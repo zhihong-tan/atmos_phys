@@ -20,7 +20,7 @@
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
  character(len=128) :: version = '$Id: ras.F90,v 1.3 2000/08/04 18:55:37 fms Exp $'
- character(len=128) :: tag = '$Name: bombay $'
+ character(len=128) :: tag = '$Name: calgary $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav

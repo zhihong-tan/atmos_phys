@@ -15,7 +15,7 @@
 <H2>Module vert_turb_driver_mod</H2>
 <A NAME="HEADER">
 <PRE>
-     <B>Contact:</B>   Bruce Wyman
+     <B>Contact:</B>   Bruce Wyman, Steve Klein
      <B>Reviewers:</B>
 
      <B><A HREF=".doc.log#vert_turb_driver.f90">Tags/Status</A></B>
@@ -44,6 +44,7 @@
         1) Mellor-Yamada 2.5 turbulence closure scheme
         2) Generalized diffusivity scheme
         3) Shallow convection scheme
+        4) Calculation of gustiness
 
 </PRE>
 </A><!-- END DESCRIPTION -->
@@ -215,6 +216,16 @@ input (optional), for the step-mountain (eta) coordinate option
   do_shallow_conv    Switch to turn on/off shallow convection scheme.
                        [logical, default: do_shallow_conv=.false.]
 
+  gust_scheme        Sets the scheme used for the gustiness calculation.
+                     Valid schemes (case sensitive) are:
+                     = 'constant' --> use namelist value CONSTANT_GUST
+                     = 'beljaars' --> use Beljaars(1994) scheme
+                       [character, default: gust_scheme = 'constant']
+
+  constant_gust      Value used for gustiness (in m/s) when
+                     gust_scheme = 'constant'.
+                       [real, default: constant_gust = 1.]
+
 </PRE>
 </A><!-- END NAMELIST -->
 <!--------------------------------------------------------------------->
@@ -238,6 +249,7 @@ Diagnostic fields for module name: <b>vert_turb</b>
    lscale         turbulent length scale (m)
    lscale_0       master length scale (m)
    z_pbl          depth of planetary boundary layer (m)
+   gust           gustiness (m/s)
    diff_t         vert diff coeff for temp (m2/s)
    diff_m         vert diff coeff for momentum (m2/s)
    diff_sc        vert diff coeff for shallow conv (m2/s)
@@ -300,6 +312,10 @@ Notes:
 
     <b>attempting to call initialization twice</b>
        You can not call vert_turb_driver_init more than once.
+
+    <b>invalid value for namelist variable GUST_SCHEME</b>
+       The gustiness scheme you have selected is not valid.
+       Check the <a href="vert_turb_driver.doc.html#NAMELIST">namelist options</a> for variable GUST_SCHEME.
 
 <b>Fatal errors in vert_turb_driver:</b>
 

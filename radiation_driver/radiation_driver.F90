@@ -41,8 +41,8 @@
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: radiation_driver.F90,v 1.2 2000/07/28 20:16:45 fms Exp $'
-character(len=128) :: tag = '$Name: bombay $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 1.3 2000/11/22 14:34:38 fms Exp $'
+character(len=128) :: tag = '$Name: calgary $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)
@@ -141,7 +141,7 @@ namelist /radiation_driver_nml/ dt_rad, offset, do_average, &
 !-----------------------------------------------------------------------
 !-------------------- diagnostics fields -------------------------------
 
-integer :: id_alb_sfc
+integer :: id_alb_sfc, id_coszen
 
 integer, dimension(2) :: id_tdt_sw,   id_tdt_lw,  &
                          id_swdn_toa, id_swup_toa, id_olr, &
@@ -159,7 +159,7 @@ contains
 !#######################################################################
 !#######################################################################
 
-   subroutine radiation_driver (is, ie, js, je, Time, dt,             &
+   subroutine radiation_driver (is, ie, js, je, Time, Time_next,      &
                                 lat, lon, pfull, phalf, t, q, ts,     &
                                 land, albedo, tdt, flux_sw, flux_lw,  &
                                 coszen, mask, kbot)
@@ -167,11 +167,8 @@ contains
 !-----------------------------------------------------------------------
 !
 !    in:  is,ie,js,je  starting/ending i,j in global storage arrays;
-!         Time       time for determining whether radiation should be
-!                    done 
-!         dt         time step in seconds, interval that 
-!                      radiation_driver is called (not the interval
-!                      that radiation calculations are done)
+!         Time       time for determining whether radiation should be done
+!         Time_next  time used for diagnostic output
 !         lat        latitude,in radians
 !         lon        longitude,in radians
 !         pfull      pressure at full levels
@@ -193,10 +190,14 @@ contains
 !         mask
 !         kbot
 !
+!
+!  NOTE:   "dt" the time step in seconds, is the interval that 
+!          radiation_driver is called (not the interval that radiation
+!          calculations are done.
+!          It may be calculated as: dt = Time_next - Time
 !-----------------------------------------------------------------------
         integer, intent(in)            :: is, ie, js, je
-type(time_type), intent(in)            :: Time
-   real, intent(in)                    :: dt
+type(time_type), intent(in)            :: Time, Time_next
    real, intent(in), dimension(:,:)    :: lat, lon
    real, intent(in), dimension(:,:,:)  :: pfull, phalf, t, q
    real, intent(in), dimension(:,:)    :: ts
@@ -207,6 +208,8 @@ type(time_type), intent(in)            :: Time
 
    real, intent(in), dimension(:,:,:),optional   :: mask
 integer, intent(in), dimension(:,:),optional     :: kbot
+!-----------------------------------------------------------------------
+integer :: day, sec, dt
   
 !-----------------------------------------------------------------------
 
@@ -216,7 +219,13 @@ integer, intent(in), dimension(:,:),optional     :: kbot
 !-----------------------------------------------------------------------
 !------------ is this a radiative time step ??? ------------------------
 
-      if ( num_pts == 0 ) rad_alarm = rad_alarm - nint(dt)
+      call get_time (Time_next-Time,sec,day)
+      dt = day*86400 + sec
+
+      if (dt <= 0) call error_mesg ('radiation_driver_mod', &
+                                    'Time_next <= Time', FATAL)
+
+      if ( num_pts == 0 ) rad_alarm = rad_alarm - dt
       num_pts = num_pts + size(t,1) * size(t,2)
 
       if ( rad_alarm <= 0 ) do_rad = .true.
@@ -226,8 +235,8 @@ integer, intent(in), dimension(:,:),optional     :: kbot
 !          compute new radiative tendencies
 
    if (do_rad .or. do_average) then
-       call radiation_calc (is, ie, js, je, Time, dt, lat, lon,    &
-                            pfull, phalf, t, q, ts,                &
+       call radiation_calc (is, ie, js, je, Time, Time_next, dt,   &
+                            lat, lon,  pfull, phalf, t, q, ts,     &
                             land, albedo, mask, kbot)
    endif
 
@@ -267,14 +276,14 @@ integer, intent(in), dimension(:,:),optional     :: kbot
 
 !#######################################################################
 
-  subroutine radiation_calc (is, ie, js, je, Time, dt, lat, lon,     &
+  subroutine radiation_calc (is, ie, js, je, Time, Time_diag, dt, lat, lon, &
                              pfull, phalf, t, q, ts, land, albedo,   &
                              mask, kbot)
 
 !-----------------------------------------------------------------------
         integer, intent(in)               :: is, ie, js, je
-type(time_type), intent(in)               :: Time
-           real, intent(in)               :: dt
+type(time_type), intent(in)               :: Time, Time_diag
+        integer, intent(in)               :: dt
    real, intent(in),  dimension(:,:)    :: lat,lon
    real, intent(in),  dimension(:,:,:)  :: pfull, phalf, t, q
    real, intent(in),  dimension(:,:)    :: ts
@@ -300,7 +309,7 @@ integer,dimension(size(t,1),size(t,2), size(t,3)+1) :: ktop,kbtm,  &
                                             swups,swdns,lwups,lwdns
 integer,dimension(size(t,1),size(t,2))   :: nclds
    real,dimension(size(t,1),size(t,2))   :: hang,cosz,solar,  &
-                                            psfc,tsfc,asfc
+                                            psfc,tsfc,asfc,cosz1
 
 integer :: i, j, k, n, id, jd, kd, ipass, npass, ip, jp, kb
 logical :: no_clouds, used
@@ -325,15 +334,18 @@ type(time_type) :: Rad_time, Dt_zen
 
       if (do_diurnal) then
          if (do_average) then
-            Dt_zen = set_time(nint(dt),0)
+            Dt_zen = set_time(dt,0)
          else
             Dt_zen = set_time(rad_time_step,0)
          endif
-         call diurnal_solar     (cosz, solar, lat,lon, Rad_time, Dt_zen)
+         call diurnal_solar (cosz1, solar, lat,lon, Rad_time+Dt_zen, Dt_zen)
+         call diurnal_solar (cosz , solar, lat,lon, Rad_time       , Dt_zen)
       else if (do_annual) then
          call annual_mean_solar (cosz, solar, lat)
+         cosz1 = cosz
       else
          call daily_mean_solar  (cosz, solar, lat, Rad_time)
+         cosz1 = cosz
       endif
 
       solar = solar * solar_constant
@@ -433,7 +445,7 @@ type(time_type) :: Rad_time, Dt_zen
                           no_clouds = .true.
       if (ipass == npass) no_clouds = .false.
       
-      call clouds (is,js, no_clouds, Rad_time, lat, land,   &
+      call clouds (is,js, no_clouds, Rad_time, Time_diag, lat, land, &
                     press(:,:,1:kd), p_int, temp(:,:,1:kd),   &
                     cosz,nclds, ktopsw, kbtmsw, ktop, kbtm,   &
                     cldamt, cuvrf, cirrf, cirab, emcld, mask, kbot)
@@ -474,61 +486,66 @@ type(time_type) :: Rad_time, Dt_zen
 
        flux_sw_surf(is:ie,js:je) = swdns(:,:)-swups(:,:)
        flux_lw_surf(is:ie,js:je) = lwdns(:,:)
-       coszen_angle(is:ie,js:je) = cosz (:,:)
+       coszen_angle(is:ie,js:je) = cosz1(:,:)
 
 !-----------------------------------------------------------------------
 !------------------------ diagnostics section --------------------------
 
 !------- albedo (only do once) -------------------------
       if ( id_alb_sfc > 0 .and. .not. no_clouds ) then
-         used = send_data ( id_alb_sfc, asfc, Time, is, js )
+         used = send_data ( id_alb_sfc, asfc, Time_diag, is, js )
+      endif
+
+!------- cos zenith angle (only do once) -------------------------
+      if ( id_coszen > 0 .and. .not. no_clouds ) then
+         used = send_data ( id_coszen, cosz, Time_diag, is, js )
       endif
 
 !------- sw tendency -----------
       if ( id_tdt_sw(ipass) > 0 ) then
-         used = send_data ( id_tdt_sw(ipass), tdtsw, Time, is, js, 1, &
+         used = send_data ( id_tdt_sw(ipass), tdtsw, Time_diag, is, js, 1, &
                             rmask=mask )
       endif
 
 !------- lw tendency -----------
       if ( id_tdt_lw(ipass) > 0 ) then
-         used = send_data ( id_tdt_lw(ipass), tdtlw, Time, is, js, 1, &
+         used = send_data ( id_tdt_lw(ipass), tdtlw, Time_diag, is, js, 1, &
                             rmask=mask )
       endif
 
 !------- incoming sw flux toa -------
       if ( id_swdn_toa(ipass) > 0 ) then
-         used = send_data ( id_swdn_toa(ipass), swin, Time, is, js )
+         used = send_data ( id_swdn_toa(ipass), swin, Time_diag, is, js )
       endif
 
 !------- outgoing sw flux toa -------
       if ( id_swup_toa(ipass) > 0 ) then
-         used = send_data ( id_swup_toa(ipass), swout, Time, is, js )
+         used = send_data ( id_swup_toa(ipass), swout, Time_diag, is, js )
       endif
 
 !------- outgoing lw flux toa (olr) -------
       if ( id_olr(ipass) > 0 ) then
-         used = send_data ( id_olr(ipass), olr, Time, is, js )
+         used = send_data ( id_olr(ipass), olr, Time_diag, is, js )
       endif
 
 !------- upward sw flux surface -------
       if ( id_swup_sfc(ipass) > 0 ) then
-         used = send_data ( id_swup_sfc(ipass), swups, Time, is, js )
+         used = send_data ( id_swup_sfc(ipass), swups, Time_diag, is, js )
       endif
 
 !------- downward sw flux surface -------
       if ( id_swdn_sfc(ipass) > 0 ) then
-         used = send_data ( id_swdn_sfc(ipass), swdns, Time, is, js )
+         used = send_data ( id_swdn_sfc(ipass), swdns, Time_diag, is, js )
       endif
 
 !------- upward lw flux surface -------
       if ( id_lwup_sfc(ipass) > 0 ) then
-         used = send_data ( id_lwup_sfc(ipass), lwups, Time, is, js )
+         used = send_data ( id_lwup_sfc(ipass), lwups, Time_diag, is, js )
       endif
 
 !------- downward lw flux surface -------
       if ( id_lwdn_sfc(ipass) > 0 ) then
-         used = send_data ( id_lwdn_sfc(ipass), lwdns, Time, is, js )
+         used = send_data ( id_lwdn_sfc(ipass), lwdns, Time_diag, is, js )
       endif
 
 !-----------------------------------------------------------------------
@@ -927,6 +944,10 @@ enddo
     id_alb_sfc = &
     register_diag_field ( mod_name, 'alb_sfc', axes(1:2), Time, &
                          'surface albedo', 'percent'            )
+
+    id_coszen = &
+    register_diag_field ( mod_name, 'coszen', axes(1:2), Time, &
+                         'cosine of zenith angle', 'none'       )
 
 
 !-----------------------------------------------------------------------

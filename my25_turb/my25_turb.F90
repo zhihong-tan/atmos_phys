@@ -26,7 +26,7 @@
 !---------------------------------------------------------------------
 
  character(len=128) :: version = '$Id: my25_turb.F90,v 1.2 2000/08/04 18:52:36 fms Exp $'
- character(len=128) :: tag = '$Name: bombay $'
+ character(len=128) :: tag = '$Name: calgary $'
 
  logical :: do_init = .true.
  logical :: init_tke

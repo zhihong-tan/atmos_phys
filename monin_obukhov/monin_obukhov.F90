@@ -30,7 +30,8 @@ private
 
 ! form of interfaces
 !=======================================================================
-! call  mo_drag (dt, pt, pt0, z, z0, zt, speed, drag_m, drag_t, &
+! call  mo_drag (dt, pt, pt0, z, z0, zt, zq, speed, &
+!                drag_m, drag_t, drag_q,            &
 !                u_star, b_star, [mask])
 !
 !   (In the following the phrase "dimension(:) or (:,:)" means
@@ -65,6 +66,10 @@ private
 !          surface roughness for temperature
 !          meters
 !
+!      zq, real, dimension(:) or (:,:)
+!          surface roughness for moisture
+!          meters
+!
 !      speed, real, dimension(:) or (:,:) 
 !          wind speed at lowest model level with respect to surface 
 !             (any "gustiness" factor should be included in speed)
@@ -75,9 +80,11 @@ private
 !        drag_m, real, dimension(:) or (:,:)
 !              non-dimensional drag coefficient for momentum
 !           
-!
 !        drag_t, real, dimension(:) or (:,:)
 !             non-dimensional drag coefficient for temperature
+!           
+!        drag_q, real, dimension(:) or (:,:)
+!             non-dimensional drag coefficient for moisture
 !
 !          (the input values are used only if the time-smoothing 
 !            option is turned on)
@@ -113,8 +120,8 @@ private
 !
 !==========================================================================
 !
-! subroutine mo_profile(zref, z, z0, zt, u_star, b_star, &
-!                          del_m, del_h, [mask])
+! subroutine mo_profile(zref, z, z0, zt, zq, u_star, b_star, q_star, &
+!                          del_m, del_h, del_q, [mask])
 !
 !     (In the following the phrase "dimension(:) or (:,:)" means
 !      that this routine can be called either with all of the 
@@ -139,6 +146,10 @@ private
 !         surface roughness for temperature
 !         meters
 !
+!     zq, real, dimension(:) or (:,:)
+!         surface roughness for moisture
+!         meters
+!
 !     u_star, real, dimension(:) or (:,:)
 !             friction velocity 
 !             meters/sec
@@ -147,7 +158,12 @@ private
 !             buoyancy scale
 !             (meters/sec)**2
 !
-!          (Note:  u_star and b_star are output from mo_drag)
+!     q_star, real, dimension(:) or (:,:)
+!             moisture scale
+!             kg/kg
+!
+!          (Note:  u_star and b_star are output from mo_drag,
+!                  q_star = flux_q/u_star/rho )
 !
 !    optional input:
 !
@@ -163,6 +179,9 @@ private
 !
 !       del_h, real, dimension(:) or (:,:)
 !              dimensionless ratio, as defined below, for temperature
+!
+!       del_q, real, dimension(:) or (:,:)
+!              dimensionless ratio, as defined below, for moisture
 !
 !          Ratios are  (f(zref) - f_surf)/(f(z) - f_surf)
 !
@@ -241,8 +260,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.2 2000/07/28 20:16:42 fms Exp $'
-character(len=128) :: tag = '$Name: bombay $'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.3 2000/11/22 14:34:25 fms Exp $'
+character(len=128) :: tag = '$Name: calgary $'
 
 !=======================================================================
 
@@ -315,23 +334,23 @@ end subroutine monin_obukhov_init
 !=======================================================================
 
 subroutine mo_drag_1d &
-         (dt, pt, pt0, z, z0, zt, speed, drag_m, drag_t, u_star, b_star, mask)
+         (dt, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, u_star, b_star, mask)
 
 real, intent(in) :: dt
-real, intent(in)   , dimension(:) :: pt, pt0, z, z0, zt, speed
-real, intent(inout), dimension(:) :: drag_m, drag_t
+real, intent(in)   , dimension(:) :: pt, pt0, z, z0, zt, zq, speed
+real, intent(inout), dimension(:) :: drag_m, drag_t, drag_q
 real, intent(out),   dimension(:) :: u_star, b_star
 logical, intent(in), optional, dimension(:) :: mask
 
 real :: vk2, r_crit1
 
-real   , dimension(size(pt)) :: rich, fm, fh
+real   , dimension(size(pt)) :: rich, fm, fh, fq
 integer, dimension(size(pt)) :: stabl, unstabl
 logical, dimension(size(pt)) :: avail
 
 real   , dimension(size(pt)) :: &
-    rich_1d, z_1d, z0_1d, zt_1d, fm_1d, fh_1d, zeta_1d, delta_b, us, bs, &
-    u_star_eq, b_star_eq, drag_m_eq, drag_t_eq
+    rich_1d, z_1d, z0_1d, zt_1d, zq_1d, fm_1d, fh_1d, fq_1d, zeta_1d, delta_b, us, bs, qs, &
+    u_star_eq, b_star_eq, drag_m_eq, drag_t_eq, drag_q_eq
 
 real :: xi, xi_1, xi_2
 
@@ -356,10 +375,13 @@ if(neutral) then
   where(avail)
     fm   = alog(z/z0)
     fh   = alog(z/zt)
+    fq   = alog(z/zq)
     us   = vonkarm/fm
     bs   = vonkarm/fh
+    qs   = vonkarm/fq
     drag_m    = us*us
     drag_t    = us*bs
+    drag_q    = us*qs
     u_star = us*speed
     b_star = bs*delta_b
   end where
@@ -369,8 +391,10 @@ else
   where(avail .and. rich >= r_crit) 
     drag_m_eq   = drag_min
     drag_t_eq   = drag_min
+    drag_q_eq   = drag_min
     us          = sqrt_drag_min
     bs          = sqrt_drag_min
+    qs          = sqrt_drag_min
   end where
 
 ! solve for zeta on stable and unstable points separately
@@ -383,14 +407,18 @@ else
        z_1d   (i) = z   (unstabl(i))
        z0_1d  (i) = z0  (unstabl(i))
        zt_1d  (i) = zt  (unstabl(i))
+       zq_1d  (i) = zq  (unstabl(i))
     end do
 
     call solve_zeta  &
      (nptu, rich_1d, z_1d, z0_1d, zt_1d, fm_1d, fh_1d, unstable = .true.)
+    call solve_zeta  &
+     (nptu, rich_1d, z_1d, z0_1d, zq_1d, fm_1d, fq_1d, unstable = .true.)
 
     do i = 1, nptu
       fm(unstabl(i)) = fm_1d(i)
       fh(unstabl(i)) = fh_1d(i)
+      fq(unstabl(i)) = fq_1d(i)
     end do
   end if
 
@@ -400,22 +428,28 @@ else
        z_1d   (i) = z   (stabl(i))
        z0_1d  (i) = z0  (stabl(i))
        zt_1d  (i) = zt  (stabl(i))
+       zq_1d  (i) = zq  (stabl(i))
     end do
 
     call solve_zeta  &
      (npts, rich_1d, z_1d, z0_1d, zt_1d, fm_1d, fh_1d, unstable = .false.)
+    call solve_zeta  &
+     (npts, rich_1d, z_1d, z0_1d, zq_1d, fm_1d, fq_1d, unstable = .false.)
 
     do i = 1, npts
       fm(stabl(i)) = fm_1d(i)
       fh(stabl(i)) = fh_1d(i)
+      fq(stabl(i)) = fq_1d(i)
     end do
   end if
 
   where (avail .and. rich < r_crit)
     us   = max(vonkarm/fm, sqrt_drag_min)
     bs   = max(vonkarm/fh, sqrt_drag_min)
+    qs   = max(vonkarm/fq, sqrt_drag_min)
     drag_m_eq   = us*us
     drag_t_eq   = us*bs
+    drag_q_eq   = us*qs
   end where
 
   if(relax_time.ne.0.0) then
@@ -425,6 +459,7 @@ else
      where (avail)
        drag_m = xi_1*drag_m + xi_2*drag_m_eq
        drag_t = xi_1*drag_t + xi_2*drag_t_eq
+       drag_q = xi_1*drag_q + xi_2*drag_q_eq
        us = sqrt(drag_m)
        bs = drag_t/us
        u_star = us*speed
@@ -434,6 +469,7 @@ else
      where (avail)
        drag_m = drag_m_eq
        drag_t = drag_t_eq
+       drag_q = drag_q_eq
        u_star = us*speed
        b_star = bs*delta_b
      end where
@@ -666,24 +702,25 @@ end subroutine mo_integral_s
 
 !=======================================================================
 
-subroutine mo_profile_1d(zref, z, z0, zt, u_star, b_star, del_m, del_h, mask)
+subroutine mo_profile_1d(zref, z, z0, zt, zq, u_star, b_star, q_star, del_m, del_h, del_q, mask)
 
 real, intent(in)                :: zref
-real, intent(in) , dimension(:) :: z, z0, zt, u_star, b_star
-real, intent(out), dimension(:) :: del_m, del_h
+real, intent(in) , dimension(:) :: z, z0, zt, zq, u_star, b_star, q_star
+real, intent(out), dimension(:) :: del_m, del_h, del_q
 logical, optional, dimension(:) :: mask
 
 integer, dimension(size(z)) :: stabl, unstabl
 real   , allocatable, dimension(:) :: &
-     zeta_1d, zeta_0_1d, zeta_h_1d, zeta_ref_1d,   &
-     ln_z_z0_1d, ln_z_zt_1d, ln_z_zref_1d,         &
-     f_m_1d, f_h_1d, f_m_ref_1d, f_h_ref_1d
+     zeta_1d, zeta_0_1d, zeta_h_1d, zeta_q_1d, zeta_ref_1d,   &
+     ln_z_z0_1d, ln_z_zt_1d, ln_z_zq_1d, ln_z_zref_1d,         &
+     f_m_1d, f_h_1d, f_q_1d, f_m_ref_1d, f_h_ref_1d, f_q_ref_1d
 
 integer :: i,j, npts,nptu
 
-real, dimension(size(z)) :: zeta, zeta_0, zeta_h, zeta_ref,  &
-                            ln_z_z0, ln_z_zt, ln_z_zref,     &
-                            f_m_ref, f_m_0, f_h_ref, f_h_0, mo_length_inv
+real, dimension(size(z)) :: zeta, zeta_0, zeta_h, zeta_q, zeta_ref,  &
+                            ln_z_z0, ln_z_zt, ln_z_zq, ln_z_zref,     &
+                            f_m_ref, f_m_0, f_h_ref, f_h_0, f_q_ref, f_q_0, &
+                            mo_length_inv
 
 logical, dimension(size(z)) :: avail, avail1
 
@@ -693,6 +730,7 @@ if(.not.init) call monin_obukhov_init
 !-- zero output arrays --
     del_m = 0.0
     del_h = 0.0
+    del_q = 0.0
 
 avail = .true.
 if (present(mask)) avail = mask
@@ -700,6 +738,7 @@ if (present(mask)) avail = mask
 where(avail) 
   ln_z_z0   = log(z/z0)
   ln_z_zt   = log(z/zt)
+  ln_z_zq   = log(z/zq)
   ln_z_zref = log(z/zref)
 end where
 
@@ -708,6 +747,7 @@ if(neutral) then
   where(avail)
     del_m = 1.0 - ln_z_zref/ln_z_z0
     del_h = 1.0 - ln_z_zref/ln_z_zt
+    del_q = 1.0 - ln_z_zref/ln_z_zq
   end where
 
 else
@@ -717,6 +757,7 @@ else
   where(u_star .eq. 0.0)
     del_m = 0.0
     del_h = 0.0
+    del_q = 0.0
   end where
 
   where(avail1) 
@@ -724,6 +765,7 @@ else
     zeta      = z   *mo_length_inv
     zeta_0    = z0  *mo_length_inv
     zeta_h    = zt  *mo_length_inv
+    zeta_q    = zq  *mo_length_inv
     zeta_ref  = zref*mo_length_inv
   elsewhere
     zeta      = 0.0
@@ -736,46 +778,59 @@ else
     allocate(zeta_1d      (nptu))
     allocate(zeta_0_1d    (nptu))
     allocate(zeta_h_1d    (nptu))
+    allocate(zeta_q_1d    (nptu))
     allocate(zeta_ref_1d  (nptu))
     allocate(ln_z_z0_1d   (nptu))
     allocate(ln_z_zt_1d   (nptu))
+    allocate(ln_z_zq_1d   (nptu))
     allocate(ln_z_zref_1d (nptu))
     allocate(f_m_1d       (nptu))
     allocate(f_h_1d       (nptu))
+    allocate(f_q_1d       (nptu))
     allocate(f_m_ref_1d   (nptu))
     allocate(f_h_ref_1d   (nptu))
+    allocate(f_q_ref_1d   (nptu))
 
     do i =1, nptu
        zeta_1d   (i)   = zeta     (unstabl(i))
        zeta_0_1d (i)   = zeta_0   (unstabl(i))
        zeta_h_1d (i)   = zeta_h   (unstabl(i))
+       zeta_q_1d (i)   = zeta_q   (unstabl(i))
        zeta_ref_1d (i) = zeta_ref (unstabl(i))
        ln_z_z0_1d(i)   = ln_z_z0  (unstabl(i))
        ln_z_zt_1d(i)   = ln_z_zt  (unstabl(i))
+       ln_z_zq_1d(i)   = ln_z_zq  (unstabl(i))
        ln_z_zref_1d(i) = ln_z_zref(unstabl(i))
     end do
 
     call mo_integral_um(f_m_1d     ,zeta_1d,  zeta_0_1d,   ln_z_z0_1d  )
     call mo_integral_uh(f_h_1d     ,zeta_1d,  zeta_h_1d,   ln_z_zt_1d  )
+    call mo_integral_uh(f_q_1d     ,zeta_1d,  zeta_q_1d,   ln_z_zq_1d  )
     call mo_integral_um(f_m_ref_1d ,zeta_1d,  zeta_ref_1d, ln_z_zref_1d)
     call mo_integral_uh(f_h_ref_1d ,zeta_1d,  zeta_ref_1d, ln_z_zref_1d)
+    f_q_ref_1d = f_h_ref_1d
 
     do i = 1, nptu
       del_m(unstabl(i)) = 1.0 - f_m_ref_1d(i)/f_m_1d(i)
       del_h(unstabl(i)) = 1.0 - f_h_ref_1d(i)/f_h_1d(i)
+      del_q(unstabl(i)) = 1.0 - f_q_ref_1d(i)/f_q_1d(i)
     end do
 
     deallocate(zeta_1d      )
     deallocate(zeta_0_1d    )
     deallocate(zeta_h_1d    )
+    deallocate(zeta_q_1d    )
     deallocate(zeta_ref_1d  )
     deallocate(ln_z_z0_1d   )
     deallocate(ln_z_zt_1d   )
+    deallocate(ln_z_zq_1d   )
     deallocate(ln_z_zref_1d )
     deallocate(f_m_1d       )
     deallocate(f_h_1d       )
+    deallocate(f_q_1d       )
     deallocate(f_m_ref_1d   )
     deallocate(f_h_ref_1d   )
+    deallocate(f_q_ref_1d   )
 
   end if
 
@@ -784,46 +839,59 @@ else
     allocate(zeta_1d      (npts))
     allocate(zeta_0_1d    (npts))
     allocate(zeta_h_1d    (npts))
+    allocate(zeta_q_1d    (npts))
     allocate(zeta_ref_1d  (npts))
     allocate(ln_z_z0_1d   (npts))
     allocate(ln_z_zt_1d   (npts))
+    allocate(ln_z_zq_1d   (npts))
     allocate(ln_z_zref_1d (npts))
     allocate(f_m_1d       (npts))
     allocate(f_h_1d       (npts))
+    allocate(f_q_1d       (npts))
     allocate(f_m_ref_1d   (npts))
     allocate(f_h_ref_1d   (npts))
+    allocate(f_q_ref_1d   (npts))
 
     do i =1, npts
        zeta_1d   (i)   = zeta     (stabl(i))
        zeta_0_1d (i)   = zeta_0   (stabl(i))
        zeta_h_1d (i)   = zeta_h   (stabl(i))
+       zeta_q_1d (i)   = zeta_q   (stabl(i))
        zeta_ref_1d (i) = zeta_ref (stabl(i))
        ln_z_z0_1d(i)   = ln_z_z0  (stabl(i))
        ln_z_zt_1d(i)   = ln_z_zt  (stabl(i))
+       ln_z_zq_1d(i)   = ln_z_zq  (stabl(i))
        ln_z_zref_1d(i) = ln_z_zref(stabl(i))
     end do
 
     call mo_integral_s(f_m_1d     , zeta_1d, zeta_0_1d,   ln_z_z0_1d  )
     call mo_integral_s(f_h_1d     , zeta_1d, zeta_h_1d,   ln_z_zt_1d  )
+    call mo_integral_s(f_q_1d     , zeta_1d, zeta_q_1d,   ln_z_zq_1d  )
     call mo_integral_s(f_m_ref_1d , zeta_1d, zeta_ref_1d, ln_z_zref_1d)
     f_h_ref_1d = f_m_ref_1d
+    f_q_ref_1d = f_m_ref_1d
 
     do i = 1, npts
       del_m(stabl(i)) = 1.0 - f_m_ref_1d(i)/f_m_1d(i)
       del_h(stabl(i)) = 1.0 - f_h_ref_1d(i)/f_h_1d(i)
+      del_q(stabl(i)) = 1.0 - f_q_ref_1d(i)/f_q_1d(i)
     end do
 
     deallocate(zeta_1d      )
     deallocate(zeta_0_1d    )
     deallocate(zeta_h_1d    )
+    deallocate(zeta_q_1d    )
     deallocate(zeta_ref_1d  )
     deallocate(ln_z_z0_1d   )
     deallocate(ln_z_zt_1d   )
+    deallocate(ln_z_zq_1d   )
     deallocate(ln_z_zref_1d )
     deallocate(f_m_1d       )
     deallocate(f_h_1d       )
+    deallocate(f_q_1d       )
     deallocate(f_m_ref_1d   )
     deallocate(f_h_ref_1d   )
+    deallocate(f_q_ref_1d   )
 
   end if
 
@@ -991,15 +1059,15 @@ end subroutine separate_stabilities
 !=======================================================================
 
 subroutine mo_drag_2d &
-         (dt, pt, pt0, z, z0, zt, speed, drag_m, drag_t, u_star, b_star)
+         (dt, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, u_star, b_star)
 
 real, intent(in) :: dt
-real, intent(in),  dimension(:,:) :: z, speed, pt, pt0, z0, zt
-real, intent(out), dimension(:,:) :: drag_m, drag_t
+real, intent(in),  dimension(:,:) :: z, speed, pt, pt0, z0, zt, zq
+real, intent(out), dimension(:,:) :: drag_m, drag_t, drag_q
 real, intent(inout), dimension(:,:) :: u_star, b_star
 
 real, dimension(size(pt,1)*size(pt,2)) :: z_1d, speed_1d, pt_1d, pt0_1d, &
-   z0_1d, zt_1d, drag_m_1d, drag_t_1d, u_star_1d, b_star_1d
+   z0_1d, zt_1d, zq_1d, drag_m_1d, drag_t_1d, drag_q_1d, u_star_1d, b_star_1d
 
 integer :: shape1(1), shape2(2)
 
@@ -1012,15 +1080,17 @@ shape2 = (/ size(pt,1),  size(pt,2) /)
         pt0_1d = reshape (pt0    , shape1)
          z0_1d = reshape (z0     , shape1)
          zt_1d = reshape (zt     , shape1)
+         zq_1d = reshape (zq     , shape1)
      u_star_1d = reshape (u_star , shape1)
      b_star_1d = reshape (b_star , shape1)
 
 call mo_drag_1d &
-         (dt, pt_1d, pt0_1d, z_1d, z0_1d, zt_1d , speed_1d,&
-          drag_m_1d, drag_t_1d, u_star_1d, b_star_1d)
+         (dt, pt_1d, pt0_1d, z_1d, z0_1d, zt_1d, zq_1d, speed_1d,&
+          drag_m_1d, drag_t_1d, drag_q_1d, u_star_1d, b_star_1d)
 
       drag_m = reshape (drag_m_1d   , shape2)
       drag_t = reshape (drag_t_1d   , shape2)
+      drag_q = reshape (drag_q_1d   , shape2)
       u_star = reshape (u_star_1d   , shape2)
       b_star = reshape (b_star_1d   , shape2)
 
@@ -1029,15 +1099,15 @@ return
 end subroutine mo_drag_2d
 !=======================================================================
 
-subroutine mo_profile_2d(zref, z, z0, zt, u_star, b_star, del_m, del_h)
+subroutine mo_profile_2d(zref, z, z0, zt, zq, u_star, b_star, q_star, del_m, del_h, del_q)
 
 real, intent(in)                  :: zref
-real, intent(in) , dimension(:,:) :: z, z0, zt, u_star, b_star
-real, intent(out), dimension(:,:) :: del_m, del_h
+real, intent(in) , dimension(:,:) :: z, z0, zt, zq, u_star, b_star, q_star
+real, intent(out), dimension(:,:) :: del_m, del_h, del_q
 
-real, dimension(size(z,1)*size(z,2)) :: z_1d, z0_1d,  zt_1d, &
-                                          u_star_1d, b_star_1d, &
-                                          del_m_1d, del_h_1d
+real, dimension(size(z,1)*size(z,2)) :: z_1d, z0_1d,  zt_1d, zq_1d, &
+                                          u_star_1d, b_star_1d, q_star_1d, &
+                                          del_m_1d, del_h_1d, del_q_1d
 
 integer :: shape1(1), shape2(2)
 
@@ -1047,14 +1117,17 @@ shape2 = (/ size(z,1),  size(z,2) /)
           z_1d = reshape (z        , shape1)
          z0_1d = reshape (z0       , shape1)
          zt_1d = reshape (zt       , shape1)
+         zq_1d = reshape (zq       , shape1)
      u_star_1d = reshape (u_star   , shape1)
      b_star_1d = reshape (b_star   , shape1)
+     q_star_1d = reshape (q_star   , shape1)
 
 call mo_profile_1d&
-    (zref, z_1d, z0_1d, zt_1d, u_star_1d, b_star_1d, del_m_1d, del_h_1d)
+    (zref, z_1d, z0_1d, zt_1d, zq_1d, u_star_1d, b_star_1d, q_star_1d, del_m_1d, del_h_1d, del_q_1d)
 
       del_m = reshape (del_m_1d , shape2)
       del_h = reshape (del_h_1d , shape2)
+      del_q = reshape (del_q_1d , shape2)
 
 return
 end subroutine mo_profile_2d

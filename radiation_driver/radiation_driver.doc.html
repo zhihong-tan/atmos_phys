@@ -138,7 +138,7 @@ input
 ---------------------------------------------------------------------
 <a name="radiation_driver">
 
-call radiation_driver (is, ie, js, je, Time, dt, lat, lon,
+call radiation_driver (is, ie, js, je, Time, Time_next, lat, lon,
                        pfull, phalf, t, q, ts, land, albedo,
                        tdt, flux_sw, flux_lw, coszen,
                        [, mask, kbot] )
@@ -148,13 +148,11 @@ input
     is,ie,js,je  starting/ending i,j indices in global storage arrays
                    [integer]
 
-    Time       the current time (used as the radiative time unless namelist
-               variable rad_time has been specified)
-                 [time_type]
+    Time       The time for determining whether radiation should be done.
+               This is used as the radiative time unless namelist variable
+               rad_time has been specified.   [time_type]
 
-    dt         the model time step in seconds (the interval that the
-               radiation_driver is called, not the interval that radiation
-               calculations are done)    [real]
+    Time_next  The time used for diagnostic output.   [time_type]
 
     lat        mean latitude (in radians) of all grid boxes processed by this
                call to radiation_driver   [real, dimension(:,:)]
@@ -295,6 +293,7 @@ Diagnostic fields for module name: <b>radiation</b>
    ----------      -----------------
 
    alb_sfc         surface albedo (percent)
+   coszen          cosine of the solar zenith angle
 
    tdt_sw          temperature tendency for SW radiation (deg_K/sec)
    tdt_lw          Temperature tendency for LW radiation (deg_K/sec)
@@ -354,7 +353,7 @@ NOTE: When namelist variable <b>do_clear_sky_diag = .true.</b> an additional cle
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
-<B><A HREF=".doc.log#radiation_driver.f90">Revision history</A></B>
+<B><A HREF=".doc.log#radiation_driver.f90">CVS revision history</A></B>
 
 <b>changes prior to 1/24/2000</b>
 
@@ -415,6 +414,12 @@ NOTE: When namelist variable <b>do_clear_sky_diag = .true.</b> an additional cle
     <b>radiation_driver_init must first be called</b>
        You have not called radiation_driver_init before calling
        radiation_driver.
+
+    <b>Time_next <= Time</b>
+       Time arguments to radiation_driver are producing a time step <= 0.
+       Check that the time argumnets passed to the physics_driver are
+       correct.
+       
 
 <b>Fatal errors in return_average in radiation_driver_mod:</b>
 

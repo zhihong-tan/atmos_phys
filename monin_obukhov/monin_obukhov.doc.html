@@ -74,9 +74,6 @@
     to zeta is (1/zeta)*phi(zeta).  for the neutral logarithmic
     profile, phi = 1.
 
-   Drag coefficients for water and all tracers should be set equal 
-     to that for temperature
-
 </PRE>
 </A><!-- END DESCRIPTION -->
 <!--------------------------------------------------------------------->
@@ -105,11 +102,11 @@
                                   mo_profile, &
                                   mo_diff   ]
 
-    mo_drag   : computes the drag coefficients for momentum and heat;
+    mo_drag   : computes the drag coefficients for momentum, heat, and moisture;
                 also returns u_star (the friction velocity) and
                 b_star (the buoyancy scale)
 
-    mo_profile :  provides the profile of momentum and temperature
+    mo_profile :  provides the profile of momentum, temperature, and specific humidity
                 in the constant flux layer -- useful when desiring 
                 model output at a standard level below the lowest
                 model level.  For example, "surface winds" generally
@@ -154,7 +151,7 @@
 
 ==========================================================================
 
- call  mo_drag (dt, pt, pt0, z, z0, zt, speed, drag_m, drag_t, &
+ call  mo_drag (dt, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, &
                 u_star, b_star, [mask])
 
    (In the following the phrase "dimension(:) or (:,:)" means
@@ -189,6 +186,10 @@
           surface roughness for temperature
           meters
 
+      zq, real, dimension(:) or (:,:)
+          surface roughness for moisture
+          meters
+
       speed, real, dimension(:) or (:,:) 
           wind speed at lowest model level with respect to surface 
              (any "gustiness" factor should be included in speed)
@@ -199,9 +200,12 @@
         drag_m, real, dimension(:) or (:,:)
               non-dimensional drag coefficient for momentum
            
-
         drag_t, real, dimension(:) or (:,:)
               non-dimensional drag coefficient for temperature
+           
+        drag_q, real, dimension(:) or (:,:)
+              non-dimensional drag coefficient for moisture (specific humidity)
+
 
           (the input values are used only if the time-smoothing 
             option is turned on)
@@ -237,8 +241,8 @@
 
 ==========================================================================
 
- subroutine mo_profile(zref, z, z0, zt, u_star, b_star, &
-                          del_m, del_h, [mask])
+ subroutine mo_profile(zref, z, z0, zt, zq, u_star, b_star, q_star, &
+                          del_m, del_h, del_q, [mask])
 
      (In the following the phrase "dimension(:) or (:,:)" means
       that this routine can be called either with all of the 
@@ -263,6 +267,10 @@
          surface roughness for temperature
          meters
 
+     zq, real, dimension(:) or (:,:)
+         surface roughness for moisture
+         meters
+
      u_star, real, dimension(:) or (:,:)
              friction velocity 
              meters/sec
@@ -271,7 +279,12 @@
              buoyancy scale
              (meters/sec)**2
 
-          (Note:  u_star and b_star are output from mo_drag)
+     q_star, real, dimension(:) or (:,:)
+             moisture scale
+             kg/kg
+
+          (Note:  u_star and b_star are output from mo_drag,
+                  q_star = flux_q/u_star/rho )
 
     optional input:
 
@@ -287,6 +300,9 @@
 
        del_h, real, dimension(:) or (:,:)
               dimensionless ratio, as defined below, for temperature
+
+       del_q, real, dimension(:) or (:,:)
+              dimensionless ratio, as defined below, for specific humidity
 
           Ratios are  (f(zref) - f_surf)/(f(z) - f_surf)
 

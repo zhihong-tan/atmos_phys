@@ -61,6 +61,7 @@
 
      sat_vapor_pres_mod
           utilities_mod
+          constants_mod
 
 </PRE>
 </A><!-- END MODULES_USED -->
@@ -93,21 +94,11 @@ Notes:
 <!-- BEGIN ROUTINES -->
 <PRE>
 
- <b>call shallow_conv_init</b>( kx,       p00_in,   Hlv_in,  Cp_in,   RDgas_in, &
-                         RVgas_in, Kappa_in, grav_in, d622_in, d378_in   )
+ <b>call shallow_conv_init</b>( kx )
 
 input
 
     kx           Number of levels in vertical                     [integer]
-    p00_in       Reference pressure in pascals                    [real]
-    Hlv_in       Latent heat in joules/gm                         [real]
-    Cp_in        Specific heat in joules/gm/deg K                 [real]
-    RDgas_in     Gas constant for dry air in joules/gm/deg K      [real]
-    RVgas_in     Gas constant for water vapor in joules/gm/deg K  [real]
-    Kappa_in     RDgas / Cp                                       [real]
-    grav_in      Gravity in m/sec^2                               [real]
-    d622_in      0.622                                            [real]
-    d378_in      1.0 - d622                                       [real]
 
 ---------------------------------------------------------------------
 

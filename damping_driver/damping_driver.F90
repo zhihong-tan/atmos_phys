@@ -70,7 +70,7 @@ character(len=7) :: mod_name = 'damping'
 !     rfactr = coeff. for damping momentum at the top level
 
  character(len=128) :: version = '$Id: damping_driver.F90,v 1.2 2000/08/04 18:41:02 fms Exp $'
- character(len=128) :: tag = '$Name: bombay $'
+ character(len=128) :: tag = '$Name: calgary $'
 
 !-----------------------------------------------------------------------
 

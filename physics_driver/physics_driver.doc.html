@@ -128,7 +128,7 @@ call physics_driver_init ( Time, lonb, latb, axes, pref,
 ----------------------------------------------------------------------
 
 call physics_driver_down (is, ie, js, je,
-                          dt, Time, lat, lon, area,
+                          Time_prev, Time, Time_next, lat, lon, area,
                           p_half, p_full, z_half, z_full,
                           u, v, t, q, r, um, vm, tm, qm, rm,
                           frac_land, rough_mom,
@@ -145,9 +145,11 @@ INPUT
   is,ie,js,je  starting and ending global indices for the current data window
                   [integer]
 
-  dt           time step in seconds [real]
+  Time_prev    previous time, for variables um,vm,tm,qm,rm (time_type)
 
-  Time         current time [time_type]
+  Time         current time, for variables u,v,t,q,r  (time_type)
+
+  Time_next    next time, used for diagnostics  (time_type)
 
   lat          latitude in radians [real, dimension(:,:)]
 
@@ -223,7 +225,7 @@ OPTIONAL INPUT
 ----------------------------------------------------------------------
 
 call physics_driver_up (is, ie, js, je,
-                        dt, Time, lat, lon, area,
+                        Time_prev, Time, Time_next, lat, lon, area,
                         p_half, p_full, omega,
                         u, v, t, q, r, um, vm, tm, qm, rm,
                         frac_land, udt, vdt, tdt, qdt, rdt,
@@ -233,8 +235,9 @@ call physics_driver_up (is, ie, js, je,
   input
   -----
   is,ie,js,je  starting and ending global indices
-  dt           time step in seconds
-  Time         current time (time_type)
+  Time_prev    previous time, for variables um,vm,tm,qm,rm (time_type)
+  Time         current time, for variables u,v,t,q,r  (time_type)
+  Time_next    next time, used for diagnostics  (time_type)
   lat          latitude in radians
   lon          longitude in radians
   area         grid box area (in m2) - currently not used

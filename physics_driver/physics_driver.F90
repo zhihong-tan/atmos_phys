@@ -30,7 +30,7 @@ use        constants_mod, only: tfreeze,hlv,hlf,hls,kappa,  &
 use        utilities_mod, only: file_exist, error_mesg, FATAL, NOTE,  &
                                 open_file, close_file, get_my_pe
 
-use     time_manager_mod, only: time_type
+use     time_manager_mod, only: time_type, get_time, operator(-)
 
 use    tracer_driver_mod, only: tracer_driver_init, tracer_driver,  &
                                 tracer_driver_end
@@ -54,8 +54,8 @@ interface check_dim
 end interface
 
 !--------------------- version number ----------------------------------
-character(len=256) :: version = '$Id: physics_driver.F90,v 1.2 2000/07/28 20:16:44 fms Exp $'
-character(len=256) :: tag = '$Name: bombay $'
+character(len=256) :: version = '$Id: physics_driver.F90,v 1.3 2000/11/22 14:34:34 fms Exp $'
+character(len=256) :: tag = '$Name: calgary $'
 !-----------------------------------------------------------------------
 
       logical :: do_init = .true., do_check_args = .true.
@@ -67,7 +67,8 @@ contains
 !#######################################################################
 
  subroutine physics_driver_down (is, ie, js, je,                     &
-                                 dt, Time, lat, lon, area,           & 
+                                 Time_prev, Time, Time_next,         &
+                                 lat, lon, area,                     & 
                                  p_half, p_full, z_half, z_full,     &
                                  u, v, t, q, r, um, vm, tm, qm, rm,  &
                                  frac_land, rough_mom,               &
@@ -81,8 +82,7 @@ contains
 
 !-----------------------------------------------------------------------
         integer,          intent(in)       :: is, ie, js, je
-           real,          intent(in)       :: dt
-type(time_type),          intent(in)       :: Time
+type(time_type),          intent(in)       :: Time_prev, Time, Time_next
       real, intent(in)   ,dimension(:,:)   :: lat, lon, area
       real, intent(in)   ,dimension(:,:,:) :: p_half, p_full,   &
                                               z_half, z_full,   &
@@ -111,8 +111,9 @@ type(time_type),          intent(in)       :: Time
 !  input
 !  -----
 !  is,ie,js,je  starting and ending global indices
-!  dt           time step in seconds
-!  Time         current time (time_type)
+!  Time_prev    previous time, for variables um,vm,tm,qm,rm (time_type)
+!  Time         current time, for variables u,v,t,q,r  (time_type)
+!  Time_next    next time, used for diagnostics  (time_type)
 !  lat          latitude in radians
 !  lon          longitude in radians
 !  area         grid box area (in m2) - currently not used
@@ -149,6 +150,8 @@ type(time_type),          intent(in)       :: Time
 !-----------------------------------------------------------------------
 
    real, dimension(size(u,1),size(u,2),size(u,3)) :: diff_t,  diff_m
+   real    :: dt
+   integer :: day, sec
 
 !-----------------------------------------------------------------------
       if (do_init) call error_mesg ('physics_driver',  &
@@ -160,11 +163,16 @@ type(time_type),          intent(in)       :: Time
                        u, v, t, q, r, um, vm, tm, qm, rm,              &
                        udt, vdt, tdt, qdt, rdt)
 
+!     --- compute the time step (from tau-1 to tau+1) ---
+
+      call get_time (Time_next-Time_prev, sec, day)
+      dt = real(sec+day*86400)
+
 !-----------------------------------------------------------------------
 !-------------------------- radiation ----------------------------------
 
-     call radiation_driver (is, ie, js, je, Time,             &
-                            dt, lat, lon, p_full, p_half,     &
+     call radiation_driver (is, ie, js, je, Time, Time_next,  &
+                            lat, lon, p_full, p_half,         &
                             t, q, t_surf_rad, frac_land,      &
                             albedo, tdt, flux_sw, flux_lw,    &
                             coszen,      mask=mask, kbot=kbot )
@@ -172,19 +180,20 @@ type(time_type),          intent(in)       :: Time
 !-----------------------------------------------------------------------
 !------------------------ damping --------------------------------------
 
-     call damping_driver (is, js, Time, p_full, p_half, z_full, z_half,&
+     call damping_driver (is, js,  &
+                          Time_next, p_full, p_half, z_full, z_half,   &
                           u, v, t, q, r,  udt, vdt, tdt, qdt, rdt,     &
                           mask=mask, kbot=kbot)
 
 !-----------------------------------------------------------------------
 !-------- need to modify vert_turb_driver (remove t_surf) --------
 
-     call vert_turb_driver (is, js, Time, dt, frac_land,     &
-                            p_half, p_full, z_half, z_full,  &
-                            u_star, b_star, rough_mom,       &
-                            u, v, t, q,                      &
-                            diff_t, diff_m, gust,            &
-                            mask=mask, kbot=kbot             )
+     call vert_turb_driver (is, js, Time_next, dt, frac_land, &
+                            p_half, p_full, z_half, z_full,   &
+                            u_star, b_star, rough_mom,        &
+                            u, v, t, q,                       &
+                            diff_t, diff_m, gust,             &
+                            mask=mask, kbot=kbot              )
 
 !-----------------------------------------------------------------------
 !----------------------- process tracers fields ------------------------
@@ -194,12 +203,12 @@ type(time_type),          intent(in)       :: Time
 !-----------------------------------------------------------------------
 !----------------------- vertical diffusion ----------------------------
 
-  call vert_diff_driver_down (is, js, Time, dt, p_half, z_full,    &
-                              diff_m, diff_t, um ,vm ,tm ,qm ,rm,  &
-                              dtau_dv, tau_x, tau_y,               &
-                              udt, vdt, tdt, qdt, rdt,             &
-                              Surf_diff,                           &
-                              mask=mask, kbot=kbot                 )
+  call vert_diff_driver_down (is, js, Time_next, dt, p_half, z_full, &
+                              diff_m, diff_t, um ,vm ,tm ,qm ,rm,    &
+                              dtau_dv, tau_x, tau_y,                 &
+                              udt, vdt, tdt, qdt, rdt,               &
+                              Surf_diff,                             &
+                              mask=mask, kbot=kbot                   )
 
 !-----------------------------------------------------------------------
 
@@ -208,7 +217,8 @@ type(time_type),          intent(in)       :: Time
 !#######################################################################
 
  subroutine physics_driver_up (is, ie, js, je,                    &
-                               dt, Time, lat, lon, area,          &
+                               Time_prev, Time, Time_next,        &
+                               lat, lon, area,                    &
                                p_half, p_full, omega,             &
                                u, v, t, q, r, um, vm, tm, qm, rm, &
                                frac_land,                         &
@@ -219,8 +229,7 @@ type(time_type),          intent(in)       :: Time
 
 !-----------------------------------------------------------------------
         integer,          intent(in)       :: is, ie, js, je
-           real,          intent(in)       :: dt
-type(time_type),          intent(in)       :: Time
+type(time_type),          intent(in)       :: Time_prev, Time, Time_next
       real, intent(in)   ,dimension(:,:)   :: lat, lon, area
       real, intent(in)   ,dimension(:,:,:) :: p_half, p_full, omega,  &
                                               u , v , t , q ,         &
@@ -243,8 +252,9 @@ type(time_type),          intent(in)       :: Time
 !  input
 !  -----
 !  is,ie,js,je  starting and ending global indices
-!  dt           time step in seconds
-!  Time         current time (time_type)
+!  Time_prev    previous time, for variables um,vm,tm,qm,rm (time_type)
+!  Time         current time, for variables u,v,t,q,r  (time_type)
+!  Time_next    next time, used for diagnostics  (time_type)
 !  lat          latitude in radians
 !  lon          longitude in radians
 !  area         grid box area (in m2) - currently not used
@@ -261,19 +271,28 @@ type(time_type),          intent(in)       :: Time
 !  tm,qm        temperature and specific humidity at previous time step
 !  rm           multiple 3d tracer fields at previous time step
 !
+!-----------------------------------------------------------------------
+   real    :: dt
+   integer :: day, sec
+
+!     --- compute the time step (from tau-1 to tau+1) ---
+
+      call get_time (Time_next-Time_prev, sec, day)
+      dt = real(sec+day*86400)
+
 !----------------------- vertical diffusion ----------------------------
 
-    call vert_diff_driver_up (is, js, Time, dt, p_half, Surf_diff, &
+    call vert_diff_driver_up (is, js, Time_next, dt, p_half, Surf_diff, &
                               tdt, qdt,  mask=mask, kbot=kbot)
 
 !-----------------------------------------------------------------------
 !-------------------------- moist processes ----------------------------
 
-    call moist_processes (is, ie, js, je, Time, dt, frac_land, &
-                          p_half, p_full, omega,               &
-                          t, q, r, u, v, tm, qm, rm, um, vm,   &
-                          tdt, qdt, rdt, udt, vdt,             &
-                          lprec, fprec, mask=mask, kbot=kbot   )
+    call moist_processes (is, ie, js, je, Time_next, dt, frac_land, &
+                          p_half, p_full, omega,                    &
+                          t, q, r, u, v, tm, qm, rm, um, vm,        &
+                          tdt, qdt, rdt, udt, vdt,                  &
+                          lprec, fprec, mask=mask, kbot=kbot        )
 
 !-----------------------------------------------------------------------
 

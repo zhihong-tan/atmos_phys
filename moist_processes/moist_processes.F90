@@ -8,7 +8,9 @@
 !             moist convective adjustment
 !             relaxed arakawa-schubert
 !             large-scale condensation
-!             stratiform prognostic cloud scheme (coming soon)
+!             stratiform prognostic cloud scheme 
+!             rel humidity cloud scheme 
+!             Diagnostic cloud scheme 
 !
 !-----------------------------------------------------------------------
 
@@ -35,6 +37,9 @@ use     strat_cloud_mod, only: strat_init, strat_driv, strat_end, &
 use       rh_clouds_mod, only: rh_clouds_init, rh_clouds_end, &
                                rh_clouds_sum
 
+use      diag_cloud_mod, only: diag_cloud_init, diag_cloud_end, &
+                               diag_cloud_sum
+
 use diag_integral_mod, only:     diag_integral_field_init, &
                              sum_diag_integral_field
 
@@ -60,15 +65,15 @@ private
    real, parameter :: d378 = 1.-d622
 
 !--------------------- version number ----------------------------------
-   character(len=128) :: version = '$Id: moist_processes.F90,v 1.3 2000/08/04 19:18:46 fms Exp $'
-   character(len=128) :: tag = '$Name: bombay $'
+   character(len=128) :: version = '$Id: moist_processes.F90,v 1.4 2000/11/22 14:34:18 fms Exp $'
+   character(len=128) :: tag = '$Name: calgary $'
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
 
 
    logical :: do_mca=.true., do_lsc=.true., do_ras=.false.,  &
               do_strat=.false., do_dryadj=.false., &
-              do_rh_clouds=.false.,  &
+              do_rh_clouds=.false., do_diag_clouds=.false., &
               use_tau=.false.
    character(len=8) :: call_pat = 'x       '
 
@@ -89,6 +94,10 @@ private
 !                [logical, default: do_ras=false ]
 !   do_strat = switch to turn on/off stratiform cloud scheme
 !                [logical, default: do_strat=false ]
+! do_rh_clouds = switch to turn on/off simple relative humidity cloud scheme
+!                [logical, default: do_rh_clouds=false ]
+! do_diag_clouds = switch to turn on/off (Gordon's) diagnostic cloud scheme
+!                [logical, default: do_diag_clouds=false ]
 !  do_dryadj = switch to turn on/off dry adjustment scheme
 !                [logical, default: do_dryadj=false ]
 !   use_tau  = switch to determine whether current time level (tau)
@@ -117,7 +126,7 @@ private
 namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_strat,  &
                                do_dryadj, pdepth, tfreeze,        &
                                nql, nqi, nqa, use_tau, call_pat,  &
-                               do_rh_clouds
+                               do_rh_clouds, do_diag_clouds
 
 !-----------------------------------------------------------------------
 !-------------------- diagnostics fields -------------------------------
@@ -148,6 +157,8 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,      &
 !    in:  is,ie      starting and ending i indices for window
 !
 !         js,je      starting and ending j indices for window
+!
+!         Time       time used for diagnostics [time_type]
 !
 !         dt         time step (from t(n-1) to t(n+1) if leapfrog)
 !                    in seconds   [real]
@@ -249,6 +260,22 @@ integer unit,n
 integer :: i, j, k, ix, jx, kx, nt, ipat, ip
 real    :: dtinv, fdt
 logical :: use_mask, do_adjust, used
+!-----------------------------------------------------------------------
+
+! The following local quantitities are used exclusively for diagnostic clouds
+!      LGSCLDELQ  Averaged rate of change in mix ratio due to lg scale precip 
+!               at full model levels  
+!               (dimensioned IX x JX x KX)
+!      CNVCNTQ  Accumulated count of change in mix ratio due to conv precip 
+!               at full model levels  
+!               (dimensioned IX x JX x KX)
+!      CONVPRC  Accumulated conv precip rate summed over all
+!               full model levels (mm/day )
+!               (dimensioned IX x JX)
+
+real, dimension(size(t,1),size(t,2),size(t,3)) :: lgscldelq,cnvcntq
+real, dimension(size(t,1),size(t,2)) :: convprc
+
 !-----------------------------------------------------------------------
 
       if (do_init) call error_mesg ('moist_processes',  &
@@ -533,6 +560,19 @@ endif
       endif
 
  endif
+
+!-----------------------------------------------------------------------
+                      if (do_diag_clouds) then
+!  capture convective precip and convective spec hum changes (and calculate, 
+!  convective spec hum counter) which are needed as predictors 
+!  for Gordon's diagnostic clouds
+      where (qtnd(:,:,:) < 0.0)
+            cnvcntq (:,:,:) = 1.0
+      else where
+            cnvcntq (:,:,:) = 0.0
+      end where
+      convprc = precip
+                      endif
 !-----------------------------------------------------------------------
 !***********************************************************************
 !----------------- large-scale condensation ----------------------------
@@ -561,6 +601,25 @@ if (do_adjust) then
            
            !pass RH to rh_clouds_sum
            call rh_clouds_sum (is, js, RH)
+           
+     end if
+
+!------- compute diagnostic clouds if desired ------
+     if (do_diag_clouds) then
+           
+           !calculate relative humidity
+           call rh_calc(pfull,tin,qin,RH,mask)
+
+!  capture tendency of spec. hum. due to lg scale condensation
+           lgscldelq = qtnd
+           
+!--- check adjusted temperatures to be within es lookup table range -----
+
+      call tempcheck (is,ie,js,je,tin)
+
+! pass cloud predictors to diag_cloud_sum
+           call diag_cloud_sum (is,js, &
+                    tin,qin,rh,omega,lgscldelq,cnvcntq,convprc,kbot)
            
      end if
 
@@ -692,7 +751,8 @@ endif
 !------- diagnostics for relative humidity -------
 
    if ( id_rh > 0 ) then
-      if (.not.do_rh_clouds) call rh_calc (pfull,tin,qin,RH,mask)
+      if (.not.(do_rh_clouds.or.do_diag_clouds)) &
+          call rh_calc (pfull,tin,qin,RH,mask)
       used = send_data ( id_rh, RH*100., Time, is, js, 1, rmask=mask )
    endif
 
@@ -745,9 +805,14 @@ integer  unit,io,ierr,nt
          if ( do_lsc .and. do_strat ) call error_mesg   &
                  ('moist_processes_init',  &
                   'both do_lsc and do_strat cannot be specified', FATAL)
-         if ( do_rh_clouds .and. do_strat .and. get_my_pe() == 0) &
-              call error_mesg ('moist_processes_init',            &
-         'both do_rh_clouds and do_strat should not be specified', NOTE)
+
+         if ( (do_rh_clouds.or.do_diag_clouds) .and. do_strat .and. &
+             get_my_pe() == 0 ) call error_mesg ('moist_processes_init', &
+     'do_rh_clouds or do_diag_clouds + do_strat should not be specified', NOTE)
+
+         if ( do_rh_clouds .and. do_diag_clouds .and. get_my_pe() == 0 ) &
+            call error_mesg ('moist_processes_init',  &
+       'do_rh_clouds and do_diag_clouds should not be specified', NOTE)
 
          if (do_strat) then
          endif
@@ -777,7 +842,7 @@ integer  unit,io,ierr,nt
         call close_file (unit)
       else
         num_calls = 0
-        if (get_my_pe() == 0) call error_mesg ('moist_processes_init', &
+        if (get_my_pe() == 0) call error_mesg ('moist_processes_init',  &
                          'restart data (num_calls) set to zero.',NOTE)
       endif
 
@@ -786,6 +851,7 @@ integer  unit,io,ierr,nt
       if (do_lsc) then
                      call lscale_cond_init ()
                      if (do_rh_clouds) call rh_clouds_init (id,jd,kd)
+                     if (do_diag_clouds) call diag_cloud_init (id,jd,kd,ierr)
       endif
       if (do_ras)    call         ras_init ()
       if (do_strat)  call       strat_init (id,jd,kd)
@@ -822,6 +888,7 @@ integer  unit
 
       if (do_strat)     call     strat_end
       if (do_rh_clouds) call rh_clouds_end
+      if (do_diag_clouds) call diag_cloud_end
 
 !-----------------------------------------------------------------------
 
@@ -901,11 +968,11 @@ end subroutine moist_processes_end
 
               if (numbad > 0) then
 
-!del               print *, 'pe,numbad,is,js=',get_my_pe(),numbad,is,js
+                   print *, 'pe,numbad,is,js=',get_my_pe(),numbad,is,js
 
                    do k=1,size(temp,3)
                      call tcheck (temp(:,:,k),numbad)
-!del                 print *, 'pe,k,numbad=',get_my_pe(),k,numbad
+                     print *, 'pe,k,numbad=',get_my_pe(),k,numbad
                    enddo
 
                  if (size(temp,2) > 1) then

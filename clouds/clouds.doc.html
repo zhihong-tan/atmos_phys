@@ -58,6 +58,7 @@
        cloud_obs_mod
        rh_clouds_mod
      strat_cloud_mod
+      diag_cloud_mod
        cloud_rad_mod
     time_manager_mod
     diag_manager_mod
@@ -124,7 +125,7 @@
 
 ----------------------------------------------------------------------
 
-call clouds  (is, js, clear_sky, time, lat, land, 
+call clouds  (is, js, clear_sky, Time, Time_diag, lat, land, 
               pfull, phalf, t, cosz,
               nclds, ktopsw, kbtmsw, ktopsw, kbtmlw,
               cldamt, cuvrf, cirrf, cirab, emcld
@@ -138,7 +139,10 @@ call clouds  (is, js, clear_sky, time, lat, land,
                  If this is set to true, there will be no clouds.
                    [logical]
 
-     time        The current time.  [time_type]
+     Time        The current (radiative) time.  [time_type]
+
+     Time_diag   The time used when outputting diagnostic fields.
+                    [time_type]
 
      lat         The latitude in radians.  [real, dimension(:,:)]
 
@@ -286,7 +290,7 @@ NOTES:
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
-<B><A HREF=".doc.log#clouds.f90">Revision history</A></B>
+<B><A HREF=".doc.log#clouds.f90">CVS revision history</A></B>
 
 <b>changes from 10/4/1999</b>
 
@@ -366,8 +370,8 @@ NOTES:
  2) The observed clouds only provide amounts. The position (model level)
     and radiative properties are the same that used for zonal clouds.
 
- 3) RH_CLOUDS or STRAT_CLOUD will override specified clouds (when
-    their restart data is available). The predicted cloud schemes
+ 3) RH_CLOUDS, STRAT_CLOUD, or DIAG_CLOUD will override specified clouds
+    (when their restart data is available). The predicted cloud schemes
     are controlled through module moist_processes.
 
  4) Default cloud properties for specified clouds are set up
@@ -388,7 +392,7 @@ NOTES:
 <!-- BEGIN PLANS -->
 <PRE>
 
-     1) Add a diagnostic cloud scheme option.
+     None.
 
 </PRE>
 </A><!-- END PLANS -->

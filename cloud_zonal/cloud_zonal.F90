@@ -24,8 +24,8 @@ public   cloud_zonal, cloud_zonal_init, getcld
    real, dimension(37,4)   :: phigh,pmidl,ptop,pbtm
    real                    :: rad2deg
 
-   character(len=128) :: version = '$Id: cloud_zonal.F90,v 1.2 2000/08/04 18:38:53 fms Exp $'
-   character(len=128) :: tag = '$Name: bombay $'
+   character(len=128) :: version = '$Id: cloud_zonal.F90,v 1.3 2000/11/22 14:33:32 fms Exp $'
+   character(len=128) :: tag = '$Name: calgary $'
 
 !-----------------------------------------------------------------------
 !--------cloud amounts every 5 deg. for high,mid, & low-----------------
@@ -237,8 +237,9 @@ subroutine cloud_zonal_init (season)
 !---- error checks -----
 
       if (iseason /= -1) then
-          call error_mesg ('cloud_zonal_init',  &
-               'initialization routine can not be called twice.', FATAL)
+          return
+!DEL      call error_mesg ('cloud_zonal_init',  &
+!DEL           'initialization routine can not be called twice.', FATAL)
       endif
 
       if (season < 1 .or. season > 5) then

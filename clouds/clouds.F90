@@ -17,6 +17,8 @@ use    utilities_mod, only:  error_mesg, FATAL, file_exist,   &
                              get_my_pe, close_file
 use    rh_clouds_mod, only:  do_rh_clouds, rh_clouds, rh_clouds_avg
 use  strat_cloud_mod, only:  do_strat_cloud, strat_cloud_avg
+use   diag_cloud_mod, only:  do_diag_cloud, diag_cloud_driver, &
+                             diag_cloud_avg
 use diag_manager_mod, only:  register_diag_field, send_data
 
 implicit none
@@ -28,8 +30,8 @@ public   clouds, clouds_init, clouds_end
 
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: clouds.F90,v 1.2 2000/07/28 20:16:22 fms Exp $'
- character(len=128) :: tag = '$Name: bombay $'
+ character(len=128) :: version = '$Id: clouds.F90,v 1.3 2000/11/22 14:33:39 fms Exp $'
+ character(len=128) :: tag = '$Name: calgary $'
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !   note:  the fels-schwarzkopf radiation code permits bi-spectral
@@ -77,7 +79,7 @@ contains
 
 !#######################################################################
 
-subroutine clouds  (is, js, clear_sky, time, lat, land,       &
+subroutine clouds  (is, js, clear_sky, Time, Time_diag, lat, land, &
                     pfull, phalf, t,  cosz,                   &
                     nclds, ktopsw, kbtmsw, ktoplw, kbtmlw,    &
                     cldamt, cuvrf, cirrf, cirab, emcld, mask, kbot)
@@ -85,7 +87,7 @@ subroutine clouds  (is, js, clear_sky, time, lat, land,       &
 !-----------------------------------------------------------------------
         integer, intent(in)                    :: is, js
         logical, intent(in)                    :: clear_sky
-type(time_type), intent(in)                    :: time
+type(time_type), intent(in)                    :: Time, Time_diag
 
    real, intent(in), dimension(:,:)    :: lat
    real, intent(in), dimension(:,:)    :: land
@@ -100,8 +102,12 @@ integer, intent(in),  dimension(:,:),  optional :: kbot
    real,dimension(size(cirab,1),size(cirab,2),size(cirab,3)) :: cuvab
 integer,dimension(size(ktoplw,1),size(ktoplw,2),size(ktoplw,3)) ::  &
                        ktop, kbtm
+!      TCA_CA   array for total clouds diagnositc
+!      HML_CA   array for high, middle and low clouds diagnostics
+!               as per 3rd index values of 1,2 and 3 respectively.
    real,dimension(size(pfull,1),size(pfull,2))   :: tca
    real,dimension(size(pfull,1),size(pfull,2),3) :: hml_ca
+
    real,dimension(size(pfull,1),size(pfull,2),size(pfull,3)) ::  &
                                                      ql,qi,cf,rh,cloud
    real,dimension(size(phalf,1),size(phalf,2),size(phalf,3)) :: phaf
@@ -109,6 +115,33 @@ integer,dimension(size(ktoplw,1),size(ktoplw,2),size(ktoplw,3)) ::  &
 integer :: i,j,k,kb,kx,kp1,n,ierr
 logical :: used
 !-----------------------------------------------------------------------
+
+! The following local quantitities are used exclusively for diagnostic clouds
+!      TEMP     Averaged temperature (Deg K) at full model levels
+!                   (dimensioned IDIM x JDIM x kx)
+!      QMIX     Averaged specific humidity at full model levels 
+!                   (dimensioned IDIM x JDIM x kx)
+!      OMEGA  	Averaged pressure vertical velocity at full model levels
+!                   (dimensioned IDIM x JDIM x kx)
+!      LGSCLDELQ  Averaged rate of change in mix ratio due to lg scale precip 
+!               at full model levels  
+!               (dimensioned IX x JX x KX)
+!      CNVCNTQ  Accumulated count of change in mix ratio due to conv precip 
+!               at full model levels  
+!               (dimensioned IX x JX x KX)
+!      CONVPRC  Accumulated conv precip rate summed over all
+!               full model levels (mm/day )
+!               (dimensioned IX x JX)
+!      Note:    RH is also a predictor but since it is used in the rh cloud
+!               scheme as well it has already been declared.
+!      PSFC     Surface pressure
+!               (dimensioned IX x JX)
+real, dimension(size(t,1),size(t,2),size(t,3)) :: temp,qmix,omega
+real, dimension(size(t,1),size(t,2),size(t,3)) :: lgscldelq,cnvcntq
+real, dimension(size(t,1),size(t,2)) :: convprc,psfc
+
+!-----------------------------------------------------------------------
+
   ierr = 1
 
   kx  = size(ktopsw,3)-1
@@ -175,6 +208,31 @@ logical :: used
 !-----------------------------------------------------------------------
 
 !-----------------------------------------------------------------------
+!--------------- determine diagnostic cloud properties -----------------
+ if ( do_diag_cloud() ) then
+!-----------------------------------------------------------------------
+      
+     call diag_cloud_avg (is, js, temp,qmix,rh,omega, &
+                          lgscldelq,cnvcntq,convprc,ierr)
+
+     psfc(:,:) = phalf(:,:,kp1)
+     if (ierr == 0) then
+         call diag_cloud_driver (is,js, &
+                    temp,qmix,rh,omega,lgscldelq,cnvcntq,convprc, &
+                    pfull,phalf,psfc,cosz,lat,Time, &
+                    nclds,ktop(:,:,2:kp1),kbtm(:,:,2:kp1), &
+                    cldamt(:,:,2:kp1),cuvrf(:,:,2:kp1),  &
+                    cirrf(:,:,2:kp1),cuvab(:,:,2:kp1),  &
+                    cirab(:,:,2:kp1),emcld(:,:,2:kp1) )
+!                    cirab(:,:,2:kp1),emcld(:,:,2:kp1) ,kbot)
+     endif     
+
+!-----------------------------------------------------------------------
+ endif     
+!-----------------------------------------------------------------------
+
+
+!-----------------------------------------------------------------------
 !  ----------- zonal or observed clouds ??? --------------
 !  (also do if avg cloud properties could not be returned)
 !-----------------------------------------------------------------------
@@ -195,14 +253,14 @@ logical :: used
 
 !   ---- get three cloud levels (store in k=2,4) -----
 
-      call cloud_zonal (time, lat, phaf, nclds,  &
+      call cloud_zonal (Time, lat, phaf, nclds,  &
                         ktopsw(:,:,2:4), kbtmsw(:,:,2:4), &
                         ktoplw(:,:,2:4), kbtmlw(:,:,2:4), &
                         cldamt(:,:,2:4), cuvrf(:,:,2:4),  &
                         cirrf(:,:,2:4), cirab(:,:,2:4),  &
                         emcld(:,:,2:4))
 
-      if (do_obs_clouds) call cloud_obs (is, js, time, cldamt(:,:,2:4))
+      if (do_obs_clouds) call cloud_obs (is, js, Time, cldamt(:,:,2:4))
 
 !-----------------------------------------------------------------------
  endif
@@ -211,7 +269,8 @@ logical :: used
 
 !----- store longwave and shortwave indices -----
 
-   if ( (do_rh_clouds() .or. do_strat_cloud()) .and. ierr == 0 ) then
+   if ( (do_rh_clouds() .or. do_strat_cloud() .or. do_diag_cloud()) &
+        .and. ierr == 0 ) then
 
          do j=1,size(ktoplw,2)
          do i=1,size(ktoplw,1)
@@ -233,7 +292,7 @@ logical :: used
 !---- total cloud diagnostic ----
       if ( id_tot_cld_amt > 0 ) then
          call compute_tca_random ( nclds, cldamt(:,:,2:kp1), tca )
-         used = send_data ( id_tot_cld_amt, tca, Time, is, js )
+         used = send_data ( id_tot_cld_amt, tca, Time_diag, is, js )
       endif
 
 !---- high,mid,low cloud diagnostics ----
@@ -242,18 +301,18 @@ logical :: used
          call compute_hml_ca_random ( nclds, cldamt(:,:,2:kp1), &
                     kbtmlw(:,:,2:kp1), pfull, phalf, hml_ca, kbot )
          if ( id_high_cld_amt > 0 ) used = send_data &
-                     ( id_high_cld_amt, hml_ca(:,:,1), Time, is, js )
+                     ( id_high_cld_amt, hml_ca(:,:,1), Time_diag, is, js )
          if ( id_mid_cld_amt > 0 ) used = send_data &
-                      ( id_mid_cld_amt, hml_ca(:,:,2), Time, is, js )
+                      ( id_mid_cld_amt, hml_ca(:,:,2), Time_diag, is, js )
          if ( id_low_cld_amt > 0 ) used = send_data &
-                      ( id_low_cld_amt, hml_ca(:,:,3), Time, is, js )
+                      ( id_low_cld_amt, hml_ca(:,:,3), Time_diag, is, js )
       endif
 
 !------- cloud amount -------------------------
       if ( id_cld_amt > 0 ) then
          call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
                              cldamt(:,:,2:kp1), cloud )
-         used = send_data ( id_cld_amt, cloud, Time, is, js, 1, &
+         used = send_data ( id_cld_amt, cloud, Time_diag, is, js, 1, &
                             rmask=mask )
       endif
 
@@ -261,7 +320,7 @@ logical :: used
       if ( id_em_cld > 0 ) then
          call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
                              emcld(:,:,2:kp1), cloud )
-         used = send_data ( id_em_cld, cloud, Time, is, js, 1, &
+         used = send_data ( id_em_cld, cloud, Time_diag, is, js, 1, &
                             rmask=mask )
       endif
 
@@ -269,7 +328,7 @@ logical :: used
       if ( id_alb_uv_cld > 0 ) then
          call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
                              cuvrf(:,:,2:kp1), cloud )
-         used = send_data ( id_alb_uv_cld, cloud, Time, is, js, 1, &
+         used = send_data ( id_alb_uv_cld, cloud, Time_diag, is, js, 1, &
                             rmask=mask )
       endif
 
@@ -277,7 +336,7 @@ logical :: used
       if ( id_alb_nir_cld > 0 ) then
          call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
                              cirrf(:,:,2:kp1), cloud )
-         used = send_data ( id_alb_nir_cld, cloud, Time, is, js, 1, &
+         used = send_data ( id_alb_nir_cld, cloud, Time_diag, is, js, 1, &
                             rmask=mask )
       endif
 
@@ -285,7 +344,7 @@ logical :: used
 !     if ( id_abs_uv_cld > 0 ) then
 !        call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
 !                            cuvab(:,:,2:kp1), cloud )
-!        used = send_data ( id_abs_uv_cld, cloud, Time, is, js, 1, &
+!        used = send_data ( id_abs_uv_cld, cloud, Time_diag, is, js, 1, &
 !                           rmask=mask )
 !     endif
 
@@ -293,7 +352,7 @@ logical :: used
       if ( id_abs_nir_cld > 0 ) then
          call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
                              cirab(:,:,2:kp1), cloud )
-         used = send_data ( id_abs_nir_cld, cloud, Time, is, js, 1, &
+         used = send_data ( id_abs_nir_cld, cloud, Time_diag, is, js, 1, &
                             rmask=mask )
       endif
 

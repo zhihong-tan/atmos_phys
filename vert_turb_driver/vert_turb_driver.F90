@@ -24,7 +24,7 @@ use   diag_manager_mod, only: register_diag_field, send_data
 
 use   time_manager_mod, only: time_type
 
-use      constants_mod, only: grav, rdgas, rvgas, cp, kappa, p00, hlv
+use      constants_mod, only: rdgas, rvgas, kappa, p00
 
 use      utilities_mod, only: error_mesg, open_file, file_exist, &
                               get_my_pe, close_file, FATAL
@@ -40,8 +40,8 @@ public   vert_turb_driver_init, vert_turb_driver_end, vert_turb_driver
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 1.2 2000/08/04 19:04:10 fms Exp $'
-character(len=128) :: tag = '$Name: bombay $'
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 1.3 2000/11/22 14:36:29 fms Exp $'
+character(len=128) :: tag = '$Name: calgary $'
 
 !-----------------------------------------------------------------------
 
@@ -54,17 +54,25 @@ character(len=128) :: tag = '$Name: bombay $'
 
  logical :: do_init = .true.
 
+ real :: gust_zi = 1000.   ! constant for computed gustiness (meters)
+
 !-----------------------------------------------------------------------
 !-------------------- namelist -----------------------------------------
 
  logical :: do_shallow_conv  = .false.
  logical :: do_mellor_yamada = .true.
 
- namelist /vert_turb_driver_nml/ do_shallow_conv, do_mellor_yamada
+ character(len=24) :: gust_scheme  = 'constant' ! valid schemes are:
+                                                !   => 'constant'
+                                                !   => 'beljaars'
+ real              :: constant_gust = 1.0
+
+ namelist /vert_turb_driver_nml/ do_shallow_conv, do_mellor_yamada, &
+                                 gust_scheme, constant_gust
 
 !-------------------- diagnostics fields -------------------------------
 
-integer :: id_tke,    id_lscale, id_lscale_0, id_z_pbl,  &
+integer :: id_tke,    id_lscale, id_lscale_0, id_z_pbl, id_gust,  &
            id_diff_t, id_diff_m, id_diff_sc
 
 real :: missing_value = -999.
@@ -172,7 +180,16 @@ logical :: used
 !-----------------------------------------------------------------------
 !------------- define gustiness ------------
 
-     gust = 1.0
+     if ( trim(gust_scheme) == 'constant' ) then
+          gust = constant_gust
+     else if ( trim(gust_scheme) == 'beljaars' ) then
+!    --- from Beljaars (1994) and Beljaars and Viterbo (1999) ---
+          where (b_star > 0.)
+             gust = (u_star*b_star*gust_zi)**(1./3.)
+          elsewhere
+             gust = 0.
+          endwhere
+     endif
 
 !-----------------------------------------------------------------------
 !------------------------ diagnostics section --------------------------
@@ -209,6 +226,11 @@ end if
 !------- boundary layer depth -------
       if ( id_z_pbl > 0 ) then
          used = send_data ( id_z_pbl, z_pbl, Time, is, js )
+      endif
+
+!------- boundary layer depth -------
+      if ( id_gust > 0 ) then
+         used = send_data ( id_gust, gust, Time, is, js )
       endif
 
 
@@ -287,13 +309,17 @@ subroutine vert_turb_driver_init (id, jd, kd, axes, Time)
       endif
       call close_file (unit)
 
+!     --- check namelist option ---
+      if ( trim(gust_scheme) /= 'constant' .and. &
+           trim(gust_scheme) /= 'beljaars' ) call error_mesg &
+         ('vert_turb_driver_mod', 'invalid value for namelist &
+          &variable GUST_SCHEME', FATAL)
+
 !-----------------------------------------------------------------------
 
       if (do_mellor_yamada) call my25_turb_init (id, jd, kd)
 
-      if (do_shallow_conv)  &
-         call shallow_conv_init (kd, p00, hlv, cp, rdgas, rvgas,   &
-                                 kappa, grav, d622, d378           )
+      if (do_shallow_conv)  call shallow_conv_init (kd)
 
 !-----------------------------------------------------------------------
 !----- initialize diagnostic fields -----
@@ -318,6 +344,10 @@ endif
    id_z_pbl = &
    register_diag_field ( mod_name, 'z_pbl', axes(1:2), Time,       &
                         'depth of planetary boundary layer',  'm'  )
+
+   id_gust = &
+   register_diag_field ( mod_name, 'gust', axes(1:2), Time,        &
+                        'wind gustiness in surface layer',  'm/s'  )
 
    id_diff_t = &
    register_diag_field ( mod_name, 'diff_t', axes(half), Time,    &

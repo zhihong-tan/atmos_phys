@@ -20,7 +20,7 @@
 !-----------------------------------------------------------------------
 
       character(len=128) :: version = '$Id: fsrad.F90,v 1.2 2000/08/04 18:49:37 fms Exp $'
-      character(len=128) :: tag = '$Name: bombay $'
+      character(len=128) :: tag = '$Name: calgary $'
       logical :: do_init = .true.
 
       real, parameter :: Day_Length=86400.

@@ -210,8 +210,8 @@ REAL,    PRIVATE            :: qamin = 1.E-2
 !       DECLARE VERSION NUMBER OF SCHEME
 !
         
-        character(len=128) :: version = '$Id: cloud_rad.F90,v 1.2 2000/08/04 19:30:28 fms Exp $'
-        character(len=128) :: tag = '$Name: bombay $'
+        character(len=128) :: version = '$Id: cloud_rad.F90,v 1.3 2000/11/22 14:33:28 fms Exp $'
+        character(len=128) :: tag = '$Name: calgary $'
 
 ! 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -450,6 +450,20 @@ SUBROUTINE CLOUD_SUMMARY(LAND,ql,qi,qa,pfull,phalf,TKel,coszen,&
 !        and 16.6 microns, which is the range of validity for the
 !        Slingo (1989) radiation.
 !
+!     For single layer liquid or mixed phase clouds it is assumed that
+!     cloud liquid is vertically stratified within the cloud.  Under
+!     such situations for observed stratocumulus clouds it is found
+!     that the cloud mean effective radius is between 80 and 100% of
+!     the cloud top effective radius. (Brenguier et al., Journal of
+!     Atmospheric Sciences, vol. 57, pp. 803-821 (2000))  For linearly 
+!     stratified cloud in liquid specific humidity, the cloud top 
+!     effective radius is greater than the effective radius of the 
+!     cloud mean specific humidity by a factor of 2**(1./3.).
+!
+!     This correction, 0.9*(2**(1./3.)) = 1.134, is applied only to 
+!     single layer liquid or mixed phase clouds.
+!
+!
 !     FOR ICE CLOUDS THE EFFECTIVE RADIUS IS TAKEN FROM THE FORMULATION
 !     IN DONNER (1997, J. Geophys. Res., 102, pp. 21745-21768) WHICH IS
 !     BASED ON HEYMSFIELD AND PLATT (1984) WITH ENHANCEMENT FOR PARTICLES
@@ -592,6 +606,17 @@ REAL, DIMENSION(SIZE(ql,1),SIZE(ql,2),SIZE(ql,3),4) :: tau,w0,gg
                         ql_local(i,j,k)/qa_local(i,j,k)/Rdgas/&
                            TKel(i,j,k)/Dens_h2o/N_drop(i,j))**(1./3.)
                        end if
+
+                       if ( (k .eq. 1    .and. qa_local(i,j,2)      .lt. qamin) &
+                            .or. &
+                            (k .eq. KDIM .and. qa_local(i,j,KDIM-1) .lt. qamin) &
+                            .or. &
+                            (k .gt. 1 .and. k .lt. KDIM .and. &
+                            qa_local(i,j,k-1) .lt. qamin .and. &
+                            qa_local(i,j,k+1) .lt. qamin) ) then
+                            reff_liq_local = 1.134 * reff_liq_local
+                       end if
+
                        !limit reff_liq_local to values for which
                        !Slingo radiation is valid :
                        ! 4.2 microns < reff < 16.6 microns
@@ -767,6 +792,17 @@ REAL, DIMENSION(SIZE(ql,1),SIZE(ql,2),SIZE(ql,3),4) :: tau,w0,gg
                         ql_local(i,j,k)/qa_local(i,j,k)/Rdgas/&
                            TKel(i,j,k)/Dens_h2o/N_drop(i,j))**(1./3.)
                        end if
+
+                       if ( (k .eq. 1    .and. qa_local(i,j,2)      .lt. qamin) &
+                            .or. &
+                            (k .eq. KDIM .and. qa_local(i,j,KDIM-1) .lt. qamin) &
+                            .or. &
+                            (k .gt. 1 .and. k .lt. KDIM .and. &
+                            qa_local(i,j,k-1) .lt. qamin .and. &
+                            qa_local(i,j,k+1) .lt. qamin) ) then
+                            reff_liq_local = 1.134 * reff_liq_local
+                       end if
+
                        !limit reff_liq_local to values for which
                        !Slingo radiation is valid :
                        ! 4.2 microns < reff < 16.6 microns

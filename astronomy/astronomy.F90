@@ -27,7 +27,7 @@ public :: set_orbital_parameters, &
           get_period
 
 character(len=128) :: version = '$Id: astronomy.F90,v 1.2 2000/08/04 18:05:13 fms Exp $'
-character(len=128) :: tag = '$Name: bombay $'
+character(len=128) :: tag = '$Name: calgary $'
 
 ! description of public interfaces
 

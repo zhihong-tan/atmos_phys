@@ -9,6 +9,8 @@
                                 CHECK_NML_ERROR, OPEN_FILE,      &
                                 get_my_pe, CLOSE_FILE
 
+ use constants_mod, only: p00, Hlv, Cp, RDgas, RVgas, Kappa, grav
+
 !---------------------------------------------------------------------
  implicit none
  private
@@ -19,8 +21,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: shallow_conv.F90,v 1.2 2000/08/04 19:01:57 fms Exp $'
- character(len=128) :: tag = '$Name: bombay $'
+ character(len=128) :: version = '$Id: shallow_conv.F90,v 1.3 2000/11/22 14:34:48 fms Exp $'
+ character(len=128) :: tag = '$Name: calgary $'
 
  logical :: do_init = .true.
 
@@ -28,8 +30,7 @@
 ! --- CONSTANTS
 !---------------------------------------------------------------------
 
-  real :: p00, Hlv, Cp, RDgas, RVgas, Kappa, grav, d622, d378
-  real :: Hlv_by_Cp, Cp_by_RDgas, omkappa, dovcns 
+  real :: Hlv_by_Cp, Cp_by_RDgas, omkappa, dovcns, d622, d378
   real :: crtkons
 
   integer  :: kctopm1, kctopm2  
@@ -59,8 +60,7 @@
 !#######################################################################
 !#######################################################################
 
- SUBROUTINE SHALLOW_CONV_INIT( kx, p00_in, Hlv_in, Cp_in, RDgas_in, &
-           RVgas_in, Kappa_in, grav_in, d622_in, d378_in )
+ SUBROUTINE SHALLOW_CONV_INIT( kx )
 
 !=======================================================================
 ! ***** INITIALIZE SHALLOW CONVECTION
@@ -68,27 +68,17 @@
 !---------------------------------------------------------------------
 ! Arguments (Intent in)
 !     kx     - Number of levels in vertical
-!     p00    - Reference pressure
-!     Hlv    - Latent heat
-!     Cp     - Specific heat
-!     RDgas  - Gas constant for dry air
-!     RVgas  - Gas constant for water vapor
-!     Kappa  - RDgas / Cp
-!     grav   - Gravity
-!     d622   - 0.622
-!     d378   - 1.0 - d622
 !---------------------------------------------------------------------
  integer, intent(in) :: kx
  
- real, intent(in) :: grav_in, Hlv_in, Cp_in, RDgas_in, RVgas_in,  &
-                     Kappa_in, p00_in, d622_in, d378_in
-
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
  integer :: unit, io, ierr
  
 !=====================================================================
+
+  if (.not.do_init) return
 
 !---------------------------------------------------------------------
 ! --- Read namelist
@@ -122,16 +112,8 @@
 ! --- Initialize constants
 !---------------------------------------------------------------------
 
-  p00   =   p00_in
-  Hlv   =   Hlv_in
-  Cp    =    Cp_in
-  RDgas = RDgas_in
-  RVgas = RVgas_in
-  Kappa = Kappa_in
-  grav  =  grav_in
-  d622  =  d622_in
-  d378  =  d378_in
-
+  d622        = RDgas / RVgas
+  d378        = 1.0 - d622
   Hlv_by_Cp   = Hlv / Cp
   Cp_by_RDgas = Cp / RDgas
   omkappa     = 1.0 - Kappa
