@@ -3,7 +3,7 @@ module interpolator_mod
 !
 ! Purpose: Module to interpolate climatology data to model grid.
 !
-! author: William Cooke wfc@gfdl.noaa.gov
+! author: William Cooke William.Cooke@noaa.gov
 !
 
 use mpp_mod,           only : mpp_error, &
@@ -75,8 +75,8 @@ interface interpolator
    module procedure interpolator_3D
    module procedure interpolator_2D
 end interface
-character(len=128) :: version = '$Id: interpolator.F90,v 1.2 2003/04/09 21:04:38 fms Exp $'
-character(len=128) :: tagname = '$Name: inchon $'
+character(len=128) :: version = '$Id: interpolator.F90,v 10.0 2003/10/24 22:00:55 fms Exp $'
+character(len=128) :: tagname = '$Name: jakarta $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -84,14 +84,14 @@ type, public  :: interpolate_type
 private
 !Redundant data between fields
 !All climatology data
-real, pointer            :: lat(:)
-real, pointer            :: lon(:)
-real, pointer            :: latb(:)
-real, pointer            :: lonb(:)
-real, pointer            :: levs(:)
-real, pointer            :: halflevs(:) 
+real, pointer            :: lat(:) =>NULL()
+real, pointer            :: lon(:) =>NULL()
+real, pointer            :: latb(:) =>NULL()
+real, pointer            :: lonb(:) =>NULL()
+real, pointer            :: levs(:) =>NULL()
+real, pointer            :: halflevs(:) =>NULL()
 type(horiz_interp_type)  :: interph
-type(time_type), pointer :: time_slice(:) ! An array of the times within the climatology.
+type(time_type), pointer :: time_slice(:) =>NULL() ! An array of the times within the climatology.
 integer                  :: unit          ! Unit number on which file is being read.
 character(len=64)        :: file_name     ! Climatology filename
 integer                  :: TIME_FLAG     ! Linear or seaonal interpolation?
@@ -99,15 +99,15 @@ integer                  :: level_type    ! Pressure or Sigma level
 integer                  :: is,ie,js,je
 
 !Field specific data  for nfields
-type(fieldtype),   pointer :: field_type(:)   ! NetCDF field type
-character(len=64), pointer :: field_name(:)   ! name of this field
-integer,           pointer :: time_init(:,:)  ! second index is the number of time_slices being kept. 2 or ntime.
-integer,           pointer :: mr(:)           ! Flag for conversion of climatology to mixing ratio. 
-integer,           pointer :: out_of_bounds(:)! Flag for when surface pressure is out of bounds.
+type(fieldtype),   pointer :: field_type(:) =>NULL()   ! NetCDF field type
+character(len=64), pointer :: field_name(:) =>NULL()   ! name of this field
+integer,           pointer :: time_init(:,:) =>NULL()  ! second index is the number of time_slices being kept. 2 or ntime.
+integer,           pointer :: mr(:) =>NULL()           ! Flag for conversion of climatology to mixing ratio. 
+integer,           pointer :: out_of_bounds(:) =>NULL()! Flag for when surface pressure is out of bounds.
 !++lwh
-integer,           pointer :: vert_interp(:)  ! Flag for type of vertical interpolation.
+integer,           pointer :: vert_interp(:) =>NULL()  ! Flag for type of vertical interpolation.
 !--lwh
-real,              pointer :: data(:,:,:,:,:) ! (nlatmod,nlonmod,nlevclim,size(time_init,2),nfields)
+real,              pointer :: data(:,:,:,:,:) =>NULL() ! (nlatmod,nlonmod,nlevclim,size(time_init,2),nfields)
 end type interpolate_type
 
 
@@ -115,7 +115,7 @@ integer :: ndim, nvar,natt,ntime
 integer :: nlat,nlatb,nlon,nlonb,nlev,nlevh
 integer :: i, j, k, len, ntime_in, n, num_fields
 type(axistype), allocatable :: axes(:)
-type(axistype) :: time_axis
+type(axistype),save          :: time_axis
 type(fieldtype), allocatable :: varfields(:)
 
 real, allocatable :: time_in(:)
@@ -161,7 +161,7 @@ contains
 subroutine interpolator_init( clim_type, file_name, lonb_mod, latb_mod, &
                               data_names, data_out_of_bounds,           &
                               vert_interp, clim_units )
-type(interpolate_type), intent(out) :: clim_type
+type(interpolate_type), intent(inout) :: clim_type
 character(len=*), intent(in)            :: file_name
 real            , intent(in)            :: lonb_mod(:), latb_mod(:)
 character(len=*), intent(in) , optional :: data_names(:)
@@ -742,7 +742,7 @@ do i= 1,size(clim_type%field_name)
       if (itaum.eq.0 .and. itaup.ne.0) then
 ! Can't think of a situation where we would have the next time level but not the previous.
  call mpp_error(FATAL,'interpolator_3D : No data from the previous climatology time &
- 			& but we have the next time. How did this happen?')
+                         & but we have the next time. How did this happen?')
       endif
       if (itaum.ne.0 .and. itaup.eq.0) then
 !We have the previous time step but not the next time step data
@@ -851,7 +851,7 @@ end select
 enddo !End of i loop
 if( .not. found_field) then !field name is not in interpolator file.ERROR.
   call mpp_error(FATAL,"Interpolator: the field name is not contained in this &
-  		 &intepolate_type: "//trim(field_name))
+                   &intepolate_type: "//trim(field_name))
 endif
 end subroutine interpolator_3D
 !
@@ -999,7 +999,7 @@ enddo !End of i loop
 
 if( .not. found_field) then !field name is not in interpolator file.ERROR.
   call mpp_error(FATAL,"Interpolator: the field name is not contained in this &
-  		 &intepolate_type: "//trim(field_name))
+                   &intepolate_type: "//trim(field_name))
 endif
 end subroutine interpolator_2D
 !--lwh
@@ -1515,7 +1515,7 @@ end subroutine sulfate_init
 !#######################################################################
 !
 subroutine get_anthro_sulfate( sulfate, model_time, p_half, name, model_data, is, js, clim_units )
-type(interpolate_type), intent(out) :: sulfate
+type(interpolate_type), intent(inout) :: sulfate
 type(time_type), intent(in) :: model_time
 real, intent(in)           :: p_half(:,:,:)
 character(len=*), intent(in) :: name
@@ -1533,7 +1533,7 @@ subroutine ozone_init( o3, lonb, latb, axes, model_time, data_out_of_bounds, ver
 real,                  intent(in)           :: lonb(:),latb(:)
 integer,               intent(in)           :: axes(:)
 type(time_type),       intent(in)           :: model_time
-type(interpolate_type),intent(out)          :: o3
+type(interpolate_type),intent(inout)        :: o3
 integer,               intent(in)           :: data_out_of_bounds(:)
 integer,               intent(in), optional :: vert_interp(:)
 

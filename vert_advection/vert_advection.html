@@ -22,7 +22,7 @@
      <b>Contact:</b> &nbsp;  Bruce Wyman <br>
      <b>Reviewers:</b>&nbsp; <br>
      <b>Change History:&nbsp; </b><a HREF="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/atmos/shared/vert_advection/vert_advection.f90">WebCVS Log</a> <br>
-     <b>Last Modified:</b>&nbsp; $Date: 2003/04/09 21:33:29 $
+     <b>Last Modified:</b>&nbsp; $Date: 2003/10/24 22:00:57 $
 </div><br>
 
 <!-- END HEADER -->
@@ -66,9 +66,9 @@
 <div>
 <pre>
 
-<b>use vert_advection_mod</b> [, only:  vert_advection,
+<b>use vert_advection_mod</b> [, only:  vert_advection, vert_advection_end,
                                  SECOND_CENTERED, FOURTH_CENTERED,
-                                 SECOND_CENTERED_NEW, FOURTH_CENTERED_NEW,
+                                 SECOND_CENTERED_WTS, FOURTH_CENTERED_WTS,
                                  FINITE_VOLUME_LINEAR, FINITE_VOLUME_PARABOLIC,
                                  VAN_LEER_LINEAR, FLUX_FORM, ADVECTIVE_FORM  ]
 
@@ -77,6 +77,9 @@
  <dt>  <a href="vert_advection.html#vert_advection">vert_advection</a>:
      <dd>   Computes the vertical advective tendency for an arbitrary quantity.
         There is no initialization routine necessary.
+
+ <dt>  <a href="vert_advection.html#vert_advection_end">vert_advection_end</a>:
+     <dd>   Termination routine for the vertical advection module.
 
 </dl></div><br>
 <!-- END INTERFACE -->
@@ -127,7 +130,7 @@ OUTPUT
 
 OPTIONAL INPUT
    mask    mask for below ground layers,
-           where mask > 0 for layers above ground
+           where mask &gt; 0 for layers above ground
            <span class="type">[real, dimension(:,:,:)]</span>
            <span class="type">[real, dimension(:,:)]</span>
            <span class="type">[real, dimension(:)]</span>
@@ -135,9 +138,9 @@ OPTIONAL INPUT
    scheme  spatial differencing scheme, use one of these values:
               SECOND_CENTERED = second-order centered
               FOURTH_CENTERED = fourth-order centered
-              SECOND_CENTERED_NEW = second-order centered with corrected weights
+              SECOND_CENTERED_WTS = second-order centered with corrected weights
                                     for unequal vertical level spacing
-              FOURTH_CENTERED_NEW = fourth-order centered with corrected weights
+              FOURTH_CENTERED_WTS = fourth-order centered with corrected weights
                                     for unequal vertical level spacing
               FINITE_VOLUME_LINEAR    = piecewise linear, finite volume
               FINITE_VOLUME_PARABOLIC = piecewise parabolic, finite volume
@@ -158,6 +161,19 @@ NOTE
 
 </pre>
 </li>
+<li><a name="vert_advection_end"></a><h4>vert_advection_end</h4>
+<pre>
+<b>call vert_advection_end</b>
+
+DESCRIPTION
+   Termination routine for the vertical advection module.
+   It is not mandatory that this routine be called.
+   This routine releases any global storage that may have been allocated.
+   The amount of memory that may be deallocated is relatively small.
+   If a finite volume advection scheme was used, then the maximum
+   CFL and the number of CFL violations are printed to standard output.
+</pre>
+</li>
 </ol>
 <!-- END PUBLIC ROUTINES -->
 <!-------------------------------------------------------------------->
@@ -174,8 +190,8 @@ NOTE
     
     <dd><span class="errmsg">invalid value for optional argument scheme</span></dd>
     <dd>  The value of optional argument scheme must be one of the
-        public parameters SECOND_CENTERED, FOURTH_CENTERED, SECOND_CENTERED_NEW,
-        FOURTH_CENTERED_NEW, FINITE_VOLUME_LINEAR, FINITE_VOLUME_PARABOLIC, or
+        public parameters SECOND_CENTERED, FOURTH_CENTERED, SECOND_CENTERED_WTS,
+        FOURTH_CENTERED_WTS, FINITE_VOLUME_LINEAR, FINITE_VOLUME_PARABOLIC, or
         VAN_LEER_LINEAR.
     <br><br></dd>
     
@@ -235,7 +251,8 @@ NOTE
 <!-- BEGIN FUTURE PLANS -->
 <div>
 
-      None.
+      Will be monitoring the maximum CFL number to consider
+      whether or not to implement a Lagrangian-type scheme.
 
 </div><br>
 <!-- END FUTURE PLANS -->

@@ -1,9 +1,9 @@
 module atmos_radon_mod
-! <CONTACT EMAIL="wfc@gfdl.noaa.gov">
+! <CONTACT EMAIL="William.Cooke@noaa.gov">
 !   William Cooke
 ! </CONTACT>
 
-! <REVIEWER EMAIL="lwh@gfdl.noaa.gov">
+! <REVIEWER EMAIL="Larry.Horowitz@noaa.gov">
 !   Larry Horowitz
 ! </REVIEWER>
 
@@ -62,8 +62,8 @@ logical :: module_is_initialized=.FALSE.
 
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_radon.F90,v 1.2 2002/07/16 22:38:11 fms Exp $'
-character(len=128) :: tagname = '$Name: inchon $'
+character(len=128) :: version = '$Id: atmos_radon.F90,v 10.0 2003/10/24 22:00:55 fms Exp $'
+character(len=128) :: tagname = '$Name: jakarta $'
 !-----------------------------------------------------------------------
 
 contains

@@ -1,10 +1,10 @@
 
 module atmos_sulfur_hex_mod
-! <CONTACT EMAIL="jbg@gfdl.noaa.gov">
+! <CONTACT EMAIL="Jeffrey.Greenblatt@noaa.gov">
 !   Jeff Greenblatt
 ! </CONTACT>
 
-! <REVIEWER EMAIL="wfc@gfdl.noaa.gov">
+! <REVIEWER EMAIL="William.Cooke@noaa.gov">
 !   William Cooke
 ! </REVIEWER>
 
@@ -103,8 +103,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 1.2 2002/07/16 22:38:22 fms Exp $'
-character(len=128) :: tagname = '$Name: inchon $'
+character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 10.0 2003/10/24 22:00:55 fms Exp $'
+character(len=128) :: tagname = '$Name: jakarta $'
 !-----------------------------------------------------------------------
 
 contains
@@ -192,7 +192,7 @@ source=0.0
 
       if (present(kbot)) then
           do j=1,jd
-	  do i=1,id
+          do i=1,id
              kb=kbot(i,j)
              source(i,j,kb)=sf6_grid(i,j+js-1)*rate/pwt(i,j,kb)
           enddo

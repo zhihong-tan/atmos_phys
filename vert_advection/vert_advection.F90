@@ -3,21 +3,22 @@ module vert_advection_mod
 
 !-------------------------------------------------------------------------------
 
-use fms_mod, only: error_mesg, FATAL, write_version_number
+use fms_mod, only: error_mesg, FATAL, write_version_number, stdout
+use mpp_mod, only: mpp_sum, mpp_max
 
 implicit none
 private
 
-public :: vert_advection
+public :: vert_advection, vert_advection_end
 integer, parameter, public :: SECOND_CENTERED = 101, FOURTH_CENTERED = 102
 integer, parameter, public :: FINITE_VOLUME_LINEAR = 103
 integer, parameter, public :: FINITE_VOLUME_PARABOLIC = 104
-integer, parameter, public :: SECOND_CENTERED_NEW = 105, FOURTH_CENTERED_NEW = 106
+integer, parameter, public :: SECOND_CENTERED_WTS = 105, FOURTH_CENTERED_WTS = 106
 integer, parameter, public :: VAN_LEER_LINEAR = FINITE_VOLUME_LINEAR
 integer, parameter, public :: FLUX_FORM = 201, ADVECTIVE_FORM = 202
 
-character(len=128), parameter :: version = '$Id: vert_advection.F90,v 1.3 2003/04/09 21:05:13 fms Exp $'
-character(len=128), parameter :: tagname = '$Name: inchon $'
+character(len=128), parameter :: version = '$Id: vert_advection.F90,v 10.0 2003/10/24 22:00:56 fms Exp $'
+character(len=128), parameter :: tagname = '$Name: jakarta $'
 
 logical :: module_is_initialized = .false.
 
@@ -28,6 +29,10 @@ end interface
 ! buffers for coefficients used by the parabolic scheme
   real, allocatable :: zwts(:,:,:,:), dzs(:,:,:)
   integer :: nlons = 0, nlats = 0, nlevs = 0
+
+! for cfl diagnostics with finite volume schemes
+  real    :: cflmax = 0.
+  integer :: cflerr = 0
 
 contains
 
@@ -59,7 +64,11 @@ contains
 !   scheme = differencing scheme, use one of these values:
 !               SECOND_CENTERED = second-order centered
 !               FOURTH_CENTERED = fourth-order centered
-!               VAN_LEER_LINEAR = piecewise linear, finite volume (van Leer)
+!               SECOND_CENTERED_WTS = second-order centered (assuming unequal level spacing)
+!               FOURTH_CENTERED_WTS = fourth-order centered (assuming unequal level spacing)
+!               FINITE_VOLUME_LINEAR    = piecewise linear, finite volume (van Leer)
+!               VAN_LEER_LINEAR         = same as FINITE_VOLUME_LINEAR
+!               FINITE_VOLUME_PARABOLIC = piecewise parabolic, finite volume (PPM)
 !   form   = form of equations, use one of these values:
 !               FLUX_FORM      = solves for -d(wr)/dt
 !               ADVECTIVE_FORM = solves for -w*d(r)/dt
@@ -103,7 +112,7 @@ contains
    select case (diff_scheme)
 
    !------ 2nd-order centered scheme assuming variable grid spacing ------
-      case (SECOND_CENTERED_NEW)
+      case (SECOND_CENTERED_WTS)
          do k = ks+1, ke
          do j = 1, size(r,2)
          do i = 1, size(r,1)
@@ -126,7 +135,7 @@ contains
          enddo
 
    !------ 4th-order centered scheme assuming variable grid spacing ------
-      case (FOURTH_CENTERED_NEW)
+      case (FOURTH_CENTERED_WTS)
          call compute_weights ( dz, zwt )
          call slope_z ( r, dz, slp, limit=.false., linear=.false. )
          if (present(mask)) then
@@ -214,11 +223,15 @@ contains
          do j = 1, size(r,2)
          do i = 1, size(r,1)
             if (w(i,j,k) >= 0.) then
-               rst = (r(i,j,k-1) + 0.5*slp(i,j,k-1)*(1.-dt*w(i,j,k)/dz(i,j,k-1)))
+               xx = dt*w(i,j,k)/dz(i,j,k-1)
+               rst = r(i,j,k-1) + 0.5*slp(i,j,k-1)*(1.-xx)
             else
-               rst = (r(i,j,k  ) - 0.5*slp(i,j,k  )*(1.+dt*w(i,j,k)/dz(i,j,k  )))
+               xx = -dt*w(i,j,k)/dz(i,j,k)
+               rst = r(i,j,k  ) - 0.5*slp(i,j,k  )*(1.-xx)
             endif
             flux(i,j,k) = w(i,j,k)*rst
+            if (xx > 1.) cflerr = cflerr+1
+            cflmax = max(cflmax,xx)
          enddo
          enddo
          enddo
@@ -293,6 +306,8 @@ contains
                   rst = r_left(i,j,k) + 0.5*xx*(rm + (1.0 - tt*xx)*r6)
               endif
               flux(i,j,k) = w(i,j,k)*rst
+              if (xx > 1.) cflerr = cflerr+1
+              cflmax = max(cflmax,xx)
            enddo
            enddo
            enddo
@@ -324,6 +339,26 @@ contains
 
 
  end subroutine vert_advection_3d
+
+!-------------------------------------------------------------------------------
+
+ subroutine vert_advection_end
+
+  ! deallocate storage
+    if (allocated(zwts)) deallocate(zwts)
+    if (allocated(dzs))  deallocate(dzs)
+
+  ! cfl diagnostics
+    call mpp_max (cflmax)
+    call mpp_sum (cflerr) ! integer sum
+    if (cflmax > 0.) then
+        write (stdout(),10) cflmax, cflerr
+    endif
+ 10 format (/,' Vertical advection (atmosphere):', &
+            /,'     maximum CFL =',f10.6,          &
+            /,'     number of CFL errors =',i5,/)
+        
+ end subroutine vert_advection_end
 
 !-------------------------------------------------------------------------------
 

@@ -1,10 +1,10 @@
 
 module atmos_tracer_utilities_mod
-! <CONTACT EMAIL="wfc@gfdl.noaa.gov">
+! <CONTACT EMAIL="William.Cooke@noaa.gov">
 !   William Cooke
 ! </CONTACT>
 
-! <REVIEWER EMAIL="bw@gfdl.noaa.gov">
+! <REVIEWER EMAIL="Bruce.Wyman@noaa.gov">
 !   Bruce Wyman
 ! </REVIEWER>
 
@@ -33,7 +33,8 @@ use   diag_manager_mod, only : send_data, &
                                register_diag_field
 use tracer_manager_mod, only : query_method, &
                                get_tracer_names, &
-                               get_number_tracers
+                               get_number_tracers, &
+                               MAX_TRACER_FIELDS
 use  field_manager_mod, only : MODEL_ATMOS, parse
 use      constants_mod, only : grav, rdgas, PI
 use   horiz_interp_mod, only : horiz_interp
@@ -56,13 +57,13 @@ public  wet_deposition,    &
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 1.3 2003/04/09 21:05:08 fms Exp $'
-character(len=128) :: tagname = '$Name: inchon $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 10.0 2003/10/24 22:00:56 fms Exp $'
+character(len=128) :: tagname = '$Name: jakarta $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 !-----------------------------------------------------------------------
 !--- identification numbers for  diagnostic fields and axes ----
-integer, parameter :: max_tracers = 50
+integer, parameter :: max_tracers = MAX_TRACER_FIELDS
 integer :: id_tracer_ddep(max_tracers), id_tracer_wdep_ls(max_tracers), id_tracer_wdep_cv(max_tracers)
 character(len=32),  dimension(max_tracers) :: tracer_names     = ' '
 character(len=32),  dimension(max_tracers) :: tracer_units     = ' '
@@ -334,7 +335,7 @@ call get_drydep_param(name,control,scheme,land_dry_dep_vel,sea_dry_dep_vel)
 !
 !****  Compute dry sinks (loss frequency, need modification when 
 !****    different vdep values are to be used for species)
-	flagsr=parse(control,'surfr',surfr)
+        flagsr=parse(control,'surfr',surfr)
         if(flagsr == 0) surfr=500.
         hwindv=sqrt(u**2+v**2)
         frictv=u_star
