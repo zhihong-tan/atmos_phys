@@ -4,7 +4,9 @@
 use utilities_mod,      only:  open_file, file_exist,    &
                                check_nml_error, error_mesg, &
                                print_version_number, FATAL, NOTE, &
+			       get_num_pes, &
 			       WARNING, get_my_pe, close_file
+!use constants_new_mod,  only : radians_to_degrees
 
 
 !--------------------------------------------------------------------
@@ -23,8 +25,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: rad_utilities.F90,v 1.2 2001/07/05 17:32:54 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: galway $'
+   character(len=128)  :: version =  '$Id: rad_utilities.F90,v 1.3 2002/07/16 22:36:40 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: havana $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -32,7 +34,9 @@ private
 
 public      &
 	  rad_utilities_init, define_environment, &
-	  locate_in_table, looktab, table_alloc
+	  map_global_indices,   &
+          locate_in_table, looktab, table_alloc
+!                   looktab, table_alloc
 
 interface looktab
     module procedure  looktab_type1, looktab_type2, looktab_type3
@@ -74,7 +78,8 @@ end type table_axis_type
 public longwave_control_type 
 
 type longwave_control_type
-    character(len=10)         :: lw_form
+!    character(len=10)         :: lw_form
+    character(len=16)         :: lw_form
     logical                   :: do_cfc
     logical                   :: do_lwaerosol
     logical                   :: do_ckd2p1
@@ -88,18 +93,24 @@ end type longwave_control_type
 public shortwave_control_type
 
 type shortwave_control_type
-    character(len=10)         :: sw_form
-    character(len=12)         :: swaerosol_form
+!   character(len=10)         :: sw_form
+!   character(len=16)         :: sw_form
+    logical                   :: do_lhsw
+    logical                   :: do_esfsw
+!   character(len=12)         :: swaerosol_form
+    character(len=16)         :: swaerosol_form
     logical                   :: do_swaerosol
 end type shortwave_control_type
 
 public radiation_control_type
 
 type radiation_control_type
-    logical                        :: do_diagnostics
+!   logical                        :: do_diagnostics
     logical                        :: do_totcld_forcing
-    logical, dimension(:), pointer :: do_raddg
+!   logical, dimension(:), pointer :: do_raddg
 end type radiation_control_type
+
+!------------------------------------------------------------------
 
 public cloudrad_control_type
 
@@ -107,28 +118,245 @@ type cloudrad_control_type
     logical                        :: do_pred_cld_microphys
     logical                        :: do_presc_cld_microphys
     logical                        :: do_no_cld_microphys
+    logical                        :: do_rh_clouds        
+    logical                        :: do_strat_clouds        
+    logical                        :: do_zonal_clouds        
+    logical                        :: do_mgroup_prescribed
+    logical                        :: do_obs_clouds        
+    logical                        :: do_no_clouds        
+    logical                        :: do_diag_clouds        
+    logical                        :: do_specified_clouds        
+    logical                        :: do_donner_deep_clouds
+    integer                        :: nlwcldb
 end type cloudrad_control_type
+
+!------------------------------------------------------------------
 
 public environment_type
 
 type environment_type
-    logical                         ::  running_fms
-    logical                         ::  running_skyhi
+!   logical                         ::  running_fms
+!   logical                         ::  running_skyhi
     logical                         ::  using_sky_periphs
     logical                         ::  using_fms_periphs
     logical                         ::  running_gcm     
     logical                         ::  running_standalone
-    character(len=11)               ::  column_type
+!   character(len=11)               ::  column_type
+    character(len=16)               ::  column_type
 end type environment_type
+
+!------------------------------------------------------------------
+
+public   radiative_gases_type
+ 
+type radiative_gases_type
+     real     :: rrvch4, rrvn2o, rrvco2,    &
+                 rrvf11, rrvf12, rrvf113, rrvf22, &
+		 rf11air, rf12air, rf113air, rf22air
+     real, dimension(:,:,:), pointer :: qo3
+!    logical  :: do_co2, do_ch4_n2o, do_cfc
+     logical  :: time_varying_co2, time_varying_f11, &
+                 time_varying_f12, time_varying_f113, &
+                 time_varying_f22,  &
+                 time_varying_ch4, time_varying_n2o
+end type radiative_gases_type
+
+!------------------------------------------------------------------
+
+public optical_path_type
+
+type optical_path_type
+     real, dimension (:,:,:,:), pointer :: empl1f, empl2f, vrpfh2o, &
+!                                          totch2o, totch2obd, &
+                                         xch2obd, tphfh2o, avephif, &
+                                         totaerooptdep
+     real, dimension (:,:,:), pointer   :: empl1, empl2,  var1, var2, &
+                                          emx1f, emx2f, totvo2, avephi,&
+                                         totch2obdwd, xch2obdwd, &
+                                           totphi, cntval,toto3,   &
+!                                        tphio3, var3, var4, sh2o,  &
+!                                          tmpexp, rvh2o, wk, rhoave, &
+                                         tphio3, var3, var4,        &
+                                                          wk,         &
+                                         rh2os,  rfrgn, tfac, &
+                                         totaerooptdep_15, &
+                                         totf11, totf12, totf113, totf22
+      real, dimension (:,:), pointer     :: emx1, emx2, csfah2o, &
+                                            aerooptdep_KE_15
+end type optical_path_type
+
+!------------------------------------------------------------------
+
+public gas_tf_type
+
+type gas_tf_type
+     real, dimension(:,:,:), pointer :: tdav, tlsqu, tmpdiff, tstdav,  &
+                                        co2nbl, n2o9c, tn2o17
+     real, dimension(:,:,:,:), pointer :: co2spnb
+     real, dimension(:,:), pointer :: a1, a2
+end type gas_tf_type
+
+!------------------------------------------------------------------
+
+public lw_output_type
+
+type lw_output_type
+     real, dimension(:,:,:), pointer :: heatra, flxnet, heatracf, &
+                                        flxnetcf
+end type lw_output_type
+
+!------------------------------------------------------------------
+
+public lw_clouds_type
+
+type lw_clouds_type
+     real, dimension(:,:,:,:),   pointer :: taucld_rndlw, &
+                                            taucld_mxolw, &
+                                            taunbl_mxolw
+end type lw_clouds_type
+
+!------------------------------------------------------------------
+
+public lw_diagnostics_type
+
+type lw_diagnostics_type
+     real, dimension(:,:),   pointer :: flx1e1, gxcts
+     real, dimension(:,:,:), pointer :: flx1e1f, excts, fctsg
+     real, dimension(:,:,:,:), pointer :: fluxn, fluxncf, exctsn,  &
+                                          cts_out, cts_outcf
+end type lw_diagnostics_type
+
+!------------------------------------------------------------------
+
+public lw_table_type
+
+type lw_table_type
+     real, dimension(:),   pointer :: bdlocm, bdhicm, bandlo, bandhi
+     integer, dimension(:), pointer :: iband
+end type lw_table_type
+
+!------------------------------------------------------------------
+
+public cld_space_properties_type
+
+type cld_space_properties_type
+     real, dimension(:,:,:),   pointer :: camtswkc        
+!    real, dimension(:,:,:,:),   pointer :: cirabswkc, cirrfswkc, &
+     real, dimension(:,:,:),   pointer :: cirabswkc, cirrfswkc, &
+                                            cvisrfswkc
+     integer, dimension(:,:,:), pointer :: ktopswkc, kbtmswkc
+end type cld_space_properties_type
+
+!------------------------------------------------------------------
+
+public cld_diagnostics_type
+
+type cld_diagnostics_type
+     real, dimension(:,:,:),   pointer :: lwpath, iwpath, size_drop, &
+                                          size_ice
+     real, dimension(:,:),     pointer :: cld_isccp_hi, cld_isccp_mid, &
+                                          cld_isccp_low, tot_clds
+end type cld_diagnostics_type
+
+!------------------------------------------------------------------
+
+public sw_output_type
+
+type sw_output_type
+     real, dimension(:,:,:), pointer :: dfsw, ufsw, fsw, hsw, &
+                                        dfswcf, ufswcf, fswcf, hswcf
+end type sw_output_type
+
+!-------------------------------------------------------------------
+
+public atmos_input_type
+
+type atmos_input_type
+     real, dimension(:,:,:), pointer :: press, temp, rh2o, pflux, &
+                                        tflux, deltaz, cloud_ice, &
+                                        cloud_water, phalf
+     real, dimension(:,:),   pointer :: psfc, tsfc, asfc, land
+endtype atmos_input_type
+
+!-------------------------------------------------------------------
+
+public fsrad_output_type
+
+type fsrad_output_type
+     real, dimension(:,:,:), pointer :: tdtsw, tdtlw, tdtsw_clr,  &
+                                       tdtlw_clr
+     real, dimension(:,:),   pointer :: swdns, swups, lwups, lwdns, &
+                                       swin, swout, olr, &
+                                       swdns_clr, swups_clr, lwups_clr,&
+                                       lwdns_clr, swin_clr, swout_clr, &
+                                       olr_clr
+     integer      :: npass
+end type fsrad_output_type
+
+!-------------------------------------------------------------------
+
+public rad_output_type
+
+type rad_output_type
+     real, dimension(:,:,:), pointer :: tdt_rad, tdt_rad_clr, &
+                                        tdtsw, tdtsw_clr
+     real, dimension(:,:), pointer :: flux_sw_surf, flux_lw_surf, &
+                                      coszen_angle
+end type rad_output_type
+
+!-------------------------------------------------------------------
+
+public astronomy_type
+    
+type astronomy_type
+     logical :: do_diurnal, do_annual, do_daily_mean
+     real    :: rrsun, solar_constant
+     real, dimension(:,:), pointer  :: solar, cosz, fracday
+end type astronomy_type
+
+!--------------------------------------------------------------------
+
+public cldrad_properties_type
+
+type cldrad_properties_type
+     real, dimension(:,:,:,:), pointer :: cldext, cldasymm, cldsct, &
+                                          emmxolw, emrndlw, cirabsw, &
+                                          abscoeff, cldemiss, &
+                                          cirrfsw, cvisrfsw
+     real, dimension(:,:,:), pointer :: camtsw, cmxolw, crndlw      
+     Integer, dimension(:,:), pointer :: ncldsw, nmxolw, nrndlw     
+!     integer                          :: NLWCLDB
+end type cldrad_properties_type
+
+
+public longwave_parameter_type
+
+
+type longwave_parameter_type
+     integer             :: offset
+     integer             :: NBTRG
+     integer             :: NBTRGE
+!     integer             :: NLWCLDB
+     integer             :: NBLY
+end type longwave_parameter_type
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
 
-real   ::  dummy = 1.0
+!real   ::  dummy = 1.0
+!character(len=12)              ::                    &
+character(len=16)              ::                    &
+                                   peripherals_source=' ', &
+                                   application_type = '  ', &
+                                   column_type = '    '
+
 
 namelist / rad_utilities_nml /   &
-                                       dummy
+!                                      dummy
+                                   peripherals_source, &
+                                   application_type, &
+                                   column_type
 
 
 !---------------------------------------------------------------------
@@ -141,23 +369,37 @@ type (longwave_control_type),  public   ::    &
 				      .false., .false., .true., .false.)
 
 type (shortwave_control_type), public   ::  &
-   Sw_control = shortwave_control_type( '          ', '            ', &
-					.false.  )
+   Sw_control = shortwave_control_type( .false., .false.,    &
+                                        '            ',  .false.  )
 
 type (radiation_control_type), public   ::  Rad_control
 
 type (cloudrad_control_type), public   ::   &
-   Cldrad_control = cloudrad_control_type(.false., .false., .false.)
+   Cldrad_control = cloudrad_control_type(.false., .false., .false., &
+                                          .false., .false., .false., &
+					  .false., .false., .false., &
+					  .false., .false., .false., &
+					  0 )
 
 type (environment_type), public   ::   &
-   Environment = environment_type(.false., .false., .false., &
+!  Environment = environment_type(.false., .false., .false., &
+   Environment = environment_type(                  .false., &
 				  .false., .false., .false., &
 				  '      ')
+
+type (longwave_parameter_type), public  ::   &
+!   Lw_parameters = longwave_parameter_type(0, 0, 0, 0, 0)
+   Lw_parameters = longwave_parameter_type(0, 0, 0, 0)
+
+type (table_axis_type),        public   ::    &
+     temp_1 = table_axis_type(1, 100.0, 370.0, 10.0), &
+     mass_1 = table_axis_type(1, -16.0,   1.9,  0.1)
 
 !---------------------------------------------------------------------
 !------- private data ------
 
 
+logical :: rad_utilities_initialized=.false.
 
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
@@ -176,8 +418,11 @@ subroutine rad_utilities_init
 !------------------------------------------------------------------
       integer    ::  unit, ierr, io
 
+
+      if (rad_utilities_initialized) return
 !---------------------------------------------------------------------
 !-----  read namelist  ------
+     
 
      if (file_exist('input.nml')) then
        unit =  open_file ('input.nml', action='read')
@@ -196,6 +441,11 @@ subroutine rad_utilities_init
      endif
      call close_file (unit)
 
+     call define_environment
+
+
+     rad_utilities_initialized = .true.
+
 !------------------------------------------------------------------
 
 end  subroutine rad_utilities_init
@@ -204,25 +454,28 @@ end  subroutine rad_utilities_init
 
 !####################################################################
 
-subroutine define_environment (model_name, peripherals_source,  &
-                               application_type, column_type_in)
+!subroutine define_environment (model_name, peripherals_source,  &
+subroutine define_environment            
+!subroutine define_environment (            peripherals_source,  &
+!                               application_type, column_type_in)
 
 !--------------------------------------------------------------------
-character(len=*),  intent(in)    :: model_name, peripherals_source, &
-				    application_type, &
-				    column_type_in
+!character(len=*),  intent(in)    :: model_name, peripherals_source, &
+!haracter(len=*),  intent(in)    ::             peripherals_source, &
+!			    application_type, &
+!			    column_type_in
 !---------------------------------------------------------------------
 
-   if (trim(model_name) == 'skyhi') then
-     Environment%running_skyhi = .true.
-     Environment%running_fms   = .false.
-   else if (trim(model_name) == 'fms') then
-     Environment%running_skyhi = .false.
-     Environment%running_fms   = .true.
-   else
-     call error_mesg ('define_environment', &
-       ' model_name not recognized', FATAL)
-   endif
+!  if (trim(model_name) == 'skyhi') then
+!    Environment%running_skyhi = .true.
+!    Environment%running_fms   = .false.
+!  else if (trim(model_name) == 'fms') then
+!    Environment%running_skyhi = .false.
+!    Environment%running_fms   = .true.
+!  else
+!    call error_mesg ('define_environment', &
+!      ' model_name not recognized', FATAL)
+!  endif
 
    if (trim(peripherals_source) == 'skyhi')  then
      Environment%using_sky_periphs = .true.
@@ -249,7 +502,8 @@ character(len=*),  intent(in)    :: model_name, peripherals_source, &
        ' application_type not acceptable', FATAL)
    endif
 
-   Environment%column_type = column_type_in
+!  Environment%column_type = column_type_in
+   Environment%column_type = column_type
 
 !-------------------------------------------------------------------
 
@@ -288,13 +542,13 @@ real                                               ::  table_min,  &
 integer                                            ::  k, table_col
 
 
-      do k=k_min,k_max
-        fx (:,:,k) = AINT((x(:,:,k) - table_axis%min_val )/  &
-				      table_axis%tab_inc)
-        ix (:,:,k) = INT(fx(:,:,k)) + table_axis%first_col
-        dx (:,:,k) = x(:,:,k) - fx(:,:,k)*table_axis%tab_inc - &
-				      table_axis%min_val
-      end do
+     do k=k_min,k_max
+       fx (:,:,k) = AINT((x(:,:,k) - table_axis%min_val )/  &
+			      table_axis%tab_inc)
+       ix (:,:,k) = INT(fx(:,:,k)) + table_axis%first_col
+       dx (:,:,k) = x(:,:,k) - fx(:,:,k)*table_axis%tab_inc - &
+			      table_axis%min_val
+     end do
       
 !---------------------------------------------------------------------
 
@@ -499,8 +753,51 @@ end subroutine table3_alloc
 !##################################################################
 
 
+!subroutine map_global_indices (jmax_aerfile, latb, jindx2)
+subroutine map_global_indices (global_rows , latb,    &
+                               global_index_array )
+
+integer, intent(in)   :: global_rows 
+real, dimension(:), intent(in) :: latb
+integer, dimension(:), intent(out) :: global_index_array
+
+       real   :: lat_start
+       real, dimension(global_rows) :: data_lat
+       integer   :: j, jst, jj
+
+       if (get_num_pes()*(size(latb,1) -1) == global_rows) then
+!       lat_start = -90.0 + 180./(2.*float(global_rows))
+        lat_start = -0.5*acos(-1.0) + acos(-1.0)/(2.*float(global_rows))
+       do j=1,global_rows
+!        data_lat(j) = lat_start + real(j-1)*180.0/real(global_rows)
+         data_lat(j) = lat_start + real(j-1)*acos(-1.0)/real(global_rows)
+       end do
+       jst = 1
+       do jj=1, size(latb,1) - 1
+         do j = jst,global_rows
+!   if (data_lat(j) >= latb(jj)*radians_to_degrees ) then
+	   if (data_lat(j) >= latb(jj)                    ) then
+	     global_index_array(jj) = j
+	     jst = j
+             exit
+           endif
+         end do
+       end do
+       else
+         call error_mesg ('esfsw_scattering_mod', &
+            'resolution of data input file doesn''t match model size --&
+	    &  must provide inter(extra)polation not yet implemented', &
+            FATAL)
+       endif
+
+end subroutine map_global_indices 
+
+
+!####################################################################
 
 
 		    end module rad_utilities_mod
+
+
 
 

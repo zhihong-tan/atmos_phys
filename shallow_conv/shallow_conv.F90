@@ -9,7 +9,7 @@
                                 CHECK_NML_ERROR, OPEN_FILE,      &
                                 get_my_pe, CLOSE_FILE
 
- use constants_mod, only: p00, Hlv, Cp, RDgas, RVgas, Kappa, grav
+ use constants_mod, only: Hlv, Cp, RDgas, RVgas, Kappa, grav
 
 !---------------------------------------------------------------------
  implicit none
@@ -21,8 +21,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: shallow_conv.F90,v 1.4 2001/03/06 18:52:02 fms Exp $'
- character(len=128) :: tag = '$Name: galway $'
+ character(len=128) :: version = '$Id: shallow_conv.F90,v 1.5 2002/07/16 22:37:18 fms Exp $'
+ character(len=128) :: tag = '$Name: havana $'
 
  logical :: do_init = .true.
 
@@ -32,7 +32,7 @@
 
   real :: Hlv_by_Cp, Cp_by_RDgas, omkappa, dovcns, d622, d378
   real :: crtkons
-
+  real, parameter :: p00 = 1000.0E2
   integer  :: kctopm1, kctopm2  
 
   real, allocatable, dimension(:) :: rhcrit, rhmax, rhmin, delrhc
@@ -49,6 +49,7 @@
   real    ::  crthum   =    0.85
   real    ::  hc       =    1.0
   integer ::  kctop    =    3
+
  
  NAMELIST / shallow_conv_nml /    &
          lipps, ldetran,  theqvcr, pshalow, akhsc0, kctop, crthum, hc

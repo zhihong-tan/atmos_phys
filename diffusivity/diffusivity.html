@@ -98,8 +98,8 @@ Notes:
 <!-- BEGIN ROUTINES -->
 <PRE>
 
-<b>call diffusivity</b> (t, q, u, v, z_full, z_half, u_star, b_star, 
-                  h, k_m, k_t, kbot)
+<b>call diffusivity</b> (t, q, u, v, p_full, p_half, z_full, z_half,
+                         u_star, b_star, h, k_m, k_t, kbot)
 
 input:
   
@@ -112,6 +112,10 @@ input:
        u     : zonal wind (m/s) [real, dimension(:,:)]
 
        v     : meridional wind (m/s) [real, dimension(:,:,:)] 
+
+       p_full : pressure at full levels (pascals)
+
+       p_half : pressure at half levels (pascals)
 
        z_full : height of full levels (m)
                 [real, dimension(:,:,:), size(z_full,3) = size(t,3)]
@@ -176,61 +180,78 @@ optional input:
 
 fixed_depth         should the boundary layer depth be fixed?
                     [logical, default: fixed_depth = .false.]
+
 depth_0             height of fixed depth boundary (meters)
                     [real, default: depth_0 = 5000.]
+
 frac_inner          height of the surface layer as a fraction of
                     the boundary layer depth
                     [real, default: frac_inner = 0.1]
+
 rich_crit_pbl       critical richardson number used to compute 
                     boundary layer depth in the neutral or stable
                     case
                     [real, default: rich_crit_pbl = 1.0]
+
 entr_ratio          ratio of entrainment buoyancy flux to surface
                     buoyancy flux (must be >= 0.)
                     [real, default: entr_ratio = 0.2]
+
 parcel_buoy         scaling factor for the excess buoyancy of the
                     parcel used to determine the boundary layer
                     depth in the unstable case
                     [real, default: parcel_buoy = 2.]
+
 znom                nominal boundary layer depth used only in the
                     calculation of surface layer vertical velocity
                     scale.  this velocity scale is used only in
                     the calculation of parcel buoyancy in the unstable
                     case (meters)
                     [real, default: znom = 1000.]
+
 free_atm_diff       should there be richardson number dependent
                     mixing in the free atmosphere?
                     [logical, default: free_atm_diff = .false.]
+
 free_atm_skyhi_diff should the free atmospheric diffusion
                     depend on model level thickness and the 
                     prandtl number depend on the richardson number
                     (as in the formulation previously used in skyhi)?
                     [logical, default: free_atm_skyhi_diff = .false.]
-pbl_supersource     should the pbl K profile be that of supersource?
-                    [logical, default: pbl_supersource = .false.]
+
+pbl_mcm             When .true., the pbl K profile is that of the Manabe Climate Model.
+                    [logical, default: pbl_mcm = .false.]
+
 rich_crit_diff      critical richardson number beneath which free
                     atmospheric diffusion occurs
                     [real, default: rich_crit_diff = 0.25 ] 
+
 mix_len             mixing length used in free atmospheric diffusion
                     (meters)
                     [real, default: mix_len = 30.]
+
 rich_prandtl        Prandtl number used in the scaling of k_m to
                     k_t in the free atmospheric diffusion 
                     [real, default: rich_prandtl = 1.]
+
 background_m        background value of K for momentum (m**2/sec)
                     [real, default: background_m = 0.]
+
 background_t        background value of K for temperature and tracers
                     (m**2/sec)
                     [real, default: background_t = 0.]
 
 Notes:  (1) To get Climate Model's PBL diffusivities set
-            pbl_supersource to TRUE, fixed_depth to TRUE, 
+            pbl_mcm to TRUE, fixed_depth to TRUE, 
             depth_0 to 5000. and frac_inner to 0.015.
-        (2) To get K-profile diffusivities, pbl_supersource
+
+        (2) To get K-profile diffusivities, pbl_mcm
             must be FALSE (default) and fixed_depth must be 
             FALSE (default).
+
         (3) To have any vertical diffusion in the free atmosphere
             free_atm_diff must be set to TRUE.
+
         (4) To get skyhi free atmospheric diffusivities, both
             free_atm_skyhi_diff and free_atm_diff must be set
             to true.

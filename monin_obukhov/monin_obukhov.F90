@@ -54,8 +54,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.6 2002/02/22 19:00:26 fms Exp $'
-character(len=128) :: tagname = '$Name: galway $'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.7 2002/07/16 22:33:43 fms Exp $'
+character(len=128) :: tagname = '$Name: havana $'
 
 !=======================================================================
 
@@ -322,7 +322,8 @@ else if(stable_option == 2) then
 
   where(rich > 0.0 .and. rich <= rich_trans)
     mix = (1.0 - 5.0*rich)**2
-  else where(rich > rich_trans .and. rich < rich_crit)
+  end where
+  where(rich > rich_trans .and. rich < rich_crit)
     mix = ((1.0 - b_stab*rich)/lambda)**2
   end where
   
@@ -410,6 +411,8 @@ mask_1 = mask
 
 where(mask_1) 
   zeta = rich*ln_z_z0*ln_z_z0/ln_z_zt
+else where
+  zeta = 0.0
 end where
 
 where (mask_1 .and. rich >= 0.0)
@@ -431,6 +434,10 @@ iter_loop: do iter = 1, max_iter
     zeta_0 = zeta/z_z0
     zeta_t = zeta/z_zt
     zeta_q = zeta/z_zq
+  else where
+    zeta_0 = 0.0
+    zeta_t = 0.0
+    zeta_q = 0.0
   end where
 
   call mo_derivative_m(phi_m  , zeta  , mask_1)
@@ -503,7 +510,8 @@ else if(stable_option == 2) then
 
   where (stable .and. zeta < zeta_trans)
     phi_m = 1 + 5.0*zeta
-  else where (stable .and. zeta >= zeta_trans)
+  end where
+  where (stable .and. zeta >= zeta_trans)
     phi_m = lambda + b_stab*zeta
   end where
 
@@ -541,7 +549,8 @@ else if(stable_option == 2) then
 
   where (stable .and. zeta < zeta_trans)
     phi_t = 1 + 5.0*zeta
-  else where (stable .and. zeta >= zeta_trans)
+  end where
+  where (stable .and. zeta >= zeta_trans)
     phi_t = lambda + b_stab*zeta
   end where
 
@@ -607,13 +616,15 @@ else if (stable_option == 2) then
   
   where (strongly_stable .and. zeta_t <= zeta_trans)
     psi_t = ln_z_zt + x + 5.0*(zeta_trans - zeta_t)
-  else where (strongly_stable .and. zeta_t > zeta_trans)
+  end where
+  where (strongly_stable .and. zeta_t > zeta_trans)
     psi_t = lambda*ln_z_zt + b_stab*(zeta  - zeta_t)
   endwhere
   
-  where (strongly_stable .and. zeta_t <= zeta_trans)
+  where (strongly_stable .and. zeta_q <= zeta_trans)
     psi_q = ln_z_zq + x + 5.0*(zeta_trans - zeta_q)
-  else where (strongly_stable .and. zeta_q > zeta_trans)
+  end where
+  where (strongly_stable .and. zeta_q > zeta_trans)
     psi_q = lambda*ln_z_zq + b_stab*(zeta  - zeta_q)
   endwhere
   
@@ -680,7 +691,8 @@ else if (stable_option == 2) then
   
   where (strongly_stable .and. zeta_0 <= zeta_trans)
     psi_m = ln_z_z0 + x + 5.0*(zeta_trans - zeta_0)
-  else where (strongly_stable .and. zeta_0 > zeta_trans)
+  end where
+  where (strongly_stable .and. zeta_0 > zeta_trans)
     psi_m = lambda*ln_z_z0 + b_stab*(zeta  - zeta_0)
   endwhere
   

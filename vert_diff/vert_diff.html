@@ -22,7 +22,6 @@
      <B>Contact:</B>   Isaac Held
      <B>Reviewers:</B>
 
-     <B><A HREF=".doc.log#vert_diff.f90">Tags/Status</A></B>
 </PRE>
 </A><!-- END HEADER -->
 <!--------------------------------------------------------------------->
@@ -80,9 +79,10 @@
 <!-- BEGIN MODULES_USED -->
 <PRE>
 
-     Constants_mod
-     Utilities_mod
-
+     constants_mod
+     fms_mod
+     field_manager_mod
+     tracer_manager_mod
 
 </PRE>
 </A><!-- END MODULES_USED -->
@@ -154,7 +154,9 @@ notes:
 ==========================================================================
 
  subroutine gcm_vert_diff_init(Tri_surf, idim, jdim, kdim, &
-                               conserve_energy)
+                               conserve_energy, 
+			       use_virtual_temp_vert_diff,
+			       do_mcm_plev)
  
     integer, intent(in)  :: idim, jdim, kdim 
         the three "global" dimensions of the fields to be diffused,
@@ -169,7 +171,9 @@ notes:
 	 is returned as heat in the temperature tendency so as to 
 	 conserve energy
 
-       
+    logical, intent(in) :: use_virtual_temp_vert_diff
+
+    logical, intent(in) :: do_mcm_plev
 
 ==========================================================================
 
@@ -470,7 +474,7 @@ notes:
 
  subroutine gcm_vert_diff_down (is, js, delt,                              &
                           u, v, t, q, tr,                                  &
-                          diff_m, diff_t, p_half, z_full,                  &
+                          diff_m, diff_t, p_half, p_full, z_full,          &
                           tau_u, tau_v, dtau_datmos,                       &
                           flux_tr,                                         &
                           dt_u, dt_v, dt_t, dt_q, dt_tr,                   &
@@ -517,6 +521,11 @@ notes:
          p_half -- real, dimension(:,:,:)
              pressure at interface between model levels
              size(p_half,3) must = 1 + size(t,3)
+             units = Pascals
+
+         p_full -- real, dimension(:,:,:)
+             pressure at full model levels
+             size(p_half,3) must = size(t,3)
              units = Pascals
 
          z_full -- real, dimension(:,:,:)
@@ -650,6 +659,9 @@ subroutine gcm_vert_diff_up (is, js, delt, Tri_surf, dt_t, dt_q, kbot)
              input temperatures are non-zero and that the pressure 
              thicknesses of the underground layers are non-zero as well. 
 
+==========================================================================
+
+subroutine gcm_vert_diff_end
 
 </PRE>
 </A><!-- END ROUTINES -->
@@ -659,7 +671,6 @@ subroutine gcm_vert_diff_up (is, js, delt, Tri_surf, dt_t, dt_q, kbot)
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
-<B><A HREF=".doc.log#vert_diff.f90">Revision history</A></B>
 
 
 <b>Changes prior to the CVS revision history</b>

@@ -2,25 +2,26 @@
 		 module longwave_tables_mod
 
 
-use rad_step_setup_mod,    only: KS=>KSRAD, KE=>KERAD, ISRAD, IERAD, &
-				 JSRAD, JERAD
 use longwave_params_mod,   only: NBLW, NBLX, NBLY_ORIG, NBLY_CKD2P1, &
 				 NBCO215
 use  utilities_mod,        only: open_file, file_exist,    &
                                  check_nml_error, error_mesg, &
                                  print_version_number, FATAL, NOTE, &
 				 WARNING, get_my_pe, close_file
-use radiation_diag_mod,    only: radiag_from_lwtables
-use ch4_n2o_mod,           only: ch4_n2o_input_type, CN_basic
-use optical_path_mod,      only: get_path_for_enear, get_path_for_e90 
-use longwave_setup_mod,    only: tpl1, tpl2, dte1, dte2, ixoe1, &
-		                 ixoe2, temp_1, mass_1,    &
-				 Lw_parameters,longwave_parameter_type
-use rad_utilities_mod,     only: locate_in_table, looktab,   &
+!use ch4_n2o_mod,           only: ch4_n2o_input_type, CN_basic
+
+use rad_utilities_mod,     only:                  looktab,   &
 		                 longwave_tables1_type,  &
 				 longwave_tables2_type,  &
 	                  	 longwave_tables3_type,  &
+				 locate_in_table, &
+				 lw_table_type, &
+                                 atmos_input_type, &
+				 optical_path_type, &
+				 Lw_parameters,longwave_parameter_type,&
 				 table_alloc, table_axis_type, &
+				 mass_1, temp_1, &
+				 environment_type, Environment, &
 		                 longwave_control_type, Lw_control
 
 
@@ -39,19 +40,20 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-!  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: longwave_tables.F90,v 1.2 2001/08/30 15:13:04 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: galway $'
+   character(len=128)  :: version =  '$Id: longwave_tables.F90,v 1.3 2002/07/16 22:35:48 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: havana $'
 
 !---------------------------------------------------------------------
 !------    interfaces   ------
 
 public   &
-       	   longwave_tables_init, &
-	   e1e290, e290, enear, &
-	   get_bds
+       	   longwave_tables_init
+!   locate_in_table, &
+!	   e1e290, e290, enear
+!   get_bds
 
 private  &
+!	   idrbtsh2o, id2h2o, table, locate_in_table
 	   idrbtsh2o, id2h2o, table
 
 !---------------------------------------------------------------------
@@ -67,7 +69,12 @@ namelist / longwave_tables_nml /  &
 !---- public data -------
 
 
-type (longwave_tables3_type), public     :: tabsr
+!type (longwave_tables3_type), public     :: tabsr
+!type (table_axis_type),        public   ::    &
+!     temp_1 = table_axis_type(1, 100.0, 370.0, 10.0), &
+!     mass_1 = table_axis_type(1, -16.0,   1.9,  0.1)
+!type (longwave_tables1_type), public     :: tab1, tab2, tab3, tab1w
+!type (longwave_tables2_type), public     :: tab1a, tab2a, tab3a
 
 
 !---------------------------------------------------------------------
@@ -95,8 +102,8 @@ real                            :: d171n2o, e171n2o
 real, dimension (:), allocatable :: acomb, bcomb, apcm, bpcm, atpcm,  &
 				    btpcm, bdlocm, bdhicm
 
-type (longwave_tables1_type)     :: tab1, tab2, tab3, tab1w
-type (longwave_tables2_type)     :: tab1a, tab2a, tab3a
+!type (longwave_tables1_type)     :: tab1, tab2, tab3, tab1w
+!type (longwave_tables2_type)     :: tab1a, tab2a, tab3a
 
 integer, parameter               :: NTTABH2O   = 28
 integer, parameter               :: NUTABH2O   = 180
@@ -110,6 +117,87 @@ integer                          :: NBTRG, NBTRGE, NBLY
 real                             :: apwd, bpwd, atpwd, btpwd, bdlowd, &
 				    bdhiwd 
 
+	real, dimension(10)    :: af10h2o, bdl10h2o, bdh10h2o, &
+				                      bf10h2o
+	real, dimension(4)     :: af4h2o, bdl4h2o, bdh4h2o, &
+				                    bf4h2o
+	real, dimension(2)     :: af2h2o, bdl2h2o, bdh2h2o, &
+				                    bf2h2o
+	real                   :: af1h2o, bdl1h2o, bdh1h2o, &
+				                    bf1h2o
+        integer    :: k          
+
+!---------------------------------------------------------------------
+!   data for h2o for 10 20 cm-1 wide bands in 1200-1400 cm-1 range
+!---------------------------------------------------------------------
+      data (         af10h2o(k),k=1,10)    /   &
+     &   0.587965E+00,  0.501611E+00,  0.740500E+00,  0.555079E+01, &
+     &   0.221491E+01,  0.141263E+02,  0.215772E+02,  0.208761E+02, &
+     &   0.112267E+03,  0.238073E+03/
+
+      data (         bf10h2o(k),k=1,10)    /  &
+     &   0.136093E+00,  0.215200E+00,  0.215289E+00,  0.196231E+00, &
+     &   0.433159E+00,  0.279419E+00,  0.263223E+00,  0.202895E+00, &
+     &   0.211683E+00,  0.151673E+00/
+
+
+      data          bdl10h2o / &
+     &   0.120000E+04,  0.122000E+04,  0.124000E+04,  0.126000E+04, &
+     &   0.128000E+04,  0.130000E+04,  0.132000E+04,  0.134000E+04, &
+     &   0.136000E+04,  0.138000E+04                              /
+
+      data          bdh10h2o /   &
+     &   0.122000E+04,  0.124000E+04,  0.126000E+04,  0.128000E+04,&
+     &   0.130000E+04,  0.132000E+04,  0.134000E+04,  0.136000E+04, &
+     &   0.138000E+04,  0.140000E+04                              /
+
+!---------------------------------------------------------------------
+!   data for h2o for 4 50 cm-1 wide bands in 1200-1400 cm-1 range
+!---------------------------------------------------------------------
+      data          af4h2o  /  &
+     &   0.676625E+00,  0.316169E+01,  0.208415E+02,  0.141927E+03/
+
+      data          bf4h2o  / &
+     &   0.155982E+00,  0.249785E+00,  0.247080E+00,  0.152715E+00/
+
+
+      data          bdl4h2o /  &
+     &   0.120000E+04,  0.125000E+04,  0.130000E+04,  0.135000E+04/
+
+      data          bdh4h2o /  &
+     &   0.125000E+04,  0.130000E+04,  0.135000E+04,  0.140000E+04/
+
+!---------------------------------------------------------------------
+!   data for h2o for 2 100 cm-1 wide bands in 1200-1400 cm-1 range
+!---------------------------------------------------------------------
+      data          af2h2o  /  &
+     &   0.191916E+01,  0.813840E+02/
+
+      data          bf2h2o  /  &
+     &   0.191841E+00,  0.147305E+00/
+
+
+      data          bdl2h2o /    &
+     &   0.120000E+04,  0.130000E+04/
+
+      data          bdh2h2o /   &
+     &   0.130000E+04,  0.140000E+04/
+
+!---------------------------------------------------------------------
+!   data for h2o for 1 200 cm-1 wide band in 1200-1400 cm-1 range
+!---------------------------------------------------------------------
+      data          af1h2o  /   &
+     &   0.416516E+02/
+
+      data          bf1h2o  /  &
+     &   0.993856E-01/
+
+
+      data          bdl1h2o /    &
+     &              0.120000E+04/
+
+      data          bdh1h2o /    &
+     &              0.140000E+04/
 
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
@@ -121,7 +209,13 @@ contains
 
 
 
-subroutine longwave_tables_init
+subroutine longwave_tables_init (Lw_tables, tabsr,   &
+                    tab1, tab2, tab3, tab1w, tab1a, tab2a, tab3a)
+
+type(lw_table_type), intent(out) :: Lw_tables
+type(longwave_tables3_type), intent(out) :: tabsr
+type (longwave_tables1_type), intent(out)  :: tab1, tab2, tab3, tab1w
+type (longwave_tables2_type), intent(out) :: tab1a, tab2a, tab3a
 
 !-----------------------------------------------------------------------
     integer              :: k4, n4
@@ -507,549 +601,33 @@ subroutine longwave_tables_init
        call table_alloc (tab2a, NTTABH2O, NUTABH2O, NBTRGE)
        call table_alloc (tab3a, NTTABH2O, NUTABH2O, NBTRGE)
      endif
-     call table_alloc (tabsr, NTTABH2O, NBLY    )
+!      call table_alloc (tabsr, NTTABH2O, NBLY    )
+      call table_alloc (tabsr, NTTABH2O, NBLY    )
 
-     call table
+!     call table
+     call table(tabsr,  &
+                 tab1, tab2, tab3, tab1w, &
+                  tab1a, tab2a, tab3a )
 
-     call radiag_from_lwtables (bdlocm, bdhicm, iband, bandlo, bandhi)
+!     call radiag_from_lwtables (bdlocm, bdhicm, iband, bandlo, bandhi)
+
+     allocate (Lw_tables%bdlocm(NBLY))
+     allocate (Lw_tables%bdhicm(NBLY))
+     allocate (Lw_tables%iband (40))
+     allocate (Lw_tables%bandlo (NBLW))
+     allocate (Lw_tables%bandhi (NBLW))
+
+     Lw_tables%bdlocm = bdlocm
+     Lw_tables%bdhicm = bdhicm
+     Lw_tables%iband  = iband 
+     Lw_tables%bandlo = bandlo
+     Lw_tables%bandhi = bandhi
+
 !---------------------------------------------------------------------
 
 
 end subroutine longwave_tables_init
 
-
-
-
-!####################################################################
-
-subroutine e1e290 (e1cts1, e1cts2, e1ctw1, e1ctw2, e1flx, emiss,  &
-                   e1cts1f, e1cts2f, e1flxf, emissf)
-
-!-----------------------------------------------------------------------
-real, dimension (:,:,:), intent(out)   ::  e1cts1, e1cts2, e1ctw1, &
-					   e1ctw2, e1flx, emiss
-real, dimension (:,:,:, :), optional, intent(out) :: e1cts1f, e1cts2f, &
-                     			             e1flxf, emissf
-!-----------------------------------------------------------------------
-
-!-----------------------------------------------------------------------
-!
-!     E1e290 computes two different quantities.
-!     
-!     1) emissivities used to compute the exchange terms for flux at the
-!     top of the atmosphere (level KS). (the top layer, isothermal by
-!     assumption, does not contribute to photon exchanges with other
-!     layers). these terms are obtained using precomputed e2 functions
-!     (see ref. (2)).
-!
-!     2) emissivities used to obtain the cool-to-space heating rates
-!     for all pressure layers. these are obtained using precomputed
-!     e1 functions (see ref. (2)).
-!
-!     the frequency ranges for the e2 calculations are 0-560 and 1200-
-!     2200 cm-1. the CTS calculations also require calculations in the
-!     160-560 cm-1 range. (see refs. (1) and (2)).
-!ifdef ch4n2o
-!
-!     if ch4 and n2o are included, the frequency range for emissivities
-!     is 1400-2200 cm-1, with separate emissivity quantities for the
-!     1200-1400 cm-1 range.
-!endif ch4n2o
-!
-!     the reason for combining these calculations is that both use
-!     the same scaled h2o amount (avephi) as input, thus reducing
-!     some calculation time for obtaining index quantities.
-!   
-!     references:
-!
-!     (1) schwarzkopf, m. d., and s. b. fels, "the simplified
-!         exchange method revisited: an accurate, rapid method for
-!         computation of infrared cooling rates and fluxes," journal
-!         of geophysical research, 96 (1981), 9075-9096.
-!
-!     (2) fels, s. b., and m. d. schwarzkopf, "the simplified exchange
-!         approximation: a new method for radiative transfer
-!         calculations," journal atmospheric science, 32 (1975),
-!         1475-1488.
-!
-!     author: m. d. schwarzkopf
-!
-!     revised: 1/1/93
-!
-!     certified:  radiation version 1.0
-!-----------------------------------------------------------------------
-
-!---------------------------------------------------------------------
-!  local variables
-!---------------------------------------------------------------------
-      real,    dimension(:,:,:),   allocatable :: avphilog, dt1, du, dup
-      integer, dimension(:,:,:),   allocatable :: ixo1, iyo, iyop 
-      real,    dimension(:,:,:),   allocatable :: avephi
-      real,    dimension(:,:,:,:), allocatable :: avephif
-      integer  :: k, m
-
-!---------------------------------------------------------------------
-!  allocate and retrieve variables from optical_path_mod
-!---------------------------------------------------------------------
-      allocate (avephi    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
-      if (Lw_control%do_ch4_n2o) then
-        allocate (avephif (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, NBTRGE) )
-        call get_path_for_e90 (avephi, avephif)
-      else
-        call get_path_for_e90 (avephi)
-      endif
-
-!---------------------------------------------------------------------
-!  allocatate local variables
-!---------------------------------------------------------------------
-      allocate (avphilog (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (dt1      (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (du       (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (dup      (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (ixo1     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (iyo      (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (iyop     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-
-!---------------------------------------------------------------------
-!     obtain the "exchange" emissivities as a function of temperature 
-!     (fxo) and water amount (fyo). the temperature indices have
-!     been obtained in longwave_setup_mod.
-!-------------------------------------------------------------------
-      avphilog(:,:,KS:KE+1) = LOG10(avephi(:,:,KS:KE+1))
-      call locate_in_table (mass_1, avphilog, du, iyo, KS, KE+1)
-      call looktab (tab2, ixoe2, iyo, dte2, du, emiss, KS, KE+1)
-
-!-----------------------------------------------------------------------
-!     the special case emiss(:,:,KE) for layer KE is obtained by 
-!     averaging the values for KE and KE+1.
-!---------------------------------------------------------------------
-      emiss(:,:,KE) = 0.5E+00*(emiss(:,:,KE) +emiss(:,:,KE+1))
- 
-!---------------------------------------------------------------------
-!     perform calculations for the e1 function. the terms involving top
-!     layer du are not known.  we use index two to represent index one
-!     in previous calculations.
-!--------------------------------------------------------------------
-      iyop(:,:,KS)        = 1
-      iyop(:,:,KS+1:KE+1) = iyo(:,:,KS:KE)
-      dup (:,:,KS)        = 0.0E+00
-      dup (:,:,KS+1:KE+1) = du (:,:,KS:KE)
-      do k=KS,KE+1
-        ixo1(:,:,k) = ixoe1(:,:,KS)
-        dt1 (:,:,k) = dte1 (:,:,KS)
-      enddo
-
-!-----------------------------------------------------------------------
-!     e1flx(:,:,KS) equals e1cts1(:,:,KS).
-!-----------------------------------------------------------------------
-      call looktab (tab1, ixoe1, iyop, dte1, dup, e1cts1, KS, KE+1)
-      call looktab (tab1, ixoe1, iyo, dte1, du, e1cts2, KS, KE)
-      call looktab (tab1, ixo1, iyop, dt1, dup, e1flx, KS, KE+1)
-      call looktab (tab1w, ixoe1, iyop, dte1, dup, e1ctw1, KS, KE+1)
-      call looktab (tab1w, ixoe1, iyo, dte1, du, e1ctw2, KS, KE)
-
-!--------------------------------------------------------------------
-!     calculations with ch4 and n2o require NBTRGE separate emissivity
-!     bands for h2o.
-!--------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
-        do m=1,NBTRGE
-          avphilog(:,:,KS:KE+1) = LOG10(avephif(:,:,KS:KE+1,m))
-          call locate_in_table (mass_1, avphilog, du, iyo, KS , KE+1)
-          iyop(:,:,KS)        = 1
-          iyop(:,:,KS+1:KE+1) = iyo(:,:,KS:KE)
-          dup (:,:,KS)        = 0.0E+00
-          dup (:,:,KS+1:KE+1) = du (:,:,KS:KE)
-          call looktab (tab2a, ixoe2, iyo, dte2, du, emissf(:,:,:,m), &
-		        KS, KE+1, m)
-          call looktab (tab1a, ixoe1, iyop, dte1, dup,    &
-		        e1cts1f(:,:,:,m), KS, KE+1, m)
-          call looktab (tab1a, ixoe1, iyo, dte1, du, e1cts2f(:,:,:,m),&
-		        KS, KE, m)
-          call looktab (tab1a, ixo1, iyop, dt1, dup,   &
-                        e1flxf(:,:,:,m), KS, KE+1, m)
-        enddo
-
-!--------------------------------------------------------------------
-!     the special case emissf(:,:,KE,m) for layer KE is obtained by 
-!     averaging the values for KE and KE+1.
-!--------------------------------------------------------------------
-        do m=1,NBTRGE
-          emissf(:,:,KE,m) = 0.5E+00*    &
-                             (emissf(:,:,KE,m) +emissf(:,:,KE+1,m))
-        enddo
-      endif
-
-!--------------------------------------------------------------------
-      deallocate (avephi)
-      deallocate ( iyop       )
-      deallocate ( iyo        )
-      deallocate ( ixo1       )
-      deallocate ( dup        )
-      deallocate ( du         )
-      deallocate ( dt1        )
-      deallocate ( avphilog   )
-      if (Lw_control%do_ch4_n2o) then
-	deallocate (avephif)
-      endif
-
-
-end  subroutine e1e290
-
-
-
-
-!###################################################################
-
-subroutine e290 (k, emiss, emissb, emissf, emissbf)
-
-!-----------------------------------------------------------------------
-integer,                  intent(in)            ::  k
-real, dimension(:,:,:),   intent(out)           :: emiss, emissb  
-real, dimension(:,:,:,:), intent(out), optional :: emissf, emissbf
-!-----------------------------------------------------------------------
-
-!-----------------------------------------------------------------------
-!
-!     e290 computes the exchange terms in the flux equation for longwave
-!     radiation for all terms except the exchange with the top of the
-!     atmosphere.  the method is a table lookup on a pre-computed e2
-!     function (defined in reference (2)).  calculation are done in the
-!     frequency range: 0-560, 1200-2200 cm-1 for q(approximate).
-!     motivation for these calculations is in references (1) and (2).
-!
-!     references:
-!
-!     (1) schwarzkopf, m. d., and s. b. fels, "the simplified
-!         exchange method revisited: an accurate, rapid method for
-!         computation of infrared cooling rates and fluxes," journal
-!         of geophysical research, 96 (1981), 9075-9096.
-!
-!     (2) fels, s. b., and m. d. schwarzkopf, "the simplified exchange
-!         approximation: a new method for radiative transfer
-!         calculations," journal atmospheric science, 32 (1975),
-!         1475-1488.
-!
-!     author: c. h. goldberg
-!
-!     revised: 1/1/93
-!
-!     certified:  radiation version 1.0
-!
-!-----------------------------------------------------------------------
-
-!-------------------------------------------------------------------
-!  local variables
-!-------------------------------------------------------------------
-      real,    dimension(:,:,:),   allocatable :: avphilog, dtk, du
-      real,    dimension(:,:,:),   allocatable :: avephi
-      real,    dimension(:,:,:,:), allocatable :: avephif
-      integer, dimension(:,:,:),   allocatable :: ixok, iyo          
-      integer      :: kp, m
-
-!--------------------------------------------------------------------
-!   allocate and retrieve needed variables from optical_path_mod
-!--------------------------------------------------------------------
-      allocate (avephi    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
-      if (Lw_control%do_ch4_n2o) then
-        allocate (avephif (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, NBTRGE) )
-        call get_path_for_e90 (avephi, avephif)
-      else
-        call get_path_for_e90 (avephi)
-      endif
-
-!-----------------------------------------------------------------------
-!     obtain the "exchange" emissivities as a function of temperature 
-!     (fxo) and water amount (avephi). the temperature indices have
-!     been obtained in Lwrad. calculations are for flux level k, with
-!     kp = k+1 to KE+1. the case k=KS is excluded (done in E1e290).
-!     calculations are also made for flux levels k to KE, for
-!     contributions from flux level k. in this case, the temperature
-!     index (ixok) represents tflux(:,:,k-1); the water index (iyo)
-!     has the same values as in the case with varying kp.
-!---------------------------------------------------------------------
-      allocate ( avphilog (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate ( dtk      (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate ( du       (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate ( ixok     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate ( iyo      (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-
-!----------------------------------------------------------------------
-      do kp=k,KE
-        ixok(:,:,kp) = ixoe2(:,:,k-1)
-        dtk (:,:,kp) = dte2 (:,:,k-1)
-      end do
-
-      avphilog(:,:,k:KE+1) = LOG10(avephi(:,:,k:KE+1))
-      call locate_in_table (mass_1, avphilog, du, iyo,k, KE+1)
-      call looktab (tab2, ixoe2, iyo, dte2, du, emiss, k, KE+1)
-      call looktab (tab2, ixok, iyo, dtk, du, emissb, k, KE)
-
-!--------------------------------------------------------------------
-!     the special case emiss(:,:,KE) for layer KE is obtained by 
-!     averaging the values for KE and KE+1. note that emiss(:,:,KE+1) 
-!     is not useful after this point.
-!-------------------------------------------------------------------
-      emiss(:,:,KE) = 0.5E+00*(emiss(:,:,KE) +emiss(:,:,KE+1))
- 
-!--------------------------------------------------------------------
-!     calculations with ch4 and n2o require NBTRGE separate emissivity
-!     bands for h2o. reqults are in emissf (flux level k) and
-!     emissbf (other levels).
-!-------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
-        do m=1,NBTRGE
-          avphilog(:,:,k:KE+1) = LOG10(avephif(:,:,k:KE+1,m))
-          call locate_in_table (mass_1, avphilog, du, iyo, k, KE+1)
-          call looktab (tab2a, ixoe2, iyo, dte2, du, emissf(:,:,:,m), &
-			k, KE+1, m)
-          call looktab (tab2a, ixok, iyo, dtk, du, emissbf(:,:,:,m), &
-			k, KE, m)
-        enddo
-
-!----------------------------------------------------------------------
-!     the special case emissf(:,:,KE) for layer KE is obtained by 
-!     averaging the values for KE and KE+1. note that emissf(:,:,KE+1,m)
-!     is not useful after this point.
-!----------------------------------------------------------------------
-        do m=1,NBTRGE
-          emissf(:,:,KE,m) = 0.5E+00*  &
-                             (emissf(:,:,KE,m) +emissf(:,:,KE+1,m))
-        enddo
-      endif
-
-!-------------------------------------------------------------------
-      deallocate (avephi)
-      deallocate (iyo        )
-      deallocate (ixok       )
-      deallocate (du         )
-      deallocate (dtk        )
-      deallocate (avphilog   )
-      if (Lw_control%do_ch4_n2o) then
-	deallocate (avephif)
-      endif
-!--------------------------------------------------------------------
-
-
-end subroutine e290
-
-
-
-!####################################################################
-
-subroutine enear (emisdg, emspec, emisdgf, emspecf ) 
-   
-!--------------------------------------------------------------------
-real, dimension (:,:,:),   intent(out)           ::   emisdg , emspec
-real, dimension (:,:,:,:), intent(out), optional ::   emisdgf, emspecf
-!--------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!   local variables
-!--------------------------------------------------------------------
-      real,    dimension(:,:,:),   allocatable :: dxsp, ylog, dysp, &
-						  emiss,  emd1, emd2
-      real,    dimension(:,:,:,:), allocatable :: emissf, emd2f, emd1f
-      real,    dimension(:,:,:,:), allocatable :: empl1f, empl2f,  &
-						  vrpfh2o
-      real,    dimension(:,:,:  ), allocatable :: empl1, empl2, var2, &
-						  emx1f, emx2f
-      real,    dimension(:,:    ), allocatable :: emx1, emx2
-      integer, dimension(:,:,:),   allocatable :: ixsp, iysp           
-
-      integer   :: m
-
-!----------------------------------------------------------------------
-!  allocate and retrieve needed variables from optical_path_mod
-!----------------------------------------------------------------------
-      allocate (  empl1    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (  empl2    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (  var2     (ISRAD:IERAD, JSRAD:JERAD, KS:KE  )  )
-      allocate (  emx2    (ISRAD:IERAD, JSRAD:JERAD                 ) )
-      allocate (  emx1    (ISRAD:IERAD, JSRAD:JERAD                 ) )
-      if (Lw_control%do_ch4_n2o) then
-        allocate (  empl2f (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, NBTRGE) )
-        allocate (  empl1f (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, NBTRGE) )
-        allocate (  vrpfh2o(ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, NBTRGE) )
-        allocate (  emx2f  (ISRAD:IERAD, JSRAD:JERAD,          NBTRGE) )
-        allocate (  emx1f  (ISRAD:IERAD, JSRAD:JERAD,          NBTRGE) )
-        call get_path_for_enear (var2, emx1, emx2, empl1, empl2, &
-			         vrpfh2o_out=vrpfh2o, emx1f_out=emx1f, &
-			         emx2f_out=emx2f, empl1f_out=empl1f,  &
-			         empl2f_out=empl2f )
-      else
-        call get_path_for_enear (var2, emx1, emx2, empl1, empl2)
-      endif
-
-!-------------------------------------------------------------------
-!  allocate local variables
-!-------------------------------------------------------------------
-      allocate (  ixsp     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (  iysp     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (  dxsp     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (  ylog     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (  dysp     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (  emiss    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (  emd1     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (  emd2     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-      allocate (  emissf   (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, NBTRGE) )
-      allocate (  emd2f    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, NBTRGE) )
-      allocate (  emd1f    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, NBTRGE) )
-
-!--------------------------------------------------------------------
-      ixsp(:,:,KE)   = ixoe2(:,:,KE-1)
-      ixsp(:,:,KE+1) = ixoe1(:,:,KE-1)
-      dxsp(:,:,KE)   = dte2(:,:,KE-1)
-      dxsp(:,:,KE+1) = dte1(:,:,KE-1)
-
-      ylog(:,:,KE  ) = ALOG10(var2(:,:,KE))
-      ylog(:,:,KE+1) = ALOG10(var2(:,:,KE) + empl1(:,:,KE))
-
-      call locate_in_table (mass_1, ylog, dysp, iysp, KE, KE+1)
-
-!--------------------------------------------------------------------
-!     compute exchange terms in the flux equation for two terms used
-!     for nearby layer computations.
-!--------------------------------------------------------------------
-      call looktab (tab2, ixsp, iysp, dxsp, dysp, emiss, KE, KE+1)
-
-!----------------------------------------------------------------------
-!     obtain index values of h2o pressure-scaled mass for each band
-!     in the 1200-1400 range.
-!---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
-        do m=1,NBTRGE
-          ylog(:,:,KE  ) = ALOG10(vrpfh2o(:,:,KE,m))
-          ylog(:,:,KE+1) = ALOG10(vrpfh2o(:,:,KE,m) + empl1f(:,:,KE,m))
-
-          call locate_in_table (mass_1, ylog, dysp, iysp, KE, KE+1)
-
-!-----------------------------------------------------------------------
-!     compute exchange terms in the flux equation for two terms used
-!     for nearby layer computations.
-!---------------------------------------------------------------------
-          call looktab (tab2a, ixsp, iysp, dxsp, dysp, emissf(:,:,:,m),&
-		        KE, KE+1, m)
-        enddo
-      endif
-!-----------------------------------------------------------------------
-!     compute nearby layer transmissivities for h2o.
-!--------------------------------------------------------------------
-      call locate_in_table (temp_1, tpl1, dxsp, ixsp, KS, KE+1)
-      ylog(:,:,KS:KE+1) = ALOG10(empl1(:,:,KS:KE+1))
-      call locate_in_table (mass_1, ylog, dysp, iysp, KS, KE+1)
-      call looktab (tab3, ixsp, iysp, dxsp, dysp, emd1, KS, KE+1)
-
-!----------------------------------------------------------------------
-!     obtain index values of h2o pressure-scaled mass for each band
-!     in the 1200-1400 range.
-!------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
-        do m=1,NBTRGE
-          ylog(:,:,KS:KE+1) = ALOG10(empl1f(:,:,KS:KE+1,m))
-          call locate_in_table (mass_1, ylog, dysp, iysp, KS, KE+1)
-          call looktab (tab3a, ixsp, iysp, dxsp, dysp, emd1f(:,:,:,m), &
-			KS, KE+1, m)
-        enddo
-      endif
-
-!---------------------------------------------------------------------
-      call locate_in_table (temp_1, tpl2, dxsp, ixsp, KS+1, KE+1)
-      ylog(:,:,KS+1:KE+1) = ALOG10(empl2(:,:,KS+1:KE+1))
-      call locate_in_table (mass_1, ylog, dysp, iysp, KS+1, KE+1)
-      call looktab (tab3, ixsp, iysp, dxsp, dysp, emd2, KS+1, KE+1)
-
-!----------------------------------------------------------------------
-!     obtain index values of h2o pressure-scaled mass for each band
-!     in the 1200-1400 range.
-!---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
-        do m=1,NBTRGE
-          ylog(:,:,KS+1:KE+1) = ALOG10(empl2f(:,:,KS+1:KE+1,m))
-          call locate_in_table (mass_1, ylog, dysp, iysp, KS+1, KE+1)
-          call looktab (tab3a, ixsp, iysp, dxsp, dysp, emd2f(:,:,:,m), &
-			KS+1, KE+1, m)
-        enddo
-      endif
-
-!---------------------------------------------------------------------- 
-!     compute nearby layer and special-case transmissivities for
-!     emissivity using methods for h2o given in reference (4).
-!-------------------------------------------------------------------- 
-      emisdg(:,:,KS+1:KE) = emd2(:,:,KS+1:KE) + emd1(:,:,KS+1:KE)
-      emisdg(:,:,KE+1) = 2.0E+00*emd1(:,:,KE+1)
-      emspec(:,:,KS     ) = (emd1(:,:,KS)*empl1(:,:,KS) -    &
-                             emd1(:,:,KE+1)*empl1(:,:,KE+1))/  &
-                             emx1(:,:) + 0.25E+00*(emiss(:,:,KE) +   &
-                             emiss(:,:,KE+1))
-      emspec(:,:,KS+1) = 2.0E+00*(emd1(:,:,KS)*empl1(:,:,KS) -    &
-                         emd2(:,:,KE+1)*empl2(:,:,KE+1))/emx2(:,:)
-
-     if (Lw_control%do_ch4_n2o) then
-       do m=1,NBTRGE
-         emisdgf(:,:,KS+1:KE,m) =    &
-                            emd2f(:,:,KS+1:KE,m) + emd1f(:,:,KS+1:KE,m)
-         emisdgf(:,:,KE+1,m) = 2.0E+00*emd1f(:,:,KE+1,m)
-         emspecf(:,:,KS,m   ) = (emd1f(:,:,KS,m)*empl1f(:,:,KS,m) -   &
-                              emd1f(:,:,KE+1,m)*empl1f(:,:,KE+1,m))/   &
-                          emx1f(:,:,m) + 0.25E+00*(emissf(:,:,KE,m) +  &
-                             emissf(:,:,KE+1,m))
-         emspecf(:,:,KS+1,m) = 2.0E+00*    &
-                                 (emd1f(:,:,KS,m)*empl1f(:,:,KS,m) -  &
-                              emd2f(:,:,KE+1,m)*empl2f(:,:,KE+1,m)) / &
-                              emx2f(:,:,m)
-       enddo
-     endif
-!--------------------------------------------------------------------
-
-     deallocate (var2    )
-     deallocate (emx1    )
-     deallocate (emx2    )
-     deallocate (empl1   )
-     deallocate (empl2   )
-
-     if (Lw_control%do_ch4_n2o) then
-       deallocate (vrpfh2o )
-       deallocate (emx1f   )
-       deallocate (emx2f   )
-       deallocate (empl1f  )
-       deallocate (empl2f  )
-     endif
-
-     deallocate (emd1f  )
-     deallocate (emd2f  )
-     deallocate (emissf )
-     deallocate (emd2   )
-     deallocate (emd1   )
-     deallocate (emiss  )
-     deallocate (dysp   )
-     deallocate (ylog   )
-     deallocate (dxsp   )
-     deallocate (iysp   )
-     deallocate (ixsp   )
-!------------------------------------------------------------------
-
-
-
-end subroutine enear
- 
-
-
-
-
-!#####################################################################
-
-subroutine get_bds (bdlo_out, bdhi_out)
-
-real, dimension(:), intent(out) :: bdlo_out, bdhi_out
-
-      integer   :: ioffset
-
-      ioffset = Lw_parameters%offset
-      bdlo_out(:) = bdlocm(9+ioffset:8+NBCO215+ioffset) 
-      bdhi_out(:) = bdhicm(9+ioffset:8+NBCO215+ioffset) 
-
-end subroutine get_bds
 
 
 
@@ -1139,7 +717,11 @@ end subroutine id2h2o
 
 !#####################################################################
 
-subroutine table 
+subroutine table  (tabsr, tab1, tab2, tab3, tab1w, tab1a, tab2a, tab3a)
+
+type(longwave_tables3_type), intent(out) :: tabsr
+type (longwave_tables1_type), intent(out)   :: tab1, tab2, tab3, tab1w
+type (longwave_tables2_type), intent(out)   :: tab1a, tab2a, tab3a
 
 !---------------------------------------------------------------------
 !     table computes table entries used in longwave radiation.  
@@ -1217,31 +799,31 @@ subroutine table
 !---------------------------------------------------------------------
       if (NBTRGE .EQ. 1) then
         do m=1,NBTRGE
-          afah2o(m) = CN_basic%af1h2o
-          bfah2o(m) = CN_basic%bf1h2o
-          bdlah2o(m) = CN_basic%bdl1h2o
-          bdhah2o(m) = CN_basic%bdh1h2o
+          afah2o(m) =          af1h2o
+          bfah2o(m) =          bf1h2o
+          bdlah2o(m) =          bdl1h2o
+          bdhah2o(m) =          bdh1h2o
         end do
       elseif (NBTRGE .EQ. 2) then
         do  m=1,NBTRGE
-          afah2o(m) = CN_basic%af2h2o(m)
-          bfah2o(m) = CN_basic%bf2h2o(m)
-          bdlah2o(m) = CN_basic%bdl2h2o(m)
-          bdhah2o(m) = CN_basic%bdh2h2o(m)
+          afah2o(m) =          af2h2o(m)
+          bfah2o(m) =          bf2h2o(m)
+          bdlah2o(m) =          bdl2h2o(m)
+          bdhah2o(m) =          bdh2h2o(m)
         end do
       elseif (NBTRGE .EQ. 4) then
         do  m=1,NBTRGE
-          afah2o(m) = CN_basic%af4h2o(m)
-          bfah2o(m) = CN_basic%bf4h2o(m)
-          bdlah2o(m) = CN_basic%bdl4h2o(m)
-          bdhah2o(m) = CN_basic%bdh4h2o(m)
+          afah2o(m) =          af4h2o(m)
+          bfah2o(m) =          bf4h2o(m)
+          bdlah2o(m) =          bdl4h2o(m)
+          bdhah2o(m) =          bdh4h2o(m)
         end do
       elseif (NBTRGE .EQ. 10) then
         do m=1,NBTRGE
-          afah2o(m) = CN_basic%af10h2o(m)
-          bfah2o(m) = CN_basic%bf10h2o(m)
-          bdlah2o(m) = CN_basic%bdl10h2o(m)
-          bdhah2o(m) = CN_basic%bdh10h2o(m)
+          afah2o(m) =          af10h2o(m)
+          bfah2o(m) =          bf10h2o(m)
+          bdlah2o(m) =          bdl10h2o(m)
+          bdhah2o(m) =          bdh10h2o(m)
         enddo
       elseif (NBTRGE .EQ. 20) then
         do m=1,NBTRGE
@@ -1829,6 +1411,11 @@ subroutine table
 
 end subroutine table
 
- 
+!####################################################################
+
+
 	      end module longwave_tables_mod
 		
+
+ 
+

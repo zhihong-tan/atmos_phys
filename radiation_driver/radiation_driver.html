@@ -18,10 +18,9 @@
 <H2>Module radiation_driver_mod</H2>
 <A NAME="HEADER">
 <PRE>
-     <B>Contact:</B>   Bruce Wyman
+     <B>Contact:</B>   Bruce Wyman, Rick Hemler
      <B>Reviewers:</B>
 
-     <B><A HREF=".doc.log#radiation_driver.f90">Tags/Status</A></B>
 </PRE>
 </A><!-- END HEADER -->
 <!--------------------------------------------------------------------->
@@ -221,8 +220,8 @@ call radiation_driver_end
 
 &radiation_driver_nml
 
-  dt_rad             The radiative time step in seconds.
-                       [integer, default: dt_rad=43200]
+  rad_time_step        The radiative time step in seconds.
+                       [integer, default: dt_rad=14400]
 
   offset             An offset for radiative time step (in seconds).
                      Note: If offset=1 then radiation will be done on the first
@@ -230,24 +229,42 @@ call radiation_driver_end
                      FOR NOW DO NOT CHANGE THIS VALUE
                        [integer, default: offset=1]
 
-  do_diurnal         Switch to turn on/off diurnal radiation.
-                       [logical, default: do_diurnal=.false.]
-
-  do_annual          Switch to turn on/off mean annual radiation. 
-		     NB: Fatal error results if do_diurnal==.true. and do_annual==.true.
-                       [logical, default: do_annual=.false.]
-
   do_average         Switch to turn on/off time averaged input data over the radiation
                      time step. Turning this option ON will increase the amount of
                      memory needed.   [logical, default: do_average=.false.]
 
-  do_clear_sky_diag  Switch to turn on/off the archiving diagnostics with and
-                     without clouds. Note that diagnostics fields must also be
-                     selected (see diagnostic variables).
-                       [logical, default: do_clear_sky_diag=.false.]
+  do_average_gases   ???????????
+                       [logical, default: do_average_gases=.false.]
 
-  solar_constant     The solar constant in watts/m2.
-                       [real, default: solar_constant=1365.]
+  do_average_clouds  ???????????
+                       [logical, default: do_average_clouds=.false.]
+
+  do_clear_sky_pass  ???????????
+                       [logical, default: do_clear_sky_pass=.false.]
+
+  zenith_spec        ???????????
+                       [character, no default]
+
+  rad_package        ???????????
+                       [character, default: rad_package='sea_esf']
+
+  calc_hemi_integrals ???????????
+                       [logical, default: calc_hemi_integrals=.false.]
+
+  renormalize_sw_fluxes ???????????
+                       [logical, default: renormalize_sw_fluxes=.false.]
+
+  all_level_radiation ???????????
+                       [logical, default: all_level_radiation=.false.]
+
+  topmost_radiation_level ???????????
+                       [integer, default: topmost_radiation_level=99]
+
+  drop_upper_levels  ???????????
+                       [logical, default: drop_upper_levels=.false.]
+
+  all_column_radiation ???????????
+                       [logical, default: all_column_radiation=.false.]
 
   rsd                Switch that determines whether repeating-single-day forcing is to be used. Used with
 		     rad_date (see below).
@@ -261,15 +278,6 @@ call radiation_driver_end
 		     If rsd=.true., the (year,month,day) entries are used as the single fixed calendar date
 		     for a repeating-single-day integration, and the time of day used is the model time of day.
                        [real, dimension(6), default: rad_date=0,0,0,0,0,0]
-
-  co2std             The standard co2 volume mixing ratio (either 300 or 330 ppmv).
-                       [real, default: co2std=330.]
-
-  ratio              The co2 volume mixing ratio in units of the standard volume
-                     mixing ratio (co2std), where ratio must lie between 0.5 and 4.0.
-                       [real, default: ratio=1.0]
-
-  ipt,jpt	     Specify columns in which radiation diagnostics are desired. [integer, default: ipt = -35, jpt = -35]
 
 Note:
 
@@ -362,7 +370,6 @@ NOTE: When namelist variable <b>do_clear_sky_diag = .true.</b> an additional cle
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
-<B><A HREF=".doc.log#radiation_driver.f90">CVS revision history</A></B>
 
 <b>changes prior to 1/24/2000</b>
 

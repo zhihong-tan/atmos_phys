@@ -12,6 +12,7 @@ use time_manager_mod,     only:  time_type, increment_time, &
                                  operator(/=), operator(-), &
 				 operator(>), operator(==)
 use diag_manager_mod,     only:  register_diag_field, send_data
+!use sat_vapor_pres_mod,   only:  escomp
 use sat_vapor_pres_mod,   only:  lookup_es
 
 
@@ -37,8 +38,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 1.4 2002/02/22 18:59:37 fms Exp $'
-character(len=128)  :: tag     =  '$Name: galway $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 1.5 2002/07/16 22:32:12 fms Exp $'
+character(len=128)  :: tag     =  '$Name: havana $'
 
 
 !--------------------------------------------------------------------
@@ -49,25 +50,29 @@ public   &
 	 get_cemetf, get_tprea1_donner_deep,   &
 	 store_donner_deep_variables, &
 	 fill_donner_deep_variables, donner_deep_time_vary,     &
-	 write_restart_donner_deep, inquire_donner_deep, donner_deep_end
+	 write_restart_donner_deep, inquire_donner_deep,   &
+	 donner_deep_sum, donner_deep_avg,    &
+	 donner_deep_end
 
 private   &
 	cupar_vect, precu_vect, polat_vect, cape_vect, ieq_x, satad, &
 	lcl, mulsub_vect, cloudm_vect, simult, meens, mesub, micro,  &
-	prean, andge, write_diagnostics, STRAT_CLOUD_DONNER_TEND
+	prean, andge, write_diagnostics, cell_liquid_size_comp, &
+	strat_cloud_donner_tend
 
 
 !---------------------------------------------------------------------
 !---namelist----
 
-logical :: initialize_donner_deep = .false.    ! should the scheme be 
-			                       ! initialized now ?
+!logical :: initialize_donner_deep = .false.    ! should the scheme be 
+!			                       ! initialized now ?
 logical :: save_donner_deep_diagnostics=.true. ! should module diag-
 					       ! nostics be archived ? 
 
 integer :: donner_deep_freq   = 1080  ! frequency of calling donner_deep
                                       ! assumption made that <= 86400 s
-integer :: donner_deep_offset = 720   ! offset of first daily calcul-
+!integer :: donner_deep_offset = 720   ! offset of first daily calcul-
+integer :: donner_deep_offset = 0     ! offset of first daily calcul-
 				      ! ation time from 00Z
 
 logical :: debug = .false.          ! should debug data be written ?
@@ -85,13 +90,35 @@ integer :: ntracers_in_usrtr_file =  43   ! number of tracers in rstrt
 					  ! file - applicable only in
 					  ! SKYHI
 
+!!4 character(len=10) :: cell_liquid_size_type = ' ' ! cell liquid size
+character(len=16) :: cell_liquid_size_type = ' ' ! cell liquid size
+                                                 ! type is either 
+                                                 ! 'input' or 'bower'
+
+!!4 character(len=10) :: cell_ice_size_type = ' ' ! cell ice size type is
+character(len=16) :: cell_ice_size_type = ' ' ! cell ice size type is
+                                              ! 'input' or 'default'
+ 
+real  :: cell_liquid_eff_diam_def = 15.0 ! default cell liquid eff 
+                                      ! diameter in micrometers
+real  :: cell_ice_geneff_diam_def = 13.3 ! default cell ice generalized
+                                      ! effective diameter in micrometers
+real  :: cell_ice_geneff_diam_input = -1.0 ! input cell ice generalized
+                                     ! effective diameter in micrometers
+
+logical  :: do_average     =  .false.  !Average donner cloud properties
+                                       !before computing clouds used by
+                                       !radiation?
 
 namelist / donner_deep_nml /      &
-                              initialize_donner_deep, &
+!                              initialize_donner_deep, &
 			      save_donner_deep_diagnostics, &
 			      donner_deep_freq, donner_deep_offset, &
 			      debug, kttest, itest, jtest, ktest_model,&
-			      ntracers_in_usrtr_file
+			      ntracers_in_usrtr_file,                 &
+                            cell_liquid_size_type, cell_ice_size_type, &
+                            cell_ice_geneff_diam_input, &
+                              do_average
 
 
 
@@ -108,8 +135,11 @@ namelist / donner_deep_nml /      &
 !--------------------------------------------------------------------
 !---list of restart versions readable by this module--
 
-integer, dimension(2)  :: restart_versions = (/ 1, 2 /)
+!integer, dimension(2)  :: restart_versions = (/ 1, 2 /)
+integer, dimension(3)  :: restart_versions = (/ 1, 2, 3 /)
 !   version 1 does not have the tprea1_3d array included
+!   version 3 contains the time remaining until the next donner step,
+!   rather than the actual time of the next donner step
 
 !--------------------------------------------------------------------
 !--- 3d module arrays (k index 1 is closest to the ground) ---
@@ -170,32 +200,58 @@ integer, dimension(2)  :: restart_versions = (/ 1, 2 /)
 !                    index 1 at model top
 !     cuql_3d        cell liquid content (kg{water)/kg)
 !                    index 1 at model top
+!  cell_liquid_eff_diam     cell liquid effective diameter. defined 
+!                    using Bower parameterization or from namelist
+!                    input. index 1 at model top (micrometers)
+!  cell_ice_geneff_diam     cell ice generalized effective diameter.
+!                    default is smallest data value given in andge
+!                    subroutine (micrometers)
 
 real, dimension(:,:,:), allocatable  :: cemetf        !  ooo(24)
-real, dimension(:,:,:), allocatable  :: ceefc         !  ooo(25)
-real, dimension(:,:,:), allocatable  :: cecon         !  ooo(26)
-real, dimension(:,:,:), allocatable  :: cemfc         !  ooo(27)
+!real, dimension(:,:,:), allocatable  :: ceefc         !  ooo(25)
+!real, dimension(:,:,:), allocatable  :: cecon         !  ooo(26)
+!real, dimension(:,:,:), allocatable  :: cemfc         !  ooo(27)
 real, dimension(:,:,:), allocatable  :: cememf        !  ooo(28)
-real, dimension(:,:,:), allocatable  :: cememf_mod              
-real, dimension(:,:,:), allocatable  :: cual_3d       !  ooo(29)
-real, dimension(:,:,:), allocatable  :: fre_3d        !  ooo(30)
-real, dimension(:,:,:), allocatable  :: elt_3d        !  ooo(31)
-real, dimension(:,:,:), allocatable  :: cmus_3d       !  ooo(32)
-real, dimension(:,:,:), allocatable  :: ecds_3d       !  ooo(33)
-real, dimension(:,:,:), allocatable  :: eces_3d       !  ooo(34)
-real, dimension(:,:,:), allocatable  :: emds_3d       !  ooo(35)
-real, dimension(:,:,:), allocatable  :: emes_3d       !  ooo(36)
-real, dimension(:,:,:), allocatable  :: qmes_3d       !  ooo(37)
-real, dimension(:,:,:), allocatable  :: wmps_3d       !  ooo(38)
-real, dimension(:,:,:), allocatable  :: wmms_3d       !  ooo(39)
-real, dimension(:,:,:), allocatable  :: tmes_3d       !  ooo(40)
-real, dimension(:,:,:), allocatable  :: dmeml_3d      !  ooo(41)
-real, dimension(:,:,:), allocatable  :: uceml_3d      !  ooo(42)
-real, dimension(:,:,:), allocatable  :: umeml_3d      !  ooo(43)
-real, dimension(:,:,:), allocatable  :: xice_3d       !
-real, dimension(:,:,:), allocatable  :: dgeice_3d       !
-real, dimension(:,:,:), allocatable  :: cuqi_3d       !
-real, dimension(:,:,:), allocatable  :: cuql_3d       !
+!real, dimension(:,:,:), allocatable  :: cememf_mod              
+!real, dimension(:,:,:), allocatable  :: cual_3d       !  ooo(29)
+!real, dimension(:,:,:), allocatable  :: fre_3d        !  ooo(30)
+!real, dimension(:,:,:), allocatable  :: elt_3d        !  ooo(31)
+!real, dimension(:,:,:), allocatable  :: cmus_3d       !  ooo(32)
+!real, dimension(:,:,:), allocatable  :: ecds_3d       !  ooo(33)
+!real, dimension(:,:,:), allocatable  :: eces_3d       !  ooo(34)
+!real, dimension(:,:,:), allocatable  :: emds_3d       !  ooo(35)
+!real, dimension(:,:,:), allocatable  :: emes_3d       !  ooo(36)
+!real, dimension(:,:,:), allocatable  :: qmes_3d       !  ooo(37)
+!real, dimension(:,:,:), allocatable  :: wmps_3d       !  ooo(38)
+!real, dimension(:,:,:), allocatable  :: wmms_3d       !  ooo(39)
+!real, dimension(:,:,:), allocatable  :: tmes_3d       !  ooo(40)
+!real, dimension(:,:,:), allocatable  :: dmeml_3d      !  ooo(41)
+!real, dimension(:,:,:), allocatable  :: uceml_3d      !  ooo(42)
+!real, dimension(:,:,:), allocatable  :: umeml_3d      !  ooo(43)
+!real, dimension(:,:,:), allocatable  :: xice_3d       !
+!real, dimension(:,:,:), allocatable  :: dgeice_3d     !
+!real, dimension(:,:,:), allocatable  :: cuqi_3d       !
+!real, dimension(:,:,:), allocatable  :: cuql_3d       !
+real, dimension(:,:,:), allocatable  :: cell_liquid_eff_diam
+real, dimension(:,:,:), allocatable  :: cell_ice_geneff_diam
+ 
+!Fields saved between time steps which are needed to pass cloud 
+!information from donner convection to the radiation code
+ 
+real,    dimension(:,:,:), allocatable  :: cell_cloud_frac
+real,    dimension(:,:,:), allocatable  :: cell_liquid_amt
+real,    dimension(:,:,:), allocatable  :: cell_liquid_size
+real,    dimension(:,:,:), allocatable  :: cell_ice_amt
+real,    dimension(:,:,:), allocatable  :: cell_ice_size
+real,    dimension(:,:,:), allocatable  :: meso_cloud_frac
+real,    dimension(:,:,:), allocatable  :: meso_liquid_amt
+real,    dimension(:,:,:), allocatable  :: meso_liquid_size
+real,    dimension(:,:,:), allocatable  :: meso_ice_amt
+real,    dimension(:,:,:), allocatable  :: meso_ice_size
+integer, dimension(:,:)  , allocatable  :: nsum
+ 
+
+
 
 !--------------------------------------------------------------------
 !--- 2d module arrays (k index 1 is closest to the ground) ---
@@ -206,7 +262,7 @@ real, dimension(:,:,:), allocatable  :: cuql_3d       !
 !     amos_3d          upper limit on cloud fractional area based on
 !                      moisture constraint See "Moisture Constraint," 
 !                      8/8/97.
-!     ampta1_3d        area weighted mesoscale cloud fraction, normal-
+!     ampta1_2d        area weighted mesoscale cloud fraction, normal-
 !                      ized by a(1,p_b)
 !     coin_3d          convective inhibition 
 !                      energy required to lift parcel from level istart
@@ -231,22 +287,22 @@ real, dimension(:,:,:), allocatable  :: cuql_3d       !
 !                      released as parcel moves from level of free 
 !                      convection to level of zero buoyancy [ J/kg ]
 
-real, dimension(:,:), allocatable  :: plcl_3d      !  spare(20)
-real, dimension(:,:), allocatable  :: plfc_3d      !  spare(21)
-real, dimension(:,:), allocatable  :: plzb_3d      !  spare(22)
+!real, dimension(:,:), allocatable  :: plcl_3d      !  spare(20)
+!real, dimension(:,:), allocatable  :: plfc_3d      !  spare(21)
+!real, dimension(:,:), allocatable  :: plzb_3d      !  spare(22)
 real, dimension(:,:), allocatable  :: xcape_3d     !  spare(23)
-real, dimension(:,:), allocatable  :: coin_3d      !  spare(24)
-real, dimension(:,:), allocatable  :: dcape_3d     !  spare(25)
+!real, dimension(:,:), allocatable  :: coin_3d      !  spare(24)
+!real, dimension(:,:), allocatable  :: dcape_3d     !  spare(25)
 real, dimension(:,:), allocatable  :: qint_3d      !  spare(26)
-real, dimension(:,:), allocatable  :: a1_3d        !  spare(27)
-real, dimension(:,:), allocatable  :: amax_3d      !  spare(28)
-real, dimension(:,:), allocatable  :: amos_3d      !  spare(29)
+!real, dimension(:,:), allocatable  :: a1_3d        !  spare(27)
+!real, dimension(:,:), allocatable  :: amax_3d      !  spare(28)
+!real, dimension(:,:), allocatable  :: amos_3d      !  spare(29)
 real, dimension(:,:), allocatable  :: tprea1_3d    !  spare(30)
-real, dimension(:,:), allocatable  :: ampta1_3d    !  spare(31)
+!real, dimension(:,:), allocatable  :: ampta1_2d    !  spare(31)
 real, dimension(:,:), allocatable  :: omint_3d     !  spare(32)
-real, dimension(:,:), allocatable  :: rcoa1_3d     !  spare(33)
-real, dimension(:,:), allocatable  :: contot_v     
-real, dimension(:,:), allocatable  :: emdi_v       
+!real, dimension(:,:), allocatable  :: rcoa1_3d     !  spare(33)
+!real, dimension(:,:), allocatable  :: contot_v     
+!real, dimension(:,:), allocatable  :: emdi_v       
 
 !------------------------------------------------------------------
 !   module loop and dimension variables
@@ -262,7 +318,7 @@ integer :: nlev          ! number of model half-levels (layers)
 !   module control variables
 
 logical  :: do_donner_deep=.false. ! is this module active ?
-logical  :: do_init         !  is initialization necessary ?
+logical  :: do_init=.false.         !  is initialization necessary ?
 integer  :: tstep_counter   !  number of timesteps executed in this job
 integer  :: total_pts       !  total number of points in the subdomain
 integer  :: num_pts         !  number of pts processed in the subdomain
@@ -273,6 +329,12 @@ logical  :: ldeep           !  is this a step to calculate donner deep ?
 logical  :: ldeep_next      !  is deep calculated on the next step ?
 logical  :: standard_step   !  is this a "standard" time step ? (cur-
 			    !  rently only meaningful in SKYHI)
+logical  :: do_input_cell_liquid_size = .false.  ! cell liquid size from input?
+logical  :: do_bower_cell_liquid_size = .false.  ! cell liquid size from bower calc
+                                        ! or strat clouds?
+logical  :: do_input_cell_ice_size = .false. ! cell ice size from input?
+logical  :: do_default_cell_ice_size = .false. ! cell ice size from default?
+
 
 !---------------------------------------------------------------------
 !  constants required for deep cumulus parameterization. these will
@@ -310,6 +372,7 @@ real, parameter   ::  frezdk = 273.16        ! melting temperature [ K ]
 !  module time and time-step variables
 
 real            :: dt                    !  model time step [ sec ]
+type(time_type) :: Time_current          !  time of current timestep
 type(time_type) :: Next_donner_deep_time !  next time to calculate 
 					 !  donner_deep
 type(time_type) :: Donner_deep_timestep  !  frequency of calculating
@@ -349,6 +412,23 @@ real, parameter    :: pdeep_mc = 200.e02 !  pressure thickness (Pa)
 					 !  the largest entrainment
 					 !  coefficient. 
 
+!--------------------------------------------------------------------
+!   module internal parameters used to calculate effective particle
+!   sizes of liquid droplets in cumulus clouds in the cell area
+
+ 
+real, parameter :: r_conv_land  = 10.0      ! radius conv cld  
+                                            ! over land (micrometers)
+real, parameter :: r_conv_ocean = 16.0      ! radius conv cld  
+                                            ! over ocean (micrometers)
+real, parameter :: N_land       = 600*1.0e6 ! droplet number conc 
+                                            ! over land (m**-3)
+real, parameter :: N_ocean      = 150*1.0e6 ! droplet number conc 
+                                            ! over ocean (m**-3)
+real, parameter :: delz_land    = 500.0     ! cloud land vert depth (m) 
+real, parameter :: delz_ocean   = 1500.0    ! cloud ocean vert depth (m)
+real, parameter :: rho_water    = 1000.0    ! density of liquid water
+                                            ! kg water (m**-3)
 
 !--------------------------------------------------------------------
 !   variables for debugging option
@@ -368,6 +448,7 @@ integer          :: id_cemetf_deep, id_ceefc_deep, id_cecon_deep, &
 		    id_wmps_deep, id_wmms_deep, id_tmes_deep,&
 		    id_dmeml_deep, id_uceml_deep, &
 		    id_umeml_deep, id_xice_deep, id_dgeice_deep, &
+		    id_dgeliq_deep,                   &
                     id_cuqi_deep, id_cuql_deep, &
 		    id_plcl_deep, id_plfc_deep, id_plzb_deep, &
 		    id_xcape_deep, id_coin_deep,  &
@@ -379,6 +460,7 @@ integer          :: id_cemetf_deep, id_ceefc_deep, id_cecon_deep, &
 real             :: Missing_value = -999.
 character(len=8) :: mod_name = 'don_deep'
 
+logical :: calc_all_steps
 
 
 
@@ -424,7 +506,8 @@ integer, dimension(4), intent(in), optional :: axes
       integer                 :: unit, ierr, io
       integer                 :: secs_from_start, time_to_donner_deep, &
 				 time_remaining, secs, days
-      character(len=4)        :: chvers
+!!4      character(len=4)        :: chvers
+      character(len=8)        :: chvers
       type(time_type)         :: New_donner_deep_time
   
 !---------------------------------------------------------------------
@@ -476,6 +559,27 @@ integer, dimension(4), intent(in), optional :: axes
 						       FATAL)
         endif
 
+        if (trim(cell_liquid_size_type) == 'input') then
+           do_input_cell_liquid_size = .true.
+        else if (trim(cell_liquid_size_type) == 'bower') then
+           do_bower_cell_liquid_size = .true.
+        else
+           call error_mesg ( 'donner_deep_init', &
+             ' cell_liquid_size_type must be input or bower', &
+                                                  FATAL)
+        endif
+
+        if (trim(cell_ice_size_type) == 'input') then
+          do_input_cell_ice_size = .true.
+        else if (trim(cell_ice_size_type) == 'default') then
+          do_default_cell_ice_size = .true.
+        else
+          call error_mesg ( 'donner_deep_init', &
+             ' cell_ice_size_type must be input or default', &
+                                                     FATAL)
+        endif
+
+
 !-------------------------------------------------------------------
 !  define module variables specifying the grid dimensions
 !   idf, jdf = dimensions of subdomain on this processor
@@ -510,6 +614,11 @@ integer, dimension(4), intent(in), optional :: axes
    	   'cutoff level for debug diagnostics is not in domain', FATAL)
         endif
 
+        if (jtest >= y(3) .and. jtest <= y(4) ) then
+	  jtest = jtest - y(3) + 1
+	else 
+	  jtest = -1
+        endif
 !--------------------------------------------------------------------
 !  initialize the es table to be used with this module. AS OF NOW, this
 !  has been imported from SKYHI; the ultimate plan is to use the sat-
@@ -542,6 +651,10 @@ integer, dimension(4), intent(in), optional :: axes
 !!  cases properly. 3/7/01 : additional slight mods made in response
 !!  to running in FMS.
         if (present (Time) ) then
+	  if (donner_deep_offset /= 0) then
+	     call error_mesg ('donner_deep_mod', &
+           ' donner_deep_offset must == 0 when running in FMS', FATAL)
+          endif
           call get_time (Time, secs, days)
 	  if (secs > donner_deep_offset) then
 	    secs_from_start = MOD (secs, donner_deep_freq)
@@ -549,7 +662,9 @@ integer, dimension(4), intent(in), optional :: axes
 	    time_remaining = MOD (time_to_donner_deep, donner_deep_freq)
 	  else
             time_remaining = donner_deep_offset - secs
-	    if (time_remaining == 0 .and. initialize_donner_deep) then
+!    if (time_remaining == 0 .and. initialize_donner_deep) then
+	    if (time_remaining == 0 .and.      &                        
+	         .not. file_exist ('INPUT/donner_deep.res') ) then
 	      time_remaining = donner_deep_freq
             endif
 	  endif
@@ -571,19 +686,19 @@ integer, dimension(4), intent(in), optional :: axes
 !   message if it is being coldstarted even though a restart file is
 !   in place.to advise user.
 !--------------------------------------------------------------------
-        if (initialize_donner_deep) then
-	  do_init = .true.
-          if (file_exist ('INPUT/donner_deep.res') ) then
-	    if (get_my_pe() == 0) then
-	      call error_mesg ('donner_deep_init', &
-	          ' BE ADVISED: donner_deep_mod is being coldstarted, &
-	             &even though a restart file is present. Is&
-	             & this what you want ?', NOTE)
-	    endif
-	  endif
-	else 
-	  do_init = .false.
-	endif
+!       if (initialize_donner_deep) then
+!  do_init = .true.
+!         if (file_exist ('INPUT/donner_deep.res') ) then
+!    if (get_my_pe() == 0) then
+!      call error_mesg ('donner_deep_init', &
+!          ' BE ADVISED: donner_deep_mod is being coldstarted, &
+!             &even though a restart file is present. Is&
+!             & this what you want ?', NOTE)
+!    endif
+!  endif
+!else 
+!  do_init = .false.
+!endif
 
 !--------------------------------------------------------------------
 !   provide initial values for the module variables that are saved
@@ -592,16 +707,31 @@ integer, dimension(4), intent(in), optional :: axes
 !   none of these options is indicated, a message is written and the 
 !   job aborts.
 !--------------------------------------------------------------------
-        if (do_init) then
-          call initialize_variables
-        else if (file_exist ('INPUT/donner_deep.res') ) then
-	  call read_restart_donner_deep
+!       if (do_init) then
+!         call initialize_variables
+!       else if (file_exist ('INPUT/donner_deep.res') ) then
+!  call read_restart_donner_deep
+!       else if (file_exist ('INPUT/usrtr_rstrt') ) then
+!  call read_usrtr_file
+!       else
+!   call error_mesg ('donner_deep_init', &
+!         'either provide restart file (old or new) or request&
+!  & initialization', FATAL)
+!       endif
+
+!       if (do_init) then
+!         call initialize_variables
+
+        if (file_exist ('INPUT/donner_deep.res') ) then
+	  call read_restart_donner_deep (Time)
         else if (file_exist ('INPUT/usrtr_rstrt') ) then
 	  call read_usrtr_file
         else
-	   call error_mesg ('donner_deep_init', &
-          'either provide restart file (old or new) or request&
-	  & initialization', FATAL)
+	  do_init = .true.
+          call initialize_variables
+!   call error_mesg ('donner_deep_init', &
+!         'either provide restart file (old or new) or request&
+!  & initialization', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -709,6 +839,10 @@ integer, dimension(4), intent(in), optional :: axes
            register_diag_field (mod_name, 'cuql_deep', axes(1:3),  &
            Time, 'cell liquid ', 'kg(H2O)/kg',   &
            missing_value=missing_value)
+            id_dgeliq_deep =  &
+           register_diag_field (mod_name, 'dgeliq_deep', axes(1:3), &
+            Time, 'cell liq gen eff size ', 'micrometers',   &
+            missing_value=missing_value)
 
             id_plcl_deep =  &
            register_diag_field (mod_name, 'plcl_deep', axes(1:2),   &
@@ -807,6 +941,7 @@ integer, dimension(4), intent(in), optional :: axes
 !     do k=1,100 
 !     tttt = 253.0 + (k-1)*0.01
 !     call establ (es, tttt)
+!!    call escomp ( tttt, ess)
 !     call lookup_es ( tttt, ess)
 !     print *, 'temp, es(SKY), es (FMS) : ', tttt, es, ess
 !     end do
@@ -877,6 +1012,7 @@ type(time_type), intent(in), optional    :: Time_in
 !---------------------------------------------------------------------
 
        type(time_type)    :: Time_next, Next_check_time
+       integer :: next(2)
 
 !--------------------------------------------------------------------
 !  this code is executed when in SKYHI:
@@ -921,6 +1057,13 @@ type(time_type), intent(in), optional    :: Time_in
 !--------------------------------------------------------------------
        else if (present (Time_in) ) then
 
+!!!!!!ADD THIS
+         Time_current = Time_in
+! if (get_my_pe() == 0) then
+!        call get_time (Time_current         ,next(1), next(2) )
+! print *, 'current time     :',  next(1), next(2)
+! endif
+!!! END OF ADD THIS
 !-------------------------------------------------------------------
 !   save the model timestep. verify that donner_deep_freq is an integral
 !   multiple of it.
@@ -931,6 +1074,13 @@ type(time_type), intent(in), optional    :: Time_in
 	     call error_mesg ('donner_deep_time_vary',  &
 		'donner_deep timestep NOT an integral multiple of &
 		 &physics timestep', FATAL)
+         endif
+
+         if (idt == donner_deep_freq) then
+!             print * , 'idt, donner_deep_freq', idt, donner_deep_freq
+             calc_all_steps = .true.
+         else
+           calc_all_steps = .false.
          endif
 
          if (idt == donner_deep_freq) then
@@ -1031,7 +1181,8 @@ end subroutine donner_deep_time_vary
 
 subroutine donner_deep (is, js, temold, ratold, pfull, phalf, coldT,   &
 		        omega_btm, iflag, ttnd, qtnd, rain, snow, &
-			Time, Lbot, cf, qlin,qiin, qatend, qltend, qitend)
+			Time, Lbot, cf, qlin,qiin, qatend, qltend,  &
+			qitend, land)
 
 !-------------------------------------------------------------------
 !   donner_deep is the prognostic interface between the model and the 
@@ -1052,10 +1203,12 @@ real, dimension(:,:,:),     intent(out)       :: ttnd, qtnd
 real, dimension(:,:),       intent(out)       :: rain, snow
 integer,dimension(:,:,:),   intent(inout)        :: iflag
 type(time_type),            intent(in), optional :: Time
-real, dimension(:,:,:),     intent(out), optional:: qatend, qltend, qitend
+real, dimension(:,:,:),     intent(out), optional:: qatend,   &
+                                                    qltend, qitend
 !real, dimension(:,:,:),     intent(out), optional:: cfdel, qldel, qidel
 real, dimension(:,:,:),     intent(in), optional :: cf
 integer, dimension(:,:), intent(in), optional   :: Lbot
+real, dimension(:,:),       intent(in), optional :: land
 !--------------------------------------------------------------------
 
 !--------------------------------------------------------------------
@@ -1073,14 +1226,11 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !                     (i,j) dimensions are size of physics_window
 !     omega_btm       omega field at lowest model level
 !                     (i,j) dimensions are size of physics_window
-!     qliN             on entry, large-scale cloud liquid specific
+!     qlin             on entry, large-scale cloud liquid specific
 !                     humidity (kg(liquid)/kg)
 !     qiin            on entry, large-scale cloud ice specific
 !                     humidity (kg(ice)/kg)
 !     cf              on entry, large-scale cloud fraction (0-1)
-!
-!   intent(inout) variables:
-!
 !     temold          on entry, the current tau+1 temperature field;
 !                     on exit, the tau+1 temperature field after the
 !                     effects of donner_deep have been included
@@ -1091,6 +1241,9 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !                     effects of donner_deep have been included
 !                     (i,j) dimensions are size of physics_window, 
 !                     k dimension is nlev
+!
+!   intent(inout) variables:
+!
 !     iflag           on entry, array is zeroed out;
 !                     on exit contains flag indicating grid boxes
 !                     where donner_deep occurs.
@@ -1102,6 +1255,11 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !    the following variable is present when running in FMS:
 !
 !     Time            current time (time_type)
+!
+!
+!   intent(in), optional variables:
+!
+!     land            fraction of surface (grid box) covered by land
 !
 !--------------------------------------------------------------------
 
@@ -1133,6 +1291,22 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
        integer, dimension (size(temold,1) )     :: iabs
        integer, dimension (size(temold,2) )     :: jabs
        logical                                  :: used
+       integer :: unit
+       real  :: sum
+       logical, dimension(size(temold,1), size(temold,2))    &
+                                        :: exit_flag_2d
+
+       real, dimension(size(temold,1), size(temold,2),   &
+                                              size(temold,3))  ::   &
+                ceefc, cecon, cemfc, cememf_mod, cual_3d, fre_3d, &
+              elt_3d, cmus_3d, ecds_3d, eces_3d, emds_3d, emes_3d, &
+                qmes_3d, wmps_3d, wmms_3d, tmes_3d, dmeml_3d, &
+             uceml_3d, umeml_3d, xice_3d, dgeice_3d, &
+                cuqi_3d, cuql_3d
+
+    real, dimension(size(temold,1), size(temold,2)) ::  &
+               plcl_3d, plfc_3d, plzb_3d, coin_3d, dcape_3d, a1_3d, &
+               amax_3d, amos_3d, ampta1_2d, rcoa1_3d, contot_v, emdi_v
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -1188,10 +1362,22 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !    remains for the duration of the model run.  initialize these
 !    variables after allocating them.
 !-------------------------------------------------------------------
-       if (.not. allocated (plcl_3d) ) then
+       if (.not. allocated ( cell_ice_geneff_diam) ) then
          call allocate_local_variables
-         call initialize_local_variables
        endif
+          call initialize_local_variables ( &
+               ceefc, cecon, cemfc, cememf_mod, cual_3d, fre_3d, &
+               elt_3d, cmus_3d, ecds_3d, eces_3d, emds_3d, emes_3d, &
+               qmes_3d, wmps_3d, wmms_3d, tmes_3d, dmeml_3d, &
+              uceml_3d, umeml_3d, xice_3d, dgeice_3d, &
+              cuqi_3d, cuql_3d, &
+               plcl_3d, plfc_3d, plzb_3d, coin_3d, dcape_3d, a1_3d, &
+                amax_3d, amos_3d, ampta1_2d, rcoa1_3d, contot_v, emdi_v)
+!      endif
+!      if (.not. allocated (plcl_3d) ) then
+!        call allocate_local_variables
+!        call initialize_local_variables
+!      endif
 
 !-------------------------------------------------------------------
 !    local variables are initialized upon each entry into the module
@@ -1204,7 +1390,7 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !    iables are not needed from the previous timestep.
 !-------------------------------------------------------------------
        if (present (Time) ) then
-         call initialize_local_variables
+!2        call initialize_local_variables
        endif
 
 !--------------------------------------------------------------------
@@ -1230,11 +1416,14 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
        endif
 !       call toc ( 'cvct', '1')
 
+!  initialize temp, moisture, cloud, liquid and ice tendencies
        ttnd(:,:,:) = 0.0
        qtnd(:,:,:) = 0.0
+       if (present (qitend) ) then
        qatend(:,:,:) = 0.0
        qltend(:,:,:) = 0.0
        qitend(:,:,:) = 0.0
+       endif
 
 !---------------------------------------------------------------------
 !   calculate time integrated low-level displacement (Cu Closure E 
@@ -1274,6 +1463,11 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !   execute the following code only on steps where convective forcing
 !   is being calculated.
 !---------------------------------------------------------------------
+!       unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!         write (unit,*) ' donner_deep,standard_step = ', standard_step
+!         write (unit,*) ' donner_deep,ldeep = ', ldeep
+!       call close_file (unit)
        if (ldeep) then
 
 !--------------------------------------------------------------------
@@ -1282,9 +1476,10 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !--------------------------------------------------------------------
 !         call tic ( 'cvct', '4')
 !        call precu_vect (temold, ratold, press, pcape_vect, &
+	 exit_flag_2d = .false.
          call precu_vect (temold, ratold, pfull, pcape_vect, &
                           prini_vect, jabs, rcape_vect, rini_vect,   &
-		          tcape_vect, tini_vect)
+		          tcape_vect, tini_vect, exit_flag_2d)
 !         call toc ( 'cvct', '4')
 
 !--------------------------------------------------------------------
@@ -1392,17 +1587,37 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !   call cupar_vect to calculate normalized deep convective forcing
 !---------------------------------------------------------------------
 !           call tic ( 'cvct', '9')
-           call cupar_vect (xcape_vect, coin_vect, dcape_3d, dqls_vect,&
-                            omint2_vect, pcape_vect, plfc_vect,   &
-			    plzb_vect, prini_vect, rini_vect,    &
-			    qlsd_vect, rcape_vect, rpc_vect, tini_vect,&
-			    tcape_vect, tpca_vect, jabs)
+            call cupar_vect (xcape_vect, coin_vect, dcape_3d, dqls_vect,&
+                         omint2_vect, pcape_vect, plfc_vect,   &
+                            plzb_vect, prini_vect, rini_vect,    &
+                            qlsd_vect, rcape_vect, rpc_vect, tini_vect,&
+                             tcape_vect, tpca_vect, jabs,  &
+             ceefc, cecon, cemfc, cememf_mod, cual_3d, fre_3d, &
+                elt_3d, cmus_3d, ecds_3d, eces_3d, emds_3d, emes_3d, &
+               qmes_3d, wmps_3d, wmms_3d, tmes_3d, dmeml_3d, &
+              uceml_3d, umeml_3d, xice_3d, dgeice_3d, &
+                cuqi_3d, cuql_3d, &
+                plcl_3d, plfc_3d, plzb_3d, coin_3d, dcape_3d, a1_3d, &
+               amax_3d, amos_3d, ampta1_2d, rcoa1_3d, contot_v, emdi_v)
+!          call cupar_vect (xcape_vect, coin_vect, dcape_3d, dqls_vect,&
+!                           omint2_vect, pcape_vect, plfc_vect,   &
+!		    plzb_vect, prini_vect, rini_vect,    &
+!		    qlsd_vect, rcape_vect, rpc_vect, tini_vect,&
+!		    tcape_vect, tpca_vect, jabs)
 !           call toc ( 'cvct', '9')
+!      unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!        write (unit,*) ' donner_deep,after cupar_vect'
+!        write (unit,*) ' cuql_3d'
+! write (unit,*) cuql_3d
+!      call close_file (unit)
+
+
             
 	    do ilon=iminp,imaxp
 	      do jlat=jminp,jmaxp
 	        jgl=jabs(jlat)
-	        ampu=ampta1_3d(ilon,jlat)
+	        ampu=ampta1_2d(ilon,jlat)
 	        emdi=emdi_v(ilon,jlat)
 	        contot=contot_v(ilon,jlat)
 	        tprei=tprea1_3d(ilon,jgl)
@@ -1417,7 +1632,7 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !                 write(6,*) 'pre prean i,j,jgl= ',ilon,jlat,jgl
 !                 write(6,*) 'ampu,emdi,contot= ',ampu,emdi,contot
 !                 write(6,*) 'tprei= ',tprei
-!                 write(6,*) 'ampta1= ',ampta1_3d(ilon,jlat)
+!                 write(6,*) 'ampta1= ',ampta1_2d(ilon,jlat)
 !                 write(6,*) 'emdi_v= ',emdi_v(ilon,jlat)
 !                 write(6,*) 'contot_v= ',contot_v(ilon,jlat)
 !                 write(6,*) 'tprea1= ',tprea1_3d(ilon,jgl)
@@ -1453,7 +1668,6 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
                 end do
               end do
             end do
-
 !
 !        Code to link Donner convection to Tiedtke/Rotstayn cloud
 !        fraction/microphysics
@@ -1463,43 +1677,65 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !        detraining mass flux of the convective system (kg/(m**2 s))
 !
          do ilon=iminp,imaxp
-           do jlat=jminp,jmaxp
-             do k=1,nlev
-               xliq_3d(ilon,jlat,k)=0.
-               if (xice_3d(ilon,jlat,k) .ge. 1.0e-10) then
-                 dmeso_3d(ilon,jlat,k)=emes_3d(ilon,jlat,k)/ &
-                                       xice_3d(ilon,jlat,k)
-               else
-                 dmeso_3d(ilon,jlat,k)=0.
-               end if
-             end do
-             do k=1,nlev-1
-               if ((uceml_3d(ilon,jlat,k) .le. 1.0e-10)  .and.   &
-                   (umeml_3d(ilon,jlat,k) .le. 1.0e-10)) then
-                 mhalf_3d(ilon,jlat,k)=0.
-                 mhalf_3d(ilon,jlat,k+1)=0.
-                 cycle
-               end if
-               dnna=phalf(ilon,jlat,k+1)-pfull(ilon,jlat,k)
-               dnnb=pfull(ilon,jlat,k+1)-phalf(ilon,jlat,k+1)
-               mhalf_3d(ilon,jlat,k+1)=(dnnb*uceml_3d(ilon,jlat,k) + &
-                                      dnna*uceml_3d(ilon,jlat,k+1)   &
-                                      +dnnb*umeml_3d(ilon,jlat,k)    &
-                              +dnna*umeml_3d(ilon,jlat,k+1))/(dnna+dnnb)
-             end do
-             mhalf_3d(ilon,jlat,nlev+1)=0.
-             mhalf_3d(ilon,jlat,1)=0.
-           end do
-         end do
-      call STRAT_CLOUD_DONNER_TEND(dmeso_3d,xliq_3d,xice_3d,mhalf_3d, &
-              phalf,qlin,qiin,cf,qltend,qitend,qatend)
+	     do jlat=jminp,jmaxp
+	        do k=1,nlev
+	           xliq_3d(ilon,jlat,k)=0.
+		   if (xice_3d(ilon,jlat,k) .ge. 1.0e-10) then
+		     dmeso_3d(ilon,jlat,k)=emes_3d(ilon,jlat,k)/ &
+		     xice_3d(ilon,jlat,k)
+                   else
+		     dmeso_3d(ilon,jlat,k)=0.
+                   end if
+                 end do
+		 do k=1,nlev-1
+		 if ((uceml_3d(ilon,jlat,k) .le. 1.0e-10)  .and.   &
+		      (umeml_3d(ilon,jlat,k) .le. 1.0e-10)) then
+		         mhalf_3d(ilon,jlat,k)=0.
+			 mhalf_3d(ilon,jlat,k+1)=0.
+			 cycle
+                       end if
+		          dnna=phalf(ilon,jlat,k+1)-pfull(ilon,jlat,k)
+			  dnnb=pfull(ilon,jlat,k+1)-phalf(ilon,jlat,k+1)
+		   mhalf_3d(ilon,jlat,k+1)=(dnnb*uceml_3d(ilon,jlat,k) + &
+		    dnna*uceml_3d(ilon,jlat,k+1)   &
+		    +dnnb*umeml_3d(ilon,jlat,k)    &
+		    +dnna*umeml_3d(ilon,jlat,k+1))/(dnna+dnnb)
+                  end do
+                  mhalf_3d(ilon,jlat,nlev+1)=0.
+		  mhalf_3d(ilon,jlat,1)=0.
+		  end do
+		  end do
+!      unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!        write (unit,*) ' bef call ,standard_step = ', standard_step
+!        write (unit,*) ' bef call,ldeep = ', ldeep
+!      call close_file (unit)
 
+      if (present(qitend)) then
+!!! the following should only be done with do_strat_cloud active
+     call strat_cloud_donner_tend(dmeso_3d,xliq_3d,xice_3d,mhalf_3d, &
+             phalf,qlin,qiin,cf,qltend,qitend,qatend)
 !
 !     Convert tendencies to increments.
 !
-       qltend(:,:,:)=qltend(:,:,:)*dt
-       qitend(:,:,:)=qitend(:,:,:)*dt
-       qatend(:,:,:)=qatend(:,:,:)*dt
+            qltend(:,:,:)=qltend(:,:,:)*dt
+	    qitend(:,:,:)=qitend(:,:,:)*dt
+	    qatend(:,:,:)=qatend(:,:,:)*dt
+      endif
+!
+!   compute the cell liquid effective diameter
+!
+      
+    call cell_liquid_size_comp(pfull, temold, cuql_3d, land = land)
+	
+!
+!   store cloud variables for the radiation code
+!	
+
+!   call donner_deep_sum( is, js )
+    call donner_deep_sum( is, js, xice_3d, ampta1_2d, dgeice_3d, &
+                          cual_3d, cuql_3d, cuqi_3d)
+				 
 
 
 !---------------------------------------------------------------------
@@ -1537,7 +1773,8 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
                if ((ratold(i,j,k) + qtnd(i,j,k)) .lt. 0.) then
                  if (rsave(i,j,k) .gt. 0.) then
 !           ratold(i,j,k) = 0.
-	           qtnd  (i,j,k) = -rsave(i,j,k)/dt
+            qtnd  (i,j,k) = -rsave(i,j,k)/dt
+!	           qtnd  (i,j,k) = -rsave(i,j,k)
                    cememf_mod(i,j,k) = -rsave(i,j,k)/dt
                  else 
                    cememf_mod(i,j,k) = 0.
@@ -1609,11 +1846,27 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !   tendencies.
 !--------------------------------------------------------------------
 !         call tic ( 'cvct', '11')
+           if ( calc_all_steps) then
+            do j=jminp,jmaxp
+            do i=iminp,imaxp
+              exit_flag_2d(i,j) = .true.
+          do k=1,nlev
+!            if (ttnd(i,j,k) /= 0.0 .or. qtnd(i,j,k) /= 0.0) then
+             if (ttnd(i,j,k) /= 0.0                        ) then
+               exit_flag_2d(i,j) = .false.
+               exit
+             endif
+           end do
+         end do
+        end do
+         else
+          exit_flag_2d= .false.
+        endif
 !        call precu_vect (temold, ratold, press, pcape_vect,   &
 !        call precu_vect (temold+ttnd, ratold+qtnd, press, pcape_vect, &
          call precu_vect (temold+ttnd, ratold+qtnd, pfull, pcape_vect, &
                           prini_vect, jabs, rcape_vect, rini_vect,    &
-		          tcape_vect,  tini_vect)
+		          tcape_vect,  tini_vect, exit_flag_2d)
 !         call toc ( 'cvct', '11')
 
 !--------------------------------------------------------------------
@@ -1623,7 +1876,8 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !         call tic ( 'cvct', '12')
          call cape_vect (pcape_vect, rcape_vect, tcape_vect,   &
 			 coin_vect, plcl_vect, plfc_vect, plzb_vect,  &
-			 rpc_vect, tpca_vect, xcape_vect, jabs)
+			 rpc_vect, tpca_vect, xcape_vect, jabs, &
+                         exit_flag=exit_flag_2d)
 !         call toc ( 'cvct', '12')
 
 !---------------------------------------------------------------------
@@ -1636,6 +1890,7 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
            do i=iminp,imaxp
              xcape_3d(i,jabs(j)) = xcape_vect(i,j)
 
+           if (.not. exit_flag_2d(i,j)) then
              qint_vect(i,j) = rcape_vect(i,j,1)*(pcape_vect(i,j,1) -  &
 			      pcape_vect(i,j,2))
              do k=2,ncap-1
@@ -1647,6 +1902,7 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 			      (pcape_vect(i,j,ncap-1) -  &
 		               pcape_vect(i,j,ncap))
              qint_vect(i,j) = qint_vect(i,j)/gravm
+      endif
              qint_3d(i,jabs(j)) = qint_vect(i,j)
            end do
          end do
@@ -1673,7 +1929,7 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
          print *, 'DONNER_DEEP/donner_deep: amax ', amax_3d(itest,jdebug)
          print *, 'DONNER_DEEP/donner_deep: amos ', amos_3d(itest,jdebug)
          print *, 'DONNER_DEEP/donner_deep: tprea1 ', tprea1_3d(itest,jtest)
-         print *, 'DONNER_DEEP/donner_deep: ampta1 ', ampta1_3d(itest,jdebug)
+         print *, 'DONNER_DEEP/donner_deep: ampta1 ', ampta1_2d(itest,jdebug)
          print *, 'DONNER_DEEP/donner_deep: omint', omint_3d(itest,jtest)
          print *, 'DONNER_DEEP/donner_deep: rcoa1 ', rcoa1_3d(itest,jdebug)
 
@@ -1794,6 +2050,9 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
                                is, js, 1)
              used = send_data (id_cuql_deep, cuql_3d(:,:,:), Time,&
                                is, js, 1)
+   used = send_data (id_dgeliq_deep, cell_liquid_eff_diam(:,:,:), Time,&
+                               is, js, 1)
+             
 
              used = send_data (id_plcl_deep, plcl_3d(:,:), Time,&
                 	       is, js)
@@ -1820,7 +2079,7 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
              used = send_data (id_tprea1_deep,    &
                                tprea1_3d(:,jabs(jminp):jabs(jmaxp)),  &
 			       Time, is, js)
-             used = send_data (id_ampta1_deep, ampta1_3d(:,:), Time,&
+             used = send_data (id_ampta1_deep, ampta1_2d(:,:), Time,&
  	                       is, js)
              used = send_data (id_omint_deep,    &
                                omint_3d(:,jabs(jminp):jabs(jmaxp)),  &
@@ -1863,7 +2122,9 @@ end subroutine donner_deep
 
 !####################################################################
 
-subroutine read_restart_donner_deep
+subroutine read_restart_donner_deep (Time)
+
+type(time_type), intent(in) :: Time
 
 !---------------------------------------------------------------------
 !   this subroutine reads a restart file previously written by this 
@@ -1872,7 +2133,8 @@ subroutine read_restart_donner_deep
 
       integer             :: next(2), dt(2), cal
       integer             :: unit, vers
-      character(len=4)    :: chvers
+!!4   character(len=4)    :: chvers
+      character(len=8)    :: chvers
 
 !-------------------------------------------------------------------- 
 !   open the restart file.
@@ -1898,13 +2160,18 @@ subroutine read_restart_donner_deep
 !---------------------------------------------------------------------
       read (unit) next, dt, cal
       Old_time_step = set_time (dt(1), dt(2))
-      if (cal == get_calendar_type() ) then
-        Next_donner_deep_time = set_time( next(1), next(2) ) 	
-      else
-	if (get_my_pe() == 0) then
-          call error_mesg ('read_restart_donner_deep',  &
+      if (vers < 3) then
+        if (cal == get_calendar_type() ) then
+          Next_donner_deep_time = set_time( next(1), next(2) ) 	
+        else
+	  if (get_my_pe() == 0) then
+            call error_mesg ('read_restart_donner_deep',  &
 	        'current calendar not same as restart calendar', NOTE)
-	endif
+	  endif
+        endif
+      else
+!   next is the time remaining until the next timestep.
+        Next_donner_deep_time = Time + set_time( next(1), next(2) )
       endif
 
 !---------------------------------------------------------------------
@@ -1920,6 +2187,21 @@ subroutine read_restart_donner_deep
       else
         tprea1_3d = 0.0
       endif
+
+!read donner cloud variables from restart file
+      call read_data(unit, cell_cloud_frac  )
+      call read_data(unit, cell_liquid_amt  )
+      call read_data(unit, cell_liquid_size )
+      call read_data(unit, cell_ice_amt     )
+      call read_data(unit, cell_ice_size    )
+ 
+      call read_data(unit, meso_cloud_frac  )
+      call read_data(unit, meso_liquid_amt  )
+      call read_data(unit, meso_liquid_size )
+      call read_data(unit, meso_ice_amt     )
+      call read_data(unit, meso_ice_size    )
+      call read_data(unit, nsum             )
+
 
 !-------------------------------------------------------------------- 
 !   close the restart file.
@@ -2066,6 +2348,20 @@ subroutine initialize_variables
       omint_3d     = 0.0
       tprea1_3d    = 0.0
 
+!initialize cloud variables
+      cell_cloud_frac  = 0.0
+     cell_liquid_amt  = 0.0
+      cell_liquid_size = 0.0
+      cell_ice_amt     = 0.0
+      cell_ice_size    = 0.0
+
+      meso_cloud_frac  = 0.0
+      meso_liquid_amt  = 0.0
+      meso_liquid_size = 0.0
+      meso_ice_amt     = 0.0
+      meso_ice_size    = 0.0
+      nsum             = 1
+
 end subroutine initialize_variables
 
 
@@ -2086,6 +2382,19 @@ subroutine allocate_variables
      allocate ( omint_3d       (idf, jdf ) )
      allocate ( tprea1_3d      (idf, jdf ) )
 
+!variables which are passed to the radiation
+     allocate (cell_cloud_frac (idf, jdf, nlev ) )
+     allocate (cell_liquid_amt (idf, jdf, nlev ) )
+     allocate (cell_liquid_size(idf, jdf, nlev ) )
+     allocate (cell_ice_amt    (idf, jdf, nlev ) )
+     allocate (cell_ice_size   (idf, jdf, nlev ) )
+
+     allocate (meso_cloud_frac (idf, jdf, nlev ) )
+     allocate (meso_liquid_amt (idf, jdf, nlev ) )
+     allocate (meso_liquid_size(idf, jdf, nlev ) )
+     allocate (meso_ice_amt    (idf, jdf, nlev ) )
+     allocate (meso_ice_size   (idf, jdf, nlev ) )
+     allocate (nsum            (idf, jdf ) )
 !-------------------------------------------------------------------
 
 
@@ -2101,42 +2410,44 @@ subroutine allocate_local_variables
 !   variables.
 !--------------------------------------------------------------------
 
-     allocate ( ceefc          (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( cecon          (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( cemfc          (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( cememf_mod     (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( cual_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( fre_3d         (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( elt_3d         (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( cmus_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( ecds_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( eces_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( emds_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( emes_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( qmes_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( wmps_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( wmms_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( tmes_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( dmeml_3d       (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( uceml_3d       (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( umeml_3d       (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( xice_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( dgeice_3d      (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( cuqi_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
-     allocate ( cuql_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( ceefc          (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( cecon          (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( cemfc          (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( cememf_mod     (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( cual_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( fre_3d         (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( elt_3d         (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( cmus_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( ecds_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( eces_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( emds_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( emes_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( qmes_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( wmps_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( wmms_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( tmes_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( dmeml_3d       (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( uceml_3d       (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( umeml_3d       (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( xice_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( dgeice_3d      (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( cuqi_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+!    allocate ( cuql_3d        (iminp:imaxp, jminp:jmaxp, nlev) )
+     allocate (cell_liquid_eff_diam (iminp:imaxp, jminp:jmaxp, nlev) )
+     allocate (cell_ice_geneff_diam (iminp:imaxp, jminp:jmaxp, nlev) )
 
-     allocate ( plcl_3d        (iminp:imaxp, jminp:jmaxp ) )
-     allocate ( plfc_3d        (iminp:imaxp, jminp:jmaxp ) )
-     allocate ( plzb_3d        (iminp:imaxp, jminp:jmaxp ) )
-     allocate ( coin_3d        (iminp:imaxp, jminp:jmaxp ) )
-     allocate ( dcape_3d       (iminp:imaxp, jminp:jmaxp ) )
-     allocate ( a1_3d          (iminp:imaxp, jminp:jmaxp ) )
-     allocate ( amax_3d        (iminp:imaxp, jminp:jmaxp ) )
-     allocate ( amos_3d        (iminp:imaxp, jminp:jmaxp ) )
-     allocate ( ampta1_3d      (iminp:imaxp, jminp:jmaxp ) )
-     allocate ( rcoa1_3d       (iminp:imaxp, jminp:jmaxp ) )
-     allocate ( contot_v       (iminp:imaxp, jminp:jmaxp ) )
-     allocate ( emdi_v         (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( plcl_3d        (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( plfc_3d        (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( plzb_3d        (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( coin_3d        (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( dcape_3d       (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( a1_3d          (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( amax_3d        (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( amos_3d        (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( ampta1_2d      (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( rcoa1_3d       (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( contot_v       (iminp:imaxp, jminp:jmaxp ) )
+!    allocate ( emdi_v         (iminp:imaxp, jminp:jmaxp ) )
 
 !-------------------------------------------------------------------
 
@@ -2147,7 +2458,25 @@ end subroutine allocate_local_variables
 
 !####################################################################
 
-subroutine initialize_local_variables
+subroutine initialize_local_variables (     &
+               ceefc, cecon, cemfc, cememf_mod, cual_3d, fre_3d, &
+               elt_3d, cmus_3d, ecds_3d, eces_3d, emds_3d, emes_3d, &
+               qmes_3d, wmps_3d, wmms_3d, tmes_3d, dmeml_3d, &
+              uceml_3d, umeml_3d, xice_3d, dgeice_3d, &
+               cuqi_3d, cuql_3d, &
+             plcl_3d, plfc_3d, plzb_3d, coin_3d, dcape_3d, a1_3d, &
+          amax_3d, amos_3d, ampta1_2d, rcoa1_3d, contot_v, emdi_v)
+
+ real, dimension(:,:,:), intent(out) ::                    &
+            ceefc, cecon, cemfc, cememf_mod, cual_3d, fre_3d, &
+            elt_3d, cmus_3d, ecds_3d, eces_3d, emds_3d, emes_3d, &
+           qmes_3d, wmps_3d, wmms_3d, tmes_3d, dmeml_3d, &
+           uceml_3d, umeml_3d, xice_3d, dgeice_3d, &
+           cuqi_3d, cuql_3d
+
+real, dimension(:,:), intent(out) ::                    &
+              plcl_3d, plfc_3d, plzb_3d, coin_3d, dcape_3d, a1_3d, &
+          amax_3d, amos_3d, ampta1_2d, rcoa1_3d, contot_v, emdi_v
 
 !--------------------------------------------------------------------
 !   this subroutine initializes the window-dimensioned module variables.
@@ -2156,6 +2485,7 @@ subroutine initialize_local_variables
      ceefc      = 0.0
      cecon      = 0.0
      cemfc      = 0.0
+     cememf_mod = 0.0
      cual_3d    = 0.0
      fre_3d     = 0.0
      elt_3d     = 0.0
@@ -2184,8 +2514,10 @@ subroutine initialize_local_variables
      a1_3d      = 0.0
      amax_3d    = 0.0
      amos_3d    = 0.0
-     ampta1_3d  = 0.0
+     ampta1_2d  = 0.0
      rcoa1_3d   = 0.0
+     contot_v   = 0.0
+     emdi_v     = 0.0
 
 !-------------------------------------------------------------------
 
@@ -2223,48 +2555,48 @@ real, dimension(:,:,:)  , intent(out), optional   :: spare
 !-------------------------------------------------------------------
 !   if the 3D diagnostic variables are desired, collect them.
 !-------------------------------------------------------------------
-    if (present (oom)) then
-      oom(:,jminp:jmaxp,:, 1) =  cemetf(:,j+jminp-1:j+jmaxp-1,:) 
-      oom(:,:,:, 2) =  ceefc          (:,:,:  ) 
-      oom(:,:,:, 3) =  cecon          (:,:,:  ) 
-      oom(:,:,:, 4) =  cemfc          (:,:,:  ) 
-      oom(:,:,:, 5) =  cememf_mod     (:,:,:  ) 
-      oom(:,:,:, 6) =  cual_3d        (:,:,:  ) 
-      oom(:,:,:, 7) =  fre_3d         (:,:,:  ) 
-      oom(:,:,:, 8) =  elt_3d         (:,:,:  ) 
-      oom(:,:,:, 9) =  cmus_3d        (:,:,:  ) 
-      oom(:,:,:,10) =  ecds_3d        (:,:,:  ) 
-      oom(:,:,:,11) =  eces_3d        (:,:,:  ) 
-      oom(:,:,:,12) =  emds_3d        (:,:,:  ) 
-      oom(:,:,:,13) =  emes_3d        (:,:,:  ) 
-      oom(:,:,:,14) =  qmes_3d        (:,:,:  ) 
-      oom(:,:,:,15) =  wmps_3d        (:,:,:  ) 
-      oom(:,:,:,16) =  wmms_3d        (:,:,:  ) 
-      oom(:,:,:,17) =  tmes_3d        (:,:,:  ) 
-      oom(:,:,:,18) =  dmeml_3d       (:,:,:  ) 
-      oom(:,:,:,19) =  uceml_3d       (:,:,:  ) 
-      oom(:,:,:,20) =  umeml_3d       (:,:,:  ) 
-     endif
+!   if (present (oom)) then
+!     oom(:,jminp:jmaxp,:, 1) =  cemetf(:,j+jminp-1:j+jmaxp-1,:) 
+!     oom(:,:,:, 2) =  ceefc          (:,:,:  ) 
+!     oom(:,:,:, 3) =  cecon          (:,:,:  ) 
+!     oom(:,:,:, 4) =  cemfc          (:,:,:  ) 
+!     oom(:,:,:, 5) =  cememf_mod     (:,:,:  ) 
+!     oom(:,:,:, 6) =  cual_3d        (:,:,:  ) 
+!     oom(:,:,:, 7) =  fre_3d         (:,:,:  ) 
+!     oom(:,:,:, 8) =  elt_3d         (:,:,:  ) 
+!     oom(:,:,:, 9) =  cmus_3d        (:,:,:  ) 
+!     oom(:,:,:,10) =  ecds_3d        (:,:,:  ) 
+!     oom(:,:,:,11) =  eces_3d        (:,:,:  ) 
+!     oom(:,:,:,12) =  emds_3d        (:,:,:  ) 
+!     oom(:,:,:,13) =  emes_3d        (:,:,:  ) 
+!     oom(:,:,:,14) =  qmes_3d        (:,:,:  ) 
+!     oom(:,:,:,15) =  wmps_3d        (:,:,:  ) 
+!     oom(:,:,:,16) =  wmms_3d        (:,:,:  ) 
+!     oom(:,:,:,17) =  tmes_3d        (:,:,:  ) 
+!     oom(:,:,:,18) =  dmeml_3d       (:,:,:  ) 
+!     oom(:,:,:,19) =  uceml_3d       (:,:,:  ) 
+!     oom(:,:,:,20) =  umeml_3d       (:,:,:  ) 
+!    endif
 
 !-------------------------------------------------------------------
 !   if the 2D diagnostic variables are desired, collect them.
 !-------------------------------------------------------------------
-     if (present (spare) ) then
-       spare (:,:, 1) = plcl_3d          (:,:)
-       spare (:,:, 2) = plfc_3d          (:,:)
-       spare (:,:, 3) = plzb_3d          (:,:)
-       spare (:,jminp:jmaxp, 4) = xcape_3d(:,j+jminp-1:j+jmaxp-1)
-       spare (:,:, 5) = coin_3d          (:,:)
-       spare (:,:, 6) = dcape_3d          (:,:)
-       spare (:,jminp:jmaxp, 7) = qint_3d (:,j+jminp-1:j+jmaxp-1)
-       spare (:,:, 8) = a1_3d            (:,:)
-       spare (:,:, 9) = amax_3d            (:,:)
-       spare (:,:,10) = amos_3d            (:,:)
-       spare (:,:,11) = tprea1_3d            (:,j+jminp-1:j+jmaxp-1)
-       spare (:,:,12) = ampta1_3d            (:,:)
-       spare (:,jminp:jmaxp,13) = omint_3d  (:,j+jminp-1:j+jmaxp-1)
-       spare (:,:,14) = rcoa1_3d            (:,:)
-     endif
+!    if (present (spare) ) then
+!      spare (:,:, 1) = plcl_3d          (:,:)
+!      spare (:,:, 2) = plfc_3d          (:,:)
+!      spare (:,:, 3) = plzb_3d          (:,:)
+!      spare (:,jminp:jmaxp, 4) = xcape_3d(:,j+jminp-1:j+jmaxp-1)
+!      spare (:,:, 5) = coin_3d          (:,:)
+!      spare (:,:, 6) = dcape_3d          (:,:)
+!      spare (:,jminp:jmaxp, 7) = qint_3d (:,j+jminp-1:j+jmaxp-1)
+!      spare (:,:, 8) = a1_3d            (:,:)
+!      spare (:,:, 9) = amax_3d            (:,:)
+!      spare (:,:,10) = amos_3d            (:,:)
+!      spare (:,:,11) = tprea1_3d            (:,j+jminp-1:j+jmaxp-1)
+!      spare (:,:,12) = ampta1_2d            (:,:)
+!      spare (:,jminp:jmaxp,13) = omint_3d  (:,j+jminp-1:j+jmaxp-1)
+!      spare (:,:,14) = rcoa1_3d            (:,:)
+!    endif
 
 !--------------------------------------------------------------------
 
@@ -2303,41 +2635,41 @@ real, dimension(:,:,:)  , intent(out)             :: sparep
 !
 !-------------------------------------------------------------------
 
-      oom(:,jminp:jmaxp,:, 1) =  cemetf     (:,j+jminp-1:j+jmaxp-1,:  ) 
-      oom(:,:,:, 2) =  ceefc          (:,:,:  ) 
-      oom(:,:,:, 3) =  cecon          (:,:,:  ) 
-      oom(:,:,:, 4) =  cemfc          (:,:,:  ) 
-      oom(:,:,:, 5) =  cememf         (:,j+jminp-1:j+jmaxp-1,:  ) 
-      oom(:,:,:, 6) =  cual_3d           (:,:,:  ) 
-      oom(:,:,:, 7) =  fre_3d         (:,:,:  ) 
-      oom(:,:,:, 8) =  elt_3d         (:,:,:  ) 
-      oom(:,:,:, 9) =  cmus_3d        (:,:,:  ) 
-      oom(:,:,:,10) =  ecds_3d        (:,:,:  ) 
-      oom(:,:,:,11) =  eces_3d        (:,:,:  ) 
-      oom(:,:,:,12) =  emds_3d        (:,:,:  ) 
-      oom(:,:,:,13) =  emes_3d        (:,:,:  ) 
-      oom(:,:,:,14) =  qmes_3d        (:,:,:  ) 
-      oom(:,:,:,15) =  wmps_3d        (:,:,:  ) 
-      oom(:,:,:,16) =  wmms_3d        (:,:,:  ) 
-      oom(:,:,:,17) =  tmes_3d        (:,:,:  ) 
-      oom(:,:,:,18) =  dmeml_3d       (:,:,:  ) 
-      oom(:,:,:,19) =  uceml_3d       (:,:,:  ) 
-      oom(:,:,:,20) =  umeml_3d       (:,:,:  ) 
+!     oom(:,jminp:jmaxp,:, 1) =  cemetf     (:,j+jminp-1:j+jmaxp-1,:  ) 
+!     oom(:,:,:, 2) =  ceefc          (:,:,:  ) 
+!     oom(:,:,:, 3) =  cecon          (:,:,:  ) 
+!     oom(:,:,:, 4) =  cemfc          (:,:,:  ) 
+!     oom(:,:,:, 5) =  cememf         (:,j+jminp-1:j+jmaxp-1,:  ) 
+!     oom(:,:,:, 6) =  cual_3d           (:,:,:  ) 
+!     oom(:,:,:, 7) =  fre_3d         (:,:,:  ) 
+!     oom(:,:,:, 8) =  elt_3d         (:,:,:  ) 
+!     oom(:,:,:, 9) =  cmus_3d        (:,:,:  ) 
+!     oom(:,:,:,10) =  ecds_3d        (:,:,:  ) 
+!     oom(:,:,:,11) =  eces_3d        (:,:,:  ) 
+!     oom(:,:,:,12) =  emds_3d        (:,:,:  ) 
+!     oom(:,:,:,13) =  emes_3d        (:,:,:  ) 
+!     oom(:,:,:,14) =  qmes_3d        (:,:,:  ) 
+!     oom(:,:,:,15) =  wmps_3d        (:,:,:  ) 
+!     oom(:,:,:,16) =  wmms_3d        (:,:,:  ) 
+!     oom(:,:,:,17) =  tmes_3d        (:,:,:  ) 
+!     oom(:,:,:,18) =  dmeml_3d       (:,:,:  ) 
+!     oom(:,:,:,19) =  uceml_3d       (:,:,:  ) 
+!     oom(:,:,:,20) =  umeml_3d       (:,:,:  ) 
 
-      sparep(:,:,20) = plcl_3d          (:,:)
-      sparep(:,:,21) = plfc_3d          (:,:)
-      sparep(:,:,22) = plzb_3d          (:,:)
-      sparep(:,jminp:jmaxp,23) = xcape_3d(:,j+jminp-1:j+jmaxp-1)
-      sparep(:,:,24) = coin_3d          (:,:)
-      sparep(:,:,25) = dcape_3d          (:,:)
-      sparep(:,jminp:jmaxp,26) = qint_3d (:,j+jminp-1:j+jmaxp-1)
-      sparep(:,:,27) = a1_3d            (:,:)
-      sparep(:,:,28) = amax_3d            (:,:)
-      sparep(:,:,29) = amos_3d            (:,:)
-      sparep(:,jminp:jmaxp,30) = tprea1_3d (:,j+jminp-1:j+jmaxp-1)
-      sparep(:,:,31) = ampta1_3d            (:,:)
-      sparep(:,jminp:jmaxp,32) = omint_3d  (:,j+jminp-1:j+jmaxp-1)
-      sparep(:,:,33) = rcoa1_3d            (:,:)
+!     sparep(:,:,20) = plcl_3d          (:,:)
+!     sparep(:,:,21) = plfc_3d          (:,:)
+!     sparep(:,:,22) = plzb_3d          (:,:)
+!     sparep(:,jminp:jmaxp,23) = xcape_3d(:,j+jminp-1:j+jmaxp-1)
+!     sparep(:,:,24) = coin_3d          (:,:)
+!     sparep(:,:,25) = dcape_3d          (:,:)
+!     sparep(:,jminp:jmaxp,26) = qint_3d (:,j+jminp-1:j+jmaxp-1)
+!     sparep(:,:,27) = a1_3d            (:,:)
+!     sparep(:,:,28) = amax_3d            (:,:)
+!     sparep(:,:,29) = amos_3d            (:,:)
+!     sparep(:,jminp:jmaxp,30) = tprea1_3d (:,j+jminp-1:j+jmaxp-1)
+!     sparep(:,:,31) = ampta1_2d            (:,:)
+!     sparep(:,jminp:jmaxp,32) = omint_3d  (:,j+jminp-1:j+jmaxp-1)
+!     sparep(:,:,33) = rcoa1_3d            (:,:)
 
 
 !--------------------------------------------------------------------
@@ -2375,41 +2707,41 @@ real, dimension(:,:,:)  , intent(out)             :: sparep
 !
 !-------------------------------------------------------------------
 
-      cemetf     (:,j+jminp-1:j+jmaxp-1,:  )  = oom(:,jminp:jmaxp,:,1)
-      ceefc          (:,:,:  )   =   oom(:,:,:,2)
-      cecon          (:,:,:  )   = oom(:,:,:,3) 
-      cemfc          (:,:,:  )  = oom(:,:,:,4)
-      cememf     (:,j+jminp-1:j+jmaxp-1,:  )  = oom(:,jminp:jmaxp,:,5)
-      cual_3d        (:,:,:  )  = oom(:,:,:,6)
-      fre_3d         (:,:,:  )  = oom(:,:,:,7)
-      elt_3d         (:,:,:  )  = oom(:,:,:,8)
-      cmus_3d        (:,:,:  )  = oom(:,:,:,9)
-      ecds_3d        (:,:,:  )  = oom(:,:,:,10)
-      eces_3d        (:,:,:  )  = oom(:,:,:,11)
-      emds_3d        (:,:,:  )  = oom(:,:,:,12)
-      emes_3d        (:,:,:  ) = oom(:,:,:,13)
-      qmes_3d        (:,:,:  )   = oom(:,:,:,14)
-      wmps_3d        (:,:,:  )  = oom(:,:,:,15)
-      wmms_3d        (:,:,:  )  = oom(:,:,:,16)
-      tmes_3d        (:,:,:  ) = oom(:,:,:,17)
-      dmeml_3d       (:,:,:  ) = oom(:,:,:,18)
-      uceml_3d       (:,:,:  ) = oom(:,:,:,19)
-      umeml_3d       (:,:,:  ) = oom(:,:,:,20)
+!     cemetf     (:,j+jminp-1:j+jmaxp-1,:  )  = oom(:,jminp:jmaxp,:,1)
+!     ceefc          (:,:,:  )   =   oom(:,:,:,2)
+!     cecon          (:,:,:  )   = oom(:,:,:,3) 
+!     cemfc          (:,:,:  )  = oom(:,:,:,4)
+!     cememf     (:,j+jminp-1:j+jmaxp-1,:  )  = oom(:,jminp:jmaxp,:,5)
+!     cual_3d        (:,:,:  )  = oom(:,:,:,6)
+!     fre_3d         (:,:,:  )  = oom(:,:,:,7)
+!     elt_3d         (:,:,:  )  = oom(:,:,:,8)
+!     cmus_3d        (:,:,:  )  = oom(:,:,:,9)
+!     ecds_3d        (:,:,:  )  = oom(:,:,:,10)
+!     eces_3d        (:,:,:  )  = oom(:,:,:,11)
+!     emds_3d        (:,:,:  )  = oom(:,:,:,12)
+!     emes_3d        (:,:,:  ) = oom(:,:,:,13)
+!     qmes_3d        (:,:,:  )   = oom(:,:,:,14)
+!     wmps_3d        (:,:,:  )  = oom(:,:,:,15)
+!     wmms_3d        (:,:,:  )  = oom(:,:,:,16)
+!     tmes_3d        (:,:,:  ) = oom(:,:,:,17)
+!     dmeml_3d       (:,:,:  ) = oom(:,:,:,18)
+!     uceml_3d       (:,:,:  ) = oom(:,:,:,19)
+!     umeml_3d       (:,:,:  ) = oom(:,:,:,20)
 
-      plcl_3d          (:,:)  = sparep (:,:,1)
-      plfc_3d          (:,:)  = sparep (:,:,2)
-      plzb_3d          (:,:)  = sparep (:,:,3)
-      xcape_3d(:,j+jminp-1:j+jmaxp-1) = sparep (:,jminp:jmaxp, 4)
-      coin_3d          (:,:) = sparep (:,:,5)
-      dcape_3d          (:,:) = sparep (:,:,6)
-      qint_3d (:,j+jminp-1:j+jmaxp-1) = sparep(:,jminp:jmaxp, 7)
-      a1_3d            (:,:)  = sparep(:,:,8)
-      amax_3d            (:,:) = sparep(:,:,9)
-      amos_3d            (:,:) = sparep(:,:,10)
-      tprea1_3d            (:,j+jminp-1:j+jmaxp-1) = sparep(:,:,11)
-      ampta1_3d            (:,:) = sparep(:,:,12)
-      omint_3d  (:,j+jminp-1:j+jmaxp-1) = sparep(:,jminp:jmaxp,13)
-      rcoa1_3d            (:,:) = sparep(:,:,14)
+!     plcl_3d          (:,:)  = sparep (:,:,1)
+!     plfc_3d          (:,:)  = sparep (:,:,2)
+!     plzb_3d          (:,:)  = sparep (:,:,3)
+!     xcape_3d(:,j+jminp-1:j+jmaxp-1) = sparep (:,jminp:jmaxp, 4)
+!     coin_3d          (:,:) = sparep (:,:,5)
+!     dcape_3d          (:,:) = sparep (:,:,6)
+!     qint_3d (:,j+jminp-1:j+jmaxp-1) = sparep(:,jminp:jmaxp, 7)
+!     a1_3d            (:,:)  = sparep(:,:,8)
+!     amax_3d            (:,:) = sparep(:,:,9)
+!     amos_3d            (:,:) = sparep(:,:,10)
+!     tprea1_3d            (:,j+jminp-1:j+jmaxp-1) = sparep(:,:,11)
+!     ampta1_2d            (:,:) = sparep(:,:,12)
+!     omint_3d  (:,j+jminp-1:j+jmaxp-1) = sparep(:,jminp:jmaxp,13)
+!     rcoa1_3d            (:,:) = sparep(:,:,14)
 
 !--------------------------------------------------------------------
 
@@ -2671,7 +3003,14 @@ subroutine andge(p,pzm,pztm,dgeicer)
 subroutine cupar_vect (cape_v, cin_v,           dcape_v, dqls_v,   &
                                           omint_v, pcape_v, plfc_v,  &
                   plzb_v, pr_v, q_v, qlsd_v, r_v, rpc_v,     t_v, &
-                  tcape_v, tpc_v,            jabs)
+                   tcape_v, tpc_v,            jabs,   &
+                ceefc, cecon, cemfc, cememf_mod, cual_3d, fre_3d, &
+             elt_3d, cmus_3d, ecds_3d, eces_3d, emds_3d, emes_3d, &
+               qmes_3d, wmps_3d, wmms_3d, tmes_3d, dmeml_3d, &
+                uceml_3d, umeml_3d, xice_3d, dgeice_3d, &
+                cuqi_3d, cuql_3d, &
+               plcl_3d, plfc_3d, plzb_3d, coin_3d, dcape_3d, a1_3d, &
+               amax_3d, amos_3d, ampta1_2d, rcoa1_3d, contot_v, emdi_v)
 
 !---------------------------------------------------------------------
 real, dimension(:,:), intent(in)   :: cape_v, cin_v, dcape_v, dqls_v, &
@@ -2682,6 +3021,16 @@ real, dimension(:,:,:), intent(in) :: pcape_v, pr_v, q_v, r_v, rpc_v, &
 
 integer, dimension(:), intent(in)  :: jabs
 
+real, dimension(:,:,:), intent(inout) ::                    &
+               ceefc, cecon, cemfc, cememf_mod, cual_3d, fre_3d, &
+               elt_3d, cmus_3d, ecds_3d, eces_3d, emds_3d, emes_3d, &
+                qmes_3d, wmps_3d, wmms_3d, tmes_3d, dmeml_3d, &
+              uceml_3d, umeml_3d, xice_3d, dgeice_3d, &
+                cuqi_3d, cuql_3d
+ 
+real, dimension(:,:), intent(inout) ::                    &
+                plcl_3d, plfc_3d, plzb_3d, coin_3d, dcape_3d, a1_3d, &
+             amax_3d, amos_3d, ampta1_2d, rcoa1_3d, contot_v, emdi_v
 
 !-----------------------------------------------------------------------
 !      Cupar drives the parameterization for deep cumulus convection
@@ -2771,6 +3120,7 @@ integer, dimension(:), intent(in)  :: jabs
       logical, dimension (size(t_v,1), size(t_v,2), size(t_v,3) ) ::   &
 	        exit_3d
 
+      integer :: unit
 
 !--------------------------------------------------------------------
 !
@@ -2841,40 +3191,40 @@ integer, dimension(:), intent(in)  :: jabs
 !     do j=1,kmax
       do j=1,nlev
           cemetf(ilon,jgl ,j          )=0.
-          ceefc (ilon,jlat,j          )=0.
-	  cecon(ilon,jlat,j          )=0.
-	  cemfc(ilon,jlat,j          )=0.
+!         ceefc (ilon,jlat,j          )=0.
+!  cecon(ilon,jlat,j          )=0.
+!  cemfc(ilon,jlat,j          )=0.
 	  cememf(ilon,jgl ,j          )=0.
-	  cememf_mod(ilon,jlat,j          )=0.
-	  cual_3d(ilon,jlat,j          )=0.
-	  fre_3d(ilon,jlat,j          )=0.
+!  cememf_mod(ilon,jlat,j          )=0.
+!  cual_3d(ilon,jlat,j          )=0.
+!  fre_3d(ilon,jlat,j          )=0.
 
 
-          elt_3d  (ilon,jlat,j) = 0.0
-          cmus_3d (ilon,jlat,j) = 0.0
-          ecds_3d (ilon,jlat,j) = 0.0
-          eces_3d (ilon,jlat,j) = 0.0
-          emds_3d (ilon,jlat,j) = 0.0
-          emes_3d (ilon,jlat,j) = 0.0
-          qmes_3d (ilon,jlat,j) = 0.0
-          wmps_3d (ilon,jlat,j) = 0.0
-          wmms_3d (ilon,jlat,j) = 0.0
-          tmes_3d (ilon,jlat,j) = 0.0
-          dmeml_3d(ilon,jlat,j) = 0.0
-          uceml_3d(ilon,jlat,j) = 0.0
-          umeml_3d(ilon,jlat,j) = 0.0
-	  xice_3d(ilon,jlat,j) = 0.0
-	  dgeice_3d(ilon,jlat,j) = 0.0
-          cuqi_3d(ilon,jlat,j) = 0.0
-          cuql_3d(ilon,jlat,j) = 0.0
+!         elt_3d  (ilon,jlat,j) = 0.0
+!         cmus_3d (ilon,jlat,j) = 0.0
+!         ecds_3d (ilon,jlat,j) = 0.0
+!         eces_3d (ilon,jlat,j) = 0.0
+!         emds_3d (ilon,jlat,j) = 0.0
+!         emes_3d (ilon,jlat,j) = 0.0
+!         qmes_3d (ilon,jlat,j) = 0.0
+!         wmps_3d (ilon,jlat,j) = 0.0
+!         wmms_3d (ilon,jlat,j) = 0.0
+!         tmes_3d (ilon,jlat,j) = 0.0
+!         dmeml_3d(ilon,jlat,j) = 0.0
+!         uceml_3d(ilon,jlat,j) = 0.0
+!         umeml_3d(ilon,jlat,j) = 0.0
+!  xice_3d(ilon,jlat,j) = 0.0
+!  dgeice_3d(ilon,jlat,j) = 0.0
+!         cuqi_3d(ilon,jlat,j) = 0.0
+!         cuql_3d(ilon,jlat,j) = 0.0
           cuq_v(ilon,jlat,j) = 0.0
           cuql_v(ilon,jlat,j) = 0.0
-          a1_3d(ilon,jlat) = 0.0
-          amax_3d(ilon,jlat) = 0.0
-          amos_3d(ilon,jlat) = 0.0
+!         a1_3d(ilon,jlat) = 0.0
+!         amax_3d(ilon,jlat) = 0.0
+!         amos_3d(ilon,jlat) = 0.0
           tprea1_3d(ilon,jgl ) = 0.0
-          ampta1_3d(ilon,jlat) = 0.0
-          rcoa1_3d(ilon,jlat) = 0.0
+!         ampta1_2d(ilon,jlat) = 0.0
+!         rcoa1_3d(ilon,jlat) = 0.0
       end do
       end do
       end do
@@ -2920,7 +3270,7 @@ integer, dimension(:), intent(in)  :: jabs
 			  ecds_v,eces_v,emds_v,emei_v,emes_v,disa_v, &
              disb_v, disc_v,disd_v,dise_v,dmeml_v, &
        elt_v,fre_v,qmes_v,tmes_v,tpre_v,uceml_v,umeml_v,wmms_v,wmps_v, &
-       jabs, exit_flag)
+       jabs, exit_flag, contot_v, emdi_v)
 
 
 !ljd
@@ -3230,17 +3580,19 @@ integer, dimension(:), intent(in)  :: jabs
         end do
 
 
+        do jlat=jminp,jmaxp
+             jgl = jabs(jlat)
+       do ilon=iminp,imaxp
+          if (.not. exit_flag(ilon,jlat)) then
+          do j=1,nlev
+             jinv=nlev+1-j
 
-!      do j=1,kmax
-       do j=1,nlev
-!      jinv=kmax+1-j
-       jinv=nlev+1-j
-      do jlat=jminp,jmaxp
-!! THIS WAS THE LIKELY ERROR  !!
-!         jgl = jabs(1)
- 	  jgl = jabs(jlat)
-      do ilon=iminp,imaxp
-       if (.not. exit_3d  (ilon,jlat,j) ) then
+!      do j=1,nlev
+!      jinv=nlev+1-j
+!     do jlat=jminp,jmaxp
+!	  jgl = jabs(jlat)
+!     do ilon=iminp,imaxp
+!      if (.not. exit_3d  (ilon,jlat,j) ) then
 	  cemetf(ilon,jgl ,jinv          )=disa_v(ilon,jlat,j)
 	  ceefc(ilon,jlat,jinv          )=disb_v(ilon,jlat,j)
 	  cecon(ilon,jlat,jinv          )=disc_v(ilon,jlat,j)
@@ -3265,11 +3617,18 @@ integer, dimension(:), intent(in)  :: jabs
 	  umeml_3d(ilon,jlat,jinv          )=umeml_v(ilon,jlat,j)
 	  cuqi_3d(ilon,jlat,jinv )  = cuq_v(ilon,jlat,j)
           cuql_3d(ilon,jlat,jinv )  = cuql_v(ilon,jlat,j)
-      endif
+!     endif
       end do
+      endif
       end do
        end do
 
+!      unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!        write (unit,*) ' donner_deep,in cupar_vect'
+!        write (unit,*) ' cuql_3d'
+!        write (unit,*) cuql_3d
+!      call close_file (unit)
 !     if (get_my_pe() == 2) then
 !print *, 'cemetf in cupar', (cemetf(33,3,k),k=1,nlev)
 !     endif
@@ -3284,7 +3643,7 @@ integer, dimension(:), intent(in)  :: jabs
 	  amos_3d(ilon,jlat         )=amos_v(ilon,jlat)
 !	  tprea1_3d(ilon,jlat     )=tpre_v(ilon,jlat)*a1_v(ilon,jlat)
  	  tprea1_3d(ilon,jgl      )=tpre_v(ilon,jlat)*a1_v(ilon,jlat)
-	  ampta1_3d(ilon,jlat    )=ampt_v(ilon,jlat)*a1_v(ilon,jlat)
+	  ampta1_2d(ilon,jlat    )=ampt_v(ilon,jlat)*a1_v(ilon,jlat)
 	  rcoa1_3d(ilon,jlat)=rco_v(ilon,jlat)*a1_v(ilon,jlat)
 	  emdi_v(ilon,jlat)=emdi_v(ilon,jlat)*a1_v(ilon,jlat)
 
@@ -3298,7 +3657,7 @@ integer, dimension(:), intent(in)  :: jabs
 !        do ilon=iminp,imaxp
 !           if (ampt_v(ilon,jlat) .ne. 0.) then
 !           write(6,*) 'cupar 3 ilon,jlat,jgl= ',ilon,jlat,jgl
-!             write(6,*) 'cupar 3 ampt,tpre= ',ampta1_3d(ilon,jlat), &
+!             write(6,*) 'cupar 3 ampt,tpre= ',ampta1_2d(ilon,jlat), &
 !              tprea1_3d(ilon,jgl)
 !             do k=1,nlev
 !             write(6,*) 'k,cual= ',k,cual_3d(ilon,jlat,k)
@@ -3310,7 +3669,7 @@ integer, dimension(:), intent(in)  :: jabs
 !ljd
 !      do jlat=jminp,jmaxp
 !      do ilon=iminp,imaxp
-!              if (ampta1_3d(ilon,jlat) .ne. 0.) then
+!              if (ampta1_2d(ilon,jlat) .ne. 0.) then
 !             write(6,*) ' Cupar 4 i,j,jgl= ',ilon,jlat,jgl
 !             write(6,*) 'emdi= ',emdi_v(ilon,jlat)
 !             do k=1,nlev
@@ -3332,7 +3691,7 @@ integer, dimension(:), intent(in)  :: jabs
     	            print *, 'DONNER_DEEP/cupar: kttest,i,jtest,meso a= ',  &
 			      kttest,i, jtest,rcoa1_3d(i,jdebug)
            print *, 'DONNER_DEEP/cupar: amax,ampt= ',amax_3d(i,jdebug), &
-			      ampta1_3d(i,jdebug)
+			      ampta1_2d(i,jdebug)
  	          end if
                 endif
               end do
@@ -3368,7 +3727,7 @@ integer, dimension(:), intent(in)  :: jabs
 	      print *, 'DONNER_DEEP/cupar: contot,tpre=',   &
 		       contot_v(itest,jdebug), tpre_v(itest,jdebug)
 	      print *, 'DONNER_DEEP/cupar: a1,ampt =', a1_3d (itest,jdebug), &
-			 ampta1_3d(itest,jdebug)
+			 ampta1_2d(itest,jdebug)
 	    endif
 !         end do
 
@@ -3463,12 +3822,13 @@ end subroutine cupar_vect
 subroutine precu_vect( temold, ratold, press, pcape, prini, &
 			      jabs, &
 			     rcape,  &
-                             rini, tcape, tini)
+			     rini, tcape, tini, exit_flag)
 
 integer, dimension(:),  intent(in)  :: jabs
 real, dimension(:,:,:), intent(in) :: temold, ratold, press
 real, dimension(:,:,:), intent(out) :: pcape, prini, rcape, rini, &
 				       tcape, tini
+logical, dimension(:,:), intent(in)           :: exit_flag
 
 !-------------------------------------------------------------------
 !     precu_vect defines pressure, temperature and moisture values on
@@ -3510,10 +3870,12 @@ real, dimension(:,:,:), intent(out) :: pcape, prini, rcape, rini, &
       do k=1,nlev
         do j=jminp,jmaxp
           do i=iminp,imaxp
-	    rini (i,j,nlev+1-k) = amax1 (ratold(i,j,k), 0.0e00)
+           if (                           .not. exit_flag(i,j) ) then
+            rini (i,j,nlev+1-k) = amax1 (ratold(i,j,k), 0.0e00)
 !           tini (i,j,nlev+1-k) = temold(i,j,k) + frezdk
             tini (i,j,nlev+1-k) = temold(i,j,k)
-	    prini(i,j,nlev+1-k) = press(i,j,k)
+            prini(i,j,nlev+1-k) = press(i,j,k)
+           endif
           end do
         end do
       end do
@@ -3525,14 +3887,18 @@ real, dimension(:,:,:), intent(out) :: pcape, prini, rcape, rini, &
 !-------------------------------------------------------------------
       do j=jminp,jmaxp
         do i=iminp,imaxp
+           if (                           .not. exit_flag(i,j) ) then
           dp(i,j) = (prini(i,j,1) - prini(i,j,nlev))/(ncap-1)
           pcape(i,j,ncap) = 0.
+	  endif
         end do
       end do
       do k=1,ncap-1
         do j=jminp,jmaxp
           do i=iminp,imaxp
+           if (                           .not. exit_flag(i,j) ) then
 	    pcape(i,j,k) = prini(i,j,1) - (k-1)*dp(i,j)
+	    endif
           end do
         end do
       end do
@@ -3542,9 +3908,24 @@ real, dimension(:,:,:), intent(out) :: pcape, prini, rcape, rini, &
 !   the enhanced convection grid by interpolating from the model grid
 !   values. insure that the moisture field is positive-definite.
 !--------------------------------------------------------------------
-      call polat_vect (tini, prini, pcape, tcape)
-      call polat_vect (rini, prini, pcape, rcape)
-      rcape(:,:,:) = MAX (rcape(:,:,:), 0.0)
+!     call polat_vect (tini, prini, pcape, tcape)
+!     call polat_vect (rini, prini, pcape, rcape)
+!     rcape(:,:,:) = MAX (rcape(:,:,:), 0.0)
+
+       call polat_vect (tini, prini, pcape, tcape, exit_flag)
+       call polat_vect (rini, prini, pcape, rcape, exit_flag)
+!     rcape(:,:,:) = MAX (rcape(:,:,:), 0.0)
+       do k=1,ncap
+       do j=jminp,jmaxp
+         do i=iminp,imaxp
+!!          if ( (present(exit_flag) .and. .not. exit_flag(i,j)) .or. &
+!          (.not. present(exit_flag)) ) then
+            if (                           .not. exit_flag(i,j) ) then
+               rcape(i,j,k) = MAX(rcape(i,j,k), 0.0)
+            endif
+       end do
+       end do
+       end do
 
 !---------------------------------------------------------------------
 !   if debugging is activated, print out the input pressure, moisture 
@@ -3569,7 +3950,7 @@ end subroutine precu_vect
 
 !###################################################################
 
-subroutine polat_vect (xv, pv, p, x)
+subroutine polat_vect (xv, pv, p, x, exit_flag)
 
 !------------------------------------------------------------------
 !    polat_vect interpolates the field xv on a  pressure grid pv to
@@ -3578,6 +3959,7 @@ subroutine polat_vect (xv, pv, p, x)
  
 real, dimension(:,:,:), intent(in)   :: xv, pv, p
 real, dimension(:,:,:), intent(out)  :: x
+logical, dimension(:,:), intent(in), optional ::exit_flag
 
 !     ON INPUT:
 !
@@ -3594,46 +3976,92 @@ real, dimension(:,:,:), intent(out)  :: x
 !       dimension x (iminp:imaxp, jminp:jmaxp,ncap)
 !       dimension p (iminp:imaxp, jminp:jmaxp,ncap)
 
+      real :: xs
+!integer, dimension(iminp:imaxp, jminp:jmaxp)  :: kstart
+      integer      :: kstart, kkstart
+      real    :: xt1, xt2
+      real, dimension(size(pv,3)) :: pv_1d, xv_1d, dxdpv
+      real, dimension(size(p,3)) :: p_1d
+ real, dimension(size(x,1), size(x,2), size(x,3)) :: x2
 
 !       call tic ( 'polat_vect', '1')
        n = size(pv,3)
-       nm1 = n - 1
+!      nm1 = n - 1
 
-       do k=1,ncap
-       do j=jminp,jmaxp
-       do i=iminp,imaxp
-       IF (P(i,j,k) .GE. PV(i,j,1)) THEN
-          X(i,j,k)=(XV(i,j,2)-XV(i,j,1))/(PV(i,j,2)-PV(i,j,1))
-          X(i,j,k)=X(i,j,k)*(P(i,j,k)-PV(i,j,1))+XV(i,j,1)
-       else IF (P(i,j,k) .LE. PV(i,j,n)) THEN
-          X(i,j,k)=(XV(i,j,n)-XV(i,j,nm1))/(PV(i,j,n)-PV(i,j,nm1))
-          X(i,j,k)=X(i,j,k)*(P(i,j,k)-PV(i,j,n))+XV(i,j,n)
-       ENDIF
-       end do
-       end do
-       end do
+!      do k=1,ncap
+!      do j=jminp,jmaxp
+!      do i=iminp,imaxp
+!      IF (P(i,j,k) .GE. PV(i,j,1)) THEN
+!         X(i,j,k)=(XV(i,j,2)-XV(i,j,1))/(PV(i,j,2)-PV(i,j,1))
+!         X(i,j,k)=X(i,j,k)*(P(i,j,k)-PV(i,j,1))+XV(i,j,1)
+!      else IF (P(i,j,k) .LE. PV(i,j,n)) THEN
+!         X(i,j,k)=(XV(i,j,n)-XV(i,j,nm1))/(PV(i,j,n)-PV(i,j,nm1))
+!         X(i,j,k)=X(i,j,k)*(P(i,j,k)-PV(i,j,n))+XV(i,j,n)
+!      ENDIF
+!      end do
+!      end do
+!      end do
 
 !       call toc ( 'polat_vect', '1')
 !       call tic ( 'polat_vect', '2')
 
-       do k=1,ncap
-       do j=jminp,jmaxp
-       do i=iminp,imaxp
-       DO  kk=1,NM1
-       IF ((P(i,j,k) .GE. PV(i,j,kk+1)) .AND.     &
-	   (P(i,j,k) .LE. PV(i,j,kk))) THEN
-          X(i,j,k)=(XV(i,j,kk+1)-XV(i,j,kk))/(PV(i,j,kk+1)-PV(i,j,kk))
-          X(i,j,k)=X(i,j,k)*(P(i,j,k)-PV(i,j,kk+1))+XV(i,j,kk+1)
-	  cycle
-       ENDIF
-       end do
+!      do k=1,ncap
+!      do j=jminp,jmaxp
+!      do i=iminp,imaxp
+!      DO  kk=1,NM1
+!      IF ((P(i,j,k) .GE. PV(i,j,kk+1)) .AND.     &
 
-       end do
-       end do
-       end do
+!! change to insure preservation of answers in going to revised code
+!!  (P(i,j,k) .LE. PV(i,j,kk))) THEN
+!   (P(i,j,k) .LT. PV(i,j,kk))) THEN
+!! end change
+ 
+!         X(i,j,k)=(XV(i,j,kk+1)-XV(i,j,kk))/(PV(i,j,kk+1)-PV(i,j,kk))
+!         X(i,j,k)=X(i,j,k)*(P(i,j,k)-PV(i,j,kk+1))+XV(i,j,kk+1)
+!  cycle
+!      ENDIF
+!      end do
+
+!      end do
+!      end do
+!      end do
 
 !       call toc ( 'polat_vect', '2')
 !       call tic ( 'polat_vect', '3')
+
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        do j=jminp,jmaxp
+         do i=iminp,imaxp
+           if (present(exit_flag) .and. exit_flag(i,j)) cycle
+!           if ( (present(exit_flag) .and. .not. exit_flag(i,j)) .or. &
+!                  (.not. present(exit_flag)) ) then
+            pv_1d(:) = pv(i,j,:)
+            xv_1d(:) = xv(i,j,:)
+          p_1d(:)  = p(i,j,:)
+            dxdpv(1:n-1) = (xv_1d(2:n)-xv_1d(1:n-1))/(pv_1d(2:n) - &
+                                                      pv_1d(1:n-1))
+            kkstart = 1
+           do k=1,ncap
+            IF (p_1d(    k) .GE. PV_1d(    1)) THEN
+               xt2      =dxdpv(1)*(P_1d(k)-PV_1d(1))+XV_1d(1)
+              else IF (P_1d(k) .LE. PV_1d(n)) THEN
+                Xt2     =dxdpv(n-1) *(P_1d(k)-PV_1d(n))+XV_1d(n)
+             else
+         DO  kk=kkstart     ,N-1
+                 IF ((P_1d(k) .GE. PV_1d(kk+1)) ) then
+                   xt2   =dxdpv(kk) *(P_1d(k)-PV_1d(kk+1))+XV_1d(kk+1)
+                    kkstart      = kk
+                exit
+             ENDIF
+         end do
+         endif
+            x(i,j,k) = xt2
+         end do
+
+         end do
+         end do
 
 !      do j=jminp,jmaxp
 ! if (debug_jt(j)) then
@@ -3655,8 +4083,9 @@ end subroutine polat_vect
 
 !###################################################################
 
+
 subroutine cape_vect (p_v, r_v, t_v, cin_v, plcl_v, plfc_v, plzb_v, &
-		      rpc_v, tpc_v, xcape_v, jabs)
+		      rpc_v, tpc_v, xcape_v, jabs, exit_flag, perturbed)
  
 !----------------------------------------------------------------------
 !    cape_vect calculates convective available potential energy for a 
@@ -3666,8 +4095,11 @@ subroutine cape_vect (p_v, r_v, t_v, cin_v, plcl_v, plfc_v, plzb_v, &
 integer, dimension(:),   intent(in)  :: jabs
 real, dimension (:,:,:), intent(in)  :: p_v, r_v, t_v
 real, dimension (:,:)  , intent(out) :: cin_v, plcl_v, plfc_v, &
-					plzb_v, xcape_v
+					plzb_v
+real, dimension (:,:)  , intent(inout) :: xcape_v                    
 real, dimension (:,:,:), intent(out) :: rpc_v, tpc_v
+logical, dimension(:,:), intent(in), optional  :: exit_flag
+logical, intent(in), optional  :: perturbed
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
@@ -3715,16 +4147,34 @@ real, dimension (:,:,:), intent(out) :: rpc_v, tpc_v
       real, dimension(size(t_v,1), size(t_v,2) ) :: tot, ro, tc_1, tp, &
 				  q_ve, cp_v, rs_v, es_v, tlcl, rlcl, &
 				  dt_v, dtdp_v, tc_v, qe_v, qs_v, &
-				  tve_v, tv_v, tvc_v, tve_v, delt_v
+				  tve_v, tv_v, tvc_v, delt_v
 
      integer :: s_found, z_found, cin_counter, error_flag
+     real    :: q_ve_s, cp_v_s,               tp_s, es_v_s, rs_v_s, &
+                dtdp_v_s, dt_v_s, rlcl_s, tlcl_s, plcl_v_s, p_v_s, &
+                p_v_sm, p_v_sp
+     integer :: ieqv_s, klcl_s
 
+     real :: tc_v_s, qe_v_s, tve_v_s, qs_v_s, tv_v_s
+     real :: tvc_v_s, delt_v_s
+     real, dimension(ncap)  :: tpc_v_s, rpc_v_s
+     real, dimension(size(p_v,3)) :: p_v_k, r_v_k, t_v_k
+     integer :: klzb_s, klfc_s
+     logical :: capepos_s, cape_exit_s
+     real  :: plfc_v_s, plzb_v_s, cin_v_s, xcape_v_s, tot_s
+!    real  :: p_v_k_s, denom
+!--------------------------------------------------------------------
+!     Stop CAPE calculation when pressure falls to pstop or
+!     parcel temperature falls below tmin.
+!     istart-index of level whose mixing ratio is conserved as a parcel 
+!            leaves it undergoing dry adiabatic ascent
+!--------------------------------------------------------------------
+      real ::   pstop=4.0e03
+      real ::   tmin=154.
+      integer :: istart=1
 
 
 !--------------------------------------------------------------------
-!     call tic ('cape', '1')
-!         do j=jminp,jmaxp
-!	    if (debug_jt(j)) then
 	    if (in_debug_window) then
 	      print *, 'DONNER_DEEP/cape: cpi= ', cpi
 	      print *, 'DONNER_DEEP/cape: cpv= ', cpv
@@ -3742,618 +4192,549 @@ real, dimension (:,:,:), intent(out) :: rpc_v, tpc_v
 		print *, 'DONNER_DEEP/cape: k,  t = ', k,  t_v(itest,jdebug,k)
               end do
             endif
-!         end do
-
-!--------------------------------------------------------------------
-!     Stop CAPE calculation when pressure falls to pstop or
-!     parcel temperature falls below tmin.
-!     istart-index of level whose mixing ratio is conserved as a parcel 
-!            leaves it undergoing dry adiabatic ascent
-!--------------------------------------------------------------------
-      pstop=4.0e03
-      tmin=154.
-      istart=1
 
 !-------------------------------------------------------------------
-!     initialize variables.
+!     loop over columns in physics window.
 !------------------------------------------------------------------
       do j=jminp,jmaxp
         do i=iminp,imaxp
-          capepos(i,j)=.false.
-          plfc_v(i,j)=pstop
-          plzb_v(i,j)=pstop
-          plcl_v(i,j)=pstop
-          klfc(i,j)=ncap-1
-          klcl(i,j)=ncap-1
-          cin_v(i,j)=0.
-          xcape_v(i,j)=0.
-          tot(i,j)=0.
-        end do
-      end do
-      do k=1,ncap
-        do j=jminp,jmaxp
-          do i=iminp,imaxp
-	    tpc_v(i,j,k)=t_v(i,j,k)
-	    rpc_v(i,j,k)=r_v(i,j,k)
-          end do
-        end do
-      end do
-!     call toc ('cape', '1')
-!     call tic ('cape', '2')
-!--------------------------------------------------------------------
-!  define parcel departure point values. if temperature at departure
-!  point is too cold, set flag to suppress calculations in that column.
-!  convert mixing ratio to specific humidity.
-!--------------------------------------------------------------------
 
-      s_found = 0
-      z_found = 0
-      cin_counter = 0
+!------------------------------------------------------------------
+!  if exit_flag is .true., it is already known that the cape 
+!  calculation is not needed in this column. cycle to next column.
+!-------------------------------------------------------------------
+          if (present (exit_flag) .and. exit_flag(i,j)) cycle
 
-      do j=jminp,jmaxp
-        do i=iminp,imaxp
-          ro(i,j)=r_v(i,j,istart)
-          tc_1(i,j)=t_v(i,j,istart)
-          tp(i,j)=tc_1(i,j)
-          if (tp(i,j) .lt. tmin)  then
-	    cape_exit(i,j) = .true.
-	    s_found = s_found + 1
-	    lcl_found(i,j) = .true.
-	    z_found = z_found + 1
-	    lzb_found(i,j) = .true.
-	  else
-	    cape_exit(i,j) = .false.
-	    lcl_found(i,j) = .false.
-	    lzb_found(i,j) = .false.
+!------------------------------------------------------------------
+!  if lowest level temp is lower than tmin, set output fields in this
+!  column to defaults and cycle to next column.
+!------------------------------------------------------------------
+          if (t_v(i,j,istart) .lt. tmin)  then
+!RETURN
+            do k=1,ncap
+              rpc_v(i,j,k) = r_v(i,j,k)
+              tpc_v(i,j,k) = t_v(i,j,k)
+            end do 
+            plfc_v(i,j)=pstop       
+            plzb_v(i,j)=pstop      
+            plcl_v(i,j)=pstop      
+            cin_v(i,j) = 0.       
+            xcape_v(i,j) = 0.             
+            cycle
           endif
-          q_ve(i,j) = ro(i,j)/(1.+ro(i,j))
-          cp_v(i,j) = cpi*(1.+((cpv/cpi)-1.)*q_ve(i,j))
-        end do
-      end do
+!-------------------------------------------------------------------
+!     initialize variables.
+!------------------------------------------------------------------
+          plfc_v_s   =pstop
+          plzb_v_s   =pstop
+          plcl_v_s   =pstop
 
-!     call toc ('cape', '2')
+          klfc_s = ncap - 1
+          klcl_s = ncap - 1
+
+          cin_v_s = 0.
+          xcape_v_s  = 0.
+          tot_s = 0.
+
+          capepos_s = .false.
+          cape_exit_s = .false.
 !--------------------------------------------------------------------
-!  integrate in the vertical to find the lcl in each column. only 
-!  calculate in those columns which are still searching.
+!  define parcel departure point values. convert mixing ratio to 
+!  specific humidity.
 !--------------------------------------------------------------------
-!     call tic ('cape', '3')
-      do k=istart,ncap
-!if (s_found < 100) then
-	if (s_found < imaxp*jmaxp) then
+          tpc_v_s(istart) = t_v(i,j,istart)
+	  rpc_v_s(istart) = r_v(i,j,istart)
+          tp_s   =tpc_v_s(istart)
+          q_ve_s    = rpc_v_s(istart)/( 1.+rpc_v_s(istart) )
+          cp_v_s    = cpi*(1.+((cpv/cpi)-1.)*q_ve_s   )
+
+!-------------------------------------------------------------------
+!  define 1-d arrays of pressure, temperature and mixing ratio in the 
+!  column.
+!-------------------------------------------------------------------
+          p_v_k(:) = p_v(i,j,:)
+          t_v_k(:) = t_v(i,j,:)
+          r_v_k(:) = r_v(i,j,:)
 
 !--------------------------------------------------------------------
-!  determine saturation mixing ratio for parcels at this level.
+!  move the parcel upwards to find the lcl in the column.
+!--------------------------------------------------------------------
+          do k=istart,ncap  ! k loop to find lcl
+!           p_v_k_s = p_v_k(k)
+!--------------------------------------------------------------------
+!  if the temperature and pressure are still within limits, continue 
+!  parcel movement. determine saturation mixing ratio for parcels at 
+!  this level.
 !---------------------------------------------------------------------
-!         call establ_vect(es_v, tp, lcl_found)
-!         call lookup_es     (tp, es_v, lcl_found)
-          call lookup_es     (tp, es_v)
-          do j=jminp,jmaxp
-            do i=iminp,imaxp
-	      if (.not. lcl_found(i,j) ) then
-	        rs_v(i,j) = rocp*es_v(i,j)/(p_v(i,j,k) +  &
-			    (rocp - 1.)*es_v(i,j))
+!           if (tp_s >= tmin .and. p_v_k(k) >= pstop) then
+            if (tp_s >= tmin .and. p_v_k(k) >= pdeep_cv) then
+!           if (tp_s >= tmin .and. p_v_k_s  >= pstop) then
+!             call escomp (tp_s, es_v_s)
+              call lookup_es (tp_s, es_v_s)
+!!! THIS FORMULA IS INCORRECT -- no rocp*es in denom -- mixing ratio
+!!!  is in use here.
+              rs_v_s  = rocp*es_v_s /(p_v_k(k)  + (rocp - 1.)*es_v_s)
+!      denom = p_v_k_s + (rocp-1.0)*es_v_s
+!             rs_v_s  = rocp*es_v_s /(p_v_k_s   + (rocp - 1.)*es_v_s)
+!             rs_v_s  = rocp*es_v_s /denom                            
+
+!--------------------------------------------------------------------
+!  check if the parcel is now saturated.
+!---------------------------------------------------------------------
+              call ieq_x (rs_v_s, rpc_v_s(istart), ieqv_s)
+
+!--------------------------------------------------------------------
+!   if saturation is exact or if parcel is super-saturated at its 
+!   starting level, save pressure, temp, mixing ratio and cloud base 
+!   level. exit vertical loop.
+!--------------------------------------------------------------------
+              if ( (ieqv_s ==  0) .or. &
+                   (ieqv_s < 0 .and. k == istart) ) then
+                plcl_v_s    = p_v_k(k)  
+!               plcl_v_s    = p_v_k_s   
+                rlcl_s    = r_v_k(  k)
+                tlcl_s    = t_v_k(  k)
+                klcl_s    = k
+	        exit
               endif
-	    end do
-	  end do
 
 !--------------------------------------------------------------------
-!  check for parcel saturation at this level, if it has not yet been
-!  reached and level is below upper limit for cape calculation.
-!---------------------------------------------------------------------
-          call ieq_z (rs_v, ro, ieqv, lcl_found)
-          do j=jminp,jmaxp
-            do i=iminp,imaxp
-	      if (.not. lcl_found(i,j) ) then
- 	        if (p_v(i,j,k) .ge. pstop) then    
-
+!   if parcel is super-saturated, define cloud-base pressure, temp 
+!   and mixing ratio as the average value between the current level
+!   and the next lower level, and this level as the cloud base level.
+!   exit the column.
 !--------------------------------------------------------------------
-!   saturation reached exactly; save pressure, temp, moisture and 
-!   vertical index for cloud base.  set flag and update counter.
-!--------------------------------------------------------------------
-	          if (ieqv(i,j) .eq. 0) then
-	            plcl_v(i,j) = p_v(i,j,k)
-	            rlcl(i,j) = r_v(i,j,k)
-	            tlcl(i,j) = t_v(i,j,k)
-	            klcl(i,j) = k
-		    s_found = s_found + 1
-                    lcl_found(i,j) = .true.
-
-!--------------------------------------------------------------------
-!   saturation exceeded; save pressure, temp, moisture and vertical
-!   index for cloud base. set flag and update counter.
-!--------------------------------------------------------------------
-                  else if (ieqv(i,j) .lt. 0) then
-	            if (k .eq. istart) then
-	              plcl_v(i,j)=p_v(i,j,istart)
-	              tlcl(i,j) =t_v(i,j,istart)
-	              rlcl(i,j) =r_v(i,j,istart)
-	              klcl(i,j)=istart
-		      s_found = s_found + 1
-                      lcl_found(i,j) = .true.
-	            else                         
-	              plcl_v(i,j) = (p_v(i,j,k)+p_v(i,j,k-1))/2.
-	              tlcl(i,j) = (t_v(i,j,k)+t_v(i,j,k-1))/2.
-	              rlcl(i,j) = (r_v(i,j,k)+r_v(i,j,k-1))/2.
-	              klcl(i,j) = k
-		      s_found = s_found + 1
-                      lcl_found(i,j) = .true.
-	   	    endif
+              if (ieqv_s < 0) then
+                plcl_v_s  = (p_v_k(k)     +p_v_k(k-1)  )/2.
+!               plcl_v_s  = (p_v_k_s      +p_v_k(k-1)  )/2.
+                tlcl_s    = (t_v_k(  k)+t_v_k(  k-1))/2.
+                rlcl_s    = (r_v_k(  k)+r_v_k(  k-1))/2.
+                klcl_s    = k
+                exit
 
 !---------------------------------------------------------------------
-!    parcel still unsaturated; move parcel to next pressure level 
-!    along the dry adiabat. define temperature at this level; verify
-!    that it is within bounds of scheme. update parcel values at the
-!    k+1 level to be those thus calculated.
+!    if the parcel remains unsaturated at this level and the top of the 
+!    model has not been reached, move parcel along dry adiabat to next 
+!    pressure level. define temperature at this level; verify that it 
+!    is warmer than tmin. save parcel temperature and mixing ratio at 
+!    this next higher level.
 !---------------------------------------------------------------------
-	   	  else  ! (ieqv(i,j) .gt. 0) 
-	   	    if (k .lt. ncap) then
-                      dtdp_v(i,j)=rair*tp(i,j)/cp_v(i,j)
-                      dt_v(i,j)=dtdp_v(i,j)*    &
-				    alog((p_v(i,j,k+1)   )/p_v(i,j,k))
-                      tp(i,j)=tp(i,j)+dt_v(i,j)
-      	              if (tp(i,j) .lt. tmin)  then
-	                cape_exit(i,j) = .true.
-		        lcl_found(i,j) = .true.
-		        s_found = s_found + 1
-			z_found = z_found + 1
-			lzb_found(i,j) = .true.
-                      else  
-	                tpc_v(i,j,k+1)=tp(i,j)
-	                rpc_v(i,j,k+1)=ro(i,j)
-                      endif
-	            endif
-		  endif ! (ieqv(i,j) .gt. 0)
+              else  ! (ieqv_s    .gt. 0) 
+                if (k .lt. ncap) then
+                  dtdp_v_s = rair*tp_s/cp_v_s   
+                  dt_v_s   = dtdp_v_s*alog( p_v_k(k+1)/p_v_k(k) )
+!                 dt_v_s   = dtdp_v_s*alog( p_v_k(k+1)/p_v_k_s  )
+                  tp_s   = tp_s  + dt_v_s    
+                  if (tp_s    .lt. tmin)  then
+                    cape_exit_s    = .true.
+!RETURN
+                    tpc_v_s(k+1:ncap) = t_v_k(  k+1:ncap)
+                    rpc_v_s(k+1:ncap) = r_v_k(  k+1:ncap)
+                    exit
+                  else  
+                    tpc_v_s(  k+1)=tp_s   
+                    rpc_v_s(  k+1)=rpc_v_s(istart)
+                  endif
+
+!-------------------------------------------------------------------
+!    if have reached top of model, set flag to stop integration in this
+!    column.
+!-------------------------------------------------------------------
+                else
+                  cape_exit_s    = .true.
+                endif
+              endif ! (ieqv_s    .gt. 0)
 
 !--------------------------------------------------------------------
-!    if parcel is now at pressure below cutoff for cape calculation,
-!    set flag to stop calculation.
+!    if either parcel temperature or pressure is below cutoff values,
+!    set remainder of parcel sounding to the environment and stop 
+!    searching in this column.
 !--------------------------------------------------------------------
-	        else
-		  lcl_found(i,j) = .true.
-		  s_found = s_found + 1
- 	        endif      ! (p(k) .lt. pstop )
-	      endif  ! (lcl_found)
-            end do
-          end do
-        endif
-      end do   ! k loop
-
-!     call toc ('cape', '3')
-!--------------------------------------------------------------------
-!  verify that the lcl calculated is below the limiting pressure level.
-!--------------------------------------------------------------------
-!     call tic ('cape', '4')
-      call ieq_y (plcl_v, pstop, ieqv)
-      do j=jminp,jmaxp
-        do i=iminp,imaxp
-          if (ieqv(i,j) .le. 0) then
-            cape_exit(i,j) = .true.
-	    if ( .not. (lzb_found(i,j))) then
-	      z_found = z_found + 1
-	      lzb_found(i,j) = .true.
-	    endif
-          end if
-        end do
-      end do
-
-!     call toc ('cape', '4')
-!     call tic ('cape', '5')
-
-
-!        do j=jminp,jmaxp
-!	   if (debug_jt(j)) then
-           if (in_debug_window) then
-             print *,  'DONNER_DEEP/cape: plcl,klcl,tlcl,rlcl= ',   &
-			 plcl_v(itest,jdebug), klcl(itest,jdebug),    &
-			 tlcl(itest,jdebug),rlcl(itest,jdebug)
-             print *,  'DONNER_DEEP/cape: p(klcl)= ',   &
-			    p_v(itest,jdebug,klcl(itest,j))
+           else
+!RETURN
+             tpc_v_s(k+1:ncap) = t_v_k(  k+1:ncap)
+             rpc_v_s(k+1:ncap) = r_v_k(  k+1:ncap)
+             cape_exit_s = .true.
            endif
-!        end do
+         end do   ! k loop to find lcl
+
+!---------------------------------------------------------------------
+!   if lcl not found, stop calculations in this column.
+!---------------------------------------------------------------------
+         if (cape_exit_s) go to 12
+
+!--------------------------------------------------------------------
+!   if in debug mode, print out info on lcl in debug column.
+!--------------------------------------------------------------------
+!        if (in_debug_window .and. i == itest .and. j == jdebug) then
+               if (in_debug_window ) then
+	          if (i == itest .and. j == jdebug) then
+            print *,  'DONNER_DEEP/cape: plcl,klcl,tlcl,rlcl= ',   &
+                     plcl_v_s, klcl_s, tlcl_s, rlcl_s            
+             print *,  'DONNER_DEEP/cape: p(klcl)= ',   &
+                     p_v_k(klcl_s)
+         endif
+         endif
 
 !-------------------------------------------------------------------
 !   calculate temperature along saturated adiabat, starting at p(klcl)
-!   and a temperature tp.
-!-------------------------------------------------------------------
-      do j=jminp,jmaxp
-        do i=iminp,imaxp
-            tc_v(i,j)=tp(i,j)
-      end do
-      end do
-!     call toc ('cape', '5')
+!   and a temperature tp to find the level of free convection and
+!   the level of zero buoyancy. 
+!--------------------------------------------------------------------
+         do k=klcl_s,ncap-1
 
 !--------------------------------------------------------------------
-!   integrate in the vertical to find the level of free convection and
-!   the level of zero buoyancy. only integrate in those columns which
-!   are still active.
+!   search for the lfc only up to a pressure pstop.
 !--------------------------------------------------------------------
-      do k=istart,ncap-1
-!	if (z_found < 100) then
-	if (z_found < imaxp*jmaxp) then
+           if ( (p_v_k(k+1)   >= pstop) .or.   &
+                (p_v_k(k+1)   >= pdeep_cv .and. .not. capepos_s) ) then
 
 !--------------------------------------------------------------------
-!   define a flag indicating whether one should search for either the
-!   lfc or lzb at this level in each column. 
+!   define saturation vapor pressure for the parcel.
 !--------------------------------------------------------------------
-!	  call tic ('cape', '5a')
-          do j=jminp,jmaxp
-            do i=iminp,imaxp
-               if (p_v(i,j,k+1) >= pstop ) then
-                 if ( (.not. lzb_found(i,j)) .and.     &
-		      (k .ge. klcl(i,j)) ) then
-                  skip_search(i,j) = .false.
-                else
-                  skip_search(i,j) = .true.
-                endif
-	      else
-                skip_search(i,j) = .true.
-              endif  ! p >= pstop
-            end do
-          end do
+!            call escomp (tp_s, es_v_s)
+             call lookup_es (tp_s, es_v_s)
 
-!	  call toc ('cape', '5a')
-!	  call tic ('cape', '5b')
-!--------------------------------------------------------------------
-!   define saturation vapor pressure for the parcel in active columns.
-!--------------------------------------------------------------------
-!         call establ_vect (es_v, tc_v, skip_search)
-!         call lookup_es      (tc_v, es_v, skip_search)
-          call lookup_es      (tc_v, es_v)
-
-!	  call toc ('cape', '5b')
-!	  call tic ('cape', '5c')
 !--------------------------------------------------------------------
 !   define the environmental and parcel virtual temperature and specific
-!   humidity where needed.
+!   humidity.
 !--------------------------------------------------------------------
-          do j=jminp,jmaxp
-            do i=iminp,imaxp
-	      if ( .not. skip_search(i,j)) then
-	        qe_v(i,j) = r_v(i,j,k)/(1.+r_v(i,j,k))
-	        tve_v(i,j) = t_v(i,j,k)*(1.+.61*qe_v(i,j))
-     	        rs_v(i,j) = rocp  *es_v(i,j)/(p_v(i,j,k)+   &
-		      	    (rocp  -1.)*es_v(i,j))
-                qs_v(i,j)=rs_v(i,j)/(1.+rs_v(i,j))
-	        tv_v(i,j)=tc_v(i,j)*(1.+.61*qs_v(i,j))
-	      endif
-	    end do
-	  end do
-!	  call toc ('cape', '5c')
+!     denom = 1. + r_v_k(k)
+             qe_v_s = r_v_k(k)/(1.+r_v_k(  k))
+!            qe_v_s = r_v_k(k)/denom             
+             tve_v_s = t_v_k(k)*(1.+.61*qe_v_s   )
+             rs_v_s = rocp*es_v_s   /(p_v_k(k)  +   &
+!            denom  = p_v_k_s + (rocp-1.)*es_v_s
+!            rs_v_s = rocp*es_v_s   /(p_v_k_s   +   &
+                         (rocp  -1.)*es_v_s   )
+!            rs_v_s = rocp*es_v_s   /denom             
+             qs_v_s = rs_v_s/(1.+rs_v_s   )
+             tv_v_s = tp_s*(1.+.61*qs_v_s   )
 
 !--------------------------------------------------------------------
 !   determine whether the parcel temperature is cooler or warmer than 
 !   the environment.
 !--------------------------------------------------------------------
-!	  call tic ('cape', '5d')
-          call ieq_z (tv_v, tve_v, ieqv, skip_search  )
-!	  call toc ('cape', '5d')
+             call ieq_x (tv_v_s, tve_v_s, ieqv_s)
 
 !---------------------------------------------------------------------
 !   integrate parcel upward, finding level of free convection and 
 !   level of zero buoyancy.
 !---------------------------------------------------------------------
-!	  call tic ('cape', '5e')
-          do j=jminp,jmaxp
-            do i=iminp,imaxp
-	      if ( .not. skip_search(i,j)) then
-
-!!!COMMENT: ieqv == 0 should be included below:
-!!!             if ((ieqv(i,j) .gt. 0) .and. (.not. capepos(i,j))) then
 
 !-------------------------------------------------------------------
 !   determine if the level of free convection has been reached. 
 !-------------------------------------------------------------------
-                if ((ieqv(i,j) .ge. 0) .and. (.not. capepos(i,j))) then
-                  capepos(i,j) = .true.
-                  plfc_v(i,j) = p_v(i,j,k)
-                  klfc(i,j) = k
-                end if
+             if ((ieqv_s >= 0) .and. (.not. capepos_s   )) then
+               capepos_s    = .true.
+               plfc_v_s    = p_v_k(k)  
+!              plfc_v_s    = p_v_k_s   
+               klfc_s    = k
+             end if
 
 !-------------------------------------------------------------------
 !   determine if the level of zero buoyancy has been reached.  if so,
 !   set flag so that calculation will be ended in this column.
 !-------------------------------------------------------------------
-	        if ((ieqv(i,j) .lt. 0) .and. (capepos(i,j))) then
-	          klzb(i,j) = k
-	          plzb_v(i,j) = (p_v(i,j,k)+p_v(i,j,k-1))/2.
-                  z_found = z_found + 1
-	          lzb_found(i,j) = .true.
-!-------------------------------------------------------------------
+	     if ((ieqv_s    .lt. 0) .and. (capepos_s   )) then
+	       klzb_s    = k
+        plzb_v_s    = (p_v_k(k)  +p_v_k(k-1)  )/2.
+!       plzb_v_s    = (p_v_k_s   +p_v_k(k-1)  )/2.
+               tpc_v_s(k+1:ncap) = t_v_k(  k+1:ncap)
+               rpc_v_s(k+1:ncap) = r_v_k(  k+1:ncap)
+               exit
+!-----------------------------------------------------------------
 !   if not, continue moving parcel up pseudo-adiabat to next cape-
 !   calculation pressure level. define new parcel temperature and
 !   mixing ratio at this level; if temperature is colder than allowed,
 !   end integration.
 !-------------------------------------------------------------------
-                else   !  (cape is pos, parcel warmer than env)
-	          rc = (1.-qs_v(i,j))*rair+qs_v(i,j)*rvap
-	          pb = 0.5*(p_v(i,j,k)+p_v(i,j,k+1))
-	          fact1 = rair/cpi
-	          fact2 = tv_v(i,j)+(latvap*qs_v(i,j)/rc)
-	          fact1 = fact1*fact2
-	          fact3 = rocp  *(latvap**2)*es_v(i,j)/    &
-		         (cpi*pb*rvap*(tv_v(i,j)**2))
-	          fact3 = 1.+fact3
-	          dtdp = fact1/fact3
-	          tc_v(i,j) = tc_v(i,j)+dtdp*     &
-			      alog(p_v(i,j,k+1)/p_v(i,j,k))
-           	  if (tc_v(i,j) .lt. tmin        )  then
-	            cape_exit(i,j) = .true.
-	            z_found = z_found + 1
-	            lzb_found(i,j) = .true.
-	          else
-	            tpc_v(i,j,k+1) = tc_v(i,j)
-	            rpc_v(i,j,k+1) = rs_v(i,j)
-                  endif
-                endif   !  (ieq < 0, capepos)
+             else   !  (cape is pos, parcel warmer than env)
+	       rc = (1.-qs_v_s   )*rair+qs_v_s   *rvap
+        pb = 0.5*(p_v_k(k)     +p_v_k(k+1))
+!       pb = 0.5*(p_v_k_s      +p_v_k(k+1))
+	       fact1 = rair/cpi
+	       fact2 = tv_v_s   +(latvap*qs_v_s   /rc)
+	       fact1 = fact1*fact2
+	       fact3 = rocp  *(latvap**2)*es_v_s   /    &
+	               (cpi*pb*rvap*(tv_v_s   **2))
+	       fact3 = 1.+fact3
+	       dtdp = fact1/fact3
+	       tp_s    = tp_s   +dtdp*     &
+                         alog(p_v_k(k+1)  /p_v_k(k)  )
+!                        alog(p_v_k(k+1)  /p_v_k_s   )
+               if (tp_s    .lt. tmin        )  then
+                 cape_exit_s    = .true.
+!RETURN
+                 tpc_v_s(k+1:ncap) = t_v_k(  k+1:ncap)
+                 rpc_v_s(k+1:ncap) = r_v_k(  k+1:ncap)
+                 exit  ! exit k loop
+               else
+                 tpc_v_s(  k+1) = tp_s   
+                 rpc_v_s(  k+1) = rs_v_s   
+               endif
+             endif   !  (ieq < 0, capepos)
 
 !--------------------------------------------------------------------
 !    if pressure has gone below the minimum at which deep convection 
 !    is allowed, set flag to end calculation in this column.
 !--------------------------------------------------------------------
-              else  ! (skip_search)
-                if (p_v(i,j,k+1)  < pstop ) then
-		 if (.not. lzb_found(i,j) ) then
-	            lzb_found(i,j) = .true.
-	            z_found = z_found + 1
-		  endif
-                endif                    
-              endif    !   (skip_search)
-            end do  ! i loop
-          end do  ! j loop
-!	  call toc ('cape', '5e')
-        endif   !  (z_found)
-      end do   ! k loop
-
-!      call tic ('cape', '5f')
-!         do j=jminp,jmaxp
-!    if (debug_jt(j)) then
-	    if (in_debug_window) then
-              do k=klcl(itest,j),ncap-1
-             print *,   'DONNER_DEEP/cape: k,tv,tve= ',k,tv_v(itest,jdebug),  &
-				    tve_v(itest,jdebug)
+!    if (in_debug_window .and.    &
+!       i == itest .and. j == jdebug) then
+               if (in_debug_window ) then
+	          if (i == itest .and. j == jdebug) then
+             print *,   'DONNER_DEEP/cape: k,tv,tve= ',k,tv_v_s,  &
+				    tve_v_s            
  	        print *,   'DONNER_DEEP/cape: klzb,plzb,p(klzb)= ',  &
-			     klzb(itest,jdebug),   &
- 		            plzb_v(itest,jdebug),   &
-			    p_v(itest,jdebug,klzb(itest,jdebug))
+			     klzb_s            ,   &
+ 		            plzb_v_s            ,   &
+			    p_v_k(             klzb_s            )
  	        print *,   'DONNER_DEEP/cape: fact1,fact2,rc= ',fact1,fact2,rc
  	        print *,   'DONNER_DEEP/cape: fact1,fact3= ',fact1,fact3
  	        print *,   'DONNER_DEEP/cape: dtdp= ',dtdp
- 	        print *,   'DONNER_DEEP/cape: tc,t= ',tc_v(itest,jdebug),  &
-					   t_v(itest,jdebug,k+1)
-       print *,   'DONNER_DEEP/cape: p,r,rs= ',p_v(itest,jdebug,k+1),   &
-			    r_v(itest,jdebug,k+1),  rs_v(itest,jdebug)
-	      end do  ! k loop
+ 	        print *,   'DONNER_DEEP/cape: tc,t= ',tp_s      ,  &
+					   t_v_k(           k+1)
+       print *,   'DONNER_DEEP/cape: p,r,rs= ',p_v_k(           k+1),   &
+			    r_v_k(           k+1),  rs_v_s            
             endif
-!         end do
-!      call toc ('cape', '5f')
+            endif
+        else
+!RETURN
+                        tpc_v_s(k+1:ncap) = t_v_k(  k+1:ncap)
+                        rpc_v_s(k+1:ncap) = r_v_k(  k+1:ncap)
+             exit
+        endif
+      end do   ! k loop
+      if (cape_exit_s   ) go to 12
+
+!--------------------------------------------------------------------
+!   if this was a call to calculate perturbd profile, bypass cape and
+!   cin calculation, since only the tpc and rpc profiles are needed.
+!--------------------------------------------------------------------
+!     if (present (exit_flag)) go to 12
+      if (present (perturbed)) go to 13
 
 !-------------------------------------------------------------------
 !   define flag to indicate where to calculate convective inhibition.
 !-------------------------------------------------------------------
-!      call tic ('cape', '6')
-      do j=jminp,jmaxp
-        do i=iminp,imaxp
-	  if (.not. cape_exit(i,j)) then
-	    cin_done(i,j) = .false.
-          else
-	    cin_done(i,j) = .true.
-	    cin_counter = cin_counter + 1
-	  endif
-        end do
-      end do
 
 !-------------------------------------------------------------------
 !   calculate convective inhibition.
 !--------------------------------------------------------------------
       do k=istart,ncap-1
-! 	if (cin_counter < 100) then
- 	if (cin_counter < imaxp*jmaxp) then
+!        p_v_k_s = p_v_k(k)
+
+!              if (in_debug_window .and. &
+!           i == itest .and. j == jdebug) then
+!              else
+!             if ( p_v_k(k+1)   <= pstop              ) then
+!               cape_exit_s    = .true.
+!	exit
+!             endif
+!             endif
+!------------------------------------------------------------------
+!   determine if sounding fails to produce a level of free convection.
+!   if so, set flag to avoid cape calculation. If desired, print out
+!   columns where lcl exists, but no lfc.
+!------------------------------------------------------------------
+!             if ( p_v_k(k+1)   <= pstop              ) then
+              if ( p_v_k(k+1)   <= pdeep_cv           ) then
+                cape_exit_s    = .true.
+!               if (debug) then
+!                 print *, 'cape = 0 (NO LFC): i, jrow, cin= ',   &
+!		   i, jabs(j), cin_v_s   
+!	endif
+                exit   ! exit k loop
+              end if
+
+!--------------------------------------------------------------------
+!    define the specific humidity and virtual temperature of the
+!    parcel and environment.
+!--------------------------------------------------------------------
+	      rbc =     (rpc_v_s(  k) + rpc_v_s(  k+1))/2.
+	      rbe =     (r_v_k(  k) + r_v_k(  k+1))/2.
+	      qc = rbc/(1. + rbc)
+	      qe = rbe/(1. + rbe)
+	      tvc_v_s    =     (tpc_v_s(  k) + tpc_v_s(k+1))/2.
+	      tve_v_s    =     (t_v_k(  k) + t_v_k(  k+1))/2.
+	      tvc_v_s    = tvc_v_s *  (1.+.61*qc)
+	      tve_v_s    = tve_v_s   *(1.+.61*qe)
+
+!              if (in_debug_window .and. &
+!           i == itest .and. j == jdebug) then
+               if (in_debug_window ) then
+	          if (i == itest .and. j == jdebug) then
+                print *, 'DONNER_DEEP/cape: k,tvc,tve= ', k,  &
+			   tvc_v_s            ,  &
+			  tve_v_s            
+              endif
+              endif
+
+!---------------------------------------------------------------------
+!   determine whether the parcel temperature is cooler or warmer than 
+!   the environment.
+!--------------------------------------------------------------------
+        call ieq_x(tvc_v_s   , tve_v_s   , ieqv_s   )
+
+!---------------------------------------------------------------------
+!   add the contribution to cin from this pressure layer.
+!---------------------------------------------------------------------
+	      if ((ieqv_s    .lt. 0) .or.      &
+ 		  (p_v_k(k)   .gt. plfc_v_s   ))  then
+!		  (p_v_k_s    .gt. plfc_v_s   ))  then
+                delt_v_s    = rair*(tvc_v_s   -tve_v_s   )*   &
+ 		 alog(p_v_k(k) /p_v_k(k+1))
+!		 alog(p_v_k_s  /p_v_k(k+1))
+                cin_v_s    = cin_v_s    - delt_v_s   
+              else
 
 !------------------------------------------------------------------
 !   determine if sounding fails to produce a level of free convection.
 !   if so, set flag to avoid cape calculation. If desired, print out
 !   columns where lcl exists, but no lfc.
 !------------------------------------------------------------------
-        do j=jminp,jmaxp
-          do i=iminp,imaxp
-             if (.not. (cin_done (i,j)) ) then
-              if ( p_v(i,j,k+1) <= pstop              ) then
-		cin_done(i,j) = .true.
-	        cape_exit(i,j) = .true.
-		cin_counter = cin_counter + 1
-                if (debug) then
-                  print *, 'cape = 0 (NO LFC): i, jrow, cin= ',   &
-			   i, jabs(j), cin_v(i,j)
-		endif
-	      end if
-            endif
-          end do
-	end do
-
-!--------------------------------------------------------------------
-!    define the specific humidity and virtual temperature of the
-!    parcel and environment.
-!--------------------------------------------------------------------
-        do j=jminp,jmaxp
-          do i=iminp,imaxp
- 	    if ( .not. cin_done(i,j) ) then
-	      rbc =     (rpc_v(i,j,k) + rpc_v(i,j,k+1))/2.
-	      rbe =     (r_v(i,j,k) + r_v(i,j,k+1))/2.
-	      qc = rbc/(1. + rbc)
-	      qe = rbe/(1. + rbe)
-	      tvc_v(i,j) =     (tpc_v(i,j,k) + tpc_v(i,j,k+1))/2.
-	      tve_v(i,j) =     (t_v(i,j,k) + t_v(i,j,k+1))/2.
-	      tvc_v(i,j) = tvc_v(i,j)*(1.+.61*qc)
-	      tve_v(i,j) = tve_v(i,j)*(1.+.61*qe)
-             endif
-          end do
-	end do
-
-!           do j=jminp,jmaxp
-!	      if (debug_jt(j)) then
-               if (in_debug_window) then
-	      if (.not. cin_done(itest,jdebug)) then
-                print *, 'DONNER_DEEP/cape: k,tvc,tve= ', k,  &
-			   tvc_v(itest,jdebug),  &
-			  tve_v(itest,jdebug)
-              endif
-              endif
-!           end do
-
-!---------------------------------------------------------------------
-!   determine whether the parcel temperature is cooler or warmer than 
-!   the environment.
-!--------------------------------------------------------------------
-        call ieq_z(tvc_v, tve_v, ieqv, cin_done)
-
-!---------------------------------------------------------------------
-!   add the contribution to cin from this pressure layer.
-!---------------------------------------------------------------------
-        do j=jminp,jmaxp
-          do i=iminp,imaxp
-	    if ( .not. cin_done(i,j) ) then
-	      if ((ieqv(i,j) .lt. 0) .or.      &
- 		  (p_v(i,j,k) .gt. plfc_v(i,j)))  then
-                delt_v(i,j) = rair*(tvc_v(i,j)-tve_v(i,j))*   &
-			 alog(p_v(i,j,k)/p_v(i,j,k+1))
-                cin_v(i,j) = cin_v(i,j) - delt_v(i,j)
-	      else
-                  cin_done(i,j) = .true.
-	  	  cin_counter = cin_counter + 1
+!               if (p_v_k(k) < plfc_v_s .or.  &
+!                   p_v_k(k) <= pstop) then
+!          cape_exit_s    = .true.
+!               if (debug) then
+!                 print *, 'cape = 0 (NO LFC): i, jrow, cin= ',   &
+!		   i, jabs(j), cin_v_s   
+!	endif
+ 	        exit
+!	endif
               end if
-            endif
-          end do
-        end do
-      endif
-      end do
-!      call toc ('cape', '6')
 
-!      call tic ('cape', '7')
+
+      end do  ! k loop
+
+!       if (debug) then
+        if (debug .and. cape_exit_s) then
+           print *, 'cape = 0 (NO LFC): i, jrow, cin= ',   &
+                                i, jabs(j), cin_v_s   
+        endif
+
+      if (cape_exit_s    ) go to 12
+
+
+
 !-------------------------------------------------------------------
 !   if desired, print out lfc k index and pressure.
 !-------------------------------------------------------------------
-!         do j=jminp,jmaxp
-!    if (debug_jt(j)) then
-	    if (in_debug_window) then
-           print *, 'DONNER_DEEP/cape: klfc, p(klfc)= ', klfc(itest,jdebug),  &
-	               p_v(itest,jdebug,klfc(itest,jdebug))
+	    if (i == itest .and. j == jdebug) then
+           print *, 'DONNER_DEEP/cape: klfc, p(klfc)= ', klfc_s       ,  &
+	               p_v_k(             klfc_s            )
             endif
-!          end do
 
 !--------------------------------------------------------------------
 !  calculate convective available potential energy.
 !--------------------------------------------------------------------
-      do k=istart,ncap-1
+      do k=klfc_s,ncap-1
+!        p_v_k_s = p_v_k(k)
 
 !--------------------------------------------------------------------
 !  define flag to indicate which columns are actively computing cape.
 !-------------------------------------------------------------------
-        do j=jminp,jmaxp
-          do i=iminp,imaxp
-            if (.not. (cape_exit(i,j))  .and.  &
-	         ( k .ge. klfc(i,j) ) ) then
-              if ( p_v(i,j,k+1) .gt. plzb_v(i,j) ) then
-	        cape_skip(i,j) = .false.
-	      else
-	        cape_skip(i,j) = .true.
-              endif
-	    else
-	      cape_skip(i,j) = .true.
-            endif
-	  end do 
-	end do 
+              if ( p_v_k(k+1) .gt. plzb_v_s    ) then
 
 !--------------------------------------------------------------------
 !  define virtual temperature and specific humidity of parcel and 
 !  environment.
 !-------------------------------------------------------------------
-        do j=jminp,jmaxp
-          do i=iminp,imaxp
-	    if (.not. cape_skip(i,j) ) then
-              rbc = (rpc_v(i,j,k)+rpc_v(i,j,k+1))/2.
-	      rbe = (r_v(i,j,k)+r_v(i,j,k+1))/2.
+              rbc = (rpc_v_s(  k)+rpc_v_s(  k+1))/2.
+	      rbe = (r_v_k(  k)+r_v_k(  k+1))/2.
 	      qc = rbc/(1.+rbc)
 	      qe = rbe/(1.+rbe)
-	      tvc_v(i,j) = (tpc_v(i,j,k)+tpc_v(i,j,k+1))/2.
-	      tve_v(i,j) = (t_v(i,j,k)+t_v(i,j,k+1))/2.
-	      tvc_v(i,j) = tvc_v(i,j)*(1.+.61*qc)
-	      tve_v(i,j) = tve_v(i,j)*(1.+.61*qe)
-	    endif
-	  end do
-        end do
+              tvc_v_s    = (tpc_v_s(  k)+tpc_v_s(  k+1))/2.
+	      tve_v_s    = (t_v_k(  k)+t_v_k(  k+1))/2.
+               tvc_v_s    = tvc_v_s   *(1.+.61*qc)
+	      tve_v_s    = tve_v_s   *(1.+.61*qe)
 
 !--------------------------------------------------------------------
 !   determine whether the parcel temperature is cooler or warmer than 
 !   the environment.
 !--------------------------------------------------------------------
-        call ieq_z(tvc_v, tve_v, ieqv, cape_skip)
+        call ieq_x(tvc_v_s   , tve_v_s   , ieqv_s              )
 
 !---------------------------------------------------------------------
 !   add the contribution to column cape from this pressure layer.
 !---------------------------------------------------------------------
-        do j=jminp,jmaxp
-          do i=iminp,imaxp
-	    if (.not. cape_skip(i,j) ) then
-	      if (ieqv(i,j) .ge. 0) then
-                delt_v(i,j) = rair*(tvc_v(i,j)-tve_v(i,j))*    &
-			     alog(p_v(i,j,k)/p_v(i,j,k+1))
-	        xcape_v(i,j)=xcape_v(i,j)+delt_v(i,j)
+	      if (ieqv_s    .ge. 0) then
+                delt_v_s    = rair*(tvc_v_s   -tve_v_s   )*    &
+ 		     alog(p_v_k(k)/p_v_k(k+1))
+!		     alog(p_v_k_s /p_v_k(k+1))
+	        xcape_v_s   =xcape_v_s   +delt_v_s   
               end if
-            endif
-	  end do
-	end do
 
 !---------------------------------------------------------------------
 !   print out cape and cape contribution from this level.
 !---------------------------------------------------------------------
-!           do j=jminp,jmaxp
-!	      if (debug_jt(j)) then
 	      if (in_debug_window) then
-	        if (.not. cape_skip(itest,jdebug) ) then
-	          if (ieqv(itest,jdebug) .ge. 0) then
+                if ( i == itest .and. j == jdebug) then
+	          if (ieqv_s             .ge. 0) then
     		    print *,   'DONNER_DEEP/cape: k,delt,xcape= ',k,   &
-				delt_v(itest,jdebug),    &
-				xcape_v(itest,jdebug)
+				delt_v_s            ,    &
+				xcape_v_s            
                   endif
                 endif
               endif
-!           end do
 
+	      else
+		exit
+              endif
       end do  ! end of k loop
 
 !--------------------------------------------------------------------
 !  print out diagnostics (cape, cin, tot), if desired.
 !--------------------------------------------------------------------
-!       do j=jminp,jmaxp
-!  if (debug_jt(j)) then
           if (in_debug_window) then
-            if (.not. cape_skip(itest,jdebug) ) then
-              tot(itest,jdebug) = xcape_v(itest,jdebug) -   &
-			       cin_v(itest,jdebug)
-              print *,   'DONNER_DEEP/cape: cin= ',cin_v(itest,jdebug),' J/kg'
-              print *,   'DONNER_DEEP/cape: xcape= ',xcape_v(itest,jdebug),  &
+                if ( i == itest .and. j == jdebug) then
+            if (cin_v_s    /= 0.0 .or. &
+	         xcape_v_s    /= 0.0) then
+              tot_s             = xcape_v_s             -   &
+			       cin_v_s             
+              print *,   'DONNER_DEEP/cape: cin= ',cin_v_s            ,' J/kg'
+              print *,   'DONNER_DEEP/cape: xcape= ',xcape_v_s,  &
 					     ' J/kg'
-              print *,   'DONNER_DEEP/cape: tot= ',tot(itest,jdebug),' J/kg'
+              print *,   'DONNER_DEEP/cape: tot= ',tot_s            ,' J/kg'
+            endif
             endif
           endif
-!       end do
 
 !--------------------------------------------------------------------
 !  check for error in cape calculation. stop execution if present.
 !--------------------------------------------------------------------
-      error_flag = 0
-      do j=jminp,jmaxp
-        do i=iminp,imaxp
-          if (.not. (cape_exit(i,j)) )  then
-            if (xcape_v(i,j) .lt. 0.) error_flag = 1
-            exit
-          endif
-        end do
-      end do
-      if (error_flag == 1)  &
+            if (xcape_v_s    .lt. 0.) then            
         call error_mesg ( 'cape_vect',  &
 	                  ' xcape error -- value < 0.0 ', FATAL)
-!      call toc ('cape', '7')
+          endif
+
+
+!--------------------------------------------------------------------
+!  fill appropriate (i,j) indices in output variables.
+!--------------------------------------------------------------------
+   12 continue
+          plfc_v(i,j)=plfc_v_s
+          plzb_v(i,j)=plzb_v_s
+          plcl_v(i,j)=plcl_v_s
+          cin_v(i,j) = cin_v_s
+          xcape_v(i,j) = xcape_v_s
+    13  continue
+!RETURN
+!       if (.not. present(exit_flag) .or. present(perturbed)) then
+!         if ( .not. cape_exit_s) then
+      do k=1,ncap
+      rpc_v(i,j,k) = rpc_v_s(k)
+      tpc_v(i,j,k) = tpc_v_s(k)
+      end do 
+!          endif
+!       endif
+
+    end do ! i loop
+    end do ! j loop
+
+
+
+
 
 !---------------------------------------------------------------------
 
@@ -4363,7 +4744,6 @@ real, dimension (:,:,:), intent(out) :: rpc_v, tpc_v
 
 
 end subroutine cape_vect
-
 
 
 
@@ -4633,16 +5013,31 @@ real, dimension(:,:), intent(out)  :: a1_v
    logical, dimension (size(tcape_v,1), size(tcape_v,2), ncap) :: &
 		       exit_3d
 
+   logical, dimension (size(tcape_v,1), size(tcape_v,2)      ) :: &
+                        exit_2d
+
       real, dimension (size(tcape_v,1), size(tcape_v,2) ) :: &
                      cin_v2, plcl_v2, plfc_v2, plzb_v2, xcape_v2
 
       logical  :: debug_ijt
+      logical  :: perturbed
 
-
+       perturbed = .true.
 
 !--------------------------------------------------------------------
 !  define 3d execution flag.
 !---------------------------------------------------------------------
+      do j=jminp,jmaxp
+        do i=iminp,imaxp
+            if ( (.not. exit_flag(i,j))   .and. &
+                 ( .not. nine_flag(i,j)) ) then
+               exit_2d(i,j) = .false.
+           else
+              exit_2d(i,j) = .true.
+          endif
+         end do
+       end do
+
       do k=1,ncap
         do j=jminp,jmaxp
           do i=iminp,imaxp
@@ -4683,7 +5078,9 @@ real, dimension(:,:), intent(out)  :: a1_v
 !  prevent calculation in cape_vect subroutine.
 !--------------------------------------------------------------------
             else
-              ta_v(i,j,k) = 0.007
+!! CHANGE in connecting to fez
+!             ta_v(i,j,k) = 0.007
+              ta_v(i,j,k) = 150.0     
 	      ra_v(i,j,k) = 0.0          
             endif
           end do
@@ -4712,13 +5109,15 @@ real, dimension(:,:), intent(out)  :: a1_v
 !   only tpca_v and rpca_v are needed as output from this call.
 !--------------------------------------------------------------------
       call cape_vect (pcape_v, ra_v, ta_v, cin_v2, plcl_v2, plfc_v2,  &
-		      plzb_v2, rpca_v, tpca_v, xcape_v2, jabs)
+		      plzb_v2, rpca_v, tpca_v, xcape_v2, jabs,   &
+                      exit_flag=exit_2d, perturbed=perturbed)
 
 !---------------------------------------------------------------------
 
       do j=jminp,jmaxp
       do i=iminp,imaxp
 
+       if (.not. exit_3d(i,j,1)) then
 !        if (debug_jt(j) .and. i == itest) then
         if (in_debug_window .and. j == jdebug .and. i == itest) then
 	  debug_ijt = .true.
@@ -4879,6 +5278,10 @@ real, dimension(:,:), intent(out)  :: a1_v
 
 
      endif
+
+
+     endif ! exit_3d
+
      end do
      end do
 
@@ -4898,7 +5301,8 @@ subroutine mulsub_vect (ampt_v, arat_v, pr_v, q_v, sfcqf_v, sfcsf_v,&
 			disd_v, dise_v,  &
 			dmeml_v, elt_v, fre_v, qmes_v, tmes_v,    &
 			tpre_v, uceml_v,  &
-                     umeml_v, wmms_v, wmps_v, jabs, exit_flag)
+			umeml_v, wmms_v, wmps_v, jabs, exit_flag, &
+                      contot_v, emdi_v)
 
 !---------------------------------------------------------------------
 integer, dimension(:), intent(in)   :: jabs
@@ -4908,6 +5312,7 @@ real, dimension(:,:), intent(out)   :: ampt_v, amax_v,   &
 				       cmui_v, emei_v, tpre_v
 
 real, dimension(:,:,:), intent(in)  ::  pr_v, q_v, t_v
+real, dimension(:,:), intent(inout)  ::  contot_v, emdi_v
 real, dimension(:,:,:), intent(out) ::  cmus_v, cual_v, ecds_v, &
 		 eces_v, emds_v, emes_v, disa_v, disb_v, disc_v, &
 		 disd_v, dise_v, dmeml_v, elt_v, fre_v, qmes_v, &
@@ -5422,6 +5827,7 @@ logical, dimension(:,:), intent(in) :: exit_flag
 !
 !
 !     call establ(esc,tb)
+!     call escomp(tb, esc)
       call lookup_es(tb, esc)
       qcc=epsilo*esc/(pb-esc)
 !
@@ -5559,10 +5965,13 @@ logical, dimension(:,:), intent(in) :: exit_flag
 
 !     CALL ESTABL(ESH,TCC(ITH))
 !     CALL ESTABL(ESL,TCC(ITL))
+!     CALL escomp(TCC(ITH), ESH)
+!     CALL escomp(TCC(ITL), ESL)
       CALL lookup_es(TCC(ITH), ESH)
       CALL lookup_es(TCC(ITL), ESL)
       targ=tcc(it)
 !     call establ(es,targ)   
+!     call escomp(targ, es)   
       call lookup_es(targ, es)   
       rh=epsilo*esh/(ph+(epsilo-1.)*esh)
       rl=epsilo*esl/(pl+(epsilo-1.)*esl)
@@ -6803,6 +7212,7 @@ real, dimension(:,:,:), intent(out) :: tcc_v, wv_v, rcl_v, te_v, qe_v, &
       QRW=0.
       TCC(1)=TB
 !     CALL ESTABL(ES,TB)
+!     CALL escomp(TB, ES)
       CALL lookup_es(TB, ES)
       RSC(1)=ES*EPSILO/(PB-ES)
       PRECIP=0.
@@ -6830,6 +7240,7 @@ real, dimension(:,:,:), intent(out) :: tcc_v, wv_v, rcl_v, te_v, qe_v, &
       DO 1 k=1,ncap-1
       IF (k .NE. 1) GO TO 10
 !     CALL ESTABL(ES,TCC(k))
+!     CALL escomp(TCC(k), ES)
       CALL lookup_es(TCC(k), ES)
       RSC(k)=EPSILO*ES/(PB-ES)
       IH=0
@@ -6900,6 +7311,7 @@ real, dimension(:,:,:), intent(out) :: tcc_v, wv_v, rcl_v, te_v, qe_v, &
        ALOG(SIG(IH+1)/SIG(IH)))
  12   CONTINUE
 !     CALL ESTABL(ES,TCC(k))
+!     CALL escomp(TCC(k), ES)
       CALL lookup_es(TCC(k), ES)
       PP=P-DP
       DISP(k)=PP
@@ -6938,6 +7350,7 @@ real, dimension(:,:,:), intent(out) :: tcc_v, wv_v, rcl_v, te_v, qe_v, &
           IF (REST .LE. 0.) GO TO 4
 	  IF (WEST .LT. .01) GO TO 4
 !     CALL ESTABL(ESTEST,TCEST)
+!     CALL escomp(TCEST, ESTEST)
       CALL lookup_es(TCEST, ESTEST)
 	  QCEST=EPSILO*ESTEST/(P-ESTEST)
       TEST=TE(k+1)
@@ -7026,6 +7439,7 @@ real, dimension(:,:,:), intent(out) :: tcc_v, wv_v, rcl_v, te_v, qe_v, &
       IF (WV(k+1) .GT. WV(k)) TESTLC=.FALSE.
       end if
 !     CALL ESTABL(ES,TCC(k+1))
+!     CALL escomp(TCC(k+1), ES)
       CALL lookup_es(TCC(k+1), ES)
        RSC(k+1)=EPSILO*ES/(P-ES)
 
@@ -7325,6 +7739,7 @@ real, intent(in)     :: press
       GAM=.286*(1.-.26*Q)*TC/(P/      press       )
       TC=TC+GAM*DP/    press
 !     CALL ESTABL(ES,TC)
+!     CALL escomp(TC, ES)
       CALL lookup_es(TC, ES)
       RS=.622*ES/(PT-ES)
       IF (RS .LE. Q) PB=PT
@@ -7374,6 +7789,7 @@ real, intent(out) :: dtp
 !     calculate saturation specific humidity
 !
 !     call establ(es,t    )
+!     call escomp(t, es    )
       call lookup_es(t, es    )
       qs=epsilo_satad*es/(p-es)
       tv=t*(1.+.61*qs)
@@ -7462,6 +7878,7 @@ real, intent(out) :: dtdp, drdp, dwdp, rmu
       if (tc .lt. tfre) lat=latvap+latice
 !
 !     call establ(es,tc)
+!     call escomp(tc, es)
       call lookup_es(tc, es)
       rsc=epsilo*es/(p+(epsilo-1.)*es)
        htve=te   *(1.+.609*qe   )
@@ -7548,6 +7965,7 @@ real, intent(out) :: dtdp, drdp, dwdp, rmu
         (dwdp .gt. 0.) ) dwdp=0.
       west=wv+dwdp*dp
 !     call establ(es,test)
+!     call escomp(test, es)
       call lookup_es(test, es)
 !      rsc=epsilo*es/(p-es)
       rsc=epsilo*es/(p+(epsilo-1.)*es)
@@ -7893,6 +8311,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
          pctm=pc2+omer*tme
       ta=t(jk)+tpri
 !  call establ(es,ta)
+!  call escomp(ta, es)
 	  call lookup_es(ta, es)
 	  qsat=epsilo*es/(pr(jk)+(epsilo-1.)*es)
 	  q3=qsat-tempq(jk)
@@ -7917,6 +8336,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             if (pr(jk) .lt. pztm) go to 21
             te=t(jk)+tpri
 !           call establ(es,te)
+!           call escomp(te, es)
             call lookup_es(te, es)
             qs=epsilo*es/(pr(jk)+(epsilo-1.)*es)
             jsave=jk
@@ -7970,6 +8390,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             pre=pr(jk)
 	       te=t(jk)+tpri
 !       call establ(es,te)
+!       call escomp(te, es)
 	       call lookup_es(te, es)
                tempqa(jk)=epsilo*es/(pr(jk)+(epsilo-1.)*es)
 	       if (qref .ge. tempqa(jk)) then
@@ -7979,6 +8400,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
               -pr(jkm))
             else if (jk .eq. jsave) then
 !              call establ(es,tep)
+!              call escomp(tep, es)
                call lookup_es(tep, es)
                tempqa(jkp)=epsilo*es/(pr(jkp)+(epsilo-1.)*   &
               es)
@@ -7987,6 +8409,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
               qref=tempqa(jkp)
             else
 !              call establ(es,tep)
+!              call escomp(tep, es)
                call lookup_es(tep, es)
                tempqa(jkp)=epsilo*es/(pr(jkp)+(epsilo-1.)*es)
                cmu(jk)=-omv(jk)*(tempqa(jkp)-tempqa(jkm))/(pr(jkp)   &
@@ -8056,6 +8479,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
          if (pr(jk) .gt. pzm) go to 43
          tmu=t(jk)+tpri
 !        call establ(es,tmu)
+!        call escomp(tmu, es)
          call lookup_es(tmu, es)
          qmu=epsilo*es/(pr(jk)+(epsilo-1.)*es)
          hflux=omv(jk)*(cpair_mul*tpri+lat*(qmu-q(jk)))
@@ -8108,6 +8532,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
 !
          targ=t(jk)
 !        call establ(es,targ)
+!        call escomp(targ, es)
          call lookup_es(targ, es)
          qs=epsilo*es/(pr(jk)+(epsilo-1.)*es)
          c1=epsilo*lat*es/(pr(jk)*rh2o*(t(jk)**2))
@@ -8117,6 +8542,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
          tempt(jk)=t(jk)+tprimd
          targ=tempt(jk)
 !        call establ(es,targ)
+!        call escomp(targ, es)
          call lookup_es(targ, es)
          tempqa(jk)=c2*es*epsilo/(pr(jk)+(epsilo-1.)*es)
 
@@ -8153,6 +8579,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             call polat(q,pr,qb,pb, debug_ijt)
             call polat(t,pr,tb,pb, debug_ijt)
 !           call establ(es,tb)
+!           call escomp(tb, es)
             call lookup_es(tb, es)
             qsb=epsilo*es/(pb+(epsilo-1.)*es)
             tprimd=hfmin/omd
@@ -8166,6 +8593,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             fjk=ampt*omd*(tempqa(jk)-q(jk))
             targ=tb+tprimd
 !           call establ(es,targ)
+!           call escomp(targ, es)
             call lookup_es(targ, es)
             qbm=.7*epsilo*es/(pb+(epsilo-1.)*es)
             fjkb=ampt*omd*(qbm-qb)
@@ -8177,6 +8605,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             call polat(q,pr,qmd,pmd, debug_ijt)
             call polat(t,pr,tmd,pmd, debug_ijt)
 !           call establ(es,tmd)
+!           call escomp(tmd, es)
             call lookup_es(tmd, es)
             qsmd=epsilo*es/(pmd+(epsilo-1.)*es)
             c1=epsilo*lat*es/(pmd*rh2o*(tmd**2))
@@ -8187,6 +8616,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             emt(jk)=fjkmd*wa+fjkm*wb
             targ=tmd+tprimd
 !           call establ(es,targ)
+!           call escomp(targ, es)
             call lookup_es(targ, es)
             qmmd=epsilo*es/(pmd+(epsilo-1.)*es)
             fjkm=ampt*omd*(tempqa(jk-1)-q(jk-1))
@@ -8812,6 +9242,8 @@ logical,      intent(in) :: debug_ijt
 !
 !     call establ(es1,tc1)
 !     call establ(es2,tc2)
+!     call escomp(tc1, es1)
+!     call escomp(tc2, es2)
       call lookup_es(tc1, es1)
       call lookup_es(tc2, es2)
       rs1=ep*es1/(p1-es1)
@@ -9064,29 +9496,40 @@ real,     intent(out)  :: ta
 !     On Output:
 !        ta    adiabatic equivalent temperature
 !
-
+       integer :: k
 
 !
 !     define constants
 !
 !     cappa=rair_mul/cpair_mul
 !
+      pstop = 4.0E03
       ta=t
 !     do 1 i=1,nc
-      do 1 i=1,ncap
-      pr=p+(i-1)*dp
-      if (pr .le. 0.) go to 2
+!     do 1 i=1,ncap
+      do k=1,ncap
+      pr=p+(k-1)*dp
+      if (pr .le. 0.) exit      
+!! CHANGE in connecting to fez
+      if ( pr < pstop) exit       
       te=t*((pr/p)**cappa)
 !     call establ(es,te)
+!     if (te > 373.0 .or. te < 114.0) then
+!       print *, 'get_my_pe, i, t, te, p, pr', get_my_pe(), i,   &
+!                                       t, te, p, pr
+!       go to 2
+!     call escomp(te, es)
       call lookup_es(te, es)
       qe=epsilo*es/(p-es)
       if (q .ge. qe) then
 !        ta=t*exp(latvap*q/(te*cpair_mul))
          ta=t*exp(lat*q/(te*cpair_mul))
-         go to 2
+!        go to 2
+         exit
       end if
- 1    continue
- 2    continue
+      end do
+!1    continue
+!2    continue
 
 end subroutine tae
 
@@ -9579,7 +10022,7 @@ integer,                intent(in) :: jsg
       write(unit)  a1_3d            
       write(unit)  amax_3d      
       write(unit)  amos_3d            
-      write(unit)  ampta1_3d 
+      write(unit)  ampta1_2d 
       write(unit)  rcoa1_3d     
 
       call close_file (unit)
@@ -9600,6 +10043,7 @@ subroutine donner_deep_end
 !--------------------------------------------------------------------
 
        integer :: unit, next(2), dt(2), cal
+       type(time_type) :: Time_remaining
 
 !-------------------------------------------------------------------
 !    open unit for restart file
@@ -9615,8 +10059,19 @@ subroutine donner_deep_end
        if (get_my_pe() == 0) then
 	 write (unit) restart_versions(size(restart_versions))
 
-	 call get_time (Next_donner_deep_time,next(1), next(2) )
+!!! ADD THIS
+         Time_remaining = Next_donner_deep_time - Time_current
+! call get_time (Next_donner_deep_time,next(1), next(2) )
+	 call get_time (Time_remaining,next(1), next(2) )
+! print *, 'time_remaining:', next(1), next(2)
+
+!        call get_time (Time_current         ,next(1), next(2) )
+! print *, 'current time     :', next(1), next(2)
+!        call get_time (Next_donner_deep_time,next(1), next(2) )
+! print *, 'next time     :',  next(1), next(2)
+
 	 call get_time (Donner_deep_timestep, dt(1), dt(2))
+! print *, 'donner dt     :' , dt(1),   dt(2)
 	 cal = get_calendar_type()
 	 write (unit) next, dt, cal
        endif
@@ -9630,6 +10085,20 @@ subroutine donner_deep_end
       call write_data (unit, qint_3d )
       call write_data (unit, omint_3d)
       call write_data (unit, tprea1_3d)
+
+      !write out donner cloud variables
+      call write_data(unit, cell_cloud_frac  )
+      call write_data(unit, cell_liquid_amt  )
+      call write_data(unit, cell_liquid_size )
+      call write_data(unit, cell_ice_amt     )
+      call write_data(unit, cell_ice_size    )
+ 
+      call write_data(unit, meso_cloud_frac  )
+      call write_data(unit, meso_liquid_amt  )
+      call write_data(unit, meso_liquid_size )
+      call write_data(unit, meso_ice_amt     )
+      call write_data(unit, meso_ice_size    )
+      call write_data(unit, nsum             )
 
 !-------------------------------------------------------------------
 !    close restart file unit.
@@ -9695,8 +10164,583 @@ end subroutine write_restart_donner_deep
 
 !##################################################################
 
+subroutine donner_deep_sum( is, js,  &  
+                            xice_3d, ampta1_2d, dgeice_3d, &
+                          cual_3d, cuql_3d, cuqi_3d)
 
- SUBROUTINE STRAT_CLOUD_DONNER_TEND (Dmeso, qlmeso, qimeso, &
+!------------------------------------------------------------------
+! this subroutine puts into global storage the fields needed by the
+! radiation scheme, after cleaning them up a little bit by checks
+! put in by D. Schwarzkopf and L. Donner.
+!------------------------------------------------------------------
+
+integer, intent(in)                   :: is,js
+real, dimension(:,:), intent(inout) :: ampta1_2d                      
+real, dimension(:,:,:), intent(inout) :: xice_3d, dgeice_3d, cual_3d, &
+                                         cuql_3d, cuqi_3d
+
+!------------------------------------------------------------------
+! declare local variables
+
+
+integer :: k, idim, jdim, kdim, unit
+integer :: ie, je
+
+real, dimension(size(xice_3d,1),size(xice_3d,2),size(xice_3d,3)) :: &
+      meso_area
+   
+!------------------------------------------------------------------
+! code
+		  
+
+!-------------------------------------------------------------------
+! compute useful integers, the dimensions of the array (idim,jdim,kdim)
+! and the ending integers
+
+  idim = SIZE(xice_3d,1)
+  jdim = SIZE(xice_3d,2)
+  kdim = SIZE(xice_3d,3)
+
+  ie = is + idim - 1
+  je = js + jdim - 1
+
+
+!-------------------------------------
+! increment counter
+
+  if (do_average) then
+       nsum(is:ie,js:je)   =  nsum(is:ie,js:je)   +  1
+  else
+       nsum(is:ie,js:je)   =  1
+  end if
+
+!      unit = open_file ('fort.149', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!        write (unit,*) ' donner_deep_1'
+! idim = size(nsum,1)
+! jdim = size(nsum,2)
+! write (unit,*) idim,jdim,is,ie,js,je
+! write (unit,*) nsum
+!      call close_file (unit)
+
+!================================
+!
+!   DEFINE MESOSCALE PROPERTIES
+!
+!================================
+  
+
+!-------------------------------------------
+! create 3d meso anvil area 
+!
+ 
+  do k=1,nlev  
+     where (xice_3d(:,:,k) == 0.0)
+            meso_area(:,:,k) =  0.0
+     elsewhere
+            meso_area(:,:,k) =  max(0.0,ampta1_2d(:,:))
+     endwhere
+  enddo  
+
+!------------------------------------
+! define mesoscale anvil area
+!
+    
+  if (do_average) then
+     meso_cloud_frac(is:ie,js:je,:) = &
+     meso_cloud_frac(is:ie,js:je,:) + meso_area(:,:,:)
+  else
+     meso_cloud_frac(is:ie,js:je,:) = meso_area(:,:,:)
+  end if
+
+!------------------------------------
+! define mesoscale liquid amt
+!
+
+  if (do_average) then 
+       meso_liquid_amt(is:ie,js:je,:) = &
+       meso_liquid_amt(is:ie,js:je,:) + 0.0
+  else
+       meso_liquid_amt(is:ie,js:je,:) = 0.0
+  end if
+
+!------------------------------------
+! define mesoscale liquid size
+!
+ 
+  if (do_average) then 
+        meso_liquid_size(is:ie,js:je,:) = &
+	meso_liquid_size(is:ie,js:je,:) + 0.0
+  else
+        meso_liquid_size(is:ie,js:je,:) = 0.0
+  end if
+  
+!------------------------------------
+! define mesoscale ice amt
+!
+ 
+  if (do_average) then 
+        meso_ice_amt(is:ie,js:je,:) = &
+	meso_ice_amt(is:ie,js:je,:) + xice_3d(:,:,:)
+  else
+        meso_ice_amt(is:ie,js:je,:) = xice_3d(:,:,:)
+  end if
+
+!------------------------------------
+! define mesoscale ice size
+!
+ 
+  if (do_average) then 
+        meso_ice_size(is:ie,js:je,:) = &
+	meso_ice_size(is:ie,js:je,:) + dgeice_3d(:,:,:)
+  else
+        meso_ice_size(is:ie,js:je,:) = dgeice_3d(:,:,:)
+  end if
+ 
+
+!================================
+!
+!   DEFINE CELL PROPERTIES
+!
+!================================
+  
+!------------------------------------
+! define cell area
+!
+ 
+  if (do_average) then
+        cell_cloud_frac(is:ie,js:je,:) = &
+        cell_cloud_frac(is:ie,js:je,:) + &
+             max( 0.0, cual_3d(:,:,:) - meso_area(:,:,:) )
+  else
+        cell_cloud_frac(is:ie,js:je,:) = &
+             max( 0.0, cual_3d(:,:,:) - meso_area(:,:,:) )
+  end if
+  
+!------------------------------------
+! define cell liquid amt
+!
+  if (do_average) then 
+        cell_liquid_amt(is:ie,js:je,:) = &
+	cell_liquid_amt(is:ie,js:je,:) + cuql_3d(:,:,:)
+  else
+        cell_liquid_amt(is:ie,js:je,:) = cuql_3d(:,:,:)
+  end if
+  
+!------------------------------------
+! define cell liquid size
+!
+ 
+  if (do_input_cell_liquid_size) then
+  
+  
+    if (do_average) then  
+       cell_liquid_size(is:ie,js:je,:) = &
+       cell_liquid_size(is:ie,js:je,:) + cell_liquid_eff_diam_input
+    else  
+       cell_liquid_size(is:ie,js:je,:) = cell_liquid_eff_diam_input
+    end if
+    
+  else if (do_bower_cell_liquid_size) then
+  
+    if (do_average) then 
+       cell_liquid_size(is:ie,js:je,:) = &
+       cell_liquid_size(is:ie,js:je,:) + cell_liquid_eff_diam
+    else 
+       cell_liquid_size(is:ie,js:je,:) = cell_liquid_eff_diam
+    end if
+
+  endif
+
+!------------------------------------
+! define cell ice amt
+!
+ 
+  if (do_average) then
+     cell_ice_amt(is:ie,js:je,:) = &
+     cell_ice_amt(is:ie,js:je,:) + cuqi_3d(:,:,:)
+  else
+     cell_ice_amt(is:ie,js:je,:) = cuqi_3d(:,:,:)
+  end if
+  
+!------------------------------------
+! define cell ice size
+!
+  
+  if (do_default_cell_ice_size) then
+
+     if (do_average) then
+       cell_ice_size(is:ie,js:je,:) = &
+       cell_ice_size(is:ie,js:je,:) + cell_ice_geneff_diam_def
+     else
+       cell_ice_size(is:ie,js:je,:) = cell_ice_geneff_diam_def
+     end if
+      
+  else if (do_input_cell_ice_size) then
+     
+     if (do_average) then       
+       cell_ice_size(is:ie,js:je,:) = &
+       cell_ice_size(is:ie,js:je,:) + cell_ice_geneff_diam_input
+     else
+       cell_ice_size(is:ie,js:je,:) = cell_ice_geneff_diam_input
+     end if
+     
+  endif
+
+
+!--------------------------------------------
+
+end subroutine donner_deep_sum
+
+
+
+!##################################################################
+
+
+subroutine donner_deep_avg ( is, js,         cell_cloud_frac_out, &
+                       cell_liquid_amt_out,  cell_liquid_size_out,&
+                       cell_ice_amt_out,     cell_ice_size_out,   &
+                       meso_cloud_frac_out,  meso_liquid_amt_out, & 
+		       meso_liquid_size_out, meso_ice_amt_out,    &
+		       meso_ice_size_out)
+
+!------------------------------------------------------------------
+! this subroutine retrieves the variables from Donner convection
+! that are needed by the radiation scheme.
+!------------------------------------------------------------------
+
+integer, intent(in)                    :: is,js
+real,    intent(out), dimension(:,:,:) :: cell_cloud_frac_out,        &
+         cell_liquid_amt_out, cell_liquid_size_out, cell_ice_amt_out, &
+	 cell_ice_size_out, meso_cloud_frac_out, meso_liquid_amt_out, &
+	 meso_liquid_size_out, meso_ice_amt_out, meso_ice_size_out
+
+   
+!------------------------------------------------------------------
+! local variables
+		  
+
+integer :: ie, je, num, k
+integer :: unit
+real,   dimension(size(cell_cloud_frac_out,1), &
+                  size(cell_cloud_frac_out,2))   :: inv_nsum
+   
+!------------------------------------------------------------------
+! code
+   
+   
+!-------------
+! error check
+
+  if (size(cell_cloud_frac_out,3) .ne. size(cell_cloud_frac,3)) &
+      call error_mesg (  'donner_deep_avg in donner_deep_mod',  &
+                         'input argument has the wrong size',FATAL)
+
+!------------------------
+! compute useful integers
+   	  
+
+  ie = is + size(cell_cloud_frac_out,1) - 1
+  je = js + size(cell_cloud_frac_out,2) - 1
+  
+!--------------------------
+! find number of bad points
+  
+!      unit = open_file ('fort.149', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!        write (unit,*) ' donner_deep'
+! idim = size(nsum,1)
+! jdim = size(nsum,2)
+! write (unit,*) idim,jdim,is,ie,js,je
+! write (unit,*) nsum
+!      call close_file (unit)
+
+
+  num = count(nsum(is:ie,js:je) == 0)
+
+  if (num > 0) then
+  
+       !--------------------
+       ! print error message
+       
+       call error_mesg ( 'donner_deep_avg in donner_deep_mod', &
+                         'nsum has some zero entries', FATAL)
+       
+  else
+  
+      !---------------------------------------
+      ! average data
+      
+      inv_nsum = 1. / float(nsum(is:ie,js:je))
+      do k = 1, size(cell_cloud_frac_out,3)
+        cell_cloud_frac_out(:,:,k) = cell_cloud_frac(is:ie,js:je,k) * inv_nsum
+        cell_liquid_amt_out(:,:,k) = cell_liquid_amt(is:ie,js:je,k) * inv_nsum
+        cell_liquid_size_out(:,:,k) = cell_liquid_size(is:ie,js:je,k) * inv_nsum
+        cell_ice_amt_out(:,:,k) = cell_ice_amt(is:ie,js:je,k) * inv_nsum
+        cell_ice_size_out(:,:,k) = cell_ice_size(is:ie,js:je,k) * inv_nsum
+        meso_cloud_frac_out(:,:,k) = meso_cloud_frac(is:ie,js:je,k) * inv_nsum
+        meso_liquid_amt_out(:,:,k) = meso_liquid_amt(is:ie,js:je,k) * inv_nsum
+        meso_liquid_size_out(:,:,k) = meso_liquid_size(is:ie,js:je,k) * inv_nsum
+        meso_ice_amt_out(:,:,k) = meso_ice_amt(is:ie,js:je,k) * inv_nsum
+        meso_ice_size_out(:,:,k) = meso_ice_size(is:ie,js:je,k) * inv_nsum
+      enddo
+     
+      !---------------------------
+      ! dan's checks to eliminate 
+      ! unreasonable states
+      
+      where (cell_ice_size_out .ge. 13.3 .and. &
+             cell_ice_size_out .le. 18.6)
+             cell_ice_size_out   =  18.6
+      end where
+      where (cell_cloud_frac_out  > 0.0 .and.  &
+             cell_liquid_amt_out == 0.0 .and.  &
+	     cell_ice_amt_out    == 0.0)
+             cell_cloud_frac_out  = 0.0
+      end where
+      where (cell_cloud_frac_out == 0.0 .and.   &
+             cell_liquid_amt_out  > 0.0)
+             cell_liquid_amt_out  = 0.0
+      end where
+      where (cell_cloud_frac_out == 0.0 .and.   &
+             cell_ice_amt_out     > 0.0)
+             cell_ice_amt_out     = 0.0
+      end where
+
+      where (meso_ice_size_out .ge. 13.3 .and. &
+             meso_ice_size_out .le. 18.6)
+             meso_ice_size_out   =  18.6
+      end where
+      where (meso_cloud_frac_out  > 0.0 .and.  &
+             meso_liquid_amt_out == 0.0 .and.  &
+	     meso_ice_amt_out    == 0.0)
+             meso_cloud_frac_out  = 0.0
+      end where
+      where (meso_cloud_frac_out == 0.0 .and.   &
+             meso_liquid_amt_out  > 0.0)
+             meso_liquid_amt_out  = 0.0
+      end where
+      where (meso_cloud_frac_out == 0.0 .and.   &
+             meso_ice_amt_out     > 0.0)
+             meso_ice_amt_out     = 0.0
+      end where
+       
+  endif
+
+ 
+!-------------------------------------
+! zero out allocated storage variables
+  
+  nsum            (is:ie,js:je)   = 0
+  cell_cloud_frac (is:ie,js:je,:) = 0.0
+  cell_liquid_amt (is:ie,js:je,:) = 0.0
+  cell_liquid_size(is:ie,js:je,:) = 0.0
+  cell_ice_amt    (is:ie,js:je,:) = 0.0
+  cell_ice_size   (is:ie,js:je,:) = 0.0
+  meso_cloud_frac (is:ie,js:je,:) = 0.0
+  meso_liquid_amt (is:ie,js:je,:) = 0.0
+  meso_liquid_size(is:ie,js:je,:) = 0.0
+  meso_ice_amt    (is:ie,js:je,:) = 0.0
+  meso_ice_size   (is:ie,js:je,:) = 0.0
+       
+end subroutine donner_deep_avg
+
+
+!##################################################################
+
+
+subroutine cell_liquid_size_comp(pfull, temold, cuql_3d, land)
+
+!---------------------------------------------------
+! This subroutine calculates the effective radii of
+! liquid cloud drops in cumulus clouds following
+! the prescription of Bower et al.
+!---------------------------------------------------
+
+real, dimension(:,:,:), intent(in)           :: pfull, temold, cuql_3d
+real, dimension(:,:)  , intent(in), optional :: land
+
+
+   
+!------------------------------------------------------------------
+! local variables
+		  
+integer      :: i, j, k, idim, jdim, kdim
+real         :: pie      ! pi
+
+real, dimension (size(pfull,1),size(pfull,2)) ::   &
+                          cell_pbase, temp_cell_pbase, &
+                          cell_land_ref_delp, cell_ocean_ref_delp
+                                       
+real, dimension (size(pfull,1),size(pfull,2),size(pfull,3)) ::   &
+                          cell_liquid_eff_diam_land, cell_delp, &
+                          cell_liquid_eff_diam_ocean
+     integer :: unit
+
+!------------------------
+! code
+
+      idim = SIZE(cuql_3d,1)
+      jdim = SIZE(cuql_3d,2)
+      kdim = SIZE(cuql_3d,3)
+      pie = 4.0e+00*ATAN(1.0E+00)  ! pi
+
+!       compute liquid effective diameter using formulation of
+!       Bower et al (JAS, 1994)
+!
+!
+!   stage 1:       compute the pressure (cell_pbase) of the base of
+!              cell clouds and the difference (cell_delp) between
+!              (cell_pbase) and the pressure at full levels above
+!              cell_pbase)( so long as a cell cloud exists).
+!                   also compute the pressure difference between
+!              (cell_pbase) and a point 500 and 1500 meters above 
+!               the cloud base pressure (cell_land_delp and 
+!              cell_ocean_delp, respectively). obtain the weighted
+!   stage 2  :      compute separately for the land and ocean portion
+!              of the grid box:
+!              if (cell_delp) is greater than (cell_land_delp(say))
+!              use specified effective radius. otherwise derive 
+!              effective radius using formula.
+!   stage 3  : the effective diameter is twice the weighted (by land/
+!              ocean fraction) effective radius.
+!
+!   stage 1
+
+       cell_pbase = pfull(:,:,1)
+       temp_cell_pbase = temold(:,:,1)
+
+       do i=1,idim
+       do j=1,jdim
+       do k=nlev,1,-1
+         if (cuql_3d(i,j,k) >= 1.0e-11 )  then
+	   cell_pbase(i,j) = pfull(i,j,k)
+	   temp_cell_pbase(i,j) = temold(i,j,k)
+	   exit
+         end if
+       end do
+       end do
+       end do
+
+       do k=1,nlev
+!         cell_delp(:,:,k) = pfull(:,:,k) - cell_pbase(:,:)
+          cell_delp(:,:,k) = cell_pbase(:,:) - pfull(:,:,k)
+       enddo
+
+!      cell_land_ref_delp = cell_pbase*                     &
+!              EXP( -(delz_land*gravm/(rair*temp_cell_pbase)) ) 
+       cell_land_ref_delp = cell_pbase*(1.0 -               &
+               EXP( -(delz_land*gravm/(rair*temp_cell_pbase)) ))
+!      cell_ocean_ref_delp = cell_pbase*                     &
+!              EXP( -(delz_ocean*gravm/(rair*temp_cell_pbase)) )
+       cell_ocean_ref_delp = cell_pbase*(1.0 -               &
+               EXP( -(delz_ocean*gravm/(rair*temp_cell_pbase)) ))
+
+!      unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!        write (unit,*) ' donner_deep,cell_liquid_size_comp,stage 1'
+!        write (unit,*) idim,jdim,kdim
+!        write (unit,*) ' cuql_3d'
+! write (unit,*) cuql_3d
+!        write (unit,*) ' cell_land_ref_delp'
+! write (unit,*) cell_land_ref_delp
+!        write (unit,*) ' cell_ocean_ref_delp'
+! write (unit,*) cell_ocean_ref_delp
+!        write (unit,*) ' land'
+! write (unit,*) land
+!        write (unit,*) ' cell_delp'
+! write (unit,*) cell_delp
+!        write (unit,*) ' cell_pbase'
+! write (unit,*) cell_pbase
+!        write (unit,*) ' pfull'
+! write (unit,*) pfull
+!      call close_file (unit)
+!  stage 2
+! set "default" land, ocean diameters to zero. these will be
+! overwritten whenever the cell liquid conc (cuql_3d)  >= 1.0E-11
+
+	cell_liquid_eff_diam_land = 0.0
+	cell_liquid_eff_diam_ocean = 0.0
+
+       do k = 1,nlev
+       do j=1,jdim
+       do i=1,idim
+       if (cuql_3d(i,j,k) >= 1.0e-11) then
+!      unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!        write (unit,*) ' cuql_3d large enough', i,j,k
+!      call close_file (unit)
+         if (land(i,j) > 0.0) then
+!   do land calculation only if land > 0
+           if (cell_delp(i,j,k) >= cell_land_ref_delp(i,j)) then 
+!      unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!        write (unit,*) ' land,cell_delp large enof',r_conv_land
+!      call close_file (unit)
+            cell_liquid_eff_diam_land(i,j,k) = 2.0*r_conv_land
+           else
+!      unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!        write (unit,*) ' land,cell_delp  too small'
+!      call close_file (unit)
+	    cell_liquid_eff_diam_land(i,j,k) =  2.0 *  (1.0e6) *      &
+	     (3.0*(pfull(i,j,k)/(rair*temold(i,j,k)))*cuql_3d(i,j,k) / &
+	      (4*pie*rho_water*N_land) ) ** (1./3.)      
+	   endif
+         endif
+         if (land(i,j) < 1.0) then
+!   do ocean calculation only if land < 1.0
+           if (cell_delp(i,j,k) >= cell_ocean_ref_delp(i,j)) then 
+            cell_liquid_eff_diam_ocean(i,j,k) = 2.0*r_conv_ocean
+           else
+	    cell_liquid_eff_diam_ocean(i,j,k) =  2.0 *  (1.0e6) *     &
+	     (3.0*(pfull(i,j,k)/(rair*temold(i,j,k)))*cuql_3d(i,j,k) / &
+	      (4*pie*rho_water*N_ocean) ) ** (1./3.)    
+	   endif
+	 endif
+	endif
+	enddo
+	enddo
+	enddo
+
+
+!  stage 3
+       do k = 1,nlev
+       do i=1,idim
+       do j=1,jdim
+       cell_liquid_eff_diam(i,j,k) =                    &
+            land(i,j)*        cell_liquid_eff_diam_land(i,j,k)   + &
+            (1.0 - land(i,j))*cell_liquid_eff_diam_ocean(i,j,k) 
+       enddo
+       enddo
+       enddo
+
+!      cell_liquid_eff_diam = 10.0
+       where (cuql_3d == 0.0)
+         cell_liquid_eff_diam = 10.0
+       end where
+       where (cell_liquid_eff_diam < 8.401E+00)
+         cell_liquid_eff_diam = 8.401E+00
+       end where
+       where (cell_liquid_eff_diam > 33.199E+00)
+         cell_liquid_eff_diam = 33.199E+00
+       end where
+       
+!      unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!        write (unit,*) ' donner_deep,cell_liquid_size_comp'
+!        write (unit,*) ' cell_liquid_eff_diam'
+! write (unit,*) cell_liquid_eff_diam
+!        write (unit,*) ' cell_liquid_eff_diam_land'
+! write (unit,*) cell_liquid_eff_diam_land
+!        write (unit,*) ' cell_liquid_eff_diam_ocean'
+! write (unit,*) cell_liquid_eff_diam_ocean
+!      call close_file (unit)
+end subroutine cell_liquid_size_comp
+
+!#######################################################################
+
+ subroutine strat_cloud_donner_tend (Dmeso, qlmeso, qimeso, &
          Mtot, phalf, ql, qi, cf, qltend, qitend, cftend)
 
 !-----------------------------------------------------------------------
@@ -9731,27 +10775,30 @@ end subroutine write_restart_donner_deep
    real, intent(out), dimension(:,:,:) :: qltend, qitend,cftend
 !-----------------------------------------------------------------------
    integer kdim
-!ljd
-    integer kdima
-    integer kdimb
-!ljd
+   integer unit
    real, dimension(size(Dmeso,1),size(Dmeso,2),size(Dmeso,3)) :: mass    ! kg
+   real, dimension(size(cf,1),size(cf,2),size(cf,3)) :: cffix
+   real :: cffmax
 !  air/m2 of each level
    integer k
    integer kk
 !-----------------------------------------------------------------------
 
    kdim = size(Dmeso,3)
-!ljd
-   kdima=size(Dmeso,1)
-   kdimb=size(Dmeso,2)
-!ljd
    mass(:,:,1:kdim) = (phalf(:,:,2:kdim+1)-phalf(:,:,1:kdim))/gravm
 
-   qltend=0.
-   qitend=0.
-   cftend=0.
+!   qltend=0.
+!   qitend=0.
+!   cftend=0.
     
+!       unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!         write (unit,*) ' donner_deep,strat_cloud_donner_tend_1'
+!         write (unit,*) ' qltend'
+!         write (unit,*) qltend
+!         write (unit,*) ' qitend'
+!         write (unit,*) qitend
+!       call close_file (unit)
    !do incoming compensating subsidence fluxes from above
    qltend(:,:,2:kdim)=qltend(:,:,2:kdim) +  Mtot(:,:,2:kdim) * &
                       0.5*(ql(:,:,1:kdim-1)+ql(:,:,2:kdim))/mass(:,:,2:kdim)
@@ -9759,21 +10806,6 @@ end subroutine write_restart_donner_deep
                       0.5*(qi(:,:,1:kdim-1)+qi(:,:,2:kdim))/mass(:,:,2:kdim)
    cftend(:,:,2:kdim)=cftend(:,:,2:kdim) +  Mtot(:,:,2:kdim) * &
                       0.5*(cf(:,:,1:kdim-1)+cf(:,:,2:kdim))/mass(:,:,2:kdim)
-!ljd
-!  do ilon=1,kdima
-! do jlat=1,kdimb
-!		      do k=1,kdim
-!  if (qimeso(ilon,jlat,k) .ge. 1.0e-09) then
-!   kk=6
-!  write(6,*) 'kk,qltend,qitend,cftend= ',kk,qltend(ilon,jlat,kk), &
-!  qitend(ilon,jlat,kk), cftend(ilon,jlat,kk)
-!  go to 11
-!  end if
-!  end do
-!  end do
-!  end do
-! 11  continue
-!ljd   
    !do outgoing compensating subsidence fluxes out the bottom
    qltend(:,:,1:kdim-1)=qltend(:,:,1:kdim-1) -  Mtot(:,:,2:kdim) * &
                       0.5*(ql(:,:,1:kdim-1)+ql(:,:,2:kdim))/mass(:,:,1:kdim-1)
@@ -9781,70 +10813,44 @@ end subroutine write_restart_donner_deep
                       0.5*(qi(:,:,1:kdim-1)+qi(:,:,2:kdim))/mass(:,:,1:kdim-1)
    cftend(:,:,1:kdim-1)=cftend(:,:,1:kdim-1) -  Mtot(:,:,2:kdim) * &
                       0.5*(cf(:,:,1:kdim-1)+cf(:,:,2:kdim))/mass(:,:,1:kdim-1)
-!ljd
-!  do ilon=1,kdima
-! do jlat=1,kdimb
-!  do k=1,kdim
-!  if (qimeso(ilon,jlat,k) .ge. 1.0e-09) then
-!   kk=6
-!  write(6,*) 'kk,qltend,qitend,cftend= ',kk,qltend(ilon,jlat,kk), &
-!  qitend(ilon,jlat,kk), cftend(ilon,jlat,kk)
-!  go to 12
-!  end if
-!  end do
-!  end do
-!  end do
-!  12 continue
-!ljd   
    !do detrainment from meso region
    qltend(:,:,:) = qltend(:,:,:) + Dmeso(:,:,:)*qlmeso(:,:,:)
    qitend(:,:,:) = qitend(:,:,:) + Dmeso(:,:,:)*qimeso(:,:,:)
    where ((qlmeso+qimeso) .ge. 1.e-10)
    cftend(:,:,:) = cftend(:,:,:) + Dmeso(:,:,:)
    end where
-!ljd
-!  do ilon=1,kdima
-! do jlat=1,kdimb
-!  do k=1,kdim
-!  if (qimeso(ilon,jlat,k) .ge. 1.0e-09) then
-!   kk=6
-!  write(6,*) 'kk,qltend,qitend,cftend= ',kk,qltend(ilon,jlat,kk), &
-!  qitend(ilon,jlat,kk), cftend(ilon,jlat,kk)
-!  go to 13
-!  end if
-!  end do
-!  end do
-!  end do
-! 13 continue
-!ljd
-!ljd
-!  do ilon=1,kdima
-! do jlat=1,kdimb
-! do k=1,kdim
-!  if (qimeso(ilon,jlat,k) .ge. 1.0e-09) then
-!  do kk=1,kdim
-!  write(6,*) 'kk,dmeso,qimeso= ',kk,dmeso(ilon,jlat,kk),  &
-!  qimeso(ilon,jlat,kk)
-!  write(6,*) 'kk,phalf,mtot= ',kk,phalf(ilon,jlat,kk),    &
-!  mtot(ilon,jlat,kk)
-!  write(6,*) 'kk,ql,qi,cf= ',kk,ql(ilon,jlat,kk),qi(ilon,jlat,kk), &
-!  cf(ilon,jlat,kk)
-!  write(6,*) 'kk,qltend,qitend,cftend= ',qltend(ilon,jlat,kk), &
-!  qitend(ilon,jlat,kk), cftend(ilon,jlat,kk)
-!  end do
-!  call error_mesg('strat_CLOUD_DONNER_TEND','diag stop',FATAL)
-!  end if
-!  end do
-!  end do
-!  end do
-!ljd
       
+!       unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+!         write (unit,*) ' donner_deep,strat_cloud_donner_tend_2'
+!         write (unit,*) ' ql'
+!         write (unit,*) ql
+!         write (unit,*) ' qi'
+!         write (unit,*) qi
+!         write (unit,*) ' cf'
+!         write (unit,*) cf
+!         write (unit,*) ' qltend'
+!         write (unit,*) qltend
+!         write (unit,*) ' qitend'
+!         write (unit,*) qitend
+!       call close_file (unit)
+	where (cf > 1.00 .or. cf < 0.0)
+	   cffix = 100.
+        else where
+	   cffix = 1.0
+        end where
+	cffmax = maxval(cffix)
+!if (cffmax > 5.0) then
+!       unit = open_file ('fort.152', action='append',threading='multi')
+!      call print_version_number (unit, 'microphys_rad', version_number)
+! write (unit,*) ' cf out of range, cffmax = ', cffmax
+!       call close_file (unit)
+!       endif
 !-----------------------------------------------------------------------
 
-END SUBROUTINE STRAT_CLOUD_DONNER_TEND
+end subroutine strat_cloud_donner_tend
 
-
-
+!##################################################################
 
 	  end module donner_deep_mod
 

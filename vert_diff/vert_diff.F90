@@ -9,11 +9,14 @@ module vert_diff_mod
 !
 !=======================================================================
 
-use   constants_mod, only:  grav, rdgas, rvgas, cp
+use   constants_mod, only:  GRAV, RDGAS, RVGAS, CP
 
-use   utilities_mod, only:  error_mesg, FATAL, file_exist, &
-                            check_nml_error, open_file,    &
-                            get_my_pe, close_file
+use         fms_mod, only:  error_mesg, FATAL, uppercase, &
+                            write_version_number, stdlog, &
+                            mpp_pe, mpp_root_pe 
+
+use   field_manager_mod, only: MODEL_ATMOS
+use  tracer_manager_mod, only: query_method, get_tracer_index
 
 implicit none
 private
@@ -51,31 +54,48 @@ real,    allocatable, dimension(:,:,:) :: e_global, f_t_global, f_q_global
       
 logical :: do_init = .true.
 logical :: do_conserve_energy = .true.
+logical :: use_virtual_temp_vert_diff, do_mcm_plev
+integer :: sphum
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 1.5 2001/10/25 17:48:55 fms Exp $'
-character(len=128) :: tag = '$Name: galway $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 1.6 2002/07/16 22:37:36 fms Exp $'
+character(len=128) :: tag = '$Name: havana $'
 
-real, parameter :: d608 = (rvgas-rdgas)/rdgas
+real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
 
 contains
 
 !#######################################################################
 
-subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim, &
-                               do_conserve_energy_in)
+subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim,    &
+                               do_conserve_energy_in,         &
+                               use_virtual_temp_vert_diff_in, &
+                               do_mcm_plev_in )
 
  type(surf_diff_type), intent(inout) :: Tri_surf
  integer,              intent(in)    :: idim, jdim, kdim
  logical,              intent(in)    :: do_conserve_energy_in
+ logical, optional,    intent(in)    :: use_virtual_temp_vert_diff_in
+ logical, optional,    intent(in)    :: do_mcm_plev_in
 
- integer :: unit
+    call write_version_number ( version, tag )
 
-    unit = open_file ('logfile.out', action='append')
-    if (get_my_pe() == 0) &
-    write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-    call close_file (unit)
+! get the tracer number for specific humidity
+    sphum = get_tracer_index( MODEL_ATMOS, 'sphum')
+    if (mpp_pe() == mpp_root_pe()) &
+    write (stdlog(),'(a,i4)') 'Tracer number for specific humidity =',sphum
+
+    if(present(use_virtual_temp_vert_diff_in)) then
+      use_virtual_temp_vert_diff = use_virtual_temp_vert_diff_in
+    else
+      use_virtual_temp_vert_diff = .false.
+    endif
+    if(present(do_mcm_plev_in)) then
+      do_mcm_plev = do_mcm_plev_in
+    else
+      do_mcm_plev = .false.
+    endif
 
  if (do_init) then
 
@@ -144,8 +164,8 @@ end subroutine gcm_vert_diff_end
 
 subroutine gcm_vert_diff_down (is, js, delt,                &
                           u, v, t, q, tr,                   &
-                          diff_m, diff_t, p_half, z_full,   &
-                          tau_u, tau_v, dtau_datmos,        &
+                          diff_m, diff_t, p_half, p_full,   &
+                          z_full, tau_u, tau_v, dtau_datmos,&
                           flux_tr,                          &
                           dt_u, dt_v, dt_t, dt_q, dt_tr,    &
                           dissipative_heat, Tri_surf,       &
@@ -155,7 +175,8 @@ integer, intent(in)                        :: is, js
 real,    intent(in)                        :: delt
 real,    intent(in)   , dimension(:,:,:)   :: u, v, t, q,     &
                                               diff_m, diff_t, &
-                                              p_half, z_full
+                                              p_half, p_full, &
+                                              z_full
 real,    intent(in)   , dimension(:,:,:,:) :: tr
 real,    intent(in)   , dimension(:,:)     :: dtau_datmos
 real,    intent(inout), dimension(:,:)     :: tau_u, tau_v
@@ -185,12 +206,12 @@ integer :: i, j, kb, ie, je
  ie = is + size(t,1) -1
  je = js + size(t,2) -1
  
- gcp       = grav/cp
+ gcp       = GRAV/CP
  tt  = t + z_full*gcp   ! the vertical gradient of tt determines the
                         ! diffusive flux of temperature
 
  call compute_mu (p_half, mu)
- call compute_nu (diff_m, p_half, z_full, t, q, nu) 
+ call compute_nu (diff_m, p_half, p_full, z_full, t, q, nu) 
 
 !  diffuse u-momentum and v_momentum
 
@@ -198,7 +219,7 @@ integer :: i, j, kb, ie, je
                     dt_u, dt_v, dt_t, dissipative_heat, kbot)
 		    	
 !  recompute nu for a different diffusivity
- call compute_nu   (diff_t, p_half, z_full, t, q, nu)
+ call compute_nu   (diff_t, p_half, p_full, z_full, t, q, nu)
 
 !  diffuse tracers 
  call tr_vert_diff (delt, mu, nu, tr, flux_tr, dt_tr, kbot )
@@ -258,7 +279,7 @@ end subroutine gcm_vert_diff_up
 !#######################################################################
 
 subroutine gcm_vert_diff (delt, u, v, t, q, tr,                    &
-                          diff_m, diff_t, p_half, z_full,          &
+                          diff_m, diff_t, p_half, p_full, z_full,  &
                           dtau_datmos, dsens_datmos, devap_datmos, &
                           sens, evap, tau_u, tau_v, flux_tr,       &
                           dt_u, dt_v, dt_t, dt_q, dt_tr,           &
@@ -268,8 +289,8 @@ subroutine gcm_vert_diff (delt, u, v, t, q, tr,                    &
 !    surface fluxes on surface temperature
 
 real,    intent(in)                          :: delt
-real,    intent(in)   , dimension(:,:,:)     :: u, v, t, q, p_half, z_full, &
-                                                diff_m, diff_t
+real,    intent(in)   , dimension(:,:,:)     :: u, v, t, q, p_half, p_full, &
+                                                z_full, diff_m, diff_t
 real,    intent(in)   , dimension(:,:,:,:)   :: tr
 real,    intent(in)   , dimension(:,:)       :: dtau_datmos, dsens_datmos, &
                                                 devap_datmos
@@ -288,12 +309,12 @@ real, dimension(size(u,1),size(u,2),size(u,3)) :: mu, nu
 
  call compute_mu (p_half, mu)
 
- call compute_nu (diff_m, p_half, z_full, t, q, nu) 
+ call compute_nu (diff_m, p_half, p_full, z_full, t, q, nu) 
  
  call uv_vert_diff (delt, mu, nu, u, v, dtau_datmos, tau_u, tau_v, &
                     dt_u, dt_v, dt_t, dissipative_heat, kbot )
 		    
- call compute_nu   (diff_t, p_half, z_full, t, q, nu)
+ call compute_nu   (diff_t, p_half, p_full, z_full, t, q, nu)
 
  call tq_vert_diff (delt, mu, nu, t, q, z_full,  &
                     dsens_datmos, devap_datmos,  &
@@ -305,13 +326,13 @@ end subroutine gcm_vert_diff
 
 !#######################################################################
 
-subroutine vert_diff (delt, xi, t, q, diff, p_half, z_full, &
+subroutine vert_diff (delt, xi, t, q, diff, p_half, p_full, z_full, &
                       flux, dflux_datmos, factor, dt_xi, kbot)
 
 ! one-step diffusion of a single field 
 
 real,    intent(in)                          :: delt
-real,    intent(in)   , dimension(:,:,:)     :: xi, t, q, diff, p_half, z_full
+real,    intent(in)   , dimension(:,:,:)     :: xi, t, q, diff, p_half, p_full, z_full
 real,    intent(inout), dimension(:,:)       :: flux
 real,    intent(in)   , dimension(:,:)       :: dflux_datmos
 real,    intent(in)                          :: factor
@@ -329,7 +350,7 @@ real, dimension(size(xi,1),size(xi,2))  :: mu_delt_n, nu_n, e_n1,  &
 
  call compute_mu    (p_half, mu)
 
- call compute_nu    (diff, p_half, z_full, t, q, nu) 
+ call compute_nu    (diff, p_half, p_full, z_full, t, q, nu) 
 
  call vert_diff_down &
      (delt, mu, nu, xi, dt_xi, e, f, mu_delt_n, nu_n, e_n1,  &
@@ -373,7 +394,7 @@ real    :: half_delt, cp_inv
 !-----------------------------------------------------------------------
 
  half_delt = 0.5*delt
- cp_inv    = 1.0/cp
+ cp_inv    = 1.0/CP
  
  if (do_conserve_energy) then
    dt_u_temp = dt_u
@@ -434,7 +455,7 @@ integer :: i, j, kb
 real    :: gcp
 !-----------------------------------------------------------------------
 
- gcp = grav/cp
+ gcp = GRAV/CP
  tt  = t + z_full*gcp
   
  call vert_diff_down_2 &
@@ -444,7 +465,7 @@ real    :: gcp
 
 
  call diff_surface (mu_delt_n, nu_n, e_n1, f_t_delt_n1,  &
-                    dsens_datmos, sens, cp, delta_t_n)
+                    dsens_datmos, sens, CP, delta_t_n)
 
  call diff_surface (mu_delt_n, nu_n, e_n1, f_q_delt_n1,  &
                     devap_datmos, evap, 1.0, delta_q_n)
@@ -478,17 +499,33 @@ real, dimension(size(tr,1),size(tr,2),size(tr,3)-1,size(tr,4)) :: f
 
 real, dimension(size(tr,1),size(tr,2),size(tr,3)-1) :: e
 integer :: i, j, n, kb, ntr
+character(len=128) :: scheme
+logical, dimension(size(dt_tr,4)) :: skip_tracer_diff
 !-----------------------------------------------------------------------
 
- ntr  = size(tr,4)
+ ntr  = size(tr,4) ! number of prognostic tracers
+
+ ! setup flags for tracer diffusion
+ ! this could be moved to the initialization
+ skip_tracer_diff(1:ntr) = .true.
+ do n=1,ntr
+   ! skip specific humidity (done separately)
+     if ( n == sphum ) cycle
+   ! skip tracers if diffusion scheme truned off
+     if (query_method('diff_vert',MODEL_ATMOS,n,scheme)) then
+         if(uppercase(trim(scheme)) == 'NONE') cycle
+     endif
+     skip_tracer_diff(n) = .false.
+ enddo
 
  dflux_dtr = 0.0
   
  call vert_diff_down_n &
      (delt, mu, nu, tr, dt_tr, e, f, mu_delt_n, nu_n,  &
-      e_n1, f_delt_n1, delta_tr_n, kbot)
+      e_n1, f_delt_n1, delta_tr_n, skip_tracer_diff, kbot)
 
  do n = 1, ntr
+   if (skip_tracer_diff(n)) cycle
    call diff_surface (mu_delt_n, nu_n, e_n1, f_delt_n1(:,:,n),  &
                       dflux_dtr, flux(:,:,n), 1.0, delta_tr_n(:,:,n))
 
@@ -635,7 +672,7 @@ end subroutine vert_diff_down_2
 
 subroutine vert_diff_down_n &
       (delt, mu, nu, tr, dt_tr, e, f, mu_delt_n, nu_n,  &
-       e_n1, f_delt_n1, delta_tr_n, kbot)
+       e_n1, f_delt_n1, delta_tr_n, skip, kbot)
 
 !-----------------------------------------------------------------------
 
@@ -648,6 +685,7 @@ real,    intent(out)   , dimension(:,:,:,:) :: f
 real,    intent(out)   , dimension(:,:)     :: mu_delt_n, nu_n, e_n1
 real,    intent(out)   , dimension(:,:,:)   :: f_delt_n1, delta_tr_n
 
+logical, intent(in),    dimension(:),   optional :: skip
 integer, intent(in),    dimension(:,:), optional :: kbot
 
 real, dimension(size(tr,1),size(tr,2),size(tr,3)) :: a, b, c, g
@@ -661,6 +699,9 @@ integer :: i, j, k, n, kb, nlev, ntr
  call compute_e  (delt, mu, nu, e, a, b, c, g)
 
  do n = 1, ntr
+   if (present(skip)) then
+       if(skip(n)) cycle
+   endif
    call explicit_tend (mu, nu, tr(:,:,:,n), dt_tr(:,:,:,n))
    call compute_f (dt_tr(:,:,:,n), b, c, g, f(:,:,:,n))
  end do
@@ -676,21 +717,29 @@ integer :: i, j, k, n, kb, nlev, ntr
     enddo
     enddo
     do n=1,size(tr,4)
+    if (present(skip)) then
+       if(skip(n)) cycle
+    endif
     do j=1,size(tr,2)
     do i=1,size(tr,1)
         kb = kbot(i,j)
-       f_delt_n1(i,j,n) =     f(i,j,kb-1,n)*delt
+       f_delt_n1(i,j,n)  =     f(i,j,kb-1,n)*delt
        delta_tr_n(i,j,n) = dt_tr(i,j,kb  ,n)*delt
     enddo
     enddo
     enddo
  else
     nlev = size(mu,3)
-    mu_delt_n(:,:)   =    mu(:,:,nlev    )*delt
-         nu_n(:,:)   =    nu(:,:,nlev    )
-        e_n1(:,:)   =     e(:,:,nlev-1  )
-   f_delt_n1(:,:,:) =     f(:,:,nlev-1,:)*delt
-   delta_tr_n(:,:,:) = dt_tr(:,:,nlev  ,:)*delt
+    mu_delt_n(:,:)  =  mu(:,:,nlev  )*delt
+         nu_n(:,:)  =  nu(:,:,nlev  )
+         e_n1(:,:)  =   e(:,:,nlev-1)
+    do n=1,size(tr,4)
+      if (present(skip)) then
+          if(skip(n)) cycle
+      endif
+       f_delt_n1(:,:,n) =     f(:,:,nlev-1,n)*delt
+      delta_tr_n(:,:,n) = dt_tr(:,:,nlev  ,n)*delt
+    enddo
  endif
 
 
@@ -863,7 +912,7 @@ integer :: nlev
 
 nlev = size(mu,3)
 
-mu(:,:,1:nlev) = grav / (p_half(:,:,2:nlev+1) -p_half(:,:,1:nlev))
+mu(:,:,1:nlev) = GRAV / (p_half(:,:,2:nlev+1) -p_half(:,:,1:nlev))
 
 !-----------------------------------------------------------------------
 
@@ -872,10 +921,11 @@ end subroutine compute_mu
 
 !#######################################################################
 
-subroutine compute_nu (diff, p_half, z_full, t, q, nu)
+subroutine compute_nu (diff, p_half, p_full, z_full, t, q, nu)
 
 !-----------------------------------------------------------------------
-real,    intent(in)    , dimension(:,:,:) :: diff, p_half, z_full, t, q
+real,    intent(in)    , dimension(:,:,:) :: diff, p_half, p_full, &
+                                             z_full, t, q
 real,    intent(out)   , dimension(:,:,:) :: nu
 
 real, dimension(size(t,1),size(t,2),size(t,3)) :: rho_half, tt
@@ -884,12 +934,22 @@ integer :: nlev
 
 nlev = size(nu,3)
 
-tt = t * (1.0 + d608*q)           ! virtual temperature
-rho_half(:,:,2:nlev) =  &         ! density at half levels
-      2.0*p_half(:,:,2:nlev)/(rdgas*(tt(:,:,2:nlev)+tt(:,:,1:nlev-1)))
+if ( use_virtual_temp_vert_diff ) then
+  tt = t * (1.0 + d608*q)           ! virtual temperature
+else
+  tt = t ! Take out virtual temperature effect here to mimic supersource
+endif
 
-nu(:,:,2:nlev) = rho_half(:,:,2:nlev)*diff(:,:,2:nlev) /  &
-                  (z_full(:,:,1:nlev-1)-z_full(:,:,2:nlev))
+rho_half(:,:,2:nlev) =  &         ! density at half levels
+      2.0*p_half(:,:,2:nlev)/(RDGAS*(tt(:,:,2:nlev)+tt(:,:,1:nlev-1)))
+
+if(do_mcm_plev) then
+  nu(:,:,2:nlev) = GRAV*rho_half(:,:,2:nlev)*rho_half(:,:,2:nlev)*diff(:,:,2:nlev)/ &
+                    (p_full(:,:,2:nlev)-p_full(:,:,1:nlev-1))
+else
+  nu(:,:,2:nlev) = rho_half(:,:,2:nlev)*diff(:,:,2:nlev) /  &
+                    (z_full(:,:,1:nlev-1)-z_full(:,:,2:nlev))
+endif
 !-----------------------------------------------------------------------
 
 end subroutine compute_nu

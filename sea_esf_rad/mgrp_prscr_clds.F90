@@ -6,16 +6,25 @@ use utilities_mod,          only: open_file, file_exist,   &
                                   print_version_number, FATAL, NOTE, &
 				  WARNING, get_my_pe, close_file, &
 				  get_domain_decomp
-use rad_step_setup_mod,     only: jabs, ISRAD, IERAD, JSRAD, JERAD, & 
-                                  KSRAD, KERAD
-use longwave_setup_mod,     only: longwave_parameter_type, &    
-                                  Lw_parameters
-use std_pressures_mod,      only: get_std_pressures
-use constants_new_mod,      only: pstd
+!use rad_step_setup_mod,     only: jabs, ISRAD, IERAD, JSRAD, JERAD, & 
+!                                  KSRAD, KERAD, get_std_pressures
+!use rad_step_setup_mod,     only: jabs,                             & 
+!use rad_step_setup_mod,     only:   get_std_pressures
+!use longwave_setup_mod,     only: longwave_parameter_type, &    
+!                                  Lw_parameters
+!use std_pressures_mod,      only: get_std_pressures
+!use constants_new_mod,      only: pstd
+use constants_new_mod,      only: pstd, radians_to_degrees
 use rad_utilities_mod,      only: shortwave_control_type, Sw_control, &
+                                  map_global_indices, &
+				  cld_diagnostics_type, &
+                                  longwave_parameter_type, &    
+                                  Lw_parameters, &
 				  longwave_control_type, Lw_control 
 use microphys_rad_mod,      only: microphys_rad_init, &
-				  microphys_rad_driver
+                                  microphys_rad_driver,&
+                                  microphys_presc_conc,   &
+                                  lwemiss_calc
 
 
 !--------------------------------------------------------------------
@@ -36,8 +45,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 ! character(len=5), parameter  ::  version_number = 'v0.09'
-  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 1.2 2001/08/30 15:14:06 fms Exp $'
-  character(len=128)  :: tag     =  '$Name: galway $'
+  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 1.3 2002/07/16 22:35:58 fms Exp $'
+  character(len=128)  :: tag     =  '$Name: havana $'
 
 
 
@@ -114,6 +123,11 @@ data cabir  / 0.35E-01, 0.02E+00, 0.05E-01 /
 
 integer                                 ::  jj, kkc
 real, dimension(LATOBS,NOFCLDS_SP)      ::  ccd           
+real, dimension(LATOBS)                 ::  cloud_lats
+
+data cloud_lats / -90., -80., -70., -60., -50., -40., -30., -20., &
+                  -10., 0.0, 10., 20., 30., 40., 50., 60., 70., 80., &
+                   90. /
 
 data ((ccd(jj,kkc),jj=1,19),kkc=1,3)/    &
      &  0.360E+00, 0.401E+00, 0.439E+00, 0.447E+00, 0.417E+00, &
@@ -137,12 +151,15 @@ real, dimension(:), allocatable :: qlevel
 !    NLWCLDB is the number of frequency bands for which lw
 !    emissitivies are defined.
 !----------------------------------------------------------------------
-integer            :: NLWCLDB 
+!integer            :: NLWCLDB 
 
 real               :: psbar  
-integer            :: x(4), y(4), jdf, jd
-character(len=10)  :: swform
+!integer            :: x(4), y(4), jdf, jd
+!character(len=10)  :: swform
+!character(len=16)  :: swform
+logical    :: do_lhsw, do_esfsw
 logical            :: do_lwcldemiss
+integer            :: ksrad, kerad
 
 
 !----------------------------------------------------------------------
@@ -154,17 +171,25 @@ logical            :: do_lwcldemiss
 	 contains 
 
 
-subroutine mgrp_prscr_init (qlyr)
+!subroutine mgrp_prscr_init (kx, pd, latb, qlyr)
+subroutine mgrp_prscr_init (kx, pref, latb, qlyr)
 
 !------------------------------------------------------------------
+integer, intent(in) :: kx
+!real, dimension(:), intent(in)             :: pd, latb      
+real, dimension(:), intent(in)             ::  latb      
+real, dimension(:,:), intent(in)             :: pref          
 real, dimension(:), intent(in), optional   :: qlyr
 !--------------------------------------------------------------------
 
       integer            :: unit, ierr, io
       integer            :: j, k, kc, ktop, kbot, li
+      integer            :: jdf
       real               :: fl
+         
 
-      real, dimension(:),     allocatable :: pd, cldhm, cldml, &
+!     real, dimension(:),     allocatable :: pd, cldhm, cldml, &
+      real, dimension(:),     allocatable ::     cldhm, cldml, &
 				             cldhm_abs_gl, cldml_abs_gl
       real, dimension(:,:),   allocatable :: emmxo19, emrnd19,    &
 					     crfvis19, crfir19,   &
@@ -173,6 +198,7 @@ real, dimension(:), intent(in), optional   :: qlyr
 					     zcamtrnd_g, zcrfvis_g,  &
 	  				     zcrfir_g, zcabir_g
       real, dimension(:,:,:), allocatable :: zemmxo_g, zemrnd_g
+      integer, dimension(:), allocatable :: jindx2
 
 !---------------------------------------------------------------------
 !-----  read namelist  ------
@@ -200,9 +226,18 @@ real, dimension(:), intent(in), optional   :: qlyr
 !  retrieve module variables that come from other modules
 !--------------------------------------------------------------------
 
-      call get_domain_decomp (x, y)
-      jd = y(2)
-      jdf = y(4) - y(3) + 1
+      ksrad = 1
+      kerad = kx
+!     call get_domain_decomp (x, y)
+!     jd = y(2)
+!     jdf = y(4) - y(3) + 1
+      jdf = size(latb,1) - 1
+
+!      if (Environment%running_gcm) then
+!     if (trim (swaerosol_form) /= ' ' .and. jmax_aerfile /= 0) then
+         allocate (jindx2  (size(latb,1)-1))
+         call find_nearest_index (latb, jindx2)
+!        print *, 'jindx2', get_my_pe(), jindx2 
 
 !---------------------------------------------------------------------
 !    save the sigma levels that have been input for later use within 
@@ -212,19 +247,23 @@ real, dimension(:), intent(in), optional   :: qlyr
       if (present(qlyr)) then
         qlevel(:) = qlyr(KSRAD:KERAD)
       else
-        allocate ( pd(KSRAD:KERAD) )
-        call get_std_pressures (pd_out=pd)
+!       allocate ( pd(KSRAD:KERAD) )
+!       call get_std_pressures (pd_out=pd)
         psbar = pstd*1.0E-03   !  convert from cgs to mb
-	qlevel(KSRAD:KERAD) = pd(KSRAD:KERAD)/psbar
-	deallocate (pd)
+!qlevel(KSRAD:KERAD) = pd(KSRAD:KERAD)/psbar
+!qlevel(KSRAD:KERAD) = (1.0E-02*pd(KSRAD:KERAD))/psbar
+	qlevel(KSRAD:KERAD) = (1.0E-02*pref(KSRAD:KERAD,1))/psbar
+!deallocate (pd)
       endif
 
 !---------------------------------------------------------------------
 !    define the number of cloud emissivity bands for use in this module.
 !---------------------------------------------------------------------
 
-      NLWCLDB = Lw_parameters%NLWCLDB
-      swform = Sw_control%sw_form
+!     NLWCLDB = Lw_parameters%NLWCLDB
+!      swform = Sw_control%sw_form
+      do_lhsw = Sw_control%do_lhsw
+      do_esfsw = Sw_control%do_esfsw
       do_lwcldemiss = Lw_control%do_lwcldemiss
 
 !---------------------------------------------------------------------
@@ -234,18 +273,20 @@ real, dimension(:), intent(in), optional   :: qlyr
 
       allocate( zcamtmxo    (jdf , KSRAD:KERAD))
       allocate( zcamtrnd    (jdf , KSRAD:KERAD))
-      allocate( zemmxo      (jdf , KSRAD:KERAD, NLWCLDB))
-      allocate( zemrnd      (jdf , KSRAD:KERAD, NLWCLDB))
+!     allocate( zemmxo      (jdf , KSRAD:KERAD, NLWCLDB))
+!     allocate( zemrnd      (jdf , KSRAD:KERAD, NLWCLDB))
+      allocate( zemmxo      (jdf , KSRAD:KERAD, 1      ))
+      allocate( zemrnd      (jdf , KSRAD:KERAD, 1      ))
       allocate( zcrfvis     (jdf , KSRAD:KERAD))
       allocate( zcrfir      (jdf , KSRAD:KERAD))
       allocate( zcabir      (jdf , KSRAD:KERAD))
-      allocate( zcamtmxo_g  (jd , KSRAD:KERAD))
-      allocate( zcamtrnd_g  (jd , KSRAD:KERAD))
-      allocate( zemmxo_g    (jd , KSRAD:KERAD, NLWCLDB))
-      allocate( zemrnd_g    (jd , KSRAD:KERAD, NLWCLDB))
-      allocate( zcrfvis_g   (jd , KSRAD:KERAD))
-      allocate( zcrfir_g    (jd , KSRAD:KERAD))
-      allocate( zcabir_g    (jd , KSRAD:KERAD))
+!     allocate( zcamtmxo_g  (jd , KSRAD:KERAD))
+!     allocate( zcamtrnd_g  (jd , KSRAD:KERAD))
+!     allocate( zemmxo_g    (jd , KSRAD:KERAD, NLWCLDB))
+!     allocate( zemrnd_g    (jd , KSRAD:KERAD, NLWCLDB))
+!     allocate( zcrfvis_g   (jd , KSRAD:KERAD))
+!     allocate( zcrfir_g    (jd , KSRAD:KERAD))
+!     allocate( zcabir_g    (jd , KSRAD:KERAD))
 
 !--------------------------------------------------------------------
 !   allocate arrays to hold the cloud radiative properties at the 
@@ -310,38 +351,49 @@ real, dimension(:), intent(in), optional   :: qlyr
 !    latitude available (using NINT function) is used.
 !---------------------------------------------------------------------
 
-      do j=1,jd
-        fl = 9.0E+00 - 9.0E+00*(FLOAT(jd+1 -j - jd/2) -    &
-             0.5E+00)/FLOAT(jd/2)
-        li = NINT(fl) + 1
-	do k=KSRAD,KERAD
-	  zcamtmxo_g(j,k) = camtmxo19(li,k)
-	  zcamtrnd_g(j,k) = camtrnd19(li,k)
-	  zemmxo_g(j,k,:) = emmxo19(li,k)
-	  zemrnd_g(j,k,:) = emrnd19(li,k)
-	  zcrfvis_g(j,k)  = crfvis19(li,k)
-	  zcrfir_g(j,k)   = crfir19(li,k)
-	  zcabir_g(j,k)   = cabir19(li,k)
-        end do
-      end do
+!     do j=1,jd
       do j=1,jdf
+!       fl = 9.0E+00 - 9.0E+00*(FLOAT(jd+1 -j - jd/2) -    &
+!            0.5E+00)/FLOAT(jd/2)
+!       li = NINT(fl) + 1
+        li = jindx2(j)
 	do k=KSRAD,KERAD
-          zcamtmxo(j,k) = zcamtmxo_g(j+y(3)-1,k)	
-          zcamtrnd(j,k) = zcamtrnd_g(j+y(3)-1,k)	
-          zemmxo(j,k,:) = zemmxo_g(j+y(3)-1,k,:)	
-          zemrnd(j,k,:) = zemrnd_g(j+y(3)-1,k,:)	
-          zcrfvis (j,k) = zcrfvis_g(j+y(3)-1,k)	
-          zcrfir  (j,k) = zcrfir_g (j+y(3)-1,k)	
-          zcabir  (j,k) = zcabir_g (j+y(3)-1,k)	
+!  zcamtmxo_g(j,k) = camtmxo19(li,k)
+!  zcamtrnd_g(j,k) = camtrnd19(li,k)
+!  zemmxo_g(j,k,:) = emmxo19(li,k)
+!  zemrnd_g(j,k,:) = emrnd19(li,k)
+!  zcrfvis_g(j,k)  = crfvis19(li,k)
+!  zcrfir_g(j,k)   = crfir19(li,k)
+!  zcabir_g(j,k)   = cabir19(li,k)
+	  zcamtmxo(j,k) = camtmxo19(li,k)
+	  zcamtrnd(j,k) = camtrnd19(li,k)
+!  zemmxo(j,k,:) = emmxo19(li,k)
+!  zemrnd(j,k,:) = emrnd19(li,k)
+	  zemmxo(j,k,1) = emmxo19(li,k)
+	  zemrnd(j,k,1) = emrnd19(li,k)
+	  zcrfvis(j,k)  = crfvis19(li,k)
+	  zcrfir(j,k)   = crfir19(li,k)
+	  zcabir(j,k)   = cabir19(li,k)
         end do
       end do
-      deallocate (zcamtmxo_g)
-      deallocate (zcamtrnd_g)
-      deallocate (zemmxo_g )
-      deallocate (zemrnd_g )
-      deallocate (zcrfvis_g)
-      deallocate (zcrfir_g )
-      deallocate (zcabir_g )
+!     do j=1,jdf
+!do k=KSRAD,KERAD
+!         zcamtmxo(j,k) = zcamtmxo_g(j+y(3)-1,k)	
+!         zcamtrnd(j,k) = zcamtrnd_g(j+y(3)-1,k)	
+!         zemmxo(j,k,:) = zemmxo_g(j+y(3)-1,k,:)	
+!         zemrnd(j,k,:) = zemrnd_g(j+y(3)-1,k,:)	
+!         zcrfvis (j,k) = zcrfvis_g(j+y(3)-1,k)	
+!         zcrfir  (j,k) = zcrfir_g (j+y(3)-1,k)	
+!         zcabir  (j,k) = zcabir_g (j+y(3)-1,k)	
+!       end do
+!     end do
+!     deallocate (zcamtmxo_g)
+!     deallocate (zcamtrnd_g)
+!     deallocate (zemmxo_g )
+!     deallocate (zemrnd_g )
+!     deallocate (zcrfvis_g)
+!     deallocate (zcrfir_g )
+!     deallocate (zcabir_g )
 
       deallocate ( kkbh)
       deallocate ( kkth)
@@ -382,28 +434,33 @@ real, dimension(:), intent(in), optional   :: qlyr
 !    latitude available (using NINT function) is used.
 !---------------------------------------------------------------------
   
-      allocate ( cldhm_abs_gl (jd) )
-      allocate ( cldml_abs_gl (jd) )
-      do j=1,jd
-          fl = 9.0E+00 - 9.0E+00*(FLOAT(JD+1 -j - JD/2) -    &
-               0.5E+00)/FLOAT(JD/2)
-          li = NINT(fl) + 1
-          cldhm_abs_gl(j) = cldhm(li)
-          cldml_abs_gl(j) = cldml(li)
-      end do
+!     allocate ( cldhm_abs_gl (jd) )
+!     allocate ( cldml_abs_gl (jd) )
+!     do j=1,jd
       do j=1,jdf
-          cldhm_abs(j) =  cldhm_abs_gl(j+y(3)-1)
-          cldml_abs(j) =  cldml_abs_gl(j+y(3)-1)
+!         fl = 9.0E+00 - 9.0E+00*(FLOAT(JD+1 -j - JD/2) -    &
+!              0.5E+00)/FLOAT(JD/2)
+!         li = NINT(fl) + 1
+          li = jindx2(j)
+!         cldhm_abs_gl(j) = cldhm(li)
+!         cldml_abs_gl(j) = cldml(li)
+          cldhm_abs   (j) = cldhm(li)
+          cldml_abs   (j) = cldml(li)
       end do
-      deallocate (cldhm_abs_gl)
-      deallocate (cldml_abs_gl)
+!     do j=1,jdf
+!         cldhm_abs(j) =  cldhm_abs_gl(j+y(3)-1)
+!         cldml_abs(j) =  cldml_abs_gl(j+y(3)-1)
+!     end do
+!     deallocate (cldhm_abs_gl)
+!     deallocate (cldml_abs_gl)
 
 !---------------------------------------------------------------------
 !    if a cloud microphysics scheme is to be employed with the cloud
 !    scheme, initialize the microphysics_rad module.
 !--------------------------------------------------------------------
 
-      if (trim(swform) == 'esfsw99' .or. do_lwcldemiss) then
+!     if (trim(swform) == 'esfsw99' .or. do_lwcldemiss) then
+      if (do_esfsw                  .or. do_lwcldemiss) then
         call microphys_rad_init (cldhm_abs, cldml_abs)
       endif
 
@@ -417,19 +474,63 @@ real, dimension(:), intent(in), optional   :: qlyr
 end subroutine mgrp_prscr_init
 
 
+!#####################################################################
+
+subroutine find_nearest_index (latb, jindx2)
+
+real, dimension(:), intent(in) :: latb
+integer, dimension(:), intent(out)  :: jindx2
+
+
+      integer :: jd, j, jj
+      real   :: diff_low, diff_high
+      real, dimension(size(latb,1)-1) :: lat
+
+
+      jd = size(latb,1) - 1
+
+      do j = 1,jd
+        lat(j) = 0.5*(latb(j) + latb(j+1))
+      do jj=1, LATOBS         
+        if (lat(j)*radians_to_degrees >= cloud_lats(jj)) then
+          diff_low = lat(j)*radians_to_degrees - cloud_lats(jj)    
+          diff_high = cloud_lats(jj+1) - lat(j)*radians_to_degrees
+          if (diff_high <= diff_low) then
+            jindx2(j) = jj+1
+          else
+            jindx2(j) = jj
+          endif
+        endif
+      end do
+      end do
+
+
+
+
+
+
+end subroutine find_nearest_index 
+
+
+
 
 
 !######################################################################
 
-subroutine mgrp_prscr_calc (camtsw, cmxolw, crndlw, ncldsw, &
+subroutine mgrp_prscr_calc (is, ie, js, je, Cld_diagnostics, deltaz, press, temp, &
+                            camtsw, cmxolw,  &
+                             crndlw, ncldsw, &
 				   nmxolw, nrndlw,                    &
 				            emmxolw, emrndlw, &
 				   cirabsw, cirrfsw, cvisrfsw, cldext, &
 				   cldsct, cldasymm)
 
+integer, intent(in) :: is, ie, js, je
+real,    dimension(:,:,:),   intent(in) :: deltaz, press, temp     
 real,    dimension(:,:,:),   intent(inout) :: camtsw, cmxolw, crndlw
 real,    dimension(:,:,:,:), intent(inout) ::   &                  
 					      emmxolw, emrndlw
+type(cld_diagnostics_type), intent(inout) :: Cld_diagnostics
 real,    dimension(:,:,:,:), intent(inout), optional  ::    &
 					      cirabsw, cvisrfsw, &
 					      cirrfsw, cldext, cldsct, &
@@ -464,6 +565,17 @@ integer, dimension(:,:),     intent(inout) :: ncldsw, nmxolw, nrndlw
 !---------------------------------------------------------------------
  
        integer :: i,j,k
+       real, dimension(:,:,:,:), allocatable       :: abscoeff, cldemiss
+       real, dimension(:,:,:), allocatable    :: conc_drop, conc_ice, &
+                                                 size_drop, size_ice
+
+       integer :: israd, ierad, jsrad, jerad
+
+
+       israd = 1
+       ierad = size(camtsw, 1)
+       jsrad = 1
+       jerad = size(camtsw,2)
 
 !---------------------------------------------------------------------
 !     define the number of clouds in each column. the assumption is made
@@ -481,8 +593,10 @@ integer, dimension(:,:),     intent(inout) :: ncldsw, nmxolw, nrndlw
        do k=KSRAD,KERAD
          do j=JSRAD,JERAD
            do i=ISRAD,IERAD
- 	     cmxolw(i,j,k)     = zcamtmxo(jabs (j),k)
- 	     crndlw(i,j,k)     = zcamtrnd(jabs (j),k)
+!	     cmxolw(i,j,k)     = zcamtmxo(jabs (j),k)
+!	     crndlw(i,j,k)     = zcamtrnd(jabs (j),k)
+            cmxolw(i,j,k)     = zcamtmxo(j+js-1  ,k)
+            crndlw(i,j,k)     = zcamtrnd(j+js-1  ,k)
              camtsw(i,j,k)     = cmxolw(i,j,k) + crndlw(i,j,k)
            end do
          end do
@@ -492,20 +606,28 @@ integer, dimension(:,:),     intent(inout) :: ncldsw, nmxolw, nrndlw
          do k=KSRAD,KERAD
            do j=JSRAD,JERAD
              do i=ISRAD,IERAD
-  	       emmxolw(i,j,k,:)  = zemmxo  (jabs (j),k,:)
-               emrndlw(i,j,k,:)  = zemrnd  (jabs (j),k,:)
+! 	       emmxolw(i,j,k,:)  = zemmxo  (jabs (j),k,:)
+!              emrndlw(i,j,k,:)  = zemrnd  (jabs (j),k,:)
+!              emmxolw(i,j,k,:)  = zemmxo  (j+js-1  ,k,:)
+!              emrndlw(i,j,k,:)  = zemrnd  (j+js-1  ,k,:)
+               emmxolw(i,j,k,:)  = zemmxo  (j+js-1  ,k,1)
+               emrndlw(i,j,k,:)  = zemrnd  (j+js-1  ,k,1)
              end do
            end do
          end do
        endif
 
-       if (trim(swform) /= 'esfsw99' ) then
+!      if (trim(swform) /= 'esfsw99' ) then
+       if (.not. do_esfsw            ) then
          do k=KSRAD,KERAD
            do j=JSRAD,JERAD
              do i=ISRAD,IERAD
-  	       cirabsw(i,j,k,:)  = zcabir  (jabs (j),k)
-  	       cirrfsw(i,j,k,:)  = zcrfir  (jabs (j),k)
-	       cvisrfsw(i,j,k,:) = zcrfvis (jabs (j),k)
+! 	       cirabsw(i,j,k,:)  = zcabir  (jabs (j),k)
+! 	       cirrfsw(i,j,k,:)  = zcrfir  (jabs (j),k)
+!       cvisrfsw(i,j,k,:) = zcrfvis (jabs (j),k)
+                cirabsw(i,j,k,:)  = zcabir  (j+js-1  ,k)
+                cirrfsw(i,j,k,:)  = zcrfir  (j+js-1  ,k)
+                cvisrfsw(i,j,k,:) = zcrfvis (j+js-1  ,k)
              end do
            end do
          end do
@@ -515,13 +637,86 @@ integer, dimension(:,:),     intent(inout) :: ncldsw, nmxolw, nrndlw
 !  if microphysics is being used for either sw or lw calculation, call
 !  microphys_rad_driver to obtain cloud radiative properties.
 !--------------------------------------------------------------------
-       if (trim(swform) == 'esfsw99' ) then
-         call microphys_rad_driver (camtsw, emmxolw, emrndlw, &
-                                    cldext=cldext, cldsct=cldsct,    &
-                                    cldasymm=cldasymm)
-       else if (do_lwcldemiss) then
-         call microphys_rad_driver (camtsw, emmxolw, emrndlw)
-       endif
+!      if (do_esfsw                  ) then
+!        call microphys_rad_driver (is, ie, js, je, deltaz, &
+!       press, temp,         camtsw, emmxolw, &
+!                                   emrndlw, Cld_diagnostics, &
+!                                   cldext=cldext, cldsct=cldsct,    &
+!                                   cldasymm=cldasymm)
+!      else if (do_lwcldemiss) then
+!        call microphys_rad_driver (is, ie, js, je, deltaz, &
+!             press, temp,    camtsw, emmxolw,  &
+!                                    emrndlw, Cld_diagnostics)
+!      endif
+
+
+ if (do_esfsw                  .or. do_lwcldemiss) then
+
+
+
+  allocate (abscoeff ( SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3), &
+                       SIZE(emmxolw,4)) )
+  allocate (cldemiss ( SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3), &
+                     SIZE(emmxolw,4)) )
+allocate (conc_drop (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
+  allocate (conc_ice (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
+  allocate (size_drop (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
+  allocate (size_ice (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
+
+       call microphys_presc_conc (  is,ie,js,je,             &
+                             camtsw,  deltaz, press, temp,       &
+                           conc_drop, size_drop, conc_ice, size_ice)
+
+
+      if (do_esfsw                  ) then
+
+
+         call microphys_rad_driver (is,ie,js,je,deltaz, press, temp, &
+                           Cld_diagnostics, &
+                           conc_drop_in=conc_drop, conc_ice_in=conc_ice, &
+                      size_drop_in=size_drop, size_ice_in=size_ice, &
+                               cldext=cldext, cldsct=cldsct,    &
+                              cldasymm=cldasymm,               &
+                              abscoeff=abscoeff)
+
+    else if (do_lwcldemiss) then
+!       call microphys_rad_driver (                           &
+        call microphys_rad_driver (is,ie,js,je,deltaz,press,temp, &
+                           Cld_diagnostics, &
+                   conc_drop_in=conc_drop, conc_ice_in=conc_ice, &
+                  size_drop_in=size_drop, size_ice_in=size_ice, &
+                      abscoeff=abscoeff)
+     endif  ! do_esfsw
+
+     if (do_lwcldemiss) then
+   call lwemiss_calc( deltaz,                             &
+                         abscoeff,                         &
+                         cldemiss)
+      endif  
+      endif  ! do_esfsw or lwcldemiss
+
+
+   if (do_lwcldemiss) then
+!   as of 3 august 2001, we are assuming randomly overlapped clouds
+!  only. the cloud and emissivity settings follow:
+
+     emmxolw = cldemiss
+     emrndlw = cldemiss
+ endif  
+
+
+
+
+
+      if (ALLOCATED (abscoeff)) then
+    deallocate (abscoeff)
+    deallocate (cldemiss)
+   deallocate (conc_drop)
+
+   deallocate (size_drop)
+  deallocate (conc_ice)
+   deallocate (size_ice)
+ endif
 
 
 end subroutine mgrp_prscr_calc

@@ -2,18 +2,23 @@
 		   module esfsw_scattering_mod
 
 
-use rad_step_setup_mod,    only: ISRAD, IERAD, JSRAD,JERAD,  &
-			         KSRAD, KERAD, iabs, jabs
+!use rad_step_setup_mod,    only: ISRAD, IERAD, JSRAD,JERAD,  &
+!			         KSRAD, KERAD, iabs, jabs
+!use rad_step_setup_mod,    only:  iabs, jabs
 use  utilities_mod,        only: open_file, file_exist,    &
                                  check_nml_error, error_mesg, &
+                                 get_num_pes,  &
                                  print_version_number, FATAL, NOTE, &
-				 WARNING, get_my_pe, close_file, &
-				 get_domain_decomp
+				 WARNING, get_my_pe, close_file
+!			 WARNING, get_my_pe, close_file, &
+!			 get_domain_decomp
 use esfsw_parameters_mod,  only: nbands, get_solarfluxes, &
 			         TOT_WVNUMS
 use rad_utilities_mod,     only: shortwave_control_type, Sw_control, &
-			         Environment, environment_type
+			         Environment, environment_type, &
+				 map_global_indices
 use microphys_rad_mod,     only: thickavg, thinavg
+use constants_new_mod, only: radians_to_degrees
 
 !-------------------------------------------------------------------
 
@@ -31,8 +36,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !   character(len=5), parameter  ::  version_number = 'v0.09'
-    character(len=128)  :: version =  '$Id: esfsw_scattering.F90,v 1.2 2001/07/05 17:31:29 fms Exp $'
-    character(len=128)  :: tag     =  '$Name: galway $'
+    character(len=128)  :: version =  '$Id: esfsw_scattering.F90,v 1.3 2002/07/16 22:35:10 fms Exp $'
+    character(len=128)  :: tag     =  '$Name: havana $'
 
 
 
@@ -50,8 +55,10 @@ private          &
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-character(len=19)            :: swaer_model_type = '                  '
-character(len=12)            :: swaerosol_form = '            '
+!character(len=19)            :: swaer_model_type = '                  '
+!character(len=12)            :: swaerosol_form = '            '
+character(len=48)            :: swaer_model_type = '                  '
+character(len=16)            :: swaerosol_form = '            '
 integer                      :: swaer_model_nintvls = 0
 logical                      :: do_swaerosol = .false.
 integer                      :: imax_aerfile = 0
@@ -151,8 +158,9 @@ real     :: aerextrefstr = 1.58614E-02
 
 
 !-------------------------------------------------------------------
-integer  :: kmin, kmax
-integer  :: x(4), y(4)
+!nteger  :: kmin, kmax
+!integer  :: x(4), y(4)
+      integer, dimension(:), allocatable :: jindx2
 
 
 
@@ -166,9 +174,11 @@ integer  :: x(4), y(4)
                    contains
 
 
-subroutine esfsw_scattering_init (kmin_in, kmax_in)
+!subroutine esfsw_scattering_init (kmin_in, kmax_in, latb)
+subroutine esfsw_scattering_init (                  latb)
  
-integer, intent(in)   :: kmin_in, kmax_in
+!integer, intent(in)   :: kmin_in, kmax_in
+real, dimension(:), intent(in) :: latb
  
 
 !----------------------------------------------------------------------c
@@ -199,7 +209,11 @@ integer, intent(in)   :: kmin_in, kmax_in
      character(len=64)       :: name
 
      real,    dimension(:), allocatable :: solarfluxtoa
+     real,    dimension(:), allocatable :: data_lat
+!     integer, dimension(:), allocatable :: jindx2
      integer, dimension(:), allocatable :: endwvnbands
+     real :: lat_start
+     integer :: j, jst, jj
 
 !--------------------------------------------------------------------
 !-----  read namelist  ------
@@ -226,9 +240,43 @@ integer, intent(in)   :: kmin_in, kmax_in
 !  retrieve model dimensions
 !---------------------------------------------------------------------
 
-     kmin = kmin_in
-     kmax = kmax_in
-     call get_domain_decomp (x, y)
+!    kmin = kmin_in
+!    kmax = kmax_in
+!     call get_domain_decomp (x, y)
+
+
+     if (Environment%running_gcm) then
+     if (trim (swaerosol_form) /= ' ' .and. jmax_aerfile /= 0) then
+        allocate (jindx2  (size(latb,1)-1))
+        call map_global_indices (jmax_aerfile, latb, jindx2)
+
+
+
+!     if (jmax_aerfile /= 0) then
+!      if (get_num_pes()*(size(latb,1) -1) == jmax_aerfile) then
+!       lat_start = -90.0 + 180./(2.*float(jmax_aerfile))
+!       allocate (data_lat(jmax_aerfile))
+!      do j=1,jmax_aerfile
+!        data_lat(j) = lat_start + real(j-1)*180.0/real(jmax_aerfile)
+!      end do
+!      jst = 1
+!      do jj=1, size(latb,1) - 1
+!        do j = jst,jmax_aerfile
+!   if (data_lat(j) >= latb(jj)*radians_to_degrees ) then
+!     jindx2(jj) = j
+!     jst = j
+!            exit
+!          endif
+!        end do
+!      end do
+!      else
+!        call error_mesg ('esfsw_scattering_mod', &
+!           'resolution of data input file doesn''t match model size --&
+!    &  must provide inter(extra)polation not yet implemented', &
+!           FATAL)
+!      endif
+     endif
+     endif
 
 !---------------------------------------------------------------------
 !   define existence and type of shortwave aerosols in model in the
@@ -432,6 +480,45 @@ end subroutine esfsw_scattering_init
 
 !####################################################################
 
+!subroutine map_global_indices (global_rows , latb,    &
+!                              global_index_array )
+
+!integer, intent(in)   :: global_rows 
+!real, dimension(:), intent(in) :: latb
+!integer, dimension(:), intent(out) :: global_index_array
+
+!      real   :: lat_start
+!      real, dimension(global_rows) :: data_lat
+!      integer   :: j, jst, jj
+
+!      if (get_num_pes()*(size(latb,1) -1) == global_rows) then
+!       lat_start = -90.0 + 180./(2.*float(global_rows))
+!      do j=1,global_rows
+!        data_lat(j) = lat_start + real(j-1)*180.0/real(global_rows)
+!      end do
+!      jst = 1
+!      do jj=1, size(latb,1) - 1
+!        do j = jst,global_rows
+!   if (data_lat(j) >= latb(jj)*radians_to_degrees ) then
+!     global_index_array(jj) = j
+!     jst = j
+!            exit
+!          endif
+!        end do
+!      end do
+!      else
+!        call error_mesg ('esfsw_scattering_mod', &
+!           'resolution of data input file doesn''t match model size --&
+!    &  must provide inter(extra)polation not yet implemented', &
+!           FATAL)
+!      endif
+
+!end subroutine map_global_indices 
+
+
+
+!####################################################################
+
 subroutine scatpar 
 
 !------------------------------------------------------------------- 
@@ -463,12 +550,12 @@ end  subroutine scatpar
 
 !#####################################################################
 
-subroutine get_swaerprops_from_scattering ( n,   &
+subroutine get_swaerprops_from_scattering ( js, ix, jx, n,   &
            aerextband_out, aerssalbband_out, aerasymmband_out, &
 	   aeramtsc_out)
  
 !---------------------------------------------------------------------
-integer,                intent(in)  ::   n
+integer,                intent(in)  ::   js, ix, jx, n
 real, dimension(:,:,:), intent(out) ::   aerextband_out,    &
 					 aerssalbband_out,   &
 					 aerasymmband_out,  &
@@ -476,6 +563,13 @@ real, dimension(:,:,:), intent(out) ::   aerextband_out,    &
 !---------------------------------------------------------------------
 
      integer    :: i, j, jindx
+     integer    :: israd, ierad, jsrad, jerad
+
+
+     israd = 1
+     jsrad = 1
+     ierad = ix
+     jerad = jx
 
 !--------------------------------------------------------------------
 !   initialize output fields
@@ -527,7 +621,9 @@ real, dimension(:,:,:), intent(out) ::   aerextband_out,    &
          if (Environment%running_standalone) then
 	   jindx = 1
          else if (Environment%running_gcm) then
-	   jindx = jabs(j) + y(3) - 1
+!	   jindx = jabs(j) + y(3) - 1
+!	   jindx = js+j-1  + y(3) - 1
+           jindx = jindx2(js+j-1)
          endif
          do i=ISRAD, IERAD
            aerextband_out(i,j,ktop_aer:kbot_aer) =     &

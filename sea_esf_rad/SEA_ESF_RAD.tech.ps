@@ -2195,13 +2195,11 @@ end
 %%EndProlog
 %%BeginSetup
 (5.5) FMVERSION
-1 1 0 0 612 792 0 1 7 FMDOCUMENT
+1 1 0 0 612 792 0 1 6 FMDOCUMENT
 %%IncludeFont: Times-Bold
 0 0 /Times-Bold FMFONTDEFINE
 %%IncludeFont: Times-Roman
 1 0 /Times-Roman FMFONTDEFINE
-%%IncludeFont: Times-Italic
-2 0 /Times-Italic FMFONTDEFINE
 32 FMFILLS
 0 0 FMFILL
 1 0.1 FMFILL
@@ -2241,9 +2239,9 @@ end
 0 FrameSetSepColors
 [
 /Creator (FrameMaker 5.5.6.)
-/Title (SEA_ESF_RAD_doc_eugene)
+/Title (SEA_ESF_RAD_doc_havana)
 /CreationDate (D:20000602054802)
-/ModDate (D:20010625130720)
+/ModDate (D:20020426041648)
 /DOCINFO FmPD2
 FrameNoSep
 0 0 0 1 0 0 0 1 K
@@ -2255,112 +2253,150 @@ J
 (Pr) 91.14 666 T
 (eliminary Documentation f) 109.81 666 T
 (or the SEA-ESF Radiation) 316.34 666 T
-(Code  -- Eugene r) 216.18 644 T
-(elease) 350.84 644 T
+(Code  -- Ha) 214.99 644 T
+(v) 303.03 644 T
+(ana r) 311.85 644 T
+(elease) 352.03 644 T
 1 F
 (Richard Hemler) 250.51 578 T
-(June 25, 2001) 255.75 556 T
+(April 25, 2002) 253.25 556 T
 1 14 Q
-(This document is to serv) 99 468 T
-(e as an initial source of information about the Eugene) 236.45 468 T
-(release) 72 448.67 T
-(v) 113.63 448.67 T
-(ersion) 120.42 448.67 T
-(of) 157.41 448.67 T
-(the) 171.84 448.67 T
-(sea-esf) 191.71 448.67 T
-(radiation-step) 233.35 448.67 T
-(ph) 313.1 448.67 T
-(ysics) 327.03 448.67 T
-(modules) 357.8 448.67 T
-(in) 408.01 448.67 T
-(the) 421.67 448.67 T
-(FMS) 441.55 448.67 T
-(repository) 475.1 448.67 T
-(.) 530.96 448.67 T
-(It) 72 430.67 T
-(is) 83.74 430.67 T
-(anticipated) 96.26 430.67 T
-(that) 160.88 430.67 T
-(FMS-standard) 185.06 430.67 T
-(documentation) 268.36 430.67 T
-(for) 354.76 430.67 T
-(each) 374.27 430.67 T
-(of) 403.1 430.67 T
-(the) 417.95 430.67 T
-(ne) 438.24 430.67 T
-(w) 451.11 430.67 T
-(modules) 464.4 430.67 T
-(will) 515.03 430.67 T
-(be a) 72 412.67 T
-(v) 94.65 412.67 T
-(ailable in the ne) 101.3 412.67 T
-(xt release.  Included here is some limited discussion of both) 190.13 412.67 T
-(the scienti\336c and computational features of this code and information on ho) 72 394.67 T
-(w to) 495.09 394.67 T
-(access) 72 376.67 T
-(and) 110.99 376.67 T
-(use) 134.43 376.67 T
-(this) 156.32 376.67 T
-(code) 179.78 376.67 T
-(within) 209.44 376.67 T
-(the) 248.45 376.67 T
-(FMS.) 268.79 376.67 T
-(Also) 306.76 376.67 T
-(included) 336.44 376.67 T
-(is) 387.88 376.67 T
-(discussion) 400.45 376.67 T
-(of) 462.02 376.67 T
-(the) 476.91 376.67 T
-(interac-) 497.24 376.67 T
-(tion) 72 358.67 T
-(with) 96.72 358.67 T
-(other) 124.56 358.67 T
-(FMS) 156.27 358.67 T
-(modules,) 187.22 358.67 T
-(an) 244.05 358.67 T
-(outline) 260.2 358.67 T
-(of) 302.04 358.67 T
-(the) 319.58 358.67 T
-(directory) 339.63 358.67 T
-(structure) 393.11 358.67 T
-(under) 445.04 358.67 T
-(which) 479.85 358.67 T
-(the) 517.01 358.67 T
-(code is currently stored and a proposal for future storage,  a discussion of the fea-) 72 340.67 T
-(tures of the current code that are a consequence of it ha) 72 322.67 T
-(ving pre) 380.78 322.67 T
-(viously been neces-) 426.7 322.67 T
-(sary to run this code in applications outside of FMS and the anticipated changes) 72 304.67 T
-(which will occur in the ne) 72 286.67 T
-(xt release when this requirement will be remo) 217.6 286.67 T
-(v) 473.62 286.67 T
-(ed, and a) 480.41 286.67 T
-(discussion of current de\336ciencies in its compliance with the GFDL ph) 72 268.67 T
-(ysics and) 463.89 268.67 T
-(FMS standards, which will also be corrected in the ne) 72 250.67 T
-(xt release.) 372.75 250.67 T
-(      The follo) 72 215.67 T
-(wing sections are contained in this document:) 144.37 215.67 T
-(            A.  Scienti\336c dif) 72 198.67 T
-(ferences between def) 206.2 198.67 T
-(ault and sea-esf radiation code) 324.22 198.67 T
-(            B.   General capabilities of the sea-esf radiation-step ph) 72 181.67 T
-(ysics modules) 424.97 181.67 T
-(            C.   Changes made to e) 72 164.67 T
-(xisting FMS modules to accomodate this code) 243.28 164.67 T
-(            D.   Directory structure of sea-esf modules) 72 147.67 T
-(            E.   Remo) 72 130.67 T
-(v) 169.79 130.67 T
-(al of SKYHI interf) 176.44 130.67 T
-(aces) 281.66 130.67 T
-(            F) 72 113.67 T
-(.   Compliance with FMS and GFDL ph) 120.66 113.67 T
-(ysics coding standards) 343.43 113.67 T
-(            G.   Coding techniques which dif) 72 96.67 T
-(fer from other FMS modules) 299.14 96.67 T
-(            H.   List and brief description of ne) 72 79.67 T
-(w modules) 310.78 79.67 T
+(This) 96.32 468 T
+(document) 124.37 468 T
+(is) 182.74 468 T
+(to) 195.23 468 T
+(serv) 209.27 468 T
+(e) 232.39 468 T
+(as) 241.76 468 T
+(a) 256.57 468 T
+(source) 265.94 468 T
+(of) 305.63 468 T
+(information) 320.45 468 T
+(about) 389.71 468 T
+(the) 423.97 468 T
+(changes) 444.23 468 T
+(made) 492.48 468 T
+(to) 525.95 468 T
+(the) 72 448.67 T
+(modules) 92.42 448.67 T
+(contained) 143.17 448.67 T
+(in) 200.91 448.67 T
+(and) 215.12 448.67 T
+(related) 238.64 448.67 T
+(to) 280.04 448.67 T
+(the) 294.24 448.67 T
+(sea-esf) 314.66 448.67 T
+(radiation) 356.83 448.67 T
+(code) 409.91 448.67 T
+(in) 439.65 448.67 T
+(going) 453.86 448.67 T
+(from) 489.06 448.67 T
+(the) 519.58 448.67 T
+(Gal) 72 430.67 T
+(w) 92.08 430.67 T
+(ay) 102.04 430.67 T
+(release) 118.59 430.67 T
+(to) 160.79 430.67 T
+(the) 175.02 430.67 T
+(Ha) 195.46 430.67 T
+(v) 211.51 430.67 T
+(ana) 218.15 430.67 T
+(release) 240.92 430.67 T
+(of) 283.12 430.67 T
+(the) 298.11 430.67 T
+(FMS.) 318.56 430.67 T
+(The) 356.74 430.67 T
+(reader) 381.84 430.67 T
+(is) 420.15 430.67 T
+(referred) 432.82 430.67 T
+(to) 480.45 430.67 T
+(the) 494.68 430.67 T
+(Gal-) 515.12 430.67 T
+(w) 72 412.67 T
+(ay) 81.97 412.67 T
+(release) 98.46 412.67 T
+(v) 140.6 412.67 T
+(ersion) 147.39 412.67 T
+(of) 184.88 412.67 T
+(this) 199.82 412.67 T
+(document) 223.32 412.67 T
+(for) 281.82 412.67 T
+(additional) 301.42 412.67 T
+(information) 360.69 412.67 T
+(on) 430.07 412.67 T
+(this) 447.35 412.67 T
+(package,) 470.86 412.67 T
+(its) 523.49 412.67 T
+(structure, capabilities and softw) 72 394.67 T
+(are e) 249.94 394.67 T
+(v) 276.4 394.67 T
+(olution plans.) 283.12 394.67 T
+(      The follo) 72 359.67 T
+(wing sections are contained in this document:) 144.37 359.67 T
+(            A.   A summary of the changes made to this code.) 72 342.67 T
+(            B.   List and brief description of the modules of this directory) 72 325.67 T
+(.) 457.22 325.67 T
+(            C.   Changes needed to g) 72 308.67 T
+(al) 253.52 308.67 T
+(w) 263.49 308.67 T
+(ay-based fms scripts to use the ne) 273.46 308.67 T
+(w code.) 461.3 308.67 T
+(            D.   Summary of namelist v) 72 291.67 T
+(ariables and acceptable v) 268.81 291.67 T
+(alues for them.) 408.8 291.67 T
+0 F
+(A.   Code changes) 75.5 257.67 T
+1 F
+(       Code changes in the sea-esf radiation package made between the Gal) 72 223.67 T
+(w) 482.8 223.67 T
+(ay and) 492.77 223.67 T
+(Ha) 72 206.67 T
+(v) 88.04 206.67 T
+(ana) 94.69 206.67 T
+(releases) 117.27 206.67 T
+(may) 164.72 206.67 T
+(be) 191.97 206.67 T
+(cate) 208.33 206.67 T
+(gorized) 230.66 206.67 T
+(as) 275.79 206.67 T
+(being) 290.59 206.67 T
+(in) 324.84 206.67 T
+(three) 338.88 206.67 T
+(areas:) 370.01 206.67 T
+(scienti\336c) 405.8 206.67 T
+(enhancement,) 459.49 206.67 T
+(code reor) 72 189.67 T
+(g) 124.22 189.67 T
+(anization or code cleanup.) 131.15 189.67 T
+(          1.   Scienti\336c enhancement) 72 155.67 T
+(                 a.  Code w) 72 138.67 T
+(as added to allo) 191.24 138.67 T
+(w the mer) 278.37 138.67 T
+(ger of strat_cloud and donner_deep) 334.11 138.67 T
+(cloud properties so that the) 72 121.67 T
+(y could be used to de\336ne appropriate cloud radiati) 223.44 121.67 T
+(v) 503.82 121.67 T
+(e) 510.61 121.67 T
+(properties.) 72 104.67 T
+(b) 122.77 87.67 T
+(.) 129.21 87.67 T
+(A) 139.48 87.67 T
+(ne) 152.98 87.67 T
+(w) 165.84 87.67 T
+(ozone) 179.33 87.67 T
+(climatology) 216.15 87.67 T
+(is) 286.43 87.67 T
+(no) 299.15 87.67 T
+(w) 312.8 87.67 T
+(a) 326.29 87.67 T
+(v) 332.23 87.67 T
+(ailable,) 338.88 87.67 T
+(based) 383.09 87.67 T
+(on) 418.35 87.67 T
+(ne) 435.74 87.67 T
+(wer) 448.6 87.67 T
+(ozone) 472.97 87.67 T
+(data.) 509.79 87.67 T
 FMENDPAGE
 %%EndPage: "1" 1
 %%Page: "2" 2
@@ -2371,141 +2407,213 @@ FrameNoSep
 0 0 0 1 0 0 0 1 K
 1 14 Q
 0 X
-(            I.    Ex) 72 710.67 T
-(ecution options with the sea-esf radiation code) 151.51 710.67 T
-(            J.    Script changes necessary to run with sea-esf radiation code) 72 693.67 T
-(            K.   Namelist option set for \322FMS-lik) 72 676.67 T
-(e\323 run) 323.86 676.67 T
-(            L.   Namelist option set for \322SKYHI-lik) 72 659.67 T
-(e\323 run) 337.06 659.67 T
-(            M.  Namelist v) 72 642.67 T
-(ariables within the sea_esf_rad modules) 197.65 642.67 T
-0 F
-(A.   Scienti\336c differ) 75.5 591.67 T
-(ences between default and sea-esf radiation codes) 190.73 591.67 T
-1 F
-(The) 94.82 557.67 T
-(Eugene) 119.85 557.67 T
-(release) 165.09 557.67 T
-(of) 207.21 557.67 T
-(the) 222.14 557.67 T
-(sea-esf) 242.5 557.67 T
-(radiation) 284.63 557.67 T
-(code) 337.66 557.67 T
-(represents) 367.35 557.67 T
-(the) 427.36 557.67 T
-(state) 447.73 557.67 T
-(of) 476.65 557.67 T
-(de) 491.57 557.67 T
-(v) 504.44 557.67 T
-(elop-) 511.23 557.67 T
-(ment) 72 540.67 T
-(of) 103.16 540.67 T
-(the) 117.99 540.67 T
-(radiation) 138.26 540.67 T
-(codes) 191.2 540.67 T
-(at) 226.24 540.67 T
-(GFDL) 239.51 540.67 T
-(as) 279.23 540.67 T
-(of) 294.06 540.67 T
-(May) 308.88 540.67 T
-(,) 333.64 540.67 T
-(2001.) 340.3 540.67 T
-(The) 378.13 540.67 T
-(def) 403.06 540.67 T
-(ault) 420.8 540.67 T
-(radiation) 444.97 540.67 T
-(code) 497.9 540.67 T
-(is) 527.5 540.67 T
-(re\337ecti) 72 523.67 T
-(v) 110.53 523.67 T
-(e of the state of radiation code de) 117.32 523.67 T
-(v) 303.2 523.67 T
-(elopment at some point in the early) 309.99 523.67 T
-(1990\325) 72 506.67 T
-(s.) 103.89 506.67 T
-(Among) 96.45 472.67 T
-(the) 141.94 472.67 T
-(ne) 162.54 472.67 T
-(w) 175.41 472.67 T
-(features) 189.01 472.67 T
-(and) 236.82 472.67 T
-(capabilities) 260.52 472.67 T
-(that) 327.79 472.67 T
-(appear) 352.28 472.67 T
-(with) 393.08 472.67 T
-(the) 421.47 472.67 T
-(sea-esf) 442.07 472.67 T
-(code) 484.43 472.67 T
-(rela-) 514.35 472.67 T
-(ti) 72 455.67 T
-(v) 79.43 455.67 T
-(e to the def) 86.22 455.67 T
-(ault are :) 148.68 455.67 T
-(            1.  Shortw) 72 438.67 T
-(a) 171.81 438.67 T
-(v) 177.74 438.67 T
-(e code) 184.53 438.67 T
-(                a.\051  The e) 72 421.67 T
-(xponential-sum-\336t sw code using either 25 bands and 72) 180.65 421.67 T
-(                       frequenc) 72 404.67 T
-(y  points \050high-resolution option\051  or 18 bands and 38) 201.26 404.67 T
-(                        frequenc) 72 387.67 T
-(y points \050lo) 204.76 387.67 T
-(w-resolution\051 does a much better job of de\336ning) 268.2 387.67 T
-(                       the solar spectrum and allo) 72 370.67 T
-(wing the proper interaction of v) 303.01 370.67 T
-(arious) 480.35 370.67 T
-(                       atmospheric components with the spectrum than does the Lacis-) 72 353.67 T
-(                       Hansen formulation used pre) 72 336.67 T
-(viously) 314.28 336.67 T
-(.  This form has the ability to) 354.6 336.67 T
-(                       include ef) 72 319.67 T
-(fects of aerosols on the solar heating rates and \337ux) 207.74 319.67 T
-(es, a) 490.98 319.67 T
-(                       capability not present with Lacis-Hansen.) 72 302.67 T
-(                 b) 72 285.67 T
-(.\051  Note that the Lacis-Hansen shortw) 137.94 285.67 T
-(a) 347.37 285.67 T
-(v) 353.3 285.67 T
-(e code remains a) 360.09 285.67 T
-(v) 453.5 285.67 T
-(ailable with-) 460.15 285.67 T
-(                       in the sea-esf modules, so that it may still be used when needed. A) 72 268.67 T
-(                       fe) 72 251.67 T
-(w upgrades to the def) 163.03 251.67 T
-(ault Lacis-Hansen code are present in the) 283.41 251.67 T
-(                       sea-esf form.) 72 234.67 T
-(                 c.\051  Code to de\336ne cloud radiati) 72 217.67 T
-(v) 308.07 217.67 T
-(e properties based on cloud micro-) 314.86 217.67 T
-(                       ph) 72 200.67 T
-(ysical properties is a) 166.43 200.67 T
-(v) 280.85 200.67 T
-(ailable.) 287.5 200.67 T
-(             2.  Longw) 72 166.67 T
-(a) 174.52 166.67 T
-(v) 180.46 166.67 T
-(e code) 187.25 166.67 T
-(                  a.\051   The ability to include the ef) 72 149.67 T
-(fects of additional radiati) 314.68 149.67 T
-(v) 454.69 149.67 T
-(ely-acti) 461.48 149.67 T
-(v) 503.12 149.67 T
-(e) 509.91 149.67 T
-(                         g) 72 132.67 T
-(ases on the L) 166.43 132.67 T
-(W \337ux) 238.88 132.67 T
-(es and heating rates is present. Addit-) 277.17 132.67 T
-(                         ional g) 72 115.67 T
-(ases whose ef) 197.93 115.67 T
-(fects may be included are CH4, N2O, and) 274.55 115.67 T
-(                         4 CFCs : f11, f12, f22, and  f113.) 72 98.67 T
-(                   b) 72 81.67 T
-(.\051  The ef) 144.94 81.67 T
-(fects of w) 195.9 81.67 T
-(ater v) 250.96 81.67 T
-(apor continuum absorption are calculated) 282.1 81.67 T
+(It) 72 710.67 T
+(may) 83.88 710.67 T
+(be) 111.3 710.67 T
+(accessed) 127.84 710.67 T
+(by) 180.13 710.67 T
+(setting) 197.45 710.67 T
+(a) 238.11 710.67 T
+(namelist) 247.65 710.67 T
+(v) 298.41 710.67 T
+(ariable.) 305.06 710.67 T
+(An) 349.98 710.67 T
+(interpolater) 370.41 710.67 T
+(module) 438.27 710.67 T
+(is) 483.59 710.67 T
+(present) 496.25 710.67 T
+(in the directory to use this data; this will soon be a) 72 693.67 T
+(v) 353.65 693.67 T
+(ailable in a /shared directory) 360.3 693.67 T
+(,) 518.8 693.67 T
+(and this v) 72 676.67 T
+(ersion of interpolater) 126.24 676.67 T
+(.F90 will be remo) 242.88 676.67 T
+(v) 342.23 676.67 T
+(ed.) 349.02 676.67 T
+(c.) 116.31 659.67 T
+(Code) 132.35 659.67 T
+(to) 165.07 659.67 T
+(allo) 179.13 659.67 T
+(w) 199.78 659.67 T
+(the) 213.05 659.67 T
+(time) 233.32 659.67 T
+(interpolation) 261.38 659.67 T
+(of) 336.1 659.67 T
+(the) 350.92 659.67 T
+(solar) 371.2 659.67 T
+(f) 401.58 659.67 T
+(actor) 406.1 659.67 T
+(between) 437.25 659.67 T
+(radiation) 487.06 659.67 T
+(timesteps w) 72 642.67 T
+(as added as an option. This will allo) 138.36 642.67 T
+(w sw heating rates and \337ux) 339.44 642.67 T
+(es to) 492.04 642.67 T
+(v) 72 625.67 T
+(ary more gradually with time, rather than changing in a step-lik) 78.65 625.67 T
+(e manner at the) 433.51 625.67 T
+(radiation timestep frequenc) 72 608.67 T
+(y) 224.98 608.67 T
+(.  Thus the solar c) 231.07 608.67 T
+(ycle will be captured at ph) 330.4 608.67 T
+(ysics step) 478.46 608.67 T
+(resolution rather than radiation step resolution. Note that basic \337ux) 72 591.67 T
+(es are only cal-) 446.64 591.67 T
+(culated at the radiation step frequenc) 72 574.67 T
+(y using input data v) 278.23 574.67 T
+(alid at that time, b) 388.33 574.67 T
+(ut that) 489.55 574.67 T
+(the \337ux) 72 557.67 T
+(es are renormalized usaing solar input v) 114.18 557.67 T
+(alues appropriate on the current) 337.01 557.67 T
+(ph) 72 540.67 T
+(ysics timestep.) 85.93 540.67 T
+(             d.  A preliminary connection between the sea_esf_rad package and the) 72 523.67 T
+(diag_cloud package w) 72 506.67 T
+(as established by modifying the appropriate interf) 197.05 506.67 T
+(aces to) 475.31 506.67 T
+(allo) 72 489.67 T
+(w the return of microph) 92.65 489.67 T
+(ysically-based cloud radiati) 225.55 489.67 T
+(v) 379.17 489.67 T
+(e properties needed in the) 385.96 489.67 T
+(sea-esf radiation package. This code is under de) 72 472.67 T
+(v) 339.9 472.67 T
+(elopment, and is not yet ready for) 346.69 472.67 T
+(scienti\336c use.) 72 455.67 T
+(           2.  Code reor) 72 421.67 T
+(g) 183.34 421.67 T
+(anization) 190.27 421.67 T
+(                a. The original fms module astronomy) 72 404.67 T
+(.f90 w) 341.74 404.67 T
+(as consolidated with the) 377.37 404.67 T
+(sea_esf_rad module astronomy_package.f90. Changes were made to enhance com-) 72 387.67 T
+(pliance with coding standards and simplify \050generalize\051 interf) 72 370.67 T
+(aces. The calculation) 416.74 370.67 T
+(of solar quantities when the annual_mean option is chosen is no) 72 353.67 T
+(w done only once,) 429.39 353.67 T
+(rather than being done on each timestep, sa) 72 336.67 T
+(ving considerable time in some applica-) 313.56 336.67 T
+(tions.) 72 319.67 T
+(b) 123.78 302.67 T
+(.) 130.22 302.67 T
+(Radiation_dri) 140.2 302.67 T
+(v) 216.85 302.67 T
+(er_mod) 223.64 302.67 T
+(is) 269.64 302.67 T
+(no) 282.22 302.67 T
+(w) 295.87 302.67 T
+(the) 309.21 302.67 T
+(interf) 329.55 302.67 T
+(ace) 359.74 302.67 T
+(between) 381.62 302.67 T
+(ph) 431.51 302.67 T
+(ysics_dri) 445.44 302.67 T
+(v) 495.64 302.67 T
+(er) 502.43 302.67 T
+(and) 516.55 302.67 T
+(an) 72 285.67 T
+(y radiation package to be used within FMS. It is responsible for obtaining astro-) 85.01 285.67 T
+(nomical, cloud, radiati) 72 268.67 T
+(v) 197.64 268.67 T
+(e g) 204.43 268.67 T
+(as and atmospheric input data to radiation and returning) 221.07 268.67 T
+(heating rates, \337ux) 72 251.67 T
+(es and diagnostics from whate) 171.72 251.67 T
+(v) 340.9 251.67 T
+(er radiation package is emplo) 347.69 251.67 T
+(yed.) 512.4 251.67 T
+(As a result, ph) 72 234.67 T
+(ysics_dri) 152.81 234.67 T
+(v) 203.01 234.67 T
+(er no) 209.8 234.67 T
+(w simply calls radiation_dri) 237.83 234.67 T
+(v) 394.2 234.67 T
+(er) 400.99 234.67 T
+(, and the choice of) 411.3 234.67 T
+(radiation package is made in radiation_dri) 72 217.67 T
+(v) 307.66 217.67 T
+(er) 314.45 217.67 T
+(.) 324.56 217.67 T
+(               c.  A reor) 72 200.67 T
+(g) 177.11 200.67 T
+(anization of the handling of radiati) 184.04 200.67 T
+(v) 377.72 200.67 T
+(e g) 384.51 200.67 T
+(ases is underw) 401.15 200.67 T
+(ay) 482.66 200.67 T
+(. Deter-) 494.97 200.67 T
+(mination of distrib) 72 183.67 T
+(utions of all species are no) 175.95 183.67 T
+(w handled within) 324.52 183.67 T
+(radiati) 72 166.67 T
+(v) 107.42 166.67 T
+(e_g) 114.21 166.67 T
+(ases_mod, while the rele) 134.36 166.67 T
+(v) 272.42 166.67 T
+(ant transmission function contrib) 279.07 166.67 T
+(utions from) 463.51 166.67 T
+(those g) 72 149.67 T
+(ases remain in the module named by the speci\336c g) 111.98 149.67 T
+(as.) 393.82 149.67 T
+(d.) 119.85 132.67 T
+(The) 133.53 132.67 T
+(module) 158.49 132.67 T
+(longw) 203.68 132.67 T
+(a) 238.54 132.67 T
+(v) 244.48 132.67 T
+(e_dri) 251.27 132.67 T
+(v) 279.69 132.67 T
+(er_mod) 286.48 132.67 T
+(is) 332.44 132.67 T
+(no) 344.97 132.67 T
+(w) 358.62 132.67 T
+(used) 371.92 132.67 T
+(as) 400.77 132.67 T
+(a) 415.62 132.67 T
+(high-le) 425.02 132.67 T
+(v) 464.33 132.67 T
+(el) 471.12 132.67 T
+(dri) 484.42 132.67 T
+(v) 499.63 132.67 T
+(er) 506.42 132.67 T
+(for) 520.48 132.67 T
+(an) 72 115.67 T
+(y) 85.01 115.67 T
+(v) 95.16 115.67 T
+(ersion) 101.95 115.67 T
+(of) 139.32 115.67 T
+(the) 154.13 115.67 T
+(longw) 174.39 115.67 T
+(a) 209.25 115.67 T
+(v) 215.19 115.67 T
+(e) 221.98 115.67 T
+(radiation) 231.35 115.67 T
+(package) 284.27 115.67 T
+(that) 333.29 115.67 T
+(might) 357.44 115.67 T
+(be) 393.27 115.67 T
+(present) 409.64 115.67 T
+(in) 453.22 115.67 T
+(sea_esf_rad.) 467.27 115.67 T
+(The former contents of longw) 72 98.67 T
+(a) 239.05 98.67 T
+(v) 244.98 98.67 T
+(e_dri) 251.77 98.67 T
+(v) 280.19 98.67 T
+(er) 286.98 98.67 T
+(.f90 are no) 297.09 98.67 T
+(w in the ne) 357 98.67 T
+(w module) 418.47 98.67 T
+(seal) 72 81.67 T
+(w99.f90, the speci\336c dri) 93.63 81.67 T
+(v) 228.98 81.67 T
+(er for the current longw) 235.77 81.67 T
+(a) 368.59 81.67 T
+(v) 374.53 81.67 T
+(e code v) 381.32 81.67 T
+(ersion, along with) 427.75 81.67 T
 FMENDPAGE
 %%EndPage: "2" 2
 %%Page: "3" 3
@@ -2516,134 +2624,207 @@ FrameNoSep
 0 0 0 1 0 0 0 1 K
 1 14 Q
 0 X
-(                          using the CKD 2.1 v) 72 710.67 T
-(ersion of the AFGL continuum absorption) 278.29 710.67 T
-(                          algorithm instead of the Roberts continuum.) 72 693.67 T
-(                    c.\051  A re) 72 676.67 T
-(vised band structure is used \05016 instead of 15 bands as is used) 187.51 676.67 T
-(                          in  the  def) 72 659.67 T
-(ault code\051.) 222.74 659.67 T
-(                    d.\051  Preliminary code to include aerosol ef) 72 642.67 T
-(fects on the L) 377.27 642.67 T
-(W \337ux) 452.83 642.67 T
-(es and) 491.12 642.67 T
-(                          heating rates is  present.) 72 625.67 T
-(                    e.\051  Code to de\336ne cloud radiati) 72 608.67 T
-(v) 318.57 608.67 T
-(e properties based on cloud micro-) 325.36 608.67 T
-(                          ph) 72 591.67 T
-(ysical properties is present.) 176.93 591.67 T
-(                     f.\051 Longw) 72 574.67 T
-(a) 201.35 574.67 T
-(v) 207.28 574.67 T
-(e transmission functions for the well-mix) 214.07 574.67 T
-(ed greenhouse) 444.46 574.67 T
-(                          g) 72 557.67 T
-(ases \050CO2, CH4, N2O\051 at model species amount, temperatures) 169.93 557.67 T
-(                          and pressures are computed \050online\051  from transmission functions) 72 540.67 T
-(                          for these g) 72 523.67 T
-(ases at standard species amounts, temperatures and) 222.02 523.67 T
-(                          pressures. The standard pressure le) 72 506.67 T
-(v) 358.2 506.67 T
-(els number 496, rather than) 364.99 506.67 T
-(                         109 as in the def) 72 489.67 T
-(ault code.) 251.9 489.67 T
-(              3. Standalone dri) 72 455.67 T
-(v) 215.92 455.67 T
-(er -  There is a standalone dri) 222.71 455.67 T
-(v) 386.03 455.67 T
-(er a) 392.82 455.67 T
-(v) 413.14 455.67 T
-(ailable to run the) 419.79 455.67 T
-(                  radiation code for  user) 72 438.67 T
-(-speci\336ed set\050s\051 of atmospheric-column charac-) 264.57 438.67 T
-(                  teristics.  F) 72 421.67 T
-(or the ne) 196.63 421.67 T
-(xt release, it is anticipated that interf) 245.4 421.67 T
-(aces will also) 449.4 421.67 T
-(                  be a) 72 404.67 T
-(v) 157.65 404.67 T
-(ailable for connection to single-column ph) 164.3 404.67 T
-(ysics models.) 401.81 404.67 T
-(.) 72 387.67 T
-0 F
-(B.   General capabilities of the sea-esf radiation-step ph) 75.5 353.67 T
-(ysics modules) 405.06 353.67 T
-1 F
-(        A primary consideration during the de) 72 319.67 T
-(v) 313.89 319.67 T
-(elopment of the sea-esf modules w) 320.68 319.67 T
-(as) 515.34 319.67 T
-(the retention of the ability to run the radiation-step ph) 72 302.67 T
-(ysics as it w) 372.51 302.67 T
-(as currently run-) 440.42 302.67 T
-(ning, both in SKYHI and in the FMS.  Extensi) 72 285.67 T
-(v) 331.83 285.67 T
-(e testing of the sea-esf code has sat-) 338.62 285.67 T
-(is\336ed me of the follo) 72 268.67 T
-(wing:) 188.31 268.67 T
-(1.) 112.63 251.67 T
-(The) 129.91 251.67 T
-(ne) 155.06 251.67 T
-(w) 167.93 251.67 T
-(modules) 181.42 251.67 T
-(no) 232.25 251.67 T
-(w) 245.9 251.67 T
-(incorporated) 259.4 251.67 T
-(into) 333.54 251.67 T
-(the) 358.71 251.67 T
-(FMS) 379.2 251.67 T
-(reliably) 410.61 251.67 T
-(reproduce) 456.76 251.67 T
-(the) 516.12 251.67 T
-(radiation) 72 234.67 T
-(calculation) 125 234.67 T
-(results) 189.66 234.67 T
-(obtained) 229.44 234.67 T
-(in) 280.88 234.67 T
-(SKYHI) 295 234.67 T
-(when) 341 234.67 T
-(the) 374.55 234.67 T
-(original) 394.89 234.67 T
-(code) 441.67 234.67 T
-(upon) 471.33 234.67 T
-(which) 502.56 234.67 T
-(the) 72 217.67 T
-(y are based is e) 88.9 217.67 T
-(x) 174.21 217.67 T
-(ecuted.  The changes which occur are understood and are not) 181 217.67 T
-(considered \322suspect\323.) 72 200.67 T
-(            2.  The dif) 72 183.67 T
-(ferences between the radiation results in SKYHI when run in a) 171.97 183.67 T
-(\322coldstart\323 mode and from a \322SKYHI-lik) 72 166.67 T
-(e\323 v) 303.2 166.67 T
-(ersion of FMS run from coldstart are) 325.92 166.67 T
-(acceptable,) 72 149.67 T
-(implying) 137.94 149.67 T
-(that) 191.88 149.67 T
-(the) 216.24 149.67 T
-(e) 236.71 149.67 T
-(xternal) 242.72 149.67 T
-(ar) 284.96 149.67 T
-(guments) 295.59 149.67 T
-(to) 346.4 149.67 T
-(the) 360.65 149.67 T
-(radiation) 381.12 149.67 T
-(modules) 434.26 149.67 T
-(are) 485.07 149.67 T
-(being) 505.53 149.67 T
-(handled properly in the FMS implementation.) 72 132.67 T
-(            3.   The inclusion of the sea-esf code in FMS does not af) 72 115.67 T
-(fect at all the) 430.16 115.67 T
-(answers obtained when the def) 72 98.67 T
-(ault code is e) 244.48 98.67 T
-(x) 317.76 98.67 T
-(ecuted. Thus one can e) 324.55 98.67 T
-(xactly repro-) 452.24 98.67 T
-(duce pre) 72 81.67 T
-(vious results obtained with the FMS, simply by continuing to e) 119.46 81.67 T
-(x) 471.99 81.67 T
-(ecute the) 478.78 81.67 T
+(most of the former contents of cool_to_space.f90, co2_source.f90 and se) 72 710.67 T
+(v) 479.12 710.67 T
+(eral rou-) 485.91 710.67 T
+(tines from longw) 72 693.67 T
+(a) 167.52 693.67 T
+(v) 173.46 693.67 T
+(e_tables.f90.) 180.25 693.67 T
+(e.) 124.67 676.67 T
+(The) 140.97 676.67 T
+(former) 166.03 676.67 T
+(contents) 207.41 676.67 T
+(of) 257.37 676.67 T
+(radiation_dri) 272.32 676.67 T
+(v) 344.3 676.67 T
+(er) 351.09 676.67 T
+(.f90) 361.19 676.67 T
+(\050the) 386.65 676.67 T
+(code) 411.71 676.67 T
+(to) 441.43 676.67 T
+(run) 455.62 676.67 T
+(the) 477.57 676.67 T
+(def) 497.97 676.67 T
+(ault) 515.71 676.67 T
+(fms radiation code\051 ha) 72 659.67 T
+(v) 197.3 659.67 T
+(e been mo) 204.09 659.67 T
+(v) 261.42 659.67 T
+(ed to the ne) 268.21 659.67 T
+(w module original_fms_rad.f90,) 332.79 659.67 T
+(which is optionally called from radiation_dri) 72 642.67 T
+(v) 322.46 642.67 T
+(er) 329.25 642.67 T
+(.) 339.36 642.67 T
+(              f.   The former contents of sea_esf_rad.f90 are no) 72 625.67 T
+(w lar) 397.84 625.67 T
+(gely in) 425.96 625.67 T
+(radiation_dri) 72 608.67 T
+(v) 143.97 608.67 T
+(er_mod. Sea_esf_rad_mod is no) 150.76 608.67 T
+(w used as a high-le) 330.83 608.67 T
+(v) 437.79 608.67 T
+(el dri) 444.58 608.67 T
+(v) 473.39 608.67 T
+(er for the) 480.18 608.67 T
+(sea_esf_rad radiation package.) 72 591.67 T
+(g.) 121.5 574.67 T
+(The) 138.6 574.67 T
+(use) 163.68 574.67 T
+(of) 185.64 574.67 T
+(\322setup\323) 200.6 574.67 T
+(mods) 245.88 574.67 T
+(has) 279.52 574.67 T
+(been) 301.49 574.67 T
+(eliminated.) 331.22 574.67 T
+(The) 397.13 574.67 T
+(needed) 422.2 574.67 T
+(functionality) 465.14 574.67 T
+(is no) 72 557.67 T
+(w ef) 98.49 557.67 T
+(\336ciently pro) 122.62 557.67 T
+(vided by the stack-resident deri) 190.47 557.67 T
+(v) 365.86 557.67 T
+(ed-type v) 372.65 557.67 T
+(ariables.) 424.79 557.67 T
+(h.) 115.36 540.67 T
+(F) 128.96 540.67 T
+(ormer) 136.54 540.67 T
+(modules) 173.06 540.67 T
+(zonal_ozone.f90) 223.61 540.67 T
+(\050FMS) 319.62 540.67 T
+(original\051) 355.4 540.67 T
+(and) 406.71 540.67 T
+(ozone.f90) 430.02 540.67 T
+(\050sea-esf\051) 488.71 540.67 T
+(ha) 72 523.67 T
+(v) 84.94 523.67 T
+(e been consolidated, and are no) 91.73 523.67 T
+(w accessed through the radiati) 267.1 523.67 T
+(v) 436.27 523.67 T
+(e_g) 443.06 523.67 T
+(ases module.) 463.2 523.67 T
+(All pre) 72 506.67 T
+(vious functionality remains, although plans are to remo) 110.92 506.67 T
+(v) 420.24 506.67 T
+(e outdated options) 427.03 506.67 T
+(in a future release.) 72 489.67 T
+(            i. Ne) 72 472.67 T
+(w options related to donner_deep are being added to the) 140.87 472.67 T
+(standalone_clouds_mod. This is under de) 72 455.67 T
+(v) 303.8 455.67 T
+(elopment.) 310.59 455.67 T
+(           3.  Code cleanup) 72 421.67 T
+(               a.  Changes were made in man) 72 404.67 T
+(y modules to remo) 295.75 404.67 T
+(v) 400.15 404.67 T
+(e code that w) 406.94 404.67 T
+(as pre) 481.05 404.67 T
+(vi-) 513.74 404.67 T
+(ously needed to allo) 72 387.67 T
+(w connection of this radiation package to the SKYHI model.) 184.03 387.67 T
+(That connection is no longer needed, and so simpli\336cation and remo) 72 370.67 T
+(v) 454.8 370.67 T
+(al of those) 461.45 370.67 T
+(pieces) 72 353.67 T
+(is) 110.15 353.67 T
+(under) 122.64 353.67 T
+(w) 157.68 353.67 T
+(ay) 167.65 353.67 T
+(.) 179.96 353.67 T
+(Man) 189.77 353.67 T
+(y) 215.23 353.67 T
+(modules) 225.39 353.67 T
+(that) 275.99 353.67 T
+(were) 300.15 353.67 T
+(needed) 330.51 353.67 T
+(as) 373.32 353.67 T
+(\322dummy\323) 388.14 353.67 T
+(modules) 446.52 353.67 T
+(for) 497.13 353.67 T
+(this) 516.61 353.67 T
+(purpose ha) 72 336.67 T
+(v) 132.76 336.67 T
+(e been remo) 139.55 336.67 T
+(v) 207.76 336.67 T
+(ed in addition to speci\336c blocks of code. This process is) 214.55 336.67 T
+(ongoing.) 72 319.67 T
+(b) 123.64 302.67 T
+(.) 130.08 302.67 T
+(Local) 140.03 302.67 T
+(arrays) 175.14 302.67 T
+(are) 212.57 302.67 T
+(no) 232.89 302.67 T
+(w) 246.54 302.67 T
+(being) 259.87 302.67 T
+(de\336ned) 294.21 302.67 T
+(as) 338.65 302.67 T
+(stack) 353.54 302.67 T
+(v) 385.54 302.67 T
+(ariables,) 392.19 302.67 T
+(rather) 442.45 302.67 T
+(than) 478.33 302.67 T
+(being) 505.66 302.67 T
+(allocated from the heap.) 72 285.67 T
+(              c.  Man) 72 268.67 T
+(y former module v) 163.17 268.67 T
+(ariables are no) 267.41 268.67 T
+(w elements of stack-resident) 348.7 268.67 T
+(deri) 72 251.67 T
+(v) 93.42 251.67 T
+(ed-type) 100.21 251.67 T
+(v) 145.46 251.67 T
+(ariables) 152.11 251.67 T
+(in) 198.91 251.67 T
+(radiation_dri) 213.07 251.67 T
+(v) 285.04 251.67 T
+(er_mod.) 291.83 251.67 T
+(The) 341.36 251.67 T
+(y) 362.92 251.67 T
+(can) 373.19 251.67 T
+(then) 395.88 251.67 T
+(be) 423.25 251.67 T
+(passed) 439.73 251.67 T
+(ef) 480.32 251.67 T
+(\336ciently) 490.85 251.67 T
+(via ar) 72 234.67 T
+(gument list to the lo) 103.23 234.67 T
+(wer le) 214.9 234.67 T
+(v) 249.14 234.67 T
+(el modules and subroutines where needed. This) 255.93 234.67 T
+(change eliminates the use of get_xxx type subroutines, allo) 72 217.67 T
+(wing direct passage of) 402.55 217.67 T
+(v) 72 200.67 T
+(ariables via ar) 78.65 200.67 T
+(gument list.) 156.92 200.67 T
+(              d.  MKS v) 72 183.67 T
+(ariables ha) 178.99 183.67 T
+(v) 238.96 183.67 T
+(e  replaced non-compliant usages of CGS in man) 245.75 183.67 T
+(y) 520.06 183.67 T
+(places.) 72 166.67 T
+(              e.  Character strings are declared to be multiples of 8 bytes long.) 72 149.67 T
+(f.) 122.52 132.67 T
+(Use) 137.42 132.67 T
+(of) 162.56 132.67 T
+(the) 177.59 132.67 T
+(utilities_mod) 198.07 132.67 T
+(subroutine) 275.34 132.67 T
+(get_domain_decomp) 337.82 132.67 T
+(has) 458.61 132.67 T
+(been) 480.64 132.67 T
+(elim-) 510.45 132.67 T
+(inated.) 72 115.67 T
+(               g.  Use of the g) 72 98.67 T
+(aussian angle inde) 209.97 98.67 T
+(x on cloud radiati) 312.41 98.67 T
+(v) 410.44 98.67 T
+(e properties in con-) 417.23 98.67 T
+(junction with lacis-hansen shortw) 72 81.67 T
+(a) 260.45 81.67 T
+(v) 266.39 81.67 T
+(e has been eliminated.) 273.18 81.67 T
 FMENDPAGE
 %%EndPage: "3" 3
 %%Page: "4" 4
@@ -2654,165 +2835,181 @@ FrameNoSep
 0 0 0 1 0 0 0 1 K
 1 14 Q
 0 X
-(def) 72 710.67 T
-(ault code.) 89.74 710.67 T
-(4.) 117.49 693.67 T
-(The) 134.99 693.67 T
-(dif) 160.26 693.67 T
-(ferences) 175.46 693.67 T
-(between) 225.59 693.67 T
-(the) 275.74 693.67 T
-(initial) 296.35 693.67 T
-(radiation) 332.52 693.67 T
-(results) 389.29 693.67 T
-(of) 429.35 693.67 T
-(the) 444.51 693.67 T
-(def) 465.11 693.67 T
-(ault) 482.85 693.67 T
-(radia-) 507.35 693.67 T
-(tion) 72 676.67 T
-(code) 96.94 676.67 T
-(in) 126.53 676.67 T
-(FMS) 140.58 676.67 T
-(and) 171.75 676.67 T
-(that) 195.12 676.67 T
-(of) 219.27 676.67 T
-(the) 234.09 676.67 T
-(sea-esf) 254.36 676.67 T
-(code) 296.38 676.67 T
-(when) 325.97 676.67 T
-(run) 359.45 676.67 T
-(in) 381.26 676.67 T
-(\322FMS-lik) 395.31 676.67 T
-(e\323) 448.85 676.67 T
-(mode) 464.44 676.67 T
-(are) 498.7 676.67 T
-(not) 518.95 676.67 T
-(suspect. Exact reproduction of old answers is not possible, because of mods which) 72 659.67 T
-(ha) 72 642.67 T
-(v) 84.94 642.67 T
-(e been made to the old code that are not retrie) 91.73 642.67 T
-(v) 347.2 642.67 T
-(able through namelist options.) 353.85 642.67 T
-(            5.  Radiation-step ph) 72 625.67 T
-(ysics options that were present in SKYHI remain) 230.59 625.67 T
-(present in the sea-esf code when run in \322SKYHI-lik) 72 608.67 T
-(e\323 mode. Lik) 361.9 608.67 T
-(e) 435.24 608.67 T
-(wise, the options) 441.11 608.67 T
-(a) 72 591.67 T
-(v) 77.94 591.67 T
-(ailable with the def) 84.59 591.67 T
-(ault FMS radiation are still a) 192.15 591.67 T
-(v) 352.48 591.67 T
-(ailable with the sea-esf code.) 359.13 591.67 T
-(If an) 72 574.67 T
-(y such options are found to not be present \050or not implemented properly\051,) 97.83 574.67 T
-(please) 72 557.67 T
-(advise) 110.3 557.67 T
-(me) 149.39 557.67 T
-(so) 169.82 557.67 T
-(that) 185.58 557.67 T
-(the) 209.9 557.67 T
-(y) 226.8 557.67 T
-(will) 237.12 557.67 T
-(run) 262.22 557.67 T
-(correctly) 284.2 557.67 T
-(.) 333.05 557.67 T
-(Also,) 343.18 557.67 T
-(please) 376.45 557.67 T
-(be) 414.75 557.67 T
-(alert) 431.29 557.67 T
-(when) 459.48 557.67 T
-(running) 493.13 557.67 T
-(such options -- I ha) 72 540.67 T
-(v) 179.81 540.67 T
-(e tested them \050in v) 186.6 540.67 T
-(arious combinations\051 in 24 hr runs and) 289.69 540.67 T
-(encountered no dif) 72 523.67 T
-(\336culties; I ha) 176.62 523.67 T
-(v) 249.45 523.67 T
-(e not look) 256.24 523.67 T
-(ed for longer) 312.1 523.67 T
-(-term problems, and cer-) 384.13 523.67 T
-(tainly all possible combinations of options ha) 72 506.67 T
-(v) 326.06 506.67 T
-(e not been tested. As noted earlier) 332.85 506.67 T
-(,) 522.41 506.67 T
-(this will be the last release with this \322SKYHI-lik) 72 489.67 T
-(e\323 capability) 344.06 489.67 T
-(.) 414.3 489.67 T
-(        A discussion of ho) 72 455.67 T
-(w to run an FMS-based model in either \322FMS-lik) 204.26 455.67 T
-(e\323 or) 481 455.67 T
-(\322SKYHI-lik) 72 438.67 T
-(e\323 mode is contained in section I.) 140.29 438.67 T
-(         Note that the sea-esf radiation code has NO) 72 404.67 T
-(T been run using the eta v) 346.71 404.67 T
-(ertical) 491.92 404.67 T
-(coordinate, and it is lik) 72 387.67 T
-(ely that the current code w) 200.58 387.67 T
-(ould not w) 349.34 387.67 T
-(ork properly in that) 409.09 387.67 T
-(con\336guration. USER BEW) 72 370.67 T
-(ARE !) 222.37 370.67 T
+(               h.   Bug\336x to zonal_ozone \050seasonally-v) 72 710.67 T
+(arying option\051 is included.) 350.07 710.67 T
+(i.) 124.07 693.67 T
+(A) 137.97 693.67 T
+(cleaner) 151.34 693.67 T
+(separation) 195.01 693.67 T
+(of) 255.8 693.67 T
+(SKYHI-related) 270.72 693.67 T
+(ozone) 359.5 693.67 T
+(options) 396.19 693.67 T
+(has) 440.67 693.67 T
+(been) 462.59 693.67 T
+(made) 492.27 693.67 T
+(in) 525.85 693.67 T
+(preparation for their remo) 72 676.67 T
+(v) 216.8 676.67 T
+(al in the ne) 223.45 676.67 T
+(xt release.) 285.07 676.67 T
+(j.) 119.87 659.67 T
+(Zonal) 133.64 659.67 T
+(ozone) 169.5 659.67 T
+(data) 206.12 659.67 T
+(is) 232.64 659.67 T
+(no) 245.17 659.67 T
+(w) 258.82 659.67 T
+(supplied) 272.11 659.67 T
+(via) 322.75 659.67 T
+(input) 343.05 659.67 T
+(\336le,) 375.03 659.67 T
+(both) 399.61 659.67 T
+(clim) 427.69 659.67 T
+(ozone) 455.78 659.67 T
+(and) 492.4 659.67 T
+(fms) 515.81 659.67 T
+(ozone.) 72 642.67 T
+(                        .) 72 608.67 T
 0 F
-(C.  Changes made to existing FMS modules) 76.5 317 T
+(B.  List and brief description of  modules) 72 574.67 T
 1 F
-(Fi) 95.67 273 T
-(v) 107 273 T
-(e) 113.79 273 T
-(e) 123.07 273 T
-(xisting) 129.07 273 T
-(FMS) 170.26 273 T
-(\336les) 201.35 273 T
-(were) 227.75 273 T
-(modi\336ed) 258.02 273 T
-(when) 310.88 273 T
-(the) 344.27 273 T
-(sea-esf) 364.45 273 T
-(radiation) 406.38 273 T
-(modules) 459.21 273 T
-(were) 509.73 273 T
-(incorporated into FMS:) 72 253.67 T
-(1.) 109.35 218.67 T
-(astronomy) 126.64 218.67 T
-(.f90) 184.84 218.67 T
-(:) 210.4 218.67 T
-(astronomy) 221.08 218.67 T
-(.f90) 279.27 218.67 T
-(w) 304.83 218.67 T
-(as) 314.8 218.67 T
-(modi\336ed) 329.86 218.67 T
-(so) 383.04 218.67 T
-(that) 398.88 218.67 T
-(the) 423.27 218.67 T
-(daylight) 443.78 218.67 T
-(fraction) 493.06 218.67 T
-(and earth-sun distance may be returned as optional ar) 72 201.67 T
-(guments in calls to) 370.34 201.67 T
-(diurnal_solar) 72 184.67 T
-(,) 145.32 184.67 T
-(daily_mean_solar) 151.99 184.67 T
-(,) 250.98 184.67 T
-(and) 257.65 184.67 T
-(annual_mean_solar) 281.05 184.67 T
-(.) 389.14 184.67 T
-(This) 398.99 184.67 T
-(change) 427.06 184.67 T
-(is) 469.89 184.67 T
-(necessary) 482.4 184.67 T
-(since some anticipated FMS modules \050e.g. stratospheric chemistry\051 will require) 72 167.67 T
-(daylight fraction as an input.) 72 150.67 T
-(          2.  rh_clouds.f90 :  An additional entry point \050get_global_clouds\051 which) 72 116.67 T
-(e) 72 99.67 T
-(xtracts a cloud location \337ag from the module has been added. Rather than e) 78.01 99.67 T
-(xten-) 500.05 99.67 T
-(si) 72 82.67 T
-(v) 80.99 82.67 T
-(ely modifying the e) 87.78 82.67 T
-(xisting rh_clouds at this time to mak) 196.84 82.67 T
-(e the proper connection) 401.27 82.67 T
+(       The follo) 72 523.67 T
+(wing is a list of the radiation-related modules, along with a brief sum-) 147.87 523.67 T
+(mary of their function. All are found in the sea_esf_rad directory) 72 506.67 T
+(, with the e) 434.61 506.67 T
+(xcep-) 496.62 506.67 T
+(tion of radiation_dri) 72 489.67 T
+(v) 184.42 489.67 T
+(er and astronomy) 191.21 489.67 T
+(.) 287.5 489.67 T
+0 12 Q
+(T) 164.45 431 T
+(able 1: Modules contained in the new radiation code) 171.35 431 T
+1 F
+(Module name) 106.84 405 T
+(Comments) 223.23 405 T
+(Called by:) 324.13 405 T
+(Calls:) 454.96 405 T
+(radiation_dri) 78 381 T
+(v) 139.69 381 T
+(er_mod) 145.51 381 T
+(dri) 214 381 T
+(v) 227.03 381 T
+(er) 232.85 381 T
+(for) 245 381 T
+(radi-) 261.81 381 T
+(ation code\050s\051) 214 367 T
+(ph) 296.47 381 T
+(ysics_dri) 308.41 381 T
+(v) 351.44 381 T
+(er_mod) 357.26 381 T
+(sea_esf_rad_mod,) 413.47 381 T
+(original_fms_rad_mod) 413.47 367 T
+(,) 413.47 353 T
+(rad_output_\336le_mod,) 418.63 353 T
+(radiati) 413.47 339 T
+(v) 443.83 339 T
+(e_g) 449.65 339 T
+(ases_mod,) 466.92 339 T
+(cloudrad_package_mo) 413.47 325 T
+(d, astronomy_mod) 413.47 311 T
+(sea_esf_rad_mod) 78 289 T
+(dri) 214 289 T
+(v) 227.03 289 T
+(er for the) 232.85 289 T
+(sea-esf radia-) 214 275 T
+(tion package) 214 261 T
+(radiation_dri) 296.47 289 T
+(v) 358.16 289 T
+(er_mod) 363.98 289 T
+(longw) 413.47 289 T
+(a) 443.35 289 T
+(v) 448.44 289 T
+(e_dri) 454.26 289 T
+(v) 478.62 289 T
+(er_mod) 484.44 289 T
+(shortw) 413.47 275 T
+(a) 446.01 275 T
+(v) 451.1 275 T
+(e_dri) 456.92 275 T
+(v) 481.28 275 T
+(er_mod) 487.1 275 T
+(radiation_diag_mod) 413.47 261 T
+(original_fms_rad_mod) 78 239 T
+(dri) 214 239 T
+(v) 227.03 239 T
+(er for) 232.85 239 T
+(original fms) 214 225 T
+(radiation) 214 211 T
+(package) 214 197 T
+(radiation_dri) 296.47 239 T
+(v) 358.16 239 T
+(er_mod) 363.98 239 T
+(rad_output_\336le_mod) 78 175 T
+(creates spe-) 214 175 T
+(cialized) 214 161 T
+(netcdf) 252.9 161 T
+(\336le) 214 147 T
+(radiation_dri) 296.47 175 T
+(v) 358.16 175 T
+(er_mod) 363.98 175 T
+(radiati) 78 125 T
+(v) 108.36 125 T
+(e_g) 114.18 125 T
+(ases_mod) 131.45 125 T
+(de\336nes radia-) 214 125 T
+(ti) 214 111 T
+(v) 220.37 111 T
+(ely-acti) 226.19 111 T
+(v) 261.88 111 T
+(e) 267.7 111 T
+(g) 214 97 T
+(ases) 219.94 97 T
+(radiation_dri) 296.47 125 T
+(v) 358.16 125 T
+(er_mod) 363.98 125 T
+72 420.75 72 89.25 2 L
+V
+0.5 H
+0 Z
+N
+208 421.25 208 88.75 2 L
+V
+N
+290.47 421.25 290.47 88.75 2 L
+V
+N
+407.47 421.25 407.47 88.75 2 L
+V
+N
+530.47 420.75 530.47 89.25 2 L
+V
+N
+71.75 421 530.72 421 2 L
+V
+N
+72.25 396.25 530.22 396.25 2 L
+V
+N
+72.25 393.75 530.22 393.75 2 L
+V
+N
+71.75 303 530.72 303 2 L
+V
+N
+71.75 253 530.72 253 2 L
+V
+N
+71.75 189 530.72 189 2 L
+V
+N
+71.75 139 530.72 139 2 L
+V
+N
+71.75 89 530.72 89 2 L
+V
+N
 FMENDPAGE
 %%EndPage: "4" 4
 %%Page: "5" 5
@@ -2821,237 +3018,218 @@ FMENDPAGE
 FrameNoSep
 -45 -45 657 837 C
 0 0 0 1 0 0 0 1 K
-1 14 Q
+1 12 Q
 0 X
-(to the ne) 72 710.67 T
-(w radiation code interf) 119.87 710.67 T
-(aces, I elected to preserv) 246.86 710.67 T
-(e the e) 384.65 710.67 T
-(xisting code and cre-) 420.98 710.67 T
-(ate) 72 693.67 T
-(a) 91.78 693.67 T
-(ne) 101.45 693.67 T
-(w) 114.31 693.67 T
-(module) 127.87 693.67 T
-(with) 173.33 693.67 T
-(the) 201.67 693.67 T
-(proper) 222.23 693.67 T
-(ne) 262.22 693.67 T
-(w) 275.09 693.67 T
-(interf) 288.65 693.67 T
-(aces) 318.83 693.67 T
-(to) 346.38 693.67 T
-(the) 360.73 693.67 T
-(radiati) 381.29 693.67 T
-(v) 416.71 693.67 T
-(e) 423.5 693.67 T
-(routines.) 433.17 693.67 T
-(This) 485.23 693.67 T
-(ne) 513.57 693.67 T
-(w) 526.44 693.67 T
-(module \050rh_based_clouds\051 uses this interf) 72 676.67 T
-(ace to get cloud location information and) 305.94 676.67 T
-(then) 72 659.67 T
-(call) 99.58 659.67 T
-(routines) 123.27 659.67 T
-(to) 171.85 659.67 T
-(assign) 186.21 659.67 T
-(cloud) 224.69 659.67 T
-(radiati) 259.27 659.67 T
-(v) 294.69 659.67 T
-(e) 301.48 659.67 T
-(properties.) 311.17 659.67 T
-(This) 377.6 659.67 T
-(procedure) 405.96 659.67 T
-(is) 465.41 659.67 T
-(also) 478.22 659.67 T
-(neces-) 504.24 659.67 T
-(sary to allo) 72 642.67 T
-(w rh clouds to be used in both SKYHI \050for no) 133.87 642.67 T
-(w\051 and FMS, since the) 390.15 642.67 T
-(details of ho) 72 625.67 T
-(w the cloud \337ag is de\336ned dif) 140.87 625.67 T
-(fer between those tw) 306.95 625.67 T
-(o applications. The) 423.05 625.67 T
-(original) 72 608.67 T
-(rh_clouds) 119.05 608.67 T
-(module) 177.77 608.67 T
-(both) 223.27 608.67 T
-(de\336ned) 251.66 608.67 T
-(cloud) 296.38 608.67 T
-(locations) 330.98 608.67 T
-(and) 385.04 608.67 T
-(then) 408.75 608.67 T
-(assigned) 436.36 608.67 T
-(radiati) 488.07 608.67 T
-(v) 523.49 608.67 T
-(e) 530.28 608.67 T
-(properties within the same subroutine.) 72 591.67 T
-(          3.  radiation_dri) 72 557.67 T
-(v) 196.47 557.67 T
-(er) 203.26 557.67 T
-(.f90 : A change is made to radiation_dri) 213.37 557.67 T
-(v) 436.21 557.67 T
-(er) 443 557.67 T
-(.f90 to pro) 453.11 557.67 T
-(vide) 511.61 557.67 T
-(the ability to acti) 72 540.67 T
-(v) 166.15 540.67 T
-(ate the radiation diagnostic \336le, which in the def) 172.8 540.67 T
-(ault FMS code) 442.9 540.67 T
-(had) 72 523.67 T
-(been) 95.41 523.67 T
-(hard-wired) 125.04 523.67 T
-(of) 189.65 523.67 T
-(f.) 200.96 523.67 T
-(This) 212.31 523.67 T
-(is) 240.4 523.67 T
-(needed) 252.93 523.67 T
-(for) 295.77 523.67 T
-(testing,) 315.29 523.67 T
-(check) 359.32 523.67 T
-(out) 391.83 523.67 T
-(and) 412.92 523.67 T
-(comparison) 436.33 523.67 T
-(of) 504.84 523.67 T
-(the) 519.7 523.67 T
-(old and ne) 72 506.67 T
-(w codes, and should be a permanent change.) 129.97 506.67 T
-(         4. ph) 72 472.67 T
-(ysics_dri) 131.43 472.67 T
-(v) 181.63 472.67 T
-(er) 188.42 472.67 T
-(.f90 :  ph) 198.53 472.67 T
-(ysics_dri) 249.02 472.67 T
-(v) 299.22 472.67 T
-(er) 306.01 472.67 T
-(.f90 has been modi\336ed to allo) 316.12 472.67 T
-(w either) 482.2 472.67 T
-(the acti) 72 455.67 T
-(v) 112.47 455.67 T
-(ation of the def) 119.12 455.67 T
-(ault or ne) 204.13 455.67 T
-(w radiation modules \050radiation_dri) 256.66 455.67 T
-(v) 451.12 455.67 T
-(er or) 457.91 455.67 T
-(sea_esf_rad\051, dependent on the v) 72 438.67 T
-(alue of a logical v) 255.54 438.67 T
-(ariable which is set in the run-) 355.5 438.67 T
-(script.  When the def) 72 421.67 T
-(ault radiation is desired, the inte) 188.89 421.67 T
-(gration will use the def) 368.32 421.67 T
-(ault) 497.28 421.67 T
-(radiation modules; when the ne) 72 404.67 T
-(w radiation is speci\336ed, the radiation-step ph) 247.41 404.67 T
-(ysics) 498.92 404.67 T
-(code within the ne) 72 387.67 T
-(w modules will be e) 174.69 387.67 T
-(x) 287.25 387.67 T
-(ecuted.) 294.04 387.67 T
-(Additionally) 113.3 370.67 T
-(,) 183.18 370.67 T
-(se) 189.85 370.67 T
-(v) 201.17 370.67 T
-(eral) 207.96 370.67 T
-(changes) 232.12 370.67 T
-(are) 280.39 370.67 T
-(needed) 300.66 370.67 T
-(in) 343.49 370.67 T
-(ph) 357.56 370.67 T
-(ysics_dri) 371.49 370.67 T
-(v) 421.69 370.67 T
-(er) 428.48 370.67 T
-(in) 442.54 370.67 T
-(order) 456.6 370.67 T
-(to) 489.32 370.67 T
-(attach) 503.39 370.67 T
-(the ne) 72 353.67 T
-(w radiation modules.) 105.47 353.67 T
-(               a. A namelist is added, which contains the control v) 72 336.67 T
-(ariable de\336ning) 413.84 336.67 T
-(whether def) 72 319.67 T
-(ault or ne) 138.33 319.67 T
-(w radiation code is to be e) 190.86 319.67 T
-(x) 337.62 319.67 T
-(ecuted.) 344.41 319.67 T
-(               b) 72 302.67 T
-(.  The def) 130.94 302.67 T
-(ault radiation code performs astronomical calculations from) 184.45 302.67 T
-(within the radiation dri) 72 285.67 T
-(v) 200.37 285.67 T
-(er) 207.16 285.67 T
-(. In general, astronomy must be called outside of radia-) 217.26 285.67 T
-(tion, since other parameterizations yet to come \050stratospheric chemistry) 72 268.67 T
-(, for e) 471.18 268.67 T
-(xam-) 504.01 268.67 T
-(ple\051 will need zenith angles, perhaps on e) 72 251.67 T
-(v) 303.38 251.67 T
-(ery timestep, b) 310.17 251.67 T
-(ut certainly not just on) 392.71 251.67 T
-(radiation) 72 234.67 T
-(steps.) 125.1 234.67 T
-(In) 159.93 234.67 T
-(the) 174.92 234.67 T
-(ne) 195.36 234.67 T
-(w) 208.23 234.67 T
-(code,) 221.67 234.67 T
-(astronomy) 254.93 234.67 T
-(is) 317.37 234.67 T
-(pulled) 330.04 234.67 T
-(out) 368.37 234.67 T
-(of) 389.59 234.67 T
-(the) 404.58 234.67 T
-(radiation) 425.02 234.67 T
-(setup) 478.12 234.67 T
-(calls) 511.01 234.67 T
-(in anticipation of being able to pro) 72 217.67 T
-(vide this capability) 265.44 217.67 T
-(, and called in ph) 371.08 217.67 T
-(ysics_dri) 467.05 217.67 T
-(v) 517.26 217.67 T
-(er) 524.05 217.67 T
-(.) 534.15 217.67 T
-(               c.  The calculation of the longw) 72 200.67 T
-(a) 302.05 200.67 T
-(v) 307.98 200.67 T
-(e g) 314.77 200.67 T
-(as transmission functions are called) 331.42 200.67 T
-(separately from the call to the sea-esf radiation dri) 72 183.67 T
-(v) 353.13 183.67 T
-(er) 359.92 183.67 T
-(. This is a v) 370.03 183.67 T
-(estige of the w) 434.77 183.67 T
-(ay) 516.67 183.67 T
-(the code has been run on PVP machines, and will be changed in the ne) 72 166.67 T
-(xt release.) 467.22 166.67 T
-(d.) 119.5 149.67 T
-(The) 136.79 149.67 T
-(astronomy) 161.95 149.67 T
-(package) 224.45 149.67 T
-(used) 273.71 149.67 T
-(in) 302.76 149.67 T
-(SKYHI) 317.05 149.67 T
-(uses) 363.21 149.67 T
-(a) 390.71 149.67 T
-(dif) 400.32 149.67 T
-(ferent) 415.52 149.67 T
-(julian) 451.57 149.67 T
-(day) 486.85 149.67 T
-(spec-) 510.46 149.67 T
-(i\336cation than that used in FMS.  Con) 72 132.67 T
-(v) 278.35 132.67 T
-(ersion between the tw) 285.14 132.67 T
-(o is done here before) 407.47 132.67 T
-(the astronomy call.  This dif) 72 115.67 T
-(ference will be eliminated in the ne) 229.53 115.67 T
-(xt release.) 426.83 115.67 T
-(            It is anticipated that in the ne) 72 98.67 T
-(xt release the selection of either sea_esf or) 276.33 98.67 T
-(def) 72 81.67 T
-(ault radiation will be pushed do) 89.74 81.67 T
-(wn into  radiation_dri) 266.32 81.67 T
-(v) 387.69 81.67 T
-(er_mod, so that) 394.48 81.67 T
+(cloudrad_package_mod) 78 662 T
+(obtains cloud) 214 662 T
+(radiati) 214 648 T
+(v) 244.36 648 T
+(e) 250.18 648 T
+(prop-) 258.48 648 T
+(erties) 214 634 T
+(radiation_dri) 296.47 662 T
+(v) 358.16 662 T
+(er_mod) 363.98 662 T
+(astronomy_mod) 78 612 T
+(pro) 214 612 T
+(vides) 229.82 612 T
+(astronomical) 214 598 T
+(properties) 214 584 T
+(radiation_dri) 296.47 612 T
+(v) 358.16 612 T
+(er_mod) 363.98 612 T
+(radiation_diag_mod) 78 562 T
+(column radia-) 214 562 T
+(tion diagnos-) 214 548 T
+(tics) 214 534 T
+(sea_esf_rad_mod) 296.47 562 T
+(longw) 78 512 T
+(a) 107.88 512 T
+(v) 112.97 512 T
+(e_dri) 118.79 512 T
+(v) 143.15 512 T
+(er_mod) 148.97 512 T
+(dri) 214 512 T
+(v) 227.03 512 T
+(er for) 232.85 512 T
+(longw) 214 498 T
+(a) 243.88 498 T
+(v) 248.97 498 T
+(e cal-) 254.79 498 T
+(culation) 214 484 T
+(sea_esf_rad_mod) 296.47 512 T
+(shortw) 78 462 T
+(a) 110.54 462 T
+(v) 115.63 462 T
+(e_dri) 121.45 462 T
+(v) 145.81 462 T
+(er_mod) 151.63 462 T
+(dri) 214 462 T
+(v) 227.03 462 T
+(er for) 232.85 462 T
+(shortw) 214 448 T
+(a) 246.54 448 T
+(v) 251.63 448 T
+(e cal-) 257.45 448 T
+(culation) 214 434 T
+(sea_esf_rad_mod) 296.47 462 T
+(ozone_mod) 78 412 T
+(pro) 214 412 T
+(vides) 229.82 412 T
+(ozone \336eld) 214 398 T
+(radiati) 296.47 412 T
+(v) 326.83 412 T
+(e_g) 332.65 412 T
+(ases_mod) 349.92 412 T
+(seal) 78 376 T
+(w99_mod) 96.54 376 T
+(dri) 214 376 T
+(v) 227.03 376 T
+(er for) 232.85 376 T
+(seal) 214 362 T
+(w99 pack-) 232.54 362 T
+(age) 214 348 T
+(longw) 296.47 376 T
+(a) 326.35 376 T
+(v) 331.44 376 T
+(e_dri) 337.26 376 T
+(v) 361.62 376 T
+(er_mo) 367.44 376 T
+(d) 296.47 362 T
+(optical_path_mod) 78 326 T
+(internal long-) 214 326 T
+(w) 214 312 T
+(a) 222.54 312 T
+(v) 227.63 312 T
+(e module) 233.45 312 T
+(longw) 78 290 T
+(a) 107.88 290 T
+(v) 112.97 290 T
+(e_tables_mod) 118.79 290 T
+(internal long-) 214 290 T
+(w) 214 276 T
+(a) 222.54 276 T
+(v) 227.63 276 T
+(e module) 233.45 276 T
+(longw) 78 254 T
+(a) 107.88 254 T
+(v) 112.97 254 T
+(e_aerosol_mod) 118.79 254 T
+(internal long-) 214 254 T
+(w) 214 240 T
+(a) 222.54 240 T
+(v) 227.63 240 T
+(e module) 233.45 240 T
+(l) 78 218 T
+(w_g) 81.22 218 T
+(ases_stdtf_mod) 101.82 218 T
+(internal long-) 214 218 T
+(w) 214 204 T
+(a) 222.54 204 T
+(v) 227.63 204 T
+(e module) 233.45 204 T
+(g) 78 182 T
+(as_tf_mod) 83.94 182 T
+(internal long-) 214 182 T
+(w) 214 168 T
+(a) 222.54 168 T
+(v) 227.63 168 T
+(e module) 233.45 168 T
+(longw) 78 146 T
+(a) 107.88 146 T
+(v) 112.97 146 T
+(e_clouds_mod) 118.79 146 T
+(internal long-) 214 146 T
+(w) 214 132 T
+(a) 222.54 132 T
+(v) 227.63 132 T
+(e module) 233.45 132 T
+(longw) 78 110 T
+(a) 107.88 110 T
+(v) 112.97 110 T
+(e_\337ux) 118.79 110 T
+(es_mod) 148.61 110 T
+(internal long-) 214 110 T
+(w) 214 96 T
+(a) 222.54 96 T
+(v) 227.63 96 T
+(e module) 233.45 96 T
+0 F
+(T) 164.45 712 T
+(able 1: Modules contained in the new radiation code) 171.35 712 T
+1 F
+(Module name) 106.84 686 T
+(Comments) 223.23 686 T
+(Called by:) 324.13 686 T
+(Calls:) 454.96 686 T
+72 701.75 72 88.25 2 L
+V
+0.5 H
+0 Z
+N
+208 702.25 208 87.75 2 L
+V
+N
+290.47 702.25 290.47 87.75 2 L
+V
+N
+407.47 702.25 407.47 87.75 2 L
+V
+N
+530.47 701.75 530.47 88.25 2 L
+V
+N
+71.75 702 530.72 702 2 L
+V
+N
+72.25 677.25 530.22 677.25 2 L
+V
+N
+72.25 674.75 530.22 674.75 2 L
+V
+N
+71.75 626 530.72 626 2 L
+V
+N
+71.75 576 530.72 576 2 L
+V
+N
+71.75 526 530.72 526 2 L
+V
+N
+71.75 476 530.72 476 2 L
+V
+N
+71.75 426 530.72 426 2 L
+V
+N
+71.75 390 530.72 390 2 L
+V
+N
+71.75 340 530.72 340 2 L
+V
+N
+71.75 304 530.72 304 2 L
+V
+N
+71.75 268 530.72 268 2 L
+V
+N
+71.75 232 530.72 232 2 L
+V
+N
+71.75 196 530.72 196 2 L
+V
+N
+71.75 160 530.72 160 2 L
+V
+N
+71.75 124 530.72 124 2 L
+V
+N
+71.75 88 530.72 88 2 L
+V
+N
 FMENDPAGE
 %%EndPage: "5" 5
 %%Page: "6" 6
@@ -3060,149 +3238,171 @@ FMENDPAGE
 FrameNoSep
 -45 -45 657 837 C
 0 0 0 1 0 0 0 1 K
-1 14 Q
+1 12 Q
 0 X
-(ph) 72 710.67 T
-(ysics_dri) 85.93 710.67 T
-(v) 136.13 710.67 T
-(er) 142.92 710.67 T
-(will) 157.29 710.67 T
-(return) 182.56 710.67 T
-(to) 219.48 710.67 T
-(its) 233.86 710.67 T
-(original) 250.58 710.67 T
-(form.) 297.62 710.67 T
-(That) 331.83 710.67 T
-(w) 360.98 710.67 T
-(as) 370.95 710.67 T
-(not) 386.1 710.67 T
-(done) 407.48 710.67 T
-(in) 438.18 710.67 T
-(the) 452.56 710.67 T
-(current) 473.16 710.67 T
-(and) 516.29 710.67 T
-(pre) 72 693.67 T
-(vious) 89.53 693.67 T
-(releases) 122.76 693.67 T
-(because) 169.97 693.67 T
-(of) 217.17 693.67 T
-(dif) 231.73 693.67 T
-(\336culties) 246.93 693.67 T
-(in) 294.17 693.67 T
-(doing) 307.95 693.67 T
-(so) 342.74 693.67 T
-(while) 358.08 693.67 T
-(maintaining) 392.08 693.67 T
-(runnability) 461.87 693.67 T
-(in) 526.21 693.67 T
-(the SKYHI model.) 72 676.67 T
-(        5.   diag_inte) 72 621.67 T
-(gral.f90 : Mods were made to diag_inte) 172.9 621.67 T
-(gral.f90 to allo) 393.93 621.67 T
-(w:  a\051 the) 476.4 621.67 T
-(printout of more signi\336cant \336gures in inte) 72 604.67 T
-(grals, and b\051, the calculation of hemi-) 305.9 604.67 T
-(spheric in addition to global inte) 72 587.67 T
-(grals. By def) 253.4 587.67 T
-(ault, one obtains the traditional) 325.19 587.67 T
-(diag_inte) 72 570.67 T
-(gral code; hemispheric inte) 123.9 570.67 T
-(grals and additional signi\336cant \336gures are) 275.71 570.67 T
-(obtained) 72 553.67 T
-(by) 123.42 553.67 T
-(setting) 140.63 553.67 T
-(the) 181.17 553.67 T
-(namelist) 201.49 553.67 T
-(v) 252.14 553.67 T
-(ariables) 258.79 553.67 T
-(do_standard_printout) 305.54 553.67 T
-(and) 428.52 553.67 T
-(print_header) 451.94 553.67 T
-(to) 525.9 553.67 T
-(be .f) 72 536.67 T
-(alse..) 96.74 536.67 T
+(constants_ne) 78 662 T
+(w_mod) 139.69 662 T
+(utility module) 214 662 T
+(longw) 78 640 T
+(a) 107.88 640 T
+(v) 112.97 640 T
+(e_params_mod) 118.79 640 T
+(internal long-) 214 640 T
+(w) 214 626 T
+(a) 222.54 626 T
+(v) 227.63 626 T
+(e module) 233.45 626 T
+(rad_utilities_mod) 78 604 T
+(utility module) 214 604 T
+(esfsw_scattering_mod) 78 582 T
+(internal short-) 214 582 T
+(w) 214 568 T
+(a) 222.54 568 T
+(v) 227.63 568 T
+(e module) 233.45 568 T
+(esfsw_parameters_mod) 78 546 T
+(internal short-) 214 546 T
+(w) 214 532 T
+(a) 222.54 532 T
+(v) 227.63 532 T
+(e module) 233.45 532 T
+(esfsw_dri) 78 510 T
+(v) 124.36 510 T
+(er_mod) 130.18 510 T
+(internal short-) 214 510 T
+(w) 214 496 T
+(a) 222.54 496 T
+(v) 227.63 496 T
+(e module) 233.45 496 T
+(lhsw_dri) 78 474 T
+(v) 119.7 474 T
+(er_mod) 125.52 474 T
+(internal short-) 214 474 T
+(w) 214 460 T
+(a) 222.54 460 T
+(v) 227.63 460 T
+(e module) 233.45 460 T
+(ch4_n2o_mod) 78 438 T
+(internal) 214 438 T
+(radiati) 214 424 T
+(v) 244.36 424 T
+(e_g) 250.18 424 T
+(ase) 267.45 424 T
+(s module) 214 410 T
+(cfc_mod) 78 388 T
+(internal) 214 388 T
+(radiati) 214 374 T
+(v) 244.36 374 T
+(e_g) 250.18 374 T
+(ase) 267.45 374 T
+(s module) 214 360 T
+(co2_mod) 78 338 T
+(internal) 214 338 T
+(radiati) 214 324 T
+(v) 244.36 324 T
+(e_g) 250.18 324 T
+(ase) 267.45 324 T
+(s module) 214 310 T
+(interpolater_mod) 78 288 T
+(utility module) 214 288 T
+(mgrp_prscr_clds_mod) 78 266 T
+(internal cloud-) 214 266 T
+(rad module) 214 252 T
+(microph) 78 230 T
+(ys_rad_mod) 117.94 230 T
+(internal cloud-) 214 230 T
+(rad module) 214 216 T
+(no_clouds_mod) 78 194 T
+(internal cloud-) 214 194 T
+(rad module) 214 180 T
+(obs_clouds_W_mod) 78 158 T
+(internal cloud-) 214 158 T
+(rad module) 214 144 T
+(rh_based_clouds_mod) 78 122 T
+(internal cloud-) 214 122 T
+(rad module) 214 108 T
 0 F
-( D) 79 468.67 T
-(. Dir) 92.33 468.67 T
-(ectory structur) 119.29 468.67 T
-(e f) 208.84 468.67 T
-(or the new modules) 222.86 468.67 T
+(T) 164.45 712 T
+(able 1: Modules contained in the new radiation code) 171.35 712 T
 1 F
-(              F) 72 434.67 T
-(or  incorporation into the FMS repository) 128.57 434.67 T
-(,  all of the associated modules) 359.43 434.67 T
-(ha) 72 417.67 T
-(v) 84.94 417.67 T
-(e been grouped into a single directory:   /atmos_param/sea_esf_rad.) 91.73 417.67 T
-(As) 119.84 383.67 T
-(a) 138.58 383.67 T
-(consequence,) 147.98 383.67 T
-(there) 226.2 383.67 T
-(e) 257.37 383.67 T
-(xist) 263.38 383.67 T
-(in) 286.8 383.67 T
-(the) 300.88 383.67 T
-(repository) 321.18 383.67 T
-(\322duplicate\323) 381.14 383.67 T
-(modules) 448.08 383.67 T
-(related) 498.72 383.67 T
-(to the radiation-step ph) 72 366.67 T
-(ysics, namely ozone, astronomy and clouds, one being part) 201.42 366.67 T
-(of) 72 349.67 T
-(the) 87.02 349.67 T
-(def) 107.49 349.67 T
-(ault) 125.23 349.67 T
-(FMS) 149.59 349.67 T
-(modules) 180.96 349.67 T
-(and) 231.77 349.67 T
-(the) 255.35 349.67 T
-(other) 275.82 349.67 T
-(being) 307.95 349.67 T
-(present) 342.42 349.67 T
-(in) 386.21 349.67 T
-(the) 400.46 349.67 T
-(sea-esf-rad) 420.93 349.67 T
-(modules.) 485.69 349.67 T
-(The treatment of the processes dif) 72 332.67 T
-(fers suf) 261.77 332.67 T
-(\336ciently between FMS and SKYHI that I) 303.01 332.67 T
-(deemed it necessary to maintain the particular formulations of each application) 72 315.67 T
-(while code v) 72 298.67 T
-(alidation w) 143.19 298.67 T
-(as being carried out, since the emphasis w) 205.66 298.67 T
-(as placed on) 441.14 298.67 T
-(retaining the ability to \322reproduce\323 results, and the dif) 72 281.67 T
-(ferences in implementation) 374.54 281.67 T
-(details between the dif) 72 264.67 T
-(ferent v) 198.01 264.67 T
-(ersions of these modules are necessary in that ef) 240.95 264.67 T
-(fort.) 510.42 264.67 T
-(              By the ne) 72 230.67 T
-(xt release it is anticipated that these modules will be uni\336ed in) 174.45 230.67 T
-(FMS standard-compliant form, resulting in modules which retain all essential capa-) 72 213.67 T
-(bilities, b) 72 196.67 T
-(ut which eliminate non-essential options. An) 123.84 196.67 T
-(y indi) 374.06 196.67 T
-(viduals with interests) 406 196.67 T
-(and e) 72 179.67 T
-(xpertise rele) 101.72 179.67 T
-(v) 170.18 179.67 T
-(ant to these modules will be solicited to contrib) 176.83 179.67 T
-(ute to the discus-) 441.77 179.67 T
-(sions which will de\336ne the contents of the uni\336ed modules.) 72 162.67 T
-(             Pro) 72 128.67 T
-(vided there are not major problems related to CVS in doing so, it is pro-) 136.74 128.67 T
-(posed that the sea-esf modules be placed into the follo) 72 111.67 T
-(wing directories after consol-) 375.32 111.67 T
-(idation:) 72 94.67 T
-(               1.  radiation_dri) 72 77.67 T
-(v) 213.97 77.67 T
-(er :  dri) 220.76 77.67 T
-(v) 261.24 77.67 T
-(er) 268.03 77.67 T
-(-le) 278.63 77.67 T
-(v) 293.05 77.67 T
-(el modules, including support modules) 299.84 77.67 T
+(Module name) 106.84 686 T
+(Comments) 223.23 686 T
+(Called by:) 324.13 686 T
+(Calls:) 454.96 686 T
+72 701.75 72 100.25 2 L
+V
+0.5 H
+0 Z
+N
+208 702.25 208 99.75 2 L
+V
+N
+290.47 702.25 290.47 99.75 2 L
+V
+N
+407.47 702.25 407.47 99.75 2 L
+V
+N
+530.47 701.75 530.47 100.25 2 L
+V
+N
+71.75 702 530.72 702 2 L
+V
+N
+72.25 677.25 530.22 677.25 2 L
+V
+N
+72.25 674.75 530.22 674.75 2 L
+V
+N
+71.75 654 530.72 654 2 L
+V
+N
+71.75 618 530.72 618 2 L
+V
+N
+71.75 596 530.72 596 2 L
+V
+N
+71.75 560 530.72 560 2 L
+V
+N
+71.75 524 530.72 524 2 L
+V
+N
+71.75 488 530.72 488 2 L
+V
+N
+71.75 452 530.72 452 2 L
+V
+N
+71.75 402 530.72 402 2 L
+V
+N
+71.75 352 530.72 352 2 L
+V
+N
+71.75 302 530.72 302 2 L
+V
+N
+71.75 280 530.72 280 2 L
+V
+N
+71.75 244 530.72 244 2 L
+V
+N
+71.75 208 530.72 208 2 L
+V
+N
+71.75 172 530.72 172 2 L
+V
+N
+71.75 136 530.72 136 2 L
+V
+N
+71.75 100 530.72 100 2 L
+V
+N
 FMENDPAGE
 %%EndPage: "6" 6
 %%Page: "7" 7
@@ -3213,191 +3413,170 @@ FrameNoSep
 0 0 0 1 0 0 0 1 K
 1 14 Q
 0 X
-(               2.  longw) 72 710.67 T
-(a) 176.86 710.67 T
-(v) 182.8 710.67 T
-(e : the longw) 189.59 710.67 T
-(a) 262.16 710.67 T
-(v) 268.1 710.67 T
-(e radiation modules) 274.89 710.67 T
-(               3.  shortw) 72 693.67 T
-(a) 179.97 693.67 T
-(v) 185.9 693.67 T
-(e : the shortw) 192.69 693.67 T
-(a) 268.38 693.67 T
-(v) 274.31 693.67 T
-(e radiation modules) 281.1 693.67 T
-(               4.  astronomy : astronomy module\050s\051) 72 676.67 T
-(               5.  cloudrad : cloud-radiation interf) 72 659.67 T
-(ace modules) 321.1 659.67 T
-(               6.  radiati) 72 642.67 T
-(v) 177.42 642.67 T
-(e_g) 184.21 642.67 T
-(ases : modules related to the radiati) 204.36 642.67 T
-(v) 401.53 642.67 T
-(ely-acti) 408.32 642.67 T
-(v) 449.96 642.67 T
-(e g) 456.75 642.67 T
-(ases,) 473.39 642.67 T
-(                                             including ozone) 72 625.67 T
-(The) 72 608.67 T
-(def) 97.24 608.67 T
-(ault) 114.98 608.67 T
-(radiation) 139.45 608.67 T
-(modules) 192.68 608.67 T
-(could) 243.6 608.67 T
-(be) 278.18 608.67 T
-(relocated) 294.86 608.67 T
-(within) 349.64 608.67 T
-(these) 388.89 608.67 T
-(directories,) 421.13 608.67 T
-(and) 487.2 608.67 T
-(each) 510.88 608.67 T
-(of the ne) 72 591.67 T
-(w modules appropriately placed in a directory) 120.64 591.67 T
-(, as indicated in Section H.) 377.12 591.67 T
-(The) 123.77 557.67 T
-(only) 148.99 557.67 T
-(major) 177.34 557.67 T
-(change) 213.45 557.67 T
-(from) 256.55 557.67 T
-(the) 287.22 557.67 T
-(current) 307.78 557.67 T
-(directory) 350.88 557.67 T
-(structure) 404.87 557.67 T
-(is) 457.31 557.67 T
-(the) 470.1 557.67 T
-(addition) 490.66 557.67 T
-(of a ne) 72 540.67 T
-(w directory for the shortw) 109.74 540.67 T
-(a) 255.79 540.67 T
-(v) 261.73 540.67 T
-(e code, which seems to be an ob) 268.52 540.67 T
-(vious need.) 448.71 540.67 T
-(Support routines  \050table lookups in radiation tables, support for radiation diagnos-) 72 523.67 T
-(tics,  etc.\051 w) 72 506.67 T
-(ould be placed within the dri) 139.9 506.67 T
-(v) 300.14 506.67 T
-(er directory) 306.93 506.67 T
-(.  The radiati) 370.94 506.67 T
-(v) 442.13 506.67 T
-(e_g) 448.92 506.67 T
-(ases direc-) 469.07 506.67 T
-(tory w) 72 489.67 T
-(ould include the current ozone code and the ne) 108.02 489.67 T
-(w radiation modules) 368.94 489.67 T
-(concerned) 72 472.67 T
-(with) 132.62 472.67 T
-(co2,) 160.61 472.67 T
-(n2o,) 187.43 472.67 T
-(ch4) 215.02 472.67 T
-(and) 238.34 472.67 T
-(the) 261.65 472.67 T
-(cfc) 281.85 472.67 T
-(g) 302.04 472.67 T
-(ases.) 308.97 472.67 T
-(W) 341.99 472.67 T
-(ith) 354.65 472.67 T
-(the) 372.53 472.67 T
-(potential) 392.73 472.67 T
-(to) 444.83 472.67 T
-(v) 458.82 472.67 T
-(ary) 465.47 472.67 T
-(these) 486.44 472.67 T
-(g) 518.31 472.67 T
-(as) 525.24 472.67 T
-(concentrations with time during an inte) 72 455.67 T
-(gration,  the need to treat these g) 291.49 455.67 T
-(ases as) 474.16 455.67 T
-(more) 72 438.67 T
-(than) 103.87 438.67 T
-(internal) 131.07 438.67 T
-(radiation) 176.94 438.67 T
-(v) 229.8 438.67 T
-(ariables) 236.45 438.67 T
-(becomes) 283.09 438.67 T
-(apparent,) 335.17 438.67 T
-(and) 389.97 438.67 T
-(will) 413.28 438.67 T
-(require) 438.16 438.67 T
-(additional) 480.9 438.67 T
-(code in the future.) 72 421.67 T
+(       In addition to these modules, radiation_dri) 72 382.67 T
+(v) 334.14 382.67 T
+(er) 340.93 382.67 T
+(.f90  and astronomy) 351.03 382.67 T
+(.f90 may be) 462.11 382.67 T
+(found in their o) 72 365.67 T
+(wn directories of) 158.37 365.67 T
+(f of atmos_param.) 252.88 365.67 T
 0 F
-( E. Remo) 72 336.67 T
-(v) 126.68 336.67 T
-(al of SKYHI interfaces) 133.54 336.67 T
+(C.     Needed script changes) 79 314.67 T
 1 F
-(The) 115.98 302.67 T
-(sea-esf) 140.89 302.67 T
-(radiation) 182.89 302.67 T
-(code) 235.8 302.67 T
-(w) 265.38 302.67 T
-(as) 275.34 302.67 T
-(originally) 290.15 302.67 T
-(constructed) 347.73 302.67 T
-(to) 415.42 302.67 T
-(be) 429.45 302.67 T
-(runnable) 445.8 302.67 T
-(both) 497.93 302.67 T
-(in) 525.97 302.67 T
-(FMS and in SKYHI. This capability w) 72 285.67 T
-(as necessary as long as SKYHI w) 288.47 285.67 T
-(as a viable) 476.5 285.67 T
-(model at GFDL.  W) 72 268.67 T
-(ith the ongoing de) 183.82 268.67 T
-(v) 284.97 268.67 T
-(elopment of FMS-based models, the arri) 291.76 268.67 T
-(v) 517.72 268.67 T
-(al) 524.37 268.67 T
-(of) 72 251.67 T
-(the) 86.88 251.67 T
-(Origin) 107.21 251.67 T
-(3800) 146.99 251.67 T
-(computers,) 178.21 251.67 T
-(and) 243.26 251.67 T
-(the) 266.69 251.67 T
-(lab\325) 287.02 251.67 T
-(s) 308.02 251.67 T
-(focus) 316.69 251.67 T
-(on) 350.24 251.67 T
-(model) 367.46 251.67 T
-(de) 405.68 251.67 T
-(v) 418.55 251.67 T
-(elopment) 425.33 251.67 T
-(within) 480.66 251.67 T
-(the) 519.67 251.67 T
-(FMS) 72 234.67 T
-(frame) 103.07 234.67 T
-(w) 135.37 234.67 T
-(ork,) 145.34 234.67 T
-(it) 170.55 234.67 T
-(has) 181.39 234.67 T
-(been) 203.11 234.67 T
-(decided) 232.6 234.67 T
-(that) 279.19 234.67 T
-(the) 303.25 234.67 T
-(Eugene) 323.41 234.67 T
-(release) 368.45 234.67 T
-(of) 410.37 234.67 T
-(the) 425.09 234.67 T
-(sea-esf) 445.25 234.67 T
-(radiation) 487.17 234.67 T
-(step ph) 72 217.67 T
-(ysics will be the last which will be e) 111.98 217.67 T
-(xplicitly runnable in SKYHI. Future) 314.76 217.67 T
-(radiation code de) 72 200.67 T
-(v) 168.07 200.67 T
-(elopment is anticipated to occur within FMS. As a consequence,) 174.86 200.67 T
-(the ne) 72 183.67 T
-(xt release of the code will feature the remo) 105.61 183.67 T
-(v) 344.89 183.67 T
-(al of the connections and con-) 351.54 183.67 T
-(structs that are currently present to allo) 72 166.67 T
-(w the use of the code within SKYHI. This) 290.16 166.67 T
-(will result in a simpler) 72 149.67 T
-(, easier) 197.44 149.67 T
-(-to-follo) 236.81 149.67 T
-(w code.) 283.12 149.67 T
+(The) 113.16 280.67 T
+(only) 138.36 280.67 T
+(script) 166.68 280.67 T
+(changes) 201.22 280.67 T
+(needed) 249.74 280.67 T
+(\050other) 292.82 280.67 T
+(than) 329.68 280.67 T
+(to) 357.22 280.67 T
+(access) 371.54 280.67 T
+(the) 410.72 280.67 T
+(updated) 431.26 280.67 T
+(namelists\051) 479.02 280.67 T
+(is to access tw) 72 263.67 T
+(o ne) 152.35 263.67 T
+(w ozone data \336les.   It is anticipated that these \336les will be incor-) 175.71 263.67 T
+(porated into the get_module_data script and be transparent to the user) 72 246.67 T
+(.) 461.61 246.67 T
+(            F) 72 229.67 T
+(or no) 121.57 229.67 T
+(w) 150.39 229.67 T
+(, these \336les may be accessed as) 159.58 229.67 T
+(                  cp /home/rsh/zonal_ozone_data     INPUT) 72 195.67 T
+(                  cp /home/ds/fms/fez/input/o3.climatology) 72 178.67 T
+(.nc INPUT) 368.98 178.67 T
+0 F
+(D) 79 144.67 T
+(.    Namelist v) 88.83 144.67 T
+(ariables within the sea_esf_rad modules) 169.57 144.67 T
+1 F
+(In) 116.26 110.67 T
+(the) 131.32 110.67 T
+(follo) 151.84 110.67 T
+(wing) 177.93 110.67 T
+(table,) 209.34 110.67 T
+(v) 243.46 110.67 T
+(ariables) 250.11 110.67 T
+(in) 297.05 110.67 T
+0 F
+(bold) 311.35 110.67 T
+(type) 341.21 110.67 T
+1 F
+(denoted) 370.28 110.67 T
+(with) 418.01 110.67 T
+(\050) 446.3 110.67 T
+0 F
+(**\051) 454.37 110.67 T
+1 F
+(require) 476.43 110.67 T
+(the) 519.49 110.67 T
+(user) 72 93.67 T
+(to) 98.76 93.67 T
+(replace) 113.08 93.67 T
+(the) 156.93 93.67 T
+(def) 177.47 93.67 T
+(ault) 195.21 93.67 T
+(v) 219.64 93.67 T
+(alue) 226.29 93.67 T
+(with) 253.05 93.67 T
+(a) 281.37 93.67 T
+(realistic) 291.02 93.67 T
+(one) 338.78 93.67 T
+(within) 362.43 93.67 T
+(the) 401.64 93.67 T
+(runscript) 422.18 93.67 T
+0 F
+(r) 475.39 93.67 T
+(egardless) 481.35 93.67 T
+(of what execution options ar) 72 76.67 T
+(e chosen) 240.52 76.67 T
+1 F
+(.  Other v) 290.68 76.67 T
+(ariables e) 343.21 76.67 T
+(xist which must be set to) 396.25 76.67 T
+1 12 Q
+(standalone_clouds_mod) 78 662 T
+(internal cloud-) 214 662 T
+(rad module) 214 648 T
+(used with) 214 634 T
+(standalone) 214 620 T
+(program) 214 606 T
+(donner_deep_clouds_W_) 78 584 T
+(mod) 78 570 T
+(internal cloud-) 214 584 T
+(rad module) 214 570 T
+(strat_clouds_W_mod) 78 548 T
+(internal cloud-) 214 548 T
+(rad module) 214 534 T
+(zonal_clouds_W_mod) 78 512 T
+(internal cloud-) 214 512 T
+(rad module) 214 498 T
+(diag_clouds_W_mod) 78 476 T
+(internal cloud-) 214 476 T
+(rad module) 214 462 T
+(radtest_mod) 78 440 T
+(dri) 214 440 T
+(v) 227.03 440 T
+(er) 232.85 440 T
+(for) 245 440 T
+(radi-) 261.81 440 T
+(ation standal-) 214 426 T
+(one program) 214 412 T
+0 F
+(T) 164.45 712 T
+(able 1: Modules contained in the new radiation code) 171.35 712 T
+1 F
+(Module name) 106.84 686 T
+(Comments) 223.23 686 T
+(Called by:) 324.13 686 T
+(Calls:) 454.96 686 T
+72 701.75 72 404.25 2 L
+V
+0.5 H
+0 Z
+N
+208 702.25 208 403.75 2 L
+V
+N
+290.47 702.25 290.47 403.75 2 L
+V
+N
+407.47 702.25 407.47 403.75 2 L
+V
+N
+530.47 701.75 530.47 404.25 2 L
+V
+N
+71.75 702 530.72 702 2 L
+V
+N
+72.25 677.25 530.22 677.25 2 L
+V
+N
+72.25 674.75 530.22 674.75 2 L
+V
+N
+71.75 598 530.72 598 2 L
+V
+N
+71.75 562 530.72 562 2 L
+V
+N
+71.75 526 530.72 526 2 L
+V
+N
+71.75 490 530.72 490 2 L
+V
+N
+71.75 454 530.72 454 2 L
+V
+N
+71.75 404 530.72 404 2 L
+V
+N
 FMENDPAGE
 %%EndPage: "7" 7
 %%Page: "8" 8
@@ -3406,178 +3585,232 @@ FMENDPAGE
 FrameNoSep
 -45 -45 657 837 C
 0 0 0 1 0 0 0 1 K
-0 14 Q
+1 14 Q
 0 X
-(F) 72 710.67 T
-(. Compliance with FMS and GFDL ph) 79.01 710.67 T
-(ysics code standards) 307.89 710.67 T
-1 F
-(The) 92.56 676.67 T
-(de) 117.76 676.67 T
-(v) 130.62 676.67 T
-(elopment) 137.41 676.67 T
-(of) 192.95 676.67 T
-(the) 208.04 676.67 T
-(radiation) 228.57 676.67 T
-(modules) 281.77 676.67 T
-(w) 332.64 676.67 T
-(as) 342.61 676.67 T
-(patterned) 357.7 676.67 T
-(on) 413.22 676.67 T
-(the) 430.64 676.67 T
-(code) 451.18 676.67 T
-(style) 481.04 676.67 T
-(used) 510.91 676.67 T
-(by) 72 659.67 T
-(Bruce) 89.05 659.67 T
-(W) 125.53 659.67 T
-(yman) 137.73 659.67 T
-(in) 171.89 659.67 T
-(the) 185.83 659.67 T
-(dynamical) 205.99 659.67 T
-(core) 267.36 659.67 T
-(modules) 294.51 659.67 T
-(which) 345 659.67 T
-(e) 382.27 659.67 T
-(xisted) 388.27 659.67 T
-(in) 424.77 659.67 T
-(early) 438.71 659.67 T
-(1999.) 469.75 659.67 T
-(There) 504.3 659.67 T
-(are some kno) 72 642.67 T
-(wn departures from the standards at this point in time \050and there may) 146.3 642.67 T
-(be) 72 625.67 T
-(others) 88.46 625.67 T
-(I) 125.92 625.67 T
-(am) 133.83 625.67 T
-(not) 154.18 625.67 T
-(conscious) 175.32 625.67 T
-(of\051,) 233.78 625.67 T
-(and) 256.85 625.67 T
-(ef) 280.31 625.67 T
-(forts) 290.84 625.67 T
-(will) 319.75 625.67 T
-(be) 344.77 625.67 T
-(made) 361.24 625.67 T
-(to) 394.81 625.67 T
-(mak) 408.94 625.67 T
-(e) 432.91 625.67 T
-(all) 442.37 625.67 T
-(modules) 459.62 625.67 T
-(fully) 510.31 625.67 T
-(standard compliant for the ne) 72 608.67 T
-(xt code release. Among the de\336ciencies:) 235.87 608.67 T
-( 1.  Speci\336ed FMS documentation is missing.   Dan, Stuart and I  will) 124.5 574.67 T
-(attempt  to pro) 72 557.67 T
-(vide this as soon as possible.) 153.84 557.67 T
-(                2.  There are still some instances of cgs usage within the code, primarily) 72 540.67 T
-(in) 72 523.67 T
-(v) 82.33 523.67 T
-(olving cgs units to fractional po) 89.05 523.67 T
-(wers. Dan and Stuart will e) 266.42 523.67 T
-(xamine these) 418.63 523.67 T
-(instances. Other e) 72 506.67 T
-(xamples are related to the need to run in SKYHI and will be) 171.71 506.67 T
-(remo) 72 489.67 T
-(v) 100.56 489.67 T
-(ed.) 107.35 489.67 T
-(                 3.  Ar) 72 472.67 T
-(guments to subroutines are not al) 163.52 472.67 T
-(w) 348.86 472.67 T
-(ays in the proper intent order --) 358.83 472.67 T
-(an o) 72 455.67 T
-(v) 95.51 455.67 T
-(ersight on my part  during the de) 102.3 455.67 T
-(v) 285.09 455.67 T
-(elopment stage which will be corrected for) 291.88 455.67 T
-(the ne) 72 438.67 T
-(xt release.) 105.61 438.67 T
-(               4.  V) 72 421.67 T
-(eri\336cation that the) 150.55 421.67 T
-2 F
-(_init) 255.93 421.67 T
-1 F
-( subroutine has been called is not included.) 281.61 421.67 T
-(               5.  Explicit de\336nitions of all ar) 72 404.67 T
-(guments in call statements is not present.) 295.75 404.67 T
-(This will be addressed as the FMS documentation w) 72 387.67 T
-(ork is done.) 365.06 387.67 T
-(               6.  All input \336le names are not supplied as namelist v) 72 370.67 T
-(ariables.) 422.03 370.67 T
-(                7.  Additional  minor  non-conformities  are certainly possible, as I  ha) 72 353.67 T
-(v) 522 353.67 T
-(e) 528.79 353.67 T
-(not yet check) 72 336.67 T
-(ed the modules with a \336ne-tooth comb) 146.51 336.67 T
-(.) 361.38 336.67 T
+(realistic) 72 710.67 T
+(v) 119.82 710.67 T
+(alues) 126.47 710.67 T
+(when) 158.74 710.67 T
+(the) 192.57 710.67 T
+(rele) 213.17 710.67 T
+(v) 233.81 710.67 T
+(ant) 240.46 710.67 T
+(option) 261.07 710.67 T
+(is) 300.35 710.67 T
+(chosen;) 313.19 710.67 T
+(these) 359.46 710.67 T
+(are) 391.73 710.67 T
+(also) 412.32 710.67 T
+(in) 438.38 710.67 T
 0 F
-(G. Coding techniques which differ fr) 72 285.67 T
-(om other FMS modules) 291.09 285.67 T
+(bold) 452.77 710.67 T
+(type) 482.73 710.67 T
 1 F
-(      I will no) 72 251.67 T
-(w discuss some of the techniques I ha) 140.1 251.67 T
-(v) 350.95 251.67 T
-(e used which dif) 357.74 251.67 T
-(fer from those) 449.54 251.67 T
-(used in other modules in FMS and present some reasons for the approach I ha) 72 234.67 T
-(v) 507.2 234.67 T
-(e) 513.99 234.67 T
-(tak) 72 217.67 T
-(en.  Ag) 88.97 217.67 T
-(ain, some of these techniques are at least partly a result of maintaining) 129.72 217.67 T
-(runnability withinSKYHI, and so need to be reassessed for the ne) 72 200.67 T
-(xt release.) 438.45 200.67 T
-(          1.  I ha) 72 166.67 T
-(v) 145.6 166.67 T
-(e generally allocated and deallocated local arrays rather than use the) 152.39 166.67 T
-(size) 72 149.67 T
-(function) 97.11 149.67 T
-(and) 147.12 149.67 T
-(a) 170.68 149.67 T
-(dimension) 180.24 149.67 T
-(statement,) 241.92 149.67 T
-(whereas) 302.42 149.67 T
-(most) 351.63 149.67 T
-(of) 382.2 149.67 T
-(the) 397.2 149.67 T
-(rest) 417.66 149.67 T
-(of) 441.21 149.67 T
-(FMS) 456.22 149.67 T
-(tak) 487.58 149.67 T
-(es) 504.54 149.67 T
-(the) 519.55 149.67 T
-(alternati) 72 132.67 T
-(v) 117.53 132.67 T
-(e approach. Se) 124.32 132.67 T
-(v) 205.99 132.67 T
-(eral considerations led me to tak) 212.78 132.67 T
-(e this approach.) 394.22 132.67 T
-(              a.\051 Initially I did use the size function where possible, b) 72 115.67 T
-(ut both Dan and I) 431.79 115.67 T
-(found) 72 98.67 T
-(that) 108.12 98.67 T
-(this) 132.57 98.67 T
-(made) 156.26 98.67 T
-(for) 190.03 98.67 T
-(some) 209.81 98.67 T
-(opaque) 242.82 98.67 T
-(code.) 286.71 98.67 T
-(Often) 323.55 98.67 T
-(if) 358.88 98.67 T
-(one) 370.89 98.67 T
-(w) 394.56 98.67 T
-(ants) 404.53 98.67 T
-(to) 430.54 98.67 T
-(kno) 444.88 98.67 T
-(w) 465.53 98.67 T
-(the) 479.1 98.67 T
-(size) 499.66 98.67 T
-(of) 524.88 98.67 T
-(an array dimension one has to go back se) 72 81.67 T
-(v) 301.82 81.67 T
-(eral le) 308.61 81.67 T
-(v) 342.86 81.67 T
-(els of subroutines to \336nd it, and) 349.65 81.67 T
+(,) 508.39 710.67 T
+(b) 518.89 710.67 T
+(ut) 525.61 710.67 T
+(denoted) 72 693.67 T
+(by) 119.72 693.67 T
+(\050*\051.) 140.5 693.67 T
+(The) 163.72 693.67 T
+(v) 188.88 693.67 T
+(alues) 195.53 693.67 T
+(of) 227.69 693.67 T
+(an) 242.75 693.67 T
+(y) 255.75 693.67 T
+(v) 266.14 693.67 T
+(ariable) 272.8 693.67 T
+(may) 314.28 693.67 T
+(be) 341.78 693.67 T
+(changed) 358.39 693.67 T
+(as) 408.43 693.67 T
+(the) 423.48 693.67 T
+(user) 443.98 693.67 T
+(wishes;) 470.7 693.67 T
+(it) 516.09 693.67 T
+(is) 527.27 693.67 T
+(intended that internal checks will pre) 72 676.67 T
+(v) 278.89 676.67 T
+(ent the use of inconsistent options.) 285.68 676.67 T
+0 12 Q
+(T) 179.62 618 T
+(able 2: Namelist v) 186.52 618 T
+(ariables used with the sea-esf modules) 278.05 618 T
+1 F
+(Module) 103.83 578 T
+(V) 197.68 578 T
+(ariable Name) 205.01 578 T
+(Description) 337 578 T
+(Def) 454.07 585 T
+(ault) 471.93 585 T
+(V) 458.34 571 T
+(alue) 465.67 571 T
+(Other) 530.34 592 T
+(Acceptable) 517.01 578 T
+(V) 528 564 T
+(alues) 535.34 564 T
+(cfc) 78 540 T
+(dummy) 179 540 T
+(dummy v) 300 540 T
+(ariable) 345.37 540 T
+(\324        \324) 442 540 T
+(ch4_n2o) 78 518 T
+(dummy) 179 518 T
+(dummy v) 300 518 T
+(ariable) 345.37 518 T
+(\324         \324) 442 518 T
+(cloudrad_package) 78 496 T
+0 F
+(**micr) 179 496 T
+(oph) 214.77 496 T
+(ys_f) 233.94 496 T
+(orm) 254.3 496 T
+1 F
+(type of mictroph) 300 496 T
+(ysics to) 379.93 496 T
+(use when de\336ning cloud) 300 482 T
+(radiati) 300 468 T
+(v) 330.36 468 T
+(e properties) 336.18 468 T
+(\324                 \324) 442 496 T
+(\324none\325,) 514 496 T
+(\324pre-) 514 482 T
+(scribed\325,) 514 468 T
+(\324predicted\325) 514 454 T
+0 F
+(**cloud_type_f) 179 432 T
+(orm) 256.7 432 T
+1 F
+(cloud formulation used to) 300 432 T
+(supply cloud radiati) 300 418 T
+(v) 395.03 418 T
+(e) 400.85 418 T
+(properties) 300 404 T
+(\324            \324) 442 432 T
+(\324rh\325, \324strat\325,) 514 432 T
+(\324zonal\325,) 514 418 T
+(\324obs\325,) 514 404 T
+(\324diag\325,) 514 390 T
+(\324pre-) 514 376 T
+(scribed\325,) 514 362 T
+(\324stratdeep\325,) 514 348 T
+(\324deep\325,) 514 334 T
+(\324speci\336ed\325,) 514 320 T
+(none\325) 514 306 T
+(do_l) 179 284 T
+(wcldemiss) 200.22 284 T
+(a) 300 284 T
+(cloud) 308.31 284 T
+(emissi) 337.96 284 T
+(vity) 368.34 284 T
+(that) 389.99 284 T
+(v) 410.98 284 T
+(ar-) 416.68 284 T
+(ies with frequenc) 300 270 T
+(y band is) 382.46 270 T
+(used) 300 256 T
+(in) 324.82 256 T
+(the) 336.99 256 T
+(l) 354.48 256 T
+(w) 357.7 256 T
+(calculation) 369.19 256 T
+(?) 424.67 256 T
+(.f) 442 284 T
+(alse.) 448.88 284 T
+(n_prsc_clds) 179 234 T
+(number of prescribed) 300 234 T
+(clouds used in formulation) 300 220 T
+(3) 442 234 T
+(constants_ne) 78 198 T
+(w) 139.69 198 T
+(dummy) 179 198 T
+(dummy v) 300 198 T
+(ariable) 345.37 198 T
+(\324       \324) 442 198 T
+(co2) 78 176 T
+(dummy) 179 176 T
+(dummy v) 300 176 T
+(ariable) 345.37 176 T
+(\324       \324) 442 176 T
+(diag_clouds_W) 78 154 T
+(dummy) 179 154 T
+(dummy v) 300 154 T
+(ariable) 345.37 154 T
+(0) 442 154 T
+(donner_deep_clou) 78 132 T
+(ds_W) 78 118 T
+(using_dge_swe) 179 132 T
+(use Fu\0501998\051 scheme for) 300 132 T
+(ice sw optical depth ?) 300 118 T
+(.true.) 442 132 T
+(using_dge_l) 179 96 T
+(w) 237.55 96 T
+(use Fu\0501998\051 scheme for) 300 96 T
+(ice l) 300 82 T
+(w optical depth ?) 320.21 82 T
+(.true.) 442 96 T
+72 607.75 72 74.25 2 L
+V
+0.5 H
+0 Z
+N
+173 608.25 173 73.75 2 L
+V
+N
+294 608.25 294 73.75 2 L
+V
+N
+436 608.25 436 73.75 2 L
+V
+N
+508 608.25 508 73.75 2 L
+V
+N
+580 607.75 580 74.25 2 L
+V
+N
+71.75 608 580.25 608 2 L
+V
+N
+72.25 555.25 579.75 555.25 2 L
+V
+N
+72.25 552.75 579.75 552.75 2 L
+V
+N
+71.75 532 580.25 532 2 L
+V
+N
+71.75 510 580.25 510 2 L
+V
+N
+71.75 446 580.25 446 2 L
+V
+N
+71.75 298 580.25 298 2 L
+V
+N
+71.75 248 580.25 248 2 L
+V
+N
+71.75 212 580.25 212 2 L
+V
+N
+71.75 190 580.25 190 2 L
+V
+N
+71.75 168 580.25 168 2 L
+V
+N
+71.75 146 580.25 146 2 L
+V
+N
+71.75 110 580.25 110 2 L
+V
+N
+71.75 74 580.25 74 2 L
+V
+N
 FMENDPAGE
 %%EndPage: "8" 8
 %%Page: "9" 9
@@ -3586,186 +3819,195 @@ FMENDPAGE
 FrameNoSep
 -45 -45 657 837 C
 0 0 0 1 0 0 0 1 K
-1 14 Q
+1 12 Q
 0 X
-(the process becomes quite a task.  Currently this primarily applies to the v) 72 710.67 T
-(ertical) 486.3 710.67 T
-(dimension -- is it KMAX or KMAX + 1?   Ho) 72 693.67 T
-(we) 330.36 693.67 T
-(v) 346.33 693.67 T
-(er ...) 353.12 693.67 T
-(               b) 72 676.67 T
-(.\051  In the future it is possible that in high resolution studies that radiation) 130.94 676.67 T
-(will be computed on a subset of the horizontal grid, just as currently it may not be) 72 659.67 T
-(computed at all v) 72 642.67 T
-(ertical le) 168.61 642.67 T
-(v) 216.86 642.67 T
-(els, when the model top is at a v) 223.65 642.67 T
-(ery high le) 403.48 642.67 T
-(v) 463.01 642.67 T
-(el. \050This is) 469.8 642.67 T
-(the) 72 625.67 T
-(reason) 92.24 625.67 T
-(for) 131.91 625.67 T
-(the) 151.37 625.67 T
-(tw) 171.62 625.67 T
-(o) 185.48 625.67 T
-(v) 195.61 625.67 T
-(ariable) 202.26 625.67 T
-(sets) 243.49 625.67 T
-(\050IMINP) 270.75 625.67 T
-(,) 313.52 625.67 T
-(JMINP) 320.16 625.67 T
-(,) 359.05 625.67 T
-(KMIN\051) 365.68 625.67 T
-(and) 413.94 625.67 T
-(\050ISRAD,) 437.29 625.67 T
-(JSRAD,) 490.58 625.67 T
-(KSRAD within the radiation modules.\051  This will mean that it will become e) 72 608.67 T
-(v) 500.19 608.67 T
-(en) 506.98 608.67 T
-(more dif) 72 591.67 T
-(\336cult to quickly determine array dimensions de\336ned via the size function,) 119.47 591.67 T
-(and) 72 574.67 T
-(so) 95.58 574.67 T
-(to) 111.39 574.67 T
-(distinguish) 125.64 574.67 T
-(quickly) 190.46 574.67 T
-(between) 235.83 574.67 T
-(v) 285.84 574.67 T
-(ariables) 292.49 574.67 T
-(dimensioned) 339.39 574.67 T
-(on) 414.31 574.67 T
-(the) 431.67 574.67 T
-(model) 452.14 574.67 T
-(grid) 490.5 574.67 T
-(and) 516.42 574.67 T
-(on the radiation grid.) 72 557.67 T
-(              c.\051   The radiation code contains as man) 72 540.67 T
-(y and lik) 343.57 540.67 T
-(ely more local v) 392.43 540.67 T
-(ariables) 482.68 540.67 T
-(than an) 72 523.67 T
-(y other modules of FMS.  It is desirable \050essential\051 to be able to control the) 112.61 523.67 T
-(memory usage within these modules on as \336ne a  granularity as possible without) 72 506.67 T
-(becoming too CPU time-intensi) 72 489.67 T
-(v) 249.38 489.67 T
-(e, particularly as one w) 256.17 489.67 T
-(orks at higher and higher) 386.27 489.67 T
-(resolution.) 72 472.67 T
-(Allocating) 134.91 472.67 T
-(and) 197.44 472.67 T
-(deallocating) 221.07 472.67 T
-(local) 292.92 472.67 T
-(w) 323.55 472.67 T
-(ork) 333.52 472.67 T
-(arrays) 355.59 472.67 T
-(within) 393.21 472.67 T
-(subroutines) 432.41 472.67 T
-(allo) 500.38 472.67 T
-(ws) 521.03 472.67 T
-(one to do this, whereas stack arrays will be present the whole time that the subrou-) 72 455.67 T
-(tine is acti) 72 438.67 T
-(v) 129.2 438.67 T
-(e.) 135.99 438.67 T
-(           d.\051   T) 72 421.67 T
-(o reduce the lik) 143.6 421.67 T
-(elihood of lea) 230.16 421.67 T
-(ving g) 306.86 421.67 T
-(aps in the heap as arrays are allo-) 342.19 421.67 T
-(cated) 72 404.67 T
-(and) 104.52 404.67 T
-(deallocated,) 127.72 404.67 T
-(the) 197.96 404.67 T
-(radiation) 218.05 404.67 T
-(modules) 270.8 404.67 T
-(ha) 321.23 404.67 T
-(v) 334.17 404.67 T
-(e) 340.96 404.67 T
-(separate) 350.16 404.67 T
-(interf) 399 404.67 T
-(aces) 429.19 404.67 T
-(through) 456.26 404.67 T
-(which) 502.8 404.67 T
-(module) 72 387.67 T
-(v) 117.31 387.67 T
-(ariables) 123.96 387.67 T
-(are) 170.82 387.67 T
-(allocated) 191.22 387.67 T
-(and) 245.07 387.67 T
-(deallocated.) 268.6 387.67 T
-(These) 339.17 387.67 T
-(subroutines) 375.91 387.67 T
-(are) 443.78 387.67 T
-(called) 464.19 387.67 T
-(before) 500.93 387.67 T
-(the calculation subroutines, allo) 72 370.67 T
-(wing module v) 249.74 370.67 T
-(ariables to be the \336rst allocated and) 333.39 370.67 T
-(the last deallocated on a radiation step.  Local arrays allocated within a w) 72 353.67 T
-(ork sub-) 482.44 353.67 T
-(routine are deallocated at e) 72 336.67 T
-(xit.) 222.63 336.67 T
-(           e.\051  Man) 72 319.67 T
-(y of the radiation arrays need to be conditionally allocated,  depen-) 157.33 319.67 T
-(dent on the run-time options selected. De\336ning them all as stack v) 72 302.67 T
-(ariables leads to) 441.84 302.67 T
-(unnecessary memory usage.) 72 285.67 T
-(I) 94.06 251.67 T
-(intend) 101.87 251.67 T
-(to) 140.03 251.67 T
-(study) 154.07 251.67 T
-(this) 187.56 251.67 T
-(issue) 210.94 251.67 T
-(on) 242.09 251.67 T
-(the) 259.24 251.67 T
-(o3k) 279.5 251.67 T
-(system) 303.65 251.67 T
-(and) 345.7 251.67 T
-(mak) 369.07 251.67 T
-(e) 393.03 251.67 T
-(e) 402.4 251.67 T
-(v) 408.27 251.67 T
-(ery) 415.06 251.67 T
-(attempt) 436.09 251.67 T
-(to) 481.24 251.67 T
-(remo) 495.28 251.67 T
-(v) 523.84 251.67 T
-(e) 530.63 251.67 T
-(the  user allocation / deallocation of these local arrays for the ne) 72 234.67 T
-(xt release.  Issues) 430.26 234.67 T
-(related to the potential of ha) 72 217.67 T
-(ving a radiation grid which dif) 229.19 217.67 T
-(fers from the model grid) 399.54 217.67 T
-(may be handled by de\336ning that grid at the dri) 72 200.67 T
-(v) 331.01 200.67 T
-(er le) 337.8 200.67 T
-(v) 361.94 200.67 T
-(el , so that a single inde) 368.73 200.67 T
-(x is) 500.34 200.67 T
-(then used internally) 72 183.67 T
-(. It is also lik) 181.52 183.67 T
-(ely that less concern need be tak) 254.11 183.67 T
-(en with respect to) 435.15 183.67 T
-(memory usage, than w) 72 166.67 T
-(as necessary on our pre) 198.62 166.67 T
-(vious T90 and T3E systems. I feel) 328.89 166.67 T
-(that the reduction in code comple) 72 149.67 T
-(xity and potential heap ab) 258.82 149.67 T
-(use obtained by using) 403.18 149.67 T
-(stack allocation is highly desirable and hopefully can be achie) 72 132.67 T
-(v) 418.86 132.67 T
-(ed with only mini-) 425.65 132.67 T
-(mal ne) 72 115.67 T
-(g) 109.51 115.67 T
-(ati) 116.44 115.67 T
-(v) 130.09 115.67 T
-(e impact.) 136.88 115.67 T
-(          2.   I ha) 72 81.67 T
-(v) 149.1 81.67 T
-(e de\336ned \322setup\323 modules which de\336ne and hold a set of high-le) 155.89 81.67 T
-(v) 517.54 81.67 T
-(el) 524.33 81.67 T
+(esfsw_dri) 78 634 T
+(v) 124.36 634 T
+(er) 130.18 634 T
+(dummy) 179 634 T
+(dummy v) 300 634 T
+(ariable) 345.37 634 T
+(1.0) 442 634 T
+(esfsw_parameters) 78 612 T
+0 F
+(**sw_r) 179 612 T
+(esolution) 215.44 612 T
+1 F
+(will allo) 300 612 T
+(w ability to use) 339.37 612 T
+(either high or lo) 300 598 T
+(w resolu-) 376.69 598 T
+(tion spectral parameteriza-) 300 584 T
+(tion) 300 570 T
+(\324          \324) 442 612 T
+(\324high\325,) 514 612 T
+(\324lo) 514 598 T
+(w\325) 527.03 598 T
+0 F
+(**sw_diff_str) 179 548 T
+(eams) 248.11 548 T
+1 F
+(number of streams of dif-) 300 548 T
+(fuse radiation) 300 534 T
+(0) 442 548 T
+(select) 514 548 T
+(either) 544 548 T
+(1 or 4) 514 534 T
+(esfsw_scattering) 78 512 T
+(do_sw) 179 512 T
+(aerosol) 210.21 512 T
+(are aerosols included in) 300 512 T
+(the sw formulation ?) 300 498 T
+(.f) 442 512 T
+(alse.) 448.88 512 T
+0 F
+(*swaer) 179 476 T
+(osol_f) 214.77 476 T
+(orm) 244.47 476 T
+1 F
+(type of sw aerosols being) 300 476 T
+(used. if do_sw) 300 462 T
+(aerosol =) 369.54 462 T
+(.true. and sw) 300 448 T
+(aerosol_form) 361.2 448 T
+(= \324     \324, then rayleigh scat-) 300 434 T
+(tering is turned on.) 300 420 T
+(\324   \324) 442 476 T
+(\324predicted\325,) 514 476 T
+(\324observ) 514 462 T
+(ed\325,) 549.81 462 T
+(\324prescribed\325) 514 448 T
+0 F
+(*swaer) 179 398 T
+(osol_model_t) 214.77 398 T
+(ype) 179 384 T
+1 F
+( actual data source name) 300 398 T
+(for aerosol formulation) 300 384 T
+(\324) 442 398 T
+(\324) 498 398 T
+(\324shettle_fen) 514 398 T
+(n_mar_0\325,) 514 384 T
+(shettle_fenn) 514 370 T
+(_mar_95\325,) 514 356 T
+(\324robock\325,) 514 342 T
+(\324ramachan-) 514 328 T
+(dran\325) 514 314 T
+0 F
+(*swaer_model_nintv) 179 292 T
+(ls) 179 278 T
+1 F
+(number of bands o) 300 292 T
+(v) 389.47 292 T
+(er) 395.29 292 T
+(which the aerosol data is) 300 278 T
+(pro) 300 264 T
+(vided) 315.82 264 T
+(0) 442 292 T
+0 F
+(*imax_aer\336le) 179 242 T
+1 F
+(number of longitudes at) 300 242 T
+(which aerosol data is pro-) 300 228 T
+(vided) 300 214 T
+(0) 442 242 T
+0 F
+(*jmax_aer\336le) 179 192 T
+1 F
+(number of latitudes at) 300 192 T
+(which aerosol data is pro-) 300 178 T
+(vided) 300 164 T
+(0) 442 192 T
+0 F
+(*kmax_aer\336le) 179 142 T
+1 F
+(number) 300 142 T
+(of) 338.93 142 T
+(v) 351.2 142 T
+(ertical) 357.02 142 T
+(le) 389.28 142 T
+(v) 397.64 142 T
+(els) 403.46 142 T
+(at) 419.07 142 T
+(which aerosol data is pro-) 300 128 T
+(vided) 300 114 T
+(0) 442 142 T
+0 F
+(T) 179.62 712 T
+(able 2: Namelist v) 186.52 712 T
+(ariables used with the sea-esf modules) 278.05 712 T
+1 F
+(Module) 103.83 672 T
+(V) 197.68 672 T
+(ariable Name) 205.01 672 T
+(Description) 337 672 T
+(Def) 454.07 679 T
+(ault) 471.93 679 T
+(V) 458.34 665 T
+(alue) 465.67 665 T
+(Other) 530.34 686 T
+(Acceptable) 517.01 672 T
+(V) 528 658 T
+(alues) 535.34 658 T
+72 701.75 72 106.25 2 L
+V
+0.5 H
+0 Z
+N
+173 702.25 173 105.75 2 L
+V
+N
+294 702.25 294 105.75 2 L
+V
+N
+436 702.25 436 105.75 2 L
+V
+N
+508 702.25 508 105.75 2 L
+V
+N
+580 701.75 580 106.25 2 L
+V
+N
+71.75 702 580.25 702 2 L
+V
+N
+72.25 649.25 579.75 649.25 2 L
+V
+N
+72.25 646.75 579.75 646.75 2 L
+V
+N
+71.75 626 580.25 626 2 L
+V
+N
+71.75 562 580.25 562 2 L
+V
+N
+71.75 526 580.25 526 2 L
+V
+N
+71.75 490 580.25 490 2 L
+V
+N
+71.75 412 580.25 412 2 L
+V
+N
+71.75 306 580.25 306 2 L
+V
+N
+71.75 256 580.25 256 2 L
+V
+N
+71.75 206 580.25 206 2 L
+V
+N
+71.75 156 580.25 156 2 L
+V
+N
+71.75 106 580.25 106 2 L
+V
+N
 FMENDPAGE
 %%EndPage: "9" 9
 %%Page: "10" 10
@@ -3774,184 +4016,222 @@ FMENDPAGE
 FrameNoSep
 -45 -45 657 837 C
 0 0 0 1 0 0 0 1 K
-1 14 Q
+0 12 Q
 0 X
-(public v) 72 710.67 T
-(ariables that are used in man) 117.15 710.67 T
-(y modules within the radiation code.  By so) 276.74 710.67 T
-(doing,  these ar) 72 693.67 T
-(guments need not be passed through se) 157.29 693.67 T
-(v) 375.46 693.67 T
-(eral le) 382.25 693.67 T
-(v) 416.5 693.67 T
-(els of subroutines in) 423.29 693.67 T
-(order) 72 676.67 T
-(to) 104.87 676.67 T
-(reach) 119.08 676.67 T
-(the) 152.72 676.67 T
-(one) 173.15 676.67 T
-(routine) 196.7 676.67 T
-(where) 239.68 676.67 T
-(the) 277.21 676.67 T
-(y) 294.11 676.67 T
-(are) 304.44 676.67 T
-(actually) 324.86 676.67 T
-(used.) 372.51 676.67 T
-(Instead,) 404.99 676.67 T
-(it) 452.25 676.67 T
-(is) 463.36 676.67 T
-(only) 476.03 676.67 T
-(neces-) 504.24 676.67 T
-(sary that the module which actually uses the v) 72 659.67 T
-(ariable has the appropriate \322use\323) 329.84 659.67 T
-(statement. The set of v) 72 642.67 T
-(ariables treated in this manner is limited, and consists prima-) 198.8 642.67 T
-(rily of v) 72 625.67 T
-(ariables deri) 116.76 625.67 T
-(v) 185.22 625.67 T
-(ed from model inputs to the radiation code.  These v) 192.01 625.67 T
-(ariables) 484.45 625.67 T
-(are not used outside of the radiation_step routines, so that the model interf) 72 608.67 T
-(aces do) 487.53 608.67 T
-(re\337ect all incoming and outgoing ar) 72 591.67 T
-(guments to the radiation calculation; it is only-) 272 591.67 T
-(within the radiation calculation itself that needed inputs become more oapque.) 72 574.67 T
-(        I will also re) 72 540.67 T
-(vie) 170.03 540.67 T
-(w \0502\051 to assess its usefulness in a pure FMS-based model. If I) 186.79 540.67 T
-(\336nd that its usefullness is minimal or if it is found unacceptable by the MI / OP) 72 523.67 T
-(teams, I will modify the structure for the ne) 72 506.67 T
-(xt code release.) 315.59 506.67 T
-(3.) 105.48 472.67 T
-(I) 122.68 472.67 T
-(ha) 130.69 472.67 T
-(v) 143.63 472.67 T
-(e) 150.42 472.67 T
-(attempted) 159.98 472.67 T
-(to) 218.55 472.67 T
-(present) 232.79 472.67 T
-(a) 276.57 472.67 T
-(uniform) 286.13 472.67 T
-(style) 334.59 472.67 T
-(to) 364.38 472.67 T
-(the) 378.62 472.67 T
-(structure) 399.08 472.67 T
-(of) 451.41 472.67 T
-(the) 466.42 472.67 T
-(radiation) 486.88 472.67 T
-(modules,  based primarily on that used by Bruce W) 72 455.67 T
-(yman with the dynamical core) 358.72 455.67 T
-(modules.  I ha) 72 438.67 T
-(v) 151.04 438.67 T
-(e also tried to include the follo) 157.83 438.67 T
-(wing features, which I \336nd to be use-) 328.58 438.67 T
-(ful as a code modi\336er / de) 72 421.67 T
-(v) 217.07 421.67 T
-(eloper:) 223.86 421.67 T
-(          a.  Ha) 72 404.67 T
-(v) 139.76 404.67 T
-(e the) 146.55 404.67 T
-2 F
-(_init) 176.87 404.67 T
+(*ktop_aer) 179 634 T
 1 F
-( routine immediately follo) 202.55 404.67 T
-(w the \322contains\323 statement.) 348.81 404.67 T
-(b) 106.52 387.67 T
-(.) 112.96 387.67 T
-(Ha) 122.73 387.67 T
-(v) 138.78 387.67 T
-(e) 145.57 387.67 T
-(public) 154.92 387.67 T
-(subroutines) 193.06 387.67 T
-(occur) 260.75 387.67 T
-(in) 294.98 387.67 T
-(the) 309.01 387.67 T
-(module) 329.26 387.67 T
-(in) 374.39 387.67 T
-(the) 388.42 387.67 T
-(order) 408.67 387.67 T
-(in) 441.35 387.67 T
-(which) 455.38 387.67 T
-(the) 492.73 387.67 T
-(y) 509.63 387.67 T
-(are) 519.77 387.67 T
-(declared as public.) 72 370.67 T
-(c.) 109.64 353.67 T
-(Ha) 126.19 353.67 T
-(v) 142.24 353.67 T
-(e) 149.03 353.67 T
-(a) 158.66 353.67 T
-(listing) 168.3 353.67 T
-(of) 206.74 353.67 T
-(pri) 225.24 353.67 T
-(v) 240.45 353.67 T
-(ate) 247.1 353.67 T
-(routines) 266.84 353.67 T
-(of) 315.37 353.67 T
-(the) 330.45 353.67 T
-(module,) 350.98 353.67 T
-(and) 399.91 353.67 T
-(ha) 426.96 353.67 T
-(v) 439.9 353.67 T
-(e) 446.69 353.67 T
-(them) 456.33 353.67 T
-(occur) 491.17 353.67 T
-(in) 525.69 353.67 T
-(the order of listing,  after the public interf) 72 336.67 T
-(aces.) 304.76 336.67 T
-(d.) 109.93 319.67 T
-(Include) 127.33 319.67 T
-(a) 172.76 319.67 T
-(namelist) 182.42 319.67 T
-(and) 233.32 319.67 T
-(the) 256.98 319.67 T
-(code) 277.54 319.67 T
-(to) 307.42 319.67 T
-(read) 321.76 319.67 T
-(it) 349.3 319.67 T
-(in) 360.53 319.67 T
-(e) 374.87 319.67 T
-(v) 380.74 319.67 T
-(ery) 387.53 319.67 T
-(module.) 408.86 319.67 T
-(If) 457.8 319.67 T
-(there) 470.58 319.67 T
-(are) 502.01 319.67 T
-(no) 522.55 319.67 T
-(rele) 72 302.67 T
-(v) 92.64 302.67 T
-(ant) 99.29 302.67 T
-(namelist) 119.89 302.67 T
-(v) 170.83 302.67 T
-(ariables) 177.48 302.67 T
-(currently) 224.52 302.67 T
-(,) 274.15 302.67 T
-(simply) 281.14 302.67 T
-(ha) 322.76 302.67 T
-(v) 335.69 302.67 T
-(e) 342.48 302.67 T
-(some) 352.2 302.67 T
-(dummy) 385.24 302.67 T
-(v) 431.52 302.67 T
-(alue) 438.17 302.67 T
-(there.) 464.99 302.67 T
-(If) 503.47 302.67 T
-(and) 516.29 302.67 T
-(when the need arises for a namelist v) 72 285.67 T
-(ariable, e) 278.88 285.67 T
-(v) 329.84 285.67 T
-(erything will be in place.) 336.63 285.67 T
+(topmost model inde) 300 634 T
+(x at) 395.16 634 T
+(which aerosol data is pro-) 300 620 T
+(vided) 300 606 T
+(0) 442 634 T
 0 F
-(H.  List and brief description of new  modules) 72 234.67 T
+(*kbot_aer) 179 584 T
 1 F
-(       The follo) 72 183.67 T
-(wing is a list of the sea-esf radiation modules, along with a proposed) 147.87 183.67 T
-(assignment to one of the CVS directories de\336ned in Section D,  and a brief discus-) 72 166.67 T
-(sion rele) 72 149.67 T
-(v) 119.47 149.67 T
-(ant to the module\325) 126.12 149.67 T
-(s disposition as the need to be accessible in SKYHI is) 227.62 149.67 T
-(eliminated.) 72 132.67 T
+(bottommost model inde) 300 584 T
+(x) 413.83 584 T
+(at which aerosol data is) 300 570 T
+(pro) 300 556 T
+(vided) 315.82 556 T
+(0) 442 584 T
+(g) 78 534 T
+(as_tf) 83.94 534 T
+(interp_form) 179 534 T
+(the form of table interpola-) 300 534 T
+(tion to be used when cal-) 300 520 T
+(culating the transmission) 300 506 T
+(functions) 300 492 T
+(\324log\324) 442 534 T
+(\324linear\325) 514 534 T
+(do_calcstdch4tfs) 179 470 T
+(calculate the ch4 tfs) 300 470 T
+(.true.) 442 470 T
+(do_writestdch4tfs) 179 448 T
+(write) 300 448 T
+(the) 327.41 448 T
+(ch4) 344.83 448 T
+(tfs) 364.91 448 T
+(to) 379.66 448 T
+(a) 391.74 448 T
+(\336le) 399.83 448 T
+(to) 417.91 448 T
+(sa) 300 434 T
+(v) 309.76 434 T
+(e) 315.58 434 T
+(.f) 442 448 T
+(alse.) 448.88 448 T
+(do_readstdch4tfs) 179 412 T
+(read the ch4 tfs  from a \336le) 300 412 T
+(.f) 442 412 T
+(alse.) 448.88 412 T
+(do _calcstdn2otfs) 179 390 T
+(calculate the n2o tfs) 300 390 T
+(.true.) 442 390 T
+(do_writestdn2otfs) 179 368 T
+(write the n2o tfs to a \336le) 300 368 T
+(.f) 442 368 T
+(alse.) 448.88 368 T
+(do_readstdn2otfs) 179 346 T
+(read the n2o tfs from a \336le) 300 346 T
+(.f) 442 346 T
+(alse.) 448.88 346 T
+(do_calcstdco2tfs) 179 324 T
+(calculate the co2 tfs) 300 324 T
+(.true.) 442 324 T
+(do_writestdco2tfs) 179 302 T
+(write the co2 tfs to a \336le) 300 302 T
+(.f) 442 302 T
+(alse.) 448.88 302 T
+(do_readstdco2tfs) 179 280 T
+(read the tfs from a \336le) 300 280 T
+(.f) 442 280 T
+(alse.) 448.88 280 T
+(lhsw_dri) 78 258 T
+(v) 119.7 258 T
+(er) 125.52 258 T
+(dummy) 179 258 T
+(dummy v) 300 258 T
+(ariable) 345.37 258 T
+(0.0) 442 258 T
+(longw) 78 236 T
+(a) 107.88 236 T
+(v) 112.97 236 T
+(e_aerosol) 118.79 236 T
+(do_l) 179 236 T
+(w) 200.22 236 T
+(aerosol) 208.76 236 T
+(aerosol ef) 300 236 T
+(fects are) 346.68 236 T
+(included in the longw) 300 222 T
+(a) 404.21 222 T
+(v) 409.3 222 T
+(e) 415.12 222 T
+(radiation parameterization) 300 208 T
+(?) 300 194 T
+(.f) 442 236 T
+(alse.) 448.88 236 T
+0 F
+(*lwaer) 179 172 T
+(osol_f) 213.44 172 T
+(orm) 243.14 172 T
+1 F
+(type of longw) 300 172 T
+(a) 366.54 172 T
+(v) 371.63 172 T
+(e aerosol) 377.45 172 T
+(being treated within the) 300 158 T
+(longw) 300 144 T
+(a) 329.88 144 T
+(v) 334.97 144 T
+(e code) 340.79 144 T
+(\324         \324) 442 172 T
+(\324pre-) 514 172 T
+(scribed\325,) 514 158 T
+(\324observ) 514 144 T
+(ed\325,) 549.81 144 T
+(\324predicted\325) 514 130 T
+0 F
+(strat_lwmodel_type) 179 108 T
+1 F
+(NO) 300 108 T
+(T USED CUR-) 316.85 108 T
+(RENTL) 300 94 T
+(Y) 337.46 94 T
+(\324           \324) 442 108 T
+0 F
+(T) 179.62 712 T
+(able 2: Namelist v) 186.52 712 T
+(ariables used with the sea-esf modules) 278.05 712 T
+1 F
+(Module) 103.83 672 T
+(V) 197.68 672 T
+(ariable Name) 205.01 672 T
+(Description) 337 672 T
+(Def) 454.07 679 T
+(ault) 471.93 679 T
+(V) 458.34 665 T
+(alue) 465.67 665 T
+(Other) 530.34 686 T
+(Acceptable) 517.01 672 T
+(V) 528 658 T
+(alues) 535.34 658 T
+72 701.75 72 86.25 2 L
+V
+0.5 H
+0 Z
+N
+173 702.25 173 85.75 2 L
+V
+N
+294 702.25 294 85.75 2 L
+V
+N
+436 702.25 436 85.75 2 L
+V
+N
+508 702.25 508 85.75 2 L
+V
+N
+580 701.75 580 86.25 2 L
+V
+N
+71.75 702 580.25 702 2 L
+V
+N
+72.25 649.25 579.75 649.25 2 L
+V
+N
+72.25 646.75 579.75 646.75 2 L
+V
+N
+71.75 598 580.25 598 2 L
+V
+N
+71.75 548 580.25 548 2 L
+V
+N
+71.75 484 580.25 484 2 L
+V
+N
+71.75 462 580.25 462 2 L
+V
+N
+71.75 426 580.25 426 2 L
+V
+N
+71.75 404 580.25 404 2 L
+V
+N
+71.75 382 580.25 382 2 L
+V
+N
+71.75 360 580.25 360 2 L
+V
+N
+71.75 338 580.25 338 2 L
+V
+N
+71.75 316 580.25 316 2 L
+V
+N
+71.75 294 580.25 294 2 L
+V
+N
+71.75 272 580.25 272 2 L
+V
+N
+71.75 250 580.25 250 2 L
+V
+N
+71.75 186 580.25 186 2 L
+V
+N
+71.75 122 580.25 122 2 L
+V
+N
+71.75 86 580.25 86 2 L
+V
+N
 FMENDPAGE
 %%EndPage: "10" 10
 %%Page: "11" 11
@@ -3962,1796 +4242,172 @@ FrameNoSep
 0 0 0 1 0 0 0 1 K
 0 12 Q
 0 X
-(T) 148.71 686 T
-(able 1: Modules contained in the new radiation code) 155.61 686 T
+(*strat_lwmodel_nint) 179 634 T
+(vls) 179 620 T
 1 F
-(Module name) 106.84 653 T
-(Proposed) 228.67 660 T
-(Directory) 228.01 646 T
-(Comments) 370.5 653 T
-(sea_esf_rad_mod) 78 622 T
-(dri) 214 622 T
-(v) 227.03 622 T
-(er) 232.85 622 T
-(interf) 300 622 T
-(ace to model called by) 325.87 622 T
-(ph) 300 608 T
-(ysics_dri) 311.94 608 T
-(v) 354.97 608 T
-(er_mod) 360.79 608 T
-(std_pressures_mod) 78 586 T
-(dri) 214 586 T
-(v) 227.03 586 T
-(er) 232.85 586 T
-(will be absorbed /replaced by) 300 586 T
-(v) 300 572 T
-(ert_grid_mod when SKYHI goes) 305.82 572 T
-(rad_output_\336le_mod) 78 550 T
-(dri) 214 550 T
-(v) 227.03 550 T
-(er) 232.85 550 T
-(creates netcdf \336le - will be unneeded) 300 550 T
-(when SKYHI goes) 300 536 T
-(calendar_mod) 78 514 T
-(dri) 214 514 T
-(v) 227.03 514 T
-(er) 232.85 514 T
-(calendar interpolation module, used in) 300 514 T
-(SKYHI and standalone, will be) 300 500 T
-(unneeded  when SKYHI goes) 300 486 T
-(store_rad_output_mod) 78 464 T
-(dri) 214 464 T
-(v) 227.03 464 T
-(er) 232.85 464 T
-(dummy) 300 464 T
-(module) 339.58 464 T
-(needed) 378.49 464 T
-(to) 415.38 464 T
-(pro) 427.62 464 T
-(vide) 443.44 464 T
-(inter-) 467.01 464 T
-(f) 300 450 T
-(aces that are used in SKYHI - will dis-) 303.88 450 T
-(appear when SKYHI goes) 300 436 T
-(donner_ice_mod) 78 414 T
-(dri) 214 414 T
-(v) 227.03 414 T
-(er) 232.85 414 T
-(dummy) 300 414 T
-(module) 339.58 414 T
-(needed) 378.49 414 T
-(to) 415.38 414 T
-(pro) 427.62 414 T
-(vide) 443.44 414 T
-(inter-) 467.01 414 T
-(f) 300 400 T
-(aces that are used in SKYHI - will dis-) 303.88 400 T
-(appear when SKYHI goes) 300 386 T
-(radiati) 78 364 T
-(v) 108.36 364 T
-(e_g) 114.18 364 T
-(ases_mod) 131.45 364 T
-(radiati) 214 364 T
-(v) 244.36 364 T
-(e_g) 250.18 364 T
-(ases) 267.45 364 T
-(controls) 300 364 T
-(ch4,) 341.62 364 T
-(n2o,) 364.9 364 T
-(cfc) 388.85 364 T
-(and) 406.45 364 T
-(co2) 426.73 364 T
-(speci\336ca-) 447.02 364 T
-(tions) 300 350 T
-(cool_to_space_mod) 78 328 T
-(longw) 214 328 T
-(a) 243.88 328 T
-(v) 248.97 328 T
-(e) 254.79 328 T
-(internal longw) 300 328 T
-(a) 369.54 328 T
-(v) 374.63 328 T
-(e module) 380.45 328 T
-(optical_path_mod) 78 306 T
-(longw) 214 306 T
-(a) 243.88 306 T
-(v) 248.97 306 T
-(e) 254.79 306 T
-(internal longw) 300 306 T
-(a) 369.54 306 T
-(v) 374.63 306 T
-(e module) 380.45 306 T
-(longw) 78 284 T
-(a) 107.88 284 T
-(v) 112.97 284 T
-(e_tables_mod) 118.79 284 T
-(longw) 214 284 T
-(a) 243.88 284 T
-(v) 248.97 284 T
-(e) 254.79 284 T
-(internal longw) 300 284 T
-(a) 369.54 284 T
-(v) 374.63 284 T
-(e module) 380.45 284 T
-(longw) 78 262 T
-(a) 107.88 262 T
-(v) 112.97 262 T
-(e_aerosol_mod) 118.79 262 T
-(longw) 214 262 T
-(a) 243.88 262 T
-(v) 248.97 262 T
-(e) 254.79 262 T
-(internal longw) 300 262 T
-(a) 369.54 262 T
-(v) 374.63 262 T
-(e module) 380.45 262 T
-(l) 78 240 T
-(w_g) 81.22 240 T
-(ases_stdtf_mod) 101.82 240 T
-(longw) 214 240 T
-(a) 243.88 240 T
-(v) 248.97 240 T
-(e) 254.79 240 T
-(internal longw) 300 240 T
-(a) 369.54 240 T
-(v) 374.63 240 T
-(e module) 380.45 240 T
-(g) 78 218 T
-(as_tf_mod) 83.94 218 T
-(longw) 214 218 T
-(a) 243.88 218 T
-(v) 248.97 218 T
-(e) 254.79 218 T
-(internal longw) 300 218 T
-(a) 369.54 218 T
-(v) 374.63 218 T
-(e module) 380.45 218 T
-(co2_source_mod) 78 196 T
-(longw) 214 196 T
-(a) 243.88 196 T
-(v) 248.97 196 T
-(e) 254.79 196 T
-(internal longw) 300 196 T
-(a) 369.54 196 T
-(v) 374.63 196 T
-(e module) 380.45 196 T
-(longw) 78 174 T
-(a) 107.88 174 T
-(v) 112.97 174 T
-(e_setup_mod) 118.79 174 T
-(longw) 214 174 T
-(a) 243.88 174 T
-(v) 248.97 174 T
-(e) 254.79 174 T
-(internal longw) 300 174 T
-(a) 369.54 174 T
-(v) 374.63 174 T
-(e module) 380.45 174 T
-(longw) 78 152 T
-(a) 107.88 152 T
-(v) 112.97 152 T
-(e_clouds_mod) 118.79 152 T
-(longw) 214 152 T
-(a) 243.88 152 T
-(v) 248.97 152 T
-(e) 254.79 152 T
-(internal longw) 300 152 T
-(a) 369.54 152 T
-(v) 374.63 152 T
-(e module) 380.45 152 T
-(radiation_diag_mod) 78 130 T
-(dri) 214 130 T
-(v) 227.03 130 T
-(er) 232.85 130 T
-(column radiation diagnostics) 300 130 T
-(longw) 78 108 T
-(a) 107.88 108 T
-(v) 112.97 108 T
-(e_dri) 118.79 108 T
-(v) 143.15 108 T
-(er_mod) 148.97 108 T
-(longw) 214 108 T
-(a) 243.88 108 T
-(v) 248.97 108 T
-(e) 254.79 108 T
-(internal longw) 300 108 T
-(a) 369.54 108 T
-(v) 374.63 108 T
-(e module) 380.45 108 T
-(longw) 78 86 T
-(a) 107.88 86 T
-(v) 112.97 86 T
-(e_\337ux) 118.79 86 T
-(es_mod) 148.61 86 T
-(longw) 214 86 T
-(a) 243.88 86 T
-(v) 248.97 86 T
-(e) 254.79 86 T
-(internal longw) 300 86 T
-(a) 369.54 86 T
-(v) 374.63 86 T
-(e module) 380.45 86 T
-72 675.75 72 78.25 2 L
-V
-0.5 H
-0 Z
-N
-208 676.25 208 77.75 2 L
-V
-N
-294 676.25 294 77.75 2 L
-V
-N
-499 675.75 499 78.25 2 L
-V
-N
-71.75 676 499.25 676 2 L
-V
-N
-72.25 637.25 498.75 637.25 2 L
-V
-N
-72.25 634.75 498.75 634.75 2 L
-V
-N
-71.75 600 499.25 600 2 L
-V
-N
-71.75 564 499.25 564 2 L
-V
-N
-71.75 528 499.25 528 2 L
-V
-N
-71.75 478 499.25 478 2 L
-V
-N
-71.75 428 499.25 428 2 L
-V
-N
-71.75 378 499.25 378 2 L
-V
-N
-71.75 342 499.25 342 2 L
-V
-N
-71.75 320 499.25 320 2 L
-V
-N
-71.75 298 499.25 298 2 L
-V
-N
-71.75 276 499.25 276 2 L
-V
-N
-71.75 254 499.25 254 2 L
-V
-N
-71.75 232 499.25 232 2 L
-V
-N
-71.75 210 499.25 210 2 L
-V
-N
-71.75 188 499.25 188 2 L
-V
-N
-71.75 166 499.25 166 2 L
-V
-N
-71.75 144 499.25 144 2 L
-V
-N
-71.75 122 499.25 122 2 L
-V
-N
-71.75 100 499.25 100 2 L
-V
-N
-71.75 78 499.25 78 2 L
-V
-N
-FMENDPAGE
-%%EndPage: "11" 11
-%%Page: "12" 12
-612 792 0 FMBEGINPAGE
-0 FrameSetSepColors
-FrameNoSep
--45 -45 657 837 C
-0 0 0 1 0 0 0 1 K
-1 12 Q
-0 X
-(constants_ne) 78 648 T
-(w_mod) 139.69 648 T
-(dri) 214 648 T
-(v) 227.03 648 T
-(er) 232.85 648 T
-(will be consolidated with) 300 648 T
-(constants_mod) 300 634 T
-(longw) 78 612 T
-(a) 107.88 612 T
-(v) 112.97 612 T
-(e_params_mod) 118.79 612 T
-(longw) 214 612 T
-(a) 243.88 612 T
-(v) 248.97 612 T
-(e) 254.79 612 T
-(internal longw) 300 612 T
-(a) 369.54 612 T
-(v) 374.63 612 T
-(e module) 380.45 612 T
-(rad_utilities_mod) 78 590 T
-(dri) 214 590 T
-(v) 227.03 590 T
-(er) 232.85 590 T
-(contains de\336ned data types and utilities) 300 590 T
-(used by radiation modules) 300 576 T
-(shortw) 78 554 T
-(a) 110.54 554 T
-(v) 115.63 554 T
-(e_dri) 121.45 554 T
-(v) 145.81 554 T
-(e_mod) 151.63 554 T
-(shortw) 214 554 T
-(a) 246.54 554 T
-(v) 251.63 554 T
-(e) 257.45 554 T
-(internal shortw) 300 554 T
-(a) 372.2 554 T
-(v) 377.29 554 T
-(e module) 383.11 554 T
-(esfsw_scattering_mod) 78 532 T
-(shortw) 214 532 T
-(a) 246.54 532 T
-(v) 251.63 532 T
-(e) 257.45 532 T
-(internal shortw) 300 532 T
-(a) 372.2 532 T
-(v) 377.29 532 T
-(e module) 383.11 532 T
-(esfsw_parameters_mod) 78 510 T
-(shortw) 214 510 T
-(a) 246.54 510 T
-(v) 251.63 510 T
-(e) 257.45 510 T
-(internal shortw) 300 510 T
-(a) 372.2 510 T
-(v) 377.29 510 T
-(e module) 383.11 510 T
-(esfsw_dri) 78 488 T
-(v) 124.36 488 T
-(er_mod) 130.18 488 T
-(shortw) 214 488 T
-(a) 246.54 488 T
-(v) 251.63 488 T
-(e) 257.45 488 T
-(internal shortw) 300 488 T
-(a) 372.2 488 T
-(v) 377.29 488 T
-(e module) 383.11 488 T
-(lhsw_dri) 78 466 T
-(v) 119.7 466 T
-(er_mod) 125.52 466 T
-(shortw) 214 466 T
-(a) 246.54 466 T
-(v) 251.63 466 T
-(e) 257.45 466 T
-(internal shortw) 300 466 T
-(a) 372.2 466 T
-(v) 377.29 466 T
-(e module) 383.11 466 T
-(radiation_package_mod) 78 444 T
-(dri) 214 444 T
-(v) 227.03 444 T
-(er) 232.85 444 T
-(rad_step_setup_mod) 78 422 T
-(dri) 214 422 T
-(v) 227.03 422 T
-(er) 232.85 422 T
-(radiation_step_mod) 78 400 T
-(dri) 214 400 T
-(v) 227.03 400 T
-(er) 232.85 400 T
-(ozone_mod) 78 378 T
-(radiati) 214 378 T
-(v) 244.36 378 T
-(e_g) 250.18 378 T
-(ases) 267.45 378 T
-(will be consolidated with) 300 378 T
-(zonal_ozone_mod) 300 364 T
-(cloudrad_package_mod) 78 342 T
-(cloudrad) 214 342 T
-(replacement / consolidation with) 300 342 T
-(clouds_mod) 300 328 T
-(astronomy_package_mod) 78 306 T
-(astronomy) 214 306 T
-(replacement / consolidation with) 300 306 T
-(astronomy_mod) 300 292 T
-(surf) 78 270 T
-(ace_albedo_mod) 96.54 270 T
-(dri) 214 270 T
-(v) 227.03 270 T
-(er) 232.85 270 T
-(dummy) 300 270 T
-(module) 339.58 270 T
-(needed) 378.49 270 T
-(to) 415.38 270 T
-(pro) 427.62 270 T
-(vide) 443.44 270 T
-(inter-) 467.01 270 T
-(f) 300 256 T
-(aces that are used in SKYHI - will dis-) 303.88 256 T
-(appear when SKYHI goes) 300 242 T
-(stratchem_mod) 78 220 T
-(dri) 214 220 T
-(v) 227.03 220 T
-(er) 232.85 220 T
-(dummy) 300 220 T
-(module) 339.58 220 T
-(needed) 378.49 220 T
-(to) 415.38 220 T
-(pro) 427.62 220 T
-(vide) 443.44 220 T
-(inter-) 467.01 220 T
-(f) 300 206 T
-(aces that are used in SKYHI - will dis-) 303.88 206 T
-(appear when SKYHI goes) 300 192 T
-(ch4_n2o_mod) 78 170 T
-(radiati) 214 170 T
-(v) 244.36 170 T
-(e_g) 250.18 170 T
-(ases) 267.45 170 T
-(internal radiati) 300 170 T
-(v) 370.02 170 T
-(e_g) 375.84 170 T
-(ases module) 393.11 170 T
-(cfc_mod) 78 148 T
-(radiati) 214 148 T
-(v) 244.36 148 T
-(e_g) 250.18 148 T
-(ases) 267.45 148 T
-(internal radiati) 300 148 T
-(v) 370.02 148 T
-(e_g) 375.84 148 T
-(ases module) 393.11 148 T
-(co2_mod) 78 126 T
-(radiati) 214 126 T
-(v) 244.36 126 T
-(e_g) 250.18 126 T
-(ases) 267.45 126 T
-(internal radiati) 300 126 T
-(v) 370.02 126 T
-(e_g) 375.84 126 T
-(ases module) 393.11 126 T
+(number of band interv) 300 634 T
+(als) 406.68 634 T
+(in) 300 620 T
+(the) 312.3 620 T
+(l) 329.92 620 T
+(w) 333.14 620 T
+(aerosol) 344.76 620 T
+(input) 382.38 620 T
+(data) 410.01 620 T
+(1) 442 634 T
 0 F
-(T) 148.71 712 T
-(able 1: Modules contained in the new radiation code) 155.61 712 T
+(*imax_aer\336le) 179 598 T
 1 F
-(Module name) 106.84 679 T
-(Proposed) 228.67 686 T
-(Directory) 228.01 672 T
-(Comments) 370.5 679 T
-72 701.75 72 118.25 2 L
-V
-0.5 H
-0 Z
-N
-208 702.25 208 117.75 2 L
-V
-N
-294 702.25 294 117.75 2 L
-V
-N
-499 701.75 499 118.25 2 L
-V
-N
-71.75 702 499.25 702 2 L
-V
-N
-72.25 663.25 498.75 663.25 2 L
-V
-N
-72.25 660.75 498.75 660.75 2 L
-V
-N
-71.75 626 499.25 626 2 L
-V
-N
-71.75 604 499.25 604 2 L
-V
-N
-71.75 568 499.25 568 2 L
-V
-N
-71.75 546 499.25 546 2 L
-V
-N
-71.75 524 499.25 524 2 L
-V
-N
-71.75 502 499.25 502 2 L
-V
-N
-71.75 480 499.25 480 2 L
-V
-N
-71.75 458 499.25 458 2 L
-V
-N
-71.75 436 499.25 436 2 L
-V
-N
-71.75 414 499.25 414 2 L
-V
-N
-71.75 392 499.25 392 2 L
-V
-N
-71.75 356 499.25 356 2 L
-V
-N
-71.75 320 499.25 320 2 L
-V
-N
-71.75 284 499.25 284 2 L
-V
-N
-71.75 234 499.25 234 2 L
-V
-N
-71.75 184 499.25 184 2 L
-V
-N
-71.75 162 499.25 162 2 L
-V
-N
-71.75 140 499.25 140 2 L
-V
-N
-71.75 118 499.25 118 2 L
-V
-N
-FMENDPAGE
-%%EndPage: "12" 12
-%%Page: "13" 13
-612 792 0 FMBEGINPAGE
-0 FrameSetSepColors
-FrameNoSep
--45 -45 657 837 C
-0 0 0 1 0 0 0 1 K
-1 14 Q
-0 X
-(      Of the 48 modules listed abo) 72 308.67 T
-(v) 254.17 308.67 T
-(e which are currently needed, 31 of them will) 260.96 308.67 T
-(lik) 72 291.67 T
-(ely remain after the elimination of the need to run in SKYHI.   Approximately 8) 86.64 291.67 T
-(of the ne) 72 274.67 T
-(w modules will disappear  once the need to run in SKYHI is eliminated,) 120.64 274.67 T
-(while the remaining 9 will be consolidated with / absorbed into e) 72 257.67 T
-(xisting FMS mod-) 435.37 257.67 T
-(ules.) 72 240.67 T
-1 12 Q
-(mgrp_prscr_clds_mod) 78 648 T
-(cloudrad) 214 648 T
-(consolidated with zonal_clouds_mod) 300 648 T
-(and zonal_clouds_W_mod when) 300 634 T
-(SKYHI goes) 300 620 T
-(microph) 78 598 T
-(ys_rad_mod) 117.94 598 T
-(cloudrad) 214 598 T
-(internal cloudrad module) 300 598 T
-(no_clouds_mod) 78 576 T
-(cloudrad) 214 576 T
-(internal cloudrad module) 300 576 T
-(obs_clouds_W_mod) 78 554 T
-(cloudrad) 214 554 T
-(consolidate) 300 554 T
-(with) 357.08 554 T
-(obs_clouds_mod) 380.83 554 T
-(when) 464.59 554 T
-(SKYHI goes) 300 540 T
-(rh_based_clouds_mod) 78 518 T
-(cloudrad) 214 518 T
-(consolidate with rh_clouds_mod when) 300 518 T
-(SKYHI goes) 300 504 T
-(standalone_clouds_mod) 78 482 T
-(cloudrad) 214 482 T
-(internal cloudrad module used with) 300 482 T
-(standalone program) 300 468 T
-(strat_clouds_W_mod) 78 446 T
-(cloudrad) 214 446 T
-(consolidate with strat_clouds_mod and) 300 446 T
-(cloud_rad_mod when SKYHI goes) 300 432 T
-(zonal_clouds_W_mod) 78 410 T
-(cloudrad) 214 410 T
-(consolidate with zonal_clouds_mod) 300 410 T
-(when SKYHI goes) 300 396 T
-(diag_clouds_W_mod) 78 374 T
-(cloudrad) 214 374 T
-(consolidate) 300 374 T
-(with) 357.25 374 T
-(diag_cloud_mod) 381.17 374 T
-(when) 464.42 374 T
-(SKYHI goes) 300 360 T
-(radtest_mod) 78 338 T
-(dri) 214 338 T
-(v) 227.03 338 T
-(er) 232.85 338 T
-(dri) 300 338 T
-(v) 313.03 338 T
-(er for radiation standalone program) 318.85 338 T
+(number) 300 598 T
+(of) 338.83 598 T
+(longitude) 350.99 598 T
+(points) 398.49 598 T
+(in) 300 584 T
+(the) 312.3 584 T
+(l) 329.92 584 T
+(w) 333.14 584 T
+(aerosol) 344.76 584 T
+(input) 382.38 584 T
+(data) 410.01 584 T
+(-1) 442 598 T
 0 F
-(T) 148.71 712 T
-(able 1: Modules contained in the new radiation code) 155.61 712 T
+(*jmax_aer\336le) 179 562 T
 1 F
-(Module name) 106.84 679 T
-(Proposed) 228.67 686 T
-(Directory) 228.01 672 T
-(Comments) 370.5 679 T
-72 701.75 72 330.25 2 L
-V
-0.5 H
-0 Z
-N
-208 702.25 208 329.75 2 L
-V
-N
-294 702.25 294 329.75 2 L
-V
-N
-499 701.75 499 330.25 2 L
-V
-N
-71.75 702 499.25 702 2 L
-V
-N
-72.25 663.25 498.75 663.25 2 L
-V
-N
-72.25 660.75 498.75 660.75 2 L
-V
-N
-71.75 612 499.25 612 2 L
-V
-N
-71.75 590 499.25 590 2 L
-V
-N
-71.75 568 499.25 568 2 L
-V
-N
-71.75 532 499.25 532 2 L
-V
-N
-71.75 496 499.25 496 2 L
-V
-N
-71.75 460 499.25 460 2 L
-V
-N
-71.75 424 499.25 424 2 L
-V
-N
-71.75 388 499.25 388 2 L
-V
-N
-71.75 352 499.25 352 2 L
-V
-N
-71.75 330 499.25 330 2 L
-V
-N
-FMENDPAGE
-%%EndPage: "13" 13
-%%Page: "14" 14
-612 792 0 FMBEGINPAGE
-0 FrameSetSepColors
-FrameNoSep
--45 -45 657 837 C
-0 0 0 1 0 0 0 1 K
-0 14 Q
-0 X
-(  I.    Execution options with the sea-esf radiation code) 72 710.67 T
-1 F
-(       The sea_esf radiation code may be run in se) 72 679.67 T
-(v) 341.86 679.67 T
-(eral modes of interest:) 348.65 679.67 T
-(1\051) 109.76 645.67 T
-(By) 128.29 645.67 T
-(setting) 148.06 645.67 T
-(the) 188.83 645.67 T
-(ph) 209.37 645.67 T
-(ysics_dri) 223.3 645.67 T
-(v) 273.51 645.67 T
-(er_nml) 280.3 645.67 T
-(namelist) 323.39 645.67 T
-(v) 374.27 645.67 T
-(ariable) 380.92 645.67 T
-(rad_step_ph) 425.88 645.67 T
-(ysics) 494.24 645.67 T
-(to) 525.67 645.67 T
-(\322def) 72 628.67 T
-(ault\323,) 95.95 628.67 T
-(the) 129.72 628.67 T
-(model) 149.87 628.67 T
-(will) 187.92 628.67 T
-(e) 212.75 628.67 T
-(x) 218.76 628.67 T
-(ecute) 225.55 628.67 T
-(the) 258.14 628.67 T
-(def) 278.29 628.67 T
-(ault) 296.03 628.67 T
-(radiation) 320.08 628.67 T
-(code,) 372.9 628.67 T
-(reproducing) 405.88 628.67 T
-(e) 476.57 628.67 T
-(xactly) 482.58 628.67 T
-(the) 519.84 628.67 T
-(output of an e) 72 611.67 T
-(x) 149.17 611.67 T
-(ecutable not containing an) 155.96 611.67 T
-(y of the code related to the sea-esf radia-) 303.11 611.67 T
-(tion-step ph) 72 594.67 T
-(ysics.) 138.43 594.67 T
-(           2\051  By setting the ph) 72 560.67 T
-(ysics_dri) 224.38 560.67 T
-(v) 274.58 560.67 T
-(er_nml namelist v) 281.37 560.67 T
-(ariable rad_step_ph) 382.13 560.67 T
-(ysics to) 492.08 560.67 T
-(\322sea-esf\323,  setting the sea_esf_nml namelist v) 72 543.67 T
-(ariable peripherals_source to \324fms\325,) 326.32 543.67 T
-(and choosing the speci\336c namelist options de\336ned in section K, one may come as) 72 526.67 T
-(close) 72 509.67 T
-(as) 103.98 509.67 T
-(possible) 118.85 509.67 T
-(to) 167.95 509.67 T
-(the) 182.05 509.67 T
-(def) 202.36 509.67 T
-(ault) 220.1 509.67 T
-(radiation) 244.31 509.67 T
-(formulation,) 297.29 509.67 T
-(while) 370.1 509.67 T
-(running) 404.42 509.67 T
-(the) 451.18 509.67 T
-(sea-esf) 471.5 509.67 T
-(radi-) 513.57 509.67 T
-(ation modules.  Dif) 72 492.67 T
-(ferences will e) 179.76 492.67 T
-(xist, since some outdated features of the def) 261.18 492.67 T
-(ault) 506.77 492.67 T
-(code are not retrie) 72 475.67 T
-(v) 173.11 475.67 T
-(able in the sea-esf code.) 179.76 475.67 T
-(3\051) 113.19 441.67 T
-(By) 131.72 441.67 T
-(setting) 151.49 441.67 T
-(the) 192.26 441.67 T
-(ph) 212.8 441.67 T
-(ysics_dri) 226.74 441.67 T
-(v) 276.94 441.67 T
-(er_nml) 283.73 441.67 T
-(namelist) 326.82 441.67 T
-(v) 377.7 441.67 T
-(ariable) 384.35 441.67 T
-(rad_step_ph) 425.88 441.67 T
-(ysics) 494.24 441.67 T
-(to) 525.67 441.67 T
-(\322sea-esf\323,  setting the sea_esf_nml namelist v) 72 424.67 T
-(ariable peripherals_source to \324sk) 326.32 424.67 T
-(yhi\325,) 508.45 424.67 T
-(and choosing the speci\336c namelist options de\336ned in section L, one may come as) 72 407.67 T
-(close as possible to the SKYHI radiation formulation. Dif) 72 390.67 T
-(ferences will e) 394.78 390.67 T
-(xist) 476.21 390.67 T
-(because of changes between the FMS and SKYHI model structure.) 72 373.67 T
-(            4\051  T) 72 339.67 T
-(o use the def) 140.1 339.67 T
-(ault FMS ozone, clouds and astronomy modules and stan-) 211.1 339.67 T
-(dard) 72 322.67 T
-(FMS) 100.29 322.67 T
-(constants) 131.71 322.67 T
-(and) 187.24 322.67 T
-(calculation) 210.86 322.67 T
-(procedures) 275.71 322.67 T
-(while) 340.54 322.67 T
-(using) 375.05 322.67 T
-(ne) 408.8 322.67 T
-(w) 421.67 322.67 T
-(long-) 435.19 322.67 T
-(and/or) 468.16 322.67 T
-(short-) 507.34 322.67 T
-(w) 72 305.67 T
-(a) 81.97 305.67 T
-(v) 87.9 305.67 T
-(e) 94.69 305.67 T
-(radiation) 104.16 305.67 T
-(features,) 157.19 305.67 T
-(set) 208.25 305.67 T
-(the) 227.06 305.67 T
-(namelist) 247.42 305.67 T
-(v) 298.12 305.67 T
-(ariable) 304.77 305.67 T
-(rad_step_ph) 346.12 305.67 T
-(ysics) 414.48 305.67 T
-(to) 445.74 305.67 T
-(\322sea-esf\323,) 459.89 305.67 T
-(set) 521.19 305.67 T
-(the namelist v) 72 288.67 T
-(ariable peripherals_source to \324fms\325, and choose the speci\336c namelist) 150.2 288.67 T
-(options from within the sea-esf radiation modules that are desired.  One can thus) 72 271.67 T
-(use the def) 72 254.67 T
-(ault FMS peripherals with all  the a) 132.51 254.67 T
-(v) 330.16 254.67 T
-(ailable radiati) 336.81 254.67 T
-(v) 413.05 254.67 T
-(e g) 419.84 254.67 T
-(ases, or with the) 436.49 254.67 T
-(esf shortw) 72 237.67 T
-(a) 129.79 237.67 T
-(v) 135.73 237.67 T
-(e code, for e) 142.52 237.67 T
-(xample.  These abilities ha) 211.5 237.67 T
-(v) 360.92 237.67 T
-(e been e) 367.71 237.67 T
-(xtensi) 413.36 237.67 T
-(v) 446.46 237.67 T
-(ely tested, and) 453.25 237.67 T
-(ef) 72 220.67 T
-(forts made to pro) 82.53 220.67 T
-(vide an informational e) 178.36 220.67 T
-(xit if an una) 308.4 220.67 T
-(v) 375.39 220.67 T
-(ailable combination of) 382.04 220.67 T
-(options is selected.) 72 203.67 T
+(number of latitude points) 300 562 T
+(in) 300 548 T
+(the) 312.3 548 T
+(l) 329.92 548 T
+(w) 333.14 548 T
+(aerosol) 344.76 548 T
+(input) 382.38 548 T
+(data) 410.01 548 T
+(-1) 442 562 T
 0 F
-(J) 75.5 152.67 T
-(.    Script changes necessary to run with sea-esf radiation code) 82.22 152.67 T
+(*kmax_aer\336le) 179 526 T
 1 F
-(          The sea-esf radiation code may be run in tw) 72 118.67 T
-(o modes:) 352.57 118.67 T
-(              1. Using the def) 72 101.67 T
-(ault radiation code) 210.29 101.67 T
-(              2. Using the sea-esf modules, or some portion thereof.) 72 84.67 T
-FMENDPAGE
-%%EndPage: "14" 14
-%%Page: "15" 15
-612 792 0 FMBEGINPAGE
-0 FrameSetSepColors
-FrameNoSep
--45 -45 657 837 C
-0 0 0 1 0 0 0 1 K
-1 14 Q
-0 X
-(T) 122.43 693.67 T
-(o) 129.86 693.67 T
-(run) 140.22 693.67 T
-(with) 162.25 693.67 T
-(the) 190.5 693.67 T
-(def) 210.97 693.67 T
-(ault) 228.71 693.67 T
-(radiation) 253.07 693.67 T
-(code) 306.2 693.67 T
-(and) 336 693.67 T
-(produce) 359.57 693.67 T
-(an) 408.03 693.67 T
-(inte) 424.61 693.67 T
-(gration) 445.4 693.67 T
-(identical) 488.42 693.67 T
-(to) 72 676.67 T
-(that) 86.01 676.67 T
-(obtained) 110.12 676.67 T
-(if) 161.45 676.67 T
-(the) 173.12 676.67 T
-(sea-esf) 193.35 676.67 T
-(code) 235.33 676.67 T
-(w) 264.87 676.67 T
-(as) 274.84 676.67 T
-(not) 289.62 676.67 T
-(present) 310.63 676.67 T
-(in) 354.17 676.67 T
-(the) 368.18 676.67 T
-(e) 388.41 676.67 T
-(x) 394.41 676.67 T
-(ecutable,) 401.2 676.67 T
-(no) 454.46 676.67 T
-(changes) 471.58 676.67 T
-(are) 519.79 676.67 T
-(necessary to a \322standard\323 Eugene script.) 72 659.67 T
-(              T) 72 642.67 T
-(o run e) 128.43 642.67 T
-(x) 167.1 642.67 T
-(ecuting the ne) 173.89 642.67 T
-(w modules \050i.e., setting ph) 252.08 642.67 T
-(ysics_dri) 400.17 642.67 T
-(v) 450.38 642.67 T
-(er_nml  v) 457.17 642.67 T
-(ari-) 510.48 642.67 T
-(able rad_step_ph) 72 625.67 T
-(ysics = \324sea_esf) 167.19 625.67 T
-(\325\051, one must also change the ar) 256.72 625.67 T
-(guments to the) 427.92 625.67 T
-(get_module_data  script so that \322oldrad\323 is deselected and \322sea-esf\323 is  selected.) 72 608.67 T
-(This will obtain the radiation input data compatible with sea-esf  radiation.) 72 591.67 T
-(          No other changes are necessary to the standard AM2 runscript.) 72 557.67 T
-(           In addition to the runscript, an appropriate diag_table and namelists  are) 72 523.67 T
-(needed.  A sample runscript \050run_AM2\051, diag_table and namelists may be seen at) 72 506.67 T
-(/home/rsh/eugene_samples. These GENERALL) 72 489.67 T
-(Y re\337ect options that were used in) 340.06 489.67 T
-(the AM2 runs; if an e) 72 472.67 T
-(xact, current AM2 set is needed, please see the CMDT web) 191.94 472.67 T
-(page.) 72 455.67 T
+(number of le) 300 526 T
+(v) 361.02 526 T
+(els in the l) 366.84 526 T
+(w) 416.39 526 T
+(aerosol input data) 300 512 T
+(-1) 442 526 T
 0 F
-( K.   Namelist option set f) 72 404.67 T
-(or \322FMS-lik) 222.53 404.67 T
-(e\323 run) 295.89 404.67 T
+(*ktop_aer) 179 490 T
 1 F
-(            The set of namelist options which mimic the def) 72 370.67 T
-(ault FMS radiation imple-) 384.51 370.67 T
-(mentation are found in  /home/rsh/T3Ehome/sea_esf_nml_FMS.  Most of these) 72 353.67 T
-(indi) 72 336.67 T
-(vidual options may be independently changed without dif) 93.43 336.67 T
-(\336culty;  inconsistent) 415.45 336.67 T
-(sets of options should produce an error message.  If there are questions concerning) 72 319.67 T
-(the scienti\336c merit of speci\336c combinations of options, please consult Dan) 72 302.67 T
-(Schw) 72 285.67 T
-(arzk) 102.97 285.67 T
-(opf.) 126.92 285.67 T
+(topmost le) 300 490 T
+(v) 350.04 490 T
+(el in the l) 355.86 490 T
+(w) 400.74 490 T
+(aerosol input data) 300 476 T
+(-1) 442 490 T
 0 F
-(  L.    Namelist option set f) 72 234.67 T
-(or \322SKYHI-lik) 227.97 234.67 T
-(e\323 run) 316.9 234.67 T
+(*kbot_aer) 179 454 T
 1 F
-(The) 117.17 200.67 T
-(set) 142.42 200.67 T
-(of) 161.45 200.67 T
-(namelist) 176.58 200.67 T
-(options) 227.5 200.67 T
-(which) 272.21 200.67 T
-(mimic) 309.9 200.67 T
-(the) 349.16 200.67 T
-(SKYHI) 369.74 200.67 T
-(radiation) 415.98 200.67 T
-(implementa-) 469.23 200.67 T
-(tion are found in  /home/rsh/T3Ehome/sea_esf_nml. Most of these indi) 72 183.67 T
-(vidual) 469.07 183.67 T
-(options may be independently changed without dif) 72 166.67 T
-(\336culty;  inconsistent sets of) 355.51 166.67 T
-(options should produce an error message.  If there are questions concerning the sci-) 72 149.67 T
-(enti\336c merit of speci\336c combinations of options, please consult Dan Schw) 72 132.67 T
-(arzk) 487.55 132.67 T
-(opf.) 511.5 132.67 T
-FMENDPAGE
-%%EndPage: "15" 15
-%%Page: "16" 16
-612 792 0 FMBEGINPAGE
-0 FrameSetSepColors
-FrameNoSep
--45 -45 657 837 C
-0 0 0 1 0 0 0 1 K
-0 14 Q
-0 X
-(M.    Namelist v) 82.5 710.67 T
-(ariables within the sea_esf_rad modules) 176.45 710.67 T
-1 F
-(In) 116.26 676.67 T
-(the) 131.32 676.67 T
-(follo) 151.84 676.67 T
-(wing) 177.93 676.67 T
-(table,) 209.34 676.67 T
-(v) 243.46 676.67 T
-(ariables) 250.11 676.67 T
-(in) 297.05 676.67 T
-0 F
-(bold) 311.35 676.67 T
-(type) 341.21 676.67 T
-1 F
-(denoted) 370.28 676.67 T
-(with) 418.01 676.67 T
-(\050) 446.3 676.67 T
-0 F
-(**\051) 454.37 676.67 T
-1 F
-(require) 476.43 676.67 T
-(the) 519.49 676.67 T
-(user) 72 659.67 T
-(to) 98.76 659.67 T
-(replace) 113.08 659.67 T
-(the) 156.93 659.67 T
-(def) 177.47 659.67 T
-(ault) 195.21 659.67 T
-(v) 219.64 659.67 T
-(alue) 226.29 659.67 T
-(with) 253.05 659.67 T
-(a) 281.37 659.67 T
-(realistic) 291.02 659.67 T
-(one) 338.78 659.67 T
-(within) 362.43 659.67 T
-(the) 401.64 659.67 T
-(runscript) 422.18 659.67 T
-0 F
-(r) 475.39 659.67 T
-(egardless) 481.35 659.67 T
-(of what execution options ar) 72 642.67 T
-(e chosen) 240.52 642.67 T
-1 F
-(.  Other v) 290.68 642.67 T
-(ariables e) 343.21 642.67 T
-(xist which must be set to) 396.25 642.67 T
-(realistic) 72 625.67 T
-(v) 119.82 625.67 T
-(alues) 126.47 625.67 T
-(when) 158.74 625.67 T
-(the) 192.57 625.67 T
-(rele) 213.17 625.67 T
-(v) 233.81 625.67 T
-(ant) 240.46 625.67 T
-(option) 261.07 625.67 T
-(is) 300.35 625.67 T
-(chosen;) 313.19 625.67 T
-(these) 359.46 625.67 T
-(are) 391.73 625.67 T
-(also) 412.32 625.67 T
-(in) 438.38 625.67 T
-0 F
-(bold) 452.77 625.67 T
-(type) 482.73 625.67 T
-1 F
-(,) 508.39 625.67 T
-(b) 518.89 625.67 T
-(ut) 525.61 625.67 T
-(denoted) 72 608.67 T
-(by) 119.72 608.67 T
-(\050*\051.) 140.5 608.67 T
-(The) 163.72 608.67 T
-(v) 188.88 608.67 T
-(alues) 195.53 608.67 T
-(of) 227.69 608.67 T
-(an) 242.75 608.67 T
-(y) 255.75 608.67 T
-(v) 266.14 608.67 T
-(ariable) 272.8 608.67 T
-(may) 314.28 608.67 T
-(be) 341.78 608.67 T
-(changed) 358.39 608.67 T
-(as) 408.43 608.67 T
-(the) 423.48 608.67 T
-(user) 443.98 608.67 T
-(wishes;) 470.7 608.67 T
-(it) 516.09 608.67 T
-(is) 527.27 608.67 T
-(intended that internal checks will pre) 72 591.67 T
-(v) 278.89 591.67 T
-(ent the use of inconsistent options.) 285.68 591.67 T
-0 12 Q
-(T) 179.62 533 T
-(able 2: Namelist v) 186.52 533 T
-(ariables used with the sea-esf modules) 278.05 533 T
-1 F
-(Module) 103.83 493 T
-(V) 197.68 493 T
-(ariable Name) 205.01 493 T
-(Description) 337 493 T
-(Def) 454.07 500 T
-(ault) 471.93 500 T
-(V) 458.34 486 T
-(alue) 465.67 486 T
-(Other) 530.34 507 T
-(Acceptable) 517.01 493 T
-(V) 528 479 T
-(alues) 535.34 479 T
-(ph) 78 455 T
-(ysics_dri) 89.94 455 T
-(v) 132.97 455 T
-(er) 138.79 455 T
-(rad_step_ph) 179 455 T
-(ysics) 237.6 455 T
-(use either the def) 300 455 T
-(ault or) 382.19 455 T
-(sea_esf_rad formulation) 300 441 T
-(\324def) 442 455 T
-(ault\325) 461.2 455 T
-(\324sea_esf) 514 455 T
-(\325) 553.97 455 T
-(astronomy_packa) 78 419 T
-(ge) 78 405 T
-(ldiurn) 179 419 T
-(use) 300 419 T
-(diurnally-v) 318.33 419 T
-(arying) 371.35 419 T
-(solar) 404.34 419 T
-(radiation ?) 300 405 T
-( .true.) 442 419 T
-(lswg) 179 383 T
-(use g) 300 383 T
-(aussian quadrature) 324.94 383 T
-(solar radiation ?) 300 369 T
-(.f) 442 383 T
-(alse.) 448.88 383 T
-(nswg) 179 347 T
-(number of g) 300 347 T
-(aussian) 358.6 347 T
-(quadrature points to use) 300 333 T
-(0) 442 347 T
-(1, 2, 4, 8) 514 347 T
-(do_oldrightasc) 179 311 T
-(use) 300 311 T
-(older) 318.93 311 T
-(formula) 346.53 311 T
-(for) 387.46 311 T
-(right) 404.39 311 T
-(ascension ?) 300 297 T
-(.f) 442 311 T
-(alse.) 448.88 311 T
-(do_annual) 179 275 T
-(use annual mean radiation) 300 275 T
-(characteristics) 300 261 T
-(.f) 442 275 T
-(alse.) 448.88 275 T
-(v) 179 239 T
-(erbose) 184.82 239 T
-(controls  printout of decli-) 300 239 T
-(nation,) 300 225 T
-(right) 335.59 225 T
-(ascension) 360.84 225 T
-(and) 410.08 225 T
-(radius v) 300 211 T
-(ector) 338.15 211 T
-(0) 442 239 T
-(> 0) 514 239 T
-0 F
-(NO) 179 189 T
-(TE) 196.52 189 T
-1 F
-(: When ldiurn,) 212.53 189 T
-(lswg and do_annual) 179 175 T
-(are all .f) 179 161 T
-(alse., a diur-) 218.53 161 T
-(nal-mean radiati) 179 147 T
-(v) 257.01 147 T
-(e) 262.83 147 T
-(forcing will be used.) 179 133 T
-(cfc) 78 111 T
-(f11_amt) 179 111 T
-(is f11 amt \336x) 300 111 T
-(ed or v) 363.49 111 T
-(aried) 396.52 111 T
-(in time ?) 300 97 T
-(\324FIXED\325) 442 111 T
-(\324V) 514 111 T
-(AR) 525.04 111 T
-(Y\325) 540.93 111 T
-72 522.75 72 89.25 2 L
-V
-0.5 H
-0 Z
-N
-173 523.25 173 88.75 2 L
-V
-N
-294 523.25 294 88.75 2 L
-V
-N
-436 523.25 436 88.75 2 L
-V
-N
-508 523.25 508 88.75 2 L
-V
-N
-580 522.75 580 89.25 2 L
-V
-N
-71.75 523 580.25 523 2 L
-V
-N
-72.25 470.25 579.75 470.25 2 L
-V
-N
-72.25 467.75 579.75 467.75 2 L
-V
-N
-71.75 433 580.25 433 2 L
-V
-N
-71.75 397 580.25 397 2 L
-V
-N
-71.75 361 580.25 361 2 L
-V
-N
-71.75 325 580.25 325 2 L
-V
-N
-71.75 289 580.25 289 2 L
-V
-N
-71.75 253 580.25 253 2 L
-V
-N
-71.75 203 580.25 203 2 L
-V
-N
-71.75 125 580.25 125 2 L
-V
-N
-71.75 89 580.25 89 2 L
-V
-N
-FMENDPAGE
-%%EndPage: "16" 16
-%%Page: "17" 17
-612 792 0 FMBEGINPAGE
-0 FrameSetSepColors
-FrameNoSep
--45 -45 657 837 C
-0 0 0 1 0 0 0 1 K
-1 12 Q
-0 X
-(f12_amt) 179 634 T
-(is f12 amt \336x) 300 634 T
-(ed or v) 363.49 634 T
-(aried) 396.52 634 T
-(in time ?) 300 620 T
-(\324FIXED\325) 442 634 T
-(\324V) 514 634 T
-(AR) 525.04 634 T
-(Y\325) 540.93 634 T
-(f22_amt) 179 598 T
-(is f22 amt \336x) 300 598 T
-(ed or v) 363.49 598 T
-(aried) 396.52 598 T
-(in time ?) 300 584 T
-(\324FIXED\325) 442 598 T
-(\324V) 514 598 T
-(AR) 525.04 598 T
-(Y\325) 540.93 598 T
-(f113_amt) 179 562 T
-(is f113 amt \336x) 300 562 T
-(ed or v) 369.49 562 T
-(aried) 402.52 562 T
-(in time ?) 300 548 T
-(\324FIXED\325) 442 562 T
-(\324V) 514 562 T
-(AR) 525.04 562 T
-(Y\325) 540.93 562 T
-(ch4_n2o) 78 526 T
-(ch4_amt) 179 526 T
-(is) 300 526 T
-(ch4) 310.75 526 T
-(amt) 330.83 526 T
-(\336x) 351.58 526 T
-(ed) 364.07 526 T
-(or) 378.15 526 T
-(v) 390.89 526 T
-(arying) 396.59 526 T
-(in time ?) 300 512 T
-(\324FIXED\325) 442 526 T
-(\324V) 514 526 T
-(AR) 525.04 526 T
-(Y\325) 540.93 526 T
-(n2o_amt) 179 490 T
-(is) 300 490 T
-(n2o) 310.64 490 T
-(amt) 331.28 490 T
-(\336x) 351.91 490 T
-(ed) 364.41 490 T
-(or) 378.37 490 T
-(v) 391 490 T
-(arying) 396.7 490 T
-(in time ?) 300 476 T
-(\324FIXED\325) 442 490 T
-(\324V) 514 490 T
-(AR) 525.04 490 T
-(Y\325) 540.93 490 T
-(cloudrad_package) 78 454 T
-0 F
-(**micr) 179 454 T
-(oph) 214.77 454 T
-(ys_f) 233.94 454 T
-(orm) 254.3 454 T
-1 F
-(type of mictroph) 300 454 T
-(ysics to) 379.93 454 T
-(use when de\336ning cloud) 300 440 T
-(radiati) 300 426 T
-(v) 330.36 426 T
-(e properties) 336.18 426 T
-(\324                 \324) 442 454 T
-(\324none\325,) 514 454 T
-(\324pre-) 514 440 T
-(scribed\325,) 514 426 T
-(\324predicted\325) 514 412 T
-0 F
-(**cloud_type_f) 179 390 T
-(orm) 256.7 390 T
-1 F
-(cloud formulation used to) 300 390 T
-(supply cloud radiati) 300 376 T
-(v) 395.03 376 T
-(e) 400.85 376 T
-(properties) 300 362 T
-(\324            \324) 442 390 T
-(\324rh\325, \324strat\325,) 514 390 T
-(\324zonal\325,) 514 376 T
-(\324obs\325, \324diag\325) 514 362 T
-(\324pre-) 514 348 T
-(scribed\325,) 514 334 T
-(\324) 514 320 T
-(\324none\325) 517.11 320 T
-(n_prsc_clds) 179 298 T
-(number of prescribed) 300 298 T
-(clouds used in formulation) 300 284 T
-(3) 442 298 T
-(constants_ne) 78 262 T
-(w) 139.69 262 T
-(dummy) 179 262 T
-(dummy v) 300 262 T
-(ariable) 345.37 262 T
-(\324       \324) 442 262 T
-(co2) 78 240 T
-(co2_amt) 179 240 T
-(is) 300 240 T
-(co2) 310.75 240 T
-(amt) 330.83 240 T
-(\336x) 351.58 240 T
-(ed) 364.07 240 T
-(or) 378.15 240 T
-(v) 390.89 240 T
-(arying) 396.59 240 T
-(in time ?) 300 226 T
-(\324FIXED\325) 442 240 T
-(\324V) 514 240 T
-(AR) 525.04 240 T
-(Y\325) 540.93 240 T
-(co2_source) 78 204 T
-(do_nlte) 179 204 T
-(is a re) 300 204 T
-(gion of non-local) 328.48 204 T
-(thermodynamic equilib-) 300 190 T
-(rium included in the) 300 176 T
-(model ?) 300 162 T
-(.f) 442 204 T
-(alse.) 448.88 204 T
-(cool_to_space) 78 140 T
-(dummy) 179 140 T
-(dummy v) 300 140 T
-(ariable) 345.37 140 T
-(1.0) 442 140 T
-(diag_clouds_W) 78 118 T
-(dummy) 179 118 T
-(dummy v) 300 118 T
-(ariable) 345.37 118 T
-(0) 442 118 T
-(esfsw_dri) 78 96 T
-(v) 124.36 96 T
-(er) 130.18 96 T
-(dummy) 179 96 T
-(dummy v) 300 96 T
-(ariable) 345.37 96 T
-(1.0) 442 96 T
-0 F
-(T) 179.62 712 T
-(able 2: Namelist v) 186.52 712 T
-(ariables used with the sea-esf modules) 278.05 712 T
-1 F
-(Module) 103.83 672 T
-(V) 197.68 672 T
-(ariable Name) 205.01 672 T
-(Description) 337 672 T
-(Def) 454.07 679 T
-(ault) 471.93 679 T
-(V) 458.34 665 T
-(alue) 465.67 665 T
-(Other) 530.34 686 T
-(Acceptable) 517.01 672 T
-(V) 528 658 T
-(alues) 535.34 658 T
-72 701.75 72 88.25 2 L
-V
-0.5 H
-0 Z
-N
-173 702.25 173 87.75 2 L
-V
-N
-294 702.25 294 87.75 2 L
-V
-N
-436 702.25 436 87.75 2 L
-V
-N
-508 702.25 508 87.75 2 L
-V
-N
-580 701.75 580 88.25 2 L
-V
-N
-71.75 702 580.25 702 2 L
-V
-N
-72.25 649.25 579.75 649.25 2 L
-V
-N
-72.25 646.75 579.75 646.75 2 L
-V
-N
-71.75 612 580.25 612 2 L
-V
-N
-71.75 576 580.25 576 2 L
-V
-N
-71.75 540 580.25 540 2 L
-V
-N
-71.75 504 580.25 504 2 L
-V
-N
-71.75 468 580.25 468 2 L
-V
-N
-71.75 404 580.25 404 2 L
-V
-N
-71.75 312 580.25 312 2 L
-V
-N
-71.75 276 580.25 276 2 L
-V
-N
-71.75 254 580.25 254 2 L
-V
-N
-71.75 218 580.25 218 2 L
-V
-N
-71.75 154 580.25 154 2 L
-V
-N
-71.75 132 580.25 132 2 L
-V
-N
-71.75 110 580.25 110 2 L
-V
-N
-71.75 88 580.25 88 2 L
-V
-N
-FMENDPAGE
-%%EndPage: "17" 17
-%%Page: "18" 18
-612 792 0 FMBEGINPAGE
-0 FrameSetSepColors
-FrameNoSep
--45 -45 657 837 C
-0 0 0 1 0 0 0 1 K
-1 12 Q
-0 X
-(esfsw_parameters) 78 634 T
-0 F
-(**sw_r) 179 634 T
-(esolution) 215.44 634 T
-1 F
-(will allo) 300 634 T
-(w ability to use) 339.37 634 T
-(either high or lo) 300 620 T
-(w resolu-) 376.69 620 T
-(tion spectral parameteriza-) 300 606 T
-(tion) 300 592 T
-(\324          \324) 442 634 T
-(\324high\325,) 514 634 T
-(\324lo) 514 620 T
-(w\325) 527.03 620 T
-0 F
-(**sw_diff_str) 179 570 T
-(eams) 248.11 570 T
-1 F
-(number of streams of dif-) 300 570 T
-(fuse radiation) 300 556 T
-(0) 442 570 T
-(select) 514 570 T
-(either) 544 570 T
-(1 or 4) 514 556 T
-(esfsw_scattering) 78 534 T
-(do_sw) 179 534 T
-(aerosol) 210.21 534 T
-(are aerosols included in) 300 534 T
-(the sw formulation ?) 300 520 T
-(.f) 442 534 T
-(alse.) 448.88 534 T
-0 F
-(*swaer) 179 498 T
-(osol_f) 214.77 498 T
-(orm) 244.47 498 T
-1 F
-(type of sw aerosols being) 300 498 T
-(used. if do_sw) 300 484 T
-(aerosol =) 369.54 484 T
-(.true. and sw) 300 470 T
-(aerosol_form) 361.2 470 T
-(= \324     \324, then rayleigh scat-) 300 456 T
-(tering is turned on.) 300 442 T
-(\324   \324) 442 498 T
-(\324predicted\325,) 514 498 T
-(\324observ) 514 484 T
-(ed\325,) 549.81 484 T
-(\324prescribed\325) 514 470 T
-0 F
-(*swaer) 179 420 T
-(osol_model_t) 214.77 420 T
-(ype) 179 406 T
-1 F
-( actual data source name) 300 420 T
-(for aerosol formulation) 300 406 T
-(\324) 442 420 T
-(\324) 498 420 T
-(\324shettle_fen) 514 420 T
-(n_mar_0\325,) 514 406 T
-(shettle_fenn) 514 392 T
-(_mar_95\325,) 514 378 T
-(\324robock\325,) 514 364 T
-(\324ramachan-) 514 350 T
-(dran\325) 514 336 T
-0 F
-(*swaer_model_nintv) 179 314 T
-(ls) 179 300 T
-1 F
-(number of bands o) 300 314 T
-(v) 389.47 314 T
-(er) 395.29 314 T
-(which the aerosol data is) 300 300 T
-(pro) 300 286 T
-(vided) 315.82 286 T
-(0) 442 314 T
-0 F
-(*imax_aer\336le) 179 264 T
-1 F
-(number of longitudes at) 300 264 T
-(which aerosol data is pro-) 300 250 T
-(vided) 300 236 T
-(0) 442 264 T
-0 F
-(*jmax_aer\336le) 179 214 T
-1 F
-(number of latitudes at) 300 214 T
-(which aerosol data is pro-) 300 200 T
-(vided) 300 186 T
-(0) 442 214 T
-0 F
-(*kmax_aer\336le) 179 164 T
-1 F
-(number) 300 164 T
-(of) 338.93 164 T
-(v) 351.2 164 T
-(ertical) 357.02 164 T
-(le) 389.28 164 T
-(v) 397.64 164 T
-(els) 403.46 164 T
-(at) 419.07 164 T
-(which aerosol data is pro-) 300 150 T
-(vided) 300 136 T
-(0) 442 164 T
-0 F
-(*ktop_aer) 179 114 T
-1 F
-(topmost model inde) 300 114 T
-(x at) 395.16 114 T
-(which aerosol data is pro-) 300 100 T
-(vided) 300 86 T
-(0) 442 114 T
-0 F
-(T) 179.62 712 T
-(able 2: Namelist v) 186.52 712 T
-(ariables used with the sea-esf modules) 278.05 712 T
-1 F
-(Module) 103.83 672 T
-(V) 197.68 672 T
-(ariable Name) 205.01 672 T
-(Description) 337 672 T
-(Def) 454.07 679 T
-(ault) 471.93 679 T
-(V) 458.34 665 T
-(alue) 465.67 665 T
-(Other) 530.34 686 T
-(Acceptable) 517.01 672 T
-(V) 528 658 T
-(alues) 535.34 658 T
-72 701.75 72 78.25 2 L
-V
-0.5 H
-0 Z
-N
-173 702.25 173 77.75 2 L
-V
-N
-294 702.25 294 77.75 2 L
-V
-N
-436 702.25 436 77.75 2 L
-V
-N
-508 702.25 508 77.75 2 L
-V
-N
-580 701.75 580 78.25 2 L
-V
-N
-71.75 702 580.25 702 2 L
-V
-N
-72.25 649.25 579.75 649.25 2 L
-V
-N
-72.25 646.75 579.75 646.75 2 L
-V
-N
-71.75 584 580.25 584 2 L
-V
-N
-71.75 548 580.25 548 2 L
-V
-N
-71.75 512 580.25 512 2 L
-V
-N
-71.75 434 580.25 434 2 L
-V
-N
-71.75 328 580.25 328 2 L
-V
-N
-71.75 278 580.25 278 2 L
-V
-N
-71.75 228 580.25 228 2 L
-V
-N
-71.75 178 580.25 178 2 L
-V
-N
-71.75 128 580.25 128 2 L
-V
-N
-71.75 78 580.25 78 2 L
-V
-N
-FMENDPAGE
-%%EndPage: "18" 18
-%%Page: "19" 19
-612 792 0 FMBEGINPAGE
-0 FrameSetSepColors
-FrameNoSep
--45 -45 657 837 C
-0 0 0 1 0 0 0 1 K
-0 12 Q
-0 X
-(*kbot_aer) 179 634 T
-1 F
-(bottommost model inde) 300 634 T
-(x) 413.83 634 T
-(at which aerosol data is) 300 620 T
-(pro) 300 606 T
-(vided) 315.82 606 T
-(0) 442 634 T
-(g) 78 584 T
-(as_tf) 83.94 584 T
-(interp_form) 179 584 T
-(the form of table interpola-) 300 584 T
-(tion to be used when cal-) 300 570 T
-(culating the transmission) 300 556 T
-(functions) 300 542 T
-(\324log\324) 442 584 T
-(\324linear\325) 514 584 T
-(do_calcstdch4tfs) 179 520 T
-(calculate the ch4 tfs) 300 520 T
-(.true.) 442 520 T
-(do_writestdch4tfs) 179 498 T
-(write) 300 498 T
-(the) 327.41 498 T
-(ch4) 344.83 498 T
-(tfs) 364.91 498 T
-(to) 379.66 498 T
-(a) 391.74 498 T
-(\336le) 399.83 498 T
-(to) 417.91 498 T
-(sa) 300 484 T
-(v) 309.76 484 T
-(e) 315.58 484 T
-(.f) 442 498 T
-(alse.) 448.88 498 T
-(do_readstdch4tfs) 179 462 T
-(read the ch4 tfs  from a \336le) 300 462 T
-(.f) 442 462 T
-(alse.) 448.88 462 T
-(do _calcstdn2otfs) 179 440 T
-(calculate the n2o tfs) 300 440 T
-(.true.) 442 440 T
-(do_writestdn2otfs) 179 418 T
-(write the n2o tfs to a \336le) 300 418 T
+(bottommost) 300 454 T
+(le) 360.13 454 T
+(v) 368.5 454 T
+(el) 374.32 454 T
+(in) 385.77 454 T
+(the) 397.89 454 T
+(l) 415.33 454 T
+(w) 418.55 454 T
+(aerosol input data) 300 440 T
+(-10) 442 454 T
+(longw) 78 418 T
+(a) 107.88 418 T
+(v) 112.97 418 T
+(e_clouds) 118.79 418 T
+(dummy) 179 418 T
+(dummy v) 300 418 T
+(ariable) 345.37 418 T
 (.f) 442 418 T
 (alse.) 448.88 418 T
-(do_readstdn2otfs) 179 396 T
-(read the n2o tfs from a \336le) 300 396 T
-(.f) 442 396 T
-(alse.) 448.88 396 T
-(do_calcstdco2tfs) 179 374 T
-(calculate the co2 tfs) 300 374 T
-(.true.) 442 374 T
-(do_writestdco2tfs) 179 352 T
-(write the co2 tfs to a \336le) 300 352 T
-(.f) 442 352 T
-(alse.) 448.88 352 T
-(do_readstdco2tfs) 179 330 T
-(read the tfs from a \336le) 300 330 T
-(.f) 442 330 T
-(alse.) 448.88 330 T
-(lhsw_dri) 78 308 T
-(v) 119.7 308 T
-(er) 125.52 308 T
-(dummy) 179 308 T
-(dummy v) 300 308 T
-(ariable) 345.37 308 T
-(0.0) 442 308 T
-(longw) 78 286 T
-(a) 107.88 286 T
-(v) 112.97 286 T
-(e_aerosol) 118.79 286 T
-(do_l) 179 286 T
-(w) 200.22 286 T
-(aerosol) 208.76 286 T
-(aerosol ef) 300 286 T
-(fects are) 346.68 286 T
-(included in the longw) 300 272 T
-(a) 404.21 272 T
-(v) 409.3 272 T
-(e) 415.12 272 T
-(radiation parameterization) 300 258 T
-(?) 300 244 T
-(.f) 442 286 T
-(alse.) 448.88 286 T
-0 F
-(*lwaer) 179 222 T
-(osol_f) 213.44 222 T
-(orm) 243.14 222 T
-1 F
-(type of longw) 300 222 T
-(a) 366.54 222 T
-(v) 371.63 222 T
-(e aerosol) 377.45 222 T
-(being treated within the) 300 208 T
-(longw) 300 194 T
-(a) 329.88 194 T
-(v) 334.97 194 T
-(e code) 340.79 194 T
-(\324         \324) 442 222 T
-(\324pre-) 514 222 T
-(scribed\325,) 514 208 T
-(\324observ) 514 194 T
-(ed\325,) 549.81 194 T
-(\324predicted\325) 514 180 T
-0 F
-(strat_lwmodel_type) 179 158 T
-1 F
-(NO) 300 158 T
-(T USED CUR-) 316.85 158 T
-(RENTL) 300 144 T
-(Y) 337.46 144 T
-(\324           \324) 442 158 T
-0 F
-(*strat_lwmodel_nint) 179 122 T
-(vls) 179 108 T
-1 F
-(number of band interv) 300 122 T
-(als) 406.68 122 T
-(in) 300 108 T
-(the) 312.3 108 T
-(l) 329.92 108 T
-(w) 333.14 108 T
-(aerosol) 344.76 108 T
-(input) 382.38 108 T
-(data) 410.01 108 T
-(1) 442 122 T
+(longw) 78 396 T
+(a) 107.88 396 T
+(v) 112.97 396 T
+(e_dri) 118.79 396 T
+(v) 143.15 396 T
+(er) 148.97 396 T
+(l) 179 396 T
+(wform) 182.22 396 T
+(character) 300 396 T
+(string) 346.87 396 T
+(describing) 377.11 396 T
+(l) 300 382 T
+(w parameterization being) 303.22 382 T
+(used) 300 368 T
+(\324seal) 442 396 T
+(w99\325) 464.54 396 T
+(longw) 78 346 T
+(a) 107.88 346 T
+(v) 112.97 346 T
+(e_\337ux) 118.79 346 T
+(es) 148.61 346 T
+(dummy) 179 346 T
+(dummy v) 300 346 T
+(ariable) 345.37 346 T
+(1.0) 442 346 T
+(longw) 78 324 T
+(a) 107.88 324 T
+(v) 112.97 324 T
+(e_params) 118.79 324 T
+(dummy) 179 324 T
+(dummy v) 300 324 T
+(ariable) 345.37 324 T
+(\324              \324) 442 324 T
+(longw) 78 302 T
+(a) 107.88 302 T
+(v) 112.97 302 T
+(e_tables) 118.79 302 T
+(dummy) 179 302 T
+(dummy v) 300 302 T
+(ariable) 345.37 302 T
+(1.0) 442 302 T
+(l) 78 280 T
+(w_g) 81.22 280 T
+(ases_stdtf) 101.82 280 T
+(do_coeintdiag) 179 280 T
+(include diagnostic print-) 300 280 T
+(out of some coef) 300 266 T
+(\336cients ?) 380.02 266 T
+(.f) 442 280 T
+(alse.) 448.88 280 T
+(nstdco2lvls) 179 244 T
+(number) 300 244 T
+(of) 338.95 244 T
+(le) 351.24 244 T
+(v) 359.61 244 T
+(els) 365.43 244 T
+(contained) 381.05 244 T
+(in  the tab) 300 230 T
+(ulated lbl tfs) 347.42 230 T
+(496) 442 244 T
+(pre) 514 244 T
+(viously) 529.02 244 T
+(w) 514 230 T
+(as 109.) 522.54 230 T
+(mgrp_prscr_clds) 78 208 T
+(dummy) 179 208 T
+(dummy v) 300 208 T
+(ariable) 345.37 208 T
+(0) 442 208 T
+(microph) 78 186 T
+(ys_rad) 117.94 186 T
+(n_prsc_clds) 179 186 T
+(number of prescribed) 300 186 T
+(clouds used in the) 300 172 T
+(mgrp_prscr_clds or) 300 158 T
+(zonal_clouds mods) 300 144 T
+(3) 442 186 T
+(wtr_cld_ref) 179 122 T
+(f) 234.68 122 T
+(ef) 300 122 T
+(fecti) 309.02 122 T
+(v) 330.05 122 T
+(e radius for w) 335.87 122 T
+(ater) 402.06 122 T
+(cloud drops) 300 108 T
+(10.) 442 122 T
 0 F
 (T) 179.62 712 T
 (able 2: Namelist v) 186.52 712 T
@@ -5798,285 +4454,6 @@ N
 72.25 646.75 579.75 646.75 2 L
 V
 N
-71.75 598 580.25 598 2 L
-V
-N
-71.75 534 580.25 534 2 L
-V
-N
-71.75 512 580.25 512 2 L
-V
-N
-71.75 476 580.25 476 2 L
-V
-N
-71.75 454 580.25 454 2 L
-V
-N
-71.75 432 580.25 432 2 L
-V
-N
-71.75 410 580.25 410 2 L
-V
-N
-71.75 388 580.25 388 2 L
-V
-N
-71.75 366 580.25 366 2 L
-V
-N
-71.75 344 580.25 344 2 L
-V
-N
-71.75 322 580.25 322 2 L
-V
-N
-71.75 300 580.25 300 2 L
-V
-N
-71.75 236 580.25 236 2 L
-V
-N
-71.75 172 580.25 172 2 L
-V
-N
-71.75 136 580.25 136 2 L
-V
-N
-71.75 100 580.25 100 2 L
-V
-N
-FMENDPAGE
-%%EndPage: "19" 19
-%%Page: "20" 20
-612 792 0 FMBEGINPAGE
-0 FrameSetSepColors
-FrameNoSep
--45 -45 657 837 C
-0 0 0 1 0 0 0 1 K
-0 12 Q
-0 X
-(*imax_aer\336le) 179 634 T
-1 F
-(number) 300 634 T
-(of) 338.83 634 T
-(longitude) 350.99 634 T
-(points) 398.49 634 T
-(in) 300 620 T
-(the) 312.3 620 T
-(l) 329.92 620 T
-(w) 333.14 620 T
-(aerosol) 344.76 620 T
-(input) 382.38 620 T
-(data) 410.01 620 T
-(-1) 442 634 T
-0 F
-(*jmax_aer\336le) 179 598 T
-1 F
-(number of latitude points) 300 598 T
-(in) 300 584 T
-(the) 312.3 584 T
-(l) 329.92 584 T
-(w) 333.14 584 T
-(aerosol) 344.76 584 T
-(input) 382.38 584 T
-(data) 410.01 584 T
-(-1) 442 598 T
-0 F
-(*kmax_aer\336le) 179 562 T
-1 F
-(number of le) 300 562 T
-(v) 361.02 562 T
-(els in the l) 366.84 562 T
-(w) 416.39 562 T
-(aerosol input data) 300 548 T
-(-1) 442 562 T
-0 F
-(*ktop_aer) 179 526 T
-1 F
-(topmost le) 300 526 T
-(v) 350.04 526 T
-(el in the l) 355.86 526 T
-(w) 400.74 526 T
-(aerosol input data) 300 512 T
-(-1) 442 526 T
-0 F
-(*kbot_aer) 179 490 T
-1 F
-(bottommost) 300 490 T
-(le) 360.13 490 T
-(v) 368.5 490 T
-(el) 374.32 490 T
-(in) 385.77 490 T
-(the) 397.89 490 T
-(l) 415.33 490 T
-(w) 418.55 490 T
-(aerosol input data) 300 476 T
-(-10) 442 490 T
-(longw) 78 454 T
-(a) 107.88 454 T
-(v) 112.97 454 T
-(e_clouds) 118.79 454 T
-(do_l) 179 454 T
-(wcldemiss) 200.22 454 T
-(a) 300 454 T
-(cloud) 308.31 454 T
-(emissi) 337.96 454 T
-(vity) 368.34 454 T
-(that) 389.99 454 T
-(v) 410.98 454 T
-(ar-) 416.68 454 T
-(ies with frequenc) 300 440 T
-(y band is) 382.46 440 T
-(used) 300 426 T
-(in) 324.82 426 T
-(the) 336.99 426 T
-(l) 354.48 426 T
-(w) 357.7 426 T
-(calculation) 369.19 426 T
-(?) 424.67 426 T
-(.f) 442 454 T
-(alse.) 448.88 454 T
-(longw) 78 404 T
-(a) 107.88 404 T
-(v) 112.97 404 T
-(e_dri) 118.79 404 T
-(v) 143.15 404 T
-(er) 148.97 404 T
-(do_thick) 179 404 T
-(an optional parameteriza-) 300 404 T
-(tion of the longw) 300 390 T
-(a) 382.21 390 T
-(v) 387.3 390 T
-(e \337ux) 393.12 390 T
-(in thick clouds is used ?) 300 376 T
-(.f) 442 404 T
-(alse.) 448.88 404 T
-(longw) 78 354 T
-(a) 107.88 354 T
-(v) 112.97 354 T
-(e_\337ux) 118.79 354 T
-(es) 148.61 354 T
-(dummy) 179 354 T
-(dummy v) 300 354 T
-(ariable) 345.37 354 T
-(1.0) 442 354 T
-(longw) 78 332 T
-(a) 107.88 332 T
-(v) 112.97 332 T
-(e_params) 118.79 332 T
-(dummy) 179 332 T
-(dummy v) 300 332 T
-(ariable) 345.37 332 T
-(\324              \324) 442 332 T
-(longw) 78 310 T
-(a) 107.88 310 T
-(v) 112.97 310 T
-(e_setup) 118.79 310 T
-(do_ckd2p1) 179 310 T
-(use CKD2.1 w) 300 310 T
-(ater v) 370.87 310 T
-(apor) 397.56 310 T
-(cv) 300 296 T
-(ontinuum parameteriza-) 311.09 296 T
-(tion ?) 300 282 T
-(.true.) 442 310 T
-(do_ch4n2olbltmpint) 179 260 T
-(  de) 300 260 T
-(v) 317.03 260 T
-(elopment option) 322.85 260 T
-(.f) 442 260 T
-(alse.) 448.88 260 T
-(longw) 78 238 T
-(a) 107.88 238 T
-(v) 112.97 238 T
-(e_tables) 118.79 238 T
-(dummy) 179 238 T
-(dummy v) 300 238 T
-(ariable) 345.37 238 T
-(1.0) 442 238 T
-(l) 78 216 T
-(w_g) 81.22 216 T
-(ases_stdtf) 101.82 216 T
-(do_coeintdiag) 179 216 T
-(include diagnostic print-) 300 216 T
-(out of some coef) 300 202 T
-(\336cients ?) 380.02 202 T
-(.f) 442 216 T
-(alse.) 448.88 216 T
-(nstdco2lvls) 179 180 T
-(number) 300 180 T
-(of) 338.95 180 T
-(le) 351.24 180 T
-(v) 359.61 180 T
-(els) 365.43 180 T
-(contained) 381.05 180 T
-(in  the tab) 300 166 T
-(ulated lbl tfs) 347.42 166 T
-(496) 442 180 T
-(pre) 514 180 T
-(viously) 529.02 180 T
-(w) 514 166 T
-(as 109.) 522.54 166 T
-(mgrp_prscr_clds) 78 144 T
-(dummy) 179 144 T
-(dummy v) 300 144 T
-(ariable) 345.37 144 T
-(0) 442 144 T
-(microph) 78 122 T
-(ys_rad) 117.94 122 T
-(n_prsc_clds) 179 122 T
-(number of prescribed) 300 122 T
-(clouds used in the) 300 108 T
-(mgrp_prscr_clds or) 300 94 T
-(zonal_clouds mods) 300 80 T
-(3) 442 122 T
-0 F
-(T) 179.62 712 T
-(able 2: Namelist v) 186.52 712 T
-(ariables used with the sea-esf modules) 278.05 712 T
-1 F
-(Module) 103.83 672 T
-(V) 197.68 672 T
-(ariable Name) 205.01 672 T
-(Description) 337 672 T
-(Def) 454.07 679 T
-(ault) 471.93 679 T
-(V) 458.34 665 T
-(alue) 465.67 665 T
-(Other) 530.34 686 T
-(Acceptable) 517.01 672 T
-(V) 528 658 T
-(alues) 535.34 658 T
-72 701.75 72 72.25 2 L
-V
-0.5 H
-0 Z
-N
-173 702.25 173 71.75 2 L
-V
-N
-294 702.25 294 71.75 2 L
-V
-N
-436 702.25 436 71.75 2 L
-V
-N
-508 702.25 508 71.75 2 L
-V
-N
-580 701.75 580 72.25 2 L
-V
-N
-71.75 702 580.25 702 2 L
-V
-N
-72.25 649.25 579.75 649.25 2 L
-V
-N
-72.25 646.75 579.75 646.75 2 L
-V
-N
 71.75 612 580.25 612 2 L
 V
 N
@@ -6092,42 +4469,42 @@ N
 71.75 468 580.25 468 2 L
 V
 N
-71.75 418 580.25 418 2 L
+71.75 432 580.25 432 2 L
 V
 N
-71.75 368 580.25 368 2 L
+71.75 410 580.25 410 2 L
 V
 N
-71.75 346 580.25 346 2 L
+71.75 360 580.25 360 2 L
 V
 N
-71.75 324 580.25 324 2 L
+71.75 338 580.25 338 2 L
 V
 N
-71.75 274 580.25 274 2 L
+71.75 316 580.25 316 2 L
 V
 N
-71.75 252 580.25 252 2 L
+71.75 294 580.25 294 2 L
 V
 N
-71.75 230 580.25 230 2 L
+71.75 258 580.25 258 2 L
 V
 N
-71.75 194 580.25 194 2 L
+71.75 222 580.25 222 2 L
 V
 N
-71.75 158 580.25 158 2 L
+71.75 200 580.25 200 2 L
 V
 N
 71.75 136 580.25 136 2 L
 V
 N
-71.75 72 580.25 72 2 L
+71.75 100 580.25 100 2 L
 V
 N
 FMENDPAGE
-%%EndPage: "20" 20
-%%Page: "21" 21
+%%EndPage: "11" 11
+%%Page: "12" 12
 612 792 0 FMBEGINPAGE
 0 FrameSetSepColors
 FrameNoSep
@@ -6135,112 +4512,106 @@ FrameNoSep
 0 0 0 1 0 0 0 1 K
 1 12 Q
 0 X
-(wtr_cld_ref) 179 634 T
-(f) 234.68 634 T
+(ice_cld_ref) 179 634 T
+(f) 232.68 634 T
 (ef) 300 634 T
 (fecti) 309.02 634 T
 (v) 330.05 634 T
-(e radius for w) 335.87 634 T
-(ater) 402.06 634 T
-(cloud drops) 300 620 T
-(10.) 442 634 T
-(ice_cld_ref) 179 598 T
-(f) 232.68 598 T
+(e radius for ice) 335.87 634 T
+(crystals) 300 620 T
+(50.) 442 634 T
+(rain_ref) 179 598 T
+(f) 216.68 598 T
 (ef) 300 598 T
 (fecti) 309.02 598 T
 (v) 330.05 598 T
-(e radius for ice) 335.87 598 T
-(crystals) 300 584 T
-(50.) 442 598 T
-(rain_ref) 179 562 T
-(f) 216.68 562 T
-(ef) 300 562 T
-(fecti) 309.02 562 T
-(v) 330.05 562 T
-(e radius for rain) 335.87 562 T
-(drops) 300 548 T
-(250.) 442 562 T
-(using_fu) 179 526 T
-(use) 300 526 T
-(the) 318.17 526 T
-(fu) 335.01 526 T
-(parameterization) 347.18 526 T
-(? Currently) 300 512 T
-(, MUST be set) 353.54 512 T
-(to .f) 300 498 T
-(alse.) 319.21 498 T
-(.f) 442 526 T
-(alse.) 448.88 526 T
+(e radius for rain) 335.87 598 T
+(drops) 300 584 T
+(250.) 442 598 T
 0 F
-(*lwem_f) 179 476 T
-(orm) 222.02 476 T
+(*lwem_f) 179 562 T
+(orm) 222.02 562 T
 1 F
-(l) 300 476 T
-(w emissi) 303.22 476 T
-(vity parameter-) 345.25 476 T
-(ization type) 300 462 T
-(\324   \324) 442 476 T
-(\324fuliou\325,) 514 476 T
-(\324ebertcurry\325) 514 462 T
-(no_clouds) 78 440 T
-(dummy) 179 440 T
-(dummy v) 300 440 T
-(ariable) 345.37 440 T
-(0.0) 442 440 T
-(obs_clouds_W) 78 418 T
-(dummy) 179 418 T
-(dummy v) 300 418 T
-(ariable) 345.37 418 T
-(0) 442 418 T
-(optical_path) 78 396 T
-(dummy) 179 396 T
-(dummy v) 300 396 T
-(ariable) 345.37 396 T
-(0.0) 442 396 T
-(ozone) 78 374 T
-(basic_ozone_type) 179 374 T
-(data source for ozone \336eld) 300 374 T
-(\324annual_me) 442 374 T
-(an\325) 442 360 T
-(seasonally-) 514 374 T
-(v) 514 360 T
-(arying\325,) 519.7 360 T
-(\324randelpro-) 514 346 T
-(\336le\325, \324input\325) 514 332 T
-(o3monloss) 179 310 T
-(a perturbation will be) 300 310 T
-(applied to the basic ozone) 300 296 T
-(type selected) 300 282 T
-(.f) 442 310 T
-(alse.) 448.88 310 T
+(l) 300 562 T
+(w emissi) 303.22 562 T
+(vity parameter-) 345.25 562 T
+(ization type) 300 548 T
+(\324   \324) 442 562 T
+(\324fuliou\325,) 514 562 T
+(\324ebertcurry\325) 514 548 T
+(no_clouds) 78 526 T
+(dummy) 179 526 T
+(dummy v) 300 526 T
+(ariable) 345.37 526 T
+(0.0) 442 526 T
+(obs_clouds_W) 78 504 T
+(dummy) 179 504 T
+(dummy v) 300 504 T
+(ariable) 345.37 504 T
+(0) 442 504 T
+(optical_path) 78 482 T
+(dummy) 179 482 T
+(dummy v) 300 482 T
+(ariable) 345.37 482 T
+(0.0) 442 482 T
+(original_fms_rad) 78 460 T
+(lat_diag) 179 460 T
+(latitude for diagnostics) 300 460 T
+(column \050de) 300 446 T
+(grees\051) 354.14 446 T
+(-1000.) 442 460 T
+(-90. -> 90.) 514 460 T
+(long_diag) 179 424 T
+(longitude for diagnostics) 300 424 T
+(column \050de) 300 410 T
+(grees\051) 354.14 410 T
+(-1000.) 442 424 T
+(0. -> 360.) 514 424 T
+(solar_constant) 179 388 T
+(solar constant \050W/m**2\051) 300 388 T
+(1365.) 442 388 T
+(co2std) 179 366 T
+(co2 mixing ratio) 300 366 T
+(330.) 442 366 T
+(300.) 514 366 T
+(ratio) 179 344 T
+(f) 300 344 T
+(actor to multiply co2std) 303.88 344 T
+(by to get co2 v) 300 330 T
+(alue being) 371.03 330 T
+(used) 300 316 T
+(1.0) 442 344 T
+(0.5 - 4.0) 514 344 T
+(ozone) 78 294 T
+(basic_ozone_type) 179 294 T
+(data source for ozone \336eld) 300 294 T
+(\324fms_zonal_) 442 294 T
+(ozone\325) 442 280 T
+(\324clim_zonal) 514 294 T
+(_ozone\325,) 514 280 T
+(\324annual_me) 514 266 T
+(an\325, season-) 514 252 T
+(ally-v) 514 238 T
+(ary-) 541.7 238 T
+(ing\325,) 514 224 T
+(\324randelpro-) 514 210 T
+(\336le\325, \324input\325) 514 196 T
+(o3monloss) 179 174 T
+(a perturbation will be) 300 174 T
+(applied to the basic ozone) 300 160 T
+(type selected) 300 146 T
+(.f) 442 174 T
+(alse.) 448.88 174 T
 0 F
-(*o3monloss_type) 179 260 T
+(*o3monloss_type) 179 124 T
 1 F
-(name of the ozone pertur-) 300 260 T
-(bation being applied) 300 246 T
-(\324         \324) 442 260 T
-(\324tomspro\336le) 514 260 T
-(1\325,) 514 246 T
-(\324tomspro\336le) 514 232 T
-(2\325) 514 218 T
-(do_ozone_adjustment) 179 196 T
-(\322poor man\325) 300 196 T
-(s ozone chem-) 354.32 196 T
-(istry\323) 300 182 T
-(.true.) 442 196 T
-(v) 179 160 T
-(erbose) 184.82 160 T
-(print out ozone day diag-) 300 160 T
-(nostic) 300 146 T
-(.f) 442 160 T
-(alse.) 448.88 160 T
-(rad_output_\336le) 78 124 T
-(test_read) 179 124 T
-(the radiation output data) 300 124 T
-(\336le will be test read at the) 300 110 T
-(end of the job ?) 300 96 T
-(.f) 442 124 T
-(alse.) 448.88 124 T
+(name of the ozone pertur-) 300 124 T
+(bation being applied) 300 110 T
+(\324         \324) 442 124 T
+(\324tomspro\336le) 514 124 T
+(1\325,) 514 110 T
+(\324tomspro\336le) 514 96 T
+(2\325) 514 82 T
 0 F
 (T) 179.62 712 T
 (able 2: Namelist v) 186.52 712 T
@@ -6258,24 +4629,24 @@ FrameNoSep
 (Acceptable) 517.01 672 T
 (V) 528 658 T
 (alues) 535.34 658 T
-72 701.75 72 88.25 2 L
+72 701.75 72 74.25 2 L
 V
 0.5 H
 0 Z
 N
-173 702.25 173 87.75 2 L
+173 702.25 173 73.75 2 L
 V
 N
-294 702.25 294 87.75 2 L
+294 702.25 294 73.75 2 L
 V
 N
-436 702.25 436 87.75 2 L
+436 702.25 436 73.75 2 L
 V
 N
-508 702.25 508 87.75 2 L
+508 702.25 508 73.75 2 L
 V
 N
-580 701.75 580 88.25 2 L
+580 701.75 580 74.25 2 L
 V
 N
 71.75 702 580.25 702 2 L
@@ -6296,42 +4667,42 @@ N
 71.75 540 580.25 540 2 L
 V
 N
-71.75 490 580.25 490 2 L
+71.75 518 580.25 518 2 L
 V
 N
-71.75 454 580.25 454 2 L
+71.75 496 580.25 496 2 L
 V
 N
-71.75 432 580.25 432 2 L
+71.75 474 580.25 474 2 L
 V
 N
-71.75 410 580.25 410 2 L
+71.75 438 580.25 438 2 L
 V
 N
-71.75 388 580.25 388 2 L
+71.75 402 580.25 402 2 L
 V
 N
-71.75 324 580.25 324 2 L
+71.75 380 580.25 380 2 L
 V
 N
-71.75 274 580.25 274 2 L
+71.75 358 580.25 358 2 L
 V
 N
-71.75 210 580.25 210 2 L
+71.75 308 580.25 308 2 L
 V
 N
-71.75 174 580.25 174 2 L
+71.75 188 580.25 188 2 L
 V
 N
 71.75 138 580.25 138 2 L
 V
 N
-71.75 88 580.25 88 2 L
+71.75 74 580.25 74 2 L
 V
 N
 FMENDPAGE
-%%EndPage: "21" 21
-%%Page: "22" 22
+%%EndPage: "12" 12
+%%Page: "13" 13
 612 792 0 FMBEGINPAGE
 0 FrameSetSepColors
 FrameNoSep
@@ -6339,111 +4710,122 @@ FrameNoSep
 0 0 0 1 0 0 0 1 K
 1 12 Q
 0 X
-(write_hist10) 179 634 T
-(the radiation output data) 300 634 T
-(\336le \050a la SKYHI\051 will be) 300 620 T
-(written ?) 300 606 T
-(.f) 442 634 T
-(alse.) 448.88 634 T
+(ozone_adjustment_li) 179 634 T
+(mit) 179 620 T
+(pressure le) 300 634 T
+(v) 351.35 634 T
+(el \050MKS\051) 357.17 634 T
+(abo) 300 620 T
+(v) 317.15 620 T
+(e which ozone photo-) 322.97 620 T
+(chemical adjustment is) 300 606 T
+(applied, if acti) 300 592 T
+(v) 368.69 592 T
+(ated) 374.39 592 T
+(1000.) 442 634 T
+(\05010 hP) 442 620 T
+(a\051) 473.49 620 T
+(fms_zonal_ozone_typ) 179 570 T
+(e) 179 556 T
+(seasonal or annual mean) 300 570 T
+(ozone when) 300 556 T
+(fms_zonal_ozone is acti-) 300 542 T
+(v) 300 528 T
+(ated) 305.7 528 T
+(\324seasonally-) 442 570 T
+(v) 442 556 T
+(arying\325) 447.7 556 T
+(\324winter\325,) 514 570 T
+(\324spring\325,) 514 556 T
+(\324summer\325,) 514 542 T
+(\324autumn\325,) 514 528 T
+(\324annual_me) 514 514 T
+(an\325) 514 500 T
+(do_ozone_adjustment) 179 478 T
+(\322poor man\325) 300 478 T
+(s ozone chem-) 354.32 478 T
+(istry\323) 300 464 T
+(.f) 442 478 T
+(alse.) 448.88 478 T
+(rad_output_\336le) 78 442 T
+(write_data_\336le) 179 442 T
+(radiation) 300 442 T
+(output) 345.06 442 T
+(data) 378.13 442 T
+(\336le) 400.53 442 T
+(to) 418.26 442 T
+(be written ?) 300 428 T
+(.f) 442 442 T
+(alse.) 448.88 442 T
+(rad_utilities) 78 406 T
 0 F
-(*i_prt) 179 584 T
+(**peripherals_sour) 179 406 T
+(c) 278.12 406 T
+(e) 179 392 T
 1 F
-(column to be test-read) 300 584 T
-(\050global inde) 300 570 T
-(x\051) 357.48 570 T
-(0) 442 584 T
+(source of peripheral pack-) 300 406 T
+(ages, constants, etc. to be) 300 392 T
+(used) 300 378 T
+(\324   \324) 442 406 T
+(\324fms\325,) 514 406 T
+(\324sk) 514 392 T
+(yhi\325) 528.48 392 T
 0 F
-(*j_prt) 179 548 T
+(**application_type) 179 356 T
 1 F
-(ro) 300 548 T
-(w to be test-read \050pe) 309.7 548 T
-(local inde) 300 534 T
-(x\051) 346.81 534 T
-(0) 442 548 T
+(running a model or the) 300 356 T
+(standalone dri) 300 342 T
+(v) 367.36 342 T
+(er ?) 373.18 342 T
+(\324        \324) 442 356 T
+(\324gcm\325,) 514 356 T
+(\324standalone\325) 514 342 T
 0 F
-(*jd_prt) 179 512 T
+(*column_type) 179 320 T
 1 F
-(ro) 300 512 T
-(w to be test-read \050global) 309.7 512 T
-(inde) 300 498 T
-(x\051) 320.48 498 T
-(0) 442 512 T
-(write_netcdf_\336le) 179 476 T
-(a netcdf v) 300 476 T
-(ersion of the out-) 347.14 476 T
-(put) 300 462 T
-(\336le) 318 462 T
-(\050old) 336.01 462 T
-(\336le) 358 462 T
-(10\051) 376.01 462 T
-(will) 394.67 462 T
-(be) 416.01 462 T
-(written ?) 300 448 T
-(.f) 442 476 T
-(alse.) 448.88 476 T
-(rad_step_setup) 78 426 T
-(all_le) 179 426 T
-(v) 205.36 426 T
-(el_radiation) 211.18 426 T
-(radiation is to be calcu-) 300 426 T
-(lated at all model le) 300 412 T
-(v) 394.36 412 T
-(els ?) 400.18 412 T
-(.true.) 442 426 T
+(type of v) 300 320 T
+(ertical grid struc-) 342.48 320 T
+(ture for standalone model) 300 306 T
+(\324               \324) 442 320 T
+(\324sk) 514 320 T
+(yl40\325,) 528.48 320 T
+(\324sk) 514 306 T
+(yl80\325,) 528.48 306 T
+(\324e) 514 292 T
+(grpl9\325,) 523.14 292 T
+(\324climl9\325,) 514 278 T
+(\324ccml12\325,) 514 264 T
+(\324climl14\325,) 514 250 T
+(e) 514 236 T
+(grpl18\325,) 519.15 236 T
+(\324climl30\325,) 514 222 T
+(nmcl18\325,) 514 208 T
+(lanl45\325) 514 194 T
+(radiation_diag) 78 172 T
 0 F
-(*topmost_radiation_) 179 390 T
-(le) 179 376 T
-(v) 187.48 376 T
-(el) 193.36 376 T
+(*iradprt_gl) 179 172 T
 1 F
-(highest model le) 300 390 T
-(v) 379.03 390 T
-(el at) 384.85 390 T
-(which radiation is calcu-) 300 376 T
-(lated; only needed when) 300 362 T
-(all_le) 300 348 T
-(v) 326.36 348 T
-(el_radiation is) 332.18 348 T
-(.f) 300 334 T
-(alse.) 306.88 334 T
-(-99) 442 390 T
-(all_column_radiation) 179 312 T
-(radiation is to be calcu-) 300 312 T
-(lated) 300 298 T
-(in) 326.26 298 T
-(all) 338.53 298 T
-(model) 353.46 298 T
-(columns) 386.4 298 T
-(?) 300 284 T
-(.true.) 442 312 T
-(do_bounds_chk) 179 262 T
-(record an) 300 262 T
-(y temperature) 344.8 262 T
-(and v) 300 248 T
-(apor v) 326.03 248 T
-(alues being) 356.05 248 T
-(input to the radiation mod-) 300 234 T
-(ules that are outside of the) 300 220 T
-(table bounds) 300 206 T
-(.f) 442 262 T
-(alse.) 448.88 262 T
-(rad_utilities) 78 184 T
-(dummy) 179 184 T
-(dummy v) 300 184 T
-(ariable) 345.37 184 T
-(1.0) 442 184 T
-(radiation_diag) 78 162 T
-(do_totcld_forcing) 179 162 T
-(calculate radiati) 300 162 T
-(v) 376.01 162 T
-(e \337ux) 381.83 162 T
-(es) 408.65 162 T
-(iand heating rates in the) 300 148 T
-(total absence of clouds in) 300 134 T
-(addition to the standard) 300 120 T
-(cloud scheme) 300 106 T
-(.f) 442 162 T
-(alse.) 448.88 162 T
+(global) 300 172 T
+(i) 332.45 172 T
+(indices) 338.23 172 T
+(of) 374.67 172 T
+(points) 387.11 172 T
+(at) 418.89 172 T
+(which radiation diagnos-) 300 158 T
+(tics are to be generated) 300 144 T
+(0) 442 172 T
+0 F
+(*jradprt_gl) 179 122 T
+1 F
+(global) 300 122 T
+(j) 332.45 122 T
+(indices) 338.23 122 T
+(of) 374.67 122 T
+(points) 387.11 122 T
+(at) 418.89 122 T
+(which radiation diagnos-) 300 108 T
+(tics are to be generated) 300 94 T
+(0) 442 122 T
 0 F
 (T) 179.62 712 T
 (able 2: Namelist v) 186.52 712 T
@@ -6461,24 +4843,24 @@ FrameNoSep
 (Acceptable) 517.01 672 T
 (V) 528 658 T
 (alues) 535.34 658 T
-72 701.75 72 98.25 2 L
+72 701.75 72 86.25 2 L
 V
 0.5 H
 0 Z
 N
-173 702.25 173 97.75 2 L
+173 702.25 173 85.75 2 L
 V
 N
-294 702.25 294 97.75 2 L
+294 702.25 294 85.75 2 L
 V
 N
-436 702.25 436 97.75 2 L
+436 702.25 436 85.75 2 L
 V
 N
-508 702.25 508 97.75 2 L
+508 702.25 508 85.75 2 L
 V
 N
-580 701.75 580 98.25 2 L
+580 701.75 580 86.25 2 L
 V
 N
 71.75 702 580.25 702 2 L
@@ -6490,172 +4872,152 @@ N
 72.25 646.75 579.75 646.75 2 L
 V
 N
-71.75 598 580.25 598 2 L
+71.75 584 580.25 584 2 L
 V
 N
-71.75 562 580.25 562 2 L
+71.75 492 580.25 492 2 L
 V
 N
-71.75 526 580.25 526 2 L
+71.75 456 580.25 456 2 L
 V
 N
-71.75 490 580.25 490 2 L
+71.75 420 580.25 420 2 L
 V
 N
-71.75 440 580.25 440 2 L
+71.75 370 580.25 370 2 L
 V
 N
-71.75 404 580.25 404 2 L
+71.75 334 580.25 334 2 L
 V
 N
-71.75 326 580.25 326 2 L
+71.75 186 580.25 186 2 L
 V
 N
-71.75 276 580.25 276 2 L
+71.75 136 580.25 136 2 L
 V
 N
-71.75 198 580.25 198 2 L
-V
-N
-71.75 176 580.25 176 2 L
-V
-N
-71.75 98 580.25 98 2 L
+71.75 86 580.25 86 2 L
 V
 N
 FMENDPAGE
-%%EndPage: "22" 22
-%%Page: "23" 23
+%%EndPage: "13" 13
+%%Page: "14" 14
 612 792 0 FMBEGINPAGE
 0 FrameSetSepColors
 FrameNoSep
 -45 -45 657 837 C
 0 0 0 1 0 0 0 1 K
-0 12 Q
+1 12 Q
 0 X
-(*iradprt) 179 634 T
-1 F
-(global) 300 634 T
-(i) 332.45 634 T
-(indices) 338.23 634 T
-(of) 374.67 634 T
-(points) 387.11 634 T
-(at) 418.89 634 T
-(which radiation diagnos-) 300 620 T
-(tics are to be generated) 300 606 T
+(num_pts_ij) 179 634 T
+(number) 300 634 T
+(of) 339.5 634 T
+(points) 352.33 634 T
+(speci\336ed) 384.5 634 T
+(by global indices at which) 300 620 T
+(to generate radiation diag-) 300 606 T
+(nostics) 300 592 T
 (0) 442 634 T
+(num_pts_latlon) 179 570 T
+(number) 300 570 T
+(of) 339.5 570 T
+(points) 352.33 570 T
+(speci\336ed) 384.5 570 T
+(by lat-lon at which to gen-) 300 556 T
+(erate radiation diagnostics) 300 542 T
+(0) 442 570 T
 0 F
-(*jradprt) 179 584 T
+(*latradprt) 179 520 T
 1 F
-(global) 300 584 T
-(j) 332.45 584 T
-(indices) 338.23 584 T
-(of) 374.67 584 T
-(points) 387.11 584 T
-(at) 418.89 584 T
-(which radiation diagnos-) 300 570 T
-(tics are to be generated) 300 556 T
-(0) 442 584 T
-(num_pts) 179 534 T
-(number of points at which) 300 534 T
-(to generate radiation diag-) 300 520 T
-(nostics) 300 506 T
-(0) 442 534 T
-(write_radiag_\336le) 179 484 T
-(write the radiation diag-) 300 484 T
-(nostics to a \336le other than) 300 470 T
-(the print \336le) 300 456 T
-(.f) 442 484 T
-(alse.) 448.88 484 T
+(latitudes) 300 520 T
+(of) 343.07 520 T
+(points) 355.47 520 T
+(at) 387.21 520 T
+(which) 398.27 520 T
+(diagnostics are desired) 300 506 T
+(999.) 442 520 T
+(*) 179 484 T
 0 F
-(*radiag_output_\336le) 179 434 T
+(lonradprt) 185 484 T
 1 F
-(name of the \336le to which) 300 434 T
-(radiation) 300 420 T
-(diagnostics) 345 420 T
-(are) 401.34 420 T
-(to) 418.33 420 T
-(be written - path name rel-) 300 406 T
-(ati) 300 392 T
-(v) 311.7 392 T
-(e to $w) 317.52 392 T
-(orkdir) 352.73 392 T
-(\324                \324) 442 434 T
-(enter) 514 434 T
-(desired \336le-) 514 420 T
-(name) 514 406 T
-(radiation_package) 78 370 T
-(dummy) 179 370 T
-(dummy v) 300 370 T
-(ariable) 345.37 370 T
-(0.0) 442 370 T
-(radiation_step) 78 348 T
-(do_donner_cloud_for) 179 348 T
-(cing) 179 334 T
-(currently a placeholder) 300 348 T
+(longitudes of points at) 300 484 T
+(which diagnostics are) 300 470 T
+(desired) 300 456 T
+(999.) 442 484 T
+(radiation_dri) 78 434 T
+(v) 139.69 434 T
+(er) 145.51 434 T
+(rad_time_step) 179 434 T
+(radiation time step in sec-) 300 434 T
+(onds) 300 420 T
+(14400) 442 434 T
+(of) 179 398 T
+(fset) 188.7 398 T
+(of) 300 398 T
+(fset in timesteps from) 309.7 398 T
+(the radiation timestep at) 300 384 T
+(which to call radiation) 300 370 T
+(1) 442 398 T
+(do_a) 179 348 T
+(v) 202.09 348 T
+(erage) 207.91 348 T
+(use time-a) 300 348 T
+(v) 349.42 348 T
+(eraged v) 355.24 348 T
+(alues) 395.92 348 T
+(of the astronomical and) 300 334 T
+(atmospheric) 300 320 T
+(\336elds) 361.32 320 T
+(as) 390 320 T
+(input) 402.66 320 T
+(to the radiation modules) 300 306 T
 (.f) 442 348 T
 (alse.) 448.88 348 T
-(radiati) 78 312 T
-(v) 108.36 312 T
-(e_g) 114.18 312 T
-(ases) 131.45 312 T
-(do_ch4_n2o) 179 312 T
-(ch4) 300 312 T
-(and) 319.7 312 T
-(n2o) 339.39 312 T
-(are) 359.77 312 T
-(radiati) 376.79 312 T
-(v) 407.15 312 T
-(ely) 412.97 312 T
-(acti) 300 298 T
-(v) 317.03 298 T
-(e ?) 322.85 298 T
-(.true.) 442 312 T
-(do_f11) 179 276 T
-(f11 is radiati) 300 276 T
-(v) 360.36 276 T
-(ely acti) 366.18 276 T
-(v) 400.87 276 T
-(e ?) 406.69 276 T
-(.true.) 442 276 T
-(do_f12) 179 254 T
-(f12 is radiati) 300 254 T
-(v) 360.36 254 T
-(ely acti) 366.18 254 T
-(v) 400.87 254 T
-(e ?) 406.69 254 T
-(.true.) 442 254 T
-(do_f113) 179 232 T
-(f113 is radiati) 300 232 T
-(v) 366.36 232 T
-(ely acti) 372.18 232 T
-(v) 406.87 232 T
-(e ?) 412.69 232 T
-(.true.) 442 232 T
-(do_f22) 179 210 T
-(f22 is radiati) 300 210 T
-(v) 360.36 210 T
-(ely acti) 366.18 210 T
-(v) 400.87 210 T
-(e ?) 406.69 210 T
-(.true.) 442 210 T
-(do_co2) 179 188 T
-(co2 is rdiati) 300 188 T
-(v) 356.36 188 T
-(ely acti) 362.18 188 T
-(v) 396.88 188 T
-(e ?) 402.7 188 T
-(MUST be .true.) 300 174 T
-(.true.) 442 188 T
-(direct_access_read) 179 152 T
-(the radiati) 300 152 T
-(v) 348.02 152 T
-(e g) 353.84 152 T
-(ases restart) 368.11 152 T
-(\336le to be read is a direct) 300 138 T
-(access \336le  ?) 300 124 T
-(.f) 442 152 T
-(alse.) 448.88 152 T
+(do_a) 179 284 T
+(v) 202.09 284 T
+(erage_g) 207.91 284 T
+(ases) 245.83 284 T
+(are radiati) 300 284 T
+(v) 348.01 284 T
+(e g) 353.83 284 T
+(as inputs) 368.1 284 T
+(time-a) 300 270 T
+(v) 330.42 270 T
+(eraged ?) 336.24 270 T
+(.f) 442 284 T
+(alse.) 448.88 284 T
+(do_a) 179 248 T
+(v) 202.09 248 T
+(erage_clouds) 207.91 248 T
+(are cloud inputs time-a) 300 248 T
+(v) 410.08 248 T
+(er-) 415.9 248 T
+(aged?) 300 234 T
+(.f) 442 248 T
+(alse.) 448.88 248 T
+(do_clear_sk) 179 212 T
+(y_pass) 236.8 212 T
+(are clear) 300 212 T
+(-sk) 340.73 212 T
+(y radiation) 355.21 212 T
+(diagnostics to be calcu-) 300 198 T
+(lated?) 300 184 T
+(.f) 442 212 T
+(alse.) 448.88 212 T
+0 F
+(**zenith_spec) 179 162 T
+1 F
+(string de\336ning ho) 300 162 T
+(w zenith) 384.37 162 T
+(angle is computed) 300 148 T
+(\324   \324) 442 162 T
+(\324daily_mean) 514 162 T
+(\325,) 514 148 T
+(\324annual_me) 514 134 T
+(an\325, \324diur-) 514 120 T
+(nally-v) 514 106 T
+(ary-) 547.7 106 T
+(ing\325) 514 92 T
 0 F
 (T) 179.62 712 T
 (able 2: Namelist v) 186.52 712 T
@@ -6673,24 +5035,24 @@ FrameNoSep
 (Acceptable) 517.01 672 T
 (V) 528 658 T
 (alues) 535.34 658 T
-72 701.75 72 116.25 2 L
+72 701.75 72 84.25 2 L
 V
 0.5 H
 0 Z
 N
-173 702.25 173 115.75 2 L
+173 702.25 173 83.75 2 L
 V
 N
-294 702.25 294 115.75 2 L
+294 702.25 294 83.75 2 L
 V
 N
-436 702.25 436 115.75 2 L
+436 702.25 436 83.75 2 L
 V
 N
-508 702.25 508 115.75 2 L
+508 702.25 508 83.75 2 L
 V
 N
-580 701.75 580 116.25 2 L
+580 701.75 580 84.25 2 L
 V
 N
 71.75 702 580.25 702 2 L
@@ -6702,10 +5064,10 @@ N
 72.25 646.75 579.75 646.75 2 L
 V
 N
-71.75 598 580.25 598 2 L
+71.75 584 580.25 584 2 L
 V
 N
-71.75 548 580.25 548 2 L
+71.75 534 580.25 534 2 L
 V
 N
 71.75 498 580.25 498 2 L
@@ -6714,39 +5076,30 @@ N
 71.75 448 580.25 448 2 L
 V
 N
-71.75 384 580.25 384 2 L
+71.75 412 580.25 412 2 L
 V
 N
 71.75 362 580.25 362 2 L
 V
 N
-71.75 326 580.25 326 2 L
+71.75 298 580.25 298 2 L
 V
 N
-71.75 290 580.25 290 2 L
+71.75 262 580.25 262 2 L
 V
 N
-71.75 268 580.25 268 2 L
+71.75 226 580.25 226 2 L
 V
 N
-71.75 246 580.25 246 2 L
+71.75 176 580.25 176 2 L
 V
 N
-71.75 224 580.25 224 2 L
-V
-N
-71.75 202 580.25 202 2 L
-V
-N
-71.75 166 580.25 166 2 L
-V
-N
-71.75 116 580.25 116 2 L
+71.75 84 580.25 84 2 L
 V
 N
 FMENDPAGE
-%%EndPage: "23" 23
-%%Page: "24" 24
+%%EndPage: "14" 14
+%%Page: "15" 15
 612 792 0 FMBEGINPAGE
 0 FrameSetSepColors
 FrameNoSep
@@ -6754,92 +5107,120 @@ FrameNoSep
 0 0 0 1 0 0 0 1 K
 1 12 Q
 0 X
-(direct_access_write) 179 634 T
-(the radiati) 300 634 T
-(v) 348.02 634 T
-(e g) 353.84 634 T
-(ases restart) 368.11 634 T
-(\336le to be written is to be) 300 620 T
-(direct access  ?) 300 606 T
-(.f) 442 634 T
-(alse.) 448.88 634 T
-(initial_record_number) 179 584 T
-(the initial record number) 300 584 T
-(in the direct access \336le to) 300 570 T
-(be read) 300 556 T
-(1) 442 584 T
+(rad_package) 179 634 T
+(string de\336ning radiation) 300 634 T
+(package being used) 300 620 T
+(\324sea_esf) 442 634 T
+(\325) 481.97 634 T
+(\324original_f) 514 634 T
+(ms\325) 514 620 T
+(calc_hemi_inte) 179 598 T
+(grals) 252.14 598 T
+(are hemispheric inte) 300 598 T
+(grals) 397.13 598 T
+(desired ?) 300 584 T
+(.f) 442 598 T
+(alse.) 448.88 598 T
+(renormalize_sw_\337ux) 179 562 T
+(e) 280.14 562 T
+(s) 179 548 T
+(should sw \337ux) 300 562 T
+(es be renor-) 369.83 562 T
+(malized on each step to) 300 548 T
+(account for earth-sun) 300 534 T
+(mo) 300 520 T
+(v) 315.16 520 T
+(ement between radia-) 320.98 520 T
+(tion steps ?) 300 506 T
+(.f) 442 562 T
+(alse.) 448.88 562 T
+(rad_date) 179 484 T
+(use the input \336elds at this) 300 484 T
+(time) 300 470 T
+(rather) 323.61 470 T
+(than) 353.87 470 T
+(the) 376.8 470 T
+(current) 393.74 470 T
+(model) 300 456 T
+(time) 332.4 456 T
+(to) 356.14 456 T
+(calculate) 367.88 456 T
+(the) 412.93 456 T
+(radiati) 300 442 T
+(v) 330.36 442 T
+(e forcings) 336.18 442 T
+(\0500,0,0,0,0,0\051) 442 484 T
+(all_le) 179 420 T
+(v) 205.36 420 T
+(el_radiation) 211.18 420 T
+(radiation is to be calcu-) 300 420 T
+(lated at all model le) 300 406 T
+(v) 394.36 406 T
+(els ?) 400.18 406 T
+(.true.) 442 420 T
 0 F
-(*ch4n2o_data_sour) 179 534 T
-(c) 278.79 534 T
-(e) 179 520 T
+(*topmost_radiation_) 179 384 T
+(le) 179 370 T
+(v) 187.48 370 T
+(el) 193.36 370 T
 1 F
-(source of ch4, n2o data to) 300 534 T
-(be used) 300 520 T
-(\324    \324) 442 534 T
-(\324restart\325,) 514 534 T
-(\324icrccm\325,) 514 520 T
-(\324ipcc_92\325,) 514 506 T
-(\324ipcc_98\325,) 514 492 T
-(\324ipcc_80\325,) 514 478 T
-(\324input\325) 514 464 T
-0 F
-(*cfc_data_sour) 179 442 T
-(ce) 256.77 442 T
-1 F
-(source of cfc data to be) 300 442 T
-(used) 300 428 T
-(\324           \324) 442 442 T
-(\324restart\325,) 514 442 T
-(\324icrccm\325,) 514 428 T
-(\324ipcc_92\325,) 514 414 T
-(\324ipcc_98\325,) 514 400 T
-(\324ipcc_80\325,) 514 386 T
-(\324input\325) 514 372 T
-0 F
-(**co2_data_sour) 179 350 T
-(ce) 265.45 350 T
-1 F
-(source of co2 data to be) 300 350 T
-(used) 300 336 T
-(\324           \324) 442 350 T
-(\324restart\325,) 514 350 T
-(\324icrccm\325,) 514 336 T
-(\324ipcc_92\325,) 514 322 T
-(\324ipcc_98\325,) 514 308 T
-(\324ipcc_80\325,) 514 294 T
-(\324input\325,) 514 280 T
-(\324330ppm\325,) 514 266 T
-(\324660ppm\325) 514 252 T
-(rh_based_clouds) 78 230 T
-0 F
-(*cldht_type_f) 179 230 T
-(orm) 248.7 230 T
-1 F
-(formulation used to de\336ne) 300 230 T
-(the  boundaries between) 300 216 T
-(lo) 300 202 T
-(w) 309.04 202 T
-(, middle and high) 316.92 202 T
-(clouds) 300 188 T
-(\324          \324) 442 230 T
-(\32460\325, \32493\325,) 514 230 T
-(\324sk) 514 216 T
-(yhi\325) 528.48 216 T
-0 F
-(*cirrus_cld_pr) 179 166 T
-(op_f) 254.78 166 T
-(o) 277.15 166 T
-(rm) 179 152 T
-1 F
-(the \324blackness\325 of cirrus) 300 166 T
-(clouds) 300 152 T
-(\324part\325,) 514 166 T
-(\324full\325) 514 152 T
-(sea_esf_rad) 78 130 T
-(dt_rad) 179 130 T
-(radiation time step in sec-) 300 130 T
-(onds) 300 116 T
-(14400) 442 130 T
+(highest model le) 300 384 T
+(v) 379.03 384 T
+(el at) 384.85 384 T
+(which radiation is calcu-) 300 370 T
+(lated; only needed when) 300 356 T
+(all_le) 300 342 T
+(v) 326.36 342 T
+(el_radiation is) 332.18 342 T
+(.f) 300 328 T
+(alse.) 306.88 328 T
+(-99) 442 384 T
+(drop_upper_le) 179 306 T
+(v) 248.68 306 T
+(els) 254.5 306 T
+(if all_le) 300 306 T
+(v) 336.7 306 T
+(el_radiation is) 342.52 306 T
+(.f) 300 292 T
+(alse. and) 306.88 292 T
+(drop_upper_le) 300 278 T
+(v) 369.68 278 T
+(els) 375.5 278 T
+(is) 390.67 278 T
+(.true.,) 400.51 278 T
+(radiation will only be cal-) 300 264 T
+(culated from) 300 250 T
+(topmost_radiation_le) 300 236 T
+(v) 401.7 236 T
+(el) 407.52 236 T
+(to) 418.42 236 T
+(the surf) 300 222 T
+(ace) 336.2 222 T
+(.f) 442 306 T
+(alse.) 448.88 306 T
+(all_column_radiation) 179 200 T
+(radiation is to be calcu-) 300 200 T
+(lated) 300 186 T
+(in) 326.26 186 T
+(all) 338.53 186 T
+(model) 353.46 186 T
+(columns) 386.4 186 T
+(?) 300 172 T
+(.true.) 442 200 T
+(rsd) 179 150 T
+(call) 300 150 T
+(radiation) 319.6 150 T
+(for) 364.54 150 T
+(same) 380.8 150 T
+(date) 407.73 150 T
+(\050yr) 300 136 T
+(,day\051, b) 313.51 136 T
+(ut repeatedly) 349.6 136 T
+(run through the diurnal) 300 122 T
+(c) 300 108 T
+(ycle) 305.15 108 T
+(.f) 442 150 T
+(alse.) 448.88 150 T
 0 F
 (T) 179.62 712 T
 (able 2: Namelist v) 186.52 712 T
@@ -6857,24 +5238,24 @@ FrameNoSep
 (Acceptable) 517.01 672 T
 (V) 528 658 T
 (alues) 535.34 658 T
-72 701.75 72 108.25 2 L
+72 701.75 72 100.25 2 L
 V
 0.5 H
 0 Z
 N
-173 702.25 173 107.75 2 L
+173 702.25 173 99.75 2 L
 V
 N
-294 702.25 294 107.75 2 L
+294 702.25 294 99.75 2 L
 V
 N
-436 702.25 436 107.75 2 L
+436 702.25 436 99.75 2 L
 V
 N
-508 702.25 508 107.75 2 L
+508 702.25 508 99.75 2 L
 V
 N
-580 701.75 580 108.25 2 L
+580 701.75 580 100.25 2 L
 V
 N
 71.75 702 580.25 702 2 L
@@ -6886,33 +5267,36 @@ N
 72.25 646.75 579.75 646.75 2 L
 V
 N
-71.75 598 580.25 598 2 L
+71.75 612 580.25 612 2 L
 V
 N
-71.75 548 580.25 548 2 L
+71.75 576 580.25 576 2 L
 V
 N
-71.75 456 580.25 456 2 L
+71.75 498 580.25 498 2 L
 V
 N
-71.75 364 580.25 364 2 L
+71.75 434 580.25 434 2 L
 V
 N
-71.75 244 580.25 244 2 L
+71.75 398 580.25 398 2 L
 V
 N
-71.75 180 580.25 180 2 L
+71.75 320 580.25 320 2 L
 V
 N
-71.75 144 580.25 144 2 L
+71.75 214 580.25 214 2 L
 V
 N
-71.75 108 580.25 108 2 L
+71.75 164 580.25 164 2 L
+V
+N
+71.75 100 580.25 100 2 L
 V
 N
 FMENDPAGE
-%%EndPage: "24" 24
-%%Page: "25" 25
+%%EndPage: "15" 15
+%%Page: "16" 16
 612 792 0 FMBEGINPAGE
 0 FrameSetSepColors
 FrameNoSep
@@ -6920,131 +5304,258 @@ FrameNoSep
 0 0 0 1 0 0 0 1 K
 1 12 Q
 0 X
-(of) 179 634 T
-(fset) 188.7 634 T
-(of) 300 634 T
-(fset in timesteps from) 309.7 634 T
-(the radiation timestep at) 300 620 T
-(which to call radiation) 300 606 T
-(1) 442 634 T
-(do_a) 179 584 T
-(v) 202.09 584 T
-(erage) 207.91 584 T
-(use time-a) 300 584 T
-(v) 349.42 584 T
-(eraged v) 355.24 584 T
-(alues) 395.92 584 T
-(of) 300 570 T
-(the) 312.44 570 T
-(model) 329.55 570 T
-(\336elds) 361.99 570 T
-(as) 390.44 570 T
-(input) 402.88 570 T
-(to the radiation modules) 300 556 T
-(.f) 442 584 T
-(alse.) 448.88 584 T
-(rad_date) 179 534 T
-(use the input \336elds at this) 300 534 T
-(time) 300 520 T
-(rather) 323.61 520 T
-(than) 353.87 520 T
-(the) 376.8 520 T
-(current) 393.74 520 T
-(model) 300 506 T
-(time) 332.4 506 T
-(to) 356.14 506 T
-(calculate) 367.88 506 T
-(the) 412.93 506 T
-(radiati) 300 492 T
-(v) 330.36 492 T
-(e forcings) 336.18 492 T
-(\0500,0,0,0,0,0\051) 442 534 T
+(radiati) 78 634 T
+(v) 108.36 634 T
+(e_g) 114.18 634 T
+(ases) 131.45 634 T
 0 F
-(**model_name) 179 470 T
+(**ch4_data_sour) 179 634 T
+(ce) 266.12 634 T
 1 F
-(name of the model in) 300 470 T
-(which the radiation mod-) 300 456 T
-(ules are being run) 300 442 T
-(\324        \324) 442 470 T
-(\324fms\325,) 514 470 T
-(\324sk) 514 456 T
-(yhi\325) 528.48 456 T
+(source of ch4 data to be) 300 634 T
+(used) 300 620 T
+(\324    \324) 442 634 T
+(\324restart\325,) 514 634 T
+(\324icrccm\325,) 514 620 T
+(\324ipcc_92\325,) 514 606 T
+(\324ipcc_98\325,) 514 592 T
+(\324ipcc_80\325,) 514 578 T
+(\324input\325,) 514 564 T
+(\324absent\325) 514 550 T
 0 F
-(**peripherals_sour) 179 420 T
-(c) 278.12 420 T
-(e) 179 406 T
+(**n2o_data_sour) 179 528 T
+(ce) 266.79 528 T
 1 F
-(source of peripheral pack-) 300 420 T
-(ages, constants, etc. to be) 300 406 T
-(used) 300 392 T
-(\324   \324) 442 420 T
-(\324fms\325,) 514 420 T
-(\324sk) 514 406 T
-(yhi\325) 528.48 406 T
+(source of n2o data to be) 300 528 T
+(used) 300 514 T
+(\324    \324) 442 528 T
+(\324restart\325,) 514 528 T
+(\324icrccm\325,) 514 514 T
+(\324ipcc_92\325,) 514 500 T
+(\324ipcc_98\325,) 514 486 T
+(\324ipcc_80\325,) 514 472 T
+(\324input\325,) 514 458 T
+(\324absent\325) 514 444 T
 0 F
-(**application_type) 179 370 T
+(**f11_data_sour) 179 422 T
+(ce) 264.12 422 T
 1 F
-(running a model or the) 300 370 T
-(standalone dri) 300 356 T
-(v) 367.36 356 T
-(er ?) 373.18 356 T
-(\324        \324) 442 370 T
-(\324gcm\325,) 514 370 T
-(\324standalone\325) 514 356 T
-(rsd) 179 334 T
-(do repeat_same_day radia-) 300 334 T
-(tion \050diurnal c) 300 320 T
-(ycle, al) 367.81 320 T
-(w) 402.35 320 T
-(ays) 410.89 320 T
-(for the same calendar day\051) 300 306 T
-(.f) 442 334 T
-(alse.) 448.88 334 T
+(source of f11 data to be) 300 422 T
+(used) 300 408 T
+(\324    \324) 442 422 T
+(\324restart\325,) 514 422 T
+(\324icrccm\325,) 514 408 T
+(\324ipcc_92\325,) 514 394 T
+(\324ipcc_98\325,) 514 380 T
+(\324ipcc_80\325,) 514 366 T
+(\324input\325,) 514 352 T
+(\324absent\325) 514 338 T
 0 F
-(*column_type) 179 284 T
+(**f12_data_sour) 179 316 T
+(ce) 264.12 316 T
 1 F
-(type of v) 300 284 T
-(ertical grid struc-) 342.48 284 T
-(ture for standalone model) 300 270 T
-(\324               \324) 442 284 T
-(\324sk) 514 284 T
-(yl40\325,) 528.48 284 T
-(\324sk) 514 270 T
-(yl80\325,) 528.48 270 T
-(\324e) 514 256 T
-(grpl9\325,) 523.14 256 T
-(\324climl9\325,) 514 242 T
-(\324ccml12\325,) 514 228 T
-(\324climl14\325,) 514 214 T
-(e) 514 200 T
-(grpl18\325,) 519.15 200 T
-(\324climl30\325,) 514 186 T
-(nmcl18\325,) 514 172 T
-(lanl45\325) 514 158 T
-(shortw) 78 136 T
-(a) 110.54 136 T
-(v) 115.63 136 T
-(e_dri) 121.45 136 T
-(v) 145.81 136 T
-(er) 151.63 136 T
+(source of f12 data to be) 300 316 T
+(used) 300 302 T
+(\324           \324) 442 316 T
+(\324restart\325,) 514 316 T
+(\324icrccm\325,) 514 302 T
+(\324ipcc_92\325,) 514 288 T
+(\324ipcc_98\325,) 514 274 T
+(\324ipcc_80\325,) 514 260 T
+(\324input\325,) 514 246 T
+(\324absent\325) 514 232 T
 0 F
-(**swf) 179 136 T
-(orm) 208.03 136 T
+(**f113_data_sour) 179 210 T
+(ce) 270.12 210 T
 1 F
-(shortw) 300 136 T
-(a) 332.54 136 T
-(v) 337.63 136 T
-(e parameteriza-) 343.45 136 T
-(tion to be used) 300 122 T
-(\324     \325) 442 136 T
-(\324lhsw\325,) 514 136 T
-(\324esfsw99\325) 514 122 T
-(v) 179 100 T
-(erbose) 184.82 100 T
-(controls optional printout) 300 100 T
-(of solar distance) 300 86 T
-(0) 442 100 T
-( > 0) 514 100 T
+(source of f113 data to be) 300 210 T
+(used) 300 196 T
+(\324           \324) 442 210 T
+(\324restart\325,) 514 210 T
+(\324icrccm\325,) 514 196 T
+(\324ipcc_92\325,) 514 182 T
+(\324ipcc_98\325,) 514 168 T
+(\324ipcc_80\325,) 514 154 T
+(\324input\325,) 514 140 T
+(\324absent\325) 514 126 T
+0 F
+(T) 179.62 712 T
+(able 2: Namelist v) 186.52 712 T
+(ariables used with the sea-esf modules) 278.05 712 T
+1 F
+(Module) 103.83 672 T
+(V) 197.68 672 T
+(ariable Name) 205.01 672 T
+(Description) 337 672 T
+(Def) 454.07 679 T
+(ault) 471.93 679 T
+(V) 458.34 665 T
+(alue) 465.67 665 T
+(Other) 530.34 686 T
+(Acceptable) 517.01 672 T
+(V) 528 658 T
+(alues) 535.34 658 T
+72 701.75 72 118.25 2 L
+V
+0.5 H
+0 Z
+N
+173 702.25 173 117.75 2 L
+V
+N
+294 702.25 294 117.75 2 L
+V
+N
+436 702.25 436 117.75 2 L
+V
+N
+508 702.25 508 117.75 2 L
+V
+N
+580 701.75 580 118.25 2 L
+V
+N
+71.75 702 580.25 702 2 L
+V
+N
+72.25 649.25 579.75 649.25 2 L
+V
+N
+72.25 646.75 579.75 646.75 2 L
+V
+N
+71.75 542 580.25 542 2 L
+V
+N
+71.75 436 580.25 436 2 L
+V
+N
+71.75 330 580.25 330 2 L
+V
+N
+71.75 224 580.25 224 2 L
+V
+N
+71.75 118 580.25 118 2 L
+V
+N
+FMENDPAGE
+%%EndPage: "16" 16
+%%Page: "17" 17
+612 792 0 FMBEGINPAGE
+0 FrameSetSepColors
+FrameNoSep
+-45 -45 657 837 C
+0 0 0 1 0 0 0 1 K
+0 12 Q
+0 X
+(**f22_data_sour) 179 634 T
+(ce) 264.12 634 T
+1 F
+(source of f22 data to be) 300 634 T
+(used) 300 620 T
+(\324           \324) 442 634 T
+(\324restart\325,) 514 634 T
+(\324icrccm\325,) 514 620 T
+(\324ipcc_92\325,) 514 606 T
+(\324ipcc_98\325,) 514 592 T
+(\324ipcc_80\325,) 514 578 T
+(\324input\325,) 514 564 T
+(\324absent\325) 514 550 T
+0 F
+(**co2_data_sour) 179 528 T
+(ce) 265.45 528 T
+1 F
+(source of co2 data to be) 300 528 T
+(used) 300 514 T
+(\324           \324) 442 528 T
+(\324restart\325,) 514 528 T
+(\324icrccm\325,) 514 514 T
+(\324ipcc_92\325,) 514 500 T
+(\324ipcc_98\325,) 514 486 T
+(\324ipcc_80\325,) 514 472 T
+(\324input\325,) 514 458 T
+(\324330ppm\325,) 514 444 T
+(\324660ppm\325) 514 430 T
+(rh_based_clouds) 78 408 T
+0 F
+(*cldht_type_f) 179 408 T
+(orm) 248.7 408 T
+1 F
+(formulation used to de\336ne) 300 408 T
+(the  boundaries between) 300 394 T
+(lo) 300 380 T
+(w) 309.04 380 T
+(, middle and high) 316.92 380 T
+(clouds) 300 366 T
+(\324          \324) 442 408 T
+(\32460\325, \32493\325,) 514 408 T
+(\324sk) 514 394 T
+(yhi\325) 528.48 394 T
+0 F
+(*cirrus_cld_pr) 179 344 T
+(op_f) 254.78 344 T
+(o) 277.15 344 T
+(rm) 179 330 T
+1 F
+(the \324blackness\325 of cirrus) 300 344 T
+(clouds) 300 330 T
+(\324part\325,) 514 344 T
+(\324full\325) 514 330 T
+(sea_esf_rad) 78 308 T
+(dummy) 179 308 T
+(dummy v) 300 308 T
+(ariable) 345.37 308 T
+(seal) 78 286 T
+(w99) 96.54 286 T
+(do_nlte) 179 286 T
+(is a re) 300 286 T
+(gion of non-local) 328.48 286 T
+(thermodynamic equilib-) 300 272 T
+(rium included in the) 300 258 T
+(model ?) 300 244 T
+(.f) 442 286 T
+(alse.) 448.88 286 T
+(do_thick) 179 222 T
+(an optional parameteriza-) 300 222 T
+(tion of the longw) 300 208 T
+(a) 382.21 208 T
+(v) 387.3 208 T
+(e \337ux) 393.12 208 T
+(in thick clouds is used ?) 300 194 T
+(.f) 442 222 T
+(alse.) 448.88 222 T
+(do_ckd2p1) 179 172 T
+(use CKD2.1 w) 300 172 T
+(ater v) 370.87 172 T
+(apor) 397.56 172 T
+(continuum parameteriza-) 300 158 T
+(tion ?) 300 144 T
+(.true.) 442 172 T
+(do_ch4n2olbltmpint) 179 122 T
+(  de) 300 122 T
+(v) 317.03 122 T
+(elopment option) 322.85 122 T
+(.f) 442 122 T
+(alse.) 448.88 122 T
+(shortw) 78 100 T
+(a) 110.54 100 T
+(v) 115.63 100 T
+(e_dri) 121.45 100 T
+(v) 145.81 100 T
+(er) 151.63 100 T
+0 F
+(**swf) 179 100 T
+(orm) 208.03 100 T
+1 F
+(shortw) 300 100 T
+(a) 332.54 100 T
+(v) 337.63 100 T
+(e parameteriza-) 343.45 100 T
+(tion to be used) 300 86 T
+(\324     \325) 442 100 T
+(\324lhsw\325,) 514 100 T
+(\324esfsw99\325) 514 86 T
 0 F
 (T) 179.62 712 T
 (able 2: Namelist v) 186.52 712 T
@@ -7091,28 +5602,28 @@ N
 72.25 646.75 579.75 646.75 2 L
 V
 N
-71.75 598 580.25 598 2 L
+71.75 542 580.25 542 2 L
 V
 N
-71.75 548 580.25 548 2 L
+71.75 422 580.25 422 2 L
 V
 N
-71.75 484 580.25 484 2 L
+71.75 358 580.25 358 2 L
 V
 N
-71.75 434 580.25 434 2 L
+71.75 322 580.25 322 2 L
 V
 N
-71.75 384 580.25 384 2 L
+71.75 300 580.25 300 2 L
 V
 N
-71.75 348 580.25 348 2 L
+71.75 236 580.25 236 2 L
 V
 N
-71.75 298 580.25 298 2 L
+71.75 186 580.25 186 2 L
 V
 N
-71.75 150 580.25 150 2 L
+71.75 136 580.25 136 2 L
 V
 N
 71.75 114 580.25 114 2 L
@@ -7122,8 +5633,8 @@ N
 V
 N
 FMENDPAGE
-%%EndPage: "25" 25
-%%Page: "26" 26
+%%EndPage: "17" 17
+%%Page: "18" 18
 612 792 0 FMBEGINPAGE
 0 FrameSetSepColors
 FrameNoSep
@@ -7219,47 +5730,16 @@ FrameNoSep
 (\324   \324) 442 342 T
 (\324input\325,) 514 342 T
 (\324speci\336ed\325) 514 328 T
-(std_pressures) 78 292 T
-0 F
-(*lus) 179 292 T
-1 F
-(number of pure pressure) 300 292 T
-(le) 300 278 T
-(v) 308.36 278 T
-(els in model. V) 314.18 278 T
-(alue) 386.18 278 T
-(must be supplied only) 300 264 T
-(when running in SKYHI) 300 250 T
+(strat_clouds_W) 78 292 T
+(dummy) 179 292 T
+(dummy v) 300 292 T
+(ariable) 345.37 292 T
 (0) 442 292 T
-(strat_clouds_W) 78 228 T
-(dummy) 179 228 T
-(dummy v) 300 228 T
-(ariable) 345.37 228 T
-(0) 442 228 T
-(surf) 78 206 T
-(ace_albedo) 96.54 206 T
-(albedo_type) 179 206 T
-(source of surf) 300 206 T
-(ace albedo) 365.86 206 T
-(v) 300 192 T
-(alues used) 305.7 192 T
-(\324climap\325) 442 206 T
-(\324zonal\325) 514 206 T
-(single_column_albedo) 179 170 T
-(v) 300 170 T
-(alue) 305.7 170 T
-(of) 328.45 170 T
-(surf) 341.21 170 T
-(ace) 359.75 170 T
-(albedo) 378.49 170 T
-(for) 413.25 170 T
-(single column model) 300 156 T
-(0.1) 442 170 T
-(zonal_clouds_W) 78 134 T
-(dummy) 179 134 T
-(dummy v) 300 134 T
-(ariable) 345.37 134 T
-(0) 442 134 T
+(zonal_clouds_W) 78 270 T
+(dummy) 179 270 T
+(dummy v) 300 270 T
+(ariable) 345.37 270 T
+(0) 442 270 T
 0 F
 (T) 179.62 712 T
 (able 2: Namelist v) 186.52 712 T
@@ -7277,24 +5757,24 @@ FrameNoSep
 (Acceptable) 517.01 672 T
 (V) 528 658 T
 (alues) 535.34 658 T
-72 701.75 72 126.25 2 L
+72 701.75 72 262.25 2 L
 V
 0.5 H
 0 Z
 N
-173 702.25 173 125.75 2 L
+173 702.25 173 261.75 2 L
 V
 N
-294 702.25 294 125.75 2 L
+294 702.25 294 261.75 2 L
 V
 N
-436 702.25 436 125.75 2 L
+436 702.25 436 261.75 2 L
 V
 N
-508 702.25 508 125.75 2 L
+508 702.25 508 261.75 2 L
 V
 N
-580 701.75 580 126.25 2 L
+580 701.75 580 262.25 2 L
 V
 N
 71.75 702 580.25 702 2 L
@@ -7324,33 +5804,22 @@ N
 71.75 306 580.25 306 2 L
 V
 N
-71.75 242 580.25 242 2 L
+71.75 284 580.25 284 2 L
 V
 N
-71.75 220 580.25 220 2 L
-V
-N
-71.75 184 580.25 184 2 L
-V
-N
-71.75 148 580.25 148 2 L
-V
-N
-71.75 126 580.25 126 2 L
+71.75 262 580.25 262 2 L
 V
 N
 FMENDPAGE
-%%EndPage: "26" 26
+%%EndPage: "18" 18
 %%Trailer
 FMENDDOCUMENT
 %%BoundingBox: 0 0 612 792
 %%PageOrder: Ascend
-%%Pages: 26
+%%Pages: 18
 %%DocumentFonts: Times-Bold
 %%+ Times-Roman
-%%+ Times-Italic
 %%DocumentNeedsFonts: Times-Bold
 %%+ Times-Roman
-%%+ Times-Italic
 %%DocumentSuppliedFonts:
 %%EOF

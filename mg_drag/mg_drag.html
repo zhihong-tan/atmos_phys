@@ -20,7 +20,6 @@ module mg_drag_mod</h2>
      <B>Contact:</B>   Bill Stern
      <B>Reviewers:</B>
 
-     <B><A HREF=".doc.log#mg_drag.f90">Tags/Status</A></B>
 </PRE>
 <!-- END HEADER -->
 <!---------------------------------------------------------------------><a NAME="OVERVIEW"></a>
@@ -191,16 +190,17 @@ NAMELIST</h4>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; wave breaking is allowed.
 
 &nbsp; do_conserve_energy&nbsp; If TRUE the heating due to the dissipation of kinetic energy
-                      by Rayleigh damping will be computed (default is FALSE).</pre>
+                      by Rayleigh damping will be computed (default is FALSE).
+
+&nbsp; do_mcm_mg_drag&nbsp; If TRUE the gravity wave drag calculation mimics Manabe Climate Model.
+                       (default is FALSE).</pre>
 <!-- END NAMELIST --><!---------------------------------------------------------------------><a NAME="CHANGES"></a>
 <hr>
 <h4>
 CHANGE HISTORY</h4>
 <!-- BEGIN CHANGES -->
 <pre>
-<B><A HREF=".doc.log#mg_drag.f90">Revision history</A></B>
 
-<b>changes</b> (05/23/2000)
 
 &nbsp;&nbsp;&nbsp;&nbsp; MPP version created. Minor changes for open_file, error_mesg,
 &nbsp;&nbsp;&nbsp;&nbsp; and Fortran write statements.</pre>

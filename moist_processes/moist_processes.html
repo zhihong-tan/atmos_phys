@@ -72,6 +72,8 @@ are controlled by this module:
      physics_diag_mod
               fms_mod
         constants_mod
+    field_manager_mod
+   tracer_manager_mod
 
 </PRE>
 </A><!-- END MODULES_USED -->
@@ -267,10 +269,6 @@ input (optional)
                  temperature is less than or equal to Tfreeze then snow occurs.
                    [real, default: tfreeze=273.16]
 
-  nql,nqi,nqa    Tracer number (index) for the stratiform cloud scheme
-                 tracers cloud liquid water, cloud ice, and cloud fraction,
-                 respectively.  [integer, default: nql=nqi=nqa=0]
-
   use_tau        Switch to determine whether data (temp, sphum, and tracers)
                  at the current time level (tau) or next time level (tau+1)
                  will used in the convective and large-scale schemes.
@@ -301,11 +299,6 @@ Notes:
   * pdepth and tfreeze are used to determine liquid vs. solid precipitation
       for MCA, LSC, and RAS schemes, the stratiform scheme determines it's
       own precipitation type.
-  * If do_strat=true then the tracer numbers (nql,nqi,nqa) must be set to
-      different values > 0.
-  * call_pat should not be set to anything but the default if do_strat=true.
-      It will not cause an error, but the effects may not be desireable.
-  * There has been limited testing of the call_pat option.
 
 </PRE>
 </A><!-- END NAMELIST -->
@@ -446,8 +439,13 @@ is used:
        or you may have inadvertently selected the stratiform
        cloud scheme.
 
+    <b>stratiform cloud tracer(s) not found</b>
+       This code expects the field_table to define tracers
+       called: <b>liq_wat</b>, <b>ice_wat</b>, and <b>cld_amt</b>.
+
     <b>tracers indices cannot be the same (i.e., nql=nqi=nqa).</b>
        The tracers numbers must all be unique (and non-zero).
+       This error should not occur using the tracer manager.
 
     <b>temperatures not within range of es loopup table</b>
        A check of temperatures within moist_processes found
@@ -477,12 +475,6 @@ is used:
        The relative humidity cloud scheme will not be used and
        the stratiform cloud scheme will override.
        Check namelist options do_rh_clouds and do_strat. 
-
-    <b>restart data (num_calls) set to zero.</b>
-       This is not a FATAL error, only a NOTE.
-       This will occur whenever the restart file does not exist.
-       Unless you are using the namelist option call_pat this
-       message can be ignored.
 
 </PRE>
 </A><!-- END ERRORS -->

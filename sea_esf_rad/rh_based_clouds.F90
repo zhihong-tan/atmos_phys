@@ -3,25 +3,37 @@
 
 use rh_clouds_mod,          only: get_global_clouds
 use microphys_rad_mod,      only: microphys_rad_driver,   &
-				  microphys_rad_init
+				  microphys_rad_init,   &
+				  microphys_presc_conc,   &
+                                  lwemiss_calc
 use utilities_mod,          only: open_file, file_exist,   &
                                   check_nml_error, error_mesg,   &
                                   print_version_number, FATAL, NOTE, &
-				  WARNING, get_my_pe, close_file, &
-				  get_domain_decomp
-use rad_step_setup_mod,     only: press, jabs, iabs,  &
-			          IMINP, IMAXP, JMINP, JMAXP, &
-                                  ISRAD, IERAD, JSRAD, JERAD, & 
-                                  KSRAD, KERAD
+				  WARNING, get_my_pe, close_file
+!			  WARNING, get_my_pe, close_file, &
+!			  get_domain_decomp
+!use rad_step_setup_mod,     only: press, jabs, iabs,  &
+!		          IMINP, IMAXP, JMINP, JMAXP, &
+!                                 ISRAD, IERAD, JSRAD, JERAD, & 
+!                                 KSRAD, KERAD, cosz
+!use rad_step_setup_mod,     only: press, jabs, iabs,  &
+!use rad_step_setup_mod,     only: press,              &
+!use rad_step_setup_mod,     only: press
+!                                                cosz
 use rad_utilities_mod,      only: Environment, environment_type, &
                                   shortwave_control_type, Sw_control, &
-                                  longwave_control_type, Lw_control
-use longwave_setup_mod,     only: longwave_parameter_type, &    
+                                  cld_diagnostics_type, &
+                                  longwave_control_type, Lw_control, &
+                                  longwave_parameter_type, &    
                                   Lw_parameters
-use astronomy_package_mod,  only: get_astronomy_for_clouds,  &
-			          get_astronomy_for_clouds_init
+!use longwave_setup_mod,     only: longwave_parameter_type, &    
+!                                  Lw_parameters
+!use astronomy_package_mod,  only: get_astronomy_for_clouds,  &
+!use astronomy_package_mod,  only:                            &
+!			          get_astronomy_for_clouds_init
 use constants_new_mod,      only: radians_to_degrees
 use donner_deep_mod,        only: get_cemetf, inquire_donner_deep
+!use rad_output_file_mod, only: hold_clouds
 
 !--------------------------------------------------------------------
 
@@ -40,8 +52,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 ! character(len=5), parameter  ::  version_number = 'v0.09'
-  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 1.2 2001/07/05 17:33:04 fms Exp $'
-  character(len=128)  :: tag     =  '$Name: galway $'
+  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 1.3 2002/07/16 22:36:44 fms Exp $'
+  character(len=128)  :: tag     =  '$Name: havana $'
 
 
 
@@ -60,8 +72,10 @@ private         &
 !-------- namelist  ---------
 
 
-character(len=5)             :: cldht_type_form       = '     '
-character(len=4)             :: cirrus_cld_prop_form  = '    '
+!character(len=5)             :: cldht_type_form       = '     '
+!character(len=4)             :: cirrus_cld_prop_form  = '    '
+character(len=8)             :: cldht_type_form       = '     '
+character(len=8)             :: cirrus_cld_prop_form  = '    '
 
 !    logical variables derived from namelist input
 
@@ -100,6 +114,11 @@ namelist /rh_based_clouds_nml /     &
  
 integer, parameter             :: NOFCLDS_SP=3  
 integer, parameter             :: LATOBS=19     
+real, dimension(LATOBS)                 ::  cloud_lats
+
+data cloud_lats / -90., -80., -70., -60., -50., -40., -30., -20., &
+                  -10., 0.0, 10., 20., 30., 40., 50., 60., 70., 80., &
+                  90. /
 
 real, dimension(NOFCLDS_SP)    :: crfvis_m,   crfir_m,   cabir_m,  &
                                   crfvis_fms, crfir_fms, cabir_fms, &
@@ -222,11 +241,15 @@ real, dimension(:), allocatable   :: qlevel
 !    emissitivies are defined. 
 !--------------------------------------------------------------------
 integer               :: NLWCLDB 
-integer               :: nsolwg
-character(len=10)     :: swform
+!integer               :: nsolwg
+!character(len=10)     :: swform
+!character(len=16)     :: swform
+logical  :: do_lhsw, do_esfsw
 logical               :: do_lwcldemiss
-integer               :: x(4), y(4), id, jd, jdf
+!integer               :: x(4), y(4), id, jd, jdf
 
+      integer  :: israd, ierad, jsrad, jerad, ksrad, kerad, &
+                  iminp, imaxp, jminp, jmaxp
 
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
@@ -237,16 +260,21 @@ integer               :: x(4), y(4), id, jd, jdf
 	 contains 
 
 
-subroutine rh_clouds_init (th, qlevel_in)
+!subroutine rh_clouds_init (th, qlevel_in, latb)
+subroutine rh_clouds_init (    qlevel_in, latb)
 
 
-real, dimension(:), intent(in)    :: th, qlevel_in
+!real, dimension(:), intent(in)    :: th, qlevel_in, latb
+real, dimension(:), intent(in)    ::     qlevel_in, latb
 
 !--------------------------------------------------------------------
      real                              :: alatn, fl
      integer                           :: j,li, jj
      integer                           :: unit, ierr, io
      real, dimension(:), allocatable   :: cldhm, cldml
+     integer, dimension(:), allocatable :: jindx2
+     integer                      :: jdf
+     real, dimension (size(latb,1) - 1) :: th
 
 !---------------------------------------------------------------------
 !-----  read namelist  ------
@@ -269,20 +297,32 @@ real, dimension(:), intent(in)    :: th, qlevel_in
       endif
       call close_file (unit)
 
-      call get_domain_decomp (x, y)
-      jdf = y(4) -y(3) + 1
-      id  = x(2) -x(1) + 1
-      jd  = y(2) -y(1) + 1
-      call get_astronomy_for_clouds_init (nsolwg)
+
+!     call get_domain_decomp (x, y)
+!     jdf = y(4) -y(3) + 1
+!     id  = x(2) -x(1) + 1
+!     jd  = y(2) -y(1) + 1
+
+
+       jdf = size(latb,1) - 1
+        allocate (jindx2  (jdf))
+        call find_nearest_index (latb, jindx2)
+!       print *, 'jindx2', get_my_pe(), jindx2
+
+!     call get_astronomy_for_clouds_init (nsolwg)
+!     nsolwg = 1
 
       allocate ( qlevel(KSRAD:KERAD) )
       qlevel = qlevel_in
 
-      NLWCLDB = Lw_parameters%NLWCLDB
-      swform = Sw_control%sw_form
+!      NLWCLDB = Lw_parameters%NLWCLDB
+!     swform = Sw_control%sw_form
+      do_lhsw = Sw_control%do_lhsw
+      do_esfsw = Sw_control%do_esfsw
       do_lwcldemiss = Lw_control%do_lwcldemiss
 
-      if (trim(swform) /= 'esfsw99' ) then
+!     if (trim(swform) /= 'esfsw99' ) then
+      if (.not. do_esfsw            ) then
         allocate ( zza(NOFCLDS_SP, NREFL_BDS) )
       endif
 
@@ -407,21 +447,26 @@ real, dimension(:), intent(in)    :: th, qlevel_in
 !    in default case, no interpolation is actually done; the nearest
 !    latitude available (using NINT function) is used.
 !---------------------------------------------------------------------
-	allocate ( cldhm_abs_gl (jd) )
-	allocate ( cldml_abs_gl (jd) )
-        do j=1,jd
-	  if (Environment%using_sky_periphs) then
-            fl = 9.0E+00 - 9.0E+00*(FLOAT(JD+1 -j - JD/2) -    &
-                 0.5E+00)/FLOAT(JD/2)
-            li = NINT(fl) + 1
-            cldhm_abs_gl(j) = cldhm(li)
-            cldml_abs_gl(j) = cldml(li)
-	  endif
-        end do
+!       allocate ( cldhm_abs_gl (jd) )
+!       allocate ( cldml_abs_gl (jd) )
+!       do j=1,jd
         do j=1,jdf
 	  if (Environment%using_sky_periphs) then
-	    cldhm_abs(j) =  cldhm_abs_gl(j+y(3)-1)
-	    cldml_abs(j) =  cldml_abs_gl(j+y(3)-1)
+!           fl = 9.0E+00 - 9.0E+00*(FLOAT(JD+1 -j - JD/2) -    &
+!                0.5E+00)/FLOAT(JD/2)
+!           li = NINT(fl) + 1
+            li = jindx2(j)
+!           cldhm_abs_gl(j) = cldhm(li)
+!           cldml_abs_gl(j) = cldml(li)
+            cldhm_abs   (j) = cldhm(li)
+            cldml_abs   (j) = cldml(li)
+	  endif
+        end do
+         th(1:jdf) = 0.5*(latb(1:jdf) + latb(2:jdf+1))
+        do j=1,jdf
+          if (Environment%using_sky_periphs) then
+!    cldhm_abs(j) =  cldhm_abs_gl(j+y(3)-1)
+!    cldml_abs(j) =  cldml_abs_gl(j+y(3)-1)
 	  else if (Environment%using_fms_periphs) then
             cldhm_abs(j) = cldhp + (90.0E+00-abs(th(j)*   &
 			   radians_to_degrees))*(cldhe-cldhp)/90.0E+00
@@ -429,14 +474,15 @@ real, dimension(:), intent(in)    :: th, qlevel_in
 			   radians_to_degrees))*(cldme-cldmp)/90.0E+00
 	  endif
         end do
-	deallocate (cldhm_abs_gl)
-	deallocate (cldml_abs_gl)
+!deallocate (cldhm_abs_gl)
+!deallocate (cldml_abs_gl)
 
 !---------------------------------------------------------------------
 !    if a cloud microphysics scheme is to be employed with the cloud
 !    scheme, initialize the microphysics_rad module.
 !--------------------------------------------------------------------
-        if (trim(swform) == 'esfsw99' .or. do_lwcldemiss) then
+!       if (trim(swform) == 'esfsw99' .or. do_lwcldemiss) then
+        if (do_esfsw                  .or. do_lwcldemiss) then
           call microphys_rad_init (cldhm_abs, cldml_abs)
         endif
 
@@ -450,15 +496,61 @@ real, dimension(:), intent(in)    :: th, qlevel_in
 end subroutine rh_clouds_init
 
 
+!#####################################################################
+
+subroutine find_nearest_index (latb, jindx2)
+
+real, dimension(:), intent(in) :: latb
+integer, dimension(:), intent(out)  :: jindx2
+ 
+
+       integer :: jd, j, jj
+      real   :: diff_low, diff_high
+       real, dimension(size(latb,1)-1) :: lat
+
+ 
+       jd = size(latb,1) - 1
+
+       do j = 1,jd
+         lat(j) = 0.5*(latb(j) + latb(j+1))
+       do jj=1, LATOBS
+         if (lat(j)*radians_to_degrees >= cloud_lats(jj)) then
+          diff_low = lat(j)*radians_to_degrees - cloud_lats(jj)
+           diff_high = cloud_lats(jj+1) - lat(j)*radians_to_degrees
+           if (diff_high <= diff_low) then
+             jindx2(j) = jj+1
+           else
+             jindx2(j) = jj
+           endif
+         endif
+       end do
+    end do
+
+
+
+
+
+
+end subroutine find_nearest_index
+
+ 
+
+
 
 
 !######################################################################
 
-subroutine rh_clouds_calc (camtsw, cmxolw, crndlw, ncldsw, nmxolw, &
+subroutine rh_clouds_calc (is, ie, js, je, Cld_diagnostics, deltaz, cosz, press,  &
+                     temp,     camtsw, cmxolw, crndlw,  &
+                          ncldsw, nmxolw, &
 			   nrndlw, emmxolw, emrndlw, cirabsw,   &
 			   cvisrfsw, cirrfsw, cldext, cldsct, &
 			   cldasymm)
 
+integer,                     intent(in)    :: is, ie, js, je
+real,    dimension(:,:,:),   intent(in) :: deltaz, press, temp         
+real,    dimension(:,:),   intent(in) :: cosz                   
+type(cld_diagnostics_type), intent(inout) :: Cld_diagnostics
 real,    dimension(:,:,:),   intent(inout) :: camtsw, cmxolw, crndlw
 integer, dimension(:,:),     intent(inout) :: ncldsw, nrndlw, nmxolw
 real,    dimension(:,:,:,:), intent(inout) :: emmxolw, emrndlw
@@ -503,7 +595,9 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
 !                may be zenith angle dependent.
 !---------------------------------------------------------------------
  
-      real, dimension(:,:,:), allocatable    :: ccover, cosangsolar, &
+!     real, dimension(:,:,:), allocatable    :: ccover, cosangsolar, &
+      real, dimension(:,:  ), allocatable    ::         cosangsolar
+      real, dimension(:,:,:), allocatable    :: ccover,              &
 						cemetf
       real, dimension(:), allocatable        :: qlsig
       integer, dimension(:,:,:), allocatable :: iflagglbl, ifcd,&
@@ -513,6 +607,44 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
       integer                                :: k, j, i, ngp
       real                                   :: cld
       logical                                :: do_donner_deep
+
+      
+!     integer  :: israd, ierad, jsrad, jerad, ksrad, kerad, &
+!                 iminp, imaxp, jminp, jmaxp
+     real, dimension(size(press,1), size(press,2), size(press,3)-1) :: &
+						     rh
+     real, dimension(size(press,1), size(press,2)) :: rh_crit, sigma, &
+					       icount_hi, icount_mid, &
+	            		               icount_low     
+!            		               icount_low,  &
+!				       cld_isccp_hi,  &
+!				       cld_isccp_mid, &
+!		                       cld_isccp_low, tot_clds
+
+     integer                                ::  ks, ke, ierr,  &
+					        it, if, jt, jf
+
+   real, dimension(:,:,:,:), allocatable  :: abscoeff, cldemiss
+   real, dimension(:,:,:), allocatable    :: conc_drop, conc_ice, &
+                                             size_drop, size_ice
+
+!---------------------------------------------------------------------
+      allocate ( Cld_diagnostics%tot_clds (size(press,1), size(press,2)) )
+      allocate ( Cld_diagnostics%cld_isccp_hi  (size(press,1), size(press,2)) )
+      allocate ( Cld_diagnostics%cld_isccp_mid (size(press,1), size(press,2)) )
+      allocate ( Cld_diagnostics%cld_isccp_low (size(press,1), size(press,2)) )
+
+
+      israd = 1
+      jsrad = 1
+      ksrad = 1
+      iminp = 1
+      jminp = 1
+      ierad = size (camtsw,1)
+      jerad = size (camtsw,2)
+      kerad = size (camtsw,3)
+      imaxp = size (camtsw, 1)
+      jmaxp = size (camtsw, 2)
 
 !---------------------------------------------------------------------
 
@@ -527,7 +659,8 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
       call inquire_donner_deep (do_donner_deep)
       if (do_donner_deep) then
         allocate (cemetf(IMINP:IMAXP, JMINP:JMAXP, ksrad:kerad))
-        call get_cemetf(jabs(jminp), cemetf)
+!        call get_cemetf(jabs(jminp), cemetf)
+        call get_cemetf(js,          cemetf)
         do k=ksrad,kerad
           do j=jminp,jmaxp
             do i=iminp,imaxp
@@ -552,7 +685,9 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
   
 
 
-      allocate (cosangsolar (ISRAD:IERAD, JSRAD:JERAD, nsolwg) )
+!     allocate (cosangsolar (ISRAD:IERAD, JSRAD:JERAD, nsolwg) )
+!     allocate (cosangsolar (ISRAD:IERAD, JSRAD:JERAD,      1) )
+      allocate (cosangsolar (ISRAD:IERAD, JSRAD:JERAD        ) )
       allocate (ifcd   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
       allocate (ifcv   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
       allocate (ccover (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
@@ -561,30 +696,89 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
       allocate (mid_cloud(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
       allocate (low_cloud(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
 
-      if (Environment%running_fms) then
+!     if (Environment%running_fms) then
         allocate (iflagglbl (IMINP:IMAXP, JMINP:JMAXP, KSRAD:KERAD) )
         iflagglbl(:,:,:) = 0
-      else if (Environment%running_skyhi) then
-        allocate (iflagglbl (id, jd, KSRAD:KERAD) )
-      endif
+!     else if (Environment%running_skyhi) then
+!       allocate (iflagglbl (id, jd, KSRAD:KERAD) )
+!     endif
 
 !---------------------------------------------------------------------
 !     obtain the appropriate zenith angles that are to be used here.
 !---------------------------------------------------------------------
-      call get_astronomy_for_clouds (cosangsolar)
+!     call get_astronomy_for_clouds (cosangsolar)
+!     cosangsolar(:,:,:) = cosz(:,:,:)
+      cosangsolar(:,:  ) = cosz(:,:  )
 
 !--------------------------------------------------------------------- 
 !     for the predicted clouds based on the rh distribution, obtain the
 !     cloud flag array
 !-------------------------------------------------------------
-      call get_global_clouds (iabs(IMINP), jabs(JMINP), press,  &
+!      call get_global_clouds (iabs(IMINP), jabs(JMINP), press,  &
+      call get_global_clouds (is, js,                   press,  &
                               iflagglbl)
+
+!!! MAY BE a slight inconsistency here in the pressure level boun-
+!!! daries for the isccp cloud types compared with skyhi.
+
+   it = 1
+   jt = 1
+!  if =  size(rh,1) 
+!  jf =  size(rh,2)  
+   if =  size(press,1) 
+   jf =  size(press,2)  
+!  if (get_my_pe() == 0) then
+!    print *, 'it,if, jt,jf', it,if,jt,jf
+!  endif
+   do j=jt,jf        
+     do i=it,if       
+       Cld_diagnostics%tot_clds(i,j) = 0.0
+       icount_hi(i,j) = 1.0
+       icount_mid(i,j) = 1.
+       icount_low(i,j) = 1.
+       Cld_diagnostics%cld_isccp_hi (i,j) = 0.0
+       Cld_diagnostics%cld_isccp_mid(i,j) = 0.0
+       Cld_diagnostics%cld_isccp_low(i,j) = 0.0
+       do k=ksrad,kerad
+! if (cldflag_out(i,j,k) == 1) tot_clds(i,j) = 1.0E+00
+	 if (iflagglbl(i,j,k) == 1) Cld_diagnostics%tot_clds(i,j) = 1.0E+00
+!        if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) >=  10000. &
+         if (iflagglbl  (i,j,k) == 1 .and. press(i,j,k) >=  10000. &
+         .and. press(i,j,k) <= 440000. .and. icount_hi(i,j) == 1.)  &
+	 then
+	   Cld_diagnostics%cld_isccp_hi(i,j) = 1.0
+	   icount_hi(i,j) =0.0
+	   icount_mid(i,j) =0.0
+	   icount_low(i,j) =0.0
+         endif
+!	 if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) >  440000. &
+ 	 if (iflagglbl  (i,j,k) == 1 .and. press(i,j,k) >  440000. &
+         .and. press(i,j,k) <= 680000. .and. icount_mid(i,j) == 1.)  &
+	 then
+	   Cld_diagnostics%cld_isccp_mid(i,j) = 1.0
+	   icount_mid(i,j) =0.
+	   icount_low(i,j) =0.
+         endif
+! if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) > 680000. &
+	 if (iflagglbl  (i,j,k) == 1 .and. press(i,j,k) > 680000. &
+         .and. press(i,j,k) <= 1000000. .and. icount_low(i,j) == 1.) &
+         then
+           Cld_diagnostics%cld_isccp_low(i,j) = 1.0
+           icount_low(i,j) =0.
+         endif
+       end do
+     end do
+   end do
+
+!  call hold_clouds (tot_clds, cld_isccp_hi, cld_isccp_mid,  &
+!                      cld_isccp_low)
+
 !-----------------------------------------------------------------------
 !     locate those points with cloudiness. set a flag to indicate if
 !     it is stable or convective cloudiness. do not allow clouds at
 !     model level 1. 
 !-----------------------------------------------------------------------
-      if (Environment%running_fms) then
+!     if (Environment%running_fms) then
         do k=KSRAD+1,KERAD
           do j=JSRAD,JERAD
             do i=ISRAD,IERAD
@@ -604,28 +798,28 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
             end do
           end do
         end do
-      else if (Environment%running_skyhi) then
-        do k=KSRAD+1,KERAD
-          do j=JSRAD,JERAD
-            do i=ISRAD,IERAD
-              if (iflagglbl(iabs (i),jabs (j),k) .EQ. 3 .or.  &
-		  cvflag(i,j,k) ) then
-	        ifcv(i,j,k) = 1
-	        ifcd(i,j,k) = 0
-	        ccover(i,j,k) = crz 
-	      else if (iflagglbl(iabs (i),jabs (j),k) .EQ. 1) then
-	        ifcv(i,j,k) = 0
-	        ifcd(i,j,k) = 1
-	        ccover(i,j,k) = crz 
-	      else
-	        ifcv(i,j,k) = 0
-	        ifcd(i,j,k) = 0
-	        ccover(i,j,k) = 0.0E+00
-	      endif
-	    end do
-	  end do
-        end do
-      endif
+!     else if (Environment%running_skyhi) then
+!       do k=KSRAD+1,KERAD
+!         do j=JSRAD,JERAD
+!           do i=ISRAD,IERAD
+!             if (iflagglbl(iabs (i),jabs (j),k) .EQ. 3 .or.  &
+!	  cvflag(i,j,k) ) then
+!        ifcv(i,j,k) = 1
+!        ifcd(i,j,k) = 0
+!        ccover(i,j,k) = crz 
+!      else if (iflagglbl(iabs (i),jabs (j),k) .EQ. 1) then
+!        ifcv(i,j,k) = 0
+!        ifcd(i,j,k) = 1
+!        ccover(i,j,k) = crz 
+!      else
+!        ifcv(i,j,k) = 0
+!        ifcd(i,j,k) = 0
+!        ccover(i,j,k) = 0.0E+00
+!      endif
+!    end do
+!  end do
+!       end do
+!     endif
 
 !---------------------------------------------------------------------
 !     define the number of each type of cloud in each column and the 
@@ -672,16 +866,20 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
                 qlsig(k) = qlevel(k)
               endif
 
-	      if (qlsig(k) .LE. cldhm_abs(jabs(j)) ) then
+!      if (qlsig(k) .LE. cldhm_abs(jabs(j)) ) then
+             if (qlsig(k) .LE. cldhm_abs(js+j-1 ) ) then
 	        hi_cloud(i,j,k) = .true.
 	        mid_cloud(i,j,k) = .false.
 	        low_cloud(i,j,k) = .false.
-	      else if (qlsig(k) .GT. cldhm_abs(jabs(j))  .and.  &
-	               qlsig(k) .LT. cldml_abs(jabs(j)) ) then
+!      else if (qlsig(k) .GT. cldhm_abs(jabs(j))  .and.  &
+!               qlsig(k) .LT. cldml_abs(jabs(j)) ) then
+              else if (qlsig(k) .GT. cldhm_abs(js+j-1 )  .and.  &
+                       qlsig(k) .LT. cldml_abs(js+j-1 ) ) then
 	        hi_cloud(i,j,k) = .false.
 	        mid_cloud(i,j,k) = .true.
 	        low_cloud(i,j,k) = .false.
-	      else if (qlsig(k) .GE. cldml_abs(jabs(j)) ) then
+!      else if (qlsig(k) .GE. cldml_abs(jabs(j)) ) then
+              else if (qlsig(k) .GE. cldml_abs(js+j-1 ) ) then
 	        hi_cloud(i,j,k) = .false.
 	        mid_cloud(i,j,k) = .false.
 	        low_cloud(i,j,k) = .true.
@@ -723,16 +921,19 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
 !     if microphysics not being used for sw calculation, calculate the
 !     needed sw reflectivities and absorptivities.
 !-------------------------------------------------------------------
-      if (trim(swform) /= 'esfsw99' ) then
+!     if (trim(swform) /= 'esfsw99' ) then
+      if (.not. do_esfsw            ) then
         do j=JSRAD,JERAD
           do i=ISRAD,IERAD
 	    if (ncldsw(i,j) > 0 ) then
-	      do ngp=1,nsolwg
+!      do ngp=1,nsolwg
+	         ngp=1        
 !-----------------------------------------------------------------------
 !     call cldalb to define the zenith angle dependent cloud visible
 !     and infrared reflectivities.
 !-----------------------------------------------------------------------
-	        call cldalb (cosangsolar(i,j,ngp))
+!        call cldalb (cosangsolar(i,j,ngp))
+	        call cldalb (cosangsolar(i,j    ))
 
 !-----------------------------------------------------------------------
 !     call albcld_sw to assign the zenith-angle-dependent visible and 
@@ -742,7 +943,7 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
                 call albcld_sw (i, j, hi_cloud, mid_cloud, low_cloud,  &
 		 	        ngp, camtsw, cmxolw, crndlw, cvisrfsw, &
 			        cirrfsw, cirabsw)
-	      end do
+!      end do
             endif
 	  end do
         end do
@@ -752,13 +953,79 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
 !  if microphysics is being used for either sw or lw calculation, call 
 !  microphys_rad_driver to obtain cloud radiative properties.
 !--------------------------------------------------------------------
-      if (trim(swform) == 'esfsw99' ) then
-        call microphys_rad_driver (camtsw, emmxolw, emrndlw, &
-				   cldext=cldext, cldsct=cldsct,    &
-				   cldasymm=cldasymm) 
-      else if (do_lwcldemiss) then
-        call microphys_rad_driver (camtsw, emmxolw, emrndlw)
+!     if (do_esfsw                  ) then
+!       call microphys_rad_driver (is, ie, js, je, deltaz, &
+!        press, temp,       camtsw, emmxolw,  &
+!                                  emrndlw, Cld_diagnostics, &
+!			   cldext=cldext, cldsct=cldsct,    &
+!			   cldasymm=cldasymm) 
+!     else if (do_lwcldemiss) then
+!       call microphys_rad_driver (is, ie, js, je, deltaz,  &
+!               press, temp,camtsw, emmxolw, &
+!                                   emrndlw, Cld_diagnostics)
+!     endif
+
+!     if (trim(swform) == 'esfsw99' .or. do_lwcldemiss) then
+
+
+
+      if (do_esfsw                  .or. do_lwcldemiss) then
+
+
+allocate (abscoeff ( SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3), &
+             SIZE(emmxolw,4)) )
+allocate (cldemiss ( SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3), &
+                 SIZE(emmxolw,4)) )
+allocate (conc_drop (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
+allocate (conc_ice (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
+allocate (size_drop (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
+allocate (size_ice (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
+
+         call microphys_presc_conc ( is,ie,js,je,              &
+                           camtsw, deltaz, press, temp,        &
+                             conc_drop, size_drop, conc_ice, size_ice)
+
+! if (trim(swform) == 'esfsw99' ) then
+  if (do_esfsw                  ) then
+        call microphys_rad_driver (                           &
+                        is,ie, js, je, deltaz, press, temp, &
+                        CLd_diagnostics, &
+              conc_drop_in=conc_drop, conc_ice_in=conc_ice, &
+            size_drop_in=size_drop, size_ice_in=size_ice, &
+              cldext=cldext, cldsct=cldsct,    &
+             cldasymm=cldasymm,               &
+               abscoeff=abscoeff)
+  else if (do_lwcldemiss) then
+        call microphys_rad_driver (                           &
+                        is,ie, js, je, deltaz, press, temp, &
+                        Cld_diagnostics, &
+                conc_drop_in=conc_drop, conc_ice_in=conc_ice, &
+                size_drop_in=size_drop, size_ice_in=size_ice, &
+               abscoeff=abscoeff)
       endif
+    if (do_lwcldemiss) then
+    call lwemiss_calc(  deltaz,                            &
+                           abscoeff,                         &
+                         cldemiss)
+    endif
+    endif  ! do_esfsw
+
+    if (do_lwcldemiss) then
+!   as of 3 august 2001, we are assuming randomly overlapped clouds
+!  only. the cloud and emissivity settings follow:
+       emmxolw = cldemiss
+       emrndlw = cldemiss
+    endif
+
+   if (ALLOCATED (abscoeff)) then
+   deallocate (abscoeff)
+deallocate (cldemiss)
+    deallocate (conc_drop)
+   deallocate (size_drop)
+    deallocate (conc_ice)
+   deallocate (size_ice)
+ endif
+
 
 !-------------------------------------------------------------------
 !    deallocate  local arrays
@@ -1177,4 +1444,5 @@ end subroutine albcld_sw
 
 
 	       end module rh_based_clouds_mod
+
 

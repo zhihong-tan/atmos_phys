@@ -4,13 +4,16 @@
 !-----------------------------------------------------------------------
 !-------------------- PUBLIC Radiation routines ------------------------
 
+      Use        MCM_LW_Mod, ONLY: MCM_LW_Rad
+      Use MCM_SW_Driver_Mod, ONLY: mcm_shortwave_driver
+
       Use   ShortWave_Mod, ONLY: SWRad
       Use    LongWave_Mod, ONLY: LWRad, Rad_DeAlloc
       Use      RdParm_Mod, ONLY: RdParm_Init
       Use    Rad_Diag_Mod, ONLY: Radiag
       Use    CO2_Data_Mod, ONLY: CO2_Data
 
-      Use   Utilities_Mod, ONLY: open_file, get_my_pe, close_file
+      Use   Utilities_Mod, ONLY: open_file, get_my_pe, get_root_pe, close_file
       Use   Constants_Mod, ONLY: stefan
 
       implicit none
@@ -19,8 +22,8 @@
       public  FSrad, RdParm_Init, CO2_Data
 !-----------------------------------------------------------------------
 
-      character(len=128) :: version = '$Id: fsrad.F90,v 1.2 2000/08/04 18:49:37 fms Exp $'
-      character(len=128) :: tag = '$Name: galway $'
+      character(len=128) :: version = '$Id: fsrad.F90,v 1.3 2002/07/16 22:32:31 fms Exp $'
+      character(len=128) :: tag = '$Name: havana $'
       logical :: do_init = .true.
 
       real, parameter :: Day_Length=86400.
@@ -33,16 +36,19 @@ CONTAINS
 
 !#######################################################################
 
-      Subroutine FSrad (ip,jp,Press,Temp,Rh2o,Qo3,  &
-                        Nclds,KtopSW,KbtmSW,Ktop,Kbtm,CldAmt,  &
-                        EmCld,CUVRF,CIRRF,CIRAB,Albedo,RVco2,  &
-                        CosZ,Solar,                           &
-                        SWin,SWout,OLR,SWupS,SWdnS,LWupS,LWdnS,  &
+      Subroutine FSrad (ip,jp,Press,Temp,Rh2o,Qo3,              &
+                        phalf,do_mcm_radiation,             &
+                        Nclds,KtopSW,KbtmSW,Ktop,Kbtm,CldAmt,   &
+                        EmCld,CUVRF,CIRRF,CIRAB,Albedo,RVco2,   &
+                        CosZ,Solar,                             &
+                        SWin,SWout,OLR,SWupS,SWdnS,LWupS,LWdnS, &
                         TdtSW,TdtLW, Ksfc,Psfc)
 
 !-----------------------------------------------------------------------
 Integer, Intent(IN)                    :: ip,jp
    Real, Intent(IN), Dimension(:,:,:)  :: Press,Temp,Rh2o,Qo3
+   Real, Intent(IN), Dimension(:,:,:)  :: phalf
+Logical, Intent(IN)                    :: do_mcm_radiation
 Integer, Intent(IN), Dimension(:,:)    :: Nclds
 Integer, Intent(IN), Dimension(:,:,:)  :: KtopSW,KbtmSW,Ktop,Kbtm
    Real, Intent(IN), Dimension(:,:,:)  :: CldAmt,EmCld,CUVRF,CIRRF,CIRAB
@@ -67,7 +73,7 @@ Integer  i,j,k,IX,JX,KX,unit
 !     ----- write version id to logfile -----
       if (do_init) then
           unit = open_file ('logfile.out', action='append')
-          if (get_my_pe() == 0) &
+          if (get_my_pe() == get_root_pe()) &
           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
           call close_file (unit)
           do_init = .false.
@@ -97,18 +103,33 @@ Integer  i,j,k,IX,JX,KX,unit
 
       If (SunUp) Then
          Rco2=RVco2*RATco2MW
+
+        if ( do_mcm_radiation ) then
+         Call mcm_shortwave_driver &
+                    (Nclds, KtopSW, KbtmSW, Press, Rh2o, Qo3, CldAmt, &
+                     CUVRF, CIRRF, CIRAB, Rco2, CosZ, SSolar,         &
+                     Albedo, FSW, DFSW, UFSW, TdtSW, phalf )
+        else
          Call SWRad (Nclds, KtopSW, KbtmSW, Press, Rh2o, Qo3, CldAmt, &
                      CUVRF, CIRRF, CIRAB, Rco2, CosZ, SSolar,         &
                      Albedo, FSW, DFSW, UFSW, TdtSW, Ksfc, Psfc       )
+        endif
+
       Else
          FSW=0.0; DFSW=0.0; UFSW=0.0; TdtSW=0.0
       EndIf
 
+
 !-----------------------------------------------------------------------
 !----------------------- Longwave Radiation ----------------------------
 
-      Call LWRad (Ktop, Kbtm, Nclds, EmCld, Press, Temp, Rh2o, Qo3,  &
-                  CldAmt, RVco2, TdtLW, GrnFlux, TopFlux, Ksfc, Psfc )
+      if ( do_mcm_radiation ) then
+        Call MCM_LW_Rad (Ktop, Kbtm, Nclds, EmCld, Press, Temp, Rh2o, Qo3,&
+                    CldAmt, RVco2, TdtLW, GrnFlux, TopFlux, phalf )
+      else
+        Call LWRad (Ktop, Kbtm, Nclds, EmCld, Press, Temp, Rh2o, Qo3,  &
+                    CldAmt, RVco2, TdtLW, GrnFlux, TopFlux, Ksfc, Psfc )
+      endif
 
 !-----------------------------------------------------------------------
 !----------------------- Radiation Diagnostics -------------------------
@@ -119,7 +140,9 @@ Integer  i,j,k,IX,JX,KX,unit
                       Albedo,CosZ,SSolar,   ip,jp)
       EndIf
 !-----------------------------------------------------------------------
-      Call Rad_DeAlloc
+      if(.not.do_mcm_radiation ) then
+        Call Rad_DeAlloc
+      endif
 !-----------------------------------------------------------------------
 !    **** Output fluxes at the top and bottom of atmosphere ****
 !            **** convert ergs/cm2/s to watts/m2 ****

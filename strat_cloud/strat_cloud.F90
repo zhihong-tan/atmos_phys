@@ -151,6 +151,8 @@ MODULE STRAT_CLOUD_MOD
 !       U00	       threshold relative humidity     fraction
 !                      for cloud formation 
 !
+!       u00_profile    should low-level u00 ECMWF profile be applied?
+!
 !       rthresh        liquid cloud drop radius        microns
 !                      threshold for autoconversion
 !
@@ -234,10 +236,9 @@ MODULE STRAT_CLOUD_MOD
 !                      from cloud rad
 !                      overlap = 1 is maximum-random
 !                      overlap = 2 is random
-!
-
   
         REAL              :: U00            =  0.80
+	LOGICAL           :: u00_profile    =  .false.
         REAL              :: rthresh        =  10.
         REAL              :: N_land         =  250.E+06
         REAL              :: N_ocean        =  100.E+06
@@ -259,7 +260,9 @@ MODULE STRAT_CLOUD_MOD
 !
 !-----------------------------------------------------------------------
 !-------------------- diagnostics fields -------------------------------
- 
+
+        integer :: id_aliq,         id_aice,            id_aall,       &
+	           id_rvolume,      id_autocv,          id_vfall 
         integer :: id_qldt_cond,    id_qldt_eros,       id_qldt_fill,  &
 	           id_qldt_accr,    id_qldt_evap,       id_qldt_freez, &
 		   id_qldt_berg,    id_qldt_destr,      id_qldt_rime,  &
@@ -297,8 +300,8 @@ MODULE STRAT_CLOUD_MOD
 !       CREATE NAMELIST
 !
 
-        NAMELIST /STRAT_CLOUD_NML/ U00,rthresh,N_land,N_ocean,&
-                              U_evap,eros_scale,tracer_advec,&
+        NAMELIST /STRAT_CLOUD_NML/ U00,u00_profile,rthresh,N_land,     &
+	                      N_ocean,U_evap,eros_scale,tracer_advec,  &
                               qmin,Dmin,num_strat_pts,strat_pts
 			      
 !        
@@ -308,8 +311,8 @@ MODULE STRAT_CLOUD_MOD
 !       DECLARE VERSION NUMBER OF SCHEME
 !
         
-        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 1.7 2002/02/22 19:03:35 fms Exp $'
-        Character(len=128) :: Tag = '$Name: galway $'
+        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 1.8 2002/07/16 22:37:22 fms Exp $'
+        Character(len=128) :: Tag = '$Name: havana $'
          
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -527,6 +530,33 @@ SUBROUTINE DIAG_FIELD_INIT (axes,Time)
         integer, dimension(3) :: half = (/1,2,4/)
 
 
+! assorted items
+
+        id_aall = register_diag_field ( mod_name, 'aall', axes(1:3),   &
+	     Time, 'Cloud fraction for all clouds at midtimestep',     &
+	     'dimensionless', missing_value=missing_value )
+
+        id_aliq = register_diag_field ( mod_name, 'aliq', axes(1:3),   &
+	     Time, 'Cloud fraction for liquid clouds', 'dimensionless',&
+	     missing_value=missing_value )
+
+        id_aice = register_diag_field ( mod_name, 'aice', axes(1:3),   &
+	     Time, 'Cloud fraction for ice clouds', 'dimensionless',   &
+	     missing_value=missing_value )
+
+        id_rvolume = register_diag_field ( mod_name, 'rv', axes(1:3),  &
+	     Time, 'Cloud liquid mean volume radius', 'microns',       &
+	     missing_value=missing_value )
+
+        id_autocv = register_diag_field ( mod_name, 'aauto', axes(1:3),&
+	     Time, 'Cloud fraction where autoconversion is occurring', &
+	     'dimensionless', missing_value=missing_value )
+
+        id_vfall = register_diag_field ( mod_name, 'vfall', axes(1:3), &
+	     Time, 'Ice crystal fall speed', 'meters/second',          &
+	     missing_value=missing_value )
+
+     
 !liquid water tendencies
 
 
@@ -1142,6 +1172,9 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !
 !	U	       grid box relative humidity      fraction
 !
+!       U00p           critical relative humidity      fraction
+!                      which is a function of pressure 
+!
 !       dqs_ls         change in saturation specific   kg vapor/kg air
 !                      due to large-scale processes,
 !                      such as large-scale vertical
@@ -1299,7 +1332,7 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: a_rain_clr,a_rain_cld
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: snow_clr,snow_cld
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: a_snow_clr,a_snow_cld
-        REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: deltpg,U
+        REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: deltpg,U,U00p
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: dqs_ls,da_ls
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: C_dt, D_dt
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: D1_dt,D2_dt,D_eros
@@ -1328,6 +1361,10 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 	     a_rain_cld_diag,   snow_clr_diag,    snow_cld_diag,   &
 	     a_snow_clr_diag,   a_snow_cld_diag,  mask3,           &
 	     a_precip_clr_diag, a_precip_cld_diag
+
+        REAL, ALLOCATABLE, DIMENSION(:,:,:) :: areaall, arealiq,   &
+	     areaice, areaautocv, rvolume, vfalldiag
+
 	LOGICAL :: used
 
 
@@ -1343,6 +1380,37 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       allocate space for diagnostic variables if needed
 !
 
+        if (id_aall > 0) then
+	     if (ALLOCATED(areaall)) DEALLOCATE (areaall)
+             ALLOCATE(areaall(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     areaall(:,:,:) = 0.0
+	end if
+	if (id_aliq > 0 .or. id_rvolume > 0) then
+	     if (ALLOCATED(arealiq)) DEALLOCATE (arealiq)
+             ALLOCATE(arealiq(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     arealiq(:,:,:) = 0.0
+	end if
+	if (id_aice > 0 .or. id_vfall > 0) then
+	     if (ALLOCATED(areaice)) DEALLOCATE (areaice)
+             ALLOCATE(areaice(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     areaice(:,:,:) = 0.0
+	end if
+	if (id_rvolume > 0) then
+	     if (ALLOCATED(rvolume)) DEALLOCATE (rvolume)
+             ALLOCATE(rvolume(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     rvolume(:,:,:) = 0.0
+	end if
+	if (id_autocv > 0) then
+	     if (ALLOCATED(areaautocv)) DEALLOCATE (areaautocv)
+             ALLOCATE(areaautocv(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     areaautocv(:,:,:) = 0.0
+	end if
+	if (id_vfall > 0) then
+	     if (ALLOCATED(vfalldiag)) DEALLOCATE (vfalldiag)
+             ALLOCATE(vfalldiag(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     vfalldiag(:,:,:) = 0.0
+	end if
+	
         if (do_budget_diag) then
 	
 	     if (ALLOCATED(qldt_cond)) DEALLOCATE (qldt_cond)
@@ -1733,13 +1801,23 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       the case that da_ls is not equal to zero.
 !
 
+        U00p(:,:) = U00
+        !compute pressure dependent U00 following ECMWF formula if 
+	!desired
+        if (u00_profile) then
+             WHERE (pfull(:,:,j) .gt. 0.8*phalf(:,:,KDIM+1)) 
+                    U00p(:,:) = U00 + (1.-U00)* &
+                         (((pfull(:,:,j)-(0.8*phalf(:,:,KDIM+1))) &
+                                    /    (0.2*phalf(:,:,KDIM+1)) )**2.)
+             END WHERE
+        end if
         
         dqs_ls(:,:) = (((omega(:,:,j)+Grav*Mc(:,:,j)) &
                        /airdens(:,:,j)/Cp) + radturbten(is:ie,js:je,j))&
                        *dtcloud*dqsdT(:,:,j)
 
 
-        WHERE (dqs_ls(:,:) .le. 0. .and. U(:,:) .ge. U00 .and. &
+        WHERE (dqs_ls(:,:) .le. 0. .and. U(:,:) .ge. U00p(:,:) .and. &
                qa_upd(:,:) .lt. 1.)
              tmp1(:,:) = sqrt( &
                                (1.+qa_upd(:,:)*gamma(:,:,j))**2. - &
@@ -1791,7 +1869,7 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !            
 
         !compute formula for da_ls
-        WHERE (dqs_ls(:,:) .le. 0. .and. U(:,:) .ge. U00)
+        WHERE (dqs_ls(:,:) .le. 0. .and. U(:,:) .ge. U00p(:,:))
              da_ls(:,:) = -0.5 * (1.-qa_upd(:,:))* (1.-qa_upd(:,:))* &
                     dqs_ls(:,:) / qs(:,:,j) / MAX(1.-U(:,:),qmin)
         ELSEWHERE
@@ -1974,6 +2052,18 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         qa_mean(:,:) = qa_upd(:,:)
         ql_mean(:,:) = ql_upd(:,:) + MAX(dcond_ls(:,:)     ,0.)        
         qi_mean(:,:) = qi_upd(:,:) + MAX(dcond_ls_ice (:,:),0.)
+
+        if (id_aall > 0) areaall(:,:,j) = qa_mean(:,:)
+	if (id_aliq > 0 .or. id_rvolume > 0) then
+	      where (ql_mean(:,:) .gt. qmin) 
+	           arealiq(:,:,j) = qa_mean(:,:)
+              endwhere
+        end if
+	if (id_aice > 0 .or. id_vfall > 0) then
+	      where (qi_mean(:,:) .gt. qmin) 
+	           areaice(:,:,j) = qa_mean(:,:)
+              endwhere
+        end if        	      
         
 !-----                                                            -----! 
 !                                                                      !
@@ -2322,6 +2412,8 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
                       rad_liq(:,:) = 0.
         ENDWHERE
 
+        if (id_rvolume > 0) rvolume(:,:,j) = rad_liq(:,:)*arealiq(:,:,j)
+	
         !compute accretion D term
         D1_dt(:,:) =  dtcloud * 65.772565 * &
                      (a_rain_cld(:,:)/MAX(qa_mean(:,:),qmin)) * &
@@ -2406,8 +2498,14 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
              a_rain_cld(:,:) = qa_mean(:,:)
         END WHERE
 	
-        if ( do_budget_diag ) qldt_auto(:,:,j) = tmp1(:,:)        
-        
+        if ( do_budget_diag ) qldt_auto(:,:,j) = tmp1(:,:) 
+	
+	if ( id_autocv > 0 ) then
+	     where ( rad_liq(:,:) .gt. rthresh ) 
+                  areaautocv(:,:,j) = qa_mean(:,:)       
+             endwhere
+	end if
+	        
 !       Bergeron-Findeisan Process 
 !
 !       Where ice and liquid coexist, the differential saturation
@@ -2699,6 +2797,8 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         !compute Vfall
         Vfall(:,:) = 3.29*((airdens(:,:,j)*qi_mean(:,:)/ &
                               MAX(qa_mean(:,:),qmin))**0.16)
+
+        if (id_vfall > 0) vfalldiag(:,:,j) = Vfall(:,:)*areaice(:,:,j)
 
         !add to ice source the settling ice flux from above
         !note that because C_dt already contains the source
@@ -3289,6 +3389,39 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       DIAGNOSTICS
 !
 
+        if (id_aall > 0) then
+             used = send_data ( id_aall, areaall, Time, is, js, 1,     &
+	          rmask=mask )
+             DEALLOCATE(areaall)
+	end if
+	if (id_aliq > 0) then
+             used = send_data ( id_aliq, arealiq, Time, is, js, 1,     &
+	          rmask=mask )
+             DEALLOCATE(arealiq)
+	end if
+	if (id_aice > 0) then
+	     used = send_data ( id_aice, areaice, Time, is, js, 1,     &
+	          rmask=mask )
+             DEALLOCATE(areaice)
+	end if
+	if (id_rvolume > 0) then
+	     used = send_data ( id_rvolume, rvolume, Time, is, js, 1,  &
+	          rmask=mask )
+             DEALLOCATE(rvolume)
+	     if (ALLOCATED(arealiq)) DEALLOCATE (arealiq)             
+	end if
+	if (id_autocv > 0) then
+	     used = send_data ( id_autocv, areaautocv, Time, is, js, 1,&
+	          rmask=mask )
+             DEALLOCATE(areaautocv)
+	end if
+	if (id_vfall > 0) then
+	     used = send_data ( id_vfall, vfalldiag, Time, is, js, 1,  &
+	          rmask=mask )		  
+             DEALLOCATE(vfalldiag)
+	     if (ALLOCATED(areaice)) DEALLOCATE (areaice)
+	end if
+	
         if ( do_budget_diag ) then
 
         !------- set up half level mask --------

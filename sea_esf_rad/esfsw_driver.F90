@@ -2,22 +2,30 @@
 		       module esfsw_driver_mod
 
 
-use rad_step_setup_mod,   only:  ISRAD, IERAD, JSRAD, JERAD, &
-				 KSRAD, KERAD, &
-				 pflux, deltaz
+!use rad_step_setup_mod,   only:  ISRAD, IERAD, JSRAD, JERAD, &
+!use rad_step_setup_mod,   only:                              &
+!				 KSRAD, KERAD, &
+!			 pflux, deltaz
+!				        deltaz
 use  utilities_mod,       only:  open_file, file_exist,    &
                                  check_nml_error, error_mesg, &
                                  print_version_number, FATAL, NOTE, &
 				 WARNING, get_my_pe, close_file
-use radiative_gases_mod,  only : rrvco2
+!use radiative_gases_mod,  only : rrvco2
 use constants_new_mod,    only:  radcon_mks, o2mixrat, gasconst, &
 				 rhoair, pie, grav_mks, pstd_mks
 use esfsw_parameters_mod, only:  nbands, nfrqpts, put_solarfluxes, &
 				 TOT_WVNUMS, nh2obands, nstreams
 use esfsw_scattering_mod, only:  get_swaerprops_from_scattering, &
                                  scatpar
-use cloudrad_package_mod, only:  get_swcldprops_from_cloudrad
+!use cloudrad_package_mod, only:  get_swcldprops_from_cloudrad
 use rad_utilities_mod,    only:  Rad_control, radiation_control_type, &
+                                 cldrad_properties_type, &
+                                 astronomy_type, &
+				 radiative_gases_type, &
+				 atmos_input_type, &
+				 sw_output_type, &
+				 Environment, environment_type, &
                                  Sw_control, shortwave_control_type
 
 !---------------------------------------------------------------------
@@ -36,8 +44,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.08'
-   character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 1.3 2001/10/25 17:48:29 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: galway $'
+   character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 1.4 2002/07/16 22:34:58 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: havana $'
 
 
 
@@ -478,11 +486,21 @@ end subroutine esfsw_driver_init
 
 !#################################################################
 
-subroutine swresf (cloudfrac, cirrfgd, cvisrfgd, fracday,  &
-                   press, qo3, rh2o, ssolar, temp,         &
-                   dfsw, fsw, hsw, ufsw,                   &
-                   cosangsolar, gausswt, nsolwg,           &
-                   dfswclr, fswclr, hswclr, ufswclr)
+subroutine swresf (is, ie, js, je, &
+!                  cloudfrac, cirrfgd, cvisrfgd, fracday,  &
+!                             cirrfgd, cvisrfgd, fracday,  &
+!                             cirrfgd, cvisrfgd,           &
+               Atmos_input, &
+!    deltaz, pflux, press, qo3, rrvco2, rh2o, ssolar, temp,         &
+!    deltaz, pflux,        qo3, rrvco2, rh2o, ssolar, temp,         &
+!                       Rad_gases,            ssolar,               &
+                        Rad_gases,                                  &
+!                  dfsw, fsw, hsw, ufsw,                   &
+!                  cosangsolar, gausswt, nsolwg, Cldrad_props,      &
+!                  Astro,       gausswt, nsolwg, Cldrad_props,      &
+                   Astro,                        Cldrad_props,      &
+                   Sw_output)
+!                  dfswclr, fswclr, hswclr, ufswclr)
 
 !----------------------------------------------------------------------c
 ! swresf uses the delta-eddington technique in conjunction with a      c
@@ -531,12 +549,23 @@ subroutine swresf (cloudfrac, cirrfgd, cvisrfgd, fracday,  &
 !
 !----------------------------------------------------------------------c
 
-real,dimension(:,:,:), intent(in)  :: cloudfrac, press, qo3, &
-				      rh2o, temp,  cosangsolar
-real, dimension(:,:  ), intent(in) :: cirrfgd, cvisrfgd, fracday
-real, dimension(:),     intent(in) :: gausswt
-real,                   intent(in) :: ssolar
-integer,                intent(in) :: nsolwg
+integer, intent(in)            :: is, ie, js, je
+!real,dimension(:,:,:), intent(in)  :: cloudfrac, pflux, press, qo3, &
+!real,dimension(:,:,:), intent(in)  ::            pflux, press, qo3, &
+!real,dimension(:,:,:), intent(in)  ::            pflux,        qo3, &
+!			      deltaz, rh2o, temp,  cosangsolar
+!				      deltaz, rh2o, temp
+!real, dimension(:,:  ), intent(in) :: cirrfgd, cvisrfgd, fracday
+!real, dimension(:,:  ), intent(in) :: cirrfgd, cvisrfgd
+!real, dimension(:),     intent(in) :: gausswt
+!real,                   intent(in) :: ssolar, rrvco2
+!real,                   intent(in) :: ssolar
+!integer,                intent(in) :: nsolwg
+type(cldrad_properties_type), intent(in) :: Cldrad_props
+type(astronomy_type), intent(in) :: Astro
+type(atmos_input_type), intent(in) :: Atmos_input
+type(radiative_gases_type), intent(in) :: Rad_gases   
+type(sw_output_type), intent(inout) :: Sw_output   
 !logical,      intent(in), optional :: sw_with_clouds
 
 !----------------------------------------------------------------------
@@ -562,9 +591,9 @@ integer,                intent(in) :: nsolwg
 !
 !----------------------------------------------------------------------c
  
-real, dimension(:,:,:), intent(inout)            :: dfsw, fsw, hsw, ufsw
-real, dimension(:,:,:), intent(inout) , optional :: dfswclr, fswclr,   &
-                                                  hswclr, ufswclr
+!real, dimension(:,:,:), intent(inout)            :: dfsw, fsw, hsw, ufsw
+!real, dimension(:,:,:), intent(inout) , optional :: dfswclr, fswclr,   &
+!                                                  hswclr, ufswclr
  
 !-----------------------------------------------------------------------
 !     local variables:
@@ -627,13 +656,65 @@ real, dimension(:,:,:), intent(inout) , optional :: dfswclr, fswclr,   &
 
    integer            :: j, i, k, ng, ncld, ncldlyrs, nhiclds,    &
 			 nmiclds, nloclds, np, nband, nf, ns
-   character(len=15)  :: swaer_form
+!   character(len=15)  :: swaer_form
+   character(len=16)  :: swaer_form
 
+    integer :: nsolwg=1
+    real :: rrvco2
+    real, dimension(1) :: gausswt
+    integer :: ix, jx, kx, israd, jsrad, ierad, jerad, ksrad, kerad
+    real, dimension(size(Atmos_input%press,1), size(Atmos_input%press,2), 1) ::&
+                       cosangsolar
+
+    real, dimension(size(Atmos_input%press,1),   &
+           size(Atmos_input%press,2), size(Atmos_input%press,3)-1) ::&
+                        cloudfrac, deltaz, qo3, rh2o
+
+    real, dimension(size(Atmos_input%press,1),  &
+             size(Atmos_input%press,2), size(Atmos_input%press,3)  ) ::&
+                         press, pflux, temp
+
+    real, dimension(size(Atmos_input%press,1),  &
+                     size(Atmos_input%press,2)   ) ::&
+                          fracday, cirrfgd, cvisrfgd
+    real :: ssolar  
+
+      cloudfrac(:,:,:) = Cldrad_props%camtsw(:,:,:)
+      cosangsolar(:,:,1) = Astro%cosz(:,:)
+      fracday(:,:) = Astro%fracday(:,:)
+      cirrfgd(:,:) = Atmos_input%asfc(:,:)
+      cvisrfgd(:,:) = Atmos_input%asfc(:,:)
+      gausswt(1) = 1.0
+!      if (Environment%running_gcm) then
+!  convert to cgs and then back to mks for consistency with previous ooo
+      press(:,:,:) = 0.1*(10.0*Atmos_input%press(:,:,:))
+      pflux(:,:,:) =     (10.0*Atmos_input%pflux(:,:,:))
+!     else if (Environment%running_standalone) then
+!     press(:,:,:) = 0.1*(10.0*(    Atmos_input%press(:,:,:)))
+!     pflux(:,:,:) =           10.0*(    Atmos_input%pflux(:,:,:))
+!     endif
+      deltaz(:,:,:) = Atmos_input%deltaz(:,:,:)
+      rh2o  (:,:,:) = Atmos_input%rh2o  (:,:,:)
+      temp  (:,:,:) = Atmos_input%temp  (:,:,:)
+      qo3   (:,:,:) = Rad_gases%qo3(:,:,:)
+      rrvco2 = Rad_gases%rrvco2
+
+      where (cosangsolar(:,:,1) == 0.0) cosangsolar(:,:,1) = 1.0
+      ssolar = Astro%solar_constant*Astro%rrsun
 
 !--------------------------------------------------------------------
 !    define limits and dimensions 
 !--------------------------------------------------------------------
 
+      ix = size(temp,1)
+      jx = size(temp,2)
+      kx = size(temp,3) - 1
+      israd = 1
+      jsrad = 1
+      ksrad = 1
+      ierad = ix
+      jerad = jx
+      kerad = kx
       IJK   = IERAD-ISRAD+1
 
 !---------------------------------------------------------------------
@@ -902,7 +983,7 @@ endif
 ! obtain aerosol properties from esfsw_scattering
 !----------------------------------------------------------------------c
 
-          call get_swaerprops_from_scattering ( nband,   &
+          call get_swaerprops_from_scattering ( js, ix, jx, nband,   &
 	                         aerext, aerssalb, aerasymm, aeramtsc)
 
 !----------------------------------------------------------------------c
@@ -931,8 +1012,11 @@ endif
 ! obtain cloud properties from cloudrad_package
 !----------------------------------------------------------------------c
 
-            call get_swcldprops_from_cloudrad (nband, cldext, cldsct, &
-					       cldasymm)
+!           call get_swcldprops_from_cloudrad (nband, cldext, cldsct, &
+!				       cldasymm)
+              cldext(:,:,:) = Cldrad_props%cldext(:,:,:,nband)
+              cldsct(:,:,:) = Cldrad_props%cldsct(:,:,:,nband)
+              cldasymm(:,:,:) = Cldrad_props%cldasymm(:,:,:,nband)
 
             do k = KSRAD,KERAD
               do j=JSRAD,JERAD
@@ -1198,7 +1282,8 @@ endif
 ! calculate the reflection and transmission in the scattering layers   c
 ! using the delta-eddington method.                                    c
 !----------------------------------------------------------------------c
-                call deledd (taustrclr, omegastrclr, gstrclr,   &
+                call deledd ( ix, jx, kx, &
+		             taustrclr, omegastrclr, gstrclr,   &
 			     cosangsolar, ng , daylight,rlayerdirclr,  &
 			     tlayerdirclr, rlayerdifclr,  &
                              tlayerdifclr, tlayerdeclr)
@@ -1281,8 +1366,9 @@ endif
 !----------------------------------------------------------------------c
 ! calculate the reflection and transmission in the scattering layers   c
 ! using the delta-eddington method.                                    c
-!----------------------------------------------------------------------c
-                call deledd (taustrovc, omegastrovc, gstrovc,   &
+!---------------------------------------------------------------------c
+                call deledd (  ix, jx, kx,  &
+		             taustrovc, omegastrovc, gstrovc,   &
 			     cosangsolar, ng, daylight, rlayerdirovc, &
 			     tlayerdirovc, rlayerdifovc,  & 
                              tlayerdifovc, tlayerdeovc, cloud)
@@ -1338,13 +1424,14 @@ endif
 ! corresponding layers using the adding method.                        c
 !----------------------------------------------------------------------c
  
-              call adding (rlayerdir, tlayerdir, rlayerdif, tlayerdif, &
+              call adding (  ix, jx, kx, &
+	                 rlayerdir, tlayerdir, rlayerdif, tlayerdif, &
                            tlayerde , sfcalb   , daylight, &
                            reflectance, transmittance)    
  
               if (Rad_control%do_totcld_forcing) then
 
-                call adding (                                    &
+                call adding ( ix, jx,  kx, &         
                              rlayerdirclr, tlayerdirclr,         &
                              rlayerdifclr, tlayerdifclr,         &
                              tlayerdeclr,  sfcalb, cloud_in_column, &
@@ -1433,11 +1520,11 @@ endif
            do j=JSRAD,JERAD
              do i=ISRAD,IERAD
               if (daylight(i,j) ) then
-          dfsw (i,j,k) = dfsw(i,j,k) + sumtr(i,j,k)*solarflux(i,j)
-          ufsw (i,j,k) = ufsw(i,j,k) + sumre(i,j,k)*solarflux(i,j)
+          Sw_output%dfsw (i,j,k) = Sw_output%dfsw(i,j,k) + sumtr(i,j,k)*solarflux(i,j)
+          Sw_output%ufsw (i,j,k) = Sw_output%ufsw(i,j,k) + sumre(i,j,k)*solarflux(i,j)
           fswband(i,j,k      ) = (sumre(i,j,k)*solarflux(i,j)) - &
                                  (sumtr(i,j,k)*solarflux(i,j))
-          fsw(i,j,k) = fsw(i,j,k) + fswband(i,j,k)
+          Sw_output%fsw(i,j,k) = Sw_output%fsw(i,j,k) + fswband(i,j,k)
             endif
           end do
           end do
@@ -1449,7 +1536,7 @@ endif
               if (daylight(i,j) ) then
             hswband(i,j,k      ) = (fswband(i,j,k+1      ) -    &
                                     fswband(i,j,k      ) )*gocpdp(i,j,k)
-            hsw(i,j,k) = hsw(i,j,k) + hswband(i,j,k      )
+            Sw_output%hsw(i,j,k) = Sw_output%hsw(i,j,k) + hswband(i,j,k      )
             endif
           end do
           end do
@@ -1478,13 +1565,13 @@ endif
             do k = KSRAD,KERAD+1
            do j=JSRAD,JERAD
              do i=ISRAD,IERAD
-              dfswclr(i,j,k) = dfswclr(i,j,k) +sumtrclr(i,j,k)* &
+              Sw_output%dfswcf(i,j,k) = Sw_output%dfswcf(i,j,k) +sumtrclr(i,j,k)* &
                                solarflux(i,j)
-              ufswclr(i,j,k) = ufswclr(i,j,k) + sumreclr   (i,j,k)*  &
+              Sw_output%ufswcf(i,j,k) = Sw_output%ufswcf(i,j,k) + sumreclr   (i,j,k)*  &
                                  solarflux(i,j)
               fswbandclr(i,j,k  ) = (sumreclr(i,j,k)*solarflux(i,j))- &
                                       (sumtrclr(i,j,k)*solarflux(i,j))
-               fswclr(i,j,k) = fswclr(i,j,k) + fswbandclr(i,j,k      )
+               Sw_output%fswcf(i,j,k) = Sw_output%fswcf(i,j,k) + fswbandclr(i,j,k      )
           end do
           end do
             end do
@@ -1496,7 +1583,7 @@ endif
               hswbandclr(i,j,k      ) = (fswbandclr(i,j,k+1      ) -  &
                                          fswbandclr(i,j,k      ) ) *  &
                                          gocpdp(i,j,k)
-               hswclr(i,j,k) = hswclr(i,j,k) + hswbandclr(i,j,k      )
+               Sw_output%hswcf(i,j,k) = Sw_output%hswcf(i,j,k) + hswbandclr(i,j,k      )
           end do
           end do
             end do
@@ -1649,6 +1736,17 @@ endif
       endif
 
 !---------------------------------------------------------------------
+!--------------------------------------------------------------------
+!   convert sw fluxes to cgs and then back to  mks units.
+!---------------------------------------------------------------------
+     Sw_output%fsw(:,:,:) = 1.0E-03*(1.0E+03*Sw_output%fsw(:,:,:))
+     Sw_output%dfsw(:,:,:) = 1.0E-03*(1.0E+03*Sw_output%dfsw(:,:,:))
+    Sw_output%ufsw(:,:,:) = 1.0E-03*(1.0E+03*Sw_output%ufsw(:,:,:))
+     if (Rad_control%do_totcld_forcing) then
+     Sw_output%fswcf(:,:,:) = 1.0E-03*(1.0E+03*Sw_output%fswcf(:,:,:))
+      Sw_output%dfswcf(:,:,:) = 1.0E-03*(1.0E+03*Sw_output%dfswcf(:,:,:))
+      Sw_output%ufswcf(:,:,:) = 1.0E-03*(1.0E+03*Sw_output%ufswcf(:,:,:))
+   endif
 
 
 end  subroutine swresf
@@ -1657,7 +1755,8 @@ end  subroutine swresf
 
 !#####################################################################
 
-subroutine adding (rlayerdir, tlayerdir, rlayerdif, tlayerdif,  &
+subroutine adding ( ix, jx, kx, &
+                   rlayerdir, tlayerdir, rlayerdif, tlayerdif,  &
                    tlayerde, sfcalb, calc_flag, reflectance,   &
                    transmittance)
  
@@ -1700,6 +1799,7 @@ real, dimension(:,:,:),  intent(in)  :: rlayerdir, rlayerdif, &
                                         tlayerde
 real, dimension (:,:) ,  intent(in)  :: sfcalb
 logical, dimension (:,:) ,  intent(in)  :: calc_flag
+integer, intent(in) :: ix, jx, kx
 !----------------------------------------------------------------------c
 !                                                                      c
 ! intent out:                                                          c
@@ -1736,8 +1836,10 @@ real, dimension(:,:,:)  , intent(out)  :: reflectance, transmittance
 ! initialization for the surface layer.                                c
 !----------------------------------------------------------------------c
  
-      do j=jsrad,jerad
-      do i=israd,ierad
+!     do j=jsrad,jerad
+!     do i=israd,ierad
+      do j=1,jx        
+      do i=1,ix
 
         if (calc_flag(i,j) ) then
       
@@ -1753,7 +1855,8 @@ real, dimension(:,:,:)  , intent(out)  :: reflectance, transmittance
  
         raddupdif2p = sfcalb(i,j)
         raddupdir2p = sfcalb(i,j)
-      do k = KERAD,KSRAD,-1
+!     do k = KERAD,KSRAD,-1
+      do k = kx, 1,-1
         dm2tl2    = tlayerdif(i,j,k) / ( 1.0 - rlayerdif(i,j,k) *  &
                      raddupdif2p )
         rdm2tl2    = dm2tl2    * raddupdif2p     
@@ -1781,12 +1884,16 @@ real, dimension(:,:,:)  , intent(out)  :: reflectance, transmittance
 ! initialization for the first scattering layer.                       c
 !----------------------------------------------------------------------c
  
-      tlevel2p         = tlayerde(i,j,KSRAD)
-      radddowndifm    =  rlayerdif(i,j,KSRAD)
-      tadddowndirm    =  tlayerdir(i,j,KSRAD)
+!     tlevel2p         = tlayerde(i,j,KSRAD)
+!     radddowndifm    =  rlayerdif(i,j,KSRAD)
+!     tadddowndirm    =  tlayerdir(i,j,KSRAD)
+      tlevel2p         = tlayerde(i,j,    1)
+      radddowndifm    =  rlayerdif(i,j,     1)
+      tadddowndirm    =  tlayerdir(i,j,    1)
 
 
-      do k = KSRAD+1,KERAD
+!     do k = KSRAD+1,KERAD
+      do k = 2      ,kx    
         dm1tl2       = tlayerdif(i,j,k) / ( 1.0 - rlayerdif(i,j,k) *  &
                      radddowndifm      )
         radddowndif2(k) = rlayerdif(i,j,k) + radddowndifm      * &
@@ -1820,16 +1927,20 @@ real, dimension(:,:,:)  , intent(out)  :: reflectance, transmittance
         dm3r1p2          = 1.0 + sfcalb(i,j) * dm3r2         
         alpp2          = (tadddowndirm        - tlevel2p         )* &
                            dm32          
-        transmittance(i,j,kERAD+1) = (tlevel2p        *(1.0 +   &
+!       transmittance(i,j,kERAD+1) = (tlevel2p        *(1.0 +   &
+        transmittance(i,j,kx   +1) = (tlevel2p        *(1.0 +   &
 	                           sfcalb(i,j)* &
                                 dm3r2         ) + alpp2         )
-        reflectance(i,j,kERAD+1) = ( tlevel2p         *    &
+!       reflectance(i,j,kERAD+1) = ( tlevel2p         *    &
+        reflectance(i,j,kx   +1) = ( tlevel2p         *    &
 	                              sfcalb(i,j) *   &
                              dm3r1p2          + alpp2          *   &
                              sfcalb(i,j) )
 
-      reflectance(i,j,KSRAD) = raddupdir2p         
-      transmittance(i,j,KSRAD) = 1.0
+!     reflectance(i,j,KSRAD) = raddupdir2p         
+!     transmittance(i,j,KSRAD) = 1.0
+      reflectance(i,j,    1) = raddupdir2p         
+      transmittance(i,j,    1) = 1.0
 
 
         endif
@@ -1843,7 +1954,8 @@ end subroutine adding
 
 !####################################################################
 
-subroutine deledd (taustr, omegastr, gstr, cosang, ng , daylight,  &
+subroutine deledd (ix, jx, kx,  &
+                   taustr, omegastr, gstr, cosang, ng , daylight,  &
                     rlayerdir, tlayerdir, rlayerdif, tlayerdif,   &
 		    tlayerde,  cloud)
  
@@ -1880,6 +1992,7 @@ logical, dimension(:,:),   intent(in)             :: daylight
 real, dimension(:,:,:),    intent(inout)          :: taustr, omegastr
 integer,                   intent(in)             :: ng
 logical, dimension(:,:,:), intent(in), optional   :: cloud          
+integer, intent(in) :: ix, jx, kx
 
 !----------------------------------------------------------------------c
 ! intent out:                                                          c
@@ -1910,8 +2023,10 @@ real, dimension(:,:,:), intent(out)    :: rlayerdir, rlayerdif,   &
     real  :: rsum, tsum, alpha
      real :: qq(7), rr(5), ss(8), tt(8),        ww(4)
  
-       do k=KSRAD,KERAD
-         do j=JSRAD,JERAD
+!      do k=KSRAD,KERAD
+!        do j=JSRAD,JERAD
+       do k=1,kx         
+         do j=1,jx         
 !----------------------------------------------------------------------c
 ! overcast sky mode                                                    c
 !                                                                      c
@@ -1921,7 +2036,8 @@ real, dimension(:,:,:), intent(out)    :: rlayerdir, rlayerdif,   &
 
      nn = 0
      if (present(cloud)) then
-           do i=ISRAD,IERAD
+!          do i=ISRAD,IERAD
+           do i=1,ix          
              if (cloud(i,j,k) ) then
                nn = nn + 1
 	       cld_index(i,j,k) = nn
@@ -1947,7 +2063,8 @@ real, dimension(:,:,:), intent(out)    :: rlayerdir, rlayerdif,   &
 !----------------------------------------------------------------------c
 
      else
-           do i=ISRAD,IERAD
+!          do i=ISRAD,IERAD
+           do i=1,ix         
             if (daylight(i,j) ) then
              nn = nn + 1
 	     cld_index(i,j,k) = nn
@@ -2094,7 +2211,8 @@ real, dimension(:,:,:), intent(out)    :: rlayerdir, rlayerdif,   &
 !---------------------------------------------------------------------
 
    if (present(cloud)) then
-         do i=ISRAD,IERAD
+!        do i=ISRAD,IERAD
+         do i=1,ix           
            if (cloud(i,j,k) ) then
              rlayerdir(i,j,k) = rlayerdir2(cld_index(i,j,k))
              tlayerdir(i,j,k) = tlayerdir2(cld_index(i,j,k))
@@ -2106,7 +2224,8 @@ real, dimension(:,:,:), intent(out)    :: rlayerdir, rlayerdif,   &
            endif
          end do
    else
-         do i=ISRAD,IERAD
+!        do i=ISRAD,IERAD
+         do i=1,ix            
 	   if (daylight(i,j) ) then
              rlayerdir(i,j,k) = rlayerdir2(cld_index(i,j,k))
              tlayerdir(i,j,k) = tlayerdir2(cld_index(i,j,k))

@@ -6,8 +6,8 @@ use utilities_mod,         only:  open_file, file_exist,   &
                                   check_nml_error, error_mesg,   &
                                   print_version_number, FATAL, NOTE, &
 				  WARNING, get_my_pe, close_file
-use rad_step_setup_mod,    only:  ISRAD, IERAD, JSRAD, JERAD, & 
-                                  KSRAD, KERAD
+!use rad_step_setup_mod,    only:  ISRAD, IERAD, JSRAD, JERAD, & 
+!                                  KSRAD, KERAD
 
 !--------------------------------------------------------------------
 
@@ -26,8 +26,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.08'
-   character(len=128)  :: version =  '$Id: no_clouds.F90,v 1.2 2001/08/30 15:14:46 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: galway $'
+   character(len=128)  :: version =  '$Id: no_clouds.F90,v 1.3 2002/07/16 22:36:06 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: havana $'
 
 
 
@@ -61,6 +61,8 @@ namelist /no_clouds_nml /     &
 !----------------------------------------------------------------------
 !----  private data -------
 
+
+       integer :: israd, ierad, jsrad, jerad, ksrad, kerad
 
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
@@ -113,6 +115,13 @@ real   , dimension(:,:,:), intent(inout)      ::  camtsw, crndlw
 real   , dimension(:,:,:,:), intent(inout)    ::  emrndlw   
 integer, dimension(:,:), intent(in), optional ::  kbot
 !--------------------------------------------------------------------
+
+       israd = 1
+       ierad = size (camtsw, 1)
+       jsrad = 1
+       jerad = size (camtsw, 2)
+       ksrad = 1
+       kerad = size (camtsw, 3)
 
 !--------------------------------------------------------------------
 !!  IS THIS (OR SOMETHING LIKE IT) NEEDED IN THIS FORMULATION ?

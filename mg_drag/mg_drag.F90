@@ -1,4 +1,4 @@
-MODULE MG_DRAG_MOD
+module mg_drag_mod
 
 !=======================================================================
 !         MOUNTAIN GRAVITY WAVE DRAG - PIerrehumbert (1986)            !
@@ -11,10 +11,12 @@ MODULE MG_DRAG_MOD
 
 
  use topography_mod, only:  get_topog_stdev
- use Utilities_Mod, ONLY: FILE_EXIST, OPEN_FILE, ERROR_MESG, FATAL, &
-                          get_my_pe, READ_DATA, WRITE_DATA,         &
-                          CLOSE_FILE, check_nml_error
- use  Constants_Mod, ONLY:  Grav,Kappa,RDgas,p00,cp
+
+ use utilities_mod, ONLY: file_exist, open_file, error_mesg, FATAL, &
+                          get_my_pe, get_root_pe, read_data, write_data, &
+                          close_file, check_nml_error
+
+ use  constants_mod, ONLY:  Grav,Kappa,RDgas,cp
 
 !-----------------------------------------------------------------------
  implicit none
@@ -22,8 +24,10 @@ MODULE MG_DRAG_MOD
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 1.5 2002/01/15 16:20:14 fms Exp $'
- character(len=128) :: tag = '$Name: galway $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 1.6 2002/07/16 22:33:27 fms Exp $'
+ character(len=128) :: tag = '$Name: havana $'
+
+ real, parameter :: p00 = 1.e5
 
 !---------------------------------------------------------------------
 ! --- GLOBAL STORAGE FOR:
@@ -64,9 +68,10 @@ MODULE MG_DRAG_MOD
       ,low_lev_frac = .23
 
 logical :: do_conserve_energy = .false.
+logical :: do_mcm_mg_drag = .false.
 
-    NAMELIST / mg_drag_nml /                         &
-     &  xl_mtn, gmax, acoef, rho ,low_lev_frac, do_conserve_energy
+    namelist / mg_drag_nml / xl_mtn, gmax, acoef, rho,low_lev_frac, &
+                             do_conserve_energy, do_mcm_mg_drag
 
 
  public mg_drag, mg_drag_init, mg_drag_end
@@ -75,8 +80,8 @@ logical :: do_conserve_energy = .false.
 
 !#############################################################################      
 
- SUBROUTINE mg_drag (is,js,delt,uwnd,vwnd,temp,pfull,phalf,   &
-                    zfull,zhalf,dtaux,dtauy,dtemp,taub,kbot)
+ subroutine mg_drag (is, js, delt, uwnd, vwnd, temp, pfull, phalf, &
+                    zfull, zhalf, dtaux, dtauy, dtemp, taub, kbot)
 !===================================================================
 
 ! Arguments (intent in)
@@ -85,7 +90,7 @@ logical :: do_conserve_energy = .false.
  real, intent(in)    :: delt
  real, intent(in), dimension (:,:,:) :: &
      &             uwnd, vwnd, temp, pfull, phalf, zfull, zhalf
- integer, intent(in), OPTIONAL, dimension(:,:)   :: kbot
+ integer, intent(in), optional, dimension(:,:)   :: kbot
 
 !
 !      INPUT
@@ -106,7 +111,7 @@ logical :: do_conserve_energy = .false.
 !                   (dimensioned IDIM x JDIM x KDIM+1)
 !      ZFULL    Height at full model levels
 !                   (dimensioned IDIM x JDIM x KDIM+1)
-!      KBOT     OPTIONAL;lowest model level index (integer)
+!      KBOT     optional;lowest model level index (integer)
 !                   (dimensioned IDIM x JDIM)
 !===================================================================
 ! Arguments (intent out)
@@ -172,7 +177,7 @@ logical :: do_conserve_energy = .false.
  real , dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)+1) ::  taus
  real vsamp
 integer, dimension (size(uwnd,1),size(uwnd,2)) :: ktop, kbtm
-integer id, jd, idim, jdim, kdim,kdimm1, kdimp1,ie, je
+integer id, jd, idim, jdim, kdim, kdimm1, kdimp1
 !              XN,YN  = PROJECTIONS OF "LOW LEVEL" WIND
 !                       IN ZONAL & MERIDIONAL DIRECTIONS
 !              TAUB = BASE MOMENTUM FLUX
@@ -197,16 +202,28 @@ integer id, jd, idim, jdim, kdim,kdimm1, kdimp1,ie, je
 !  type loop indicies
  integer i, j, k, kd, kb, kt, kbp1, ktm1 
 !-----------------------------------------------------------------------
+!  Local variables needed only for code that
+!  implements supersource-like gravity wave drag.
+
+integer :: ie, je, klast, kcrit
+real    :: sigtop, small=1.e-10
+
+real,    dimension(size(uwnd,1),size(uwnd,2))              :: ulow, vlow, tlow, thlow
+real,    dimension(size(uwnd,1),size(uwnd,2))              :: rlow, zsvar, bvfreq, x
+real,    dimension(size(uwnd,1),size(uwnd,2))              :: depth, ave_p
+integer, dimension(size(uwnd,1),size(uwnd,2))              :: ntop 
+real,    dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)) :: th, sh_ang, test
+real,    dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)) :: sigma, del_sigma
+!real,    dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)+1) :: sigma_half
 
 !---------------------------------------------------------------------
 
-  idim = SIZE( uwnd, 1 )
-  jdim = SIZE( uwnd, 2 )
-  kdim = SIZE( uwnd, 3 )
+  idim = size( uwnd, 1 )
+  jdim = size( uwnd, 2 )
+  kdim = size( uwnd, 3 )
   kdimm1 = kdim - 1
   kdimp1 = kdim + 1
 !-----------------------------------------------------------------------
-
 
 !        CODE VARIABLES     DESCRIPTION
 
@@ -245,6 +262,7 @@ integer id, jd, idim, jdim, kdim,kdimm1, kdimp1,ie, je
 !              	  A = 1.0
 !=======================================================================
 
+if ( .not.do_mcm_mg_drag ) then
 !-----------------------------------------------------------------------
 !     vsamp is a vertical sampling coefficient which serves to amplify
 !     the windshear wkb extension term in the calculation of d.
@@ -255,55 +273,179 @@ integer id, jd, idim, jdim, kdim,kdimm1, kdimp1,ie, je
       vsamp = 1.0
 !-----------------------------------------------------------------------
 !  calculate bottom of low-level layer = lowest level unless kbot is present
-  if (PRESENT(Kbot)) then
-     kbtm(:,:) = kbot(:,:)
-  else
-     kbtm(:,:) = kdim
-  endif
+    if (present(kbot)) then
+       kbtm(:,:) = kbot(:,:)
+    else
+       kbtm(:,:) = kdim
+    endif
 !  calculate top of low-level layer, first get surface p from phalf
-  if (PRESENT(Kbot)) then
-     do j=1,jdim
-     do i=1,idim
-       psurf(i,j) = phalf(i,j,kbtm(i,j)+1)
-     end do
-     end do
-  else
-     psurf(:,:) = phalf(:,:,kdimp1)
-  endif
+    if (present(kbot)) then
+       do j=1,jdim
+       do i=1,idim
+         psurf(i,j) = phalf(i,j,kbtm(i,j)+1)
+       end do
+       end do
+    else
+       psurf(:,:) = phalf(:,:,kdimp1)
+    endif
 !     print *,'psurf=', psurf
 !  Based on fraction of model atmosphere to be considered "low-level"
 !  (input via namelist), find highest model level.
 
-  ptop(:,:) = (1.-low_lev_frac)*psurf(:,:)
-  do kd=kdim,1,-1 
-       where (pfull(:,:,kd) .ge. ptop(:,:)) 
-         ktop(:,:) = kd
-       end where
-  end do
+    ptop(:,:) = (1.-low_lev_frac)*psurf(:,:)
+    do kd=kdim,1,-1 
+         where (pfull(:,:,kd) .ge. ptop(:,:)) 
+           ktop(:,:) = kd
+         end where
+    end do
 !  Make sure that low-level layer is at least 2 layer thick
-  ktop(:,:) = min(ktop(:,:),(kbtm(:,:)-1) )
+    ktop(:,:) = min(ktop(:,:),(kbtm(:,:)-1) )
 !     print *,'ptop=', ptop
 !     print *,'ktop=', ktop
 
 !  calculate base flux
-call mgwd_base_flux (is,js,uwnd,vwnd,temp,pfull,phalf,ktop,kbtm,theta, &
-     &               xn,yn,taub)
+    call mgwd_base_flux (is,js,uwnd,vwnd,temp,pfull,phalf,ktop,kbtm,theta, &
+         &               xn,yn,taub)
 
 !  calculate saturation flux profile
-call mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
-     &                xn,yn,taub,pfull, phalf,zfull,zhalf,vsamp,taus)
+    call mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
+         &                xn,yn,taub,pfull, phalf,zfull,zhalf,vsamp,taus)
 
 !  calculate mountain gravity wave drag tendency contributions
-call mgwd_tend (is,js,xn,yn,taub,phalf,taus,dtaux,dtauy)
+    call mgwd_tend (is,js,xn,yn,taub,phalf,taus,dtaux,dtauy)
+
+else if ( do_mcm_mg_drag ) then
+
+    if(present(kbot)) then
+      call error_mesg ('mg_drag','kbot cannot be present in the calling arguments when using the Manabe Climate Model option',FATAL)
+    endif
+
+    do k=1,kdim
+      sigma(:,:,k) = pfull(:,:,k)/phalf(:,:,kdimp1)
+      del_sigma(:,:,k) = (phalf(:,:,k+1) - phalf(:,:,k))/phalf(:,:,kdimp1)
+!     sigma_half(:,:,k) = phalf(:,:,k)/phalf(:,:,kdimp1)
+    enddo
+!    sigma_half(:,:,kdimp1) = 1.0
+
+    ie = is + idim - 1
+    je = js + jdim - 1
+
+    zsvar = (Ghprime(is:ie,js:je))**2
+
+    do k = 1,kdim
+      th(:,:,k) = temp(:,:,k) + grav*(zfull(:,:,k)-zhalf(:,:,kdimp1))*kappa/rdgas
+    end do
+
+    sigtop = 1.0 - low_lev_frac
+    do j = 1,jdim
+      do i = 1,idim
+        do k = kdim,1,-1
+          if (sigma(i,j,k) .lt. sigtop) then
+              if ( (sigtop - sigma(i,j,k)) .le. (sigma(i,j,k+1)-sigtop) ) then
+                ntop(i,j) = k
+              else
+                ntop(i,j) = k + 1
+              endif
+              go to 10
+          endif
+        end do
+        10 continue
+      enddo
+    enddo
+
+    ulow  = 0.0
+    vlow  = 0.0
+    tlow  = 0.0
+    thlow = 0.0
+    depth = 0.0
+
+    do j = 1,jdim
+      do i = 1,idim
+        do k = ntop(i,j), kdim
+           ulow(i,j)  = ulow(i,j)  + del_sigma(i,j,k)* uwnd(i,j,k) 
+           vlow(i,j)  = vlow(i,j)  + del_sigma(i,j,k)* vwnd(i,j,k) 
+           tlow(i,j)  = tlow(i,j)  + del_sigma(i,j,k)* temp(i,j,k)  
+           thlow(i,j) = thlow(i,j) + del_sigma(i,j,k)*th(i,j,k)
+           depth(i,j) = depth(i,j) + del_sigma(i,j,k)
+        end do
+      enddo
+    enddo
+    ulow  = ulow/depth
+    vlow  = vlow/depth
+    tlow  = tlow/depth
+    thlow = thlow/depth
+
+    do j = 1,jdim
+      do i = 1,idim
+        ave_p(i,j)  = (phalf(i,j,ntop(i,j)-1) + phalf(i,j,kdim))/2.
+        bvfreq(i,j) = (th(i,j,kdim) - th(i,j,ntop(i,j)))/(pfull(i,j,kdim) - pfull(i,j,ntop(i,j)))
+        bvfreq(i,j) = -grav*grav*ave_p(i,j)*bvfreq(i,j)/(rdgas*tlow(i,j)*thlow(i,j))  ! thlow should be tlow !IH
+      enddo
+    enddo
+
+    where(bvfreq > 0.0)
+      bvfreq = sqrt(bvfreq)
+    elsewhere
+      bvfreq = 0.0
+    endwhere
+
+!     TK mod: original had rk0*grav*bvfreq*zsvar*ulow .... etc..
+
+    x = grav*bvfreq*zsvar/(rdgas*tlow*xl_mtn)
+
+    rlow = 1.0/sqrt(ulow**2 + vlow**2 + small)
+    do k = 1, kdim
+      sh_ang(:,:,k) = rlow*(ulow*uwnd(:,:,k) + vlow*vwnd(:,:,k))/      &
+                     sqrt(uwnd(:,:,k)**2 + vwnd(:,:,k)**2 + small)
+    enddo
+    sh_ang = min(sh_ang, 0.99999)
+    sh_ang = max(sh_ang,-0.99999)
+    sh_ang = acos(sh_ang)
+
+    test = 1.0
+    where (sh_ang > 2.*atan(1.0))
+      test = 0.0
+    endwhere
+    do j = 1,jdim
+      do i = 1,idim
+        do k=ntop(i,j),kdim
+          test(i,j,k) = 1.0
+        enddo
+      enddo
+    enddo
+
+    do j = 1,jdim
+      do i = 1,idim
+        do k = ntop(i,j) - 1, 1, -1
+          klast = k
+          if (test(i,j,k) /= 1.0 )  go to 20
+        end do
+        klast = 0
+        20 continue
+        if ( klast /= 0 )  test(i,j,1:klast) = 0.0
+        kcrit = klast + 1
+        x(i,j) = x(i,j)/(1.-sigma(i,j,kcrit))  
+!       should be  x(i,j) = x(i,j)/(1 - sigma_half(klast)/sigma_half(kdim))
+      end do
+    end do
+
+    do k = 1,kdim
+      dtaux(:,:,k) = - x*ulow*test(:,:,k)
+      dtauy(:,:,k) = - x*vlow*test(:,:,k)
+    end do
+
+    taub = 0.0
+
+endif
 
 !  calculate temperature tendency due to dissipation of kinetic energy
-   if (do_conserve_energy) then
-      dtemp = -((uwnd+.5*delt*dtaux)*dtaux + (vwnd+.5*delt*dtauy)*dtauy)/cp
-   else
-      dtemp = 0.0
-   endif
+if (do_conserve_energy) then
+  dtemp = -((uwnd+.5*delt*dtaux)*dtaux + (vwnd+.5*delt*dtauy)*dtauy)/cp
+else
+  dtemp = 0.0
+endif
 
-
+return
 end subroutine mg_drag
 !=======================================================================
 
@@ -345,9 +487,9 @@ real grav2, xli, a, small
 ! --- DEFINE CURRENT WINDOW & GET GLOBAL VARIABLES
 !-------------------------------------------------------------------
 
-  idim = SIZE( uwnd, 1 )
-  jdim = SIZE( uwnd, 2 )
-  kdim = SIZE( uwnd, 3 )
+  idim = size( uwnd, 1 )
+  jdim = size( uwnd, 2 )
+  kdim = size( uwnd, 3 )
   ie = is + idim - 1
   je = js + jdim - 1
   hprime(:,:) = Ghprime(is:ie,js:je)
@@ -465,9 +607,9 @@ subroutine mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
 !=======================================================================
 
 
-  idim = SIZE( uwnd, 1 )
-  jdim = SIZE( uwnd, 2 )
-  kdim = SIZE( uwnd, 3 )
+  idim = size( uwnd, 1 )
+  jdim = size( uwnd, 2 )
+  kdim = size( uwnd, 3 )
   kdimm1 = kdim - 1
   kdimp1 = kdim + 1
 
@@ -717,7 +859,7 @@ subroutine mgwd_tend (is,js,xn,yn,taub,phalf,taus,dtaux,dtauy)
 !=======================================================================
 
 
-  kdim = SIZE( dtaux, 3 )
+  kdim = size( dtaux, 3 )
   kdimp1 = kdim + 1
 
 
@@ -761,16 +903,15 @@ subroutine mgwd_tend (is,js,xn,yn,taub,phalf,taus,dtaux,dtauy)
 
 !     ***********************************************************
 
-end SUBROUTINE MGWD_TEND
+end subroutine mgwd_tend
 
 !#######################################################################
 
-  SUBROUTINE MG_DRAG_INIT( lonb, latb, hprime )
+  subroutine mg_drag_init( lonb, latb, hprime )
 
 !=======================================================================
 ! ***** INITIALIZE Mountain Gravity Wave Drag
 !=======================================================================
-
 
 !---------------------------------------------------------------------
 ! Arguments (Intent in)
@@ -792,19 +933,22 @@ end SUBROUTINE MGWD_TEND
  logical  ::  answer
 
 !=====================================================================
+
+if(.not.do_init) return
+
 !---------------------------------------------------------------------
 ! --- Read namelist
 !---------------------------------------------------------------------
-  if( FILE_EXIST( 'input.nml' ) ) then
+  if( file_exist( 'input.nml' ) ) then
 ! -------------------------------------
-   unit = OPEN_FILE ( file = 'input.nml', action = 'read' )
+   unit = open_file ( file = 'input.nml', action = 'read' )
    ierr = 1
    do while( ierr .ne. 0 )
-   READ ( unit,  nml = mg_drag_nml, iostat = io, end = 10 ) 
+   read ( unit,  nml = mg_drag_nml, iostat = io, end = 10 ) 
    ierr = check_nml_error(io,'mg_drag_nml')
    end do
 10 continue
-   CALL CLOSE_FILE ( unit )
+   call close_file ( unit )
 ! -------------------------------------
   end if
 
@@ -812,12 +956,12 @@ end SUBROUTINE MGWD_TEND
 ! --- Output version
 !---------------------------------------------------------------------
 
-  unit = OPEN_FILE ( file = 'logfile.out', action = 'APPEND' )
-  if ( get_my_pe() == 0 ) then
-       WRITE( unit,'(/,80("="),/(a))') trim(version), trim(tag)
-       WRITE( unit, nml = mg_drag_nml ) 
+  unit = open_file ( file = 'logfile.out', action = 'APPEND' )
+  if ( get_my_pe() == get_root_pe() ) then
+       write( unit,'(/,80("="),/(a))') trim(version), trim(tag)
+       write( unit, nml = mg_drag_nml ) 
   endif
-  CALL CLOSE_FILE ( unit )
+  call close_file ( unit )
 
 !---------------------------------------------------------------------
 ! --- Allocate storage for Ghprime
@@ -826,8 +970,7 @@ end SUBROUTINE MGWD_TEND
   ix = size(lonb) - 1
   iy = size(latb) - 1
 
-  if( ALLOCATED( Ghprime ) ) DEALLOCATE( Ghprime )
-                           ALLOCATE( Ghprime(ix,iy) )
+  allocate( Ghprime(ix,iy) )
 
 !-------------------------------------------------------------------
   do_init = .false.
@@ -838,17 +981,17 @@ end SUBROUTINE MGWD_TEND
   answer = get_topog_stdev ( lonb, latb, Ghprime )
 
   if ( .not. answer ) then
-  if (  FILE_EXIST( 'INPUT/mg_drag.res' ) ) then
+  if (  file_exist( 'INPUT/mg_drag.res' ) ) then
 
-      unit = OPEN_FILE ( file = 'INPUT/mg_drag.res',  &
+      unit = open_file ( file = 'INPUT/mg_drag.res',  &
                          form = 'NATIVE', action = 'READ' )
-      CALL READ_DATA ( unit, Ghprime )
-      CALL CLOSE_FILE ( unit )
+      call read_data ( unit, Ghprime )
+      call close_file ( unit )
       do_restart_write = .true.
 
   else
 
-      CALL ERROR_MESG ('MG_DRAG_INIT',  &
+      call error_mesg ('mg_drag_init',  &
                        'No sub-grid orography specified in mg_drag', &
                        FATAL)
 
@@ -859,25 +1002,31 @@ end SUBROUTINE MGWD_TEND
   if (present(hprime)) hprime = Ghprime
  
 !=====================================================================
-  end SUBROUTINE MG_DRAG_INIT
+  end subroutine mg_drag_init
 
 !#######################################################################
 
-  SUBROUTINE MG_DRAG_END
+  subroutine mg_drag_end
 
 !=======================================================================
   integer :: unit
 !=======================================================================
 
-      if (.not.do_restart_write) return
+      do_init = .true.
 
-      unit = OPEN_FILE ( file = 'RESTART/mg_drag.res', &
+      if (.not.do_restart_write) then
+        deallocate(ghprime)
+        return
+      endif
+
+      unit = open_file ( file = 'RESTART/mg_drag.res', &
                          form = 'NATIVE', action = 'WRITE' )
-      CALL WRITE_DATA ( unit, Ghprime )
-      CALL CLOSE_FILE ( unit )
+      call write_data ( unit, Ghprime )
+      call close_file ( unit )
+      deallocate(ghprime)
  
 !=====================================================================
-  end SUBROUTINE MG_DRAG_END
+  end subroutine mg_drag_end
 
 
-end MODULE MG_DRAG_MOD
+end module mg_drag_mod

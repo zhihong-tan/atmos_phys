@@ -2,18 +2,17 @@
 		 module gas_tf_mod
 
 
-use rad_step_setup_mod,       only : KSRAD, KERAD, ISRAD,   &
-				     IERAD, JSRAD, JERAD, pflux, tflux
 use longwave_params_mod,      only : NBCO215
-use rad_utilities_mod,        only : longwave_control_type, Lw_control
+use rad_utilities_mod,        only : longwave_control_type, Lw_control,&
+				     atmos_input_type, &
+                                     gas_tf_type, Environment,   &
+				      environment_type
 use utilities_mod,            only : open_file, file_exist,    &
                                      check_nml_error, error_mesg, &
 				     print_version_number, FATAL, NOTE,&
 				     WARNING, get_my_pe, close_file, &
 				     read_data, write_data
 use constants_new_mod,        only : pstd, rgas, wtmair, grav
-use longwave_setup_mod,       only : pdfinv, pdflux
-use std_pressures_mod,        only : get_std_pressures
 
 !---------------------------------------------------------------------
 
@@ -30,30 +29,33 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-!     character(len=5), parameter  ::  version_number = 'v0.09'
-      character(len=128)  :: version =  '$Id: gas_tf.F90,v 1.2 2001/07/05 17:31:35 fms Exp $'
-      character(len=128)  :: tag     =  '$Name: galway $'
+      character(len=128)  :: version =  '$Id: gas_tf.F90,v 1.3 2002/07/16 22:35:14 fms Exp $'
+      character(len=128)  :: tag     =  '$Name: havana $'
 
 !---------------------------------------------------------------------
 !------    interfaces   ------
 
-public   gas_tf_init, co2coef,  transfn, transcol,    &
-	 transcolrow, gas_dealloc, trans_nearby,    &
-	 get_gastf_for_cts, get_gastf_for_optpath, &
+!public   gas_tf_init, co2coef,  transfn, transcol,    &
+ public   gas_tf_init, co2coef,           transcol,    &
+! transcolrow,              trans_nearby,    &
+	 transcolrow,              trans_nearby, trans_sfc,   &
+!	 get_gastf_for_cts, get_gastf_for_optpath, &
+!	                    get_gastf_for_optpath, &
 	 put_co2_stdtf_for_gas_tf, put_co2_nbltf_for_gas_tf, &
 	 put_ch4_stdtf_for_gas_tf, put_n2o_stdtf_for_gas_tf, &
 	 get_control_gas_tf, gas_tf_end, process_co2_input_file, &
 	 process_ch4_input_file, process_n2o_input_file
 
 
-private  ptz, antemp, process_gas_input_file
+private  ptz, antemp, process_gas_input_file, transfn
 
 
 !---------------------------------------------------------------------
 !------     namelist  -----
 
 
-character(len=10) :: interp_form='log'
+!character(len=10) :: interp_form='log'
+character(len=16) :: interp_form='log'
 logical           :: do_calcstdco2tfs = .true.,   &
                      do_writestdco2tfs = .false., &
                      do_readstdco2tfs = .false.
@@ -276,11 +278,6 @@ real, allocatable, dimension (:,:)       ::  n2o91, n2o98,     &
 				             n2od2t91, n2od2t98
 
 
-real, dimension (:,:,:),   allocatable   :: tdav, tlsqu, tmpdiff,  &
-         			            tstdav, co2nbl, n2o9c, &
-					    tn2o17
-real, dimension (:,:),     allocatable   :: a1, a2
-real, dimension (:,:,:,:), allocatable   :: co2spnb
 
 !----------------------------------------------------------------------
 !       stemp   =  standard temperatures for model pressure level
@@ -301,6 +298,7 @@ real     :: b1 = -0.18113332E-03
 real     :: b2 = -0.10680132E-05
 real     :: b3 = -0.67303519E-07
 
+integer               :: israd, ierad, jsrad, jerad, ksrad, kerad
 integer, parameter    :: nvalids=1
 integer               :: ixprkminh2o
 logical               :: do_linearlblint, do_loglblint
@@ -327,20 +325,33 @@ character(len=8), dimension(nvalids) :: valid_versions= 'v1.00'
 
 !###############################################################
 
-subroutine gas_tf_init (kmin, kmax)
+!subroutine gas_tf_init (kmin, kmax, plm, pd)
+!subroutine gas_tf_init (kmin, kmax, plm_in, pd_in)
+!subroutine gas_tf_init (ks,          plm_in, pd_in)
+subroutine gas_tf_init (pref)                        
 
-integer, intent(in)  :: kmin, kmax
+!integer, intent(in)  :: kmin, kmax
+!integer, intent(in)  :: ks
+!real, dimension(:), intent(in) :: plm, pd
+!real, dimension(:), intent(in) :: plm_in, pd_in
+real, dimension(:,:), intent(in) :: pref
 
 !--------------------------------------------------------------------
 !  local variables
 !--------------------------------------------------------------------
-   real, dimension(:), allocatable   :: plm, pd
+!   real, dimension(:), allocatable   :: plm, pd
 
 !-------------------------------------------------------------------
 !  prkminh2o : pressure (mb) above which h2o-co2 overlap affects
 !              nearby layer transmissivities 
 !-------------------------------------------------------------------
    real            :: prkminh2o = 28.0
+!  real, dimension (size(plm_in,1)) :: plm
+!  real, dimension (size(pd_in,1)) :: pd
+   real, dimension (size(pref  ,1)) :: plm
+   real, dimension (size(pref ,1)) :: pd
+   integer ::kmin, kmax
+   integer :: ks = 1
 
 
    integer         :: unit, ierr, io, k
@@ -364,6 +375,40 @@ integer, intent(in)  :: kmin, kmax
      write (unit, nml=gas_tf_nml)
    endif
    call close_file (unit)
+
+    kmin = 1
+!   kmax = size(plm_in,1) - 1
+    kerad = size(pref  ,1) - 1
+    kmax = kerad
+    ksrad = 1
+    ks = 1
+!! DEFINE THIS DIFFERENTLY -- pass this in 
+!   kerad = kmax
+
+
+   pd (:) = pref(:,1)
+!  pd8(:) = pref(:,2)
+    plm (kmin) = 0.
+!   plm8(kmin) = 0.
+    do k=kmin+1,kmax
+      plm (k) = 0.5*(pd (k-1) + pd (k))
+!     plm8(k) = 0.5*(pd8(k-1) + pd8(k))
+    enddo
+    plm (kmax+1) = pd (kmax+1)
+!    plm8(kmax+1) = pd8(kmax+1)
+
+!! convert plm to mb
+!  plm = plm_in*1.0E-02
+   plm = plm   *1.0E-02
+!  plm = plm_in
+!  pd = pd_in*1.0E-02
+   pd = pd   *1.0E-02
+
+!   kmin = 1
+!   kmax = size(plm_in,1) - 1
+!   ksrad = 1
+!! DEFINE THIS DIFFERENTLY -- pass this in 
+!   kerad = kmax
 
 !--------------------------------------------------------------------
 !  check on consistency between namelist values
@@ -422,10 +467,10 @@ integer, intent(in)  :: kmin, kmax
 !  call ptz to compute standard temps and a pressure coefficient(gtemp)
 !  used in the radiation algorithm. 
 !--------------------------------------------------------------------
-   allocate ( plm(KMIN:KMAX+1) )
-   allocate ( pd (KMIN:KMAX+1) )
+!  allocate ( plm(KMIN:KMAX+1) )
+!  allocate ( pd (KMIN:KMAX+1) )
 
-   call get_std_pressures ( plm_out=plm, pd_out=pd)
+!  call get_std_pressures ( plm_out=plm, pd_out=pd)
 
    call ptz (plm, pd)
 
@@ -438,23 +483,30 @@ integer, intent(in)  :: kmin, kmax
 !  less than 28 mb, nearby layer effects are going to be ignored,
 !  so ixprkminh2o is set to KERAD+1 to avoid loop calculations.
 !--------------------------------------------------------------------
-   if (plm(KSRAD) >= prkminh2o) then
-     ixprkminh2o = KSRAD
-   else if (plm(KERAD) < prkminh2o) then
-       ixprkminh2o = KERAD + 1
+!  if (plm(KSRAD) >= prkminh2o) then
+   if (plm(ks   ) >= prkminh2o) then
+!    ixprkminh2o = KSRAD
+     ixprkminh2o = 1
+   else if (plm(kmax ) < prkminh2o) then
+!      ixprkminh2o = KERAD + 1
+       ixprkminh2o = (kmax - ks + 1) + 1
    else
-     do k=KSRAD+1,KERAD
+!    do k=KSRAD+1,KERAD
+     do k=ks+1,kmax  
        if ((plm(k) - prkminh2o) .LT. 0.0) then
-         cycle
+!        cycle
+!! ixprkminh2o in radiation grid coordianates, not model grid coords
        else
-         ixprkminh2o = k
+!        ixprkminh2o = k
+         ixprkminh2o = k-ks + 1
          exit
        endif
      enddo
    endif
    
-   deallocate ( plm)
-   deallocate ( pd )
+!  deallocate ( plm)
+!  deallocate ( pd )
+    print *, 'ks, kmin,ksrad, kmax, kerad', ks, kmin, ksrad, kmax,kerad
 
 !----------------------------------------------------------------------
 !   allocate co2 transmission function arrays to hold data which will 
@@ -520,42 +572,54 @@ end subroutine gas_tf_init
 
 !###################################################################
 
-subroutine co2coef (press, temp)
+subroutine co2coef (Atmos_input, Gas_tf)
  
 !---------------------------------------------------------------------
-real, dimension (:,:,:), intent(in)        :: press, temp       
+type(gas_tf_type), intent(inout) :: Gas_tf
+type(atmos_input_type), intent(in) :: Atmos_input
 
 !---------------------------------------------------------------------
       integer                              ::  k, i, j
       real                                 ::  palog8, alogps8 
-      real, dimension (:,:,:), allocatable ::  tdif
+      real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2), &
+                           size(Atmos_input%pflux,3)-1) :: pdflux
+      real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2), &
+                           size(Atmos_input%pflux,3)  ) :: tdif, &
+                                press, temp, pflux, tflux
 
+!  convert press and pflux to cgs.
+        press(:,:,:) = 10.0*Atmos_input%press(:,:,:)
+        pflux(:,:,:) = 10.0*Atmos_input%pflux(:,:,:)
+     tflux(:,:,:) = Atmos_input%tflux(:,:,:)
+     temp(:,:,:) = Atmos_input%temp(:,:,:)
+
+      israd = 1
+      ierad = size(Atmos_input%press,1)
+      jsrad = 1
+      jerad = size(Atmos_input%press,2)
+    
 !---------------------------------------------------------------------
 !   allocate module variables
 !---------------------------------------------------------------------
-      allocate (a1      (ISRAD:IERAD, JSRAD:JERAD           ))
-      allocate (a2      (ISRAD:IERAD, JSRAD:JERAD           ))
-      allocate (tdav    (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
-      allocate (tlsqu   (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
-      allocate (tmpdiff (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
-      allocate (tstdav  (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
-      allocate (co2nbl  (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD  ))
-      allocate (co2spnb (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1,  &
+      allocate (Gas_tf%a1      (ISRAD:IERAD, JSRAD:JERAD           ))
+      allocate (Gas_tf%a2      (ISRAD:IERAD, JSRAD:JERAD           ))
+      allocate (Gas_tf%tdav    (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
+      allocate (Gas_tf%tlsqu   (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
+      allocate (Gas_tf%tmpdiff (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
+      allocate (Gas_tf%tstdav  (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
+      allocate (Gas_tf%co2nbl  (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD  ))
+      allocate (Gas_tf%co2spnb (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1,  &
 							       NBCO215))
-      allocate (n2o9c   (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
-      allocate (tn2o17  (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
+      allocate (Gas_tf%n2o9c   (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
+      allocate (Gas_tf%tn2o17  (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
 
-!---------------------------------------------------------------------
-!   allocate subroutine variables
-!---------------------------------------------------------------------
-      allocate (tdif    (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
 
 !--------------------------------------------------------------------
 !     compute temperature difference between model profile and 
 !     standard profile
 !---------------------------------------------------------------------
       do k = KSRAD,KERAD+1
-        tmpdiff(:,:,k) = temp(:,:,k) - stemp(k)
+        Gas_tf%tmpdiff(:,:,k) = temp(:,:,k) - stemp(k)
       enddo
 
 !-----------------------------------------------------------------------
@@ -564,12 +628,13 @@ real, dimension (:,:,:), intent(in)        :: press, temp
 !     of these will be used to obtain  the difference (dift) between the
 !     model temperature profile and the standard profile.
 !-----------------------------------------------------------------------
-      tstdav(:,:,KSRAD) = 0.0E+00
-      tdav  (:,:,KSRAD) = 0.0E+00
+      Gas_tf%tstdav(:,:,KSRAD) = 0.0E+00
+      Gas_tf%tdav  (:,:,KSRAD) = 0.0E+00
       do k=KSRAD,KERAD
-        tstdav(:,:,k+1) = tstdav(:,:,k) + gtemp(k)*pdflux(:,:,k)
-        tdav  (:,:,k+1) = tdav  (:,:,k) + gtemp(k)*pdflux(:,:,k)*  &
-                          tmpdiff(:,:,k)
+        pdflux(:,:,k) = pflux(:,:,k+1) - pflux(:,:,k)
+        Gas_tf%tstdav(:,:,k+1) = Gas_tf%tstdav(:,:,k) + gtemp(k)*pdflux(:,:,k)
+        Gas_tf%tdav  (:,:,k+1) = Gas_tf%tdav  (:,:,k) + gtemp(k)*pdflux(:,:,k)*  &
+                          Gas_tf%tmpdiff(:,:,k)
       enddo
 
 !----------------------------------------------------------------------
@@ -579,8 +644,8 @@ real, dimension (:,:,:), intent(in)        :: press, temp
 !     accounting for the 0.8 and 0.2 factors.
 !----------------------------------------------------------------------
       if (do_linearlblint) then
-        a1(:,:) = (press(:,:,KERAD+1) - pstd*0.8E+00)/(pstd*0.2E+00)
-        a2(:,:) = (pstd - press(:,:,KERAD+1))/(pstd*0.2E+00)
+        Gas_tf%a1(:,:) = (press(:,:,KERAD+1) - pstd*0.8E+00)/(pstd*0.2E+00)
+        Gas_tf%a2(:,:) = (pstd - press(:,:,KERAD+1))/(pstd*0.2E+00)
 
 !----------------------------------------------------------------------
 !     a logarithmic interpolation is presently assumed, with the 2 
@@ -592,8 +657,8 @@ real, dimension (:,:,:), intent(in)        :: press, temp
       else if (do_loglblint) then 
         alogps8 = ALOG(pstd*0.8E+00)
         palog8 = -ALOG(0.8E+00)
-        a1(:,:) = (ALOG(press(:,:,KERAD+1)) - alogps8)/palog8
-        a2(:,:) = 1.0E+00 - a1(:,:)
+        Gas_tf%a1(:,:) = (ALOG(press(:,:,KERAD+1)) - alogps8)/palog8
+        Gas_tf%a2(:,:) = 1.0E+00 - Gas_tf%a1(:,:)
       else 
 	call error_mesg ('co2coef', &
               'neither linearlblint nor loglblint was specified.', &
@@ -609,19 +674,22 @@ real, dimension (:,:,:), intent(in)        :: press, temp
 	do j=JSRAD,JERAD
 	  do i=ISRAD,IERAD
             if(tflux(i,j,k) .LE. 2.5E+02) then
-              tlsqu(i,j,k) = b0 +     tdif (i,j,k)  *  &
+              Gas_tf%tlsqu(i,j,k) = b0 +     tdif (i,j,k)  *  &
                             (b1 +     tdif (i,j,k)  *  &
                             (b2 + b3* tdif (i,j,k)  )) 
             else 
-              tlsqu(i,j,k) = b0 
+              Gas_tf%tlsqu(i,j,k) = b0 
             endif
           enddo
         enddo
       enddo
 
-      deallocate (tdif)
 
 !----------------------------------------------------------------------
+!     call transfn to compute temperature-corrected co2 transmission 
+!     functions (co2spnb and co2nbl). 
+!---------------------------------------------------------------------
+       call transfn (Gas_tf)
 
 
 end subroutine co2coef
@@ -631,7 +699,7 @@ end subroutine co2coef
 
 !#####################################################################
 
-subroutine transfn 
+subroutine transfn (Gas_tf)
 
 !----------------------------------------------------------------------
 !     transfn computes the temperature-corrected co2 nearby layer
@@ -642,6 +710,9 @@ subroutine transfn
 !     revised: 1/1/93
 !
 !     certified:  radiation version 1.0
+
+type(gas_tf_type), intent(inout) :: Gas_tf
+
 !--------------------------------------------------------------------
 !       co2nbl =  co2 transmission functions (not pressure-integrated) 
 !                 for adjacent levels, over the 560-800 cm-1 range.
@@ -653,22 +724,19 @@ subroutine transfn
 !---------------------------------------------------------------------
 !  local variables
 !---------------------------------------------------------------------
-    real, dimension(:,:,:),   allocatable ::  co2m2d, co2md, co2mr, dift
-    real, dimension(:,:,:,:), allocatable ::  co215nb, co2dt15nb, &
+
+    real, dimension (size(Gas_tf%tdav,1), size(Gas_tf%tdav,2), &
+                     size(Gas_tf%tdav,3)-1) :: co2m2d, co2md, co2mr
+    real, dimension (size(Gas_tf%tdav,1), size(Gas_tf%tdav,2), &
+                     size(Gas_tf%tdav,3)  ) :: dift                 
+    real, dimension (size(Gas_tf%tdav,1), size(Gas_tf%tdav,2), &
+                     size(Gas_tf%tdav,3), NBCO215  ) ::       &
+                                              co215nb, co2dt15nb, &
 					      co2d2t15nb
+
     integer    ::  inb, k
 
 !----------------------------------------------------------------------
-    allocate (co2m2d    (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD    ))
-    allocate (co2md     (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD    ))
-    allocate (co2mr     (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD    ))
-    allocate (co215nb   (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1,  &
-							       NBCO215))
-    allocate (co2dt15nb (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1,  &
-							       NBCO215))
-    allocate (co2d2t15nb(ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1,   &
-							       NBCO215))
-    allocate (dift      (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1   ))
 
 
 !----------------------------------------------------------------------
@@ -678,40 +746,40 @@ subroutine transfn
 !----------------------------------------------------------------------
     do inb=1,NBCO215
       do k=KSRAD,KERAD+1
-        co215nb(:,:,k,inb)    = a1(:,:)*co215nbps1(k,inb) +  &
-                                a2(:,:)*co215nbps8(k,inb)
-        co2dt15nb(:,:,k,inb)  = 1.0E-2*(a1(:,:)*co2dt15nbps1(k,inb) +&
-                                        a2(:,:)*co2dt15nbps8(k,inb))
-        co2d2t15nb(:,:,k,inb) = 1.0E-3*(a1(:,:)*co2d2t15nbps1(k,inb)+&
-                                        a2(:,:)*co2d2t15nbps8(k,inb))
+        co215nb(:,:,k,inb)    = Gas_tf%a1(:,:)*co215nbps1(k,inb) +  &
+                                Gas_tf%a2(:,:)*co215nbps8(k,inb)
+        co2dt15nb(:,:,k,inb)  = 1.0E-2*(Gas_tf%a1(:,:)*co2dt15nbps1(k,inb) +&
+                                        Gas_tf%a2(:,:)*co2dt15nbps8(k,inb))
+        co2d2t15nb(:,:,k,inb) = 1.0E-3*(Gas_tf%a1(:,:)*co2d2t15nbps1(k,inb)+&
+                                        Gas_tf%a2(:,:)*co2d2t15nbps8(k,inb))
       enddo
     enddo
     do k=KSRAD,KERAD
-      co2mr (:,:,k) = a1(:,:)*co2m51(k) + a2(:,:)*co2m58(k)
-      co2md (:,:,k) = 1.0E-02*(a1(:,:)*cdtm51(k) +   &
-                               a2(:,:)*cdtm58(k))
-      co2m2d(:,:,k) = 1.0E-03*(a1(:,:)*c2dm51(k) +   &
-                               a2(:,:)*c2dm58(k))
+      co2mr (:,:,k) = Gas_tf%a1(:,:)*co2m51(k) + Gas_tf%a2(:,:)*co2m58(k)
+      co2md (:,:,k) = 1.0E-02*(Gas_tf%a1(:,:)*cdtm51(k) +   &
+                               Gas_tf%a2(:,:)*cdtm58(k))
+      co2m2d(:,:,k) = 1.0E-03*(Gas_tf%a1(:,:)*c2dm51(k) +   &
+                               Gas_tf%a2(:,:)*c2dm58(k))
     enddo
 
 !----------------------------------------------------------------------
 !     perform the temperature interpolation for these transmissivities
 !----------------------------------------------------------------------
 
-    dift(:,:,KSRAD+1:KERAD+1) = tdav(:,:,KSRAD+1:KERAD+1)/   &
-			        tstdav(:,:,KSRAD+1:KERAD+1)
+    dift(:,:,KSRAD+1:KERAD+1) = Gas_tf%tdav(:,:,KSRAD+1:KERAD+1)/   &
+			        Gas_tf%tstdav(:,:,KSRAD+1:KERAD+1)
     do inb=1,NBCO215
-      co2spnb(:,:,KSRAD,inb) = 1.0E+00
-      co2spnb(:,:,KSRAD+1:KERAD+1,inb) =     &
+      Gas_tf%co2spnb(:,:,KSRAD,inb) = 1.0E+00
+      Gas_tf%co2spnb(:,:,KSRAD+1:KERAD+1,inb) =     &
 			        co215nb(:,:,KSRAD+1:KERAD+1,inb) +  &
                                        dift(:,:,KSRAD+1:KERAD+1)*    &
 			       (co2dt15nb(:,:,KSRAD+1:KERAD+1,inb) +&
                                  0.5E+00*dift(:,:,KSRAD+1:KERAD+1)*   &
 				   co2d2t15nb(:,:,KSRAD+1:KERAD+1,inb))
       do k=KSRAD,KERAD+1
-        co2spnb(:,:,k,inb) = co2spnb(:,:,k,inb)*  &
-                             (1.0E+00 - tlsqu(:,:,KSRAD)) +    &
-					tlsqu(:,:,KSRAD)
+        Gas_tf%co2spnb(:,:,k,inb) = Gas_tf%co2spnb(:,:,k,inb)*  &
+                             (1.0E+00 - Gas_tf%tlsqu(:,:,KSRAD)) +    &
+					Gas_tf%tlsqu(:,:,KSRAD)
       enddo
     enddo
 
@@ -719,24 +787,17 @@ subroutine transfn
 !     compute special nearby layer transmission functions for combined
 !     band in 15 um range. the transmissivities are not layer-averaged.
 !----------------------------------------------------------------------
-    co2nbl(:,:,KSRAD:KERAD) = co2mr(:,:,KSRAD:KERAD) +   &
-                        tmpdiff(:,:,KSRAD:KERAD)*   &
+    Gas_tf%co2nbl(:,:,KSRAD:KERAD) = co2mr(:,:,KSRAD:KERAD) +   &
+                        Gas_tf%tmpdiff(:,:,KSRAD:KERAD)*   &
 			(co2md (:,:,KSRAD:KERAD) +   &
-                        0.5E+00*tmpdiff(:,:,KSRAD:KERAD)*   &
+                        0.5E+00*Gas_tf%tmpdiff(:,:,KSRAD:KERAD)*   &
 			co2m2d(:,:,KSRAD:KERAD))
 
-    co2nbl(:,:,KSRAD:KERAD) = co2nbl(:,:,KSRAD:KERAD)*(1.0E+00 -   &
-                        tlsqu(:,:,KSRAD:KERAD)) + tlsqu(:,:,KSRAD:KERAD) 
+    Gas_tf%co2nbl(:,:,KSRAD:KERAD) = Gas_tf%co2nbl(:,:,KSRAD:KERAD)*(1.0E+00 -   &
+                        Gas_tf%tlsqu(:,:,KSRAD:KERAD)) + Gas_tf%tlsqu(:,:,KSRAD:KERAD) 
 
 
 
-    deallocate ( co2m2d    )
-    deallocate ( co2md     )
-    deallocate ( co2mr     )
-    deallocate ( co215nb   )
-    deallocate ( co2dt15nb )
-    deallocate ( co2d2t15nb)
-    deallocate ( dift      )
 
 !--------------------------------------------------------------------
 
@@ -748,7 +809,7 @@ end subroutine transfn
 
 !#####################################################################
 
-subroutine transcol (kcol, krow, kcols, kcole, co21c)        
+subroutine transcol (kcol, krow, kcols, kcole, co21c, Gas_tf)        
 
 !----------------------------------------------------------------------
 !     transcol computes temperature-corrected co2 transmission 
@@ -766,31 +827,29 @@ subroutine transcol (kcol, krow, kcols, kcole, co21c)
 !---------------------------------------------------------------------
 integer,                intent(in)  :: krow, kcol, kcols, kcole
 real, dimension(:,:,:), intent(out) :: co21c
+type(gas_tf_type), intent(in) :: Gas_tf
 
 !----------------------------------------------------------------------
-    real, dimension (:, :, :), allocatable  ::  co2r, dift,  d2cdt2, &
+    real, dimension (size(Gas_tf%tdav,1), size(Gas_tf%tdav,2), &
+                     size(Gas_tf%tdav,3)  ) ::   &  
+		                      co2r, dift,  d2cdt2, &
 						dco2dt
+
 
 
     integer    ::  k, kp
 
-!--------------------------------------------------------------------
-!   allocate local arrays
-!--------------------------------------------------------------------
-    allocate ( co2r    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)   )
-    allocate ( dift    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)   )
-    allocate ( d2cdt2  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)   )
-    allocate ( dco2dt  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)   )
+!------------------------------------------------------------------
 
 
     co21c(:,:,KSRAD:KERAD+1) = 1.0E+00
 
     do kp = kcols,kcole
       if (kp .NE. krow) then
-        dift(:,:,kp) = (tdav  (:,:,kp) - tdav  (:,:,krow))/  &
-                       (tstdav(:,:,kp) - tstdav(:,:,krow))
+        dift(:,:,kp) = (Gas_tf%tdav  (:,:,kp) - Gas_tf%tdav  (:,:,krow))/  &
+                       (Gas_tf%tstdav(:,:,kp) - Gas_tf%tstdav(:,:,krow))
       elseif (krow .NE. KSRAD) then
-        dift(:,:,kp) = 0.5E+00*(tmpdiff(:,:,kp) + tmpdiff(:,:,kp-1))
+        dift(:,:,kp) = 0.5E+00*(Gas_tf%tmpdiff(:,:,kp) + Gas_tf%tmpdiff(:,:,kp-1))
       else
         dift(:,:,kp) = 0.0E+00
       endif
@@ -802,11 +861,11 @@ real, dimension(:,:,:), intent(out) :: co21c
 !       pressure interpolation
 !----------------------------------------------------------------------
     do kp=kcols,kcole
-      co2r  (:,:,kp) = a1(:,:)*co251(kp,krow) + a2(:,:)*co258(kp,krow)
-      dco2dt(:,:,kp) = 1.0E-02*(a1(:,:)*cdt51(kp,krow) +   &
-                       a2(:,:)*cdt58(kp,krow))
-      d2cdt2(:,:,kp) = 1.0E-03*(a1(:,:)*c2d51(kp,krow) +  &
-                       a2(:,:)*c2d58(kp,krow))
+      co2r  (:,:,kp) = Gas_tf%a1(:,:)*co251(kp,krow) + Gas_tf%a2(:,:)*co258(kp,krow)
+      dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt51(kp,krow) +   &
+                       Gas_tf%a2(:,:)*cdt58(kp,krow))
+      d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d51(kp,krow) +  &
+                       Gas_tf%a2(:,:)*c2d58(kp,krow))
 
     enddo
  
@@ -824,17 +883,11 @@ real, dimension(:,:,:), intent(out) :: co21c
 !----------------------------------------------------------------------
  
     do kp=kcols,kcole
-      co21c(:,:,kp) = co21c(:,:,kp)*(1.0E+00 - tlsqu(:,:,kp)) +  &
-                                               tlsqu(:,:,kp)
+      co21c(:,:,kp) = co21c(:,:,kp)*(1.0E+00 - Gas_tf%tlsqu(:,:,kp)) +  &
+                                               Gas_tf%tlsqu(:,:,kp)
     enddo
 
 !----------------------------------------------------------------
-!  deallocate local arrays
-!----------------------------------------------------------------
-    deallocate ( dco2dt )
-    deallocate ( d2cdt2 )
-    deallocate ( dift   )
-    deallocate ( co2r   )
 
 !-----------------------------------------------------------------------
 
@@ -845,7 +898,7 @@ end subroutine transcol
  
 !#####################################################################
 
-subroutine transcolrow (kcol, krow, kcols, kcole, krows, krowe,    &
+subroutine transcolrow (Gas_tf, kcol, krow, kcols, kcole, krows, krowe,    &
                         co21c, co21r, tch4n2oe)                     
 !----------------------------------------------------------------------
 !     transcolrow computes the temperature-corrected co2 transmission 
@@ -864,6 +917,7 @@ subroutine transcolrow (kcol, krow, kcols, kcole, krows, krowe,    &
 !     certified:  radiation version 1.0
 !----------------------------------------------------------------------
 integer, intent(in)  ::  kcol, krow, kcols, kcole, krows, krowe
+type(gas_tf_type), intent(inout) :: Gas_tf
 
 !-----------------------------------------------------------------------
 !     intent out:
@@ -872,7 +926,8 @@ integer, intent(in)  ::  kcol, krow, kcols, kcole, krows, krowe
 !
 !----------------------------------------------------------------------
 real, dimension (:,:,:),   intent(out) :: co21c, co21r
-real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
+!real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
+real, dimension (:,:,:,:), intent(inout)             :: tch4n2oe
 
 !--------------------------------------------------------------------
 !   local variables
@@ -889,10 +944,21 @@ real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
 !      n2o9r = column of n2o 9 um transmission functions (fixed kcol).
 !----------------------------------------------------------------------
 
-    real, dimension (:,:,:), allocatable :: ch41r, n2o1r, n2o17r,   &
-					    n2o9r, ch41c, n2o1c, n2o17c
-    real, dimension (:,:,:), allocatable :: co2p, dift, d2cdt2, dco2dt
-    real, dimension (:,:,:), allocatable :: ch4p, d2ch4dt2, dch4dt, &
+!   real, dimension (:,:,:), allocatable :: ch41r, n2o1r, n2o17r,   &
+!				    n2o9r, ch41c, n2o1c, n2o17c
+!   real, dimension (:,:,:), allocatable :: co2p, dift, d2cdt2, dco2dt
+!   real, dimension (:,:,:), allocatable :: ch4p, d2ch4dt2, dch4dt, &
+!            		            d2n2odt2, dn2odt,    &
+!				    d2n2o17dt2, dn2o17dt, &
+!		                    d2n2o9dt2, dn2o9dt, n2op,  &
+!				    n2o17p, n2o9p
+
+    real, dimension (size(Gas_tf%tdav,1), size(Gas_tf%tdav,2), &
+                     size(Gas_tf%tdav,3)  ) ::   &  
+                                            ch41r, n2o1r, n2o17r,   &
+					    n2o9r, ch41c, n2o1c, n2o17c,&
+                                            co2p, dift, d2cdt2, dco2dt,&
+                                            ch4p, d2ch4dt2, dch4dt, &
 	            		            d2n2odt2, dn2odt,    &
 					    d2n2o17dt2, dn2o17dt, &
 			                    d2n2o9dt2, dn2o9dt, n2op,  &
@@ -904,47 +970,50 @@ real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
 !  allocate local arrays
 !----------------------------------------------------------------------
 
-    allocate ( co2p       (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
-    allocate ( dift       (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
-    allocate ( d2cdt2     (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
-    allocate ( dco2dt     (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
-    allocate ( ch41c      (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
-    allocate ( n2o1c      (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
-    allocate ( n2o17c     (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
+!   allocate ( co2p       (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
+!   allocate ( dift       (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
+!   allocate ( d2cdt2     (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
+!   allocate ( dco2dt     (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
+!   allocate ( ch41c      (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
+!   allocate ( n2o1c      (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
+!   allocate ( n2o17c     (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
 !   allocate ( ch41r      (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
 !   allocate ( n2o1r      (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
 !   allocate ( n2o17r     (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
 !   allocate ( n2o9r      (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1  ))
 
 
-    if (Lw_control%do_ch4n2olbltmpint) then
-      allocate ( ch4p       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-      allocate ( d2ch4dt2   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-      allocate ( dch4dt     (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-      allocate ( d2n2odt2   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-      allocate ( dn2odt     (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-      allocate ( d2n2o17dt2 (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-      allocate ( dn2o17dt   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-      allocate ( d2n2o9dt2  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-      allocate ( dn2o9dt    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-      allocate ( n2op       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-      allocate ( n2o17p     (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-      allocate ( n2o9p      (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
-    endif
+!   if (Lw_control%do_ch4n2olbltmpint) then
+!     allocate ( ch4p       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!     allocate ( d2ch4dt2   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!     allocate ( dch4dt     (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!     allocate ( d2n2odt2   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!     allocate ( dn2odt     (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!     allocate ( d2n2o17dt2 (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!     allocate ( dn2o17dt   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!     allocate ( d2n2o9dt2  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!     allocate ( dn2o9dt    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!     allocate ( n2op       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!     allocate ( n2o17p     (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!     allocate ( n2o9p      (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1  ))
+!   endif
 
 !-----------------------------------------------------------------------
 !initialization
 !-----------------------------------------------------------------------
  
-    co21c(:,:,KSRAD:KERAD+1) = 1.0E+00
+!    co21c(:,:,KSRAD:KERAD+1) = 1.0E+00
+    co21c(:,:,kcols:kcole  ) = 1.0E+00
     co21r(:,:,KSRAD:KERAD+1) = 1.0E+00
-    ch41c(:,:,KSRAD:KERAD+1) = 1.0E+00
+!   ch41c(:,:,KSRAD:KERAD+1) = 1.0E+00
+    ch41c(:,:,kcols:kcole  ) = 1.0E+00
 !   ch41r(:,:,KSRAD:KERAD+1) = 1.0E+00
-    n2o1c(:,:,KSRAD:KERAD+1) = 1.0E+00
+!   n2o1c(:,:,KSRAD:KERAD+1) = 1.0E+00
+    n2o1c(:,:,kcols:kcole) = 1.0E+00
 !   n2o1r(:,:,KSRAD:KERAD+1) = 1.0E+00
     n2o17c(:,:,KSRAD:KERAD+1) = 1.0E+00
 !   n2o17r(:,:,KSRAD:KERAD+1) = 1.0E+00
-    n2o9c(:,:,KSRAD:KERAD+1) = 1.0E+00
+    Gas_tf%n2o9c(:,:,KSRAD:KERAD+1) = 1.0E+00
 !   n2o9r(:,:,KSRAD:KERAD+1) = 1.0E+00
 
 !-----------------------------------------------------------------------
@@ -952,10 +1021,10 @@ real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
 !-----------------------------------------------------------------------
     do kp = kcols,kcole
       if (kp .NE. krow) then
-        dift(:,:,kp) = (tdav  (:,:,kp) - tdav  (:,:,krow))/  &
-                       (tstdav(:,:,kp) - tstdav(:,:,krow))
+        dift(:,:,kp) = (Gas_tf%tdav  (:,:,kp) - Gas_tf%tdav  (:,:,krow))/  &
+                       (Gas_tf%tstdav(:,:,kp) - Gas_tf%tstdav(:,:,krow))
       elseif (krow .NE. KSRAD) then
-        dift(:,:,kp) = 0.5E+00*(tmpdiff(:,:,kp) + tmpdiff(:,:,kp-1))
+        dift(:,:,kp) = 0.5E+00*(Gas_tf%tmpdiff(:,:,kp) + Gas_tf%tmpdiff(:,:,kp-1))
       else
         dift(:,:,kp) = 0.0E+00
       endif
@@ -967,45 +1036,45 @@ real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
 !       pressure interpolation
 !-----------------------------------------------------------------------
     do kp=kcols,kcole
-      co2p  (:,:,kp) = a1(:,:)*co251(kp,krow) + a2(:,:)*co258(kp,krow)
-      dco2dt(:,:,kp) = 1.0E-02*(a1(:,:)*cdt51(kp,krow) +   &
-                       a2(:,:)*cdt58(kp,krow))
-      d2cdt2(:,:,kp) = 1.0E-03*(a1(:,:)*c2d51(kp,krow) +   &
-                       a2(:,:)*c2d58(kp,krow))
+      co2p  (:,:,kp) = Gas_tf%a1(:,:)*co251(kp,krow) + Gas_tf%a2(:,:)*co258(kp,krow)
+      dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt51(kp,krow) +   &
+                       Gas_tf%a2(:,:)*cdt58(kp,krow))
+      d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d51(kp,krow) +   &
+                       Gas_tf%a2(:,:)*c2d58(kp,krow))
       if (Lw_control%do_ch4_n2o) then
         if (Lw_control%do_ch4n2olbltmpint) then
-          ch4p (:,:,kp)  = a1(:,:)*ch451(kp,krow) + a2(:,:)*  &
+          ch4p (:,:,kp)  = Gas_tf%a1(:,:)*ch451(kp,krow) + Gas_tf%a2(:,:)*  &
 		           ch458(kp,krow)
-          n2op (:,:,kp)  = a1(:,:)*n2o51(kp,krow) + a2(:,:)* &
+          n2op (:,:,kp)  = Gas_tf%a1(:,:)*n2o51(kp,krow) + Gas_tf%a2(:,:)* &
 			   n2o58(kp,krow)
-          n2o17p(:,:,kp) = a1(:,:)*n2o71(kp,krow) + a2(:,:)* &
+          n2o17p(:,:,kp) = Gas_tf%a1(:,:)*n2o71(kp,krow) + Gas_tf%a2(:,:)* &
 		           n2o78(kp,krow)
-          n2o9p(:,:,kp) = a1(:,:)*n2o91(kp,krow) + a2(:,:)*  &
+          n2o9p(:,:,kp) = Gas_tf%a1(:,:)*n2o91(kp,krow) + Gas_tf%a2(:,:)*  &
 	                  n2o98(kp,krow)
-          dch4dt(:,:,kp) = 1.0E-02*(a1(:,:)*ch4dt51(kp,krow) +   &
-                           a2(:,:)*ch4dt58(kp,krow))
-          dn2odt(:,:,kp) = 1.0E-02*(a1(:,:)*n2odt51(kp,krow) +  &
-                           a2(:,:)*n2odt58(kp,krow))
-          dn2o17dt(:,:,kp) = 1.0E-02*(a1(:,:)*n2odt71(kp,krow) +  &
-                             a2(:,:)*n2odt78(kp,krow))
-          dn2o9dt(:,:,kp) = 1.0E-02*(a1(:,:)*n2odt91(kp,krow) +   &
-                            a2(:,:)*n2odt98(kp,krow))
-          d2ch4dt2(:,:,kp) = 1.0E-03*(a1(:,:)*ch4d2t51(kp,krow) +  &
-                             a2(:,:)*ch4d2t58(kp,krow))
-          d2n2odt2(:,:,kp) = 1.0E-03*(a1(:,:)*n2od2t51(kp,krow) +  &
-                             a2(:,:)*n2od2t58(kp,krow))
-          d2n2o17dt2(:,:,kp) = 1.0E-03*(a1(:,:)*n2od2t71(kp,krow) +  &
-                               a2(:,:)*n2od2t78(kp,krow))
-          d2n2o9dt2(:,:,kp) = 1.0E-03*(a1(:,:)*n2od2t91(kp,krow) +  &
-                              a2(:,:)*n2od2t98(kp,krow))
+          dch4dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*ch4dt51(kp,krow) +   &
+                           Gas_tf%a2(:,:)*ch4dt58(kp,krow))
+          dn2odt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*n2odt51(kp,krow) +  &
+                           Gas_tf%a2(:,:)*n2odt58(kp,krow))
+          dn2o17dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*n2odt71(kp,krow) +  &
+                             Gas_tf%a2(:,:)*n2odt78(kp,krow))
+          dn2o9dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*n2odt91(kp,krow) +   &
+                            Gas_tf%a2(:,:)*n2odt98(kp,krow))
+          d2ch4dt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*ch4d2t51(kp,krow) +  &
+                             Gas_tf%a2(:,:)*ch4d2t58(kp,krow))
+          d2n2odt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*n2od2t51(kp,krow) +  &
+                             Gas_tf%a2(:,:)*n2od2t58(kp,krow))
+          d2n2o17dt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*n2od2t71(kp,krow) +  &
+                               Gas_tf%a2(:,:)*n2od2t78(kp,krow))
+          d2n2o9dt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*n2od2t91(kp,krow) +  &
+                              Gas_tf%a2(:,:)*n2od2t98(kp,krow))
         else
-          ch41c(:,:,kp)  = a1(:,:)*ch451(kp,krow) + a2(:,:)*   &
+          ch41c(:,:,kp)  = Gas_tf%a1(:,:)*ch451(kp,krow) + Gas_tf%a2(:,:)*   &
 		           ch458(kp,krow)
-          n2o1c(:,:,kp)  = a1(:,:)*n2o51(kp,krow) + a2(:,:)*  &
+          n2o1c(:,:,kp)  = Gas_tf%a1(:,:)*n2o51(kp,krow) + Gas_tf%a2(:,:)*  &
 			   n2o58(kp,krow)
-          n2o17c(:,:,kp) = a1(:,:)*n2o71(kp,krow) + a2(:,:)* &
+          n2o17c(:,:,kp) = Gas_tf%a1(:,:)*n2o71(kp,krow) + Gas_tf%a2(:,:)* &
 			   n2o78(kp,krow)
-          n2o9c(:,:,kp) = a1(:,:)*n2o91(kp,krow) + a2(:,:)*  &
+          Gas_tf%n2o9c(:,:,kp) = Gas_tf%a1(:,:)*n2o91(kp,krow) + Gas_tf%a2(:,:)*  &
 			  n2o98(kp,krow)
         endif
       endif
@@ -1025,7 +1094,7 @@ real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
         n2o17c(:,:,kp) = n2o17p(:,:,kp) +  &
                          dift(:,:,kp)*(dn2o17dt(:,:,kp) +  &
                          0.5E+00*dift(:,:,kp)*d2n2o17dt2(:,:,kp))
-        n2o9c(:,:,kp) = n2o9p(:,:,kp) +   &
+        Gas_tf%n2o9c(:,:,kp) = n2o9p(:,:,kp) +   &
                         dift(:,:,kp)*(dn2o9dt(:,:,kp) +  &
                         0.5E+00*dift(:,:,kp)*d2n2o9dt2(:,:,kp))
       endif
@@ -1036,8 +1105,8 @@ real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
 !      (Eqs. 7a-7c, Ref. (2))
 !---------------------------------------------------------------------
     do kp=kcols,kcole
-      co21c(:,:,kp) = co21c(:,:,kp)*(1.0E+00 - tlsqu(:,:,kp)) + &
-                                               tlsqu(:,:,kp)
+      co21c(:,:,kp) = co21c(:,:,kp)*(1.0E+00 - Gas_tf%tlsqu(:,:,kp)) + &
+                                               Gas_tf%tlsqu(:,:,kp)
     enddo
 
 !-----------------------------------------------------------------------
@@ -1056,10 +1125,10 @@ real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
         krowe .GT. kcole)     then
       do kp = krows,krowe
         if (kp .NE. krow) then
-          dift(:,:,kp) = (tdav  (:,:,kp) - tdav  (:,:,krow))/  &
-                         (tstdav(:,:,kp) - tstdav(:,:,krow))
+          dift(:,:,kp) = (Gas_tf%tdav  (:,:,kp) - Gas_tf%tdav  (:,:,krow))/  &
+                         (Gas_tf%tstdav(:,:,kp) - Gas_tf%tstdav(:,:,krow))
         elseif (krow .NE. KSRAD) then
-          dift(:,:,kp) = 0.5E+00*(tmpdiff(:,:,kp) + tmpdiff(:,:,kp-1))
+          dift(:,:,kp) = 0.5E+00*(Gas_tf%tmpdiff(:,:,kp) + Gas_tf%tmpdiff(:,:,kp-1))
         else
           dift(:,:,kp) = 0.0E+00
         endif
@@ -1070,37 +1139,37 @@ real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
 !       pressure interpolation
 !--------------------------------------------------------------------
     do kp=krows,krowe
-      co2p  (:,:,kp) = a1(:,:)*co251(kcol,kp) + a2(:,:)*co258(kcol,kp)
-      dco2dt(:,:,kp) = 1.0E-02*(a1(:,:)*cdt51(kcol,kp) +   &
-                       a2(:,:)*cdt58(kcol,kp))
-      d2cdt2(:,:,kp) = 1.0E-03*(a1(:,:)*c2d51(kcol,kp) +   &
-                       a2(:,:)*c2d58(kcol,kp))
+      co2p  (:,:,kp) = Gas_tf%a1(:,:)*co251(kcol,kp) + Gas_tf%a2(:,:)*co258(kcol,kp)
+      dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt51(kcol,kp) +   &
+                       Gas_tf%a2(:,:)*cdt58(kcol,kp))
+      d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d51(kcol,kp) +   &
+                       Gas_tf%a2(:,:)*c2d58(kcol,kp))
       if (Lw_control%do_ch4_n2o) then
         if (Lw_control%do_ch4n2olbltmpint) then
-          ch4p (:,:,kp)  = a1(:,:)*ch451(kcol,kp) + a2(:,:)*   &
+          ch4p (:,:,kp)  = Gas_tf%a1(:,:)*ch451(kcol,kp) + Gas_tf%a2(:,:)*   &
 		           ch458(kcol,kp)
-          n2op (:,:,kp)  = a1(:,:)*n2o51(kcol,kp) + a2(:,:)*   &
+          n2op (:,:,kp)  = Gas_tf%a1(:,:)*n2o51(kcol,kp) + Gas_tf%a2(:,:)*   &
 			   n2o58(kcol,kp)
-          n2o17p(:,:,kp) = a1(:,:)*n2o71(kcol,kp) + a2(:,:)*  &
+          n2o17p(:,:,kp) = Gas_tf%a1(:,:)*n2o71(kcol,kp) + Gas_tf%a2(:,:)*  &
 			   n2o78(kcol,kp)
-          n2o9p(:,:,kp) = a1(:,:)*n2o91(kcol,kp) + a2(:,:)*   &
+          n2o9p(:,:,kp) = Gas_tf%a1(:,:)*n2o91(kcol,kp) + Gas_tf%a2(:,:)*   &
 			  n2o98(kcol,kp)
-          dch4dt(:,:,kp) = 1.0E-02*(a1(:,:)*ch4dt51(kcol,kp) +   &
-                           a2(:,:)*ch4dt58(kcol,kp))
-          dn2odt(:,:,kp) = 1.0E-02*(a1(:,:)*n2odt51(kcol,kp) +  &
-                           a2(:,:)*n2odt58(kcol,kp))
-          dn2o17dt(:,:,kp) = 1.0E-02*(a1(:,:)*n2odt71(kcol,kp) +   &
-                             a2(:,:)*n2odt78(kcol,kp))
-          dn2o9dt(:,:,kp) = 1.0E-02*(a1(:,:)*n2odt91(kcol,kp) +   &
-                            a2(:,:)*n2odt98(kcol,kp))
-          d2ch4dt2(:,:,kp) = 1.0E-03*(a1(:,:)*ch4d2t51(kcol,kp) +  &
-                             a2(:,:)*ch4d2t58(kcol,kp))
-          d2n2odt2(:,:,kp) = 1.0E-03*(a1(:,:)*n2od2t51(kcol,kp) +   &
-                             a2(:,:)*n2od2t58(kcol,kp))
-          d2n2o17dt2(:,:,kp) = 1.0E-03*(a1(:,:)*n2od2t71(kcol,kp) +   &
-                               a2(:,:)*n2od2t78(kcol,kp))
-          d2n2o9dt2(:,:,kp) = 1.0E-03*(a1(:,:)*n2od2t91(kcol,kp) +   &
-                              a2(:,:)*n2od2t98(kcol,kp))
+          dch4dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*ch4dt51(kcol,kp) +   &
+                           Gas_tf%a2(:,:)*ch4dt58(kcol,kp))
+          dn2odt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*n2odt51(kcol,kp) +  &
+                           Gas_tf%a2(:,:)*n2odt58(kcol,kp))
+          dn2o17dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*n2odt71(kcol,kp) +   &
+                             Gas_tf%a2(:,:)*n2odt78(kcol,kp))
+          dn2o9dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*n2odt91(kcol,kp) +   &
+                            Gas_tf%a2(:,:)*n2odt98(kcol,kp))
+          d2ch4dt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*ch4d2t51(kcol,kp) +  &
+                             Gas_tf%a2(:,:)*ch4d2t58(kcol,kp))
+          d2n2odt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*n2od2t51(kcol,kp) +   &
+                             Gas_tf%a2(:,:)*n2od2t58(kcol,kp))
+          d2n2o17dt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*n2od2t71(kcol,kp) +   &
+                               Gas_tf%a2(:,:)*n2od2t78(kcol,kp))
+          d2n2o9dt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*n2od2t91(kcol,kp) +   &
+                              Gas_tf%a2(:,:)*n2od2t98(kcol,kp))
         else
 !       ch41r(:,:,kp)  = a1(:,:)*ch451(kcol,kp) + a2(:,:)*ch458(kcol,kp)
 !       n2o1r(:,:,kp)  = a1(:,:)*n2o51(kcol,kp) + a2(:,:)*n2o58(kcol,kp)
@@ -1135,18 +1204,26 @@ real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
 !      (Eqs. 7a-7c, Ref. (2))
 !---------------------------------------------------------------------
     do kp=krows,krowe
-      co21r(:,:,kp) = co21r(:,:,kp)*(1.0E+00 - tlsqu(:,:,kcol)) +  &
-                                               tlsqu(:,:,kcol)
+      co21r(:,:,kp) = co21r(:,:,kp)*(1.0E+00 - Gas_tf%tlsqu(:,:,kcol)) +  &
+                                               Gas_tf%tlsqu(:,:,kcol)
     enddo
 
 !----------------------------------------------------------------------
 ! save the values which are needed elsewhere
 ! tn2o17 results are for 560-630 cm-1 band. (if NBCO215=3)
 !----------------------------------------------------------------------
-    if (present (tch4n2oe) ) then
-    tch4n2oe(:,:,:,1) = ch41c(:,:,:)*n2o1c(:,:,:)
+!   if (present (tch4n2oe) ) then
+     if (Lw_control%do_ch4_n2o) then
+!   tch4n2oe(:,:,:,1) = ch41c(:,:,:)*n2o1c(:,:,:)
+
+    if (kcols == 1) then
+      tch4n2oe(:,:,kcols,1) = ch41c(:,:,kcols)*n2o1c(:,:,kcols)
     endif
-    tn2o17(:,:,:) = n2o17c(:,:,:)
+
+    tch4n2oe(:,:,kcols+1:kcole,1) = ch41c(:,:,kcols+1:kcole)*  &
+                                     n2o1c(:,:,kcols+1:kcole)
+    endif
+    Gas_tf%tn2o17(:,:,:) = n2o17c(:,:,:)
 
 !---------------------------------------------------------------------
 
@@ -1154,29 +1231,29 @@ real, dimension (:,:,:,:), intent(out), optional   :: tch4n2oe
 !    deallocate (n2o17r    )
 !    deallocate (n2o1r     )
 !    deallocate (ch41r     )
-    deallocate (n2o17c    )
-    deallocate (n2o1c     )
-    deallocate (ch41c     )
-    deallocate (dco2dt    )
-    deallocate (d2cdt2    )
-    deallocate (dift      )
-    deallocate (co2p      )
+!   deallocate (n2o17c    )
+!   deallocate (n2o1c     )
+!   deallocate (ch41c     )
+!   deallocate (dco2dt    )
+!   deallocate (d2cdt2    )
+!   deallocate (dift      )
+!   deallocate (co2p      )
 
 
-    if (Lw_control%do_ch4n2olbltmpint) then
-      deallocate (ch4p        )
-      deallocate (d2ch4dt2    )
-      deallocate (dch4dt      )
-      deallocate (d2n2odt2    )
-      deallocate (dn2odt      )
-      deallocate (d2n2o17dt2  )
-      deallocate (dn2o17dt    )
-      deallocate (d2n2o9dt2   )
-      deallocate (dn2o9dt     )
-      deallocate (n2op        )
-      deallocate (n2o17p      )
-      deallocate (n2o9p       )
-    endif
+!   if (Lw_control%do_ch4n2olbltmpint) then
+!     deallocate (ch4p        )
+!     deallocate (d2ch4dt2    )
+!     deallocate (dch4dt      )
+!     deallocate (d2n2odt2    )
+!     deallocate (dn2odt      )
+!     deallocate (d2n2o17dt2  )
+!     deallocate (dn2o17dt    )
+!     deallocate (d2n2o9dt2   )
+!     deallocate (dn2o9dt     )
+!     deallocate (n2op        )
+!     deallocate (n2o17p      )
+!     deallocate (n2o9p       )
+!   endif
 
 
 end subroutine transcolrow
@@ -1185,30 +1262,264 @@ end subroutine transcolrow
 
 !####################################################################
 
-subroutine gas_dealloc
+!subroutine gas_dealloc
 
 
-   deallocate (tn2o17  )
-   deallocate (n2o9c   )
-   deallocate (co2spnb )
-   deallocate (co2nbl  )
-   deallocate (tstdav  )
-   deallocate (tmpdiff )
-   deallocate (tlsqu   )
-   deallocate (tdav    )
-   deallocate (a2      )
-   deallocate (a1      )
+!   deallocate (tn2o17  )
+!   deallocate (n2o9c   )
+!   deallocate (co2spnb )
+!   deallocate (co2nbl  )
+!   deallocate (tstdav  )
+!   deallocate (tmpdiff )
+!   deallocate (tlsqu   )
+!   deallocate (tdav    )
+!   deallocate (a2      )
+!   deallocate (a1      )
 
 
-end subroutine gas_dealloc
+!end subroutine gas_dealloc
 
 
 !#####################################################################
 
-subroutine trans_nearby (press, overod, co21c, co21diag, co21r)
+!subroutine trans_nearby (Gas_tf, Atmos_input, overod, co21c, co21diag, co21r)
+subroutine trans_nearby (Gas_tf, Atmos_input, overod, co21diag)
  
 !------------------------------------------------------------------
-real, dimension (:,:,:), intent(in)  ::  press, overod  
+type(gas_tf_type), intent(in) :: Gas_tf
+type(atmos_input_type), intent(in) :: Atmos_input
+real, dimension (:,:,:), intent(in)  ::                overod  
+!real, dimension (:,:,:), intent(out) ::  co21c, co21r, co21diag
+real, dimension (:,:,:), intent(out) ::   co21diag
+
+!-------------------------------------------------------------------
+!  compute "nearby  layer" transmission functions at level k 
+!  ( tau(p(k),p(k))) in the frequency band at 15 um. include all
+!  gases (co2, h2o, h2o cont) used in computing fluxes in this band.
+!  the algorithm assumes that at pressures (p') near the pressure
+!  at level k (p(k)), the transmission function may be written as:
+ 
+!              tau(p',p(k)) = EXP(-alpha*SQRT(p'-p(k)))
+ 
+!  with alpha determined by the boundary condition(s)
+!  tau(p(k+1),p(k)) and tau(p(k-1),p(k)) = the values from  "normal"
+!  calculations. An integration is performed over the "nearby" pressure
+!  layer to obtain tau(p(k),p(k)).
+!  the computation is not done for levels from KSRAD to KMINH2O-1 (if
+!  different), where it is assumed that the h2o transmissivities 
+!  are near unity, and that the precomputed co2 transmissivities may
+!  be used.
+!     two "special case" transmissivities, viz.,
+!  tau(p(KERAD),p(KERAD+1)) and tau(p(KERAD+1),p(KERAD)) are also 
+!  evaluated using the above assumptions and an integration.
+!-------------------------------------------------------------------
+!  local variables
+!-------------------------------------------------------------------
+!   real, dimension (:,:,:), allocatable  ::  &
+!                     alpa, alpb, ca, cb, delpr1, delpr2, rlog
+
+    real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2)) :: pdfl
+    real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2),  &
+                      size(Atmos_input%pflux,3)-1) :: pdfinv
+
+    real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2),  &
+                      size(Atmos_input%pflux,3)) ::         &
+                            press, pflux, &
+                            alpa, alpb, ca, cb, delpr1, delpr2, rlog
+
+
+
+
+    integer   :: k, km, kmp1
+
+!  convert press and pflux to cgs.
+       press(:,:,:) = 10.0*Atmos_input%press(:,:,:)
+       pflux(:,:,:) = 10.0*Atmos_input%pflux(:,:,:)
+
+
+     pdfinv(:,:,KSRAD:KERAD) = 1.0/(pflux(:,:,KSRAD+1:KERAD+1) -   &
+                                      pflux(:,:,KSRAD:KERAD) )
+
+
+    km= MAX(ixprkminh2o - 1, KSRAD)
+    kmp1 = MAX(ixprkminh2o - 1, KSRAD+1)
+
+    rlog  (:,:,km:KERAD)     = LOG(Gas_tf%co2nbl(:,:,km:KERAD)*   &
+!			   overod(:,:,km:KERAD))
+				   overod(:,:,km+1:KERAD+1))
+    delpr1(:,:,kmp1:KERAD)   = pdfinv (:,:,kmp1:KERAD)*  &
+			       (press(:,:,kmp1:KERAD) - &
+                               pflux(:,:,kmp1:KERAD)) 
+    alpb  (:,:,kmp1:KERAD)   = -SQRT(delpr1(:,:,kmp1:KERAD))*  &
+                             rlog(:,:,kmp1:KERAD)
+    delpr2(:,:,kmp1:KERAD+1) = pdfinv(:,:,kmp1-1:KERAD)*  &
+                            (pflux(:,:,kmp1:KERAD+1) -  &
+			    press(:,:,kmp1-1:KERAD)) 
+    alpa  (:,:,km:KERAD)     = -SQRT(delpr2(:,:,km+1:KERAD+1))*  &
+                            rlog(:,:,km:KERAD)
+    alpa  (:,:,KERAD+1)      = -rlog(:,:,KERAD)
+    alpb  (:,:,KERAD+1)      = -rlog(:,:,KERAD)*SQRT(pdfinv(:,:,KERAD)*&
+                            (pflux(:,:,KERAD+1) - press(:,:,KERAD-1)))
+    ca(:,:,km:KERAD+1) = alpa(:,:,km:KERAD+1)*(-0.66667E+00 +  &
+                      alpa(:,:,km:KERAD+1)*(0.25E+00 +   &
+                      alpa(:,:,km:KERAD+1)*(-0.066667E+00)))
+    cb(:,:,kmp1:KERAD+1) = alpb(:,:,kmp1:KERAD+1)*(-0.66667E+00 +  &
+                        alpb(:,:,kmp1:KERAD+1)*(0.25E+00 +    &
+                        alpb(:,:,kmp1:KERAD+1)*(-0.066667E+00)))
+
+    do k=ixprkminh2o,KERAD
+      co21diag(:,:,k) = 1.0E+00 + 0.5E+00*(cb(:,:,k) + ca(:,:,k-1))
+    enddo
+
+    co21diag(:,:,KERAD+1) = 1.0E+00 + ca(:,:,KERAD)
+
+!   pdfl(:,:) = pflux(:,:,KERAD+1) - pflux(:,:,KERAD)
+
+!   co21c(:,:,KERAD+1) = 1.0E+00 +    &
+!                     (pdfl  (:,:      )*ca(:,:,KERAD+1) -    &
+!                     (press(:,:,KERAD) - pflux(:,:,KERAD))*   &
+!	      cb(:,:,KERAD))/   &
+!                     (pflux(:,:,KERAD+1) - press(:,:,KERAD))
+ 
+!   co21r(:,:,KERAD+1)   = 1.0E+00 +    &
+!                       ((pflux(:,:,KERAD+1) - press(:,:,KERAD-1))*  &
+!		cb(:,:,KERAD+1) -   &
+!                       (pflux(:,:,KERAD+1) - press(:,:,KERAD))*  &
+!		ca(:,:,KERAD))/ &
+!                       (press(:,:,KERAD) - press(:,:,KERAD-1))
+
+!-------------------------------------------------------------------
+
+
+
+
+end subroutine trans_nearby
+
+!#####################################################################
+
+!subroutine trans_sfc    (Gas_tf, Atmos_input, overod, co21c, co21diag, co21r)
+subroutine trans_sfc    (Gas_tf, Atmos_input, overod, co21c, co21r)
+ 
+!------------------------------------------------------------------
+type(gas_tf_type), intent(in) :: Gas_tf
+type(atmos_input_type), intent(in) :: Atmos_input
+real, dimension (:,:,:), intent(in)  ::                overod  
+!real, dimension (:,:,:), intent(out) ::  co21c, co21r
+real, dimension (:,:), intent(out) ::  co21c, co21r
+
+!-------------------------------------------------------------------
+!  compute "nearby  layer" transmission functions at level k 
+!  ( tau(p(k),p(k))) in the frequency band at 15 um. include all
+!  gases (co2, h2o, h2o cont) used in computing fluxes in this band.
+!  the algorithm assumes that at pressures (p') near the pressure
+!  at level k (p(k)), the transmission function may be written as:
+ 
+!              tau(p',p(k)) = EXP(-alpha*SQRT(p'-p(k)))
+ 
+!  with alpha determined by the boundary condition(s)
+!  tau(p(k+1),p(k)) and tau(p(k-1),p(k)) = the values from  "normal"
+!  calculations. An integration is performed over the "nearby" pressure
+!  layer to obtain tau(p(k),p(k)).
+!  the computation is not done for levels from KSRAD to KMINH2O-1 (if
+!  different), where it is assumed that the h2o transmissivities 
+!  are near unity, and that the precomputed co2 transmissivities may
+!  be used.
+!     two "special case" transmissivities, viz.,
+!  tau(p(KERAD),p(KERAD+1)) and tau(p(KERAD+1),p(KERAD)) are also 
+!  evaluated using the above assumptions and an integration.
+!-------------------------------------------------------------------
+!  local variables
+!-------------------------------------------------------------------
+!   real, dimension (:,:,:), allocatable  ::  &
+!                     alpa, alpb, ca, cb, delpr1, delpr2, rlog
+
+    real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2)) :: pdfl
+    real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2),  &
+                      size(Atmos_input%pflux,3)-1) :: pdfinv
+
+    real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2),  &
+                      size(Atmos_input%pflux,3)) ::         &
+                            press, pflux, &
+                            alpa, alpb, ca, cb, delpr1, delpr2, rlog
+
+
+
+
+    integer   :: k, km, kmp1
+
+!  convert press and pflux to cgs.
+       press(:,:,:) = 10.0*Atmos_input%press(:,:,:)
+       pflux(:,:,:) = 10.0*Atmos_input%pflux(:,:,:)
+
+
+     pdfinv(:,:,KSRAD:KERAD) = 1.0/(pflux(:,:,KSRAD+1:KERAD+1) -   &
+                                      pflux(:,:,KSRAD:KERAD) )
+
+
+    km= MAX(ixprkminh2o - 1, KSRAD)
+    kmp1 = MAX(ixprkminh2o - 1, KSRAD+1)
+
+    rlog  (:,:,km:KERAD)     = LOG(Gas_tf%co2nbl(:,:,km:KERAD)*   &
+!			   overod(:,:,km:KERAD))
+				   overod(:,:,km+1:KERAD+1))
+    delpr1(:,:,kmp1:KERAD)   = pdfinv (:,:,kmp1:KERAD)*  &
+			       (press(:,:,kmp1:KERAD) - &
+                               pflux(:,:,kmp1:KERAD)) 
+    alpb  (:,:,kmp1:KERAD)   = -SQRT(delpr1(:,:,kmp1:KERAD))*  &
+                             rlog(:,:,kmp1:KERAD)
+    delpr2(:,:,kmp1:KERAD+1) = pdfinv(:,:,kmp1-1:KERAD)*  &
+                            (pflux(:,:,kmp1:KERAD+1) -  &
+			    press(:,:,kmp1-1:KERAD)) 
+    alpa  (:,:,km:KERAD)     = -SQRT(delpr2(:,:,km+1:KERAD+1))*  &
+                            rlog(:,:,km:KERAD)
+    alpa  (:,:,KERAD+1)      = -rlog(:,:,KERAD)
+    alpb  (:,:,KERAD+1)      = -rlog(:,:,KERAD)*SQRT(pdfinv(:,:,KERAD)*&
+                            (pflux(:,:,KERAD+1) - press(:,:,KERAD-1)))
+    ca(:,:,km:KERAD+1) = alpa(:,:,km:KERAD+1)*(-0.66667E+00 +  &
+                      alpa(:,:,km:KERAD+1)*(0.25E+00 +   &
+                      alpa(:,:,km:KERAD+1)*(-0.066667E+00)))
+    cb(:,:,kmp1:KERAD+1) = alpb(:,:,kmp1:KERAD+1)*(-0.66667E+00 +  &
+                        alpb(:,:,kmp1:KERAD+1)*(0.25E+00 +    &
+                        alpb(:,:,kmp1:KERAD+1)*(-0.066667E+00)))
+
+!   do k=ixprkminh2o,KERAD
+!     co21diag(:,:,k) = 1.0E+00 + 0.5E+00*(cb(:,:,k) + ca(:,:,k-1))
+!   enddo
+
+!   co21diag(:,:,KERAD+1) = 1.0E+00 + ca(:,:,KERAD)
+
+    pdfl(:,:) = pflux(:,:,KERAD+1) - pflux(:,:,KERAD)
+
+!    co21c(:,:,KERAD+1) = 1.0E+00 +    &
+    co21c(:,:        ) = 1.0E+00 +    &
+                      (pdfl  (:,:      )*ca(:,:,KERAD+1) -    &
+                      (press(:,:,KERAD) - pflux(:,:,KERAD))*   &
+		      cb(:,:,KERAD))/   &
+                      (pflux(:,:,KERAD+1) - press(:,:,KERAD))
+ 
+!    co21r(:,:,KERAD+1)   = 1.0E+00 +    &
+    co21r(:,:        )   = 1.0E+00 +    &
+                        ((pflux(:,:,KERAD+1) - press(:,:,KERAD-1))*  &
+			cb(:,:,KERAD+1) -   &
+                        (pflux(:,:,KERAD+1) - press(:,:,KERAD))*  &
+			ca(:,:,KERAD))/ &
+                        (press(:,:,KERAD) - press(:,:,KERAD-1))
+
+!-------------------------------------------------------------------
+
+
+
+
+end subroutine trans_sfc
+
+!#####################################################################
+
+subroutine trans_nearby_orig (Gas_tf, Atmos_input, overod, co21c, co21diag, co21r)
+ 
+!------------------------------------------------------------------
+type(gas_tf_type), intent(in) :: Gas_tf
+type(atmos_input_type), intent(in) :: Atmos_input
+real, dimension (:,:,:), intent(in)  ::                overod  
 real, dimension (:,:,:), intent(out) ::  co21c, co21r, co21diag
 
 !-------------------------------------------------------------------
@@ -1234,26 +1545,36 @@ real, dimension (:,:,:), intent(out) ::  co21c, co21r, co21diag
 !-------------------------------------------------------------------
 !  local variables
 !-------------------------------------------------------------------
-    real, dimension (:,:,:), allocatable  ::  &
-	                     alpa, alpb, ca, cb, delpr1, delpr2, rlog
+!   real, dimension (:,:,:), allocatable  ::  &
+!                     alpa, alpb, ca, cb, delpr1, delpr2, rlog
+
+    real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2)) :: pdfl
+    real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2),  &
+                      size(Atmos_input%pflux,3)-1) :: pdfinv
+
+    real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2),  &
+                      size(Atmos_input%pflux,3)) ::         &
+                            press, pflux, &
+                            alpa, alpb, ca, cb, delpr1, delpr2, rlog
+
+
+
 
     integer   :: k, km, kmp1
 
-!---------------------------------------------------------------------
-!   allocate local variables.
-!---------------------------------------------------------------------
-    allocate ( alpa    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)  )
-    allocate ( alpb    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)  )
-    allocate ( ca      (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)  )
-    allocate ( cb      (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)  )
-    allocate ( delpr1  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)  )
-    allocate ( delpr2  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)  )
-    allocate ( rlog    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)  )
+!  convert press and pflux to cgs.
+       press(:,:,:) = 10.0*Atmos_input%press(:,:,:)
+       pflux(:,:,:) = 10.0*Atmos_input%pflux(:,:,:)
+
+
+     pdfinv(:,:,KSRAD:KERAD) = 1.0/(pflux(:,:,KSRAD+1:KERAD+1) -   &
+                                      pflux(:,:,KSRAD:KERAD) )
+
 
     km= MAX(ixprkminh2o - 1, KSRAD)
     kmp1 = MAX(ixprkminh2o - 1, KSRAD+1)
 
-    rlog  (:,:,km:KERAD)     = LOG(co2nbl(:,:,km:KERAD)*   &
+    rlog  (:,:,km:KERAD)     = LOG(Gas_tf%co2nbl(:,:,km:KERAD)*   &
 				   overod(:,:,km:KERAD))
     delpr1(:,:,kmp1:KERAD)   = pdfinv (:,:,kmp1:KERAD)*  &
 			       (press(:,:,kmp1:KERAD) - &
@@ -1281,8 +1602,10 @@ real, dimension (:,:,:), intent(out) ::  co21c, co21r, co21diag
 
     co21diag(:,:,KERAD+1) = 1.0E+00 + ca(:,:,KERAD)
 
+    pdfl(:,:) = pflux(:,:,KERAD+1) - pflux(:,:,KERAD)
+
     co21c(:,:,KERAD+1) = 1.0E+00 +    &
-                      (pdflux(:,:,KERAD)*ca(:,:,KERAD+1) -    &
+                      (pdfl  (:,:      )*ca(:,:,KERAD+1) -    &
                       (press(:,:,KERAD) - pflux(:,:,KERAD))*   &
 		      cb(:,:,KERAD))/   &
                       (pflux(:,:,KERAD+1) - press(:,:,KERAD))
@@ -1296,26 +1619,20 @@ real, dimension (:,:,:), intent(out) ::  co21c, co21r, co21diag
 
 !-------------------------------------------------------------------
 
-    deallocate (  rlog   )
-    deallocate (  delpr2 )
-    deallocate (  delpr1 )
-    deallocate (  cb     )
-    deallocate (  ca     )
-    deallocate (  alpb   )
-    deallocate (  alpa   )
 
 
 
-end subroutine trans_nearby
+end subroutine trans_nearby_orig
 
 
 !####################################################################
 
-subroutine get_gastf_for_cts (co2spnb_d, n2o9c_d)
+!subroutine get_gastf_for_cts (Gas_tf, co2spnb_d, n2o9c_d)
 
 !--------------------------------------------------------------------
-real, dimension(:,:,:,:), intent(out)    :: co2spnb_d
-real, dimension(:,:,:  ), intent(out)    :: n2o9c_d
+!type(gas_tf_type), intent(in) :: Gas_tf
+!real, dimension(:,:,:,:), intent(out)    :: co2spnb_d
+!real, dimension(:,:,:  ), intent(out)    :: n2o9c_d
 
 !-------------------------------------------------------------------
 !   note: the following depends on the choice of freq bands in the
@@ -1326,30 +1643,31 @@ real, dimension(:,:,:  ), intent(out)    :: n2o9c_d
 !    (tn2o17)
 !-------------------------------------------------------------------
 
-     co2spnb_d(:,:,:,1)   = co2spnb(:,:,:,1)*tn2o17(:,:,:)
-     co2spnb_d(:,:,:,2:3) = co2spnb(:,:,:,2:3)
-     n2o9c_d (:,:,:)      = n2o9c(:,:,:)
+!    co2spnb_d(:,:,:,1)   = Gas_tf%co2spnb(:,:,:,1)*Gas_tf%tn2o17(:,:,:)
+!    co2spnb_d(:,:,:,2:3) = Gas_tf%co2spnb(:,:,:,2:3)
+!    n2o9c_d (:,:,:)      = Gas_tf%n2o9c(:,:,:)
 
 !--------------------------------------------------------------------
 
-end subroutine get_gastf_for_cts
+!end subroutine get_gastf_for_cts
 
 
 
 !####################################################################
 
-subroutine get_gastf_for_optpath (kst, kend, tn2o17_d)           
+!subroutine get_gastf_for_optpath (Gas_tf, kst, kend, tn2o17_d)           
 
 !--------------------------------------------------------------------
-integer,                  intent(in)     :: kst, kend
-real, dimension(:,:,:  ), intent(out)    :: tn2o17_d
+!type(gas_tf_type), intent(in) :: Gas_tf
+!integer,                  intent(in)     :: kst, kend
+!real, dimension(:,:,:  ), intent(out)    :: tn2o17_d
 
 !-------------------------------------------------------------------
-     tn2o17_d(:,:,kst:kend) = tn2o17(:,:,kst:kend)
+!    tn2o17_d(:,:,kst:kend) = Gas_tf%tn2o17(:,:,kst:kend)
 
 !--------------------------------------------------------------------
 
-end subroutine get_gastf_for_optpath
+!end subroutine get_gastf_for_optpath
 
 
 
@@ -1592,7 +1910,7 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 
    logical               :: valid=.false.
    integer               :: k, unit, n
-   character(len=5)      :: gas_file, gastf_version
+!  character(len=5)      :: gas_file, gastf_version
    real                  :: gas_amount_file
    integer               :: nstdlvls_file, kbegin_file, kend_file
 
@@ -1655,7 +1973,7 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 
    logical               :: valid=.false.
    integer               :: k, unit, n
-   character(len=5)      :: gas_file, gastf_version
+!  character(len=5)      :: gas_file, gastf_version
    real                  :: gas_amount_file
    integer               :: nstdlvls_file, kbegin_file, kend_file
 
@@ -1715,7 +2033,7 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 
    logical               :: valid=.false.
    integer               :: k, unit, n
-   character(len=5)      :: gas_file, gastf_version
+!  character(len=5)      :: gas_file, gastf_version
    real                  :: gas_amount_file
    integer               :: nstdlvls_file, kbegin_file, kend_file
 
@@ -2089,4 +2407,6 @@ end subroutine process_gas_input_file
 !#####################################################################
 
 	      end module gas_tf_mod
+
+
 

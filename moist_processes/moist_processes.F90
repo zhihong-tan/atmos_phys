@@ -49,6 +49,9 @@ use diag_integral_mod, only:     diag_integral_field_init, &
 
 use       constants_mod, only: CP, GRAV, RDGAS, RVGAS
 
+use  field_manager_mod, only: MODEL_ATMOS
+use tracer_manager_mod, only: get_tracer_index
+
 
 implicit none
 private
@@ -68,9 +71,11 @@ private
    real, parameter :: d622 = RDGAS/RVGAS
    real, parameter :: d378 = 1.-d622
 
+   integer :: nql, nqi, nqa   ! tracer indices for stratiform clouds
+
 !--------------------- version number ----------------------------------
-   character(len=128) :: version = '$Id: moist_processes.F90,v 1.8 2002/02/22 19:00:21 fms Exp $'
-   character(len=128) :: tag = '$Name: galway $'
+   character(len=128) :: version = '$Id: moist_processes.F90,v 1.9 2002/07/16 22:33:35 fms Exp $'
+   character(len=128) :: tag = '$Name: havana $'
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
 
@@ -81,9 +86,6 @@ private
               do_donner_deep=.false., &
               use_tau=.false.
 
-!------ tracer mapping for stratiform cloud scheme ------
-
-   integer :: nql=0, nqi=0, nqa=0
 
    real :: pdepth = 150.e2
    real :: tfreeze = 273.16
@@ -117,21 +119,18 @@ private
 !                temperature tfreeze (used for snowfall determination)
 !   tfreeze  = mean temperature used for snowfall determination (deg k)
 !                [real, default: tfreeze=273.16]
-!   nql,nqi,nqa  = tracer number (index) for cloud liquid water,ice,and
-!                fraction,respectively.  [integer, default: nql=nqi=nqa=0]
 !   notes: 1) do_lsc and do_strat cannot both be true
 !          2) pdepth and tfreeze are used to determine liquid vs. solid
 !             precipitation for mca, lsc, and ras schemes, the 
 !             stratiform scheme determines it's own precipitation type.
-!          3) if do_strat=true then the tracer numbers (nql,nqi,nqa) must
-!             be set to different values > 0.
+!          3) if do_strat=true then stratiform cloud tracers: liq_wat,
+!             ice_wat, cld_amt must be present 
 !
 !-----------------------------------------------------------------------
 
 namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_strat,  &
                                do_dryadj, pdepth, tfreeze,        &
-                               nql, nqi, nqa, use_tau,            &
-                               do_rh_clouds, do_diag_clouds,      &
+                               use_tau, do_rh_clouds, do_diag_clouds, &
                                do_donner_deep
 
 !-----------------------------------------------------------------------
@@ -314,7 +313,7 @@ real, dimension(size(t,1),size(t,2)) :: convprc
 !-----------------------------------------------------------------------
 !-------- input array size and position in global storage --------------
 
-      ix=size(t,1); jx=size(t,2); kx=size(t,3); nt=size(r,4)
+      ix=size(t,1); jx=size(t,2); kx=size(t,3); nt=size(rdt,4)
 
 !-----------------------------------------------------------------------
 
@@ -351,9 +350,6 @@ real, dimension(size(t,1),size(t,2)) :: convprc
       if (nt == 0 .or. nt < max(nql,nqi,nqa))  call error_mesg ( &
                  'moist_processes', &
                  'number of tracers less than nql or nqi or nqa', FATAL)
-      if (nql == nqi .or. nqa == nqi .or. nql == nqa) call error_mesg (&
-       'moist_processes',  &
-       'tracers indices cannot be the same (i.e., nql=nqi=nqa).', FATAL)
 
       if (use_tau) then
          qlin (:,:,:)=r(:,:,:,nql)
@@ -1151,6 +1147,13 @@ integer  unit,io,ierr,nt
          enddo
   10     call close_file (unit)
 
+!--------- write version and namelist to standard log ------------
+
+      call write_version_number ( version, tag )
+      if ( mpp_pe() == mpp_root_pe() ) &
+      write ( stdlog(), nml=moist_processes_nml )
+
+
 !------------------- dummy checks --------------------------------------
 
          if ( do_mca .and. do_ras ) call error_mesg   &
@@ -1170,6 +1173,16 @@ integer  unit,io,ierr,nt
        'do_rh_clouds and do_diag_clouds should not be specified', NOTE)
 
          if (do_strat) then
+           ! get tracer indices for stratiform cloud variables
+             nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
+             nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
+             nqa = get_tracer_index ( MODEL_ATMOS, 'cld_amt' )
+             if (mpp_pe() == mpp_root_pe()) &
+                 write (stdlog(),'(a,3i4)') 'Stratiform cloud tracer indices: nql,nqi,nqa =',nql,nqi,nqa
+             if (min(nql,nqi,nqa) <= 0) call error_mesg ('moist_processes', &
+                                                         'stratiform cloud tracer(s) not found', FATAL)
+             if (nql == nqi .or. nqa == nqi .or. nql == nqa) call error_mesg ('moist_processes',  &
+                                      'tracers indices cannot be the same (i.e., nql=nqi=nqa).', FATAL)
          endif
 
          if (do_mca .and. do_donner_deep) call error_mesg &
@@ -1181,13 +1194,6 @@ integer  unit,io,ierr,nt
 !           'both do_donner_deep and do_ras cannot be specified', FATAL)
 
       endif
-
-
-!--------- write version and namelist to standard log ------------
-
-      call write_version_number ( version, tag )
-      if ( mpp_pe() == mpp_root_pe() ) &
-      write ( stdlog(), nml=moist_processes_nml )
 
 
 !------------ initialize various schemes ----------

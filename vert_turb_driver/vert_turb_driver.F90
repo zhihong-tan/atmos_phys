@@ -24,10 +24,10 @@ use   diag_manager_mod, only: register_diag_field, send_data
 
 use   time_manager_mod, only: time_type, get_time, operator(-)
 
-use      constants_mod, only: rdgas, rvgas, kappa, p00
+use      constants_mod, only: rdgas, rvgas, kappa
 
 use      utilities_mod, only: error_mesg, open_file, file_exist, &
-                              check_nml_error,            &
+                              check_nml_error, get_root_pe,      &
                               get_my_pe, close_file, FATAL
 
 implicit none
@@ -41,11 +41,11 @@ public   vert_turb_driver_init, vert_turb_driver_end, vert_turb_driver
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 1.5 2001/07/05 17:33:50 fms Exp $'
-character(len=128) :: tag = '$Name: galway $'
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 1.6 2002/07/16 22:37:45 fms Exp $'
+character(len=128) :: tag = '$Name: havana $'
 
 !-----------------------------------------------------------------------
-
+ real, parameter :: p00    = 1000.0E2
  real, parameter :: p00inv = 1./p00
  real, parameter :: d622   = rdgas/rvgas
  real, parameter :: d378   = 1.-d622
@@ -77,7 +77,8 @@ character(len=128) :: tag = '$Name: galway $'
 !-------------------- diagnostics fields -------------------------------
 
 integer :: id_tke,    id_lscale, id_lscale_0, id_z_pbl, id_gust,  &
-           id_diff_t, id_diff_m, id_diff_sc
+           id_diff_t, id_diff_m, id_diff_sc, id_z_full, id_z_half,&
+	   id_uwnd,   id_vwnd
 
 real :: missing_value = -999.
 
@@ -204,7 +205,7 @@ logical :: used
 !------------------- non-local K scheme --------------
 
 
-    call diffusivity ( tt, qq, uu, vv, z_full, z_half,   &
+    call diffusivity ( tt, qq, uu, vv, p_full, p_half, z_full, z_half,   &
                        u_star, b_star, z_pbl, diff_m, diff_t, &
                        kbot = kbot)
 
@@ -269,7 +270,7 @@ end if
          used = send_data ( id_z_pbl, z_pbl, Time_next, is, js )
       endif
 
-!------- boundary layer depth -------
+!------- gustiness -------
       if ( id_gust > 0 ) then
          used = send_data ( id_gust, gust, Time_next, is, js )
       endif
@@ -310,6 +311,35 @@ end if
    endif
  endif
 
+!--- geopotential height relative to the surface on full and half levels ----
+
+   if ( id_z_half > 0 ) then
+      !--- set up local mask for fields with surface data ---
+      if ( present(mask) ) then
+         lmask(:,:,1)        = .true.
+         lmask(:,:,2:nlev+1) = mask(:,:,1:nlev) > 0.5
+      else
+         lmask = .true.
+      endif
+      used = send_data ( id_z_half, z_half, Time_next, is, js, 1, mask=lmask )
+   endif
+   
+   if ( id_z_full > 0 ) then
+      used = send_data ( id_z_full, z_full, Time_next, is, js, 1, rmask=mask)
+   endif
+   
+!--- zonal and meridional wind on mass grid -------
+
+   if ( id_uwnd > 0 ) then
+      used = send_data ( id_uwnd, uu, Time_next, is, js, 1, rmask=mask)
+   endif
+  
+   if ( id_vwnd > 0 ) then
+      used = send_data ( id_vwnd, vv, Time_next, is, js, 1, rmask=mask)
+   endif
+  
+ 
+   
 !-----------------------------------------------------------------------
 
 end subroutine vert_turb_driver
@@ -345,7 +375,7 @@ subroutine vert_turb_driver_init (id, jd, kd, axes, Time)
 !---------- output namelist --------------------------------------------
 
       unit = open_file (file='logfile.out', action='append')
-      if ( get_my_pe() == 0 ) then
+      if ( get_my_pe() == get_root_pe() ) then
            write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
            write (unit,nml=vert_turb_driver_nml)
       endif
@@ -369,6 +399,24 @@ subroutine vert_turb_driver_init (id, jd, kd, axes, Time)
 
 !-----------------------------------------------------------------------
 !----- initialize diagnostic fields -----
+
+   id_uwnd = register_diag_field ( mod_name, 'uwnd', axes(full), Time, &
+        'zonal wind on mass grid', 'meters/second' ,                   &
+	missing_value=missing_value    )
+
+   id_vwnd = register_diag_field ( mod_name, 'vwnd', axes(full), Time, &
+        'meridional wind on mass grid', 'meters/second' ,              &
+	missing_value=missing_value    )
+
+   id_z_full = &
+   register_diag_field ( mod_name, 'z_full', axes(full), Time,    &
+        'geopotential height relative to surface at full levels', &
+			'meters' , missing_value=missing_value    )
+
+   id_z_half = &
+   register_diag_field ( mod_name, 'z_half', axes(half), Time,    &
+        'geopotential height relative to surface at half levels', &
+			'meters' , missing_value=missing_value    )
 
 if (do_mellor_yamada) then
 

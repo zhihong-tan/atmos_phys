@@ -113,8 +113,8 @@
 !-----------------------------------------------------------------------
 !------------ VERSION NUMBER ----------------
 
- character(len=128) :: version = '$Id: co2_data.F90,v 1.2 2000/08/04 18:48:20 fms Exp $'
- character(len=128) :: tag = '$Name: galway $'
+ character(len=128) :: version = '$Id: co2_data.F90,v 1.3 2002/07/16 22:32:27 fms Exp $'
+ character(len=128) :: tag = '$Name: havana $'
 
 !-----------------------------------------------------------------------
 
@@ -318,8 +318,10 @@
 
          Call co2int (LMAX,ir,npurp,nkkk,unit1,unit2,ratio)  
 
-         call close_file (unit1, status='keep') 
-         If (ntap == 2) call close_file (unit2, status='keep')
+!RSH     call close_file (unit1, status='keep') 
+!RSH     If (ntap == 2) call close_file (unit2, status='keep')
+         call close_file (unit1               ) 
+         If (ntap == 2) call close_file (unit2               )
 
 !-----------------------------------------------------------------------
 !     Load transmission functions into data arrays

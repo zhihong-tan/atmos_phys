@@ -1,17 +1,22 @@
+
                      module longwave_clouds_mod
  
 
-use rad_step_setup_mod,    only:  KS=>KSRAD, KE=>KERAD, IS=>ISRAD, &
-			          IE=>IERAD, JS=>JSRAD, JE=>JERAD, &
-				  pflux
 use utilities_mod,         only:  open_file, file_exist,    &
                                   check_nml_error, error_mesg, &
 				  print_version_number, FATAL, NOTE, &
 				  WARNING, get_my_pe, close_file
 use constants_new_mod,     only:  radcon
-use longwave_setup_mod,    only:  pdfinv,  Lw_parameters, &
-				  longwave_parameter_type
-use rad_utilities_mod,     only:  Lw_control, longwave_control_type
+!use longwave_setup_mod,    only:  pdfinv,  Lw_parameters, &
+!use longwave_setup_mod,    only:           Lw_parameters, &
+!				  longwave_parameter_type
+use rad_utilities_mod,     only:  Lw_control, longwave_control_type, &
+				  lw_output_type, &
+		  cloudrad_control_type, Cldrad_control, &
+                                  lw_clouds_type, &
+                                  Lw_parameters, &
+				  longwave_parameter_type, &
+                                  cldrad_properties_type
 
 
 !---------------------------------------------------------------------
@@ -29,9 +34,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-! character(len=5), parameter  ::  version_number = 'v0.08'
-  character(len=128)  :: version =  '$Id: longwave_clouds.F90,v 1.2 2001/08/30 15:14:53 fms Exp $'
-  character(len=128)  :: tag     =  '$Name: galway $'
+  character(len=128)  :: version =  '$Id: longwave_clouds.F90,v 1.3 2002/07/16 22:35:31 fms Exp $'
+  character(len=128)  :: tag     =  '$Name: havana $'
 
 
 !---------------------------------------------------------------------
@@ -39,7 +43,6 @@ private
            
 public       &
 		longwave_clouds_init, &
-		longwave_clouds_dealloc, &
 		cldtau, &
 		cloud, &
 		thickcld
@@ -47,11 +50,13 @@ public       &
 !---------------------------------------------------------------------
 !---- namelist   -----
 
-logical    :: do_lwcldemiss = .false.
+!logical    :: do_lwcldemiss = .false.
+logical    :: dummy         = .false.
 
 
 namelist / longwave_clouds_nml /   &
-                                     do_lwcldemiss
+                                     dummy
+!                                    do_lwcldemiss
 
 !----------------------------------------------------------------------
 !--- public data ---------
@@ -62,8 +67,6 @@ namelist / longwave_clouds_nml /   &
 !----------------------------------------------------------------------
 !---   private ---------
 
-real, dimension(:,:,:,:), allocatable :: taucld_mxolw, taucld_rndlw, &
-					 taunbl_mxolw
 integer        :: NLWCLDB
 
 
@@ -105,20 +108,20 @@ subroutine longwave_clouds_init
     endif
     call close_file (unit)
 
-    Lw_control%do_lwcldemiss = do_lwcldemiss
+!   Lw_control%do_lwcldemiss = do_lwcldemiss
 
 !--------------------------------------------------------------------
 !     NLWCLDB =  number of infrared bands with varying cloud
 !                properties (emissivity). at present either unity
 !                or a model-dependent amount (ifdef lwcldemiss)
 !--------------------------------------------------------------------
-    if (Lw_control%do_lwcldemiss) then
-      NLWCLDB = 7
-    else
-      NLWCLDB = 1
-    endif 
+!   if (Lw_control%do_lwcldemiss) then
+!     NLWCLDB = 7
+!   else
+!     NLWCLDB = 1
+!   endif 
 
-    Lw_parameters%NLWCLDB = NLWCLDB
+!   Lw_parameters%NLWCLDB = NLWCLDB
 
 !--------------------------------------------------------------------
 
@@ -128,42 +131,39 @@ end subroutine longwave_clouds_init
 
 
 
-
-!#################################################################
-
-subroutine longwave_clouds_dealloc
-
-     deallocate (taucld_mxolw)
-     deallocate (taucld_rndlw)
-     deallocate (taunbl_mxolw)
-
-
-end subroutine longwave_clouds_dealloc
-
-
-
 !####################################################################
 
-subroutine cldtau (cmxolw, crndlw, emmxolw, emrndlw)
+subroutine cldtau (Cldrad_props, Lw_clouds)
  
 !--------------------------------------------------------------------
-real, dimension(:,:,:),    intent(in) :: cmxolw, crndlw
-real, dimension(:,:,:,:),  intent(in) :: emmxolw, emrndlw
+type(cldrad_properties_type), intent(in) :: Cldrad_props
+type(lw_clouds_type), intent(out) :: Lw_clouds
 
 !---------------------------------------------------------------------
       integer   :: n, k, i, j
+      integer  :: is, ie, js, je, ks, ke
+
+
+      is = 1
+      ie = size(Cldrad_props%cmxolw, 1)
+      js = 1
+      je = size(Cldrad_props%cmxolw, 2)
+      ks = 1
+!      NLWCLDB = Lw_parameters%NLWCLDB
+      NLWCLDB = Cldrad_control%NLWCLDB
+      ke = size(Cldrad_props%cmxolw, 3)
 
 !--------------------------------------------------------------------
-      allocate (taucld_rndlw (IS:IE, JS:JE,KS:KE, NLWCLDB) )
-      allocate (taunbl_mxolw (IS:IE, JS:JE,KS:KE, NLWCLDB) )
-      allocate (taucld_mxolw (IS:IE, JS:JE,KS:KE, NLWCLDB) )
+      allocate (Lw_clouds%taucld_rndlw (IS:IE, JS:JE,KS:KE, NLWCLDB) )
+      allocate (Lw_clouds%taunbl_mxolw (IS:IE, JS:JE,KS:KE, NLWCLDB) )
+      allocate (Lw_clouds%taucld_mxolw (IS:IE, JS:JE,KS:KE, NLWCLDB) )
 
 !----------------------------------------------------------------------
 !    define max overlap layer transmission function over layers KS,KE
 !----------------------------------------------------------------------
       do n = 1,NLWCLDB
         do k = KS,KE
-          taucld_mxolw(:,:,k,n) = 1.0E+00 - emmxolw(:,:,k,n)
+          Lw_clouds%taucld_mxolw(:,:,k,n) = 1.0E+00 - Cldrad_props%emmxolw(:,:,k,n)
         enddo
       enddo
  
@@ -175,13 +175,15 @@ real, dimension(:,:,:,:),  intent(in) :: emmxolw, emrndlw
         do k = KS,KE
           do j = JS,JE
 	    do i = IS,IE
-	      if (crndlw(i,j,k) > 0.0E+00) then
-	        taucld_rndlw(i,j,k,n) =   &
-                  (crndlw(i,j,k)/(1.0E+00 - cmxolw(i,j,k)))*  &
-                   (1.0E+00 - emrndlw(i,j,k,n)) + &
-                   1.0E+00 - crndlw(i,j,k)/(1.0E+00 - cmxolw(i,j,k))
+	      if (Cldrad_props%crndlw(i,j,k) > 0.0E+00) then
+	        Lw_clouds%taucld_rndlw(i,j,k,n) =   &
+                  (Cldrad_props%crndlw(i,j,k)/(1.0E+00 - &
+		   Cldrad_props%cmxolw(i,j,k)))*  &
+                   (1.0E+00 - Cldrad_props%emrndlw(i,j,k,n)) + &
+                   1.0E+00 - Cldrad_props%crndlw(i,j,k)/   &
+		   (1.0E+00 - Cldrad_props%cmxolw(i,j,k))
 	      else
-	        taucld_rndlw(i,j,k,n) = 1.0E+00
+	        Lw_clouds%taucld_rndlw(i,j,k,n) = 1.0E+00
 	      endif
 	    enddo
 	  enddo
@@ -194,7 +196,7 @@ real, dimension(:,:,:,:),  intent(in) :: emmxolw, emrndlw
 !--------------------------------------------------------------------
       do n = 1,NLWCLDB
         do k=KS,KE
-          taunbl_mxolw(:,:,k,n) = 0.0E+00
+          Lw_clouds%taunbl_mxolw(:,:,k,n) = 0.0E+00
         enddo
       enddo
  
@@ -208,20 +210,30 @@ end subroutine cldtau
 
 !######################################################################
 
-subroutine cloud (kl, cmxolw, crndlw, cldtf)
+subroutine cloud (kl, Cldrad_props, Lw_clouds, cldtf)
 
 !---------------------------------------------------------------------
-real, dimension(:,:,:),     intent(in)  :: cmxolw, crndlw
+type(cldrad_properties_type), intent(in) :: Cldrad_props
+type(lw_clouds_type), intent(in) :: Lw_clouds
 real, dimension(:,:,:,:),   intent(out) :: cldtf        
 integer,                    intent(in)  :: kl
 !--------------------------------------------------------------------
 
-    real, dimension(:,:,:), allocatable :: cldtfmo, cldtfrd
     integer   ::   n, i, j, kp
+    integer   :: is, ie, js, je, ks, ke
 
-!---------------------------------------------------------------------
-    allocate (cldtfmo (IS:IE, JS:JE, KS:KE+1)  )
-    allocate (cldtfrd (IS:IE, JS:JE, KS:KE+1)  )
+    real, dimension(size(Cldrad_props%cmxolw,1), &
+                    size(Cldrad_props%cmxolw,2), & 
+		    size(Cldrad_props%cmxolw,3) + 1) ::   &
+		                         cldtfmo, cldtfrd
+
+
+    is = 1
+    ie = size (Cldrad_props%cmxolw, 1)
+    js = 1
+    je = size(Cldrad_props%cmxolw,2)
+    ks = 1
+    ke = size(Cldrad_props%cmxolw, 3)
 
 !---------------------------------------------------------------------
 !    the definition of "within a max overlapped cloud" is:
@@ -249,10 +261,10 @@ integer,                    intent(in)  :: kl
       if (kl > KS .AND. kl < KE+1) then
         do j=JS,JE
           do i=IS,IE
-            if ( cmxolw(i,j,kl-1) /= 0.0 .and.     &
-                 cmxolw(i,j,kl) == cmxolw(i,j,kl-1)) then
-              cldtfmo(i,j,kl) = cmxolw(i,j,kl)*taunbl_mxolw(i,j,kl,n)
-              cldtfrd(i,j,kl) = 1.0 - cmxolw(i,j,kl)
+            if ( Cldrad_props%cmxolw(i,j,kl-1) /= 0.0 .and.     &
+                 Cldrad_props%cmxolw(i,j,kl) == Cldrad_props%cmxolw(i,j,kl-1)) then
+              cldtfmo(i,j,kl) = Cldrad_props%cmxolw(i,j,kl)*Lw_clouds%taunbl_mxolw(i,j,kl,n)
+              cldtfrd(i,j,kl) = 1.0 - Cldrad_props%cmxolw(i,j,kl)
             endif
           enddo
         enddo
@@ -273,9 +285,9 @@ integer,                    intent(in)  :: kl
 !   is unity and is apportioned between (cmxolw) max. overlap cld,
 !   (crndlw) rnd overlap cld, and remainder as clear sky.
 !--------------------------------------------------------------------
-        cldtfmo(:,:,kl+1) = cmxolw(:,:,kl)*taucld_mxolw(:,:,kl,n)
-        cldtfrd(:,:,kl+1) = (1.0 - cmxolw(:,:,kl))*  &
-                            taucld_rndlw(:,:,kl,n)
+        cldtfmo(:,:,kl+1) = Cldrad_props%cmxolw(:,:,kl)*Lw_clouds%taucld_mxolw(:,:,kl,n)
+        cldtfrd(:,:,kl+1) = (1.0 - Cldrad_props%cmxolw(:,:,kl))*  &
+                            Lw_clouds%taucld_rndlw(:,:,kl,n)
         cldtf(:,:,kl+1,n) = cldtfmo(:,:,kl+1) + cldtfrd(:,:,kl+1)
 
 !--------------------------------------------------------------------
@@ -288,12 +300,12 @@ integer,                    intent(in)  :: kl
         do kp = kl+2, KE+1
           do j=JS,JE
 	    do i=IS,IE
-	      if (cmxolw(i,j,kp-2) .eq. 0. .or.    &
-                  cmxolw(i,j,kp-2) .ne. cmxolw(i,j,kp-1)) then
+	      if (Cldrad_props%cmxolw(i,j,kp-2) .eq. 0. .or.    &
+                  Cldrad_props%cmxolw(i,j,kp-2) .ne. Cldrad_props%cmxolw(i,j,kp-1)) then
 	        cldtfmo(i,j,kp) = cldtf(i,j,kp-1,n)*   &
-                             cmxolw(i,j,kp-1)*taucld_mxolw(i,j,kp-1,n)
+                             Cldrad_props%cmxolw(i,j,kp-1)*Lw_clouds%taucld_mxolw(i,j,kp-1,n)
 	        cldtfrd(i,j,kp) = cldtf(i,j,kp-1,n)*   &
-                    (1.0 - cmxolw(i,j,kp-1))*taucld_rndlw(i,j,kp-1,n)
+                    (1.0 - Cldrad_props%cmxolw(i,j,kp-1))*Lw_clouds%taucld_rndlw(i,j,kp-1,n)
 	        cldtf(i,j,kp,n) = cldtfmo(i,j,kp) + cldtfrd(i,j,kp)
 
 !--------------------------------------------------------------------
@@ -304,9 +316,9 @@ integer,                    intent(in)  :: kl
 !--------------------------------------------------------------------
               else 
 	        cldtfmo(i,j,kp) = cldtfmo(i,j,kp-1)*   &
-                                  taucld_mxolw(i,j,kp-1,n)
+                                  Lw_clouds%taucld_mxolw(i,j,kp-1,n)
                 cldtfrd(i,j,kp) = cldtfrd(i,j,kp-1)*   &
-                                  taucld_rndlw(i,j,kp-1,n)
+                                  Lw_clouds%taucld_rndlw(i,j,kp-1,n)
                 cldtf(i,j,kp,n) = cldtfmo(i,j,kp) + cldtfrd(i,j,kp)
               endif
 	    enddo
@@ -315,22 +327,18 @@ integer,                    intent(in)  :: kl
       endif
     enddo
 
-    deallocate (cldtfmo )
-    deallocate (cldtfrd )
-
 end  subroutine cloud
 
 
 
 !####################################################################
 
-subroutine thickcld (cmxolw, emmxolw, kmxolw, flxnet, heatra)
+subroutine thickcld (pflux_in, Cldrad_props, Lw_output)
 
 !------------------------------------------------------------------
-real,   dimension (:,:,:),   intent(in)    :: cmxolw
-real,   dimension (:,:,:,:), intent(in)    :: emmxolw
-integer,                     intent(in)    ::  kmxolw
-real,   dimension (:,:,:),   intent(out)   :: flxnet, heatra        
+real,   dimension (:,:,:),   intent(in)    ::  pflux_in
+type(cldrad_properties_type), intent(in) :: Cldrad_props
+type(lw_output_type), intent(inout) :: Lw_output      
 
 !----------------------------------------------------------------------
 !     input variables:
@@ -356,13 +364,41 @@ real,   dimension (:,:,:),   intent(out)   :: flxnet, heatra
 !     heatra  =  heating rate at data levels. (also an input variable)
 !----------------------------------------------------------------------
 
-      real, dimension(:,:,:),    allocatable :: tmp1
-      real, dimension(:,:),      allocatable :: delptc, fbtm, ftop,  &
-	   				        pbtm, ptop
-      integer, dimension(:,:,:), allocatable :: ktopmxo, kbtmmxo
-      integer, dimension(:,:),   allocatable :: itopmxo, ibtmmxo
+      real, dimension (size(pflux_in,1), size(pflux_in,2))  :: &
+                                delptc, fbtm, ftop, pbtm, ptop
+      integer, dimension (size(pflux_in,1), size(pflux_in,2))  :: &
+                            itopmxo, ibtmmxo
+      integer, dimension (size(pflux_in,1), size(pflux_in,2),  &
+                          size(pflux_in,3)-1)  :: &
+                               ktopmxo, kbtmmxo
+      real, dimension (size(pflux_in,1), size(pflux_in,2),  &
+                          size(pflux_in,3)-1)  :: &
+!                                tmp1
+                                 tmp1, pdfinv
+      real, dimension (size(pflux_in,1), size(pflux_in,2),  &
+                          size(pflux_in,3)  )  :: pflux
+
 
       integer :: i,j, k, kc, kc1, kc2
+    integer   :: is, ie, js, je, ks, ke
+ integer                                    ::  kmxolw
+
+!--------------------------------------------------------------------
+
+       kmxolw = MAXVAL(Cldrad_props%nmxolw)
+
+    is = 1
+    ie = size (pflux_in, 1)
+    js = 1
+    je = size(pflux_in,2)
+    ks = 1
+    ke = size(pflux_in, 3) - 1
+
+! convert pflux to cgs
+    pflux = 10.0*pflux_in
+
+
+    pdfinv(:,:,ks:ke) = 1.0 / (pflux(:,:,ks+1:ke+1) - pflux(:,:,ks:ke))
 
 !----------------------------------------------------------------------
 !     this module recomputes cloud fluxes in "thick" clouds assuming
@@ -374,16 +410,6 @@ real,   dimension (:,:,:),   intent(out)   :: flxnet, heatra
 !     Therefore, it assumes that emissivity quantities (emmxolw) are
 !     from frequency band 1 (normally unity).
 !---------------------------------------------------------------------
-      allocate (tmp1    (IS:IE, JS:JE, KS:KE)  )
-      allocate (ktopmxo (IS:IE, JS:JE, KS:KE)  )
-      allocate (kbtmmxo (IS:IE, JS:JE, KS:KE)  )
-      allocate (delptc  (IS:IE, JS:JE       )  )
-      allocate (fbtm    (IS:IE, JS:JE       )  )
-      allocate (ftop    (IS:IE, JS:JE       )  )
-      allocate (pbtm    (IS:IE, JS:JE       )  )
-      allocate (ptop    (IS:IE, JS:JE       )  )
-      allocate (itopmxo (IS:IE, JS:JE       )  )
-      allocate (ibtmmxo (IS:IE, JS:JE       )  )
 
 !--------------------------------------------------------------------
 !   determine levels at which max overlap clouds start and stop
@@ -398,7 +424,7 @@ real,   dimension (:,:,:),   intent(out)   :: flxnet, heatra
 !--------------------------------------------------------------------
       do j = JS,JE
         do i = IS,IE
-          if ( cmxolw(i,j,KS) .GT. 0.0E+00) then
+          if ( Cldrad_props%cmxolw(i,j,KS) .GT. 0.0E+00) then
                  itopmxo(i,j) = itopmxo(i,j) + 1
 		 ktopmxo(i,j,itopmxo(i,j)) = KS
 	  endif
@@ -411,8 +437,8 @@ real,   dimension (:,:,:),   intent(out)   :: flxnet, heatra
       do k = KS+1,KE
         do j = JS,JE
           do i = IS,IE
-            if (cmxolw(i,j,k) .GT. 0.0E+00 .AND.   &
-                cmxolw(i,j,k-1) .NE. cmxolw(i,j,k)) then
+            if (Cldrad_props%cmxolw(i,j,k) .GT. 0.0E+00 .AND.   &
+                Cldrad_props%cmxolw(i,j,k-1) .NE. Cldrad_props%cmxolw(i,j,k)) then
                   itopmxo(i,j) = itopmxo(i,j) + 1
 	          ktopmxo(i,j,itopmxo(i,j)) = k
             endif
@@ -426,8 +452,8 @@ real,   dimension (:,:,:),   intent(out)   :: flxnet, heatra
       do k = KS,KE-1
         do j = JS,JE
           do i = IS,IE
-            if (cmxolw(i,j,k) .GT. 0.0E+00 .AND.    &
-                cmxolw(i,j,k+1) .NE. cmxolw(i,j,k)) then
+            if (CLdrad_props%cmxolw(i,j,k) .GT. 0.0E+00 .AND.    &
+                Cldrad_props%cmxolw(i,j,k+1) .NE. Cldrad_props%cmxolw(i,j,k)) then
 	      ibtmmxo(i,j) = ibtmmxo(i,j) + 1
 	      kbtmmxo(i,j,ibtmmxo(i,j)) = k+1
             endif
@@ -440,7 +466,7 @@ real,   dimension (:,:,:),   intent(out)   :: flxnet, heatra
 !--------------------------------------------------------------------
      do j = JS,JE
        do i = IS,IE
-         if (cmxolw(i,j,KE) .GT. 0.0E+00) then
+         if (Cldrad_props%cmxolw(i,j,KE) .GT. 0.0E+00) then
            ibtmmxo(i,j) = ibtmmxo(i,j) + 1
 	   kbtmmxo(i,j,ibtmmxo(i,j)) = KE+1
          endif
@@ -459,8 +485,8 @@ real,   dimension (:,:,:),   intent(out)   :: flxnet, heatra
                 kc2 = kbtmmxo(i,j,kc)
                 ptop(i,j) = pflux (i,j,kc1) 
                 pbtm(i,j) = pflux (i,j,kc2)
-                ftop(i,j) = flxnet(i,j,kc1)
-                fbtm(i,j) = flxnet(i,j,kc2)
+                ftop(i,j) = Lw_output%flxnet(i,j,kc1)
+                fbtm(i,j) = Lw_output%flxnet(i,j,kc2)
 
 !-----------------------------------------------------------------------
 !      compute the "flux derivative" df/dp delptc.
@@ -473,10 +499,10 @@ real,   dimension (:,:,:),   intent(out)   :: flxnet, heatra
                 do k=kc1+1,kc2-1
                   tmp1(i,j,k) = ftop(i,j) + (pflux(i,j,k) - ptop(i,j))*&
 				delptc(i,j) 
-                  flxnet(i,j,k) = flxnet(i,j,k)*(1.0E+00 -    &
-				  cmxolw(i,j,k)*emmxolw(i,j,k,1)) +  &
-				  tmp1(i,j,k)*cmxolw(i,j,k)*   &
-				  emmxolw(i,j,k,1)
+                  Lw_output%flxnet(i,j,k) = Lw_output%flxnet(i,j,k)*(1.0E+00 -    &
+				  Cldrad_props%cmxolw(i,j,k)*Cldrad_props%emmxolw(i,j,k,1)) +  &
+				  tmp1(i,j,k)*Cldrad_props%cmxolw(i,j,k)*   &
+				  Cldrad_props%emmxolw(i,j,k,1)
                 end do
               endif
             end do
@@ -487,19 +513,9 @@ real,   dimension (:,:,:),   intent(out)   :: flxnet, heatra
 !-----------------------------------------------------------------------
 !     recompute the heating rates based on the revised fluxes.
 !-----------------------------------------------------------------------
-      heatra(:,:,KS:KE) = radcon*(flxnet(:,:,KS+1:KE+1) -   &
-                          flxnet(:,:,KS:KE))*pdfinv(:,:,KS:KE)
+      Lw_output%heatra(:,:,KS:KE) = radcon*(Lw_output%flxnet(:,:,KS+1:KE+1) -   &
+                          Lw_output%flxnet(:,:,KS:KE))*pdfinv(:,:,KS:KE)
 
-      deallocate ( tmp1        )
-      deallocate ( ktopmxo     )
-      deallocate ( kbtmmxo     )
-      deallocate ( delptc      )
-      deallocate ( fbtm        )
-      deallocate ( ftop        )
-      deallocate ( pbtm        )
-      deallocate ( ptop        )
-      deallocate ( itopmxo     )
-      deallocate ( ibtmmxo     )
 
 
 

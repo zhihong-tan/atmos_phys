@@ -19,7 +19,7 @@ private
 !   ---- version number ----
 
  character(len=128) :: version = '$Id: lscale_cond.F90,v 1.2 2000/07/28 20:16:39 fms Exp $'
- character(len=128) :: tag = '$Name: galway $'
+ character(len=128) :: tag = '$Name: havana $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----

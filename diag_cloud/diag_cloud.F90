@@ -36,8 +36,8 @@ MODULE DIAG_CLOUD_MOD
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud.F90,v 1.4 2002/02/22 18:59:20 fms Exp $'
- character(len=128) :: tag = '$Name: galway $'
+ character(len=128) :: version = '$Id: diag_cloud.F90,v 1.5 2002/07/16 22:31:51 fms Exp $'
+ character(len=128) :: tag = '$Name: havana $'
 !-----------------------------------------------------------------------
 
 !  parmameter mxband = max number of radiative bands to be considered for some
@@ -56,6 +56,7 @@ MODULE DIAG_CLOUD_MOD
 ! ****************************************************************************
 !  The following constants are derive from other constants in constants_mod
    real,  parameter :: d622  = rdgas/rvgas, d378  = 1.0-d622
+   real,  parameter :: p00 = 1000.0E2
 !-----------------------------------------------------------------------
 
 ! ****  parameter used and defined in def_hi_mid_low ****
@@ -182,7 +183,8 @@ MODULE DIAG_CLOUD_MOD
                     temp,qmix,rhum,omega,lgscldelq,cnvcntq,convprc, &
                     pfull,phalf,psfc,coszen,lat,time, &
                     nclds,cldtop,cldbas,cldamt,r_uv,r_nir,ab_uv,ab_nir, &
-                    em_lw,kbot)
+                    em_lw, conc_drop, conc_ice, size_drop, size_ice, &
+		    kbot)
 
 ! Arguments (intent in)
 
@@ -236,7 +238,10 @@ MODULE DIAG_CLOUD_MOD
  integer, intent(out), dimension(:,:,:) :: cldtop,cldbas
  integer, intent(out), dimension(:,:)  ::  nclds
 
-   real, intent(out), dimension(:,:,:) :: r_uv,r_nir,ab_uv,ab_nir,em_lw
+   real, intent(out), dimension(:,:,:), optional :: r_uv,r_nir,ab_uv, &
+                                                  ab_nir,em_lw, &
+                                                  conc_drop, conc_ice, &
+                                                  size_drop, size_ice
    real, intent(out), dimension(:,:,:) :: cldamt
 
 !      OUTPUT
@@ -271,6 +276,7 @@ real,  dimension(size(rhum,1),size(rhum,2),size(rhum,3),mxband)  :: tau
 real,  dimension(size(rhum,1),size(rhum,2),size(rhum,3))  :: &
                   tempcld,delp_true
 integer idim, jdim, ie, je, kx, lk, ierr, iprnt
+logical :: rad_prop, wat_prop
 
 !       TAU        cloud optical depth (at cloud levels)
 !                   (dimensioned IDIM x JDIM x kx x MXBAND)
@@ -307,6 +313,20 @@ integer idim, jdim, ie, je, kx, lk, ierr, iprnt
       jdim = size(rhum,2)
       kx = size(rhum,3)
 
+      rad_prop = .false.
+      wat_prop = .false.
+      if (present (r_uv) .or. present(r_nir) .or. present (ab_uv) &
+             .or. present(ab_nir) .or. present (em_lw) ) then
+         rad_prop = .true.
+      endif
+      if (present(conc_drop) .or. present(conc_ice) .or.    &
+           present(size_drop) .or. present(size_ice) ) then
+         wat_prop = .true.
+      endif
+      if ( (.not. rad_prop) .and. (.not. wat_prop) ) then
+        rad_prop = .true.
+      endif
+
 !  define lower limit for low cloud bases
       if (nofog) then
         lk = low_lev_cloud_index
@@ -317,17 +337,30 @@ integer idim, jdim, ie, je, kx, lk, ierr, iprnt
 !  cldtim drives cloud prediction scheme
       call cldtim ( temp,qmix,rhum,omega,lgscldelq,cnvcntq,convprc, &
                     pfull, phalf,psfc, lat, time, tempcld,delp_true, &
-                    cldtop,cldbas,cldamt,r_uv,r_nir,ab_uv,ab_nir,em_lw, &
+                    cldtop,cldbas,cldamt,                              &
                     lhight,lhighb, lmidt, lmidb, llowt,icld,nclds,kbot)
 
 ! lowest level mixing ratio for anomalous absorption in cloud-radiation
       qmix_kx(:,:) = qmix(:,:,kx)
 
 !  cloud_tau_driver drives cloud radiative properties scheme
+      if (rad_prop) then
       call cloud_tau_driver (pfull,phalf,qmix_kx,nclds,icld,cldamt, &
                  cldtop, cldbas,delp_true,tempcld, &
                  lhight,lhighb, lmidt, lmidb, llowt,lk, &
-                 r_uv,r_nir,ab_uv,ab_nir,em_lw,tau, coszen, psfc )
+                                               tau, coszen, psfc, &
+                 r_uv=r_uv, r_nir=r_nir, ab_nir=ab_nir, ab_uv=ab_uv, &
+                 em_lw=em_lw)
+
+      endif
+      if (wat_prop) then
+      call cloud_tau_driver (pfull,phalf,qmix_kx,nclds,icld,cldamt, &
+                 cldtop, cldbas,delp_true,tempcld, &
+                 lhight,lhighb, lmidt, lmidb, llowt,lk, &
+                                               tau, coszen, psfc , &
+                 conc_drop=conc_drop, conc_ice=conc_ice,    &
+                 size_drop=size_drop, size_ice=size_ice   )
+      endif
 
 
 !-----------------------------------------------------------------------
@@ -357,7 +390,7 @@ end SUBROUTINE DIAG_CLOUD_DRIVER
 
  SUBROUTINE CLDTIM (temp,qmix,rhum, omega,lgscldelq,cnvcntq,convprc,  &
                     pfull, phalf,psfc, lat, time, tempcld,delp_true, &
-                    cldtop,cldbas,cldamt,r_uv,r_nir,ab_uv,ab_nir,em_lw, &
+                    cldtop,cldbas,cldamt,                              &
                     lhight,lhighb, lmidt, lmidb, llowt,icld,nclds,kbot)
 
 !===================================================================
@@ -417,7 +450,6 @@ end SUBROUTINE DIAG_CLOUD_DRIVER
 integer, intent(out), dimension(:,:,:) :: cldtop,cldbas,icld
 integer, intent(out), dimension(:,:)  :: nclds
 integer, intent(out), dimension(:,:)  :: lhight,lhighb, lmidt, lmidb, llowt
-   real, intent(out), dimension(:,:,:) :: r_uv,r_nir,ab_uv,ab_nir,em_lw
    real, intent(out), dimension(:,:,:) :: cldamt
    real, intent(out), dimension(:,:,:) :: tempcld,delp_true
 
@@ -2762,7 +2794,7 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
          unit = open_file ('input.nml', action='read')
-   unit = open_file(file = 'input.nml',action='read')
+        
    io = 1
    do while( io .ne. 0 )
    READ ( unit,  nml = diag_cloud_nml, iostat = io, end = 10 ) 
@@ -2866,7 +2898,7 @@ go to 99
       call write_data (unit, cnvcntq_sum)
       call write_data (unit, convprc_sum)
 
-      call close_file( unit )
+      call close_file (unit)
  
 !=====================================================================
   end SUBROUTINE DIAG_CLOUD_END

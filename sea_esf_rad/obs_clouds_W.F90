@@ -1,16 +1,22 @@
 
                  module obs_clouds_W_mod
 
+use time_manager_mod,    only:  time_type
 use cloud_zonal_mod,     only: getcld
 use cloud_obs_mod,       only: cloud_obs, cloud_obs_init
 use utilities_mod,       only: open_file, file_exist,   &
                                check_nml_error, error_mesg,   &
                                print_version_number, FATAL, NOTE, &
 			       WARNING, get_my_pe, close_file
-use rad_step_setup_mod,  only: jabs, iabs,  &
-                               ISRAD, IERAD, JSRAD, JERAD, & 
-                               KSRAD, KERAD,  Rad_time_sv,  &
-			       lat_sv, pflux
+!use rad_step_setup_mod,  only: jabs, iabs,  &
+!                               ISRAD, IERAD, JSRAD, JERAD, & 
+!                               KSRAD, KERAD,  Rad_time_sv,  &
+!			       lat_sv, pflux
+!use rad_step_setup_mod,  only: jabs, iabs,  &
+!use rad_step_setup_mod,  only:              &
+!                                             Rad_time_sv,  &
+!		       lat_sv, pflux
+!		               pflux
 use rad_utilities_mod,   only: Environment, environment_type
 use constants_new_mod,   only: pstd_mks
 
@@ -32,8 +38,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: obs_clouds_W.F90,v 1.2 2001/08/30 15:11:56 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: galway $'
+   character(len=128)  :: version =  '$Id: obs_clouds_W.F90,v 1.3 2002/07/16 22:36:11 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: havana $'
 
 
 
@@ -148,12 +154,16 @@ end subroutine obs_clouds_init
 
 !####################################################################
 
-subroutine obs_clouds_calc (camtsw, cmxolw, crndlw, ncldsw, nmxolw, &
+subroutine obs_clouds_calc ( Rad_time, lat, pflux, &
+                            camtsw, cmxolw, crndlw, ncldsw, nmxolw, &
 			    nrndlw, cirabsw, cvisrfsw, cirrfsw, &
 			    emmxolw, emrndlw, is, ie, js, je)
 
 !---------------------------------------------------------------------
 integer,                     intent(in)     :: is, ie, js, je
+type(time_type), intent(in)               :: Rad_time
+real, dimension(:,:), intent(in) :: lat
+real, dimension(:,:,:), intent(in) :: pflux
 integer, dimension(:,:),     intent(inout)  :: ncldsw, nmxolw, nrndlw
 real,    dimension(:,:,:),   intent(inout)  :: camtsw, cmxolw, crndlw
 real,    dimension(:,:,:,:), intent(inout)  :: cirabsw, cvisrfsw, &
@@ -190,7 +200,15 @@ real,    dimension(:,:,:,:), intent(inout)  :: cirabsw, cvisrfsw, &
       integer, dimension(:,:,:), allocatable :: ktopsw3, kbtmsw3
       real, dimension(:,:,:), allocatable    :: phaf
       integer                                :: k, j, i
+      integer      :: israd, ierad, jsrad, jerad, ksrad, kerad
 
+
+      israd = 1
+      ierad = size (camtsw, 1)
+      jsrad = 1
+      jerad = size (camtsw, 2)
+      ksrad = 1
+      kerad = size (camtsw, 3)
 
 !-----------------------------------------------------------------------
 !     Move property arrays for large-scale ice clouds from physical 
@@ -212,10 +230,12 @@ real,    dimension(:,:,:,:), intent(inout)  :: cirabsw, cvisrfsw, &
          phaf(:,:,k) = pflux(:,:,k)*pstd_mks/pflux(:,:,KERAD+1)
        end do
 
-       call getcld (Rad_time_sv, lat_sv, phaf, ktopsw3, kbtmsw3, &
+!      call getcld (Rad_time_sv, lat_sv, phaf, ktopsw3, kbtmsw3, &
+       call getcld (Rad_time   , lat   , phaf, ktopsw3, kbtmsw3, &
 	            camtsw3 )
 
-       call cloud_obs(is, js, Rad_time_sv, camtsw3)
+!      call cloud_obs(is, js, Rad_time_sv, camtsw3)
+       call cloud_obs(is, js, Rad_time   , camtsw3)
 
 !---------------------------------------------------------------------
 !    map the cloud-space arrays obtained above to model space arrays. 

@@ -158,8 +158,8 @@ use utilities_mod, only:  error_mesg, FATAL, file_exist,    &
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 1.4 2002/02/22 18:59:27 fms Exp $'
- character(len=128) :: tag = '$Name: galway $'
+ character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 1.5 2002/07/16 22:31:55 fms Exp $'
+ character(len=128) :: tag = '$Name: havana $'
 !-----------------------------------------------------------------------
 
 ! REAL, PARAMETER :: taumin = 1.E-06
@@ -264,8 +264,9 @@ REAL, PARAMETER  :: qsat_min = 0.0, qsat_trans = 0.01, qsat_max = 0.02
 SUBROUTINE CLOUD_TAU_DRIVER(pfull,phalf,qmix_kx,nclds,icld,cldamt, &
                  cldtop, cldbas,delp_true,tempcld, &
                  lhight,lhighb, lmidt, lmidb, llowt,lk, &
-                 r_uv,r_nir,ab_uv,ab_nir,em_lw,tau,  &
-                 coszen, psfc )
+                                               tau,  &
+                 coszen, psfc, r_uv, r_nir, ab_uv, ab_nir, em_lw, &
+		 conc_drop, conc_ice, size_drop, size_ice)
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -409,7 +410,9 @@ real,    intent(in), dimension (:,:)  ::  coszen, psfc
 
 ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-real,     intent (out),dimension(:,:,:):: r_uv,r_nir,ab_uv,ab_nir,em_lw
+real,     intent (out),dimension(:,:,:), optional  :: r_uv,r_nir,  &
+                           ab_uv,ab_nir,em_lw, &
+                           conc_drop, conc_ice, size_drop, size_ice
 
 !  *****************************************************************
 
@@ -430,6 +433,10 @@ real, dimension(size(tau,1),size(tau,2),size(tau,3)) :: delp
 
 integer                                  :: i,j,k,idim,jdim,kdim
 integer                                  :: max_cld
+logical                                  :: wat_prop, rad_prop
+integer                                  :: n
+real                                     :: t_cold = 263.16
+
 
 !
 ! Code
@@ -439,11 +446,23 @@ integer                                  :: max_cld
 
 
         ! initialize variables
+       rad_prop = .false.
+       wat_prop = .false.
+       if ( present (r_uv) ) then
         r_uv(:,:,:)   = 0.
         r_nir(:,:,:)  = 0.
         ab_uv(:,:,:)  = 0.
         ab_nir(:,:,:) = 0.
         em_lw(:,:,:)  = 0.
+        rad_prop = .true.
+       endif
+       if (present (conc_ice)) then
+        conc_ice(:,:,:) = 0.0
+        conc_drop(:,:,:) = 0.0
+        size_ice(:,:,:) = 60.
+        size_drop(:,:,:) = 20.
+        wat_prop = .true.
+       endif
         LWP(:,:,:)    = 0.
         IWP(:,:,:)    = 0.
         tau(:,:,:,:)  = 0.
@@ -464,11 +483,59 @@ integer                                  :: max_cld
 
         call cloud_optical_depths(nclds,icld,cldtop,cldbas,tempcld,delp, &
      &                            tau,phalf )
+       if (rad_prop) then
         call cloud_opt_prop_tg(lwp,iwp,tau,w0,gg,em_lw,tempcld,qmix_kx)
  
 !  From Steve Klein's cloud_rad_mod
 
       call cloud_rad(tau,w0,gg,coszen,r_uv,r_nir,ab_uv,ab_nir)
+       endif
+
+       if (wat_prop) then
+
+!!!RSH
+!!      NOTE:
+!  THE FOLLOWING is here as an INITIAL IMPLEMENTATION to allow compil-
+!  ation and model execution, and provide "reasonable ?? " values.
+!  Code developed but NOT YET ADDED HERE reflects the current approach.
+!  That code is available under the fez release, and will be added to
+!  the repository when upgrades to the cloud-radiation modules are com-
+!  pleted.
+!!!RSH
+! obtain drop and ice size and concentration here, consistent with the
+! diag_cloud scheme.
+!  As a test case, 
+!  the following is a simple specification of constant concentration and
+!  size in all boxes defined as cloudy, attempting to come close to
+!  the prescribd values in microphys_rad.
+!  assume ice cld thickness = 2.0 km; then conc_ice=10.0E-03 => 
+!    iwp = 20 g/m^2, similar to that prescribed in microphys_rad.
+!  assume water cld thickness = 3.5 km; then conc_drop = 20E-03 =>
+!    lwp = 70 g / m^2, similar to that prescribed in microphys_rad.
+!   use sizes as used in microphys_rad (50 and 20 microns). when done,
+!   radiative boundary fluxes are "similar" to non-microphysical results
+!   for test case done here, and shows reasonable sensitivity to
+!   variations in concentrations.
+
+          idim = size(tau,1)
+          jdim = size(tau,2)
+         do j= 1,jdim
+          do i=1,idim
+         do n=1,nclds(i,j)
+         do k=cldtop(i,j,n), cldbas(i,j,n)
+          if (tempcld(i,j,n) < t_cold) then
+            conc_ice(i,j,k) = 10.0E-03  ! units : g/m^3
+           size_ice(i,j,k) = 50.       ! units : diameter in microns
+          else
+            conc_drop(i,j,k) = 20.0E-03 ! units : g/m^3
+           size_drop(i,j,k) = 20.      ! units : diameter in microns
+          endif
+           end do
+           end do
+           end do
+           end do
+              
+       endif
 
     END IF
 
@@ -1510,7 +1577,6 @@ end subroutine CLOUD_OPT_PROP_tg
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
          unit = open_file ('input.nml', action='read')
-   unit = open_file(file = 'input.nml',action='read')
    io = 1
    do while( io .ne. 0 )
    READ ( unit,  nml = diag_cloud_rad_nml, iostat = io, end = 10 ) 

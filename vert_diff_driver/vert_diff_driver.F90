@@ -17,11 +17,11 @@ use diag_manager_mod, only:  register_diag_field, send_data
 
 use time_manager_mod, only:  time_type
 
-use    utilities_mod, only:  file_exist, open_file, error_mesg,  &
-                             check_nml_error, FATAL, get_my_pe,  &
-                             close_file
+use          fms_mod, only:  file_exist, open_namelist_file, error_mesg,  &
+                             check_nml_error, FATAL, mpp_pe, mpp_root_pe, &
+                             close_file, write_version_number, stdlog
 
-use    constants_mod, only:  cp, grav
+use    constants_mod, only:  CP, GRAV
 
 !-----------------------------------------------------------------------
 
@@ -36,16 +36,21 @@ public :: surf_diff_type
 !-----------------------------------------------------------------------
 !---- namelist ----
 
-integer :: ntp = 0
+logical :: do_conserve_energy         = .false.
+logical :: do_mcm_no_neg_q            = .false.
+logical :: use_virtual_temp_vert_diff = .true.
+logical :: do_mcm_plev                = .false.
+logical :: do_mcm_vert_diff_tq        = .false.
 
-!    ntp  = number of fully prognostic tracers
-!           tracers (1:ntp) will be vertically diffused
-
-logical :: do_conserve_energy = .false.
-
-namelist /vert_diff_driver_nml/  ntp, do_conserve_energy
+namelist /vert_diff_driver_nml/ do_conserve_energy,         &
+                                do_mcm_no_neg_q,            &
+                                use_virtual_temp_vert_diff, &
+                                do_mcm_plev, do_mcm_vert_diff_tq
 
 !-----------------------------------------------------------------------
+
+real, allocatable, dimension(:,:,:) :: dt_t_save, dt_q_save
+
 !-------------------- diagnostics fields -------------------------------
 
 integer :: id_tdt_vdif, id_qdt_vdif, id_udt_vdif, id_vdt_vdif,  &
@@ -59,8 +64,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 1.3 2001/10/25 17:49:08 fms Exp $'
-character(len=128) :: tag = '$Name: galway $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 1.4 2002/07/16 22:37:26 fms Exp $'
+character(len=128) :: tag = '$Name: havana $'
 
 logical :: do_init = .true.
 
@@ -69,8 +74,8 @@ contains
 
 !#######################################################################
 
- subroutine vert_diff_driver_down (is, js, Time, delt, p_half, z_full, &
-                                   diff_mom, diff_heat,                &
+ subroutine vert_diff_driver_down (is, js, Time, delt, p_half, p_full, &
+                                   z_full, diff_mom, diff_heat,        &
                                    u, v, t, q, trs,                    &
                                    dtau_dv, tau_x, tau_y,              &
                                    dt_u, dt_v, dt_t, dt_q, dt_trs,     &
@@ -79,7 +84,7 @@ contains
 integer, intent(in)                     :: is, js
 type(time_type),   intent(in)           :: Time
 real, intent(in)                        :: delt
-real, intent(in)   , dimension(:,:,:)   :: p_half, z_full,  &
+real, intent(in)   , dimension(:,:,:)   :: p_half, p_full, z_full,  &
                                            diff_mom, diff_heat
 real, intent(in),    dimension(:,:,:)   :: u, v, t, q
 real, intent(in),    dimension(:,:,:,:) :: trs
@@ -94,13 +99,14 @@ type(surf_diff_type), intent(inout)     :: Surf_diff
 real   , intent(in), dimension(:,:,:), optional :: mask
 integer, intent(in), dimension(:,:),   optional :: kbot
 
-real, dimension(size(trs,1),size(trs,2),1:ntp) :: flux_trs
-real, dimension(size(t,1),size(t,2),size(t,3)) :: tt, dpg
+real, dimension(size(trs,1),size(trs,2),size(dt_trs,4)) :: flux_trs
+real, dimension(size(t,1),size(t,2),size(t,3)) :: tt, dpg, q_2
+real, dimension(size(t,1),size(t,2),size(t,3)) :: dt_u_tmp, dt_v_tmp
 real, dimension(size(t,1),size(t,2),size(t,3)) :: dissipative_heat
-integer :: k
+integer :: k, ntp
 logical :: used
 real, dimension(size(t,1),size(t,2)) :: diag2
-
+integer :: ie, je
 
 !-----------------------------------------------------------------------
 
@@ -110,15 +116,25 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 
 !-----------------------------------------------------------------------
 
-  if (size(trs,4) < ntp) call error_mesg ('vert_diff_driver_mod',  &
-              'Number of tracers .lt. namelist value of ntp', FATAL)
+  ntp = size(dt_trs,4) ! number of prognostic tracers
+  if (size(trs,4) < ntp) call error_mesg ('vert_diff_driver', &
+             'Number of tracers .lt. number of tracer tendencies',FATAL)
 
-!-----------------------------------------------------------------------
+  ie = is + size(t,1) -1
+  je = js + size(t,2) -1
+
 !---- save temperature tendency for stratiform cloud scheme ----
 !   note if strat scheme is not operating this routine does nothing
 
     call subtract_strat_tend (is, is+size(dt_t,1)-1,     &
                               js, js+size(dt_t,2)-1, dt_t)
+
+    if(do_mcm_vert_diff_tq) then
+      dt_t_save(is:ie,js:je,:) = dt_t
+      dt_q_save(is:ie,js:je,:) = dt_q
+      dt_t = 0.0
+      dt_q = 0.0
+    endif
 
 !-----------------------------------------------------------------------
 !---- to do diagnostics on dt_t, dt_q, dt_u, and dt_v at this point add 
@@ -157,9 +173,16 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 !---- tracer diffusion (no surface flux) ----
 
  flux_trs = 0.0
+ dt_u_tmp = dt_u
+ dt_v_tmp = dt_v
 
- call gcm_vert_diff_down (is, js, delt, u, v, tt, q, trs(:,:,:,1:ntp), &
-                          diff_mom, diff_heat, p_half, z_full,         &
+ q_2 = q
+ if (do_mcm_no_neg_q) then
+   where (q_2 < 0.0)  q_2 = 0.0
+ endif
+
+ call gcm_vert_diff_down (is, js, delt, u, v, tt, q_2, trs(:,:,:,1:ntp), &
+                          diff_mom, diff_heat, p_half, p_full, z_full,   &
                           tau_x, tau_y, dtau_dv,  flux_trs,            &
                           dt_u, dt_v, dt_t, dt_q, dt_trs(:,:,:,1:ntp), &
                           dissipative_heat, Surf_diff,  kbot           )
@@ -175,7 +198,7 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 !------ preliminary calculations for vert integrals -----
     if ( id_sens_vdif > 0 .or. id_evap_vdif > 0 .or. id_diss_heat_vdif > 0 ) then
             do k = 1, size(p_half,3)-1
-               dpg(:,:,k) = (p_half(:,:,k+1)-p_half(:,:,k))/grav
+               dpg(:,:,k) = (p_half(:,:,k+1)-p_half(:,:,k))/GRAV
             enddo
             if (present(mask)) dpg = dpg*mask
     endif
@@ -196,7 +219,7 @@ real, dimension(size(t,1),size(t,2)) :: diag2
     if ( id_sens_vdif > 0 ) then
 !         --- compute column changes ---
           diag2 = sum( dt_t*dpg, 3 )
-          used = send_data ( id_sens_vdif, -2.*cp*diag2, Time, is, js )
+          used = send_data ( id_sens_vdif, -2.*CP*diag2, Time, is, js )
     endif
 
 !------- diagnostics for evap_diff -------
@@ -229,7 +252,7 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 
 !------- diagnostics for vertically integrated dissipative heating -------
     if ( id_diss_heat_vdif > 0 ) then
-          diag2 = sum( cp*dissipative_heat*dpg, 3 )
+          diag2 = sum( CP*dissipative_heat*dpg, 3 )
           used = send_data ( id_diss_heat_vdif, diag2, Time, is, js )
     endif
 
@@ -255,7 +278,11 @@ real, dimension(size(t,1),size(t,2)) :: diag2
  logical :: used
  real, dimension(size(p_half,1),size(p_half,2),size(p_half,3)-1) :: dpg
  real, dimension(size(p_half,1),size(p_half,2)) :: diag2
+ integer :: ie, je
 
+!-----------------------------------------------------------------------
+    ie = is + size(p_half,1) -1
+    je = js + size(p_half,2) -1
 !-----------------------------------------------------------------------
 
     call gcm_vert_diff_up (is, js, delt, Surf_diff, dt_t, dt_q, kbot)
@@ -289,7 +316,7 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 !------ preliminary calculations for vert integrals -----
     if ( id_sens_vdif > 0 .or. id_evap_vdif > 0 ) then
             do k = 1, size(p_half,3)-1
-               dpg(:,:,k) = (p_half(:,:,k+1)-p_half(:,:,k))/grav
+               dpg(:,:,k) = (p_half(:,:,k+1)-p_half(:,:,k))/GRAV
             enddo
             if (present(mask)) dpg = dpg*mask
     endif
@@ -298,7 +325,7 @@ real, dimension(size(t,1),size(t,2)) :: diag2
     if ( id_sens_vdif > 0 ) then
 !         --- compute column changes ---
           diag2 = sum( dt_t*dpg, 3 )
-          used = send_data ( id_sens_vdif, 2.*cp*diag2, Time, is, js )
+          used = send_data ( id_sens_vdif, 2.*CP*diag2, Time, is, js )
     endif
 
 !------- diagnostics for evap_diff -------
@@ -308,6 +335,10 @@ real, dimension(size(t,1),size(t,2)) :: diag2
           used = send_data ( id_evap_vdif, 2.*diag2, Time, is, js )
     endif
 
+    if(do_mcm_vert_diff_tq) then
+      dt_t = dt_t + dt_t_save(is:ie,js:je,:)
+      dt_q = dt_q + dt_q_save(is:ie,js:je,:)
+    endif
 
 !-----------------------------------------------------------------------
 
@@ -328,7 +359,7 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 !------ read namelist ------
 
    if ( file_exist('input.nml')) then
-      unit = open_file ('input.nml', action='read')
+      unit = open_namelist_file ()
       ierr=1; do while (ierr /= 0)
          read  (unit, nml=vert_diff_driver_nml, iostat=io, end=10)
          ierr = check_nml_error(io,'vert_diff_driver_nml')
@@ -338,18 +369,21 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 
 !--------- write version number and namelist ------------------
 
-   unit = open_file ('logfile.out', action='append')
-   if ( get_my_pe() == 0 ) then
-        write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-        write (unit, nml=vert_diff_driver_nml)
-   endif
-   call close_file (unit)
+   call write_version_number ( version, tag )
+   if(mpp_pe() == mpp_root_pe() ) write(stdlog(),nml=vert_diff_driver_nml)
 
 !-------- initialize gcm vertical diffusion ------
 
-   call gcm_vert_diff_init (Surf_diff, idim, jdim, kdim, do_conserve_energy)
+   call gcm_vert_diff_init (Surf_diff, idim, jdim, kdim, do_conserve_energy, &
+                            use_virtual_temp_vert_diff, do_mcm_plev)
 
 !-----------------------------------------------------------------------
+
+   if(do_mcm_vert_diff_tq) then
+     allocate(dt_t_save(idim,jdim,kdim))
+     allocate(dt_q_save(idim,jdim,kdim))
+   endif
+
 !--------------- initialize diagnostic fields --------------------
 
    id_tdt_vdif = &
@@ -406,6 +440,7 @@ real, dimension(size(t,1),size(t,2)) :: diag2
  subroutine vert_diff_driver_end
 
    call gcm_vert_diff_end
+   if(do_mcm_vert_diff_tq) deallocate(dt_t_save, dt_q_save)
 
  end subroutine vert_diff_driver_end
 

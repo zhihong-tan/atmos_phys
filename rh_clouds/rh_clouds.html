@@ -22,7 +22,6 @@
      <B>Contact:</B>   Isaac Held and Steve Klein
      <B>Reviewers:</B>
 
-     <B><A HREF=".doc.log#rh_clouds.f90">Tags/Status</A></B>
 </PRE>
 </A><!-- END HEADER -->
 <!--------------------------------------------------------------------->
@@ -260,40 +259,60 @@ input
     high_middle_pole  sigma coordinate boundary between high and
                           middle clouds at the pole 
                       [real, default: high_middle_pole=0.7]
+
     high_middle_eq    sigma coordinate boundary between high and
                           middle clouds at the equator
                       [real, default: high_middle_eq=0.4]
+
     middle_low_pole   sigma coordinate boundary between low and
                           middle clouds at the pole 
                       [real, default: middle_low_pole=0.85]
+
     middle_low_eq     sigma coordinate boundary between low and
                           middle clouds at the equator
                       [real, default: middle_low_eq=0.7]
+
     rh_crit_bot       critical relative humidity to define occur of cloud
-                          at sigma = 1
+                        at sigma = 1         when do_mcm_crit_rh=.false.
+                            or
+                        at lowest full level when do_mcm_crit_rh=.true.
                       [real, default: rh_crit_bot=1.0]
+
     rh_crit_top       critical relative humidity to define occur of cloud
                           at sigma = 0
                       [real, default: rh_crit_top=0.9]
+
+    do_mcm_crit_rh    See rh_crit_bot
+                      [logical, default: do_mcm_crit_rh=.false.]
+
+    do_mcm_no_clouds_top: Prevents clouds at top model level. 
+                      [logical, default: do_mcm_no_clouds_top=.false.]
+
+    tuning_coeff_low_cld: Multiplies low cloud albedos to change default values.
+                       Intended for use with Manabe Climate Model.
+		       [real, default: tuning_coeff_low_cld = 1.0]
+
     high_abs          Near-infrared absorptivities of high clouds
                       [real, default: high_abs = 0.04]
+
     middle_abs        Near-infrared absorptivities of middle level clouds
                       [real, default: middle_abs = 0.30]
+
     low_abs           Near-infrared absorptivities of low clouds
                       [real, default: low_abs = 0.40]
+
     high_emiss        Infrared emissivities of high clouds
                       [real, default: high_emiss = 0.6]
+
     middle_emiss      Infrared emissivities of middle level clouds
                       [real, default: middle_emiss = 1.0]
+
     low_emiss         Infrared emissivities of low clouds
                       [real, default: low_emiss = 1.0]
+
     do_average        Use time-averaged rh values when computing
                           clouds
                       [logical, default: do_average = .true.]
-
-
-
-
 
 </PRE>
 </A><!-- END NAMELIST -->
@@ -303,7 +322,6 @@ input
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
-<B><A HREF=".doc.log#rh_clouds.f90">Revision history</A></B>
 
 <b>Prior Changes</b> (1/24/2009)
 

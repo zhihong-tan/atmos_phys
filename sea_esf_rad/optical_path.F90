@@ -2,32 +2,37 @@
                     module optical_path_mod
  
 
-use rad_step_setup_mod,     only: temp, press, rh2o, KS=>KSRAD, &
-				  KE=>KERAD, ISRAD, IERAD, JSRAD, &
-				  JERAD, Rad_time_sv, lat_sv, pflux
 use  longwave_params_mod,   only: NBLW, NBCO215, NBLY_ORIG
 use  utilities_mod,         only: open_file, file_exist,    &
                                   check_nml_error, error_mesg, &
                                   print_version_number, FATAL, NOTE, &
 				  WARNING, get_my_pe, close_file
 use rad_utilities_mod,      only: looktab, longwave_tables3_type, &
+				  radiative_gases_type, &
+				  atmos_input_type, &
+				  Environment_type, Environment, &
+			                       Lw_parameters, &
+			          longwave_parameter_type, &
+				  optical_path_type, &
+				  gas_tf_type, &
 				  table_alloc, longwave_control_type,&
 				  Lw_control
-use ch4_n2o_mod,            only: ch4_n2o_input_type, CN_basic
-use cfc_mod,                only: cfc_optical_depth, cfc_exact,&
+!use ch4_n2o_mod,            only: ch4_n2o_input_type, CN_basic
+!use cfc_mod,                only: cfc_optical_depth, cfc_exact,&
+!use cfc_mod,                only:                    cfc_exact,&
+use lw_gases_stdtf_mod,     only:                    cfc_exact,&
 				  cfc_overod, cfc_overod_part,   &
-				  cfc_exact_part, cfc_dealloc
+!			  cfc_exact_part, cfc_dealloc
+				  cfc_exact_part
 use constants_new_mod,      only: wtmair, avogno, wtmh2o, grav,    &
 				  rgas, pstd, diffac, rh2oair
-use longwave_setup_mod,     only: pdfinv, pdflux, tpl1, tpl2,  &
-			          dte1, ixoe1, Lw_parameters, &
-			          longwave_parameter_type
-use longwave_aerosol_mod,   only: aertau, longwave_aerosol_dealloc, &
-                                  get_totaerooptdep,   &
-			          get_totaerooptdep_15,   &
-				  get_aerooptdep_KE_15
-use gas_tf_mod,             only: get_gastf_for_optpath
-use ozone_mod,              only: get_ozone
+!use longwave_aerosol_mod,   only: aertau, longwave_aerosol_dealloc, &
+use longwave_aerosol_mod,   only: aertau, &
+                                  longwave_aerosol_init
+!                                 get_totaerooptdep,   &
+!		          get_totaerooptdep_15,   &
+!			  get_aerooptdep_KE_15
+!use gas_tf_mod,             only: get_gastf_for_optpath
 
 !--------------------------------------------------------------------
 
@@ -44,29 +49,28 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-!  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: optical_path.F90,v 1.2 2001/08/30 15:13:20 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: galway $'
+   character(len=128)  :: version =  '$Id: optical_path.F90,v 1.3 2002/07/16 22:36:15 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: havana $'
 
 
 !---------------------------------------------------------------------
 !----- interfaces  -----
            
 public     &
-	      optical_path_init, optical_dealloc,   &
+!	      optical_path_init, optical_dealloc,   &
+	      optical_path_init,                    &
 	      optical_path_setup,     &
 	      optical_trans_funct_from_KS,    &
 	      optical_trans_funct_k_down, &
 	      optical_trans_funct_KE,  &
 	      optical_trans_funct_diag, &
 	      get_totch2o, get_totch2obd, &
-	      get_totvo2, get_var1var2, &
-	      get_path_for_enear, get_path_for_e90
+	      get_totvo2         
 
 
 private    &
 	      optical_ckd2p1_init, optical_path_ckd2p1, &
-	      optical_o3, optical_rbts, optical_h2o
+	      optical_o3, optical_rbts, optical_h2o, cfc_optical_depth
 !---------------------------------------------------------------------
 !---- namelist   -----
 
@@ -207,24 +211,95 @@ data (betacm(n),n=9,16) /    &
 
 !---------------------------------------------------------------------
 
-real, allocatable, dimension (:,:,:,:) :: empl1f, empl2f, vrpfh2o, &
-                                          totch2o, totch2obd, &
-                                          xch2obd, tphfh2o, avephif 
-real, allocatable, dimension (:,:,:)   :: empl1, empl2,  var1, var2, &
-                                          emx1f, emx2f, totvo2, avephi,&
-                                          totch2obdwd, xch2obdwd, & 
-                                          totphi, cntval,toto3,   &
-					  tphio3, var3, var4, sh2o,  &
-					  tmpexp, rvh2o, wk, rhoave, &
-					  rh2os,  rfrgn, tfac
-real, allocatable, dimension (:,:)     :: emx1, emx2, csfah2o
+  real, allocatable, dimension (:,:)     ::             csfah2o
 
 integer   :: NBTRG, NBTRGE
 
+      integer :: israd, ierad, jsrad, jerad, ks, ke
 
+!---------------------------------------------------------------------
+!   the values of the molecular weights of f11 and f12 are derived
+!   from elemental atomic weights adopted by the International Union of 
+!   Pure and Applied Chemistry in 1961. These values are also used in 
+!   the US Standard Atmosphere, 1976.
+!   some previous radiative calculations at gfdl have used the
+!   values  137.5, 121.0 for the molecular weights of f11 and f12.
+!---------------------------------------------------------------------
+       real       ::  wtmf11  = 137.36855
+   real       ::  wtmf12  = 120.91395
+       real       ::  wtmf113 = 187.3765
+   real       ::  wtmf22  =  86.46892
 
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
+        real, dimension(2,10)  :: cpf10h2o, csf10h2o
+        real, dimension(2, 4)  :: cpf4h2o, csf4h2o
+        real, dimension(2, 2)  :: cpf2h2o, csf2h2o
+        real, dimension(2   )  :: cpf1h2o, csf1h2o
+
+!---------------------------------------------------------------------
+!   data for h2o for 10 20 cm-1 wide bands in 1200-1400 cm-1 range
+!---------------------------------------------------------------------
+
+      data          cpf10h2o            / &
+     &   0.189824E-01, -0.660707E-04, &
+     &   0.175350E-01, -0.275910E-04, &
+     &   0.142808E-01, -0.274332E-04, &
+     &   0.142165E-01, -0.415313E-04, &
+     &   0.260793E-01, -0.524774E-04, &
+     &   0.182821E-01, -0.573604E-04, &
+     &   0.199166E-01, -0.721160E-04, &
+     &   0.147737E-01, -0.477693E-04, &
+     &   0.124860E-01, -0.483700E-04, &
+     &   0.951027E-02, -0.441301E-04/
+
+      data          csf10h2o            / &
+     &   0.179076E-01, -0.493954E-04, &
+     &   0.188315E-01, -0.282847E-04, &
+     &   0.165058E-01, -0.155592E-04, &
+     &   0.163390E-01, -0.389195E-04, &
+     &   0.198982E-01, -0.380731E-04, &
+     &   0.156372E-01, -0.462165E-04, &
+     &   0.143535E-01, -0.410551E-04, &
+     &   0.116195E-01, -0.260344E-04, &
+     &   0.100036E-01, -0.367164E-04, &
+     &   0.846707E-02, -0.385911E-04/
+
+
+!---------------------------------------------------------------------
+!   data for h2o for 4 50 cm-1 wide bands in 1200-1400 cm-1 range
+!---------------------------------------------------------------------
+      data          cpf4h2o /    &
+     &   0.166392E-01, -0.428283E-04,  &
+     &   0.175692E-01, -0.295058E-04,  &
+     &   0.175389E-01, -0.566292E-04, &
+     &   0.105481E-01, -0.443731E-04/
+
+      data          csf4h2o /  &
+     &   0.184822E-01, -0.337057E-04,  &
+     &   0.177179E-01, -0.351393E-04,  &
+     &   0.140172E-01, -0.386980E-04,  &
+     &   0.938797E-02, -0.366436E-04/
+
+!---------------------------------------------------------------------
+!   data for h2o for 2 100 cm-1 wide bands in 1200-1400 cm-1 range
+!---------------------------------------------------------------------
+      data          cpf2h2o /  &
+     &   0.174097E-01, -0.317609E-04,  &
+     &   0.114313E-01, -0.432460E-04/
+
+      data          csf2h2o /   &
+     &   0.179228E-01, -0.347266E-04,  &
+     &   0.109031E-01, -0.361374E-04/
+
+!---------------------------------------------------------------------
+!   data for h2o for 1 200 cm-1 wide band in 1200-1400 cm-1 range
+!---------------------------------------------------------------------
+      data          cpf1h2o /   &
+     &   0.115749E-01, -0.425616E-04/
+
+      data          csf1h2o /    &
+     &   0.119546E-01, -0.343610E-04/
 
 
 
@@ -234,7 +309,11 @@ contains
 
 
 
-subroutine optical_path_init
+!subroutine optical_path_init
+subroutine optical_path_init (kmax, latb)
+
+integer, intent(in) :: kmax
+real, dimension(:), intent(in) :: latb
 
 !--------------------------------------------------------------------
        real, dimension (NBLW)  :: dummy
@@ -303,6 +382,7 @@ subroutine optical_path_init
       call close_file (inrad)
 
 !---------------------------------------------------------------------
+      call longwave_aerosol_init (kmax, latb)
 
       if (Lw_control%do_ckd2p1 ) then
         awide = awide_c
@@ -328,23 +408,23 @@ subroutine optical_path_init
 !---------------------------------------------------------------------
       if (NBTRGE .EQ. 1) then
         do m=1,NBTRGE
-          csfah2o(1,m) = CN_basic%csf1h2o(1)
-          csfah2o(2,m) = CN_basic%csf1h2o(2)
+          csfah2o(1,m) =          csf1h2o(1)
+          csfah2o(2,m) =          csf1h2o(2)
 	end do
       elseif (NBTRGE .EQ. 2) then
         do m=1,NBTRGE
-          csfah2o(1,m) = CN_basic%csf2h2o(1,m)
-          csfah2o(2,m) = CN_basic%csf2h2o(2,m)
+          csfah2o(1,m) =          csf2h2o(1,m)
+          csfah2o(2,m) =          csf2h2o(2,m)
         end do
       elseif (NBTRGE .EQ. 4) then
         do  m=1,NBTRGE
-          csfah2o(1,m) = CN_basic%csf4h2o(1,m)
-          csfah2o(2,m) = CN_basic%csf4h2o(2,m)
+          csfah2o(1,m) =          csf4h2o(1,m)
+          csfah2o(2,m) =          csf4h2o(2,m)
         end do
       elseif (NBTRGE .EQ. 10) then
         do m=1,NBTRGE
-          csfah2o(1,m) = CN_basic%csf10h2o(1,m)
-          csfah2o(2,m) = CN_basic%csf10h2o(2,m)
+          csfah2o(1,m) =          csf10h2o(1,m)
+          csfah2o(2,m) =          csf10h2o(2,m)
         enddo
       elseif (NBTRGE .EQ. 20) then
         do m=1,NBTRGE
@@ -373,137 +453,94 @@ end subroutine optical_path_init
 
 !###################################################################
 
-subroutine optical_dealloc
-      
-!-------------------------------------------------------------------
+!subroutine optical_path_setup (is, ie, js, je, kx, Atmos_input, &
+subroutine optical_path_setup (is, ie, js, je,  Atmos_input, &
+                                Rad_gases, Optical) 
 
-
-      if (Lw_control%do_lwaerosol) then
-        call longwave_aerosol_dealloc
-      endif 
-
-      if (Lw_control%do_cfc) then
-        call cfc_dealloc
-      endif
-
-      deallocate  (var4 )
-      deallocate  (var3 )
-      deallocate  (tphio3)
-      deallocate  (toto3)
-
-      if (Lw_control%do_ckd2p1) then
-        deallocate ( xch2obdwd)
-        deallocate ( totch2obdwd)
-        deallocate ( xch2obd)
-      else
-        deallocate (totvo2)
-        deallocate (cntval)
-      endif
-
-      if (Lw_control%do_ch4_n2o) then
-        deallocate ( emx2f  )
-        deallocate ( emx1f  )
-        deallocate ( vrpfh2o)
-        deallocate ( tphfh2o)
-        deallocate ( empl2f )
-        deallocate ( empl1f )
-      endif
-
-      deallocate ( emx2   )
-      deallocate ( emx1  )
-      deallocate ( var2   )
-      deallocate ( var1   )
-      deallocate ( totphi )
-      deallocate ( empl2  )
-      deallocate ( empl1  )
-
-      if (Lw_control%do_ch4_n2o) then
-        deallocate (avephif)
-      endif 
-
-      deallocate (avephi)
-      deallocate (tfac)
-      deallocate (rfrgn)
-      deallocate (rh2os)
-      deallocate (rhoave)
-      deallocate (wk  )
-      deallocate (rvh2o)
-      deallocate (tmpexp)
-      deallocate (sh2o)
-
-!--------------------------------------------------------------------
-
-
-end subroutine optical_dealloc
-
-
-
-
-!###################################################################
-
-subroutine optical_path_setup 
+!integer, intent(in) ::  is, ie, js, je, kx
+integer, intent(in) ::  is, ie, js, je
+type(radiative_gases_type), intent(in) :: Rad_gases
+type(atmos_input_type), intent(in) :: Atmos_input
+type(optical_path_type), intent(inout) :: Optical     
 
 !---------------------------------------------------------------------
-     real, dimension(:,:,:), allocatable :: atmden, vv, qo3
      integer      :: k, i
+     integer      :: ix, jx, kx
+real, dimension (size(Atmos_input%press,1), size(Atmos_input%press,2), &
+                        size(Atmos_input%press,3) )  :: press, pflux, &
+                                                        temp, tflux, &
+                                                    atmden, vv
 
+real, dimension (size(Atmos_input%press,1), size(Atmos_input%press,2), &
+                  size(Atmos_input%press,3)-1 )  ::  rh2o, deltaz
+
+     ix = ie -is + 1
+     jx = je -js +1
+     israd = 1
+     ierad = ix
+     jsrad = 1
+     jerad = jx
+     ks    = 1
+     kx = size(Atmos_input%press,3) - 1
+     ke    = kx
+!  convert press and pflux to cgs.
+        press(:,:,:) = 10.0*Atmos_input%press(:,:,:)
+        pflux(:,:,:) = 10.0*Atmos_input%pflux(:,:,:)
+      deltaz = Atmos_input%deltaz
+      temp = Atmos_input%temp
+      rh2o = Atmos_input%rh2o
+      tflux = Atmos_input%tflux
 !--------------------------------------------------------------------
 !     atmden   =  atmospheric density, in gm/cm**2, for each of the
 !                 KMAX layers.
 !-------------------------------------------------------------------
-     allocate (sh2o        (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
-     allocate (tmpexp      (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
-     allocate (rvh2o       (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
-     allocate (wk          (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
-     allocate (rhoave      (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
-     allocate (rh2os       (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
-     allocate (rfrgn       (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
-     allocate (tfac        (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
-     allocate (avephi      (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
+!     allocate (Optical%sh2o        (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
+!     allocate (Optical%tmpexp      (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
+!     allocate (Optical%rvh2o       (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
+     allocate (Optical%wk          (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
+!     allocate (Optical%rhoave      (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
+     allocate (Optical%rh2os       (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
+     allocate (Optical%rfrgn       (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
+     allocate (Optical%tfac        (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
+     allocate (Optical%avephi      (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
 
      if (Lw_control%do_ch4_n2o) then
-       allocate (avephif   (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, NBTRGE) )
+       allocate (Optical%avephif   (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, NBTRGE) )
      endif
 !---------------------------------------------------------------------
  
-     allocate (atmden  (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-     allocate (vv      (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-
-     allocate (qo3 (ISRAD:IERAD, JSRAD:JERAD, KS:KE) )
-     call get_ozone (qo3)
-
 !----------------------------------------------------------------------
 !     define the layer-mean pressure in atmospheres (vv) and the layer 
 !     density (atmden). 
 !----------------------------------------------------------------------
      do k=KS,KE
-       atmden(:,:,k) = pdflux(:,:,k)/grav
+       atmden(:,:,k) = (pflux(:,:,k+1) - pflux(:,:,k))/grav
        vv(:,:,k)     = 0.5E+00*(pflux(:,:,k+1) + pflux(:,:,k)  )/pstd
      enddo
 
 !----------------------------------------------------------------------
 !     compute optical paths.
 !----------------------------------------------------------------------
-     call optical_h2o (atmden, vv)
+     call optical_h2o (pflux, atmden, vv, press, temp, rh2o, tflux, Optical)
 
 !---------------------------------------------------------------------
      if (.not. Lw_control%do_ckd2p1) then
-       call optical_rbts 
+       call optical_rbts  (temp, rh2o, Optical)
      else
 !---------------------------------------------------------------------
 !    call optical_ckd2p1 to determine self- and foreign-broadened h2o
 !    continuum paths, for the given temperature, pressure and mixing
 !    ratio, over the predetermined frequency range.
 !---------------------------------------------------------------------
-       call optical_path_ckd2p1  (atmden)
+       call optical_path_ckd2p1  (atmden, press, temp, rh2o, Optical)
      endif
 
 !---------------------------------------------------------------------
-     call optical_o3 (atmden, qo3, vv)
+     call optical_o3 (atmden, Rad_gases%qo3, vv, Optical)
 
 !--------------------------------------------------------------------
      if (Lw_control%do_cfc) then
-       call cfc_optical_depth (atmden) 
+       call cfc_optical_depth (atmden, Rad_gases, Optical) 
      endif
 
 !---------------------------------------------------------------------
@@ -513,14 +550,10 @@ subroutine optical_path_setup
 !     arguments going to aertau.
 !---------------------------------------------------------------------
      if (Lw_control%do_lwaerosol) then
-       call aertau 
+       call aertau (ix, jx, kx, js, deltaz, Optical) 
      endif
 !---------------------------------------------------------------------
        
-     deallocate (qo3)
-     deallocate (vv      )
-     deallocate (atmden  )
- 
 
 end subroutine  optical_path_setup
 
@@ -528,63 +561,65 @@ end subroutine  optical_path_setup
 
 !####################################################################
 
-subroutine optical_trans_funct_from_KS (to3cnt, overod, &
+subroutine optical_trans_funct_from_KS (Gas_tf, to3cnt, overod, Optical, &
 				        cnttaub1, cnttaub2, cnttaub3)
 
 !---------------------------------------------------------------------
 real, dimension (:,:,:), intent(out) ::  to3cnt, overod, &
                                          cnttaub1, cnttaub2, cnttaub3
+type(optical_path_type), intent(inout) :: Optical
+type(gas_tf_type), intent(inout) :: Gas_tf 
 
 !---------------------------------------------------------------------
-      real, dimension (:,:,:), allocatable :: tmp1, tmp2, tmp3,   &
-					      cfc_tf, totch2o_tmp,  &
+   real, dimension (size(to3cnt,1), size(to3cnt,2), &
+                 size(to3cnt,3)) ::   &
+                                              tmp1, tmp2, tmp3,   &
+					              totch2o_tmp,  &
 					      totaer_tmp, tn2o17,  &
 					      totaerooptdep_15
+
+   real, dimension (size(to3cnt,1), size(to3cnt,2), &
+                 size(to3cnt,3)-1) :: cfc_tf
+
       integer    :: m
 
-!--------------------------------------------------------------------
-!  allocate localk arrays
-!--------------------------------------------------------------------
-      allocate ( tmp1(ISRAD:IERAD, JSRAD:JERAD,       KS:KE+1  ) )
-      allocate ( tmp2(ISRAD:IERAD, JSRAD:JERAD,       KS:KE+1  ) )
-      allocate ( tmp3(ISRAD:IERAD, JSRAD:JERAD,       KS:KE+1  ) )
-      allocate ( cfc_tf(ISRAD:IERAD, JSRAD:JERAD,       KS:KE  ) )
-      allocate ( totch2o_tmp(ISRAD:IERAD, JSRAD:JERAD,       KS:KE+1) )
-      allocate ( totaer_tmp(ISRAD:IERAD, JSRAD:JERAD,       KS:KE+1) )
-      allocate ( tn2o17(ISRAD:IERAD, JSRAD:JERAD,       KS:KE+1  ) )
 
 !-----------------------------------------------------------------------
 !   compute transmission functions in 990-1070 cm-1 range, including
 !   ozone and h2o continuum, from level KS to all other levels. 
 !------------------------------------------------------------------
-      tmp1  (:,:,KS:KE) = bo3rnd(2)*tphio3(:,:,KS+1:KE+1)/  &
-                           toto3(:,:,KS+1:KE+1)
+      tmp1  (:,:,KS:KE) = bo3rnd(2)*Optical%tphio3(:,:,KS+1:KE+1)/  &
+                           Optical%toto3(:,:,KS+1:KE+1)
       tmp2(:,:,KS:KE) = 0.5*(tmp1(:,:,KS:KE)*(SQRT(1.0E+00 + (4.0E+00*&
-                        ao3rnd(2)*toto3(:,:,KS+1:KE+1))/  &
+                        ao3rnd(2)*Optical%toto3(:,:,KS+1:KE+1))/  &
 			tmp1(:,:,KS:KE))  - 1.0E+00))
       if (Lw_control%do_ckd2p1) then
-	call get_totch2obd(6, totch2o_tmp)
+	call get_totch2obd(6, Optical, totch2o_tmp)
 	tmp2(:,:,KS:KE) = tmp2(:,:,KS:KE) + diffac*   &
 		          totch2o_tmp(:,:,KS+1:KE+1)
       else 
         tmp2(:,:,KS:KE) = tmp2(:,:,KS:KE) + betacm(14)*   &
-                          totvo2(:,:,KS+1:KE+1)
+                          Optical%totvo2(:,:,KS+1:KE+1)
       endif
 
       if (Lw_control%do_lwaerosol) then
-	call get_totaerooptdep(6, totaer_tmp)
+!	call get_totaerooptdep(6, Optical, totaer_tmp)
+	totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,6)
 	tmp2(:,:,KS:KE) = tmp2(:,:,KS:KE) +    &
                           totaer_tmp   (:,:,KS+1:KE+1)
       endif
-      to3cnt(:,:,KS:KE) = EXP(-1.0E+00*tmp2(:,:,KS:KE))
+!     to3cnt(:,:,KS:KE) = EXP(-1.0E+00*tmp2(:,:,KS:KE))
+      to3cnt(:,:,KS) = 1.0
+      to3cnt(:,:,KS+1:KE+1) = EXP(-1.0E+00*tmp2(:,:,KS:KE))
  
 !--------------------------------------------------------------------
 !    if cfcs are included, also include the transmission functions for
 !    f11, f12, f113, and f22 in to3cnt.
 !---------------------------------------------------------------------
       if (Lw_control%do_cfc) then
-        call cfc_exact (6, cfc_tf)
-        to3cnt(:,:,KS:KE) = to3cnt(:,:,KS:KE)* cfc_tf(:,:,KS:KE)
+        call cfc_exact (6, Optical, cfc_tf)
+!       to3cnt(:,:,KS:KE) = to3cnt(:,:,KS:KE)* cfc_tf(:,:,KS:KE)
+        to3cnt(:,:,KS+1:KE+1) = to3cnt(:,:,KS+1:KE+1)* cfc_tf(:,:,KS:KE)
       endif
 
 !---------------------------------------------------------------------
@@ -593,25 +628,23 @@ real, dimension (:,:,:), intent(out) ::  to3cnt, overod, &
 !   add contributions from h2o(lines) and h2o(continuum).
 !   h2o(continuum) contributions are either Roberts or CKD2.1
 !---------------------------------------------------------------------
-      tmp1(:,:,KS:KE) = SQRT(ab15wd*totphi(:,:,KS+1:KE+1)) 
+      tmp1(:,:,KS:KE) = SQRT(ab15wd*Optical%totphi(:,:,KS+1:KE+1)) 
       if (Lw_control%do_ckd2p1) then
 	tmp1(:,:,KS:KE) = tmp1(:,:,KS:KE) + diffac*   &
-                          totch2obdwd(:,:,KS+1:KE+1)
+                          Optical%totch2obdwd(:,:,KS+1:KE+1)
       else
 	tmp1(:,:,KS:KE) = tmp1(:,:,KS:KE) + betawd*   &
-                          totvo2     (:,:,KS+1:KE+1)
+                          Optical%totvo2     (:,:,KS+1:KE+1)
       endif
 
 !--------------------------------------------------------------------
 !   add contribution from longwave aerosols (if desired).
 !--------------------------------------------------------------------
       if (Lw_control%do_lwaerosol) then
-	allocate ( totaerooptdep_15(ISRAD:IERAD, JSRAD:JERAD,   &
-						        KS:KE+1))
-	call get_totaerooptdep_15 (totaerooptdep_15)
+!	call get_totaerooptdep_15 (Optical, totaerooptdep_15)
+	totaerooptdep_15(:,:,:) = Optical%totaerooptdep_15(:,:,:)
 	tmp1(:,:,KS:KE) = tmp1(:,:,KS:KE) +    &
                           totaerooptdep_15(:,:,KS+1:KE+1)
-	deallocate (totaerooptdep_15)
       endif
  
 !----------------------------------------------------------------------
@@ -619,7 +652,9 @@ real, dimension (:,:,:), intent(out) ::  to3cnt, overod, &
 !    effects of co2, n2o  and  cfc's (not exponentials) are added
 !    later.
 !---------------------------------------------------------------------
-      overod(:,:,KS:KE) = EXP(-1.0E+00*tmp1     (:,:,KS:KE))
+!     overod(:,:,KS:KE) = EXP(-1.0E+00*tmp1     (:,:,KS:KE))
+      overod(:,:,KS) = 1.0
+      overod(:,:,KS+1:KE+1) = EXP(-1.0E+00*tmp1     (:,:,KS:KE))
 
 !---------------------------------------------------------------------
 !   add contribution from the 17 um n2o band (if desired).
@@ -627,14 +662,16 @@ real, dimension (:,:,:), intent(out) ::  to3cnt, overod, &
 !   valent widths in evaluating 560-800 cm-1 transmissivities.
 !---------------------------------------------------------------------
       if (Lw_control%do_ch4_n2o) then
-        call get_gastf_for_optpath (KS+1, KE+1, tn2o17)
+	  tn2o17(:,:,ks+1:ke+1) = Gas_tf%tn2o17(:,:,ks+1:ke+1)
 
         if (NBCO215 .EQ. 2) then
-          overod(:,:,KS:KE) = overod(:,:,KS:KE) *    &
+!         overod(:,:,KS:KE) = overod(:,:,KS:KE) *    &
+          overod(:,:,KS+1:KE+1) = overod(:,:,KS+1:KE+1) *    &
                               (130./240. + 110./240.*   &
 			       tn2o17(:,:,KS+1:KE+1))
         elseif (NBCO215 .EQ. 3) then
-          overod(:,:,KS:KE) = overod(:,:,KS:KE) * (170./240. +    &
+!         overod(:,:,KS:KE) = overod(:,:,KS:KE) * (170./240. +    &
+          overod(:,:,KS+1:KE+1) = overod(:,:,KS+1:KE+1) * (170./240. +    &
 			      70./240.*tn2o17(:,:,KS+1:KE+1))
         endif
       endif
@@ -644,8 +681,9 @@ real, dimension (:,:,:), intent(out) ::  to3cnt, overod, &
 !    f11, f12, f113, and f22 in overod .
 !--------------------------------------------------------------------
       if (Lw_control%do_cfc) then
-	call cfc_overod (cfc_tf)
-	overod(:,:,KS:KE) = overod(:,:,KS:KE)*cfc_tf(:,:,KS:KE)
+	call cfc_overod (Optical, cfc_tf)
+!overod(:,:,KS:KE) = overod(:,:,KS:KE)*cfc_tf(:,:,KS:KE)
+	overod(:,:,KS+1:KE+1) = overod(:,:,KS+1:KE+1)*cfc_tf(:,:,KS:KE)
       endif 
 
 !----------------------------------------------------------------------
@@ -656,51 +694,63 @@ real, dimension (:,:,:), intent(out) ::  to3cnt, overod, &
 !     division of relevant values of cnttau.
 !---------------------------------------------------------------------
       if (Lw_control%do_ckd2p1) then 
-	call get_totch2obd(4, totch2o_tmp)
+	call get_totch2obd(4, Optical, totch2o_tmp)
 	tmp1(:,:,KS:KE) = diffac*totch2o_tmp(:,:,KS+1:KE+1)
-	call get_totch2obd(5, totch2o_tmp)
+	call get_totch2obd(5, Optical, totch2o_tmp)
 	tmp2(:,:,KS:KE) = diffac*totch2o_tmp(:,:,KS+1:KE+1)
-	call get_totch2obd(7, totch2o_tmp)
+	call get_totch2obd(7, Optical, totch2o_tmp)
 	tmp3(:,:,KS:KE) = diffac*totch2o_tmp(:,:,KS+1:KE+1)
       else
-	tmp1(:,:,KS:KE) = betacm(12)*totvo2(:,:,KS+1:KE+1)
-	tmp2(:,:,KS:KE) = betacm(13)*totvo2(:,:,KS+1:KE+1)
-	tmp3(:,:,KS:KE) = betacm(15)*totvo2(:,:,KS+1:KE+1)
+	tmp1(:,:,KS:KE) = betacm(12)*Optical%totvo2(:,:,KS+1:KE+1)
+	tmp2(:,:,KS:KE) = betacm(13)*Optical%totvo2(:,:,KS+1:KE+1)
+	tmp3(:,:,KS:KE) = betacm(15)*Optical%totvo2(:,:,KS+1:KE+1)
       endif
 
       if (Lw_control%do_lwaerosol) then
-	call get_totaerooptdep(4, totaer_tmp)
+!	call get_totaerooptdep(4, Optical, totaer_tmp)
+	totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,4)
 	tmp1(:,:,KS:KE) =  tmp1(:,:,KS:KE) +    &
                            totaer_tmp   (:,:,KS+1:KE+1  )
-	call get_totaerooptdep(5, totaer_tmp)
+!	call get_totaerooptdep(5, Optical, totaer_tmp)
+	totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,5)
 	tmp2(:,:,KS:KE) =  tmp2(:,:,KS:KE) +    &
                            totaer_tmp   (:,:,KS+1:KE+1)
-	call get_totaerooptdep(7, totaer_tmp)
+!	call get_totaerooptdep(7, Optical, totaer_tmp)
+	totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,7)
 	tmp3(:,:,KS:KE) =  tmp3(:,:,KS:KE) +    &
                            totaer_tmp   (:,:,KS+1:KE+1)
       endif
 
-      cnttaub1(:,:,KS:KE) = EXP(-1.0*tmp1(:,:,KS:KE))
-      cnttaub2(:,:,KS:KE) = EXP(-1.0*tmp2(:,:,KS:KE))
-      cnttaub3(:,:,KS:KE) = EXP(-1.0*tmp3(:,:,KS:KE))
+!     cnttaub1(:,:,KS:KE) = EXP(-1.0*tmp1(:,:,KS:KE))
+!     cnttaub2(:,:,KS:KE) = EXP(-1.0*tmp2(:,:,KS:KE))
+!     cnttaub3(:,:,KS:KE) = EXP(-1.0*tmp3(:,:,KS:KE))
+      cnttaub1(:,:,KS) = 1.0                       
+      cnttaub2(:,:,KS) = 1.0                       
+      cnttaub3(:,:,KS) = 1.0                       
+      cnttaub1(:,:,KS+1:KE+1) = EXP(-1.0*tmp1(:,:,KS:KE))
+      cnttaub2(:,:,KS+1:KE+1) = EXP(-1.0*tmp2(:,:,KS:KE))
+      cnttaub3(:,:,KS+1:KE+1) = EXP(-1.0*tmp3(:,:,KS:KE))
 
 !---------------------------------------------------------------------
 !     if cfcs are included, add transmission functions for f11, f12,
 !     f113, and f22.
 !---------------------------------------------------------------------
       if (Lw_control%do_cfc) then
-        call cfc_exact (4, cfc_tf)
-        cnttaub1(:,:,KS:KE) = cnttaub1(:,:,KS:KE)*cfc_tf(:,:,KS:KE)
-        call cfc_exact (5, cfc_tf)
-        cnttaub2(:,:,KS:KE) = cnttaub2(:,:,KS:KE)*cfc_tf(:,:,KS:KE)
-        call cfc_exact (7, cfc_tf)
-        cnttaub3(:,:,KS:KE) = cnttaub3(:,:,KS:KE)*cfc_tf(:,:,KS:KE)
+        call cfc_exact (4, Optical, cfc_tf)
+!       cnttaub1(:,:,KS:KE) = cnttaub1(:,:,KS:KE)*cfc_tf(:,:,KS:KE)
+        cnttaub1(:,:,KS+1:KE+1) = cnttaub1(:,:,KS+1:KE+1)*cfc_tf(:,:,KS:KE)
+        call cfc_exact (5, Optical, cfc_tf)
+!       cnttaub2(:,:,KS:KE) = cnttaub2(:,:,KS:KE)*cfc_tf(:,:,KS:KE)
+        cnttaub2(:,:,KS+1:KE+1) = cnttaub2(:,:,KS+1:KE+1)*cfc_tf(:,:,KS:KE)
+        call cfc_exact (7, Optical, cfc_tf)
+!       cnttaub3(:,:,KS:KE) = cnttaub3(:,:,KS:KE)*cfc_tf(:,:,KS:KE)
+        cnttaub3(:,:,KS+1:KE+1) = cnttaub3(:,:,KS+1:KE+1)*cfc_tf(:,:,KS:KE)
       endif 
  
 !----------------------------------------------------------------------
 !     evaluate h2o (mbar*phibar) between level KS and other levels.
 !----------------------------------------------------------------------
-      avephi(:,:,KS:KE) = totphi(:,:,KS+1:KE+1)
+      Optical%avephi(:,:,KS:KE) = Optical%totphi(:,:,KS+1:KE+1)
  
 !----------------------------------------------------------------------
 !     the evaluation of emiss over the layer between data level (KS)
@@ -709,7 +759,7 @@ real, dimension (:,:,:), intent(out) ::  to3cnt, overod, &
 !     phibar) is required; it is stored in the (otherwise vacant)
 !     KE+1'th position of avephi.
 !----------------------------------------------------------------------
-      avephi(:,:,KE+1) = avephi(:,:,KE-1) + emx1(:,:)
+      Optical%avephi(:,:,KE+1) = Optical%avephi(:,:,KE-1) + Optical%emx1(:,:)
 
 !----------------------------------------------------------------------
 !     if h2o lines in the 1200-1400 range are assumed to have a temp-
@@ -718,21 +768,14 @@ real, dimension (:,:,:), intent(out) ::  to3cnt, overod, &
 !----------------------------------------------------------------------
       if (Lw_control%do_ch4_n2o) then
         do m=1,NBTRGE
-         avephif(:,:,KS:KE,m) = tphfh2o(:,:,KS+1:KE+1,m)
+         Optical%avephif(:,:,KS:KE,m) = Optical%tphfh2o(:,:,KS+1:KE+1,m)
         enddo
         do m=1,NBTRGE
-         avephif(:,:,KE+1,m) = avephif(:,:,KE-1,m) + emx1f(:,:,m)
+         Optical%avephif(:,:,KE+1,m) = Optical%avephif(:,:,KE-1,m) +  &
+	                Optical%emx1f(:,:,m)
         enddo
       endif
 !----------------------------------------------------------------------
-
-      deallocate (tn2o17)
-      deallocate (totaer_tmp)
-      deallocate (totch2o_tmp)
-      deallocate (cfc_tf)
-      deallocate (tmp3 )
-      deallocate (tmp2  )
-      deallocate (tmp1  )
 
 
 end subroutine optical_trans_funct_from_KS
@@ -742,64 +785,56 @@ end subroutine optical_trans_funct_from_KS
 
 !####################################################################
 
-subroutine optical_trans_funct_k_down (k, cnttaub1, cnttaub2, &
-				       cnttaub3, to3cnt, overod,  &
-			               contodb1, contodb2, contodb3)
+!subroutine optical_trans_funct_k_down (Gas_tf, k, cnttaub1, cnttaub2, &
+!			       cnttaub3, to3cnt, overod, Optical, &
+!			               contodb1, contodb2, contodb3)
+subroutine optical_trans_funct_k_down (Gas_tf, k,                     &
+			                 to3cnt, overod, Optical)   
 
 !----------------------------------------------------------------------
 integer,                 intent (in) :: k
-real, dimension(:,:,:),  intent(in)  :: cnttaub1, cnttaub2, cnttaub3
-real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1,   &
-					contodb2, contodb3
+!real, dimension(:,:,:),  intent(in)  :: cnttaub1, cnttaub2, cnttaub3
+!real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1,   &
+real, dimension (:,:,:), intent(out) :: to3cnt, overod
+!				contodb2, contodb3
+type(optical_path_type), intent(inout) :: Optical
+type(gas_tf_type), intent(inout) :: Gas_tf 
 !---------------------------------------------------------------------
 
-       real, dimension(:,:,:), allocatable  ::  avmo3, avpho3, tmp1, &
-					        tmp2, cfc_tf, avvo2,  &
+   real, dimension (size(to3cnt,1), size(to3cnt,2), &
+                 size(to3cnt,3)) ::    &
+                                                avmo3, avpho3, tmp1, &
+!				        tmp2, cfc_tf, avvo2,  &
+					        tmp2,         avvo2,  &
 					        avckdwd, avckdo3, &
 	                                        avaero3, totch2o_tmp,  &
 					        totaer_tmp, tn2o17, &
 	                      		        totaerooptdep_15
 
+   real, dimension (size(to3cnt,1), size(to3cnt,2), &
+                 size(to3cnt,3)-1) :: cfc_tf
+
        integer       :: kp, m
 !--------------------------------------------------------------------
 
-       allocate (avmo3   (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-       allocate (avpho3  (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-       allocate (tmp1    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-       allocate (tmp2    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-       allocate (cfc_tf  (ISRAD:IERAD, JSRAD:JERAD, KS:KE  )  )
 
-!---------------------------------------------------------------------
-       if (Lw_control%do_ckd2p1) then
-	 allocate (avckdwd (ISRAD:IERAD, JSRAD:JERAD,       KS:KE+1  ))
-	 allocate (avckdo3 (ISRAD:IERAD, JSRAD:JERAD,       KS:KE+1  ))
-	 allocate (totch2o_tmp (ISRAD:IERAD, JSRAD:JERAD,      KS:KE+1))
-       else
-	 allocate (avvo2   (ISRAD:IERAD, JSRAD:JERAD,       KS:KE+1  ))
-       endif
-
-       if (Lw_control%do_lwaerosol) then
-	 allocate (totaer_tmp (ISRAD:IERAD, JSRAD:JERAD,      KS:KE+1))
-	 allocate (avaero3 (ISRAD:IERAD, JSRAD:JERAD,       KS:KE+1  ))
-       endif
-
-       allocate (tn2o17  (ISRAD:IERAD, JSRAD:JERAD,       KS:KE+1  ))
 
        if (Lw_control%do_ckd2p1) then
-         call get_totch2obd(6, totch2o_tmp)
+         call get_totch2obd(6, Optical, totch2o_tmp)
        endif
        if (Lw_control%do_lwaerosol) then
-         call get_totaerooptdep(6, totaer_tmp)
+!         call get_totaerooptdep(6, Optical, totaer_tmp)
+	totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,6)
        endif
 
        do kp=1,KE+1-k
-         avmo3 (:,:,kp+k-1) = toto3 (:,:,kp+k) - toto3 (:,:,k)
-         avpho3(:,:,kp+k-1) = tphio3(:,:,kp+k) - tphio3(:,:,k) 
+         avmo3 (:,:,kp+k-1) = Optical%toto3 (:,:,kp+k) - Optical%toto3 (:,:,k)
+         avpho3(:,:,kp+k-1) = Optical%tphio3(:,:,kp+k) - Optical%tphio3(:,:,k) 
          if (.not. Lw_control%do_ckd2p1) then
-           avvo2 (:,:,kp+k-1) = totvo2(:,:,kp+k) - totvo2(:,:,k)
+           avvo2 (:,:,kp+k-1) = Optical%totvo2(:,:,kp+k) - Optical%totvo2(:,:,k)
          else
-           avckdwd(:,:,kp+k-1) = totch2obdwd(:,:,kp+k) -   &
-                                 totch2obdwd(:,:,k)
+           avckdwd(:,:,kp+k-1) = Optical%totch2obdwd(:,:,kp+k) -   &
+                                 Optical%totch2obdwd(:,:,k)
            avckdo3(:,:,kp+k-1) = totch2o_tmp(:,:,kp+k) -  &
                                  totch2o_tmp(:,:,k)
 	 endif			 
@@ -810,12 +845,13 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1,   &
        enddo
 
        do kp=1,KE+1-k
-         contodb1(:,:,kp+k-1) = cnttaub1(:,:,kp+k-1)/cnttaub1(:,:,k-1)
-         contodb2(:,:,kp+k-1) = cnttaub2(:,:,kp+k-1)/cnttaub2(:,:,k-1)
-         contodb3(:,:,kp+k-1) = cnttaub3(:,:,kp+k-1)/cnttaub3(:,:,k-1)
-         avephi  (:,:,kp+k-1) = totphi(:,:,kp+k) - totphi(:,:,k)
+!        contodb1(:,:,kp+k-1) = cnttaub1(:,:,kp+k-1)/cnttaub1(:,:,k-1)
+!        contodb2(:,:,kp+k-1) = cnttaub2(:,:,kp+k-1)/cnttaub2(:,:,k-1)
+!        contodb3(:,:,kp+k-1) = cnttaub3(:,:,kp+k-1)/cnttaub3(:,:,k-1)
+         Optical%avephi  (:,:,kp+k-1) = Optical%totphi(:,:,kp+k) -  &
+	                                 Optical%totphi(:,:,k)
        end do
-       avephi (:,:,KE+1) = avephi(:,:,KE-1) + emx1(:, :)
+       Optical%avephi (:,:,KE+1) = Optical%avephi(:,:,KE-1) + Optical%emx1(:, :)
 
 
 !---------------------------------------------------------------------
@@ -826,10 +862,11 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1,   &
        if (Lw_control%do_ch4_n2o) then
          do m=1,NBTRGE
            do kp=1,KE+1-k
-             avephif(:,:,kp+k-1,m) =  tphfh2o(:,:,kp+k,m) -  &
-                                  tphfh2o(:,:,k,   m)
+             Optical%avephif(:,:,kp+k-1,m) =  Optical%tphfh2o(:,:,kp+k,m) -  &
+                                  Optical%tphfh2o(:,:,k,   m)
            enddo
-           avephif(:,:,KE+1,m) = avephif(:,:,KE-1,m) + emx1f(:,:,m)
+           Optical%avephif(:,:,KE+1,m) = Optical%avephif(:,:,KE-1,m) + &
+	           Optical%emx1f(:,:,m)
          enddo
        endif
 
@@ -840,7 +877,7 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1,   &
 !   add contributions from h2o(lines) and h2o(continuum).
 !   h2o(continuum) contributions are either Roberts or CKD2.1
 !----------------------------------------------------------------------
-       tmp1     (:,:,k:KE) = SQRT(ab15wd*avephi(:,:,k:KE)) 
+       tmp1     (:,:,k:KE) = SQRT(ab15wd*Optical%avephi(:,:,k:KE)) 
        if (Lw_control%do_ckd2p1) then
 	 tmp1(:,:,k:KE) = tmp1(:,:,k:KE) + diffac*   &
                           avckdwd    (:,:,k:KE)
@@ -853,15 +890,13 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1,   &
 !      add contribution from longwave aerosols (if desired).
 !-------------------------------------------------------------------
        if (Lw_control%do_lwaerosol) then
-	 allocate ( totaerooptdep_15(ISRAD:IERAD, JSRAD:JERAD,   &
-						        KS:KE+1))
-	 call get_totaerooptdep_15 (totaerooptdep_15)
+!	 call get_totaerooptdep_15 (Optical, totaerooptdep_15)
+	totaerooptdep_15(:,:,:) = Optical%totaerooptdep_15(:,:,:)
 	 do kp=k,KE
 	   tmp1(:,:,kp) = tmp1(:,:,kp) +    &
                           (totaerooptdep_15(:,:,kp+1) -   &
                            totaerooptdep_15(:,:,k) )
 	 end do
-	 deallocate (totaerooptdep_15)
        endif
 
 !---------------------------------------------------------------------
@@ -869,7 +904,8 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1,   &
 !    effects of co2, n2o  and  cfc's (not exponentials) are added
 !    later.
 !--------------------------------------------------------------------
-       overod(:,:,k:KE) = EXP(-1.0E+00*tmp1     (:,:,k:KE))
+!      overod(:,:,k:KE) = EXP(-1.0E+00*tmp1     (:,:,k:KE))
+       overod(:,:,k+1:KE+1) = EXP(-1.0E+00*tmp1     (:,:,k:KE))
 
 !----------------------------------------------------------------------
 !       add contribution from the 17 um n2o band (if desired).
@@ -877,13 +913,17 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1,   &
 !   valent widths in evaluating 560-800 cm-1 transmissivities.
 !---------------------------------------------------------------------
        if (Lw_control%do_ch4_n2o) then
-         call get_gastf_for_optpath (k+1, KE+1, tn2o17)
+!         call get_gastf_for_optpath (Gas_tf, k+1, KE+1, tn2o17)
+!	   tn2o17_d(:,:,kst:kend) = Gas_tf%tn2o17(:,:,kst:kend)
+	   tn2o17(:,:,k+1:ke+1) = Gas_tf%tn2o17(:,:,k+1:ke+1)
 
          if (NBCO215 .EQ. 2) then
-           overod(:,:,k:KE) = overod(:,:,k:KE) *(130./240. +  &
+!          overod(:,:,k:KE) = overod(:,:,k:KE) *(130./240. +  &
+           overod(:,:,k+1:KE+1) = overod(:,:,k+1:KE+1) *(130./240. +  &
 		 	      110./240.*tn2o17(:,:,k+1:KE+1))
          elseif (NBCO215 .EQ. 3) then
-           overod(:,:,k:KE) = overod(:,:,k:KE)*(170./240. + &
+!          overod(:,:,k:KE) = overod(:,:,k:KE)*(170./240. + &
+           overod(:,:,k+1:KE+1) = overod(:,:,k+1:KE+1)*(170./240. + &
 			      70./240.*tn2o17(:,:,k+1:KE+1))
          endif
        endif
@@ -893,8 +933,9 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1,   &
 !    f11, f12, f113, and f22 in overod .
 !----------------------------------------------------------------------
        if (Lw_control%do_cfc) then
-         call cfc_overod_part ( cfc_tf, k)
-         overod(:,:,k:KE) = overod(:,:,k:KE)*cfc_tf(:,:,k:KE)
+         call cfc_overod_part ( Optical, cfc_tf, k)
+!        overod(:,:,k:KE) = overod(:,:,k:KE)*cfc_tf(:,:,k:KE)
+         overod(:,:,k+1:KE+1) = overod(:,:,k+1:KE+1)*cfc_tf(:,:,k:KE)
        endif
 
 !--------------------------------------------------------------------
@@ -916,37 +957,19 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1,   &
 	 tmp2(:,:,k:KE) = tmp2(:,:,k:KE) +   &
                           avaero3      (:,:,k:KE)
        endif
-       to3cnt(:,:,k:KE) = EXP(-1.0E+00*tmp2(:,:,k:KE))
+!      to3cnt(:,:,k:KE) = EXP(-1.0E+00*tmp2(:,:,k:KE))
+       to3cnt(:,:,k+1:KE+1) = EXP(-1.0E+00*tmp2(:,:,k:KE))
 
 !---------------------------------------------------------------------
 !    if cfcs are included, also include the transmission functions for
 !    f11, f12, f113, and f22 in to3cnt.
 !---------------------------------------------------------------------
        if (Lw_control%do_cfc) then
-         call cfc_exact_part (6, cfc_tf, k)
-         to3cnt(:,:,k:KE) = to3cnt(:,:,k:KE)*cfc_tf(:,:,k:KE)
+         call cfc_exact_part (6, Optical, cfc_tf, k)
+!        to3cnt(:,:,k:KE) = to3cnt(:,:,k:KE)*cfc_tf(:,:,k:KE)
+         to3cnt(:,:,k+1:KE+1) = to3cnt(:,:,k+1:KE+1)*cfc_tf(:,:,k:KE)
        endif 
 !---------------------------------------------------------------------
-
-       deallocate (tn2o17)
-       if (allocated (avvo2)) then 
-	 deallocate (avvo2)
-       endif
-       if (allocated (avckdwd)) then
-	 deallocate (avckdwd)
-	 deallocate (avckdo3)
-	 deallocate (totch2o_tmp)
-       endif
-       if (allocated (avaero3)) then
-	 deallocate (avaero3)
-	 deallocate (totaer_tmp )
-       endif
-
-       deallocate (cfc_tf   )
-       deallocate (tmp2     )
-       deallocate (tmp1     )
-       deallocate (avpho3   )
-       deallocate (avmo3    )
 
 
 end subroutine optical_trans_funct_k_down
@@ -955,25 +978,37 @@ end subroutine optical_trans_funct_k_down
 
 !#################################################################
 
-subroutine optical_trans_funct_KE (cnttaub1, cnttaub2,    &
-				   cnttaub3, to3cnt, overod, contodb1, &
-				   contodb2, contodb3)
+!subroutine optical_trans_funct_KE (Gas_tf, cnttaub1, cnttaub2,    &
+!				   cnttaub3, to3cnt, Optical,   &
+!				   overod, contodb1, &
+!				   contodb2, contodb3)
+subroutine optical_trans_funct_KE (Gas_tf,                        &
+				             to3cnt, Optical,   &
+				   overod)               
 
 !---------------------------------------------------------------------
-real, dimension (:,:,:), intent(in) ::  cnttaub1, cnttaub2,  cnttaub3
-real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1, &
-					  contodb2, contodb3
+!real, dimension (:,:,:), intent(in) ::  cnttaub1, cnttaub2,  cnttaub3
+real, dimension (:,:,:), intent(out) :: to3cnt, overod
+!real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1, &
+!					  contodb2, contodb3
+type(optical_path_type), intent(inout) :: Optical
+type(gas_tf_type), intent(inout) :: Gas_tf 
 
 !---------------------------------------------------------------------
-      real, dimension(:,:,:), allocatable :: tmp1, tmp2, tn2o17, cfc_tf
-      real,  dimension(:,:) , allocatable :: aerooptdep_KE_15
+
+   real, dimension (size(to3cnt,1), size(to3cnt,2), &
+                 size(to3cnt,3)) ::    &
+                                             tmp1, tmp2, tn2o17
+
+   real, dimension (size(to3cnt,1), size(to3cnt,2), &
+                 size(to3cnt,3)-1) ::    &
+                                          cfc_tf
+
+   real, dimension (size(to3cnt,1), size(to3cnt,2)) :: &
+                                             aerooptdep_KE_15
 
 !---------------------------------------------------------------------
 
-      allocate (tmp1    ( ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
-      allocate (tmp2    ( ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
-      allocate (tn2o17  ( ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
-      allocate (cfc_tf  ( ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
 
 !-----------------------------------------------------------------------
 !   compute transmission function in the 560-800 cm-1 range
@@ -983,24 +1018,23 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1, &
 !       add contributions from h2o(lines) and h2o(continuum).
 !       h2o(continuum) contributions are either Roberts or CKD2.1
 !----------------------------------------------------------------------
-      tmp1     (:,:,KE) = SQRT(ab15wd*var2  (:,:,KE)) 
+      tmp1     (:,:,KE) = SQRT(ab15wd*Optical%var2  (:,:,KE)) 
       if (Lw_control%do_ckd2p1) then
 	tmp1(:,:,KE) = tmp1(:,:,KE) + diffac*   &
-                         xch2obdwd   (:,:,KE)
+                         Optical%xch2obdwd   (:,:,KE)
       else
 	tmp1(:,:,KE) = tmp1(:,:,KE) + betawd*  &
-                          cntval     (:,:,KE)
+                          Optical%cntval     (:,:,KE)
       endif
 
 !---------------------------------------------------------------------
 !      add contribution from longwave aerosols (if desired).
 !---------------------------------------------------------------------
       if (Lw_control%do_lwaerosol) then
-	allocate (aerooptdep_KE_15(ISRAD:IERAD, JSRAD:JERAD) )
-	call get_aerooptdep_KE_15 (aerooptdep_KE_15)
+!       call get_aerooptdep_KE_15 (Optical, aerooptdep_KE_15)
+ 	aerooptdep_KE_15(:,:) = Optical%aerooptdep_KE_15(:,:)
 	tmp1(:,:,KE) = tmp1(:,:,KE) +     &
                           aerooptdep_KE_15(:,:)  
-	deallocate (aerooptdep_KE_15)
       endif
  
 !---------------------------------------------------------------------
@@ -1008,7 +1042,8 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1, &
 !    effects of co2, n2o  and  cfc's (not exponentials) are added
 !    later.
 !---------------------------------------------------------------------
-      overod(:,:,KE) = EXP(-1.0E+00*tmp1     (:,:,KE))
+!     overod(:,:,KE) = EXP(-1.0E+00*tmp1     (:,:,KE))
+      overod(:,:,KE+1) = EXP(-1.0E+00*tmp1     (:,:,KE))
  
 !---------------------------------------------------------------------
 !       add contribution from the 17 um n2o band (if desired).
@@ -1016,12 +1051,16 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1, &
 !   valent widths in evaluating 560-800 cm-1 transmissivities.
 !---------------------------------------------------------------------
       if (Lw_control%do_ch4_n2o) then
-        call get_gastf_for_optpath (KE+1, KE+1, tn2o17)
+!       call get_gastf_for_optpath (Gas_tf, KE+1, KE+1, tn2o17)
+!	  tn2o17_d(:,:,kst:kend) = Gas_tf%tn2o17(:,:,kst:kend)
+	  tn2o17(:,:,ke+1    ) = Gas_tf%tn2o17(:,:,ke+1)
         if (NBCO215 .EQ. 2) then
-          overod(:,:,KE) = overod(:,:,KE) *  &
+!         overod(:,:,KE) = overod(:,:,KE) *  &
+          overod(:,:,KE+1) = overod(:,:,KE+1) *  &
                            (130./240. + 110./240.*tn2o17(:,:,KE+1))
         elseif (NBCO215 .EQ. 3) then
-          overod(:,:,KE) = overod(:,:,KE) *   &
+!         overod(:,:,KE) = overod(:,:,KE) *   &
+          overod(:,:,KE+1) = overod(:,:,KE+1) *   &
                            (170./240. + 70./240.*tn2o17(:,:,KE+1))
         endif
       endif
@@ -1031,44 +1070,43 @@ real, dimension (:,:,:), intent(out) :: to3cnt, overod, contodb1, &
 !    f11, f12, f113, and f22 in overod .
 !---------------------------------------------------------------------
      if (Lw_control%do_cfc) then
-       call cfc_overod_part (cfc_tf, KE)
-       overod(:,:,KE) = overod(:,:,KE)*cfc_tf(:,:,KE)
+       call cfc_overod_part (Optical, cfc_tf, KE)
+!      overod(:,:,KE) = overod(:,:,KE)*cfc_tf(:,:,KE)
+       overod(:,:,KE+1) = overod(:,:,KE+1)*cfc_tf(:,:,KE)
      endif 
 
 !-----------------------------------------------------------------------
 !   compute transmission functions in 990-1070 cm-1 range, including
 !   ozone and h2o continuum, from level KS to all other levels. 
 !---------------------------------------------------------------------
-     tmp1  (:,:,KE) = bo3rnd(2)*var4(:,:,KE)/var3(:,:,KE)
+     tmp1  (:,:,KE) = bo3rnd(2)*Optical%var4(:,:,KE)/Optical%var3(:,:,KE)
      tmp2(:,:,KE) = 0.5*(tmp1(:,:,KE)*(SQRT(1.0E+00 + (4.0E+00*  &
-                    ao3rnd(2)*var3 (:,:,KE))/tmp1(:,:,KE))  - 1.0E+00))
+                    ao3rnd(2)*Optical%var3 (:,:,KE))/tmp1(:,:,KE))  - 1.0E+00))
 
      if (Lw_control%do_ckd2p1) then
-       tmp2(:,:,KE) = tmp2(:,:,KE) + diffac*xch2obd  (:,:,KE,6) 
+       tmp2(:,:,KE) = tmp2(:,:,KE) + diffac*Optical%xch2obd  (:,:,KE,6) 
      else
-       tmp2(:,:,KE) = tmp2(:,:,KE) + betacm(14)*cntval (:,:,KE)
+       tmp2(:,:,KE) = tmp2(:,:,KE) + betacm(14)*Optical%cntval (:,:,KE)
      endif
 
-     to3cnt(:,:,KE) = EXP(-1.0E+00*tmp2(:,:,KE))
+!    to3cnt(:,:,KE) = EXP(-1.0E+00*tmp2(:,:,KE))
+     to3cnt(:,:,KE+1) = EXP(-1.0E+00*tmp2(:,:,KE))
 
 !---------------------------------------------------------------------
 !    if cfcs are included, also include the transmission functions for
 !    f11, f12, f113, and f22 in overod and to3cnt.
 !---------------------------------------------------------------------
      if (Lw_control%do_cfc) then
-       call cfc_exact_part (6, cfc_tf, KE)
-       to3cnt(:,:,KE) = to3cnt(:,:,KE)*cfc_tf(:,:,KE)
+       call cfc_exact_part (6, Optical, cfc_tf, KE)
+!      to3cnt(:,:,KE) = to3cnt(:,:,KE)*cfc_tf(:,:,KE)
+       to3cnt(:,:,KE+1) = to3cnt(:,:,KE+1)*cfc_tf(:,:,KE)
      endif
 
-     contodb1(:,:,KE  ) = cnttaub1(:,:,KE)/cnttaub1(:,:,KE-1)
-     contodb2(:,:,KE  ) = cnttaub2(:,:,KE)/cnttaub2(:,:,KE-1)
-     contodb3(:,:,KE  ) = cnttaub3(:,:,KE)/cnttaub3(:,:,KE-1)
+!    contodb1(:,:,KE  ) = cnttaub1(:,:,KE)/cnttaub1(:,:,KE-1)
+!    contodb2(:,:,KE  ) = cnttaub2(:,:,KE)/cnttaub2(:,:,KE-1)
+!    contodb3(:,:,KE  ) = cnttaub3(:,:,KE)/cnttaub3(:,:,KE-1)
 
 !-------------------------------------------------------------------
-     deallocate (cfc_tf  )
-     deallocate (tn2o17  )
-     deallocate (tmp2    )
-     deallocate (tmp1    )
 
 
 end subroutine optical_trans_funct_KE
@@ -1078,29 +1116,38 @@ end subroutine optical_trans_funct_KE
 
 !####################################################################
 
-subroutine optical_trans_funct_diag ( press, contdg, to3dg)
+!subroutine optical_trans_funct_diag ( pflux, press, contdg, to3dg, &
+subroutine optical_trans_funct_diag ( Atmos_input, contdg, to3dg, &
+                                      Optical)
 
 !---------------------------------------------------------------------
-real, dimension (:,:,:), intent(in)     :: press
+!real, dimension (:,:,:), intent(in)     :: pflux, press
 real, dimension (:,:,:), intent(out)    :: to3dg                
 real, dimension (:,:,:,:), intent(out)  :: contdg               
+type(optical_path_type), intent(inout) :: Optical
+type(atmos_input_type), intent(in) :: Atmos_input
 					
 !---------------------------------------------------------------------
 !   local variables:
 !---------------------------------------------------------------------
-    real, dimension(:,:,:), allocatable ::    &
+     real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2), &
+                         size(Atmos_input%pflux,3)-1) :: pdfinv
+
+     real, dimension (size(Atmos_input%pflux,1), size(Atmos_input%pflux,2), &
+                         size(Atmos_input%pflux,3)) ::  &
+                          press, pflux, &
                    ca, cb, csuba, csubb, ctmp2, ctmp3, delpr1, delpr2
+
+!  convert press and pflux to cgs.
+      press(:,:,:) = 10.0*Atmos_input%press(:,:,:)
+       pflux(:,:,:) = 10.0*Atmos_input%pflux(:,:,:)
+
+
+
+     pdfinv(:,:,ks:ke) = 1.0/(pflux(:,:,ks+1:ke+1) - pflux(:,:,ks:ke))
 
 !----------------------------------------------------------------------
 
-    allocate (  ca        (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-    allocate (  cb        (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-    allocate (  csuba     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-    allocate (  csubb     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-    allocate (  ctmp2     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-    allocate (  ctmp3     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-    allocate (  delpr1    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
-    allocate (  delpr2    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
 
 !---------------------------------------------------------------------
     delpr1(:,:,KS+1:KE)   = pdfinv (:,:,KS+1:KE)*(press(:,:,KS+1:KE) -&
@@ -1114,8 +1161,8 @@ real, dimension (:,:,:,:), intent(out)  :: contdg
 !     the method is the same as described for co2 in reference(4).
 !-----------------------------------------------------------------------
     if ( .not. Lw_control%do_ckd2p1) then
-      ctmp2(:,:,KS+1:KE)  = cntval(:,:,KS+1:KE)*delpr1(:,:,KS+1:KE) 
-      ctmp3(:,:,KS+1:KE)  = cntval(:,:,KS:KE-1)*delpr2(:,:,KS+1:KE) 
+      ctmp2(:,:,KS+1:KE)  = Optical%cntval(:,:,KS+1:KE)*delpr1(:,:,KS+1:KE) 
+      ctmp3(:,:,KS+1:KE)  = Optical%cntval(:,:,KS:KE-1)*delpr2(:,:,KS+1:KE) 
     endif
     
 !-----------------------------------------------------------------------
@@ -1126,9 +1173,9 @@ real, dimension (:,:,:,:), intent(out)  :: contdg
       csuba(:,:,KS+1:KE)  = betacm(12)*ctmp2(:,:,KS+1:KE)
       csubb(:,:,KS+1:KE)  = betacm(12)*ctmp3(:,:,KS+1:KE)
 	else
-      csuba(:,:,KS+1:KE)  = diffac*xch2obd(:,:,KS+1:KE,4)*  &
+      csuba(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS+1:KE,4)*  &
                             delpr1(:,:,KS+1:KE)
-      csubb(:,:,KS+1:KE)  = diffac*xch2obd(:,:,KS:KE-1,4)*  &
+      csubb(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS:KE-1,4)*  &
                             delpr2(:,:,KS+1:KE)
     endif
     ca    (:,:,KS+1:KE) = csuba(:,:,KS+1:KE)*(-0.5E+00 +    &
@@ -1147,9 +1194,9 @@ real, dimension (:,:,:,:), intent(out)  :: contdg
       csuba(:,:,KS+1:KE)  = betacm(13)*ctmp2(:,:,KS+1:KE)
       csubb(:,:,KS+1:KE)  = betacm(13)*ctmp3(:,:,KS+1:KE)
     else
-      csuba(:,:,KS+1:KE)  = diffac*xch2obd(:,:,KS+1:KE,5)*   &
+      csuba(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS+1:KE,5)*   &
                             delpr1(:,:,KS+1:KE)
-      csubb(:,:,KS+1:KE)  = diffac*xch2obd(:,:,KS:KE-1,5)*  &
+      csubb(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS:KE-1,5)*  &
                             delpr2(:,:,KS+1:KE)
     endif
     ca    (:,:,KS+1:KE) = csuba(:,:,KS+1:KE)*(-0.5E+00 +  &
@@ -1168,9 +1215,9 @@ real, dimension (:,:,:,:), intent(out)  :: contdg
       csuba(:,:,KS+1:KE)  = betacm(15)*ctmp2(:,:,KS+1:KE)
       csubb(:,:,KS+1:KE)  = betacm(15)*ctmp3(:,:,KS+1:KE)
     else
-      csuba(:,:,KS+1:KE)  = diffac*xch2obd(:,:,KS+1:KE,7)*   &
+      csuba(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS+1:KE,7)*   &
                             delpr1(:,:,KS+1:KE)
-      csubb(:,:,KS+1:KE)  = diffac*xch2obd(:,:,KS:KE-1,7)*  &
+      csubb(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS:KE-1,7)*  &
                             delpr2(:,:,KS+1:KE)
     endif
     ca    (:,:,KS+1:KE) = csuba(:,:,KS+1:KE)*(-0.5E+00 +    &
@@ -1189,9 +1236,9 @@ real, dimension (:,:,:,:), intent(out)  :: contdg
       csuba(:,:,KS+1:KE)  = betacm(14)*ctmp2(:,:,KS+1:KE)
       csubb(:,:,KS+1:KE)  = betacm(14)*ctmp3(:,:,KS+1:KE)
     else
-      csuba(:,:,KS+1:KE)  = diffac*xch2obd(:,:,KS+1:KE,6)*   &
+      csuba(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS+1:KE,6)*   &
                             delpr1(:,:,KS+1:KE)
-      csubb(:,:,KS+1:KE)  = diffac*xch2obd(:,:,KS:KE-1,6)*  &
+      csubb(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS:KE-1,6)*  &
                             delpr2(:,:,KS+1:KE)
     endif
     ca   (:,:,KS+1:KE)  = csuba(:,:,KS+1:KE)*(-0.5E+00 +   &
@@ -1207,14 +1254,6 @@ real, dimension (:,:,:,:), intent(out)  :: contdg
                            cb(:,:,KS+1:KE))
 !-------------------------------------------------------------------
 
-     deallocate ( ca       )
-     deallocate ( cb       )
-     deallocate ( csuba    )
-     deallocate ( csubb    )
-     deallocate ( ctmp2    )
-     deallocate ( ctmp3    )
-     deallocate ( delpr1   )
-     deallocate ( delpr2   )
 
 
 end subroutine optical_trans_funct_diag
@@ -1222,14 +1261,20 @@ end subroutine optical_trans_funct_diag
 
 !###################################################################
 
-subroutine get_totch2o (n, totch2o)
+subroutine get_totch2o (n, Optical, totch2o, dte1, ixoe1)
 
 !------------------------------------------------------------------
+real, dimension(:,:,:), intent(in)     :: dte1    
+type(optical_path_type), intent(inout) :: Optical
+integer, dimension(:,:,:), intent(in)     :: ixoe1   
 real, dimension(:,:,:), intent(out)     :: totch2o
 integer,                intent(in)      :: n
 
 !-----------------------------------------------------------------
-         real, allocatable  ::  radf (:,:,:)
+
+         real, dimension(size(Optical%tfac,1), size(Optical%tfac,2), &
+	             size(Optical%tfac,3)) ::  radf, sh2o , tmpexp
+
          real               ::  t0 = 296.0
          integer            ::  k, nu
          real               ::  fh2o0, sh2o0
@@ -1242,8 +1287,10 @@ integer,                intent(in)      :: n
 !     flux, 0-2200 cm-1) using this value. this value is used instead
 !     of tmpfctrs at each frequency band.
 !--------------------------------------------------------------------
-         tmpexp(:,:,KS:KE) = EXP(-.013*tfac(:,:,KS:KE))
+!         Optical%tmpexp(:,:,KS:KE) = EXP(-.013*Optical%tfac(:,:,KS:KE))
+                 tmpexp(:,:,KS:KE) = EXP(-.013*Optical%tfac(:,:,KS:KE))
 
+!--------------------------------------------------------------------
 !--------------------------------------------------------------------
 !     compute source function for frequency bands (ioffh2o+1 to ioffh2o
 !     +nptch2o) at layer temperatures using table lookup.
@@ -1251,14 +1298,14 @@ integer,                intent(in)      :: n
 !     as the table extent for radf is the same as for the e1 tables
 !     of the model.
 !--------------------------------------------------------------------
-         allocate (radf (ISRAD:IERAD, JSRAD:JERAD,         KS:KE) )
          nu = n
          call looktab (radfunc, ixoe1, dte1, radf(:,:,:), KS, KE,   &
 		       nu+ioffh2o)
          sh2o0 = ssh2o_296(nu+ioffh2o)*sfac(nu+ioffh2o)
 
          do k=KS,KE 
- 	   sh2o(:,:,k) = sh2o0*tmpexp(:,:,k)
+! 	   Optical%sh2o(:,:,k) = sh2o0*Optical%tmpexp(:,:,k)
+ 	           sh2o(:,:,k) = sh2o0*        tmpexp(:,:,k)
          enddo
  
 !--------------------------------------------------------------------
@@ -1268,15 +1315,15 @@ integer,                intent(in)      :: n
          fh2o0 = sfh2o(nu+ioffh2o)*fscal(nu+ioffh2o)
          totch2o(:,:,1) = 0.0E+00
 	 do k = KS+1,KE+1
-	   totch2o(:,:,k) = wk(:,:,k-1)*1.0e-20*   &
-                            (sh2o(:,:,k-1)*rh2os(:,:,k-1) +    &
-	                    fh2o0*rfrgn(:,:,k-1))* &
+	   totch2o(:,:,k) = Optical%wk(:,:,k-1)*1.0e-20*   &
+!                            (Optical%sh2o(:,:,k-1)*Optical%rh2os(:,:,k-1) +    &
+                            (        sh2o(:,:,k-1)*Optical%rh2os(:,:,k-1) +    &
+	                    fh2o0*Optical%rfrgn(:,:,k-1))* &
                             vvj(nu)*radf(:,:,k-1   )    +   &
                             totch2o(:,:,k-1)
          enddo
 
 !------------------------------------------------------------------
-         deallocate (radf)
 
 !------------------------------------------------------------------
 
@@ -1287,14 +1334,14 @@ end subroutine get_totch2o
 !#####################################################################
 
 
-subroutine get_totch2obd (n, totch2obd)
+subroutine get_totch2obd (n, Optical, totch2obd)
 
 !------------------------------------------------------------------
 real, dimension(:,:,:), intent(out)     :: totch2obd
 integer,                intent(in)      :: n
+type(optical_path_type), intent(inout) :: Optical
 
 !-----------------------------------------------------------------
-        real, allocatable  ::  radf (:,:,:)
         real               ::  t0 = 296.0
         integer            ::  k, nu
         real               ::  fh2o0, sh2o0
@@ -1309,7 +1356,7 @@ integer,                intent(in)      :: n
 	totch2obd(:,:,1) = 0.0E+00
 	do k = KS+1,KE+1
 	  totch2obd(:,:,k) = totch2obd(:,:,k-1) +   &
-                             xch2obd(:,:,k-1,nu)
+                             Optical%xch2obd(:,:,k-1,nu)
 	enddo
 !--------------------------------------------------------------------
  
@@ -1320,93 +1367,21 @@ end subroutine get_totch2obd
 
 !#####################################################################
 
-subroutine get_totvo2 (n, totvo2_out) 
+subroutine get_totvo2 (n, Optical, totvo2_out) 
 
 !------------------------------------------------------------------
 integer,                intent(in)         :: n
+type(optical_path_type), intent(inout) :: Optical
 real, dimension(:,:,:), intent(out)        :: totvo2_out
 
 !-----------------------------------------------------------------
 
-        totvo2_out(:,:,:) = betacm(n)*totvo2(:,:,KS+1:KE+1)
+        totvo2_out(:,:,:) = betacm(n)*Optical%totvo2(:,:,KS+1:KE+1)
 
 end subroutine get_totvo2 
 
 
 !###################################################################
-
-subroutine get_var1var2 (var1_out, var2_out)
-
-!------------------------------------------------------------------
-real, dimension(:,:,:), intent(out)        :: var1_out, var2_out
-
-!-----------------------------------------------------------------
-
-	var1_out(:,:,:) = var1(:,:,:)
-	var2_out(:,:,:) = var2(:,:,:)
-
-end subroutine get_var1var2              
-
-
-!###################################################################
-
-subroutine get_path_for_enear ( var2_out, emx1_out, emx2_out,  &
-			       empl1_out,  empl2_out, &
-			       emx1f_out, emx2f_out, empl1f_out, &
-			       empl2f_out, vrpfh2o_out)
-
-!---------------------------------------------------------------------
-real, dimension(:,:,:),   intent(out)            :: empl1_out,  &
-						    empl2_out, &
-                                                    var2_out 
-real, dimension(:,:),     intent(out)            :: emx1_out, emx2_out
-real, dimension(:,:,:,:), intent(out), optional  :: empl1f_out,   &
-					            empl2f_out, &
-					            vrpfh2o_out
-real, dimension(:,:,:),   intent(out), optional  :: emx1f_out, &
-                                                    emx2f_out
-!---------------------------------------------------------------------
-
-      if (Lw_control%do_ch4_n2o) then
-         empl1f_out    = empl1f
-         empl2f_out    = empl2f
-	 vrpfh2o_out   = vrpfh2o
-	 emx1f_out     = emx1f
-	 emx2f_out     = emx2f
-      endif
-
-      empl1_out     = empl1
-      empl2_out     = empl2
-      var2_out      = var2
-      emx1_out      = emx1
-      emx2_out      = emx2
-
-!--------------------------------------------------------------------
-
-
-end subroutine get_path_for_enear
-
-
-
-!#####################################################################
-
-subroutine get_path_for_e90 (avephi_out, avephif_out)
-
-real, dimension(:,:,:),   intent(out)             :: avephi_out
-real, dimension(:,:,:,:), intent(out), optional   :: avephif_out
-
-
-      avephi_out(:,:,:)    = avephi(:,:,:)
-
-      if (Lw_control%do_ch4_n2o) then
-        avephif_out(:,:,:,:) = avephif(:,:,:,:)
-      endif
-
-end subroutine get_path_for_e90
-
-
-
-!#####################################################################
 
 subroutine optical_ckd2p1_init
 
@@ -1659,7 +1634,7 @@ end subroutine optical_ckd2p1_init
 
 !###################################################################
 
-subroutine optical_path_ckd2p1 (atmden) 
+subroutine optical_path_ckd2p1 (atmden, press, temp, rh2o, Optical) 
 
 !---------------------------------------------------------------------
 !    subroutine optical_ckd2p1 computes h2o continuum optical paths
@@ -1668,37 +1643,46 @@ subroutine optical_path_ckd2p1 (atmden)
 !    the gcm parameterization.
 !    (this routine is previously called contnm.F)
 !---------------------------------------------------------------------
-real, dimension (:,:,:), intent(in)       ::  atmden
+real, dimension (:,:,:), intent(in)       ::  atmden, press, temp, rh2o
+type(optical_path_type), intent(inout) :: Optical
 
 !---------------------------------------------------------------------
-      real, dimension(:,:,:), allocatable :: xch2obdinw, totch2obdinw, &
-					     radf
+      real, dimension(size(press,1), size(press,2), &
+              size(press,3)) :: totch2obdinw
+
+      real, dimension(size(press,1), size(press,2), &
+              size(press,3)-1) :: xch2obdinw, tmpexp, rvh2o, rhoave
+
       real                                ::  t0 = 296.0
       integer                             ::  n, k, nu
       real                                ::  fh2o0, sh2o0
 
 !----------------------------------------------------------------------
 
-      allocate (xch2obd    (ISRAD:IERAD, JSRAD:JERAD,   KS:KE  , 7) )
-      allocate (totch2obdwd(ISRAD:IERAD, JSRAD:JERAD,   KS:KE+1   ) )
-      allocate (xch2obdwd  (ISRAD:IERAD, JSRAD:JERAD,   KS:KE     ) )
-      allocate (xch2obdinw  (ISRAD:IERAD, JSRAD:JERAD,   KS:KE  ) )
-      allocate (totch2obdinw(ISRAD:IERAD, JSRAD:JERAD,   KS:KE+1) )
+      allocate (Optical%xch2obd    (ISRAD:IERAD, JSRAD:JERAD,   KS:KE  , 7) )
+      allocate (Optical%totch2obdwd(ISRAD:IERAD, JSRAD:JERAD,   KS:KE+1   ) )
+      allocate (Optical%xch2obdwd  (ISRAD:IERAD, JSRAD:JERAD,   KS:KE     ) )
 
 !--------------------------------------------------------------------
 !    define the volume mixing ratio of h2o
 !---------------------------------------------------------------------
-      rvh2o(:,:,KS:KE) = rh2o(:,:,KS:KE)*wtmair/wtmh2o
+!      Optical%rvh2o(:,:,KS:KE) = rh2o(:,:,KS:KE)*wtmair/wtmh2o
+              rvh2o(:,:,KS:KE) = rh2o(:,:,KS:KE)*wtmair/wtmh2o
 
 !---------------------------------------------------------------------
 !    define input arguments to optical_ckd2p1
 !-------------------------------------------------------------------
-      wk(:,:,KS:KE) = rvh2o(:,:,KS:KE)*avogno/wtmair*   &
+!      Optical%wk(:,:,KS:KE) = Optical%rvh2o(:,:,KS:KE)*avogno/wtmair*   &
+      Optical%wk(:,:,KS:KE) =         rvh2o(:,:,KS:KE)*avogno/wtmair*   &
                           atmden(:,:,KS:KE)
-      rhoave(:,:,KS:KE) = (press(:,:,KS:KE)/pstd)*(t0/temp(:,:,KS:KE))
-      rh2os(:,:,KS:KE) = rvh2o(:,:,KS:KE)*rhoave(:,:,KS:KE)
-      rfrgn(:,:,KS:KE) = rhoave(:,:,KS:KE) - rh2os(:,:,KS:KE)
-      tfac(:,:,KS:KE) = temp(:,:,KS:KE) - t0
+!      Optical%rhoave(:,:,KS:KE) = (press(:,:,KS:KE)/pstd)*(t0/temp(:,:,KS:KE))
+              rhoave(:,:,KS:KE) = (press(:,:,KS:KE)/pstd)*(t0/temp(:,:,KS:KE))
+!      Optical%rh2os(:,:,KS:KE) = Optical%rvh2o(:,:,KS:KE)*Optical%rhoave(:,:,KS:KE)
+!      Optical%rh2os(:,:,KS:KE) =         rvh2o(:,:,KS:KE)*Optical%rhoave(:,:,KS:KE)
+      Optical%rh2os(:,:,KS:KE) =         rvh2o(:,:,KS:KE)*        rhoave(:,:,KS:KE)
+!      Optical%rfrgn(:,:,KS:KE) = Optical%rhoave(:,:,KS:KE) - Optical%rh2os(:,:,KS:KE)
+      Optical%rfrgn(:,:,KS:KE) =         rhoave(:,:,KS:KE) - Optical%rh2os(:,:,KS:KE)
+      Optical%tfac(:,:,KS:KE) = temp(:,:,KS:KE) - t0
 
 !--------------------------------------------------------------------
 !     compute self-broadened temperature-dependent continuum coefficient
@@ -1708,7 +1692,8 @@ real, dimension (:,:,:), intent(in)       ::  atmden
 !     flux, 0-2200 cm-1) using this value. this value is used instead
 !     of tmpfctrs at each frequency band.
 !-------------------------------------------------------------------
-      tmpexp(:,:,KS:KE) = EXP(-.020*tfac(:,:,KS:KE))
+!      Optical%tmpexp(:,:,KS:KE) = EXP(-.020*Optical%tfac(:,:,KS:KE))
+              tmpexp(:,:,KS:KE) = EXP(-.020*Optical%tfac(:,:,KS:KE))
  
 !-------------------------------------------------------------------
 !     compute h2o self- and foreign- broadened continuum optical path 
@@ -1718,32 +1703,37 @@ real, dimension (:,:,:), intent(in)       ::  atmden
 !--------------------------------------------------------------------
       do nu = 1,7
         do k = KS,KE 
-          xch2obd(:,:,k,nu) = wk(:,:,k)*1.0e-20* (svj(nu)*rh2os(:,:,k)*&
-			      tmpexp(:,:,k) + fvj(nu)*rfrgn(:,:,k))* &
+      Optical%xch2obd(:,:,k,nu) = Optical%wk(:,:,k)*1.0e-20*   &
+            (svj(nu)*Optical%rh2os(:,:,k)*&
+!                Optical%tmpexp(:,:,k) + fvj(nu)*Optical%rfrgn(:,:,k))* &
+                        tmpexp(:,:,k) + fvj(nu)*Optical%rfrgn(:,:,k))* &
                               radfnbd(nu)
         enddo
       enddo
  
       do k = KS,KE 
-        xch2obdinw(:,:,k) = wk(:,:,k)*1.0e-20*(svjinw*rh2os(:,:,k)* &
-			    tmpexp(:,:,k) + fvjinw*rfrgn(:,:,k))* &
+        xch2obdinw(:,:,k) = Optical%wk(:,:,k)*1.0e-20*(svjinw*  &
+	       Optical%rh2os(:,:,k)* &
+!	    Optical%tmpexp(:,:,k) + fvjinw*Optical%rfrgn(:,:,k))* &
+	            tmpexp(:,:,k) + fvjinw*Optical%rfrgn(:,:,k))* &
                             radfnbdinw
-        xch2obdwd(:,:,k) = wk(:,:,k)*1.0e-20*(svjwd*rh2os(:,:,k)* &
-			   tmpexp(:,:,k) + fvjwd*rfrgn(:,:,k))*  &
+        Optical%xch2obdwd(:,:,k) = Optical%wk(:,:,k)*1.0e-20*(svjwd* &
+	                   Optical%rh2os(:,:,k)* &
+!	   Optical%tmpexp(:,:,k) + fvjwd*Optical%rfrgn(:,:,k))*  &
+	           tmpexp(:,:,k) + fvjwd*Optical%rfrgn(:,:,k))*  &
                            radfnbdwd
       enddo
  
       totch2obdinw(:,:,1) = 0.0E+00
-      totch2obdwd(:,:,1) = 0.0E+00
+      Optical%totch2obdwd(:,:,1) = 0.0E+00
       do k = KS+1,KE+1
 	totch2obdinw(:,:,k) = totch2obdinw(:,:,k-1) +    &
 			      xch2obdinw(:,:,k-1)
-	totch2obdwd(:,:,k) = totch2obdwd(:,:,k-1) + xch2obdwd(:,:,k-1)
+	Optical%totch2obdwd(:,:,k) = Optical%totch2obdwd(:,:,k-1) + &
+	                             Optical%xch2obdwd(:,:,k-1)
       enddo
 
 !----------------------------------------------------------------------
-      deallocate  (totch2obdinw )
-      deallocate  (xch2obdinw   )
 
  
 end subroutine optical_path_ckd2p1
@@ -1752,7 +1742,7 @@ end subroutine optical_path_ckd2p1
 
 !################################################################## 
 
-subroutine optical_o3 (atmden, qo3, vv)
+subroutine optical_o3 (atmden, qo3, vv, Optical)
 
 !----------------------------------------------------------------------
 !     optical_o3 computes optical paths for o3.
@@ -1770,6 +1760,7 @@ subroutine optical_o3 (atmden, qo3, vv)
 !
 !-------------------------------------------------------------------    
 real, dimension(:,:,:), intent(in) ::  atmden, qo3, vv
+type(optical_path_type), intent(inout) :: Optical
 
 !---------------------------------------------------------------------
 !
@@ -1791,10 +1782,10 @@ real, dimension(:,:,:), intent(in) ::  atmden, qo3, vv
 !--------------------------------------------------------------------
 
 !--------------------------------------------------------------------
-      allocate (toto3 (ISRAD:IERAD, JSRAD:JERAD, KS:KE      +1))
-      allocate (tphio3(ISRAD:IERAD, JSRAD:JERAD, KS:KE      +1))
-      allocate (var3  (ISRAD:IERAD, JSRAD:JERAD, KS:KE        ))
-      allocate (var4  (ISRAD:IERAD, JSRAD:JERAD, KS:KE        ))
+      allocate (Optical%toto3 (ISRAD:IERAD, JSRAD:JERAD, KS:KE      +1))
+      allocate (Optical%tphio3(ISRAD:IERAD, JSRAD:JERAD, KS:KE      +1))
+      allocate (Optical%var3  (ISRAD:IERAD, JSRAD:JERAD, KS:KE        ))
+      allocate (Optical%var4  (ISRAD:IERAD, JSRAD:JERAD, KS:KE        ))
 
 !-----------------------------------------------------------------------
 !     compute optical paths for o3, using the diffusivity 
@@ -1804,17 +1795,17 @@ real, dimension(:,:,:), intent(in) ::  atmden, qo3, vv
 !     var4 expression are the approximate voigt corrections
 !     for o3.
 !---------------------------------------------------------------------  
-      var3(:,:,KS:KE) = atmden(:,:,KS:KE)*qo3(:,:,KS:KE)*diffac
-      var4(:,:,KS:KE) = var3(:,:,KS:KE)*(vv(:,:,KS:KE) + 3.0E-03)
+      Optical%var3(:,:,KS:KE) = atmden(:,:,KS:KE)*qo3(:,:,KS:KE)*diffac
+      Optical%var4(:,:,KS:KE) = Optical%var3(:,:,KS:KE)*(vv(:,:,KS:KE) + 3.0E-03)
 
 !----------------------------------------------------------------------
 !     compute summed optical paths for o3.
 !----------------------------------------------------------------------
-      toto3 (:,:,KS) = 0.0E+00
-      tphio3(:,:,KS) = 0.0E+00
+      Optical%toto3 (:,:,KS) = 0.0E+00
+      Optical%tphio3(:,:,KS) = 0.0E+00
       do k=KS+1,KE+1
-        toto3 (:,:,k) = toto3 (:,:,k-1) + var3  (:,:,k-1) 
-        tphio3(:,:,k) = tphio3(:,:,k-1) + var4  (:,:,k-1) 
+        Optical%toto3 (:,:,k) = Optical%toto3 (:,:,k-1) + Optical%var3  (:,:,k-1) 
+        Optical%tphio3(:,:,k) = Optical%tphio3(:,:,k-1) + Optical%var4  (:,:,k-1) 
       enddo
 !----------------------------------------------------------------------
 
@@ -1826,7 +1817,10 @@ end  subroutine optical_o3
 
 !#####################################################################
 
-subroutine optical_rbts 
+subroutine optical_rbts (temp, rh2o, Optical) 
+
+real, dimension(:,:,:), intent(in) :: temp, rh2o
+type(optical_path_type), intent(inout) :: Optical
 
 !----------------------------------------------------------------------
 !     optical_rbts computes optical paths for h2o rbts comtinuum.
@@ -1846,14 +1840,16 @@ subroutine optical_rbts
 !                 flux level k.
 !-----------------------------------------------------------------------
 
-      real, dimension(:,:,:), allocatable :: texpsl
+
+      real, dimension(size(temp,1), size(temp,2), &
+                                     size(temp,3)) :: texpsl
+
       integer     :: k, i
 
 !---------------------------------------------------------------------
 
-      allocate (cntval(ISRAD:IERAD, JSRAD:JERAD,   KS:KE+1     ))
-      allocate (totvo2(ISRAD:IERAD, JSRAD:JERAD,   KS:KE+1     ))
-      allocate (texpsl(ISRAD:IERAD, JSRAD:JERAD,   KS:KE+1     ))
+      allocate (Optical%cntval(ISRAD:IERAD, JSRAD:JERAD,   KS:KE+1     ))
+      allocate (Optical%totvo2(ISRAD:IERAD, JSRAD:JERAD,   KS:KE+1     ))
 
 !----------------------------------------------------------------------
 !     compute argument for constant temperature coefficient (this is 
@@ -1871,20 +1867,20 @@ subroutine optical_rbts
 !     continuum calculations, however, the time penalty of an angular
 !     integration is severe.
 !---------------------------------------------------------------------  
-      cntval(:,:,KS:KE) = texpsl(:,:,KS:KE)*rh2o(:,:,KS:KE)*   &
-                          var2(:,:,KS:KE)/(rh2o(:,:,KS:KE) +  &
+      Optical%cntval(:,:,KS:KE) = texpsl(:,:,KS:KE)*rh2o(:,:,KS:KE)*   &
+                          Optical%var2(:,:,KS:KE)/(rh2o(:,:,KS:KE) +  &
                           rh2oair)
 
 !----------------------------------------------------------------------
 !     compute summed optical paths for h2o roberts continuum.
 !----------------------------------------------------------------------
-      totvo2(:,:,KS) = 0.0E+00
+      Optical%totvo2(:,:,KS) = 0.0E+00
       do k=KS+1,KE+1
-        totvo2(:,:,k) = totvo2(:,:,k-1) + cntval(:,:,k-1) 
+        Optical%totvo2(:,:,k) = Optical%totvo2(:,:,k-1) +   &
+	                         Optical%cntval(:,:,k-1) 
       enddo
 !----------------------------------------------------------------------
 
-      deallocate (texpsl  )
 
 
 end  subroutine optical_rbts
@@ -1893,7 +1889,8 @@ end  subroutine optical_rbts
 
 !####################################################################
 
-subroutine optical_h2o (atmden, vv) 
+subroutine optical_h2o (pflux, atmden, vv, press, temp, rh2o, tflux, &
+                        Optical) 
 
 !----------------------------------------------------------------------
 !     optical_h2o computes optical paths for h2o.
@@ -1918,7 +1915,9 @@ subroutine optical_h2o (atmden, vv)
 !
 !     tpl2    =  temperature at "lower" nearby layers of model.
 !-------------------------------------------------------------------    
-real, dimension (:,:,:), intent(in) ::  atmden, vv 
+real, dimension (:,:,:), intent(in) ::  pflux, atmden, vv, press, &
+                      temp, rh2o, tflux
+type(optical_path_type), intent(inout) :: Optical
 !-----------------------------------------------------------------------
 !     intent out:
 !
@@ -1949,8 +1948,9 @@ real, dimension (:,:,:), intent(in) ::  atmden, vv
 !       qh2o    =  h2o mass mixing ratio, multiplied by the diffusivity
 !                  factor diffac.
 !-----------------------------------------------------------------------
-      real, dimension(:,:,:), allocatable :: qh2o, tdif, tdif2
-      real, dimension(:,:,:,:), allocatable :: totfh2o, vrfh2o   
+      real, dimension (size(pflux,1), size(pflux,2), &
+                     size(pflux,3)) :: tpl1, tpl2, &
+                                             qh2o, tdif, tdif2
 
 !!!  DAN NOTE ::
 !!!   totfh2o, vrfh2o not used
@@ -1964,18 +1964,27 @@ real, dimension (:,:,:), intent(in) ::  atmden, vv
 
       integer    ::  m, k
 
+!-------------------------------------------------------------------- 
+!     compute mean temperature in the "nearby layer" between a flux
+!     level and the first data level below the flux level (tpl1) or the
+!     first data level above the flux level (tpl2)
 !---------------------------------------------------------------------
-      allocate (empl1  (ISRAD:IERAD, JSRAD:JERAD  , KS:KE+1       ))
-      allocate (empl2  (ISRAD:IERAD, JSRAD:JERAD  , KS:KE+1       ))
-      allocate (totphi (ISRAD:IERAD, JSRAD:JERAD  , KS:KE+1       ))
-      allocate (var1   (ISRAD:IERAD, JSRAD:JERAD  , KS:KE         ))
-      allocate (var2   (ISRAD:IERAD, JSRAD:JERAD  , KS:KE         ))
-      allocate (emx1   (ISRAD:IERAD, JSRAD:JERAD                  ))
-      allocate (emx2   (ISRAD:IERAD, JSRAD:JERAD                  ))
-      allocate (qh2o   (ISRAD:IERAD, JSRAD:JERAD  , KS:KE+1       ))
-      allocate (tdif   (ISRAD:IERAD, JSRAD:JERAD  , KS:KE+1       ))
-      allocate (tdif2  (ISRAD:IERAD, JSRAD:JERAD  , KS:KE+1       ))
+      tpl1(:,:,KS   )         = temp(:,:,KE   )
+      tpl1(:,:,KS   +1:KE   ) = tflux(:,:,KS   +1:KE   )
+      tpl1(:,:,KE   +1)       = 0.5E+00*(tflux(:,:,KE   +1) +   &
+                                       temp(:,:,KE   ))
+   tpl2(:,:,KS   +1:KE   ) = tflux(:,:,KS   +1:KE   )
+      tpl2(:,:,KE   +1)       = 0.5E+00*(tflux(:,:,KE   ) +    &
+                                       temp(:,:,KE   ))
 
+!---------------------------------------------------------------------
+      allocate (Optical%empl1  (ISRAD:IERAD, JSRAD:JERAD  , KS:KE+1       ))
+      allocate (Optical%empl2  (ISRAD:IERAD, JSRAD:JERAD  , KS:KE+1       ))
+      allocate (Optical%totphi (ISRAD:IERAD, JSRAD:JERAD  , KS:KE+1       ))
+      allocate (Optical%var1   (ISRAD:IERAD, JSRAD:JERAD  , KS:KE         ))
+      allocate (Optical%var2   (ISRAD:IERAD, JSRAD:JERAD  , KS:KE         ))
+      allocate (Optical%emx1   (ISRAD:IERAD, JSRAD:JERAD                  ))
+      allocate (Optical%emx2   (ISRAD:IERAD, JSRAD:JERAD                  ))
 !----------------------------------------------------------------------
 !     compute optical paths for h2o, using the diffusivity 
 !     approximation 1.66 for the angular integration.  obtain 
@@ -1986,15 +1995,15 @@ real, dimension (:,:,:), intent(in) ::  atmden, vv
 !     atmosphere), which is not the same as the level pressure press.
 !---------------------------------------------------------------------  
       qh2o(:,:,KS:KE) = rh2o(:,:,KS:KE)*diffac
-      var1(:,:,KS:KE) = atmden(:,:,KS:KE)*qh2o(:,:,KS:KE)
-      var2(:,:,KS:KE) = var1(:,:,KS:KE)*(vv(:,:,KS:KE) + 3.0E-04)
+      Optical%var1(:,:,KS:KE) = atmden(:,:,KS:KE)*qh2o(:,:,KS:KE)
+      Optical%var2(:,:,KS:KE) = Optical%var1(:,:,KS:KE)*(vv(:,:,KS:KE) + 3.0E-04)
 
 !----------------------------------------------------------------------
 !     compute summed optical paths for h2o.
 !----------------------------------------------------------------------
-      totphi(:,:,KS) = 0.0E+00
+      Optical%totphi(:,:,KS) = 0.0E+00
       do k=KS+1,KE+1
-        totphi(:,:,k) = totphi(:,:,k-1) + var2  (:,:,k-1) 
+        Optical%totphi(:,:,k) = Optical%totphi(:,:,k-1) + Optical%var2  (:,:,k-1) 
       enddo
 
 !----------------------------------------------------------------------
@@ -2004,32 +2013,32 @@ real, dimension (:,:,:), intent(in) ::  atmden, vv
 !     pflux(KE+1).  it is used in calculations between flux levels k
 !     and KE+1.
 !----------------------------------------------------------------------
-      emx1(:,:) = qh2o(:,:,KE)*press(:,:,KE)*(press(:,:,KE) -   &
+      Optical%emx1(:,:) = qh2o(:,:,KE)*press(:,:,KE)*(press(:,:,KE) -   &
                   pflux(:,:,KE))/(grav*pstd)
-      emx2(:,:) = qh2o(:,:,KE)*press(:,:,KE)*(pflux(:,:,KE+1) -  &
+      Optical%emx2(:,:) = qh2o(:,:,KE)*press(:,:,KE)*(pflux(:,:,KE+1) -  &
                   press(:,:,KE))/(grav*pstd)
 
 !----------------------------------------------------------------------
 !     empl is the pressure scaled mass from pflux(k) to press(k) or to 
 !     press(k+1).
 !----------------------------------------------------------------------
-      empl1(:,:,KS) = var2(:,:,KE)
-      empl1(:,:,KS+1:KE+1) =   &
+      Optical%empl1(:,:,KS) = Optical%var2(:,:,KE)
+      Optical%empl1(:,:,KS+1:KE+1) =   &
                  qh2o(:,:,KS:KE)*pflux(:,:,KS+1:KE+1)*   &
                  (pflux(:,:,KS+1:KE+1) - press(:,:,KS:KE))/(grav*pstd)
-      empl2(:,:,KS+1:KE) =    &
+      Optical%empl2(:,:,KS+1:KE) =    &
                  qh2o(:,:,KS+1:KE)*pflux(:,:,KS+1:KE)*   &
                  (press(:,:,KS+1:KE) - pflux(:,:,KS+1:KE))/(grav*pstd)
-      empl2(:,:,KE+1) = empl2(:,:,KE) 
+      Optical%empl2(:,:,KE+1) = Optical%empl2(:,:,KE) 
 
 !---------------------------------------------------------------------
   if (Lw_control%do_ch4_n2o) then
-    allocate ( empl1f (ISRAD:IERAD , JSRAD:JERAD , KS:KE+1,  NBTRGE ) )
-    allocate ( empl2f (ISRAD:IERAD , JSRAD:JERAD , KS:KE+1,  NBTRGE ) )
-    allocate ( tphfh2o(ISRAD:IERAD , JSRAD:JERAD , KS:KE+1,  NBTRGE ) ) 
-    allocate ( vrpfh2o(ISRAD:IERAD , JSRAD:JERAD , KS:KE+1,  NBTRGE ) )
-    allocate ( emx1f  (ISRAD:IERAD , JSRAD:JERAD ,           NBTRGE ) )
-    allocate ( emx2f  (ISRAD:IERAD , JSRAD:JERAD ,           NBTRGE ) )
+    allocate ( Optical%empl1f (ISRAD:IERAD , JSRAD:JERAD , KS:KE+1,  NBTRGE ) )
+    allocate ( Optical%empl2f (ISRAD:IERAD , JSRAD:JERAD , KS:KE+1,  NBTRGE ) )
+    allocate ( Optical%tphfh2o(ISRAD:IERAD , JSRAD:JERAD , KS:KE+1,  NBTRGE ) ) 
+    allocate ( Optical%vrpfh2o(ISRAD:IERAD , JSRAD:JERAD , KS:KE+1,  NBTRGE ) )
+    allocate ( Optical%emx1f  (ISRAD:IERAD , JSRAD:JERAD ,           NBTRGE ) )
+    allocate ( Optical%emx2f  (ISRAD:IERAD , JSRAD:JERAD ,           NBTRGE ) )
 
 !----------------------------------------------------------------------
 !   compute h2o optical paths for use in the 1200-1400 cm-1 range if
@@ -2038,15 +2047,15 @@ real, dimension (:,:,:), intent(in) ::  atmden, vv
     tdif(:,:,KS:KE) = temp(:,:,KS:KE)-2.5E+02
 
     do m=1,NBTRGE
-      vrpfh2o(:,:,KS:KE,m) = var2(:,:,KS:KE) *    &
+      Optical%vrpfh2o(:,:,KS:KE,m) = Optical%var2(:,:,KS:KE) *    &
                              EXP(csfah2o(1,m)*(tdif(:,:,KS:KE)) +   &
                                  csfah2o(2,m)*(tdif(:,:,KS:KE))**2 )
     enddo
 
     do m=1,NBTRGE
-      tphfh2o(:,:,KS,m) = 0.0E+00
+      Optical%tphfh2o(:,:,KS,m) = 0.0E+00
       do k=KS+1,KE+1
-        tphfh2o(:,:,k,m) = tphfh2o(:,:,k-1,m) + vrpfh2o(:,:,k-1,m)
+        Optical%tphfh2o(:,:,k,m) = Optical%tphfh2o(:,:,k-1,m) + Optical%vrpfh2o(:,:,k-1,m)
       enddo
     enddo
 
@@ -2058,10 +2067,10 @@ real, dimension (:,:,:), intent(in) ::  atmden, vv
 !   if temperature dependence of line intensities is accounted for.
 !--------------------------------------------------------------------
     do m=1,NBTRGE
-      emx1f(:,:,m) = emx1(:,:) *    &
+      Optical%emx1f(:,:,m) = Optical%emx1(:,:) *    &
                      EXP(csfah2o(1,m)*(tdif2(:,:,KE+1)        ) +   &
                          csfah2o(2,m)*(tdif2(:,:,KE+1)        )**2 )
-      emx2f(:,:,m) = emx2(:,:) *    &
+      Optical%emx2f(:,:,m) = Optical%emx2(:,:) *    &
                      EXP(csfah2o(1,m)*(tdif (:,:,KE+1)        ) +  &
                          csfah2o(2,m)*(tdif (:,:,KE+1)        )**2 )
     enddo
@@ -2071,21 +2080,18 @@ real, dimension (:,:,:), intent(in) ::  atmden, vv
 !   if temperature dependence of line intensities is accounted for.
 !----------------------------------------------------------------------
     do m=1,NBTRGE
-      empl1f(:,:,KS+1:KE+1,m) = empl1(:,:,KS+1:KE+1) *   &
+      Optical%empl1f(:,:,KS+1:KE+1,m) = Optical%empl1(:,:,KS+1:KE+1) *   &
                           EXP(csfah2o(1,m)*(tdif(:,:,KS+1:KE+1)) +    &
                               csfah2o(2,m)*(tdif(:,:,KS+1:KE+1))**2 )
-      empl2f(:,:,KS+1:KE,m) = empl2(:,:,KS+1:KE) *   &
+      Optical%empl2f(:,:,KS+1:KE,m) = Optical%empl2(:,:,KS+1:KE) *   &
                           EXP(csfah2o(1,m)*(tdif2(:,:,KS+1:KE)) +   &
                               csfah2o(2,m)*(tdif2(:,:,KS+1:KE))**2 )
-      empl1f(:,:,KS ,m) = vrpfh2o(:,:,KE,m)
-      empl2f(:,:,KE+1,m) = empl2f(:,:,KE,m)
+      Optical%empl1f(:,:,KS ,m) = Optical%vrpfh2o(:,:,KE,m)
+      Optical%empl2f(:,:,KE+1,m) = Optical%empl2f(:,:,KE,m)
     enddo
   endif
 
 !---------------------------------------------------------------------
-      deallocate (tdif2 )
-      deallocate (tdif  )
-      deallocate (qh2o  )
 
 
 
@@ -2096,7 +2102,91 @@ end subroutine optical_h2o
 !####################################################################
 
 
+subroutine cfc_optical_depth (density, Rad_gases, Optical)
+
+!----------------------------------------------------------------------
+!     cfc_optical_depth computes optical paths for cfc. The code assumes
+!     a constant mixing ratio throughout the atmosphere.
+!
+!     author: m. d. schwarzkopf
+!
+!     revised: 1/1/93
+!
+!     certified:  radiation version 1.0
+!----------------------------------------------------------------------
+
+real, dimension (:,:,:), intent(in)    :: density 
+type(radiative_gases_type), intent(in) :: Rad_gases
+type(optical_path_type), intent(inout) :: Optical 
+
+!----------------------------------------------------------------------
+      integer          ::      k
+      integer          :: kx
+      real             :: rrf11, rrf12, rrf113, rrf22
+     real :: rf11air, rf12air, rf113air, rf22air
+
+!----------------------------------------------------------------------
+!     allocate ( totf11 (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1     ) )
+!     allocate ( totf12 (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1     ) )
+!     allocate ( totf113(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1     ) )
+!     allocate ( totf22 (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1     ) )
+      allocate ( Optical%totf11 (size(density,1), size(density,2),    &
+                         size(density,3) ) )
+      allocate ( Optical%totf12 (size(density,1), size(density,2),    &
+                         size(density,3) ) )
+      allocate ( Optical%totf113(size(density,1), size(density,2),    &
+                         size(density,3) ) )
+      allocate ( Optical%totf22 (size(density,1), size(density,2),    &
+                         size(density,3) ) )
+ 
+      kx = size(density,3)
+
+!--------------------------------------------------------------------
+!   define cfc mixing ratio conversion factors.
+!--------------------------------------------------------------------
+      rf11air  = wtmf11/wtmair
+       rf12air  = wtmf12/wtmair
+    rf113air = wtmf113/wtmair
+      rf22air  = wtmf22/wtmair
+
+      rrf11 = Rad_gases%rrvf11*rf11air
+      rrf12 = Rad_gases%rrvf12*rf12air
+      rrf113 = Rad_gases%rrvf113*rf113air
+      rrf22 = Rad_gases%rrvf22*rf22air
+
+!----------------------------------------------------------------------
+!   compute summed optical paths for f11,f12, f113 and f22  with the 
+!   diffusivity factor of 2 (appropriate for weak-line absorption 
+!   limit).
+!----------------------------------------------------------------------
+!     totf11(:,:,KSRAD) = 0.0E+00
+!     totf12(:,:,KSRAD) = 0.0E+00
+!     totf113(:,:,KSRAD) = 0.0E+00
+!     totf22 (:,:,KSRAD) = 0.0E+00
+      Optical%totf11(:,:,1) = 0.0E+00
+      Optical%totf12(:,:,1) = 0.0E+00
+      Optical%totf113(:,:,1) = 0.0E+00
+      Optical%totf22 (:,:,1) = 0.0E+00
+!     do k=KSRAD+1,KERAD+1
+      do k=2,kx           
+        Optical%totf11(:,:,k) = Optical%totf11(:,:,k-1) + density(:,:,k-1)*rrf11*2.0E+00
+        Optical%totf12(:,:,k) = Optical%totf12(:,:,k-1) + density(:,:,k-1)*rrf12*2.0E+00
+        Optical%totf113(:,:,k) = Optical%totf113(:,:,k-1) + density(:,:,k-1)*rrf113* &  
+                                                      	      2.0E+00
+        Optical%totf22(:,:,k) = Optical%totf22(:,:,k-1) + density(:,:,k-1)*rrf22*2.0E+00
+
+      enddo
+       
+!--------------------------------------------------------------------
+
+
+end subroutine cfc_optical_depth
+
+
+
+
+!####################################################################
+
 
                    end module optical_path_mod
-
 

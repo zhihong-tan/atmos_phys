@@ -25,20 +25,22 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !     character(len=5), parameter  ::  version_number = 'v0.08'
-      character(len=128)  :: version =  '$Id: constants_new.F90,v 1.3 2001/10/25 17:48:25 fms Exp $'
-      character(len=128)  :: tag     =  '$Name: galway $'
+      character(len=128)  :: version =  '$Id: constants_new.F90,v 1.4 2002/07/16 22:34:38 fms Exp $'
+      character(len=128)  :: tag     =  '$Name: havana $'
 
 
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
-public  constants_new_init, define_constants
+!public  constants_new_init, define_constants
+public  constants_new_init, constants_new_end
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-character(len=5)   :: dummy    = '     '
+!character(len=5)   :: dummy    = '     '
+character(len=8)   :: dummy    = '     '
 
 
 namelist /constants_new_nml/   &
@@ -62,14 +64,14 @@ real, public, parameter :: diffac = 1.660000E+00
 real, public, parameter :: rh2oair  = wtmh2o/wtmair
 
 
-real, public, parameter :: secday  = 8.640000E+04
+real, public, parameter :: seconds_per_day  = 8.640000E+04
 real, public, parameter :: cpair   = 1.004840E+07
 real, public, parameter :: grav    = 9.806650E+02
 
 
 !!!! USE THIS VALUE FOR CONSISTENCY WITH VALUE IN Constants_mod, 
 !!!! beginning with fez release:
-real, public, parameter :: sigma    = 5.6734E-05 
+real, public, parameter :: sigma    = 5.6734E-05
 !real, public, parameter :: sigma   = 5.670E-05
 
 real, public, parameter :: avogno = 6.023000E+23
@@ -79,6 +81,7 @@ real, public, parameter :: avogno = 6.023000E+23
 !--------------------------------------------------------------------
 
 real, public, parameter :: rgas = 8.314320E+07
+real, public, parameter :: rgas_mks = 8.314320E+03
 !--------------------------------------------------------------------
 !  the following value may be a newer value to use  (ifdef newrgas)?? : 
 !real, public, parameter :: rgas = 8.314410E+07
@@ -98,7 +101,8 @@ real, public, parameter :: gasconst    = 287.053
 real, public, parameter :: rhoair      = 1.292269  
 real, public, parameter :: grav_mks    = 9.80665   
 real, public, parameter :: cpair_mks   = 1.004840E+03
-real, public, parameter :: radcon_mks  = (grav_mks/cpair_mks)*secday
+real, public, parameter :: radcon_mks  = (grav_mks/cpair_mks)*  &
+                                          seconds_per_day
 real, public, parameter :: pstd_mks    = 101325.0
 
 
@@ -118,7 +122,9 @@ real, public, parameter :: calyear     = 365.2500
 !real, public, parameter :: sigmasb     = 5.670320E-05 ! (ifdef newsigma)
 !!!! USE THIS VALUE FOR CONSISTENCY WITH VALUE IN Constants_mod, 
 !!!! beginning with fez release:
-real, public, parameter :: sigmasb     = 5.6734E-05 
+real, public, parameter :: sigmasb     = 5.6734E-05
+!real, public, parameter :: sigmasb_mks = 5.670320E-08 ! (ifdef newsigma)
+real, public, parameter :: sigmasb_mks = 5.6734E-08 ! (ifdef newsigma)
 !--------------------------------------------------------------------
 !real, public, parameter :: sigmasb     = 5.673000E-05 ! (older value) 
 !--------------------------------------------------------------------
@@ -136,9 +142,11 @@ integer, public,parameter :: bytes_per_word = 8
 !--------------------------------------------------------------------
 ! ---  private ---
 
-real,         parameter :: radcon_mgroup  = (grav/cpair)*secday
+real,         parameter :: radcon_mgroup  = (grav/cpair)*seconds_per_day
 !!!  for FMS MIMIC :
 real,         parameter :: radcon_fms  = 8.427 ! instead of 8.4321 
+
+logical   :: constants_new_initialized=.false.
  
 
 !--------------------------------------------------------------------
@@ -154,6 +162,7 @@ subroutine constants_new_init
 !------------------------------------------------------------------
      integer    ::  unit, ierr, io
 
+    if (constants_new_initialized) return
 !---------------------------------------------------------------------
 !-----  read namelist  ------
 
@@ -178,7 +187,13 @@ subroutine constants_new_init
      pie   = 4.0E+00*ATAN(1.0E+00)
      radians_to_degrees = 180.0/pie
 
+!   if (Environment%using_fms_periphs) then
+!     radcon = radcon_fms
+!   else if (Environment%using_sky_periphs) then
+      radcon = radcon_mgroup
+!   endif
 
+    constants_new_initialized=.true.
 !------------------------------------------------------------------
 
 
@@ -188,15 +203,25 @@ end subroutine constants_new_init
 
 !####################################################################
 
-subroutine define_constants
+subroutine constants_new_end
 
-    if (Environment%using_fms_periphs) then
-      radcon = radcon_fms
-    else if (Environment%using_sky_periphs) then
-      radcon = radcon_mgroup
-    endif
+   return
 
-end subroutine define_constants
+end subroutine constants_new_end
+
+
+
+!###################################################################
+
+!subroutine define_constants
+
+!    if (Environment%using_fms_periphs) then
+!      radcon = radcon_fms
+!    else if (Environment%using_sky_periphs) then
+!      radcon = radcon_mgroup
+!    endif
+!
+!end subroutine define_constants
 
 
 

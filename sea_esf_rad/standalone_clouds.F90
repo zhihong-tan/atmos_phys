@@ -1,22 +1,31 @@
-
+!
                  module standalone_clouds_mod
 
 use time_manager_mod,    only: time_type
-use microphys_rad_mod,   only: microphys_rad_driver, microphys_rad_init
+!use microphys_rad_mod,   only: microphys_rad_driver, microphys_rad_init
+use microphys_rad_mod,   only: microphys_rad_driver,   &
+                               lwemiss_calc, microphys_rad_init
 use utilities_mod,       only: open_file, file_exist,   &
                                check_nml_error, error_mesg,   &
                                print_version_number, FATAL, NOTE, &
 			       WARNING, get_my_pe, close_file, &
-                               get_my_pe, get_domain_decomp
-use rad_step_setup_mod,  only: ISRAD, IERAD, JSRAD, JERAD, & 
-                               KSRAD, KERAD
+!                              get_my_pe, get_domain_decomp
+                               get_my_pe
+!use rad_step_setup_mod,  only: ISRAD, IERAD, JSRAD, JERAD, & 
+!                               KSRAD, KERAD
 use rad_utilities_mod,   only: Environment, environment_type, &
 			       longwave_control_type, Lw_control, &
-			       shortwave_control_type, Sw_control
-use longwave_setup_mod,  only: longwave_parameter_type, Lw_parameters
+			       cld_diagnostics_type, &
+			       cloudrad_control_type, &
+			       Cldrad_control, &
+			       shortwave_control_type, Sw_control, &
+                                longwave_parameter_type, Lw_parameters
+!use longwave_setup_mod,  only: longwave_parameter_type, Lw_parameters
 use constants_new_mod,   only: radians_to_degrees
 use strat_clouds_W_mod,  only: strat_clouds_calc
+ use donner_deep_clouds_W_mod,  only: donner_deep_clouds_calc
 use cloud_rad_mod,       only: cloud_rad_init
+use donner_deep_mod,     only: donner_deep_init
 !--------------------------------------------------------------------
 
 implicit none
@@ -33,8 +42,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 ! character(len=5), parameter  ::  version_number = 'v0.09'
-  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 1.2 2001/07/05 17:33:29 fms Exp $'
-  character(len=128)  :: tag     =  '$Name: galway $'
+  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 1.3 2002/07/16 22:37:06 fms Exp $'
+  character(len=128)  :: tag     =  '$Name: havana $'
 
 
 
@@ -47,11 +56,15 @@ public          &
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-character(len=10) :: cldht_type_form='   '
-character(len=10) :: cloud_data_form='   '
+!character(len=10) :: cldht_type_form='   '
+!character(len=10) :: cloud_data_form='   '
+character(len=16) :: cldht_type_form='   '
+character(len=16) :: cloud_data_form='   '
 character(len=16) :: cloud_overlap_form='   '
-character(len=10) :: lhsw_cld_prop_form='   '
-character(len=10) :: lw_cld_prop_form='   '
+!character(len=10) :: lhsw_cld_prop_form='   '
+!character(len=10) :: lw_cld_prop_form='   '
+character(len=16) :: lhsw_cld_prop_form='   '
+character(len=16) :: lw_cld_prop_form='   '
 integer           :: cloud_data_points = 0
 
 !  logical variables derived from namelist variables
@@ -82,7 +95,9 @@ namelist /standalone_clouds_nml /     &
 !----------------------------------------------------------------------
 !----  private data -------
 
-character(len=10)      :: swform
+!character(len=10)      :: swform
+!character(len=16)      :: swform
+logical :: do_lhsw, do_esfsw
 
 !------------------------------------------------------------------
 !    test (singlecolumn) values for cloud amount, height index,
@@ -108,8 +123,8 @@ real, dimension(:,:), allocatable     :: emlw_in
 
 integer   :: NLWCLDB 
  
-integer, parameter   :: LATOBS=19
-integer              :: x(4), y(4), jd, jdf
+!integer, parameter   :: LATOBS=19
+!integer              :: x(4), y(4), jd, jdf
 
 !----------------------------------------------------------------------
 !   define default values for shortwave cloud absorptivity and
@@ -140,6 +155,16 @@ real                 :: lowcloud_emiss = 1.00E+00
 real                 :: midcloud_emiss = 1.00E+00
 real                 :: highcloud_emiss = 1.00E+00
 
+      integer    :: israd, ierad, jsrad, jerad, ksrad, kerad
+
+integer, parameter   :: LATOBS=19
+real, dimension(LATOBS)                 ::  cloud_lats
+
+data cloud_lats / -90., -80., -70., -60., -50., -40., -30., -20., &
+                  -10., 0.0, 10., 20., 30., 40., 50., 60., 70., 80., &
+                  90. /
+
+
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
 
@@ -149,17 +174,27 @@ real                 :: highcloud_emiss = 1.00E+00
 
 
 
-subroutine standalone_clouds_init (theta, do_strat_clouds,   &
-                                          do_specified_clouds)
+!subroutine standalone_clouds_init (kx_in, theta, latb,   &
+subroutine standalone_clouds_init (kx_in,        latb,   &
+                              do_strat_clouds,   &
+                      do_donner_deep_clouds, do_specified_clouds)
 
-real, dimension(:), intent(in)    :: theta
-logical,            intent(in)    :: do_strat_clouds
+integer, intent(in) :: kx_in
+!real, dimension(:), intent(in)    :: theta, latb
+real, dimension(:), intent(in)    ::        latb
+!logical,            intent(in)    :: do_strat_clouds
+logical,            intent(in)    :: do_strat_clouds,   &
+                                      do_donner_deep_clouds
 logical,            intent(in)    :: do_specified_clouds
 
 !--------------------------------------------------------------------
 !
 !   do_strat_clouds (if true) indicates that cloud microphysical
 !   properties are to be obtained from the Klein parameterization
+!
+!
+!   do_donner_deep_clouds (if true) indicates that cloud microphysical
+!   properties are to be obtained from the donner_deep parameterization
 !
 !   do_specified_clouds (if true) indicates that the cloud microphysical
 !   properties are specified.
@@ -174,11 +209,15 @@ logical,            intent(in)    :: do_specified_clouds
       integer            :: unit, ierr, io
       integer            :: k, j, i, n
       integer            :: ni
-      character(len=10)  :: type_form
+!      character(len=10)  :: type_form
+      character(len=16)  :: type_form
       real               :: alatn, fl
       integer            :: li, jj
       integer            :: kk,ktop,kbot
       real               :: max_cld_calc
+     integer, dimension(:), allocatable :: jindx2
+       integer              ::  jdf
+       real, dimension(size(latb,1)-1) :: theta
 
 !--------------------------------------------------------------------
 !     these variables define the boundaries (in sigma coordinates) 
@@ -209,6 +248,9 @@ logical,            intent(in)    :: do_specified_clouds
 	write (unit,nml=standalone_clouds_nml)
       endif
       call close_file (unit)
+
+      ksrad = 1
+      kerad = kx_in
 
 !-------------------------------------------------------------------
 !  ensure that cloud_data_points (from namelist) is at least one
@@ -294,7 +336,14 @@ logical,            intent(in)    :: do_specified_clouds
       if (trim(lw_cld_prop_form) == 'input') then
         do_lw_cld_prop_input = .true.
       else if (trim(lw_cld_prop_form) == 'specified') then
-        do_lw_cld_prop_spec = .true.
+!        do_lw_cld_prop_spec = .true.
+         if (do_cloud_data_spec) then
+          do_lw_cld_prop_spec = .true.
+       else
+       call error_mesg( 'standalone_package_init',  &
+             ' if lw_cld_prop_form is specified  cloud_data_form&
+            & must be specified.',                         FATAL)
+       endif
       else
         call error_mesg( 'standalone_package_init',  &
                ' lw_cld_prop_form is not an acceptable value.', &
@@ -304,17 +353,24 @@ logical,            intent(in)    :: do_specified_clouds
 !---------------------------------------------------------------------
 !  retrieve model size parameters from temporary module
 !---------------------------------------------------------------------
-      call get_domain_decomp (x, y)
-      jd = y(2)
-      jdf = y(4) - y(3) + 1
+!      call get_domain_decomp (x, y)
+!      jd = y(2)
+!     jdf = y(4) - y(3) + 1
+
+       jdf = size(latb,1) - 1
+        allocate (jindx2  (jdf))
+        call find_nearest_index (latb, jindx2)
 
 !---------------------------------------------------------------------
 !    define the number of cloud emissivity bands for use in this module.
 !    define the shortwave parameterization being used.
 !---------------------------------------------------------------------
 
-      NLWCLDB = Lw_parameters%NLWCLDB
-      swform = Sw_control%sw_form
+!      NLWCLDB = Lw_parameters%NLWCLDB
+       NLWCLDB = Cldrad_control%NLWCLDB
+!      swform = Sw_control%sw_form
+      do_lhsw = Sw_control%do_lhsw
+      do_esfsw = Sw_control%do_esfsw
 
       allocate (cloud_amount_in (1:cloud_data_points,KSRAD:KERAD ))
       allocate (max_cloud_amount_in (1:cloud_data_points,KSRAD:KERAD ))
@@ -469,6 +525,17 @@ logical,            intent(in)    :: do_specified_clouds
 !   allocate lw emissivity array and fill with either input or
 !   specified values
 !-------------------------------------------------------------------
+
+
+
+
+!!!!!!!!!!ARBITRARILY DEFINE THSIS FOR NOW -- WILL NEED TO BE
+!! DEFINED PROPERLY :LATER AFTER ORDER OF CALCS CHANGED !!!!!!!!!
+
+
+!         NLWCLDB = 7
+
+
       allocate (emlw_band_in(1:cloud_data_points, KSRAD:KERAD, NLWCLDB))
 
 ! default emissivity value is unity
@@ -522,7 +589,8 @@ logical,            intent(in)    :: do_specified_clouds
 	       FATAL)
       endif
 
-      if (trim(swform) /= 'esfsw99') then
+!     if (trim(swform) /= 'esfsw99') then
+      if (.not. do_esfsw           ) then
 !-------------------------------------------------------------------
 !   allocate lhsw cloud property arrays and either read input file
 !   containing them or use specified values
@@ -602,8 +670,8 @@ logical,            intent(in)    :: do_specified_clouds
       allocate (cldml (LATOBS) )
       allocate (cldhm_abs (jdf) )
       allocate (cldml_abs (jdf) )
-      allocate (cldhm_abs_gl (jd) )
-      allocate (cldml_abs_gl (jd) )
+!     allocate (cldhm_abs_gl (jd) )
+!     allocate (cldml_abs_gl (jd) )
 
       if (do_cldhtskyhi) then
 
@@ -650,23 +718,28 @@ logical,            intent(in)    :: do_specified_clouds
 !    in default case, no interpolation is actually done; the nearest
 !    latitude available (using NINT function) is used.
 !---------------------------------------------------------------------
-      do j=1,jd
-        if (Environment%using_sky_periphs) then
-	  if ( jd > 1) then
-            fl = 9.0E+00 - 9.0E+00*(FLOAT(jd+1 -j - jd/2) -    &
-                 0.5E+00)/FLOAT(jd/2)
-          else
-	    fl = 9.0E+00
-	  endif
-          li = NINT(fl) + 1
-          cldhm_abs_gl(j) = cldhm(li)
-          cldml_abs_gl(j) = cldml(li)
-        endif
-      end do
+!     do j=1,jd
       do j=1,jdf
         if (Environment%using_sky_periphs) then
-	  cldhm_abs(j) = cldhm_abs_gl(j+y(3)-1)
-	  cldml_abs(j) = cldml_abs_gl(j+y(3)-1)
+!  if ( jd > 1) then
+!           fl = 9.0E+00 - 9.0E+00*(FLOAT(jd+1 -j - jd/2) -    &
+!                0.5E+00)/FLOAT(jd/2)
+!         else
+!    fl = 9.0E+00
+!  endif
+!         li = NINT(fl) + 1
+          li = jindx2(j)
+!         cldhm_abs_gl(j) = cldhm(li)
+!         cldml_abs_gl(j) = cldml(li)
+          cldhm_abs   (j) = cldhm(li)
+          cldml_abs   (j) = cldml(li)
+        endif
+      end do
+      theta(1:jdf) = 0.5*(latb(1:jdf) + latb(2:jdf+1))
+      do j=1,jdf
+        if (Environment%using_sky_periphs) then
+!  cldhm_abs(j) = cldhm_abs_gl(j+y(3)-1)
+!  cldml_abs(j) = cldml_abs_gl(j+y(3)-1)
         else if (Environment%using_fms_periphs) then
           cldhm_abs(j) = cldhp + (90.0E+00-abs(theta(j)*   &
 	                 radians_to_degrees))*(cldhe-cldhp)/90.0E+00
@@ -674,8 +747,8 @@ logical,            intent(in)    :: do_specified_clouds
 	                 radians_to_degrees))*(cldme-cldmp)/90.0E+00
         endif
       end do
-      deallocate (cldhm_abs_gl)
-      deallocate (cldml_abs_gl)
+!     deallocate (cldhm_abs_gl)
+!     deallocate (cldml_abs_gl)
 
 !-------------------------------------------------------------------
 !     if the strat clouds module is to be used, initialize the
@@ -685,11 +758,16 @@ logical,            intent(in)    :: do_specified_clouds
         call cloud_rad_init
       endif
 
+       if (do_donner_deep_clouds) then
+         call donner_deep_init(kmax_in=KERAD)
+       endif
+
 !-------------------------------------------------------------------
 !    if a cloud microphysics scheme is to be employed with the cloud
 !    scheme, initialize the microphysics_rad module.
 !--------------------------------------------------------------------
-      if (trim(swform) == 'esfsw99'  .or.     &
+!     if (trim(swform) == 'esfsw99'  .or.     &
+      if (do_esfsw                   .or.     &
                                        Lw_control%do_lwcldemiss) then
 	call microphys_rad_init                                  &
              (cldhm_abs_in=cldhm_abs, cldml_abs_in=cldml_abs)
@@ -714,33 +792,55 @@ end subroutine standalone_clouds_init
 
 !#################################################################
 
-subroutine standalone_clouds_driver (do_strat_clouds, &
+subroutine standalone_clouds_driver (is, ie, js, je, Cld_diagnostics, pflux, deltaz, &
+                                  land, cosz, cloud_water, cloud_ice,&
+				  press, temp, rh2o,do_strat_clouds, &
+				  do_donner_deep_clouds, &
 				     camtsw, cmxolw, crndlw, ncldsw, &
 				     nmxolw, nrndlw, emmxolw, emrndlw, &
 				     Time_next,   &
 				     cirabsw, cvisrfsw, cirrfsw, &
-				     cldext, cldsct, cldasymm )
+!			     cldext, cldsct, cldasymm )
+				     cldext, cldsct, cldasymm, abscoeff)
 
+integer, intent(in) :: is, ie, js, je
+real,    dimension(:,:,:),   intent(in) :: pflux, deltaz, cloud_water, &
+                                           cloud_ice, press, temp, rh2o
+real,    dimension(:,:  ),   intent(in) :: land, cosz  
 real,    dimension(:,:,:),   intent(inout) :: camtsw, cmxolw, crndlw
 integer, dimension(:,:),     intent(inout) :: ncldsw, nrndlw, nmxolw
 real,    dimension(:,:,:,:), intent(inout) :: emmxolw, emrndlw
+type(cld_diagnostics_type),    intent(inout), optional ::  Cld_diagnostics
 type(time_type),                intent(in), optional ::  Time_next
 real,    dimension(:,:,:,:), intent(inout), optional ::       &
                                               cirabsw, cirrfsw, &
                                               cvisrfsw, cldext, &
-                                              cldsct, cldasymm
-logical                   , intent(in)     :: do_strat_clouds
+                                              cldsct, cldasymm, &
+                                              abscoeff
+logical                   , intent(in)     :: do_strat_clouds, &
+                                              do_donner_deep_clouds
 
 !----------------------------------------------------------------------
 !   local variables
 !----------------------------------------------------------------------
 
       integer       :: i, j, k, n
+!     integer    :: israd, ierad, jsrad, jerad, ksrad, kerad
+       real, dimension(:,:,:), allocatable :: cldamt_out
+
+
+      israd = 1
+      ierad = size (camtsw, 1)
+      jsrad = 1
+      jerad = size (camtsw, 2)
+!     ksrad = 1
+!     kerad = size (camtsw, 3)
 
 !-----------------------------------------------------------------------
 !    subroutine default_clouds (called previously from clouddrvr)
 !    has initialized all cloud property fields
 !-----------------------------------------------------------------------
+     allocate (cldamt_out(size(camtsw,1),size(camtsw,2),size(camtsw,3)))
 
 !---------------------------------------------------------------------- 
 !     define the cloud and cloud index fields used by both longwave
@@ -756,8 +856,14 @@ logical                   , intent(in)     :: do_strat_clouds
         enddo
       enddo
 
-      camtsw(:,:,:) = crndlw(:,:,:) + cmxolw(:,:,:)
-      ncldsw(:,:) = nmxolw(:,:) + nrndlw(:,:) 
+!     camtsw(:,:,:) = crndlw(:,:,:) + cmxolw(:,:,:)
+!     ncldsw(:,:) = nmxolw(:,:) + nrndlw(:,:) 
+      do j=JSRAD,JERAD
+       do i=1,cloud_data_points
+      camtsw(i,j,:) = crndlw(i,j,:) + cmxolw(i,j,:)
+        ncldsw(i,j) = nmxolw(i,j) + nrndlw(i,j)
+       enddo
+       enddo
 
       do j=JSRAD,JERAD
         do i=1,cloud_data_points
@@ -779,19 +885,39 @@ logical                   , intent(in)     :: do_strat_clouds
 !--------------------------------------------------------------------
       if (do_strat_clouds) then
         call strat_clouds_calc  &
-                             (camtsw, cmxolw, crndlw, ncldsw, nmxolw, &
-                              nrndlw, emmxolw, emrndlw,           &
-                              Time_next,                  &
+                             (is, ie, js, je, Cld_diagnostics, pflux, deltaz,  &
+			        land, cosz, cloud_water, cloud_ice, &
+				press, temp, rh2o, camtsw=camtsw, &
+				cldamt_out=cldamt_out, &
+!			cmxolw,   &
+!                             crndlw, ncldsw, nmxolw, &
+                                      ncldsw=ncldsw, nmxolw=nmxolw, &
+                              nrndlw=nrndlw,  &
+!		      emmxolw, emrndlw,           &
+                              Time_next=Time_next,                  &
                               cldext=cldext, &
+			      abscoeff=abscoeff, &
                               cldsct=cldsct, cldasymm=cldasymm)
 
+                      camtsw = cldamt_out
+
       else    ! (if not strat_clouds)
-        if (trim(swform) == 'esfsw99' ) then
-          call microphys_rad_driver (camtsw, emmxolw, emrndlw,   &
+!       if (trim(swform) == 'esfsw99' ) then
+        if (do_esfsw                  ) then
+          call microphys_rad_driver (is, ie, js, je, deltaz, &
+!            press, temp,      camtsw, emmxolw, &
+!                                     emrndlw, Cld_diagnostics,   &
+	            press, temp,                       &
+                                               Cld_diagnostics,   &
                                      cldext=cldext, cldsct=cldsct,   &
+                                     abscoeff=abscoeff, &
                                      cldasymm=cldasymm )
          else if (Lw_control%do_lwcldemiss) then
-           call microphys_rad_driver ( camtsw, emmxolw, emrndlw)
+           call microphys_rad_driver (is, ie, js, je, deltaz, &
+!               press, temp,   camtsw,  &
+!                                     emmxolw, emrndlw, Cld_diagnostics)
+	               press, temp,            &
+                                   Cld_diagnostics, abscoeff=abscoeff)
          endif
       endif
 
@@ -806,5 +932,46 @@ end subroutine standalone_clouds_driver
 
 
 
+subroutine find_nearest_index (latb, jindx2)
+
+real, dimension(:), intent(in) :: latb
+integer, dimension(:), intent(out)  :: jindx2
+ 
+
+       integer :: jd, j, jj
+      real   :: diff_low, diff_high
+       real, dimension(size(latb,1)-1) :: lat
+
+ 
+       jd = size(latb,1) - 1
+
+       do j = 1,jd
+         lat(j) = 0.5*(latb(j) + latb(j+1))
+       do jj=1, LATOBS
+         if (lat(j)*radians_to_degrees >= cloud_lats(jj)) then
+          diff_low = lat(j)*radians_to_degrees - cloud_lats(jj)
+           diff_high = cloud_lats(jj+1) - lat(j)*radians_to_degrees
+           if (diff_high <= diff_low) then
+             jindx2(j) = jj+1
+           else
+             jindx2(j) = jj
+           endif
+         endif
+       end do
+    end do
+
+
+
+
+
+
+end subroutine find_nearest_index
+
+!#####################################################################
+
+
+
+
 	       end module standalone_clouds_mod
+
 

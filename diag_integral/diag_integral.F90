@@ -57,8 +57,8 @@ end interface
 !-----------------------------------------------------------------------
 !----- version number -----
 
-   character(len=128) :: version = '$Id: diag_integral.F90,v 1.3 2001/07/05 17:25:27 fms Exp $'
-   character(len=128) :: tag = '$Name: galway $'
+   character(len=128) :: version = '$Id: diag_integral.F90,v 1.4 2002/07/16 22:32:00 fms Exp $'
+   character(len=128) :: tag = '$Name: havana $'
 
    type (time_type) :: Next_alarm_time, Alarm_interval,  &
                        Zero_time
@@ -85,8 +85,6 @@ end interface
    character(len=16)           :: field_format (max_num_field)
    real                        :: field_sum    (max_num_field)
    integer                     :: field_count  (max_num_field)
-   integer                     :: field_fraction (max_num_field)
-   logical                     :: standard_field (max_num_field)
 
    integer            :: nt,             nd
    character(len=160) :: format_text,    format_data
@@ -163,19 +161,19 @@ contains
 
       fields_to_print = 0
       do i = 1, num_field
-        if (do_standard_printout .and. (.not. standard_field(i)) ) cycle
+        if (do_standard_printout) cycle
         fields_to_print = fields_to_print + 1
         rcount = real(field_count(i))
-        call mpp_sum (rcount, 1)
-        call mpp_sum (field_sum(i), 1)
+        call mpp_sum (rcount)
+        call mpp_sum (field_sum(i))
         field_count(i) = nint(rcount)
 
         if ( field_count(i) == 0 ) call error_mesg &
                      ('write_field_averages in diag_integral_mod',  &
                       'field_count equals zero for field_name ' //  &
                        field_name(i)(1:len_trim(field_name(i))), FATAL )
-        kount = field_count(i)*field_fraction(i)/ field_size
-        if ((field_size/field_fraction(i))*kount /= field_count(i)) &
+        kount = field_count(i)/field_size
+        if ((field_size)*kount /= field_count(i)) &
              call error_mesg &
                     ('write_field_averages in diag_integral_mod',  &
                      'field_count not a multiple of field_size', FATAL )
@@ -267,8 +265,8 @@ contains
       sum_area = sum(area)
 
       rsize = real(field_size)
-      call mpp_sum (rsize, 1)
-      call mpp_sum (sum_area, 1)
+      call mpp_sum (rsize)
+      call mpp_sum (sum_area)
       field_size = nint(rsize)
 
 !     print *, 'from diag_integral_init: sum_area  = ', sum_area
@@ -353,18 +351,11 @@ contains
       format_text(1:nt) = "('#    time"
 
       do i = nst,nend
-      if (do_standard_printout .and. (.not. standard_field(i)) ) cycle
+      if (do_standard_printout) cycle
 !        ---- text format ----
          nc = len_trim(field_name(i))
-	 if (standard_field(i)) then
            format_text(nt+1:nt+nc+5) =  '     ' // field_name(i)(1:nc)
            nt = nt+nc+5
-	 else
-!         format_text(nt+1:nt+nc+8) =  '        ' // field_name(i)(1:nc)
-          format_text(nt+1:nt+nc+5) =  '     ' // field_name(i)(1:nc)
-!          nt = nt+nc+8
-           nt = nt+nc+5
-	 endif
       enddo
          format_text(nt+1:nt+2) = "')"
          nt = nt+2
@@ -402,7 +393,7 @@ contains
       endif
 
       do i = nst,nend
-	 if (do_standard_printout .and. (.not. standard_field(i)) ) cycle
+	 if (do_standard_printout) cycle
 !        ---- data format ----
          nc = len_trim(field_format(i))
          format_data(nd+1:nd+nc+5) =  ',1x,' // field_format(i)(1:nc)
@@ -471,11 +462,9 @@ contains
 
 !#######################################################################
 
- subroutine diag_integral_field_init (name, format, extended, hemi)
+ subroutine diag_integral_field_init (name, format)
 
    character(len=*), intent(in) :: name, format
-   integer, intent(in), optional :: hemi
-   logical, intent(in), optional :: extended
 
    integer :: field
 
@@ -498,16 +487,6 @@ contains
    field_format (num_field) = format
    field_sum    (num_field) = 0.0
    field_count  (num_field) = 0
-   if (present (hemi) ) then
-     field_fraction (num_field) = hemi
-   else
-     field_fraction (num_field) = 1
-   endif
-   if (present(extended)) then
-     standard_field(num_field) = .false.
-   else
-     standard_field(num_field) = .true.
-   endif
 
  end subroutine diag_integral_field_init
 
@@ -620,7 +599,8 @@ contains
    j1 = mod ( (js-1) ,size(data,2) ) + 1
    j2 = j1
 
-   field_count (field) = field_count (field) + (i2-i1+1)*(j2-j1+1)
+!! include hemispheric factor here
+   field_count (field) = field_count (field) + 2* (i2-i1+1)*(j2-j1+1)
    field_sum   (field) = field_sum   (field) +  &
                                sum (data(i1:i2,j1:j2)*area(is:ie,js:je))
 

@@ -24,8 +24,8 @@ real :: rstd(19,81),current_fyear
 real :: pref = 101325.
 real :: twopi,rad2deg
 
-character(len=128) :: version = '$Id: zonal_ozone.F90,v 1.2 2000/08/04 19:04:56 fms Exp $'
-character(len=128) :: tag = '$Name: galway $'
+character(len=128) :: version = '$Id: zonal_ozone.F90,v 1.3 2002/07/16 22:37:57 fms Exp $'
+character(len=128) :: tag = '$Name: havana $'
 
 !-----------------------------------------------------------------------
 
@@ -337,7 +337,7 @@ contains
                            +o3data(:,:,3)+o3data(:,:,4))
          data4(:,:,2)=0.50*(o3data(:,:,2)-o3data(:,:,4))
          data4(:,:,3)=0.50*(o3data(:,:,1)-o3data(:,:,3))
-         data4(:,:,4)=0.25*(o3data(:,:,1)-o3data(:,:,1)  &
+         data4(:,:,4)=0.25*(o3data(:,:,1)-o3data(:,:,2)  &
                            +o3data(:,:,3)-o3data(:,:,4))
          o3data(:,:,1)=data4(:,:,1)
          o3data(:,:,2)=data4(:,:,2)

@@ -246,6 +246,10 @@ call clouds_end ( )
    do_no_clouds       flag that specifies that no clouds will be used
                         [logical, default: do_no_clouds = .false.]
 
+   do_isccp_cloud_diags  When .true., specifies alternative cloud scheme
+                         for the pupose of cloud diagnostics.
+			 Intended for use with the Manabe Climate Model.
+                        [logical, default: do_no_clouds = .false.]
 
 <b>Notes:</b>
     1) If do_zonal_clouds = do_obs_clouds = do_no_clouds = .false.

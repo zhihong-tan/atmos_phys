@@ -18,7 +18,6 @@
      <B>Contact:</B>   Bruce Wyman, Steve Klein
      <B>Reviewers:</B>
 
-     <B><A HREF=".doc.log#vert_turb_driver.f90">Tags/Status</A></B>
 </PRE>
 </A><!-- END HEADER -->
 <!--------------------------------------------------------------------->
@@ -262,6 +261,9 @@ input (optional), for the step-mountain (eta) coordinate option
                                 (e.g., tt=t+dt*tdt)
                    [logical, default: use_tau=true ]
 
+  do_molecular_diffusion ??????
+                   [logical, default: do_molecular_diffusion = .false.]
+
 </PRE>
 </A><!-- END NAMELIST -->
 <!--------------------------------------------------------------------->
@@ -303,8 +305,6 @@ Notes:
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
-<B><A HREF=".doc.log#vert_turb_driver.f90">CVS Revision history</A></B>
-
 
 <B>Changes prior to CVS version control</B>
 

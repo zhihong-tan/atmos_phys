@@ -4,18 +4,24 @@
 use utilities_mod,       only: open_file, file_exist,   &
                                check_nml_error, error_mesg,   &
                                print_version_number, FATAL, NOTE, &
-			       WARNING, get_my_pe, close_file, &
-			       get_domain_decomp
-use rad_step_setup_mod,  only: temp, press, jabs, iabs, deltaz,&
-			       IMINP, IMAXP, JMINP, JMAXP, &
-                               ISRAD, IERAD, JSRAD, JERAD, & 
-                               KSRAD, KERAD
+                               WARNING, get_my_pe, close_file
+!		       get_domain_decomp
+!use rad_step_setup_mod,  only: temp, press, jabs, iabs, deltaz,&
+!			       IMINP, IMAXP, JMINP, JMAXP, &
+!                               ISRAD, IERAD, JSRAD, JERAD, & 
+!                               KSRAD, KERAD
 use rad_utilities_mod,   only: longwave_control_type, Lw_control, &
+                                cld_diagnostics_type, &
+                                cloudrad_control_type, &
+                                Cldrad_control, &
                                shortwave_control_type, Sw_control,&
-			       radiation_control_type, Rad_control
-use longwave_setup_mod,  only: longwave_parameter_type, &    
+			       radiation_control_type, Rad_control, &
+                               longwave_parameter_type, &    
                                Lw_parameters
-use radiation_diag_mod,  only: radiag_from_cloudrad
+!			       radiation_control_type, Rad_control
+!use longwave_setup_mod,  only: longwave_parameter_type, &    
+!                               Lw_parameters
+!use radiation_diag_mod,  only: radiag_from_cloudrad
 use longwave_params_mod, only: NBLW 
 use esfsw_parameters_mod,only: nbands, get_solarfluxes, &
 			       TOT_WVNUMS
@@ -38,8 +44,8 @@ private
 !----------- ****** VERSION NUMBER ******* -----------------------
 
 !   character(len=5), parameter  ::  version_number = 'v0.09'
-    character(len=128)  :: version =  '$Id: microphys_rad.F90,v 1.3 2001/08/30 15:12:18 fms Exp $'
-    character(len=128)  :: tag     =  '$Name: galway $'
+    character(len=128)  :: version =  '$Id: microphys_rad.F90,v 1.4 2002/07/16 22:36:02 fms Exp $'
+    character(len=128)  :: tag     =  '$Name: havana $'
 
 
 
@@ -48,13 +54,14 @@ private
 
 public          &
 	  microphys_rad_init, microphys_rad_driver,   &
-	  thickavg, thinavg
+	  thickavg, thinavg,  microphys_presc_conc,    &
+          lwemiss_calc, comb_cldprops_calc
 
 
 private         &
 	  cloud_lwpar, furainlw, fusnowlw, cliqlw, el, cloudpar, &
 	  slingo, savijarvi, fu, snowsw, snowlw, icesolar, &
-	  cloud_lwem_oneband
+	  cloud_lwem_oneband, el_dge
 
 
 !---------------------------------------------------------------------
@@ -65,8 +72,9 @@ integer                      :: n_prsc_clds=3
 real                         :: wtr_cld_reff=10.
 real                         :: ice_cld_reff=50.
 real                         :: rain_reff=250.
-logical                      :: using_fu=.false. ! MUST be .false.
-character(len=10)            :: lwem_form=' '
+!logical                      :: using_fu=.false. ! MUST be .false.
+!!4 character(len=10)            :: lwem_form=' '
+character(len=16)            :: lwem_form=' '
 
 
 
@@ -74,13 +82,17 @@ namelist /microphys_rad_nml /     &
 	        		  n_prsc_clds, &
 				  wtr_cld_reff, &
 				  ice_cld_reff, &
-				  using_fu,   &
+!				  using_fu,   &
 				  rain_reff, &
 				  lwem_form
 
 
 !----------------------------------------------------------------------
 !----  public data -------
+
+!
+! deltaz    = the thickness of pressure layers (in meters)
+!
 
 !----------------------------------------------------------------------
 !----  private data -------
@@ -291,9 +303,13 @@ real   ::  lwpath_mid = 18.94179
 real   ::  lwpath_low = 75.76714
 
 !-------------------------------------------------------------------
-character(len=10)    :: swform
+!!4 character(len=10)    :: swform
+!character(len=16)    :: swform
+logical  :: do_lhsw, do_esfsw
 logical              :: do_init=.false.
-integer              :: xdom(4), y(4), jdf 
+!integer              :: xdom(4), y(4), jdf 
+ integer       :: israd, ierad, jsrad, jerad, ksrad, kerad
+
 
 
 !--------------------------------------------------------------------
@@ -320,8 +336,7 @@ real, dimension(:), intent(in),optional :: cldhm_abs_in, cldml_abs_in
       integer           :: unit, ierr, io
       integer           :: k, j, i, n
       integer           :: ni
-      integer           :: iounit, nf, nw1, nw2, nintsolar, &
-  	                   nivl1, nivl2, nivl3
+      integer           :: iounit, nf, nw1, nw2, nintsolar
       integer           :: ib, nw, nivl, nband  
       integer           :: nivl1, nivl2, nivl3, nivl4, nivl5
       real              :: sumsol1, sumsol2, sumsol3, sumsol
@@ -417,7 +432,8 @@ real, dimension(:), intent(in),optional :: cldhm_abs_in, cldml_abs_in
 
       allocate ( solflxband(nbands) )
 
-      NLWCLDB = Lw_parameters%NLWCLDB
+!      NLWCLDB = Lw_parameters%NLWCLDB
+      NLWCLDB = Cldrad_control%NLWCLDB
 !------------------------------------------------------------------
 
       if (Lw_control%do_lwcldemiss) then
@@ -532,8 +548,11 @@ real, dimension(:), intent(in),optional :: cldhm_abs_in, cldml_abs_in
 !    compute shortwave microphysics bands and weights
 !--------------------------------------------------------------------
 
-      swform = Sw_control%sw_form
-      if (trim(swform) == 'esfsw99') then
+!      swform = Sw_control%sw_form
+       do_lhsw = Sw_control%do_lhsw
+       do_esfsw = Sw_control%do_esfsw
+!     if (trim(swform) == 'esfsw99') then
+      if (do_esfsw                 ) then
 
 	allocate (solarfluxtoa(TOT_WVNUMS) )
 	allocate (solflxband_in(nbands) )
@@ -682,8 +701,8 @@ real, dimension(:), intent(in),optional :: cldhm_abs_in, cldml_abs_in
 !-----------------------------------------------------------------
 !  obtain global and subdomain dimensions for later use.
 !----------------------------------------------------------------
-      call get_domain_decomp (xdom, y)
-      jdf = y(4) - y(3) + 1
+!      call get_domain_decomp (xdom, y)
+!     jdf = y(4) - y(3) + 1
 
 !-----------------------------------------------------------------
 !  set flag to indicate that the routine has been completed.
@@ -712,42 +731,50 @@ end subroutine microphys_rad_init
 
 !#################################################################
 
-subroutine microphys_rad_driver (camtsw, emmxolw, emrndlw, &
-			         cldext, cldsct, cldasymm, &
+subroutine microphys_rad_driver (                            &
+                                 is,ie,js,je,deltaz, press, temp, &
+                                 Cld_diagnostics, &
                                  conc_drop_in, conc_ice_in,   &
 				 conc_rain_in, conc_snow_in,    &
 	                         size_drop_in, size_ice_in,   &
-				 size_rain_in, size_snow_in)
+				 size_rain_in, size_snow_in,  &
+			         cldext, cldsct, cldasymm, &
+				 abscoeff,                 &
+				 using_dge_sw, using_dge_lw)
 
 !---------------------------------------------------------------------
-real, dimension(:,:,:),   intent(inout) :: camtsw
-real, dimension(:,:,:,:), intent(inout) :: emmxolw, emrndlw
-real, dimension(:,:,:,:), intent(inout), optional  ::  &
-					   cldext, cldsct, cldasymm
-real, dimension (:,:,:), intent(inout), optional  ::  &
+integer,                  intent(in)    :: is, ie, js, je
+real, dimension(:,:,:),   intent(in) :: deltaz, press, temp
+type(cld_diagnostics_type), intent(inout) :: Cld_diagnostics
+real, dimension(:,:,:,:), intent(out), optional  ::  &
+			   cldext, cldsct, cldasymm, abscoeff
+real, dimension (:,:,:), intent(in), optional  ::  &
                                            size_drop_in, size_ice_in,  &
                                            size_rain_in, size_snow_in
-real, dimension (:,:,:), intent(inout), optional  ::  &
+real, dimension (:,:,:), intent(in), optional  ::  &
                                            conc_drop_in, conc_ice_in,  &
                                            conc_rain_in, conc_snow_in
+logical,  optional                 :: using_dge_sw, using_dge_lw
 
 !----------------------------------------------------------------------
 ! local variables:                                                  
 !---------------------------------------------------------------------
 
      real, dimension (:,:,:), allocatable  :: lwpath, iwpath
-     real, dimension (:,:,:), allocatable  :: conc_drop, conc_ice,  &
-                                              conc_rain, conc_snow
-     real, dimension (:,:,:), allocatable  :: size_drop, size_ice,  &
-                                              size_rain, size_snow
-     integer, dimension (:,:), allocatable :: nhi_clouds,    &
-					      nmid_clouds, &
-                                              nlow_clouds
-     real, dimension (:,:), allocatable    :: press_hm, press_ml
      real, dimension (:,:,:), allocatable  :: conc
 
+     real, dimension (:,:,:), allocatable  :: conc_drop, conc_ice,  &
+                                              conc_rain, conc_snow, &
+					      size_drop, size_ice,  &
+					      size_rain, size_snow
+
+ integer, dimension (:,:), allocatable :: nhi_clouds,    &
+                                          nmid_clouds, &
+                                           nlow_clouds
+ real, dimension (:,:), allocatable    :: press_hm, press_ml
 
      integer       :: k, j, i
+     logical       :: do_dge_sw, do_dge_lw
 
 !-------------------------------------------------------------------
 !  be sure module has been initialized.
@@ -758,170 +785,96 @@ real, dimension (:,:,:), intent(inout), optional  ::  &
 							    FATAL)
      endif
 
+     israd = 1
+!   ierad = size (camtsw, 1)
+    ierad = size (press , 1)
+    jsrad = 1
+    jerad = size(press , 2)
+    ksrad = 1
+     kerad = size (press , 3) - 1
 !-------------------------------------------------------------------- 
-!  allocate arrays for size and concentration of microphys species.
+! allocate local arrays for size and concentration of microphys species.
 !-------------------------------------------------------------------- 
      allocate (conc_drop   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+
      allocate (conc_ice    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+
      allocate (conc_rain   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+
      allocate (conc_snow   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+
      allocate (size_drop   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+
      allocate (size_ice    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+
      allocate (size_rain   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+
      allocate (size_snow   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+
      allocate ( lwpath     (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
      allocate ( iwpath     (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
 
 !----------------------------------------------------------------------
-!   define sizes and concentrations of microphysical species. use 
-!   supplied default value if no input argument is provided. note 
+!   define sizes and concentrations of microphysical species if
+!   no input argument is provided. note 
 !   default drop and rain values are radii, multiply by 2 to produce 
 !   diameter as desired in this modules microphysics routines. assume
 !   precip particles are non-existent, if values are not supplied via 
 !   input.
 !----------------------------------------------------------------------
 
-     if ( present(size_drop_in) )  then
-       size_drop(:,:,:) = size_drop_in(:,:,:)
+
+
+     if ( .not. present(size_rain_in) )  then
+       size_rain = 2.0*rain_reff
      else
-       size_drop(:,:,:) = 2.0*wtr_cld_reff
+       size_rain = size_rain_in
      endif
 
-     if ( present(size_ice_in) )  then
-       size_ice(:,:,:) = size_ice_in(:,:,:)
-     else
-       size_ice(:,:,:) = ice_cld_reff
-     endif
-
-     if ( present(size_rain_in) )  then
-       size_rain(:,:,:) = size_rain_in(:,:,:)
-     else
-       size_rain(:,:,:) = 2.0*rain_reff
-     endif
-
-     if ( present(conc_rain_in) )  then
-       conc_rain(:,:,:) = conc_rain_in(:,:,:)
-     else
+     if ( .not. present(conc_rain_in) )  then
        conc_rain = 0.0
-     endif
-
-     if ( present(conc_snow_in) )  then
-       conc_snow(:,:,:) = conc_snow_in(:,:,:)
      else
-       conc_snow = 0.0
+       conc_rain = conc_rain_in
      endif
 
-     if ( present(conc_ice_in) .and. present(conc_drop_in) )  then
+     if ( .not. present(conc_snow_in) )  then
+       conc_snow = 0.0
+     else
+       conc_snow = conc_snow_in
+     endif
+
+     if ( present(conc_ice_in) .and. present(conc_drop_in) ) then
        conc_ice(:,:,:) = conc_ice_in(:,:,:)
        conc_drop(:,:,:) = conc_drop_in(:,:,:)
-     else  if (present(conc_ice_in) ) then
+     else if ( present(conc_ice_in) )  then
        call error_mesg ('microphys_rad_driver',  &
 	 'ice concentration present but no drop concentration', FATAL)
-     else  if (present(conc_drop_in) ) then
+     else if ( present(conc_drop_in) ) then
        call error_mesg ('microphys_rad_driver',  &
 	 'drop concentration present but no ice concentration', FATAL)
-     else
-!---------------------------------------------------------------------
-!  if concentrations of drops and ice are not input from some
-!  microphysical model (external source) then they will be calculated
-!  here, based on some prescribed values. allocate arrays which will
-!  be used in defining these concentrations.
-!---------------------------------------------------------------------
-     
-       allocate (nhi_clouds  (ISRAD:IERAD, JSRAD:JERAD) )
-       allocate (nmid_clouds (ISRAD:IERAD, JSRAD:JERAD) )
-       allocate (nlow_clouds (ISRAD:IERAD, JSRAD:JERAD) )
-       allocate (press_hm    (ISRAD:IERAD, JSRAD:JERAD) )
-       allocate (press_ml    (ISRAD:IERAD, JSRAD:JERAD) )
-       allocate (conc        (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-
-!----------------------------------------------------------------------
-! assume that the water path ( = conc.* path(km) ) is preset at fixed 
-! values (lwpath_hi, _mid, _low) for "high", "mid", "low" clouds. the 
-! lwpath in each cloud layer within "hi", "mid" "low" pressure specif-
-! ication is that lwpath_... divided by the number of clouds actually 
-! in that pressure interval. the unit of liquid water path is grams per 
-! meter**2. 
-!----------------------------------------------------------------------
-
-!----------------------------------------------------------------------
-! define the number of high, middle, low clouds according to
-! Wetherald's criterion
-!----------------------------------------------------------------------
-    if (.not. allocated (cldhm_abs) .or.   &
-        .not. allocated(cldml_abs)) then
-           call error_mesg ('microphys_rad_driver', &
-	 'must specify h-m-l cloud boundaries if not supplying micro&
-	 &physical properties', FATAL)
      endif
-       do j=JSRAD,JERAD
-         do i=ISRAD,IERAD
-           nhi_clouds(i,j) = 0
-           nmid_clouds(i,j) = 0
-           nlow_clouds(i,j) = 0
-           press_hm(i,j) = cldhm_abs(jabs(j))*press(i,j,KERAD+1)
-           press_ml(i,j) = cldml_abs(jabs(j))*press(i,j,KERAD+1)
-           do k=KSRAD,KERAD
-             if (camtsw(i,j,k) > 0.0) then
-               if (press(i,j,k) .LE. press_hm(i,j)) then     
-                 nhi_clouds(i,j) = nhi_clouds(i,j) + 1
-	       endif
-	       if (press(i,j,k) .GT. press_hm(i,j) .AND.      &
-                   press(i,j,k) .LE. press_ml(i,j)) then
-	         nmid_clouds(i,j) = nmid_clouds(i,j) + 1
-	       endif
-	       if (press(i,j,k) .GT. press_ml(i,j) ) then       
-	         nlow_clouds(i,j) = nlow_clouds(i,j) + 1
-	       endif
-             endif
-           enddo
-         enddo
-       enddo
-      
-!----------------------------------------------------------------------
-!   compute conc in each layer as (water path / layer geometric path)
-!----------------------------------------------------------------------
-       conc(:,:,:) = 0.0E+00
-       do j=JSRAD,JERAD
- 	 do i=ISRAD,IERAD
-           do k=KSRAD,KERAD
-             if (camtsw(i,j,k) > 0.0) then
-               if (press(i,j,k) .LE. press_hm(i,j) ) then
-	 	 conc(i,j,k) = lwpath_hi     /                 &
-                               (nhi_clouds(i,j)*deltaz(i,j,k))
-	       endif
-	       if (press(i,j,k) .GT. press_hm(i,j) .AND.          &
-                   press(i,j,k) .LE. press_ml(i,j) )  then          
-		 conc(i,j,k) = lwpath_mid    /                   &
-                               (nmid_clouds(i,j)*deltaz(i,j,k))
-	       endif
-	       if (press(i,j,k) .GT. press_ml(i,j)) then
-		 conc(i,j,k) = lwpath_low    /                   &
-                               (nlow_clouds(i,j)*deltaz(i,j,k))
-	       endif
-             endif
-	   enddo
-	 enddo
-       enddo
 
-!----------------------------------------------------------------------
-!   split conc into conc_ice and conc_drop, depending on temperature
-!   criterion (T < 273.16); add default size_ice, size_drop as
-!   needed.
-!----------------------------------------------------------------------
-       do k = KSRAD,KERAD
-         do j = JSRAD,JERAD
-	   do i = ISRAD,IERAD
-	     if (temp(i,j,k) .LT. 273.16) then
-	       conc_ice(i,j,k) = conc(i,j,k)
-	       conc_drop(i,j,k) = 0.0E+00
-	     else
-	       conc_ice(i,j,k) = 0.0E+00
-	       conc_drop(i,j,k) = conc(i,j,k)
-	     endif
-	   enddo
-	 enddo
-       enddo
+     if ( present(size_ice_in) .and. present(size_drop_in) ) then
+       size_ice(:,:,:) = size_ice_in(:,:,:)
+       size_drop(:,:,:) = size_drop_in(:,:,:)
+     else if ( present(size_ice_in) )  then
+       call error_mesg ('microphys_rad_driver',  &
+	 'ice size present but no drop size', FATAL)
+     else if ( present(size_drop_in) ) then
+       call error_mesg ('microphys_rad_driver',  &
+	 'drop size present but no ice size', FATAL)
+     endif
+
+     if (present (using_dge_sw)) then
+       do_dge_sw = .true.
+     else
+       do_dge_sw = .false.
+     endif
+
+     if (present (using_dge_lw)) then
+       do_dge_lw = .true.
+     else
+       do_dge_lw = .false.
      endif
 
 
@@ -932,7 +885,7 @@ real, dimension (:,:,:), intent(inout), optional  ::  &
 !   lwpath, iwpath in units of g/m**2
 !---------------------------------------------------------------------
  
-     lwpath(:,:,:) = 1.0E-03*conc_drop(:,:,:)*deltaz(:,:,:)
+    lwpath(:,:,:) = 1.0E-03*conc_drop(:,:,:)*deltaz(:,:,:)
     iwpath(:,:,:) = 1.0E-03*conc_ice(:,:,:)*deltaz(:,:,:)
 
 !---------------------------------------------------------------------
@@ -944,17 +897,21 @@ real, dimension (:,:,:), intent(inout), optional  ::  &
 !---------------------------------------------------------------------
     if (Lw_control%do_lwcldemiss)    then
       if (trim(lwem_form) == 'fuliou') then
-        call cloud_lwpar                                           &
+        if (present (abscoeff)) then
+              call cloud_lwpar                                  &
                     (size_drop, size_ice, size_rain,              &
                      conc_drop, conc_ice, conc_rain, conc_snow,    &
-                     deltaz,                                        &
-                     emmxolw,   emrndlw)             
+                     abscoeff,                                    &
+                      do_dge_lw)
+         endif
       endif
     else
       if (trim(lwem_form) == 'ebertcurry') then
-        call cloud_lwem_oneband                                 &
-                   (lwpath, iwpath, size_drop, size_ice,        &
-                    emmxolw, emrndlw)
+        if (present (abscoeff)) then
+               call cloud_lwem_oneband                                 &
+                   (conc_drop, conc_ice, size_drop, size_ice,      &
+                    abscoeff)
+         endif
       endif
     endif
  
@@ -962,25 +919,18 @@ real, dimension (:,:,:), intent(inout), optional  ::  &
 !   call cloudpar to define microphysically-based sw cloud 
 !   properties.
 !---------------------------------------------------------------------
-     if (trim(swform) == 'esfsw99')    then
-       call cloudpar                                                   &
+!    if (trim(swform) == 'esfsw99')    then
+      if (do_esfsw) then
+       call cloudpar                                                  &
                     (size_drop, size_ice, size_rain,                  &
                      conc_drop, conc_ice, conc_rain, conc_snow,       &
-                     cldext, cldsct,  cldasymm)
+                     cldext, cldsct,  cldasymm,                       &
+		     do_dge_sw)
      endif
  
 !---------------------------------------------------------------------
 !   deallocate arrays
 !---------------------------------------------------------------------
-    if (allocated (nhi_clouds) ) then
-      deallocate (nhi_clouds   )
-      deallocate (nmid_clouds  )
-      deallocate (nlow_clouds  )
-      deallocate (press_hm     )
-      deallocate (press_ml     )
-      deallocate (conc         )
-    endif
-
     deallocate (conc_drop    )
     deallocate (conc_ice     )
     deallocate (conc_rain    )
@@ -992,14 +942,24 @@ real, dimension (:,:,:), intent(inout), optional  ::  &
 !-------------------------------------------------------------------- 
 !send  necessary data to radiation_diag_mod
 !----------------------------------------------------------------------
-    if (Rad_control%do_diagnostics) then
-      do j=JSRAD, JERAD
-        call radiag_from_cloudrad (j, cldext, cldsct, cldasymm,   &
-	                         deltaz, &
-	          lwpath_in=1000.*lwpath, iwpath_in=1000.*iwpath,   &
-                     size_drop_in=size_drop, size_ice_in=size_ice)
-      end do
-    endif
+!   if (Rad_control%do_diagnostics) then
+!     do j=JSRAD, JERAD
+!       call radiag_from_cloudrad (j, cldext, cldsct, cldasymm,   &
+!                         deltaz, &
+!          lwpath_in=1000.*lwpath, iwpath_in=1000.*iwpath,   &
+!                    size_drop_in=size_drop, size_ice_in=size_ice)
+!     end do
+!   endif
+       if (   do_esfsw .or. Lw_control%do_lwcldemiss        ) then
+      allocate ( Cld_diagnostics%lwpath (ie-is+1, je-js+1, KSRAD:KERAD))
+      allocate ( Cld_diagnostics%iwpath (ie-is+1, je-js+1, KSRAD:KERAD))
+   allocate ( Cld_diagnostics%size_drop (ie-is+1, je-js+1, KSRAD:KERAD))
+    allocate ( Cld_diagnostics%size_ice (ie-is+1, je-js+1, KSRAD:KERAD))
+       Cld_diagnostics%lwpath = 1000.0*lwpath
+       Cld_diagnostics%iwpath = 1000.0*iwpath
+       Cld_diagnostics%size_drop = size_drop
+  Cld_diagnostics%size_ice = size_ice
+   endif
 
 !----------------------------------------------------------------------
 ! deallocate the lwpath, iwpath, size_drop, size_ice arrays after
@@ -1013,6 +973,7 @@ real, dimension (:,:,:), intent(inout), optional  ::  &
 
 
 end subroutine microphys_rad_driver  
+
 
 
 !####################################################################
@@ -1359,8 +1320,8 @@ end subroutine thinavg
 subroutine cloud_lwpar                                    &
                     (size_drop, size_ice, size_rain,            &
                      conc_drop, conc_ice, conc_rain, conc_snow, &
-                     deltaz,                                    &
-                     emmxolw,   emrndlw )
+		     abscoeff,                                  &
+                     do_dge_lw)
  
 !----------------------------------------------------------------------
 ! determine the infrared cloud emissivities for specified wavenumber    
@@ -1391,34 +1352,59 @@ subroutine cloud_lwpar                                    &
 !                                                                   
 ! conc_snow = the snow concentration in grams / meter**3            
 !                                                                   
-! deltaz    = the thickness of pressure layers (in meters)
+! do_dge_lw  = use parameterizations using generalized effective size
+!               developed by Fu et al (1998) (if true). otherwise use
+!               parameterizations by Fu et al using effective size.
+!                                    
 !----------------------------------------------------------------------
  
 real, dimension (:,:,:), intent(in)     ::   size_drop, size_ice,    &
                                              size_rain,              &
 					     conc_drop, conc_ice,    &
-					     conc_rain, conc_snow,   &
-					     deltaz
+					     conc_rain, conc_snow
+logical, intent(in)                     ::   do_dge_lw
  
 !----------------------------------------------------------------------
 !                                                                   
 ! intent out:                                                       
 !                                                                   
-! emmxolw     = the infrared cloud emissivity for the (NLWCLDB)     
-!               bands. used for maximally overlapped clouds.        
-!                                                                   
-! emrndlw     = the infrared cloud emissivity for the (NLWCLDB)     
-!               bands. used for randomly overlapped clouds.         
+! abscoeff    = the  infrared absorption coefficient.
+!               units are (kilometer**-1).
 !                                                                   
 !----------------------------------------------------------------------
  
-real, dimension (:,:,:,:), intent(out)  ::  emmxolw, emrndlw
+real, dimension (:,:,:,:), intent(out), optional  ::  abscoeff 
  
 !----------------------------------------------------------------------
 ! local variables:                                                  
 !---------------------------------------------------------------------
 
-        integer       :: k, j, i, n
+real, dimension (:,:,:,:), allocatable ::  cldextivlliq,     &
+                                   cldssalbivlliq, cldasymmivlliq,   &
+                                   cldextivlice,            &
+                                  cldssalbivlice, cldasymmivlice,     &
+                                   cldextivlrain,           &
+                                  cldssalbivlrain, cldasymmivlrain,   &
+                                 cldextivlsnow,           &
+                                 cldssalbivlsnow, cldasymmivlsnow
+real, dimension (:,:,:,:), allocatable ::  cldextbandliq,     &
+                                   cldssalbbandliq, cldasymmbandliq,   &
+                                   cldextbandice,           &
+                                   cldssalbbandice, cldasymmbandice,   &
+                               cldextbandrain,          &
+                                   cldssalbbandrain, cldasymmbandrain, &
+                                   cldextbandsnow,          &
+                                   cldssalbbandsnow, cldasymmbandsnow
+real, dimension (:,:,:), allocatable   ::  cldscatice,     &
+                              cldscatliq,  &
+                                 cldscatrain, cldscatsnow
+
+integer       :: k, j, i, n, nband
+
+   integer :: unit
+!--------------------------------------------------------------------
+! define the single scattering parameters for cloud drops.         
+!----------------------------------------------------------------------
 
 !---------------------------------------------------------------------
 !
@@ -1467,8 +1453,7 @@ real, dimension (:,:,:,:), intent(out)  ::  emmxolw, emrndlw
              cldextbndrainlw, cldssalbbndrainlw, cldasymmbndrainlw, &
              cldextbndsnowlw, cldssalbbndsnowlw, cldasymmbndsnowlw, &
              cldextbndicelw, cldssalbbndicelw, cldasymmbndicelw,    &
-	     cldextbnddroplw,                                       &
-	     abscoeff
+	     cldextbnddroplw
 !----------------------------------------------------------------------
 
 !----------------------------------------------------------------------
@@ -1493,8 +1478,6 @@ real, dimension (:,:,:,:), intent(out)  ::  emmxolw, emrndlw
       allocate ( cldasymmbndicelw                                    &
                   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD, N_EMISS_BDS) )
       allocate ( cldextbnddroplw                                      &
-                  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD, N_EMISS_BDS) )
-      allocate ( abscoeff                                             &
                   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD, N_EMISS_BDS) )
 
 !--------------------------------------------------------------------
@@ -1524,9 +1507,32 @@ real, dimension (:,:,:,:), intent(out)  ::  emmxolw, emrndlw
 !     compute extinction coefficient, single scattering coefficient
 !     asymmetry parameter for cloud ice crystals
 !----------------------------------------------------------------------
+!     unit = open_file ('fort.146', action='append',threading='multi')
+!     call print_version_number (unit, 'microphys_rad', version_number)
+!     write (unit,*) ' calling el_dge from microphys_rad'
+!       write (unit,*) ' conc_ice'
+!write (unit,*) conc_ice
+!       write (unit,*) ' size_ice'
+!write (unit,*) size_ice
+!     call close_file (unit)
+
+if (do_dge_lw) then
+   call el_dge                                                    &
+                    (conc_ice    , size_ice      ,                    &
+                   cldextbndicelw, cldssalbbndicelw, cldasymmbndicelw)
+!     unit = open_file ('fort.147', action='append',threading='multi')
+!     call print_version_number (unit, 'microphys_rad', version_number)
+!     write (unit,*) ' immediately after el_dge call'
+!       write (unit,*) ' cldextbndicelw'
+!write (unit,*) cldextbndicelw
+!       write (unit,*) ' cldssalbbndicelw'
+!write (unit,*) cldssalbbndicelw
+!     call close_file (unit)
+   else
       call el                                                        &
                    (conc_ice    , size_ice      ,                    &
                     cldextbndicelw, cldssalbbndicelw, cldasymmbndicelw)
+      endif
  
 !----------------------------------------------------------------------
 !       compute absorption coefficient (in km-1) for each species
@@ -1544,15 +1550,25 @@ real, dimension (:,:,:,:), intent(out)  ::  emmxolw, emrndlw
                  cldextbnddroplw                            +       &
                  cldextbndsnowlw*(1.0E+00 - cldssalbbndsnowlw) +    &
                  cldextbndrainlw*(1.0E+00 - cldssalbbndrainlw)
-!----------------------------------------------------------------------
-!     1.0E-3 is conversion factor from (m) to (km).
-!----------------------------------------------------------------------
-      do n=1,NLWCLDB
-        emmxolw(:,:,:,n)  = 1.0E+00 -                               &
-                 EXP(-diffac*abscoeff(:,:,:,n)*deltaz(:,:,:)*1.0E-03)
-      enddo
-      emrndlw  = emmxolw
  
+!     call print_version_number (unit, 'microphys_rad', version_number)
+!     write (unit,*) ' abscoeff from microphys_rad'
+!       write (unit,*) ' cldextbndicelw'
+!write (unit,*) cldextbndicelw
+!       write (unit,*) ' cldssalbbndicelw'
+!write (unit,*) cldssalbbndicelw
+!       write (unit,*) ' cldextbnddroplw'
+!write (unit,*) cldextbnddroplw
+!       write (unit,*) ' cldextbndsnowlw'
+!write (unit,*) cldextbndsnowlw
+!       write (unit,*) ' cldextbndrainlw'
+!write (unit,*) cldextbndrainlw
+!       write (unit,*) ' cldssalbbndsnowlw'
+!write (unit,*) cldssalbbndsnowlw
+!      write (unit,*) ' cldssalbbndrainlw'
+!write (unit,*) cldssalbbndrainlw
+!     call close_file (unit)
+
 !----------------------------------------------------------------------
 !      deallocate deallocatable arrays
 !----------------------------------------------------------------------
@@ -1566,7 +1582,6 @@ real, dimension (:,:,:,:), intent(out)  ::  emmxolw, emrndlw
       deallocate (cldssalbbndicelw)
       deallocate (cldasymmbndicelw)
       deallocate (cldextbnddroplw)
-      deallocate (abscoeff)
  
 
 end subroutine cloud_lwpar
@@ -1576,8 +1591,8 @@ end subroutine cloud_lwpar
 
 
  subroutine cloud_lwem_oneband                                    &
-                     (lwpath, iwpath, size_drop, size_ice,        &
-                      emmxolw, emrndlw)
+                (conc_drop, conc_ice, size_drop, size_ice,        &
+                     abscoeff)
 
 !----------------------------------------------------------------------
 ! determine the infrared cloud emissivities for a single broadband
@@ -1592,33 +1607,30 @@ end subroutine cloud_lwpar
 !
 ! intent in:
 !
+! conc_drop = the cloud drop liquid water concentration in grams / 
+!             meter**3                                             
+!                                                                  
+! conc_ice = the ice water concentation in grams / meter**3 
+!
 ! size_drop = the cloud drop effective diameter in microns
 !
 ! size_ice  = the ice crystal effective size in microns
 !
-! lwpath    = the liquid water path, in kg / meters**2
-!
-! iwpath    = the ice water path, in kg / meters**2
-!
 !----------------------------------------------------------------------
 
 real, dimension (:,:,:), intent(in)     ::   size_drop, size_ice,    &
-                                             lwpath, iwpath
-
+                                             conc_drop, conc_ice
 !----------------------------------------------------------------------
 !
 !
 ! intent out:  
 !
-! emmxolw     = the one-band infrared cloud emissivity.
-!               used for maximally overlapped clouds.
-!
-! emrndlw     = the one-band infrared cloud emissivity.
-!               used for randomly overlapped clouds.
+! abscoeff    = the one-band infrared absorption coefficient.
+!               units are (kilometer**-1).
 !
 !----------------------------------------------------------------------
  
-real, dimension (:,:,:,:), intent(out)  ::  emmxolw, emrndlw
+real, dimension (:,:,:,:), intent(out)  ::  abscoeff         
 
 !----------------------------------------------------------------------
 ! local variables:
@@ -1626,15 +1638,13 @@ real, dimension (:,:,:,:), intent(out)  ::  emmxolw, emrndlw
 
   integer       ::  n
 
-  real, dimension(:,:,:), allocatable :: Reff_ice,  k_liq, k_ice,  &
-                                        em_lw
+  real, dimension(:,:,:), allocatable :: Reff_ice,  k_liq, k_ice
  
 !---------------   COMPUTE LONGWAVE EMISSIVITY ----------------------!
 
   allocate  (  Reff_ice (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD),  &
                k_liq    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD),  &
-              k_ice    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD),  &
-              em_lw    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD)   )
+              k_ice    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
 
 !   Reff_ice is the effective diameter obtained using an expression
 !    provided by S. Klein
@@ -1644,24 +1654,30 @@ real, dimension (:,:,:,:), intent(out)  ::  emmxolw, emrndlw
     ((0.1033741*size_ice*size_ice + 0.2115169*(size_ice**2.272))**0.5)
   
       k_liq(:,:,:) = 140.
+
+!!RSH
+!   fix for case when size_ice = conc_ice = 0.0, etc.
+     where (size_ice(:,:,:) /= 0.0) 
       k_ice(:,:,:) = 4.83591 + 1758.511/Reff_ice(:,:,:)
+      else where
+      k_ice(:,:,:) = 0.0                                  
+      end where
 
+! compute absorption coefficient. the division by the diffusivity
+! coefficient (diffac) is due to the assumption that the effect of
+! angular integration is accounted for on the values of k_liq and
+! k_ice. since the dimensions of k_liq and k_ice are [m**2/Kg]
+! and conc_ice and conc_drop is in [g/m**3] the unit conversion
+! factor to obtain [Km**-1] is unity.
+ 
+       abscoeff(:,:,:,1) = ( k_liq(:,:,:)*conc_drop(:,:,:) +       &
+                             k_ice(:,:,:)*conc_ice(:,:,:)  ) / diffac
       
-! compute combined emissivity
-      em_lw(:,:,:) = 1. - exp(-1.*(k_liq(:,:,:)*lwpath(:,:,:) +   &
-                                   k_ice(:,:,:)*iwpath(:,:,:) ) )
-
-!----------------------------------------------------------------------
-     do n=1,NLWCLDB
-       emmxolw(:,:,:,n)  = em_lw(:,:,:)
-     enddo
-     emrndlw  = emmxolw
 
 !----------------------------------------------------------------------
 !      deallocate deallocatable arrays
 !----------------------------------------------------------------------
 
-     deallocate (em_lw)
      deallocate (k_ice)
      deallocate (k_liq)
      deallocate (Reff_ice)
@@ -1671,6 +1687,259 @@ end subroutine cloud_lwem_oneband
 
 !######################################################################
 
+subroutine el_dge  (conc_ice    , size_ice      ,                &
+                cldextbndicelw, cldssalbbndicelw, cldasymmbndicelw)
+ 
+!-----------------------------------------------------------------------
+!
+!     calculates total optical depth and scattering optical depth
+!     for infrared radiation using Fu et al (J. Clim., 11,2223 (1998)).
+!     To be used for crystal generalized effective diameters from 
+!     18.6 to 130.2 um to match shortwave limits.
+!
+!
+!        Leo Donner, GFDL, 29 Aug 98
+!        Dan Schwarzkopf, GFDL 31 July 2001
+!
+!-----------------------------------------------------------------------
+!
+! intent in:                                                       
+!                                                                  
+! conc_ice = the ice crystal concentation in grams / meter**3      
+!                                                                  
+! size_ice = the ice crystal effective size in microns             
+!---------------------------------------------------------------------
+ 
+real, dimension (:,:,:), intent(in)  ::  conc_ice, size_ice
+                                                                   
+!----------------------------------------------------------------------
+!                                                                  
+! intent out:                                                      
+!                                                                  
+! cldextbndicelw = the specified values of the extinction          
+!                 coefficient for ice particles in kilometers**(-1)
+!                 over wavenumber bands used by the radiation code 
+!                                                                  
+! cldssalbbndicelw = the specified values of the single-           
+!                  scattering albedo for ice particles             
+!                 over wavenumber bands used by the radiation code 
+!                                                                  
+! cldasymmbndicelw = the specified values of the asymmetry         
+!                  factor for ice particles                        
+!                 over wavenumber bands used by the radiation code 
+!--------------------------------------------------------------------- 
+ 
+real, dimension (:,:,:,:), intent(out)   ::  cldextbndicelw,   &
+                                             cldssalbbndicelw,    &
+					     cldasymmbndicelw
+                                                                   
+!---------------------------------------------------------------------
+! local variables:                                                   
+!--------------------------------------------------------------------
+ 
+!----------------------------------------------------------------------
+! cldextivlice = the specified spectral values of the extinction   
+!                 coefficient for ice particles in kilometers**(-1)
+!                                                                  
+! cldabsivlice = the specified spectral values of the absorption   
+!                 coefficient for ice particles in kilometers**(-1)
+!                                                                  
+! cldssalbivlice = the specified spectral values of the single-    
+!                  scattering albedo for ice particles             
+!                                                                  
+! cldasymmivlice = the specified spectral values of the asymmetry  
+!                  factor for ice particles                        
+!----------------------------------------------------------------------
+        real, dimension (:,:,:,:), allocatable   ::   cldextivlice, &
+						      cldssalbivlice, &
+						      cldasymmivlice, &
+						      cldabsivlice
+        real, dimension(:,:,:), allocatable :: term1, term2
+        real, dimension(:,:,:), allocatable :: conc_ice_local
+
+         integer :: unit
+!----------------------------------------------------------------------
+!     a0,a1,a2 = empirical coefficients for extinction coefficient
+!             parameterization
+!     b     = empirical coefficients for single scattering albedo
+!             parameterization
+!     cpr   = empirical coefficients for asymmetry parameter
+!             parameterization
+!     note: since model wavenumber bands are in order of increasing
+!     wavenumber, the Fu coefficients have been reversed (thus are
+!     in order  bands 12-1)
+!----------------------------------------------------------------------
+        real, dimension (1:NBFL,0:NBB)     ::   b
+        real, dimension (1:NBFL,0:NBC)     ::   cpr
+        real, dimension (NBFL)             ::   a0, a1, a2
+        integer     :: k, j, i, n, ni
+ 
+        data a0 /                                                    &
+	  4.919685E-03,  3.325756E-03, -1.334860E-02, -9.524174E-03, &
+	 -4.159424E-03, -1.691632E-03, -8.372696E-03, -8.178608E-03, &
+	 -4.936610E-03, -3.034573E-03, -2.465236E-03, -2.308881E-03/
+        data a1 /                                                     &
+	  2.327741, 2.601360, 4.043808, 3.587742, 3.047325, 2.765756, &
+	  3.455018, 3.401245, 3.087764, 2.900043, 2.833187, 2.814002  /
+        data a2 /                                                    &
+	 -1.390858E+01, -1.909602E+01, -2.171029E+01, -1.068895E+01, &
+	 -5.061568E+00, -8.331033E+00, -1.516692E+01, -8.812820E+00, &
+	 -3.884262E+00, -1.849911E+00, -4.227573E-01,  1.072211E+00/
+        data (b(n,0),n=1,NBFL) /                                     &
+	  8.869787E-01,  2.005578E-01,  3.003701E-01,  9.551440E-01, &
+          1.466481E+00,  1.195515E+00,  5.409536E-01,  5.874323E-01, &
+	  7.152274E-01,  8.862434E-01,  7.428957E-01,  4.346482E-01/
+        data (b(n,1),n=1,NBFL) /                                     &
+	  2.118409E-02,  2.132614E-02,  2.051529E-02,  1.309792E-02, &
+	 -2.129226E-03,  3.350616E-03,  1.949649E-02,  1.876628E-02, &
+	  1.621734E-02,  1.226538E-02,  1.279601E-02,  1.721457E-02/
+        data (b(n,2),n=1,NBFL) /                                     &
+	 -2.781429E-04, -1.751052E-04, -1.931684E-04, -1.793694E-04, &
+	 -1.361630E-05, -5.266996E-05, -2.050908E-04, -2.045834E-04, &
+	 -1.868544E-04, -1.523076E-04, -1.391803E-04, -1.623227E-04/
+        data (b(n,3),n=1,NBFL) /                                     &
+	  1.094562E-06,  5.355885E-07,  6.583031E-07,  7.313392E-07, &
+	  1.193649E-07,  2.233377E-07,  7.364680E-07,  7.510080E-07, &
+	  7.078738E-07,  6.000892E-07,  5.180104E-07,  5.561523E-07/
+        data (cpr(n,0),n=1,NBFL) /                                   &
+	  4.949276E-01,  6.891414E-01,  7.260484E-01,  7.363466E-01, &
+	  7.984021E-01,  8.663385E-01,  8.906280E-01,  8.609604E-01, &
+	  8.522816E-01,  8.714665E-01,  8.472918E-01,  7.962716E-01/
+        data (cpr(n,1),n=1,NBFL) /                                   &
+	  1.186174E-02,  6.192281E-03,  2.664334E-03,  4.798266E-03, &
+	  3.977117E-03,  2.797934E-03,  1.903269E-03,  2.200445E-03, &
+	  2.523627E-03,  2.455409E-03,  2.559953E-03,  3.003488E-03/
+        data (cpr(n,2),n=1,NBFL) /                                   &
+	 -1.267629E-04, -6.459514E-05, -1.251136E-05, -4.513292E-05, &
+         -4.471984E-05, -3.187011E-05, -1.733552E-05, -1.748105E-05, &
+	 -2.149196E-05, -2.456935E-05, -2.182660E-05, -2.082376E-05/
+        data (cpr(n,3),n=1,NBFL) /                                   &
+	  4.603574E-07,  2.436963E-07,  2.243377E-08,  1.525774E-07, &
+	  1.694919E-07,  1.217209E-07,  5.855071E-08,  5.176616E-08, &
+	  6.685067E-08,  8.641223E-08,  6.879977E-08,  5.366545E-08/
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!     allocate allocatable arrays
+!---------------------------------------------------------------------
+      allocate ( cldextivlice                                      &
+                 (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD, NBFL) )
+      allocate ( cldabsivlice                                      &
+                 (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD, NBFL) )
+      allocate ( cldssalbivlice                                    &
+                 (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD, NBFL) )
+!     allocate ( cldasymmivlice                                    &
+!                 (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD, NBFL) )
+      allocate ( term1                                             &
+                   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+      allocate ( term2                                             &
+                   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+      allocate ( conc_ice_local                                    &
+                   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+      
+
+!-----------------------------------------------------------------------
+!     Calculate extinction coefficient (km**(-1)) over wavenumber
+!     bands of the Fu-Liou parameterization (not the radiation
+!     code wavenumber bands)
+!-----------------------------------------------------------------------
+      where (size_ice /= 0.0)
+         term1 = 1.0/size_ice
+	 term2 = 1.0/size_ice**2
+	 conc_ice_local = conc_ice
+      elsewhere
+         term1 = 0.0
+	 term2 = 0.0
+	 conc_ice_local = 0.0
+      endwhere
+      do n=1,NBFL                                                      
+        cldextivlice(:,:,:,n) = 1.0E+03*conc_ice_local(:,:,:)*        &
+            (a0(n) + a1(n)*term1(:,:,:) + a2(n)*term2(:,:,:) )
+      enddo
+
+!-----------------------------------------------------------------------
+!     Calculate single-scattering albedo and asymmetry parameter.
+!     these are dimensionless. as of 4/8/99, the asymmetry parameter is
+!     not used in the infrared code. therefore the calculations are
+!     commented out.
+!-----------------------------------------------------------------------
+      do n=1,NBFL                                                      
+        cldabsivlice(:,:,:,n) =          &
+            1.0E+03*conc_ice_local(:,:,:)*term1(:,:,:)*      &
+        (b(n,0) + b(n,1)*size_ice(:,:,:) + b(n,2)*size_ice(:,:,:)**2 + &
+         b(n,3)*size_ice(:,:,:)**3)
+!       cldabsivlice(:,:,:,n) =          &
+!           1.0E+03*conc_ice(:,:,:)/size_ice(:,:,:)*                   &
+!       (b(n,0) + b(n,1)*size_ice(:,:,:) + b(n,2)*size_ice(:,:,:)**2 + &
+!        b(n,3)*size_ice(:,:,:)**3)
+      enddo
+
+      where (cldextivlice /= 0.0)
+        cldssalbivlice = 1.0E+00 - cldabsivlice/cldextivlice
+      elsewhere
+        cldssalbivlice = 0.0
+      endwhere
+ 
+!     unit = open_file ('fort.148', action='append',threading='multi')
+!     call print_version_number (unit, 'microphys_rad', version_number)
+!     write (unit,*) ' ice arrays in el_dge '
+!       write (unit,*) ' cldabsivlice'
+!write (unit,*) cldabsivlice
+!       write (unit,*) ' cldextivlice'
+!write (unit,*) cldextivlice
+!       write (unit,*) ' cldssalbivlice'
+!write (unit,*) cldssalbivlice
+!       write (unit,*) ' conc_ice_local'
+!write (unit,*) conc_ice_local
+!       write (unit,*) ' size_ice'
+!write (unit,*) size_ice
+!     call close_file (unit)
+!     do n=1,NBFL                                                      
+! 	cldasymmivlice(:,:,:,n) = cpr(n,0) +                          &
+!        cpr(n,1)*size_ice(:,:,:) + cpr(n,2)*size_ice(:,:,:)**2 +     &
+!        cpr(n,3) * size_ice(:,:,:)**3
+!     enddo
+ 
+!-----------------------------------------------------------------------
+!    use band weighting factors (computed in initialization routine)
+!    to derive band quantities for these quantities
+!-----------------------------------------------------------------------
+      cldextbndicelw = 0.0E+00
+!     cldasymmbndicelw = 0.0E+00
+      cldssalbbndicelw = 0.0E+00
+      do n = 1,NLWCLDB                                                 
+	do ni = 1,NBFL                                                 
+	  cldextbndicelw(:,:,:,n) = cldextbndicelw(:,:,:,n) +         &
+               cldextivlice(:,:,:,ni)*fulwwts(n,ni)
+ 	  cldssalbbndicelw(:,:,:,n) = cldssalbbndicelw(:,:,:,n) +     &
+               cldssalbivlice(:,:,:,ni)*fulwwts(n,ni)
+!	  cldasymmbndicelw(:,:,:,n) = cldasymmbndicelw(:,:,:,n) +     &
+!              cldasymmivlice(:,:,:,ni)*fulwwts(n,ni)
+	enddo
+      enddo
+!     unit = open_file ('fort.148', action='append',threading='multi')
+!     call print_version_number (unit, 'microphys_rad', version_number)
+!     write (unit,*) ' bnd arrays in el_dge '
+!       write (unit,*) ' cldextbndicelw'
+!write (unit,*) cldextbndicelw
+!       write (unit,*) ' cldssalbbndicelw'
+!write (unit,*) cldssalbbndicelw
+!     call close_file (unit)
+!----------------------------------------------------------------------
+!--------------------------------------------------------------------
+ 
+!     deallocate (cldasymmivlice)
+      deallocate (cldssalbivlice)
+      deallocate (cldabsivlice)
+      deallocate (cldextivlice)
+      deallocate (term1)
+      deallocate (term2)
+      deallocate (conc_ice_local)
+
+end subroutine el_dge
+
+
+!#####################################################################
 
 subroutine furainlw                                         &
                 (conc_rain    ,                                   &
@@ -2099,6 +2368,7 @@ real, dimension (:,:,:,:), intent(out)   ::  cldextbndicelw,   &
         real, dimension (1:NBFL,0:NBB)     ::   b
         real, dimension (1:NBFL,0:NBC)     ::   cpr
         real, dimension (NBFL)             ::   a0, a1, a2
+        integer     :: k, j, i, n, ni
  
         data a0 /                                                    &
           -7.752E-03,  -1.741E-02,  -1.704E-02,  -1.151E-02,         &
@@ -2142,7 +2412,6 @@ real, dimension (:,:,:,:), intent(out)   ::  cldextbndicelw,   &
            0.000E+00,   0.000E+00,   0.000E+00,   0.000E+00/
 !---------------------------------------------------------------------
 
-        integer     :: k, j, i, n, ni
 
 
 !---------------------------------------------------------------------
@@ -2211,7 +2480,8 @@ end subroutine el
 subroutine cloudpar                                            &
                     (size_drop, size_ice, size_rain,                 &
                      conc_drop, conc_ice, conc_rain, conc_snow,      &
-                     cldext, cldsct, cldasymm)
+                     cldext, cldsct, cldasymm,                  &
+                     do_dge_sw)
  
 !----------------------------------------------------------------------
 ! determine the parameterization band values of the single scattering   
@@ -2243,6 +2513,7 @@ real, dimension (:,:,:), intent(in)        ::   size_drop, size_ice,  &
                                                 size_rain,             &
 					        conc_drop, conc_ice,   &
 					        conc_rain, conc_snow
+ logical, intent(in)                       ::   do_dge_sw
  
 !----------------------------------------------------------------------
 ! intent inout:                                                      
@@ -2259,6 +2530,13 @@ real, dimension (:,:,:), intent(in)        ::   size_drop, size_ice,  &
  real, dimension (:,:,:,:), intent(inout)   ::  cldasymm, cldext,  &
                                                 cldsct
  
+! intent in:
+!
+!  do_dge_sw  = use parameterizations using generalized effective size
+!               developed by Fu et al (1998) (if true). otherwise use
+!               parameterizations by Fu et al using effective size.
+!                       
+!
 !---------------------------------------------------------------------
 ! local variables:                                                   
 !--------------------------------------------------------------------
@@ -2359,7 +2637,7 @@ real, dimension (:,:,:), intent(in)        ::   size_drop, size_ice,  &
                                 nbands) )
       allocate (cldasymmbandice(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD, &
                                 nbands) )
-    if (using_fu) then
+    if (do_dge_sw) then
       allocate (cldextivlice   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD, &
                               NICECLDIVLS) )
       allocate (cldssalbivlice (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD, &
@@ -2842,6 +3120,7 @@ real, dimension (:,:,:,:), intent(out)  ::  cldextivlice,             &
                                         b0fu, b1fu, b2fu, b3fu,       &
                                         c0fu, c1fu, c2fu, c3fu
  
+      integer :: unit,unit14
       data a0fu / -2.54823E-04, 1.87598E-04, 2.97295E-04, 2.34245E-04, &
                    4.89477E-04,-8.37325E-05, 6.44675E-04,-8.05155E-04, &
                    6.51659E-05, 4.13595E-04,-6.14288E-04, 7.31638E-05, &
@@ -2917,6 +3196,22 @@ real, dimension (:,:,:,:), intent(out)  ::  cldextivlice,             &
  !  compute scattering parameters for ice crystals. bypass calculations
  !  if no crystals are present.
  !-----------------------------------------------------------------
+!     unit = open_file ('logfile.out', action='append')
+!     call print_version_number (unit, 'microphys_rad', version_number)
+!     if (get_my_pe() == 0)  then
+!     write (unit,*) ' subr fu from microphys_rad'
+!       write (unit,*) ' conc_ice'
+!write (unit,*) conc_ice
+!       write (unit,*) ' size_ice'
+!write (unit,*) size_ice
+!     endif
+!        unit14 = open_file ('fort.144', action='write',threading='multi')
+! write (unit14,*) 'conc_ice pe14'
+!write (unit14,*) conc_ice
+!       write (unit14,*) ' size_ice pe14'
+!write (unit14,*) size_ice
+!     call close_file (unit14)
+!     call close_file (unit)
       do k = KSRAD,KERAD
         do j = JSRAD,JERAD
           do i = ISRAD,IERAD
@@ -2925,6 +3220,17 @@ real, dimension (:,:,:,:), intent(out)  ::  cldextivlice,             &
               cldasymmivlice (i,j,k,:) = 0.0
               cldssalbivlice (i,j,k,:) = 0.0
             else
+
+!     unit = open_file ('logfile.out', action='append')
+!     call print_version_number (unit, 'microphys_rad', version_number)
+!     if (get_my_pe() == 0)  then
+!     write (unit,*) ' else, subr fu from microphys_rad'
+!       write (unit,*) i,j,k
+!write (unit,*) conc_ice(i,j,k)
+!write (unit,*) size_ice(i,j,k)
+!     endif
+!     call close_file (unit)
+
 	      if (size_ice(i,j,k).ge.1.86E+01 .and.                    &
                   size_ice(i,j,k).le.1.302E+02 ) then                   
                 do ni = 1,NICECLDIVLS
@@ -2946,6 +3252,17 @@ real, dimension (:,:,:,:), intent(out)  ::  cldextivlice,             &
 					     size_ice(i,j,k) ** 3
 	        end do
 	      else
+
+!     unit = open_file ('logfile.out', action='append')
+!     call print_version_number (unit, 'microphys_rad', version_number)
+!     if (get_my_pe() == 0)  then
+!     write (unit,*) ' error, subr fu from microphys_rad'
+!       write (unit,*) i,j,k
+!write (unit,*) conc_ice(i,j,k)
+!write (unit,*) size_ice(i,j,k)
+!     endif
+!     call close_file (unit)
+
 	        call error_mesg ('fu', &
 		   'ice crystal size out of range', FATAL)
               endif
@@ -3254,6 +3571,410 @@ end subroutine icesolar
 
 !###################################################################
 
+subroutine microphys_presc_conc ( is,ie,js,je,                        &
+                           camtsw,  deltaz, press, temp,            &
+			   conc_drop, size_drop, conc_ice, size_ice)
+
+integer, intent(in)     :: is,ie,js,je
+real, dimension(:,:,:),   intent(in) :: camtsw, &
+                                        deltaz, press, temp
+real, dimension(:,:,:),   intent(out) :: conc_drop, size_drop,     &
+                                         conc_ice, size_ice
+!----------------------------------------------------------------------
+! local variables:                                                  
+!---------------------------------------------------------------------
+
+integer, dimension (:,:), allocatable :: nhi_clouds,    &
+			                 nmid_clouds, &
+                                         nlow_clouds
+real, dimension (:,:), allocatable    :: press_hm, press_ml
+real, dimension (:,:,:), allocatable  :: conc
+integer                               :: i,j,k
+
+
+       israd = 1
+       ierad = size(press,1)
+       jsrad = 1
+       jerad = size(press,2)
+       ksrad = 1
+       kerad = size(press,3) - 1
+
+!---------------------------------------------------------------------
+!  if concentrations of drops and ice are not input from some
+!  microphysical model (external source) then they will be calculated
+!  here, based on some prescribed values. allocate arrays which will
+!  be used in defining these concentrations.
+!---------------------------------------------------------------------
+     
+       allocate (nhi_clouds  (ISRAD:IERAD, JSRAD:JERAD) )
+       allocate (nmid_clouds (ISRAD:IERAD, JSRAD:JERAD) )
+       allocate (nlow_clouds (ISRAD:IERAD, JSRAD:JERAD) )
+       allocate (press_hm    (ISRAD:IERAD, JSRAD:JERAD) )
+       allocate (press_ml    (ISRAD:IERAD, JSRAD:JERAD) )
+       allocate (conc        (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
+
+!----------------------------------------------------------------------
+! assume that the water path ( = conc.* path(km) ) is preset at fixed 
+! values (lwpath_hi, _mid, _low) for "high", "mid", "low" clouds. the 
+! lwpath in each cloud layer within "hi", "mid" "low" pressure specif-
+! ication is that lwpath_... divided by the number of clouds actually 
+! in that pressure interval. the unit of liquid water path is grams per 
+! meter**2. 
+!----------------------------------------------------------------------
+
+!----------------------------------------------------------------------
+! define the number of high, middle, low clouds according to
+! Wetherald's criterion
+!----------------------------------------------------------------------
+    if (.not. allocated (cldhm_abs) .or.   &
+        .not. allocated(cldml_abs)) then
+           call error_mesg ('microphys_rad_driver', &
+	 'must specify h-m-l cloud boundaries if not supplying micro&
+	 &physical properties', FATAL)
+    endif
+       do j=JSRAD,JERAD
+         do i=ISRAD,IERAD
+           nhi_clouds(i,j) = 0
+           nmid_clouds(i,j) = 0
+           nlow_clouds(i,j) = 0
+!          press_hm(i,j) = cldhm_abs(jabs(j))*press(i,j,KERAD+1)
+!          press_ml(i,j) = cldml_abs(jabs(j))*press(i,j,KERAD+1)
+           press_hm(i,j) = cldhm_abs(j+js-1 )*press(i,j,KERAD+1)
+           press_ml(i,j) = cldml_abs(j+js-1 )*press(i,j,KERAD+1)
+           do k=KSRAD,KERAD
+             if (camtsw(i,j,k) > 0.0) then
+               if (press(i,j,k) .LE. press_hm(i,j)) then     
+                 nhi_clouds(i,j) = nhi_clouds(i,j) + 1
+	       endif
+	       if (press(i,j,k) .GT. press_hm(i,j) .AND.      &
+                   press(i,j,k) .LE. press_ml(i,j)) then
+	         nmid_clouds(i,j) = nmid_clouds(i,j) + 1
+	       endif
+	       if (press(i,j,k) .GT. press_ml(i,j) ) then       
+	         nlow_clouds(i,j) = nlow_clouds(i,j) + 1
+	       endif
+             endif
+           enddo
+         enddo
+       enddo
+      
+!----------------------------------------------------------------------
+!   compute conc in each layer as (water path / layer geometric path)
+!----------------------------------------------------------------------
+           
+       conc(:,:,:) = 0.0E+00
+       do j=JSRAD,JERAD
+ 	 do i=ISRAD,IERAD
+           do k=KSRAD,KERAD
+             if (camtsw(i,j,k) > 0.0) then
+               if (press(i,j,k) .LE. press_hm(i,j) ) then
+	 	 conc(i,j,k) = lwpath_hi     /                 &
+                               (nhi_clouds(i,j)*deltaz(i,j,k))
+	       endif
+	       if (press(i,j,k) .GT. press_hm(i,j) .AND.          &
+                   press(i,j,k) .LE. press_ml(i,j) )  then          
+		 conc(i,j,k) = lwpath_mid    /                   &
+                               (nmid_clouds(i,j)*deltaz(i,j,k))
+	       endif
+	       if (press(i,j,k) .GT. press_ml(i,j)) then
+		 conc(i,j,k) = lwpath_low    /                   &
+                               (nlow_clouds(i,j)*deltaz(i,j,k))
+	       endif
+             endif
+	   enddo
+	 enddo
+       enddo
+
+!----------------------------------------------------------------------
+!   split conc into conc_ice and conc_drop, depending on temperature
+!   criterion (T < 273.16); add default size_ice, size_drop as
+!   needed.
+!----------------------------------------------------------------------
+       do k = KSRAD,KERAD
+         do j = JSRAD,JERAD
+	   do i = ISRAD,IERAD
+	     if (temp(i,j,k) .LT. 273.16) then
+	       conc_ice(i,j,k) = conc(i,j,k)
+	       conc_drop(i,j,k) = 0.0E+00
+	     else
+	       conc_ice(i,j,k) = 0.0E+00
+	       conc_drop(i,j,k) = conc(i,j,k)
+	     endif
+	   enddo
+	 enddo
+       enddo
+
+!----------------------------------------------------------------------
+!   define sizes of microphysical species. use 
+!   supplied default value if no input argument is provided. note
+!   default drop and rain values are radii, multiply by 2 to produce 
+!   diameter as desired in this modules microphysics routines. assume
+!   precip particles are non-existent, if values are not supplied via 
+!   input.
+!----------------------------------------------------------------------
+
+       size_drop(:,:,:) = 2.0*wtr_cld_reff
+
+       size_ice(:,:,:) = ice_cld_reff
+
+
+end subroutine microphys_presc_conc
+
+!#################################################################
+
+subroutine lwemiss_calc(     deltaz,                     &
+                          abscoeff,                      &
+		          cldemiss)
+
+!    compute the infrared emissivity from the absorption coefficient
+!
+real, dimension(:,:,:), intent(in)  :: deltaz  
+real, dimension(:,:,:,:), intent(in)  :: abscoeff
+!----------------------------------------------------------------------
+!                                                                   
+! intent out:                                                       
+!                                                                   
+! cldemiss    = the infrared cloud emissivity for the (NLWCLDB)     
+!               bands
+!                                                                   
+!----------------------------------------------------------------------
+real, dimension(:,:,:,:), intent(out)  :: cldemiss
+
+!    local variables
+integer                                :: n
+
+!----------------------------------------------------------------------
+!     1.0E-3 is conversion factor from (m) to (km).
+!----------------------------------------------------------------------
+      do n=1,NLWCLDB
+        cldemiss(:,:,:,n)  = 1.0E+00 -                               &
+                 EXP(-diffac*abscoeff(:,:,:,n)*deltaz(:,:,:)*1.0E-03)
+      enddo
+ 
+end subroutine lwemiss_calc
+
+!#################################################################
+
+subroutine comb_cldprops_calc (                              &
+                         cldext, cldsct, cldasymm, abscoeff,   &
+	                 cld_lsc, cldext_lsc, cldsct_lsc,      &
+			          cldasymm_lsc, abscoeff_lsc,  &
+	                 cld_cell, cldext_cell, cldsct_cell,      &
+			          cldasymm_cell, abscoeff_cell,  &
+	                 cld_meso, cldext_meso, cldsct_meso,      &
+			          cldasymm_meso, abscoeff_meso)
+
+real, dimension(:,:,:,:), intent(out)    ::                      &
+                         cldext, cldsct, cldasymm, abscoeff
+real, dimension(:,:,:), intent(in), optional ::                  &
+                         cld_lsc, cld_cell, cld_meso
+real, dimension(:,:,:,:), intent(in), optional ::                 &
+                         cldext_lsc, cldsct_lsc, cldasymm_lsc,    &
+			 abscoeff_lsc,                            &
+                         cldext_cell, cldsct_cell, cldasymm_cell,    &
+			 abscoeff_cell,                            &
+                         cldext_meso, cldsct_meso, cldasymm_meso,    &
+			 abscoeff_meso
+
+!
+!    local variables
+!
+integer :: n
+integer :: idim, jdim, kdim, i, j, k
+real, dimension (:,:,:), allocatable  :: cldsum
+integer :: unit
+logical :: ax1,ax2
+
+idim = size(cldext,1)
+jdim = size(cldext,2)
+kdim = size(cldext,3)
+allocate (cldsum(idim, jdim, kdim) )
+
+!     unit = open_file ('logfile.out', action='append')
+!     call print_version_number (unit, 'microphys_rad', version_number)
+!     if (get_my_pe() == 0)  then
+!       write (unit,*) ' idim,jdim,kdim'
+!write (unit,*) idim,jdim,kdim
+!ax1 = present(cld_lsc)
+!ax2 = present(cld_cell)
+!     write (unit,*) ax1,ax2
+!     endif
+!     call close_file (unit)
+!   if cld_cell is present, cld_meso is also present
+if (present(cld_lsc) .and. present(cld_cell)) then
+!     unit = open_file ('logfile.out', action='append')
+!     call print_version_number (unit, 'microphys_rad', version_number)
+!     if (get_my_pe() == 0)  then
+!       write (unit,*) ' cld_lsc'
+!write (unit,*) cld_lsc
+!       write (unit,*) ' cld_cell'
+!write (unit,*) cld_cell
+!       write (unit,*) ' cld_meso'
+!write (unit,*) cld_meso
+!     endif
+!     call close_file (unit)
+  cldsum = cld_lsc + cld_cell + cld_meso
+  do n=1,nbands
+    do k=1,kdim
+    do j=1,jdim
+    do i=1,idim
+    if (cldsum(i,j,k) > 0.0) then
+      cldext(i,j,k,n) = (cld_lsc(i,j,k)*cldext_lsc(i,j,k,n) +     &
+                     cld_cell(i,j,k)*cldext_cell(i,j,k,n) +    &
+		     cld_meso(i,j,k)*cldext_meso(i,j,k,n)) /   &
+		     cldsum(i,j,k)
+      cldsct(i,j,k,n) = (cld_lsc(i,j,k)*cldsct_lsc(i,j,k,n) +     &
+                     cld_cell(i,j,k)*cldsct_cell(i,j,k,n) +    &
+		     cld_meso(i,j,k)*cldsct_meso(i,j,k,n)) /   &
+		     cldsum(i,j,k)
+     else
+       cldext(i,j,k,n) = 0.0
+       cldsct(i,j,k,n) = 0.0
+     endif
+     if  ( (cld_lsc(i,j,k)*cldsct_lsc(i,j,k,n) +             &
+          cld_cell(i,j,k)*cldsct_cell(i,j,k,n) +             &
+          cld_meso(i,j,k)*cldsct_meso(i,j,k,n))  > 0.0) then
+      cldasymm(i,j,k,n) =                                       &
+        (cld_lsc(i,j,k)*cldsct_lsc(i,j,k,n)*cldasymm_lsc(i,j,k,n)  +   &
+         cld_cell(i,j,k)*cldsct_cell(i,j,k,n)*cldasymm_cell(i,j,k,n) + &
+         cld_meso(i,j,k)*cldsct_meso(i,j,k,n)*cldasymm_meso(i,j,k,n)) /&
+
+        ( cld_lsc(i,j,k)*cldsct_lsc(i,j,k,n) +                        &
+	  cld_cell(i,j,k)*cldsct_cell(i,j,k,n) +                      &
+	  cld_meso(i,j,k)*cldsct_meso(i,j,k,n) )
+
+     else
+       cldasymm(i,j,k,n) = 1.0
+     endif
+     end do
+     end do
+     end do
+   end do
+
+   do n=1,NLWCLDB
+     do k=1,kdim
+     do j=1,jdim
+     do i=1,idim
+     if (cldsum(i,j,k) > 0.0) then
+      abscoeff(i,j,k,n) = (cld_lsc(i,j,k)*abscoeff_lsc(i,j,k,n) +     &
+                     cld_cell(i,j,k)*abscoeff_cell(i,j,k,n) +    &
+		     cld_meso(i,j,k)*abscoeff_meso(i,j,k,n)) /   &
+		     cldsum(i,j,k)
+
+     else
+       abscoeff(i,j,k,n) = 0.0
+     endif
+     end do
+     end do
+     end do
+   enddo
+else if (present(cld_lsc)) then
+!!RSH  cldsum = cld_lsc
+
+  do n=1,nbands
+    do k=1,kdim
+    do j=1,jdim
+    do i=1,idim
+!     if (cldsum(i,j,k) > 0.0) then
+      if (cld_lsc(i,j,k) > 0.0) then
+!!R   cldext(i,j,k,n) = (cld_lsc(i,j,k)*cldext_lsc(i,j,k,n)) /    &
+!!     cldsum(i,j,k)
+!!    cldsct(i,j,k,n) = (cld_lsc(i,j,k)*cldsct_lsc(i,j,k,n)) /    &
+!!     cldsum(i,j,k)
+!!RSH cldasymm(i,j,k,n) =                                       &
+!!RSH   (cld_lsc(i,j,k)*cldsct_lsc(i,j,k,n)*cldasymm_lsc(i,j,k,n)) /   &
+
+!!      ( cld_lsc(i,j,k)*cldsct_lsc(i,j,k,n) )
+        cldext(i,j,k,n) = cldext_lsc(i,j,k,n)
+        cldsct(i,j,k,n) = cldsct_lsc(i,j,k,n)
+        cldasymm(i,j,k,n) = cldasymm_lsc(i,j,k,n)
+
+
+     else
+       cldext(i,j,k,n) = 0.0
+       cldsct(i,j,k,n) = 0.0
+       cldasymm(i,j,k,n) = 1.0
+     endif
+     end do
+     end do
+     end do
+   end do
+
+   do n=1,NLWCLDB
+     do k=1,kdim
+     do j=1,jdim
+     do i=1,idim
+!    if (cldsum(i,j,k) > 0.0) then
+      if (cld_lsc(i,j,k) > 0.0) then
+!     abscoeff(i,j,k,n) = (cld_lsc(i,j,k)*abscoeff_lsc(i,j,k,n)) /    &
+!	     cldsum(i,j,k)
+      abscoeff(i,j,k,n) = abscoeff_lsc(i,j,k,n)
+
+     else
+       abscoeff(i,j,k,n) = 0.0
+     endif
+     end do
+     end do
+     end do
+   enddo
+else if (present(cld_cell)) then
+  cldsum = cld_cell + cld_meso
+  do n=1,nbands
+     do k=1,kdim
+     do j=1,jdim
+     do i=1,idim
+     if (cldsum(i,j,k) > 0.0) then
+      cldext(i,j,k,n) =                                        &
+                     (cld_cell(i,j,k)*cldext_cell(i,j,k,n) +   &
+		     cld_meso(i,j,k)*cldext_meso(i,j,k,n)) /   &
+		     cldsum(i,j,k)
+      cldsct(i,j,k,n) =                                        &
+                     (cld_cell(i,j,k)*cldsct_cell(i,j,k,n) +   &
+		     cld_meso(i,j,k)*cldsct_meso(i,j,k,n)) /   &
+		     cldsum(i,j,k)
+      cldasymm(i,j,k,n) =                                       &
+        (cld_cell(i,j,k)*cldsct_cell(i,j,k,n)*cldasymm_cell(i,j,k,n) + &
+         cld_meso(i,j,k)*cldsct_meso(i,j,k,n)*cldasymm_meso(i,j,k,n)) /&
+
+	( cld_cell(i,j,k)*cldsct_cell(i,j,k,n) +                      &
+	  cld_meso(i,j,k)*cldsct_meso(i,j,k,n) )
+
+
+     else
+       cldext(i,j,k,n) = 0.0
+       cldsct(i,j,k,n) = 0.0
+       cldasymm(i,j,k,n) = 1.0
+     endif
+     end do
+     end do
+     end do
+   end do
+
+   do n=1,NLWCLDB
+     do k=1,kdim
+     do j=1,jdim
+     do i=1,idim
+     if (cldsum(i,j,k) > 0.0) then
+      abscoeff(i,j,k,n) =                                       &
+                    (cld_cell(i,j,k)*abscoeff_cell(i,j,k,n) +   &
+		     cld_meso(i,j,k)*abscoeff_meso(i,j,k,n)) /   &
+		     cldsum(i,j,k)
+
+     else
+       abscoeff(i,j,k,n) = 0.0
+     endif
+     end do
+     end do
+     end do
+   enddo
+endif
+
+deallocate (cldsum)
+
+end subroutine comb_cldprops_calc
+
+!#################################################################
 
 	       end module microphys_rad_mod
+
 

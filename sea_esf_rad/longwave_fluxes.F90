@@ -2,14 +2,15 @@
                   module longwave_fluxes_mod
 
 
-use rad_step_setup_mod,   only:  ISRAD, IERAD, JSRAD, JERAD, &
-			         KS=>KSRAD, KE=>KERAD
+!use rad_step_setup_mod,   only:  ISRAD, IERAD, JSRAD, JERAD, &
+!			         KS=>KSRAD, KE=>KERAD
 use  utilities_mod,       only:  open_file, file_exist,       &
                                  check_nml_error, error_mesg, &
 			         print_version_number, FATAL, NOTE, &
 				 WARNING, get_my_pe, close_file
-use rad_utilities_mod,    only:  Rad_control, radiation_control_type
-use radiation_diag_mod,   only:  radiag_from_fluxes
+use rad_utilities_mod,    only:  Rad_control, radiation_control_type, &
+                                 lw_diagnostics_type
+!use radiation_diag_mod,   only:  radiag_from_fluxes
 
 !---------------------------------------------------------------------
 
@@ -26,18 +27,18 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.08'
-   character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 1.3 2001/10/25 17:48:33 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: galway $'
+   character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 1.4 2002/07/16 22:35:39 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: havana $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
 public    &
        longwave_fluxes_init, &
-       longwave_fluxes_alloc,  &
+!      longwave_fluxes_alloc,  &
        longwave_fluxes_ks, longwave_fluxes_k_down, &
        longwave_fluxes_KE_KEp1, longwave_fluxes_diag, &
-       longwave_fluxes_dealloc, &
+!      longwave_fluxes_dealloc, &
        longwave_fluxes_sum
 
 
@@ -63,10 +64,11 @@ namelist / longwave_fluxes_nml /        &
 !------- private data ------
 
 
-real, dimension(:,:,:,:), allocatable :: fluxn, fluxncf
+!real, dimension(:,:,:,:), allocatable :: fluxn, fluxncf
 
-integer   ::   flux_index4
+!integer   ::   flux_index4
 
+!        integer :: israd, ierad, jsrad, jerad, ks, ke
 
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
@@ -110,27 +112,36 @@ end subroutine longwave_fluxes_init
 
 !#####################################################################
 
-subroutine longwave_fluxes_alloc (index4)
+!subroutine longwave_fluxes_alloc (ix, jx, kx, index4, Lw_diagnostics)
 
 !---------------------------------------------------------------------
-integer,                intent(in) :: index4
+!integer,                intent(in) :: ix, jx, kx, index4
+!type(lw_diagnostics_type), intent(inout) :: Lw_diagnostics
+
+!---------------------------------------------------------------------
+!         integer :: israd, ierad, jsrad, jerad, ks, ke
+
+!     israd = 1
+!     ierad = ix
+!     jsrad = 1
+!     jerad = jx
+!     ks = 1
+!     ke = kx
+
+! allocate ( Lw_diagnostics%fluxn   (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, index4) )
+! Lw_diagnostics%fluxn  (:,:,:,:) = 0.0
+!
+! if (Rad_control%do_totcld_forcing) then
+!   allocate ( Lw_diagnostics%fluxncf (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, index4) )
+!   Lw_diagnostics%fluxncf(:,:,:,:) = 0.0
+! endif
+
+! flux_index4 = index4
 
 !---------------------------------------------------------------------
 
- allocate ( fluxn   (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, index4) )
- fluxn  (:,:,:,:) = 0.0
 
- if (Rad_control%do_totcld_forcing) then
-   allocate ( fluxncf (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, index4) )
-   fluxncf(:,:,:,:) = 0.0
- endif
-
- flux_index4 = index4
-
-!---------------------------------------------------------------------
-
-
-end subroutine longwave_fluxes_alloc
+!end subroutine longwave_fluxes_alloc
 
 
 
@@ -138,61 +149,64 @@ end subroutine longwave_fluxes_alloc
 
 !####################################################################
 
-subroutine longwave_fluxes_ks (source, trans, iof, source2, trans2,  &
-			       iof2, cld_trans, cld_ind, m)
+subroutine longwave_fluxes_ks ( source, trans, source2, trans2,  &
+			        cld_trans, cld_ind, Lw_diagnostics)
 
 !---------------------------------------------------------------------
-integer,                   intent(in)   :: iof, iof2, m, &
-	   		   	           cld_ind
-real, dimension (:,:,:),   intent(in)   :: source
-real, dimension (:,:,:),   intent(in)   :: source2
-real, dimension (:,:,:),   intent(in)   :: trans2, trans
+integer, dimension(:),     intent(in)   ::  cld_ind
+real, dimension (:,:,:,:),   intent(in)   :: source
+real, dimension (:,:,:,:),   intent(in)   :: source2
+real, dimension (:,:,:,:),   intent(in)   :: trans2, trans
 real, dimension (:,:,:,:), intent(in)   :: cld_trans
+type(lw_diagnostics_type), intent(inout) :: Lw_diagnostics
 !---------------------------------------------------------------------
 
 !------------------------------------------------------------------
 !  local variables
 !------------------------------------------------------------------
-        real, dimension(:,:,:), allocatable :: flux_tmp, flux_tmp2
-        integer   ::   k
+   real, dimension (size(source2,1), size(source2,2), &
+          size(source2,3) ) :: flux_tmp, flux_tmp2
+        integer   ::   k, ks, ke, nbands, m
 
 !---------------------------------------------------------------------
-        allocate ( flux_tmp  (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
-        allocate ( flux_tmp2 (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
+        ks =1
+	ke = size(source2,3)-1
+	nbands = size(source,4)
+
+   do m = 1, nbands
 
 	do k=KS+1, KE+1
-          flux_tmp(:,:,k) = source(:,:,KS)*trans(:,:,k-1+iof)
-          flux_tmp2(:,:,k) = source2(:,:,k)*trans2(:,:,k-1+iof2)
+           flux_tmp(:,:,k) = source(:,:,KS,m)*trans(:,:,k,m    )
+           flux_tmp2(:,:,k) = source2(:,:,k,m)*trans2(:,:,k ,m    )
         end do
 
         if ((m  == 1) .or. (m  >= 7)) then
-          fluxn(:,:,KS,m) = fluxn(:,:,KS,m) + source(:,:,KS)*  &
-							   trans(:,:,KS)
+          Lw_diagnostics%fluxn(:,:,KS,m) = Lw_diagnostics%fluxn(:,:,KS,m) + source(:,:,KS,m)*  &
+				   trans(:,:,KS,m)
         else
-          fluxn(:,:,KS,m) = fluxn(:,:,KS,m) + source(:,:,KS)
+          Lw_diagnostics%fluxn(:,:,KS,m) = Lw_diagnostics%fluxn(:,:,KS,m) + source(:,:,KS,m)
         endif
 
         do k=KS+1,KE+1
-          fluxn(:,:,k,m) = fluxn(:,:,k,m) + flux_tmp(:,:,k)* &
-	                   cld_trans(:,:,k,cld_ind)
-          fluxn(:,:,KS,m) = fluxn(:,:,KS,m) + flux_tmp2(:,:,k)*   &
-		            cld_trans(:,:,k,cld_ind)
+          Lw_diagnostics%fluxn(:,:,k,m) = Lw_diagnostics%fluxn(:,:,k,m) + flux_tmp(:,:,k)* &
+	                   cld_trans(:,:,k,cld_ind(m))
+          Lw_diagnostics%fluxn(:,:,KS,m) = Lw_diagnostics%fluxn(:,:,KS,m) + flux_tmp2(:,:,k)*   &
+		            cld_trans(:,:,k,cld_ind(m))
         end do
 
         if (Rad_control%do_totcld_forcing) then
           if ((m  == 1) .or. (m  >= 7)) then
-            fluxncf(:,:,KS,m) =  source(:,:,KS)*trans(:,:,KS)
+            Lw_diagnostics%fluxncf(:,:,KS,m) =  source(:,:,KS,m)*trans(:,:,KS,m)
           else
-            fluxncf(:,:,KS,m) =  source(:,:,KS)
+            Lw_diagnostics%fluxncf(:,:,KS,m) =  source(:,:,KS,m)
           endif
           do k=KS+1,KE+1
-	    fluxncf(:,:,k,m) = fluxncf(:,:,k,m) + flux_tmp(:,:,k)
-	    fluxncf(:,:,KS,m) = fluxncf(:,:,KS,m) + flux_tmp2(:,:,k)
+	    Lw_diagnostics%fluxncf(:,:,k,m) = Lw_diagnostics%fluxncf(:,:,k,m) + flux_tmp(:,:,k)
+	    Lw_diagnostics%fluxncf(:,:,KS,m) = Lw_diagnostics%fluxncf(:,:,KS,m) + flux_tmp2(:,:,k)
           end do
         endif
 
-        deallocate (flux_tmp  )
-        deallocate (flux_tmp2 )
+     end do   ! (m loop)
 !---------------------------------------------------------------------
 
 
@@ -203,35 +217,48 @@ end subroutine longwave_fluxes_ks
 !####################################################################
 
 subroutine longwave_fluxes_k_down (klevel, source, trans, trans2,   &
-				   iof, cld_trans, m)
+!				        cld_trans, m, Lw_diagnostics)
+				        cld_trans, cld_ind,   Lw_diagnostics)
 
 !---------------------------------------------------------------------
-integer,                    intent(in)     :: iof, klevel, m
-real,    dimension (:,:,:), intent(in)     :: cld_trans, source
-real,    dimension (:,:,:), intent(in)     :: trans2, trans
+!integer,                    intent(in)     ::  klevel, m
+integer,                    intent(in)     ::  klevel
+!real,    dimension (:,:,:), intent(in)     :: cld_trans, source
+real,    dimension (:,:,:,:), intent(in)     :: cld_trans, source
+!real,    dimension (:,:,:), intent(in)     :: trans2, trans
+real,    dimension (:,:,:,:), intent(in)     :: trans2, trans
+type(lw_diagnostics_type), intent(inout) :: Lw_diagnostics
+integer, dimension(:), intent(in) :: cld_ind
 !---------------------------------------------------------------------
 
 !------------------------------------------------------------------
 !  local variables
 !------------------------------------------------------------------
-       real, dimension(:,:  ), allocatable  ::  flux4, flux4a
+   real, dimension (size(source,1), size(source,2)) :: flux4, flux4a
        real :: flux3a, flux_tmp, flux_tmp2
 
-       integer     ::  kp, i, j, k, nn, ntot
+       integer     ::  kp, i, j, k, nn, ntot, israd, ierad, jsrad, jerad
+       integer :: ke
+       integer :: m, nbands
 
+       ierad = size(source,1)
+       jerad = size(source,2)
+       israd=1
+       jsrad = 1
+       ke = size(source,3)-1
+       nbands = size(trans,4)
 !---------------------------------------------------------------------
-       allocate ( flux4      (ISRAD:IERAD, JSRAD:JERAD         ) )
-       allocate ( flux4a     (ISRAD:IERAD, JSRAD:JERAD         ) )
 
+       do m=1, nbands
 
        do kp=klevel+1,KE+1
         do j=jsrad,jerad
           do i=israd,ierad   
-         flux_tmp         = source(i,j,klevel)*trans(i,j,kp-1+iof)
-         fluxn(i,j,kp,m) = fluxn(i,j,kp,m) +flux_tmp        *   &
-                           cld_trans(i,j,kp)
+         flux_tmp         = source(i,j,klevel,m)*trans(i,j,kp,m    )
+         Lw_diagnostics%fluxn(i,j,kp,m) = Lw_diagnostics%fluxn(i,j,kp,m) +flux_tmp        *   &
+                           cld_trans(i,j,kp, cld_ind(m))
        if (Rad_control%do_totcld_forcing) then
-           fluxncf(i,j,kp,m) = fluxncf(i,j,kp,m) + flux_tmp         
+           Lw_diagnostics%fluxncf(i,j,kp,m) = Lw_diagnostics%fluxncf(i,j,kp,m) + flux_tmp         
 
        endif
        end do
@@ -244,9 +271,9 @@ real,    dimension (:,:,:), intent(in)     :: trans2, trans
         do j=jsrad,jerad
           do i=israd,ierad   
 
-         flux_tmp2         = source(i,j,kp)*trans2(i,j,kp-1+iof)
+         flux_tmp2         = source(i,j,kp,m)*trans2(i,j,kp,m      )
           flux4(i,j         ) = flux4(i,j         ) +    &
-                               flux_tmp2        *cld_trans(i,j,kp)
+                        flux_tmp2        *cld_trans(i,j,kp, cld_ind(m))
        if (Rad_control%do_totcld_forcing) then
            flux4a (i,j         ) = flux4a (i,j         ) +  &
                                    flux_tmp2        
@@ -256,17 +283,17 @@ real,    dimension (:,:,:), intent(in)     :: trans2, trans
             end do
         do j=jsrad,jerad
           do i=israd,ierad   
-           fluxn  (i,j,klevel,m) = fluxn  (i,j,klevel,m) +  &
+           Lw_diagnostics%fluxn  (i,j,klevel,m) = Lw_diagnostics%fluxn  (i,j,klevel,m) +  &
                                    flux4    (i,j       )
        if (Rad_control%do_totcld_forcing) then
-           fluxncf(i,j,klevel,m) = fluxncf(i,j,klevel,m) +  &
+           Lw_diagnostics%fluxncf(i,j,klevel,m) = Lw_diagnostics%fluxncf(i,j,klevel,m) +  &
                                    flux4a   (i,j       )
        endif
        end do
        end do
 
-       deallocate (flux4     )
-       deallocate (flux4a    )
+
+   end do  ! (nbands loop)
 !---------------------------------------------------------------------
 
 
@@ -276,38 +303,46 @@ end subroutine longwave_fluxes_k_down
 
 !####################################################################
 
-subroutine longwave_fluxes_KE_KEp1 (source, trans, trans2, cld_trans, m)
+subroutine longwave_fluxes_KE_KEp1 (source, trans, trans2, cld_trans,&
+!                                      m, Lw_diagnostics)
+                                       cld_ind, Lw_diagnostics)
 
 !---------------------------------------------------------------------
-integer,                      intent(in)    :: m
-real,    dimension (:,:),     intent(in)    :: trans2, trans
-real,    dimension (:,:,:),   intent(in)    :: source, cld_trans
+!integer,                      intent(in)    :: m
+!real,    dimension (:,:),     intent(in)    :: trans2, trans
+real,    dimension (:,:,:),     intent(in)    :: trans2, trans
+!real,    dimension (:,:,:),   intent(in)    :: source, cld_trans
+real,    dimension (:,:,:,:),   intent(in)    :: source, cld_trans
+integer, dimension(:), intent(in) :: cld_ind
+type(lw_diagnostics_type), intent(inout) :: Lw_diagnostics
 !---------------------------------------------------------------------
 
 !--------------------------------------------------------------------
 !  local variables
 !--------------------------------------------------------------------
-       real, dimension(:,:), allocatable :: flux_tmp, flux_tmp2
+   real, dimension (size(trans,1), size(trans,2)) :: flux_tmp, flux_tmp2
+      integer :: ke
+      integer :: m, nbands
 
 !-------------------------------------------------------------------
-       allocate ( flux_tmp   (ISRAD:IERAD, JSRAD:JERAD)  )
-       allocate ( flux_tmp2  (ISRAD:IERAD, JSRAD:JERAD)  )
+        ke = size(source,3) - 1
+	nbands = size(trans,3) 
 
-       flux_tmp(:,:) = source(:,:,KE+1)*trans(:,:)
-       flux_tmp2(:,:) = source(:,:,KE)*trans2(:,:)
+do m=1,nbands
+       flux_tmp(:,:) = source(:,:,KE+1,m)*trans(:,:,m)
+       flux_tmp2(:,:) = source(:,:,KE,m)*trans2(:,:,m)
 
-       fluxn(:,:,KE,m) = fluxn(:,:,KE,m) +flux_tmp(:,:)*  &
-                         cld_trans(:,:,KE+1)
-       fluxn(:,:,KE+1,m) = fluxn(:,:,KE+1,m) +   &
-                           flux_tmp2(:,:)*cld_trans(:,:,KE+1)
+       Lw_diagnostics%fluxn(:,:,KE,m) = Lw_diagnostics%fluxn(:,:,KE,m) +flux_tmp(:,:)*  &
+                         cld_trans(:,:,KE+1,cld_ind(m))
+       Lw_diagnostics%fluxn(:,:,KE+1,m) = Lw_diagnostics%fluxn(:,:,KE+1,m) +   &
+                           flux_tmp2(:,:)*cld_trans(:,:,KE+1,cld_ind(m))
 
        if (Rad_control%do_totcld_forcing) then
-         fluxncf(:,:,KE,m) = fluxncf(:,:,KE,m) + flux_tmp(:,:)
-         fluxncf(:,:,KE+1,m) = fluxncf(:,:,KE+1,m) + flux_tmp2(:,:)
+         Lw_diagnostics%fluxncf(:,:,KE,m) = Lw_diagnostics%fluxncf(:,:,KE,m) + flux_tmp(:,:)
+         Lw_diagnostics%fluxncf(:,:,KE+1,m) = Lw_diagnostics%fluxncf(:,:,KE+1,m) + flux_tmp2(:,:)
        endif
 
-       deallocate (flux_tmp   )
-       deallocate (flux_tmp2  )
+end do  ! (nbands loop)
 !---------------------------------------------------------------------
 
 end subroutine longwave_fluxes_KE_KEp1
@@ -316,38 +351,52 @@ end subroutine longwave_fluxes_KE_KEp1
 
 !####################################################################
 
-subroutine longwave_fluxes_diag (source, trans, cld_trans, m)
+!subroutine longwave_fluxes_diag (source, trans, cld_trans, m, Lw_diagnostics)
+subroutine longwave_fluxes_diag (source, trans, cld_trans, cld_ind, &
+                                 Lw_diagnostics)
 
 !---------------------------------------------------------------------
-real, dimension (:,:,:),   intent(in)    :: cld_trans, source, trans
-integer,                   intent(in)    :: m
+!real, dimension (:,:,:),   intent(in)    :: cld_trans, source, trans
+real, dimension (:,:,:,:),   intent(in)    :: cld_trans, source, trans
+!integer,                   intent(in)    :: m
+integer, dimension(:),     intent(in)    :: cld_ind
+type(lw_diagnostics_type), intent(inout) :: Lw_diagnostics
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
 !   local variables
 !---------------------------------------------------------------------
-        real, dimension(:,:,:), allocatable :: flux_tmp
-        integer      ::   k
+   real, dimension (size(trans,1), size(trans,2), &
+            size(trans,3)) :: flux_tmp
+        integer      ::   k, ks, ke
+	integer :: m, nbands
 
 !---------------------------------------------------------------------
-        allocate (flux_tmp (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1)  )
+         ks = 1
+         ke = size(trans,3) - 1
+	 nbands = size(trans,4)
+
+do m=1,nbands
+
+
         do k=KS+1, KE+1
-          flux_tmp(:,:,k) = source(:,:,k)*trans(:,:,k)
+          flux_tmp(:,:,k) = source(:,:,k,m)*trans(:,:,k,m)
         end do
 
         do k=KS+1,KE+1
-          fluxn(:,:,k,m) = fluxn(:,:,k,m) + flux_tmp(:,:,k)*   &
-                           cld_trans(:,:,k)
+          Lw_diagnostics%fluxn(:,:,k,m) = Lw_diagnostics%fluxn(:,:,k,m) + flux_tmp(:,:,k)*   &
+                           cld_trans(:,:,k,cld_ind(m))
         end do
 
         if (Rad_control%do_totcld_forcing) then
           do k=KS+1,KE+1
-	    fluxncf(:,:,k,m) = fluxncf(:,:,k,m) +   &
+	    Lw_diagnostics%fluxncf(:,:,k,m) = Lw_diagnostics%fluxncf(:,:,k,m) +   &
                                flux_tmp(:,:,k)
           end do
         endif
-        deallocate (flux_tmp  )
 !---------------------------------------------------------------------
+
+end do ! (m loop)
 
 
 end subroutine longwave_fluxes_diag
@@ -356,26 +405,29 @@ end subroutine longwave_fluxes_diag
 
 !####################################################################
 
-subroutine longwave_fluxes_dealloc
+!subroutine longwave_fluxes_dealloc
 
-    deallocate (fluxn)
-    if (Rad_control%do_totcld_forcing) then
-      deallocate (fluxncf)
-    endif
+!    deallocate (fluxn)
+!   if (Rad_control%do_totcld_forcing) then
+!     deallocate (fluxncf)
+!   endif
 
 
-end subroutine longwave_fluxes_dealloc
+!end subroutine longwave_fluxes_dealloc
 
 
 
 !###################################################################
 
-subroutine longwave_fluxes_sum (flux, NBTRGE, fluxcf)
+subroutine longwave_fluxes_sum (is, ie, js, je, flux, NBTRGE,         &
+                                 Lw_diagnostics, fluxcf)
 
 !--------------------------------------------------------------------
-integer,                          intent(in)    :: NBTRGE
+integer,                          intent(in)    :: is, ie, js, &
+                                                   je, NBTRGE
 real, dimension(:,:,:),           intent(out)   :: flux
 real, dimension(:,:,:), optional, intent(out)   :: fluxcf
+type(lw_diagnostics_type), intent(in) :: Lw_diagnostics
 !--------------------------------------------------------------------
 
 !--------------------------------------------------------------------
@@ -385,22 +437,26 @@ real, dimension(:,:,:), optional, intent(out)   :: fluxcf
 
 !-------------------------------------------------------------------
     flux = 0.
-    do m= 1, flux_index4            
-      flux(:,:,:) = flux(:,:,:) + fluxn(:,:,:,m)
+!   do m= 1, flux_index4            
+    do m= 1, 6+NBTRGE               
+      flux(:,:,:) = flux(:,:,:) + Lw_diagnostics%fluxn(:,:,:,m)
     end do
 
     if (Rad_control%do_totcld_forcing) then 
       fluxcf = 0.
-      do m= 1, flux_index4            
-	fluxcf(:,:,:) = fluxcf(:,:,:) + fluxncf(:,:,:,m)
+!     do m= 1, flux_index4            
+      do m= 1, 6+NBTRGE               
+	fluxcf(:,:,:) = fluxcf(:,:,:) + Lw_diagnostics%fluxncf(:,:,:,m)
       end do
     endif
 
-    if (Rad_control%do_diagnostics) then
-      do j=JSRAD, JERAD
-        call radiag_from_fluxes (j, fluxn, fluxncf, NBTRGE)
-      end do
-    endif
+!     do j=js,je         
+!      if (Rad_control%do_raddg(j)) then
+!       call radiag_from_fluxes (Lw_diagnostics%fluxn,   &
+!                 Lw_diagnostics%fluxncf, NBTRGE, j, j-js+1, &
+!                                 is, ie)
+!      endif
+!     end do
 !--------------------------------------------------------------------
 
 end subroutine longwave_fluxes_sum

@@ -16,7 +16,8 @@ implicit none
 private
 
 !---------------------------------------------------------------------
-!                     ch4_n2o gases module
+!                    module which obtains ch4_n2o longwave 
+!                  radiation transmission function components
 !
 !---------------------------------------------------------------------
 
@@ -25,9 +26,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-!        character(len=5), parameter  ::  version_number = 'v0.09'
-         character(len=128)  :: version =  '$Id: ch4_n2o.F90,v 1.2 2001/07/05 17:28:20 fms Exp $'
-         character(len=128)  :: tag     =  '$Name: galway $'
+         character(len=128)  :: version =  '$Id: ch4_n2o.F90,v 1.3 2002/07/16 22:34:24 fms Exp $'
+         character(len=128)  :: tag     =  '$Name: havana $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -63,12 +63,11 @@ end type ch4_n2o_input_type
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-character(len=5)                 :: ch4_amt = 'FIXED'
-character(len=5)                 :: n2o_amt = 'FIXED'
+ integer  :: dummy
 
 
-namelist /ch4_n2o_nml/                      &
-                         ch4_amt, n2o_amt
+ namelist /ch4_n2o_nml/                      &
+			 dummy
 
 
 
@@ -490,9 +489,7 @@ integer                    ::  k, mm, m
 !---------------------------------------------------------------------
 !------- private data ------
 
-real       ::  rch4air, rn2oair, rch4, rn2o
-logical    ::  do_ch4_init = .true.
-logical    ::  do_n2o_init = .true.
+real       ::  rch4air, rn2oair
 
 
 
@@ -505,11 +502,11 @@ logical    ::  do_n2o_init = .true.
                          contains
 
 
-subroutine ch4_n2o_init (data_source, rrvch4_in, rrvn2o_in) 
+subroutine ch4_n2o_init 
+
 
 !---------------------------------------------------------------------
-real, intent(in), optional :: rrvch4_in, rrvn2o_in
-character(len=*)    ::  data_source
+      integer    :: unit, ierr, io
 
 !---------------------------------------------------------------------
 !   the values of the molecular weights of ch4 and n2o are derived
@@ -519,24 +516,6 @@ character(len=*)    ::  data_source
 !---------------------------------------------------------------------
       real       ::  wtmch4  = 16.04303
       real       ::  wtmn2o  = 44.01280
-
-!---------------------------------------------------------------------
-!  optional supplied initial trace gas volume mixing ratios in (no./no.)
-!---------------------------------------------------------------------
-      real       ::  rch4_icrccm   = 1.75000E-06
-      real       ::  rn2o_icrccm   = 2.80000E-07
-
-      real       ::  rch4_ipcc_92  = 1.71400E-06
-      real       ::  rn2o_ipcc_92  = 3.11000E-07
-
-      real       ::  rch4_ipcc_80  = 1.56900E-06
-      real       ::  rn2o_ipcc_80  = 3.02620E-07
-
-      real       ::  rch4_ipcc_98  = 1.82120E-06
-      real       ::  rn2o_ipcc_98  = 3.16000E-07
-
-!---------------------------------------------------------------------
-      integer    :: unit, ierr, io, inrad
 
 !---------------------------------------------------------------------
 !-----  read namelist  ------
@@ -551,7 +530,6 @@ character(len=*)    ::  data_source
      endif
 
      unit = open_file('logfile.out', action='append')
-!    call print_version_number (unit, 'ch4_n2o', version_number)
      if (get_my_pe() == 0) then
        write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
        write (unit,nml=ch4_n2o_nml)
@@ -564,44 +542,6 @@ character(len=*)    ::  data_source
       rch4air = wtmch4/wtmair
       rn2oair = wtmn2o/wtmair
 
-!---------------------------------------------------------------------
-!  define initial ch4, n2o mixing ratios to be used.
-!---------------------------------------------------------------------
-      if (trim(data_source) == 'icrccm') then
-        rch4   = rch4_icrccm
-        rn2o   = rn2o_icrccm
-      else if (trim(data_source) == 'ipcc_92') then
-        rch4   = rch4_ipcc_92  
-        rn2o   = rn2o_ipcc_92
-      else if (trim(data_source) == 'ipcc_98') then
-        rch4   = rch4_ipcc_98
-        rn2o   = rn2o_ipcc_98
-      else if (trim(data_source) == 'ipcc_80') then
-        rch4   = rch4_ipcc_80
-        rn2o   = rn2o_ipcc_80
-      else if (trim(data_source) == 'input') then
-	if (file_exist ('INPUT/id1ch4n2o') ) then
-          inrad = open_file ('INPUT/id1ch4n2o', form= 'formatted', &
-                             action= 'read')
-          read (inrad, FMT = '(5e18.10)')  rch4
-          read (inrad, FMT = '(5e18.10)')  rn2o
-          call close_file (inrad)
-	else
-	  call error_mesg ( 'ch4_n2o_init', &
-	           'desired ch4_n2o input file is not present', FATAL)
-	endif
-      else if (trim(data_source) == 'restart') then
-	  rch4 = rrvch4_in
-	  rn2o = rrvn2o_in
-      else
-	call error_mesg ('ch4_n2o_init', &
-         'no valid data source was specified for ch4 and n2o input',  &
-	 FATAL)
-      endif
-!---------------------------------------------------------------------
-	
-
-
 end subroutine ch4_n2o_init
 
 
@@ -609,13 +549,13 @@ end subroutine ch4_n2o_init
 
 !####################################################################
 
-subroutine ch4_n2o_time_vary ( rrvch4, rrvn2o)
+subroutine ch4_n2o_time_vary (rrvch4, rrvn2o)
 
 !---------------------------------------------------------------------
-real, intent(inout)    ::  rrvch4, rrvn2o
+real, intent(in) :: rrvch4, rrvn2o               
 
 !---------------------------------------------------------------------
-     real             ::  ch4_vmr, n2o_vmr, rrch4, rrn2o
+     real             ::  ch4_vmr, n2o_vmr
 
 !---------------------------------------------------------------------
 !  the ch4 volume mixing ratio is set to the initial value (rch4) and 
@@ -623,35 +563,8 @@ real, intent(inout)    ::  rrvch4, rrvn2o
 !  then the lbl transmission function is calculated. after first access,
 !  this routine does nothing. 
 !--------------------------------------------------------------------
-     if (trim(ch4_amt) == 'FIXED' ) then    
-       if (do_ch4_init) then
-         rrvch4 = rch4
-         rrch4  = rrvch4*rch4air
          ch4_vmr = rrvch4*1.0E+09
-         call Ch4_lblinterp  (ch4_vmr, ch4_amt)
-         do_ch4_init = .false.
-       endif
-
-!---------------------------------------------------------------------
-! NOTE: TIME VARIATION OF RADIATIVE GASES NOT CURRENTLY AVAILABLE.
-!---------------------------------------------------------------------
-     else if (trim(ch4_amt) == 'VARY') then
-!---------------------------------------------------------------------
-!   this is where the time-variation of ch4 will be added
-!   define rrvch4, the volume mixing ratio of ch4, as a function of 
-!   rch4 and time and then convert it into rrch4, the mass mixing ratio.
-!      rrvch4 = ???
-!      rrch4  = rrvch4*rch4air
-!   new values of lw tf must also be calculated:
-!      ch4_vmr = rrvch4*1.0E+09
-!      call Ch4_lblinterp  (ch4_vmr, ch4_amt)
-!---------------------------------------------------------------------
-       call error_mesg ('ch4_n2o_time_vary',  &
-		   'time-varying ch4 not yet implemented', FATAL)
-     else
-       call error_mesg ('ch4_n2o_time_vary',  &
-		   'ch4_amt has unacceptable value', FATAL)
-     endif      
+         call Ch4_lblinterp  (ch4_vmr)
 
 !---------------------------------------------------------------------
 !  the n2o volume mixing ratio is set to initial value (rn2o) and the 
@@ -659,36 +572,8 @@ real, intent(inout)    ::  rrvch4, rrvn2o
 !  routines are called to calculate the lbl transmission functions for 
 !  n2o. after first access, this routine does nothing. 
 !--------------------------------------------------------------------
-     if (trim(n2o_amt) == 'FIXED' ) then    
-       if (do_n2o_init) then
-         rrvn2o = rn2o
-         rrn2o  = rrvn2o*rn2oair
          n2o_vmr = rrvn2o*1.0E+09
-         call N2o_lblinterp (n2o_vmr, n2o_amt)
-         do_n2o_init = .false.
-       endif
-
-!---------------------------------------------------------------------
-! NOTE: TIME VARIATION OF RADIATIVE GASES NOT CURRENTLY AVAILABLE.
-!---------------------------------------------------------------------
-     else if (trim(n2o_amt) == 'VARY') then
-!---------------------------------------------------------------------
-!   this is where the time-variation of n2o will be added. define 
-!   rrvn2o, the volume mixing ratio of n2o, as a function of rn2o and 
-!   time and then convert it into rrn2o, the mass mixing ratio.
-!      rrvn2o = ???
-!      rrn2o  = rrvn2o*rn2oair
-!   new values of lw tf must also be calculated:
-!      n2o_vmr = rrvn2o*1.0E+09
-!      call n2o_lblinterp  (n2o_vmr, n2o_amt)
-!---------------------------------------------------------------------
-       call error_mesg ('ch4_n2o_time_vary',  &
-		   'time-varying n2o not yet implemented', FATAL)
-     else
-       call error_mesg ('ch4_n2o_time_vary',  &
-		   'n2o_amt has unacceptable value', FATAL)
-     endif      
-
+         call N2o_lblinterp (n2o_vmr)
 
 
 end subroutine ch4_n2o_time_vary

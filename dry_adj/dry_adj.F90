@@ -6,7 +6,7 @@
 
  use Utilities_Mod, ONLY: FILE_EXIST, ERROR_MESG, OPEN_FILE, &
                           CHECK_NML_ERROR,                   &
-                          get_my_pe, FATAL, WARNING, CLOSE_FILE
+                          get_my_pe, get_root_pe, FATAL, WARNING, CLOSE_FILE
  use Constants_Mod, ONLY: Grav, Kappa
 !---------------------------------------------------------------------
  implicit none
@@ -16,15 +16,14 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: dry_adj.F90,v 1.2 2000/08/04 18:46:36 fms Exp $'
- character(len=128) :: tag = '$Name: galway $'
+ character(len=128) :: version = '$Id: dry_adj.F90,v 1.3 2002/07/16 22:32:17 fms Exp $'
+ character(len=128) :: tag = '$Name: havana $'
 
  logical :: do_init = .true.
 
 !---------------------------------------------------------------------
 
   real,    parameter :: p00     = 1000.0E2
-  real,    parameter :: small   = 0.001
 
 !---------------------------------------------------------------------
 ! --- NAMELIST
@@ -33,8 +32,10 @@
 !---------------------------------------------------------------------
 
   integer :: itermax = 5
+  real    :: small = 0.001
+  logical :: do_mcm_dry_adj = .false.
     
-  NAMELIST / dry_adj_nml / itermax
+  NAMELIST / dry_adj_nml / itermax, small, do_mcm_dry_adj
 
 !---------------------------------------------------------------------
 
@@ -71,9 +72,9 @@
 !---------------------------------------------------------------------
  
   real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)) ::     &
-        temp, pi, theta, pixdp, dpres
+        temp, pi, theta, pixdp, dpres, ppp
  
-  real,    dimension(size(temp0,1),size(temp0,2)) :: store
+  real,    dimension(size(temp0,1),size(temp0,2)) :: store, xxx
   logical, dimension(size(temp0,1),size(temp0,2)) :: do_daa
  
   integer :: kmax, iter, k
@@ -102,6 +103,13 @@
 
 ! --- Compute potential temperature
   theta = temp / pi                  
+
+  if(do_mcm_dry_adj) then
+    do k = 2,kmax
+      xxx = 0.5*kappa*(pres(:,:,k) - pres(:,:,k-1))/pres_int(:,:,k)
+      ppp(:,:,k) = (1.0 + xxx)/(1.0 - xxx)
+    enddo
+  endif
     
 !-----------------------------------------------------------------
 ! iteration loop starts           
@@ -115,24 +123,39 @@
 ! ----------------------------------------------
 
 ! --- Flag layers needing adjustment
-  do_daa(:,:) = ( theta(:,:,k+1) - theta(:,:,k) ) > small
+  if(do_mcm_dry_adj) then
+    do_daa(:,:) = temp(:,:,k+1) > ( temp(:,:,k)*ppp(:,:,k+1) + small )
+  else
+    do_daa(:,:) = ( theta(:,:,k+1) - theta(:,:,k) ) > small
+  endif
+  
   if( PRESENT( mask ) ) then
   do_daa(:,:) = do_daa(:,:) .and. ( mask(:,:,k+1) > 0.5 )
   endif
-  do_any      = ANY( do_daa(:,:) )
+  do_any = ANY( do_daa(:,:) )
 
 ! --- Do adjustment
  if ( do_any ) then
- where ( do_daa )
-    store(:,:) = ( theta(:,:,k  ) * pixdp(:,:,k  )     &
-                +  theta(:,:,k+1) * pixdp(:,:,k+1) )   &
-               / ( pixdp(:,:,k  ) + pixdp(:,:,k+1) )
-    theta(:,:,k  ) = store(:,:)
-    theta(:,:,k+1) = store(:,:)
-     temp(:,:,k  ) = pi(:,:,k  ) * theta(:,:,k  ) 
-     temp(:,:,k+1) = pi(:,:,k+1) * theta(:,:,k+1)
- end where
-    did_adj = .true.
+   if(do_mcm_dry_adj) then
+     where ( do_daa )
+       temp(:,:,k) = (temp(:,:,k)  * dpres(:,:,k  )   + &
+                      temp(:,:,k+1)* dpres(:,:,k+1) )   &
+                   /(dpres(:,:,k) + ppp(:,:,k+1)*dpres(:,:,k+1))
+       temp(:,:,k+1) = temp(:,:,k)*ppp(:,:,k+1)
+     end where
+     did_adj = .true.
+   else
+     where ( do_daa )
+       store(:,:) = ( theta(:,:,k  ) * pixdp(:,:,k  )     &
+                   +  theta(:,:,k+1) * pixdp(:,:,k+1) )   &
+                  / ( pixdp(:,:,k  ) + pixdp(:,:,k+1) )
+       theta(:,:,k  ) = store(:,:)
+       theta(:,:,k+1) = store(:,:)
+        temp(:,:,k  ) = pi(:,:,k  ) * theta(:,:,k  ) 
+        temp(:,:,k+1) = pi(:,:,k+1) * theta(:,:,k+1)
+     end where
+     did_adj = .true.
+   endif
  end if
 
 ! ----------------------------------------------
@@ -146,7 +169,9 @@
 !-----------------------------------------------------------------
 ! iteration loop ends           
 !-----------------------------------------------------------------
+ if(.not.do_mcm_dry_adj) then
      call error_mesg ('DRY_ADJ', 'Non-convergence in dry_adj', WARNING)
+ endif
  900 continue
     
 ! --- Compute change in temperature
@@ -191,7 +216,7 @@
 !---------------------------------------------------------------------
 
   unit = open_file ('logfile.out', action='append')
-  if ( get_my_pe() == 0 ) then
+  if ( get_my_pe() == get_root_pe() ) then
        WRITE( unit,'(/,80("="),/(a))') trim(version), trim(tag)
        WRITE( unit, nml = dry_adj_nml ) 
   endif

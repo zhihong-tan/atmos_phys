@@ -24,8 +24,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !   character(len=5), parameter  ::  version_number = 'v0.08'
-    character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 1.2 2001/07/05 17:31:17 fms Exp $'
-    character(len=128)  :: tag     =  '$Name: galway $'
+    character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 1.3 2002/07/16 22:35:06 fms Exp $'
+    character(len=128)  :: tag     =  '$Name: havana $'
 
 !--------------------------------------------------------------------
 !----- interfaces ------
@@ -36,7 +36,8 @@ public esfsw_parameters_init,   &
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-character(len=12)         :: sw_resolution = ' '
+!!3 character(len=12)         :: sw_resolution = ' '
+character(len=16)         :: sw_resolution = ' '
 integer                   :: sw_diff_streams = 0
 
 

@@ -1,16 +1,23 @@
                   module lw_gases_stdtf_mod
 
 
-use rad_step_setup_mod,   only: KSRAD, KERAD
+!use rad_step_setup_mod,   only: KSRAD, KERAD, get_std_pressures
+!use rad_step_setup_mod,   only:               get_std_pressures
 use longwave_params_mod,  only: NBCO215
 use  utilities_mod,       only: open_file, file_exist,    &
 	                        check_nml_error, error_mesg, &
 			        print_version_number  , FATAL, NOTE, &
 				WARNING, get_my_pe, close_file, &
 				read_data, write_data
-use rad_utilities_mod,    only: Environment, environment_type
-use constants_new_mod,    only: bytes_per_word
-use std_pressures_mod,    only: get_std_pressures
+use rad_utilities_mod,    only: Environment, environment_type, &
+                               radiative_gases_type, &
+                               longwave_parameter_type, &
+			       Lw_parameters, &
+                               longwave_control_type, &
+			       Lw_control, &
+                               optical_path_type
+use constants_new_mod,    only: bytes_per_word, wtmair
+!use std_pressures_mod,    only: get_std_pressures
 use gas_tf_mod,           only: put_co2_stdtf_for_gas_tf, &
                                 put_co2_nbltf_for_gas_tf, &
                                 put_ch4_stdtf_for_gas_tf, &
@@ -41,8 +48,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !    character(len=5), parameter  ::  version_number = 'v0.09'
-     character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 1.2 2001/08/30 15:14:14 fms Exp $'
-     character(len=128)  :: tag     =  '$Name: galway $'
+     character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 1.3 2002/07/16 22:35:53 fms Exp $'
+     character(len=128)  :: tag     =  '$Name: havana $'
 
 
 !---------------------------------------------------------------------
@@ -51,7 +58,10 @@ private
 public         &
 	      lw_gases_stdtf_init, lw_gases_stdtf_time_vary,      &
 	      ch4_lblinterp, co2_lblinterp, n2o_lblinterp, &
-	      lw_gases_stdtf_dealloc
+	      lw_gases_stdtf_dealloc, &
+! cfc_init,                  &
+	 cfc_exact, cfc_exact_part, cfc_indx8, cfc_indx8_part, &
+	 cfc_overod, cfc_overod_part
 
 private        &
 	      std_lblpressures, approx_fn, approx_fn_std, &
@@ -207,10 +217,94 @@ logical             :: do_calcstdco2tfs
 logical             :: do_calcstdch4tfs
 logical             :: do_calcstdn2otfs
 
+!--------------------------------------------------------------------
+!       NBLWCFC =  number of frequency bands with cfc band strengths
+!                  included. The bands have the same frequency ranges
+!                  as those used for h2o calculations
+!--------------------------------------------------------------------
+integer, parameter :: NBLWCFC = 8
+
+
+!--------------------------------------------------------------------
+!   data for averaged f11 band strength
+!--------------------------------------------------------------------
+real strf11(NBLWCFC) 
+
+data  strf11 /       &
+         0.000000E+00,  0.000000E+00,  0.527655E+02,  0.297523E+04,  &
+         0.134488E+03,  0.247279E+03,  0.710717E+03,  0.000000E+00/
+
+!--------------------------------------------------------------------
+!   data for averaged f12 band strength
+!--------------------------------------------------------------------
+real strf12(NBLWCFC) 
+
+data strf12 /       &
+         0.552499E+01,  0.136436E+03,  0.243867E+02,  0.612532E+03, &
+         0.252378E+04,  0.438226E+02,  0.274950E+04,  0.000000E+00/
+
+!--------------------------------------------------------------------
+!   data for averaged f113 band strength
+!--------------------------------------------------------------------
+real strf113(NBLWCFC)
+
+data strf113 /     &
+         0.627223E+01,  0.690936E+02,  0.506764E+02,  0.122039E+04,  &
+         0.808762E+03,  0.742843E+03,  0.109485E+04,  0.194768E+03/
+
+!--------------------------------------------------------------------
+!   data for averaged f22 band strength
+!--------------------------------------------------------------------
+real strf22(NBLWCFC) 
+
+data strf22 /    &
+         0.301881E+02,  0.550826E+01,  0.397496E+03,  0.124802E+04,  &
+         0.190285E+02,  0.460065E+02,  0.367359E+04,  0.508838E+03/
+
+!--------------------------------------------------------------------
+!   data for averaged f11 560-800 cm-1 band strength
+!--------------------------------------------------------------------
+real  :: sf1115=0.219856E+02
+
+!--------------------------------------------------------------------
+!   data for averaged f12 560-800 cm-1 band strength
+!--------------------------------------------------------------------
+real  :: sf1215=0.515665E+02
+
+!--------------------------------------------------------------------
+!   data for averaged f113 560-800 cm-1 band strength
+!--------------------------------------------------------------------
+real  :: sf11315=0.430969E+02
+
+!--------------------------------------------------------------------
+!   data for averaged f22 560-800 cm-1 band strength
+!--------------------------------------------------------------------
+real  :: sf2215=0.176035E+03
+
+!--------------------------------------------------------------------
+!   data for averaged f11 800-990, 1070-1200 cm-1 band strength
+!--------------------------------------------------------------------
+real  :: sf11ct=0.125631E+04
+
+!--------------------------------------------------------------------
+!   data for averaged f12 800-990, 1070-1200 cm-1 band strength
+!--------------------------------------------------------------------
+real  :: sf12ct=0.201821E+04
+
+!--------------------------------------------------------------------
+!   data for averaged f113 800-990, 1070-1200 cm-1 band strength
+!--------------------------------------------------------------------
+real  :: sf113ct=0.105362E+04
+
+!--------------------------------------------------------------------
+!   data for averaged f22 800-990, 1070-1200 cm-1 band strength
+!--------------------------------------------------------------------
+real  :: sf22ct=0.188775E+04
 
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
 
+     integer :: ksrad, kerad
 
 
 
@@ -219,12 +313,20 @@ logical             :: do_calcstdn2otfs
 
 
 
-subroutine lw_gases_stdtf_init (kmin, kmax)
+!ubroutine lw_gases_stdtf_init (kmin, kmax, kx, plm_in, pd_in, plm8_in,&
+!subroutine lw_gases_stdtf_init (            kx, plm_in, pd_in, plm8_in,&
+!                                pd8_in)
+subroutine lw_gases_stdtf_init ( pref)
 
-integer, intent(in)  :: kmin, kmax
+!integer, intent(in)  :: kmin, kmax, kx
+!integer, intent(in)  ::             kx
+!real, dimension(:), intent(in) :: plm_in, pd_in, plm8_in, pd8_in
+real,  dimension(:,:), intent(in) :: pref
 
 !---------------------------------------------------------------------
     integer unit, ierr, io
+!    integer :: ksrad, kerad
+    integer :: kmin, kmax
 
 !---------------------------------------------------------------------
 !----  read namelist ----
@@ -246,13 +348,56 @@ integer, intent(in)  :: kmin, kmax
     endif
     call close_file (unit)
 
-    allocate (pd (kmin:kmax+1) )
-    allocate (plm(kmin:kmax+1) )
-    allocate (pd8 (kmin:kmax+1) )
-    allocate (plm8(kmin:kmax+1) )
+!   allocate (pd (kmin:kmax+1) )
+!   allocate (plm(kmin:kmax+1) )
+!   allocate (pd8 (kmin:kmax+1) )
+!   allocate (plm8(kmin:kmax+1) )
 
-    call get_std_pressures (plm_out=plm, pd_out=pd, plm8_out=plm8, &
-	 		    pd8_out=pd8)
+!   allocate (pd   (size(pd_in)   ))
+!   allocate (plm  (size(plm_in)  ))
+!   allocate (pd8  (size(pd8_in)  ))
+!   allocate (plm8 (size(plm8_in) ))
+
+    allocate (pd   (size(pref,1)   ))
+    allocate (plm  (size(pref,1)  ))
+    allocate (pd8  (size(pref,1)  ))
+    allocate (plm8 (size(pref,1 ) ))
+
+!   pd = pd_in
+!   plm =plm_in
+!   plm8 = plm8_in
+!   pd8 = pd8_in
+
+!!! convert to mb
+!   pd = pd_in*1.0E-02
+!   plm =plm_in*1.0E-02           
+!   plm8 = plm8_in*1.0E-02           
+!   pd8 = pd8_in*1.0E-02
+
+     kmin = 1
+     kmax = size(pref,1) - 1
+      pd (:) = pref(:,1)
+      pd8(:) = pref(:,2)
+      plm (kmin) = 0.
+      plm8(kmin) = 0.
+      do k=kmin+1,kmax
+        plm (k) = 0.5*(pd (k-1) + pd (k))
+        plm8(k) = 0.5*(pd8(k-1) + pd8(k))
+      enddo
+       plm (kmax+1) = pd (kmax+1)
+       plm8(kmax+1) = pd8(kmax+1)
+    pd = pd  *1.0E-02
+    pd8 = pd8      *1.0E-02
+    plm =plm   *1.0E-02           
+    plm8 = plm8*1.0E-02           
+
+    ksrad = 1
+!   kerad = kx
+    kerad = kmax
+
+!   call get_std_pressures (plm_out=plm, pd_out=pd, plm8_out=plm8, &
+! 		    pd8_out=pd8)
+   
 
 !--------------------------------------------------------------------
 !  define the standard pressure levels for use in calculating the 
@@ -260,7 +405,18 @@ integer, intent(in)  :: kmin, kmax
 !--------------------------------------------------------------------- 
     call std_lblpressures
 
-!--------------------------------------------------------------------
+!---------------------------------------------------------------------
+!   define the number of individual bands in the 1200 - 1400 cm-1 
+!   region when ch4 and n2o are active.
+!---------------------------------------------------------------------
+     if (Lw_control%do_ch4_n2o) then                    
+        Lw_parameters%NBTRG  = 1
+        Lw_parameters%NBTRGE = 1
+      else
+        Lw_parameters%NBTRG  = 0                                       
+        Lw_parameters%NBTRGE = 0
+      endif
+
 
 end subroutine lw_gases_stdtf_init
 
@@ -339,11 +495,12 @@ end subroutine lw_gases_stdtf_time_vary
 
 !###################################################################
 
-subroutine ch4_lblinterp (ch4_vmr, ch4_amt)
+!subroutine ch4_lblinterp (ch4_vmr, ch4_amt)
+subroutine ch4_lblinterp (ch4_vmr)
 
 !-----------------------------------------------------------------
 real,              intent(in)  :: ch4_vmr
-character(len=*),  intent(in)  :: ch4_amt
+!character(len=*),  intent(in)  :: ch4_amt
 !-----------------------------------------------------------------
 
 !--------------------------------------------------------------------
@@ -383,7 +540,8 @@ character(len=*),  intent(in)  :: ch4_amt
        integer                   ::  n
        real                      ::  ch4_std_lo, ch4_std_hi
        integer                   ::  nstd_ch4_lo, nstd_ch4_hi
-       character(len=3)          ::  gas_type = 'ch4'
+!      character(len=3)          ::  gas_type = 'ch4'
+       character(len=8)          ::  gas_type = 'ch4'
 
 !---------------------------------------------------------------------
 !  this routine does nothing unless the calculation of tfs is desired.
@@ -523,16 +681,17 @@ character(len=*),  intent(in)  :: ch4_amt
 !---------------------------------------------------------------------
 !   if not calculating tfs, read them in
 !---------------------------------------------------------------------
-      else if (trim(ch4_amt) == 'FIXED') then
+!     else if (trim(ch4_amt) == 'FIXED') then
+      else                                      
 	 call process_ch4_input_file (gas_type, ch4_vmr, NSTDCO2LVLS, &
 				   KSRAD, KERAD, pd, plm, pa)
 
 !---------------------------------------------------------------------
 !   do not read tf file if gas amount is to vary
 !--------------------------------------------------------------------
-      else if (trim(ch4_amt) == 'VARY') then
-	 call error_mesg ('ch4_lblinterp',  &
-           'do not read std tf file if you are varying ch4 amt', FATAL)
+!     else if (trim(ch4_amt) == 'VARY') then
+! call error_mesg ('ch4_lblinterp',  &
+!          'do not read std tf file if you are varying ch4 amt', FATAL)
 
        endif   ! (do_calcstdch4tfs)
 !-------------------------------------------------------------------
@@ -544,11 +703,12 @@ end subroutine ch4_lblinterp
 
 !####################################################################
 
-      subroutine co2_lblinterp (co2_vmr, co2_amt)
+!     subroutine co2_lblinterp (co2_vmr, co2_amt)
+      subroutine co2_lblinterp (co2_vmr         )
 
 !--------------------------------------------------------------------
 real,             intent(in)     ::  co2_vmr
-character(len=*), intent(in)     ::  co2_amt
+!character(len=*), intent(in)     ::  co2_amt
 !--------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -588,7 +748,8 @@ character(len=*), intent(in)     ::  co2_amt
       integer              ::  n
       real                 ::  co2_std_lo, co2_std_hi
       integer              ::  nstd_co2_lo, nstd_co2_hi
-      character(len=3)     ::  gas_type = 'co2'
+!     character(len=3)     ::  gas_type = 'co2'
+      character(len=8)     ::  gas_type = 'co2'
 
 !---------------------------------------------------------------------
 !  this routine does nothing unless the calculation of tfs is desired.
@@ -753,16 +914,17 @@ character(len=*), intent(in)     ::  co2_amt
 !---------------------------------------------------------------------
 !   if not calculating tfs, read them in
 !---------------------------------------------------------------------
-      else if (trim(co2_amt) == 'FIXED') then
+!     else if (trim(co2_amt) == 'FIXED') then
+      else                                    
 	 call process_co2_input_file (gas_type, co2_vmr, NSTDCO2LVLS, &
 				   KSRAD, KERAD, pd, plm, pa)
 
 !---------------------------------------------------------------------
 !   do not read tf file if gas amount is to vary
 !--------------------------------------------------------------------
-      else if (trim(co2_amt) == 'VARY') then
-	 call error_mesg ('co2_lblinterp',  &
-           'do not read std tf file if you are varying co2 amt', FATAL)
+!     else if (trim(co2_amt) == 'VARY') then
+! call error_mesg ('co2_lblinterp',  &
+!          'do not read std tf file if you are varying co2 amt', FATAL)
 
       endif    !   (do_calcstdco2tfs)
 
@@ -776,11 +938,12 @@ end subroutine co2_lblinterp
 
 !#####################################################################
 
-subroutine n2o_lblinterp (n2o_vmr, n2o_amt)
+!subroutine n2o_lblinterp (n2o_vmr, n2o_amt)
+subroutine n2o_lblinterp (n2o_vmr)
 
 !---------------------------------------------------------------------
 real,             intent(in)   :: n2o_vmr
-character(len=*), intent(in)   :: n2o_amt
+!character(len=*), intent(in)   :: n2o_amt
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -820,7 +983,8 @@ character(len=*), intent(in)   :: n2o_amt
       integer                   ::  n
       real                      ::  n2o_std_lo, n2o_std_hi
       integer                   ::  nstd_n2o_lo, nstd_n2o_hi
-      character(len=3)          ::  gas_type = 'n2o'
+!     character(len=3)          ::  gas_type = 'n2o'
+      character(len=8)          ::  gas_type = 'n2o'
 
 
 !---------------------------------------------------------------------
@@ -969,16 +1133,17 @@ character(len=*), intent(in)   :: n2o_amt
 !---------------------------------------------------------------------
 !   if not calculating tfs, read them in
 !---------------------------------------------------------------------
-      else if (trim(n2o_amt) == 'FIXED') then
+!     else if (trim(n2o_amt) == 'FIXED') then
+      else                                   
 	 call process_n2o_input_file (gas_type, n2o_vmr, NSTDCO2LVLS, &
 				   KSRAD, KERAD, pd, plm, pa)
 
 !---------------------------------------------------------------------
 !   do not read tf file if gas amount is to vary
 !--------------------------------------------------------------------
-      else if (trim(n2o_amt) == 'VARY') then
-	 call error_mesg ('n2o_lblinterp',  &
-           'do not read std tf file if you are varying n2o amt', FATAL)
+!     else if (trim(n2o_amt) == 'VARY') then
+! call error_mesg ('n2o_lblinterp',  &
+!          'do not read std tf file if you are varying n2o amt', FATAL)
 
     endif
  
@@ -3977,12 +4142,18 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
 !--------------------------------------------------------------------
 !  local variables
 !--------------------------------------------------------------------
-      character(len=17) input_lblco2name(nfreq_bands_sea_co2,9)
-      character(len=17) input_lblch4name(nfreq_bands_sea_ch4,5)
-      character(len=17) input_lbln2oname(nfreq_bands_sea_n2o,4)
-      character(len=17) name_lo
-      character(len=17) name_hi
-      character(len=23) filename
+!     character(len=17) input_lblco2name(nfreq_bands_sea_co2,9)
+!     character(len=17) input_lblch4name(nfreq_bands_sea_ch4,5)
+!     character(len=17) input_lbln2oname(nfreq_bands_sea_n2o,4)
+!     character(len=17) name_lo
+!     character(len=17) name_hi
+!     character(len=23) filename
+      character(len=24) input_lblco2name(nfreq_bands_sea_co2,9)
+      character(len=24) input_lblch4name(nfreq_bands_sea_ch4,5)
+      character(len=24) input_lbln2oname(nfreq_bands_sea_n2o,4)
+      character(len=24) name_lo
+      character(len=24) name_hi
+      character(len=32) filename
 
       real, dimension(:,:), allocatable  :: trns_in
 
@@ -4128,5 +4299,210 @@ subroutine deallocate_interp_arrays
 end subroutine deallocate_interp_arrays
 
 
-             end  module lw_gases_stdtf_mod
+!####################################################################
+
+subroutine cfc_exact (index, Optical, cfc_tf)
+
+!----------------------------------------------------------------------
+!     cfc_exact computes exact cool-to-space transmission function 
+!     for cfc for the desired band (given by index). 
+!----------------------------------------------------------------------
+
+integer,                 intent(in)    :: index
+type(optical_path_type), intent(in) :: Optical
+real, dimension (:,:,:), intent(out)   :: cfc_tf
+
+!----------------------------------------------------------------------
+     integer :: kx
+     kx = size (Optical%totf11,3) 
+!     cfc_tf(:,:,KSRAD:KERAD) = 1.0E+00 -    &
+!                      strf113(index)*totf113(:,:,KSRAD+1:KERAD+1) -   &
+!                     strf22 (index)*totf22 (:,:,KSRAD+1:KERAD+1) -   &
+!                     strf11 (index)*totf11 (:,:,KSRAD+1:KERAD+1) -   &
+!                     strf12 (index)*totf12 (:,:,KSRAD+1:KERAD+1)    
+      cfc_tf(:,:,:          ) = 1.0E+00 -    &
+                      strf113(index)*Optical%totf113(:,:,2:kx           ) -   &
+                      strf22 (index)*Optical%totf22 (:,:,2:kx           ) -   &
+                      strf11 (index)*Optical%totf11 (:,:,2:kx           ) -   &
+                      strf12 (index)*Optical%totf12 (:,:,2:kx           )    
+
+
+end subroutine cfc_exact
+
+
+
+
+!####################################################################
+
+subroutine cfc_exact_part (index, Optical, cfc_tf, klevel)
+
+!----------------------------------------------------------------------
+!     cfc_exact computes exact cool-to-space transmission function 
+!     at levels below klevel for cfc for the band given by index. 
+!----------------------------------------------------------------------
+
+integer,                 intent(in)    :: index, klevel
+type(optical_path_type), intent(in) :: Optical
+real, dimension (:,:,:), intent(out)   :: cfc_tf
+
+!----------------------------------------------------------------------
+      integer     ::  k, kx
+
+!----------------------------------------------------------------------
+     kx = size (Optical%totf11,3) 
+!     do k=klevel,KERAD
+      do k=klevel,kx-1 
+        cfc_tf(:,:,k) = 1.0E+00 -    &
+                         strf113(index)*    &
+		          (Optical%totf113(:,:,k+1) -  &
+			   Optical%totf113(:,:,klevel)) -   &
+                         strf22 (index)*   &
+		          (Optical%totf22(:,:,k+1) -   &
+			   Optical%totf22(:,:,klevel)) -   &
+                         strf11 (index)*                          &
+		          (Optical%totf11(:,:,k+1) -   &
+			    Optical%totf11(:,:,klevel)) -   &
+                         strf12 (index)*      &   
+		          (Optical%totf12(:,:,k+1) -   &
+			   Optical%totf12(:,:,klevel)) 
+      end do
+
+
+end subroutine cfc_exact_part
+
+
+
+!####################################################################
+
+subroutine cfc_indx8 (index, Optical, tcfc8)
+
+!----------------------------------------------------------------------
+!     cfc_indx8 computes transmission function for cfc for the band 8. 
+!----------------------------------------------------------------------
+
+integer,                 intent(in)    :: index
+type(optical_path_type), intent(in) :: Optical
+real, dimension (:,:,:), intent(out)   :: tcfc8
+
+!----------------------------------------------------------------------
+!     tcfc8 (:,:,KSRAD:KERAD+1) = 1.0E+00 -    &
+!                      strf113(index)*totf113(:,:,KSRAD:KERAD+1) -   &
+!                      strf22 (index)*totf22 (:,:,KSRAD:KERAD+1) 
+      tcfc8 (:,:, :           ) = 1.0E+00 -    &
+                       strf113(index)*Optical%totf113(:,:, :           ) -   &
+                       strf22 (index)*Optical%totf22 (:,:, :           ) 
+
+
+end subroutine cfc_indx8
+
+
+
+!####################################################################
+
+subroutine cfc_indx8_part (index, Optical, tcfc8, klevel)
+
+!----------------------------------------------------------------------
+!     cfc_indx8_part computes transmission function for cfc for 
+!     the band 8. 
+!----------------------------------------------------------------------
+
+integer,                 intent(in)    :: index, klevel
+type(optical_path_type), intent(in) :: Optical
+real, dimension (:,:,:), intent(out)   :: tcfc8
+
+!----------------------------------------------------------------------
+    integer     ::      k, kx
+
+!----------------------------------------------------------------------
+     kx = size (Optical%totf11,3) 
+!     do k=klevel,KERAD
+      do k=klevel,kx-1 
+        tcfc8 (:,:,k+1) = 1.0E+00 -  strf113(index)*    &
+	                  (Optical%totf113(:,:,k+1) -  &
+			   Optical%totf113(:,:,klevel)) -   &
+                          strf22 (index)*  &
+		  	  (Optical%totf22(:,:,k+1) -   &
+			    Optical%totf22(:,:,klevel)) 
+      end do
+
+
+end subroutine cfc_indx8_part
+
+
+
+
+!####################################################################
+
+subroutine cfc_overod (Optical, cfc_tf)
+
+!----------------------------------------------------------------------
+!     cfc_overod computes transmission function for cfc that is used   
+!     with overod variable.
+!----------------------------------------------------------------------
+
+type(optical_path_type), intent(in) :: Optical
+real, dimension (:,:,:), intent(out)   :: cfc_tf
+
+!----------------------------------------------------------------------
+     integer :: kx
+!     cfc_tf(:,:,KSRAD:KERAD) = 1.0E+00 -    &
+!                          sf11315*totf113(:,:,KSRAD+1:KERAD+1) -   &
+!                          sf2215 *totf22 (:,:,KSRAD+1:KERAD+1) -  &
+!	           sf1115*totf11  (:,:,KSRAD+1:KERAD+1) -  &
+!	           sf1215*totf12  (:,:,KSRAD+1:KERAD+1)
+     kx = size (Optical%totf11,3) 
+      cfc_tf(:,:, :         ) = 1.0E+00 -    &
+                           sf11315*Optical%totf113(:,:,2:kx           ) -   &
+                           sf2215 *Optical%totf22 (:,:,2:kx           ) -  &
+		           sf1115*Optical%totf11  (:,:,2:kx           ) -  &
+		           sf1215*Optical%totf12  (:,:,2:kx           )
+
+
+end subroutine cfc_overod
+
+
+
+
+!####################################################################
+
+subroutine cfc_overod_part (Optical, cfc_tf, klevel)
+
+!----------------------------------------------------------------------
+!     cfc_overod_part computes transmission function for cfc that is 
+!     used with overod variable from klevel down.
+!----------------------------------------------------------------------
+
+type(optical_path_type), intent(in) :: Optical
+real, dimension (:,:,:), intent(out)   :: cfc_tf
+integer,                 intent(in)    :: klevel
+
+!----------------------------------------------------------------------
+      integer     ::      k, kx
+
+!----------------------------------------------------------------------
+!     do k=klevel,KERAD
+     kx = size (Optical%totf11,3) 
+      do k=klevel,kx-1 
+        cfc_tf(:,:,k) = 1.0E+00 - sf11315*      &
+	   	        (Optical%totf113(:,:,k+1) - Optical%totf113(:,:,klevel)) - &
+                           sf2215 *  &
+		        (Optical%totf22 (:,:,k+1) - Optical%totf22 (:,:,klevel)) -   & 
+		           sf1115*   &
+		        (Optical%totf11 (:,:,k+1) - Optical%totf11 (:,:,klevel)) -   & 
+		           sf1215*  &
+		        (Optical%totf12 (:,:,k+1) - Optical%totf12 (:,:,klevel))   
+      end do
+
+
+
+end subroutine cfc_overod_part
+
+
+
+!####################################################################
+
+
+
+             end module lw_gases_stdtf_mod
+
 

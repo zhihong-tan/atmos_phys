@@ -2,15 +2,21 @@
                     module longwave_aerosol_mod
 
  
-use rad_step_setup_mod,    only: KSRAD, KERAD, ISRAD, IERAD, JSRAD, &
-			         JERAD, jabs, deltaz
+!use rad_step_setup_mod,    only: KSRAD, KERAD, ISRAD, IERAD, JSRAD, &
+!			         JERAD, jabs, deltaz
+!use rad_step_setup_mod,    only:                                    &
+!		                jabs, deltaz
+!			                      deltaz
 use  rad_utilities_mod,    only: longwave_control_type, Lw_control, &
+                                  optical_path_type, &
+                                 map_global_indices, &
 				 Environment, environment_type
 use  utilities_mod,        only: open_file, file_exist,    &
 			         check_nml_error, error_mesg, &
 			         print_version_number, FATAL, NOTE, &
-				 WARNING, get_my_pe, close_file, &
-				 get_domain_decomp
+				 WARNING, get_my_pe, close_file
+!			 WARNING, get_my_pe, close_file, &
+!			 get_domain_decomp
 use constants_new_mod,     only: diffac
 
 !--------------------------------------------------------------------
@@ -28,15 +34,16 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: longwave_aerosol.F90,v 1.2 2001/07/05 17:31:50 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: galway $'
+   character(len=128)  :: version =  '$Id: longwave_aerosol.F90,v 1.3 2002/07/16 22:35:26 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: havana $'
 
 
 !---------------------------------------------------------------------
 !----- interfaces  -----
            
 public         longwave_aerosol_init, &
-	       aertau, longwave_aerosol_dealloc, &
+!	       aertau, longwave_aerosol_dealloc, &
+	       aertau,  &
                get_totaerooptdep, get_totaerooptdep_15, &
 	       get_aerooptdep_KE_15
 
@@ -62,8 +69,10 @@ public         longwave_aerosol_init, &
 
 
 logical           :: do_lwaerosol    = .false.
-character(len=12) :: strat_lwmodel_type  =  '            '
-character(len=12) :: lwaerosol_form      =  '          '
+!character(len=12) :: strat_lwmodel_type  =  '            '
+!character(len=12) :: lwaerosol_form      =  '          '
+character(len=16) :: strat_lwmodel_type  =  '            '
+character(len=16) :: lwaerosol_form      =  '          '
 integer           :: strat_lwmodel_nintvls = 1
 integer           :: imax_aerfile = -1
 integer           :: jmax_aerfile = -1
@@ -93,17 +102,21 @@ namelist / longwave_aerosol_nml /    &
 !------- private data ------
 
 
-real, dimension (:,:,:), allocatable       :: totaerooptdep_15, &
+!real, dimension (:,:,:), allocatable       :: totaerooptdep_15, &
+real, dimension (:,:,:), allocatable       ::                   &
                                               strlwext, strlwalb 
 real, dimension (:,:,:,:), allocatable     :: aeralb, aerext,   &
-					      aerconc, totaerooptdep
-real, dimension (:,:), allocatable         :: strlwext_15, strlwalb_15,&
-                                              aerooptdep_KE_15
+!					      aerconc, totaerooptdep
+					      aerconc                 
+!real, dimension (:,:), allocatable         :: strlwext_15, strlwalb_15,&
+real, dimension (:,:), allocatable         :: strlwext_15, strlwalb_15
+!                                              aerooptdep_KE_15
 
 integer                      :: NLWAERB
 integer, parameter           :: NLWAERMODELSSTR = 1
 logical                      :: do_prdlwaerosol
-integer                      :: x(4), y(4)
+!integer                       :: x(4), y(4)
+integer, dimension(:), allocatable :: jindx2
 
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
@@ -116,9 +129,12 @@ integer                      :: x(4), y(4)
 
 
 
-subroutine longwave_aerosol_init (kmin, kmax)
+!subroutine longwave_aerosol_init (kmin, kmax, latb)
+subroutine longwave_aerosol_init (      kmax, latb)
 
-integer, intent(in)    :: kmin, kmax
+!integer, intent(in)    :: kmin, kmax
+integer, intent(in)    ::       kmax
+real, dimension(:), intent(in) :: latb
 
 !-----------------------------------------------------------------------
 !  local variables
@@ -128,7 +144,9 @@ integer, intent(in)    :: kmin, kmax
 			  	             aerasymmivlstrlw
 
      integer         :: unit, ierr, io
-     integer         :: iounit, inaer1, inaer2, k, j, lwb, jd, jdf
+     integer         :: kmin=1
+!    integer         :: iounit, inaer1, inaer2, k, j, lwb, jd, jdf
+     integer         :: iounit, inaer1, inaer2, k, j, lwb,     jdf,jindx
 
 !---------------------------------------------------------------------
 !-----  read namelist  ------
@@ -179,7 +197,7 @@ integer, intent(in)    :: kmin, kmax
 !-------------------------------------------------------------------
        else if (trim(lwaerosol_form) == 'predicted') then
          call error_mesg ('longwave_aerosol_init',   &
-		'predicted longwave aerosols not yet implemented.', &
+              'predicted longwave aerosols not yet implemented.', &
 		                                             FATAL)
        else
 !-------------------------------------------------------------------
@@ -193,9 +211,10 @@ integer, intent(in)    :: kmin, kmax
 !--------------------------------------------------------------------
 !   retrieve needed variables from other modules.
 !--------------------------------------------------------------------
-       call get_domain_decomp (x, y)
-       jd = y(2)
-       jdf = y(4) -y(3) + 1
+!      call get_domain_decomp (x, y)
+!      jd = y(2)
+!      jdf = y(4) -y(3) + 1
+       jdf = size(latb,1) - 1
 
 !--------------------------------------------------------------------
 !   check to see if the model configuration matches the form of the
@@ -206,10 +225,19 @@ integer, intent(in)    :: kmin, kmax
          if (kmax /= 40) call error_mesg ('longwave_aerosol_init', &
            ' cannot currently activate lw aerosols with this kerad', & 
 							  FATAL)
-         if (jd  /= 60) call error_mesg ('longwave_aerosol_init', &
-            ' cannot currently activate lw aerosols with this jd', & 
-							    FATAL)
+!  taken care of in map_global_indices
+!        if (jd  /= 60) call error_mesg ('longwave_aerosol_init', &
+!           ' cannot currently activate lw aerosols with this jd', & 
+!						    FATAL)
        endif
+
+      if (Environment%running_gcm) then
+      if (trim (lwaerosol_form) /= ' ' .and. jmax_aerfile /= -1) then
+         allocate (jindx2  (size(latb,1)-1))
+         call map_global_indices (jmax_aerfile, latb, jindx2)
+       endif
+       endif
+
 
 !---------------------------------------------------------------------
 !   define the number of band intervals in the aerosol data. allocate
@@ -237,7 +265,7 @@ integer, intent(in)    :: kmin, kmax
  
 !--------------------------------------------------------------------
 !     read in the time-independent longwave aerosol extinction and
-!     albedo coefficients for rama's code. these are given for the
+!     albedo coefficients for ramas code. these are given for the
 !     frequency band structure appropriate to the present longwave
 !     radiation code, so there is no need (as there is in the 
 !     shortwave code) to do a frequency interpolation.
@@ -285,8 +313,11 @@ integer, intent(in)    :: kmin, kmax
          do lwb = 1, NLWAERB
            do k = ktop_aer, kbot_aer
              do j = 1,jdf
-	       strlwext (j,k,lwb) =  aerextivlstrlw (lwb,k,y(3)+j-1)
-    	       strlwalb (j,k,lwb) =  aerssalbivlstrlw (lwb,k,y(3)+j-1)
+!               strlwext (j,k,lwb) =  aerextivlstrlw (lwb,k,y(3)+j-1)
+!               strlwalb (j,k,lwb) =  aerssalbivlstrlw (lwb,k,y(3)+j-1)
+               jindx = jindx2(j)
+               strlwext (j,k,lwb) =  aerextivlstrlw (lwb,k,jindx   )
+               strlwalb (j,k,lwb) =  aerssalbivlstrlw (lwb,k,jindx   )
              end do
            end do
          end do
@@ -341,27 +372,39 @@ end subroutine longwave_aerosol_init
 
 !###################################################################
 
-subroutine aertau (aeralb, aerext, aerconc)
+subroutine aertau (ix, jx, kx, js, deltaz, Optical, aeralb, aerext,   &
+                   aerconc)
  
 !---------------------------------------------------------------------
+integer, intent(in)     :: ix, jx, kx, js
+real, dimension(:,:,:), intent(in) :: deltaz
+type(optical_path_type), intent(inout) :: Optical
 real, dimension(:,:,:,:),  intent(in), optional   :: aeralb, aerext, &
 						     aerconc
 
 !---------------------------------------------------------------------
       integer                                :: j, k, n, nm
+      integer    :: israd, ierad, jsrad, jerad, ksrad, kerad
       real, dimension (:,:,:,:), allocatable :: aerooptdep
       real, dimension (:,:,:  ), allocatable :: aerooptdep_15
+
+      israd = 1 
+      ierad = ix
+      jsrad = 1
+      jerad = jx
+      ksrad = 1
+      kerad = kx
 
 !---------------------------------------------------------------------
 !allocate needed arrays
 !---------------------------------------------------------------------
-      allocate (totaerooptdep (ISRAD:IERAD, JSRAD:JERAD,         &
+      allocate (Optical%totaerooptdep (ISRAD:IERAD, JSRAD:JERAD,         &
                                            KSRAD:KERAD+1,  NLWAERB) )
-      allocate (aerooptdep_KE_15 (ISRAD:IERAD, JSRAD:JERAD           ) )
-      allocate (totaerooptdep_15 (ISRAD:IERAD, JSRAD:JERAD,   &
-					               KSRAD:KERAD+1))
+      allocate (Optical%aerooptdep_KE_15 (ISRAD:IERAD, JSRAD:JERAD           ) )
+      allocate (Optical%totaerooptdep_15 (ISRAD:IERAD, JSRAD:JERAD,   &
+ 				               KSRAD:KERAD+1))
       allocate (aerooptdep (ISRAD:IERAD, JSRAD:JERAD,    &
-						KSRAD:KERAD, NLWAERB) )
+ 					KSRAD:KERAD, NLWAERB) )
       allocate (aerooptdep_15 (ISRAD:IERAD, JSRAD:JERAD,  KSRAD:KERAD) )
 
 !---------------------------------------------------------------------
@@ -372,33 +415,37 @@ real, dimension(:,:,:,:),  intent(in), optional   :: aeralb, aerext, &
         do n = 1,NLWAERB
           do k=ktop_aer,kbot_aer
             aerooptdep(:,j,k,n) = aerooptdep(:,j,k,n) + diffac*  &
-                                  (1.0 - strlwalb(jabs(j),k,n))* &
-                                  strlwext(jabs(j),k,n)*  &
+!                                 (1.0 - strlwalb(jabs(j),k,n))* &
+                                  (1.0 - strlwalb(j+js-1 ,k,n))* &
+!                                 strlwext(jabs(j),k,n)*  &
+                                  strlwext(j+js-1 ,k,n)*  &
 		                  deltaz(:,j,k)
           enddo
         enddo
         do k=ktop_aer,kbot_aer
           aerooptdep_15(:,j,k) = aerooptdep_15(:,j,k) + diffac*  &
-                                 (1.0 - strlwalb_15(jabs(j),k))* &
-                                 strlwext_15(jabs(j),k)*   &
+!                                (1.0 - strlwalb_15(jabs(j),k))* &
+                                 (1.0 - strlwalb_15(j+js-1 ,k))* &
+!                                strlwext_15(jabs(j),k)*   &
+                                 strlwext_15(j+js-1 ,k)*   &
 			         deltaz(:,j,k)
         enddo
       enddo
  
       do n = 1,NLWAERB
-        totaerooptdep (:,:,KSRAD,n) = 0.0E+00
+        Optical%totaerooptdep (:,:,KSRAD,n) = 0.0E+00
         do k = KSRAD+1,KERAD+1
-          totaerooptdep(:,:,k,n) = totaerooptdep(:,:,k-1,n) +  &
+          Optical%totaerooptdep(:,:,k,n) = Optical%totaerooptdep(:,:,k-1,n) +  &
                                    aerooptdep(:,:,k-1,n)
         enddo
       enddo
-      totaerooptdep_15 (:,:,KSRAD) = 0.0E+00
+      Optical%totaerooptdep_15 (:,:,KSRAD) = 0.0E+00
       do k = KSRAD+1,KERAD+1
-	totaerooptdep_15(:,:,k) = totaerooptdep_15(:,:,k-1) +    &
+	Optical%totaerooptdep_15(:,:,k) = Optical%totaerooptdep_15(:,:,k-1) +    &
                                   aerooptdep_15(:,:,k-1)
       enddo
 
-      aerooptdep_KE_15(:,:) = aerooptdep_15(:,:,KERAD)
+      Optical%aerooptdep_KE_15(:,:) = aerooptdep_15(:,:,KERAD)
 
 !---------------------------------------------------------------------
 
@@ -414,26 +461,27 @@ end  subroutine aertau
 
 !####################################################################
 
-subroutine longwave_aerosol_dealloc
+!subroutine longwave_aerosol_dealloc
 
-      deallocate ( totaerooptdep_15 )
-      deallocate ( aerooptdep_KE_15 )
-      deallocate ( totaerooptdep    )
+!     deallocate ( totaerooptdep_15 )
+!     deallocate ( aerooptdep_KE_15 )
+!     deallocate ( totaerooptdep    )
 
-end subroutine longwave_aerosol_dealloc
+!end subroutine longwave_aerosol_dealloc
 
 
 !####################################################################
 
-subroutine get_totaerooptdep (n, totaer)
+subroutine get_totaerooptdep (n, Optical, totaer)
 
 !----------------------------------------------------------------------
 integer,                    intent(in)    :: n
+type(optical_path_type), intent(in) :: Optical
 real, dimension(:,:,:),     intent(out)   :: totaer
 
 !----------------------------------------------------------------------
 
-      totaer(:,:,:) = totaerooptdep(:,:,:,n)
+      totaer(:,:,:) = Optical%totaerooptdep(:,:,:,n)
 
 !-------------------------------------------------------------------
 
@@ -445,14 +493,15 @@ end subroutine get_totaerooptdep
 
 !#####################################################################
 
-subroutine get_totaerooptdep_15 (totaer)
+subroutine get_totaerooptdep_15 (Optical, totaer)
 
 !----------------------------------------------------------------------
+type(optical_path_type), intent(in) :: Optical
 real, dimension(:,:,:),     intent(out)   :: totaer
 
 !----------------------------------------------------------------------
 
-      totaer(:,:,:) = totaerooptdep_15(:,:,:)
+      totaer(:,:,:) = Optical%totaerooptdep_15(:,:,:)
 
 !-------------------------------------------------------------------
 
@@ -464,14 +513,15 @@ end subroutine get_totaerooptdep_15
 
 !#####################################################################
 
-subroutine get_aerooptdep_KE_15 (totaer)
+subroutine get_aerooptdep_KE_15 (Optical, totaer)
 
 !----------------------------------------------------------------------
+type(optical_path_type), intent(in) :: Optical
 real, dimension(:,:),       intent(out)   :: totaer
 
 !----------------------------------------------------------------------
 
-      totaer(:,:) = aerooptdep_KE_15(:,:)
+      totaer(:,:) = Optical%aerooptdep_KE_15(:,:)
 
 !-------------------------------------------------------------------
 

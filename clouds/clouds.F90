@@ -14,7 +14,7 @@ use    cloud_obs_mod, only:  cloud_obs, cloud_obs_init
 use time_manager_mod, only:  time_type
 use    utilities_mod, only:  error_mesg, FATAL, file_exist,   &
                              check_nml_error, open_file,      &
-                             get_my_pe, close_file
+                             get_my_pe, get_root_pe, close_file
 use    rh_clouds_mod, only:  do_rh_clouds, rh_clouds, rh_clouds_avg
 use  strat_cloud_mod, only:  do_strat_cloud, strat_cloud_avg
 use   diag_cloud_mod, only:  do_diag_cloud, diag_cloud_driver, &
@@ -30,8 +30,8 @@ public   clouds, clouds_init, clouds_end
 
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: clouds.F90,v 1.4 2001/03/06 18:49:47 fms Exp $'
- character(len=128) :: tag = '$Name: galway $'
+ character(len=128) :: version = '$Id: clouds.F90,v 1.5 2002/07/16 22:31:43 fms Exp $'
+ character(len=128) :: tag = '$Name: havana $'
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !   note:  the fels-schwarzkopf radiation code permits bi-spectral
@@ -68,10 +68,12 @@ public   clouds, clouds_init, clouds_end
       logical :: do_zonal_clouds = .false.
       logical :: do_obs_clouds   = .false.
       logical :: do_no_clouds    = .false.
+      logical :: do_isccp_cloud_diags = .false.
       
       namelist /clouds_nml/ do_zonal_clouds,  &
                             do_obs_clouds,    &
-                            do_no_clouds
+                            do_no_clouds,     &
+                            do_isccp_cloud_diags
 
 !-----------------------------------------------------------------------
 
@@ -107,6 +109,11 @@ integer,dimension(size(ktoplw,1),size(ktoplw,2),size(ktoplw,3)) ::  &
 !               as per 3rd index values of 1,2 and 3 respectively.
    real,dimension(size(pfull,1),size(pfull,2))   :: tca
    real,dimension(size(pfull,1),size(pfull,2),3) :: hml_ca
+ 
+!      pflux    array for the flux pressure levels for isccp cloud
+!               diagnostics calculations
+   real,dimension(size(phalf,1),size(phalf,2),size(phalf,3))  :: pflux
+   
 
    real,dimension(size(pfull,1),size(pfull,2),size(pfull,3)) ::  &
                                                      ql,qi,cf,rh,cloud
@@ -302,8 +309,41 @@ real, dimension(size(t,1),size(t,2)) :: convprc,psfc
 !---- high,mid,low cloud diagnostics ----
       if ( id_high_cld_amt > 0 .or. id_mid_cld_amt > 0 .or. &
             id_low_cld_amt > 0 ) then
-         call compute_hml_ca_random ( nclds, cldamt(:,:,2:kp1), &
+
+         if (do_isccp_cloud_diags) then
+!           Do alternative (isccp) high,mid,low cloud methodology.            
+!           Use methodology adopted from cloudrad_package:
+
+!           Construct the pflux array, which is the flux pressure
+!           level midway between the pressure levels in the model
+!           where radiation is actually computed.  Add surface
+!           pressure as the final vertical level of the 3-D array.
+!           The first element of the array is set to zero.
+!           The array which uses these is based on cgs units, 
+!           so also multiply by 10 to convert from Pa to dynes/cm2.
+
+            if (present(kbot)) then
+               call error_mesg ('clouds in clouds_mod', &
+                  'compute_isccp_clds not set up/tested on case where kbot is present.',FATAL)
+            end if
+     
+            pflux(:,:,1) = 0.
+            do k = 2, kx
+               pflux(:,:,k) = 0.5 * (pfull(:,:,k-1)+pfull(:,:,k)) * 10.0
+            end do
+            pflux(:,:,kp1) = phalf(:,:,kp1) * 10.0  
+       
+            call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
+                             cldamt(:,:,2:kp1), cloud )
+                             
+            call compute_isccp_clds ( pflux, cloud, hml_ca)               
+
+         else
+!           Use original methodology contained in this module:            
+            call compute_hml_ca_random ( nclds, cldamt(:,:,2:kp1), &
                     kbtmlw(:,:,2:kp1), pfull, phalf, hml_ca, kbot )
+         end if           
+                    
          if ( id_high_cld_amt > 0 ) used = send_data &
                      ( id_high_cld_amt, hml_ca(:,:,1), Time_diag, is, js )
          if ( id_mid_cld_amt > 0 ) used = send_data &
@@ -469,6 +509,58 @@ real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: pfull_norm
 
 !#######################################################################
 
+subroutine compute_isccp_clds ( pflux, cloud, hml_ca)
+
+real,  dimension(:,:,:),   intent(in)  :: pflux, cloud
+real,  dimension(:,:,:),   intent(out) :: hml_ca
+
+!
+!   define arrays giving the fractional cloudiness for clouds with
+!   tops within the ISCCP definitions of high (10-440 hPa), middle
+!   (440-680 hPa) and low (680-1000 hPa).
+ 
+!    note that at this point pflux is in cgs units. change this later.
+
+!    This routine is copied from cloudrad_package_mod, where
+!    it is private and thus non-accessible from here directly.
+!    Modified to work within this routine...
+ 
+! ---------------------------------------------------------------------
+
+   real,  parameter :: mid_btm = 6.8e5,high_btm = 4.4e5
+  
+! local array
+
+integer :: i, j, k
+
+ 
+!---- compute high, middle and low cloud amounts assuming that -----
+!       independent clouds overlap randomly
+
+    hml_ca = 1.0
+    
+ 
+   do j=1, size(cloud,2)
+    do i=1, size(cloud,1)
+      do k = 1, size(cloud,3)
+        if (pflux(i,j,k)  <=  high_btm) then
+          hml_ca(i,j,1) = hml_ca(i,j,1) * (1. - cloud(i,j,k))
+        else if ( (pflux(i,j,k) >  high_btm) .and.  &
+           (pflux(i,j,k) <=  mid_btm) ) then
+         hml_ca(i,j,2) = hml_ca(i,j,2) * (1. - cloud(i,j,k))
+       else  if ( pflux(i,j,k) > mid_btm ) then
+         hml_ca(i,j,3) = hml_ca(i,j,3) * (1. - cloud(i,j,k))
+       endif
+    enddo
+  enddo
+  enddo
+
+    hml_ca = 1. - hml_ca
+    hml_ca = 100. * hml_ca
+  
+end subroutine compute_isccp_clds
+!#######################################################################
+
       subroutine default_clouds (nclds,ktopsw,kbtmsw,ktop,kbtm,  &
                                  cldamt,cuvrf,cirrf,cuvab,cirab,emcld)
 
@@ -625,7 +717,7 @@ type(time_type), intent(in)               :: Time
 !      ----- write namelist -----
 
       unit = open_file ('logfile.out', action='append')
-      if ( get_my_pe() == 0 ) then
+      if ( get_my_pe() == get_root_pe() ) then
            write (unit, '(/,80("="),/(a))') trim(version),trim(tag)
            write (unit, nml=clouds_nml)
       endif

@@ -7,12 +7,10 @@ module rh_clouds_mod
 !
 !=======================================================================
 
-
-use rad_output_file_mod, only:  hold_clouds
-
 use utilities_mod, only:  error_mesg, FATAL, file_exist,    &
                           check_nml_error, open_file,       &
-                          close_file, get_my_pe, read_data, write_data
+                          close_file, get_my_pe, get_root_pe, &
+                          read_data, write_data
 
 !=======================================================================
 
@@ -84,8 +82,8 @@ end interface
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: rh_clouds.F90,v 1.3 2001/07/05 17:27:08 fms Exp $'
-character(len=128) :: tag = '$Name: galway $'
+character(len=128) :: version = '$Id: rh_clouds.F90,v 1.4 2002/07/16 22:34:10 fms Exp $'
+character(len=128) :: tag = '$Name: havana $'
 
 !=======================================================================
 
@@ -120,9 +118,13 @@ real :: high_emiss    = 0.6
 real :: middle_emiss  = 1.0
 real :: low_emiss     = 1.0
 
+real :: tuning_coeff_low_cld = 1.0
+
 !  flag for time averaging rh
 
 logical :: do_average = .false.
+logical :: do_mcm_no_clouds_top = .false.
+logical :: do_mcm_crit_rh = .false.
 
 ! albedos are computed from a table look-up as function of zenith angle
 
@@ -131,7 +133,8 @@ namelist /rh_clouds_nml/ high_middle_pole, high_middle_eq, &
                          rh_crit_bot, rh_crit_top, &
                          high_abs, middle_abs, low_abs, &
                          high_emiss, middle_emiss, low_emiss, &
-                         do_average
+                         do_average, tuning_coeff_low_cld, &
+                         do_mcm_no_clouds_top, do_mcm_crit_rh
 
 !=======================================================================
 
@@ -163,7 +166,7 @@ integer :: unit, ierr, io
 !---------- output namelist to log-------------------------------------
 
       unit = open_file ('logfile.out', action='append')
-      if ( get_my_pe() == 0 ) then
+      if ( get_my_pe() == get_root_pe() ) then
            write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
            write (unit, nml=rh_clouds_nml)
       endif
@@ -303,7 +306,7 @@ real   , intent(out), dimension(:,:,:)   :: alb_uv,alb_nir,abs_uv,abs_nir
 
 
 integer :: i, j, k, n, nlev, max_n_cloud
-real   , dimension(size(rh,1),size(rh,2))            :: sigma, rh_crit
+real   , dimension(size(rh,1),size(rh,2))            :: rh_crit
 logical, dimension(size(rh,1),size(rh,2),size(rh,3)) :: cloud
 real, dimension(size(rh,1),size(rh,2),2) ::  high_alb, middle_alb, low_alb
 real, dimension(size(rh,1),size(rh,2)) :: high_middle, middle_low
@@ -330,10 +333,15 @@ cloud = .false.
 nlev  = size(rh,3)
 
 do k = 1, nlev
-  sigma   = p_full(:,:,k)/p_surf
-  rh_crit = rh_crit_top + sigma*(rh_crit_bot - rh_crit_top)
+  if ( do_mcm_crit_rh ) then
+    rh_crit = rh_crit_top + (rh_crit_bot - rh_crit_top)*p_full(:,:,k)/p_full(:,:,nlev)
+  else
+    rh_crit = rh_crit_top + (rh_crit_bot - rh_crit_top)*p_full(:,:,k)/p_surf
+  endif
   where(rh(:,:,k) >= rh_crit) cloud(:,:,k) = .true.
-end do
+enddo
+
+if ( do_mcm_no_clouds_top ) cloud(:,:,1) = .false.
 
 n_cloud = 0
 
@@ -416,11 +424,13 @@ integer, parameter :: num_angles = 17
 integer, parameter :: num_bands  = 2
 
 real, dimension(num_angles, 2) :: high_cloud, middle_cloud, low_cloud
+real, dimension(num_angles, 2) :: low_cloud_tun
 
 real, dimension(size(zenith,1),size(zenith,2)) :: z
 
 real    :: pi, del, x, r
 integer :: n, i, j, ind
+integer :: n1, n2
 
 ! high cloud albedos for zenith angles from 0-80 deg. every 5 degs.
 !    first for band =1, then band = 2
@@ -445,6 +455,12 @@ pi = 4.0*atan(1.0)
 z  = acos(zenith)*180.0/pi
 del = 90.0/float(num_angles+1)
 
+  do n1 = 1,num_angles
+    do n2 = 1,num_bands
+      low_cloud_tun(n1,n2) = tuning_coeff_low_cld*low_cloud(n1,n2)
+    end do
+  end do
+
 ! if zenith angle >= 80 degrees, use albedos for zenith angle = 80
 do j = 1, size(zenith,2)
   do i = 1, size(zenith,1)
@@ -452,7 +468,7 @@ do j = 1, size(zenith,2)
       do n = 1,num_bands
           high(i,j,n) =   high_cloud(num_angles,n)
         middle(i,j,n) = middle_cloud(num_angles,n)
-           low(i,j,n) =    low_cloud(num_angles,n)
+           low(i,j,n) = low_cloud_tun(num_angles,n)
       end do
     else
       x = z(i,j)/del
@@ -464,8 +480,8 @@ do j = 1, size(zenith,2)
                    + r*(  high_cloud(ind+1,n) -   high_cloud(ind,n))
         middle(i,j,n) = middle_cloud(ind,n) &
                    + r*(middle_cloud(ind+1,n) - middle_cloud(ind,n))
-           low(i,j,n) =    low_cloud(ind,n) &
-                   + r*(   low_cloud(ind+1,n) -    low_cloud(ind,n))
+           low(i,j,n) =    low_cloud_tun(ind,n) &
+                   + r*(   low_cloud_tun(ind+1,n) - low_cloud_tun(ind,n))
       end do
     end if
   end do
@@ -623,53 +639,6 @@ integer, dimension(:,:,:), intent(out) :: cldflag_out
        cldflag_out(:,:,:) = 0
      endif
 
-!!! MAY BE a slight inconsistency here in the pressure level boun-
-!!! daries for the isccp cloud types compared with skyhi.
-
-   it = 1
-   jt = 1
-   if =  size(rh,1) 
-   jf =  size(rh,2)  
-   do j=jt,jf        
-     do i=it,if       
-       tot_clds(i,j) = 0.0
-       icount_hi(i,j) = 1.0
-       icount_mid(i,j) = 1.
-       icount_low(i,j) = 1.
-       cld_isccp_hi (i,j) = 0.0
-       cld_isccp_mid(i,j) = 0.0
-       cld_isccp_low(i,j) = 0.0
-       do k=ks,ke
-	 if (cldflag_out(i,j,k) == 1) tot_clds(i,j) = 1.0E+00
-         if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) >=  10000. &
-         .and. press(i,j,k) <= 440000. .and. icount_hi(i,j) == 1.)  &
-	 then
-	   cld_isccp_hi(i,j) = 1.0
-	   icount_hi(i,j) =0.0
-	   icount_mid(i,j) =0.0
-	   icount_low(i,j) =0.0
-         endif
- 	 if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) >  440000. &
-         .and. press(i,j,k) <= 680000. .and. icount_mid(i,j) == 1.)  &
-	 then
-	   cld_isccp_mid(i,j) = 1.0
-	   icount_mid(i,j) =0.
-	   icount_low(i,j) =0.
-         endif
-	 if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) > 680000. &
-         .and. press(i,j,k) <= 1000000. .and. icount_low(i,j) == 1.) &
-         then
-           cld_isccp_low(i,j) = 1.0
-           icount_low(i,j) =0.
-         endif
-       end do
-     end do
-   end do
-
-   call hold_clouds (tot_clds, cld_isccp_hi, cld_isccp_mid,  &
-                       cld_isccp_low)
-
-
 end subroutine get_global_clouds 
 
 !#######################################################################
@@ -677,5 +646,4 @@ end subroutine get_global_clouds
 
 
 end module rh_clouds_mod
-
 
