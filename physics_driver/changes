@@ -1,0 +1,25 @@
+
+ * added time manager module
+
+     - argument changes to physics_driver include:
+         timesince (integer) --> time (time_type)
+         timesince_rad removed (replaced by a namelist value in
+                                radiation_driver)
+
+     - argument changes in physics_driver_init include (also see below):
+         timesince (integer) --> time      (time_type)
+         date(4) (integer)   --> time_init (time_type)
+         (the call to physics_diag_init also reflects this change)
+
+     - date module initialization no longer done in physics_driver_init
+       this must be done through the time manager module by the user
+
+     - argument to physics_driver_end has changed
+         timesince (integer) --> time (time_type)
+
+ * cleaned up check_dim subroutine
+
+ * physics_driver_init interface now passes the grid box edges,
+   calls to surface_model_init and radiation_driver_init also
+   reflect this change
+

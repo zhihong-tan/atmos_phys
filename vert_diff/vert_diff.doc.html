@@ -1,0 +1,875 @@
+<HTML>
+<TITLE>module vert_diff_mod</TITLE>
+<BODY BGCOLOR="#AABBCC" TEXT="#332211" >
+
+<DIV ALIGN="CENTER"> <FONT SIZE=1>
+<A HREF="#INTERFACE">PUBLIC INTERFACE</A> / 
+<A HREF="#DATA_TYPES">DATA</A> / 
+<A HREF="#ROUTINES">ROUTINES</A> / 
+<A HREF="#NAMELIST">NAMELIST</A> / 
+<A HREF="#DIAGNOSTICS">DIAGNOSTICS</A> / 
+<A HREF="#CHANGES">CHANGES</A> / 
+<A HREF="#ERRORS">ERRORS</A> / 
+<A HREF="#REFERENCES">REFERENCES</A> / 
+<A HREF="#NOTES">NOTES</A> 
+</FONT>
+<P><I>Last updated on <!--#exec cmd="echo $LAST_MODIFIED" -->.</I>
+<BR><BR></DIV><HR>
+
+
+<H2>Vert_diff_mod</H2>
+<A NAME="HEADER">
+<PRE>
+     Version: v1.1
+     Date:    August 10, 1999
+     Contact: Isaac Held
+</PRE>
+</A><!-- END HEADER -->
+<!--------------------------------------------------------------------->
+<A NAME="OVERVIEW">
+<HR>
+<H4>OVERVIEW</H4>
+<!-- BEGIN OVERVIEW -->
+<PRE>
+
+     Adds the tendencies due to vertical diffusion to the tendencies
+     of model prognostic variables  
+     
+
+</PRE>
+</A><!-- END OVERVIEW -->
+<!--------------------------------------------------------------------->
+<A NAME="DESCRIPTION">
+<!-- BEGIN DESCRIPTION -->
+<PRE>
+
+     All three dimensional fields are assumed to be (lon, lat, level)
+      with the third index starting at the top of the model and
+      ending at the bottom
+
+     For tracers, it is the tendency of the mixing ratio (parts
+        per unit mass) that is computed, not the density (parts
+        per unit volume) and analogously for all other fields
+
+     If the dependence of the surface heat flux and evaporation
+       on surface temperature is treated explicitly, then a single
+       subroutine updates the tendencies of all fields
+
+     If the dependence of the surface heat flux and evaporation
+       on surface temperature is treated implicitly, then interfaces 
+       are provided for dividing the up and down sweeps of the 
+       standard tridiagonal elimination into six parts.  One can 
+       visualize this procedure as starting with a downward 
+       sweep through the atmosphere, which continue through the 
+       surface, then re-emerges and continues up the atmosphere.
+       A sample program is included below to help the user undertand
+       the approriate calling sequence
+
+     Diffusion of heat takes the form of mixing of the "dry static
+       energy temperature", T + g*z/cp.
+
+     Details are provided in <A HREF="vert_diff.tech.ps">vert_diff.tech.ps</A>
+
+     
+</PRE>
+</A><!-- END DESCRIPTION -->
+<!--------------------------------------------------------------------->
+<A NAME="MODULES_USED">
+<HR>
+<H4>OTHER MODULES USED</H4>
+<!-- BEGIN MODULES_USED -->
+<PRE>
+
+     Constants_mod  tested using v1.0
+     Utilities_mod  tested using v1.0
+
+
+</PRE>
+</A><!-- END MODULES_USED -->
+<!--------------------------------------------------------------------->
+<A NAME="INTERFACE">
+<HR>
+<H4>PUBLIC INTERFACE</H4>
+<!-- BEGIN INTERFACE -->
+<PRE>
+
+  use vert_diff_mod [,only: vert_diff_init           , &
+                            vert_diff_end            , &
+                            vert_diff                , &
+                            gcm_vert_diff            , &
+                            surf_diff                , &
+                            tri_surf                 , &
+                            gcm_vert_diff_down       , &
+                            gcm_vert_diff_surf_down  , &
+                            gcm_vert_diff_surf_up    , &
+                            gcm_vert_diff_up         , &
+                            tri_surf_2d_to_1d        , &
+                            tri_surf_1d_to_2d        
+
+
+
+  vert_diff_init : initializes module
+
+  vert_diff_end : clears memory
+
+  vert_diff : adds tendency due to vertical diffusion to tendencies
+              of a single field -- 
+              to be used only if surface fluxes are not implicitly 
+              dependent on surface temperature
+
+  gcm_vert_diff  : 
+              adds tendency due to vertical diffusion to tendencies
+              of temperature, specific humidity, two components of 
+              momentum, and mixing ratios of other tracers,
+              to be used only if surface fluxes are not implicitly 
+              dependent on surface temperature
+
+  surf_diff : the type defined to hold 2d and 1d global fields required  
+              by the following 6 steps of the diffusion algorithm when 
+              the dependence of surface fluxes on surface temperature 
+              is treated implicitly
+
+  tri_surf :  where these 2d and 1d fields are stored, 
+              (of type(surf_diff) )
+             
+  gcm_vert_diff_down   : step 1
+              Downward sweep of tridiagonal solver
+
+  tri_surf_2d_to_1d : step 2 
+              moves the 2d fields in
+              surf_diff into the 1d fields required for the next step
+              (this routine is included for testing purposes;
+              in the gcm this transfer is performed by the 
+              flux_exchange module)
+
+  gcm_vert_diff_surf_down : step 3.  prepares boundary conditions
+              for surface modules 
+
+  gcm_vert_diff_surf_up : step 4.  called after surface modules
+              have updated the surface temperature.  Prepares
+              the information needed to continue the upward sweep 
+
+  tri_surf_1d_to_2d : step 5 
+              move the required 1d fields in
+              surf_diff back into the 2d fields required for the next step
+              (this routine is included for testing purposes;
+              in the gcm this transfer is performed by the 
+              flux_exchange module)_
+
+  gcm_vert_diff_up   : step 6.  upward sweep of tridiagonal solver
+
+
+notes:
+ 1) there is no namelist
+ 2) no data files or restart files are required
+ 3) a line is appended to the file logfile.out if it already exists
+    containing the version number of the module -- if it does not
+    exist the file is created in the working directory
+
+
+</PRE>
+</A><!-- END INTERFACE -->
+<!--------------------------------------------------------------------->
+<A NAME="ROUTINES">
+<HR>
+<H4>PUBLIC ROUTINES</H4>
+<!-- BEGIN ROUTINES -->
+<PRE>
+
+==========================================================================
+
+ subroutine vert_diff_init(idim, jdim, kdim, exdim, global)
+ 
+    input:
+     
+       idim, jdim, kdim -- integers
+           the three global dimensions of the fields to be diffused,
+           with kdim being the number of vertical levels
+
+       exdim -- integer
+           the size of the 1d exchange grid
+           used only if global is .true.
+
+       global -- logical
+
+           .true. if the split diffusion procedure is to be utilized, 
+             calling gcm_vert_diff_down, gcm_vert_diff_surf_down, 
+                     gcm_vert_diff_surf_up, gcm_vert_diff_up
+
+           .false. otherwise 
+
+==========================================================================
+
+ subroutine vert_diff_end()
+ 
+        no arguments
+
+==========================================================================
+
+ subroutine vert_diff(delt, xi, t, q, diff, p_half, z_full, &
+                flux, dflux_datmos, factor, dt_xi, kbot)
+ 
+    input: 
+
+         delt -- real
+           time step , seconds
+           if using leapfrog step, set equal to 2*dt = time(i+1) - time(i-1)
+
+         xi -- real, dimension(:,:,:)
+            field to be diffused, 
+                  at time step i   for   two-time level schemes
+                  at time step i-1 for three-time level (leapfrog) schemes
+               units up to user
+           
+         t -- real, dimension(:,:,:)
+            temperature ( degrees K)
+              used only for computation of density 
+              shape must conform to that of xi
+
+         q -- real, dimension(:,:,:)
+            specific humidity (dimensionless)
+              used only for computation of density 
+              shape must conform to that of xi
+
+         diff -- real, dimension(:,:,:) 
+             kinematic diffusivity (m*2/s)
+             shape must conform to that of xi
+             diff(:,:,k) is the diffusivity evaluated at the interface
+                 between the k-1 and k levels
+             the value diff(:,:,1) is not used
+
+         p_half -- real, dimension(:,:,:)
+             pressure at interface between model levels
+             size(p_half,3) must = 1 + size(xi,3)
+             units = Pascals
+
+         z_full -- real, dimension(:,:,:)
+             height of the level where xi is defined
+             shape must conform to that of xi
+             units = meters
+
+         factor -- real
+             used if one wants to modify the units of the flux input 
+             The units for flux are [factor]*[xi]*kg/(m**2 s)
+                where [xi} is the unit for the field xi
+             Thus, if xi = temperature in K, and if you want to input the 
+               flux in W/(m**2) set factor = heat capacity per unit mass
+               in (J/(kg K))
+
+         dflux_datmos -- real, dimension(:,:)
+             shape must conform to first two dimensions of xi.
+             Set = 0.0 if the surface flux is treated explicitly.
+             If dependence of flux on lowest level of atmosphere is
+             treated implicitly, set equal to derivative of flux 
+             with respect to value of xi in lowest model layer.
+             Units = [factor]*kg/(m**2 s)
+
+    
+    input/output:
+
+         flux -- real, dimension(:,:)
+             Surface flux (positive upwards) 
+             shape must conform to first two dimensions of xi
+             Units = [factor]*[xi]*kg/(m**2 s)
+             Flux should be evaluated with atmospheric fields 
+                     from time i   for two-time level schemes
+                     from time i-1 for leapgrog
+             If dflux_datmos is non-zero, input flux is modified by 
+             the implicit correction 
+                 flux(i+1) = flux(i or i-1) + delt*dflux_datmos*dt_xi(:,:,N)
+                 where dt_xi is the final (output) tendency and 
+                 N = size(dt_xi,3) is the lowest model level
+
+         dt_xi -- real, dimension(:,:,:)
+             Tendency of xi
+             shape must conform to that of xi
+             input is the tendency due to all other processes
+                 that have been added prior to this call
+             output will be the tendency modified by the effects of diffusion
+             Because the algorithm is implicit, the final tendency
+                depends on which other processes contribute to 
+                the tendency before, and which after, this call
+
+     optional input:
+
+          kbot -- integer,dimension(:,:)
+             shape must conform to first two dimensions of xi
+
+             For use with models in which different columns
+             have different number of levels above the surface.
+             The levels k <= kbot are assumed to be above the surface.
+
+             If kbot is present, the module will function properly
+             if  diff = 0 for levels below the surface. Also, to avoid
+             division by zero, be sure that the underground 
+             input temperatures are non-zero and that the pressure 
+             thicknesses of the underground layers are non-zero as well.  
+               
+==========================================================================
+
+ subroutine  gcm_vert_diff(delt, u, v, t, q, tr, diff_m, diff_t,     &
+                    p_half, z_full,                                  &
+                    dtau_datmos, dsens_datmos, devap_datmos,         &
+                    sens, evap, tau_u, tau_v, flux_tr,               &
+                    dt_u, dt_v, dt_t, dt_q, dt_tr, kbot)
+ 
+    input: 
+
+         delt -- real
+           time step , seconds
+           if using leapfrog step, set equal to 2*dt = time(i+1) - time(i-1)
+
+         u -- real, dimension(:,:,:)   zonal wind (m/sec)
+         v -- real, dimension(:,:,:)   meridional wind (m/sec)
+         T -- real, dimension(:,:,:)   temperature  (K)
+         q -- real, dimension(:,:,:)   specific humidity 
+                                         (non-dimensional -- Kg water/Kg air)
+         tr -- real, dimension(:,:,:,:) tracers
+                                          (units arbitrary)
+                                        size(tr,4) = number of tracers
+         
+              fields to be diffused, 
+                  at time step i   for   two-time level schemes
+                  at time step i-1 for three-time level (leapfrog) schemes
+              (t and q also used to compute density)
+
+         diff_m -- real, dimension(:,:,:) 
+             kinematic diffusivity for momentum (m*2/s)
+         diff_t -- real, dimension(:,:,:) 
+             kinematic diffusivity for heat, water vapor, tracers (m*2/s)
+
+             shape must conform to those of u, v, t, q
+             diff_m(:,:,k) and dsiff_t(:,:,k) are the diffusivities
+                 evaluated at the interface between the k-1 and k levels
+             the values diff_m(:,:,1) and diff_m(:,:,1) are not used
+
+         p_half -- real, dimension(:,:,:)
+             pressure at interface between model levels
+             size(p_half,3) must = 1 + size(t,3)
+             units = Pascals
+
+         z_full -- real, dimension(:,:,:)
+             height of the levels where t, q, u, v, tr are defined
+             shape must conform to that of xi
+             units = meters
+
+
+         dtau_datmos  -- real, dimension(:,:)
+         dsens_datmos -- real, dimension(:,:)
+         devap_datmos -- real, dimension(:,:)
+             shape must conform to first two dimensions of input fields
+             Set = 0.0 if the surface flux is treated explicitly
+             If dependence of flux on lowest level of atmosphere is
+             treated implicitly, set 
+
+                dtau_datmos = derivative of surface stress with respect to 
+                     wind component in lowest model layer.
+                     Units = kg/(m**2 s)
+
+                dsens_datmos = derivative of surface sensible heat flux 
+                     with respect to temperature in lowest model layer.
+                     Units = W/(m**2 K)
+
+                devap_datmos = derivative of surface flux of water vapor 
+                     with respect to specific humidity in lowest model layer.
+                     Units = kg/(m**2 s)
+
+    
+    input/output:
+
+         sens, evap, tau_u, tau_v -- real, dimension(:,:)
+             Surface fluxes (positive upwards) 
+             shape must conform to first two dimensions of input fields
+
+             Units:  sens   : W/(m**2) = J /(m**2 s)
+                     evap   : Kg/(m**2 s)
+                     tau_u  : Kg/(m s**2) = (Kg m/s)/(m**2 s) 
+                               = (Kg/(m**3))((m/s)**2) = Pascals
+                     tau_v  : as above
+
+             Flux should be evaluated with atmospheric fields 
+                     from time i   for two-time level schemes
+                     from time i-1 for leapgrog
+
+             If dflux_datmos is non-zero, input flux is modified by 
+             the implicit correction to be 
+                 flux(i+1) = flux(i or i-1) + delt*dflux_datmos*dt_xi(:,:,N)
+                 where dt_xi is the final (output) tendency and 
+                 N = size(dt_xi,3) is the lowest model level
+
+         flux_tr -- real, dimension(:,:,:) 
+                   with size(flux,tr_3) = number of tracers
+                   (although listed as inout, the implicit treatment of 
+                    tracer fluxes is not implemented here, so the 
+                    ouput tracer flux will be identical to the input flux
+                                  
+
+         dt_u, dt_v, dt_t, dt_q -- real, dimension(:,:,:)
+             Tendency of u, v, t, q
+             shape must conform to that of u, v etc
+             input is the tendency due to all other processes
+                 that have been added prior to this call
+             output will be the tendency modified by the effects of diffusion
+             Because the algorithm is implicit, the final tendency
+                depends on which other processes have contributed to 
+                the tendency before, and which after, this call
+
+             Units of dt_xi are [xi]/s where [xi] are units of xi
+
+         dt_tr -- real, dimension(:,:,:,:)
+             Tracer tendency (see above)  size(dt_tr,4) = number of tracers
+
+     optional input:
+
+          kbot -- integer,dimension(:,:)
+             shape must conform to first two dimensions of xi
+
+             For use with models in which different columns
+             have different number of levels above the surface.
+             The levels k <= kbot are assumed to be above the surface.
+
+             If kbot is present, the interface will function properly
+             if  diff = 0 for levels below the surface. Also, to avoid
+             division by zero, be sure that the underground 
+             input temperatures are non-zero and that the pressure 
+             thicknesses of the underground layers are non-zero as well.  
+               
+==========================================================================
+
+ type surf_diff
+
+  real, pointer, dimension(:,:) :: mu_delt_n,    &
+                                   nu_n,         &
+                                   e_n1,         &
+                                   f_t_delt_n1,  &
+                                   f_q_delt_n1,  &
+                                   delta_t_n,    &
+                                   delta_q_n
+
+  real, pointer, dimension(:) :: x_mu_delt_n,    &
+                                 x_nu_n,         &
+                                 x_e_n1,         &
+                                 x_f_t_delt_n1,  &
+                                 x_f_q_delt_n1,  &
+                                 x_delta_t_n,    &
+                                 x_delta_q_n 
+ end type surf_diff
+
+    a public type used to store 2d and 2d data needed by the 
+       multi-step version of the diffusion algorithm
+
+    The same date is stored in 2d and 1d versions
+     (the 1d versions have x_ prepended to the name)
+
+     For the meaning of these seven fields, see <A HREF="vert_diff.tech.ps">vert_diff.tech.ps</A>
+     The user need not know the meaning of these fields to use the module
+
+     Higher level routines need reference this type only when moving
+       data from the 2d atmospheric grid to the 1d exhange grid on which
+       fluxes are computed
+
+         Briefly, the diffusion operator has the form
+
+              mu_k*[nu_{k+1/2}*(T(k+1)-T(k)) - nu_{k-1/2}*(T(k)-T(k-1))
+
+         mu_delt_n = mu_{N} *delt  whre N = the number of levels
+         nu_n = nu_{N-1/2}
+
+         In the tridiagonal elimination, the final increments delta_T
+              (T(i+1)-T(i-1) for leapfrog
+               T(i) - T(i-1) for two-time level models)
+           are related by 
+
+               delta_T_{k} = e_k * delta_T_{k+1} + f_delt_{k}
+
+           (The tendencies, DT = delta_T/delt, are related by
+               DT_{k} = e_k * DT_{k+1} + f_{k}
+            where f_delt = f *delt )
+
+         e_n1        = e_{N-1}      (same for T and q)
+         f_t_delt_n1 = f_delt_{N-1) for temperature
+         f_q_delt_n1 = f_delt_{N-1) for specific humidity
+         delta_t_n = delta_T_{N}, the temperature increment at the lowest level
+         delta_q_n = delta_q_{N}, same for specific humidity
+              
+==========================================================================
+
+ tri_surf
+
+    a public variable of type(surf_diff) in which the relevant fields
+       are stored
+
+==========================================================================
+
+ subroutine gcm_vert_diff_down (is, js, delt,                              &
+                          u, v, t, q, tr,                                  &
+                          diff_m, diff_t, p_half, z_full,                  &
+                          tau_u, tau_v, dtau_datmos,                       &
+                          flux_tr,                                         &
+                          dt_u, dt_v, dt_t, dt_q, dt_tr,                   &
+                          kbot)
+
+    input: 
+
+         is, js -- integers
+             the location in the global lon-lat grid of the rectangular
+             domain on which diffusion is to be performed
+             the size of the domain is determined by the size ofthe input
+             i.e, longitude index ranges from is to is + size(t,1) -1
+                   latitude index ranges from js to js + size(t,2) -1
+
+         delt -- real
+           time step , seconds
+           if using leapfrog step, set equal to 2*dt = time(i+1) - time(i-1)
+
+         u -- real, dimension(:,:,:)   zonal wind (m/sec)
+         v -- real, dimension(:,:,:)   meridional wind (m/sec)
+         T -- real, dimension(:,:,:)   temperature  (K)
+         q -- real, dimension(:,:,:)   specific humidity 
+                                         (non-dimensional -- Kg water/Kg air)
+         tr -- real, dimension(:,:,:,:) tracers
+                                          (units arbitrary)
+                                        size(tr,4) = number of tracers
+         
+              fields to be diffused, 
+                  at time step i   for   two-time level schemes
+                  at time step i-1 for three-time level (leapfrog) schemes
+              (t and q also used to compute density)
+
+         diff_m -- real, dimension(:,:,:) 
+             kinematic diffusivity for momentum (m*2/s)
+         diff_t -- real, dimension(:,:,:) 
+             kinematic diffusivity for heat, water vapor, tracers (m*2/s)
+
+             shape must conform to those of u, v, t, q
+             diff_m(:,:,k) and dsiff_t(:,:,k) are the diffusivities
+                 evaluated at the interface between the k-1 and k levels
+             the values diff_m(:,:,1) and diff_m(:,:,1) are not used
+
+         p_half -- real, dimension(:,:,:)
+             pressure at interface between model levels
+             size(p_half,3) must = 1 + size(t,3)
+             units = Pascals
+
+         z_full -- real, dimension(:,:,:)
+             height of the levels where t, q, u, v, tr are defined
+             shape must conform to that of xi
+             units = meters
+
+	 dtau_datmos  -- real, dimension(:,:)
+	     shape must conform to first two dimensions of input fields
+	     Set = 0.0 if the surface flux is treated explicitly. If
+	     dependence of flux on lowest level of atmosphere is
+	     treated implicitly, set = derivative of surface stress
+	     with respect to wind component in lowest model layer.  
+             Units = kg/(m**2 s)
+
+
+    input/output:
+
+         tau_u, tau_v -- real, dimension(:,:)
+             Surface stresses (positive upwards) 
+             shape must conform to first two dimensions of input fields
+
+             Units:  Kg/(m s**2) = (Kg m/s)/(m**2 s) 
+                               = (Kg/(m**3))((m/s)**2) = Pascals
+
+
+             Flux should be evaluated at time i   for two-time level schemes
+                                   and at time i-1 for leapgrog
+             If dtau_datmos is non-zero, input stress is modified by 
+             the implicit correction 
+                 tau_u(i+1) = tau_u(i or i-1) + delt*dtau_datmos*dt_u(:,:,N)
+                 where dt_u is the final (output) tendency and 
+                 N is the lowest model level; similarly for tau_v
+
+         flux_tr -- real, dimension(:,:,:) 
+                   with size(flux,tr_3) = number of tracers
+                   (although listed as inout, the implicit treatment of 
+                    tracer fluxes is not implemented here, so the 
+                    ouput tracer flux will be identical to the input flux
+                                  
+
+         dt_u, dt_v, dt_t, dt_q -- real, dimension(:,:,:)
+             Tendency of u, v, t, q
+             shape must conform to that of u, v etc
+             input is the tendency due to all other processes
+                 that have been added prior to this call
+             output will be the tendency modified by the 
+                 effects of diffusion 
+             For u, v, (and tracers below) these are the 
+                 tendencies modified by the effects of diffusion 
+
+             The output values of dt_t and dt_q are 0.0
+             (These are listed as inout so that the memory can be
+              used by vert_diff_mod to perform intermediate calculations;
+              the final value of dt_t and dt_q are output by 
+              gcm_vert_diff_up  -- a little dirty)
+
+             Units are [xi]/s where [xi] = [u], [v] etc
+
+         dt_tr -- real, dimension(:,:,:,:)
+             Tracer tendency (see above)  size(dt_tr,4) = number of tracers
+
+
+
+     optional input:
+
+          kbot -- integer,dimension(:,:)
+             shape must conform to first two dimensions of xi
+
+             For use with models in which different columns
+             have different number of levels above the surface.
+             The levels k <= kbot are assumed to be above the surface.
+
+             If kbot is present, the interface will function properly
+             if  diff = 0 for levels below the surface. Also, to avoid
+             division by zero, be sure that the underground 
+             input temperatures are non-zero and that the pressure 
+             thicknesses of the underground layers are non-zero as well.  
+               
+==========================================================================
+
+ subroutine gcm_vert_diff_surf_down 
+               (avail, dsens_datmos, dsens_dsurf, devap_datmos, &
+                devap_dsurf, drad_dsurf, sens, evap)
+
+   Designed for use with the "exchange grid"
+       the output from gcm_vert_diff_down must first be passed to the
+       exchange grid before this routine is called
+
+    input: 
+
+        avail -- logical, dimension(:) 
+             operations will only be performed were avail is .true.
+
+
+        dsens_datmos     real, dimension(:)
+        devap_datmos     real, dimension(:) 
+             Set = 0.0 if the surface flux is treated explicitly
+             If dependence of flux on lowest level of atmosphere is
+             treated implicitly, set 
+
+                dsens_datmos = derivative of surface sensible heat flux 
+                     with respect to temperature in lowest model layer.
+                     Units = W/(m**2 K)
+
+                devap_datmos = derivative of surface flux of water vapor 
+                     with respect to specific humidity in lowest model layer.
+                     Units = kg/(m**2 s)
+
+         drad_dsurf     real, dimension(:)
+               derivative of surface upward longwave radiative flux
+               with respect to surface temperature
+               Units = W/(m**2 K)
+               Set to 0.0 if dependence on surface
+                    temperature is not treated implicitly
+
+    input/output:
+
+        sens, evap -- real, dimension(:)
+             Surface fluxes (positive upwards) 
+
+             Units:  sens   : W/(m**2) = J /(m**2 s)
+                     evap   : Kg/(m**2 s)
+
+        dsens_dsurf     real, dimension(:) 
+        devap_dsurf     real, dimension(:)
+             Set = 0.0 if the surface flux is treated explicitly
+
+             dsens_dsurf = derivative of surface sensible heat flux 
+                     with respect to surface temperature
+                     Units = W/(m**2 K)
+
+             devap_dsurf = derivative of surface flux of water vapor 
+                     with respect to surface temperature.
+                     Units = 1/(m**2 s K) = [kg water/kg air]/(m**2 s K)
+
+         Output provides the fluxes and sensitivities to be passed to 
+            implicit surface modules
+             ie., sensible heat flux = sens + dsens_dsurf * delta t_surf
+                         evaporation = evap + devap_dsurf * delta t_surf
+                where delta t_surf is the temperature increment as
+                 determined by the surface modules 
+
+==========================================================================
+
+ subroutine gcm_vert_diff_surf_up  (avail, delta_t_surf, &
+                                  dsens_dsurf, devap_dsurf, drad_dsurf, &
+                                  sens, evap, rad)                                   
+
+    input: 
+
+        avail -- logical, dimension(:)  
+             operations will only be performed were avail is .true.
+
+
+         delta_t_surf     real, dimension(:) 
+             increment in surface temperature
+             degrees K
+             (if surface model uses only two time levels,
+               this is T(i+1) - T(i), irrespective of whether
+               the atmosphere is leapfrog or not -- i.e.,
+               this is the temperature change since the time at which
+               the temperature was evaluated in the explicit
+               part of the computation of the surface fluxes)
+
+         dsens_dsurf   real, dimension(:) 
+         devap_dsurf   real, dimension(:)
+          drad_dsurf   real, dimension(:)    
+               (see gcm_diff_surface_down)
+
+    input/output
+
+         sens           real, dimension(:) 
+         evap           real, dimension(:) 
+         rad            real, dimension(:)
+
+        input sens and evap should be the output from gcm_diff_surface_down (!)
+        the output is the final values of the surface fluxes
+             sens and rad -- units W/(m**2)
+             evap         -- units Kg/(m**2 s)
+
+==========================================================================
+
+subroutine gcm_vert_diff_up (is, js, delt, dt_t, dt_q, kbot)
+
+        (input and output are 2d -- output
+            from gcm_diff_surface_up must be passed from exchange grid to 
+            atmospheric grid before this routine is called)
+
+   input:
+
+         is, js -- integers
+             the location in the global lon-lat grid of the rectangular
+             domain on which diffusion is to be performed
+             the size of the domain is determined by the size ofthe input
+             i.e, longitude index ranges from is to is + size(dt_t,1) -1
+                   latitude index ranges from js to js + size(dt_t,2) -1
+
+         delt -- real
+           time step , seconds
+           if using leapfrog step, set equal to 2*dt = time(i+1) - time(i-1)
+
+
+         dt_t, dt_q -- real, dimension(:,:,:)
+
+             The tendencies modified by the effects of diffusion
+             Because the algorithm is implicit, the final tendency
+                depends on which other processes have contributed to 
+                the tendency before, and which after, this call
+
+             Units of dt_xi are [xi]/s where [xi] are units of xi
+
+==========================================================================
+
+subroutine tri_surf_2d_to_1d()
+
+              no arguments
+
+          moves the seven fields in tri_surf from 2d to 1d form
+
+          (useful for check-out -- gcm uses exchange module instead)
+
+==========================================================================
+
+subroutine tri_surf_1d_to_2d()
+
+              no arguments
+
+          moves two fields in tri_surf from 1d to 2d form  
+              (delta_t_n and delta_q_n)
+
+             (these are the only two fields needed for the rest of the 
+                multistep algorithm)
+
+          (useful for check-out -- gcm uses exchange module instead)
+
+
+</PRE>
+</A><!-- END ROUTINES -->
+<!--------------------------------------------------------------------->
+<A NAME="CHANGES">
+<HR>
+<H4>CHANGE HISTORY</H4>
+<!-- BEGIN CHANGES -->
+<PRE>
+
+     v1.1 incorporates parts of v1.0 of tq_surf_flux_mod so as
+            to centralize all parts of the code that are related to 
+            the implicit vertical diffusion
+
+     The code has been reorganized substantially from v1.0 but
+            the algorithm has not changed
+
+
+</PRE>
+</A><!-- END CHANGES -->
+<!--------------------------------------------------------------------->
+<A NAME="NOTES">
+<HR>
+<H4>NOTES</H4>
+<!-- BEGIN NOTES -->
+<PRE>
+
+     A pseudo-program using the multistep algorithm:
+
+         do atmospheric loop
+             call gcm_vert_diff_down  (needn't do the whole thing at once)
+         end do
+
+         if not using exchange module
+
+            call tri_surf_2d_to_1d
+
+         if using exchange module
+
+            put tri_surf%mu_delt_n   into  tri_surf%x_mu_delt_n
+            put tri_surf%nu_n        into  tri_surf%x_nu_n
+            put tri_surf%e_n1        into  tri_surf%x_e_n1
+            put tri_surf%f_t_delt_n1 into  tri_surf%x_f_t_delt_n1
+            put tri_surf%f_q_delt_n1 into  tri_surf%x_f_q_delt_n1
+            put tri_surf%delta_t_n   into  tri_surf%x_delta_t_n
+            put tri_surf%delta_q_n   into  tri_surf%x_delta_q_n
+
+         call gcm_vert_diff_surf_down
+
+         call surface modules
+
+         call gcm_vert_diff_surf_up
+
+         if not using exchange module
+
+            call tri_surf_1d_to_2d
+
+         if using exchange module
+         
+            get tri_surf%delta_t_n   from  tri_surf%x_delta_t_n
+            get tri_surf%delta_q_n   from  tri_surf%x_delta_q_n
+
+
+         do atmospheric loop
+             call gcm_vert_diff_up
+         end do
+         
+         done!
+
+
+</PRE>
+</A><!-- END NOTES -->
+<!--------------------------------------------------------------------->
+<A NAME="PLANS">
+<HR>
+<H4>FUTURE PLANS</H4>
+<!-- BEGIN PLANS -->
+<PRE>
+
+     (??)
+
+</PRE>
+</A><!-- END PLANS -->
+<!--------------------------------------------------------------------->
+
+<HR>
+</BODY>
+</HTML>

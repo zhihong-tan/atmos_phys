@@ -1,0 +1,408 @@
+<HTML>
+<TITLE>module cloud_rad</TITLE>
+<BODY BGCOLOR="#AABBCC" TEXT="#332211" >
+
+<DIV ALIGN="CENTER"> <FONT SIZE=1>
+<A HREF="#INTERFACE">PUBLIC INTERFACE</A> / 
+<A HREF="#ROUTINES">ROUTINES</A> / 
+<A HREF="#NAMELIST">NAMELIST</A> / 
+<A HREF="#CHANGES">CHANGES</A> / 
+<A HREF="#ERRORS">ERRORS</A> / 
+<A HREF="#REFERENCES">REFERENCES</A> / 
+<A HREF="#PLANS">PLANS</A> 
+</FONT>
+<P><I>Last updated on <!--#exec cmd="echo $LAST_MODIFIED" -->.</I>
+<BR><BR></DIV><HR>
+
+
+<H2>Module Cloud_Rad_Mod</H2>
+<A NAME="HEADER">
+<PRE>
+     Version: v2.1
+     Date:    January 24, 2000
+     Contact: Steve Klein
+</PRE>
+</A><!-- END HEADER -->
+<!--------------------------------------------------------------------->
+<A NAME="OVERVIEW">
+<HR>
+<H4>OVERVIEW</H4>
+<!-- BEGIN OVERVIEW -->
+<PRE>
+
+     The cloud radiation module uses the stored values of the
+     prognostic cloud variables, and computes the cloud albedo and
+     absorption for the two shortwave bands (ultra-violet/visible and
+     near-infrared), the longwave cloud emissivity, and the 
+     fractional areas covered by clouds.
+
+</PRE>
+</A><!-- END OVERVIEW -->
+<!--------------------------------------------------------------------->
+<A NAME="DESCRIPTION">
+<!-- BEGIN DESCRIPTION -->
+<PRE>
+
+     The cloud radiation module condenses the cloud information 
+     provided by the stratiform cloud scheme and converts it into
+     the areas covered by, the water paths and the effective particle 
+     sizes of liquid and ice. This cloud information is stored into 
+     cloud blocks which are assumed to be randomly overlapped (done 
+     in CLOUD_SUMMARY subroutine). From these, the single-scattering 
+     albedo, asymmetry parameter, and optical depth for the two short 
+     wave bands and the longwave cloud emissivity for each cloud are 
+     calculated in the subroutine CLOUD_OPTICAL_PROPERTIES. Finally, 
+     the subroutine CLOUD_RAD takes the shortwave cloud properties 
+     and converts them using the Delta-Eddington solution to albedo 
+     and absorption in each of the shortwave bands.
+
+     In CLOUD_OPTICAL_PROPERTIES, the parameterization of Slingo (1989)
+     and Ebert and Curry (1992) are used for the shortwave properties of 
+     liquid and ice clouds, respectively.  For the longwave cloud 
+     emissivity, the empirical observation result of Stephens (1978) is
+     used for liquid clouds whereas the parameterization of Ebert and
+     Curry (1992) is used for ice clouds.
+
+     In CLOUD_SUMMARY, the effective radius for liquid clouds is 
+     calculated using the parameterization of Martin et al. (1994)
+     whereas the effective radius of ice clouds is parameterized using
+     that of Donner et al. (1997).
+
+</PRE>
+</A><!-- END DESCRIPTION -->
+<!--------------------------------------------------------------------->
+<A NAME="MODULES_USED">
+<HR>
+<H4>OTHER MODULES USED</H4>
+<!-- BEGIN MODULES_USED -->
+<PRE>
+
+utilities_mod
+constants_mod
+
+</PRE>
+</A><!-- END MODULES_USED -->
+<!--------------------------------------------------------------------->
+<A NAME="INTERFACE">
+<HR>
+<H4>PUBLIC INTERFACE</H4>
+<!-- BEGIN INTERFACE -->
+<PRE>
+
+use cloud_rad_mod [,only: cloud_rad_init, cloud_summary, cloud_rad]
+
+cloud_rad_init -      called once to initialize cloud_rad module.  
+                      This routine initializes the values of 3 private 
+                      constants and reads the namelist input. 
+
+cloud_summary -       called every radiation time step to return the
+                      amounts covered by, shortwave albedoes and 
+                      absorptivities, and longwave emissivities of
+                      clouds predicted by the stratiform cloud scheme.
+
+cloud_rad   -         this subroutine takes the optical depths, single
+                      scattering albedoes, and asymmetry parameters in
+                      the four shortwave bands (specified to in the
+                      comments to cloud_optical_properties subroutine),
+                      and solves the delta-eddington radiative transfer
+                      code to provide the albedoes and reflectivities
+                      of the clouds in 2 shortwave bands, the ultraviolet-
+                      visible and the near infrared.
+
+Notes:
+
+ 1) Note that if strat_cloud is operating, cloud_rad_init is called 
+    from strat_cloud_init. This is done so that the namelist parameters
+    of strat_cloud (qmin, N_land, N_ocean) may be stored as module 
+    parameters in cloud_rad with exactly the same values.
+ 2) Although there is a cloud_rad_init, there is no cloud_rad_end module.
+ 3) No other data files are needed.
+
+</PRE>
+</A><!-- END INTERFACE -->
+<!--------------------------------------------------------------------->
+<A NAME="ROUTINES">
+<HR>
+<H4>PUBLIC ROUTINES</H4>
+<!-- BEGIN ROUTINES -->
+<PRE>
+
+<b>call cloud_rad_init</b> (qmin_in,N_land_in,N_ocean_in)
+
+input
+    
+
+       qmin_in        input value of minimum per-     kg condensate/ 
+                      missible cloud liquid, ice,     kg air
+                      or fraction [real]              or fraction
+
+       N_land_in      input value of number of        #/(m*m*m)
+                      of cloud drop per cubic meter
+                      over land [real]
+
+       N_ocean_in     input value of number of        #/(m*m*m)
+                      of cloud drop per cubic meter
+                      over ocean [real]
+
+  
+-----------------------------------------------------------------------
+
+<b>call cloud_summary</b> (LAND,ql,qi,qa,pfull,phalf,TKel,coszen,
+                    nclds,ktop,kbot,cldamt,r_uv,r_nir,ab_uv,ab_nir,em_lw)
+
+input
+
+     land      fraction of the grid box covered by LAND [real,dimension(:,:)]
+
+     ql         specific humidity of cloud liquid {kg vapor/kg air}
+                [real,dimension(:,:,nlev)]
+  
+     qi         specific humidity of cloud ice {kg vapor/kg air}
+                [real,dimension(:,:,nlev)]
+  
+     qa         cloud fraction {fraction} 
+                [real,dimension(:,:,nlev)]
+ 
+     pfull      pressure at full model levels {Pascals}. 
+                [real,dimension(:,:,nlev)] 
+                IMPORTANT NOTE: p(j) < p(j+1)
+
+     phalf      pressure at half model levels {Pascals}.  
+                [real,dimension(:,:,nlev+1)]
+                IMPORTANT NOTE: phalf(j) < pfull(j) < phalf(j+1)
+
+     TKel       temperature  {Kelvin} 
+                [real,dimension(:,:,nlev)]
+
+
+     coszen     cosine of the solar zenith angle [real,dimension(:,:)]
+
+
+input/output
+
+
+     nclds      number of (random overlapping) clouds in column 
+                [integer,dimension(:,:)]
+
+     ktop       index of vertical level which contains the top of
+                the i'th cloud in the column. [integer,dimension(:,:,i),
+                where i = 1, nclds(:,:)]
+    
+     kbot       index of vertical level which contains the bottom of
+                the i'th cloud in the column. [integer,dimension(:,:,i)]
+    
+     cldamt     horiztonal area amount of i'th cloud (fraction)
+                [real,dimension(:,:,i)]
+
+     r_uv       cloud reflectance in ultra-violet (uv) band of i'th cloud 
+                (fraction) [real,dimension(:,:,i)]
+     
+     r_nir      cloud reflectance in the near-infrared (nir) band of i'th 
+                cloud (fraction) [real,dimension(:,:,i)] 
+
+     ab_uv      cloud absorptance in the uv band of i'th cloud 
+                (fraction) [real,dimension(:,:,i)]
+
+     ab_nir     cloud absorptance in the nir band of i'th cloud 
+                (fraction) [real,dimension(:,:,i)]
+
+     em_lw      longwave emissivity of the i'th cloud (fraction)
+                [real,dimension(:,:,i)]
+
+-----------------------------------------------------------------------
+
+<b>call cloud_rad</b> (tau,w0,gg,coszen,r_uv,r_nir,ab_uv,ab_nir)
+
+input 
+
+     tau        optical depth in 4 bands (dimensionless) 
+                [real,dimension(:,:,i), where i = 1, nclds(:,:)]
+     
+     w0         single scattering albedo in 4 bands (dimensionless)
+                [real,dimension(:,:,i)]
+
+     gg         asymmetry parameter in 4 bands (dimensionless)
+                [real,dimension(:,:,i)]
+
+     coszen       cosine of the solar zenith angle [real,dimension(:,:)]
+
+
+input/output 
+
+     r_uv       cloud reflectance in ultra-violet (uv) band of i'th cloud 
+                (fraction) [real,dimension(:,:,i)]
+     
+     r_nir      cloud reflectance in the near-infrared (nir) band of i'th 
+                cloud (fraction) [real,dimension(:,:,i)] 
+
+     ab_uv      cloud absorptance in the uv band of i'th cloud 
+                (fraction) [real,dimension(:,:,i)]
+
+     ab_nir     cloud absorptance in the nir band of i'th cloud 
+                (fraction) [real,dimension(:,:,i)]
+
+
+
+</PRE>
+</A><!-- END ROUTINES -->
+<!--------------------------------------------------------------------->
+<A NAME="NAMELIST">
+<HR>
+<H4>NAMELIST</H4>
+<!-- BEGIN NAMELIST -->
+<PRE>
+
+<b>&cloud_rad_nml</b>
+
+
+       overlap        integer variable indicating which 
+                      overlap assumption to use:
+                      [integer]
+
+                      overlap = 1. means condensate in 
+                                   adjacent levels is 
+                                   treated as part of 
+                                   the same cloud
+                          
+                      overlap = 2. means condensate in 
+                                   adjacent levels is 
+                                   treated as different 
+                                   clouds
+
+                      overlap is used only if the stratiform
+                      cloud scheme is operating
+                         
+       l2strem        logical variable indicating whether
+                      what solution for cloud radiative
+                      properties is being used.
+                      [logical]
+          
+                      l2strem = T  2 stream solution
+                      l2strem = F  Delta-Eddington solution
+
+                      Note that IF l2strem = T then the 
+                      solution does not depend on solar 
+                      zenith angle
+
+                      used in the radiative transfer 
+                      solution module (cloud_rad)
+
+       taucrit        critical optical depth for switching 
+                      direct beam to diffuse beam for 
+                      use in Delta-Eddington solution
+                      [real]
+
+                      used in the radiative transfer
+                      solution module (cloud_rad)
+
+       adjust_top     logical variable indicating whether 
+                      or not to use the code which places 
+                      the top and bottom of the cloud at 
+                      the faces which are most in view from
+                      the top and bottom of the cloud block.  
+                      This is done to avoid undue influence 
+                      to very small cloud fractions.  If 
+                      true this adjustment of tops is 
+                      performed; If false this is not 
+                      performed.
+                      [logical]
+
+                      used only if strat_cloud_mod is operating
+
+Notes:
+
+ 1) Namelist parameters adjust_top and overlap are only used by
+    the stratiform cloud scheme when it is operating.
+
+</PRE>
+</A><!-- END NAMELIST -->
+<!--------------------------------------------------------------------->
+<A NAME="CHANGES">
+<HR>
+<H4>CHANGE HISTORY</H4>
+<!-- BEGIN CHANGES -->
+<PRE>
+
+
+<b>changes for v2.1</b> (10/4/1999)
+
+     Reset cloud properties to zero where there is zero cloud amount.
+     This was needed for reproducibility on different numbers of
+     processors. Answers may change slightly.
+
+<b>changes for v2.0</b> (10/4/1999)
+
+     MPP version created. Minor changes for open_file and Fortran
+     write statements. Answers should reproduce the previous version.
+
+</PRE>
+</A><!-- END CHANGES -->
+<!--------------------------------------------------------------------->
+<A NAME="ERRORS">
+<HR>
+<H4>ERROR MESSAGES</H4>
+<!-- BEGIN ERRORS -->
+<PRE>
+
+    No error messages at present.
+
+</PRE>
+</A><!-- END ERRORS -->
+<!--------------------------------------------------------------------->
+<A NAME="REFERENCES">
+<HR>
+<H4>REFERENCES</H4>
+<!-- BEGIN REFERENCES -->
+
+     <I> The shortwave properties of liquid clouds come from: </I>
+
+<PRE>
+     Slingo, A., 1989: A GCM parameterization for the shortwave 
+     radiative properties of water clouds. J. Atmos. Sci., vol. 46, 
+     pp. 1419-1427.
+</PRE>
+     <I> The shortwave and longwave properties of ice clouds come from: </I>
+
+<PRE>
+     Ebert, E. E. and J. A. Curry, 1992: A parameterization of ice cloud
+     optical properties for climate models. J. Geophys. Res., vol. 97,
+     D1, pp. 3831-3836.
+</PRE>
+     <I> The longwave emissivity parameterization of liquid clouds comes 
+         from: </I>
+<PRE>
+     Stephens, G. L., 1978: Radiation profiles in extended water clouds.
+     II: Parameterization schemes. J. Atmos. Sci., vol. 35, 
+     pp. 2123-2132.
+</PRE>
+     <I> The parameterization of liquid cloud effective radius comes from: </I>
+<PRE>
+     Martin, G. M., D. W. Johnson, and A. Spice, 1994: The measurement 
+     and parameterization of effective radius of droplets in warm stratocumulus
+     clouds. J. Atmos. Sci, vol 51, pp. 1823-1842.
+</PRE>
+     <I> The parameterization of ice cloud effective radius comes from: </I>
+<PRE>
+     Donner, L. J., C. J. Seman, B. J. Soden, R. S. Hemler, J. C. Warren,
+     J. Strom, and K.-N. Liou, 1997: Large-scale ice clouds in the GFDL
+     SKYHI general circulation model. J. Geophys. Res., vol. 102, D18,
+     pp. 21,745-21,768.
+</PRE>
+
+</A><!-- END REFERENCES -->
+<!--------------------------------------------------------------------->
+<A NAME="PLANS">
+<HR>
+<H4>FUTURE PLANS</H4>
+<!-- BEGIN PLANS -->
+<PRE>
+
+     No Plans at present.
+
+</PRE>
+</A><!-- END PLANS -->
+<!--------------------------------------------------------------------->
+
+<HR>
+</BODY>
+</HTML>
