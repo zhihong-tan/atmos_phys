@@ -24,8 +24,8 @@ private
 
 ! public interfaces
 !=======================================================================
-public :: gcm_vert_diff_init,          &
-          gcm_vert_diff_end,           &
+public :: vert_diff_init,          &
+          vert_diff_end,           &
           gcm_vert_diff,               &
           gcm_vert_diff_down,          &
           gcm_vert_diff_up,            &
@@ -40,11 +40,13 @@ public :: gcm_vert_diff_init,          &
 
 type surf_diff_type
 
-  real, pointer, dimension(:,:) :: dtmass,    &
-                                   dflux_t,   & 
-                                   dflux_q,   & 
-                                   delta_t,   &
-                                   delta_q
+  real, pointer, dimension(:,:) :: dtmass  => NULL(),   &
+                                   dflux_t => NULL(),   & 
+                                   dflux_q => NULL(),   & 
+                                   delta_t => NULL(),   &
+                                   delta_q => NULL(),   &
+                                   delta_u => NULL(),   &
+                                   delta_v => NULL()
  
 end type surf_diff_type
 
@@ -52,15 +54,15 @@ end type surf_diff_type
 real,    allocatable, dimension(:,:,:) :: e_global, f_t_global, f_q_global 
 
       
-logical :: do_init = .true.
 logical :: do_conserve_energy = .true.
 logical :: use_virtual_temp_vert_diff, do_mcm_plev
 integer :: sphum, mix_rat
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 1.7 2003/04/09 21:02:48 fms Exp $'
-character(len=128) :: tag = '$Name: inchon $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 10.0 2003/10/24 22:00:52 fms Exp $'
+character(len=128) :: tagname = '$Name: jakarta $'
+logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
 
@@ -68,7 +70,7 @@ contains
 
 !#######################################################################
 
-subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim,    &
+subroutine vert_diff_init (Tri_surf, idim, jdim, kdim,    &
                                do_conserve_energy_in,         &
                                use_virtual_temp_vert_diff_in, &
                                do_mcm_plev_in )
@@ -79,7 +81,7 @@ subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim,    &
  logical, optional,    intent(in)    :: use_virtual_temp_vert_diff_in
  logical, optional,    intent(in)    :: do_mcm_plev_in
 
-    call write_version_number ( version, tag )
+    call write_version_number ( version, tagname )
 
 ! get the tracer number for specific humidity
     sphum = get_tracer_index( MODEL_ATMOS, 'sphum')
@@ -104,7 +106,7 @@ subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim,    &
       do_mcm_plev = .false.
     endif
 
- if (do_init) then
+ if (.not. module_is_initialized) then
 
     if (allocated(  e_global ))    deallocate (  e_global )
     if (allocated(f_t_global ))    deallocate (f_t_global )
@@ -114,7 +116,7 @@ subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim,    &
     allocate(f_t_global (idim, jdim, kdim-1))
     allocate(f_q_global (idim, jdim, kdim-1))
 
-    do_init = .false.
+    module_is_initialized = .true.
 
  endif
 
@@ -122,7 +124,7 @@ subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim,    &
  
  do_conserve_energy = do_conserve_energy_in
 
-end subroutine gcm_vert_diff_init
+end subroutine vert_diff_init
 
 !#######################################################################
 
@@ -136,6 +138,9 @@ integer,              intent(in)    :: idim, jdim
     allocate( Tri_surf%dflux_q   (idim, jdim) )
     allocate( Tri_surf%delta_t   (idim, jdim) )
     allocate( Tri_surf%delta_q   (idim, jdim) )
+    allocate( Tri_surf%delta_u   (idim, jdim) )
+    allocate( Tri_surf%delta_v   (idim, jdim) )
+
 
 end subroutine alloc_surf_diff_type
 
@@ -150,22 +155,26 @@ type(surf_diff_type), intent(inout) :: Tri_surf
       deallocate( Tri_surf%dflux_q   )
       deallocate( Tri_surf%delta_t   )
       deallocate( Tri_surf%delta_q   )
+      deallocate( Tri_surf%delta_u   )
+      deallocate( Tri_surf%delta_v   )
 
 end subroutine dealloc_surf_diff_type
 
 !#######################################################################
 
-subroutine gcm_vert_diff_end
+subroutine vert_diff_end
 
-  if (.not.do_init) then
+  if (module_is_initialized) then
 
     if (allocated(   e_global ))    deallocate (   e_global)
     if (allocated( f_t_global ))    deallocate ( f_t_global)
     if (allocated( f_q_global ))    deallocate ( f_q_global)
 
   endif
+  module_is_initialized = .false.
 
-end subroutine gcm_vert_diff_end
+
+end subroutine vert_diff_end
 
 !#######################################################################
 
@@ -199,14 +208,15 @@ integer, intent(in)   , dimension(:,:), optional :: kbot
 real, dimension(size(u,1),size(u,2),size(u,3)) :: tt, mu, nu
 
 real, dimension(size(u,1),size(u,2)) :: f_t_delt_n1, f_q_delt_n1, &
-            mu_delt_n, nu_n, e_n1, delta_t_n, delta_q_n
+            mu_delt_n, nu_n, e_n1, delta_t_n, delta_q_n,          &
+            delta_u_n, delta_v_n
 
 real    :: gcp
 integer :: i, j, kb, ie, je
 
 !-----------------------------------------------------------------------
 
-  if(do_init) call error_mesg ('gcm_vert_diff_down in vert_diff_mod',  &
+  if(.not. module_is_initialized) call error_mesg ('gcm_vert_diff_down in vert_diff_mod',  &
       'the initialization routine gcm_vert_diff_init has not been called', &
        FATAL)
     
@@ -223,8 +233,9 @@ integer :: i, j, kb, ie, je
 !  diffuse u-momentum and v_momentum
 
  call uv_vert_diff (delt, mu, nu, u, v, dtau_datmos, tau_u, tau_v,  &
-                    dt_u, dt_v, dt_t, dissipative_heat, kbot)
-		    	
+                    dt_u, dt_v, dt_t, delta_u_n, delta_v_n,         &
+                    dissipative_heat, kbot)
+                            
 !  recompute nu for a different diffusivity
  call compute_nu   (diff_t, p_half, p_full, z_full, t, q, nu)
 
@@ -247,6 +258,8 @@ integer :: i, j, kb, ie, je
     Tri_surf%dflux_t (is:ie,js:je) = -nu_n*(1.0 - e_n1)
     Tri_surf%dflux_q (is:ie,js:je) = -nu_n*(1.0 - e_n1)
     Tri_surf%dtmass  (is:ie,js:je) = mu_delt_n
+    Tri_surf%delta_u (is:ie,js:je) = delta_u_n
+    Tri_surf%delta_v (is:ie,js:je) = delta_v_n
 
 !-----------------------------------------------------------------------
 
@@ -290,7 +303,7 @@ subroutine gcm_vert_diff (delt, u, v, t, q, tr,                    &
                           dtau_datmos, dsens_datmos, devap_datmos, &
                           sens, evap, tau_u, tau_v, flux_tr,       &
                           dt_u, dt_v, dt_t, dt_q, dt_tr,           &
-			  dissipative_heat, kbot      )
+                          dissipative_heat, kbot      )
 
 !  one-step diffusion call for gcm in which there is no implicit dependence of 
 !    surface fluxes on surface temperature
@@ -310,6 +323,7 @@ real,    intent(out)  , dimension(:,:,:)     :: dissipative_heat
 integer, intent(in)   , dimension(:,:), optional :: kbot
 
 real, dimension(size(u,1),size(u,2),size(u,3)) :: mu, nu
+real, dimension(size(u,1),size(u,2))           :: delta_u_n, delta_v_n
 
 
 !-----------------------------------------------------------------------
@@ -319,8 +333,9 @@ real, dimension(size(u,1),size(u,2),size(u,3)) :: mu, nu
  call compute_nu (diff_m, p_half, p_full, z_full, t, q, nu) 
  
  call uv_vert_diff (delt, mu, nu, u, v, dtau_datmos, tau_u, tau_v, &
-                    dt_u, dt_v, dt_t, dissipative_heat, kbot )
-		    
+                    dt_u, dt_v, dt_t, delta_u_n, delta_v_n,        &
+                    dissipative_heat, kbot)
+                    
  call compute_nu   (diff_t, p_half, p_full, z_full, t, q, nu)
 
  call tq_vert_diff (delt, mu, nu, t, q, z_full,  &
@@ -375,7 +390,7 @@ end subroutine vert_diff
 
 subroutine uv_vert_diff (delt, mu, nu, u, v,  &
                          dtau_datmos, tau_u, tau_v, dt_u, dt_v, dt_t, &
-			 dissipative_heat, kbot )
+                          delta_u_n, delta_v_n, dissipative_heat, kbot )
 
 real,    intent(in)                        :: delt
 real,    intent(in)   , dimension(:,:,:)   :: u, v, mu, nu
@@ -383,13 +398,17 @@ real,    intent(in)   , dimension(:,:)     :: dtau_datmos
 real,    intent(inout), dimension(:,:)     :: tau_u, tau_v
 real,    intent(inout), dimension(:,:,:)   :: dt_u, dt_v, dt_t
 real,    intent(out)  , dimension(:,:,:)   :: dissipative_heat
+real,    intent(out)  , dimension(:,:)     :: delta_u_n, delta_v_n
+
+! Note (IH) 
+!   delta_u_n = dt_u/delt at lowest model level, and similarly
+!   for delta_v_n  -- it is convenient to output them separately
 
 integer, intent(in)   , dimension(:,:), optional :: kbot
 
 real, dimension(size(u,1),size(u,2)) :: mu_delt_n, nu_n, e_n1,    &
-                                        f_u_delt_n1, f_v_delt_n1, &
-                                        delta_u_n, delta_v_n
-					
+                                        f_u_delt_n1, f_v_delt_n1
+                                        
 real, dimension(size(u,1),size(u,2),size(u,3)) :: dt_u_temp, dt_v_temp
 
 real, dimension(size(u,1),size(u,2),size(u,3)-1) :: e, f_u, f_v
@@ -411,7 +430,7 @@ real    :: half_delt, cp_inv
  call vert_diff_down_2 &
      (delt, mu, nu, u, v, dt_u, dt_v, e, f_u, f_v, &
       mu_delt_n, nu_n, e_n1, f_u_delt_n1, f_v_delt_n1,  &
-      delta_u_n, delta_v_n, kbot)	
+      delta_u_n, delta_v_n, kbot)        
 
  call diff_surface (mu_delt_n, nu_n, e_n1, f_u_delt_n1, &
                     dtau_datmos, tau_u, 1.0, delta_u_n)

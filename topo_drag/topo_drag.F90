@@ -8,8 +8,9 @@ module topo_drag_mod
 !  Calculates horizontal velocity tendency due to topographic drag
 !--------------------------------------------------------------------------
 
-  use Utilities_Mod, only: FILE_EXIST, OPEN_FILE, ERROR_MESG, FATAL, &
-                           get_my_pe, READ_DATA, WRITE_DATA, CLOSE_FILE
+  use       Fms_Mod, only: FILE_EXIST, OPEN_NAMELIST_FILE, ERROR_MESG, FATAL, &
+                           READ_DATA, WRITE_DATA, CLOSE_FILE, mpp_pe, mpp_root_pe, &
+                           write_version_number, stdlog, open_restart_file
   use Constants_Mod, only: Grav,Cp_Air,Rdgas,Radius,Pi,Radian
   use mpp_mod
 
@@ -20,8 +21,9 @@ module topo_drag_mod
   logical :: do_init = .true.
   logical :: do_restart_write = .true.
 
-  character(len=128) :: version = '$Id: topo_drag.F90,v 1.2 2003/04/09 21:02:31 fms Exp $'
-  character(len=128) :: tag = '$Name: inchon $'
+  character(len=128) :: version = '$Id: topo_drag.F90,v 10.0 2003/10/24 22:00:51 fms Exp $'
+  character(len=128) :: tagname = '$Name: jakarta $'
+  logical            :: module_is_initialized = .false.
 
 ! horizontal array size
 
@@ -278,7 +280,7 @@ contains
                    (gamma-epsi-beta))/(gamma-epsi-beta)
 
 !RSH    taulin(i,j) = rnormal*(frumax**(gamma+2.) - frumin**(gamma+2.))/(gamma+2.)
-	taulin(i,j) = rnormal*(frumax**(gamma-epsi+2.) - frumin**(gamma-epsi+2.))/(gamma-epsi+2.)
+        taulin(i,j) = rnormal*(frumax**(gamma-epsi+2.) - frumin**(gamma-epsi+2.))/(gamma-epsi+2.)
 
 !       get propagating and nonpropagating parts of total drag
 
@@ -502,7 +504,7 @@ contains
     integer :: i,j
     real,intent(in),dimension(:) :: lonb,latb
 
-    if (.not. do_init) return
+    if (module_is_initialized) return
 
     nlon = size(lonb)-1
     nlat = size(latb)-1
@@ -510,7 +512,7 @@ contains
 !   Read namelist
 
     if (FILE_EXIST('input.nml')) then
-      unit = OPEN_FILE (file = 'input.nml', action = 'READ')
+      unit = OPEN_NAMELIST_FILE ()
       io = 1
       do while (io /= 0)
         read (unit, nml = topo_drag_nml, iostat = io, end = 10) 
@@ -521,12 +523,10 @@ contains
 
 !   Output version details
 
-    unit = OPEN_FILE (file = 'logfile.out', action = 'APPEND')
-    if (get_my_pe() == 0) then
-      write(unit,'(/,80("="),/(a))') trim(version), trim(tag)
-      write(unit, nml = topo_drag_nml) 
+    if ( mpp_pe() == mpp_root_pe() ) then
+      call write_version_number(version, tagname)
+      write(stdlog(), nml = topo_drag_nml) 
     endif
-    call CLOSE_FILE (unit)
 
 !RSHif (gamma == beta) gamma = beta + 1.e-6
     if (gamma == beta + epsi) gamma = beta + epsi + 1.e-6
@@ -537,17 +537,17 @@ contains
       flat(j) = 1./sqrt(max(1., 2.*sin(.5*Radian*(latb(j) + latb(j+1)))))
     enddo
 
-    do_init = .false.
+    module_is_initialized = .true.
 
 !   Read and interpolate mountain drag dataset
         
     if (FILE_EXIST('INPUT/topo_drag.res')) then
 
-      unit = OPEN_FILE (file = 'INPUT/topo_drag.res', form = 'NATIVE', action = 'READ')
+      unit = OPEN_RESTART_FILE (file = 'INPUT/topo_drag.res', action = 'READ')
 
     else if (FILE_EXIST('INPUT/topo_drag')) then
 
-      unit = OPEN_FILE (file = 'INPUT/topo_drag', form = 'NATIVE', action = 'READ')
+      unit = OPEN_RESTART_FILE (file = 'INPUT/topo_drag', action = 'READ')
 
     else
 
@@ -574,7 +574,7 @@ contains
     call close_file (unit)
 
     return
-  endsubroutine topo_drag_init
+  end subroutine topo_drag_init
 
   !=====================================================================
 
@@ -662,7 +662,7 @@ contains
 
     ktop(:,:) = MIN(ktop(:,:), kdim-1)
 
-  endsubroutine compute_pbl_top_index
+  end subroutine compute_pbl_top_index
 
   !=====================================================================
 
@@ -674,7 +674,7 @@ contains
 
 !   write out global arrays to restart file
 
-    unit = OPEN_FILE (file = 'RESTART/topo_drag.res', form = 'NATIVE', action = 'WRITE')
+    unit = OPEN_RESTART_FILE (file = 'RESTART/topo_drag.res', action = 'WRITE')
 
     call WRITE_DATA (unit,t11)
     call WRITE_DATA (unit,t21)
@@ -687,8 +687,10 @@ contains
 
     call CLOSE_FILE (unit)
  
+      module_is_initialized = .false.
+ 
     return
-  endsubroutine topo_drag_end
+  end subroutine topo_drag_end
 
 !#############################################################################      
 

@@ -2,21 +2,19 @@
                  module donner_deep_clouds_W_mod
 
 use time_manager_mod,       only: time_type
-use donner_deep_mod,        only: donner_deep_avg
-use utilities_mod,          only: open_file, file_exist,   &
+use donner_deep_mod,        only: donner_deep_avg, donner_deep_init
+use       fms_mod,          only: open_namelist_file, file_exist,   &
                                   check_nml_error, error_mesg,   &
-                                  print_version_number, FATAL, NOTE, &
-				  WARNING, get_my_pe, close_file
-!use rad_step_setup_mod,     only: temp, rh2o, press, pflux, jabs,   &
-!				  iabs, ISRAD, IERAD, JSRAD, JERAD, & 
-!                                  KSRAD, KERAD, land, &
-!				  cloud_ice, cloud_water
+                                  close_file, FATAL, NOTE, &
+                                  WARNING, mpp_pe, mpp_root_pe, &
+                                  write_version_number, stdlog
 use rad_utilities_mod,      only: Environment, environment_type, &
                                   longwave_control_type, Lw_control, &
-				  shortwave_control_type, Sw_control,&
-				  cld_diagnostics_type, &
+                                   shortwave_control_type, Sw_control,&
+                                  microphysics_type,  &
+                                   microrad_properties_type, &
+                                  cld_specification_type, &
                                   cloudrad_control_type, Cldrad_control
-use microphys_rad_mod,      only: microphys_rad_driver
 
 !--------------------------------------------------------------------
 
@@ -24,7 +22,7 @@ implicit none
 private
 
 !--------------------------------------------------------------------
-!	          donner deep cloud radiative properties module
+!          donner deep cloud radiative properties module
 !
 !--------------------------------------------------------------------
 
@@ -33,9 +31,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-!  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 1.3 2003/04/09 20:59:10 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: inchon $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 10.0 2003/10/24 22:00:40 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: jakarta $'
 
 
 
@@ -43,7 +40,8 @@ private
 !-------  interfaces --------
 
 public          &
-          donner_deep_clouds_init, donner_deep_clouds_calc
+          donner_deep_clouds_W_init, donner_deep_clouds_calc,  &
+          donner_deep_clouds_W_end , donner_deep_clouds_amt
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
@@ -54,7 +52,7 @@ logical   :: using_dge_sw = .true.
 
 
 namelist /donner_deep_clouds_W_nml /     &
-			       using_dge_sw, using_dge_lw
+       using_dge_sw, using_dge_lw
 
 
 !----------------------------------------------------------------------
@@ -64,13 +62,8 @@ namelist /donner_deep_clouds_W_nml /     &
 !----------------------------------------------------------------------
 !----  private data -------
 
-!character(len=10)     :: swform
-!character(len=16)     :: swform
-logical               :: do_lwcldemiss
-logical               :: do_esfsw         
-logical               :: do_lhsw        
 
-
+  logical :: module_is_initialized = .false.
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
 
@@ -83,15 +76,22 @@ contains
 
 
 
-subroutine donner_deep_clouds_init 
+subroutine donner_deep_clouds_W_init  (pref, lonb, latb, axes, Time)
+
+real, dimension(:,:), intent(in) :: pref
+real, dimension(:), intent(in) :: lonb, latb
+integer, dimension(4), intent(in)      :: axes
+type(time_type),       intent(in)      :: Time
 
       integer            :: unit, ierr, io
+      integer            :: ix, jx, kx
 
+     if (module_is_initialized) return
 !---------------------------------------------------------------------
 !-----  read namelist  ------
   
       if (file_exist('input.nml')) then
-        unit =  open_file ('input.nml', action='read')
+        unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
         read (unit, nml=donner_deep_clouds_W_nml, iostat=io, end=10)
         ierr = check_nml_error (io, 'donner_deep_clouds_W_nml')
@@ -99,39 +99,143 @@ subroutine donner_deep_clouds_init
 10      call close_file (unit)
       endif
 
-      unit = open_file ('logfile.out', action='append')
-!      call print_version_number (unit, 'donner_deep_clouds_W', version_number)
-      if (get_my_pe() == 0) then
-	write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-	write (unit,nml=donner_deep_clouds_W_nml)
+      if ( mpp_pe() == mpp_root_pe() ) then
+         call write_version_number(version, tagname)
+         write (stdlog(),nml=donner_deep_clouds_W_nml)
       endif
-      call close_file (unit)
 
-!     swform = Sw_control%sw_form
-      do_esfsw = Sw_control%do_esfsw
-      do_lhsw = Sw_control%do_lhsw 
-      do_lwcldemiss = Lw_control%do_lwcldemiss
+       ix = size(lonb)-1
+       jx = size(latb)-1
+       kx = size(pref,1) - 1
+
+!---------------------------------------------------------------------
+      if (Environment%running_gcm .or.    &
+          Environment%running_sa_model) then
+      else
+        call donner_deep_init(lonb, latb, pref(:,1), axes, Time)
+      endif
+
+       module_is_initialized = .true.
 
 
-end subroutine donner_deep_clouds_init
+end subroutine donner_deep_clouds_W_init
 
+subroutine donner_deep_clouds_W_end
+       
+!----------------------------------------------------------------------
+!    diag_clouds_W_end is the destructor for diag_clouds_W_mod.
+!----------------------------------------------------------------------
+       
+!---------------------------------------------------------------------
+!    mark the module as not initialized.
+!---------------------------------------------------------------------
+      module_is_initialized = .false.
+       
+!--------------------------------------------------------------------
+
+
+end subroutine donner_deep_clouds_W_end
 
 
 !#################################################################
 
+subroutine donner_deep_clouds_amt2  (             &
+                       is, ie, js, je,    &
+                                cld_cell,        &
+                          Cell_microphys,  &
+                       cld_meso,        &
+                        Meso_microphys  )
+
+
+integer, intent(in) :: is,ie,js,je
+type(microphysics_type), intent(inout) :: Cell_microphys, Meso_microphys
+real, dimension(:,:,:), intent(  out) :: cld_cell, cld_meso
+
+
+!-------------------------------------------------------------------
+!   local variables
+!-------------------------------------------------------------------
+
+
+
+!---------------------------------------------------------------------
+!     obtain the deep cloud areas and properties
+!---------------------------------------------------------------------
+
+
+      call donner_deep_avg(  is, ie, js, je,           &
+                             cell_cloud_frac_out  = cld_cell,        &
+                      cell_liquid_amt_out  = Cell_microphys%conc_drop, &
+                 cell_liquid_size_out = Cell_microphys%size_drop,&
+               cell_ice_amt_out     = Cell_microphys%conc_ice,    &
+              cell_ice_size_out    = Cell_microphys%size_ice,   &
+                             meso_cloud_frac_out  = cld_meso,        &
+               meso_liquid_amt_out  = Meso_microphys%conc_drop , &
+               meso_liquid_size_out = Meso_microphys%size_drop,&
+               meso_ice_amt_out     = Meso_microphys%conc_ice,   &
+            meso_ice_size_out    = Meso_microphys%size_ice    )
+
+
+end subroutine donner_deep_clouds_amt2 
+
+!---------------------------------------------------------------------
+
+subroutine donner_deep_clouds_amt (is, ie, js, je, Cell_microphys,  &
+                                   Meso_microphys)
+
+!---------------------------------------------------------------------
+!    donner_deep_clouds_amt defines the distribution of cloud water and
+!    cloud ice concentration and particle size and total cloud fraction
+!    in both the mesoscale and convective cell-scale components of the
+!    clouds associated with donner_deep convection. these values will
+!    be combined with the large-scale cloud fields to produce the dist-
+!    ribution of cloud radiative properties that will be seen by the
+!    radiation package.
+!----------------------------------------------------------------------
+
+integer,                 intent(in)    :: is,ie,js,je
+type(microphysics_type), intent(inout) :: Cell_microphys, Meso_microphys
+
+!---------------------------------------------------------------------
+!     call donner_deep_avg to obtain the specification fields for both
+!     the mesoscale and convective cellscale clouds assocated with 
+!     donner_deep convection.
+!---------------------------------------------------------------------
+      call donner_deep_avg (                           &
+                      is, ie, js, je,           &
+                      cell_cloud_frac_out  = Cell_microphys%cldamt, &
+                      cell_liquid_amt_out  = Cell_microphys%conc_drop, &
+                      cell_liquid_size_out = Cell_microphys%size_drop,&
+                      cell_ice_amt_out     = Cell_microphys%conc_ice, &
+                      cell_ice_size_out    = Cell_microphys%size_ice, &
+                      meso_cloud_frac_out  = Meso_microphys%cldamt,   &
+                      meso_liquid_amt_out  = Meso_microphys%conc_drop, &
+                      meso_liquid_size_out = Meso_microphys%size_drop,&
+                      meso_ice_amt_out     = Meso_microphys%conc_ice, &
+                      meso_ice_size_out    = Meso_microphys%size_ice )
+
+!---------------------------------------------------------------------
+
+
+
+end subroutine donner_deep_clouds_amt  
+
+
+!#####################################################################
+
+
 subroutine donner_deep_clouds_calc (             &
-                  is,ie,js,je,deltaz,press,temp, Cld_diagnostics, &
+                  is,ie,js,je,deltaz,press,temp,                 &
                                     cld_cell,               &
-			 cldext_cell, cldsct_cell, cldasymm_cell,  &
-				    abscoeff_cell,          &
+ cldext_cell, cldsct_cell, cldasymm_cell,  &
+    abscoeff_cell,          &
                                     cld_meso,               &
-			 cldext_meso, cldsct_meso, cldasymm_meso,  &
-				    abscoeff_meso)
+ cldext_meso, cldsct_meso, cldasymm_meso,  &
+    abscoeff_meso)
 
 
 integer, intent(in) :: is,ie,js,je
 real, dimension(:,:,:), intent(in) :: deltaz, press, temp
-type(cld_diagnostics_type), intent(inout) :: Cld_diagnostics
 real, dimension(:,:,:), intent(inout) :: cld_cell, cld_meso
 real, dimension(:,:,:,:), intent(out) :: cldext_cell, cldsct_cell,  &
                                          cldasymm_cell, abscoeff_cell
@@ -155,7 +259,6 @@ integer :: unit
 
 if (Environment%running_gcm) then
 !--------------------------------------------------------------------
-! if (Environment%running_fms) then
 
 
 !---------------------------------------------------------------------
@@ -163,8 +266,6 @@ if (Environment%running_gcm) then
 !---------------------------------------------------------------------
 
 
-!     call donner_deep_avg(  iabs(ISRAD), jabs(JSRAD),               &
-!     call donner_deep_avg(  is, js,               &
       call donner_deep_avg(  is, ie, js, je,           &
                              cell_cloud_frac_out  = cld_cell,        &
                              cell_liquid_amt_out  = cell_liquid_amt, &
@@ -176,7 +277,7 @@ if (Environment%running_gcm) then
                              meso_liquid_size_out = meso_liquid_size,&
                              meso_ice_amt_out     = meso_ice_amt,    &
                              meso_ice_size_out    = meso_ice_size    )
-	 
+ 
 !      unit = open_file ('fort.149', action='append',threading='multi')
 !      call print_version_number (unit, 'microphys_rad', version_number)
 !        write (unit,*) ' donner_deep_clouds_w'
@@ -200,39 +301,33 @@ if (Environment%running_gcm) then
 !  microphys_rad_driver to obtain cloud radiative properties.
 !--------------------------------------------------------------------
 
-          call microphys_rad_driver(                         &
-                  is,ie,js,je,deltaz,press,temp, Cld_diagnostics, &
-	                   conc_drop_in=cell_liquid_amt,        &
-			   conc_ice_in=cell_ice_amt,            &
-			   size_drop_in=cell_liquid_size,       &
-			   size_ice_in=cell_ice_size,           &
-			   cldext=cldext_cell,               &
-			   cldsct=cldsct_cell,               &
-			   cldasymm=cldasymm_cell,           &
-			   abscoeff=abscoeff_cell,           &
-			   using_dge_sw=using_dge_sw,        &
-			   using_dge_lw=using_dge_lw)
+!         call microphys_rad_driver(                         &
+!                 is,ie,js,je,deltaz,press,temp,                  &
+!                   conc_drop_in=cell_liquid_amt,        &
+!   conc_ice_in=cell_ice_amt,            &
+!   size_drop_in=cell_liquid_size,       &
+!   size_ice_in=cell_ice_size,           &
+!   cldext=cldext_cell,               &
+!   cldsct=cldsct_cell,               &
+!   cldasymm=cldasymm_cell,           &
+!   abscoeff=abscoeff_cell,           &
+!   using_dge_sw=using_dge_sw,        &
+!   using_dge_lw=using_dge_lw)
 
-          call microphys_rad_driver(                         &
-                  is,ie,js,je,deltaz,press,temp, Cld_diagnostics, &
-	                   conc_drop_in=meso_liquid_amt,        &
-			   conc_ice_in=meso_ice_amt,            &
-			   size_drop_in=meso_liquid_size,       &
-			   size_ice_in=meso_ice_size,           &
-			   cldext=cldext_meso,               &
-			   cldsct=cldsct_meso,               &
-			   cldasymm=cldasymm_meso,           &
-			   abscoeff=abscoeff_meso,           &
-			   using_dge_sw=using_dge_sw,        &
-			   using_dge_lw=using_dge_lw)
+!         call microphys_rad_driver(                         &
+!                 is,ie,js,je,deltaz,press,temp,                  &
+!                   conc_drop_in=meso_liquid_amt,        &
+!   conc_ice_in=meso_ice_amt,            &
+!   size_drop_in=meso_liquid_size,       &
+!   size_ice_in=meso_ice_size,           &
+!   cldext=cldext_meso,               &
+!   cldsct=cldsct_meso,               &
+!   cldasymm=cldasymm_meso,           &
+!   abscoeff=abscoeff_meso,           &
+!   using_dge_sw=using_dge_sw,        &
+!   using_dge_lw=using_dge_lw)
 
 
-!     else  ! (gcm, not running fms)
-
-!       call error_mesg ('donner_deep_clouds_W',   &
-!         'donner_deep_cloud only available in FMS', FATAL)
-
-!   endif ! (running_gcm)
 
   else if (Environment%running_standalone) then ! (running_standalone)
  
@@ -243,31 +338,31 @@ if (Environment%running_gcm) then
 !  if microphysics is being used for either sw or lw calculation, call
 !  microphys_rad_driver to obtain cloud radiative properties.
 !--------------------------------------------------------------------
-          call microphys_rad_driver(                         &
-                  is,ie,js,je,deltaz,press,temp, Cld_diagnostics, &
-	                   conc_drop_in=cell_liquid_amt,        &
-			   conc_ice_in=cell_ice_amt,            &
-			   size_drop_in=cell_liquid_size,       &
-			   size_ice_in=cell_ice_size,           &
-			   cldext=cldext_cell,               &
-			   cldsct=cldsct_cell,               &
-			   cldasymm=cldasymm_cell,           &
-			   abscoeff=abscoeff_cell,           &
-			   using_dge_sw=using_dge_sw,        &
-			   using_dge_lw=using_dge_lw)
+!         call microphys_rad_driver(                         &
+!                 is,ie,js,je,deltaz,press,temp,                  &
+!                   conc_drop_in=cell_liquid_amt,        &
+!   conc_ice_in=cell_ice_amt,            &
+!   size_drop_in=cell_liquid_size,       &
+!   size_ice_in=cell_ice_size,           &
+!   cldext=cldext_cell,               &
+!   cldsct=cldsct_cell,               &
+!   cldasymm=cldasymm_cell,           &
+!   abscoeff=abscoeff_cell,           &
+!   using_dge_sw=using_dge_sw,        &
+!   using_dge_lw=using_dge_lw)
 
-          call microphys_rad_driver(                         &
-                  is,ie,js,je,deltaz,press,temp, Cld_diagnostics, &
-	                   conc_drop_in=meso_liquid_amt,        &
-			   conc_ice_in=meso_ice_amt,            &
-			   size_drop_in=meso_liquid_size,       &
-			   size_ice_in=meso_ice_size,           &
-			   cldext=cldext_meso,               &
-			   cldsct=cldsct_meso,               &
-			   cldasymm=cldasymm_meso,           &
-			   abscoeff=abscoeff_meso,           &
-			   using_dge_sw=using_dge_sw,        &
-			   using_dge_lw=using_dge_lw)
+!         call microphys_rad_driver(                         &
+!                 is,ie,js,je,deltaz,press,temp,                  &
+!                   conc_drop_in=meso_liquid_amt,        &
+!   conc_ice_in=meso_ice_amt,            &
+!   size_drop_in=meso_liquid_size,       &
+!   size_ice_in=meso_ice_size,           &
+!   cldext=cldext_meso,               &
+!   cldsct=cldsct_meso,               &
+!   cldasymm=cldasymm_meso,           &
+!   abscoeff=abscoeff_meso,           &
+!   using_dge_sw=using_dge_sw,        &
+!   using_dge_lw=using_dge_lw)
 
   
 
@@ -289,7 +384,7 @@ end subroutine donner_deep_clouds_calc
 !####################################################################
 
 
-	       end module donner_deep_clouds_W_mod
+       end module donner_deep_clouds_W_mod
 
 
 

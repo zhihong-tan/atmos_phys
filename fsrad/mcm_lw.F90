@@ -1,4 +1,4 @@
-      MODULE MCM_LW_MOD
+      module mcm_lw_mod
 
 !   TK modified from ajb code 
 !     /net/ajb/radiation_code/updates/v4.3/lw_mod.F 
@@ -9,15 +9,21 @@
 
       USE   Constants_Mod, ONLY: grav, tfreeze
 
-      Use Utilities_Mod, ONLY:  Error_Mesg, FATAL
+      Use       Fms_Mod, ONLY: Error_Mesg, FATAL, &
+                               write_version_number, mpp_pe, mpp_root_pe
 
+      implicit none
       private
 
       integer, parameter :: nb_lw=19, ng=3, ngp=ng+1
       integer :: ix, jx, kx, kp, km
+!------------ VERSION NUMBER ----------------
+
+      character(len=128) :: version = '$Id: mcm_lw.F90,v 10.0 2003/10/24 22:00:31 fms Exp $'
+      character(len=128) :: tagname = '$Name: jakarta $'
       logical :: module_is_initialized = .false.
 
-      public :: MCM_LW_RAD, mcm_lw_init
+      public :: MCM_LW_RAD, mcm_lw_init, mcm_lw_end
 
 !     -------------------------------------------------
 ! TK NOTE: not ready for this yet...      implicit none
@@ -48,7 +54,7 @@
 !    TK: This is a name change to avoid having to change nb locally:
       INTEGER, PARAMETER :: nb = nb_lw
 
-      INTEGER :: LMAX
+      INTEGER :: LMAX, i
 
       real :: grav_accel
       real :: pi_alpha
@@ -168,11 +174,28 @@
       kp = kx + 1
       km = kx -1
 
+!------- write version number and namelist ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
+
       module_is_initialized = .true.
 
       return
       end subroutine mcm_lw_init
 !#######################################################################
+
+subroutine mcm_lw_end
+
+      module_is_initialized = .false.
+
+!---------------------------------------------------------------------
+
+end subroutine mcm_lw_end
+
+!#######################################################################
+
       SUBROUTINE MCM_LW_RAD (KTOP,KBTM,NCLDS,EMCLD, &
                       PRES,TEMP,RH2O,QO3,CAMT, &
                       RRVCO2,  HEATRA,GRNFLX,TOPFLX, phalf)
@@ -215,10 +238,10 @@
       REAL, DIMENSION(ix,jx,1:kx) :: sigma_thick
       REAL, DIMENSION(kx) :: o3_mixrat
  
-      INTEGER :: i,j
+      INTEGER :: i,j, n, ipr
 
 !     TK mods:
-      integer :: iindex, jindex, klev
+      integer :: iindex, jindex, klev, kpr
 
       real :: pi
 
@@ -469,42 +492,45 @@
 ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-      parameter ( sigma = 5.673e-5, c1 = 3.740e-5, c2 = 1.4385 )
-      parameter ( cp1 = 0.24, cp2 = 4.1867e7 * cp1 )
+      real, parameter :: sigma = 5.673e-5, c1 = 3.740e-5, c2 = 1.4385 
+      real, parameter :: cp1 = 0.24, cp2 = 4.1867e7 * cp1 
 
-      real, intent(in) :: cloud_cover(ix,0:kp)
-      real, intent(in) :: tj(ix,kx), rj(ix,kx), psj(ix)
-      real, intent(in) :: t_sfc(ix)
-      real, intent(in) :: sigma_level(ix,kx), sigma_half_level(ix,0:kx)
-      real, intent(in) :: sigma_thick(ix,kx), o3_mixrat(kx)
+      real,    intent(in)  :: cloud_cover(ix,0:kp)
+      real,    intent(in)  :: tj(ix,kx), rj(ix,kx), psj(ix)
+      real,    intent(in)  :: t_sfc(ix)
+      real,    intent(in)  :: sigma_level(ix,kx), sigma_half_level(ix,0:kx)
+      real,    intent(in)  :: sigma_thick(ix,kx), o3_mixrat(kx)
+      integer, intent(in)  :: jrow_flag
 
-      real, intent(out) :: lw_up_toa(ix)
-      real, intent(out) :: lw_net_sfc(ix)
-      real, intent(out) :: lw_cooling_rate(ix,kx)
-      real, intent(out) :: lw_down_sfc(ix)
+      real,    intent(out) :: lw_up_toa(ix)
+      real,    intent(out) :: lw_net_sfc(ix)
+      real,    intent(out) :: lw_cooling_rate(ix,kx)
+      real,    intent(out) :: lw_down_sfc(ix)
 
 
 !----------------LOCAL ARRAY STORAGE------------------------------------
-      dimension dqx (ix,0:kp,0:kp), uqx (ix,0:kp,0:kp)
-      dimension dfxc(ix,0:kp),      ufxc(ix,0:kp)
-      dimension psigl(ix,2:kx)
+      real :: dqx (ix,0:kp,0:kp), uqx (ix,0:kp,0:kp)
+      real :: dfxc(ix,0:kp),      ufxc(ix,0:kp)
+      real :: psigl(ix,2:kx)
 
       integer kloud (ix,0:kp)
       integer kldtop(ix,2:kx), kldmid(ix,2:kx), kldbot(ix,2:kx)
 
-      dimension numtop(2:kx), nummid(2:kx), numbot (2:kx)
-      dimension ufxkb (ix),   uqxkt (ix),   ufxb(ix,2:kx)
-      dimension dfxkt (ix),   dqxkb (ix),   dqxb(ix,2:kx)
-      dimension ppfkb (ix),   ppfkt (ix),   ppfb(ix,2:kx)
+      integer :: numtop(2:kx), nummid(2:kx), numbot (2:kx)
+      real :: ufxkb (ix),   uqxkt (ix),   ufxb(ix,2:kx)
+      real :: dfxkt (ix),   dqxkb (ix),   dqxb(ix,2:kx)
+      real :: ppfkb (ix),   ppfkt (ix),   ppfb(ix,2:kx)
 
-      dimension cdxa  (kx),   cuxa(0:kx)
-      dimension dfx(ix,0:kp), ufx(ix,0:kp)
+      real :: cdxa  (kx),   cuxa(0:kx)
+      real :: dfx(ix,0:kp), ufx(ix,0:kp)
 
       real temp_kelvin(ix,0:kp)
       real planck_func(ix,0:kp)
       real lw_trans_coeff(ix,0:kx,0:kx), lw_toa_correct(ix,0:kx)
       real lw_abs_quarter(ix,0:kx,2)
       real dpbb(ix,0:kx)
+      integer :: k, l, kb, kt
+      real :: cof
 
 !    TK: I took out these equivalences but needed to modify the
 !         code below so that dfx and ufx were initialized properly.
@@ -728,6 +754,36 @@
       return
       end subroutine lwcool
 
+function  expx(x)
+real, intent(in) :: x
+real :: expx
+
+! ----------------------------------------------------------------------
+!  statement function
+! ----------------------------------------------------------------------
+
+!  the approximation to exp(x) which follows is appropriate only given
+!  the following assumptions:
+!    1) since the correction coefficients (h2o_corr_a & h2o_corr_b) 
+!       are known only to about four digits of accuracy, 6-7 digits 
+!       of accuracy for the approximation is ample.
+!    2) the input range for x is [-6.735,2.289].  this depends on:
+!       a) the valid temperature range, now [-173.16,102] (celsius)
+!       b) the values of the coefficients h2o_corr_a & h2o_corr_b
+!
+
+      real, parameter :: c0e = 9.999999810120017e-1 
+      real, parameter :: c1e = 9.999999599140620e-1/16.**1 
+      real, parameter :: c2e = 5.000056658124412e-1/16.**2 
+      real, parameter :: c3e = 1.666837874572320e-1/16.**3 
+      real, parameter :: c4e = 4.146341773620255e-2/16.**4 
+      real, parameter :: c5e = 7.279860860195404e-3/16.**5 
+
+      expx = ((( (((((c5e*x+c4e)*x+c3e)*x+c2e)*x+c1e)*x+c0e) &
+                   **2)**2)**2)**2
+end function expx
+
+
       subroutine lwtran (planck_func, temp_kelvin, rj, psj, &
         lw_trans_coeff, lw_toa_correct, lw_abs_quarter, jrow_flag, &
         sigma_level, sigma_half_level, sigma_thick, o3_mixrat)
@@ -798,46 +854,6 @@
 !     pp.99-102, 1968).
 
 ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-      parameter ( sigma = 5.673e-5, c1 = 3.740e-5, c2 = 1.4385 )
-      parameter ( po = 1013.25e3, opo = 1.0 / po, o2po = 0.5 * opo )
-!     parameter ( opo = 9.8692271e-7, o2po = 4.9346136e-7 )
-      parameter ( ak1 = 223.0, ak2=10.0 )
-!     parameter ( alpha = 0.28 )
-!     parameter ( pi = 3.1415926535898 )
-!     parameter ( pialph = pi * alpha )
-      parameter ( ak1x4 = 4.0 * ak1 )
-      parameter ( ak2x4 = 4.0 * ak2 )
-!     parameter ( pialph = 0.8796459, ak1x4 = 892.0, ak2x4 = 40.0 )
-      parameter (            azint = 1.66                 )
-!     parameter ( g = 980.6, azint = 1.66, g1 = azint / g )
-!     parameter ( g1h = 0.5 * g1 )
-!     parameter ( g1 = 1.6938774e-3, g1h = 0.5 * g1 )
-      parameter ( c3 = 1.0 / 120.0, a1 = 75.48, a2 = 23.44 )
-!     parameter ( c3 = 8.333333e-3, a1 = 75.48, a2 = 23.44 )
-      parameter ( c3a1 = c3 * a1, c3a2 = c3 * a2 )
-      parameter ( c0e = 9.999999810120017e-1 )
-      parameter ( c1e = 9.999999599140620e-1/16.**1 )
-      parameter ( c2e = 5.000056658124412e-1/16.**2 )
-      parameter ( c3e = 1.666837874572320e-1/16.**3 )
-      parameter ( c4e = 4.146341773620255e-2/16.**4 )
-      parameter ( c5e = 7.279860860195404e-3/16.**5 )
-
-      dimension bw(ix,0:kx,nb), bwz(ix,nb), expzs(ix,nb)
-      dimension trans(ix,0:kx,0:kx), dbbdt(ix,0:kx)
-
-      dimension vcube(nb), expz1(nb), c(nb), v(nb), dv(nb)
-      dimension pdi   (ix,0:kp), pfl   (ix,0:kx), dpdi (ix,  kx)
-      dimension rh2o  (ix,0:kp), ro3   (ix,0:kp), qdi  (ix,  kx)
-      dimension duh2o (ix,  kx), duco2 (ix,  kx), duo3 (ix,  kx)
-      dimension duqh2o(ix,  kx), duqfac(ix,  kx), dufac(ix,  kx)
-      dimension fbignl(ix,  kx), bignel(ix,0:kx), bign (ix,  kx)
-      dimension tdpfac(ix,  kx), tfac  (ix,  kx), teff (ix,  kx)
-      dimension sfac  (ix,0:kx), pfac  (ix,0:kx), peff (ix,0:kx)
-      dimension tcof  (ix,0:kx), fac1  (ix,0:kx), fac2 (ix,0:kx)
-      dimension t260  (ix,0:kx), tadj  (ix,0:kx,2)
-      dimension ulog  (ix,0:kx), plog  (ix,0:kx)
-
       real, intent(in) :: planck_func(ix,0:kp)
       real, intent(in) :: temp_kelvin(ix,0:kp)
       real, intent(in) :: rj(ix,kx)
@@ -845,15 +861,59 @@
 
       real, intent(in) :: sigma_level(ix,kx), sigma_half_level(ix,0:kx)
       real, intent(in) :: sigma_thick(ix,kx), o3_mixrat(kx)
+      integer, intent(in)  :: jrow_flag
 
       real, intent(out) :: lw_trans_coeff(ix,0:kx,0:kx)
       real, intent(out) :: lw_toa_correct(ix,0:kx)
       real, intent(out) :: lw_abs_quarter(ix,0:kx,2)
 
+      real, parameter :: sigma = 5.673e-5, c1 = 3.740e-5, c2 = 1.4385 
+      real, parameter :: po = 1013.25e3, opo = 1.0 / po, o2po = 0.5 * opo 
+!     parameter ( opo = 9.8692271e-7, o2po = 4.9346136e-7 )
+      real, parameter :: ak1 = 223.0, ak2=10.0 
+!     parameter ( alpha = 0.28 )
+!     parameter ( pi = 3.1415926535898 )
+!     parameter ( pialph = pi * alpha )
+      real, parameter :: ak1x4 = 4.0 * ak1 
+      real, parameter :: ak2x4 = 4.0 * ak2 
+!     parameter ( pialph = 0.8796459, ak1x4 = 892.0, ak2x4 = 40.0 )
+      real, parameter ::            azint = 1.66                 
+!     parameter ( g = 980.6, azint = 1.66, g1 = azint / g )
+!     parameter ( g1h = 0.5 * g1 )
+!     parameter ( g1 = 1.6938774e-3, g1h = 0.5 * g1 )
+      real, parameter :: c3 = 1.0 / 120.0, a1 = 75.48, a2 = 23.44 
+!     parameter ( c3 = 8.333333e-3, a1 = 75.48, a2 = 23.44 )
+      real, parameter :: c3a1 = c3 * a1, c3a2 = c3 * a2 
+      real, parameter :: c0e = 9.999999810120017e-1 
+      real, parameter :: c1e = 9.999999599140620e-1/16.**1 
+      real, parameter :: c2e = 5.000056658124412e-1/16.**2 
+      real, parameter :: c3e = 1.666837874572320e-1/16.**3 
+      real, parameter :: c4e = 4.146341773620255e-2/16.**4 
+      real, parameter :: c5e = 7.279860860195404e-3/16.**5 
+
+      real :: bw(ix,0:kx,nb), bwz(ix,nb), expzs(ix,nb)
+      real :: trans(ix,0:kx,0:kx), dbbdt(ix,0:kx)
+
+      real :: vcube(nb), expz1(nb), c(nb), v(nb), dv(nb)
+      real :: pdi   (ix,0:kp), pfl   (ix,0:kx), dpdi (ix,  kx)
+      real :: rh2o  (ix,0:kp), ro3   (ix,0:kp), qdi  (ix,  kx)
+      real :: duh2o (ix,  kx), duco2 (ix,  kx), duo3 (ix,  kx)
+      real :: duqh2o(ix,  kx), duqfac(ix,  kx), dufac(ix,  kx)
+      real :: fbignl(ix,  kx), bignel(ix,0:kx), bign (ix,  kx)
+      real :: tdpfac(ix,  kx), tfac  (ix,  kx), teff (ix,  kx)
+      real :: sfac  (ix,0:kx), pfac  (ix,0:kx), peff (ix,0:kx)
+      real :: tcof  (ix,0:kx), fac1  (ix,0:kx), fac2 (ix,0:kx)
+      real :: t260  (ix,0:kx), tadj  (ix,0:kx,2)
+      real :: ulog  (ix,0:kx), plog  (ix,0:kx)
+
+
 !  quarter-layer variables
 
-      dimension txdegk(ix,0:kx), qx    (ix,0:kx), dpfac(ix,0:kx)
-      dimension duxh2o(ix,0:kx), duxco2(ix,0:kx), duxo3(ix,0:kx)
+      real :: txdegk(ix,0:kx), qx    (ix,0:kx), dpfac(ix,0:kx)
+      real :: duxh2o(ix,0:kx), duxco2(ix,0:kx), duxo3(ix,0:kx)
+      real :: g1, g1h, bc,  bandc1, bandc2, cco2, asodsq, diag, &
+              factr1, factr2, diago3
+      integer :: lb, k, l, len, kq
 
 !c  TK: Removed unnecessary equivalences:
 !      equivalence (ulog,  fac1  ), (plog,  fac2 ), (teff, peff )
@@ -963,22 +1023,6 @@
 !          bottom model level     kx     kx   +++++++
 !                               kx+1/2   kx   -------
 !                ground level     kp     kp   +++++++
-
-! ----------------------------------------------------------------------
-!  statement function
-! ----------------------------------------------------------------------
-
-!  the approximation to exp(x) which follows is appropriate only given
-!  the following assumptions:
-!    1) since the correction coefficients (h2o_corr_a & h2o_corr_b) 
-!       are known only to about four digits of accuracy, 6-7 digits 
-!       of accuracy for the approximation is ample.
-!    2) the input range for x is [-6.735,2.289].  this depends on:
-!       a) the valid temperature range, now [-173.16,102] (celsius)
-!       b) the values of the coefficients h2o_corr_a & h2o_corr_b
-!
-      expx(x) = ((( (((((c5e*x+c4e)*x+c3e)*x+c2e)*x+c1e)*x+c0e) &
-                   **2)**2)**2)**2
 
 ! ----------------------------------------------------------------------
 !  Compute various constants involving gravity.
@@ -1586,11 +1630,12 @@
  
       real, intent(out) :: tco2(ln) 
  
-      dimension ahi   (lmax), alo   (lmax), cct   (lmax), cdt   (lmax)
-      dimension nplog (lmax), iulog (lmax), fulog (lmax), index (lmax)
-      dimension plnum (lmax), plden (lmax), plfac (lmax), tcor  (lmax)
-      dimension alogoo(lmax), alogpo(lmax), alogop(lmax), alogpp(lmax)
-      dimension pltab (  12)
+      real :: ahi   (lmax), alo   (lmax), cct   (lmax), cdt   (lmax), fulog (lmax)
+      integer :: nplog (lmax), iulog (lmax), index (lmax)
+      real :: plnum (lmax), plden (lmax), plfac (lmax), tcor  (lmax)
+      real :: alogoo(lmax), alogpo(lmax), alogop(lmax), alogpp(lmax)
+      real :: pltab (  12)
+      integer :: iu, l, n
  
 !c TK: Removed unnecessary equivalences:
 !c TK:      equivalence (alogoo, plnum), (alogpo, plden, alo, tcor)

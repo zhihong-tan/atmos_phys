@@ -5,9 +5,10 @@
 !=======================================================================
 
  use  Sat_Vapor_Pres_Mod, ONLY: ESCOMP, DESCOMP
- use Utilities_Mod,       ONLY: FILE_EXIST, ERROR_MESG, FATAL,   &
-                                CHECK_NML_ERROR, OPEN_FILE,      &
-                                get_my_pe, CLOSE_FILE
+ use       Fms_Mod,       ONLY: FILE_EXIST, ERROR_MESG, FATAL,   &
+                                CHECK_NML_ERROR, OPEN_NAMELIST_FILE,      &
+                                CLOSE_FILE, mpp_pe, mpp_root_pe, &
+                                write_version_number, stdlog
 
  use constants_mod, only: Hlv, Cp_Air, RDgas, RVgas, Kappa, grav
 
@@ -21,10 +22,10 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: shallow_conv.F90,v 1.6 2003/04/09 21:02:12 fms Exp $'
- character(len=128) :: tag = '$Name: inchon $'
+ character(len=128) :: version = '$Id: shallow_conv.F90,v 10.0 2003/10/24 22:00:49 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
 
- logical :: do_init = .true.
+ logical :: module_is_initialized = .false.
 
 !---------------------------------------------------------------------
 ! --- CONSTANTS
@@ -79,7 +80,7 @@
  
 !=====================================================================
 
-  if (.not.do_init) return
+  if (module_is_initialized) return
 
 !---------------------------------------------------------------------
 ! --- Read namelist
@@ -87,7 +88,7 @@
 
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
-   unit = OPEN_FILE ( file = 'input.nml', action = 'read' )
+   unit = OPEN_NAMELIST_FILE ( )
    ierr = 1
    do while( ierr .ne. 0 )
    READ ( unit,  nml = shallow_conv_nml, iostat = io, end = 10 ) 
@@ -98,16 +99,12 @@
 ! -------------------------------------
   end if
 
-!---------------------------------------------------------------------
-! --- Output version
-!---------------------------------------------------------------------
+!------- write version number and namelist ---------
 
-  unit = open_file ('logfile.out', action='append')
-  if ( get_my_pe() == 0 ) then
-       WRITE( unit,'(/,80("="),/(a))') trim(version), trim(tag)
-       WRITE( unit, nml = shallow_conv_nml ) 
+  if ( mpp_pe() == mpp_root_pe() ) then
+       call write_version_number(version, tagname)
+       WRITE( stdlog(), nml = shallow_conv_nml ) 
   endif
-  CALL CLOSE_FILE ( unit )
 
 !---------------------------------------------------------------------
 ! --- Initialize constants
@@ -143,7 +140,7 @@
   delrhc = 1.0 / ( rhmax - rhmin )
 
 !-------------------------------------------------------------------
-  do_init = .false.
+  module_is_initialized = .true.
 !---------------------------------------------------------------------
 
 !=====================================================================
@@ -151,6 +148,14 @@
 
 !#######################################################################
 
+  SUBROUTINE SHALLOW_CONV_END
+!-------------------------------------------------------------------
+  module_is_initialized = .false.
+!---------------------------------------------------------------------
+
+  end SUBROUTINE SHALLOW_CONV_END
+
+!#######################################################################
   SUBROUTINE SHALLOW_CONV( Temp, qmix0, pfull, phalf, akhsc, kbot )
 
 !=======================================================================

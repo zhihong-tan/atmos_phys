@@ -16,17 +16,20 @@
                               EXCTSN, E1FLX, CO2SP
       USE LONGWAVE_MOD, ONLY: IBAND, BANDLO, BANDHI
 
-!     -------------------------------------------------------------
+      Use       Fms_Mod, ONLY: write_version_number, mpp_pe, mpp_root_pe, &
+                               error_mesg, FATAL
 
-      PRIVATE LMAX, LP1, NBLW, NBLY
 
-      PRIVATE OSOUR, CSOUR, SS1
-      PRIVATE FLX1E1, GXCTS, FCTSG
-      PRIVATE CLDFAC
-      PRIVATE DELP2, DELP
-      PRIVATE TO3, CO21, EMISS, EMISS2, CTS, EXCTS, EXCTSN, E1FLX, CO2SP
+implicit none
+private
 
 !-----------------------------------------------------------------------
+      character(len=128) :: version = '$Id: rad_diag.F90,v 10.0 2003/10/24 22:00:32 fms Exp $'
+      character(len=128) :: tagname = '$Name: jakarta $'
+      logical            :: module_is_initialized = .false.
+
+public RADIAG, RAD_DIAG_init, RAD_DIAG_end
+
 
       CONTAINS
 
@@ -78,6 +81,32 @@
 
       END SUBROUTINE RADIAG
 
+!#######################################################################
+!#######################################################################
+
+      subroutine RAD_DIAG_init
+!------- write version number and namelist ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
+
+      module_is_initialized = .true.
+
+!---------------------------------------------------------------------
+
+      end subroutine RAD_DIAG_init
+
+!#######################################################################
+!#######################################################################
+
+      subroutine RAD_DIAG_end
+
+      module_is_initialized = .false.
+
+!---------------------------------------------------------------------
+
+      end subroutine RAD_DIAG_end
 !#######################################################################
 !#######################################################################
 

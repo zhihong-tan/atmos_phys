@@ -9,9 +9,10 @@ module moist_conv_mod
 use   time_manager_mod, only : time_type
  use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
 use  sat_vapor_pres_mod, ONLY: EsComp, DEsComp
-use       utilities_mod, ONLY:  error_mesg, file_exist, open_file,  &
+use             fms_mod, ONLY:  error_mesg, file_exist, open_namelist_file,  &
                                 check_nml_error, close_file,        &
-                                FATAL, WARNING, NOTE, get_my_pe
+                                FATAL, WARNING, NOTE, mpp_pe, mpp_root_pe, &
+                                write_version_number, stdlog
 use       constants_mod, ONLY: HLv, HLs, cp_air, grav, rdgas, rvgas
 
 use           fms_mod, only : write_version_number, ERROR_MESG, FATAL
@@ -28,7 +29,7 @@ private
 
 !------- interfaces in this module ------------
 
-public :: moist_conv, moist_conv_Init
+public :: moist_conv, moist_conv_Init, moist_conv_end
 
 !-----------------------------------------------------------------------
 !---- namelist ----
@@ -46,8 +47,9 @@ public :: moist_conv, moist_conv_Init
 !-----------------------------------------------------------------------
 !---- VERSION NUMBER -----
 
- character(len=128) :: version = '$Id: moist_conv.F90,v 1.3 2003/04/09 20:57:29 fms Exp $'
- character(len=128) :: tagname = '$Name: inchon $'
+ character(len=128) :: version = '$Id: moist_conv.F90,v 10.0 2003/10/24 22:00:34 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
+ logical            :: module_is_initialized = .false.
 
 !---------- initialize constants used by this module -------------------
 
@@ -56,17 +58,16 @@ public :: moist_conv, moist_conv_Init
  real, parameter :: grav_inv = 1.0/grav
  real, parameter :: rocp = rdgas/cp_air
 
- logical :: module_is_initialized = .false.
 real :: missing_value = -999.
 integer               :: num_tracers
 integer, allocatable, dimension(:) :: id_tracer_conv, id_tracer_conv_col
  integer :: nsphum, nql, nqi, nqa   ! tracer indices for stratiform clouds
 
 integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
-	   id_qldt_conv,   id_qidt_conv,   id_qadt_conv, &
-	   id_ql_conv_col, id_qi_conv_col, id_qa_conv_col,&
-	   id_q_conv_col, id_t_conv_col
-	
+           id_qldt_conv,   id_qidt_conv,   id_qadt_conv, &
+           id_ql_conv_col, id_qi_conv_col, id_qa_conv_col,&
+           id_q_conv_col, id_t_conv_col
+
 character(len=3) :: mod_name = 'mca'
 logical :: used
 
@@ -81,8 +82,6 @@ CONTAINS
                          Tdel, Qdel, Rain, Snow, Lbot, &
                          do_strat, tracer, tracertnd, &
                          dtinv, Time, mask, is, js, Conv )
-                         !cf, &
-                         !Conv, cfdel, qldel, qidel)
 
 !-----------------------------------------------------------------------
 !
@@ -119,22 +118,20 @@ CONTAINS
 !
 !-----------------------------------------------------------------------
 !----------------------PUBLIC INTERFACE ARRAYS--------------------------
-    real, intent(INOUT) , dimension(:,:,:) :: Tin, Qin
-    real, intent(IN) , dimension(:,:,:) :: Pfull, Phalf 
- logical, intent(IN) , dimension(:,:)   :: coldT
-    real, intent(OUT), dimension(:,:,:) :: Tdel, Qdel
-    real, intent(OUT), dimension(:,:)   :: Rain, Snow
- integer, intent(IN) , optional, dimension(:,:)   :: Lbot
-!    real, intent(IN) , optional, dimension(:,:,:) :: cf
- logical, intent(OUT), optional, dimension(:,:,:) :: Conv
-!    real, intent(OUT), optional, dimension(:,:,:) :: cfdel, qldel, qidel
-logical, intent(in)                     :: do_strat
-    real, intent(IN)                    :: dtinv
- integer, intent(IN)                    :: is, js     
-    real, intent(INOUT), dimension(:,:,:,:) :: tracer
+    real, intent(INOUT), dimension(:,:,:)           :: Tin, Qin
+    real, intent(IN) ,   dimension(:,:,:)           :: Pfull, Phalf 
+ logical, intent(IN) ,   dimension(:,:)             :: coldT
+    real, intent(OUT),   dimension(:,:,:)           :: Tdel, Qdel
+    real, intent(OUT),   dimension(:,:)             :: Rain, Snow
+ integer, intent(IN) ,   dimension(:,:),   optional :: Lbot
+ logical, intent(OUT),   dimension(:,:,:), optional :: Conv
+ logical, intent(in)                                :: do_strat
+    real, intent(IN)                                :: dtinv
+ integer, intent(IN)                                :: is, js     
+    real, intent(INOUT), dimension(:,:,:,:)         :: tracer
     real, intent(INOUT), dimension(:,:,:,:), target :: tracertnd
-type(time_type), intent(in)              :: Time
-   real, intent(in) , dimension(:,:,:), optional :: mask
+type(time_type), intent(in)                         :: Time
+   real, intent(in) ,    dimension(:,:,:), optional :: mask
          
 !-----------------------------------------------------------------------
 !----------------------PRIVATE (LOCAL) ARRAYS---------------------------
@@ -155,11 +152,13 @@ real, dimension(size(Tin,3)) :: C,Ta,Qa
 real, dimension(size(Tin,1),size(Tin,2)) :: HL
 
 integer :: i,j,k,kk,KX,ITER,MXLEV,MXLEV1,kstart,KTOP,KBOT,KBOTM1
-real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta,DTinv
+real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta
 
 
 real, dimension(SIZE(tracer,1),SIZE(tracer,2),SIZE(tracer,3)) :: cf
-real, pointer, dimension(:,:,:) :: cfdel, qldel, qidel
+real, pointer, dimension(:,:,:) :: cfdel => NULL(), &
+                                   qldel => NULL(), &
+                                   qidel => NULL()
 logical :: cf_Present
 real, dimension(size(Phalf,1),size(Phalf,2),size(Phalf,3)) :: pmass
 real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
@@ -560,7 +559,7 @@ real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
           tempdiag(:,:) = tempdiag(:,:) + Qdel(:,:,k)*pmass(:,:,k)
         end do
         used = send_data ( id_q_conv_col, tempdiag, Time, is, js )
-      end if	
+      end if
    
 !------- diagnostics for dry static energy tendency ---------
       if ( id_t_conv_col > 0 ) then
@@ -569,7 +568,7 @@ real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
           tempdiag(:,:) = tempdiag(:,:) + Tdel(:,:,k)*cp_air*pmass(:,:,k)
         end do
         used = send_data ( id_t_conv_col, tempdiag, Time, is, js )
-      end if	
+      end if
    
    !------- stratiform cloud tendencies from cumulus convection ------------
    if ( do_strat ) then
@@ -599,7 +598,7 @@ real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
           tempdiag(:,:) = tempdiag(:,:) + tracertnd(:,:,k,nql)*pmass(:,:,k)
         end do
         used = send_data ( id_ql_conv_col, tempdiag, Time, is, js )
-      end if	
+      end if
       
       !------- diagnostics for ice water path tendency ---------
       if ( id_qi_conv_col > 0 ) then
@@ -608,7 +607,7 @@ real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
           tempdiag(:,:) = tempdiag(:,:) + tracertnd(:,:,k,nqi)*pmass(:,:,k)
         end do
         used = send_data ( id_qi_conv_col, tempdiag, Time, is, js )
-      end if	
+      end if
       
       !---- diagnostics for column integrated cloud mass tendency ---
       if ( id_qa_conv_col > 0 ) then
@@ -617,7 +616,7 @@ real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
           tempdiag(:,:) = tempdiag(:,:) + tracertnd(:,:,k,nqa)*pmass(:,:,k)
         end do
         used = send_data ( id_qa_conv_col, tempdiag, Time, is, js )
-      end if	
+      end if
          
    end if !end do strat if
 
@@ -639,7 +638,7 @@ IMPLICIT NONE
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-!	VARIABLES
+!       VARIABLES
 !
 !   ------
 !   INPUT:
@@ -665,7 +664,7 @@ IMPLICIT NONE
 !                (kg condensate/kg air)
 !
 !   -------------------
-!	INTERNAL VARIABLES:
+!       INTERNAL VARIABLES:
 !   -------------------
 !
 !       precipsource  accumulated source of precipitation
@@ -777,7 +776,7 @@ END SUBROUTINE CONV_DETR
 !-----------------------------------------------------------------------
 
     if (file_exist('input.nml')) then
-        unit = open_file ('input.nml', action='read')
+        unit = open_namelist_file ()
         ierr=1; do while (ierr /= 0)
             read  (unit, nml=moist_conv_nml, iostat=io, end=10)
             ierr = check_nml_error (io,'moist_conv_nml')
@@ -787,13 +786,10 @@ END SUBROUTINE CONV_DETR
 
 !---------- output namelist --------------------------------------------
 
-  call write_version_number (version, tagname)
-      unit = open_file ('logfile.out', action='append')
-      if ( get_my_pe() == 0 ) then
-!           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-           write (unit,nml=moist_conv_nml)
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number (version, tagname)
+           write (stdlog(),nml=moist_conv_nml)
       endif
-      call close_file (unit)
 
    id_tdt_conv = register_diag_field ( mod_name, &
      'tdt_conv', axes(1:3), Time, &

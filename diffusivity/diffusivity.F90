@@ -11,11 +11,12 @@ module diffusivity_mod
 !=======================================================================
 
 
-use constants_mod, only : grav, vonkarm, cp_air, rdgas, rvgas
+use     constants_mod, only : grav, vonkarm, cp_air, rdgas, rvgas
 
-use utilities_mod, only:  error_mesg, FATAL, file_exist,   &
-                          check_nml_error, open_file,      &
-                          get_my_pe, get_root_pe, close_file
+use           fms_mod, only : error_mesg, FATAL, file_exist,   &
+                              check_nml_error, open_namelist_file,      &
+                              mpp_pe, mpp_root_pe, close_file, &
+                              write_version_number, stdlog
 
 use monin_obukhov_mod, only : mo_diff
 
@@ -93,8 +94,8 @@ private
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: diffusivity.F90,v 1.5 2003/04/09 20:54:55 fms Exp $'
-character(len=128) :: tag = '$Name: inchon $'
+character(len=128) :: version = '$Id: diffusivity.F90,v 10.0 2003/10/24 22:00:27 fms Exp $'
+character(len=128) :: tagname = '$Name: jakarta $'
 
 !=======================================================================
 
@@ -133,7 +134,7 @@ namelist /diffusivity_nml/ fixed_depth, depth_0, frac_inner,&
 
 real    :: small  = 1.e-04
 real    :: gcp    = grav/cp_air
-logical :: init   = .false.
+logical :: module_is_initialized   = .false.
 real    :: beta   = 1.458e-06
 real    :: rbop1  = 110.4
 real    :: rbop2  = 1.405
@@ -152,7 +153,7 @@ integer :: unit, ierr, io
 !------------------- read namelist input -------------------------------
 
       if (file_exist('input.nml')) then
-         unit = open_file ('input.nml', action='read')
+         unit = open_namelist_file ()
          ierr=1; do while (ierr /= 0)
             read  (unit, nml=diffusivity_nml, iostat=io, end=10)
             ierr = check_nml_error(io,'diffusivity_nml')
@@ -203,17 +204,23 @@ integer :: unit, ierr, io
 
 !---------- output namelist to log-------------------------------------
 
-      unit = open_file ('logfile.out', action='append')
-      if ( get_my_pe() == get_root_pe() ) then
-           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-           write (unit, nml=diffusivity_nml)
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+           write (stdlog(), nml=diffusivity_nml)
       endif
-      call close_file (unit)
 
-init = .true.
+      module_is_initialized = .true.
 
 return
 end subroutine diffusivity_init
+
+!=======================================================================
+
+subroutine diffusivity_end
+
+      module_is_initialized = .false.
+
+end subroutine diffusivity_end
 
 !=======================================================================
 
@@ -234,7 +241,7 @@ real, dimension(size(t,1),size(t,2),size(t,3)+1):: z_half_ag
 real, dimension(size(t,1),size(t,2))            :: z_surf
 integer                                         :: i,j,k,nlev,nlat,nlon
 
-if(.not.init) call diffusivity_init
+if(.not.module_is_initialized) call diffusivity_init
 
 nlev = size(t,3)
 

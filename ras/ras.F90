@@ -11,6 +11,7 @@
 !  SUBROUTINE RAS_CLOUD_INDEX - SET ORDER IN WHICH CLOUDS ARE TO BE DONE 
 !  SUBROUTINE RAS_CLOUD_EXIST - TEST FOR INSTABILITY IN COLUMN
 !  SUBROUTINE RAS_BDGT        - BUDGET CHECK FOR RAS
+!  FUNCTION   RAN0            - RANDOM NUMBER GENERATOR
 !=======================================================================
 
  use           mpp_mod, only : mpp_pe,             &
@@ -20,9 +21,9 @@
  use      Constants_Mod, ONLY:  HLv, HLs, Cp_Air, Grav, Kappa, rdgas, rvgas
  use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
  use   Time_Manager_Mod, ONLY: time_type
- use      Utilities_Mod, ONLY: FILE_EXIST, OPEN_FILE, ERROR_MESG,  &
-                                get_my_pe, CLOSE_FILE, FATAL
- use           fms_mod, only : write_version_number
+ use           fms_mod, only : write_version_number, open_namelist_file, &
+                               FILE_EXIST, ERROR_MESG,  &
+                               CLOSE_FILE, FATAL
  use  field_manager_mod, only: MODEL_ATMOS
  use tracer_manager_mod, only: get_tracer_index,   &
                                get_number_tracers, &
@@ -37,8 +38,8 @@
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- character(len=128) :: version = '$Id: ras.F90,v 1.6 2003/04/09 20:58:26 fms Exp $'
- character(len=128) :: tagname = '$Name: inchon $'
+ character(len=128) :: version = '$Id: ras.F90,v 10.0 2003/10/24 22:00:38 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -118,6 +119,10 @@
 !     evap_on - Turn on evaporation if true
 !     cfrac   - Fraction of grid box assumed to be covered by convection
 !     hcevap  - Evap allowed while q <= hcevap * qsat
+! --- CRITICAL CLOUD WORK FUNCTION ---
+!     ph - array, dim(15), of cloud top pressures
+!      a - array, dim(15), of critical cloud work functions 
+!          for clouds detraining at level ph
 !---------------------------------------------------------------------
 
  real    :: fracs        = 0.25
@@ -158,7 +163,8 @@
       ncrnd,   iseed,   krmin,   krmax, botop,    &
       rn_ptop, rn_pbot, rn_frac_top, rn_frac_bot, &
       evap_on, cfrac,   hcevap, rh_trig, alm_min, &
-      Tokioka_on, Tokioka_con, Tokioka_plim, modify_pbl, prevent_unreasonable
+      Tokioka_on, Tokioka_con, Tokioka_plim, modify_pbl, prevent_unreasonable, &
+      ph, a
 
 !---------------------------------------------------------------------
 ! DIAGNOSTICS FIELDS 
@@ -215,7 +221,7 @@ integer, allocatable, dimension(:) :: tr_indices, id_tracer_conv, id_tracer_conv
 !---------------------------------------------------------------------
 
   if( FILE_EXIST( 'input.nml' ) ) then
-      unit = OPEN_FILE ( file = 'input.nml', action = 'read' )
+      unit = OPEN_NAMELIST_FILE ()
       io = 1
   do while ( io .ne. 0 )
       READ( unit, nml = ras_nml, iostat = io, end = 10 )
@@ -242,7 +248,7 @@ integer, allocatable, dimension(:) :: tr_indices, id_tracer_conv, id_tracer_conv
   else
     call error_mesg('ras_init', 'No atmospheric tracers found', FATAL)
   endif
-  call get_tracer_indices(MODEL_ATMOS, tr_indices)  
+  call get_tracer_indices(MODEL_ATMOS, prog_ind=tr_indices)  
   if (do_strat) then
     ! get tracer indices for stratiform cloud variables
       nsphum = get_tracer_index ( MODEL_ATMOS, 'sphum' )
@@ -461,10 +467,10 @@ end subroutine ras_end
 
 !#####################################################################
 
-  SUBROUTINE RAS( is,     js,      Time,     temp0,     qvap0,     &
-                  uwnd0,  vwnd0,   pres0,    pres0_int, coldT0,    &
-                  dtime,  dtemp0,  dqvap0,   duwnd0,    dvwnd0,    &
-                  rain0,  snow0,   do_strat, mask,      kbot,      &
+  SUBROUTINE RAS( is,     js,      Time,      temp0,   qvap0,     &
+          uwnd0,  vwnd0,  pres0,   pres0_int, zhalf0,  coldT0,    &
+                  dtime,  dtemp0,  dqvap0,    duwnd0,  dvwnd0,    &
+                  rain0,  snow0,   do_strat,  mask,    kbot,      &
                   mc0,    R0,      DR0 )
 
 !=======================================================================
@@ -477,6 +483,7 @@ end subroutine ras_end
 !     dtime     - Size of time step in seconds
 !     pres0     - Pressure
 !     pres0_int - Pressure at layer interface
+!     zhalf0    - Height at layer interface
 !     temp0     - Temperature
 !     qvap0     - Water vapor 
 !     uwnd0     - U component of wind
@@ -493,7 +500,7 @@ end subroutine ras_end
   type(time_type), intent(in)                   :: Time
   integer,         intent(in)                   :: is, js
   real,            intent(in)                   :: dtime
-  real,            intent(in), dimension(:,:,:) :: pres0, pres0_int
+  real,            intent(in), dimension(:,:,:) :: pres0, pres0_int, zhalf0
   real,            intent(inout), dimension(:,:,:) :: temp0, qvap0, uwnd0, vwnd0
   logical,         intent(in), dimension(:,:)   :: coldT0
   logical,         intent(in)                   :: do_strat
@@ -541,7 +548,7 @@ end subroutine ras_end
 
  real, dimension(SIZE(R0,3),SIZE(R0,4)) :: tracer, dtracer, dtracercu
 
- real, dimension(SIZE(temp0,3)+1) ::  pres_int, mc, pi_int, mccu
+ real, dimension(SIZE(temp0,3)+1) ::  pres_int, mc, pi_int, mccu, zhalf
 
  logical, dimension(size(temp0,1),size(temp0,2)) :: rhtrig_mask
  integer, dimension(size(temp0,1),size(temp0,2)) :: kcbase
@@ -557,7 +564,7 @@ end subroutine ras_end
  logical :: setras, Lkbot, Lda0, Lmc0, LR0
  integer :: i, imax, j, jmax, k, kmax, tr
  integer :: ncmax, nc, ib
- real    :: rasal, frac
+ real    :: rasal, frac, zbase
  real    :: dpfac, dtcu_pbl, dqcu_pbl, ducu_pbl, dvcu_pbl, dtracercu_pbl(SIZE(R0,4))
  
 !--- For extra diagnostics
@@ -690,13 +697,13 @@ end subroutine ras_end
 
 !---------------------------------------------------------------------
 
-! --- Set order in which clouds are to be done                   
-  CALL RAS_CLOUD_INDEX ( ic, ncmax )
-
 ! LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL
   do j = 1,jmax
   do i = 1,imax
 ! TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+! --- Set order in which clouds are to be done                   
+  CALL RAS_CLOUD_INDEX ( ic, ncmax )
 
 ! --- rh trigger
   if ( .not.rhtrig_mask(i,j) ) CYCLE
@@ -709,6 +716,7 @@ end subroutine ras_end
       vwnd(:) =      vwnd0(i,j,:)
       pres(:) =      pres0(i,j,:)
   pres_int(:) =  pres0_int(i,j,:)
+     zhalf(:) =     zhalf0(i,j,:)
   qvap_sat(:) =  qvap_sat0(i,j,:) 
  dqvap_sat(:) = dqvap_sat0(i,j,:) 
       psfc    =      psfc0(i,j)
@@ -762,6 +770,9 @@ end subroutine ras_end
   mass(1:kmax) =  pres_int(2:kmax+1) - pres_int(1:kmax) 
   mass(1:kmax) = MAX( mass(1:kmax), 1.0e-5 )
 
+! --- Sub-cloud layer thickness
+   zbase = zhalf(klcl) - zhalf(ksfc)
+
 ! --- Compute exner functions 
 ! --- at layer interfaces
   pi_int(:) = ( pres_int(:) / p00  ) ** Kappa                                   
@@ -809,7 +820,7 @@ end subroutine ras_end
   CALL RAS_CLOUD(                                                    &
        klcl,  ib,   rasal, frac, Hl, coldT,                          &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
-       alpha, beta, gamma, cp_by_dp,                                 &
+       alpha, beta, gamma, cp_by_dp, zbase,                          &
        dtcu,  dqcu, ducu,  dvcu, dpcu,                               &
        ql,    qi,   qa,    mccu, Dlcu, Dicu, Dacu, tracer= tracer,   &
        dtracercu = dtracercu )
@@ -817,15 +828,15 @@ end subroutine ras_end
   CALL RAS_CLOUD(                                                    &
        klcl,  ib,   rasal, frac, Hl,  coldT,                         &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
-       alpha, beta, gamma, cp_by_dp,                                 &
-       dtcu,  dqcu, ducu,  dvcu, dpcu, mccu=mccu, tracer= tracer,   &
+       alpha, beta, gamma, cp_by_dp, zbase,                          &
+       dtcu,  dqcu, ducu,  dvcu, dpcu, mccu=mccu, tracer= tracer,    &
        dtracercu = dtracercu )
   else
   CALL RAS_CLOUD(                                                    &
        klcl,  ib,   rasal, frac, Hl,  coldT,                         &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
-       alpha, beta, gamma, cp_by_dp,                                 &
-       dtcu,  dqcu, ducu,  dvcu, dpcu, tracer= tracer,   &
+       alpha, beta, gamma, cp_by_dp, zbase,                          &
+       dtcu,  dqcu, ducu,  dvcu, dpcu, tracer= tracer,               &
        dtracercu = dtracercu )
   end if
 
@@ -1157,7 +1168,7 @@ endif
           tempdiag(:,:) = tempdiag(:,:) + dqvap0(:,:,k)*pmass(:,:,k)*dtinv
         end do
         used = send_data ( id_q_conv_col, tempdiag, Time, is, js )
-      end if	
+      end if
    
 !------- diagnostics for dry static energy tendency ---------
       if ( id_t_conv_col > 0 ) then
@@ -1166,7 +1177,7 @@ endif
           tempdiag(:,:) = tempdiag(:,:) + dtemp0(:,:,k)*Cp_Air*pmass(:,:,k)
         end do
         used = send_data ( id_t_conv_col, tempdiag, Time, is, js )
-      end if	
+      end if
 
    if ( do_strat ) then
 
@@ -1195,7 +1206,7 @@ endif
           tempdiag(:,:) = tempdiag(:,:) + Dl0(:,:,k)*pmass(:,:,k)
         end do
         used = send_data ( id_ql_conv_col, tempdiag, Time, is, js )
-      end if	
+      end if
       
       !------- diagnostics for ice water path tendency ---------
       if ( id_qi_conv_col > 0 ) then
@@ -1204,7 +1215,7 @@ endif
           tempdiag(:,:) = tempdiag(:,:) + Di0(:,:,k)*pmass(:,:,k)
         end do
         used = send_data ( id_qi_conv_col, tempdiag, Time, is, js )
-      end if	
+      end if
       
       !---- diagnostics for column integrated cloud mass tendency ---
       if ( id_qa_conv_col > 0 ) then
@@ -1213,7 +1224,7 @@ endif
           tempdiag(:,:) = tempdiag(:,:) + Da0(:,:,k)*pmass(:,:,k)
         end do
         used = send_data ( id_qa_conv_col, tempdiag, Time, is, js )
-      end if	
+      end if
          
    end if !end do strat if
 
@@ -1232,7 +1243,7 @@ endif
           tempdiag(:,:) = tempdiag(:,:) + DR0(:,:,k,tr)*pmass(:,:,k)
         end do
         used = send_data ( id_tracer_conv_col(tr), tempdiag, Time, is, js )
-      end if	
+      end if
 
 
    enddo
@@ -1250,7 +1261,7 @@ endif
  SUBROUTINE RAS_CLOUD(                                           &
             k, ic, rasal, frac, hl, coldT,                       &
             theta, qvap, uwnd, vwnd, pres_int, pi_int, pi, psfc, &
-            alf, bet, gam, cp_by_dp,                             &
+            alf, bet, gam, cp_by_dp, zbase,                      &
             dtcu, dqcu, ducu,  dvcu, dpcu,                       &
             ql, qi, qa, mccu, Dlcu, Dicu, Dacu, tracer, dtracercu )
 !=======================================================================
@@ -1270,13 +1281,14 @@ endif
 !     pi_int   : Exner function at layer interface
 !     pi       : Exner function 
 !     psfc     : Surface pressure
+!     zbase    : Thickness of sub-cloud layer
 !     rasal    : Relaxation parameter for cloud type ic
 !     ql       : OPTIONAL, cloud liquid
 !     qi       : OPTIONAL, cloud ice
 !     qa       : OPTIONAL, cloud fraction or saturated volume fraction
 !---------------------------------------------------------------------
 
- real,    intent(in) :: rasal, frac
+ real,    intent(in) :: rasal, frac, zbase
  real,    intent(in) :: hl,    psfc
  integer, intent(in) :: ic,    k
  logical, intent(in) :: coldT
@@ -1316,7 +1328,7 @@ endif
   real    :: wll,  wli
   integer :: km1,  ic1, l,    iwk
   real    :: xx1,  xx2, xx3,  xx4
-  real    :: ssl, dtemp, zzl, hccp, hcc,  dpib, dpit, zbase 
+  real    :: ssl, dtemp, zzl, hccp, hcc,  dpib, dpit 
   real    :: dut, dvt,   dub, dvb,  wdet, dhic, hkb, hic, sic
  
  real, dimension(size(theta,1)) :: gmh, eta, hol, hst, qol
@@ -1383,7 +1395,6 @@ endif
     hol(k) = pi_int(k+1) * theta(k) * Cp_Air + qol(k) * Hl
     eta(k) = 0.0
     zzl    = ( pi_int(k+1) - pi_int(k) ) * theta(k) * Cp_Air
-    zbase  = zzl
 
 ! --- between cloud base & cloud top
  if ( ic < km1 ) then
@@ -1585,7 +1596,7 @@ if ( LRcu ) then
 !     xx2      = 0.5 * xx1
 !     dtracercu(ic,:) = ( eta(ic1) * ( tracer(ic,:) - tracer(ic1,:) ) * xx2 ) + &
 !                  ( wlR      - eta(ic) * tracer(ic,:)  ) * xx1
-!		
+!
  end if
 
 !------------ Cloud liquid, ice, and fraction
@@ -1789,7 +1800,8 @@ if ( LRcu ) then
      wfn = 0.0
  end if
 
-     xx1 = ( pres_int(k+1) - pres_int(k) ) * frac
+!    xx1 = ( pres_int(k+1) - pres_int(k) ) * frac
+     xx1 = ( psfc          - pres_int(k) ) * frac
      wfn = MIN( wfn, xx1 )
 
 !=======================================================================
@@ -2096,16 +2108,13 @@ if ( LRcu ) then
 ! --- set non-used clouds to zero
   ic((kfx+1):kmax) = 0
 
-! $$$$$$ COMMENTED OUT FOR WORKSTATION
 ! --- Random clouds
-!if ( ncrnd > 0 ) then
-!      CALL RANSET( iseed )
-!    do nc = 1,ncrnd
-!      irnd      = ( RANF() - 0.0005 ) * ( kcr - krmin + 1 )
-!      ic(kfx+nc) = irnd + krmin
-!    end do
-! endif
-! $$$$$$ COMMENTED OUT FOR WORKSTATION
+ if ( ncrnd > 0 ) then
+     do nc = 1,ncrnd
+       irnd      = ( RAN0(iseed) - 0.0005 ) * ( kcr - krmin + 1 )
+       ic(kfx+nc) = irnd + krmin
+     end do
+  endif
 
 !=======================================================================
   end SUBROUTINE RAS_CLOUD_INDEX 
@@ -2258,6 +2267,36 @@ if ( LRcu ) then
 
 !=====================================================================
   end SUBROUTINE RAS_BDGT
+
+!#######################################################################
+!#######################################################################
+
+FUNCTION ran0(idum)
+
+
+!     $Id: ras.F90,v 10.0 2003/10/24 22:00:38 fms Exp $
+!     Platform independent random number generator from
+!     Numerical Recipies
+!     Mark Webb July 1999
+      
+      REAL :: ran0
+      INTEGER, INTENT (INOUT) :: idum
+      
+      INTEGER :: IA,IM,IQ,IR,k
+      REAL :: AM
+
+      IA=16807; IM=2147483647; AM=1.0/IM; IQ=127773; IR=2836
+      
+      if (idum.eq.0) then
+        CALL ERROR_MESG( 'ran0', 'idum=0, ZERO seed not allowed.', FATAL )
+      endif
+
+      k=idum/IQ
+      idum=ia*(idum-k*iq)-ir*k
+      if (idum.lt.0) idum=idum+im
+      ran0=am*idum
+
+END FUNCTION ran0
 
 !#######################################################################
 !#######################################################################

@@ -13,18 +13,19 @@
       Use    Rad_Diag_Mod, ONLY: Radiag
       Use    CO2_Data_Mod, ONLY: CO2_Data
 
-      Use   Utilities_Mod, ONLY: open_file, get_my_pe, get_root_pe, close_file
+      Use         Fms_Mod, ONLY: mpp_pe, mpp_root_pe, write_version_number, &
+                                 error_mesg, FATAL
       Use   Constants_Mod, ONLY: stefan
 
       implicit none
       private
 
-      public  FSrad, RdParm_Init, CO2_Data
+      public  FSrad, RdParm_Init, CO2_Data, fsrad_init, fsrad_end
 !-----------------------------------------------------------------------
 
-      character(len=128) :: version = '$Id: fsrad.F90,v 1.3 2002/07/16 22:32:31 fms Exp $'
-      character(len=128) :: tag = '$Name: inchon $'
-      logical :: do_init = .true.
+      character(len=128) :: version = '$Id: fsrad.F90,v 10.0 2003/10/24 22:00:31 fms Exp $'
+      character(len=128) :: tagname = '$Name: jakarta $'
+      logical            :: module_is_initialized = .false.
 
       real, parameter :: Day_Length=86400.
       real, parameter :: RATco2MW=1.519449738
@@ -70,14 +71,6 @@ Logical  SunUp
 Integer  i,j,k,IX,JX,KX,unit
 !-----------------------------------------------------------------------
 
-!     ----- write version id to logfile -----
-      if (do_init) then
-          unit = open_file ('logfile.out', action='append')
-          if (get_my_pe() == get_root_pe()) &
-          write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-          call close_file (unit)
-          do_init = .false.
-      endif
 
       IX=Size(Rh2o,1)
       JX=Size(Rh2o,2)
@@ -179,6 +172,32 @@ Integer  i,j,k,IX,JX,KX,unit
       End Subroutine FSrad
 
 !#######################################################################
+
+      Subroutine fsrad_init
+!------- write version number and namelist ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
+
+      module_is_initialized = .true.
+
+!---------------------------------------------------------------------
+
+      End Subroutine fsrad_init
+
+!#######################################################################
+
+      Subroutine fsrad_end
+
+      module_is_initialized = .false.
+!---------------------------------------------------------------------
+
+      End Subroutine fsrad_end
+
+!#######################################################################
+
+
 
                      End Module FSrad_Mod
 

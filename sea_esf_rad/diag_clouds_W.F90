@@ -2,28 +2,23 @@
                  module diag_clouds_W_mod
 
 use time_manager_mod,       only: time_type
-use diag_cloud_mod,         only: diag_cloud_avg, diag_cloud_driver
-use utilities_mod,          only: open_file, file_exist,   &
+use diag_cloud_mod,         only: diag_cloud_avg, diag_cloud_driver, &
+                                  diag_cloud_driver2, diag_cloud_avg2
+use diag_cloud_rad_mod,     only: cloud_opt_prop_tg_lw,  &
+                                  cloud_opt_prop_tg_sw
+use       fms_mod,          only: open_namelist_file, file_exist,   &
                                   check_nml_error, error_mesg,   &
-                                  print_version_number, FATAL, NOTE, &
-				  WARNING, get_my_pe, close_file
-!use rad_step_setup_mod,     only: temp, press, pflux, jabs, iabs,  &
-!use rad_step_setup_mod,     only: temp, press, pflux,              &
-!use rad_step_setup_mod,     only: temp, press,             &
-!use rad_step_setup_mod,     only: temp, press
-!                                 ISRAD, IERAD, JSRAD, JERAD, & 
-!                                 KSRAD, KERAD, land, cosz
-!                                               land, cosz
-!                                                      cosz
+                                  write_version_number, FATAL, NOTE, &
+                                  WARNING, mpp_pe, mpp_root_pe, &
+                                  close_file, stdlog
 use rad_utilities_mod,      only: Environment, environment_type, &
                                   longwave_control_type, Lw_control, &
-				  cld_diagnostics_type,  &
+                                   microphysics_type, &
+                                  cld_specification_type, &
+                                  cldrad_properties_type, &
                                   shortwave_control_type, Sw_control,&
                                   cloudrad_control_type, Cldrad_control
-!use astronomy_package_mod,  only: get_astronomy_for_clouds,  &
-!use astronomy_package_mod,  only:                            &
-!			          get_astronomy_for_clouds_init
-use microphys_rad_mod,      only: microphys_rad_driver, &
+use microphys_rad_mod,      only:    &
                                   lwemiss_calc, &
                                   microphys_rad_init
 
@@ -33,7 +28,7 @@ implicit none
 private
 
 !--------------------------------------------------------------------
-!	           diag cloud radiative properties module
+!           diag cloud radiative properties module
 !            currently a wrapper until SKYHI goes away and this
 !            module can be consolidated with diag_cloud_mod
 !
@@ -44,9 +39,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-!  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 1.3 2002/07/16 22:34:44 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: inchon $'
+   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 10.0 2003/10/24 22:00:40 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: jakarta $'
 
 
 
@@ -54,17 +48,25 @@ private
 !-------  interfaces --------
 
 public          &
-          diag_clouds_init, diag_clouds_calc
+          diag_clouds_W_init,    &
+          diag_clouds_W_end,    &
+          diag_clouds_amt,  &
+          obtain_bulk_lw_diag, &
+          obtain_bulk_sw_diag
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-integer   :: dummy = 0
+real       :: taucrit = 1.0     !  critical optical depth at which 
+                                !  solar beam is treated as diffuse
+                                !  rather than direct
+integer    :: num_slingo_bands = 4
 
 
 
 namelist /diag_clouds_W_nml /     &
-			       dummy
+                               num_slingo_bands, &
+                               taucrit
 
 
 !----------------------------------------------------------------------
@@ -74,14 +76,7 @@ namelist /diag_clouds_W_nml /     &
 !----------------------------------------------------------------------
 !----  private data -------
 
-!integer   :: nsolwg
-!character(len=10)     :: swform
-!character(len=16)     :: swform
-logical  :: do_lhsw, do_esfsw
-logical               :: do_lwcldemiss
-
-!real, dimension(:), allocatable :: latsv
-
+logical :: module_is_initialized = .false.
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
 
@@ -94,23 +89,20 @@ contains
 
 
 
-!subroutine diag_clouds_init ( ix, iy, kx, th, ierr)
-!ubroutine diag_clouds_init ( ix, iy, kx,     ierr)
-subroutine diag_clouds_init ( ix, iy,         ierr)
+subroutine diag_clouds_W_init  (num_slingo_bands_out)
 
-!integer,       intent(in)       :: ix, iy, kx
-integer,       intent(in)       :: ix, iy
-integer,       intent(out)      :: ierr
-!real, dimension(:), intent(in)  :: th
+
+integer, intent(out) :: num_slingo_bands_out
 
       integer            :: unit, ierr, io, ierr2
       integer            :: i, j
 
+      if (module_is_initialized) return
 !---------------------------------------------------------------------
 !-----  read namelist  ------
   
       if (file_exist('input.nml')) then
-        unit =  open_file ('input.nml', action='read')
+        unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
         read (unit, nml=diag_clouds_W_nml, iostat=io, end=10)
         ierr = check_nml_error (io, 'diag_clouds_W_nml')
@@ -118,492 +110,512 @@ integer,       intent(out)      :: ierr
 10      call close_file (unit)
       endif
 
-      unit = open_file ('logfile.out', action='append')
-!     call print_version_number (unit, 'diag_clouds_W', version_number)
-      if (get_my_pe() == 0) then
-	write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-	write (unit,nml=diag_clouds_W_nml)
-      endif
-      call close_file (unit)
-
-!      swform = Sw_control%sw_form
-      do_lhsw = Sw_control%do_lhsw
-      do_esfsw = Sw_control%do_esfsw
-      do_lwcldemiss = Lw_control%do_lwcldemiss
-
-      if (Environment%running_gcm ) then
-!       if (trim(swform) == 'esfsw99' .or. do_lwcldemiss) then
-        if (do_esfsw                  .or. do_lwcldemiss) then
-          call microphys_rad_init
-        endif
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+           write (stdlog(),nml=diag_clouds_W_nml)
       endif
 
-!--------------------------------------------------------------------
-!  retrieve module variables that come from other modules
-!--------------------------------------------------------------------
+      num_slingo_bands_out = num_slingo_bands
+! (ultimately get from diag_cloud_mod when call diag_cloud_init)
+      module_is_initialized = .true.
 
-!     call get_astronomy_for_clouds_init (nsolwg)
-!     nsolwg = 1
-
-!--------------------------------------------------------------------
-!  define and save latitude for later use
-!--------------------------------------------------------------------
-!      allocate (latsv(size(th,1) ) )
-!      latsv(:) = th(:)
+end subroutine diag_clouds_W_init
 
 
-end subroutine diag_clouds_init
+!#####################################################################
+
+subroutine diag_clouds_W_end
+ 
+!----------------------------------------------------------------------
+!    diag_clouds_W_end is the destructor for diag_clouds_W_mod.
+!----------------------------------------------------------------------
+ 
+!---------------------------------------------------------------------
+!    mark the module as not initialized.
+!---------------------------------------------------------------------
+      module_is_initialized = .false.
+
+!--------------------------------------------------------------------
+
+
+end subroutine diag_clouds_W_end
 
 
 
 !#################################################################
 
-subroutine diag_clouds_calc ( is, ie, js, je, Cld_diagnostics, lat,  pflux, deltaz, &
-                      cosz,  press, temp_in,     camtsw, cmxolw,  &
-                            crndlw, ncldsw, &
-			       nmxolw, nrndlw,    &
-!		       cirabsw, &
-!		       cvisrfsw, cirrfsw,   &
-			       emmxolw, emrndlw, &
-!			       is, js, Time_next,  &
-			               Time_next,  &
-			       cirabsw, cirrfsw, cvisrfsw,   &
-			       cldext, cldsct, cldasymm)
+subroutine diag_clouds_amt (is, ie, js, je, lat, pflux, press,   &
+                            Rad_time, Cld_spec, Lsc_microphys) 
 
-integer,                      intent(in)    :: is, ie, js, je
-real, dimension(:,:),         intent(in)    :: lat, cosz
-real, dimension(:,:,:),         intent(in)    :: pflux, deltaz, press, &
-                                                 temp_in
-type(time_type),              intent(in)    :: Time_next
-type(cld_diagnostics_type),   intent(inout)    :: Cld_diagnostics
-integer, dimension(:,:),      intent(inout) :: ncldsw, nmxolw, nrndlw
-real,    dimension(:,:,:),    intent(inout) :: camtsw, cmxolw, crndlw
-real,    dimension(:,:,:,:),  intent(inout) :: emmxolw, emrndlw
-real,    dimension(:,:,:,:),  intent(inout), optional :: cirabsw,   &
-                                              cvisrfsw,  cirrfsw,   &
-                                              cldsct, cldext, cldasymm
+!----------------------------------------------------------------------
+!    diag_clouds_amt defines the location, amount (cloud fraction), 
+!    number, optical depth, thickness and liquid percentage of clouds 
+!    present on the model grid.
+!----------------------------------------------------------------------
+
+integer,                      intent(in)     ::  is, ie, js, je
+real,    dimension(:,:),      intent(in)     ::  lat
+real,    dimension(:,:,:),    intent(in)     ::  pflux, press
+type(time_type),              intent(in)     ::  Rad_time     
+type(cld_specification_type), intent(inout)  ::  Cld_spec
+type(microphysics_type),      intent(inout)  ::  Lsc_microphys
 
 !--------------------------------------------------------------------
-!   these arrays define the basic radiative properties of the clouds.
+!   intent(in) variables:
 !
-!     cmxolw  =  amounts of maximally overlapped longwave clouds in
-!                layers from 1     to kx      
-!     crndlw  =  amounts of randomly overlapped longwave clouds in
-!                layers from 1     to kx   .
-!     nmxolw  =  number of maximally overlapped longwave clouds
-!                in each grid column.
-!     nrndlw  =  number of maximally overlapped longwave clouds
-!                in each grid column.
-!     emmxolw =  longwave cloud emissivity for maximally overlapped
-!                clouds through layers from KSRAD to KERAD.
-!     emrndlw =  longwave cloud emissivity for randomly overlapped
-!                clouds through layers from KSRAD to KERAD.
-!     camtsw  =  shortwave cloud amounts. the sum of the maximally
-!                overlapped and randomly overlapped longwave
-!                cloud amounts.
-!     ncldsw  =  number of shortwave clouds in each grid column.
-!     cirabsw =  absorptivity of clouds in the infrared frequency band.
-!                may be zenith angle dependent.
-!     cirrfsw =  reflectivity of clouds in the infrared frequency band.
-!                may be zenith angle dependent.
-!    cvisrfsw =  reflectivity of clouds in the visible frequency band.
-!                may be zenith angle dependent.
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in 
+!                   the physics_window being integrated
+!      lat          latitude of model points  [ radians ]
+!      pflux        average of pressure at adjacent model levels
+!                   [ (kg /( m s^2) ] 
+!      press        pressure at model levels (1:nlev), surface 
+!                   pressure is stored at index value nlev+1
+!                   [ (kg /( m s^2) ]
+!      Rad_time     time at which the climatologically-determined, 
+!                   time-varying zonal cloud fields should apply
+!                   [ time_type, days and seconds]
+!
+!   intent(inout) variables:
+!
+!      Cld_spec     cld_specification_type variable containing the 
+!                   cloud specification input fields needed by the 
+!                   radiation package
+!
+!               the following elements of Cld_spec are defined here:
+!
+!                  %cmxolw  fraction of maximally overlapped clouds
+!                           seen by the longwave radiation 
+!                           [ dimensionless ]
+!                  %crndlw  fraction of randomly overlapped clouds
+!                           seen by the longwave radiation 
+!                           [ dimensionless ]
+!                  %camtsw  cloud fraction seen by the shortwave
+!                           radiation; the sum of the maximally
+!                           overlapped and randomly overlapped 
+!                           longwave cloud fractions  [ dimensionless ]
+!                  %nmxolw  number of maximally overlapped longwave 
+!                           clouds in each grid column.
+!                  %nrndlw  number of randomly overlapped longwave 
+!                           clouds in each grid column.
+!                  %ncldsw  number of clouds seen by he shortwave
+!                           radiation in each grid column.
+!                  %liq_frac 
+!                           percentage of cloud condensate in a grid 
+!                           box which is liquid  [ dimensionless ]
+!                  %tau     cloud optical depth  [ dimensionless ]
+!                  %cloud_thickness
+!                           number of model layers over which the cloud
+!                           in this grid box extends
+!                  %ice_cloud  
+!                           logical variable, which if true, indicates 
+!                           that the grid box will contain ice cloud; 
+!                           if false, the box will contain liquid cloud
+!
 !---------------------------------------------------------------------
 
 !-------------------------------------------------------------------
 !   local variables
-!-------------------------------------------------------------------
-!     real, dimension(:,:,:), allocatable    :: cosangsolar
-      real, dimension(:,:  ), allocatable    :: cosangsolar
-      integer, dimension(:,:,:), allocatable :: kbtm, ktop
-      real, dimension(:,:,:), allocatable    :: temp, qmix, rhum, &
-						omega, lgscldelq, &
-						cnvcntq
-!      real, dimension(:,:), allocatable      :: convprc,lat
-      real, dimension(:,:), allocatable      :: convprc
-      real, dimension(:,:,:), allocatable    :: ql, qi, cf , &
-                                                cldamt, cuvab, cirab, &
-                                                cuvrf, cirrf, emcld, &
-                                                conc_drop, conc_ice, &
-                                                size_drop, size_ice
-      real, dimension(:,:,:,:), allocatable    :: abscoeff, cldemiss
-      integer                                :: j, i, k
-      integer                                :: ierr, kc
-      integer         :: ix, jx, kx 
 
-      ix = size (camtsw, 1)
-      jx = size(camtsw,2)
-      kx = size(camtsw,3)
+      logical, dimension (size(Cld_spec%camtsw,1),                 &
+                          size(Cld_spec%camtsw,2),                 &
+                          size(Cld_spec%camtsw,3)) :: ice_cloud_cs
 
+      real, dimension    (size(Cld_spec%camtsw,1),                 &
+                          size(Cld_spec%camtsw,2),                 &
+                          size(Cld_spec%camtsw,3)) ::  cldamt,     &
+                                                       liq_frac
 
-      if (Environment%running_gcm) then
-!--------------------------------------------------------------------
-!     if (Environment%running_fms) then
+      real, dimension    (size(Cld_spec%camtsw,1),                 &
+                          size(Cld_spec%camtsw,2),                 &
+                          size(Cld_spec%camtsw,3),                 &
+                          size(Cld_spec%tau,4))    ::  tau
 
-!---------------------------------------------------------------------
-!     obtain the appropriate zenith angles that are to be used here.
-!---------------------------------------------------------------------
-!       allocate (cosangsolar (ISRAD:IERAD, JSRAD:JERAD, nsolwg) )
-!       allocate (cosangsolar (ISRAD:IERAD, JSRAD:JERAD,      1) )
-!       allocate (cosangsolar (ISRAD:IERAD, JSRAD:JERAD        ) )
-        allocate (cosangsolar (ix, jx                          ) )
-!       call get_astronomy_for_clouds (cosangsolar   )
-!       cosangsolar(:,:,:) = cosz(:,:,:)
-        cosangsolar(:,:  ) = cosz(:,:  )
+      integer, dimension (size(Cld_spec%camtsw,1),                 &
+                          size(Cld_spec%camtsw,2),                 &
+                          size(Cld_spec%camtsw,3)) ::  ktop, kbtm
 
-!---------------------------------------------------------------------
-!     obtain the cloud amounts and areas.
-!---------------------------------------------------------------------
-!       allocate (temp (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!       allocate (qmix (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!       allocate (rhum (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!       allocate (omega (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!       allocate (lgscldelq (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!       allocate (cnvcntq   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!       allocate (convprc   (ISRAD:IERAD, JSRAD:JERAD) )
-!       allocate (lat       (ISRAD:IERAD, JSRAD:JERAD) )
+      integer     ::   i,j, k, kc           
+      integer     ::   kx                     
 
-!!!! USE input temp if diag_cloud_avg were not being called
-!!! it appears that this will not happen currently -- diag_cloud_avg
-!!! will return a value unless ierr == 1, in which case it is not
-!! needed here.
-
-        allocate (temp (ix, jx, kx                           ) )
-         temp(:,:,:) = temp_in(:,:,1:kx)
-
-
-
-        allocate (qmix (ix, jx, kx                           ) )
-        allocate (rhum (ix, jx, kx                           ) )
-        allocate (omega (ix, jx, kx                           ) )
-        allocate (lgscldelq (ix, jx, kx                           ) )
-        allocate (cnvcntq   (ix, jx, kx                           ) )
-        allocate (convprc   (ix, jx                  ) )
-!        allocate (lat       (ix, jx                  ) )
-
-!       call diag_cloud_avg (iabs(ISRAD), jabs(JSRAD), temp, qmix, &
-        call diag_cloud_avg (is, js, temp, qmix, &
-			     rhum, omega, lgscldelq, cnvcntq, convprc, &
-			     ierr)
-
-!---------------------------------------------------------------------
-!     allocate and initialize the cloud radiative property arrays.
-!---------------------------------------------------------------------
-        if (ierr == 0) then
-!         allocate (ktop   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!  allocate (kbtm   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!  allocate (cldamt (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!  allocate (emcld  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-          allocate (ktop   (ix, jx, kx                           ) )
-	  allocate (kbtm   (ix, jx, kx                           ) )
-	  allocate (cldamt (ix, jx, kx                           ) )
-	  allocate (emcld  (ix, jx, kx                           ) )
-!        if (trim(swform) == 'lhsw' ) then
-         if (do_lhsw                ) then
-!  allocate (cuvrf  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!  allocate (cirrf  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!  allocate (cuvab  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!  allocate (cirab  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-	  allocate (cuvrf  (ix, jx, kx                           ) )
-	  allocate (cirrf  (ix, jx, kx                           ) )
-	  allocate (cuvab  (ix, jx, kx                            ) )
-	  allocate (cirab  (ix, jx, kx                           ) )
-         endif
-!       if (trim(swform) == 'esfsw99' .or. do_lwcldemiss) then
-        if (do_esfsw                  .or. do_lwcldemiss) then
-!         allocate (conc_drop  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-!         allocate (conc_ice  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-!         allocate (size_drop (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-!         allocate (size_ice  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-   allocate (abscoeff ( ix,jx,kx, SIZE(emmxolw,4)) )
-   allocate (cldemiss ( ix,jx,kx, SIZE(emmxolw,4)) )
-          allocate (conc_drop  (ix, jx, kx                           ))
-          allocate (conc_ice  (ix, jx, kx                           ) )
-          allocate (size_drop (ix, jx, kx                           ))
-          allocate (size_ice  (ix, jx, kx                           ) )
-        endif
-
-	  emcld = 1.
-	  ktop=1
-	  kbtm=0
-	  cldamt=0.
-!  if (trim(swform) == 'lhsw' ) then
-	  if (do_lhsw                ) then
-            cuvrf=0.
-            cirrf=0.
-            cuvab=0.
-            cirab=0.
-          endif
-!       if (trim(swform) == 'esfsw99' .or. do_lwcldemiss) then
-        if (do_esfsw                  .or. do_lwcldemiss) then
-	    conc_ice(:,:,:) = 0.
-	    conc_drop(:,:,:) = 0.
-	    size_ice(:,:,:) = 60.
-	    size_drop(:,:,:) = 20.
-         end if
-
-!         do j=jsrad,jerad
-!         do j=1,jx           
-!    lat(:,j) = latsv(jabs(j))
-!  end do
-
-!---------------------------------------------------------------------
-!     obtain the cloud radiative properties.
-!---------------------------------------------------------------------
-!       if (trim(swform) == 'lhsw' ) then
-        if (do_lhsw                ) then
-          if ( .not. do_lwcldemiss) then
-          call diag_cloud_driver (is, js, &
-		temp, qmix, rhum, omega, lgscldelq, cnvcntq, convprc, &
-!	0.1*press(:,:,KSRAD:KERAD),&
-                0.1*press(:,:,1    :kx   ),&
-!  	0.1*pflux, 0.1*pflux(:,:,KERAD+1),  &
-	  	0.1*pflux, 0.1*pflux(:,:,kx   +1),  &
-!		      cosangsolar(:,:,1), lat, Time_next, &
-			      cosangsolar       , lat, Time_next, &
-			      ncldsw, ktop, kbtm, cldamt, r_uv=cuvrf,  &
-                              r_nir=cirrf, ab_uv=cuvab,   &
-			      ab_nir=cirab, em_lw=emcld)
-          else          
-              call diag_cloud_driver (is, js, &
-                 temp, qmix, rhum, omega, lgscldelq, cnvcntq, convprc, &
-!                0.1*press(:,:,KSRAD:KERAD),&
-                 0.1*press(:,:,    1:kx   ),&
-!                0.1*pflux, 0.1*pflux(:,:,KERAD+1),  &
-                 0.1*pflux, 0.1*pflux(:,:,kx   +1),  &
-!                cosangsolar(:,:,1), lat, Time_next, &
-                 cosangsolar       , lat, Time_next, &
-                 ncldsw, ktop, kbtm, cldamt, r_uv=cuvrf,  &
-                 r_nir=cirrf, ab_uv=cuvab, ab_nir=cirab, em_lw=emcld, &
-		 conc_drop=conc_drop, conc_ice=conc_ice, &
-		 size_drop=size_drop, size_ice=size_ice)
-           endif
-!---------------------------------------------------------------------
-!    map the cloud-space arrays to physical space arrays
-!-------------------------------------------------------------------
-!         do j=JSRAD,JERAD
-!           do i=ISRAD,IERAD
-          do j=1,jx           
-            do i=1,ix           
-              do kc=1, ncldsw(i,j)  
-   
-                do k=ktop(i,j,kc), kbtm(i,j,kc)
-	          camtsw(i,j,k) = cldamt(i,j,kc) 
-	          cirabsw(i,j,k,:) = cirab(i,j,kc)
-	          cirrfsw(i,j,k,:) = cirrf(i,j,kc)
-	          cvisrfsw(i,j,k,:) = cuvrf(i,j,kc)
-                end do
-                do k=ktop(i,j,kc), kbtm(i,j,kc)
-	          if (ktop(i,j,kc) == kbtm(i,j,kc)) then
-	            crndlw(i,j,k) = cldamt(i,j,kc)
-	     	    cmxolw(i,j,k) = 0.0             
-		    emrndlw(i,j,k,:) = emcld(i,j,kc) 
-                  else
-		    cmxolw(i,j,k) = cldamt(i,j,kc)
-		    crndlw(i,j,k) = 0.0
-		    emmxolw(i,j,k,:) = emcld(i,j,kc) 
-                  endif
-	        end do
-	        if (ktop(i,j,kc) == kbtm(i,j,kc)) then
-	          nrndlw(i,j) = nrndlw(i,j) + 1
-                else
-	          nmxolw(i,j) = nmxolw(i,j) + 1
-                endif
-              end do
-	    end do
-          end do
-
-
-!    this caters to the case when the shortwave is lh but the
-!    longwave is sea_esf with the do_lwcldemiss option on
-          if (do_lwcldemiss) then
-            call microphys_rad_driver (is, ie, js, je, deltaz, &
-!              press, temp_in, camtsw,  &
-!                          emmxolw, emrndlw, Cld_diagnostics, &
-	              press, temp_in,          &
-	                                            Cld_diagnostics, &
-                            abscoeff=abscoeff, &
-                                  conc_drop_in=conc_drop,     &
-                                   conc_ice_in=conc_ice,      &
-                                      size_drop_in=size_drop,    &
-                                    size_ice_in=size_ice)
-
-           call lwemiss_calc(  deltaz,                            &
-                           abscoeff,                         &
-                         cldemiss)
-
-!   as of 3 august 2001, we are assuming randomly overlapped clouds
-!  only. the cloud and emissivity settings follow:
-       emmxolw = cldemiss
-        emrndlw = cldemiss
-
-          endif
-
- 
-!        else if (trim(swform) == 'esfsw99') then
-         else if (do_esfsw                 ) then
-
-              call diag_cloud_driver (is, js, &
-                 temp, qmix, rhum, omega, lgscldelq, cnvcntq, convprc, &
-!                0.1*press(:,:,KSRAD:KERAD),&
-                 0.1*press(:,:,    1:kx   ),&
-!                0.1*pflux, 0.1*pflux(:,:,KERAD+1),  &
-                 0.1*pflux, 0.1*pflux(:,:,kx   +1),  &
-!                cosangsolar(:,:,1), lat, Time_next, &
-                 cosangsolar       , lat, Time_next, &
-                 ncldsw, ktop, kbtm, cldamt,   &
-!	 cuvrf,  &
-!                cirrf, cuvab, cirab, emcld)
-                 conc_drop=conc_drop, conc_ice=conc_ice, &
-		 size_drop=size_drop, size_ice=size_ice)
-
-!---------------------------------------------------------------------
-!   as of 14 dec 2000, all cloud properties and cloud fractions are
-!   assumed to be for randomly overlapped clouds
-!---------------------------------------------------------------------
-!         do j=JSRAD,JERAD
-!           do i=ISRAD,IERAD
-          do j=1,jx         
-            do i=1,ix           
-              do kc=1, ncldsw(i,j)  
-   
-                do k=ktop(i,j,kc), kbtm(i,j,kc)
-	          camtsw(i,j,k) = cldamt(i,j,kc) 
-		  crndlw(i,j,k) = camtsw(i,j,k)
-		  cmxolw(i,j,k) = 0.0
-		  emrndlw(i,j,k,1) = emcld(i,j,kc)
-		  emmxolw(i,j,k,:) = 1.0
-                 end do
-                 end do
-                 end do
-                 end do
-
-!         crndlw = cldamt
-!         cmxolw = 0.0E+00
-!        camtsw = cmxolw + crndlw
-!         emmxolw = 1.0
-!         emrndlw(:,:,:,1) = emcld
+!----------------------------------------------------------------------
+!  local variables:
 !
+!      ice_cloud_cs  logical flag indicating whether a given cloud (in
+!                    cloud-space) is made up of ice (.true.) or liquid
+!                    (.false.)
+!      cldamt        fractional cloudiness in a grid box 
+!                    (in cloud-space)  [ dimensionless ]
+!      liq_frac      the fraction of cloud in a grid box which is liquid
+!                    (in cloud-space) [ dimensionless ]
+!      tau           cloud optical depth, in cloud-space   
+!                    [ dimensionless ]
+!      ktop          model index of the cloud top
+!      kbtm          model index of the cloud base
+!      i, j, k, kc   do loop indices
+!      kx            number of model layers
+!
+!---------------------------------------------------------------------
+
 !--------------------------------------------------------------------
-!  if microphysics is being used for either sw or lw calculation, call
-!  microphys_rad_driver to obtain cloud radiative properties.
+!    define number of model layers.
 !--------------------------------------------------------------------
-       call microphys_rad_driver (is, ie, js, je, deltaz, &
-!                              press, temp_in,   camtsw, emmxolw,  &
-!                                emrndlw, Cld_diagnostics, &
-                               press, temp_in,                     &
-                                          Cld_diagnostics, &
-                                  cldext=cldext, cldsct=cldsct,    &
-                            abscoeff=abscoeff, &
-!                                 cldasymm=cldasymm)             
-                                  cldasymm=cldasymm,            &
-                                  conc_drop_in=conc_drop,     &
-                                  conc_ice_in=conc_ice,      &
-                                  size_drop_in=size_drop,    &
-                                  size_ice_in=size_ice)
+      kx = size(Cld_spec%camtsw,3)
 
+!---------------------------------------------------------------------
+!    call diag_cloud_driver2 to obtain the cloud specification variables
+!    in cloud space.
+!---------------------------------------------------------------------
+      call diag_cloud_driver2 (is, js, press, pflux, lat, Rad_time,  &
+                               Cld_spec%ncldsw, ktop, kbtm, cldamt, &
+                               liq_frac, tau, ice_cloud_cs)
 
-!       if (do_lwcldemiss) then
-           call lwemiss_calc(  deltaz,                            &
-                           abscoeff,                         &
-                         cldemiss)
+!---------------------------------------------------------------------
+!    map the various cloud specification arrays from cloud-space to 
+!    physical space so that they may be exported for use elsewhere.
+!-------------------------------------------------------------------
+      do j=1,size(Cld_spec%camtsw,2)
+        do i=1,size(Cld_spec%camtsw,1)
+          do kc=1,Cld_spec%ncldsw(i,j)  
+            do k=ktop(i,j,kc), kbtm(i,j,kc)
+              Cld_spec%camtsw(i,j,k) = cldamt(i,j,kc) 
+              Cld_spec%liq_frac(i,j,k) = liq_frac(i,j,kc)
+              Cld_spec%tau(i,j,k,:) = tau(i,j,kc,:)
+              Cld_spec%cld_thickness(i,j,k) =    &
+                                      kbtm(i,j,kc) - ktop(i,j,kc) + 1
+              Cld_spec%ice_cloud(i,j,k) = ice_cloud_cs(i,j,kc)
+      
+!---------------------------------------------------------------------
+!    determine if max overlap or random overlap assumption is made. if
+!    cloud is more than one layer deep and using lhsw, then max overlap
+!    assumed; otherwise random overlap is assumed.
+!----------------------------------------------------------------------
+              if (ktop(i,j,kc) == kbtm(i,j,kc)) then
+                Cld_spec%crndlw(i,j,k) = cldamt(i,j,kc)
+                Cld_spec%cmxolw(i,j,k) = 0.0             
+              else
+                if (Sw_control%do_esfsw) then
+                  Cld_spec%crndlw(i,j,k) = cldamt(i,j,kc)  
+                  Cld_spec%cmxolw(i,j,k) = 0.0             
+                else
+                  Cld_spec%cmxolw(i,j,k) = cldamt(i,j,kc)
+                  Cld_spec%crndlw(i,j,k) = 0.0
+                endif       
+              endif
+            end do
+            if (ktop(i,j,kc) == kbtm(i,j,kc)) then
+              Cld_spec%nrndlw(i,j) = Cld_spec%nrndlw(i,j) + 1
+            else
+              if (Sw_control%do_esfsw) then
+                Cld_spec%nrndlw(i,j) = Cld_spec%nrndlw(i,j) + 1
+              else
+                Cld_spec%nmxolw(i,j) = Cld_spec%nmxolw(i,j) + 1
+              endif     
+            endif
+          end do
+        end do
+      end do
+ 
 
-!   as of 3 august 2001, we are assuming randomly overlapped clouds
-!  only. the cloud and emissivity settings follow:
-       emmxolw = cldemiss
-        emrndlw = cldemiss
-
-!     endif
-
-
-     endif
-	  deallocate (ktop  )
-	  deallocate (kbtm  )
-	  deallocate (cldamt)
-	  deallocate (emcld )
-!         if (trim(swform) == 'lhsw' ) then
-          if (do_lhsw                ) then
-	    deallocate (cuvrf )
-            deallocate (cirrf )
-            deallocate (cuvab )
-            deallocate (cirab )
-          endif
-!        if (trim(swform) == 'esfsw99' .or. do_lwcldemiss ) then
-         if (do_esfsw                  .or. do_lwcldemiss ) then
-         deallocate (conc_drop )
-         deallocate (conc_ice  )
-         deallocate (size_drop )
-         deallocate (size_ice  )
-         deallocate (abscoeff  )
-         deallocate (cldemiss  )
-        endif
-
-!-----------------------------------------------------------------
-! (if ierr /= 0, then default clouds will be used. this is ok on the
-! first timestep, when this condition happens, but should likely be 
-! changed to indicate a real error if it occurs after the first step.
 !--------------------------------------------------------------------
-	else 
-! needed to supply values for radiation_diag_mod
-        if (do_esfsw                  .or. do_lwcldemiss) then
-          allocate (conc_drop  (ix, jx, kx                           ))
-          allocate (conc_ice  (ix, jx, kx                           ) )
-          allocate (size_drop (ix, jx, kx                           ))
-          allocate (size_ice  (ix, jx, kx                           ) )
-	    conc_ice(:,:,:) = 0.
-	    conc_drop(:,:,:) = 0.
-	    size_ice(:,:,:) = 60.
-	    size_drop(:,:,:) = 20.
-       call microphys_rad_driver (is, ie, js, je, deltaz, &
-!                              press, temp_in,   camtsw, emmxolw,  &
-!                                emrndlw, Cld_diagnostics, &
-                               press, temp_in,                     &
-                                          Cld_diagnostics, &
-                                  cldext=cldext, cldsct=cldsct,    &
-!                                abscoeff=abscoeff, &
-!                                 cldasymm=cldasymm)             
-                                  cldasymm=cldasymm,            &
-                                  conc_drop_in=conc_drop,     &
-                                  conc_ice_in=conc_ice,      &
-                                  size_drop_in=size_drop,    &
-                                  size_ice_in=size_ice)
-         deallocate (conc_drop )
-         deallocate (conc_ice  )
-         deallocate (size_drop )
-         deallocate (size_ice  )
-         emrndlw = 1.0
-         emmxolw = 1.0
-        endif
-        endif  ! (ierr)
 
-        deallocate (temp   )
-        deallocate (qmix   )
-        deallocate (rhum   )
-        deallocate (omega  )
-        deallocate (lgscldelq)
-        deallocate (cnvcntq)
-        deallocate (convprc)
-        deallocate (cosangsolar  )
-!	deallocate (lat)
-
-!     else
-
-!       call error_mesg ('diag_clouds_W',   &
-!         'diag_cloud only available in FMS', FATAL)
-
-!     endif ! (running_fms)
-
-     endif  ! (running_gcm)
+end subroutine diag_clouds_amt 
 
 
 
-end subroutine diag_clouds_calc
+
+
+!#####################################################################
+
+subroutine obtain_bulk_lw_diag (is, ie, js, je, Cld_spec, Cldrad_props)
+
+!---------------------------------------------------------------------
+!    obtain_bulk_lw_diag defines bulk longwave cloud radiative 
+!    properties for the gordon diag cloud scheme.
+!---------------------------------------------------------------------
+ 
+integer,                     intent(in)     :: is, ie, js, je
+type(cld_specification_type), intent(in   ) :: Cld_spec
+type(cldrad_properties_type), intent(inout) :: Cldrad_props
+
+!--------------------------------------------------------------------
+!   intent(in) variables:
+!
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in 
+!                   the physics_window being integrated
+!
+!   intent(inout) variables:
+!
+!      Cld_spec          cloud specification arrays defining the 
+!                        location, amount and type (hi, middle, lo)
+!                        of clouds that are present, provides input 
+!                        to this subroutine
+!                        [ cld_specification_type ]
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output 
+!               from this routine:
+!
+!                    %emrndlw   longwave cloud emissivity for 
+!                               randomly overlapped clouds
+!                               in each of the longwave 
+!                               frequency bands  [ dimensionless ]
+!                    %emmxolw   longwave cloud emissivity for 
+!                               maximally overlapped clouds
+!                               in each of the longwave 
+!                               frequency bands  [ dimensionless ]
+!
+!---------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+!   local variables:
+
+      real, dimension (size(Cldrad_props%emrndlw,1),               &
+                       size(Cldrad_props%emrndlw,2),                &
+                       size(Cldrad_props%emrndlw,3)) ::  emcld
+
+      integer    :: max_cld
+      integer    :: i,j,k
+
+!---------------------------------------------------------------------
+!   local variables:
+!
+!            emcld    longwave cloud emissivity, assuming a single 
+!                     band, returned from diag_cloud_rad_mod
+!            max_cld  maximum number of clouds in any column in the 
+!                     window
+!            i,j,k    do-loop indices
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    determine if any clouds are present in the window.
+!---------------------------------------------------------------------
+      max_cld = maxval(Cld_spec%ncldsw)
+
+!---------------------------------------------------------------------
+!    if cloud is nowhere present, return. 
+!---------------------------------------------------------------------
+      if (max_cld > 0) then
+
+!--------------------------------------------------------------------
+!    initialize property array in cloud-space to zero.
+!--------------------------------------------------------------------
+        emcld = 0.
+
+!---------------------------------------------------------------------
+!    call cloud_opt_prop_tg_lw to obtain the cloud longwave enmissivity.
+!---------------------------------------------------------------------
+        call cloud_opt_prop_tg_lw (Cld_spec%tau, Cld_spec%liq_frac,  &
+                                   emcld)
+
+!---------------------------------------------------------------------
+!    assign the emissivity value returned to both the random and max-
+!    imum overlap case. the value will only be used when there is a
+!    non-zero cloud fraction of a particular type.
+!-------------------------------------------------------------------
+        do k=1,size(Cldrad_props%emrndlw,3)
+          do j=1,size(Cldrad_props%emrndlw,2)
+            do i=1,size(Cldrad_props%emrndlw,1)
+              Cldrad_props%emrndlw(i,j,k,:) = emcld(i,j,k) 
+              Cldrad_props%emmxolw(i,j,k,:) = emcld(i,j,k) 
+            end do
+          end do
+        end do
+      endif  
+ 
+!---------------------------------------------------------------------
+
+
+end subroutine obtain_bulk_lw_diag
+
+
+
+
+!#####################################################################
+
+subroutine obtain_bulk_sw_diag (is, ie, js, je, cosz, Cld_spec,  &   
+                                Cldrad_props)
+
+!---------------------------------------------------------------------
+!    obtain_bulk_sw_diag defines bulk shortwave cloud radiative 
+!    properties for the gordon diag cloud scheme.
+!---------------------------------------------------------------------
+
+integer,                      intent(in)    ::  is, ie, js, je
+real, dimension(:,:),         intent(in)    ::  cosz
+type(cld_specification_type), intent(in   ) ::  Cld_spec
+type(cldrad_properties_type), intent(inout) ::  Cldrad_props
+
+!--------------------------------------------------------------------
+!   intent(in) variables:
+!
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in 
+!                   the physics_window being integrated
+!      cosz         cosine of the zenith angle  [ dimensionless ]
+!
+!   intent(inout) variables:
+!
+!      Cld_spec          cloud specification arrays defining the 
+!                        location, amount and type (hi, middle, lo)
+!                        of clouds that are present, provides input 
+!                        to this subroutine
+!                        [ cld_specification_type ]
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output 
+!               from this routine:
+!
+!                    %cirabsw   absorptivity of clouds in the 
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cirrfsw   reflectivity of clouds in the 
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cvisrfsw  reflectivity of clouds in the 
+!                               visible frequency band
+!                               [ dimensionless ]
+!
+!---------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+!   local variables:
+
+
+      real, dimension (size(Cldrad_props%cirabsw,1),                 &
+                       size(Cldrad_props%cirabsw,2),                 &
+                       size(Cldrad_props%cirabsw,3)) ::  cuvab
+
+      real, dimension (size(Cldrad_props%cirabsw,1),                 &
+                       size(Cldrad_props%cirabsw,2)) :: qmix_kx
+
+      logical, dimension (size(Cldrad_props%cirabsw,1),    &
+                          size(Cldrad_props%cirabsw,2), &
+                          size(Cldrad_props%cirabsw,3)) ::  direct
+
+      real        ::    taucum
+      integer     ::    max_cld, ierr, kcld
+      integer     ::    i, j, k, kk
+
+!-------------------------------------------------------------------
+!   local variables:
+!
+!        cuvab      absorptivity of clouds in the visible frequency
+!                   bands [ nondimensional ]
+!        qmix_kx    mixing ratio at the lowest model level
+!                   [ nondimensional ]
+!        direct     logical variable indicating whether solar beam is
+!                   treated as direct or diffuse
+!        taucum     sum of cloud extinction coefficients from model
+!                   top to the current level; if taucum is > taucrit
+!                   then the solar beam is considered to be diffuse 
+!                   at lower model levels [ dimensionless ]
+!        max_cld    maximum number of clouds in any physics window 
+!                   column
+!        ierr       error flag
+!        kcld       next model layer to check for the presence of cloud
+!                   in the calculation of taucum. this will not be the
+!                   next lower level when multi-layer clouds are present
+!        i,j,k,kk   do-loop indices
+!
+!----------------------------------------------------------------------
+
+!----------------------------------------------------------------------
+!    define the nature of the solar beam at the top of atmosphere.
+!---------------------------------------------------------------------
+      direct(:,:,:) = .true.
+
+!----------------------------------------------------------------------
+!    in each column, integrate downward, defining the nature of the 
+!    solar beam at each model level, and summing the cloud optical 
+!    depths. once the optical depth exceeds taucrit, the solar beam is 
+!    assigned diffuse properties rather than the properties of a direct 
+!    solar beam. the logical variable direct is defined to indicate how
+!    the beam is to be treated at each level.
+!---------------------------------------------------------------------
+      do j=1,size(Cld_spec%tau,2)
+        do i=1,size(Cld_spec%tau,1)
+          kcld = 1
+          taucum = 0.
+          do k=1,size(Cld_spec%tau,3)
+            if (k >= kcld) then
+
+!---------------------------------------------------------------------
+!    once taucrit is exceeded, mark all lower levels as being diffuse,
+!    and begin the next column.
+!----------------------------------------------------------------------
+              if (taucum > taucrit) then
+                do kk=k,size(Cld_spec%tau,3)
+                  direct(i,j,kk) = .false.
+                end do
+                exit
+              endif
+
+!---------------------------------------------------------------------
+!    when multi-layer clouds are encountered, the optical depth for the
+!    cloud must be added to taucum only once. kcld is defined as the 
+!    first level below the current cloud at which to again start check-
+!    ing taucum vs taucrit.
+!---------------------------------------------------------------------
+              if (Cld_spec%cld_thickness(i,j,k) > 0) then
+                taucum = taucum + Cld_spec%tau(i,j,k,1)
+                kcld = kcld + Cld_spec%cld_thickness(i,j,k)
+              else
+                kcld = kcld + 1
+              endif
+            endif
+          end do
+        end do
+      end do
+
+!---------------------------------------------------------------------
+!    determine if any clouds are present in the window.
+!---------------------------------------------------------------------
+      max_cld = maxval(Cld_spec%ncldsw)
+
+!--------------------------------------------------------------------
+!    define the absorptivity in the visible spectrum to be 0.0.
+!--------------------------------------------------------------------
+      cuvab = 0.
+
+!---------------------------------------------------------------------
+!    if cloud is present, define cloud radiative properties. otherwise 
+!    the default values corresponding to no clouds will be used.
+!---------------------------------------------------------------------
+      if (max_cld > 0) then
+
+!--------------------------------------------------------------------
+!    obtain the properly averaged (or instantaneous) mixing ratio at
+!    the lowest model level. it will be passed to cloud_opt_prop_tg_sw
+!    and used to calculate anomalous absorption.
+!---------------------------------------------------------------------
+        call diag_cloud_avg2 (is, js, qmix_kx, ierr)
+
+!---------------------------------------------------------------------
+!    call cloud_opt_prop_tg_sw to obtain short-wave cloud radiative 
+!    properties. 
+!---------------------------------------------------------------------
+        call cloud_opt_prop_tg_sw (Cld_spec%liq_frac, Cld_spec%tau, &
+                                   direct,  qmix_kx, cosz,   &
+                                   Cldrad_props%cvisrfsw, &
+                                   Cldrad_props%cirrfsw, &
+                                   cuvab, Cldrad_props%cirabsw)
+      endif  ! (max_cld > 0)
+
+!--------------------------------------------------------------------
+
+
+
+
+end subroutine obtain_bulk_sw_diag
+
 
 
 !####################################################################
 
 
-	       end module diag_clouds_W_mod
+       end module diag_clouds_W_mod
 
 
 

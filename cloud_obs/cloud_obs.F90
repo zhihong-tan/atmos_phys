@@ -8,9 +8,10 @@
 !-----------------------------------------------------------------------
 
 use horiz_interp_mod, only: horiz_interp
-use    utilities_mod, only: file_exist, error_mesg, FATAL,  &
-                            open_file, close_file,          &
-                            check_nml_error, get_my_pe
+use          fms_mod, only: file_exist, error_mesg, FATAL,  &
+                            open_namelist_file, close_file,          &
+                            check_nml_error, mpp_pe, mpp_root_pe, &
+                            write_version_number, stdlog, open_ieee32_file
 use time_manager_mod, only: time_type, get_date
 use  time_interp_mod, only: time_interp
 
@@ -19,18 +20,18 @@ private
 
 !---------- public interfaces ----------
 
-public  cloud_obs, cloud_obs_init
+public  cloud_obs, cloud_obs_init, cloud_obs_end
 
 !-----------------------------------------------------------------------
 !   ---------- private data ------------
 
-   character(len=128) :: version = '$Id: cloud_obs.F90,v 1.2 2000/08/04 18:18:22 fms Exp $'
-   character(len=128) :: tag = '$Name: inchon $'
+   character(len=128) :: version = '$Id: cloud_obs.F90,v 10.0 2003/10/24 22:00:23 fms Exp $'
+   character(len=128) :: tagname = '$Name: jakarta $'
 
       real, allocatable, dimension(:,:,:) :: clda,cldb
       real, allocatable, dimension(:)     :: londat,latdat
    integer :: yrclda=-99,moclda=-99, yrcldb=-99,mocldb=-99
-   logical :: do_init=.true.
+   logical :: module_is_initialized = .false.
 
 !   ---------- namelist ---------------
 
@@ -79,13 +80,14 @@ type(time_type), intent(in)                    :: Time
    logical      :: unit_opened
 !-----------------------------------------------------------------------
 
-   if (do_init) call error_mesg ('cloud_obs',  &
-                          'cloud_obs_init has not been called.',FATAL)
+   if ( .not. module_is_initialized)  &
+                call error_mesg ('cloud_obs',  &
+                         'cloud_obs_init has not been called.',FATAL)
 
    if (size(cldamt,3) < 3) call error_mesg ('cloud_obs',  &
                                 'dimension 3 of cldamt is < 3', FATAL)
 
-   pe = get_my_pe()
+   pe = mpp_pe()
 
 !------------ size & position of this window ---------------------------
       ix=size(cldamt,1); jx=size(cldamt,2)
@@ -118,8 +120,7 @@ type(time_type), intent(in)                    :: Time
 
       if (year1 .ne. yrclda .or. month1 .ne. moclda) then
           unit_opened=.true.
-          unit = open_file ( 'INPUT/cloud_obs.data', form='ieee32', &
-                             action='read' )
+          unit = open_ieee32_file ( 'INPUT/cloud_obs.data', action='read' )
           irec=0
           do
 !!!!               read (unit,end=380)  yr,mo,obs
@@ -151,11 +152,10 @@ type(time_type), intent(in)                    :: Time
       if (year2 .ne. yrcldb .or. month2 .ne. mocldb) then
           if (.not.unit_opened) then
              unit_opened=.true.
-             unit = open_file ( 'INPUT/cloud_obs.data', form='ieee32', &
-                                action='read' )
+             unit = open_ieee32_file ( 'INPUT/cloud_obs.data', action='read' )
           endif
           if (useclimo1 .and. month2 <= month1 ) then
-             if (verbose > 1 .and. pe == 0)  &
+             if (verbose > 1 .and. pe == mpp_root_pe())  &
                        print *, ' rewinding INPUT/cloud_obs.data'
              rewind unit
           endif
@@ -236,10 +236,12 @@ type(time_type), intent(in)                    :: Time
    real    :: hpie
    integer :: i,j,in,jn, unit, ierr, io
 
+   if (module_is_initialized) return
+
 !------- read namelist --------
 
       if (file_exist('input.nml')) then
-          unit = open_file ('input.nml', action='read')
+          unit = open_namelist_file ()
           ierr=1; do while (ierr /= 0)
              read  (unit, nml=cloud_obs_nml, iostat=io, end=10)
              ierr = check_nml_error(io,'cloud_obs_nml')
@@ -249,12 +251,10 @@ type(time_type), intent(in)                    :: Time
 
 !------- write version number and namelist ---------
 
-      unit = open_file ('logfile.out', action='append')
-      if ( get_my_pe() == 0 ) then
-           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-           write (unit, nml=cloud_obs_nml)
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+           write (stdlog(), nml=cloud_obs_nml)
       endif
-      call close_file (unit)
 
 !------- setup for observed grid -------
 
@@ -269,11 +269,21 @@ type(time_type), intent(in)                    :: Time
 
       latdat = latb; londat = lonb
 
-      do_init = .false.
+      module_is_initialized = .true.
 
 !-----------------------------------------------------------------------
 
  end subroutine cloud_obs_init
+
+!#######################################################################
+
+ subroutine cloud_obs_end
+ 
+      module_is_initialized = .false.
+
+!-----------------------------------------------------------------------
+
+ end subroutine cloud_obs_end
 
 !#######################################################################
 

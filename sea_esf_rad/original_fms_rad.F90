@@ -7,7 +7,7 @@
 
 use           mcm_lw_mod, only: mcm_lw_init
 
-use    mcm_sw_driver_mod, only: mcm_shortwave_driver_init
+use    mcm_sw_driver_mod, only: mcm_sw_driver_init
 
 use            fsrad_mod, only: rdparm_init, fsrad, co2_data
 
@@ -21,23 +21,23 @@ use     time_manager_mod, only: time_type, set_date, set_time,  &
                                 increment_time,  operator(<), &
                                 operator(>=), operator(>)
 
-use      strat_cloud_mod, only: add_strat_tend
 
 use    diag_integral_mod, only: diag_integral_field_init, &
                                 sum_diag_integral_field
 
-use        utilities_mod, only: get_my_pe, FATAL,  WARNING, NOTE,  &
+use              fms_mod, only: FATAL,  WARNING, NOTE,  &
                                 close_file, read_data, write_data, &
-                                open_file, print_version_number,   &
-                                get_num_pes,  get_root_pe,         &
+                                open_namelist_file,    &
                                 check_nml_error, file_exist,       &
-                                utilities_init, error_mesg
+                                error_mesg, &
+                                mpp_pe, mpp_root_pe, mpp_npes, &
+                                write_version_number, stdlog
 
 use     optical_path_mod, only: optical_path_init
 
 use  longwave_tables_mod, only: longwave_tables_init
 
-use longwave_aerosol_mod, only: longwave_aerosol_init
+!use longwave_aerosol_mod, only: longwave_aerosol_init
 
 use           gas_tf_mod, only: gas_tf_init, gas_tf_end
 
@@ -52,11 +52,14 @@ use  longwave_params_mod, only: longwave_params_init
 use    rad_utilities_mod, only: rad_utilities_init, &
                                 radiation_control_type, &
                                 Rad_control, &
-                                define_environment, &
+!                               define_environment, &
                                 radiative_gases_type, &
                                 cldrad_properties_type, &
+                                cld_specification_type, &
                                 astronomy_type, &
                                 atmos_input_type, &
+                                surface_type, &
+                                shortwave_control_type, Sw_control, &
                                 sw_output_type, lw_output_type, &
                                 rad_output_type, &
                                 fsrad_output_type, &
@@ -69,10 +72,6 @@ use esfsw_parameters_mod, only: esfsw_parameters_init
 
 use            ozone_mod, only: ozone_init
 
-use cloudrad_package_mod, only: cloudrad_package_init, &
-                                clouddrvr, cloudrad_package_alloc_rad, &
-                                cloudrad_package_dealloc
-
 use   lw_gases_stdtf_mod, only: lw_gases_stdtf_init 
 
 implicit none 
@@ -84,8 +83,8 @@ public    original_fms_rad_init, original_fms_rad_end, original_fms_rad
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: original_fms_rad.F90,v 1.3 2003/04/09 21:00:56 fms Exp $'
-character(len=128) :: tag = '$Name: inchon $'
+character(len=128) :: version = '$Id: original_fms_rad.F90,v 10.0 2003/10/24 22:00:45 fms Exp $'
+character(len=128) :: tagname = '$Name: jakarta $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)
@@ -118,7 +117,7 @@ character(len=128) :: tag = '$Name: inchon $'
 !   coszen_angle = cosine of the zenith angle 
 !                  (used for the last radiation calculation)
 
-    type(rad_output_type)               ::  Rad_output
+    type(rad_output_type),save          ::  Rad_output
     real, allocatable, dimension(:,:)   ::  solar_save
 
 !   real, allocatable, dimension(:,:,:) :: tdt_rad
@@ -218,9 +217,9 @@ namelist /original_fms_rad_nml/ &
 !                               co2std, ratio, jpt, ipt, &
                                 co2std, ratio, &
 !                               do_bounds_chk, &
-!				  all_level_radiation, &
-!				  topmost_radiation_level, &
-!				  all_column_radiation, &
+!  all_level_radiation, &
+!  topmost_radiation_level, &
+!  all_column_radiation, &
 !                               rsd
                                 do_mcm_radiation
 
@@ -294,7 +293,7 @@ real               ::  rh2o_lower_limit
 
 !-----------------------------------------------------------------------
            integer, intent(in)  :: kmax
-!	   real, intent(in) :: co2std, ratio
+!   real, intent(in) :: co2std, ratio
            real, intent(in), dimension(:)   :: lonb, latb
            real, intent(in), dimension(:,:) :: pref
         integer, intent(in), dimension(4)   :: axes
@@ -319,7 +318,7 @@ type(time_type), intent(in)                 :: Time
 !    read namelist.
 !---------------------------------------------------------------------
       if ( file_exist('input.nml')) then
-        unit = open_file (file='input.nml', action='read')
+        unit = open_namelist_file ()
         ierr=1; do while (ierr /= 0)
           read  (unit, nml=original_fms_rad_nml, iostat=io, end=10)
           ierr = check_nml_error(io,'original_fms_rad_nml')
@@ -330,18 +329,11 @@ type(time_type), intent(in)                 :: Time
 !---------------------------------------------------------------------
 !    write namelist to logfile.
 !---------------------------------------------------------------------
-      unit = open_file ('logfile.out', action='append')
-      if ( get_my_pe() == 0 ) then
-!     if ( get_my_pe() == get_root_pe() ) then
-        write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+      if ( mpp_pe() == mpp_root_pe() ) then
+        call write_version_number(version, tagname)
         write (unit, nml=original_fms_rad_nml)
       endif
-      call close_file (unit)
 
-!   if (do_annual .and. do_diurnal) then
-!     call error_mesg ( 'radiation_driver_init', &
-!        'Cannot have both do_annual and do_diurnal as .true.', FATAL)
-!   endif
 
     jd = size(latb)-1
     id = size(lonb)-1
@@ -353,7 +345,7 @@ type(time_type), intent(in)                 :: Time
      if (lat_diag /= -1000. .and. long_diag /= -1000.) then
        if ( (lat_diag < -90. .or. lat_diag > 90.) .or.  &
            (long_diag <    0. .or. long_diag > 360.) ) then 
-          call error_mesg ('radiation_driver_init', & 
+          call error_mesg ('original_fms_rad_mod', & 
        ' bad values specified for lat_diag or long_diag', FATAL) 
        endif
        
@@ -404,7 +396,7 @@ type(time_type), intent(in)                 :: Time
 
          if(do_mcm_radiation) then
            call mcm_lw_init (id,jd,kmax)
-           call mcm_shortwave_driver_init(kmax)
+           call mcm_sw_driver_init(kmax)
          else
            call co2_data (co2std, ratio, pref)
          endif
@@ -438,7 +430,8 @@ end subroutine original_fms_rad_end
 subroutine original_fms_rad (is, ie, js, je, phalf, lat_in, lon_in, &
                              do_clear_sky_pass, &
                              Rad_time, Time_diag, Atmos_input, &
-                             Astro, Rad_gases, Cldrad_props,  &
+                             Surface, &
+                             Astro, Rad_gases, Cldrad_props, Cld_spec, &
                              Fsrad_output, mask, kbot) 
 
 !--------------------------------------------------------------------
@@ -447,13 +440,15 @@ subroutine original_fms_rad (is, ie, js, je, phalf, lat_in, lon_in, &
 integer, intent(in) :: is, ie, js, je
 real, intent(in), dimension(:,:,:) :: phalf
 real, dimension(:,:), intent(in) :: lat_in, lon_in
-type(time_type), intent(in) :: Rad_time, time_diag
+type(time_type), intent(in) :: Rad_time, Time_diag
 logical, intent(in) :: do_clear_sky_pass
 type(atmos_input_type), intent(in) :: Atmos_input
+type(surface_type), intent(in) :: Surface
 type(astronomy_type), intent(in) :: Astro        
 type(radiative_gases_type), intent(in) :: Rad_gases
 type(cldrad_properties_type), intent(in) :: Cldrad_props
-type(fsrad_output_type), intent(inout)  :: fsrad_output
+type(cld_specification_type), intent(in) :: Cld_spec
+type(fsrad_output_type), intent(inout)  :: Fsrad_output
 real, dimension(:,:,:), intent(in), optional :: mask
 integer, dimension(:,:), intent(in), optional  :: kbot
 !--------------------------------------------------------------------
@@ -493,11 +488,6 @@ integer, dimension(:,:), intent(in), optional  :: kbot
      logical :: no_clouds, used
      type(time_type) ::           Dt_zen
 
-     type(atmos_input_type) :: Atmos_input
-     type(astronomy_type) :: Astro
-     type(radiative_gases_type) :: Rad_gases
-     type(cldrad_properties_type) :: Cldrad_props
-         type(fsrad_output_type)     :: Fsrad_output
 
      real :: rrsun
 
@@ -528,13 +518,13 @@ integer, dimension(:,:), intent(in), optional  :: kbot
                press = Atmos_input%press
                temp  = Atmos_input%temp 
                rh2o  = Atmos_input%rh2o 
-               asfc  = Atmos_input%asfc 
+               asfc  = Surface%asfc
                psfc  = Atmos_input%psfc 
                tsfc  = Atmos_input%tsfc 
                pflux = Atmos_input%pflux
                tflux = Atmos_input%tflux
 !              deltaz = Atmos_input%deltaz
-               land  = Atmos_input%land 
+               land  = Surface%land
 !              cloud_water = Atmos_input%cloud_water
 !              cloud_ice = Atmos_input%cloud_ice
 
@@ -546,7 +536,8 @@ integer, dimension(:,:), intent(in), optional  :: kbot
 !    is resident in the shortwave module and is applied in that module.
 !--------------------------------------------------------------------
 !              cosz = Astro%cosz
-               if (Astro%do_diurnal) then
+!              if (Astro%do_diurnal) then
+               if (Sw_control%do_diurnal) then
                  cosz = Astro%cosz*Astro%fracday
                else
                  cosz = Astro%cosz

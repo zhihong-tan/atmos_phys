@@ -1,39 +1,22 @@
 
                  module rh_based_clouds_mod
 
-use rh_clouds_mod,          only: get_global_clouds
-use microphys_rad_mod,      only: microphys_rad_driver,   &
-				  microphys_rad_init,   &
-				  microphys_presc_conc,   &
-                                  lwemiss_calc
-use utilities_mod,          only: open_file, file_exist,   &
+use fms_mod,                only: open_namelist_file, mpp_pe, &
+                                  mpp_root_pe, stdlog,  &
+                                  write_version_number, file_exist, & 
                                   check_nml_error, error_mesg,   &
-                                  print_version_number, FATAL, NOTE, &
-				  WARNING, get_my_pe, close_file
-!			  WARNING, get_my_pe, close_file, &
-!			  get_domain_decomp
-!use rad_step_setup_mod,     only: press, jabs, iabs,  &
-!		          IMINP, IMAXP, JMINP, JMAXP, &
-!                                 ISRAD, IERAD, JSRAD, JERAD, & 
-!                                 KSRAD, KERAD, cosz
-!use rad_step_setup_mod,     only: press, jabs, iabs,  &
-!use rad_step_setup_mod,     only: press,              &
-!use rad_step_setup_mod,     only: press
-!                                                cosz
+                                  FATAL, NOTE, WARNING, close_file
+use rh_clouds_mod,          only: rh_clouds_avg      
 use rad_utilities_mod,      only: Environment, environment_type, &
                                   shortwave_control_type, Sw_control, &
-                                  cld_diagnostics_type, &
+                                  cldrad_properties_type, &
                                   longwave_control_type, Lw_control, &
+                                  cld_specification_type, &
+                                  microphysics_type,  &         
                                   longwave_parameter_type, &    
                                   Lw_parameters
-!use longwave_setup_mod,     only: longwave_parameter_type, &    
-!                                  Lw_parameters
-!use astronomy_package_mod,  only: get_astronomy_for_clouds,  &
-!use astronomy_package_mod,  only:                            &
-!			          get_astronomy_for_clouds_init
-use constants_mod,          only: radian
-!use donner_deep_mod,        only: get_cemetf, inquire_donner_deep
-!use rad_output_file_mod, only: hold_clouds
+use constants_mod,           only: radian
+                                 
 
 !--------------------------------------------------------------------
 
@@ -41,7 +24,7 @@ implicit none
 private
 
 !--------------------------------------------------------------------
-!	           module which defines cloud locations
+!           module which defines cloud locations
 !                     based on model relative humidity
 !
 !--------------------------------------------------------------------
@@ -51,9 +34,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-! character(len=5), parameter  ::  version_number = 'v0.09'
-  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 1.4 2003/04/09 21:01:32 fms Exp $'
-  character(len=128)  :: tag     =  '$Name: inchon $'
+  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 10.0 2003/10/24 22:00:46 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: jakarta $'
 
 
 
@@ -61,38 +43,33 @@ private
 !-------  interfaces --------
 
 public          &
-          rh_clouds_init, rh_clouds_calc
+          rh_based_clouds_init,  &
+          rh_clouds_amt,  &
+          obtain_bulk_lw_rh, obtain_bulk_sw_rh, &
+          rh_based_clouds_end, &
+          cldalb, albcld_lw, albcld_sw
 
 
-private         &
-	  cldalb, albcld_lw, albcld_sw
 
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
 
-!character(len=5)             :: cldht_type_form       = '     '
-!character(len=4)             :: cirrus_cld_prop_form  = '    '
-character(len=8)             :: cldht_type_form       = '     '
-character(len=8)             :: cirrus_cld_prop_form  = '    '
+character(len=8)             :: cirrus_cld_prop_form  = 'full'
 
 !    logical variables derived from namelist input
 
 logical                      :: do_part_black_cirrus=.false.
 logical                      :: do_full_black_cirrus=.false.
 
-logical                      :: do_cldht60 = .false.
-logical                      :: do_cldht93 = .false.
-logical                      :: do_cldhtskyhi = .false.
 
 
 
 
 
 namelist /rh_based_clouds_nml /     &
-			       cldht_type_form, &
-			       cirrus_cld_prop_form
+       cirrus_cld_prop_form
 
 
 !----------------------------------------------------------------------
@@ -113,38 +90,19 @@ namelist /rh_based_clouds_nml /     &
 !--------------------------------------------------------------------
  
 integer, parameter             :: NOFCLDS_SP=3  
-integer, parameter             :: LATOBS=19     
-real, dimension(LATOBS)                 ::  cloud_lats
 
-data cloud_lats / -90., -80., -70., -60., -50., -40., -30., -20., &
-                  -10., 0.0, 10., 20., 30., 40., 50., 60., 70., 80., &
-                  90. /
-
-real, dimension(NOFCLDS_SP)    :: crfvis_m,   crfir_m,   cabir_m,  &
-                                  crfvis_fms, crfir_fms, cabir_fms, &
-				  crfvis,     crfir,     cabir,  &
+real, dimension(NOFCLDS_SP)    ::                                  &
+  crfvis,     crfir,     cabir,  &
                                   cldem
 real                           :: crz
 
 
-data cldem / 1.0E+00, 1.0E+00, 1.0E+00 /  
-data crz   / 1.00 /                     
+data crfvis / 0.59E+00, 0.45E+00, 0.21E+00 /
+data crfir  / 0.59E+00, 0.45E+00, 0.21E+00 /
+data cabir  / 0.40E+00, 0.30E+00, 0.04E+00 /
+data cldem  / 1.0E+00, 1.0E+00, 1.0E+00 /  
+data crz    / 1.00 /                     
 
-!---------------------------------------------------------------------
-!  these are m group values :
-!---------------------------------------------------------------------
-
-data crfvis_m  / 0.69E+00, 0.48E+00, 0.21E+00 / 
-data crfir_m   / 0.69E+00, 0.48E+00, 0.21E+00 / 
-data cabir_m   / 0.30E+00, 0.30E+00, 0.04E+00 /
-
-!---------------------------------------------------------------------
-!  these are fms values :
-!---------------------------------------------------------------------
-  
-data crfvis_fms/ 0.59E+00, 0.45E+00, 0.21E+00 /
-data crfir_fms / 0.59E+00, 0.45E+00, 0.21E+00 /
-data cabir_fms / 0.40E+00, 0.30E+00, 0.04E+00 /
 !---------------------------------------------------------------------
 
 !--------------------------------------------------------------------
@@ -165,12 +123,6 @@ real, dimension(NANGS,NREFL_BDS)      ::  albch, albcm, albcl
 !---------------------------------------------------------------------
 !     albedos for high clouds at zenith angles from 0-80 deg. at 5 deg.
 !     intervals for 1) visible and 2) infrared radiation.
-!     for original skyhi values use:
-!    &             .04,.05,.05,.05,.06,.06,.07,.07,.08,.11,.13,.16,.21,
-!    &             .28,.39,.48,.61,
-!    &             .04,.05,.05,.05,.06,.06,.07,.07,.08,.10,.11,.14,.21,
-!    &             .26,.35,.44,.55 /
-!     and specify a zenith angle of 60.000001.
 !---------------------------------------------------------------------
 
 data albch /      &
@@ -182,12 +134,6 @@ data albch /      &
 !---------------------------------------------------------------------
 !     albedos for middle clouds at zenith angles from 0-80 deg. at 5 deg
 !     intervals for 1) visible and 2) infrared radiation.
-!     for original skyhi values use:
-!    &            .18,.18,.19,.20,.21,.23,.24,.26,.29,.33,.37,.42,.48,
-!    &            .55,.64,.71,.79,
-!    &            .14,.14,.15,.16,.17,.18,.18,.20,.23,.25,.29,.32,.48,
-!    &            .43,.50,.55,.61 /
-!     and specify a zenith angle of 60.000001.
 !----------------------------------------------------------------------
 
 data albcm /     &
@@ -199,11 +145,6 @@ data albcm /     &
 !-----------------------------------------------------------------------
 !     albedos for low clouds at zenith angles from 0-80 deg. at 5 deg
 !     intervals for 1) visible and 2) infrared radiation.
-!     for original skyhi values use:
-!    &             .50,.50,.51,.51,.52,.53,.54,.56,.58,.62,.65,.67,.69,
-!    &             .73,.78,.82,.86,
-!    &             .42,.42,.43,.43,.44,.45,.46,.48,.50,.52,.55,.57,.69,
-!    &             .63,.66,.70,.74 /
 !-----------------------------------------------------------------------
 
 data albcl /     &
@@ -221,35 +162,27 @@ data albcl /     &
 !     infrared.
 !-------------------------------------------------------------------
  
-real, dimension (:,:), allocatable   ::  zza 
+real, dimension (NOFCLDS_SP,NREFL_BDS)  ::  zza 
  
 !--------------------------------------------------------------------
 !     these variables define the boundaries (in sigma coordinates) 
-!     between high and middle and middle and low clouds. 
+!     between high and middle and middle and low clouds at the poles
+!     and at the equator. 
 !--------------------------------------------------------------------
 
-real, dimension(:), allocatable   :: cldhm_abs, cldml_abs,   &
-				     cldhm_abs_gl, cldml_abs_gl
-real                              :: cldhp, cldhe, cldmp, cldme
+real    :: cldhp = 0.7E+00
+real    :: cldhe = 0.4E+00
+real    :: cldmp = 0.85E+00
+real    :: cldme = 0.7E+00
 !-----------------------------------------------------------------
 
+! cloud is present when relative humidity >= rh_crit, which varies liearly
+!   in sigma from rh_crit_top at sigma = 0 to rh_crit_bot at sigma = 1
 
-real, dimension(:), allocatable   :: qlevel
+real :: rh_crit_bot    = 1.00
+real :: rh_crit_top    = 0.90
 
-!-------------------------------------------------------------------
-!    NLWCLDB is the actual number of frequency bands for which lw
-!    emissitivies are defined. 
-!--------------------------------------------------------------------
-integer               :: NLWCLDB 
-!integer               :: nsolwg
-!character(len=10)     :: swform
-!character(len=16)     :: swform
-logical  :: do_lhsw, do_esfsw
-logical               :: do_lwcldemiss
-!integer               :: x(4), y(4), id, jd, jdf
-
-      integer  :: israd, ierad, jsrad, jerad, ksrad, kerad, &
-                  iminp, imaxp, jminp, jmaxp
+logical :: module_is_initialized = .false.
 
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
@@ -257,30 +190,24 @@ logical               :: do_lwcldemiss
 
 
 
-	 contains 
+                           contains 
 
 
-!subroutine rh_clouds_init (th, qlevel_in, latb)
-subroutine rh_clouds_init (    qlevel_in, latb)
+subroutine rh_based_clouds_init 
 
 
-!real, dimension(:), intent(in)    :: th, qlevel_in, latb
-real, dimension(:), intent(in)    ::     qlevel_in, latb
 
 !--------------------------------------------------------------------
-     real                              :: alatn, fl
-     integer                           :: j,li, jj
      integer                           :: unit, ierr, io
-     real, dimension(:), allocatable   :: cldhm, cldml
-     integer, dimension(:), allocatable :: jindx2
-     integer                      :: jdf
-     real, dimension (size(latb,1) - 1) :: th
 
+
+      if (module_is_initialized) return
 !---------------------------------------------------------------------
-!-----  read namelist  ------
+!    read namelist.
+!---------------------------------------------------------------------
 
       if (file_exist('input.nml')) then
-        unit =  open_file ('input.nml', action='read')
+        unit =  open_namelist_file (                          )
         ierr=1; do while (ierr /= 0)
         read (unit, nml=rh_based_clouds_nml, iostat=io, end=10)
         ierr = check_nml_error (io, 'rh_based_clouds_nml')
@@ -288,83 +215,18 @@ real, dimension(:), intent(in)    ::     qlevel_in, latb
 10      call close_file (unit)
       endif
 
-      unit = open_file ('logfile.out', action='append')
-!     call print_version_number (unit, 'rh_based_clouds',    &
-!					       version_number)
-      if (get_my_pe() == 0) then
-	write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-	write (unit,nml=rh_based_clouds_nml)
-      endif
-      call close_file (unit)
-
-
-!     call get_domain_decomp (x, y)
-!     jdf = y(4) -y(3) + 1
-!     id  = x(2) -x(1) + 1
-!     jd  = y(2) -y(1) + 1
-
-
-       jdf = size(latb,1) - 1
-        allocate (jindx2  (jdf))
-        call find_nearest_index (latb, jindx2)
-!       print *, 'jindx2', get_my_pe(), jindx2
-
-!     call get_astronomy_for_clouds_init (nsolwg)
-!     nsolwg = 1
-
-      allocate ( qlevel(KSRAD:KERAD) )
-      qlevel = qlevel_in
-
-!      NLWCLDB = Lw_parameters%NLWCLDB
-!     swform = Sw_control%sw_form
-      do_lhsw = Sw_control%do_lhsw
-      do_esfsw = Sw_control%do_esfsw
-      do_lwcldemiss = Lw_control%do_lwcldemiss
-
-!     if (trim(swform) /= 'esfsw99' ) then
-      if (.not. do_esfsw            ) then
-        allocate ( zza(NOFCLDS_SP, NREFL_BDS) )
-      endif
-
-!--------------------------------------------------------------------
-!  define the formulation to be used for defining the interfaces 
-!  between high, middle and low clouds
-!--------------------------------------------------------------------
-!--------------------------------------------------------------------
-!  use cloud height (low, middle, high) specification as in 1960
-!  definition in SUPERSOURCE model
-!--------------------------------------------------------------------
-      if (trim(cldht_type_form) == '60') then
-        do_cldht60 = .true.
-
-!--------------------------------------------------------------------
-!  use cloud height (low, middle, high) specification as in 1993
-!  definition in SUPERSOURCE model
-!--------------------------------------------------------------------
-      else if (trim(cldht_type_form) == '93') then
-        do_cldht93 = .true.
-
-!--------------------------------------------------------------------
-!  use cloud height (low, middle, high) specification as in 1993
-!  definition in SKYHI model
-!--------------------------------------------------------------------
-      else if (trim(cldht_type_form) == 'skyhi') then
-        do_cldhtskyhi = .true.
-
-!--------------------------------------------------------------------
-! error condition
-!--------------------------------------------------------------------
-      else
-        call error_mesg( 'cloudrad_package_init',  &
-                ' cldht_type_form is not an acceptable value.', FATAL)
-      endif
+!----------------------------------------------------------------------
+!    write version number and namelist to logfile.
+!---------------------------------------------------------------------
+      call write_version_number (version, tagname)
+      if (mpp_pe() == mpp_root_pe() ) &
+           write (stdlog(), nml=rh_based_clouds_nml)
 
 !--------------------------------------------------------------------
 ! define the "blackness" of the cirrus clouds. cirrus clouds are either 
 ! "part black" with emissivity of 0.6 or are "full black" with emis-
 ! sivity of 1.0
 !--------------------------------------------------------------------
-      if ( .not. do_lwcldemiss) then
         if (trim(cirrus_cld_prop_form) == 'part') then
           do_part_black_cirrus = .true.
         else if (trim(cirrus_cld_prop_form) == 'full') then
@@ -372,687 +234,454 @@ real, dimension(:), intent(in)    ::     qlevel_in, latb
         else
           call error_mesg( 'cloudrad_package_init',  &
                 ' cirrus_cld_prop_form is not an acceptable value.', & 
-								FATAL)
+                                                      FATAL)
         endif
-      endif
 
-!--------------------------------------------------------------------
-!   allocate arrays for the sigmas of the low-mid and mid-high cloud 
-!   interfaces
-!---------------------------------------------------------------------
-      allocate ( cldhm_abs(jdf) )
-      allocate ( cldml_abs(jdf) )
-      allocate ( cldhm    (LATOBS) )
-      allocate ( cldml    (LATOBS) )
 
-!---------------------------------------------------------------------
-!    select the ir absorptivity, ir reflectivity and visible reflect-
-!    ivity values to use. 
-!---------------------------------------------------------------------
-      if (Environment%using_fms_periphs) then
-        crfvis(:) = crfvis_fms(:)
-        crfir (:) = crfir_fms (:)
-        cabir(:) = cabir_fms(:)
-      else if (Environment%using_sky_periphs) then
-        crfvis(:) = crfvis_m(:)
-        crfir (:) = crfir_m (:)
-        cabir(:) = cabir_m(:)
-      endif
-!-----------------------------------------------------------------------
-!     define the cloud height boundaries that distinguish low, middle 
-!     and high clouds. values are defined in terms of the standard 
-!     sigma coordinate at full levels.
-!---------------------------------------------------------------------
-        if (do_cldhtskyhi) then
+       module_is_initialized = .true.
 
-!---------------------------------------------------------------------
-!      this block supplies the standard skyhi values for these param-
-!      eters, to be used for checkout when needed.
+end subroutine rh_based_clouds_init
+
+!####################################################################
+
+subroutine rh_based_clouds_end
+
 !----------------------------------------------------------------------
-          do jj=1,LATOBS
-            cldhm(jj) = 0.52
-            cldml(jj) = 0.70         
-          end do
-          cldml(1) = 0.78
-          cldml(2) = 0.78
-          cldml(18) = 0.78
-          cldml(19) = 0.78
-
-!-----------------------------------------------------------------------
-!     this definition was determined by Wetherald and Manabe circa 1960.
-!-----------------------------------------------------------------------
-        else  if (do_cldht60) then
-          do j=1,LATOBS
-            cldhm(j) = 0.4    
-            cldml(j) = 0.7      
-          end do
-
-!-----------------------------------------------------------------------
-!     this definition was determined by Wetherald, Manabe, Spelman and
-!     Stouffer in 1993. here the cloud boundaries vary with latitude.
-!-----------------------------------------------------------------------
-        else if (do_cldht93) then
-          cldhp = 0.7E+00
-          cldhe = 0.4E+00
-          cldmp = 0.85E+00
-          cldme = 0.7E+00
-          do jj=1,LATOBS
-            alatn = ABS(-90.0E+00 + (jj-1)*10.0E+00)
-            cldhm(jj) = cldhp + (90.0E+00-alatn)*(cldhe-cldhp)/90.0E+00
-            cldml(jj) = cldmp + (90.0E+00-alatn)*(cldme-cldmp)/90.0E+00
-          end do
-        endif
-!---------------------------------------------------------------------
-!    perform latitude "interpolation" to the (JD) model latitudes
-!    in default case, no interpolation is actually done; the nearest
-!    latitude available (using NINT function) is used.
-!---------------------------------------------------------------------
-!       allocate ( cldhm_abs_gl (jd) )
-!       allocate ( cldml_abs_gl (jd) )
-!       do j=1,jd
-        do j=1,jdf
-	  if (Environment%using_sky_periphs) then
-!           fl = 9.0E+00 - 9.0E+00*(FLOAT(JD+1 -j - JD/2) -    &
-!                0.5E+00)/FLOAT(JD/2)
-!           li = NINT(fl) + 1
-            li = jindx2(j)
-!           cldhm_abs_gl(j) = cldhm(li)
-!           cldml_abs_gl(j) = cldml(li)
-            cldhm_abs   (j) = cldhm(li)
-            cldml_abs   (j) = cldml(li)
-	  endif
-        end do
-         th(1:jdf) = 0.5*(latb(1:jdf) + latb(2:jdf+1))
-        do j=1,jdf
-          if (Environment%using_sky_periphs) then
-!    cldhm_abs(j) =  cldhm_abs_gl(j+y(3)-1)
-!    cldml_abs(j) =  cldml_abs_gl(j+y(3)-1)
-	  else if (Environment%using_fms_periphs) then
-            cldhm_abs(j) = cldhp + (90.0E+00-abs(th(j)*   &
-			   radian))*(cldhe-cldhp)/90.0E+00
-            cldml_abs(j) = cldmp + (90.0E+00-abs(th(j)*    &
-			   radian))*(cldme-cldmp)/90.0E+00
-	  endif
-        end do
-!deallocate (cldhm_abs_gl)
-!deallocate (cldml_abs_gl)
+!    rh_based_clouds_end is the destructor for rh_based_cloouds_mod.
+!----------------------------------------------------------------------
 
 !---------------------------------------------------------------------
-!    if a cloud microphysics scheme is to be employed with the cloud
-!    scheme, initialize the microphysics_rad module.
+!    mark the module as not initialized.
+!---------------------------------------------------------------------
+      module_is_initialized = .false.
+
 !--------------------------------------------------------------------
-!       if (trim(swform) == 'esfsw99' .or. do_lwcldemiss) then
-        if (do_esfsw                  .or. do_lwcldemiss) then
-          call microphys_rad_init (cldhm_abs, cldml_abs)
-        endif
-
-!---------------------------------------------------------------------
-!    deallocate local variables
-!---------------------------------------------------------------------
-        deallocate (cldhm) 
-        deallocate (cldml) 
 
 
-end subroutine rh_clouds_init
-
-
-!#####################################################################
-
-subroutine find_nearest_index (latb, jindx2)
-
-real, dimension(:), intent(in) :: latb
-integer, dimension(:), intent(out)  :: jindx2
- 
-
-       integer :: jd, j, jj
-      real   :: diff_low, diff_high
-       real, dimension(size(latb,1)-1) :: lat
-
- 
-       jd = size(latb,1) - 1
-
-       do j = 1,jd
-         lat(j) = 0.5*(latb(j) + latb(j+1))
-       do jj=1, LATOBS
-         if (lat(j)*radian >= cloud_lats(jj)) then
-          diff_low = lat(j)*radian - cloud_lats(jj)
-           diff_high = cloud_lats(jj+1) - lat(j)*radian
-           if (diff_high <= diff_low) then
-             jindx2(j) = jj+1
-           else
-             jindx2(j) = jj
-           endif
-         endif
-       end do
-    end do
-
-
-
-
-
-
-end subroutine find_nearest_index
-
- 
-
+end subroutine rh_based_clouds_end
 
 
 
 !######################################################################
 
-subroutine rh_clouds_calc (is, ie, js, je, Cld_diagnostics, deltaz, cosz, press,  &
-                     temp,     camtsw, cmxolw, crndlw,  &
-                          ncldsw, nmxolw, &
-			   nrndlw, emmxolw, emrndlw, cirabsw,   &
-			   cvisrfsw, cirrfsw, cldext, cldsct, &
-			   cldasymm)
+subroutine rh_clouds_amt (is, ie, js, je, press, lat, Cld_spec)
 
-integer,                     intent(in)    :: is, ie, js, je
-real,    dimension(:,:,:),   intent(in) :: deltaz, press, temp         
-real,    dimension(:,:),   intent(in) :: cosz                   
-type(cld_diagnostics_type), intent(inout) :: Cld_diagnostics
-real,    dimension(:,:,:),   intent(inout) :: camtsw, cmxolw, crndlw
-integer, dimension(:,:),     intent(inout) :: ncldsw, nrndlw, nmxolw
-real,    dimension(:,:,:,:), intent(inout) :: emmxolw, emrndlw
-real,    dimension(:,:,:,:), intent(inout), optional ::       &
-				              cirabsw, cirrfsw, &
-				              cvisrfsw, cldext, &
-					      cldsct, cldasymm
+!----------------------------------------------------------------------
+!    rh_clouds_amt defines the location, amount (cloud fraction), number
+!    and type (hi, mid, low) of clouds present on the model grid.
+!----------------------------------------------------------------------
+
+integer,                      intent(in)    ::  is, ie, js, je
+real,    dimension(:,:,:),    intent(in)    ::  press
+real,    dimension(:,:),      intent(in)    ::  lat                    
+type(cld_specification_type), intent(inout) ::  Cld_spec       
 
 !--------------------------------------------------------------------
-!   these arrays define the basic radiative properties of the clouds.
+!   intent(in) variables:
 !
-!     cmxolw  =  amounts of maximally overlapped longwave clouds in
-!                layers from KSRAD to KERAD.
-!     crndlw  =  amounts of randomly overlapped longwave clouds in
-!                layers from KSRAD to KERAD.
-!     nmxolw  =  number of maximally overlapped longwave clouds
-!                in each grid column.
-!     nrndlw  =  number of maximally overlapped longwave clouds
-!                in each grid column.
-!     emmxolw =  longwave cloud emissivity for maximally overlapped
-!                clouds through layers from KSRAD to KERAD.
-!     emrndlw =  longwave cloud emissivity for randomly overlapped
-!                clouds through layers from KSRAD to KERAD.
-!     camtsw  =  shortwave cloud amounts. the sum of the maximally
-!                overlapped and randomly overlapped longwave
-!                cloud amounts.
-!     ncldsw  =  number of shortwave clouds in each grid column.
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in 
+!                   the physics_window being integrated
+!      press        pressure at model levels (1:nlev), surface 
+!                   pressure is stored at index value nlev+1
+!                   [ (kg /( m s^2) ]
+!      lat          latitude of model points  [ radians ]
+!
+!   intent(inout) variables:
+!
+!      Cld_spec     cld_specification_type variable containing the 
+!                   cloud specification input fields needed by the 
+!                   radiation package
+!
+!               the following elements of Cld_spec are defined here:
+!
+!                  %cmxolw  fraction of maximally overlapped clouds
+!                           seen by the longwave radiation 
+!                           [ dimensionless ]
+!                  %crndlw  fraction of randomly overlapped clouds
+!                           seen by the longwave radiation 
+!                           [ dimensionless ]
+!                  %camtsw  cloud fraction seen by the shortwave
+!                           radiation; the sum of the maximally
+!                           overlapped and randomly overlapped 
+!                           longwave cloud fractions  [ dimensionless ]
+!                  %nmxolw  number of maximally overlapped longwave 
+!                           clouds in each grid column.
+!                  %nrndlw  number of randomly overlapped longwave 
+!                           clouds in each grid column.
+!                  %ncldsw  number of clouds seen by he shortwave
+!                           radiation in each grid column.
+!                  %hi_cld  logical flag indicating the presence of 
+!                           high clouds in a grid box
+!                 %mid_cld  logical flag indicating the presence of 
+!                           middle clouds in a grid box
+!                 %low_cld  logical flag indicating the presence of 
+!                           low clouds in a grid box
 !                                                                  
-!    cldext   =  the parameterization band values of the cloud      
-!                extinction coefficient in kilometer**(-1)          
-!                                                                  
-!    cldsct   =  the parameterization band values of the cloud      
-!                scattering coefficient in kilometer**(-1)          
-!                                                                  
-!    cldasymm =  the parameterization band values of the asymmetry  
-!                factor                                             
-!     cirabsw =  absorptivity of clouds in the infrared frequency band.
-!                may be zenith angle dependent.
-!     cirrfsw =  reflectivity of clouds in the infrared frequency band.
-!                may be zenith angle dependent.
-!    cvisrfsw =  reflectivity of clouds in the visible frequency band.
-!                may be zenith angle dependent.
 !---------------------------------------------------------------------
  
-!     real, dimension(:,:,:), allocatable    :: ccover, cosangsolar, &
-      real, dimension(:,:  ), allocatable    ::         cosangsolar
-      real, dimension(:,:,:), allocatable    :: ccover,              &
-						cemetf
-      real, dimension(:), allocatable        :: qlsig
-      integer, dimension(:,:,:), allocatable :: iflagglbl, ifcd,&
-                                                ifcv
-      logical, dimension(:,:,:), allocatable :: hi_cloud, mid_cloud, &
-!					low_cloud, cvflag
-						low_cloud
-      integer                                :: k, j, i, ngp
-      real                                   :: cld
-      logical                                :: do_donner_deep
+!-------------------------------------------------------------------
+!   local variables:
+ 
+      real, dimension (size(press,1), size(press,2),    &
+                       size(press,3)-1)   ::  ccover, rh, sigma
 
-      
-!     integer  :: israd, ierad, jsrad, jerad, ksrad, kerad, &
-!                 iminp, imaxp, jminp, jmaxp
-     real, dimension(size(press,1), size(press,2), size(press,3)-1) :: &
-						     rh
-     real, dimension(size(press,1), size(press,2)) :: rh_crit, sigma, &
-					       icount_hi, icount_mid, &
-	            		               icount_low     
-!            		               icount_low,  &
-!				       cld_isccp_hi,  &
-!				       cld_isccp_mid, &
-!		                       cld_isccp_low, tot_clds
+      real, dimension (size(lat,1), size(lat,2)) ::     &
+                                                 cldhm, cldml, rh_crit
 
-     integer                                ::  ks, ke, ierr,  &
-					        it, if, jt, jf
+      logical   ::  inside_max_ovlp_cld
+      integer   ::  kmax 
+      integer   ::  ierr
+      integer   ::  k, j, i
 
-   real, dimension(:,:,:,:), allocatable  :: abscoeff, cldemiss
-   real, dimension(:,:,:), allocatable    :: conc_drop, conc_ice, &
-                                             size_drop, size_ice
+!----------------------------------------------------------------------
+!   local variables:
+!
+!           ccover       cloud fraction in a grid box [ dimensinless ]
+!           rh           relative humidity [ dimensionless ]
+!           sigma        ratio of pressure to surface pressure 
+!                        [ dimensionless ]
+!           cldhm        sigma value to use as the transition between
+!                        middle and high clouds [ dimensionless ]
+!           cldml        sigma value to use as the transition between
+!                        low and middle clouds [ dimensionless ]
+!           rh_crit      value of relative humidity at which clouds 
+!                        are assumed present, as a function of sigma
+!                        [ dimensionless ]
+!           inside_max_ovlp_cld
+!                        logical flag indicating whether the model grid
+!                        box under consideration is part of a maximum
+!                        overlap cloud with its base below the current
+!                        level
+!           kmax         number of model layers
+!           ierr         error flag returned from rh_clouds_mod, if 
+!                        non-zero indicates that all or some of the 
+!                        relative humidity field was not retrievable
+!           i,j,k        do loop indices
+!
+!--------------------------------------------------------------------- 
 
-!---------------------------------------------------------------------
-      allocate ( Cld_diagnostics%tot_clds (size(press,1), size(press,2)) )
-      allocate ( Cld_diagnostics%cld_isccp_hi  (size(press,1), size(press,2)) )
-      allocate ( Cld_diagnostics%cld_isccp_mid (size(press,1), size(press,2)) )
-      allocate ( Cld_diagnostics%cld_isccp_low (size(press,1), size(press,2)) )
-
-       Cld_diagnostics%tot_clds  =0.
-      Cld_diagnostics%cld_isccp_hi  = 0.
-      Cld_diagnostics%cld_isccp_mid  = 0.
-       Cld_diagnostics%cld_isccp_low  = 0.
-
-      israd = 1
-      jsrad = 1
-      ksrad = 1
-      iminp = 1
-      jminp = 1
-      ierad = size (camtsw,1)
-      jerad = size (camtsw,2)
-      kerad = size (camtsw,3)
-      imaxp = size (camtsw, 1)
-      jmaxp = size (camtsw, 2)
-
-!---------------------------------------------------------------------
-
-!     allocate (cvflag(IMINP:IMAXP, JMINP:JMAXP, ksrad:kerad) )
 
 !--------------------------------------------------------------------
-!   if donner_deep is active, retrieve the array of heating rates
-!   due to convection. wherever the heating rate from convection is
-!   non-zero, set a flag which will be used to indicate to the radiat-
-!   ion package that cloud is present in that grid box.
-!---------------------------------------------------------------------
-!     call inquire_donner_deep (do_donner_deep)
-!     if (do_donner_deep) then
-!       allocate (cemetf(IMINP:IMAXP, JMINP:JMAXP, ksrad:kerad))
-!       call get_cemetf(js,          cemetf)
-!       do k=ksrad,kerad
-!         do j=jminp,jmaxp
-!           do i=iminp,imaxp
-!             if (cemetf(i,j,k) /=  0.0)  then
-!               cvflag(i,j,k) = .true.
-!             else
-!               cvflag(i,j,k) = .false.
-!             endif
-!           end do
-!         end do
-!       end do
-!       deallocate (cemetf)
-!     else
-!       do k=ksrad,kerad
-!         do j=jminp,jmaxp
-!           do i=iminp,imaxp
-!             cvflag(i,j,k) = .false.
-!           end do
-!         end do
-!       end do
-!     endif
-  
-
-
-!     allocate (cosangsolar (ISRAD:IERAD, JSRAD:JERAD, nsolwg) )
-!     allocate (cosangsolar (ISRAD:IERAD, JSRAD:JERAD,      1) )
-      allocate (cosangsolar (ISRAD:IERAD, JSRAD:JERAD        ) )
-      allocate (ifcd   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-      allocate (ifcv   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-      allocate (ccover (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-      allocate (qlsig  (                          KSRAD:KERAD) )
-      allocate (hi_cloud(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-      allocate (mid_cloud(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-      allocate (low_cloud(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-
-!     if (Environment%running_fms) then
-        allocate (iflagglbl (IMINP:IMAXP, JMINP:JMAXP, KSRAD:KERAD) )
-        iflagglbl(:,:,:) = 0
-!     else if (Environment%running_skyhi) then
-!       allocate (iflagglbl (id, jd, KSRAD:KERAD) )
-!     endif
+!    define the number of model layers.
+!----------------------------------------------------------------------
+      kmax = size (Cld_spec%camtsw,3)
 
 !---------------------------------------------------------------------
-!     obtain the appropriate zenith angles that are to be used here.
+!    define the sigma values marking the transitions between high,
+!    middle and low clouds.  it must be calculated in this routine 
+!    because model latitudes are not available during initialization
+!    phase in the bgrid model core.
 !---------------------------------------------------------------------
-!     call get_astronomy_for_clouds (cosangsolar)
-!     cosangsolar(:,:,:) = cosz(:,:,:)
-      cosangsolar(:,:  ) = cosz(:,:  )
+      cldhm(:,:) = cldhp + (90.0E+00-abs(lat(:,:)*   &
+                   radian))*(cldhe-cldhp)/90.0E+00
+      cldml(:,:) = cldmp + (90.0E+00-abs(lat(:,:)*    &
+                   radian))*(cldme-cldmp)/90.0E+00
 
-!--------------------------------------------------------------------- 
-!     for the predicted clouds based on the rh distribution, obtain the
-!     cloud flag array
-!-------------------------------------------------------------
-!      call get_global_clouds (iabs(IMINP), jabs(JMINP), press,  &
-      call get_global_clouds (is, js,                   press,  &
-                              iflagglbl)
+!---------------------------------------------------------------------- 
+!    call rh_clouds_avg to obtain the appropriate array of relative 
+!    humidity to use in defining cloud locations. this may be the inst-
+!    antaneous field from the last time step or the average field in the
+!    interval from the previous call to rh_clouds_avg.
+!----------------------------------------------------------------------
+      call rh_clouds_avg (is, js, rh, ierr)
 
-!!! MAY BE a slight inconsistency here in the pressure level boun-
-!!! daries for the isccp cloud types compared with skyhi.
-
-   it = 1
-   jt = 1
-!  if =  size(rh,1) 
-!  jf =  size(rh,2)  
-   if =  size(press,1) 
-   jf =  size(press,2)  
-!  if (get_my_pe() == 0) then
-!    print *, 'it,if, jt,jf', it,if,jt,jf
-!  endif
-   do j=jt,jf        
-     do i=it,if       
-       Cld_diagnostics%tot_clds(i,j) = 0.0
-       icount_hi(i,j) = 1.0
-       icount_mid(i,j) = 1.
-       icount_low(i,j) = 1.
-       Cld_diagnostics%cld_isccp_hi (i,j) = 0.0
-       Cld_diagnostics%cld_isccp_mid(i,j) = 0.0
-       Cld_diagnostics%cld_isccp_low(i,j) = 0.0
-       do k=ksrad,kerad
-! if (cldflag_out(i,j,k) == 1) tot_clds(i,j) = 1.0E+00
-	 if (iflagglbl(i,j,k) == 1) Cld_diagnostics%tot_clds(i,j) = 1.0E+00
-!        if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) >=  10000. &
-         if (iflagglbl  (i,j,k) == 1 .and. press(i,j,k) >=  10000. &
-         .and. press(i,j,k) <= 440000. .and. icount_hi(i,j) == 1.)  &
-	 then
-	   Cld_diagnostics%cld_isccp_hi(i,j) = 1.0
-	   icount_hi(i,j) =0.0
-	   icount_mid(i,j) =0.0
-	   icount_low(i,j) =0.0
-         endif
-!	 if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) >  440000. &
- 	 if (iflagglbl  (i,j,k) == 1 .and. press(i,j,k) >  440000. &
-         .and. press(i,j,k) <= 680000. .and. icount_mid(i,j) == 1.)  &
-	 then
-	   Cld_diagnostics%cld_isccp_mid(i,j) = 1.0
-	   icount_mid(i,j) =0.
-	   icount_low(i,j) =0.
-         endif
-! if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) > 680000. &
-	 if (iflagglbl  (i,j,k) == 1 .and. press(i,j,k) > 680000. &
-         .and. press(i,j,k) <= 1000000. .and. icount_low(i,j) == 1.) &
-         then
-           Cld_diagnostics%cld_isccp_low(i,j) = 1.0
-           icount_low(i,j) =0.
-         endif
-       end do
-     end do
-   end do
-
-!  call hold_clouds (tot_clds, cld_isccp_hi, cld_isccp_mid,  &
-!                      cld_isccp_low)
-
-!-----------------------------------------------------------------------
-!     locate those points with cloudiness. set a flag to indicate if
-!     it is stable or convective cloudiness. do not allow clouds at
-!     model level 1. 
-!-----------------------------------------------------------------------
-!     if (Environment%running_fms) then
-        do k=KSRAD+1,KERAD
-          do j=JSRAD,JERAD
-            do i=ISRAD,IERAD
-!             if (iflagglbl(i,j,k) .EQ. 3 .or. cvflag(i,j,k) ) then
-              if (iflagglbl(i,j,k) .EQ. 3                    ) then
-                ifcv(i,j,k) = 1
-                ifcd(i,j,k) = 0
+!----------------------------------------------------------------------
+!    if relative humidity data was present in rh_clouds_mod and values 
+!    have been returned, determine those grid points where the relative
+!    humidity exceeds the critical value for that grid box. define a
+!    non-zero cloud fraction for those boxes; other boxes are given a
+!    zero cloud fraction. note that cloud is not allowed to be present
+!    in the topmost layer.
+!----------------------------------------------------------------------
+      if (ierr ==  0) then
+        ccover(:,:,1) = 0.0
+        do k=2,kmax 
+          do j=1,size(press,2)
+            do i=1,size(press,1)
+              sigma(i,j,k) = press(i,j,k)/press(i,j,kmax+1)
+              rh_crit(i,j) = rh_crit_top + sigma(i,j,k)*  &
+                                           (rh_crit_bot - rh_crit_top)
+              if (rh(i,j,k) >= rh_crit(i,j))  then 
                 ccover(i,j,k) = crz
-              else if (iflagglbl(i,j,k) .EQ. 1) then
-                ifcv(i,j,k) = 0
-                ifcd(i,j,k) = 1
-                ccover(i,j,k) = crz
-              else
-                ifcv(i,j,k) = 0
-                ifcd(i,j,k) = 0
-                ccover(i,j,k) = 0.0E+00
-              endif
+              else 
+                ccover(i,j,k) = 0.0
+              endif     
             end do
           end do
         end do
-!     else if (Environment%running_skyhi) then
-!       do k=KSRAD+1,KERAD
-!         do j=JSRAD,JERAD
-!           do i=ISRAD,IERAD
-!             if (iflagglbl(iabs (i),jabs (j),k) .EQ. 3 .or.  &
-!	  cvflag(i,j,k) ) then
-!        ifcv(i,j,k) = 1
-!        ifcd(i,j,k) = 0
-!        ccover(i,j,k) = crz 
-!      else if (iflagglbl(iabs (i),jabs (j),k) .EQ. 1) then
-!        ifcv(i,j,k) = 0
-!        ifcd(i,j,k) = 1
-!        ccover(i,j,k) = crz 
-!      else
-!        ifcv(i,j,k) = 0
-!        ifcd(i,j,k) = 0
-!        ccover(i,j,k) = 0.0E+00
-!      endif
-!    end do
-!  end do
-!       end do
-!     endif
 
 !---------------------------------------------------------------------
-!     define the number of each type of cloud in each column and the 
-!     amount of each cloud type present in each grid box. allow for 
-!     thick clouds if cloud is present at two adjacent levels.
+!    if relative humidity data could not be returned, set the clouds
+!    to zero everywhere. this is a valid occurrence on the first
+!    time step of a run, when radiation is calculated prior to the
+!    moist_processes physics, and so no relative humidity data is 
+!    present. if it occurs after the first step, an error is likely
+!    present.
 !---------------------------------------------------------------------
-      do j=JSRAD,JERAD
-        do i=ISRAD,IERAD
-          cld = 0.
-          do k=KERAD,KSRAD+1,-1
-            if (cld .EQ. 0.0E+00) then
+      else
+        ccover(:,:,:) = 0.0
+      endif
+
+!---------------------------------------------------------------------
+!    define the cloud specification arrays used by rh_clouds -- cloud 
+!    fractions for random and maximally overlapped clouds and total 
+!    clouds, number of each type of cloud in each column, and flags to
+!    indicate whether a given cloud is to be given high, middle or low 
+!    cloud properties.
+!---------------------------------------------------------------------
+      do j=1,size(press,2)
+        do i=1,size(press,1)
+
+!--------------------------------------------------------------------
+!    define an indicator as to whether the current level is part of a
+!    maximum-overlap cloud with a base at a lower level. the lowest
+!    level obviously is not.
+!---------------------------------------------------------------------
+          inside_max_ovlp_cld = .false.
+
+!---------------------------------------------------------------------
+!    move upwards from the surface to level 2, since clouds are not
+!    allowed at the topmost model level.
+!----------------------------------------------------------------------
+          do k=kmax,2,-1
+
+!---------------------------------------------------------------------
+!    if inside_max_ovlp_cld is .false., then this level is not part of 
+!    a multi-layer cloud with a cloud base at a lower level, either 
+!    because it does not contain cloud or because it contains a single 
+!    level cloud, or because it is the lowest model level.
+!---------------------------------------------------------------------
+            if (.not. inside_max_ovlp_cld) then
+
+!---------------------------------------------------------------------
+!    if there is cloud at this level, determine if cloud exists at the
+!    level above. if it doesn't then this is a one layer cloud and it
+!    is counted as a random overlap cloud. if cloud does exist at the
+!    level above, then this is the lowest level of a multi-layer cloud,
+!    and it is denoted as a maximum overlap cloud. the flag 
+!    inside_max_ovlp_cld is set to .true. to indicate that the next 
+!    level is within a maximum overlap cloud.
+!---------------------------------------------------------------------
               if (ccover(i,j,k) .NE. 0.0E+00) then
                 if (ccover(i,j,k-1) .EQ. 0.0E+00 ) then
-                  nrndlw(i,j) = nrndlw(i,j) + 1
-                  crndlw(i,j,k) = ccover(i,j,k)
+                  Cld_spec%nrndlw(i,j) = Cld_spec%nrndlw(i,j) + 1
+                  Cld_spec%crndlw(i,j,k) = ccover(i,j,k)
                 else
-                  cld = 1.0E+00
-                  cmxolw(i,j,k) = ccover(i,j,k)
-	        endif
+                  inside_max_ovlp_cld = .true.
+                  Cld_spec%cmxolw(i,j,k) = ccover(i,j,k)
+                endif
               endif
+!--------------------------------------------------------------------
+!    if inside_max_ovlp_cld is .true., then the current level is 
+!    contained within a multi-layer cloud (max overlap) with a cloud 
+!    base at a lower level. define the cloud on this level as maximum 
+!    overlap. the counter of maximum overlap clouds is incremented when 
+!    either the model top (k = 2, since no clouds allowed at level 1) 
+!    is reached, or the level above does not contain cloudiness. if the 
+!    level above does not contain clouds, then the flag 
+!    inside_max_ovlp_cld is set .false. to indicate that the level above
+!    is not part of a maximum overlap cloud with a cloud base at a 
+!    lower level.
+!--------------------------------------------------------------------
             else
-              if (ccover(i,j,k) .NE. 0.0E+00) then
-                cmxolw(i,j,k) = ccover(i,j,k)
-                if (k .EQ. KSRAD+1) then
-                  nmxolw(i,j) = nmxolw(i,j) + 1
-                endif
-                if (ccover(i,j,k-1) .EQ. 0.0E+00) then
-                  nmxolw(i,j) = nmxolw(i,j) + 1
-                  cld = 0.0E+00
-                endif
+              Cld_spec%cmxolw(i,j,k) = ccover(i,j,k)
+              if (k .EQ. 2) then
+                Cld_spec%nmxolw(i,j) = Cld_spec%nmxolw(i,j) + 1
+              endif
+              if (ccover(i,j,k-1) .EQ. 0.0E+00) then
+                Cld_spec%nmxolw(i,j) = Cld_spec%nmxolw(i,j) + 1
+                inside_max_ovlp_cld = .false.
               endif
             endif
-            camtsw(i,j,k) = cmxolw(i,j,k) + crndlw(i,j,k)
 
-            if (camtsw(i,j,k) > 0.0) then
+!---------------------------------------------------------------------
+!    define the cloud fraction seen by the shortwave radiation as the 
+!    sum of the random and maximum overlap cloud fractions.
+!---------------------------------------------------------------------
+            Cld_spec%camtsw(i,j,k) = Cld_spec%cmxolw(i,j,k) +  &
+                                     Cld_spec%crndlw(i,j,k)
 
-!-------------------------------------------------------------------
-!      if cloud is present, define it to be either high, middle or low.
-!      define a sigma variable to be used for this purpose.
-!-------------------------------------------------------------------
-              if (Environment%using_fms_periphs) then
-                qlsig(k) = press(i,j,k)/press(i,j,KERAD+1)
-              else if (Environment%using_sky_periphs) then
-                qlsig(k) = qlevel(k)
+!----------------------------------------------------------------------
+!    if cloud is present, it must be designated as high, middle or low
+!    so that the grid box can be given the radiation characteristics of
+!    that cloud type. the arrays cldhm and cldml define the sigma
+!    boundaries of the different cloud types.
+!----------------------------------------------------------------------
+            if (Cld_spec%camtsw(i,j,k) > 0.0) then
+              if (sigma(i,j,k) <= cldhm(i,j) ) then
+                Cld_spec%hi_cloud(i,j,k) = .true.
+              else if (sigma(i,j,k) > cldhm(i,j)  .and.  &
+                       sigma(i,j,k) < cldml(i,j) ) then
+                Cld_spec%mid_cloud(i,j,k) = .true.
+              else if (sigma(i,j,k) >= cldml(i,j) ) then
+                Cld_spec%low_cloud(i,j,k) = .true.
               endif
-
-!      if (qlsig(k) .LE. cldhm_abs(jabs(j)) ) then
-             if (qlsig(k) .LE. cldhm_abs(js+j-1 ) ) then
-	        hi_cloud(i,j,k) = .true.
-	        mid_cloud(i,j,k) = .false.
-	        low_cloud(i,j,k) = .false.
-!      else if (qlsig(k) .GT. cldhm_abs(jabs(j))  .and.  &
-!               qlsig(k) .LT. cldml_abs(jabs(j)) ) then
-              else if (qlsig(k) .GT. cldhm_abs(js+j-1 )  .and.  &
-                       qlsig(k) .LT. cldml_abs(js+j-1 ) ) then
-	        hi_cloud(i,j,k) = .false.
-	        mid_cloud(i,j,k) = .true.
-	        low_cloud(i,j,k) = .false.
-!      else if (qlsig(k) .GE. cldml_abs(jabs(j)) ) then
-              else if (qlsig(k) .GE. cldml_abs(js+j-1 ) ) then
-	        hi_cloud(i,j,k) = .false.
-	        mid_cloud(i,j,k) = .false.
-	        low_cloud(i,j,k) = .true.
-              else
-	        call error_mesg ('rh_clouds_calc',  &
-                     'model level is not mapped to a cloud type', FATAL)
-              endif
-!-------------------------------------------------------------------
-!      if no cloud is present, define all cloud types as false.
-!-------------------------------------------------------------------
-	    else
-	      hi_cloud(i,j,k) = .false.
-	      mid_cloud(i,j,k) = .false.
-	      low_cloud(i,j,k) = .false.
             endif
           end do
+
+!-------------------------------------------------------------------
+!      define the total number of clouds present in each column.
+!-------------------------------------------------------------------
+          Cld_spec%ncldsw(i,j) = Cld_spec%nmxolw(i,j) +   &
+                                 Cld_spec%nrndlw(i,j)
         end do
       end do
 
-!-------------------------------------------------------------------
-!      define the number of clouds present in each column.
-!-------------------------------------------------------------------
-      do j=JSRAD,JERAD
-        do i=ISRAD,IERAD
-          ncldsw(i,j) = nmxolw(i,j) + nrndlw(i,j)
-        end do
-      end do
-
-!-------------------------------------------------------------------
-!     if microphysics not being used for lw calculation, call albcld_lw
-!     to define long-wave emissivities for the model clouds.
-!-------------------------------------------------------------------
-      if (.not. do_lwcldemiss) then
-        call albcld_lw (hi_cloud, mid_cloud,  &
-	 	       low_cloud, cmxolw, crndlw,  emmxolw,  emrndlw)
-      endif
-
-!-------------------------------------------------------------------
-!     if microphysics not being used for sw calculation, calculate the
-!     needed sw reflectivities and absorptivities.
-!-------------------------------------------------------------------
-!     if (trim(swform) /= 'esfsw99' ) then
-      if (.not. do_esfsw            ) then
-        do j=JSRAD,JERAD
-          do i=ISRAD,IERAD
-	    if (ncldsw(i,j) > 0 ) then
-!      do ngp=1,nsolwg
-	         ngp=1        
-!-----------------------------------------------------------------------
-!     call cldalb to define the zenith angle dependent cloud visible
-!     and infrared reflectivities.
-!-----------------------------------------------------------------------
-!        call cldalb (cosangsolar(i,j,ngp))
-	        call cldalb (cosangsolar(i,j    ))
-
-!-----------------------------------------------------------------------
-!     call albcld_sw to assign the zenith-angle-dependent visible and 
-!     infrared reflectivities and infrared absorptivities to the model 
-!     clouds.
-!-----------------------------------------------------------------------
-                call albcld_sw (i, j, hi_cloud, mid_cloud, low_cloud,  &
-		 	        ngp, camtsw, cmxolw, crndlw, cvisrfsw, &
-			        cirrfsw, cirabsw)
-!      end do
-            endif
-	  end do
-        end do
-      endif
-
 !--------------------------------------------------------------------
-!  if microphysics is being used for either sw or lw calculation, call 
-!  microphys_rad_driver to obtain cloud radiative properties.
-!--------------------------------------------------------------------
-!     if (do_esfsw                  ) then
-!       call microphys_rad_driver (is, ie, js, je, deltaz, &
-!        press, temp,       camtsw, emmxolw,  &
-!                                  emrndlw, Cld_diagnostics, &
-!			   cldext=cldext, cldsct=cldsct,    &
-!			   cldasymm=cldasymm) 
-!     else if (do_lwcldemiss) then
-!       call microphys_rad_driver (is, ie, js, je, deltaz,  &
-!               press, temp,camtsw, emmxolw, &
-!                                   emrndlw, Cld_diagnostics)
-!     endif
 
-!     if (trim(swform) == 'esfsw99' .or. do_lwcldemiss) then
+
+end subroutine rh_clouds_amt 
 
 
 
-      if (do_esfsw                  .or. do_lwcldemiss) then
-
-
-allocate (abscoeff ( SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3), &
-             SIZE(emmxolw,4)) )
-allocate (cldemiss ( SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3), &
-                 SIZE(emmxolw,4)) )
-allocate (conc_drop (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
-allocate (conc_ice (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
-allocate (size_drop (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
-allocate (size_ice (SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3)) )
-
-         call microphys_presc_conc ( is,ie,js,je,              &
-                           camtsw, deltaz, press, temp,        &
-                             conc_drop, size_drop, conc_ice, size_ice)
-
-! if (trim(swform) == 'esfsw99' ) then
-  if (do_esfsw                  ) then
-        call microphys_rad_driver (                           &
-                        is,ie, js, je, deltaz, press, temp, &
-                        CLd_diagnostics, &
-              conc_drop_in=conc_drop, conc_ice_in=conc_ice, &
-            size_drop_in=size_drop, size_ice_in=size_ice, &
-              cldext=cldext, cldsct=cldsct,    &
-             cldasymm=cldasymm,               &
-               abscoeff=abscoeff)
-  else if (do_lwcldemiss) then
-        call microphys_rad_driver (                           &
-                        is,ie, js, je, deltaz, press, temp, &
-                        Cld_diagnostics, &
-                conc_drop_in=conc_drop, conc_ice_in=conc_ice, &
-                size_drop_in=size_drop, size_ice_in=size_ice, &
-               abscoeff=abscoeff)
-      endif
-    if (do_lwcldemiss) then
-    call lwemiss_calc(  deltaz,                            &
-                           abscoeff,                         &
-                         cldemiss)
-    endif
-    endif  ! do_esfsw
-
-    if (do_lwcldemiss) then
-!   as of 3 august 2001, we are assuming randomly overlapped clouds
-!  only. the cloud and emissivity settings follow:
-       emmxolw = cldemiss
-       emrndlw = cldemiss
-    endif
-
-   if (ALLOCATED (abscoeff)) then
-   deallocate (abscoeff)
-deallocate (cldemiss)
-    deallocate (conc_drop)
-   deallocate (size_drop)
-    deallocate (conc_ice)
-   deallocate (size_ice)
- endif
-
-
-!-------------------------------------------------------------------
-!    deallocate  local arrays
-!-------------------------------------------------------------------
-!     deallocate (cvflag)
-      deallocate (cosangsolar  )
-      deallocate (qlsig   )
-      deallocate (ifcd    )
-      deallocate (ifcv    )
-      deallocate (ccover )
-      deallocate (iflagglbl  )
-      deallocate (hi_cloud)
-      deallocate (mid_cloud)
-      deallocate (low_cloud)
-
-
-
-end subroutine rh_clouds_calc
 
 
 !####################################################################
 
+subroutine obtain_bulk_lw_rh (is, ie, js, je, Cld_spec, Cldrad_props)
+
+!---------------------------------------------------------------------
+!    obtain_bulk_lw_rh defines bulk longwave cloud radiative 
+!    properties for the rh cloud scheme.
+!---------------------------------------------------------------------
+
+integer,                     intent(in)     :: is, ie, js, je
+type(cld_specification_type), intent(in   ) :: Cld_spec
+type(cldrad_properties_type), intent(inout) :: Cldrad_props
+
+!--------------------------------------------------------------------
+!   intent(in) variables:
+!
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in 
+!                   the physics_window being integrated
+!
+!   intent(inout) variables:
+!
+!      Cld_spec          cloud specification arrays defining the 
+!                        location, amount and type (hi, middle, lo)
+!                        of clouds that are present, provides input 
+!                        to this subroutine
+!                        [ cld_specification_type ]
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output 
+!               from this routine:
+!
+!                    %emrndlw   longwave cloud emissivity for 
+!                               randomly overlapped clouds
+!                               in each of the longwave 
+!                               frequency bands  [ dimensionless ]
+!                    %emmxolw   longwave cloud emissivity for 
+!                               maximally overlapped clouds
+!                               in each of the longwave 
+!                               frequency bands  [ dimensionless ]
+!
+!---------------------------------------------------------------------
+
+
+!------------------------------------------------------------------
+!     call albcld_lw to define long-wave cloud emissivities.
+!-------------------------------------------------------------------
+        call albcld_lw (Cld_spec%hi_cloud, Cld_spec%mid_cloud,  &
+                        Cld_spec%low_cloud, Cld_spec%cmxolw,  &
+                        Cld_spec%crndlw,  Cldrad_props%emmxolw,  &
+                        Cldrad_props%emrndlw)
+
+
+end subroutine obtain_bulk_lw_rh
+
+
+
+!######################################################################
+
+subroutine obtain_bulk_sw_rh (is, ie, js, je, cosz, Cld_spec,   &
+                              Cldrad_props)
+
+!---------------------------------------------------------------------
+!    obtain_bulk_sw_rh defines bulk shortwave cloud radiative 
+!    properties for the rh cloud scheme.
+!---------------------------------------------------------------------
+ 
+integer,                      intent(in)    :: is, ie, js, je
+real,    dimension(:,:),      intent(in)    :: cosz
+type(cld_specification_type), intent(in   ) :: Cld_spec
+type(cldrad_properties_type), intent(inout) :: Cldrad_props
+
+!---------------------------------------------------------------------
+!   intent(in) variables:
+!
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in 
+!                   the physics_window being integrated
+!      cosz         cosine of the zenith angle [ dimensionless ]
+!
+!   intent(inout) variables:
+!
+!      Cld_spec          cloud specification arrays defining the 
+!                        location, amount and type (hi, middle, lo)
+!                        of clouds that are present, provides input 
+!                        to this subroutine
+!                        [ cld_specification_type ]
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output 
+!               from this routine:
+!
+!                    %cirabsw   absorptivity of clouds in the 
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cirrfsw   reflectivity of clouds in the 
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cvisrfsw  reflectivity of clouds in the 
+!                               visible frequency band
+!                               [ dimensionless ]
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    local variables:
+
+      integer      ::  j, i  ! do-loop indices
+ 
+!-------------------------------------------------------------------
+!    define the bulk sw cloud radiative properties at each grid point 
+!    which contains cloud.
+!-------------------------------------------------------------------
+      do j=1,size(Cld_spec%ncldsw,2)          
+        do i=1,size(Cld_spec%ncldsw,1)          
+          if (Cld_spec%ncldsw(i,j) > 0 ) then
+
+!-----------------------------------------------------------------------
+!    call cldalb to define the zenith angle dependent cloud visible
+!    and infrared reflectivities for high, middle and low clouds in
+!    each model column containing cloud.
+!-----------------------------------------------------------------------
+            call cldalb (cosz(i,j))
+
+!-----------------------------------------------------------------------
+!    call albcld_sw to assign the zenith-angle-dependent visible and 
+!    infrared reflectivities and infrared absorptivities to the model 
+!    clouds in the current column.
+!-----------------------------------------------------------------------
+            call albcld_sw (i, j, Cld_spec%hi_cloud, &
+                            Cld_spec%mid_cloud, Cld_spec%low_cloud,  &
+                            Cld_spec%camtsw, Cld_spec%cmxolw,   &
+                            Cld_spec%crndlw, Cldrad_props%cvisrfsw, &
+                            Cldrad_props%cirrfsw, Cldrad_props%cirabsw)
+          endif
+        end do
+      end do
+
+!----------------------------------------------------------------------
+ 
+
+ end subroutine obtain_bulk_sw_rh
+
+
+
+!####################################################################
 
 subroutine cldalb (zenith)
 
@@ -1074,7 +703,6 @@ real, intent(in)           ::  zenith
 !-----------------------------------------------------------------------
 
         zangle = ACOS(zenith)*radian
-!       zangle = 60.0000001
 
 !-----------------------------------------------------------------------
 !     define reflectivities for each cloud level.
@@ -1116,7 +744,7 @@ end subroutine cldalb
 !##################################################################
 
 subroutine albcld_lw(hi_cloud, mid_cloud, low_cloud,       &
-	             cmxolw, crndlw, emmxolw, emrndlw)
+             cmxolw, crndlw, emmxolw, emrndlw)
 
 !-----------------------------------------------------------------------
 !     albcld_lw computes the lw cloud emissivities. This calculation is 
@@ -1128,59 +756,28 @@ subroutine albcld_lw(hi_cloud, mid_cloud, low_cloud,       &
 real, dimension(:,:,:),   intent(in)    :: cmxolw, crndlw
 real, dimension(:,:,:,:), intent(inout) :: emmxolw, emrndlw
 logical, dimension(:,:,:),intent(in)    :: hi_cloud, mid_cloud,   &
-					   low_cloud
+   low_cloud
 
 !---------------------------------------------------------------------
 !    local variables
 !---------------------------------------------------------------------
 
        integer  ::  i, j, k, kk
+      integer  :: israd, ierad, jsrad, jerad, ksrad, kerad
+      israd= 1
+      jsrad= 1
+      ksrad= 1
+      ierad = size (cmxolw,1)
+      jerad = size (cmxolw,2)
+      kerad = size (cmxolw,3)
 
 !-----------------------------------------------------------------------
 !     compute the emissivities for each cloud in the column. 
 !-----------------------------------------------------------------------
 
-       if (do_cldht60) then
          do k=KSRAD,KERAD
-	   do j=JSRAD,JERAD
-	     do i=ISRAD,IERAD
-               if ((cmxolw(i,j,k) + crndlw(i,j,k) ) > 0.0) then
-!-----------------------------------------------------------------------
-!     case of a thick cloud. note that all thick clouds are given the 
-!     properties of low clouds.
-!-----------------------------------------------------------------------
-                 if (cmxolw(i,j,k) .NE. 0.0E+00) then
-	           emmxolw(i,j,k,:) = cldem(1)
-                 endif
-                 if (crndlw(i,j,k) .NE. 0.0) then
-!-----------------------------------------------------------------------
-!     case of a thin high cloud.
-!-----------------------------------------------------------------------
-		   if (hi_cloud(i,j,k)) then
-	             emrndlw(i,j,k,:) = cldem(3)
-!-----------------------------------------------------------------------
-!     case of a thin middle cloud.
-!-----------------------------------------------------------------------
-                   else if (mid_cloud(i,j,k))  then
-	             emrndlw(i,j,k,:) = cldem(2)
-!-----------------------------------------------------------------------
-!     case of a thin low cloud. note that thick clouds and low clouds 
-!     have the same radiative properties. 
-!-----------------------------------------------------------------------
-                   else if (low_cloud(i,j,k)) then
-	             emrndlw(i,j,k,:) = cldem(1)
-		   endif
-                 endif
-	       endif
-             end do
-           end do
-         end do
-       endif
-
-       if (do_cldht93 .or. do_cldhtskyhi) then
-         do k=KSRAD,KERAD
-	   do j=JSRAD,JERAD
-	     do i=ISRAD,IERAD
+   do j=JSRAD,JERAD
+     do i=ISRAD,IERAD
                if ((cmxolw(i,j,k) + crndlw(i,j,k) ) > 0.0) then
 !-----------------------------------------------------------------------
 !     case of a thick cloud. note that thick cloud properties are deter-
@@ -1193,46 +790,42 @@ logical, dimension(:,:,:),intent(in)    :: hi_cloud, mid_cloud,   &
 !     case of a thick high cloud.
 !-----------------------------------------------------------------------
                    if (hi_cloud(i,j,k)) then
-         	     if (Environment%using_fms_periphs) then
                        emmxolw(i,j,k,:) = cldem(3)*0.6
-                     else if (Environment%using_sky_periphs) then
-                       emmxolw(i,j,k,:) = cldem(3)
-                     endif
 !-----------------------------------------------------------------------
 !     case of a thick middle cloud.
 !-----------------------------------------------------------------------
                    else if (mid_cloud(i,j,k)) then
-	             emmxolw(i,j,k,:) = cldem(2)
+             emmxolw(i,j,k,:) = cldem(2)
 !-----------------------------------------------------------------------
 !     case of a thick low cloud.
 !-----------------------------------------------------------------------
                    else if (low_cloud (i,j,k)) then
-	             emmxolw(i,j,k,:) = cldem(1)
+             emmxolw(i,j,k,:) = cldem(1)
                    endif
                  endif
-	         if (crndlw(i,j,k) .NE. 0.0E+00) then
+         if (crndlw(i,j,k) .NE. 0.0E+00) then
 !-----------------------------------------------------------------------
 !     case of a thin high cloud.
 !-----------------------------------------------------------------------
                    if (hi_cloud(i,j,k)) then
-	             if (do_full_black_cirrus) then
+             if (do_full_black_cirrus) then
                        emrndlw(i,j,k,:) = cldem(3)
-	             else if (do_part_black_cirrus) then
-	               emrndlw(i,j,k,:) = 0.6E+00*cldem(3)
-	             endif
+             else if (do_part_black_cirrus) then
+               emrndlw(i,j,k,:) = 0.6E+00*cldem(3)
+             endif
 !-----------------------------------------------------------------------
 !     case of a thin middle cloud.
 !-----------------------------------------------------------------------
                    else if (mid_cloud(i,j,k)) then 
-	             emrndlw(i,j,k,:) = cldem(2)
+             emrndlw(i,j,k,:) = cldem(2)
 !-----------------------------------------------------------------------
 !     case of a thin low cloud.
 !-----------------------------------------------------------------------
                    else if (low_cloud(i,j,k)) then
-	             emrndlw(i,j,k,:) = cldem(1)
-	           endif
+             emrndlw(i,j,k,:) = cldem(1)
+           endif
                  endif
-	       endif
+       endif
              end do     
            end do
          end do
@@ -1241,10 +834,9 @@ logical, dimension(:,:,:),intent(in)    :: hi_cloud, mid_cloud,   &
 !  even if some cloud layers extend out of the cloud base type region
 !-------------------------------------------------------------------
 
-         if (Environment%using_fms_periphs) then 
            do k=KERAD,KSRAD+1,-1
-	     do j=JSRAD,JERAD
-	       do i=ISRAD,IERAD
+     do j=JSRAD,JERAD
+       do i=ISRAD,IERAD
                  if (cmxolw(i,j,k) /= 0.0) then
                    kk = k-1
                    if (cmxolw(i,j,kk) /= 0.0) then
@@ -1254,8 +846,6 @@ logical, dimension(:,:,:),intent(in)    :: hi_cloud, mid_cloud,   &
                end do
              end do
            end do
-         endif
-       endif
      
  
 end subroutine albcld_lw
@@ -1263,8 +853,8 @@ end subroutine albcld_lw
 
 !####################################################################
 
-subroutine albcld_sw(i,j, hi_cloud, mid_cloud, low_cloud, ngp,    &
-		     camtsw, cmxolw, crndlw, cvisrfsw, cirrfsw, cirabsw)
+subroutine albcld_sw(i,j, hi_cloud, mid_cloud, low_cloud,         &
+     camtsw, cmxolw, crndlw, cvisrfsw, cirrfsw, cirabsw)
 
 !-----------------------------------------------------------------------
 !     albcld_sw computes the cloud albedos. This calculation is based on
@@ -1272,65 +862,29 @@ subroutine albcld_sw(i,j, hi_cloud, mid_cloud, low_cloud, ngp,    &
 !     cloud thickness  and latitude in the new scheme (cldht93).
 !-----------------------------------------------------------------------
 
-real, dimension(:,:,:),   intent(inout) :: camtsw, cmxolw, crndlw
-real, dimension(:,:,:,:), intent(inout) :: cvisrfsw, cirrfsw, cirabsw
+!real, dimension(:,:,:),   intent(inout) :: camtsw, cmxolw, crndlw
+real, dimension(:,:,:),   intent(in) :: camtsw, cmxolw, crndlw
+real, dimension(:,:,:), intent(inout) :: cvisrfsw, cirrfsw, cirabsw
 logical, dimension(:,:,:),intent(in)    :: hi_cloud, mid_cloud,   &
-					   low_cloud
-integer,                  intent(in)    :: i, j, ngp
+   low_cloud
+integer,                  intent(in)    :: i, j
 !---------------------------------------------------------------------
 
        integer  ::  k, n, kk
 
+      integer  :: israd, ierad, jsrad, jerad, ksrad, kerad
+
+      israd = 1
+      jsrad = 1
+      ksrad = 1
+      ierad = size (camtsw,1)
+      jerad = size (camtsw,2)
+      kerad = size (camtsw,3)
 !-----------------------------------------------------------------------
 !     compute the reflectivities and absorptivities for each cloud in 
 !     the column. cldhm and cldml are sigma levels which serve as 
 !     boundaries between low, middle and high clouds. 
 !-----------------------------------------------------------------------
-       if (do_cldht60) then
-         do k=KSRAD+1,KERAD
-	   if (camtsw(i,j,k) .NE. 0.0) then
-!-----------------------------------------------------------------------
-!     case of a thick cloud. note that all thick clouds are given the 
-!     properties of low clouds.
-!-----------------------------------------------------------------------
-             if (cmxolw(i,j,k) .NE. 0.0E+00) then
-               cvisrfsw(i,j,k,ngp) = zza(1,1)
-               cirrfsw(i,j,k,ngp) = zza(1,2)
-               cirabsw(i,j,k,ngp) = cabir(1)
-             endif
-             if (crndlw(i,j,k) .NE. 0.0 ) then    
-
-!-----------------------------------------------------------------------
-!     case of a thin high cloud.
-!-----------------------------------------------------------------------
-               if ( hi_cloud(i,j,k)) then
-                 cvisrfsw(i,j,k,ngp) = zza(3,1)
-                 cirrfsw(i,j,k,ngp) = zza(3,2)
-                 cirabsw(i,j,k,ngp) = cabir(3)
-
-!-----------------------------------------------------------------------
-!     case of a thin middle cloud.
-!-----------------------------------------------------------------------
-               else if (mid_cloud(i,j,k)) then
-                 cvisrfsw(i,j,k,ngp) = zza(2,1)
-                 cirrfsw(i,j,k,ngp) = zza(2,2)
-                 cirabsw(i,j,k,ngp) = cabir(2)
-
-!-----------------------------------------------------------------------
-!     case of a thin low cloud. note that thick clouds and low clouds 
-!     have the same radiative properties. 
-!-----------------------------------------------------------------------
-               else if (low_cloud(i,j,k)) then
-                 cvisrfsw(i,j,k,ngp) = zza(1,1)
-                 cirrfsw(i,j,k,ngp) = zza(1,2)
-                 cirabsw(i,j,k,ngp) = cabir(1)
-               endif
-	     endif
-           endif
-         end do
-       endif
-
-       if (do_cldht93 .or. do_cldhtskyhi) then
          do k=KSRAD+1,KERAD
            if (camtsw(i,j,k) .NE. 0.0E+00) then
 !-----------------------------------------------------------------------
@@ -1344,82 +898,58 @@ integer,                  intent(in)    :: i, j, ngp
 !     case of a thick high cloud.
 !-----------------------------------------------------------------------
                if (hi_cloud(i,j,k)) then
-                 cvisrfsw(i,j,k,ngp) = zza(3,1)
-                 cirrfsw(i,j,k,ngp) = zza(3,2)
-	         if (Environment%using_fms_periphs) then
-                   cirabsw(i,j,k,ngp) = MIN(0.99-cirrfsw(i,j,k,ngp), &
+                 cvisrfsw(i,j,k) = zza(3,1)
+                 cirrfsw(i,j,k) = zza(3,2)
+                   cirabsw(i,j,k) = MIN(0.99-cirrfsw(i,j,k), &
                                             cabir(3) )
-                 else if (Environment%using_sky_periphs) then
-                   cirabsw(i,j,k,ngp) = cabir(3)
-                 endif
 
 !-----------------------------------------------------------------------
 !     case of a thick middle cloud.
 !-----------------------------------------------------------------------
                else if (mid_cloud(i,j,k)) then
-                 cvisrfsw(i,j,k,ngp) = zza(2,1)
-                 cirrfsw(i,j,k,ngp) = zza(2,2)
-	         if (Environment%using_fms_periphs) then
-                   cirabsw(i,j,k,ngp) = MIN(0.99-cirrfsw(i,j,k,ngp), &
+                 cvisrfsw(i,j,k) = zza(2,1)
+                 cirrfsw(i,j,k) = zza(2,2)
+                   cirabsw(i,j,k) = MIN(0.99-cirrfsw(i,j,k), &
                                             cabir(2) )
-                 else if (Environment%using_sky_periphs) then
-                   cirabsw(i,j,k,ngp) = cabir(2)
-                 endif
 
 !-----------------------------------------------------------------------
 !     case of a thick low cloud.
 !-----------------------------------------------------------------------
                else if (low_cloud(i,j,k)) then
-                 cvisrfsw(i,j,k,ngp) = zza(1,1)
-                 cirrfsw(i,j,k,ngp) = zza(1,2)
-	         if (Environment%using_fms_periphs) then
-                   cirabsw(i,j,k,ngp) = MIN(0.99-cirrfsw(i,j,k,ngp), &
-	                                    cabir(1) )
-                 else if (Environment%using_sky_periphs) then
-                   cirabsw(i,j,k,ngp) = cabir(1)
-                 endif
+                 cvisrfsw(i,j,k) = zza(1,1)
+                 cirrfsw(i,j,k) = zza(1,2)
+                   cirabsw(i,j,k) = MIN(0.99-cirrfsw(i,j,k), &
+                                    cabir(1) )
                endif
              endif
-	     if (crndlw(i,j,k) .NE. 0.0E+00) then
+     if (crndlw(i,j,k) .NE. 0.0E+00) then
 
 !-----------------------------------------------------------------------
 !     case of a thin high cloud.
 !-----------------------------------------------------------------------
                if (hi_cloud(i,j,k)) then
-                 cvisrfsw(i,j,k,ngp) = zza(3,1)
-                 cirrfsw(i,j,k,ngp) = zza(3,2)
-	         if (Environment%using_fms_periphs) then
-                   cirabsw(i,j,k,ngp) = MIN(0.99-cirrfsw(i,j,k,ngp), &
+                 cvisrfsw(i,j,k) = zza(3,1)
+                 cirrfsw(i,j,k) = zza(3,2)
+                   cirabsw(i,j,k) = MIN(0.99-cirrfsw(i,j,k), &
                                             cabir(3) )
-                 else if (Environment%using_sky_periphs) then
-                   cirabsw(i,j,k,ngp) = cabir(3)
-                 endif
 
 !-----------------------------------------------------------------------
 !     case of a thin middle cloud.
 !-----------------------------------------------------------------------
                else if (mid_cloud(i,j,k))  then
-                 cvisrfsw(i,j,k,ngp) = zza(2,1)
-                 cirrfsw(i,j,k,ngp) = zza(2,2)
-	         if (Environment%using_fms_periphs) then
-                   cirabsw(i,j,k,ngp) = MIN(0.99-cirrfsw(i,j,k,ngp), &
+                 cvisrfsw(i,j,k) = zza(2,1)
+                 cirrfsw(i,j,k) = zza(2,2)
+                   cirabsw(i,j,k) = MIN(0.99-cirrfsw(i,j,k), &
                                             cabir(2) )
-                 else if (Environment%using_sky_periphs) then
-                   cirabsw(i,j,k,ngp) = cabir(2)
-                 endif
 
 !-----------------------------------------------------------------------
 !     case of a thin low cloud.
 !-----------------------------------------------------------------------
                else if (low_cloud(i,j,k)) then
-                 cvisrfsw(i,j,k,ngp) = zza(1,1)
-                 cirrfsw(i,j,k,ngp) = zza(1,2)
-	         if (Environment%using_fms_periphs) then
-                   cirabsw(i,j,k,ngp) = MIN(0.99-cirrfsw(i,j,k,ngp), &
+                 cvisrfsw(i,j,k) = zza(1,1)
+                 cirrfsw(i,j,k) = zza(1,2)
+                   cirabsw(i,j,k) = MIN(0.99-cirrfsw(i,j,k), &
                                             cabir(1) )
-                 else if (Environment%using_sky_periphs) then
-                   cirabsw(i,j,k,ngp) = cabir(1)
-                 endif
                endif
              endif
            endif
@@ -1429,25 +959,22 @@ integer,                  intent(in)    :: i, j, ngp
 !! for fms formulation, set thick cloud properties based on cloud base,
 !  even if some cloud layers extend out of the cloud base type region
 !-------------------------------------------------------------------
-         if (Environment%using_fms_periphs) then
            do k=KERAD,KSRAD+1,-1
              if (cmxolw(i,j,k) /= 0.0) then
                kk = k-1
                if (cmxolw(i,j,kk) /= 0.0) then
-                 cvisrfsw(i,j,kk,ngp) = cvisrfsw(i,j,k,ngp)
-                 cirrfsw(i,j,kk,ngp) = cirrfsw(i,j,k,ngp)
-                 cirabsw(i,j,kk,ngp) = cirabsw(i,j,k,ngp)
+                 cvisrfsw(i,j,kk) = cvisrfsw(i,j,k)
+                 cirrfsw(i,j,kk) = cirrfsw(i,j,k)
+                 cirabsw(i,j,kk) = cirabsw(i,j,k)
                endif
              endif
            end do
-         endif
-       endif
      
  
 end subroutine albcld_sw
 
 
 
-	       end module rh_based_clouds_mod
+       end module rh_based_clouds_mod
 
 

@@ -1,14 +1,16 @@
+!FDOC_TAG_GFDL
 module entrain_mod
-
-!=======================================================================
-!
-!
+! <CONTACT EMAIL="Stephen.Klein@noaa.gov">
+!   Stephen Klein
+! </CONTACT>
+! <REVIEWER EMAIL="reviewer_email@gfdl.noaa.gov">
+!   none
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
 !
 !      K-PROFILE BOUNDARY LAYER SCHEME WITH CLOUD TOP ENTRAINMENT
 !
-!
-!      January 2003
-!      Contact person: Steve Klein
 !
 !      This routine calculates diffusivity coefficients for vertical
 !      diffusion using a K-profile approach.  This scheme is modelled
@@ -19,30 +21,81 @@ module entrain_mod
 !          description and single-column modeling tests. Mon. Wea. Rev.,
 !          128, 3187-3199.
 !
+!   
+! </OVERVIEW>
+! <DESCRIPTION>
+!
 !      The key part is the parameterization of entrainment at the top
-!      convective layers.  This entrainment rate is parameterized as:
+!      convective layers. For an entrainment interface from surface
+!      driven mixing, the entrainment rate, we, is parameterized as:
 !
-!      we = entrainment velocity 
+!                      
+!      we, surf =  A / B
 !
-!      we * delta_slv * grav / slv  = entrainment buoyancy consumption 
+!      where A = ( beta_surf * (V_surf**3 + V_shear**3) / zsml )
+!        and B = ( delta_b   + ((V_surf**3 + V_shear**3)**(2/3))/zsml )
 !
-!           =  surface forcing + cloud top radiative cooling forcing
 !
-!           =  beta_surf*(u_star*b_star+(Ashear*(u_star**3)/zsml)) + 
+!      In this formula,
 !
-!              beta_rad*grav*delta-F / rho/slv
-! 
+!           zsml     =  depth of surface mixed layer
+!
+!           V_surf   =  surface driven scaling velocity
+!                    =  (u_star*b_star*zsml)**(1/3)
+!
+!           V_shear  =  surface driven shear velocity,
+!                    =  (Ashear**(1/3))*u_star
+!
+!           delta_b  =  buoyancy jump at the entrainment interface(m/s2)
+!                    =  grav * delta_slv / slv
+!
+!      If an entrainment interface is associated only with cloud top
+!      radiative cooling, the entrainment rate is parameterized as:
+!
+!
+!                     
+!      we, rad  =  ( A / B)
+!
+!            where A = beta_rad  *  V_rad**3 /  zradml
+!              and B = delta_b   +  V_rad**2 /  zradml
+!
+!      where
+!
+!           zradml   =  depth of radiatively driven layer
+!
+!           V_rad    =  radiatively driven scaling velocity
+!                    =  (grav*delta-F*zradml/(rho*cp_air*T)) **(1/3)
+!                 
+!
+!      Note that the source of entrainment from cloud top buoyancy
+!      reversal has been omitted in this implementation.
+!  
+!      If the entrainment interface for surface driven mixing coincides
+!      with that for cloud top radiatively driven convection then the
+!      following full entrainment rate:
+!
+!                          
+!      we, full =   A / B
+!
+!            where A =   V_full**3 / zsml
+!              and B =  delta_b+((V_surf**3+V_shear**3+V_rad**3)**(2/3))/zsml
+!              and V_full**3 = beta_surf*(V_surf**3+V_shear**3) + beta_rad*V_rad**3
+!   
+! </DESCRIPTION>
+!
+
 !-----------------------------------------------------------------------
 !
 ! outside modules used
 !
 
 use      constants_mod, only: grav,vonkarm,cp_air,rdgas,rvgas,hlv,hls, &
-                              tfreeze,radian 
+                              tfreeze, radian 
 
-use      utilities_mod, only: file_exist, open_file, error_mesg, FATAL,&
-                              get_my_pe, close_file, read_data, &
-			      write_data
+use            fms_mod, only: open_file, file_exist, open_namelist_file, &
+                              error_mesg, FATAL,&
+                              mpp_pe, mpp_root_pe, close_file, read_data, &
+                              write_data, stdlog, write_version_number
 
 use   diag_manager_mod, only: register_diag_field, send_data
         
@@ -59,14 +112,7 @@ private
 !
 !      public interfaces
 
-public entrain, entrain_init, entrain_end, entrain_tend, entrain_on
-
-!-----------------------------------------------------------------------
-!
-!      global storage variable
-!
-
-real, allocatable, dimension(:,:,:) :: tdtlw  ! LW heating rate (K/s)
+public entrain, entrain_init, entrain_end, entrain_on
 
 !-----------------------------------------------------------------------
 !
@@ -75,9 +121,9 @@ real, allocatable, dimension(:,:,:) :: tdtlw  ! LW heating rate (K/s)
 real :: akmax       =  1.e4 ! maximum value for a diffusion coefficient 
                             ! (m2/s)
 real :: wentrmax    =  0.05 ! maximum entrainment rate (m/s)
-real :: parcel_buoy =  2.0  ! scaling factor for surface parcel buoyancy
+real :: parcel_buoy =  1.0  ! scaling factor for surface parcel buoyancy
 real :: frac_inner  =  0.1  ! surface layer height divided by pbl height
-real :: beta_surf   =  0.2  ! scaling of surface buoyancy flux for 
+real :: beta_surf   =  0.23 ! scaling of surface buoyancy flux for 
                             ! convective pbl entrainment
 real :: Ashear      = 25.0  ! scaling of surface shear contribution to
                             ! entrainment
@@ -87,42 +133,44 @@ real :: radfmin     = 30.   ! minimum radiative forcing for entrainment
                             ! to be effective (W/m2)
 real :: qdotmin     = 10.   ! minimum longwave cooling rate (K/day) for
                             ! entrainment to be effective, used only if
-			    ! no layers were found using radfmin			    
+                            ! no layers were found using radfmin    
 real :: radperturb  =  0.3  ! parcel perturbation looking for depth of
-                            ! radiatively driven layer (K)	
+                            ! radiatively driven layer (K)
 real :: critjump    =  0.3  ! critical jump for finding stable inter-
                             ! faces to bound convective layers, or to 
-			    ! identify ambigous layers (K)
+                            ! identify ambigous layers (K)
+integer :: parcel_option = 1! Should the cloud top parcel property
+                            ! be limited to the value of the level
+                            ! below minus radperturb (option = 1) or 
+                            ! the value of level below (option = 2)    
 real :: zcldtopmax  =  3.e3 ! maximum altitude for cloud top of 
-                            ! radiatively driven convection (m)			  		  
+                            ! radiatively driven convection (m)    
 real :: pr          =  0.75 ! prandtl # (k_m/k_t) for radiatively driven 
-                            ! convection and simple mixing scheme
+                            ! convection 
 real :: qamin       =  0.3  ! minimum cloud fraction for cloud top 
                             ! radiative cooling entrainment and kprofile
-			    ! from radiative cooling to occur
-real :: asympt_len  =  1.5e2! asymptotic mixing length for simple mixing
-                            ! scheme
-real :: rich_crit   =  0.25 ! critical richardson number for simple
-                            ! mixing scheme
+                            ! from radiative cooling to occur
 logical :: do_jump_exit = .true.
                             ! should an internal stable layer limit
-			    ! the depth of the radiatively driven
-			    ! convection?
-logical :: prof_recon_on = .false.
-                            ! should profile reconstruction be applied?			    
+                            ! the depth of the radiatively driven
+                            ! convection?
 logical :: apply_entrain = .true. 
                             ! logical controlling whether results of
                             ! of entrainment module are applied:
-	                    ! if F, then no diffusion coefficients 
-			    ! from entrain_mod will be applied to
-			    ! the actual diffusion coefficients;
-		            ! i.e. the module is purely diagnostic
+                            ! if F, then no diffusion coefficients 
+                            ! from entrain_mod will be applied to
+                            ! the actual diffusion coefficients;
+                            ! i.e. the module is purely diagnostic
+logical :: convect_shutoff = .false.
+                            ! if surface based moist convection is   
+                            ! occurring in the grid box, set entrainment
+                            ! at top of surface mixed layer to zero
 
 !-----------------------------------------------------------------------   
 !
 !  Stuff needed to write out extradiagnostics from a single point
 !
-			    
+    
 integer, dimension(2) :: ent_pts = 0 ! the global indices for i,j
                                      ! at which diagnostics will 
                                      ! print out
@@ -133,25 +181,25 @@ logical   :: column_match = .false.  ! should this column be printed
 integer   :: dpu = 0                 ! unit # for do_print output
 integer   :: n_print_levels = 14     ! how many of the lowest levels 
                                      ! should be printed out
-				 
-	
+ 
+
 integer, parameter                 :: MAX_PTS = 20
 integer, dimension (MAX_PTS)       :: i_entprt_gl=0, j_entprt_gl=0
 real, dimension(MAX_PTS)           :: lat_entprt=999., lon_entprt=999.
 integer                            :: num_pts_ij = 0
 integer                            :: num_pts_latlon = 0
 
-			  				   
+     
 namelist /entrain_nml/ wentrmax, parcel_buoy, frac_inner, beta_surf,   &
                        Ashear, beta_rad, radfmin, qdotmin, radperturb, &
-		       critjump, zcldtopmax, pr, qamin, asympt_len,    &
-		       do_jump_exit, prof_recon_on, apply_entrain,     &
-		       ent_pts,  i_entprt_gl, j_entprt_gl, num_pts_ij, &
-		       num_pts_latlon, lat_entprt, lon_entprt
+                       critjump, zcldtopmax, pr, qamin, parcel_option, &
+                       do_jump_exit, convect_shutoff, apply_entrain,   &
+                       ent_pts,  i_entprt_gl, j_entprt_gl, num_pts_ij, &
+                       num_pts_latlon, lat_entprt, lon_entprt
 
 integer     :: num_pts           !  total number of columns in which
                                  !  diagnostics are desired
-		       
+       
 !-----------------------------------------------------------------------
 !    deglon1 and deglat1 are the longitude and latitude of the columns
 !    at which diagnostics will be calculated (degrees).
@@ -179,19 +227,18 @@ character(len=10) :: mod_name = 'entrain'
 real              :: missing_value = 0.
 integer           :: id_wentr_rad, id_wentr_pbl, id_radf,id_parcelkick,&
                      id_k_t_entr,  id_k_m_entr,  id_k_rad,  id_zsml,   &             
-		     id_k_t_troen, id_k_m_troen, id_radfq,  id_pblfq,  &
-		     id_zradbase,  id_zradtop,   id_vrad,   id_zradml, &
-		     id_convpbl,   id_radpbl,    id_svpcp,  id_k_t_sim,&
-		     id_k_m_sim,   id_simfq
-       
-      
+                     id_vsurf,     id_vshear,    id_vrad,   id_zradml, &
+                     id_k_t_troen, id_k_m_troen, id_radfq,  id_pblfq,  &
+                     id_zradbase,  id_zradtop,   id_convpbl,id_radpbl, &
+                     id_svpcp,     id_zinv,      id_fqinv,  id_invstr
+     
 !-----------------------------------------------------------------------
 !
 !      set default values to parameters       
 !
 
 logical         :: entrain_on = .false.
-real, parameter :: small  = 1.e-4			      
+real, parameter :: small  = 1.e-4      
 real, parameter :: d608 = (rvgas-rdgas)/rdgas
 
 !-----------------------------------------------------------------------
@@ -199,9 +246,9 @@ real, parameter :: d608 = (rvgas-rdgas)/rdgas
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: entrain.F90,v 1.2 2003/04/09 20:55:21 fms Exp $'
-character(len=128) :: Tag = '$Name: inchon $'
-      
+character(len=128) :: Version = '$Id: entrain.F90,v 10.0 2003/10/24 22:00:30 fms Exp $'
+character(len=128) :: Tagname = '$Name: jakarta $'
+logical            :: module_is_initialized = .false.      
 !-----------------------------------------------------------------------
 !
 ! Subroutines include:
@@ -218,18 +265,12 @@ character(len=128) :: Tag = '$Name: inchon $'
 !      pbl_depth       routine to calculate the depth of surface driven
 !                      mixed layer
 !
-!      prof_recon      subroutine to perform profile reconstruction
-!
 !      radml_depth     subroutine to calculate the depth of the cloud
 !                      topped radiatively driven mixed layer
 !     
 !      diffusivity_pbl subroutine to calculate diffusivity coefficients
 !                      for surface driven mixed layer
-!
-!      diffusivity_sim subroutine to calculate simple diffusion 
-!                      coefficients, used for all levels WHERE 
-!                      surface driven unstable PBL and radiative driven
-!                      convection do not occur
+
 
 contains
 
@@ -237,13 +278,44 @@ contains
 
 !======================================================================= 
 !
-!      subroutine entrain_init 
-!        
+! <SUBROUTINE NAME="entrain_init">
+!  <OVERVIEW>
 !
-!      this subroutine reads the namelist file and restart data
-!      and initializes some constants.
-!        
-
+!      
+!           
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!     This subroutine reads the namelist file, sets up individual 
+!     points diagnostics if desired, and initializes netcdf output.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!
+!   call entrain_init(lonb, latb, axes,time,idim,jdim,kdim)
+!		
+!  </TEMPLATE>
+!  <IN NAME="lonb" TYPE="real">
+!       Vector of model longitudes at cell boundaries (radians) 
+!  </IN>
+!  <IN NAME="latb" TYPE="real">
+!       Vector of model latitudes at cell boundaries (radians)
+!  </IN>
+!  <IN NAME="axes" TYPE="integer">
+!       Integer arrary for axes used needed for netcdf diagnostics
+!  </IN>
+!  <IN NAME="time" TYPE="time_type">
+!       Time type variable used for netcdf diagnostics
+!  </IN>
+!  <IN NAME="idim" TYPE="integer">
+!       Size of first (longitude) array dimension 
+!  </IN>
+!  <IN NAME="jdim" TYPE="integer">
+!       Size of second (latitude) array dimension
+!  </IN>
+!  <IN NAME="kdim" TYPE="integer">
+!       Size of third (vertical, full levels) array dimension
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine entrain_init(lonb, latb, axes,time,idim,jdim,kdim)
 
 !-----------------------------------------------------------------------
@@ -284,7 +356,7 @@ real                           :: dellat, dellon
 !      namelist functions
 
        If (File_Exist('input.nml')) Then
-            unit = Open_File ('input.nml', action='read')
+            unit = Open_namelist_File ()
             io=1
             Do While (io .ne. 0)
                  Read  (unit, nml=entrain_nml, iostat=io, End=10)
@@ -292,29 +364,11 @@ real                           :: dellat, dellon
   10        Call Close_File (unit)
        EndIf
 
-       unit = Open_File ('logfile.out', action='append')
-       if ( get_my_pe() == 0 ) then
-            Write (unit,'(/,80("="),/(a))') trim(Version), trim(Tag)
-            Write (unit,nml=entrain_nml)
+       if ( mpp_pe() == mpp_root_pe() ) then
+            call write_version_number(Version, Tagname)
+            Write (stdlog(),nml=entrain_nml)
        endif
-       Call Close_File (unit)
 
-!-----------------------------------------------------------------------
-!
-!      Stuff to do single point diagnostics
-
-
-!      if (ent_pts(1) > 0 .and.ent_pts (2) >0) do_print = .true.
-
-!      if (do_print) then
-!!RSH  unit = Open_File ('entrain.out', action='write')
-!      dpu  = Open_File ('entrain.out', threading='multi', action='write')
-!      if ( get_my_pe() == 0 ) then
-!           Write (unit,'(/,80("="),/(a))') trim(Version), trim(Tag)
-!           Write (unit,nml=ent_nml)
-!      endif
-!!     Call Close_File (unit)
-!      end if
        
 !-----------------------------------------------------------------------
 !    allocate and initialize a flag array which indicates the latitudes
@@ -412,8 +466,10 @@ real                           :: dellat, dellon
                   do_ent_dg(j) = .true.
                   j_entprt(nn) = j
                   i_entprt(nn) = i
-                  deglon1(nn) = 0.5*(lonb(i) + lonb(i+1))*radian
-                  deglat1(nn) = 0.5*(latb(j) + latb(j+1))*radian
+                  deglon1(nn) = 0.5*(lonb(i) + lonb(i+1))*  &
+                                radian
+                  deglat1(nn) = 0.5*(latb(j) + latb(j+1))*   &
+                                radian
                   exit
                 endif
               end do
@@ -428,8 +484,8 @@ real                           :: dellat, dellon
         dpu = open_file ('entrain.out', action='write', &
                                  threading='multi', form='formatted')
        do_print = .true.
-       if ( get_my_pe() == 0 ) then
-            Write (dpu ,'(/,80("="),/(a))') trim(Version), trim(Tag)
+       if ( mpp_pe() == mpp_root_pe() ) then
+            call write_version_number(Version, Tagname, dpu)
             Write (dpu ,nml=entrain_nml)
        endif
       endif     ! (num_pts > 0)
@@ -439,133 +495,128 @@ real                           :: dellat, dellon
 !      initialize entrain_on
 
        entrain_on = .TRUE.
+       module_is_initialized = .true.
 
        
-!-----------------------------------------------------------------------
-!
-!      handle global storage
-        
-       if (allocated(tdtlw)) deallocate (tdtlw)
-       allocate(tdtlw(idim,jdim,kdim))
-                
-       if (File_Exist('INPUT/entrain.res')) then
-            unit = Open_File (FILE='INPUT/entrain.res', &
-                 FORM='native', ACTION='read')
-            call read_data (unit, tdtlw)
-            call Close_File (unit)
-       else
-            tdtlw   (:,:,:) = 0.
-       endif
-
 !-----------------------------------------------------------------------
 !
 ! register diagnostic fields       
 
        id_zsml = register_diag_field (mod_name, 'zsml', axes(1:2),     &
-	    time, 'depth of surface well-mixed layer', 'm',            &
-	    missing_value=missing_value )
+            time, 'depth of surface well-mixed layer', 'meters',       &
+            missing_value=missing_value )
+
+       id_vsurf = register_diag_field (mod_name, 'vsurf',              &
+            axes(1:2), time,                                           &
+            'surface buoyancy velocity scale', 'meters per second',    &
+            missing_value=missing_value )
+
+       id_vshear = register_diag_field (mod_name, 'vshear',            &
+            axes(1:2), time,                                           &
+            'surface shear driven velocity scale', 'meters per second',&
+             missing_value=missing_value )
 
        id_parcelkick = register_diag_field (mod_name, 'parcelkick',    &
             axes(1:2),time, 'surface parcel excess', 'K',              &
-	    missing_value=missing_value )
+            missing_value=missing_value )
 
        id_wentr_pbl = register_diag_field (mod_name,'wentr_pbl',       &
             axes(1:2), time,                                           &
-	    'Entrainment velocity from surface buoyancy flux',         &
-	    'meters per second', missing_value=missing_value )
+            'Entrainment velocity from surface buoyancy flux',         &
+            'meters per second', missing_value=missing_value )
        
        id_wentr_rad = register_diag_field (mod_name, 'wentr_rad',      &
             axes(1:2), time,                                           &
-	    'Entrainment velocity from cloud top radiative cooling',   &
-	    'meters per second', missing_value=missing_value )
+            'Entrainment velocity from cloud top radiative cooling',   &
+            'meters per second', missing_value=missing_value )
        
        id_convpbl = register_diag_field (mod_name, 'convpbl_fq',       &
             axes(1:2), time, 'Frequency of convective boundary layer', &
-	    'none')
+            'none')
        
        id_pblfq = register_diag_field (mod_name,'entr_pbl_fq',         &
             axes(half), time,                                          &
-	    'Frequency of surface driven entrainment turbulent layer', &
-	    'none')
+            'Frequency of surface driven entrainment turbulent layer', &
+            'none')
        
        id_radfq = register_diag_field (mod_name, 'entr_rad_fq',        &
             axes(half), time,                                          &
-	   'Frequency of radiative driven entrainment turbulent layer',&
-	    'none')
+           'Frequency of radiative driven entrainment turbulent layer',&
+            'none')
        
        id_k_t_troen = register_diag_field (mod_name, 'k_t_troen',      &
             axes(half), time, 'Heat entrainment diffusivity from PBL', &
-	    'meters squared per second', missing_value=missing_value )
+            'meters squared per second', missing_value=missing_value )
        
        id_k_m_troen = register_diag_field (mod_name, 'k_m_troen',      &
             axes(half), time,                                          &
-	    'Momentum entrainment diffusivity from PBL',               &
-	    'meters squared per second', missing_value=missing_value )
+            'Momentum entrainment diffusivity from PBL',               &
+            'meters squared per second', missing_value=missing_value )
        
        id_svpcp = register_diag_field (mod_name, 'svpcp',              &
             axes(1:2), time,                                           &
-	    'Liquid water virtual potential temperature at cloud top', &
-	    'K',missing_value=missing_value )
+            'Liquid water virtual potential temperature at cloud top', &
+            'K',missing_value=missing_value )
 
        id_zradbase = register_diag_field (mod_name, 'zradbase',        &
             axes(1:2), time,                                           &
-	    'base of radiatively driven well-mixed layer', 'm',        &
-	    missing_value=missing_value )
+            'base of radiatively driven well-mixed layer', 'm',        &
+            missing_value=missing_value )
 
        id_zradtop = register_diag_field (mod_name, 'zradtop',          &
             axes(1:2), time,                                           &
-	    'top of radiatively driven well-mixed layer', 'm',         &
-	    missing_value=missing_value )
+            'top of radiatively driven well-mixed layer', 'm',         &
+            missing_value=missing_value )
 
        id_zradml = register_diag_field (mod_name, 'zradml',            &
             axes(1:2), time,                                           &
-	    'depth of radiatively driven well-mixed layer', 'm',       &
-	    missing_value=missing_value )
+            'depth of radiatively driven well-mixed layer', 'm',       &
+            missing_value=missing_value )
 
        id_radpbl = register_diag_field (mod_name, 'radpbl_fq',         &
             axes(1:2), time,                                           &
-	    'Frequency of radiatively driven turbulent layer',         &
-	    'none' )
+            'Frequency of radiatively driven turbulent layer',         &
+            'none' )
        
        id_vrad = register_diag_field (mod_name, 'vrad',                &
             axes(1:2), time,                                           &
-	    'radiatively driven layer velocity scale', 'm',            &
-	    missing_value=missing_value )
+            'radiatively driven layer velocity scale',                 &
+            'meters per second', missing_value=missing_value )
 
        id_k_rad = register_diag_field (mod_name, 'k_rad',              &
             axes(half), time,                                          &
-	    'diffusivity from cloud top radiative cooling',            &
-	    'meters squared per second', missing_value=missing_value )
+            'diffusivity from cloud top radiative cooling',            &
+            'meters squared per second', missing_value=missing_value )
        
        id_radf  = register_diag_field (mod_name, 'radf', axes(1:2),    &
-	    time, 'Longwave jump in cloud top radiation',              &
-	    'Watts/m**2', missing_value=missing_value )
+            time, 'Longwave jump in cloud top radiation',              &
+            'Watts/m**2', missing_value=missing_value )
  
-       id_k_m_sim = register_diag_field (mod_name, 'k_m_sim',          &
-            axes(half), time,                                          &
-	    'Momentum entrainment diffusivity from simple mixing',     &
-	    'meters squared per second', missing_value=missing_value )
-       
-       id_k_t_sim = register_diag_field (mod_name, 'k_t_sim',          &
-            axes(half), time,                                          &
-	    'Heat entrainment diffusivity from simple mixing',         &
-	    'meters squared per second', missing_value=missing_value )
-       
-       id_simfq = register_diag_field (mod_name, 'entr_sim_fq',        &
-            axes(half), time,                                          &
-	   'Frequency of simple stable mixing scheme layer',           &
-	    'none')
-       
        id_k_t_entr = register_diag_field (mod_name, 'k_t_entr',        &
             axes(half), time,                                          &
-	    'Heat diffusivity from entrainment module',                &
-	    'meters squared per second')
+            'Heat diffusivity from entrainment module',                &
+            'meters squared per second')
        
        id_k_m_entr = register_diag_field (mod_name, 'k_m_entr',        &
             axes(half), time,                                          &
-	    'Momentum diffusivity from entrainment module',            &
-	    'meters squared per second' )
-       
+            'Momentum diffusivity from entrainment module',            &
+            'meters squared per second' )
+
+       id_zinv = register_diag_field (mod_name, 'zinv',                &
+            axes(1:2), time,                                           &
+            'Altitude of strongest inversion at altitudes less '//     &
+            'than 3000 m',   'm', missing_value=missing_value )
+
+       id_invstr = register_diag_field (mod_name, 'invstr',            &
+            axes(1:2), time,                                           &
+            'Strength of strongest inversion at altitudes less '//     &
+            'than 3000 m',   'K', missing_value=missing_value )
+
+       id_fqinv = register_diag_field (mod_name, 'fqinv',              &
+            axes(1:2), time,                                           &
+            'Frequency of inversions at altitudes less than 3000 m',   &
+            'fraction', missing_value=missing_value )
+              
                         
 !-----------------------------------------------------------------------
 ! 
@@ -585,9 +636,127 @@ end subroutine entrain_init
 !      subroutine entrain
 !        
 
-subroutine entrain(is,ie,js,je,time,u_star,b_star,t,qv,ql,qi,qa,u,v,   &
-                   zfull,pfull,zhalf,phalf,diff_m,diff_t,k_m_entr,     &
-		   k_t_entr,kbot)
+! <SUBROUTINE NAME="entrain">
+!  <OVERVIEW>
+!   
+!      
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!      This is the main subroutine which takes in the state of the
+!      atmosphere and returns vertical diffusion coefficients for
+!      convective turbulent layers.  (Stable turbulent layers are
+!      handled by stable_bl_turb.f90 in AM2)
+!
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call entrain(is,ie,js,je,time, tdtlw_in, convect,u_star,b_star,             &
+!		t,qv,ql,qi,qa,u,v,zfull,pfull,zhalf,phalf,          
+!		diff_m,diff_t,k_m_entr,k_t_entr,use_entr,zsml,      
+!		vspblcap,kbot)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!      Indice of starting point in the longitude direction of the slab being passed to entrain
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+!      Indice of ending point in the longitude direction of the slab being passed to entrain  
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+!      Indice of starting point in the latitude direction of the slab being passed to entrain
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+!      Indice of ending point in the latitude direction of the slab being passed to entrain 
+!  </IN>
+!  <IN NAME="time" TYPE="time_type">
+!      Time of the model: used for netcdf diagnostics
+!  </IN>
+!  <IN NAME="tdtlw_in" TYPE="real">
+!      Longwave cooling rate (from the radiation scheme) (K/sec)
+!  </IN>
+!  <IN NAME="convect" TYPE="logical">
+!      Is surface based convection occurring in this grid box at this time? (from convection scheme (or schemes))
+!  </IN>
+!  <IN NAME="u_star" TYPE="real">
+!      Friction velocity (m/s) 
+!  </IN>
+!  <IN NAME="b_star" TYPE="real">
+!      Buoyancy scale (m/s2)
+!  </IN>
+!  <IN NAME="t" TYPE="time_type">
+!      Temperature (3d array) (K)
+!  </IN>
+!  <IN NAME="qv" TYPE="real">
+!      Water vapor specific humidity (3d array) (kg/kg)
+!  </IN>
+!  <IN NAME="ql" TYPE="real">
+!      Liquid water specific humidity (3d array) (kg/kg)
+!  </IN>
+!  <IN NAME="qi" TYPE="real">
+!      Ice water specific humidity (3d array) (kg/kg)
+!  </IN>
+!  <IN NAME="qa" TYPE="real">
+!      Cloud fraction (3d array) (fraction)
+!  </IN>
+!  <IN NAME="u" TYPE="real">
+!      Zonal wind velocity (3d array) (m/s)
+!  </IN>
+!  <IN NAME="v" TYPE="logical">
+!      Meridional wind velocity (3d array) (m/s) 
+!  </IN>
+!  <IN NAME="zfull" TYPE="real">
+!      Geopotential height of full model levels (3d array) (m)
+!  </IN>
+!  <IN NAME="pfull" TYPE="real">
+!      Pressure of full model levels (3d array) (Pa)
+!  </IN>
+!  <IN NAME="zhalf" TYPE="real">
+!      Geopotential height of half model levels (3d array) (m)
+!  </IN>
+!  <IN NAME="phalf" TYPE="real">
+!      Pressure of half model levels (3d array) (Pa)
+!  </IN>
+!  <INOUT NAME="diff_m" TYPE="real">
+!      Vertical momentum diffusion coefficient (3d array) (m2/s)
+!
+!      Note that if apply_entrain = .true. then the output will be 
+!      the diffusion coefficient diagnosed by entrain_mod (k_m_entr). 
+!      If apply_entrain = .false. then the output will be identical to 
+!      the input.  This permits one to run entrain_mod as a diagnostic 
+!      module without using the diffusion coefficients determined by it. 
+!  </INOUT>
+!  <INOUT NAME="diff_t" TYPE="real">
+!      Vertical heat and tracer diffusion coefficient (3d array) (m2/s) 
+!
+!      The note for diff_m also applies here.
+!  </INOUT>
+!  <OUT NAME="k_m_entr" TYPE="real">
+!      Vertical momentum diffusion coefficient diagnosed by entrain_mod (3d array) (m2/s)
+!  </OUT>
+!  <OUT NAME="k_t_entr" TYPE="real">
+!      Vertical heat and tracer diffusion coefficient diagnosed by entrain_mod (3d array) (m2/s)
+!  </OUT>
+!  <OUT NAME="use_entr" TYPE="real">
+!      Was a diffusion coefficient calculated for this level by entrain_mod?  (1.0 = yes, 0.0 = no)
+!  </OUT>
+!  <OUT NAME="zsml" TYPE="real">
+!      Height of surface based convective mixed layer (m)
+!      This may be used by other routines, e.g. Steve Garner's gravity wave drag
+!  </OUT>
+!  <OUT NAME="vspblcap" TYPE="real">
+!      Lowest height level for which entrain module calculated at diffusion coefficient (meters) 
+!      (i.e. where use_entr = 1.0)
+!      This is used by stable_bl_turb.f90 to limit the height of enhanced mixing in stable conditions.
+!  </OUT>
+!  <IN NAME="kbot" TYPE="integer">
+!      Optional input integer indicating the lowest true layer of atmosphere (counting down from the top of the atmosphere).
+!      This is used only for eta coordinate model.
+!  </IN>
+! </SUBROUTINE>
+!
+subroutine entrain(is,ie,js,je,time, tdtlw_in, convect,u_star,b_star,             &
+                   t,qv,ql,qi,qa,u,v,zfull,pfull,zhalf,phalf,          &
+                   diff_m,diff_t,k_m_entr,k_t_entr,use_entr,zsml,      &
+                   vspblcap,kbot)
 
 !-----------------------------------------------------------------------
 !
@@ -600,6 +769,8 @@ subroutine entrain(is,ie,js,je,time,u_star,b_star,t,qv,ql,qi,qa,u,v,   &
 !      is,ie,js,je  i,j indices marking the slab of model working on
 !      time      variable needed for netcdf diagnostics
 !
+!      convect   is surface based moist convection occurring in this
+!                grid box?
 !      u_star    friction velocity (m/s)
 !      b_star    buoyancy scale (m/s**2)
 !
@@ -649,11 +820,12 @@ subroutine entrain(is,ie,js,je,time,u_star,b_star,t,qv,ql,qi,qa,u,v,   &
 !
 !      k_t_entr  heat diffusivity coefficient (m**2/s)
 !      k_m_entr  momentum diffusivity coefficient (m**2/s)
-!     
-!      These are the diffusivity coefficients calculated by this 
-!      routine.  This is sent out for diagnostics purposes only.
-!      The diffusivity coefficients actually used by the model are
-!      the output values of diff_t and diff_m.
+!      use_entr  Was a diffusion coefficient calculated for this
+!                level?  (1.0 = yes, 0.0 = no)
+!      zsml      height of surface driven mixed layer (m)
+!      vspblcap  lowest height level for which entrain module calculated
+!                at diffusion coefficient (meters) (i.e. where 
+!                use_entr = 1.0)
 !
 !      --------------
 !      optional input
@@ -687,7 +859,8 @@ subroutine entrain(is,ie,js,je,time,u_star,b_star,t,qv,ql,qi,qa,u,v,   &
 !      Variables related to surface driven convective layers
 !      -----------------------------------------------------
 !
-!      zsml        height of surface driven mixed layer (m)
+!      vsurf       surface driven buoyancy velocity scale (m/s)
+!      vshear      surface driven shear velocity scale (m/s)
 !      parcelkick  buoyancy kick to surface parcel (K)
 !      wentr_pbl   surface driven entrainment rate (m/s)
 !      convpbl     1 is surface driven convective layer present
@@ -716,24 +889,28 @@ subroutine entrain(is,ie,js,je,time,u_star,b_star,t,qv,ql,qi,qa,u,v,   &
 !                  layer, 0 otherwise
 !      k_rad       radiatively driven diffusion coefficient (m2/s)
 !
+!      Diagnostic variables
+!      --------------------
 !
-!      Variables related to simple mixing scheme
-!      ------------------------------------------
-!
-!      k_m_sim     momentum diffusion coefficient (m2/s)
-!      k_t_sim     heat diffusion coefficient (m2/s)
-!      simfq       frequency of stable simple mixing scheme
+!      fqinv       1 if an inversion occurs at altitudes less 
+!                    than 3000 m, 0 otherwise
+!      zinv        altitude of inversion base (m)
+!      invstr      strength of inversion in slv/cp (K)
 !
 !-----------------------------------------------------------------------
 
 integer,         intent(in)                      :: is,ie,js,je
 type(time_type), intent(in)                      :: time
+real,            intent(in),    dimension(:,:,:) :: tdtlw_in       
+logical,         intent(in),    dimension(:,:)   :: convect
 real,            intent(in),    dimension(:,:)   :: u_star,b_star
 real,            intent(in),    dimension(:,:,:) :: t,qv,ql,qi,qa
 real,            intent(in),    dimension(:,:,:) :: u,v,zfull,pfull
 real,            intent(in),    dimension(:,:,:) :: zhalf, phalf
 real,            intent(inout), dimension(:,:,:) :: diff_m,diff_t
 real,            intent(out),   dimension(:,:,:) :: k_m_entr,k_t_entr
+real,            intent(out),   dimension(:,:,:) :: use_entr
+real,            intent(out),   dimension(:,:)   :: zsml,vspblcap
 integer,  intent(in),   dimension(:,:), optional :: kbot
 
 
@@ -743,46 +920,33 @@ integer                                         :: kmax,kcldtop
 logical                                         :: used
 real                                            :: maxradf, tmpradf
 real                                            :: maxqdot, tmpqdot
+real                                            :: maxinv
 real                                            :: wentr_tmp
 real                                            :: k_entr_tmp,tmpjump
+real                                            :: tmp1, tmp2
+real                                            :: vsurf3, vshear3,vrad3
 real                                            :: dslvcptmp,ztmp
-real, dimension(size(t,1),size(t,2))            :: zsurf,zsml,parcelkick
+real, dimension(size(t,1),size(t,2))            :: zsurf,parcelkick
 real, dimension(size(t,1),size(t,2))            :: zradbase,zradtop
 real, dimension(size(t,1),size(t,2))            :: vrad,radf,svpcp
-real, dimension(size(t,1),size(t,2))            :: zradml
+real, dimension(size(t,1),size(t,2))            :: zradml, vsurf, vshear
 real, dimension(size(t,1),size(t,2))            :: wentr_rad,wentr_pbl
 real, dimension(size(t,1),size(t,2))            :: convpbl, radpbl
+real, dimension(size(t,1),size(t,2))            :: zinv, fqinv, invstr
 real, dimension(size(t,1),size(t,2),size(t,3))  :: slv, density
 real, dimension(size(t,1),size(t,2),size(t,3))  :: mask,hleff
 real, dimension(size(t,1),size(t,2),size(t,3))  :: zfull_ag
 real, dimension(size(t,1),size(t,2),size(t,3)+1):: zhalf_ag
-real, dimension(size(t,1),size(t,2),size(t,3))  :: radfq,pblfq,simfq
+real, dimension(size(t,1),size(t,2),size(t,3))  :: radfq,pblfq
 real, dimension(size(t,1),size(t,2),size(t,3)+1):: mask3,rtmp
 real, dimension(size(t,1),size(t,2),size(t,3))  :: k_m_troen,k_t_troen
-real, dimension(size(t,1),size(t,2),size(t,3))  :: k_rad,k_t_sim,k_m_sim
-real, dimension(size(t,3))                      :: use_entr
+real, dimension(size(t,1),size(t,2),size(t,3))  :: k_rad
 
 integer                                         :: ipt,jpt
 integer, dimension(MAX_PTS) :: nsave
 integer :: iloc(MAX_PTS), jloc(MAX_PTS), nn, kk, npts, nnsave
 integer :: year, month, day, hour, minute, second
 character(len=16) :: mon
-
-!-----------------------------------------------------------------------
-!
-!      open ascii entrain.out file if do_print
-
-!      if (do_print) then
-!           if ( ent_pts(1) >= is .and. ent_pts(1) <= ie  .and.        &
-!                ent_pts(2) >= js .and. ent_pts(2) <= je) then
-!                ipt=ent_pts(1)-is+1
-!	 jpt=ent_pts(2)-js+1
-!!RSH            dpu = open_file ('entrain.out', action='append')
-!           else
-!         ipt = 0
-!	 jpt = 0
-!           endif
-!      endif
                     
 !-----------------------------------------------------------------------
 !
@@ -790,9 +954,9 @@ character(len=16) :: mon
 
        convpbl    = 0.0
        wentr_pbl  = missing_value
+       vsurf      = missing_value
+       vshear     = missing_value
        pblfq      = 0.0
-       ipbl       = 0
-       zsml       = missing_value
        parcelkick = missing_value
        k_t_troen  = missing_value
        k_m_troen  = missing_value
@@ -806,12 +970,18 @@ character(len=16) :: mon
        radfq      = 0.0
        wentr_rad  = missing_value
        k_rad      = missing_value
-       simfq      = 0.0
-       k_t_sim    = missing_value
-       k_m_sim    = missing_value
        k_t_entr   = 0.0
        k_m_entr   = 0.0
-                  
+       use_entr   = 0.0
+       vspblcap   = 0.0
+       fqinv      = 0.0
+       zinv       = missing_value
+       invstr     = missing_value
+       zsml       = 0.0   ! note that this must be zero as this is 
+                          ! indicates stable surface layer and this
+                          ! value is output for use in gravity
+                          ! wave drag scheme
+                             
 !-----------------------------------------------------------------------
 !
 !      compute height above surface
@@ -839,10 +1009,10 @@ character(len=16) :: mon
        end do
        zhalf_ag(:,:,nlev+1) = zhalf(:,:,nlev+1) - zsurf(:,:)
        
-     	
+     
 !-----------------------------------------------------------------------
 !
-!      set up specific humidities and static energies  	
+!      set up specific humidities and static energies  
 !      compute airdensity
 !
 
@@ -852,16 +1022,7 @@ character(len=16) :: mon
        slv     = cp_air*t + grav*zfull_ag - hleff*(ql + qi)
        slv     = slv*(1+d608*(qv+ql+qi))
        density = pfull/rdgas/(t *(1.+d608*qv-ql-qi))              
-
-
-!-----------------------------------------------------------------------
-!      
-!      compute simple mixing scheme
-!
-
-       call diffusivity_sim(slv/cp_air, u, v, zfull_ag, zhalf_ag,             &
-                            k_m_sim, k_t_sim)
-			    
+    
 !-----------------------------------------------------------------------
 ! 
 !      big loop over points
@@ -869,480 +1030,547 @@ character(len=16) :: mon
        
        ibot = nlev
               
-       do j=1,nlat	
+       do j=1,nlat
          npts = 0
        if (do_ent_dg(j+js-1) ) then       
-	 do nn=1,num_pts
+       do nn=1,num_pts
          if (                          &
-	       js == j_entprt(nn) .and.  &
+       js == j_entprt(nn) .and.  &
                  i_entprt(nn) >= is .and. i_entprt(nn) <= ie) then
-	      iloc(npts+1) = i_entprt(nn) - is + 1
-	      jloc(npts+1) = j_entprt(nn) - js + 1
-	      nsave(npts+1) = nn
-	      npts = npts + 1
+      iloc(npts+1) = i_entprt(nn) - is + 1
+      jloc(npts+1) = j_entprt(nn) - js + 1
+      nsave(npts+1) = nn
+      npts = npts + 1
          endif
         end do    ! (num_points)
        else
           ipt = 0
            jpt = 0
-	   column_match = .false.
+          column_match = .false.
        endif
        do i=1,nlon
-          if (npts > 0) then
-		   do nn=1,npts
+         if (npts > 0) then
+           do nn=1,npts
+             ipt = iloc(nn)
+             jpt = jloc(nn)
+             if (i == ipt ) then
+               column_match = .true.
+               nnsave = nsave(nn)
+               exit
+             else
+               column_match = .false.
+             endif
+           end do
+           nn = nnsave
+         else 
+           column_match = .false.
+           nn = 0
+         endif
 
-		   ipt = iloc(nn)
-		   jpt = jloc(nn)
-!                  if (i == ipt .and. j == jpt) then
-                   if (i == ipt ) then
-!	 if (i == ipt .and. j == jpt .and.  &
-!	     js == j_entprt(nn) ) then
-	         column_match = .true.
-!	 nnsave = nn
-		 nnsave = nsave(nn)
-		 exit
-		 else
-	         column_match = .false.
-		 endif
-               end do
-	       nn = nnsave
-	       else 
-	         column_match = .false.
-		 nn = 0
-	       endif
             !-----------------------------------------------------------
-	    !
+            !
             ! should diagnostics be printed out for this column
             !
-	    
-!    if (i .eq. ipt .and. j .eq. jpt) then
-!         column_match = .true.
-!           else
-!         column_match = .false.		 
-!           end if
-
+    
             if (column_match) then
-	    call get_date(Time, year, month, day, hour, minute, second)
-	    mon = month_name (month)
+            call get_date(Time, year, month, day, hour, minute, second)
+            mon = month_name (month)
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  '===================================='//&
-	         '=================='
+                               '=================='
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  '               ENTERING ENTRAIN    '
             write (dpu,'(a)')  ' '
             write (dpu,'(a, i6,a,i4,i4,i4,i4)')  ' time stamp:',   &
-	                                       year, trim(mon), day, &
-	                                       hour, minute, second
+                                       year, trim(mon), day, &
+                                       hour, minute, second
             write (dpu,'(a)')  '  DIAGNOSTIC POINT COORDINATES :'
             write (dpu,'(a)')  ' '
-	    write (dpu,'(a,f8.3,a,f8.3)') ' longitude = ', deglon1(nn),&
-	                                  ' latitude  = ', deglat1(nn)
-	    write (dpu,'(a,i6,a,i6)')    &
-                                   ' global i =', i_entprt_gl(nn), &
-                                   ' global j = ', j_entprt_gl(nn)
-	    write (dpu,'(a,i6,a,i6)')    &
+            write (dpu,'(a,f8.3,a,f8.3)') ' longitude = ', deglon1(nn),&
+                                          ' latitude  = ', deglat1(nn)
+            write (dpu,'(a,i6,a,i6)')    &
+                                       ' global i =', i_entprt_gl(nn), &
+                                       ' global j = ', j_entprt_gl(nn)
+            write (dpu,'(a,i6,a,i6)')    &
                                    ' processor i =', i_entprt(nn),     &
                                    ' processor j = ',j_entprt(nn)
-	    write (dpu,'(a,i6,a,i6)')     &
-                                   ' window    i =', ipt,          &
-                                   ' window    j = ',jpt
+            write (dpu,'(a,i6,a,i6)')     &
+                                       ' window    i =', ipt,          &
+                                       ' window    j = ',jpt
             write (dpu,'(a)')  ' '
-	    write (dpu,'(a)')  ' '
+            write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' k      T         u         v       '//&
-	         '  qv        qt ' 
+                               '  qv        qt ' 
             write (dpu,'(a)')  '       (K)      (m/s)     (m/s)     '//&
-	         '(g/kg)    (g/kg)'
+                               '(g/kg)    (g/kg)'
             write (dpu,'(a)')  '------------------------------------'//&
-	         '-----------------'
+                               '-----------------'
             write (dpu,'(a)')  ' '
             do kk = nlev-n_print_levels,nlev
                  write(dpu,18) kk,t(i,j,kk),u(i,j,kk),v(i,j,kk),       &
-		      1000.*qv(i,j,kk), 1000.*(qv(i,j,kk)+ql(i,j,kk)+  &
-		      qi(i,j,kk))
+                      1000.*qv(i,j,kk), 1000.*(qv(i,j,kk)+ql(i,j,kk)+  &
+                      qi(i,j,kk))
             end do
 18          format(1X,i2,1X,5(f9.4,1X))
             write (dpu,'(a)')  ' '
-            write (dpu,'(a)')  ' k      qa        qc      sliv/cp_air'//&
-	         'density    tdtlw'
+            write (dpu,'(a)')  ' k      qa        qc      sliv/cp   '//&
+                               'density    tdtlw'
             write (dpu,'(a)')  '                (g/kg)     (K)      '//&
-	         ' (kg/m3)   (K/day)'
+                               ' (kg/m3)   (K/day)'
             write (dpu,'(a)')  '------------------------------------'//&
-	         '-------------------'
+                               '-------------------'
             write (dpu,'(a)')  ' '
             do kk = nlev-n_print_levels,nlev
                  write(dpu,19) kk,qa(i,j,kk),1000.*                    &
-		   (ql(i,j,kk)+qi(i,j,kk)),slv(i,j,kk)/cp_air,         &
-		   density(i,j,kk),tdtlw(is-1+i,js-1+j,kk)*86400.
-            enddo	    
+                   (ql(i,j,kk)+qi(i,j,kk)),slv(i,j,kk)/cp_air,         &
+                   density(i,j,kk),tdtlw_in(i,j,kk)*86400.
+            enddo    
 19          format(1X,i2,1X,5(f9.4,1X))
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' k   z_full    z_half    p_full    p'//&
-	         '_half  '
+                               '_half  '
             write (dpu,'(a)')  '      (m)      (m)        (mb)      '//&
-	         '(mb)'
+                               '(mb)'
             write (dpu,'(a)')  '------------------------------------'//&
-	         '--------'
+                               '--------'
             write (dpu,'(a)')  ' '
             do kk = nlev-n_print_levels,nlev
                  write(dpu,619) kk,zfull_ag(i,j,kk),zhalf_ag(i,j,kk+1),&
-	              pfull(i,j,kk)/100.,phalf(i,j,kk+1)/100.
+                                pfull(i,j,kk)/100.,phalf(i,j,kk+1)/100.
             enddo
 619         format(1X,i2,1X,4(f9.4,1X))
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
             end if
-	    
-            !-----------------------------------------------------------
-	    !  BEGIN BASIC CODE
-	    
-	    use_entr = 0.
-	    if (present(kbot)) ibot = kbot(i,j)
-	    
-	    !-----------------------------------------------------------
-	    !
-	    ! SURFACE DRIVEN CONVECTIVE LAYERS
-	    !
-	    ! Note this part is done only if b_star > 0., that is,
-	    ! upward surface buoyancy flux
-	 
-	    
-	    if (b_star(i,j) .gt. 0.) then
-	    
-	         call pbl_depth(slv(i,j,1:ibot)/cp_air, &
-		      zfull_ag(i,j,1:ibot),u_star(i,j),b_star(i,j),    &
-		      ipbl,zsml(i,j),parcelkick(i,j))
+    
+    !-----------------------------------------------------------
+    !  BEGIN BASIC CODE
+    
+    if (present(kbot)) ibot = kbot(i,j)
+    
+    !---------------
+    ! reset indices
+    ipbl    = -1
+    kcldtop = -1
+      
+    !-----------------------------------------------------------
+    !
+    ! SURFACE DRIVEN CONVECTIVE LAYERS
+    !
+    ! Note this part is done only if b_star > 0., that is,
+    ! upward surface buoyancy flux
+ 
+    
+    if (b_star(i,j) .gt. 0.) then
+    
+         !------------------------------------------------------
+         ! Find depth of surface driven mixing by raising a 
+         ! parcel from the surface with some excess buoyancy
+         ! to its level of neutral buoyancy.  Note the use
+         ! slv as the density variable permits one to goes
+         ! through phase changes to find parcel top
+ 
+         call pbl_depth(slv(i,j,1:ibot)/cp_air, &
+              zfull_ag(i,j,1:ibot),u_star(i,j),b_star(i,j),    &
+              ipbl,zsml(i,j),parcelkick(i,j))
             
                  
-		 !------------------------------------------------------
-		 ! Following Lock et al. 2000, limit height of surface
-		 ! well mixed layer if interior stable interface is
-		 ! found.  An interior stable interface is diagnosed if
-		 ! the slope between 2 full levels is greater than
-		 ! the namelist parameter critjump
-		  
-		 if (ipbl .lt. ibot) then 
-                      do k = ibot, ipbl+1, -1
-		           tmpjump =(slv(i,j,k-1)-slv(i,j,k))/cp_air 
-		           if (tmpjump .gt. critjump) then
-			        ipbl = k
-				zsml(i,j) = zhalf_ag(i,j,ipbl)
-                                exit
-                           end if
-                      enddo
-                 end if		      			   				
-
-                 !-------------------------------------
-		 ! compute entrainment rate
-		 !
-		 
-                 wentr_tmp= min(wentrmax,max(0.,beta_surf*             &
-		      (u_star(i,j)*b_star(i,j)  +                      &
-		      (Ashear*(u_star(i,j)**3.)/zsml(i,j)))*           &
-		      slv(i,j,ipbl)/grav/                              &
-		      max((slv(i,j,ipbl-1)-slv(i,j,ipbl)),0.1) ))  
-                                           
-                 k_entr_tmp = wentr_tmp*(zfull_ag(i,j,ipbl-1)-         &
-			                 zfull_ag(i,j,ipbl))  
-                 k_entr_tmp = min ( k_entr_tmp, akmax )
-			
-                 pblfq(i,j,ipbl:ibot) = 1.
-		 convpbl(i,j)         = 1.
-		 use_entr(ipbl:ibot)  = 1.
-	         wentr_pbl(i,j)       = wentr_tmp
-                 k_t_troen(i,j,ipbl)  = k_entr_tmp
-		 k_m_troen(i,j,ipbl)  = k_entr_tmp
-		 k_t_entr (i,j,ipbl)  = k_t_entr(i,j,ipbl) + k_entr_tmp
-	         k_m_entr (i,j,ipbl)  = k_m_entr(i,j,ipbl) + k_entr_tmp
-	         
-	         if (ipbl .lt. ibot) then
-		      
-		      call diffusivity_pbl(zsml(i,j),u_star(i,j),      &
-			   b_star(i,j), slv(i,j,(ipbl+1):ibot)/cp_air, &
-		                  zhalf_ag(i,j,(ipbl+1):ibot),        &
-			          k_m_troen(i,j,(ipbl+1):ibot),        &
-			          k_t_troen(i,j,(ipbl+1):ibot))
-                		      
-		      k_t_entr(i,j,(ipbl+1):ibot) =                    & 
-		           k_t_entr(i,j,(ipbl+1):ibot) +               &
-			   k_t_troen(i,j,(ipbl+1):ibot)
-		     
-		      k_m_entr(i,j,(ipbl+1):ibot) =                    & 
-		           k_m_entr(i,j,(ipbl+1):ibot) +               &
-			   k_m_troen(i,j,(ipbl+1):ibot)
-		         
-                 end if
-	         
-            end if		      
-	    
-	    
-	    !-----------------------------------------------------------
-	    !
-	    ! LW RADIATIVELY DRIVEN CONVECTIVE LAYERS
-	    !
-	    ! This part is done only if a level can be found with
-	    ! greater than radfmin (typically 30 W/m2) longwave
-	    ! divergence and if the level is at a lower altitude
-	    ! than zcldtopmax (typically 3000 m).
-	    !
-	    ! Note that if no layer is found with radiative divergence
-	    ! greater than radfmin, a check is made on the heating rates
-	    ! themselves and compared to qdotmin (10 K/day)
-
-            !--------------------------
-	    ! find level of zcldtopmax
-            kmax = ibot+1
-	    do k = 1, ibot
-                if( zhalf_ag(i,j,k) < zcldtopmax) then
-                     kmax = k
-                     exit
-                end if
-            end do
-	   	    
-	    !-----------------------------------------------------------
-	    ! compute radiative driving
-	    !
-	    ! look at heating rate itself if no levels with radiative 
-	    ! forcing greater than radfmin are found.
-	    
-	    kcldtop = ibot+1
-	    maxradf = radfmin
-            do k = kmax, ibot
-	         tmpradf = -1.*tdtlw(is-1+i,js-1+j,k)*cp_air*              &
-		           ((phalf(i,j,k+1)-phalf(i,j,k))/grav)
-                 if (tmpradf .gt. maxradf) then
-		      kcldtop = k
-		      maxradf = tmpradf
-		 end if       			   
-            enddo              
-	    
-	    !-----------------------------------------------------------
-	    ! Second try to find a radiatively driven level
-	    !
-	    ! exit if no levels with longwave cooling rate greater than
-	    ! qdotmin are found.
-	    
-	    if (kcldtop .eq. ibot+1) then
-	    
-	         kcldtop = ibot+1
-	         maxradf = radfmin
-		 maxqdot = qdotmin
-                 
-		 do k = kmax, ibot
-		      tmpqdot = -1.*86400*tdtlw(is-1+i,js-1+j,k)
-	              tmpradf = -1.*tdtlw(is-1+i,js-1+j,k)*cp_air*         &
-		           ((phalf(i,j,k+1)-phalf(i,j,k))/grav)
-                      if (tmpqdot .gt. maxqdot) then
-		           kcldtop = k
-		           maxradf = tmpradf
-			   maxqdot = tmpqdot
-		      end if       			   
-                 enddo              
-                 
-            if (kcldtop .eq. ibot+1) go to 55
-	   
-	    end if
-	   
-	    !-----------------------------------------------------------
-	    ! following Lock for stable layer one level down;
-	    ! move cld top there if it exists
-	    	    
-	    !if (kcldtop .lt. ibot) then
-	    !    tmpjump =(slv(i,j,kcldtop)-slv(i,j,kcldtop+1))/cp_air
-            !    if (tmpjump .gt. critjump) kcldtop = kcldtop+1		           
-            !end if	    
-	    
-	    !-----------------------------------------------------------
-	    ! if layer is unstable move up a layer
-	    ! if that layer is also unstable exit
-	    
-	    if (slv(i,j,kcldtop-1) .lt. slv(i,j,kcldtop)) then  
-	         kcldtop = kcldtop - 1
-		 if (slv(i,j,kcldtop-1) .lt. slv(i,j,kcldtop)) then
-		      go to 55
-		 end if     
-            end if
-	    		 
-            !-----------------------------------------------------------
-            ! exit if no cloud is present
-
-            if ( qa(i,j,kcldtop-1)           .lt. qamin .and.          &
-	         qa(i,j,kcldtop  )           .lt. qamin .and.          &
-		 qa(i,j,min(kcldtop+1,ibot)) .lt. qamin ) go to 55
-		  	    		 
-            !-----------------------------------------------------------
-	    ! determine if kcldtop is in an ambiguous layer
-            !
-            ! if not, assume inversion is at zhalf_ag(kcldtop) and
-	    ! proceed normally.
-	    !
-	    ! if so, then do profile reconstruction. 
-	    !
-	    ! NOTE THAT	THE ENTRAINMENT RATE IS NOT APPLIED TO THE 
-	    ! DIFFUSION COEFFICIENTS IF KCLDTOP IS IN AN AMBIGUOUS 
-	    ! LAYER.
-	    
-	    radf(i,j) = maxradf
-	    
-	    if ( prof_recon_on .and.  kcldtop .lt. ibot .and.          &
-	         ((slv(i,j,kcldtop)-slv(i,j,kcldtop+1))/cp_air) .gt.   &
-		 critjump) then
-                 
-		 !---------------------------
-	         ! do profile reconstruction
-	    
-                 call prof_recon(density(i,j,kcldtop),                 &
-		                 slv(i,j,(kcldtop-2):(kcldtop+1))/cp_air, &
-		              pfull(i,j,(kcldtop-2):(kcldtop+1)),      &
-		              phalf(i,j, kcldtop   :(kcldtop+1)),      &
-		              zradtop(i,j),dslvcptmp)		            
-		 
-		 zradtop(i,j)   = zradtop(i,j)+zhalf_ag(i,j,kcldtop+1)
-		 wentr_rad(i,j) = min(wentrmax,beta_rad*maxradf/cp_air/    &
-		                max(dslvcptmp,0.1)/density(i,j,kcldtop))
-		     
-                 svpcp(i,j)         = slv(i,j,kcldtop+1)/cp_air
-		 radpbl(i,j)        = 1.
-                 use_entr(kcldtop)  = 1.
-	    
-            else
-	    	    
-	         !---------------------------
-		 ! compute entrainment rate
-	         !
-	         ! compute cloud top temperature, svpcp. Ensure that
-		 ! that the cloud top parcel temperature, equal to
-		 ! svpcp minus radperturb, is no greater than
-		 ! the temperature of level kcldtop+1. This is
-		 ! done so that if kcldtop is in an ambiguous layer 
-		 ! then there will not be a sudden jump in cloud top
-		 ! properties
-		 
-		 svpcp(i,j) =min((slv(i,j,kcldtop  )/cp_air),              &
-		                 (slv(i,j,kcldtop+1)/cp_air) ) 
-	    
-	         dslvcptmp = (slv(i,j,kcldtop-1)/cp_air)-svpcp(i,j)
-	    
-	         wentr_rad(i,j) = min(wentrmax,beta_rad*maxradf/cp_air/    &
-		                max(dslvcptmp,0.1)/density(i,j,kcldtop))
-		 
-                 k_entr_tmp = wentr_rad(i,j)*                          &
-		       (zfull_ag(i,j,kcldtop-1)-zfull_ag(i,j,kcldtop))
-                 k_entr_tmp = min ( k_entr_tmp, akmax )
-
-                 zradtop(i,j) = zhalf_ag(i,j,kcldtop)
-                 
-	         radfq(i,j,kcldtop) = 1.
-	         radpbl(i,j)        = 1.
-                 use_entr(kcldtop)  = 1.
-	         k_rad(i,j,kcldtop) = k_entr_tmp
-	         k_t_entr (i,j,kcldtop) = k_t_entr(i,j,kcldtop)        &
-		                        + k_entr_tmp
-	         k_m_entr (i,j,kcldtop) = k_m_entr(i,j,kcldtop)        &
-		                        + pr*k_entr_tmp
-	    
-	    end if
-
-            		                  		 
-            !-----------------------------------------------------------
-	    ! find depth of radiatively driven convection 
+         !------------------------------------------------------
+         ! Define velocity scales vsurf and vshear
+         !           
+         ! vsurf   =  (u_star*b_star*zsml)**(1/3)
+         ! vshear  =  (Ashear**(1/3))*u_star
+               
+         vsurf3   = u_star(i,j)*b_star(i,j)*zsml(i,j)
+         vshear3  = Ashear*u_star(i,j)*u_star(i,j)*u_star(i,j)
  
-            if (kcldtop .lt. ibot) then 
-                 call radml_depth(svpcp(i,j),zradtop(i,j),             &
-		      slv(i,j,kcldtop:ibot)/cp_air,                        &
-		      zfull_ag(i,j,kcldtop:ibot),                      &
-		      zhalf_ag(i,j,kcldtop:ibot),zradbase(i,j),        &
-		      zradml(i,j))	      
-            else
-	         zradbase(i,j) = 0.0
-                 zradml(i,j)   = zradtop(i,j)  
-            end if                   
+         if (id_vsurf  > 0) vsurf(i,j)  = vsurf3 **(1./3.)
+         if (id_vshear > 0) vshear(i,j) = vshear3**(1./3.) 
+ 
+         !------------------------------------------------------
+         ! Following Lock et al. 2000, limit height of surface
+         ! well mixed layer if interior stable interface is
+         ! found.  An interior stable interface is diagnosed if
+         ! the slope between 2 full levels is greater than
+         ! the namelist parameter critjump
+  
+         if (ipbl .lt. ibot) then 
+              do k = ibot, ipbl+1, -1
+                   tmpjump =(slv(i,j,k-1)-slv(i,j,k))/cp_air 
+                   if (tmpjump .gt. critjump) then
+                         ipbl = k
+                         zsml(i,j) = zhalf_ag(i,j,ipbl)
+                         exit
+                   end if
+             enddo
+         end if         
+
+         !-------------------------------------
+         ! compute entrainment rate
+         !
+ 
+         tmp1 = grav*max(0.1,(slv(i,j,ipbl-1)-slv(i,j,ipbl))/   &
+                cp_air)/(slv(i,j,ipbl)/cp_air)
+         tmp2 = ((vsurf3+vshear3)**(2./3.)) / zsml(i,j)
+                  
+         wentr_tmp= min( wentrmax,  max(0., (beta_surf *        &
+                         (vsurf3 + vshear3)/zsml(i,j))/         &
+                         (tmp1+tmp2) ) )
+                                   
+         k_entr_tmp = wentr_tmp*(zfull_ag(i,j,ipbl-1)-          &
+                 zfull_ag(i,j,ipbl))  
+         k_entr_tmp = min ( k_entr_tmp, akmax )
+
+         pblfq(i,j,ipbl:ibot) = 1.
+         convpbl(i,j)         = 1.
+         use_entr(i,j,ipbl:ibot) = 1.
+         wentr_pbl(i,j)       = wentr_tmp
+         k_t_troen(i,j,ipbl)  = k_entr_tmp
+         k_m_troen(i,j,ipbl)  = k_entr_tmp
+         k_t_entr (i,j,ipbl)  = k_t_entr(i,j,ipbl) + k_entr_tmp
+         k_m_entr (i,j,ipbl)  = k_m_entr(i,j,ipbl) + k_entr_tmp
+         
+         !------------------------------------------------------
+         ! if surface based moist convection is occurring in the
+         ! grid box set the entrainment rate to zero
+         
+         if (convect(i,j).and.convect_shutoff) then
                  
-            !-----------------------------------------------------------
-	    ! compute radiation driven scale
-	    !
-	    ! Vrad**3 = g*zradml*radf/density/slv
-	    
-	    vrad(i,j) = grav*zradml(i,j)*maxradf/density(i,j,kcldtop)/ &
-	           slv(i,j,kcldtop)
-		   
-            vrad(i,j) = vrad(i,j) ** (1./3.)		   
-	    		 
-            !-----------------------------------------------------------
-	    ! if there are any interior layers to calculate diffusivity
-	      
-	    if ( kcldtop .lt. ibot ) then 		 						 
+              wentr_pbl(i,j)      = 0.
+              pblfq(i,j,ipbl)     = 0.
+              k_t_entr (i,j,ipbl) = k_t_entr (i,j,ipbl) -      &
+                                    k_t_troen(i,j,ipbl)
+              k_m_entr (i,j,ipbl) = k_m_entr (i,j,ipbl) -      &
+                                    k_m_troen(i,j,ipbl)          
+              k_t_troen(i,j,ipbl)  = 0.
+              k_m_troen(i,j,ipbl)  = 0. 
+                 
+         end if
 
-                 do k = kcldtop+1,ibot
-		 
-		     ztmp = max(0.,(zhalf_ag(i,j,k)-zradbase(i,j))/    &
-		                    zradml(i,j) )
-	             
-		     if (ztmp.gt.0.) then
-		     
-		          radfq(i,j,k) = 1.
-                          use_entr(k)  = 1.
-			  k_entr_tmp = 0.85*vonkarm*vrad(i,j)*ztmp*    &
-		                  zradml(i,j)*ztmp*((1.-ztmp)**0.5)
-	                  k_entr_tmp = min ( k_entr_tmp, akmax )
-	                  k_rad(i,j,k) = k_entr_tmp
-	                  k_t_entr (i,j,k) = k_t_entr(i,j,k)           &
-			                   + k_entr_tmp
-	                  k_m_entr (i,j,k) = k_m_entr(i,j,k)           &
-			                   + pr*k_entr_tmp
-	             
-		     end if		                  		 
-                enddo  
-		 
+         !------------------------------------------------------
+         ! compute diffusion coefficients in the interior of
+         ! the PBL
+ 
+         if (ipbl .lt. ibot) then
+      
+              call diffusivity_pbl(zsml(i,j),u_star(i,j),      &
+                   b_star(i,j), slv(i,j,(ipbl+1):ibot)/cp_air, &
+                          zhalf_ag(i,j,(ipbl+1):ibot),         &
+                          k_m_troen(i,j,(ipbl+1):ibot),        &
+                          k_t_troen(i,j,(ipbl+1):ibot))
+                      
+              k_t_entr(i,j,(ipbl+1):ibot) =                    & 
+                   k_t_entr(i,j,(ipbl+1):ibot) +               &
+                   k_t_troen(i,j,(ipbl+1):ibot)
+     
+              k_m_entr(i,j,(ipbl+1):ibot) =                    & 
+                   k_m_entr(i,j,(ipbl+1):ibot) +               &
+                   k_m_troen(i,j,(ipbl+1):ibot)
+         
+         end if
+         
+    end if      
+    
+    
+    !-----------------------------------------------------------
+    !
+    ! LW RADIATIVELY DRIVEN CONVECTIVE LAYERS
+    !
+    ! This part is done only if a level can be found with
+    ! greater than radfmin (typically 30 W/m2) longwave
+    ! divergence and if the level is at a lower altitude
+    ! than zcldtopmax (typically 3000 m).
+    !
+    ! Note that if no layer is found with radiative divergence
+    ! greater than radfmin, a check is made on the heating rates
+    ! themselves and compared to qdotmin (10 K/day)
+
+    !--------------------------
+    ! find level of zcldtopmax
+    
+    kmax = ibot+1
+    do k = 1, ibot
+          if( zhalf_ag(i,j,k) < zcldtopmax) then
+               kmax = k
+               exit
+          end if
+    end do
+       
+    !-----------------------------------------------------------
+    ! compute radiative driving
+    !
+    ! look at heating rate itself if no levels with radiative 
+    ! forcing greater than radfmin are found.
+    
+    kcldtop = ibot+1
+    maxradf = radfmin
+    do k = kmax, ibot
+         tmpradf = -1.*tdtlw_in(i,j,k)*cp_air*          &
+                   ((phalf(i,j,k+1)-phalf(i,j,k))/grav)
+         if (tmpradf .gt. maxradf) then
+              kcldtop = k
+              maxradf = tmpradf
+         end if          
+    enddo              
+    
+    !-----------------------------------------------------------
+    ! Second try to find a radiatively driven level
+    !
+    ! exit if no levels with longwave cooling rate greater than
+    ! qdotmin are found.
+    
+    if (kcldtop .eq. ibot+1) then
+    
+         kcldtop = ibot+1
+         maxradf = radfmin
+         maxqdot = qdotmin
+                 
+         do k = kmax, ibot
+              tmpqdot = -1.*86400*tdtlw_in(i,j,k)
+              tmpradf = -1.*tdtlw_in(i,j,k)*cp_air*     &
+                           ((phalf(i,j,k+1)-phalf(i,j,k))/grav)
+              if (tmpqdot .gt. maxqdot) then
+                   kcldtop = k
+                   maxradf = tmpradf
+                   maxqdot = tmpqdot
+              end if          
+         enddo              
+                 
+         if (kcldtop .eq. ibot+1) go to 55
+   
+    end if
+
+    !-----------------------------------------------------------
+    ! following Lock for stable layer one level down;
+    ! move cld top there if it exists
+        
+    !if (kcldtop .lt. ibot) then
+    !    tmpjump =(slv(i,j,kcldtop)-slv(i,j,kcldtop+1))/cp_air
+    !    if (tmpjump .gt. critjump) kcldtop = kcldtop+1           
+    !end if    
+    
+    !-----------------------------------------------------------
+    ! if layer is unstable move up a layer
+    ! if that layer is also unstable exit
+    
+    if (slv(i,j,kcldtop-1) .lt. slv(i,j,kcldtop)) then  
+         kcldtop = kcldtop - 1
+         if (slv(i,j,kcldtop-1) .lt. slv(i,j,kcldtop)) then
+              go to 55
+         end if     
+    end if
+     
+    !-----------------------------------------------------------
+    ! exit if no cloud is present
+
+    if ( qa(i,j,kcldtop-1)           .lt. qamin .and.          &
+         qa(i,j,kcldtop  )           .lt. qamin .and.          &
+         qa(i,j,min(kcldtop+1,ibot)) .lt. qamin ) go to 55
+       
+    !-----------------------------------------------------------
+    ! compute cloud top temperature, svpcp. Ensure that
+    ! that the cloud top parcel temperature, equal to
+    ! svpcp minus radperturb, is no greater than
+    ! the temperature of level kcldtop+1 minus radperturb if 
+    ! parcel_option equals 1, and the temperature of level
+    ! kcldtop+1 if parcel_option does not equal 1. This is
+    ! done so that if kcldtop is in an ambiguous layer
+    ! then there will not be a sudden jump in cloud top
+    ! properties
+    !
+    ! Also assign radiative forcing at height of radiatively
+    ! driven mixed layer.
+
+    if (parcel_option .eq. 1) then
+       svpcp(i,j) =min((slv(i,j,kcldtop  )/cp_air),            &
+             (slv(i,j,min(kcldtop+1,ibot))/cp_air)             ) 
+    else
+       svpcp(i,j) =min((slv(i,j,kcldtop  )/cp_air),            &
+             (slv(i,j,min(kcldtop+1,ibot))/cp_air) + radperturb) 
+    end if
+    
+    radf(i,j) = maxradf
+    zradtop(i,j) = zhalf_ag(i,j,kcldtop)
+                 
+    !-----------------------------------------------------------
+    ! find depth of radiatively driven convection 
+ 
+    if (kcldtop .lt. ibot) then 
+         call radml_depth(svpcp(i,j),zradtop(i,j),             &
+              slv(i,j,kcldtop:ibot)/cp_air,                    &
+              zfull_ag(i,j,kcldtop:ibot),                      &
+              zhalf_ag(i,j,kcldtop:ibot),zradbase(i,j),        &
+              zradml(i,j))      
+    else
+         zradbase(i,j) = 0.0
+         zradml(i,j)   = zradtop(i,j)  
+    end if                   
+                 
+    !-----------------------------------------------------------
+    ! compute radiation driven scale
+    !
+    ! Vrad**3 = g*zradml*radf/density/slv
+    
+    vrad3 = grav*zradml(i,j)*maxradf/density(i,j,kcldtop)/ &
+            slv(i,j,kcldtop)   
+    vrad(i,j) = vrad3 ** (1./3.)    
+            
+    !-----------------------------------------------------------
+    ! compute entrainment rate
+    !
+
+
+    tmp1 = grav*max(0.1,((slv(i,j,kcldtop-1)/cp_air)-          &
+            svpcp(i,j)))/(slv(i,j,kcldtop)/cp_air)
+    
+    tmp2 = (vrad(i,j)**2.) / zradml(i,j)
+    wentr_rad(i,j) = min(wentrmax,beta_rad*vrad3/zradml(i,j)/  &
+                     (tmp1+tmp2)) 
+    k_entr_tmp = min ( akmax, wentr_rad(i,j)*                  &
+               (zfull_ag(i,j,kcldtop-1)-zfull_ag(i,j,kcldtop)) )
+             
+    radfq(i,j,kcldtop)     = 1.
+    radpbl(i,j)            = 1.
+    use_entr(i,j,kcldtop)  = 1.
+    k_rad(i,j,kcldtop)     = k_entr_tmp
+    k_t_entr (i,j,kcldtop) = k_t_entr(i,j,kcldtop) + k_entr_tmp
+    k_m_entr (i,j,kcldtop) = k_m_entr(i,j,kcldtop) + k_entr_tmp
+    
+    !-----------------------------------------------------------
+    ! handle case of radiatively driven top being the same top
+    ! as surface driven top
+    
+    if (ipbl .eq. kcldtop .and. ipbl .gt. 0) then
+
+         tmp2 = ((vrad3+vsurf3+vshear3)**(2./3.)) / zradml(i,j)
+ 
+         wentr_rad(i,j) = min( wentrmax,  max(0.,              &
+              ((beta_surf *(vsurf3 + vshear3)+beta_rad*vrad3)/ &
+              zradml(i,j))/(tmp1+tmp2) ) )
+      
+         wentr_pbl(i,j)       = wentr_rad(i,j)
+                 
+         k_entr_tmp = min ( akmax, wentr_rad(i,j)*             &
+               (zfull_ag(i,j,kcldtop-1)-zfull_ag(i,j,kcldtop)) )
+                 
+         pblfq(i,j,ipbl)        = 1.
+         radfq(i,j,kcldtop)     = 1.
+         radpbl(i,j)            = 1.
+         use_entr(i,j,kcldtop)  = 1.
+         k_rad(i,j,kcldtop)     = k_entr_tmp
+         k_t_troen(i,j,ipbl)    = k_entr_tmp
+         k_m_troen(i,j,ipbl)    = k_entr_tmp
+         k_t_entr (i,j,kcldtop) = k_entr_tmp
+         k_m_entr (i,j,kcldtop) = k_entr_tmp
+                                    
+    end if
+                                    
+    !-----------------------------------------------------------
+    ! if there are any interior layers to calculate diffusivity
+      
+    if ( kcldtop .lt. ibot ) then   
+
+         do k = kcldtop+1,ibot
+ 
+             ztmp = max(0.,(zhalf_ag(i,j,k)-zradbase(i,j))/    &
+                    zradml(i,j) )
+             
+             if (ztmp.gt.0.) then
+     
+                  radfq(i,j,k) = 1.
+                  use_entr(i,j,k) = 1.
+                  k_entr_tmp = 0.85*vonkarm*vrad(i,j)*ztmp*    &
+                  zradml(i,j)*ztmp*((1.-ztmp)**0.5)
+                  k_entr_tmp = min ( k_entr_tmp, akmax )
+                  k_rad(i,j,k) = k_entr_tmp
+                  k_t_entr (i,j,k) = k_t_entr(i,j,k)           &
+                                   + k_entr_tmp
+                  k_m_entr (i,j,k) = k_m_entr(i,j,k)           &
+                                   + pr*k_entr_tmp
+             
+             end if                   
+         enddo  
+ 
+    end if
+           
+    !-----------------------------------------------------------
+    ! handle special case of zradbase < zsml
+    !
+    ! in this case there should be no entrainment from the 
+    ! surface.
+    
+    if (zradbase(i,j) .lt. zsml(i,j) .and. convpbl(i,j) .eq. 1.&
+        .and. ipbl .gt. kcldtop) then
+         wentr_pbl(i,j)      = 0.
+         pblfq(i,j,ipbl)     = 0.
+         k_t_entr (i,j,ipbl) = k_t_entr (i,j,ipbl) -            &
+                               k_t_troen(i,j,ipbl)
+         k_m_entr (i,j,ipbl) = k_m_entr (i,j,ipbl) -            &
+                               k_m_troen(i,j,ipbl)          
+         k_t_troen(i,j,ipbl)  = 0.
+         k_m_troen(i,j,ipbl)  = 0. 
+    end if
+
+55  continue
+    
+    !-----------------------------------------------------------
+    !
+    ! Modify diffusivity coefficients if apply_entrain = T
+        
+    if (apply_entrain) then
+         do k = 2, ibot     
+              if (use_entr(i,j,k).eq.1.) then   
+                   diff_t(i,j,k) = k_t_entr(i,j,k)
+                   diff_m(i,j,k) = k_m_entr(i,j,k)
+              end if
+         enddo      
+    end if
+           
+    !-----------------------------------------------------------
+    !
+    ! compute maximum height to apply very stable mixing 
+    ! coefficients (see stable_bl_turb.f90)
+    
+    vspblcap(i,j) = zhalf_ag(i,j,2)   
+    if ( radpbl(i,j).eq.1.) vspblcap(i,j) = zradbase(i,j)  
+    if (convpbl(i,j).eq.1.) vspblcap(i,j) = 0.
+
+    !-----------------------------------------------------------
+    !
+    ! Diagnostic code for inversions
+    
+    if (id_fqinv > 0 .or. id_zinv > 0 .or. id_invstr > 0) then
+       maxinv = 0.0
+       do k = ibot,2,-1
+            if ( t(i,j,k)            .lt. t(i,j,k-1) .and.     &
+                (t(i,j,k-1)-t(i,j,k)).gt. maxinv     .and.     &
+                 zhalf_ag(i,j,k)     .lt. 3000. ) then
+                 maxinv      = t(i,j,k-1)-t(i,j,k)
+                 invstr(i,j) = (slv(i,j,k-1)-slv(i,j,k))/cp_air
+                 fqinv(i,j)  = 1.
+                 zinv(i,j)   = zhalf_ag(i,j,k)   
             end if
-	
-55          continue
-	    
-	    !-----------------------------------------------------------
-	    !
-	    ! Patch in simple mixing coefficients where surface convec-
-	    ! tive pbl and radiatively driven pbl are not giving you
-	    ! a coefficient
-	    
-	    do k = 2, ibot
-	         if (use_entr(k).eq.0. .and.(k_t_sim(i,j,k).gt.0. .or. &
-		                             k_m_sim(i,j,k).gt.0.)) then
-		      simfq(i,j,k)    = 1.
-		      k_t_entr(i,j,k) = k_t_sim(i,j,k)
-		      k_m_entr(i,j,k) = k_m_sim(i,j,k)
-	         else
-		      simfq(i,j,k)    = 0.
-		      k_t_sim(i,j,k)  = 0.
-		      k_m_sim(i,j,k)  = 0.
-		 end if
-            enddo		 
+        enddo                   
+    end if 
 
-	    !-----------------------------------------------------------
-	    !
-	    ! Modify diffusivity coefficients if apply_entrain = T
-	    	    
-            if (apply_entrain) then	   
-	         diff_t(i,j,:) = k_t_entr(i,j,:)
-	         diff_m(i,j,:) = k_m_entr(i,j,:)
-            end if
-	    
-            !-----------------------------------------------------------
-	    !
-	    ! Selected points printout
-	    
+    !-----------------------------------------------------------
+    !
+    ! Selected points printout
+    
 
-            if (column_match) then
-	    
-	    write (dpu,'(a)')  ' '
+    if (column_match) then
+    
             write (dpu,'(a)')  ' '
-	    write (dpu,'(a,f10.4)')  ' u_star = ', u_star(i,j)
+            write (dpu,'(a)')  ' '
+            write (dpu,'(a,f10.4)')  ' u_star = ', u_star(i,j)
             write (dpu,'(a)')  ' '
             write (dpu,'(a,f10.4)')  ' b_star = ', b_star(i,j)
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
-	    write (dpu,'(a,f10.4)')  ' convpbl = ', convpbl(i,j)
+            write (dpu,'(a,f10.4)')  ' convpbl = ', convpbl(i,j)
             write (dpu,'(a)')  ' '
             write (dpu,'(a,i3)')  ' ipbl = ', ipbl
             write (dpu,'(a)')  ' '
@@ -1350,9 +1578,13 @@ character(len=16) :: mon
             write (dpu,'(a)')  ' '
             write (dpu,'(a,f10.4)')  ' zsml = ', zsml(i,j)
             write (dpu,'(a)')  ' '
+            write (dpu,'(a,f10.4)')  ' vsurf = ', vsurf(i,j)
+            write (dpu,'(a)')  ' '
+            write (dpu,'(a,f10.4)')  ' vshear = ', vshear(i,j)
+            write (dpu,'(a)')  ' '
             write (dpu,'(a,f10.4)')  ' wentr_pbl = ', wentr_pbl(i,j)
             write (dpu,'(a)')  ' '
-	    write (dpu,'(a)')  ' '
+            write (dpu,'(a)')  ' '
             write (dpu,'(a,f10.4)')  ' radpbl = ', radpbl(i,j)
             write (dpu,'(a)')  ' '
             write (dpu,'(a,i3)')  ' kcldtop = ', kcldtop
@@ -1369,41 +1601,43 @@ character(len=16) :: mon
             write (dpu,'(a)')  ' '
             write (dpu,'(a,f10.4)')  ' radf = ', radf(i,j)
             write (dpu,'(a)')  ' '
+            write (dpu,'(a,f10.4)')  ' vspblcap = ', vspblcap(i,j)
+            write (dpu,'(a)')  ' '
        
        
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' k  use_entr    diff_t    diff_m  '//  &
-	         '  k_t_entr  k_m_entr' 
+                               '  k_t_entr  k_m_entr' 
             write (dpu,'(a)')  '                (m2/s)    (m2/s)    '//&
-	         '(m2/s)    (m2/s)'
+                               '(m2/s)    (m2/s)'
             write (dpu,'(a)')  '------------------------------------'//&
-	         '------------------'
+                               '------------------'
             write (dpu,'(a)')  ' '
             do kk = nlev-n_print_levels,nlev
-                 write(dpu,947) kk,use_entr(kk), diff_t(i,j,kk),       &
-		      diff_m(i,j,kk), k_t_entr(i,j,kk), k_m_entr(i,j,kk)
+             write(dpu,947) kk,use_entr(i,j,kk), diff_t(i,j,kk),       &
+                      diff_m(i,j,kk), k_t_entr(i,j,kk), k_m_entr(i,j,kk)
             end do
 947         format(1X,i2,3X,f3.1,4X,4(f9.4,1X))
             write (dpu,'(a)')  ' '
-	    write (dpu,'(a)')  ' '
-            write (dpu,'(a)')  ' k   pblfq  radfq  simfq     '//&
-	         'k_t_troen k_m_troen   k_rad    k_t_sim   k_m_sim' 
-            write (dpu,'(a)')  '                              (m2/s)'//   &
-	         '    (m2/s)     (m2/s)    (m2/s)    (m2/s) '
+            write (dpu,'(a)')  ' '
+            write (dpu,'(a)')  ' k   pblfq  radfq     '//&
+                               'k_t_troen k_m_troen   k_rad' 
+            write (dpu,'(a)')  '                       (m2/s)'//   &
+                               '    (m2/s)     (m2/s) '
             write (dpu,'(a)')  '------------------------------------'//&
-	         '-----------------------------------------------'
+                               '------------------------------------'
             write (dpu,'(a)')  ' '
             do kk = nlev-n_print_levels,nlev
                  write(dpu,949) kk,pblfq(i,j,kk),radfq(i,j,kk),        &
-		     simfq(i,j,kk),k_t_troen(i,j,kk),k_m_troen(i,j,kk),&
-		     k_rad(i,j,kk),k_t_sim(i,j,kk),k_m_sim(i,j,kk)
+                       k_t_troen(i,j,kk),k_m_troen(i,j,kk),k_rad(i,j,kk)
             end do
-949         format(1X,i2,3X,3(f3.1,4X),5(f9.4,1X))
-            end if
+949         format(1X,i2,3X,2(f3.1,4X),3(f9.4,1X))
+
+      end if
 
       enddo
       enddo
-	    
+    
 !-----------------------------------------------------------------------
 ! 
 !      Diagnostics
@@ -1412,163 +1646,163 @@ character(len=16) :: mon
        if ( id_convpbl    > 0 .or. id_wentr_pbl > 0 .or.               &
             id_k_m_entr   > 0 .or. id_wentr_rad > 0 .or.               &
             id_zsml       > 0 .or. id_k_t_entr  > 0 .or.               &
-	    id_pblfq      > 0 .or. id_radfq     > 0 .or.               &
-	    id_parcelkick > 0 .or. id_k_t_troen > 0 .or.               &
-	    id_k_rad      > 0 .or. id_k_m_troen > 0 .or.               &
-	    id_radf       > 0 .or. id_vrad      > 0 .or.               &
-	    id_zradbase   > 0 .or. id_radpbl    > 0 .or.               &
-	    id_zradtop    > 0 .or. id_zradml    > 0 .or.               &
-	    id_svpcp      > 0 .or. id_k_t_sim   > 0 .or.               &
-	    id_k_m_sim    > 0 .or. id_simfq     > 0 ) then 
+            id_pblfq      > 0 .or. id_radfq     > 0 .or.               &
+            id_parcelkick > 0 .or. id_k_t_troen > 0 .or.               &
+            id_k_rad      > 0 .or. id_k_m_troen > 0 .or.               &
+            id_radf       > 0 .or. id_vrad      > 0 .or.               &
+            id_zradbase   > 0 .or. id_radpbl    > 0 .or.               &
+            id_zradtop    > 0 .or. id_zradml    > 0 .or.               &
+            id_svpcp      > 0 .or. id_vsurf     > 0 .or.               &
+            id_vshear     > 0  ) then 
 
-            mask3(:,:,1:(nlev+1)) = 1.
-            if (present(kbot)) then
-                 where (zhalf_ag < 0.)
-                      mask3(:,:,:) = 0.
-                 end where
-            endif
+          mask3(:,:,1:(nlev+1)) = 1.
+          if (present(kbot)) then
+               where (zhalf_ag < 0.)
+                     mask3(:,:,:) = 0.
+               end where
+          endif
             
-	    !----------------------------------------------
-	    !
-	    ! Convective PBL diagnostics
-	    !
-	    
-	    if ( id_convpbl > 0 ) then
+          !----------------------------------------------
+          !
+          ! Convective PBL diagnostics
+          !
+    
+          if ( id_convpbl > 0 ) then
                  used = send_data ( id_convpbl, convpbl, time, is, js )
-            end if
-	    
-	    if ( id_zsml > 0 ) then
+          end if
+    
+          if ( id_zsml > 0 ) then
                  used = send_data ( id_zsml, zsml, time, is, js )
-            end if
-	    
-	    if ( id_parcelkick > 0 ) then
+          end if
+    
+          if ( id_vsurf > 0 ) then
+                 used = send_data ( id_vsurf, vsurf, time, is, js )
+          end if
+    
+          if ( id_vshear > 0 ) then
+                 used = send_data ( id_vshear, vshear, time, is, js )
+          end if
+    
+          if ( id_parcelkick > 0 ) then
                  used = send_data ( id_parcelkick, parcelkick, time,   &
-		                    is, js )
-            end if
-	    
-	    if ( id_wentr_pbl > 0 ) then
-                 used = send_data ( id_wentr_pbl, wentr_pbl, time,     &
-		                    is, js)
-            end if
+                    is, js )
+          end if
+    
+          if ( id_wentr_pbl > 0 ) then
+               used = send_data ( id_wentr_pbl, wentr_pbl, time,     &
+                          is, js)
+          end if
             
-	    if ( id_pblfq > 0 ) then
-                 rtmp = 0.
-	         rtmp(:,:,1:nlev) = pblfq
-	         used = send_data ( id_pblfq, rtmp, time, is, js,      &
-		                    1, rmask=mask3 )
-            end if
+          if ( id_pblfq > 0 ) then
+               rtmp = 0.
+               rtmp(:,:,1:nlev) = pblfq
+               used = send_data ( id_pblfq, rtmp, time, is, js,      &
+                          1, rmask=mask3 )
+          end if
             
-	    if ( id_k_t_troen > 0 ) then
-                 rtmp = 0.
-	         rtmp(:,:,1:nlev) = k_t_troen
-	         used = send_data ( id_k_t_troen, rtmp, time, is, js,  &
-		                    1, rmask=mask3 )
-            end if
+          if ( id_k_t_troen > 0 ) then
+               rtmp = 0.
+               rtmp(:,:,1:nlev) = k_t_troen
+               used = send_data ( id_k_t_troen, rtmp, time, is, js,  &
+                          1, rmask=mask3 )
+          end if
             
-	    if ( id_k_m_troen > 0 ) then
-                 rtmp = 0.
-	         rtmp(:,:,1:nlev) = k_m_troen
-	         used = send_data ( id_k_m_troen, rtmp, time, is, js,  &
-		                    1, rmask=mask3 )
-            end if
+          if ( id_k_m_troen > 0 ) then
+               rtmp = 0.
+               rtmp(:,:,1:nlev) = k_m_troen
+               used = send_data ( id_k_m_troen, rtmp, time, is, js,  &
+                          1, rmask=mask3 )
+          end if
             
-	    !----------------------------------------------
-	    !
-	    ! Cloud top radiative cooling diagnostics
-	    !
-	    
-	    if ( id_radpbl > 0 ) then
+          !----------------------------------------------
+          !
+          ! Cloud top radiative cooling diagnostics
+          !
+    
+          if ( id_radpbl > 0 ) then
                  used = send_data ( id_radpbl, radpbl, time, is, js )
-            end if
-	    
-	    if ( id_vrad > 0 ) then
+          end if
+    
+          if ( id_vrad > 0 ) then
                  used = send_data ( id_vrad, vrad, time, is, js )
-            end if
-	    
-	    if ( id_zradml > 0 ) then
+          end if
+    
+          if ( id_zradml > 0 ) then
                  used = send_data ( id_zradml, zradml, time, is, js )
-            end if
-	    
-	    if ( id_svpcp > 0 ) then
+          end if
+    
+          if ( id_svpcp > 0 ) then
                  used = send_data ( id_svpcp, svpcp, time, is, js )
-            end if
-	    
-	    if ( id_zradtop > 0 ) then
+          end if
+    
+          if ( id_zradtop > 0 ) then
                  used = send_data ( id_zradtop, zradtop, time, is, js )
-            end if
-	    
-	    if ( id_zradbase > 0 ) then
+          end if
+    
+          if ( id_zradbase > 0 ) then
                  used = send_data ( id_zradbase, zradbase, time, is, js)
-            end if
-	    
-	    if ( id_radf > 0 ) then
+          end if
+    
+          if ( id_radf > 0 ) then
                  used = send_data ( id_radf, radf, time, is, js )            
-            end if
+          end if
             
-	    if ( id_wentr_rad > 0 ) then
+          if ( id_wentr_rad > 0 ) then
                  used = send_data ( id_wentr_rad, wentr_rad, time, is, &
-		                    js)
-            end if
+                                      js)
+          end if
             
-	    if ( id_radfq > 0 ) then
-                 rtmp = 0.
-	         rtmp(:,:,1:nlev) = radfq
-	         used = send_data ( id_radfq, rtmp, time, is, js,      &
-		                    1, rmask=mask3 )
-            end if
+          if ( id_radfq > 0 ) then
+               rtmp = 0.
+               rtmp(:,:,1:nlev) = radfq
+               used = send_data ( id_radfq, rtmp, time, is, js,      &
+                          1, rmask=mask3 )
+          end if
             
-	    if ( id_k_rad > 0 ) then
-                 rtmp = 0.
-	         rtmp(:,:,1:nlev) = k_rad
-	         used = send_data ( id_k_rad, rtmp, time, is, js, 1,   &
-		                    rmask=mask3 )
-            end if
+          if ( id_k_rad > 0 ) then
+               rtmp = 0.
+               rtmp(:,:,1:nlev) = k_rad
+               used = send_data ( id_k_rad, rtmp, time, is, js, 1,   &
+                          rmask=mask3 )
+          end if
             
-	    !----------------------------------------------
-	    !
-	    ! Simple mixing diffusion coefficients
-	    !
-	    
-	    if ( id_k_t_sim > 0 ) then
-                 rtmp = 0.
-	         rtmp(:,:,1:nlev) = k_t_sim
-	         used = send_data ( id_k_t_sim, rtmp, time, is, js,  &
-		                    1, rmask=mask3 )
-            end if
+          !----------------------------------------------
+          !
+          ! Total diffusivity coefficients
+          !
+    
+          if ( id_k_t_entr > 0 ) then
+               rtmp = 0.
+               rtmp(:,:,1:nlev) = k_t_entr
+               used = send_data ( id_k_t_entr, rtmp, time, is, js,   &
+                          1, rmask=mask3 )
+          end if
             
-	    if ( id_k_m_sim > 0 ) then
-                 rtmp = 0.
-	         rtmp(:,:,1:nlev) = k_m_sim
-	         used = send_data ( id_k_m_sim, rtmp, time, is, js,  &
-		                    1, rmask=mask3 )
-            end if
-            
-	    if ( id_simfq > 0 ) then
-                 rtmp = 0.
-	         rtmp(:,:,1:nlev) = simfq
-	         used = send_data ( id_simfq, rtmp, time, is, js,      &
-		                    1, rmask=mask3 )
-            end if
-            
-	    !----------------------------------------------
-	    !
-	    ! Total diffusivity coefficients
-	    !
-	    
-	    if ( id_k_t_entr > 0 ) then
-                 rtmp = 0.
-	         rtmp(:,:,1:nlev) = k_t_entr
-	         used = send_data ( id_k_t_entr, rtmp, time, is, js,   &
-		                    1, rmask=mask3 )
-            end if
-            
-	    if ( id_k_m_entr > 0 ) then
-                 rtmp = 0.
-	         rtmp(:,:,1:nlev) = k_m_entr
-	         used = send_data ( id_k_m_entr, rtmp, time, is, js,   &
-		                    1, rmask=mask3 )
-            end if
-            
+          if ( id_k_m_entr > 0 ) then
+               rtmp = 0.
+               rtmp(:,:,1:nlev) = k_m_entr
+               used = send_data ( id_k_m_entr, rtmp, time, is, js,   &
+                          1, rmask=mask3 )
+          end if
+
+
+          !----------------------------------------------
+          !
+          ! Inversion diagnostics
+          !
+
+          if ( id_fqinv > 0 ) then
+                 used = send_data ( id_fqinv, fqinv, time, is, js )
+          end if
+    
+          if ( id_zinv > 0 ) then
+                 used = send_data ( id_zinv, zinv, time, is, js )
+          end if
+    
+          if ( id_invstr > 0 ) then
+                 used = send_data ( id_invstr, invstr, time, is, js )
+          end if
+              
        end if  ! do diagnostics if
        
 !-----------------------------------------------------------------------
@@ -1586,6 +1820,41 @@ end subroutine entrain
 !  Subroutine to calculate pbl depth
 !
 
+! <SUBROUTINE NAME="pbl_depth">
+!  <OVERVIEW>
+!    
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!
+!      Calculates the depth of the surface based convective layer
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call pbl_depth(t, z, u_star, b_star, ipbl, h, parcelkick)
+!		
+!  </TEMPLATE>
+!  <IN NAME="t" TYPE="real">
+!       Liquid water virtual static energy divided by cp (K)
+!  </IN>
+!  <IN NAME="z" TYPE="real">
+!       Geopoential height of levels t is defined on (m)       
+!  </IN>
+!  <IN NAME="u_star" TYPE="real">
+!       Friction velocity (m/s)
+!  </IN>
+!  <IN NAME="b_star" TYPE="real">
+!       Buoyancy scale (m/s2)
+!  </IN>
+!  <OUT NAME="ipbl" TYPE="integer">
+!       Integer indicating the half model level which is the PBL top
+!  </OUT>
+!  <OUT NAME="h" TYPE="real">
+!       PBL height (m)
+!  </OUT>
+!  <OUT NAME="parcelkick" TYPE="real">
+!       Surface parcel excess (K)
+!  </OUT>
+! </SUBROUTINE>
+!
 subroutine pbl_depth(t, z, u_star, b_star, ipbl, h, parcelkick)
 
 !
@@ -1610,7 +1879,7 @@ real,    intent(in)                 :: u_star, b_star
 integer, intent(out)                :: ipbl
 real,    intent(out)                :: h,parcelkick
 
-real     :: svp,h1,h2,svp,t1,t2
+real     :: svp,h1,h2,t1,t2
 real     :: ws,k_t_ref
 integer  :: k,nlev
 
@@ -1636,7 +1905,7 @@ do k = nlev-1 , 2, -1
      t2 = t(k)
      if (t2.gt.svp) then
           h = h2 + (h1 - h2)*(t2 - svp)/(t2 - t1 )
-	  ipbl = k+1
+          ipbl = k+1
           return
      end if
      h1 = h2
@@ -1658,6 +1927,42 @@ end subroutine pbl_depth
 !  Subroutine to do profile reconstuction
 !
 
+! <SUBROUTINE NAME="prof_recon">
+!  <OVERVIEW>
+!      
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!
+!      Subroutine to do profile reconstruction
+!
+!      This is not turned on in the default version as I suspect there is a 
+!      bug in this subroutine.
+!
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call prof_recon(rho,t,pf,ph,zt,dt)
+!		
+!  </TEMPLATE>
+!  <IN NAME="rho" TYPE="real">
+!       Air density (kg/m3)
+!  </IN>
+!  <IN NAME="t" TYPE="real">
+!       Liquid water virtual static energy divided by cp (K)
+!  </IN>
+!  <IN NAME="pf" TYPE="real">
+!       Full level pressures (Pa)
+!  </IN>
+!  <IN NAME="ph" TYPE="real">
+!       Half level pressures (pa)
+!  </IN>
+!  <OUT NAME="zt" TYPE="real">
+!       Top of radiatively driven layer in distance relative to boundary between cloud top layer and the level below (m)
+!  </OUT>
+!  <OUT NAME="dt" TYPE="real">
+!       Cloud top jump in liquid water virtual static energy divided by cp (K)
+!  </OUT>
+! </SUBROUTINE>
+!
 subroutine prof_recon(rho,t,pf,ph,zt,dt)
 
 !
@@ -1679,7 +1984,7 @@ subroutine prof_recon(rho,t,pf,ph,zt,dt)
 !  dt     cloud top jump in liquid water virtual static energy divided 
 !         by cp (K)
 !
-		 
+ 
 real,   intent(in)                    :: rho
 real,   intent(in) ,  dimension(-2:1) :: t, pf
 real,   intent(in) ,  dimension( 0:1) :: ph
@@ -1760,7 +2065,7 @@ else
      ttop = t(-1) + slope*(pinv-pfp(-1))
      
      dt = ttop - t(1)
-          		  
+            
 end if
  
 return
@@ -1773,6 +2078,41 @@ end subroutine prof_recon
 !
 !  Subroutine to calculate bottom and depth of radiatively driven mixed
 !  layer
+!
+! <SUBROUTINE NAME="radml_depth">
+!  <OVERVIEW>
+!       
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!       Subroutine to calculate the depth of the the radiatively driven 
+!       (i.e. stratocumulus) mixed layer 
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call radml_depth(svp, zt, t, zf, zh, zb, zml)
+!		
+!  </TEMPLATE>
+!  <IN NAME="svp" TYPE="real">
+!       Cloud top value of the liquid water virtual static energy divided by cp (K)
+!  </IN>
+!  <IN NAME="zt" TYPE="real">
+!       Top of radiatively driven layer (m)
+!  </IN>
+!  <IN NAME="t" TYPE="real">
+!       Liquid water virtual static energy divided by cp (vertical profile) (K)
+!  </IN>
+!  <IN NAME="zf" TYPE="real">
+!       Full level geopotential height relative to ground (vertical profile) (m)
+!  </IN>
+!  <IN NAME="zh" TYPE="real">
+!       Half level geopotential height relative to ground (vertical profile) (m)
+!  </IN>
+!  <OUT NAME="zb" TYPE="real">
+!       Base of radiatively driven mixed layer (m) 
+!  </OUT>
+!  <OUT NAME="zml" TYPE="real">
+!       Depth of radiatively driven mixed layer (m) (equals zt minus zb)
+!  </OUT>
+! </SUBROUTINE>
 !
 subroutine radml_depth(svp, zt, t, zf, zh, zb, zml)
 
@@ -1820,14 +2160,14 @@ do k = 2,nlev
      
      if (t2.lt.svpar) then
           zb = h2 + (h1 - h2)*(svpar - t2)/(t1 - t2)
-	  zml = zt - zb
-	  return
+          zml = zt - zb
+          return
      end if
      
      if (do_jump_exit .and. (t1-t2) .gt. critjump .and. k .gt. 2) then
           zb = zh(k)
-	  zml = zt - zb
-	  return
+          zml = zt - zb
+          return
      end if
      
      h1 = h2
@@ -1836,7 +2176,7 @@ enddo
 
 zb = 0.
 zml = zt
-	  
+  
 return
 end subroutine radml_depth
 
@@ -1845,8 +2185,43 @@ end subroutine radml_depth
 
 !=======================================================================
 
+! <SUBROUTINE NAME="diffusivity_pbl">
+!  <OVERVIEW>
+!         
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!       Subroutine to return the vertical K-profile of diffusion 
+!       coefficients for the surface driven convective mixed layer    
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call diffusivity_pbl(h, u_star, b_star, t, zm, k_m, k_t)
+!		
+!  </TEMPLATE>
+!  <IN NAME="h" TYPE="real">
+!      Depth of surface driven mixed layer (m) 
+!  </IN>
+!  <IN NAME="u_star" TYPE="real">
+!      Friction velocity (m/s)
+!  </IN>
+!  <IN NAME="b_star" TYPE="real">
+!      Buoyancy scale (m/s2)
+!  </IN>
+!  <IN NAME="t" TYPE="real">
+!      Liquid water virtual static energy divided by cp (K)
+!  </IN>
+!  <IN NAME="zm" TYPE="real">
+!      Half level heights relative to the ground (m)
+!  </IN>
+!  <OUT NAME="k_m" TYPE="real">
+!      Momentum diffusion coefficient (m2/s)
+!  </OUT>
+!  <OUT NAME="k_t" TYPE="real">
+!      Heat and tracer diffusion coefficient (m2/s)
+!  </OUT>
+! </SUBROUTINE>
+!
 subroutine diffusivity_pbl(h, u_star, b_star, t, zm, k_m, k_t)
- 	
+ 
 real,    intent(in)                :: h, u_star, b_star
 real,    intent(in),  dimension(:) :: t,zm
 real,    intent(out), dimension(:) :: k_m, k_t
@@ -1889,105 +2264,6 @@ end subroutine diffusivity_pbl
 !
 !======================================================================= 
 
-
-
-
-!=======================================================================
-
-subroutine diffusivity_sim(t, u, v, z, zz, k_m, k_t)
-
-!-------------------------------
-!
-!  INPUT
-!
-!  defined on full levels 1:nlev
-!
-!  t      static energy of some type            (J/kg) 
-!  u,v    horizontal wind speeds                (m/s)
-!  z      full level height relative to surface (m)
-!  
-!  define on half levels 1:nlev+1
-!
-!  zz     half level height relative to surface (m)
-!
-!  OUTPUT 
-!
-!  defined on half levels 1:nlev
-!
-!  k_m    momentum diffusion coefficient        (m)
-!  k_t    heat diffusion coefficient            (m)
-!
-!  k_m/k_t are defined so that k_m(k) is the diffusion coefficient
-!  between full levels k-1 and k.
-!
-
-real, intent(in)    , dimension(:,:,:) :: t, u, v, z, zz
-real, intent(out)   , dimension(:,:,:) :: k_m, k_t
-
-real, dimension(size(t,1),size(t,2))   :: dz, b, speed2, rich
-real, dimension(size(t,1),size(t,2))   :: fri, mix_len
-integer                                :: k
-
-do k = 2, size(t,3)
-
-!----------------------------------------------------------------------
-!  define the richardson number. set it to zero if it is negative. save
-!  a copy of it for later use (rich2).
-!----------------------------------------------------------------------
-  
-  dz     = z(:,:,k-1) - z(:,:,k)
-  b      = grav*(t(:,:,k-1)-t(:,:,k))/t(:,:,k)
-  speed2 = (u(:,:,k-1) - u(:,:,k))**2 + (v(:,:,k-1) - v(:,:,k))**2 
-  rich= b*dz/(speed2+small)
-  rich = max(rich, 0.0)
-
-!-----------------------------------------------------------------------
-! compute mixing length
-!-----------------------------------------------------------------------
-
-  mix_len(:,:) = (1./max(0.1,vonkarm*zz(:,:,k))) + (1./asympt_len)
-  mix_len(:,:) = 1. / mix_len(:,:)
-  
-!-----------------------------------------------------------------------
-!   compute the richardson number factor to be used in the eddy 
-!   mixing coefficient. 
-!-----------------------------------------------------------------------
-
-  fri(:,:)   = 0.0
-  where (rich .lt. rich_crit) 
-       fri(:,:)   = (1.0 - rich/rich_crit)**2
-  end where
-
-!-----------------------------------------------------------------------
-!   compute the eddy mixing coefficients. Values are obtained only when 
-!   the richardson number is sub-critical
-!---------------------------------------------------------------------
-
-  where (rich < rich_crit)
-     k_m(:,:,k) = mix_len*mix_len*sqrt(speed2)*fri(:,:)/dz
-     k_t(:,:,k) = k_m(:,:,k)/pr
-  end where
-  
-!---------------------------------------------------------------------
-!   end loop over levels
-!---------------------------------------------------------------------
-  
-end do
-
-!---------------------------------------------------------------------
-! bound diffusion coefficients
-!---------------------------------------------------------------------
-
-k_m = min ( max( 0., k_m ), akmax )
-k_t = min ( max( 0., k_t ), akmax )
-
-return
-end subroutine diffusivity_sim
-
-!
-!======================================================================= 
-
-
 !======================================================================= 
 !
 !      subroutine entrain_tend
@@ -1997,7 +2273,7 @@ end subroutine diffusivity_sim
 !      to tdtlw
 !        
 
-subroutine entrain_tend(is,ie,js,je,tend)
+!subroutine entrain_tend(is,ie,js,je,tend)
 
 !-----------------------------------------------------------------------
 !
@@ -2012,23 +2288,23 @@ subroutine entrain_tend(is,ie,js,je,tend)
 !
 !-----------------------------------------------------------------------
 
-integer, intent(in)                   :: is,ie,js,je
-real,    intent(in), dimension(:,:,:) :: tend
+!integer, intent(in)                   :: is,ie,js,je
+!real,    intent(in), dimension(:,:,:) :: tend
 
 !-----------------------------------------------------------------------
 !
 !      assign tendency
 !
 
-       if (.not. entrain_on) return
-       tdtlw(is:ie,js:je,:)=tend(:,:,:)
+!      if (.not. entrain_on) return
+!      tdtlw(is:ie,js:je,:)=tend(:,:,:)
 
 !-----------------------------------------------------------------------
 ! 
 !      subroutine end
 !
 
-end subroutine entrain_tend
+!end subroutine entrain_tend
 
 !
 !======================================================================= 
@@ -2044,6 +2320,18 @@ end subroutine entrain_tend
 !      this subroutine writes out the restart field
 !        
 
+! <SUBROUTINE NAME="entrain_end">
+!  <OVERVIEW>
+!      
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!      All this module does is to set "module_is_initialized" to false.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call entrain_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine entrain_end()
 
 !-----------------------------------------------------------------------
@@ -2064,11 +2352,11 @@ integer :: unit
 !
 !      write out restart file
 !
-       unit = Open_File ('RESTART/entrain.res', &
-            FORM='native', ACTION='write')
-       call write_data (unit, tdtlw)
-       Call Close_File (unit)
-
+!      unit = Open_File ('RESTART/entrain.res', &
+!           FORM='native', ACTION='write')
+!      call write_data (unit, tdtlw)
+!      Call Close_File (unit)
+      module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 ! 

@@ -19,9 +19,11 @@ module damping_driver_mod
  use      mg_drag_mod, only:  mg_drag, mg_drag_init, mg_drag_end
  use      cg_drag_mod, only:  cg_drag_init, cg_drag_calc, cg_drag_end
  use    topo_drag_mod, only:  topo_drag_init, topo_drag, topo_drag_end
- use    utilities_mod, only:  file_exist, open_file, error_mesg, &
+ use          fms_mod, only:  file_exist, mpp_pe, mpp_root_pe, stdlog, &
+                              write_version_number, &
+                              open_namelist_file, error_mesg, &
                               check_nml_error,                   &
-                              get_my_pe, FATAL, close_file
+                              FATAL, close_file
  use diag_manager_mod, only:  register_diag_field,  &
                               register_static_field, send_data
  use time_manager_mod, only:  time_type
@@ -81,15 +83,15 @@ character(len=7) :: mod_name = 'damping'
  logical :: do_rayleigh
 
  real, parameter ::  daypsec=1./86400.
- logical :: do_init=.true.
+ logical :: module_is_initialized =.false.
 
  real :: rfactr
 
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 1.5 2003/04/09 20:54:24 fms Exp $'
- character(len=128) :: tag = '$Name: inchon $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 10.0 2003/10/24 22:00:25 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
 
 !-----------------------------------------------------------------------
 
@@ -132,7 +134,7 @@ contains
  real :: a,b
 !-----------------------------------------------------------------------
 
-   if (do_init) call error_mesg ('damping_driver',  &
+   if (.not.module_is_initialized) call error_mesg ('damping_driver',  &
                      'damping_driver_init must be called first', FATAL)
 
 !-----------------------------------------------------------------------
@@ -316,7 +318,7 @@ contains
 !----------------- namelist (read & write) -----------------------------
 
    if (file_exist('input.nml')) then
-      unit = open_file ('input.nml', action='read')
+      unit = open_namelist_file ()
       ierr=1; do while (ierr /= 0)
          read  (unit, nml=damping_driver_nml, iostat=io, end=10)
          ierr = check_nml_error (io, 'damping_driver_nml')
@@ -324,12 +326,10 @@ contains
  10   call close_file (unit)
    endif
 
-   unit = open_file ('logfile.out', action='append')
-   if ( get_my_pe() == 0 ) then
-        write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-        write (unit,nml=damping_driver_nml)
+   call write_version_number(version, tagname)
+   if(mpp_pe() == mpp_root_pe() ) then
+        write (stdlog(),nml=damping_driver_nml)
    endif
-   call close_file (unit)
 
 !-----------------------------------------------------------------------
 !--------- rayleigh friction ----------
@@ -483,7 +483,7 @@ endif
 
 !-----------------------------------------------------------------------
 
-   do_init=.false.
+   module_is_initialized =.true.
 
 !******************** end of initialization ****************************
 !-----------------------------------------------------------------------
@@ -498,6 +498,9 @@ endif
      if (do_mg_drag) call mg_drag_end
      if (do_cg_drag)   call cg_drag_end
      if (do_topo_drag) call topo_drag_end
+
+     module_is_initialized =.false.
+
 
  end subroutine damping_driver_end
 

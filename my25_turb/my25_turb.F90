@@ -4,9 +4,10 @@
 !   MELLOR-YAMADA LEVEL 2.5 TURBULENCE CLOSURE SCHEME - GFDL VERSION   !
 !=======================================================================
 
- use Utilities_Mod,   ONLY: FILE_EXIST, OPEN_FILE, ERROR_MESG, FATAL, &
-                            get_my_pe, read_data, write_data, CLOSE_FILE,&
-                            check_nml_error
+ use       Fms_Mod,   ONLY: FILE_EXIST, OPEN_NAMELIST_FILE, ERROR_MESG, FATAL, &
+                            read_data, write_data, CLOSE_FILE,&
+                            check_nml_error, mpp_pe, mpp_root_pe, &
+                            write_version_number, stdlog, open_restart_file
  use Tridiagonal_Mod, ONLY: TRI_INVERT, CLOSE_TRIDIAGONAL
  use constants_mod,   only: grav, vonkarm
  use monin_obukhov_mod, only : mo_diff
@@ -26,10 +27,10 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: my25_turb.F90,v 1.4 2003/04/09 20:57:59 fms Exp $'
- character(len=128) :: tag = '$Name: inchon $'
-
- logical :: do_init = .true.
+ character(len=128) :: version = '$Id: my25_turb.F90,v 10.0 2003/10/24 22:00:36 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
+ logical            :: module_is_initialized = .false.
+ 
  logical :: init_tke
  integer :: num_total_pts, pts_done
 
@@ -160,7 +161,7 @@
 !====================================================================
 
 ! --- Check to see if MY25_TURB has been initialized
-  if( do_init ) CALL ERROR_MESG( ' MY25_TURB',     &
+  if( .not. module_is_initialized ) CALL ERROR_MESG( ' MY25_TURB',     &
                                  ' MY25_TURB_INIT has not been called',&
                                    FATAL )
 
@@ -560,7 +561,7 @@
 
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
-   unit = OPEN_FILE ( file = 'input.nml', action = 'read' )
+   unit = OPEN_NAMELIST_FILE ( )
    ierr = 1
    do while( ierr .ne. 0 )
    READ ( unit,  nml = my25_turb_nml, iostat = io, end = 10 ) 
@@ -575,12 +576,10 @@
 ! --- Output version
 !---------------------------------------------------------------------
 
-  unit = OPEN_FILE ( file = 'logfile.out', action = 'append' )
-  if ( get_my_pe() == 0 ) then
-       WRITE( unit,'(/,80("="),/(a))') trim(version), trim(tag)
-       WRITE( unit, nml = my25_turb_nml ) 
+  if ( mpp_pe() == mpp_root_pe() ) then
+       call write_version_number(version, tagname)
+       WRITE( stdlog(), nml = my25_turb_nml ) 
   endif
-  CALL CLOSE_FILE( unit )
 
 !---------------------------------------------------------------------
 ! --- Initialize constants
@@ -623,16 +622,13 @@
   if( ALLOCATED( TKE ) ) DEALLOCATE( TKE )
                            ALLOCATE( TKE(ix,jx,kx+1) )
 
-!-------------------------------------------------------------------
-  do_init = .false.
 !---------------------------------------------------------------------
 ! --- Input TKE
 !---------------------------------------------------------------------
 
   if( FILE_EXIST( 'INPUT/my25_turb.res' ) ) then
 
-      unit = OPEN_FILE ( file = 'INPUT/my25_turb.res', &
-                         form = 'native', action = 'read' )
+      unit = OPEN_restart_FILE ( file = 'INPUT/my25_turb.res', action = 'read' )
       call read_data ( unit, TKE )
       CALL CLOSE_FILE( unit )
 
@@ -648,6 +644,10 @@
 
   endif
 
+!-------------------------------------------------------------------
+      module_is_initialized = .true.
+!---------------------------------------------------------------------
+
  
 !=====================================================================
   end SUBROUTINE MY25_TURB_INIT
@@ -659,8 +659,9 @@
  integer :: unit
 !=======================================================================
 
-      unit = OPEN_FILE ( file = 'RESTART/my25_turb.res', &
-                         form = 'native', action = 'write' )
+      module_is_initialized = .false.
+!---------------------------------------------------------------------
+      unit = OPEN_RESTART_FILE ( file = 'RESTART/my25_turb.res', action = 'write' )
       call write_data ( unit, TKE )
       CALL CLOSE_FILE ( unit )
  

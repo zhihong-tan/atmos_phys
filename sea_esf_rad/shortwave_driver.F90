@@ -1,32 +1,51 @@
                      module shortwave_driver_mod
+! <CONTACT EMAIL="Fei.Liu@noaa.gov">
+!  fil
+! </CONTACT>
+!
+! <REVIEWER EMAIL="Stuart.Freidenreich@noaa.gov">
+!  smf
+! </REVIEWER>
+! 
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+!
+! <OVERVIEW>
+!  Code to carry out shortwave calculation.
+! </OVERVIEW>
+! <DESCRIPTION>
+!  This code initializes, prepares, and ends shortwave radiation calculation.
+!  This code is called by sea_esf_rad.f90 and calls shortwave subroutines
+!  to do shortwave flux calculation.
+! </DESCRIPTION>
+!
 
-use  utilities_mod,       only:  open_file, file_exist,      &
-                                 utilities_init, &
-                                 check_nml_error, error_mesg, & 
-                                 print_version_number, FATAL, NOTE, &
-                                 WARNING, get_my_pe, close_file
-use rad_utilities_mod,    only:  Rad_control, radiation_control_type, &
-                                 cldrad_properties_type, &
-                                 rad_utilities_init, &
+!   shared modules:
+
+use fms_mod,              only:  open_namelist_file, fms_init, &
+                                 mpp_pe, mpp_root_pe, stdlog, &
+                                 file_exist, write_version_number, &
+                                 check_nml_error, error_mesg, &
+                                 FATAL, NOTE, WARNING, close_file
+
+!   shared radiation package modules:
+ 
+use rad_utilities_mod,    only:  rad_utilities_init, Rad_control,  &
+                                 Environment, cldrad_properties_type, &
+                                 cld_specification_type, Sw_control, &
                                  radiative_gases_type,   &
-                                 aerosol_type, &
-                                 atmos_input_type, &
-                                 astronomy_type, &
-                                 cld_space_properties_type, &
-                                 sw_output_type, &
-                                 Sw_control, shortwave_control_type, &
-                                 Environment, environment_type
-
-!  lacis-hansen shortwave package:
-
-use lhsw_driver_mod,      only:  lhsw_driver_init, swrad
-
-!  exponential-sum-fit shortwave package:
-
-use esfsw_driver_mod,     only:  esfsw_driver_init, swresf
-use esfsw_scattering_mod, only:  esfsw_scattering_init
+                                 aerosol_type, aerosol_properties_type,&
+                                 atmos_input_type, surface_type, &
+                                 astronomy_type, sw_output_type, &
+                                 cld_space_properties_type
 use esfsw_parameters_mod, only:  esfsw_parameters_init
 
+!  radiation package modules:
+
+use lhsw_driver_mod,      only:  lhsw_driver_init, swrad
+use esfsw_driver_mod,     only:  esfsw_driver_init, swresf,   &
+                                 esfsw_driver_end
+
+!-------------------------------------------------------------------
 
 implicit none
 private
@@ -40,18 +59,22 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module  -------------------------
 
-character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 1.4 2003/04/09 21:01:50 fms Exp $'
-character(len=128)  :: tag     =  '$Name: inchon $'
+character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 10.0 2003/10/24 22:00:47 fms Exp $'
+character(len=128)  :: tagname =  '$Name: jakarta $'
 
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
-public   shortwave_driver_init , shortwave_driver,              &
-         shortwave_driver_end
+public        &
+          shortwave_driver_init , shortwave_driver,    & 
+          shortwave_driver_end
 
 
-private  shortwave_driver_alloc
+private       &
+
+!   called from shortwave_driver:
+          shortwave_driver_alloc
 
 
 !---------------------------------------------------------------------
@@ -63,7 +86,6 @@ character(len=16)   :: swform = '    '
 namelist / shortwave_driver_nml /             &
                                      swform
 
-
 !---------------------------------------------------------------------
 !------- public data ------
 
@@ -71,9 +93,7 @@ namelist / shortwave_driver_nml /             &
 !---------------------------------------------------------------------
 !------- private data ------
 
-logical    :: shortwave_driver_initialized =    &
-                                    .false.  ! module initialized ?
-
+logical :: module_is_initialized = .false.  ! module initialized ?
 
 
 !-------------------------------------------------------------------
@@ -91,7 +111,28 @@ logical    :: shortwave_driver_initialized =    &
 !                                
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
+! <SUBROUTINE NAME="shortwave_driver_init">
+!  <OVERVIEW>
+!   Code that initializes shortwave radiation calculation.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Initialize utilities and radiation utilities if necessary. They
+!   should have been initialized in the radiation initialiation subroutine
+!   in the sea_esf_rad.f90. The code then reads in input.nml namelist
+!   and logs input parameters to logfile. It uses lhsw or esfsw package
+!   depends on namelist parameter. Initializes apropriate shortwave
+!   package subroutines and set up the initialize parameter.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call shortwave_driver_init (latb, pref)
+!  </TEMPLATE>
+!  <IN NAME="latb" TYPE="real">
+!   An array of model latitudes at cell boundaries [radians]
+!  </IN>
+!  <IN NAME="pref" TYPE="real">
+!   An array containing two reference pressure profiles [pascals]
+!  </IN>
+! </SUBROUTINE>
 subroutine shortwave_driver_init (latb, pref)
 
 !---------------------------------------------------------------------
@@ -106,54 +147,58 @@ real, dimension(:,:), intent(in) :: pref
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
-!       latb      array of model latitudes at cell boundaries [radians]
+!       latb      array of model latitudes at cell boundaries 
+!                 [ radians ]
 !                                
 !       pref      array containing two reference pressure profiles 
-!                 [pascals]
+!                 [ Pa ]
 !
 !--------------------------------------------------------------------
 
 !--------------------------------------------------------------------
-!  local variables
+!  local variables:
 
       integer   :: unit, io, ierr
 
+!---------------------------------------------------------------------
+!  local variables:
+!
+!        unit            io unit number used for namelist file
+!        ierr            error code
+!        io              error status returned from io operation
+!                                
+!---------------------------------------------------------------------
 
 !-------------------------------------------------------------------
 !    if routine has already been executed, exit.
 !-------------------------------------------------------------------
-      if (shortwave_driver_initialized) return
+      if (module_is_initialized) return
 
 !-------------------------------------------------------------------
 !    verify that modules used by this module that are not called later
 !    have already been initialized.
 !-------------------------------------------------------------------
-      call utilities_init
+      call fms_init
       call rad_utilities_init
 
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
 !    read namelist.
-!----------------------------------------------------------------
- 
-      if (file_exist('input.nml')) then
-        unit =  open_file ('input.nml', action='read')
+!-----------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
-        read (unit, nml=shortwave_driver_nml, iostat=io, end=10)
-        ierr = check_nml_error (io, 'shortwave_driver_nml')
-        enddo
+        read  (unit, nml=shortwave_driver_nml, iostat=io, end=10)
+        ierr = check_nml_error(io,'shortwave_driver_nml')
+        end do
 10      call close_file (unit)
       endif
-  
+ 
 !---------------------------------------------------------------------
-!    write namelist to logfile.
+!    write version number and namelist to logfile.
 !---------------------------------------------------------------------
-      unit = open_file ('logfile.out', action='append')
-      if (get_my_pe() == 0) then
-!     if (get_my_pe() == get_root_pe() ) then
-        write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-        write (unit,nml=shortwave_driver_nml)
-      endif
-      call close_file (unit)
+      call write_version_number (version, tagname)
+      if (mpp_pe() == mpp_root_pe() ) &
+                       write (stdlog(), nml=shortwave_driver_nml)
 
 !--------------------------------------------------------------------
 !    define logicals specifying the sw package in use as an element
@@ -163,23 +208,33 @@ real, dimension(:,:), intent(in) :: pref
 !---------------------------------------------------------------------
       if (trim(swform) == 'lhsw') then
         Sw_control%do_lhsw  = .true.
+        if (Environment%running_sa_model) then
+          call error_mesg ( 'shortwave_driver_mod', &
+            'must use esfsw parameterization with sa_gcm',  FATAL)
+        endif
         call lhsw_driver_init (pref)
       else if (trim(swform) == 'esfsw99') then
         Sw_control%do_esfsw = .true.
         call esfsw_parameters_init
         call esfsw_driver_init
-        call esfsw_scattering_init (latb)
       else
-        call error_mesg ( 'shortwave_driver_init',   &
+        call error_mesg ( 'shortwave_driver_mod',   &
         'improper specification of desired shortwave parameterization',&
                                                                FATAL)
       endif
 
+!---------------------------------------------------------------------
+!    mark the just-defined logicals as defined.
+!---------------------------------------------------------------------
+      Sw_control%do_lhsw_iz  = .true.
+      Sw_control%do_esfsw_iz = .true.
+
 !-------------------------------------------------------------------
 !    set flag indicating successful initialization of module.
 !-------------------------------------------------------------------
-      shortwave_driver_initialized = .true.
+      module_is_initialized = .true.
 
+!--------------------------------------------------------------------
 
 
 end subroutine shortwave_driver_init
@@ -187,10 +242,77 @@ end subroutine shortwave_driver_init
 
 
 !###########################################################
-
-subroutine shortwave_driver (is, ie, js, je, Atmos_input, Astro, &
-                             Aerosol, Rad_gases, Cldrad_props,   &
-                             Sw_output, Cldspace_rad) 
+! <SUBROUTINE NAME="shortwave_driver">
+!  <OVERVIEW>
+!   Code that deploys shortwave radiation calculation
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    shortwave_driver initializes shortwave radiation output variables, 
+!    determines if shortwave radiation is present in the current physics
+!    window, selects one of the available shortwave parameterizations,
+!    executes it, and returns the output fields to sea_esf_rad_mod.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!    call shortwave_driver (is, ie, js, je, Atmos_input, Surface, Astro, &
+!                           Rad_gases, Cldrad_props, Cld_spec, Sw_output, &
+!                           Cldspace_rad) 
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!    starting subdomain i indices of data in 
+!                   the physics_window being integrated
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+!    ending subdomain i indices of data in 
+!                   the physics_window being integrated
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+!    starting subdomain j indices of data in 
+!                   the physics_window being integrated
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+!    ending subdomain j indices of data in 
+!                   the physics_window being integrated
+!  </IN>
+!   <IN NAME="Atmos_input" TYPE="atmos_input_type">
+!     Atmos_input_type variable containing the atmospheric
+!     input fields on the radiation grid 
+!   </IN>
+!   <IN NAME="Astro" TYPE="astronomy_type">
+!     Astronomy_type variable containing the astronomical
+!     input fields on the radiation grid  
+!   </IN>
+!   <IN NAME="Aerosol" TYPE="aerosol_type">
+!    Aerosol input data of shortwave radiation calculation
+!   </IN>
+!   <IN NAME="Aerosol_props" TYPE="aerosol_properties_type">
+!    Aerosol radiative property input data 
+!   </IN>
+!   <IN NAME="Rad_gases" TYPE="radiative_gases_type">
+!     Radiative_gases_type variable containing the radiative 
+!     gas input fields on the radiation grid 
+!   </IN>
+!   <IN NAME="Cldrad_props" TYPE="cldrad_properties_type">
+!     The cloud radiative property input fields on the
+!     radiation grid
+!   </IN>
+!   <INOUT NAME="Sw_output" TYPE="sw_output_type">
+!     The shortwave radiation calculation result
+!   </INOUT>
+!   <INOUT NAME="Cldspace_rad" TYPE="cld_space_properties_type">
+!     Optional cloud radiative forcing output used in lacis-hansen
+!     formulation.
+!   </INOUT>
+!   <IN NAME="Surface" TYPE="surface_type">
+!    Surface data as boundary condition to radiation
+!   </IN>
+!   <IN NAME="Cld_spec" TYPE="cld_specification_type">
+!    Cloud specification data as initial condition to radiation
+!   </IN>
+! </SUBROUTINE>
+subroutine shortwave_driver (is, ie, js, je, Atmos_input, Surface,  &
+                             Astro, Aerosol, Aerosol_props, Rad_gases, &
+                             Cldrad_props,  Cld_spec, Sw_output,   &
+                             Cldspace_rad) 
 
 !---------------------------------------------------------------------
 !    shortwave_driver initializes shortwave radiation output variables, 
@@ -199,62 +321,86 @@ subroutine shortwave_driver (is, ie, js, je, Atmos_input, Astro, &
 !    executes it, and returns the output fields to sea_esf_rad_mod.
 !---------------------------------------------------------------------
 
-integer,                      intent(in)    :: is, ie, js, je
-type(atmos_input_type),       intent(in)    :: Atmos_input     
-type(astronomy_type),         intent(in)    :: Astro           
-type(radiative_gases_type),   intent(in)    :: Rad_gases   
-type(aerosol_type),           intent(in)    :: Aerosol     
-type(cldrad_properties_type), intent(in)    :: Cldrad_props
-type(sw_output_type),         intent(inout)   :: Sw_output
+integer,                         intent(in)    :: is, ie, js, je
+type(atmos_input_type),          intent(in)    :: Atmos_input     
+type(surface_type),              intent(in)    :: Surface     
+type(astronomy_type),            intent(in)    :: Astro           
+type(radiative_gases_type),      intent(in)    :: Rad_gases   
+type(aerosol_type),              intent(in)    :: Aerosol     
+type(aerosol_properties_type),   intent(in)    :: Aerosol_props
+type(cldrad_properties_type),    intent(in)    :: Cldrad_props
+type(cld_specification_type),    intent(in)    :: Cld_spec
+type(sw_output_type),            intent(inout) :: Sw_output
 type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
 !
-!      is,ie,js,je  starting/ending subdomain i,j indices of data in 
-!                   the physics_window being integrated
-!
-!      Atmos_input  atmos_input_type variable containing the atmospheric
-!                   input fields needed by the radiation package
-!      Astro        astronomy_type variable containing the astronomical
-!                   input fields needed by the radiation package
-!      Rad_gases    radiative_gases_type variable containing the radi-
-!                   ative gas input fields needed by the radiation 
-!                   package
-!      Cldrad_props cldrad_properties_type variable containing the 
-!                   cloud radiative property input fields needed by the 
-!                   radiation package
+!      is,ie,js,je    starting/ending subdomain i,j indices of data in 
+!                     the physics_window being integrated
+!      Atmos_input    atmos_input_type variable containing the atmos-
+!                     pheric input fields needed by the radiation 
+!                     package
+!      Surface        surface_type variable containing the surface input
+!                     fields needed by the radiation package
+!      Astro          astronomy_type variable containing the astronom-
+!                     ical input fields needed by the radiation package
+!      Rad_gases      radiative_gases_type variable containing the radi-
+!                     ative gas input fields needed by the radiation 
+!                     package
+!      Aerosol        aerosol_type variable containing the aerosol input
+!                     data needed by the radiation package
+!      Aerosol_props  aerosol_properties_type variable containing the
+!                     aerosol radiative properties input data needed by
+!                     the radiation package
+!      Cldrad_props   cldrad_properties_type variable containing the 
+!                     cloud radiative property input fields needed by 
+!                     the radiation package
+!      Cld_spec       cld_specification_type variable containing the 
+!                     cloud specification input fields needed by the 
+!                     radiation package
 !
 !   intent(out) variables:
 !
-!      Sw_output    sw_output_type variable containing shortwave 
-!                   radiation output data 
+!      Sw_output      sw_output_type variable containing shortwave 
+!                     radiation output data 
+!      Cldspace_rad   cld_space_properties_type variable containing the
+!                     sw output fields obtained from the lacis-hansen
+!                     shortwave parameterization 
 !
 !----------------------------------------------------------------------
 
 !----------------------------------------------------------------------
-!  local variables
-!--------------------------------------------------------------------
+!  local variables:
+
       logical  :: skipswrad
       logical  :: with_clouds
-      integer  ::   j, i   
+      integer  :: i, j       
       integer  :: ix, jx, kx
 
 !---------------------------------------------------------------------
-!
 !   local variables:
 !
 !      skipswrad    bypass calling sw package because sun is not 
 !                   shining any where in current physics window ?
 !      with_clouds  are clouds to be considered in determining
 !                   the sw fluxes and heating rates ?
+!      ix,jx,kx     dimensions of current physics window
+!      i,j          do-loop indices
 !
 !---------------------------------------------------------------------
 
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('shortwave_driver_mod',   &
+             'module has not been initialized', FATAL )
+      endif
 
 !----------------------------------------------------------------------
-!    initialize fluxes and heating rates which are kept in a 
-!    shortwave_output_type variable.
+!    call shortwave_driver_alloc to initialize shortwave fluxes and 
+!    heating rates.
 !--------------------------------------------------------------------
       ix = ie - is + 1
       jx = je - js + 1
@@ -263,7 +409,7 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 
 !--------------------------------------------------------------------
 !    determine when the no-sun case exists at all points within the 
-!    physics window and bypass the radiation calculations for that 
+!    physics window and bypass the sw radiation calculations for that 
 !    window. for do_annual_mean or do_daily_mean, only one cosz in a
 !    model row need be tested, since all points in i have the same 
 !    zenith angle.
@@ -271,7 +417,7 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
       skipswrad = .true.
       do j=1,jx        
         if ( Astro%cosz(1,j) > 0.0 ) skipswrad = .false.
-        if (Astro%do_diurnal) then
+        if (Sw_control%do_diurnal) then
           do i = 2,ix         
             if (Astro%cosz(i,j) > 0.0 )  then
               skipswrad = .false.
@@ -282,22 +428,32 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
       end do
 
 !--------------------------------------------------------------------
-!    if the sun is shining nowhere in the physics window, return.
+!    if the sun is shining nowhere in the physics window allocate
+!    output fields which will be needed later, set them to a flag
+!    value and return.
 !--------------------------------------------------------------------
       if (skipswrad)  then
+        allocate ( Cldspace_rad%camtswkc(ie-is+1, je-js+1, 1 ))
+        allocate ( Cldspace_rad%cirabswkc(ie-is+1, je-js+1, 1 ))
+        allocate ( Cldspace_rad%cirrfswkc(ie-is+1, je-js+1, 1 ))
+        allocate ( Cldspace_rad%cvisrfswkc(ie-is+1, je-js+1, 1 ))
+        allocate ( Cldspace_rad%ktopswkc(ie-is+1, je-js+1,  1 ))
+        allocate ( Cldspace_rad%kbtmswkc(ie-is+1, je-js+1,  1 ))
+        Cldspace_rad%camtswkc = -99.0
+        Cldspace_rad%cirabswkc = -99.0
+        Cldspace_rad%cirrfswkc = -99.0
+        Cldspace_rad%cvisrfswkc = -99.0
+        Cldspace_rad%ktopswkc = -99.0
+        Cldspace_rad%kbtmswkc = -99.0
 
 !---------------------------------------------------------------------
 !    calculate shortwave radiative forcing and fluxes using the 
 !    exponential-sum-fit parameterization.
 !---------------------------------------------------------------------
       else if (Sw_control%do_esfsw) then
-
-!---------------------------------------------------------------------
-! allocate space for and then retrieve the aerosol mixing ratios from
-! the aerosol module.
-!--------------------------------------------------------------------
-        call swresf (is, ie, js, je, Atmos_input, Rad_gases,    &
-                     Aerosol, Astro, Cldrad_props, Sw_output)
+        call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases, &
+                     Aerosol, Aerosol_props, Astro, Cldrad_props,  &
+                     Cld_spec, Sw_output)
 
 !---------------------------------------------------------------------
 !    calculate shortwave radiative forcing and fluxes using the 
@@ -305,9 +461,9 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !---------------------------------------------------------------------
       else if (Sw_control%do_lhsw) then
         with_clouds = .true.
-        call swrad (is, ie, js, je, Astro, with_clouds,  &
-                    Atmos_input, Rad_gases, Cldrad_props, Sw_output, &
-                    Cldspace_rad)
+        call swrad (is, ie, js, je, Astro, with_clouds, Atmos_input, &
+                    Surface, Rad_gases, Cldrad_props, Cld_spec,  &
+                    Sw_output, Cldspace_rad)
 
 !---------------------------------------------------------------------
 !    lacis-hansen requires a second call to produce the cloud-free
@@ -315,28 +471,58 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !---------------------------------------------------------------------
         if (Rad_control%do_totcld_forcing) then
           with_clouds = .false.
-          call swrad (is, ie, js, je, Astro, with_clouds,  &
-                      Atmos_input, Rad_gases, Cldrad_props, Sw_output, &
-                      Cldspace_rad)  
+          call swrad (is, ie, js, je, Astro, with_clouds, Atmos_input, &
+                      Surface, Rad_gases, Cldrad_props, Cld_spec,  &
+                      Sw_output, Cldspace_rad)  
         endif
       endif  
 
 !--------------------------------------------------------------------
+
 
 end subroutine shortwave_driver
 
 
 
 !###################################################################
-
+! <SUBROUTINE NAME="shortwave_driver_end">
+!  <OVERVIEW>
+!   Code that ends shortwave radiation calculation
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Subroutine that simply reset shortwave_driver_initialized to false
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call shortwave_driver_end
+!  </TEMPLATE>
+! </SUBROUTINE>
 subroutine shortwave_driver_end
 
 !---------------------------------------------------------------------
 !    shortwave_driver_end is the destructor for shortwave_driver_mod.
 !---------------------------------------------------------------------
 
-      shortwave_driver_initialized = .false.
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('shortwave_driver_mod',   &
+             'module has not been initialized', FATAL )
+      endif
 
+!--------------------------------------------------------------------
+!    close out the modules initialized by this module.
+!--------------------------------------------------------------------
+      if (Sw_control%do_esfsw) then
+        call esfsw_driver_end
+      endif
+
+!---------------------------------------------------------------------
+!    mark the module as uninitialized.
+!---------------------------------------------------------------------
+      module_is_initialized = .false.
+
+!-------------------------------------------------------------------
 
 end subroutine shortwave_driver_end
 
@@ -350,7 +536,32 @@ end subroutine shortwave_driver_end
 
 
 !###################################################################
-
+! <SUBROUTINE NAME="shortwave_driver_alloc">
+!  <OVERVIEW>
+!   Code that allocates and initializes shortwave output variables
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Shortwave_driver_alloc allocates and initializes the components
+!   of the sw_output_type variable Sw_output, which is used to hold
+!   output data from shortwave_driver_mod.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call shortwave_driver_alloc (ix, jx, kx, Sw_output)
+!  </TEMPLATE>
+!  <IN NAME="ix" TYPE="integer">
+!   x dimention of the radiation grid where shortwave output is desired
+!  </IN>
+!  <IN NAME="jx" TYPE="integer">
+!   y dimention of the radiation grid where shortwave output is desired
+!  </IN>
+!  <IN NAME="kx" TYPE="integer">
+!   z dimention of the radiation grid where shortwave output is desired
+!  </IN>
+!  <INOUT NAME="Sw_output" TYPE="sw_output_type">
+!   shortwave radiation output variable
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine shortwave_driver_alloc (ix, jx, kx, Sw_output) 
 
 !--------------------------------------------------------------------
@@ -358,7 +569,8 @@ subroutine shortwave_driver_alloc (ix, jx, kx, Sw_output)
 !    of the sw_output_type variable Sw_output, which is used to hold
 !    output data from shortwave_driver_mod.
 !--------------------------------------------------------------------
-integer,              intent(in)   ::  ix, jx, kx 
+
+integer,              intent(in)     ::  ix, jx, kx 
 type(sw_output_type), intent(inout)  ::  Sw_output 
 
 !-------------------------------------------------------------------
@@ -367,7 +579,7 @@ type(sw_output_type), intent(inout)  ::  Sw_output
 !    ix, jx, kx   dimensions of the radiation grid on which output 
 !                 will be produced
 !
-!  intent(out) variables:
+!  intent(inout) variables:
 !
 !      Sw_output  sw_output_type variable containing shortwave 
 !                 radiation output data 

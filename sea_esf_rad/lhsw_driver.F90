@@ -1,26 +1,21 @@
-		      module lhsw_driver_mod
+      module lhsw_driver_mod
 
-!use rad_step_setup_mod,    only: KS=>KSRAD, KE=>KERAD, ISRAD, IERAD, &
-!			         JSRAD, JERAD, get_std_pressures
-!use rad_step_setup_mod,    only:                                     &
-!			                       get_std_pressures
 use rad_utilities_mod,     only: Environment, environment_type, &
                                  astronomy_type, &
-				 atmos_input_type, &
-				 sw_output_type, &
+                                 shortwave_control_type, Sw_control, &
+                                 atmos_input_type, &
+                                 surface_type, &
+                                 sw_output_type, &
                                  cld_space_properties_type, &
-				 radiative_gases_type, &
+                                 radiative_gases_type, &
+                                 cld_specification_type, &
                                  cldrad_properties_type
 use constants_mod,         only: GRAV, diffac, radcon, alogmin, wtmair
-
-!use std_pressures_mod,     only: get_std_pressures
-!use co2_mod,               only: rrco2
-!use cloudrad_package_mod,  only: get_ncldsw, get_clouds_for_lhsw
-use cloudrad_package_mod,  only: convert_to_cloud_space  
-use  utilities_mod,        only: open_file, file_exist,     &
+use        fms_mod,        only: open_namelist_file, file_exist,     &
                                  check_nml_error, error_mesg, &  
-                                 print_version_number, FATAL, NOTE, &
-				 WARNING, get_my_pe, close_file
+                                 FATAL, NOTE, &
+                                 WARNING, close_file, mpp_pe, mpp_root_pe, &
+                                 write_version_number, stdlog
 
 !--------------------------------------------------------------------
 
@@ -37,17 +32,18 @@ private
 !--------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-!   character(len=5), parameter  ::  version_number = 'v0.09'
-    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 1.4 2003/04/09 20:59:35 fms Exp $'
-    character(len=128)  :: tag     =  '$Name: inchon $'
+    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 10.0 2003/10/24 22:00:42 fms Exp $'
+    character(len=128)  :: tagname =  '$Name: jakarta $'
+    logical             :: module_is_initialized = .false.
 
 
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
  
-public  lhsw_driver_init, swrad
+public  lhsw_driver_init, lhsw_driver_end, swrad
 
+private convert_to_cloud_space
 
 
 !-------------------------------------------------------------------
@@ -55,8 +51,12 @@ public  lhsw_driver_init, swrad
 
 
 real     :: dummy = 0.0
+integer  :: nbands_to_use = 9
+logical  :: calculate_o2_absorption = .false.
 
 namelist /lhsw_driver_nml /         &
+                            nbands_to_use, &
+                            calculate_o2_absorption, &
                             dummy
 
 
@@ -148,28 +148,23 @@ real  :: rco2air
 
 
 
-	contains
+contains
 
 
-!subroutine lhsw_driver_init (kmin, kmax, plm)
-!subroutine lhsw_driver_init (            plm)
 subroutine lhsw_driver_init (          pref )
 
-!nteger, intent(in)    :: kmin, kmax
-!real, dimension(:), intent(in) :: plm
 real, dimension(:,:), intent(in) :: pref
 
       integer :: unit, ierr, io
       integer :: k, KSL, KEL, kmin, kmax
 
       real, dimension(size(pref,1) )  :: plm
-!      real, dimension(:), allocatable :: plm
 
 !---------------------------------------------------------------------
 !-----  read namelist  ------
 
       if (file_exist('input.nml')) then
-        unit =  open_file ('input.nml', action='read')
+        unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
         read (unit, nml=lhsw_driver_nml, iostat=io, end=10)
         ierr = check_nml_error (io, 'lhsw_driver_nml')
@@ -177,37 +172,34 @@ real, dimension(:,:), intent(in) :: pref
 10      call close_file (unit)
       endif
 
-      unit = open_file ('logfile.out', action='append')
-!     call print_version_number (unit, 'lhsw_driver', version_number)
-      if (get_my_pe() == 0) then
-	write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-	write (unit,nml=lhsw_driver_nml)
+      if ( mpp_pe() == mpp_root_pe() ) then
+        call write_version_number(version, tagname)
+        write (stdlog(),nml=lhsw_driver_nml)
       endif
-      call close_file (unit)
 
 !---------------------------------------------------------------------
-!     allocate ( plm(kmin:kmax+1) )
-!     call get_std_pressures(plm_out=plm)
-!     KSL = lbound(plm,1)
-!     KEL = ubound(plm,1) - 1
       KSL = 1
-!     KEL = size(plm, 1) - 1
       KEL = size(pref, 1) - 1
       kmin = ksl
       kmax = kel
  
-      if (Environment%using_fms_periphs) then
-	NB = 9
-	allocate (abcff (9) )
-	allocate (pwts  (9) )
-	abcff(:) = abcff_9(:)
-	pwts(:)  = pwts_9(:)
-      else if (Environment%using_sky_periphs) then
+!     if (Environment%using_fms_periphs) then
+      if (nbands_to_use == 9) then
+         NB = 9
+         allocate (abcff (9) )
+         allocate (pwts  (9) )
+        abcff(:) = abcff_9(:)
+         pwts(:)  = pwts_9(:)
+!     else if (Environment%using_sky_periphs) then
+      else if (nbands_to_use == 12) then           
         NB = 12
         allocate (abcff (12) )
         allocate (pwts  (12) )
         abcff(:) = abcff_12(:)
         pwts(:)  = pwts_12(:)
+      else
+        call error_mesg ('lhsw_driver_mod', &
+           ' nbands_to_use has improper value', FATAL)
       endif
 
 !-------------------------------------------------------------------
@@ -215,18 +207,13 @@ real, dimension(:,:), intent(in) :: pref
 !   for o2 calculation into an index (ixprko2)
 !------------------------------------------------------------------- 
 
-!     pd (:) = pref(:,1)
       plm (kmin) = 0.
      do k=kmin+1,kmax
-!        plm (k) = 0.5*(pd (k-1) + pd (k))
          plm (k) = 0.5*(pref (k-1,1) + pref (k,1))
      enddo
-!     plm (kmax+1) = pd (kmax+1)
       plm (kmax+1) = pref (kmax+1,1)
       ixprko2 = KSL 
       do k=KSL+1,KEL
-!       if ((plm(k) - prko2) .LT. 0.0) then
-!! plm*1.0E-02 == mb
         if ((plm(k)*1.0E-02 - prko2) .LT. 0.0) then
           ixprko2 = k + KSL - 1
         else
@@ -237,13 +224,22 @@ real, dimension(:,:), intent(in) :: pref
 
       rco2air = wtmco2/wtmair
 
-!      deallocate (plm)
-
+!------------------------------------------------------------------- 
+      module_is_initialized = .true.
 !------------------------------------------------------------------- 
 
 
 end subroutine lhsw_driver_init
 
+
+!######################################################################
+subroutine lhsw_driver_end
+
+!------------------------------------------------------------------- 
+      module_is_initialized = .true.
+!---------------------------------------------------------------------
+
+end subroutine lhsw_driver_end
 
 
 
@@ -252,12 +248,9 @@ end subroutine lhsw_driver_init
  
 subroutine swrad ( is, ie, js, je,   &
             Astro,                with_clouds,    Atmos_input,   &
-!            press, qo3, rrvco2, rh2o, ssolar,            &
-!            Rad_gases,                ssolar,            &
-	            Rad_gases,                                   &
-!   Cldrad_props, dfsw,  &
-!	  fsw, hsw, ufsw, gwt)
-	   Cldrad_props, Sw_output, Cldspace_rad, gwt)
+             Surface,  &
+            Rad_gases,                                   &
+   Cldrad_props, Cld_spec, Sw_output, Cldspace_rad, gwt)
        
 !-----------------------------------------------------------------------
 !
@@ -294,19 +287,12 @@ subroutine swrad ( is, ie, js, je,   &
 
 integer,                  intent(in)     :: is, ie, js, je
 logical,                  intent(in)     :: with_clouds
-!real,                     intent(in)     :: ssolar, rrvco2
-!real,                     intent(in)     :: ssolar
-!integer,                  intent(in)     :: nsolwg
-!real, dimension(:,:,:),   intent(in)     :: press, qo3, rh2o
-!real, dimension(:,:,:),   intent(in)     :: press, qo3, rh2o,  &
-!					    cosangsolar
-!real, dimension(:,:),     intent(in)     :: fracday, cirabgd, &
-!real, dimension(:,:),     intent(in)     ::                   &
-!				    cirrfgd, cvisrfgd
 type(cldrad_properties_type), intent(in) :: Cldrad_props
+type(cld_specification_type), intent(in) :: Cld_spec       
 real, dimension(:), optional, intent(in) :: gwt
 type(astronomy_type), intent(in) :: Astro
 type(atmos_input_type), intent(in) :: Atmos_input
+type(surface_type), intent(in) :: Surface
 type(radiative_gases_type), intent(in) :: Rad_gases  
 
 type(sw_output_type), intent(inout) :: Sw_output
@@ -324,7 +310,6 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !     ufsw    =  upward radiation at all pressure levels.
 !-----------------------------------------------------------------------
 
-!real, dimension(:,:,:), intent(out)   :: dfsw, fsw, hsw, ufsw
 
 !-----------------------------------------------------------------------
 !     intent local:
@@ -438,26 +423,26 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !-----------------------------------------------------------------------
       real, dimension(:,:),   allocatable :: refl, rray, seczen
       real, dimension(:,:,:), allocatable ::   &
-		  absdo3,        absuo3,          alfa,   &
-		  alfau,         alogtt,          cr,       &
-		  ct,            dfn,             dfncltop, &
-		  dfnlbc,        dfntop,          dp,       &
-		  dpcldi,        du,              duco2,    &
-		  duo3,          ff,              ffco2,    &
-		  ffo3,          pp,              pptop,    &
-		  pr2,           tdcltt,          tdclbt,   &
-		  tdcltop,       tdclbtm,         tdco2,    &
-		  ttd,           ttdb1,           ttu,      &
-		  ttub1,         tucltop,         tuco2,    &
-		  ud,            udco2,           udo3,     &
-		  ufn,           ufncltop,        ufnlbc,   &
-		  uu,            uuco2,           uuo3,     &
-		  absdo2,        uo2,             dfswg,    &
-		  fswg,          hswg,            ufswg
+  absdo3,        absuo3,          alfa,   &
+  alfau,         alogtt,          cr,       &
+  ct,            dfn,             dfncltop, &
+  dfnlbc,        dfntop,          dp,       &
+  dpcldi,        du,              duco2,    &
+  duo3,          ff,              ffco2,    &
+  ffo3,          pp,              pptop,    &
+  pr2,           tdcltt,          tdclbt,   &
+  tdcltop,       tdclbtm,         tdco2,    &
+  ttd,           ttdb1,           ttu,      &
+  ttub1,         tucltop,         tuco2,    &
+  ud,            udco2,           udo3,     &
+  ufn,           ufncltop,        ufnlbc,   &
+  uu,            uuco2,           uuo3,     &
+  absdo2,        uo2,             dfswg,    &
+  fswg,          hswg,            ufswg
      integer :: k,j,i,kc, kc1, nband, ko, ngp, kcldsw
      real    :: tempu, tempd
      real, dimension(:,:,:  ),  allocatable   :: cirabsw, cirrfsw, &
- 				                 cvisrfsw
+                  cvisrfsw
      real, dimension(:,:,:),    allocatable   :: camtsw
      integer, dimension(:,:),   allocatable   :: ncldsw            
      integer, dimension(:,:,:), allocatable   :: ktopsw, kbtmsw    
@@ -485,35 +470,31 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 
      cosangsolar(:,:, 1) = Astro%cosz(:,:)
      fracday(:,:) = Astro%fracday(:,:)
-     cvisrfgd(:,:) = Atmos_input%asfc(:,:)
-     cirrfgd(:,:) = Atmos_input%asfc(:,:)
+     cvisrfgd(:,:) = Surface%asfc(:,:)
+     cirrfgd(:,:) = Surface%asfc(:,:)
 
 ! convert press to cgs.
-!     if (Environment%running_gcm) then
       press(:,:,:) = 10.0*Atmos_input%press(:,:,:)
-!     else if (Environment%running_standalone) then
-!     press(:,:,:) = 10.0*(    Atmos_input%press(:,:,:))
-!     endif
       rh2o (:,:,:) = Atmos_input%rh2o (:,:,:)
       qo3(:,:,:) = Rad_gases%qo3(:,:,:)
       rrvco2 = Rad_gases%rrvco2
 
-      ssolar = Astro%solar_constant*Astro%rrsun
+      ssolar = Sw_control%solar_constant*Astro%rrsun
 
      israd = 1
-     ierad = size(press, 1)
+     ierad = size(Atmos_input%press, 1)
      jsrad = 1
-     jerad = size(press,2)
+     jerad = size(Atmos_input%press,2)
      ks    = 1
-     ke    = size(press,3) - 1
+     ke    = size(Atmos_input%press,3) - 1
+    
 
 !--------------------------------------------------------------------
 !     allocate space for and then retrieve the number of clouds in 
 !     in each model column.
 !------------------------------------------------------------------
       allocate( ncldsw (ISRAD:IERAD, JSRAD:JERAD) )
-!     call get_ncldsw (ncldsw )
-      ncldsw(:,:) = Cldrad_props%ncldsw(:,:)
+      ncldsw(:,:) = Cld_spec%ncldsw(:,:)
 
 !---------------------------------------------------------------------
 !     define the maximum number of clouds in any column of the chunk
@@ -539,28 +520,27 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
         allocate( cirrfsw(ISRAD:IERAD, JSRAD:JERAD, 1:kcldsw        ) )
         allocate( cvisrfsw(ISRAD:IERAD, JSRAD:JERAD,1:kcldsw        ) )
 
-	
-!        call get_clouds_for_lhsw (is, ie, js, je,   Cldrad_props, &
+
         call convert_to_cloud_space (is, ie, js, je,   Cldrad_props, &
-	                          cirabsw, cirrfsw, cvisrfsw,  &
-	 			  ktopsw, kbtmsw, camtsw, Cldspace_rad)
+           Cld_spec,      cirabsw, cirrfsw, cvisrfsw,  &
+   ktopsw, kbtmsw, camtsw, Cldspace_rad)
+
 !!! IS THIS NEEDED ???
-!     else if (with_clouds) then
+!!! 1-13-03  : YES, YES, YES !!!!
+      else if (with_clouds) then
 !!!!! needed for radiation_diag_mod
-!      allocate ( Cldspace_rad%camtswkc(ie-is+1, je-js+1, 1 ))
-!    allocate ( Cldspace_rad%cirabswkc(ie-is+1, je-js+1, 1, 1 ))
-!   allocate ( Cldspace_rad%cirrfswkc(ie-is+1, je-js+1, 1, 1 ))
-!      allocate ( Cldspace_rad%cvisrfswkc(ie-is+1, je-js+1, 1, 1 ))
-!     allocate ( Cldspace_rad%ktopswkc(ie-is+1, je-js+1,  1 ))
-!    allocate ( Cldspace_rad%kbtmswkc(ie-is+1, je-js+1,  1 ))
-! Cldspace_rad%camtswkc = -99.0       
-!   Cldspace_rad%cirabswkc = -99.0       
-!    Cldspace_rad%cirrfswkc = -99.0       
-!     Cldspace_rad%cvisrfswkc = -99.0        
-!      Cldspace_rad%ktopswkc = -99.0      
-!     Cldspace_rad%kbtmswkc = -99.0         
-!     else
-!       Cldrad_props%ncldsw(:,:) = 0
+       allocate ( Cldspace_rad%camtswkc(ie-is+1, je-js+1, 1 ))
+     allocate ( Cldspace_rad%cirabswkc(ie-is+1, je-js+1, 1 ))
+    allocate ( Cldspace_rad%cirrfswkc(ie-is+1, je-js+1, 1 ))
+       allocate ( Cldspace_rad%cvisrfswkc(ie-is+1, je-js+1, 1 ))
+      allocate ( Cldspace_rad%ktopswkc(ie-is+1, je-js+1,  1 ))
+     allocate ( Cldspace_rad%kbtmswkc(ie-is+1, je-js+1,  1 ))
+  Cldspace_rad%camtswkc = -99.0       
+    Cldspace_rad%cirabswkc = -99.0       
+     Cldspace_rad%cirrfswkc = -99.0       
+      Cldspace_rad%cvisrfswkc = -99.0        
+       Cldspace_rad%ktopswkc = -99.0      
+      Cldspace_rad%kbtmswkc = -99.0         
       endif
   
 !--------------------------------------------------------------------
@@ -634,7 +614,7 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !-----------------------------------------------------------------------
 
       seczen(:,:        ) = 3.5E+01/SQRT(1.224E+03*  &
-			    cosangsolar(:,:,ngp)*  &
+    cosangsolar(:,:,ngp)*  &
                             cosangsolar(:,:,ngp) + 1.0E+00)
       pp    (:,:,KS     ) = 0.0E+00
       pp    (:,:,KE+1   ) = press(:,:,KE+1)
@@ -661,11 +641,11 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
       ffo3 (:,:,KS:KE+1) = efmago3
       do j=JSRAD,JERAD
         do i=ISRAD,IERAD
-	  if (ncldsw(i,j) .NE. 0) then
+  if (ncldsw(i,j) .NE. 0) then
             kc1=ktopsw(i,j,ncldsw(i,j))
-	  else
-	    kc1 = KE+1
-	  endif
+  else
+    kc1 = KE+1
+  endif
           do kc=KS,kc1 
             ffo3 (i,j,kc) = seczen(i,j) 
             ffco2(i,j,kc) = seczen(i,j)
@@ -679,13 +659,10 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !     pressure weighting uses pr2.  du equals value for h2o; duco2 for
 !     co2; duo3 for o3.
 !-----------------------------------------------------------------------
-!     duo3 (:,:,KS:KE) = (cfo3/grav)*qo3(:,:,KS:KE)*dp(:,:,KS:KE)
       duo3 (:,:,KS:KE) = (cfo3/(1.0E+02*GRAV))*qo3(:,:,KS:KE)*dp(:,:,KS:KE)
-!     duco2(:,:,KS:KE) = (rrco2/grav*cfco2)*dp(:,:,KS:KE)*  &
       duco2(:,:,KS:KE) = (rrco2/(1.0E+02*GRAV)*cfco2)*dp(:,:,KS:KE)*  &
                           pr2(:,:,KS:KE)
       du   (:,:,KS:KE) = rh2o(:,:,KS:KE)*dp(:,:,KS:KE)* &
-!                         pr2(:,:,KS:KE)/grav
                           pr2(:,:,KS:KE)/(1.0E+02*GRAV)
 
 !-----------------------------------------------------------------------
@@ -783,16 +760,17 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !
 !     the absorption is constant below 35 km (level ixprKO2).
 !---------------------------------------------------------------------
-    if (Environment%using_sky_periphs) then
+!   if (Environment%using_sky_periphs) then
+    if (calculate_o2_absorption) then
       absdo2(:,:,KS) = 0.0E+00
       do ko=KS+1,ixprKO2
         do j=JSRAD,JERAD
           do i=ISRAD,IERAD
             if(uo2(i,j,ko) .LE. 6.739057E+02) then
-!	    absdo2(i,j,ko) = 1.02E-05*EXP(.3795E+00*ALOG(uo2(i,j,ko)))
+!    absdo2(i,j,ko) = 1.02E-05*EXP(.3795E+00*ALOG(uo2(i,j,ko)))
                absdo2(i,j,ko) = 1.02E-05*uo2(i,j,ko)**0.3795E+00
             else
-!	    absdo2(i,j,ko) = 4.51E-06*EXP(.5048E+00*ALOG(uo2(i,j,ko)))
+!    absdo2(i,j,ko) = 4.51E-06*EXP(.5048E+00*ALOG(uo2(i,j,ko)))
                absdo2(i,j,ko) = 4.51E-06*uo2(i,j,ko)**0.5048E+00
             endif
           end do
@@ -855,7 +833,7 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !     in a subsequent update.
 !-----------------------------------------------------------------------
         cr(:,:,2:kcldsw+1) = cvisrfsw(:,:,1:kcldsw    )*   &
- 		     camtsw(:,:,1:kcldsw)
+      camtsw(:,:,1:kcldsw)
         ct(:,:,2:kcldsw+1) = 1.0E+00 - cr(:,:,2:kcldsw+1)
       end if
 
@@ -883,7 +861,7 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !     transmission function ttdb1 and ttub1 for band two is equal to
 !     that of band one.
 !-----------------------------------------------------------------------
-	else if(nband .EQ. 2) then
+else if(nband .EQ. 2) then
           alogtt(:,:,KS:KE+1) = -abcff(1)*ud(:,:,KS:KE+1)
           ttdb1 (:,:,KS:KE+1) = EXP(MAX(alogmin,alogtt(:,:,KS:KE+1)))
           ttd   (:,:,KS:KE+1) = ttdb1(:,:,KS:KE+1)*tdco2(:,:,KS:KE+1)
@@ -896,7 +874,7 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !     bands.  include co2 transmission tdco2/tuco2, which is the
 !     same for all infrared bands.
 !-----------------------------------------------------------------------
-	else if(nband .GE. 3) then
+else if(nband .GE. 3) then
           alogtt(:,:,KS:KE+1) = -abcff(nband)*ud(:,:,KS:KE+1)
           ttd   (:,:,KS:KE+1) = EXP(MAX(alogmin,alogtt(:,:,KS:KE+1)))* &
                                 tdco2(:,:,KS:KE+1)
@@ -1073,7 +1051,7 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !-----------------------------------------------------------------------
             do j=JSRAD,JERAD
               do i=ISRAD,IERAD
-		do kc=1,ncldsw(i,j)
+do kc=1,ncldsw(i,j)
                   do k=kbtmsw(i,j,kc+1),ktopsw(i,j,kc  )
                     ufn(i,j,k) = ufnlbc(i,j,kc+1)*ttu(i,j,k) 
                     dfn(i,j,k) = dfnlbc(i,j,kc+1)*ttd(i,j,k)
@@ -1119,10 +1097,10 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
            if (with_clouds) then
           Sw_output%dfsw (:,:,KS:KE+1) = Sw_output%dfsw (:,:,KS:KE+1) + dfn(:,:,KS:KE+1)
           Sw_output%ufsw (:,:,KS:KE+1) = Sw_output%ufsw (:,:,KS:KE+1) + ufn(:,:,KS:KE+1)
-	  else
+  else
           Sw_output%dfswcf (:,:,KS:KE+1) = Sw_output%dfswcf (:,:,KS:KE+1) + dfn(:,:,KS:KE+1)
           Sw_output%ufswcf (:,:,KS:KE+1) = Sw_output%ufswcf (:,:,KS:KE+1) + ufn(:,:,KS:KE+1)
-	  endif
+  endif
         endif
       end do
 
@@ -1132,24 +1110,20 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
       if (present(gwt)) then
         fswg(:,:,KS:KE+1) = ufswg(:,:,KS:KE+1) - dfswg(:,:,KS:KE+1)
         hswg(:,:,KS:KE  ) = radcon*(fswg(:,:,KS+1:KE+1) -    &
-	  		    fswg(:,:,KS:KE))/dp(:,:,KS:KE)
-!       fsw  (:,:,:) = fsw  (:,:,:) + gwt(ngp)*fswg (:,:,:)
-!       dfsw (:,:,:) = dfsw (:,:,:) + gwt(ngp)*dfswg(:,:,:)
-!       ufsw (:,:,:) = ufsw (:,:,:) + gwt(ngp)*ufswg(:,:,:)
-!       hsw  (:,:,:) = hsw  (:,:,:) + gwt(ngp)*hswg (:,:,:)
+      fswg(:,:,KS:KE))/dp(:,:,KS:KE)
       else
-	if (with_clouds) then
+if (with_clouds) then
         Sw_output%fsw (:,:,KS:KE+1) = Sw_output%ufsw (:,:,KS:KE+1) - &
-	                  Sw_output%dfsw (:,:,KS:KE+1)
+                  Sw_output%dfsw (:,:,KS:KE+1)
         Sw_output%hsw (:,:,KS:KE  ) = radcon*   &
-	         (Sw_output%fsw (:,:,KS+1:KE+1) -    &
-	  		    Sw_output%fsw (:,:,KS:KE))/dp(:,:,KS:KE)
-	else
+         (Sw_output%fsw (:,:,KS+1:KE+1) -    &
+      Sw_output%fsw (:,:,KS:KE))/dp(:,:,KS:KE)
+else
         Sw_output%fswcf (:,:,KS:KE+1) = Sw_output%ufswcf (:,:,KS:KE+1) -   &
-	              Sw_output%dfswcf (:,:,KS:KE+1)
+              Sw_output%dfswcf (:,:,KS:KE+1)
         Sw_output%hswcf (:,:,KS:KE  ) = radcon*  &
-	 (Sw_output%fswcf (:,:,KS+1:KE+1) -    &
-	  		   Sw_output% fswcf (:,:,KS:KE))/dp(:,:,KS:KE)
+ (Sw_output%fswcf (:,:,KS+1:KE+1) -    &
+     Sw_output% fswcf (:,:,KS:KE))/dp(:,:,KS:KE)
       endif
 
       endif
@@ -1231,7 +1205,6 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
       Sw_output%dfsw(:,:,:) = 1.0E-03*Sw_output%dfsw(:,:,:)
       Sw_output%ufsw(:,:,:) = 1.0E-03*Sw_output%ufsw(:,:,:)
       else
-!     if (Rad_control%do_totcld_forcing) then
         Sw_output%fswcf(:,:,:) = 1.0E-03*Sw_output%fswcf(:,:,:)
        Sw_output%dfswcf(:,:,:) = 1.0E-03*Sw_output%dfswcf(:,:,:)
       Sw_output%ufswcf(:,:,:) = 1.0E-03*Sw_output%ufswcf(:,:,:)
@@ -1243,6 +1216,141 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 
 
 !##################################################################
+!####################################################################
+
+subroutine convert_to_cloud_space (is, ie, js, je,  Cldrad_props, &
+                               Cld_spec,  &
+                               cirabswkc, cirrfswkc,  &
+cvisrfswkc, ktopswkc, kbtmswkc,  &
+camtswkc, Cldspace_rad)
+      
+integer, intent(in) :: is, ie, js, je
+type(cldrad_properties_type), intent(in) :: Cldrad_props
+type(cld_specification_type), intent(in) :: Cld_spec       
+real, dimension(:,:,:),   intent(out) :: camtswkc
+real, dimension(:,:,:  ), intent(out) :: cirabswkc, cirrfswkc,  &
+ cvisrfswkc
+integer, dimension(:,:,:),intent(out) :: ktopswkc, kbtmswkc
+type(cld_space_properties_type), intent(inout) :: Cldspace_rad
+!-------------------------------------------------------------------
+
+      logical :: do_donner_ice
+      integer :: i,j,k, index_kbot, index_ktop, ngp
+      integer :: kcldsmx
+      integer :: ix, jx, kx
+
+       ix = size(Cld_spec%camtsw,1)
+       jx = size(Cld_spec%camtsw,2)
+       kx = size(Cld_spec%camtsw,3)
+
+!---------------------------------------------------------------------
+!     obtain arrays for shortwave cloud properties in "cloud space".
+!     "bottom up" counting is used in conformity with the lhsw
+!     radiative algorithm. (ie, index = 1 = lowest cloud (if any), etc.)
+!---------------------------------------------------------------------
+      
+      kcldsmx = MAXVAL(Cld_spec%ncldsw)
+      if (kcldsmx /= 0.0) then
+      camtswkc(:,:,:) = 0.0E+00
+      cirabswkc(:,:,:  ) = 0.0E+00
+      cirrfswkc(:,:,:  ) = 0.0E+00
+      cvisrfswkc(:,:,:) = 0.0E+00
+      ktopswkc(:,:,:) = 1        
+      kbtmswkc(:,:,:) = 1        
+
+      do j=1,jx         
+        do i=1,ix         
+ index_kbot = 0
+  index_ktop = 0
+!---------------------------------------------------------------------
+!     in the kx   'th layer, the presence of cloud (camtsw) implies a
+!     shortwave cloud bottom at level (kx   +1) but nothing about
+!     cloud tops.
+!---------------------------------------------------------------------
+          if (Cld_spec%camtsw(i,j,kx   ) .GT. 0.0E+00) then
+            index_kbot = index_kbot + 1
+    kbtmswkc(i,j,index_kbot) = kx   +1
+    camtswkc(i,j,index_kbot) = Cld_spec%camtsw(i,j,kx   )
+      cirabswkc(i,j,index_kbot    ) = Cldrad_props%cirabsw(i,j,kx )
+              cirrfswkc(i,j,index_kbot    ) = Cldrad_props%cirrfsw(i,j,kx )
+      cvisrfswkc(i,j,index_kbot    ) = Cldrad_props%cvisrfsw(i,j,kx )
+          endif
+!---------------------------------------------------------------------
+!   in other layers, cloud bottoms and tops are determined according
+!   to changes in shortwave cloud (and special case).
+!---------------------------------------------------------------------
+          do k=kx-1,1    ,-1
+!---------------------------------------------------------------------
+!     cloud bottoms.
+!--------------------------------------------------------------------
+    if (Cld_spec%camtsw(i,j,k) .NE. Cld_spec%camtsw(i,j,k+1) .AND.    &
+      Cld_spec%camtsw(i,j,k) .GT. 0.0E+00              .OR.  &
+!---------------------------------------------------------------------
+!     special case where shortwave cloud amounts for adjacent
+!     layers are equal, but a randomly overlapped cloud exists
+!     in at least one of these layers
+!---------------------------------------------------------------------
+                Cld_spec%camtsw(i,j,k) .EQ. Cld_spec%camtsw(i,j,k+1) .AND.   &
+               (Cld_spec%crndlw(i,j,k) .NE. 0.0E+00 .OR.      &
+                Cld_spec%crndlw(i,j,k+1) .NE. 0.0E+00)                ) then
+              index_kbot = index_kbot + 1
+      kbtmswkc(i,j,index_kbot) = k+1
+      camtswkc(i,j,index_kbot) = Cld_spec%camtsw(i,j,k)
+      cirabswkc(i,j,index_kbot    ) = Cldrad_props%cirabsw(i,j,k)
+      cirrfswkc(i,j,index_kbot    ) = Cldrad_props%cirrfsw(i,j,k)
+      cvisrfswkc(i,j,index_kbot    ) = Cldrad_props%cvisrfsw(i,j,k)
+            endif
+!---------------------------------------------------------------------
+!     cloud tops.
+!---------------------------------------------------------------------
+            if (Cld_spec%camtsw(i,j,k) .NE. Cld_spec%camtsw(i,j,k+1) .AND.      &
+                Cld_spec%camtsw(i,j,k+1) .GT. 0.0E+00            .OR.  &
+!---------------------------------------------------------------------
+!     special case where shortwave cloud amounts for adjacent
+!     layers are equal, but a randomly overlapped cloud exists
+!     in at least one of these layers
+!---------------------------------------------------------------------
+                Cld_spec%camtsw(i,j,k) .EQ. Cld_spec%camtsw(i,j,k+1) .AND.    &
+               (Cld_spec%crndlw(i,j,k) .NE. 0.0E+00 .OR.        &
+                Cld_spec%crndlw(i,j,k+1) .NE. 0.0E+00)                ) then
+      index_ktop = index_ktop + 1
+      ktopswkc(i,j,index_ktop) = k+1
+            endif
+          enddo
+        enddo
+      enddo
+
+
+!---------------------------------------------------------------------
+      allocate ( Cldspace_rad%camtswkc(ie-is+1, je-js+1,  &
+                                 size(camtswkc,3) ) )
+      allocate ( Cldspace_rad%cirabswkc(ie-is+1, je-js+1,  &
+                                 size(camtswkc,3)   ) )
+      allocate ( Cldspace_rad%cirrfswkc(ie-is+1, je-js+1,  &
+                                 size(camtswkc,3)   ) )
+      allocate ( Cldspace_rad%cvisrfswkc(ie-is+1, je-js+1,  &
+                                 size(camtswkc,3)   ) )
+      allocate ( Cldspace_rad%ktopswkc(ie-is+1, je-js+1,  &
+                                 size(camtswkc,3) ) )
+      allocate ( Cldspace_rad%kbtmswkc(ie-is+1, je-js+1,  &
+                                 size(camtswkc,3)+1 ) )
+      Cldspace_rad%camtswkc = camtswkc
+      Cldspace_rad%cirabswkc = cirabswkc
+      Cldspace_rad%cirrfswkc = cirrfswkc
+      Cldspace_rad%cvisrfswkc = cvisrfswkc
+      Cldspace_rad%ktopswkc = ktopswkc
+      Cldspace_rad%kbtmswkc = kbtmswkc
+      else
+      endif
+
+
+
+end subroutine convert_to_cloud_space
+
+
+
+!####################################################################
 
 
              end module lhsw_driver_mod
+

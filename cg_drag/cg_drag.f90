@@ -32,8 +32,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.f90,v 1.2 2003/04/09 20:53:32 fms Exp $'
-character(len=128)  :: tag     =  '$Name: inchon $'
+character(len=128)  :: version =  '$Id: cg_drag.f90,v 10.0 2003/10/24 22:00:22 fms Exp $'
+character(len=128)  :: tagname =  '$Name: jakarta $'
 
 
 
@@ -201,7 +201,7 @@ real             :: missing_value = -999.
 character(len=7) :: mod_name = 'cg_drag'
 
 
-logical          :: cg_drag_initialized=.false.
+logical          :: module_is_initialized=.false.
 
 !-------------------------------------------------------------------
 !-------------------------------------------------------------------
@@ -268,7 +268,7 @@ type(time_type),       intent(in)      :: Time
 !---------------------------------------------------------------------
 !    if routine has already been executed, return.
 !---------------------------------------------------------------------
-      if (cg_drag_initialized) return
+      if (module_is_initialized) return
 
 !---------------------------------------------------------------------
 !    verify that all modules used by this module have been initialized.
@@ -294,7 +294,7 @@ type(time_type),       intent(in)      :: Time
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
-      call write_version_number (version, tag)
+      call write_version_number (version, tagname)
       if (mpp_pe() == mpp_root_pe()) write (stdlog(), nml=cg_drag_nml)
 
 !-------------------------------------------------------------------
@@ -440,7 +440,7 @@ type(time_type),       intent(in)      :: Time
 !---------------------------------------------------------------------
 !    mark the module as initialized.
 !---------------------------------------------------------------------
-      cg_drag_initialized = .true.
+      module_is_initialized = .true.
 
 !---------------------------------------------------------------------
 
@@ -694,7 +694,7 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
                                               '  source_level  =', iz0
                   write (diag_units(nn),'(a)')     &
                          '   k         u           z        density&
-		         &         bf      gwforcing'
+                         &         bf      gwforcing'
                   do k=0,iz0 
                     write (diag_units(nn), '(i5, 2x, 5e12.5)')   &
                                        k,                         &
@@ -818,7 +818,7 @@ subroutine cg_drag_end
 !---------------------------------------------------------------------
 !    mark the module as uninitialized.
 !---------------------------------------------------------------------
-      cg_drag_initialized = .false.
+      module_is_initialized = .false.
 
 !---------------------------------------------------------------------
 

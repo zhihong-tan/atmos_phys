@@ -1,30 +1,49 @@
                          module radiation_diag_mod
 
+! <CONTACT EMAIL="Fei.Liu@noaa.gov">
+!  fil
+! </CONTACT>
+! <REVIEWER EMAIL="Dan.Schwarzkopf@noaa.gov">
+!  ds
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!  Module that provides a diagnostic output file of radiation-
+!    related variables in user-specified atmospheric columns for the
+!    sea_esf_rad radiation package.
+! </OVERVIEW>
+! <DESCRIPTION>
+!  Module that provides a diagnostic output file of radiation-
+!    related variables in user-specified atmospheric columns for the
+!    sea_esf_rad radiation package.
+! </DESCRIPTION>
 
-use rad_utilities_mod,  only: longwave_control_type, Lw_control, &
-                              shortwave_control_type, Sw_control,&
-                              rad_utilities_init, &
-                              radiative_gases_type, &
-                              astronomy_type, &
-                              atmos_input_type, &
-                              cldrad_properties_type, &
-                              cld_space_properties_type, &
-                              cld_diagnostics_type, &
-                              lw_diagnostics_type, &
-                              lw_table_type, &
-                              sw_output_type, lw_output_type, &
-                              radiation_control_type, Rad_control
-use  utilities_mod,     only: open_file, file_exist,    &
+!  shared modules:
+
+use fms_mod,            only: open_namelist_file, fms_init, &
+                              mpp_pe, mpp_root_pe, stdlog, &
+                              file_exist, write_version_number, &
                               check_nml_error, error_mesg, &
-                              utilities_init, &
-                              print_version_number, FATAL, NOTE, &
-                              WARNING, get_my_pe, close_file
-use constants_mod,      only: radcon_mks, radian
+                              FATAL, NOTE, WARNING, close_file, &
+                              open_file     
+use constants_mod,      only: constants_init, radcon_mks, radian
 
+!  shared radiation package modules:
+
+use rad_utilities_mod,  only: Lw_control,  Sw_control,&
+                              rad_utilities_init, radiative_gases_type,&
+                              astronomy_type, atmos_input_type, &
+                              surface_type, cldrad_properties_type, &
+                              cld_specification_type,  &
+                              cld_space_properties_type, &
+                              lw_diagnostics_type, lw_table_type, &
+                              sw_output_type, lw_output_type, &
+                              Rad_control
+
+!--------------------------------------------------------------------
 
 implicit none
 private
-
 
 !---------------------------------------------------------------------
 !    radiation_diag_mod provides a diagnostic output file of radiation-
@@ -36,18 +55,21 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: radiation_diag.F90,v 1.4 2003/04/09 21:01:09 fms Exp $'
-character(len=128)  :: tag     =  '$Name: inchon $'
+character(len=128)  :: version =  '$Id: radiation_diag.F90,v 10.0 2003/10/24 22:00:45 fms Exp $'
+character(len=128)  :: tagname =  '$Name: jakarta $'
 
 
 !---------------------------------------------------------------------
 !------    interfaces   ------
 
-public   radiation_diag_init, radiation_diag_driver,   &
+public    &
+         radiation_diag_init,  &
+         radiation_diag_driver,   &
          radiation_diag_end
 
 
-private  radiag
+private   &
+         radiag
 
 
 !---------------------------------------------------------------------
@@ -69,7 +91,6 @@ namelist / radiation_diag_nml /  &
 !---  public data ---
 
 
-       
 !----------------------------------------------------------------------
 !---  private data ---
 
@@ -119,7 +140,7 @@ integer     :: radiag_unit       ! i/o unit to which output file is
                                  ! written
 integer     :: num_pts           !  total number of columns in which
                                  !  diagnostics are desired
-logical     :: radiation_diag_initialized = .false.        
+logical     :: module_is_initialized = .false.        
                                  ! module initialized ?
 
 
@@ -143,7 +164,28 @@ logical     :: radiation_diag_initialized = .false.
 
 
 !#####################################################################
-
+! <SUBROUTINE NAME="radiation_diag_init">
+!  <OVERVIEW> 
+!   Constructor of the radiation_diag_mod module
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Constructor of the radiation_diag_mod module
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call radiation_diag_init (latb, lonb, Lw_tables)
+!  </TEMPLATE>
+!  <IN NAME="latb" TYPE="real">
+!   array of model latitudes at cell boundaries [radians]
+!  </IN>
+!  <IN NAME="lonb" TYPE="real">
+!   array of model longitudes at cell boundaries [radians]
+!  </IN>
+!  <IN NAME="Lw_tables" TYPE="lw_table_type">
+!    lw_tables_type variable containing various longwave
+!    table specifiers needed by radiation_diag_mod.
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine radiation_diag_init (latb, lonb, Lw_tables)
 
 !---------------------------------------------------------------------
@@ -173,39 +215,43 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
       real        :: dellat, dellon
 
 !--------------------------------------------------------------------
+!  local variables
+!
+!     unit
+!
+!-------------------------------------------------------------------
+
+!--------------------------------------------------------------------
 !    if routine has already been executed, return.
 !--------------------------------------------------------------------
-      if (radiation_diag_initialized)  return
+      if (module_is_initialized)  return
  
 !-------------------------------------------------------------------
 !    verify that modules used by this module that are not called later
 !    have already been initialized.
 !-------------------------------------------------------------------
-      call utilities_init
+      call fms_init
+      call constants_init
       call rad_utilities_init
 
-!----------------------------------------------------------------
-!    read namelist.
-!---------------------------------------------------------------------
-      if (file_exist('input.nml')) then
-        unit = open_file ('input.nml', action='read')
+!-----------------------------------------------------------------------
+!    read namelist.              
+!-----------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
-        read (unit, nml=radiation_diag_nml, iostat=io, end=10)
-        ierr = check_nml_error (io, 'radiation_diag_nml')
-        enddo
-10      call close_file (unit)
-      endif
-
+        read  (unit, nml=radiation_diag_nml, iostat=io, end=10) 
+        ierr = check_nml_error(io,'radiation_diag_nml')
+        end do                   
+10      call close_file (unit)   
+      endif                      
+                                  
 !---------------------------------------------------------------------
-!    write namelist to logfile.
+!    write version number and namelist to logfile.
 !---------------------------------------------------------------------
-      unit = open_file ('logfile.out', action='append')
-      if (get_my_pe() == 0) then
-!     if (get_my_pe() == get_root_pe() ) then
-        write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-        write (unit,nml=radiation_diag_nml)
-      endif
-      call close_file (unit)
+      call write_version_number (version, tagname)
+      if (mpp_pe() == mpp_root_pe() ) &
+                         write (stdlog(), nml=radiation_diag_nml)
 
 !---------------------------------------------------------------------
 !    allocate and initialize a flag array which indicates the latitudes
@@ -346,7 +392,7 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !---------------------------------------------------------------------
 !    set flag indicating successful initialization of module.
 !---------------------------------------------------------------------
-      radiation_diag_initialized = .true.
+      module_is_initialized = .true.
 
 
 
@@ -357,11 +403,78 @@ end subroutine radiation_diag_init
 
 
 !####################################################################
-
-subroutine radiation_diag_driver (is, ie, js, je, Atmos_input, Astro, &
-                                  Rad_gases, Cldrad_props,   &
-                                  Cld_diagnostics, Sw_output,   &
-                                  Lw_output, Lw_diagnostics,   &
+! <SUBROUTINE NAME="radiation_diag_driver">
+!  <OVERVIEW>
+!   Subroutine to  determine if a diagnostics column is present
+!    in the current physics window, and, if so, calls radiag to 
+!    obtain the desired variables in that column and output them to
+!    a data file.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Subroutine to  determine if a diagnostics column is present
+!    in the current physics window, and, if so, calls radiag to 
+!    obtain the desired variables in that column and output them to
+!    a data file.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call radiation_diag_driver (is, ie, js, je, Atmos_input, Surface, Astro, &
+!                                  Rad_gases, Cldrad_props,   &
+!                                  Cld_spec, Sw_output,   &
+!                                  Lw_output, Lw_diagnostics,   &
+!                                  Cldspace_rad)
+!  </TEMPLATE>
+!  <IN NAME="is, ie, js, je" TYPE="integer">
+!   starting/ending subdomain i,j indices of data in 
+!                   the physics_window being integrated
+!  </IN>
+!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
+!   atmos_input_type variable containing the atmospheric
+!                   input fields needed by the radiation package
+!  </IN>
+!  <IN NAME="Surface" TYPE="Surface">
+!   Surface boundary condition to radiation package
+!  </IN>
+!  <IN NAME="Astro" TYPE="astronomy_type">
+!   astronomy_type variable containing the astronomical
+!     input fields needed by the radiation package
+!  </IN>
+!  <IN NAME="Rad_gases" TYPE="radiative_gases_type">
+!   radiative_gases_type variable containing the radi-
+!                   ative gas input fields needed by the radiation 
+!                   package
+!  </IN>
+!  <IN NAME="Cldrad_props" TYPE="cldrad_prperties_type">
+!   cldrad_prperties_type variable containing the cloud radiative
+!   property input fields needed by the radiation package
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+!   cld_specification_type variable containing 
+!                   cloud information relevant to the radiation package
+!  </IN>
+!  <IN NAME="Sw_output" TYPE="sw_output_type">
+!   sw_output_type variable containing shortwave 
+!                   radiation output data 
+!  </IN>
+!  <IN NAME="Lw_output" TYPE="lw_output_type">
+!   lw_output_type variable containing longwave 
+!                   radiation output data
+!  </IN>
+!  <IN NAME="Lw_diagnostics" TYPE="lw_diagnostics_type">
+!   lw_diagnostics_type variable containing diagnostic
+!                   longwave output used by the radiation diagnostics
+!                   module
+!  </IN>
+!  <IN NAME="Cldspace_rad" TYPE="cld_space_properties_type">
+!   cld_space_properties_type variable containing infor-
+!                   mation on cloud properties seen by the radiation 
+!                   package in cloud-space coordinates
+!  </IN>
+! </SUBROUTINE>
+!
+subroutine radiation_diag_driver (is, ie, js, je, Atmos_input,  &
+                                  Surface, Astro, Rad_gases,   &
+                                  Cldrad_props, Cld_spec,  &
+                                  Sw_output, Lw_output, Lw_diagnostics,&
                                   Cldspace_rad)
 
 !---------------------------------------------------------------------
@@ -373,10 +486,11 @@ subroutine radiation_diag_driver (is, ie, js, je, Atmos_input, Astro, &
 
 integer,                         intent(in) :: is, ie, js, je
 type(atmos_input_type),          intent(in) :: Atmos_input
+type(surface_type),              intent(in) :: Surface
 type(astronomy_type),            intent(in) :: Astro
 type(radiative_gases_type),      intent(in) :: Rad_gases
 type(cldrad_properties_type),    intent(in) :: Cldrad_props
-type(cld_diagnostics_type),      intent(in) :: Cld_diagnostics
+type(cld_specification_type),    intent(in) :: Cld_spec       
 type(sw_output_type),            intent(in) :: Sw_output
 type(lw_output_type),            intent(in) :: Lw_output
 type(lw_diagnostics_type),       intent(in) :: Lw_diagnostics
@@ -389,6 +503,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !                   the physics_window being integrated
 !      Atmos_input  atmos_input_type variable containing the atmospheric
 !                   input fields needed by the radiation package
+!      Surface      surface_type variable containing surface variables
+!                   needed by the radiation package
 !      Astro        astronomy_type variable containing the astronomical
 !                   input fields needed by the radiation package
 !      Rad_gases    radiative_gases_type variable containing the radi-
@@ -397,9 +513,9 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !      Cldrad_props cldrad_properties_type variable containing the 
 !                   cloud radiative property input fields needed by the 
 !                   radiation package
-!      Cld_diagnostics 
-!                   cld_diagnostics_type variable containing diagnostic 
-!                   cloud information relevant to the radiation package
+!      Cld_spec     cld_specification_type variable containing the 
+!                   cloud specification input fields needed by the 
+!                   radiation package
 !      Sw_output    sw_output_type variable containing shortwave 
 !                   radiation output data 
 !      Lw_output    lw_output_type variable containing longwave 
@@ -417,8 +533,15 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !---------------------------------------------------------------------
 !  local variables
 
-      integer    :: j
+      integer    :: j   ! do-loop index
 
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('radiation_diag_mod',   &
+              'module has not been initialized', FATAL )
+      endif
 
 !---------------------------------------------------------------------
 !    if this physics window includes a point at which diagnostics are 
@@ -427,9 +550,9 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !---------------------------------------------------------------------
       do j=js,je
         if (do_raddg(j)) then
-          call radiag (is, ie, js, je, j, Atmos_input, Astro, &
-                       Rad_gases, Cldrad_props, Sw_output, Lw_output, &
-                       Lw_diagnostics, Cld_diagnostics, Cldspace_rad)
+          call radiag (is, ie, js, je, j, Atmos_input, Surface, Astro, &
+                       Rad_gases, Cldrad_props, Cld_spec, Sw_output, &
+                       Lw_output, Lw_diagnostics, Cldspace_rad)
         endif
       end do
 
@@ -441,12 +564,24 @@ end subroutine radiation_diag_driver
 
 
 !###################################################################
-
+! <SUBROUTINE NAME="radiation_diag_end">
+!  <OVERVIEW>
+!   radiation_diag_end is the destructor for radiation_diag_mod.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   radiation_diag_end is the destructor for radiation_diag_mod.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call radiation_diag_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine radiation_diag_end
 
 !--------------------------------------------------------------------
 !    radiation_diag_end is the destructor for radiation_diag_mod.
 !--------------------------------------------------------------------
+      deallocate ( do_raddg )
 
       if (num_pts > 0 ) then
 !--------------------------------------------------------------------
@@ -457,13 +592,14 @@ subroutine radiation_diag_end
 !--------------------------------------------------------------------
 !    deallocate module arrays.
 !--------------------------------------------------------------------
-        deallocate ( do_raddg, deglon1, deglat1, jradprt, iradprt,  &
+        deallocate ( deglon1, deglat1, jradprt, iradprt,  &
                      bdlocm, bdhicm, iband, bandlo, bandhi )   
       endif
 
 !--------------------------------------------------------------------
-      radiation_diag_initialized = .false.    
+      module_is_initialized = .false.    
 
+!---------------------------------------------------------------------
 
 
 end subroutine radiation_diag_end
@@ -482,10 +618,75 @@ end subroutine radiation_diag_end
 
 
 !#####################################################################
-
-subroutine radiag (is, ie, js, je, jrow, Atmos_input, Astro, &
-                   Rad_gases, Cldrad_props, Sw_output, Lw_output,  &
-                   Lw_diagnostics, Cld_diagnostics, Cldspace_rad)
+! <SUBROUTINE NAME="radiag">
+!  <OVERVIEW>
+!   radiag calculates and outputs radiation diagnostics in user-
+!    specified columns.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   radiag calculates and outputs radiation diagnostics in user-
+!    specified columns.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call radiag (is, ie, js, je, jrow, Atmos_input, Surface, Astro, &
+!                   Rad_gases, Cldrad_props, Cld_spec, Sw_output, Lw_output,  &
+!                   Lw_diagnostics, Cldspace_rad)
+!  </TEMPLATE>
+!  <IN NAME="is, ie, js, je" TYPE="integer">
+!   starting/ending subdomain i,j indices of data in 
+!                   the physics_window being integrated
+!  </IN>
+!  <IN NAME="jrow" TYPE="integer">
+!   the current physics-window j index, which contains 
+!                   a radiation diagnostics column
+!  </IN>
+!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
+!   atmos_input_type variable containing the atmospheric
+!                   input fields needed by the radiation package
+!  </IN>
+!  <IN NAME="Surface" TYPE="Surface">
+!   Surface boundary condition to radiation package
+!  </IN>
+!  <IN NAME="Astro" TYPE="astronomy_type">
+!   astronomy_type variable containing the astronomical
+!     input fields needed by the radiation package
+!  </IN>
+!  <IN NAME="Rad_gases" TYPE="radiative_gases_type">
+!   radiative_gases_type variable containing the radi-
+!                   ative gas input fields needed by the radiation 
+!                   package
+!  </IN>
+!  <IN NAME="Cldrad_props" TYPE="cldrad_prperties_type">
+!   cldrad_prperties_type variable containing the cloud radiative
+!   property input fields needed by the radiation package
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+!   cld_specification_type variable containing 
+!                   cloud information relevant to the radiation package
+!  </IN>
+!  <IN NAME="Sw_output" TYPE="sw_output_type">
+!   sw_output_type variable containing shortwave 
+!                   radiation output data 
+!  </IN>
+!  <IN NAME="Lw_output" TYPE="lw_output_type">
+!   lw_output_type variable containing longwave 
+!                   radiation output data
+!  </IN>
+!  <IN NAME="Lw_diagnostics" TYPE="lw_diagnostics_type">
+!   lw_diagnostics_type variable containing diagnostic
+!                   longwave output used by the radiation diagnostics
+!                   module
+!  </IN>
+!  <IN NAME="Cldspace_rad" TYPE="cld_space_properties_type">
+!   cld_space_properties_type variable containing infor-
+!                   mation on cloud properties seen by the radiation 
+!                   package in cloud-space coordinates
+!  </IN>
+! </SUBROUTINE>
+!
+subroutine radiag (is, ie, js, je, jrow, Atmos_input, Surface, Astro, &
+                   Rad_gases, Cldrad_props, Cld_spec, Sw_output,  &
+                   Lw_output, Lw_diagnostics, Cldspace_rad)
 
 !--------------------------------------------------------------------
 !    radiag calculates and outputs radiation diagnostics in user-
@@ -494,13 +695,14 @@ subroutine radiag (is, ie, js, je, jrow, Atmos_input, Astro, &
 
 integer,                         intent(in) :: is, ie, js, je, jrow
 type(atmos_input_type),          intent(in) :: Atmos_input
+type(surface_type),              intent(in) :: Surface
 type(astronomy_type),            intent(in) :: Astro
 type(radiative_gases_type),      intent(in) :: Rad_gases
 type(cldrad_properties_type),    intent(in) :: Cldrad_props
+type(cld_specification_type),    intent(in) :: Cld_spec       
 type(sw_output_type),            intent(in) :: Sw_output
 type(lw_output_type),            intent(in) :: Lw_output
 type(lw_diagnostics_type),       intent(in) :: Lw_diagnostics
-type(cld_diagnostics_type),      intent(in) :: Cld_diagnostics
 type(cld_space_properties_type), intent(in) :: Cldspace_rad
 
 !--------------------------------------------------------------------
@@ -512,6 +714,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !                   a radiation diagnostics column
 !      Atmos_input  atmos_input_type variable containing the atmospheric
 !                   input fields needed by the radiation package
+!      Surface      surface_type variable containing surface variables
+!                   needed by the radiation package
 !      Astro        astronomy_type variable containing the astronomical
 !                   input fields needed by the radiation package
 !      Rad_gases    radiative_gases_type variable containing the radi-
@@ -519,6 +723,9 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !                   package
 !      Cldrad_props cldrad_properties_type variable containing the 
 !                   cloud radiative property input fields needed by the 
+!                   radiation package
+!      Cld_spec     cld_specification_type variable containing the 
+!                   cloud specification input fields needed by the 
 !                   radiation package
 !      Sw_output    sw_output_type variable containing shortwave 
 !                   radiation output data 
@@ -528,9 +735,6 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !                   lw_diagnostics_type variable containing diagnostic
 !                   longwave output used by the radiation diagnostics
 !                   module
-!      Cld_diagnostics 
-!                   cld_diagnostics_type variable containing diagnostic 
-!                   cloud information relevant to the radiation package
 !      Cldspace_rad cld_space_properties_type variable containing infor-
 !                   mation on cloud properties seen by the radiation 
 !                   package in cloud-space coordinates
@@ -781,8 +985,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !    in the column. if there are, define the number of lw cloud bands.
 !----------------------------------------------------------------------
             write (radiag_unit,9009)
-            nmxolw     = Cldrad_props%nmxolw(iloc, jloc)
-            nrndlw     = Cldrad_props%nrndlw(iloc, jloc)
+            nmxolw     = Cld_spec%nmxolw(iloc, jloc)
+            nrndlw     = Cld_spec%nrndlw(iloc, jloc)
             if (nmxolw > 0 .OR. nrndlw > 0) then
               write (radiag_unit,9010) nmxolw, nrndlw    
               nlwcldb = size (Cldrad_props%emmxolw,4)
@@ -796,8 +1000,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
               do n=1,nlwcldb
                 write (radiag_unit,9041) n
                 do k = ks,ke
-                  cmxolw(k) = Cldrad_props%cmxolw(iloc, jloc, k)
-                  crndlw(k) = Cldrad_props%crndlw(iloc, jloc, k)
+                  cmxolw(k) = Cld_spec%cmxolw(iloc, jloc, k)
+                  crndlw(k) = Cld_spec%crndlw(iloc, jloc, k)
                   if (cmxolw(k) > 0.0 .or. crndlw(k) > 0.0)  then
                     write (radiag_unit,9030)   k,    &
                       cmxolw(k), Cldrad_props%emmxolw(iloc,jloc,k,n), &
@@ -816,7 +1020,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !----------------------------------------------------------------------
 !    define the number of shortwave clouds.
 !----------------------------------------------------------------------
-            ncldsw = Cldrad_props%ncldsw(iloc, jloc)
+            ncldsw = Cld_spec%ncldsw(iloc, jloc)
             write (radiag_unit, 9018)
             write (radiag_unit, 9019) ncldsw
 
@@ -860,8 +1064,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !---------------------------------------------------------------------
 !    for each shortwave cloud band, define an exinction factor,
 !    single-scattering albedo and asymmetry factor and write them
-!    out along with the cloud amount. use the contents of Cldrad_props
-!    and Atmos_input for these calculations:
+!    out along with the cloud amount. use the contents of Cldrad_props,
+!    Cld_spec and Atmos_input for these calculations:
 !    %cldext      cloud extinction coefficient [ km -1 ]  
 !    %cldsct      cloud scattering coefficient [ dimensionless ]
 !    %cldsasymm   cloud asymmetry factor  [ dimensionless ]
@@ -870,7 +1074,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                 do n=1,size(Cldrad_props%cldext,4)
                   write (radiag_unit,9040) n
                   do k=ks,ke
-                    if (Cldrad_props%camtsw(iloc,jloc,k) > 0.0) then
+                    if (Cld_spec%camtsw(iloc,jloc,k) > 0.0) then
                       cldext = Cldrad_props%cldext(iloc,jloc,k,n)*   &
                                Atmos_input%clouddeltaz(iloc,jloc,k)* &
                                1.0E-03
@@ -881,7 +1085,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                         cldssalb = 0.0
                       endif
                       write (radiag_unit,9050) k,     &
-                             Cldrad_props%camtsw (iloc,jloc,k),   &
+                             Cld_spec%camtsw (iloc,jloc,k),   &
                              cldext, cldssalb,                      &
                              Cldrad_props%cldasymm(iloc,jloc,k,n)
                     endif
@@ -906,11 +1110,11 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !--------------------------------------------------------------------
 !    if microphysics has been activated, write microphysical parameters
 !    at those levels where cloud is present. use variables found in 
-!    Cld_diagnostics.
-!    %lwpath     liquid water path  [ g / m**2 ]
-!    %iwpath     ice water path     [ g / m**2 ]
-!    %size_drop  diameter of drops  [ microns ]
-!    %size_ice   diameter of ice    [ microns ]
+!    Cld_spec.
+!    %lwp        liquid water path                   [ kg / m**2 ]
+!    %iwp        ice water path                      [ kg / m**2 ]
+!    %reff_liq_micro effective cloud drop radius         [ microns ]
+!    %reff_ice_micro effective radius of ice crystals    [ microns ]
 !----------------------------------------------------------------------
             if (ncldsw /= 0) then
               if (Lw_control%do_lwcldemiss .or.    &
@@ -919,10 +1123,10 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                 do k=ks,ke     
                   if (cmxolw(k) > 0.0 .or. crndlw(k) > 0.0) then
                     write (radiag_unit, 9520)   k,                &
-                     Cld_diagnostics%lwpath   (iloc,jloc,k),   &
-                     Cld_diagnostics%iwpath   (iloc,jloc,k),    &
-                     Cld_diagnostics%size_drop(iloc,jloc,k),  &
-                     Cld_diagnostics%size_ice (iloc,jloc,k)
+                     1.0e03*Cld_spec%lwp      (iloc,jloc,k),   &
+                     1.0e03*Cld_spec%iwp      (iloc,jloc,k),    &
+                     2.0*Cld_spec%reff_liq_micro(iloc,jloc,k),  &
+                     2.0*Cld_spec%reff_ice_micro(iloc,jloc,k)
                   endif
                 end do
               endif
@@ -930,11 +1134,11 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 
 !--------------------------------------------------------------------
 !    write out the visible and infrared reflectivities at the ground.
-!    currently these are both given the same value (Atmos_input%asfc), 
+!    currently these are both given the same value (Surface%asfc), 
 !    but could be different in the future.
 !--------------------------------------------------------------------
-            cvisrfgd = Atmos_input%asfc(iloc,jloc)
-            cirrfgd  = Atmos_input%asfc(iloc,jloc)
+            cvisrfgd = Surface%asfc(iloc,jloc)
+            cirrfgd  = Surface%asfc(iloc,jloc)
             write (radiag_unit,9059)
             write (radiag_unit,9060) cvisrfgd, cirrfgd 
 
@@ -956,9 +1160,9 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !    assumption used to specify the solar zenith angle.
 !---------------------------------------------------------------------
             write (radiag_unit, 9079)
-            if (Astro%do_diurnal) then
+            if (Sw_control%do_diurnal) then
               write (radiag_unit,99020) 
-            else if (Astro%do_annual) then
+            else if (Sw_control%do_annual) then
               write (radiag_unit,99025)
             else
               write (radiag_unit,99030)
@@ -976,9 +1180,10 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !     %rrsun           earth-sun distance relative to mean distance 
 !                      [ dimensionless ]
 !----------------------------------------------------------------------
-            write (radiag_unit,9080) Astro%solar_constant*Astro%rrsun, &
-                                     Astro%cosz(iloc,jloc), &
-                                     Astro%fracday(iloc,jloc)
+            write (radiag_unit,9080)    &
+                               Sw_control%solar_constant*Astro%rrsun, &
+                               Astro%cosz(iloc,jloc), &
+                               Astro%fracday(iloc,jloc)
         
 !----------------------------------------------------------------------
 !    write out atmospheric input data and longwave fluxes and heating
@@ -1610,7 +1815,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                ' NET FLUX DIFFERENCE,0-2200 CM-1 =',F14.6,' W/M**2')
 9271   format ( /,  &
                ' FLUX AT TOP, BAND ',I2,' 1200-1400 CM-1 RANGE =',  &
-	       F14.6, ' W/M**2')
+                F14.6, ' W/M**2')
 9272   format ( /,   &
                ' FLUX AT TOP, 1200-1400 CM-1 BAND  =',F14.6, &
                  ' W/M**2')
@@ -1636,10 +1841,10 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                ' 990-1070  ',' 1070-1200 ',' 1200-1250 ',' 1250-1300 ',&
                ' 1300-1350 ',' 1350-1400 ',' 1200-1400 ',  &
                '  total    ')
-9330   format (i5,-3p7f11.5)
-9331   format (i5,-3p8f11.5)
-9332   format (i5,-3p10f11.5)
-9333   format (i5,-3p12f11.5)
+9330   format (i5,-3p,7f11.5)
+9331   format (i5,-3p,8f11.5)
+9332   format (i5,-3p,10f11.5)
+9333   format (i5,-3p,12f11.5)
 9400   format (/,'***** CLEAR-SKY LW HEATING RATES AND FLUXES ******',/)
 9410   format (/,'**** CLEAR-SKY SW HEATING RATES AND FLUXES******',/)
 9420   format (/,'*** COMBINED CLEAR-SKY HEATING RATES AND FLUXES **',/)

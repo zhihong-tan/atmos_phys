@@ -6,20 +6,20 @@
       USE  RDPARM_MOD, ONLY: LMAX,LP1,LLP1,LP2,LLP2,NB
       USE  HCONST_MOD, ONLY: DIFFCTR,GINV,O3DIFCTR,RADCON
 
-      Use  Utilities_Mod, ONLY: Error_Mesg, FATAL
+      Use       Fms_Mod, ONLY: Error_Mesg, FATAL, &
+                               write_version_number, mpp_pe, mpp_root_pe
 
-!CC   PRIVATE   LMAX,LP1,LLP1,NB
-      PRIVATE   LMAX,LP1,LLP1,LP2,LLP2,NB
-      PRIVATE   DIFFCTR,GINV,O3DIFCTR,RADCON
-      Private   Error_Mesg
-
-      INTEGER, PRIVATE :: IMAX
+!implicit none
+private
 
 !------- interfaces -------
-      PUBLIC  SWRAD
-      PRIVATE SWRAD_ORIG
+      PUBLIC  SWRAD, SHORTWAVE_INIT, SHORTWAVE_END
 
+      character(len=128) :: version = '$Id: shortwave.F90,v 10.0 2003/10/24 22:00:32 fms Exp $'
+      character(len=128) :: tagname = '$Name: jakarta $'
+      logical            :: module_is_initialized = .false.
 
+      integer :: IMAX
       CONTAINS
 
 !#######################################################################
@@ -1200,6 +1200,31 @@
 !-----------------------------------------------------------------------
 
       END SUBROUTINE SWRAD_ORIG
+
+!#######################################################################
+      SUBROUTINE SHORTWAVE_INIT
+
+!------- write version number and namelist ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
+
+      module_is_initialized = .true.
+
+!---------------------------------------------------------------------
+
+      END SUBROUTINE SHORTWAVE_INIT
+
+!#######################################################################
+
+      SUBROUTINE SHORTWAVE_END
+
+      module_is_initialized = .false.
+
+!---------------------------------------------------------------------
+
+      END SUBROUTINE SHORTWAVE_END
 
 !#######################################################################
 

@@ -9,8 +9,9 @@ module cloud_zonal_mod
 
 use time_manager_mod, only:  time_type
 use  time_interp_mod, only:  fraction_of_year
-use    utilities_mod, only:  error_mesg, FATAL, open_file, &
-                             close_file, get_my_pe
+use          fms_mod, only:  error_mesg, FATAL, open_file, &
+                             close_file, mpp_pe, mpp_root_pe, &
+                             write_version_number
 
 implicit none
 private
@@ -24,8 +25,9 @@ public   cloud_zonal, cloud_zonal_init, getcld
    real, dimension(37,4)   :: phigh,pmidl,ptop,pbtm
    real                    :: rad2deg
 
-   character(len=128) :: version = '$Id: cloud_zonal.F90,v 1.3 2000/11/22 14:33:32 fms Exp $'
-   character(len=128) :: tag = '$Name: inchon $'
+   character(len=128) :: version = '$Id: cloud_zonal.F90,v 10.0 2003/10/24 22:00:24 fms Exp $'
+   character(len=128) :: tagname = '$Name: jakarta $'
+   logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
 !--------cloud amounts every 5 deg. for high,mid, & low-----------------
@@ -254,14 +256,22 @@ subroutine cloud_zonal_init (season)
 
 !---- print version number to logfile ----
 
-   unit = open_file ('logfile.out', action='append')
-   if (get_my_pe() == 0) &
-   write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-   call close_file (unit)
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
 
+      module_is_initialized = .true.
 !-----------------------------------------------------------------------
 
 end subroutine cloud_zonal_init
+
+!#######################################################################
+ subroutine cloud_zonal_end
+
+      module_is_initialized =.false.
+!-----------------------------------------------------------------------
+
+end subroutine cloud_zonal_end
 
 !#######################################################################
 

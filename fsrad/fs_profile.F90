@@ -1,6 +1,9 @@
 
 module fs_profile_mod
 
+use fms_mod, only : mpp_pe, mpp_root_pe, write_version_number, &
+                    error_mesg, FATAL
+
 implicit none
 private
 
@@ -27,10 +30,15 @@ private
 !              level.
 !-----------------------------------------------------------------------
 
- Public   fs_profile
+ Public   fs_profile, fs_profile_init, fs_profile_end
 
  Real, Public, Allocatable, Dimension(:) :: pd1013,plm1013,pd810,plm810
 
+!------------ VERSION NUMBER ----------------
+
+ character(len=128) :: version = '$Id: fs_profile.F90,v 10.0 2003/10/24 22:00:30 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
+ logical            :: module_is_initialized = .false.
 
 CONTAINS
 
@@ -276,6 +284,30 @@ CONTAINS
 !-----------------------------------------------------------------------
 
   END FUNCTION ANTEMP
+
+!#######################################################################
+
+      Subroutine fs_profile_init
+!------- write version number and namelist ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
+
+      module_is_initialized = .true.
+
+!---------------------------------------------------------------------
+
+      End Subroutine fs_profile_init
+
+!#######################################################################
+
+      Subroutine fs_profile_end
+
+      module_is_initialized = .false.
+!---------------------------------------------------------------------
+
+      End Subroutine fs_profile_end
 
 !#######################################################################
 

@@ -16,14 +16,17 @@ module monin_obukhov_mod
 
 
 use constants_mod, only : grav, vonkarm
-use utilities_mod, only:  error_mesg, FATAL, file_exist,   &
-                          check_nml_error, open_file,      &
-                          get_my_pe, close_file
+use       fms_mod, only:  error_mesg, FATAL, file_exist,   &
+                          check_nml_error, open_namelist_file,      &
+                          mpp_pe, mpp_root_pe, close_file, stdlog, &
+                          write_version_number
 
 implicit none
 private
 
 !=======================================================================
+ public monin_obukhov_init
+ public monin_obukhov_end
  public mo_drag
  public mo_profile
  public mo_diff
@@ -54,8 +57,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.8 2003/04/09 20:57:45 fms Exp $'
-character(len=128) :: tagname = '$Name: inchon $'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 10.0 2003/10/24 22:00:35 fms Exp $'
+character(len=128) :: tagname = '$Name: jakarta $'
 
 !=======================================================================
 
@@ -77,7 +80,7 @@ namelist /monin_obukhov_nml/ rich_crit, neutral, drag_min, &
 
 real, parameter    :: small  = 1.e-04
 real               :: b_stab, r_crit, sqrt_drag_min, lambda, rich_trans
-logical            :: init = .false.
+logical            :: module_is_initialized = .false.
 
 
 contains
@@ -91,7 +94,7 @@ integer :: unit, ierr, io
 !------------------- read namelist input -------------------------------
 
       if (file_exist('input.nml')) then
-         unit = open_file ('input.nml', action='read')
+         unit = open_namelist_file ()
          ierr=1; do while (ierr /= 0)
             read  (unit, nml=monin_obukhov_nml, iostat=io, end=10)
             ierr = check_nml_error(io,'monin_obukhov_nml')
@@ -101,12 +104,10 @@ integer :: unit, ierr, io
 
 !---------- output namelist to log-------------------------------------
 
-      unit = open_file ('logfile.out', action='append')
-      if ( get_my_pe() == 0 ) then
-           write (unit,'(/,80("="),/(a))') trim(version), trim(tagname)
-           write (unit, nml=monin_obukhov_nml)
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+           write (stdlog(), nml=monin_obukhov_nml)
       endif
-      call close_file (unit)
       
 !----------------------------------------------------------------------
 
@@ -117,11 +118,11 @@ if(rich_crit.le.0.25)  call error_mesg( &
 if(drag_min.le.0.0)  call error_mesg( &
         'MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', &
         'drag_min in monin_obukhov_mod must be >= 0.0', FATAL)
-	
+
 if(stable_option < 1 .or. stable_option > 2) call error_mesg( &
         'MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', &
         'the only allowable values of stable_option are 1 and 2', FATAL)
-	
+
 if(stable_option == 2 .and. zeta_trans < 0) call error_mesg( &
         'MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', &
         'zeta_trans must be positive', FATAL)
@@ -136,16 +137,24 @@ if(drag_min.ne.0.0) sqrt_drag_min = sqrt(drag_min)
 lambda     = 1.0 + (5.0 - b_stab)*zeta_trans   ! used only if stable_option = 2
 rich_trans = zeta_trans/(1.0 + 5.0*zeta_trans) ! used only if stable_option = 2
 
-init = .true.
+module_is_initialized = .true.
 
 return
 end subroutine monin_obukhov_init
 
 !=======================================================================
 
+subroutine monin_obukhov_end
+
+module_is_initialized = .false.
+
+end subroutine monin_obukhov_end
+
+!=======================================================================
+
 subroutine mo_drag_1d &
          (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, &
-	  u_star, b_star, avail)
+          u_star, b_star, avail)
 
 real, intent(in)   , dimension(:) :: pt, pt0, z, z0, zt, zq, speed
 real, intent(inout), dimension(:) :: drag_m, drag_t, drag_q, u_star, b_star
@@ -156,7 +165,7 @@ logical, dimension(size(pt)) :: mask, mask_1, mask_2
 
 real   , dimension(size(pt)) :: delta_b, us, bs, qs
 
-if(.not.init) call monin_obukhov_init
+if(.not.module_is_initialized) call monin_obukhov_init
 
 
 mask = .true.
@@ -235,10 +244,10 @@ real, dimension(size(z)) :: zeta, zeta_0, zeta_t, zeta_q, zeta_ref, zeta_ref_t, 
                             ln_z_z0, ln_z_zt, ln_z_zq, ln_z_zref, ln_z_zref_t,  &
                             f_m_ref, f_m, f_t_ref, f_t, f_q_ref, f_q,           &
                             mo_length_inv
-			    
+
 logical, dimension(size(z)) :: mask
-		
-if(.not.init) call monin_obukhov_init
+
+if(.not. module_is_initialized) call monin_obukhov_init
 
 mask = .true.
 if(present(avail)) mask = avail
@@ -274,7 +283,7 @@ else
     zeta_ref   = zref  *mo_length_inv
     zeta_ref_t = zref_t*mo_length_inv
   endwhere
-		   
+                   
   call mo_integral_m(f_m,     zeta, zeta_0,   ln_z_z0,   mask)
   call mo_integral_m(f_m_ref, zeta, zeta_ref, ln_z_zref, mask)
   
@@ -345,7 +354,7 @@ integer :: j, k
 
 logical, dimension(size(z,1)) :: mask
 
-if(.not.init) call monin_obukhov_init
+if(.not.module_is_initialized) call monin_obukhov_init
 
 mask = .true.
 uss = max(u_star, 1.e-10)
@@ -390,10 +399,10 @@ integer :: iter
 
 real, dimension(size(rich)) ::   &
           d_rich, rich_1, correction, corr, z_z0, z_zt, z_zq, &
-	  ln_z_z0, ln_z_zt, ln_z_zq, zeta,                    &
-	  phi_m, phi_m_0, phi_t, phi_t_0, rzeta,              &
-	  zeta_0, zeta_t, zeta_q, df_m, df_t
-	  
+          ln_z_z0, ln_z_zt, ln_z_zq, zeta,                    &
+          phi_m, phi_m_0, phi_t, phi_t_0, rzeta,              &
+          zeta_0, zeta_t, zeta_q, df_m, df_t
+          
 logical, dimension(size(rich)) :: mask_1
 
 
@@ -444,7 +453,7 @@ iter_loop: do iter = 1, max_iter
   call mo_derivative_m(phi_m_0, zeta_0, mask_1)
   call mo_derivative_t(phi_t  , zeta  , mask_1)
   call mo_derivative_t(phi_t_0, zeta_t, mask_1)
-		   
+                   
   call mo_integral_m(f_m, zeta, zeta_0, ln_z_z0, mask_1)
   call mo_integral_tq(f_t, f_q, zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq, mask_1)
 
@@ -571,7 +580,7 @@ real    , intent(in),  dimension(:) :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
 logical , intent(in),  dimension(:) :: mask
 
 real, dimension(size(zeta)) :: x, x_t, x_q
-			       
+                               
 logical, dimension(size(zeta)) :: stable, unstable, &
                                   weakly_stable, strongly_stable
 
@@ -644,7 +653,7 @@ real    , intent(in),  dimension(:) :: zeta, zeta_0, ln_z_z0
 logical , intent(in),  dimension(:) :: mask
 
 real, dimension(size(zeta)) :: x, x_0, x1, x1_0, num, denom, y
-			       
+                               
 logical, dimension(size(zeta)) :: stable, unstable, &
                                   weakly_stable, strongly_stable
 
@@ -721,7 +730,7 @@ integer :: j
 do j = 1, size(pt,2)
   call mo_drag_1d (pt(:,j), pt0(:,j), z(:,j), z0(:,j), zt(:,j), zq(:,j), &
                    speed(:,j), drag_m(:,j), drag_t(:,j), drag_q(:,j), &
-		   u_star(:,j), b_star(:,j))
+                   u_star(:,j), b_star(:,j))
 end do
 
 
@@ -800,11 +809,11 @@ q_star_1(1) = q_star
 call mo_profile_1d (zref, zref_t, z_1, z0_1, zt_1, zq_1, &
                     u_star_1, b_star_1, q_star_1,        &
                     del_m_1, del_h_1, del_q_1)
-		    
+                    
 del_m = del_m_1(1)
 del_h = del_h_1(1)
 del_q = del_q_1(1)
-		    
+                    
 
 return
 end subroutine mo_profile_0d

@@ -1,35 +1,43 @@
                        module rad_output_file_mod
 
+! <CONTACT EMAIL="Fei.Liu@noaa.gov">
+!  fil
+! </CONTACT>
+! <REVIEWER EMAIL="Dan.Schwarzkopf@noaa.gov">
+!  ds
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!  Module that provides subroutines to write radiation output to
+!  history file
+! </OVERVIEW>
+! <DESCRIPTION>
+!  Module that provides subroutines to write radiation output to
+!  history file
+! </DESCRIPTION>
 
-use  utilities_mod,     only:  open_file, file_exist,    &
-                               check_nml_error, error_mesg, &
-                               print_version_number, FATAL, NOTE, &
-                               WARNING, get_my_pe, close_file, &
-                               utilities_init, &
-                               get_num_pes
-use time_manager_mod,   only:     &
-!	                       time_manager_init, &
-                               time_type
-use diag_manager_mod,   only:  register_diag_field,  &
-                               diag_manager_init, &
-                               send_data
-use constants_mod,       only: GRAV
-use rad_utilities_mod,  only:  Environment, environment_type, &
-                               rad_utilities_init, &
-                               radiative_gases_type, &
-                               rad_output_type, &
-                               cldrad_properties_type, &
-                               cld_diagnostics_type, &
-                               atmos_input_type, &
-                                aerosol_type, &
-                               aerosol_properties_type, &
-                               Aerosol_props,  &
-                               sw_output_type,  &
-                               lw_output_type,  &
-                               Cldrad_control,  &
-                               cloudrad_control_type, &
-                               Rad_control, radiation_control_type
+!   shared modules:
 
+use fms_mod,           only: open_namelist_file, fms_init, &
+                             mpp_pe, mpp_root_pe, stdlog, &
+                             file_exist, write_version_number, &
+                             check_nml_error, error_mesg, &
+                             FATAL, NOTE, WARNING, close_file
+use time_manager_mod,  only: time_manager_init, time_type
+use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
+                             send_data
+use constants_mod,     only: constants_init, GRAV
+
+!  radiation package shared modules:
+
+use rad_utilities_mod, only:  Environment, environment_type, &
+                              rad_utilities_init, radiative_gases_type,&
+                              rad_output_type, cldrad_properties_type, &
+                              cld_specification_type, atmos_input_type,&
+                              surface_type, sw_output_type,  &
+                              lw_output_type, Rad_control
+
+!--------------------------------------------------------------------
 
 implicit none
 private
@@ -49,8 +57,8 @@ private
 !-------------------------------------------------------------------
 !----------- version number for this module ------------------------
 
-character(len=128)  :: version =  '$Id: rad_output_file.F90,v 1.4 2003/04/09 21:01:20 fms Exp $'
-character(len=128)  :: tag     =  '$Name: inchon $'
+character(len=128)  :: version =  '$Id: rad_output_file.F90,v 10.0 2003/10/24 22:00:46 fms Exp $'
+character(len=128)  :: tagname =  '$Name: jakarta $'
 
 
 !---------------------------------------------------------------------
@@ -60,7 +68,10 @@ public   &
          rad_output_file_init, write_rad_output_file,   &
          rad_output_file_end
 
-private  register_fields
+private   &
+
+!   called from rad_output_file_init
+        register_fields
 
 
 !-------------------------------------------------------------------
@@ -72,7 +83,6 @@ logical :: write_data_file=.false.  ! data file to be written  ?
 namelist  / rad_output_file_nml /  &
                                   write_data_file
      
-
 !------------------------------------------------------------------
 !----public data------
 
@@ -80,15 +90,11 @@ namelist  / rad_output_file_nml /  &
 !------------------------------------------------------------------
 !----private data------
 
-logical        :: do_isccp=.false.     ! isccp cloud output included  ?
-logical        :: rad_output_file_initialized= .false. 
-                                       ! module initialized ?
-
 !--------------------------------------------------------------------
-!  DU_factor is Dobson units per (kg/m2). the first term is 
-! (avogadro's number/loeschmidt's number at STP = vol./kmol of an ideal
-! gas at STP). second term = mol wt o3 . third term is units conversion.
-! values are chosen from US Standard Atmospheres, 1976.
+!    DU_factor is Dobson units per (kg/m2). the first term is 
+!    (avogadro's number/loeschmidt's number at STP = vol./kmol of an 
+!    ideal gas at STP). second term = mol wt o3 . third term is units 
+!    conversion. values are chosen from US Standard Atmospheres, 1976.
 !--------------------------------------------------------------------
 real, parameter  :: DU_factor =    &
                             (6.022169e26/2.68684e25)/(47.9982)*1.0e5
@@ -98,27 +104,32 @@ real, parameter  :: DU_factor2 = DU_factor/GRAV
 
 !--------------------------------------------------------------------
 ! netcdf diagnostics field variables
-!-------------------------- ------------------------------------------
-
-character(len=16), parameter :: mod_name='radiation'
-real                         :: missing_value = -999.
-integer                      :: id_radswp, id_radp, id_temp, id_rh2o, &
-                                id_qo3, id_qo3_col, id_cmxolw,  &
-                                id_crndlw,   &
-                                id_flxnet, id_fsw, id_ufsw, id_psj, &
-                                id_tmpsfc, id_cvisrfgd, id_cirrfgd, &
-                                id_tot_clds, id_cld_isccp_hi, &
-                                id_cld_isccp_mid, id_cld_isccp_low, &
-                                id_radswpcf, id_radpcf, id_flxnetcf, &
-                                id_fswcf, id_ufswcf, id_pressm,  &
-                                id_phalfm, id_pfluxm
+!---------------------------------------------------------------------
+character(len=16), parameter       :: mod_name='radiation'
+real                               :: missing_value = -999.
 integer, dimension(:), allocatable :: id_aerosol, id_aerosol_column
-integer                            :: naerosol=0
+integer                            :: id_radswp, id_radp, id_temp, &
+                                      id_rh2o, id_qo3, id_qo3_col,  &
+                                      id_cmxolw, id_crndlw, id_flxnet, &
+                                      id_fsw, id_ufsw, id_psj, &
+                                      id_tmpsfc, id_cvisrfgd,  &
+                                      id_cirrfgd, id_radswpcf,  &
+                                      id_radpcf, id_flxnetcf, &
+                                      id_fswcf, id_ufswcf, id_pressm,  &
+                                      id_phalfm, id_pfluxm
 
 
 
 !---------------------------------------------------------------------
+!    miscellaneous variables
 !---------------------------------------------------------------------
+integer :: naerosol=0                      ! number of active aerosols
+logical :: module_is_initialized= .false.  ! module initialized ?
+
+
+!---------------------------------------------------------------------
+!---------------------------------------------------------------------
+
 
 
                           contains
@@ -132,79 +143,102 @@ integer                            :: naerosol=0
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
 !#####################################################################
-
-subroutine rad_output_file_init (axes, Time)
+! <SUBROUTINE NAME="rad_output_file_init">
+!  <OVERVIEW>
+!   Constructor of rad_output_file module
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Subroutine to initialize and set up rad_output_file module
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call  rad_output_file_init (axes, Time, names)
+!  </TEMPLATE>
+!  <IN NAME="axes" TYPE="integer">
+!   diagnostic variable axes for netcdf files
+!  </IN>
+!  <IN NAME="Time" TYPE="time_type">
+!   current time [ time_type(days, seconds) ]
+!  </IN>
+!  <IN NAME="names" TYPE="character">
+!   aerosol names
+!  </IN>
+! </SUBROUTINE>
+!
+subroutine rad_output_file_init (axes, Time, names)
 
 !--------------------------------------------------------------------
 !    rad_output_file_init is the constructor for rad_output_file_mod.
 !--------------------------------------------------------------------
 
-integer, dimension(4), intent(in), optional    :: axes
-type(time_type),       intent(in), optional    :: Time
+integer, dimension(4),           intent(in)    :: axes
+type(time_type),                 intent(in)    :: Time
+!character(len=64), dimension(:), intent(in)    :: names
+character(len=*), dimension(:), intent(in)    :: names
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
-!
-!       aerosol_names
-!
-!--------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!  intent(in), optional variables:
 !
 !    these variables are present when running the gcm, not present
 !    when running the standalone code.
 !  
 !       axes      diagnostic variable axes for netcdf files
 !       Time      current time [ time_type(days, seconds) ]
+!       names     names of active aerosols
 !
 !----------------------------------------------------------------------
 
 !---------------------------------------------------------------------
-!   local variables
+!   local variables:
 
-integer   :: unit, io, ierr
-integer   :: n
+      integer   :: unit, io, ierr
+      integer   :: nfields
+
+!---------------------------------------------------------------------
+!   local variables:
+!
+!        unit            io unit number used for namelist file
+!        ierr            error code
+!        io              error status returned from io operation
+!        nfields         number of active aerosol fields
+!
+!---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
 !---------------------------------------------------------------------
-      if (rad_output_file_initialized) return
+      if (module_is_initialized) return
 
 !---------------------------------------------------------------------
 !    verify that modules used by this module that are not called later
 !    have already been initialized.
 !---------------------------------------------------------------------
-      call utilities_init
+      call fms_init
+      call constants_init
       call rad_utilities_init
       if (Environment%running_gcm .or.  &
           Environment%running_sa_model) then
         call diag_manager_init  
       endif
-!     call time_manager_init ! doesn't exist
- 
-!---------------------------------------------------------------------
+      call time_manager_init 
+
+!-----------------------------------------------------------------------
 !    read namelist.
-!---------------------------------------------------------------------
-      if (file_exist('input.nml')) then
-        unit =  open_file ('input.nml', action='read')
+!-----------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
-          read (unit, nml=rad_output_file_nml, iostat=io, end=10)
-          ierr = check_nml_error (io, 'rad_output_file_nml')
-        enddo
+        read  (unit, nml=rad_output_file_nml, iostat=io, end=10)
+        ierr = check_nml_error(io,'rad_output_file_nml')
+        end do
 10      call close_file (unit)
       endif
-
+ 
 !---------------------------------------------------------------------
-!    write namelist to logfile.
+!    write version number and namelist to logfile.
 !---------------------------------------------------------------------
-      unit = open_file ('logfile.out', action='append')
-      if (get_my_pe() == 0) then
-!     if ( get_my_pe() == get_root_pe() ) then
-        write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-        write (unit,nml=rad_output_file_nml)
-      endif
-      call close_file (unit)
+      call write_version_number (version, tagname)
+      if (mpp_pe() == mpp_root_pe() ) &
+                         write (stdlog(), nml=rad_output_file_nml)
 
 !--------------------------------------------------------------------
 !    if running gcm, continue on if data file is to be written. 
@@ -213,18 +247,11 @@ integer   :: n
           Environment%running_sa_model) then
         if (write_data_file) then
 
-!--------------------------------------------------------------------
-!    define a variable indicating whether isccp output variables will
-!    be present.
-!--------------------------------------------------------------------
-          if (Cldrad_control%do_rh_clouds) then
-            do_isccp = .true.
-          endif
-
 !---------------------------------------------------------------------
 !    register the diagnostic fields for output.
 !---------------------------------------------------------------------
-          call register_fields (Time, axes)
+          nfields = size(names)
+          call register_fields (Time, axes, nfields, names)
         endif
 
 !--------------------------------------------------------------------
@@ -233,14 +260,16 @@ integer   :: n
       else
         if (write_data_file) then
           call error_mesg ('rad_output_file_mod', &
-            ' can only write output file when running in gcm', &
-                                                           FATAL)
+          ' can only write output file when running in gcm', FATAL)
         endif
       endif
 
 !--------------------------------------------------------------------
-    rad_output_file_initialized = .true.
+!    mark the module as initialized.
+!--------------------------------------------------------------------
+      module_is_initialized = .true.
 
+!--------------------------------------------------------------------
 
 
 end subroutine rad_output_file_init
@@ -248,11 +277,74 @@ end subroutine rad_output_file_init
 
 
 !################################################################
-
-subroutine write_rad_output_file (is, ie, js, je, Atmos_input,  &
-                                  Rad_output, &
-                                  Sw_output, Lw_output, Rad_gases, &
-                                  Cldrad_props, Cld_diagnostics,   &
+! <SUBROUTINE NAME="write_rad_output_file">
+!  <OVERVIEW>
+!   write_rad_output_file produces a netcdf output file containing
+!   the user-specified radiation-related variables.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   write_rad_output_file produces a netcdf output file containing
+!   the user-specified radiation-related variables.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call write_rad_output_file (is, ie, js, je, Atmos_input, Surface, &
+!                                  Rad_output, &
+!                                  Sw_output, Lw_output, Rad_gases, &
+!                                  Cldrad_props, Cld_spec,  &
+!                                  Time_diag, aerosol_in)
+!  </TEMPLATE>
+!  <IN NAME="is, ie, js, je" TYPE="integer">
+!   starting/ending subdomain i,j indices of data 
+!   in the physics_window being integrated
+!  </IN>
+!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
+!   atmos_input_type variable containing atmos-
+!                        pheric input data for the radiation package 
+!                        on the model grid
+!  </IN>
+!  <IN NAME="Surface" TYPE="surface_type">
+!   Surface input data to radiation package
+!  </IN>
+!  <IN NAME="Rad_output" TYPE="rad_output_type">
+!   rad_output_type variable containing radiation
+!                        output data needed by other modules
+!  </IN>
+!  <IN NAME="Sw_output" TYPE="sw_output_type">
+!   sw_output_type variable containing shortwave 
+!                        radiation output data from the sea_esf_rad
+!                        radiation package on the model grid
+!  </IN>
+!  <IN NAME="Lw_output" TYPE="lw_output_type">
+!   lw_output_type variable containing longwave 
+!                        radiation output data from the sea_esf_rad
+!                        radiation package on the model grid 
+!  </IN>
+!  <IN NAME="Rad_gases" TYPE="radiative_gases_type">
+!   radiative_gases_type variable containing rad-
+!                        iative gas input data for the radiation package
+!                        on the model grid
+!  </IN>
+!  <IN NAME="Cldrad_pros" TYPE="cldrad_properties_type">
+!   cldrad_properties_type variable containing 
+!                        cloud radiative property input data for the 
+!                        radiation package on the model grid
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_diagnostics_type">
+!   cld_specification_type variable containing cloud
+!                        microphysical data
+!  </IN>
+!  <IN NAME="Time_diag" TYPE="time_type">
+!   time on next timestep, used as stamp for diag-
+!                        nostic output  [ time_type  (days, seconds) ]
+!  </IN>
+!  <IN NAME="aerosol_in" TYPE="real">
+!   optional aerosol data
+!  </IN>
+! </SUBROUTINE>
+!
+subroutine write_rad_output_file (is, ie, js, je, Atmos_input, Surface,&
+                                  Rad_output, Sw_output, Lw_output,    &
+                                  Rad_gases, Cldrad_props, Cld_spec,   &
                                   Time_diag, aerosol_in)
 
 !----------------------------------------------------------------
@@ -260,15 +352,16 @@ subroutine write_rad_output_file (is, ie, js, je, Atmos_input,  &
 !    the user-specified radiation-related variables.
 !----------------------------------------------------------------
 
-integer,                      intent(in)  ::  is, ie, js, je
-type(atmos_input_type),       intent(in)  ::  Atmos_input
-type(rad_output_type),        intent(in)  ::  Rad_output
-type(sw_output_type),         intent(in)  ::  Sw_output
-type(lw_output_type),         intent(in)  ::  Lw_output
-type(radiative_gases_type),   intent(in)  ::  Rad_gases
-type(cldrad_properties_type), intent(in)  ::  Cldrad_props
-type(cld_diagnostics_type),   intent(in)  ::  Cld_diagnostics 
-type(time_type),              intent(in)  ::  Time_diag
+integer,                      intent(in)            ::  is, ie, js, je
+type(atmos_input_type),       intent(in)            ::  Atmos_input
+type(surface_type),           intent(in)            ::  Surface
+type(rad_output_type),        intent(in)            ::  Rad_output
+type(sw_output_type),         intent(in)            ::  Sw_output
+type(lw_output_type),         intent(in)            ::  Lw_output
+type(radiative_gases_type),   intent(in)            ::  Rad_gases
+type(cldrad_properties_type), intent(in)            ::  Cldrad_props
+type(cld_specification_type), intent(in)            ::  Cld_spec      
+type(time_type),              intent(in)            ::  Time_diag
 real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
 
 !------------------------------------------------------------------
@@ -279,6 +372,8 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
 !      Atmos_input       atmos_input_type variable containing atmos-
 !                        pheric input data for the radiation package 
 !                        on the model grid
+!      Surface           surface input fields to radiation package
+!                        [ surface_type ]
 !      Rad_output        rad_output_type variable containing radiation
 !                        output data needed by other modules
 !      Sw_output         sw_output_type variable containing shortwave 
@@ -293,12 +388,43 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
 !      Cldrad_props      cldrad_properties_type variable containing 
 !                        cloud radiative property input data for the 
 !                        radiation package on the model grid
-!      Cld_diagnostics   cld_diagnostics_type variable containing cloud
-!                        microphysical and /or isccp diagnostic fields
+!      Cld_spec          cld_specification_type variable containing 
+!                        cloud specification input data for the 
+!                        radiation package on the model grid
 !      Time_diag         time on next timestep, used as stamp for diag-
 !                        nostic output  [ time_type  (days, seconds) ]  
 !
+!  intent(in), optional variables:
+!
+!      aerosol_in        active aerosol distributions
+!                        [ kg / m**2 ]
+!
 !----------------------------------------------------------------------
+
+!----------------------------------------------------------------------
+!  local variables:
+
+      real, dimension (size(Atmos_input%press,1),   &
+                       size(Atmos_input%press,2) )  ::  &
+                           tmpsfc, psj, cvisrfgd, cirrfgd, qo3_col
+
+      real, dimension (size(Atmos_input%press,1),    &
+                       size(Atmos_input%press,2), &
+                       size(Atmos_input%press,3)  ) ::   &
+                          fsw, ufsw, fswcf, ufswcf, flxnet, flxnetcf, &
+                          phalfm, pfluxm
+
+      real, dimension (size(Atmos_input%press,1),    &
+                       size(Atmos_input%press,2), &
+                       size(Atmos_input%press,3)-1 ) ::  &
+                       temp, rh2o, qo3, cmxolw, crndlw, radp, radswp, &
+                       radpcf, radswpcf, pressm
+
+      real, dimension(:,:,:), allocatable :: aerosol_col
+
+      logical   :: used  
+      integer   :: kerad ! number of model layers
+      integer   :: n, k
 
 !----------------------------------------------------------------------
 !  local variables:
@@ -332,37 +458,23 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
 !      radpcf         lw + sw heating rate w/o clouds [ deg K / sec ]
 !      radswpcf       sw heating rate w/o clouds [ deg K / sec ]
 !      pressm         pressure at model levels [ Pa ]
+!      aerosol_col
+!      used
+!      kerad
+!      n,k
 !
 !---------------------------------------------------------------------
-      real, dimension (size(Atmos_input%press,1),   &
-                       size(Atmos_input%press,2) )  ::  &
-                    tmpsfc, psj, cvisrfgd, cirrfgd, tot_clds,   &
-                    cld_isccp_hi, cld_isccp_mid, cld_isccp_low, &
-                    qo3_col
 
-      real, dimension (size(Atmos_input%press,1),    &
-                       size(Atmos_input%press,2), &
-                       size(Atmos_input%press,3)  ) ::   &
-                    fsw, ufsw, fswcf, ufswcf, flxnet, flxnetcf, &
-                    phalfm, pfluxm
-
-      real, dimension (size(Atmos_input%press,1),    &
-                       size(Atmos_input%press,2), &
-                       size(Atmos_input%press,3)-1 ) ::  &
-                    temp, rh2o, qo3, cmxolw, crndlw, radp, radswp, &
-                    radpcf, radswpcf, pressm
-
-       real, dimension(:,:,:), allocatable :: aerosol_col
-
-
-
-      logical   :: used  
-      integer   :: kerad ! number of model layers
-      integer   :: n, k
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('rad_output_file_mod', &
+              'module has not been initialized', FATAL )
+      endif
 
 !--------------------------------------------------------------------
-!    if the file is not to be written, do nothing.e desired fields from
-!    the input derived data types.
+!    if the file is not to be written, do nothing.
 !--------------------------------------------------------------------
       if (write_data_file) then
 
@@ -383,14 +495,14 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
         rh2o(:,:,:)     = Atmos_input%rh2o(:,:,:)
         radp(:,:,:)     = Rad_output%tdt_rad(:,js:je,:)
         radswp(:,:,:)   = Rad_output%tdtsw  (:,js:je,:)
-        cirrfgd(:,:)    = Atmos_input%asfc(:,:)
-        cvisrfgd(:,:)   = Atmos_input%asfc(:,:)
+        cirrfgd(:,:)    = Surface%asfc(:,:)
+        cvisrfgd(:,:)   = Surface%asfc(:,:)
         fsw(:,:,:)      = Sw_output% fsw(:,:,:)
         ufsw(:,:,:)     = Sw_output%ufsw(:,:,:)
         flxnet(:,:,:)   = Lw_output%flxnet(:,:,:)
         qo3(:,:,:)      = Rad_gases%qo3(:,:,:)
-        cmxolw(:,:,:)   = 100.0*Cldrad_props%cmxolw(:,:,:)
-        crndlw(:,:,:)   = 100.0*Cldrad_props%crndlw(:,:,:)
+        cmxolw(:,:,:)   = 100.0*Cld_spec%cmxolw(:,:,:)
+        crndlw(:,:,:)   = 100.0*Cld_spec%crndlw(:,:,:)
 
         if (Rad_control%do_totcld_forcing) then 
           fswcf(:,:,:)    = Sw_output%fswcf(:,:,:)
@@ -398,12 +510,6 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
           flxnetcf(:,:,:) = Lw_output%flxnetcf(:,:,:)
           radpcf(:,:,:)   = Rad_output%tdt_rad_clr(:,js:je,:)
           radswpcf(:,:,:) = Rad_output%tdtsw_clr  (:,js:je,:)
-        endif
-        if (do_isccp) then
-          tot_clds(:,:)      = 100.0*Cld_diagnostics%tot_clds(:,:)
-          cld_isccp_hi (:,:) = 100.0*Cld_diagnostics%cld_isccp_hi (:,:)
-          cld_isccp_mid(:,:) = 100.0*Cld_diagnostics%cld_isccp_mid(:,:)
-          cld_isccp_low(:,:) = 100.0*Cld_diagnostics%cld_isccp_low(:,:)
         endif
 
 !---------------------------------------------------------------------
@@ -418,16 +524,14 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
         end do
         qo3_col(:,:) = qo3_col(:,:)*DU_factor2
 
-
 !---------------------------------------------------------------------
 !    define the aerosol fields and calculate the column aerosol. 
 !---------------------------------------------------------------------
         if (Rad_control%do_aerosol) then
-           allocate ( aerosol_col(size(aerosol_in, 1), &
-                                  size(aerosol_in, 2), &
-                                  size(aerosol_in, 4)) )       
-
-          aerosol_col(:,:,:) = SUM (           aerosol_in(:,:,:,:), 3)
+          allocate ( aerosol_col(size(aerosol_in, 1), &
+                                 size(aerosol_in, 2), &
+                                 size(aerosol_in, 4)) )       
+          aerosol_col(:,:,:) = SUM (aerosol_in(:,:,:,:), 3)
         endif
         
 !---------------------------------------------------------------------
@@ -470,17 +574,17 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
         endif
 
         if (Rad_control%do_aerosol) then
-        do n = 1,naerosol
-          if (id_aerosol(n)  > 0 ) then
-            used = send_data (id_aerosol(n), aerosol_in(:,:,:,n),   &
-                              Time_diag, is, js, 1)
-          endif
-          if (id_aerosol_column(n)  > 0 ) then
-            used = send_data (id_aerosol_column(n),     &
-                              aerosol_col(:,:,n), Time_diag, is, js)
-          endif
-        end do
-        deallocate (aerosol_col)
+          do n = 1,naerosol
+            if (id_aerosol(n)  > 0 ) then
+              used = send_data (id_aerosol(n), aerosol_in(:,:,:,n),   &
+                                Time_diag, is, js, 1)
+            endif
+            if (id_aerosol_column(n)  > 0 ) then
+              used = send_data (id_aerosol_column(n),     &
+                                aerosol_col(:,:,n), Time_diag, is, js)
+            endif
+          end do
+          deallocate (aerosol_col)
         endif
 
         if (id_cmxolw > 0 ) then
@@ -519,27 +623,6 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
           used = send_data (id_cirrfgd , cirrfgd , Time_diag, is, js)
         endif
 
-        if (do_isccp) then
-          if (id_tot_clds > 0 ) then
-            used = send_data (id_tot_clds , tot_clds, Time_diag, is, js)
-          endif
-
-          if (id_cld_isccp_hi > 0 ) then
-            used = send_data (id_cld_isccp_hi, cld_isccp_hi,   &
-                              Time_diag, is, js)
-          endif
-
-          if (id_cld_isccp_mid > 0 ) then
-            used = send_data (id_cld_isccp_mid, cld_isccp_mid,   &
-                              Time_diag, is, js)
-          endif
-
-          if (id_cld_isccp_low > 0 ) then
-            used = send_data (id_cld_isccp_low, cld_isccp_low,   &
-                              Time_diag, is, js)
-          endif
-        endif
-
         if (Rad_control%do_totcld_forcing) then
           if (id_radswpcf > 0 ) then
             used = send_data (id_radswpcf, radswpcf, Time_diag,   &
@@ -565,7 +648,6 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
         endif
       endif
 
-
 !------------------------------------------------------------------
 
 
@@ -574,15 +656,38 @@ end subroutine write_rad_output_file
 
 
 !#####################################################################
-
+! <SUBROUTINE NAME="rad_output_file_end">
+!  <OVERVIEW>
+!   rad_output_file_end is the destructor for rad_output_file_mod
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   rad_output_file_end is the destructor for rad_output_file_mod
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call rad_output_file_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine rad_output_file_end
 
 !-------------------------------------------------------------------
 !    rad_output_file_end is the destructor for rad_output_file_mod.
 !-------------------------------------------------------------------
 
-      rad_output_file_initialized= .false. 
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('rad_output_file_mod', &
+              'module has not been initialized', FATAL )
+      endif
 
+!---------------------------------------------------------------------
+!    mark the module as uninitialized.
+!---------------------------------------------------------------------
+      module_is_initialized= .false. 
+
+!----------------------------------------------------------------------
 
 end subroutine rad_output_file_end
 
@@ -596,36 +701,73 @@ end subroutine rad_output_file_end
 
 
 !#################################################################
-
-subroutine register_fields (Time, axes)
+! <SUBROUTINE NAME="register_fields">
+!  <OVERVIEW>
+!   register_fields send the relevant information concerning the 
+!    user-desired output fields to diag_manager_mod.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   register_fields send the relevant information concerning the 
+!    user-desired output fields to diag_manager_mod.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call register_fields (Time, axes, nfilds, names)
+!  </TEMPLATE>
+!  <IN NAME="Time" TYPE="time_type">
+!   current time [ time_type(days, seconds) ]
+!  </IN>
+!  <IN NAME="axes" TYPE="integer">
+!   diagnostic variable axes for netcdf files
+!  </IN>
+!  <IN NAME="nfields" TYPE="integer">
+!   number of aerosol fields
+!  </IN>
+!  <IN NAME="names" TYPE="character">
+!   names of aerosol fields
+!  </IN>
+! </SUBROUTINE>
+!
+subroutine register_fields (Time, axes, nfields, names)
 
 !--------------------------------------------------------------------
 !    register_fields send the relevant information concerning the 
 !    user-desired output fields to diag_manager_mod.
 !--------------------------------------------------------------------
 
-type(time_type),       intent(in)          :: Time
-integer, dimension(4), intent(in)          :: axes
+type(time_type),                 intent(in) :: Time
+integer, dimension(4),           intent(in) :: axes
+integer,                         intent(in) :: nfields
+!character(len=64), dimension(:), intent(in) :: names
+character(len=*), dimension(:), intent(in) :: names
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
 !
 !       Time      current time [ time_type(days, seconds) ]
 !       axes      diagnostic variable axes for netcdf files
+!       nfields   number of active aerosol species
+!       names     names of active aerosol species
 !
 !----------------------------------------------------------------------
 
 !---------------------------------------------------------------------
 !   local variables:
-!
-!       bxes      diagnostic variable axes with elements (1:3) valid 
-!                 for variables defined at flux levels
-!
-!--------------------------------------------------------------------
+
       character(len=64), dimension(:), allocatable ::   & 
                                                aerosol_column_names
       integer, dimension(4)    :: bxes
       integer                  :: n
+
+!---------------------------------------------------------------------
+!   local variables:
+!
+!       aerosol_column_names
+!       bxes                   diagnostic variable axes with elements 
+!                              (1:3) valid for variables defined at
+!                              flux levels
+!       n
+!
+!--------------------------------------------------------------------
  
 !-------------------------------------------------------------------
 !    define variable axis array with elements (1:3) valid for variables
@@ -688,24 +830,21 @@ integer, dimension(4), intent(in)          :: axes
 !--------------------------------------------------------------------
 !    allocate space for and save aerosol name information.
 !--------------------------------------------------------------------
-      if (associated (Aerosol_props%aerosol_names)) then
-        naerosol = Aerosol_props%nfields
+      if (nfields /= 0) then
+        naerosol = nfields
         allocate (id_aerosol(naerosol))
         allocate (id_aerosol_column(naerosol)) 
         allocate (aerosol_column_names(naerosol))
         do n = 1,naerosol                           
-          aerosol_column_names(n) =    &
-                    TRIM( Aerosol_props%aerosol_names(n) ) // "_col"
+          aerosol_column_names(n) = TRIM(names(n) ) // "_col"
         end do
         do n = 1,naerosol
           id_aerosol(n)    = &
-             register_diag_field (mod_name,    &
-                           TRIM(Aerosol_props%aerosol_names(n)),  &
-                           axes(1:3), Time,    &
-                           TRIM(Aerosol_props%aerosol_names(n)),&
-                           'kg/m2', missing_value=missing_value)
+             register_diag_field (mod_name, TRIM(names(n)), axes(1:3), &
+                                  Time, TRIM(names(n)),&
+                                  'kg/m2', missing_value=missing_value)
           id_aerosol_column(n)    = &
-             register_diag_field (mod_name,    &
+             register_diag_field (mod_name,   &
                       TRIM(aerosol_column_names(n)), axes(1:2), Time, &
                       TRIM(aerosol_column_names(n)), &
                       'kg/m2', missing_value=missing_value)
@@ -758,28 +897,15 @@ integer, dimension(4), intent(in)          :: axes
                           'visible infra-red albedo', &
                           'dimensionless', missing_value=missing_value)
 
-      if (do_isccp) then
-        id_tot_clds = &
-           register_diag_field (mod_name, 'tot_clds', axes(1:2), Time, &
-                            'total isccp cloud cover', 'percent',  &
-                            missing_value=missing_value)
-
-        id_cld_isccp_hi = &
-           register_diag_field (mod_name, 'cld_isccp_hi', axes(1:2),   &
-                            Time, 'isccp high clouds', 'percent',&
-                            missing_value=missing_value)
-
-        id_cld_isccp_mid = &
-           register_diag_field (mod_name, 'cld_isccp_mid', axes(1:2), &
-                            Time, 'isccp middle clouds', 'percent',   &
-                            missing_value=missing_value)
-
-        id_cld_isccp_low = &
-           register_diag_field (mod_name, 'cld_isccp_low', axes(1:2), &
-                            Time, 'isccp low clouds', 'percent',   &
-                            missing_value=missing_value)
-
-      endif 
+!-------------------------------------------------------------------
+!    verify that Rad_control%do_totcld_forcing has been initialized.
+!-------------------------------------------------------------------
+      if (Rad_control%do_totcld_forcing_iz) then
+      else
+        call error_mesg ('rad_output_file_mod', &
+         ' attempting to use Rad_control%do_totcld_forcing before'//&
+                                                ' it is set', FATAL)
+      endif
 
       if (Rad_control%do_totcld_forcing) then
         id_radswpcf = &

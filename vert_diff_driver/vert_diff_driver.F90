@@ -6,12 +6,11 @@ module vert_diff_driver_mod
 !-----------------------------------------------------------------------
 
 use    vert_diff_mod, only:  surf_diff_type,     &
-                             gcm_vert_diff_init, &
+                             vert_diff_init, &
                              gcm_vert_diff_down, &
                              gcm_vert_diff_up,   &
-                             gcm_vert_diff_end
+                             vert_diff_end
 
-use  strat_cloud_mod, only:  add_strat_tend, subtract_strat_tend
 
 use diag_manager_mod, only:  register_diag_field, send_data
 
@@ -64,10 +63,10 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 1.5 2003/04/09 21:02:43 fms Exp $'
-character(len=128) :: tag = '$Name: inchon $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 10.0 2003/10/24 22:00:52 fms Exp $'
+character(len=128) :: tagname = '$Name: jakarta $'
 
-logical :: do_init = .true.
+logical :: module_is_initialized = .false.
 
 
 contains
@@ -109,7 +108,7 @@ integer :: ie, je
 
 !-----------------------------------------------------------------------
 
-  if (do_init) call error_mesg       &
+  if (.not. module_is_initialized) call error_mesg       &
                   ('vert_diff_driver_mod',  &
                    'vert_diff_driver_init must be called first', FATAL)
 
@@ -122,11 +121,6 @@ integer :: ie, je
   ie = is + size(t,1) -1
   je = js + size(t,2) -1
 
-!---- save temperature tendency for stratiform cloud scheme ----
-!   note if strat scheme is not operating this routine does nothing
-
-    call subtract_strat_tend (is, is+size(dt_t,1)-1,     &
-                              js, js+size(dt_t,2)-1, dt_t)
 
     if(do_mcm_vert_diff_tq) then
       dt_t_save(is:ie,js:je,:) = dt_t
@@ -284,12 +278,6 @@ integer :: ie, je
 
     call gcm_vert_diff_up (is, js, delt, Surf_diff, dt_t, dt_q, kbot)
 
-!-----------------------------------------------------------------------
-!---- compute temperature tendency for stratiform cloud scheme ----
-!   note if strat scheme is not operating this routine does nothing
-
-    call add_strat_tend (is, is+size(dt_t,1)-1,     &
-                         js, js+size(dt_t,2)-1, dt_t)
 
 !-----------------------------------------------------------------------
 !---- to do diagnostics on dt_t and dt_q at this point add in the
@@ -366,13 +354,13 @@ integer :: ie, je
 
 !--------- write version number and namelist ------------------
 
-   call write_version_number ( version, tag )
+   call write_version_number ( version, tagname )
    if(mpp_pe() == mpp_root_pe() ) write(stdlog(),nml=vert_diff_driver_nml)
 
 !-------- initialize gcm vertical diffusion ------
 
-   call gcm_vert_diff_init (Surf_diff, idim, jdim, kdim, do_conserve_energy, &
-                            use_virtual_temp_vert_diff, do_mcm_plev)
+   call vert_diff_init (Surf_diff, idim, jdim, kdim, do_conserve_energy, &
+                        use_virtual_temp_vert_diff, do_mcm_plev)
 
 !-----------------------------------------------------------------------
 
@@ -426,7 +414,7 @@ integer :: ie, je
 
 !-----------------------------------------------------------------------
 
-   do_init = .false.
+   module_is_initialized = .true.
 
 !-----------------------------------------------------------------------
 
@@ -436,9 +424,14 @@ integer :: ie, je
 
  subroutine vert_diff_driver_end
 
-   call gcm_vert_diff_end
+   call vert_diff_end
    if(do_mcm_vert_diff_tq) deallocate(dt_t_save, dt_q_save)
 
+!-----------------------------------------------------------------------
+
+   module_is_initialized = .false.
+
+!-----------------------------------------------------------------------
  end subroutine vert_diff_driver_end
 
 !#######################################################################

@@ -1,335 +1,353 @@
+!FDOC_TAG_GFDL
 
-MODULE CLOUD_RAD_MOD
+
+                 module cloud_rad_mod
+! <CONTACT EMAIL="Stephen.Klein@noaa.gov">
+!   Steve Klein
+! </CONTACT>
+! <REVIEWER EMAIL="reviewer_email@gfdl.noaa.gov">
+!   Reviewer_name_here
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!        The cloud radiation module uses the stored values of the
+!     prognostic cloud variables, and computes the cloud albedo and
+!     absorption for the two shortwave bands (ultra-violet/visible and
+!     near-infrared), the longwave cloud emissivity, and the 
+!     fractional areas covered by clouds.
+! </OVERVIEW>
+! <DESCRIPTION>
+!      The cloud radiation module condenses the cloud information 
+!     provided by the stratiform cloud scheme and converts it into
+!     the areas covered by, the water paths and the effective particle 
+!     sizes of liquid and ice. This cloud information is stored into 
+!     cloud blocks which are assumed to be randomly overlapped (done 
+!     in CLOUD_ORGANIZE subroutine). From these, the single-scattering 
+!     albedo, asymmetry parameter, and optical depth for the two short 
+!     wave bands and the longwave cloud emissivity for each cloud are 
+!     calculated in the subroutine CLOUD_OPTICAL_PROPERTIES. Finally, 
+!     the subroutine CLOUD_RAD takes the shortwave cloud properties 
+!     and converts them using the Delta-Eddington solution to albedo 
+!     and absorption in each of the shortwave bands.
+!
+!     In CLOUD_OPTICAL_PROPERTIES, the parameterization of Slingo (1989)
+!     and Ebert and Curry (1992) are used for the shortwave properties of 
+!     liquid and ice clouds, respectively.  For the longwave cloud 
+!     emissivity, the empirical observation result of Stephens (1978) is
+!     used for liquid clouds whereas the parameterization of Ebert and
+!     Curry (1992) is used for ice clouds.
+!
+!     In CLOUD_ORGANIZE, the effective radius for liquid clouds is 
+!     calculated using the parameterization of Martin et al. (1994)
+!     whereas the effective radius of ice clouds is parameterized using
+!     that of Donner et al. (1997).
+!
+!     The module has two important diagnostic subroutines. In 
+!     ISCCP_CLOUDTYPES, the satellite view of clouds is simulated for
+!     direct comparison to the ISCCP satellite data.  This allows one
+!     to quantify the occurrence of clouds stratified by their cloud
+!     top pressure and optical thickness.  The algorithm to do this
+!     is described fully in Klein and Jakob (1999).
+!
+!     In TAU_REFF_DIAG the optical thickness of low clouds is diagnosed.
+!     In addition, the mean ice and liquid particle size from the cloud
+!     tops visible to a satellite (i.e. not obscured by higher level
+!     clouds) is diagnosed.
+  
+! </DESCRIPTION>
+!
+
+!   shared modules:
+
+use  fms_mod,             only:  file_exist, fms_init,       &
+                                 stdlog, mpp_pe, mpp_root_pe, &
+                                 open_namelist_file, &
+                                 write_version_number,  &
+                                 error_mesg, FATAL,     &
+                                 close_file,  &
+                                 check_nml_error
+use  constants_mod,       only:  RDGAS, GRAV, TFREEZE, DENS_H2O, &
+                                 constants_init
+use  diag_manager_mod,    only:  diag_manager_init,    &
+                                 register_diag_field, send_data
+use  time_manager_mod,    only:  time_type, time_manager_init
+
+!   support module:
+
+use isccp_clouds_mod,     only:  tau_reff_diag2, isccp_cloudtypes, &
+                                 isccp_clouds_init, isccp_output
+
+implicit none
+private
+
+!---------------------------------------------------------------------
+!    cloud_rad_mod does the following:           
+!     
+!    (a)  subroutine cloud_summary3 returns cloud specification var-
+!         iables that are used in calculating the cloud radiative prop-
+!         erties. these include cloud locations, water paths and effect-
+!         ive particle sizes for use in determining bulk properties and
+!         concentrations and drop sizes if microphysically-based prop-
+!         erties are desired.
+!    (b)  subroutine lw_emissivity returns the long wave cloud emis-
+!         sivity and subroutine sw_optical_properties returns the cloud 
+!         reflectivities and absorptions in the nir and uv spectral
+!         bands when using non-microphysically-based cloud radiative
+!         properties.
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!------------ version number for this module -------------------------
+        
+character(len=128) :: version = '$Id: cloud_rad.F90,v 10.0 2003/10/24 22:00:23 fms Exp $'
+character(len=128) :: tagname = '$Name: jakarta $'
 
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!---------------------------------------------------------------------- 
+!--------- interfaces --------
+
+public     &
+         cloud_rad_init, &
+         cloud_rad_end, &
+         cloud_summary, &
+         lw_emissivity, &
+         sw_optical_properties, &
+         cloud_summary3, &
+         get_strat_cloud_diagnostics, &
+         cloud_rad_k_diag,  &
+         cloud_rad
+
+!---------------------------------------------------------------------
+!    public subroutines:
 !
-!	CLOUD RADIATIVE PROPERTIES
-!
-!       February 2001
-!       Contact person: Steve Klein
-!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!       This module does one of two things...
-!
-!       (a)  If using the "old" Fels-Schwarzkopf LW / Lacis-Hansen SW
-!       radiation code this module solves for the radiative properties 
-!       of every cloud.  In particular it uses either the
-!       two stream approach or the delta-Eddington approach
-!       to solve for the longwave emmissivity, the ultra-violet-
-!       visible reflectivities and absorptions, and the
-!       near-infrared reflectivities and absorptions.
-!
-!       (b)  If using the "new sea-esf" radiation code this returns
-!       the cloud amounts, layers in which these occur, and concentrations
-!       of microphysical properties, and the effective diameters
-!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!        The module contains the following:
-!
-!	SUBROUTINES
-!
-!
-!            CLOUD_RAD_INIT
+!      cloud_rad_init
 !                        Initializes values of qmin, N_land, and 
 !                        N_ocean using values from strat_cloud namelist
 !                        as well as reads its own namelist variables. 
 !                        In addition, it registed diagnostic fields
 !                        if needed, and returns the value of the
 !                        cloud overlap to strat_cloud.
-!            CLOUD_SUMMARY
+!      cloud_summary
 !                        This is the main driver program of the module
-!            CLOUD_ORGANIZE
-!                        for each cloud this computes the cloud amount,
-!                        the liquid and ice water paths, the effective
-!                        particle sizes, the tops and bottoms of clouds.
-!    	     CLOUD_RAD   
+!      cloud_rad   
 !                        this solves for the radiative properties of the
 !                        clouds given the cloud optical properties
 !                        (tau,w0,gg) for each cloud using either a 
 !                        Delta-Eddington solution (default) or the
 !                        two stream approximation.
-!            CLOUD_OPTICAL_PROPERTIES
+!      cloud_optical_properties
 !                        for each cloud this calculates the mixed phase
-!                        values of the optical depth, the single scattering
-!                        albedo, and the asymmetry parameter (tau, w0,and g)
-!                        for the visible and near infrared bands.  It also
-!                        computes the longwave emmissivity of each cloud.
-!            ISCCP_CLOUDTYPES
+!                        values of the optical depth, the single scat-
+!                        tering albedo, and the asymmetry parameter 
+!                        (tau, w0,and g) for the visible and near infra-
+!                        red bands.  It also computes the longwave 
+!                        emissivity of each cloud.
+!       isccp_cloudtypes
 !                        computes the ISCCP view of model clouds
-!            TAU_REFF_DIAG
+!       tau_reff_diag       
 !                        computes diagnostics on cloud optical depth,
 !                        effective radius, and cloud temperature.
 !
-!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!
-!       Declare outside modules used, make implicit nones, declare
-!       public routines/variables.
-!
+!----------------------------------------------------------------------
 
-        USE  Constants_Mod,      ONLY :  Rdgas,Grav,Tfreeze,Dens_h2o
-        USE  Utilities_Mod,      ONLY :  File_Exist, Open_File,  &
-                                         print_version_number,  &
-                                         error_mesg, FATAL,     &
-                                         Close_File, get_my_pe, &
-					 check_nml_error
-        use  diag_manager_mod,    only:  register_diag_field, &
-                                         send_data
-        use  time_manager_mod,    only:  time_type
-  
-        IMPLICIT NONE
-        PRIVATE
-
-        PUBLIC   CLOUD_RAD_INIT, &
-                 CLOUD_SUMMARY, &
-                 CLOUD_RAD
-
+private     &
+         max_rnd_overlap, rnd_overlap, cloud_rad_k
      
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!---------------------------------------------------------------------
+!    private subroutines:
 !
+!       max_rnd_overlap
+!       rnd_overlap
+!       cloud_rad_k
+!      cloud_organize
+!                        for each cloud this computes the cloud amount,
+!                        the liquid and ice water paths, the effective
+!                        particle sizes, the tops and bottoms of clouds.
 !
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!-------- namelist  ---------
+
+integer      :: overlap = 1
+logical      :: l2strem = .false.
+real         :: taucrit = 1.
+logical      :: adjust_top = .true.
+real         :: scale_factor = 0.85
+real         :: qamin = 1.E-2
+logical      :: do_brenguier = .true.
+
+!--------------------------------------------------------------------
+!    namelist variables:
 !
-!                           PARAMETERS OF THE SCHEME
+!      overlap        integer variable indicating which overlap 
+!                     assumption to use:
+!                     overlap = 1. means condensate in adjacent levels 
+!                                  is treated as part of the same cloud
+!                                  i.e. maximum-random overlap
+!                     overlap = 2. means condensate in adjacent levels 
+!                                  is treated as different clouds
+!                                  i.e. random overlap
+!      l2strem        logical variable indicating which solution for 
+!                     cloud radiative properties is being used.
+!                     l2strem = T  2 stream solution
+!                     l2strem = F  Delta-Eddington solution
+!                     Note that IF l2strem = T then the solution does 
+!                     not depend on solar zenith angle
+!      taucrit        critical optical depth for switching direct beam 
+!                     to diffuse beam for use in Delta-Eddington 
+!                     solution [ dimensionless] 
+!      adjust_top     logical variable indicating whether or not to use 
+!                     the code which places the top and bottom of the 
+!                     cloud at the faces which are most in view from
+!                     the top and bottom of the cloud block. this is 
+!                     done to avoid undue influence of very small cloud
+!                     fractions. if true this adjustment of tops is 
+!                     performed; if false this is not performed.
+!      scale_factor   factor which multiplies actual cloud optical 
+!                     depths to account for the plane-parallel homo-
+!                     genous cloud bias  (e.g. Cahalan effect).
+!                     [ dimensionless] 
+!      qamin          minimum permissible cloud fraction 
+!                     [ dimensionless] 
+!      do_brenguier   should drops at top of stratocumulus clouds be
+!                     scaled?
 !
-!
-!       taumin         minimum permissible tau         dimensionless
-!
-!       qmin           minimum permissible cloud       kg condensate/kgair                  
-!                      condensate
-!              
-!       N_land         number of cloud droplets        1/(m*m*m)
-!                      in liquid clouds over land
-!
-!       N_ocean        number of cloud droplets        1/(m*m*m)
-!                      in liquid clouds over ocean
-!
-!       k_land         ratio of effective radius to    dimensionless
-!                      volume radius for continental
-!                      air masses
-!
-!       k_ocean        ratio of effective radius to    dimensionless
-!                      volume radius for maritime
-!                      air masses
-!
+!----------------------------------------------------------------------
+ 
+
+namelist /cloud_rad_nml/                                       &
+                         overlap, l2strem, taucrit,     &
+                         adjust_top, scale_factor, qamin, &
+                         do_brenguier
+
+
+!------------------------------------------------------------------
+!---- public data ------
+
+
+!-------------------------------------------------------------------
+!---- private data ------
+
+!-------------------------------------------------------------------
+!   various physical parameters:
+!-------------------------------------------------------------------
+real, parameter :: taumin = 1.E-06  ! minimum permissible tau  
+                                    ! [ dimensionless ]
+real            :: qmin = 1.E-10    ! minimum permissible cloud 
+                                    ! condensate [ kg condensate / 
+                                    ! kg air ]                 
+real            :: N_land = 3.E+08  ! number of cloud droplets in liquid
+                                    ! clouds over land  [ m**(-3) ]
+real            :: N_ocean = 1.E+08 ! number of cloud droplets in liquid
+                                    ! clouds over ocean [ m**(-3) ]
+real, parameter :: k_land = 1.143   ! ratio of effective radius to 
+                                    ! volume radius for continental
+                                    ! air masses  [ dimensionless ]
+real, parameter :: k_ocean = 1.077  ! ratio of effective radius to 
+                                    ! volume radius for continental
+                                    ! air masses  [ dimensionless ]
 !       IMPORTANT NOTE qmin, N_land, N_ocean are initialized with a 
 !       call from strat_cloud_init to cloud_rad_init.  This guarantees
 !       that both strat_cloud and cloud_rad have the exact same values
 !       for these parameters.
-!
-!      
-!                         NAMELIST VARIABLES OF THE SCHEME
-!
-!       overlap        integer variable indicating which 
-!                      overlap assumption to use:
-!
-!                      overlap = 1. means condensate in 
-!                                   adjacent levels is 
-!                                   treated as part of 
-!                                   the same cloud
-!
-!                      i.e. maximum-random overlap
-!                          
-!                      overlap = 2. means condensate in 
-!                                   adjacent levels is 
-!                                   treated as different 
-!                                   clouds
-!
-!                      i.e. random overlap
-!
-!
-!       l2strem        logical variable indicating whether
-!                      what solution for cloud radiative
-!                      properties is being used.
-!          
-!                      l2strem = T  2 stream solution
-!                      l2strem = F  Delta-Eddington solution
-!
-!                      Note that IF l2strem = T then the 
-!                      solution does not depend on solar 
-!                      zenith angle
-!
-!                      used in the radiative transfer 
-!                      solution module (cloud_rad)
-!
-!       taucrit        critical optical depth for switching 
-!                      direct beam to diffuse beam for 
-!                      use in Delta-Eddington solution
-!
-!                      used in the radiative transfer
-!                      solution module (cloud_rad)
-!                         
-!       NOTE: l2strem and taucrit are only used in subroutine cloud_rad!
-!
-!
-!
-!       adjust_top     logical variable indicating whether 
-!                      or not to use the code which places 
-!                      the top and bottom of the cloud at 
-!                      the faces which are most in view from
-!                      the top and bottom of the cloud block.  
-!                      This is done to avoid undue influence 
-!                      to very small cloud fractions.  If 
-!                      true this adjustment of tops is 
-!                      performed; If false this is not 
-!                      performed.
-!
-!       scale_factor   Factor which multiplies actual cloud
-!                      optical depths to account for the
-!                      plane-parallel homogenous cloud bias
-!                      (e.g. Cahalan effect).
-!
-!                      used only by strat_cloud_mod
-!
-!       qamin          minimum permissible cloud       dimensionless                  
-!                      fraction 
-!
-!
-!       ------------------------------------------------------------------
-!
-!                         ISCCP CLOUD PROCESSING
-!
-!    
-!       The following variables only apply if the ISCCP cloud view
-!       processing is done.  To turn on ISCCP cloud processing you
-!       must require one of the diagnostic fields produced by it from
-!       the diag_table. 
-!
-!
-!       top_height
-!
-!                      integer variable indicating whether 
-!                      or not to simulate 10.5 micron brightness
-!                      temperatures to adjust top heights according
-!                      to the emissivity of the cloud. 
-!                     
-!                      1 = adjust top height using both a computed
-!                          infrared brightness temperature and the 
-!                          visible optical depth to adjust cloud top 
-!                          pressure. Note that this calculation is 
-!                          most appropriate to compare to ISCCP data 
-!                          during sunlit hours.
-!                                   
-!                      2 = do not adjust top height, that is cloud top
-!                          pressure is the actual cloud top pressure
-!                          in the model
-!                
-!                      3 = adjust top height using only the computed
-!                          infrared brightness temperature. Note that 
-!                          this calculation is most appropriate to 
-!                          compare to ISCCP IR only algortihm (i.e. 
-!                          you can compare to nighttime ISCCP data 
-!                          with this option)
-!
-!       ncol           number of columns used in ISCCP cloud type
-!                      simulations
-! 
-!       isccp_taumin   minimum optical depth ISCCP can see
-!
-!       emsfclw        assumed constant of longwave emissivity of
-!                      the surface (fraction)
-!
-!       do_sunlit      should ISCCP diagnostics be done during sunlit
-!                      hours only?
-!
-!
-!                  PHYSICAL CONSTANTS USED IN THE SCHEME
-!
-!	
-!         constant              definition                  unit
-!       ------------   -----------------------------   ---------------
-!
-!	Grav	       gravitational acceleration      m/(s*s)
-!
-!	Rdgas	       gas constant of dry air         J/kg air/K
-!
-!       Tfreeze        Triple point of water           K
-!
-!       Dens_h2o       density of pure liquid          kg/(m*m*m)
-!
+ 
+!----------------------------------------------------------------------
+!    diagnostics variables.        
+!----------------------------------------------------------------------
+character(len=8)    :: mod_name = 'cloud_rad'
+real                :: missing_value = -999.
 
-
-
-REAL,    PRIVATE, PARAMETER :: taumin = 1.E-06
-REAL,    PRIVATE            :: qmin = 1.E-10
-REAL,    PRIVATE            :: N_land = 3.E+08
-REAL,    PRIVATE            :: N_ocean = 1.E+08
-REAL,    PRIVATE, PARAMETER :: k_land = 1.143
-REAL,    PRIVATE, PARAMETER :: k_ocean = 1.077
-LOGICAL, PRIVATE            :: do_tau_reff = .FALSE.
-LOGICAL, PRIVATE            :: do_isccp = .FALSE.
-LOGICAL, PRIVATE            :: do_sunlit = .FALSE.
-
-INTEGER, PRIVATE            :: overlap = 1
-LOGICAL, PRIVATE            :: l2strem = .FALSE.
-REAL,    PRIVATE            :: taucrit = 1.
-LOGICAL, PRIVATE            :: adjust_top = .TRUE.
-REAL,    PRIVATE            :: scale_factor = 0.8
-REAL,    PRIVATE            :: qamin = 1.E-2
-INTEGER, PRIVATE            :: top_height = 1
-INTEGER, PRIVATE            :: ncol = 50
-REAL,    PRIVATE            :: isccp_taumin = 0.3
-REAL,    PRIVATE            :: emsfclw = 0.94
-
-!        
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!       CREATE NAMELIST
-!
-
-        NAMELIST /CLOUD_RAD_NML/ overlap,l2strem,taucrit,adjust_top, &
-                                 scale_factor,qamin,top_height,ncol, &
-				 isccp_taumin, emsfclw, do_sunlit
-
-!-----------------------------------------------------------------------
-!-------------------- diagnostics fields -------------------------------
-
-integer :: id_pc1tau1,id_pc1tau2,id_pc1tau3,id_pc1tau4,id_pc1tau5, &
-           id_pc1tau6,id_pc1tau7, &
-           id_pc2tau1,id_pc2tau2,id_pc2tau3,id_pc2tau4,id_pc2tau5, &
-           id_pc2tau6,id_pc2tau7, &
-           id_pc3tau1,id_pc3tau2,id_pc3tau3,id_pc3tau4,id_pc3tau5, &
-           id_pc3tau6,id_pc3tau7, &
-           id_pc4tau1,id_pc4tau2,id_pc4tau3,id_pc4tau4,id_pc4tau5, &
-           id_pc4tau6,id_pc4tau7, &
-           id_pc5tau1,id_pc5tau2,id_pc5tau3,id_pc5tau4,id_pc5tau5, &
-           id_pc5tau6,id_pc5tau7, &
-           id_pc6tau1,id_pc6tau2,id_pc6tau3,id_pc6tau4,id_pc6tau5, &
-           id_pc6tau6,id_pc6tau7, &
-           id_pc7tau1,id_pc7tau2,id_pc7tau3,id_pc7tau4,id_pc7tau5, &
-           id_pc7tau6,id_pc7tau7, &
-           id_nisccp, id_aice, id_reffice, id_aliq, id_reffliq, &
+integer ::            id_aice, id_reffice, id_aliq, id_reffliq, &
            id_alow, id_tauicelow, id_tauliqlow, id_tlaylow, id_tcldlow
 
-character(len=5) :: mod_name = 'cloud'
+logical :: do_isccp    = .false.     ! are isccp diagnostics desired ?
+logical :: do_tau_reff = .false.     ! are the isccp summary diagnostics
+                                    ! desired ?
+logical :: do_sunlit = .false.   ! do isccp clouds during sunlit hours
+                                 ! only ? 
 
-!        
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!---------------------------------------------------------------------
+!   logical variables:
+!--------------------------------------------------------------------
+logical   :: module_is_initialized = .false.  ! is module initialized ?
+
+
+
+
+!---------------------------------------------------------------------
+!---------------------------------------------------------------------
+
+
+
+
+                         contains
+
+
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !
-!       DECLARE VERSION NUMBER OF SCHEME
+!                     PUBLIC SUBROUTINES
 !
-        
-        character(len=128) :: version = '$Id: cloud_rad.F90,v 1.7 2003/04/09 20:53:41 fms Exp $'
-        character(len=128) :: tag = '$Name: inchon $'
-
-! 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
-CONTAINS
-
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 !#######################################################################
-!#######################################################################
 
 
-SUBROUTINE CLOUD_RAD_INIT(axes,Time,qmin_in,N_land_in,N_ocean_in,overlap_out)
+! <SUBROUTINE NAME="cloud_rad_init">
+!  <OVERVIEW>
+!
+!   Called once to initialize cloud_rad module.   This routine reads the
+!   namelist, registers any requested diagnostic fields, and (when
+!   called from strat_cloud_init [standard practice]) returns the
+!   overlap assumption to strat_cloud for use in determining cloud and
+!   large-scale precipitation overlap. 
+!
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!
+!   Initializes values of qmin, N_land, and  N_ocean using values from
+!   strat_cloud namelist as well as reads its own namelist variables. In
+!   addition, it registers diagnostic fields if needed, and returns the 
+!   value of the cloud overlap to strat_cloud.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call cloud_rad_init (axes, Time, qmin_in, N_land_in, N_ocean_in, &
+!		overlap_out)
+!		
+!  </TEMPLATE>
+!  <IN NAME="axes" TYPE="integer, optional">
+!    Axis integers for diagnostics
+!  </IN>
+!  <IN NAME="Time" TYPE="time_type, optional">
+!     Time type variable for diagnostics
+!  </IN>
+!  <IN NAME="qmin_in" TYPE="real, kg condensate/kg air, optional">
+!      Input value of minimum permissible cloud liquid, ice,
+!      or fraction                
+!  </IN>
+!  <IN NAME="N_land_in" TYPE="real, #/(m*m*m), optional">
+!    Input value of number of cloud drop per cubic meter
+!    over land
+!  </IN>
+!  <IN NAME="N_ocean_in" TYPE="real, #/(m*m*m), optional">
+!    Input value of number of cloud drop per cubic meter
+!    over ocean
+!  </IN>
+!  <OUT NAME="overlap_out" TYPE="integer, optional">
+!    Integer indicating the overlap assumption being used 
+!                       (1 = maximum-random, 2 = random)
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine cloud_rad_init (axes, Time, qmin_in, N_land_in, N_ocean_in, &
+                           overlap_out)
                                
+!--------------------------------------------------------------------
+!    cloud_rad_init is the constructor for cloud_rad_mod.
+!--------------------------------------------------------------------
 
-!        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 !       This subroutine initializes values of qmin, N_land, and 
@@ -339,14 +357,14 @@ SUBROUTINE CLOUD_RAD_INIT(axes,Time,qmin_in,N_land_in,N_ocean_in,overlap_out)
 !
 !
 !
-!	VARIABLES
+!VARIABLES
 !
 !
 !       --------------
 !       OPTIONAL INPUT
 !       --------------
 !
-!	
+!
 !         variable              definition                  unit
 !       ------------   -----------------------------   ---------------
 !
@@ -375,7 +393,7 @@ SUBROUTINE CLOUD_RAD_INIT(axes,Time,qmin_in,N_land_in,N_ocean_in,overlap_out)
 !
 !
 !       -------------------
-!	INTERNAL VARIABLES:
+!INTERNAL VARIABLES:
 !       -------------------
 !
 !       unit,io        namelist integers
@@ -403,29 +421,39 @@ INTEGER                                  :: unit,io,ierr
 !       Code
 !
     
-        
-!-----------------------------------------------------------------------
-!
-!       Namelist functions
+!---------------------------------------------------------------------
+!    if routine has already been executed, exit.
+!---------------------------------------------------------------------
+      if (module_is_initialized) return
 
-	!read namelist file if it exists
-        if ( file_exist('input.nml')) then
-        unit = open_file (file='input.nml', action='read')
+!---------------------------------------------------------------------
+!    verify that modules used by this module that are not called later
+!    have already been initialized.
+!---------------------------------------------------------------------
+      call fms_init
+      call time_manager_init
+      call constants_init
+      call diag_manager_init
+
+!--------------------------------------------------------------------
+!    read namelist.
+!--------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+        unit = open_namelist_file ()
         ierr=1; do while (ierr /= 0)
            read  (unit, nml=cloud_rad_nml, iostat=io, end=10)
            ierr = check_nml_error(io,'cloud_rad_nml')
         enddo
 10      call close_file (unit)
-        endif
-	
-	!write namelist variables to logfile
-        unit = Open_File ('logfile.out', action='APPEND')
-        if ( get_my_pe() == 0 ) then
-             Write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-             Write (unit,nml=CLOUD_RAD_NML)
-        endif
-        Call Close_File (unit)
-       
+      endif
+
+!---------------------------------------------------------------------
+!    write version number and namelist to logfile.
+!---------------------------------------------------------------------
+      call write_version_number (version, tagname)
+      if (mpp_pe() == mpp_root_pe() ) &
+                        write (stdlog(), nml=cloud_rad_nml)
+
 !-----------------------------------------------------------------------
 !
 !       Prevent unreasonable values
@@ -460,256 +488,3038 @@ INTEGER                                  :: unit,io,ierr
               overlap_out = overlap
         end if
         
-!-----------------------------------------------------------------------
+        
+       call isccp_clouds_init (axes, Time, do_sunlit_out = do_sunlit, &
+                               do_isccp_out = do_isccp, &
+                                do_tau_reff_out = do_tau_reff)
+
+
+       module_is_initialized = .true.
+
+end subroutine cloud_rad_init
+
+!###################################################################
+
+! <SUBROUTINE NAME="cloud_rad_end">
+!  <OVERVIEW>
+!
+!    A destructor routine for the cloud_rad module.
+!
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!
+!    A destructor routine for the cloud_rad module.
+!
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call cloud_rad_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
+subroutine cloud_rad_end
+
+       module_is_initialized = .false.
+
+end subroutine cloud_rad_end
+
+!###################################################################
+
+! <SUBROUTINE NAME="get_strat_cloud_diagnostics">
+!  <OVERVIEW>
+!
+!    A subroutine to return values of the overlap assumption and the
+!    minimum permissible cloud liquid, ice, or fraction.
+!
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!
+!    This subroutine returns the values of the overlap assumption and
+!    the minimum permissible cloud liquid, ice, or fraction.
+!
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call get_strat_cloud_diagnostics (overlap_out, qmin_out)
+!		
+!  </TEMPLATE>
+!  <OUT NAME="overlap_out" TYPE="integer">
+!     Integer indicating the overlap assumption being used.
+!     (1 = maximum-random, 2 = random)
+!  </OUT>
+!  <OUT NAME="qmin_out" TYPE="real">
+!    Value of minimum permissible cloud liquid, ice, or fraction.
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine get_strat_cloud_diagnostics (overlap_out, qmin_out)
+
+integer, intent(out) :: overlap_out
+real, intent(out)    :: qmin_out
+
+    if (module_is_initialized) then
+    
+     overlap_out = overlap
+     qmin_out = qmin
+     else
+    call error_mesg ( 'cloud_rad_mod',  &
+     'calling get_strat_cloud_diagnostics before cloud_rad_init', FATAL)
+    endif
+
+end subroutine get_strat_cloud_diagnostics
+
+
+
+
+
+!#####################################################################
+
+! <SUBROUTINE NAME="lw_emissivity">
+!  <OVERVIEW>
+!   
+!    Subroutine lw_emissivity computes the longwave cloud emissivity 
+!    using the cloud mass absorption coefficient and the water path.
+!
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call lw_emissivity (is, js, lwp, iwp, reff_liq, reff_ice,   &
+!		nclds, em_lw)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!     Starting subdomain i index of data 
+!     in the physics_window being integrated
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+!     Starting subdomain j index of data 
+!     in the physics_window being integrated
+!  </IN>
+!  <IN NAME="lwp" TYPE="real">
+!     Liquid water path [ kg / m**2 ]
+!  </IN>
+!  <IN NAME="iwp" TYPE="real">
+!     Ice water path [ kg / m**2 ]
+!  </IN>
+!  <IN NAME="reff_liq" TYPE="real">
+!     Effective cloud drop radius used with
+!     bulk cloud physics scheme [ microns ]
+!  </IN>
+!  <IN NAME="reff_ice" TYPE="real">
+!     Effective ice crystal radius used with
+!     bulk cloud physics scheme [ microns ]
+!  </IN>
+!  <IN NAME="nclds" TYPE="integer">
+!     Number of random overlapping clouds in column
+!  </IN>
+!  <OUT NAME="em_lw" TYPE="real">
+!     longwave cloud emmissivity [ dimensionless ]
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine lw_emissivity (is, js, lwp, iwp, reff_liq, reff_ice,   &
+                          nclds, em_lw)
+
+!---------------------------------------------------------------------
+!    subroutine lw_emissivity computes the longwave cloud emissivity 
+!    using the cloud mass absorption coefficient and the water path.
+!---------------------------------------------------------------------
+
+integer,                 intent(in)   ::  is,js
+real, dimension(:,:,:),  intent(in)   ::  lwp, iwp, reff_liq, reff_ice
+integer, dimension(:,:), intent(in)   ::  nclds
+real, dimension(:,:,:),  intent(out)  ::  em_lw
+
+
+!--------------------------------------------------------------------
+!   intent(in) variables:
+!
+!        is,js           starting subdomain i,j indices of data 
+!                        in the physics_window being integrated     
+!        lwp             liquid water path [ kg / m**2 ]
+!        iwp             ice water path [ kg / m**2 ]
+!        reff_liq        effective cloud drop radius  used with
+!                        bulk cloud physics scheme [ microns ]
+!        reff_ice        effective ice crystal radius used with
+!                        bulk cloud physics scheme [ microns ]
+!        nclds           number of random overlapping clouds in column
+!
+!    intent(out) variables:
+!
+!        em_lw           longwave cloud emmissivity [ dimensionless ]
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!   local variables:
+
+      real, dimension (size(em_lw,1), size(em_lw,2),                 &
+                                      size(em_lw,3)) ::  k_liq, k_ice
+      integer        ::   i, j, k 
+
+!---------------------------------------------------------------------
+!   local variables:
+!     
+!     k_liq             liquid cloud mass absorption coefficient for 
+!                       longwave portion of spectrum 
+!                       [ m**2 / kg condensate ]
+!     k_ice             ice cloud mass absorption coefficient for 
+!                       longwave portion of spectrum 
+!                       [ m**2 / kg condensate ]
+!     i,j,k             do-loop indices
+!
+!---------------------------------------------------------------------
+              
+!----------------------------------------------------------------------
+!    compute longwave emissivity, including contributions from both the
+!    ice and liquid cloud particles present.
+!----------------------------------------------------------------------
+      k_liq = 140.
+      k_ice = 4.83591 + 1758.511/reff_ice       
+      em_lw = 1. - exp(-1.*( k_liq*lwp +  k_ice*iwp))
+
+!----------------------------------------------------------------------
+
+
+    
+end subroutine lw_emissivity                   
+
+
+
+
+!######################################################################
+
+! <SUBROUTINE NAME="cloud_summary3">
+!  <OVERVIEW>
+!
+!   cloud_summary3 returns the specification properties of the clouds
+!    present in the strat_cloud_mod.
+!
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!
+!   cloud_summary3 returns the specification properties of the clouds
+!    present in the strat_cloud_mod.
+!
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call cloud_summary3 (is, js, land, ql, qi, qa, pfull, phalf, &
+!		tkel, nclds, cldamt, lwp, iwp, reff_liq,  &
+!		reff_ice, ktop, kbot, conc_drop, conc_ice, &
+!		size_drop, size_ice)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is,js" TYPE="integer">
+!    Indices for model slab
+!  </IN>
+!  <IN NAME="land" TYPE="real">
+!    Fraction of the grid box covered by land
+!                    [ dimensionless ]
+!  </IN>
+!  <IN NAME="ql" TYPE="real">
+!    Cloud liquid condensate [ kg condensate/kg air ]
+!  </IN>
+!  <IN NAME="qi" TYPE="real">
+!    Cloud ice condensate [ kg condensate/kg air ]
+!  </IN>
+!  <IN NAME="qa" TYPE="real">
+!    Cloud volume fraction [ fraction ]
+!  </IN>
+!  <IN NAME="pfull" TYPE="real">
+!    Pressure at full levels [ Pascals ]
+!  </IN>
+!  <IN NAME="phalf" TYPE="real">
+!    Pressure at half levels [ Pascals ]
+!    NOTE: it is assumed that phalf(j+1) > phalf(j)
+!  </IN>
+!  <IN NAME="tkel" TYPE="real">
+!    Temperature [ deg. Kelvin ]
+!  </IN>
+!  <OUT NAME="nclds" TYPE="integer">
+!    Number of random-overlap clouds in a column
+!  </OUT>
+!  <OUT NAME="cldamt" TYPE="real">
+!    Cloud amount of condensed cloud
+!  </OUT>
+!  <OUT NAME="lwp" TYPE="real">
+!    Liquid water path
+!  </OUT>
+!  <OUT NAME="iwp" TYPE="real">
+!    Ice water path
+!  </OUT>
+!  <OUT NAME="reff_liq" TYPE="real">
+!    Effective radius of cloud drops
+!  </OUT>
+!  <OUT NAME="reff_ice" TYPE="real">
+!    Effective radius of ice crystals
+!  </OUT>
+!  <OUT NAME="ktop" TYPE="integer, optional">
+!    Integer level for top of cloud, present when 
+!    max-random overlap assumption made.
+!  </OUT>
+!  <OUT NAME="kbot" TYPE="integer, optional">
+!    Integer level for bottom of cloud, present when
+!    max-random overlap assumption made.
+!  </OUT>
+!  <OUT NAME="conc_drop" TYPE="real, optional">
+!    Liquid cloud droplet mass concentration, present 
+!    when microphysically-based cloud radiative
+!    properties are desired.
+!  </OUT>
+!  <OUT NAME="conc_ice" TYPE="real, optional">
+!    Ice cloud mass concentration, present when
+!    microphysically-based cloud radiative
+!    properties are desired
+!  </OUT>
+!  <OUT NAME="size_drop" TYPE="real, optional">
+!    Effective diameter of liquid cloud droplets, 
+!    present when microphysically-based cloud radiative
+!    properties are desired.
+!  </OUT>
+!  <OUT NAME="size_ice" TYPE="real, optional">
+!     Effective diameter of ice cloud, present when 
+!     microphysically-based cloud radiative
+!     properties are desired.
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine cloud_summary3 (is, js, land, ql, qi, qa, pfull, phalf, &
+                           tkel, nclds, cldamt, lwp, iwp, reff_liq,  &
+                           reff_ice, ktop, kbot, conc_drop, conc_ice, &
+                           size_drop, size_ice)
+   
+!---------------------------------------------------------------------
+!    cloud_summary3 returns the specification properties of the clouds
+!    present in the strat_cloud_mod.
+!---------------------------------------------------------------------
+ 
+integer,                   intent(in)            :: is,js
+real, dimension(:,:),      intent(in)            :: land
+real, dimension(:,:,:),    intent(in)            :: ql, qi, qa, pfull,&
+                                                    phalf, tkel
+integer, dimension(:,:),   intent(out)           :: nclds          
+real, dimension(:,:,:),    intent(out)           :: cldamt, lwp, iwp, &
+                                                    reff_liq, reff_ice
+integer, dimension(:,:,:), intent(out), optional :: ktop, kbot 
+real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
+                                                    size_drop,size_ice
+
+!---------------------------------------------------------------------
+!    intent(in) variables:
+!
+!       is,js        Indices for model slab
+!       land         Fraction of the grid box covered by land
+!                    [ dimensionless ]
+!       ql           Cloud liquid condensate [ kg condensate/kg air ]
+!       qi           Cloud ice condensate [ kg condensate/kg air ]
+!       qa           Cloud volume fraction [ fraction ]
+!       pfull        Pressure at full levels [ Pascals ]
+!       phalf        Pressure at half levels [ Pascals ]
+!                    NOTE: it is assumed that phalf(j+1) > phalf(j)
+!       tkel         Temperature [ deg. Kelvin ] 
+!
+!    intent(out) variables:
+!
+!       nclds        Number of random-overlap clouds in a column
+!       cldamt       Cloud amount of condensed cloud
+!       lwp          Liquid water path 
+!       iwp          Ice water path
+!       reff_liq     Effective radius of cloud drops
+!       reff_ice     Effective radius of ice crystals
+!
+!   intent(out), optional variables:
+! 
+!       ktop         Integer level for top of cloud, present when 
+!                    max-random overlap assumption made
+!       kbot         Integer level for bottom of cloud, present when
+!                    max-random overlap assumption made
+!       conc_drop    Liquid cloud droplet mass concentration, present 
+!                    when microphysically-based cloud radiative
+!                    properties are desired
+!       conc_ice     Ice cloud mass concentration, present when
+!                    microphysically-based cloud radiative
+!                    properties are desired
+!       size_drop    Effective diameter of liquid cloud droplets, 
+!                    present when microphysically-based cloud radiative
+!                    properties are desired
+!       size_ice     Effective diameter of ice cloud, present when 
+!                    microphysically-based cloud radiative
+!                    properties are desired
+!
+!--------------------------------------------------------------------
+ 
+!--------------------------------------------------------------------
+!    local variables:
+
+      real,dimension (size(ql,1),size(ql,2),   &
+                                 size(ql,3)) :: qa_local, ql_local, &
+                                                qi_local
+
+      real,dimension (size(ql,1),size(ql,2)) :: N_drop, k_ratio
+
+!--------------------------------------------------------------------
+!    local variables:
+!
+!       qa_local     local value of qa (fraction)
+!       ql_local     local value of ql (kg condensate / kg air)
+!       qi_local     local value of qi (kg condensate / kg air)
+!       N_drop       number of cloud droplets per cubic meter
+!       k_ratio      ratio of effective radius to mean volume radius
+!
+!---------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!    create local values of ql and qi. this step is necessary to remove 
+!    the values of (qi,ql) which are 0 < (qi,ql) < qmin   or
+!    (qi,ql) > qmin and qa <= qamin.
+!--------------------------------------------------------------------
+      qa_local(:,:,:) = 0.
+
+      where ( (qa(:,:,:) .gt. qamin) .and. (ql(:,:,:) .gt. qmin) )
+        ql_local(:,:,:) = ql(:,:,:)
+        qa_local(:,:,:) = qa(:,:,:)
+      elsewhere
+        ql_local(:,:,:) = 0.
+      end where
+      where ( (qa(:,:,:) .gt. qamin) .and. (qi(:,:,:) .gt. qmin) )
+        qi_local(:,:,:) = qi(:,:,:)
+        qa_local(:,:,:) = qa(:,:,:)
+      elsewhere
+        qi_local(:,:,:) = 0.
+      end where
+
+!--------------------------------------------------------------------
+!    define the cloud droplet concentration and the ratio of the 
+!    effective drop radius to the mean volume radius.
+!--------------------------------------------------------------------
+      N_drop(:,:)  = N_land*land(:,:) + N_ocean*(1. - land(:,:))
+      k_ratio(:,:) = k_land*land(:,:) + k_ocean*(1. - land(:,:))
+
+!--------------------------------------------------------------------
+!    execute the following when  the max-random overlap assumption 
+!    is being made. 
+!--------------------------------------------------------------------
+      if (present(ktop) .and. present(kbot)) then    ! max-rnd
+
+!--------------------------------------------------------------------
+!    if microphysics output is required, only the random overlap assump-
+!    tion is allowed; if max-random overlap is requested, an error
+!    message will be issued. if random overlap is requested, call
+!    subroutine rnd_overlap to obtain the cloud specification proper-
+!    ties, including the microphysical parameters.
+!--------------------------------------------------------------------
+        if (present (conc_drop) .and.  present (conc_ice ) .and. &
+            present (size_ice ) .and.  present (size_drop)) then      
+          call error_mesg ( 'cloud_rad_mod', &
+       ' max-random overlap not currently available for radiation '//&
+              'scheme requiring microphysically-based outputs', FATAL)
+     
+!----------------------------------------------------------------------
+!    if some but not all of the microphysics variables are present,
+!    stop execution.
+!---------------------------------------------------------------------
+        else if (present (conc_drop) .or.  present (conc_ice ) .or. &
+                 present (size_ice ) .or.  present (size_drop)) then
+          call error_mesg ('cloud_rad_mod', &
+                ' if any microphysical args present, all must be '//&
+                                                    'present', FATAL)
+
+        else
+          call  max_rnd_overlap (ql_local, qi_local, qa_local, pfull,  &
+                                 phalf, tkel, N_drop, k_ratio, nclds,  &
+                                 ktop, kbot, cldamt, lwp, iwp,   &
+                                 reff_liq, reff_ice)
+        endif
+     
+!---------------------------------------------------------------------
+!    if only ktop or kbot is present, stop execution; both are needed
+!    for max-random overlap and neither are prrmitted when the 
+!    random overlap assumption is made.
+!---------------------------------------------------------------------
+      else if (present(ktop) .or. present(kbot)) then ! error
+        call error_mesg ('cloud_rad_mod',  &
+                  'kbot and ktop must either both be absent or both '//&
+                    'be present', FATAL)
+
+!---------------------------------------------------------------------
+!    if neither are present, then random overlap is assumed.
+!---------------------------------------------------------------------
+      else                 
+
+!---------------------------------------------------------------------
+!    if microphysical properties are desired, call subroutine 
+!    rnd_overlap to obtain the cloud specification properties, including
+!    the microphysical parameters.
+!--------------------------------------------------------------------
+        if (present (conc_drop) .and.  present (conc_ice ) .and. &
+            present (size_ice ) .and.  present (size_drop)) then      
+          call rnd_overlap (ql_local, qi_local, qa_local, pfull,  &
+                            phalf, tkel, N_drop, k_ratio, nclds,      &
+                            cldamt, lwp, iwp, reff_liq, reff_ice,   &
+                            conc_drop_org=conc_drop,&
+                            conc_ice_org =conc_ice,&
+                            size_drop_org=size_drop,&
+                            size_ice_org =size_ice)
+
+!--------------------------------------------------------------------
+!    account for the plane-parallel homogeneous cloud bias.
+!--------------------------------------------------------------------
+          conc_drop = scale_factor*conc_drop
+          conc_ice  = scale_factor*conc_ice 
+
+!----------------------------------------------------------------------
+!    if some but not all of the microphysics variables are present,
+!    stop execution.
+!---------------------------------------------------------------------
+        else if (present (conc_drop) .or.  present (conc_ice ) .or. &
+                 present (size_ice ) .or.  present (size_drop)) then   
+          call error_mesg ('cloud_rad_mod', &
+                ' if any microphysical args present, all must '//&
+                                                'be present', FATAL)
+
+!----------------------------------------------------------------------
+!    if microphysics terms are not required, call rnd_overlap to obtain
+!    the cloud specification variables.
+!----------------------------------------------------------------------
+        else
+           call  rnd_overlap (ql_local, qi_local, qa_local, pfull,  &
+                              phalf, tkel, N_drop, k_ratio, nclds,  &
+                              cldamt, lwp, iwp, reff_liq, reff_ice)
+        endif
+      endif ! (present(ktop and kbot))
+
+!---------------------------------------------------------------------
+    
+
+
+end subroutine cloud_summary3
+
+
+
+!######################################################################
+
+! <SUBROUTINE NAME="max_rnd_overlap">
+!  <OVERVIEW>
+!
+!    max_rnd_overlap returns various cloud specification properties
+!    obtained with the maximum-random overlap assumption.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!
+!    max_rnd_overlap returns various cloud specification properties
+!    obtained with the maximum-random overlap assumption.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
+!		k_ratio, nclds, ktop, kbot, cldamt, lwp,  &
+!		iwp, reff_liq, reff_ice)
+!		
+!  </TEMPLATE>
+!  <IN NAME="ql" TYPE="real">
+!    Cloud liquid condensate [ kg condensate/kg air ]
+!  </IN>
+!  <IN NAME="qi" TYPE="real">
+!    Cloud ice condensate [ kg condensate/kg air ]
+!  </IN>
+!  <IN NAME="qa" TYPE="real">
+!    Cloud volume fraction [ fraction ]
+!  </IN>
+!  <IN NAME="pfull" TYPE="real">
+!    Pressure at full levels [ Pascals ]
+!  </IN>
+!  <IN NAME="phalf" TYPE="real">
+!    Pressure at half levels, index 1 at model top 
+!    [ Pascals ]
+!  </IN>
+!  <IN NAME="tkel" TYPE="real">
+!    Temperature [ deg Kelvin ]
+!  </IN>
+!  <IN NAME="N_drop" TYPE="real">
+!    Number of cloud droplets per cubic meter
+!  </IN>
+!  <IN NAME="k_ratio" TYPE="real">
+!    Ratio of effective radius to mean volume radius
+!  </IN>
+!  <OUT NAME="nclds" TYPE="integer">
+!    Number of (random overlapping) clouds in column 
+!  </OUT>
+!  <OUT NAME="ktop" TYPE="integer">
+!    Level of the top of the cloud.
+!  </OUT>
+!  <OUT NAME="kbot" TYPE="integer">
+!    Level of the bottom of the cloud.
+!  </OUT>
+!  <OUT NAME="cldamt" TYPE="real">
+!    Cloud amount of condensed cloud [ dimensionless ]
+!  </OUT>
+!  <OUT NAME="lwp" TYPE="real">
+!    Cloud liquid water path [ kg condensate / m **2 ]
+!  </OUT>
+!  <OUT NAME="iwp" TYPE="real">
+!    Cloud ice path [ kg condensate / m **2 ]
+!  </OUT>
+!  <OUT NAME="reff_liq" TYPE="real">
+!    Effective radius for liquid clouds [ microns ]
+!  </OUT>
+!  <OUT NAME="reff_ice" TYPE="real">
+!    Effective particle size for ice clouds [ microns ]
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
+                           k_ratio, nclds, ktop, kbot, cldamt, lwp,  &
+                           iwp, reff_liq, reff_ice)
+
+!----------------------------------------------------------------------
+!    max_rnd_overlap returns various cloud specification properties
+!    obtained with the maximum-random overlap assumption.
+!----------------------------------------------------------------------
+ 
+real,    dimension(:,:,:), intent(in)             :: ql, qi, qa,  &
+                                                     pfull, phalf, tkel
+real,    dimension(:,:),   intent(in)             :: N_drop, k_ratio
+integer, dimension(:,:),   intent(out)            :: nclds
+integer, dimension(:,:,:), intent(out)            :: ktop, kbot
+real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
+                                                     reff_liq, reff_ice
+
+!---------------------------------------------------------------------
+!   intent(in) variables:
+!
+!       ql           Cloud liquid condensate [ kg condensate/kg air ]
+!       qi           Cloud ice condensate [ kg condensate/kg air ]
+!       qa           Cloud volume fraction [ fraction ]
+!       pfull        Pressure at full levels [ Pascals ]
+!       phalf        Pressure at half levels, index 1 at model top 
+!                    [ Pascals ]
+!       tkel         Temperature [ deg Kelvin ]
+!       N_drop       Number of cloud droplets per cubic meter
+!       k_ratio      Ratio of effective radius to mean volume radius
+!
+!   intent(out) variables:
+!
+!       nclds        Number of (random overlapping) clouds in column 
+!       ktop         Level of the top of the cloud
+!       kbot         Level of the bottom of the cloud
+!       cldamt       Cloud amount of condensed cloud [ dimensionless ]
+!       lwp          Cloud liquid water path [ kg condensate / m **2 ]
+!       iwp          Cloud ice path [ kg condensate / m **2 ]
+!       reff_liq     Effective radius for liquid clouds [ microns ]
+!       reff_ice     Effective particle size for ice clouds [ microns ]
+!
+!---------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!   local variables:
+
+      real, dimension (size(ql,1), size(ql,2), size(ql,3))  :: &
+                    cldamt_cs, lwp_cs, iwp_cs, reff_liq_cs, reff_ice_cs 
+
+      integer    :: kdim
+      integer    :: top_t, bot_t
+      integer    :: tmp_top, tmp_bot, nlev
+      logical    :: already_in_cloud, cloud_bottom_reached
+      real       :: sum_liq, sum_ice, maxcldfrac
+      real       :: totcld_bot, max_bot
+      real       :: totcld_top, max_top, tmp_val
+      real       :: reff_liq_local, sum_reff_liq
+      real       :: reff_ice_local, sum_reff_ice
+      integer    :: i, j, k, kc, t
+
+!--------------------------------------------------------------------
+!   local variables:
+!
+!       kdim              number of model layers
+!       top_t             used temporarily as tag for cloud top index
+!       bot_t             used temporarily as tag for cloud bottom index
+!       tmp_top           used temporarily as tag for cloud top index
+!       tmp_bot           used temporarily as tag for cloud bottom index
+!       nlev              number of levels in the cloud
+!       already_in_cloud  if true, previous layer contained cloud
+!       cloud_bottom_reached
+!                         if true, the cloud-free layer beneath a cloud
+!                         has been reached
+!       sum_liq           sum of liquid in cloud 
+!                         [ kg condensate / m**2 ]
+!       sum_ice           sum of ice in cloud 
+!                         [ kg condensate / m**2 ]
+!       maxcldfrac        maximum cloud fraction in any layer of cloud
+!                         [ fraction ]
+!       totcld_bot        total cloud fraction from bottom view
+!       max_bot           largest cloud fraction face from bottom view
+!       totcld_top        total cloud fraction from top view
+!       max_top           largest cloud fraction face from top view
+!       tmp_val           temporary number used in the assigning of top 
+!                         and bottom
+!       reff_liq_local    gridpoint value of reff of liquid clouds 
+!                         [ microns ]
+!       sum_reff_liq      condensate-weighted sum over cloud of 
+!                         reff_liq_local  
+!                         [ (kg condensate / m**2) * microns ]
+!       reff_ice_local    gridpoint value ofreff of ice clouds  
+!                         [ microns ]
+!       sum_reff_ice      condensate-weighted sum over cloud of 
+!                         reff_ice_local 
+!                         [ (kg condensate / m**2) * microns ]
+!       i,j,k,kc,t        do-loop indices
+!
+!----------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    define the number of vertical layers in the model. initialize the
+!    output fields to correspond to the absence of clouds.
+!---------------------------------------------------------------------
+      kdim     = size(ql,3)
+      nclds    = 0
+      ktop     = 1
+      kbot     = 0
+      cldamt   = 0.
+      lwp      = 0.
+      iwp      = 0.
+      reff_liq = 10.
+      reff_ice = 30.
+
+!--------------------------------------------------------------------
+!    find the levels with cloud in each column. determine the vertical
+!    extent of each individual cloud, treating cloud in adjacent layers
+!    as components of a multi-layer cloud, and then calculate appropr-
+!    iate values of water paths and effective particle size.
+!--------------------------------------------------------------------
+
+      do j=1,size(ql,2)
+        do i=1,size(ql,1)
+
+!--------------------------------------------------------------------
+!    set a flag indicating that we are searching for the next cloud top.
+!--------------------------------------------------------------------
+          already_in_cloud  = .false.
+          cloud_bottom_reached = .false.
+
+!--------------------------------------------------------------------
+!    march down the column.
+!--------------------------------------------------------------------
+          do k=1,kdim      
+
+!--------------------------------------------------------------------
+!    find a layer containing cloud in the column. 
+!--------------------------------------------------------------------
+            if ( (ql(i,j,k) .gt. qmin) .or. &
+                 (qi(i,j,k) .gt. qmin) ) then      
+
+!--------------------------------------------------------------------
+!    if the previous layer was not cloudy, then a new cloud has been
+!    found. increment the cloud counter, set the flag to indicate the 
+!    layer is in a cloud, save its cloud top level, initialize the 
+!    values of its ice and liquid contents and fractional area and 
+!    effective crystal and drop sizes. 
+!--------------------------------------------------------------------
+              if (.not. already_in_cloud)  then
+                nclds(i,j) = nclds(i,j) + 1
+                already_in_cloud = .true.
+                cloud_bottom_reached = .false.
+                ktop(i,j,nclds(i,j)) = k
+                sum_liq          = 0.
+                sum_ice          = 0.
+                maxcldfrac       = 0.
+                sum_reff_liq     = 0.
+                sum_reff_ice     = 0.        
+              endif
+
+!--------------------------------------------------------------------
+!    if liquid is present in the layer, compute the effective drop
+!    radius. the following formula, recommended by (Martin et al., 
+!    J. Atmos. Sci, vol 51, pp. 1823-1842) is used for liquid droplets:
+!    reff (in microns) =  k * 1.E+06 *
+!                    (3*airdens*(ql/qa)/(4*pi*Dens_h2o*N_liq))**(1/3)
+!
+!    where airdens = density of air in kg air/m3
+!               ql = liquid condensate in kg cond/kg air
+!               qa = cloud fraction
+!               pi = 3.14159
+!         Dens_h2o = density of pure liquid water (kg liq/m3) 
+!            N_liq = density of cloud droplets (number per cubic meter)
+!                k = factor to account for difference between 
+!                    mean volume radius and effective radius
+!--------------------------------------------------------------------
+              if (ql(i,j,k) > qmin) then
+                reff_liq_local = k_ratio(i,j)*620350.49*    &
+                                 (pfull(i,j,k)*ql(i,j,k)/qa(i,j,k)/  &
+                                 RDGAS/tkel(i,j,k)/DENS_H2O/  &
+                                 N_drop(i,j))**(1./3.)
+              else
+                reff_liq_local = 0.
+              endif
+
+!----------------------------------------------------------------------
+!    for single layer liquid or mixed phase clouds it is assumed that
+!    cloud liquid is vertically stratified within the cloud.  under
+!    such situations for observed stratocumulus clouds it is found
+!    that the cloud mean effective radius is between 80 and 100% of
+!    the cloud top effective radius. (Brenguier et al., Journal of
+!    Atmospheric Sciences, vol. 57, pp. 803-821 (2000))  for linearly 
+!    stratified cloud in liquid specific humidity, the cloud top 
+!    effective radius is greater than the effective radius of the 
+!    cloud mean specific humidity by a factor of 2**(1./3.).
+!    this correction, 0.9*(2**(1./3.)) = 1.134, is applied only to 
+!    single layer liquid or mixed phase clouds.
+!
+!---------------------------------------------------------------------- 
+              if (do_brenguier) then
+              if ( k == 1 ) then
+                 if (qa(i,j,2) < qamin) then
+                   reff_liq_local = 1.134*reff_liq_local
+                 endif
+              else if (k == kdim ) then
+                 if ( qa(i,j,kdim-1) < qamin) then
+                   reff_liq_local = 1.134*reff_liq_local
+                 endif
+              else if (qa(i,j,k-1) .lt. qamin .and. & 
+                       qa(i,j,k+1) .lt. qamin)  then
+                reff_liq_local = 1.134*reff_liq_local
+              end if
+              end if
+
+!---------------------------------------------------------------------
+!    in this module, reff_liq is limited to be between 4.2 microns and 
+!    16.6 microns, which is the range of validity for the Slingo (1989)
+!    radiation.
+!---------------------------------------------------------------------
+              reff_liq_local = MIN(16.6,reff_liq_local)
+              reff_liq_local = MAX(4.2, reff_liq_local)
+
+!--------------------------------------------------------------------
+!    if ice crystals are present, define their effective size, which
+!    is a function of temperature. for ice clouds the effective radius
+!    is taken from the formulation in Donner (1997, J. Geophys. Res., 
+!    102, pp. 21745-21768) which is based on Heymsfield and Platt (1984)
+!    with enhancement for particles smaller than 20 microns.  
+!
+!              T Range (K)               Reff (microns) 
+!     -------------------------------    --------------
+!
+!     tfreeze-25. < T                       92.46298       
+!     tfreeze-30. < T <= Tfreeze-25.        72.35392     
+!     tfreeze-35. < T <= Tfreeze-30.        85.19071         
+!     tfreeze-40. < T <= Tfreeze-35.        55.65818        
+!     tfreeze-45. < T <= Tfreeze-40.        35.29989       
+!     tfreeze-50. < T <= Tfreeze-45.        32.89967     
+!     Tfreeze-55  < T <= Tfreeze-50         16.60895      
+!                   T <= Tfreeze-55.        15.41627    
+!
+!--------------------------------------------------------------------
+              if (qi(i,j,k) > qmin) then
+                if (tkel(i,j,k) > TFREEZE - 25. ) then
+                  reff_ice_local = 92.46298
+                else if (tkel(i,j,k) >  TFREEZE - 30. .and. &
+                         tkel(i,j,k) <= TFREEZE - 25.) then
+                  reff_ice_local = 72.35392
+                else if (tkel(i,j,k) >  TFREEZE - 35. .and. &
+                         tkel(i,j,k) <= TFREEZE - 30.) then
+                  reff_ice_local = 85.19071 
+                else if (tkel(i,j,k) >  TFREEZE - 40. .and. &
+                         tkel(i,j,k) <= TFREEZE - 35.) then
+                  reff_ice_local = 55.65818
+                else if (tkel(i,j,k) >  TFREEZE - 45. .and. &
+                         tkel(i,j,k) <= TFREEZE - 40.) then
+                  reff_ice_local = 35.29989
+                else if (tkel(i,j,k) >  TFREEZE - 50. .and. &
+                         tkel(i,j,k) <= TFREEZE - 45.) then
+                  reff_ice_local = 32.89967
+                else if (tkel(i,j,k) >  TFREEZE - 55. .and. &
+                         tkel(i,j,k) <= TFREEZE - 50.) then
+                  reff_ice_local = 16.60895
+                else
+                  reff_ice_local = 15.41627
+                end if
+
+!---------------------------------------------------------------------
+!    in this program, reff_ice is limited to be between 10 microns
+!    and 130 microns, which is the range of validity for the Ebert
+!    and Curry (1992) radiation.
+!---------------------------------------------------------------------
+                reff_ice_local = MIN(130.,reff_ice_local)
+                reff_ice_local = MAX(10.,reff_ice_local)
+              else
+                reff_ice_local = 0.
+              end if  
+
+!---------------------------------------------------------------------
+!    add this layer's contributions to the current cloud. total liquid
+!    content, ice content, largest cloud fraction and condensate-
+!    weighted effective droplet and crystal radii are accumulated over 
+!    the cloud.
+!---------------------------------------------------------------------
+              sum_liq = sum_liq + ql(i,j,k)*  &
+                        (phalf(i,j,k+1) - phalf(i,j,k))/GRAV
+              sum_ice = sum_ice + qi(i,j,k)* &
+                        (phalf(i,j,k+1) - phalf(i,j,k))/GRAV
+              maxcldfrac = MAX(maxcldfrac,qa(i,j,k))
+              sum_reff_liq  = sum_reff_liq + (reff_liq_local*ql(i,j,k)*&
+                              (phalf(i,j,k+1) - phalf(i,j,k))/GRAV)
+              sum_reff_ice  = sum_reff_ice + &
+                              (reff_ice_local * qi(i,j,k) * &
+                              (phalf(i,j,k+1) - phalf(i,j,k))/GRAV)
+            endif ! (ql > qmin or qi > qmin)
+
+!--------------------------------------------------------------------
+!    when the cloud-free layer below a cloud is reached, or if the
+!    bottom model level is reached, define the cloud bottom level and
+!    set a flag indicating that mean values for the cloud may now be
+!    calculated.
+!--------------------------------------------------------------------
+            if (ql(i,j,k) <= qmin .and. qi(i,j,k) <= qmin .and. &
+                already_in_cloud) then                 
+              cloud_bottom_reached = .true.
+              kbot(i,j,nclds(i,j)) = k - 1
+            else if (already_in_cloud .and. k == kdim) then
+              cloud_bottom_reached = .true.
+              kbot(i,j,nclds(i,j)) = kdim
+            endif
+
+!--------------------------------------------------------------------
+!    define the cloud fraction as the largest value of any layer in the
+!    cloud. define the water paths as the total liquid normalized by the
+!    fractional area of the cloud. define the condensate-weighted 
+!    effective water and ice radii. 
+!--------------------------------------------------------------------
+            if (cloud_bottom_reached) then
+              cldamt_cs(i,j,nclds(i,j)) = maxcldfrac
+              lwp_cs(i,j,nclds(i,j)) = sum_liq/cldamt_cs(i,j,nclds(i,j))
+              iwp_cs(i,j,nclds(i,j)) = sum_ice/cldamt_cs(i,j,nclds(i,j))
+              if (sum_liq > 0.) then
+                reff_liq_cs(i,j,nclds(i,j)) = sum_reff_liq/sum_liq
+              else
+                reff_liq_cs(i,j,nclds(i,j)) = 10.0
+              end if
+              if (sum_ice > 0.) then
+                reff_ice_cs(i,j,nclds(i,j)) = sum_reff_ice/sum_ice
+              else
+                reff_ice_cs(i,j,nclds(i,j)) = 30.0
+              end if
+
+!----------------------------------------------------------------------
+!    if adjust_top is true, the top and bottom indices of multi-layer
+!    clouds are adjusted to be those that are the most exposed to top 
+!    and bottom view.
+!----------------------------------------------------------------------
+              if (adjust_top) then
+    
+!---------------------------------------------------------------------
+!    define the cloud thickness.
+!---------------------------------------------------------------------
+                nlev = kbot(i,j,nclds(i,j)) - ktop(i,j,nclds(i,j)) + 1
+                if (nlev > 1) then
+
+!---------------------------------------------------------------------
+!    use the current top and bottom as the first guess for the new 
+!    values.
+!---------------------------------------------------------------------
+                  tmp_top = ktop(i,j,nclds(i,j))
+                  tmp_bot = kbot(i,j,nclds(i,j))
+
+!--------------------------------------------------------------------
+!    initialize local search variables.
+!--------------------------------------------------------------------
+                  totcld_bot = 0.
+                  totcld_top = 0.
+                  max_bot    = 0.
+                  max_top    = 0.
+          
+!--------------------------------------------------------------------
+!    to find the adjusted cloud top, begin at current top and work 
+!    downward. find the layer which is most exposed when viewed from
+!    the top; i.e., the cloud fraction increase is largest for that
+!    layer. the adjusted cloud base is found equivalently, starting
+!    from the actual cloud base and working upwards.
+!--------------------------------------------------------------------
+                  do t=1,nlev
+
+!--------------------------------------------------------------------
+!    find adjusted cloud top.
+!--------------------------------------------------------------------
+                    top_t   = ktop(i,j,nclds(i,j)) + t - 1
+                    tmp_val = MAX(0., qa(i,j,top_t) - totcld_top)
+                    if (tmp_val > max_top) then
+                      max_top = tmp_val
+                      tmp_top = top_t
+                    end if
+                    totcld_top = totcld_top + tmp_val         
+                              
+!--------------------------------------------------------------------
+!    find adjusted cloud base.
+!--------------------------------------------------------------------
+                    bot_t   = kbot(i,j,nclds(i,j)) - t + 1
+                    tmp_val = MAX(0., qa(i,j,bot_t) - totcld_bot)
+                    if (tmp_val > max_bot) then
+                      max_bot = tmp_val
+                      tmp_bot = bot_t
+                    end if
+                    totcld_bot = totcld_bot + tmp_val         
+                  end do
+                       
+!--------------------------------------------------------------------
+!    assign tmp_top and tmp_bot as the new ktop and kbot.
+!--------------------------------------------------------------------
+                  ktop(i,j,nclds(i,j)) = tmp_top
+                  kbot(i,j,nclds(i,j)) = tmp_bot
+                endif  !(nlev > 1)  
+              endif  ! (adjust_top)
+
+!---------------------------------------------------------------------
+!    reset already_in_cloud and cloud_bottom_reached to indicate that
+!    the current cloud has been exited.
+!---------------------------------------------------------------------
+              already_in_cloud     = .false.
+              cloud_bottom_reached = .false.
+            endif   ! (cloud_bottom_reached)
+          end do
+        end do
+      end do
+
+!---------------------------------------------------------------------
+!    place cloud properties into physical-space arrays for return to
+!    calling routine. NOTE THAT ALL LEVELS IN A GIVEN CLOUD ARE
+!    ASSIGNED THE SAME PROPERTIES.
+!---------------------------------------------------------------------
+      do j=1,size(ql,2)
+        do i=1,size(ql,1)
+          do kc=1, nclds(i,j)
+            do k= ktop(i,j,kc), kbot(i,j,kc)
+              cldamt(i,j,k)   = cldamt_cs(i,j,kc)
+              lwp(i,j,k)      = lwp_cs(i,j,kc)
+              iwp(i,j,k)      = iwp_cs(i,j,kc)
+              reff_liq(i,j,k) = reff_liq_cs(i,j,kc)
+              reff_ice(i,j,k) = reff_ice_cs(i,j,kc)
+            end do
+          end do
+        end do
+      end do
+     
+!---------------------------------------------------------------------
+
+end subroutine max_rnd_overlap
+
+
+
+
+!#####################################################################
+
+! <SUBROUTINE NAME="rnd_overlap">
+!  <OVERVIEW>
+!    rnd_overlap returns various cloud specification properties, 
+!    obtained with the random-overlap assumption. implicit in this
+!    assumption is that all clouds are only a single layer thick; i.e.,
+!    clouds at adjacent levels in the same column are independent of
+!    one another.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    rnd_overlap returns various cloud specification properties, 
+!    obtained with the random-overlap assumption. implicit in this
+!    assumption is that all clouds are only a single layer thick; i.e.,
+!    clouds at adjacent levels in the same column are independent of
+!    one another.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call rnd_overlap    (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
+!		k_ratio, nclds, cldamt, lwp, iwp, reff_liq, &
+!		reff_ice, conc_drop_org, conc_ice_org,  &
+!		size_drop_org, size_ice_org)
+!		
+!  </TEMPLATE>
+!  <IN NAME="ql" TYPE="real">
+!    Cloud liquid condensate [ kg condensate/kg air ]
+!  </IN>
+!  <IN NAME="qi" TYPE="real">
+!    Cloud ice condensate [ kg condensate/kg air ]
+!  </IN>
+!  <IN NAME="qa" TYPE="real">
+!    Cloud volume fraction [ fraction ]
+!  </IN>
+!  <IN NAME="pfull" TYPE="real">
+!    Pressure at full levels [ Pascals ]
+!  </IN>
+!  <IN NAME="phalf" TYPE="real">
+!    Pressure at half levels, index 1 at model top 
+!    [ Pascals ]
+!  </IN>
+!  <IN NAME="tkel" TYPE="real">
+!    Temperature [ deg Kelvin ]
+!  </IN>
+!  <IN NAME="N_drop" TYPE="real">
+!    Number of cloud droplets per cubic meter
+!  </IN>
+!  <IN NAME="k_ratio" TYPE="real">
+!    Ratio of effective radius to mean volume radius
+!  </IN>
+!  <OUT NAME="nclds" TYPE="integer">
+!    Number of (random overlapping) clouds in column 
+!  </OUT>
+!  <OUT NAME="cldamt" TYPE="real">
+!    Cloud amount of condensed cloud [ dimensionless ]
+!  </OUT>
+!  <OUT NAME="lwp" TYPE="real">
+!    Cloud liquid water path [ kg condensate / m **2 ]
+!  </OUT>
+!  <OUT NAME="iwp" TYPE="real">
+!    Cloud ice path [ kg condensate / m **2 ]
+!  </OUT>
+!  <OUT NAME="reff_liq" TYPE="real">
+!    Effective radius for liquid clouds [ microns ]
+!  </OUT>
+!  <OUT NAME="reff_ice" TYPE="real">
+!    Effective particle size for ice clouds [ microns ]
+!  </OUT>
+!  <OUT NAME="conc_drop_org" TYPE="real, optional">
+!    Liquid cloud droplet mass concentration 
+!    [ g / m**3 ]
+!  </OUT>
+!  <OUT NAME="conc_ice_org" TYPE="real, optional">
+!    Ice cloud mass concentration [ g / m**3 ]
+!  </OUT>
+!  <OUT NAME="size_drop_org" TYPE="real, optional">
+!    Effective diameter of liquid cloud droplets 
+!    [ microns ]
+!  </OUT>
+!  <OUT NAME="size_ice_org" TYPE="real, optional">
+!    Effective diameter of ice clouds [ microns ]
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine rnd_overlap    (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
+                           k_ratio, nclds, cldamt, lwp, iwp, reff_liq, &
+                           reff_ice, conc_drop_org, conc_ice_org,  &
+                           size_drop_org, size_ice_org)
+
+!----------------------------------------------------------------------
+!    rnd_overlap returns various cloud specification properties, 
+!    obtained with the random-overlap assumption. implicit in this
+!    asusmption is that all clouds are only a single layer thick; i.e.,
+!    clouds at adjacent levels in the same column are independent of
+!    one another.
+!----------------------------------------------------------------------
+ 
+real,    dimension(:,:,:), intent(in)             :: ql, qi, qa,  &
+                                                     pfull, phalf, tkel
+real,    dimension(:,:),   intent(in)             :: N_drop, k_ratio
+integer, dimension(:,:),   intent(out)            :: nclds
+real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
+                                                     reff_liq, reff_ice
+real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
+                                                     conc_ice_org,  &
+                                                     size_drop_org,  &
+                                                     size_ice_org
+
+!---------------------------------------------------------------------
+!   intent(in) variables:
+!
+!       ql           Cloud liquid condensate [ kg condensate/kg air ]
+!       qi           Cloud ice condensate [ kg condensate/kg air ]
+!       qa           Cloud volume fraction [ fraction ]
+!       pfull        Pressure at full levels [ Pascals ]
+!       phalf        Pressure at half levels, index 1 at model top 
+!                    [ Pascals ]
+!       tkel         Temperature [ deg Kelvin ]
+!       N_drop       Number of cloud droplets per cubic meter
+!       k_ratio      Ratio of effective radius to mean volume radius
+!
+!   intent(out) variables:
+!
+!       nclds        Number of (random overlapping) clouds in column 
+!       cldamt       Cloud amount of condensed cloud [ dimensionless ]
+!       lwp          Cloud liquid water path [ kg condensate / m **2 ]
+!       iwp          Cloud ice path [ kg condensate / m **2 ]
+!       reff_liq     Effective radius for liquid clouds [ microns ]
+!       reff_ice     Effective particle size for ice clouds [ microns ]
+!
+!    intent(out), optional variables:
+!
+!       conc_drop_org Liquid cloud droplet mass concentration 
+!                     [ g / m**3 ]
+!       conc_ice_org  Ice cloud mass concentration [ g / m**3 ]
+!       size_drop_org Effective diameter of liquid cloud droplets 
+!                     [ microns ]
+!       size_ice_org  Effective diameter of ice clouds { microns ]
+!
+!---------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!   local variables:
+
+      logical    ::  want_microphysics
+      real       ::  reff_liq_local, reff_ice_local
+      integer    ::  kdim
+      integer    ::  i, j, k
+
+!--------------------------------------------------------------------
+!   local variables:
+!
+!       want_microphysics   logical indicating if microphysical 
+!                           parameters are to be calculated
+!       reff_liq_local      reff of liquid clouds used locally
+!                           [ microns ]
+!       reff_ice_local      reff of ice clouds used locally 
+!                           [ microns ]
+!       kdim                number of vertical layers
+!       i,j,k               do-loop indices
+!
+!----------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    define the number of vertical layers in the model. initialize the
+!    output fields to correspond to the absence of clouds.
+!---------------------------------------------------------------------
+      kdim     = size(ql,3)
+      nclds    = 0
+      cldamt   = 0.
+      lwp      = 0.
+      iwp      = 0.
+      reff_liq = 10.
+      reff_ice = 30.
+
+!--------------------------------------------------------------------
+!    initialize the optional output arguments, if present. define a
+!    logical, indicating their presence.
+!--------------------------------------------------------------------
+      if (present(conc_drop_org) .and. present(conc_ice_org ) .and. &
+          present(size_ice_org ) .and. present(size_drop_org)) then  
+        conc_drop_org = 0.
+        conc_ice_org  = 0.
+        size_drop_org = 20.
+        size_ice_org  = 60.
+        want_microphysics = .true.
+
+!----------------------------------------------------------------------
+!    if some but not all of the microphysics variables are present,
+!    stop execution.
+!---------------------------------------------------------------------
+      else if (present(conc_drop_org) .or. present(conc_ice_org ) .or. &
+               present(size_ice_org ) .or. present(size_drop_org)) then 
+        call error_mesg ('cloud_rad_mod', &
+            ' if any microphysical args present, all must be present',&
+                                                                FATAL)
+
+!----------------------------------------------------------------------
+!    if the optional arguments are not present, set the appropriate
+!    flag to indicate that only bulk properties will be calculated.
+!---------------------------------------------------------------------
+      else
+         want_microphysics = .false.
+      end if
+
+!--------------------------------------------------------------------
+!    find the layers with cloud in each column, starting at model top. 
+!--------------------------------------------------------------------
+      do j=1,size(ql,2)
+        do i=1,size(ql,1)
+          do k=1,size(ql,3)
+            if (ql(i,j,k) > qmin .or. qi(i,j,k) > qmin) then
+               
+!---------------------------------------------------------------------
+!    when cloud is found, increment the cloud column counter.
+!---------------------------------------------------------------------
+              nclds(i,j) = nclds(i,j) + 1
+
+!---------------------------------------------------------------------
+!    if liquid water is present, compute the liquid water path. 
+!---------------------------------------------------------------------
+              if (ql(i,j,k) > qmin) then
+                lwp(i,j,k) = ql(i,j,k)*    &
+                                      (phalf(i,j,k+1) - phalf(i,j,k))/ &
+                                      GRAV/qa(i,j,k)
+
+!----------------------------------------------------------------------
+!    if microphysical properties are desired, calculate the droplet
+!    concentrations. units of concentration are in g / m**3.
+!----------------------------------------------------------------------
+                if (want_microphysics) then
+                  conc_drop_org(i,j,k) =     &
+                      1000.*ql(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/&
+                      RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/  &
+                      MAX(phalf(i,j,k), pfull(i,j,1)))/qa(i,j,k)
+                endif  
+
+!---------------------------------------------------------------------
+!    compute the effective cloud droplet radius. for liquid clouds the 
+!    following formula is used, as recommended by 
+!    Martin et al., J. Atmos. Sci, vol 51, pp. 1823-1842:
+!
+!    reff (in microns) =  k * 1.E+06 *
+!                    (3*airdens*(ql/qa)/(4*pi*Dens_h2o*N_liq))**(1/3)
+!
+!    where airdens = density of air in kg air/m3
+!               ql = liquid condensate in kg cond/kg air
+!               qa = cloud fraction
+!               pi = 3.14159
+!         Dens_h2o = density of pure liquid water (kg liq/m3) 
+!            N_liq = density of cloud droplets (number per cubic meter)
+!                k = factor to account for difference between 
+!                    mean volume radius and effective radius
+!---------------------------------------------------------------------
+                reff_liq_local = k_ratio(i,j)* 620350.49 *    &
+                                 (pfull(i,j,k)*ql(i,j,k)/qa(i,j,k)/   & 
+                                 RDGAS/tkel(i,j,k)/DENS_H2O/    &
+                                 N_drop(i,j))**(1./3.)
+                       
+!----------------------------------------------------------------------
+!    for single layer liquid or mixed phase clouds it is assumed that
+!    cloud liquid is vertically stratified within the cloud.  under
+!    such situations for observed stratocumulus clouds it is found
+!    that the cloud mean effective radius is between 80 and 100% of
+!    the cloud top effective radius. (Brenguier et al., Journal of
+!    Atmospheric Sciences, vol. 57, pp. 803-821 (2000))  for linearly 
+!    stratified cloud in liquid specific humidity, the cloud top 
+!    effective radius is greater than the effective radius of the 
+!    cloud mean specific humidity by a factor of 2**(1./3.).
+!    this correction, 0.9*(2**(1./3.)) = 1.134, is applied only to 
+!    single layer liquid or mixed phase clouds.
+!----------------------------------------------------------------------
+                if (do_brenguier) then
+! should this be applied to all clouds ? 
+! random overlap ==> all clouds are of 1 layer
+                if ( k == 1 ) then
+                  if (qa(i,j,2) < qamin) then
+                    reff_liq_local = 1.134*reff_liq_local
+                  endif
+                else if (k == kdim ) then
+                  if ( qa(i,j,kdim-1) < qamin) then
+                    reff_liq_local = 1.134*reff_liq_local
+                  endif
+                else if (qa(i,j,k-1) .lt. qamin .and. & 
+                         qa(i,j,k+1) .lt. qamin)  then
+                  reff_liq_local = 1.134*reff_liq_local
+!! ADD for random overlap -- all clouds are 1 layer thick
+!!! WAIT FOR SAK REPLY
+!               else
+!                 reff_liq_local = 1.134*reff_liq_local
+                end if
+                end if
+
+!---------------------------------------------------------------------
+!    in this program reff_liq is limited to be between 4.2 microns
+!    and 16.6 microns, which is the range of validity for the
+!    Slingo (1989) radiation.
+!----------------------------------------------------------------------
+                reff_liq_local = MIN(16.6,reff_liq_local)
+                reff_liq_local = MAX(4.2, reff_liq_local)
+
+                reff_liq(i,j,k) =  reff_liq_local
+                if (want_microphysics)      &
+                   size_drop_org(i,j,k) = 2.*reff_liq_local
+              endif  ! (ql > qmin)
+
+!---------------------------------------------------------------------
+!    if ice is present, compute the ice water path.
+!---------------------------------------------------------------------
+              if (qi(i,j,k) .gt. qmin) then
+                iwp(i,j,k) = qi(i,j,k)*    &
+                                      (phalf(i,j,k+1) - phalf(i,j,k))/ &
+                                      GRAV/qa(i,j,k)
+                          
+!----------------------------------------------------------------------
+!    if microphysical properties are desired, calculate the ice con-
+!    centration. units of concentration are in g / m**3.
+!----------------------------------------------------------------------
+                if (want_microphysics) then
+                  conc_ice_org (i,j,k) =     &
+                      1000.*qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                      RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/   &
+                      MAX(phalf(i,j,k), pfull(i,j,1)))/ qa(i,j,k)
+                end if  
+                       
+!---------------------------------------------------------------------
+!    compute the effective ice crystal size. for bulk physics cases, the
+!    effective radius is taken from the formulation in Donner 
+!    (1997, J. Geophys. Res., 102, pp. 21745-21768) which is based on 
+!    Heymsfield and Platt (1984) with enhancement for particles smaller
+!    than 20 microns.  
+!    if microphysical properties are requested, then the size of the
+!    ice crystals comes from the Deff column [ reference ?? ].     
+!
+!              T Range (K)               Reff (microns)   Deff (microns)
+!     -------------------------------    --------------   --------------
+!
+!     Tfreeze-25. < T                       92.46298         100.6
+!     Tfreeze-30. < T <= Tfreeze-25.        72.35392          80.8
+!     Tfreeze-35. < T <= Tfreeze-30.        85.19071          93.5
+!     Tfreeze-40. < T <= Tfreeze-35.        55.65818          63.9
+!     Tfreeze-45. < T <= Tfreeze-40.        35.29989          42.5
+!     Tfreeze-50. < T <= Tfreeze-45.        32.89967          39.9
+!     Tfreeze-55  < T <= Tfreeze-50         16.60895          21.6
+!                   T <= Tfreeze-55.        15.41627          20.2
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    calculate the effective ice crystal size using the data approp-
+!    riate for the microphysics case.
+!---------------------------------------------------------------------
+                if (want_microphysics) then
+                  if (tkel(i,j,k) > TFREEZE - 25.) then
+                    reff_ice_local = 100.6      
+                  else if (tkel(i,j,k) >  TFREEZE - 30. .and. &
+                           tkel(i,j,k) <= TFREEZE - 25.) then
+                    reff_ice_local = 80.8        
+                  else if (tkel(i,j,k) >  TFREEZE - 35. .and. &
+                           tkel(i,j,k) <= TFREEZE - 30.) then
+                    reff_ice_local = 93.5       
+                  else if (tkel(i,j,k) >  TFREEZE - 40. .and. &
+                           tkel(i,j,k) <= TFREEZE - 35.) then
+                    reff_ice_local = 63.9         
+                  else if (tkel(i,j,k) >  TFREEZE - 45. .and. &
+                           tkel(i,j,k) <= TFREEZE - 40.) then
+                    reff_ice_local = 42.5       
+                  else if (tkel(i,j,k) >  TFREEZE - 50. .and. &
+                           tkel(i,j,k) <= TFREEZE - 45.) then
+                    reff_ice_local = 39.9           
+                  else if (tkel(i,j,k) >  TFREEZE - 55. .and. &
+                           tkel(i,j,k) <= TFREEZE - 50.) then
+                    reff_ice_local = 21.6         
+                  else
+                    reff_ice_local = 20.2             
+                  endif
+
+!---------------------------------------------------------------------
+!    in this program, size_ice (i.e. Deff) is limited to be between
+!    18.6 microns and 130.2 microns, which is the range of validity 
+!    for the Fu Liou JAS 1993 radiation.
+!---------------------------------------------------------------------
+                  reff_ice_local = MIN(130.2, reff_ice_local)
+                  size_ice_org(i,j,k) = MAX(18.6, reff_ice_local)
+                endif
+
+!---------------------------------------------------------------------
+!    calculate reff_ice using the bulk physics data.
+!---------------------------------------------------------------------
+                if (tkel(i,j,k) > TFREEZE - 25.) then
+                  reff_ice_local = 92.46298
+                else if (tkel(i,j,k) >  TFREEZE - 30. .and. &
+                         tkel(i,j,k) <= TFREEZE - 25.) then
+                  reff_ice_local = 72.35392
+                else if (tkel(i,j,k) >  TFREEZE - 35. .and. &
+                         tkel(i,j,k) <= TFREEZE - 30.) then
+                  reff_ice_local = 85.19071 
+                else if (tkel(i,j,k) >  TFREEZE - 40. .and. &
+                         tkel(i,j,k) <= TFREEZE - 35.) then
+                  reff_ice_local = 55.65818
+                else if (tkel(i,j,k) >  TFREEZE - 45. .and. &
+                         tkel(i,j,k) <= TFREEZE - 40.) then
+                  reff_ice_local = 35.29989
+                else if (tkel(i,j,k) >  TFREEZE - 50. .and. &
+                         tkel(i,j,k) <= TFREEZE - 45.) then
+                  reff_ice_local = 32.89967
+                else if (tkel(i,j,k) >  TFREEZE - 55. .and. &
+                         tkel(i,j,k) <= TFREEZE - 50.) then
+                  reff_ice_local = 16.60895
+                else
+                  reff_ice_local = 15.41627
+                endif
+
+!---------------------------------------------------------------------
+!    in this program, reff_ice is limited to be between 10 microns
+!    and 130 microns, which is the range of validity for the Ebert
+!    and Curry (1992) radiation.
+!---------------------------------------------------------------------
+                reff_ice_local = MIN(130.,reff_ice_local)
+                reff_ice(i,j,k) = MAX(10.,reff_ice_local)
+              end if ! (qi > qmin)                    
+                          
+!---------------------------------------------------------------------
+!    define the cloud fraction.
+!---------------------------------------------------------------------
+              cldamt(i,j,k) = qa(i,j,k)
+            endif   !( ql > 0 or qi > 0)
+          end do
+        end do
+      end do
+
+!-------------------------------------------------------------------
+    
+end subroutine rnd_overlap   
+
+
+
+
+!#####################################################################
+
+! <SUBROUTINE NAME="CLOUD_RAD_k_diag">
+!  <OVERVIEW>
+!      This subroutine calculates the following radiative properties
+!      for each cloud:
+!
+!<PRE>               1. r_uv : cloud reflectance in uv band
+!               2. r_nir: cloud reflectance in nir band
+!               3. ab_uv: cloud absorption in uv band
+!               4. ab_nir:cloud absorption in nir band
+!</PRE>   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!      This subroutine calculates the following radiative properties
+!      for each cloud:
+!
+!<PRE>               1. r_uv : cloud reflectance in uv band
+!               2. r_nir: cloud reflectance in nir band
+!               3. ab_uv: cloud absorption in uv band
+!               4. ab_nir:cloud absorption in nir band
+!</PRE>
+!
+!      These quantities are computed by dividing the shortwave
+!      spectrum into 4 bands and then computing the reflectance
+!      and absorption for each band individually and then setting
+!      the uv reflectance and absorption equal to that of band
+!      1 and the nir reflectance and absorption equal to the
+!      spectrum weighted results of bands 2,3,and 4.  The limits
+!      of bands are described in CLOUD_OPTICAL_PROPERTIES.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call CLOUD_RAD_k_diag(tau, direct, w0,gg,coszen,r_uv,r_nir,ab_uv,ab_nir)
+!		
+!  </TEMPLATE>
+!  <IN NAME="tau" TYPE="real">
+!    Optical depth in 4 bands [ dimensionless ]
+!  </IN>
+!  <IN NAME="direct" TYPE="logical">
+!    Logical variable for each cloud indicating whether
+!     or not to use the direct beam solution for the
+!     delta-eddington radiation or the diffuse beam
+!     radiation solution.
+!  </IN>
+!  <IN NAME="w0" TYPE="real">
+!    Single scattering albedo in 4 bands [ dimensionless ]
+!  </IN>
+!  <IN NAME="gg" TYPE="real">
+!    Asymmetry parameter in 4 bands  [ dimensionless ]
+!  </IN>
+!  <IN NAME="coszen" TYPE="real">
+!    Cosine of the zenith angle  [ dimensionless ]
+!  </IN>
+!  <INOUT NAME="r_uv" TYPE="real">
+!    Cloud reflectance in uv band
+!  </INOUT>
+!  <INOUT NAME="r_nir" TYPE="real">
+!    Cloud reflectance in nir band
+!  </INOUT>
+!  <INOUT NAME="ab_nir" TYPE="real">
+!    Cloud absorption in nir band
+!  </INOUT>
+!  <INOUT NAME="ab_uv" TYPE="real">
+!    Cloud absorption in uv band
+!  </INOUT>
+! </SUBROUTINE>
+
+SUBROUTINE CLOUD_RAD_k_diag(tau, direct, w0,gg,coszen,r_uv,r_nir,ab_uv,ab_nir)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+!      This subroutine calculates the following radiative properties
+!      for each cloud:
+!
+!               1. r_uv : cloud reflectance in uv band
+!               2. r_nir: cloud reflectance in nir band
+!               3. ab_uv: cloud absorption in uv band
+!               4. ab_nir:cloud absorption in nir band
+!               
+!
+!      These quantities are computed by dividing the shortwave
+!      spectrum into 4 bands and then computing the reflectance
+!      and absorption for each band individually and then setting
+!      the uv reflectance and absorption equal to that of band
+!      1 and the nir reflectance and absorption equal to the
+!      spectrum weighted results of bands 2,3,and 4.  The limits
+!      of bands are described in CLOUD_OPTICAL_PROPERTIES.
 !
 !
-!       NETCDF
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+!VARIABLES
+!
+!       ------
+!INPUT:
+!       ------
+!
+!       tau          Optical depth in 4 bands (dimensionless)
+!       direct       Logical variable for each cloud indicating whether
+!                      or not to use the direct beam solution for the
+!                      delta-eddington radiation or the diffuse beam
+!                      radiation solution.
+!       w0           Single scattering albedo in 4 bands (dimensionless)
+!       gg           Asymmetry parameter in 4 bands (dimensionless)
+!       coszen       Cosine of the zenith angle
+!
+!       ------
+!INPUT/OUTPUT:
+!       ------
+!
+!       r_uv         Cloud reflectance in uv band
+!       r_nir        Cloud reflectance in nir band
+!       ab_uv        Cloud absorption in uv band
+!       ab_nir       Cloud absorption in nir band
+!
+!       -------------------
+!INTERNAL VARIABLES:
+!       -------------------
+!
+!      tau_local    optical depth for the band being solved
+!      w0_local     single scattering albedo for the band being solved
+!      g_local      asymmetry parameter for the band being solved
+!      coszen_3d    3d version of coszen
+!      I            looping variable
+!      iband        looping variables over band number
+!      taucum       cumulative sum of visible optical depth
+!      g_prime      scaled g
+!      w0_prime     scaled w0
+!      tau_prime    scaled tau
+!      crit         variable equal to 1./(4 - 3g')
+!      AL           variable equal to sqrt(3*(1-w0')*(1-w0'*g'))
+!      ALPHV        temporary work variable
+!      GAMV         temporary work variable
+!      T1V          exp( -1.*AL * tau')
+!      trans_dir    direct radiation beam transmittance
+!      U            1.5 * (1. - w0'*g')/AL
+!      r_diffus     diffuse beam reflection
+!      trans_diffus diffuse beam transmission
+!
+!      r            cloud reflectance for each cloud in each band
+!      ab           cloud absorption for each cloud in each band
+!      r_dir_uv       direct beam reflection for uv band
+!      r_dir_nir      direct beam reflection for nir band
+!      trans_dir_uv   direct beam transmission for uv band
+!      trans_dir_nir  direct beam transmission for uv band
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+!  User Interface variables
+!  ------------------------
+
+REAL,     INTENT (IN), DIMENSION(:,:,:,:):: tau,w0,gg
+REAL,     INTENT (IN), DIMENSION(:,:)    :: coszen
+REAL,     INTENT (INOUT),DIMENSION(:,:,:):: r_uv,r_nir,ab_uv,ab_nir
+logical,  INTENT (IN   ),DIMENSION(:,:,:):: direct                        
+
+!  Internal variables
+!  ------------------
+
+INTEGER                                  :: I,iband,J,K, kk
+REAL,    DIMENSION(SIZE(tau,1),SIZE(tau,2)) :: taucum
+LOGICAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) ::         &
+                                                         direct_k
+LOGICAL, DIMENSION(SIZE(tau,1),SIZE(tau,2)            ) :: set_direct
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: coszen_3d
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: tau_local, &
+                                                        tau_test
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: w0_local,g_local
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: g_prime,w0_prime
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: tau_prime,crit,AL
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: ALPHV,GAMV,T1V,U
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: r_diffus
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: trans_diffus
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: r_dir,trans_dir
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3),SIZE(tau,4)) :: r,ab
+
+!
+! Code
+! ----
+
+        ! reinitialize variables
+        r_uv(:,:,:) = 0.
+        r_nir(:,:,:)= 0.
+        ab_uv(:,:,:)= 0.
+        ab_nir(:,:,:)=0.
+
+        !create 3d zenith angle
+        DO I = 1, SIZE(tau,3)
+               coszen_3d(:,:,I)=coszen(:,:)
+        END DO
+        WHERE (coszen_3d(:,:,:) .lt. 1.E-06)
+                coszen_3d(:,:,:) = 1.E-06
+        END WHERE
+
+        
+
+    !----------------- LOOP OVER BAND -----------------------------!
+
+    DO iband = 1, SIZE(tau,4)
+
+        !-----------------------------------------------------------
+        !  assign w0, g, tau to the value appropriate for the band
+
+        w0_local(:,:,:) = w0(:,:,:,iband)
+        tau_local(:,:,:)= tau(:,:,:,iband)
+        g_local(:,:,:) =  gg(:,:,:,iband)
+
+        !-------------------------------------------------------------------
+        ! for delta-Eddington scaled ('prime') g, w0, tau where:
+        !
+        !               g' = g / (1 + g)
+        !              w0' = (1 - g*g) * w0 / (1 - w*g*g)
+        !             tau' = (1 - w*g*g) * tau
+        !
+
+                 tau_prime(:,:,:) = 1. - &
+                      (w0_local(:,:,:)*g_local(:,:,:)*g_local(:,:,:))
+                 w0_prime(:,:,:) = w0_local(:,:,:) * &
+                   (1. - (g_local(:,:,:)*g_local(:,:,:)))/tau_prime(:,:,:)
+                 tau_prime(:,:,:) = tau_prime(:,:,:) * tau_local(:,:,:)
+                 g_prime(:,:,:) = g_local(:,:,:) / (1. + g_local(:,:,:))
+
+        !-------------------------------------------------------------------
+        ! create other variables
+        !
+        !        crit = 1./(4 - 3g')
+        !
+        !      and where w0' < crit set w0' = crit
+        !
+        !        AL = sqrt( 3. * (1. - w0') * (1. - w0'*g') )
+        !
+
+                 crit(:,:,:) = 1./(4.- 3.*g_prime(:,:,:))
+
+                 WHERE (w0_prime(:,:,:) .lt. crit(:,:,:) )
+                           w0_prime(:,:,:) = crit(:,:,:)
+                 END WHERE
+
+                 AL(:,:,:) =  ( 3. * (1. - w0_prime(:,:,:) ) &
+                    * (1. - (w0_prime(:,:,:)*g_prime(:,:,:)))  )**0.5
+
+                 !set up a minimum to AL
+                 WHERE (AL(:,:,:) .lt. 1.E-06)
+                        AL(:,:,:) = 1.E-06
+                 END WHERE
+
+
+        !-------------------------------------------------------------------
+        ! simplifications if not two stream
+        !
+        !        ALPHV = 0.75*w0'*coszen*(1.+g'(1.-w0'))/
+        !                          (1.-(AL*coszen)**2.)
+        !        GAMV = 0.5*w0'*(3.*g'*(1.-w0')*coszen*coszen + 1.)/
+        !                          (1.-(AL*coszen)**2.)
+        !
+
+        IF (.NOT. l2strem) THEN
+
+
+                ALPHV(:,:,:) = 0.75 * w0_prime(:,:,:)*coszen_3d(:,:,:) * &
+                 (1. + (g_prime(:,:,:)*(1. - w0_prime(:,:,:)))) / &
+                 (1. - (AL(:,:,:)*coszen_3d(:,:,:))**2.0)
+
+                GAMV(:,:,:) =  0.50 * w0_prime(:,:,:) * &
+                (  (3.* g_prime(:,:,:) * (1. - w0_prime(:,:,:)) * &
+                    coszen_3d(:,:,:) * coszen_3d(:,:,:)) + 1. ) / &
+                 (1. - (AL(:,:,:)*coszen_3d(:,:,:))**2.0)
+
+        END IF
+
+
+        !-------------------------------------------------------------------
+        ! calculate T1V
+        !
+        !    T1V = exp (-1* AL * tau' )
+
+
+                  T1V(:,:,:) = exp( -1.*AL(:,:,:) * tau_prime(:,:,:) )
+
+
+        !-------------------------------------------------------------------
+        !calculate diffuse beam reflection and transmission
+        !
+
+        !first calculate U  = 1.5 * (1. - w0'*g')/AL
+        U(:,:,:) = 1.5 *(1. - w0_prime(:,:,:)*g_prime(:,:,:))/AL(:,:,:)
+
+        !initialize variables
+        r_diffus(:,:,:)= 0.
+        trans_diffus(:,:,:) = 1.
+
+
+
+        trans_diffus(:,:,:) = 4. * U(:,:,:) * T1V(:,:,:) / &
+            ( ( (U(:,:,:)+1.) * (U(:,:,:)+1.)  ) - &
+              ( (U(:,:,:)-1.) * (U(:,:,:)-1.) * &
+                   T1V(:,:,:) *   T1V(:,:,:)   )    )
+
+        r_diffus(:,:,:) =     ((U(:,:,:)*U(:,:,:))-1.) * &
+                   ( 1. -   (T1V(:,:,:)*T1V(:,:,:)) ) / &
+             ( ( (U(:,:,:)+1.) * (U(:,:,:)+1.)  ) - &
+               ( (U(:,:,:)-1.) * (U(:,:,:)-1.) * &
+                    T1V(:,:,:) *   T1V(:,:,:)   )    )
+
+
+
+        !-------------------------------------------------------------------
+        ! calculate direct bean transmission
+        !
+        !
+        IF (.NOT. l2strem) THEN
+
+
+            !initialize variables
+            trans_dir(:,:,:) = 1.
+            r_dir(:,:,:) = 0.
+
+            r_dir(:,:,:) = ( (ALPHV(:,:,:) - GAMV(:,:,:)) * &
+               exp(-1.*tau_prime(:,:,:)/coszen_3d(:,:,:)) * &
+               trans_diffus(:,:,:) ) +  &
+              ( (ALPHV(:,:,:) + GAMV(:,:,:)) * &
+              r_diffus(:,:,:) )  -  (ALPHV(:,:,:) - GAMV(:,:,:))
+
+            trans_dir(:,:,:) = &
+              ( (ALPHV(:,:,:)+GAMV(:,:,:))*trans_diffus(:,:,:) ) + &
+              ( exp(-1.*tau_prime(:,:,:)/coszen_3d(:,:,:)) * &
+              ( ( (ALPHV(:,:,:)-GAMV(:,:,:))*r_diffus(:,:,:) ) - &
+                (ALPHV(:,:,:)+GAMV(:,:,:)) + 1. )   )
+
+        END IF
+
+
+        !-------------------------------------------------------------------
+        ! patch together final solution
+        !
+        !
+
+
+        IF (l2strem) THEN
+
+             !two-stream solution
+             r(:,:,:,iband) = r_diffus(:,:,:)
+             ab(:,:,:,iband) = 1. - trans_diffus(:,:,:) - r_diffus(:,:,:)
+
+        ELSE
+
+             !delta-Eddington solution
+             WHERE (.not. direct)
+
+                   r(:,:,:,iband) = r_diffus(:,:,:)
+                   ab(:,:,:,iband) = 1. - trans_diffus(:,:,:) &
+                                     - r_diffus(:,:,:)
+
+
+             END WHERE
+
+             WHERE (direct)
+
+                   r(:,:,:,iband) = r_dir(:,:,:)
+                   ab(:,:,:,iband) = 1. - trans_dir(:,:,:) &
+                                     - r_dir(:,:,:)
+
+             END WHERE
+
+        END IF
+
+    !----------------- END LOOP OVER BAND -----------------------------!
+
+    END DO
+
+
+    !----------------- CREATE SUM OVER BAND ---------------------------!
+
+    r_uv(:,:,:) = r(:,:,:,1)
+    ab_uv(:,:,:) = ab(:,:,:,1)
+
+    r_nir(:,:,:) =  (  0.326158 * r(:,:,:,2) + &
+                       0.180608 * r(:,:,:,3) + &
+                       0.033474 * r(:,:,:,4) ) / 0.540240
+
+    ab_nir(:,:,:) =  (  0.326158 * ab(:,:,:,2) + &
+                        0.180608 * ab(:,:,:,3) + &
+                        0.033474 * ab(:,:,:,4) ) / 0.540240
+
+
+        !-------------------------------------------------------------------
+        ! guarantee that clouds for tau = 0. have the properties
+        ! of no cloud
+
+        
+        WHERE(tau(:,:,:,1) .le. 0.)
+             r_uv(:,:,:) = 0.
+             ab_uv(:,:,:)= 0.                       
+        END WHERE
+        WHERE((tau(:,:,:,2)+tau(:,:,:,3)+tau(:,:,:,4)) .le. 0.)
+             r_nir(:,:,:)= 0.
+             ab_nir(:,:,:)=0.
+        END WHERE       
+
+        !-------------------------------------------------------------------
+        ! guarantee that for coszen lt. or equal to zero that solar
+        ! reflectances and absorptances are equal to zero.
+        DO I = 1, SIZE(tau,3)
+               WHERE (coszen(:,:) .lt. 1.E-06)
+                    r_uv(:,:,I) = 0. 
+                    ab_uv(:,:,I) = 0.
+                    r_nir(:,:,I) = 0.
+                    ab_nir(:,:,I) = 0.
+               END WHERE
+        END DO
+        
+        !-------------------------------------------------------------------
+        ! guarantee that each cloud has some transmission by reducing
+        ! the actual cloud reflectance in uv and nir band
+        ! this break is necessary to avoid the rest of the
+        ! radiation code from breaking up.
+        !
+
+        WHERE ( (1. - r_uv(:,:,:) - ab_uv(:,:,:)) .lt. 0.01)
+                      r_uv(:,:,:) = r_uv(:,:,:) - 0.01
+        END WHERE
+        WHERE ( (1. - r_nir(:,:,:) - ab_nir(:,:,:)) .lt. 0.01)
+                      r_nir(:,:,:) = r_nir(:,:,:) - 0.01
+        END WHERE
+
+        !-------------------------------------------------------------------
+        ! guarantee that cloud reflectance and absorption are greater than
+        ! or equal to zero
+
+        WHERE (r_uv(:,:,:) .lt. 0.)
+               r_uv(:,:,:) = 0.
+        END WHERE
+        WHERE (r_nir(:,:,:) .lt. 0.)
+               r_nir(:,:,:) = 0.
+        END WHERE
+        WHERE (ab_uv(:,:,:) .lt. 0.)
+               ab_uv(:,:,:) = 0.
+        END WHERE
+        WHERE (ab_nir(:,:,:) .lt. 0.)
+               ab_nir(:,:,:) = 0.
+        END WHERE
+
+
+END SUBROUTINE CLOUD_RAD_k_diag
+
+
+
+!#####################################################################
+
+! <SUBROUTINE NAME="cloud_rad_k">
+!  <OVERVIEW>
+!    Subroutine cloud_rad_k calculates the cloud reflectances and
+!    absorptions in the uv and nir wavelength bands. These quantities 
+!    are computed by dividing the shortwave spectrum into 4 bands and 
+!    then computing the reflectance and absorption for each band 
+!    individually and then setting the uv reflectance and absorption 
+!    equal to that of band 1 and the nir reflectance and absorption 
+!    equal to the spectrum-weighted results of bands 2,3,and 4.  The 
+!    limits of bands are defined in subroutine sw_optical_properties.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    Subroutine cloud_rad_k calculates the cloud reflectances and
+!    absorptions in the uv and nir wavelength bands. These quantities 
+!    are computed by dividing the shortwave spectrum into 4 bands and 
+!    then computing the reflectance and absorption for each band 
+!    individually and then setting the uv reflectance and absorption 
+!    equal to that of band 1 and the nir reflectance and absorption 
+!    equal to the spectrum-weighted results of bands 2,3,and 4.  The 
+!    limits of bands are defined in subroutine sw_optical_properties.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call cloud_rad_k (tau, w0, gg, coszen, r_uv, r_nir,    &
+!		ab_nir, ab_uv_out)
+!		
+!  </TEMPLATE>
+!  <IN NAME="tau" TYPE="real">
+!    Optical depth [ dimensionless ]
+!  </IN>
+!  <IN NAME="w0" TYPE="real">
+!    Single scattering albedo [ dimensionless ]
+!  </IN>
+!  <IN NAME="gg" TYPE="real">
+!    Asymmetry parameter for each band
+!    [ dimensionless ]
+!  </IN>
+!  <IN NAME="coszen" TYPE="real">
+!    Cosine of zenith angle  [ dimensionless ]
+!  </IN>
+!  <INOUT NAME="r_uv" TYPE="real">
+!    Cloud reflectance in uv band
+!  </INOUT>
+!  <INOUT NAME="r_nir" TYPE="real">
+!    Cloud reflectance in nir band
+!  </INOUT>
+!  <INOUT NAME="ab_nir" TYPE="real">
+!    Cloud absorption in nir band
+!  </INOUT>
+!  <INOUT NAME="ab_uv_out" TYPE="real, optional">
+!    Cloud absorption in uv band
+!  </INOUT>
+! </SUBROUTINE>
+!
+subroutine cloud_rad_k (tau, w0, gg, coszen, r_uv, r_nir,    &
+                        ab_nir, ab_uv_out)
+
+!----------------------------------------------------------------------
+!    subroutine cloud_rad_k calculates the cloud reflectances and
+!    absorptions in the uv and nir wavelength bands. these quantities 
+!    are computed by dividing the shortwave spectrum into 4 bands and 
+!    then computing the reflectance and absorption for each band 
+!    individually and then setting the uv reflectance and absorption 
+!    equal to that of band 1 and the nir reflectance and absorption 
+!    equal to the spectrum-weighted results of bands 2,3,and 4.  The 
+!    limits of bands are defined in subroutine sw_optical_properties.
+!----------------------------------------------------------------------
+
+real, dimension(:,:,:,:), intent(in)             :: tau, w0, gg
+real, dimension(:,:),     intent(in)             :: coszen
+real, dimension(:,:,:),   intent(inout)          :: r_uv, r_nir, ab_nir
+real, dimension(:,:,:),   intent(inout),optional :: ab_uv_out
+
+!---------------------------------------------------------------------
+!   intent(in) variables:
+!
+!         tau            Optical depth [ dimensionless ]
+!         w0             Single scattering albedo [ dimensionless ]
+!         gg             Asymmetry parameter for each band
+!                        [ dimensionless ]
+!         coszen         Cosine of zenith angle  [ dimensionless ]
+!
+!    intent(inout) variables:
+!
+!         r_uv            Cloud reflectance in uv band
+!         r_nir           Cloud reflectance in nir band
+!         ab_nir          Cloud absorption in nir band
+!
+!    intent(inout), optional variables:
+!
+!         ab_uv_out       Cloud absorption in uv band
+! 
+!--------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!   local variables:
+
+      real,    dimension (size(tau,1), size(tau,2)) :: taucum
+
+      logical, dimension (size(tau,1), size(tau,2),                 &
+                                       size(tau,3)) :: direct
+
+      real,    dimension (size(tau,1), size(tau,2),                  &
+                                       size(tau,3)) ::              &
+                          coszen_3d, tau_local, w0_local, g_local, &
+                          g_prime, w0_prime, tau_prime, crit, al,   &
+                          alphv, gamv, t1v, u, denom, r_diffus,   &
+                          trans_diffus, r_dir, trans_dir, ab_uv
+
+      real, dimension (size(tau,1), size(tau,2),                    &
+                       size(tau,3), size(tau,4)) :: r, ab
+
+      integer   :: i, iband, j, k
+
+!---------------------------------------------------------------------
+!   local variables:
+!
+!     taucum       cumulative sum of visible optical depth from top
+!                  of atmosphere to current layer
+!     direct       logical variable for each cloud indicating whether
+!                  or not to use the direct beam solution for the
+!                  delta-eddington radiation or the diffuse beam
+!                  radiation solution.
+!      coszen_3d    3d version of coszen
+!      tau_local    optical depth for the band being solved
+!      w0_local     single scattering albedo for the band being solved
+!      g_local      asymmetry parameter for the band being solved
+!      g_prime      scaled g
+!      w0_prime     scaled w0
+!      tau_prime    scaled tau
+!      crit         variable equal to 1./(4 - 3g')
+!      al           variable equal to sqrt(3*(1-w0')*(1-w0'*g'))
+!      alphv        temporary work variable
+!      gamv         temporary work variable
+!      t1v          exp( -1.*AL * tau')
+!      u            1.5 * (1. - w0'*g')/AL
+!      denom        [(u+1)*(u+1)] - [(u-1)*(u-1)*t1v*t1v]
+!      r_diffus     diffuse beam reflection
+!      trans_diffus diffuse beam transmission
+!      r_dir        diffuse beam reflection
+!      trans_dir    direct radiation beam transmittance
+!      ab_uv        cloud absorption in uv band
+!      r            cloud reflectance for each cloud in each band
+!      ab           cloud absorption for each cloud in each band
+!      i,j,k,iband  do-loop indices
+!
+!--------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+!    define some values needed when the delta-eddington approach is
+!    being taken.
+!-------------------------------------------------------------------
+      if (.not. l2strem) then
+
+!--------------------------------------------------------------------
+!    create 3d version of zenith angle array. allow it to be no 
+!    smaller than 1.0e-06.
+!--------------------------------------------------------------------
+        do k=1,size(tau,3)
+          coszen_3d(:,:,k) = coszen(:,:)
+        end do
+        where (coszen_3d(:,:,:) < 1.E-06) 
+          coszen_3d(:,:,:) = 1.E-06
+        end where
+        
+!--------------------------------------------------------------------
+!    initialize taucum and direct. taucum will be the accumulated tau
+!    from model top to the current level and will be the basis of
+!    deciding whether the incident beam is treated as direct or diffuse.
+!--------------------------------------------------------------------
+        taucum(:,:) = 0.
+        direct(:,:,:) = .true.
+        do k=1,size(tau,3)      
+
+!---------------------------------------------------------------------
+!    find if taucum from model top to level above has exceeded taucrit.
+!----------------------------------------------------------------------
+          where (taucum(:,:) > taucrit)
+            direct(:,:,k) = .false.
+          end where
+
+!---------------------------------------------------------------------
+!    increment the cumulative tau.
+!---------------------------------------------------------------------
+          taucum(:,:) = taucum(:,:) + tau(:,:,k,1)
+        end do
+      endif 
+
+!---------------------------------------------------------------------
+!    loop over the wavelength bands, calculating the reflectivity 
+!    and absorption for each band.
+!---------------------------------------------------------------------
+      do iband=1,size(tau,4)
+
+!---------------------------------------------------------------------
+!    assign local values of w0, g and  tau appropriate for the current
+!    band under consideration.
+!---------------------------------------------------------------------
+        w0_local (:,:,:) = w0 (:,:,:,iband)
+        tau_local(:,:,:) = tau(:,:,:,iband)
+        g_local  (:,:,:) = gg (:,:,:,iband)
+
+!---------------------------------------------------------------------
+!    define the scaled (prime) values of g, w0 and tau used in the 
+!    delta-Eddington calculation:
+!               g' = g / (1 + g)
+!              w0' = (1 - g*g) * w0 / (1 - w*g*g)
+!             tau' = (1 - w*g*g) * tau
+!---------------------------------------------------------------------
+        tau_prime(:,:,:) = 1. - (w0_local(:,:,:)*g_local(:,:,:)*   &
+                                 g_local(:,:,:))
+        w0_prime(:,:,:) = w0_local(:,:,:)*(1. - (g_local(:,:,:)*    &
+                          g_local(:,:,:)))/tau_prime(:,:,:)
+        tau_prime(:,:,:) = tau_prime(:,:,:)*tau_local(:,:,:)
+        g_prime(:,:,:) = g_local(:,:,:)/(1. + g_local(:,:,:))
+
+!-------------------------------------------------------------------
+!    define other variables:
+!      crit = 1./(4 - 3g')  and where w0' < crit set w0' = crit
+!      al = sqrt( 3. * (1. - w0') * (1. - w0'*g') ) and where 
+!      al < 1.0e-06, set al = 1.0e-06.
+!--------------------------------------------------------------------
+        crit(:,:,:) = 1./(4.- 3.*g_prime(:,:,:))
+        where (w0_prime(:,:,:) < crit(:,:,:) )
+          w0_prime(:,:,:) = crit(:,:,:)
+        end where
+        al(:,:,:) = (3.*(1. - w0_prime(:,:,:) ) *      &
+                    (1. - (w0_prime(:,:,:)*g_prime(:,:,:))) )**0.5
+        where (al(:,:,:) < 1.E-06)
+          al(:,:,:) = 1.E-06
+        end where
+
+!--------------------------------------------------------------------
+!    calculate t1v:
+!    t1v = exp (-1* al * tau')
+!--------------------------------------------------------------------
+        t1v(:,:,:) = exp(-1.*al(:,:,:)*tau_prime(:,:,:))
+
+!-------------------------------------------------------------------
+!    calculate diffuse beam reflection and transmission. first calculate
+!    the factor u  = 1.5 * (1. - w0'*g')/al and the value denom =
+!    [ (u+1)*(u+1) - (u-1)*(u-1)*t1v*t1v ].
+!---------------------------------------------------------------------
+        u(:,:,:) = 1.5*(1. - w0_prime(:,:,:)*g_prime(:,:,:))/al(:,:,:)
+        denom(:,:,:) = ( ( (u(:,:,:) + 1.)*(u(:,:,:) + 1.) ) - &
+                         ( (u(:,:,:) - 1.)*(u(:,:,:) - 1.)* &
+                            t1v(:,:,:)*t1v(:,:,:)   )    )
+        trans_diffus(:,:,:) = 4.*u(:,:,:)*t1v(:,:,:)/denom(:,:,:)
+        r_diffus(:,:,:) = ((u(:,:,:)*u(:,:,:)) - 1.) * &
+                          (1. - (t1v(:,:,:)*t1v(:,:,:)) )/denom(:,:,:)
+
+!-------------------------------------------------------------------
+!    calculate direct beam transmission for the delta-eddington case.
+!    alphv = 0.75*w0'*coszen*(1.+g'(1.-w0'))/
+!            (1.-(al*coszen)**2.)
+!    gamv = 0.5*w0'*(3.*g'*(1.-w0')*coszen*coszen + 1.)/
+!           (1.-(al*coszen)**2.)
+!-------------------------------------------------------------------
+        if (.not. l2strem) then
+          where (direct)
+            alphv(:,:,:) = 0.75 * w0_prime(:,:,:)*coszen_3d(:,:,:)* &
+                           (1. + (g_prime(:,:,:)*    &
+                           (1. - w0_prime(:,:,:))))/ &
+                           (1. - (al(:,:,:)*coszen_3d(:,:,:))**2)
+            gamv(:,:,:) =  0.50 * w0_prime(:,:,:)* &
+                           (  (3.* g_prime(:,:,:)*(1. -     &
+                           w0_prime(:,:,:))*&
+                           coszen_3d(:,:,:)*coszen_3d(:,:,:)) + 1. )/ &
+                           (1. - (al(:,:,:)*coszen_3d(:,:,:))**2)
+            r_dir(:,:,:) = ( (alphv(:,:,:) - gamv(:,:,:)) * &
+                           exp(-1.*tau_prime(:,:,:)/coszen_3d(:,:,:))* &
+                           trans_diffus(:,:,:) ) + ((alphv(:,:,:) +   &
+                           gamv(:,:,:)) * r_diffus(:,:,:) )  -  &
+                           (alphv(:,:,:) - gamv(:,:,:))
+            trans_dir(:,:,:) = ( (alphv(:,:,:) + gamv(:,:,:))*  &
+                               trans_diffus(:,:,:) ) + &
+                               (exp(-1.*tau_prime(:,:,:)/   &
+                                coszen_3d(:,:,:)) * &
+                                ( ( (alphv(:,:,:) - gamv(:,:,:))*  &
+                                r_diffus(:,:,:) ) - (alphv(:,:,:) + &
+                                gamv(:,:,:)) + 1. )   )
+          end where
+        endif 
+
+!-------------------------------------------------------------------
+!    patch together final solution.
+!-------------------------------------------------------------------
+        if (l2strem) then
+
+!---------------------------------------------------------------------
+!    two-stream solution.
+!---------------------------------------------------------------------
+          r(:,:,:,iband)  = r_diffus(:,:,:)
+          ab(:,:,:,iband) = 1. - trans_diffus(:,:,:) - r_diffus(:,:,:)
+        else
+
+!----------------------------------------------------------------------
+!    delta-eddington solution.
+!----------------------------------------------------------------------
+          where (.not. direct)
+            r (:,:,:,iband) = r_diffus(:,:,:)
+            ab(:,:,:,iband) = 1. - trans_diffus(:,:,:) - r_diffus(:,:,:)
+          end where
+          where (direct)
+            r (:,:,:,iband) = r_dir(:,:,:)
+            ab(:,:,:,iband) = 1. - trans_dir(:,:,:) - r_dir(:,:,:)
+          end where
+        endif 
+      end do  ! (iband loop)
+
+
+!---------------------------------------------------------------------
+!    sum over the apprpriate bands to obtain values for the uv and nir
+!    bands.
+!----------------------------------------------------------------------
+
+      r_uv (:,:,:) = r (:,:,:,1)
+      ab_uv(:,:,:) = ab(:,:,:,1)
+      r_nir(:,:,:) = ( 0.326158*r(:,:,:,2) + &
+                       0.180608*r(:,:,:,3) + &
+                       0.033474*r(:,:,:,4) ) / 0.540240
+      ab_nir(:,:,:) =  ( 0.326158*ab(:,:,:,2) + &
+                         0.180608*ab(:,:,:,3) + &
+                         0.033474*ab(:,:,:,4) ) / 0.540240
+
+!-------------------------------------------------------------------
+!    guarantee that when tau = 0., the sw properties are clear-sky 
+!    values.
+!-------------------------------------------------------------------
+      where (tau(:,:,:,1) <= 0.)
+        r_uv (:,:,:) = 0.
+        ab_uv(:,:,:) = 0.                       
+      end where
+      where ((tau(:,:,:,2) + tau(:,:,:,3) + tau(:,:,:,4)) <= 0.)
+        r_nir (:,:,:) = 0.
+        ab_nir(:,:,:) = 0.
+      end where       
+
+!-------------------------------------------------------------------
+!    guarantee that for coszen .le. 1.0E-6 that solar reflectances and 
+!    absorptances are equal to zero.
+!-------------------------------------------------------------------
+      do k=1,size(tau,3)
+        where (coszen(:,:) < 1.E-06)
+          r_uv  (:,:,k) = 0. 
+          ab_uv (:,:,k) = 0.
+          r_nir (:,:,k) = 0.
+          ab_nir(:,:,k) = 0.
+        end where
+      end do
+        
+!-------------------------------------------------------------------
+!    guarantee that each cloud has some transmission by reducing the 
+!    actual cloud reflectance. this break is necessary to avoid the 
+!    rest of the radiation code from breaking up.
+!---------------------------------------------------------------------
+      where ( (1. - r_uv(:,:,:) - ab_uv(:,:,:)) < 0.01)
+        r_uv(:,:,:) = r_uv(:,:,:) - 0.01
+      end where
+      where ( (1. - r_nir(:,:,:) - ab_nir(:,:,:)) < 0.01)
+        r_nir(:,:,:) = r_nir(:,:,:) - 0.01
+      end where
+
+!-------------------------------------------------------------------
+!    guarantee that cloud reflectance and absorption are .ge. 0.0.
+!-------------------------------------------------------------------
+      where (r_uv(:,:,:) < 0.)
+        r_uv(:,:,:) = 0.
+      end where
+      where (r_nir(:,:,:) < 0.)
+        r_nir(:,:,:) = 0.
+      end where
+      where (ab_uv(:,:,:) < 0.)
+        ab_uv(:,:,:) = 0.
+      end where
+      where (ab_nir(:,:,:) < 0.)
+        ab_nir(:,:,:) = 0.
+      end where
+
+!--------------------------------------------------------------------
+!    if ab_uv is desired as an output variable from this subroutine,
+!    fill the variable being returned.
+!--------------------------------------------------------------------
+      if (present (ab_uv_out)) then
+        ab_uv_out = ab_uv
+      endif
+
+!----------------------------------------------------------------------
+
+
+
+end subroutine cloud_rad_k
+
+
+!#####################################################################
+
+SUBROUTINE CLOUD_RAD(tau,w0,gg,coszen,r_uv,r_nir,ab_uv,ab_nir)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+!      This subroutine calculates the following radiative properties
+!      for each cloud:
+!
+!               1. r_uv : cloud reflectance in uv band
+!               2. r_nir: cloud reflectance in nir band
+!               3. ab_uv: cloud absorption in uv band
+!               4. ab_nir:cloud absorption in nir band
+!               
+!
+!      These quantities are computed by dividing the shortwave
+!      spectrum into 4 bands and then computing the reflectance
+!      and absorption for each band individually and then setting
+!      the uv reflectance and absorption equal to that of band
+!      1 and the nir reflectance and absorption equal to the
+!      spectrum weighted results of bands 2,3,and 4.  The limits
+!      of bands are described in CLOUD_OPTICAL_PROPERTIES.
 !
 !
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+!VARIABLES
+!
+!       ------
+!INPUT:
+!       ------
+!
+!       tau          optical depth in 4 bands (dimensionless)
+!       w0           single scattering albedo in 4 bands (dimensionless)
+!       gg           asymmetry parameter in 4 bands (dimensionless)
+!       coszen       cosine of the zenith angle
+!
+!       ------
+!INPUT/OUTPUT:
+!       ------
+!
+!       r_uv         cloud reflectance in uv band
+!       r_nir        cloud reflectance in nir band
+!       ab_uv        cloud absorption in uv band
+!       ab_nir       cloud absorption in nir band
+!
+!       -------------------
+!INTERNAL VARIABLES:
+!       -------------------
+!
+!      direct       logical variable for each cloud indicating whether
+!                       or not to use the direct beam solution for the
+!                       delta-eddington radiation or the diffuse beam
+!                       radiation solution.
+!      tau_local    optical depth for the band being solved
+!      w0_local     single scattering albedo for the band being solved
+!      g_local      asymmetry parameter for the band being solved
+!      coszen_3d    3d version of coszen
+!      I            looping variable
+!      iband        looping variables over band number
+!      taucum       cumulative sum of visible optical depth
+!      g_prime      scaled g
+!      w0_prime     scaled w0
+!      tau_prime    scaled tau
+!      crit         variable equal to 1./(4 - 3g')
+!      AL           variable equal to sqrt(3*(1-w0')*(1-w0'*g'))
+!      ALPHV        temporary work variable
+!      GAMV         temporary work variable
+!      T1V          exp( -1.*AL * tau')
+!      trans_dir    direct radiation beam transmittance
+!      U            1.5 * (1. - w0'*g')/AL
+!      r_diffus     diffuse beam reflection
+!      trans_diffus diffuse beam transmission
+!
+!      r            cloud reflectance for each cloud in each band
+!      ab           cloud absorption for each cloud in each band
+!      r_dir_uv       direct beam reflection for uv band
+!      r_dir_nir      direct beam reflection for nir band
+!      trans_dir_uv   direct beam transmission for uv band
+!      trans_dir_nir  direct beam transmission for uv band
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+!  User Interface variables
+!  ------------------------
 
-   if(PRESENT(axes).and.PRESENT(Time)) then
+REAL,     INTENT (IN), DIMENSION(:,:,:,:):: tau,w0,gg
+REAL,     INTENT (IN), DIMENSION(:,:)    :: coszen
+REAL,     INTENT (INOUT),DIMENSION(:,:,:):: r_uv,r_nir,ab_uv,ab_nir
 
-!      ISCCP
-!      -----
+!  Internal variables
+!  ------------------
 
-       id_pc1tau1 = register_diag_field ( mod_name, &
-                             'pc1tau1', axes(1:2), Time, &
-                      '    pc<180;     0<tau<taumin', 'fraction' )
-       id_pc1tau2 = register_diag_field ( mod_name, &
-                             'pc1tau2', axes(1:2), Time, &
-                      '    pc<180;taumin<tau<1.3   ', 'fraction' )
-       id_pc1tau3 = register_diag_field ( mod_name, &
-                             'pc1tau3', axes(1:2), Time, &
-                      '    pc<180;   1.3<tau<3.6   ', 'fraction' )
-       id_pc1tau4 = register_diag_field ( mod_name, &
-                             'pc1tau4', axes(1:2), Time, &
-                      '    pc<180;   3.6<tau<9.4   ', 'fraction' )
-       id_pc1tau5 = register_diag_field ( mod_name, &
-                             'pc1tau5', axes(1:2), Time, &
-                      '    pc<180;   9.4<tau<23    ', 'fraction' )
-       id_pc1tau6 = register_diag_field ( mod_name, &
-                             'pc1tau6', axes(1:2), Time, &
-                      '    pc<180;    23<tau<60    ', 'fraction' )
-       id_pc1tau7 = register_diag_field ( mod_name, &
-                             'pc1tau7', axes(1:2), Time, &
-                      '    pc<180;    60<tau       ', 'fraction' )
-       id_pc2tau1 = register_diag_field ( mod_name, &
-                             'pc2tau1', axes(1:2), Time, &
-                      '180<pc<310;     0<tau<taumin', 'fraction' )
-       id_pc2tau2 = register_diag_field ( mod_name, &
-                             'pc2tau2', axes(1:2), Time, &
-                      '180<pc<310;taumin<tau<1.3   ', 'fraction' )
-       id_pc2tau3 = register_diag_field ( mod_name, &
-                             'pc2tau3', axes(1:2), Time, &
-                      '180<pc<310;   1.3<tau<3.6   ', 'fraction' )
-       id_pc2tau4 = register_diag_field ( mod_name, &
-                             'pc2tau4', axes(1:2), Time, &
-                      '180<pc<310;   3.6<tau<9.4   ', 'fraction' )
-       id_pc2tau5 = register_diag_field ( mod_name, &
-                             'pc2tau5', axes(1:2), Time, &
-                      '180<pc<310;   9.4<tau<23    ', 'fraction' )
-       id_pc2tau6 = register_diag_field ( mod_name, &
-                             'pc2tau6', axes(1:2), Time, &
-                      '180<pc<310;    23<tau<60    ', 'fraction' )
-       id_pc2tau7 = register_diag_field ( mod_name, &
-                             'pc2tau7', axes(1:2), Time, &
-                      '180<pc<310;    60<tau       ', 'fraction' )
-       id_pc3tau1 = register_diag_field ( mod_name, &
-                             'pc3tau1', axes(1:2), Time, &
-                      '310<pc<440;     0<tau<taumin', 'fraction' )
-       id_pc3tau2 = register_diag_field ( mod_name, &
-                             'pc3tau2', axes(1:2), Time, &
-                      '310<pc<440;taumin<tau<1.3   ', 'fraction' )
-       id_pc3tau3 = register_diag_field ( mod_name, &
-                             'pc3tau3', axes(1:2), Time, &
-                      '310<pc<440;   1.3<tau<3.6   ', 'fraction' )
-       id_pc3tau4 = register_diag_field ( mod_name, &
-                             'pc3tau4', axes(1:2), Time, &
-                      '310<pc<440;   3.6<tau<9.4   ', 'fraction' )
-       id_pc3tau5 = register_diag_field ( mod_name, &
-                             'pc3tau5', axes(1:2), Time, &
-                      '310<pc<440;   9.4<tau<23    ', 'fraction' )
-       id_pc3tau6 = register_diag_field ( mod_name, &
-                             'pc3tau6', axes(1:2), Time, &
-                      '310<pc<440;    23<tau<60    ', 'fraction' )
-       id_pc3tau7 = register_diag_field ( mod_name, &
-                             'pc3tau7', axes(1:2), Time, &
-                      '310<pc<440;    60<tau       ', 'fraction' )
-       id_pc4tau1 = register_diag_field ( mod_name, &
-                             'pc4tau1', axes(1:2), Time, &
-                      '440<pc<560;     0<tau<taumin', 'fraction' )
-       id_pc4tau2 = register_diag_field ( mod_name, &
-                             'pc4tau2', axes(1:2), Time, &
-                      '440<pc<560;taumin<tau<1.3   ', 'fraction' )
-       id_pc4tau3 = register_diag_field ( mod_name, &
-                             'pc4tau3', axes(1:2), Time, &
-                      '440<pc<560;   1.3<tau<3.6   ', 'fraction' )
-       id_pc4tau4 = register_diag_field ( mod_name, &
-                             'pc4tau4', axes(1:2), Time, &
-                      '440<pc<560;   3.6<tau<9.4   ', 'fraction' )
-       id_pc4tau5 = register_diag_field ( mod_name, &
-                             'pc4tau5', axes(1:2), Time, &
-                      '440<pc<560;   9.4<tau<23    ', 'fraction' )
-       id_pc4tau6 = register_diag_field ( mod_name, &
-                             'pc4tau6', axes(1:2), Time, &
-                      '440<pc<560;    23<tau<60    ', 'fraction' )
-       id_pc4tau7 = register_diag_field ( mod_name, &
-                             'pc4tau7', axes(1:2), Time, &
-                      '440<pc<560;    60<tau       ', 'fraction' )
-       id_pc5tau1 = register_diag_field ( mod_name, &
-                             'pc5tau1', axes(1:2), Time, &
-                      '560<pc<680;     0<tau<taumin', 'fraction' )
-       id_pc5tau2 = register_diag_field ( mod_name, &
-                             'pc5tau2', axes(1:2), Time, &
-                      '560<pc<680;taumin<tau<1.3   ', 'fraction' )
-       id_pc5tau3 = register_diag_field ( mod_name, &
-                             'pc5tau3', axes(1:2), Time, &
-                      '560<pc<680;   1.3<tau<3.6   ', 'fraction' )
-       id_pc5tau4 = register_diag_field ( mod_name, &
-                             'pc5tau4', axes(1:2), Time, &
-                      '560<pc<680;   3.6<tau<9.4   ', 'fraction' )
-       id_pc5tau5 = register_diag_field ( mod_name, &
-                             'pc5tau5', axes(1:2), Time, &
-                      '560<pc<680;   9.4<tau<23    ', 'fraction' )
-       id_pc5tau6 = register_diag_field ( mod_name, &
-                             'pc5tau6', axes(1:2), Time, &
-                      '560<pc<680;    23<tau<60    ', 'fraction' )
-       id_pc5tau7 = register_diag_field ( mod_name, &
-                             'pc5tau7', axes(1:2), Time, &
-                      '560<pc<680;    60<tau       ', 'fraction' )
-       id_pc6tau1 = register_diag_field ( mod_name, &
-                             'pc6tau1', axes(1:2), Time, &
-                      '680<pc<800;     0<tau<taumin', 'fraction' )
-       id_pc6tau2 = register_diag_field ( mod_name, &
-                             'pc6tau2', axes(1:2), Time, &
-                      '680<pc<800;taumin<tau<1.3   ', 'fraction' )
-       id_pc6tau3 = register_diag_field ( mod_name, &
-                             'pc6tau3', axes(1:2), Time, &
-                      '680<pc<800;   1.3<tau<3.6   ', 'fraction' )
-       id_pc6tau4 = register_diag_field ( mod_name, &
-                             'pc6tau4', axes(1:2), Time, &
-                      '680<pc<800;   3.6<tau<9.4   ', 'fraction' )
-       id_pc6tau5 = register_diag_field ( mod_name, &
-                             'pc6tau5', axes(1:2), Time, &
-                      '680<pc<800;   9.4<tau<23    ', 'fraction' )
-       id_pc6tau6 = register_diag_field ( mod_name, &
-                             'pc6tau6', axes(1:2), Time, &
-                      '680<pc<800;    23<tau<60    ', 'fraction' )
-       id_pc6tau7 = register_diag_field ( mod_name, &
-                             'pc6tau7', axes(1:2), Time, &
-                      '680<pc<800;    60<tau       ', 'fraction' )
-       id_pc7tau1 = register_diag_field ( mod_name, &
-                             'pc7tau1', axes(1:2), Time, &
-                      '680<pc<800;     0<tau<taumin', 'fraction' )
-       id_pc7tau2 = register_diag_field ( mod_name, &
-                             'pc7tau2', axes(1:2), Time, &
-                      '800<pc    ;taumin<tau<1.3   ', 'fraction' )
-       id_pc7tau3 = register_diag_field ( mod_name, &
-                             'pc7tau3', axes(1:2), Time, &
-                      '800<pc    ;   1.3<tau<3.6   ', 'fraction' )
-       id_pc7tau4 = register_diag_field ( mod_name, &
-                             'pc7tau4', axes(1:2), Time, &
-                      '800<pc    ;   3.6<tau<9.4   ', 'fraction' )
-       id_pc7tau5 = register_diag_field ( mod_name, &
-                             'pc7tau5', axes(1:2), Time, &
-                      '800<pc    ;   9.4<tau<23    ', 'fraction' )
-       id_pc7tau6 = register_diag_field ( mod_name, &
-                             'pc7tau6', axes(1:2), Time, &
-                      '800<pc    ;    23<tau<60    ', 'fraction' )
-       id_pc7tau7 = register_diag_field ( mod_name, &
-                             'pc7tau7', axes(1:2), Time, &
-                      '800<pc    ;    60<tau       ', 'fraction' )
-       id_nisccp = register_diag_field ( mod_name, &
-                             'nisccp', axes(1:2), Time, &
-                   'frequency of ISCCP calculations', 'fraction' )
-       
-       !set do_isccp
-       do_isccp = .false.
-       if (id_pc1tau1>0) do_isccp=.true.; if (id_pc1tau2>0) do_isccp=.true.
-       if (id_pc1tau3>0) do_isccp=.true.; if (id_pc1tau4>0) do_isccp=.true.
-       if (id_pc1tau5>0) do_isccp=.true.; if (id_pc1tau6>0) do_isccp=.true.
-       if (id_pc1tau7>0) do_isccp=.true.
-       if (id_pc2tau1>0) do_isccp=.true.; if (id_pc2tau2>0) do_isccp=.true.
-       if (id_pc2tau3>0) do_isccp=.true.; if (id_pc2tau4>0) do_isccp=.true.
-       if (id_pc2tau5>0) do_isccp=.true.; if (id_pc2tau6>0) do_isccp=.true.
-       if (id_pc2tau7>0) do_isccp=.true.
-       if (id_pc3tau1>0) do_isccp=.true.; if (id_pc3tau2>0) do_isccp=.true.
-       if (id_pc3tau3>0) do_isccp=.true.; if (id_pc3tau4>0) do_isccp=.true.
-       if (id_pc3tau5>0) do_isccp=.true.; if (id_pc3tau6>0) do_isccp=.true.
-       if (id_pc3tau7>0) do_isccp=.true.
-       if (id_pc4tau1>0) do_isccp=.true.; if (id_pc4tau2>0) do_isccp=.true.
-       if (id_pc4tau3>0) do_isccp=.true.; if (id_pc4tau4>0) do_isccp=.true.
-       if (id_pc4tau5>0) do_isccp=.true.; if (id_pc4tau6>0) do_isccp=.true.
-       if (id_pc4tau7>0) do_isccp=.true.
-       if (id_pc5tau1>0) do_isccp=.true.; if (id_pc5tau2>0) do_isccp=.true.
-       if (id_pc5tau3>0) do_isccp=.true.; if (id_pc5tau4>0) do_isccp=.true.
-       if (id_pc5tau5>0) do_isccp=.true.; if (id_pc5tau6>0) do_isccp=.true.
-       if (id_pc5tau7>0) do_isccp=.true.
-       if (id_pc5tau1>0) do_isccp=.true.; if (id_pc6tau2>0) do_isccp=.true.
-       if (id_pc6tau3>0) do_isccp=.true.; if (id_pc6tau4>0) do_isccp=.true.
-       if (id_pc6tau5>0) do_isccp=.true.; if (id_pc6tau6>0) do_isccp=.true.
-       if (id_pc6tau7>0) do_isccp=.true.
-       if (id_pc7tau1>0) do_isccp=.true.; if (id_pc7tau2>0) do_isccp=.true.
-       if (id_pc7tau3>0) do_isccp=.true.; if (id_pc7tau4>0) do_isccp=.true.
-       if (id_pc7tau5>0) do_isccp=.true.; if (id_pc7tau6>0) do_isccp=.true.
-       if (id_pc7tau7>0) do_isccp=.true.   
+INTEGER                                  :: I,iband,J,K
+REAL,    DIMENSION(SIZE(tau,1),SIZE(tau,2)) :: taucum
+LOGICAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: direct
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: coszen_3d
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: tau_local
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: w0_local,g_local
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: g_prime,w0_prime
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: tau_prime,crit,AL
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: ALPHV,GAMV,T1V,U
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: r_diffus
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: trans_diffus
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: r_dir,trans_dir
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3),SIZE(tau,4)) :: r,ab
 
-!      TAU_REFF
-!      --------
+!
+! Code
+! ----
 
-       id_aice = register_diag_field ( mod_name, &
-                             'aice', axes(1:2), Time, &
-                      'area of ice clouds seen from space', 'fraction' )
-       id_reffice = register_diag_field ( mod_name, &
-                         'reffice', axes(1:2), Time, &
-                      'ice cloud effective radius', 'microns' )
-       id_aliq = register_diag_field ( mod_name, &
-                             'aliq', axes(1:2), Time, &
-                      'area of liquid clouds seen from space', 'fraction' )
-       id_reffliq = register_diag_field ( mod_name, &
-                         'reffliq', axes(1:2), Time, &
-                      'liquid cloud effective radius', 'microns' )
-       id_alow = register_diag_field ( mod_name, &
-                             'alow', axes(1:2), Time, &
-                      'area of low clouds seen from space', 'fraction' )
-       id_tauicelow = register_diag_field ( mod_name, &
-                             'tauicelow', axes(1:2), Time, &
-                      'low ice cloud optical depth', 'fraction' )
-       id_tauliqlow = register_diag_field ( mod_name, &
-                             'tauliqlow', axes(1:2), Time, &
-                      'low liquid cloud optical depth', 'fraction' )
-       id_tlaylow = register_diag_field ( mod_name, &
-                             'tlaylow', axes(1:2), Time, &
-                      'low layer temperature', 'fraction' )
-       id_tcldlow = register_diag_field ( mod_name, &
-                             'tcldlow', axes(1:2), Time, &
-                      'low cloud top temperature', 'fraction' )
-       
-       if (id_aice>0) do_tau_reff=.true.; if (id_reffice>0) do_tau_reff=.true.
-       if (id_aliq>0) do_tau_reff=.true.; if (id_reffliq>0) do_tau_reff=.true.
-       if (id_alow>0) do_tau_reff=.true.
-       if (id_tauicelow>0) do_tau_reff=.true.
-       if (id_tauliqlow>0) do_tau_reff=.true.
-       if (id_tlaylow>0) do_tau_reff=.true.
-       if (id_tcldlow>0) do_tau_reff=.true.
+        ! reinitialize variables
+        r_uv(:,:,:) = 0.
+        r_nir(:,:,:)= 0.
+        ab_uv(:,:,:)= 0.
+        ab_nir(:,:,:)=0.
 
-   end if !for setting up diagnostics
+        !create 3d zenith angle
+        DO I = 1, SIZE(tau,3)
+               coszen_3d(:,:,I)=coszen(:,:)
+        END DO
+        WHERE (coszen_3d(:,:,:) .lt. 1.E-06)
+                coszen_3d(:,:,:) = 1.E-06
+        END WHERE
 
-!-----------------------------------------------------------------------
+        
+        !------------------------------------------------------------------
+        !do logical variable to determine where total cloud optical depth
+        !at uv wavelengths exceeds taucrit
+        IF (.NOT. l2strem) THEN
+
+                !---- initialize taucum and direct
+                taucum(:,:)=0.
+                direct(:,:,:)=.TRUE.
+
+                DO I = 1, SIZE(tau,3)
+
+                      !find if taucum to levels above has exceeded taucrit
+                      WHERE (taucum(:,:) .gt. taucrit)
+                            direct(:,:,I)=.FALSE.
+                      END WHERE
+
+                      !increment cumulative tau
+                      taucum(:,:)=taucum(:,:)+tau(:,:,I,1)
+
+                END DO
+        END IF
+
+    !----------------- LOOP OVER BAND -----------------------------!
+
+    DO iband = 1, SIZE(tau,4)
+
+        !-----------------------------------------------------------
+        !  assign w0, g, tau to the value appropriate for the band
+
+        w0_local(:,:,:) = w0(:,:,:,iband)
+        tau_local(:,:,:)= tau(:,:,:,iband)
+        g_local(:,:,:) =  gg(:,:,:,iband)
+
+        !-------------------------------------------------------------------
+        ! for delta-Eddington scaled ('prime') g, w0, tau where:
+        !
+        !               g' = g / (1 + g)
+        !              w0' = (1 - g*g) * w0 / (1 - w*g*g)
+        !             tau' = (1 - w*g*g) * tau
+        !
+
+                 tau_prime(:,:,:) = 1. - &
+                      (w0_local(:,:,:)*g_local(:,:,:)*g_local(:,:,:))
+                 w0_prime(:,:,:) = w0_local(:,:,:) * &
+                   (1. - (g_local(:,:,:)*g_local(:,:,:)))/tau_prime(:,:,:)
+                 tau_prime(:,:,:) = tau_prime(:,:,:) * tau_local(:,:,:)
+                 g_prime(:,:,:) = g_local(:,:,:) / (1. + g_local(:,:,:))
+
+        !-------------------------------------------------------------------
+        ! create other variables
+        !
+        !        crit = 1./(4 - 3g')
+        !
+        !      and where w0' < crit set w0' = crit
+        !
+        !        AL = sqrt( 3. * (1. - w0') * (1. - w0'*g') )
+        !
+
+                 crit(:,:,:) = 1./(4.- 3.*g_prime(:,:,:))
+
+                 WHERE (w0_prime(:,:,:) .lt. crit(:,:,:) )
+                           w0_prime(:,:,:) = crit(:,:,:)
+                 END WHERE
+
+                 AL(:,:,:) =  ( 3. * (1. - w0_prime(:,:,:) ) &
+                    * (1. - (w0_prime(:,:,:)*g_prime(:,:,:)))  )**0.5
+
+                 !set up a minimum to AL
+                 WHERE (AL(:,:,:) .lt. 1.E-06)
+                        AL(:,:,:) = 1.E-06
+                 END WHERE
+
+
+        !-------------------------------------------------------------------
+        ! simplifications if not two stream
+        !
+        !        ALPHV = 0.75*w0'*coszen*(1.+g'(1.-w0'))/
+        !                          (1.-(AL*coszen)**2.)
+        !        GAMV = 0.5*w0'*(3.*g'*(1.-w0')*coszen*coszen + 1.)/
+        !                          (1.-(AL*coszen)**2.)
+        !
+
+        IF (.NOT. l2strem) THEN
+
+
+                ALPHV(:,:,:) = 0.75 * w0_prime(:,:,:)*coszen_3d(:,:,:) * &
+                 (1. + (g_prime(:,:,:)*(1. - w0_prime(:,:,:)))) / &
+                 (1. - (AL(:,:,:)*coszen_3d(:,:,:))**2.0)
+
+                GAMV(:,:,:) =  0.50 * w0_prime(:,:,:) * &
+                (  (3.* g_prime(:,:,:) * (1. - w0_prime(:,:,:)) * &
+                    coszen_3d(:,:,:) * coszen_3d(:,:,:)) + 1. ) / &
+                 (1. - (AL(:,:,:)*coszen_3d(:,:,:))**2.0)
+
+        END IF
+
+
+        !-------------------------------------------------------------------
+        ! calculate T1V
+        !
+        !    T1V = exp (-1* AL * tau' )
+
+
+                  T1V(:,:,:) = exp( -1.*AL(:,:,:) * tau_prime(:,:,:) )
+
+
+        !-------------------------------------------------------------------
+        !calculate diffuse beam reflection and transmission
+        !
+
+        !first calculate U  = 1.5 * (1. - w0'*g')/AL
+        U(:,:,:) = 1.5 *(1. - w0_prime(:,:,:)*g_prime(:,:,:))/AL(:,:,:)
+
+        !initialize variables
+        r_diffus(:,:,:)= 0.
+        trans_diffus(:,:,:) = 1.
+
+
+
+        trans_diffus(:,:,:) = 4. * U(:,:,:) * T1V(:,:,:) / &
+            ( ( (U(:,:,:)+1.) * (U(:,:,:)+1.)  ) - &
+              ( (U(:,:,:)-1.) * (U(:,:,:)-1.) * &
+                   T1V(:,:,:) *   T1V(:,:,:)   )    )
+
+        r_diffus(:,:,:) =     ((U(:,:,:)*U(:,:,:))-1.) * &
+                   ( 1. -   (T1V(:,:,:)*T1V(:,:,:)) ) / &
+             ( ( (U(:,:,:)+1.) * (U(:,:,:)+1.)  ) - &
+               ( (U(:,:,:)-1.) * (U(:,:,:)-1.) * &
+                    T1V(:,:,:) *   T1V(:,:,:)   )    )
+
+
+
+        !-------------------------------------------------------------------
+        ! calculate direct bean transmission
+        !
+        !
+        IF (.NOT. l2strem) THEN
+
+
+            !initialize variables
+            trans_dir(:,:,:) = 1.
+            r_dir(:,:,:) = 0.
+
+            r_dir(:,:,:) = ( (ALPHV(:,:,:) - GAMV(:,:,:)) * &
+               exp(-1.*tau_prime(:,:,:)/coszen_3d(:,:,:)) * &
+               trans_diffus(:,:,:) ) +  &
+              ( (ALPHV(:,:,:) + GAMV(:,:,:)) * &
+              r_diffus(:,:,:) )  -  (ALPHV(:,:,:) - GAMV(:,:,:))
+
+            trans_dir(:,:,:) = &
+              ( (ALPHV(:,:,:)+GAMV(:,:,:))*trans_diffus(:,:,:) ) + &
+              ( exp(-1.*tau_prime(:,:,:)/coszen_3d(:,:,:)) * &
+              ( ( (ALPHV(:,:,:)-GAMV(:,:,:))*r_diffus(:,:,:) ) - &
+                (ALPHV(:,:,:)+GAMV(:,:,:)) + 1. )   )
+
+        END IF
+
+
+        !-------------------------------------------------------------------
+        ! patch together final solution
+        !
+        !
+
+
+        IF (l2strem) THEN
+
+             !two-stream solution
+             r(:,:,:,iband) = r_diffus(:,:,:)
+             ab(:,:,:,iband) = 1. - trans_diffus(:,:,:) - r_diffus(:,:,:)
+
+        ELSE
+
+             !delta-Eddington solution
+             WHERE (.not. direct)
+
+                   r(:,:,:,iband) = r_diffus(:,:,:)
+                   ab(:,:,:,iband) = 1. - trans_diffus(:,:,:) &
+                                     - r_diffus(:,:,:)
+
+
+             END WHERE
+
+             WHERE (direct)
+
+                   r(:,:,:,iband) = r_dir(:,:,:)
+                   ab(:,:,:,iband) = 1. - trans_dir(:,:,:) &
+                                     - r_dir(:,:,:)
+
+             END WHERE
+
+        END IF
+
+    !----------------- END LOOP OVER BAND -----------------------------!
+
+    END DO
+
+
+    !----------------- CREATE SUM OVER BAND ---------------------------!
+
+    r_uv(:,:,:) = r(:,:,:,1)
+    ab_uv(:,:,:) = ab(:,:,:,1)
+
+    r_nir(:,:,:) =  (  0.326158 * r(:,:,:,2) + &
+                       0.180608 * r(:,:,:,3) + &
+                       0.033474 * r(:,:,:,4) ) / 0.540240
+
+    ab_nir(:,:,:) =  (  0.326158 * ab(:,:,:,2) + &
+                        0.180608 * ab(:,:,:,3) + &
+                        0.033474 * ab(:,:,:,4) ) / 0.540240
+
+
+        !-------------------------------------------------------------------
+        ! guarantee that clouds for tau = 0. have the properties
+        ! of no cloud
+
+        
+        WHERE(tau(:,:,:,1) .le. 0.)
+             r_uv(:,:,:) = 0.
+             ab_uv(:,:,:)= 0.                       
+        END WHERE
+        WHERE((tau(:,:,:,2)+tau(:,:,:,3)+tau(:,:,:,4)) .le. 0.)
+             r_nir(:,:,:)= 0.
+             ab_nir(:,:,:)=0.
+        END WHERE       
+
+        !-------------------------------------------------------------------
+        ! guarantee that for coszen lt. or equal to zero that solar
+        ! reflectances and absorptances are equal to zero.
+        DO I = 1, SIZE(tau,3)
+               WHERE (coszen(:,:) .lt. 1.E-06)
+                    r_uv(:,:,I) = 0. 
+                    ab_uv(:,:,I) = 0.
+                    r_nir(:,:,I) = 0.
+                    ab_nir(:,:,I) = 0.
+               END WHERE
+        END DO
+        
+        !-------------------------------------------------------------------
+        ! guarantee that each cloud has some transmission by reducing
+        ! the actual cloud reflectance in uv and nir band
+        ! this break is necessary to avoid the rest of the
+        ! radiation code from breaking up.
+        !
+
+        WHERE ( (1. - r_uv(:,:,:) - ab_uv(:,:,:)) .lt. 0.01)
+                      r_uv(:,:,:) = r_uv(:,:,:) - 0.01
+        END WHERE
+        WHERE ( (1. - r_nir(:,:,:) - ab_nir(:,:,:)) .lt. 0.01)
+                      r_nir(:,:,:) = r_nir(:,:,:) - 0.01
+        END WHERE
+
+        !-------------------------------------------------------------------
+        ! guarantee that cloud reflectance and absorption are greater than
+        ! or equal to zero
+
+        WHERE (r_uv(:,:,:) .lt. 0.)
+               r_uv(:,:,:) = 0.
+        END WHERE
+        WHERE (r_nir(:,:,:) .lt. 0.)
+               r_nir(:,:,:) = 0.
+        END WHERE
+        WHERE (ab_uv(:,:,:) .lt. 0.)
+               ab_uv(:,:,:) = 0.
+        END WHERE
+        WHERE (ab_nir(:,:,:) .lt. 0.)
+               ab_nir(:,:,:) = 0.
+        END WHERE
+
+
+END SUBROUTINE CLOUD_RAD
+
+!######################################################################
+
+! <SUBROUTINE NAME="sw_optical_properties">
+!  <OVERVIEW>
+!    sw_optical_properties computes the needed optical parameters and
+!    then calls cloud_rad_k in order to compute the cloud radiative
+!    properties.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    sw_optical_properties computes the needed optical parameters and
+!    then calls cloud_rad_k in order to compute the cloud radiative
+!    properties.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call sw_optical_properties (nclds, lwp, iwp, reff_liq, reff_ice, &
+!		coszen, r_uv, r_nir, ab_nir)
+!		
+!  </TEMPLATE>
+!  <IN NAME="nclds" TYPE="integer">
+!    Number of random overlapping clouds in column
+
+
+
+
+
+!  </IN>
+!  <IN NAME="lwp" TYPE="real">
+!    Liquid water path [ kg / m**2 ]
+!  </IN>
+!  <IN NAME="iwp" TYPE="real">
+!    Ice water path [ kg / m**2 ]
+!  </IN>
+!  <IN NAME="reff_liq" TYPE="real">
+!    Effective cloud drop radius  used with
+!    bulk cloud physics scheme [ microns ]
+!  </IN>
+!  <IN NAME="reff_ice" TYPE="real">
+!    Effective ice crystal radius used with
+!    bulk cloud physics scheme [ microns ]
+!  </IN>
+!  <IN NAME="coszen" TYPE="real">
+!    Cosine of zenith angle [ dimensionless ]
+!  </IN>
+!  <INOUT NAME="r_uv" TYPE="real">
+!    Cloud reflectance in uv band
+!  </INOUT>
+!  <INOUT NAME="r_nir" TYPE="real">
+!    Cloud reflectance in nir band
+!  </INOUT>
+!  <INOUT NAME="ab_nir" TYPE="real">
+!    Cloud absorption in nir band
+!  </INOUT>
+! </SUBROUTINE>
+!
+subroutine sw_optical_properties (nclds, lwp, iwp, reff_liq, reff_ice, &
+                                  coszen, r_uv, r_nir, ab_nir)
+
+!----------------------------------------------------------------------
+!    sw_optical_properties computes the needed optical parameters and
+!    then calls cloud_rad_k in order to compute the cloud radiative
+!    properties.
+!---------------------------------------------------------------------
+                              
+integer, dimension(:,:),   intent(in)      :: nclds
+real,    dimension(:,:,:), intent(in)      :: lwp, iwp, reff_liq,   &
+                                              reff_ice
+real,    dimension(:,:),   intent(in)      :: coszen
+real,    dimension(:,:,:), intent(inout)   :: r_uv, r_nir, ab_nir
+
+!----------------------------------------------------------------------
+!    intent(in) variables:
+!
+!        nclds           Number of random overlapping clouds in column
+!        lwp             Liquid water path [ kg / m**2 ]
+!        iwp             Ice water path [ kg / m**2 ]
+!        reff_liq        Effective cloud drop radius  used with
+!                        bulk cloud physics scheme [ microns ]
+!        reff_ice        Effective ice crystal radius used with
+!                        bulk cloud physics scheme [ microns ]
+!        coszen          Cosine of zenith angle [ dimensionless ]
+!
+!    intent(out) variables:
+!
+!        r_uv            Cloud reflectance in uv band
+!        r_nir           Cloud reflectance in nir band
+!        ab_nir          Cloud absorption in nir band
+!
+!--------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!   local variables:
+
+      real, dimension (size(lwp,1),                                   &
+                       size(lwp,2),                                   &
+                       size(lwp,3), 4) ::  tau, w0, gg, tau_liq,   &
+                                           tau_ice, w0_liq, w0_ice, &
+                                           g_liq, g_ice
+      integer :: max_cld
+      integer :: i,j, k, m
+
+!---------------------------------------------------------------------
+!   local variables:
+!
+!           tau            optical depth [ dimensionless ]
+!           w0             single scattering albedo
+!           gg             asymmetry parameter for each band
+!           tau_liq        optical depth due to cloud liquid 
+!                          [ dimensionless ]
+!           tau_ice        optical depth due to cloud liquid 
+!                          [ dimensionless ]
+!           w0_liq         single scattering albedo due to liquid
+!           w0_ice         single scattering albedo due to ice
+!           g_liq          asymmetry factor for cloud liquid
+!           g_ice          asymmetry factor for cloud ice      
+!           max_cld        largest number of clouds in any column in
+!                          the current physics window
+!           i,j,l,m        do-loop indices 
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    define the maximum number of random overlap clouds in any column
+!    in the current physics window.
+!---------------------------------------------------------------------
+      max_cld = maxval (nclds(:,:))
+
+!--------------------------------------------------------------------
+!    spatial loop.
+!--------------------------------------------------------------------
+      do j=1,size(lwp,2)
+        do i=1,size(lwp,1)
+          do k=1,size(lwp,3)  
+
+!---------------------------------------------------------------------
+!    initialize local variables to default values.
+!---------------------------------------------------------------------
+            tau    (i,j,k ,:) = 0.
+            tau_liq(i,j,k ,:) = 0.
+            tau_ice(i,j,k ,:) = 0.
+            gg     (i,j,k ,:) = 0.85
+            g_liq  (i,j,k ,:) = 0.85
+            g_ice  (i,j,k ,:) = 0.85
+            w0     (i,j,k ,:) = 0.95
+            w0_liq (i,j,k ,:) = 0.95
+            w0_ice (i,j,k ,:) = 0.95
+
+!--------------------------------------------------------------------
+!    compute uv cloud optical depths due to liquid droplets in each 
+!    of the wavelength bands. the formulas for optical depth come from 
+!    Slingo (1989, J. Atmos. Sci., vol. 46, pp. 1419-1427)
+!--------------------------------------------------------------------
+            tau_liq(i,j,k,1) = lwp(i,j,k)*1000.* &
+                               (0.02817 + (1.305/reff_liq(i,j,k)))
+            tau_liq(i,j,k,2) = lwp(i,j,k)*1000.* &
+                               (0.02682 + (1.346/reff_liq(i,j,k)))
+            tau_liq(i,j,k,3) = lwp(i,j,k)*1000.* &
+                               (0.02264 + (1.454/reff_liq(i,j,k)))
+            tau_liq(i,j,k,4) = lwp(i,j,k)*1000.* &
+                               (0.01281 + (1.641/reff_liq(i,j,k)))
+        
+!--------------------------------------------------------------------
+!    compute uv cloud optical depths due to ice crystals. the ice
+!    optical depth is independent of wavelength band. the formulas for 
+!    optical depth come from Ebert and Curry (1992, J. Geophys. Res., 
+!    vol. 97, pp. 3831-3836. IMPORTANT!!! NOTE WE ARE CHEATING HERE 
+!    BECAUSE WE ARE FORCING THE FIVE BAND MODEL OF EBERT AND CURRY INTO
+!    THE FOUR BAND MODEL OF SLINGO. THIS IS DONE BY COMBINING BANDS 3 
+!    and 4 OF EBERT AND CURRY TOGETHER. EVEN SO THE EXACT BAND LIMITS 
+!    DO NOT MATCH.  FOR COMPLETENESS HERE ARE THE BAND LIMITS (MICRONS)
+!
+!            BAND               SLINGO                 EBERT AND CURRY
+!
+!             1               0.25-0.69                0.25 - 0.7
+!             2               0.69-1.19                0.7 - 1.3
+!             3               1.19-2.38                1.3 - 2.5
+!             4               2.38-4.00                2.5 - 3.5
+!--------------------------------------------------------------------
+            tau_ice(i,j,k,1) = iwp(i,j,k)*1000.* &
+                               (0.003448 + (2.431/reff_ice(i,j,k)))
+            tau_ice(i,j,k,2) = tau_ice(i,j,k,1)
+            tau_ice(i,j,k,3) = tau_ice(i,j,k,1)
+            tau_ice(i,j,k,4) = tau_ice(i,j,k,1)
+        
+!--------------------------------------------------------------------
+!    compute total cloud optical depth as the sum of the liquid and
+!    ice components. the mixed phase optical properties are based upon 
+!    equation 14 of Rockel et al. 1991, Contributions to Atmospheric 
+!    Physics, volume 64, pp.1-12:  
+!           tau = tau_liq + tau_ice
+!--------------------------------------------------------------------
+            tau(i,j,k,:) = tau_liq(i,j,k,:) + tau_ice(i,j,k,:)
+        
+!---------------------------------------------------------------------
+!    compute single-scattering albedo resulting from the presence
+!    of liquid droplets.
+!---------------------------------------------------------------------
+            w0_liq(i,j,k,1) =  5.62E-08 - 1.63E-07*reff_liq(i,j,k)
+            w0_liq(i,j,k,2) =  6.94E-06 - 2.35E-05*reff_liq(i,j,k)
+            w0_liq(i,j,k,3) = -4.64E-04 - 1.24E-03*reff_liq(i,j,k)
+            w0_liq(i,j,k,4) = -2.01E-01 - 7.56E-03*reff_liq(i,j,k)
+
+            w0_liq(i,j,k,:) = w0_liq(i,j,k,:) + 1.
+
+!---------------------------------------------------------------------
+!    compute single-scattering albedo resulting from the presence
+!    of ice crystals.
+!---------------------------------------------------------------------
+            w0_ice(i,j,k,1) = -1.00E-05
+            w0_ice(i,j,k,2) = -1.10E-04 - 1.41E-05*reff_ice(i,j,k)
+            w0_ice(i,j,k,3) = -1.86E-02 - 8.33E-04*reff_ice(i,j,k)
+            w0_ice(i,j,k,4) = -4.67E-01 - 2.05E-05*reff_ice(i,j,k)
+
+            w0_ice(i,j,k,:) = w0_ice(i,j,k,:) + 1.
+          end do
+        end do
+      end do
+
+!----------------------------------------------------------------------
+!    compute total single scattering albedo. the mixed phase value is
+!    obtained from equation 14 of Rockel et al. 1991, Contributions to 
+!    Atmospheric Physics, volume 64, pp.1-12:
+!           w0  =   ( w0_liq * tau_liq  +  w0_ice * tau_ice ) /
+!                   (          tau_liq  +           tau_ice )
+!----------------------------------------------------------------------
+      do j=1,size(lwp,2)
+        do i=1,size(lwp,1)
+          do k=1, size(lwp,3)    
+            do m=1,4
+              if (tau(i,j,k,m) > 0.0) then
+                w0(i,j,k,m) = (w0_liq(i,j,k,m) * tau_liq(i,j,k,m) + &
+                               w0_ice(i,j,k,m) * tau_ice(i,j,k,m)) / &
+                               tau(i,j,k,m)
+              endif
+            end do
+          end do
+        end do
+      end do
+
+!---------------------------------------------------------------------
+!    compute asymmetry factor.
+!---------------------------------------------------------------------
+      do j=1,size(lwp,2)
+        do i=1,size(lwp,1)
+          do k=1, size(lwp,3)  
+
+!---------------------------------------------------------------------
+!    compute asymmetry factor resulting from the presence
+!    of liquid droplets.
+!---------------------------------------------------------------------
+            g_liq(i,j,k,1) = 0.829 + 2.482E-03*reff_liq(i,j,k)
+            g_liq(i,j,k,2) = 0.794 + 4.226E-03*reff_liq(i,j,k)
+            g_liq(i,j,k,3) = 0.754 + 6.560E-03*reff_liq(i,j,k)
+            g_liq(i,j,k,4) = 0.826 + 4.353E-03*reff_liq(i,j,k)
+
+!---------------------------------------------------------------------
+!    compute asymmetry factor resulting from the presence
+!    of ice crystals.
+!---------------------------------------------------------------------
+            g_ice(i,j,k,1) = 0.7661 + 5.851E-04*reff_ice(i,j,k)
+            g_ice(i,j,k,2) = 0.7730 + 5.665E-04*reff_ice(i,j,k)
+            g_ice(i,j,k,3) = 0.7940 + 7.267E-04*reff_ice(i,j,k)
+            g_ice(i,j,k,4) = 0.9595 + 1.076E-04*reff_ice(i,j,k)
+          end do
+        end do
+      end do
+
+!----------------------------------------------------------------------
+!    compute combined asymmetry factor, including effects of both
+!    liquid droplets and ice crystals. the mixed phase value is obtained
+!    from equation 14 of Rockel et al. 1991, Contributions to 
+!    Atmospheric Physics, volume 64, pp.1-12: 
+!      g  = ( g_liq * w0_liq * tau_liq + g_ice * w0_ice * tau_ice ) /
+!           (         w0_liq * tau_liq +         w0_ice * tau_ice )
+!----------------------------------------------------------------------
+      do j=1,size(lwp,2)
+        do i=1,size(lwp,1)
+          do k=1, size(lwp,3)   
+            do m=1,4
+              if (tau(i,j,k,m) > 0.0) then
+                gg(i,j,k,m) = (w0_liq(i,j,k,m)*g_liq(i,j,k,m)*   &
+                               tau_liq(i,j,k,m) + w0_ice(i,j,k,m)*  &
+                               g_ice(i,j,k,m)*tau_ice(i,j,k,m) ) / &
+                               (w0_liq(i,j,k,m)*tau_liq(i,j,k,m) + &
+                                w0_ice(i,j,k,m)*tau_ice(i,j,k,m) )
+
+              endif
+            end do
+          end do
+        end do
+      end do
+        
+!--------------------------------------------------------------------
+!    apply constraints to the values of these variables.
+!--------------------------------------------------------------------
+      do j=1,size(lwp,2)
+        do i=1,size(lwp,1)
+          do k=1, size(lwp,3)
+            do m=1,4
+              if (tau(i,j,k,m) < taumin .and. tau(i,j,k,m) /= 0.0 ) then
+                tau(i,j,k,m) = taumin
+              endif
+            end do
+          end do
+        end do
+      end do
+
+!---------------------------------------------------------------------
+!    account for plane-parallel homogenous cloud bias.
+!---------------------------------------------------------------------
+      tau(:,:,:,:) = scale_factor*tau(:,:,:,:)
+
+!---------------------------------------------------------------------
+!    call cloud_rad_k to calculate the cloud radiative properties.
+!---------------------------------------------------------------------
+     call cloud_rad_k (tau, w0, gg, coszen, r_uv, r_nir, ab_nir)
+
+!----------------------------------------------------------------------
+
+
+end subroutine sw_optical_properties
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 !
-!       END OF SUBROUTINE
+!         USED WITH ORIGINAL FMS RADIATION:
 !
 !
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-END SUBROUTINE CLOUD_RAD_INIT
+!#####################################################################
 
-
-!########################################################################
-!########################################################################
-
-SUBROUTINE CLOUD_SUMMARY(is,js,&
+SUBROUTINE CLOUD_SUMMARY (is,js,                        &
                   LAND,ql,qi,qa,qv,pfull,phalf,TKel,coszen,skt,&
                   nclds,ktop,kbot,cldamt,Time,&
                   r_uv,r_nir,ab_uv,ab_nir,em_lw,&
@@ -742,10 +3552,10 @@ SUBROUTINE CLOUD_SUMMARY(is,js,&
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-!	VARIABLES
+!VARIABLES
 !
 !       ------
-!	INPUT:
+!INPUT:
 !       ------
 !
 !       is,js        indices for model slab
@@ -762,7 +3572,7 @@ SUBROUTINE CLOUD_SUMMARY(is,js,&
 !       skt          surface skin temperature (Kelvin)
 !
 !       -------------
-!	INPUT/OUTPUT:
+!INPUT/OUTPUT:
 !       -------------
 !
 !       nclds        number of (random overlapping) clouds in column and also
@@ -786,7 +3596,7 @@ SUBROUTINE CLOUD_SUMMARY(is,js,&
 !       size_ice   : effective diameter of ice clouds (microns)
 !
 !       -------------------
-!	INTERNAL VARIABLES:
+!INTERNAL VARIABLES:
 !       -------------------
 !
 !       i,j,k,t      looping variables
@@ -836,12 +3646,12 @@ REAL,     INTENT (INOUT),OPTIONAL,DIMENSION(:,:,:):: size_drop,size_ice
 
 INTEGER                                           :: i,j,k,IDIM,JDIM,KDIM,max_cld
 LOGICAL                                           :: rad_prop, wat_prop
-REAL, DIMENSION(:,:,:), allocatable               :: cldamt_diag
 REAL, DIMENSION(SIZE(ql,1),SIZE(ql,2),SIZE(ql,3)) :: qa_local,ql_local,qi_local
 REAL, DIMENSION(SIZE(ql,1),SIZE(ql,2))            :: N_drop, k_ratio
 REAL, DIMENSION(:,:,:), allocatable               :: r_uv_local, r_nir_local
 REAL, DIMENSION(:,:,:), allocatable               :: ab_uv_local, ab_nir_local
 REAL, DIMENSION(:,:,:), allocatable               :: em_lw_local
+REAL, DIMENSION(:,:,:), allocatable               :: cldamt_diag 
 REAL, DIMENSION(:,:,:), allocatable               :: conc_drop_local,conc_ice_local
 REAL, DIMENSION(:,:,:), allocatable               :: size_drop_local,size_ice_local
 REAL, DIMENSION(:,:,:), allocatable               :: LWP,IWP,Reff_liq,Reff_ice
@@ -851,6 +3661,14 @@ REAL, DIMENSION(:,:), allocatable                 :: npoints
 REAL, DIMENSION(:), allocatable                   :: tau_local,em_local,cldamt_local
 LOGICAL                                           :: used
 
+integer :: n
+integer, dimension(size(phalf,1), size(phalf,2), &
+                   size(phalf,3)-1 ) :: cld_thickness
+real   , dimension(size(phalf,1), size(phalf,2), &
+                   size(phalf,3)-1 ) :: cld_a2, reff_liq_a2, &
+                                        reff_ice_a2
+real   , dimension(size(phalf,1), size(phalf,2), &
+                   size(phalf,3)-1, 4 ) :: tau_a2, tau_ice_a2
 !
 ! Code
 ! ----
@@ -900,8 +3718,6 @@ LOGICAL                                           :: used
     N_drop(:,:)=N_land*LAND(:,:) + N_ocean*(1.-LAND(:,:))
     k_ratio(:,:)=k_land*LAND(:,:) + k_ocean*(1.-LAND(:,:))
 
-
-
     !do solution for new radiation code
     if (wat_prop) then
 
@@ -924,8 +3740,8 @@ LOGICAL                                           :: used
                   size_ice_org =size_ice_local)
 
          !assign to output
-         if (PRESENT(conc_drop)) conc_drop = conc_drop_local
-         if (PRESENT(conc_ice)) conc_ice = conc_ice_local
+         if (PRESENT(conc_drop)) conc_drop = scale_factor*conc_drop_local
+         if (PRESENT(conc_ice)) conc_ice = scale_factor*conc_ice_local
          if (PRESENT(size_drop)) size_drop = size_drop_local
          if (PRESENT(size_ice)) size_ice = size_ice_local
     
@@ -935,7 +3751,8 @@ LOGICAL                                           :: used
          DEALLOCATE(size_ice_local)
          
     end if
-    
+     
+         
     !do solution for old radiation code
     if (rad_prop) then
 
@@ -970,7 +3787,7 @@ LOGICAL                                           :: used
          call  cloud_organize(ql_local,qi_local,qa_local,&
                   pfull,phalf,TKel,coszen,N_drop,&
                   k_ratio,nclds,ktop,kbot,cldamt,&
-                  LWP=LWP,IWP=IWP,Reff_liq=Reff_liq,Reff_ice=Reff_ice)
+                  LWP_in=LWP,IWP_in=IWP,Reff_liq_in=Reff_liq,Reff_ice_in=Reff_ice)
          
          !find maximum number of clouds
          max_cld  = MAXVAL(nclds(:,:))
@@ -1033,12 +3850,13 @@ LOGICAL                                           :: used
 
          !make sure Time is present
          if (.not.present(Time)) then
-              call error_mesg  ('Time has not been passed to cloud',&
-                                'summary, needed for diagnostics', FATAL)
+              call error_mesg  ('cloud_rad_mod', &
+                      'Time has not been passed to cloud '//&  
+                      'summary, needed for diagnostics', FATAL)
          end if
         
          !initialize temporary variables
-         ALLOCATe(cldamt_diag(IDIM,JDIM,size(cldamt,3)))
+         allocate (cldamt_diag(Idim,jdim,size(cldamt,3)))
          ALLOCATE(em_lw_local(IDIM,JDIM,KDIM))
          ALLOCATE(LWP(IDIM,JDIM,KDIM))
          ALLOCATE(IWP(IDIM,JDIM,KDIM))
@@ -1064,8 +3882,8 @@ LOGICAL                                           :: used
          call cloud_organize(ql_local,qi_local,qa_local,&
               pfull,phalf,TKel,coszen,N_drop,&
               k_ratio,nclds,ktop,kbot,cldamt_diag,&
-              LWP=LWP,IWP=IWP,Reff_liq=Reff_liq,Reff_ice=Reff_ice)
-             
+              LWP_in=LWP,IWP_in=IWP,Reff_liq_in=Reff_liq,Reff_ice_in=Reff_ice)
+         
          !find maximum number of clouds
          max_cld  = MAXVAL(nclds(:,:))
          
@@ -1100,11 +3918,11 @@ LOGICAL                                           :: used
               tau_local(:) = 0.
               em_local(:) = 0.
               do k = 1, nclds(i,j)
-                    cldamt_local(ktop(i,j,k):kbot(i,j,k)) = &
-		          cldamt_diag(i,j,k)                  
+                    cldamt_local(ktop(i,j,k):kbot(i,j,k)) =   &
+                                               cldamt_diag(i,j,k)      
                     tau_local(ktop(i,j,k):kbot(i,j,k)) =    &
-		          tau(i,j,k,1)/ real(kbot(i,j,k)-        &
-			  ktop(i,j,k)+1)
+                                           tau(i,j,k,1)/ &
+                                          real(kbot(i,j,k)-ktop(i,j,k)+1)
                     em_local(ktop(i,j,k):kbot(i,j,k)) = 1. - &
                          ( (1.-em_lw_local(i,j,k))** &
                            (1./real(kbot(i,j,k)-ktop(i,j,k)+1)) )
@@ -1112,122 +3930,23 @@ LOGICAL                                           :: used
 
               if (do_sunlit .and. coszen(i,j) .gt. 1.E-06) then
                     call ISCCP_CLOUDTYPES(pfull(i,j,:),phalf(i,j,:),&
-                         qv(i,j,:),TKel(i,j,:),skt(i,j),cldamt_local(:),&
-                         tau_local(:),em_local(:),fq_isccp(i,j,:,:))
-                    npoints(i,j) = 1.         		    
-              end if
-	      
-	      if (.not. do_sunlit) then
-	            call ISCCP_CLOUDTYPES(pfull(i,j,:),phalf(i,j,:),&
-                         qv(i,j,:),TKel(i,j,:),skt(i,j),cldamt_local(:),&
-                         tau_local(:),em_local(:),fq_isccp(i,j,:,:))
+                         qv(i,j,:),TKel(i,j,:),skt(i,j),cldamt_local,&
+                         tau_local,em_local,fq_isccp(i,j,:,:))
                     npoints(i,j) = 1.
-	      end if
+              end if
 
+              if ( .not. do_sunlit ) then
+                    call ISCCP_CLOUDTYPES(pfull(i,j,:),phalf(i,j,:),&
+                         qv(i,j,:),TKel(i,j,:),skt(i,j),cldamt_local,&
+                         tau_local,em_local,fq_isccp(i,j,:,:))
+                    npoints(i,j) = 1.
+              end if
          END DO
          END DO
          
          !5. netcdf diagnostics....
-         used = send_data ( id_pc1tau1, fq_isccp(:,:,1,1), Time, &
-                           is, js )
-         used = send_data ( id_pc1tau2, fq_isccp(:,:,2,1), Time, &
-                           is, js )
-         used = send_data ( id_pc1tau3, fq_isccp(:,:,3,1), Time, &
-                           is, js )
-         used = send_data ( id_pc1tau4, fq_isccp(:,:,4,1), Time, &
-                           is, js )
-         used = send_data ( id_pc1tau5, fq_isccp(:,:,5,1), Time, &
-                           is, js )
-         used = send_data ( id_pc1tau6, fq_isccp(:,:,6,1), Time, &
-                           is, js )
-         used = send_data ( id_pc1tau7, fq_isccp(:,:,7,1), Time, &
-                           is, js )
-         used = send_data ( id_pc2tau1, fq_isccp(:,:,1,2), Time, &
-                           is, js )
-         used = send_data ( id_pc2tau2, fq_isccp(:,:,2,2), Time, &
-                           is, js )
-         used = send_data ( id_pc2tau3, fq_isccp(:,:,3,2), Time, &
-                           is, js )
-         used = send_data ( id_pc2tau4, fq_isccp(:,:,4,2), Time, &
-                           is, js )
-         used = send_data ( id_pc2tau5, fq_isccp(:,:,5,2), Time, &
-                           is, js )
-         used = send_data ( id_pc2tau6, fq_isccp(:,:,6,2), Time, &
-                           is, js )
-         used = send_data ( id_pc2tau7, fq_isccp(:,:,7,2), Time, &
-                           is, js )
-         used = send_data ( id_pc3tau1, fq_isccp(:,:,1,3), Time, &
-                           is, js )
-         used = send_data ( id_pc3tau2, fq_isccp(:,:,2,3), Time, &
-                           is, js )
-         used = send_data ( id_pc3tau3, fq_isccp(:,:,3,3), Time, &
-                           is, js )
-         used = send_data ( id_pc3tau4, fq_isccp(:,:,4,3), Time, &
-                           is, js )
-         used = send_data ( id_pc3tau5, fq_isccp(:,:,5,3), Time, &
-                           is, js )
-         used = send_data ( id_pc3tau6, fq_isccp(:,:,6,3), Time, &
-                           is, js )
-         used = send_data ( id_pc3tau7, fq_isccp(:,:,7,3), Time, &
-                           is, js )
-         used = send_data ( id_pc4tau1, fq_isccp(:,:,1,4), Time, &
-                           is, js )
-         used = send_data ( id_pc4tau2, fq_isccp(:,:,2,4), Time, &
-                           is, js )
-         used = send_data ( id_pc4tau3, fq_isccp(:,:,3,4), Time, &
-                           is, js )
-         used = send_data ( id_pc4tau4, fq_isccp(:,:,4,4), Time, &
-                           is, js )
-         used = send_data ( id_pc4tau5, fq_isccp(:,:,5,4), Time, &
-                           is, js )
-         used = send_data ( id_pc4tau6, fq_isccp(:,:,6,4), Time, &
-                           is, js )
-         used = send_data ( id_pc4tau7, fq_isccp(:,:,7,4), Time, &
-                           is, js )
-         used = send_data ( id_pc5tau1, fq_isccp(:,:,1,5), Time, &
-                           is, js )
-         used = send_data ( id_pc5tau2, fq_isccp(:,:,2,5), Time, &
-                           is, js )
-         used = send_data ( id_pc5tau3, fq_isccp(:,:,3,5), Time, &
-                           is, js )
-         used = send_data ( id_pc5tau4, fq_isccp(:,:,4,5), Time, &
-                           is, js )
-         used = send_data ( id_pc5tau5, fq_isccp(:,:,5,5), Time, &
-                           is, js )
-         used = send_data ( id_pc5tau6, fq_isccp(:,:,6,5), Time, &
-                           is, js )
-         used = send_data ( id_pc5tau7, fq_isccp(:,:,7,5), Time, &
-                           is, js )
-         used = send_data ( id_pc6tau1, fq_isccp(:,:,1,6), Time, &
-                           is, js )
-         used = send_data ( id_pc6tau2, fq_isccp(:,:,2,6), Time, &
-                           is, js )
-         used = send_data ( id_pc6tau3, fq_isccp(:,:,3,6), Time, &
-                           is, js )
-         used = send_data ( id_pc6tau4, fq_isccp(:,:,4,6), Time, &
-                           is, js )
-         used = send_data ( id_pc6tau5, fq_isccp(:,:,5,6), Time, &
-                           is, js )
-         used = send_data ( id_pc6tau6, fq_isccp(:,:,6,6), Time, &
-                           is, js )
-         used = send_data ( id_pc6tau7, fq_isccp(:,:,7,6), Time, &
-                           is, js )
-         used = send_data ( id_pc7tau1, fq_isccp(:,:,1,7), Time, &
-                           is, js )
-         used = send_data ( id_pc7tau2, fq_isccp(:,:,2,7), Time, &
-                           is, js )
-         used = send_data ( id_pc7tau3, fq_isccp(:,:,3,7), Time, &
-                           is, js )
-         used = send_data ( id_pc7tau4, fq_isccp(:,:,4,7), Time, &
-                           is, js )
-         used = send_data ( id_pc7tau5, fq_isccp(:,:,5,7), Time, &
-                           is, js )
-         used = send_data ( id_pc7tau6, fq_isccp(:,:,6,7), Time, &
-                           is, js )
-         used = send_data ( id_pc7tau7, fq_isccp(:,:,7,7), Time, &
-                           is, js )
-   
-         used = send_data ( id_nisccp, npoints, Time, is, js )
+         call isccp_output (is, js, fq_isccp, npoints, Time)
+         
 
          !deallocate temporary arrays
          DEALLOCATE(fq_isccp)
@@ -1240,13 +3959,33 @@ LOGICAL                                           :: used
 
          if (do_tau_reff) then
 
-         call TAU_REFF_DIAG(is,js,Time,coszen,nclds,ktop,&
-             kbot,cldamt_diag,TKel,phalf,tau(:,:,:,1),tau_ice(:,:,:,1),&
-             Reff_liq,Reff_ice)
+         do j=1, jdim
+         DO i = 1, IDIM
+              cld_thickness(i,j,:)        = 0                              
+              cld_a2(i,j,:) = 0.0                  
+              tau_a2(i,j,:,1) = 0.0            
+              tau_ice_a2(i,j,:,1) = 0.0                
+              reff_liq_a2(i,j,:) = 10.0               
+              reff_ice_a2(i,j,:) = 30.0                  
+         do n=1,nclds(i,j)
+            do k=ktop(i,j,n), kbot(i,j,n)
+              cld_thickness(i,j,k) = kbot(i,j,n) - ktop(i,j,n) + 1
+              cld_a2(i,j,k) = cldamt_diag(i,j,n)
+              tau_a2(i,j,k,1) = tau(i,j,n,1)
+              tau_ice_a2(i,j,k,1) = tau_ice(i,j,n,1)
+              reff_liq_a2(i,j,k) = reff_liq(i,j,n)
+              reff_ice_a2(i,j,k) = reff_ice(i,j,n)
+         end do
+         end do
+         end do
+         end do
+         call TAU_REFF_DIAG2(is,js,Time,coszen,nclds,cld_thickness, &
+             cld_a2     ,TKel,phalf,tau_a2(:,:,:,1),tau_ice_a2(:,:,:,1),&
+             Reff_liq_a2,Reff_ice_a2)
          
          end if   !for do_tau_reff
         
-	 DEALLOCATE(cldamt_diag)
+         DEALLOCATE(cldamt_diag)
          DEALLOCATE(em_lw_local)
          DEALLOCATE(LWP)
          DEALLOCATE(IWP)
@@ -1258,20 +3997,14 @@ LOGICAL                                           :: used
          DEALLOCATE(gg)
          
     end if   !for do_isccp .or. do_tau_reff
-
+   
     
     
 END SUBROUTINE CLOUD_SUMMARY
 
-
-
-
-!########################################################################
-!########################################################################
-
 SUBROUTINE CLOUD_ORGANIZE(ql,qi,qa,pfull,phalf,TKel,coszen,N_drop,&
                   k_ratio,nclds,ktop,kbot,cldamt,&
-                  LWP,IWP,Reff_liq,Reff_ice, &
+                  LWP_in,IWP_in,Reff_liq_in,Reff_ice_in, &
                   conc_drop_org,conc_ice_org,size_drop_org,size_ice_org)
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1289,10 +4022,10 @@ SUBROUTINE CLOUD_ORGANIZE(ql,qi,qa,pfull,phalf,TKel,coszen,N_drop,&
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-!	VARIABLES
+!VARIABLES
 !
 !       ------
-!	INPUT:
+!INPUT:
 !       ------
 !
 !       LAND         fraction of the grid box covered by LAND
@@ -1308,7 +4041,7 @@ SUBROUTINE CLOUD_ORGANIZE(ql,qi,qa,pfull,phalf,TKel,coszen,N_drop,&
 !       k_ratio      ratio of effective radius to mean volume radius
 !
 !       -------------
-!	INPUT/OUTPUT:
+!INPUT/OUTPUT:
 !       -------------
 !
 !       nclds        number of (random overlapping) clouds in column and also
@@ -1331,7 +4064,7 @@ SUBROUTINE CLOUD_ORGANIZE(ql,qi,qa,pfull,phalf,TKel,coszen,N_drop,&
 !       size_ice_org  effective diameter of ice clouds (microns)
 !
 !       -------------------
-!	INTERNAL VARIABLES:
+!INTERNAL VARIABLES:
 !       -------------------
 !
 !       i,j,k,t      looping variables
@@ -1431,7 +4164,7 @@ REAL,     INTENT (IN), DIMENSION(:,:,:)  :: phalf
 INTEGER,  INTENT (INOUT),DIMENSION(:,:)  :: nclds
 INTEGER,  INTENT (INOUT),DIMENSION(:,:,:):: ktop,kbot
 REAL,     INTENT (INOUT),DIMENSION(:,:,:):: cldamt
-REAL,     INTENT (INOUT),OPTIONAL,DIMENSION(:,:,:):: LWP,IWP,Reff_liq,Reff_ice
+REAL,     INTENT (INOUT),OPTIONAL,DIMENSION(:,:,:):: LWP_in,IWP_in,Reff_liq_in,Reff_ice_in
 REAL,     INTENT (INOUT),OPTIONAL,DIMENSION(:,:,:):: conc_drop_org,conc_ice_org
 REAL,     INTENT (INOUT),OPTIONAL,DIMENSION(:,:,:):: size_drop_org,size_ice_org
 
@@ -1448,6 +4181,7 @@ REAL                                     :: totcld_bot,max_bot
 REAL                                     :: totcld_top,max_top,tmp_val
 REAL                                     :: reff_liq_local,sum_reff_liq
 REAL                                     :: reff_ice_local,sum_reff_ice
+real, dimension(:,:,:), allocatable :: lwp, iwp, reff_liq, reff_ice
 
 !
 ! Code
@@ -1466,25 +4200,28 @@ REAL                                     :: reff_ice_local,sum_reff_ice
     !decide which type of output is necessary
     lhsw = .FALSE.
     sea_esf = .FALSE.
-    if (PRESENT(LWP).or.PRESENT(IWP).or.PRESENT(Reff_liq).or. &
-        PRESENT(Reff_ice)) then
-        lhsw = .TRUE.
-    end if
     if (PRESENT(conc_drop_org).or.PRESENT(conc_ice_org).or.  &
         PRESENT(size_drop_org).or.PRESENT(size_ice_org)) then
         sea_esf = .TRUE.
     end if
+    if (PRESENT(LWP_in).or.PRESENT(IWP_in).or.PRESENT(Reff_liq_in).or. &
+        PRESENT(Reff_ice_in)) then
+        lhsw = .true.
+    end if
+        allocate ( lwp(idim, jdim,kdim))
+        allocate ( iwp(idim, jdim,kdim))
+        allocate ( reff_liq(idim, jdim,kdim))
+        allocate ( reff_ice(idim, jdim,kdim))
     if ((.not.lhsw).and.(.not.sea_esf)) then
         lhsw = .TRUE.
     end if
 
+
     !initialize output fields
-    if (lhsw) then
          LWP(:,:,:)    = 0.
          IWP(:,:,:)    = 0.
          Reff_liq(:,:,:) = 10.
          Reff_ice(:,:,:) = 30.
-    end if
 
     if (sea_esf) then
          conc_drop_org(:,:,:) = 0.
@@ -1847,412 +4584,16 @@ REAL                                     :: reff_ice_local,sum_reff_ice
 
     end if   !overlap = 2  if
 
+    if (present(lwp_in)) then
+      lwp_in = lwp
+      iwp_in = iwp
+      reff_liq_in = reff_liq
+      reff_ice_in = reff_ice
+     endif
     
+      deallocate (lwp, iwp, reff_liq, reff_ice)
+
 END SUBROUTINE CLOUD_ORGANIZE
-
-
-!########################################################################
-!########################################################################
-
-SUBROUTINE CLOUD_RAD(tau,w0,gg,coszen,r_uv,r_nir,ab_uv,ab_nir)
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!      This subroutine calculates the following radiative properties
-!      for each cloud:
-!
-!               1. r_uv : cloud reflectance in uv band
-!               2. r_nir: cloud reflectance in nir band
-!               3. ab_uv: cloud absorption in uv band
-!               4. ab_nir:cloud absorption in nir band
-!               
-!
-!      These quantities are computed by dividing the shortwave
-!      spectrum into 4 bands and then computing the reflectance
-!      and absorption for each band individually and then setting
-!      the uv reflectance and absorption equal to that of band
-!      1 and the nir reflectance and absorption equal to the
-!      spectrum weighted results of bands 2,3,and 4.  The limits
-!      of bands are described in CLOUD_OPTICAL_PROPERTIES.
-!
-!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!	VARIABLES
-!
-!       ------
-!	INPUT:
-!       ------
-!
-!       tau          optical depth in 4 bands (dimensionless)
-!       w0           single scattering albedo in 4 bands (dimensionless)
-!       gg           asymmetry parameter in 4 bands (dimensionless)
-!       coszen       cosine of the zenith angle
-!
-!       ------
-!	INPUT/OUTPUT:
-!       ------
-!
-!       r_uv         cloud reflectance in uv band
-!       r_nir        cloud reflectance in nir band
-!       ab_uv        cloud absorption in uv band
-!       ab_nir       cloud absorption in nir band
-!
-!       -------------------
-!	INTERNAL VARIABLES:
-!       -------------------
-!
-!      direct       logical variable for each cloud indicating whether
-!                       or not to use the direct beam solution for the
-!                       delta-eddington radiation or the diffuse beam
-!                       radiation solution.
-!      tau_local    optical depth for the band being solved
-!      w0_local     single scattering albedo for the band being solved
-!      g_local      asymmetry parameter for the band being solved
-!      coszen_3d    3d version of coszen
-!      I            looping variable
-!      iband        looping variables over band number
-!      taucum       cumulative sum of visible optical depth
-!      g_prime      scaled g
-!      w0_prime     scaled w0
-!      tau_prime    scaled tau
-!      crit         variable equal to 1./(4 - 3g')
-!      AL           variable equal to sqrt(3*(1-w0')*(1-w0'*g'))
-!      ALPHV        temporary work variable
-!      GAMV         temporary work variable
-!      T1V          exp( -1.*AL * tau')
-!      trans_dir    direct radiation beam transmittance
-!      U            1.5 * (1. - w0'*g')/AL
-!      r_diffus     diffuse beam reflection
-!      trans_diffus diffuse beam transmission
-!
-!      r            cloud reflectance for each cloud in each band
-!      ab           cloud absorption for each cloud in each band
-!      r_dir_uv       direct beam reflection for uv band
-!      r_dir_nir      direct beam reflection for nir band
-!      trans_dir_uv   direct beam transmission for uv band
-!      trans_dir_nir  direct beam transmission for uv band
-!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!  User Interface variables
-!  ------------------------
-
-REAL,     INTENT (IN), DIMENSION(:,:,:,:):: tau,w0,gg
-REAL,     INTENT (IN), DIMENSION(:,:)    :: coszen
-REAL,     INTENT (INOUT),DIMENSION(:,:,:):: r_uv,r_nir,ab_uv,ab_nir
-
-!  Internal variables
-!  ------------------
-
-INTEGER                                  :: I,iband,J,K
-REAL,    DIMENSION(SIZE(tau,1),SIZE(tau,2)) :: taucum
-LOGICAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: direct
-REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: coszen_3d
-REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: tau_local
-REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: w0_local,g_local
-REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: g_prime,w0_prime
-REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: tau_prime,crit,AL
-REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: ALPHV,GAMV,T1V,U
-REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: r_diffus
-REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: trans_diffus
-REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: r_dir,trans_dir
-REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3),SIZE(tau,4)) :: r,ab
-
-!
-! Code
-! ----
-
-        ! reinitialize variables
-        r_uv(:,:,:) = 0.
-        r_nir(:,:,:)= 0.
-        ab_uv(:,:,:)= 0.
-        ab_nir(:,:,:)=0.
-
-        !create 3d zenith angle
-        DO I = 1, SIZE(tau,3)
-               coszen_3d(:,:,I)=coszen(:,:)
-        END DO
-        WHERE (coszen_3d(:,:,:) .lt. 1.E-06)
-                coszen_3d(:,:,:) = 1.E-06
-        END WHERE
-
-        
-        !------------------------------------------------------------------
-        !do logical variable to determine where total cloud optical depth
-        !at uv wavelengths exceeds taucrit
-        IF (.NOT. l2strem) THEN
-
-                !---- initialize taucum and direct
-                taucum(:,:)=0.
-                direct(:,:,:)=.TRUE.
-
-                DO I = 1, SIZE(tau,3)
-
-                      !find if taucum to levels above has exceeded taucrit
-                      WHERE (taucum(:,:) .gt. taucrit)
-                            direct(:,:,I)=.FALSE.
-                      END WHERE
-
-                      !increment cumulative tau
-                      taucum(:,:)=taucum(:,:)+tau(:,:,I,1)
-
-                END DO
-        END IF
-
-    !----------------- LOOP OVER BAND -----------------------------!
-
-    DO iband = 1, SIZE(tau,4)
-
-        !-----------------------------------------------------------
-        !  assign w0, g, tau to the value appropriate for the band
-
-        w0_local(:,:,:) = w0(:,:,:,iband)
-        tau_local(:,:,:)= tau(:,:,:,iband)
-        g_local(:,:,:) =  gg(:,:,:,iband)
-
-        !-------------------------------------------------------------------
-        ! for delta-Eddington scaled ('prime') g, w0, tau where:
-        !
-        !               g' = g / (1 + g)
-        !              w0' = (1 - g*g) * w0 / (1 - w*g*g)
-        !             tau' = (1 - w*g*g) * tau
-        !
-
-                 tau_prime(:,:,:) = 1. - &
-                      (w0_local(:,:,:)*g_local(:,:,:)*g_local(:,:,:))
-                 w0_prime(:,:,:) = w0_local(:,:,:) * &
-                   (1. - (g_local(:,:,:)*g_local(:,:,:)))/tau_prime(:,:,:)
-                 tau_prime(:,:,:) = tau_prime(:,:,:) * tau_local(:,:,:)
-                 g_prime(:,:,:) = g_local(:,:,:) / (1. + g_local(:,:,:))
-
-        !-------------------------------------------------------------------
-        ! create other variables
-        !
-        !        crit = 1./(4 - 3g')
-        !
-        !      and where w0' < crit set w0' = crit
-        !
-        !        AL = sqrt( 3. * (1. - w0') * (1. - w0'*g') )
-        !
-
-                 crit(:,:,:) = 1./(4.- 3.*g_prime(:,:,:))
-
-                 WHERE (w0_prime(:,:,:) .lt. crit(:,:,:) )
-                           w0_prime(:,:,:) = crit(:,:,:)
-                 END WHERE
-
-                 AL(:,:,:) =  ( 3. * (1. - w0_prime(:,:,:) ) &
-                    * (1. - (w0_prime(:,:,:)*g_prime(:,:,:)))  )**0.5
-
-                 !set up a minimum to AL
-                 WHERE (AL(:,:,:) .lt. 1.E-06)
-                        AL(:,:,:) = 1.E-06
-                 END WHERE
-
-
-        !-------------------------------------------------------------------
-        ! simplifications if not two stream
-        !
-        !        ALPHV = 0.75*w0'*coszen*(1.+g'(1.-w0'))/
-        !                          (1.-(AL*coszen)**2.)
-        !        GAMV = 0.5*w0'*(3.*g'*(1.-w0')*coszen*coszen + 1.)/
-        !                          (1.-(AL*coszen)**2.)
-        !
-
-        IF (.NOT. l2strem) THEN
-
-
-                ALPHV(:,:,:) = 0.75 * w0_prime(:,:,:)*coszen_3d(:,:,:) * &
-                 (1. + (g_prime(:,:,:)*(1. - w0_prime(:,:,:)))) / &
-                 (1. - (AL(:,:,:)*coszen_3d(:,:,:))**2.0)
-
-                GAMV(:,:,:) =  0.50 * w0_prime(:,:,:) * &
-                (  (3.* g_prime(:,:,:) * (1. - w0_prime(:,:,:)) * &
-                    coszen_3d(:,:,:) * coszen_3d(:,:,:)) + 1. ) / &
-                 (1. - (AL(:,:,:)*coszen_3d(:,:,:))**2.0)
-
-        END IF
-
-
-        !-------------------------------------------------------------------
-        ! calculate T1V
-        !
-        !    T1V = exp (-1* AL * tau' )
-
-
-                  T1V(:,:,:) = exp( -1.*AL(:,:,:) * tau_prime(:,:,:) )
-
-
-        !-------------------------------------------------------------------
-        !calculate diffuse beam reflection and transmission
-        !
-
-        !first calculate U  = 1.5 * (1. - w0'*g')/AL
-        U(:,:,:) = 1.5 *(1. - w0_prime(:,:,:)*g_prime(:,:,:))/AL(:,:,:)
-
-        !initialize variables
-        r_diffus(:,:,:)= 0.
-        trans_diffus(:,:,:) = 1.
-
-
-
-        trans_diffus(:,:,:) = 4. * U(:,:,:) * T1V(:,:,:) / &
-            ( ( (U(:,:,:)+1.) * (U(:,:,:)+1.)  ) - &
-              ( (U(:,:,:)-1.) * (U(:,:,:)-1.) * &
-                   T1V(:,:,:) *   T1V(:,:,:)   )    )
-
-        r_diffus(:,:,:) =     ((U(:,:,:)*U(:,:,:))-1.) * &
-                   ( 1. -   (T1V(:,:,:)*T1V(:,:,:)) ) / &
-             ( ( (U(:,:,:)+1.) * (U(:,:,:)+1.)  ) - &
-               ( (U(:,:,:)-1.) * (U(:,:,:)-1.) * &
-                    T1V(:,:,:) *   T1V(:,:,:)   )    )
-
-
-
-        !-------------------------------------------------------------------
-        ! calculate direct bean transmission
-        !
-        !
-        IF (.NOT. l2strem) THEN
-
-
-            !initialize variables
-            trans_dir(:,:,:) = 1.
-            r_dir(:,:,:) = 0.
-
-            r_dir(:,:,:) = ( (ALPHV(:,:,:) - GAMV(:,:,:)) * &
-               exp(-1.*tau_prime(:,:,:)/coszen_3d(:,:,:)) * &
-               trans_diffus(:,:,:) ) +  &
-              ( (ALPHV(:,:,:) + GAMV(:,:,:)) * &
-              r_diffus(:,:,:) )  -  (ALPHV(:,:,:) - GAMV(:,:,:))
-
-            trans_dir(:,:,:) = &
-              ( (ALPHV(:,:,:)+GAMV(:,:,:))*trans_diffus(:,:,:) ) + &
-              ( exp(-1.*tau_prime(:,:,:)/coszen_3d(:,:,:)) * &
-              ( ( (ALPHV(:,:,:)-GAMV(:,:,:))*r_diffus(:,:,:) ) - &
-                (ALPHV(:,:,:)+GAMV(:,:,:)) + 1. )   )
-
-        END IF
-
-
-        !-------------------------------------------------------------------
-        ! patch together final solution
-        !
-        !
-
-
-        IF (l2strem) THEN
-
-             !two-stream solution
-             r(:,:,:,iband) = r_diffus(:,:,:)
-             ab(:,:,:,iband) = 1. - trans_diffus(:,:,:) - r_diffus(:,:,:)
-
-        ELSE
-
-             !delta-Eddington solution
-             WHERE (.not. direct)
-
-                   r(:,:,:,iband) = r_diffus(:,:,:)
-                   ab(:,:,:,iband) = 1. - trans_diffus(:,:,:) &
-                                     - r_diffus(:,:,:)
-
-
-             END WHERE
-
-             WHERE (direct)
-
-                   r(:,:,:,iband) = r_dir(:,:,:)
-                   ab(:,:,:,iband) = 1. - trans_dir(:,:,:) &
-                                     - r_dir(:,:,:)
-
-             END WHERE
-
-        END IF
-
-    !----------------- END LOOP OVER BAND -----------------------------!
-
-    END DO
-
-
-    !----------------- CREATE SUM OVER BAND ---------------------------!
-
-    r_uv(:,:,:) = r(:,:,:,1)
-    ab_uv(:,:,:) = ab(:,:,:,1)
-
-    r_nir(:,:,:) =  (  0.326158 * r(:,:,:,2) + &
-                       0.180608 * r(:,:,:,3) + &
-                       0.033474 * r(:,:,:,4) ) / 0.540240
-
-    ab_nir(:,:,:) =  (  0.326158 * ab(:,:,:,2) + &
-                        0.180608 * ab(:,:,:,3) + &
-                        0.033474 * ab(:,:,:,4) ) / 0.540240
-
-
-        !-------------------------------------------------------------------
-        ! guarantee that clouds for tau = 0. have the properties
-        ! of no cloud
-
-        
-        WHERE(tau(:,:,:,1) .le. 0.)
-             r_uv(:,:,:) = 0.
-             ab_uv(:,:,:)= 0.                       
-        END WHERE
-        WHERE((tau(:,:,:,2)+tau(:,:,:,3)+tau(:,:,:,4)) .le. 0.)
-             r_nir(:,:,:)= 0.
-             ab_nir(:,:,:)=0.
-        END WHERE       
-
-        !-------------------------------------------------------------------
-        ! guarantee that for coszen lt. or equal to zero that solar
-        ! reflectances and absorptances are equal to zero.
-        DO I = 1, SIZE(tau,3)
-               WHERE (coszen(:,:) .lt. 1.E-06)
-                    r_uv(:,:,I) = 0. 
-                    ab_uv(:,:,I) = 0.
-                    r_nir(:,:,I) = 0.
-                    ab_nir(:,:,I) = 0.
-               END WHERE
-        END DO
-        
-        !-------------------------------------------------------------------
-        ! guarantee that each cloud has some transmission by reducing
-        ! the actual cloud reflectance in uv and nir band
-        ! this break is necessary to avoid the rest of the
-        ! radiation code from breaking up.
-        !
-
-        WHERE ( (1. - r_uv(:,:,:) - ab_uv(:,:,:)) .lt. 0.01)
-                      r_uv(:,:,:) = r_uv(:,:,:) - 0.01
-        END WHERE
-        WHERE ( (1. - r_nir(:,:,:) - ab_nir(:,:,:)) .lt. 0.01)
-                      r_nir(:,:,:) = r_nir(:,:,:) - 0.01
-        END WHERE
-
-        !-------------------------------------------------------------------
-        ! guarantee that cloud reflectance and absorption are greater than
-        ! or equal to zero
-
-        WHERE (r_uv(:,:,:) .lt. 0.)
-               r_uv(:,:,:) = 0.
-        END WHERE
-        WHERE (r_nir(:,:,:) .lt. 0.)
-               r_nir(:,:,:) = 0.
-        END WHERE
-        WHERE (ab_uv(:,:,:) .lt. 0.)
-               ab_uv(:,:,:) = 0.
-        END WHERE
-        WHERE (ab_nir(:,:,:) .lt. 0.)
-               ab_nir(:,:,:) = 0.
-        END WHERE
-
-
-END SUBROUTINE CLOUD_RAD
-
-!########################################################################
-!########################################################################
-
-
 SUBROUTINE CLOUD_OPTICAL_PROPERTIES(LWP,IWP,Reff_liq,Reff_ice,&
                         tau,w0,gg,em_lw,tau_ice_diag)
 
@@ -2316,10 +4657,10 @@ SUBROUTINE CLOUD_OPTICAL_PROPERTIES(LWP,IWP,Reff_liq,Reff_ice,&
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-!	VARIABLES
+!VARIABLES
 !
 !       ------
-!	INPUT:
+!INPUT:
 !       ------
 !
 !       LWP          cloud liquid water path (kg condensate per square meter)
@@ -2328,7 +4669,7 @@ SUBROUTINE CLOUD_OPTICAL_PROPERTIES(LWP,IWP,Reff_liq,Reff_ice,&
 !       Reff_ice     effective particle size for ice clouds (microns)
 !
 !       ------
-!	INPUT/OUTPUT:
+!INPUT/OUTPUT:
 !       ------
 !
 !      tau          optical depth in each band
@@ -2344,7 +4685,7 @@ SUBROUTINE CLOUD_OPTICAL_PROPERTIES(LWP,IWP,Reff_liq,Reff_ice,&
 !
 !
 !       -------------------
-!	INTERNAL VARIABLES:
+!INTERNAL VARIABLES:
 !       -------------------
 !
 !       tau_liq   optical depth            at each band for cloud liquid
@@ -2495,994 +4836,13 @@ REAL, DIMENSION(SIZE(LWP,1),SIZE(LWP,2),SIZE(LWP,3))   :: k_liq,k_ice
 
 END SUBROUTINE CLOUD_OPTICAL_PROPERTIES
 
-!########################################################################
-!########################################################################
-
-SUBROUTINE ISCCP_CLOUDTYPES(pfull,phalf,qv,at,skt,cc,dtau_s,dem_s,&
-                            fq_isccp)
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!      This subroutine calculates the fraction of each model 
-!      grid box covered by each of the 49 ISCCP D level cloud 
-!      types (i.e. stratified by optical depth and cloud top
-!      pressure) by accounting for model overlap. For further 
-!      explanation see Klein and Jakob, Monthly Weather Review,
-!      (2000), vol x, pp. .
-!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!	VARIABLES
-!
-!       ------
-!	INPUT:
-!       ------
-!  
-!       pfull            pressure of full model levels (Pascals)
-!                        pfull(1)    is    top level of model
-!                        pfull(nlev) is bottom level of model
-!       phalf            pressure of half model levels (Pascals)
-!                        phalf(1)    is    top       of model
-!                        phalf(nlev+1) is the surface pressure
-!       cc               cloud cover in each model level (fraction)
-!                        this includes convective clouds if any
-!  
-!                        NOTE:  This is the HORIZONTAL area of each
-!                               grid box covered by clouds
-!                         
-!       dtau_s           mean 0.67 micron optical depth of stratiform
-!                        clouds in each model level
-!
-!                        NOTE:  this the cloud optical depth of only the
-!                               cloudy part of the grid box, it is not 
-!                               weighted with the 0 cloud optical depth 
-!                               of the clear part of the grid box
-!
-!       NOTE :  OPTION TO RUN WITH CONVECTIVE CLOUDS IS NOT
-!               IMPLEMENTED YET
-!
-!       conv             convective cloud cover in each model 
-!                        level (fraction) this includes convective 
-!                        clouds if any
-!  
-!                        NOTE:  This is the HORIZONTAL area of each
-!                               grid box covered by clouds
-!                         
-!       dtau_c           mean 0.67 micron optical depth of convective
-!                        clouds in each model level
-!
-!                        NOTE:  this the cloud optical depth of only the
-!                               cloudy part of the grid box, it is not 
-!                               weighted with the 0 cloud optical depth 
-!                               of the clear part of the grid box
-!   
-!       The following input variables are used only if 
-!       top_height = 1 or top_height = 3
-!
-!       qv               water vapor specific humidity on model levels
-!                        (kg vapor / kg air)
-!       at               temperature in each model level (K)
-!       dem_s            10.5 micron longwave emissivity of stratiform
-!                        clouds in each model level.  Same note applies 
-!                        as in dtau.
-!       skt              skin Temperature (K)
-!
-!
-!       -------------------
-!	OUTPUT
-!       -------------------
-!
-!       fq_isccp        matrix of fractional area covered by cloud
-!                       types of a given optical depth and cloud
-!                       top pressure range.  The matrix is 7x7 for
-!                       7 cloud optical depths and 7 cloud top 
-!                       pressure ranges
-!	
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!  User Interface variables
-!  ------------------------
-
-REAL,     INTENT (IN), DIMENSION(:)      :: pfull,phalf,at,qv
-REAL,     INTENT (IN)                    :: skt
-REAL,     INTENT (INOUT), DIMENSION(:)   :: cc,dtau_s,dem_s
-!REAL,     INTENT (INOUT), DIMENSION(:)   :: conv,dtau_c,dem_c
-
-REAL,     INTENT (OUT), DIMENSION(7,7)   :: fq_isccp
-
-!
-!
-!  Internal variables
-!  ------------------
-!
-
-  
-REAL                        :: ptrop,attrop,atmax,atmin,btcmin,transmax, &
-                               fluxtop,fluxtopclrsky,trans,transclrsky, &
-                               wtmair, wtmh20, Navo, grav, pstd, t0, &
-                               press, dpress, atmden, rvh20, wk, rhoave, &
-                               rh20s, rfrgn, tmpexp,tauwv, emcld, &
-                               taumintmp
-INTEGER                     :: ilev,j,ibox,itrop,ipres,itau,nmatch,nlev
-
-REAL,    DIMENSION(size(qv,1))      :: demwv
-INTEGER, DIMENSION(size(qv,1)-1)    :: match
-INTEGER, DIMENSION(ncol)            :: levmatch
-REAL,    DIMENSION(ncol)            :: tau,tb,ptop
-
-REAL,    DIMENSION(ncol,size(qv,1))  :: frac_out
-REAL,    DIMENSION(ncol,0:size(qv,1)):: tca
-REAL,    DIMENSION(ncol)             :: threshold,maxosc,boxpos
-REAL,    DIMENSION(ncol)             :: threshold_min
-REAL                                 :: bb,dem
-REAL                                 :: fluxtopinit,tauir,boxarea
-INTEGER                              :: seed,icycle
-
-!convective cloud stuff
-!REAL,    DIMENSION(ncol,size(qv,1))  :: cca
-!REAL,    DIMENSION(ncol)             :: maxocc
-
-!
-! Code
-! ----
 
 
 
-      nlev = size(qv,1) 
-     
-      
-!     ---------------------------------------------------!
-!     find tropopause pressure and temperature min and max
-!
-!     The tropopause pressure is used only in the assignment
-!     of cloud top pressure in the case where the infrared 
-!     brightness temperature is calculated (top_height = 1 
-!     or 3). Cloud whose infrared brightness temperatures 
-!     are less than the tropopause temperature are assigned 
-!     to a cloud top pressure of the tropopause pressure 
-!     (see ISCCP documentation)
-!
-
-      if (top_height .eq. 1 .or. top_height .eq. 3) then
-
-      ptrop=5000.
-      atmin = 400.
-      atmax = 0.
-      do  ilev=1,nlev-1
-           if ((pfull(ilev)/phalf(nlev+1)) .lt. 0.4 .and. &
-                at(ilev) .gt. at(ilev+1)) then
-                ptrop = pfull(ilev+1)
-                attrop = at(ilev+1)
-                itrop=ilev+1
-           end if
-           if (at(ilev) .gt. atmax) atmax=at(ilev)
-           if (at(ilev) .lt. atmin) atmin=at(ilev)
-      end do
-
-      end if
-
-!     -----------------------------------------------------!
-
-!     ---------------------------------------------------!
-!     find unpermittable data.....
-!
-      where (cc(:) .lt. 0.) 
-             cc(:) = 0.
-      end where
-      where (cc(:) .gt. 1.) 
-             cc(:) = 1.
-      end where
-      where (dtau_s(:) .lt. 0.) 
-             dtau_s(:) = 0.
-      end where
-      where (dem_s(:) .lt. 0.) 
-             dem_s(:) = 0.
-      end where
-      where (dem_s(:) .gt. 1.) 
-             dem_s(:) = 1.
-      end where
-     
-      !where (dtau_c(:) .lt. 0.) 
-      !       dtau_c(:) = 0.
-      !end where
-      !where (dem_c(:) .lt. 0.) 
-      !       dem_c(:) = 0.
-      !end where
-      !where (dem_c(:) .gt. 1.) 
-      !       dem_c(:) = 1.
-      !end where
-     
 
 
-!     ---------------------------------------------------!
-
-
-!     ---------------------------------------------------!
-!     ALLOCATE CLOUD INTO BOXES, FOR NCOLUMNS, NLEVELS
-!
-
-      !initialize variables
-      
-      !assign 2d tca array using 1d input array cc
-      !assign 2d cca array using 1d input array conv
-      tca(:,0) = 0.
-      do ilev = 1,nlev
-             tca(:,ilev) = cc(ilev)
-             !cca(:,ilev  ) = conv(ilev)
-      enddo
-            
-      seed = (pfull(nlev)-int(pfull(nlev)))*100+1
-      frac_out(:,:)=0.
-
-      do ibox=1,ncol
-           boxpos(ibox)=(real(ibox)-.5)/real(ncol)
-      enddo
-
-      !frac_out is the array that contains the information 
-      !where 0 is no cloud, 1 is a stratiform cloud and 2 is a
-      !convective cloud
-      do ilev=1, nlev
-
-
-           !Initialise threshold
-           IF (ilev.eq.1) then
-               DO ibox=1,ncol
-	            ! If max overlap 
-	            ! select pixels spread evenly
-	            ! across the gridbox
-                    !threshold(ibox)=boxpos(ibox)
-	          
-                    ! for non-maximum overlap options
-	            ! select random pixels from the non-convective
-	            ! part the gridbox ( some will be converted into
-	            ! convective pixels below )
-                    threshold(ibox)= ran0(seed)
-!                   threshold(ibox)= cca(ibox,ilev)+ &
-!                                    (1-cca(ibox,ilev))*ran0(seed)            
-               ENDDO
-           ENDIF
-
-           DO ibox=1,ncol
-
-                   !All versions
-                   !if (boxpos(ibox).le.cca(ibox,ilev)) then
-                   !     maxocc(ibox) = 1
-                   !else
-                   !     maxocc(ibox) = 0
-                   !end if
-
-                   !Max overlap
-                   !      threshold_min(ibox)=cca(ibox,ilev)
-                   !       maxosc(ibox)=1
-                   
-                   !Random overlap
-                   if (overlap .eq. 2) then
-                   !      threshold_min(ibox)=cca(ibox,ilev)
-                          threshold_min(ibox)=0.
-                          maxosc(ibox)=0
-                   end if
-
-                   !Max/Random overlap
-                   if (overlap .eq. 1) then
-                     
-                         threshold_min(ibox)= &
-                               min(tca(ibox,ilev-1),tca(ibox,ilev))
-                              !max(cca(ibox,ilev), &
-                              !min(tca(ibox,ilev-1),tca(ibox,ilev)))
-                         if (threshold(ibox).lt.  &
-                               min(tca(ibox,ilev-1),tca(ibox,ilev))) then
-                              !.and.(threshold(ibox).gt.cca(ibox,ilev))          
-                               maxosc(ibox)=1.
-                         else
-                               maxosc(ibox)=0.
-                         end if 
-
-                   end if 
-                         
-    
-                   !Reset threshold 
-                   threshold(ibox)=     &                                
-                           (maxosc(ibox) * threshold(ibox)) + &
-                           ((1-maxosc(ibox)) * &
-                            ( threshold_min(ibox)+ &
-                             (1-threshold_min(ibox))*ran0(seed) ) )
-
-                   !original code...................
-                   !threshold(ibox)=     &                                
-                   !if max overlapped conv cloud
-                   !maxocc(ibox) * (  &                                     
-                   ! boxpos(ibox)     &                                         
-                   !        ) +       &                                               
-                   !else
-                   !(1-maxocc(ibox)) * ( &                                   
-                   !if max overlapped strat cloud
-                   ! (maxosc(ibox)) * (  &                                
-                   !threshold=boxpos
-                   !      threshold(ibox) &                                        
-                   !            ) +       &                                          
-                   !else
-                   !    (1-maxosc(ibox)) * (   &                            
-                   !threshold_min=random[thrmin,1]
-                   !     threshold_min(ibox)+  &
-                   !  (1-threshold_min(ibox))*ran0(seed)  
-                   !           ) 
-                   !    )
-
-           ENDDO
-
-
-           !Fill frac_out with 1's where tca is greater than the threshold
-           WHERE(tca(:,ilev).gt.threshold(:))
-                 frac_out(:,ilev)=1
-           ENDWHERE
-	   
-           !Code to partition boxes into startiform and convective parts
-           !goes here
-           !
-           !DO ibox=1,ncol
-           !    if (threshold(ibox).le.cca(ibox,ilev)) then
-           !    ! = 2 IF threshold le cca(ibox)
-           !        frac_out(ibox,ilev) = 2 
-           !    else
-           !    ! = the same IF NOT threshold le cca(ibox) 
-           !        frac_out(ibox,ilev) = frac_out(ibox,ilev)
-           !    end if
-           !ENDDO
-
-      enddo      !loop over levels
-	  
-!     ---------------------------------------------------!
+                  end module cloud_rad_mod
 
       
-!
-!     ---------------------------------------------------!
-!     COMPUTE CLOUD OPTICAL DEPTH FOR EACH COLUMN and
-!     put into vector tau
- 
-      !compute total cloud optical depth for each column     
-      tau(:)=0.
-      do ilev=1,nlev
-            tau(:)=tau(:)+ &
-                 real(frac_out(:,ilev))*dtau_s(ilev)
-                 !if (frac_out(ibox,ilev).eq.1) then
-                 !       dtautmp(ibox)= dtau_s(ilev)
-                 !else if (frac_out(ibox,ilev).eq.2) then
-                 !       dtautmp(ibox)= dtau_c(ilev)
-                 !else
-                 !       dtautmp(ibox)= 0.
-                 !end if
-		 !tau(ibox)=tau(ibox)+dtautmp(ibox)
-      end do
-      
 
-!  
-!     ---------------------------------------------------!
-
-
-
-!     
-!     ---------------------------------------------------!
-!     COMPUTE INFRARED BRIGHTNESS TEMPERUATRES
-!     AND CLOUD TOP TEMPERATURE SATELLITE SHOULD SEE
-!
-!     again this is only done if top_height = 1 or 3
-!
-!     fluxtop is the 10.5 micron radiance at the top of the
-!              atmosphere
-!     fluxtopclrsky is the 10.5 micron radiance at the top of
-!              the atmosphere under clear skies
-!     trans is the transmissivity from the top of level to
-!              the top of the atmosphere
-!     transclrsky is the clear sky transmissivity from the top
-!              of level to the top of the atmosphere
-
-
-      if (top_height .eq. 1 .or. top_height .eq. 3) then
-
-      !compute water vapor continuum emissivity
-      !this treatment follows Schwarkzopf and Ramaswamy
-      !JGR 1999,vol 104, pages 9467-9499.
-      !the emissivity is calculated at a wavenumber of 955 cm-1, 
-      !or 10.47 microns 
-      do ilev=1,nlev
-               wtmair = 28.9644
-               wtmh20 = 18.01534
-               Navo = 6.023E+23
-               grav = 9.806650E+02
-               pstd = 1.013250E+06
-               t0 = 296.
-               !press and dpress are dyne/cm2 = Pascals *10
-               press = pfull(ilev)*10.
-               dpress = (phalf(ilev+1)-phalf(ilev))*10
-               !atmden = g/cm2 = kg/m2 / 10 
-               atmden = dpress/grav
-               rvh20 = qv(ilev)*wtmair/wtmh20
-               wk = rvh20*Navo*atmden/wtmair
-               rhoave = (press/pstd)*(t0/at(ilev))
-               rh20s = rvh20*rhoave
-               rfrgn = rhoave-rh20s
-               tmpexp = exp(-0.02*(at(ilev)-t0))
-               tauwv = wk*1.e-20*( (0.0224697*rh20s*tmpexp) + &
-                      (3.41817e-7*rfrgn)         )*0.98
-               demwv(ilev) = 1. - exp( -1. * tauwv)
-               
-      end do
-       
-      !loop over columns 
-      do ibox=1,ncol
-      
-            fluxtop=0.
-            fluxtopclrsky=0.
-            trans=1.
-            transclrsky=1.
-          
-            do ilev=1,nlev
- 
-                   !blackbody emission
-                   bb=1 / ( exp(1307.27/at(ilev)) - 1. )
-	         
-                   !compute emissivity for this layer
-                   dem= 1. -  &
-                           (1. - demwv(ilev)) *  &
-                           (1. - frac_out(ibox,ilev)*dem_s(ilev))
-                           
-                           !if (frac_out(ibox,ilev).eq.1) then
-                           ! dem(ibox)= 1. -  ( (1. - demwv(ilev)) * 
-			   ! (1. -  dem_s(ilev)) )
-                           !else if (frac_out(ibox,ilev).eq.2) then
-                           !  dem(ibox)= 1. - ( (1. - demwv(ilev)) * 
-			   ! (1. -  dem_c(ilev)) )
-                           ! else
-                           !dem(ibox)=  dem_wv(ilev)
-                           !end if
-                
-		   ! increase TOA flux by flux emitted from layer
-	           ! times total transmittance in layers above
-                   fluxtop = fluxtop   + dem * bb  * trans 
-                   fluxtopclrsky = fluxtopclrsky   +  &
-                           demwv(ilev) * bb  * transclrsky 
-                   
-                   ! update trans_layers_above with transmissivity
-	           ! from this layer for next time around loop
-                   trans=trans*(1.-dem)
-                   transclrsky=transclrsky*(1.-demwv(ilev))
-
-            end do
-
-            !add in surface emission
-            fluxtop = fluxtop + trans * emsfclw/(exp(1307.27/skt)-1.)
-            fluxtopclrsky = fluxtopclrsky +                        &
-                      (transclrsky * emsfclw/(exp(1307.27/skt)-1.))
-            
-            
-            !now that you have the top of atmosphere radiance account
-            !for ISCCP procedures to determine cloud top temperature
-
-            !account for partially transmitting cloud recompute flux 
-            !ISCCP would see assuming a single layer cloud
-            !note choice here of 2.13, as it is primarily ice
-            !clouds which have partial emissivity and need the 
-            !adjustment performed in this section
-            !
-            !If it turns out that the cloud brightness temperature
-	    !is greater than 260K, then the liquid cloud conversion
-            !factor of 2.56 is used.
-	    !
-            !Note that this is discussed on pages 85-87 of 
-            !the ISCCP D level documentation (Rossow et al. 1996)
-           
-            
-            !compute minimum brightness temperature and optical depth
-            btcmin = 1. /  ( exp(1307.27/(attrop-5.)) - 1. ) 
-            transmax = (fluxtop-btcmin)/(fluxtopclrsky-btcmin)
-            taumintmp = -1. * log(max(min(transmax,(1.-qmin)),0.001))
-	    
-	    !note that the initial setting of tauir is needed so that
-	    !tauir has a realistic value should the next if block be
-	    !bypassed
-            tauir = tau(ibox) / 2.13
-
-            if (top_height .eq. 1 .and. transmax .gt. 0.001 .and. &
-	        transmax .le. (1.-qmin)) then
-		    icycle = 1
-		    fluxtopinit = fluxtop
-		    tauir = tau(ibox) / 2.13
-243		    emcld = 1. - exp(-1. * tauir  )
-                    fluxtop = fluxtopinit -                            &
-                              ((1.-emcld)*fluxtopclrsky)
-                    fluxtop = max(1.E-06,(fluxtop/emcld))
-                    tb(ibox)= 1307.27/ (log(1. + (1./fluxtop)))
-                    if (icycle .eq. 1 .and. tb(ibox) .gt. 260.) then
-		         tauir = tau(ibox) / 2.56
-			 icycle = 2
-                         go to 243
-                    end if
-            end if
-
-            if (tau(ibox) .gt. (-1.*log((1.-qmin)))) then 
-                
-                !cloudy box
-		tb(ibox)= 1307.27/ (log(1. + (1./fluxtop)))
-                if (top_height .eq. 1 .and. tauir .lt. taumintmp) then
-                         tb(ibox) = attrop 
-			 tau(ibox) = 2.13*taumintmp
-                end if
-		
-            else
-
-                !clear sky brightness temperature
-                tb(ibox) = 1307.27/(log(1.+(1./fluxtopclrsky)))
-
-            end if
-            
-      end do
-
-      end if
-!
-!     ---------------------------------------------------!
-
-
-!     
-!     ---------------------------------------------------!
-!     DETERMINE CLOUD TOP PRESSURE
-!
-!     again the 2 methods differ according to whether
-!     or not you use   the physical cloud top pressure
-!     (top_height = 2)
-!     or the radiatively determined cloud top pressure 
-!     (top_height = 1 or 3)
-!
-
-      !compute cloud top pressure
-      do ibox=1,ncol
-      
-           !segregate according to optical thickness
-           if (tau(ibox).le. (-1.*log((1.-qmin)))) then
-
-                ptop(ibox)=0.
-                levmatch(ibox)=0      
-
-           else 
-
-                if (top_height .eq. 1 .or. top_height .eq. 3) then  
-                                               
-                     !find level whose temperature
-                     !most closely matches brightness temperature
-                     nmatch=0
-                     do ilev=1,nlev-1
-                        
-                          if ((at(ilev)   .ge. tb(ibox) .and.          &
-                               at(ilev+1) .lt. tb(ibox)) .or.          &
-                              (at(ilev)   .le. tb(ibox) .and.          &
-                               at(ilev+1) .gt. tb(ibox))) then 
-     
-                               nmatch=nmatch+1
-                               if(abs(at(ilev)  -tb(ibox)) .lt.        &
-                                  abs(at(ilev+1)-tb(ibox))) then
-                                    match(nmatch)=ilev
-                               else
-                                    match(nmatch)=ilev+1
-                               end if
-                          end if                        
-                        
-                     end do
-
-                     if (nmatch .ge. 1) then
-                                 
-                          ptop(ibox)=pfull(match(nmatch))
-                          levmatch(ibox)=match(nmatch)   
-                     else
-                                                        
-                          if (tb(ibox) .lt. atmin) then
-                               ptop(ibox)=ptrop
-                               levmatch(ibox)=itrop
-                          end if
-                          if (tb(ibox) .gt. atmax) then
-                               ptop(ibox)=pfull(nlev)
-                               levmatch(ibox)=nlev
-                          end if                                
-                                                                
-                     end if
-                                                               
-                else             
-                     
-		     ptop(ibox)=0.
-                     ilev=1
-                     do while(ptop(ibox) .eq. 0. .and. ilev .lt. nlev+1)
-                          if (frac_out(ibox,ilev) .ne. 0) then
-                               ptop(ibox)=pfull(ilev)
-                               levmatch(ibox)=ilev
-                          end if
-                          ilev=ilev+1              
-                     end do
-           
-	        end if                            
-           
-	   end if
-	        
-      end do
-              
-
-!
-!     ---------------------------------------------------!
-
-             
-
-!     
-!     ---------------------------------------------------!
-!     DETERMINE ISCCP CLOUD TYP FREQUENCIES
-!
-!     Now that ptop and tau have been determined, 
-!     determine amount of each of the 49 ISCCP cloud
-!     types
-!
-
-
-
-      !compute isccp frequencies
-      fq_isccp(:,:)=0. 
-      
-      !compute boxarea
-      boxarea = 1./real(ncol)
-      
-      do ibox=1,ncol
-      
-            !convert ptop to millibars
-            ptop(ibox)=ptop(ibox) / 100.
-            
-      if (tau(ibox) .gt. (-1.*log((1.-qmin))) .and. ptop(ibox) .gt. 0.) then
-
-
-            !reset itau, ipres
-            itau = 0
-            ipres = 0
-
-            !determine optical depth category
-            if (tau(ibox) .lt. isccp_taumin) then
-                itau=1
-            else if (tau(ibox).ge.isccp_taumin .and.tau(ibox) .lt. 1.3) then
-                itau=2
-            else if (tau(ibox) .ge. 1.3 .and. tau(ibox) .lt. 3.6) then
-                itau=3
-            else if (tau(ibox) .ge. 3.6 .and. tau(ibox) .lt. 9.4) then
-                itau=4
-            else if (tau(ibox) .ge. 9.4 .and. tau(ibox) .lt. 23.) then
-                itau=5
-            else if (tau(ibox) .ge. 23. .and. tau(ibox) .lt. 60.) then
-                itau=6
-            else if (tau(ibox) .ge. 60.) then
-                itau=7
-            end if
-
-            !determine cloud top pressure category
-            if (ptop(ibox) .gt. 0. .and. ptop(ibox) .lt. 180.) then
-                ipres=1
-            else if (ptop(ibox) .ge. 180..and.ptop(ibox) .lt. 310.) then
-                ipres=2
-            else if (ptop(ibox) .ge. 310..and.ptop(ibox) .lt. 440.) then
-                ipres=3
-            else if (ptop(ibox) .ge. 440..and.ptop(ibox) .lt. 560.) then
-                ipres=4
-            else if(ptop(ibox) .ge. 560..and.ptop(ibox) .lt. 680.) then
-                ipres=5
-            else if (ptop(ibox) .ge. 680..and.ptop(ibox) .lt. 800.) then
-                ipres=6
-            else if (ptop(ibox) .ge. 800.) then
-                ipres=7
-            end if 
-
-            !update frequencies
-            if(ipres .gt. 0.and.itau .gt. 0) then
-            fq_isccp(itau,ipres)=fq_isccp(itau,ipres)+boxarea
-            end if
-
-      end if
-                       
-      end do
-
-      
-
-
-      
-END SUBROUTINE ISCCP_CLOUDTYPES
-
-!########################################################################
-!########################################################################
-
-SUBROUTINE TAU_REFF_DIAG(is,js,Time,coszen,nclds,ktop_phys,&
-          kbot_phys,cldamt,TKel,phalf,tau,tau_ice,Reff_liq,Reff_ice)
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!      This subroutine computes the typical cloud optical
-!      depth, effective radius and temperature for each
-!      column of the atmosphere, and for liquid and ice 
-!      clouds separately.
-!
-!      The method is to select the compacted cloud with the
-!      greatest horizontal area coverage and use the properties
-!      of that cloud in determining 
-!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!	VARIABLES
-!
-!       ------
-!	INPUT:
-!       ------
-!
-!       is,js        (is/js) indices for model slab
-!       coszen       cosine of zenith angle
-!       nclds        number of clouds in column
-!       ktop_phys    physical tops of compacted clouds
-!       kbot_phys    physical bottoms of compacted clouds
-!       cldamt       amount of clouds in matrix (fraction)
-!       TKel            temperature (Kelvin)
-!       phalf        pressure on model half levels (Pa)
-!       tau          visible optical depth (dimensionless)
-!       tau_ice      visible ice cloud optical depth (dimensionless)
-!       Reff_liq     liquid cloud effective radius (microns)
-!       Reff_ice     ice cloud effective radius (microns)
-!
-!       -------------------
-!	INTERNAL VARIABLES:
-!       -------------------
-!
-!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!  User Interface variables
-!  ------------------------
-
-INTEGER,  INTENT (IN)                    :: is, js
-type(time_type), intent(in)              :: Time
-REAL,     INTENT (IN), DIMENSION(:,:,:)  :: TKel,phalf
-REAL,     INTENT (IN), DIMENSION(:,:,:)  :: cldamt,tau,tau_ice
-REAL,     INTENT (IN), DIMENSION(:,:,:)  :: Reff_liq,Reff_ice
-REAL,     INTENT (IN), DIMENSION(:,:)    :: coszen
-INTEGER,  INTENT (IN), DIMENSION(:,:)    :: nclds
-INTEGER,  INTENT (IN), DIMENSION(:,:,:)  :: ktop_phys,kbot_phys
-
-!  Internal variables
-!  ------------------
-
-INTEGER                                  :: i,j,k,IDIM,JDIM,KDIM,ifld,maxclds
-REAL, DIMENSION(SIZE(TKel,1),SIZE(TKel,2))   :: &
-                                            tau_cld_liq, tau_cld_ice, &
-                                            reff_cld_liq, reff_cld_ice, &
-                                            T_cld_low,T_cld_lay
-REAL, DIMENSION(SIZE(TKel,1),SIZE(TKel,2),SIZE(TKel,3))   :: tau_liq
-
-REAL, DIMENSION(SIZE(TKel,1),SIZE(TKel,2))   :: cldamt_space_liq, &
-                                                cldamt_space_ice, &
-                                                cldamt_space_low, &
-                                                tca_space,tca_space_last,&
-                                                aliq_space,&
-                                                aice_space,&
-                                                alow_space,&
-                                                Tlay,sum_logp
-REAL :: tca_space_loc, tca_space_loc_high, tca_space_loc_last
-INTEGER, DIMENSION(SIZE(TKel,1),SIZE(TKel,2))   :: ncld_liq,ncld_ice
-LOGICAL :: used
-
-!
-! Code
-! ----
-
-    
-
-
-    !1. initialize some variables
-    IDIM=SIZE(TKel,1)
-    JDIM=SIZE(TKel,2)
-    KDIM=SIZE(TKel,3)
-    tau_cld_liq(:,:)  = 0.
-    tau_cld_ice(:,:)  = 0.
-    reff_cld_liq(:,:) = 0.
-    reff_cld_ice(:,:) = 0.
-    T_cld_lay(:,:)  = 0.
-    T_cld_low(:,:)  = 0.
-    aliq_space(:,:) = 0.
-    aice_space(:,:) = 0.
-    alow_space(:,:) = 0.
-    maxclds = MAXVAL(nclds(:,:))
-    
-    if (maxclds .gt. 0) then    
-    
-    
-    !compute liquid cloud optical depth
-    tau_liq = MAX(tau - tau_ice,0.)
-
-    !compute properties of liquid and ice cloud reff
-    if ( (id_aice > 0) .or. (id_aliq > 0)) then
-  
-       tca_space(:,:) = 0.
-       do k = 1, maxclds
-
-            !update cld amount from space calculation
-            tca_space_last = tca_space
-            tca_space(:,:) = 1.-((1.-tca_space(:,:))*(1.-cldamt(:,:,k)))
-            WHERE ((tau_liq(:,:,k)>0.).and.(coszen(:,:)>1.E-06).and.&
-                   (tau_ice(:,:,k)<=0.))
-            cldamt_space_liq(:,:) = MIN(MAX(0.,tca_space-tca_space_last),1.)
-            ELSEWHERE
-            cldamt_space_liq(:,:) = 0.
-            END WHERE
-            WHERE ((tau_ice(:,:,k)>0.).and.(coszen(:,:)>1.E-06).and.&
-                   (tau_liq(:,:,k)<=0.))
-            cldamt_space_ice(:,:) = MIN(MAX(0.,tca_space-tca_space_last),1.)
-            ELSEWHERE
-            cldamt_space_ice(:,:) = 0.
-            END WHERE
-           
-            !Sum up areas and particle sizes. Note that particle sizes
-            !are multiplied by the area of the cloud seen from space so 
-            !that division by the area will yield the local cloud properties
-            aliq_space(:,:) = aliq_space(:,:) + cldamt_space_liq(:,:)
-            reff_cld_liq(:,:) = reff_cld_liq(:,:) + &
-                               cldamt_space_liq(:,:)*Reff_liq(:,:,k) 
-            aice_space(:,:) = aice_space(:,:) + cldamt_space_ice(:,:)
-            reff_cld_ice(:,:) = reff_cld_ice(:,:) + &
-                               cldamt_space_ice(:,:)*Reff_ice(:,:,k) 
-                                 
-       end do  !loop over clouds
-
-    end if   !for doing liquid and ice cloud properties
-
-
-    if (id_alow > 0) then
-
-       !compute low cloud temperature as the log pressure weighted
-       !mean temperature of layers where the pressure is greater than
-       !680 mb.  This choice conforms to Isccp definitions of low cloud
-       sum_logp(:,:)=0.
-       Tlay(:,:)=0.
-       do k = 1, KDIM
-          WHERE (((phalf(:,:,k+1)+phalf(:,:,k))/2.).ge. 68000.)
-                  sum_logp(:,:)=sum_logp(:,:)+ &
-                        (log(phalf(:,:,k+1))-log(phalf(:,:,k)))
-                  Tlay(:,:)=Tlay(:,:)+ TKel(:,:,k)* &
-                        (log(phalf(:,:,k+1))-log(phalf(:,:,k)))
-          ENDWHERE
-       enddo
-       WHERE(sum_logp(:,:) .gt. 0.)
-          Tlay(:,:)=Tlay(:,:)/sum_logp(:,:)
-       ELSEWHERE
-          Tlay(:,:)=0.
-       ENDWHERE
-    
-       !loop over column becase algorithm cannot be made more
-       !vectorized
-        
-       do i = 1,IDIM
-       do j = 1,JDIM
-             
-            tca_space_loc = 0.
-            tca_space_loc_high = 0.
-            do k = 1,nclds(i,j)
-
-                  !update cld amount from space calculation
-                  tca_space_loc_last = tca_space_loc
-                  tca_space_loc = 1.-((1.-tca_space_loc)*(1.-cldamt(i,j,k)))
-                  
-                  !should high cloud amount be set
-                  if (((phalf(i,j,ktop_phys(i,j,k)+1)+ &
-                        phalf(i,j,ktop_phys(i,j,k)))/2.) .lt. 68000.) then
-                           tca_space_loc_high = tca_space_loc
-                  end if
-        
-                  !is this a low cloud visible under sunlit conditions
-                  if (((phalf(i,j,ktop_phys(i,j,k)+1)+ &
-                        phalf(i,j,ktop_phys(i,j,k)))/2.) .ge. 68000. &
-                        .and. (coszen(i,j)>1.E-06)) then
-
-                       tau_cld_ice(i,j)=tau_cld_ice(i,j)+ &
-                            (cldamt(i,j,k)*(1.-tca_space_loc_high)*&
-                             tau_ice(i,j,k))
-                       tau_cld_liq(i,j)=tau_cld_liq(i,j)+ &
-                            (cldamt(i,j,k)*(1.-tca_space_loc_high)*&
-                             tau_liq(i,j,k))
-                       T_cld_low(i,j) = T_cld_low(i,j)+ &
-                             TKel(i,j,ktop_phys(i,j,k))* &
-                             (tca_space_loc-tca_space_loc_last)
-                       
-                  end if
-
-            end do !loop over k
-
-            !record low cloud area and temperature
-            if (coszen(i,j)>1.E-06) then
-            alow_space(i,j) = tca_space_loc - tca_space_loc_high
-            T_cld_lay(i,j) = (tca_space_loc - tca_space_loc_high)* Tlay(i,j)
-            end if
-
-       enddo  !loop over j
-       enddo  !loop over i
-
-    end if   !for low cloud diagnostics
-
-    end if   !for any clouds in the column
-    
-    
-    !netcdf diagnostics....
-
-    if (id_aice > 0) then
-         used = send_data ( id_aice, aice_space, Time, is, js )
-    end if
- 
-    if (id_reffice > 0) then
-         used = send_data ( id_reffice, reff_cld_ice, Time, is, js )
-    end if
-    
-    if (id_aliq > 0) then
-         used = send_data ( id_aliq, aliq_space, Time, is, js )
-    end if
- 
-    if (id_reffliq > 0) then
-         used = send_data ( id_reffliq, reff_cld_liq, Time, is, js )
-    end if
-
-    if (id_alow > 0) then
-         used = send_data ( id_alow, alow_space, Time, is, js )
-    end if
- 
-    if (id_tauicelow > 0) then
-         used = send_data ( id_tauicelow, tau_cld_ice, Time, is, js )
-    end if
-
-    if (id_tauliqlow > 0) then
-         used = send_data ( id_tauliqlow, tau_cld_liq, Time, is, js )
-    end if
-
-    if (id_tlaylow > 0) then
-         used = send_data ( id_tlaylow, T_cld_lay, Time, is, js )
-    end if
-    
-    if (id_tcldlow > 0) then
-         used = send_data ( id_tcldlow, T_cld_low, Time, is, js )
-    end if
-
-END SUBROUTINE TAU_REFF_DIAG
-
-!########################################################################
-!########################################################################
- 
-FUNCTION ran0(idum)
-
-
-!     $Id: cloud_rad.F90,v 1.7 2003/04/09 20:53:41 fms Exp $
-!     Platform independent random number generator from
-!     Numerical Recipies
-!     Mark Webb July 1999
-      
-      REAL :: ran0
-      INTEGER, INTENT (INOUT) :: idum
-      
-      INTEGER :: IA,IM,IQ,IR,k
-      REAL :: AM
-
-      IA=16807; IM=2147483647; AM=1.0/IM; IQ=127773; IR=2836
-      
-      if (idum.eq.0) then
-        write(6,*) 'idum=',idum
-        write(6,*) 'ZERO seed not allowed'
-        stop
-      endif
-
-      k=idum/IQ
-      idum=ia*(idum-k*iq)-ir*k
-      if (idum.lt.0) idum=idum+im
-      ran0=am*idum
-
-END FUNCTION ran0
-      
-
-!########################################################################
-!########################################################################
- 
-
-END MODULE CLOUD_RAD_MOD
-
-
-      
 

@@ -4,22 +4,22 @@
 !          DRY ADIABATIC ADJUSTMENT       
 !=======================================================================
 
- use Utilities_Mod, ONLY: FILE_EXIST, ERROR_MESG, OPEN_FILE, &
+ use       Fms_Mod, ONLY: FILE_EXIST, ERROR_MESG, OPEN_NAMELIST_FILE, &
                           CHECK_NML_ERROR,                   &
-                          get_my_pe, get_root_pe, FATAL, WARNING, CLOSE_FILE
+                          mpp_pe, mpp_root_pe, FATAL, WARNING, CLOSE_FILE, &
+                                   stdlog, write_version_number
  use Constants_Mod, ONLY: Grav, Kappa
 !---------------------------------------------------------------------
  implicit none
  private
 
- public :: dry_adj, dry_adj_init, dry_adj_bdgt
+ public :: dry_adj, dry_adj_init, dry_adj_end, dry_adj_bdgt
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: dry_adj.F90,v 1.3 2002/07/16 22:32:17 fms Exp $'
- character(len=128) :: tag = '$Name: inchon $'
-
- logical :: do_init = .true.
+ character(len=128) :: version = '$Id: dry_adj.F90,v 10.0 2003/10/24 22:00:29 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
+ logical            :: module_is_initialized = .false.
 
 !---------------------------------------------------------------------
 
@@ -83,7 +83,7 @@
 !====================================================================
 
 ! --- Check to see if dry_adj has been initialized
-  if( do_init ) CALL ERROR_MESG( 'DRY_ADJ', &
+  if(.not. module_is_initialized ) CALL ERROR_MESG( 'DRY_ADJ', &
                            'dry_adj_init has not been called', FATAL )
 
 ! --- Set dimensions
@@ -202,7 +202,7 @@
 !---------------------------------------------------------------------
 
   if( FILE_EXIST( 'input.nml' ) ) then
-      unit = OPEN_FILE ( 'input.nml', action='read' )
+      unit = OPEN_NAMELIST_FILE ()
       ierr = 1
   do while ( ierr /= 0 )
       READ( unit, nml = dry_adj_nml, iostat = io, end = 10 )
@@ -211,24 +211,32 @@
   10  CALL CLOSE_FILE ( unit )
   end if
 
-!---------------------------------------------------------------------
-! --- WRITE NAMELIST
-!---------------------------------------------------------------------
+!------- write version number and namelist ---------
 
-  unit = open_file ('logfile.out', action='append')
-  if ( get_my_pe() == get_root_pe() ) then
-       WRITE( unit,'(/,80("="),/(a))') trim(version), trim(tag)
-       WRITE( unit, nml = dry_adj_nml ) 
+  if ( mpp_pe() == mpp_root_pe() ) then
+       call write_version_number(version, tagname)
+       write (stdlog(), nml = dry_adj_nml ) 
   endif
-  CALL CLOSE_FILE ( unit )
-
 
 !-------------------------------------------------------------------
 
-  do_init = .false.
+  module_is_initialized = .true.
 
 !=====================================================================
   end SUBROUTINE DRY_ADJ_INIT
+
+
+!#######################################################################
+!#######################################################################
+
+  SUBROUTINE DRY_ADJ_END
+
+!-------------------------------------------------------------------
+
+  module_is_initialized = .true.
+
+!=====================================================================
+  end SUBROUTINE DRY_ADJ_END
 
 
 !#######################################################################

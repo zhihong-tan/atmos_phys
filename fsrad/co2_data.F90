@@ -5,11 +5,12 @@
 
       use fs_profile_mod, ONLY:  fs_profile
       Use     co2int_mod, ONLY:  co2int, TRNS
-      Use  Utilities_Mod, ONLY:  open_file, get_my_pe,  &
-                                 Error_Mesg, FATAL, close_file
+      Use        fms_mod, ONLY:  open_namelist_file, mpp_pe,  &
+                                 Error_Mesg, FATAL, close_file,  &
+                                 write_version_number, mpp_root_pe, open_file
 
-      Private   fs_profile, co2int, TRNS,  &
-                open_file, get_my_pe, Error_Mesg, FATAL, close_file
+implicit none
+private
 
 !-----------------------------------------------------------------------
 !
@@ -113,13 +114,21 @@
 !-----------------------------------------------------------------------
 !------------ VERSION NUMBER ----------------
 
- character(len=128) :: version = '$Id: co2_data.F90,v 1.3 2002/07/16 22:32:27 fms Exp $'
- character(len=128) :: tag = '$Name: inchon $'
+ character(len=128) :: version = '$Id: co2_data.F90,v 10.0 2003/10/24 22:00:30 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
+ logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
 
-      Public   CO2_Data, Write_CO2_Data, Read_CO2_Data
-      Private  co2ins, co2in1
+      Public   CO2_Data, Write_CO2_Data, Read_CO2_Data, &
+               co2_data_init, co2_data_end
+
+      Public   CO251,  CO258,  CDT51,  CDT58,  C2D51,  C2D58,  &
+               CO2M51, CO2M58, CDTM51, CDTM58, C2DM51, C2DM58, &
+               STEMP,  GTEMP,  B0,     B1,     B2,     B3,     &
+               CO231,  CO238,  CDT31,  CDT38,  C2D31,  C2D38,  &
+               CO271,  CO278,  CDT71,  CDT78,  C2D71,  C2D78,  &
+               CO211,  CO218
 
       CONTAINS
 
@@ -147,12 +156,6 @@
         (/ '490850', '490670', '670850', '43um  ' /)
 !-----------------------------------------------------------------------
 
-!---- write version number -----
-
-      unit = open_file (file='logfile.out', action='APPEND')
-      if (get_my_pe() == 0) &
-      write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-      call close_file (unit)
 
 !----- check input values -----
 
@@ -804,6 +807,31 @@
       End Subroutine Read_CO2_Data
 
 !#######################################################################
+
+      Subroutine co2_data_init
+!------- write version number and namelist ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
+
+      module_is_initialized = .true.
+
+!---------------------------------------------------------------------
+      End Subroutine co2_data_init
+
+!#######################################################################
+
+      Subroutine co2_data_end
+
+      module_is_initialized = .false.
+
+!---------------------------------------------------------------------
+
+      End Subroutine co2_data_end
+
+!#######################################################################
+
 
       End Module CO2_Data_Mod
 

@@ -1,6 +1,17 @@
       module mcm_swnew_mod
 
       use mcm_swtbls_mod, only: aaa, aab
+      Use       Fms_Mod, ONLY: write_version_number, mpp_pe, mpp_root_pe, &
+                               error_mesg, FATAL
+
+!implicit none 
+private 
+
+      character(len=128) :: version = '$Id: mcm_swnew.F90,v 10.0 2003/10/24 22:00:32 fms Exp $'
+      character(len=128) :: tagname = '$Name: jakarta $'
+      logical            :: module_is_initialized = .false.
+
+public mcm_swnew, mcm_swnew_init, mcm_swnew_end
 
       contains
 
@@ -469,5 +480,27 @@
   10  continue
       return
       end subroutine mcm_sif1d
+
+! ---------------------------------------------------------------------------------------
+      subroutine mcm_swnew_init
+!------- write version number and namelist ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
+
+      module_is_initialized = .true.
+
+!---------------------------------------------------------------------
+
+      end subroutine mcm_swnew_init
+! ---------------------------------------------------------------------------------------
+      subroutine mcm_swnew_end
+
+      module_is_initialized = .false.
+
+!---------------------------------------------------------------------
+      end subroutine mcm_swnew_end
+
 
       end module mcm_swnew_mod

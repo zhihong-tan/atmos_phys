@@ -7,10 +7,11 @@ module rh_clouds_mod
 !
 !=======================================================================
 
-use utilities_mod, only:  error_mesg, FATAL, file_exist,    &
-                          check_nml_error, open_file,       &
-                          close_file, get_my_pe, get_root_pe, &
-                          read_data, write_data
+use       fms_mod, only:  error_mesg, FATAL, file_exist,    &
+                          check_nml_error, open_namelist_file,       &
+                          close_file, open_restart_file, &
+                          read_data, write_data, mpp_pe, mpp_root_pe, &
+                          write_version_number, stdlog
 
 !=======================================================================
 
@@ -18,7 +19,7 @@ implicit none
 private
 
 public  rh_clouds, rh_clouds_init, rh_clouds_end,  &
-        rh_clouds_sum, rh_clouds_avg, do_rh_clouds, get_global_clouds
+        rh_clouds_sum, rh_clouds_avg, do_rh_clouds
 
 !=======================================================================
 
@@ -82,8 +83,8 @@ end interface
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: rh_clouds.F90,v 1.4 2002/07/16 22:34:10 fms Exp $'
-character(len=128) :: tag = '$Name: inchon $'
+character(len=128) :: version = '$Id: rh_clouds.F90,v 10.0 2003/10/24 22:00:39 fms Exp $'
+character(len=128) :: tagname = '$Name: jakarta $'
 
 !=======================================================================
 
@@ -140,7 +141,7 @@ namelist /rh_clouds_nml/ high_middle_pole, high_middle_eq, &
 
 !  OTHER MODULE VARIABLES
 
-logical :: do_init   = .false.
+logical :: module_is_initialized = .false.
 
 contains
 
@@ -152,10 +153,12 @@ integer, intent(in) :: nlon, nlat, nlev
 
 integer :: unit, ierr, io
 
+      if (module_is_initialized) return
+
 !------------------- read namelist input -------------------------------
 
       if (file_exist('input.nml')) then
-         unit = open_file ('input.nml', action='read')
+         unit = open_namelist_file ()
          ierr=1; do while (ierr /= 0)
             read  (unit, nml=rh_clouds_nml, iostat=io, end=10)
             ierr = check_nml_error(io,'rh_clouds_nml')
@@ -165,20 +168,17 @@ integer :: unit, ierr, io
 
 !---------- output namelist to log-------------------------------------
 
-      unit = open_file ('logfile.out', action='append')
-      if ( get_my_pe() == get_root_pe() ) then
-           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-           write (unit, nml=rh_clouds_nml)
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+           write (stdlog(), nml=rh_clouds_nml)
       endif
-      call close_file (unit)
 
 !---------- initialize for rh cloud averaging -------------------------
 
       allocate (rhsum(nlon,nlat,nlev), nsum(nlon,nlat))
 
       if (file_exist('INPUT/rh_clouds.res')) then
-           unit = open_file ('INPUT/rh_clouds.res',      &
-                             form='native', action='read')
+           unit = open_restart_file ('INPUT/rh_clouds.res', action='read')
            call read_data (unit, nsum)
            call read_data (unit, rhsum)
            call close_file (unit)
@@ -187,7 +187,7 @@ integer :: unit, ierr, io
       endif
 
 
-   do_init = .true.
+      module_is_initialized = .true.
 
 !-----------------------------------------------------------------------
 
@@ -199,11 +199,11 @@ subroutine rh_clouds_end
 
  integer :: unit
 
-    unit = open_file ('RESTART/rh_clouds.res',     &
-                      form='native', action='write')
+    unit = open_restart_file ('RESTART/rh_clouds.res', action='write')
     call write_data (unit, nsum)
     call write_data (unit, rhsum)
     call close_file (unit)
+    module_is_initialized = .false.
 
 end subroutine rh_clouds_end
 
@@ -215,7 +215,7 @@ end subroutine rh_clouds_end
 !  returns logical value for whether rh_clouds has been initialized
 !  presumably if initialized then rh_cloud will be used
 
-   answer = do_init
+   answer = module_is_initialized
 
  end function do_rh_clouds
 
@@ -314,8 +314,8 @@ real :: sig_bot
 
 ! dummy checks
 
- if (.not.do_init) call error_mesg( 'RH_CLOUDS in RH_CLOUDS_MOD', &
-             'module not initialized', FATAL)
+ if (.not.module_is_initialized) call error_mesg( 'RH_CLOUDS in RH_CLOUD        S_MOD', &
+        'module not initialized', FATAL)
  if (size(zenith,1).ne.size(rh,1)) &
               call error_mesg( 'RH_CLOUDS in RH_CLOUDS_MOD', &
              'dimensions of zenith and top do not match', FATAL)
@@ -596,50 +596,6 @@ emiss = emiss_3d(1,1,:)
 
 end subroutine rh_clouds_1d
 
-!#######################################################################
-
-subroutine get_global_clouds (is, js, press, cldflag_out)
-
-integer, intent(in)  ::  is, js
-real, dimension(:,:,:), intent(in) :: press
-integer, dimension(:,:,:), intent(out) :: cldflag_out
-!------------------------------------------------------------------
- 
-     real, dimension(size(press,1), size(press,2), size(press,3)-1) :: &
-						     rh
-     real, dimension(size(press,1), size(press,2)) :: rh_crit, sigma, &
-					       icount_hi, icount_mid, &
-	            		               icount_low,  &
-					       cld_isccp_hi,  &
-					       cld_isccp_mid, &
-			                       cld_isccp_low, tot_clds
-
-     integer                                :: k, ks, ke, ierr,  &
-					       i, j, it, if, jt, jf
-!------------------------------------------------------------------
-
-     ks = lbound(press,3)
-     ke = ubound(press,3) - 1
-
-     ierr = -1
-
-     call rh_clouds_avg (is, js, rh, ierr)
-
-     if (ierr ==  0) then
-       do k = ks, ke 
-         sigma   = press(:,:,k)/press(:,:,ke+1)
-         rh_crit = rh_crit_top + sigma*(rh_crit_bot - rh_crit_top)
-         where(rh(:,:,k) >= rh_crit) 
-           cldflag_out(:,:,k) = 1
-         else where
-           cldflag_out(:,:,k) = 0
-         endwhere
-       end do
-     else
-       cldflag_out(:,:,:) = 0
-     endif
-
-end subroutine get_global_clouds 
 
 !#######################################################################
 

@@ -23,8 +23,8 @@ module mg_drag_mod
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 1.7 2003/04/09 20:56:31 fms Exp $'
- character(len=128) :: tagname = '$Name: inchon $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 10.0 2003/10/24 22:00:34 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
 
  real, parameter :: p00 = 1.e5
 
@@ -599,10 +599,10 @@ subroutine mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
 
 !===================================================================
 ! Arguments (intent in)
- real, intent(in), dimension (:,:,:) :: &
+ real, intent(in), dimension (:,:,:)  :: &
      &             uwnd, vwnd, temp, theta, pfull, phalf,zfull, zhalf
- real, intent(in), dimension (:,:) :: xn, yn, taub
- real vsamp 
+ real, intent(in), dimension (:,:)    :: xn, yn, taub
+ real, intent(in)                     :: vsamp 
  integer, intent(in), dimension (:,:) :: ktop, kbtm
 !===================================================================
 ! Arguments (intent out)

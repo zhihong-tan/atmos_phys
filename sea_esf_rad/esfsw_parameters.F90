@@ -1,11 +1,37 @@
+                 module esfsw_parameters_mod
+!
+! <CONTACT EMAIL="Fei.Liu@noaa.gov">
+!  fil
+! </CONTACT>
+! <REVIEWER EMAIL="Stuart.Freidenreich@noaa.gov">
+!  smf
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!  Code to initialize shortwave parameters and access flux data.
+! </OVERVIEW>
+! <DESCRIPTION>
+!  This code initializes shortwave radiation calculation parameters such as
+!  solar flux input at top of the atmosphere, number of shortwave bands
+!  depending on the spectral resolution used, number of frequency points
+!  in the gaussian quadrature algorithm, the number of streams used in
+!  multiple stream flux algorithm, and the number of water vapor bands.
+!
+!  The code also provides two access methods: get and put solar flux data
+!  
+! </DESCRIPTION>
 
-		 module esfsw_parameters_mod
+!    shared modules:
 
+use fms_mod,           only: open_namelist_file, fms_init, &
+                             mpp_pe, mpp_root_pe, stdlog, &
+                             file_exist, write_version_number, &
+                             check_nml_error, error_mesg, &
+                             FATAL, NOTE, WARNING, close_file
 
-use utilities_mod,      only:  open_file, file_exist,    &
-                               check_nml_error, error_mesg, &
-                               print_version_number, FATAL, NOTE, &
-			       WARNING, get_my_pe, close_file
+!  shared radiation package modules:
+
+use rad_utilities_mod, only: rad_utilities_init, solar_spectrum_type
 
 
 !--------------------------------------------------------------------
@@ -14,52 +40,55 @@ implicit none
 private
 
 !-------------------------------------------------------------------
-!          module containing parameters for esf shortwave code,
-!               including solar flux band information
-!
+!     esfsw_parameters_mod defines parameters for esf shortwave code,
+!     including a description of the band structure  used to define the
+!     solar spectrum.
 !------------------------------------------------------------------
 
 
 !---------------------------------------------------------------------
-!----------- ****** VERSION NUMBER ******* ---------------------------
+!----------- version number for this module -------------------
 
-!   character(len=5), parameter  ::  version_number = 'v0.08'
-    character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 1.3 2002/07/16 22:35:06 fms Exp $'
-    character(len=128)  :: tag     =  '$Name: inchon $'
+character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 10.0 2003/10/24 22:00:41 fms Exp $'
+character(len=128)  :: tagname =  '$Name: jakarta $'
 
 !--------------------------------------------------------------------
 !----- interfaces ------
 
-public esfsw_parameters_init,   &
-       put_solarfluxes, get_solarfluxes
+public       &
+         esfsw_parameters_init, &
+         esfsw_parameters_end
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-!!3 character(len=12)         :: sw_resolution = ' '
-character(len=16)         :: sw_resolution = ' '
-integer                   :: sw_diff_streams = 0
+character(len=16)  :: sw_resolution = '   ' ! either 'high' or 'low'
+integer            :: sw_diff_streams = 0   ! number of streams of
+                                            ! diffuse radiation that
+                                            ! are considered
 
 
 namelist /esfsw_parameters_nml/    &
-                                 sw_resolution, sw_diff_streams
-
-
+                                 sw_resolution,   &
+                                 sw_diff_streams
 
 !-------------------------------------------------------------------
 !----- public data --------
 
-integer, public   :: nbands, nfrqpts, nstreams, nh2obands
+!---------------------------------------------------------------------
+!    TOT_WVNUMS     number of wavenumbers included in the parameter-
+!                   ization of the solar spectrum 
+!    Solar_spect    solar_spectrum_type variable defining the nature
+!                   of the solar spectral paramaterization
+!---------------------------------------------------------------------
+integer, parameter                      :: TOT_WVNUMS  = 57600
+type(solar_spectrum_type), public, save :: Solar_spect
 
-integer, parameter, public   :: TOT_WVNUMS  = 57600
 
 !-------------------------------------------------------------------
 !----- private data --------
 
-real,    dimension(TOT_WVNUMS)        :: solarfluxtoa
-
-real,    dimension(:), allocatable     :: solflxband
-integer, dimension(:), allocatable     :: endwvnbands
+logical :: module_is_initialized = .false.  ! module is initialized ?
 
 
 !---------------------------------------------------------------------
@@ -71,107 +100,188 @@ integer, dimension(:), allocatable     :: endwvnbands
 
 
 
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!     
+!                     PUBLIC SUBROUTINES
+!            
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+!#####################################################################
+!
+! <SUBROUTINE NAME="esfsw_parameters_init">
+!  <OVERVIEW>
+!   Subroutine that initializes and set up shortwave radiation.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Subroutine that initializes shortwave radiation calculation parameters such as
+!   solar flux input at top of the atmosphere, number of shortwave bands
+!   depending on the spectral resolution used, number of frequency points
+!   in the gaussian quadrature algorithm, the number of streams used in
+!   multiple stream flux algorithm, and the number of water vapor bands.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call esfsw_parameters_init
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine esfsw_parameters_init
 
 !------------------------------------------------------------------
-     integer    ::  unit, ierr, io
-
-!---------------------------------------------------------------------
-!-----  read namelist  ------
-
-     if (file_exist('input.nml')) then
-       unit =  open_file ('input.nml', action='read')
-       ierr=1; do while (ierr /= 0)
-       read (unit, nml=esfsw_parameters_nml, iostat=io, end=10)
-       ierr = check_nml_error (io, 'esfsw_parameters_nml')
-       enddo
-10     call close_file (unit)
-     endif
-
-     if (trim(sw_resolution) == 'high') then
-       nbands = 25
-       nfrqpts = 72
-       nh2obands = 14
-     elseif (trim(sw_resolution) == 'low') then
-       nbands = 18
-       nfrqpts = 38
-       nh2obands = 9
-     else
-       call error_mesg ( 'esfsw_parameters_init',   &
-	    ' sw_resolution must be specified as "high" or "low".', &
-	    FATAL)
-     endif
-
-     if (sw_diff_streams == 4) then
-       nstreams = 4
-     else if (sw_diff_streams == 1) then
-       nstreams = 1
-     else
-       call error_mesg ( 'esfsw_parameters_init',   &
-          ' sw_diff_streams must be specified as either 1 or 4.', FATAL)
-     endif
-
-     unit = open_file ('logfile.out', action='append')
-!    call print_version_number (unit, 'esfsw_parameters',  &
-!							version_number)
-     if (get_my_pe() == 0) then
-       write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-       write (unit,9000) NBANDS, NFRQPTS, NSTREAMS, NH2OBANDS 
-       write (unit,nml=esfsw_parameters_nml)
-     endif
-     call close_file (unit)
-
-9000   format ( 'NBANDS=  ', i4, '  NFRQPTS=', i4, &
-		'NSTREAMS= ', i4, 'NH2OBANDS= ', i4 )
-
-     allocate (solflxband (nbands) )
-     allocate (endwvnbands (0:nbands) )
+!    esfsw_parameters_init is the constructor for esfsw_parameters_mod.
+!------------------------------------------------------------------
 
 !------------------------------------------------------------------
+!  local variables:
+
+      integer    ::  unit, ierr, io
+
+!---------------------------------------------------------------------
+!  local variables:
+!
+!        unit            io unit number used for namelist file
+!        ierr            error code
+!        io              error status returned from io operation
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    if routine has already been executed, exit.
+!---------------------------------------------------------------------
+      if (module_is_initialized) return
+ 
+!---------------------------------------------------------------------
+!    verify that modules used by this module that are not called later
+!    have already been initialized.
+!---------------------------------------------------------------------
+      call fms_init
+
+!-----------------------------------------------------------------------
+!    read namelist.
+!-----------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ( )
+        ierr=1; do while (ierr /= 0)
+        read  (unit, nml=esfsw_parameters_nml, iostat=io, end=10)
+        ierr = check_nml_error(io,'esfsw_parameters_nml')
+        end do
+10      call close_file (unit)
+      endif
+
+!--------------------------------------------------------------------
+!    process the namelist entries to obtain the parameters specifying
+!    the solar spectral parameterization.
+!--------------------------------------------------------------------
+      if (trim(sw_resolution) == 'high') then
+        Solar_spect%nbands = 25
+        Solar_spect%nfrqpts = 72
+        Solar_spect%nh2obands = 14
+      else if (trim(sw_resolution) == 'low') then
+        Solar_spect%nbands = 18
+        Solar_spect%nfrqpts = 38
+        Solar_spect%nh2obands = 9
+      else
+        call error_mesg ( 'esfsw_parameters_mod',   &
+       ' sw_resolution must be specified as "high" or "low".', FATAL)
+      endif
+      if (sw_diff_streams == 4) then
+        Solar_spect%nstreams = 4
+      else if (sw_diff_streams == 1) then
+        Solar_spect%nstreams = 1
+      else
+        call error_mesg ( 'esfsw_parameters_mod',   &
+          ' sw_diff_streams must be specified as either 1 or 4.', FATAL)
+      endif
+
+!---------------------------------------------------------------------
+!    include the total number of wavenumbers in the solar parameter-
+!    ization in the solar_spectrum_type variable.
+!---------------------------------------------------------------------
+      Solar_spect%tot_wvnums = TOT_WVNUMS
+
+!---------------------------------------------------------------------
+!    write version number and namelist to logfile also write out
+!    some key parameters obtained from an input data file.
+!---------------------------------------------------------------------
+      call write_version_number (version, tagname)
+      if (mpp_pe() == mpp_root_pe() ) &
+                        write (stdlog(),9000)     &
+                            Solar_spect%NBANDS, Solar_spect%NFRQPTS,  &
+                            Solar_spect%NSTREAMS, Solar_spect%NH2OBANDS 
+      if (mpp_pe() == mpp_root_pe() ) &
+                        write (stdlog(), nml=esfsw_parameters_nml)
+
+!-------------------------------------------------------------------
+!    allocate space for the array components of the solar_spect_type
+!    variable.
+!-------------------------------------------------------------------
+      allocate (Solar_spect%solflxband (Solar_spect%nbands) )
+      allocate (Solar_spect%endwvnbands (0:Solar_spect%nbands) )
+      allocate (Solar_spect%solarfluxtoa (Solar_spect%tot_wvnums))
+
+!------------------------------------------------------------------
+!    mark the module as initialized.
+!------------------------------------------------------------------
+      module_is_initialized = .true.
+
+!------------------------------------------------------------------
+9000  format ( '  NBANDS=  ', i4, '  NFRQPTS=', i4, &
+               '  NSTREAMS= ', i4, '  NH2OBANDS= ', i4 )
+
+!------------------------------------------------------------------
+
 
 end subroutine esfsw_parameters_init
 
 
 
 !####################################################################
+!
+! <SUBROUTINE NAME="esfsw_parameters_end">
+!  <OVERVIEW>
+!   Subroutine that is the destructor for esfsw_parameters_mod.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Subroutine that deallocates module variables and marks the module  
+!   as uninitialized.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call esfsw_parameters_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 
-subroutine put_solarfluxes (solarfluxtoa_in, solflxband_in,     &
-			    endwvnbands_in)
+subroutine esfsw_parameters_end
 
-!----------------------------------------------------------------------
-real,    dimension(:), intent(in)  :: solarfluxtoa_in
-real,    dimension(:),     intent(in)  :: solflxband_in
-integer, dimension(:),   intent(in)  :: endwvnbands_in
+!--------------------------------------------------------------------
+!    esfsw_parameters_end is the destructor for esfsw_parameters_mod.
+!--------------------------------------------------------------------
 
-!----------------------------------------------------------------------
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('esfsw_parameters_mod',   &
+             'module has not been initialized', FATAL )
+      endif
 
-    solarfluxtoa = solarfluxtoa_in
-    solflxband = solflxband_in
-    endwvnbands = endwvnbands_in
+!--------------------------------------------------------------------
+!    deallocate the components of the solar_spect_type variable.
+!---------------------------------------------------------------------
+      deallocate (Solar_spect%solflxband, &
+                  Solar_spect%endwvnbands, &
+                  Solar_spect%solarfluxtoa)
 
+!-------------------------------------------------------------------
+!    mark the module as uninitialized.
+!--------------------------------------------------------------------
+      module_is_initialized = .false.
 
-end subroutine put_solarfluxes 
+!--------------------------------------------------------------------
+
+end subroutine esfsw_parameters_end
+
 
 
 !###################################################################
 
-subroutine get_solarfluxes (solarfluxtoa_out, solflxband_out,     &
-			    endwvnbands_out)
-
-!----------------------------------------------------------------------
-real,    dimension(:), intent(out)  :: solarfluxtoa_out
-real,    dimension(:),     intent(out)  :: solflxband_out
-integer, dimension(:),   intent(out)  :: endwvnbands_out
-!----------------------------------------------------------------------
-
-    solarfluxtoa_out = solarfluxtoa
-    solflxband_out = solflxband
-    endwvnbands_out = endwvnbands
-
-
-end subroutine get_solarfluxes 
-
-
-!###################################################################
-
-	      end module esfsw_parameters_mod
+      end module esfsw_parameters_mod

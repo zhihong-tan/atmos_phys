@@ -16,14 +16,20 @@ MODULE DIAG_CLOUD_MOD
 !  omega and stability 
 !-------------------------------------------------------------------
 
- use utilities_mod, only: error_mesg, FATAL, file_exist,    &
-                          check_nml_error, open_file,       &
-                          get_my_pe,  close_file,           &
-                          read_data, write_data
+ use       fms_mod, only: error_mesg, FATAL, file_exist,    &
+                          check_nml_error, open_namelist_file,       &
+                          mpp_pe, mpp_root_pe,  close_file, &
+                          read_data, write_data, &
+                          write_version_number, stdlog, open_restart_file
  use  Constants_Mod, only: Cp_Air, rdgas, rvgas, Kappa, HLv
  use time_manager_mod, only:  TIME_TYPE
  use  cloud_zonal_mod, only:  CLOUD_ZONAL_INIT, GETCLD
- use  diag_cloud_rad_mod, only:  CLOUD_TAU_DRIVER, diag_cloud_rad_INIT
+ use  diag_cloud_rad_mod, only:  CLOUD_TAU_DRIVER, diag_cloud_rad_INIT,&
+                                 cloud_pres_thick_for_tau,  &
+                                 cloud_opt_prop_tg_lw, &
+                                 cloud_opt_prop_tg_sw, &
+                                 cloud_optical_depths, &
+                                 cloud_optical_depths2
  use  sat_vapor_pres_mod, ONLY: ESCOMP
  use  shallow_conv_mod, ONLY: SHALLOW_CONV_INIT,MYLCL
 
@@ -35,8 +41,9 @@ MODULE DIAG_CLOUD_MOD
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud.F90,v 1.6 2003/04/09 20:54:35 fms Exp $'
- character(len=128) :: tag = '$Name: inchon $'
+ character(len=128) :: version = '$Id: diag_cloud.F90,v 10.0 2003/10/24 22:00:25 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
+ logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 
 !  parmameter mxband = max number of radiative bands to be considered for some
@@ -72,10 +79,11 @@ MODULE DIAG_CLOUD_MOD
 !----------------- arrays for cloud predictor averaging code --------------------------
 
     real,    allocatable, dimension (:,:,:) :: temp_sum,qmix_sum,rhum_sum
+    real,    allocatable, dimension (:,:) :: qmix_sum2
     real,    allocatable, dimension (:,:,:) :: omega_sum
     real,    allocatable, dimension (:,:,:) :: lgscldelq_sum,cnvcntq_sum
     real,    allocatable, dimension (:,:)   :: convprc_sum
-    integer, allocatable, dimension (:,:)   :: nsum
+    integer, allocatable, dimension (:,:)   :: nsum, nsum2
 
 !-----------------------------------------------------------------------
 
@@ -141,8 +149,10 @@ MODULE DIAG_CLOUD_MOD
 !     PSHALLOW - top of shallow convective layer (pressure level - n/m**2 )
 !     WCUT0 - omega cutoff value for omega cloud depletion factor = 0
 !     WCUT1 - omega cutoff value for omega cloud depletion factor = 1
+!     t_cold     temperature defining ice-liquid cloud transition
 !-----------------------------------------------------------------------
 
+      real        :: t_cold= 263.16
  real :: &
       pshallow=.750E+05, wcut0 = .10, wcut1 = 0.0
  real, dimension(nrhc) :: rhc = (/ 0.8,0.8,0.84 /)
@@ -157,17 +167,18 @@ MODULE DIAG_CLOUD_MOD
       lomega = .true.,lcnvcld = .true.,l_theqv = .true., & 
       linvers = .false.,lslingo = .true., lregrsc = .true., &
       lthick_high = .true.,lthick_mid = .true.,lthick_low = .true.
-!      lthick_high = .false.,lthick_mid = .false.,lthick_low = .true.
 
     NAMELIST / diag_cloud_nml /                         &
        rhc,pbounds,do_average,lquadra,lrhcnv,lomega,lcnvcld,l_theqv, & 
        linvers,lslingo,lregrsc,lthick_high,lthick_mid,lthick_low, & 
        high_lev_cloud_index, nofog, low_lev_cloud_index, nband, &
-       pshallow, wcut0, wcut1                  
+       pshallow, wcut0, wcut1, t_cold
 
+integer :: num_pts, tot_pts
 
  public diag_cloud_driver, diag_cloud_init, diag_cloud_end
- public diag_cloud_sum, diag_cloud_avg, do_diag_cloud
+ public diag_cloud_driver2
+ public diag_cloud_sum, diag_cloud_avg, diag_cloud_avg2, do_diag_cloud
 
  contains
 
@@ -178,7 +189,7 @@ MODULE DIAG_CLOUD_MOD
                     pfull,phalf,psfc,coszen,lat,time, &
                     nclds,cldtop,cldbas,cldamt,r_uv,r_nir,ab_uv,ab_nir, &
                     em_lw, conc_drop, conc_ice, size_drop, size_ice, &
-		    kbot)
+    kbot)
 
 ! Arguments (intent in)
 
@@ -203,7 +214,7 @@ MODULE DIAG_CLOUD_MOD
 !                   (dimensioned IDIM x JDIM x kx)
 !      RHUM     Relative humidity fraction at full model levels
 !                   (dimensioned IDIM x JDIM x kx)
-!      OMEGA  	Pressure vertical velocity at full model levels
+!      OMEGA  Pressure vertical velocity at full model levels
 !                   (dimensioned IDIM x JDIM x kx)
 !      LGSCLDELQ  Averaged rate of change in mix ratio due to lg scale precip 
 !               at full model levels  
@@ -252,13 +263,13 @@ MODULE DIAG_CLOUD_MOD
 !                   (dimensioned IDIM x JDIM x kx)
 !      R_UV     fractional amount of ultraviolet radiation
 !                     reflected by the clouds (at cloud levels)
-!      R_NIR	fractional amount of near inrared radiation
+!      R_NIRfractional amount of near inrared radiation
 !                     reflected by the clouds (at cloud levels)
-!      AB_UV	fractional amount of ultraviolet radiation
+!      AB_UVfractional amount of ultraviolet radiation
 !                     absorbed by the clouds (at cloud levels)
-!      AB_NIR	fractional amount of near inrared radiation
+!      AB_NIRfractional amount of near inrared radiation
 !                     absorbed by the clouds (at cloud levels)
-!      EM_LW	emissivity for the clouds (at cloud levels)
+!      EM_LWemissivity for the clouds (at cloud levels)
 
 !=======================================================================
 !  (Intent local)
@@ -268,9 +279,11 @@ integer,  dimension(size(rhum,1),size(rhum,2),size(rhum,3))  :: icld
 real, dimension(size(rhum,1),size(rhum,2)) :: qmix_kx
 real,  dimension(size(rhum,1),size(rhum,2),size(rhum,3),mxband)  :: tau
 real,  dimension(size(rhum,1),size(rhum,2),size(rhum,3))  :: &
-                  tempcld,delp_true
+                  tempcld,delp_true, delp
 integer idim, jdim, ie, je, kx, lk, ierr, iprnt
 logical :: rad_prop, wat_prop
+integer :: max_cld
+integer :: i,j,k,n
 
 !       TAU        cloud optical depth (at cloud levels)
 !                   (dimensioned IDIM x JDIM x kx x MXBAND)
@@ -306,27 +319,33 @@ logical :: rad_prop, wat_prop
       idim = size(rhum,1)
       jdim = size(rhum,2)
       kx = size(rhum,3)
+      tau = 0.0
 
       rad_prop = .false.
       wat_prop = .false.
       if (present (r_uv) .or. present(r_nir) .or. present (ab_uv) &
-             .or. present(ab_nir) .or. present (em_lw) ) then
-         rad_prop = .true.
-      endif
-      if (present(conc_drop) .or. present(conc_ice) .or.    &
-           present(size_drop) .or. present(size_ice) ) then
-         wat_prop = .true.
-      endif
-      if ( (.not. rad_prop) .and. (.not. wat_prop) ) then
-        rad_prop = .true.
-      endif
+       .or. present(ab_nir) .or. present (em_lw) ) then
+   rad_prop = .true.
+   r_uv = 0.
+   r_nir = 0.
+   ab_uv = 0.
+   ab_nir = 0.
+   em_lw = 0.
+endif
+if (present(conc_drop) .or. present(conc_ice) .or.    &
+     present(size_drop) .or. present(size_ice) ) then
+   wat_prop = .true.
+endif
+if ( (.not. rad_prop) .and. (.not. wat_prop) ) then
+  rad_prop = .true.
+endif
 
-!  define lower limit for low cloud bases
-      if (nofog) then
-        lk = low_lev_cloud_index
-      else
-        lk = kx
-      endif
+  !  define lower limit for low cloud bases
+if (nofog) then
+  lk = low_lev_cloud_index
+else
+  lk = kx
+endif
 
 !  cldtim drives cloud prediction scheme
       call cldtim ( temp,qmix,rhum,omega,lgscldelq,cnvcntq,convprc, &
@@ -337,25 +356,28 @@ logical :: rad_prop, wat_prop
 ! lowest level mixing ratio for anomalous absorption in cloud-radiation
       qmix_kx(:,:) = qmix(:,:,kx)
 
+    max_cld  = MAXVAL(nclds(:,:))
+
+    IF (max_cld .gt. 0) then
+
+       call cloud_pres_thick_for_tau (nclds,icld,cldtop,cldbas, &
+   &          delp_true,lhight,lhighb, lmidt, lmidb, llowt,lk, delp, &
+   &          phalf, psfc )
+
+       call cloud_optical_depths(nclds,icld,cldtop,cldbas,tempcld,delp, &
+                          tau,phalf )
+
 !  cloud_tau_driver drives cloud radiative properties scheme
       if (rad_prop) then
-      call cloud_tau_driver (pfull,phalf,qmix_kx,nclds,icld,cldamt, &
-                 cldtop, cldbas,delp_true,tempcld, &
-                 lhight,lhighb, lmidt, lmidb, llowt,lk, &
-                                               tau, coszen, psfc, &
-                 r_uv=r_uv, r_nir=r_nir, ab_nir=ab_nir, ab_uv=ab_uv, &
+      call cloud_tau_driver (            qmix_kx,                   &
+                                          tempcld, &
+                                               tau, coszen,  &
+                                   r_uv=r_uv, r_nir=r_nir, ab_nir=ab_nir, ab_uv=ab_uv, &
                  em_lw=em_lw)
 
       endif
-      if (wat_prop) then
-      call cloud_tau_driver (pfull,phalf,qmix_kx,nclds,icld,cldamt, &
-                 cldtop, cldbas,delp_true,tempcld, &
-                 lhight,lhighb, lmidt, lmidb, llowt,lk, &
-                                               tau, coszen, psfc , &
-                 conc_drop=conc_drop, conc_ice=conc_ice,    &
-                 size_drop=size_drop, size_ice=size_ice   )
-      endif
 
+      endif ! (max_cld > 0)
 
 !-----------------------------------------------------------------------
 !  print output for 1-d testing
@@ -375,12 +397,316 @@ logical :: rad_prop, wat_prop
 !            print *,'optical depth = ', tau(iprnt,1,:,:)     
 
 !-----------------------------------------------------------------------
+   if (present (conc_drop)) then
+!-----------------------------------------------------------------------
+!!!RSH
+!!      NOTE:
+!  THE FOLLOWING is here as an INITIAL IMPLEMENTATION to allow compil-
+!  ation and model execution, and provide "reasonable ?? " values.
+!  Code developed but NOT YET ADDED HERE reflects the current approach.
+!  That code is available under the fez release, and will be added to
+!  the repository when upgrades to the cloud-radiation modules are com-
+!  pleted.
+!!!RSH
+! obtain drop and ice size and concentration here, consistent with the
+! diag_cloud scheme.
+!  As a test case, 
+!  the following is a simple specification of constant concentration and
+!  size in all boxes defined as cloudy, attempting to come close to
+!  the prescribd values in microphys_rad.
+!  assume ice cld thickness = 2.0 km; then conc_ice=10.0E-03 => 
+!    iwp = 20 g/m^2, similar to that prescribed in microphys_rad.
+!  assume water cld thickness = 3.5 km; then conc_drop = 20E-03 =>
+!    lwp = 70 g / m^2, similar to that prescribed in microphys_rad.
+!   use sizes as used in microphys_rad (50 and 20 microns). when done,
+!   radiative boundary fluxes are "similar" to non-microphysical results
+!   for test case done here, and shows reasonable sensitivity to
+!   variations in concentrations.
+
+    conc_ice = 0.
+    conc_drop = 0.
+    size_ice = 50.
+    size_drop = 20.
+
+
+    IF (max_cld .gt. 0) then
+         idim = size(tau,1)
+           jdim = size(tau,2)
+         do j= 1,jdim
+           do i=1,idim
+          do n=1,nclds(i,j)
+          do k=cldtop(i,j,n), cldbas(i,j,n)
+           if (tempcld(i,j,n) < t_cold) then
+            conc_ice(i,j,k) = 10.0E-03  ! units : g/m^3
+          size_ice(i,j,k) = 50.       ! units : diameter in microns
+           else
+            conc_drop(i,j,k) = 20.0E-03 ! units : g/m^3
+            size_drop(i,j,k) = 20.      ! units : diameter in microns
+           endif
+           end do
+        end do
+           end do
+           end do
+
+    endif
+ endif
 
 
 end SUBROUTINE DIAG_CLOUD_DRIVER
 
+!---------------------------------------------------------------------
 
-!#############################################################################      
+subroutine diag_cloud_driver2 (is, js, press, pflux, lat, time, nclds, &
+                               cldtop, cldbas, cldamt, liq_frac, tau, &
+                               ice_cloud, kbot) 
+
+!--------------------------------------------------------------------- 
+!    diag_cloud_driver2 returns the cloud specification arrays for the 
+!    gordon diag cloud scheme. returned are the number of clouds per 
+!    column, the cloud top, cloud base and fractional coverage of each 
+!    cloud, the amount of the cloud which is liquid, its optical depth 
+!    and an indicator as to whether it is ice or liquid (a different 
+!    criterion than is used for the liquid fraction determination).
+!----------------------------------------------------------------------
+ 
+integer,                     intent(in)             ::  is,js
+real,    dimension (:,:,:),  intent(in)             ::  press, pflux 
+real,    dimension(:,:),     intent(in)             ::  lat
+type(time_type),             intent(in)             ::  time
+integer, dimension(:,:),     intent(inout)          ::  nclds
+integer, dimension(:,:,:),   intent(out)            ::  cldtop,cldbas
+real,    dimension(:,:,:),   intent(out)            ::  cldamt, liq_frac
+real,    dimension(:,:,:,:), intent(out)            ::  tau
+logical, dimension(:,:,:),   intent(out)            ::  ice_cloud
+integer, dimension(:,:),     intent(in), optional   ::  kbot
+
+!---------------------------------------------------------------------
+!   intent(in) variables:
+!
+!      is,js             starting subdomain i,j indices of data 
+!                        in the physics_window being integrated
+!      press             pressure at model levels (1:nlev), surface    
+!                        pressure is stored at index value nlev+1   
+!                        [ (kg /( m s^2) ]
+!      pflux             average of pressure at adjacent model levels  
+!                        [ (kg /( m s^2) ]
+!      lat               latitude of model points  [ radians ]
+!      time              time at which radiation calculation is to apply
+!                        [ time_type (days, seconds) ]
+!
+!   intent(inout) variables:
+!
+!      nclds             total number of clouds in each grid column
+!
+!   intent(out) variables:
+!
+!      cldtop            k index of cloud top for each cloud
+!      cldbas            k index of cloud base for each cloud
+!      cldamt            fractional cloudiness for each cloud
+!                        [ dimensionless ]
+!      liq_frac          fraction of cloud which is liquid 
+!                        [ dimensionless ]
+!      tau               cloud optical depth  [ dimensionless ]
+!      ice_cloud         logical flag indicating whether cloud is liquid
+!                        or ice
+!
+!    intent(in), optional variables:
+!
+!      kbot              present when running eta vertical coordinate,
+!                        index of lowest model level above ground
+!
+!---------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!   local variables:
+
+      integer, dimension (size(press,1), size(press,2)) :: &
+                                    lhight, lhighb, lmidt, lmidb, llowt
+
+      integer,  dimension (size(press,1), size(press,2),  &
+                                          size(press,3)-1)  :: icld
+
+      real,  dimension (size(press,1), size(press,2),   &
+                                       size(press,3)-1)  :: &
+                         temp, qmix, rhum, omega, lgscldelq, cnvcntq, &
+                 delp, tempcld, delp_true, pfull
+
+      real, dimension (size(press,1), size(press,2)) ::  convprc, psfc
+
+      real,  dimension(size(press,1), size(press,2),  &
+                       size(press,3))  ::  phalf
+
+      integer     :: kx, lk, ierr, max_cld
+      integer     :: i, j, n
+      
+!---------------------------------------------------------------------
+!   local variables:
+!
+!       lhight     vertical level index upper limit for high cloud tops
+!                  a function of lat and lon
+!       lhighb     vertical level index lower limit for high cloud bases
+!                  a function of lat and lon
+!       lmidt      vertical level index upper limit for mid cloud tops
+!                  a function of lat and lon
+!       lmidb      vertical level index lower limit for mid cloud bases
+!                  a function of lat and lon
+!       llowt      vertical level index upper limit for low cloud tops
+!                  a function of ltt and lon
+!       icld       marker array of cloud types/heights (at cloud levels)
+!       temp       temperature at full model levels [ deg K ]
+!       qmix       mixing ratio at full model levels [ kg H2O / kg air ]
+!       rhum       relative humidity fraction at full model levels
+!                  [ dimensionless ]
+!       omega      pressure vertical velocity at full model levels
+!                  [ mb / sec ??????? ]
+!       lgscldelq  averaged rate of change in mixing ratio due to large 
+!                  scale precip at full model levels  
+!       cnvcntq    accumulated count of change in mixing ratio due to 
+!                  convective  precip at full model levels  
+!       delp       pressure thickness of model layers [ kg / (m s^2) ]
+!       tempcld    cloud layer mean temperature, at cloud levels
+!                  [ deg K ]
+!       delp_true  true cloud pressure thickness of distinct cloud 
+!                  layers (at cloud levels) [ kg / (m s^2) ]
+!       pfull      pressure at full levels [ kg / (m s^2) ]
+!       convprc    accumulated conv precip rate summed over all
+!                  full model levels [ mm/day ]
+!       psfc       surface pressure field [ kg / (m s^2) ]
+!       phalf      pressure at model half levels [ kg / (m s^2) ]
+
+
+!       kx         number of model layers
+!       lk         vertical level below which no low cloud bases can 
+!                  exist
+!       ierr       error flag
+!       max_cld    max number of clouds in any column in the current
+!                  physics window
+!       i,j,n    do loop indices
+!
+!--------------------------------------------------------------------- 
+
+!----------------------------------------------------------------------
+!    define the number of model layers.
+!----------------------------------------------------------------------
+      kx   = size(press,3) - 1
+
+!---------------------------------------------------------------------
+!    define the needed pressure arrays. 
+!---------------------------------------------------------------------
+      pfull(:,:,:) = press(:,:,1:kx)
+      phalf(:,:,:) = pflux(:,:,:)
+      psfc(:,:)    = press(:,:,kx+1)
+
+!--------------------------------------------------------------------
+!    call diag_cloud_avg to obtain the appropriate values for the input 
+!    arrays needed to define the cloud locations and amounts. these may
+!    or may not be time-averaged values.
+!---------------------------------------------------------------------
+      call diag_cloud_avg (is, js, temp, qmix, rhum, omega, lgscldelq, &
+                           cnvcntq, convprc, ierr)
+
+!----------------------------------------------------------------------
+!    initialize the output fields produced by this module.
+!---------------------------------------------------------------------
+      tau = 0.
+      liq_frac = 0.
+      cldamt = 0.
+      cldtop = 0
+      cldbas = 0
+      ice_cloud = .false.
+
+!----------------------------------------------------------------------
+!    if input data was appropriately returned from diag_cloud_avg,
+!    proceed with the determination of the cloud field.
+!---------------------------------------------------------------------
+      if (ierr == 0) then
+
+!---------------------------------------------------------------------
+!    define the lowest model level which can be a cloud base. it is 
+!    either the lowest model level, or a level determined from namelist
+!    input.
+!---------------------------------------------------------------------
+        if (nofog) then
+          lk = low_lev_cloud_index
+        else
+          lk = kx
+        endif
+
+!--------------------------------------------------------------------
+!    call cldtim to drive the cloud prediction scheme.
+!--------------------------------------------------------------------
+        call cldtim (temp, qmix, rhum, omega, lgscldelq, cnvcntq,   &
+                     convprc, pfull, phalf, psfc, lat, time, tempcld, &
+                     delp_true, cldtop, cldbas, cldamt, lhight, lhighb,&
+                     lmidt, lmidb, llowt, icld, nclds, kbot)
+
+!---------------------------------------------------------------------
+!    determine the maximum number of clouds in any of the columns in the
+!    physics window.
+!---------------------------------------------------------------------
+        max_cld  = MAXVAL(nclds(:,:))
+
+!--------------------------------------------------------------------
+!    if cloud is present anywhere in the window, call 
+!    cloud_pres_thick_for_tau to determine the cloud thicknesses and
+!    the call cloud_optical_depths2 to determine the optical depths and
+!    liquid fraction of each cloud.
+!---------------------------------------------------------------------
+        if (max_cld > 0) then
+          call cloud_pres_thick_for_tau (nclds, icld, cldtop, cldbas, &
+                                         delp_true, lhight, lhighb,  &
+                                         lmidt, lmidb, llowt, lk, delp,&
+                                         phalf, psfc)
+          call cloud_optical_depths2 (nclds, icld, cldtop, cldbas,  & 
+                                      tempcld, delp, tau, phalf, &
+                                      liq_frac)
+        endif
+
+!---------------------------------------------------------------------
+!    determine whether the cloud temperature will support a liquid or
+!    an ice cloud. the parameter t_cold is the cutoff temperature value.
+!---------------------------------------------------------------------
+        do j= 1,size(press,2)
+          do i=1,size(press,1)
+            do n=1,nclds(i,j)
+              if (tempcld(i,j,n) < t_cold) then
+                ice_cloud(i,j,n) = .true.
+              endif
+            end do
+          end do
+        end do
+
+!----------------------------------------------------------------------
+!    if input data was not acceptably returned from diag_cloud_avg,
+!    determine if this represents an error, or is just a manifestation
+!    of coldstart behavior. if this is coldstart step, set clouds to
+!    zero and continue.
+!---------------------------------------------------------------------
+      else
+        if (num_pts >= tot_pts) then
+          call error_mesg ('diag_cloud_mod',  &
+             ' no diag cloud data available; ierr /= 0', FATAL)
+        else
+          num_pts = num_pts + size(press,1)*size(press,2)
+          nclds = 0
+        endif
+      endif ! (ierr=0)
+
+
+!--------------------------------------------------------------------
+
+
+
+
+end subroutine diag_cloud_driver2
+
+
+
+!---------------------------------------------------------------------
+
+
+
+!##################################################################      
 
  SUBROUTINE CLDTIM (temp,qmix,rhum, omega,lgscldelq,cnvcntq,convprc,  &
                     pfull, phalf,psfc, lat, time, tempcld,delp_true, &
@@ -417,7 +743,7 @@ end SUBROUTINE DIAG_CLOUD_DRIVER
 !                   (dimensioned IDIM x JDIM x kx)
 !      RHUM     Relative humidity fraction at full model levels
 !                   (dimensioned IDIM x JDIM x kx)
-!      OMEGA  	Pressure vertical velocity at full model levels 
+!      OMEGA  Pressure vertical velocity at full model levels 
 !                   (dimensioned IDIM x JDIM x kx)
 !      LGSCLDELQ  Averaged rate of change in mix ratio due to lg scale precip 
 !               at full model levels  
@@ -468,13 +794,13 @@ integer, intent(in), OPTIONAL, dimension(:,:) :: kbot
 !                    (at cloud levels)
 !      R_UV    fractional amount of ultraviolet radiation
 !                     reflected by the clouds
-!      R_NIR	fractional amount of near inrared radiation
+!      R_NIRfractional amount of near inrared radiation
 !                     reflected by the clouds
-!      AB_UV	fractional amount of ultraviolet radiation
+!      AB_UVfractional amount of ultraviolet radiation
 !                     absorbed by the clouds
-!      AB_NIR	fractional amount of near inrared radiation
+!      AB_NIRfractional amount of near inrared radiation
 !                     absorbed by the clouds
-!      EM_LW	emissivity for the clouds
+!      EM_LWemissivity for the clouds
 !       NCLDS        number of (random overlapping) clouds in column and also
 !                        the current # for clouds to be operating on
 !       LHIGHT        vertical level index upper limit for high cloud tops
@@ -845,7 +1171,7 @@ subroutine CLOUD_CNV (rhum,cnvcntq,convprc, pfull, phalf, camtcnv, rhumcnv )
             do j=1,jdim
             do i=1,idim
       if (camtcnv(i,j,k) .lt. 0.0) then
-         print *, ' pe,i,j,k,camtcnv = ', get_my_pe(),i,j,k,  &
+         print *, ' pe,i,j,k,camtcnv = ', mpp_pe(),i,j,k,  &
                     camtcnv(i,j,k)
          call error_mesg ('cloud_cnv','cloud amount < 0' ,FATAL) 
       endif
@@ -890,7 +1216,7 @@ subroutine CLOUD_RHUM (rhum,pnorm, camtrh)
 !               when nofog = true (model level index)
 !-------------------------------------------------------------------
 
- real, intent(in), dimension (:,:,:) :: rhum,pnorm
+real, intent(in), dimension (:,:,:) :: rhum,pnorm
 
 !-------------------------------------------------------------------
 !      RHUM     Relative humidity fraction at full model levels
@@ -906,6 +1232,7 @@ subroutine CLOUD_RHUM (rhum,pnorm, camtrh)
 !=======================================================================
 !  (Intent local)
  real, dimension (size(rhum,1),size(rhum,2)) :: rhc_work
+! real, dimension (size(rhum,1),size(rhum,2),size(rhum,3)) :: rhum2      
  integer kx, kcbtop, lk, lkxm1, npower
 !-----------------------------------------------------------------------
 !  type loop index variable
@@ -925,6 +1252,9 @@ subroutine CLOUD_RHUM (rhum,pnorm, camtrh)
       endif
 
 
+!    if (mpp_pe() == 0) then
+!      print *, 'npower', npower
+!    endif
 
 !  define lower limit rel hum clouds
       if (nofog) then
@@ -953,6 +1283,12 @@ subroutine CLOUD_RHUM (rhum,pnorm, camtrh)
         where (pnorm(:,:,k).lt.pbounds(1)) 
               rhc_work(:,:) = rhc(1)
         end where
+!BUGFIX ??
+!       where (rhum(:,:,k) == rhc_work(:,:))
+!    rhum2(:,:,k) = rhum(:,:,k) - 0.00007
+!elsewhere
+!    rhum2(:,:,k) = rhum(:,:,k)
+!       endwhere
         where (rhum (:,:,k) > rhc_work(:,:))
           camtrh(:,:,k) = min(1.0, (  &
            (rhum (:,:,k) - rhc_work(:,:))/(1-rhc_work(:,:)) )** npower)
@@ -995,7 +1331,7 @@ subroutine CLOUD_OMGA (camtrh, omega, llowt, camtw)
 !-----------------------------------------------------------------------
 !      CAMTRH   tentative rel. humidity cloud amounts 
 !                   (dimensioned IDIM x JDIM x kx)
-!      OMEGA  	Pressure vertical velocity at full model levels
+!      OMEGA  Pressure vertical velocity at full model levels
 !                   (dimensioned IDIM x JDIM x kx)
 !      LLOWT    vertical level index upper limit for low cloud tops
 !               a function of lon and latitude (dimensioned IDIMxJDIM)
@@ -1108,7 +1444,7 @@ subroutine CLOUD_SHALLOW_CONV (theta,omega,pfull,phalf,temp,qmix,camtrh, &
 
 !     THETA     Potential temperature at full model levels ( Deg K )
 !               (dimensioned IDIM x JDIM x kx)
-!      OMEGA  	Pressure vertical velocity at full model levels
+!      OMEGA  Pressure vertical velocity at full model levels
 !                   (dimensioned IDIM x JDIM x kx)
 !      PFULL    Pressure at full model levels
 !                   (dimensioned IDIM x JDIM x kx)
@@ -1212,7 +1548,8 @@ subroutine CLOUD_SHALLOW_CONV (theta,omega,pfull,phalf,temp,qmix,camtrh, &
 
 !  calculate equivalent potential temperature 
      
-     theta_e(:,:,:) = theta(:,:,:)*exp(HLv*qmix(:,:,:)/(Cp_Air*temp(:,:,:)))
+     theta_e(:,:,:) = theta(:,:,:)*exp(HLv*qmix(:,:,:)/    &
+                      (Cp_Air*temp(:,:,:)))
  
 
 !=======================================================================
@@ -2247,7 +2584,7 @@ integer, intent(out), dimension(:,:)  :: nclds
 ! find maximum number of cloud layers
       maxcld  = maxval(nclds(:,:))
                    if (maxcld .gt. kx/2) then
-     print *,'pe, NCLDS =', get_my_pe(),nclds
+     print *,'pe, NCLDS =', mpp_pe(),nclds
                  call error_mesg ('diag_cloud, layr_top_base',  &
                    'NCLDS too large', FATAL)
                     endif
@@ -2383,7 +2720,7 @@ subroutine CLDAMT_MN (nclds,cldtop,cldbas,phalf,camt,cldamt)
              else if ( (cldtop(i,j,kpr) .gt. cldbas(i,j,kpr)) .or. &
              (cldtop(i,j,kpr).lt.0) .or. (cldbas(i,j,kpr).lt.0)) then
 
-     print *,'pe, i,j,kpr, cldtop,cldbas =', get_my_pe(),i,j,kpr, &
+     print *,'pe, i,j,kpr, cldtop,cldbas =', mpp_pe(),i,j,kpr, &
          cldtop(i,j,kpr),cldbas(i,j,kpr),cldtop(i,j,kpr),cldbas(i,j,kpr)
                  call error_mesg ('diag_cloud, cldamt_mn',  &
                    'invalid cldtop and/or cldbas', FATAL)
@@ -2769,17 +3106,10 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer  unit, log_unit, io,idim,jdim,is,js,ie,je
+ integer  unit, io,idim,jdim,is,js,ie,je
 
 !=====================================================================
 
-!---------------------------------------------------------------------
-! --- Output version
-!---------------------------------------------------------------------
-
-      log_unit = open_file ('logfile.out', action='append')
-      if ( get_my_pe() == 0 ) &
-           write (log_unit, '(/,80("="),/(a))') trim(version),trim(tag)
 
 !---------------------------------------------------------------------
 ! --- Read namelist
@@ -2787,16 +3117,13 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
-         unit = open_file ('input.nml', action='read')
+         unit = open_namelist_file ('input.nml')
         
    io = 1
    do while( io .ne. 0 )
    READ ( unit,  nml = diag_cloud_nml, iostat = io, end = 10 ) 
    end do
-go to 99
-10 if (get_my_pe() == 0 ) write (log_unit,11)
-11 format (' *** USING DEFAULTS FOR NAMELIST DIAG_CLOUD_NML ')
-99  call close_file (unit)
+10  call close_file (unit)
 ! -------------------------------------
   end if
 
@@ -2804,7 +3131,10 @@ go to 99
 ! --- Output namelist
 !---------------------------------------------------------------------
 
-      if ( get_my_pe() == 0 ) write (log_unit, nml=diag_cloud_nml)
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+           write (stdlog(), nml=diag_cloud_nml)
+      endif     
 
 !---------------------------------------------------------------------
 ! --- Allocate storage for global cloud quantities
@@ -2812,20 +3142,27 @@ go to 99
 
 
     allocate( temp_sum(ix,iy,kx),qmix_sum(ix,iy,kx),rhum_sum(ix,iy,kx) )
+    allocate( qmix_sum2(ix,iy) )
     allocate( omega_sum(ix,iy,kx),lgscldelq_sum(ix,iy,kx),cnvcntq_sum(ix,iy,kx) )
-    allocate( convprc_sum(ix,iy),nsum(ix,iy) )
+    allocate( convprc_sum(ix,iy),nsum(ix,iy), nsum2(ix,iy) )
 
+! need to set up to account for first radiation step without having
+! diag cloud info available (radiation called before diag_cloud, and
+! diag_cloud being initiated (cold-started) in this job). 
+
+      tot_pts = ix*iy
 !---------------------------------------------------------------------
 !---------- initialize for cloud averaging -------------------------
 !---------------------------------------------------------------------
 
   if( FILE_EXIST( 'INPUT/diag_cloud.res' ) ) then
-           unit = open_file ('INPUT/diag_cloud.res',      &
-                             form='native', action='read')
+           unit = open_restart_file ('INPUT/diag_cloud.res', action='read')
 
       call read_data (unit,nsum)
+      nsum2 = nsum
       call read_data (unit,temp_sum)
       call read_data (unit,qmix_sum)
+      qmix_sum2(:,:) = qmix_sum(:,:,size(qmix_sum,3))
       call read_data (unit,rhum_sum)
       call read_data (unit,omega_sum)
       call read_data (unit,lgscldelq_sum)
@@ -2834,23 +3171,32 @@ go to 99
 
       ierr = 0
 
+      num_pts = tot_pts
   else
 
       ierr = 1
-      if (get_my_pe() == 0 ) write (log_unit,12)
-      call close_file (log_unit)
+      if (mpp_pe() == mpp_root_pe() ) write (stdlog(),12)
   12  format ('*** WARNING *** No cloud_tg restart file found ***  ' )
 
       nsum = 0
+      nsum2 = 0
       temp_sum = 0.0
       qmix_sum = 0.0
+      qmix_sum2 = 0.0
       rhum_sum = 0.0
       omega_sum = 0.0
       lgscldelq_sum = 0.0
       cnvcntq_sum = 0.0
       convprc_sum = 0.0
 
+      num_pts = 0
+
   end if
+
+
+
+
+
 !-------------------------------------------------------------------
 ! initialize zonal cloud routine for climatological zonal mean cloud info
 ! Passing the number 5 as the argument to cloud_zonal_init initializes the 
@@ -2866,6 +3212,7 @@ go to 99
          call diag_cloud_rad_init (do_crad_init)
       endif
   do_cpred_init = .true.
+  module_is_initialized = .true.
 
  
 !=====================================================================
@@ -2880,8 +3227,7 @@ go to 99
   integer :: unit
 !=======================================================================
 
-    unit = open_file ('RESTART/diag_cloud.res',     &
-                      form='native', action='write')
+    unit = open_restart_file ('RESTART/diag_cloud.res', action='write')
 
       call write_data (unit, nsum)
       call write_data (unit, temp_sum)
@@ -2893,6 +3239,7 @@ go to 99
       call write_data (unit, convprc_sum)
 
       call close_file (unit)
+      module_is_initialized = .false.
  
 !=====================================================================
   end SUBROUTINE DIAG_CLOUD_END
@@ -2932,7 +3279,7 @@ go to 99
 !                   (dimensioned IDIM x JDIM x kx)
 !      RHUM     Relative humidity fraction at full model levels
 !                   (dimensioned IDIM x JDIM x kx)
-!      OMEGA  	Pressure vertical velocity at full model levels
+!      OMEGA  Pressure vertical velocity at full model levels
 !                   (dimensioned IDIM x JDIM x kx)
 !      LGSCLDELQ  Averaged rate of change in mix ratio due to lg scale precip 
 !               at full model levels  
@@ -2958,8 +3305,10 @@ go to 99
 
    if (do_average) then
       nsum(is:ie,js:je)   =  nsum(is:ie,js:je)   +  1
+      nsum2(is:ie,js:je)   =  nsum2(is:ie,js:je)   +  1
       temp_sum(is:ie,js:je,:) = temp_sum(is:ie,js:je,:) + temp(:,:,:)
       qmix_sum(is:ie,js:je,:) = qmix_sum(is:ie,js:je,:) + qmix(:,:,:)
+      qmix_sum2(is:ie,js:je) = qmix_sum2(is:ie,js:je) + qmix(:,:,size(qmix,3))
       rhum_sum(is:ie,js:je,:) = rhum_sum(is:ie,js:je,:) + rhum(:,:,:)
       omega_sum(is:ie,js:je,:) = omega_sum(is:ie,js:je,:) + omega(:,:,:)
       lgscldelq_sum(is:ie,js:je,:) = lgscldelq_sum(is:ie,js:je,:) &
@@ -2968,8 +3317,10 @@ go to 99
       convprc_sum(is:ie,js:je) = convprc_sum(is:ie,js:je) + convprc(:,:)
    else
       nsum(is:ie,js:je)   =  1
+      nsum2(is:ie,js:je)   =  1
       temp_sum(is:ie,js:je,:) = temp(:,:,:)
       qmix_sum(is:ie,js:je,:) = qmix(:,:,:)
+      qmix_sum2(is:ie,js:je) = qmix(:,:,size(qmix,3))
       rhum_sum(is:ie,js:je,:) = rhum(:,:,:)
       omega_sum(is:ie,js:je,:) = omega(:,:,:)
       lgscldelq_sum(is:ie,js:je,:) = lgscldelq(:,:,:)
@@ -2984,7 +3335,7 @@ go to 99
 !#######################################################################
 
  subroutine DIAG_CLOUD_AVG (is, js, temp,qmix,rhum,omega, &
-                           lgscldelq,cnvcntq,convprc,ierr)
+                           lgscldelq,cnvcntq,convprc,      ierr)
 
 !-----------------------------------------------------------------------
    integer, intent(in)                    :: is, js
@@ -3046,6 +3397,51 @@ go to 99
 !-----------------------------------------------------------------------
 
  end SUBROUTINE DIAG_CLOUD_AVG
+
+!#######################################################################
+
+ subroutine DIAG_CLOUD_AVG2 (is, js, qmix, ierr)
+
+!-----------------------------------------------------------------------
+   integer, intent(in)                    :: is, js
+      real, intent(inout), dimension(:,:) :: qmix
+   integer, intent(out)                   :: ierr
+!-----------------------------------------------------------------------
+   integer ::ie, je, num, k
+!-----------------------------------------------------------------------
+
+!  if (size(qmix,3) .ne. size(qmix_sum2,3)) call error_mesg ( &
+!                              'diag_cloud_avg in diag_cloud_mod',  &
+!                              'input argument has the wrong size',2)
+
+   ie = is + size(qmix,1) - 1
+   je = js + size(qmix,2) - 1
+   num = count(nsum2(is:ie,js:je) == 0)
+
+   if (num > 0) then
+
+!     ----- no average, return error flag -----
+
+!!!    call error_mesg ('diag_cloud_avg in diag_cloud_mod',  &
+!!!                     'dividing by a zero counter', 2)
+       ierr = 1
+
+   else
+
+!      ----- compute average -----
+
+          qmix(:,:) = qmix_sum2(is:ie,js:je) / float(nsum2(is:ie,js:je))
+
+       ierr = 0
+
+   endif
+
+    nsum2(is:ie,js:je)   = 0
+   qmix_sum2(is:ie,js:je) = 0.0
+     
+!-----------------------------------------------------------------------
+
+ end SUBROUTINE DIAG_CLOUD_AVG2
 
 !#######################################################################
 

@@ -10,7 +10,8 @@
       USE HCONST_MOD, ONLY: DIFFCTR,GINV,P0,P0INV,GP0INV,P0XZP2,P0XZP8
       USE HCONST_MOD, ONLY: RADCON,RADCON1,RATH2OMW,SECPDA
 
-      Use Utilities_Mod, ONLY:  Error_Mesg, FATAL, NOTE
+      Use    FMS_Mod, ONLY:  Error_Mesg, FATAL, NOTE, mpp_pe, &
+                             mpp_root_pe, write_version_number
 
       Use CO2_Data_Mod, ONLY:  CO251,CO258,CDT51,CDT58,C2D51,C2D58, &
                                CO2M51,CO2M58,CDTM51,CDTM58,C2DM51,  &
@@ -21,15 +22,8 @@
 
 
 !     -----------------------------------------------------------
-
-      PRIVATE LMAX
-      PRIVATE LM1,LP1,LP2,LL,LLP1,LLM1,LP1M,LP1V,LL3P
-      PRIVATE NBLW,NBLX,NBLY,NBLM,INLTE,INLTEP,NNLTE
-
-      PRIVATE DIFFCTR,GINV,P0,P0INV,GP0INV,P0XZP2,P0XZP8
-      PRIVATE RADCON,RADCON1,RATH2OMW,SECPDA
-
-      Private   Error_Mesg
+implicit none
+private
 
 !-----------------------------------------------------------------------
 !--------------------- G L O B A L   D A T A ---------------------------
@@ -84,6 +78,7 @@
       DATA AO3RND /0.543368E+02,  0.234676E+04,  0.384881E+02/
       DATA BO3RND /0.526064E+01,  0.922424E+01,  0.496515E+01/
 
+      integer :: i
       DATA (ARNDM(i),i=1,64) /                                      &
          0.354693E+00,  0.269857E+03,  0.167062E+03,  0.201314E+04, &
          0.964533E+03,  0.547971E+04,  0.152933E+04,  0.599429E+04, &
@@ -765,9 +760,46 @@
       REAL,ALLOCATABLE,DIMENSION(:,:)   :: E1FLX,CO2NBL,CO2SP1,CO2SP2
       REAL,ALLOCATABLE,DIMENSION(:,:)   :: CO2SP,TO3SPC,TOTVO2
 
+!------------ VERSION NUMBER ----------------
+
+ character(len=128) :: version = '$Id: longwave.F90,v 10.0 2003/10/24 22:00:31 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
+ logical            :: module_is_initialized = .false.
+
 !-----------------------------------------------------------------------
 
+public LWRad, Rad_DeAlloc, longwave_init, longwave_end
+public OSOUR, CSOUR, SS1, FLX1E1, GXCTS, FCTSG, CLDFAC, DELP2, DELP, &
+       TO3, CO21, EMISS, EMISS2, CTS, EXCTS, EXCTSN, E1FLX, CO2SP,   &
+       IBAND, BANDLO, BANDHI
+
+
       CONTAINS
+
+!#######################################################################
+!#######################################################################
+      Subroutine longwave_init
+!------- write version number  ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
+
+      module_is_initialized = .true.
+
+!---------------------------------------------------------------------
+
+      End Subroutine longwave_init
+
+!#######################################################################
+!#######################################################################
+
+      Subroutine longwave_end
+
+      module_is_initialized = .false.
+!---------------------------------------------------------------------
+
+      End Subroutine longwave_end
 
 !#######################################################################
 !#######################################################################
@@ -902,26 +934,39 @@
       REAL,   INTENT(OUT), DIMENSION(:,:) :: HEATRA
       REAL,   INTENT(OUT), DIMENSION(:)   :: GRNFLX,TOPFLX
 
-!CC   DIMENSION   HEATRA(IMAX,LMAX),GRNFLX(IMAX),TOPFLX(IMAX)
 !-----------------------------------------------------------------------
 !----------------LOCAL ARRAY STORAGE------------------------------------
-      DIMENSION  PRESS(IMAX,LP1)
+
+      integer :: k, kp
+      real    :: diftt
+      real, dimension(IMAX,LP1)  :: &
+                    PRESS, CO2R1, DCO2D1, D2CD21, D2CD22, &
+                    CO2R2 , DCO2D2, TDAV, TSTDAV, VSUM3, TEXPSL, TLSQU
+      
+      real, dimension(IMAX,LMAX)  :: &
+                    VV, CO2MR, CO2MD, CO2M2D, VSUM4
+
+      real, dimension(IMAX)  :: &
+                    VSUM1, VSUM2, A1, A2
+      real, dimension(IMAX,LP1M)  :: &
+                    DIFT1D
+!      DIMENSION  :: PRESS(IMAX,LP1)
 
 !     DIMENSION  CO2R(IMAX,LP1,LP1),DIFT(IMAX,LP1,LP1)
 !     DIMENSION                     DIFT(IMAX,LP1,LP1)
-      DIMENSION  CO2R1(IMAX,LP1),DCO2D1(IMAX,LP1) 
-      DIMENSION  D2CD21(IMAX,LP1),D2CD22(IMAX,LP1)
-      DIMENSION  CO2R2(IMAX,LP1),DCO2D2(IMAX,LP1) 
-      DIMENSION  CO2MR(IMAX,LMAX),CO2MD(IMAX,LMAX),CO2M2D(IMAX,LMAX) 
-      DIMENSION  TDAV(IMAX,LP1),TSTDAV(IMAX,LP1), &
-                 VV(IMAX,LMAX),VSUM3(IMAX,LP1),VSUM1(IMAX),VSUM2(IMAX) 
-      DIMENSION  A1(IMAX),A2(IMAX)
+!      DIMENSION  CO2R1 (IMAX,LP1), DCO2D1(IMAX,LP1) 
+!      DIMENSION  D2CD21(IMAX,LP1), D2CD22(IMAX,LP1)
+!      DIMENSION  CO2R2 (IMAX,LP1), DCO2D2(IMAX,LP1) 
+!      DIMENSION  TDAV(IMAX,LP1),TSTDAV(IMAX,LP1), &
+!                 VV(IMAX,LMAX),VSUM3(IMAX,LP1),VSUM1(IMAX),VSUM2(IMAX) 
+!      DIMENSION  CO2MR (IMAX,LMAX),CO2MD (IMAX,LMAX),CO2M2D(IMAX,LMAX) 
+!      DIMENSION  A1(IMAX),A2(IMAX)
 !-----------------------------------------------------------------------
 !     DIMENSION  DIFTD(IMAX,LP1,LP1) 
 !     DIMENSION  DCO2DT(IMAX,LP1,LP1),D2CDT2(IMAX,LP1,LP1) 
-      DIMENSION  TEXPSL(IMAX,LP1),TLSQU(IMAX,LP1)
-      DIMENSION  VSUM4(IMAX,LMAX) 
-      DIMENSION  DIFT1D(IMAX,LP1M) 
+!      DIMENSION  TEXPSL(IMAX,LP1),TLSQU(IMAX,LP1)
+!      DIMENSION  VSUM4(IMAX,LMAX) 
+!      DIMENSION  DIFT1D(IMAX,LP1M) 
 !-----------------------------------------------------------------------
 !     EQUIVALENCE (DIFTD,CO2R)
 !     EQUIVALENCE (DCO2DT,D2CDT2,CO2R)
@@ -1513,42 +1558,44 @@
 !     DIMENSION   HEATRA(IMAX,LMAX),GRNFLX(IMAX),TOPFLX(IMAX)
 !-----------------------------------------------------------------------
 !----------------LOCAL ARRAY STORAGE------------------------------------
-      DIMENSION  IXO(IMAX,LP1),ITOP(IMAX),IBOT(IMAX),INDTC(IMAX)
-      DIMENSION  VTMP1(IMAX,LP1M),VTMP2(IMAX,LP1V),VTMP3(IMAX,LP1),   &
+      integer :: i, k, n, klen, kmaxs, kk, kp, icnt, nc
+      real    :: hm5
+      integer :: IXO(IMAX,LP1),ITOP(IMAX),IBOT(IMAX),INDTC(IMAX)
+      real    :: VTMP1(IMAX,LP1M),VTMP2(IMAX,LP1V),VTMP3(IMAX,LP1),   &
                  C(IMAX,LLP1),ALP(IMAX,LLP1),DSORC(IMAX,LP1),         &
                  TOTPHI(IMAX,LP1),TOTO3(IMAX,LP1),TPHIO3(IMAX,LP1),   &
                  RLOG(IMAX,LMAX),DELPTC(IMAX),PTOP(IMAX),PBOT(IMAX),  &
                  FTOP(IMAX),FBOT(IMAX) 
 !-----------------------------------------------------------------------
 !  ------DIMENSION OF VARIABLES EQUIVALENCED TO THOSE ABOVE------
-      DIMENSION TVAL(IMAX,LP1),VSUM1(IMAX,LP1),HEATEM(IMAX,LP1) 
-      DIMENSION EMXX(IMAX,LMAX)
-      DIMENSION CSUB(IMAX,LLP1) 
-      DIMENSION FLX(IMAX,LP1),SUM(IMAX,LP1) 
-      DIMENSION OSS(IMAX,LP1),CSS(IMAX,LP1),SS2(IMAX,LP1),TC(IMAX,LP1), &
+      real    :: TVAL(IMAX,LP1),VSUM1(IMAX,LP1),HEATEM(IMAX,LP1) 
+      real    :: EMXX(IMAX,LMAX)
+      real    :: CSUB(IMAX,LLP1) 
+      real    :: FLX(IMAX,LP1),SUM(IMAX,LP1) 
+      real    :: OSS(IMAX,LP1),CSS(IMAX,LP1),SS2(IMAX,LP1),TC(IMAX,LP1), &
                 DTC(IMAX,LP1)
-      DIMENSION ALPSQ1(IMAX,LP1),ALPSQ2(IMAX,LP1) 
-      DIMENSION DELPR1(IMAX,LP1),DELPR2(IMAX,LP1) 
-      DIMENSION FLXNET(IMAX,LP1),FLXTHK(IMAX,LP1) 
-      DIMENSION Z1(IMAX,LP1),CEVAL(IMAX,LP1)
-      DIMENSION TOTEVV(IMAX,LP1)
-      DIMENSION AVMO3(IMAX,LP1M),AVPHO3(IMAX,LP1V),FAC1(IMAX,LP1V)
-      DIMENSION FAC2(IMAX,LP1M),AVVO2(IMAX,LP1M),AVEPHJ(IMAX,LP1V)
+      real    :: ALPSQ1(IMAX,LP1),ALPSQ2(IMAX,LP1) 
+      real    :: DELPR1(IMAX,LP1),DELPR2(IMAX,LP1) 
+      real    :: FLXNET(IMAX,LP1),FLXTHK(IMAX,LP1) 
+      real    :: Z1(IMAX,LP1),CEVAL(IMAX,LP1)
+      real    :: TOTEVV(IMAX,LP1)
+      real    :: AVMO3(IMAX,LP1M),AVPHO3(IMAX,LP1V),FAC1(IMAX,LP1V)
+      real    :: FAC2(IMAX,LP1M),AVVO2(IMAX,LP1M),AVEPHJ(IMAX,LP1V)
 !1    DIMENSION OVER(IMAX,LP1,LP1)
 !     DIMENSION OVER1D(IMAX,LP1M)
 !1    DIMENSION EMISST(IMAX,LP1,LP1)
-      DIMENSION VTMP21(IMAX*LP1V) 
+      real    :: VTMP21(IMAX*LP1V) 
 !---DIMENSION OF VARIABLES EQUIVALENCED TO THOSE IN OTHER COMMON BLKS-- 
 !     DIMENSION TO31D(IMAX,LP1M),EMI21D(IMAX,LP1M)
 !     DIMENSION CO21D(IMAX,LP1M),EMIS1D(IMAX,LP1M)
 !     DIMENSION AVEP1D(IMAX,LP1M),AVEP1(IMAX*LP1M)
 !---DIMENSION OF VARIABLES PASSED TO OTHER SUBROUTINES--- 
-      DIMENSION E1CTS1(IMAX,LP1),E1CTS2(IMAX,LMAX) 
-      DIMENSION E1CTW1(IMAX,LP1),E1CTW2(IMAX,LMAX) 
-      DIMENSION FXO(IMAX,LP1),DT(IMAX,LP1)
-      DIMENSION EMD(IMAX,LLP1),TPL(IMAX,LLP1),EMPL(IMAX,LLP1) 
+      real    :: E1CTS1(IMAX,LP1),E1CTS2(IMAX,LMAX) 
+      real    :: E1CTW1(IMAX,LP1),E1CTW2(IMAX,LMAX) 
+      real    :: FXO(IMAX,LP1),DT(IMAX,LP1)
+      real    :: EMD(IMAX,LLP1),TPL(IMAX,LLP1),EMPL(IMAX,LLP1) 
 !---EMX1 IS A LOCAL VARIABLE USED AS INPUT AND OUTPUT TO E1E288--
-      DIMENSION EMX1(IMAX)
+      real    :: EMX1(IMAX)
 
 !     EQUIVALENCE (VTMP3,TVAL,VSUM1,EMXX,TC,HEATEM) 
 !     EQUIVALENCE (VTMP2,VTMP21,AVPHO3,FAC1,AVEPHJ) 
@@ -2711,8 +2758,10 @@
 !#include "hcon.h"
 !-----------------------------------------------------------------------
 !#include "tabcom.h"
-      COMMON /TABCOM/  EM1   (28,180),EM1WDE(28,180),EM3   (28,180),  &
+real :: EM1   (28,180),EM1WDE(28,180),EM3   (28,180),  &
      &                 TABLE1(28,180),TABLE2(28,180),TABLE3(28,180)
+      COMMON /TABCOM/  EM1   , EM1WDE, EM3   ,  &
+     &                 TABLE1, TABLE2, TABLE3
 !-----------------------------------------------------------------------
       REAL,  INTENT(OUT), DIMENSION(:,:) :: G1,G2,G3,G4,G5
       REAL,  INTENT(IN) , DIMENSION(:,:) :: FXOE1,DTE1,TEMP
@@ -2722,17 +2771,19 @@
 !CC  &          G2(IMAX,LMAX),G3(IMAX,LP1),G4(IMAX,LP1),G5(IMAX,LMAX) 
 !CC   DIMENSION  TEMP(IMAX,LP1)
 !-----------------------------------------------------------------------
-      DIMENSION  IT1(IMAX,LL3P) 
-      DIMENSION  TTEMP(IMAX,LP1,LP1)
-      DIMENSION  FIT1(IMAX,LL3P),DTOT1(IMAX,LL3P),                    &
+      integer :: kk, k, i, kp
+      integer :: IT1(IMAX,LL3P) 
+      real    :: TTEMP(IMAX,LP1,LP1)
+      real    :: FIT1(IMAX,LL3P),DTOT1(IMAX,LL3P),                    &
                  DTOT2(IMAX,LL3P),DTOT3(IMAX,LL3P),DTOT4(IMAX,LL3P),  &
                  WW1(IMAX,LP1),WW2(IMAX,LP1)
-      DIMENSION  FYO(IMAX,LP1),DU(IMAX,LP1),F1(IMAX,LP1)
+      real    :: FYO(IMAX,LP1),DU(IMAX,LP1),F1(IMAX,LP1)
 !-----------------------------------------------------------------------
-      DIMENSION FXO(IMAX,LP1),FIVAL(IMAX,LP1),IVAL(IMAX,LP1),  &
+      real    :: FXO(IMAX,LP1),FIVAL(IMAX,LP1),  &
                     DT(IMAX,LP1),F2(IMAX,LP1),F3(IMAX,LP1)
-      DIMENSION T1(5040),T2(5040),T4(5040)
-      DIMENSION EM1V(5040),EM1VW(5040)
+      integer :: IVAL(IMAX,LP1)
+      real    :: T1(5040),T2(5040),T4(5040)
+      real    :: EM1V(5040),EM1VW(5040)
 !     DIMENSION TTMP1D(IMAX,LP1M) 
 
       CHARACTER(LEN=40) :: err_string
@@ -2967,8 +3018,10 @@
 !#include "hcon.h"
 !-----------------------------------------------------------------------
 !#include "tabcom.h"
-      COMMON /TABCOM/  EM1   (28,180),EM1WDE(28,180),EM3   (28,180), &
+      real ::          EM1   (28,180),EM1WDE(28,180),EM3   (28,180), &
                        TABLE1(28,180),TABLE2(28,180),TABLE3(28,180)
+      COMMON /TABCOM/  EM1    ,EM1WDE ,EM3   , &
+                       TABLE1 ,TABLE2 ,TABLE3
 !-----------------------------------------------------------------------
       REAL, INTENT(OUT), DIMENSION(:,:) :: EMV
       REAL, INTENT(IN),  DIMENSION(:,:) :: TV,AV
@@ -3056,14 +3109,15 @@
 
 !     DIMENSION  PRESS(IMAX,LP1),TEMP(IMAX,LP1)
 !-----------------------------------------------------------------------
-      DIMENSION  CAPPHI(IMAX,LP1),CAPPSI(IMAX,LP1),TT(IMAX,LMAX), &
+      integer :: k, n
+      real ::    CAPPHI(IMAX,LP1),CAPPSI(IMAX,LP1),TT(IMAX,LMAX), &
                  FAC1(IMAX,LMAX),FAC2(IMAX,LMAX),                 &
                  CTMP(IMAX,LP1),CDIF(IMAX,LMAX),                  &
                  TOPM(IMAX,LMAX),TOPPHI(IMAX,LMAX),               &
                  BOT(IMAX),                                       &
                  X(IMAX,LMAX),Y(IMAX,LMAX),VFLUX(IMAX,LMAX)
 !-----------------------------------------------------------------------
-      DIMENSION F(IMAX,LMAX),FF(IMAX,LMAX),AG(IMAX,LMAX),AGG(IMAX,LMAX), &
+      real :: F(IMAX,LMAX),FF(IMAX,LMAX),AG(IMAX,LMAX),AGG(IMAX,LMAX), &
        AH(IMAX,LMAX),AHH(IMAX,LMAX),AI(IMAX,LMAX),AII(IMAX,LMAX),        &
        AJ(IMAX,LMAX),AJJ(IMAX,LMAX),FELSX(IMAX,LMAX),                    &
        PHITMP(IMAX,LMAX),PSITMP(IMAX,LMAX)
@@ -3353,13 +3407,15 @@
 !-----------------------------------------------------------------------
 !#include "bandta.h"
 !-----------------------------------------------------------------------
-      DIMENSION      CMTRX(IMAX,LMAX,INLTE),VNL(IMAX,LMAX,INLTE),     &
+      integer :: n, k, i, KP, IITER
+      real ::      CMTRX(IMAX,LMAX,INLTE),VNL(IMAX,LMAX,INLTE),     &
             VSUM(IMAX,INLTE),BDENOM(IMAX,INLTE),CDIAG(IMAX,INLTE),    &
             TCOLL(IMAX,INLTE),FNLTE(IMAX,INLTE),                      &
             AZ(IMAX,INLTE),AG(IMAX,INLTE),                            &
             C1B7(2),C2B7(2),CENT(2),DEL(2) 
 !-----------------------------------------------------------------------
 !*****DEGENERACY FACTOR=0.5*****
+      real DEGEN
       DATA DEGEN /0.5/ 
 !-----------------------------------------------------------------------
 
@@ -3617,7 +3673,8 @@
 !    &  CAMT(IMAX,LP1)
 !-----------------------------------------------------------------------
 !     DIMENSION        V1(IMAX,LP1,LP1),
-      DIMENSION        CAMTV(IMAX),V11D(IMAX,LP1) 
+      integer :: k, kp, nc, icnt
+      real ::        CAMTV(IMAX),V11D(IMAX,LP1) 
 !-----------------------------------------------------------------------
       LOGICAL BCLDUD,BCLDSA,BCLDSB,BCLDSC
       DIMENSION BCLDUD(2*IMAX,LP1),BCLDSA(IMAX,LP1), &
@@ -3789,19 +3846,23 @@
 !#include "bdcomb.h"
 !-----------------------------------------------------------------------
 !#include "tabcom.h"
-      COMMON /TABCOM/  EM1   (28,180),EM1WDE(28,180),EM3   (28,180), &
+      integer :: i1, i2e, i2, indx, jp, n, icnt, j, ia, nsubds, nsb
+      real    :: cent, del, bdlo, bdhi, c1, anu
+      real ::          EM1   (28,180),EM1WDE(28,180),EM3   (28,180), &
                        TABLE1(28,180),TABLE2(28,180),TABLE3(28,180)
+      COMMON /TABCOM/  EM1    ,EM1WDE ,EM3    , &
+                       TABLE1 ,TABLE2 ,TABLE3
 !-----------------------------------------------------------------------
-      DIMENSION  SUM(28,180),PERTSM(28,180),SUM3(28,180),SUMWDE(28,180), &
+      real ::    SUM(28,180),PERTSM(28,180),SUM3(28,180),SUMWDE(28,180), &
                  SRCWD(28,NBLX),SRC1NB(28,NBLW),DBDTNB(28,NBLW)
-      DIMENSION  ZMASS(181),ZROOT(181),SC(28),DSC(28),XTEMV(28),         &
+      real ::    ZMASS(181),ZROOT(181),SC(28),DSC(28),XTEMV(28),         &
                  TFOUR(28),FORTCU(28),X(28),X1(28),X2(180),SRCS(28),     &
                  SUM4(28),SUM6(28),SUM7(28),SUM8(28),SUM4WD(28),         &
                  R1(28),R2(28),S2(28),T3(28),R1WD(28) 
-      DIMENSION  EXPO(180),FAC(180) 
-      DIMENSION  CNUSB(30),DNUSB(30) 
-      DIMENSION  ALFANB(NBLW),AROTNB(NBLW),DELCM(NBLY)
-      DIMENSION  ANB(NBLW),BNB(NBLW),CENTNB(NBLW),DELNB(NBLW),   &
+      real ::    EXPO(180),FAC(180) 
+      real ::    CNUSB(30),DNUSB(30) 
+      real ::    ALFANB(NBLW),AROTNB(NBLW),DELCM(NBLY)
+      real ::    ANB(NBLW),BNB(NBLW),CENTNB(NBLW),DELNB(NBLW),   &
                  BETANB(NBLW)
 !
 !*** NOTE: THE DATA,EQUIVALENCE AND DIMENSION STATEMENTS FOR QUANTITIES 

@@ -244,8 +244,12 @@
 !-----------------------------------------------------------------------
 
       Use fs_profile_mod, ONLY:  pd1013,plm1013,pd810,plm810
-      Use  utilities_mod, ONLY:  ERROR_MESG, FATAL, WARNING
+      Use        fms_mod, ONLY:  ERROR_MESG, FATAL, WARNING, &
+                                 mpp_pe, mpp_root_pe, write_version_number
 
+
+implicit none
+private
       Integer,Parameter :: kind_type = selected_real_kind(15,307)
 
       Real, Allocatable, Dimension(:,:,:,:) :: TRNS
@@ -258,9 +262,15 @@
       Real(kind_type),Private :: ZERO=0.0, ONE=1.0, TWO=2.0
 !-----------------------------------------------------------------------
 
-      Public   co2int
+      Public   co2int, co2int_init, co2int_end, TRNS
       Private  RCTRNS,COEINT,QUADSR,SINTR2,Qintrp,PATH
 
+!------------ VERSION NUMBER ----------------
+
+ character(len=128) :: version = '$Id: co2int.F90,v 10.0 2003/10/24 22:00:30 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
+ logical            :: module_is_initialized = .false.
+!-----------------------------------------------------------------------
 
       CONTAINS
 
@@ -453,6 +463,30 @@
 !=======================================================================
 
       End Subroutine co2int
+
+!#######################################################################
+
+      Subroutine co2int_init
+!------- write version number and namelist ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
+
+      module_is_initialized = .true.
+
+!---------------------------------------------------------------------
+
+      End Subroutine co2int_init
+
+!#######################################################################
+
+      Subroutine co2int_end
+
+      module_is_initialized = .false.
+!---------------------------------------------------------------------
+
+      End Subroutine co2int_end
 
 !#######################################################################
 

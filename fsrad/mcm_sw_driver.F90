@@ -17,16 +17,21 @@
 
 !      USE   Constants_Mod, ONLY: grav, tfreeze
 
-      Use Utilities_Mod, ONLY:  Error_Mesg, FATAL
+      Use       Fms_Mod, ONLY: Error_Mesg, FATAL, &
+                               write_version_number, mpp_pe, mpp_root_pe
 
       use mcm_swnew_mod, only: mcm_swnew
 
+implicit none
       private
 
       integer :: kx, kp
+      character(len=128) :: version = '$Id: mcm_sw_driver.F90,v 10.0 2003/10/24 22:00:31 fms Exp $'
+      character(len=128) :: tagname = '$Name: jakarta $'
       logical :: module_is_initialized = .false.
 
-      public :: mcm_shortwave_driver, mcm_shortwave_driver_init
+      public :: mcm_shortwave_driver, mcm_sw_driver_init, &
+                mcm_sw_driver_end
 
 !     -------------------------------------------------
 ! TK NOTE: not ready for this yet...      implicit none
@@ -69,11 +74,11 @@ contains
 
       real, intent (in)                           :: Rco2
       real, intent (in)   , dimension(:,:)        :: CosZ
-      real, intent (in)   , dimension(:,:)        :: Ssolar
+      real, intent (in)   , dimension(:,:)        :: SSolar
       real, intent (in)   , dimension(:,:)        :: Albedo
 
       REAL,   INTENT(OUT), DIMENSION(:,:,:)       :: FSW, DFSW, UFSW
-      REAL,   INTENT(OUT), DIMENSION(:,:,:)       :: TdtSw
+      REAL,   INTENT(OUT), DIMENSION(:,:,:)       :: TdtSW
 
 
 !----------------LOCAL ARRAY STORAGE------------------------------------
@@ -87,6 +92,7 @@ contains
       real,   dimension(size(press,1), size(press,2), kx) :: sigma_level
 
       integer ncv
+      real pchg
 
       INTEGER :: ix, jx
       integer :: ipt, jrow, k
@@ -258,14 +264,28 @@ contains
 
       end subroutine mcm_shortwave_driver
 ! ---------------------------------------------------------------------------------------
-      subroutine mcm_shortwave_driver_init(kx_in)
+      subroutine mcm_sw_driver_init(kx_in)
       integer, intent(in) :: kx_in
 
       kx = kx_in
       kp = kx + 1
+!------- write version number and namelist ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
+
       module_is_initialized = .true.
 
       return
-      end subroutine mcm_shortwave_driver_init
+      end subroutine mcm_sw_driver_init
+! ---------------------------------------------------------------------------------------
+
+      subroutine mcm_sw_driver_end
+
+      module_is_initialized = .false.
+!---------------------------------------------------------------------
+
+      end subroutine mcm_sw_driver_end
 ! ---------------------------------------------------------------------------------------
       end module MCM_SW_DRIVER_MOD

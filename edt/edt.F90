@@ -54,9 +54,10 @@ module edt_mod
 use      constants_mod, only: grav,vonkarm,cp_air,rdgas,rvgas,hlv,hls, &
                               tfreeze,radian
 
-use      utilities_mod, only: file_exist, open_file, error_mesg, FATAL,&
-                              get_my_pe, close_file, read_data, &
-			      write_data
+use            fms_mod, only: file_exist, open_namelist_file, error_mesg, FATAL,&
+                              NOTE, mpp_pe, mpp_root_pe, close_file, read_data, &
+                              write_data, write_version_number, stdlog, &
+                              open_restart_file, open_file
 
 use   diag_manager_mod, only: register_diag_field, send_data
         
@@ -73,26 +74,25 @@ private
 !
 !      public interfaces
 
-public edt, edt_init, edt_end, edt_tend, edt_on, qaturb, qcturb,tblyrtau
+public edt, edt_init, edt_end, edt_on, qaturb, qcturb,tblyrtau
 
 !-----------------------------------------------------------------------
 !
 !      global storage variable
 !
 
-real, allocatable, dimension(:,:,:) :: tdtlw  ! LW heating rate (K/s)
 real, allocatable, dimension(:,:,:) :: qaturb ! cloud fraction diagnosed
                                               ! from turbulence model
-					      ! (fraction)
+      ! (fraction)
 real, allocatable, dimension(:,:,:) :: qcturb ! cloud condensate 
                                               ! diagnosed from turb.
-					      ! model (kg liq/kg air)
+      ! model (kg liq/kg air)
 real, allocatable, dimension(:,:,:) :: tblyrtau  ! turbulent layer
                                                  ! time scale
-						 ! (seconds)
+ ! (seconds)
 real, allocatable, dimension(:,:,:) :: sigmas ! standard deviation of 
                                               ! water perturbation
-                                              ! (kg water/kg air)				     
+                                              ! (kg water/kg air)     
 
 !-----------------------------------------------------------------------
 !
@@ -106,8 +106,8 @@ logical   :: use_qcmin = .true.      ! Use qcminfrac as indicator of
                                      ! of cloud top.
 logical   :: use_extrapolated_ql  = .false.  ! should the layer top
                                              ! liquid water be used to
-					     ! estimate the evaporative
-					     ! enhancement
+     ! estimate the evaporative
+     ! enhancement
 integer   :: n_print_levels = 14     ! how many of the lowest levels 
                                      ! should be printed out
 integer, dimension(2) :: edt_pts = 0 ! the global indices for i,j
@@ -118,24 +118,24 @@ logical   :: do_print = .false.      ! should selected variables
 logical   :: column_match = .false.  ! should this column be printed 
                                      ! out?
 integer   :: dpu = 0                 ! unit # for do_print output
-				 
+ 
 real      :: min_adj_time = 0.25     ! minimum adjustment time of
                                      ! turbulent layer for thermo-
                                      ! dynamics, as a fraction of
                                      ! the physics time step. 
-!				 
-! the following quantities only deal with the gaussian cloud model				 
-!	
-			 
+! 
+! the following quantities only deal with the gaussian cloud model 
+!
+ 
 logical   :: do_gaussian_cloud = .false.  
 
 real      :: kappa   = 0.5       ! absolute value of the correlation
                                  ! coefficient between sli and qt 
-				 ! fluctions
+ ! fluctions
 real      :: mesovar = 0.02      ! amplitude to mesoscale fluctuations
                                  ! in sigma-s as a fraction of the 
-				 ! saturation specific humidity
-        	 
+ ! saturation specific humidity
+         
 
 integer, parameter                 :: MAX_PTS = 20
 integer, dimension (MAX_PTS)       :: i_edtprt_gl=0, j_edtprt_gl=0
@@ -151,7 +151,7 @@ namelist /edt_nml/sftype,qcminfrac,use_qcmin,kappa,mesovar,edt_pts,    &
                                   i_edtprt_gl, j_edtprt_gl, &
                                   num_pts_ij, num_pts_latlon,       &
                                   lat_edtprt, lon_edtprt
-		  
+  
  
 integer     :: num_pts           !  total number of columns in which
                                  !  diagnostics are desired
@@ -183,10 +183,10 @@ character(len=10) :: mod_name = 'edt'
 real              :: missing_value = -999.
 integer           :: id_fq_cv_int,    id_fq_cv_top,      id_fq_cv_bot, &
                      id_fq_st,   id_n2,      id_s2,      id_ri,        &
-		     id_leng,    id_bprod,   id_sprod,   id_trans,     &
-		     id_diss,    id_qaedt,   id_qcedt,   id_tauinv,    &
-		     id_eddytau, id_fq_turb, id_sigmas,  id_radf,      &
-		     id_sh,      id_sm,      id_gh,      id_evhc
+     id_leng,    id_bprod,   id_sprod,   id_trans,     &
+     id_diss,    id_qaedt,   id_qcedt,   id_tauinv,    &
+     id_eddytau, id_fq_turb, id_sigmas,  id_radf,      &
+     id_sh,      id_sm,      id_gh,      id_evhc
        
       
 !-----------------------------------------------------------------------
@@ -196,7 +196,7 @@ integer           :: id_fq_cv_int,    id_fq_cv_top,      id_fq_cv_bot, &
 
 logical         :: edt_on = .false.
 logical         :: init = .false.
-real, parameter :: small  = 1.e-8			      
+real, parameter :: small  = 1.e-8      
 real, parameter :: fpi  = 3.14159     ! pi
 real, parameter :: d608 = (rvgas-rdgas)/rdgas
 real, parameter :: d622 = rdgas/rvgas
@@ -234,20 +234,20 @@ real, parameter :: rinc    =  -0.5    ! Min W/<W> for incorp into CL
 
 real, parameter :: a1l       =  0.10  ! Dry entrainment efficiency param
                                       ! Herve set to 0.05 due to excess 
-				      ! TKE but a1l = 0.10 = 0.2*tunl*
-				      ! erat^-1.5 should be the "real" 
-				      ! value, where erat = <e>/wstar^2 
-				      ! for dry CBL = 0.3
+      ! TKE but a1l = 0.10 = 0.2*tunl*
+      ! erat^-1.5 should be the "real" 
+      ! value, where erat = <e>/wstar^2 
+      ! for dry CBL = 0.3
 real, parameter :: a2l       = 15.    ! Moist entrainment enhancement 
                                       ! param Herve's SCCM value was 15
 real, parameter :: a3l       =  0.8   ! 
 real, parameter :: jbumin    =  0.001 ! Min buoyancy jump at an entrain-
                                       ! ment interface (m/s2)
-				      ! (~ jump in K/30)
+      ! (~ jump in K/30)
 real, parameter :: evhcmax   = 10.    ! Max entrainment efficiency
 real, parameter :: rimaxentr =  0.    ! Limiting Ri for entraining turb
                                       ! layer
-				      
+      
 !  parameters affecting TKE
 
 real, parameter :: rmin    =   0.1    ! Min allowable e/<e> in a CL
@@ -260,9 +260,9 @@ real, parameter :: tkemin  =   1.e-6  ! tke minimum (m2/s2)
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: edt.F90,v 1.2 2003/04/09 20:55:14 fms Exp $'
-character(len=128) :: Tag = '$Name: inchon $'
-      
+character(len=128) :: Version = '$Id: edt.F90,v 10.0 2003/10/24 22:00:29 fms Exp $'
+character(len=128) :: Tagname = '$Name: jakarta $'
+logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !
 ! fms module subroutines include:
@@ -282,6 +282,7 @@ character(len=128) :: Tag = '$Name: inchon $'
 !
 
 
+      integer, dimension(1) :: restart_versions = (/ 1 /)
 
 contains
 
@@ -328,6 +329,8 @@ type(time_type), intent(in) :: time
 real, dimension(:),intent(in) :: lonb, latb
 
 integer                     :: unit,io
+integer :: vers, vers2
+character(len=4) :: chvers
 integer, dimension(3)       :: full = (/1,2,3/), half = (/1,2,4/)
 integer     :: nn, i, j, iloc, jloc
 real         :: dellat, dellon
@@ -337,7 +340,7 @@ real         :: dellat, dellon
 !      namelist functions
 
        If (File_Exist('input.nml')) Then
-            unit = Open_File ('input.nml', action='read')
+            unit = Open_namelist_File ()
             io=1
             Do While (io .ne. 0)
                  Read  (unit, nml=edt_nml, iostat=io, End=10)
@@ -345,12 +348,12 @@ real         :: dellat, dellon
   10        Call Close_File (unit)
        EndIf
 
-       unit = Open_File ('logfile.out', action='append')
-       if ( get_my_pe() == 0 ) then
-            Write (unit,'(/,80("="),/(a))') trim(Version), trim(Tag)
-            Write (unit,nml=edt_nml)
+!------- write version number and namelist ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+           write (stdlog(), nml=edt_nml)
        endif
-       Call Close_File (unit)
 
 
 !      if (edt_pts(1) > 0 .and.edt_pts (2) >0) do_print = .true.
@@ -477,9 +480,10 @@ real         :: dellat, dellon
         dpu = open_file ('edt.out', action='write', &
                                  threading='multi', form='formatted')
        do_print = .true.
-       if ( get_my_pe() == 0 ) then
-            Write (dpu ,'(/,80("="),/(a))') trim(Version), trim(Tag)
-            Write (dpu ,nml=edt_nml)
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+           write (dpu ,nml=edt_nml)
        endif
       endif     ! (num_pts > 0)
 
@@ -488,7 +492,7 @@ real         :: dellat, dellon
 !      initialize edt_on
 
        edt_on = .TRUE.
-
+       module_is_initialized = .true.
 !-----------------------------------------------------------------------
 !
 !      initialize b123 = b1**(2/3)
@@ -499,8 +503,6 @@ real         :: dellat, dellon
 !
 !      handle global storage
         
-       if (allocated(tdtlw)) deallocate (tdtlw)
-       allocate(tdtlw(idim,jdim,kdim))
        if (allocated(qaturb)) deallocate (qaturb)
        allocate(qaturb(idim,jdim,kdim))
        if (allocated(qcturb)) deallocate (qcturb)
@@ -511,20 +513,45 @@ real         :: dellat, dellon
        allocate(sigmas(idim,jdim,kdim+1))
               
        if (File_Exist('INPUT/edt.res')) then
-            unit = Open_File (FILE='INPUT/edt.res', &
-                 FORM='native', ACTION='read')
-            call read_data (unit, tdtlw)
+         unit = Open_restart_File (FILE='INPUT/edt.res', ACTION='read')
+         read (unit, iostat=io, err=142) vers, vers2
+142      continue
+ 
+!--------------------------------------------------------------------
+!    if eor is not encountered, then the file includes tdtlw as the
+!    first record (which this read statement read). that data is not 
+!    needed; note this and continue by reading next record.
+!--------------------------------------------------------------------
+         if (io == 0) then
+           call error_mesg ('edt_mod',  &
+              'reading pre-version number edt.res file, '//&
+                'ignoring tdtlw', NOTE)
+
+!--------------------------------------------------------------------
+!    if the first record was only one word long, then the file is a 
+!    newer one, and that record was the version number, read into vers. 
+!    if it is not a valid version, stop execution with a message.
+!--------------------------------------------------------------------
+         else
+           if (.not. any(vers == restart_versions) ) then
+             write (chvers, '(i4)') vers
+             call error_mesg ('edt_mod',  &
+                   'restart version ' // chvers//' cannot be read '//&
+                    'by this version of edt_mod.', FATAL)
+           endif
+         endif
+
+!---------------------------------------------------------------------
             call read_data (unit, qaturb)
             call read_data (unit, qcturb)
-	    call read_data (unit, tblyrtau)
-	    call read_data (unit, sigmas)
-	    call Close_File (unit)
+    call read_data (unit, tblyrtau)
+    call read_data (unit, sigmas)
+    call Close_File (unit)
        else
-            tdtlw   (:,:,:) = 0.
-	    qaturb  (:,:,:) = 0.
-	    qcturb  (:,:,:) = 0.
-	    tblyrtau(:,:,:) = 0.
-	    sigmas  (:,:,:) = 0.
+    qaturb  (:,:,:) = 0.
+    qcturb  (:,:,:) = 0.
+    tblyrtau(:,:,:) = 0.
+    sigmas  (:,:,:) = 0.
        endif
 
 !-----------------------------------------------------------------------
@@ -533,98 +560,98 @@ real         :: dellat, dellon
 
        id_fq_cv_int = register_diag_field (mod_name, 'fq_cv_int',      &
             axes(half), time, 'Frequency that the interface is in '//  &
-	    'the interior of a convective layer from EDT',             &
-	    'none', missing_value=missing_value )
+    'the interior of a convective layer from EDT',             &
+    'none', missing_value=missing_value )
 
        id_fq_cv_top = register_diag_field (mod_name, 'fq_cv_top',      &
             axes(half), time, 'Frequency that the interface is at '//  &
-	    'the top of a convective layer from EDT',                  &
-	    'none', missing_value=missing_value )
+    'the top of a convective layer from EDT',                  &
+    'none', missing_value=missing_value )
 
        id_fq_cv_bot = register_diag_field (mod_name, 'fq_cv_bot',      &
             axes(half), time, 'Frequency that the interface is at '//  &
-	    'the bottom of a convective layer from EDT',               &
-	    'none', missing_value=missing_value )
+    'the bottom of a convective layer from EDT',               &
+    'none', missing_value=missing_value )
 
        id_fq_st = register_diag_field (mod_name, 'fq_st', axes(half),  &
            time, 'Frequency of stable turbulence from EDT',            &
-	    'none', missing_value=missing_value )
+    'none', missing_value=missing_value )
 
        id_fq_turb = register_diag_field (mod_name, 'fq_turb',          &
             axes(full), time, 'Frequency that the layer is fully '//   &
-	    'turbulent from EDT','none', missing_value=missing_value )
+    'turbulent from EDT','none', missing_value=missing_value )
 
        id_n2 = register_diag_field (mod_name, 'n2', axes(half),        &
-	    time,'Moist Vaisala Frequency from EDT',                   &
-	    '(1/sec)**2', missing_value=missing_value )
+    time,'Moist Vaisala Frequency from EDT',                   &
+    '(1/sec)**2', missing_value=missing_value )
        
        id_s2 = register_diag_field (mod_name, 's2', axes(half),        &
-	    time,'Shear vector magnitude squared from EDT',            &
-	    '(1/sec)**2', missing_value=missing_value )
+    time,'Shear vector magnitude squared from EDT',            &
+    '(1/sec)**2', missing_value=missing_value )
        
        id_ri = register_diag_field (mod_name, 'ri', axes(half),        &
-	    time, 'Moist Richardson number from EDT',                  &
-	    'none', missing_value=missing_value )
+    time, 'Moist Richardson number from EDT',                  &
+    'none', missing_value=missing_value )
 
        id_leng = register_diag_field (mod_name, 'leng', axes(half),    &
-	    time, 'Turbulent Length Scale from EDT',                   &
-	    'meters', missing_value=missing_value )
+    time, 'Turbulent Length Scale from EDT',                   &
+    'meters', missing_value=missing_value )
        
        id_bprod = register_diag_field (mod_name, 'bprod', axes(half),  &
-	    time, 'Buoyancy production of TKE from EDT',               &
-	    '(meters**2)/(sec**3)', missing_value=missing_value )
+    time, 'Buoyancy production of TKE from EDT',               &
+    '(meters**2)/(sec**3)', missing_value=missing_value )
 
        id_sprod = register_diag_field (mod_name, 'sprod', axes(half),  &
-	    time, 'Shear production of TKE from EDT',                  &
-	    '(meters**2)/(sec**3)', missing_value=missing_value )
+    time, 'Shear production of TKE from EDT',                  &
+    '(meters**2)/(sec**3)', missing_value=missing_value )
        
        id_trans = register_diag_field (mod_name, 'trans', axes(half),  &
-	    time, 'TKE transport from EDT',                            &
-	    '(meters**2)/(sec**3)', missing_value=missing_value )
+    time, 'TKE transport from EDT',                            &
+    '(meters**2)/(sec**3)', missing_value=missing_value )
        
        id_diss = register_diag_field (mod_name, 'diss', axes(half),    &
-	    time, 'TKE dissipation from EDT',                          &
-	    '(meters**2)/(sec**3)', missing_value=missing_value )
+    time, 'TKE dissipation from EDT',                          &
+    '(meters**2)/(sec**3)', missing_value=missing_value )
 
        id_radf  = register_diag_field (mod_name, 'radf', axes(half),   &
-	    time, 'TKE radiative forcing from EDT',                    &
-	    '(meters**2)/(sec**3)', missing_value=missing_value )
+    time, 'TKE radiative forcing from EDT',                    &
+    '(meters**2)/(sec**3)', missing_value=missing_value )
        
        id_sh  = register_diag_field (mod_name, 'sh', axes(half),       &
-	    time, 'Galperin heat stability coefficient from EDT',      &
-	    'none', missing_value=missing_value )
+    time, 'Galperin heat stability coefficient from EDT',      &
+    'none', missing_value=missing_value )
  
        id_sm  = register_diag_field (mod_name, 'sm', axes(half),       &
-	    time, 'Galperin momentum stability coefficient from EDT',  &
-	    'none', missing_value=missing_value )
+    time, 'Galperin momentum stability coefficient from EDT',  &
+    'none', missing_value=missing_value )
  
        id_gh  = register_diag_field (mod_name, 'gh', axes(half),       &
-	    time, 'Galperin stability ratio from EDT',                 &
-	    'none', missing_value=missing_value )
+    time, 'Galperin stability ratio from EDT',                 &
+    'none', missing_value=missing_value )
  
        id_evhc  = register_diag_field (mod_name, 'evhc', axes(half),   &
-	    time, 'Evaporative cooling enhancement factor from EDT',   &
-	    'none', missing_value=missing_value )
+    time, 'Evaporative cooling enhancement factor from EDT',   &
+    'none', missing_value=missing_value )
  
        id_sigmas = register_diag_field (mod_name, 'sigmas', axes(half),&
-	    time, 'Std. dev. of water perturbation from EDT',          &
-	    '(kg water)/(kg air)', missing_value=missing_value )
+    time, 'Std. dev. of water perturbation from EDT',          &
+    '(kg water)/(kg air)', missing_value=missing_value )
        
        id_qaedt = register_diag_field (mod_name, 'qaedt', axes(full),  &
-	    time, 'statistical cloud fraction from EDT',               &
-	    'fraction', missing_value=missing_value )
+    time, 'statistical cloud fraction from EDT',               &
+    'fraction', missing_value=missing_value )
        
        id_qcedt = register_diag_field (mod_name, 'qcedt', axes(full),  &
-	    time, 'statistical cloud condensate from EDT',             &
-	    'kg condensate/kg air', missing_value=missing_value )
+    time, 'statistical cloud condensate from EDT',             &
+    'kg condensate/kg air', missing_value=missing_value )
        
        id_tauinv = register_diag_field (mod_name, 'tauinv', axes(half),&
-	    time, 'inverse large-eddy turnover time from EDT',         &
-	    '1/second', missing_value=missing_value )
+    time, 'inverse large-eddy turnover time from EDT',         &
+    '1/second', missing_value=missing_value )
        
        id_eddytau = register_diag_field (mod_name, 'eddytau',          &
             axes(full),time, 'large-eddy turnover time from EDT',      &
-	    'seconds', missing_value=missing_value )
+    'seconds', missing_value=missing_value )
                           
 !-----------------------------------------------------------------------
 ! 
@@ -648,11 +675,11 @@ end subroutine edt_init
 !       provided by Chris Bretherton
 !        
 
-subroutine edt(is,ie,js,je,dt,time,u_star,b_star,q_star,t,qv,ql,qi,qa, &
+subroutine edt(is,ie,js,je,dt,time,tdtlw_in, u_star,b_star,q_star,t,qv,ql,qi,qa, &
 !              u,v,z_full,p_full,z_half,p_half,stbltop,k_m,k_t,kbot,   &
 !       pblh,tke)
                u,v,z_full,p_full,z_half,p_half,stbltop,k_m,k_t,pblh,  &
-	       kbot,tke)
+       kbot,tke)
 
 !-----------------------------------------------------------------------
 !
@@ -780,6 +807,7 @@ subroutine edt(is,ie,js,je,dt,time,u_star,b_star,q_star,t,qv,ql,qi,qa, &
 integer,         intent(in)                            :: is,ie,js,je
 real,            intent(in)                            :: dt
 type(time_type), intent(in)                            :: time
+real,            intent(in),  dimension(:,:,:)         :: tdtlw_in
 real,            intent(in),  dimension(:,:)           :: u_star,b_star
 real,            intent(in),  dimension(:,:)           :: q_star
 real,            intent(in),  dimension(:,:,:)         :: t,qv,ql,qi,qa
@@ -843,7 +871,7 @@ real, dimension(size(t,3)+1):: gb_z_half,   gb_sigmas,   gb_p_half
 real, dimension(size(t,3)+1):: gb_radf,     gb_sh,       gb_sm
 real, dimension(size(t,3)+1):: gb_gh,       gb_evhc
 logical :: used, topfound
-			 
+ 
    integer, dimension(MAX_PTS) :: nsave
    integer :: iloc(MAX_PTS), jloc(MAX_PTS), nn, npts, nnsave
    integer :: year, month, day, hour, minute, second
@@ -857,11 +885,11 @@ logical :: used, topfound
 !           if ( edt_pts(1) >= is .and. edt_pts(1) <= ie  .and.        &
 !                edt_pts(2) >= js .and. edt_pts(2) <= je) then
 !                ipt=edt_pts(1)-is+1
-!	 jpt=edt_pts(2)-js+1
+! jpt=edt_pts(2)-js+1
 !!RSH            dpu = open_file ('edt.out', action='append')
 !           else
 !         ipt = 0
-!	 jpt = 0
+! jpt = 0
 !           endif
 !      endif
 
@@ -988,11 +1016,11 @@ logical :: used, topfound
        dqsldtl = d622*p_full*dqsldtl/qsl/qsl
        
        !calculate qs
-       qsl=d622*esl/qsl      	
-	
+       qsl=d622*esl/qsl      
+
 !-----------------------------------------------------------------------
 !
-!      set up specific humidities and static energies  	
+!      set up specific humidities and static energies  
 !      compute airdensity
 
        qt      = qv + ql + qi
@@ -1007,66 +1035,66 @@ logical :: used, topfound
 !
 
        ibot = nlev
-	
+
        do j=1,nlat
-	 npts = 0
+ npts = 0
        if (do_edt_dg(j+js-1) ) then       
-	 do nn=1,num_pts
+ do nn=1,num_pts
          if (                          &
-	       js == j_edtprt(nn) .and.  &
+       js == j_edtprt(nn) .and.  &
                  i_edtprt(nn) >= is .and. i_edtprt(nn) <= ie) then
-	      iloc(npts+1) = i_edtprt(nn) - is + 1
-	      jloc(npts+1) = j_edtprt(nn) - js + 1
-	      nsave(npts+1) = nn
-	      npts = npts + 1
+      iloc(npts+1) = i_edtprt(nn) - is + 1
+      jloc(npts+1) = j_edtprt(nn) - js + 1
+      nsave(npts+1) = nn
+      npts = npts + 1
          endif
         end do    ! (num_points)
        else
           ipt = 0
            jpt = 0
-	   column_match = .false.
+   column_match = .false.
        endif
        do i=1,nlon
-		 if (npts > 0) then
-		   do nn=1,npts
+ if (npts > 0) then
+   do nn=1,npts
 
-		   ipt = iloc(nn)
-		   jpt = jloc(nn)
+   ipt = iloc(nn)
+   jpt = jloc(nn)
 !                  if (i == ipt .and. j == jpt) then
                    if (i == ipt ) then
-!	 if (i == ipt .and. j == jpt .and.  &
-!	     js == j_edtprt(nn) ) then
-	         column_match = .true.
-!	 nnsave = nn
-		 nnsave = nsave(nn)
-		 exit
-		 else
-	         column_match = .false.
-		 endif
+! if (i == ipt .and. j == jpt .and.  &
+!     js == j_edtprt(nn) ) then
+         column_match = .true.
+! nnsave = nn
+ nnsave = nsave(nn)
+ exit
+ else
+         column_match = .false.
+ endif
                end do
-	       nn = nnsave
-	       else 
-	         column_match = .false.
-		 nn = 0
-	       endif
+       nn = nnsave
+       else 
+         column_match = .false.
+ nn = 0
+       endif
             !-----------------------------------------------------------
-	    !
+    !
             ! should diagnostics be printed out for this column
             !
-	    
+    
 !    if (i .eq. ipt .and. j .eq. jpt) then
 !         column_match = .true.
 !           else
-!         column_match = .false.		 
+!         column_match = .false. 
 !           end if
 
             !-----------------------------------------------------------
-	    !
+    !
             ! extract column data to pass to caleddy
             !
-	    
+    
             if (present(kbot)) ibot = kbot(i,j)
-	    
+    
             gb_t      (1:ibot  ) = t         (i,j,1:ibot  )
 !           gb_qv     (1:ibot  ) = qv        (i,j,1:ibot  )
 !           gb_qc     (1:ibot  ) = ql        (i,j,1:ibot  ) +          &
@@ -1085,138 +1113,138 @@ logical :: used, topfound
             gb_p_half (1:ibot+1) = p_half    (i,j,1:ibot+1)
             gb_p_full (1:ibot  ) = p_full    (i,j,1:ibot  )
             gb_qsl    (1:ibot  ) = qsl       (i,j,1:ibot  )
-	    gb_esl    (1:ibot  ) = esl       (i,j,1:ibot  )
-	    gb_hleff  (1:ibot  ) = hleff     (i,j,1:ibot  )
-	    gb_density(1:ibot  ) = density   (i,j,1:ibot  )
-	    gb_dqsldtl(1:ibot  ) = dqsldtl   (i,j,1:ibot  )
-            gb_tdtlw  (1:ibot  ) = tdtlw (is-1+i,js-1+j,1:ibot)
+    gb_esl    (1:ibot  ) = esl       (i,j,1:ibot  )
+    gb_hleff  (1:ibot  ) = hleff     (i,j,1:ibot  )
+    gb_density(1:ibot  ) = density   (i,j,1:ibot  )
+    gb_dqsldtl(1:ibot  ) = dqsldtl   (i,j,1:ibot  )
+            gb_tdtlw  (1:ibot  ) = tdtlw_in (i,j,1:ibot)
             gb_sigmas (1:ibot+1) = sigmas(is-1+i,js-1+j,1:ibot+1)
-	    kqfs                 = u_star(i,j)*q_star(i,j)
+    kqfs                 = u_star(i,j)*q_star(i,j)
             khfs                 = u_star(i,j)*b_star(i,j)*gb_t(ibot)/ &
-	                           grav
+                           grav
             gb_u_star            = u_star(i,j)          
 
 !      if (get_my_pe() == 40  .and. js == 6  .and. i == 9) then
 !       print *, 'edt pointf', gb_qt(26), gb_qc(26), gb_qv(26)
 !      endif
             !compute sigmas at surface
-	    gb_sigmas(ibot+1) =  ((mesovar*gb_qsl(ibot))**2.0) +       &
-	         ((q_star(i,j)-gb_dqsldtl(ibot)*b_star(i,j)*gb_t(ibot)/&
-	         grav)**2.0)
+    gb_sigmas(ibot+1) =  ((mesovar*gb_qsl(ibot))**2.0) +       &
+         ((q_star(i,j)-gb_dqsldtl(ibot)*b_star(i,j)*gb_t(ibot)/&
+         grav)**2.0)
             gb_sigmas(ibot+1) = sqrt( gb_sigmas(ibot+1) ) / ( 1. +     &
-	         gb_hleff(ibot)*gb_dqsldtl(ibot)/cp_air )
+         gb_hleff(ibot)*gb_dqsldtl(ibot)/cp_air )
 
             if (column_match) then
-	    call get_date(Time, year, month, day, hour, minute, second)
-	    mon = month_name (month)
+    call get_date(Time, year, month, day, hour, minute, second)
+    mon = month_name (month)
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  '===================================='//&
-	         '=================='
+         '=================='
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  '               ENTERING EDT    '
             write (dpu,'(a)')  ' '
             write (dpu,'(a, i6,a,i4,i4,i4,i4)')  ' time stamp:',   &
-	                                       year, trim(mon), day, &
-	                                       hour, minute, second
+                                       year, trim(mon), day, &
+                                       hour, minute, second
             write (dpu,'(a)')  '  DIAGNOSTIC POINT COORDINATES :'
             write (dpu,'(a)')  ' '
-	    write (dpu,'(a,f8.3,a,f8.3)') ' longitude = ', deglon1(nn),&
-	                                  ' latitude  = ', deglat1(nn)
-	    write (dpu,'(a,i6,a,i6)')    &
+    write (dpu,'(a,f8.3,a,f8.3)') ' longitude = ', deglon1(nn),&
+                                  ' latitude  = ', deglat1(nn)
+    write (dpu,'(a,i6,a,i6)')    &
                                    ' global i =', i_edtprt_gl(nn), &
                                    ' global j = ', j_edtprt_gl(nn)
-	    write (dpu,'(a,i6,a,i6)')    &
+    write (dpu,'(a,i6,a,i6)')    &
                                    ' processor i =', i_edtprt(nn),     &
                                    ' processor j = ',j_edtprt(nn)
-	    write (dpu,'(a,i6,a,i6)')     &
+    write (dpu,'(a,i6,a,i6)')     &
                                    ' window    i =', ipt,          &
                                    ' window    j = ',jpt
             write (dpu,'(a)')  ' '
-	    write (dpu,'(a)')  ' sigmas at the surface .... '
+    write (dpu,'(a)')  ' sigmas at the surface .... '
             write (dpu,'(a)')  ' ' 
-	    write (dpu,'(a,f14.7,a)')  ' sigmas = ',1000.*             &
-	         gb_sigmas(ibot+1), ' g/kg'
+    write (dpu,'(a,f14.7,a)')  ' sigmas = ',1000.*             &
+         gb_sigmas(ibot+1), ' g/kg'
             write (dpu,'(a,f14.7)  ')  ' acoef = ', 1./( 1.+           &
-	         gb_hleff(ibot)* gb_dqsldtl(ibot)/cp_air )            
-	    write (dpu,'(a,f14.7,a)')  ' sigmas/a = ', 1000.*          &
-	         gb_sigmas(ibot+1)*( 1. + gb_hleff(ibot)*              &
-		 gb_dqsldtl(ibot)/cp_air ), ' g/kg'
+         gb_hleff(ibot)* gb_dqsldtl(ibot)/cp_air )            
+    write (dpu,'(a,f14.7,a)')  ' sigmas/a = ', 1000.*          &
+         gb_sigmas(ibot+1)*( 1. + gb_hleff(ibot)*              &
+ gb_dqsldtl(ibot)/cp_air ), ' g/kg'
             write (dpu,'(a,f14.7)'  )  ' mesovar = ', mesovar
             write (dpu,'(a,f14.7,a)')  ' mesovar*qsl = ',mesovar*      &
-	         gb_qsl(ibot)*1000.,' g/kg'
+         gb_qsl(ibot)*1000.,' g/kg'
             write (dpu,'(a,f14.7,a)')  ' turb.fluct = ',1000.*         &
-	         (q_star(i,j)-gb_dqsldtl(ibot)*b_star(i,j)*gb_t(ibot)/ &
-		 grav),' g/kg'
+         (q_star(i,j)-gb_dqsldtl(ibot)*b_star(i,j)*gb_t(ibot)/ &
+ grav),' g/kg'
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' k      T         u         v       '//&
-	         '  qv        qt ' 
+         '  qv        qt ' 
             write (dpu,'(a)')  '       (K)      (m/s)     (m/s)     '//&
-	         '(g/kg)    (g/kg)'
+         '(g/kg)    (g/kg)'
             write (dpu,'(a)')  '------------------------------------'//&
-	         '-----------------'
+         '-----------------'
             write (dpu,'(a)')  ' '
             do kk = nlev-n_print_levels,nlev
                  write(dpu,18) kk,gb_t(kk),gb_u(kk),gb_v(kk),1000.*    &
-	              gb_qv(kk), 1000.*gb_qt(kk)
+              gb_qv(kk), 1000.*gb_qt(kk)
             end do
 18          format(1X,i2,1X,5(f9.4,1X))
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' k      qa        qc      sli/cp_air    '//&
-	         'sliv/cp_air    tdtlw'
+         'sliv/cp_air    tdtlw'
             write (dpu,'(a)')  '                (g/kg)     (K)      '//&
-	         ' (K)      (K/day)'
+         ' (K)      (K/day)'
             write (dpu,'(a)')  '------------------------------------'//&
-	         '-----------------'
+         '-----------------'
             write (dpu,'(a)')  ' '
             do kk = nlev-n_print_levels,nlev
                  write(dpu,19) kk,qa(i,j,kk),1000.*gb_qc(kk),          &
-		      gb_sli(kk)/cp_air,gb_sliv(kk)/cp_air,gb_tdtlw(kk)*86400.
-            enddo	    
+      gb_sli(kk)/cp_air,gb_sliv(kk)/cp_air,gb_tdtlw(kk)*86400.
+            enddo    
 19          format(1X,i2,1X,5(f9.4,1X))
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' k   z_full    z_half    p_full    p'//&
-	         '_half    sigmas'
+         '_half    sigmas'
             write (dpu,'(a)')  '      (m)      (m)        (mb)      '//&
-	         '(mb)     (g/kg)'
+         '(mb)     (g/kg)'
             write (dpu,'(a)')  '------------------------------------'//&
-	         '-----------------'
+         '-----------------'
             write (dpu,'(a)')  ' '
             do kk = nlev-n_print_levels,nlev
                  write(dpu,19) kk,gb_z_full(kk),gb_z_half(kk+1),       &
-	              gb_p_full(kk)/100.,gb_p_half(kk+1)/100.,1000.*   &
+              gb_p_full(kk)/100.,gb_p_half(kk+1)/100.,1000.*   &
                       gb_sigmas(kk+1)
             enddo
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' k     esl       qsl      dqsldtl   '//&
-	         ' hleff '
+         ' hleff '
             write (dpu,'(a)')  '       (mb)    (g/kg)     (g/kg/K)  '//&
-	         '(MJ/kg)' 
+         '(MJ/kg)' 
             write (dpu,'(a)')  '------------------------------------'//&
-	         '-------'
+         '-------'
             write (dpu,'(a)')  ' '
             do kk = nlev-n_print_levels,nlev
                  write(dpu,19) kk, gb_esl(kk)/100.,gb_qsl(kk)*1000.,   &
-	              gb_dqsldtl(kk)*1000.,gb_hleff(kk)/1.0e+06
+              gb_dqsldtl(kk)*1000.,gb_hleff(kk)/1.0e+06
             enddo
             write (dpu,'(a)')  ' '
             end if
        
             ! call the initialization routine for variables needed 
-	    ! by caleddy
+    ! by caleddy
          
             call trbintd(gb_t,       gb_qv,     gb_qt,     gb_qc,      &
-	                 gb_sli,     gb_sliv,   gb_u,      gb_v,       &
-	                 gb_z_full,  gb_z_half, gb_p_full, gb_p_half,  &
+                 gb_sli,     gb_sliv,   gb_u,      gb_v,       &
+                 gb_z_full,  gb_z_half, gb_p_full, gb_p_half,  &
                          gb_sigmas,  gb_qsl,    gb_esl,    gb_hleff,   &
-			 gb_dqsldtl, gb_slisl,  gb_qtsl,   gb_qxtop,   &
-			 gb_qxbot,   gb_qltop,  gb_sfuh,   gb_sflh,    &
-			 gb_qc_new,  gb_qa_new, gb_chu,    gb_chs,     &
-			 gb_cmu,     gb_cms,    gb_n2,     gb_s2,      &
-			 gb_ri    )
+ gb_dqsldtl, gb_slisl,  gb_qtsl,   gb_qxtop,   &
+ gb_qxbot,   gb_qltop,  gb_sfuh,   gb_sflh,    &
+ gb_qc_new,  gb_qa_new, gb_chu,    gb_chs,     &
+ gb_cmu,     gb_cms,    gb_n2,     gb_s2,      &
+ gb_ri    )
             
             !-----------------------------------------------------------
             !
@@ -1225,19 +1253,19 @@ logical :: used, topfound
 
             
             call caleddy(gb_u_star, kqfs,      khfs,      gb_sli,      &
-	                 gb_qt,     gb_qc_new, gb_qa_new, gb_sliv,     &
-			 gb_u,      gb_v,      gb_p_full, gb_z_full,   &
-			 gb_sfuh,   gb_sflh,   gb_slisl,  gb_qtsl,     &
-			 gb_tdtlw,  gb_hleff,  gb_density,gb_qsl,      &
-			 gb_dqsldtl,gb_qltop,  gb_p_half, gb_z_half,   &
-			 gb_chu,    gb_chs,    gb_cmu,    gb_cms,      &
-			 gb_n2,     gb_s2,     gb_ri,     gb_pblh,     &
-			 gb_turbtype,gb_k_t,   gb_k_m,    gb_tke,      &
-			 gb_leng,   gb_bprod,  gb_sprod,  gb_trans,    &
-			 gb_diss,   gb_isturb, gb_tauinv, gb_sigmas,   &
-			 gb_radf,   gb_sh,     gb_sm,     gb_gh,       &
-			 gb_evhc)
-		 
+                 gb_qt,     gb_qc_new, gb_qa_new, gb_sliv,     &
+ gb_u,      gb_v,      gb_p_full, gb_z_full,   &
+ gb_sfuh,   gb_sflh,   gb_slisl,  gb_qtsl,     &
+ gb_tdtlw,  gb_hleff,  gb_density,gb_qsl,      &
+ gb_dqsldtl,gb_qltop,  gb_p_half, gb_z_half,   &
+ gb_chu,    gb_chs,    gb_cmu,    gb_cms,      &
+ gb_n2,     gb_s2,     gb_ri,     gb_pblh,     &
+ gb_turbtype,gb_k_t,   gb_k_m,    gb_tke,      &
+ gb_leng,   gb_bprod,  gb_sprod,  gb_trans,    &
+ gb_diss,   gb_isturb, gb_tauinv, gb_sigmas,   &
+ gb_radf,   gb_sh,     gb_sm,     gb_gh,       &
+ gb_evhc)
+ 
             !-----------------------------------------------------------
             !
             ! paste back outputs
@@ -1247,37 +1275,37 @@ logical :: used, topfound
             k_t(i,j,1:ibot)        = gb_k_t(1:ibot)
             k_m(i,j,1:ibot)        = gb_k_m(1:ibot)
             tke(i,j,1:ibot+1)      = gb_tke(1:ibot+1)
-	    
-	    turbtype(:,i,j,1:ibot+1) = gb_turbtype(:,1:ibot+1)
-	    isturb(i,j,1:ibot)       = gb_isturb(1:ibot)
-	    n2(i,j,1:ibot+1)         = gb_n2(1:ibot+1)
-	    s2(i,j,1:ibot+1)         = gb_s2(1:ibot+1)
-	    ri(i,j,1:ibot+1)         = gb_ri(1:ibot+1)	    
-	    tauinv(i,j,1:ibot+1)     = gb_tauinv(1:ibot+1)
-	    leng(i,j,1:ibot+1)       = gb_leng(1:ibot+1)
-	    bprod(i,j,1:ibot+1)      = gb_bprod(1:ibot+1)
-	    sprod(i,j,1:ibot+1)      = gb_sprod(1:ibot+1)
+    
+    turbtype(:,i,j,1:ibot+1) = gb_turbtype(:,1:ibot+1)
+    isturb(i,j,1:ibot)       = gb_isturb(1:ibot)
+    n2(i,j,1:ibot+1)         = gb_n2(1:ibot+1)
+    s2(i,j,1:ibot+1)         = gb_s2(1:ibot+1)
+    ri(i,j,1:ibot+1)         = gb_ri(1:ibot+1)    
+    tauinv(i,j,1:ibot+1)     = gb_tauinv(1:ibot+1)
+    leng(i,j,1:ibot+1)       = gb_leng(1:ibot+1)
+    bprod(i,j,1:ibot+1)      = gb_bprod(1:ibot+1)
+    sprod(i,j,1:ibot+1)      = gb_sprod(1:ibot+1)
             trans(i,j,1:ibot+1)      = gb_trans(1:ibot+1)
-	    diss(i,j,1:ibot+1)       = gb_diss(1:ibot+1)
+    diss(i,j,1:ibot+1)       = gb_diss(1:ibot+1)
             radf(i,j,1:ibot+1)       = gb_radf(1:ibot+1)
             sh(i,j,1:ibot+1)         = gb_sh(1:ibot+1)
             sm(i,j,1:ibot+1)         = gb_sm(1:ibot+1)
-	    gh(i,j,1:ibot+1)         = gb_gh(1:ibot+1)
+    gh(i,j,1:ibot+1)         = gb_gh(1:ibot+1)
             evhc(i,j,1:ibot+1)       = gb_evhc(1:ibot+1)
-                                                	    
+                                                    
             slislope(i,j,1:ibot  )   = gb_slisl(1:ibot  )
-	    qtslope (i,j,1:ibot  )   = gb_qtsl (1:ibot  )
-	    qxtop   (i,j,1:ibot  )   = gb_qxtop(1:ibot  )
-	    qxbot   (i,j,1:ibot  )   = gb_qxbot(1:ibot  )
-	    qc_new  (i,j,1:ibot  )   = gb_qc_new(1:ibot  )
-	    qa_new  (i,j,1:ibot  )   = gb_qa_new(1:ibot  )
-	    
-	    sigmas(is-1+i,js-1+j,1:ibot+1) = gb_sigmas (1:ibot+1) 
-	    
+    qtslope (i,j,1:ibot  )   = gb_qtsl (1:ibot  )
+    qxtop   (i,j,1:ibot  )   = gb_qxtop(1:ibot  )
+    qxbot   (i,j,1:ibot  )   = gb_qxbot(1:ibot  )
+    qc_new  (i,j,1:ibot  )   = gb_qc_new(1:ibot  )
+    qa_new  (i,j,1:ibot  )   = gb_qa_new(1:ibot  )
+    
+    sigmas(is-1+i,js-1+j,1:ibot+1) = gb_sigmas (1:ibot+1) 
+    
             !determine maximum altitude that the very stable pbl
-	    !is permitted to operate.  this is set to the half
-	    !level altitude just beneath the first turbulent
-	    !level
+    !is permitted to operate.  this is set to the half
+    !level altitude just beneath the first turbulent
+    !level
             stbltop(i,j) = 0.
             topfound = .false.
      
@@ -1289,12 +1317,12 @@ logical :: used, topfound
             stbltop(i,j) = gb_z_half(kk+1)
        
             if (column_match) then
-	    write (dpu,'(a)') ' '
-	    write (dpu,'(a,f14.7,a)') ' stbltop = ',stbltop(i,j),      &
-	         ' meters'
-	    write (dpu,'(a)') ' '
-	    end if
-	    
+    write (dpu,'(a)') ' '
+    write (dpu,'(a,f14.7,a)') ' stbltop = ',stbltop(i,j),      &
+         ' meters'
+    write (dpu,'(a)') ' '
+    end if
+    
        enddo
        enddo
 
@@ -1314,9 +1342,9 @@ logical :: used, topfound
        enddo
        
        where (tauinvtmp .gt. 1.e-10 .and. isturb .gt. 0.5)
-	    eddytau = max ( 1./tauinvtmp, mineddytau )
+    eddytau = max ( 1./tauinvtmp, mineddytau )
        elsewhere
-	    eddytau = missing_value
+    eddytau = missing_value
        endwhere
        
        qaturb(is:ie,js:je,:)   = qa_new
@@ -1360,11 +1388,11 @@ logical :: used, topfound
        if ( id_fq_cv_int > 0 .or. id_fq_cv_top > 0 .or. id_n2 > 0 .or. & 
             id_fq_turb   > 0 .or. id_diss      > 0 .or. id_s2 > 0 .or. &
             id_fq_cv_bot > 0 .or. id_fq_st     > 0 .or. id_ri > 0 .or. &
-	    id_eddytau   > 0 .or. id_tauinv    > 0 .or.                &
+    id_eddytau   > 0 .or. id_tauinv    > 0 .or.                &
             id_leng      > 0 .or. id_qaedt     > 0 .or.                &
-	    id_bprod     > 0 .or. id_sprod     > 0 .or.                &
-	    id_trans     > 0 .or. id_qcedt     > 0 .or.                &
-	    id_sigmas    > 0 ) then  
+    id_bprod     > 0 .or. id_sprod     > 0 .or.                &
+    id_trans     > 0 .or. id_qcedt     > 0 .or.                &
+    id_sigmas    > 0 ) then  
       
             mask3(:,:,1:(nlev+1)) = 1.
             if (present(kbot)) then
@@ -1374,146 +1402,146 @@ logical :: used, topfound
             endif
         
             if ( id_fq_cv_int > 0 ) then
-	         where (turbtype(2,:,:,:) .eq. 1) 
-		     tmpdat = 1.
-		 elsewhere
-		     tmpdat = 0.
-		 end where
+         where (turbtype(2,:,:,:) .eq. 1) 
+     tmpdat = 1.
+ elsewhere
+     tmpdat = 0.
+ end where
                  used = send_data (id_fq_cv_int,tmpdat,time, is, js, 1,&
-		                   rmask=mask3 )
+                   rmask=mask3 )
             end if
 
             if ( id_fq_cv_top > 0 ) then
-	         where (turbtype(4,:,:,:) .eq. 1) 
-		     tmpdat = 1.
-		 elsewhere
-		     tmpdat = 0.
-		 end where
+         where (turbtype(4,:,:,:) .eq. 1) 
+     tmpdat = 1.
+ elsewhere
+     tmpdat = 0.
+ end where
                  used = send_data (id_fq_cv_top,tmpdat,time, is, js, 1,&
-		                   rmask=mask3 )
+                   rmask=mask3 )
             end if
             
-	    if ( id_fq_cv_bot > 0 ) then
-	         where (turbtype(3,:,:,:) .eq. 1) 
-		     tmpdat = 1.
-		 elsewhere
-		     tmpdat = 0.
-		 end where
+    if ( id_fq_cv_bot > 0 ) then
+         where (turbtype(3,:,:,:) .eq. 1) 
+     tmpdat = 1.
+ elsewhere
+     tmpdat = 0.
+ end where
                  used = send_data (id_fq_cv_bot,tmpdat,time, is, js, 1,&
-		                   rmask=mask3 )
+                   rmask=mask3 )
             end if
          
-	    if ( id_fq_st > 0 ) then
-	         where (turbtype(1,:,:,:) .eq. 1) 
-		     tmpdat = 1.
-		 elsewhere
-		     tmpdat = 0.
-		 end where                 
+    if ( id_fq_st > 0 ) then
+         where (turbtype(1,:,:,:) .eq. 1) 
+     tmpdat = 1.
+ elsewhere
+     tmpdat = 0.
+ end where                 
                  used = send_data ( id_fq_st, tmpdat, time, is, js, 1, &
-		                    rmask=mask3 )
+                    rmask=mask3 )
             end if
 
             if ( id_fq_turb > 0 ) then
                  used = send_data ( id_fq_turb, isturb, time, is, js,1,&
-		                    rmask=mask )
+                    rmask=mask )
             end if
                      
-	    if ( id_n2 > 0 ) then
+    if ( id_n2 > 0 ) then
                  used = send_data ( id_n2, n2, time, is, js, 1,        &
-		                    rmask=mask3 )
+                    rmask=mask3 )
             end if
          
-	    if ( id_s2 > 0 ) then
+    if ( id_s2 > 0 ) then
                  used = send_data ( id_s2, s2, time, is, js, 1,        &
-		                    rmask=mask3 )
+                    rmask=mask3 )
             end if
          
-	    if ( id_ri > 0 ) then
+    if ( id_ri > 0 ) then
                  used = send_data ( id_ri, ri, time, is, js, 1,        &
-		                    rmask=mask3 )
+                    rmask=mask3 )
             end if
          
-	    if ( id_leng > 0 ) then
+    if ( id_leng > 0 ) then
                  used = send_data ( id_leng, leng, time, is, js, 1,    &
-		                    rmask=mask3 )
+                    rmask=mask3 )
             end if
             
-	    if ( id_bprod > 0 ) then
+    if ( id_bprod > 0 ) then
                  used = send_data ( id_bprod, bprod, time, is, js, 1,  &
-		                    rmask=mask3 )
+                    rmask=mask3 )
             end if
          
-	    if ( id_sprod > 0 ) then
+    if ( id_sprod > 0 ) then
                  used = send_data ( id_sprod, sprod, time, is, js, 1,  &
-		                    rmask=mask3 )            
+                    rmask=mask3 )            
             end if
-				    
+    
             if ( id_trans > 0 ) then
                  used = send_data ( id_trans, trans, time, is, js, 1,  &
-		                    rmask=mask3 )            
+                    rmask=mask3 )            
             end if
-				    
+    
             if ( id_diss > 0 ) then
                  used = send_data ( id_diss, diss, time, is, js, 1,    &
-		                    rmask=mask3 )            
+                    rmask=mask3 )            
             end if
-				    
+    
             if ( id_radf > 0 ) then
                  used = send_data ( id_radf, radf, time, is, js, 1,    &
-		                    rmask=mask3 )            
+                    rmask=mask3 )            
             end if
-				    
+    
             if ( id_sh > 0 ) then
                  used = send_data ( id_sh, sh, time, is, js, 1,        &
-		                    rmask=mask3 )            
+                    rmask=mask3 )            
             end if
-				    
+    
             if ( id_sm > 0 ) then
                  used = send_data ( id_sm, sm, time, is, js, 1,        & 
-		                    rmask=mask3 )            
+                    rmask=mask3 )            
             end if
-				    
+    
             if ( id_gh > 0 ) then
                  used = send_data ( id_gh, gh, time, is, js, 1,        &
-		                    rmask=mask3 )            
+                    rmask=mask3 )            
             end if
-				    
+    
             if ( id_evhc > 0 ) then
                  used = send_data ( id_evhc, evhc, time, is, js, 1,    &
-		                    rmask=mask3 )            
+                    rmask=mask3 )            
             end if
-				    
+    
             if ( id_tauinv > 0 ) then
                  used = send_data ( id_tauinv, tauinv, time, is, js, 1,&
-		                    rmask=mask3 )
+                    rmask=mask3 )
             end if
             
             if ( id_eddytau > 0 ) then
                  used = send_data ( id_eddytau, eddytau, time, is, js, &
-		                    1, rmask=mask )
+                    1, rmask=mask )
             end if
             
             if ( id_sigmas > 0 ) then
                  used = send_data ( id_sigmas, sigmas(is:ie,js:je,:),  &
-		                    time, is, js, 1, rmask=mask3 )
+                    time, is, js, 1, rmask=mask3 )
             end if
             
             if (id_qaedt > 0) then
-	         tmpdat = 0.0
-		 do k = 1, nlev	   
-		      tmpdat(:,:,k) = isturb(:,:,k)*qa_new(:,:,k)
+         tmpdat = 0.0
+ do k = 1, nlev   
+      tmpdat(:,:,k) = isturb(:,:,k)*qa_new(:,:,k)
                  enddo
-		 used = send_data ( id_qaedt, tmpdat(:,:,1:nlev),      &
-		                    time, is, js, 1, rmask=mask )                 
+ used = send_data ( id_qaedt, tmpdat(:,:,1:nlev),      &
+                    time, is, js, 1, rmask=mask )                 
             end if
             
-	    if (id_qcedt > 0) then
-	         tmpdat = 0.0
-		 do k = 1, nlev	   
-	              tmpdat(:,:,k) = isturb(:,:,k)*qc_new(:,:,k)
-		 enddo
-		 used = send_data ( id_qcedt, tmpdat(:,:,1:nlev),      &
-		                    time, is, js, 1, rmask=mask )      
+    if (id_qcedt > 0) then
+         tmpdat = 0.0
+ do k = 1, nlev   
+              tmpdat(:,:,k) = isturb(:,:,k)*qc_new(:,:,k)
+ enddo
+ used = send_data ( id_qcedt, tmpdat(:,:,1:nlev),      &
+                    time, is, js, 1, rmask=mask )      
             end if
  
        end if  ! do diagnostics if
@@ -1535,51 +1563,6 @@ end subroutine edt
 !
 !======================================================================= 
 
-
-!======================================================================= 
-!
-!      subroutine edt_tend
-!        
-!
-!      this subroutine takes the longwave heating rate and assigns it
-!      to tdtlw
-!        
-
-subroutine edt_tend(is,ie,js,je,tend)
-
-!-----------------------------------------------------------------------
-!
-!      variables
-!
-!      -----
-!      input
-!      -----
-!
-!      is,ie,js,je       i,j indices marking the slab of model 
-!      tend              longwave heating rate (deg K/sec)
-!
-!-----------------------------------------------------------------------
-
-integer, intent(in)                   :: is,ie,js,je
-real,    intent(in), dimension(:,:,:) :: tend
-
-!-----------------------------------------------------------------------
-!
-!      assign tendency
-!
-
-       if (.not. edt_on) return
-       tdtlw(is:ie,js:je,:)=tend(:,:,:)
-
-!-----------------------------------------------------------------------
-! 
-!      subroutine end
-!
-
-end subroutine edt_tend
-
-!
-!======================================================================= 
 
 
 
@@ -1612,9 +1595,12 @@ integer :: unit
 !
 !      write out restart file
 !
-       unit = Open_File ('RESTART/edt.res', &
-            FORM='native', ACTION='write')
-       call write_data (unit, tdtlw)
+       unit = Open_restart_File ('RESTART/edt.res', ACTION='write')
+
+      if (mpp_pe() == mpp_root_pe()) then
+        write (unit) restart_versions(size(restart_versions))
+       endif
+
        call write_data (unit, qaturb)
        call write_data (unit, qcturb)
        call write_data (unit, tblyrtau)
@@ -1633,7 +1619,7 @@ integer :: unit
 ! 
 !      subroutine end
 !
-
+       module_is_initialized = .false.
 end subroutine edt_end
 
 !
@@ -1676,7 +1662,7 @@ end subroutine edt_end
 !      caleddy            main subroutine which calculates diffusivity
 !                         coefficients
 !
-!      exacol	          determines whether the column has adjacent 
+!      exacol          determines whether the column has adjacent 
 !                         regions where Ri < 0 (unstable layers or ULs) 
 !                         and determine the indices kbase, ktop which 
 !                         delimit these unstable layers : 
@@ -1710,8 +1696,8 @@ end subroutine edt_end
 
 subroutine sfdiag (qsl, esl, dqsldtl, hleff, qt, qtslope,sli, slislope,&
                    p_full, z_full, p_half, z_half, sdevs, qxtop, qxbot,&
-		   qltop, sfuh, sflh, qc_new, qa_new, sfi)
-		   
+   qltop, sfuh, sflh, qc_new, qa_new, sfi)
+   
 !----------------------------------------------------------------------- 
 ! 
 !      Purpose: 
@@ -1822,12 +1808,12 @@ real    :: acoef                  ! 1./(1+L*dqsldT/cp_air)
        do k = 2,nlev
 
             !-----------------------------------------------------------
-	    ! calculate midpoint liquid-ice water temperature
-	    tlim = (sli(k) - grav*z_full(k))/cp_air
+    ! calculate midpoint liquid-ice water temperature
+    tlim = (sli(k) - grav*z_full(k))/cp_air
 
             !-----------------------------------------------------------
-	    ! calculate dqsl/dp
-	    dqsldp = -1.*qsl(k)*qsl(k)/d622/esl(k)
+    ! calculate dqsl/dp
+    dqsldp = -1.*qsl(k)*qsl(k)/d622/esl(k)
             
             !-----------------------------------------------------------
             ! Compute saturation excess at top and bottom of layer k
@@ -1838,103 +1824,103 @@ real    :: acoef                  ! 1./(1+L*dqsldT/cp_air)
             slitop = min ( max ( 0.25*sli(k), slitop), 4.*sli(k))
             qttop  = min ( max ( 0.25* qt(k), qttop ), 4.* qt(k))
             tlitop = (slitop - grav*z_half(k))/cp_air   
-	    qsltop  = qsl(k) + dqsldp      * (p_half(k) - p_full(k)) + &
-	                       dqsldtl (k) * (tlitop    - tlim     )
-	    qsltop  = min ( max ( 0.25*qsl(k), qsltop ) , 4.*qsl(k) )
+    qsltop  = qsl(k) + dqsldp      * (p_half(k) - p_full(k)) + &
+                       dqsldtl (k) * (tlitop    - tlim     )
+    qsltop  = min ( max ( 0.25*qsl(k), qsltop ) , 4.*qsl(k) )
             qxtop(k) = qttop  - qsltop
             qltop(k)  = max( 0., qxtop(k)/( 1.+ hleff(k)*dqsldtl(k)/cp_air))
 
             !extrapolation to layer bottom
             slibot = sli(k) + slislope(k) * (p_half(k+1) - p_full(k))
             qtbot  = qt (k) + qtslope (k) * (p_half(k+1) - p_full(k))
-	    slibot = min ( max ( 0.25*sli(k), slibot), 4.*sli(k))
+    slibot = min ( max ( 0.25*sli(k), slibot), 4.*sli(k))
             qtbot  = min ( max ( 0.25* qt(k), qtbot ), 4.* qt(k))
             tlibot = (slibot - grav*z_half(k+1))/cp_air
-	    qslbot = qsl(k) + dqsldp      * (p_half(k+1) - p_full(k))+ &
-	                      dqsldtl (k) * (tlibot      - tlim     ) 
-	    qslbot  = min ( max ( 0.25*qsl(k), qslbot ) ,4.*qsl(k) )     
-	    qxbot(k) = qtbot  - qslbot
+    qslbot = qsl(k) + dqsldp      * (p_half(k+1) - p_full(k))+ &
+                      dqsldtl (k) * (tlibot      - tlim     ) 
+    qslbot  = min ( max ( 0.25*qsl(k), qslbot ) ,4.*qsl(k) )     
+    qxbot(k) = qtbot  - qslbot
             qlbot  = max( 0., qxbot(k)/( 1.+hleff(k)*dqsldtl(k)/cp_air ) )
 
             !-----------------------------------------------------------
             ! Compute saturation excess at midpoint of layer k           
             qxm    = qxtop(k) + (qxbot(k)-qxtop(k))*                   &
-	                 (p_full(k)-p_half(k))/(p_half(k+1) - p_half(k))
+                 (p_full(k)-p_half(k))/(p_half(k+1) - p_half(k))
             qlm  = max( 0., qxm / ( 1. +  hleff(k)*dqsldtl(k)/cp_air ) )
 
             if (column_match) then
-	    write(dpu,21) k,tlim,1000.*dqsldp*100.*100.,slitop/cp_air,     &
-	         tlitop,1000.*qttop,1000.*qsltop,1000.*qxtop(k),       &
-			1000.*qltop(k),1000.*qxm,   1000.*qlm
+    write(dpu,21) k,tlim,1000.*dqsldp*100.*100.,slitop/cp_air,     &
+         tlitop,1000.*qttop,1000.*qsltop,1000.*qxtop(k),       &
+1000.*qltop(k),1000.*qxm,   1000.*qlm
             write(dpu,21) k,tlim,1000.*dqsldp*100.*100.,slibot/cp_air,     &
-	         tlibot,1000.*qtbot,1000.*qslbot,1000.*qxbot(k),       &
-			1000.*qlbot,1000.*qxm,   1000.*qlm
-	    write (dpu,'(a)')  ' '
+         tlibot,1000.*qtbot,1000.*qslbot,1000.*qxbot(k),       &
+1000.*qlbot,1000.*qxm,   1000.*qlm
+    write (dpu,'(a)')  ' '
             end if
 
 
             !-----------------------------------------------------------
-	    !
-	    ! TWO WAYS OF CALCULATING SATURATION FRACTION AND QA AND QC
-	    !
-	    !
-	    !          FIRST WAY:  USE GAUSSIAN CLOUD MODEL
-	    !
-	    !
+    !
+    ! TWO WAYS OF CALCULATING SATURATION FRACTION AND QA AND QC
+    !
+    !
+    !          FIRST WAY:  USE GAUSSIAN CLOUD MODEL
+    !
+    !
 
             if (do_gaussian_cloud) then
-	   
-	         !calculate sigmas on model full levels
-		 sigmasf = 0.5 * (sdevs(k) + sdevs(k+1))
-	         acoef = 1. / ( 1. + hleff(k)*dqsldtl(k)/cp_air )
-		 !sigmasf = max ( sigmasf, acoef*mesovar*qsl(k) )
-		 sigmasf = acoef*mesovar*qsl(k)
-	         call gaussian_cloud(qxtop(k), qxm,      qxbot(k),     &
-		                     acoef,    sigmasf,  qa_new(k),    &
-				     qc_new(k),sfuh(k),  sflh(k))
-				     
+   
+         !calculate sigmas on model full levels
+ sigmasf = 0.5 * (sdevs(k) + sdevs(k+1))
+         acoef = 1. / ( 1. + hleff(k)*dqsldtl(k)/cp_air )
+ !sigmasf = max ( sigmasf, acoef*mesovar*qsl(k) )
+ sigmasf = acoef*mesovar*qsl(k)
+         call gaussian_cloud(qxtop(k), qxm,      qxbot(k),     &
+                     acoef,    sigmasf,  qa_new(k),    &
+     qc_new(k),sfuh(k),  sflh(k))
+     
                  !------------------------------------------------------
                  ! Combine with sflh (still for layer k-1) to get 
-		 ! interface layer saturation fraction
-	         !
-	         ! N.B.:
+ ! interface layer saturation fraction
+         !
+         ! N.B.:
                  !
-	         ! if sfuh(k)>sflh(k-1),sfi(k) = sflh(k-1)
-	         ! if sfuh(k)<sflh(k-1),sfi(k) = mean(sfuh(k),sflh(k-1))
+         ! if sfuh(k)>sflh(k-1),sfi(k) = sflh(k-1)
+         ! if sfuh(k)<sflh(k-1),sfi(k) = mean(sfuh(k),sflh(k-1))
                  !
                  sfi(k) =  0.5 * ( sflh(k-1) + min(sflh(k-1),sfuh(k)) )
  
             else
-	    
+    
             !
-	    !
-	    !          SECOND WAY:  ORIGINAL BRETHERTON-GRENIER WAY
-	    !
-	    !
+    !
+    !          SECOND WAY:  ORIGINAL BRETHERTON-GRENIER WAY
+    !
+    !
 
                  !------------------------------------------------------
                  ! Compute saturation fraction sfuh(k) of the upper half 
-		 ! of layer k.
+ ! of layer k.
 
                  if      ( (qxtop(k).lt.0.) .and. (qxm.lt.0.) ) then
                       sfuh(k) = 0.  ! Upper half-layer unsaturated
                  else if ( (qxtop(k).gt.0.) .and. (qxm.gt.0.) ) then
                       sfuh(k) = 1.  ! Upper half-layer fully saturated
                  else               ! Either qxm < 0 and qxtop > 0 
-	                            ! or vice versa
+                            ! or vice versa
                       sfuh(k) = max(qxtop(k),qxm) / abs(qxtop(k) - qxm)
                  end if
 
                  !------------------------------------------------------
                  ! Combine with sflh (still for layer k-1) to get      
-		 ! interfac layer sat frac
-	         !
-	         ! N.B.:
+ ! interfac layer sat frac
+         !
+         ! N.B.:
                  !
-	         ! if sfuh(k)>sflh(k-1),sfi(k) = sflh(k-1)
-	         ! if sfuh(k)<sflh(k-1),sfi(k) = mean(sfuh(k),sflh(k-1))
+         ! if sfuh(k)>sflh(k-1),sfi(k) = sflh(k-1)
+         ! if sfuh(k)<sflh(k-1),sfi(k) = mean(sfuh(k),sflh(k-1))
                  !
-	         sfi(k) =  0.5 * ( sflh(k-1) + min( sflh(k-1), sfuh(k)))
+         sfi(k) =  0.5 * ( sflh(k-1) + min( sflh(k-1), sfuh(k)))
       
                  !------------------------------------------------------
                  ! Update sflh to be for the lower half of layer k.             
@@ -1944,18 +1930,18 @@ real    :: acoef                  ! 1./(1+L*dqsldT/cp_air)
                  else if ( (qxbot(k).gt.0.) .and. (qxm.gt.0.) ) then
                       sflh(k) = 1.  ! Upper half-layer fully saturated
                  else            ! Either qxm < 0 and qxbot > 0 or vice
-		                 ! versa
+                 ! versa
                       sflh(k) = max(qxbot(k),qxm) / abs(qxbot(k) - qxm)
                  end if
-	         
-	         !------------------------------------------------------
-          	 !Compute grid volume mean condensate and cloud fraction
-          	 qc_new(k) = 0.5 * ( sfuh(k) * 0.5 * (qltop(k) + qlm) )&
-		           + 0.5 * ( sflh(k) * 0.5 * (qlbot    + qlm) )
+         
+         !------------------------------------------------------
+           !Compute grid volume mean condensate and cloud fraction
+           qc_new(k) = 0.5 * ( sfuh(k) * 0.5 * (qltop(k) + qlm) )&
+           + 0.5 * ( sflh(k) * 0.5 * (qlbot    + qlm) )
                  qa_new(k) = 0.5 * ( sfuh(k) + sflh(k) )
-	   
-	    end if
-	    
+   
+    end if
+    
        end do
 
        
@@ -1972,8 +1958,8 @@ real    :: acoef                  ! 1./(1+L*dqsldT/cp_air)
        write (dpu,'(a)')  ' '
        do k = nlev-n_print_levels,nlev
             write(dpu,22) k,sfuh(k),sflh(k),sfi(k),1000.*qc_new(k),    &
-	                                                 qa_new(k)
-       enddo	    
+                                                 qa_new(k)
+       enddo    
 22     format(1X,i2,1X,5(f9.4,1X))
        write (dpu,'(a)')  ' '
        end if
@@ -1998,8 +1984,8 @@ end subroutine sfdiag
 
  subroutine trbintd (t, qv, qt, qc, sli, sliv, u, v, z_full, z_half,   &
                      p_full, p_half, sdevs, qsl, esl, hleff, dqsldtl,  &
-		     slislope, qtslope, qxtop, qxbot, qltop, sfuh,sflh,&
-		     qc_new, qa_new, chu, chs, cmu, cms, n2, s2, ri)
+     slislope, qtslope, qxtop, qxbot, qltop, sfuh,sflh,&
+     qc_new, qa_new, chu, chs, cmu, cms, n2, s2, ri)
 
 !----------------------------------------------------------------------- 
 ! 
@@ -2158,7 +2144,7 @@ real, dimension(size(t,1)+1) :: sfi ! saturated fraction at interfaces
        write (dpu,'(a)')  ' '
        do k = kdim+1-n_print_levels,kdim+1
             write(dpu,20) k,cp_air*chu(k),cp_air*chs(k),cmu(k),cms(k)
-       enddo	    
+       enddo    
 20     format(1X,i2,1X,4(f9.4,1X))
        write (dpu,'(a)')  ' '
        end if
@@ -2222,7 +2208,7 @@ real, dimension(size(t,1)+1) :: sfi ! saturated fraction at interfaces
        write (dpu,'(a)')  ' '
        do k = kdim-n_print_levels,kdim
             write(dpu,17) k,slislope(k)*100.*100./cp_air,                  &
-	               1000.*qtslope(k)*100.*100.
+               1000.*qtslope(k)*100.*100.
        enddo
        write (dpu,'(a)')  ' '
        end if
@@ -2234,7 +2220,7 @@ real, dimension(size(t,1)+1) :: sfi ! saturated fraction at interfaces
 
        call sfdiag(qsl, esl, dqsldtl, hleff, qt, qtslope,sli, slislope,&
                    p_full, z_full, p_half, z_half, sdevs, qxtop, qxbot,&
-		   qltop, sfuh, sflh, qc_new, qa_new, sfi)
+   qltop, sfuh, sflh, qc_new, qa_new, sfi)
 
 !-----------------------------------------------------------------------
 !     
@@ -2284,13 +2270,13 @@ real, dimension(size(t,1)+1) :: sfi ! saturated fraction at interfaces
             s2(k)   = ((u(km1)-u(k))**2 + (v(km1)-v(k))**2)*(rdz**2)
             s2(k)   = max(ntzero,s2(k))
             ri(k)   = n2(k) / s2(k)
-	    
-	    if (column_match) then
-	         write(dpu,22) k,1000.*rdz,1000.*dslidz/cp_air,            &
-		      1000.*1000.*dqtdz,cp_air*chu(k),cp_air*chs(k),cp_air*ch,     &
-		      cmu(k),cms(k),cm
+    
+    if (column_match) then
+         write(dpu,22) k,1000.*rdz,1000.*dslidz/cp_air,            &
+      1000.*1000.*dqtdz,cp_air*chu(k),cp_air*chs(k),cp_air*ch,     &
+      cmu(k),cms(k),cm
             end if
-	    
+    
        end do
        n2(1) = 0.
        s2(1) = 0.
@@ -2305,7 +2291,7 @@ real, dimension(size(t,1)+1) :: sfi ! saturated fraction at interfaces
        write (dpu,'(a)')  ' '
        do k = kdim-n_print_levels,kdim
             write(dpu,23) k,n2(k)*sqrt(abs(n2(k)))*3600./max(small,    &
-	                abs(n2(k))),sqrt(s2(k))*3600.,ri(k)
+                abs(n2(k))),sqrt(s2(k))*3600.,ri(k)
        enddo
 23     format(1X,i2,1X,3(f9.3,1X))
        write (dpu,'(a)')  ' '
@@ -2365,7 +2351,7 @@ integer, intent(out)               :: ncvfin ! number of ULs
 integer :: k, kdim, ncv         
 real    :: riex(size(ri,1)) ! Column Ri profile extended to surface
                             ! by taking riex > rimaxentr for bflxs < 0
-			    !           riex < rimaxentr for bflxs > 0.
+    !           riex < rimaxentr for bflxs > 0.
 
 
 !-----------------------------------------------------------------------
@@ -2392,13 +2378,13 @@ real    :: riex(size(ri,1)) ! Column Ri profile extended to surface
        
             if (riex(k) .lt. rimaxentr) then 
                  
-		 !------------------------------------------------------
-		 !
+ !------------------------------------------------------
+ !
                  ! A new convective layer has been found.
-		 ! Define kbase as interface below first unstable one
-		 ! then decrement k until top unstable level is found.
-		 ! Set ktop to the first interface above unstable layer. 
-		 
+ ! Define kbase as interface below first unstable one
+ ! then decrement k until top unstable level is found.
+ ! Set ktop to the first interface above unstable layer. 
+ 
                  ncv = ncv + 1
                  kbase(ncv) = min(k+1,kdim+1)
                  do while (riex(k) .lt. rimaxentr .and. k.gt.2)
@@ -2407,11 +2393,11 @@ real    :: riex(size(ri,1)) ! Column Ri profile extended to surface
                  ktop(ncv) = k
             else
                  
-		 !------------------------------------------------------
+ !------------------------------------------------------
                  !
-		 ! Keep on looking for a CL.
+ ! Keep on looking for a CL.
               
-	         k = k-1
+         k = k-1
        
             end if
        
@@ -2468,7 +2454,7 @@ end subroutine exacol
      
 subroutine zisocl(u_star, bflxs, tkes, zm, ql, zi, n2, s2, ri, ncvfin, &
                   kbase, ktop, belongcv, ebrk, wbrk, ghcl, shcl, smcl, &
-		  lbrk)
+  lbrk)
 
 !-----------------------------------------------------------------------
 !
@@ -2583,28 +2569,28 @@ real    :: tmpr
             kt      = ktop(ncv)
             lbulk   = zi(kt)-zi(kb)
             
-	    if (column_match) then
-	    write (dpu,'(a)')  ' '
-	    write (dpu,'(a,i3)')  ' ncv    = ', ncv
-	    write (dpu,'(a,i3)')  ' kb     = ', kb
-	    write (dpu,'(a,i3)')  ' kt     = ', kt
-	    write (dpu,'(a,f14.7,a)')  ' zi(kt) = ', zi(kt), ' meters'
-	    write (dpu,'(a,f14.7,a)')  ' zi(kb) = ', zi(kb), ' meters'
-	    write (dpu,'(a,f14.7,a)')  ' lbulk  = ', lbulk, ' meters'
-	    write (dpu,'(a)')  ' '
-	    end if
-	    
+    if (column_match) then
+    write (dpu,'(a)')  ' '
+    write (dpu,'(a,i3)')  ' ncv    = ', ncv
+    write (dpu,'(a,i3)')  ' kb     = ', kb
+    write (dpu,'(a,i3)')  ' kt     = ', kt
+    write (dpu,'(a,f14.7,a)')  ' zi(kt) = ', zi(kt), ' meters'
+    write (dpu,'(a,f14.7,a)')  ' zi(kb) = ', zi(kb), ' meters'
+    write (dpu,'(a,f14.7,a)')  ' lbulk  = ', lbulk, ' meters'
+    write (dpu,'(a)')  ' '
+    end if
+    
             !-----------------------------------------------------------
             !            
             ! Add contribution (if any) from surface interfacial layer 
-	    ! to turbulent production and lengthscales.  If there is 
-	    ! positive surface buoyancy flux, the CL extends to the 
-	    ! surface and there is a surface interfacial layer contri-
-	    ! bution to W and the CL interior depth. If there is neg-
-	    ! ative buoyancy flux, the surface interfacial layer is 
-	    ! treated as energetically isolated from the rest of the CL
-	    ! and does not contribute to the layer-interior W or depth.
-	    ! This case also requires a redefinition of lbulk.
+    ! to turbulent production and lengthscales.  If there is 
+    ! positive surface buoyancy flux, the CL extends to the 
+    ! surface and there is a surface interfacial layer contri-
+    ! bution to W and the CL interior depth. If there is neg-
+    ! ative buoyancy flux, the surface interfacial layer is 
+    ! treated as energetically isolated from the rest of the CL
+    ! and does not contribute to the layer-interior W or depth.
+    ! This case also requires a redefinition of lbulk.
 
             bottom = kb .eq. kdim+1
             if (bottom .and. (bflxs .ge. 0.)) then
@@ -2621,37 +2607,37 @@ real    :: tmpr
             l2n2 = 0.
             l2s2 = 0.
             
-	    if (column_match .and. bottom) then
-	         write(dpu,30) kdim+1,lint,lz,l2n2,l2s2
+    if (column_match .and. bottom) then
+         write(dpu,30) kdim+1,lint,lz,l2n2,l2s2
 30               format(1X,i2,1X,2(f8.4,1X),2(f12.9,1X))
             end if
-	    
+    
             !-----------------------------------------------------------
             !            
             ! Turbulence contribution from conv layer (CL) interior 
-	    ! kt < k < kb, which at this point contains only unstable 
-	    ! interfaces. Based on the CL interior stratification, 
-	    ! initial guesses at the stability functions are made. If 
-	    ! there is no CL interior interface, neutral stability is 
-	    ! assumed for now.
+    ! kt < k < kb, which at this point contains only unstable 
+    ! interfaces. Based on the CL interior stratification, 
+    ! initial guesses at the stability functions are made. If 
+    ! there is no CL interior interface, neutral stability is 
+    ! assumed for now.
 
             if (kt .lt. kb-1) then 
             
-	         do k = kb-1, kt+1, -1
+         do k = kb-1, kt+1, -1
                       lz   = lengthscale(zi(k),lbulk)
                       l2n2 = l2n2 + lz*lz*n2(k)*(zm(k-1)-zm(k))
                       l2s2 = l2s2 + lz*lz*s2(k)*(zm(k-1)-zm(k))
                       lint = lint + (zm(k-1)-zm(k))      
-		      if (column_match) write(dpu,30) k,lint,lz,l2n2,  &
-		           l2s2
+      if (column_match) write(dpu,30) k,lint,lz,l2n2,  &
+           l2s2
                  enddo
 
                  !------------------------------------------------------
-		 !
+ !
                  ! Solve for bulk Sh, Sm, and wint over the CL interior
-		 
+ 
                  ricl = min(l2n2/l2s2,ricrit) ! actually we should have 
-		                              ! ricl < 0 
+                              ! ricl < 0 
                  call galperin(ricl,gh,sh,sm)
                  wint = -sh*l2n2 + sm*l2s2 + dwsurf 
                  ebar = b1*wint/lint
@@ -2661,46 +2647,46 @@ real    :: tmpr
             !-----------------------------------------------------------
             !            
             ! There is no CL interior interface. The only way that 
-	    ! should happen at this point is if there is upward surface 
-	    ! buoy flux but no unstable interior interfaces. In that 
-	    ! case, the surface interface turbulent production terms are
-	    ! used as its CL 'interior'.
+    ! should happen at this point is if there is upward surface 
+    ! buoy flux but no unstable interior interfaces. In that 
+    ! case, the surface interface turbulent production terms are
+    ! used as its CL 'interior'.
 
                  if (bottom) then
                       wint = dwsurf
                       ebar = tkes     
-		      
-		      !use neutral stability fns for layer extension
+      
+      !use neutral stability fns for layer extension
                       call galperin(0.,gh,sh,sm) 
-		      
+      
                  else
                       call error_mesg ('edt_mod', &
-		   'no convective layers found although ncv <= ncvfin',&
-		                        FATAL)
+   'no convective layers found although ncv <= ncvfin',&
+                        FATAL)
                  endif
-		 
+ 
             endif
-	    
-	    if(column_match) then
+    
+    if(column_match) then
             write (dpu,'(a)')  ' '
-	    write (dpu,'(a,f14.7)')  ' ricrit = ',ricrit
-	    write (dpu,'(a,f14.7)')  ' ricl   = ', ricl
-	    write (dpu,'(a,f14.7)')  ' gh     = ', gh
-	    write (dpu,'(a,f14.7)')  ' sh     = ', sh
-	    write (dpu,'(a,f14.7)')  ' sm     = ', sm
-	    write (dpu,'(a,f14.7,a)')  ' lbulk  = ', lbulk,  ' meters'
-	    write (dpu,'(a,f14.7,a)')  ' wint   = ', wint,   ' m3/s2'
-	    write (dpu,'(a,f14.7,a)')  ' dwsurf = ', dwsurf, ' m3/s2'
-	    write (dpu,'(a,f14.7,a)')  ' ebar   = ', ebar,   ' m2/s2' 
-	    write (dpu,'(a)')  ' '
-	    end if
-	    
+    write (dpu,'(a,f14.7)')  ' ricrit = ',ricrit
+    write (dpu,'(a,f14.7)')  ' ricl   = ', ricl
+    write (dpu,'(a,f14.7)')  ' gh     = ', gh
+    write (dpu,'(a,f14.7)')  ' sh     = ', sh
+    write (dpu,'(a,f14.7)')  ' sm     = ', sm
+    write (dpu,'(a,f14.7,a)')  ' lbulk  = ', lbulk,  ' meters'
+    write (dpu,'(a,f14.7,a)')  ' wint   = ', wint,   ' m3/s2'
+    write (dpu,'(a,f14.7,a)')  ' dwsurf = ', dwsurf, ' m3/s2'
+    write (dpu,'(a,f14.7,a)')  ' ebar   = ', ebar,   ' m2/s2' 
+    write (dpu,'(a)')  ' '
+    end if
+    
             !-----------------------------------------------------------
             !            
             ! Try to extend the top of the convective layer. Compute 
-	    ! possible contributions to TKE production and lengthscale 
-	    ! were the CL top interfacial layer found by exacol incor-
-	    ! porated into the CL interior.
+    ! possible contributions to TKE production and lengthscale 
+    ! were the CL top interfacial layer found by exacol incor-
+    ! porated into the CL interior.
 
             extend = .false.    ! will become true if CL top is extended
             dzinc  = zm(kt-1)-zm(kt)
@@ -2710,9 +2696,9 @@ real    :: tmpr
             dwinc  = -sh*dl2n2 + sm*dl2s2
 
             if (column_match) then 
-	    write (dpu,'(a)')  '------------------------------------'//&
+    write (dpu,'(a)')  '------------------------------------'//&
                  '-------'
-	    write (dpu,'(a)')  ' '
+    write (dpu,'(a)')  ' '
             write (dpu,'(a)')  '  trying to extend a layer upwards     '
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
@@ -2723,58 +2709,58 @@ real    :: tmpr
             write (dpu,'(a)')  '------------------------------------'//&
                  '----------------------'
             write (dpu,'(a)')  ' '
-	    write(dpu,31) kt,dzinc,lz,dl2n2,dl2s2,dwinc
+    write(dpu,31) kt,dzinc,lz,dl2n2,dl2s2,dwinc
 31          format(1X,i2,1X,2(f8.4,1X),3(f12.9,1X))
             end if
-	    
+    
             !-----------------------------------------------------------
             !            
             ! Test for incorporation of top layer kt into CL interior. 
-	    ! If true, extend CL by incorporating top layers until test 
-	    ! fails.
+    ! If true, extend CL by incorporating top layers until test 
+    ! fails.
       
             l2n2 = -max(min(-l2n2,tkemax*lint/(b1*sh)),tkemin*lint/    &
-	         (b1*sh))
-	    tmpr = -rinc*dzinc*l2n2/(lint+(1-rinc)*dzinc)
-	    
-	    if (column_match) then
+         (b1*sh))
+    tmpr = -rinc*dzinc*l2n2/(lint+(1-rinc)*dzinc)
+    
+    if (column_match) then
             write (dpu,'(a)')  ' '
-	    write (dpu,'(a,f14.7,a)')  '-dl2n2 = ', -1.*dl2n2, ' m3/s2'
-	    write (dpu,'(a,f14.7,a)')  '  l2n2 = ',      l2n2, ' m3/s2'
-	    write (dpu,'(a,f14.7)')    '  rinc = ',      rinc
-	    write (dpu,'(a,f14.7,a)')  '  tmpr = ',      tmpr, ' m3/s2'
-	    !write (dpu,'(a,f14.7)')  ' will layer be extended (-dl2'//&
+    write (dpu,'(a,f14.7,a)')  '-dl2n2 = ', -1.*dl2n2, ' m3/s2'
+    write (dpu,'(a,f14.7,a)')  '  l2n2 = ',      l2n2, ' m3/s2'
+    write (dpu,'(a,f14.7)')    '  rinc = ',      rinc
+    write (dpu,'(a,f14.7,a)')  '  tmpr = ',      tmpr, ' m3/s2'
+    !write (dpu,'(a,f14.7)')  ' will layer be extended (-dl2'//&
             !    'n2 .gt. tmpr)? ', real( -dl2n2 .gt. tmpr )
-	    write (dpu,'(a)')  ' '
-	    end if
-	    
+    write (dpu,'(a)')  ' '
+    end if
+    
             do while (-dl2n2 .gt. tmpr)
 
                  !------------------------------------------------------
-		 ! Add contributions from layer kt to interior length-
-		 ! scale/TKE prod
+ ! Add contributions from layer kt to interior length-
+ ! scale/TKE prod
 
                  lint = lint + dzinc
                  wint = wint + dwinc
                  l2n2 = l2n2 + dl2n2
                  l2n2 = -max(min(-l2n2,tkemax*lint/(b1*sh)),tkemin*lint&
-		      /(b1*sh))
+      /(b1*sh))
                  l2s2 = l2s2 + dl2s2
                  kt = kt-1
                  extend = .true.
                  if (kt .eq. 1) then
-		      call error_mesg ('edt_mod', &
-		      'trying to extend convective layer at model top',&
-		                        FATAL)
+      call error_mesg ('edt_mod', &
+      'trying to extend convective layer at model top',&
+                        FATAL)
                  end if
                
                  !------------------------------------------------------
-		 ! Check for existence of an overlying CL which might 
-		 ! be merged. If such exists (ktinc > 1), check for 
-		 ! merging by testing for incorporation of its top 
-		 ! interior interface into current CL. If no such layer 
-		 ! exists, ktop(ncv+cntu+1) will equal its default value
-		 ! of zero, so ktinc will be 1 and the test kt=ktinc
+ ! Check for existence of an overlying CL which might 
+ ! be merged. If such exists (ktinc > 1), check for 
+ ! merging by testing for incorporation of its top 
+ ! interior interface into current CL. If no such layer 
+ ! exists, ktop(ncv+cntu+1) will equal its default value
+ ! of zero, so ktinc will be 1 and the test kt=ktinc
                  ! will fail.
 
                  ktinc = ktop(ncv+cntu+1)+1
@@ -2784,39 +2770,39 @@ real    :: tmpr
                  end if
 
                  !------------------------------------------------------
-		 ! Compute possible lengthscale and TKE production
+ ! Compute possible lengthscale and TKE production
                  ! contributions were layer kt incorporated into CL 
-		 ! interior. Then go back to top of loop to test for 
-		 ! incorporation.
+ ! interior. Then go back to top of loop to test for 
+ ! incorporation.
             
                  dzinc = zm(kt-1)-zm(kt)
                  lz    = lengthscale(zi(kt),lbulk)
                  dl2n2 = lz*lz*n2(kt)*dzinc
                  dl2s2 = lz*lz*s2(kt)*dzinc
                  dwinc = -sh*dl2n2 + sm*dl2s2
-	    
-	         if (column_match) write(dpu,31) kt,dzinc,lz,dl2n2,    &
-		      dl2s2,dwinc
-	    
-		 !------------------------------------------------------
-		 ! Recalculate tmpr
-		      
-		 tmpr  = -rinc*dzinc*l2n2/(lint+(1-rinc)*dzinc)
+    
+         if (column_match) write(dpu,31) kt,dzinc,lz,dl2n2,    &
+      dl2s2,dwinc
+    
+ !------------------------------------------------------
+ ! Recalculate tmpr
+      
+ tmpr  = -rinc*dzinc*l2n2/(lint+(1-rinc)*dzinc)
             
-	         if (column_match) then
-		 write (dpu,'(a)')  ' '
-		 write (dpu,'(a,f14.7,a)')  '-dl2n2 = ', -1.*dl2n2,    &
-		      ' m3/s2'
-	         write (dpu,'(a,f14.7,a)')  '  l2n2 = ',      l2n2,    &
-		      ' m3/s2'
-	         write (dpu,'(a,f14.7)')    '  rinc = ',      rinc
-	         write (dpu,'(a,f14.7,a)')  '  tmpr = ',      tmpr,    &
-		      ' m3/s2'
-	         !write (dpu,'(a,f14.7,a)')  ' will layer be extende'//&
+         if (column_match) then
+ write (dpu,'(a)')  ' '
+ write (dpu,'(a,f14.7,a)')  '-dl2n2 = ', -1.*dl2n2,    &
+      ' m3/s2'
+         write (dpu,'(a,f14.7,a)')  '  l2n2 = ',      l2n2,    &
+      ' m3/s2'
+         write (dpu,'(a,f14.7)')    '  rinc = ',      rinc
+         write (dpu,'(a,f14.7,a)')  '  tmpr = ',      tmpr,    &
+      ' m3/s2'
+         !write (dpu,'(a,f14.7,a)')  ' will layer be extende'//&
                  !     'd (-dl2n2 .gt. tmpr)? ', real(-dl2n2 .gt. tmpr)
-	         write (dpu,'(a)')  ' '
-	    	 end if
-	    
+         write (dpu,'(a)')  ' '
+     end if
+    
             end do   ! Done with top extension of CL
 
             !-----------------------------------------------------------
@@ -2834,9 +2820,9 @@ real    :: tmpr
             ! Extend the CL base if possible.
 
             if (column_match .and. .not. bottom) then 
-	    write (dpu,'(a)')  '------------------------------------'//&
+    write (dpu,'(a)')  '------------------------------------'//&
                  '-------'
-	    write (dpu,'(a)')  ' '
+    write (dpu,'(a)')  ' '
             write (dpu,'(a)')  '  trying to extend a layer downwards'
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
@@ -2847,14 +2833,14 @@ real    :: tmpr
             write (dpu,'(a)')  '------------------------------------'//&
                  '---------------------------'
             write (dpu,'(a)')  ' '
-	    end if
-	    
+    end if
+    
             if (.not. bottom) then
 
                  !------------------------------------------------------
-		 ! Compute possible contributions to TKE production and 
-		 ! lengthscale, were the CL base interfacial layer found 
-		 ! by exacol incorporated into the CL interior.
+ ! Compute possible contributions to TKE production and 
+ ! lengthscale, were the CL base interfacial layer found 
+ ! by exacol incorporated into the CL interior.
 
                  dzinc = zm(kb-1)-zm(kb)
                  lz    = lengthscale(zi(kb),lbulk)
@@ -2863,84 +2849,84 @@ real    :: tmpr
                  dwinc = -sh*dl2n2 + sm*dl2s2
 
                  if (column_match) write(dpu,31) kb,dzinc,lz,dl2n2,    &
-		      dl2s2,dwinc
+      dl2s2,dwinc
 
                  !------------------------------------------------------
-		 ! Test for incorporation of base layer kb into CL 
-		 ! interior. If true, extend CL by incorporating base 
-		 ! layers until test fails.
+ ! Test for incorporation of base layer kb into CL 
+ ! interior. If true, extend CL by incorporating base 
+ ! layers until test fails.
 
                  tmpr = -rinc*dzinc*l2n2/(lint+(1-rinc)*dzinc)
-		 
+ 
                  if (column_match) then
                  write (dpu,'(a)')  ' '
-		 write (dpu,'(a,f14.7,a)')  '-dl2n2 = ', -1.*dl2n2,    &
-		      ' m3/s2'
-	         write (dpu,'(a,f14.7,a)')  '  l2n2 = ',      l2n2,    &
-		      ' m3/s2'
-	         write (dpu,'(a,f14.7)')    '  rinc = ',      rinc
-	         write (dpu,'(a,f14.7,a)')  '  tmpr = ',      tmpr,    &
-		      ' m3/s2'
-	         !write (dpu,'(a,f14.7,a)')  ' will layer be extende'//&
+ write (dpu,'(a,f14.7,a)')  '-dl2n2 = ', -1.*dl2n2,    &
+      ' m3/s2'
+         write (dpu,'(a,f14.7,a)')  '  l2n2 = ',      l2n2,    &
+      ' m3/s2'
+         write (dpu,'(a,f14.7)')    '  rinc = ',      rinc
+         write (dpu,'(a,f14.7,a)')  '  tmpr = ',      tmpr,    &
+      ' m3/s2'
+         !write (dpu,'(a,f14.7,a)')  ' will layer be extende'//&
                  !     'd (-dl2n2 .gt. tmpr)? ', real(-dl2n2 .gt. tmpr)
-	         write (dpu,'(a)')  ' '
-	    	 end if
+         write (dpu,'(a)')  ' '
+     end if
 
                  do while((-dl2n2.gt. tmpr) .and. (.not. bottom) )
 
                       !-------------------------------------------------
-		      ! Add contributions from layer kb to interior 
-		      ! lengthscale/TKE prod
+      ! Add contributions from layer kb to interior 
+      ! lengthscale/TKE prod
  
                       lint = lint + dzinc
                       wint = wint + dwinc
                       l2n2 = l2n2 + dl2n2
                       l2n2 = -max(min(-l2n2,tkemax*lint/(b1*sh)),tkemin&
-		           *lint/(b1*sh))
+           *lint/(b1*sh))
                       l2s2 = l2s2 + dl2s2
 
                       !-------------------------------------------------
-		      ! Extend base of CL downward a layer
+      ! Extend base of CL downward a layer
 
                       kb = kb+1
                       extend = .true.
 
                       !-------------------------------------------------
-		      ! Check for existence of an underlying CL which 
-		      ! might be merged. If such exists (kbinc > 1), 
-		      ! check for merging by testing for incorporation 
-		      ! of its top interior interface into current CL.
+      ! Check for existence of an underlying CL which 
+      ! might be merged. If such exists (kbinc > 1), 
+      ! check for merging by testing for incorporation 
+      ! of its top interior interface into current CL.
                       ! Note that this top 'interior' interface could be
-		      ! the surface.
+      ! the surface.
 
                       kbinc = 0
                       if (ncv .gt. 1) kbinc = ktop(ncv-1)+1
                       if (kb .eq. kbinc) then
 
                            !--------------------------------------------
-		           ! We are incorporating interior of CL ncv-1, 
-			   ! so merge this CL into the current CL.
+           ! We are incorporating interior of CL ncv-1, 
+   ! so merge this CL into the current CL.
 
                            ncv    = ncv    - 1
                            ncvfin = ncvfin - 1
                            cntd   = cntd   + 1 
                       
-		      end if
+      end if
 
                       !-------------------------------------------------
-		      ! If CL would now reach the surface, check sign of
-		      ! surface buoyancy flux. If positive, add contri-
-		      ! butions of surface interfacial layer to TKE 
-		      ! production and lengthscale. If negative, we 
-		      ! regard the surface layer as stable and do not
+      ! If CL would now reach the surface, check sign of
+      ! surface buoyancy flux. If positive, add contri-
+      ! butions of surface interfacial layer to TKE 
+      ! production and lengthscale. If negative, we 
+      ! regard the surface layer as stable and do not
                       ! add surface interfacial layer contributions to 
-		      ! the CL. In either case the surface interface is 
-		      ! classified as part of the CL for bookkeeping 
-		      ! purposes (to ensure no base entrainment calcula-
-		      ! tion is done). If we are merging with a surface-
-		      ! driven CL with no interior unstable interfaces, 
-		      ! the above code will already have handled the 
-		      ! merging book-keeping.
+      ! the CL. In either case the surface interface is 
+      ! classified as part of the CL for bookkeeping 
+      ! purposes (to ensure no base entrainment calcula-
+      ! tion is done). If we are merging with a surface-
+      ! driven CL with no interior unstable interfaces, 
+      ! the above code will already have handled the 
+      ! merging book-keeping.
 
                       bottom = kb .eq. kdim+1
                       if (bottom) then 
@@ -2951,10 +2937,10 @@ real    :: tmpr
                       else
 
                            !--------------------------------------------
-		           ! Compute possible lengthscale and TKE prod-
-			   ! uction contributions were layer kb incor-
-			   ! porated into CL interior,then go back to 
-			   ! top of loop to test for incorporation
+           ! Compute possible lengthscale and TKE prod-
+   ! uction contributions were layer kb incor-
+   ! porated into CL interior,then go back to 
+   ! top of loop to test for incorporation
             
                            dzinc = zm(kb-1) - zm(kb)
                            lz    = lengthscale(zi(kb),lbulk)
@@ -2962,37 +2948,37 @@ real    :: tmpr
                            dl2s2 = lz*lz*s2(kb)*dzinc
                            dwinc = -sh*dl2n2 + sm*dl2s2
                         
-		      end if
+      end if
 
                       if (column_match) write(dpu,31) kb,dzinc,lz,     &
-		           dl2n2,dl2s2,dwinc
-	    
+           dl2n2,dl2s2,dwinc
+    
                       !-------------------------------------------------
-		      ! Recalculate tmpr
-		      
-		      tmpr = -rinc*dzinc*l2n2/(lint+(1-rinc)*dzinc)
+      ! Recalculate tmpr
+      
+      tmpr = -rinc*dzinc*l2n2/(lint+(1-rinc)*dzinc)
 
                       if (column_match) then
-		      write (dpu,'(a)')  ' '
-		      write (dpu,'(a,f14.7,a)')  '-dl2n2 = ',-1.*dl2n2,&
-		           ' m3/s2'
-	              write (dpu,'(a,f14.7,a)')  '  l2n2 = ',     l2n2,&
-		           ' m3/s2'
-	              write (dpu,'(a,f14.7)')    '  rinc = ',     rinc
-	              write (dpu,'(a,f14.7,a)')  '  tmpr = ',     tmpr,&
-		           ' m3/s2'
-	              !write (dpu,'(a,f14.7,a)')  ' will layer be ex'//&
+      write (dpu,'(a)')  ' '
+      write (dpu,'(a,f14.7,a)')  '-dl2n2 = ',-1.*dl2n2,&
+           ' m3/s2'
+              write (dpu,'(a,f14.7,a)')  '  l2n2 = ',     l2n2,&
+           ' m3/s2'
+              write (dpu,'(a,f14.7)')    '  rinc = ',     rinc
+              write (dpu,'(a,f14.7,a)')  '  tmpr = ',     tmpr,&
+           ' m3/s2'
+              !write (dpu,'(a,f14.7,a)')  ' will layer be ex'//&
                       !     'tended (-dl2n2 .gt. tmpr)? ', real(-dl2n2 &
-		      !     .gt. tmpr)
-	              write (dpu,'(a)')  ' '
-	    	      end if
-	    
+      !     .gt. tmpr)
+              write (dpu,'(a)')  ' '
+          end if
+    
                  end do ! for downward extension
  
                  if (bottom .and. ncv .ne. 1) then 
                        call error_mesg ('edt_mod', &
-		               'bottom convective layer not indexed 1',&
-			                 FATAL)
+               'bottom convective layer not indexed 1',&
+                 FATAL)
                  end if
 
             end if   ! Done with bottom extension of CL 
@@ -3011,17 +2997,17 @@ real    :: tmpr
             ! Sanity check for positive wint.
             if (wint .lt. 0.) then
                  call error_mesg ('edt_mod', &
-		                  'interior avg TKE < 0', FATAL)
+                  'interior avg TKE < 0', FATAL)
             end if
 
             !-----------------------------------------------------------
             ! Recompute base and top indices, Ri_cl, Sh, Sm, and <W> 
-	    ! after layer extension if necessary. Ideally, we would 
-	    ! recompute l2n2 and l2s2 to account for the incorrect lbulk
-	    ! used in the computation of lz, but we take the simpler 
-	    ! approach of simply multiplying the lz's by the ratio of 
-	    ! the actual PBL depth to lbulk.
-	    
+    ! after layer extension if necessary. Ideally, we would 
+    ! recompute l2n2 and l2s2 to account for the incorrect lbulk
+    ! used in the computation of lz, but we take the simpler 
+    ! approach of simply multiplying the lz's by the ratio of 
+    ! the actual PBL depth to lbulk.
+    
             if (extend) then
 
                  ktop (ncv) = kt
@@ -3032,13 +3018,13 @@ real    :: tmpr
                  l2n2       = l2n2*l2rat
                  l2s2       = l2s2*l2rat
                  ricl = min(l2n2/l2s2,ricrit)
-		 call galperin(ricl,gh,sh,sm)
+ call galperin(ricl,gh,sh,sm)
                  
-		 !------------------------------------------------------
-		 ! It is conceivable that even though the original wint 
-		 ! was positive, it will be negative after correction. 
-		 ! In this case, correct wint to be a small positive 
-		 ! number
+ !------------------------------------------------------
+ ! It is conceivable that even though the original wint 
+ ! was positive, it will be negative after correction. 
+ ! In this case, correct wint to be a small positive 
+ ! number
                  wint = max(dwsurf + (-sh*l2n2 + sm*l2s2),0.01*wint)
 
             end if  ! for extend if
@@ -3051,25 +3037,25 @@ real    :: tmpr
             shcl(ncv) = sh
             smcl(ncv) = sm
            
-	    if (column_match) then
-	    write (dpu,'(a)')  ' '
-	    write (dpu,'(a,i4)') ' FINAL RESULTS FOR CONVECTIVE LAYER',&
+    if (column_match) then
+    write (dpu,'(a)')  ' '
+    write (dpu,'(a,i4)') ' FINAL RESULTS FOR CONVECTIVE LAYER',&
                  ncv
-	    write (dpu,'(a)')  ' '
-	    write (dpu,'(a,i4,i4)')   ' ktop(ncv), kbase(ncv) = ',     &
-	         ktop(ncv), kbase(ncv)
-	    write (dpu,'(a,f14.7,a)') ' lbrk(ncv) = ', lbrk(ncv),' m'
-	    write (dpu,'(a,f14.7,a)') ' wbrk(ncv) = ', wbrk(ncv),      &
-	         ' m2/s2'
+    write (dpu,'(a)')  ' '
+    write (dpu,'(a,i4,i4)')   ' ktop(ncv), kbase(ncv) = ',     &
+         ktop(ncv), kbase(ncv)
+    write (dpu,'(a,f14.7,a)') ' lbrk(ncv) = ', lbrk(ncv),' m'
+    write (dpu,'(a,f14.7,a)') ' wbrk(ncv) = ', wbrk(ncv),      &
+         ' m2/s2'
             write (dpu,'(a,f14.7,a)') ' sqrt(ebrk(ncv)) = ',           &
-	         sqrt(ebrk(ncv)), ' m/s'
-	    write (dpu,'(a,f14.7)')   ' ghcl(ncv) = ', ghcl(ncv)
-	    write (dpu,'(a,f14.7)')   ' shcl(ncv) = ', shcl(ncv)
-	    write (dpu,'(a,f14.7)')   ' smcl(ncv) = ', smcl(ncv)
-	    end if
+         sqrt(ebrk(ncv)), ' m/s'
+    write (dpu,'(a,f14.7)')   ' ghcl(ncv) = ', ghcl(ncv)
+    write (dpu,'(a,f14.7)')   ' shcl(ncv) = ', shcl(ncv)
+    write (dpu,'(a,f14.7)')   ' smcl(ncv) = ', smcl(ncv)
+    end if
 
             !-----------------------------------------------------------
-	    ! Increment counter for next CL
+    ! Increment counter for next CL
 
             ncv = ncv + 1
 
@@ -3118,17 +3104,17 @@ end subroutine zisocl
 
 subroutine caleddy( u_star,       kqfs,         khfs,         sl,      &
                     qt,           ql,           qa,           slv,     &
-		    u,            v,            pm,           zm,      &
-		    sfuh,         sflh,         slslope,      qtslope, &
-		    qrl,          hleff,        density,      qsl,     &
-		    dqsldtl,      qltop,        pi,           zi,      &
-		    chu,          chs,          cmu,          cms,     &
-		    n2,           s2,           ri,           pblh,    &
-		    turbtype,     kvh,          kvm,          tke,     &
-		    leng,         bprod,        sprod,        trans,   &
-		    diss,         isturb,       adj_time_inv, sdevs,   &
-		    radfvec,      shvec,        smvec,        ghvec,   &
-		    evhcvec)
+    u,            v,            pm,           zm,      &
+    sfuh,         sflh,         slslope,      qtslope, &
+    qrl,          hleff,        density,      qsl,     &
+    dqsldtl,      qltop,        pi,           zi,      &
+    chu,          chs,          cmu,          cms,     &
+    n2,           s2,           ri,           pblh,    &
+    turbtype,     kvh,          kvm,          tke,     &
+    leng,         bprod,        sprod,        trans,   &
+    diss,         isturb,       adj_time_inv, sdevs,   &
+    radfvec,      shvec,        smvec,        ghvec,   &
+    evhcvec)
 
 
 !-----------------------------------------------------------------------
@@ -3183,7 +3169,7 @@ real, intent(in), dimension(:) :: sfuh    ! sat frac in upper half-lyr
 real, intent(in), dimension(:) :: sflh    ! sat frac in lower half-lyr    
 real, intent(in), dimension(:) :: slslope ! sl slope with respect to
                                           ! pressure in thermo lyr
-					  ! (J/kg/Pa)
+  ! (J/kg/Pa)
 real, intent(in), dimension(:) :: qtslope ! qt slope with respect to
                                           ! pressure in thermo lyr
                                           ! (kg water/kg air/Pa)
@@ -3197,7 +3183,7 @@ real, intent(in), dimension(:) :: dqsldtl ! temperature derivative of
                                           ! qsl (kg water/kg air/K)
 real, intent(in), dimension(:) :: qltop   ! cloud liquid at the top
                                           ! of the thermo layer
-					  
+  
 !
 !       the following fields are defined on model half levels,
 !       dimension(1:nlev+1)
@@ -3231,7 +3217,7 @@ real,    intent(out)   :: pblh     ! planetary boundary layer height (m)
 !
 
 real,    intent(out), dimension(:) :: isturb ! is full layer part of a 
-					     ! turbulent layer?
+     ! turbulent layer?
 
 !
 !       the following fields are defined on model half levels,
@@ -3240,7 +3226,7 @@ real,    intent(out), dimension(:) :: isturb ! is full layer part of a
 
 integer, intent(out), dimension(:,:) :: turbtype! Interface turb. type
                                                 ! 1 = stable turb 
-	  				        ! 2 = CL interior
+          ! 2 = CL interior
                                                 ! 3 = bottom entr intfc 
                                                 ! 4 = upper entr intfc 
 real,    intent(out), dimension(:) :: kvh       ! diffusivity for heat 
@@ -3261,12 +3247,12 @@ real,    intent(out), dimension(:) :: diss      ! TKE dissipation
                                                 ! (m*m)/(s*s*s)
 real,    intent(out), dimension(:) :: adj_time_inv  ! inverse adjustment 
                                                     ! time for turbulent
-						    ! layer (1/sec)
+    ! layer (1/sec)
 real,    intent(out), dimension(:) :: sdevs     ! std. dev. of water
                                                 ! perturbation
-					        ! (kg water/kg air)
-					        ! defined on model half
-					        ! levels
+        ! (kg water/kg air)
+        ! defined on model half
+        ! levels
 real,    intent(out), dimension(:) :: radfvec   ! Buoyancy production
                                                 ! from lw radiation
                                                 ! (m*m)/(s*s*s)
@@ -3278,7 +3264,7 @@ real,    intent(out), dimension(:) :: ghvec     ! Galperin stability
                                                 ! ratio (none)
 real,    intent(out), dimension(:) :: evhcvec   ! Evaporative cooling
                                                 ! entrainment factor
-						! (none)
+! (none)
 
 
 !
@@ -3293,10 +3279,10 @@ logical :: cloudtop                          ! Is the interface at
                                              ! cloudtop?
 logical, dimension(size(sl,1)+1) :: belongcv ! True for interfaces 
                                              ! interior to convective
-					     ! layer (CL)
+     ! layer (CL)
 logical, dimension(size(sl,1)+1) :: belongst ! True for interfaces 
                                              ! interior to a stable
-					     ! turbulent layer
+     ! turbulent layer
 integer :: k                    ! vertical index
 integer :: ks                   ! vertical index
 integer :: kk                   ! vertical index
@@ -3309,8 +3295,8 @@ integer :: ncvnew               ! index of added one layer rad-driven CL
 integer :: ncvsurf              ! if nonzero, index of CL including 
                                 ! surface
 integer :: kb, kt               ! kbase and ktop for current CL
-				
-				
+
+
 integer, dimension(size(sl,1)+1) :: kbase     ! vert. index for base
                                               ! interface of CL
 integer, dimension(size(sl,1)+1) :: ktop      ! vert. index for top 
@@ -3368,7 +3354,7 @@ real    :: bstartmp      ! b* at upper/lower inversion (m/s2)
 real    :: temperature   ! actual temperature (K)
 real    :: tmpfrac       ! fraction of cloud at top of convective layer
                          ! exposed to clear air above using maximum 
-			 ! overlap assumption
+ ! overlap assumption
 real, dimension(size(sl,1)+1) :: ebrk,wbrk,lbrk,ghcl,shcl,smcl
 real, dimension(size(sl,1)+1) :: wcap          ! W (m2/s2)
 real, dimension(size(sl,1)+1) :: rcap          ! e/<e> 
@@ -3428,7 +3414,7 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
        write (dpu,'(a)')  ' '
        do kk = kdim-n_print_levels,kdim
             write(dpu,224) kk,sl (kk)/cp_air,1000.*qt(kk),1000.*ql(kk),    &
-	         qa(kk),slv(kk)/cp_air
+         qa(kk),slv(kk)/cp_air
        end do
 224    format(1X,i2,1X,5(f9.4,1X))
 24     format(1X,i2,1X,4(f9.4,1X))
@@ -3439,7 +3425,7 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
        write (dpu,'(a)')  ' '
        do kk = kdim-n_print_levels,kdim
             write(dpu,24) kk,u(kk),v(kk),zm(kk),pm(kk)/100.
-       enddo	    
+       enddo    
        write (dpu,'(a)') ' '
        write (dpu,'(a)') ' '
        write (dpu,'(a)') ' k     sfuh      sflh     slslope   qtslope'
@@ -3448,7 +3434,7 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
        write (dpu,'(a)') ' '
        do kk = kdim-n_print_levels,kdim
             write(dpu,24) kk,sfuh(kk),sflh(kk),slslope(kk)*100.*100./cp_air&
-	    ,1000.*qtslope(kk)*100.*100.
+    ,1000.*qtslope(kk)*100.*100.
        enddo
        write (dpu,'(a)')  ' '
        write (dpu,'(a)')  ' '
@@ -3471,8 +3457,8 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
        write (dpu,'(a)')  ' '
        do kk = kdim+1-n_print_levels,kdim+1
             write(dpu,26) kk,pi(kk)/100.,zi(kk),cp_air*chu(kk),cp_air*chs(kk), &
-	                cmu(kk),cms(kk),n2(kk)*sqrt(abs(n2(kk)))*3600./&
-			max(small,abs(n2(kk))),sqrt(s2(kk))*3600.,ri(kk)
+                cmu(kk),cms(kk),n2(kk)*sqrt(abs(n2(kk)))*3600./&
+max(small,abs(n2(kk))),sqrt(s2(kk))*3600.,ri(kk)
        enddo
 26     format(1X,i2,1X,f7.2,1X,f7.1,1X,2(f6.4,1X),2(f6.3,1X),3(f9.3,1X))
        write (dpu,'(a)')  ' '
@@ -3538,8 +3524,8 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
        write (dpu,'(a,f14.7,a)')  ' surface tke sqrt = ',sqrt(tkes),   &
             ' m/s'
        write (dpu,'(a)')  ' '
-       end if  	      
-	
+       end if        
+
 !-----------------------------------------------------------------------
 !
 !      Examine each column and determine whether it is convective.
@@ -3559,15 +3545,15 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
        if (ncvfin .gt. 0) then
        
           call zisocl(u_star, bflxs, tkes, zm, ql, zi, n2, s2, ri,     &
-	              ncvfin, kbase, ktop, belongcv, ebrk, wbrk, ghcl, &
-		      shcl, smcl, lbrk)
+              ncvfin, kbase, ktop, belongcv, ebrk, wbrk, ghcl, &
+      shcl, smcl, lbrk)
  
           !-------------------------------------------------------------
           ! CLs found by zisocl are in order of height, so if any CL 
-	  ! contains the surface, it will be CL1.
+  ! contains the surface, it will be CL1.
          
           if (kbase(1) .eq. kdim+1) ncvsurf = 1
-	  
+  
        else
        
           belongcv(:) = .false.
@@ -3606,55 +3592,55 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
        
        do k = kdim, 2, -1
              
-	    cloudtop  = .false. 
-	    if (ql(k)  .gt. qcminfrac*qsl(k)   .and. use_qcmin .and.   &
-	        ql(k-1).lt. qcminfrac*qsl(k-1))        cloudtop = .true.
-	    if (.not.use_qcmin .and. qa(k).gt.qa(k-1)) cloudtop = .true.				
-	     
+    cloudtop  = .false. 
+    if (ql(k)  .gt. qcminfrac*qsl(k)   .and. use_qcmin .and.   &
+        ql(k-1).lt. qcminfrac*qsl(k-1))        cloudtop = .true.
+    if (.not.use_qcmin .and. qa(k).gt.qa(k-1)) cloudtop = .true.
+     
             if (qrl(k).lt. 0. .and. ri(k).gt.ricrit .and. cloudtop) then
-		
+
                  ch  = (1 -sfuh(k))*chu(k) + sfuh(k)*chs(k)
                  cm  = (1 -sfuh(k))*cmu(k) + sfuh(k)*cms(k)
                  n2h = ch*slslope(k) + cm*qtslope(k)
              
-	         if (n2h.le.0.) then
+         if (n2h.le.0.) then
 
                       !-------------------------------------------------
-		      ! Test if k and k+1 are part of the same preexist-
-		      ! ing CL. If not, find appropriate index for new 
-		      ! SRCL. Note that this calculation makes use of 
-		      ! ncv set from prior passes through the k do loop
+      ! Test if k and k+1 are part of the same preexist-
+      ! ing CL. If not, find appropriate index for new 
+      ! SRCL. Note that this calculation makes use of 
+      ! ncv set from prior passes through the k do loop
  
                       in_CL = .false.
                 
-		      do while (ncv .le. ncvf)
+      do while (ncv .le. ncvf)
                            
-			   if (ktop(ncv) .le. k) then
+   if (ktop(ncv) .le. k) then
 
                                 !---------------------------------------
-		                ! If kbase > k, k and k+1 are part of 
-				! same prior CL
+                ! If kbase > k, k and k+1 are part of 
+! same prior CL
                                 if (kbase(ncv) .gt. k) in_CL = .true.
-			
+
                                 !---------------------------------------
-		                ! exit from do-loop once CL top at/above
-				! intfc k.
-				exit  
+                ! exit from do-loop once CL top at/above
+! intfc k.
+exit  
                       
-		           else                                
-		
-				!---------------------------------------
-		                !  Go up one CL				
-				ncv = ncv + 1  
+           else                                
+
+!---------------------------------------
+                !  Go up one CL
+ncv = ncv + 1  
                       
-		           end if
+           end if
                       
-		      end do ! ncv
+      end do ! ncv
 
                       !-------------------------------------------------
-		      ! Add a new SRCL
+      ! Add a new SRCL
                 
-		      if (.not.in_CL) then
+      if (.not.in_CL) then
 
                            ncvfin        = ncvfin+1
                            ncvnew        = ncvfin
@@ -3666,45 +3652,45 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
 
                            if (k.lt.kdim) then
                                 
-				ebrk(ncvnew) = 0.
+ebrk(ncvnew) = 0.
                                 lbrk(ncvnew) = 0.
                                 shcl(ncvnew) = 0.
                                 smcl(ncvnew) = 0.
-				
+
                            else 
-			   
-			        !---------------------------------------
-		                ! surface radiatively driven fog				
+   
+        !---------------------------------------
+                ! surface radiatively driven fog
                                 if (bflxs.gt.0.) then 
-				
-				     !----------------------------------
-		                     ! unstable surface layer 
-				     ! incorporate surface TKE into
+
+     !----------------------------------
+                     ! unstable surface layer 
+     ! incorporate surface TKE into
                                      ebrk(ncvnew) = tkes
                                      lbrk(ncvnew) = zm(k)
                                      adj_time_inv(kdim+1) = sqrt(tkes)/&
-				          zm(k)
-			        else   
-				
-				     !----------------------------------
-		                     ! stable surface layer 
-				     ! don't incorporate surface TKE 
+          zm(k)
+        else   
+
+     !----------------------------------
+                     ! stable surface layer 
+     ! don't incorporate surface TKE 
                                      ebrk(ncvnew) = 0.
                                      lbrk(ncvnew) = 0.
                                 
-				end if
+end if
                                 shcl(ncvnew) = 0.
                                 smcl(ncvnew) = 0.
                                 ncvsurf = ncvnew
                       
                            end if    ! k < kdim  
                       
-		      end if    ! new SRCL
+      end if    ! new SRCL
              
-	         end if    ! n2h < 0 
-		                  
+         end if    ! n2h < 0 
+                  
           end if ! qrl < 0, ri(k) > ricrit and cloudtop
-		 
+ 
        end do ! k do loop, end of SRCL section
 
 !-----------------------------------------------------------------------
@@ -3721,37 +3707,37 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
 
        do ncv = 1, ncvfin
             
-	    kt    = ktop(ncv)
+    kt    = ktop(ncv)
             kb    = kbase(ncv)
             lbulk = zi(kt)-zi(kb)          
-	    
-	    if (column_match) then
-	    write (dpu,'(a,i3)')  ' convective layer #',ncv
-	    write (dpu,'(a,i4,i4)')  ' kt, kb = ', kt,kb
-	    write (dpu,'(a,f14.7,a)')  ' lbulk = ', lbulk, ' m'
-	    write (dpu,'(a)')  ' '
+    
+    if (column_match) then
+    write (dpu,'(a,i3)')  ' convective layer #',ncv
+    write (dpu,'(a,i4,i4)')  ' kt, kb = ', kt,kb
+    write (dpu,'(a,f14.7,a)')  ' lbulk = ', lbulk, ' m'
+    write (dpu,'(a)')  ' '
             end if
-	    
-	    do k = min(kb,kdim), kt, -1             
-	         leng(k) = lengthscale(zi(k),lbulk)
+    
+    do k = min(kb,kdim), kt, -1             
+         leng(k) = lengthscale(zi(k),lbulk)
                  wcap(k) = (leng(k)**2)*(-shcl(ncv)*n2(k)+ &
-		                          smcl(ncv)*s2(k))
+                          smcl(ncv)*s2(k))
             end do    ! k do loop
 
             if (column_match) then
-	    write (dpu,'(a)')  ' '
-	    write (dpu,'(a)')  ' k     leng          wcap '
+    write (dpu,'(a)')  ' '
+    write (dpu,'(a)')  ' k     leng          wcap '
             write (dpu,'(a)')  '       (m)          (m2/s2)'
             write (dpu,'(a)')  '----------------------------'
             write (dpu,'(a)')  ' '
             do k = min(kb,kdim),kt,-1
             write(dpu,33) k,leng(k),wcap(k)
-            enddo	
+            enddo
 33          format(1X,i2,1X,f9.4,1X,f14.9)    
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
             end if
-	    
+    
             !-----------------------------------------------------------
             ! Calculate jumps at the lower inversion 
   
@@ -3770,193 +3756,193 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
                  vyb  = n2h*jbzm/jbbu
                  vub  = min(1.,(jbu**2+jbv**2)/(jbbu*jbzm) )
           
-	    else  
-	    
-	         !------------------------------------------------------
-		 ! Zero bottom entrainment contribution for CL extending
-		 ! down to sfc
+    else  
+    
+         !------------------------------------------------------
+ ! Zero bottom entrainment contribution for CL extending
+ ! down to sfc
             
-	         vyb = 0.
+         vyb = 0.
                  vub = 0.
           
-	    end if
+    end if
             
-	    if (column_match .and. kb .lt. kdim+1) then
-	    write (dpu,'(a)')  ' '
-	    write (dpu,'(a)')  ' jumps at lower inversion '
-	    write (dpu,'(a)')  ' ------------------------ '
-	    write (dpu,'(a)')  ' '
-	    write (dpu,'(a,i3)')  ' inversion half level = ',kb
-	    write (dpu,'(a,f14.7,a)')  ' jbzm = ',jbzm,' m'
-	    write (dpu,'(a,f14.7,a)')  ' jbsl = ',jbsl/cp_air,' K'
-	    write (dpu,'(a,f14.7,a)')  ' jbqt = ',jbqt*1000.,' g/kg'
-	    write (dpu,'(a,f14.7,a)')  ' jbbu = ',jbbu,' m/s2'
-	    write (dpu,'(a,f14.7,a)')  ' jbumin = ',jbumin,' m/s2'
-	    write (dpu,'(a,f14.7,a)')  ' jbu = ',jbu,' m/s'
-	    write (dpu,'(a,f14.7,a)')  ' jbv = ',jbv,' m/s'
-	    write (dpu,'(a,f14.7,a)')  ' ch  = ',ch*cp_air, ' m/K/s2'
-	    write (dpu,'(a,f14.7,a)')  ' cm  = ',cm, ' m/s2'
-	    write (dpu,'(a,f14.7,a)')  ' sqrt(n2h) = ',n2h*            &
-	         sqrt(abs(n2h))*3600./abs(n2h),' 1/sec'
+    if (column_match .and. kb .lt. kdim+1) then
+    write (dpu,'(a)')  ' '
+    write (dpu,'(a)')  ' jumps at lower inversion '
+    write (dpu,'(a)')  ' ------------------------ '
+    write (dpu,'(a)')  ' '
+    write (dpu,'(a,i3)')  ' inversion half level = ',kb
+    write (dpu,'(a,f14.7,a)')  ' jbzm = ',jbzm,' m'
+    write (dpu,'(a,f14.7,a)')  ' jbsl = ',jbsl/cp_air,' K'
+    write (dpu,'(a,f14.7,a)')  ' jbqt = ',jbqt*1000.,' g/kg'
+    write (dpu,'(a,f14.7,a)')  ' jbbu = ',jbbu,' m/s2'
+    write (dpu,'(a,f14.7,a)')  ' jbumin = ',jbumin,' m/s2'
+    write (dpu,'(a,f14.7,a)')  ' jbu = ',jbu,' m/s'
+    write (dpu,'(a,f14.7,a)')  ' jbv = ',jbv,' m/s'
+    write (dpu,'(a,f14.7,a)')  ' ch  = ',ch*cp_air, ' m/K/s2'
+    write (dpu,'(a,f14.7,a)')  ' cm  = ',cm, ' m/s2'
+    write (dpu,'(a,f14.7,a)')  ' sqrt(n2h) = ',n2h*            &
+         sqrt(abs(n2h))*3600./abs(n2h),' 1/sec'
             write (dpu,'(a,f14.7,a)')  ' vyb = ', vyb
-	    write (dpu,'(a,f14.7,a)')  ' vub = ', vub
-	    write (dpu,'(a)')  ' '
-	    end if
-	    
+    write (dpu,'(a,f14.7,a)')  ' vub = ', vub
+    write (dpu,'(a)')  ' '
+    end if
+    
             !-----------------------------------------------------------
             ! Calculate jumps at the upper inversion
             ! Note the check to force jtbu to be greater than or equal
-	    ! to jbumin.
+    ! to jbumin.
 
             jtzm = zm(kt-1) - zm(kt)
             jtsl = sl(kt-1) - sl(kt)
             jtqt = qt(kt-1) - qt(kt)
             jtbu = n2(kt)   * jtzm 
-	    jtbu = max(jtbu,jbumin)
-	    jtu  = u(kt-1) - u(kt)
+    jtbu = max(jtbu,jbumin)
+    jtu  = u(kt-1) - u(kt)
             jtv  = v(kt-1) - v(kt)
             ch   = (1 -sfuh(kt))*chu(kt) + sfuh(kt)*chs(kt)
             cm   = (1 -sfuh(kt))*cmu(kt) + sfuh(kt)*cms(kt)
             n2h  = (ch*jtsl + cm*jtqt)/jtzm
             
-	    ! Ratio of buoy flux to w'(b_l)'
+    ! Ratio of buoy flux to w'(b_l)'
             vys  = n2h*jtzm/jtbu 
             
-	    ! Inverse of shear prodution divided by buoyancy production
+    ! Inverse of shear prodution divided by buoyancy production
             vus  = min(1.,(jtu**2+jtv**2)/(jtbu*jtzm)) 
             
-	    if (column_match) then
-	    write (dpu,'(a)')  ' '
-	    write (dpu,'(a)')  ' jumps at upper inversion '
-	    write (dpu,'(a)')  ' ------------------------ '
-	    write (dpu,'(a)')  ' '
-	    write (dpu,'(a,i3)')  ' inversion half level = ',kt
-	    write (dpu,'(a,f14.7,a)')  ' jtzm = ',jtzm,' m'
-	    write (dpu,'(a,f14.7,a)')  ' jtsl = ',jtsl/cp_air,' K'
-	    write (dpu,'(a,f14.7,a)')  ' jtqt = ',jtqt*1000.,' g/kg'
-	    write (dpu,'(a,f14.7,a)')  ' jtbu = ',jtbu,' m/s2'
-	    write (dpu,'(a,f14.7,a)')  ' jbumin = ',jbumin,' m/s2'
-	    write (dpu,'(a,f14.7,a)')  ' jtu = ',jtu,' m/s'
-	    write (dpu,'(a,f14.7,a)')  ' jtv = ',jtv,' m/s'
-	    write (dpu,'(a,f14.7,a)')  ' ch  = ',ch*cp_air, ' m/K/s2'
-	    write (dpu,'(a,f14.7,a)')  ' cm  = ',cm, ' m/s2'
-	    write (dpu,'(a,f14.7,a)')  ' sqrt(n2h) = ',n2h*            &
-	         sqrt(abs(n2h))*3600./abs(n2h),' 1/sec'
+    if (column_match) then
+    write (dpu,'(a)')  ' '
+    write (dpu,'(a)')  ' jumps at upper inversion '
+    write (dpu,'(a)')  ' ------------------------ '
+    write (dpu,'(a)')  ' '
+    write (dpu,'(a,i3)')  ' inversion half level = ',kt
+    write (dpu,'(a,f14.7,a)')  ' jtzm = ',jtzm,' m'
+    write (dpu,'(a,f14.7,a)')  ' jtsl = ',jtsl/cp_air,' K'
+    write (dpu,'(a,f14.7,a)')  ' jtqt = ',jtqt*1000.,' g/kg'
+    write (dpu,'(a,f14.7,a)')  ' jtbu = ',jtbu,' m/s2'
+    write (dpu,'(a,f14.7,a)')  ' jbumin = ',jbumin,' m/s2'
+    write (dpu,'(a,f14.7,a)')  ' jtu = ',jtu,' m/s'
+    write (dpu,'(a,f14.7,a)')  ' jtv = ',jtv,' m/s'
+    write (dpu,'(a,f14.7,a)')  ' ch  = ',ch*cp_air, ' m/K/s2'
+    write (dpu,'(a,f14.7,a)')  ' cm  = ',cm, ' m/s2'
+    write (dpu,'(a,f14.7,a)')  ' sqrt(n2h) = ',n2h*            &
+         sqrt(abs(n2h))*3600./abs(n2h),' 1/sec'
             write (dpu,'(a,f14.7,a)')  ' vys = ', vys
-	    write (dpu,'(a,f14.7,a)')  ' vus = ', vus
-	    write (dpu,'(a)')  ' '
-	    end if
-	    	    
+    write (dpu,'(a,f14.7,a)')  ' vus = ', vus
+    write (dpu,'(a)')  ' '
+    end if
+        
             !-----------------------------------------------------------
-	    ! 
+    ! 
             ! Calculate evaporative entrainment enhancement factor evhc. 
             ! We take the full inversion strength to be jt2slv, where
-	    ! jt2slv = slv(kt-2)  - slv(kt), and kt - 1 is in the 
-	    ! ambiguous layer.  However, for a cloud-topped CL overlain
+    ! jt2slv = slv(kt-2)  - slv(kt), and kt - 1 is in the 
+    ! ambiguous layer.  However, for a cloud-topped CL overlain
             ! by another convective layer, it is possible that 
-	    ! slv(kt-2) < slv(kt). To avoid negative or excessive evhc, 
-	    ! we lower-bound jt2slv and upper-bound evhc.
+    ! slv(kt-2) < slv(kt). To avoid negative or excessive evhc, 
+    ! we lower-bound jt2slv and upper-bound evhc.
 
             evhc = 1.
-	    cloudtop  = .false. 
-	    if (ql(kt)  .gt. qcminfrac*qsl(kt)   .and. use_qcmin .and. &
-	        ql(kt-1).lt. qcminfrac*qsl(kt-1))       cloudtop= .true.
-	    if (.not.use_qcmin .and. qa(kt).gt.qa(kt-1))cloudtop= .true.				
-	    
-	    if (cloudtop) then 
-	         if (use_qcmin) then
-		      tmpfrac = 1.
-		 else
-		      tmpfrac = 1. - (qa(kt-1)/qa(kt))
-		 end if     
+    cloudtop  = .false. 
+    if (ql(kt)  .gt. qcminfrac*qsl(kt)   .and. use_qcmin .and. &
+        ql(kt-1).lt. qcminfrac*qsl(kt-1))       cloudtop= .true.
+    if (.not.use_qcmin .and. qa(kt).gt.qa(kt-1))cloudtop= .true.
+    
+    if (cloudtop) then 
+         if (use_qcmin) then
+      tmpfrac = 1.
+ else
+      tmpfrac = 1. - (qa(kt-1)/qa(kt))
+ end if     
                  jt2slv = slv(max(kt-2,1)) - slv(kt)
                  jt2slv = max(jt2slv, jbumin*slv(kt-1)/grav)
-		 if (use_extrapolated_ql) then
-		      evhc = 1.+tmpfrac*a2l*a3l*hleff(kt)*qltop(kt)/ &
-		           jt2slv
-		 else
+ if (use_extrapolated_ql) then
+      evhc = 1.+tmpfrac*a2l*a3l*hleff(kt)*qltop(kt)/ &
+           jt2slv
+ else
                       evhc = 1.+tmpfrac*a2l*a3l*hleff(kt)*ql(kt)   / &
-		           jt2slv
+           jt2slv
                  end if
-		 evhc   = min(evhc,evhcmax)
-		 evhcvec(kt) = evhc
+ evhc   = min(evhc,evhcmax)
+ evhcvec(kt) = evhc
             end if
 
             if (column_match) then
-	         write (dpu,'(a)')  ' '
-		 write (dpu,'(a)')  ' computing entrainment enhancem'//&
+         write (dpu,'(a)')  ' '
+ write (dpu,'(a)')  ' computing entrainment enhancem'//&
                       'ent factor '
-		 write (dpu,'(a)')  ' '
-		 write (dpu,'(a)')  ' ' 
-		 write (dpu,'(a,f14.7,a)')  ' slv(max(kt-2,1))/cp_air =  ',&
-		                              slv(max(kt-2,1))/cp_air,' K'
-		 write (dpu,'(a,f14.7,a)')  ' slv(kt)/cp_air =  ', slv(kt)/&
-		      cp_air,' K'
-		 write (dpu,'(a,f14.7,a)')  ' jt2slv(kt)/cp_air =  ',jt2slv&
-		      /cp_air,' K'
-		 write (dpu,'(a,f14.7,a)')  ' ql(kt-1) = ',ql(kt-1)*   &
-		      1000.,' g/kg'
-		 write (dpu,'(a,f14.7,a)')  ' ql(kt) = ',ql(kt)*1000., &
-		      ' g/kg'
+ write (dpu,'(a)')  ' '
+ write (dpu,'(a)')  ' ' 
+ write (dpu,'(a,f14.7,a)')  ' slv(max(kt-2,1))/cp_air =  ',&
+                              slv(max(kt-2,1))/cp_air,' K'
+ write (dpu,'(a,f14.7,a)')  ' slv(kt)/cp_air =  ', slv(kt)/&
+      cp_air,' K'
+ write (dpu,'(a,f14.7,a)')  ' jt2slv(kt)/cp_air =  ',jt2slv&
+      /cp_air,' K'
+ write (dpu,'(a,f14.7,a)')  ' ql(kt-1) = ',ql(kt-1)*   &
+      1000.,' g/kg'
+ write (dpu,'(a,f14.7,a)')  ' ql(kt) = ',ql(kt)*1000., &
+      ' g/kg'
                  write (dpu,'(a,f14.7,a)')  ' qltop(kt) = ',qltop(kt)* &
-		      1000.,' g/kg'
-		 write (dpu,'(a,f14.7,a)')  ' qa(kt-1) = ',qa(kt-1)
-		 write (dpu,'(a,f14.7,a)')  ' qa(kt) = ',  qa(kt)                    
-		 write (dpu,'(a,f14.7,a)')  ' evhc = ',evhc
+      1000.,' g/kg'
+ write (dpu,'(a,f14.7,a)')  ' qa(kt-1) = ',qa(kt-1)
+ write (dpu,'(a,f14.7,a)')  ' qa(kt) = ',  qa(kt)                    
+ write (dpu,'(a,f14.7,a)')  ' evhc = ',evhc
             end if
-	    
+    
             !-----------------------------------------------------------
-	    ! 
+    ! 
             ! Radiative forcing at the upper inversion if at a cloud top
 
             if (cloudtop) then
-	     
-	         !------------------------------------------------------
-		 !  estimate longwave opt depth in layer kt
+     
+         !------------------------------------------------------
+ !  estimate longwave opt depth in layer kt
                  
-		 lwp = ql(kt) * (pi(kt+1) - pi(kt)) / grav
-	         opt_depth = 156*lwp
+ lwp = ql(kt) * (pi(kt+1) - pi(kt)) / grav
+         opt_depth = 156*lwp
 
                  !------------------------------------------------------
-		 ! Approximation to LW cooling frac at inversion
+ ! Approximation to LW cooling frac at inversion
                  ! The following formula is a polynomial approximation
-		 ! to exact solution which is
-		 ! radinvfrac = 1 - 2/opt_depth + 2/(exp(opt_depth)-1))
-		 
+ ! to exact solution which is
+ ! radinvfrac = 1 - 2/opt_depth + 2/(exp(opt_depth)-1))
+ 
                  radinvfrac  = opt_depth*(4.+opt_depth) / &
                                (6.*(4.+opt_depth) + opt_depth**2)
 
                  !------------------------------------------------------
-		 ! units of radf = (m*m)/(s*s*s)
+ ! units of radf = (m*m)/(s*s*s)
                  radf = max(-radinvfrac*qrl(kt)*(zi(kt)-zi(kt+1)),0.)* &
                         cp_air * chs(kt)
 
             else
-	      lwp        = 0.
+      lwp        = 0.
               opt_depth  = 0.
               radinvfrac = 0.
               radf       = 0.
             end if
 
             !-----------------------------------------------------------
-	    ! 
+    ! 
             ! Solve cubic equation
             !   r^3 + trmp*r + trmq = 0,   r = sqrt<e>
             ! to estimate <e> for multilayer convection. Note, that if 
-	    ! the CL goes to the surface, vyb and vub are zero, and ebrk
-	    ! and lbrk have already incorporated the surface interfacial
+    ! the CL goes to the surface, vyb and vub are zero, and ebrk
+    ! and lbrk have already incorporated the surface interfacial
             ! layer, so the formulas below still apply.  For a SRCL, 
-	    ! there are no interior interfaces so ebrk = lbrk = 0.
+    ! there are no interior interfaces so ebrk = lbrk = 0.
             ! The cases are:
             !    (1) no cloudtop cooling (radf=0) -- trmq = 0, 
-	    !        r = sqrt(-trmp)
+    !        r = sqrt(-trmp)
             !    (2) radf > 0 but no interior CL interface -- trmp = 0, 
-	    !        trmq < 0
+    !        trmq < 0
             !    (3) radf > 0 and interior CL interface(s) -- trmp < 0, 
-	    !        trmq < 0
+    !        trmq < 0
 
             trma = 1. - (b1*a1l/lbulk)*(evhc*(-vys+vus)*(zi(kt)-zm(kt))& 
-	              +  (-vyb+vub)*(zm(kb-1)-zi(kb)) )
+              +  (-vyb+vub)*(zm(kb-1)-zi(kb)) )
             trma = max(trma,0.5)  ! Prevents runaway entrainment instab.
             trmp = -ebrk(ncv) *(lbrk(ncv)/lbulk)/trma
             trmq = -b1*radf*(leng(kt)/lbulk)*(zi(kt)-zm(kt))/trma
@@ -3965,208 +3951,208 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
             if (trmq .lt. 0.) then
                  if (qq .gt. 0.) then 
                       rootp = (-trmq/2.+sqrt(qq))**(1./3.)
-                      if (trmp .lt. 0.) then 		      
-		           !--------------------------------------------
-		           ! case 3 (in case 2, added term is zero)
+                      if (trmp .lt. 0.) then       
+           !--------------------------------------------
+           ! case 3 (in case 2, added term is zero)
                            rootp = rootp  + (-trmq/2.-sqrt(qq))**(1./3.)
                       end if
-                 else 		 
-		      !-------------------------------------------------
-		      ! also part of case 3
+                 else  
+      !-------------------------------------------------
+      ! also part of case 3
                       angle = acos(-trmq/2./sqrt(-(trmp/3)**3))
                       rootp = 2.*sqrt(-trmp/3.)*cos(angle/3.)
                  end if
             else
-	         !------------------------------------------------------
-		 !  case 1: radf = 0, so trmq = 0
+         !------------------------------------------------------
+ !  case 1: radf = 0, so trmq = 0
                  rootp = sqrt(-trmp)
             endif
           
             if (column_match) then
-	         write (dpu,'(a,f14.7)')  ' trma = ',trma
-		 write (dpu,'(a,f14.7,a)')  ' trmp = ',trmp,' m2/s2'
-		 write (dpu,'(a,f14.7,a)')  ' trmq = ',trmq,' m3/s3'
-	         write (dpu,'(a,f14.7,a)')  ' qq   = ',  qq,' m6/s6'
+         write (dpu,'(a,f14.7)')  ' trma = ',trma
+ write (dpu,'(a,f14.7,a)')  ' trmp = ',trmp,' m2/s2'
+ write (dpu,'(a,f14.7,a)')  ' trmq = ',trmq,' m3/s3'
+         write (dpu,'(a,f14.7,a)')  ' qq   = ',  qq,' m6/s6'
                  write (dpu,'(a,f14.7)')  ' b1   = ', b1
-		 write (dpu,'(a,f14.7)')  ' a1l  = ', a1l
-		 write (dpu,'(a,f14.7)')  ' vys  = ', vys
-		 write (dpu,'(a,f14.7)')  ' vus  = ', vus
-		 write (dpu,'(a,f14.7)')  ' vyb  = ', vyb
-		 write (dpu,'(a,f14.7)')  ' vub  = ', vub
-		 write (dpu,'(a,f14.7,a)') ' cwp  = ', 1000.*lwp,     &
-		       ' g/m2'
-		 write (dpu,'(a,f14.7)')  ' opt_depth  = ', opt_depth
-		 write (dpu,'(a,f14.7)')  ' radinvfrac = ',radinvfrac
-		 write (dpu,'(a,f14.7,a)')  ' radf = ', radf,' m2/s3' 
+ write (dpu,'(a,f14.7)')  ' a1l  = ', a1l
+ write (dpu,'(a,f14.7)')  ' vys  = ', vys
+ write (dpu,'(a,f14.7)')  ' vus  = ', vus
+ write (dpu,'(a,f14.7)')  ' vyb  = ', vyb
+ write (dpu,'(a,f14.7)')  ' vub  = ', vub
+ write (dpu,'(a,f14.7,a)') ' cwp  = ', 1000.*lwp,     &
+       ' g/m2'
+ write (dpu,'(a,f14.7)')  ' opt_depth  = ', opt_depth
+ write (dpu,'(a,f14.7)')  ' radinvfrac = ',radinvfrac
+ write (dpu,'(a,f14.7,a)')  ' radf = ', radf,' m2/s3' 
             end if
-	    
+    
             !-----------------------------------------------------------
             ! limit CL-avg TKE used for entrainment
-	    
-       	    ebrk(ncv) = rootp**2	    
+    
+           ebrk(ncv) = rootp**2    
             ebrk(ncv) = max(min(ebrk(ncv),tkemax),tkemin) 
             wbrk(ncv) = ebrk(ncv)/b1
 
             if (column_match) then
-	         write (dpu,'(a,f14.7,a)')  ' rootp**2 = ',  rootp**2, &
-		      ' m2/s2'
-		 write (dpu,'(a,f14.7,a)')  ' ebrk     = ', ebrk(ncv), &
-		      ' m2/s2'
-		 write (dpu,'(a,f14.7,a)')  ' wbrk     = ', wbrk(ncv), &
-		      ' m2/s2'
+         write (dpu,'(a,f14.7,a)')  ' rootp**2 = ',  rootp**2, &
+      ' m2/s2'
+ write (dpu,'(a,f14.7,a)')  ' ebrk     = ', ebrk(ncv), &
+      ' m2/s2'
+ write (dpu,'(a,f14.7,a)')  ' wbrk     = ', wbrk(ncv), &
+      ' m2/s2'
             end if
-	     
+     
             !-----------------------------------------------------------
-	    ! ebrk should be greater than zero so if it is not a FATAL
-	    ! call is implemented
+    ! ebrk should be greater than zero so if it is not a FATAL
+    ! call is implemented
 
             if (ebrk(ncv) .eq. 0.) then
-	         call error_mesg ('edt_mod', &
-		                  'convective layer average tke = 0',  &
-				   FATAL)
+         call error_mesg ('edt_mod', &
+                  'convective layer average tke = 0',  &
+   FATAL)
             end if
-	    
+    
             !-----------------------------------------------------------
-	    ! Compute adjustment time for layer equal to lbulk / <e>
-	    ! Should this be divided by "c" = b1/mu, which for
-	    ! default value = 5.8/70 = 0.083
-	    
-	    do k = kb, kt, -1
+    ! Compute adjustment time for layer equal to lbulk / <e>
+    ! Should this be divided by "c" = b1/mu, which for
+    ! default value = 5.8/70 = 0.083
+    
+    do k = kb, kt, -1
                  adj_time_inv(k) = sqrt(ebrk(ncv))/lbulk
-	    enddo
-	    
-	    !-----------------------------------------------------------
-	    ! We approximate TKE = <e> at entrainment interfaces con-
-	    ! sistent with entrainment closure.
+    enddo
+    
+    !-----------------------------------------------------------
+    ! We approximate TKE = <e> at entrainment interfaces con-
+    ! sistent with entrainment closure.
             
-	    rcap(kt) = 1.   
+    rcap(kt) = 1.   
             rcap(kb) = 1.   
 
             !-----------------------------------------------------------
-	    ! Calculate ratio rcap = e/<e> in convective layer interior. 
-	    ! Bound it by limits rmin = 0.1 to rmax = 2.0 to take care 
-	    ! of some pathological cases.
+    ! Calculate ratio rcap = e/<e> in convective layer interior. 
+    ! Bound it by limits rmin = 0.1 to rmax = 2.0 to take care 
+    ! of some pathological cases.
 
             if ((kb-kt).gt.1) then
             do k = kb-1, kt+1, -1
                  rcap(k) = (mu*leng(k)/lbulk + wcap(k)/wbrk(ncv)) /    &
-		           (mu*leng(k)/lbulk + 1.               )
+           (mu*leng(k)/lbulk + 1.               )
                  rcap(k) = min(max(rcap(k),rmin), rmax)
             end do
-	    end if
-	    
+    end if
+    
             !-----------------------------------------------------------
-	    ! Compute TKE throughout CL, and bound by tkemin & tkemax.
+    ! Compute TKE throughout CL, and bound by tkemin & tkemax.
             !
-	    ! Question by Steve Klein:
-	    !
-	    ! Does tke(kb) properly account if kb is the top interface
-	    ! of another convective layer? 
-	    !
-	    
+    ! Question by Steve Klein:
+    !
+    ! Does tke(kb) properly account if kb is the top interface
+    ! of another convective layer? 
+    !
+    
             do k = kb, kt, -1
-                 tke(k) = max(min(ebrk(ncv)*rcap(k),tkemax),tkemin)	 
+                 tke(k) = max(min(ebrk(ncv)*rcap(k),tkemax),tkemin) 
             end do 
                         
             !-----------------------------------------------------------
-	    ! Compute CL interior diffusivities, buoyancy and shear 
-	    ! production
-	    
-	    if ((kb-kt).gt.1) then
-	    
+    ! Compute CL interior diffusivities, buoyancy and shear 
+    ! production
+    
+    if ((kb-kt).gt.1) then
+    
                  do k = kb-1, kt+1, -1
             
-	              kvh(k)        = leng(k)*sqrt(tke(k))*shcl(ncv)
+              kvh(k)        = leng(k)*sqrt(tke(k))*shcl(ncv)
                       kvm(k)        = leng(k)*sqrt(tke(k))*smcl(ncv)
                       bprod(k)      = - kvh(k)*n2(k)
                       sprod(k)      =   kvm(k)*s2(k)
                       trans(k)      = mu*(ebrk(ncv)-tke(k))*           &
-		                      adj_time_inv(k)/b1 
+                      adj_time_inv(k)/b1 
                       diss(k)       = sqrt(tke(k)*tke(k)*tke(k))/b1/   &
-		                      leng(k)
+                      leng(k)
                       shvec(k)      = shcl(ncv)
-		      smvec(k)      = smcl(ncv)
-		      ghvec(k)      = ghcl(ncv)
-		      
+      smvec(k)      = smcl(ncv)
+      ghvec(k)      = ghcl(ncv)
+      
                       turbtype(2,k) = 1
-		      isturb(k)     = 1.
-		      isturb(k-1)   = 1.
-		 	 
+      isturb(k)     = 1.
+      isturb(k-1)   = 1.
+  
                       !-------------------------------------------------
-		      ! compute sdevs
-		      ! 
-		      ! The approximation used is that qt and qs(Tl) are 
-		      ! correlated with strength kappa. The sign of the 
-		      ! correlation is positive if the vertical 
-		      ! gradients to qt and sli are of the same sign, 
-		      ! and negative otherwise.
-		 
-		      if (k .eq. kdim+1) call error_mesg ('edt_mod',   &
-		           'trying to compute sdevs at the surface',   &
+      ! compute sdevs
+      ! 
+      ! The approximation used is that qt and qs(Tl) are 
+      ! correlated with strength kappa. The sign of the 
+      ! correlation is positive if the vertical 
+      ! gradients to qt and sli are of the same sign, 
+      ! and negative otherwise.
+ 
+      if (k .eq. kdim+1) call error_mesg ('edt_mod',   &
+           'trying to compute sdevs at the surface',   &
                            FATAL)
-		      if (k .eq. 1)  call error_mesg ('edt_mod',       &
-		           'trying to compute sdevs at the model top', &
+      if (k .eq. 1)  call error_mesg ('edt_mod',       &
+           'trying to compute sdevs at the model top', &
                            FATAL)
-		     
-		      qtsltmp    = (qt(k-1) - qt(k))/(zm(k-1) - zm(k))
-		      slsltmp    = (sl(k-1) - sl(k))/(zm(k-1) - zm(k))  
-		      qsltmp     = 0.5 * ( qsl    (k-1) + qsl    (k) )
-		      dqsldtltmp = 0.5 * ( dqsldtl(k-1) + dqsldtl(k) )   
-		      hlefftmp   = 0.5 * ( hleff  (k-1) + hleff  (k) )
-		     
+     
+      qtsltmp    = (qt(k-1) - qt(k))/(zm(k-1) - zm(k))
+      slsltmp    = (sl(k-1) - sl(k))/(zm(k-1) - zm(k))  
+      qsltmp     = 0.5 * ( qsl    (k-1) + qsl    (k) )
+      dqsldtltmp = 0.5 * ( dqsldtl(k-1) + dqsldtl(k) )   
+      hlefftmp   = 0.5 * ( hleff  (k-1) + hleff  (k) )
+     
                       sdevs(k) = ( (mesovar*qsltmp)**2.0) +            &
-		           ( ( (kvh(k)/sqrt(tke(k))) *                 &
-			  (qtsltmp-(kappa*slsltmp*dqsldtltmp/cp_air)))**2.0) 
+           ( ( (kvh(k)/sqrt(tke(k))) *                 &
+  (qtsltmp-(kappa*slsltmp*dqsldtltmp/cp_air)))**2.0) 
                       sdevs(k) = sqrt(sdevs(k)) /                      &
-		                 (1.+hlefftmp*dqsldtltmp/cp_air)   
+                 (1.+hlefftmp*dqsldtltmp/cp_air)   
      
                       if (column_match) then
-		      write (dpu,'(a)')  ' ' 
-	              write (dpu,'(a)')  ' ' 
-	              write (dpu,'(a,i4)')  ' sigmas for level ',k
+      write (dpu,'(a)')  ' ' 
+              write (dpu,'(a)')  ' ' 
+              write (dpu,'(a,i4)')  ' sigmas for level ',k
                       write (dpu,'(a)')  ' ' 
-	              write (dpu,'(a,f14.7,a)')  ' sigmas = ', 1000.*  &
-		           sdevs(k), ' g/kg'
+              write (dpu,'(a,f14.7,a)')  ' sigmas = ', 1000.*  &
+           sdevs(k), ' g/kg'
                       write (dpu,'(a,f14.7)')  ' acoef = ', 1. /       &
-		           ( 1. + hlefftmp*dqsldtltmp/cp_air )
+           ( 1. + hlefftmp*dqsldtltmp/cp_air )
                       write (dpu,'(a,f14.7,a)')  ' sigmas/a = ',       &
-		           1000.*sdevs(k)*(1. +hlefftmp*dqsldtltmp/cp_air),&
-			   ' g/kg'
+           1000.*sdevs(k)*(1. +hlefftmp*dqsldtltmp/cp_air),&
+   ' g/kg'
                       write (dpu,'(a,f14.7)'  )  ' mesovar = ', mesovar
                       write (dpu,'(a,f14.7,a)')  ' mesovar*qsl = ',    &
-		           mesovar*qsltmp*1000.,' g/kg'
+           mesovar*qsltmp*1000.,' g/kg'
                       write (dpu,'(a,f14.7,a)')  ' turb.fluct = ',1000.&
-		           *(kvh(k)/sqrt(tke(k)))*(qtsltmp-            &
-			   (kappa*slsltmp*dqsldtltmp/cp_air)) ,' g/kg'
+           *(kvh(k)/sqrt(tke(k)))*(qtsltmp-            &
+   (kappa*slsltmp*dqsldtltmp/cp_air)) ,' g/kg'
                       write (dpu,'(a,f14.7,a)')  ' (kvh/sqrt(tke))* '//&
                            ' qtsltmp = ',1000.*(kvh(k)/sqrt(tke(k)))*  &
-			   qtsltmp ,' g/kg'
+   qtsltmp ,' g/kg'
                       write (dpu,'(a,f14.7,a)')  ' (kvh/sqrt(tke))* '//&
                            ' (kappa*slsltmp*dqsldtltmp/cp_air) = ',1000.*  &
-		           (kvh(k)/sqrt(tke(k)))*(kappa*slsltmp*       &
-			   dqsldtltmp/cp_air) ,' g/kg'
+           (kvh(k)/sqrt(tke(k)))*(kappa*slsltmp*       &
+   dqsldtltmp/cp_air) ,' g/kg'
                       write (dpu,'(a)')  ' '
                       write (dpu,'(a)')  ' '
                       end if
-		 
+ 
                  end do
-	    
-	    
-	         !------------------------------------------------------
-	         !
-	         ! set sdevs at kt and kb equal to kt+1 and kb-1 values 
-	         ! respectively
-	         !
-	   
-	         sdevs(kt) = sdevs(kt+1)
-	         sdevs(kb) = sdevs(kb-1)
-	    
-	    end if
+    
+    
+         !------------------------------------------------------
+         !
+         ! set sdevs at kt and kb equal to kt+1 and kb-1 values 
+         ! respectively
+         !
+   
+         sdevs(kt) = sdevs(kt+1)
+         sdevs(kb) = sdevs(kb-1)
+    
+    end if
 
             !-----------------------------------------------------------
-	    ! Compute diffusivity we*dz and some diagnostics at the 
-	    ! upper inversion. Limit entrainment rate below the free 
-	    ! entrainment limit a1l * sqrt(e)
+    ! Compute diffusivity we*dz and some diagnostics at the 
+    ! upper inversion. Limit entrainment rate below the free 
+    ! entrainment limit a1l * sqrt(e)
 
             kentr          = jtzm * a1l * sqrt(ebrk(ncv)) * &
                              min(evhc * ebrk(ncv)/(jtbu*leng(kt)),1.)
@@ -4176,175 +4162,175 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
             sprod(kt)      =  kentr*s2(kt)
             trans(kt)      = mu*(ebrk(ncv)-tke(kt))*adj_time_inv(kt)/b1
             diss(kt)       = sqrt(tke(kt)*tke(kt)*tke(kt))/b1/leng(kt)
-	    radfvec(kt)    = radf
+    radfvec(kt)    = radf
             turbtype(4,kt) = 1
             isturb(kt)     = 1.
-	    
-	    !-----------------------------------------------------------
-	    ! set isturb to 1 in the ambiguous layer
-	    
-	    isturb(kt-1) = 1.
-	
-	    if (column_match) then
+    
+    !-----------------------------------------------------------
+    ! set isturb to 1 in the ambiguous layer
+    
+    isturb(kt-1) = 1.
+
+    if (column_match) then
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' at upper inversion: '
-	    write (dpu,'(a,f14.7,a)')  ' kentr = ', kentr, ' m2/s'
-	    write (dpu,'(a,f14.7)')  ' mu    = ', mu
+    write (dpu,'(a,f14.7,a)')  ' kentr = ', kentr, ' m2/s'
+    write (dpu,'(a,f14.7)')  ' mu    = ', mu
             write (dpu,'(a,f14.7,a)')  ' 1/adj_time_inv = ',           &
-	         1./adj_time_inv(kt), ' sec'
+         1./adj_time_inv(kt), ' sec'
             write (dpu,'(a)')  ' '
             end if
-	  	    
-	    !-----------------------------------------------------------
+      
+    !-----------------------------------------------------------
             ! compute sdevs at CL top
-	    !
-	    ! FOR SOME REASON THIS DERIVATION DOES NOT WORK
-	    !
-	    ! note that a water perturbation q* and buoyancy 
-	    ! perturbation b* are computed from the below equations:
-	    !
-	    !      q*   =    (w'qt') / sqrt(tke)
-	    !           =   - kentr * (dqt/dz) / sqrt(tke)
-	    !
-	    !      b*   =    (w'b')  / sqrt(tke)
-	    !           =    bprod   / sqrt(tke)
-	    !
+    !
+    ! FOR SOME REASON THIS DERIVATION DOES NOT WORK
+    !
+    ! note that a water perturbation q* and buoyancy 
+    ! perturbation b* are computed from the below equations:
+    !
+    !      q*   =    (w'qt') / sqrt(tke)
+    !           =   - kentr * (dqt/dz) / sqrt(tke)
+    !
+    !      b*   =    (w'b')  / sqrt(tke)
+    !           =    bprod   / sqrt(tke)
+    !
             !
             
-	    qtsltmp     = (qt(kt-1) - qt(kt))/(zm(kt-1) - zm(kt))		 
+    qtsltmp     = (qt(kt-1) - qt(kt))/(zm(kt-1) - zm(kt)) 
             qstartmp    =  - kentr * qtsltmp / sqrt(tke(kt))
-            bstartmp    =    bprod(kt)       / sqrt(tke(kt))		 
-	    temperature = pm(kt)/density(kt)/rdgas
-	    
-	    !sdevs(kt)   =  ((mesovar*qsl(kt))**2.0) +       &
-	    !     ((qstartmp-dqsldtl(kt)*bstartmp*temperature/grav)**2.0)
+            bstartmp    =    bprod(kt)       / sqrt(tke(kt)) 
+    temperature = pm(kt)/density(kt)/rdgas
+    
+    !sdevs(kt)   =  ((mesovar*qsl(kt))**2.0) +       &
+    !     ((qstartmp-dqsldtl(kt)*bstartmp*temperature/grav)**2.0)
             !sdevs(kt) = sqrt(sdevs(kt))/(1.+hleff(kt)*dqsldtl(kt)/cp_air)
-	    
-	    
+    
+    
             if ((kb-kt).le.1) sdevs(kt) = mesovar*qsl(kt)/             &
-		                          (1.+hleff(kt)*dqsldtl(kt)/cp_air)
-	   
+                          (1.+hleff(kt)*dqsldtl(kt)/cp_air)
+   
 
             if (column_match) then
             write (dpu,'(a)')  ' ' 
-	    write (dpu,'(a)')  ' ' 
-	    write (dpu,'(a,i4)')  ' sigmas at kt level # ',kt
+    write (dpu,'(a)')  ' ' 
+    write (dpu,'(a,i4)')  ' sigmas at kt level # ',kt
             write (dpu,'(a)')  ' ' 
-	    write (dpu,'(a,f14.7,a)')  ' sigmas = ', 1000.*sdevs(kt),  &
-	         ' g/kg'
+    write (dpu,'(a,f14.7,a)')  ' sigmas = ', 1000.*sdevs(kt),  &
+         ' g/kg'
             write (dpu,'(a,f14.7)')    ' acoef = ', 1. /(1.+hleff(kt)* &
-	         dqsldtl(kt)/cp_air )                      
-	    write (dpu,'(a,f14.7,a)')  ' sigmas/a = ', 1000.*sdevs(kt)*&
-		 ( 1. + hleff(kt)*dqsldtl(kt)/cp_air ), ' g/kg'
+         dqsldtl(kt)/cp_air )                      
+    write (dpu,'(a,f14.7,a)')  ' sigmas/a = ', 1000.*sdevs(kt)*&
+ ( 1. + hleff(kt)*dqsldtl(kt)/cp_air ), ' g/kg'
             write (dpu,'(a,f14.7)'  )  ' mesovar = ', mesovar
             write (dpu,'(a,f14.7,a)')  ' mesovar*qsl = ',mesovar*      &
-	         qsl(kt)*1000.,' g/kg'
+         qsl(kt)*1000.,' g/kg'
             write (dpu,'(a,f14.7,a)')  ' turb.fluct = ',1000.* &
-		 (qstartmp-dqsldtl(kt)*bstartmp*temperature/grav) ,    &
-		 ' g/kg'
+ (qstartmp-dqsldtl(kt)*bstartmp*temperature/grav) ,    &
+ ' g/kg'
             write (dpu,'(a,f14.7,a)')  ' temperature = ',temperature,  &
-	         ' K'
+         ' K'
             write (dpu,'(a,f14.7,a)')  ' qstartmp = ',1000.*qstartmp , &
-	         ' g/kg'
+         ' g/kg'
             write (dpu,'(a,f14.7,a)')  ' bstartmp = ',bstartmp ,' m/s2'
             write (dpu,'(a,f14.7,a)')  ' jtbu = ',jtbu ,' m/s2'
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
             end if
-		                          
+                          
             !-----------------------------------------------------------
-	    ! Compute Kh, Km and some diagnostics at the lower inversion
+    ! Compute Kh, Km and some diagnostics at the lower inversion
 
             if (kb .lt. kdim+1) then 
           
-	         kentr        = jbzm * a1l * sqrt(ebrk(ncv)) * &
+         kentr        = jbzm * a1l * sqrt(ebrk(ncv)) * &
                                 min(ebrk(ncv)/(jbbu*leng(kb)),1.)
-		
-		 !------------------------------------------------------
-	         ! The addition of the previous value of kvh and khm 
-		 ! handles the case of 2 CLs entraining into each other
+
+ !------------------------------------------------------
+         ! The addition of the previous value of kvh and khm 
+ ! handles the case of 2 CLs entraining into each other
                  kvh(kb)      = kentr + kvh(kb)   
                  kvm(kb)      = kentr + kvm(kb)   
-		 
+ 
                  bprod(kb)    = bprod(kb) - kvh(kb)*n2(kb)
                  sprod(kb)    = sprod(kb) + kvm(kb)*s2(kb)
                  trans(kb)    = trans(kb) + mu*(ebrk(ncv)-tke(kb))*    &
-		                adj_time_inv(kb)/b1
-		 diss(kb)     = diss(kb)+sqrt(tke(kb)*tke(kb)*tke(kb)) &
-		                /b1/leng(kb)
+                adj_time_inv(kb)/b1
+ diss(kb)     = diss(kb)+sqrt(tke(kb)*tke(kb)*tke(kb)) &
+                /b1/leng(kb)
                              
-		 turbtype(3,kb) = 1
+ turbtype(3,kb) = 1
                  isturb(kb-1)   = 1.
 
                  !------------------------------------------------------
-	         ! set isturb to 1 in the ambiguous layer
-	         
-		 isturb(kb) = 1.
-	
-	         if (column_match) then
+         ! set isturb to 1 in the ambiguous layer
+         
+ isturb(kb) = 1.
+
+         if (column_match) then
                  write (dpu,'(a)')  ' '
                  write (dpu,'(a)')  ' at lower inversion: '
-	         write (dpu,'(a,f14.7,a)')  ' kentr = ', kentr, ' m2/s'
-	         write (dpu,'(a,f14.7)')  ' mu    = ', mu
+         write (dpu,'(a,f14.7,a)')  ' kentr = ', kentr, ' m2/s'
+         write (dpu,'(a,f14.7)')  ' mu    = ', mu
                  write (dpu,'(a,f14.7,a)')  ' adj_time_inv = ',        &
-		      1./adj_time_inv(kb), ' sec'
+      1./adj_time_inv(kb), ' sec'
                  write (dpu,'(a)')  ' '
                  end if
-	    
-	         !------------------------------------------------------
+    
+         !------------------------------------------------------
                  ! compute sdevs at CL bottom
-	         !
-		 ! note that same formulas are used here as for CL top
+         !
+ ! note that same formulas are used here as for CL top
    
-                 qtsltmp     = (qt(kb-1) - qt(kb))/(zm(kb-1) - zm(kb))		 
+                 qtsltmp     = (qt(kb-1) - qt(kb))/(zm(kb-1) - zm(kb)) 
                  qstartmp    =  - kentr * qtsltmp / sqrt(tke(kb))
-                 bstartmp    =    bprod(kb)       / sqrt(tke(kb))		 
-	         temperature = pm(kb-1)/density(kb-1)/rdgas
-		 
-	         !sdevs(kb)   = ((mesovar*qsl(kb-1))**2.0) + ((qstartmp-&
-		 !              dqsldtl(kb-1)*bstartmp*temperature/grav)&
-		 !	       **2.0)
+                 bstartmp    =    bprod(kb)       / sqrt(tke(kb)) 
+         temperature = pm(kb-1)/density(kb-1)/rdgas
+ 
+         !sdevs(kb)   = ((mesovar*qsl(kb-1))**2.0) + ((qstartmp-&
+ !              dqsldtl(kb-1)*bstartmp*temperature/grav)&
+ !       **2.0)
                  !sdevs(kb)   = sqrt(sdevs(kb))/(1.+hleff(kb-1)*        &
-		 !                               dqsldtl(kb-1)/cp_air)
+ !                               dqsldtl(kb-1)/cp_air)
                          
                  if ((kb-kt).le.1) sdevs(kb) = mesovar*qsl(kb-1)/       &
-		                        (1.+hleff(kb-1)*dqsldtl(kb-1)/cp_air)
+                        (1.+hleff(kb-1)*dqsldtl(kb-1)/cp_air)
 
                  if (column_match) then
                  write (dpu,'(a)')  ' ' 
-	         write (dpu,'(a)')  ' ' 
-	         write (dpu,'(a,i5)')  ' sigmas at lower inversion l'//&
+         write (dpu,'(a)')  ' ' 
+         write (dpu,'(a,i5)')  ' sigmas at lower inversion l'//&
                       'evel # ',kb
                  write (dpu,'(a)')  ' ' 
-		 write (dpu,'(a,f14.7,a)')  ' sigmas = ', 1000.*       &
-		      sdevs(kb), ' g/kg'
+ write (dpu,'(a,f14.7,a)')  ' sigmas = ', 1000.*       &
+      sdevs(kb), ' g/kg'
                  write (dpu,'(a,f14.7)  ')  ' acoef = ', 1. /(1.+      &
-		      hleff(kb-1)*dqsldtl(kb-1)/cp_air )                     	    
-	         write (dpu,'(a,f14.7,a)')  ' sigmas/a = ', 1000.*     &
-		      sdevs(kb)*( 1. + hleff(kb-1)*dqsldtl(kb-1)/cp_air ), &
-		      ' g/kg'
+      hleff(kb-1)*dqsldtl(kb-1)/cp_air )                         
+         write (dpu,'(a,f14.7,a)')  ' sigmas/a = ', 1000.*     &
+      sdevs(kb)*( 1. + hleff(kb-1)*dqsldtl(kb-1)/cp_air ), &
+      ' g/kg'
                  write (dpu,'(a,f14.7)'  )  ' mesovar = ', mesovar
                  write (dpu,'(a,f14.7,a)')  ' mesovar*qsl = ',mesovar* &
-		      qsl(kb-1)*1000.,' g/kg'
+      qsl(kb-1)*1000.,' g/kg'
                  write (dpu,'(a,f14.7,a)')  ' turb.fluct = ',1000.*    &
-		      (qstartmp-dqsldtl(kb-1)*bstartmp*temperature/    &
-		      grav) , ' g/kg'
+      (qstartmp-dqsldtl(kb-1)*bstartmp*temperature/    &
+      grav) , ' g/kg'
                  write (dpu,'(a,f14.7,a)')  ' temperature = ',         &
-		      temperature,' K'
+      temperature,' K'
                  write (dpu,'(a,f14.7,a)')  ' qstartmp = ',1000.*      &
-		      qstartmp ,' g/kg'
+      qstartmp ,' g/kg'
                  write (dpu,'(a,f14.7,a)')  ' bstartmp = ',bstartmp ,  &
-		      ' m/s2'
+      ' m/s2'
                  write (dpu,'(a,f14.7,a)')  ' jbbu = ',jbbu ,' m/s2'
                  write (dpu,'(a)')  ' '
                  write (dpu,'(a)')  ' '
                  end if
-		
-	    end if
+
+    end if
 
             !-----------------------------------------------------------
-	    ! put minimum threshold on TKE to prevent possible division 
-	    ! by zero.
+    ! put minimum threshold on TKE to prevent possible division 
+    ! by zero.
 
             if (kb .lt. kdim+1) then
                  wcap(kb) = bprod(kb)*leng(kb)/sqrt(max(tke(kb),tkemin))
@@ -4366,7 +4352,7 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
             write (dpu,'(a)')  ' '
             do k = kb,kt,-1
             write(dpu,34) k,leng(k),rcap(k),wcap(k),tke(k)
-            enddo	  
+            enddo  
 34          format(1X,i2,1X,4(f8.4,1X))
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
@@ -4379,8 +4365,8 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
             write (dpu,'(a)')  ' '
             do k = kb,kt,-1
             write(dpu,35) k,kvh(k),kvm(k),bprod(k),sprod(k),trans(k),  &
-	         diss(k)
-            enddo	  
+         diss(k)
+            enddo  
 35          format(1X,i2,1X,2(f8.4,1X),4(f12.9,1X))
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
@@ -4388,7 +4374,7 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
                  
        !----------------------------------------------------------------
        ! End big loop over ncv
-	 
+ 
        end do      
 
 !-----------------------------------------------------------------------
@@ -4398,7 +4384,7 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
 !
        if (ncvsurf .gt. 0) then
             pblh   = zi(ktop(ncvsurf))
-	    if(bflxs.ge.0.) then
+    if(bflxs.ge.0.) then
                  turbtype(2,kdim+1) = 1
             else
                  turbtype(3,kdim+1) = 1
@@ -4422,8 +4408,8 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
        
        do k = 2, kdim
          
-	  belongst(k)  = (ri(k) .lt. ricrit) .and. (.not. belongcv(k))
-	  if (belongst(k)) any_stable = .true.
+  belongst(k)  = (ri(k) .lt. ricrit) .and. (.not. belongcv(k))
+  if (belongst(k)) any_stable = .true.
           if (belongst(k) .and. (.not.belongst(k-1)) ) then
                  kt    = k     ! Top of stable turb layer
           else if (.not. belongst(k) .and. belongst(k-1)) then
@@ -4431,10 +4417,10 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
                  lbulk = zm(kt-1) - zm(kb)
                  do ks = kt, kb
                       leng(ks)=lengthscale(zi(ks),lbulk)
-		      adj_time_inv(ks) = 1. / lbulk
+      adj_time_inv(ks) = 1. / lbulk
                  end do
           end if
-	  
+  
        end do ! k
 
        !----------------------------------------------------------------
@@ -4449,22 +4435,22 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
        if (belongst(kdim+1)) then  
       
             turbtype(1,kdim+1) = 1
-	    if (belongst(kdim)) then
-		 !------------------------------------------------------
-	         ! surface stable layer includes interior stable turb-
-		 ! ulent interface kt already defined above. Note that
-		 ! zm(kb) = 0.
-                 lbulk = zm(kt-1) 		    
+    if (belongst(kdim)) then
+ !------------------------------------------------------
+         ! surface stable layer includes interior stable turb-
+ ! ulent interface kt already defined above. Note that
+ ! zm(kb) = 0.
+                 lbulk = zm(kt-1)     
             else                     
-	         !------------------------------------------------------
-	         ! surface stable BL with no interior turbulence            
-	         kt = kdim+1		 
-	    end if
-	    lbulk  = zm(kt-1)
+         !------------------------------------------------------
+         ! surface stable BL with no interior turbulence            
+         kt = kdim+1 
+    end if
+    lbulk  = zm(kt-1)
             pblh   = lbulk   ! PBL Height <-> lowest stable turb. layer            
-	    do ks = kt,kdim+1
+    do ks = kt,kdim+1
                  leng(ks) = lengthscale(zi(ks),lbulk)
-		 adj_time_inv(ks) = 1./ lbulk
+ adj_time_inv(ks) = 1./ lbulk
             end do 
             adj_time_inv(kdim+1) = adj_time_inv(kdim+1)*sqrt(tkes)
        end if  ! for belongst if
@@ -4474,7 +4460,7 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
 
        if (column_match .and. any_stable) then
             write (dpu,'(a)')  ' '
-	    write (dpu,'(a)')  ' STABLE LAYERS '
+    write (dpu,'(a)')  ' STABLE LAYERS '
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' k     kvh      kvm      leng      t'//&
                  'ke      bprod        sprod        diss'
@@ -4490,90 +4476,90 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
             if (belongst(k)) then    
                  
                  turbtype(1,k) = 1
-		 isturb(k)     = 1.
-		 isturb(k-1)   = 1.
-		 
-		 call galperin(ri(k),gh,ckh,ckm)
-		 
-		 ! note that original cb code did not limit the maximum
-		 ! gh to 0.0233 so that we should check that if the  
-		 ! limiter was invoked
+ isturb(k)     = 1.
+ isturb(k-1)   = 1.
+ 
+ call galperin(ri(k),gh,ckh,ckm)
+ 
+ ! note that original cb code did not limit the maximum
+ ! gh to 0.0233 so that we should check that if the  
+ ! limiter was invoked
 !!RSH drop this fail for now (maybe ok during early spinup ?? )
 !                  if (gh .eq. 0.0233) call error_mesg ('edt_mod',&
 !                    'galperin stability fn = 0.0233',&
 !                                      FATAL)
-						       
-                 ! ri(k) should be less than ricrit						     
-		 if (ri(k) .gt. ricrit) call error_mesg ('edt_mod',&
-		      'ri(k) > ricrit, but belongst(k) = T',FATAL)
-		 
-	         tke(k) = b1*(leng(k)**2)*(-ckh*n2(k)+ckm*s2(k))
+       
+                 ! ri(k) should be less than ricrit     
+ if (ri(k) .gt. ricrit) call error_mesg ('edt_mod',&
+      'ri(k) > ricrit, but belongst(k) = T',FATAL)
+ 
+         tke(k) = b1*(leng(k)**2)*(-ckh*n2(k)+ckm*s2(k))
                  tke(k) = max(min(tke(k),tkemax),tkemin)
                  kvh(k) = leng(k) * sqrt(tke(k)) * ckh
                  kvm(k) = leng(k) * sqrt(tke(k)) * ckm
                  bprod(k)  = - kvh(k)*n2(k)
                  sprod(k)  =   kvm(k)*s2(k)
-                 diss (k)  = sqrt(tke(k)*tke(k)*tke(k))/b1/leng(k)	
-		 adj_time_inv(k) = adj_time_inv(k)*sqrt(tke(k))
+                 diss (k)  = sqrt(tke(k)*tke(k)*tke(k))/b1/leng(k)
+ adj_time_inv(k) = adj_time_inv(k)*sqrt(tke(k))
                  shvec(k)  = ckh
-		 smvec(k)  = ckm
+ smvec(k)  = ckm
                  ghvec(k)  = gh
-		 		 		 
+   
                  if (column_match) then         
                  write(dpu,37) k,kvh(k),kvm(k),leng(k),tke(k),bprod(k),&
-	                sprod(k),diss(k)
+                sprod(k),diss(k)
 37               format(1X,i2,1X,3(f8.4,1X),4(f12.9,1X))
                  end if
 
                  !------------------------------------------------------
-		 ! compute sdevs 
-		 ! (note same formulas as used in CL calculations)
-		 ! 
-		 
-		 if (k .eq. kdim+1)  call error_mesg ('edt_mod',       &
-		      'trying to compute sdevs at the surface', FATAL)
-		 if (k .eq. 1)       call error_mesg ('edt_mod',       &
-		      'trying to compute sdevs at the model top', FATAL)
-		     
-		 qtsltmp    = (qt(k-1) - qt(k))/(zm(k-1) - zm(k))
-		 slsltmp    = (sl(k-1) - sl(k))/(zm(k-1) - zm(k))  
-		 qsltmp     = 0.5 * ( qsl    (k-1) + qsl    (k) )
-		 dqsldtltmp = 0.5 * ( dqsldtl(k-1) + dqsldtl(k) )   
-		 hlefftmp   = 0.5 * ( hleff  (k-1) + hleff  (k) )
-		     
+ ! compute sdevs 
+ ! (note same formulas as used in CL calculations)
+ ! 
+ 
+ if (k .eq. kdim+1)  call error_mesg ('edt_mod',       &
+      'trying to compute sdevs at the surface', FATAL)
+ if (k .eq. 1)       call error_mesg ('edt_mod',       &
+      'trying to compute sdevs at the model top', FATAL)
+     
+ qtsltmp    = (qt(k-1) - qt(k))/(zm(k-1) - zm(k))
+ slsltmp    = (sl(k-1) - sl(k))/(zm(k-1) - zm(k))  
+ qsltmp     = 0.5 * ( qsl    (k-1) + qsl    (k) )
+ dqsldtltmp = 0.5 * ( dqsldtl(k-1) + dqsldtl(k) )   
+ hlefftmp   = 0.5 * ( hleff  (k-1) + hleff  (k) )
+     
                  sdevs(k) = ( (mesovar*qsltmp)**2.0) +                 &
-		            ( (  (kvh(k)/sqrt(tke(k))) *               &
-			      (qtsltmp-(kappa*slsltmp*dqsldtltmp/cp_air)) )&
-			    **2.0) 
+            ( (  (kvh(k)/sqrt(tke(k))) *               &
+      (qtsltmp-(kappa*slsltmp*dqsldtltmp/cp_air)) )&
+    **2.0) 
                  sdevs(k) = sqrt(sdevs(k)) / (1.+hlefftmp*dqsldtltmp/cp_air)   
 
                  if (column_match) then
-		 write (dpu,'(a)')  ' ' 
-	         write (dpu,'(a)')  ' ' 
-	         write (dpu,'(a)')  ' sigmas  .... '
+ write (dpu,'(a)')  ' ' 
+         write (dpu,'(a)')  ' ' 
+         write (dpu,'(a)')  ' sigmas  .... '
                  write (dpu,'(a)')  ' ' 
-	         write (dpu,'(a,f14.7,a)')  ' sigmas = ',1000.*sdevs(k)&
-		      , ' g/kg'
+         write (dpu,'(a,f14.7,a)')  ' sigmas = ',1000.*sdevs(k)&
+      , ' g/kg'
                  write (dpu,'(a,f14.7)  ')  ' acoef = ', 1. / ( 1. +   &
-		      hlefftmp*dqsldtltmp/cp_air )
+      hlefftmp*dqsldtltmp/cp_air )
                  write (dpu,'(a,f14.7,a)')  ' sigmas/a = ', 1000.*     &
-		      sdevs(k)* ( 1. + hlefftmp*dqsldtltmp/cp_air ), ' g/kg'
+      sdevs(k)* ( 1. + hlefftmp*dqsldtltmp/cp_air ), ' g/kg'
                  write (dpu,'(a,f14.7)'  )  ' mesovar = ', mesovar
                  write (dpu,'(a,f14.7,a)')  ' mesovar*qsl = ',mesovar* &
-		      qsltmp*1000.,' g/kg'
+      qsltmp*1000.,' g/kg'
                  write (dpu,'(a,f14.7,a)')  ' turb.fluct = ',1000.*    &
-		      (kvh(k)/sqrt(tke(k)))*(qtsltmp-(kappa*slsltmp*   &
-		      dqsldtltmp/cp_air)) ,' g/kg'
+      (kvh(k)/sqrt(tke(k)))*(qtsltmp-(kappa*slsltmp*   &
+      dqsldtltmp/cp_air)) ,' g/kg'
                  write (dpu,'(a,f14.7,a)')  ' (kvh/sqrt(tke))*qtsltm'//&
                       'p = ',1000.*(kvh(k)/sqrt(tke(k)))*qtsltmp ,     &
-		      ' g/kg'
+      ' g/kg'
                  write (dpu,'(a,f14.7,a)')  ' (kvh/sqrt(tke))*(kappa'//&
                       '*slsltmp*dqsldtltmp/cp_air) = ',1000.*(kvh(k)/sqrt  &
-		      (tke(k)))*(kappa*slsltmp*dqsldtltmp/cp_air),' g/kg'
+      (tke(k)))*(kappa*slsltmp*dqsldtltmp/cp_air),' g/kg'
                  write (dpu,'(a)')  ' '
                  write (dpu,'(a)')  ' '
                  end if
-		  
+  
 
             end if  ! belongs to stable layer
             
@@ -4618,7 +4604,7 @@ subroutine galperin(ricl,gh,sh,sm)
 !-----------------------------------------------------------------------
 !
 !      Given a Richardson number ricl, return the stability functions
-!      sh and sm calculated according Galperin (1982).	
+!      sh and sm calculated according Galperin (1982).
 !
 !----------------------------------------------------------------------- 
 !----------------------------------------------------------------------- 
@@ -4630,7 +4616,7 @@ real, intent(out) :: gh, sh, sm
   
 ! internal variables
 
-real              :: ri, trma, trmb, trmc, det, gh
+real              :: ri, trma, trmb, trmc, det
 
 !-----------------------------------------------------------------------
 !
@@ -4671,7 +4657,7 @@ function lengthscale(height,depth)
 !
 !      Calculate the turbulent length scale given the depth of the
 !      turbulent layer.  Near the surface, the lengthscale asymptotes
-!      to vonkarm*height.	
+!      to vonkarm*height.
 !
 !----------------------------------------------------------------------- 
 !----------------------------------------------------------------------- 
@@ -4806,7 +4792,7 @@ real :: qcuh,qclh
 
        if (qalyr .lt. qcminfrac) then
             qalyr = 0.
-	    qclyr = 0.
+    qclyr = 0.
        end if
 
        if (column_match) then
@@ -4867,7 +4853,7 @@ function erfcc(x)
 !-----------------------------------------------------------------------
 !
 !      This numerical recipes routine calculates the complementary
-!      error function.	
+!      error function.
 !
 !----------------------------------------------------------------------- 
 !----------------------------------------------------------------------- 

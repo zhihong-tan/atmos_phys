@@ -1,13 +1,29 @@
  
-		     module rad_utilities_mod
-
-use utilities_mod,      only:  open_file, file_exist,    &
-                               check_nml_error, error_mesg, &
-                               print_version_number, FATAL, NOTE, &
-			       get_num_pes, &
-			       WARNING, get_my_pe, close_file
-!use constants_mod,      only : radian
-
+               module rad_utilities_mod
+!
+! <CONTACT EMAIL="Fei.Liu@noaa.gov">
+!  fil
+! </CONTACT>
+! <REVIEWER EMAIL="Stuart.Freidenreich@noaa.gov">
+!  smf
+! </REVIEWER>
+! 
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!  Code to define the derived data types and provide table search routines.
+! </OVERVIEW>
+! <DESCRIPTION>
+!  This code is used in the radiation code package as a helper module.
+!  It defines many derived data types used in radiation calculation.
+!  This code also provides table search routines and simple arithmatic
+!  routines.
+! </DESCRIPTION>
+!
+use fms_mod,               only: open_namelist_file, fms_init, &
+                                 mpp_pe, mpp_root_pe, stdlog, &
+                                 file_exist, write_version_number, &
+                                 check_nml_error, error_mesg, &
+                                 FATAL, NOTE, WARNING, close_file
 
 !--------------------------------------------------------------------
 
@@ -15,28 +31,27 @@ implicit none
 private
 
 !---------------------------------------------------------------------
-!         module containing radiation table search 
-!      routines and derived types used in radiation code
-!
+!    rad_utilities_mod contains radiation table search routines,
+!    some band averaging routines, and the derived-type variables 
+!    used in the radiation package.
 !---------------------------------------------------------------------
 
 
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-!  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: rad_utilities.F90,v 1.4 2003/04/09 21:01:26 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: inchon $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 10.0 2003/10/24 22:00:46 fms Exp $'
+character(len=128)  :: tagname =  '$Name: jakarta $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
-
 public      &
-	  rad_utilities_init, define_environment, &
-	  map_global_indices,   &
-          locate_in_table, looktab, table_alloc
-!                   looktab, table_alloc
+          rad_utilities_init, check_derived_types, & 
+          locate_in_table,  &
+          looktab, table_alloc, &
+          thickavg, thinavg,   &
+          rad_utilities_end
 
 interface looktab
     module procedure  looktab_type1, looktab_type2, looktab_type3
@@ -46,91 +61,248 @@ interface table_alloc
    module procedure    table1_alloc, table2_alloc, table3_alloc
 end interface
 
+interface thickavg
+   module procedure thickavg_3d
+   module procedure thickavg_0d
+end interface
 
+!------------------------------------------------------------------
 
-public longwave_tables1_type, longwave_tables2_type, &
-       longwave_tables3_type, table_axis_type
+public   aerosol_type              
+  
+!    aerosol
+!    aerosol_names
 
+type aerosol_type
+     real, dimension(:,:,:,:),        pointer :: aerosol=>NULL()
+     character(len=64), dimension(:), pointer :: aerosol_names=>NULL()
+end type aerosol_type              
 
-type longwave_tables1_type
-    real, dimension(:,:), pointer      ::  vae=>NULL(), td=>NULL(), &
-                                           md=>NULL(), cd=>NULL()
-end type longwave_tables1_type
+!------------------------------------------------------------------
+ 
+public   aerosol_properties_type
 
+!    aerextband
+!    aerssalbband
+!    aerasymmband
+!    aerextbandlw
+!    aerssalbbandlw
+!    sulfate_index
+!    optical_index
 
-type longwave_tables2_type
-    real, dimension(:,:,:), pointer    ::  vae=>NULL(), td=>NULL(),  &
-                                           md=>NULL(), cd=>NULL()
-end type longwave_tables2_type
+type aerosol_properties_type
+     real, dimension(:,:), pointer  :: aerextband=>NULL(),   &
+                                       aerssalbband=>NULL(), &
+                                       aerasymmband=>NULL(), &
+                                       aerextbandlw=>NULL(), &
+                                       aerssalbbandlw=>NULL()
+     integer, dimension(:), pointer :: sulfate_index=>NULL()
+     integer, dimension(:), pointer :: optical_index=>NULL()
+end type aerosol_properties_type
 
+!------------------------------------------------------------------
 
-type longwave_tables3_type
-     real,  dimension(:,:), pointer    ::  vae=>NULL(), td=>NULL()          
-end type longwave_tables3_type
+public astronomy_type
+    
+!    solar
+!    cosz
+!    fracday
+!    rrsun
 
+type astronomy_type
+     real, dimension(:,:), pointer  :: solar=>NULL(),   &
+                                       cosz=>NULL(),  &
+                                       fracday=>NULL()
+     real    :: rrsun
+end type astronomy_type
 
-type table_axis_type
-  integer :: first_col
-  real    :: min_val
-  real    :: max_val
-  real    :: tab_inc
-end type table_axis_type
+!--------------------------------------------------------------------
 
+public atmos_input_type
 
-public longwave_control_type 
+!    press
+!    temp
+!    rh2o
+!    pflux
+!    tflux
+!    deltaz
+!    phalf
+!    rel_hum
+!    cloudtemp
+!    clouddeltaz
+!    cloudvapor
+!    aerosoltemp
+!    aerosolvapor
+!    aerosolpress
+!    aerosolrelhum
+!    tsfc
+!    psfc
 
-type longwave_control_type
-!    character(len=10)         :: lw_form
-    character(len=16)         :: lw_form
-    logical                   :: do_cfc
-    logical                   :: do_lwaerosol
-    logical                   :: do_ckd2p1
-    logical                   :: do_ch4_n2o
-    logical                   :: do_ch4n2olbltmpint
-    logical                   :: do_co2
-    logical                   :: do_lwcldemiss
-end type longwave_control_type
+type atmos_input_type
+     real, dimension(:,:,:), pointer :: press=>NULL(),   &
+                                        temp=>NULL(), &
+                                        rh2o=>NULL(),  &
+                                        pflux=>NULL(), &
+                                        tflux=>NULL(),  &
+                                        deltaz=>NULL(),  &
+                                        phalf=>NULL(),   &
+                                        rel_hum=>NULL(), &
+                                        cloudtemp=>NULL(),   &
+                                        clouddeltaz=>NULL(), &
+                                        cloudvapor=>NULL(), &
+                                        aerosoltemp=>NULL(), &
+                                        aerosolvapor=>NULL(), &
+                                        aerosolpress=>NULL(), &
+                                        aerosolrelhum=>NULL()
+     real, dimension(:,:),   pointer :: tsfc=>NULL(),   &
+                                        psfc=>NULL()              
+end type atmos_input_type
 
+!-------------------------------------------------------------------
 
-public shortwave_control_type
+public cldrad_properties_type
 
-type shortwave_control_type
-!   character(len=10)         :: sw_form
-!   character(len=16)         :: sw_form
-    logical                   :: do_lhsw
-    logical                   :: do_esfsw
-!   character(len=12)         :: swaerosol_form
-    character(len=16)         :: swaerosol_form
-    logical                   :: do_swaerosol
-end type shortwave_control_type
+!    cldext
+!    cldasymm
+!    cldsct
+!    emmxolw
+!    emrndlw
+!    abscoeff
+!    cldemiss
+!    cirabsw
+!    cirrfsw
+!    cvisrfsw
 
-public radiation_control_type
+type cldrad_properties_type
+     real, dimension(:,:,:,:), pointer :: cldext=>NULL(),   &
+                                          cldasymm=>NULL(), &
+                                          cldsct=>NULL(), &
+                                          emmxolw=>NULL(), &
+                                          emrndlw=>NULL(),  &
+                                          abscoeff=>NULL(),  &
+                                          cldemiss=>NULL()
+     real, dimension(:,:,:), pointer ::   cirabsw=>NULL(), &
+                                          cirrfsw=>NULL(),   &
+                                          cvisrfsw=>NULL()
+end type cldrad_properties_type
 
-type radiation_control_type
-!   logical                        :: do_diagnostics
-    logical                        :: do_totcld_forcing
-    logical                        :: do_aerosol
-!   logical, dimension(:), pointer :: do_raddg
-end type radiation_control_type
+!------------------------------------------------------------------
+
+public cld_space_properties_type
+
+!    camtswkc
+!    cirabswkc
+!    cirrfswkc
+!    cvisrfswkc
+!    ktopswkc
+!    kbtmswkc
+
+type cld_space_properties_type
+     real, dimension(:,:,:),    pointer :: camtswkc=>NULL()        
+     real, dimension(:,:,:),    pointer :: cirabswkc=>NULL(),  &
+                                           cirrfswkc=>NULL(), &
+                                           cvisrfswkc=>NULL()
+     integer, dimension(:,:,:), pointer :: ktopswkc=>NULL(),   &
+                                           kbtmswkc=>NULL()
+end type cld_space_properties_type
+
+!------------------------------------------------------------------
+
+public cld_specification_type
+
+!    tau
+!    lwp
+!    iwp
+!    reff_liq
+!    reff_ice
+!    liq_frac
+!    cloud_water
+!    cloud_ice
+!    cloud_area
+!    reff_liq_micro
+!    reff_ice_micro
+!    camtsw
+!    cmxolw
+!    crndlw
+!    cld_thickness
+!    ncldsw
+!    nmxolw
+!    nrndlw
+!    hi_cloud
+!    mid_cloud
+!    low_cloud
+!    ice_cloud
+
+type cld_specification_type
+   real, dimension(:,:,:,:),  pointer :: tau=>NULL()
+   real, dimension(:,:,:),    pointer :: lwp=>NULL(),   &
+                                         iwp=>NULL(),  &
+                                         reff_liq=>NULL(),   &
+                                         reff_ice=>NULL(), &
+                                         liq_frac=>NULL(), &
+                                         cloud_water=>NULL(), &
+                                         cloud_ice=>NULL(),  &
+                                         cloud_area=>NULL(), &
+                                         reff_liq_micro=>NULL(),   &
+                                         reff_ice_micro=>NULL(),&
+                                         camtsw=>NULL(),   &
+                                         cmxolw=>NULL(),  &
+                                         crndlw=>NULL()
+   integer, dimension(:,:,:), pointer :: cld_thickness=>NULL()
+   integer, dimension(:,:),   pointer :: ncldsw=>NULL(),   &
+                                         nmxolw=>NULL(),&
+                                         nrndlw=>NULL()
+   logical, dimension(:,:,:), pointer :: hi_cloud=>NULL(),   &
+                                         mid_cloud=>NULL(),  &
+                                         low_cloud=>NULL(),   &
+                                         ice_cloud=>NULL()
+end type cld_specification_type
 
 !------------------------------------------------------------------
 
 public cloudrad_control_type
 
 type cloudrad_control_type
-    logical                        :: do_pred_cld_microphys
-    logical                        :: do_presc_cld_microphys
-    logical                        :: do_no_cld_microphys
-    logical                        :: do_rh_clouds        
-    logical                        :: do_strat_clouds        
-    logical                        :: do_zonal_clouds        
-    logical                        :: do_mgroup_prescribed
-    logical                        :: do_obs_clouds        
-    logical                        :: do_no_clouds        
-    logical                        :: do_diag_clouds        
-    logical                        :: do_specified_clouds        
-    logical                        :: do_donner_deep_clouds
-    integer                        :: nlwcldb
+    logical :: do_pred_cld_microphys
+    logical :: do_presc_cld_microphys
+    logical :: do_bulk_microphys
+    logical :: do_sw_micro
+    logical :: do_lw_micro
+    logical :: do_rh_clouds        
+    logical :: do_strat_clouds        
+    logical :: do_zonal_clouds        
+    logical :: do_mgroup_prescribed
+    logical :: do_obs_clouds        
+    logical :: do_no_clouds        
+    logical :: do_diag_clouds        
+    logical :: do_specified_clouds        
+    logical :: do_donner_deep_clouds
+    logical :: do_random_overlap
+    logical :: do_max_random_overlap
+    integer :: nlwcldb                   !   number of frequency bands 
+                                         !   for which lw cloud emissiv-
+                                         !   ities are defined.
+    integer :: cloud_data_points
+    integer :: ich
+    integer :: icm
+    integer :: ict
+    integer :: icb
+    logical :: do_pred_cld_microphys_iz
+    logical :: do_presc_cld_microphys_iz
+    logical :: do_bulk_microphys_iz
+    logical :: do_sw_micro_iz
+    logical :: do_lw_micro_iz
+    logical :: do_rh_clouds_iz
+    logical :: do_strat_clouds_iz
+    logical :: do_zonal_clouds_iz
+    logical :: do_mgroup_prescribed_iz
+    logical :: do_obs_clouds_iz
+    logical :: do_no_clouds_iz
+    logical :: do_diag_clouds_iz
+    logical :: do_specified_clouds_iz
+    logical :: do_donner_deep_clouds_iz
+    logical :: do_random_overlap_iz
+    logical :: do_max_random_overlap_iz
 end type cloudrad_control_type
 
 !------------------------------------------------------------------
@@ -138,141 +310,180 @@ end type cloudrad_control_type
 public environment_type
 
 type environment_type
-!   logical                         ::  running_fms
-!   logical                         ::  running_skyhi
-    logical                         ::  using_sky_periphs
-    logical                         ::  using_fms_periphs
-    logical                         ::  running_gcm     
-    logical                         ::  running_standalone
-    logical                         ::  running_sa_model
-!   character(len=11)               ::  column_type
-    character(len=16)               ::  column_type
+    logical           ::  using_sky_periphs
+    logical           ::  using_fms_periphs
+    logical           ::  running_gcm     
+    logical           ::  running_standalone
+    logical           ::  running_sa_model
+    character(len=16) ::  column_type
 end type environment_type
 
 !------------------------------------------------------------------
 
-public   radiative_gases_type
- 
-type radiative_gases_type
-     real     :: rrvch4, rrvn2o, rrvco2,    &
-                 rrvf11, rrvf12, rrvf113, rrvf22, &
-		 rf11air, rf12air, rf113air, rf22air
-     real, dimension(:,:,:), pointer :: qo3=>NULL()
-!    logical  :: do_co2, do_ch4_n2o, do_cfc
-     logical  :: time_varying_co2, time_varying_f11, &
-                 time_varying_f12, time_varying_f113, &
-                 time_varying_f22,  &
-                 time_varying_ch4, time_varying_n2o
-end type radiative_gases_type
+public fsrad_output_type
 
-!------------------------------------------------------------------
+!    tdtsw
+!    tdtlw
+!    tdtsw_clr
+!    tdtlw_clr
+!    swdns
+!    swups
+!    lwdns
+!    lwups
+!    swin
+!    swout
+!    olr
+!    swdns_clr
+!    swups_clr
+!    lwdns_clr
+!    lwups_clr`
+!    swin_clr
+!    swout_clr
+!    olr_clr
+!    npass
 
-public   aerosol_type              
-  
-type aerosol_type
-     real, dimension(:,:,:,:), pointer :: aerosol=>NULL()
-     integer                  :: max_data_fields 
-!     character(len=64), dimension(:), pointer :: data_names
-     integer    :: nfields
-     character(len=64), dimension(:), pointer ::   &
-                                          aerosol_optical_names=>NULL()
-     integer, dimension(:), pointer :: sulfate_index=>NULL()
-     integer, dimension(:), pointer :: optical_index=>NULL()
-end type aerosol_type              
-!------------------------------------------------------------------
- 
-public   aerosol_properties_type
+type fsrad_output_type
+     real, dimension(:,:,:), pointer :: tdtsw=>NULL(), &
+                                        tdtlw=>NULL(),  &
+                                        tdtsw_clr=>NULL(),  &
+                                        tdtlw_clr=>NULL()
+     real, dimension(:,:),   pointer :: swdns=>NULL(),   &
+                                        swups=>NULL(),  &
+                                        lwups=>NULL(), &
+                                        lwdns=>NULL(), &
+                                        swin=>NULL(), &
+                                        swout=>NULL(), &
+                                        olr=>NULL(), &
+                                        swdns_clr=>NULL(),  &
+                                        swups_clr=>NULL(),  &
+                                        lwups_clr=>NULL(),&
+                                        lwdns_clr=>NULL(),   &
+                                        swin_clr=>NULL(),  &
+                                        swout_clr=>NULL(), &
+                                        olr_clr=>NULL()
+     integer      :: npass
+end type fsrad_output_type
 
-type aerosol_properties_type
-     integer    :: NAERMODELS
-     integer    :: num_wavenumbers
-     integer    :: nfields
-     integer, dimension(:), pointer :: endaerwvnsf=>NULL()
-     character(len=64), dimension(:), pointer :: aerosol_names=>NULL()
-     real, dimension(:,:), pointer :: aeroextivl=>NULL(),  &
-                                      aerossalbivl=>NULL(), &
-                                      aeroasymmivl=>NULL()
-     real, dimension(:,:), pointer :: aerextband=>NULL(),   &
-                                      aerssalbband=>NULL(), &
-                                      aerasymmband=>NULL()
-end type aerosol_properties_type
-
-!------------------------------------------------------------------
-
-public optical_path_type
-
-type optical_path_type
-     real, dimension (:,:,:,:), pointer :: empl1f=>NULL(),  &
-                                           empl2f=>NULL(),  &
-                                           vrpfh2o=>NULL(), &
-!                                          totch2o, totch2obd, &
-                                           xch2obd=>NULL(),  &
-                                           tphfh2o=>NULL(), &
-                                           avephif=>NULL(), &
-                                           totaerooptdep=>NULL()
-     real, dimension (:,:,:), pointer   :: empl1=>NULL(), &
-                                           empl2=>NULL(),  &
-					   var1=>NULL(), &
-					   var2=>NULL(), &
-                                          emx1f=>NULL(),   &
-					  emx2f=>NULL(),   &
-					  totvo2=>NULL(),  &
-					  avephi=>NULL(),&
-                                         totch2obdwd=>NULL(), &
-					 xch2obdwd=>NULL(), &
-                                           totphi=>NULL(),   &
-					   cntval=>NULL(), &
-					   toto3=>NULL(),   &
-!                                        tphio3, var3, var4, sh2o,  &
-!                                          tmpexp, rvh2o, wk, rhoave, &
-                                         tphio3=>NULL(),  &
-					 var3=>NULL(),  &
-					 var4=>NULL(),        &
-                                         wk=>NULL(),         &
-                                         rh2os=>NULL(),  &
-					 rfrgn=>NULL(),  &
-					 tfac=>NULL(), &
-                                         totaerooptdep_15=>NULL(), &
-                                         totf11=>NULL(),   &
-					 totf12=>NULL(),  &
-					 totf113=>NULL(),   &
-					 totf22=>NULL()
-      real, dimension (:,:), pointer     :: emx1=>NULL(),  &
-                                            emx2=>NULL(),  &
-					    csfah2o=>NULL(), &
-                                            aerooptdep_KE_15=>NULL()
-end type optical_path_type
-
-!------------------------------------------------------------------
+!-------------------------------------------------------------------
 
 public gas_tf_type
 
+!    tdav
+!    tlsqu
+!    tmpdiff
+!    tstdav
+!    co2nbl
+!    n2o9c
+!    tn2o17
+!    co2spnb
+!    a1
+!    a2
+
 type gas_tf_type
-     real, dimension(:,:,:), pointer :: tdav=>NULL(),   &
-                                        tlsqu=>NULL(),   &
-                                        tmpdiff=>NULL(),   &
-                                        tstdav=>NULL(),  &
-                                        co2nbl=>NULL(),   &
-                                        n2o9c=>NULL(),   &
-                                        tn2o17=>NULL()
+     real, dimension(:,:,:),   pointer :: tdav=>NULL(),   &
+                                          tlsqu=>NULL(),   &
+                                          tmpdiff=>NULL(),   &
+                                          tstdav=>NULL(),  &
+                                          co2nbl=>NULL(),   &
+                                          n2o9c=>NULL(),   &
+                                          tn2o17=>NULL()
      real, dimension(:,:,:,:), pointer :: co2spnb=>NULL()
-     real, dimension(:,:), pointer :: a1=>NULL(), a2=>NULL()
+     real, dimension(:,:),     pointer :: a1=>NULL(),    &
+                                          a2=>NULL()
 end type gas_tf_type
 
 !------------------------------------------------------------------
 
-public lw_output_type
+public longwave_control_type 
 
-type lw_output_type
-     real, dimension(:,:,:), pointer :: heatra=>NULL(), &
-                                        flxnet=>NULL(),  &
-                                        heatracf=>NULL(), &
-                                        flxnetcf=>NULL()
-end type lw_output_type
+type longwave_control_type
+    character(len=16) :: lw_form
+    character(len=16) :: continuum_form
+    character(len=16) :: linecatalog_form
+    logical           :: do_cfc
+    logical           :: do_lwaerosol
+    logical           :: do_ch4_n2o
+    logical           :: do_ch4n2olbltmpint
+    logical           :: do_co2
+    logical           :: do_lwcldemiss
+    logical           :: do_cfc_iz
+    logical           :: do_lwaerosol_iz
+    logical           :: do_ch4_n2o_iz
+    logical           :: do_ch4n2olbltmpint_iz
+    logical           :: do_co2_iz
+    logical           :: do_lwcldemiss_iz
+end type longwave_control_type
 
-!------------------------------------------------------------------
+!---------------------------------------------------------------------
+
+public longwave_parameter_type
+
+type longwave_parameter_type
+     integer   :: offset
+     integer   :: NBTRG
+     integer   :: NBTRGE
+     integer   :: NBLY
+     integer   :: n_lwaerosol_bands
+     real      :: lw_band_resolution
+     logical   :: offset_iz
+     logical   :: NBTRG_iz
+     logical   :: NBTRGE_iz
+     logical   :: NBLY_iz
+     logical   :: n_lwaerosol_bands_iz
+     logical   :: lw_band_resolution_iz
+end type longwave_parameter_type
+
+!--------------------------------------------------------------------
+
+public longwave_tables1_type
+
+!    vae
+!    td
+!    md
+!    cd
+
+type longwave_tables1_type
+    real, dimension(:,:), pointer  ::  vae=>NULL(),   &
+                                       td=>NULL(), &
+                                       md=>NULL(), &
+                                       cd=>NULL()
+end type longwave_tables1_type
+
+!--------------------------------------------------------------------
+
+public longwave_tables2_type
+
+!    vae
+!    td
+!    md
+!    cd
+
+type longwave_tables2_type
+    real, dimension(:,:,:), pointer  ::  vae=>NULL(),  &
+                                         td=>NULL(),  &
+                                         md=>NULL(),   &
+                                         cd=>NULL()
+end type longwave_tables2_type
+
+!---------------------------------------------------------------------
+
+public longwave_tables3_type
+
+!    vae
+!    td
+
+type longwave_tables3_type
+     real,  dimension(:,:), pointer    ::  vae=>NULL(),   &
+                                           td=>NULL()          
+end type longwave_tables3_type
+
+!---------------------------------------------------------------------
 
 public lw_clouds_type
+
+!    taucld_rndlw
+!    taucld_mxolw
+!    taunbl_mxolw
 
 type lw_clouds_type
      real, dimension(:,:,:,:),   pointer :: taucld_rndlw=>NULL(), &
@@ -284,120 +495,247 @@ end type lw_clouds_type
 
 public lw_diagnostics_type
 
+!    flx1e1
+!    gxcts
+!    flx1e1f
+!    excts
+!    fctsg
+!    fluxn
+!    fluxncf
+!    exctsn
+!    cts_out
+!    cts_outcf
+
 type lw_diagnostics_type
-     real, dimension(:,:),   pointer :: flx1e1=>NULL(), gxcts=>NULL()
-     real, dimension(:,:,:), pointer :: flx1e1f=>NULL(), excts=>NULL(),&
-                                        fctsg=>NULL()
+     real, dimension(:,:),   pointer   :: flx1e1=>NULL(),  &
+                                          gxcts=>NULL()
+     real, dimension(:,:,:), pointer   :: flx1e1f=>NULL(),  &
+                                          excts=>NULL(),&
+                                          fctsg=>NULL()
      real, dimension(:,:,:,:), pointer :: fluxn=>NULL(),   &
                                           fluxncf=>NULL(),   &
-					  exctsn=>NULL(),  &
+                                          exctsn=>NULL(),  &
                                           cts_out=>NULL(), &
-					  cts_outcf=>NULL()
+                                          cts_outcf=>NULL()
 end type lw_diagnostics_type
+
+!-------------------------------------------------------------------
+
+public lw_output_type
+
+!    heatra
+!    flxnet
+!    heatracf
+!    flxnetcf
+
+type lw_output_type
+     real, dimension(:,:,:), pointer :: heatra=>NULL(), &
+                                        flxnet=>NULL(),  &
+                                        heatracf=>NULL(), &
+                                        flxnetcf=>NULL()
+end type lw_output_type
 
 !------------------------------------------------------------------
 
 public lw_table_type
 
+!    bdlocm
+!    bdhicm
+!    bandlo
+!    bandhi
+!    iband
+
 type lw_table_type
-     real, dimension(:),   pointer :: bdlocm=>NULL(),   &
-                                      bdhicm=>NULL(),  &
-				      bandlo=>NULL(),  &
-				      bandhi=>NULL()
+     real, dimension(:),    pointer :: bdlocm=>NULL(),   &
+                                       bdhicm=>NULL(),  &
+                                       bandlo=>NULL(),  &
+                                       bandhi=>NULL()
      integer, dimension(:), pointer :: iband=>NULL()
 end type lw_table_type
 
 !------------------------------------------------------------------
 
-public cld_space_properties_type
+public microphysics_type
+ 
+!    conc_ice
+!    conc_drop
+!    size_ice
+!    size_drop
+!    size_snow
+!    conc_snow
+!    size_rain
+!    conc_rain
+!    cldamt
 
-type cld_space_properties_type
-     real, dimension(:,:,:),   pointer :: camtswkc=>NULL()        
-!    real, dimension(:,:,:,:),   pointer :: cirabswkc, cirrfswkc, &
-     real, dimension(:,:,:),   pointer :: cirabswkc=>NULL(),  &
-                                          cirrfswkc=>NULL(), &
-                                            cvisrfswkc=>NULL()
-     integer, dimension(:,:,:), pointer :: ktopswkc=>NULL(),   &
-                                            kbtmswkc=>NULL()
-end type cld_space_properties_type
+type microphysics_type
+   real, dimension(:,:,:), pointer :: conc_ice=>NULL(),   &
+                                      conc_drop=>NULL(),      &
+                                      size_ice=>NULL(),   &
+                                      size_drop=>NULL(),     &
+                                      size_snow=>NULL(),   &
+                                      conc_snow=>NULL(),     &
+                                      size_rain=>NULL(),     &
+                                      conc_rain=>NULL(),   &
+                                      cldamt=>NULL()
+end type microphysics_type
+
+!-------------------------------------------------------------------
+
+public microrad_properties_type
+ 
+!    cldext
+!    cldsct
+!    cldasymm
+!    abscoeff
+
+type microrad_properties_type
+   real, dimension(:,:,:,:), pointer :: cldext=>NULL(),  &
+                                        cldsct=>NULL(), &
+                                        cldasymm=>NULL(),    &
+                                        abscoeff=>NULL()
+end type microrad_properties_type
+
+!--------------------------------------------------------------------
+
+public optical_path_type
+
+!    empl1f
+!    vrpfh2o
+!    xch2obd
+!    tphfh2o
+!    avephif
+!    totaerooptdep
+!    empl1
+!    empl2
+!    var1
+!    var2
+!    emx1f
+!    emx2f
+!    totvo2
+!    avephi
+!    totch2obdwd
+!    xch2obdwd
+!    totphi
+!    cntval
+!    toto3
+!    tphio3
+!    var3
+!    var4
+!    wk
+!    rh2os
+!    rfrgn
+!    tfac
+!    totaerooptdep15
+!    totf11
+!    totf12
+!    totf113
+!    totf22
+!    emx1
+!    emx2
+!    csfah2o
+!    aerooptdep_KE_15
+
+type optical_path_type
+     real, dimension (:,:,:,:), pointer :: empl1f=>NULL(),  &
+                                           empl2f=>NULL(),  &
+                                           vrpfh2o=>NULL(), &
+                                           xch2obd=>NULL(),  &
+                                           tphfh2o=>NULL(), &
+                                           avephif=>NULL(), &
+                                           totaerooptdep=>NULL()
+     real, dimension (:,:,:),   pointer :: empl1=>NULL(), &
+                                           empl2=>NULL(),  &
+                                           var1=>NULL(), &
+                                           var2=>NULL(), &
+                                           emx1f=>NULL(),   &
+                                           emx2f=>NULL(),   &
+                                           totvo2=>NULL(),  &
+                                           avephi=>NULL(),&
+                                           totch2obdwd=>NULL(), &
+                                           xch2obdwd=>NULL(), &
+                                           totphi=>NULL(),   &
+                                           cntval=>NULL(), &
+                                           toto3=>NULL(),   &
+                                           tphio3=>NULL(),  &
+                                           var3=>NULL(),  &
+                                           var4=>NULL(),        &
+                                           wk=>NULL(),         &
+                                           rh2os=>NULL(),  &
+                                           rfrgn=>NULL(),  &
+                                           tfac=>NULL(), &
+                                           totaerooptdep_15=>NULL(), &
+                                           totf11=>NULL(),   &
+                                           totf12=>NULL(),  &
+                                           totf113=>NULL(),   &
+                                           totf22=>NULL()
+      real, dimension (:,:), pointer    :: emx1=>NULL(),  &
+                                           emx2=>NULL(),  &
+                                           csfah2o=>NULL(), &
+                                           aerooptdep_KE_15=>NULL()
+end type optical_path_type
 
 !------------------------------------------------------------------
 
-public cld_diagnostics_type
+public radiation_control_type
 
-type cld_diagnostics_type
-     real, dimension(:,:,:),   pointer :: lwpath=>NULL(),   &
-                                          iwpath=>NULL(),   &
-					  size_drop=>NULL(), &
-                                          size_ice=>NULL()
-     real, dimension(:,:),     pointer :: cld_isccp_hi=>NULL(),   &
-                                          cld_isccp_mid=>NULL(), &
-                                          cld_isccp_low=>NULL(),   &
-                                          tot_clds=>NULL()
-end type cld_diagnostics_type
+type radiation_control_type
+    logical  :: do_totcld_forcing
+    logical  :: do_aerosol
+    logical  :: do_totcld_forcing_iz
+    logical  :: do_aerosol_iz
+end type radiation_control_type
 
 !------------------------------------------------------------------
 
-public sw_output_type
+public   radiative_gases_type
+ 
+!    qo3
+!    rrvch4
+!    rrvn2o
+!    rrvco2
+!    rrvf11
+!    rrvf12
+!    rrvf113
+!    rrvf22
+!    rf11air
+!    rf12air
+!    rf113air
+!    rf22air
+!    time_varying_co2
+!    time_varying_f11
+!    time_varying_f12
+!    time_varying_f113
+!    time_varying_f22
+!    time_varying_ch4
+!    time_varying_n2o
 
-type sw_output_type
-     real, dimension(:,:,:), pointer :: dfsw=>NULL(), ufsw=>NULL(),  &
-                                        fsw=>NULL(), hsw=>NULL(), &
-                                        dfswcf=>NULL(), ufswcf=>NULL(),&
-                                        fswcf=>NULL(), hswcf=>NULL()
-end type sw_output_type
+type radiative_gases_type
+     real, dimension(:,:,:), pointer :: qo3=>NULL()
+     real                            :: rrvch4, rrvn2o, rrvco2,    &
+                                        rrvf11, rrvf12, rrvf113,  &
+                                        rrvf22, rf11air, rf12air,  &
+                                        rf113air, rf22air
+     logical                         :: time_varying_co2,  &
+                                        time_varying_f11, &
+                                        time_varying_f12,  &
+                                        time_varying_f113, &
+                                        time_varying_f22,  &
+                                        time_varying_ch4, &
+                                        time_varying_n2o
+end type radiative_gases_type
 
-!-------------------------------------------------------------------
-
-public atmos_input_type
-
-type atmos_input_type
-     real, dimension(:,:,:), pointer :: press=>NULL(),   &
-                                        temp=>NULL(), &
-					rh2o=>NULL(),  &
-					pflux=>NULL(), &
-                                        tflux=>NULL(),  &
-					deltaz=>NULL(),  &
-					cloud_ice=>NULL(), &
-                                        cloud_water=>NULL(), &
-					phalf=>NULL(),   &
-					rel_hum=>NULL(), &
-                                        cloudtemp=>NULL(),   &
-					clouddeltaz=>NULL(), &
-                                        cloudvapor=>NULL()
-     real, dimension(:,:),   pointer :: psfc=>NULL(), tsfc=>NULL(),   &
-                                        asfc=>NULL(), land=>NULL()
-endtype atmos_input_type
-
-!-------------------------------------------------------------------
-
-public fsrad_output_type
-
-type fsrad_output_type
-     real, dimension(:,:,:), pointer :: tdtsw=>NULL(), &
-                                        tdtlw=>NULL(),  &
-					tdtsw_clr=>NULL(),  &
-                                       tdtlw_clr=>NULL()
-     real, dimension(:,:),   pointer :: swdns=>NULL(),   &
-                                        swups=>NULL(),  &
-					lwups=>NULL(), &
-					lwdns=>NULL(), &
-                                       swin=>NULL(), &
-				       swout=>NULL(), &
-				       olr=>NULL(), &
-                                       swdns_clr=>NULL(),  &
-				       swups_clr=>NULL(),  &
-				       lwups_clr=>NULL(),&
-                                       lwdns_clr=>NULL(),   &
-				       swin_clr=>NULL(),  &
-				       swout_clr=>NULL(), &
-                                       olr_clr=>NULL()
-     integer      :: npass
-end type fsrad_output_type
-
-!-------------------------------------------------------------------
+!------------------------------------------------------------------
 
 public rad_output_type
+
+!    tdt_rad
+!    tdt_rad_clr
+!    tdtsw
+!    tdtsw_clr
+!    tdtlw
+!    flux_sw_surf
+!    flux_lw_surf
+!    coszen_angle
 
 type rad_output_type
      real, dimension(:,:,:), pointer :: tdt_rad=>NULL(),  &
@@ -405,77 +743,127 @@ type rad_output_type
                                         tdtsw=>NULL(),   &
                                         tdtsw_clr=>NULL(),  &
                                         tdtlw=>NULL()
-     real, dimension(:,:), pointer :: flux_sw_surf=>NULL(), &
-                                      flux_lw_surf=>NULL(), &
-                                      coszen_angle=>NULL()
+     real, dimension(:,:),   pointer :: flux_sw_surf=>NULL(), &
+                                        flux_lw_surf=>NULL(), &
+                                        coszen_angle=>NULL()
 end type rad_output_type
 
 !-------------------------------------------------------------------
 
-public astronomy_type
-    
-type astronomy_type
-     logical :: do_diurnal, do_annual, do_daily_mean
-     real    :: rrsun, solar_constant
-     real, dimension(:,:), pointer  :: solar=>NULL(),   &
-                                       cosz=>NULL(),  &
-				       fracday=>NULL()
-end type astronomy_type
+public shortwave_control_type
 
-!--------------------------------------------------------------------
-
-public cldrad_properties_type
-
-type cldrad_properties_type
-     real, dimension(:,:,:,:), pointer :: cldext=>NULL(),   &
-                                          cldasymm=>NULL(), &
-					  cldsct=>NULL(), &
-                                          emmxolw=>NULL(), &
-					  emrndlw=>NULL(),  &
-					  cirabsw=>NULL(), &
-                                          abscoeff=>NULL(),  &
-					  cldemiss=>NULL(), &
-                                          cirrfsw=>NULL(),   &
-					  cvisrfsw=>NULL()
-     real, dimension(:,:,:), pointer :: camtsw=>NULL(),  &
-                                        cmxolw=>NULL(),  &
-					crndlw=>NULL()      
-     Integer, dimension(:,:), pointer :: ncldsw=>NULL(),  &
-                                         nmxolw=>NULL(),  &
-					 nrndlw=>NULL()     
-!     integer                          :: NLWCLDB
-end type cldrad_properties_type
-
-
-public longwave_parameter_type
-
-
-type longwave_parameter_type
-     integer             :: offset
-     integer             :: NBTRG
-     integer             :: NBTRGE
-!     integer             :: NLWCLDB
-     integer             :: NBLY
-     integer             :: n_lwaerosol_bands
-end type longwave_parameter_type
+type shortwave_control_type
+    logical  :: do_lhsw
+    logical  :: do_esfsw
+    logical  :: do_swaerosol
+    logical  :: do_diurnal
+    logical  :: do_annual
+    logical  :: do_daily_mean
+    real     :: solar_constant
+    logical  :: do_lhsw_iz
+    logical  :: do_esfsw_iz
+    logical  :: do_swaerosol_iz
+    logical  :: do_diurnal_iz
+    logical  :: do_annual_iz
+    logical  :: do_daily_mean_iz
+end type shortwave_control_type
 
 !---------------------------------------------------------------------
+
+public solar_spectrum_type
+
+!    solarfluxtoa      highly-resolved solar flux at toa in 
+!                      Sw_control%tot_wvnums 
+!                      bands [         ]
+!    solflxband        toa solar flux in each parameterization band
+!                      [         ]
+!    endwvnbands       highest wave number in each of the solar
+!                      spectral parameterization bands [ cm (-1) ]
+!    tot_wvnums
+!    nbands
+!    nfrqpts
+!    nstreams
+!    nh2obands
+
+type solar_spectrum_type
+    real, dimension(:),    pointer   :: solarfluxtoa=>null()
+    real, dimension(:),    pointer   :: solflxband=>NULL()
+    integer, dimension(:), pointer   :: endwvnbands=>NULL()
+    integer         :: tot_wvnums
+    integer         :: nbands
+    integer         :: nfrqpts
+    integer         :: nstreams
+    integer         :: nh2obands
+end type solar_spectrum_type
+
+!---------------------------------------------------------------------
+
+public surface_type
+
+!    asfc
+!    land
+
+type surface_type
+    real, dimension(:,:),   pointer ::  asfc=>NULL(),   &
+                                        land=>NULL()
+end type surface_type
+ 
+!-------------------------------------------------------------------
+
+public sw_output_type
+
+!    dfsw
+!    ufsw
+!    fsw
+!    hsw
+!    dfswcf
+!    ufswcf
+!    fswcf
+!    hswcf
+
+type sw_output_type
+     real, dimension(:,:,:), pointer :: dfsw=>NULL(),   &
+                                        ufsw=>NULL(),  &
+                                        fsw=>NULL(),   &
+                                        hsw=>NULL(), &
+                                        dfswcf=>NULL(),   &
+                                        ufswcf=>NULL(),&
+                                        fswcf=>NULL(),  &
+                                        hswcf=>NULL()
+end type sw_output_type
+
+!-------------------------------------------------------------------
+
+public table_axis_type
+
+type table_axis_type
+  integer :: first_col
+  real    :: min_val
+  real    :: max_val
+  real    :: tab_inc
+end type table_axis_type
+
+!---------------------------------------------------------------------
+
+!private      &
+
+
+!--------------------------------------------------------------------
 !-------- namelist  ---------
 
-
-!real   ::  dummy = 1.0
-!character(len=12)              ::                    &
-character(len=16)              ::                    &
-                                   peripherals_source=' ', &
-                                   application_type = '  ', &
-                                   column_type = '    '
+character(len=16) ::    &
+       application_type  = '    '  ! type of program in which the rad-
+                                   ! iation package is being run; either
+                                   ! 'gcm', 'sa_gcm' or 'standalone'
+character(len=16) ::     &
+       column_type       = '    '  ! when running with application_type
+                                   ! of 'standalone' the column type 
+                                   ! being employed
 
 
 namelist / rad_utilities_nml /   &
-!                                      dummy
-                                   peripherals_source, &
-                                   application_type, &
-                                   column_type
+                                application_type, &
+                                column_type
 
 
 !---------------------------------------------------------------------
@@ -483,190 +871,397 @@ namelist / rad_utilities_nml /   &
 
 
 type (longwave_control_type),  public   ::    &
-   Lw_control = longwave_control_type( '          ', &
-				      .false., .false., .false.,  &
-				      .false., .false., .true., .false.)
+     Lw_control = longwave_control_type( '    ', '    ', '    ', &
+                                         .false., .false., .false.,  &
+                                         .false., .true., .false.,  &
+                                         .false., .false., .false.,  &
+                                         .false., .false., .false.   )
 
 type (shortwave_control_type), public   ::  &
-   Sw_control = shortwave_control_type( .false., .false.,    &
-                                        '            ',  .false.  )
+    Sw_control = shortwave_control_type( .false., .false., .false. , &
+                                         .false., .false., .false., &
+                                         0.0, &
+                                         .false., .false., .false. , &
+                                         .false., .false., .false.)
 
-type (radiation_control_type), public   ::  Rad_control
+type (radiation_control_type), public   ::  &
+   Rad_control = radiation_control_type( .false., .false. , &
+                                         .false., .false.)
 
-type (aerosol_properties_type), public   ::  Aerosol_props
+type (cloudrad_control_type), public    ::   &
+ Cldrad_control = cloudrad_control_type( .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false., .false., &
+                                         .false., .false.,          &
+                                         0,0,0,0,0,0 , &
+                                         .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false., .false., &
+                                         .false., .false.)
 
-type (cloudrad_control_type), public   ::   &
-   Cldrad_control = cloudrad_control_type(.false., .false., .false., &
-                                          .false., .false., .false., &
-					  .false., .false., .false., &
-					  .false., .false., .false., &
-					  0 )
-
-type (environment_type), public   ::   &
-!  Environment = environment_type(.false., .false., .false., &
-   Environment = environment_type(                  .false., &
-				  .false., .false., .false., &
-                                  .false.,  '      ')
+type (environment_type), public         ::   &
+         Environment = environment_type( .false.,  .false., .false., &
+                                         .false.,  .false.,  '      ')
 
 type (longwave_parameter_type), public  ::   &
-!   Lw_parameters = longwave_parameter_type(0, 0, 0, 0, 0)
-   Lw_parameters = longwave_parameter_type(0, 0, 0, 0, 0)
+Lw_parameters = longwave_parameter_type( 0, 0, 0, 0, 0, 10.0, &
+                                         .false., .false., .false.,  &
+                                         .false., .false., .true.)
 
 type (table_axis_type),        public   ::    &
-     temp_1 = table_axis_type(1, 100.0, 370.0, 10.0), &
-     mass_1 = table_axis_type(1, -16.0,   1.9,  0.1)
+               temp_1 = table_axis_type( 1, 100.0, 370.0, 10.0), &
+               mass_1 = table_axis_type( 1, -16.0,   1.9,  0.1)
+
 
 !---------------------------------------------------------------------
 !------- private data ------
 
 
-logical :: rad_utilities_initialized=.false.
+logical :: module_is_initialized=.false.   ! module is initialized ?
+
 
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
 
 
 
-
-contains
-
+                           contains
 
 
 
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!
+!                     PUBLIC SUBROUTINES
+!
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+! <SUBROUTINE NAME="rad_utilities_init">
+!  <OVERVIEW>
+!   Subroutine to initialize radiation utility package.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   This subroutine reads the input namelist file and initializes 
+!   rad_utilities_nml. It then writes out this namelist to the output
+!   logfile. It also sets up the radiation calculation environment
+!   and the initialization flag variable.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call rad_utilities_init
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine rad_utilities_init
 
+!---------------------------------------------------------------------
+!    rad_utilities_init is the constructor for rad_uti;lities_mod.
+!---------------------------------------------------------------------
+
 !------------------------------------------------------------------
+!  local variables:
+
       integer    ::  unit, ierr, io
 
-
-      if (rad_utilities_initialized) return
 !---------------------------------------------------------------------
-!-----  read namelist  ------
-     
+!  local variables:
+!
+!        unit            io unit number used for namelist file
+!        ierr            error code
+!        io              error status returned from io operation
+!                                
+!---------------------------------------------------------------------
 
-     if (file_exist('input.nml')) then
-       unit =  open_file ('input.nml', action='read')
-       ierr=1; do while (ierr /= 0)
-       read (unit, nml=rad_utilities_nml, iostat=io, end=10)
-       ierr = check_nml_error (io, 'rad_utilities_nml')
-       enddo
-10     call close_file (unit)
-     endif
+!---------------------------------------------------------------------
+!    if routine has already been executed, exit.
+!---------------------------------------------------------------------
+      if (module_is_initialized) return
+ 
+!---------------------------------------------------------------------
+!    verify that modules used by this module that are not called later
+!    have already been initialized.
+!---------------------------------------------------------------------
+      call fms_init
 
-     unit = open_file ('logfile.out', action='append')
-!    call print_version_number (unit, 'rad_utilities', version_number)
-     if (get_my_pe() == 0) then
-       write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-       write (unit,nml=rad_utilities_nml)
-     endif
-     call close_file (unit)
+!-----------------------------------------------------------------------
+!    read namelist.
+!-----------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ( )
+        ierr=1; do while (ierr /= 0)
+        read  (unit, nml=rad_utilities_nml, iostat=io, end=10)
+        ierr = check_nml_error(io,'rad_utilities_nml')
+        end do
+10      call close_file (unit)
+      endif
+ 
+!---------------------------------------------------------------------
+!    write version number and namelist to logfile.
+!---------------------------------------------------------------------
+      call write_version_number (version, tagname)
+      if (mpp_pe() == mpp_root_pe() ) &
+                        write (stdlog(), nml=rad_utilities_nml)
 
-     call define_environment
+!--------------------------------------------------------------------
+!    define the type of program in which the radiation package is 
+!    being used.
+!----------------------------------------------------------------------
+      if (trim(application_type) == 'gcm') then
+        Environment%running_gcm = .true.
+        Environment%running_standalone = .false.
+        Environment%running_sa_model = .false.
+      else if (trim(application_type) == 'standalone') then
+        Environment%running_gcm = .false.
+        Environment%running_standalone = .true.
+        Environment%running_sa_model = .false.
+      else if (trim(application_type) == 'sa_gcm') then
+        Environment%running_gcm = .false.
+        Environment%running_standalone = .true.
+        Environment%running_sa_model = .true.
+      else
+        call error_mesg ('rad_utilities_mod', &
+           ' application_type not acceptable', FATAL)
+      endif
 
+!--------------------------------------------------------------------
+!    define the selected column_type (only used when running in 
+!    standalone columns mode).
+!--------------------------------------------------------------------
+      Environment%column_type = column_type
 
-     rad_utilities_initialized = .true.
+!-------------------------------------------------------------------
+!    mark the module as initialized.
+!-------------------------------------------------------------------
+      module_is_initialized = .true.
 
 !------------------------------------------------------------------
 
-end  subroutine rad_utilities_init
+end subroutine rad_utilities_init
 
 
+!#####################################################################
+!
+! <SUBROUTINE NAME="check_derived_types">
+!  <OVERVIEW>
+!   Subroutine to verify that all logical elements of derived-type
+!   variables were initialized during the initialization phase.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   This subroutine checks that all of the variable names ending in 
+!   "_iz" in its public derived-type module variables are set to .true..
+!   If additional types or variables within current public types are
+!   added, it is necessary to also add the corresponding "_iz" variable,
+!   initialized in this module to .false., and then set to .true. when 
+!   the variable is initialized, and add a check in this routine to 
+!   verify that initialization.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call check_derived_types
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 
-!####################################################################
-
-!subroutine define_environment (model_name, peripherals_source,  &
-subroutine define_environment            
-!subroutine define_environment (            peripherals_source,  &
-!                               application_type, column_type_in)
+subroutine check_derived_types 
 
 !--------------------------------------------------------------------
-!character(len=*),  intent(in)    :: model_name, peripherals_source, &
-!haracter(len=*),  intent(in)    ::             peripherals_source, &
-!			    application_type, &
-!			    column_type_in
+!    check_derived_types is called at the end of radiation package
+!    initialization to verify that all logical components of public
+!    derived-type module variables have been initialized.
+!--------------------------------------------------------------------
+
 !---------------------------------------------------------------------
+!    check the components of Lw_control.
+!--------------------------------------------------------------------
+      if (Lw_control%do_cfc_iz .and. &
+          Lw_control%do_lwaerosol_iz .and. &
+          Lw_control%do_ch4_n2o_iz .and. &
+          Lw_control%do_ch4n2olbltmpint_iz .and. &
+          Lw_control%do_co2_iz .and. &
+          Lw_control%do_lwcldemiss_iz ) then  
+      else
+        call error_mesg ('rad_utilities_mod', &
+             ' at least one component of Lw_control has not been '//&
+                                     'initialized', FATAL)
+      endif
 
-!  if (trim(model_name) == 'skyhi') then
-!    Environment%running_skyhi = .true.
-!    Environment%running_fms   = .false.
-!  else if (trim(model_name) == 'fms') then
-!    Environment%running_skyhi = .false.
-!    Environment%running_fms   = .true.
-!  else
-!    call error_mesg ('define_environment', &
-!      ' model_name not recognized', FATAL)
-!  endif
+!---------------------------------------------------------------------
+!    check the components of Sw_control.
+!--------------------------------------------------------------------
+      if (Sw_control%do_lhsw_iz .and. &
+          Sw_control%do_esfsw_iz .and. &
+          Sw_control%do_swaerosol_iz .and. &
+          Sw_control%do_diurnal_iz .and. &
+          Sw_control%do_annual_iz .and. &
+          Sw_control%do_daily_mean_iz ) then  
+      else
+        call error_mesg ('rad_utilities_mod', &
+             ' at least one component of Sw_control has not been '//&
+                                     'initialized', FATAL)
+      endif
 
-   if (trim(peripherals_source) == 'skyhi')  then
-     Environment%using_sky_periphs = .true.
-     Environment%using_fms_periphs = .false.
-   else if (trim(peripherals_source) == 'fms') then
-     Environment%using_sky_periphs = .false.
-     Environment%using_fms_periphs = .true.
-   else
-     call error_mesg ('define_environment', &
-       ' peripherals_source not recognized', FATAL)
-   endif
+!---------------------------------------------------------------------
+!    check the components of Rad_control.
+!--------------------------------------------------------------------
+      if (Rad_control%do_totcld_forcing_iz .and. &
+          Rad_control%do_aerosol_iz ) then 
+      else
+        call error_mesg ('rad_utilities_mod', &
+          ' at least one component of Rad_control has not been '//&
+                                     'initialized', FATAL)
+      endif
 
-   if (trim(application_type) == 'gcm') then
-     Environment%running_gcm = .true.
-     Environment%running_standalone = .false.
-   else if (trim(application_type) == 'standalone') then
-     Environment%running_gcm = .false.
-     Environment%running_standalone = .true.
-   else
-     call error_mesg ('define_environment', &
-       ' application_type not acceptable', FATAL)
-   endif
+!---------------------------------------------------------------------
+!    check the components of Cldrad_control.
+!--------------------------------------------------------------------
+      if (Cldrad_control%do_pred_cld_microphys_iz .and. &
+          Cldrad_control%do_presc_cld_microphys_iz .and. &
+          Cldrad_control%do_bulk_microphys_iz .and. &
+          Cldrad_control%do_sw_micro_iz .and. &
+          Cldrad_control%do_lw_micro_iz .and. &
+          Cldrad_control%do_strat_clouds_iz .and. &
+          Cldrad_control%do_zonal_clouds_iz .and. &
+          Cldrad_control%do_mgroup_prescribed_iz .and. &
+          Cldrad_control%do_obs_clouds_iz .and. &
+          Cldrad_control%do_no_clouds_iz .and. &
+          Cldrad_control%do_diag_clouds_iz .and. &
+          Cldrad_control%do_specified_clouds_iz .and. &
+          Cldrad_control%do_donner_deep_clouds_iz .and. &
+          Cldrad_control%do_random_overlap_iz .and. &
+          Cldrad_control%do_max_random_overlap_iz ) then 
+      else
+        call error_mesg ('rad_utilities_mod', &
+          ' at least one component of Cldrad_control has not been '//&
+                                     'initialized', FATAL)
+      endif
 
-!  Environment%column_type = column_type_in
-   Environment%column_type = column_type
+!---------------------------------------------------------------------
+!    check the components of Lw_parameters.
+!--------------------------------------------------------------------
+      if (Lw_parameters%offset_iz .and. &
+          Lw_parameters%nbtrg_iz .and. &
+          Lw_parameters%nbtrge_iz .and. &
+          Lw_parameters%nbly_iz .and. &
+          Lw_parameters%n_lwaerosol_bands_iz .and. &
+          Lw_parameters%lw_band_resolution_iz) then
+      else
+        call error_mesg ('rad_utilities_mod', &
+          ' at least one component of Lw_parameters has not been '//&
+                                     'initialized', FATAL)
+      endif
 
-!-------------------------------------------------------------------
+!--------------------------------------------------------------------
 
-end subroutine define_environment
+
+end subroutine check_derived_types 
 
 
 
 !####################################################################
-
-subroutine locate_in_table (table_axis, x, dx, ix, k_min, k_max) 
-
-!-----------------------------------------------------------------------
-!
+! <SUBROUTINE NAME="locate_in_table">
+!  <OVERVIEW>
+!   Subroutine to locate index and residual value from an array provided 
+!   with array and axis information
+!  </OVERVIEW>
+!  <DESCRIPTION>
 !     given array x and an arithmetic sequence of table column headings
 !     tabxmin, tabxmin+tabdeltax, ..., corresponding to column ixlow, 
 !     ixlow+1, ..., ixupp, Locate returns the array ix is column 
 !     indices and the array dx of residuals.
-!
-!     author: c. h. goldberg
-!
-!     revised: 1/1/93
-!
-!     certified:  radiation version 1.0
-!
-!-----------------------------------------------------------------------
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call locate_in_table(table_axis, x, dx, ix, k_min, k_max)
+!  </TEMPLATE>
+!  <IN NAME="table_axis" TYPE="table_axis_type">
+!   table_axis contains the axis information such as, min, increment,
+!   and first column values.
+!  </IN>
+!  <IN NAME="x" TYPE="real">
+!   array from which data is to be searched
+!  </IN>
+!  <OUT NAME="dx" TYPE="real">
+!   residual between x and x(ix+first_column)
+!  </OUT>
+!  <OUT NAME="ix" TYPE="integer">
+!   index values of the searched domain in the array
+!  </OUT>
+!  <IN NAME="k_min" TYPE="integer">
+!   minimum k value of the search domain 
+!  </IN>
+!  <IN NAME="k_max" TYPE="integer">
+!   maximum k value of the search domain
+!  </IN>
+! </SUBROUTINE>
+subroutine locate_in_table (table_axis, x, dx, ix, k_min, k_max) 
+
+!---------------------------------------------------------------------
+!    given array x and an arithmetic sequence of table column headings
+!    tabxmin, tabxmin+tabdeltax, ..., corresponding to column ixlow, 
+!    ixlow+1, ..., ixupp, locate_in_table returns the array ix of
+!    column indices and the array dx of residuals.
+!    author: c. h. goldberg
+!    revised: 1/1/93
+!    certified:  radiation version 1.0
+!----------------------------------------------------------------------
+
 type(table_axis_type),     intent(in)  :: table_axis
 real,    dimension(:,:,:), intent(in)  :: x
 integer,                   intent(in)  :: k_min, k_max
 real,    dimension(:,:,:), intent(out) :: dx
 integer, dimension(:,:,:), intent(out) :: ix
 
-!-----------------------------------------------------------------------
-real, dimension (size(x,1), size(x,2), size(x,3))  ::  fx
-real                                               ::  table_min,  &
-						       table_inc
-integer                                            ::  k, table_col
+!--------------------------------------------------------------------
+!  intent(in) variables:
+!
+!    table_axis
+!    x
+!    k_min
+!    k_max
+!
+!  intent(out) variables:
+!
+!    dx
+!    ix
+!
+!---------------------------------------------------------------------
 
+!---------------------------------------------------------------------
+!  local variables:
 
-     do k=k_min,k_max
-       fx (:,:,k) = AINT((x(:,:,k) - table_axis%min_val )/  &
-			      table_axis%tab_inc)
-       ix (:,:,k) = INT(fx(:,:,k)) + table_axis%first_col
-       dx (:,:,k) = x(:,:,k) - fx(:,:,k)*table_axis%tab_inc - &
-			      table_axis%min_val
-     end do
+      real, dimension (size(x,1), size(x,2), size(x,3))  ::  fx
+      real        ::  table_min,  table_inc
+      integer     ::  k, table_col
+
+!---------------------------------------------------------------------
+!  local variables:
+!
+!     fx
+!     table_min
+!     table_inc
+!     k
+!     table_col
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('rad_utilities_mod',   &
+               'module has not been initialized', FATAL )
+      endif
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+      do k=k_min,k_max
+        fx (:,:,k) = AINT((x(:,:,k) - table_axis%min_val )/  &
+                     table_axis%tab_inc)
+        ix (:,:,k) = INT(fx(:,:,k)) + table_axis%first_col
+        dx (:,:,k) = x(:,:,k) - fx(:,:,k)*table_axis%tab_inc - &
+                     table_axis%min_val
+      end do
       
 !---------------------------------------------------------------------
 
@@ -676,48 +1271,121 @@ end subroutine locate_in_table
 
 
 !####################################################################
-
-subroutine looktab_type1 (tab, ix, iy, dx, dy, answer, k_min, k_max)   
-
-!----------------------------------------------------------------------
-!
-!     given arrays ix(:,:,:) and iy(:,:,:) of integral subscripts and
+! <SUBROUTINE NAME="looktab_type1">
+!  <OVERVIEW>
+!   Subroutine to calculate answer from input differentials.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   given arrays ix(:,:,:) and iy(:,:,:) of integral subscripts and
 !     arrays dx(:,:,:) and dy(:,:,:) of differences from x(:,:,:) and
 !     y(:,:,:), calculate answer(:,:,:) = f(x(:,:,:), y(:,:,:))
 !     from four tables of values, f, df/dx, df/dy, and d2f/dxdy.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call looktab_type1 (tab, ix, iy, dx, dy, answer, k_min, k_max)
+!  </TEMPLATE>
+!  <IN NAME="tab" TYPE="longwave_tables1_type">
+!   The data array that contains function values and differentials
+!  </IN>
+!  <IN NAME="ix" TYPE="integer">
+!   x subscript of input data array
+!  </IN>
+!  <IN NAME="iy" TYPE="integer">
+!   y subscript of input data array
+!  </IN>
+!  <IN NAME="dx" TYPE="real">
+!   x step in the x subscript space
+!  </IN>
+!  <IN NAME="dy" TYPE="real">
+!   y step in the y subscript space
+!  </IN>
+!  <OUT NAME="answer" TYPE="real">
+!   the answer to be calculated
+!  </OUT>
+!  <IN NAME="k_min" TYPE="integer">
+!   the minimum k value of the domain
+!  </IN>
+!  <IN NAME="k_max" TYPE="integer">
+!   the maximum k value of the domain
+!  </IN>
+! </SUBROUTINE>
 !
-!     author: c. h. goldberg
-!
-!     revised: 1/1/93
-!
-!     certified:  radiation version 1.0
-!     
+subroutine looktab_type1 (tab, ix, iy, dx, dy, answer, k_min, k_max)   
+
+!----------------------------------------------------------------------
+!    given arrays ix(:,:,:) and iy(:,:,:) of integral subscripts and
+!    arrays dx(:,:,:) and dy(:,:,:) of differences from x(:,:,:) and
+!    y(:,:,:), calculate answer(:,:,:) = f(x(:,:,:), y(:,:,:))
+!    from four tables of values, f, df/dx, df/dy, and d2f/dxdy.
+!    author: c. h. goldberg
+!    revised: 1/1/93
+!    certified:  radiation version 1.0
 !--------------------------------------------------------------------
+
 type(longwave_tables1_type), intent(in)  :: tab
 integer,dimension(:,:,:),    intent(in)  :: ix, iy
 real,   dimension(:,:,:),    intent(in)  :: dx, dy   
 real,   dimension(:,:,:),    intent(out) :: answer
 integer,                     intent(in)  :: k_min, k_max
 
+!---------------------------------------------------------------------
+!  intent(in) variables:
+!
+!    tab
+!    ix
+!    iy
+!    dx
+!    dy
+!    k_min
+!    k_max
+!
+!  intent(out) variables:
+!
+!    answer
+!
+!---------------------------------------------------------------------
+
 !--------------------------------------------------------------------
-      integer    ::  i_min, i_max, j_min, j_max, i,j, k
+!  local variables:
+
+      integer    ::  i_min, i_max, j_min, j_max, i, j, k
   
+!--------------------------------------------------------------------
+!  local variables:
+!
+!    i_min
+!    i_max
+!    j_min
+!    j_max
+!    i,j,k
+!
+!--------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('rad_utilities_mod',   &
+               'module has not been initialized', FATAL )
+      endif
+
       i_min = lbound(ix,1)
       i_max = ubound(ix,1)
       j_min = lbound(ix,2)
       j_max = ubound(ix,2)
 
       do k=k_min, k_max
- 	do j=j_min, j_max
+        do j=j_min, j_max
           do i=i_min, i_max
-	    answer(i,j,k) =                                          &
-                                    tab%vae (ix(i,j,k), iy(i,j,k)) + &
-                          dx(i,j,k)*tab%td  (ix(i,j,k), iy(i,j,k)) + &
-                          dy(i,j,k)*tab%md  (ix(i,j,k), iy(i,j,k)) + &
-                dx(i,j,k)*dy(i,j,k)*tab%cd  (ix(i,j,k), iy(i,j,k))
-	  end do
+            answer(i,j,k) =                                         &
+                                      tab%vae (ix(i,j,k), iy(i,j,k)) + &
+                            dx(i,j,k)*tab%td  (ix(i,j,k), iy(i,j,k)) + &
+                            dy(i,j,k)*tab%md  (ix(i,j,k), iy(i,j,k)) + &
+                  dx(i,j,k)*dy(i,j,k)*tab%cd(ix(i,j,k), iy(i,j,k))
+          end do
         end do
       end do
+
 !---------------------------------------------------------------------
 
 
@@ -726,23 +1394,62 @@ end subroutine looktab_type1
 
 
 !#####################################################################
-
-subroutine looktab_type2 (tab, ix, iy, dx, dy, answer, k_min, k_max, m)
-
-!-------------------------------------------------------------------
-!
-!     given arrays ix(:,:,:) and iy(:,:,:) of integral subscripts and
+! <SUBROUTINE NAME="looktab_type2">
+!  <OVERVIEW>
+!   Subroutine to calculate answer from input differentials.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   given arrays ix(:,:,:) and iy(:,:,:) of integral subscripts and
 !     arrays dx(:,:,:) and dy(:,:,:) of differences from x(:,:,:) and
 !     y(:,:,:), calculate answer(:,:,:) = f(x(:,:,:), y(:,:,:))
 !     from four tables of values, f, df/dx, df/dy, and d2f/dxdy.
+!     The difference between this version about the version above is
+!     that the differential arrays are 3 dimensional.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call looktab_type2 (tab, ix, iy, dx, dy, answer, k_min, k_max, m)
+!  </TEMPLATE>
+!  <IN NAME="tab" TYPE="longwave_tables2_type">
+!   The data array that contains function values and differentials
+!  </IN>
+!  <IN NAME="ix" TYPE="integer">
+!   x subscript of input data array
+!  </IN>
+!  <IN NAME="iy" TYPE="integer">
+!   y subscript of input data array
+!  </IN>
+!  <IN NAME="dx" TYPE="real">
+!   x step in the x subscript space
+!  </IN>
+!  <IN NAME="dy" TYPE="real">
+!   y step in the y subscript space
+!  </IN>
+!  <OUT NAME="answer" TYPE="real">
+!   the answer to be calculated
+!  </OUT>
+!  <IN NAME="k_min" TYPE="integer">
+!   the minimum k value of the domain
+!  </IN>
+!  <IN NAME="k_max" TYPE="integer">
+!   the maximum k value of the domain
+!  </IN>
+!  <IN NAME="m" TYPE="integer">
+!   the z indice of the differential arrays
+!  </IN>
+! </SUBROUTINE>
 !
-!     author: c. h. goldberg
-!
-!     revised: 1/1/93
-!
-!     certified:  radiation version 1.0
-!     
+subroutine looktab_type2 (tab, ix, iy, dx, dy, answer, k_min, k_max, m)
+
+!-------------------------------------------------------------------
+!    given arrays ix(:,:,:) and iy(:,:,:) of integral subscripts and
+!    arrays dx(:,:,:) and dy(:,:,:) of differences from x(:,:,:) and
+!    y(:,:,:), calculate answer(:,:,:) = f(x(:,:,:), y(:,:,:))
+!    from four tables of values, f, df/dx, df/dy, and d2f/dxdy.
+!    author: c. h. goldberg
+!    revised: 1/1/93
+!    certified:  radiation version 1.0
 !--------------------------------------------------------------------
+
 type(longwave_tables2_type), intent(in)   :: tab
 integer, dimension (:,:,:),  intent(in)   :: ix, iy
 integer,                     intent(in)   :: m
@@ -750,10 +1457,48 @@ real, dimension (:,:,:),     intent(in)   :: dx, dy
 real, dimension (:,:,:),     intent(out)  :: answer
 integer,                     intent(in)   :: k_min, k_max
 
+!---------------------------------------------------------------------
+!  intent(in) variables:
+!
+!    tab
+!    ix
+!    iy
+!    m
+!    dx
+!    dy
+!    k_min
+!    k_max
+!
+!  intent(out) variables:
+!
+!    answer
+!
+!---------------------------------------------------------------------
+
 !--------------------------------------------------------------------
-       integer    ::    i, j, k, i_min, i_max, j_min, j_max
+!  local variables:
+
+       integer    ::    i_min, i_max, j_min, j_max
+       integer    ::    i, j, k
   
+!--------------------------------------------------------------------
+!  local variables:
+!
+!    i_min
+!    i_max
+!    j_min
+!    j_max
+!    i,j,k
+!
 !-------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('rad_utilities_mod',   &
+               'module has not been initialized', FATAL )
+      endif
 
       i_min = lbound(ix,1)
       i_max = ubound(ix,1)
@@ -761,14 +1506,14 @@ integer,                     intent(in)   :: k_min, k_max
       j_max = ubound(ix,2)
 
       do k=k_min, k_max
-	do j=j_min, j_max
+        do j=j_min, j_max
           do i=i_min, i_max
-	    answer(i,j,k) =                                           &
+            answer(i,j,k) =                                           &
                                    tab%vae (ix(i,j,k), iy(i,j,k),m) + &
                          dx(i,j,k)*tab%td (ix(i,j,k), iy(i,j,k),m) + &
                          dy(i,j,k)*tab%md (ix(i,j,k), iy(i,j,k),m) + &
                dx(i,j,k)*dy(i,j,k)*tab%cd   (ix(i,j,k), iy(i,j,k),m)
-	  end do
+           end do
         end do
       end do
 
@@ -779,23 +1524,57 @@ end subroutine looktab_type2
 
 
 !###################################################################
-
+! <SUBROUTINE NAME="looktab_type3">
+!  <OVERVIEW>
+!   Subroutine to calculate answer from input differentials.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   given arrays ix(:,:,:) and iy(:,:,:) of integral subscripts and
+!     arrays dx(:,:,:) and dy(:,:,:) of differences from x(:,:,:) and
+!     y(:,:,:), calculate answer(:,:,:) = f(x(:,:,:), y(:,:,:))
+!     from four tables of values, f, df/dx, df/dy, and d2f/dxdy.
+!   In this version, only f(x,y) and f(x,y)+dx*df/dx is used. Probably
+!   the f(x,y) is homogeneous in y space.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call looktab_type3 (tab, ix, dx,  answer, k_min, k_max, n)
+!  </TEMPLATE>
+!  <IN NAME="tab" TYPE="longwave_tables3_type">
+!   The data array that contains function values and differentials
+!  </IN>
+!  <IN NAME="ix" TYPE="integer">
+!   x subscript of input data array
+!  </IN>
+!  <IN NAME="dx" TYPE="real">
+!   x step in the x subscript space
+!  </IN>
+!  <OUT NAME="answer" TYPE="real">
+!   the answer to be calculated
+!  </OUT>
+!  <IN NAME="k_min" TYPE="integer">
+!   the minimum k value of the domain
+!  </IN>
+!  <IN NAME="k_max" TYPE="integer">
+!   the maximum k value of the domain
+!  </IN>
+!  <IN NAME="n" TYPE="integer">
+!   the z indice of the differential arrays
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine looktab_type3 (tab, ix, dx,  answer, k_min, k_max, n)
 
 !----------------------------------------------------------------------
 !
-!     given arrays ix(:,:,:) and dx(:,:,:) of integer subscripts and!
-!     differences from x(:,:,:) and constant column subscript iyconst, 
-!     calculate answer(:,:,:) = f(x(:,:,:), y(:,:,:)) from four tables
-!     of values f, df/dx, df/dy, and d2f/dxdy.
-!
-!     author: c. h. goldberg
-!
-!     revised: 1/1/93
-!
-!     certified:  radiation version 1.0
-!     
+!    given arrays ix(:,:,:) and dx(:,:,:) of integer subscripts and!
+!    differences from x(:,:,:) and constant column subscript iyconst, 
+!    calculate answer(:,:,:) = f(x(:,:,:), y(:,:,:)) from four tables
+!    of values f, df/dx, df/dy, and d2f/dxdy.
+!    author: c. h. goldberg
+!    revised: 1/1/93
+!    certified:  radiation version 1.0
 !-----------------------------------------------------------------------
+
 type(longwave_tables3_type), intent(in)  :: tab
 integer, dimension (:,:,:),  intent(in)  :: ix
 integer,                     intent(in)  :: n
@@ -803,9 +1582,47 @@ real,    dimension(:,:,:),   intent(in)  :: dx
 real,    dimension(:,:,:),   intent(out) :: answer 
 integer,                     intent(in)  :: k_min, k_max
 
-!----------------------------------------------------------------------
-      integer    :: i, j, k, i_min, i_max, j_min, j_max
+!---------------------------------------------------------------------
+!  intent(in) variables:
+!
+!    tab
+!    ix
+!    n
+!    dx
+!    k_min
+!    k_max
+!
+!  intent(out) variables:
+!
+!    answer
+!
+!---------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!  local variables:
+
+      integer    :: i_min, i_max, j_min, j_max
+      integer    :: i, j, k
    
+!--------------------------------------------------------------------
+!  local variables:
+!
+!    i_min
+!    i_max
+!    j_min
+!    j_max
+!    i,j,k
+!
+!-------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('rad_utilities_mod',   &
+               'module has not been initialized', FATAL )
+      endif
+
 !-----------------------------------------------------------------
       i_min = lbound(ix,1)
       i_max = ubound(ix,1)
@@ -813,12 +1630,12 @@ integer,                     intent(in)  :: k_min, k_max
       j_max = ubound(ix,2)
 
       do k=k_min, k_max
-	do j=j_min, j_max
+        do j=j_min, j_max
           do i=i_min, i_max
-	    answer(i,j,k) =                                 &
+                answer(i,j,k) =                                 &
                                       tab%vae (ix(i,j,k),n) +   &
                             dx(i,j,k)*tab%td(ix(i,j,k),n)
-	  end do
+          end do
         end do
       end do
 
@@ -828,40 +1645,189 @@ end subroutine  looktab_type3
 
 
 !#####################################################################
-
+! <SUBROUTINE NAME="table1_alloc">
+!  <OVERVIEW>
+!   Allocate the longwave tables.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Allocate the longwave tables based on 2 dimension sizes
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call table1_alloc(tab, dim1, dim2)
+!  </TEMPLATE>
+!  <INOUT NAME="tab" TYPE="longwave_tables1_type">
+!   The longwave tables
+!  </INOUT>
+!  <IN NAME="dim1" TYPE="integer">
+!   size of the x dimension
+!  </IN>
+!  <IN NAME="dim2" TYPE="integer">
+!   size of the y dimension
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine table1_alloc (tab, dim1, dim2)
 
-type(longwave_tables1_type), intent (inout) :: tab
-integer,                     intent(in)  :: dim1, dim2
+!------------------------------------------------------------------
+!    table1_alloc allocates the arrays contained in a 
+!    longwave_tables1_type variable.
+!------------------------------------------------------------------
 
+type(longwave_tables1_type), intent (inout) :: tab
+integer,                     intent(in)     :: dim1, dim2
+
+!-------------------------------------------------------------------
+! intent(in) variables:
+!
+!     dim1
+!     dim2
+!
+!  intent(inout) variables:
+!
+!     tab
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('rad_utilities_mod',   &
+               'module has not been initialized', FATAL )
+      endif
+
+!---------------------------------------------------------------------
+!    allocate the component arrays of a longwave_tables1_type variable.
+!---------------------------------------------------------------------
       allocate (tab%vae(dim1, dim2))
       allocate (tab%td (dim1, dim2))
       allocate (tab%md (dim1, dim2))
       allocate (tab%cd (dim1, dim2))
 
+!---------------------------------------------------------------------
+
 end subroutine table1_alloc
 
-!####################################################################
 
+!####################################################################
+! <SUBROUTINE NAME="table2_alloc">
+!  <OVERVIEW>
+!   Allocate the longwave tables.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Allocate the longwave tables based on 3 dimension sizes
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call table2_alloc(tab, dim1, dim2)
+!  </TEMPLATE>
+!  <INOUT NAME="tab" TYPE="longwave_tables2_type">
+!   The longwave tables
+!  </INOUT>
+!  <IN NAME="dim1" TYPE="integer">
+!   size of the x dimension
+!  </IN>
+!  <IN NAME="dim2" TYPE="integer">
+!   size of the y dimension
+!  </IN>
+!  <IN NAME="dim3" TYPE="integer">
+!   size of the z dimension
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine table2_alloc (tab, dim1, dim2, dim3)
 
-type(longwave_tables2_type), intent (inout) :: tab
-integer,                     intent(in)  :: dim1, dim2, dim3
+!------------------------------------------------------------------
+!    table2_alloc allocates the arrays contained in a 
+!    longwave_tables2_type variable.
+!------------------------------------------------------------------
 
+type(longwave_tables2_type), intent (inout) :: tab
+integer,                     intent(in)     :: dim1, dim2, dim3
+
+!-------------------------------------------------------------------
+! intent(in) variables:
+!
+!     dim1
+!     dim2
+!     dim3
+!
+!  intent(inout) variables:
+!
+!     tab
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('rad_utilities_mod',   &
+               'module has not been initialized', FATAL )
+      endif
+
+!---------------------------------------------------------------------
+!    allocate the component arrays of a longwave_tables2_type variable.
+!---------------------------------------------------------------------
       allocate (tab%vae(dim1, dim2, dim3))
       allocate (tab%td (dim1, dim2, dim3))
       allocate (tab%md (dim1, dim2, dim3))
       allocate (tab%cd (dim1, dim2, dim3))
 
+!--------------------------------------------------------------------
+
 end subroutine table2_alloc
 
-!#####################################################################
 
+!#####################################################################
+! <SUBROUTINE NAME="table3_alloc">
+!  <OVERVIEW>
+!   Allocate the longwave tables.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Allocate the longwave tables based on 2 dimension sizes
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call table3_alloc(tab, dim1, dim2)
+!  </TEMPLATE>
+!  <INOUT NAME="tab" TYPE="longwave_tables3_type">
+!   The longwave tables
+!  </INOUT>
+!  <IN NAME="dim1" TYPE="integer">
+!   size of the x dimension
+!  </IN>
+!  <IN NAME="dim2" TYPE="integer">
+!   size of the y dimension
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine table3_alloc (tab, dim1, dim2)
 
 type(longwave_tables3_type), intent (inout) :: tab
-integer,                     intent(in)  :: dim1, dim2
+integer,                     intent(in)     :: dim1, dim2
 
+!-------------------------------------------------------------------
+! intent(in) variables:
+!
+!     dim1
+!     dim2
+!
+!  intent(inout) variables:
+!
+!     tab
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('rad_utilities_mod',   &
+               'module has not been initialized', FATAL )
+      endif
+
+!---------------------------------------------------------------------
+!    allocate the component arrays of a longwave_tables3_type variable.
+!---------------------------------------------------------------------
       allocate (tab%vae(dim1, dim2))
       allocate (tab%td (dim1, dim2))
 
@@ -870,52 +1836,712 @@ end subroutine table3_alloc
 
 !##################################################################
 
+! <SUBROUTINE NAME="thickavg_3d">
+!  <OVERVIEW>
+!   Subroutine to use thick-averaging technique to define band interval
+!   single scattering properties.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+! use the thick-averaging technique to define the single-scattering    
+! properties of the parameterization band spectral intervals from the  
+! specified spectral intervals of the particular scatterer.            
+!                                                                      
+! references:                                                          
+!                                                                      
+! edwards,j.m. and a. slingo, studies with a flexible new radiation    
+!      code I: choosing a configuration for a large-scale model.,      
+!      q.j.r. meteorological society, 122, 689-719, 1996.              
+!                                                                      
+! note: the 1.0E-100 factor to calculate asymmband is to prevent        
+!       division by zero.                                              
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call subroutine thickavg_3d (nivl1    , nivl2     , nivls   ,   &
+!                        nbands, $
+!                        extivl   , ssalbivl  , asymmivl, solflxivl, &
+!                        solflxband, extband  , ssalbband , asymmband)
+!  </TEMPLATE>
+!  <IN NAME="nivl1" TYPE="integer">
+!   interval number for the specified single-scattering                
+!              properties corresponding to the first psuedo-           
+!              monochromatic frequency in a given parameterization     
+!              band  
+!  </IN>
+!  <IN NAME="nivl2" TYPE="integer">
+!   interval number for the specified single-scattering     
+!              properties corresponding to the last psuedo-            
+!              monochromatic frequency in a given parameterization     
+!              band
+!  </IN>
+!  <IN NAME="nivls" TYPE="integer">
+!   number of specified scattering spectral intervals
+!  </IN>
+!  <IN NAME="nbands" TYPE="integer">
+!   number of spectral bands
+!  </IN>
+!  <IN NAME="extivl" TYPE="real">
+!   the specified spectral values of the extinction coefficient 
+!  </IN>
+!  <INOUT NAME="ssalbivl" TYPE="real">
+!   the specified spectral values of the single-scattering albedo
+!  </INOUT>
+!  <IN NAME="asymmivl" TYPE="real">
+!   the specified spectral values of the asymmetry factor
+!  </IN>
+!  <IN NAME="solflxivl" TYPE="real">
+!   the solar flux in each specified scattering spectral interval
+!  </IN>
+!  <IN NAME="solflxband" TYPE="real">
+!   the solar flux in each parameterization band
+!  </IN>
+!  <OUT NAME="extband" TYPE="real">
+!   the parameterization band values of the extinction coefficient
+!  </OUT>
+!  <OUT NAME="ssalbband" TYPE="real">
+!   the parameterization band values of the single-scattering albedo
+!  </OUT>
+!  <OUT NAME="asymmband" TYPE="real">
+!   the parameterization band values of the asymmetry factor
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine thickavg_3d (nivl1, nivl2, nivls, nbands, extivl, ssalbivl,&
+                        asymmivl, solflxivl, solflxband, extband,  &
+                        ssalbband, asymmband)
+ 
+!---------------------------------------------------------------------
+!    thickavg_3d uses the thick-averaging technique to define the 
+!    single-scattering properties of the parameterization band spectral
+!    intervals from the  specified spectral intervals of the particular
+!    scatterer, using 3d input arrays.   
+!    references:                                                       
+!    edwards,j.m. and a. slingo, studies with a flexible new radiation  
+!      code I: choosing a configuration for a large-scale model.,   
+!      q.j.r. meteorological society, 122, 689-719, 1996.            
+!--------------------------------------------------------------------
 
-!subroutine map_global_indices (jmax_aerfile, latb, jindx2)
-subroutine map_global_indices (global_rows , latb,    &
-                               global_index_array )
+integer, dimension(:),    intent(in)       :: nivl1, nivl2
+integer,                  intent(in)       :: nivls
+integer,                  intent(in)       :: nbands
+real, dimension(:,:,:,:), intent(in)       :: extivl, asymmivl
+real, dimension(:,:,:,:), intent(inout)    :: ssalbivl
+real, dimension(:,:),     intent(in)       :: solflxivl             
+real, dimension(:),       intent(in)       :: solflxband            
+real, dimension(:,:,:,:), intent(out)      :: extband, ssalbband,   &
+                                              asymmband
 
-integer, intent(in)   :: global_rows 
-real, dimension(:), intent(in) :: latb
-integer, dimension(:), intent(out) :: global_index_array
+!---------------------------------------------------------------------
+!  intent(in) variables:
+!
+!    nivl1       interval number for the specified single-scattering  
+!                properties corresponding to the first psuedo-         
+!                monochromatic frequency in a given parameterization    
+!                band                                                  
+!    nivl2       interval number for the specified single-scattering 
+!                properties corresponding to the last psuedo-          
+!                monochromatic frequency in a given parameterization    
+!                band                                                 
+!    nivls       number of specified scattering spectral intervals      
+!    nbands
+!    extivl      specified spectral values of the extinction coefficient
+!    asymmivl    the specified spectral values of the asymmetry     
+!                factor                                           
+!    solflxivl   the solar flux in each specified scattering spectral
+!                interval                                         
+!    solflxband  the solar flux in each parameterization band  
+!
+!  intent(inout) variables:
+!
+!    ssalbivl    the specified spectral values of the single-       
+!                scattering albedo                                   
+!
+!  intent(out) variables:
+!
+!    extband     the parameterization band values of the extinction 
+!                coefficient                                      
+!    ssalbband   the parameterization band values of the single-   
+!                scattering albedo                                  
+!    asymmband   the parameterization band values of the asymmetry   
+!                factor                                               
+!    
+!--------------------------------------------------------------------
+ 
+!--------------------------------------------------------------------
+!  local variables:
+ 
+      real, dimension (size(ssalbivl,1),   &
+                       size(ssalbivl,2), &
+                       size(ssalbivl,3), nbands)  ::   refband        
 
-       real   :: lat_start
-       real, dimension(global_rows) :: data_lat
-       integer   :: j, jst, jj
+      real, dimension (size(ssalbivl,1),   &
+                       size(ssalbivl,2), &
+                       size(ssalbivl,3))  ::   refthick, sp, sumk,   &
+                                               sumomegak, sumomegakg, &
+                                               sumrefthick
 
-       if (get_num_pes()*(size(latb,1) -1) == global_rows) then
-!       lat_start = -90.0 + 180./(2.*float(global_rows))
-        lat_start = -0.5*acos(-1.0) + acos(-1.0)/(2.*float(global_rows))
-       do j=1,global_rows
-!        data_lat(j) = lat_start + real(j-1)*180.0/real(global_rows)
-         data_lat(j) = lat_start + real(j-1)*acos(-1.0)/real(global_rows)
-       end do
-       jst = 1
-       do jj=1, size(latb,1) - 1
-         do j = jst,global_rows
-!   if (data_lat(j) >= latb(jj)*radian ) then
-	   if (data_lat(j) >= latb(jj)                    ) then
-	     global_index_array(jj) = j
-	     jst = j
-             exit
-           endif
-         end do
-       end do
-       else
-         call error_mesg ('esfsw_scattering_mod', &
-            'resolution of data input file doesn''t match model size --&
-	    &  must provide inter(extra)polation not yet implemented', &
-            FATAL)
-       endif
+      integer  :: nband
+      integer  :: i, j, k, ni
+ 
+!--------------------------------------------------------------------
+!  local variables:
+!
+!     refband
+!     refthick
+!     sp
+!     sumk
+!     sumomegak
+!     sumomegakg
+!     sumrefthck
+!     nband
+!     i,j,k,ni
+!
+!--------------------------------------------------------------------
 
-end subroutine map_global_indices 
+!-------------------------------------------------------------------
+!    be sure module has been initialized.
+!--------------------------------------------------------------------
+      if (.not. module_is_initialized) then
+        call error_mesg ('rad_utilities_mod',  &
+         'initialization routine of this module was never called', &
+                                                                 FATAL)
+      endif
+
+!--------------------------------------------------------------------
+!
+!--------------------------------------------------------------------
+      do nband = 1,nbands
+        sumk(:,:,:) = 0.0
+        sumomegak(:,:,:) = 0.0
+        sumomegakg(:,:,:) = 0.0
+        sumrefthick(:,:,:) = 0.0
+        do ni = nivl1(nband),nivl2(nband)
+          do k=1, size(ssalbivl,3)
+            do j=1,size(ssalbivl,2)
+              do i=1,size(ssalbivl,1)
+                if ((ssalbivl(i,j,k,ni) +    &
+                     asymmivl(i,j,k,ni)) /= 0.0) then
+                  ssalbivl(i,j,k,ni) = MIN(ssalbivl(i,j,k,ni), 1.0)
+                  sp(i,j,k) = sqrt( ( 1.0 - ssalbivl(i,j,k,ni) ) /    &
+                                    ( 1.0 - ssalbivl(i,j,k,ni) *      &
+                                      asymmivl(i,j,k,ni) ) )
+                  refthick(i,j,k) = (1.0 - sp(i,j,k))/(1.0 + sp(i,j,k))
+                  sumrefthick(i,j,k) = sumrefthick(i,j,k) +    &
+                                       refthick(i,j,k)*  &
+                                       solflxivl(nband,ni)
+                  sumk(i,j,k) = sumk(i,j,k) + extivl(i,j,k,ni) *   &
+                                solflxivl(nband,ni)
+                  sumomegak(i,j,k) = sumomegak(i,j,k) +     &
+                                     ssalbivl(i,j,k,ni)*   &
+                                     extivl(i,j,k,ni) *   &
+                                     solflxivl(nband,ni)
+                  sumomegakg(i,j,k) = sumomegakg(i,j,k) +    &
+                                      ssalbivl(i,j,k,ni)*&
+                                      extivl(i,j,k,ni)*  &
+                                      asymmivl(i,j,k,ni) * &
+                                      solflxivl(nband,ni)
+                endif
+              end do
+            end do
+          end do
+        end do
+
+!---------------------------------------------------------------------
+!    the 1.0E-100 factor to calculate asymmband is to prevent        
+!    division by zero.                                             
+!---------------------------------------------------------------------
+        do k=1, size(ssalbivl,3)
+          do j=1,size(ssalbivl,2)
+            do i=1,size(ssalbivl,1)
+              extband(i,j,k,nband) = sumk(i,j,k) / solflxband(nband)
+              asymmband(i,j,k,nband) = sumomegakg(i,j,k) /         &
+                                       ( sumomegak(i,j,k) + 1.0E-100)
+              refband(i,j,k,nband) = sumrefthick(i,j,k)/  &
+                                     solflxband(nband)
+              ssalbband(i,j,k,nband) = 4.0 * refband(i,j,k,nband) / &
+                                       ((1.0 +    &
+                                       refband(i,j,k,nband)) ** 2 -&
+                                       asymmband(i,j,k,nband) *     &
+                                       (1.0 - refband(i,j,k,nband))**2 )
+            end do
+          end do
+        end do
+      end do
+
+!---------------------------------------------------------------------
+
+  
+end subroutine thickavg_3d
+
+
+
+!####################################################################
+! <SUBROUTINE NAME="thickavg_0d">
+!  <OVERVIEW>
+!   Subroutine to use thick-averaging technique to define band interval
+!   single scattering properties.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+! use the thick-averaging technique to define the single-scattering    
+! properties of the parameterization band spectral intervals from the  
+! specified spectral intervals of the particular scatterer.            
+!                                                                      
+! references:                                                          
+!                                                                      
+! edwards,j.m. and a. slingo, studies with a flexible new radiation    
+!      code I: choosing a configuration for a large-scale model.,      
+!      q.j.r. meteorological society, 122, 689-719, 1996.              
+!                                                                      
+! note: the 1.0E-100 factor to calculate asymmband is to prevent        
+!       division by zero.                                              
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call subroutine thickavg_0d (nivl1    , nivl2     , nivls   ,   &
+!                        nbands,  &
+!                        extivl   , ssalbivl  , asymmivl, solflxivl, &
+!                        solflxband, extband  , ssalbband , asymmband)
+!  </TEMPLATE>
+!  <IN NAME="nivl1" TYPE="integer">
+!   interval number for the specified single-scattering                
+!              properties corresponding to the first psuedo-           
+!              monochromatic frequency in a given parameterization     
+!              band  
+!  </IN>
+!  <IN NAME="nivl2" TYPE="integer">
+!   interval number for the specified single-scattering     
+!              properties corresponding to the last psuedo-            
+!              monochromatic frequency in a given parameterization     
+!              band
+!  </IN>
+!  <IN NAME="nivls" TYPE="integer">
+!   number of specified scattering spectral intervals
+!  </IN>
+!  <IN NAME="nbands" TYPE="integer">
+!   number of spectral bands
+!  </IN>
+!  <IN NAME="extivl" TYPE="real">
+!   the specified spectral values of the extinction coefficient 
+!  </IN>
+!  <INOUT NAME="ssalbivl" TYPE="real">
+!   the specified spectral values of the single-scattering albedo
+!  </INOUT>
+!  <IN NAME="asymmivl" TYPE="real">
+!   the specified spectral values of the asymmetry factor
+!  </IN>
+!  <IN NAME="solflxivl" TYPE="real">
+!   the solar flux in each specified scattering spectral interval
+!  </IN>
+!  <IN NAME="solflxband" TYPE="real">
+!   the solar flux in each parameterization band
+!  </IN>
+!  <OUT NAME="extband" TYPE="real">
+!   the parameterization band values of the extinction coefficient
+!  </OUT>
+!  <OUT NAME="ssalbband" TYPE="real">
+!   the parameterization band values of the single-scattering albedo
+!  </OUT>
+!  <OUT NAME="asymmband" TYPE="real">
+!   the parameterization band values of the asymmetry factor
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine thickavg_0d (nivl1, nivl2, nivls, nbands, extivl, ssalbivl,&
+                        asymmivl, solflxivl, solflxband, extband,  &
+                        ssalbband , asymmband)
+ 
+!---------------------------------------------------------------------
+!    thickavg_0d uses the thick-averaging technique to define the 
+!    single-scattering properties of the parameterization band spectral
+!    intervals from the  specified spectral intervals of the particular
+!    scatterer, using 3d input arrays.   
+!    references:                                                       
+!    edwards,j.m. and a. slingo, studies with a flexible new radiation  
+!      code I: choosing a configuration for a large-scale model.,   
+!      q.j.r. meteorological society, 122, 689-719, 1996.            
+!--------------------------------------------------------------------
+
+integer, dimension(:),    intent(in)       :: nivl1, nivl2
+integer,                  intent(in)       :: nivls
+integer,                  intent(in)       :: nbands
+real, dimension(:),       intent(in)       :: extivl, asymmivl
+real, dimension(:),       intent(inout)    :: ssalbivl
+real, dimension(:,:),     intent(in)       :: solflxivl             
+real, dimension(:),       intent(in)       :: solflxband            
+real, dimension(:),       intent(out)      :: extband, ssalbband, &
+                                              asymmband
+
+!---------------------------------------------------------------------
+!  intent(in) variables:
+!
+!    nivl1       interval number for the specified single-scattering  
+!                properties corresponding to the first psuedo-         
+!                monochromatic frequency in a given parameterization    
+!                band                                                  
+!    nivl2       interval number for the specified single-scattering 
+!                properties corresponding to the last psuedo-          
+!                monochromatic frequency in a given parameterization    
+!                band                                                 
+!    nivls       number of specified scattering spectral intervals      
+!    nbands
+!    extivl      specified spectral values of the extinction coefficient
+!    asymmivl    the specified spectral values of the asymmetry     
+!                factor                                           
+!    solflxivl   the solar flux in each specified scattering spectral
+!                interval                                         
+!    solflxband  the solar flux in each parameterization band  
+!
+!  intent(inout) variables:
+!
+!    ssalbivl    the specified spectral values of the single-       
+!                scattering albedo                                   
+!
+!  intent(out) variables:
+!
+!    extband     the parameterization band values of the extinction 
+!                coefficient                                      
+!    ssalbband   the parameterization band values of the single-   
+!                scattering albedo                                  
+!    asymmband   the parameterization band values of the asymmetry   
+!                factor                                               
+!    
+!--------------------------------------------------------------------
+ 
+!--------------------------------------------------------------------
+!  local variables:
+
+      real, dimension (nbands)        ::   refband
+      real                            ::   refthick, sp, sumk,   &
+                                           sumomegak, sumomegakg, &
+                                           sumrefthick
+      integer  :: nband 
+      integer  :: i, j, k, ni
+ 
+ 
+!--------------------------------------------------------------------
+!  local variables:
+!
+!     refband
+!     refthick
+!     sp
+!     sumk
+!     sumomegak
+!     sumomegakg
+!     sumrefthck
+!     nband
+!     i,j,k,ni
+!
+!--------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+!    be sure module has been initialized.
+!--------------------------------------------------------------------
+      if (.not. module_is_initialized) then
+        call error_mesg ('rad_utilities_mod',  &
+         'initialization routine of this module was never called', &
+                                                                 FATAL)
+      endif
+  
+!----------------------------------------------------------------------
+!
+!----------------------------------------------------------------------
+      do nband = 1,nbands
+        sumk        = 0.0
+        sumomegak   = 0.0
+        sumomegakg  = 0.0
+        sumrefthick = 0.0
+        do ni = nivl1(nband),nivl2(nband)
+          if ( (ssalbivl(ni) + asymmivl(ni)) /= 0.0 ) then
+            ssalbivl(ni) = MIN(ssalbivl(ni), 1.0)
+            sp = sqrt( ( 1.0 - ssalbivl(ni) ) /    &
+                       ( 1.0 - ssalbivl(ni) * asymmivl(ni) ) )
+            refthick = (1.0 - sp)/(1.0 + sp)
+            sumrefthick = sumrefthick + refthick * solflxivl(nband,ni)
+            sumk = sumk + extivl(ni) * solflxivl(nband,ni)
+            sumomegak = sumomegak +     &
+                        ssalbivl(ni) * extivl(ni) * solflxivl(nband,ni)
+            sumomegakg = sumomegakg +    &
+                         ssalbivl(ni) * extivl(ni) *  &
+                         asymmivl(ni) * solflxivl(nband,ni)
+          endif
+        end do
+
+!--------------------------------------------------------------------- 
+!
+!--------------------------------------------------------------------- 
+        extband(nband) = sumk / solflxband(nband)
+        asymmband(nband) = sumomegakg / ( sumomegak + 1.0E-100)
+        refband(nband) = sumrefthick/ solflxband(nband)
+        ssalbband(nband) = 4.0 * refband(nband) / &
+                           ( (1.0 + refband(nband))**2 - &
+                          asymmband(nband) * (1.0 - refband(nband))**2 )
+      end do
+
+!---------------------------------------------------------------------
+  
+
+end subroutine thickavg_0d
+
+
+
+!####################################################################
+! <SUBROUTINE NAME="thinavg">
+!  <OVERVIEW>
+!   Subroutine to use thin-averaging technique to define band interval
+!   single scattering properties.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+! use the thin-averaging technique to define the single-scattering    
+! properties of the parameterization band spectral intervals from the  
+! specified spectral intervals of the particular scatterer.            
+!                                                                      
+! references:                                                          
+!                                                                      
+! edwards,j.m. and a. slingo, studies with a flexible new radiation    
+!      code I: choosing a configuration for a large-scale model.,      
+!      q.j.r. meteorological society, 122, 689-719, 1996.              
+!                                                                      
+! note: the 1.0E-100 factor to calculate asymmband is to prevent        
+!       division by zero.                                              
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call subroutine thinavg (nivl1    , nivl2     , nivls   ,   &
+!                        nbands, &
+!                        extivl   , ssalbivl  , asymmivl, solflxivl, &
+!                        solflxband, extband  , ssalbband , asymmband)
+!  </TEMPLATE>
+!  <IN NAME="nivl1" TYPE="integer">
+!   interval number for the specified single-scattering                
+!              properties corresponding to the first psuedo-           
+!              monochromatic frequency in a given parameterization     
+!              band  
+!  </IN>
+!  <IN NAME="nivl2" TYPE="integer">
+!   interval number for the specified single-scattering     
+!              properties corresponding to the last psuedo-            
+!              monochromatic frequency in a given parameterization     
+!              band
+!  </IN>
+!  <IN NAME="nivls" TYPE="integer">
+!   number of specified scattering spectral intervals
+!  </IN>
+!  <IN NAME="extivl" TYPE="real">
+!   the specified spectral values of the extinction coefficient 
+!  </IN>
+!  <IN NAME="nbands" TYPE="integer">
+!   number of spectral bands
+!  </IN>
+!  <INOUT NAME="ssalbivl" TYPE="real">
+!   the specified spectral values of the single-scattering albedo
+!  </INOUT>
+!  <IN NAME="asymmivl" TYPE="real">
+!   the specified spectral values of the asymmetry factor
+!  </IN>
+!  <IN NAME="solflxivl" TYPE="real">
+!   the solar flux in each specified scattering spectral interval
+!  </IN>
+!  <IN NAME="solflxband" TYPE="real">
+!   the solar flux in each parameterization band
+!  </IN>
+!  <OUT NAME="extband" TYPE="real">
+!   the parameterization band values of the extinction coefficient
+!  </OUT>
+!  <OUT NAME="ssalbband" TYPE="real">
+!   the parameterization band values of the single-scattering albedo
+!  </OUT>
+!  <OUT NAME="asymmband" TYPE="real">
+!   the parameterization band values of the asymmetry factor
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine thinavg (nivl1, nivl2, nivls, nbands, extivl, ssalbivl, &
+                    asymmivl,  solflxivl, solflxband, extband,   &
+                    ssalbband , asymmband)
+ 
+!---------------------------------------------------------------------
+!    thinavg uses the thin-averaging technique to define the 
+!    single-scattering properties of the parameterization band spectral
+!    intervals from the  specified spectral intervals of the particular
+!    scatterer, using 3d input arrays.   
+!    references:                                                       
+!    edwards,j.m. and a. slingo, studies with a flexible new radiation  
+!      code I: choosing a configuration for a large-scale model.,   
+!      q.j.r. meteorological society, 122, 689-719, 1996.            
+!--------------------------------------------------------------------
+
+integer, dimension(:),    intent(in)       :: nivl1, nivl2
+integer,                  intent(in)       :: nivls
+integer,                  intent(in)       :: nbands
+real, dimension(:,:,:,:), intent(in)       :: extivl, asymmivl
+real, dimension(:,:,:,:), intent(inout)    :: ssalbivl
+real, dimension(:,:),     intent(in)       :: solflxivl             
+real, dimension(:),       intent(in)       :: solflxband            
+real, dimension(:,:,:,:), intent(out)      :: extband, ssalbband,   &
+                                              asymmband
+
+!---------------------------------------------------------------------
+!  intent(in) variables:
+!
+!    nivl1       interval number for the specified single-scattering  
+!                properties corresponding to the first psuedo-         
+!                monochromatic frequency in a given parameterization    
+!                band                                                  
+!    nivl2       interval number for the specified single-scattering 
+!                properties corresponding to the last psuedo-          
+!                monochromatic frequency in a given parameterization    
+!                band                                                 
+!    nivls       number of specified scattering spectral intervals      
+!    nbands
+!    extivl      specified spectral values of the extinction coefficient
+!    asymmivl    the specified spectral values of the asymmetry     
+!                factor                                           
+!    solflxivl   the solar flux in each specified scattering spectral
+!                interval                                         
+!    solflxband  the solar flux in each parameterization band  
+!
+!  intent(inout) variables:
+!
+!    ssalbivl    the specified spectral values of the single-       
+!                scattering albedo                                   
+!
+!  intent(out) variables:
+!
+!    extband     the parameterization band values of the extinction 
+!                coefficient                                      
+!    ssalbband   the parameterization band values of the single-   
+!                scattering albedo                                  
+!    asymmband   the parameterization band values of the asymmetry   
+!                factor                                               
+!    
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!  local variables:
+
+      real, dimension (size(ssalbivl,1),   &
+                       size(ssalbivl,2),  &
+                       size(ssalbivl,3)) ::   sumk,  sumomegak,   &
+                                              sumomegakg
+ 
+      integer   ::   nband
+      integer   ::   i, j, k, ni
+
+!--------------------------------------------------------------------
+!  local variables:
+! 
+!    sumk
+!    sumomegak
+!    sumomegakg
+!    nband
+!    i,j,k,ni
+!
+!--------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+!    be sure module has been initialized.
+!--------------------------------------------------------------------
+      if (.not. module_is_initialized) then
+        call error_mesg ('rad_utilities_mod',  &
+         'initialization routine of this module was never called', &
+                                                                 FATAL)
+      endif
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+      do nband = 1,nbands
+        sumk(:,:,:) = 0.0
+        sumomegak(:,:,:) = 0.0
+        sumomegakg(:,:,:) = 0.0
+        do ni = nivl1(nband),nivl2(nband)
+          do k=1, size(ssalbivl,3)
+            do j=1,size(ssalbivl,2)
+              do i=1,size(ssalbivl,1)
+                if ((ssalbivl(i,j,k,ni) +    &
+                     asymmivl(i,j,k,ni)) /= 0.0) then
+                  ssalbivl(i,j,k,ni) = MIN(ssalbivl(i,j,k,ni), 1.0)
+                  sumk(i,j,k) = sumk(i,j,k) + extivl(i,j,k,ni) *   &
+                                solflxivl(nband,ni)
+                  sumomegak(i,j,k) = sumomegak(i,j,k) +    &
+                                     ssalbivl(i,j,k,ni) *  &
+                                     extivl(i,j,k,ni) *   &
+                                     solflxivl(nband,ni)
+                  sumomegakg(i,j,k) = sumomegakg(i,j,k) +    &
+                                      ssalbivl(i,j,k,ni) * & 
+                                      extivl(i,j,k,ni) *   &
+                                      asymmivl(i,j,k,ni) *  &
+                                      solflxivl(nband,ni)
+                endif
+              end do
+            end do
+          end do
+        end do
+
+!----------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+        do k=1, size(ssalbivl,3)
+          do j=1,size(ssalbivl,2)
+            do i=1,size(ssalbivl,1)
+              extband(i,j,k,nband) = sumk(i,j,k) / solflxband(nband)
+              asymmband(i,j,k,nband) = sumomegakg(i,j,k) /    &
+                                       ( sumomegak(i,j,k) + 1.0E-100 )
+              ssalbband(i,j,k,nband) = sumomegak(i,j,k) /   &
+                                       ( sumk(i,j,k) + 1.0E-100 )
+            end do
+          end do
+        end do
+      end do
+
+!-------------------------------------------------------------------
+  
+
+end subroutine thinavg 
+
+
+
+
+!#####################################################################
+
+! <SUBROUTINE NAME="rad_utilities_end">
+!  <OVERVIEW>
+!   Subroutine to close out the radiation utility package.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   This subroutine is the destructor for rad_utilies_mod. it marks
+!   the module as uninitialized.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call rad_utilities_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
+subroutine rad_utilities_end
+
+!--------------------------------------------------------------------
+!    rad_utilites_end is the destructor for rad_utilities_mod.
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('rad_utilites_mod',   &
+             'module has not been initialized', FATAL )
+      endif
+
+!---------------------------------------------------------------------
+!    mark the module as uninitialized.
+!---------------------------------------------------------------------
+       module_is_initialized = .false.
+
+!-------------------------------------------------------------------
+
+
+end subroutine rad_utilities_end
 
 
 !####################################################################
 
 
-		    end module rad_utilities_mod
-
-
+                     end module rad_utilities_mod
 
 

@@ -2,9 +2,9 @@
 module lscale_cond_mod
 
 !-----------------------------------------------------------------------
-use      utilities_mod, only:  file_exist, error_mesg, open_file,  &
-                               check_nml_error, get_my_pe, FATAL,  &
-                               close_file
+use            fms_mod, only:  file_exist, error_mesg, open_namelist_file,  &
+                               check_nml_error, mpp_pe, mpp_root_pe, FATAL,  &
+                               close_file, write_version_number, stdlog
 use sat_vapor_pres_mod, only:  escomp, descomp
 use      constants_mod, only:  HLv,HLs,Cp_Air,Grav,rdgas,rvgas
 
@@ -13,13 +13,14 @@ private
 !-----------------------------------------------------------------------
 !  ---- public interfaces ----
 
-   public  lscale_cond, lscale_cond_init
+   public  lscale_cond, lscale_cond_init, lscale_cond_end
 
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
- character(len=128) :: version = '$Id: lscale_cond.F90,v 1.3 2003/04/09 20:56:24 fms Exp $'
- character(len=128) :: tag = '$Name: inchon $'
+ character(len=128) :: version = '$Id: lscale_cond.F90,v 10.0 2003/10/24 22:00:34 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
+ logical            :: module_is_initialized=.false.
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----
@@ -27,7 +28,6 @@ private
     real, parameter :: d622 = rdgas/rvgas
     real, parameter :: d378 = 1.-d622
 
-    logical :: do_init=.true.
 
 !-----------------------------------------------------------------------
 !   --- namelist ----
@@ -101,7 +101,7 @@ integer  k, kx
 !     computation of precipitation by condensation processes
 !-----------------------------------------------------------------------
 
-      if (do_init) call error_mesg ('lscale_cond',  &
+      if (.not. module_is_initialized) call error_mesg ('lscale_cond',  &
                          'lscale_cond_init has not been called.', FATAL)
 
       kx=size(tin,3)
@@ -251,7 +251,7 @@ subroutine precip_evap (pmass, tin, qin, qsat, dqsat, hlcp, &
 !----------- read namelist ---------------------------------------------
 
       if (file_exist('input.nml')) then
-         unit = open_file (file='input.nml', action='read')
+         unit = open_namelist_file ()
          ierr=1; do while (ierr /= 0)
             read  (unit, nml=lscale_cond_nml, iostat=io, end=10)
             ierr = check_nml_error (io,'lscale_cond_nml')
@@ -261,16 +261,23 @@ subroutine precip_evap (pmass, tin, qin, qsat, dqsat, hlcp, &
 
 !---------- output namelist --------------------------------------------
 
-      unit = open_file (file='logfile.out', action='append')
-      if ( get_my_pe() == 0 ) then
-           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-           write (unit,nml=lscale_cond_nml)
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+           write (stdlog(),nml=lscale_cond_nml)
       endif
-      call close_file (unit)
 
-      do_init=.false.
+      module_is_initialized=.true.
 
    end subroutine lscale_cond_init
+
+!#######################################################################
+   subroutine lscale_cond_end
+
+      module_is_initialized=.false.
+
+!---------------------------------------------------------------------
+
+   end subroutine lscale_cond_end
 
 !#######################################################################
 

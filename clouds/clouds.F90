@@ -8,18 +8,20 @@
 !
 !=======================================================================
 
-use    cloud_rad_mod, only:  cloud_summary
+use    cloud_rad_mod, only:  cloud_rad_init, cloud_summary
 use  cloud_zonal_mod, only:  cloud_zonal
 use    cloud_obs_mod, only:  cloud_obs, cloud_obs_init
 use time_manager_mod, only:  time_type
-use    utilities_mod, only:  error_mesg, FATAL, file_exist,   &
-                             check_nml_error, open_file,      &
-                             get_my_pe, get_root_pe, close_file
+use          fms_mod, only:  error_mesg, FATAL, file_exist,   &
+                             check_nml_error, open_namelist_file,      &
+                             mpp_pe, mpp_root_pe, close_file, &
+                             write_version_number, stdlog
 use    rh_clouds_mod, only:  do_rh_clouds, rh_clouds, rh_clouds_avg
 use  strat_cloud_mod, only:  do_strat_cloud, strat_cloud_avg
 use   diag_cloud_mod, only:  do_diag_cloud, diag_cloud_driver, &
                              diag_cloud_avg
 use diag_manager_mod, only:  register_diag_field, send_data
+use isccp_clouds_mod, only:  isccp_clouds_init
 
 implicit none
 private
@@ -30,8 +32,8 @@ public   clouds, clouds_init, clouds_end
 
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: clouds.F90,v 1.5 2002/07/16 22:31:43 fms Exp $'
- character(len=128) :: tag = '$Name: inchon $'
+ character(len=128) :: version = '$Id: clouds.F90,v 10.0 2003/10/24 22:00:24 fms Exp $'
+ character(len=128) :: tagname = '$Name: jakarta $'
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !   note:  the fels-schwarzkopf radiation code permits bi-spectral
@@ -51,7 +53,7 @@ public   clouds, clouds_init, clouds_end
 
 !-----------------------------------------------------------------------
 
-      logical :: do_init=.true.
+      logical :: module_is_initialized =.false.
 
       integer :: id_tot_cld_amt, id_high_cld_amt, id_mid_cld_amt, &
                  id_low_cld_amt, id_cld_amt, id_em_cld,  &
@@ -128,7 +130,7 @@ logical :: used
 !                   (dimensioned IDIM x JDIM x kx)
 !      QMIX     Averaged specific humidity at full model levels 
 !                   (dimensioned IDIM x JDIM x kx)
-!      OMEGA  	Averaged pressure vertical velocity at full model levels
+!      OMEGA  Averaged pressure vertical velocity at full model levels
 !                   (dimensioned IDIM x JDIM x kx)
 !      LGSCLDELQ  Averaged rate of change in mix ratio due to lg scale precip 
 !               at full model levels  
@@ -706,7 +708,7 @@ type(time_type), intent(in)               :: Time
 !-------------- read namelist --------------
 
       if ( file_exist('input.nml')) then
-         unit = open_file (file='input.nml', action='read')
+         unit = open_namelist_file ()
          ierr=1; do while (ierr /= 0)
             read  (unit, nml=clouds_nml, iostat=io, end=10)
             ierr = check_nml_error(io,'clouds_nml')
@@ -716,12 +718,10 @@ type(time_type), intent(in)               :: Time
 
 !      ----- write namelist -----
 
-      unit = open_file ('logfile.out', action='append')
-      if ( get_my_pe() == get_root_pe() ) then
-           write (unit, '(/,80("="),/(a))') trim(version),trim(tag)
-           write (unit, nml=clouds_nml)
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+           write (stdlog(), nml=clouds_nml)
       endif
-      call close_file (unit)
 
 
       if (do_obs_clouds) call cloud_obs_init (lonb, latb)
@@ -731,8 +731,12 @@ type(time_type), intent(in)               :: Time
       call diag_field_init ( Time, axes )
 
 !-----------------------------------------------------------------------
+       if (do_strat_cloud() ) then
+         call cloud_rad_init
+         call isccp_clouds_init (axes, Time)
+       endif
 
-      do_init=.false.
+      module_is_initialized =.true.
 
 !-----------------------------------------------------------------------
 
@@ -743,6 +747,8 @@ type(time_type), intent(in)               :: Time
       subroutine clouds_end
 
 !-----------------------------------------------------------------------
+
+      module_is_initialized =.false.
 
 !-----------------------------------------------------------------------
 

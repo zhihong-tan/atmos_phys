@@ -1,25 +1,40 @@
                      module longwave_driver_mod
+!
+! <CONTACT EMAIL="Fei.Liu@noaa.gov">
+!  fil
+! </CONTACT>
+! <REVIEWER EMAIL="Dan.Schwarzkopf@noaa.gov">
+!  ds
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!  Code to set up longwave radiation calculation
+! </OVERVIEW>
+! <DESCRIPTION>
+!  This code initializes and calls longwave radiation radiation
+! </DESCRIPTION>
+! 
 
-use  utilities_mod,     only: open_file, file_exist,    &
+use fms_mod,            only: open_namelist_file, fms_init, &
+                              mpp_pe, mpp_root_pe, stdlog, &
+                              file_exist, write_version_number, &
                               check_nml_error, error_mesg, &
-                              FATAL, NOTE, WARNING, get_my_pe, &
-			      close_file,  utilities_init
-use rad_utilities_mod,  only: rad_utilities_init, &
-                              cldrad_properties_type, &
-                              lw_output_type, &
-                              atmos_input_type, &
-                              radiative_gases_type, &
-                              aerosol_type,  &
-                              lw_table_type, &
-                              lw_diagnostics_type, &
-                              radiation_control_type, Rad_control
+                              FATAL, NOTE, WARNING, close_file
 
-!   simplified-exchange-approximation longwave package:
+! shared radiation package modules:
+
+use rad_utilities_mod,  only: rad_utilities_init, Rad_control, &
+                              cldrad_properties_type, &
+                              cld_specification_type, lw_output_type, &
+                              atmos_input_type, radiative_gases_type, &
+                              aerosol_type, aerosol_properties_type,  &
+                              lw_table_type, lw_diagnostics_type
+
+!   radiation package module:
 
 use sealw99_mod,        only: sealw99_init, sealw99, sealw99_end
 
 !------------------------------------------------------------------
-
 
 implicit none
 private
@@ -33,16 +48,20 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: longwave_driver.F90,v 1.4 2003/04/09 20:59:58 fms Exp $'
-character(len=128)  :: tag     =  '$Name: inchon $'
+character(len=128)  :: version =  '$Id: longwave_driver.F90,v 10.0 2003/10/24 22:00:42 fms Exp $'
+character(len=128)  :: tagname =  '$Name: jakarta $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
-public   longwave_driver_init, longwave_driver,   &
+public      &
+         longwave_driver_init, longwave_driver,   &
          longwave_driver_end
 
-private  longwave_driver_alloc
+private      &
+
+! called from longwave_driver:
+         longwave_driver_alloc
 
 
 !---------------------------------------------------------------------
@@ -54,28 +73,25 @@ character(len=16) :: lwform= 'sealw99'
 namelist / longwave_driver_nml /    &
                                  lwform
 
-
 !---------------------------------------------------------------------
 !------- public data ------
-
-
 
 
 !---------------------------------------------------------------------
 !------- private data ------
 
-logical :: longwave_driver_initialized =   &
-                                      .false.   ! module initialized ?
-logical :: do_sealw99 = .false.                 ! sealw99 parameter-
-                                                ! ization active ?
+logical :: module_is_initialized =  .false.   ! module initialized ?
+logical :: do_sealw99 = .false.               ! sealw99 parameter-
+                                              ! ization active ?
+
 
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
-
 
 
 
                           contains
+
 
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -86,8 +102,31 @@ logical :: do_sealw99 = .false.                 ! sealw99 parameter-
 !
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
-
+! <SUBROUTINE NAME="longwave_driver_init">
+!  <OVERVIEW>
+!   longwave_driver_init is the constructor for longwave_driver_mod
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   This subroutine initializes longwave radiation package
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call longwave_driver_init (latb, lonb, pref, Lw_tables)
+!  </TEMPLATE>
+!  <IN NAME="latb" TYPE="real">
+!   array of model latitudes at cell boundaries [radians]
+!  </IN>
+!  <IN NAME="lonb" TYPE="real">
+!   array of model longitudes at cell boundaries [radians]
+!  </IN>
+!  <IN NAME="pref" TYPE="real">
+!   array containing two reference pressure profiles [pascals]
+!  </IN>
+!  <INOUT NAME="Lw_tables" TYPE="lw_table_type">
+!   lw_tables_type variable containing various longwave
+!                 table specifiers needed by radiation_diag_mod.
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine longwave_driver_init (latb, lonb, pref, Lw_tables)
  
 !---------------------------------------------------------------------
@@ -95,17 +134,19 @@ subroutine longwave_driver_init (latb, lonb, pref, Lw_tables)
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
-real, dimension(:),     intent(in)  :: latb, lonb
-real, dimension(:,:),   intent(in)  :: pref
+real, dimension(:),     intent(in)    :: latb, lonb
+real, dimension(:,:),   intent(in)    :: pref
 type(lw_table_type),    intent(inout) :: Lw_tables
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
-!       latb      array of model latitudes at cell boundaries [radians]
-!       lonb      array of model longitudes at cell boundaries [radians]
+!       latb      array of model latitudes at cell boundaries 
+!                 [ radians ]
+!       lonb      array of model longitudes at cell boundaries 
+!                 [ radians ]
 !       pref      array containing two reference pressure profiles 
-!                 [pascals]
+!                 [ Pa ]
 !
 !  intent(out) variables:
 !
@@ -119,42 +160,45 @@ type(lw_table_type),    intent(inout) :: Lw_tables
 
       integer     :: unit, ierr, io
 
+!---------------------------------------------------------------------
+!  local variables:
+!
+!        unit            io unit number used for namelist file
+!        ierr            error code
+!        io              error status returned from io operation
+!
+!---------------------------------------------------------------------
 
-!--------------------------------------------------------------------
-!    if routine has already been executed, return.
-!--------------------------------------------------------------------
-      if (longwave_driver_initialized) return
-
-!-------------------------------------------------------------------
+!---------------------------------------------------------------------
+!    if routine has already been executed, exit.
+!---------------------------------------------------------------------
+      if (module_is_initialized) return
+ 
+!---------------------------------------------------------------------
 !    verify that modules used by this module that are not called later
 !    have already been initialized.
-!-------------------------------------------------------------------
-      call utilities_init
+!---------------------------------------------------------------------
+      call fms_init
       call rad_utilities_init
 
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
 !    read namelist.
-!---------------------------------------------------------------------
-      if (file_exist('input.nml')) then
-        unit = open_file ('input.nml', action='read')
+!-----------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
-        read (unit, nml=longwave_driver_nml, iostat=io, end=10)
-        ierr = check_nml_error (io, 'longwave_driver_nml')
-        enddo
+        read  (unit, nml=longwave_driver_nml, iostat=io, end=10)
+        ierr = check_nml_error(io,'longwave_driver_nml')
+        end do
 10      call close_file (unit)
       endif
-
-!----------------------------------------------------------------
-!    write namelist to logfile.
+ 
 !---------------------------------------------------------------------
-      unit = open_file ('logfile.out', action='append')
-      if (get_my_pe() == 0) then
-!     if (get_my_pe() == get_root_pe() ) then
-        write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-        write (unit,nml=longwave_driver_nml)
-      endif
-      call close_file (unit)
-
+!    write version number and namelist to logfile.
+!---------------------------------------------------------------------
+      call write_version_number (version, tagname)
+      if (mpp_pe() == mpp_root_pe() ) &
+                          write (stdlog(), nml=longwave_driver_nml)
 
 !--------------------------------------------------------------------
 !    determine if valid specification of lw radiation has been made.
@@ -166,14 +210,15 @@ type(lw_table_type),    intent(inout) :: Lw_tables
         call sealw99_init ( latb, lonb, pref, Lw_tables)
       else
         call error_mesg ( 'longwave_driver_mod', &
-	  'invalid longwave radiation form specified', FATAL)
+                 'invalid longwave radiation form specified', FATAL)
       endif
 
 !---------------------------------------------------------------------
 !    set flag indicating successful initialization of module.
 !---------------------------------------------------------------------
-      longwave_driver_initialized = .true.
+      module_is_initialized = .true.
 
+!---------------------------------------------------------------------
 
 
 end  subroutine longwave_driver_init
@@ -182,10 +227,72 @@ end  subroutine longwave_driver_init
 
 
 !#####################################################################
-
+! <SUBROUTINE NAME="longwave_driver">
+!  <OVERVIEW>
+!   Subroutine to set up and execute longwave radiation calculation
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   longwave_driver allocates and initializes longwave radiation out-
+!    put variables and selects an available longwave radiation param-
+!    eterization, executes it, and then returns the output fields to 
+!    sea_esf_rad_mod.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call longwave_driver (is, ie, js, je, Atmos_input, Rad_gases, &
+!                            Aerosol, Cldrad_props, Cld_spec, Lw_output,    &
+!                            Lw_diagnostics)
+!
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!   starting subdomain i indice of data in the physics_window being
+!       integrated
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+!   ending subdomain i indice of data in the physics_window being
+!       integrated
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+!   starting subdomain j indice of data in the physics_window being
+!       integrated
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+!   ending subdomain j indice of data in the physics_window being
+!       integrated
+!  </IN>
+!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
+!   atmos_input_type variable containing the atmospheric
+!                   input fields needed by the radiation package
+!  </IN>
+!  <IN NAME="Rad_gases" TYPE="radiative_gases_type">
+!   radiative_gases_type variable containing the radi-
+!                   ative gas input fields needed by the radiation 
+!                   package
+!  </IN>
+!  <IN NAME="Cldrad_props" TYPE="cldrad_properties_type">
+!   cldrad_properties_type variable containing the 
+!                   cloud radiative property input fields needed by the 
+!                   radiation package
+!  </IN>
+!  <INOUT NAME="Lw_output" TYPE="lw_output_type">
+!   lw_output_type variable containing longwave 
+!                   radiation output data
+!  </INOUT>
+!  <INOUT NAME="Lw_diagnostics" TYPE="lw_diagnostics_type">
+!   lw_diagnostics_type variable containing diagnostic
+!                   longwave output used by the radiation diagnostics
+!                   module
+!  </INOUT>
+!  <IN NAME="Aerosol" TYPE="aerosol_type">
+!   Aerosol input data to longwave radiation
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+!   Cloud specification input data to longwave radiation
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine longwave_driver (is, ie, js, je, Atmos_input, Rad_gases, &
-                            Aerosol, Cldrad_props, Lw_output,    &
-                            Lw_diagnostics)
+                            Aerosol, Aerosol_props, Cldrad_props,  &
+                            Cld_spec, Lw_output, Lw_diagnostics)
 
 !--------------------------------------------------------------------
 !    longwave_driver allocates and initializes longwave radiation out-
@@ -194,44 +301,62 @@ subroutine longwave_driver (is, ie, js, je, Atmos_input, Rad_gases, &
 !    sea_esf_rad_mod.
 !--------------------------------------------------------------------
 
-integer,                      intent(in)  :: is, ie, js, je
-type(atmos_input_type),       intent(in)  :: Atmos_input  
-type(radiative_gases_type),   intent(in)  :: Rad_gases   
-type(aerosol_type),           intent(in)  :: Aerosol     
-type(cldrad_properties_type), intent(in)  :: Cldrad_props
-type(lw_output_type),         intent(inout) :: Lw_output   
-type(lw_diagnostics_type),    intent(inout) :: Lw_diagnostics
+integer,                      intent(in)     :: is, ie, js, je
+type(atmos_input_type),       intent(in)     :: Atmos_input  
+type(radiative_gases_type),   intent(in)     :: Rad_gases   
+type(aerosol_type),           intent(in)     :: Aerosol     
+type(aerosol_properties_type),intent(inout)  :: Aerosol_props
+type(cldrad_properties_type), intent(in)     :: Cldrad_props
+type(cld_specification_type), intent(in)     :: Cld_spec     
+type(lw_output_type),         intent(inout)  :: Lw_output   
+type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 
 !--------------------------------------------------------------------
 !   intent(in) variables:
 !
-!      is,ie,js,je  starting/ending subdomain i,j indices of data in 
-!                   the physics_window being integrated
+!      is,ie,js,je    starting/ending subdomain i,j indices of data in 
+!                     the physics_window being integrated
+!      Atmos_input    atmos_input_type variable containing the atmos-
+!                     pheric input fields needed by the radiation 
+!                     package
+!      Rad_gases      radiative_gases_type variable containing the radi-
+!                     ative gas input fields needed by the radiation 
+!                     package
+!      Aerosol        aerosol_type variable containing the aerosol 
+!                     fields that are seen by the longwave radiation 
+!                     package
+!      Cldrad_props   cldrad_properties_type variable containing the 
+!                     cloud radiative property input fields needed by 
+!                     the radiation package
+!      Cld_spec       cld_specification_type variable containing the 
+!                     cloud specification input fields needed by the 
+!                     radiation package
 !
-!      Atmos_input  atmos_input_type variable containing the atmospheric
-!                   input fields needed by the radiation package
-!      Rad_gases    radiative_gases_type variable containing the radi-
-!                   ative gas input fields needed by the radiation 
-!                   package
-!      Cldrad_props cldrad_properties_type variable containing the 
-!                   cloud radiative property input fields needed by the 
-!                   radiation package
+!   intent(inout) variables:
 !
-!   intent(out) variables:
-!
-!      Lw_output    lw_output_type variable containing longwave 
-!                   radiation output data 
-!      Lw_diagnostics
-!                   lw_diagnostics_type variable containing diagnostic
-!                   longwave output used by the radiation diagnostics
-!                   module
+!      Aerosol_props  aerosol_properties_type variable containing the 
+!                     aerosol radiative properties needed by the rad-
+!                     iation package 
+!      Lw_output      lw_output_type variable containing longwave 
+!                     radiation output data 
+!      Lw_diagnostics lw_diagnostics_type variable containing diagnostic
+!                     longwave output used by the radiation diagnostics
+!                     module
 !  
 !---------------------------------------------------------------------
 
 !--------------------------------------------------------------------
 !   local variables
 
-      integer  :: ix, jx, kx
+      integer  :: ix, jx, kx  ! dimensions of current physics window
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('longwave_driver_mod',   &
+          'module has not been initialized', FATAL )
+      endif
 
 !--------------------------------------------------------------------
 !    call longwave_driver_alloc to allocate component arrays of a
@@ -252,7 +377,8 @@ type(lw_diagnostics_type),    intent(inout) :: Lw_diagnostics
 !    parameterization.
 !----------------------------------------------------------------------
         call sealw99 (is, ie, js, je, Atmos_input, Rad_gases, &
-                      Aerosol, Cldrad_props, Lw_output, Lw_diagnostics)
+                      Aerosol, Aerosol_props, Cldrad_props, Cld_spec, &
+                      Lw_output, Lw_diagnostics)
       else
 
 !--------------------------------------------------------------------
@@ -270,12 +396,31 @@ end subroutine longwave_driver
 
 
 !#####################################################################
-
+! <SUBROUTINE NAME="longwave_driver_end">
+!  <OVERVIEW>
+!   Subroutine to end longwave calculation
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   This subroutine end longwave calculation
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call longwave_driver_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine longwave_driver_end                  
 
 !--------------------------------------------------------------------
 !    longwave_driver_end is the destructor for longwave_driver_mod.
 !--------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('longwave_driver_mod',   &
+          'module has not been initialized', FATAL )
+      endif
 
 !--------------------------------------------------------------------
 !    call sealw99_end to close sealw99_mod.
@@ -285,8 +430,11 @@ subroutine longwave_driver_end
       endif
 
 !--------------------------------------------------------------------
-      longwave_driver_initialized = .false.
+!    mark the module as uninitialized.
+!--------------------------------------------------------------------
+      module_is_initialized = .false.
 
+!---------------------------------------------------------------------
 
 
 end subroutine longwave_driver_end                  
@@ -301,7 +449,33 @@ end subroutine longwave_driver_end
 
 
 !#####################################################################
-
+! <SUBROUTINE NAME="longwave_driver_alloc">
+!  <OVERVIEW>
+!   Subroutine to allocate output variables from longwave calculation
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   This subroutine allocates and initializes the components
+!    of the lw_output_type variable Lw_output which holds the longwave
+!    output needed by radiation_driver_mod.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call longwave_driver_alloc (ix, jx, kx, Lw_output)
+!  </TEMPLATE>
+!  <IN NAME="ix" TYPE="integer">
+!   Dimension 1 length of radiation arrays to be allocated
+!  </IN>
+!  <IN NAME="jx" TYPE="integer">
+!   Dimension 2 length of radiation arrays to be allocated
+!  </IN>
+!  <IN NAME="kx" TYPE="integer">
+!   Dimension 3 length of radiation arrays to be allocated
+!  </IN>
+!  <OUT NAME="Lw_output" TYPE="lw_output_type">
+!   lw_output_type variable containing longwave 
+!                   radiation output data
+!  </OUT>
+! </SUBROUTINE>
+!
 subroutine longwave_driver_alloc (ix, jx, kx, Lw_output)
 
 !--------------------------------------------------------------------
@@ -310,16 +484,16 @@ subroutine longwave_driver_alloc (ix, jx, kx, Lw_output)
 !    output needed by radiation_driver_mod.
 !--------------------------------------------------------------------
 
-integer,                   intent(in)  :: ix, jx, kx
+integer,                   intent(in)    :: ix, jx, kx
 type(lw_output_type),      intent(inout) :: Lw_output
 
 !--------------------------------------------------------------------
 !   intent(in) variables:
 !
-!      ix,jx,kx     (i,j,k) lengths of radiation arrays to be allocated
+!      ix,jx,kx     (i,j,k) dimensions of current physics window 
 !
 !
-!   intent(out) variables:
+!   intent(inout) variables:
 !
 !      Lw_output    lw_output_type variable containing longwave 
 !                   radiation output data 
@@ -353,4 +527,4 @@ end subroutine longwave_driver_alloc
 
 
 
-		  end module longwave_driver_mod
+                end module longwave_driver_mod

@@ -26,6 +26,13 @@
 !
 !-----------------------------------------------------------------------
 
+      Use       Fms_Mod, ONLY: write_version_number, mpp_pe, mpp_root_pe, &
+                               error_mesg, FATAL
+
+implicit none
+private
+
+
 !!!!  INTEGER, PUBLIC, SAVE :: IMAX,JMAX,LMAX
       INTEGER, PUBLIC, SAVE :: LMAX=0
       INTEGER, PUBLIC, SAVE :: LP1,LP2,LP3,LM1,LM2,LM3
@@ -33,12 +40,17 @@
       INTEGER, PUBLIC, SAVE :: LP1M,LP1M1,LP1V,LP121,LL3P
       INTEGER, PUBLIC, SAVE :: LP1I,LLP1I,LL3PI
 
-      INTEGER, PARAMETER :: NBLW=163,NBLX=47,NBLY=15,NBLM=NBLY-1
-      INTEGER, PARAMETER :: NB=9,NB1=NB-1
-      INTEGER, PARAMETER :: INLTE=3,INLTEP=INLTE+1
-      INTEGER, PARAMETER :: NNLTE=56
+      INTEGER, PUBLIC, PARAMETER :: NBLW=163,NBLX=47,NBLY=15,NBLM=NBLY-1
+      INTEGER, PUBLIC, PARAMETER :: NB=9,NB1=NB-1
+      INTEGER, PUBLIC, PARAMETER :: INLTE=3,INLTEP=INLTE+1
+      INTEGER, PUBLIC, PARAMETER :: NNLTE=56
       INTEGER, PARAMETER :: KO2=12,KO21=KO2+1,KO2M=KO2-1
 
+      character(len=128) :: version = '$Id: rdparm.F90,v 10.0 2003/10/24 22:00:32 fms Exp $'
+      character(len=128) :: tagname = '$Name: jakarta $'
+      logical            :: module_is_initialized = .false.
+
+public RDPARM_INIT, RDPARM_END
 
       CONTAINS
 
@@ -62,8 +74,23 @@
 
 !!!!  Not Used ?????
 !!!!     LP1I=IMAX*LP1; LLP1I=IMAX*LLP1; LL3PI=IMAX*LL3P 
+!------- write version number and namelist ---------
+
+      if ( mpp_pe() == mpp_root_pe() ) then
+           call write_version_number(version, tagname)
+      endif
+
+      module_is_initialized = .true.
 
       END SUBROUTINE RDPARM_INIT
+
+!#######################################################################
+      SUBROUTINE RDPARM_END
+
+      module_is_initialized = .false.
+
+!---------------------------------------------------------------------
+      END SUBROUTINE RDPARM_END
 
 !#######################################################################
 
