@@ -4,21 +4,29 @@ module vert_advection_mod
 !-------------------------------------------------------------------------------
 
 use fms_mod, only: error_mesg, FATAL, write_version_number, stdout
-use mpp_mod, only: mpp_sum, mpp_max
+use mpp_mod, only: mpp_sum, mpp_max            ,mpp_pe,mpp_sync
 
 implicit none
 private
 
 public :: vert_advection, vert_advection_end
-integer, parameter, public :: SECOND_CENTERED = 101, FOURTH_CENTERED = 102
-integer, parameter, public :: FINITE_VOLUME_LINEAR = 103
-integer, parameter, public :: FINITE_VOLUME_PARABOLIC = 104
-integer, parameter, public :: SECOND_CENTERED_WTS = 105, FOURTH_CENTERED_WTS = 106
+! for optional argument: scheme
+integer, parameter, public :: SECOND_CENTERED          = 101
+integer, parameter, public :: FOURTH_CENTERED          = 102
+integer, parameter, public :: FINITE_VOLUME_LINEAR     = 103
+integer, parameter, public :: FINITE_VOLUME_PARABOLIC  = 104
+integer, parameter, public :: FINITE_VOLUME_PARABOLIC2 = 105
+integer, parameter, public :: SECOND_CENTERED_WTS      = 106
+integer, parameter, public :: FOURTH_CENTERED_WTS      = 107
 integer, parameter, public :: VAN_LEER_LINEAR = FINITE_VOLUME_LINEAR
+! for optional argument: form
 integer, parameter, public :: FLUX_FORM = 201, ADVECTIVE_FORM = 202
+! for optional argument: flags
+integer, parameter, public :: WEIGHTED_TENDENCY=1
+integer, parameter, public :: OUTFLOW_BOUNDARY=2
 
-character(len=128), parameter :: version = '$Id: vert_advection.F90,v 10.0 2003/10/24 22:00:56 fms Exp $'
-character(len=128), parameter :: tagname = '$Name: jakarta $'
+character(len=128), parameter :: version = '$Id: vert_advection.F90,v 11.0 2004/09/28 19:27:01 fms Exp $'
+character(len=128), parameter :: tagname = '$Name: khartoum $'
 
 logical :: module_is_initialized = .false.
 
@@ -31,20 +39,21 @@ end interface
   integer :: nlons = 0, nlats = 0, nlevs = 0
 
 ! for cfl diagnostics with finite volume schemes
-  real    :: cflmax = 0.
-  integer :: cflerr = 0
+  real    :: cflmaxc = 0.
+  real    :: cflmaxx = 0.
+  integer :: cflerr  = 0
 
 contains
 
 !-------------------------------------------------------------------------------
 
- subroutine vert_advection_3d ( dt, w, dz, r, rdt, mask, scheme, form )
+ subroutine vert_advection_3d ( dt, w, dz, r, rdt, mask, scheme, form, flags )
 
  real, intent(in)                    :: dt
  real, intent(in),  dimension(:,:,:) :: w, dz, r
  real, intent(out), dimension(:,:,:) :: rdt
  real,    intent(in), optional :: mask(:,:,:)
- integer, intent(in), optional :: scheme, form
+ integer, intent(in), optional :: scheme, form, flags
 
 ! INPUT
 !   dt  = time step in seconds
@@ -55,8 +64,9 @@ contains
 !   r   = advected quantity in arbitrary units
 !
 ! OUTPUT
-!   rdt = advective tendency for quantity "r" weighted by depth of layer
-!         units = [units of r * units of dz / second]
+!   rdt = advective tendency for quantity "r" (units depend on optional flags argument)
+!           the default units = [units of r / second]
+!           if flags=WEIGHTED_TENDENCY then units = [units of r * units of dz / second]
 !
 ! OPTIONAL INPUT
 !   mask   = mask for below ground layers,
@@ -69,9 +79,15 @@ contains
 !               FINITE_VOLUME_LINEAR    = piecewise linear, finite volume (van Leer)
 !               VAN_LEER_LINEAR         = same as FINITE_VOLUME_LINEAR
 !               FINITE_VOLUME_PARABOLIC = piecewise parabolic, finite volume (PPM)
+!               FINITE_VOLUME_PARABOLIC2 = piecewise parabolic, finite volume (PPM)
+!                                          using relaxed montonicity constraint (Lin,2003)
 !   form   = form of equations, use one of these values:
 !               FLUX_FORM      = solves for -d(wr)/dt
 !               ADVECTIVE_FORM = solves for -w*d(r)/dt
+!   flags  = additional optional flags
+!               WEIGHTED_TENDENCY = output tendency (rdt) has units = [units of r * units of dz / second]
+!               OUTFLOW_BOUNDARY  = advection is computed at the top and bottom for outflow boundaries
+!                                   this option is only valid for finite volume schemes
 !
 ! NOTE
 !   size(w,3) == size(dz,3)+1 == size(r,3)+1 == size(rdt,3)+1 == size(mask,3)+1
@@ -83,8 +99,12 @@ contains
  real    :: tt, c1, c2
  real    :: small = 1.e-6
  logical :: test_1
- integer :: i, j, k, ks, ke
+ logical :: do_weighted_dt, do_outflow_bnd
+ integer :: i, j, k, ks, ke, kstart, kend, iflags
  integer :: diff_scheme, eqn_form
+
+ real :: cn, rsum, dzsum, dtw
+ integer :: kk
 
  if(.not.module_is_initialized) then
    call write_version_number(version, tagname)
@@ -96,18 +116,36 @@ contains
    eqn_form    = FLUX_FORM
    if (present(scheme)) diff_scheme = scheme
    if (present(form))   eqn_form    = form
+ ! set optional flags
+   iflags = 0; if (present(flags)) iflags = flags
+   do_weighted_dt = btest(iflags,0)
+   do_outflow_bnd = btest(iflags,1)
+   
 
  ! note: size(r,3)+1 = size(w,3)
    if (size(w,3) /= size(r,3)+1) &
       call error_handler ('vertical dimension of input arrays inconsistent')
 
+ ! vertical indexing
    ks = 1; ke = size(r,3)
 
- ! determine fluxes boundaries
- ! most likely w = 0 at these points
+ ! start and end indexing for finite volume fluxes
+   kstart = ks+1;  kend = ke
+   if (do_outflow_bnd) then
+       kstart = ks;  kend = ke+1
+   endif
 
-   flux(:,:,ks)   = w(:,:,ks)  *r(:,:,ks)
-   flux(:,:,ke+1) = w(:,:,ke+1)*r(:,:,ke)
+ ! set fluxes at boundaries
+ ! most likely w = 0 at these points
+ ! but for outflow boundaries set flux to zero
+
+   if (do_outflow_bnd) then
+       flux(:,:,ks)   = 0.
+       flux(:,:,ke+1) = 0.
+   else
+       flux(:,:,ks)   = w(:,:,ks)  *r(:,:,ks)
+       flux(:,:,ke+1) = w(:,:,ke+1)*r(:,:,ke)
+   endif
 
    select case (diff_scheme)
 
@@ -219,25 +257,28 @@ contains
       case (FINITE_VOLUME_LINEAR)
        ! slope along the z-axis
          call slope_z ( r, dz, slp )
-         do k = ks+1, ke
+         do k = kstart, kend
          do j = 1, size(r,2)
          do i = 1, size(r,1)
             if (w(i,j,k) >= 0.) then
-               xx = dt*w(i,j,k)/dz(i,j,k-1)
-               rst = r(i,j,k-1) + 0.5*slp(i,j,k-1)*(1.-xx)
+               if (k == ks) cycle ! inflow
+               cn = dt*w(i,j,k)/dz(i,j,k-1)
+               rst = r(i,j,k-1) + 0.5*slp(i,j,k-1)*(1.-cn)
             else
-               xx = -dt*w(i,j,k)/dz(i,j,k)
-               rst = r(i,j,k  ) - 0.5*slp(i,j,k  )*(1.-xx)
+               if (k == ke+1) cycle ! inflow
+               cn = -dt*w(i,j,k)/dz(i,j,k)
+               rst = r(i,j,k  ) - 0.5*slp(i,j,k  )*(1.-cn)
             endif
             flux(i,j,k) = w(i,j,k)*rst
-            if (xx > 1.) cflerr = cflerr+1
-            cflmax = max(cflmax,xx)
+            if (cn > 1.) cflerr = cflerr+1
+            cflmaxc = max(cflmaxc,cn)
+            cflmaxx = cflmaxc ! same for linear scheme
          enddo
          enddo
          enddo
 
    !------ finite volume scheme using piecewise parabolic method (PPM) ------
-      case (FINITE_VOLUME_PARABOLIC)
+      case (FINITE_VOLUME_PARABOLIC:FINITE_VOLUME_PARABOLIC2)
          call compute_weights ( dz, zwt )
          call slope_z ( r, dz, slp, linear=.false. )
          do k = ks+2, ke-1
@@ -258,16 +299,36 @@ contains
            r_left (i,j,ks+1) = r(i,j,ks+1) - 0.5*slp(i,j,ks+1)
            r_right(i,j,ke-1) = r(i,j,ke-1) + 0.5*slp(i,j,ke-1)
 
+         ! pure upstream advection near boundary
+         ! r_left (i,j,ks) = r(i,j,ks)
+         ! r_right(i,j,ks) = r(i,j,ks)
+         ! r_left (i,j,ke) = r(i,j,ke)
+         ! r_right(i,j,ke) = r(i,j,ke)
+
+         ! make linear assumption near boundary
+         ! NOTE: slope is zero at ks and ks therefore
+         !       this reduces to upstream advection near boundary
+           r_left (i,j,ks) = r(i,j,ks) - 0.5*slp(i,j,ks)
            r_right(i,j,ks) = r(i,j,ks) + 0.5*slp(i,j,ks)
            r_left (i,j,ke) = r(i,j,ke) - 0.5*slp(i,j,ke)
-
-           r_left (i,j,ks) = r(i,j,ks)        ! value not used if w = 0 on boundary
-           r_right(i,j,ke) = r(i,j,ke)        ! value not used if w = 0 on boundary
+           r_right(i,j,ke) = r(i,j,ke) + 0.5*slp(i,j,ke)
          enddo
          enddo
 
-         ! limiters
+     ! monotonicity constraint
 
+       if (diff_scheme == FINITE_VOLUME_PARABOLIC2) then
+         ! limiters from Lin (2003), Equation 6 (relaxed constraint)
+           do k = ks, ke
+           do j = 1, size(r,2)
+           do i = 1, size(r,1)
+              r_left (i,j,k) = r(i,j,k) - sign( min(abs(slp(i,j,k)),abs(r_left (i,j,k)-r(i,j,k))), slp(i,j,k) )
+              r_right(i,j,k) = r(i,j,k) + sign( min(abs(slp(i,j,k)),abs(r_right(i,j,k)-r(i,j,k))), slp(i,j,k) )
+           enddo
+           enddo
+           enddo
+       else
+         ! limiters from Colella and Woodward (1984), Equation 1.10
            do k = ks, ke
            do j = 1, size(r,2)
            do i = 1, size(r,1)
@@ -285,29 +346,73 @@ contains
            enddo
            enddo
            enddo
+       endif
 
          ! compute fluxes at interfaces
 
            tt = 2./3.
-           do k = ks+1, ke
+           do k = kstart, kend
            do j = 1, size(r,2)
            do i = 1, size(r,1)
               if (w(i,j,k) >= 0.) then
-                  xx = dt*w(i,j,k)/dz(i,j,k-1)
-                  rm = r_right(i,j,k-1) - r_left(i,j,k-1)
-                  r6 = 6.0*(r(i,j,k-1) - 0.5*(r_right(i,j,k-1) + r_left(i,j,k-1)))
-                  if (k == ks+1) r6 = 0.
-                  rst = r_right(i,j,k-1) - 0.5*xx*(rm - (1.0 - tt*xx)*r6)
+                  if (k == ks) cycle ! inflow
+                  cn = dt*w(i,j,k)/dz(i,j,k-1)
+                  kk = k-1
+                  ! extension for Courant numbers > 1
+                  if (cn > 1.) then
+                      rsum = 0.
+                      dzsum = 0.
+                      dtw = dt*w(i,j,k)
+                      do while (dzsum+dz(i,j,kk) < dtw)
+                         if (kk == 1) then
+                             exit
+                         endif
+                         dzsum = dzsum + dz(i,j,kk)
+                          rsum =  rsum +  r(i,j,kk)
+                         kk = kk-1
+                      enddo
+                      xx = (dtw-dzsum)/dz(i,j,kk)
+                  else
+                      xx = cn
+                  endif
+                  rm = r_right(i,j,kk) - r_left(i,j,kk)
+                  r6 = 6.0*(r(i,j,kk) - 0.5*(r_right(i,j,kk) + r_left(i,j,kk)))
+                  if (kk == ks) r6 = 0.
+                  rst = r_right(i,j,kk) - 0.5*xx*(rm - (1.0 - tt*xx)*r6)
+                  ! extension for Courant numbers > 1
+                  if (cn > 1.) rst = (xx*rst + rsum)/cn
               else
-                  xx = - dt*w(i,j,k)/dz(i,j,k)
-                  rm = r_right(i,j,k) - r_left(i,j,k)
-                  r6 = 6.0*(r(i,j,k) - 0.5*(r_right(i,j,k) + r_left(i,j,k)))
-                  if (k == ke) r6 = 0.
-                  rst = r_left(i,j,k) + 0.5*xx*(rm + (1.0 - tt*xx)*r6)
+                  if (k == ke+1) cycle ! inflow
+                  cn = - dt*w(i,j,k)/dz(i,j,k)
+                  kk = k
+                  ! extension for Courant numbers > 1
+                  if (cn > 1.) then
+                      rsum = 0.
+                      dzsum = 0.
+                      dtw = -dt*w(i,j,k)
+                      do while (dzsum+dz(i,j,kk) < dtw)
+                         if (kk == ks) then
+                             exit
+                         endif
+                         dzsum = dzsum + dz(i,j,kk)
+                          rsum =  rsum +  r(i,j,kk)
+                         kk = kk+1
+                      enddo
+                      xx = (dtw-dzsum)/dz(i,j,kk)
+                  else
+                      xx = cn
+                  endif
+                  rm = r_right(i,j,kk) - r_left(i,j,kk)
+                  r6 = 6.0*(r(i,j,kk) - 0.5*(r_right(i,j,kk) + r_left(i,j,kk)))
+                  if (kk == ke) r6 = 0.
+                  rst = r_left(i,j,kk) + 0.5*xx*(rm + (1.0 - tt*xx)*r6)
+                  ! extension for Courant numbers > 1
+                  if (cn > 1.) rst = (xx*rst + rsum)/cn
               endif
               flux(i,j,k) = w(i,j,k)*rst
               if (xx > 1.) cflerr = cflerr+1
-              cflmax = max(cflmax,xx)
+              cflmaxx = max(cflmaxx,xx)
+              cflmaxc = max(cflmaxc,cn)
            enddo
            enddo
            enddo
@@ -323,15 +428,27 @@ contains
 
    select case (eqn_form)
       case (FLUX_FORM)
-         do k = ks, ke
-            rdt (:,:,k) = - (flux(:,:,k+1) - flux (:,:,k)) 
-!del        rdt (:,:,k) = - (flux(:,:,k+1) - flux (:,:,k)) / dz(:,:,k)
-         enddo
+         if (do_weighted_dt) then
+            do k = ks, ke
+               rdt (:,:,k) = - (flux(:,:,k+1) - flux (:,:,k)) 
+            enddo
+         else
+            do k = ks, ke
+               rdt (:,:,k) = - (flux(:,:,k+1) - flux (:,:,k))  / dz(:,:,k)
+            enddo
+         endif
       case (ADVECTIVE_FORM)
-         do k = ks, ke
-            rdt (:,:,k) = - (flux(:,:,k+1) - flux (:,:,k) - &
-                         r(:,:,k)*(w(:,:,k+1)-w(:,:,k))) / dz(:,:,k)
-         enddo
+         if (do_weighted_dt) then
+            do k = ks, ke
+               rdt (:,:,k) = - (flux(:,:,k+1) - flux (:,:,k) - &
+                            r(:,:,k)*(w(:,:,k+1)-w(:,:,k)))
+            enddo
+         else
+            do k = ks, ke
+               rdt (:,:,k) = - (flux(:,:,k+1) - flux (:,:,k) - &
+                            r(:,:,k)*(w(:,:,k+1)-w(:,:,k))) / dz(:,:,k)
+            enddo
+         endif
       case default
         ! ERROR
           call error_handler ('invalid value for optional argument form')
@@ -349,13 +466,14 @@ contains
     if (allocated(dzs))  deallocate(dzs)
 
   ! cfl diagnostics
-    call mpp_max (cflmax)
+    call mpp_max (cflmaxc)
+    call mpp_max (cflmaxx)
     call mpp_sum (cflerr) ! integer sum
-    if (cflmax > 0.) then
-        write (stdout(),10) cflmax, cflerr
+    if (cflmaxc > 0.) then
+        write (stdout(),10) cflmaxc, cflmaxx, cflerr
     endif
- 10 format (/,' Vertical advection (atmosphere):', &
-            /,'     maximum CFL =',f10.6,          &
+ 10 format (/,' Vertical advection (atmosphere):',    &
+            /,'     maximum CFL =',f10.6,'; ',f10.6,  &
             /,'     number of CFL errors =',i5,/)
         
  end subroutine vert_advection_end
@@ -496,13 +614,13 @@ contains
 !-------------------------------------------------------------------------------
 !--------------------------- overloaded versions -------------------------------
 
- subroutine vert_advection_1d ( dt, w, dz, r, rdt, mask, scheme, form )
+ subroutine vert_advection_1d ( dt, w, dz, r, rdt, mask, scheme, form, flags )
  
  real, intent(in)                :: dt
  real, intent(in),  dimension(:) :: w, dz, r
  real, intent(out), dimension(:) :: rdt
  real,    intent(in), optional :: mask(:)
- integer, intent(in), optional :: scheme, form
+ integer, intent(in), optional :: scheme, form, flags
 
  real, dimension(1,1,size(r,1)) :: dz3, r3, rdt3, mask3
  real, dimension(1,1,size(w,1)) :: w3
@@ -514,9 +632,9 @@ contains
 
     if (present(mask)) then
        mask3(1,1,:) = mask
-       call vert_advection_3d ( dt, w3, dz3, r3, rdt3, mask=mask3, scheme=scheme, form=form )
+       call vert_advection_3d ( dt, w3, dz3, r3, rdt3, mask=mask3, scheme=scheme, form=form, flags=flags )
     else
-       call vert_advection_3d ( dt, w3, dz3, r3, rdt3, scheme=scheme, form=form )
+       call vert_advection_3d ( dt, w3, dz3, r3, rdt3, scheme=scheme, form=form, flags=flags )
     endif
 
   ! output
@@ -526,13 +644,13 @@ contains
 
 !-------------------------------------------------------------------------------
 
- subroutine vert_advection_2d ( dt, w, dz, r, rdt, mask, scheme, form )
+ subroutine vert_advection_2d ( dt, w, dz, r, rdt, mask, scheme, form, flags )
 
  real, intent(in)                  :: dt
  real, intent(in),  dimension(:,:) :: w, dz, r
  real, intent(out), dimension(:,:) :: rdt
  real,    intent(in), optional :: mask(:,:)
- integer, intent(in), optional :: scheme, form
+ integer, intent(in), optional :: scheme, form, flags
 
  real, dimension(size(r,1),1,size(r,2)) :: dz3, r3, rdt3, mask3
  real, dimension(size(w,1),1,size(w,2)) :: w3
@@ -544,9 +662,9 @@ contains
 
     if (present(mask)) then
        mask3(:,1,:) = mask
-       call vert_advection_3d ( dt, w3, dz3, r3, rdt3, mask=mask3, scheme=scheme, form=form )
+       call vert_advection_3d ( dt, w3, dz3, r3, rdt3, mask=mask3, scheme=scheme, form=form, flags=flags )
     else
-       call vert_advection_3d ( dt, w3, dz3, r3, rdt3, scheme=scheme, form=form )
+       call vert_advection_3d ( dt, w3, dz3, r3, rdt3, scheme=scheme, form=form, flags=flags )
     endif
 
   ! output

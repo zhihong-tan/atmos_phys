@@ -103,8 +103,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 10.0 2003/10/24 22:00:55 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 11.0 2004/09/28 19:26:46 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 !-----------------------------------------------------------------------
 
 contains
@@ -178,10 +178,10 @@ source=0.0
       if (Time < sf6_rate(1)%Time) then
         rate=0. !previously sf6_rate(1)%Rate
       else
-        if (Time > sf6_rate(size(sf6_rate))%Time) then
-          rate=sf6_rate(size(sf6_rate))%Rate !just keep fixed past end of array
+        if (Time > sf6_rate(size(sf6_rate(:)))%Time) then
+          rate=sf6_rate(size(sf6_rate(:)))%Rate !just keep fixed past end of array
         else
-          do i=1,size(sf6_rate)-1 !This can be optimized with efficient search
+          do i=1,size(sf6_rate(:))-1 !This can be optimized with efficient search
             if (Time >= sf6_rate(i)%Time .and. Time < sf6_rate(i+1)%Time) then
               rate=sf6_rate(i)%Rate
               exit
@@ -300,7 +300,7 @@ integer :: n
                      'sf6emiss', axes(1:2),       &
                      'sulfhexemiss', 'g/m2/s')
 
-   allocate (sf6_grid(size(lonb)-1,size(latb)-1))
+   allocate (sf6_grid(size(lonb(:))-1,size(latb(:))-1))
 
 
       call sf6_init(Time)
@@ -395,7 +395,7 @@ INQUIRE(unit=unit, opened= opened)
 if (.NOT. opened) exit
 enddo
       open(unit,file='monthly.emissions', form='formatted',action='read')
-      do j = 1, size(sf6_rate)
+      do j = 1, size(sf6_rate(:))
         read(unit,'(i6,2x,f7.5)') t, sf6_rate(j)%rate
 ! convert YYMMDD into components:
         y=int(t/10000)

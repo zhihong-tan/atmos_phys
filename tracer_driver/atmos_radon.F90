@@ -28,6 +28,8 @@ use              fms_mod, only : file_exist, &
                                  write_version_number, &
                                  mpp_pe, &
                                  mpp_root_pe, &
+                                 error_mesg, &
+                                 FATAL,WARNING, NOTE, &
                                  stdlog
 use     time_manager_mod, only : time_type
 use     diag_manager_mod, only : send_data,            &
@@ -48,12 +50,16 @@ public  atmos_radon_sourcesink, atmos_radon_init, atmos_radon_end
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
 !-----------------------------------------------------------------------
+integer  :: ncopies_radon = 9
+ 
+namelist /atmos_radon_nml/  &
+                            ncopies_radon
+
 
 !--- Arrays to help calculate tracer sources/sinks ---
 
 character(len=6), parameter :: module_name = 'tracer'
 
-integer :: nradon=0  ! tracer number for radon
 !--- identification numbers for  diagnostic fields and axes ----
 
 integer :: id_emiss
@@ -62,8 +68,8 @@ logical :: module_is_initialized=.FALSE.
 
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_radon.F90,v 10.0 2003/10/24 22:00:55 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: atmos_radon.F90,v 11.0 2004/09/28 19:26:41 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 !-----------------------------------------------------------------------
 
 contains
@@ -226,7 +232,7 @@ integer  i,j,kb,id,jd,kd,lat1
 !     The axes relating to the tracer array dimensioned as
 !      (nlon, nlat, nlev, ntime)
 !   </IN>
- subroutine atmos_radon_init (r, axes, Time, mask)
+ subroutine atmos_radon_init (r, axes, Time, nradon, mask)
 
 !-----------------------------------------------------------------------
 !
@@ -239,6 +245,7 @@ integer  i,j,kb,id,jd,kd,lat1
 real,             intent(inout), dimension(:,:,:,:) :: r
 type(time_type),  intent(in)                        :: Time
 integer,          intent(in)                        :: axes(4)
+integer, dimension(:), pointer                         :: nradon
 real, intent(in), dimension(:,:,:), optional        :: mask
 
 logical :: flag
@@ -248,22 +255,43 @@ integer :: n
 !
       integer  log_unit,unit,io,index,ntr,nt
       character(len=16) ::  fld
+      character(len=64) ::  search_name
+      character(len=4) ::  chname
+      integer :: nn
 
       if (module_is_initialized) return
 
 !---- write namelist ------------------
 
       call write_version_number (version, tagname)
+      if ( mpp_pe() == mpp_root_pe() ) &
+        write ( stdlog(), nml=atmos_radon_nml )
+ 
+      if (ncopies_radon > 9) then
+        call error_mesg ('atmos_radonm_mod', &
+          'currently no more than 9 copies of the radon tracer '//&
+                                               'are allowed', FATAL)
+      endif
+      allocate (nradon(ncopies_radon))
+      nradon = -1
 
+      do nn=1,ncopies_radon
+        write (chname,'(i1)') nn
+        if (nn > 1) then
+          search_name = 'radon_'// trim(chname)
+        else
+          search_name = 'radon'
+        endif
 !----- set initial value of radon ------------
 
-       n = get_tracer_index(MODEL_ATMOS,'radon')
+       n = get_tracer_index(MODEL_ATMOS,search_name)
        if (n>0) then
-         nradon=n
-         if (nradon > 0 .and. mpp_pe() == mpp_root_pe()) write (*,30) 'Radon',nradon
-         if (nradon > 0 .and. mpp_pe() == mpp_root_pe()) write (stdlog(),30) 'Radon',nradon
+         nradon(nn)=n
+         if (nradon(nn) > 0 .and. mpp_pe() == mpp_root_pe()) write (*,30) trim(search_name), nradon(nn)
+         if (nradon(nn) > 0 .and. mpp_pe() == mpp_root_pe()) write (stdlog(),30) trim(search_name), nradon(nn)
        endif
 
+      end do
 
   30        format (A,' was initialized as tracer number ',i2)
 !

@@ -57,8 +57,8 @@ public  wet_deposition,    &
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 10.0 2003/10/24 22:00:56 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 11.0 2004/09/28 19:26:56 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 !-----------------------------------------------------------------------
@@ -129,9 +129,9 @@ character(len=128) :: name
 
 ! Make local copies of the local domain dimensions for use 
 ! in interp_emiss.
-      allocate ( blon_out(size(lonb)))
-      allocate ( blat_out(size(latb)))
-!      allocate ( data_out(size(lonb)-1, size(latb)-1))
+      allocate ( blon_out(size(lonb(:))))
+      allocate ( blat_out(size(latb(:))))
+!      allocate ( data_out(size(lonb(:))-1, size(latb(:))-1))
       blon_out = lonb
       blat_out = latb
       

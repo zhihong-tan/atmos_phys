@@ -22,7 +22,7 @@
      <b>Contact:</b> &nbsp;  Bruce Wyman <br>
      <b>Reviewers:</b>&nbsp; <br>
      <b>Change History:&nbsp; </b><a HREF="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/atmos/shared/vert_advection/vert_advection.f90">WebCVS Log</a> <br>
-     <b>Last Modified:</b>&nbsp; $Date: 2003/10/24 22:00:57 $
+     <b>Last Modified:</b>&nbsp; $Date: 2004/09/28 20:15:30 $
 </div><br>
 
 <!-- END HEADER -->
@@ -56,6 +56,7 @@
 <!-- BEGIN OTHER MODULES USED -->
 <div><pre>
      fms_mod
+     mpp_mod
 </pre></div>
 <!-- END OTHER MODULES USED -->
 <!-------------------------------------------------------------------->
@@ -69,8 +70,10 @@
 <b>use vert_advection_mod</b> [, only:  vert_advection, vert_advection_end,
                                  SECOND_CENTERED, FOURTH_CENTERED,
                                  SECOND_CENTERED_WTS, FOURTH_CENTERED_WTS,
-                                 FINITE_VOLUME_LINEAR, FINITE_VOLUME_PARABOLIC,
-                                 VAN_LEER_LINEAR, FLUX_FORM, ADVECTIVE_FORM  ]
+                                 FINITE_VOLUME_LINEAR, VAN_LEER_LINEAR,
+                                 FINITE_VOLUME_PARABOLIC, FINITE_VOLUME_PARABOLIC2,
+                                 FLUX_FORM, ADVECTIVE_FORM,
+                                 WEIGHTED_TENDENCY, OUTFLOW_BOUNDARY ]
 
 </pre>
 <dl>
@@ -91,7 +94,7 @@
 <ol type="a">
 <li><a name="vert_advection"></a><h4>vert_advection</h4>
 <pre>
-<b>call vert_advection</b> ( dt, w, dz, r, rdt <span class="type">[, mask, scheme, form]</span> )
+<b>call vert_advection</b> ( dt, w, dz, r, rdt <span class="type">[, mask, scheme, form, flags]</span> )
 
 DESCRIPTION
    This routine computes the vertical advective tendency for
@@ -123,7 +126,9 @@ INPUT
 
 OUTPUT
    rdt  advective tendency for quantity "r" weighted by depth of layer
-        units = [units of r * units of dz / second]
+        the units depend on optional flags argument
+        default units = [units of r / second]
+        if flags=WEIGHTED_TENDENCY then units = [units of r * units of dz / second]
         <span class="type">[real, dimension(:,:,:)]</span>
         <span class="type">[real, dimension(:,:)]</span>
         <span class="type">[real, dimension(:)]</span>
@@ -143,14 +148,22 @@ OPTIONAL INPUT
               FOURTH_CENTERED_WTS = fourth-order centered with corrected weights
                                     for unequal vertical level spacing
               FINITE_VOLUME_LINEAR    = piecewise linear, finite volume
-              FINITE_VOLUME_PARABOLIC = piecewise parabolic, finite volume
-              VAN_LEER_LINEAR = same as FINITE_VOLUME_LINEAR
+              VAN_LEER_LINEAR         = same as FINITE_VOLUME_LINEAR
+              FINITE_VOLUME_PARABOLIC  = piecewise parabolic, finite volume (PPM)
+              FINITE_VOLUME_PARABOLIC2 = piecewise parabolic, finite volume (PPM)
+                                         using relaxed montonicity constraint (Lin,2003)
            <span class="type">[integer, default=VAN_LEER_LINEAR]</span>
 
    form    form of equations, use one of these values:
               FLUX_FORM      = solves for -d(w*r)/dt
               ADVECTIVE_FORM = solves for -w*d(r)/dt
            <span class="type">[integer, default=FLUX_FORM]</span>
+
+   flags   additional optional flags
+              WEIGHTED_TENDENCY = output tendency (rdt) has units = [units of r * units of dz / second]
+              OUTFLOW_BOUNDARY  = advection is computed at the top and bottom for outflow boundaries
+                                  this option is only valid for finite volume schemes
+           <span class="type">[integer, default=none]</span>
 
 NOTE
    The input/output arrays may be 1d, 2d, or 3d.
@@ -192,7 +205,7 @@ DESCRIPTION
     <dd>  The value of optional argument scheme must be one of the
         public parameters SECOND_CENTERED, FOURTH_CENTERED, SECOND_CENTERED_WTS,
         FOURTH_CENTERED_WTS, FINITE_VOLUME_LINEAR, FINITE_VOLUME_PARABOLIC, or
-        VAN_LEER_LINEAR.
+        FINITE_VOLUME_PARABOLIC2, VAN_LEER_LINEAR.
     <br><br></dd>
     
     <dd><span class="errmsg">invalid value for optional argument form</span></dd>

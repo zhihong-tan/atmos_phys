@@ -114,8 +114,8 @@ logical :: module_is_initialized = .FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 10.0 2003/10/24 22:00:55 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 11.0 2004/09/28 19:26:31 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 !-----------------------------------------------------------------------
 
 contains
@@ -498,8 +498,8 @@ integer :: n
                      'ocemiss', axes(1:2),       &
                      'ocemiss', 'g/m2/s')
 !
-   allocate (bcsource(size(lonb)-1,size(latb)-1))
-   allocate (ocsource(size(lonb)-1,size(latb)-1))
+   allocate (bcsource(size(lonb(:))-1,size(latb(:))-1))
+   allocate (ocsource(size(lonb(:))-1,size(latb(:))-1))
    call tracer_input(lonb, latb, Time)
 
    call write_version_number (version, tagname)

@@ -90,6 +90,7 @@ use              fms_mod, only : file_exist, &
                                  stdlog
 use     time_manager_mod, only : time_type
 use   tracer_manager_mod, only : get_tracer_index,   &
+                                 get_number_tracers, &
                                  get_tracer_names,   &
                                  get_tracer_indices
 use    field_manager_mod, only : MODEL_ATMOS
@@ -107,6 +108,9 @@ use atmos_carbon_aerosol_mod, only : atmos_blackc_sourcesink,  &
 use atmos_sulfur_hex_mod, only : atmos_sf6_sourcesink,     &
                                  atmos_sulfur_hex_init,    &
                                  atmos_sulfur_hex_end
+use atmos_convection_tracer_mod,only: atmos_convection_tracer_init, &
+                                      atmos_cnvct_tracer_sourcesink, &
+                                      atmos_convection_tracer_end
 !chemistry start
 !use       chem_interface, only : sourcesink, &
 !                                 driver_init, &
@@ -132,7 +136,6 @@ public  atmos_tracer_driver, atmos_tracer_driver_init, atmos_tracer_driver_end
 !
 !-----------------------------------------------------------------------
 
-integer :: nradon    =0  ! tracer number for radon
 integer :: nchem     =0  ! tracer number for chem_interface
 integer :: nbcphobic =0
 integer :: nbcphilic =0
@@ -142,6 +145,12 @@ integer :: nclay     =0
 integer :: nsilt     =0
 integer :: nseasalt  =0
 integer :: nsf6      =0
+
+integer, dimension(:), pointer :: nradon
+integer, dimension(:), pointer :: nconvect
+
+integer :: nt     ! number of activated tracers
+integer :: ntp    ! number of activated prognostic tracers
 
 character(len=6), parameter :: module_name = 'tracer'
 
@@ -157,8 +166,8 @@ integer, allocatable :: local_indices(:)
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 10.0 2003/10/24 22:00:56 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 11.0 2004/09/28 19:26:51 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 !-----------------------------------------------------------------------
 
 contains
@@ -240,7 +249,7 @@ contains
 !     Integer array describing which model layer intercepts the surface.
 !   </IN>
  subroutine atmos_tracer_driver (is, ie, js, je, Time, lon, lat, land, phalf, pfull, r,  &
-                           u, v, t, q, u_star, rdt, rm, rdiag, &
+                           u, v, t, q, u_star, rdt, rm,        &
                            dt, z_half, z_full, t_surf_rad, albedo, coszen, &
                            Time_next, &
                            kbot)
@@ -253,8 +262,7 @@ real, intent(in),    dimension(:,:)           :: land
 real, intent(in),    dimension(:,:,:)         :: phalf, pfull, u, v, t, q
 real, intent(in),    dimension(:,:,:,:)       :: r
 real, intent(inout), dimension(:,:,:,:)       :: rdt
-real, intent(in),    dimension(:,:,:,:)       :: rm
-real, intent(inout), dimension(:,:,:,:)       :: rdiag
+real, intent(inout),    dimension(:,:,:,:)       :: rm
 real, intent(in)                              :: dt !timestep(used in chem_interface)
 real, intent(in),    dimension(:,:,:)         :: z_half !height in meters at half levels
 real, intent(in),    dimension(:,:,:)         :: z_full !height in meters at full levels
@@ -267,9 +275,10 @@ integer, intent(in), dimension(:,:), optional :: kbot
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtnd, pwt
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndphob, rtndphil
 real, dimension(size(r,1),size(r,2)) :: dsinku
-integer :: k, kd, nt
-real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: chem_tend
+integer :: k, kd
+real, dimension(size(r,1),size(r,2),size(r,3),ntp) :: chem_tend
 
+integer :: nnn
 !-----------------------------------------------------------------------
 
 !   <ERROR MSG="tracer_driver_init must be called first." STATUS="FATAL">
@@ -279,7 +288,7 @@ real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: chem_tend
       call error_mesg ('Tracer_driver','tracer_driver_init must be called first.', FATAL)
 
 !-----------------------------------------------------------------------
-      kd=size(r,3); nt=size(r,4)
+      kd=size(r,3)
 
   
 ! Flux into the layer is assumed to be kg(tracer)/m2/s
@@ -295,7 +304,7 @@ real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: chem_tend
 !!WARNING pwt is dp/grav!!
 ! Go do the dry deposition of the tracers
 
-  do k=1,nt
+  do k=1,ntp
     call dry_deposition(k, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
                         pwt(:,:,kd), pfull(:,:,kd), u_star, &
                         (land > 0.5), dsinku, r(:,:,kd,k), Time)
@@ -307,35 +316,83 @@ real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: chem_tend
 
 !
 !--------------- compute radon source-sink tendency --------------------
-   if (nradon > 0) then
-         if (nradon > nt) call error_mesg ('Tracer_driver', &
+    do nnn = 1, size(nradon(:))
+     if (nradon(nnn) > 0) then
+       if (nradon(nnn) > nt) call error_mesg ('Tracer_driver', &
                             'Number of tracers .lt. number for radon', FATAL)
-         call atmos_radon_sourcesink (lon,lat,land,pwt,r(:,:,:,nradon),  &
-                                rtnd, Time, kbot)
-      rdt(:,:,:,nradon)=rdt(:,:,:,nradon)+rtnd(:,:,:)
-   endif
+         call atmos_radon_sourcesink (lon,lat,land,pwt,r(:,:,:,nradon(nnn)),  &
+                                 rtnd, Time, kbot)
+       rdt(:,:,:,nradon(nnn))=rdt(:,:,:,nradon(nnn))+rtnd(:,:,:)
+    endif
+ 
+   end do
 
+!
+!--------------- compute convection tracer source-sink tendency -----
+   do nnn = 1, size(nconvect(:))
+     if (nconvect(nnn) > 0) then
+       if (nconvect(nnn) > nt) call error_mesg ('Tracer_driver', &
+           'Number of tracers .lt. number for convection tracer', FATAL)
+       call atmos_cnvct_tracer_sourcesink (lon,lat,land,pwt,  &
+                                        r(:,:,:,nconvect(nnn)),  &
+                                       rtnd, Time, is, ie, js, je,kbot)
+       rdt(:,:,:,nconvect(nnn))=rdt(:,:,:,nconvect(nnn))+rtnd(:,:,:)
+     endif
+   end do
+
+!! RSH 4/8/04
+!! note that if there are no diagnostic tracers, that argument in the
+!! call to sourcesink should be made optional and omitted in the calls
+!! below. note the switch in argument order to make this argument
+!! optional.
+    if (nt == ntp) then  ! implies no diagnostic tracers
 !chemistry start
 !   if(nchem > 0 .and. nchem <= nt) then
 !      if(present(kbot)) then
 !!       call sourcesink(lon,lat,land,pwt,r,chem_tend,Time,phalf,pfull,t,is,js,je,dt,&
 !        call sourcesink(lon,lat,land,pwt,r+rdt*dt,chem_tend,Time,phalf,pfull,t,is,js,je,dt,&
 !                          z_half, z_full,q,t_surf_rad,albedo,coszen, Time_next,&
-!                          rdiag,u,v,u_star,&
+!!                         rdiag,u,v,u_star,&
+!                          u,v,u_star,&
 !                          kbot)
 !      else
 !!      call sourcesink(lon,lat,land,pwt,r,chem_tend,Time,phalf,pfull,t,is,js,je,dt, &
 !       call sourcesink(lon,lat,land,pwt,r+rdt*dt,chem_tend,Time,phalf,pfull,t,is,js,je,dt, &
 !                          z_half, z_full,q, t_surf_rad, albedo, coszen, Time_next, &
-!                          rdiag,u,v,u_star &
+!!                         rdiag,u,v,u_star &
+!                          u,v,u_star,&
 !                          )
 !      endif
 !      rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
 !   endif        
 !chemistry end
+      else   ! case of diagnostic tracers being present
+!chemistry start
+!   if(nchem > 0 .and. nchem <= nt) then
+!      if(present(kbot)) then
+!!       call sourcesink(lon,lat,land,pwt,r,chem_tend,Time,phalf,pfull,t,is,js,je,dt,&
+!        call sourcesink(lon,lat,land,pwt,r+rdt*dt,chem_tend,Time,phalf,pfull,t,is,js,je,dt,&
+!                          z_half, z_full,q,t_surf_rad,albedo,coszen, Time_next,&
+!!                         rdiag,u,v,u_star,&
+!                          u,v,u_star,&
+!       rdiag=rm(:,:,:,nt+1:ntp),  &  ! (the diagnostic tracers)
+!                   kbot=kbot)
+!      else
+!!      call sourcesink(lon,lat,land,pwt,r,chem_tend,Time,phalf,pfull,t,is,js,je,dt, &
+!       call sourcesink(lon,lat,land,pwt,r+rdt*dt,chem_tend,Time,phalf,pfull,t,is,js,je,dt, &
+!                          z_half, z_full,q, t_surf_rad, albedo, coszen, Time_next, &
+!!                         rdiag,u,v,u_star &
+!                          u,v,u_star,&
+!        rdiag=rm(:,:,:,nt+1:ntp),  & ! (the diagnostic tracers)
+!                          )
+!      endif
+!      rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
+!   endif        
+   endif  ! (no diagnostic tracers)
+!chemistry end
 
    if (nbcphobic > 0 .and. nbcphilic > 0 ) then
-         if (nbcphobic > nt .or. nbcphilic > nt) &
+         if (nbcphobic > ntp .or. nbcphilic > ntp) &
             call error_mesg ('Tracer_driver', &
             'Number of tracers .lt. number for black carbon', FATAL)
          call atmos_blackc_sourcesink (lon,lat,land,pwt, &
@@ -348,7 +405,7 @@ real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: chem_tend
 
 
    if (nocphobic > 0) then
-         if (nocphobic > nt ) call error_mesg ('Tracer_driver', &
+         if (nocphobic > ntp ) call error_mesg ('Tracer_driver', &
                             'Number of tracers .lt. number for organic carbon', FATAL)
          call atmos_organic_sourcesink (lon,lat,land,pwt,r(:,:,:,nocphobic),  &
                                   rtnd,Time,is,ie,js,je,kbot)
@@ -356,7 +413,7 @@ real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: chem_tend
    endif
 
    if (nocphilic > 0) then
-         if (nocphilic > nt ) call error_mesg ('Tracer_driver', &
+         if (nocphilic > ntp ) call error_mesg ('Tracer_driver', &
                             'Number of tracers .lt. number for organic carbon', FATAL)
          call atmos_organic_sourcesink (lon,lat,land,pwt,r(:,:,:,nocphilic),  &
                                  rtnd, Time,is,ie,js,je, kbot)
@@ -364,7 +421,7 @@ real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: chem_tend
    endif
 
    if (nsf6 > 0) then
-         if (nsf6 > nt ) call error_mesg ('Tracer_driver', &
+         if (nsf6 > ntp ) call error_mesg ('Tracer_driver', &
                             'Number of tracers .lt. number for sulfur hexafluoride', FATAL)
          call atmos_sf6_sourcesink (lon,lat,land,pwt,r(:,:,:,nsf6),  &
                                  rtnd, Time,is,ie,js,je, kbot)
@@ -439,10 +496,12 @@ type(time_type), intent(in)                                :: Time
 
 !----- set initial value of radon ------------
 
-      nradon = get_tracer_index(MODEL_ATMOS,'radon')
-      if (nradon > 0) then
-        call atmos_radon_init(r, axes, Time, mask)
-      endif
+      call atmos_radon_init(r, axes, Time, nradon, mask)
+
+!----- initialize the convection tracer ------------
+
+      call atmos_convection_tracer_init(r, phalf, axes, Time, &
+                                        nconvect,  mask)
 
 !chemistry start
 !      nchem = get_tracer_index(MODEL_ATMOS,'CO')
@@ -469,6 +528,8 @@ type(time_type), intent(in)                                :: Time
         call atmos_sulfur_hex_init (lonb, latb, r, axes, Time, mask)
       endif
 
+      call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
+                               num_prog=ntp)
 
       module_is_initialized = .TRUE.
 
@@ -499,6 +560,7 @@ type(time_type), intent(in)                                :: Time
       call atmos_radon_end
       call atmos_sulfur_hex_end
       call atmos_carbon_aerosol_end
+      call atmos_convection_tracer_end
 
       module_is_initialized = .FALSE.
 
