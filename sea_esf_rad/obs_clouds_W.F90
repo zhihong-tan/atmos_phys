@@ -18,7 +18,7 @@ use utilities_mod,       only: open_file, file_exist,   &
 !		       lat_sv, pflux
 !		               pflux
 use rad_utilities_mod,   only: Environment, environment_type
-use constants_new_mod,   only: pstd_mks
+use constants_mod,       only: pstd_mks
 
 !--------------------------------------------------------------------
 
@@ -38,8 +38,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: obs_clouds_W.F90,v 1.3 2002/07/16 22:36:11 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: havana $'
+   character(len=128)  :: version =  '$Id: obs_clouds_W.F90,v 1.4 2003/04/09 21:00:46 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 

@@ -31,8 +31,8 @@ use rad_utilities_mod,      only: Environment, environment_type, &
 !use astronomy_package_mod,  only: get_astronomy_for_clouds,  &
 !use astronomy_package_mod,  only:                            &
 !			          get_astronomy_for_clouds_init
-use constants_new_mod,      only: radians_to_degrees
-use donner_deep_mod,        only: get_cemetf, inquire_donner_deep
+use constants_mod,          only: radian
+!use donner_deep_mod,        only: get_cemetf, inquire_donner_deep
 !use rad_output_file_mod, only: hold_clouds
 
 !--------------------------------------------------------------------
@@ -52,8 +52,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 ! character(len=5), parameter  ::  version_number = 'v0.09'
-  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 1.3 2002/07/16 22:36:44 fms Exp $'
-  character(len=128)  :: tag     =  '$Name: havana $'
+  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 1.4 2003/04/09 21:01:32 fms Exp $'
+  character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 
@@ -469,9 +469,9 @@ real, dimension(:), intent(in)    ::     qlevel_in, latb
 !    cldml_abs(j) =  cldml_abs_gl(j+y(3)-1)
 	  else if (Environment%using_fms_periphs) then
             cldhm_abs(j) = cldhp + (90.0E+00-abs(th(j)*   &
-			   radians_to_degrees))*(cldhe-cldhp)/90.0E+00
+			   radian))*(cldhe-cldhp)/90.0E+00
             cldml_abs(j) = cldmp + (90.0E+00-abs(th(j)*    &
-			   radians_to_degrees))*(cldme-cldmp)/90.0E+00
+			   radian))*(cldme-cldmp)/90.0E+00
 	  endif
         end do
 !deallocate (cldhm_abs_gl)
@@ -514,9 +514,9 @@ integer, dimension(:), intent(out)  :: jindx2
        do j = 1,jd
          lat(j) = 0.5*(latb(j) + latb(j+1))
        do jj=1, LATOBS
-         if (lat(j)*radians_to_degrees >= cloud_lats(jj)) then
-          diff_low = lat(j)*radians_to_degrees - cloud_lats(jj)
-           diff_high = cloud_lats(jj+1) - lat(j)*radians_to_degrees
+         if (lat(j)*radian >= cloud_lats(jj)) then
+          diff_low = lat(j)*radian - cloud_lats(jj)
+           diff_high = cloud_lats(jj+1) - lat(j)*radian
            if (diff_high <= diff_low) then
              jindx2(j) = jj+1
            else
@@ -603,7 +603,8 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
       integer, dimension(:,:,:), allocatable :: iflagglbl, ifcd,&
                                                 ifcv
       logical, dimension(:,:,:), allocatable :: hi_cloud, mid_cloud, &
-						low_cloud, cvflag
+!					low_cloud, cvflag
+						low_cloud
       integer                                :: k, j, i, ngp
       real                                   :: cld
       logical                                :: do_donner_deep
@@ -634,6 +635,10 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
       allocate ( Cld_diagnostics%cld_isccp_mid (size(press,1), size(press,2)) )
       allocate ( Cld_diagnostics%cld_isccp_low (size(press,1), size(press,2)) )
 
+       Cld_diagnostics%tot_clds  =0.
+      Cld_diagnostics%cld_isccp_hi  = 0.
+      Cld_diagnostics%cld_isccp_mid  = 0.
+       Cld_diagnostics%cld_isccp_low  = 0.
 
       israd = 1
       jsrad = 1
@@ -648,7 +653,7 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
 
 !---------------------------------------------------------------------
 
-      allocate (cvflag(IMINP:IMAXP, JMINP:JMAXP, ksrad:kerad) )
+!     allocate (cvflag(IMINP:IMAXP, JMINP:JMAXP, ksrad:kerad) )
 
 !--------------------------------------------------------------------
 !   if donner_deep is active, retrieve the array of heating rates
@@ -656,32 +661,31 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
 !   non-zero, set a flag which will be used to indicate to the radiat-
 !   ion package that cloud is present in that grid box.
 !---------------------------------------------------------------------
-      call inquire_donner_deep (do_donner_deep)
-      if (do_donner_deep) then
-        allocate (cemetf(IMINP:IMAXP, JMINP:JMAXP, ksrad:kerad))
-!        call get_cemetf(jabs(jminp), cemetf)
-        call get_cemetf(js,          cemetf)
-        do k=ksrad,kerad
-          do j=jminp,jmaxp
-            do i=iminp,imaxp
-              if (cemetf(i,j,k) /=  0.0)  then
-                cvflag(i,j,k) = .true.
-              else
-                cvflag(i,j,k) = .false.
-              endif
-            end do
-          end do
-        end do
-        deallocate (cemetf)
-      else
-        do k=ksrad,kerad
-          do j=jminp,jmaxp
-            do i=iminp,imaxp
-              cvflag(i,j,k) = .false.
-            end do
-          end do
-        end do
-      endif
+!     call inquire_donner_deep (do_donner_deep)
+!     if (do_donner_deep) then
+!       allocate (cemetf(IMINP:IMAXP, JMINP:JMAXP, ksrad:kerad))
+!       call get_cemetf(js,          cemetf)
+!       do k=ksrad,kerad
+!         do j=jminp,jmaxp
+!           do i=iminp,imaxp
+!             if (cemetf(i,j,k) /=  0.0)  then
+!               cvflag(i,j,k) = .true.
+!             else
+!               cvflag(i,j,k) = .false.
+!             endif
+!           end do
+!         end do
+!       end do
+!       deallocate (cemetf)
+!     else
+!       do k=ksrad,kerad
+!         do j=jminp,jmaxp
+!           do i=iminp,imaxp
+!             cvflag(i,j,k) = .false.
+!           end do
+!         end do
+!       end do
+!     endif
   
 
 
@@ -782,7 +786,8 @@ real,    dimension(:,:,:,:), intent(inout), optional ::       &
         do k=KSRAD+1,KERAD
           do j=JSRAD,JERAD
             do i=ISRAD,IERAD
-              if (iflagglbl(i,j,k) .EQ. 3 .or. cvflag(i,j,k) ) then
+!             if (iflagglbl(i,j,k) .EQ. 3 .or. cvflag(i,j,k) ) then
+              if (iflagglbl(i,j,k) .EQ. 3                    ) then
                 ifcv(i,j,k) = 1
                 ifcd(i,j,k) = 0
                 ccover(i,j,k) = crz
@@ -1030,7 +1035,7 @@ deallocate (cldemiss)
 !-------------------------------------------------------------------
 !    deallocate  local arrays
 !-------------------------------------------------------------------
-      deallocate (cvflag)
+!     deallocate (cvflag)
       deallocate (cosangsolar  )
       deallocate (qlsig   )
       deallocate (ifcd    )
@@ -1068,7 +1073,7 @@ real, intent(in)           ::  zenith
 !     a zenith angle specified as 60.00001 and the skyhi albedo values.
 !-----------------------------------------------------------------------
 
-        zangle = ACOS(zenith)*radians_to_degrees
+        zangle = ACOS(zenith)*radian
 !       zangle = 60.0000001
 
 !-----------------------------------------------------------------------

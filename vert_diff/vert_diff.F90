@@ -9,14 +9,14 @@ module vert_diff_mod
 !
 !=======================================================================
 
-use   constants_mod, only:  GRAV, RDGAS, RVGAS, CP
+use   constants_mod, only:  GRAV, RDGAS, RVGAS, CP_AIR
 
 use         fms_mod, only:  error_mesg, FATAL, uppercase, &
                             write_version_number, stdlog, &
                             mpp_pe, mpp_root_pe 
 
 use   field_manager_mod, only: MODEL_ATMOS
-use  tracer_manager_mod, only: query_method, get_tracer_index
+use  tracer_manager_mod, only: query_method, get_tracer_index, NO_TRACER
 
 implicit none
 private
@@ -55,12 +55,12 @@ real,    allocatable, dimension(:,:,:) :: e_global, f_t_global, f_q_global
 logical :: do_init = .true.
 logical :: do_conserve_energy = .true.
 logical :: use_virtual_temp_vert_diff, do_mcm_plev
-integer :: sphum
+integer :: sphum, mix_rat
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 1.6 2002/07/16 22:37:36 fms Exp $'
-character(len=128) :: tag = '$Name: havana $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 1.7 2003/04/09 21:02:48 fms Exp $'
+character(len=128) :: tag = '$Name: inchon $'
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
 
@@ -83,8 +83,15 @@ subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim,    &
 
 ! get the tracer number for specific humidity
     sphum = get_tracer_index( MODEL_ATMOS, 'sphum')
+    mix_rat=get_tracer_index( MODEL_ATMOS, 'mix_rat')
+    if(sphum /= NO_TRACER .and. mix_rat /= NO_TRACER) then
+      call error_mesg('gcm_vert_diff_init','sphum and mix_rat cannot both'// &
+                      'be present in the field_table at the same time', FATAL)
+    endif
+
     if (mpp_pe() == mpp_root_pe()) &
     write (stdlog(),'(a,i4)') 'Tracer number for specific humidity =',sphum
+    write (stdlog(),'(a,i4)') 'Tracer number for mixing ratio      =',mix_rat
 
     if(present(use_virtual_temp_vert_diff_in)) then
       use_virtual_temp_vert_diff = use_virtual_temp_vert_diff_in
@@ -206,7 +213,7 @@ integer :: i, j, kb, ie, je
  ie = is + size(t,1) -1
  je = js + size(t,2) -1
  
- gcp       = GRAV/CP
+ gcp       = GRAV/CP_AIR
  tt  = t + z_full*gcp   ! the vertical gradient of tt determines the
                         ! diffusive flux of temperature
 
@@ -394,7 +401,7 @@ real    :: half_delt, cp_inv
 !-----------------------------------------------------------------------
 
  half_delt = 0.5*delt
- cp_inv    = 1.0/CP
+ cp_inv    = 1.0/CP_AIR
  
  if (do_conserve_energy) then
    dt_u_temp = dt_u
@@ -455,7 +462,7 @@ integer :: i, j, kb
 real    :: gcp
 !-----------------------------------------------------------------------
 
- gcp = GRAV/CP
+ gcp = GRAV/CP_AIR
  tt  = t + z_full*gcp
   
  call vert_diff_down_2 &
@@ -465,7 +472,7 @@ real    :: gcp
 
 
  call diff_surface (mu_delt_n, nu_n, e_n1, f_t_delt_n1,  &
-                    dsens_datmos, sens, CP, delta_t_n)
+                    dsens_datmos, sens, CP_AIR, delta_t_n)
 
  call diff_surface (mu_delt_n, nu_n, e_n1, f_q_delt_n1,  &
                     devap_datmos, evap, 1.0, delta_q_n)
@@ -510,7 +517,7 @@ logical, dimension(size(dt_tr,4)) :: skip_tracer_diff
  skip_tracer_diff(1:ntr) = .true.
  do n=1,ntr
    ! skip specific humidity (done separately)
-     if ( n == sphum ) cycle
+     if ( n == sphum .or. n == mix_rat) cycle
    ! skip tracers if diffusion scheme truned off
      if (query_method('diff_vert',MODEL_ATMOS,n,scheme)) then
          if(uppercase(trim(scheme)) == 'NONE') cycle

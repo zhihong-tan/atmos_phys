@@ -21,7 +21,7 @@ use rad_utilities_mod,   only: Environment, environment_type, &
 			       shortwave_control_type, Sw_control, &
                                 longwave_parameter_type, Lw_parameters
 !use longwave_setup_mod,  only: longwave_parameter_type, Lw_parameters
-use constants_new_mod,   only: radians_to_degrees
+use constants_mod,       only: radian
 use strat_clouds_W_mod,  only: strat_clouds_calc
  use donner_deep_clouds_W_mod,  only: donner_deep_clouds_calc
 use cloud_rad_mod,       only: cloud_rad_init
@@ -42,8 +42,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 ! character(len=5), parameter  ::  version_number = 'v0.09'
-  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 1.3 2002/07/16 22:37:06 fms Exp $'
-  character(len=128)  :: tag     =  '$Name: havana $'
+  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 1.4 2003/04/09 21:01:56 fms Exp $'
+  character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 
@@ -175,13 +175,19 @@ data cloud_lats / -90., -80., -70., -60., -50., -40., -30., -20., &
 
 
 !subroutine standalone_clouds_init (kx_in, theta, latb,   &
-subroutine standalone_clouds_init (kx_in,        latb,   &
+!subroutine standalone_clouds_init (kx_in,        latb,   &
+!subroutine standalone_clouds_init (kx_in, lonb,  latb,   &
+subroutine standalone_clouds_init (pref , lonb,  latb,   &
+                                 axes, Time, &
                               do_strat_clouds,   &
                       do_donner_deep_clouds, do_specified_clouds)
 
-integer, intent(in) :: kx_in
+!integer, intent(in) :: kx_in
 !real, dimension(:), intent(in)    :: theta, latb
-real, dimension(:), intent(in)    ::        latb
+!real, dimension(:), intent(in)    ::        latb
+real, dimension(:), intent(in)    ::  lonb, latb, pref
+type(time_type), intent(in)    :: Time
+integer, dimension(4), intent(in) :: axes
 !logical,            intent(in)    :: do_strat_clouds
 logical,            intent(in)    :: do_strat_clouds,   &
                                       do_donner_deep_clouds
@@ -216,7 +222,8 @@ logical,            intent(in)    :: do_specified_clouds
       integer            :: kk,ktop,kbot
       real               :: max_cld_calc
      integer, dimension(:), allocatable :: jindx2
-       integer              ::  jdf
+!      integer              ::  jdf
+       integer              ::  jdf, idf
        real, dimension(size(latb,1)-1) :: theta
 
 !--------------------------------------------------------------------
@@ -250,7 +257,8 @@ logical,            intent(in)    :: do_specified_clouds
       call close_file (unit)
 
       ksrad = 1
-      kerad = kx_in
+!     kerad = kx_in
+      kerad = size(pref) - 1
 
 !-------------------------------------------------------------------
 !  ensure that cloud_data_points (from namelist) is at least one
@@ -358,6 +366,7 @@ logical,            intent(in)    :: do_specified_clouds
 !     jdf = y(4) - y(3) + 1
 
        jdf = size(latb,1) - 1
+       idf = size(lonb,1) - 1
         allocate (jindx2  (jdf))
         call find_nearest_index (latb, jindx2)
 
@@ -742,9 +751,9 @@ logical,            intent(in)    :: do_specified_clouds
 !  cldml_abs(j) = cldml_abs_gl(j+y(3)-1)
         else if (Environment%using_fms_periphs) then
           cldhm_abs(j) = cldhp + (90.0E+00-abs(theta(j)*   &
-	                 radians_to_degrees))*(cldhe-cldhp)/90.0E+00
+	                 radian))*(cldhe-cldhp)/90.0E+00
           cldml_abs(j) = cldmp + (90.0E+00-abs(theta(j)*    &
-	                 radians_to_degrees))*(cldme-cldmp)/90.0E+00
+	                 radian))*(cldme-cldmp)/90.0E+00
         endif
       end do
 !     deallocate (cldhm_abs_gl)
@@ -759,7 +768,9 @@ logical,            intent(in)    :: do_specified_clouds
       endif
 
        if (do_donner_deep_clouds) then
-         call donner_deep_init(kmax_in=KERAD)
+!        call donner_deep_init(idf, jdf, KERAD, lonb, latb)
+!        call donner_deep_init( lonb, latb, KERAD, axes, Time)
+         call donner_deep_init( lonb, latb, pref , axes, Time)
        endif
 
 !-------------------------------------------------------------------
@@ -948,9 +959,9 @@ integer, dimension(:), intent(out)  :: jindx2
        do j = 1,jd
          lat(j) = 0.5*(latb(j) + latb(j+1))
        do jj=1, LATOBS
-         if (lat(j)*radians_to_degrees >= cloud_lats(jj)) then
-          diff_low = lat(j)*radians_to_degrees - cloud_lats(jj)
-           diff_high = cloud_lats(jj+1) - lat(j)*radians_to_degrees
+         if (lat(j)*radian >= cloud_lats(jj)) then
+          diff_low = lat(j)*radian - cloud_lats(jj)
+           diff_high = cloud_lats(jj+1) - lat(j)*radian
            if (diff_high <= diff_low) then
              jindx2(j) = jj+1
            else

@@ -16,7 +16,6 @@ use rad_utilities_mod,    only: Environment, environment_type, &
                                longwave_control_type, &
 			       Lw_control, &
                                optical_path_type
-use constants_new_mod,    only: bytes_per_word, wtmair
 !use std_pressures_mod,    only: get_std_pressures
 use gas_tf_mod,           only: put_co2_stdtf_for_gas_tf, &
                                 put_co2_nbltf_for_gas_tf, &
@@ -48,8 +47,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !    character(len=5), parameter  ::  version_number = 'v0.09'
-     character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 1.3 2002/07/16 22:35:53 fms Exp $'
-     character(len=128)  :: tag     =  '$Name: havana $'
+     character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 1.4 2003/04/09 21:00:24 fms Exp $'
+     character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 !---------------------------------------------------------------------
@@ -1834,7 +1833,7 @@ character(len=*),     intent(in)  ::  gas_type
 !
 !
 !     this code may be considered to be version 2 of the
-!     interpolater. differences between this code and version 1, 
+!     interpolator. differences between this code and version 1, 
 !     written in ~1983, are as follows:
 !
 !     1) the code is written using arrays (previous code was entirely
@@ -1901,7 +1900,7 @@ character(len=*),     intent(in)  ::  gas_type
 !    be unrecognizable to Steve, this line is kept as a tribute
 !    to him.
 !
-!      ************   function interpolater routine  *****
+!      ************   function interpolator routine  *****
 !
 !--------------------------------------------------------------------
 
@@ -4232,7 +4231,8 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
       filename = 'INPUT/' // name_hi 
       inrad = open_file (file=filename, access = 'direct',  &
 			 form = 'unformatted', action='read', &
-                         recl = NSTDCO2LVLS*NSTDCO2LVLS*bytes_per_word)
+!                        recl = NSTDCO2LVLS*NSTDCO2LVLS*bytes_per_word)
+                         recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
       nrec_inhi = 0
       do nt=1,ntbnd(nf)
 	nrec_inhi = nrec_inhi + 1
@@ -4247,9 +4247,10 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
       if (callrctrns) then
         filename = 'INPUT/' // name_lo 
         inrad = open_file (file=filename, access = 'direct',  &
-			   form = 'unformatted', action='read', &
-                           recl = NSTDCO2LVLS*NSTDCO2LVLS*   &
-							bytes_per_word)
+                           form = 'unformatted', action='read', &
+                           recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
+!                          recl = NSTDCO2LVLS*NSTDCO2LVLS*   &
+!						bytes_per_word)
         nrec_inlo = 0
         do nt=1,ntbnd(nf)
   	  nrec_inlo = nrec_inlo + 1

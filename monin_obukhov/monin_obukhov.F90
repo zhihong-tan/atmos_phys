@@ -54,8 +54,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.7 2002/07/16 22:33:43 fms Exp $'
-character(len=128) :: tagname = '$Name: havana $'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.8 2003/04/09 20:57:45 fms Exp $'
+character(len=128) :: tagname = '$Name: inchon $'
 
 !=======================================================================
 
@@ -923,16 +923,22 @@ real, intent(in),  dimension(:)   :: u_star, b_star
 real, intent(out), dimension(:,:) :: k_m, k_h
 
 real, dimension(size(z,1),1)            :: u_star2, b_star2
-real, dimension(size(z,1),size(z,2), 1) :: z2, k_m2, k_h2
+real, dimension(size(z,1),1, size(z,2)) :: z2, k_m2, k_h2
 
-z2   (:,:,1) = z
+integer :: n
+
+do n = 1, size(z,2)
+  z2   (:,1,n) = z(:,n)
+enddo
 u_star2(:,1) = u_star
 b_star2(:,1) = b_star
 
 call mo_diff_2d_n(z2, u_star2, b_star2, k_m2, k_h2)
 
-k_m = k_m2(:,:,1)
-k_h = k_h2(:,:,1)
+do n = 1, size(z,2)
+  k_m(:,n) = k_m2(:,1,n)
+  k_h(:,n) = k_h2(:,1,n)
+enddo
 
 return
 end subroutine mo_diff_1d_n
@@ -968,16 +974,22 @@ real, intent(in)                :: u_star, b_star
 real, intent(out), dimension(:) :: k_m, k_h
 
 real, dimension(1,1)            :: u_star2, b_star2
-real, dimension(size(z,1),1, 1) :: z2, k_m2, k_h2
+real, dimension(1,1, size(z)) :: z2, k_m2, k_h2
 
-z2   (:,1,1) = z
+integer :: n
+
+do n = 1, size(z)
+  z2   (1,1,n) = z(n)
+enddo
 u_star2(1,1) = u_star
 b_star2(1,1) = b_star
 
 call mo_diff_2d_n(z2, u_star2, b_star2, k_m2, k_h2)
 
-k_m = k_m2(:,1,1)
-k_h = k_h2(:,1,1)
+do n = 1, size(z)
+  k_m(n) = k_m2(1,1,n)
+  k_h(n) = k_h2(1,1,n)
+enddo
 
 return
 end subroutine mo_diff_0d_n

@@ -16,10 +16,9 @@ use rad_utilities_mod,   only:  Rad_control, radiation_control_type, &
                                 radiative_gases_type,   &
                                 atmos_input_type, &
                                 Environment, environment_type
-use constants_new_mod,   only:  grav_mks, radians_to_degrees, &
-                                constants_new_init
-use interpolater_mod,    only:  interpolate_type, interpolater_init, &
-                                interpolater, interpolater_end, &
+use constants_mod,       only:  GRAV, radian
+use interpolator_mod,    only:  interpolate_type, interpolator_init, &
+                                interpolator, interpolator_end, &
                                 CONSTANT, INTERP_WEIGHTED_P
 
 
@@ -36,8 +35,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: ozone.F90,v 1.3 2002/07/16 22:36:24 fms Exp $'
-character(len=128)  :: tag     =  '$Name: havana $'
+character(len=128)  :: version =  '$Id: ozone.F90,v 1.4 2003/04/09 21:01:03 fms Exp $'
+character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 
@@ -261,7 +260,6 @@ real, dimension(:),   intent(in) :: latb, lonb
 !-------------------------------------------------------------------
       call utilities_init
       call rad_utilities_init
-      call constants_new_init
 !     call time_manager_init   ! doesn't exist yet
 !     call time_interp_init    ! doesn't exist yet
  
@@ -298,7 +296,8 @@ real, dimension(:),   intent(in) :: latb, lonb
 !---------------------------------------------------------------------
 !    when running standalone code, basic_ozone_type must be 'input'.
 !---------------------------------------------------------------------
-      if (Environment%running_standalone  .and.   &
+       if ((Environment%running_standalone  .and.       &
+            .not. Environment%running_sa_model) .and.   &
              trim(basic_ozone_type) /= 'input') then
         call error_mesg ('ozone_mod', &
             ' must supply ozone via input file when running &
@@ -437,7 +436,7 @@ integer,                    intent(in)  :: is, ie, js, je
 real, dimension(:,:),       intent(in)  :: lat
 type(time_type),            intent(in)  :: Rad_time
 type(atmos_input_type),     intent(in)  :: Atmos_input
-type(radiative_gases_type), intent(out) :: Rad_gases
+type(radiative_gases_type), intent(inout) :: Rad_gases
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -559,6 +558,7 @@ type(radiative_gases_type), intent(out) :: Rad_gases
 !    allocate space for the ozone mixing ratio array.
 !---------------------------------------------------------------------
       allocate ( Rad_gases%qo3 (ie-is+1, je-js+1, kmax) )
+       Rad_gases%qo3  = 0.
 
 !-----------------------------------------------------------------------
 !    define the (i,j,k) ozone field valid at the specified time, 
@@ -614,7 +614,7 @@ type(radiative_gases_type), intent(out) :: Rad_gases
               tcolo3(i,j) = tcolo3(i,j) + o3ducst*1.0E+02*  &
                             Rad_gases%qo3(i,j,k)* &
                             0.5E+00*(Atmos_input%press(i,j,k+1) -  &
-                            Atmos_input%press(i,j,k-1))/(grav_mks)
+                            Atmos_input%press(i,j,k-1))/(GRAV)
             end do
             do k=o3dept(j+js-1,2), o3depb(j+js-1 )
               Rad_gases%qo3(i,j,k) = Rad_gases%qo3(i,j,k)*   &
@@ -663,7 +663,7 @@ subroutine ozone_end
 
 !---------------------------------------------------------------------
       if (do_clim_zonal_ozone) then
-        call interpolater_end (o3)
+        call interpolator_end (o3)
       endif
 
 !---------------------------------------------------------------------
@@ -793,8 +793,8 @@ real, dimension(:), intent(in) :: latb
 !    find the location of model latitudes with respect to the latitude
 !    grid that the input data is on.
 !--------------------------------------------------------------------
-      inilat = initial_lat/radians_to_degrees
-      dellat    = delta_lat/radians_to_degrees
+      inilat = initial_lat/radian
+      dellat    = delta_lat/radian
       call find_nearest_lower_index (latb, hemi_data, inilat, dellat,&
                                      jindx, displacement)
 
@@ -927,8 +927,8 @@ real, dimension(:), intent(in) :: latb
 !    find the location of model latitudes with respect to the latitude
 !    grid that the input data is on.
 !--------------------------------------------------------------------
-      inilat = initial_lat/radians_to_degrees
-      dellat = delta_lat/radians_to_degrees
+      inilat = initial_lat/radian
+      dellat = delta_lat/radian
       allocate (displacement (jdf))
       call find_nearest_lower_index (latb, hemi_data, inilat, dellat,&
                                      jindx, displacement)
@@ -1082,7 +1082,7 @@ real, dimension(:),   intent(in) :: latb
                                    (qo3_col(k),k=1, NUM_LEVEL_RECORDS)
             if (jj /= jdf) then
               record_lat = initial_lat + (j-1) *delta_lat
-              if (record_lat >= latb(1)*radians_to_degrees ) then
+              if (record_lat >= latb(1)*radian ) then
                 jj= jj + 1
                 qo3_randel(jj,:,nt) = qo3_col(:)
               endif
@@ -1416,7 +1416,7 @@ subroutine obtain_clim_zonal_ozone_data (lonb, latb)
 
 !----------------------------------------------------------------------
 !    obtain_clim_zonal_ozone_data provides the necessary information 
-!    to interpolater_mod so that the appropriate clim_ozone data may
+!    to interpolator_mod so that the appropriate clim_ozone data may
 !    be obtained later on when needed.
 !---------------------------------------------------------------------
 
@@ -1430,7 +1430,7 @@ real, dimension(:), intent(in) :: lonb, latb
 !
 !-----------------------------------------------------------------
 
-      call interpolater_init (o3, "o3.climatology.nc", lonb, latb, &
+      call interpolator_init (o3, "o3.climatology.nc", lonb, latb, &
                               data_out_of_bounds=(/CONSTANT/), &
                               vert_interp=(/INTERP_WEIGHTED_P/) )
 
@@ -1965,7 +1965,6 @@ real, dimension(:,:), intent(out)  :: zdduo3n
 !---------------------------------------------------------------------
 !    determine the ozone fields valid at the specified time (Time).
 !---------------------------------------------------------------------
-      if (Environment%running_gcm) then
 
 !-----------------------------------------------------------------
 !    if ozone distribution uses monthly input data, call 
@@ -2058,13 +2057,13 @@ real, dimension(:,:), intent(out)  :: zdduo3n
 !    for standalone case, use single column ozone data read from input
 !    file.
 !----------------------------------------------------------------------
-      else if (Environment%running_standalone) then
+      if (do_column_input) then
         do k=kmin,kmax
           do j=1,je-js+1
             zdduo3n(j,k) = qqo3(k)
           end do
         end do
-      endif ! (running_gcm)
+      endif 
 
 !-------------------------------------------------------------------
 
@@ -2446,7 +2445,7 @@ real, dimension(:,:,:),  intent(out) :: ozone
 !---------------------------------------------------------------------
       do j=1,size(lat,2)
         do i=1,size(lat,1)
-          phd = max(min(lat(i,j)*radians_to_degrees, 90.), -90.)
+          phd = max(min(lat(i,j)*radian, 90.), -90.)
           j1 = 10.000 - phd*0.10
           j1 = max(min(j1, 18), 1)
           j2 = j1 + 1
@@ -2624,7 +2623,7 @@ subroutine get_clim_ozone (model_time, p_half, model_data, is, js)
 !--------------------------------------------------------------------
 !    get_clim_ozone retrieves the clim_ozone field at the desired place 
 !    and time from the o3.climatology.nc file by accessing 
-!    interpolater_mod.
+!    interpolator_mod.
 !---------------------------------------------------------------------
 
 type(time_type),        intent(in)           :: model_time
@@ -2663,7 +2662,7 @@ integer,                intent(in), optional :: is,js
 !--------------------------------------------------------------------
 !    obtain appropriate ozone data.
 !--------------------------------------------------------------------
-      call interpolater (o3, model_time, p_half, model_data, "ozone", &
+      call interpolator (o3, model_time, p_half, model_data, "ozone", &
                          is, js)
 
 

@@ -19,8 +19,7 @@ use  utilities_mod,     only: open_file, file_exist,    &
                               utilities_init, &
                               print_version_number, FATAL, NOTE, &
                               WARNING, get_my_pe, close_file
-use constants_new_mod,  only: radcon_mks, radians_to_degrees, &
-                              constants_new_init
+use constants_mod,      only: radcon_mks, radian
 
 
 implicit none
@@ -37,8 +36,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: radiation_diag.F90,v 1.3 2002/07/16 22:36:28 fms Exp $'
-character(len=128)  :: tag     =  '$Name: havana $'
+character(len=128)  :: version =  '$Id: radiation_diag.F90,v 1.4 2003/04/09 21:01:09 fms Exp $'
+character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 !---------------------------------------------------------------------
@@ -184,7 +183,6 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !-------------------------------------------------------------------
       call utilities_init
       call rad_utilities_init
-      call constants_new_init
 
 !----------------------------------------------------------------
 !    read namelist.
@@ -258,9 +256,9 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
           dellon = lonb(2) - lonb(1)
           latradprt(nn + num_pts_latlon) =     &
                       (-0.5*acos(-1.0) + (jradprt_gl(nn) - 0.5)*  &
-                                           dellat) * radians_to_degrees
+                                           dellat) * radian
           lonradprt(nn + num_pts_latlon) =                & 
-                       (iradprt_gl(nn) - 0.5)*dellon*radians_to_degrees
+                       (iradprt_gl(nn) - 0.5)*dellon*radian
         end do
 
 !--------------------------------------------------------------------
@@ -295,20 +293,20 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !    the diagnostics column.
 !--------------------------------------------------------------------
           do j=1,size(latb) - 1
-            if (latradprt(nn) .ge. latb(j)*radians_to_degrees .and.  &
-                latradprt(nn) .lt. latb(j+1)*radians_to_degrees) then
+            if (latradprt(nn) .ge. latb(j)*radian .and.  &
+                latradprt(nn) .lt. latb(j+1)*radian) then
               do i=1,size(lonb) - 1
-                if (lonradprt(nn) .ge. lonb(i)*radians_to_degrees   &
+                if (lonradprt(nn) .ge. lonb(i)*radian   &
                                   .and.&
-                    lonradprt(nn) .lt. lonb(i+1)*radians_to_degrees)  &
+                    lonradprt(nn) .lt. lonb(i+1)*radian)  &
                                    then
                   do_raddg(j) = .true.
                   jradprt(nn) = j
                   iradprt(nn) = i
                   deglon1(nn) = 0.5*(lonb(i) + lonb(i+1))*  &
-                                radians_to_degrees
+                                radian
                   deglat1(nn) = 0.5*(latb(j) + latb(j+1))*   &
-                                radians_to_degrees
+                                radian
                   exit
                 endif
               end do
@@ -431,7 +429,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
         if (do_raddg(j)) then
           call radiag (is, ie, js, je, j, Atmos_input, Astro, &
                        Rad_gases, Cldrad_props, Sw_output, Lw_output, &
-                       Lw_diagnostics, Cld_diagnostics, Cldspace_rad) 
+                       Lw_diagnostics, Cld_diagnostics, Cldspace_rad)
         endif
       end do
 
@@ -487,7 +485,7 @@ end subroutine radiation_diag_end
 
 subroutine radiag (is, ie, js, je, jrow, Atmos_input, Astro, &
                    Rad_gases, Cldrad_props, Sw_output, Lw_output,  &
-                   Lw_diagnostics, Cld_diagnostics, Cldspace_rad) 
+                   Lw_diagnostics, Cld_diagnostics, Cldspace_rad)
 
 !--------------------------------------------------------------------
 !    radiag calculates and outputs radiation diagnostics in user-
@@ -874,7 +872,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                   do k=ks,ke
                     if (Cldrad_props%camtsw(iloc,jloc,k) > 0.0) then
                       cldext = Cldrad_props%cldext(iloc,jloc,k,n)*   &
-                               Atmos_input%deltaz(iloc,jloc,k)*1.0E-03
+                               Atmos_input%clouddeltaz(iloc,jloc,k)* &
+                               1.0E-03
                       if (cldext > 0.0) then           
                         cldssalb = Cldrad_props%cldsct(iloc,jloc,k,n)/ &
                                    Cldrad_props%cldext(iloc,jloc,k,n)
@@ -1517,7 +1516,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                'CLD TOP INDEX',2X,'CLD BOT INDEX',2X,'VIS. REFL',3X, &
                ' IR REFL',4X,' IR ABS.')  
 9036   format (I5,7X,F12.6,I8,I15,6X,3F12.6)
-9040   format (,12X,      &
+9040   format (12X,      &
                ' SW CLOUD DATA, BAND = ',i2, &
                /,' MDL. LVL',7X, 'CLD. AMT.',7X,'EXT OP DEP.',3X, &
                ' SSALB.',2X,' ASYMM. PAR.')

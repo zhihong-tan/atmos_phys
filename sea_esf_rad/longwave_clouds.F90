@@ -6,7 +6,7 @@ use utilities_mod,         only:  open_file, file_exist,    &
                                   check_nml_error, error_mesg, &
 				  print_version_number, FATAL, NOTE, &
 				  WARNING, get_my_pe, close_file
-use constants_new_mod,     only:  radcon
+use constants_mod,         only:  radcon
 !use longwave_setup_mod,    only:  pdfinv,  Lw_parameters, &
 !use longwave_setup_mod,    only:           Lw_parameters, &
 !				  longwave_parameter_type
@@ -34,8 +34,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: longwave_clouds.F90,v 1.3 2002/07/16 22:35:31 fms Exp $'
-  character(len=128)  :: tag     =  '$Name: havana $'
+  character(len=128)  :: version =  '$Id: longwave_clouds.F90,v 1.4 2003/04/09 20:59:50 fms Exp $'
+  character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 !---------------------------------------------------------------------
@@ -137,7 +137,7 @@ subroutine cldtau (Cldrad_props, Lw_clouds)
  
 !--------------------------------------------------------------------
 type(cldrad_properties_type), intent(in) :: Cldrad_props
-type(lw_clouds_type), intent(out) :: Lw_clouds
+type(lw_clouds_type), intent(inout) :: Lw_clouds
 
 !---------------------------------------------------------------------
       integer   :: n, k, i, j

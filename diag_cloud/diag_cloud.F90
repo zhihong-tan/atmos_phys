@@ -20,8 +20,7 @@ MODULE DIAG_CLOUD_MOD
                           check_nml_error, open_file,       &
                           get_my_pe,  close_file,           &
                           read_data, write_data
- ! use  Constants_Mod,      ONLY:  Grav,Dens_h2o
- use  Constants_Mod
+ use  Constants_Mod, only: Cp_Air, rdgas, rvgas, Kappa, HLv
  use time_manager_mod, only:  TIME_TYPE
  use  cloud_zonal_mod, only:  CLOUD_ZONAL_INIT, GETCLD
  use  diag_cloud_rad_mod, only:  CLOUD_TAU_DRIVER, diag_cloud_rad_INIT
@@ -36,8 +35,8 @@ MODULE DIAG_CLOUD_MOD
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud.F90,v 1.5 2002/07/16 22:31:51 fms Exp $'
- character(len=128) :: tag = '$Name: havana $'
+ character(len=128) :: version = '$Id: diag_cloud.F90,v 1.6 2003/04/09 20:54:35 fms Exp $'
+ character(len=128) :: tag = '$Name: inchon $'
 !-----------------------------------------------------------------------
 
 !  parmameter mxband = max number of radiative bands to be considered for some
@@ -69,11 +68,6 @@ MODULE DIAG_CLOUD_MOD
 !      for a particular cloud type is considered to be part of an
 !      extended cloud if it is within this fraction of the max cloud amount.
 !
-
-!-----------------------------------------------------------------------
-!Universal Constant 
-!     grav    value of gravity 
-!-----------------------------------------------------------------------
 
 !----------------- arrays for cloud predictor averaging code --------------------------
 
@@ -1218,7 +1212,7 @@ subroutine CLOUD_SHALLOW_CONV (theta,omega,pfull,phalf,temp,qmix,camtrh, &
 
 !  calculate equivalent potential temperature 
      
-     theta_e(:,:,:) = theta(:,:,:)*exp(HLv*qmix(:,:,:)/(Cp*temp(:,:,:)))
+     theta_e(:,:,:) = theta(:,:,:)*exp(HLv*qmix(:,:,:)/(Cp_Air*temp(:,:,:)))
  
 
 !=======================================================================

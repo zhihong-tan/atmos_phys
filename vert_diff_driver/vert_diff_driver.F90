@@ -21,7 +21,7 @@ use          fms_mod, only:  file_exist, open_namelist_file, error_mesg,  &
                              check_nml_error, FATAL, mpp_pe, mpp_root_pe, &
                              close_file, write_version_number, stdlog
 
-use    constants_mod, only:  CP, GRAV
+use    constants_mod, only:  CP_AIR, GRAV
 
 !-----------------------------------------------------------------------
 
@@ -64,8 +64,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 1.4 2002/07/16 22:37:26 fms Exp $'
-character(len=128) :: tag = '$Name: havana $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 1.5 2003/04/09 21:02:43 fms Exp $'
+character(len=128) :: tag = '$Name: inchon $'
 
 logical :: do_init = .true.
 
@@ -101,7 +101,6 @@ integer, intent(in), dimension(:,:),   optional :: kbot
 
 real, dimension(size(trs,1),size(trs,2),size(dt_trs,4)) :: flux_trs
 real, dimension(size(t,1),size(t,2),size(t,3)) :: tt, dpg, q_2
-real, dimension(size(t,1),size(t,2),size(t,3)) :: dt_u_tmp, dt_v_tmp
 real, dimension(size(t,1),size(t,2),size(t,3)) :: dissipative_heat
 integer :: k, ntp
 logical :: used
@@ -173,8 +172,6 @@ integer :: ie, je
 !---- tracer diffusion (no surface flux) ----
 
  flux_trs = 0.0
- dt_u_tmp = dt_u
- dt_v_tmp = dt_v
 
  q_2 = q
  if (do_mcm_no_neg_q) then
@@ -219,7 +216,7 @@ integer :: ie, je
     if ( id_sens_vdif > 0 ) then
 !         --- compute column changes ---
           diag2 = sum( dt_t*dpg, 3 )
-          used = send_data ( id_sens_vdif, -2.*CP*diag2, Time, is, js )
+          used = send_data ( id_sens_vdif, -2.*CP_AIR*diag2, Time, is, js )
     endif
 
 !------- diagnostics for evap_diff -------
@@ -252,7 +249,7 @@ integer :: ie, je
 
 !------- diagnostics for vertically integrated dissipative heating -------
     if ( id_diss_heat_vdif > 0 ) then
-          diag2 = sum( CP*dissipative_heat*dpg, 3 )
+          diag2 = sum( CP_AIR*dissipative_heat*dpg, 3 )
           used = send_data ( id_diss_heat_vdif, diag2, Time, is, js )
     endif
 
@@ -325,7 +322,7 @@ integer :: ie, je
     if ( id_sens_vdif > 0 ) then
 !         --- compute column changes ---
           diag2 = sum( dt_t*dpg, 3 )
-          used = send_data ( id_sens_vdif, 2.*CP*diag2, Time, is, js )
+          used = send_data ( id_sens_vdif, 2.*CP_AIR*diag2, Time, is, js )
     endif
 
 !------- diagnostics for evap_diff -------

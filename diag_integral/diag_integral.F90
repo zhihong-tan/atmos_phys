@@ -46,7 +46,7 @@ end interface
    character(len=8)    :: time_units = 'hours'
    character(len=mxch) :: file_name = ' '
    logical             :: print_header = .true.
-   logical             :: do_standard_printout = .true.
+   logical             :: do_standard_printout = .false.
    integer             :: fields_per_print_line = 4
 
    namelist /diag_integral_nml/ output_interval, time_units,  &
@@ -57,8 +57,8 @@ end interface
 !-----------------------------------------------------------------------
 !----- version number -----
 
-   character(len=128) :: version = '$Id: diag_integral.F90,v 1.4 2002/07/16 22:32:00 fms Exp $'
-   character(len=128) :: tag = '$Name: havana $'
+   character(len=128) :: version = '$Id: diag_integral.F90,v 1.5 2003/04/09 20:54:49 fms Exp $'
+   character(len=128) :: tag = '$Name: inchon $'
 
    type (time_type) :: Next_alarm_time, Alarm_interval,  &
                        Zero_time

@@ -25,7 +25,7 @@ use rad_utilities_mod,   only: longwave_control_type, Lw_control, &
 use longwave_params_mod, only: NBLW 
 use esfsw_parameters_mod,only: nbands, get_solarfluxes, &
 			       TOT_WVNUMS
-use constants_new_mod,   only: diffac
+use constants_mod,       only: diffac
 
 !--------------------------------------------------------------------
 
@@ -44,8 +44,8 @@ private
 !----------- ****** VERSION NUMBER ******* -----------------------
 
 !   character(len=5), parameter  ::  version_number = 'v0.09'
-    character(len=128)  :: version =  '$Id: microphys_rad.F90,v 1.4 2002/07/16 22:36:02 fms Exp $'
-    character(len=128)  :: tag     =  '$Name: havana $'
+    character(len=128)  :: version =  '$Id: microphys_rad.F90,v 1.5 2003/04/09 21:00:34 fms Exp $'
+    character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 
@@ -62,6 +62,12 @@ private         &
 	  cloud_lwpar, furainlw, fusnowlw, cliqlw, el, cloudpar, &
 	  slingo, savijarvi, fu, snowsw, snowlw, icesolar, &
 	  cloud_lwem_oneband, el_dge
+
+
+interface thickavg
+   module procedure thickavg_3d
+   module procedure thickavg_0d
+end interface
 
 
 !---------------------------------------------------------------------
@@ -978,9 +984,9 @@ end subroutine microphys_rad_driver
 
 !####################################################################
 
-subroutine thickavg (nivl1    , nivl2     , nivls   ,   &
-                     extivl   , ssalbivl  , asymmivl, solflxivl, &
-                     solflxband, extband  , ssalbband , asymmband)
+subroutine thickavg_3d (nivl1    , nivl2     , nivls   ,   &
+                        extivl   , ssalbivl  , asymmivl, solflxivl, &
+                        solflxband, extband  , ssalbband , asymmband)
  
 !----------------------------------------------------------------------c
 ! use the thick-averaging technique to define the single-scattering    c
@@ -1153,7 +1159,145 @@ real, dimension(:,:,:,:), intent(out)  :: extband, ssalbband, asymmband
 
 !---------------------------------------------------------------------
   
-end subroutine thickavg
+end subroutine thickavg_3d
+
+
+
+!####################################################################
+
+subroutine thickavg_0d (nivl1    , nivl2     , nivls   ,   &
+                        extivl   , ssalbivl  , asymmivl, solflxivl, &
+                        solflxband, extband  , ssalbband , asymmband)
+ 
+!----------------------------------------------------------------------c
+! use the thick-averaging technique to define the single-scattering    c
+! properties of the parameterization band spectral intervals from the  c
+! specified spectral intervals of the particular scatterer.            c
+!                                                                      c
+! references:                                                          c
+!                                                                      c
+! edwards,j.m. and a. slingo, studies with a flexible new radiation    c
+!      code I: choosing a configuration for a large-scale model.,      c
+!      q.j.r. meteorological society, 122, 689-719, 1996.              c
+!                                                                      c
+! note: the 1.0E-100 factor to calculate asymmband is to prevent        
+!       division by zero.                                              c
+!----------------------------------------------------------------------c
+!                                                                      c
+! intent in:                                                           c
+!                                                                      c
+! nivl1      = interval number for the specified single-scattering     c
+!              properties corresponding to the first psuedo-           c
+!              monochromatic frequency in a given parameterization     c
+!              band                                                    c
+!                                                                      c
+! nivl2      = interval number for the specified single-scattering     c
+!              properties corresponding to the last psuedo-            c
+!              monochromatic frequency in a given parameterization     c
+!              band                                                    c
+!                                                                      c
+! nivls      = number of specified scattering spectral intervals       c
+!                                                                      c
+! extivl     = the specified spectral values of the extinction         c
+!              coefficient                                             c
+!                                                                      c
+! ssalbivl   = the specified spectral values of the single-            c
+!              scattering albedo                                       c
+!                                                                      c
+! asymmivl   = the specified spectral values of the asymmetry          c
+!              factor                                                  c
+!                                                                      c
+! solflxivl  = the solar flux in each specified scattering spectral    c
+!              interval                                                c
+!                                                                      c
+! solflxband = the solar flux in each parameterization band            c
+!                                                                      c
+!----------------------------------------------------------------------c
+ 
+integer, dimension(:),    intent(in)       :: nivl1, nivl2
+integer,                  intent(in)       :: nivls
+!++lwh
+real, dimension(:),       intent(in)       :: extivl, asymmivl
+real, dimension(:),       intent(inout)    :: ssalbivl
+!--lwh
+real, dimension(:,:),     intent(in)       :: solflxivl             
+real, dimension(:),       intent(in)       :: solflxband            
+ 
+!----------------------------------------------------------------------c
+!                                                                      c
+! intent out:                                                          c
+!                                                                      c
+! extband   =  the parameterization band values of the extinction      c
+!              coefficient                                             c
+!                                                                      c
+! ssalbband =  the parameterization band values of the single-         c
+!              scattering albedo                                       c
+!                                                                      c
+! asymmband =  the parameterization band values of the asymmetry       c
+!              factor                                                  c
+!                                                                      c
+!----------------------------------------------------------------------c
+ 
+real, dimension(:), intent(out)  :: extband, ssalbband, asymmband
+
+!----------------------------------------------------------------------c
+! local variables:                                                     c
+!----------------------------------------------------------------------c
+ 
+   real, dimension(:), allocatable ::   refband
+   real                            ::   refthick, sp, sumk,   &
+                                        sumomegak, sumomegakg, &
+                                        sumrefthick
+   integer  :: nband, ni, j, k, i
+   integer  :: ilb, iub, jlb, jub, klb, kub
+ 
+!--------------------------------------------------------------------
+!   allocate local arrays
+!----------------------------------------------------------------------
+
+      allocate( refband     (nbands))
+	  
+      do nband = 1,nbands
+  
+        sumk        = 0.0
+	sumomegak   = 0.0
+	sumomegakg  = 0.0
+	sumrefthick = 0.0
+ 
+        do ni = nivl1(nband),nivl2(nband)
+	   if ( (ssalbivl(ni) + asymmivl(ni)) .ne. 0.0 ) then
+	      ssalbivl(ni) = MIN(ssalbivl(ni), 1.0)
+              sp = sqrt( ( 1.0 - ssalbivl(ni) ) /    &
+                         ( 1.0 - ssalbivl(ni) * asymmivl(ni) ) )
+              refthick = (1.0 - sp)/(1.0 + sp)
+	      sumrefthick = sumrefthick + refthick * solflxivl(nband,ni)
+	      sumk = sumk + extivl(ni) * solflxivl(nband,ni)
+	      sumomegak = sumomegak +     &
+                          ssalbivl(ni) * extivl(ni) * solflxivl(nband,ni)
+              sumomegakg = sumomegakg +    &
+                           ssalbivl(ni) * extivl(ni) *  &
+                           asymmivl(ni) * solflxivl(nband,ni)
+	   endif
+        end do
+   
+        extband(nband) = sumk / solflxband(nband)
+        asymmband(nband) = sumomegakg / ( sumomegak + 1.0E-100)
+	refband(nband) = sumrefthick/ solflxband(nband)
+        ssalbband(nband) = 4.0 * refband(nband) / &
+             ( (1.0 + refband(nband))**2 - &
+               asymmband(nband) * (1.0 - refband(nband))**2 )
+
+      end do
+
+!-------------------------------------------------------------------
+!  deallocate local arrays
+!------------------------------------------------------------------
+      deallocate (refband     )
+
+
+!---------------------------------------------------------------------
+  
+end subroutine thickavg_0d
 
 
 
@@ -3976,5 +4120,4 @@ end subroutine comb_cldprops_calc
 !#################################################################
 
 	       end module microphys_rad_mod
-
 

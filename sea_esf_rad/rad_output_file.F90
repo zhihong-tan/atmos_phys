@@ -13,6 +13,7 @@ use time_manager_mod,   only:     &
 use diag_manager_mod,   only:  register_diag_field,  &
                                diag_manager_init, &
                                send_data
+use constants_mod,       only: GRAV
 use rad_utilities_mod,  only:  Environment, environment_type, &
                                rad_utilities_init, &
                                radiative_gases_type, &
@@ -20,6 +21,9 @@ use rad_utilities_mod,  only:  Environment, environment_type, &
                                cldrad_properties_type, &
                                cld_diagnostics_type, &
                                atmos_input_type, &
+                                aerosol_type, &
+                               aerosol_properties_type, &
+                               Aerosol_props,  &
                                sw_output_type,  &
                                lw_output_type,  &
                                Cldrad_control,  &
@@ -45,8 +49,8 @@ private
 !-------------------------------------------------------------------
 !----------- version number for this module ------------------------
 
-character(len=128)  :: version =  '$Id: rad_output_file.F90,v 1.3 2002/07/16 22:36:36 fms Exp $'
-character(len=128)  :: tag     =  '$Name: havana $'
+character(len=128)  :: version =  '$Id: rad_output_file.F90,v 1.4 2003/04/09 21:01:20 fms Exp $'
+character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 !---------------------------------------------------------------------
@@ -81,18 +85,35 @@ logical        :: rad_output_file_initialized= .false.
                                        ! module initialized ?
 
 !--------------------------------------------------------------------
-! netcdf diagnostics field variables
+!  DU_factor is Dobson units per (kg/m2). the first term is 
+! (avogadro's number/loeschmidt's number at STP = vol./kmol of an ideal
+! gas at STP). second term = mol wt o3 . third term is units conversion.
+! values are chosen from US Standard Atmospheres, 1976.
 !--------------------------------------------------------------------
+real, parameter  :: DU_factor =    &
+                            (6.022169e26/2.68684e25)/(47.9982)*1.0e5
+real, parameter  :: DU_factor2 = DU_factor/GRAV
+                                   ! Dobson units per (kg/kg * dyn/cm2) 
+                                   ! Dobson units per (kg/kg * N  /m2) 
+
+!--------------------------------------------------------------------
+! netcdf diagnostics field variables
+!-------------------------- ------------------------------------------
+
 character(len=16), parameter :: mod_name='radiation'
 real                         :: missing_value = -999.
 integer                      :: id_radswp, id_radp, id_temp, id_rh2o, &
-                                id_qo3, id_cmxolw, id_crndlw,   &
+                                id_qo3, id_qo3_col, id_cmxolw,  &
+                                id_crndlw,   &
                                 id_flxnet, id_fsw, id_ufsw, id_psj, &
                                 id_tmpsfc, id_cvisrfgd, id_cirrfgd, &
                                 id_tot_clds, id_cld_isccp_hi, &
                                 id_cld_isccp_mid, id_cld_isccp_low, &
                                 id_radswpcf, id_radpcf, id_flxnetcf, &
-                                id_fswcf, id_ufswcf
+                                id_fswcf, id_ufswcf, id_pressm,  &
+                                id_phalfm, id_pfluxm
+integer, dimension(:), allocatable :: id_aerosol, id_aerosol_column
+integer                            :: naerosol=0
 
 
 
@@ -122,6 +143,13 @@ integer, dimension(4), intent(in), optional    :: axes
 type(time_type),       intent(in), optional    :: Time
 
 !--------------------------------------------------------------------
+!  intent(in) variables:
+!
+!       aerosol_names
+!
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
 !  intent(in), optional variables:
 !
 !    these variables are present when running the gcm, not present
@@ -136,6 +164,7 @@ type(time_type),       intent(in), optional    :: Time
 !   local variables
 
 integer   :: unit, io, ierr
+integer   :: n
 
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
@@ -148,7 +177,8 @@ integer   :: unit, io, ierr
 !---------------------------------------------------------------------
       call utilities_init
       call rad_utilities_init
-      if (Environment%running_gcm) then
+      if (Environment%running_gcm .or.  &
+          Environment%running_sa_model) then
         call diag_manager_init  
       endif
 !     call time_manager_init ! doesn't exist
@@ -179,7 +209,8 @@ integer   :: unit, io, ierr
 !--------------------------------------------------------------------
 !    if running gcm, continue on if data file is to be written. 
 !--------------------------------------------------------------------
-      if (Environment%running_gcm) then
+      if (Environment%running_gcm .or. &
+          Environment%running_sa_model) then
         if (write_data_file) then
 
 !--------------------------------------------------------------------
@@ -222,7 +253,7 @@ subroutine write_rad_output_file (is, ie, js, je, Atmos_input,  &
                                   Rad_output, &
                                   Sw_output, Lw_output, Rad_gases, &
                                   Cldrad_props, Cld_diagnostics,   &
-                                  Time_diag)
+                                  Time_diag, aerosol_in)
 
 !----------------------------------------------------------------
 !    write_rad_output_file produces a netcdf output file containing
@@ -238,6 +269,7 @@ type(radiative_gases_type),   intent(in)  ::  Rad_gases
 type(cldrad_properties_type), intent(in)  ::  Cldrad_props
 type(cld_diagnostics_type),   intent(in)  ::  Cld_diagnostics 
 type(time_type),              intent(in)  ::  Time_diag
+real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
 
 !------------------------------------------------------------------
 !  intent(in) variables:
@@ -279,12 +311,15 @@ type(time_type),              intent(in)  ::  Time_diag
 !      cld_isccp_hi   number of isccp high clouds [ percent ]
 !      cld_isccp_mid  number of isccp middle clouds [ percent ]
 !      cld_isccp_low  number of isccp low clouds [ percent ]
+!      qo3_col        ozone column [ DU ]
 !      fsw            net shortwave flux [ W / m**2 ]
 !      ufsw           upward shortwave flux [ W / m**2 ]
 !      fswcf          net sw flux in the absence of clouds [ W / m**2 ]
 !      ufswcf         upward sw flux in absence of clouds [ W / m**2]
 !      flxnet         net longwave flux [ W / m**2 ]
 !      flxnetcf       net lw flux in the absence of clouds [ W / m**2 ]
+!      phalfm         model interface level pressure [ Pa ]
+!      pfluxm         avg of adjacent model level pressures [ Pa ]
 !      temp           temperature [ deg K ]
 !      rh2o           water vapor specific humidity [ g / g ]
 !      qo3            ozone mixing ratio [ g / g ]
@@ -296,26 +331,34 @@ type(time_type),              intent(in)  ::  Time_diag
 !      radswp         sw heating rate [ deg K / sec ]
 !      radpcf         lw + sw heating rate w/o clouds [ deg K / sec ]
 !      radswpcf       sw heating rate w/o clouds [ deg K / sec ]
+!      pressm         pressure at model levels [ Pa ]
 !
 !---------------------------------------------------------------------
       real, dimension (size(Atmos_input%press,1),   &
                        size(Atmos_input%press,2) )  ::  &
                     tmpsfc, psj, cvisrfgd, cirrfgd, tot_clds,   &
-                    cld_isccp_hi, cld_isccp_mid, cld_isccp_low
+                    cld_isccp_hi, cld_isccp_mid, cld_isccp_low, &
+                    qo3_col
 
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2), &
                        size(Atmos_input%press,3)  ) ::   &
-                    fsw, ufsw, fswcf, ufswcf, flxnet, flxnetcf
+                    fsw, ufsw, fswcf, ufswcf, flxnet, flxnetcf, &
+                    phalfm, pfluxm
 
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2), &
                        size(Atmos_input%press,3)-1 ) ::  &
                     temp, rh2o, qo3, cmxolw, crndlw, radp, radswp, &
-                    radpcf, radswpcf
+                    radpcf, radswpcf, pressm
+
+       real, dimension(:,:,:), allocatable :: aerosol_col
+
+
 
       logical   :: used  
       integer   :: kerad ! number of model layers
+      integer   :: n, k
 
 !--------------------------------------------------------------------
 !    if the file is not to be written, do nothing.e desired fields from
@@ -333,6 +376,9 @@ type(time_type),              intent(in)  ::  Time_diag
 !--------------------------------------------------------------------
         tmpsfc(:,:)     = Atmos_input%temp(:,:,kerad+1)
         psj   (:,:)     = 0.01*Atmos_input%press(:,:,kerad+1)
+        pressm(:,:,:)   = 0.01*Atmos_input%press(:,:,1:kerad)
+        phalfm(:,:,:)   = 0.01*Atmos_input%phalf(:,:,:)
+        pfluxm(:,:,:)   = 0.01*Atmos_input%pflux(:,:,:)
         temp(:,:,:)     = Atmos_input%temp(:,:,1:kerad)
         rh2o(:,:,:)     = Atmos_input%rh2o(:,:,:)
         radp(:,:,:)     = Rad_output%tdt_rad(:,js:je,:)
@@ -361,6 +407,30 @@ type(time_type),              intent(in)  ::  Time_diag
         endif
 
 !---------------------------------------------------------------------
+!    calculate the column ozone in DU (Dobson units). convert from 
+!    (kg/kg) * (N/m2) to DU (1DU = 2.687E16 molec cm^-2).
+!---------------------------------------------------------------------
+        qo3_col(:,:) = 0.
+        do k = 1,size(qo3,3)
+          qo3_col(:,:) = qo3_col(:,:) + &
+                         qo3(:,:,k)*(Atmos_input%pflux(:,:,k+1) -  &
+                                     Atmos_input%pflux(:,:,k))
+        end do
+        qo3_col(:,:) = qo3_col(:,:)*DU_factor2
+
+
+!---------------------------------------------------------------------
+!    define the aerosol fields and calculate the column aerosol. 
+!---------------------------------------------------------------------
+        if (Rad_control%do_aerosol) then
+           allocate ( aerosol_col(size(aerosol_in, 1), &
+                                  size(aerosol_in, 2), &
+                                  size(aerosol_in, 4)) )       
+
+          aerosol_col(:,:,:) = SUM (           aerosol_in(:,:,:,:), 3)
+        endif
+        
+!---------------------------------------------------------------------
 !    send the user-designated data to diag_manager_mod for processing.
 !---------------------------------------------------------------------
         if (id_radswp > 0 ) then
@@ -375,12 +445,42 @@ type(time_type),              intent(in)  ::  Time_diag
           used = send_data (id_temp, temp, Time_diag, is, js, 1)
         endif
 
+        if (id_pressm > 0 ) then
+          used = send_data (id_pressm, pressm, Time_diag, is, js, 1)
+        endif
+
+        if (id_phalfm > 0 ) then
+          used = send_data (id_phalfm, phalfm, Time_diag, is, js, 1)
+        endif
+ 
+        if (id_pfluxm > 0 ) then
+          used = send_data (id_pfluxm, pfluxm, Time_diag, is, js, 1)
+        endif
+
         if (id_rh2o > 0 ) then
           used = send_data (id_rh2o, rh2o, Time_diag, is, js, 1)
         endif
 
         if (id_qo3  > 0 ) then
           used = send_data (id_qo3, qo3, Time_diag, is, js, 1)
+        endif
+
+        if (id_qo3_col  > 0 ) then
+          used = send_data (id_qo3_col, qo3_col, Time_diag, is, js)
+        endif
+
+        if (Rad_control%do_aerosol) then
+        do n = 1,naerosol
+          if (id_aerosol(n)  > 0 ) then
+            used = send_data (id_aerosol(n), aerosol_in(:,:,:,n),   &
+                              Time_diag, is, js, 1)
+          endif
+          if (id_aerosol_column(n)  > 0 ) then
+            used = send_data (id_aerosol_column(n),     &
+                              aerosol_col(:,:,n), Time_diag, is, js)
+          endif
+        end do
+        deallocate (aerosol_col)
         endif
 
         if (id_cmxolw > 0 ) then
@@ -522,7 +622,10 @@ integer, dimension(4), intent(in)          :: axes
 !                 for variables defined at flux levels
 !
 !--------------------------------------------------------------------
+      character(len=64), dimension(:), allocatable ::   & 
+                                               aerosol_column_names
       integer, dimension(4)    :: bxes
+      integer                  :: n
  
 !-------------------------------------------------------------------
 !    define variable axis array with elements (1:3) valid for variables
@@ -552,6 +655,21 @@ integer, dimension(4), intent(in)          :: axes
                           'temperature field', &
                           'deg_K', missing_value=missing_value)
 
+      id_pressm  = &
+         register_diag_field (mod_name, 'pressm', axes(1:3), Time, &
+                           'model level pressure', &
+                           'hPa', missing_value=missing_value)
+ 
+      id_phalfm  = &
+         register_diag_field (mod_name, 'phalfm', bxes(1:3), Time, &
+                           'model interface level pressure', &
+                           'hPa', missing_value=missing_value)
+
+      id_pfluxm  = &
+          register_diag_field (mod_name, 'pfluxm', bxes(1:3), Time, &
+                           'radiation flux level pressures', &
+                           'hPa', missing_value=missing_value)
+
       id_rh2o   = &
          register_diag_field (mod_name, 'rh2o', axes(1:3), Time, &
                           'water vapor mixing ratio', &
@@ -561,6 +679,39 @@ integer, dimension(4), intent(in)          :: axes
          register_diag_field (mod_name, 'qo3', axes(1:3), Time, &
                           'ozone mixing ratio', &
                           'kg/kg', missing_value=missing_value)
+
+      id_qo3_col = &
+         register_diag_field (mod_name, 'qo3_col', axes(1:2), Time, &
+                          'ozone column', &
+                          'DU', missing_value=missing_value)
+
+!--------------------------------------------------------------------
+!    allocate space for and save aerosol name information.
+!--------------------------------------------------------------------
+      if (associated (Aerosol_props%aerosol_names)) then
+        naerosol = Aerosol_props%nfields
+        allocate (id_aerosol(naerosol))
+        allocate (id_aerosol_column(naerosol)) 
+        allocate (aerosol_column_names(naerosol))
+        do n = 1,naerosol                           
+          aerosol_column_names(n) =    &
+                    TRIM( Aerosol_props%aerosol_names(n) ) // "_col"
+        end do
+        do n = 1,naerosol
+          id_aerosol(n)    = &
+             register_diag_field (mod_name,    &
+                           TRIM(Aerosol_props%aerosol_names(n)),  &
+                           axes(1:3), Time,    &
+                           TRIM(Aerosol_props%aerosol_names(n)),&
+                           'kg/m2', missing_value=missing_value)
+          id_aerosol_column(n)    = &
+             register_diag_field (mod_name,    &
+                      TRIM(aerosol_column_names(n)), axes(1:2), Time, &
+                      TRIM(aerosol_column_names(n)), &
+                      'kg/m2', missing_value=missing_value)
+        end do
+        deallocate (aerosol_column_names)
+      endif
 
       id_cmxolw = &
          register_diag_field (mod_name, 'cmxolw', axes(1:3), Time, &

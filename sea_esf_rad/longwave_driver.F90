@@ -9,6 +9,7 @@ use rad_utilities_mod,  only: rad_utilities_init, &
                               lw_output_type, &
                               atmos_input_type, &
                               radiative_gases_type, &
+                              aerosol_type,  &
                               lw_table_type, &
                               lw_diagnostics_type, &
                               radiation_control_type, Rad_control
@@ -32,8 +33,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: longwave_driver.F90,v 1.3 2002/07/16 22:35:35 fms Exp $'
-character(len=128)  :: tag     =  '$Name: havana $'
+character(len=128)  :: version =  '$Id: longwave_driver.F90,v 1.4 2003/04/09 20:59:58 fms Exp $'
+character(len=128)  :: tag     =  '$Name: inchon $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -96,7 +97,7 @@ subroutine longwave_driver_init (latb, lonb, pref, Lw_tables)
 !---------------------------------------------------------------------
 real, dimension(:),     intent(in)  :: latb, lonb
 real, dimension(:,:),   intent(in)  :: pref
-type(lw_table_type),    intent(out) :: Lw_tables
+type(lw_table_type),    intent(inout) :: Lw_tables
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
@@ -183,7 +184,8 @@ end  subroutine longwave_driver_init
 !#####################################################################
 
 subroutine longwave_driver (is, ie, js, je, Atmos_input, Rad_gases, &
-                            Cldrad_props, Lw_output, Lw_diagnostics)
+                            Aerosol, Cldrad_props, Lw_output,    &
+                            Lw_diagnostics)
 
 !--------------------------------------------------------------------
 !    longwave_driver allocates and initializes longwave radiation out-
@@ -195,9 +197,10 @@ subroutine longwave_driver (is, ie, js, je, Atmos_input, Rad_gases, &
 integer,                      intent(in)  :: is, ie, js, je
 type(atmos_input_type),       intent(in)  :: Atmos_input  
 type(radiative_gases_type),   intent(in)  :: Rad_gases   
+type(aerosol_type),           intent(in)  :: Aerosol     
 type(cldrad_properties_type), intent(in)  :: Cldrad_props
-type(lw_output_type),         intent(out) :: Lw_output   
-type(lw_diagnostics_type),    intent(out) :: Lw_diagnostics
+type(lw_output_type),         intent(inout) :: Lw_output   
+type(lw_diagnostics_type),    intent(inout) :: Lw_diagnostics
 
 !--------------------------------------------------------------------
 !   intent(in) variables:
@@ -249,7 +252,7 @@ type(lw_diagnostics_type),    intent(out) :: Lw_diagnostics
 !    parameterization.
 !----------------------------------------------------------------------
         call sealw99 (is, ie, js, je, Atmos_input, Rad_gases, &
-                      Cldrad_props, Lw_output, Lw_diagnostics)
+                      Aerosol, Cldrad_props, Lw_output, Lw_diagnostics)
       else
 
 !--------------------------------------------------------------------
@@ -308,7 +311,7 @@ subroutine longwave_driver_alloc (ix, jx, kx, Lw_output)
 !--------------------------------------------------------------------
 
 integer,                   intent(in)  :: ix, jx, kx
-type(lw_output_type),      intent(out) :: Lw_output
+type(lw_output_type),      intent(inout) :: Lw_output
 
 !--------------------------------------------------------------------
 !   intent(in) variables:

@@ -192,6 +192,16 @@ NAMELIST</h4>
 &nbsp; do_conserve_energy&nbsp; If TRUE the heating due to the dissipation of kinetic energy
                       by Rayleigh damping will be computed (default is FALSE).
 
+&nbsp; source_of_sgsmtn&nbsp; ='computed': The topography sub-grid scale variance is
+                                 computed from the navy 1/6'th degree topography data.
+                    =   'input': The topography sub-grid scale variance is read
+                                 from a netcdf data file (INPUT/mg_drag.data.nc).
+                                 The field name in this file must be "sgsmtn".
+                                 A check exists that the resolution the model and data match.
+				 A previously generated output file containing "sgsmtn" may
+                                 be used, but the result may not reproduce exactly if the
+                                 data is not 8 byte.
+
 &nbsp; do_mcm_mg_drag&nbsp; If TRUE the gravity wave drag calculation mimics Manabe Climate Model.
                        (default is FALSE).</pre>
 <!-- END NAMELIST --><!---------------------------------------------------------------------><a NAME="CHANGES"></a>

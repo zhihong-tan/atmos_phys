@@ -6,7 +6,7 @@ use utilities_mod,      only:  open_file, file_exist,    &
                                print_version_number, FATAL, NOTE, &
 			       get_num_pes, &
 			       WARNING, get_my_pe, close_file
-!use constants_new_mod,  only : radians_to_degrees
+!use constants_mod,      only : radian
 
 
 !--------------------------------------------------------------------
@@ -25,8 +25,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: rad_utilities.F90,v 1.3 2002/07/16 22:36:40 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: havana $'
+   character(len=128)  :: version =  '$Id: rad_utilities.F90,v 1.4 2003/04/09 21:01:26 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: inchon $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -53,17 +53,19 @@ public longwave_tables1_type, longwave_tables2_type, &
 
 
 type longwave_tables1_type
-    real, dimension(:,:), pointer      ::  vae, td, md, cd
+    real, dimension(:,:), pointer      ::  vae=>NULL(), td=>NULL(), &
+                                           md=>NULL(), cd=>NULL()
 end type longwave_tables1_type
 
 
 type longwave_tables2_type
-    real, dimension(:,:,:), pointer    ::  vae, td, md, cd
+    real, dimension(:,:,:), pointer    ::  vae=>NULL(), td=>NULL(),  &
+                                           md=>NULL(), cd=>NULL()
 end type longwave_tables2_type
 
 
 type longwave_tables3_type
-     real,  dimension(:,:), pointer    ::  vae, td          
+     real,  dimension(:,:), pointer    ::  vae=>NULL(), td=>NULL()          
 end type longwave_tables3_type
 
 
@@ -107,6 +109,7 @@ public radiation_control_type
 type radiation_control_type
 !   logical                        :: do_diagnostics
     logical                        :: do_totcld_forcing
+    logical                        :: do_aerosol
 !   logical, dimension(:), pointer :: do_raddg
 end type radiation_control_type
 
@@ -141,6 +144,7 @@ type environment_type
     logical                         ::  using_fms_periphs
     logical                         ::  running_gcm     
     logical                         ::  running_standalone
+    logical                         ::  running_sa_model
 !   character(len=11)               ::  column_type
     character(len=16)               ::  column_type
 end type environment_type
@@ -153,7 +157,7 @@ type radiative_gases_type
      real     :: rrvch4, rrvn2o, rrvco2,    &
                  rrvf11, rrvf12, rrvf113, rrvf22, &
 		 rf11air, rf12air, rf113air, rf22air
-     real, dimension(:,:,:), pointer :: qo3
+     real, dimension(:,:,:), pointer :: qo3=>NULL()
 !    logical  :: do_co2, do_ch4_n2o, do_cfc
      logical  :: time_varying_co2, time_varying_f11, &
                  time_varying_f12, time_varying_f113, &
@@ -163,26 +167,80 @@ end type radiative_gases_type
 
 !------------------------------------------------------------------
 
+public   aerosol_type              
+  
+type aerosol_type
+     real, dimension(:,:,:,:), pointer :: aerosol=>NULL()
+     integer                  :: max_data_fields 
+!     character(len=64), dimension(:), pointer :: data_names
+     integer    :: nfields
+     character(len=64), dimension(:), pointer ::   &
+                                          aerosol_optical_names=>NULL()
+     integer, dimension(:), pointer :: sulfate_index=>NULL()
+     integer, dimension(:), pointer :: optical_index=>NULL()
+end type aerosol_type              
+!------------------------------------------------------------------
+ 
+public   aerosol_properties_type
+
+type aerosol_properties_type
+     integer    :: NAERMODELS
+     integer    :: num_wavenumbers
+     integer    :: nfields
+     integer, dimension(:), pointer :: endaerwvnsf=>NULL()
+     character(len=64), dimension(:), pointer :: aerosol_names=>NULL()
+     real, dimension(:,:), pointer :: aeroextivl=>NULL(),  &
+                                      aerossalbivl=>NULL(), &
+                                      aeroasymmivl=>NULL()
+     real, dimension(:,:), pointer :: aerextband=>NULL(),   &
+                                      aerssalbband=>NULL(), &
+                                      aerasymmband=>NULL()
+end type aerosol_properties_type
+
+!------------------------------------------------------------------
+
 public optical_path_type
 
 type optical_path_type
-     real, dimension (:,:,:,:), pointer :: empl1f, empl2f, vrpfh2o, &
+     real, dimension (:,:,:,:), pointer :: empl1f=>NULL(),  &
+                                           empl2f=>NULL(),  &
+                                           vrpfh2o=>NULL(), &
 !                                          totch2o, totch2obd, &
-                                         xch2obd, tphfh2o, avephif, &
-                                         totaerooptdep
-     real, dimension (:,:,:), pointer   :: empl1, empl2,  var1, var2, &
-                                          emx1f, emx2f, totvo2, avephi,&
-                                         totch2obdwd, xch2obdwd, &
-                                           totphi, cntval,toto3,   &
+                                           xch2obd=>NULL(),  &
+                                           tphfh2o=>NULL(), &
+                                           avephif=>NULL(), &
+                                           totaerooptdep=>NULL()
+     real, dimension (:,:,:), pointer   :: empl1=>NULL(), &
+                                           empl2=>NULL(),  &
+					   var1=>NULL(), &
+					   var2=>NULL(), &
+                                          emx1f=>NULL(),   &
+					  emx2f=>NULL(),   &
+					  totvo2=>NULL(),  &
+					  avephi=>NULL(),&
+                                         totch2obdwd=>NULL(), &
+					 xch2obdwd=>NULL(), &
+                                           totphi=>NULL(),   &
+					   cntval=>NULL(), &
+					   toto3=>NULL(),   &
 !                                        tphio3, var3, var4, sh2o,  &
 !                                          tmpexp, rvh2o, wk, rhoave, &
-                                         tphio3, var3, var4,        &
-                                                          wk,         &
-                                         rh2os,  rfrgn, tfac, &
-                                         totaerooptdep_15, &
-                                         totf11, totf12, totf113, totf22
-      real, dimension (:,:), pointer     :: emx1, emx2, csfah2o, &
-                                            aerooptdep_KE_15
+                                         tphio3=>NULL(),  &
+					 var3=>NULL(),  &
+					 var4=>NULL(),        &
+                                         wk=>NULL(),         &
+                                         rh2os=>NULL(),  &
+					 rfrgn=>NULL(),  &
+					 tfac=>NULL(), &
+                                         totaerooptdep_15=>NULL(), &
+                                         totf11=>NULL(),   &
+					 totf12=>NULL(),  &
+					 totf113=>NULL(),   &
+					 totf22=>NULL()
+      real, dimension (:,:), pointer     :: emx1=>NULL(),  &
+                                            emx2=>NULL(),  &
+					    csfah2o=>NULL(), &
+                                            aerooptdep_KE_15=>NULL()
 end type optical_path_type
 
 !------------------------------------------------------------------
@@ -190,10 +248,15 @@ end type optical_path_type
 public gas_tf_type
 
 type gas_tf_type
-     real, dimension(:,:,:), pointer :: tdav, tlsqu, tmpdiff, tstdav,  &
-                                        co2nbl, n2o9c, tn2o17
-     real, dimension(:,:,:,:), pointer :: co2spnb
-     real, dimension(:,:), pointer :: a1, a2
+     real, dimension(:,:,:), pointer :: tdav=>NULL(),   &
+                                        tlsqu=>NULL(),   &
+                                        tmpdiff=>NULL(),   &
+                                        tstdav=>NULL(),  &
+                                        co2nbl=>NULL(),   &
+                                        n2o9c=>NULL(),   &
+                                        tn2o17=>NULL()
+     real, dimension(:,:,:,:), pointer :: co2spnb=>NULL()
+     real, dimension(:,:), pointer :: a1=>NULL(), a2=>NULL()
 end type gas_tf_type
 
 !------------------------------------------------------------------
@@ -201,8 +264,10 @@ end type gas_tf_type
 public lw_output_type
 
 type lw_output_type
-     real, dimension(:,:,:), pointer :: heatra, flxnet, heatracf, &
-                                        flxnetcf
+     real, dimension(:,:,:), pointer :: heatra=>NULL(), &
+                                        flxnet=>NULL(),  &
+                                        heatracf=>NULL(), &
+                                        flxnetcf=>NULL()
 end type lw_output_type
 
 !------------------------------------------------------------------
@@ -210,9 +275,9 @@ end type lw_output_type
 public lw_clouds_type
 
 type lw_clouds_type
-     real, dimension(:,:,:,:),   pointer :: taucld_rndlw, &
-                                            taucld_mxolw, &
-                                            taunbl_mxolw
+     real, dimension(:,:,:,:),   pointer :: taucld_rndlw=>NULL(), &
+                                            taucld_mxolw=>NULL(), &
+                                            taunbl_mxolw=>NULL()
 end type lw_clouds_type
 
 !------------------------------------------------------------------
@@ -220,10 +285,14 @@ end type lw_clouds_type
 public lw_diagnostics_type
 
 type lw_diagnostics_type
-     real, dimension(:,:),   pointer :: flx1e1, gxcts
-     real, dimension(:,:,:), pointer :: flx1e1f, excts, fctsg
-     real, dimension(:,:,:,:), pointer :: fluxn, fluxncf, exctsn,  &
-                                          cts_out, cts_outcf
+     real, dimension(:,:),   pointer :: flx1e1=>NULL(), gxcts=>NULL()
+     real, dimension(:,:,:), pointer :: flx1e1f=>NULL(), excts=>NULL(),&
+                                        fctsg=>NULL()
+     real, dimension(:,:,:,:), pointer :: fluxn=>NULL(),   &
+                                          fluxncf=>NULL(),   &
+					  exctsn=>NULL(),  &
+                                          cts_out=>NULL(), &
+					  cts_outcf=>NULL()
 end type lw_diagnostics_type
 
 !------------------------------------------------------------------
@@ -231,8 +300,11 @@ end type lw_diagnostics_type
 public lw_table_type
 
 type lw_table_type
-     real, dimension(:),   pointer :: bdlocm, bdhicm, bandlo, bandhi
-     integer, dimension(:), pointer :: iband
+     real, dimension(:),   pointer :: bdlocm=>NULL(),   &
+                                      bdhicm=>NULL(),  &
+				      bandlo=>NULL(),  &
+				      bandhi=>NULL()
+     integer, dimension(:), pointer :: iband=>NULL()
 end type lw_table_type
 
 !------------------------------------------------------------------
@@ -240,11 +312,13 @@ end type lw_table_type
 public cld_space_properties_type
 
 type cld_space_properties_type
-     real, dimension(:,:,:),   pointer :: camtswkc        
+     real, dimension(:,:,:),   pointer :: camtswkc=>NULL()        
 !    real, dimension(:,:,:,:),   pointer :: cirabswkc, cirrfswkc, &
-     real, dimension(:,:,:),   pointer :: cirabswkc, cirrfswkc, &
-                                            cvisrfswkc
-     integer, dimension(:,:,:), pointer :: ktopswkc, kbtmswkc
+     real, dimension(:,:,:),   pointer :: cirabswkc=>NULL(),  &
+                                          cirrfswkc=>NULL(), &
+                                            cvisrfswkc=>NULL()
+     integer, dimension(:,:,:), pointer :: ktopswkc=>NULL(),   &
+                                            kbtmswkc=>NULL()
 end type cld_space_properties_type
 
 !------------------------------------------------------------------
@@ -252,10 +326,14 @@ end type cld_space_properties_type
 public cld_diagnostics_type
 
 type cld_diagnostics_type
-     real, dimension(:,:,:),   pointer :: lwpath, iwpath, size_drop, &
-                                          size_ice
-     real, dimension(:,:),     pointer :: cld_isccp_hi, cld_isccp_mid, &
-                                          cld_isccp_low, tot_clds
+     real, dimension(:,:,:),   pointer :: lwpath=>NULL(),   &
+                                          iwpath=>NULL(),   &
+					  size_drop=>NULL(), &
+                                          size_ice=>NULL()
+     real, dimension(:,:),     pointer :: cld_isccp_hi=>NULL(),   &
+                                          cld_isccp_mid=>NULL(), &
+                                          cld_isccp_low=>NULL(),   &
+                                          tot_clds=>NULL()
 end type cld_diagnostics_type
 
 !------------------------------------------------------------------
@@ -263,8 +341,10 @@ end type cld_diagnostics_type
 public sw_output_type
 
 type sw_output_type
-     real, dimension(:,:,:), pointer :: dfsw, ufsw, fsw, hsw, &
-                                        dfswcf, ufswcf, fswcf, hswcf
+     real, dimension(:,:,:), pointer :: dfsw=>NULL(), ufsw=>NULL(),  &
+                                        fsw=>NULL(), hsw=>NULL(), &
+                                        dfswcf=>NULL(), ufswcf=>NULL(),&
+                                        fswcf=>NULL(), hswcf=>NULL()
 end type sw_output_type
 
 !-------------------------------------------------------------------
@@ -272,10 +352,21 @@ end type sw_output_type
 public atmos_input_type
 
 type atmos_input_type
-     real, dimension(:,:,:), pointer :: press, temp, rh2o, pflux, &
-                                        tflux, deltaz, cloud_ice, &
-                                        cloud_water, phalf
-     real, dimension(:,:),   pointer :: psfc, tsfc, asfc, land
+     real, dimension(:,:,:), pointer :: press=>NULL(),   &
+                                        temp=>NULL(), &
+					rh2o=>NULL(),  &
+					pflux=>NULL(), &
+                                        tflux=>NULL(),  &
+					deltaz=>NULL(),  &
+					cloud_ice=>NULL(), &
+                                        cloud_water=>NULL(), &
+					phalf=>NULL(),   &
+					rel_hum=>NULL(), &
+                                        cloudtemp=>NULL(),   &
+					clouddeltaz=>NULL(), &
+                                        cloudvapor=>NULL()
+     real, dimension(:,:),   pointer :: psfc=>NULL(), tsfc=>NULL(),   &
+                                        asfc=>NULL(), land=>NULL()
 endtype atmos_input_type
 
 !-------------------------------------------------------------------
@@ -283,13 +374,24 @@ endtype atmos_input_type
 public fsrad_output_type
 
 type fsrad_output_type
-     real, dimension(:,:,:), pointer :: tdtsw, tdtlw, tdtsw_clr,  &
-                                       tdtlw_clr
-     real, dimension(:,:),   pointer :: swdns, swups, lwups, lwdns, &
-                                       swin, swout, olr, &
-                                       swdns_clr, swups_clr, lwups_clr,&
-                                       lwdns_clr, swin_clr, swout_clr, &
-                                       olr_clr
+     real, dimension(:,:,:), pointer :: tdtsw=>NULL(), &
+                                        tdtlw=>NULL(),  &
+					tdtsw_clr=>NULL(),  &
+                                       tdtlw_clr=>NULL()
+     real, dimension(:,:),   pointer :: swdns=>NULL(),   &
+                                        swups=>NULL(),  &
+					lwups=>NULL(), &
+					lwdns=>NULL(), &
+                                       swin=>NULL(), &
+				       swout=>NULL(), &
+				       olr=>NULL(), &
+                                       swdns_clr=>NULL(),  &
+				       swups_clr=>NULL(),  &
+				       lwups_clr=>NULL(),&
+                                       lwdns_clr=>NULL(),   &
+				       swin_clr=>NULL(),  &
+				       swout_clr=>NULL(), &
+                                       olr_clr=>NULL()
      integer      :: npass
 end type fsrad_output_type
 
@@ -298,10 +400,14 @@ end type fsrad_output_type
 public rad_output_type
 
 type rad_output_type
-     real, dimension(:,:,:), pointer :: tdt_rad, tdt_rad_clr, &
-                                        tdtsw, tdtsw_clr
-     real, dimension(:,:), pointer :: flux_sw_surf, flux_lw_surf, &
-                                      coszen_angle
+     real, dimension(:,:,:), pointer :: tdt_rad=>NULL(),  &
+                                        tdt_rad_clr=>NULL(), &
+                                        tdtsw=>NULL(),   &
+                                        tdtsw_clr=>NULL(),  &
+                                        tdtlw=>NULL()
+     real, dimension(:,:), pointer :: flux_sw_surf=>NULL(), &
+                                      flux_lw_surf=>NULL(), &
+                                      coszen_angle=>NULL()
 end type rad_output_type
 
 !-------------------------------------------------------------------
@@ -311,7 +417,9 @@ public astronomy_type
 type astronomy_type
      logical :: do_diurnal, do_annual, do_daily_mean
      real    :: rrsun, solar_constant
-     real, dimension(:,:), pointer  :: solar, cosz, fracday
+     real, dimension(:,:), pointer  :: solar=>NULL(),   &
+                                       cosz=>NULL(),  &
+				       fracday=>NULL()
 end type astronomy_type
 
 !--------------------------------------------------------------------
@@ -319,12 +427,22 @@ end type astronomy_type
 public cldrad_properties_type
 
 type cldrad_properties_type
-     real, dimension(:,:,:,:), pointer :: cldext, cldasymm, cldsct, &
-                                          emmxolw, emrndlw, cirabsw, &
-                                          abscoeff, cldemiss, &
-                                          cirrfsw, cvisrfsw
-     real, dimension(:,:,:), pointer :: camtsw, cmxolw, crndlw      
-     Integer, dimension(:,:), pointer :: ncldsw, nmxolw, nrndlw     
+     real, dimension(:,:,:,:), pointer :: cldext=>NULL(),   &
+                                          cldasymm=>NULL(), &
+					  cldsct=>NULL(), &
+                                          emmxolw=>NULL(), &
+					  emrndlw=>NULL(),  &
+					  cirabsw=>NULL(), &
+                                          abscoeff=>NULL(),  &
+					  cldemiss=>NULL(), &
+                                          cirrfsw=>NULL(),   &
+					  cvisrfsw=>NULL()
+     real, dimension(:,:,:), pointer :: camtsw=>NULL(),  &
+                                        cmxolw=>NULL(),  &
+					crndlw=>NULL()      
+     Integer, dimension(:,:), pointer :: ncldsw=>NULL(),  &
+                                         nmxolw=>NULL(),  &
+					 nrndlw=>NULL()     
 !     integer                          :: NLWCLDB
 end type cldrad_properties_type
 
@@ -338,6 +456,7 @@ type longwave_parameter_type
      integer             :: NBTRGE
 !     integer             :: NLWCLDB
      integer             :: NBLY
+     integer             :: n_lwaerosol_bands
 end type longwave_parameter_type
 
 !---------------------------------------------------------------------
@@ -374,6 +493,8 @@ type (shortwave_control_type), public   ::  &
 
 type (radiation_control_type), public   ::  Rad_control
 
+type (aerosol_properties_type), public   ::  Aerosol_props
+
 type (cloudrad_control_type), public   ::   &
    Cldrad_control = cloudrad_control_type(.false., .false., .false., &
                                           .false., .false., .false., &
@@ -385,11 +506,11 @@ type (environment_type), public   ::   &
 !  Environment = environment_type(.false., .false., .false., &
    Environment = environment_type(                  .false., &
 				  .false., .false., .false., &
-				  '      ')
+                                  .false.,  '      ')
 
 type (longwave_parameter_type), public  ::   &
 !   Lw_parameters = longwave_parameter_type(0, 0, 0, 0, 0)
-   Lw_parameters = longwave_parameter_type(0, 0, 0, 0)
+   Lw_parameters = longwave_parameter_type(0, 0, 0, 0, 0)
 
 type (table_axis_type),        public   ::    &
      temp_1 = table_axis_type(1, 100.0, 370.0, 10.0), &
@@ -494,9 +615,6 @@ subroutine define_environment
    else if (trim(application_type) == 'standalone') then
      Environment%running_gcm = .false.
      Environment%running_standalone = .true.
-     if (Environment%using_fms_periphs)   call error_mesg &
-       ( 'define_environment', &
-         'currently must use skyhi peripherals with standalone', FATAL)
    else
      call error_mesg ('define_environment', &
        ' application_type not acceptable', FATAL)
@@ -775,7 +893,7 @@ integer, dimension(:), intent(out) :: global_index_array
        jst = 1
        do jj=1, size(latb,1) - 1
          do j = jst,global_rows
-!   if (data_lat(j) >= latb(jj)*radians_to_degrees ) then
+!   if (data_lat(j) >= latb(jj)*radian ) then
 	   if (data_lat(j) >= latb(jj)                    ) then
 	     global_index_array(jj) = j
 	     jst = j

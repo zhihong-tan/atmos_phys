@@ -9,7 +9,7 @@
                                 CHECK_NML_ERROR, OPEN_FILE,      &
                                 get_my_pe, CLOSE_FILE
 
- use constants_mod, only: Hlv, Cp, RDgas, RVgas, Kappa, grav
+ use constants_mod, only: Hlv, Cp_Air, RDgas, RVgas, Kappa, grav
 
 !---------------------------------------------------------------------
  implicit none
@@ -21,8 +21,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: shallow_conv.F90,v 1.5 2002/07/16 22:37:18 fms Exp $'
- character(len=128) :: tag = '$Name: havana $'
+ character(len=128) :: version = '$Id: shallow_conv.F90,v 1.6 2003/04/09 21:02:12 fms Exp $'
+ character(len=128) :: tag = '$Name: inchon $'
 
  logical :: do_init = .true.
 
@@ -115,8 +115,8 @@
 
   d622        = RDgas / RVgas
   d378        = 1.0 - d622
-  Hlv_by_Cp   = Hlv / Cp
-  Cp_by_RDgas = Cp / RDgas
+  Hlv_by_Cp   = Hlv / Cp_Air
+  Cp_by_RDgas = Cp_Air / RDgas
   omkappa     = 1.0 - Kappa
   dovcns      = -0.5 * grav / RDgas
 
@@ -298,15 +298,15 @@
 ! --- Buoyancy
   do k = kctopm2,kxm
 ! -------------------
-  xy1(:,:) = Hlv / ( Cp*RVgas*Temp(:,:,k)*Temp(:,:,k) ) + 1.0 / qsat(:,:,k)
+  xy1(:,:) = Hlv / ( Cp_Air*RVgas*Temp(:,:,k)*Temp(:,:,k) ) + 1.0 / qsat(:,:,k)
 
-  xy2(:,:) = ( grav / ( Cp*Temp(:,:,k) ) ) *                              &  
+  xy2(:,:) = ( grav / ( Cp_Air*Temp(:,:,k) ) ) *                              &  
              ( Hlv / ( RVgas*Temp(:,:,k) ) - Cp_by_RDgas ) / xy1(:,:)
 
   xy3(:,:) = ( thetav(:,:,k+1) - thetav(:,:,k )  ) / phalf(:,:,k+1) +     &
              ( thetav(:,:,k  ) - thetav(:,:,k-1) ) / phalf(:,:,k  )
 
-  buoy(:,:,k) = ( hlv / ( cp*Temp(:,:,k) ) - 1.608 ) * xy2(:,:)
+  buoy(:,:,k) = ( hlv / ( Cp_Air*Temp(:,:,k) ) - 1.608 ) * xy2(:,:)
   buoy(:,:,k) =    buoy(:,:,k) - dovcns*pfull(:,:,k) * xy3(:,:) / Temp(:,:,k)
 ! -------------------
   end do

@@ -31,8 +31,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: astronomy.F90,v 1.4 2002/07/16 22:31:39 fms Exp $'
-character(len=128)  :: tag     =  '$Name: havana $'
+character(len=128)  :: version =  '$Id: astronomy.F90,v 1.5 2003/04/09 20:53:26 fms Exp $'
+character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 !---------------------------------------------------------------------
@@ -1058,9 +1058,10 @@ real,                 intent(in), optional :: dt
 !    perform a time integration to obtain cosz and fracday if desired.
 !    output is valid over the period from t to t + dt.
 !--------------------------------------------------------------------
+      h   = half_day   (lat,dec)
       if ( present(dt) ) then   ! (perform time averaging)
         tt = t + dt
-        h   = half_day   (lat,dec)
+!        h   = half_day   (lat,dec)
         st  = sin(t)
         stt = sin(tt)
         sh  = sin(h)

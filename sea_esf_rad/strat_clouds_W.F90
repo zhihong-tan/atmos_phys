@@ -8,7 +8,8 @@ use utilities_mod,          only: open_file, file_exist,   &
                                   check_nml_error, error_mesg,   &
                                   print_version_number, FATAL, NOTE, &
 				  WARNING, get_my_pe, close_file
-use constants_new_mod, only :     rh2oair
+use constants_mod,          only: RDGAS, RVGAS
+!use constants_mod,         only: RDGAS, RVGAS, rh2oair
 !use rad_step_setup_mod,     only: temp, rh2o, press, pflux, jabs,   &
 !use rad_step_setup_mod,     only: temp, rh2o, press, pflux,         &
 !use rad_step_setup_mod,     only: temp, rh2o, press,                &
@@ -51,8 +52,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 1.3 2002/07/16 22:37:10 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: havana $'
+   character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 1.4 2003/04/09 21:02:02 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 
@@ -85,6 +86,7 @@ namelist /strat_clouds_W_nml /     &
 !character(len=16)     :: swform
 logical        :: do_lhsw, do_esfsw
 logical               :: do_lwcldemiss
+real                   :: d622 = RDGAS/RVGAS
 
 
 !----------------------------------------------------------------------
@@ -141,6 +143,7 @@ subroutine strat_clouds_init
 !     call get_astronomy_for_clouds_init (nsolwg)
 !     nsolwg = 1
 
+!      print *, 'rh2oair, d622', rh2oair, d622
 
 end subroutine strat_clouds_init
 
@@ -158,7 +161,8 @@ subroutine strat_clouds_calc (is, ie, js, je, Cld_diagnostics, pflux,  deltaz,  
                               emmxolw, emrndlw,         &
                               Time_next,                &
                               cirabsw, cirrfsw, cvisrfsw, cldext, &  
-                              cldsct, cldasymm, abscoeff)
+                              cldsct, cldasymm, abscoeff, &
+                              ql_in_sa, qi_in_sa, cf_in_sa)
 
 integer, intent(in) :: is, ie, js, je
 real,    dimension(:,:,:),   intent(in) :: pflux, deltaz, cloud_water, &
@@ -173,6 +177,8 @@ type(time_type),                 intent(in), optional ::  Time_next
 real,    dimension(:,:,:,:), intent(inout), optional  ::    &
                                              cirabsw, cvisrfsw, &
                                              cirrfsw
+real,    dimension(:,:,:),   intent(in), optional :: ql_in_sa,  &
+                                                  qi_in_sa, cf_in_sa
 real,    dimension(:,:,:,:), intent(out), optional  ::    &
                                              cldext, cldsct, cldasymm,&
                                              abscoeff
@@ -235,7 +241,8 @@ integer, dimension(:,:),     intent(inout), optional :: ncldsw, nmxolw, nrndlw
       ksrad = 1
       kerad = size (press , 3) - 1
 
-     if (Environment%running_gcm) then
+     if (Environment%running_gcm .or. &
+         Environment%running_sa_model) then
 !--------------------------------------------------------------------
 !     if (Environment%running_fms) then
 
@@ -256,8 +263,23 @@ integer, dimension(:,:),     intent(inout), optional :: ncldsw, nmxolw, nrndlw
          allocate (qi (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
          allocate (cf (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
 !        call strat_cloud_avg (iabs(ISRAD), jabs(JSRAD), ql, qi,   &
-         call strat_cloud_avg (is, js,                   ql, qi,   &
-                               cf, ierr)
+       if (Environment%running_sa_model) then
+         if (present(ql_in_sa) .and. present(qi_in_sa) .and. &
+             present(cf_in_sa)) then          
+            ql = ql_in_sa
+           qi = qi_in_sa
+           cf = cf_in_sa
+           ierr = 0
+          else
+            call error_mesg ('strat_clouds_W_mod', &
+               ' ql, qi and cf must be input when running sa model', &
+                                                         FATAL)
+          endif
+         else
+           call strat_cloud_avg (is, js,                   ql, qi,   &
+                                 cf, ierr)
+         endif
+
   
 !---------------------------------------------------------------------
 !     allocate and initialize the cloud radiative property arrays.
@@ -298,7 +320,9 @@ integer, dimension(:,:),     intent(inout), optional :: ncldsw, nmxolw, nrndlw
 !     define specific humidity to pass to start_cloud_mod.
 !---------------------------------------------------------------------
 ! rh2o (  :  ,  :  ,:) = q(:,:,:)/(1.0-q(:, :, :)/rh2oair)
-       sp_hum(:,:,:) = rh2o(:,:,:)/(1.0+rh2o(:,:,:)/rh2oair)
+!      sp_hum(:,:,:) = rh2o(:,:,:)/(1.0+rh2o(:,:,:)/rh2oair)
+!      sp_hum(:,:,:) = rh2o(:,:,:)/(1.0+d622*rh2o(:,:,:))
+       sp_hum(:,:,:) = rh2o(:,:,:)/(1.0+rh2o(:,:,:)     )
   
 !---------------------------------------------------------------------
 !     obtain the cloud radiative properties.
@@ -569,7 +593,8 @@ allocate (abscoeff_lcl ( SIZE(emmxolw,1), SIZE(emmxolw,2),SIZE(emmxolw,3), &
 !     define specific humidity to pass to start_cloud_mod.
 !---------------------------------------------------------------------
 ! rh2o (  :  ,  :  ,:) = q(:,:,:)/(1.0-q(:, :, :)/rh2oair)
-       sp_hum(:,:,:) = rh2o(:,:,:)/(1.0+rh2o(:,:,:)/rh2oair)
+!      sp_hum(:,:,:) = rh2o(:,:,:)/(1.0+rh2o(:,:,:)/rh2oair)
+       sp_hum(:,:,:) = rh2o(:,:,:)/(1.0+rh2o(:,:,:)     )
 
 
 

@@ -12,7 +12,7 @@ use utilities_mod,            only : open_file, file_exist,    &
 				     print_version_number, FATAL, NOTE,&
 				     WARNING, get_my_pe, close_file, &
 				     read_data, write_data
-use constants_new_mod,        only : pstd, rgas, wtmair, grav
+use constants_mod,            only : RDGAS, GRAV, pstd
 
 !---------------------------------------------------------------------
 
@@ -29,8 +29,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-      character(len=128)  :: version =  '$Id: gas_tf.F90,v 1.3 2002/07/16 22:35:14 fms Exp $'
-      character(len=128)  :: tag     =  '$Name: havana $'
+      character(len=128)  :: version =  '$Id: gas_tf.F90,v 1.4 2003/04/09 20:59:29 fms Exp $'
+      character(len=128)  :: tag     =  '$Name: inchon $'
 
 !---------------------------------------------------------------------
 !------    interfaces   ------
@@ -506,7 +506,7 @@ real, dimension(:,:), intent(in) :: pref
    
 !  deallocate ( plm)
 !  deallocate ( pd )
-    print *, 'ks, kmin,ksrad, kmax, kerad', ks, kmin, ksrad, kmax,kerad
+!   print *, 'ks, kmin,ksrad, kmax, kerad', ks, kmin, ksrad, kmax,kerad
 
 !----------------------------------------------------------------------
 !   allocate co2 transmission function arrays to hold data which will 
@@ -613,6 +613,10 @@ type(atmos_input_type), intent(in) :: Atmos_input
       allocate (Gas_tf%n2o9c   (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
       allocate (Gas_tf%tn2o17  (ISRAD:IERAD, JSRAD:JERAD,   KSRAD:KERAD+1))
 
+      Gas_tf%co2nbl  = 0.0                                         
+      Gas_tf%co2spnb = 0.0                                           
+      Gas_tf%n2o9c  = 0.                                          
+      Gas_tf%tn2o17  = 0.0                                        
 
 !--------------------------------------------------------------------
 !     compute temperature difference between model profile and 
@@ -2195,7 +2199,7 @@ real, dimension(:), intent(in)    :: plm, pd
 !   the conversion factor is used to convert dz from cm (using the
 !   model's values for rgas and grav) to km (as in this program)
 !------------------------------------------------------------------
-        dz=1.0E-05*rgas*dlogp/(7.0*wtmair*grav*znint)
+        dz  = 1.0E-05*(1.0E+02*RDGAS)*dlogp/(7.0*GRAV*znint)
         ht=altquad(k)
  
 !---------------------------------------------------------------------

@@ -7,7 +7,6 @@ use utilities_mod,      only:  open_file, file_exist,    &
 			       print_version_number, FATAL, NOTE, &
 			       get_my_pe, read_data, write_data, &
 			       close_file
-use constants_new_mod,  only:  wtmair
 use rad_utilities_mod,  only:  radiative_gases_type, &
                                optical_path_type
 
@@ -27,8 +26,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-         character(len=128)  :: version =  '$Id: cfc.F90,v 1.3 2002/07/16 22:34:20 fms Exp $'
-         character(len=128)  :: tag     =  '$Name: havana $'
+         character(len=128)  :: version =  '$Id: cfc.F90,v 1.4 2003/04/09 20:58:44 fms Exp $'
+         character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 
@@ -207,14 +206,6 @@ subroutine cfc_init
 	write (unit,nml=cfc_nml)
       endif
       call close_file (unit)
-
-!--------------------------------------------------------------------
-!   define cfc mixing ratio conversion factors.
-!--------------------------------------------------------------------
-      rf11air  = wtmf11/wtmair
-      rf12air  = wtmf12/wtmair
-      rf113air = wtmf113/wtmair
-      rf22air  = wtmf22/wtmair
 
 !---------------------------------------------------------------------
 

@@ -3,23 +3,29 @@ module damping_driver_mod
 
 !-----------------------------------------------------------------------
 !
-!       This module controls two functions:
+!       This module controls four functions:
 !
 !   (1) rayleigh friction applied to momentum fields at levels
 !       1 to kbot (i.e., momentum is damped toward zero).
 !
 !   (2) mountain gravity wave drag module may be called
 !
+!   (3) Alexander-Dunkerton gravity wave drag may be called
+!
+!   (4) Garner topo_drag module may be called
+!
 !-----------------------------------------------------------------------
 
  use      mg_drag_mod, only:  mg_drag, mg_drag_init, mg_drag_end
+ use      cg_drag_mod, only:  cg_drag_init, cg_drag_calc, cg_drag_end
+ use    topo_drag_mod, only:  topo_drag_init, topo_drag, topo_drag_end
  use    utilities_mod, only:  file_exist, open_file, error_mesg, &
                               check_nml_error,                   &
                               get_my_pe, FATAL, close_file
  use diag_manager_mod, only:  register_diag_field,  &
                               register_static_field, send_data
  use time_manager_mod, only:  time_type
- use    constants_mod, only:  cp, grav
+ use    constants_mod, only:  cp_air, grav
 
  implicit none
  private
@@ -32,9 +38,12 @@ module damping_driver_mod
    real     :: trayfric = 0.
    integer  :: nlev_rayfric = 1
    logical  :: do_mg_drag = .false.
+   logical  :: do_cg_drag = .false.
+   logical  :: do_topo_drag = .false.
    logical  :: do_conserve_energy = .false.
 
    namelist /damping_driver_nml/  trayfric,   nlev_rayfric,  &
+                                  do_cg_drag, do_topo_drag, &
                                   do_mg_drag, do_conserve_energy
 
 !
@@ -53,10 +62,13 @@ module damping_driver_mod
 
 integer :: id_udt_rdamp,  id_vdt_rdamp,   &
            id_udt_gwd,    id_vdt_gwd,     &
-           id_taub,       id_sgsmtn
+                          id_sgsmtn,      &
+           id_udt_cgwd,   id_taus
 
 integer :: id_tdt_diss_rdamp,  id_diss_heat_rdamp, &
            id_tdt_diss_gwd,    id_diss_heat_gwd
+
+integer :: id_udt_topo,   id_vdt_topo,   id_taubx,  id_tauby
 
 !----- missing value for all fields ------
 
@@ -76,8 +88,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 1.4 2001/10/25 17:47:45 fms Exp $'
- character(len=128) :: tag = '$Name: havana $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 1.5 2003/04/09 20:54:24 fms Exp $'
+ character(len=128) :: tag = '$Name: inchon $'
 
 !-----------------------------------------------------------------------
 
@@ -85,12 +97,14 @@ contains
 
 !#######################################################################
 
- subroutine damping_driver (is, js, Time, delt, pfull, phalf, zfull, zhalf, &
+ subroutine damping_driver (is, js, lat, Time, delt, pfull, phalf, zfull, zhalf, &
                             u, v, t, q, r,  udt, vdt, tdt, qdt, rdt,  &
-                            mask, kbot)
+!                                   mask, kbot)
+                            z_pbl,  mask, kbot)
  
 !-----------------------------------------------------------------------
  integer,         intent(in)                :: is, js
+ real, dimension(:,:), intent(in)           :: lat
  type(time_type), intent(in)                :: Time
  real,            intent(in)                :: delt
  real,    intent(in),    dimension(:,:,:)   :: pfull, phalf, &
@@ -99,15 +113,23 @@ contains
  real,    intent(in),    dimension(:,:,:,:) :: r
  real,    intent(inout), dimension(:,:,:)   :: udt,vdt,tdt,qdt
  real,    intent(inout), dimension(:,:,:,:) :: rdt
+ real, dimension(:,:), intent(in)           :: z_pbl
  real,    intent(in),    dimension(:,:,:), optional :: mask
  integer, intent(in),    dimension(:,:),   optional :: kbot
+
 !-----------------------------------------------------------------------
- real, dimension(size(udt,1),size(udt,2))             :: taub, diag2
+ real, dimension(size(udt,1),size(udt,2))             :: diag2
+ real, dimension(size(udt,1),size(udt,2))             :: taubx, tauby
+ real, dimension(size(udt,1),size(udt,2),size(udt,3)) :: taus
  real, dimension(size(udt,1),size(udt,2),size(udt,3)) :: utnd, vtnd, &
                                                          ttnd, pmass, &
                                                          p2
- integer :: k
  logical :: used
+
+ real, dimension(size(udt,1),size(udt,2),size(udt,3)+1) :: p_pass, &
+                                                            t_pass
+ integer :: k, j, i, locmax(3)
+ real :: a,b
 !-----------------------------------------------------------------------
 
    if (do_init) call error_mesg ('damping_driver',  &
@@ -146,7 +168,7 @@ contains
             do k = 1,size(u,3)
               pmass(:,:,k) = phalf(:,:,k+1)-phalf(:,:,k)
             enddo
-            diag2 = cp/grav * sum(ttnd*pmass,3)
+            diag2 = cp_air/grav * sum(ttnd*pmass,3)
             used = send_data ( id_diss_heat_rdamp, diag2, Time, is, js )
        endif
 
@@ -158,7 +180,7 @@ contains
    if (do_mg_drag) then
 
        call mg_drag (is, js, delt, u, v, t, pfull, phalf, zfull, zhalf,  &
-                     utnd, vtnd, ttnd, taub, kbot)
+                     utnd, vtnd, ttnd, taubx,tauby,taus,        kbot)
        udt = udt + utnd
        vdt = vdt + vtnd
        tdt = tdt + ttnd
@@ -175,8 +197,17 @@ contains
                                rmask=mask )
        endif
 
-       if ( id_taub > 0 ) then
-            used = send_data ( id_taub, taub, Time, is, js )
+       if ( id_taubx > 0 ) then
+            used = send_data ( id_taubx, taubx, Time, is, js )
+       endif
+
+       if ( id_tauby > 0 ) then
+            used = send_data ( id_tauby, tauby, Time, is, js )
+       endif
+
+       if ( id_taus > 0 ) then
+           used = send_data ( id_taus, taus, Time, is, js, 1, &
+                              rmask=mask )
        endif
 
        if ( id_tdt_diss_gwd > 0 ) then
@@ -188,32 +219,98 @@ contains
             do k = 1,size(u,3)
               pmass(:,:,k) = phalf(:,:,k+1)-phalf(:,:,k)
             enddo
-            diag2 = cp/grav * sum(ttnd*pmass,3)
+            diag2 = cp_air/grav * sum(ttnd*pmass,3)
             used = send_data ( id_diss_heat_gwd, diag2, Time, is, js )
        endif
 
    endif
+
+!   Alexander-Dunkerton gravity wave drag
+
+   if (do_cg_drag) then
+
+     call cg_drag_calc (is, js, lat, pfull, zfull, t, u, Time,    &
+                        delt, utnd)
+
+     udt =  udt + utnd
+
+!----- diagnostics -----
+
+     if ( id_udt_cgwd > 0 ) then
+        used = send_data ( id_udt_cgwd, utnd, Time, is, js, 1, &
+                          rmask=mask )
+     endif
+ 
+   endif
+
+!-----------------------------------------------------------------------
+!---------topographic   w a v e   d r a g -------------------
+!-----------------------------------------------------------------------
+   if (do_topo_drag) then
+
+    call topo_drag ( is, js, u, v, t, pfull, phalf, zfull, zhalf,  &
+!               taubx, tauby, utnd, vtnd,taus)
+                z_pbl, taubx, tauby, utnd, vtnd,taus)
+
+     b = maxval(abs(utnd))
+     locmax = maxloc(abs(utnd))
+
+
+     udt = udt + utnd
+     vdt = vdt + vtnd
+
+
+!----- diagnostics -----
+
+    if ( id_udt_topo > 0 ) then
+       used = send_data ( id_udt_topo, utnd, Time, is, js, 1, &
+                          rmask=mask )
+    endif
+
+    if ( id_vdt_topo > 0 ) then
+         used = send_data ( id_vdt_topo, vtnd, Time, is, js, 1, &
+                         rmask=mask )
+   endif
+
+     if ( id_taubx > 0 ) then
+       used = send_data ( id_taubx, taubx, Time, is, js )
+     endif
+
+     if ( id_tauby > 0 ) then
+        used = send_data ( id_tauby, tauby, Time, is, js )
+      endif
+
+     if ( id_taus > 0 ) then
+      used = send_data ( id_taus, taus, Time, is, js, 1, &
+                          rmask=mask )
+     endif
+
+
+
+ endif
+
 !-----------------------------------------------------------------------
 
  end subroutine damping_driver
 
 !#######################################################################
 
- subroutine damping_driver_init ( lonb, latb, axes, Time )
+ subroutine damping_driver_init ( lonb, latb, pref, axes, Time, sgsmtn)
 
- real,            intent(in) :: lonb(:), latb(:)
+ real,            intent(in) :: lonb(:), latb(:), pref(:)
  integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
+ real, dimension(:,:), intent(out) :: sgsmtn
 !-----------------------------------------------------------------------
 !     lonb  = longitude in radians of the grid box edges
 !     latb  = latitude  in radians of the grid box edges
 !     axes  = axis indices, (/x,y,pf,ph/)
 !               (returned from diag axis manager)
 !     Time  = current time (time_type)
+!     sgsmtn = subgrid scale topography variance
 !-----------------------------------------------------------------------
  integer :: unit, ierr, io
  logical :: used
- real, dimension(size(lonb)-1,size(latb)-1) :: sgsmtn
 
 !-----------------------------------------------------------------------
 !----------------- namelist (read & write) -----------------------------
@@ -254,6 +351,13 @@ contains
 !----- mountain gravity wave drag -----
 
    if (do_mg_drag) call mg_drag_init (lonb, latb, sgsmtn)
+
+!--------------------------------------------------------------------
+!----- Alexander-Dunkerton gravity wave drag -----
+ 
+   if (do_cg_drag)  then
+     call cg_drag_init (lonb, latb, pref, Time=Time, axes=axes)
+   endif
 
 !-----------------------------------------------------------------------
 !----- initialize diagnostic fields -----
@@ -300,10 +404,20 @@ if (do_mg_drag) then
                      'v wind tendency for gravity wave drag', 'm/s2', &
                         missing_value=missing_value               )
 
-   id_taub = &
-   register_diag_field ( mod_name, 'taub', axes(1:2), Time,        &
-                     'base flux for gravity wave drag', 'kg/m/s2', &
-                        missing_value=missing_value               )
+   id_taubx = &
+   register_diag_field ( mod_name, 'taubx', axes(1:2), Time,        &
+                         'x base flux for grav wave drag', 'kg/m/s2', &
+                         missing_value=missing_value               )
+
+   id_tauby = &
+   register_diag_field ( mod_name, 'tauby', axes(1:2), Time,        &
+                         'y base flux for grav wave drag', 'kg/m/s2', &
+                         missing_value=missing_value )
+
+   id_taus = &
+   register_diag_field ( mod_name, 'taus', axes(1:3), Time,        &
+                       'saturation flux for gravity wave drag', 'kg/m/s2', &
+                      missing_value=missing_value               )
 
    id_tdt_diss_gwd = &
    register_diag_field ( mod_name, 'tdt_diss_gwd', axes(1:3), Time,    &
@@ -315,6 +429,57 @@ if (do_mg_drag) then
                 'Integrated dissipative heating from gravity wave drag',&
                                  'W/m2' )
 endif
+
+   if (do_cg_drag) then
+
+    id_udt_cgwd = &
+    register_diag_field ( mod_name, 'udt_cgwd', axes(1:3), Time,        &
+                 'u wind tendency for cg gravity wave drag', 'm/s2', &
+                      missing_value=missing_value               )
+   endif
+
+!-----------------------------------------------------------------------
+!----- topo wave drag -----
+
+
+
+  if (do_topo_drag) then
+          call topo_drag_init (lonb, latb, ierr)
+          sgsmtn(:,:) = -99999.
+  endif
+
+
+
+  if (do_topo_drag) then
+
+   id_udt_topo = &
+   register_diag_field ( mod_name, 'udt_topo', axes(1:3), Time,        &
+                       'u wind tendency for topo wave drag', 'm/s2', &
+                        missing_value=missing_value               )
+
+  id_vdt_topo = &
+   register_diag_field ( mod_name, 'vdt_topo', axes(1:3), Time,        &
+                       'v wind tendency for topo wave drag', 'm/s2', &
+                         missing_value=missing_value               )
+
+   id_taubx = &
+   register_diag_field ( mod_name, 'taubx', axes(1:2), Time,        &
+                     'x base flux for topo wave drag', 'kg/m/s2', &
+                        missing_value=missing_value               )
+
+    id_tauby = &
+    register_diag_field ( mod_name, 'tauby', axes(1:2), Time,        &
+                    'y base flux for topo wave drag', 'kg/m/s2', &
+                      missing_value=missing_value )
+
+    id_taus = &
+   register_diag_field ( mod_name, 'taus', axes(1:3), Time,        &
+                  'saturation flux for topo wave drag', 'kg/m/s2', &
+                     missing_value=missing_value               )
+
+ endif
+
+
 
 !-----------------------------------------------------------------------
 
@@ -331,6 +496,8 @@ endif
  subroutine damping_driver_end
 
      if (do_mg_drag) call mg_drag_end
+     if (do_cg_drag)   call cg_drag_end
+     if (do_topo_drag) call topo_drag_end
 
  end subroutine damping_driver_end
 
@@ -364,7 +531,7 @@ endif
    if (do_conserve_energy) then
        do k = 1, nlev_rayfric
           tdt(:,:,k) = -((u(:,:,k)+.5*dt*udt(:,:,k))*udt(:,:,k) +  &
-                         (v(:,:,k)+.5*dt*vdt(:,:,k))*vdt(:,:,k)) / cp
+                         (v(:,:,k)+.5*dt*vdt(:,:,k))*vdt(:,:,k)) / cp_air
        enddo
        do k = nlev_rayfric+1, size(u,3)
           tdt(:,:,k) = 0.0

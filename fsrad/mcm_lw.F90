@@ -603,11 +603,6 @@
             dfx(i,k) = dqx(i,k,0)
 18    continue 
 
-!  TK debug diagnostics:
-      if (jrow_flag .eq. 27) then
-          dum1 = float(jrow_flag)
-      end if
-
 ! ----------------------------------------------------------------------
 !  compute actual fluxes from cloud distribution
 ! ----------------------------------------------------------------------
@@ -1004,11 +999,6 @@
           expzs(i,lb) = exp(c2 / temp_kelvin(i,0) * v(lb)) - 1.0
    52 continue
 
-!  TK debug diagnostics:
-      if (jrow_flag .eq. 27) then
-          dum1 = float(jrow_flag)
-      end if
-
       do 54 lb=1,nb
         bc = c1 * vcube(lb) * dv(lb)
         do 54 i=1,ix
@@ -1192,24 +1182,55 @@
               ulog(i,k) = ulog(i,k) + 2.70668
  2030     continue
 
-          if (l .eq. kx-1) then
-            i = 0
-            ulog(i,kx) = 2.70668
-            plog(i,kx) = 0.0
-            teff(i,kx) = 0.0
-            len = ix + 1
-          else
-            i = 1
-            len = ix * (kx - l)
-          endif
+!   ------ ORIGINAL CODE ------------------------
+!          if (l .eq. kx-1) then
+!            i = 0
+!            ulog(i,kx) = 2.70668
+!            plog(i,kx) = 0.0
+!            teff(i,kx) = 0.0
+!            len = ix + 1
+!          else
+!            i = 1
+!            len = ix * (kx - l)
+!          endif
 
 ! ****** call lwco2 to compute tcof values
 
-          call lwco2(ulog(i,l+1),  plog(i,l+1), teff(i,l+1), len, tcof(i,l+1))
+!          call lwco2(ulog(i,l+1),  plog(i,l+1), teff(i,l+1), len, tcof(i,l+1))
 
 ! ****** compute co2 contribution to diagonal elements of trans matrix
 
-          if (l .eq. kx-1) diag = tcof(i,kx) * diag
+!          if (l .eq. kx-1) diag = tcof(i,kx) * diag
+!  ---------END OF ORIGINAL CODE -----------------------
+!  ---------BEGIN TK MODIFICATIONS
+
+          if (l .eq. kx-1) then
+            i = ix
+            ulog(i,kx-1) = 2.70668
+            plog(i,kx-1) = 0.0
+            teff(i,kx-1) = 0.0
+            len = ix + 1
+
+! ******    call lwco2 to compute tcof values
+
+            call lwco2(ulog(i,kx-1),  plog(i,kx-1), teff(i,kx-1), &
+                       len, tcof(i,kx-1))
+
+! ******    compute co2 contribution to diagonal elements of trans matrix
+
+            diag = tcof(i,kx-1) * diag
+
+           else
+             i = 1
+             len = ix * (kx - l)
+
+! ******    call lwco2 to compute tcof values
+
+            call lwco2(ulog(i,l+1),  plog(i,l+1), teff(i,l+1), &
+                       len, tcof(i,l+1))
+          endif
+
+!  -----------END OF TK MODIFICATIONS -------------------
 
 ! ****** accumulate co2 tcof into trans (lower triangular half)
 
@@ -1500,9 +1521,6 @@
               trans(i,k,kq) = tcof(i,k) * trans(i,k,kq)
  3800     continue
  
-!         TK bogus statement for tracking:
-          xdum = lw_abs_quarter(1,1,2)
-
 ! ****** total quarter-layer absorption
  
  3900     do 4000 k=0,kx

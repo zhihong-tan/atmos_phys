@@ -34,8 +34,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 1.2 2002/07/16 22:34:48 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: havana $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 1.3 2003/04/09 20:59:10 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 
@@ -131,7 +131,7 @@ subroutine donner_deep_clouds_calc (             &
 
 integer, intent(in) :: is,ie,js,je
 real, dimension(:,:,:), intent(in) :: deltaz, press, temp
-type(cld_diagnostics_type), intent(out) :: Cld_diagnostics
+type(cld_diagnostics_type), intent(inout) :: Cld_diagnostics
 real, dimension(:,:,:), intent(inout) :: cld_cell, cld_meso
 real, dimension(:,:,:,:), intent(out) :: cldext_cell, cldsct_cell,  &
                                          cldasymm_cell, abscoeff_cell
@@ -164,7 +164,8 @@ if (Environment%running_gcm) then
 
 
 !     call donner_deep_avg(  iabs(ISRAD), jabs(JSRAD),               &
-      call donner_deep_avg(  is, js,               &
+!     call donner_deep_avg(  is, js,               &
+      call donner_deep_avg(  is, ie, js, je,           &
                              cell_cloud_frac_out  = cld_cell,        &
                              cell_liquid_amt_out  = cell_liquid_amt, &
                              cell_liquid_size_out = cell_liquid_size,&

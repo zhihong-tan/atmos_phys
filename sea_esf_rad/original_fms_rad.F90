@@ -47,10 +47,6 @@ use   radiation_diag_mod, only: radiation_diag_init, radiation_diag_end
 
 use  longwave_fluxes_mod, only: longwave_fluxes_init
 
-use    constants_new_mod, only: constants_new_init, &
-                                pstd_mks, sigmasb,  &
-                                rgas, grav, wtmair
-
 use  longwave_params_mod, only: longwave_params_init
 
 use    rad_utilities_mod, only: rad_utilities_init, &
@@ -88,8 +84,8 @@ public    original_fms_rad_init, original_fms_rad_end, original_fms_rad
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: original_fms_rad.F90,v 1.2 2002/07/16 22:36:19 fms Exp $'
-character(len=128) :: tag = '$Name: havana $'
+character(len=128) :: version = '$Id: original_fms_rad.F90,v 1.3 2003/04/09 21:00:56 fms Exp $'
+character(len=128) :: tag = '$Name: inchon $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)
@@ -457,7 +453,7 @@ type(atmos_input_type), intent(in) :: Atmos_input
 type(astronomy_type), intent(in) :: Astro        
 type(radiative_gases_type), intent(in) :: Rad_gases
 type(cldrad_properties_type), intent(in) :: Cldrad_props
-type(fsrad_output_type), intent(out)  :: fsrad_output
+type(fsrad_output_type), intent(inout)  :: fsrad_output
 real, dimension(:,:,:), intent(in), optional :: mask
 integer, dimension(:,:), intent(in), optional  :: kbot
 !--------------------------------------------------------------------
@@ -511,9 +507,9 @@ integer, dimension(:,:), intent(in), optional  :: kbot
 !23             lat ,lon ,land, asfc, cosz, fracday, solar, &
                  psfc, tsfc
 !     real, dimension(ie-is+1, je-js+1, kerad  ) :: &
-      real, dimension(ie-is+1, je-js+1, size(Atmos_input%press,3)  ) :: &
-                              cloud_water, cloud_ice, deltaz, qo3_in, &
-                        qo3_out          
+!     real, dimension(ie-is+1, je-js+1, size(Atmos_input%press,3)  ) :: &
+!                             cloud_water, cloud_ice, deltaz, qo3_in, &
+!                       qo3_out          
 
       integer :: ierad, jerad, kerad
       real :: rvco2
@@ -537,10 +533,10 @@ integer, dimension(:,:), intent(in), optional  :: kbot
                tsfc  = Atmos_input%tsfc 
                pflux = Atmos_input%pflux
                tflux = Atmos_input%tflux
-               deltaz = Atmos_input%deltaz
+!              deltaz = Atmos_input%deltaz
                land  = Atmos_input%land 
-               cloud_water = Atmos_input%cloud_water
-               cloud_ice = Atmos_input%cloud_ice
+!              cloud_water = Atmos_input%cloud_water
+!              cloud_ice = Atmos_input%cloud_ice
 
 !-------------------------------------------------------------------
 !    make mods necessary for use with original fms radiation code:
@@ -572,6 +568,16 @@ integer, dimension(:,:), intent(in), optional  :: kbot
         allocate (Fsrad_output%swin     ( ierad, jerad       ) )
         allocate (Fsrad_output%swout    ( ierad, jerad       ) )
         allocate (Fsrad_output%olr      ( ierad, jerad       ) )
+
+        Fsrad_output%tdtsw   = 0.
+        Fsrad_output%tdtlw  = 0.
+        Fsrad_output%swdns   = 0.
+        Fsrad_output%swups  = 0.
+        Fsrad_output%lwdns   = 0.
+        Fsrad_output%lwups   = 0.
+        Fsrad_output%swin     = 0.
+        Fsrad_output%swout  = 0.
+        Fsrad_output%olr     = 0.
      if (do_clear_sky_pass) then
         allocate (Fsrad_output%tdtsw_clr( ierad, jerad, kerad) )
         allocate (Fsrad_output%tdtlw_clr( ierad, jerad, kerad) )
@@ -582,6 +588,16 @@ integer, dimension(:,:), intent(in), optional  :: kbot
         allocate (Fsrad_output%swin_clr ( ierad, jerad       ) )
         allocate (Fsrad_output%swout_clr( ierad, jerad       ) )
         allocate (Fsrad_output%olr_clr  ( ierad, jerad       ) )
+
+        Fsrad_output%tdtsw_clr = 0.
+        Fsrad_output%tdtlw_clr =0.
+        Fsrad_output%swdns_clr = 0.
+        Fsrad_output%swups_clr = 0.
+        Fsrad_output%lwdns_clr = 0.
+        Fsrad_output%lwups_clr = 0.
+        Fsrad_output%swin_clr  = 0.
+        Fsrad_output%swout_clr = 0.
+        Fsrad_output%olr_clr   = 0.
      endif
 
 !----------------------------------------------------------------------

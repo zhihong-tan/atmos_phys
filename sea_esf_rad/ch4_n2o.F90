@@ -7,7 +7,7 @@ use  utilities_mod,     only:  open_file, file_exist,    &
 			       print_version_number, FATAL, NOTE, &
 			       close_file, get_my_pe, read_data, &
 			       write_data
-use  constants_new_mod, only:  wtmair
+!use  constants_mod, only:  wtmair
 use lw_gases_stdtf_mod, only:  ch4_lblinterp, n2o_lblinterp
 
 !--------------------------------------------------------------------
@@ -26,8 +26,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-         character(len=128)  :: version =  '$Id: ch4_n2o.F90,v 1.3 2002/07/16 22:34:24 fms Exp $'
-         character(len=128)  :: tag     =  '$Name: havana $'
+         character(len=128)  :: version =  '$Id: ch4_n2o.F90,v 1.4 2003/04/09 20:58:50 fms Exp $'
+         character(len=128)  :: tag     =  '$Name: inchon $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -539,8 +539,8 @@ subroutine ch4_n2o_init
 !--------------------------------------------------------------------
 !  define ch4, n2o mixing ratio conversion factors.
 !--------------------------------------------------------------------
-      rch4air = wtmch4/wtmair
-      rn2oair = wtmn2o/wtmair
+!     rch4air = wtmch4/wtmair
+!     rn2oair = wtmn2o/wtmair
 
 end subroutine ch4_n2o_init
 

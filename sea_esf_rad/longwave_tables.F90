@@ -40,8 +40,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: longwave_tables.F90,v 1.3 2002/07/16 22:35:48 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: havana $'
+   character(len=128)  :: version =  '$Id: longwave_tables.F90,v 1.4 2003/04/09 21:00:19 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: inchon $'
 
 !---------------------------------------------------------------------
 !------    interfaces   ------
@@ -212,10 +212,10 @@ contains
 subroutine longwave_tables_init (Lw_tables, tabsr,   &
                     tab1, tab2, tab3, tab1w, tab1a, tab2a, tab3a)
 
-type(lw_table_type), intent(out) :: Lw_tables
-type(longwave_tables3_type), intent(out) :: tabsr
-type (longwave_tables1_type), intent(out)  :: tab1, tab2, tab3, tab1w
-type (longwave_tables2_type), intent(out) :: tab1a, tab2a, tab3a
+type(lw_table_type), intent(inout) :: Lw_tables
+type(longwave_tables3_type), intent(inout) :: tabsr
+type (longwave_tables1_type), intent(inout)  :: tab1, tab2, tab3, tab1w
+type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 
 !-----------------------------------------------------------------------
     integer              :: k4, n4
@@ -719,9 +719,9 @@ end subroutine id2h2o
 
 subroutine table  (tabsr, tab1, tab2, tab3, tab1w, tab1a, tab2a, tab3a)
 
-type(longwave_tables3_type), intent(out) :: tabsr
-type (longwave_tables1_type), intent(out)   :: tab1, tab2, tab3, tab1w
-type (longwave_tables2_type), intent(out)   :: tab1a, tab2a, tab3a
+type(longwave_tables3_type), intent(inout) :: tabsr
+type (longwave_tables1_type), intent(inout)   :: tab1, tab2, tab3, tab1w
+type (longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 
 !---------------------------------------------------------------------
 !     table computes table entries used in longwave radiation.  

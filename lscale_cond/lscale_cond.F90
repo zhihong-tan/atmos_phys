@@ -6,7 +6,7 @@ use      utilities_mod, only:  file_exist, error_mesg, open_file,  &
                                check_nml_error, get_my_pe, FATAL,  &
                                close_file
 use sat_vapor_pres_mod, only:  escomp, descomp
-use      constants_mod, only:  HLv,HLs,Cp,Grav,rdgas,rvgas
+use      constants_mod, only:  HLv,HLs,Cp_Air,Grav,rdgas,rvgas
 
 implicit none
 private
@@ -18,8 +18,8 @@ private
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
- character(len=128) :: version = '$Id: lscale_cond.F90,v 1.2 2000/07/28 20:16:39 fms Exp $'
- character(len=128) :: tag = '$Name: havana $'
+ character(len=128) :: version = '$Id: lscale_cond.F90,v 1.3 2003/04/09 20:56:24 fms Exp $'
+ character(len=128) :: tag = '$Name: inchon $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----
@@ -108,9 +108,9 @@ integer  k, kx
 
 !----- compute proper latent heat --------------------------------------
       WHERE (coldT)
-           hlcp = HLs/Cp
+           hlcp = HLs/Cp_Air
       ELSEWHERE
-           hlcp = HLv/Cp
+           hlcp = HLv/Cp_Air
       END WHERE
 
 !----- saturation vapor pressure (esat) & specific humidity (qsat) -----

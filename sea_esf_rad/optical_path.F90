@@ -9,6 +9,7 @@ use  utilities_mod,         only: open_file, file_exist,    &
 				  WARNING, get_my_pe, close_file
 use rad_utilities_mod,      only: looktab, longwave_tables3_type, &
 				  radiative_gases_type, &
+                                  aerosol_type, &
 				  atmos_input_type, &
 				  Environment_type, Environment, &
 			                       Lw_parameters, &
@@ -24,14 +25,9 @@ use lw_gases_stdtf_mod,     only:                    cfc_exact,&
 				  cfc_overod, cfc_overod_part,   &
 !			  cfc_exact_part, cfc_dealloc
 				  cfc_exact_part
-use constants_new_mod,      only: wtmair, avogno, wtmh2o, grav,    &
-				  rgas, pstd, diffac, rh2oair
-!use longwave_aerosol_mod,   only: aertau, longwave_aerosol_dealloc, &
-use longwave_aerosol_mod,   only: aertau, &
-                                  longwave_aerosol_init
-!                                 get_totaerooptdep,   &
-!		          get_totaerooptdep_15,   &
-!			  get_aerooptdep_KE_15
+use constants_mod,          only: RDGAS, RVGAS, GRAV, wtmair, avogno, pstd, diffac
+use longwave_aerosol_mod,   only:  longwave_aerosol_init, &
+                                  optical_depth_aerosol
 !use gas_tf_mod,             only: get_gastf_for_optpath
 
 !--------------------------------------------------------------------
@@ -49,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: optical_path.F90,v 1.3 2002/07/16 22:36:15 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: havana $'
+   character(len=128)  :: version =  '$Id: optical_path.F90,v 1.4 2003/04/09 21:00:51 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 !---------------------------------------------------------------------
@@ -302,6 +298,7 @@ integer   :: NBTRG, NBTRGE
      &   0.119546E-01, -0.343610E-04/
 
 
+real        :: d622 = RDGAS/RVGAS
 
 contains
 
@@ -310,10 +307,11 @@ contains
 
 
 !subroutine optical_path_init
-subroutine optical_path_init (kmax, latb)
+!subroutine optical_path_init (kmax, latb)
+subroutine optical_path_init 
 
-integer, intent(in) :: kmax
-real, dimension(:), intent(in) :: latb
+!integer, intent(in) :: kmax
+!real, dimension(:), intent(in) :: latb
 
 !--------------------------------------------------------------------
        real, dimension (NBLW)  :: dummy
@@ -382,7 +380,8 @@ real, dimension(:), intent(in) :: latb
       call close_file (inrad)
 
 !---------------------------------------------------------------------
-      call longwave_aerosol_init (kmax, latb)
+!     call longwave_aerosol_init (kmax, latb)
+      call longwave_aerosol_init               
 
       if (Lw_control%do_ckd2p1 ) then
         awide = awide_c
@@ -453,13 +452,12 @@ end subroutine optical_path_init
 
 !###################################################################
 
-!subroutine optical_path_setup (is, ie, js, je, kx, Atmos_input, &
 subroutine optical_path_setup (is, ie, js, je,  Atmos_input, &
-                                Rad_gases, Optical) 
+                                Rad_gases, Aerosol, Optical) 
 
-!integer, intent(in) ::  is, ie, js, je, kx
 integer, intent(in) ::  is, ie, js, je
 type(radiative_gases_type), intent(in) :: Rad_gases
+type(aerosol_type), intent(in) :: Aerosol      
 type(atmos_input_type), intent(in) :: Atmos_input
 type(optical_path_type), intent(inout) :: Optical     
 
@@ -473,6 +471,9 @@ real, dimension (size(Atmos_input%press,1), size(Atmos_input%press,2), &
 
 real, dimension (size(Atmos_input%press,1), size(Atmos_input%press,2), &
                   size(Atmos_input%press,3)-1 )  ::  rh2o, deltaz
+
+
+  integer                  :: N_AEROSOL_BANDS
 
      ix = ie -is + 1
      jx = je -js +1
@@ -508,13 +509,22 @@ real, dimension (size(Atmos_input%press,1), size(Atmos_input%press,2), &
        allocate (Optical%avephif   (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1, NBTRGE) )
      endif
 !---------------------------------------------------------------------
+     Optical%wk      = 0.                                      
+     Optical%rh2os   = 0.                                      
+     Optical%rfrgn   = 0.                                       
+     Optical%tfac    = 0.                                       
+     Optical%avephi   = 0.
+
+     if (Lw_control%do_ch4_n2o) then
+       Optical%avephif   = 0.
+     endif
  
 !----------------------------------------------------------------------
 !     define the layer-mean pressure in atmospheres (vv) and the layer 
 !     density (atmden). 
 !----------------------------------------------------------------------
      do k=KS,KE
-       atmden(:,:,k) = (pflux(:,:,k+1) - pflux(:,:,k))/grav
+       atmden(:,:,k) = (pflux(:,:,k+1) - pflux(:,:,k))/(1.0E+02*GRAV)
        vv(:,:,k)     = 0.5E+00*(pflux(:,:,k+1) + pflux(:,:,k)  )/pstd
      enddo
 
@@ -549,11 +559,35 @@ real, dimension (size(Atmos_input%press,1), size(Atmos_input%press,2), &
 !     becomes available,  aeralb, aerext and aerconc will be additional 
 !     arguments going to aertau.
 !---------------------------------------------------------------------
+
      if (Lw_control%do_lwaerosol) then
-       call aertau (ix, jx, kx, js, deltaz, Optical) 
-     endif
+
+    N_AEROSOL_BANDS = Lw_parameters%n_lwaerosol_bands
+!---------------------------------------------------------------------
+! allocate space for and then retrieve the aerosol mixing ratios and
+! aerosol optical properties from the aerosol module.
+!--------------------------------------------------------------------
+  allocate (Optical%totaerooptdep (ix,jx,kx+1, N_AEROSOL_BANDS))
+  allocate (Optical%aerooptdep_KE_15 (ix, jx ) )
+  Optical%totaerooptdep = 0.                              
+  Optical%aerooptdep_KE_15 = 0.           
+
+ do n = 1,N_AEROSOL_BANDS  !  loop on aerosol frequency bands
+!-------------------------------------------------------------------
+! for each aerosol frequency band, retrieve aerosol optical properties
+! for each aerosol category. then call optical_depth_aerosol to compute 
+! for aerosol optical depth, (output in longwave_aerosol module)
+!-------------------------------------------------------------------
+ 
+    call optical_depth_aerosol (Atmos_input, n, Aerosol%nfields,   &
+                                Aerosol,                   Optical)
+
+   enddo
+
 !---------------------------------------------------------------------
        
+  endif
+
 
 end subroutine  optical_path_setup
 
@@ -575,8 +609,9 @@ type(gas_tf_type), intent(inout) :: Gas_tf
                  size(to3cnt,3)) ::   &
                                               tmp1, tmp2, tmp3,   &
 					              totch2o_tmp,  &
-					      totaer_tmp, tn2o17,  &
-					      totaerooptdep_15
+					      totaer_tmp, tn2o17
+!				      totaer_tmp, tn2o17,  &
+!				      totaerooptdep_15
 
    real, dimension (size(to3cnt,1), size(to3cnt,2), &
                  size(to3cnt,3)-1) :: cfc_tf
@@ -604,7 +639,8 @@ type(gas_tf_type), intent(inout) :: Gas_tf
 
       if (Lw_control%do_lwaerosol) then
 !	call get_totaerooptdep(6, Optical, totaer_tmp)
-	totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,6)
+!	call get_totaerooptdep(6,  totaer_tmp)
+        totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,6)
 	tmp2(:,:,KS:KE) = tmp2(:,:,KS:KE) +    &
                           totaer_tmp   (:,:,KS+1:KE+1)
       endif
@@ -642,9 +678,11 @@ type(gas_tf_type), intent(inout) :: Gas_tf
 !--------------------------------------------------------------------
       if (Lw_control%do_lwaerosol) then
 !	call get_totaerooptdep_15 (Optical, totaerooptdep_15)
-	totaerooptdep_15(:,:,:) = Optical%totaerooptdep_15(:,:,:)
+!	call get_totaerooptdep(9,  totaer_tmp)
+!totaerooptdep_15(:,:,:) = Optical%totaerooptdep_15(:,:,:)
+ totaer_tmp      (:,:,:) = Optical%totaerooptdep   (:,:,:, 9)
 	tmp1(:,:,KS:KE) = tmp1(:,:,KS:KE) +    &
-                          totaerooptdep_15(:,:,KS+1:KE+1)
+                          totaer_tmp      (:,:,KS+1:KE+1)
       endif
  
 !----------------------------------------------------------------------
@@ -708,15 +746,18 @@ type(gas_tf_type), intent(inout) :: Gas_tf
 
       if (Lw_control%do_lwaerosol) then
 !	call get_totaerooptdep(4, Optical, totaer_tmp)
-	totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,4)
+!	call get_totaerooptdep(4,  totaer_tmp)
+        totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,4)
 	tmp1(:,:,KS:KE) =  tmp1(:,:,KS:KE) +    &
                            totaer_tmp   (:,:,KS+1:KE+1  )
 !	call get_totaerooptdep(5, Optical, totaer_tmp)
-	totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,5)
+!	call get_totaerooptdep(5,          totaer_tmp)
+        totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,5)
 	tmp2(:,:,KS:KE) =  tmp2(:,:,KS:KE) +    &
                            totaer_tmp   (:,:,KS+1:KE+1)
 !	call get_totaerooptdep(7, Optical, totaer_tmp)
-	totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,7)
+!	call get_totaerooptdep(7,          totaer_tmp)
+         totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,7)
 	tmp3(:,:,KS:KE) =  tmp3(:,:,KS:KE) +    &
                            totaer_tmp   (:,:,KS+1:KE+1)
       endif
@@ -808,8 +849,9 @@ type(gas_tf_type), intent(inout) :: Gas_tf
 					        tmp2,         avvo2,  &
 					        avckdwd, avckdo3, &
 	                                        avaero3, totch2o_tmp,  &
-					        totaer_tmp, tn2o17, &
-	                      		        totaerooptdep_15
+					        totaer_tmp, tn2o17
+!				        totaer_tmp, tn2o17, &
+!                      		        totaerooptdep_15
 
    real, dimension (size(to3cnt,1), size(to3cnt,2), &
                  size(to3cnt,3)-1) :: cfc_tf
@@ -824,7 +866,8 @@ type(gas_tf_type), intent(inout) :: Gas_tf
        endif
        if (Lw_control%do_lwaerosol) then
 !         call get_totaerooptdep(6, Optical, totaer_tmp)
-	totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,6)
+!         call get_totaerooptdep(6,  totaer_tmp)
+          totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,6)
        endif
 
        do kp=1,KE+1-k
@@ -891,11 +934,15 @@ type(gas_tf_type), intent(inout) :: Gas_tf
 !-------------------------------------------------------------------
        if (Lw_control%do_lwaerosol) then
 !	 call get_totaerooptdep_15 (Optical, totaerooptdep_15)
-	totaerooptdep_15(:,:,:) = Optical%totaerooptdep_15(:,:,:)
+!         call get_totaerooptdep(9,  totaer_tmp)
+!         totaerooptdep_15(:,:,:) = Optical%totaerooptdep_15(:,:,:)
+          totaer_tmp      (:,:,:) = Optical%totaerooptdep   (:,:,:,9)
 	 do kp=k,KE
 	   tmp1(:,:,kp) = tmp1(:,:,kp) +    &
-                          (totaerooptdep_15(:,:,kp+1) -   &
-                           totaerooptdep_15(:,:,k) )
+!                         (totaerooptdep_15(:,:,kp+1) -   &
+!                          totaerooptdep_15(:,:,k) )
+                          (totaer_tmp      (:,:,kp+1) -   &
+                           totaer_tmp      (:,:,k) )
 	 end do
        endif
 
@@ -1002,7 +1049,7 @@ type(gas_tf_type), intent(inout) :: Gas_tf
 
    real, dimension (size(to3cnt,1), size(to3cnt,2), &
                  size(to3cnt,3)-1) ::    &
-                                          cfc_tf
+                                          cfc_tf, aer_tmp
 
    real, dimension (size(to3cnt,1), size(to3cnt,2)) :: &
                                              aerooptdep_KE_15
@@ -1032,8 +1079,10 @@ type(gas_tf_type), intent(inout) :: Gas_tf
 !---------------------------------------------------------------------
       if (Lw_control%do_lwaerosol) then
 !       call get_aerooptdep_KE_15 (Optical, aerooptdep_KE_15)
- 	aerooptdep_KE_15(:,:) = Optical%aerooptdep_KE_15(:,:)
-	tmp1(:,:,KE) = tmp1(:,:,KE) +     &
+!         call get_aerooptdep(9,  aer_tmp)
+         aerooptdep_KE_15(:,:) = Optical%aerooptdep_KE_15(:,:)
+         tmp1(:,:,KE) = tmp1(:,:,KE) +     &
+!                         aer_tmp(:,:,KE)
                           aerooptdep_KE_15(:,:)  
       endif
  
@@ -1663,11 +1712,14 @@ type(optical_path_type), intent(inout) :: Optical
       allocate (Optical%totch2obdwd(ISRAD:IERAD, JSRAD:JERAD,   KS:KE+1   ) )
       allocate (Optical%xch2obdwd  (ISRAD:IERAD, JSRAD:JERAD,   KS:KE     ) )
 
+      Optical%xch2obd  = 0.                                           
+      Optical%totch2obdwd = 0.                                        
+      Optical%xch2obdwd  = 0.      
 !--------------------------------------------------------------------
 !    define the volume mixing ratio of h2o
 !---------------------------------------------------------------------
 !      Optical%rvh2o(:,:,KS:KE) = rh2o(:,:,KS:KE)*wtmair/wtmh2o
-              rvh2o(:,:,KS:KE) = rh2o(:,:,KS:KE)*wtmair/wtmh2o
+       rvh2o(:,:,KS:KE) = rh2o(:,:,KS:KE)/d622
 
 !---------------------------------------------------------------------
 !    define input arguments to optical_ckd2p1
@@ -1786,6 +1838,10 @@ type(optical_path_type), intent(inout) :: Optical
       allocate (Optical%tphio3(ISRAD:IERAD, JSRAD:JERAD, KS:KE      +1))
       allocate (Optical%var3  (ISRAD:IERAD, JSRAD:JERAD, KS:KE        ))
       allocate (Optical%var4  (ISRAD:IERAD, JSRAD:JERAD, KS:KE        ))
+     Optical%toto3  = 0.
+     Optical%tphio3 = 0.
+     Optical%var3  = 0.
+     Optical%var4  = 0.                                        
 
 !-----------------------------------------------------------------------
 !     compute optical paths for o3, using the diffusivity 
@@ -1850,6 +1906,8 @@ type(optical_path_type), intent(inout) :: Optical
 
       allocate (Optical%cntval(ISRAD:IERAD, JSRAD:JERAD,   KS:KE+1     ))
       allocate (Optical%totvo2(ISRAD:IERAD, JSRAD:JERAD,   KS:KE+1     ))
+      Optical%cntval = 0.                                         
+      Optical%totvo2 = 0.                                        
 
 !----------------------------------------------------------------------
 !     compute argument for constant temperature coefficient (this is 
@@ -1869,7 +1927,7 @@ type(optical_path_type), intent(inout) :: Optical
 !---------------------------------------------------------------------  
       Optical%cntval(:,:,KS:KE) = texpsl(:,:,KS:KE)*rh2o(:,:,KS:KE)*   &
                           Optical%var2(:,:,KS:KE)/(rh2o(:,:,KS:KE) +  &
-                          rh2oair)
+                          d622   )
 
 !----------------------------------------------------------------------
 !     compute summed optical paths for h2o roberts continuum.
@@ -1985,6 +2043,13 @@ type(optical_path_type), intent(inout) :: Optical
       allocate (Optical%var2   (ISRAD:IERAD, JSRAD:JERAD  , KS:KE         ))
       allocate (Optical%emx1   (ISRAD:IERAD, JSRAD:JERAD                  ))
       allocate (Optical%emx2   (ISRAD:IERAD, JSRAD:JERAD                  ))
+      Optical%empl1   = 0.
+      Optical%empl2  =0.
+      Optical%totphi  = 0.
+      Optical%var1   = 0.
+      Optical%var2   = 0.
+      Optical%emx1   = 0.
+      Optical%emx2   = 0.
 !----------------------------------------------------------------------
 !     compute optical paths for h2o, using the diffusivity 
 !     approximation 1.66 for the angular integration.  obtain 
@@ -2014,9 +2079,9 @@ type(optical_path_type), intent(inout) :: Optical
 !     and KE+1.
 !----------------------------------------------------------------------
       Optical%emx1(:,:) = qh2o(:,:,KE)*press(:,:,KE)*(press(:,:,KE) -   &
-                  pflux(:,:,KE))/(grav*pstd)
+                  pflux(:,:,KE))/(1.0E+02*GRAV*pstd)
       Optical%emx2(:,:) = qh2o(:,:,KE)*press(:,:,KE)*(pflux(:,:,KE+1) -  &
-                  press(:,:,KE))/(grav*pstd)
+                  press(:,:,KE))/(1.0E+02*GRAV*pstd)
 
 !----------------------------------------------------------------------
 !     empl is the pressure scaled mass from pflux(k) to press(k) or to 
@@ -2025,10 +2090,10 @@ type(optical_path_type), intent(inout) :: Optical
       Optical%empl1(:,:,KS) = Optical%var2(:,:,KE)
       Optical%empl1(:,:,KS+1:KE+1) =   &
                  qh2o(:,:,KS:KE)*pflux(:,:,KS+1:KE+1)*   &
-                 (pflux(:,:,KS+1:KE+1) - press(:,:,KS:KE))/(grav*pstd)
+                 (pflux(:,:,KS+1:KE+1) - press(:,:,KS:KE))/(1.0E+02*GRAV*pstd)
       Optical%empl2(:,:,KS+1:KE) =    &
                  qh2o(:,:,KS+1:KE)*pflux(:,:,KS+1:KE)*   &
-                 (press(:,:,KS+1:KE) - pflux(:,:,KS+1:KE))/(grav*pstd)
+                 (press(:,:,KS+1:KE) - pflux(:,:,KS+1:KE))/(1.0E+02*GRAV*pstd)
       Optical%empl2(:,:,KE+1) = Optical%empl2(:,:,KE) 
 
 !---------------------------------------------------------------------
@@ -2039,6 +2104,12 @@ type(optical_path_type), intent(inout) :: Optical
     allocate ( Optical%vrpfh2o(ISRAD:IERAD , JSRAD:JERAD , KS:KE+1,  NBTRGE ) )
     allocate ( Optical%emx1f  (ISRAD:IERAD , JSRAD:JERAD ,           NBTRGE ) )
     allocate ( Optical%emx2f  (ISRAD:IERAD , JSRAD:JERAD ,           NBTRGE ) )
+     Optical%empl1f  = 0.
+     Optical%empl2f  = 0.
+     Optical%tphfh2o  = 0.
+     Optical%vrpfh2o = 0.
+     Optical%emx1f   = 0.
+    Optical%emx2f  = 0.                                              
 
 !----------------------------------------------------------------------
 !   compute h2o optical paths for use in the 1200-1400 cm-1 range if
@@ -2138,6 +2209,10 @@ type(optical_path_type), intent(inout) :: Optical
                          size(density,3) ) )
       allocate ( Optical%totf22 (size(density,1), size(density,2),    &
                          size(density,3) ) )
+       Optical%totf11  = 0.
+      Optical%totf12  = 0.
+      Optical%totf113 = 0.
+       Optical%totf22 = 0.
  
       kx = size(density,3)
 

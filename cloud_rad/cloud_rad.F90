@@ -199,22 +199,30 @@ MODULE CLOUD_RAD_MOD
 !       the diag_table. 
 !
 !
-!       adjust_isccp_top_height
+!       top_height
 !
-!                      logical variable indicating whether 
+!                      integer variable indicating whether 
 !                      or not to simulate 10.5 micron brightness
 !                      temperatures to adjust top heights according
 !                      to the emissivity of the cloud. 
 !                     
-!                      If TRUE:
-!
-!                      then infrared brightness temperature are 
-!                      computed and cloud top pressures are adjusted 
-!                      
-!                      If FALSE:
+!                      1 = adjust top height using both a computed
+!                          infrared brightness temperature and the 
+!                          visible optical depth to adjust cloud top 
+!                          pressure. Note that this calculation is 
+!                          most appropriate to compare to ISCCP data 
+!                          during sunlit hours.
+!                                   
+!                      2 = do not adjust top height, that is cloud top
+!                          pressure is the actual cloud top pressure
+!                          in the model
 !                
-!                      reported cloud top pressures is the actual cloud 
-!                      top pressure in the model
+!                      3 = adjust top height using only the computed
+!                          infrared brightness temperature. Note that 
+!                          this calculation is most appropriate to 
+!                          compare to ISCCP IR only algortihm (i.e. 
+!                          you can compare to nighttime ISCCP data 
+!                          with this option)
 !
 !       ncol           number of columns used in ISCCP cloud type
 !                      simulations
@@ -223,6 +231,9 @@ MODULE CLOUD_RAD_MOD
 !
 !       emsfclw        assumed constant of longwave emissivity of
 !                      the surface (fraction)
+!
+!       do_sunlit      should ISCCP diagnostics be done during sunlit
+!                      hours only?
 !
 !
 !                  PHYSICAL CONSTANTS USED IN THE SCHEME
@@ -250,6 +261,7 @@ REAL,    PRIVATE, PARAMETER :: k_land = 1.143
 REAL,    PRIVATE, PARAMETER :: k_ocean = 1.077
 LOGICAL, PRIVATE            :: do_tau_reff = .FALSE.
 LOGICAL, PRIVATE            :: do_isccp = .FALSE.
+LOGICAL, PRIVATE            :: do_sunlit = .FALSE.
 
 INTEGER, PRIVATE            :: overlap = 1
 LOGICAL, PRIVATE            :: l2strem = .FALSE.
@@ -257,11 +269,10 @@ REAL,    PRIVATE            :: taucrit = 1.
 LOGICAL, PRIVATE            :: adjust_top = .TRUE.
 REAL,    PRIVATE            :: scale_factor = 0.8
 REAL,    PRIVATE            :: qamin = 1.E-2
-LOGICAL, PRIVATE            :: adjust_isccp_top_height = .TRUE.
+INTEGER, PRIVATE            :: top_height = 1
 INTEGER, PRIVATE            :: ncol = 50
-REAL,    PRIVATE            :: isccp_taumin = 0.1
+REAL,    PRIVATE            :: isccp_taumin = 0.3
 REAL,    PRIVATE            :: emsfclw = 0.94
-
 
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -270,9 +281,8 @@ REAL,    PRIVATE            :: emsfclw = 0.94
 !
 
         NAMELIST /CLOUD_RAD_NML/ overlap,l2strem,taucrit,adjust_top, &
-                                 scale_factor,qamin,&
-                                 adjust_isccp_top_height,&
-                                 ncol, isccp_taumin, emsfclw
+                                 scale_factor,qamin,top_height,ncol, &
+				 isccp_taumin, emsfclw, do_sunlit
 
 !-----------------------------------------------------------------------
 !-------------------- diagnostics fields -------------------------------
@@ -302,8 +312,8 @@ character(len=5) :: mod_name = 'cloud'
 !       DECLARE VERSION NUMBER OF SCHEME
 !
         
-        character(len=128) :: version = '$Id: cloud_rad.F90,v 1.6 2001/07/05 17:18:16 fms Exp $'
-        character(len=128) :: tag = '$Name: havana $'
+        character(len=128) :: version = '$Id: cloud_rad.F90,v 1.7 2003/04/09 20:53:41 fms Exp $'
+        character(len=128) :: tag = '$Name: inchon $'
 
 ! 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -611,7 +621,7 @@ INTEGER                                  :: unit,io,ierr
                       '800<pc    ;    60<tau       ', 'fraction' )
        id_nisccp = register_diag_field ( mod_name, &
                              'nisccp', axes(1:2), Time, &
-                      'frequency of sunlit times', 'fraction' )
+                   'frequency of ISCCP calculations', 'fraction' )
        
        !set do_isccp
        do_isccp = .false.
@@ -642,8 +652,7 @@ INTEGER                                  :: unit,io,ierr
        if (id_pc7tau1>0) do_isccp=.true.; if (id_pc7tau2>0) do_isccp=.true.
        if (id_pc7tau3>0) do_isccp=.true.; if (id_pc7tau4>0) do_isccp=.true.
        if (id_pc7tau5>0) do_isccp=.true.; if (id_pc7tau6>0) do_isccp=.true.
-       if (id_pc7tau7>0) do_isccp=.true.
-      
+       if (id_pc7tau7>0) do_isccp=.true.   
 
 !      TAU_REFF
 !      --------
@@ -827,6 +836,7 @@ REAL,     INTENT (INOUT),OPTIONAL,DIMENSION(:,:,:):: size_drop,size_ice
 
 INTEGER                                           :: i,j,k,IDIM,JDIM,KDIM,max_cld
 LOGICAL                                           :: rad_prop, wat_prop
+REAL, DIMENSION(:,:,:), allocatable               :: cldamt_diag
 REAL, DIMENSION(SIZE(ql,1),SIZE(ql,2),SIZE(ql,3)) :: qa_local,ql_local,qi_local
 REAL, DIMENSION(SIZE(ql,1),SIZE(ql,2))            :: N_drop, k_ratio
 REAL, DIMENSION(:,:,:), allocatable               :: r_uv_local, r_nir_local
@@ -925,8 +935,7 @@ LOGICAL                                           :: used
          DEALLOCATE(size_ice_local)
          
     end if
-     
-         
+    
     !do solution for old radiation code
     if (rad_prop) then
 
@@ -1029,6 +1038,7 @@ LOGICAL                                           :: used
          end if
         
          !initialize temporary variables
+         ALLOCATe(cldamt_diag(IDIM,JDIM,size(cldamt,3)))
          ALLOCATE(em_lw_local(IDIM,JDIM,KDIM))
          ALLOCATE(LWP(IDIM,JDIM,KDIM))
          ALLOCATE(IWP(IDIM,JDIM,KDIM))
@@ -1053,9 +1063,9 @@ LOGICAL                                           :: used
          
          call cloud_organize(ql_local,qi_local,qa_local,&
               pfull,phalf,TKel,coszen,N_drop,&
-              k_ratio,nclds,ktop,kbot,cldamt,&
+              k_ratio,nclds,ktop,kbot,cldamt_diag,&
               LWP=LWP,IWP=IWP,Reff_liq=Reff_liq,Reff_ice=Reff_ice)
-         
+             
          !find maximum number of clouds
          max_cld  = MAXVAL(nclds(:,:))
          
@@ -1090,26 +1100,34 @@ LOGICAL                                           :: used
               tau_local(:) = 0.
               em_local(:) = 0.
               do k = 1, nclds(i,j)
-                    cldamt_local(ktop(i,j,k):kbot(i,j,k)) = cldamt(i,j,k)                  
-                    tau_local(ktop(i,j,k):kbot(i,j,k)) = tau(i,j,k,1)/ &
-                                          real(kbot(i,j,k)-ktop(i,j,k)+1)
+                    cldamt_local(ktop(i,j,k):kbot(i,j,k)) = &
+		          cldamt_diag(i,j,k)                  
+                    tau_local(ktop(i,j,k):kbot(i,j,k)) =    &
+		          tau(i,j,k,1)/ real(kbot(i,j,k)-        &
+			  ktop(i,j,k)+1)
                     em_local(ktop(i,j,k):kbot(i,j,k)) = 1. - &
                          ( (1.-em_lw_local(i,j,k))** &
                            (1./real(kbot(i,j,k)-ktop(i,j,k)+1)) )
               enddo
 
-              if (coszen(i,j) .gt. 1.E-06) then
+              if (do_sunlit .and. coszen(i,j) .gt. 1.E-06) then
                     call ISCCP_CLOUDTYPES(pfull(i,j,:),phalf(i,j,:),&
                          qv(i,j,:),TKel(i,j,:),skt(i,j),cldamt_local(:),&
                          tau_local(:),em_local(:),fq_isccp(i,j,:,:))
-                    npoints(i,j) = 1.
+                    npoints(i,j) = 1.         		    
               end if
+	      
+	      if (.not. do_sunlit) then
+	            call ISCCP_CLOUDTYPES(pfull(i,j,:),phalf(i,j,:),&
+                         qv(i,j,:),TKel(i,j,:),skt(i,j),cldamt_local(:),&
+                         tau_local(:),em_local(:),fq_isccp(i,j,:,:))
+                    npoints(i,j) = 1.
+	      end if
 
          END DO
          END DO
          
          !5. netcdf diagnostics....
-         
          used = send_data ( id_pc1tau1, fq_isccp(:,:,1,1), Time, &
                            is, js )
          used = send_data ( id_pc1tau2, fq_isccp(:,:,2,1), Time, &
@@ -1223,11 +1241,12 @@ LOGICAL                                           :: used
          if (do_tau_reff) then
 
          call TAU_REFF_DIAG(is,js,Time,coszen,nclds,ktop,&
-             kbot,cldamt,TKel,phalf,tau(:,:,:,1),tau_ice(:,:,:,1),&
+             kbot,cldamt_diag,TKel,phalf,tau(:,:,:,1),tau_ice(:,:,:,1),&
              Reff_liq,Reff_ice)
          
          end if   !for do_tau_reff
         
+	 DEALLOCATE(cldamt_diag)
          DEALLOCATE(em_lw_local)
          DEALLOCATE(LWP)
          DEALLOCATE(IWP)
@@ -1239,7 +1258,7 @@ LOGICAL                                           :: used
          DEALLOCATE(gg)
          
     end if   !for do_isccp .or. do_tau_reff
-   
+
     
     
 END SUBROUTINE CLOUD_SUMMARY
@@ -2538,7 +2557,7 @@ SUBROUTINE ISCCP_CLOUDTYPES(pfull,phalf,qv,at,skt,cc,dtau_s,dem_s,&
 !                               of the clear part of the grid box
 !   
 !       The following input variables are used only if 
-!       adjust_isccp_top_height = .TRUE.
+!       top_height = 1 or top_height = 3
 !
 !       qv               water vapor specific humidity on model levels
 !                        (kg vapor / kg air)
@@ -2558,7 +2577,7 @@ SUBROUTINE ISCCP_CLOUDTYPES(pfull,phalf,qv,at,skt,cc,dtau_s,dem_s,&
 !                       top pressure range.  The matrix is 7x7 for
 !                       7 cloud optical depths and 7 cloud top 
 !                       pressure ranges
-!
+!	
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 !  User Interface variables
@@ -2592,11 +2611,12 @@ INTEGER, DIMENSION(ncol)            :: levmatch
 REAL,    DIMENSION(ncol)            :: tau,tb,ptop
 
 REAL,    DIMENSION(ncol,size(qv,1))  :: frac_out
-REAL,    DIMENSION(ncol,size(qv,1)+1):: tca
+REAL,    DIMENSION(ncol,0:size(qv,1)):: tca
 REAL,    DIMENSION(ncol)             :: threshold,maxosc,boxpos
 REAL,    DIMENSION(ncol)             :: threshold_min
 REAL                                 :: bb,dem
-INTEGER                              :: seed
+REAL                                 :: fluxtopinit,tauir,boxarea
+INTEGER                              :: seed,icycle
 
 !convective cloud stuff
 !REAL,    DIMENSION(ncol,size(qv,1))  :: cca
@@ -2615,15 +2635,15 @@ INTEGER                              :: seed
 !     find tropopause pressure and temperature min and max
 !
 !     The tropopause pressure is used only in the assignment
-!     of cloud top pressure in the case where the infrared bright-
-!     ness temperature is calculated (adjust_isccp_top_height = 
-!     .TRUE.). Cloud swho infrared brightness temperatures are 
-!     less than the tropopause temperature are assigned to a 
-!     cloud top pressure of the tropopause pressure (see 
-!     ISCCP documentation)
+!     of cloud top pressure in the case where the infrared 
+!     brightness temperature is calculated (top_height = 1 
+!     or 3). Cloud whose infrared brightness temperatures 
+!     are less than the tropopause temperature are assigned 
+!     to a cloud top pressure of the tropopause pressure 
+!     (see ISCCP documentation)
 !
 
-      if (adjust_isccp_top_height) then
+      if (top_height .eq. 1 .or. top_height .eq. 3) then
 
       ptrop=5000.
       atmin = 400.
@@ -2685,13 +2705,13 @@ INTEGER                              :: seed
       
       !assign 2d tca array using 1d input array cc
       !assign 2d cca array using 1d input array conv
-      tca(:,1) = 0.
+      tca(:,0) = 0.
       do ilev = 1,nlev
-             tca(:,ilev+1) = cc(ilev)
+             tca(:,ilev) = cc(ilev)
              !cca(:,ilev  ) = conv(ilev)
       enddo
             
-      seed = ncol
+      seed = (pfull(nlev)-int(pfull(nlev)))*100+1
       frac_out(:,:)=0.
 
       do ibox=1,ncol
@@ -2725,7 +2745,11 @@ INTEGER                              :: seed
            DO ibox=1,ncol
 
                    !All versions
-                   !maxocc(ibox)=(boxpos(ibox).le.cca(ibox,ilev))
+                   !if (boxpos(ibox).le.cca(ibox,ilev)) then
+                   !     maxocc(ibox) = 1
+                   !else
+                   !     maxocc(ibox) = 0
+                   !end if
 
                    !Max overlap
                    !      threshold_min(ibox)=cca(ibox,ilev)
@@ -2742,11 +2766,11 @@ INTEGER                              :: seed
                    if (overlap .eq. 1) then
                      
                          threshold_min(ibox)= &
-                               min(tca(ibox,ilev),tca(ibox,ilev+1))
+                               min(tca(ibox,ilev-1),tca(ibox,ilev))
                               !max(cca(ibox,ilev), &
-                              !min(tca(ibox,ilev),tca(ibox,ilev+1)))
+                              !min(tca(ibox,ilev-1),tca(ibox,ilev)))
                          if (threshold(ibox).lt.  &
-                               min(tca(ibox,ilev),tca(ibox,ilev+1))) then
+                               min(tca(ibox,ilev-1),tca(ibox,ilev))) then
                               !.and.(threshold(ibox).gt.cca(ibox,ilev))          
                                maxosc(ibox)=1.
                          else
@@ -2788,26 +2812,25 @@ INTEGER                              :: seed
 
 
            !Fill frac_out with 1's where tca is greater than the threshold
-           WHERE(tca(:,ilev+1).gt.threshold(:))
+           WHERE(tca(:,ilev).gt.threshold(:))
                  frac_out(:,ilev)=1
            ENDWHERE
-
+	   
            !Code to partition boxes into startiform and convective parts
            !goes here
            !
            !DO ibox=1,ncol
-           !    frac_out(ibox,ilev)=
+           !    if (threshold(ibox).le.cca(ibox,ilev)) then
+           !    ! = 2 IF threshold le cca(ibox)
+           !        frac_out(ibox,ilev) = 2 
+           !    else
            !    ! = the same IF NOT threshold le cca(ibox) 
-           !         frac_out(ibox,ilev) + 
-           !     ! = 2 IF threshold le cca(ibox)
-           !        (threshold(ibox).le.cca(ibox,ilev)) 
-           !      * ( 2 - frac_out(ibox,ilev) ) 
+           !        frac_out(ibox,ilev) = frac_out(ibox,ilev)
+           !    end if
            !ENDDO
 
       enddo      !loop over levels
-
-
-
+	  
 !     ---------------------------------------------------!
 
       
@@ -2821,11 +2844,18 @@ INTEGER                              :: seed
       do ilev=1,nlev
             tau(:)=tau(:)+ &
                  real(frac_out(:,ilev))*dtau_s(ilev)
-                 !(frac_out(:,ilev).eq.1)*dtau_s(ilev)+
-                 !(frac_out(:,ilev).eq.2)*dtau_c(ilev)
+                 !if (frac_out(ibox,ilev).eq.1) then
+                 !       dtautmp(ibox)= dtau_s(ilev)
+                 !else if (frac_out(ibox,ilev).eq.2) then
+                 !       dtautmp(ibox)= dtau_c(ilev)
+                 !else
+                 !       dtautmp(ibox)= 0.
+                 !end if
+		 !tau(ibox)=tau(ibox)+dtautmp(ibox)
       end do
+      
 
-!
+!  
 !     ---------------------------------------------------!
 
 
@@ -2835,7 +2865,7 @@ INTEGER                              :: seed
 !     COMPUTE INFRARED BRIGHTNESS TEMPERUATRES
 !     AND CLOUD TOP TEMPERATURE SATELLITE SHOULD SEE
 !
-!     again this is only done if adjust_isccp_top_height = T
+!     again this is only done if top_height = 1 or 3
 !
 !     fluxtop is the 10.5 micron radiance at the top of the
 !              atmosphere
@@ -2847,10 +2877,7 @@ INTEGER                              :: seed
 !              of level to the top of the atmosphere
 
 
-      if (adjust_isccp_top_height) then
-
-
-
+      if (top_height .eq. 1 .or. top_height .eq. 3) then
 
       !compute water vapor continuum emissivity
       !this treatment follows Schwarkzopf and Ramaswamy
@@ -2880,7 +2907,7 @@ INTEGER                              :: seed
                demwv(ilev) = 1. - exp( -1. * tauwv)
                
       end do
-
+       
       !loop over columns 
       do ibox=1,ncol
       
@@ -2898,11 +2925,18 @@ INTEGER                              :: seed
                    dem= 1. -  &
                            (1. - demwv(ilev)) *  &
                            (1. - frac_out(ibox,ilev)*dem_s(ilev))
-                           !(1. - &
-                           !((frac_out(ibox,ilev).eq.1)*dem_s(ilev) &
-                           !+(frac_out(ibox,ilev).eq.2)*dem_c(ilev)))
-
-                   ! increase TOA flux by flux emitted from layer
+                           
+                           !if (frac_out(ibox,ilev).eq.1) then
+                           ! dem(ibox)= 1. -  ( (1. - demwv(ilev)) * 
+			   ! (1. -  dem_s(ilev)) )
+                           !else if (frac_out(ibox,ilev).eq.2) then
+                           !  dem(ibox)= 1. - ( (1. - demwv(ilev)) * 
+			   ! (1. -  dem_c(ilev)) )
+                           ! else
+                           !dem(ibox)=  dem_wv(ilev)
+                           !end if
+                
+		   ! increase TOA flux by flux emitted from layer
 	           ! times total transmittance in layers above
                    fluxtop = fluxtop   + dem * bb  * trans 
                    fluxtopclrsky = fluxtopclrsky   +  &
@@ -2930,6 +2964,10 @@ INTEGER                              :: seed
             !clouds which have partial emissivity and need the 
             !adjustment performed in this section
             !
+            !If it turns out that the cloud brightness temperature
+	    !is greater than 260K, then the liquid cloud conversion
+            !factor of 2.56 is used.
+	    !
             !Note that this is discussed on pages 85-87 of 
             !the ISCCP D level documentation (Rossow et al. 1996)
            
@@ -2938,25 +2976,38 @@ INTEGER                              :: seed
             btcmin = 1. /  ( exp(1307.27/(attrop-5.)) - 1. ) 
             transmax = (fluxtop-btcmin)/(fluxtopclrsky-btcmin)
             taumintmp = -1. * log(max(min(transmax,(1.-qmin)),0.001))
-            
-            if (transmax .gt. 0.001 .and. transmax .le. (1.-qmin)) then
-                    emcld = 1. - exp(-1. * tau(ibox) / 2.13 )
-                  
-                    fluxtop = fluxtop -   ((1.-emcld)*fluxtopclrsky)
-                    fluxtop = max(qmin,fluxtop / emcld)
+	    
+	    !note that the initial setting of tauir is needed so that
+	    !tauir has a realistic value should the next if block be
+	    !bypassed
+            tauir = tau(ibox) / 2.13
 
-                    
+            if (top_height .eq. 1 .and. transmax .gt. 0.001 .and. &
+	        transmax .le. (1.-qmin)) then
+		    icycle = 1
+		    fluxtopinit = fluxtop
+		    tauir = tau(ibox) / 2.13
+243		    emcld = 1. - exp(-1. * tauir  )
+                    fluxtop = fluxtopinit -                            &
+                              ((1.-emcld)*fluxtopclrsky)
+                    fluxtop = max(1.E-06,(fluxtop/emcld))
+                    tb(ibox)= 1307.27/ (log(1. + (1./fluxtop)))
+                    if (icycle .eq. 1 .and. tb(ibox) .gt. 260.) then
+		         tauir = tau(ibox) / 2.56
+			 icycle = 2
+                         go to 243
+                    end if
             end if
 
             if (tau(ibox) .gt. (-1.*log((1.-qmin)))) then 
                 
                 !cloudy box
-                tb(ibox)= 1307.27/ (log(1. + (1./fluxtop)))
-                
-                if (tau(ibox) .lt. taumintmp) then
-                         tb(ibox) = attrop - 5.
+		tb(ibox)= 1307.27/ (log(1. + (1./fluxtop)))
+                if (top_height .eq. 1 .and. tauir .lt. taumintmp) then
+                         tb(ibox) = attrop 
+			 tau(ibox) = 2.13*taumintmp
                 end if
-
+		
             else
 
                 !clear sky brightness temperature
@@ -2971,91 +3022,91 @@ INTEGER                              :: seed
 !     ---------------------------------------------------!
 
 
-
 !     
 !     ---------------------------------------------------!
 !     DETERMINE CLOUD TOP PRESSURE
 !
 !     again the 2 methods differ according to whether
 !     or not you use   the physical cloud top pressure
-!     (adjust_isccp_top_height = F)
+!     (top_height = 2)
 !     or the radiatively determined cloud top pressure 
-!     (adjust_isccp_top_height = T)
+!     (top_height = 1 or 3)
 !
-
-
 
       !compute cloud top pressure
       do ibox=1,ncol
       
-               !segregate according to optical thickness
-               if (tau(ibox).le. (-1.*log((1.-qmin)))) then
+           !segregate according to optical thickness
+           if (tau(ibox).le. (-1.*log((1.-qmin)))) then
 
-                         ptop(ibox)=0.
-                         levmatch(ibox)=0      
+                ptop(ibox)=0.
+                levmatch(ibox)=0      
 
-               else 
+           else 
 
-                     if (adjust_isccp_top_height) then  
+                if (top_height .eq. 1 .or. top_height .eq. 3) then  
                                                
-                        !find level whose temperature
-                        !most closely matches brightness temperature
-                        nmatch=0
-                        do ilev=1,nlev-1
+                     !find level whose temperature
+                     !most closely matches brightness temperature
+                     nmatch=0
+                     do ilev=1,nlev-1
                         
-                            if ((at(ilev)   .ge. tb(ibox) .and.       &
-                                 at(ilev+1) .lt. tb(ibox)) .or.       &
-                                (at(ilev) .le. tb(ibox) .and.         &
-                                 at(ilev+1) .gt. tb(ibox))) then 
+                          if ((at(ilev)   .ge. tb(ibox) .and.          &
+                               at(ilev+1) .lt. tb(ibox)) .or.          &
+                              (at(ilev)   .le. tb(ibox) .and.          &
+                               at(ilev+1) .gt. tb(ibox))) then 
      
-                                  nmatch=nmatch+1
-                                  if(abs(at(ilev)-tb(ibox)) .lt.      &
-                                     abs(at(ilev+1)-tb(ibox))) then
-                                         match(nmatch)=ilev
-                                  else
-                                         match(nmatch)=ilev+1
-                                  end if
-                            end if                        
-                        end do
+                               nmatch=nmatch+1
+                               if(abs(at(ilev)  -tb(ibox)) .lt.        &
+                                  abs(at(ilev+1)-tb(ibox))) then
+                                    match(nmatch)=ilev
+                               else
+                                    match(nmatch)=ilev+1
+                               end if
+                          end if                        
+                        
+                     end do
 
-                        if (nmatch .ge. 1) then
+                     if (nmatch .ge. 1) then
                                  
-                                 ptop(ibox)=pfull(match(nmatch))
-                                 levmatch(ibox)=match(nmatch)   
-                        else
+                          ptop(ibox)=pfull(match(nmatch))
+                          levmatch(ibox)=match(nmatch)   
+                     else
                                                         
-                                if (tb(ibox) .lt. atmin) then
-                                       ptop(ibox)=ptrop
-                                       levmatch(ibox)=itrop
-                                end if
-                                if (tb(ibox) .gt. atmax) then
-                                       ptop(ibox)=pfull(nlev)
-                                       levmatch(ibox)=nlev
-                                end if                                
+                          if (tb(ibox) .lt. atmin) then
+                               ptop(ibox)=ptrop
+                               levmatch(ibox)=itrop
+                          end if
+                          if (tb(ibox) .gt. atmax) then
+                               ptop(ibox)=pfull(nlev)
+                               levmatch(ibox)=nlev
+                          end if                                
                                                                 
-                        end if
+                     end if
                                                                
-                     else             
-                          ptop(ibox)=0.
-                          ilev=1
-                          do while(ptop(ibox) .eq. 0.        &
-                                    .and. ilev .lt. nlev+1)
-                                if (frac_out(ibox,ilev) .ne. 0) then
-                                   ptop(ibox)=pfull(ilev)
-                                   levmatch(ibox)=ilev
-                                end if
-                                ilev=ilev+1              
-                          end do
-                     end if                            
-               end if
-      
+                else             
+                     
+		     ptop(ibox)=0.
+                     ilev=1
+                     do while(ptop(ibox) .eq. 0. .and. ilev .lt. nlev+1)
+                          if (frac_out(ibox,ilev) .ne. 0) then
+                               ptop(ibox)=pfull(ilev)
+                               levmatch(ibox)=ilev
+                          end if
+                          ilev=ilev+1              
+                     end do
+           
+	        end if                            
+           
+	   end if
+	        
       end do
               
 
 !
 !     ---------------------------------------------------!
 
-
+             
 
 !     
 !     ---------------------------------------------------!
@@ -3071,6 +3122,9 @@ INTEGER                              :: seed
       !compute isccp frequencies
       fq_isccp(:,:)=0. 
       
+      !compute boxarea
+      boxarea = 1./real(ncol)
+      
       do ibox=1,ncol
       
             !convert ptop to millibars
@@ -3082,7 +3136,6 @@ INTEGER                              :: seed
             !reset itau, ipres
             itau = 0
             ipres = 0
-
 
             !determine optical depth category
             if (tau(ibox) .lt. isccp_taumin) then
@@ -3120,12 +3173,16 @@ INTEGER                              :: seed
 
             !update frequencies
             if(ipres .gt. 0.and.itau .gt. 0) then
-            fq_isccp(itau,ipres)=fq_isccp(itau,ipres)+(1./real(ncol))
+            fq_isccp(itau,ipres)=fq_isccp(itau,ipres)+boxarea
             end if
 
       end if
                        
       end do
+
+      
+
+
       
 END SUBROUTINE ISCCP_CLOUDTYPES
 
@@ -3393,7 +3450,7 @@ END SUBROUTINE TAU_REFF_DIAG
 FUNCTION ran0(idum)
 
 
-!     $Id: cloud_rad.F90,v 1.6 2001/07/05 17:18:16 fms Exp $
+!     $Id: cloud_rad.F90,v 1.7 2003/04/09 20:53:41 fms Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

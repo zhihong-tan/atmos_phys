@@ -26,8 +26,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: my25_turb.F90,v 1.3 2001/07/05 17:39:25 fms Exp $'
- character(len=128) :: tag = '$Name: havana $'
+ character(len=128) :: version = '$Id: my25_turb.F90,v 1.4 2003/04/09 20:57:59 fms Exp $'
+ character(len=128) :: tag = '$Name: inchon $'
 
  logical :: do_init = .true.
  logical :: init_tke
@@ -453,6 +453,8 @@
      do i = 1,ix
           k = kbot(i,j)
           ddd(:,:,k-1) = ddd(:,:,k-1) - aaa(:,:,k-1) * TKE(:,:,k+1)
+!would this be correct? (arl)
+!          ddd(i,j,k-1) = ddd(i,j,k-1) - aaa(i,j,k-1) * TKE(i,j,k+1)
      enddo
      enddo
   else

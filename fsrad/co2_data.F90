@@ -114,7 +114,7 @@
 !------------ VERSION NUMBER ----------------
 
  character(len=128) :: version = '$Id: co2_data.F90,v 1.3 2002/07/16 22:32:27 fms Exp $'
- character(len=128) :: tag = '$Name: havana $'
+ character(len=128) :: tag = '$Name: inchon $'
 
 !-----------------------------------------------------------------------
 

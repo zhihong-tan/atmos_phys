@@ -25,7 +25,7 @@ private
 
 !   character(len=5), parameter  ::  version_number = 'v0.08'
     character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 1.3 2002/07/16 22:35:06 fms Exp $'
-    character(len=128)  :: tag     =  '$Name: havana $'
+    character(len=128)  :: tag     =  '$Name: inchon $'
 
 !--------------------------------------------------------------------
 !----- interfaces ------

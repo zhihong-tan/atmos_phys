@@ -9,14 +9,13 @@ module mg_drag_mod
 !  due to the effect of mountain gravity wave drag 
 !-------------------------------------------------------------------
 
+ use  topography_mod, only: get_topog_stdev
 
- use topography_mod, only:  get_topog_stdev
+ use         fms_mod, only: mpp_npes, field_size, file_exist, write_version_number, stdlog, &
+                            mpp_pe, mpp_root_pe, error_mesg, FATAL, read_data, write_data,  &
+                            open_namelist_file, close_file, check_nml_error, open_restart_file
 
- use utilities_mod, ONLY: file_exist, open_file, error_mesg, FATAL, &
-                          get_my_pe, get_root_pe, read_data, write_data, &
-                          close_file, check_nml_error
-
- use  constants_mod, ONLY:  Grav,Kappa,RDgas,cp
+ use   constants_mod, only: Grav, Kappa, RDgas, cp_air
 
 !-----------------------------------------------------------------------
  implicit none
@@ -24,14 +23,13 @@ module mg_drag_mod
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 1.6 2002/07/16 22:33:27 fms Exp $'
- character(len=128) :: tag = '$Name: havana $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 1.7 2003/04/09 20:56:31 fms Exp $'
+ character(len=128) :: tagname = '$Name: inchon $'
 
  real, parameter :: p00 = 1.e5
 
 !---------------------------------------------------------------------
-! --- GLOBAL STORAGE FOR:
-!     Ghprime - Global array of sub-grid scale mountain heights
+!     Ghprime - array of sub-grid scale mountain height variance
 !-----------------------------------------------------------------------
 
   real, allocatable, dimension(:,:) :: Ghprime
@@ -43,8 +41,7 @@ module mg_drag_mod
 !     kappa  2/7 (i.e., R/Cp)
 !-----------------------------------------------------------------------
 
- logical :: do_init = .true.
- logical :: do_restart_write = .false.
+ logical :: module_is_initialized = .false.
 
 !---------------------------------------------------------------------
 ! --- NAMELIST (mg_drag_nml)
@@ -69,10 +66,11 @@ module mg_drag_mod
 
 logical :: do_conserve_energy = .false.
 logical :: do_mcm_mg_drag = .false.
+character(len=128) :: source_of_sgsmtn = 'input'
 
-    namelist / mg_drag_nml / xl_mtn, gmax, acoef, rho,low_lev_frac, &
-                             do_conserve_energy, do_mcm_mg_drag
-
+    namelist / mg_drag_nml / xl_mtn, gmax, acoef, rho, low_lev_frac, &
+                             do_conserve_energy, do_mcm_mg_drag,     &
+                             source_of_sgsmtn 
 
  public mg_drag, mg_drag_init, mg_drag_end
 
@@ -81,7 +79,8 @@ logical :: do_mcm_mg_drag = .false.
 !#############################################################################      
 
  subroutine mg_drag (is, js, delt, uwnd, vwnd, temp, pfull, phalf, &
-                    zfull, zhalf, dtaux, dtauy, dtemp, taub, kbot)
+                    zfull,zhalf,dtaux,dtauy,dtemp,taubx, tauby, tausf,&
+                    kbot)
 !===================================================================
 
 ! Arguments (intent in)
@@ -116,13 +115,13 @@ logical :: do_mcm_mg_drag = .false.
 !===================================================================
 ! Arguments (intent out)
 
- real, intent(out), dimension (:,:) :: taub
- real, intent(out), dimension (:,:,:) :: dtaux, dtauy, dtemp
+ real, intent(out), dimension (:,:) :: taubx, tauby
+ real, intent(out), dimension (:,:,:) :: dtaux, dtauy, dtemp, tausf
 
 !      OUTPUT
 !      ------
 
-!       TAUB    base momentum flux - output for diagnostics
+!       TAUBX, TAUBY  base momentum flux componenets - output for diagnostics
 !                   (dimensioned IDIM x JDIM)-kg/m/s**2
 !                   = -(RHO*U**3/(N*XL))*G(FR) FOR N**2 > 0
 !                   =          0               FOR N**2 <=0
@@ -131,6 +130,8 @@ logical :: do_mcm_mg_drag = .false.
 !      DTAUY    Tendency of the meridional wind component deceleration 
 !                   (dimensioned IDIM x JDIM x KDIM)
 !      dtemp    Tendency of temperature due to dissipation of ke
+!
+!      TAUSF = "CLIPPED" SAT MOMENTUM FLUX ( AT HALF LEVELS below top)
 !                  
 !===================================================================
 
@@ -172,12 +173,13 @@ logical :: do_mcm_mg_drag = .false.
 
 !=======================================================================
 !  (Intent local)
- real , dimension(size(uwnd,1),size(uwnd,2)) ::  xn, yn, psurf,ptop
+ real , dimension(size(uwnd,1),size(uwnd,2)) ::  xn, yn, psurf,ptop,taub
  real , dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)) ::  theta 
  real , dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)+1) ::  taus
  real vsamp
 integer, dimension (size(uwnd,1),size(uwnd,2)) :: ktop, kbtm
-integer id, jd, idim, jdim, kdim, kdimm1, kdimp1
+integer id, jd, idim, jdim, kdim, kdimm1, kdimp1, ie, je
+
 !              XN,YN  = PROJECTIONS OF "LOW LEVEL" WIND
 !                       IN ZONAL & MERIDIONAL DIRECTIONS
 !              TAUB = BASE MOMENTUM FLUX
@@ -205,7 +207,7 @@ integer id, jd, idim, jdim, kdim, kdimm1, kdimp1
 !  Local variables needed only for code that
 !  implements supersource-like gravity wave drag.
 
-integer :: ie, je, klast, kcrit
+integer :: klast, kcrit
 real    :: sigtop, small=1.e-10
 
 real,    dimension(size(uwnd,1),size(uwnd,2))              :: ulow, vlow, tlow, thlow
@@ -223,6 +225,7 @@ real,    dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)) :: sigma, del_sigma
   kdim = size( uwnd, 3 )
   kdimm1 = kdim - 1
   kdimp1 = kdim + 1
+
 !-----------------------------------------------------------------------
 
 !        CODE VARIABLES     DESCRIPTION
@@ -263,6 +266,11 @@ real,    dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)) :: sigma, del_sigma
 !=======================================================================
 
 if ( .not.do_mcm_mg_drag ) then
+
+!--- export sub grid scale topography
+  ie = is + idim - 1
+  je = js + jdim - 1
+
 !-----------------------------------------------------------------------
 !     vsamp is a vertical sampling coefficient which serves to amplify
 !     the windshear wkb extension term in the calculation of d.
@@ -307,12 +315,16 @@ if ( .not.do_mcm_mg_drag ) then
     call mgwd_base_flux (is,js,uwnd,vwnd,temp,pfull,phalf,ktop,kbtm,theta, &
          &               xn,yn,taub)
 
+!  split taub in to x and y components
+    taubx(:,:) = taub(:,:)*xn(:,:)
+    tauby(:,:) = taub(:,:)*yn(:,:)
+
 !  calculate saturation flux profile
     call mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
          &                xn,yn,taub,pfull, phalf,zfull,zhalf,vsamp,taus)
 
 !  calculate mountain gravity wave drag tendency contributions
-    call mgwd_tend (is,js,xn,yn,taub,phalf,taus,dtaux,dtauy)
+    call mgwd_tend (is,js,xn,yn,taub,phalf,taus,dtaux,dtauy, tausf)
 
 else if ( do_mcm_mg_drag ) then
 
@@ -435,12 +447,15 @@ else if ( do_mcm_mg_drag ) then
     end do
 
     taub = 0.0
+    taubx = 0.0
+    tauby = 0.0
+    tausf = 0.0
 
 endif
 
 !  calculate temperature tendency due to dissipation of kinetic energy
 if (do_conserve_energy) then
-  dtemp = -((uwnd+.5*delt*dtaux)*dtaux + (vwnd+.5*delt*dtauy)*dtauy)/cp
+  dtemp = -((uwnd+.5*delt*dtaux)*dtaux + (vwnd+.5*delt*dtauy)*dtauy)/cp_air
 else
   dtemp = 0.0
 endif
@@ -837,7 +852,7 @@ end subroutine mgwd_satur_flux
 
 !#############################################################################      
 
-subroutine mgwd_tend (is,js,xn,yn,taub,phalf,taus,dtaux,dtauy)
+subroutine mgwd_tend (is,js,xn,yn,taub,phalf,taus,dtaux,dtauy,tausf)
 
 !===================================================================
 ! Arguments (intent in)
@@ -846,7 +861,7 @@ subroutine mgwd_tend (is,js,xn,yn,taub,phalf,taus,dtaux,dtauy)
  integer, intent(in)   :: is, js
 !===================================================================
 ! Arguments (intent out)
- real, intent(out), dimension (:,:,:) :: dtaux, dtauy
+ real, intent(out), dimension (:,:,:) :: dtaux, dtauy, tausf
 !=======================================================================
 !  (Intent local)
  real , dimension(size(phalf,1),size(phalf,2),size(phalf,3)) ::  dterm 
@@ -874,6 +889,7 @@ subroutine mgwd_tend (is,js,xn,yn,taub,phalf,taus,dtaux,dtauy)
 
       do kd=2,kdimp1
         k = kdimp1-kd+1
+        tausf(:,:,k)=taup(:,:,k+1)
         taup(:,:,k) = max (taus(:,:,k),taup(:,:,k+1))
       end do
 
@@ -931,17 +947,19 @@ end subroutine mgwd_tend
 !---------------------------------------------------------------------
  integer  ::  ix, iy, unit, io, ierr
  logical  ::  answer
+ integer, dimension(4) :: siz
+ integer :: global_num_lon, global_num_lat
 
 !=====================================================================
 
-if(.not.do_init) return
+if(module_is_initialized) return
 
 !---------------------------------------------------------------------
 ! --- Read namelist
 !---------------------------------------------------------------------
   if( file_exist( 'input.nml' ) ) then
 ! -------------------------------------
-   unit = open_file ( file = 'input.nml', action = 'read' )
+   unit = open_namelist_file()
    ierr = 1
    do while( ierr .ne. 0 )
    read ( unit,  nml = mg_drag_nml, iostat = io, end = 10 ) 
@@ -956,12 +974,8 @@ if(.not.do_init) return
 ! --- Output version
 !---------------------------------------------------------------------
 
-  unit = open_file ( file = 'logfile.out', action = 'APPEND' )
-  if ( get_my_pe() == get_root_pe() ) then
-       write( unit,'(/,80("="),/(a))') trim(version), trim(tag)
-       write( unit, nml = mg_drag_nml ) 
-  endif
-  call close_file ( unit )
+  call write_version_number(version, tagname)
+  if(mpp_pe() == mpp_root_pe()) write (stdlog(), nml=mg_drag_nml)
 
 !---------------------------------------------------------------------
 ! --- Allocate storage for Ghprime
@@ -973,29 +987,31 @@ if(.not.do_init) return
   allocate( Ghprime(ix,iy) )
 
 !-------------------------------------------------------------------
-  do_init = .false.
+  module_is_initialized = .true.
 !---------------------------------------------------------------------
 ! --- Input hprime
 !---------------------------------------------------------------------
 
-  answer = get_topog_stdev ( lonb, latb, Ghprime )
-
-  if ( .not. answer ) then
-  if (  file_exist( 'INPUT/mg_drag.res' ) ) then
-
-      unit = open_file ( file = 'INPUT/mg_drag.res',  &
-                         form = 'NATIVE', action = 'READ' )
-      call read_data ( unit, Ghprime )
-      call close_file ( unit )
-      do_restart_write = .true.
-
+  if ( trim(source_of_sgsmtn) == 'computed' ) then
+    answer = get_topog_stdev ( lonb, latb, Ghprime )
+    if ( .not.answer ) then
+      call error_mesg('mg_drag_init','source_of_sgsmtn="'//trim(source_of_sgsmtn)//'"'// &
+                      ', but topography data file does not exist', FATAL)
+    endif
+  else if ( trim(source_of_sgsmtn) == 'input' ) then
+    if ( file_exist( 'INPUT/mg_drag.data.nc' ) ) then
+      call read_data( 'INPUT/mg_drag.data.nc', 'ghprime', Ghprime)
+    else if ( file_exist( 'INPUT/mg_drag.res' ) ) then
+      unit = open_restart_file('INPUT/mg_drag.res','read')
+      call read_data(unit, Ghprime)
+      call close_file(unit)
+    else
+      call error_mesg ('mg_drag_init','source_of_sgsmtn="'//trim(source_of_sgsmtn)//'"'// &
+                       ', but neither ./INPUT/mg_drag.data.nc  or  ./INPUT/mg_drag.res  exists', FATAL)
+    endif
   else
-
-      call error_mesg ('mg_drag_init',  &
-                       'No sub-grid orography specified in mg_drag', &
-                       FATAL)
-
-  endif
+    call error_mesg ('mg_drag_init','"'//trim(source_of_sgsmtn)//'"'// &
+          ' is not a valid value for source_of_sgsmtn', FATAL)
   endif
 
 ! return sub-grid scale topography?
@@ -1007,26 +1023,19 @@ if(.not.do_init) return
 !#######################################################################
 
   subroutine mg_drag_end
-
-!=======================================================================
   integer :: unit
-!=======================================================================
 
-      do_init = .true.
+  if(.not.module_is_initialized) return
 
-      if (.not.do_restart_write) then
-        deallocate(ghprime)
-        return
-      endif
+  unit = open_restart_file('RESTART/mg_drag.res','write')
+  call write_data(unit, Ghprime)
+  call close_file(unit)
 
-      unit = open_file ( file = 'RESTART/mg_drag.res', &
-                         form = 'NATIVE', action = 'WRITE' )
-      call write_data ( unit, Ghprime )
-      call close_file ( unit )
-      deallocate(ghprime)
- 
-!=====================================================================
+  deallocate(ghprime)
+  module_is_initialized = .false.
+
   end subroutine mg_drag_end
 
+!#######################################################################
 
 end module mg_drag_mod

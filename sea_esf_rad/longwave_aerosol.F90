@@ -2,22 +2,23 @@
                     module longwave_aerosol_mod
 
  
-!use rad_step_setup_mod,    only: KSRAD, KERAD, ISRAD, IERAD, JSRAD, &
-!			         JERAD, jabs, deltaz
-!use rad_step_setup_mod,    only:                                    &
-!		                jabs, deltaz
-!			                      deltaz
 use  rad_utilities_mod,    only: longwave_control_type, Lw_control, &
                                   optical_path_type, &
                                  map_global_indices, &
+	       aerosol_properties_type, Aerosol_props,  &
+                                  longwave_parameter_type,   &
+                                 aerosol_type, &
+				  atmos_input_type,   &
+                                 Lw_parameters, &
 				 Environment, environment_type
 use  utilities_mod,        only: open_file, file_exist,    &
 			         check_nml_error, error_mesg, &
 			         print_version_number, FATAL, NOTE, &
 				 WARNING, get_my_pe, close_file
-!			 WARNING, get_my_pe, close_file, &
-!			 get_domain_decomp
-use constants_new_mod,     only: diffac
+use constants_mod,         only: diffac
+!use aerosol_mod,           only:                   &
+!				aerosol_alloc
+use longwave_params_mod,   only: NBLW
 
 !--------------------------------------------------------------------
 
@@ -33,65 +34,28 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-!  character(len=5), parameter  ::  version_number = 'v0.09'
-   character(len=128)  :: version =  '$Id: longwave_aerosol.F90,v 1.3 2002/07/16 22:35:26 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: havana $'
+   character(len=128)  :: version =  '$Id: longwave_aerosol.F90,v 1.4 2003/04/09 20:59:42 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 !---------------------------------------------------------------------
 !----- interfaces  -----
            
 public         longwave_aerosol_init, &
-!	       aertau, longwave_aerosol_dealloc, &
-	       aertau,  &
-               get_totaerooptdep, get_totaerooptdep_15, &
-	       get_aerooptdep_KE_15
+               optical_depth_aerosol
 
 
 !---------------------------------------------------------------------
 !---- namelist   -----
 
 
-!---------------------------------------------------------------------
-!    strat_lwmodel_type : identifier giving specific lw aerosol 
-!                         type (max length = 12)
-!    strat_lwmodel_nintvls : number of band intervals in the aerosol
-!                            data (not necessarily the same as the  
-!                            number of band intervals in the radiation 
-!                            code) 
-!    ktop_aer  : top model layer where aerosol extinction is to
-!                be included (for all latitudes).
-!    kbot_aer  : bottom model layer where aerosol extinction is to
-!                be included (for all latitudes).
-!    jmax_aerfile : number of latitudes in the aerosol input file
-!    kmax_aerfile : number of vertical layers in the aerosol input file
-!---------------------------------------------------------------------
-
 
 logical           :: do_lwaerosol    = .false.
-!character(len=12) :: strat_lwmodel_type  =  '            '
-!character(len=12) :: lwaerosol_form      =  '          '
-character(len=16) :: strat_lwmodel_type  =  '            '
-character(len=16) :: lwaerosol_form      =  '          '
-integer           :: strat_lwmodel_nintvls = 1
-integer           :: imax_aerfile = -1
-integer           :: jmax_aerfile = -1
-integer           :: kmax_aerfile = -1 
-integer           :: ktop_aer = -1
-integer           :: kbot_aer = -10
 			  
 
 
 namelist / longwave_aerosol_nml /    &
-			          do_lwaerosol,  &
-				  lwaerosol_form, &
-                                  strat_lwmodel_type, &
-                                  strat_lwmodel_nintvls, &
-                                  imax_aerfile, &
-                                  jmax_aerfile, &
-                                  kmax_aerfile, &
-                                  ktop_aer, &
-                                  kbot_aer
+			          do_lwaerosol
 
 
 !---------------------------------------------------------------------
@@ -102,26 +66,17 @@ namelist / longwave_aerosol_nml /    &
 !------- private data ------
 
 
-!real, dimension (:,:,:), allocatable       :: totaerooptdep_15, &
-real, dimension (:,:,:), allocatable       ::                   &
-                                              strlwext, strlwalb 
-real, dimension (:,:,:,:), allocatable     :: aeralb, aerext,   &
-!					      aerconc, totaerooptdep
-					      aerconc                 
-!real, dimension (:,:), allocatable         :: strlwext_15, strlwalb_15,&
-real, dimension (:,:), allocatable         :: strlwext_15, strlwalb_15
-!                                              aerooptdep_KE_15
+real, dimension (:,:), allocatable       :: aerextbandlw, aerssalbbandlw
 
-integer                      :: NLWAERB
-integer, parameter           :: NLWAERMODELSSTR = 1
-logical                      :: do_prdlwaerosol
-!integer                       :: x(4), y(4)
-integer, dimension(:), allocatable :: jindx2
 
+integer, parameter           :: N_AEROSOL_BANDS_FR = 8
+integer, parameter           :: N_AEROSOL_BANDS_CO = 1
+integer, parameter           :: N_AEROSOL_BANDS = N_AEROSOL_BANDS_FR + N_AEROSOL_BANDS_CO
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
 
 
+logical                      :: do_init = .false.
 
 
                            contains
@@ -129,12 +84,8 @@ integer, dimension(:), allocatable :: jindx2
 
 
 
-!subroutine longwave_aerosol_init (kmin, kmax, latb)
-subroutine longwave_aerosol_init (      kmax, latb)
+subroutine longwave_aerosol_init
 
-!integer, intent(in)    :: kmin, kmax
-integer, intent(in)    ::       kmax
-real, dimension(:), intent(in) :: latb
 
 !-----------------------------------------------------------------------
 !  local variables
@@ -142,11 +93,81 @@ real, dimension(:), intent(in) :: latb
      real, dimension (:,:,:), allocatable :: aerextivlstrlw,   &
 		                             aerssalbivlstrlw,    &
 			  	             aerasymmivlstrlw
+    real, dimension (:,:), allocatable :: aerextivl, aerssalbivl
+ real, dimension (:,:), allocatable       :: aerextbandlw_fr, aerssalbbandlw_fr
+real, dimension (:,:), allocatable       :: aerextbandlw_co, aerssalbbandlw_co
+    real, dimension (:,:), allocatable :: sflwwts, planckivlaer
+    real, dimension (:,:), allocatable :: planckivlaer_fr, planckivlaer_co
+    real, dimension (:,:), allocatable :: sflwwts_fr, sflwwts_co
+
 
      integer         :: unit, ierr, io
-     integer         :: kmin=1
-!    integer         :: iounit, inaer1, inaer2, k, j, lwb, jd, jdf
-     integer         :: iounit, inaer1, inaer2, k, j, lwb,     jdf,jindx
+
+     integer         :: NAERIVLS, NAERMODELS
+     integer, dimension(:), allocatable :: endsfbands, iendsfbands
+    real            :: del, xtemv, sumplanck
+     real, dimension(NBLW)           :: c1, centnb, sc, src1nb,  &
+                                       x, x1
+      integer         :: ib, nw, nivl, nband, n, ni
+    logical         :: do_band1
+
+!----------------------------------------------------------------------
+!     parameters for longwave aerosol parameterizations
+!----------------------------------------------------------------------
+
+!----------------------------------------------------------------------
+!   N_AEROSOL_BANDS = number of  infrared frequency bands over which 
+!                   frequency-dependent aerosol optical parameters
+!                   using appropriate parameterizations.
+!----------------------------------------------------------------------
+
+
+ integer, dimension (N_AEROSOL_BANDS) :: nivl1aer, nivl2aer
+integer, dimension (N_AEROSOL_BANDS_FR) :: nivl1aer_fr, nivl2aer_fr
+integer, dimension (N_AEROSOL_BANDS_CO) :: nivl1aer_co, nivl2aer_co
+ real,    dimension (N_AEROSOL_BANDS) :: planckaerband
+
+
+!----------------------------------------------------------------------
+!   wavenumber ranges with separate aerosol optical properties in the
+!   infrared parameterization. these may be changed only by the
+!   keeper of the radiation code.
+!----------------------------------------------------------------------
+
+!    the order of the frequency bands corresponds to the order used
+!    in the lw radiation code
+ real, dimension (N_AEROSOL_BANDS_FR)        :: aerbandlo_fr =  &
+      (/ 560.0, 630.0, 700.0, 800.0, 900.0,  990.0, 1070.0, 1200.0 /)
+ real, dimension (N_AEROSOL_BANDS_FR)        :: aerbandhi_fr =  &
+      (/ 630.0, 700.0, 800.0, 900.0, 990.0, 1070.0, 1200.0, 1400.0 /)
+ integer, dimension (N_AEROSOL_BANDS_FR)        :: istartaerband_fr =  &
+      (/ 57,  64,  71,  81,  91, 100, 108, 121 /)
+ integer, dimension (N_AEROSOL_BANDS_FR)        :: iendaerband_fr =  &
+      (/ 63,  70,  80,  90,  99, 107, 120, 140 /)
+ real, dimension (N_AEROSOL_BANDS_CO)        :: aerbandlo_co =  &
+      (/ 560.0 /)
+ real, dimension (N_AEROSOL_BANDS_CO)        :: aerbandhi_co =  &
+      (/ 800.0 /)
+ integer, dimension (N_AEROSOL_BANDS_CO)     :: istartaerband_co =  &
+     (/ 57  /)
+ integer, dimension (N_AEROSOL_BANDS_CO)     :: iendaerband_co =  &
+      (/ 80  /)
+ real, dimension(N_AEROSOL_BANDS)       :: aerbandlo, aerbandhi
+ integer, dimension(N_AEROSOL_BANDS)    :: istartaerband, iendaerband
+
+
+          do n=1,N_AEROSOL_BANDS_FR
+         aerbandlo(n) = aerbandlo_fr(n)
+        aerbandhi(n) = aerbandhi_fr(n)
+         istartaerband(n) = istartaerband_fr(n)
+         iendaerband(n) = iendaerband_fr(n)
+      enddo
+      do n=N_AEROSOL_BANDS_FR+1,N_AEROSOL_BANDS
+         aerbandlo(n) = aerbandlo_co(n-N_AEROSOL_BANDS_FR)
+        aerbandhi(n) = aerbandhi_co(n-N_AEROSOL_BANDS_FR)
+         istartaerband(n) = istartaerband_co(n-N_AEROSOL_BANDS_FR)
+         iendaerband(n) = iendaerband_co(n-N_AEROSOL_BANDS_FR)
+      enddo
 
 !---------------------------------------------------------------------
 !-----  read namelist  ------
@@ -171,6 +192,8 @@ real, dimension(:), intent(in) :: latb
 
      Lw_control%do_lwaerosol = do_lwaerosol
 
+     Lw_parameters%n_lwaerosol_bands = N_AEROSOL_BANDS
+
 !-------------------------------------------------------------------
 !   ****** the remainder of this subroutine need be executed only if 
 !   ****** do_lwaerosol is true.
@@ -183,356 +206,361 @@ real, dimension(:), intent(in) :: latb
 !-------------------------------------------------------------------
      if (do_lwaerosol) then
 
-!-------------------------------------------------------------------
-!  lw aerosol amounts and properties are inputted from measurements
-!  or are prescribed
-!-------------------------------------------------------------------
-       if (trim(lwaerosol_form) == 'prescribed' .or.    &
-           trim(lwaerosol_form) == 'observed')       then
-         do_prdlwaerosol = .false.
-
-!-------------------------------------------------------------------
-!  lw aerosol amounts and properties are predicted by the model
-!  currently this option is not implemented.
-!-------------------------------------------------------------------
-       else if (trim(lwaerosol_form) == 'predicted') then
-         call error_mesg ('longwave_aerosol_init',   &
-              'predicted longwave aerosols not yet implemented.', &
-		                                             FATAL)
-       else
-!-------------------------------------------------------------------
-!  error condition
-!-------------------------------------------------------------------
-         call error_mesg( 'longwave_aerosol_init',  &
-                     ' lwaerosol_form is not an acceptable value.', & 
-							     FATAL)
-       endif
 
 !--------------------------------------------------------------------
-!   retrieve needed variables from other modules.
+!     compute band-averaged coefficients for aerosols in infrared
+!     frequency ranges.
+!     the actual extinction coefficients (to become emissivities)
+!      (and other coefficients) are calculated as time-dependent
+!     quantities.
+!
 !--------------------------------------------------------------------
-!      call get_domain_decomp (x, y)
-!      jd = y(2)
-!      jdf = y(4) -y(3) + 1
-       jdf = size(latb,1) - 1
+ 
+     NAERIVLS = Aerosol_props%num_wavenumbers
+     allocate (endsfbands(NAERIVLS) )
+     allocate (iendsfbands(NAERIVLS) )
+     endsfbands = Aerosol_props%endaerwvnsf
+     NAERMODELS = Aerosol_props%NAERMODELS
+
+     allocate (aerextivl    (NAERIVLS, NAERMODELS) )
+     allocate (aerssalbivl  (NAERIVLS, NAERMODELS) )
+
+     allocate (aerextbandlw   (N_AEROSOL_BANDS, NAERMODELS) )
+     allocate (aerextbandlw_fr   (N_AEROSOL_BANDS_FR, NAERMODELS) )
+     allocate (aerextbandlw_co   (N_AEROSOL_BANDS_CO, NAERMODELS) )
+     allocate (aerssalbbandlw (N_AEROSOL_BANDS, NAERMODELS) )
+     allocate (aerssalbbandlw_fr (N_AEROSOL_BANDS_FR, NAERMODELS) )
+     allocate (aerssalbbandlw_co (N_AEROSOL_BANDS_CO, NAERMODELS) )
+ 
+     allocate (planckivlaer (N_AEROSOL_BANDS, NAERIVLS) )
+     allocate (planckivlaer_fr (N_AEROSOL_BANDS_FR, NAERIVLS) )
+     allocate (planckivlaer_co (N_AEROSOL_BANDS_CO, NAERIVLS) )
+     allocate (sflwwts (N_AEROSOL_BANDS, NAERIVLS) )
+     allocate (sflwwts_fr (N_AEROSOL_BANDS_FR, NAERIVLS) )
+     allocate (sflwwts_co (N_AEROSOL_BANDS_CO, NAERIVLS) )
+!-------------------------------------------------------------------
+!   get aerosol optical property data from aerosol module
+!-------------------------------------------------------------------
+    aerextivl = Aerosol_props%aeroextivl
+    aerssalbivl = Aerosol_props%aerossalbivl
+ 
 
 !--------------------------------------------------------------------
-!   check to see if the model configuration matches the form of the
-!   data which is available (n30 SKYHI only, until interpolation 
-!   becomes available).
+!    calculation for aerosols (Shettle-Fenn wavelength intervals)
 !--------------------------------------------------------------------
-       if (Environment%running_gcm) THEN
-         if (kmax /= 40) call error_mesg ('longwave_aerosol_init', &
-           ' cannot currently activate lw aerosols with this kerad', & 
-							  FATAL)
-!  taken care of in map_global_indices
-!        if (jd  /= 60) call error_mesg ('longwave_aerosol_init', &
-!           ' cannot currently activate lw aerosols with this jd', & 
-!						    FATAL)
-       endif
+ 
+        iendsfbands(:) = INT((endsfbands(:)+0.01)/10.0)
 
-      if (Environment%running_gcm) then
-      if (trim (lwaerosol_form) /= ' ' .and. jmax_aerfile /= -1) then
-         allocate (jindx2  (size(latb,1)-1))
-         call map_global_indices (jmax_aerfile, latb, jindx2)
-       endif
-       endif
+!--------------------------------------------------------------------
+!      compute weighting function.  For aerosols, I am using
+!      the Planck function at 10C.
+!--------------------------------------------------------------------
+        do n=1,NBLW 
+          del  = 10.0E+00
+	  xtemv = 283.15
+	  centnb(n) = 5.0 + (n - 1)*del
+          c1(n)     = (3.7412E-05)*centnb(n)**3
+          x(n)      = 1.4387E+00*centnb(n)/xtemv
+          x1(n)     = EXP(x(n))
+          sc(n)     = c1(n)/(x1(n) - 1.0E+00)
+          src1nb(n) = del*sc(n)
+        enddo
+ 
+!--------------------------------------------------------------------
+!      compute summed weighting function over the (N_AEROSOL_BANDS) 
+!      aerosol bands
+!--------------------------------------------------------------------
 
+        planckaerband(:) = 0.0E+00
+        do n = 1,N_AEROSOL_BANDS
+  	  do ib = istartaerband(n),iendaerband(n)
+	    planckaerband(n) = planckaerband(n) + src1nb(ib)
+	  enddo
+        enddo
 
+ 
+        nivl = 1
+        sumplanck = 0.0
+        nband = 1
+        planckivlaer_fr(:,:) = 0.0
+        nivl1aer_fr(1) = 1
+	do_band1 = .true.
+ 
+do nw = 1,NBLW
+  	  sumplanck = sumplanck + src1nb(nw)
+          if ( nw.eq.iendsfbands(nivl) ) then
+            planckivlaer_fr(nband,nivl) = sumplanck
+            sumplanck = 0.0
+          end if
+ if ( nw.eq.iendaerband_fr(nband) ) then
+            if ( nw.ne.iendsfbands(nivl) ) then
+              planckivlaer_fr(nband,nivl) = sumplanck 
+              sumplanck = 0.0
+            end if
+            nivl2aer_fr(nband) = nivl
+            nband = nband + 1
+            if ( nband.le.N_AEROSOL_BANDS_FR ) then
+              if ( nw.eq.iendsfbands(nivl) ) then
+                nivl1aer_fr(nband) = nivl + 1
+              else
+                nivl1aer_fr(nband) = nivl
+              end if
+            end if
+ end if
+ if ( nw .eq. iendsfbands(nivl) ) then
+	    nivl = nivl + 1
+	    if (do_band1 .and. nband .eq. 1 .and. iendsfbands(nivl-1) .ge. istartaerband_fr(1) .and.  &
+	        iendsfbands(nivl-1) .lt. iendaerband_fr(1)) then
+	       nivl1aer_fr(nband) = nivl-1
+	       do_band1 = .false.
+            endif
+ endif
+ if ( nw .ge. iendaerband_fr(N_AEROSOL_BANDS_FR) ) then
+	    exit
+ endif
+end do
+!--------------------------------------------------------------------
+!     compute planck-weighted band weights for Shettle-Fenn aerosol
+!     calculations
+!--------------------------------------------------------------------
+
+        nivl = 1
+        sumplanck = 0.0
+        nband = 1
+        planckivlaer_co(:,:) = 0.0
+        nivl1aer_co(1) = 1
+	do_band1 = .true.
+ 
+        do nw = 1,NBLW
+  	  sumplanck = sumplanck + src1nb(nw)
+          if ( nw.eq.iendsfbands(nivl) ) then
+            planckivlaer_co(nband,nivl) = sumplanck
+            sumplanck = 0.0
+          end if
+          if ( nw.eq.iendaerband_co(nband) ) then
+            if ( nw.ne.iendsfbands(nivl) ) then
+              planckivlaer_co(nband,nivl) = sumplanck 
+              sumplanck = 0.0
+            end if
+            nivl2aer_co(nband) = nivl
+            nband = nband + 1
+            if ( nband.le.N_AEROSOL_BANDS_CO ) then
+              if ( nw.eq.iendsfbands(nivl) ) then
+                nivl1aer_co(nband) = nivl + 1
+              else
+                nivl1aer_co(nband) = nivl
+              end if
+            end if
+          end if
+          if ( nw .eq. iendsfbands(nivl) ) then
+	    nivl = nivl + 1
+	    if (do_band1 .and. nband .eq. 1 .and. iendsfbands(nivl-1) .ge. istartaerband_co(1) .and.  &
+	        iendsfbands(nivl-1) .lt. iendaerband_co(1)) then
+	       nivl1aer_co(nband) = nivl-1
+	       do_band1 = .false.
+            endif
+	  endif
+          if ( nw .ge. iendaerband_co(N_AEROSOL_BANDS_CO) ) then
+	    exit
+	  endif
+        end do
+!--------------------------------------------------------------------
+!     compute planck-weighted band weights for Shettle-Fenn aerosol
+!     calculations
+!--------------------------------------------------------------------
+
+        sflwwts_fr(:,:) = 0.0E+00
+        do n=1,N_AEROSOL_BANDS_FR
+          do ni=nivl1aer_fr(n),nivl2aer_fr(n)
+	    sflwwts_fr(n,ni) = planckivlaer_fr(n,ni)/planckaerband(n)
+	  enddo
+        enddo
+        sflwwts_co(:,:) = 0.0E+00
+        do n=1,N_AEROSOL_BANDS_CO
+          do ni=nivl1aer_co(n),nivl2aer_co(n)
+	    sflwwts_co(n,ni) = planckivlaer_co(n,ni)/planckaerband(N_AEROSOL_BANDS_FR+n)
+	  enddo
+        enddo
+
+      do n=1,N_AEROSOL_BANDS_FR
+        do ni = 1,NAERIVLS
+	  sflwwts(n,ni) = sflwwts_fr(n,ni)
+        enddo
+      enddo
+      do n=N_AEROSOL_BANDS_FR+1,N_AEROSOL_BANDS
+        do ni = 1,NAERIVLS
+	  sflwwts(n,ni) = sflwwts_co(n-N_AEROSOL_BANDS_FR,ni)
+        enddo
+      enddo
+!-----------------------------------------------------------------------
+!    use band weighting factors 
+!    to derive band quantities for aerosol optical properties
+!-----------------------------------------------------------------------
+      aerextbandlw = 0.0E+00
+      aerssalbbandlw = 0.0E+00
+    do nw = 1, NAERMODELS     !   loop on aerosol types
+      do n = 1,N_AEROSOL_BANDS  ! loop on radiation code aerosol freq bands
+	do ni = 1,NAERIVLS ! loop on aerosol data freq bands (should be a function of aerosol type)
+	  aerextbandlw(n,nw) = aerextbandlw(n,nw) +      &
+               aerextivl(ni,nw)*sflwwts(n,ni)
+ 	  aerssalbbandlw(n,nw) = aerssalbbandlw(n,nw) +  &
+               aerssalbivl(ni,nw)*sflwwts(n,ni)
+	enddo
+      enddo
+    enddo
 !---------------------------------------------------------------------
-!   define the number of band intervals in the aerosol data. allocate
-!   arrays that are needed.
-!---------------------------------------------------------------------
-       NLWAERB = strat_lwmodel_nintvls
 
-       allocate ( aerextivlstrlw  (NLWAERB,kmax_aerfile, jmax_aerfile) )
-       allocate ( aerssalbivlstrlw(NLWAERB,kmax_aerfile, jmax_aerfile) )
-       allocate ( aerasymmivlstrlw(NLWAERB,kmax_aerfile, jmax_aerfile) )
 
-       allocate ( strlwext    (1:jdf, ktop_aer:kbot_aer, NLWAERB ) )
-       allocate ( strlwalb    (1:jdf, ktop_aer:kbot_aer, NLWAERB ) )
-       allocate ( strlwext_15 (1:jdf, ktop_aer:kbot_aer          ) )
-       allocate ( strlwalb_15 (1:jdf, ktop_aer:kbot_aer          ) )
+      endif
+!-----------------------------------------------------------------
+!  set flag to indicate that the routine has been completed.
+!----------------------------------------------------------------
 
-       if (do_prdlwaerosol) then
-         allocate ( aeralb (1:jdf, ktop_aer:kbot_aer, NLWAERB,  &
-						      NLWAERMODELSSTR))
-         allocate ( aerext (1:jdf, ktop_aer:kbot_aer, NLWAERB,    &
-						      NLWAERMODELSSTR))
-         allocate ( aerconc(1:jdf, ktop_aer:kbot_aer, NLWAERB,     &
-						      NLWAERMODELSSTR))
-       endif
- 
-!--------------------------------------------------------------------
-!     read in the time-independent longwave aerosol extinction and
-!     albedo coefficients for ramas code. these are given for the
-!     frequency band structure appropriate to the present longwave
-!     radiation code, so there is no need (as there is in the 
-!     shortwave code) to do a frequency interpolation.
-!--------------------------------------------------------------------
-       inaer1 = open_file ('INPUT/lwaerosolextdata',     &
-			   form = 'ieee32', action='read')
-       inaer2 = open_file ('INPUT/lwaerosolssalbdata',    &
-			   form = 'ieee32', action='read')
- 
-!--------------------------------------------------------------------
-!    the lw aerosol data are for jmax_aerfile latitudes. data are 
-!    stored as (freq.(NLWAERB), lat.(jmax_aerfile), alt.(kmax_aerfile)) 
-!    arrays.
-!--------------------------------------------------------------------
-       do j = 1,jmax_aerfile
-         do k = 1,kmax_aerfile
-           read (inaer1)  (aerextivlstrlw  (lwb,k,j), lwb=1,NLWAERB)
-	   read (inaer2)  (aerssalbivlstrlw(lwb,k,j), lwb=1,NLWAERB)
-         end do
-       end do
-       call close_file (inaer1)
-       call close_file (inaer2)
+      do_init = .true.
 
-!--------------------------------------------------------------------
-!    (if needed): interpolate the aerosol data into model latitudes and
-!    vertical layers
-!----note----interpolation code does not presently exist, thus
-!    requiring the restriction that jd=60 and KMAX=40 which is
-!    implemented above-----------------------------------------
-!--------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!   if there is a need to integrate over the frequency bands given
-!   for the aerosol data (numbering strat_model_nintvls(model)) to the
-!   model frequency ranges (numbering NLWAERB) do so here. (the method
-!   should resemble code in Initialswr95.F; another array then is used
-!   in the do loop that follows).
-!--------------------------------------------------------------------
- 
-!-------------------------------------------------------------------
-!   define arrays to hold the input data stored in the preferred 
-!   index order.
-!--------------------------------------------------------------------
-       if (Environment%running_gcm) THEN
-         do lwb = 1, NLWAERB
-           do k = ktop_aer, kbot_aer
-             do j = 1,jdf
-!               strlwext (j,k,lwb) =  aerextivlstrlw (lwb,k,y(3)+j-1)
-!               strlwalb (j,k,lwb) =  aerssalbivlstrlw (lwb,k,y(3)+j-1)
-               jindx = jindx2(j)
-               strlwext (j,k,lwb) =  aerextivlstrlw (lwb,k,jindx   )
-               strlwalb (j,k,lwb) =  aerssalbivlstrlw (lwb,k,jindx   )
-             end do
-           end do
-         end do
-
-       else if (Environment%running_standalone) then
-!--------------------------------------------------------------------
-!   use data for j=40 (~30n) to fill up the jd rows (usually 1)
-!   used in the single column. this latitude could change!
-!--------------------------------------------------------------------
-       	 do lwb = 1, NLWAERB
-           do j = 1,jdf
-             do k = ktop_aer, kbot_aer
-	       strlwext (j,k,lwb) = aerextivlstrlw (lwb,k,40)
-      	       strlwalb (j,k,lwb) = aerssalbivlstrlw (lwb,k,40)
-             end do
-           end do
-         end do
-       endif
- 
-!--------------------------------------------------------------------
-!     compute extinction, albedo for 560-800 cm-1 band (corresponding
-!     to aerosol bands 1-3. this is done without use of a weighting
-!     function.
-!--------------------------------------------------------------------
-       do j = 1,jdf
-	 do k = ktop_aer, kbot_aer
-	   strlwext_15(j,k) =    &
-      	                    (70.*strlwext(j,k,1) +   &
-                             70.*strlwext(j,k,2) + &
-                          100.*strlwext(j,k,3)) / 240.
-	   strlwalb_15(j,k) =    &
-                            (70.*strlwalb(j,k,1) + &
-                             70.*strlwalb(j,k,2) + &
-                          100.*strlwalb(j,k,3)) / 240.
-	 enddo
-       enddo
-!--------------------------------------------------------------------
-!   deallocate local arrays
-!--------------------------------------------------------------------
-
-       deallocate (aerextivlstrlw)
-       deallocate (aerssalbivlstrlw)
-       deallocate (aerasymmivlstrlw)
-
-     endif
 
 
 end subroutine longwave_aerosol_init
 
 
+!#####################################################################
 
+subroutine optical_depth_aerosol (Atmos_input, n, naerosol,   &
+                                  Aerosol,                   Optical)
 
-!###################################################################
-
-subroutine aertau (ix, jx, kx, js, deltaz, Optical, aeralb, aerext,   &
-                   aerconc)
- 
-!---------------------------------------------------------------------
-integer, intent(in)     :: ix, jx, kx, js
-real, dimension(:,:,:), intent(in) :: deltaz
+type(atmos_input_type), intent(in) :: Atmos_input
+integer,                  intent(in)  :: n, naerosol
+type(aerosol_type), intent(in)  :: Aerosol
 type(optical_path_type), intent(inout) :: Optical
-real, dimension(:,:,:,:),  intent(in), optional   :: aeralb, aerext, &
-						     aerconc
 
-!---------------------------------------------------------------------
-      integer                                :: j, k, n, nm
-      integer    :: israd, ierad, jsrad, jerad, ksrad, kerad
-      real, dimension (:,:,:,:), allocatable :: aerooptdep
-      real, dimension (:,:,:  ), allocatable :: aerooptdep_15
 
-      israd = 1 
-      ierad = ix
-      jsrad = 1
-      jerad = jx
-      ksrad = 1
-      kerad = kx
+integer                               :: i,j,k
+integer   :: ix, jx, kx
+integer                               :: nsc, opt_index
+real, dimension( size(Aerosol%aerosol,1),  &
+                 size(Aerosol%aerosol,2),  &
+                 size(Aerosol%aerosol,3), &
+                       Aerosol%nfields)   :: aerooptdepspec
+real, dimension( size(Aerosol%aerosol,1),  &
+                 size(Aerosol%aerosol,2),  &
+                 size(Aerosol%aerosol,3))  :: aerooptdep
+integer, dimension( size(Aerosol%aerosol,1),  &
+                 size(Aerosol%aerosol,2),  &
+                 size(Aerosol%aerosol,3))  :: irh, opt_index_v
+ real :: asum
+ real, dimension(size (Aerosol%aerosol,3)+1) :: bsum
 
-!---------------------------------------------------------------------
-!allocate needed arrays
-!---------------------------------------------------------------------
-      allocate (Optical%totaerooptdep (ISRAD:IERAD, JSRAD:JERAD,         &
-                                           KSRAD:KERAD+1,  NLWAERB) )
-      allocate (Optical%aerooptdep_KE_15 (ISRAD:IERAD, JSRAD:JERAD           ) )
-      allocate (Optical%totaerooptdep_15 (ISRAD:IERAD, JSRAD:JERAD,   &
- 				               KSRAD:KERAD+1))
-      allocate (aerooptdep (ISRAD:IERAD, JSRAD:JERAD,    &
- 					KSRAD:KERAD, NLWAERB) )
-      allocate (aerooptdep_15 (ISRAD:IERAD, JSRAD:JERAD,  KSRAD:KERAD) )
+    ix = size (Aerosol%aerosol,1)
+    jx = size (Aerosol%aerosol,2)
+    kx = size (Aerosol%aerosol,3)
 
-!---------------------------------------------------------------------
-      aerooptdep = 0.0
-      aerooptdep_15 = 0.0
+   aerooptdep(:,:,:) = 0.0
+   Optical%totaerooptdep(:,:,:,n) = 0.0
+!
+   do k = 1,kx         
+   do j = 1,jx         
+   do i = 1,ix           
+    irh(i,j,k) = MIN(100, MAX(0, NINT(100.*Atmos_input%rel_hum(i,j,k))))
+   opt_index_v(i,j,k) = Aerosol%sulfate_index( irh(i,j,k) )
+   enddo
+   enddo
+   enddo
 
-      do j=JSRAD,JERAD
-        do n = 1,NLWAERB
-          do k=ktop_aer,kbot_aer
-            aerooptdep(:,j,k,n) = aerooptdep(:,j,k,n) + diffac*  &
-!                                 (1.0 - strlwalb(jabs(j),k,n))* &
-                                  (1.0 - strlwalb(j+js-1 ,k,n))* &
-!                                 strlwext(jabs(j),k,n)*  &
-                                  strlwext(j+js-1 ,k,n)*  &
-		                  deltaz(:,j,k)
-          enddo
-        enddo
-        do k=ktop_aer,kbot_aer
-          aerooptdep_15(:,j,k) = aerooptdep_15(:,j,k) + diffac*  &
-!                                (1.0 - strlwalb_15(jabs(j),k))* &
-                                 (1.0 - strlwalb_15(j+js-1 ,k))* &
-!                                strlwext_15(jabs(j),k)*   &
-                                 strlwext_15(j+js-1 ,k)*   &
-			         deltaz(:,j,k)
-        enddo
+
+
+   do k = 1,kx         
+   do j = 1,jx         
+   do i = 1,ix           
+
+     opt_index = opt_index_v(i,j,k)
+      do nsc = 1,Aerosol%nfields  ! loop on aerosol species
+
+!  using relative humidity criterion (where necessary) determine the
+! aerosol category (as an index) appropriate for the aerosol species
+
+ if( Aerosol%optical_index(nsc) == 0 ) then
+! ... Sulfate aerosol (RH-dependent)
+
+
+
+        aerooptdepspec(i,j,k,nsc) = diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+	  (1.0 - aerssalbbandlw(n,opt_index))*aerextbandlw(n,opt_index)
+
+    endif
       enddo
- 
-      do n = 1,NLWAERB
-        Optical%totaerooptdep (:,:,KSRAD,n) = 0.0E+00
-        do k = KSRAD+1,KERAD+1
-          Optical%totaerooptdep(:,:,k,n) = Optical%totaerooptdep(:,:,k-1,n) +  &
-                                   aerooptdep(:,:,k-1,n)
-        enddo
+   enddo
+   enddo
+   enddo
+
+   do k = 1,kx         
+   do j = 1,jx         
+   do i = 1,ix           
+
+      do nsc = 1,Aerosol%nfields  ! loop on aerosol species
+
+!  using relative humidity criterion (where necessary) determine the
+! aerosol category (as an index) appropriate for the aerosol species
+
+  if( Aerosol%optical_index(nsc) == 0 ) then
+  else
+! ... Other aerosols
+    opt_index = Aerosol%optical_index(nsc)
+
+ if( opt_index == 0 ) &
+   call error_mesg( 'get_aerosol_optical_index', &
+                  'Cannot find aerosol optical properties for species = ' // &
+!                   TRIM( Aerosol%data_names(nsc) ), &
+                    TRIM( Aerosol_props%aerosol_names(nsc) ), &
+               FATAL )
+
+
+        aerooptdepspec(i,j,k,nsc) = diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+	  (1.0 - aerssalbbandlw(n,opt_index))*aerextbandlw(n,opt_index)
+
+    end if
       enddo
-      Optical%totaerooptdep_15 (:,:,KSRAD) = 0.0E+00
-      do k = KSRAD+1,KERAD+1
-	Optical%totaerooptdep_15(:,:,k) = Optical%totaerooptdep_15(:,:,k-1) +    &
-                                  aerooptdep_15(:,:,k-1)
-      enddo
+   enddo
+   enddo
+   enddo
 
-      Optical%aerooptdep_KE_15(:,:) = aerooptdep_15(:,:,KERAD)
+!   sum optical depths over all species and obtain column optical depth
+   do k=1,kx
+   do j=1,jx
+   do i=1,ix
+     asum = 0.0
+   do nsc = 1,Aerosol%nfields
+   asum = asum + aerooptdepspec(i,j,k,nsc)
+   enddo
+   aerooptdep(i,j,k) = asum                                         
+   enddo
+   enddo
+   enddo
 
-!---------------------------------------------------------------------
+   do j=1,jx
+   do i=1,ix
+     bsum(1) = 0.0
+   do k = 2,kx+1         
+      bsum(k) = bsum(k-1) + aerooptdep(i,j,k-1)
+   enddo
+   do k = 2,kx+1         
+          Optical%totaerooptdep(i,j,k,n) = bsum(k)
+   enddo
 
-      deallocate ( aerooptdep_15 )
-      deallocate ( aerooptdep )
- 
+   enddo
+   enddo
 
-end  subroutine aertau
+! continuum band is the last indx:
+    if ( n == N_AEROSOL_BANDS) then
+    Optical%aerooptdep_KE_15(:,:) = aerooptdep(:,:,kx)
+    endif
+    
 
-
-
-
-
-!####################################################################
-
-!subroutine longwave_aerosol_dealloc
-
-!     deallocate ( totaerooptdep_15 )
-!     deallocate ( aerooptdep_KE_15 )
-!     deallocate ( totaerooptdep    )
-
-!end subroutine longwave_aerosol_dealloc
-
-
-!####################################################################
-
-subroutine get_totaerooptdep (n, Optical, totaer)
-
-!----------------------------------------------------------------------
-integer,                    intent(in)    :: n
-type(optical_path_type), intent(in) :: Optical
-real, dimension(:,:,:),     intent(out)   :: totaer
-
-!----------------------------------------------------------------------
-
-      totaer(:,:,:) = Optical%totaerooptdep(:,:,:,n)
-
-!-------------------------------------------------------------------
-
-
-end subroutine get_totaerooptdep
-
-
-
-
-!#####################################################################
-
-subroutine get_totaerooptdep_15 (Optical, totaer)
-
-!----------------------------------------------------------------------
-type(optical_path_type), intent(in) :: Optical
-real, dimension(:,:,:),     intent(out)   :: totaer
-
-!----------------------------------------------------------------------
-
-      totaer(:,:,:) = Optical%totaerooptdep_15(:,:,:)
-
-!-------------------------------------------------------------------
-
-
-end subroutine get_totaerooptdep_15
-
-
-
-
-!#####################################################################
-
-subroutine get_aerooptdep_KE_15 (Optical, totaer)
-
-!----------------------------------------------------------------------
-type(optical_path_type), intent(in) :: Optical
-real, dimension(:,:),       intent(out)   :: totaer
-
-!----------------------------------------------------------------------
-
-      totaer(:,:) = Optical%aerooptdep_KE_15(:,:)
-
-!-------------------------------------------------------------------
-
-
-end subroutine get_aerooptdep_KE_15
-
-
+end subroutine optical_depth_aerosol
 
 
 !#####################################################################
 
 
 	end module longwave_aerosol_mod
+
 

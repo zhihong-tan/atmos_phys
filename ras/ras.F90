@@ -13,22 +13,32 @@
 !  SUBROUTINE RAS_BDGT        - BUDGET CHECK FOR RAS
 !=======================================================================
 
+ use           mpp_mod, only : mpp_pe,             &
+                               mpp_root_pe,        &
+                               stdlog
  use Sat_Vapor_Pres_Mod, ONLY: ESCOMP, DESCOMP
- use      Constants_Mod, ONLY:  HLv, HLs, Cp, Grav, Kappa, rdgas, rvgas
+ use      Constants_Mod, ONLY:  HLv, HLs, Cp_Air, Grav, Kappa, rdgas, rvgas
  use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
  use   Time_Manager_Mod, ONLY: time_type
  use      Utilities_Mod, ONLY: FILE_EXIST, OPEN_FILE, ERROR_MESG,  &
                                 get_my_pe, CLOSE_FILE, FATAL
-
+ use           fms_mod, only : write_version_number
+ use  field_manager_mod, only: MODEL_ATMOS
+ use tracer_manager_mod, only: get_tracer_index,   &
+                               get_number_tracers, &
+                               get_tracer_names,   &
+                               get_tracer_indices, &
+                               query_method,       &
+                               NO_TRACER
 !---------------------------------------------------------------------
  implicit none
  private
- public  :: ras, ras_init, ras_bdgt
+ public  :: ras, ras_init, ras_end, ras_bdgt
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- character(len=128) :: version = '$Id: ras.F90,v 1.5 2001/10/25 17:48:21 fms Exp $'
- character(len=128) :: tag = '$Name: havana $'
+ character(len=128) :: version = '$Id: ras.F90,v 1.6 2003/04/09 20:58:26 fms Exp $'
+ character(len=128) :: tagname = '$Name: inchon $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -36,12 +46,11 @@
  real :: onebcp, onebg
  real :: rn_pfac
 
- logical :: do_init = .true.
+ logical :: module_is_initialized = .false.
 
  real, parameter :: d622        = rdgas/rvgas
  real, parameter :: d378        = 1.0-d622
- real, parameter :: Tokioka_con = 0.05 
-
+ 
 !---------------------------------------------------------------------
 ! --- Climatological cloud work function data
 !---------------------------------------------------------------------
@@ -60,17 +69,27 @@
 !---------------------------------------------------------------------
 ! --- NAMELIST
 !---------------------------------------------------------------------
-!     fracs  - Fraction of PBL mass allowed to be used 
-!              by a cloud-type in time DT
-!     rasal0 - Base value for cloud type relaxation parameter
-!     puplim - Upper limit for cloud tops of deepest clouds
-!     aratio - Ratio of critical cloud work function to standard
-!              value of cloud work function
-!     cufric - Should Cumulus friction (momentum transport) occur?
-!    rh_trig - Convection takes place only if the relative humidity
-!              of the lowest model level exceeds rh_trig
-!    alm_min - Min value for entrainment parameter.
-! Tokioka_on - If true, alm_min computed using Tokioka formulation
+!       fracs  - Fraction of PBL mass allowed to be used 
+!                by a cloud-type in time DT
+!       rasal0 - Base value for cloud type relaxation parameter
+!       puplim - Upper limit for cloud tops of deepest clouds
+!       aratio - Ratio of critical cloud work function to standard
+!                value of cloud work function
+!       cufric - Should Cumulus friction (momentum transport) occur?
+!      rh_trig - Convection takes place only if the relative humidity
+!                of the lowest model level exceeds rh_trig
+!      alm_min - Min value for entrainment parameter.
+!   Tokioka_on - If true, alm_min computed using Tokioka formulation
+!  Tokioka_con - Constant for alm_min computed using Tokioka formulation
+! Tokioka_plim - Tokioka applied only to clouds detraining above Tokioka_plim
+!   modify_pbl - If true, mass flux in sub cloud layer varies linearly   
+!                between value at cloud base and zero at surface, and   
+!                tendencies are spread out throughout the entire sub cloud layer.
+! prevent_unreasonable - If true, unreasonable states (negatives) for the water 
+!                        tracers are prevented. This is achieved by borrowing 
+!                        from the sources of tracer within this module. 
+!                        Otherwise the tendency is added without correction and
+!                        can lead to negative mixing ratios. (Default = .FALSE.)
 ! --- CLOUD ORDER SPECIFICATION ---
 !     ncrnd  - Number of random cloud-types between krmin and krmax to be
 !              invoked in a single call to ras
@@ -101,15 +120,19 @@
 !     hcevap  - Evap allowed while q <= hcevap * qsat
 !---------------------------------------------------------------------
 
- real    :: fracs      = 0.25
- real    :: rasal0     = 0.25
- real    :: puplim     = 20.0E2
- real    :: aratio     = 1.4
- logical :: cufric     = .false.
- real    :: rh_trig    = 0.0      
- real    :: alm_min    = 0.0  
- logical :: Tokioka_on = .false.
-
+ real    :: fracs        = 0.25
+ real    :: rasal0       = 0.25
+ real    :: puplim       = 20.0E2
+ real    :: aratio       = 1.4
+ logical :: cufric       = .false.
+ real    :: rh_trig      = 0.0      
+ real    :: alm_min      = 0.0  
+ logical :: Tokioka_on   = .false.
+ real    :: Tokioka_con  = 0.05 
+ real    :: Tokioka_plim = 500.0E2
+ logical :: modify_pbl   = .false.
+ logical :: prevent_unreasonable   = .false.
+ 
 ! --- cloud order specification ---
  integer :: ncrnd = 0
  integer :: iseed = 123
@@ -128,24 +151,31 @@
  real    :: cfrac   = 0.05
  real    :: hcevap  = 0.80    
 
+ integer :: nsphum, nql, nqi, nqa   ! tracer indices for stratiform clouds
 
     NAMELIST / ras_nml /                          &
       fracs,   rasal0,  puplim, aratio, cufric,   &
       ncrnd,   iseed,   krmin,   krmax, botop,    &
       rn_ptop, rn_pbot, rn_frac_top, rn_frac_bot, &
       evap_on, cfrac,   hcevap, rh_trig, alm_min, &
-      Tokioka_on
+      Tokioka_on, Tokioka_con, Tokioka_plim, modify_pbl, prevent_unreasonable
 
 !---------------------------------------------------------------------
 ! DIAGNOSTICS FIELDS 
 !---------------------------------------------------------------------
 
 integer :: id_tdt_revap,  id_qdt_revap,    id_prec_revap,  &
-           id_snow_revap, id_prec_conv_3d, id_pcldb
+           id_snow_revap, id_prec_conv_3d, id_pcldb, &
+           id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
+           id_q_conv_col, id_t_conv_col, id_mc,&
+           id_qldt_conv, id_qidt_conv, id_qadt_conv, &
+           id_ql_conv_col, id_qi_conv_col, id_qa_conv_col
 
 character(len=3) :: mod_name = 'ras'
 
 real :: missing_value = -999.
+integer               :: num_tracers
+integer, allocatable, dimension(:) :: tr_indices, id_tracer_conv, id_tracer_conv_col
 
 !---------------------------------------------------------------------
 
@@ -154,7 +184,7 @@ real :: missing_value = -999.
 !#####################################################################
 !#####################################################################
 
-  SUBROUTINE RAS_INIT( axes, Time )
+  SUBROUTINE RAS_INIT( do_strat, axes, Time )
 
 !=======================================================================
 ! ***** INITIALIZE RAS
@@ -163,6 +193,7 @@ real :: missing_value = -999.
 ! Arguments (Intent in)
 !---------------------------------------------------------------------
 
+ logical,         intent(in) :: do_strat
  integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
 
@@ -173,7 +204,10 @@ real :: missing_value = -999.
  integer             :: unit, io
  real                :: actp, facm 
  real, dimension(15) :: au,   tem
-
+ integer, dimension(3) :: half = (/1,2,4/)
+ character(len=128)    :: diagname, diaglname, tendunits, name, longname, units
+ integer               :: tr
+ character(len=80) :: scheme
 !=====================================================================
 
 !---------------------------------------------------------------------
@@ -193,24 +227,52 @@ real :: missing_value = -999.
 ! --- Write namelist
 !---------------------------------------------------------------------
 
-  unit = OPEN_FILE ( file = 'logfile.out', action = 'APPEND')
-  if ( get_my_pe() == 0 ) then
-       WRITE( unit, '(/,80("="),/(a))') trim(version),trim(tag)
-       WRITE( unit, nml = ras_nml ) 
+  call write_version_number (version, tagname)
+       WRITE( stdlog(), nml = ras_nml ) 
+
+
+!---------------------------------------------------------------------
+! --- Find the tracer indices 
+!---------------------------------------------------------------------
+  call get_number_tracers(MODEL_ATMOS,num_prog=num_tracers)
+  if ( num_tracers .gt. 0 ) then
+    allocate(tr_indices(num_tracers))
+    allocate(id_tracer_conv(num_tracers))
+    allocate(id_tracer_conv_col(num_tracers))
+  else
+    call error_mesg('ras_init', 'No atmospheric tracers found', FATAL)
   endif
-  CALL CLOSE_FILE ( unit )
+  call get_tracer_indices(MODEL_ATMOS, tr_indices)  
+  if (do_strat) then
+    ! get tracer indices for stratiform cloud variables
+      nsphum = get_tracer_index ( MODEL_ATMOS, 'sphum' )
+      nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
+      nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
+      nqa = get_tracer_index ( MODEL_ATMOS, 'cld_amt' )
+      if (min(nql,nqi,nqa) <= 0) call error_mesg ('ras_init', &
+                                                  'stratiform cloud tracer(s) not found', FATAL)
+      if (nql == nqi .or. nqa == nqi .or. nql == nqa) call error_mesg ('ras_init',  &
+                               'tracers indices cannot be the same (i.e., nql=nqi=nqa).', FATAL)
+      if (mpp_pe() == mpp_root_pe()) &
+          write (stdlog(),'(a,3i4)') 'Stratiform cloud tracer indices: nql,nqi,nqa =',nql,nqi,nqa
+      if ( nsphum > 0 ) tr_indices(nsphum) = NO_TRACER
+      tr_indices(nql) = NO_TRACER
+      tr_indices(nqi) = NO_TRACER
+      tr_indices(nqa) = NO_TRACER
+  endif
+
 
 !---------------------------------------------------------------------
 ! --- Initialize constants
 !---------------------------------------------------------------------
 
   
-  cp_div_grav = Cp / Grav
+  cp_div_grav = Cp_Air / Grav
 
   one_plus_kappa  = 1.0 + Kappa
   one_minus_kappa = 1.0 - Kappa
 
-  onebcp = 1.0 / Cp
+  onebcp = 1.0 / Cp_Air
   onebg  = 1.0 / Grav
   
   rn_pfac = ( rn_frac_top -  rn_frac_bot)  / ( rn_pbot - rn_ptop ) 
@@ -269,19 +331,141 @@ real :: missing_value = -999.
 
 !---------------------------------------------------------------------
 
-  do_init = .false.
+   id_tdt_conv = register_diag_field ( mod_name, &
+     'tdt_conv', axes(1:3), Time, &
+     'Temperature tendency from RAS',                'deg_K/s',  &
+                        missing_value=missing_value               )
+
+   id_qdt_conv = register_diag_field ( mod_name, &
+     'qdt_conv', axes(1:3), Time, &
+     'Spec humidity tendency from RAS',              'kg/kg/s',  &
+                        missing_value=missing_value               )
+
+   id_prec_conv = register_diag_field ( mod_name, &
+     'prec_conv', axes(1:2), Time, &
+    'Precipitation rate from RAS',                  'kg/m2/s' )
+
+   id_snow_conv = register_diag_field ( mod_name, &
+     'snow_conv', axes(1:2), Time, &
+    'Frozen precip rate from RAS',                  'kg/m2/s' )
+
+   id_q_conv_col = register_diag_field ( mod_name, &
+     'q_conv_col', axes(1:2), Time, &
+    'Water vapor path tendency from RAS',           'kg/m2/s' )
+   
+   id_t_conv_col = register_diag_field ( mod_name, &
+     't_conv_col', axes(1:2), Time, &
+    'Column static energy tendency from RAS',       'W/m2' )
+
+
+   id_mc = register_diag_field ( mod_name, &
+     'mc', axes(half), Time, &
+         'Cumulus Mass Flux from RAS',                   'kg/m2/s', &
+                        missing_value=missing_value               )
+
+
+if ( do_strat ) then
+
+   id_qldt_conv = register_diag_field ( mod_name, &
+     'qldt_conv', axes(1:3), Time, &
+     'Liquid water tendency from RAS',              'kg/kg/s',  &
+                        missing_value=missing_value               )
+
+   id_qidt_conv = register_diag_field ( mod_name, &
+     'qidt_conv', axes(1:3), Time, &
+     'Ice water tendency from RAS',                 'kg/kg/s',  &
+                        missing_value=missing_value               )
+
+   id_qadt_conv = register_diag_field ( mod_name, &
+     'qadt_conv', axes(1:3), Time, &
+     'Cloud fraction tendency from RAS',            '1/sec',    &
+                        missing_value=missing_value               )
+
+   id_ql_conv_col = register_diag_field ( mod_name, &
+     'ql_conv_col', axes(1:2), Time, &
+    'Liquid water path tendency from RAS',          'kg/m2/s' )
+   
+   id_qi_conv_col = register_diag_field ( mod_name, &
+     'qi_conv_col', axes(1:2), Time, &
+    'Ice water path tendency from RAS',             'kg/m2/s' )
+   
+   id_qa_conv_col = register_diag_field ( mod_name, &
+     'qa_conv_col', axes(1:2), Time, &
+    'Cloud mass tendency from RAS',                 'kg/m2/s' )
+      
+endif
+
+! Put tracer tendencies due to RAS convection here.
+! The name for the diagnostic will be made up from the name of the tracer
+! followed by dt_RAS
+! The longname output to the Netcdf file will be the name of the tracer 
+! followed by ' tendency from RAS'
+! the units 
+    do tr = 1,num_tracers
+      id_tracer_conv(tr) = -1
+      id_tracer_conv_col(tr) = -1
+      if (tr_indices(tr) .eq. NO_TRACER ) cycle
+      call get_tracer_names(MODEL_ATMOS, tr_indices(tr), name, longname, units)
+      if ( query_method ( 'convection',MODEL_ATMOS,tr,scheme)) then
+        select case (scheme)
+          case ("off")
+            tr_indices(tr) = NO_TRACER
+            write (stdlog(),'(a)') 'Turning off convection for tracer '//name
+          case ("no_RAS")
+            tr_indices(tr) = NO_TRACER
+            write (stdlog(),'(a)') 'Turning off RAS convection for tracer '//name
+          case default  
+        end select
+      endif
+! Diagnostic for column tendency
+      diagname = trim(name)//'dt_RAS'
+      diaglname = trim(name)//' tendency from RAS'
+      tendunits = trim(units)//'/s'
+
+      id_tracer_conv(tr) = register_diag_field ( mod_name, &
+      trim(diagname), axes(1:3), Time, &
+      trim(diaglname) ,             trim(tendunits),  &
+                        missing_value=missing_value               )
+
+! Diagnostic for column integral tendency
+      diagname = trim(name)//'dt_RAS_col'
+      diaglname = trim(name)//' path tendency from RAS'
+      tendunits = trim(units)//'m2/kg/s'
+
+      id_tracer_conv_col(tr) = register_diag_field ( mod_name, &
+      trim(diagname), axes(1:2), Time, &
+      trim(diaglname) ,             trim(tendunits),  &
+                        missing_value=missing_value               )
+
+    enddo
+  module_is_initialized = .true.
 
 !=====================================================================
   end SUBROUTINE RAS_INIT
 
+
 !#####################################################################
+subroutine ras_end
+
+integer :: log_unit
+
+log_unit = stdlog()
+if ( mpp_pe() == mpp_root_pe() ) then
+   write (log_unit,'(/,(a))') 'Exiting RAS.'
+endif
+
+module_is_initialized = .FALSE.
+
+
+end subroutine ras_end
+
 !#####################################################################
 
-  SUBROUTINE RAS( is,     js,      Time,    temp0,      qvap0,     &
-                  uwnd0,  vwnd0,   pres0,   pres0_int,  coldT0,    &
-                  dtime,  dtemp0,  dqvap0,  duwnd0,     dvwnd0,    &
-                  rain0,  snow0,   kbot,    ql0,        qi0,       &
-                  qa0,    mc0,     Dl0,     Di0,        Da0  )
+  SUBROUTINE RAS( is,     js,      Time,     temp0,     qvap0,     &
+                  uwnd0,  vwnd0,   pres0,    pres0_int, coldT0,    &
+                  dtime,  dtemp0,  dqvap0,   duwnd0,    dvwnd0,    &
+                  rain0,  snow0,   do_strat, mask,      kbot,      &
+                  mc0,    R0,      DR0 )
 
 !=======================================================================
 ! ***** DRIVER FOR RAS
@@ -299,6 +483,9 @@ real :: missing_value = -999.
 !     vwnd0     - V component of wind
 !     coldT0    - should the precipitation assume to be frozen?
 !     kbot      - OPTIONAL;lowest model level index (integer)
+!     R0        - OPTIONAL;prognostic tracers to move around
+!                 note that R0 is assumed to be dimensioned
+!                 (nx,ny,nz,nt), where nt is the number of tracers
 !     ql0       - OPTIONAL;cloud liquid
 !     qi0       - OPTIONAL;cloud ice
 !     qa0       - OPTIONAL;cloud/saturated volume fraction
@@ -307,10 +494,12 @@ real :: missing_value = -999.
   integer,         intent(in)                   :: is, js
   real,            intent(in)                   :: dtime
   real,            intent(in), dimension(:,:,:) :: pres0, pres0_int
-  real,            intent(in), dimension(:,:,:) :: temp0, qvap0, uwnd0, vwnd0
+  real,            intent(inout), dimension(:,:,:) :: temp0, qvap0, uwnd0, vwnd0
   logical,         intent(in), dimension(:,:)   :: coldT0
-  integer, intent(in), OPTIONAL, dimension(:,:)   :: kbot
-  real,    intent(in), OPTIONAL, dimension(:,:,:) :: ql0,qi0,qa0
+  logical,         intent(in)                   :: do_strat
+  real, intent(in) , dimension(:,:,:), OPTIONAL :: mask
+  integer, intent(in), OPTIONAL, dimension(:,:) :: kbot
+  real,  intent(inout), dimension(:,:,:,:)         :: R0
 !---------------------------------------------------------------------
 ! Arguments (Intent out)
 !       rain0  - surface rain
@@ -323,20 +512,23 @@ real :: missing_value = -999.
 !       Dl0    - OPTIONAL; cloud liquid change
 !       Di0    - OPTIONAL; cloud ice change
 !       Da0    - OPTIONAL; cloud fraction change
+!       DR0    - OPTIONAL; increment to prognostic tracers
 !---------------------------------------------------------------------
   real, intent(out), dimension(:,:,:) :: dtemp0, dqvap0, duwnd0, dvwnd0
   real, intent(out), dimension(:,:)   :: rain0,  snow0
   
-  real, intent(out), OPTIONAL, dimension(:,:,:) :: mc0,Dl0,Di0,Da0
+  real, intent(out), OPTIONAL, dimension(:,:,:) :: mc0
+  real, intent(out), OPTIONAL, dimension(:,:,:,:) :: DR0
 
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
+  real, dimension(size(R0,1),size(R0,2),size(R0,3)) :: ql0,qi0,qa0,Dl0,Di0,Da0
 
  real, parameter :: p00 = 1000.0E2
 
  logical :: coldT,  exist    
- real    :: precip, Hl, psfc, dpcu
+ real    :: precip, Hl, psfc, dpcu, dtinv
  integer :: ksfc,   klcl
 
  integer, dimension(SIZE(temp0,3)) :: ic
@@ -347,22 +539,27 @@ real :: missing_value = -999.
        cp_by_dp,   dqvap_sat,  qvap_sat,    alpha, beta,  gamma, &
        dtcu, dqcu, ducu, dvcu, Dlcu, Dicu,  Dacu
 
+ real, dimension(SIZE(R0,3),SIZE(R0,4)) :: tracer, dtracer, dtracercu
+
  real, dimension(SIZE(temp0,3)+1) ::  pres_int, mc, pi_int, mccu
 
  logical, dimension(size(temp0,1),size(temp0,2)) :: rhtrig_mask
  integer, dimension(size(temp0,1),size(temp0,2)) :: kcbase
 
  real,    dimension(size(temp0,1),size(temp0,2)) :: &
-          psfc0, t_parc, q_parc, p_parc, qs_parc    
+          psfc0, t_parc, q_parc, p_parc, qs_parc   
 
  real,    dimension(size(temp0,1),size(temp0,2),size(temp0,3)) :: &
-          qvap_sat0, dqvap_sat0
+          qvap_sat0, dqvap_sat0, pmass
 
- logical :: setras, Lkbot, Lda0, Lmc0
- integer :: i, imax, j, jmax, k, kmax
+ real,    dimension(size(temp0,1),size(temp0,2),size(temp0,3)+1) :: mask3
+
+ logical :: setras, Lkbot, Lda0, Lmc0, LR0
+ integer :: i, imax, j, jmax, k, kmax, tr
  integer :: ncmax, nc, ib
  real    :: rasal, frac
-
+ real    :: dpfac, dtcu_pbl, dqcu_pbl, ducu_pbl, dvcu_pbl, dtracercu_pbl(SIZE(R0,4))
+ 
 !--- For extra diagnostics
 
  logical :: used
@@ -372,7 +569,7 @@ real :: missing_value = -999.
        cup, dtevap, dqevap, dtemp_ev, dqvap_ev
 
  real, dimension(size(temp0,1),size(temp0,2)) :: &
-       pcldb0, rain_ev0, snow_ev0
+       pcldb0, rain_ev0, snow_ev0, tempdiag
 
  real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)) :: &
        cuprc3d, dtemp_ev0, dqvap_ev0
@@ -380,13 +577,17 @@ real :: missing_value = -999.
 !=====================================================================
 
 ! --- Check to see if ras has been initialized
-  if( do_init ) CALL ERROR_MESG( 'RAS',  &
+  if( .not. module_is_initialized ) CALL ERROR_MESG( 'RAS',  &
                                  'ras_init has not been called', FATAL )
   
 ! --- Check for presence of optional arguments
-  Lkbot  = PRESENT( kbot )
-  Lda0   = PRESENT( Da0  )
-  Lmc0   = PRESENT( mc0  )
+  Lkbot      = PRESENT( kbot )
+  Lda0       = do_strat
+  ql0(:,:,:) = R0(:,:,:,nql)
+  qi0(:,:,:) = R0(:,:,:,nqi)
+  qa0(:,:,:) = R0(:,:,:,nqa)
+  Lmc0       = ( do_strat .or. id_mc > 0 )
+  LR0        = .TRUE. !PRESENT( R0 )
 
 ! --- Set dimensions
   imax  = size( temp0, 1 )
@@ -416,6 +617,12 @@ real :: missing_value = -999.
   if ( Lmc0 ) then
       mc0 = 0.0
   end if
+! Initialize the tracer tendencies
+    DR0        = 0.0
+
+  do k=1,kmax
+    pmass(:,:,k) = (pres0_int(:,:,k+1)-pres0_int(:,:,k))/GRAV
+  end do
 
     frac  = fracs  / dtime
     rasal = rasal0 / dtime 
@@ -531,6 +738,14 @@ real :: missing_value = -999.
         mc(:) = 0.0
   end if
 
+! Get the column of tracer data
+    do tr = 1,SIZE(R0,4)
+      dtracer(:,tr) = 0.0
+      tracer(:,tr) = 0.0
+      if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+      tracer(:,tr)  = R0(i,j,:,tr)
+    enddo
+
     if( coldT ) then
      Hl = HLs
   else  
@@ -560,7 +775,7 @@ real :: missing_value = -999.
   theta(:) = temp(:) / pi(:)                                 
 
 ! --- Compute Cp divided by dpres                  
-  cp_by_dp(1:kmax) = Cp / mass(1:kmax)
+  cp_by_dp(1:kmax) = Cp_Air / mass(1:kmax)
 
 ! --- Compute mass of layers              
   mass(:) = mass(:) / Grav
@@ -586,7 +801,7 @@ real :: missing_value = -999.
 ! --- Compute some stuff
      alpha(:) =  qvap_sat(:) - dqvap_sat(:) * temp(:)
       beta(:) = dqvap_sat(:) * pi(:)
-     gamma(:) = 1.0 / ( ( 1.0 + ( Hl * dqvap_sat(:) / Cp ) ) * pi(:) )
+     gamma(:) = 1.0 / ( ( 1.0 + ( Hl * dqvap_sat(:) / Cp_Air ) ) * pi(:) )
  endif
 
 ! --- Do adjustment
@@ -596,19 +811,22 @@ real :: missing_value = -999.
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
        alpha, beta, gamma, cp_by_dp,                                 &
        dtcu,  dqcu, ducu,  dvcu, dpcu,                               &
-       ql,    qi,   qa,    mccu, Dlcu, Dicu, Dacu )
+       ql,    qi,   qa,    mccu, Dlcu, Dicu, Dacu, tracer= tracer,   &
+       dtracercu = dtracercu )
   else if ( Lmc0 .and. .not.Lda0 ) then
   CALL RAS_CLOUD(                                                    &
        klcl,  ib,   rasal, frac, Hl,  coldT,                         &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
        alpha, beta, gamma, cp_by_dp,                                 &
-       dtcu,  dqcu, ducu,  dvcu, dpcu, mccu=mccu )
+       dtcu,  dqcu, ducu,  dvcu, dpcu, mccu=mccu, tracer= tracer,   &
+       dtracercu = dtracercu )
   else
   CALL RAS_CLOUD(                                                    &
        klcl,  ib,   rasal, frac, Hl,  coldT,                         &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
        alpha, beta, gamma, cp_by_dp,                                 &
-       dtcu,  dqcu, ducu,  dvcu, dpcu )
+       dtcu,  dqcu, ducu,  dvcu, dpcu, tracer= tracer,   &
+       dtracercu = dtracercu )
   end if
 
 ! --- For optional diagnostic output
@@ -627,6 +845,46 @@ real :: missing_value = -999.
   Dicu(:) =  Dicu(:) * dtime
   end if
 
+  if ( LR0 ) then
+    do tr = 1,SIZE(R0,4)
+      if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+      dtracercu(:,tr) = dtracercu(:,tr) * dtime
+    enddo
+  end if
+  if( modify_pbl ) then   
+! TTTTTTTTTTTTTTTTTTTTT      
+! --- Adjust mass flux between cloud base and surface       
+    if ( Lmc0 ) then     
+      do k = klcl+1,ksfc
+        mccu(k) = mccu(klcl) * ( psfc - pres_int(k)    ) / &
+                               ( psfc - pres_int(klcl) )
+      end do
+    end if
+! --- Adjust tendencies between cloud base and surface
+    dpfac = ( pres_int(klcl+1) - pres_int(klcl) ) / &
+             ( psfc             - pres_int(klcl) )   
+    dtcu_pbl = dpfac * dtcu(klcl) * pi(klcl)
+    dqcu_pbl = dpfac * dqcu(klcl) 
+    ducu_pbl = dpfac * ducu(klcl) 
+    dvcu_pbl = dpfac * dvcu(klcl) 
+    do tr = 1,SIZE(R0,4)
+      if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+      dtracercu_pbl(tr) = dpfac * dtracercu(klcl,tr)
+    enddo
+    do k = klcl,ksfc-1
+      dtcu(k) = dtcu_pbl / pi(k) 
+      dqcu(k) = dqcu_pbl
+      ducu(k) = ducu_pbl
+      dvcu(k) = dvcu_pbl
+      if ( LR0 ) then
+        do tr = 1,SIZE(R0,4)
+          if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+          dtracercu(k,tr) = dtracercu_pbl(tr)
+        enddo
+      end if
+    end do
+! LLLLLLLLLLLLLLLLL
+  endif
 ! --- Evaporate some precip
 
       dtevap(:) = 0.0
@@ -645,17 +903,69 @@ real :: missing_value = -999.
 
   endif
 
-! --- Update potential temperature, water vapor, winds
-  theta(:) = theta(:) + dtcu(:)
-   qvap(:) =  qvap(:) + dqcu(:)
-   uwnd(:) =  uwnd(:) + ducu(:)
-   vwnd(:) =  vwnd(:) + dvcu(:)
+! --- Update prognostic tracers
+!     NOTE: negative values of tracers are not prevented
+  if ( LR0 ) then  
+    do tr = 1,SIZE(R0,4)
+      if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+         tracer(:,tr)   = tracer(:,tr) + dtracercu(:,tr)
+    enddo  
+  end if
+
+if ( prevent_unreasonable ) then
+! --- Update cloud liquid, ice, and fraction
+!     NOTE: unreasonable states are prevented
+
+  if ( Lda0 ) then
+  
+    !cloud fraction---------------
+    where ((qa + Dacu) .lt. 0.)
+         Dacu = -1.*qa
+        qa   = 0.
+    elsewhere
+         qa   = qa + Dacu
+    end where
+    where (qa .gt. 1.)
+         Dacu = Dacu + (1. - qa)
+         qa   = 1.
+    end where
+    
+    !cloud liquid----------------
+    where ((ql + Dlcu) .lt. 0.)
+         dtcu = dtcu - HLv*(ql+Dlcu)/Cp_Air/pi
+        dqcu = dqcu + (ql + Dlcu)
+         Dlcu = Dlcu - (ql + Dlcu)
+        ql   = 0.
+    elsewhere
+         ql   = ql + Dlcu
+    end where
+    
+    !cloud ice----------------
+    where ((qi + Dicu) .lt. 0.)
+         dtcu = dtcu - HLs*(qi+Dicu)/Cp_Air/pi
+        dqcu = dqcu + (qi + Dicu)
+         Dicu = Dicu - (qi + Dicu)
+        qi   = 0.
+    elsewhere
+         qi   = qi + Dicu
+    endwhere
+            
+  end if
+else
 
   if ( Lda0 ) then
     ql(:) = ql(:) + Dlcu(:)
     qi(:) = qi(:) + Dicu(:)
     qa(:) = qa(:) + Dacu(:)
   end if
+
+endif
+
+! --- Update potential temperature, water vapor, winds
+  theta(:) = theta(:) + dtcu(:)
+   qvap(:) =  qvap(:) + dqcu(:)
+   uwnd(:) =  uwnd(:) + ducu(:)
+   vwnd(:) =  vwnd(:) + dvcu(:)
 
 ! --- Recover temperature 
   temp(:) = theta(:) * pi(:)
@@ -680,6 +990,10 @@ real :: missing_value = -999.
   if ( Lmc0 ) then
     mc(:) = mc(:) + mccu(:)
   end if
+  do tr = 1,SIZE(R0,4)
+    if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+    dtracer(:,tr) = dtracer(:,tr) + dtracercu(:,tr)
+  enddo  
 
   setras = .false.
 
@@ -718,6 +1032,10 @@ real :: missing_value = -999.
   if ( Lmc0 ) then
         mc0(i,j,:) = mc(:)
   end if
+  do tr = 1,SIZE(R0,4)
+      if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+      DR0(i,j,:,tr) = dtracer(:,tr)
+  enddo    
 
 ! --- For extra diagnostics
  
@@ -736,14 +1054,53 @@ real :: missing_value = -999.
   end do
 ! TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 
+!------- update input values and compute tendency -----------
+   dtinv = 1.0/dtime
+
+      temp0=temp0+dtemp0;    qvap0=qvap0+dqvap0
+      uwnd0=uwnd0+duwnd0;    vwnd0=vwnd0+dvwnd0
+
+      duwnd0=duwnd0*dtinv; dvwnd0=dvwnd0*dtinv
+
+      dtemp0=dtemp0*dtinv; dqvap0=dqvap0*dtinv
+      rain0=rain0*dtinv; snow0=snow0*dtinv
+
+!!------- add on tendency ----------
+!      tdt=tdt+ttnd; qdt=qdt+qtnd
+!      udt=udt+utnd; vdt=vdt+vtnd
+
+!------- update input values , compute and add on tendency -----------
+!-------              in the case of strat                 -----------
+
+      if (do_strat) then
+         R0(:,:,:,nql) = R0(:,:,:,nql)+Dl0(:,:,:)
+         R0(:,:,:,nqi) = R0(:,:,:,nqi)+Di0(:,:,:)
+         R0(:,:,:,nqa) = R0(:,:,:,nqa)+Da0(:,:,:)
+
+         Dl0(:,:,:)=Dl0(:,:,:)*dtinv
+         Di0(:,:,:)=Di0(:,:,:)*dtinv
+         Da0(:,:,:)=Da0(:,:,:)*dtinv
+
+         DR0(:,:,:,nql) = Dl0(:,:,:)
+         DR0(:,:,:,nqi) = Di0(:,:,:)
+         DR0(:,:,:,nqa) = Da0(:,:,:)
+ 
+      end if
+  if ( LR0 ) then
+    do tr = 1,SIZE(R0,4)
+        if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+        DR0(:,:,:,tr) = DR0(:,:,:,tr)*dtinv
+    enddo    
+  end if
+
 !---------------------------------------------------------------------
 ! --- Extra diagnostics
 !---------------------------------------------------------------------
  
-   dtemp_ev0(:,:,:) = dtemp_ev0(:,:,:) / dtime
-   dqvap_ev0(:,:,:) = dqvap_ev0(:,:,:) / dtime
-    snow_ev0(:,:)   =  snow_ev0(:,:)   / dtime
-    rain_ev0(:,:)   =  rain_ev0(:,:)   / dtime
+   dtemp_ev0(:,:,:) = dtemp_ev0(:,:,:) * dtinv
+   dqvap_ev0(:,:,:) = dqvap_ev0(:,:,:) * dtinv
+    snow_ev0(:,:)   =  snow_ev0(:,:)   * dtinv
+    rain_ev0(:,:)   =  rain_ev0(:,:)   * dtinv
 
      if ( id_tdt_revap > 0 ) then
         used = send_data ( id_tdt_revap, dtemp_ev0, Time, is, js, 1 )
@@ -764,7 +1121,126 @@ real :: missing_value = -999.
         used = send_data ( id_pcldb, pcldb0, Time, is, js )
      endif
 
+!------- diagnostics for dt/dt_ras -------
+      if ( id_tdt_conv > 0 ) then
+        used = send_data ( id_tdt_conv, dtemp0, Time, is, js, 1, &
+                           rmask=mask )
+      endif
+!------- diagnostics for dq/dt_ras -------
+      if ( id_qdt_conv > 0 ) then
+        used = send_data ( id_qdt_conv, dqvap0, Time, is, js, 1, &
+                           rmask=mask )
+      endif
+!------- diagnostics for precip_ras -------
+      if ( id_prec_conv > 0 ) then
+        used = send_data ( id_prec_conv, (rain0+snow0), Time, is, js )
+      endif
+!------- diagnostics for snow_ras -------
+      if ( id_snow_conv > 0 ) then
+        used = send_data ( id_snow_conv, snow0, Time, is, js )
+      endif
+!------- diagnostics for cumulus mass flux from ras -------
+      if ( id_mc > 0 ) then
+           !------- set up mask --------
+           mask3(:,:,1:(kmax+1)) = 1.
+           if (present(mask)) then
+              WHERE (mask(:,:,1:kmax) <= 0.5)
+                     mask3(:,:,1:kmax) = 0.
+              END WHERE
+           endif
+           used = send_data ( id_mc, mc0, Time, is, js, 1, rmask=mask3 )
+      endif
+!------- diagnostics for water vapor path tendency ----------
+      if ( id_q_conv_col > 0 ) then
+        tempdiag(:,:)=0.
+        do k=1,kmax
+          tempdiag(:,:) = tempdiag(:,:) + dqvap0(:,:,k)*pmass(:,:,k)*dtinv
+        end do
+        used = send_data ( id_q_conv_col, tempdiag, Time, is, js )
+      end if	
+   
+!------- diagnostics for dry static energy tendency ---------
+      if ( id_t_conv_col > 0 ) then
+        tempdiag(:,:)=0.
+        do k=1,kmax
+          tempdiag(:,:) = tempdiag(:,:) + dtemp0(:,:,k)*Cp_Air*pmass(:,:,k)
+        end do
+        used = send_data ( id_t_conv_col, tempdiag, Time, is, js )
+      end if	
+
+   if ( do_strat ) then
+
+      !------- diagnostics for dql/dt from RAS -----------------
+      if ( id_qldt_conv > 0 ) then
+        used = send_data ( id_qldt_conv, Dl0, Time, is, js, 1, &
+                           rmask=mask )
+      endif
+      
+      !------- diagnostics for dqi/dt from RAS -----------------
+      if ( id_qidt_conv > 0 ) then
+        used = send_data ( id_qidt_conv, Di0, Time, is, js, 1, &
+                           rmask=mask )
+      endif
+      
+      !------- diagnostics for dqa/dt from RAS -----------------
+      if ( id_qadt_conv > 0 ) then
+        used = send_data ( id_qadt_conv, Da0, Time, is, js, 1, &
+                           rmask=mask )
+      endif
+
+      !------- diagnostics for liquid water path tendency ------
+      if ( id_ql_conv_col > 0 ) then
+        tempdiag(:,:)=0.
+        do k=1,kmax
+          tempdiag(:,:) = tempdiag(:,:) + Dl0(:,:,k)*pmass(:,:,k)
+        end do
+        used = send_data ( id_ql_conv_col, tempdiag, Time, is, js )
+      end if	
+      
+      !------- diagnostics for ice water path tendency ---------
+      if ( id_qi_conv_col > 0 ) then
+        tempdiag(:,:)=0.
+        do k=1,kmax
+          tempdiag(:,:) = tempdiag(:,:) + Di0(:,:,k)*pmass(:,:,k)
+        end do
+        used = send_data ( id_qi_conv_col, tempdiag, Time, is, js )
+      end if	
+      
+      !---- diagnostics for column integrated cloud mass tendency ---
+      if ( id_qa_conv_col > 0 ) then
+        tempdiag(:,:)=0.
+        do k=1,kmax
+          tempdiag(:,:) = tempdiag(:,:) + Da0(:,:,k)*pmass(:,:,k)
+        end do
+        used = send_data ( id_qa_conv_col, tempdiag, Time, is, js )
+      end if	
+         
+   end if !end do strat if
+
+!if ( LR0 ) then
+   do tr = 1, num_tracers
+      !------- diagnostics for dtracer/dt from RAS -------------
+      if ( id_tracer_conv(tr) > 0 ) then
+        used = send_data ( id_tracer_conv(tr), DR0(:,:,:,tr), Time, is, js, 1, &
+                           rmask=mask )
+      endif
+
+      !------- diagnostics for column tracer path tendency -----
+      if ( id_tracer_conv_col(tr) > 0 ) then
+        tempdiag(:,:)=0.
+        do k=1,kmax
+          tempdiag(:,:) = tempdiag(:,:) + DR0(:,:,k,tr)*pmass(:,:,k)
+        end do
+        used = send_data ( id_tracer_conv_col(tr), tempdiag, Time, is, js )
+      end if	
+
+
+   enddo
+!endif
 !=====================================================================
+
+
+
   end SUBROUTINE RAS
 
 
@@ -776,7 +1252,7 @@ real :: missing_value = -999.
             theta, qvap, uwnd, vwnd, pres_int, pi_int, pi, psfc, &
             alf, bet, gam, cp_by_dp,                             &
             dtcu, dqcu, ducu,  dvcu, dpcu,                       &
-            ql, qi, qa, mccu, Dlcu, Dicu, Dacu )
+            ql, qi, qa, mccu, Dlcu, Dicu, Dacu, tracer, dtracercu )
 !=======================================================================
 ! RAS Cu Parameterization 
 !=======================================================================
@@ -807,6 +1283,7 @@ real :: missing_value = -999.
  real, intent(in), dimension(:) :: theta, qvap, uwnd, vwnd, pres_int, pi_int
  real, intent(in), dimension(:) :: alf,   bet,  gam,  pi,   cp_by_dp
  real, intent(in), OPTIONAL, dimension(:) :: ql,qi,qa
+ real, intent(in), OPTIONAL, dimension(:,:) :: tracer
 !---------------------------------------------------------------------
 ! Arguments (Intent out)
 !     dpcu    : Precip for cloud type ic.
@@ -818,11 +1295,13 @@ real :: missing_value = -999.
 !     Dacu    : OPTIONAL ; Detrained saturated mass fraction tendency
 !     Dlcu    : OPTIONAL ; Detrained cloud liquid tendency
 !     Dicu    : OPTIONAL ; Detrained cloud ice tendency
+!     dtracercu : OPTIONAL ; Detrained tracer tendency 
 !---------------------------------------------------------------------
 
  real, intent(out)  :: dpcu
  real, intent(out), dimension(:) :: dtcu, dqcu, ducu, dvcu
  real, intent(out), OPTIONAL, dimension(:) :: mccu, Dacu, Dlcu, Dicu
+ real, intent(out), OPTIONAL, dimension(:,:) :: dtracercu
 
 !---------------------------------------------------------------------
 !    (Intent local)
@@ -841,14 +1320,17 @@ real :: missing_value = -999.
   real    :: dut, dvt,   dub, dvb,  wdet, dhic, hkb, hic, sic
  
  real, dimension(size(theta,1)) :: gmh, eta, hol, hst, qol
+ real, dimension(SIZE(tracer,2)) :: wlR
+! real, dimension(30) :: wlR
 
- logical :: Ldacu, Lmccu
+ logical :: Ldacu, Lmccu, LRcu
 
 !=====================================================================
 
 ! --- Check for presence of optional arguments
   Ldacu = PRESENT( Dacu )
   Lmccu = PRESENT( mccu ) 
+  LRcu  = PRESENT( tracer )
 
 ! Initialize
   dtcu = 0.0
@@ -863,6 +1345,9 @@ real :: missing_value = -999.
   end if
   if ( Lmccu ) then
   mccu = 0.0
+  end if
+  if ( LRcu ) then
+  dtracercu = 0.0
   end if
 
 ! Initialize
@@ -895,9 +1380,9 @@ real :: missing_value = -999.
 ! --- at cloud base
     qs1    = alf(k) + bet(k) * theta(k)
     qol(k) = MIN( qs1 * rhmax, qvap(k) )
-    hol(k) = pi_int(k+1) * theta(k) * Cp + qol(k) * Hl
+    hol(k) = pi_int(k+1) * theta(k) * Cp_Air + qol(k) * Hl
     eta(k) = 0.0
-    zzl    = ( pi_int(k+1) - pi_int(k) ) * theta(k) * Cp
+    zzl    = ( pi_int(k+1) - pi_int(k) ) * theta(k) * Cp_Air
     zbase  = zzl
 
 ! --- between cloud base & cloud top
@@ -905,19 +1390,19 @@ real :: missing_value = -999.
  do l = km1,ic1,-1
     qs1    = alf(l) + bet(l) * theta(l)
     qol(l) = MIN( qs1 * rhmax, qvap(l) )
-    ssl    = zzl + pi_int(l+1) * theta(l) * Cp 
+    ssl    = zzl + pi_int(l+1) * theta(l) * Cp_Air 
     hol(l) = ssl + qol(l) * Hl
     hst(l) = ssl + qs1    * Hl
     dtemp  = ( pi_int(l+1) - pi_int(l) ) * theta(l)
     eta(l) = eta(l+1) + dtemp * cp_div_grav
-    zzl    = zzl      + dtemp * Cp    
+    zzl    = zzl      + dtemp * Cp_Air    
  end do
  end if
 
 ! --- at cloud top
     qs1     = alf(ic) + bet(ic) * theta(ic)
     qol(ic) = MIN( qs1 * rhmax, qvap(ic) ) 
-    ssl     = zzl + pi_int(ic1) * theta(ic) * Cp 
+    ssl     = zzl + pi_int(ic1) * theta(ic) * Cp_Air 
     hol(ic) = ssl + qol(ic) * Hl
     hst(ic) = ssl + qs1     * Hl
     dtemp   = ( pi_int(ic1) - pi(ic) ) * theta(ic)
@@ -952,8 +1437,14 @@ real :: missing_value = -999.
   end if
 
 !$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-  if( Tokioka_on ) alm_min = Tokioka_con / zbase
-  if( alm < alm_min ) RETURN
+!  if( Tokioka_on ) alm_min = Tokioka_con / zbase
+!  if( alm < alm_min ) RETURN
+     xx2 = alm_min
+  if( Tokioka_on ) then
+     xx1  = 0.5 * ( pres_int(ic) + pres_int(ic1) )
+     if(  xx1 <= Tokioka_plim ) xx2 = Tokioka_con / zbase
+  endif
+  if( alm < xx2 ) RETURN
 !$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
 !=====================================================================
@@ -1064,28 +1555,65 @@ real :: missing_value = -999.
 !         CALCULATE TRACER UPDRAFT PROPERTIES
 !            AND CONVECTIVE SOURCE OF TRACER
 !=====================================================================
- 
+
+
+!------------ Prognostic tracers
+
+if ( LRcu ) then
+
+!     wlR = tracer(k,:)
+     
+! do l = km1,ic,-1
+!     xx1 = eta(l) - eta(l+1)
+!     wlR = wlR + xx1 * tracer(l,:)
+! end do
+! 
+!!do cloud base level
+!     xx1     = 0.5 * cp_by_dp(k) / Cp_Air / onebg
+!     dtracercu(k,:) = ( tracer(km1,:) - tracer(k,:) ) * xx1
+     
+! if ( ic1 <= km1 ) then
+! do l = km1,ic1,-1
+!     xx1     = 0.5 * cp_by_dp(l) / Cp_Air / onebg
+!     dtracercu(l,:) = ( eta(l+1) * ( tracer(l  ,:) - tracer(l+1,:) ) + &
+!                   eta(l  ) * ( tracer(l-1,:) - tracer(l  ,:) ) ) * xx1
+! end do
+! end if
+!
+! !do cloud top level
+!     xx1      = cp_by_dp(ic) / Cp_Air / onebg
+!     xx2      = 0.5 * xx1
+!     dtracercu(ic,:) = ( eta(ic1) * ( tracer(ic,:) - tracer(ic1,:) ) * xx2 ) + &
+!                  ( wlR      - eta(ic) * tracer(ic,:)  ) * xx1
+!		
+ end if
+
+!------------ Cloud liquid, ice, and fraction
+
  if ( Ldacu ) then
 
      wll = ql(k)
      wli = qi(k)
+     wlR = tracer(k,:)
 
  do l = km1,ic,-1
      xx1 = eta(l) - eta(l+1)
      wll = wll + xx1 * ql(l)
      wli = wli + xx1 * qi(l)
+     wlR = wlR + xx1 * tracer(l,:)
  end do
  
 !do cloud base level
-     xx1     = 0.5 * cp_by_dp(k) / Cp / onebg
+     xx1     = 0.5 * cp_by_dp(k) / Cp_Air / onebg
      Dlcu(k) = ( ql(km1) - ql(k) ) * xx1
      Dicu(k) = ( qi(km1) - qi(k) ) * xx1
      Dacu(k) = ( qa(km1) - qa(k) ) * xx1
      mccu(k) = eta(k)
+     dtracercu(k,:) = ( tracer(km1,:) - tracer(k,:) ) * xx1
 
  if ( ic1 <= km1 ) then
  do l = km1,ic1,-1
-     xx1     = 0.5 * cp_by_dp(l) / Cp / onebg
+     xx1     = 0.5 * cp_by_dp(l) / Cp_Air / onebg
      Dlcu(l) = ( eta(l+1) * ( ql(l  ) - ql(l+1) ) + &
                  eta(l  ) * ( ql(l-1) - ql(l  ) ) ) * xx1
      Dicu(l) = ( eta(l+1) * ( qi(l  ) - qi(l+1) ) + &
@@ -1093,11 +1621,13 @@ real :: missing_value = -999.
      Dacu(l) = ( eta(l+1) * ( qa(l  ) - qa(l+1) ) + &
                  eta(l  ) * ( qa(l-1) - qa(l  ) ) ) * xx1
      mccu(l) = eta(l)
+     dtracercu(l,:) = ( eta(l+1) * ( tracer(l  ,:) - tracer(l+1,:) ) + &
+                   eta(l  ) * ( tracer(l-1,:) - tracer(l  ,:) ) ) * xx1
  end do
  end if
 
  !do cloud top level
-     xx1      = cp_by_dp(ic) / Cp / onebg
+     xx1      = cp_by_dp(ic) / Cp_Air / onebg
      xx2      = 0.5 * xx1
      Dlcu(ic) = ( eta(ic1) * ( ql(ic) - ql(ic1) ) * xx2 ) + &
                 ( wll       - eta(ic) * ql(ic)  ) * xx1
@@ -1105,6 +1635,8 @@ real :: missing_value = -999.
                 ( wli       - eta(ic) * qi(ic)  ) * xx1
      Dacu(ic) = ( eta(ic1) * ( qa(ic) - qa(ic1) ) * xx2 ) + &
                 ( eta(ic)   - eta(ic) * qa(ic)  ) * xx1
+     dtracercu(ic,:) = ( eta(ic1) * ( tracer(ic,:) - tracer(ic1,:) ) * xx2 ) + &
+                  ( wlR      - eta(ic) * tracer(ic,:)  ) * xx1
 
  end if
 
@@ -1161,9 +1693,9 @@ real :: missing_value = -999.
   if ( Ldacu ) then !detrain non-precipitated fraction of condensed vapor
     
       if (coldT) then
-         Dicu(ic) = Dicu(ic) + wdet * cp_by_dp(ic)/Cp/onebg
+         Dicu(ic) = Dicu(ic) + wdet * cp_by_dp(ic)/Cp_Air/onebg
       else
-         Dlcu(ic) = Dlcu(ic) + wdet * cp_by_dp(ic)/Cp/onebg
+         Dlcu(ic) = Dlcu(ic) + wdet * cp_by_dp(ic)/Cp_Air/onebg
       end if
           wdet = 0.0
 
@@ -1175,17 +1707,17 @@ real :: missing_value = -999.
 
    xx1 = hol(ic)
  if ( lcase2 ) then
-   xx1 = xx1 + ( sic - hic + qol(ic) * Hl ) * ( cp_by_dp(ic) / Cp )
+   xx1 = xx1 + ( sic - hic + qol(ic) * Hl ) * ( cp_by_dp(ic) / Cp_Air )
  end if
 
-   hol(ic) = xx1 - ( wdet * Hl * cp_by_dp(ic) / Cp )
+   hol(ic) = xx1 - ( wdet * Hl * cp_by_dp(ic) / Cp_Air )
 
  if ( lcase1 ) then
    akm = akm - eta(ic1) * ( pi_int(ic1) - pi(ic) ) * xx1 / pi(ic)
  end if
 
     xx2    = qol(km1) - qol(k)
-    gmh(k) = hol(k) + ( xx2 * cp_by_dp(k) * Hl * 0.5 / Cp )
+    gmh(k) = hol(k) + ( xx2 * cp_by_dp(k) * Hl * 0.5 / Cp_Air )
     akm    = akm + gam(km1) * ( pi_int(k) - pi(km1) ) * gmh(k)
 
  if ( ic1 <= km1 ) then
@@ -1193,7 +1725,7 @@ real :: missing_value = -999.
      xx3    = xx2
      xx2    = ( qol(l-1) - qol(l) ) * eta(l)
      xx3    = xx3 + xx2
-     gmh(l) = hol(l) + ( xx3 * cp_by_dp(l) * Hl * 0.5 / Cp )
+     gmh(l) = hol(l) + ( xx3 * cp_by_dp(l) * Hl * 0.5 / Cp_Air )
  end do
  end if
 
@@ -1271,6 +1803,13 @@ real :: missing_value = -999.
           Dlcu(l) = Dlcu(l) * xx1
           Dicu(l) = Dicu(l) * xx1
           mccu(l) = mccu(l) * xx1
+     end do
+ end if
+
+ if ( LRcu ) then
+      xx1 = wfn * onebg
+     do l = ic,k
+          dtracercu(l,:) = dtracercu(l,:) * xx1
      end do
  end if
 
@@ -1430,8 +1969,8 @@ real :: missing_value = -999.
 !     dpcu - Precip in mm
 !---------------------------------------------------------------------
 
-  integer :: type
-  real    :: dtime
+  integer, intent(in) :: type
+  real,    intent(in) :: dtime
 
   real,    intent(in), dimension(:) :: temp, qvap, pres, mass
   real,    intent(in), dimension(:) :: qvap_sat, dqvap_sat
@@ -1489,11 +2028,11 @@ real :: missing_value = -999.
           ( prec            > 0.0      ) .and.  &
           ( ksfc            > k        ) ) then
             def = ( hcevap*qvap_sat(k) - qvap(k) ) /    &
-                  ( 1.0 + (hl * hcevap * dqvap_sat(k) / Cp ) )
+                  ( 1.0 + (hl * hcevap * dqvap_sat(k) / Cp_Air ) )
             def = evef*def
             def = MIN( def, prec/mass(k) )
     qvap_new(k) = qvap(k) + def
-    temp_new(k) = temp(k) - (def * hl/Cp)
+    temp_new(k) = temp(k) - (def * hl/Cp_Air)
          dpevap = dpevap + def * mass(k)
   end if
 
@@ -1520,8 +2059,8 @@ real :: missing_value = -999.
 !       ic      Cloud order index
 !       ncmax   Max number of clouds
 !---------------------------------------------------------------------
- integer, dimension(:) :: ic
- integer :: ncmax
+ integer, intent(out), dimension(:) :: ic
+ integer, intent(out) :: ncmax
 
 !---------------------------------------------------------------------
 !  (Intent local)
@@ -1605,20 +2144,20 @@ real :: missing_value = -999.
 
 ! --- at cloud base
     qol_k = MIN( qsat(k) * rhmax, qvap(k) )
-    ssl(k) = pihalf(k+1) * theta(k) * Cp 
+    ssl(k) = pihalf(k+1) * theta(k) * Cp_Air 
     hol_k  = ssl(k) +  qol_k  * Hl
     hst(k) = ssl(k) + qsat(k) * Hl
-    zzl    = ( pihalf(k+1) - pihalf(k) ) * theta(k) * Cp
+    zzl    = ( pihalf(k+1) - pihalf(k) ) * theta(k) * Cp_Air
 
 ! --- between cloud base & cloud top
  do l = km1,ic1,-1
-    ssl(l) = zzl + pihalf(l+1) * theta(l) * Cp 
+    ssl(l) = zzl + pihalf(l+1) * theta(l) * Cp_Air 
     hst(l) = ssl(l) + qsat(l) * Hl
-    zzl    = zzl + ( pihalf(l+1) - pihalf(l) ) * theta(l) * Cp    
+    zzl    = zzl + ( pihalf(l+1) - pihalf(l) ) * theta(l) * Cp_Air    
  end do
 
 ! --- at cloud top
-    ssl(ic) = zzl  + pihalf(ic1) * theta(ic) * Cp 
+    ssl(ic) = zzl  + pihalf(ic1) * theta(ic) * Cp_Air 
     hst(ic) = ssl(ic) + qsat(ic) * Hl
 
 ! --- test
@@ -1694,9 +2233,9 @@ real :: missing_value = -999.
     end if  
 
      if (coldT(i,j)) then
-     dqvap_dtemp = sum_dqvap + Cp*sum_dtemp/HLs
+     dqvap_dtemp = sum_dqvap + Cp_Air*sum_dtemp/HLs
      else
-     dqvap_dtemp = sum_dqvap + Cp*sum_dtemp/HLv
+     dqvap_dtemp = sum_dqvap + Cp_Air*sum_dtemp/HLv
      end if
 
    if ( ( abs( dqvap_prec  ) > 1.0E-4 ) .or.     &
@@ -1705,12 +2244,13 @@ real :: missing_value = -999.
         ( abs( sum_dvwnd   ) > 1.0E-1 ) )  then
     print *
     print *, ' RAS BUDGET CHECK AT i,j = ', i,j
-    print *, ' dqvap + (Cp/hl)*dtemp = ',  dqvap_dtemp                                                                     
+    print *, ' dqvap + (Cp_Air/hl)*dtemp = ',  dqvap_dtemp                                                                     
     print *, ' dqvap + precip        = ',  dqvap_prec                                                                     
     print *, ' duwnd                 = ',  sum_duwnd                                                                    
     print *, ' dvwnd                 = ',  sum_dvwnd                                                                     
     print *, 'STOP'
-    STOP
+!    STOP
+   CALL ERROR_MESG( 'RAS_BDGT', 'RAS budget thresholds exceeded.', FATAL )
    endif
 
   end do

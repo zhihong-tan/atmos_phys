@@ -8,7 +8,7 @@ use  utilities_mod,     only:  open_file, file_exist,    &
 			       print_version_number, FATAL, NOTE, &
 			       WARNING, get_my_pe, close_file, &
 			       read_data, write_data
-use  constants_new_mod, only:  wtmair
+!use  constants_mod, only:  wtmair
 use lw_gases_stdtf_mod, only:  co2_lblinterp
 
 !---------------------------------------------------------------------
@@ -27,8 +27,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-      character(len=128)  :: version =  '$Id: co2.F90,v 1.3 2002/07/16 22:34:34 fms Exp $'
-      character(len=128)  :: tag     =  '$Name: havana $'
+      character(len=128)  :: version =  '$Id: co2.F90,v 1.4 2003/04/09 20:59:02 fms Exp $'
+      character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 !---------------------------------------------------------------------
@@ -106,7 +106,7 @@ subroutine co2_init
 !   define co2 mixing ratio conversion factor.
 !   (an additional fms mimicking change, if desired)
 !---------------------------------------------------------------------
-      rco2air = wtmco2/wtmair
+!      rco2air = wtmco2/wtmair
 
 end subroutine co2_init
 

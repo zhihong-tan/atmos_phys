@@ -9,6 +9,7 @@ use rad_utilities_mod,    only:  Rad_control, radiation_control_type, &
                                  cldrad_properties_type, &
                                  rad_utilities_init, &
                                  radiative_gases_type,   &
+                                 aerosol_type, &
                                  atmos_input_type, &
                                  astronomy_type, &
                                  cld_space_properties_type, &
@@ -39,8 +40,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module  -------------------------
 
-character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 1.3 2002/07/16 22:37:02 fms Exp $'
-character(len=128)  :: tag     =  '$Name: havana $'
+character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 1.4 2003/04/09 21:01:50 fms Exp $'
+character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 !---------------------------------------------------------------------
@@ -188,8 +189,8 @@ end subroutine shortwave_driver_init
 !###########################################################
 
 subroutine shortwave_driver (is, ie, js, je, Atmos_input, Astro, &
-                             Rad_gases, Cldrad_props, Sw_output, &
-                             Cldspace_rad) 
+                             Aerosol, Rad_gases, Cldrad_props,   &
+                             Sw_output, Cldspace_rad) 
 
 !---------------------------------------------------------------------
 !    shortwave_driver initializes shortwave radiation output variables, 
@@ -202,9 +203,10 @@ integer,                      intent(in)    :: is, ie, js, je
 type(atmos_input_type),       intent(in)    :: Atmos_input     
 type(astronomy_type),         intent(in)    :: Astro           
 type(radiative_gases_type),   intent(in)    :: Rad_gases   
+type(aerosol_type),           intent(in)    :: Aerosol     
 type(cldrad_properties_type), intent(in)    :: Cldrad_props
-type(sw_output_type),         intent(out)   :: Sw_output
-type(cld_space_properties_type), intent(out) :: Cldspace_rad
+type(sw_output_type),         intent(inout)   :: Sw_output
+type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
@@ -289,8 +291,13 @@ type(cld_space_properties_type), intent(out) :: Cldspace_rad
 !    exponential-sum-fit parameterization.
 !---------------------------------------------------------------------
       else if (Sw_control%do_esfsw) then
+
+!---------------------------------------------------------------------
+! allocate space for and then retrieve the aerosol mixing ratios from
+! the aerosol module.
+!--------------------------------------------------------------------
         call swresf (is, ie, js, je, Atmos_input, Rad_gases,    &
-                     Astro, Cldrad_props, Sw_output)
+                     Aerosol, Astro, Cldrad_props, Sw_output)
 
 !---------------------------------------------------------------------
 !    calculate shortwave radiative forcing and fluxes using the 
@@ -352,7 +359,7 @@ subroutine shortwave_driver_alloc (ix, jx, kx, Sw_output)
 !    output data from shortwave_driver_mod.
 !--------------------------------------------------------------------
 integer,              intent(in)   ::  ix, jx, kx 
-type(sw_output_type), intent(out)  ::  Sw_output 
+type(sw_output_type), intent(inout)  ::  Sw_output 
 
 !-------------------------------------------------------------------
 !  intent(in) variables:

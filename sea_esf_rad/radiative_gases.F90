@@ -38,7 +38,7 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: radiative_gases.F90,v 1.3 2002/07/16 22:36:32 fms Exp $'
-character(len=128)  :: tag     =  '$Name: havana $'
+character(len=128)  :: tag     =  '$Name: inchon $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

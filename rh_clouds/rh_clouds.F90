@@ -83,7 +83,7 @@ end interface
 !--------------------- version number ----------------------------------
 
 character(len=128) :: version = '$Id: rh_clouds.F90,v 1.4 2002/07/16 22:34:10 fms Exp $'
-character(len=128) :: tag = '$Name: havana $'
+character(len=128) :: tag = '$Name: inchon $'
 
 !=======================================================================
 

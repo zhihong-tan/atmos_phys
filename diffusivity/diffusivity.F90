@@ -11,7 +11,7 @@ module diffusivity_mod
 !=======================================================================
 
 
-use constants_mod, only : grav, vonkarm, cp, rdgas, rvgas
+use constants_mod, only : grav, vonkarm, cp_air, rdgas, rvgas
 
 use utilities_mod, only:  error_mesg, FATAL, file_exist,   &
                           check_nml_error, open_file,      &
@@ -93,8 +93,8 @@ private
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: diffusivity.F90,v 1.4 2002/07/16 22:32:04 fms Exp $'
-character(len=128) :: tag = '$Name: havana $'
+character(len=128) :: version = '$Id: diffusivity.F90,v 1.5 2003/04/09 20:54:55 fms Exp $'
+character(len=128) :: tag = '$Name: inchon $'
 
 !=======================================================================
 
@@ -132,7 +132,7 @@ namelist /diffusivity_nml/ fixed_depth, depth_0, frac_inner,&
 !  OTHER MODULE VARIABLES
 
 real    :: small  = 1.e-04
-real    :: gcp    = grav/cp
+real    :: gcp    = grav/cp_air
 logical :: init   = .false.
 real    :: beta   = 1.458e-06
 real    :: rbop1  = 110.4

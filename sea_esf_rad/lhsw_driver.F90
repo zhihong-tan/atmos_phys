@@ -11,12 +11,12 @@ use rad_utilities_mod,     only: Environment, environment_type, &
                                  cld_space_properties_type, &
 				 radiative_gases_type, &
                                  cldrad_properties_type
-use constants_new_mod,     only: diffac, grav, radcon, alogmin, &
-                                 wtmair
+use constants_mod,         only: GRAV, diffac, radcon, alogmin, wtmair
+
 !use std_pressures_mod,     only: get_std_pressures
 !use co2_mod,               only: rrco2
 !use cloudrad_package_mod,  only: get_ncldsw, get_clouds_for_lhsw
-use cloudrad_package_mod,  only:    convert_to_cloud_space  
+use cloudrad_package_mod,  only: convert_to_cloud_space  
 use  utilities_mod,        only: open_file, file_exist,     &
                                  check_nml_error, error_mesg, &  
                                  print_version_number, FATAL, NOTE, &
@@ -38,8 +38,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !   character(len=5), parameter  ::  version_number = 'v0.09'
-    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 1.3 2002/07/16 22:35:22 fms Exp $'
-    character(len=128)  :: tag     =  '$Name: havana $'
+    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 1.4 2003/04/09 20:59:35 fms Exp $'
+    character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 
@@ -679,11 +679,14 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !     pressure weighting uses pr2.  du equals value for h2o; duco2 for
 !     co2; duo3 for o3.
 !-----------------------------------------------------------------------
-      duo3 (:,:,KS:KE) = (cfo3/grav)*qo3(:,:,KS:KE)*dp(:,:,KS:KE)
-      duco2(:,:,KS:KE) = (rrco2/grav*cfco2)*dp(:,:,KS:KE)*  &
+!     duo3 (:,:,KS:KE) = (cfo3/grav)*qo3(:,:,KS:KE)*dp(:,:,KS:KE)
+      duo3 (:,:,KS:KE) = (cfo3/(1.0E+02*GRAV))*qo3(:,:,KS:KE)*dp(:,:,KS:KE)
+!     duco2(:,:,KS:KE) = (rrco2/grav*cfco2)*dp(:,:,KS:KE)*  &
+      duco2(:,:,KS:KE) = (rrco2/(1.0E+02*GRAV)*cfco2)*dp(:,:,KS:KE)*  &
                           pr2(:,:,KS:KE)
       du   (:,:,KS:KE) = rh2o(:,:,KS:KE)*dp(:,:,KS:KE)* &
-                          pr2(:,:,KS:KE)/grav
+!                         pr2(:,:,KS:KE)/grav
+                          pr2(:,:,KS:KE)/(1.0E+02*GRAV)
 
 !-----------------------------------------------------------------------
 !     obtain the optical path from the top of the atmosphere to the

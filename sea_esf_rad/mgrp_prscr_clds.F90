@@ -13,8 +13,7 @@ use utilities_mod,          only: open_file, file_exist,   &
 !use longwave_setup_mod,     only: longwave_parameter_type, &    
 !                                  Lw_parameters
 !use std_pressures_mod,      only: get_std_pressures
-!use constants_new_mod,      only: pstd
-use constants_new_mod,      only: pstd, radians_to_degrees
+use constants_mod,          only: pstd, radian
 use rad_utilities_mod,      only: shortwave_control_type, Sw_control, &
                                   map_global_indices, &
 				  cld_diagnostics_type, &
@@ -45,8 +44,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 ! character(len=5), parameter  ::  version_number = 'v0.09'
-  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 1.3 2002/07/16 22:35:58 fms Exp $'
-  character(len=128)  :: tag     =  '$Name: havana $'
+  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 1.4 2003/04/09 21:00:29 fms Exp $'
+  character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 
@@ -492,9 +491,9 @@ integer, dimension(:), intent(out)  :: jindx2
       do j = 1,jd
         lat(j) = 0.5*(latb(j) + latb(j+1))
       do jj=1, LATOBS         
-        if (lat(j)*radians_to_degrees >= cloud_lats(jj)) then
-          diff_low = lat(j)*radians_to_degrees - cloud_lats(jj)    
-          diff_high = cloud_lats(jj+1) - lat(j)*radians_to_degrees
+        if (lat(j)*radian >= cloud_lats(jj)) then
+          diff_low = lat(j)*radian - cloud_lats(jj)    
+          diff_high = cloud_lats(jj+1) - lat(j)*radian
           if (diff_high <= diff_low) then
             jindx2(j) = jj+1
           else

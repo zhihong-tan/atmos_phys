@@ -159,7 +159,7 @@ use utilities_mod, only:  error_mesg, FATAL, file_exist,    &
 
 !--------------------- version number ----------------------------------
  character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 1.5 2002/07/16 22:31:55 fms Exp $'
- character(len=128) :: tag = '$Name: havana $'
+ character(len=128) :: tag = '$Name: inchon $'
 !-----------------------------------------------------------------------
 
 ! REAL, PARAMETER :: taumin = 1.E-06

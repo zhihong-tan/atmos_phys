@@ -54,7 +54,7 @@ use rad_utilities_mod,       only: longwave_control_type, Lw_control, &
 !use astronomy_package_mod,   only:                            &
 !			           get_astronomy_for_clouds_init
 use esfsw_parameters_mod,    only: nbands
-use constants_new_mod,       only: pstd
+use constants_mod,       only: pstd
 !--------------------------------------------------------------------
 
 implicit none
@@ -71,8 +71,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !     character(len=5), parameter  ::  version_number = 'v0.09'
-      character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 1.3 2002/07/16 22:34:30 fms Exp $'
-      character(len=128)  :: tag     =  '$Name: havana $'
+      character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 1.4 2003/04/09 20:58:56 fms Exp $'
+      character(len=128)  :: tag     =  '$Name: inchon $'
 
 
 
@@ -414,7 +414,8 @@ type(time_type),       intent(in), optional   :: Time
 !  define type of model cloud formulation being used
 !----------------------------------------------------------------------
 
-    if (Environment%running_gcm) then
+    if (Environment%running_gcm .or. &
+        Environment%running_sa_model) then
 !-------------------------------------------------------------------
 !  cloud fractions, heights are predicted by the model based on rel hum
 !-------------------------------------------------------------------
@@ -764,7 +765,8 @@ type(time_type),       intent(in), optional   :: Time
 !  initialize the specific cloud scheme selected for this run
 !-------------------------------------------------------------------
 
-    if (Environment%running_gcm) then
+    if (Environment%running_gcm  .or.  &
+        Environment%running_sa_model) then
       if (do_mgroup_prescribed) then
 !       call mgrp_prscr_init (kx_in, pd, latb)
         call mgrp_prscr_init (kx_in, pref, latb)
@@ -826,7 +828,10 @@ type(time_type),       intent(in), optional   :: Time
 !      call standalone_clouds_init (              th,                &
 !           do_strat_clouds, do_donner_deep_clouds, do_specified_clouds)
 
-      call standalone_clouds_init ( kx_in, latb, do_strat_clouds,  &
+!     call standalone_clouds_init ( kx_in, latb, do_strat_clouds,  &
+      call standalone_clouds_init ( pref(:,1), lonb, latb,    &
+                                    axes, Time, &
+				    do_strat_clouds,  &
                         do_donner_deep_clouds, do_specified_clouds)
     endif
 
@@ -834,7 +839,7 @@ type(time_type),       intent(in), optional   :: Time
 !  initialize diagnostics of this module
 !-------------------------------------------------------------------
 !   if (Environment%running_gcm .and. Environment%running_fms  &
-    if (Environment%running_gcm                                &
+    if ((Environment%running_gcm .or. Environment%running_sa_model)  &
 				 .and. .not. do_no_clouds) then
       call diag_field_init (Time, axes)
     endif
@@ -889,7 +894,8 @@ subroutine clouddrvr (is, ie, js, je, lat,  Rad_time,   &
 !                     land, cosz, cloud_water, cloud_ice,  press_in, &
 !	              temp, rh2o,  &
                       Cldrad_props, Cld_diagnostics, Time_next,  &
-                      kbot, mask)
+                      kbot, mask, cloud_water_input, cloud_ice_input, &
+                      cloud_area_input)
 
 integer,                 intent(in)           ::  is, ie, js, je
 !real, dimension(:,:),    intent(in)           ::  lat, land, cosz
@@ -906,6 +912,9 @@ type(cld_diagnostics_type), intent(inout)   :: Cld_diagnostics
 type(time_type),         intent(in), optional ::  Time_next
 integer, dimension(:,:), intent(in), optional ::  kbot
 real, dimension(:,:,:),  intent(in), optional ::  mask
+real, dimension(:,:,:),  intent(in), optional ::  cloud_water_input,  &
+                                                  cloud_ice_input, &
+                                                  cloud_area_input 
 !-------------------------------------------------------------------
  
 !    real, dimension(size(press_in,1), size(press_in,2), &
@@ -932,11 +941,20 @@ real, dimension(:,:,:),  intent(in), optional ::  mask
       jx = size (Atmos_input%press,2)
       kx = size (Atmos_input%press,3) - 1
 
-      deltaz = Atmos_input%deltaz
       cloud_water = Atmos_input%cloud_water
       cloud_ice = Atmos_input%cloud_ice
-      temp      = Atmos_input%temp         
-      rh2o      = Atmos_input%rh2o       
+
+!----------------------------------------------------------------------
+!    define temp, rh2o and deltaz to be used in the cloud parameter-
+!    ization as those values in Atmos_input%cloudtemp, %cloudvapor and 
+!    %clouddeltaz.  for the gcm these will be the same as in %temp, 
+!    %rh2o and %deltaz, but in sa_gcm feedback studies it is necessary 
+!    to allow "replacement" values to be used.
+!----------------------------------------------------------------------
+      temp(:,:,1:kx) = Atmos_input%cloudtemp(:,:,:)
+      temp(:,:,kx+1) = Atmos_input%temp(:,:,kx+1)
+      deltaz = Atmos_input%clouddeltaz
+      rh2o      = Atmos_input%cloudvapor 
       land    = Atmos_input%land
 !-----------------------------------------------------------------
 !  convert press and pflux to cgs.
@@ -960,7 +978,8 @@ real, dimension(:,:,:),  intent(in), optional ::  mask
 !     call desired cloud package to obtain needed cloud radiative 
 !     property fields.
 !-------------------------------------------------------------------
-      if (Environment%running_gcm) then
+      if (Environment%running_gcm .or. &
+          Environment%running_sa_model) then
         if (do_rh_clouds) then
 !         if (trim(swform) /= 'esfsw99') then
           if (.not. do_esfsw           ) then
@@ -1032,6 +1051,11 @@ real, dimension(:,:,:),  intent(in), optional ::  mask
           if (do_strat_clouds) then
 !           if (trim(swform) /= 'esfsw99') then
             if (.not. do_esfsw           ) then
+	    if (Environment%running_sa_model) then
+               call error_mesg ( 'cloudrad_package_mod', &
+                'must use esfsw parameterization with sa_gcm', &
+                                                      FATAL)
+            endif
 	    call strat_clouds_calc  &
                            (is, ie, js, je,  Cld_diagnostics, pflux, deltaz, land,  &
 !		   cosz, cloud_water, cloud_ice, press, temp, &
@@ -1049,23 +1073,45 @@ real, dimension(:,:,:),  intent(in), optional ::  mask
 			     cirrfsw= Cldrad_props%cirrfsw, &
 			     Time_next=Time_next)
              else
+	      if (Environment%running_sa_model) then
+                if ( present(cloud_water_input) .and.  &
+                     present(cloud_ice_input) .and. &
+                     present(cloud_area_input ) ) then
               call strat_clouds_calc  &
+                   (is, ie, js, je, Cld_diagnostics, pflux,  deltaz, land, &
+                      Astro%cosz, cloud_water, cloud_ice, press, temp, &
+                          rh2o, &
+                     cldamt_out=cld_lsc, &
+                      ncldsw=Cldrad_props%ncldsw,  &
+                Time_next=Time_next,                  &
+                          cldext= cldext_lsc, &
+                          cldsct= cldsct_lsc,  &
+                          cldasymm= cldasymm_lsc, &
+                          abscoeff=abscoeff_lsc, &
+                           ql_in_sa=cloud_water_input, &
+                          qi_in_sa=cloud_ice_input, &
+                          cf_in_sa=cloud_area_input)
+
+!----------------------------------------------------------------------
+!   as of 14 dec 2000, all cloud properties and cloud fractions are
+!   assumed to be for randomly overlapped clouds
+!----------------------------------------------------------------------
+                 Cldrad_props%nrndlw = Cldrad_props%ncldsw
+                 Cldrad_props%nmxolw = 0.0
+               else
+                 call error_mesg ('cloudrad_package_mod', &
+                   'must input ql, qi and cf when running sa_gcm', &
+                                                            FATAL)
+                endif
+      else
+
+         call strat_clouds_calc  &
                             (is, ie, js, je, Cld_diagnostics, pflux,  deltaz, land, &
-!                          cosz, cloud_water, cloud_ice, press, temp, &
                            Astro%cosz, cloud_water, cloud_ice, press, temp, &
 			            rh2o, &
                     cldamt_out=cld_lsc, &
-!		      Cldrad_props%camtsw,  Cldrad_props%cmxolw,  &
-!		      Cldrad_props%crndlw,  &
                                ncldsw=Cldrad_props%ncldsw,  &
-!		       Cldrad_props%nmxolw, &
-!                             Cldrad_props%nrndlw,  &
-!		      Cldrad_props%emmxolw,  &
-!		      Cldrad_props%emrndlw,           &
                           Time_next=Time_next,                  &
-!                          cldext= Cldrad_props%cldext, &
-!                         cldsct= Cldrad_props%cldsct,  &
-!		  cldasymm= Cldrad_props%cldasymm)
                            cldext= cldext_lsc, &
                           cldsct= cldsct_lsc,  &
                            cldasymm= cldasymm_lsc, &
@@ -1077,6 +1123,7 @@ real, dimension(:,:,:),  intent(in), optional ::  mask
                 Cldrad_props%nrndlw = Cldrad_props%ncldsw
                 Cldrad_props%nmxolw = 0.0                   
              endif
+           endif
            endif
 
   if (do_donner_deep_clouds) then
@@ -1385,8 +1432,8 @@ real, dimension(:,:,:),  intent(in), optional ::  mask
 !     generate netcdf file output fields
 !-------------------------------------------------------------------
 !     if (Environment%running_gcm .and. Environment%running_fms .and. &
-      if (Environment%running_gcm .and.                               &
-                            .not. do_no_clouds) then
+      if ((Environment%running_gcm .or. Environment%running_sa_model) &
+              .and.         .not. do_no_clouds) then
 !        call cloudrad_netcdf (is, js, Time_next, pflux)
         call cloudrad_netcdf (is, js, Time_next, pflux, Cldrad_props)
       endif  
@@ -1425,6 +1472,16 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
     allocate (   Cldrad_props%nmxolw    (ix, jx              ))
     allocate(    Cldrad_props%nrndlw    (ix, jx                 ))
 
+                 Cldrad_props%camtsw  = 0.0                           
+                 Cldrad_props%cmxolw  = 0.0                           
+                 Cldrad_props%crndlw = 0.0                          
+             Cldrad_props%emmxolw = 0.0                              
+             Cldrad_props%emrndlw  = 0.0
+
+                 Cldrad_props%ncldsw = 0
+		 Cldrad_props%nmxolw  = 0
+                 Cldrad_props%nrndlw = 0
+
 !   if (trim(swform) /= 'esfsw99' ) then
     if (.not. do_esfsw            ) then
 
@@ -1434,6 +1491,12 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
       allocate (Cldrad_props%cldext(ix, jx, kx,           0) )
       allocate (Cldrad_props%cldsct(ix, jx, kx,           0) )
       allocate (Cldrad_props%cldasymm(ix, jx, kx,         0) )
+               Cldrad_props%cirabsw = 0.                            
+               Cldrad_props%cirrfsw = 0.                            
+               Cldrad_props%cvisrfsw = 0.                              
+                Cldrad_props%cldext = 0.                         
+                Cldrad_props%cldsct = 0.                      
+                Cldrad_props%cldasymm = 0.                       
 
     else
 
@@ -1442,6 +1505,11 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
       allocate (Cldrad_props%cldasymm(ix, jx, kx,           nbands) )
       allocate (Cldrad_props%abscoeff(ix, jx, kx,       nlwcldb   ) )
       allocate (Cldrad_props%cldemiss(ix, jx, kx,       nlwcldb   ) )
+                Cldrad_props%cldext = 0.                               
+                Cldrad_props%cldsct =0.                              
+                Cldrad_props%cldasymm = 0.                           
+                Cldrad_props%abscoeff = 0.                            
+                Cldrad_props%cldemiss = 0.                           
 
     endif
 
@@ -1493,6 +1561,16 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
     allocate (   Cldrad_props%nmxolw    (ix, jx              ))
     allocate(    Cldrad_props%nrndlw    (ix, jx                 ))
 
+       Cldrad_props%camtsw = 0.                                
+     Cldrad_props%cmxolw   = 0.                            
+       Cldrad_props%crndlw    = 0.                         
+    Cldrad_props%emmxolw = 0.                              
+    Cldrad_props%emrndlw = 0.                            
+
+      Cldrad_props%ncldsw  = 0                              
+       Cldrad_props%nmxolw = 0                         
+       Cldrad_props%nrndlw = 0                           
+
 !   if (trim(swform) /= 'esfsw99' ) then
     if (.not. do_esfsw            ) then
 
@@ -1503,6 +1581,12 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
       allocate (Cldrad_props%cldsct(ix, jx, kx,           0) )
       allocate (Cldrad_props%cldasymm(ix, jx, kx,         0) )
 
+      Cldrad_props%cirabsw  = 0.                               
+      Cldrad_props%cirrfsw = 0.                            
+      Cldrad_props%cvisrfsw = 0.                               
+      Cldrad_props%cldext =0.                         
+      Cldrad_props%cldsct = 0.                         
+      Cldrad_props%cldasymm= 0.                         
     else
 
       allocate (Cldrad_props%cldext(ix, jx, kx,           nbands) )
@@ -1511,6 +1595,11 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
       allocate (Cldrad_props%abscoeff(ix, jx, kx,       nlwcldb   ) )
       allocate (Cldrad_props%cldemiss(ix, jx, kx,       nlwcldb   ) )
 
+      Cldrad_props%cldext = 0.                              
+      Cldrad_props%cldsct =0.                               
+      Cldrad_props%cldasymm = 0.                              
+      Cldrad_props%abscoeff = 0.                            
+      Cldrad_props%cldemiss = 0.                            
     endif
 
 if (do_strat_clouds) then

@@ -286,6 +286,17 @@ Notes:
    Tokioka_on   If true, alm_min computed using Tokioka formulation
                 [logical, default: Tokioka_on = .false. ]
 
+   Tokioka_con  Constant for alm_min computed using Tokioka formulation
+                [real, default: Tokioka_con = 0.05 ]
+
+Tokioka_plim   Tokioka applied only to clouds detraining above Tokioka_plim
+                [real, default: Tokioka_plim = 500.0E2 ]
+
+   modify_pbl   If true, mass flux in sub cloud layer varies linearly
+                between value at cloud base and zero at surface, and
+                tendencies are spread out throughout the entire sub cloud layer.
+                [logical, default: modify_pbl = .false. ]
+
  --- Evaporation of convective scale precip 
 
    evap_on      Turn on evaporation if true

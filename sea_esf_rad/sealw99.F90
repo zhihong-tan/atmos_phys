@@ -7,10 +7,8 @@ use  utilities_mod,        only: open_file, file_exist,    &
 			         print_version_number, FATAL, NOTE, &
 				 WARNING, get_my_pe, close_file, &
 				read_data, write_data
-use constants_new_mod,    only: diffac, radcon_mks, seconds_per_day, &
-                                 radcon
-use longwave_clouds_mod,   only:                             &
-                                 longwave_clouds_init, &
+use constants_mod,         only: diffac, radcon_mks, seconds_per_day, radcon
+use longwave_clouds_mod,   only: longwave_clouds_init, &
                                  cldtau, cloud, thickcld 
 !use cfc_mod,               only: cfc_indx8, cfc_indx8_part, &
 !                                cfc_exact
@@ -46,6 +44,7 @@ use rad_utilities_mod,     only: longwave_control_type, Lw_control, &
 				 longwave_tables3_type, &
 				 atmos_input_type, &
 				 radiative_gases_type, &
+                                 aerosol_type, &
 				 optical_path_type, &
                                  gas_tf_type, &
 				 lw_table_type, &
@@ -83,8 +82,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-    character(len=128)  :: version =  '$Id: sealw99.F90,v 1.2 2002/07/16 22:36:57 fms Exp $'
-    character(len=128)  :: tag     =  '$Name: havana $'
+    character(len=128)  :: version =  '$Id: sealw99.F90,v 1.3 2003/04/09 21:01:44 fms Exp $'
+    character(len=128)  :: tag     =  '$Name: inchon $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -193,7 +192,7 @@ subroutine sealw99_init (latb, lonb, pref, Lw_tables)
  
 real, dimension(:), intent(in) :: latb, lonb
 real, dimension(:,:), intent(in) :: pref
-type(lw_table_type), intent(out) :: Lw_tables
+type(lw_table_type), intent(inout) :: Lw_tables
 
 !---------------------------------------------------------------------
 !    integer                 nn
@@ -417,7 +416,8 @@ type(lw_table_type), intent(out) :: Lw_tables
       NBLY = NBLY_ORIG  
    endif
      call lw_gases_stdtf_init   (pref)
-    call optical_path_init (kmax, latb)
+!    call optical_path_init (kmax, latb)
+    call optical_path_init 
 
     call longwave_tables_init (Lw_tables, tabsr, &
                               tab1, tab2, tab3, tab1w, &
@@ -627,14 +627,15 @@ end subroutine sealw99_init
 !#####################################################################
 
 subroutine sealw99 (is, ie, js, je, Atmos_input, Rad_gases, &
-                             Cldrad_props, Lw_output, Lw_diagnostics)
+                    Aerosol, Cldrad_props, Lw_output, Lw_diagnostics)
 
 integer, intent(in) :: is, ie, js, je
 type(atmos_input_type), intent(in) :: Atmos_input  
 type(radiative_gases_type), intent(in) :: Rad_gases   
+type(aerosol_type), intent(in) :: Aerosol      
 type(cldrad_properties_type), intent(in) :: Cldrad_props
-type(lw_output_type), intent(out) :: Lw_output   
-type(lw_diagnostics_type), intent(out) :: Lw_diagnostics
+type(lw_output_type), intent(inout) :: Lw_output   
+type(lw_diagnostics_type), intent(inout) :: Lw_diagnostics
 
 !--------------------------------------------------------------------
 !
@@ -944,7 +945,7 @@ type(lw_diagnostics_type), intent(out) :: Lw_diagnostics
 
 
      call optical_path_setup (is, ie, js, je,     Atmos_input  , &
-                               Rad_gases, Optical)
+                               Rad_gases, Aerosol, Optical)
 
 
 !----------------------------------------------------------------------
@@ -1618,7 +1619,6 @@ type(gas_tf_type),       intent(in)       :: Gas_tf
 
       if(Lw_control%do_lwaerosol) then
         deallocate (Optical%totaerooptdep  )
-        deallocate (Optical%totaerooptdep_15)
         deallocate (Optical%aerooptdep_KE_15  )
       endif
 
@@ -3447,7 +3447,7 @@ subroutine sealw99_alloc (ix, jx, kx, Lw_diagnostics)
 !--------------------------------------------------------------------
 
 integer,                   intent(in)  :: ix, jx, kx
-type(lw_diagnostics_type), intent(out) :: Lw_diagnostics
+type(lw_diagnostics_type), intent(inout) :: Lw_diagnostics
 
 !--------------------------------------------------------------------
 !   intent(in) variables:
@@ -3487,6 +3487,14 @@ type(lw_diagnostics_type), intent(out) :: Lw_diagnostics
       allocate (Lw_diagnostics%exctsn    (ix, jx, kx,   NBLY    ) )
       allocate (Lw_diagnostics%fctsg     (ix, jx,       NBLY    ) )
 
+      Lw_diagnostics%flx1e1   = 0.
+      Lw_diagnostics%cts_out    = 0.
+      Lw_diagnostics%cts_outcf = 0.
+      Lw_diagnostics%gxcts    = 0.
+      Lw_diagnostics%excts  = 0.
+      Lw_diagnostics%exctsn   = 0.
+      Lw_diagnostics%fctsg   = 0.
+
       Lw_diagnostics%fluxn  (:,:,:,:) = 0.0
 
       if (Rad_control%do_totcld_forcing) then
@@ -3496,6 +3504,7 @@ type(lw_diagnostics_type), intent(out) :: Lw_diagnostics
 
       if (Lw_control%do_ch4_n2o) then
         allocate( Lw_diagnostics%flx1e1f  (ix, jx,       NBTRGE  ) )
+         Lw_diagnostics%flx1e1f  = 0.
       end if
 
 !--------------------------------------------------------------------

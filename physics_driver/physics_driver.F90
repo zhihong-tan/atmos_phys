@@ -25,7 +25,7 @@ use   damping_driver_mod, only: damping_driver,      &
                                 damping_driver_end
 
 use        constants_mod, only: tfreeze,hlv,hlf,hls,kappa,  &
-                                rdgas,rvgas,cp,grav
+                                rdgas,rvgas,grav
 
 use        utilities_mod, only: file_exist, error_mesg, FATAL, NOTE,  &
                                 open_file, close_file, get_my_pe, &
@@ -35,6 +35,12 @@ use     time_manager_mod, only: time_type, get_time, operator (-)
 
 use atmos_tracer_driver_mod, only: atmos_tracer_driver_init, atmos_tracer_driver,  &
                                    atmos_tracer_driver_end
+use              fms_mod, only: mpp_clock_id, mpp_clock_begin,   &
+                                mpp_clock_end, CLOCK_MODULE_DRIVER, &
+                                MPP_CLOCK_SYNC,  &
+                                open_restart_file, read_data, &
+                                close_file, mpp_pe, mpp_root_pe, &
+                                write_data
 
 
 implicit none
@@ -63,11 +69,37 @@ interface check_dim
 end interface
 
 !--------------------- version number ----------------------------------
-character(len=256) :: version = '$Id: physics_driver.F90,v 1.8 2002/07/16 22:33:47 fms Exp $'
-character(len=256) :: tag = '$Name: havana $'
+character(len=256) :: version =                                &
+'$Id: physics_driver.F90,v 1.9 2003/04/09 20:58:05 fms Exp $'
+character(len=256) :: tag = '$Name: inchon $'
 !-----------------------------------------------------------------------
 
       logical :: do_init = .true., do_check_args = .true.
+      integer :: radiation_clock, damping_clock, turb_clock,   &
+                 tracer_clock, diff_up_clock, diff_down_clock, &
+                 moist_processes_clock
+
+!--------------------------------------------------------------------
+! list of restart versions readable by this module:
+!
+! version 1: initial implementation 1/2003, contains diffusion coef-
+!            ficient contribution from cu_mo_trans_mod. This variable
+!            is generated in physics_driver_up (moist_processes) and
+!            used on the next step in vert_diff_down, necessitating
+!            its storage.
+!
+! version 2: adds pbltop as generated in vert_turb_driver_mod. This 
+!            variable is then used on the next timestep by topo_drag
+!            (called from damping_driver_mod), necessitating its 
+!            storage.
+!
+!---------------------------------------------------------------------
+
+ integer, dimension(2) :: restart_versions = (/ 1, 2 /)
+
+
+      real, dimension(:,:,:), allocatable :: diff_cu_mo
+      real, dimension(:,:)  , allocatable :: pbltop     
 
 !-----------------------------------------------------------------------
 
@@ -82,7 +114,7 @@ contains
                                  u, v, t, q, r, um, vm, tm, qm, rm, rd,&
                                  frac_land, rough_mom,                 &
                                  albedo,    t_surf_rad,                &
-                                 u_star,    b_star,                    &
+                                 u_star,    b_star, q_star,            &
                                  dtau_dv,  tau_x,  tau_y,              &
                                  udt, vdt, tdt, qdt, rdt,              &
                                  flux_sw,  flux_lw,  coszen,  gust,    &
@@ -102,7 +134,7 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
       real, intent(in),    dimension(:,:) :: frac_land, rough_mom, &
                                              albedo, t_surf_rad,   &
                                              u_star, b_star,       &
-                                             dtau_dv
+                                             q_star, dtau_dv
       real, intent(inout), dimension(:,:) :: tau_x,  tau_y
 
       real, intent(inout),dimension(:,:,:)   :: udt,vdt,tdt,qdt
@@ -160,6 +192,7 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 !-----------------------------------------------------------------------
 
    real, dimension(size(u,1),size(u,2),size(u,3)) :: diff_t,  diff_m
+   real, dimension(size(u,1),size(u,2))           :: z_pbl 
 
    integer          :: sec, day
    real             :: dt
@@ -183,41 +216,68 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 !-----------------------------------------------------------------------
 !-------------------------- radiation ----------------------------------
 
+      call mpp_clock_begin ( radiation_clock )
       call radiation_driver (is, ie, js, je, Time, Time_next, lat,  &
                              lon, p_full, p_half, t, q, t_surf_rad,&
                              frac_land, albedo, tdt, flux_sw, &
                              flux_lw,  coszen,     &
                              mask=mask, kbot=kbot)
+      call mpp_clock_end ( radiation_clock )
 
 !-----------------------------------------------------------------------
 !------------------------ damping --------------------------------------
 
-     call damping_driver (is, js, Time_next, dt,                   &
+     z_pbl(:,:) = pbltop(is:ie,js:je) 
+     call mpp_clock_begin ( damping_clock )
+     call damping_driver (is, js, lat, Time_next, dt,           &
                           p_full, p_half, z_full, z_half,          &
                           um, vm, tm, qm, rm, udt, vdt, tdt, qdt, rdt, &
-                          mask=mask, kbot=kbot)
+!                         sgstop, mask=mask, kbot=kbot)
+                          z_pbl , mask=mask, kbot=kbot)
+     call mpp_clock_end ( damping_clock )
 
 !-----------------------------------------------------------------------
 !-------- need to modify vert_turb_driver (remove t_surf) --------
 
+     call mpp_clock_begin ( turb_clock )
      call vert_turb_driver (is, js, Time, Time_next, dt, frac_land, &
-                            p_half, p_full, z_half, z_full,         &
-                            u_star, b_star, rough_mom,              &
-                            u, v, t, q, um, vm, tm, qm,             &
-                            udt, vdt, tdt, qdt,                     &
-                            diff_t, diff_m, gust,                   &
+                            p_half, p_full, z_half, z_full, u_star, &
+			    b_star, q_star, rough_mom, lat,         &
+                            u, v, t, q, r, um, vm, tm, qm, rm,      &
+                            udt, vdt, tdt, qdt, rdt,                &
+                            diff_t, diff_m, gust, z_pbl,            &
                             mask=mask, kbot=kbot                    )
+     call mpp_clock_end ( turb_clock )
+     pbltop(is:ie,js:je) = z_pbl(:,:)
 
+!-----------------------------------------------------------------------
+!------------------------ damping --------------------------------------
+
+!    call mpp_clock_begin ( damping_clock )
+!    call damping_driver (is, js, lat, Time_next, dt,           &
+!                         p_full, p_half, z_full, z_half,          &
+!                         um, vm, tm, qm, rm, udt, vdt, tdt, qdt, rdt, &
+!                         z_pbl, mask=mask, kbot=kbot)
+!    call mpp_clock_end ( damping_clock )
+
+
+     
 !-----------------------------------------------------------------------
 !----------------------- process tracers fields ------------------------
 
+  call mpp_clock_begin ( tracer_clock )
   call atmos_tracer_driver (is, ie, js, je, Time, lon, lat, frac_land, &
                             p_half, p_full, r, u, v, t, q, u_star,     &
-                            rdt, rm, rd, kbot)
+                            rdt, rm, rd, &
+                            dt, z_half, z_full, t_surf_rad, albedo, coszen, Time_next, &
+                            kbot)
+  call mpp_clock_end ( tracer_clock )
 
 !-----------------------------------------------------------------------
 !----------------------- vertical diffusion ----------------------------
 
+  diff_m(:,:,:) = diff_m(:,:,:) + diff_cu_mo(is:ie, js:je,:)
+  call mpp_clock_begin ( diff_down_clock )
   call vert_diff_driver_down (is, js, Time_next, dt, p_half, p_full, &
                               z_full, diff_m, diff_t,                &
                               um ,vm ,tm ,qm ,rm,                    &
@@ -225,6 +285,7 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
                               udt, vdt, tdt, qdt, rdt,               &
                               Surf_diff,                             &
                               mask=mask, kbot=kbot                   )
+  call mpp_clock_end ( diff_down_clock )
 
 !-----------------------------------------------------------------------
 
@@ -235,7 +296,8 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
  subroutine physics_driver_up (is, ie, js, je,                    &
                                Time_prev, Time, Time_next,        &
                                lat, lon, area,                    &
-                               p_half, p_full, omega,             &
+                               p_half, p_full, z_half, z_full,    & 
+                               omega,                             &
                                u, v, t, q, r, um, vm, tm, qm, rm, &
                                frac_land,                         &
                                udt, vdt, tdt, qdt, rdt,           &
@@ -248,6 +310,7 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 type(time_type),          intent(in)       :: Time_prev, Time, Time_next
       real, intent(in)   ,dimension(:,:)   :: lat, lon, area
       real, intent(in)   ,dimension(:,:,:) :: p_half, p_full, omega,  &
+                                              z_half, z_full,         &
                                               u , v , t , q ,         &
                                               um, vm, tm, qm
       real, intent(in)   ,dimension(:,:,:,:) :: r,rm
@@ -290,6 +353,7 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 !---------------------------------------------------------------------
    real    :: dt
    integer :: day, sec
+   real, dimension(size(u,1), size(u,2), size(u,3)) :: diff_cu_mo_loc
 
 !     --- compute the time step (from tau-1 to tau+1) ---
 
@@ -298,18 +362,25 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 
 !----------------------- vertical diffusion ----------------------------
 
+    call mpp_clock_begin ( diff_up_clock )
     call vert_diff_driver_up (is, js, Time_next, dt, p_half, Surf_diff,&
                               tdt, qdt,  mask=mask, kbot=kbot)
+    call mpp_clock_end ( diff_up_clock )
 
 !-----------------------------------------------------------------------
 !-------------------------- moist processes ----------------------------
 
     if(.not.do_mcm_moist_process) then
+      call mpp_clock_begin ( moist_processes_clock )
       call moist_processes (is, ie, js, je, Time_next, dt, frac_land, &
-                            p_half, p_full, omega,                    &
+                            p_half, p_full, z_half, z_full, omega,    &
                             t, q, r, u, v, tm, qm, rm, um, vm,        &
-                            tdt, qdt, rdt, udt, vdt,                  &
-                            lprec, fprec, mask=mask, kbot=kbot        )
+                            tdt, qdt, rdt, udt, vdt, diff_cu_mo_loc,  &
+                            lprec, fprec, &
+                            area, lat, &
+                            mask=mask, kbot=kbot        )
+      call mpp_clock_end ( moist_processes_clock )
+      diff_cu_mo(is:ie, js:je,:) = diff_cu_mo_loc(:,:,:)
     endif
 
 !-----------------------------------------------------------------------
@@ -319,7 +390,7 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 !#######################################################################
 
  subroutine physics_driver_init ( Time, lonb, latb, axes, pref, &
-                                  trs, Surf_diff,  mask, kbot  )
+                                  trs, Surf_diff, phalf, mask, kbot  )
 
 !-----------------------------------------------------------------------
 type(time_type),      intent(in)    :: Time
@@ -327,6 +398,7 @@ type(time_type),      intent(in)    :: Time
    integer,           intent(in)    :: axes(4)
       real,           intent(in)    :: pref(:,:)
       real,           intent(inout) :: trs(:,:,:,:)
+      real,           intent(in)    :: phalf(:,:,:)
 type(surf_diff_type), intent(inout) :: Surf_diff
       real, optional, intent(in)    :: mask(:,:,:)
    integer, optional, intent(in)    :: kbot(:,:)
@@ -343,6 +415,9 @@ type(surf_diff_type), intent(inout) :: Surf_diff
 !-----------------------------------------------------------------------
       integer  unit, id, jd, kd
       integer  :: ierr, io, unit
+      integer ::  vers
+      character(len=8) :: chvers
+      real, dimension (size(lonb)-1, size(latb)-1) :: sgsmtn
 
       id = size(lonb)-1; jd = size(latb)-1; kd = size(trs,3)
 
@@ -371,18 +446,73 @@ type(surf_diff_type), intent(inout) :: Surf_diff
 !------------- initialization for various schemes ----------------------
 
       if(.not.do_mcm_moist_process) then
-        call  moist_processes_init ( id, jd, kd, axes, Time )
+        call  moist_processes_init ( id, jd, kd, lonb, latb, pref(:,1),&
+                                     axes, Time )
       endif
 
-      call vert_turb_driver_init ( id, jd, kd, axes, Time )
+      call   damping_driver_init ( lonb, latb, pref(:,1), axes, Time, &
+                                   sgsmtn)
+
+      call vert_turb_driver_init ( lonb, latb, id, jd, kd, axes, Time, &
+                                   sgsmtn)
 
       call vert_diff_driver_init ( Surf_diff, id, jd, kd, axes, Time )
 
-      call   damping_driver_init ( lonb, latb, axes, Time )
-
       call radiation_driver_init ( lonb, latb, pref, axes, time)
 
-      call atmos_tracer_driver_init ( lonb, latb, trs, axes, time, mask)
+      call atmos_tracer_driver_init ( lonb, latb, trs, axes, time, phalf, mask)
+
+!---------------------------------------------------------------------
+!   ----  initialize clocks ----
+
+      radiation_clock       =       &
+                mpp_clock_id( '   Physics_down: Radiation',    &
+                   grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+      damping_clock         =     &
+                mpp_clock_id( '   Physics_down: Damping',    &
+                  grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+      turb_clock            =      &
+                mpp_clock_id( '   Physics_down: Vert. Turb.', &
+                  grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+      tracer_clock          =      &
+                mpp_clock_id( '   Physics_down: Tracer',    &
+                 grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+      diff_down_clock       =     &
+                mpp_clock_id( '   Physics_down: Vert. Diff.',   &
+                 grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+      diff_up_clock         =     &
+                mpp_clock_id( '   Physics_up: Vert. Diff.',     &
+                grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+      moist_processes_clock =      &
+                mpp_clock_id( '   Physics_up: Moist Processes', &
+                grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+
+!-----------------------------------------------------------------------
+!   ----  allocate and initialize module variable to hold cmt diffusion 
+!   ----  coefficient between time steps ----
+
+      allocate ( diff_cu_mo(id, jd, kd) ) 
+      allocate ( pbltop    (id, jd) ) 
+      if (file_exist ('INPUT/physics_driver.res') )then
+        unit = open_restart_file ( 'INPUT/physics_driver.res', 'read')
+        read (unit) vers
+        if ( .not. any(vers ==restart_versions) ) then
+          write (chvers, '(i4)') vers
+          call error_mesg ('physics_driver_mod', &
+            'restart version ' //chvers// ' cannot be read by this&
+	     & module version', FATAL)
+        endif
+        call read_data (unit, diff_cu_mo)
+        if (vers >= 2) then
+          call read_data (unit, pbltop)
+        else
+          pbltop     = -999.0
+        endif
+        call close_file (unit)
+      else
+        diff_cu_mo = 0.0
+        pbltop     = -999.0
+      endif
 
 !-----------------------------------------------------------------------
 
@@ -398,6 +528,21 @@ type(surf_diff_type), intent(inout) :: Surf_diff
 
    type(time_type), intent(in) :: Time
 !-----------------------------------------------------------------------
+
+      integer :: unit
+
+      unit = open_restart_file ('RESTART/physics_driver.res', 'write')
+  
+      if (mpp_pe() == mpp_root_pe() ) then
+        write (unit) restart_versions(size(restart_versions))     
+      endif
+    
+      call write_data (unit, diff_cu_mo)
+      call write_data (unit, pbltop    )
+
+      call close_file (unit)
+
+!-------------------------------------------------------------------
 
       call vert_turb_driver_end
       call vert_diff_driver_end

@@ -3,11 +3,25 @@ module moist_conv_mod
 
 !-----------------------------------------------------------------------
 
+ use           mpp_mod, only : mpp_pe,             &
+                               mpp_root_pe,        &
+                               stdlog
+use   time_manager_mod, only : time_type
+ use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
 use  sat_vapor_pres_mod, ONLY: EsComp, DEsComp
 use       utilities_mod, ONLY:  error_mesg, file_exist, open_file,  &
                                 check_nml_error, close_file,        &
                                 FATAL, WARNING, NOTE, get_my_pe
-use       constants_mod, ONLY: HLv, HLs, cp, grav, rdgas, rvgas
+use       constants_mod, ONLY: HLv, HLs, cp_air, grav, rdgas, rvgas
+
+use           fms_mod, only : write_version_number, ERROR_MESG, FATAL
+use field_manager_mod, only : MODEL_ATMOS
+use tracer_manager_mod, only : get_tracer_index,   &
+                               get_number_tracers, &
+                               get_tracer_names,   &
+                               get_tracer_indices, &
+                               query_method,       &
+                               NO_TRACER
 
 implicit none
 private
@@ -32,17 +46,29 @@ public :: moist_conv, moist_conv_Init
 !-----------------------------------------------------------------------
 !---- VERSION NUMBER -----
 
- character(len=128) :: version = '$Id: moist_conv.F90,v 1.2 2000/07/28 20:16:40 fms Exp $'
- character(len=128) :: tag = '$Name: havana $'
+ character(len=128) :: version = '$Id: moist_conv.F90,v 1.3 2003/04/09 20:57:29 fms Exp $'
+ character(len=128) :: tagname = '$Name: inchon $'
 
 !---------- initialize constants used by this module -------------------
 
  real, parameter :: d622 = rdgas/rvgas
  real, parameter :: d378 = 1.0-d622
  real, parameter :: grav_inv = 1.0/grav
- real, parameter :: rocp = rdgas/cp
+ real, parameter :: rocp = rdgas/cp_air
 
- logical :: do_init=.true.
+ logical :: module_is_initialized = .false.
+real :: missing_value = -999.
+integer               :: num_tracers
+integer, allocatable, dimension(:) :: id_tracer_conv, id_tracer_conv_col
+ integer :: nsphum, nql, nqi, nqa   ! tracer indices for stratiform clouds
+
+integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
+	   id_qldt_conv,   id_qidt_conv,   id_qadt_conv, &
+	   id_ql_conv_col, id_qi_conv_col, id_qa_conv_col,&
+	   id_q_conv_col, id_t_conv_col
+	
+character(len=3) :: mod_name = 'mca'
+logical :: used
 
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
@@ -52,8 +78,11 @@ CONTAINS
 !#######################################################################
 
  subroutine moist_conv ( Tin, Qin, Pfull, Phalf, coldT,    &
-                         Tdel, Qdel, Rain, Snow, Lbot, cf, &
-                         Conv, cfdel, qldel, qidel)
+                         Tdel, Qdel, Rain, Snow, Lbot, &
+                         do_strat, tracer, tracertnd, &
+                         dtinv, Time, mask, is, js, Conv )
+                         !cf, &
+                         !Conv, cfdel, qldel, qidel)
 
 !-----------------------------------------------------------------------
 !
@@ -90,15 +119,23 @@ CONTAINS
 !
 !-----------------------------------------------------------------------
 !----------------------PUBLIC INTERFACE ARRAYS--------------------------
-    real, intent(IN) , dimension(:,:,:) :: Tin, Qin, Pfull, Phalf
+    real, intent(INOUT) , dimension(:,:,:) :: Tin, Qin
+    real, intent(IN) , dimension(:,:,:) :: Pfull, Phalf 
  logical, intent(IN) , dimension(:,:)   :: coldT
     real, intent(OUT), dimension(:,:,:) :: Tdel, Qdel
     real, intent(OUT), dimension(:,:)   :: Rain, Snow
  integer, intent(IN) , optional, dimension(:,:)   :: Lbot
-    real, intent(IN) , optional, dimension(:,:,:) :: cf
+!    real, intent(IN) , optional, dimension(:,:,:) :: cf
  logical, intent(OUT), optional, dimension(:,:,:) :: Conv
-    real, intent(OUT), optional, dimension(:,:,:) :: cfdel, qldel, qidel
-      
+!    real, intent(OUT), optional, dimension(:,:,:) :: cfdel, qldel, qidel
+logical, intent(in)                     :: do_strat
+    real, intent(IN)                    :: dtinv
+ integer, intent(IN)                    :: is, js     
+    real, intent(INOUT), dimension(:,:,:,:) :: tracer
+    real, intent(INOUT), dimension(:,:,:,:), target :: tracertnd
+type(time_type), intent(in)              :: Time
+   real, intent(in) , dimension(:,:,:), optional :: mask
+         
 !-----------------------------------------------------------------------
 !----------------------PRIVATE (LOCAL) ARRAYS---------------------------
 ! logical, dimension(size(Tin,1),size(Tin,2),size(Tin,3)) :: DO_ADJUST
@@ -119,9 +156,31 @@ real, dimension(size(Tin,1),size(Tin,2)) :: HL
 
 integer :: i,j,k,kk,KX,ITER,MXLEV,MXLEV1,kstart,KTOP,KBOT,KBOTM1
 real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta,DTinv
+
+
+real, dimension(SIZE(tracer,1),SIZE(tracer,2),SIZE(tracer,3)) :: cf
+real, pointer, dimension(:,:,:) :: cfdel, qldel, qidel
+logical :: cf_Present
+real, dimension(size(Phalf,1),size(Phalf,2),size(Phalf,3)) :: pmass
+real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
 !-----------------------------------------------------------------------
 
-      if (do_init) call moist_conv_init ( )
+      if (.not. module_is_initialized) call ERROR_MESG( 'MCA',  &
+                                 'moist_conv_init has not been called', FATAL )
+                                 !moist_conv_init ( )
+      
+      cf_Present = .FALSE.
+      if ( do_strat ) then
+        cf_Present = .TRUE.
+        cf=tracer(:,:,:,nqa)
+        cfdel => tracertnd(:,:,:,nqa)
+        qldel => tracertnd(:,:,:,nql)
+        qidel => tracertnd(:,:,:,nqi)
+      endif  
+
+        do k=1,size(Phalf,3)
+          pmass(:,:,k) = (Phalf(:,:,k+1)-Phalf(:,:,k))/GRAV
+        end do
 
       KX=size(Tin,3)
 
@@ -167,7 +226,7 @@ real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta,DTinv
       do k=1,KX-1
          ALRM(:,:,k)=rocp*DelPoP(:,:,k)*Thalf(:,:,k)  &
          *(Phalf(:,:,k+1)+d622*HL(:,:)*Esm(:,:,k)/Thalf(:,:,k)/rdgas)  &
-         /(Phalf(:,:,k+1)+d622*HL(:,:)*Esd(:,:,k)/cp)
+         /(Phalf(:,:,k+1)+d622*HL(:,:)*Esd(:,:,k)/cp_air)
       enddo
 
       IVF  (:,:,KX)=0
@@ -279,9 +338,9 @@ real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta,DTinv
 
 1625  CONTINUE
       Pdelta=Phalf(i,j,k+1)-Phalf(i,j,k)
-      Sum1=Sum1 + Pdelta*((cp+HL(i,j)*C(k))*(Temp(i,j,k)+Sum0)+  &
+      Sum1=Sum1 + Pdelta*((cp_air+HL(i,j)*C(k))*(Temp(i,j,k)+Sum0)+  &
                            HL(i,j)*(Qmix(i,j,k)-Qsat(i,j,k)))
-      Sum2=Sum2 + Pdelta*(cp+HL(i,j)*C(k))
+      Sum2=Sum2 + Pdelta*(cp_air+HL(i,j)*C(k))
 !-----------------------------------------------------------------------
 1630                   CONTINUE
 !-----------------------------------------------------------------------
@@ -323,7 +382,7 @@ real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta,DTinv
         Esd (i,j,k)=HC*EsDiff
         ALRM(i,j,k)=rocp*DelPoP(i,j,k)*Thaf*  &
                (Phalf(i,j,k+1)+d622*HL(i,j)*Esm(i,j,k)/Thaf/rdgas)/  &
-               (Phalf(i,j,k+1)+d622*HL(i,j)*Esd(i,j,k)/cp)
+               (Phalf(i,j,k+1)+d622*HL(i,j)*Esd(i,j,k)/cp_air)
       enddo
 
 !------------Is this the bottom of the current column ???---------------
@@ -343,7 +402,7 @@ real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta,DTinv
         Esd (i,j,k)=HC*EsDiff
         ALRM(i,j,k)=rocp*DelPoP(i,j,k)*Thaf*  &
                (Phalf(i,j,k+1)+d622*HL(i,j)*Esm(i,j,k)/Thaf/rdgas)/  &
-               (Phalf(i,j,k+1)+d622*HL(i,j)*Esd(i,j,k)/cp)
+               (Phalf(i,j,k+1)+d622*HL(i,j)*Esd(i,j,k)/cp_air)
       enddo
 
       do k=1,MXLEV1
@@ -399,7 +458,8 @@ real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta,DTinv
 
 !---- call Convective Detrainment subroutine -----
 
-     if (Present(cf)) then
+!     if (Present(cf)) then
+     if (cf_Present) then
 
           !reset quantities
           cfdel = 0.
@@ -430,7 +490,8 @@ real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta,DTinv
       END WHERE
 
       !subtract off detrained condensate from surface precip
-      if (present(cf)) then
+!      if (present(cf)) then
+     if (cf_Present) then
       WHERE(coldT(:,:)) 
       Snow(:,:)=Snow(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
                                qidel(:,:,k)*grav_inv
@@ -452,6 +513,113 @@ real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta,DTinv
            4X,'K',14X,'T',14X,'R',13X,'Qsat',14X,'Qdif',12X,'ALRM',/)
  9904 FORMAT (I5,5E15.7)
 !-----------------------------------------------------------------------
+
+
+!------- update input values and compute tendency -------
+                    
+      Tin=Tin+Tdel;    Qin=Qin+Qdel
+      
+      Tdel=Tdel*dtinv; Qdel=Qdel*dtinv
+      Rain=Rain*dtinv; Snow=Snow*dtinv
+!------- update input values , compute and add on tendency -----------
+!-------              in the case of strat                 -----------
+
+      if (do_strat) then
+         tracer(:,:,:,nql)=tracer(:,:,:,nql)+tracertnd(:,:,:,nql)
+         tracer(:,:,:,nqi)=tracer(:,:,:,nqi)+tracertnd(:,:,:,nqi)
+         tracer(:,:,:,nqa)=tracer(:,:,:,nqa)+tracertnd(:,:,:,nqa)
+
+         tracertnd(:,:,:,nql)=tracertnd(:,:,:,nql)*dtinv
+         tracertnd(:,:,:,nqi)=tracertnd(:,:,:,nqi)*dtinv
+         tracertnd(:,:,:,nqa)=tracertnd(:,:,:,nqa)*dtinv
+      endif   
+      
+!------- diagnostics for dt/dt_ras -------
+      if ( id_tdt_conv > 0 ) then
+        used = send_data ( id_tdt_conv, Tdel, Time, is, js, 1, &
+                           rmask=mask )
+      endif
+!------- diagnostics for dq/dt_ras -------
+      if ( id_qdt_conv > 0 ) then
+        used = send_data ( id_qdt_conv, Qdel, Time, is, js, 1, &
+                           rmask=mask )
+      endif
+!------- diagnostics for precip_ras -------
+      if ( id_prec_conv > 0 ) then
+        used = send_data ( id_prec_conv, Rain+Snow, Time, is, js )
+      endif
+!------- diagnostics for snow_ras -------
+      if ( id_snow_conv > 0 ) then
+        used = send_data ( id_snow_conv, Snow, Time, is, js )
+      endif
+
+!------- diagnostics for water vapor path tendency ----------
+      if ( id_q_conv_col > 0 ) then
+        tempdiag(:,:)=0.
+        do k=1,kx
+          tempdiag(:,:) = tempdiag(:,:) + Qdel(:,:,k)*pmass(:,:,k)
+        end do
+        used = send_data ( id_q_conv_col, tempdiag, Time, is, js )
+      end if	
+   
+!------- diagnostics for dry static energy tendency ---------
+      if ( id_t_conv_col > 0 ) then
+        tempdiag(:,:)=0.
+        do k=1,kx
+          tempdiag(:,:) = tempdiag(:,:) + Tdel(:,:,k)*cp_air*pmass(:,:,k)
+        end do
+        used = send_data ( id_t_conv_col, tempdiag, Time, is, js )
+      end if	
+   
+   !------- stratiform cloud tendencies from cumulus convection ------------
+   if ( do_strat ) then
+
+      !------- diagnostics for dql/dt from RAS or donner -------
+      if ( id_qldt_conv > 0 ) then
+        used = send_data ( id_qldt_conv, tracertnd(:,:,:,nql), Time, is, js, 1, &
+                           rmask=mask )
+      endif
+      
+      !------- diagnostics for dqi/dt from RAS or donner -------
+      if ( id_qidt_conv > 0 ) then
+        used = send_data ( id_qidt_conv, tracertnd(:,:,:,nqi), Time, is, js, 1, &
+                           rmask=mask )
+      endif
+      
+      !------- diagnostics for dqa/dt from RAS or donner -------
+      if ( id_qadt_conv > 0 ) then
+        used = send_data ( id_qadt_conv, tracertnd(:,:,:,nqa), Time, is, js, 1, &
+                           rmask=mask )
+      endif
+
+      !------- diagnostics for liquid water path tendency ------
+      if ( id_ql_conv_col > 0 ) then
+        tempdiag(:,:)=0.
+        do k=1,kx
+          tempdiag(:,:) = tempdiag(:,:) + tracertnd(:,:,k,nql)*pmass(:,:,k)
+        end do
+        used = send_data ( id_ql_conv_col, tempdiag, Time, is, js )
+      end if	
+      
+      !------- diagnostics for ice water path tendency ---------
+      if ( id_qi_conv_col > 0 ) then
+        tempdiag(:,:)=0.
+        do k=1,kx
+          tempdiag(:,:) = tempdiag(:,:) + tracertnd(:,:,k,nqi)*pmass(:,:,k)
+        end do
+        used = send_data ( id_qi_conv_col, tempdiag, Time, is, js )
+      end if	
+      
+      !---- diagnostics for column integrated cloud mass tendency ---
+      if ( id_qa_conv_col > 0 ) then
+        tempdiag(:,:)=0.
+        do k=1,kx
+          tempdiag(:,:) = tempdiag(:,:) + tracertnd(:,:,k,nqa)*pmass(:,:,k)
+        end do
+        used = send_data ( id_qa_conv_col, tempdiag, Time, is, js )
+      end if	
+         
+   end if !end do strat if
 
  end subroutine moist_conv
 
@@ -597,7 +765,10 @@ END SUBROUTINE CONV_DETR
 
 !#######################################################################
 
- subroutine moist_conv_init ()
+ subroutine moist_conv_init (axes, Time)
+
+ integer,         intent(in) :: axes(4)
+ type(time_type), intent(in) :: Time
 
 !-----------------------------------------------------------------------
       
@@ -616,19 +787,80 @@ END SUBROUTINE CONV_DETR
 
 !---------- output namelist --------------------------------------------
 
+  call write_version_number (version, tagname)
       unit = open_file ('logfile.out', action='append')
       if ( get_my_pe() == 0 ) then
-           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+!           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
            write (unit,nml=moist_conv_nml)
       endif
       call close_file (unit)
 
+   id_tdt_conv = register_diag_field ( mod_name, &
+     'tdt_conv', axes(1:3), Time, &
+     'Temperature tendency from moist conv adj',     'deg_K/s',  &
+                        missing_value=missing_value               )
 
-      do_init = .false.
+   id_qdt_conv = register_diag_field ( mod_name, &
+     'qdt_conv', axes(1:3), Time, &
+     'Spec humidity tendency from moist conv adj',   'kg/kg/s',  &
+                        missing_value=missing_value               )
+
+   id_prec_conv = register_diag_field ( mod_name, &
+     'prec_conv', axes(1:2), Time, &
+    'Precipitation rate from moist conv adj',       'kg/m2/s' )
+
+   id_snow_conv = register_diag_field ( mod_name, &
+     'snow_conv', axes(1:2), Time, &
+    'Frozen precip rate from moist conv adj',       'kg/m2/s' )
+
+   id_q_conv_col = register_diag_field ( mod_name, &
+     'q_conv_col', axes(1:2), Time, &
+    'Water vapor path tendency from moist conv adj','kg/m2/s' )
+   
+   id_t_conv_col = register_diag_field ( mod_name, &
+     't_conv_col', axes(1:2), Time, &
+    'Column static energy tendency from moist conv adj','W/m2' )
+
+
+!---------------------------------------------------------------------
+! --- Find the tracer indices 
+!---------------------------------------------------------------------
+  call get_number_tracers(MODEL_ATMOS,num_tracers)
+  if ( num_tracers .gt. 0 ) then
+    allocate(id_tracer_conv(num_tracers))
+    allocate(id_tracer_conv_col(num_tracers))
+  else
+    call error_mesg('moist_conv_init', 'No atmospheric tracers found', FATAL)
+  endif
+!  call get_tracer_indices(MODEL_ATMOS, tr_indices)  
+!  if (do_strat) then
+    ! get tracer indices for stratiform cloud variables
+      nsphum = get_tracer_index ( MODEL_ATMOS, 'sphum' )
+      nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
+      nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
+      nqa = get_tracer_index ( MODEL_ATMOS, 'cld_amt' )
+!  endif
+
+      module_is_initialized = .true.
 
 !-----------------------------------------------------------------------
 
  end subroutine moist_conv_init
+
+
+!#######################################################################
+subroutine moist_conv_end
+
+integer :: log_unit
+
+log_unit = stdlog()
+if ( mpp_pe() == mpp_root_pe() ) then
+   write (log_unit,'(/,(a))') 'Exiting moist_conv.'
+endif
+
+module_is_initialized = .FALSE.
+
+end subroutine moist_conv_end
 
 !#######################################################################
 

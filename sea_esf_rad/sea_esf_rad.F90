@@ -21,12 +21,16 @@ use rad_utilities_mod,    only:  rad_utilities_init, &
                                  lw_diagnostics_type, &
 				 cld_diagnostics_type, &
 				 lw_table_type, &
+                                 aerosol_type, &
                                  sw_output_type, lw_output_type, &
                                  rad_output_type, fsrad_output_type, &
                                  environment_type, Environment, &
                                  shortwave_control_type, Sw_control, &
 				 longwave_control_type, Lw_control, &
                                  cloudrad_control_type, Cldrad_control
+use fms_mod,              only:  mpp_clock_id, mpp_clock_begin, &
+                                 mpp_clock_end, CLOCK_MODULE,  &
+                                 MPP_CLOCK_SYNC
 
 use radiation_diag_mod,   only:  radiation_diag_init,   &
                                  radiation_diag_driver, &
@@ -50,8 +54,8 @@ private
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 
-character(len=128) :: version = '$Id: sea_esf_rad.F90,v 1.3 2002/07/16 22:36:48 fms Exp $'
-character(len=128) :: tag = '$Name: havana $'
+character(len=128) :: version = '$Id: sea_esf_rad.F90,v 1.4 2003/04/09 21:01:38 fms Exp $'
+character(len=128) :: tag = '$Name: inchon $'
 
 
 !--------------------------------------------------------------------
@@ -91,6 +95,7 @@ namelist /sea_esf_rad_nml/  dummy
 
 logical :: sea_esf_rad_initialized = .false.    ! module initialized ?
 
+integer :: longwave_clock, shortwave_clock      ! timing clocks
 
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
@@ -183,6 +188,16 @@ real, dimension(:,:),    intent(in)  :: pref_r
       call shortwave_driver_init (latb, pref_r)
       call radiation_diag_init   (latb, lonb, Lw_tables)
 
+!---------------------------------------------------------------------
+!    initialize clocks to time various modules called by this module.
+!---------------------------------------------------------------------
+      longwave_clock =      &
+                  mpp_clock_id ('   Physics_down: Radiation: lw', &
+                   grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC)
+      shortwave_clock =     &
+                  mpp_clock_id ('   Physics_down: Radiation: sw', &
+                  grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC)
+
 !-------------------------------------------------------------------
       sea_esf_rad_initialized = .true.
 
@@ -198,8 +213,8 @@ end subroutine sea_esf_rad_init
 !#####################################################################
 
 subroutine sea_esf_rad (is, ie, js, je, Atmos_input, Astro, Rad_gases, &
-                        Cldrad_props, Cld_diagnostics, Lw_output,  &
-                        Sw_output)
+                        Aerosol, Cldrad_props, Cld_diagnostics,   &
+                        Lw_output, Sw_output)
 
 !-----------------------------------------------------------------------
 !     sea_esf_rad calls the modules which calculate the long- and short-
@@ -211,10 +226,11 @@ integer,                      intent(in)   :: is, ie, js, je
 type(atmos_input_type),       intent(in)   :: Atmos_input
 type(astronomy_type),         intent(in)   :: Astro
 type(radiative_gases_type),   intent(in)   :: Rad_gases
+type(aerosol_type),           intent(in)   :: Aerosol      
 type(cldrad_properties_type), intent(in)   :: Cldrad_props
 type(cld_diagnostics_type),   intent(in)   :: Cld_diagnostics
-type(lw_output_type),         intent(out)  :: Lw_output 
-type(sw_output_type),         intent(out)  :: Sw_output 
+type(lw_output_type),         intent(inout)  :: Lw_output 
+type(sw_output_type),         intent(inout)  :: Sw_output 
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
@@ -264,15 +280,20 @@ type(sw_output_type),         intent(out)  :: Sw_output
 !----------------------------------------------------------------------
 !    compute longwave radiation.
 !----------------------------------------------------------------------
+      call mpp_clock_begin (longwave_clock)
       call longwave_driver (is, ie, js, je, Atmos_input, Rad_gases,  &
-                            Cldrad_props, Lw_output, Lw_diagnostics)
+                            Aerosol, Cldrad_props, Lw_output,   &
+                            Lw_diagnostics)
+      call mpp_clock_end (longwave_clock)
 
 !----------------------------------------------------------------------
 !    compute shortwave radiation.
 !----------------------------------------------------------------------
+      call mpp_clock_begin (shortwave_clock)
       call shortwave_driver (is, ie, js, je, Atmos_input, Astro,   &
-                             Rad_gases, Cldrad_props, Sw_output,  &
-                             Cldspace_rad)
+                             Aerosol, Rad_gases, Cldrad_props,    &
+                             Sw_output, Cldspace_rad)
+      call mpp_clock_end (shortwave_clock)
 
 !--------------------------------------------------------------------
 !    call radiation_diag_driver to compute radiation diagnostics at 
