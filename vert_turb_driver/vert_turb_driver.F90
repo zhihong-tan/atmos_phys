@@ -42,7 +42,7 @@ public   vert_turb_driver_init, vert_turb_driver_end, vert_turb_driver
 !--------------------- version number ----------------------------------
 
 character(len=128) :: version = '$Id: vert_turb_driver.F90,v 1.5 2001/07/05 17:33:50 fms Exp $'
-character(len=128) :: tag = '$Name: fez $'
+character(len=128) :: tag = '$Name: galway $'
 
 !-----------------------------------------------------------------------
 

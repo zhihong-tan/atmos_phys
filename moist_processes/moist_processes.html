@@ -70,7 +70,7 @@ are controlled by this module:
           dry_adj_mod
    sat_vapor_pres_mod
      physics_diag_mod
-        utilities_mod
+              fms_mod
         constants_mod
 
 </PRE>
@@ -279,18 +279,6 @@ input (optional)
                                 adding the tendency to the data at tau-1
                    [logical, default: use_tau=false ]
 
-  call_pat       A repeating (calling) pattern that determines whether moisture
-                 adjustments are calculated (or not).  
-                 The pattern consists of x's and o's.
-                      'x' (or 'X') means that adjustments are calculated
-                      'o' (actually anything other than 'x' or 'X')
-                          means that adjustments are NOT calculated</UL>
-                 For example, Call_Pat='xxoo' would calculate adjustments for
-                 two consecutive time steps and then skip two consecutive time
-                 steps, the pattern is then repeated.
-                 This option cannot be used when do_strat = TRUE.
-                   [character, max length=8, default: Call_Pat='x' ]
-
   do_rh_clouds   Switch to turn on/off simple relative humidity predicted
                  clouds. This option may only be selected when using the
                  large-scale condensation scheme (do_lsc=true) without the
@@ -393,23 +381,6 @@ is used:
    
 </PRE>
 </A><!-- END DIAGNOSTICS -->
-<!--------------------------------------------------------------------->
-<A NAME="DATA_SETS">
-<HR>
-<H4>DATA SETS</H4>
-<!-- BEGIN DATA_SETS -->
-<PRE>
-
-<b>Restart file</b>
-     An optional restart data set called <b>moist_processes.res</b> is
-     necessary when using the namelist option call_pat. When the
-     default value of call_pat is selected the absence of a restart file
-     will not change the answers.  When call_pat is selected and no restart
-     file exists the call_pat will re-initialize itself possibly changing 
-     answers.
-
-</PRE>
-</A><!-- END DATA_SETS -->
 <!--------------------------------------------------------------------->
 <A NAME="CHANGES">
 <HR>

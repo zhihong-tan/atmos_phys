@@ -12,7 +12,7 @@ use time_manager_mod,     only:  time_type, increment_time, &
                                  operator(/=), operator(-), &
 				 operator(>), operator(==)
 use diag_manager_mod,     only:  register_diag_field, send_data
-use sat_vapor_pres_mod,   only:  escomp
+use sat_vapor_pres_mod,   only:  lookup_es
 
 
 !implicit none
@@ -37,8 +37,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 1.3 2001/10/25 17:47:50 fms Exp $'
-character(len=128)  :: tag     =  '$Name: fez $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 1.4 2002/02/22 18:59:37 fms Exp $'
+character(len=128)  :: tag     =  '$Name: galway $'
 
 
 !--------------------------------------------------------------------
@@ -807,7 +807,7 @@ integer, dimension(4), intent(in), optional :: axes
 !     do k=1,100 
 !     tttt = 253.0 + (k-1)*0.01
 !     call establ (es, tttt)
-!     call escomp ( tttt, ess)
+!     call lookup_es ( tttt, ess)
 !     print *, 'temp, es(SKY), es (FMS) : ', tttt, es, ess
 !     end do
 !     stop
@@ -3825,7 +3825,8 @@ real, dimension (:,:,:), intent(out) :: rpc_v, tpc_v
 !  determine saturation mixing ratio for parcels at this level.
 !---------------------------------------------------------------------
 !         call establ_vect(es_v, tp, lcl_found)
-          call escomp     (tp, es_v, lcl_found)
+!         call lookup_es     (tp, es_v, lcl_found)
+          call lookup_es     (tp, es_v)
           do j=jminp,jmaxp
             do i=iminp,imaxp
 	      if (.not. lcl_found(i,j) ) then
@@ -3996,7 +3997,8 @@ real, dimension (:,:,:), intent(out) :: rpc_v, tpc_v
 !   define saturation vapor pressure for the parcel in active columns.
 !--------------------------------------------------------------------
 !         call establ_vect (es_v, tc_v, skip_search)
-          call escomp      (tc_v, es_v, skip_search)
+!         call lookup_es      (tc_v, es_v, skip_search)
+          call lookup_es      (tc_v, es_v)
 
 !	  call toc ('cape', '5b')
 !	  call tic ('cape', '5c')
@@ -5420,7 +5422,7 @@ logical, dimension(:,:), intent(in) :: exit_flag
 !
 !
 !     call establ(esc,tb)
-      call escomp(tb, esc)
+      call lookup_es(tb, esc)
       qcc=epsilo*esc/(pb-esc)
 !
       conint=conint/(rr**2)
@@ -5557,11 +5559,11 @@ logical, dimension(:,:), intent(in) :: exit_flag
 
 !     CALL ESTABL(ESH,TCC(ITH))
 !     CALL ESTABL(ESL,TCC(ITL))
-      CALL escomp(TCC(ITH), ESH)
-      CALL escomp(TCC(ITL), ESL)
+      CALL lookup_es(TCC(ITH), ESH)
+      CALL lookup_es(TCC(ITL), ESL)
       targ=tcc(it)
 !     call establ(es,targ)   
-      call escomp(targ, es)   
+      call lookup_es(targ, es)   
       rh=epsilo*esh/(ph+(epsilo-1.)*esh)
       rl=epsilo*esl/(pl+(epsilo-1.)*esl)
       pit=pb+(it-1)*dp
@@ -6801,7 +6803,7 @@ real, dimension(:,:,:), intent(out) :: tcc_v, wv_v, rcl_v, te_v, qe_v, &
       QRW=0.
       TCC(1)=TB
 !     CALL ESTABL(ES,TB)
-      CALL escomp(TB, ES)
+      CALL lookup_es(TB, ES)
       RSC(1)=ES*EPSILO/(PB-ES)
       PRECIP=0.
       CONINT=0.
@@ -6828,7 +6830,7 @@ real, dimension(:,:,:), intent(out) :: tcc_v, wv_v, rcl_v, te_v, qe_v, &
       DO 1 k=1,ncap-1
       IF (k .NE. 1) GO TO 10
 !     CALL ESTABL(ES,TCC(k))
-      CALL escomp(TCC(k), ES)
+      CALL lookup_es(TCC(k), ES)
       RSC(k)=EPSILO*ES/(PB-ES)
       IH=0
 
@@ -6898,7 +6900,7 @@ real, dimension(:,:,:), intent(out) :: tcc_v, wv_v, rcl_v, te_v, qe_v, &
        ALOG(SIG(IH+1)/SIG(IH)))
  12   CONTINUE
 !     CALL ESTABL(ES,TCC(k))
-      CALL escomp(TCC(k), ES)
+      CALL lookup_es(TCC(k), ES)
       PP=P-DP
       DISP(k)=PP
 
@@ -6936,7 +6938,7 @@ real, dimension(:,:,:), intent(out) :: tcc_v, wv_v, rcl_v, te_v, qe_v, &
           IF (REST .LE. 0.) GO TO 4
 	  IF (WEST .LT. .01) GO TO 4
 !     CALL ESTABL(ESTEST,TCEST)
-      CALL escomp(TCEST, ESTEST)
+      CALL lookup_es(TCEST, ESTEST)
 	  QCEST=EPSILO*ESTEST/(P-ESTEST)
       TEST=TE(k+1)
       QEST=QE(k+1)
@@ -7024,7 +7026,7 @@ real, dimension(:,:,:), intent(out) :: tcc_v, wv_v, rcl_v, te_v, qe_v, &
       IF (WV(k+1) .GT. WV(k)) TESTLC=.FALSE.
       end if
 !     CALL ESTABL(ES,TCC(k+1))
-      CALL escomp(TCC(k+1), ES)
+      CALL lookup_es(TCC(k+1), ES)
        RSC(k+1)=EPSILO*ES/(P-ES)
 
        if (debug_ijt) then
@@ -7323,7 +7325,7 @@ real, intent(in)     :: press
       GAM=.286*(1.-.26*Q)*TC/(P/      press       )
       TC=TC+GAM*DP/    press
 !     CALL ESTABL(ES,TC)
-      CALL escomp(TC, ES)
+      CALL lookup_es(TC, ES)
       RS=.622*ES/(PT-ES)
       IF (RS .LE. Q) PB=PT
       IF (RS .LE. Q) TB=TC
@@ -7372,7 +7374,7 @@ real, intent(out) :: dtp
 !     calculate saturation specific humidity
 !
 !     call establ(es,t    )
-      call escomp(t, es    )
+      call lookup_es(t, es    )
       qs=epsilo_satad*es/(p-es)
       tv=t*(1.+.61*qs)
 !
@@ -7460,7 +7462,7 @@ real, intent(out) :: dtdp, drdp, dwdp, rmu
       if (tc .lt. tfre) lat=latvap+latice
 !
 !     call establ(es,tc)
-      call escomp(tc, es)
+      call lookup_es(tc, es)
       rsc=epsilo*es/(p+(epsilo-1.)*es)
        htve=te   *(1.+.609*qe   )
       HTV=TC    *(1.+.609*RSC   )
@@ -7546,7 +7548,7 @@ real, intent(out) :: dtdp, drdp, dwdp, rmu
         (dwdp .gt. 0.) ) dwdp=0.
       west=wv+dwdp*dp
 !     call establ(es,test)
-      call escomp(test, es)
+      call lookup_es(test, es)
 !      rsc=epsilo*es/(p-es)
       rsc=epsilo*es/(p+(epsilo-1.)*es)
       htv=test*(1.+.609*rsc)
@@ -7891,7 +7893,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
          pctm=pc2+omer*tme
       ta=t(jk)+tpri
 !  call establ(es,ta)
-	  call escomp(ta, es)
+	  call lookup_es(ta, es)
 	  qsat=epsilo*es/(pr(jk)+(epsilo-1.)*es)
 	  q3=qsat-tempq(jk)
 	  q5=qsat-tempqa(jk)
@@ -7915,7 +7917,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             if (pr(jk) .lt. pztm) go to 21
             te=t(jk)+tpri
 !           call establ(es,te)
-            call escomp(te, es)
+            call lookup_es(te, es)
             qs=epsilo*es/(pr(jk)+(epsilo-1.)*es)
             jsave=jk
 
@@ -7968,7 +7970,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             pre=pr(jk)
 	       te=t(jk)+tpri
 !       call establ(es,te)
-	       call escomp(te, es)
+	       call lookup_es(te, es)
                tempqa(jk)=epsilo*es/(pr(jk)+(epsilo-1.)*es)
 	       if (qref .ge. tempqa(jk)) then
                tep=t(jkp)+tpri
@@ -7977,7 +7979,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
               -pr(jkm))
             else if (jk .eq. jsave) then
 !              call establ(es,tep)
-               call escomp(tep, es)
+               call lookup_es(tep, es)
                tempqa(jkp)=epsilo*es/(pr(jkp)+(epsilo-1.)*   &
               es)
               cmu(jk)=-omv(jk)*(tempqa(jkp)-tempqa(jk))/(pr(jkp)   &
@@ -7985,7 +7987,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
               qref=tempqa(jkp)
             else
 !              call establ(es,tep)
-               call escomp(tep, es)
+               call lookup_es(tep, es)
                tempqa(jkp)=epsilo*es/(pr(jkp)+(epsilo-1.)*es)
                cmu(jk)=-omv(jk)*(tempqa(jkp)-tempqa(jkm))/(pr(jkp)   &
               -pr(jkm))
@@ -8054,7 +8056,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
          if (pr(jk) .gt. pzm) go to 43
          tmu=t(jk)+tpri
 !        call establ(es,tmu)
-         call escomp(tmu, es)
+         call lookup_es(tmu, es)
          qmu=epsilo*es/(pr(jk)+(epsilo-1.)*es)
          hflux=omv(jk)*(cpair_mul*tpri+lat*(qmu-q(jk)))
          if (hflux .lt. hfmin) then
@@ -8106,7 +8108,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
 !
          targ=t(jk)
 !        call establ(es,targ)
-         call escomp(targ, es)
+         call lookup_es(targ, es)
          qs=epsilo*es/(pr(jk)+(epsilo-1.)*es)
          c1=epsilo*lat*es/(pr(jk)*rh2o*(t(jk)**2))
          tprimd=c3*hfmin/omd
@@ -8115,7 +8117,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
          tempt(jk)=t(jk)+tprimd
          targ=tempt(jk)
 !        call establ(es,targ)
-         call escomp(targ, es)
+         call lookup_es(targ, es)
          tempqa(jk)=c2*es*epsilo/(pr(jk)+(epsilo-1.)*es)
 
        if (debug_ijt) then
@@ -8151,7 +8153,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             call polat(q,pr,qb,pb, debug_ijt)
             call polat(t,pr,tb,pb, debug_ijt)
 !           call establ(es,tb)
-            call escomp(tb, es)
+            call lookup_es(tb, es)
             qsb=epsilo*es/(pb+(epsilo-1.)*es)
             tprimd=hfmin/omd
             tprimd=tprimd-lat*(.7*qsb-qb)
@@ -8164,7 +8166,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             fjk=ampt*omd*(tempqa(jk)-q(jk))
             targ=tb+tprimd
 !           call establ(es,targ)
-            call escomp(targ, es)
+            call lookup_es(targ, es)
             qbm=.7*epsilo*es/(pb+(epsilo-1.)*es)
             fjkb=ampt*omd*(qbm-qb)
             emq(jk)=wa*fjkb+wb*fjk
@@ -8175,7 +8177,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             call polat(q,pr,qmd,pmd, debug_ijt)
             call polat(t,pr,tmd,pmd, debug_ijt)
 !           call establ(es,tmd)
-            call escomp(tmd, es)
+            call lookup_es(tmd, es)
             qsmd=epsilo*es/(pmd+(epsilo-1.)*es)
             c1=epsilo*lat*es/(pmd*rh2o*(tmd**2))
             tprimd=-lat*(qsmd-qmd)/(cpair_mul+lat*c1)
@@ -8185,7 +8187,7 @@ real,   intent(out) :: cmui, emei, contot, emdi
             emt(jk)=fjkmd*wa+fjkm*wb
             targ=tmd+tprimd
 !           call establ(es,targ)
-            call escomp(targ, es)
+            call lookup_es(targ, es)
             qmmd=epsilo*es/(pmd+(epsilo-1.)*es)
             fjkm=ampt*omd*(tempqa(jk-1)-q(jk-1))
             fjkmd=ampt*omd*(qmmd-qmd)
@@ -8810,8 +8812,8 @@ logical,      intent(in) :: debug_ijt
 !
 !     call establ(es1,tc1)
 !     call establ(es2,tc2)
-      call escomp(tc1, es1)
-      call escomp(tc2, es2)
+      call lookup_es(tc1, es1)
+      call lookup_es(tc2, es2)
       rs1=ep*es1/(p1-es1)
       rs2=ep*es2/(p2-es2)
       tcb=(tc1+tc2)/2.
@@ -9076,7 +9078,7 @@ real,     intent(out)  :: ta
       if (pr .le. 0.) go to 2
       te=t*((pr/p)**cappa)
 !     call establ(es,te)
-      call escomp(te, es)
+      call lookup_es(te, es)
       qe=epsilo*es/(p-es)
       if (q .ge. qe) then
 !        ta=t*exp(latvap*q/(te*cpair_mul))

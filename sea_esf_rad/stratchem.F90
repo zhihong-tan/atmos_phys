@@ -17,7 +17,7 @@ private
 
 !   character(len=5), parameter  ::  version_number = 'v0.08'
     character(len=128)  :: version =  '$Id: stratchem.F90,v 1.2 2001/08/30 15:12:30 fms Exp $'
-    character(len=128)  :: tag     =  '$Name: fez $'
+    character(len=128)  :: tag     =  '$Name: galway $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

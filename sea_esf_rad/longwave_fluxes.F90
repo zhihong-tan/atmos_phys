@@ -27,7 +27,7 @@ private
 
 !  character(len=5), parameter  ::  version_number = 'v0.08'
    character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 1.3 2001/10/25 17:48:33 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: fez $'
+   character(len=128)  :: tag     =  '$Name: galway $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

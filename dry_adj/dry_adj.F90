@@ -17,7 +17,7 @@
 !---------------------------------------------------------------------
 
  character(len=128) :: version = '$Id: dry_adj.F90,v 1.2 2000/08/04 18:46:36 fms Exp $'
- character(len=128) :: tag = '$Name: fez $'
+ character(len=128) :: tag = '$Name: galway $'
 
  logical :: do_init = .true.
 

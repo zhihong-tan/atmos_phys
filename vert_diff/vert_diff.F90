@@ -55,7 +55,7 @@ logical :: do_conserve_energy = .true.
 !--------------------- version number ---------------------------------
 
 character(len=128) :: version = '$Id: vert_diff.F90,v 1.5 2001/10/25 17:48:55 fms Exp $'
-character(len=128) :: tag = '$Name: fez $'
+character(len=128) :: tag = '$Name: galway $'
 
 real, parameter :: d608 = (rvgas-rdgas)/rdgas
 

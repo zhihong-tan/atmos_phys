@@ -308,8 +308,8 @@ MODULE STRAT_CLOUD_MOD
 !       DECLARE VERSION NUMBER OF SCHEME
 !
         
-        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 1.6 2001/10/25 17:48:42 fms Exp $'
-        Character(len=128) :: Tag = '$Name: fez $'
+        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 1.7 2002/02/22 19:03:35 fms Exp $'
+        Character(len=128) :: Tag = '$Name: galway $'
          
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -3278,7 +3278,7 @@ SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
                 write (unit) ipt,jpt,      T(i,j,:)+ST(i,j,:) 
                 write (unit) ipt,jpt,     qv(i,j,:)+SQ(i,j,:)
                 write (unit) ipt,jpt,     pfull(i,j,:)
-                close (unit)
+                call close_file(unit)
           endif
          enddo
         endif

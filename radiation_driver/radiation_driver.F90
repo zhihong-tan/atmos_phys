@@ -42,7 +42,7 @@
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 character(len=128) :: version = '$Id: radiation_driver.F90,v 1.5 2001/07/05 17:26:45 fms Exp $'
-character(len=128) :: tag = '$Name: fez $'
+character(len=128) :: tag = '$Name: galway $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)

@@ -10,7 +10,7 @@ MODULE MG_DRAG_MOD
 !-------------------------------------------------------------------
 
 
- use topography_mod, only:  compute_stdev
+ use topography_mod, only:  get_topog_stdev
  use Utilities_Mod, ONLY: FILE_EXIST, OPEN_FILE, ERROR_MESG, FATAL, &
                           get_my_pe, READ_DATA, WRITE_DATA,         &
                           CLOSE_FILE, check_nml_error
@@ -22,8 +22,8 @@ MODULE MG_DRAG_MOD
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 1.4 2001/10/25 17:47:59 fms Exp $'
- character(len=128) :: tag = '$Name: fez $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 1.5 2002/01/15 16:20:14 fms Exp $'
+ character(len=128) :: tag = '$Name: galway $'
 
 !---------------------------------------------------------------------
 ! --- GLOBAL STORAGE FOR:
@@ -835,7 +835,7 @@ end SUBROUTINE MGWD_TEND
 ! --- Input hprime
 !---------------------------------------------------------------------
 
-  answer = compute_stdev ( lonb, latb, Ghprime )
+  answer = get_topog_stdev ( lonb, latb, Ghprime )
 
   if ( .not. answer ) then
   if (  FILE_EXIST( 'INPUT/mg_drag.res' ) ) then

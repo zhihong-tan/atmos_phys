@@ -158,8 +158,8 @@ use utilities_mod, only:  error_mesg, FATAL, file_exist,    &
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 1.3 2001/03/06 18:50:21 fms Exp $'
- character(len=128) :: tag = '$Name: fez $'
+ character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 1.4 2002/02/22 18:59:27 fms Exp $'
+ character(len=128) :: tag = '$Name: galway $'
 !-----------------------------------------------------------------------
 
 ! REAL, PARAMETER :: taumin = 1.E-06
@@ -1510,7 +1510,7 @@ end subroutine CLOUD_OPT_PROP_tg
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
          unit = open_file ('input.nml', action='read')
-   OPEN ( unit, file = 'input.nml' )
+   unit = open_file(file = 'input.nml',action='read')
    io = 1
    do while( io .ne. 0 )
    READ ( unit,  nml = diag_cloud_rad_nml, iostat = io, end = 10 ) 

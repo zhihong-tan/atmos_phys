@@ -16,19 +16,20 @@
 !-----------------------------------------------------------------------
 
 use      donner_deep_mod,only: donner_deep_init, donner_deep_time_vary,&
-			       donner_deep, donner_deep_end
+                               donner_deep, donner_deep_end
 use      moist_conv_mod, only: moist_conv, moist_conv_init
 use     lscale_cond_mod, only: lscale_cond, lscale_cond_init
-use  sat_vapor_pres_mod, only: tcheck,escomp
+use  sat_vapor_pres_mod, only: lookup_es
 
 use    time_manager_mod, only: time_type
 
 use    diag_manager_mod, only: register_diag_field, send_data
 
-use       utilities_mod, only: file_exist, error_mesg,      &
-                               check_nml_error, open_file,  &
-                               get_my_pe, FATAL, NOTE,      &
-                               close_file
+use             fms_mod, only: file_exist, check_nml_error,    &
+                               open_namelist_file, close_file, &
+                               write_version_number,           &
+                               mpp_pe, mpp_root_pe, stdlog,    &
+                               error_mesg, FATAL, NOTE
 
 use             ras_mod, only: ras, ras_init
 
@@ -46,7 +47,7 @@ use      diag_cloud_mod, only: diag_cloud_init, diag_cloud_end, &
 use diag_integral_mod, only:     diag_integral_field_init, &
                              sum_diag_integral_field
 
-use       constants_mod, only: cp, grav, rdgas, rvgas
+use       constants_mod, only: CP, GRAV, RDGAS, RVGAS
 
 
 implicit none
@@ -61,16 +62,15 @@ private
 !-------------------- private data -------------------------------------
 
 
-   integer           :: num_calls, len_pat, tot_pts, num_pts
       real,parameter :: epst=200.
    logical           :: do_init=.true.
 
-   real, parameter :: d622 = rdgas/rvgas
+   real, parameter :: d622 = RDGAS/RVGAS
    real, parameter :: d378 = 1.-d622
 
 !--------------------- version number ----------------------------------
-   character(len=128) :: version = '$Id: moist_processes.F90,v 1.7 2001/10/25 17:48:08 fms Exp $'
-   character(len=128) :: tag = '$Name: fez $'
+   character(len=128) :: version = '$Id: moist_processes.F90,v 1.8 2002/02/22 19:00:21 fms Exp $'
+   character(len=128) :: tag = '$Name: galway $'
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
 
@@ -78,12 +78,8 @@ private
    logical :: do_mca=.true., do_lsc=.true., do_ras=.false.,  &
               do_strat=.false., do_dryadj=.false., &
               do_rh_clouds=.false., do_diag_clouds=.false., &
-	      do_donner_deep=.false., &
-              use_tau=.false., &
-	      reset_t_for_estable = .false.
-   character(len=8) :: call_pat = 'x       '
-   real  :: reset_delta = 0.01   ! if t is reset, it is set to be this
-				 ! far away from table limit
+              do_donner_deep=.false., &
+              use_tau=.false.
 
 !------ tracer mapping for stratiform cloud scheme ------
 
@@ -134,10 +130,9 @@ private
 
 namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_strat,  &
                                do_dryadj, pdepth, tfreeze,        &
-                               nql, nqi, nqa, use_tau, call_pat,  &
+                               nql, nqi, nqa, use_tau,            &
                                do_rh_clouds, do_diag_clouds,      &
-			       do_donner_deep, reset_t_for_estable, &
-			       reset_delta
+                               do_donner_deep
 
 !-----------------------------------------------------------------------
 !-------------------- diagnostics fields -------------------------------
@@ -156,7 +151,6 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
 	
 character(len=5) :: mod_name = 'moist'
 
-logical :: reset_temp
 real :: missing_value = -999.
 
 !-----------------------------------------------------------------------
@@ -283,10 +277,10 @@ real, dimension(size(t,1),size(t,2),size(t,3)) :: RH, pmass
 real, dimension(size(t,1),size(t,2))           :: rain, precip
 real, dimension(size(t,1),size(t,2))           :: wvp,lwp,iwp
 real, dimension(size(t,1),size(t,2))           :: tempdiag
-integer unit,n
+integer n
 
-integer :: i, j, k, ix, jx, kx, nt, ipat, ip
-real    :: dtinv, fdt
+integer :: i, j, k, ix, jx, kx, nt, ip
+real    :: dtinv
 logical :: use_mask, do_adjust, used
 
 real, dimension(size(t,1),size(t,2),size(t,3)+1) :: press
@@ -322,41 +316,6 @@ real, dimension(size(t,1),size(t,2)) :: convprc
 
       ix=size(t,1); jx=size(t,2); kx=size(t,3); nt=size(r,4)
 
-!------- should moisture adjustments be made for this time ??? ---------
-
-      ipat = mod(num_calls,len_pat)+1
-      if ( call_pat(ipat:ipat) == 'x' .or. &
-           call_pat(ipat:ipat) == 'x' ) then
-           do_adjust = .true.
-      else
-           do_adjust = .false.
-           ttnd=0.0; qtnd=0.0; rain=0.0; snow=0.0
-      endif
-
-!------- determine time step factor (for strat scheme) ----------
-!!    if (do_strat) then
-!!       if (do_adjust .and. len_pat > 1) then
-!!          fdt=0.
-!!          do i=1,len_pat
-!!             ip=ipat-i; if (ip < 1) ip=ip+len_pat
-!!             fdt=fdt+1.0
-!!             if (call_pat(ip:ip) == 'x' .or.  &
-!!                 call_pat(ip:ip) == 'x') exit
-!!          enddo
-!!       else
-            fdt=1.
-!!       endif
-!!    endif
-               
-
-
-!    ----- increment number of calls ----
-      num_pts = num_pts + ix*jx
-      if (num_pts == tot_pts) then
-         num_calls = num_calls +1
-         num_pts = 0
-      endif
-
 !-----------------------------------------------------------------------
 
       use_mask=.false.
@@ -364,9 +323,7 @@ real, dimension(size(t,1),size(t,2)) :: convprc
 
       dtinv=1./dt
       lprec=0.0; fprec=0.0; precip=0.0
-!-----------------------------------------------------------------------
-!del if (do_adjust) then
-if (do_adjust .or. do_strat) then
+
 !------------------ setup input data -----------------------------------
 
    if (use_tau) then
@@ -416,8 +373,6 @@ if (do_adjust .or. do_strat) then
            
    endif
 
-
-
 !----------------   reset mc  ------------------------------------------
  
    mc(:,:,:) = 0.0
@@ -434,17 +389,9 @@ if (do_adjust .or. do_strat) then
 	   id_WVP         > 0 .or. id_LWP         > 0 .or. &
 	   id_IWP         > 0 .or. id_AWP         > 0 ) then
         do k=1,kx
-          pmass(:,:,k) = (phalf(:,:,k+1)-phalf(:,:,k))/grav
+          pmass(:,:,k) = (phalf(:,:,k+1)-phalf(:,:,k))/GRAV
         end do
       end if
-
-!------ check temperatures (must be with range of es lookup table) -----
-
-      if (reset_temp) then
-        call tempcheck (is,ie,js,je,tin, reset_temp)
-      else
-        call tempcheck (is,ie,js,je,tin)
-      endif
 
 !----------------- mean temp in lower atmosphere -----------------------
 !----------------- used for determination of rain vs. snow -------------
@@ -458,19 +405,16 @@ if (do_adjust .or. do_strat) then
           coldT=.FALSE.
    endwhere
       
-endif
 !-----------------------------------------------------------------------
 !***********************************************************************
 !----------------- dry adjustment scheme -------------------------------
 
 if (do_dryadj) then
 
-     if (do_adjust) then
          call dry_adj (tin, pfull, phalf, ttnd, mask)
          tin=tin+ttnd
          ttnd=ttnd*dtinv
          tdt = tdt + ttnd
-     endif
 !------------- diagnostics for dt/dt_dry_adj ---------------------------
      if ( id_tdt_dadj > 0 ) then
         used = send_data ( id_tdt_dadj, ttnd, Time, is, js, 1, &
@@ -485,7 +429,6 @@ end if
 
 if (do_donner_deep) then
 
- if (do_adjust) then
    iflag(:,:,:) = 0
    call donner_deep_time_vary  (dt_in=dt, Time_in=Time)
    omega_btm(:,:) = omega(:,:,kx)
@@ -597,15 +540,6 @@ if (do_donner_deep) then
         qatnd_save = qatnd
       endif
 
-
-!------ check temperatures (must be with range of es lookup table) -----
-
-      if (reset_temp) then
-        call tempcheck (is,ie,js,je,tin, reset_temp)
-      else
-        call tempcheck (is,ie,js,je,tin)
-      endif
-
 !--------------------------------------------------------------------
 !  call moist convective adjustment to handle any shallow convection
 !--------------------------------------------------------------------
@@ -683,7 +617,6 @@ if (do_donner_deep) then
       qtnd_save = qtnd_save + qtnd
     endif
 
-    endif  ! do_adjust
 endif  ! do_donner_deep
 
 !-----------------------------------------------------------------------
@@ -693,8 +626,6 @@ endif  ! do_donner_deep
                         if (do_mca) then
 !-----------------------------------------------------------------------
 
-if (do_adjust) then
-   
    if (do_strat) then
          call moist_conv (tin,qin,pfull,phalf,coldT,&
                           ttnd,qtnd,rain,snow,Lbot=kbot,&
@@ -733,7 +664,6 @@ if (do_adjust) then
       fprec=fprec+snow
       precip=precip+rain+snow
 
-endif
 !-----------------------------------------------------------------------
                            endif
 
@@ -743,7 +673,6 @@ endif
 
                         if (do_ras) then
 !-----------------------------------------------------------------------
-if (do_adjust) then
 
    if (do_strat) then
       call ras (is,js,Time,tin,qin,uin,vin,pfull,phalf,coldT,dt,ttnd,qtnd,&
@@ -805,8 +734,6 @@ if (do_adjust) then
         endif
       endif
           
-
-endif
 !-----------------------------------------------------------------------
                            endif
 !-----------------------------------------------------------------------
@@ -858,7 +785,7 @@ endif
       if ( id_t_conv_col > 0 ) then
         tempdiag(:,:)=0.
         do k=1,kx
-          tempdiag(:,:) = tempdiag(:,:) + ttnd(:,:,k)*cp*pmass(:,:,k)
+          tempdiag(:,:) = tempdiag(:,:) + ttnd(:,:,k)*CP*pmass(:,:,k)
         end do
         used = send_data ( id_t_conv_col, tempdiag, Time, is, js )
       end if	
@@ -937,7 +864,6 @@ endif
 
                       if (do_lsc) then
 !-----------------------------------------------------------------------
-if (do_adjust) then
 
    call lscale_cond (tin,qin,pfull,phalf,coldT,rain,snow,ttnd,qtnd,&
                      mask=mask)
@@ -971,14 +897,6 @@ if (do_adjust) then
 !  capture tendency of spec. hum. due to lg scale condensation
            lgscldelq = qtnd
            
-!--- check adjusted temperatures to be within es lookup table range -----
-
-      if (reset_temp) then
-        call tempcheck (is,ie,js,je,tin, reset_temp)
-      else
-        call tempcheck (is,ie,js,je,tin)
-      endif
-
 ! pass cloud predictors to diag_cloud_sum
            call diag_cloud_sum (is,js, &
                     tin,qin,rh,omega,lgscldelq,cnvcntq,convprc,kbot)
@@ -990,8 +908,6 @@ if (do_adjust) then
       fprec=fprec+snow
       precip=precip+rain+snow
 
-endif
-
 !-----------------------------------------------------------------------
                            endif
 !-----------------------------------------------------------------------
@@ -1000,11 +916,10 @@ endif
                      if (do_strat) then
 		     
 !-----------------------------------------------------------------------
-!del if (do_adjust) then
          do k=1,kx
 	   mc_full(:,:,k) = 0.5*(mc(:,:,k) + mc(:,:,k+1))
          end do
-         call strat_driv (Time,is,ie,js,je,dt*fdt,pfull,phalf,      &
+         call strat_driv (Time,is,ie,js,je,dt,pfull,phalf,      &
                           tin,qin,qlin,qiin,qain,omega,mc_full,land,&
 			  ttnd,qtnd,qltnd,qitnd,qatnd,rain,snow,    &
                           mask=mask)
@@ -1035,7 +950,6 @@ endif
       fprec=fprec+snow
       precip=precip+rain+snow
 
-!del endif
 !-----------------------------------------------------------------------
                            endif
 !-----------------------------------------------------------------------
@@ -1075,7 +989,7 @@ endif
       if ( id_t_ls_col > 0 ) then
         tempdiag(:,:)=0.
         do k=1,kx
-          tempdiag(:,:) = tempdiag(:,:) + ttnd(:,:,k)*cp*pmass(:,:,k)
+          tempdiag(:,:) = tempdiag(:,:) + ttnd(:,:,k)*CP*pmass(:,:,k)
         end do
         used = send_data ( id_t_ls_col, tempdiag, Time, is, js )
       end if	
@@ -1230,7 +1144,7 @@ integer  unit,io,ierr,nt
 
        if ( file_exist('input.nml')) then
 
-         unit = open_file ('input.nml', action='read')
+         unit = open_namelist_file ( )
          ierr=1; do while (ierr /= 0)
             read  (unit, nml=moist_processes_nml, iostat=io, end=10)
             ierr = check_nml_error(io,'moist_processes_nml')
@@ -1248,10 +1162,10 @@ integer  unit,io,ierr,nt
                   'both do_lsc and do_strat cannot be specified', FATAL)
 
          if ( (do_rh_clouds.or.do_diag_clouds) .and. do_strat .and. &
-             get_my_pe() == 0 ) call error_mesg ('moist_processes_init', &
+             mpp_pe() == mpp_root_pe() ) call error_mesg ('moist_processes_init', &
      'do_rh_clouds or do_diag_clouds + do_strat should not be specified', NOTE)
 
-         if ( do_rh_clouds .and. do_diag_clouds .and. get_my_pe() == 0 ) &
+         if ( do_rh_clouds .and. do_diag_clouds .and. mpp_pe() == mpp_root_pe() ) &
             call error_mesg ('moist_processes_init',  &
        'do_rh_clouds and do_diag_clouds should not be specified', NOTE)
 
@@ -1269,38 +1183,12 @@ integer  unit,io,ierr,nt
       endif
 
 
-      if (reset_t_for_estable) then
-        reset_temp = .true.
-      else 
-        reset_temp = .false.
-      endif
+!--------- write version and namelist to standard log ------------
 
-!----------- determine length of calling pattern ------------
+      call write_version_number ( version, tag )
+      if ( mpp_pe() == mpp_root_pe() ) &
+      write ( stdlog(), nml=moist_processes_nml )
 
-      len_pat=len_trim(call_pat)
-      tot_pts=id*jd; num_pts=0
-
-!--------- write namelist ------------------
-
-      unit = open_file ('logfile.out', action='append')
-      if ( get_my_pe() == 0 ) then
-           write (unit, '(/,80("="),/(a))') trim(version),trim(tag)
-           write (unit, nml=moist_processes_nml)
-      endif
-      call close_file (unit)
-
-!-------- read restart data --------
-
-      if (file_exist('INPUT/moist_processes.res')) then
-        unit = open_file ('INPUT/moist_processes.res', &
-                          action='read', form='native')
-        read  (unit) num_calls
-        call close_file (unit)
-      else
-        num_calls = 0
-        if (get_my_pe() == 0) call error_mesg ('moist_processes_init',  &
-                         'restart data (num_calls) set to zero.',NOTE)
-      endif
 
 !------------ initialize various schemes ----------
       if (do_mca)    call  moist_conv_init ()
@@ -1332,14 +1220,6 @@ end subroutine moist_processes_init
 !#######################################################################
 
 subroutine moist_processes_end
-
-integer  unit
-!-----------------------------------------------------------------------
-
-      unit = open_file ('RESTART/moist_processes.res', &
-                        action='write', form='native')
-      if ( get_my_pe() == 0 ) write (unit)  num_calls
-      call close_file (unit)
 
 !----------------close various schemes-----------------
 
@@ -1412,71 +1292,6 @@ end subroutine moist_processes_end
 
 !#######################################################################
 
-      subroutine tempcheck (is, ie, js, je, temp, reset)
-
-!-----------------------------------------------------------------------
-!   tempcheck checks to determine if temperatures are within the range 
-!   of es lookup table, and optionally may reset them to so be.
-!-----------------------------------------------------------------------
-
-integer,                intent(in)              :: is,ie,js,je
-real,  dimension(:,:,:),intent(inout)           :: temp
-logical,                intent(in),   optional  :: reset
-
-
-!---------------------------------------------------------------------
-        integer numbad, k, j
-
-!--------------------------------------------------------------------
-!   call tcheck to check for bad temperatures. if reset is present,
-!   then any bad temps will be reset to a value reset_delta from the 
-!   table edge.
-!--------------------------------------------------------------------
-        if (present (reset) ) then
-          call tcheck (temp, numbad, reset_delta)
-
-!---------------------------------------------------------------------
-!   any bad temps are printed for evaluation.
-!---------------------------------------------------------------------
-          if (numbad > 0) then
-            print *, 'the above ',numbad , ' values were found on &
-	      & pe ', get_my_pe(), 'in the window with is and js == ', &
-	       is, js
-          endif
-
-!---------------------------------------------------------------------
-!   if reset is not present, any bad temps will cause job shutdown.
-!   print desired information in such a case.
-!---------------------------------------------------------------------
-        else
-          call tcheck (temp, numbad)
-          if (numbad > 0) then
-            print *, 'pe,numbad,is,js=',get_my_pe(),numbad,is,js
-            do k=1,size(temp,3)
-              call tcheck (temp(:,:,k),numbad)
-              print *, 'pe,k,numbad=', get_my_pe(), k,numbad
-            enddo
-            if (size(temp,2) > 1) then
-	      do j=1,size(temp,2)
-	        call tcheck (temp(:,j,:), numbad)
-!del            print *, 'pe,j,numbad=', get_my_pe(), j, numbad
-	      end do
-            endif
-	    call error_mesg ('moist_processes', &
-	     'temperatures not within range of es lookup table', &
-	     FATAL)
-          endif
-       endif
-
-!--------------------------------------------------------------------
-
-
-      end subroutine tempcheck
-
-
-
-!#######################################################################
-
       subroutine rh_calc(pfull,T,qv,RH,MASK)
 
         IMPLICIT NONE
@@ -1494,7 +1309,7 @@ logical,                intent(in),   optional  :: reset
 !
 !       RH   = qv / (epsilon*esat/ [pfull  -  (1.-epsilon)*esat])
 !
-!       Where epsilon = Rdgas/RVgas = d622
+!       Where epsilon = RDGAS/RVGAS = d622
 !
 !       and where 1- epsilon = d378
 !
@@ -1505,7 +1320,7 @@ logical,                intent(in),   optional  :: reset
 
         !calculate water saturated vapor pressure from table
         !and store temporarily in the variable esat
-        CALL ESCOMP(T(:,:,:),esat(:,:,:))
+        CALL LOOKUP_ES(T(:,:,:),esat(:,:,:))
         
         !calculate denominator in qsat formula
         RH(:,:,:) = pfull(:,:,:)-d378*esat(:,:,:)

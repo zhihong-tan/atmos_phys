@@ -36,8 +36,8 @@ MODULE DIAG_CLOUD_MOD
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud.F90,v 1.3 2001/03/06 18:50:04 fms Exp $'
- character(len=128) :: tag = '$Name: fez $'
+ character(len=128) :: version = '$Id: diag_cloud.F90,v 1.4 2002/02/22 18:59:20 fms Exp $'
+ character(len=128) :: tag = '$Name: galway $'
 !-----------------------------------------------------------------------
 
 !  parmameter mxband = max number of radiative bands to be considered for some
@@ -2762,7 +2762,7 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
          unit = open_file ('input.nml', action='read')
-   OPEN ( unit, file = 'input.nml' )
+   unit = open_file(file = 'input.nml',action='read')
    io = 1
    do while( io .ne. 0 )
    READ ( unit,  nml = diag_cloud_nml, iostat = io, end = 10 ) 
@@ -2866,7 +2866,7 @@ go to 99
       call write_data (unit, cnvcntq_sum)
       call write_data (unit, convprc_sum)
 
-      CLOSE( unit )
+      call close_file( unit )
  
 !=====================================================================
   end SUBROUTINE DIAG_CLOUD_END

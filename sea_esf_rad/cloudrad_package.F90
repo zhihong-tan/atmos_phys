@@ -54,7 +54,7 @@ private
 
 !     character(len=5), parameter  ::  version_number = 'v0.09'
       character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 1.2 2001/07/05 17:28:32 fms Exp $'
-      character(len=128)  :: tag     =  '$Name: fez $'
+      character(len=128)  :: tag     =  '$Name: galway $'
 
 
 

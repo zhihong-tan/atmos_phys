@@ -22,7 +22,7 @@
 !---------------------------------------------------------------------
 
  character(len=128) :: version = '$Id: shallow_conv.F90,v 1.4 2001/03/06 18:52:02 fms Exp $'
- character(len=128) :: tag = '$Name: fez $'
+ character(len=128) :: tag = '$Name: galway $'
 
  logical :: do_init = .true.
 

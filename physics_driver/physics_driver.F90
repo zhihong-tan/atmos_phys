@@ -81,8 +81,8 @@ interface check_dim
 end interface
 
 !--------------------- version number ----------------------------------
-character(len=256) :: version = '$Id: physics_driver.F90,v 1.6 2001/10/25 17:48:12 fms Exp $'
-character(len=256) :: tag = '$Name: fez $'
+character(len=256) :: version = '$Id: physics_driver.F90,v 1.7 2001/12/19 17:48:43 fms Exp $'
+character(len=256) :: tag = '$Name: galway $'
 !-----------------------------------------------------------------------
 
       logical :: do_init = .true., do_check_args = .true.
@@ -319,7 +319,7 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 
      call damping_driver (is, js, Time_next, dt,                   &
                           p_full, p_half, z_full, z_half,          &
-                          u, v, t, q, r,  udt, vdt, tdt, qdt, rdt, &
+                          um, vm, tm, qm, rm, udt, vdt, tdt, qdt, rdt, &
                           mask=mask, kbot=kbot)
 
 !-----------------------------------------------------------------------
