@@ -5,8 +5,7 @@
 !=======================================================================
 
  use Utilities_Mod,   ONLY: FILE_EXIST, OPEN_FILE, ERROR_MESG, FATAL, &
-                            print_version_number, get_my_pe,          &
-                            read_data, write_data, CLOSE_FILE
+                            get_my_pe, read_data, write_data, CLOSE_FILE
  use Tridiagonal_Mod, ONLY: TRI_INVERT, CLOSE_TRIDIAGONAL
  use constants_mod,   only: grav, vonkarm
  use monin_obukhov_mod, only : mo_diff
@@ -25,9 +24,9 @@
   real, public, allocatable, dimension(:,:,:) :: TKE
 
 !---------------------------------------------------------------------
-!        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-          character(len=4), parameter :: Vers_Num = 'v2.0'
-!        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ character(len=128) :: version = '$Id: my25_turb.F90,v 1.2 2000/08/04 18:52:36 fms Exp $'
+ character(len=128) :: tag = '$Name: bombay $'
 
  logical :: do_init = .true.
  logical :: init_tke
@@ -548,8 +547,10 @@
 !---------------------------------------------------------------------
 
   unit = OPEN_FILE ( file = 'logfile.out', action = 'append' )
-  call print_version_number (unit, 'my25_turb', vers_num)
-  if ( get_my_pe() == 0 ) WRITE( unit, nml = my25_turb_nml ) 
+  if ( get_my_pe() == 0 ) then
+       WRITE( unit,'(/,80("="),/(a))') trim(version), trim(tag)
+       WRITE( unit, nml = my25_turb_nml ) 
+  endif
   CALL CLOSE_FILE( unit )
 
 !---------------------------------------------------------------------

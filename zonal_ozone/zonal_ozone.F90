@@ -6,7 +6,7 @@ module zonal_ozone_mod
 use  time_manager_mod, only: time_type
 use   time_interp_mod, only: fraction_of_year
 use     utilities_mod, only: error_mesg, FATAL, open_file, &
-                             print_version_number, close_file
+                             get_my_pe, close_file
 
 implicit none
 private
@@ -24,7 +24,8 @@ real :: rstd(19,81),current_fyear
 real :: pref = 101325.
 real :: twopi,rad2deg
 
-character(len=4), parameter :: vers_num = 'v2.0'
+character(len=128) :: version = '$Id: zonal_ozone.F90,v 1.2 2000/08/04 19:04:56 fms Exp $'
+character(len=128) :: tag = '$Name: bombay $'
 
 !-----------------------------------------------------------------------
 
@@ -226,7 +227,8 @@ contains
 !---- print version number to logfile ----
 
    unit = open_file ('logfile.out', action='append')
-   call print_version_number (unit, 'zonal_ozone', vers_num)
+   if (get_my_pe() == 0) &
+   write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
    call close_file (unit)
 
 !------- constants -----------------------------------------------------

@@ -9,8 +9,8 @@
 
 use horiz_interp_mod, only: horiz_interp
 use    utilities_mod, only: file_exist, error_mesg, FATAL,  &
-                            print_version_number, open_file,  &
-                            close_file, check_nml_error, get_my_pe
+                            open_file, close_file,          &
+                            check_nml_error, get_my_pe
 use time_manager_mod, only: time_type, get_date
 use  time_interp_mod, only: time_interp
 
@@ -24,7 +24,8 @@ public  cloud_obs, cloud_obs_init
 !-----------------------------------------------------------------------
 !   ---------- private data ------------
 
-   character(len=4) :: vers_num = 'v2.1'
+   character(len=128) :: version = '$Id: cloud_obs.F90,v 1.2 2000/08/04 18:18:22 fms Exp $'
+   character(len=128) :: tag = '$Name: bombay $'
 
       real, allocatable, dimension(:,:,:) :: clda,cldb
       real, allocatable, dimension(:)     :: londat,latdat
@@ -249,8 +250,10 @@ type(time_type), intent(in)                    :: Time
 !------- write version number and namelist ---------
 
       unit = open_file ('logfile.out', action='append')
-      call print_version_number (unit, 'cloud_obs', vers_num)
-      if ( get_my_pe() == 0 ) write (unit, nml=cloud_obs_nml)
+      if ( get_my_pe() == 0 ) then
+           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+           write (unit, nml=cloud_obs_nml)
+      endif
       call close_file (unit)
 
 !------- setup for observed grid -------

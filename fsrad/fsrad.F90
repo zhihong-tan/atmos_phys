@@ -10,6 +10,7 @@
       Use    Rad_Diag_Mod, ONLY: Radiag
       Use    CO2_Data_Mod, ONLY: CO2_Data
 
+      Use   Utilities_Mod, ONLY: open_file, get_my_pe, close_file
       Use   Constants_Mod, ONLY: stefan
 
       implicit none
@@ -17,6 +18,10 @@
 
       public  FSrad, RdParm_Init, CO2_Data
 !-----------------------------------------------------------------------
+
+      character(len=128) :: version = '$Id: fsrad.F90,v 1.2 2000/08/04 18:49:37 fms Exp $'
+      character(len=128) :: tag = '$Name: bombay $'
+      logical :: do_init = .true.
 
       real, parameter :: Day_Length=86400.
       real, parameter :: RATco2MW=1.519449738
@@ -56,8 +61,17 @@ Integer, Intent(IN), Dimension(:,:), Optional :: Ksfc
    Real, Dimension(Size(Rh2o,1),Size(Rh2o,2)) :: SSolar,GrnFlux,TopFlux
    Real  Rco2
 Logical  SunUp
-Integer  i,j,k,IX,JX,KX
+Integer  i,j,k,IX,JX,KX,unit
 !-----------------------------------------------------------------------
+
+!     ----- write version id to logfile -----
+      if (do_init) then
+          unit = open_file ('logfile.out', action='append')
+          if (get_my_pe() == 0) &
+          write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+          call close_file (unit)
+          do_init = .false.
+      endif
 
       IX=Size(Rh2o,1)
       JX=Size(Rh2o,2)

@@ -15,8 +15,7 @@ use constants_mod, only : grav, vonkarm, cp, rdgas, rvgas
 
 use utilities_mod, only:  error_mesg, FATAL, file_exist,   &
                           check_nml_error, open_file,      &
-                          print_version_number, get_my_pe, &
-                          close_file
+                          get_my_pe, close_file
 
 use monin_obukhov_mod, only : mo_diff
 
@@ -94,7 +93,8 @@ private
 
 !--------------------- version number ----------------------------------
 
-character(len=4), parameter :: vers_num = 'v2.0'
+character(len=128) :: version = '$Id: diffusivity.F90,v 1.2 2000/08/04 18:44:23 fms Exp $'
+character(len=128) :: tag = '$Name: bombay $'
 
 !=======================================================================
 
@@ -190,8 +190,10 @@ integer :: unit, ierr, io
 !---------- output namelist to log-------------------------------------
 
       unit = open_file ('logfile.out', action='append')
-      call print_version_number (unit, 'diffusivity', vers_num)
-      if ( get_my_pe() == 0 ) write (unit, nml=diffusivity_nml)
+      if ( get_my_pe() == 0 ) then
+           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+           write (unit, nml=diffusivity_nml)
+      endif
       call close_file (unit)
 
 init = .true.

@@ -12,16 +12,16 @@
 <A HREF="#REFERENCES">REFERENCES</A> / 
 <A HREF="#NOTES">NOTES</A> 
 </FONT>
-<P><I>Last updated on <!--#exec cmd="echo $LAST_MODIFIED" -->.</I>
 <BR><BR></DIV><HR>
 
 
 <H2>Module Damping_driver_mod</H2>
 <A NAME="HEADER">
 <PRE>
-     Version: v2.1
-     Date:    January 24, 2000
-     Contact: Bruce Wyman
+     <B>Contact:</B>   Bruce Wyman
+     <B>Reviewers:</B>
+
+     <B><A HREF=".doc.log#damping_driver.f90">Tags/Status</A></B>
 </PRE>
 </A><!-- END HEADER -->
 <!--------------------------------------------------------------------->
@@ -258,15 +258,19 @@ Diagnostic fields for module name: <b>damping</b>
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
+<B><A HREF=".doc.log#damping_driver.f90">CVS Revision history</A></B>
 
-<b>Changes for v2.1</b> (1/24/2000)
+
+<B>Changes prior to CVS version control</B>
+
+<b>Changes</b> (1/24/2000)
 
   * Removed the sponge damping option. This option cannot be considered
     column physics. Several namelist variables and diagnostic fields
     were removed but the interface argument lists did not chnage.
     This option may eventually be added to the dynamical core.
 
-<b>Changes for v2.0</b> (10/4/1999)
+<b>Changes</b> (10/4/1999)
 
   * MPP version created. Minor changes in open_file, error_mesg,
     and Fortran write statements. Answers should reproduce the

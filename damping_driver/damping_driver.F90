@@ -13,8 +13,8 @@ module damping_driver_mod
 !-----------------------------------------------------------------------
 
  use      mg_drag_mod, only:  mg_drag, mg_drag_init, mg_drag_end
- use    utilities_mod, only:  file_exist, open_file, error_mesg,     &
-                              check_nml_error, print_version_number, &
+ use    utilities_mod, only:  file_exist, open_file, error_mesg, &
+                              check_nml_error,                   &
                               get_my_pe, FATAL, close_file
  use diag_manager_mod, only:  register_diag_field, send_data
  use time_manager_mod, only:  time_type
@@ -69,7 +69,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=4) :: vers_num = 'v2.1'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 1.2 2000/08/04 18:41:02 fms Exp $'
+ character(len=128) :: tag = '$Name: bombay $'
 
 !-----------------------------------------------------------------------
 
@@ -179,8 +180,10 @@ contains
    endif
 
    unit = open_file ('logfile.out', action='append')
-   call print_version_number (unit, 'damping_driver', vers_num)
-   if ( get_my_pe() == 0 ) write (unit,nml=damping_driver_nml)
+   if ( get_my_pe() == 0 ) then
+        write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+        write (unit,nml=damping_driver_nml)
+   endif
    call close_file (unit)
 
 !-----------------------------------------------------------------------

@@ -22,7 +22,6 @@ use    diag_manager_mod, only: register_diag_field, send_data
 
 use       utilities_mod, only: file_exist, error_mesg,      &
                                check_nml_error, open_file,  &
-                               print_version_number,        &
                                get_my_pe, FATAL, NOTE,      &
                                close_file
 
@@ -61,7 +60,8 @@ private
    real, parameter :: d378 = 1.-d622
 
 !--------------------- version number ----------------------------------
-     character(len=4), parameter :: vers_num = 'v2.0'
+   character(len=128) :: version = '$Id: moist_processes.F90,v 1.3 2000/08/04 19:18:46 fms Exp $'
+   character(len=128) :: tag = '$Name: bombay $'
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
 
@@ -745,8 +745,8 @@ integer  unit,io,ierr,nt
          if ( do_lsc .and. do_strat ) call error_mesg   &
                  ('moist_processes_init',  &
                   'both do_lsc and do_strat cannot be specified', FATAL)
-         if ( do_rh_clouds .and. do_strat ) call error_mesg   &
-         ('moist_processes_init',  &
+         if ( do_rh_clouds .and. do_strat .and. get_my_pe() == 0) &
+              call error_mesg ('moist_processes_init',            &
          'both do_rh_clouds and do_strat should not be specified', NOTE)
 
          if (do_strat) then
@@ -762,8 +762,10 @@ integer  unit,io,ierr,nt
 !--------- write namelist ------------------
 
       unit = open_file ('logfile.out', action='append')
-      call print_version_number (unit, 'moist_processes', vers_num)
-      if ( get_my_pe() == 0 ) write (unit, nml=moist_processes_nml)
+      if ( get_my_pe() == 0 ) then
+           write (unit, '(/,80("="),/(a))') trim(version),trim(tag)
+           write (unit, nml=moist_processes_nml)
+      endif
       call close_file (unit)
 
 !-------- read restart data --------
@@ -775,7 +777,7 @@ integer  unit,io,ierr,nt
         call close_file (unit)
       else
         num_calls = 0
-        call error_mesg ('moist_processes_init',  &
+        if (get_my_pe() == 0) call error_mesg ('moist_processes_init', &
                          'restart data (num_calls) set to zero.',NOTE)
       endif
 
@@ -914,7 +916,7 @@ end subroutine moist_processes_end
                  endif
 
                  call error_mesg ('moist_processes',  &
-                   'temperatures not within range of es loopup table', &
+                   'temperatures not within range of es lookup table', &
                     FATAL)
 
               endif
@@ -1081,6 +1083,8 @@ endif
      'WVP', axes(1:2), Time, &
         'Column integrated water vapor',                'kg/m2'  )
 
+if ( do_strat ) then
+
    id_LWP = register_diag_field ( mod_name, &
      'LWP', axes(1:2), Time, &
         'Liquid water path',                            'kg/m2'   )
@@ -1088,6 +1092,8 @@ endif
    id_IWP = register_diag_field ( mod_name, &
      'IWP', axes(1:2), Time, &
         'Ice water path',                               'kg/m2'   )
+
+endif
 
    id_tdt_dadj = register_diag_field ( mod_name, &
      'tdt_dadj', axes(1:3), Time, &
@@ -1099,10 +1105,14 @@ endif
          'relative humidity',                            'percent',  & 
                         missing_value=missing_value               )
 
+if ( do_ras ) then
+
    id_mc = register_diag_field ( mod_name, &
      'mc', axes(half), Time, &
          'Cumulus Mass Flux from RAS',                   'kg/m2/s', &
                         missing_value=missing_value               )
+
+endif
    
 !-----------------------------------------------------------------------
 

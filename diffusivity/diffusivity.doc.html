@@ -11,21 +11,18 @@
 <A HREF="#REFERENCES">REFERENCES</A> / 
 <A HREF="#NOTES">NOTES</A> 
 </FONT>
-<P><I>Last updated on <!--#exec cmd="echo $LAST_MODIFIED" -->.</I>
 <BR><BR></DIV><HR>
 
 
 <H2>Module diffusivity_mod</H2>
 <A NAME="HEADER">
 <PRE>
-     Version: v2.0
-     Date:    October 4, 1999
-     Contact: Steve Klein and Isaac Held
+     <B>Contact:</B>   Steve Klein and Isaac Held
+     <B>Reviewers:</B>
+
+     <B><A HREF=".doc.log#diffusivity.f90">Tags/Status</A></B>
 </PRE>
 </A><!-- END HEADER -->
-<PRE>
-     Previous version: <A HREF="../v1.0/diffusivity.doc.html">v1.0</A>
-</PRE>
 <!--------------------------------------------------------------------->
 <A NAME="OVERVIEW">
 <HR>
@@ -246,19 +243,21 @@ Notes:  (1) To get Climate Model's PBL diffusivities set
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
+<B><A HREF=".doc.log#diffusivity.f90">Revision history</A></B>
 
-<b>changes in v2.0</b> (10/4/1999)
+<b>changes</b> (10/4/1999)
 
      MPP version created. Minor changes in open_file, error_mesg,
      and Fortran write statements. Answers should reproduce the
      previous version.
 
-<b>changes in v1.1</b> (8/16/1999)
+<b>changes</b> (8/16/1999)
 
      Code to set background diffusivities is moved out of
      diffusivity_free subroutine and into the diffusivity subroutine
      so that it is possible to set a background level of diffusivity
-     even if free_atm_diff = FALSE.  (This was impossible in v1.0).
+     even if free_atm_diff = FALSE.  
+     (This was impossible in previous revisions).
 
 </PRE>
 </A><!-- END CHANGES -->

@@ -14,10 +14,10 @@ use    cloud_obs_mod, only:  cloud_obs, cloud_obs_init
 use time_manager_mod, only:  time_type
 use    utilities_mod, only:  error_mesg, FATAL, file_exist,   &
                              check_nml_error, open_file,      &
-                             print_version_number, get_my_pe, &
-                             close_file
+                             get_my_pe, close_file
 use    rh_clouds_mod, only:  do_rh_clouds, rh_clouds, rh_clouds_avg
 use  strat_cloud_mod, only:  do_strat_cloud, strat_cloud_avg
+use diag_manager_mod, only:  register_diag_field, send_data
 
 implicit none
 private
@@ -28,7 +28,8 @@ public   clouds, clouds_init, clouds_end
 
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
-            character(len=4), parameter :: vers_num = 'v2.0'
+ character(len=128) :: version = '$Id: clouds.F90,v 1.2 2000/07/28 20:16:22 fms Exp $'
+ character(len=128) :: tag = '$Name: bombay $'
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !   note:  the fels-schwarzkopf radiation code permits bi-spectral
@@ -50,6 +51,15 @@ public   clouds, clouds_init, clouds_end
 
       logical :: do_init=.true.
 
+      integer :: id_tot_cld_amt, id_high_cld_amt, id_mid_cld_amt, &
+                 id_low_cld_amt, id_cld_amt, id_em_cld,  &
+                 id_alb_uv_cld, id_alb_nir_cld,          &
+                 id_abs_uv_cld, id_abs_nir_cld
+
+      character(len=6), parameter :: mod_name = 'clouds'
+
+      real :: missing_value = -999.
+
 !-----------------------------------------------------------------------
 !------------------------- namelist ------------------------------------
 
@@ -70,7 +80,7 @@ contains
 subroutine clouds  (is, js, clear_sky, time, lat, land,       &
                     pfull, phalf, t,  cosz,                   &
                     nclds, ktopsw, kbtmsw, ktoplw, kbtmlw,    &
-                    cldamt, cuvrf, cirrf, cirab, emcld, kbot, tca)
+                    cldamt, cuvrf, cirrf, cirab, emcld, mask, kbot)
 
 !-----------------------------------------------------------------------
         integer, intent(in)                    :: is, js
@@ -84,15 +94,20 @@ type(time_type), intent(in)                    :: time
 integer, intent(out), dimension(:,:)   :: nclds
 integer, intent(out), dimension(:,:,:) :: ktopsw,kbtmsw,ktoplw,kbtmlw
    real, intent(out), dimension(:,:,:) :: cldamt,cuvrf,cirrf,cirab,emcld
-integer, intent(in),  dimension(:,:),optional :: kbot
-   real, intent(inout), dimension(:,:),optional :: tca
+   real, intent(in),  dimension(:,:,:),optional :: mask
+integer, intent(in),  dimension(:,:),  optional :: kbot
 !-----------------------------------------------------------------------
    real,dimension(size(cirab,1),size(cirab,2),size(cirab,3)) :: cuvab
 integer,dimension(size(ktoplw,1),size(ktoplw,2),size(ktoplw,3)) ::  &
                        ktop, kbtm
-   real,dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: ql,qi,cf,rh
+   real,dimension(size(pfull,1),size(pfull,2))   :: tca
+   real,dimension(size(pfull,1),size(pfull,2),3) :: hml_ca
+   real,dimension(size(pfull,1),size(pfull,2),size(pfull,3)) ::  &
+                                                     ql,qi,cf,rh,cloud
    real,dimension(size(phalf,1),size(phalf,2),size(phalf,3)) :: phaf
-integer  i,j,k,kb,kx,kp1,n,ierr
+   real :: rad2deg
+integer :: i,j,k,kb,kx,kp1,n,ierr
+logical :: used
 !-----------------------------------------------------------------------
   ierr = 1
 
@@ -101,11 +116,6 @@ integer  i,j,k,kb,kx,kp1,n,ierr
     
   if (kx /= size(pfull,3)) call error_mesg ('clouds in clouds_mod', &
                        'input arrays have the incorrect size.',FATAL)
-
-!-----------------------------------------------------------------------
-!----------- reset value of tca ----------
-  
-  if (PRESENT(tca)) tca=0.
 
 !-----------------------------------------------------------------------
 !----------- default clouds values ----------
@@ -131,7 +141,8 @@ integer  i,j,k,kb,kx,kp1,n,ierr
      call rh_clouds_avg (is, js, rh, ierr)
 
      if (ierr == 0) then
-         call rh_clouds(rh,pfull,phalf(:,:,kx+1),cosz,lat*180./3.14159,&
+         rad2deg = 90./acos(0.0)
+         call rh_clouds(rh,pfull,phalf(:,:,kx+1),cosz,lat*rad2deg,&
                         nclds,ktop(:,:,2:kp1),kbtm(:,:,2:kp1),  &
                         cldamt(:,:,2:kp1),cuvrf(:,:,2:kp1),  &
                         cirrf(:,:,2:kp1),cuvab(:,:,2:kp1),  &
@@ -215,13 +226,79 @@ integer  i,j,k,kb,kx,kp1,n,ierr
          enddo
    endif
 
+
 !-----------------------------------------------------------------------
+!------------------------ diagnostics section --------------------------
+
 !---- total cloud diagnostic ----
+      if ( id_tot_cld_amt > 0 ) then
+         call compute_tca_random ( nclds, cldamt(:,:,2:kp1), tca )
+         used = send_data ( id_tot_cld_amt, tca, Time, is, js )
+      endif
 
-     if (present(tca)) call compute_tca_random (nclds,              &
-                                                cldamt(:,:,2:kp1),  &
-                                                tca                 )
+!---- high,mid,low cloud diagnostics ----
+      if ( id_high_cld_amt > 0 .or. id_mid_cld_amt > 0 .or. &
+            id_mid_cld_amt > 0 ) then
+         call compute_hml_ca_random ( nclds, cldamt(:,:,2:kp1), &
+                    kbtmlw(:,:,2:kp1), pfull, phalf, hml_ca, kbot )
+         if ( id_high_cld_amt > 0 ) used = send_data &
+                     ( id_high_cld_amt, hml_ca(:,:,1), Time, is, js )
+         if ( id_mid_cld_amt > 0 ) used = send_data &
+                      ( id_mid_cld_amt, hml_ca(:,:,2), Time, is, js )
+         if ( id_low_cld_amt > 0 ) used = send_data &
+                      ( id_low_cld_amt, hml_ca(:,:,3), Time, is, js )
+      endif
 
+!------- cloud amount -------------------------
+      if ( id_cld_amt > 0 ) then
+         call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
+                             cldamt(:,:,2:kp1), cloud )
+         used = send_data ( id_cld_amt, cloud, Time, is, js, 1, &
+                            rmask=mask )
+      endif
+
+!------- cloud emissivity ---------------------------------------
+      if ( id_em_cld > 0 ) then
+         call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
+                             emcld(:,:,2:kp1), cloud )
+         used = send_data ( id_em_cld, cloud, Time, is, js, 1, &
+                            rmask=mask )
+      endif
+
+!------- ultra-violet reflected by cloud -----------------------------
+      if ( id_alb_uv_cld > 0 ) then
+         call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
+                             cuvrf(:,:,2:kp1), cloud )
+         used = send_data ( id_alb_uv_cld, cloud, Time, is, js, 1, &
+                            rmask=mask )
+      endif
+
+!------- infra-red reflected by cloud -----------------------------
+      if ( id_alb_nir_cld > 0 ) then
+         call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
+                             cirrf(:,:,2:kp1), cloud )
+         used = send_data ( id_alb_nir_cld, cloud, Time, is, js, 1, &
+                            rmask=mask )
+      endif
+
+!------- ultra-violet absorbed by cloud (not implemented)------------
+!     if ( id_abs_uv_cld > 0 ) then
+!        call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
+!                            cuvab(:,:,2:kp1), cloud )
+!        used = send_data ( id_abs_uv_cld, cloud, Time, is, js, 1, &
+!                           rmask=mask )
+!     endif
+
+!------- infra-red absorbed by cloud -----------------------------
+      if ( id_abs_nir_cld > 0 ) then
+         call expand_cloud (nclds, ktoplw(:,:,2:kp1),kbtmlw(:,:,2:kp1), &
+                             cirab(:,:,2:kp1), cloud )
+         used = send_data ( id_abs_nir_cld, cloud, Time, is, js, 1, &
+                            rmask=mask )
+      endif
+
+!--------------END OF DIAGNOSTICS --------------------------------------
+!-----------------------------------------------------------------------
 !---- step mountain clouds in underground levels ----
 
      if (present(kbot)) call step_mtn_clouds (kx,kbot,              &
@@ -255,10 +332,77 @@ integer  i,j,k,kb,kx,kp1,n,ierr
        tca(:,:) = tca(:,:) * (1. - cldamt(:,:,k))
     enddo
 
-    tca = 1. - tca
+    tca = (1. - tca) * 100.
 
 
  end subroutine compute_tca_random
+
+!#######################################################################
+
+ subroutine compute_hml_ca_random ( nclds, cldamt, kbtm, pfull, phalf, &
+                                    hml_ca, kbot )
+
+   integer, intent(in)  :: nclds (:,:), kbtm(:,:,:)
+   real,    intent(in)  :: cldamt(:,:,:), pfull(:,:,:), phalf(:,:,:)
+   real,    intent(out) :: hml_ca   (:,:,:)
+   integer, intent(in), optional :: kbot(:,:)
+
+! hml_ca - array for high, middle and low clouds as per 3rd index values
+!          of 1,2 and 3 respectively.
+
+! ---------------------------------------------------------------------
+
+   integer,  parameter :: mid_btm = 7.0e4,high_btm = 4.0e4
+
+! local array
+real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: pfull_norm
+! pfull_norm is normalized pressure at full model levels
+
+   integer :: i, j, k, kx, kb
+
+   kx   = size(pfull,3)
+
+!  calculate normalized presure to allow full range of high middle low 
+!  clouds independent of orography
+
+   if (present(kbot)) then
+         do k=1,kx+1; do j=1,size(phalf,2); do i=1,size(phalf,1)
+            kb=kbot(i,j)
+            pfull_norm(i,j,k)=101325.*phalf(i,j,k)/phalf(i,j,kb+1)
+         enddo; enddo; enddo
+   else
+         do k=1,kx
+            pfull_norm(:,:,k)=101325.*pfull(:,:,k)/phalf(:,:,kx+1)
+         enddo
+   endif
+
+!---- compute high, middle and low cloud amounts assuming that -----
+!       independent clouds overlap randomly
+
+    hml_ca = 1.0
+
+    do j=1,size(nclds,2)
+    do i=1,size(nclds,1)
+!   if (nclds(i,j) == 0) cycle
+
+      do k = 1, nclds(i,j)
+         if (pfull_norm(i,j,kbtm(i,j,k)) .le. high_btm) then
+           hml_ca(i,j,1) = hml_ca(i,j,1) * (1. - cldamt(i,j,k))
+         else if ( (pfull_norm(i,j,kbtm(i,j,k)) .le. mid_btm) .and.  &
+                   (pfull_norm(i,j,kbtm(i,j,k)) .gt. high_btm) ) then
+           hml_ca(i,j,2) = hml_ca(i,j,2) * (1. - cldamt(i,j,k))
+         else 
+           hml_ca(i,j,3) = hml_ca(i,j,3) * (1. - cldamt(i,j,k))
+         endif
+      enddo
+
+    enddo
+    enddo
+
+    hml_ca = (1. - hml_ca) * 100.
+
+
+ end subroutine compute_hml_ca_random
 
 !#######################################################################
 
@@ -374,10 +518,33 @@ integer,save :: jrow=0
 
 !#######################################################################
 
-      subroutine clouds_init (lonb, latb)
+      subroutine expand_cloud ( nclds, ktop, kbtm, cloud_in, cloud_out )
+
+      integer, intent(in)  :: nclds(:,:), ktop(:,:,:), kbtm(:,:,:)
+      real,    intent(in)  :: cloud_in (:,:,:)
+      real,    intent(out) :: cloud_out(:,:,:)
+
+      integer :: i, j, n
+
+         cloud_out = 0.0
+         do j=1,size(nclds,2)
+         do i=1,size(nclds,1)
+            do n=1,nclds(i,j)
+              cloud_out(i,j,ktop(i,j,n):kbtm(i,j,n)) = cloud_in(i,j,n)
+            enddo
+         enddo
+         enddo
+
+      end subroutine expand_cloud
+
+!#######################################################################
+
+      subroutine clouds_init ( lonb, latb, axes, Time )
 
 !-----------------------------------------------------------------------
-         real, intent(in), dimension(:) :: lonb, latb
+           real, intent(in), dimension(:) :: lonb, latb
+        integer, intent(in), dimension(4) :: axes
+type(time_type), intent(in)               :: Time
 !-----------------------------------------------------------------------
       integer  unit,io,ierr,id,jd
 
@@ -395,12 +562,20 @@ integer,save :: jrow=0
 !      ----- write namelist -----
 
       unit = open_file ('logfile.out', action='append')
-      call print_version_number (unit, 'clouds', vers_num)
-      if ( get_my_pe() == 0 ) write (unit, nml=clouds_nml)
+      if ( get_my_pe() == 0 ) then
+           write (unit, '(/,80("="),/(a))') trim(version),trim(tag)
+           write (unit, nml=clouds_nml)
+      endif
       call close_file (unit)
 
 
       if (do_obs_clouds) call cloud_obs_init (lonb, latb)
+
+!------------ initialize diagnostic fields -----------------------------
+
+      call diag_field_init ( Time, axes )
+
+!-----------------------------------------------------------------------
 
       do_init=.false.
 
@@ -417,6 +592,66 @@ integer,save :: jrow=0
 !-----------------------------------------------------------------------
 
       end subroutine clouds_end
+
+!#######################################################################
+
+   subroutine diag_field_init ( Time, axes )
+
+     type(time_type), intent(in) :: Time
+     integer        , intent(in) :: axes(4)
+
+!-----------------------------------------------------------------------
+
+    id_tot_cld_amt = &
+    register_diag_field ( mod_name, 'tot_cld_amt', axes(1:2), Time, &
+                         'total cloud amount', 'percent'            )
+
+    id_high_cld_amt = &
+    register_diag_field ( mod_name, 'high_cld_amt', axes(1:2), Time, &
+                         'high cloud amount', 'percent'            )
+
+    id_mid_cld_amt = &
+    register_diag_field ( mod_name, 'mid_cld_amt', axes(1:2), Time, &
+                         'mid cloud amount', 'percent'            )
+
+    id_low_cld_amt = &
+    register_diag_field ( mod_name, 'low_cld_amt', axes(1:2), Time, &
+                         'low cloud amount', 'percent'            )
+
+    id_cld_amt = &
+    register_diag_field ( mod_name, 'cld_amt', axes(1:3), Time, &
+                         'cloud amount', 'percent',             &
+                         missing_value=missing_value            )
+
+    id_em_cld = &
+    register_diag_field ( mod_name, 'em_cld', axes(1:3), Time, &
+                         'cloud emissivity', 'none',           &
+                          missing_value=missing_value          )
+
+    id_alb_uv_cld = &
+    register_diag_field ( mod_name, 'alb_uv_cld', axes(1:3), Time, &
+                         'UV reflected by cloud', 'none',          &
+                          missing_value=missing_value              )
+
+    id_alb_nir_cld = &
+    register_diag_field ( mod_name, 'alb_nir_cld', axes(1:3), Time, &
+                         'IR reflected by cloud', 'none',           &
+                          missing_value=missing_value               )
+
+!   --- do not output this field ---
+!   id_abs_uv_cld = &
+!   register_diag_field ( mod_name, 'abs_uv_cld', axes(1:3), Time, &
+!                        'UV absorbed by cloud', 'none',           &
+!                         missing_value=missing_value              )
+
+    id_abs_nir_cld = &
+    register_diag_field ( mod_name, 'abs_nir_cld', axes(1:3), Time, &
+                         'IR absorbed by cloud', 'none',            &
+                          missing_value=missing_value               )
+
+!-----------------------------------------------------------------------
+
+   end subroutine diag_field_init
 
 !#######################################################################
 

@@ -7,8 +7,7 @@
  use  Sat_Vapor_Pres_Mod, ONLY: ESCOMP, DESCOMP
  use Utilities_Mod,       ONLY: FILE_EXIST, ERROR_MESG, FATAL,   &
                                 CHECK_NML_ERROR, OPEN_FILE,      &
-                                PRINT_VERSION_NUMBER, get_my_pe, &
-                                CLOSE_FILE
+                                get_my_pe, CLOSE_FILE
 
 !---------------------------------------------------------------------
  implicit none
@@ -20,9 +19,8 @@
 
 !---------------------------------------------------------------------
 
-!        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-          character(len=4), private :: vers_num = 'v2.0'
-!        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ character(len=128) :: version = '$Id: shallow_conv.F90,v 1.2 2000/08/04 19:01:57 fms Exp $'
+ character(len=128) :: tag = '$Name: bombay $'
 
  logical :: do_init = .true.
 
@@ -114,8 +112,10 @@
 !---------------------------------------------------------------------
 
   unit = open_file ('logfile.out', action='append')
-  call print_version_number (unit, 'shallow_conv', vers_num)
-  if ( get_my_pe() == 0 ) WRITE( unit, nml = shallow_conv_nml ) 
+  if ( get_my_pe() == 0 ) then
+       WRITE( unit,'(/,80("="),/(a))') trim(version), trim(tag)
+       WRITE( unit, nml = shallow_conv_nml ) 
+  endif
   CALL CLOSE_FILE ( unit )
 
 !---------------------------------------------------------------------

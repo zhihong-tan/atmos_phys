@@ -18,8 +18,8 @@ use diag_manager_mod, only:  register_diag_field, send_data
 use time_manager_mod, only:  time_type
 
 use    utilities_mod, only:  file_exist, open_file, error_mesg,  &
-                             check_nml_error, print_version_number, &
-                             FATAL, get_my_pe, close_file
+                             check_nml_error, FATAL, get_my_pe,  &
+                             close_file
 
 use    constants_mod, only:  cp, grav
 
@@ -56,7 +56,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=4), parameter :: vers_num = 'v2.0'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 1.2 2000/07/28 20:16:47 fms Exp $'
+character(len=128) :: tag = '$Name: bombay $'
 
 logical :: do_init = .true.
 
@@ -102,6 +103,11 @@ real, dimension(size(t,1),size(t,2)) :: diag2
   if (do_init) call error_mesg       &
                   ('vert_diff_driver_mod',  &
                    'vert_diff_driver_init must be called first', FATAL)
+
+!-----------------------------------------------------------------------
+
+  if (size(trs,4) < ntp) call error_mesg ('vert_diff_driver_mod',  &
+              'Number of tracers .lt. namelist value of ntp', FATAL)
 
 !-----------------------------------------------------------------------
 !---- save temperature tendency for stratiform cloud scheme ----
@@ -251,7 +257,7 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 
 !------- diagnostics for dq/dt_diff -------
     if ( id_qdt_vdif > 0 ) then
-       used = send_data ( id_tdt_vdif, 2.*dt_q, Time, is, js, 1, &
+       used = send_data ( id_qdt_vdif, 2.*dt_q, Time, is, js, 1, &
                           rmask=mask )
     endif
 
@@ -308,8 +314,10 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 !--------- write version number and namelist ------------------
 
    unit = open_file ('logfile.out', action='append')
-   call print_version_number (unit, 'vert_diff_driver', vers_num)
-   if ( get_my_pe() == 0 ) write (unit, nml=vert_diff_driver_nml)
+   if ( get_my_pe() == 0 ) then
+        write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+        write (unit, nml=vert_diff_driver_nml)
+   endif
    call close_file (unit)
 
 !-------- initialize gcm vertical diffusion ------

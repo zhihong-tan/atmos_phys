@@ -7,7 +7,7 @@ MODULE STRAT_CLOUD_MOD
 !       PROGNOSTIC CLOUD SCHEME
 !
 !
-!       February 1999
+!       April 2000
 !       Contact person: Steve Klein
 !
 !
@@ -53,8 +53,7 @@ MODULE STRAT_CLOUD_MOD
 
         USE  SAT_VAPOR_PRES_MOD, ONLY :  ESCOMP,DESCOMP
         USE  Utilities_Mod,      ONLY :  File_Exist, Open_File,  &
-                                         print_version_number,  &
-                                         error_mesg, FATAL,     &
+                                         error_mesg, FATAL, &
                                          get_my_pe, Close_File, &
                                          read_data, write_data
         USE  Constants_Mod,      ONLY :  RDgas,RVgas,HLv,HLf,HLs,Cp,&
@@ -91,11 +90,12 @@ MODULE STRAT_CLOUD_MOD
       real,    allocatable, dimension (:,:,:) :: qlsum, qisum, cfsum
       integer, allocatable, dimension (:,:)   :: nsum
 
-                                      
-!     ------ constants used by the scheme ------
-
+!
+!     ------ constants used by the scheme -------
+!
       real, parameter :: d622 = RDgas / RVgas
       real, parameter :: d378 = 1. - d622
+                                      
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -156,11 +156,6 @@ MODULE STRAT_CLOUD_MOD
 !       N_ocean        fixed number of cloud drops     1/(m*m*m)
 !                      per unit volume in liquid 
 !                      clouds over ocean
-!
-!       tau_berg       Time scale for cloud liquid     second
-!                      to be converted to cloud ice
-!                      by the Bergeron-Findeisan 
-!                      mechanism
 !
 !       rho_ice        mass density of ice crystals    kg/(m*m*m)
 !
@@ -232,7 +227,6 @@ MODULE STRAT_CLOUD_MOD
         REAL              :: rthresh        =  10.
         REAL              :: N_land         =  6.E+08
         REAL              :: N_ocean        =  1.E+08
-        REAL              :: tau_berg       =  100.
         REAL              :: rho_ice        =  100.
         REAL              :: ELI            =  0.7
         REAL              :: U_evap         =  1.0
@@ -253,7 +247,7 @@ MODULE STRAT_CLOUD_MOD
 !       CREATE NAMELIST
 !
 
-        NAMELIST /STRAT_CLOUD_NML/ U00,rthresh,N_land,N_ocean,tau_berg,&
+        NAMELIST /STRAT_CLOUD_NML/ U00,rthresh,N_land,N_ocean,&
                               rho_ice,ELI,U_evap,eros_scale,tracer_advec,&
                               qmin,Dmin,num_strat_pts,strat_pts          
 
@@ -264,7 +258,8 @@ MODULE STRAT_CLOUD_MOD
 !       DECLARE VERSION NUMBER OF SCHEME
 !
         
-        Character(len=4), Parameter :: Vers_Num = 'v2.0'
+        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 1.2 2000/08/04 17:24:20 fms Exp $'
+        Character(len=128) :: Tag = '$Name: bombay $'
         
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -392,8 +387,10 @@ SUBROUTINE STRAT_INIT(IDIM,JDIM,KDIM)
 
         !write namelist variables to logfile
         unit = Open_File ('logfile.out', action='append')
-        Call print_version_number (unit, 'Strat_Cloud', Vers_Num)
-        if ( get_my_pe() == 0 ) Write (unit,nml=STRAT_CLOUD_NML)
+        if ( get_my_pe() == 0 ) then
+           Write (unit,'(/,80("="),/(a))') trim(Version), trim(Tag)
+           Write (unit,nml=STRAT_CLOUD_NML)
+        endif
         Call Close_File (unit)
 
 !-----------------------------------------------------------------------
@@ -702,8 +699,6 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       qa_mean        qa + SA; semi-implicit          fraction
 !                      saturated volume fraction
 !
-!       qa_mean_lst    qa_mean of the level above      fraction
-!
 !       ql_mean        ql + positive increment         kg condensate/
 !                      of ql; i.e. a sort of           kg air
 !                      intermediate ql
@@ -806,7 +801,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: D1_dt,D2_dt,D_eros
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: ql_upd,qi_upd,qa_upd
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: ql_mean,qi_mean
-        REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: qa_mean,qa_mean_lst
+        REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: qa_mean
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: dcond_ls,dcond_ls_ice        
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: da_cld2clr,da_clr2cld
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: dprec_clr2cld
@@ -960,8 +955,6 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         a_snow_clr(:,:) = 0.
         a_snow_cld(:,:) = 0.
         
-        qa_mean_lst(:,:)= 0.
-
         
 !-----------------------------------------------------------------------
 !
@@ -981,7 +974,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
          
         !calculate GRID box mean relative humidity 
         U(:,:) = MIN(MAX(0.,qv(:,:,j)/qs(:,:,j)),1.)
-
+        
 !-----------------------------------------------------------------------
 !
 !       Account for the fact that other processes may have created
@@ -1172,7 +1165,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       or turbulent cloud evaporation is included.  qa goes to zero only
 !       in the case of ql and qi less than or equal to qmin; see code 
 !       near the end of this loop over levels.
-
+        
         !compute C_dt; This is assigned to the large-scale source term
         !following (15). Reset D_dt.
         C_dt(:,:) = da_ls(:,:)/MAX((1.-qa_upd(:,:)),qmin)
@@ -1210,7 +1203,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         
         dcond_ls(:,:) = -1. * dqs_ls(:,:) * (qa_upd(:,:) + &
                               0.5*MIN(da_ls(:,:),1.-qa_upd(:,:)))
-              
+             
         !note that non-convective condensation/deposition can only 
         !occur where U > U00
         WHERE (dqs_ls(:,:) .lt. 0. .and. U(:,:) .lt. U00)
@@ -1230,33 +1223,52 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         qa_upd(:,:) = qa_upd(:,:) + tmp1(:,:) 
 
 !       The next step is the apportionment on the non-convective 
-!       condensation between liquid and ice phases. For T > -20C,
-!       all condensation is liquid.  
+!       condensation between liquid and ice phases. Following the
+!       suggestion of Rostayn (2000), all condensation is in liquid
+!       form as ice nuclei are generally limited in the atmosphere.
+!       The droplets may subsequently be nucleated by homogeneous
+!       freezing or be converted to ice by the Bergeron-Findeisan
+!       mechanism.  
 !
-!       In the case of large-scale evaporation (dcond_ls<0.), the
-!       amount of evaporation is proportional the amount of each
-!       phase present.
+!       One problem with this formulation is that the proper saturation
+!       vapor pressure is not used for cold clouds as it should be
+!       liquid saturation in the case of first forming liquid, but
+!       change to ice saturation as the cloud glaciates.  The current
+!       use of ice saturation beneath -20C thus crudely mimics the
+!       result that nearly all stratiform clouds are glaciated for
+!       temperatures less than -15C.
+!
+!       In the case of large-scale evaporation (dcond_ls<0.), it is
+!       assumed that cloud liquid will evaporate faster than cloud
+!       ice because if both are present in the same volume the saturation
+!       vapor pressure over the droplet is higher than that over the
+!       ice crystal
 !
 !       The fraction of large-scale condensation that is liquid
 !       is stored in the temporary variable tmp1.   
 
         !assume liquid fractionation
         tmp1(:,:)=1.
+        tmp2(:,:)=0.
 
-        !set up ice for T <= -20C
-        WHERE (T(:,:,j) .le. (Tfreeze-20.))
-             tmp1(:,:)=0.
+        !For cases of cloud evaporation, set liquid evaporation
+        !to preferentially occur first
+        WHERE (dcond_ls(:,:) .lt. 0. .and. ql_upd(:,:) .gt. qmin)
+             tmp1(:,:) = MIN(-1.*dcond_ls(:,:),ql_upd(:,:))/ &
+                         MAX(-1.*dcond_ls(:,:),qmin)
+             tmp2(:,:) = 1.-tmp1(:,:)
         END WHERE
-          
-        !For cases of cloud evaporation, apportion
-        !phase according the amount of each present
-        WHERE (dcond_ls(:,:) .lt. 0.)
-             tmp1(:,:) = MAX(0.,MIN(1.,&
-                         ql_upd(:,:)/MAX(ql_upd(:,:)+qi_upd(:,:),qmin)))
+
+        !prevent evaporation of zero liquid /ice clouds
+        WHERE (dcond_ls(:,:) .lt. 0. .and. ql_upd(:,:) .le. qmin)
+             tmp1(:,:) = 0.
         END WHERE
-        
+        WHERE (dcond_ls(:,:) .lt. 0. .and. qi_upd(:,:) .le. qmin)
+             tmp2(:,:) = 0.
+        END WHERE
+
         !calculate partitioning among liquid and ice to dcond_ls
-        dcond_ls_ice(:,:)= (1.-tmp1(:,:))*dcond_ls(:,:)
+        dcond_ls_ice(:,:)= tmp2(:,:)*dcond_ls(:,:)
         dcond_ls(:,:)    = tmp1(:,:)*dcond_ls(:,:)
         
 !       The next step is to compute semi-implicit qa,ql,qi which are 
@@ -1312,16 +1324,23 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       For rain, the area of the grid box in which rain in saturated 
 !       air of the level above enters unsaturated air in the current 
 !       level is called da_cld2clr and is given by 
-!       maximum(a_rain_cld - qa , 0.). The grid mean flux of rain which
-!       is transfered from saturated air to unsaturated air is given by 
-!       rain_cld*da_cld2clr/a_rain_cld.
+!       maximum(a_rain_cld - qa , 0.) in the case of maximum overlap of
+!       rain_cld and qa, but equal to a_rain_cld*(1.-qa) in the case of
+!       random overlap of cloud and precipitation. The grid mean flux of 
+!       rain which is transfered from saturated air to unsaturated air 
+!       is given by rain_cld*da_cld2clr/a_rain_cld.
 !
 !       The area of the grid box where rain in unsaturated air of the
 !       level above enters saturated air in the current level is
 !       called da_clr2cld and is given by
-!       maximum(0.,mininum(a_rain_clr,qa(j)-qa(j-1))).  The grid mean
-!       flux of rain transfered from unsaturated air to saturated air
-!       is given by rain_clr*da_clr2cld/a_rain_clr.
+!       maximum(0.,mininum(a_rain_clr,qa(j)-qa(j-1))) in the case of
+!       maximum overlap of cloud and rain_clr, but equal to a_rain_clr*
+!       qa for the case of random overlap of cloud and precipitation.  
+!       The grid mean flux of rain transfered from unsaturated air to 
+!       saturated air is given by rain_clr*da_clr2cld/a_rain_clr.
+!
+!       NOTE: Random overlap of cloud and precipitation is assumed in
+!             the equations below.
 !
 !       For snow fluxes the transfers are computed in exactly the same
 !       manner.
@@ -1336,13 +1355,14 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 
         !-------------------------------
         !compute cloud to clear transfer
-        da_cld2clr(:,:) = MAX(0.,a_rain_cld(:,:) - qa_mean(:,:))
+        da_cld2clr(:,:) = MIN(   a_rain_cld(:,:), &
+                          MAX(0.,a_rain_cld(:,:)*(1. - qa_mean(:,:))))
         
         !-------------------------------
         !compute clear to cloud transfer
-        da_clr2cld(:,:) = MIN(a_rain_clr(:,:),&
-                          MAX(qa_mean(:,:)-qa_mean_lst(:,:),0.))
-
+        da_clr2cld(:,:) = MIN(MAX(a_rain_clr(:,:)*qa_mean(:,:),0.),&
+                                  a_rain_clr(:,:))
+        
         !---------------------------------
         !calculate precipitation transfers
         dprec_cld2clr(:,:) = rain_cld(:,:)*(da_cld2clr(:,:)/&
@@ -1371,13 +1391,14 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 
         !-------------------------------
         !compute cloud to clear transfer
-        da_cld2clr(:,:) = MAX(0.,a_snow_cld(:,:) - qa_mean(:,:))
+        da_cld2clr(:,:) = MIN(   a_snow_cld(:,:), &
+                          MAX(0.,a_snow_cld(:,:)*(1. - qa_mean(:,:))))
         
         !-------------------------------
         !compute clear to cloud transfer
-        da_clr2cld(:,:) = MIN(a_snow_clr(:,:),&
-                          MAX(qa_mean(:,:)-qa_mean_lst(:,:),0.))
-        
+        da_clr2cld(:,:) = MIN(MAX(a_snow_clr(:,:)*qa_mean(:,:),0.), &
+                                  a_snow_clr(:,:))
+
         !---------------------------------
         !calculate precipitation transfers
         dprec_cld2clr(:,:) = snow_cld(:,:)*(da_cld2clr(:,:)/ &
@@ -1401,20 +1422,20 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !                           MELTING OF CLEAR SKY SNOW FLUX
 !
 !
-!       Melting of falling ice to rain occurs when T > 2C. The amount 
+!       Melting of falling ice to rain occurs when T 0C. The amount 
 !       of melting is limited to the melted amount that would cool the 
-!       temperature to Tfreeze + 2C.   In cloud melting of ice occurs
+!       temperature to Tfreeze.   In cloud melting of ice occurs
 !       in the ice microphysics section.
 !
 
         !compute grid mean change in snow flux to cool portion
         !of grid box with snow_clr flux to 2C and store in
         !temporary variable tmp1
-        tmp1(:,:) = MAX((Cp*(T(:,:,j)-(Tfreeze+2.))*a_snow_clr(:,:)* & 
+        tmp1(:,:) = MAX((Cp*(T(:,:,j)-Tfreeze)*a_snow_clr(:,:)* & 
                          deltp(:,:) / Grav / dtcloud / HLf) ,0.)
         
         !change a_rain_clr
-        WHERE (T(:,:,j) .gt. (Tfreeze+2.) .and. &
+        WHERE (T(:,:,j) .gt. Tfreeze .and. &
                a_snow_clr(:,:) .gt. qmin .and. &
                a_rain_clr(:,:) .lt. a_snow_clr(:,:))
              a_rain_clr(:,:) = a_snow_clr(:,:)
@@ -1477,7 +1498,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 
         !compute lamda_f
         lamda_f(:,:) = 1.6 * 10**(3.+0.023*(Tfreeze-T(:,:,j)))
-
+        
 
 !----------------------------------------------------------------------!
 !                                                                      !
@@ -1659,60 +1680,63 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       vapor pressure between liquid and ice phases encourages
 !       the growth of ice crystals at the expense of liquid droplets.
 !
-!       While there is no first principles parameterization of this
-!       process, it clearly depends on a least two things, the
-!       relative difference in saturation vapor pressure between
-!       liquid and ice phase saturation and the relative numbers of
-!       ice crystals and cloud liquid drops.   The ad-hoc parameteri-
-!       zation takes the form of a probability that the process occurs
-!       over a parameterized time scale tau_berg.  Thus
+!       Rotstayn (2000) show derive an equation for the growth of
+!       ice by starting with the vapor deposition equation for an
+!       ice crystal and write it in terms of ice specific humidity
+!       as:
 !
-!  (32) dql/dt_local   = (probability for conversion)*ql_local/tau_berg
+!                 {(Ni/airdens)**2/3}*7.8*((Max(qi,Mio*Ni/airdens))**(1/3))
+!  (32) dqi/dt =  -------------------------------------------------------- X
+!                          [rhoice**1/3]* A_plus_B
 !
-!       The probability of conversion is parameterized by the product
-!       of the relative amount of ice and the difference of saturation
-!       vapor pressures:
+!                          [(esl-esi)/esi]
 !
-!  (33) Probability = [(qi_local)/(qi_local+ql_local)]*[(esl-esi)/esi]
+!       Here Ni is the ice crystal number which is taken from the 
+!       parameterization of Meyers et al. :
 !
-!       where esl is the saturation vapor pressure above liquid, and
-!       esi is the saturation vapor pressure above ice. Because we don't 
-!       have a good representation of ice particle concentration in
-!       the GCM (to do so would need a treatment of ice multiplication 
-!       effects and be very uncertain), we will use the relative amounts
-!       of liquid and ice to characterize the probability of transition.
+!  (33) Ni = 1000 * exp( (12.96* [(esl-esi)/esi]) - 0.639 )
+!
+!       The use of the maximum operator assumed that there is a background
+!       ice crystal always present on which deposition can occur.  Mio
+!       is an initial ice crystal mass taken to be 10-12kg.
 !
 !       Figure 9.3 of Rogers and Yau (1998) shows the nearly linear
 !       variation of [(esl-esi)/esi] from 0. at 273.16K to 0.5 at 
 !       233.16K.  Analytically this is parameterized as (Tfreeze-T)/80.
 !
-!       The time scale for the process to act should depend on the
-!       time scale for crystals to grow by deposition as well as the
-!       time for liquid drops to evaporate.  Consideration of Figure 7.6
-!       of Rogers and Yau which shows the growth by condensation of
-!       liquid droplets and Figure 9.8 which shows the time for 
-!       an ice crystal to grow to a given size, suggests a time scale of
-!       approximately 100 seconds.   However this time scale is treated
-!       as a namelist parameter which is allowed to be changed by the
-!       user of the program.
 !
-!       Generalizing (32) and (33) to grid mean conditions yields:
+!       Generalizing (32) to grid mean conditions and writing it in terms
+!       of a loss of cloud liquid yields:
 !
-!  (34) dql/dt = -{[1.+(ql/qi)]**(-1)}*[(Tfreeze-T)/80.] * ql/tau_berg
+!                   qa {(1000 * exp((12.96* (Tfreeze-T)/80)-0.639)/airdens)**2/3}
+!  (34) dql/dt = -  -------------------------------------------------------- 
+!                            [rhoice**1/3]* A_plus_B * ql
 !
+!                  *7.8*((Max(qi/qa,Mio*Ni/airdens))**(1/3))*[(Tfreeze-T)/80]*ql
+!
+!       Note that the density of ice is set to 700 kg m3 the value appropriate
+!       for pristine ice crystals.  This value is necessarily different than
+!       the value of ice used in the riming and sublimation part of the code
+!       which is for larger particles which have much lower densities.
         
         !reset D2_dt
         D2_dt(:,:)=0.
-
+        
         !do Bergeron process
         WHERE (T(:,:,j) .lt. Tfreeze .and. ql_mean(:,:) .gt. qmin &
-               .and. qi_mean(:,:) .gt. qmin .and. qa_mean(:,:) .gt. qmin)
-             D2_dt(:,:) = (dtcloud/tau_berg) * &
-                          0.0125 * (Tfreeze - T(:,:,j)) / &
-                          (1.+(ql_mean(:,:)/qi_mean(:,:)))
+                    .and. qa_mean(:,:) .gt. qmin)
+           
+             D2_dt(:,:) =  dtcloud * qa_mean(:,:) * &
+                         ((1000.*exp((12.96*0.0125*(Tfreeze-T(:,:,j)))-0.639)&
+                           / airdens(:,:,j))**(2./3.))* &
+                           7.8* ((MAX(qi_mean(:,:)/qa_mean(:,:), &
+                           1.E-12*1000.* &
+                           exp((12.96*0.0125*(Tfreeze-T(:,:,j)))-0.639)/&
+                           airdens(:,:,j)))**(1./3.))*&
+                           0.0125*(Tfreeze-T(:,:,j))/ &
+                           ((700.**(1./3.))* A_plus_B(:,:,j)* ql_mean(:,:))
         END WHERE
        
-
 !       Accretion of cloud liquid by ice ('Riming')
 !       
 !       [The below follows Rotstayn]
@@ -1745,9 +1769,9 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         
 !       Freezing of cloud liquid to cloud ice occurs when
 !       the temperature is less than -40C. At these very cold temper-
-!       atures it is assumed that there is enough ice nuclei present
-!       to nucleate ice by contact nucleation.  To accomplish this
-!       numerically in one time step:
+!       atures it is assumed that homogenous freezing of cloud liquid
+!       droplets will occur.   To accomplish this numerically in one 
+!       time step:
 !
 !  (36) D*dtcloud =  ln( ql/qmin).
 !
@@ -1875,7 +1899,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         WHERE (D_dt(:,:) .gt. Dmin .and. D1_dt(:,:) .gt. 0.)
              a_rain_cld(:,:) = qa_mean(:,:)
         END WHERE
-
+       
         
         
 !-----                                                            -----! 
@@ -1961,12 +1985,12 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         
 !       Melting of in-cloud ice
 !
-!       Melting occurs where the temperature is greater than 2C. The
-!       amount of melting is limited to that that would cool the grid
-!       box back to 2C.  If melting is not limited by this amount then
-!       all of the ice can melt within the grid box in the time step
-!       and therefore no ice settles out of the grid box (i.e. D1 is
-!       set to zero).
+!       Melting occurs where the temperature is greater than Tfreezing. 
+!       This is an instaneous process such that no stratiform ice will
+!       remain in the grid at the end of the timestep. 
+!       No ice settles out of the grid box (i.e. D1 is set to zero) when
+!       the amount of ice to be melted is less than that that would
+!       bring the cloudy part of the grid box to the freezing point.
 !
 !       The ice that melts becomes rain.  This is because if an ice
 !       crystal of dimension ~100 microns melts it will become a
@@ -1975,33 +1999,29 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       to be this large, consistent with the assumption of particle
 !       size temperature dependence.
 
-        
-        !compute grid mean change in cloud ice to cool portion of grid
-        !box with ice to 2C and store in temporary variable tmp1
-        tmp1(:,:)= MAX((Cp*(T(:,:,j)-(Tfreeze+2.))*qa_mean(:,:)/HLf),0.)
-        
-        !do not permit exceedingly small clouds to melt
-        WHERE (qa_mean(:,:) .le. qmin)
-              tmp1(:,:) = 0.
-        END WHERE
-        
         !reset D2
         D2_dt(:,:) = 0.0
                
-        !do melting in non-flux limited case
-        WHERE (tmp1(:,:) .ge. (qi_mean(:,:)-qmin) .and. &
-               qi_mean(:,:) .gt. qmin )
+        !do melting in non-limited case
+        WHERE ( T(:,:,j) .gt. Tfreeze .and. &
+               qi_mean(:,:) .gt. qmin .and. &
+               qa_mean(:,:) .gt. qmin .and. &
+               (HLf*qi_mean(:,:)) .lt. (qa_mean(:,:)*Cp*(T(:,:,j)-Tfreeze)))
              D2_dt(:,:) = log ( qi_mean(:,:) / qmin )
              D1_dt(:,:) = 0.
         END WHERE
-
-        !do melting in flux limited case
-        WHERE (tmp1(:,:) .lt. (qi_mean(:,:)-qmin) .and. &
-               tmp1(:,:) .gt. 0.)
-             D2_dt(:,:) = log ( qi_mean(:,:) /(qi_mean(:,:)-tmp1(:,:)) )
+               
+        !do melting in limited case
+        WHERE ( T(:,:,j) .gt. Tfreeze .and. &
+               qi_mean(:,:) .gt. qmin .and. &
+               qa_mean(:,:) .gt. qmin .and. &
+               (HLf*qi_mean(:,:)) .ge. (qa_mean(:,:)*Cp*(T(:,:,j)-Tfreeze)))
+             D2_dt(:,:) = log ( qi_mean(:,:) / &
+                (qi_mean(:,:)-(qa_mean(:,:)*Cp*(T(:,:,j)-Tfreeze)/HLf)) )
         END WHERE
         
-                
+
+
 !       Analytic integration of qi equation
 !
 !       Following Tiedtke, the qi equation is written in the form
@@ -2027,8 +2047,9 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         !There is no calculation of C_dt done here because C_dt already 
         !includes the source of cloud ice falling from above as well as 
         !liquid converted to ice. 
+        
         D_dt(:,:) =  D1_dt(:,:) + D2_dt(:,:) + D_eros(:,:)
-
+        
         !add in large_scale term,note use of qi mean
         WHERE (dcond_ls_ice(:,:).ge.0.)
              C_dt(:,:)=C_dt(:,:)+dcond_ls_ice(:,:)
@@ -2044,6 +2065,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
             tmp1(:,:) = C_dt(:,:)
         END WHERE
         
+
         !update SI and qi
         qi_upd(:,:) = qi_upd(:,:) + tmp1(:,:)
         SI(:,:,j) = SI(:,:,j) + tmp1(:,:)
@@ -2361,7 +2383,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
               a_rain_clr(:,:) = 1.-qa_mean(:,:)
               ST(:,:,j) = ST(:,:,j) + HLv*tmp1(:,:)/Cp
         END WHERE
-
+        
 !-----------------------------------------------------------------------
 !
 !       Cloud Destruction occurs where both ql and qi are .le. qmin, 
@@ -2378,14 +2400,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
                          (HLv*ql_upd(:,:) + HLs*qi_upd(:,:))/Cp
              SA(:,:,j) = SA(:,:,j) - qa_upd(:,:)
         END WHERE
-        
-!-----------------------------------------------------------------------
-!
-!       Save qa_mean of current level into qa_mean_lst.   This is used
-!       in transferring rain and snow fluxes between levels.
-
-        qa_mean_lst(:,:) = qa_mean(:,:)
-        
+                
         
 !-----------------------------------------------------------------------
 !
@@ -2487,7 +2502,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
              strat_pts(2,nn) >= js .and. strat_pts(2,nn) <= je) then
                 ipt=strat_pts(1,nn); jpt=strat_pts(2,nn)
                 i=ipt-is+1; j=jpt-js+1
-                unit = Open_File ('strat.data', form='ieee32', &
+                unit = Open_File ('strat.data', form='ieee32',&
                                   action='append')
                 write (unit) ipt,jpt,     ql(i,j,:)+SL(i,j,:)
                 write (unit) ipt,jpt,     qi(i,j,:)+SI(i,j,:)

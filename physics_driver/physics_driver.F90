@@ -28,8 +28,7 @@ use        constants_mod, only: tfreeze,hlv,hlf,hls,kappa,  &
                                 rdgas,rvgas,cp,grav
 
 use        utilities_mod, only: file_exist, error_mesg, FATAL, NOTE,  &
-                                open_file, close_file,                &
-                                print_version_number
+                                open_file, close_file, get_my_pe
 
 use     time_manager_mod, only: time_type
 
@@ -55,7 +54,8 @@ interface check_dim
 end interface
 
 !--------------------- version number ----------------------------------
-      character(len=4), parameter :: vers_num = 'v2.0'
+character(len=256) :: version = '$Id: physics_driver.F90,v 1.2 2000/07/28 20:16:44 fms Exp $'
+character(len=256) :: tag = '$Name: bombay $'
 !-----------------------------------------------------------------------
 
       logical :: do_init = .true., do_check_args = .true.
@@ -75,7 +75,7 @@ contains
                                  u_star,    b_star,                  &
                                  dtau_dv,  tau_x,  tau_y,            &
                                  udt, vdt, tdt, qdt, rdt,            &
-                                 flux_sw,  flux_lw,  gust,           &
+                                 flux_sw,  flux_lw,  coszen,  gust,  &
                                  Surf_diff,                          &
                                  mask, kbot                          )
 
@@ -99,7 +99,8 @@ type(time_type),          intent(in)       :: Time
       real, intent(inout),dimension(:,:,:)   :: udt,vdt,tdt,qdt
       real, intent(inout),dimension(:,:,:,:) :: rdt
 
-      real, intent(out),   dimension(:,:) :: flux_sw, flux_lw, gust
+      real, intent(out),   dimension(:,:) :: flux_sw, flux_lw,  &
+                                             coszen,  gust
 
       type(surf_diff_type), intent(inout) :: Surf_diff
 
@@ -166,7 +167,7 @@ type(time_type),          intent(in)       :: Time
                             dt, lat, lon, p_full, p_half,     &
                             t, q, t_surf_rad, frac_land,      &
                             albedo, tdt, flux_sw, flux_lw,    &
-                            mask=mask, kbot=kbot)
+                            coszen,      mask=mask, kbot=kbot )
 
 !-----------------------------------------------------------------------
 !------------------------ damping --------------------------------------
@@ -310,7 +311,8 @@ type(surf_diff_type), intent(inout) :: Surf_diff
 !-----------------------------------------------------------------------
 
       unit = open_file ('logfile.out', action='append')
-      call print_version_number (unit, 'physics_driver', vers_num)
+      if (get_my_pe() == 0)  &
+          write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
       call close_file (unit)
 
 !-----------------------------------------------------------------------

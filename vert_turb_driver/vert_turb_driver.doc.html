@@ -9,21 +9,18 @@
 <A HREF="#DIAGNOSTICS">DIAGNOSTICS</A> / 
 <A HREF="#ERRORS">ERRORS</A>
 </FONT>
-<P><I>Last updated on <!--#exec cmd="echo $LAST_MODIFIED" -->.</I>
 <BR><BR></DIV><HR>
 
 
 <H2>Module vert_turb_driver_mod</H2>
 <A NAME="HEADER">
 <PRE>
-     Version: v2.1
-     Date:    January 24, 2000
-     Contact: Bruce Wyman
+     <B>Contact:</B>   Bruce Wyman
+     <B>Reviewers:</B>
+
+     <B><A HREF=".doc.log#vert_turb_driver.f90">Tags/Status</A></B>
 </PRE>
 </A><!-- END HEADER -->
-<PRE>
-     Previous version: <!-- A HREF="../v1.0/vert_turb_driver.doc.html">v1.0</A>
-</PRE>
 <!--------------------------------------------------------------------->
 <A NAME="OVERVIEW">
 <HR>
@@ -64,9 +61,6 @@
       time_manager_mod
          constants_mod
          utilities_mod
-
-Note: Version v2.0 was used by all modules for testing this version
-      of vert_turb_driver_mod.
 
 </PRE>
 </A><!-- END MODULES_USED -->
@@ -261,15 +255,19 @@ Notes:
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
+<B><A HREF=".doc.log#vert_turb_driver.f90">CVS Revision history</A></B>
 
-<b>changes for v2.1</b> (1/24/2000)
+
+<B>Changes prior to CVS version control</B>
+
+<b>changes</b> (1/24/2000)
 
   * Minor change.
 
     When the Mellor-Yamada scheme is NOT selected the Mellor-Yamada
     initialization and end routines are no longer called.
 
-<b>changes for v2.0</b> (10/4/1999)
+<b>changes</b> (10/4/1999)
 
   * Major changes.
 
@@ -282,12 +280,12 @@ Notes:
     the manner in which diagnostics quantities are selected.
     There are additional arguments to several interfaces.
 
-<b> changes for v1.1 </b> (8/31/1999)
+<b>changes</b> (8/31/1999)
 
     Diagnostic field z_pbl, the depth of planetary boundary layer,
     may now be output for either the generalized diffusivity scheme
-    or the Mellor-Yamada scheme. (In v1.0 PBL depth could only be
-    output for the diffusivity scheme.)
+    or the Mellor-Yamada scheme. (In an earlier revision PBL depth
+    could only be output for the diffusivity scheme.)
 
 </PRE>
 </A><!-- END CHANGES -->

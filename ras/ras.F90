@@ -6,8 +6,7 @@
 
  use  Sat_Vapor_Pres_Mod, ONLY: ESCOMP, DESCOMP
  use Utilities_Mod,       ONLY: FILE_EXIST, OPEN_FILE, ERROR_MESG,  &
-                                print_version_number, get_my_pe,    &
-                                CLOSE_FILE, FATAL
+                                get_my_pe, CLOSE_FILE, FATAL
  USE  Constants_Mod,      ONLY:  HLv,HLs,Cp,Grav,Kappa,rdgas,rvgas
 
 !---------------------------------------------------------------------
@@ -20,7 +19,8 @@
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        character(len=4), parameter :: Vers_Num = 'v2.0'
+ character(len=128) :: version = '$Id: ras.F90,v 1.3 2000/08/04 18:55:37 fms Exp $'
+ character(len=128) :: tag = '$Name: bombay $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -490,20 +490,20 @@
   if (PRESENT(Da0)) then
   CALL RAS_CLOUD(                                                    &
        klcl, ib, rasal, frac, hl, coldT,                             &
-       theta, qvap, uwnd, vwnd, pres_int, pi_int, pi,                &
+       theta, qvap, uwnd, vwnd, pres_int, pi_int, pi, psfc,          &
        alpha, beta, gamma, cp_by_dp,                                 &
        dtcu, dqcu, ducu, dvcu, dpcu, &
        ql, qi, qa, mccu, Dlcu, Dicu, Dacu )
   else if (PRESENT(mc0).and..not.PRESENT(Da0)) then
   CALL RAS_CLOUD(                                                    &
        klcl, ib, rasal, frac, hl, coldT,                             &
-       theta, qvap, uwnd, vwnd, pres_int, pi_int, pi,                &
+       theta, qvap, uwnd, vwnd, pres_int, pi_int, pi, psfc,          &
        alpha, beta, gamma, cp_by_dp,                                 &
        dtcu, dqcu, ducu, dvcu, dpcu,mccu=mccu)
   else
   CALL RAS_CLOUD(                                                    &
        klcl, ib, rasal, frac, hl, coldT,                             &
-       theta, qvap, uwnd, vwnd, pres_int, pi_int, pi,                &
+       theta, qvap, uwnd, vwnd, pres_int, pi_int, pi, psfc,          &
        alpha, beta, gamma, cp_by_dp,                                 &
        dtcu, dqcu, ducu, dvcu, dpcu)
   end if
@@ -704,8 +704,10 @@
 !---------------------------------------------------------------------
 
   unit = OPEN_FILE ( file = 'logfile.out', action = 'APPEND')
-  call print_version_number (unit, 'ras', Vers_Num)
-  if ( get_my_pe() == 0 ) WRITE( unit, nml = ras_nml ) 
+  if ( get_my_pe() == 0 ) then
+       WRITE( unit, '(/,80("="),/(a))') trim(version),trim(tag)
+       WRITE( unit, nml = ras_nml ) 
+  endif
   CALL CLOSE_FILE ( unit )
 
 !---------------------------------------------------------------------
@@ -804,8 +806,8 @@
    p_lcl(:,:) = p_parc(:,:) *  EXP( rhum(:,:) )
 
 ! --- Bound p_lcl 
-  p_lcl(:,:) = MAX( p_lcl(:,:), pres(:,:,1   ) )
-  p_lcl(:,:) = MIN( p_lcl(:,:), pres(:,:,kmax) )
+  p_lcl(:,:) = MAX( p_lcl(:,:), pres(:,:,1) )
+  p_lcl(:,:) = MIN( p_lcl(:,:), p_parc(:,:) )
 
 ! --- Find index of LCL
   do k = 2,kmax
@@ -1079,7 +1081,7 @@
 
  SUBROUTINE RAS_CLOUD(                                           &
             k, ic, rasal, frac, hl, coldT,                       &
-            theta, qvap, uwnd, vwnd, pres_int, pi_int, pi,       &
+            theta, qvap, uwnd, vwnd, pres_int, pi_int, pi, psfc, &
             alf, bet, gam, cp_by_dp,                             &
             dtcu, dqcu, ducu,  dvcu, dpcu,                       &
             ql, qi, qa, mccu, Dlcu, Dicu, Dacu )
@@ -1099,6 +1101,7 @@
 !     pres_int : Pressure       at layer interface
 !     pi_int   : Exner function at layer interface
 !     pi       : Exner function 
+!     psfc     : Surface pressure
 !     rasal    : Relaxation parameter for cloud type ic
 !     ql       : OPTIONAL, cloud liquid
 !     qi       : OPTIONAL, cloud ice
@@ -1107,7 +1110,7 @@
 
  real,    intent(in) :: rasal, frac
  integer, intent(in) :: ic, k
- real, intent(in), dimension(:)   :: hl
+ real, intent(in), dimension(:)   :: hl, psfc
  logical, intent(in), dimension(:):: coldT
  real, intent(in), dimension(:,:) :: theta, qvap, uwnd, vwnd, pres_int, pi_int
  real, intent(in), dimension(:,:) :: alf, bet, gam, pi, cp_by_dp
@@ -1149,7 +1152,6 @@
  real    :: tem1, tem, tem2, rasalf
 
 !=====================================================================
-
 
 ! Initialize
   dtcu = 0.0
@@ -1729,7 +1731,7 @@
  if ( ( akm(i) < 0.0 ) .and. ( wlq(i) >= 0.0 ) ) then
 !jjs
   rasalf = rasal * ( pres_int(ii,ic+1) - puplim ) /      &
-                   ( pres_int(ii,k   ) - puplim )
+                   (     psfc(ii)      - puplim )
   rasalf = MAX( 0.0, rasalf )
 !jjs
      wfn(i) = - tx6(i) * wfn(i) * rasalf / akm(i)

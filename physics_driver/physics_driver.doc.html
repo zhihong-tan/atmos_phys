@@ -1,0 +1,323 @@
+<HTML>
+<TITLE>module physics_driver</TITLE>
+<BODY BGCOLOR="#AABBCC" TEXT="#332211" >
+
+<DIV ALIGN="CENTER"> <FONT SIZE=1>
+<A HREF="#INTERFACE">PUBLIC INTERFACE</A> / 
+<A HREF="#DATA_TYPES">DATA</A> / 
+<A HREF="#ROUTINES">ROUTINES</A> / 
+<A HREF="#CHANGES">CHANGES</A> / 
+<A HREF="#ERRORS">ERRORS</A> / 
+<A HREF="#NOTES">NOTES</A> 
+</FONT>
+<BR><BR></DIV><HR>
+
+
+<H2>module physics_driver</H2>
+<A NAME="HEADER">
+<!-- BEGIN HEADER -->
+<PRE>
+     <B>Contact:</B>   Bruce Wyman
+     <B>Reviewers:</B>
+
+     <B><A HREF=".doc.log#physics_driver.f90">Tags/Status</A></B>
+</PRE>
+<!-- END HEADER --></A>
+<!--------------------------------------------------------------------->
+<A NAME="OVERVIEW">
+<HR>
+<H4>OVERVIEW</H4>
+<!-- BEGIN OVERVIEW -->
+<PRE>
+
+     Provides high level interfaces for calling the entire
+     FMS atmospheric physics package.
+
+</PRE>
+<!-- END OVERVIEW --></A>
+<!--------------------------------------------------------------------->
+<A NAME="DESCRIPTION">
+<!-- BEGIN DESCRIPTION -->
+<PRE>
+
+     This version of physics_driver_mod has been designed around the implicit
+     version diffusion scheme of the GCM. It requires two routines to advance
+     the model one time step into the future. These two routines
+     correspond to the down and up sweeps of the standard tridiagonal solver.
+     Radiation, Rayleigh damping, gravity wave drag, vertical diffusion of
+     momentum and tracers, and the downward pass of vertical diffusion for
+     temperature and specific humidity are performed in the down routine.
+     The up routine finishes the vertical diffusion and computes moisture
+     related terms (convection,large-scale condensation, and precipitation).
+
+</PRE>
+<!-- END DESCRIPTION --></A>
+<!--------------------------------------------------------------------->
+<A NAME="MODULES_USED">
+<HR>
+<H4>OTHER MODULES USED</H4>
+<!-- BEGIN MODULES_USED -->
+<PRE>
+
+     moist_processes_mod
+    vert_turb_driver_mod
+    vert_diff_driver_mod
+    radiation_driver_mod
+      damping_driver_mod
+        time_manager_mod
+       tracer_driver_mod
+           constants_mod
+           utilities_mod
+
+</PRE>
+<!-- END MODULES_USED --></A>
+<!--------------------------------------------------------------------->
+<A NAME="INTERFACE">
+<HR>
+<H4>PUBLIC INTERFACE</H4>
+<!-- BEGIN INTERFACE -->
+<PRE>
+
+use physics_driver_mod [, only: surf_diff_type,
+                                physics_driver_init,
+                                physics_driver_down,
+                                physics_driver_up,
+                                physics_driver_end  ]
+
+surf_diff_type
+
+physics_driver_init
+     Initializes the physics driver and calls initialization routines
+     for modules that it uses.
+
+physics_driver_down
+     Must be called before physics_driver_up.
+
+physics_driver_up
+
+physics_driver_end
+     The termination call; writes data required for proper restarting.
+     Calls termination routines for all modules that it uses.
+
+</PRE>
+<!-- END INTERFACE --></A>
+<!--------------------------------------------------------------------->
+<A NAME="DATA_TYPES">
+<HR>
+<H4>PUBLIC DATA</H4>
+<!-- BEGIN DATA_TYPES -->
+<PRE>
+
+type (surf_diff_type)
+
+   This data type has been inherited from module vert_diff_mod.
+   See vert_diff_mod for details.
+
+</PRE>
+<!-- END DATA_TYPES --></A>
+<!--------------------------------------------------------------------->
+<A NAME="ROUTINES">
+<HR>
+<H4>PUBLIC ROUTINES</H4>
+<!-- BEGIN ROUTINES -->
+<PRE>
+
+call physics_driver_init ( Time, lonb, latb, axes, pref, 
+                           trs, Surf_diff,  mask, kbot  )
+
+----------------------------------------------------------------------
+
+call physics_driver_down (is, ie, js, je,
+                          dt, Time, lat, lon, area,
+                          p_half, p_full, z_half, z_full,
+                          u, v, t, q, r, um, vm, tm, qm, rm,
+                          frac_land, rough_mom,
+                          albedo,    t_surf_rad,
+                          u_star,    b_star,
+                          dtau_dv,  tau_x,  tau_y,
+                          udt, vdt, tdt, qdt, rdt,
+                          flux_sw,  flux_lw,  coszen,  gust,
+                          Surf_diff,
+                          mask, kbot                          )
+
+INPUT
+
+  is,ie,js,je  starting and ending global indices for the current data window
+                  [integer]
+
+  dt           time step in seconds [real]
+
+  Time         current time [time_type]
+
+  lat          latitude in radians [real, dimension(:,:)]
+
+  lon          longitude in radians [real, dimension(:,:)]
+
+  area         grid box area (in m2) - currently not used
+                 [real, dimension(:,:)]
+
+  p_half       pressure in pascals at half levels (offset from t,q,u,v,r)
+                 [real, dimension(:,:,nlev+1)]
+
+  p_full       pressure in pascals at full levels
+                 [real, dimension(:,:,nlev)]
+
+  z_half       height in meters at half levels
+                 [real, dimension(:,:,nlev+1)]
+
+  z_full       height in meters at full levels
+                 [real, dimension(:,:,nlev)]
+
+  u            zonal wind at current time step in m/s
+                 [real, dimension(:,:,nlev)]
+
+  v            meridional wind at current time step in m/s
+                 [real, dimension(:,:,nlev)]
+
+  t            temperature at current time step in deg k
+                 [real, dimension(:,:,nlev)]
+
+  q            specific humidity at current time step in kg vapor / kg air
+                 [real, dimension(:,:,nlev)]
+
+  r            multiple 3d tracer fields at current time step
+                 [real, dimension(:,:,nlev,:)]
+
+  um,vm        zonal and meridional wind at previous time step
+                 [real, dimension(:,:,nlev)]
+
+  tm,qm        temperature and specific humidity at previous time step
+                 [real, dimension(:,:,nlev)]
+
+  rm           multiple 3d tracer fields at previous time step
+                 [real, dimension(:,:,nlev,:)]
+
+INPUT/OUTPUT
+
+  udt          zonal wind tendency in m/s2
+                 [real, dimension(:,:,nlev)]
+
+  vdt          meridional wind tendency in m/s2
+                 [real, dimension(:,:,nlev)]
+
+  tdt          temperature tendency in deg k per sec
+                 [real, dimension(:,:,nlev)]
+
+  qdt          specific humidity tendency in kg vapor/kg air/sec
+                 [real, dimension(:,:,nlev)]
+
+  rdt          multiple tracer tendencies (in unit/unit/sec ???)
+                 [real, dimension(:,:,nlev,:)]
+
+OPTIONAL INPUT
+
+  mask         mask that designates which levels do not have data
+                 present (i.e., below ground); 0.=no data, 1.=data
+                 [real, dimension(:,:,nlev)]
+
+  kbot         lowest level which has data
+               note:  both mask and kbot must be present together.
+                 [integer, dimension(:,:)]
+
+
+----------------------------------------------------------------------
+
+call physics_driver_up (is, ie, js, je,
+                        dt, Time, lat, lon, area,
+                        p_half, p_full, omega,
+                        u, v, t, q, r, um, vm, tm, qm, rm,
+                        frac_land, udt, vdt, tdt, qdt, rdt,
+                        Surf_diff,   lprec,   fprec,
+                        mask, kbot                   )
+
+  input
+  -----
+  is,ie,js,je  starting and ending global indices
+  dt           time step in seconds
+  Time         current time (time_type)
+  lat          latitude in radians
+  lon          longitude in radians
+  area         grid box area (in m2) - currently not used
+  p_half       pressure in pascals at half levels (offset from t,q,u,v,r)
+  p_full       pressure in pascals at full levels
+  u            zonal wind at current time step in m/s
+  v            meridional wind at current time step in m/s
+  t            temperature at current time step in deg k
+  q            specific humidity at current time step in kg vapor / kg air
+  r            multiple 3d tracer fields at current time step
+  um,vm        zonal and meridional wind at previous time step
+  tm,qm        temperature and specific humidity at previous time step
+  rm           multiple 3d tracer fields at previous time step
+
+
+----------------------------------------------------------------------
+
+call physics_driver_end (Time)
+
+
+
+</PRE>
+<!-- END ROUTINES --></A>
+<!--------------------------------------------------------------------->
+<A NAME="CHANGES">
+<HR>
+<H4>CHANGE HISTORY</H4>
+<!-- BEGIN CHANGES -->
+<PRE>
+<B><A HREF=".doc.log#physics_driver.f90">Revision history</A></B>
+
+</PRE>
+<!-- END CHANGES --></A>
+<!--------------------------------------------------------------------->
+<A NAME="ERRORS">
+<HR>
+<H4>ERROR MESSAGES</H4>
+<!-- BEGIN ERRORS -->
+<PRE>
+
+physics_driver_init must be called first
+
+bad dimensions
+
+dimension __ of argument ____ has wrong size
+
+</PRE>
+<!-- END ERRORS --></A>
+<!--------------------------------------------------------------------->
+<A NAME="BUGS">
+<HR>
+<H4>KNOWN BUGS</H4>
+<!-- BEGIN BUGS -->
+<PRE>
+
+     None.
+
+</PRE>
+<!-- END BUGS --></A>
+<!--------------------------------------------------------------------->
+<A NAME="NOTES">
+<HR>
+<H4>NOTES</H4>
+<!-- BEGIN NOTES -->
+<PRE>
+
+     None.
+
+</PRE>
+<!-- END NOTES --></A>
+<!--------------------------------------------------------------------->
+<A NAME="PLANS">
+<HR>
+<H4>FUTURE PLANS</H4>
+<!-- BEGIN PLANS -->
+<PRE>
+
+     Deal with conservation of total energy?
+
+</PRE>
+<!-- END PLANS --></A>
+<!--------------------------------------------------------------------->
+
+<HR>
+</BODY>
+</HTML>

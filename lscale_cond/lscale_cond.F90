@@ -2,9 +2,9 @@
 module lscale_cond_mod
 
 !-----------------------------------------------------------------------
-use      utilities_mod, only:  file_exist, error_mesg, open_file,     &
-                               check_nml_error, print_version_number, &
-                               get_my_pe, FATAL, close_file
+use      utilities_mod, only:  file_exist, error_mesg, open_file,  &
+                               check_nml_error, get_my_pe, FATAL,  &
+                               close_file
 use sat_vapor_pres_mod, only:  escomp, descomp
 use      constants_mod, only:  HLv,HLs,Cp,Grav,rdgas,rvgas
 
@@ -18,7 +18,8 @@ private
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
-    character(len=4), parameter :: vers_num = 'v2.0'
+ character(len=128) :: version = '$Id: lscale_cond.F90,v 1.2 2000/07/28 20:16:39 fms Exp $'
+ character(len=128) :: tag = '$Name: bombay $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----
@@ -133,9 +134,12 @@ integer  k, kx
 !--------- do adjustment where greater than saturated value ------------
 
    if (present(conv)) then
-      do_adjust(:,:,:)=(.not.conv(:,:,:) .and. qin(:,:,:) > qsat(:,:,:))
+!!!!  do_adjust(:,:,:)=(.not.conv(:,:,:) .and. qin(:,:,:) > qsat(:,:,:))
+      do_adjust(:,:,:)=(.not.conv(:,:,:) .and.   &
+                         (qin(:,:,:) - qsat(:,:,:))*qsat(:,:,:) > 0.0)
    else
-      do_adjust(:,:,:)=(qin(:,:,:) > qsat(:,:,:))
+!!!!  do_adjust(:,:,:)=(qin(:,:,:) > qsat(:,:,:))
+      do_adjust(:,:,:)=( (qin(:,:,:) - qsat(:,:,:))*qsat(:,:,:) > 0.0)
    endif
 
    if (present(mask)) then
@@ -258,8 +262,10 @@ subroutine precip_evap (pmass, tin, qin, qsat, dqsat, hlcp, &
 !---------- output namelist --------------------------------------------
 
       unit = open_file (file='logfile.out', action='append')
-      call print_version_number (unit, 'lscale_cond', vers_num)
-      if ( get_my_pe() == 0 ) write (unit,nml=lscale_cond_nml)
+      if ( get_my_pe() == 0 ) then
+           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+           write (unit,nml=lscale_cond_nml)
+      endif
       call close_file (unit)
 
       do_init=.false.

@@ -11,16 +11,16 @@
 <A HREF="#REFERENCES">REFERENCES</A> / 
 <A HREF="#NOTES">NOTES</A> 
 </FONT>
-<P><I>Last updated on <!--#exec cmd="echo $LAST_MODIFIED" -->.</I>
 <BR><BR></DIV><HR>
 
 
 <H2>Module Strat_Cloud</H2>
 <A NAME="HEADER">
 <PRE>
-     Version: v1.0
-     Date:    April 1, 1999
-     Contact: Steve Klein
+     <B>Contact:</B>   Steve Klein
+     <B>Reviewers:</B>
+
+     <B><A HREF=".doc.log#strat_cloud.f90">Tags/Status</A></B>
 </PRE>
 </A><!-- END HEADER -->
 <!--------------------------------------------------------------------->
@@ -452,8 +452,22 @@ Notes:
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
+<B><A HREF=".doc.log#strat_cloud.f90">CVS Revision history</A></B>
 
-    No recent changes.
+    On 6/15/00, from version 2.0 to version v2.1
+
+    The primary change is incorporation of a new method for treating the
+Bergeron process.  The old method was based on an ad-hoc formulation
+of Steve Klein, whereas the new method is based upon the physical
+arguments and derivation of Rotstayn (2000).  As a result, the namelist
+parameter tau_berg no longer is present. The secondary change is a 
+change of cloud and precipitation overlap assumption from maximum 
+random to random for the precipitation transfers at level interfaces. 
+The tertiary change is in the division of large-scale condensation/
+evaporation into liquid and ice phases. The new formulism produces 
+liquid only for all condensation, and evaporates liquid before ice.
+A fourth change is that cloud ice will melt when the temperature is
+greater that the Tfreeze not Tfreeze+2.
 
 </PRE>
 </A><!-- END CHANGES -->

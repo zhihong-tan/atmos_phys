@@ -27,8 +27,7 @@ use   time_manager_mod, only: time_type
 use      constants_mod, only: grav, rdgas, rvgas, cp, kappa, p00, hlv
 
 use      utilities_mod, only: error_mesg, open_file, file_exist, &
-                              print_version_number, get_my_pe,   &
-                              close_file, FATAL
+                              get_my_pe, close_file, FATAL
 
 implicit none
 private
@@ -40,7 +39,10 @@ public   vert_turb_driver_init, vert_turb_driver_end, vert_turb_driver
 
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
- character(len=8), parameter :: vers_num = 'v2.0'
+
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 1.2 2000/08/04 19:04:10 fms Exp $'
+character(len=128) :: tag = '$Name: bombay $'
+
 !-----------------------------------------------------------------------
 
  real, parameter :: p00inv = 1./p00
@@ -279,8 +281,10 @@ subroutine vert_turb_driver_init (id, jd, kd, axes, Time)
 !---------- output namelist --------------------------------------------
 
       unit = open_file (file='logfile.out', action='append')
-      call print_version_number (unit, 'vert_turb_driver', vers_num)
-      if ( get_my_pe() == 0 ) write (unit,nml=vert_turb_driver_nml)
+      if ( get_my_pe() == 0 ) then
+           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+           write (unit,nml=vert_turb_driver_nml)
+      endif
       call close_file (unit)
 
 !-----------------------------------------------------------------------

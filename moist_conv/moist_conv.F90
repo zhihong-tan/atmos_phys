@@ -4,10 +4,9 @@ module moist_conv_mod
 !-----------------------------------------------------------------------
 
 use  sat_vapor_pres_mod, ONLY: EsComp, DEsComp
-use       utilities_mod, ONLY:  error_mesg, file_exist, open_file,     &
-                                check_nml_error, print_version_number, &
-                                FATAL, WARNING, NOTE, get_my_pe,       &
-                                close_file
+use       utilities_mod, ONLY:  error_mesg, file_exist, open_file,  &
+                                check_nml_error, close_file,        &
+                                FATAL, WARNING, NOTE, get_my_pe
 use       constants_mod, ONLY: HLv, HLs, cp, grav, rdgas, rvgas
 
 implicit none
@@ -33,7 +32,8 @@ public :: moist_conv, moist_conv_Init
 !-----------------------------------------------------------------------
 !---- VERSION NUMBER -----
 
- character(len=4), parameter :: vers_num = 'v2.0'
+ character(len=128) :: version = '$Id: moist_conv.F90,v 1.2 2000/07/28 20:16:40 fms Exp $'
+ character(len=128) :: tag = '$Name: bombay $'
 
 !---------- initialize constants used by this module -------------------
 
@@ -179,7 +179,8 @@ real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta,DTinv
          Test2(:,:,k)=ALRM(:,:,k)+ALTOL-Test1(:,:,k)
       enddo
 
-      Test1(:,:,:)=0.0-Qdif(:,:,:)
+!!!!! Test1(:,:,:)=0.0-Qdif(:,:,:)
+      Test1(:,:,:)=(0.0-Qdif(:,:,:))*Qsat(:,:,:)
 
 !-------IVF=1 in unstable layers where both levels are saturated--------
 
@@ -347,7 +348,9 @@ real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta,DTinv
 
       do k=1,MXLEV1
         IVF(i,j,k)=0
-        if (Qdif(i,j,k) > 0.0 .and. Qdif(i,j,k+1) > 0.0 .and.  &
+!!!!    if (Qdif(i,j,k) > 0.0 .and. Qdif(i,j,k+1) > 0.0 .and.  &
+        if (Qdif(i,j,k)*Qsat(i,j,k) > 0.0 .and.     &
+             Qdif(i,j,k+1)*Qsat(i,j,k+1) > 0.0 .and.  &
               (Temp(i,j,k+1)-Temp(i,j,k)) > (ALRM(i,j,k)+ALTOL)) then
                        IVF(i,j,k) = 1
         endif
@@ -614,8 +617,10 @@ END SUBROUTINE CONV_DETR
 !---------- output namelist --------------------------------------------
 
       unit = open_file ('logfile.out', action='append')
-      call print_version_number (unit, 'moist_conv', vers_num)
-      if ( get_my_pe() == 0 ) write (unit,nml=moist_conv_nml)
+      if ( get_my_pe() == 0 ) then
+           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+           write (unit,nml=moist_conv_nml)
+      endif
       call close_file (unit)
 
 

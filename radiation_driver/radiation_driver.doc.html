@@ -12,16 +12,16 @@
 <A HREF="#REFERENCES">REFERENCES</A> / 
 <A HREF="#NOTES">NOTES</A> 
 </FONT>
-<P><I>Last updated on <!--#exec cmd="echo $LAST_MODIFIED" -->.</I>
 <BR><BR></DIV><HR>
 
 
 <H2>Module radiation_driver_mod</H2>
 <A NAME="HEADER">
 <PRE>
-     Version: v2.1
-     Date:    January 24, 2000
-     Contact: Bruce Wyman
+     <B>Contact:</B>   Bruce Wyman
+     <B>Reviewers:</B>
+
+     <B><A HREF=".doc.log#radiation_driver.f90">Tags/Status</A></B>
 </PRE>
 </A><!-- END HEADER -->
 <!--------------------------------------------------------------------->
@@ -76,21 +76,23 @@ The following modules are called from this driver module:
 <!-- BEGIN INTERFACE -->
 <PRE>
 
-use radiation_driver_mod [,only: radiation_driver_init,
+<b>use radiation_driver_mod</b> [,only: radiation_driver_init,
                                  radiation_driver,
                                  radiation_driver_end]
 
-radiation_driver_init - Must be called once before radiation_driver
-                        to initialize the module (read namelist input and
-                        restart file).  Also calls the initialization routines
-                        for other modules used.
+   <a href="radiation_driver.doc.html#radiation_driver_init">radiation_driver_init</a>
+       Must be called once before subroutine radiation_driver to
+       initialize the module (read namelist input and restart file).
+       Also calls the initialization routines for other modules used.
 
-radiation_driver      - Called every time step (not on the radiation time step)
-                        to compute the longwave and shortwave radiative tendencies.
+   <a href="radiation_driver.doc.html#radiation_driver">radiation_driver</a>
+       Called every time step (not on the radiation time step)
+       to compute the longwave and shortwave radiative tendencies.
 
-radiation_driver_end  - Called once at the end of a model run to terminate
-                        the module (write a restart file). Also calls the
-                        termination routines for other modules used.
+   <a href="radiation_driver.doc.html#radiation_driver_end">radiation_driver_end</a>
+       Called once at the end of a model run to terminate the module (write
+       a restart file). Also calls the termination routines for other
+       modules used.
 
 Notes:
  1) A namelist interface controls runtime options.
@@ -104,6 +106,7 @@ Notes:
 <H4>PUBLIC ROUTINES</H4>
 <!-- BEGIN ROUTINES -->
 <PRE>
+<a name="radiation_driver_init">
 
 call radiation_driver_init (lonb, latb, pref, axes, Time)
 
@@ -133,10 +136,12 @@ input
     Time      The current time.  [time_type]
                                                             
 ---------------------------------------------------------------------
+<a name="radiation_driver">
 
 call radiation_driver (is, ie, js, je, Time, dt, lat, lon,
                        pfull, phalf, t, q, ts, land, albedo,
-                       tdt, flux_sw, flux_lw  [, mask, kbot] )
+                       tdt, flux_sw, flux_lw, coszen,
+                       [, mask, kbot] )
 
 input
 
@@ -187,6 +192,9 @@ output
     flux_lw    downward longwave surface flux (in watts/m**2)
                  [real, dimension(:,:)]
 
+    coszen     cosine of the zenith angle
+                 [real, dimension(:,:)]
+
 input (optional)
 
     mask       mask (1. or 0.) for grid boxes above or below
@@ -198,6 +206,7 @@ input (optional)
                  [integer, dimension(:,:)]
 
 ---------------------------------------------------------------------
+<a name="radiation_driver_end">
 
 call radiation_driver_end
 
@@ -218,7 +227,7 @@ call radiation_driver_end
                        [integer, default: dt_rad=43200]
 
   offset             An offset for radiative time step (in seconds).
-                     Note: If offset=1 then radition will be done on the first
+                     Note: If offset=1 then radiation will be done on the first
                      time step after t=0, dt_rad, 2*dt_rad, etc.
                      FOR NOW DO NOT CHANGE THIS VALUE
                        [integer, default: offset=1]
@@ -286,13 +295,6 @@ Diagnostic fields for module name: <b>radiation</b>
    ----------      -----------------
 
    alb_sfc         surface albedo (percent)
-   tot_cld_amt     total cloud amount (percent)
-   cld_amt         cloud amount (percent)
-   em_cld          cloud emissivity (percent)
-   alb_uv_cld      UV reflected by cloud (percent)
-   alb_nir_cld     IR reflected by cloud (percent)
-   abs_uv_cld      UV absorbed by cloud (percent)
-   abs_nir_cld     IR absorbed by cloud (percent)
 
    tdt_sw          temperature tendency for SW radiation (deg_K/sec)
    tdt_lw          Temperature tendency for LW radiation (deg_K/sec)
@@ -334,13 +336,15 @@ NOTE: When namelist variable <b>do_clear_sky_diag = .true.</b> an additional cle
 <b>Restart file</b>
      A restart data set called <b>radiation_driver.res</b> saves the
      global fields for the current radiative tendency, net shortwave
-     surface flux , and downward longwave surface flux. If the namelist
-     variable do_average=true, then additional time averaged global data
-     is written. If the restart file is not present when initializing
-     then the radiative tendency is set to zero and the SW and LW surface
-     fluxes to 50 watts/m2. Since radiation is usually computed on the
-     first time step when restarting, these values may have litle or no effect.
-     If the restart file is not present time average data is also set to zero.
+     surface flux, downward longwave surface flux, and cosine of the
+     zenith angle. If the namelist variable do_average=true,
+     then additional time averaged global data is written.
+     If the restart file is not present when initializing then the
+     radiative tendency is set to zero, the SW and LW surface fluxes
+     to 50 watts/m2, and the cosine of the zenith angle to 0.50.
+     Since radiation is usually computed on the first time step when
+     restarting, these values may have little or no effect.  If the
+     restart file is not present time average data is also set to zero.
 
 </PRE>
 </A><!-- END DATA_SETS -->
@@ -350,8 +354,9 @@ NOTE: When namelist variable <b>do_clear_sky_diag = .true.</b> an additional cle
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
+<B><A HREF=".doc.log#radiation_driver.f90">Revision history</A></B>
 
-<b>changes for v2.1</b> (1/24/2000)
+<b>changes prior to 1/24/2000</b>
 
   * Modified the radiation alarm. 
     The module can now be stopped/started on a time step that is not the
@@ -362,12 +367,12 @@ NOTE: When namelist variable <b>do_clear_sky_diag = .true.</b> an additional cle
 
   * Fixed a bug that occurred when namelist variable do_average = true.
     An addition averaging variable was added for array "solar". 
-    This averaging information wsas also added to the restart file.
+    This averaging information was also added to the restart file.
 
   * Removed the initialization for the astronomy package. This is now done
     by the astronomy namelist.
 
-<b>changes for v2.0</b> (10/4/1999)
+<b>changes prior to 10/4/1999</b>
 
   * MPP version created. Changes to open_file and error_mesg arguments, 
     Fortran write statements to standard output only on PE 0, Fortran close
@@ -381,7 +386,7 @@ NOTE: When namelist variable <b>do_clear_sky_diag = .true.</b> an additional cle
   * There were no changes made that would cause answers to changes.
 
 
-<b>changes for v1.0</b> (5/26/1999)
+<b>changes prior to 5/26/1999</b>
 
   * added namelist variables for modifying the co2 mixing ratio.
 
@@ -419,12 +424,6 @@ NOTE: When namelist variable <b>do_clear_sky_diag = .true.</b> an additional cle
 
 <b>Notes given in radiation_driver_init:</b>
 
-    <b>current calendar not equal restart calendar</b>
-       The calendar type set by the current model run (probably set in
-       the main program) does not match the calendar type found on the
-       radiation restart file. The current calendar will be used and the
-       radiation alarm will be reset.
-
     <b>radiation time step has changed, next radiation time also changed</b>
        The radiation time step from the namelist input did not match
        the radiation time step from the radiation restart file.
@@ -441,7 +440,7 @@ NOTE: When namelist variable <b>do_clear_sky_diag = .true.</b> an additional cle
 <PRE>
 
      For a specific list of radiation references see the
-     longwave and shortwave documention.
+     longwave and shortwave documentation.
 
 </PRE>
 </A><!-- END REFERENCES -->
@@ -482,10 +481,6 @@ NOTE: When namelist variable <b>do_clear_sky_diag = .true.</b> an additional cle
 <H4>FUTURE PLANS</H4>
 <!-- BEGIN PLANS -->
 <PRE>
-
-     * Modify the radiation alarm (again) so that the alarm is not
-       a function of the absolute time, but rather a delta time to
-       the next radiation step.
 
      * Interface for new longwave and shortwave radiation programs.
 

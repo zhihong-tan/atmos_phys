@@ -5,7 +5,7 @@
 !=======================================================================
 
  use Utilities_Mod, ONLY: FILE_EXIST, ERROR_MESG, OPEN_FILE, &
-                          CHECK_NML_ERROR, PRINT_VERSION_NUMBER, &
+                          CHECK_NML_ERROR,                   &
                           get_my_pe, FATAL, WARNING, CLOSE_FILE
  use Constants_Mod, ONLY: Grav, Kappa
 !---------------------------------------------------------------------
@@ -16,9 +16,8 @@
 
 !---------------------------------------------------------------------
 
-!         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-          character(len=4) :: Vers_Num = 'v2.0'
-!         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ character(len=128) :: version = '$Id: dry_adj.F90,v 1.2 2000/08/04 18:46:36 fms Exp $'
+ character(len=128) :: tag = '$Name: bombay $'
 
  logical :: do_init = .true.
 
@@ -192,8 +191,10 @@
 !---------------------------------------------------------------------
 
   unit = open_file ('logfile.out', action='append')
-  call print_version_number (unit, 'dry_adj', Vers_Num)
-  if ( get_my_pe() == 0 ) WRITE( unit, nml = dry_adj_nml ) 
+  if ( get_my_pe() == 0 ) then
+       WRITE( unit,'(/,80("="),/(a))') trim(version), trim(tag)
+       WRITE( unit, nml = dry_adj_nml ) 
+  endif
   CALL CLOSE_FILE ( unit )
 
 

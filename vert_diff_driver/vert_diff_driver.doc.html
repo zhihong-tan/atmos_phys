@@ -12,16 +12,16 @@
 <A HREF="#REFERENCES">REFERENCES</A> / 
 <A HREF="#NOTES">NOTES</A> 
 </FONT>
-<P><I>Last updated on <!--#exec cmd="echo $LAST_MODIFIED" -->.</I>
 <BR><BR></DIV><HR>
 
 
 <H2>Module vert_diff_driver_mod</H2>
 <A NAME="HEADER">
 <PRE>
-     Version: v1.0
-     Date:    September 3, 1999
-     Contact: Bruce Wyman or Isaac Held
+     <B>Contact:</B>   Bruce Wyman or Isaac Held
+     <B>Reviewers:</B>
+
+     <B><A HREF=".doc.log#vert_diff_driver.f90">Tags/Status</A></B>
 </PRE>
 </A><!-- END HEADER -->
 <!--------------------------------------------------------------------->
@@ -302,8 +302,7 @@ sphum_dt_diff_file   qdt_vdif   kg/kg/s  specific humidity tendency from vertica
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
-
-     No recent changes.
+<B><A HREF=".doc.log#vert_diff_driver.f90">Revision history</A></B>
 
 </PRE>
 </A><!-- END CHANGES -->
@@ -314,11 +313,16 @@ sphum_dt_diff_file   qdt_vdif   kg/kg/s  specific humidity tendency from vertica
 <!-- BEGIN ERRORS -->
 <PRE>
 
-<b>Fatal Error in vert_diff_mod</b>
+<b>Fatal Errors in vert_diff_driver_mod</b>
 
-    <b>vert_diff_init must be called first</b>
+    <b>vert_diff_driver_init must be called first</b>
         The initialization for this module must be called before
-        calling routine vert_diff_down.
+        calling routine vert_diff_driver_down.
+
+    <b>Number of tracers .lt. namelist value of ntp</b>
+        The number of tracers passed as arguments to vert_diff_driver_down
+        is less than the namelist value for "ntp". 
+        You have probably set the namelist value incorrectly.
 
 </PRE>
 </A><!-- END ERRORS -->
@@ -340,9 +344,7 @@ sphum_dt_diff_file   qdt_vdif   kg/kg/s  specific humidity tendency from vertica
 <!-- BEGIN BUGS -->
 <PRE>
 
-     The default value of namelist variable "ntp" should be 0.
-     The current (incorrect) default of 1 may result in tracer #1
-     being diffused when it should not.
+     There are no known bugs.
 
 </PRE>
 </A><!-- END BUGS -->

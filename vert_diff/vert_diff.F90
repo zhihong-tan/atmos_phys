@@ -13,7 +13,7 @@ use   constants_mod, only:  grav, rdgas, rvgas, cp
 
 use   utilities_mod, only:  error_mesg, FATAL, file_exist, &
                             check_nml_error, open_file,    &
-                            print_version_number, close_file
+                            get_my_pe, close_file
 
 implicit none
 private
@@ -80,7 +80,8 @@ logical :: do_init = .true.
 
 !--------------------- version number ---------------------------------
 
-character(len=4), parameter :: vers_num = 'v2.0'
+character(len=128) :: version = '$Id: vert_diff.F90,v 1.2 2000/08/04 19:03:28 fms Exp $'
+character(len=128) :: tag = '$Name: bombay $'
 
 real, parameter :: d608 = (rvgas-rdgas)/rdgas
 
@@ -96,7 +97,8 @@ subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim)
  integer :: unit
 
     unit = open_file ('logfile.out', action='append')
-    call print_version_number (unit, 'vert_diff', vers_num)
+    if (get_my_pe() == 0) &
+    write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
     call close_file (unit)
 
  if (do_init) then

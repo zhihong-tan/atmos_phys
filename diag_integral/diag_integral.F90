@@ -13,7 +13,7 @@ use     time_manager_mod, only:  time_type, get_time, set_time,  &
                                  operator(/=)
 use        utilities_mod, only: file_exist, error_mesg, open_file,  &
                                 check_nml_error, get_my_pe, FATAL,  &
-                                print_version_number, close_file
+                                close_file
 use        constants_mod, only: radius
 
 use              mpp_mod, only: mpp_sum
@@ -51,7 +51,9 @@ end interface
 
 !-----------------------------------------------------------------------
 !----- version number -----
-   character(len=4), parameter :: vers_num = 'v2.0'
+
+   character(len=128) :: version = '$Id: diag_integral.F90,v 1.2 2000/08/04 18:43:06 fms Exp $'
+   character(len=128) :: tag = '$Name: bombay $'
 
    type (time_type) :: Next_alarm_time, Alarm_interval,  &
                        Zero_time
@@ -206,8 +208,10 @@ contains
 
 !      ----- write namelist -----
       unit = open_file ('logfile.out', action='append')
-      call print_version_number (unit, 'diag_integral', vers_num)
-      if ( get_my_pe() == 0 ) write (unit, nml=diag_integral_nml)
+      if ( get_my_pe() == 0 ) then
+           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+           write (unit, nml=diag_integral_nml)
+      endif
       call close_file (unit)
 
 !----- grid setup ----

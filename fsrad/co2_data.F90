@@ -5,11 +5,11 @@
 
       use fs_profile_mod, ONLY:  fs_profile
       Use     co2int_mod, ONLY:  co2int, TRNS
-      Use  Utilities_Mod, ONLY:  open_file, print_version_number,  &
+      Use  Utilities_Mod, ONLY:  open_file, get_my_pe,  &
                                  Error_Mesg, FATAL, close_file
 
       Private   fs_profile, co2int, TRNS,  &
-                open_file, print_version_number, Error_Mesg
+                open_file, get_my_pe, Error_Mesg, FATAL, close_file
 
 !-----------------------------------------------------------------------
 !
@@ -112,7 +112,10 @@
 
 !-----------------------------------------------------------------------
 !------------ VERSION NUMBER ----------------
-Character(len=4), Private, Parameter :: vers_num = 'v2.1'
+
+ character(len=128) :: version = '$Id: co2_data.F90,v 1.2 2000/08/04 18:48:20 fms Exp $'
+ character(len=128) :: tag = '$Name: bombay $'
+
 !-----------------------------------------------------------------------
 
       Public   CO2_Data, Write_CO2_Data, Read_CO2_Data
@@ -147,7 +150,8 @@ Character(len=4), Private, Parameter :: vers_num = 'v2.1'
 !---- write version number -----
 
       unit = open_file (file='logfile.out', action='APPEND')
-      call print_version_number (unit, 'co2_data', vers_num)
+      if (get_my_pe() == 0) &
+      write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
       call close_file (unit)
 
 !----- check input values -----

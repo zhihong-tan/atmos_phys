@@ -11,16 +11,16 @@
 <A HREF="#REFERENCES">REFERENCES</A> / 
 <A HREF="#PLANS">PLANS</A> 
 </FONT>
-<P><I>Last updated on <!--#exec cmd="echo $LAST_MODIFIED" -->.</I>
 <BR><BR></DIV><HR>
 
 
 <H2>Module Cloud_Rad_Mod</H2>
 <A NAME="HEADER">
 <PRE>
-     Version: v2.1
-     Date:    January 24, 2000
-     Contact: Steve Klein
+     <B>Contact:</B>   Steve Klein
+     <B>Reviewers:</B>
+
+     <B><A HREF=".doc.log#cloud_rad.f90">Tags/Status</A></B>
 </PRE>
 </A><!-- END HEADER -->
 <!--------------------------------------------------------------------->
@@ -307,12 +307,18 @@ input/output
                       performed.
                       [logical]
 
-                      used only if strat_cloud_mod is operating
+       scale_factor   Factor which multiplies actual cloud
+                      optical depths to account for the
+                      plane-parallel homogenous cloud bias
+                      (e.g. Cahalan effect). [real]
+
+       qamin          minimum permissible cloud fraction [real]
+ 
 
 Notes:
 
- 1) Namelist parameters adjust_top and overlap are only used by
-    the stratiform cloud scheme when it is operating.
+ 1) Namelist parameters adjust_top, overlap, and scale_factor are 
+    only used by the stratiform cloud scheme when it is operating.
 
 </PRE>
 </A><!-- END NAMELIST -->
@@ -322,18 +328,32 @@ Notes:
 <H4>CHANGE HISTORY</H4>
 <!-- BEGIN CHANGES -->
 <PRE>
+<B><A HREF=".doc.log#cloud_rad.f90">CVS Revision history</A></B>
 
 
-<b>changes for v2.1</b> (10/4/1999)
+<B>Changes prior to CVS version control</B>
+
+<b>changes</b> (10/4/1999)
 
      Reset cloud properties to zero where there is zero cloud amount.
      This was needed for reproducibility on different numbers of
      processors. Answers may change slightly.
 
-<b>changes for v2.0</b> (10/4/1999)
+<b>changes</b> (10/4/1999)
 
      MPP version created. Minor changes for open_file and Fortran
      write statements. Answers should reproduce the previous version.
+
+<b>changes</b> (6/15/2000)
+
+     There are two changes to cloud_rad.  First, all clouds with cloud
+     fraction less than the namelist parameter qamin (default value 0.01)
+     are removed from set to zero for purposes of calculation cloud radiative
+     properties.  This is because the diffusive nature of the advection
+     scheme creates very small cloud fraction clouds which have zero
+     significance.  Second, to account for the plane-parallel cloud
+     albedo bias, the optical depth is scaled by a namelist parameter
+     scale_factor (default value 0.8).
 
 </PRE>
 </A><!-- END CHANGES -->

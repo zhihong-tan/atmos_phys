@@ -15,8 +15,7 @@ module monin_obukhov_mod
 use constants_mod, only : grav, vonkarm
 use utilities_mod, only:  error_mesg, FATAL, file_exist,   &
                           check_nml_error, open_file,      &
-                          print_version_number, get_my_pe, &
-                          close_file
+                          get_my_pe, close_file
 
 implicit none
 private
@@ -242,7 +241,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=4), parameter :: vers_num = 'v2.0'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.2 2000/07/28 20:16:42 fms Exp $'
+character(len=128) :: tag = '$Name: bombay $'
 
 !=======================================================================
 
@@ -286,8 +286,10 @@ integer :: unit, ierr, io
 !---------- output namelist to log-------------------------------------
 
       unit = open_file ('logfile.out', action='append')
-      call print_version_number (unit, 'monin_obukhov', vers_num)
-      if ( get_my_pe() == 0 ) write (unit, nml=monin_obukhov_nml)
+      if ( get_my_pe() == 0 ) then
+           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+           write (unit, nml=monin_obukhov_nml)
+      endif
       call close_file (unit)
 
 
@@ -687,6 +689,10 @@ logical, dimension(size(z)) :: avail, avail1
 
 
 if(.not.init) call monin_obukhov_init
+
+!-- zero output arrays --
+    del_m = 0.0
+    del_h = 0.0
 
 avail = .true.
 if (present(mask)) avail = mask

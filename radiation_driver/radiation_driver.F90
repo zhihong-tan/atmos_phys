@@ -15,17 +15,15 @@
    use       constants_mod, only: p00
    use       utilities_mod, only: file_exist, error_mesg, FATAL, NOTE, &
                                   check_nml_error, open_file,          &
-                                  print_version_number, get_my_pe,     &
-                                  read_data, write_data, close_file
+                                  read_data, write_data, close_file,   &
+                                  get_my_pe
 
    use          clouds_mod, only:  clouds, clouds_init, clouds_end
 
    use    diag_manager_mod, only:  register_diag_field, send_data
 
-   use    time_manager_mod, only:  time_type, increment_time,      &
-                                   set_date, set_time, get_time,   &
-                                   get_calendar_type, operator(+), &
-                                   operator(>), operator(>=),      &
+   use    time_manager_mod, only:  time_type, set_date, set_time,  &
+                                   get_time,    operator(+),       &
                                    operator(-), operator(/=)
 
    use     strat_cloud_mod, only:  add_strat_tend
@@ -43,10 +41,12 @@
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-      character(len=4), parameter :: version_number = 'v2.1'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 1.2 2000/07/28 20:16:45 fms Exp $'
+character(len=128) :: tag = '$Name: bombay $'
 
 !   ---- list of restart versions readable by this module ----
-      integer, dimension(1) :: restart_versions = (/ 1 /)
+!   (sorry, but restart version 1 will not be readable by this module)
+      integer, dimension(1) :: restart_versions = (/ 2 /)
 !-----------------------------------------------------------------------
 
      real, parameter :: p00inv=1./p00
@@ -69,16 +69,32 @@
     logical ::  use_rad_date
 
 !-----------------------------------------------------------------------
-!   tdt_rad = the current radiative (sw + lw) heating rate
+!  ------- allocatable global data saved by this module -------
+!
+!   tdt_rad      = radiative (sw + lw) heating rate
+!   flux_sw_surf = net (down-up) sw flux at surface
+!   flux_lw_surf = downward lw flux at surface
+!   coszen_angle = cosine of the zenith angle 
+!                  (used for the last radiation calculation)
 
     real, allocatable, dimension(:,:,:) :: tdt_rad
-    real, allocatable, dimension(:,:)   :: flux_sw_surf, flux_lw_surf
+    real, allocatable, dimension(:,:)   :: flux_sw_surf, &
+                                           flux_lw_surf, &
+                                           coszen_angle
 
 !-----------------------------------------------------------------------
 !   ------------------- time step constant --------------------------
+!
+!   rad_alarm     = time interval until the next radiation calculation
+!                   (integer in seconds)
+!   rad_time_step = radiation time step (integer in seconds)
+!   total_pts = number of grid boxes to be processed every time step
+!               (note: all grid boxes must be processed every time step)
+!   num_pts   = counter for current number of grid boxes processed
+!             (when num_pts=0 or num_pts=total_pts certain things happen)
 
            integer :: num_pts, total_pts
-   type(time_type) :: Next_rad_time, Rad_time_step
+           integer :: rad_alarm, rad_time_step
 
 !-----------------------------------------------------------------------
 !------- private allocatable array for time averaged input data --------
@@ -125,8 +141,7 @@ namelist /radiation_driver_nml/ dt_rad, offset, do_average, &
 !-----------------------------------------------------------------------
 !-------------------- diagnostics fields -------------------------------
 
-integer :: id_alb_sfc, id_tot_cld_amt, id_cld_amt, id_em_cld,  &
-           id_alb_uv_cld, id_alb_nir_cld, id_abs_uv_cld, id_abs_nir_cld
+integer :: id_alb_sfc
 
 integer, dimension(2) :: id_tdt_sw,   id_tdt_lw,  &
                          id_swdn_toa, id_swup_toa, id_olr, &
@@ -147,7 +162,7 @@ contains
    subroutine radiation_driver (is, ie, js, je, Time, dt,             &
                                 lat, lon, pfull, phalf, t, q, ts,     &
                                 land, albedo, tdt, flux_sw, flux_lw,  &
-                                mask, kbot)
+                                coszen, mask, kbot)
 
 !-----------------------------------------------------------------------
 !
@@ -171,6 +186,8 @@ contains
 !
 !   out:  flux_sw    net shortwave surface flux (down-up) (w/m2)
 !         flux_lw    downward longwave surface flux (w/m2)
+!         coszen     cosine of the zenith angle used for the most
+!                    recent radiation calculation
 !
 ! optional in:
 !         mask
@@ -186,7 +203,7 @@ type(time_type), intent(in)            :: Time
    real, intent(in), dimension(:,:)    :: land
    real, intent(in), dimension(:,:)    :: albedo
    real, intent(inout), dimension(:,:,:) :: tdt
-   real, intent(out),   dimension(:,:)   :: flux_sw, flux_lw
+   real, intent(out),   dimension(:,:)   :: flux_sw, flux_lw, coszen
 
    real, intent(in), dimension(:,:,:),optional   :: mask
 integer, intent(in), dimension(:,:),optional     :: kbot
@@ -199,17 +216,10 @@ integer, intent(in), dimension(:,:),optional     :: kbot
 !-----------------------------------------------------------------------
 !------------ is this a radiative time step ??? ------------------------
 
-      if ( Time >= Next_rad_time ) then
-            do_rad = .true.
-            num_pts = num_pts + size(t,1) * size(t,2)
-!           --- increment alarm when all points have been processed ---
-            if (num_pts == total_pts) then
-                Next_rad_time = Next_rad_time + Rad_time_step
-                num_pts = 0
-            endif
-      else
-            do_rad = .false.
-      endif
+      if ( num_pts == 0 ) rad_alarm = rad_alarm - nint(dt)
+      num_pts = num_pts + size(t,1) * size(t,2)
+
+      if ( rad_alarm <= 0 ) do_rad = .true.
 
 !-----------------------------------------------------------------------
 !--------- set up radiative input data and/or --------------------------
@@ -228,6 +238,7 @@ integer, intent(in), dimension(:,:),optional     :: kbot
 
          flux_sw(:,:) =         flux_sw_surf(is:ie,js:je)
          flux_lw(:,:) =         flux_lw_surf(is:ie,js:je)
+         coszen (:,:) =         coszen_angle(is:ie,js:je)
 
          
 !-----------------------------------------------------------------------
@@ -238,6 +249,17 @@ integer, intent(in), dimension(:,:),optional     :: kbot
 
          call add_strat_tend(is,ie,js,je,tdt_rad(is:ie,js:je,:))
          
+
+!-----------------------------------------------------------------------
+!--- reset alarm when all points have been processed ---
+
+    if ( num_pts == total_pts ) then
+        num_pts = 0
+        if ( do_rad ) then
+             rad_alarm = rad_alarm + rad_time_step
+             do_rad = .false.
+        endif
+    endif
 
 !-----------------------------------------------------------------------
 
@@ -274,11 +296,9 @@ integer,dimension(size(t,1),size(t,2), size(t,3)+1) :: ktop,kbtm,  &
                                                        ktopsw,kbtmsw
 
    real,dimension(size(t,1),size(t,2),size(t,3))  :: tdtsw,tdtlw
-   real,dimension(size(t,1),size(t,2),size(t,3))  :: cloud
    real,dimension(size(t,1),size(t,2))   :: swin,swout,olr, &
                                             swups,swdns,lwups,lwdns
 integer,dimension(size(t,1),size(t,2))   :: nclds
-   real,dimension(size(t,1),size(t,2))   :: tca
    real,dimension(size(t,1),size(t,2))   :: hang,cosz,solar,  &
                                             psfc,tsfc,asfc
 
@@ -305,9 +325,9 @@ type(time_type) :: Rad_time, Dt_zen
 
       if (do_diurnal) then
          if (do_average) then
-            Dt_zen = set_time(int(dt+0.5),0)
+            Dt_zen = set_time(nint(dt),0)
          else
-            Dt_zen = Rad_time_step
+            Dt_zen = set_time(rad_time_step,0)
          endif
          call diurnal_solar     (cosz, solar, lat,lon, Rad_time, Dt_zen)
       else if (do_annual) then
@@ -413,23 +433,11 @@ type(time_type) :: Rad_time, Dt_zen
                           no_clouds = .true.
       if (ipass == npass) no_clouds = .false.
       
-      if ( id_tot_cld_amt > 0 ) then
-
-
-           call clouds (is,js, no_clouds, Rad_time, lat, land,   &
-                        press(:,:,1:kd), p_int, temp(:,:,1:kd),   &
-                        cosz,nclds, ktopsw, kbtmsw, ktop, kbtm,   &
-                        cldamt, cuvrf, cirrf, cirab, emcld, kbot, tca)
-           
-      else
-
-          call clouds (is,js, no_clouds, Rad_time, lat, land,   &
-                        press(:,:,1:kd), p_int, temp(:,:,1:kd),   &
-                        cosz,nclds, ktopsw, kbtmsw, ktop, kbtm,   &
-                        cldamt, cuvrf, cirrf, cirab, emcld, kbot)
+      call clouds (is,js, no_clouds, Rad_time, lat, land,   &
+                    press(:,:,1:kd), p_int, temp(:,:,1:kd),   &
+                    cosz,nclds, ktopsw, kbtmsw, ktop, kbtm,   &
+                    cldamt, cuvrf, cirrf, cirab, emcld, mask, kbot)
  
-      endif
-      
 !-----------------------------------------------------------------------
 !----------------------------- radiation -------------------------------
 
@@ -466,8 +474,7 @@ type(time_type) :: Rad_time, Dt_zen
 
        flux_sw_surf(is:ie,js:je) = swdns(:,:)-swups(:,:)
        flux_lw_surf(is:ie,js:je) = lwdns(:,:)
-
-!del      radflux(is:ie,js:je)=(swups(:,:)-swdns(:,:))+(-lwdns(:,:))
+       coszen_angle(is:ie,js:je) = cosz (:,:)
 
 !-----------------------------------------------------------------------
 !------------------------ diagnostics section --------------------------
@@ -475,90 +482,6 @@ type(time_type) :: Rad_time, Dt_zen
 !------- albedo (only do once) -------------------------
       if ( id_alb_sfc > 0 .and. .not. no_clouds ) then
          used = send_data ( id_alb_sfc, asfc, Time, is, js )
-      endif
-
-!------- TOTAL CLOUD AMOUNT (only do once) -----------------
-      if ( id_tot_cld_amt > 0 .and. .not. no_clouds ) then
-         tca = tca*100.
-         used = send_data ( id_tot_cld_amt, tca, Time, is, js )
-      endif
-
-!------- cloud amount (only do once ?) -------------------------
-      if ( id_cld_amt > 0 .and. .not. no_clouds ) then
-!        -- insert clouds (use n+1 offset) --
-         cloud=0.0
-         do j=1,jd; do i=1,id
-            do n=1,nclds(i,j)
-              cloud(i,j,ktop(i,j,n+1):kbtm(i,j,n+1)) = cldamt(i,j,n+1)
-            enddo
-         enddo; enddo
-         used = send_data ( id_cld_amt, cloud, Time, is, js, 1, &
-                            rmask=mask )
-      endif
-
-!------- cloud emissivity ---------------------------------------
-      if ( id_em_cld > 0 .and. .not. no_clouds ) then
-!        -- insert emissivities (use n+1 offset) --
-         cloud=0.0
-         do j=1,jd; do i=1,id
-            do n=1,nclds(i,j)
-              cloud(i,j,ktop(i,j,n+1):kbtm(i,j,n+1)) = emcld(i,j,n+1)
-            enddo
-         enddo; enddo
-         used = send_data ( id_em_cld, cloud, Time, is, js, 1, &
-                            rmask=mask )
-      endif
-
-!------- ultra-violet reflected by cloud -----------------------------
-      if ( id_alb_uv_cld > 0 .and. .not. no_clouds ) then
-!        ---- insert emissivities (use n+1 offset) ----
-         cloud=0.0
-         do j=1,jd; do i=1,id
-            do n=1,nclds(i,j)
-              cloud(i,j,ktop(i,j,n+1):kbtm(i,j,n+1)) = cuvrf(i,j,n+1)
-            enddo
-         enddo; enddo
-         used = send_data ( id_alb_uv_cld, cloud, Time, is, js, 1, &
-                            rmask=mask )
-      endif
-
-!------- infra-red reflected by cloud -----------------------------
-      if ( id_alb_nir_cld > 0 .and. .not. no_clouds ) then
-!        ---- insert emissivities (use n+1 offset) ----
-         cloud=0.0
-         do j=1,jd; do i=1,id
-            do n=1,nclds(i,j)
-              cloud(i,j,ktop(i,j,n+1):kbtm(i,j,n+1)) = cirrf(i,j,n+1)
-            enddo
-         enddo; enddo
-         used = send_data ( id_alb_nir_cld, cloud, Time, is, js, 1, &
-                            rmask=mask )
-      endif
-
-!------- ultra-violet absorbed by cloud (not implemented)------------
-!     if ( id_abs_uv_cld > 0 .and. .not. no_clouds ) then
-!        ---- insert emissivities (use n+1 offset) ----
-!        cloud=0.0
-!        do j=1,jd; do i=1,id
-!           do n=1,nclds(i,j)
-!             cloud(i,j,ktop(i,j,n+1):kbtm(i,j,n+1)) = cuvab(i,j,n+1)
-!           enddo
-!        enddo; enddo
-!        used = send_data ( id_abs_uv_cld, cloud, Time, is, js, 1, &
-!                           rmask=mask )
-!     endif
-
-!------- infra-red absorbed by cloud -----------------------------
-      if ( id_abs_nir_cld > 0 .and. .not. no_clouds ) then
-!        ---- insert emissivities (use n+1 offset) ----
-         cloud=0.0
-         do j=1,jd; do i=1,id
-            do n=1,nclds(i,j)
-              cloud(i,j,ktop(i,j,n+1):kbtm(i,j,n+1)) = cirab(i,j,n+1)
-            enddo
-         enddo; enddo
-         used = send_data ( id_abs_nir_cld, cloud, Time, is, js, 1, &
-                            rmask=mask )
       endif
 
 !------- sw tendency -----------
@@ -634,9 +557,9 @@ type(time_type) :: Rad_time, Dt_zen
         integer, intent(in), dimension(4)   :: axes
 type(time_type), intent(in)                 :: Time
 !-----------------------------------------------------------------------
-      integer :: unit, io, ierr, id, jd, kd, next(2), dt(2), cal, vers
+      integer :: unit, io, ierr, id, jd, kd, vers
       logical :: do_avg_init, end
-      type(time_type) :: Old_time_step, New_rad_time
+      integer :: old_time_step, new_rad_time
       character(len=4) :: chvers
 
       id=size(lonb,1)-1; jd=size(latb,1)-1; kd=size(pref,1)-1
@@ -658,20 +581,22 @@ type(time_type), intent(in)                 :: Time
 !      ----- write namelist -----
 
     unit = open_file ('logfile.out', action='append')
-    call print_version_number (unit, 'radiation_driver', version_number)
-    if ( get_my_pe() == 0 ) write (unit, nml=radiation_driver_nml)
+    if ( get_my_pe() == 0 ) then
+         write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+         write (unit, nml=radiation_driver_nml)
+    endif
     call close_file (unit)
 
 
 !-------- set default alarm info --------
 
      if (offset > 0) then
-        Next_rad_time = increment_time (Time, offset, 0)
+        rad_alarm = offset
      else
-        Next_rad_time = increment_time (Time, dt_rad, 0)
+        rad_alarm = dt_rad
      endif
-        Rad_time_step = set_time (dt_rad,0)
-        Old_time_step = set_time (dt_rad,0)
+        rad_time_step = dt_rad
+        old_time_step = dt_rad
 
 !-----------------------------------------------------------------------
 
@@ -681,8 +606,9 @@ type(time_type), intent(in)                 :: Time
          allocate (tdt_rad     (id,jd,kd))
          allocate (flux_sw_surf(id,jd))
          allocate (flux_lw_surf(id,jd))
+         allocate (coszen_angle(id,jd))
 
-         call clouds_init (lonb,latb)
+         call clouds_init ( lonb, latb, axes, Time )
 
 !-----------------------------------------------------------------------
 !-------------- initialize time averaged input data --------------------
@@ -711,20 +637,13 @@ type(time_type), intent(in)                 :: Time
             endif
 
 !           --- reading alarm info ---
-            read (unit) next,dt,cal
 !           ---- override alarm with restart values ----
-               Old_time_step = set_time (dt(1),dt(2))
-            if ( cal == get_calendar_type() ) then
-               Next_rad_time = set_time (next(1),next(2))
-            else
-!           ---- calendar changed, will reset alarm ----
-               call error_mesg ('radiation_driver_init', &
-                   'current calendar not equal restart calendar', NOTE)
-            endif
+            read (unit) rad_alarm, old_time_step
 
             call read_data (unit, tdt_rad)
             call read_data (unit, flux_sw_surf)
             call read_data (unit, flux_lw_surf)
+            call read_data (unit, coszen_angle)
                 if (do_average) then
                    call read_data (unit, nsum, end)
                    if (end) go to 11
@@ -741,10 +660,12 @@ type(time_type), intent(in)                 :: Time
             call close_file (unit)
          else
 !-------- initial surface flux set to 100 wm-2 ---------
-!--------- only used for initial guess of sea ice temp ------
+!---    was only used for initial guess of sea ice temp ?  -----
+!--- in current model framework the ice model is called after radiation
             tdt_rad = 0.0
             flux_sw_surf = 50.0
             flux_lw_surf = 50.0
+            coszen_angle = 0.50
             if (do_average) do_avg_init = .true.
          endif
 
@@ -758,13 +679,14 @@ type(time_type), intent(in)                 :: Time
 !-----------------------------------------------------------------------
 !--------- adjust radiation alarm if alarm interval has changed --------
 
-     if ( Rad_time_step /= Old_time_step ) then
-         New_rad_time = Next_rad_time - Old_time_step + Rad_time_step
-         if ( New_rad_time > Time ) then
-            call error_mesg ('radiation_driver_init',  &
+     if ( rad_time_step /= old_time_step ) then
+         new_rad_time = rad_alarm - old_time_step + rad_time_step
+         if ( new_rad_time > 0 ) then
+            if (get_my_pe() == 0) call error_mesg      &
+                    ('radiation_driver_init',          &
                      'radiation time step has changed, &
                      &next radiation time also changed', NOTE)
-            Next_rad_time = New_rad_time
+            rad_alarm = new_rad_time
          endif
      endif
         
@@ -803,7 +725,9 @@ type(time_type), intent(in)                 :: Time
 
  subroutine radiation_driver_end
 
-    integer :: unit, next(2), dt(2), cal
+    integer :: unit
+
+!-----------------------------------------------------------------------
 
     unit = open_file (file='RESTART/radiation_driver.res', &
                       form='native', action='write')
@@ -814,16 +738,14 @@ type(time_type), intent(in)                 :: Time
        write (unit) restart_versions(size(restart_versions))
 
 !      --- write alarm info ---
-       call get_time (Next_rad_time,next(1),next(2))
-       call get_time (Rad_time_step, dt (1), dt (2))
-       cal = get_calendar_type()
-       write (unit) next,dt,cal
+       write (unit) rad_alarm, rad_time_step
     endif
 
 !   --- data ---
     call write_data (unit, tdt_rad)
     call write_data (unit, flux_sw_surf)
     call write_data (unit, flux_lw_surf)
+    call write_data (unit, coszen_angle)
 
 !   --- optional time avg data ---
   if (do_average) then
@@ -837,7 +759,18 @@ type(time_type), intent(in)                 :: Time
   endif
     call close_file (unit)
 
+!   --- release space for allocatable data ---
+
+      deallocate (tdt_rad, flux_sw_surf, flux_lw_surf, coszen_angle)
+  if (do_average) then
+      deallocate (nsum, psum, tsum, qsum, asum, csum, ssum)
+  endif
+
+!   --- terminate other modules ---
+
     call clouds_end
+
+!-----------------------------------------------------------------------
 
   end subroutine radiation_driver_end
 
@@ -994,41 +927,6 @@ enddo
     id_alb_sfc = &
     register_diag_field ( mod_name, 'alb_sfc', axes(1:2), Time, &
                          'surface albedo', 'percent'            )
-
-    id_tot_cld_amt = &
-    register_diag_field ( mod_name, 'tot_cld_amt', axes(1:2), Time, &
-                         'total cloud amount', 'percent'            )
-
-    id_cld_amt = &
-    register_diag_field ( mod_name, 'cld_amt', axes(1:3), Time, &
-                         'cloud amount', 'percent',             &
-                         missing_value=missing_value            )
-
-    id_em_cld = &
-    register_diag_field ( mod_name, 'em_cld', axes(1:3), Time, &
-                         'cloud emissivity', 'percent',        &
-                          missing_value=missing_value          )
-
-    id_alb_uv_cld = &
-    register_diag_field ( mod_name, 'alb_uv_cld', axes(1:3), Time, &
-                         'UV reflected by cloud', 'percent',       &
-                          missing_value=missing_value              )
-
-    id_alb_nir_cld = &
-    register_diag_field ( mod_name, 'alb_nir_cld', axes(1:3), Time, &
-                         'IR reflected by cloud', 'percent',        &
-                          missing_value=missing_value               )
-
-!   --- do not output this field ---
-!   id_abs_uv_cld = &
-!   register_diag_field ( mod_name, 'abs_uv_cld', axes(1:3), Time, &
-!                        'UV absorbed by cloud', 'percent',        &
-!                         missing_value=missing_value              )
-
-    id_abs_nir_cld = &
-    register_diag_field ( mod_name, 'abs_nir_cld', axes(1:3), Time, &
-                         'IR absorbed by cloud', 'percent',         &
-                          missing_value=missing_value               )
 
 
 !-----------------------------------------------------------------------

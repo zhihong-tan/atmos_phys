@@ -9,8 +9,7 @@ module rh_clouds_mod
 
 use utilities_mod, only:  error_mesg, FATAL, file_exist,    &
                           check_nml_error, open_file,       &
-                          print_version_number, close_file, &
-                          get_my_pe, read_data, write_data
+                          close_file, get_my_pe, read_data, write_data
 
 !=======================================================================
 
@@ -82,7 +81,8 @@ end interface
 
 !--------------------- version number ----------------------------------
 
-character(len=4), parameter :: vers_num = 'v1.0'
+character(len=128) :: version = '$Id: rh_clouds.F90,v 1.2 2000/08/04 19:00:11 fms Exp $'
+character(len=128) :: tag = '$Name: bombay $'
 
 !=======================================================================
 
@@ -160,8 +160,10 @@ integer :: unit, ierr, io
 !---------- output namelist to log-------------------------------------
 
       unit = open_file ('logfile.out', action='append')
-      call print_version_number (unit, 'rh_clouds', vers_num)
-      if ( get_my_pe() == 0 ) write (unit, nml=rh_clouds_nml)
+      if ( get_my_pe() == 0 ) then
+           write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+           write (unit, nml=rh_clouds_nml)
+      endif
       call close_file (unit)
 
 !---------- initialize for rh cloud averaging -------------------------

@@ -10,7 +10,7 @@ module cloud_zonal_mod
 use time_manager_mod, only:  time_type
 use  time_interp_mod, only:  fraction_of_year
 use    utilities_mod, only:  error_mesg, FATAL, open_file, &
-                             close_file, print_version_number
+                             close_file, get_my_pe
 
 implicit none
 private
@@ -24,7 +24,8 @@ public   cloud_zonal, cloud_zonal_init, getcld
    real, dimension(37,4)   :: phigh,pmidl,ptop,pbtm
    real                    :: rad2deg
 
-   character(len=4), parameter :: vers_num = 'v2.0'
+   character(len=128) :: version = '$Id: cloud_zonal.F90,v 1.2 2000/08/04 18:38:53 fms Exp $'
+   character(len=128) :: tag = '$Name: bombay $'
 
 !-----------------------------------------------------------------------
 !--------cloud amounts every 5 deg. for high,mid, & low-----------------
@@ -253,7 +254,8 @@ subroutine cloud_zonal_init (season)
 !---- print version number to logfile ----
 
    unit = open_file ('logfile.out', action='append')
-   call print_version_number (unit, 'cloud_zonal', vers_num)
+   if (get_my_pe() == 0) &
+   write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
    call close_file (unit)
 
 !-----------------------------------------------------------------------

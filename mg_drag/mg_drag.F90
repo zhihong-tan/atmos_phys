@@ -11,8 +11,7 @@ MODULE MG_DRAG_MOD
 
 
  use Utilities_Mod, ONLY: FILE_EXIST, OPEN_FILE, ERROR_MESG, FATAL, &
-                          print_version_number, get_my_pe,    &
-                          READ_DATA, WRITE_DATA, CLOSE_FILE
+                          get_my_pe, READ_DATA, WRITE_DATA, CLOSE_FILE
  use  Constants_Mod, ONLY:  Grav,Kappa,RDgas,p00
 
 !-----------------------------------------------------------------------
@@ -21,10 +20,8 @@ MODULE MG_DRAG_MOD
 
  private
 
-!       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-         character(len=4), parameter :: Vers_Num = 'v2.0'
-!       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+ character(len=128) :: version = '$Id: mg_drag.F90,v 1.2 2000/08/04 18:50:23 fms Exp $'
+ character(len=128) :: tag = '$Name: bombay $'
 
 !---------------------------------------------------------------------
 ! --- GLOBAL STORAGE FOR:
@@ -798,8 +795,10 @@ end SUBROUTINE MGWD_TEND
 !---------------------------------------------------------------------
 
   unit = OPEN_FILE ( file = 'logfile.out', action = 'APPEND' )
-  call print_version_number (unit, 'mg_drag', vers_num)
-  if ( get_my_pe() == 0 ) WRITE( unit, nml = mg_drag_nml ) 
+  if ( get_my_pe() == 0 ) then
+       WRITE( unit,'(/,80("="),/(a))') trim(version), trim(tag)
+       WRITE( unit, nml = mg_drag_nml ) 
+  endif
   CALL CLOSE_FILE ( unit )
 
 !---------------------------------------------------------------------

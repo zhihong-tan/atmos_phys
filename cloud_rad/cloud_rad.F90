@@ -59,7 +59,6 @@ MODULE CLOUD_RAD_MOD
 
         USE  Constants_Mod,      ONLY :  Rdgas,Grav,Tfreeze,Dens_h2o
         USE  Utilities_Mod,      ONLY :  File_Exist, Open_File,  &
-                                         print_version_number,  &
                                          error_mesg, FATAL,     &
                                          Close_File, get_my_pe
           
@@ -153,7 +152,15 @@ MODULE CLOUD_RAD_MOD
 !                      performed; If false this is not 
 !                      performed.
 !
+!       scale_factor   Factor which multiplies actual cloud
+!                      optical depths to account for the
+!                      plane-parallel homogenous cloud bias
+!                      (e.g. Cahalan effect).
+!
 !                      used only by strat_cloud_mod
+!
+!       qamin          minimum permissible cloud       dimensionless                  
+!                      fraction 
 !
 !
 !                  PHYSICAL CONSTANTS USED IN THE SCHEME
@@ -184,6 +191,8 @@ INTEGER, PRIVATE            :: overlap = 1
 LOGICAL, PRIVATE            :: l2strem = .FALSE.
 REAL,    PRIVATE            :: taucrit = 1.
 LOGICAL, PRIVATE            :: adjust_top = .TRUE.
+REAL,    PRIVATE            :: scale_factor = 0.8
+REAL,    PRIVATE            :: qamin = 1.E-2
 
 
 !        
@@ -192,7 +201,8 @@ LOGICAL, PRIVATE            :: adjust_top = .TRUE.
 !       CREATE NAMELIST
 !
 
-        NAMELIST /CLOUD_RAD_NML/ overlap,l2strem,taucrit,adjust_top
+        NAMELIST /CLOUD_RAD_NML/ overlap,l2strem,taucrit,adjust_top, &
+                                 scale_factor,qamin
 
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -200,7 +210,8 @@ LOGICAL, PRIVATE            :: adjust_top = .TRUE.
 !       DECLARE VERSION NUMBER OF SCHEME
 !
         
-        Character(len=4), Parameter :: Vers_Num = 'v2.1'
+        character(len=128) :: version = '$Id: cloud_rad.F90,v 1.2 2000/08/04 19:30:28 fms Exp $'
+        character(len=128) :: tag = '$Name: bombay $'
 
 ! 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -299,8 +310,10 @@ INTEGER                                  :: unit,io
 
         !write namelist variables to logfile
         unit = Open_File ('logfile.out', action='APPEND')
-        Call print_version_number (unit, 'Cloud_Rad', Vers_Num)
-        if ( get_my_pe() == 0 ) Write (unit,nml=CLOUD_RAD_NML)
+        if ( get_my_pe() == 0 ) then
+             Write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+             Write (unit,nml=CLOUD_RAD_NML)
+        endif
         Call Close_File (unit)
 
 !-----------------------------------------------------------------------
@@ -518,16 +531,16 @@ REAL, DIMENSION(SIZE(ql,1),SIZE(ql,2),SIZE(ql,3),4) :: tau,w0,gg
         !create local values of ql and qi
         !this step is necessary to remove the values of (qi,ql) which are
         !           0 < (qi,ql) < qmin   or
-        !               (qi,ql) > qmin and qa <= qmin
+        !               (qi,ql) > qmin and qa <= qamin
 
         ql_local(:,:,:) = 0.
         qi_local(:,:,:) = 0.
         qa_local(:,:,:) = 0.
-        WHERE ( (qa(:,:,:) .gt. qmin) .and. (ql(:,:,:) .gt. qmin) )
+        WHERE ( (qa(:,:,:) .gt. qamin) .and. (ql(:,:,:) .gt. qmin) )
                   ql_local(:,:,:) = ql(:,:,:)
                   qa_local(:,:,:) = qa(:,:,:)
         END WHERE
-        WHERE ( (qa(:,:,:) .gt. qmin) .and. (qi(:,:,:) .gt. qmin) )
+        WHERE ( (qa(:,:,:) .gt. qamin) .and. (qi(:,:,:) .gt. qmin) )
                   qi_local(:,:,:) = qi(:,:,:)
                   qa_local(:,:,:) = qa(:,:,:)
         END WHERE
@@ -817,6 +830,9 @@ REAL, DIMENSION(SIZE(ql,1),SIZE(ql,2),SIZE(ql,3),4) :: tau,w0,gg
                   tau(:,:,1:max_cld,:),w0(:,:,1:max_cld,:),gg(:,:,1:max_cld,:),&
                   em_lw(:,:,1:max_cld))
          
+         !Account for plane-parallel homogenous cloud bias
+         tau(:,:,:,:) = scale_factor * tau(:,:,:,:)
+
          !compute cloud radiative properties
          CALL CLOUD_RAD(tau(:,:,1:max_cld,:),w0(:,:,1:max_cld,:),&
                   gg(:,:,1:max_cld,:),coszen,&

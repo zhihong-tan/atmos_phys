@@ -2,7 +2,7 @@ module astronomy_mod
 
 !----------------------------------------------------------------------
 
-use utilities_mod,    only: error_mesg, print_version_number,       &
+use utilities_mod,    only: error_mesg,                             &
                             open_file, file_exist, check_nml_error, &
                             close_file, FATAL, get_my_pe
 
@@ -26,7 +26,8 @@ public :: set_orbital_parameters, &
           set_period,             &
           get_period
 
-character(len=4), parameter :: vers_num = 'v2.0'
+character(len=128) :: version = '$Id: astronomy.F90,v 1.2 2000/08/04 18:05:13 fms Exp $'
+character(len=128) :: tag = '$Name: bombay $'
 
 ! description of public interfaces
 
@@ -174,13 +175,6 @@ character(len=4), parameter :: vers_num = 'v2.0'
 !    daily mean solar flux
 !-------------------------------------------------------------------------
 
-private :: error_mesg, print_version_number, &
-           open_file, file_exist, check_nml_error
-
-private :: time_type, set_time, get_time, set_date, &
-           operator(-), operator(//), operator(<),  &
-           length_of_year
-
 interface diurnal_solar
    module procedure diurnal_solar_2d
    module procedure diurnal_solar_1d
@@ -287,8 +281,10 @@ else
 endif
 
 unit = open_file ('logfile.out', action='append')
-call print_version_number (unit, 'astronomy', vers_num)
-if ( get_my_pe() == 0 ) write (unit, nml=astronomy_nml)
+if ( get_my_pe() == 0 ) then
+     write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+     write (unit, nml=astronomy_nml)
+endif
 call close_file (unit)
 
 pi    = 4*atan(1.)
