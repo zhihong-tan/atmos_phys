@@ -158,8 +158,8 @@ use utilities_mod, only:  error_mesg, FATAL, file_exist,    &
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 1.2 2000/11/22 14:22:21 fms Exp $'
- character(len=128) :: tag = '$Name: calgary $'
+ character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 1.3 2001/03/06 18:50:21 fms Exp $'
+ character(len=128) :: tag = '$Name: damascus $'
 !-----------------------------------------------------------------------
 
 ! REAL, PARAMETER :: taumin = 1.E-06
@@ -1521,7 +1521,7 @@ end subroutine CLOUD_OPT_PROP_tg
   end if
 
 !   **** call cloud_rad_init to read namelist containing L2STREM  ****
-       call cloud_rad_init(1.0E-10,6.0E+08,1.0E+08)
+       call cloud_rad_init()
 
  
 !---------------------------------------------------------------------

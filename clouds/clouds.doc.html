@@ -126,7 +126,7 @@
 ----------------------------------------------------------------------
 
 call clouds  (is, js, clear_sky, Time, Time_diag, lat, land, 
-              pfull, phalf, t, cosz,
+              tsfc, pfull, phalf, t, q, cosz,
               nclds, ktopsw, kbtmsw, ktopsw, kbtmlw,
               cldamt, cuvrf, cirrf, cirab, emcld
               [, mask, kbot] )
@@ -149,6 +149,8 @@ call clouds  (is, js, clear_sky, Time, Time_diag, lat, land,
      land        The fractional amount of a grid box covered by land.
                    [real, dimension(:,:)]
 
+     tsfc        Surface skin temperature (Kelvin) [real, dimension(:,:)]
+
      pfull       Pressure in pascals at full model levels.
                    [real, dimension(:,:,nlev)]
 
@@ -157,7 +159,10 @@ call clouds  (is, js, clear_sky, Time, Time_diag, lat, land,
 
      t           Temperature in deg K at full model levels.
                    [real, dimension(:,:,nlev)]
-
+ 
+     q           Water vapor specific humidity at full model levels.
+                   [real, dimension(:,:,nlev)]
+    
      cosz        Cosine of the zenith angle.
                    [real, dimension(:,:)]
 

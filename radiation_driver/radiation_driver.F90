@@ -41,8 +41,8 @@
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: radiation_driver.F90,v 1.3 2000/11/22 14:34:38 fms Exp $'
-character(len=128) :: tag = '$Name: calgary $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 1.4 2001/03/06 18:51:29 fms Exp $'
+character(len=128) :: tag = '$Name: damascus $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)
@@ -445,8 +445,8 @@ type(time_type) :: Rad_time, Dt_zen
                           no_clouds = .true.
       if (ipass == npass) no_clouds = .false.
       
-      call clouds (is,js, no_clouds, Rad_time, Time_diag, lat, land, &
-                    press(:,:,1:kd), p_int, temp(:,:,1:kd),   &
+      call clouds (is,js, no_clouds, Rad_time, Time_diag, lat, land, tsfc, &
+                    press(:,:,1:kd), p_int, temp(:,:,1:kd), q,  &
                     cosz,nclds, ktopsw, kbtmsw, ktop, kbtm,   &
                     cldamt, cuvrf, cirrf, cirab, emcld, mask, kbot)
  

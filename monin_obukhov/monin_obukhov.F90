@@ -260,8 +260,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.3 2000/11/22 14:34:25 fms Exp $'
-character(len=128) :: tag = '$Name: calgary $'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.4 2001/03/06 18:50:59 fms Exp $'
+character(len=128) :: tag = '$Name: damascus $'
 
 !=======================================================================
 
@@ -373,9 +373,9 @@ end where
 if(neutral) then
 
   where(avail)
-    fm   = alog(z/z0)
-    fh   = alog(z/zt)
-    fq   = alog(z/zq)
+    fm   = log(z/z0)
+    fh   = log(z/zt)
+    fq   = log(z/zq)
     us   = vonkarm/fm
     bs   = vonkarm/fh
     qs   = vonkarm/fq

@@ -94,7 +94,7 @@ private
 !--------------------- version number ----------------------------------
 
 character(len=128) :: version = '$Id: diffusivity.F90,v 1.2 2000/08/04 18:44:23 fms Exp $'
-character(len=128) :: tag = '$Name: calgary $'
+character(len=128) :: tag = '$Name: damascus $'
 
 !=======================================================================
 

@@ -54,8 +54,8 @@ interface check_dim
 end interface
 
 !--------------------- version number ----------------------------------
-character(len=256) :: version = '$Id: physics_driver.F90,v 1.3 2000/11/22 14:34:34 fms Exp $'
-character(len=256) :: tag = '$Name: calgary $'
+character(len=256) :: version = '$Id: physics_driver.F90,v 1.4 2001/03/06 18:51:14 fms Exp $'
+character(len=256) :: tag = '$Name: damascus $'
 !-----------------------------------------------------------------------
 
       logical :: do_init = .true., do_check_args = .true.
@@ -188,12 +188,13 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 !-----------------------------------------------------------------------
 !-------- need to modify vert_turb_driver (remove t_surf) --------
 
-     call vert_turb_driver (is, js, Time_next, dt, frac_land, &
-                            p_half, p_full, z_half, z_full,   &
-                            u_star, b_star, rough_mom,        &
-                            u, v, t, q,                       &
-                            diff_t, diff_m, gust,             &
-                            mask=mask, kbot=kbot              )
+     call vert_turb_driver (is, js, Time, Time_next, dt, frac_land, &
+                            p_half, p_full, z_half, z_full,         &
+                            u_star, b_star, rough_mom,              &
+                            u, v, t, q, um, vm, tm, qm,             &
+                            udt, vdt, tdt, qdt,                     &
+                            diff_t, diff_m, gust,                   &
+                            mask=mask, kbot=kbot                    )
 
 !-----------------------------------------------------------------------
 !----------------------- process tracers fields ------------------------

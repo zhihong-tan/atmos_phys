@@ -119,9 +119,10 @@ input
 
 ---------------------------------------------------------------------
 
-<b>call vert_turb_driver</b> (is, js, Time, dt, frac_land,
+<b>call vert_turb_driver</b> (is, js, Time, Time_next, dt, frac_land,
                        p_half, p_full, z_half, z_full,
-                       u_star, b_star, rough, u, v, t, q,
+                       u_star, b_star, rough, u, v, t, q, 
+                       um, vm, tm, qm, udt, vdt, tdt, qdt,
                        diff_t, diff_m, gust [, mask, kbot] )
 
 input
@@ -130,9 +131,11 @@ input
 
     js         starting j index for current window [integer]
 
-    Time       current time  [time_type]
+    Time       time at the current time level (tau) [time_type]
 
-    dt         time step in seconds (from t(n-1) to t(n+1) if leapfrog)
+    Time_next  time at the next time level (tau+1) [time_type]
+
+    dt         time step in seconds (from tau-1 to tau+1 if leapfrog)
                  [real]
 
     frac_land  fraction (0. to 1.) of surface which covered by land
@@ -156,16 +159,40 @@ input
 
     rough      surface roughness length scale (m)   [real, dimension(:,:)]
 
-    u          zonal wind component (m/s) at full model levels
+    u          zonal wind component (m/s) at full model levels at the current time level
                  [real, dimension(:,:,nlev)]
 
-    v          meridional wind component (m/s) at full model levels
+    v          meridional wind component (m/s) at full model levels at the current time level
                  [real, dimension(:,:,nlev)]
 
-    t          temperature (deg K) at full model levels
+    t          temperature (deg K) at full model levels at the current time level
                  [real, dimension(:,:,nlev)]
 
-    q          specific humidity (kg/kg) at full model levels
+    q          specific humidity (kg/kg) at full model levels at the current time level
+                 [real, dimension(:,:,nlev)]
+
+    um         zonal wind component (m/s) at the previous time level
+                 [real, dimension(:,:,nlev)]
+
+    vm         meridional wind component (m/s) at the previous time level
+                 [real, dimension(:,:,nlev)]
+
+    tm         temperature (deg K) at the previous time level
+                 [real, dimension(:,:,nlev)]
+
+    qm         specific humidity (kg/kg) at the previous time level
+                 [real, dimension(:,:,nlev)]
+
+    udt        zonal wind tendency in m/s2
+                 [real, dimension(:,:,nlev)]
+
+    vdt        meridional wind tendency in m/s2
+                 [real, dimension(:,:,nlev)]
+
+    tdt        temperature tendency in deg k per sec
+                 [real, dimension(:,:,nlev)]
+
+    qdt        specific humidity tendency in kg vapor/kg air/sec
                  [real, dimension(:,:,nlev)]
 
 output
@@ -225,6 +252,15 @@ input (optional), for the step-mountain (eta) coordinate option
   constant_gust      Value used for gustiness (in m/s) when
                      gust_scheme = 'constant'.
                        [real, default: constant_gust = 1.]
+
+  use_tau        Switch to determine whether the input data (momentum, temp, sphum)
+                 used to computed the diffusion coefficients and/or update TKE should
+                 be for the current time level (tau) or next time level (tau+1)
+                   if use_tau = true then data at tau is used (e.g., u,v,t,q)
+                   if use_tau = false then data at tau+1 is used by explicitly
+                                adding the tendency to the data at tau-1
+                                (e.g., tt=t+dt*tdt)
+                   [logical, default: use_tau=true ]
 
 </PRE>
 </A><!-- END NAMELIST -->

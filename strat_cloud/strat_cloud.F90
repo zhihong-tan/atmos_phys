@@ -1,3 +1,4 @@
+
 MODULE STRAT_CLOUD_MOD
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -59,7 +60,8 @@ MODULE STRAT_CLOUD_MOD
         USE  Constants_Mod,      ONLY :  RDgas,RVgas,HLv,HLf,HLs,Cp,&
                                          Grav,Tfreeze,Dens_h2o
         USE  CLOUD_RAD_MOD,      ONLY :  CLOUD_RAD_INIT
-
+        use  time_manager_mod,    only:  time_type
+  
         IMPLICIT NONE
         PRIVATE
 
@@ -221,6 +223,12 @@ MODULE STRAT_CLOUD_MOD
 !       strat_pts      "num_strat_pts" pairs of grid
 !                      indices, e.g., the global 
 !                      indices for i,j.
+!
+!       overlap        value of the overlap parameter
+!                      from cloud rad
+!                      overlap = 1 is maximum-random
+!                      overlap = 2 is random
+!
 
   
         REAL              :: U00            =  0.80
@@ -239,6 +247,7 @@ MODULE STRAT_CLOUD_MOD
         INTEGER,PARAMETER :: max_strat_pts  = 5
         INTEGER           :: num_strat_pts = 0
         INTEGER,DIMENSION(2,max_strat_pts) :: strat_pts = 0
+        INTEGER           :: overlap = 1
 
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -258,9 +267,9 @@ MODULE STRAT_CLOUD_MOD
 !       DECLARE VERSION NUMBER OF SCHEME
 !
         
-        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 1.3 2000/11/22 14:34:57 fms Exp $'
-        Character(len=128) :: Tag = '$Name: calgary $'
-        
+        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 1.4 2001/03/06 18:52:22 fms Exp $'
+        Character(len=128) :: Tag = '$Name: damascus $'
+         
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -303,7 +312,7 @@ CONTAINS
 
 
 
-SUBROUTINE STRAT_INIT(IDIM,JDIM,KDIM)
+SUBROUTINE STRAT_INIT(axes,Time,IDIM,JDIM,KDIM)
                                
 
 !        
@@ -356,7 +365,8 @@ SUBROUTINE STRAT_INIT(IDIM,JDIM,KDIM)
 !       ------------------------
 !
 
-        INTEGER, INTENT (IN)                   :: IDIM,JDIM,KDIM
+        INTEGER, INTENT (IN)                   :: IDIM,JDIM,KDIM,axes(4)
+        type(time_type), intent(in)            :: Time
         
 !
 !       Internal variables
@@ -398,7 +408,8 @@ SUBROUTINE STRAT_INIT(IDIM,JDIM,KDIM)
 !       INITIALIZE qmin, N_land, N_ocean and selected physical constants
 !       in cloud_rad_mod
 
-        CALL CLOUD_RAD_INIT(qmin,N_land,N_ocean)
+        CALL CLOUD_RAD_INIT(axes,Time,qmin_in=qmin,N_land_in=N_land,&
+                            N_ocean_in=N_ocean,overlap_out=overlap)
 
 !-----------------------------------------------------------------------
 !
@@ -1324,9 +1335,9 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       that exists in saturated air.  At the top of each level, some 
 !       precipitation that was in unsaturated air in the levels above 
 !       may enter saturated air and vice versa. These transfers are 
-!       calculated here under the assumption of maximum overlap between 
-!       precipitation area and saturated area at the same and adjacent
-!       levels.
+!       calculated here under the assumption of maximum random or random 
+!       overlap between precipitation area and saturated area at the same 
+!       and adjacent levels.
 !
 !       For rain, the area of the grid box in which rain in saturated 
 !       air of the level above enters unsaturated air in the current 
@@ -1346,8 +1357,8 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       The grid mean flux of rain transfered from unsaturated air to 
 !       saturated air is given by rain_clr*da_clr2cld/a_rain_clr.
 !
-!       NOTE: Maximum overlap of cloud and precipitation is assumed in
-!             the equations below.
+!       NOTE: the overlap assumption used is set by the namelist variable
+!             in cloud_rad
 !
 !       For snow fluxes the transfers are computed in exactly the same
 !       manner.
@@ -1362,14 +1373,26 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 
         !-------------------------------
         !compute cloud to clear transfer
+        if (overlap .eq. 1) then
         da_cld2clr(:,:) = MIN(   a_rain_cld(:,:), &
                           MAX(0.,a_rain_cld(:,:) - qa_mean(:,:)))
-        
+        end if
+        if (overlap .eq. 2) then
+        da_cld2clr(:,:) = MIN(   a_rain_cld(:,:), &
+                          MAX(0.,a_rain_cld(:,:)*(1. - qa_mean(:,:))))
+        end if
+
         !-------------------------------
         !compute clear to cloud transfer
+        if (overlap .eq. 1) then
         da_clr2cld(:,:) = MIN(MAX(qa_mean(:,:)-qa_mean_lst(:,:),0.),&
                                   a_rain_clr(:,:))
-        
+        end if
+        if (overlap .eq. 2) then
+        da_clr2cld(:,:) = MIN(MAX(a_rain_clr(:,:)*qa_mean(:,:),0.),&
+                                  a_rain_clr(:,:))
+        end if
+
         !---------------------------------
         !calculate precipitation transfers
         dprec_cld2clr(:,:) = rain_cld(:,:)*(da_cld2clr(:,:)/&
@@ -1398,13 +1421,25 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 
         !-------------------------------
         !compute cloud to clear transfer
+        if (overlap .eq. 1) then
         da_cld2clr(:,:) = MIN(   a_snow_cld(:,:), &
                           MAX(0.,a_snow_cld(:,:) - qa_mean(:,:)))
-        
+        end if
+        if (overlap .eq. 2) then
+        da_cld2clr(:,:) = MIN(   a_snow_cld(:,:), &
+                          MAX(0.,a_snow_cld(:,:)*(1. - qa_mean(:,:))))
+        end if
+
         !-------------------------------
         !compute clear to cloud transfer
+        if (overlap .eq. 1) then
         da_clr2cld(:,:) = MIN(MAX(qa_mean(:,:)-qa_mean_lst(:,:),0.), &
                                   a_snow_clr(:,:))
+        end if
+        if (overlap .eq. 2) then
+        da_clr2cld(:,:) = MIN(MAX(a_snow_clr(:,:)*qa_mean(:,:),0.), &
+                                  a_snow_clr(:,:))
+        end if
 
         !---------------------------------
         !calculate precipitation transfers
@@ -1422,7 +1457,8 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
                                    -dprec_clr2cld(:,:)
         snow_cld(:,:)=snow_cld(:,:)-dprec_cld2clr(:,:)&
                                    +dprec_clr2cld(:,:)
-        
+   
+   
 !-----------------------------------------------------------------------
 !
 !

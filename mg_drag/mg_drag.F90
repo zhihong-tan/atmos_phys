@@ -21,7 +21,7 @@ MODULE MG_DRAG_MOD
  private
 
  character(len=128) :: version = '$Id: mg_drag.F90,v 1.2 2000/08/04 18:50:23 fms Exp $'
- character(len=128) :: tag = '$Name: calgary $'
+ character(len=128) :: tag = '$Name: damascus $'
 
 !---------------------------------------------------------------------
 ! --- GLOBAL STORAGE FOR:

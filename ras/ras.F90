@@ -19,8 +19,8 @@
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- character(len=128) :: version = '$Id: ras.F90,v 1.3 2000/08/04 18:55:37 fms Exp $'
- character(len=128) :: tag = '$Name: calgary $'
+ character(len=128) :: version = '$Id: ras.F90,v 1.4 2001/03/06 18:51:50 fms Exp $'
+ character(len=128) :: tag = '$Name: damascus $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -802,7 +802,7 @@
    chi(:,:) = t_parc(:,:) / ( 1669.0 - 122.0*rhum(:,:) - t_parc(:,:) )
 
 ! --- Compute pressure at LCL
-    rhum(:,:) =    chi(:,:) * ALOG( rhum(:,:) )
+    rhum(:,:) =    chi(:,:) *  LOG( rhum(:,:) )
    p_lcl(:,:) = p_parc(:,:) *  EXP( rhum(:,:) )
 
 ! --- Bound p_lcl 
@@ -1057,7 +1057,7 @@
             def = ( hcevap*qvap_sat(:,k) - qvap(:,k) ) /    &
                   ( 1.0 + (hl(:)* hcevap* dqvap_sat(:,k)/Cp) )
             def = evef*def
-            def = AMIN1( def, prec/mass(:,k) )
+            def = MIN( def, prec/mass(:,k) )
   qvap_new(:,k) = qvap(:,k) + def
   temp_new(:,k) = temp(:,k) - (def * hl(:)/Cp)
           pevap = pevap + def * mass(:,k)
@@ -1224,7 +1224,7 @@
  do i = 1,len
     tx1(i)   = pi_int(i,k+1) * theta(i,k)
     qs1(i)   = alf(i,k) + bet(i,k)*theta(i,k)
-    qol(i,k) = AMIN1( qs1(i)*rhmax, qvap(i,k) )
+    qol(i,k) = MIN( qs1(i)*rhmax, qvap(i,k) )
     hol(i,k) = tx1(i)*Cp + qol(i,k)*hl(i)
     eta(i,k) = 0.0
     tx2(i)   = (pi_int(i,k+1) - pi_int(i,k)) * theta(i,k) * Cp
@@ -1235,7 +1235,7 @@
  do l = km1,ic1,-1
  do i = 1,len
     qs1(i)   = alf(i,l) + bet(i,l)*theta(i,l)
-    qol(i,l) = AMIN1( qs1(i)*rhmax, qvap(i,l) )
+    qol(i,l) = MIN( qs1(i)*rhmax, qvap(i,l) )
         tem1 = tx2(i) + pi_int(i,l+1) * theta(i,l) * Cp 
     hol(i,l) = tem1 + qol(i,l )* hl(i)
     hst(i,l) = tem1 + qs1(i)   * hl(i)
@@ -1250,7 +1250,7 @@
  do i = 1,len
     hol(i,ic) = tx2(i)
     qs1(i)    = alf(i,ic) + bet(i,ic)*theta(i,ic)
-    qol(i,ic) = AMIN1( qs1(i)*rhmax, qvap(i,ic) ) 
+    qol(i,ic) = MIN( qs1(i)*rhmax, qvap(i,ic) ) 
          tem1 = tx2(i) + pi_int(i,ic1) * theta(i,ic) * Cp 
     hol(i,ic) = tem1 + qol(i,ic) * hl(i)
     hst(i,ic) = tem1 + qs1(i)    * hl(i)

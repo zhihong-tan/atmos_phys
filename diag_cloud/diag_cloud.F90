@@ -36,8 +36,8 @@ MODULE DIAG_CLOUD_MOD
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud.F90,v 1.2 2000/11/22 14:33:48 fms Exp $'
- character(len=128) :: tag = '$Name: calgary $'
+ character(len=128) :: version = '$Id: diag_cloud.F90,v 1.3 2001/03/06 18:50:04 fms Exp $'
+ character(len=128) :: tag = '$Name: damascus $'
 !-----------------------------------------------------------------------
 
 !  parmameter mxband = max number of radiative bands to be considered for some
@@ -1203,13 +1203,13 @@ subroutine CLOUD_SHALLOW_CONV (theta,omega,pfull,phalf,temp,qmix,camtrh, &
           do i=1,idim   
              k = kbot(i,j)
              xy1(i,j) =      Temp(i,j,k)
-             xy2(i,j) =  MAX(MIN( qmix(i,j,k), qsat(i,j,k) ), 1.0e-6)
+             xy2(i,j) =  MIN(MAX( qmix(i,j,k), 1.0e-6), qsat(i,j,k) )
              xy3(i,j) =     pfull(i,j,k)
           end do
         end do
       else
              xy1(:,:) =      Temp(:,:,kx)
-             xy2(:,:) = MAX(MIN( qmix(:,:,kx), qsat(:,:,kx) ), 1.0e-6)
+             xy2(:,:) = MIN(MAX( qmix(:,:,kx), 1.0e-6), qsat(:,:,kx) )
              xy3(:,:) =     pfull(:,:,kx)
       end if
 

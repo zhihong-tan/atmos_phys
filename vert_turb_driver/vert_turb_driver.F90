@@ -22,7 +22,7 @@ use   shallow_conv_mod, only: shallow_conv_init, shallow_conv
 
 use   diag_manager_mod, only: register_diag_field, send_data
 
-use   time_manager_mod, only: time_type
+use   time_manager_mod, only: time_type, get_time, operator(-)
 
 use      constants_mod, only: rdgas, rvgas, kappa, p00
 
@@ -40,8 +40,8 @@ public   vert_turb_driver_init, vert_turb_driver_end, vert_turb_driver
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 1.3 2000/11/22 14:36:29 fms Exp $'
-character(len=128) :: tag = '$Name: calgary $'
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 1.4 2001/03/06 18:58:55 fms Exp $'
+character(len=128) :: tag = '$Name: damascus $'
 
 !-----------------------------------------------------------------------
 
@@ -61,6 +61,7 @@ character(len=128) :: tag = '$Name: calgary $'
 
  logical :: do_shallow_conv  = .false.
  logical :: do_mellor_yamada = .true.
+ logical :: use_tau          = .true.
 
  character(len=24) :: gust_scheme  = 'constant' ! valid schemes are:
                                                 !   => 'constant'
@@ -68,7 +69,7 @@ character(len=128) :: tag = '$Name: calgary $'
  real              :: constant_gust = 1.0
 
  namelist /vert_turb_driver_nml/ do_shallow_conv, do_mellor_yamada, &
-                                 gust_scheme, constant_gust
+                                 gust_scheme, constant_gust, use_tau
 
 !-------------------- diagnostics fields -------------------------------
 
@@ -85,21 +86,23 @@ contains
 
 !#######################################################################
 
-subroutine vert_turb_driver (is, js, Time, dt, frac_land,      &
-                             p_half, p_full, z_half, z_full,   &
-                             u_star, b_star, rough,            &
-                             u, v, t, q, diff_t, diff_m, gust, &
-                             mask, kbot)
+subroutine vert_turb_driver (is, js, Time, Time_next, dt, frac_land,   &
+                             p_half, p_full, z_half, z_full,           &
+                             u_star, b_star, rough,                    &
+                             u, v, t, q, um, vm, tm, qm,               &
+                             udt, vdt, tdt, qdt, diff_t, diff_m, gust, &
+                             mask, kbot                                )
 
 !-----------------------------------------------------------------------
 integer,         intent(in)         :: is, js
-type(time_type), intent(in)         :: Time
+type(time_type), intent(in)         :: Time, Time_next
    real,         intent(in)         :: dt
    real, intent(in), dimension(:,:) :: frac_land,   &
                                        u_star, b_star, rough
    real, intent(in), dimension(:,:,:) :: p_half, p_full, &
                                          z_half, z_full, &
-                                         u, v, t, q
+                                         u, v, t, q, um, vm, tm, qm, &
+                                         udt, vdt, tdt, qdt
    real, intent(out),   dimension(:,:,:) :: diff_t, diff_m
    real, intent(out),   dimension(:,:)   :: gust
    real, intent(in),optional, dimension(:,:,:) :: mask
@@ -111,7 +114,9 @@ real   , dimension(size(t,1),size(t,2),size(t,3)+1) :: el, diag3
 real   , dimension(size(t,1),size(t,2))             :: el0, z_pbl
 real   , dimension(size(diff_t,1),size(diff_t,2), &
                                   size(diff_t,3))   :: diff_sc
-integer :: ie, je, nlev
+real   , dimension(size(t,1),size(t,2),size(t,3))   :: tt, qq, uu, vv
+real    :: dt_tke
+integer :: ie, je, nlev, sec, day
 logical :: used
 !-----------------------------------------------------------------------
 !----------------------- vertical turbulence ---------------------------
@@ -125,13 +130,35 @@ logical :: used
      ie = is + size(p_full,1) - 1
      je = js + size(p_full,2) - 1
 
+!-----------------------------------------------------------------------
+!---- set up state variable used by this module ----
+
+      if (use_tau) then
+      !-- variables at time tau
+          uu = u
+          vv = v
+          tt = t
+          qq = q
+      else
+      !-- variables at time tau+1
+          uu = um + dt*udt
+          vv = vm + dt*vdt
+          tt = tm + dt*tdt
+          qq = qm + dt*qdt
+      endif
+
+
 !---------------------------
  if (do_mellor_yamada) then
 !---------------------------
 
+!    ----- time step for prognostic tke calculation -----
+     call get_time (Time_next-Time, sec, day)
+     dt_tke = real(sec+day*86400)
+
 !    ----- virtual temp ----------
      ape(:,:,:)=(p_full(:,:,:)*p00inv)**(-kappa)
-     thv(:,:,:)=t(:,:,:)*(q(:,:,:)*d608+1.0)*ape(:,:,:)
+     thv(:,:,:)=tt(:,:,:)*(qq(:,:,:)*d608+1.0)*ape(:,:,:)
      if (present(mask)) where (mask < 0.5) thv = 200.
 
 !    --------------------- update tke-----------------------------------
@@ -145,14 +172,14 @@ logical :: used
 
      if ( id_z_pbl > 0 ) then
      !------ compute pbl depth from k_profile if diagnostic needed -----
-     call my25_turb (dt, frac_land, p_half, p_full, thv, u, v,  &
-                     z_half, z_full, rough, tke(is:ie,js:je,:), &
+     call my25_turb (dt_tke, frac_land, p_half, p_full, thv, uu, vv, &
+                     z_half, z_full, rough, tke(is:ie,js:je,:),      &
                      el0, el, diff_m, diff_t, &
                      mask=mask, kbot=kbot, &
                      ustar=u_star,bstar=b_star,h=z_pbl)
      else
-     call my25_turb (dt, frac_land, p_half, p_full, thv, u, v,  &
-                     z_half, z_full, rough, tke(is:ie,js:je,:), &
+     call my25_turb (dt_tke, frac_land, p_half, p_full, thv, uu, vv, &
+                     z_half, z_full, rough, tke(is:ie,js:je,:),      &
                      el0, el, diff_m, diff_t, &
                      mask=mask, kbot=kbot)
      end if
@@ -163,7 +190,7 @@ logical :: used
 !------------------- non-local K scheme --------------
 
 
-    call diffusivity ( t, q, u, v, z_full, z_half,   &
+    call diffusivity ( tt, qq, uu, vv, z_full, z_half,   &
                        u_star, b_star, z_pbl, diff_m, diff_t, &
                        kbot = kbot)
 
@@ -173,7 +200,7 @@ logical :: used
 !------------------ shallow convection ???? ----------------------------
 
    if (do_shallow_conv) then
-        call shallow_conv (t, q, p_full, p_half, diff_sc, kbot)
+        call shallow_conv (tt, qq, p_full, p_half, diff_sc, kbot)
         diff_t = diff_t + diff_sc
    endif
 
@@ -206,31 +233,31 @@ if (do_mellor_yamada) then
 
 !------- tke --------------------------------
       if ( id_tke > 0 ) then
-         used = send_data ( id_tke, tke(is:ie,js:je,:), Time,  &
+         used = send_data ( id_tke, tke(is:ie,js:je,:), Time_next,  &
                             is, js, 1, mask=lmask )
       endif
 
 !------- length scale (at half levels) ------
       if ( id_lscale > 0 ) then
-         used = send_data ( id_lscale, el, Time, is, js, 1,  &
+         used = send_data ( id_lscale, el, Time_next, is, js, 1,  &
                             mask=lmask )
       endif
 
 !------- master length scale -------
       if ( id_lscale_0 > 0 ) then
-         used = send_data ( id_lscale_0, el0, Time, is, js )
+         used = send_data ( id_lscale_0, el0, Time_next, is, js )
       endif
 
 end if
 
 !------- boundary layer depth -------
       if ( id_z_pbl > 0 ) then
-         used = send_data ( id_z_pbl, z_pbl, Time, is, js )
+         used = send_data ( id_z_pbl, z_pbl, Time_next, is, js )
       endif
 
 !------- boundary layer depth -------
       if ( id_gust > 0 ) then
-         used = send_data ( id_gust, gust, Time, is, js )
+         used = send_data ( id_gust, gust, Time_next, is, js )
       endif
 
 
@@ -252,20 +279,20 @@ end if
 !------- diffusion coefficient for heat/moisture -------
    if ( id_diff_t > 0 ) then
       diag3(:,:,1:nlev) = diff_t(:,:,1:nlev)
-      used = send_data ( id_diff_t, diag3, Time, is, js, 1, mask=lmask )
+      used = send_data ( id_diff_t, diag3, Time_next, is, js, 1, mask=lmask )
    endif
 
 !------- diffusion coefficient for momentum -------
    if ( id_diff_m > 0 ) then
       diag3(:,:,1:nlev) = diff_m(:,:,1:nlev)
-      used = send_data ( id_diff_m, diag3, Time, is, js, 1, mask=lmask )
+      used = send_data ( id_diff_m, diag3, Time_next, is, js, 1, mask=lmask )
    endif
 
 !------- diffusion coefficient for shallow conv -------
  if (do_shallow_conv) then
    if ( id_diff_sc > 0 ) then
       diag3(:,:,1:nlev) = diff_sc(:,:,1:nlev)
-      used = send_data ( id_diff_sc, diag3, Time, is, js, 1, mask=lmask)
+      used = send_data ( id_diff_sc, diag3, Time_next, is, js, 1, mask=lmask)
    endif
  endif
 

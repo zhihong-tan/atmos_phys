@@ -81,7 +81,7 @@ CONTAINS
 ! **      ESTABLISH COMPUTATATIONAL LEVELS BETWEEN USER LEVELS AT     **
 ! **      INTERVALS OF APPROXIMATELY 'DELZAP' KM.                     **
 
-            DLOGP=7.0*ALOG(press(n)/press(n+1))
+            DLOGP=7.0*LOG(press(n)/press(n+1))
             NINT=DLOGP/DELZAP
             NINT=NINT+1
             ZNINT=NINT
@@ -256,7 +256,7 @@ CONTAINS
          If (abs(expo) <= 60.) Then
             x=exp(expo)
             y=x+1.0/x
-            zlog=alog(y)
+            zlog=log(y)
          Else
             zlog=abs(expo)
          EndIf
@@ -264,7 +264,7 @@ CONTAINS
          If (abs(expp) <= 60.) Then
             x=exp(expp)
             y=x+1.0/x
-            faclog=alog(y)
+            faclog=log(y)
          Else
             faclog=abs(expp)
          EndIf

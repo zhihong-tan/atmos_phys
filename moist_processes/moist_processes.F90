@@ -65,8 +65,8 @@ private
    real, parameter :: d378 = 1.-d622
 
 !--------------------- version number ----------------------------------
-   character(len=128) :: version = '$Id: moist_processes.F90,v 1.4 2000/11/22 14:34:18 fms Exp $'
-   character(len=128) :: tag = '$Name: calgary $'
+   character(len=128) :: version = '$Id: moist_processes.F90,v 1.5 2001/03/06 18:50:47 fms Exp $'
+   character(len=128) :: tag = '$Name: damascus $'
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
 
@@ -352,7 +352,7 @@ if (do_adjust .or. do_strat) then
       vin (:,:,:)=mask(:,:,:)*vin(:,:,:)
    endif
    
-!------ check for then setup ql & qi & qa, also reset mc -------
+!------ check for then setup ql & qi & qa (for strat_cloud only) -------
 
    if (do_strat) then
       if (nt == 0 .or. nt < max(nql,nqi,nqa))  call error_mesg ( &
@@ -377,10 +377,14 @@ if (do_adjust .or. do_strat) then
          qiin (:,:,:)=mask(:,:,:)*qiin(:,:,:)
          qain (:,:,:)=mask(:,:,:)*qain(:,:,:)
       endif
-     
-      mc(:,:,:) = 0.0
-
+           
    endif
+
+
+
+!----------------   reset mc  ------------------------------------------
+ 
+   mc(:,:,:) = 0.0
 
 !------ check temperatures (must be with range of es lookup table) -----
 
@@ -854,7 +858,7 @@ integer  unit,io,ierr,nt
                      if (do_diag_clouds) call diag_cloud_init (id,jd,kd,ierr)
       endif
       if (do_ras)    call         ras_init ()
-      if (do_strat)  call       strat_init (id,jd,kd)
+      if (do_strat)  call       strat_init (axes,Time,id,jd,kd)
       if (do_dryadj) call     dry_adj_init ()
 
 !----- initialize quantities for global integral package -----

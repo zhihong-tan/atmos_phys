@@ -132,11 +132,15 @@ Notes:
 <!-- BEGIN ROUTINES -->
 <PRE>
 
-<b>call strat_cloud_init</b> (IDIM,JDIM,KDIM)
+<b>call strat_cloud_init</b> (axes,Time,IDIM,JDIM,KDIM)
 
 input
     
-   
+     axes           integer references for axes of the model.
+                    these are used for diagnostics [integer]   
+
+     Time           time type variable used for diagnostics
+
      IDIM,JDIM      number of points in first and second horizontal
                     dimensions [integer]
 

@@ -48,7 +48,7 @@
      the areas covered by, the water paths and the effective particle 
      sizes of liquid and ice. This cloud information is stored into 
      cloud blocks which are assumed to be randomly overlapped (done 
-     in CLOUD_SUMMARY subroutine). From these, the single-scattering 
+     in CLOUD_ORGANIZE subroutine). From these, the single-scattering 
      albedo, asymmetry parameter, and optical depth for the two short 
      wave bands and the longwave cloud emissivity for each cloud are 
      calculated in the subroutine CLOUD_OPTICAL_PROPERTIES. Finally, 
@@ -63,10 +63,22 @@
      used for liquid clouds whereas the parameterization of Ebert and
      Curry (1992) is used for ice clouds.
 
-     In CLOUD_SUMMARY, the effective radius for liquid clouds is 
+     In CLOUD_ORGANIZE, the effective radius for liquid clouds is 
      calculated using the parameterization of Martin et al. (1994)
      whereas the effective radius of ice clouds is parameterized using
      that of Donner et al. (1997).
+
+     The module has two important diagnostic subroutines. In 
+     ISCCP_CLOUDTYPES, the satellite view of clouds is simulated for
+     direct comparison to the ISCCP satellite data.  This allows one
+     to quantify the occurrence of clouds stratified by their cloud
+     top pressure and optical thickness.  The algorithm to do this
+     is described fully in Klein and Jakob (1999).
+
+     In TAU_REFF_DIAG the optical thickness of low clouds is diagnosed.
+     In addition, the mean ice and liquid particle size from the cloud
+     tops visible to a satellite (i.e. not obscured by higher level
+     clouds) is diagnosed.
 
 </PRE>
 </A><!-- END DESCRIPTION -->
@@ -79,6 +91,8 @@
 
 utilities_mod
 constants_mod
+diag_manager_mod
+time_manager_mod
 
 </PRE>
 </A><!-- END MODULES_USED -->
@@ -92,13 +106,22 @@ constants_mod
 use cloud_rad_mod [,only: cloud_rad_init, cloud_summary, cloud_rad]
 
 cloud_rad_init -      called once to initialize cloud_rad module.  
-                      This routine initializes the values of 3 private 
-                      constants and reads the namelist input. 
+                      This routine reads the namelist, registers
+                      any requested diagnostic fields, and (when
+                      called from strat_cloud_init [standard practice])
+                      returns the overlap assumption to strat_cloud
+                      for use in determining cloud and large-scale
+                      precipitation overlap. 
 
 cloud_summary -       called every radiation time step to return the
-                      amounts covered by, shortwave albedoes and 
-                      absorptivities, and longwave emissivities of
-                      clouds predicted by the stratiform cloud scheme.
+                      amounts covered by, and the longwave emissivity
+                      of clouds predicted by the stratiform cloud
+                      scheme.  In addition, if the Fels-Schwarzkopf
+                      radiation code is being used, the module will
+                      return the shortwave albedoes and absorptivities.
+                      If the sea_esf radiation is being used, the 
+                      code will return the concentrations of liquid
+                      and ice and the effective particle diameters.
 
 cloud_rad   -         this subroutine takes the optical depths, single
                       scattering albedoes, and asymmetry parameters in
@@ -112,9 +135,14 @@ cloud_rad   -         this subroutine takes the optical depths, single
 Notes:
 
  1) Note that if strat_cloud is operating, cloud_rad_init is called 
-    from strat_cloud_init. This is done so that the namelist parameters
-    of strat_cloud (qmin, N_land, N_ocean) may be stored as module 
-    parameters in cloud_rad with exactly the same values.
+    from strat_cloud_init. This is done for two reasons.  First, this
+    allows strat_cloud to initialize the values of three parameters
+    (qmin, N_land, N_ocean) so that the values of these parameters
+    in cloud_rad is exactly the same as it is in strat_cloud.  Secondly,
+    strat_cloud receives the value of the overlap assumption that is
+    set in cloud_rad, so that the same overlap assumption can be used
+    in strat_cloud for determining cloud and large-scale precipitation
+    overlap.
  2) Although there is a cloud_rad_init, there is no cloud_rad_end module.
  3) No other data files are needed.
 
@@ -127,32 +155,51 @@ Notes:
 <!-- BEGIN ROUTINES -->
 <PRE>
 
-<b>call cloud_rad_init</b> (qmin_in,N_land_in,N_ocean_in)
+<b>call cloud_rad_init</b> (axes,Time,qmin_in,N_land_in,N_ocean_in,overlap_out)
 
-input
+
+optional input
     
+       axes           axis integers for diagnostics [integer]
 
-       qmin_in        input value of minimum per-     kg condensate/ 
-                      missible cloud liquid, ice,     kg air
-                      or fraction [real]              or fraction
+       Time           time type variable for diagnostics [time type]
+     
+       qmin_in        minimum permissible cloud liquid, ice to calculate
+                      cloud radiative properties.  All clouds with specific
+                      humidities less than qmin_in will be ignored and treated
+                      as if they didn't exist. Note, qmin_in is determined
+                      by the strat_cloud module; qmin is a namelist parameter
+                      for strat_cloud. [real] {kg condensate/kg air}
 
-       N_land_in      input value of number of        #/(m*m*m)
-                      of cloud drop per cubic meter
-                      over land [real]
+       N_land_in      number of cloud drop per cubic meter over land [real]
+                      {#/((meter)**3)}
+       
+       N_ocean_in     number of cloud drop per cubic meter over ocean [real] 
+                      {#/((meter)**3)}
+                      
+                 
+optional output
 
-       N_ocean_in     input value of number of        #/(m*m*m)
-                      of cloud drop per cubic meter
-                      over ocean [real]
+        overlap_out   integer indicating the overlap assumption being used 
+                      [integer] (1 = maximum-random, 2 = random)
 
-  
+ 
 -----------------------------------------------------------------------
 
-<b>call cloud_summary</b> (LAND,ql,qi,qa,pfull,phalf,TKel,coszen,
-                    nclds,ktop,kbot,cldamt,r_uv,r_nir,ab_uv,ab_nir,em_lw)
+<b>call cloud_summary</b> (is,js,Time,&
+                  LAND,ql,qi,qa,qv,pfull,phalf,TKel,coszen,skt,&
+                  nclds,ktop,kbot,cldamt,&
+                  r_uv,r_nir,ab_uv,ab_nir,em_lw,&
+                  conc_drop,conc_ice,size_drop,size_ice)
+
 
 input
 
-     land      fraction of the grid box covered by LAND [real,dimension(:,:)]
+     is,js      indices for model slab [integer]
+
+     Time       time type variable for diagnostics [time type]
+
+     land       fraction of the grid box covered by LAND [real,dimension(:,:)]
 
      ql         specific humidity of cloud liquid {kg vapor/kg air}
                 [real,dimension(:,:,nlev)]
@@ -163,6 +210,9 @@ input
      qa         cloud fraction {fraction} 
                 [real,dimension(:,:,nlev)]
  
+     qv         specific humidity of water vapor {kg vapor/kg air}
+                [real,dimension(:,:,nlev)]
+  
      pfull      pressure at full model levels {Pascals}. 
                 [real,dimension(:,:,nlev)] 
                 IMPORTANT NOTE: p(j) < p(j+1)
@@ -174,12 +224,12 @@ input
      TKel       temperature  {Kelvin} 
                 [real,dimension(:,:,nlev)]
 
-
      coszen     cosine of the solar zenith angle [real,dimension(:,:)]
+
+     skt        surface skin temperature {Kelvin} [real, dimension(:,:)]
 
 
 input/output
-
 
      nclds      number of (random overlapping) clouds in column 
                 [integer,dimension(:,:)]
@@ -193,6 +243,10 @@ input/output
     
      cldamt     horiztonal area amount of i'th cloud (fraction)
                 [real,dimension(:,:,i)]
+
+optional input/output
+
+     [For Fels-Schwarzkopf radiation]
 
      r_uv       cloud reflectance in ultra-violet (uv) band of i'th cloud 
                 (fraction) [real,dimension(:,:,i)]
@@ -209,9 +263,27 @@ input/output
      em_lw      longwave emissivity of the i'th cloud (fraction)
                 [real,dimension(:,:,i)]
 
+     [For sea-esf radiation]
+
+     NOTE: The third index refers to i'th model level number, not the i'th
+           cloud as in the output for Fels-Schwarzkopf radiation
+
+     conc_drop  liquid cloud droplet mass concentration {grams/m3}
+                [real,dimension(:,:,nlev)] 
+ 
+     conc_drop  cloud ice mass concentration {grams/m3}
+                [real,dimension(:,:,nlev)]  
+
+     size_drop  effective diameter of liquid cloud droplets {microns}
+                [real,dimension(:,:,nlev)]
+   
+     size_drop  effective diameter of ice cloud particles {microns}
+                [real,dimension(:,:,nlev)]
+
 -----------------------------------------------------------------------
 
 <b>call cloud_rad</b> (tau,w0,gg,coszen,r_uv,r_nir,ab_uv,ab_nir)
+
 
 input 
 
@@ -242,7 +314,6 @@ input/output
                 (fraction) [real,dimension(:,:,i)]
 
 
-
 </PRE>
 </A><!-- END ROUTINES -->
 <!--------------------------------------------------------------------->
@@ -263,11 +334,15 @@ input/output
                                    adjacent levels is 
                                    treated as part of 
                                    the same cloud
+
+                                i.e. maximum-random overlap
                           
                       overlap = 2. means condensate in 
                                    adjacent levels is 
                                    treated as different 
                                    clouds
+
+                                i.e. random overlap
 
                       overlap is used only if the stratiform
                       cloud scheme is operating
@@ -312,8 +387,57 @@ input/output
                       plane-parallel homogenous cloud bias
                       (e.g. Cahalan effect). [real]
 
-       qamin          minimum permissible cloud fraction [real]
+       qamin          minimum permissible cloud fraction to calculate
+                      radiative properties of the cloud.  Note that this
+                      is different than qmin which is the minimum possible
+                      liquid or ice specific humidity to calculate radiative
+                      properties of the cloud. 
+
+                      Thus for a cloud to exist in the eyes of cloud_rad
+                      both the cloud fraction must exceed qamin, and
+                      one or the other of cloud liquid and ice must
+                      have a specific humidity in excess of qmin. 
+                      Note qmin is controlled by the value of qmin set
+                      by strat_cloud module where qmin is a namelist
+                      variable. [real]
  
+
+       ------------------------------------------------------------------
+
+                         ISCCP CLOUD PROCESSING
+
+    
+       The following variables only apply if the ISCCP cloud view
+       processing is done.  To turn on ISCCP cloud processing, you
+       must request one of the diagnostic output fields from the
+       diag_table.
+
+
+       adjust_isccp_top_height
+
+                      logical variable indicating whether 
+                      or not to simulate 10.5 micron brightness
+                      temperatures to adjust top heights according
+                      to the emissivity of the cloud. 
+                     
+                      If TRUE:
+
+                      then infrared brightness temperature are 
+                      computed and cloud top pressures are adjusted 
+                      
+                      If FALSE:
+                
+                      reported cloud top pressures is the actual cloud 
+                      top pressure in the model
+
+       ncol           number of columns used in ISCCP cloud type
+                      simulations
+ 
+       isccp_taumin   minimum optical depth ISCCP can see
+
+       emsfclw        assumed constant of longwave emissivity of
+                      the surface (fraction)
+
 
 Notes:
 
@@ -322,6 +446,109 @@ Notes:
 
 </PRE>
 </A><!-- END NAMELIST -->
+<!--------------------------------------------------------------------->
+<A NAME="DIAGNOSTICS">
+<HR>
+<H4>DIAGNOSTIC FIELDS</H4>
+<PRE>
+Diagnostic fields may be output to a netcdf file by specifying the
+module name <b>cloud</b> and the desired field names (given below)
+in file <b>diag_table</b>. See the documentation for diag_manager.
+</PRE>
+<!-- BEGIN DIAGNOSTICS -->
+<PRE>
+
+Diagnostic fields for module name: <b>cloud</b>
+
+   field name   field description
+   ----------   -----------------
+
+   nisccp       frequency of sunlit times at the times of the radiation
+                calculation at each point {fraction} [real,dimension(:,:)]
+
+   pc#tau%      where # is a number from 1 to 7
+                and   % is a number from 1 to 7
+                {fraction} [real,dimension(:,:)]
+
+                Thus there are 49 diagnostic fields of this type.  All
+                of them are necessary to receive the complete decomposition
+                of clouds visible from space into the ISCCP categories.
+
+                The 7 cloud top pressure ("pc") categories and 7 optical
+                depth ("tau") categories are defined as:
+
+                pc #      pc range (mb)    tau %        tau range
+                ----    ----------------   -----    ---------------------
+
+                 1              pc < 180     1     0.0    < tau < taumin 
+                 2        180 < pc < 310     2     taumin < tau < 1.3
+                 3        310 < pc < 440     3     1.3    < tau < 3.6
+                 4        440 < pc < 560     4     3.6    < tau < 9.4
+                 5        560 < pc < 680     5     9.4    < tau < 23
+                 6        680 < pc < 800     6     23     < tau < 60
+                 7        800 < pc                 60     < tau
+
+                What is saved in these diagnostics is the time mean of
+                the area covered by clouds of this type when the sun is
+                above the horizon. This is done so that the calculation 
+                will mimic the ISCCP product which is broken down into 
+                these categories only for sunlit places.
+
+                NOTE:  TO DETERMINE THE MEAN AREA COVERED BY A CLOUD TYPE 
+                       WHEN THE SUN IS ABOVE THE HORIZON YOU MUST DIVIDE
+                       BY NISCCP:
+
+                       area of cloud type pc#tau% =   pc#tau% / nisccp
+
+   aice         fractional area of sunlit clouds seen from space whose cloud 
+                top contains ice. {fraction} [real,dimension(:,:)]
+
+   reffice      time mean ice effective radius of cloud tops visible from
+                space including areas where there is no such cloud {microns} 
+                [real,dimension(:,:)]
+
+                NOTE:  THUS THE TIME MEAN CLOUD TOP EFFECTIVE RADIUS OF CLOUD 
+                       TOPS WITH ICE VISIBLE FROM SPACE IS:
+
+                       mean reffice  =    reffice /  aice
+      
+   aliq         fractional area of sunlit clouds seen from space whose cloud 
+                top contains liquid. {fraction} [real,dimension(:,:)]
+
+   reffliq      time mean cloud droplet effective radius of cloud tops 
+                visible from space including areas where there is no such 
+                cloud {microns} [real,dimension(:,:)]
+   
+                NOTE:  mean reffliq  =    reffliq / aliq
+
+   alow         fractional area of sunlit clouds seen from space whose cloud 
+                tops are low (pc > 680 mb). {fraction} [real,dimension(:,:)]
+
+   tauicelow    time mean optical depth of ice for cloud tops visible from 
+                space including areas where there is no such cloud {microns} 
+                [real,dimension(:,:)]
+  
+   tauliqlow    time mean optical depth of liquid for cloud tops visible from 
+                space including areas where there is no such cloud {microns} 
+                [real,dimension(:,:)]
+   
+   tlaylow      time mean of the low level mean temperature (pc > 680 mb) 
+                when low cloud tops are visible from space including times 
+                where there is no such cloud {microns} 
+                [real,dimension(:,:)]
+      
+   tcldlow      time mean of the cloud top temperature for cloud tops visible 
+                from space including times where there is no such cloud 
+                {microns}  [real,dimension(:,:)]
+      
+                NOTE:  mean tauicelow  =    tauicelow / alow
+                       mean tauliqlow  =    tauliqlow / alow
+                       mean tlaylow    =    tlaylow   / alow
+                       mean tcldlow    =    tcldlow   / alow
+
+
+</PRE>
+</A><!-- END DIAGNOSTICS -->
 <!--------------------------------------------------------------------->
 <A NAME="CHANGES">
 <HR>
@@ -364,7 +591,12 @@ Notes:
 <!-- BEGIN ERRORS -->
 <PRE>
 
-    No error messages at present.
+    Fatal crashes occur in initialization of the module if:
+
+    1. overlap does not equal 1 or 2
+    2. taucrit < 0.
+    3. scale_factor < 0.
+    4. qamin outside of the range of 0 to 1.
 
 </PRE>
 </A><!-- END ERRORS -->
@@ -408,6 +640,12 @@ Notes:
      SKYHI general circulation model. J. Geophys. Res., vol. 102, D18,
      pp. 21,745-21,768.
 </PRE>
+     <I> The algorithm to reproduce the ISCCP satellite view of clouds comes from: </I>
+<PRE>
+     Klein, S. A., and C. Jakob, 1999: Validation and sensitivities of 
+     frontal clouds simulated by the ECMWF model. Monthly Weather Review,
+     127(10),  2514-2531.
+</PRE>
 
 </A><!-- END REFERENCES -->
 <!--------------------------------------------------------------------->
@@ -417,7 +655,9 @@ Notes:
 <!-- BEGIN PLANS -->
 <PRE>
 
-     No Plans at present.
+     The optical depth and particle size for every model level will
+     become a diagnostic output field.
+
 
 </PRE>
 </A><!-- END PLANS -->

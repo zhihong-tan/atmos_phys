@@ -30,8 +30,8 @@ public   clouds, clouds_init, clouds_end
 
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: clouds.F90,v 1.3 2000/11/22 14:33:39 fms Exp $'
- character(len=128) :: tag = '$Name: calgary $'
+ character(len=128) :: version = '$Id: clouds.F90,v 1.4 2001/03/06 18:49:47 fms Exp $'
+ character(len=128) :: tag = '$Name: damascus $'
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !   note:  the fels-schwarzkopf radiation code permits bi-spectral
@@ -79,9 +79,9 @@ contains
 
 !#######################################################################
 
-subroutine clouds  (is, js, clear_sky, Time, Time_diag, lat, land, &
-                    pfull, phalf, t,  cosz,                   &
-                    nclds, ktopsw, kbtmsw, ktoplw, kbtmlw,    &
+subroutine clouds  (is, js, clear_sky, Time, Time_diag, lat, &
+                    land, tsfc, pfull, phalf, t, q, cosz,    &
+                    nclds, ktopsw, kbtmsw, ktoplw, kbtmlw,   &
                     cldamt, cuvrf, cirrf, cirab, emcld, mask, kbot)
 
 !-----------------------------------------------------------------------
@@ -90,8 +90,8 @@ subroutine clouds  (is, js, clear_sky, Time, Time_diag, lat, land, &
 type(time_type), intent(in)                    :: Time, Time_diag
 
    real, intent(in), dimension(:,:)    :: lat
-   real, intent(in), dimension(:,:)    :: land
-   real, intent(in), dimension(:,:,:)  :: pfull,phalf,t
+   real, intent(in), dimension(:,:)    :: land,tsfc
+   real, intent(in), dimension(:,:,:)  :: pfull,phalf,t,q
    real, intent(in), dimension(:,:)    :: cosz
 integer, intent(out), dimension(:,:)   :: nclds
 integer, intent(out), dimension(:,:,:) :: ktopsw,kbtmsw,ktoplw,kbtmlw
@@ -195,12 +195,16 @@ real, dimension(size(t,1),size(t,2)) :: convprc,psfc
      call strat_cloud_avg (is, js, ql, qi, cf, ierr)
 
      if (ierr == 0) then
-         call cloud_summary (land,ql,qi,cf,pfull,phalf,t,&
-                             cosz,&
+         call cloud_summary (is,js,land,ql,qi,cf,q,pfull, &
+                             phalf,t,cosz,tsfc,&
                              nclds,ktop(:,:,2:kp1),kbtm(:,:,2:kp1),  &
-                             cldamt(:,:,2:kp1),cuvrf(:,:,2:kp1),  &
-                             cirrf(:,:,2:kp1),cuvab(:,:,2:kp1),  &
-                             cirab(:,:,2:kp1),emcld(:,:,2:kp1))
+                             cldamt(:,:,2:kp1), &
+                             Time=Time_diag, &
+                             r_uv=cuvrf(:,:,2:kp1), &
+                             r_nir=cirrf(:,:,2:kp1), &
+                             ab_uv=cuvab(:,:,2:kp1), &
+                             ab_nir=cirab(:,:,2:kp1), &
+                             em_lw=emcld(:,:,2:kp1))
      endif     
 
 !-----------------------------------------------------------------------
@@ -297,7 +301,7 @@ real, dimension(size(t,1),size(t,2)) :: convprc,psfc
 
 !---- high,mid,low cloud diagnostics ----
       if ( id_high_cld_amt > 0 .or. id_mid_cld_amt > 0 .or. &
-            id_mid_cld_amt > 0 ) then
+            id_low_cld_amt > 0 ) then
          call compute_hml_ca_random ( nclds, cldamt(:,:,2:kp1), &
                     kbtmlw(:,:,2:kp1), pfull, phalf, hml_ca, kbot )
          if ( id_high_cld_amt > 0 ) used = send_data &

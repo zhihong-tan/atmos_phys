@@ -80,8 +80,8 @@ logical :: do_init = .true.
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 1.2 2000/08/04 19:03:28 fms Exp $'
-character(len=128) :: tag = '$Name: calgary $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 1.3 2000/12/05 13:25:07 fms Exp $'
+character(len=128) :: tag = '$Name: damascus $'
 
 real, parameter :: d608 = (rvgas-rdgas)/rdgas
 
@@ -881,7 +881,7 @@ real, intent(in) :: factor
 
  c     = - mu_delt * nu
  b     =   1.0 - c - mu_delt * dflux_datmos*fff
- a     = - mu_delt * (dflux_dsurf + dflux1_dsurf)*fff
+ a     = - mu_delt *dflux_dsurf*fff
  g     =   1./ (b + c * e_n1)
 
  e_n      = - a * g
@@ -920,7 +920,7 @@ real, intent(in) :: factor
 
    c     = - mu_delt * nu
    b     =   1.0 - c - mu_delt * dflux_datmos*fff
-   a     = - mu_delt * (dflux_dsurf + dflux1_dsurf)*fff
+   a     = - mu_delt *dflux_dsurf*fff
    g     =   1./ (b + c * e_n1)
 
    e_n      = - a * g
@@ -950,7 +950,7 @@ real, intent(out)  , dimension(:,:) :: delta_xi
 !-----------------------------------------------------------------------
 
  flux     = flux       + delta_surf * dflux_dsurf
- flux1    = flux1      + delta_surf * dflux1_dsurf
+ flux1    = flux1      - delta_surf * dflux1_dsurf
  delta_xi = f_n_delt   + delta_surf * e_n
 
 !-----------------------------------------------------------------------
@@ -976,7 +976,7 @@ real, intent(out)  , dimension(:) :: delta_xi
 
  where(avail)
    flux     = flux       + delta_surf * dflux_dsurf
-   flux1    = flux1      + delta_surf * dflux1_dsurf
+   flux1    = flux1      - delta_surf * dflux1_dsurf
    delta_xi = f_n_delt   + delta_surf * e_n
  endwhere
 

@@ -21,8 +21,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: shallow_conv.F90,v 1.3 2000/11/22 14:34:48 fms Exp $'
- character(len=128) :: tag = '$Name: calgary $'
+ character(len=128) :: version = '$Id: shallow_conv.F90,v 1.4 2001/03/06 18:52:02 fms Exp $'
+ character(len=128) :: tag = '$Name: damascus $'
 
  logical :: do_init = .true.
 
@@ -471,7 +471,7 @@
   real,    parameter :: small    = 1.0E-2 
 
   real,    dimension(size(tlparc,1),size(tlparc,2)) ::    &
-           tlcl, tlclo, clclo, esat, desat, xy1, xy2
+           tlcl, tlclo, clclo, esat, esato, desato, xy1, xy2
 
  logical, dimension(size(tlparc,1),size(tlparc,2)) ::  &
            non_cnvg
@@ -488,28 +488,36 @@
 
 ! --- Compute constant factor
   clclo = ( 1.0 + d622/qlparc ) / plparc
-  clclo = kappa*ALOG( clclo )
-  clclo =        EXP( clclo )
-  clclo =     tlclo * clclo
+  clclo = kappa*LOG( clclo )
+  clclo =       EXP( clclo )
+  clclo =    tlclo * clclo
+
+! --- Start with all points non-convergent
+  non_cnvg = .true.
 
 ! $$$$$$$$$$$$$$$$$$$$
   do iter = 1,iter_max
 ! $$$$$$$$$$$$$$$$$$$$
 
 ! --- Compute saturation vapor pressure and derivative
-  CALL  ESCOMP ( tlclo,  esat )
-  CALL DESCOMP ( tlclo, desat )
+  CALL  ESCOMP ( tlclo,  esato )
+  CALL DESCOMP ( tlclo, desato )
 
 ! --- Compute new guess for temperature at LCL
-  xy1  = kappa * clclo * desat
-  xy2  = omkappa*ALOG( esat )
-  xy2  = EXP(  xy2 )
-  tlcl = ( xy1 * tlclo - clclo * esat ) / ( xy1 - xy2 )
+  where (non_cnvg)
+     xy1  = kappa * clclo * desato
+     xy2  = omkappa*LOG( esato )
+     xy2  = EXP(  xy2 )
+     tlcl = ( xy1 * tlclo - clclo * esato ) / ( xy1 - xy2 )
+     xy2  = abs( tlcl - tlclo )
+  end where
 
 ! --- Test for convergence
-  xy2     = abs( tlcl - tlclo )
-  non_cnvg = xy2 > small
-  n        = COUNT( non_cnvg )
+  where (non_cnvg .and. xy2 <= small)
+     esat = esato
+     non_cnvg = .false.
+  endwhere
+  n = COUNT( non_cnvg )
 
   if( n .eq. 0 ) go to 1000
 
