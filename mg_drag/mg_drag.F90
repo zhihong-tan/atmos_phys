@@ -14,7 +14,7 @@ MODULE MG_DRAG_MOD
  use Utilities_Mod, ONLY: FILE_EXIST, OPEN_FILE, ERROR_MESG, FATAL, &
                           get_my_pe, READ_DATA, WRITE_DATA,         &
                           CLOSE_FILE, check_nml_error
- use  Constants_Mod, ONLY:  Grav,Kappa,RDgas,p00
+ use  Constants_Mod, ONLY:  Grav,Kappa,RDgas,p00,cp
 
 !-----------------------------------------------------------------------
  implicit none
@@ -22,8 +22,8 @@ MODULE MG_DRAG_MOD
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 1.3 2001/07/05 17:39:11 fms Exp $'
- character(len=128) :: tag = '$Name: eugene $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 1.4 2001/10/25 17:47:59 fms Exp $'
+ character(len=128) :: tag = '$Name: fez $'
 
 !---------------------------------------------------------------------
 ! --- GLOBAL STORAGE FOR:
@@ -63,8 +63,10 @@ MODULE MG_DRAG_MOD
 !  v197 value for low-level-layer
       ,low_lev_frac = .23
 
+logical :: do_conserve_energy = .false.
+
     NAMELIST / mg_drag_nml /                         &
-     &  xl_mtn, gmax, acoef, rho ,low_lev_frac                  
+     &  xl_mtn, gmax, acoef, rho ,low_lev_frac, do_conserve_energy
 
 
  public mg_drag, mg_drag_init, mg_drag_end
@@ -73,13 +75,14 @@ MODULE MG_DRAG_MOD
 
 !#############################################################################      
 
- SUBROUTINE mg_drag (is,js,uwnd,vwnd,temp,pfull,phalf,   &
-                    zfull,zhalf,dtaux,dtauy,taub,kbot)
+ SUBROUTINE mg_drag (is,js,delt,uwnd,vwnd,temp,pfull,phalf,   &
+                    zfull,zhalf,dtaux,dtauy,dtemp,taub,kbot)
 !===================================================================
 
 ! Arguments (intent in)
 
  integer, intent(in) :: is,js
+ real, intent(in)    :: delt
  real, intent(in), dimension (:,:,:) :: &
      &             uwnd, vwnd, temp, pfull, phalf, zfull, zhalf
  integer, intent(in), OPTIONAL, dimension(:,:)   :: kbot
@@ -90,6 +93,7 @@ MODULE MG_DRAG_MOD
 !
 !      is,js   - integers containing the starting
 !                  i,j indices from the full horizontal grid
+!      delt     time step in seconds
 !      UWND     Zonal wind (dimensioned IDIM x JDIM x KDIM)
 !      VWND     Meridional wind (dimensioned IDIM x JDIM x KDIM)
 !      TEMP     Temperature at full model levels
@@ -108,7 +112,7 @@ MODULE MG_DRAG_MOD
 ! Arguments (intent out)
 
  real, intent(out), dimension (:,:) :: taub
- real, intent(out), dimension (:,:,:) :: dtaux, dtauy
+ real, intent(out), dimension (:,:,:) :: dtaux, dtauy, dtemp
 
 !      OUTPUT
 !      ------
@@ -121,6 +125,8 @@ MODULE MG_DRAG_MOD
 !                   (dimensioned IDIM x JDIM x KDIM)
 !      DTAUY    Tendency of the meridional wind component deceleration 
 !                   (dimensioned IDIM x JDIM x KDIM)
+!      dtemp    Tendency of temperature due to dissipation of ke
+!                  
 !===================================================================
 
 !-----------------------------------------------------------------------
@@ -289,6 +295,14 @@ call mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
 
 !  calculate mountain gravity wave drag tendency contributions
 call mgwd_tend (is,js,xn,yn,taub,phalf,taus,dtaux,dtauy)
+
+!  calculate temperature tendency due to dissipation of kinetic energy
+   if (do_conserve_energy) then
+      dtemp = -((uwnd+.5*delt*dtaux)*dtaux + (vwnd+.5*delt*dtauy)*dtauy)/cp
+   else
+      dtemp = 0.0
+   endif
+
 
 end subroutine mg_drag
 !=======================================================================

@@ -58,7 +58,7 @@ end interface
 !----- version number -----
 
    character(len=128) :: version = '$Id: diag_integral.F90,v 1.3 2001/07/05 17:25:27 fms Exp $'
-   character(len=128) :: tag = '$Name: eugene $'
+   character(len=128) :: tag = '$Name: fez $'
 
    type (time_type) :: Next_alarm_time, Alarm_interval,  &
                        Zero_time

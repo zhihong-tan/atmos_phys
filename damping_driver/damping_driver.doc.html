@@ -80,6 +80,7 @@
      utilities_mod
   diag_manager_mod
   time_manager_mod
+     constants_mod
 
 </PRE>
 </A><!-- END MODULES_USED -->
@@ -119,7 +120,7 @@
 <!-- BEGIN ROUTINES -->
 <PRE>
 
-call damping_driver ( is, js, Time, pfull, phalf, zfull, zhalf,
+call damping_driver ( is, js, Time, delt, pfull, phalf, zfull, zhalf,
                       u, v, t, q, r,  udt, vdt, tdt, qdt, rdt,
                       [mask, kbot] )
 
@@ -129,6 +130,8 @@ Input
                 global grid   [integer]
 
     Time        current time  [time_type]
+
+    delt        time step in seconds  [real]
 
     pfull       pressure (in pascals) at full model levels
                   [real, dimension(:,:,nlev)]
@@ -216,7 +219,7 @@ input
 
     trayfric      damping time in seconds for Rayleigh damping of
                   momentum fields in the top nlev_rayfric layers
-                  (if Trayfric < 0 then time in days)
+                  (if Trayfric &lt; 0 then time in days)
                      [real, default: Trayfric=0.]
 
     nlev_rayfric  number of levels at the top of the model where
@@ -226,6 +229,10 @@ input
 
     do_mg_drag    flag for mountain gravity wave drag
                     [logical, default: do_mg_drag=.false.]
+
+    do_conserve_energy  If TRUE the heating due to the dissipation of kinetic energy
+                        by Rayleigh damping will be computed.
+                         [logical, default: do_conserve_energy=.false.]
 
 </PRE>
 </A><!-- END NAMELIST -->
@@ -246,12 +253,16 @@ Diagnostic fields for module name: <b>damping</b>
    field name     field description
    ----------     -----------------
 
-   udt_rdamp      u wind tendency for Rayleigh damping (m/s2)
-   vdt_rdamp      u wind tendency for Rayleigh damping (m/s2)
-   udt_gwd        u wind tendency for gravity wave drag (m/s2)
-   vdt_gwd        v wind tendency for gravity wave drag (m/s2)
-   taub           base flux for gravity wave drag (kg/m/s2)
-   sgsmtn         sub-grid scale topography for gravity wave drag (m)
+   udt_rdamp        u wind tendency for Rayleigh damping (m/s2)
+   vdt_rdamp        u wind tendency for Rayleigh damping (m/s2)
+   tdt_diss_rdamp   Dissipative heating from Rayleigh damping (deg_k/s)
+   diss_heat_rdamp  Integrated dissipative heating from Rayleigh damping (W/m2)
+   udt_gwd          u wind tendency for gravity wave drag (m/s2)
+   vdt_gwd          v wind tendency for gravity wave drag (m/s2)
+   tdt_diss_gwd     Dissipative heating from gravity wave drag (deg_k/s)
+   diss_heat_gwd    Integrated dissipative heating from gravity wave drag (W/m2)
+   taub             base flux for gravity wave drag (kg/m/s2)
+   sgsmtn           sub-grid scale topography for gravity wave drag (m)
 
 </PRE>
 </A><!-- END DIAGNOSTICS -->
@@ -319,8 +330,7 @@ damping_driver
 <!-- BEGIN BUGS -->
 <PRE>
 
-     The option for eddy damping (tsponge .ne. 0) will not work
-     correctly unless full zonal rows are passed in the argument list.
+     There are no known bugs.
 
 </PRE>
 </A><!-- END BUGS -->
@@ -342,7 +352,7 @@ damping_driver
 <!-- BEGIN PLANS -->
 <PRE>
 
-     The eddy damping will be removed.
+     Interface and diagnostics for topographic drag will be added.
 
 </PRE>
 </A><!-- END PLANS -->

@@ -343,27 +343,54 @@ Diagnostic fields for module name: <b>moist</b>
    qdt_conv     specific humidity tendency from MCA or RAS [kg/kg/s]
    prec_conv    total precipitation rate from MCA or RAS [kg/m2/s]
    snow_conv    frozen precipitation rate from MCA or RAS [kg/m2/s]
+   t_conv_col   column integrated dry static energy tendency from 
+                convection [W/m2]
+   q_conv_col   column integrated water vapor tendency from convection [kg/m2/s]      
    tdt_ls       temperature tendency from large-scale condensation (LSC) or
                 the stratiform cloud scheme (Strat) [deg_K/s]
    qdt_ls       specific humidity tendency from LSC or Strat [kg/kg/s]
+   t_ls_col     column integrated dry static energy tendency from
+                large-scale condensation or strat_cloud [W/m2]
+   q_ls_col     column integrated water vapor tendency from large-scale
+                condensation or strat_cloud [kg/m2/s]   
    prec_ls      total precipitation rate from LSC or Strat [kg/m2/s]
    snow_ls      frozen precipitation rate from LSC or Strat [kg/m2/s]
    precip       total precipitation rate (convective and large-scale) [kg/m2/s]
    WVP          column integrated water vapor [kg/m2]
-   LWP          liquid water path [kg/m2]
-   IWP          ice water path [kg/m2]
    tdt_dadj     temperature tendency from dry convective adjustment [deg_K/s]
    rh           relative humidity after all adjustments [percent]
    mc           cumulus mass flux from RAS [kg/m2/s]
  
-Note:
+Note that the cumulus mass flux can only be output if the convection scheme 
+selected is RAS (or donner deep?).
 
-  * The liquid water path (LWP) and ice water path (IWP) can only be
-    output if the stratiform cloud scheme is used.
+The following variables can be output only if the stratiform cloud scheme
+is used:
 
-  * Cumulus mass flux can only be output if the convection scheme selected
-    is RAS.
-
+   LWP          stratiform liquid water path [kg/m2]
+   IWP          stratiform ice water path [kg/m2]
+   AWP          stratiform saturated mass path [kg air/m2]; when AWP is 
+                divided by the total column integrated mass (i.e. the 
+		surface pressure divided by gravity), you have calculated 
+		the fraction of air mass in the column which is saturated
+		and part of a stratiform cloud.
+   qldt_conv    stratiform cloud liquid specific humidity tendency from RAS 
+                or donner deep [kg condensate/kg air/sec]
+   qidt_conv    stratiform ice water specific humidity tendency from RAS or
+                donner deep [kg condensate/kg air/sec]
+   qadt_conv    cloud fraction tendency from RAS or donner deep [1/sec]
+   ql_conv_col  LWP tendency from RAS or donner deep [kg condensate/m2/sec]
+   qi_conv_col  IWP tendency from RAS or donner deep [kg condensate/m2/sec]
+   qa_conv_col  AWP tendency from RAS or donner deep [kg air/m2/sec]
+   qldt_ls      stratiform cloud liquid specific humidity tendency from  
+                strat_cloud [kg condensate/kg air/sec]
+   qidt_ls      stratiform ice water specific humidity tendency from 
+                strat_cloud [kg condensate/kg air/sec]
+   qadt_ls      cloud fraction tendency from strat_cloud [1/sec]
+   ql_ls_col    LWP tendency from strat_cloud [kg condensate/m2/sec]
+   qi_ls_col    IWP tendency from strat_cloud [kg condensate/m2/sec]
+   qa_ls_col    AWP tendency from strat_cloud [kg air/m2/sec]
+   
 </PRE>
 </A><!-- END DIAGNOSTICS -->
 <!--------------------------------------------------------------------->

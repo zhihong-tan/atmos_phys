@@ -25,8 +25,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !     character(len=5), parameter  ::  version_number = 'v0.08'
-      character(len=128)  :: version =  '$Id: constants_new.F90,v 1.2 2001/07/05 17:29:05 fms Exp $'
-      character(len=128)  :: tag     =  '$Name: eugene $'
+      character(len=128)  :: version =  '$Id: constants_new.F90,v 1.3 2001/10/25 17:48:25 fms Exp $'
+      character(len=128)  :: tag     =  '$Name: fez $'
 
 
 
@@ -67,7 +67,10 @@ real, public, parameter :: cpair   = 1.004840E+07
 real, public, parameter :: grav    = 9.806650E+02
 
 
-real, public, parameter :: sigma   = 5.670E-05
+!!!! USE THIS VALUE FOR CONSISTENCY WITH VALUE IN Constants_mod, 
+!!!! beginning with fez release:
+real, public, parameter :: sigma    = 5.6734E-05 
+!real, public, parameter :: sigma   = 5.670E-05
 
 real, public, parameter :: avogno = 6.023000E+23
 !--------------------------------------------------------------------
@@ -112,7 +115,10 @@ real, public            :: pie, radians_to_degrees
 
 real, public, parameter :: calyear     = 365.2500
 
-real, public, parameter :: sigmasb     = 5.670320E-05 ! (ifdef newsigma)
+!real, public, parameter :: sigmasb     = 5.670320E-05 ! (ifdef newsigma)
+!!!! USE THIS VALUE FOR CONSISTENCY WITH VALUE IN Constants_mod, 
+!!!! beginning with fez release:
+real, public, parameter :: sigmasb     = 5.6734E-05 
 !--------------------------------------------------------------------
 !real, public, parameter :: sigmasb     = 5.673000E-05 ! (older value) 
 !--------------------------------------------------------------------

@@ -6,6 +6,7 @@
 <A HREF="#INTERFACE">PUBLIC INTERFACE</A> / 
 <A HREF="#ROUTINES">ROUTINES</A> / 
 <A HREF="#NAMELIST">NAMELIST</A> / 
+<A HREF="#DIAGNOSTICS">DIAGNOSTICS</A> / 
 <A HREF="#CHANGES">CHANGES</A> / 
 <A HREF="#ERRORS">ERRORS</A> / 
 <A HREF="#REFERENCES">REFERENCES</A> / 
@@ -149,19 +150,21 @@ input
 
 -----------------------------------------------------------------------
 
-<b>call strat_driv</b> (is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,
+<b>call strat_driv</b> (Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,
                       omega,Mc,LAND,ST,SQ,SL,SI,SA,surfrain,surfsnow,
                       MASK)
 
 
 input
  
+     Time       time type variable [time type]		
+
      is,ie      starting and ending i indices for window 
                 [integer]
 
      js,je      starting and ending j indices for window 
                 [integer]
-
+		
      dtcloud    time between this call and the next call to strat_driv
                 {seconds} 
                 [real]
@@ -367,7 +370,7 @@ result
 
      U00        threshold relative humidity for cloud formation by
                 large-scale condensation {fraction}
-                [real, default: U00 = 0.825]
+                [real, default: U00 = 0.80]
 
      rthresh    liquid cloud drop radius threshold for autoconversion
                 {microns}
@@ -375,23 +378,11 @@ result
 
      N_land     fixed number of cloud drops per unit volume in liquid 
                 clouds over land {1/(meters**3)}
-                [real, default: N_land = 6.E+08]
+                [real, default: N_land = 250.E+06]
 
      N_ocean    fixed number of cloud drops per unit volume in liquid 
                 clouds over non-land {1/(meters**3)}
-                [real, default: N_ocean = 1.E+08]
-
-     tau_berg   Time scale for cloud liquid to be converted to cloud 
-                ice by the Bergeron-Findeisan mechanism {seconds}
-                [real, default: tau_berg = 100.]
-
-     rho_ice    assumed mass density of ice crystals 
-                {kg condensate/(meters**3)}
-                [real, default: rho_ice = 100.]
- 
-     ELI        collection efficiency of cloud liquid by falling ice
-                {fraction}
-                [real, default: ELI = 0.7]
+                [real, default: N_ocean = 100.E+06]
 
      U_evap     critical relative humidity above which rain does not
                 evaporate {fraction}
@@ -399,7 +390,7 @@ result
 
      eros_scale  rate constant for destruction of cloud by turbulent
                  mixing with unsaturated air in the grid box {1/second}
-                 [real, default: eros_scale = 1.E-06]
+                 [real, default: eros_scale = 1.E-05]
     
      tracer_advec  Are cloud liquid,ice and fraction advected by the
                    grid resolved motion? 
@@ -450,6 +441,121 @@ Notes:
 
 </PRE>
 </A><!-- END NAMELIST -->
+<!--------------------------------------------------------------------->
+<A NAME="DIAGNOSTICS">
+<HR>
+<H4>DIAGNOSTIC FIELDS</H4>
+<PRE>
+Diagnostic fields may be output to a netcdf file by specifying the
+module name <b>strat</b> and the desired field names (given below)
+in file <b>diag_table</b>. See the documentation for diag_manager.
+</PRE>
+<!-- BEGIN DIAGNOSTICS -->
+<PRE>
+
+Diagnostic fields for module name: <b>strat</b>
+
+   field name   field description
+   ----------   -----------------
+
+Cloud liquid tendencies
+
+   qldt_cond    Liquid water specific humidity tendency from LS 
+                condensation [kg condensate/kg air/sec]       
+   qldt_evap    Liquid water specific humidity tendency from LS 
+                evaporation [kg condensate/kg air/sec]        
+   qldt_eros    Liquid water specific humidity tendency from erosion
+                [kg condensate/kg air/sec]
+   qldt_berg    Liquid water specific humidity tendency from Bergeron 
+                process [kg condensate/kg air/sec]
+   qldt_freez   Liquid water specific humidity tendency from homogenous 
+                freezing [kg condensate/kg air/sec]
+   qldt_rime    Liquid water specific humidity tendency from riming
+                [kg condensate/kg air/sec]
+   qldt_accr    Liquid water specific humidity tendency from accretion
+                [kg condensate/kg air/sec]
+   qldt_auto    Liquid water specific humidity tendency from autoconversion
+                [kg condensate/kg air/sec]
+   qldt_fill    Liquid water specific humidity tendency from filler
+                [kg condensate/kg air/sec]
+   qldt_destr   Liquid water specific humidity tendency from cloud 
+                destruction [kg condensate/kg air/sec]
+
+	
+Ice water tendencies
+
+   qidt_dep     Ice water specific humidity tendency from LS deposition
+                [kg condensate/kg air/sec] 
+   qidt_subl    Ice water specific humidity tendency from LS sublimation
+                [kg condensate/kg air/sec] 
+   qidt_fall    Ice water specific humidity tendency from ice settling out
+                of cloud.  (If qidt_fall < 0., then the amount of cloud ice
+		that fell into the cloud from the layer above exceeds the
+		amount of ice which fell out of the cloud.)
+                [kg condensate/kg air/sec] 
+   qidt_eros    Ice water specific humidity tendency from erosion
+                [kg condensate/kg air/sec] 
+   qidt_melt    Ice water specific humidity tendency from melting to rain
+                [kg condensate/kg air/sec] 	
+   qidt_fill    Ice water specific humidity tendency from filler 
+                [kg condensate/kg air/sec] 
+   qidt_destr   Ice water specific humidity tendency from cloud destruction
+                [kg condensate/kg air/sec]         
+
+Variables associated with rain or snow
+
+   rain_adj     Rain formation rate from removal of supersaturation
+                [kg condensate/kg air/sec]
+   rain_evap    Water vapor tendency from rain evaporation 
+                [kg condensate/kg air/sec] 
+
+   rain_clr     Clear sky rain rate averaged to grid box mean
+                [kg condensate/m2/s]	     
+   rain_cld     Cloudy sky rain rate averaged to grid box mean
+	        [kg condensate/m2/s]   
+   a_rain_clr   Clear sky rain fractional coverage [fraction]   
+   a_rain_cld   Cloudy sky rain fractional coverage [fraction]   
+
+   snow_adj     Snow formation rate from removal of supersaturation
+                [kg condensate/kg air/sec] 
+   snow_subl    Water vapor tendency from snow sublimation 
+                [kg condensate/kg air/sec] 
+   snow_melt    Rain water tendency from snow melting 
+                [kg condensate/kg air/sec] 
+
+   snow_clr     Clear sky snow rate averaged to grid box mean
+	        [kg condensate/m2/s]   
+   snow_cld     Cloudy sky snow rate averaged to grid box mean
+   a_snow_clr   Clear sky snow fractional coverage [fraction]   
+   a_snow_cld   Cloudy sky snow fractional coverage [fraction]   
+	     
+
+Cloud fraction tendencies
+
+   qadt_lsform  Cloud fraction tendency from LS condensation [1/sec] 
+   qadt_rhred   Cloud fraction tendency from RH limiter  [1/sec] 
+   qadt_eros    Cloud fraction tendency from erosion [1/sec] 
+   qadt_fill    Cloud fraction tendency from filler [1/sec] 
+   qadt_destr   Cloud fraction tendency from cloud destruction [1/sec] 
+        
+	
+Column integrated diagnostics for the above variables are:
+
+   ql_eros_col,   ql_cond_col,   ql_evap_col,   ql_accr_col,   ql_auto_col,
+   ql_fill_col,   ql_berg_col,   ql_destr_col,  ql_rime_col,   ql_freez_col
+   
+   qi_fall_col,   qi_fill_col,   qi_subl_col,   qi_destr_col,  qi_eros_col,
+   qi_melt_col,   qi_dep_col 
+   
+   qa_lsform_col, qa_eros_col,   qa_fill_col,   qa_rhred_col,  qa_destr_col 
+
+   rain_evap_col, rain_adj_col,  snow_subl_col, snow_melt_col, snow_adj_col
+       
+   These variables all have units of [kg condensate/m2/sec] or [kg air/m2/sec]
+   in the case of cloud fraction related variables.
+ 
+</PRE>
+</A><!-- END DIAGNOSTICS -->
 <!--------------------------------------------------------------------->
 <A NAME="CHANGES">
 <HR>

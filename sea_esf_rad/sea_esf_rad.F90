@@ -98,7 +98,7 @@ private
 
 !        character(len=5), parameter  ::  version_number = 'v0.09'
          character(len=128)  :: version =  '$Id: sea_esf_rad.F90,v 1.2 2001/07/05 17:33:13 fms Exp $'
-         character(len=128)  :: tag     =  '$Name: eugene $'
+         character(len=128)  :: tag     =  '$Name: fez $'
 
 
 !---------------------------------------------------------------------

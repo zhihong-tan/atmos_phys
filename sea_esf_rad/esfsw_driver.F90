@@ -19,7 +19,6 @@ use esfsw_scattering_mod, only:  get_swaerprops_from_scattering, &
 use cloudrad_package_mod, only:  get_swcldprops_from_cloudrad
 use rad_utilities_mod,    only:  Rad_control, radiation_control_type, &
                                  Sw_control, shortwave_control_type
-!use rad_utilities_mod,    only:  shortwave_control_type, Sw_control
 
 !---------------------------------------------------------------------
 
@@ -37,8 +36,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.08'
-   character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 1.2 2001/07/05 17:31:09 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: eugene $'
+   character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 1.3 2001/10/25 17:48:29 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: fez $'
 
 
 
@@ -94,12 +93,16 @@ real, dimension(4)          :: wtstr_4 =(/0.347854845, 0.652145155,&
 		                        0.347854845, 0.652145155/)
 
 integer                     :: IJK
+logical                     :: do_esfsw_band_diagnostics = .false.
+logical                     :: nstr4 = .false.
 
 !------------------------------------------------------------------
 !  variables used in subroutine deledd  
 !------------------------------------------------------------------
 integer, dimension(:,:,:), allocatable ::  cld_index
-real,    dimension(:,:),   allocatable ::  q, r, t
+!real,    dimension(:,:),   allocatable ::  q, r, t
+real,    dimension(:,:),   allocatable ::  q
+real,    dimension(:  ),   allocatable ::  r, t
 real,    dimension(:),     allocatable ::  gstr2, taustr2, omegastr2, &
 			  	           cosangzk2, rlayerdir2,    &
 				           tlayerde2, tlayerdir2, &
@@ -283,11 +286,13 @@ integer, dimension(:), allocatable        :: endwvnbands
       allocate (ptstr       (nstreams) )
 
       if (nstreams == 4) then
-	ptstr(:) = ptstr_4(:)
-	wtstr(:) = wtstr_4(:)
+        ptstr(:) = ptstr_4(:)
+        wtstr(:) = wtstr_4(:)
+        nstr4 = .true.
       else if (nstreams == 1) then
         ptstr(1) = ptstr_1
         wtstr(1) = 1.0
+        nstr4 = .false.
       endif
 
 !---------------------------------------------------------------------
@@ -375,9 +380,11 @@ integer, dimension(:), allocatable        :: endwvnbands
 !   convert some values to mks to match model units
 !--------------------------------------------------------------------
 
-      p0h2o = 1.0E+2*p0h2o  ! mb to mks
+!     p0h2o = 1.0E+2*p0h2o  !  mb to mks
+      p0h2o = 1.0E-2/p0h2o  ! invert, and convert mb to mks
       kh2o = kh2o *1.0E-01   ! cgs to mks
       ko3  = ko3 *1.0E-01    ! cgs to mks
+
 
 !----------------------------------------------------------------------
  
@@ -555,8 +562,8 @@ integer,                intent(in) :: nsolwg
 !
 !----------------------------------------------------------------------c
  
-real, dimension(:,:,:), intent(out)            :: dfsw, fsw, hsw, ufsw
-real, dimension(:,:,:), intent(out) , optional :: dfswclr, fswclr,   &
+real, dimension(:,:,:), intent(inout)            :: dfsw, fsw, hsw, ufsw
+real, dimension(:,:,:), intent(inout) , optional :: dfswclr, fswclr,   &
                                                   hswclr, ufswclr
  
 !-----------------------------------------------------------------------
@@ -564,6 +571,8 @@ real, dimension(:,:,:), intent(out) , optional :: dfswclr, fswclr,   &
 !-----------------------------------------------------------------------
  
    logical, dimension(:,:,:), allocatable :: cloud
+   logical, dimension(:,:  ), allocatable :: cloud_in_column
+   logical, dimension(:,:), allocatable   :: daylight
 
    real,    dimension(:,:,:), allocatable ::     &
          aeroasymfac,     aerosctopdep,   aeroextopdep,     &
@@ -572,6 +581,7 @@ real, dimension(:,:,:), intent(out) , optional :: dfswclr, fswclr,   &
          cloudsctopdep,   delpdig,        deltap,           &
                           densitymol,     extopdepclr,      &
 	 extopdepovc,     fclr,           fovc,             &
+         gocpdp,                                            &
          gasopdep,        gclr,           gstrclr,          &
          gstrovc,         govc,           omegastrclr,      &
          omegastrovc,     opdep,                            &
@@ -589,15 +599,16 @@ real, dimension(:,:,:), intent(out) , optional :: dfswclr, fswclr,   &
 
    real, dimension (:,:,:), allocatable ::      &
          reflectanceclr,  transmittanceclr,                 &
-         sumtrclr,        sumreclr
+         sumtrclr,        sumreclr,  &
+         dfswband, fswband, hswband, ufswband
 
    real, dimension (:,:,:,:), allocatable ::                &
-                          dfswband,       efftauo2,         &
-	 efftauco2,       fswband,        hswband,          &
+                                          efftauo2,         &
+	 efftauco2,                                         &
 	 totco2,          totco2str,      toto2,            &
-	 toto2str,        ufswband
+	 toto2str
 
-   real, dimension (:,:,:,:), allocatable ::                &
+   real, dimension (:,:,:), allocatable ::                &
          dfswbandclr,     fswbandclr,     hswbandclr,       &
          ufswbandclr
 
@@ -612,17 +623,18 @@ real, dimension(:,:,:), intent(out) , optional :: dfswclr, fswclr,   &
    real, dimension (:,:,:), allocatable   :: pflux_mks
 
    real, dimension(:,:), allocatable       ::               &
-	 sfcalb,          solarflux,      wtfac
+	 sfcalb,          solarflux,      wtfac, denom
 
    integer            :: j, i, k, ng, ncld, ncldlyrs, nhiclds,    &
 			 nmiclds, nloclds, np, nband, nf, ns
    character(len=15)  :: swaer_form
 
+
 !--------------------------------------------------------------------
 !    define limits and dimensions 
 !--------------------------------------------------------------------
 
-      IJK   = (IERAD-ISRAD+1)*(JERAD-JSRAD+1)*(KERAD-KSRAD+1)
+      IJK   = IERAD-ISRAD+1
 
 !---------------------------------------------------------------------
 
@@ -647,7 +659,11 @@ allocate ( wtfac           (ISRAD:IERAD, JSRAD:JERAD)  )
 
 allocate ( densitymol      (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ) )
 allocate ( cloud           (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ) )
+allocate ( cloud_in_column (ISRAD:IERAD, JSRAD:JERAD               ) )
+allocate ( daylight        (ISRAD:IERAD, JSRAD:JERAD               ) )
 allocate ( deltap          (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ) )
+allocate ( gocpdp          (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ) )
+allocate ( denom           (ISRAD:IERAD, JSRAD:JERAD               ) )
 allocate ( delpdig         (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ) )
 allocate ( totco2    (ISRAD:IERAD, JSRAD:JERAD, KSRAD+1:KERAD+1, NSOLWG) )
 allocate ( totco2str (ISRAD:IERAD, JSRAD:JERAD, KSRAD+1:KERAD+1, NSOLWG) )
@@ -705,17 +721,31 @@ allocate ( pflux_mks       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
         alphao2str (:,:,1) = 0.0
 	 
 !----------------------------------------------------------------------c
-! define a cloud existence variable.      
+! define a flag indicating columns in which there is sunshine during
+! this radiation time step. define a flag indicating points with both 
+! sunlight and cloud.      
 !----------------------------------------------------------------------c
 
-	  do k=KSRAD,KERAD
             do j = JSRAD,JERAD
               do i = ISRAD,IERAD
-	        if (cloudfrac(i,j,k) > 0.0)  then
-		  cloud(i,j,k) = .true.
-	        else
-		  cloud(i,j,k) = .false.
-	        endif
+                if ( fracday(i,j) /= 0.0) then
+                  daylight(i,j) = .true.                 
+                else
+                  daylight(i,j) = .false.                
+                endif     
+                cloud_in_column(i,j) = .false.
+            end do
+          end do
+        
+           do k=KSRAD,KERAD
+            do j = JSRAD,JERAD
+              do i = ISRAD,IERAD
+           if (cloudfrac(i,j,k) > 0.0 .and. daylight(i,j) )  then
+	      cloud_in_column(i,j) = .true.
+              cloud(i,j,k) = .true.
+            else
+              cloud(i,j,k) = .false.
+              endif
               end do
             end do
           end do
@@ -741,6 +771,7 @@ allocate ( pflux_mks       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
 
         do k = KSRAD+1,KERAD+1
           deltap(:,:,k-1) = pflux_mks(:,:,k) - pflux_mks(:,:,k-1)
+          gocpdp(:,:,k-1) = radcon_mks/deltap(:,:,k-1)
           delpdig(:,:,k-1) = deltap(:,:,k-1)/ grav_mks
           scalestr(:,:,k) = pflux_mks(:,:,k) 
           scale(:,:,k) = scalestr(:,:,k)*pflux_mks(:,:,k)/pstd_mks
@@ -753,15 +784,15 @@ allocate ( pflux_mks       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
 !----------------------------------------------------------------------c
   
         do ng = 1,nsolwg
+          denom(:,:) = 1.0/(grav_mks*rhoair*cosangsolar(:,:,ng)*2.0)
           do k = KSRAD+1,KERAD+1
-            totco2(:,:,k,ng) = 1.0E+02*rrvco2*scale(:,:,k)/(grav_mks* &
-                             rhoair * cosangsolar(:,:,ng) * 2.0 )
-            totco2str(:,:,k,ng) = 1.0E+02 * rrvco2 * scalestr(:,:,k) / &
-                              (grav_mks * rhoair * cosangsolar(:,:,ng) )
-            toto2(:,:,k,ng) = 1.0E+02 * o2mixrat * scale(:,:,k) /  &
-                          (grav_mks * rhoair * cosangsolar(:,:,ng)*2.0 )
-            toto2str(:,:,k,ng) = 1.0E+02*o2mixrat * scalestr(:,:,k) /  &
-                             (grav_mks * rhoair * cosangsolar(:,:,ng) )
+            totco2(:,:,k,ng) = 1.0E+02*rrvco2*scale(:,:,k)*denom(:,:)       
+            totco2str(:,:,k,ng) = 2.0E+02 * rrvco2 * scalestr(:,:,k) * &
+                                  denom(:,:)
+            toto2(:,:,k,ng) = 1.0E+02 * o2mixrat * scale(:,:,k) *  &
+                              denom(:,:)
+            toto2str(:,:,k,ng) = 2.0E+02*o2mixrat * scalestr(:,:,k) *  &
+                                 denom(:,:)
           end do
         end do
 
@@ -784,16 +815,16 @@ allocate ( pflux_mks       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
 	deallocate (pflux_mks     )
  
 if (Rad_control%do_totcld_forcing) then
-  allocate ( dfswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1, NBANDS))
-  allocate (  fswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1, NBANDS)) 
-  allocate (  hswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  , NBANDS)) 
-  allocate ( ufswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1, NBANDS))   
+  allocate ( dfswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
+  allocate (  fswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1)) 
+  allocate (  hswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  )) 
+  allocate ( ufswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))   
 endif
 
-  allocate ( dfswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1, NBANDS))
-  allocate (  fswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1, NBANDS))
-  allocate (  hswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  , NBANDS))
-  allocate ( ufswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1, NBANDS))
+  allocate ( dfswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
+  allocate (  fswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
+  allocate (  hswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ))
+  allocate ( ufswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
   allocate ( sctopdepclr    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
   allocate ( gclr           (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
   allocate ( fclr           (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
@@ -817,9 +848,6 @@ endif
 !---------------------------------------------------------------------
 
   allocate (cld_index  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-  allocate ( q              (IJK, 15         ))
-  allocate ( r              (IJK, NSTREAMS   ))
-  allocate ( t              (IJK, NSTREAMS   ))
   allocate ( gstr2          (IJK             ))
   allocate ( taustr2        (IJK             ))
   allocate ( omegastr2      (IJK             ))
@@ -885,11 +913,17 @@ endif
 !----------------------------------------------------------------------c
  
           do k = KSRAD,KERAD
-            aeroextopdep(:,:,k) = aerext(:,:,k)*aeramtsc(:,:,k)*&
-                                  deltaz(:,:,k) / 1.0E+03
-            aerosctopdep(:,:,k) = aerssalb(:,:,k) * &
-                                  aeroextopdep(:,:,k)
-            aeroasymfac(:,:,k) = aerasymm(:,:,k)
+            do  j=JSRAD,JERAD
+               do i=ISRAD,IERAD
+            if (daylight(i,j) ) then
+            aeroextopdep(i,j,k) = 1.0e-03*aerext(i,j,k)*   &
+                               aeramtsc(i,j,k)*deltaz(i,j,k)
+            aerosctopdep(i,j,k) = aerssalb(i,j,k) * &
+                                  aeroextopdep(i,j,k)
+            aeroasymfac(i,j,k) = aerasymm(i,j,k)
+           endif
+          end do
+          end do
           end do
  
 
@@ -901,13 +935,13 @@ endif
 					       cldasymm)
 
             do k = KSRAD,KERAD
-	      do j=JSRAD,JERAD
-	       do i=ISRAD, IERAD
-		 if (cloud(i,j,k) ) then
-		cloudextopdep(i,j,k) = cldext(i,j,k) *    &
-                                   deltaz(i,j,k) / 1.0E+03
-                cloudsctopdep(i,j,k) = cldsct(i,j,k) *    &
-                                   deltaz(i,j,k) / 1.0E+03
+              do j=JSRAD,JERAD
+                do i=ISRAD, IERAD
+                 if (cloud(i,j,k) ) then
+                   cloudextopdep(i,j,k) = 1.0E-03*cldext(i,j,k) *    &
+                                   deltaz(i,j,k) 
+                cloudsctopdep(i,j,k) = 1.0E-03*cldsct(i,j,k) *    &
+                                   deltaz(i,j,k) 
                 cloudasymfac(i,j,k) = cldasymm(i,j,k)
 
                 endif
@@ -929,7 +963,7 @@ endif
  
             do k = KSRAD,KERAD
               wh2o(:,:,k) = rh2o(:,:,k) * delpdig(:,:,k) *   &
-                            exp( powph2o(nband)*alog(press(:,:,k)/ &
+                            exp( powph2o(nband)*alog(press(:,:,k)* &
                                  p0h2o(nband) ) )
             end do
  
@@ -946,7 +980,7 @@ endif
                 do k = KSRAD+1,KERAD+1
 		  do j=JSRAD,JERAD
 		    do i = ISRAD,IERAD
-		      if (fracday(i,j) /= 0.0) then
+		      if (daylight(i,j) ) then
                       alphaco2(i,j,k) = c1co2(nband)*exp(c3co2(nband)* &
                                         alog( ( totco2(i,j,k,ng) +  &
                                                 c2co2(nband) ) ) )  - &
@@ -980,7 +1014,7 @@ endif
                 do k = KSRAD+1,KERAD+1
 		  do j=JSRAD,JERAD
                     do i = ISRAD,IERAD
-		      if (fracday(i,j) /= 0.0) then
+		      if (daylight(i,j) ) then
                       alphao2(i,j,k) = c1o2(nband)*exp( c3o2(nband) * &
                                        alog( ( toto2(i,j,k,ng) +  &
                                                c2o2(nband) ) ) ) -  &
@@ -1020,7 +1054,7 @@ endif
               do k = KSRAD+1,KERAD+1
 	        do j=JSRAD,JERAD
                   do i = ISRAD,IERAD
-		      if (fracday(i,j) /= 0.0) then
+		      if (daylight(i,j) ) then
                     alphao2str(i,j,k) = c1o2strschrun*exp  &
 					(c3o2strschrun* &
                                          alog ( ( toto2str(i,j,k,ng) + &
@@ -1045,7 +1079,7 @@ endif
  !-----------------------------------------------------------------
 
           sumtr(:,:,:) = 0.0
-          sumre(:,:,:) = 0.0
+           sumre(:,:,:) = 0.0
 
           if (Rad_control%do_totcld_forcing) then
             sumtrclr(:,:,:) = 0.0
@@ -1057,13 +1091,20 @@ endif
  !-----------------------------------------------------------------
 
           if (nband >= FIRSTRAYBAND .or. Sw_control%do_swaerosol ) then
-            sctopdepclr(:,:,:) = rayopdep(:,:,:) + aerosctopdep(:,:,:)
-            gclr(:,:,:) = aeroasymfac(:,:,:)*aerosctopdep(:,:,:) /  &
-                          sctopdepclr(:,:,:)
-            fclr(:,:,:) = aeroasymfac(:,:,:) ** 2*aerosctopdep(:,:,:)/&
-                          sctopdepclr(:,:,:)
-            gstrclr(:,:,:) = ( gclr(:,:,:)  - fclr(:,:,:) ) /   &
-                             ( 1.0 - fclr(:,:,:) )
+            do k=ksrad,kerad
+            do j=jsrad,jerad
+            do i=israd,ierad
+              if (daylight(i,j) ) then
+            sctopdepclr(i,j,k) = rayopdep(i,j,k) + aerosctopdep(i,j,k)
+            gclr(i,j,k) = aeroasymfac(i,j,k)*aerosctopdep(i,j,k) /  &
+                          sctopdepclr(i,j,k)
+            fclr(i,j,k) = aeroasymfac(i,j,k)*gclr(i,j,k)
+            gstrclr(i,j,k) = ( gclr(i,j,k)  - fclr(i,j,k) ) /   &
+                             ( 1.0 - fclr(i,j,k) )
+	      endif
+            end do
+            end do
+            end do
           endif
 
  !-----------------------------------------------------------------
@@ -1073,7 +1114,7 @@ endif
             do k=KSRAD,KERAD
               do j=JSRAD,JERAD
                 do i=ISRAD,IERAD
-                  if (cloud(i,j,k) ) then
+                  if (cloud(i,j,k)  )then
                     sctopdepovc(i,j,k) = rayopdep(i,j,k) +    &
 					 aerosctopdep(i,j,k) + &
                                          cloudsctopdep(i,j,k) 
@@ -1133,23 +1174,32 @@ endif
 !----------------------------------------------------------------------c
               if (nband >= FIRSTRAYBAND .or.     &
 		                       Sw_control%do_swaerosol )  then
-                extopdepclr(:,:,:) = gasopdep(:,:,:) +    &
-				     rayopdep(:,:,:) +    &
-				     aeroextopdep(:,:,:)
-                ssalbclr(:,:,:) = sctopdepclr(:,:,:)/extopdepclr(:,:,:)
+
+                do k=ksrad,kerad
+                do j=jsrad,jerad
+                do i=israd,ierad
+                  if (daylight(i,j) ) then
+                extopdepclr(i,j,k) = gasopdep(i,j,k) +    &
+				     rayopdep(i,j,k) +    &
+				     aeroextopdep(i,j,k)
+                ssalbclr(i,j,k) = sctopdepclr(i,j,k)/extopdepclr(i,j,k)
  
  
-                taustrclr(:,:,:) = extopdepclr(:,:,:) * ( 1.0 -    &
-                                   ssalbclr(:,:,:) * fclr(:,:,:) )
-                omegastrclr(:,:,:) = ssalbclr(:,:,:)*((1.0 -     &
-				     fclr(:,:,:))/(1.0 -   &
-				     ssalbclr(:,:,:)*fclr(:,:,:)))
+                taustrclr(i,j,k) = extopdepclr(i,j,k) * ( 1.0 -    &
+                                   ssalbclr(i,j,k) * fclr(i,j,k) )
+                omegastrclr(i,j,k) = ssalbclr(i,j,k)*((1.0 -     &
+				     fclr(i,j,k))/(1.0 -   &
+				     ssalbclr(i,j,k)*fclr(i,j,k)))
+                  endif
+                end do
+                end do
+                end do
 !----------------------------------------------------------------------c
 ! calculate the reflection and transmission in the scattering layers   c
 ! using the delta-eddington method.                                    c
 !----------------------------------------------------------------------c
                 call deledd (taustrclr, omegastrclr, gstrclr,   &
-			     cosangsolar, ng , fracday,rlayerdirclr,   &
+			     cosangsolar, ng , daylight,rlayerdirclr,  &
 			     tlayerdirclr, rlayerdifclr,  &
                              tlayerdifclr, tlayerdeclr)
 
@@ -1233,7 +1283,7 @@ endif
 ! using the delta-eddington method.                                    c
 !----------------------------------------------------------------------c
                 call deledd (taustrovc, omegastrovc, gstrovc,   &
-			     cosangsolar, ng, fracday, rlayerdirovc,   &
+			     cosangsolar, ng, daylight, rlayerdirovc, &
 			     tlayerdirovc, rlayerdifovc,  & 
                              tlayerdifovc, tlayerdeovc, cloud)
                 if (ng /= 1) then
@@ -1250,13 +1300,7 @@ endif
               do k=KSRAD,KERAD
                 do j=JSRAD,JERAD
                   do i=ISRAD,IERAD
-                    if ( .not. cloud(i,j,k) ) then
-	              rlayerdir(i,j,k) = rlayerdirclr(i,j,k)
-	              tlayerdir(i,j,k) = tlayerdirclr(i,j,k)
-	              rlayerdif(i,j,k) = rlayerdifclr(i,j,k)
-	              tlayerdif(i,j,k) = tlayerdifclr(i,j,k)
-	              tlayerde (i,j,k) = tlayerdeclr (i,j,k)
-                    else
+		    if ( cloud(i,j,k) ) then
                       rlayerdir(i,j,k) = cloudfrac(i,j,k)*   &
 	  		                 rlayerdirovc(i,j,k) +  &
                                          (1.0 - cloudfrac(i,j,k) ) *   &
@@ -1277,6 +1321,12 @@ endif
 				        tlayerdeovc(i,j,k) +  &
                                         (1.0 - cloudfrac(i,j,k) ) *  &
                                         tlayerdeclr(i,j,k)
+                    else if (daylight(i,j)) then
+	              rlayerdir(i,j,k) = rlayerdirclr(i,j,k)
+	              tlayerdir(i,j,k) = tlayerdirclr(i,j,k)
+	              rlayerdif(i,j,k) = rlayerdifclr(i,j,k)
+	              tlayerdif(i,j,k) = tlayerdifclr(i,j,k)
+	              tlayerde (i,j,k) = tlayerdeclr (i,j,k)
                     endif
           	  end do
                 end do
@@ -1289,7 +1339,7 @@ endif
 !----------------------------------------------------------------------c
  
               call adding (rlayerdir, tlayerdir, rlayerdif, tlayerdif, &
-                           tlayerde , sfcalb   ,  &
+                           tlayerde , sfcalb   , daylight, &
                            reflectance, transmittance)    
  
               if (Rad_control%do_totcld_forcing) then
@@ -1297,7 +1347,7 @@ endif
                 call adding (                                    &
                              rlayerdirclr, tlayerdirclr,         &
                              rlayerdifclr, tlayerdifclr,         &
-                             tlayerdeclr,  sfcalb,               &
+                             tlayerdeclr,  sfcalb, cloud_in_column, &
                              reflectanceclr, transmittanceclr)
 
               endif
@@ -1307,22 +1357,43 @@ endif
 ! band values.                                                         c
 !----------------------------------------------------------------------c
  
-              wtfac(:,:) = wtfreq(np)*gausswt(ng)*cosangsolar(:,:,ng)
+              do j=JSRAD,JERAD
+                do i=ISRAD,IERAD
+              wtfac(i,j) = wtfreq(np)*gausswt(ng)*cosangsolar(i,j,ng)
+                   end do
+                end do
  
               do k = KSRAD,KERAD+1
-                sumtr(:,:,k) = sumtr(:,:,k) + transmittance(:,:,k)*   &
-		               wtfac(:,:)
-                sumre(:,:,k) = sumre(:,:,k) + reflectance(:,:,k)* &
-			       wtfac(:,:)
+                do j=JSRAD,JERAD
+                 do i=ISRAD,IERAD
+                   if (daylight(i,j) ) then
+                sumtr(i,j,k) = sumtr(i,j,k) + transmittance(i,j,k)*   &
+                              wtfac(i,j)
+                sumre(i,j,k) = sumre(i,j,k) + reflectance(i,j,k)* &
+                           wtfac(i,j)
+                 endif
+              end do
+              end do
               end do
 
               if (Rad_control%do_totcld_forcing) then
 
                 do k = KSRAD,KERAD+1
-                  sumtrclr(:,:,k) = sumtrclr(:,:,k) +         &
-                                    transmittanceclr(:,:,k)*wtfac(:,:) 
-                  sumreclr(:,:,k) = sumreclr(:,:,k) +         &
-                                    reflectanceclr(:,:,k)*wtfac(:,:)
+                do j=JSRAD,JERAD
+                 do i=ISRAD,IERAD
+                  if (cloud_in_column(i,j)       ) then
+                  sumtrclr(i,j,k) = sumtrclr(i,j,k) +         &
+                                    transmittanceclr(i,j,k)*wtfac(i,j) 
+                  sumreclr(i,j,k) = sumreclr(i,j,k) +         &
+                                    reflectanceclr(i,j,k)*wtfac(i,j)
+                   else if (daylight(i,j) ) then
+          sumtrclr(i,j,k) = sumtrclr(i,j,k) + transmittance(i,j,k)*   &
+                              wtfac(i,j)
+             sumreclr(i,j,k) = sumreclr(i,j,k) + reflectance(i,j,k)* &
+                           wtfac(i,j)
+                 endif
+              end do
+              end do
                 end do
               endif
 
@@ -1343,70 +1414,102 @@ endif
 ! calculate the band fluxes and heating rates.                         c
 !----------------------------------------------------------------------c
  
+         if (do_esfsw_band_diagnostics) then
           do k = KSRAD,KERAD+1
-            dfswband(:,:,k,nband) = sumtr(:,:,k) * solarflux(:,:) 
-            ufswband(:,:,k,nband) = sumre(:,:,k) * solarflux(:,:)
+           do j=JSRAD,JERAD
+             do i=ISRAD,IERAD
+            dfswband(i,j,k      ) = sumtr(i,j,k) * solarflux(i,j) 
+            ufswband(i,j,k      ) = sumre(i,j,k) * solarflux(i,j)
           end do
+          end do
+          end do
+         endif
  
-          fswband(:,:,:,nband) = ufswband(:,:,:,nband) -   &
-				 dfswband(:,:,:,nband)
+!----------------------------------------------------------------------c
+! sum the band fluxes and heating rates to calculate the total         c
+! spectral values.                                                     c
+!----------------------------------------------------------------------c
+          do k = KSRAD,KERAD+1
+           do j=JSRAD,JERAD
+             do i=ISRAD,IERAD
+              if (daylight(i,j) ) then
+          dfsw (i,j,k) = dfsw(i,j,k) + sumtr(i,j,k)*solarflux(i,j)
+          ufsw (i,j,k) = ufsw(i,j,k) + sumre(i,j,k)*solarflux(i,j)
+          fswband(i,j,k      ) = (sumre(i,j,k)*solarflux(i,j)) - &
+                                 (sumtr(i,j,k)*solarflux(i,j))
+          fsw(i,j,k) = fsw(i,j,k) + fswband(i,j,k)
+            endif
+          end do
+          end do
+          end do
  
           do k = KSRAD,KERAD
-            hswband(:,:,k,nband) = (fswband(:,:,k+1,nband) -    &
-                                    fswband(:,:,k,nband) )*radcon_mks/ &
-				    deltap(:,:,k) 
+           do j=JSRAD,JERAD
+             do i=ISRAD,IERAD
+              if (daylight(i,j) ) then
+            hswband(i,j,k      ) = (fswband(i,j,k+1      ) -    &
+                                    fswband(i,j,k      ) )*gocpdp(i,j,k)
+            hsw(i,j,k) = hsw(i,j,k) + hswband(i,j,k      )
+            endif
+          end do
+          end do
           end do
 
-	  if (Rad_control%do_totcld_forcing) then
+          if (Rad_control%do_totcld_forcing) then
 
+!----------------------------------------------------------------------c
+! calculate the band fluxes and heating rates.                         c
+!----------------------------------------------------------------------c
+         if (do_esfsw_band_diagnostics) then
             do k = KSRAD,KERAD+1
-              dfswbandclr(:,:,k,nband) = sumtrclr(:,:,k)*solarflux(:,:)
-              ufswbandclr(:,:,k,nband) = sumreclr(:,:,k)*solarflux(:,:)
+           do j=JSRAD,JERAD
+             do i=ISRAD,IERAD
+              dfswbandclr(i,j,k      ) = sumtrclr(i,j,k)*solarflux(i,j)
+              ufswbandclr(i,j,k      ) = sumreclr(i,j,k)*solarflux(i,j)
+          end do
+          end do
             end do
-  
-            fswbandclr(:,:,:,nband) = ufswbandclr(:,:,:,nband) -   &
-                                      dfswbandclr(:,:,:,nband)
+	    endif
+
+!----------------------------------------------------------------------c
+! sum the band fluxes and heating rates to calculate the total         c
+! spectral values.                                                     c
+!----------------------------------------------------------------------c
+            do k = KSRAD,KERAD+1
+           do j=JSRAD,JERAD
+             do i=ISRAD,IERAD
+              dfswclr(i,j,k) = dfswclr(i,j,k) +sumtrclr(i,j,k)* &
+                               solarflux(i,j)
+              ufswclr(i,j,k) = ufswclr(i,j,k) + sumreclr   (i,j,k)*  &
+                                 solarflux(i,j)
+              fswbandclr(i,j,k  ) = (sumreclr(i,j,k)*solarflux(i,j))- &
+                                      (sumtrclr(i,j,k)*solarflux(i,j))
+               fswclr(i,j,k) = fswclr(i,j,k) + fswbandclr(i,j,k      )
+          end do
+          end do
+            end do
+           
 
             do k = KSRAD,KERAD
-              hswbandclr(:,:,k,nband) = (fswbandclr(:,:,k+1,nband) -  &
-                                         fswbandclr(:,:,k,nband) ) *  &
-                                         radcon_mks / deltap(:,:,k)
+           do j=JSRAD,JERAD
+             do i=ISRAD,IERAD
+              hswbandclr(i,j,k      ) = (fswbandclr(i,j,k+1      ) -  &
+                                         fswbandclr(i,j,k      ) ) *  &
+                                         gocpdp(i,j,k)
+               hswclr(i,j,k) = hswclr(i,j,k) + hswbandclr(i,j,k      )
+          end do
+          end do
             end do
           endif
-
-!--------------------------------------------------------------------
- 
-        end do      ! end of band loop
 
 !----------------------------------------------------------------------c
 ! sum the band fluxes and heating rates to calculate the total         c
 ! spectral values.                                                     c
 !----------------------------------------------------------------------c
  
-        do nband = 1,NBANDS
-          do k = KSRAD,KERAD+1
-            dfsw(:,:,k) = dfsw(:,:,k) + dfswband(:,:,k,nband) 
-            ufsw(:,:,k) = ufsw(:,:,k) + ufswband(:,:,k,nband)
-            fsw(:,:,k) = fsw(:,:,k) + fswband(:,:,k,nband) 
-          end do 
-          do k = KSRAD,KERAD
-            hsw(:,:,k) = hsw(:,:,k) + hswband(:,:,k,nband)
-          end do 
-        end do
-      
-        if (Rad_control%do_totcld_forcing) then
-          do nband = 1,NBANDS
-            do k = KSRAD,KERAD+1
-              dfswclr(:,:,k) = dfswclr(:,:,k) + dfswbandclr(:,:,k,nband)
-	      ufswclr(:,:,k) = ufswclr(:,:,k) + ufswbandclr(:,:,k,nband)
-	      fswclr(:,:,k) = fswclr(:,:,k) + fswbandclr(:,:,k,nband)
-	    end do
-	    do k = KSRAD,KERAD
-	      hswclr(:,:,k) = hswclr(:,:,k) + hswbandclr(:,:,k,nband)
-	    end do
-	  end do
-	endif
 
+        end do      ! end of band loop
+ 
 !-----------------------------------------------------------------
 !   deallocate arrays used in adding
 !-----------------------------------------------------------------
@@ -1437,9 +1540,6 @@ endif
       deallocate  (  omegastr2 )
       deallocate  (  taustr2   )
       deallocate  (  gstr2     )
-      deallocate  (  t         )
-      deallocate  (  r         )
-      deallocate  (  q         )
       deallocate  (cld_index   )
 
 !-----------------------------------------------------------------
@@ -1513,8 +1613,12 @@ endif
       deallocate (toto2str   )
       deallocate ( delpdig        )
       deallocate ( deltap         )
+      deallocate ( gocpdp         )
+      deallocate ( denom          )
       deallocate ( densitymol     )
       deallocate ( cloud          )
+      deallocate ( cloud_in_column)
+      deallocate ( daylight       )
 
       deallocate (cldext          )
       deallocate (cldasymm        )
@@ -1554,7 +1658,8 @@ end  subroutine swresf
 !#####################################################################
 
 subroutine adding (rlayerdir, tlayerdir, rlayerdif, tlayerdif,  &
-                   tlayerde, sfcalb, reflectance, transmittance)
+                   tlayerde, sfcalb, calc_flag, reflectance,   &
+                   transmittance)
  
 !----------------------------------------------------------------------c
 ! calculate the reflection and transmission at flux levels from the    c
@@ -1583,12 +1688,18 @@ subroutine adding (rlayerdir, tlayerdir, rlayerdif, tlayerdif,  &
 !             incident beam                                            c
 !                                                                      c
 ! sfcalb    = surface albedo                                           c
+!
+! calc_flag = flag to indicate columns where adding is to be done.
+!             calculations not done in "dark" columns and on clr sky
+!             pass in columns without any clouds
+!
 !----------------------------------------------------------------------c
  
 real, dimension(:,:,:),  intent(in)  :: rlayerdir, rlayerdif, &
                                         tlayerdir, tlayerdif, & 
                                         tlayerde
 real, dimension (:,:) ,  intent(in)  :: sfcalb
+logical, dimension (:,:) ,  intent(in)  :: calc_flag
 !----------------------------------------------------------------------c
 !                                                                      c
 ! intent out:                                                          c
@@ -1607,50 +1718,30 @@ real, dimension(:,:,:)  , intent(out)  :: reflectance, transmittance
 !----------------------------------------------------------------------c
  
       integer     ::  k, j, i
+      real, dimension (lbound(rlayerdir,3):ubound(rlayerdir,3)+1) ::  &
+                                 raddupdif2, raddupdir2,  tlevel2
+                                              
+
+      real, dimension (lbound(rlayerdir,3):ubound(rlayerdir,3)  ) ::  &
+                                      radddowndif2,  tadddowndir2, &
+				      tlayerdif2, tlayerdir2, &
+				      rlayerdif2, rlayerdir2, &
+				      tlayerde2
+
+      real :: dm1tl2, dm2tl2, rdm2tl2, dm32, dm3r2, dm3r1p2, alpp2, &
+              raddupdif2p, raddupdir2p, tlevel2p, radddowndifm, &
+	      tadddowndirm
 
 !----------------------------------------------------------------------c
 ! initialization for the surface layer.                                c
 !----------------------------------------------------------------------c
  
-      raddupdif(:,:,KERAD+1) = sfcalb(:,:)
-      raddupdir(:,:,KERAD+1) = sfcalb(:,:)
- 
-!----------------------------------------------------------------------c
-! initialization for the first scattering layer.                       c
-!----------------------------------------------------------------------c
- 
-      tadddowndir(:,:,KSRAD) = tlayerdir(:,:,KSRAD)
-      radddowndif(:,:,KSRAD) = rlayerdif(:,:,KSRAD)
- 
-!----------------------------------------------------------------------c
-! define the direct transmittance.                                     c
-!----------------------------------------------------------------------c
- 
-      tlevel(:,:,KSRAD) = 1.0
-      tlevel(:,:,KSRAD+1) = tlayerde(:,:,KSRAD)
- 
-      do k = KSRAD+1,KERAD
-        tlevel(:,:,k+1) = tlevel(:,:,k) * tlayerde(:,:,k) 
-      end do
- 
-!----------------------------------------------------------------------c
-! add the inhomogeneous layers downward from the second layer to the   c
-! surface.                                                             c
-!                                                                      c
-! radiation incident from below for diffuse beam, transmission of      c
-! direct beam and conversion to diffuse.                               c
-!----------------------------------------------------------------------c
- 
-      do k = KSRAD+1,KERAD
-        dm1tl(:,:,k) = tlayerdif(:,:,k) / ( 1.0 - rlayerdif(:,:,k) *  &
-                     radddowndif(:,:,k-1) )
-        radddowndif(:,:,k) = rlayerdif(:,:,k) + radddowndif(:,:,k-1) * &
-                           tlayerdif(:,:,k) * dm1tl(:,:,k)
-        tadddowndir(:,:,k) = tlevel(:,:,k) * ( tlayerdir(:,:,k) + &
-                           rlayerdir(:,:,k) * radddowndif(:,:,k-1) * &
-                           dm1tl(:,:,k) ) + ( tadddowndir(:,:,k-1) -  &
-                           tlevel(:,:,k) ) * dm1tl(:,:,k)              
-      end do
+      do j=jsrad,jerad
+      do i=israd,ierad
+
+        if (calc_flag(i,j) ) then
+      
+
  
 !----------------------------------------------------------------------c
 ! add the inhomogeneous layers upward from the surface to the top of   c
@@ -1660,42 +1751,90 @@ real, dimension(:,:,:)  , intent(out)  :: reflectance, transmittance
 ! direct beam and conversion to diffuse.                               c
 !----------------------------------------------------------------------c
  
+        raddupdif2p = sfcalb(i,j)
+        raddupdir2p = sfcalb(i,j)
       do k = KERAD,KSRAD,-1
-        dm2tl(:,:,k) = tlayerdif(:,:,k) / ( 1.0 - rlayerdif(:,:,k) *  &
-                     raddupdif(:,:,k+1) )
-        rdm2tl(:,:,k) = dm2tl(:,:,k) * raddupdif(:,:,k+1)
-        raddupdif(:,:,k) = rlayerdif(:,:,k) + tlayerdif(:,:,k)*   &
-			   rdm2tl(:,:,k) 
+        dm2tl2    = tlayerdif(i,j,k) / ( 1.0 - rlayerdif(i,j,k) *  &
+                     raddupdif2p )
+        rdm2tl2    = dm2tl2    * raddupdif2p     
+        raddupdif2(k) = rlayerdif(i,j,k) + tlayerdif(i,j,k)*   &
+                        rdm2tl2    
+ 
+        raddupdir2(k) = rlayerdir(i,j,k) + tlayerde(i,j,k) *   &
+                        raddupdir2p     * dm2tl2    +   &     
+                        (tlayerdir(i,j,k) - tlayerde(i,j,k)) *  &
+                        rdm2tl2   
+        raddupdir2p = raddupdir2(k)
+        raddupdif2p = raddupdif2(k)
       end do
  
-      do k = KERAD,KSRAD,-1
-        raddupdir(:,:,k) = rlayerdir(:,:,k) + tlayerde(:,:,k) *   &
-                           raddupdir(:,:,k+1) * dm2tl(:,:,k) +   &     
-                           (tlayerdir(:,:,k) - tlayerde(:,:,k)) *  &
-			   rdm2tl(:,:,k)
-      end do
+!----------------------------------------------------------------------c
+! define the direct transmittance.                                     c
+! add the inhomogeneous layers downward from the second layer to the   c
+! surface.                                                             c
+!                                                                      c
+! radiation incident from below for diffuse beam, transmission of      c
+! direct beam and conversion to diffuse.                               c
+!----------------------------------------------------------------------c
  
+!----------------------------------------------------------------------c
+! initialization for the first scattering layer.                       c
+!----------------------------------------------------------------------c
+ 
+      tlevel2p         = tlayerde(i,j,KSRAD)
+      radddowndifm    =  rlayerdif(i,j,KSRAD)
+      tadddowndirm    =  tlayerdir(i,j,KSRAD)
+
+
+      do k = KSRAD+1,KERAD
+        dm1tl2       = tlayerdif(i,j,k) / ( 1.0 - rlayerdif(i,j,k) *  &
+                     radddowndifm      )
+        radddowndif2(k) = rlayerdif(i,j,k) + radddowndifm      * &
+                           tlayerdif(i,j,k) * dm1tl2      
+        tadddowndir2(k) = tlevel2p   * ( tlayerdir(i,j,k) + &
+                           rlayerdir(i,j,k) * radddowndifm      * &
+                           dm1tl2    ) + ( tadddowndirm      -  &
+                           tlevel2p   ) * dm1tl2                    
 
 !----------------------------------------------------------------------c
 ! add downward to calculate the resultant reflectances and             c
 ! transmittances at flux levels.                                       c
 !----------------------------------------------------------------------c
- 
-      do k = KSRAD+1,KERAD+1
-        dm3(:,:,k) = 1.0/(1.0 - raddupdif(:,:,k)*radddowndif(:,:,k-1))
-        dm3r(:,:,k) = dm3(:,:,k) * radddowndif(:,:,k-1)
-        dm3r1p(:,:,k) = 1.0 + raddupdif(:,:,k) * dm3r(:,:,k)
-        alpp(:,:,k) = (tadddowndir(:,:,k-1) - tlevel(:,:,k) )*dm3(:,:,k)
-        transmittance(:,:,k) = (tlevel(:,:,k)*(1.0 + raddupdir(:,:,k)* &
-                                dm3r(:,:,k)) + alpp(:,:,k))
-        reflectance(:,:,k) = ( tlevel(:,:,k) * raddupdir(:,:,k) *   &
-                             dm3r1p(:,:,k) + alpp(:,:,k) *   &
-                             raddupdif(:,:,k) )
+        dm32    = 1.0/(1.0 - raddupdif2(k)*radddowndifm     )
+        dm3r2    = dm32    * radddowndifm      
+        dm3r1p2    = 1.0 + raddupdif2(k) * dm3r2   
+        alpp2    = (tadddowndirm      - tlevel2p   )*dm32   
+        transmittance(i,j,k) = (tlevel2p  *(1.0 + raddupdir2(k)* &
+                                dm3r2   ) + alpp2   )
+        reflectance(i,j,k) = ( tlevel2p   * raddupdir2(k) *   &
+                             dm3r1p2    + alpp2    *   &
+                             raddupdif2(k) )
+        tlevel2p     = tlevel2p   * tlayerde (i,j,k) 
+        radddowndifm = radddowndif2(k)
+        tadddowndirm = tadddowndir2(k)
       end do
  
+        dm32          = 1.0/(1.0 - sfcalb(i,j)*   &
+                              radddowndifm       )
+        dm3r2          = dm32          * radddowndifm       
+        dm3r1p2          = 1.0 + sfcalb(i,j) * dm3r2         
+        alpp2          = (tadddowndirm        - tlevel2p         )* &
+                           dm32          
+        transmittance(i,j,kERAD+1) = (tlevel2p        *(1.0 +   &
+	                           sfcalb(i,j)* &
+                                dm3r2         ) + alpp2         )
+        reflectance(i,j,kERAD+1) = ( tlevel2p         *    &
+	                              sfcalb(i,j) *   &
+                             dm3r1p2          + alpp2          *   &
+                             sfcalb(i,j) )
 
-      reflectance(:,:,KSRAD) = raddupdir(:,:,KSRAD)
-      transmittance(:,:,KSRAD) = 1.0
+      reflectance(i,j,KSRAD) = raddupdir2p         
+      transmittance(i,j,KSRAD) = 1.0
+
+
+        endif
+      end do
+      end do
 !------------------------------------------------------------------
 
 end subroutine adding 
@@ -1704,7 +1843,7 @@ end subroutine adding
 
 !####################################################################
 
-subroutine deledd (taustr, omegastr, gstr, cosang, ng , fracday,  &
+subroutine deledd (taustr, omegastr, gstr, cosang, ng , daylight,  &
                     rlayerdir, tlayerdir, rlayerdif, tlayerdif,   &
 		    tlayerde,  cloud)
  
@@ -1737,7 +1876,7 @@ subroutine deledd (taustr, omegastr, gstr, cosang, ng , fracday,  &
 !----------------------------------------------------------------------c
  
 real, dimension(:,:,:),    intent(in)             :: gstr, cosang
-real, dimension(:,:),      intent(in)             :: fracday
+logical, dimension(:,:),   intent(in)             :: daylight
 real, dimension(:,:,:),    intent(inout)          :: taustr, omegastr
 integer,                   intent(in)             :: ng
 logical, dimension(:,:,:), intent(in), optional   :: cloud          
@@ -1768,7 +1907,11 @@ real, dimension(:,:,:), intent(out)    :: rlayerdir, rlayerdif,   &
     real                     :: onedi3 = 1.0/3.0           
     real                     :: twodi3 = 2.0/3.0             
     integer                  :: k, i, ns, j, nn, ntot
+    real  :: rsum, tsum, alpha
+     real :: qq(7), rr(5), ss(8), tt(8),        ww(4)
  
+       do k=KSRAD,KERAD
+         do j=JSRAD,JERAD
 !----------------------------------------------------------------------c
 ! overcast sky mode                                                    c
 !                                                                      c
@@ -1776,22 +1919,25 @@ real, dimension(:,:,:), intent(out)    :: rlayerdir, rlayerdif,   &
 !       spatial points containing a cloud.                             c
 !----------------------------------------------------------------------c
 
+     nn = 0
      if (present(cloud)) then
-       nn = 0
-       do k=KSRAD,KERAD
-         do j=JSRAD,JERAD
            do i=ISRAD,IERAD
-             if (cloud(i,j,k) .and. fracday(i,j) /= 0.0) then
+             if (cloud(i,j,k) ) then
                nn = nn + 1
 	       cld_index(i,j,k) = nn
                gstr2(nn) = gstr(i,j,k)
                taustr2(nn) = taustr(i,j,k)
                omegastr2(nn) = omegastr(i,j,k)
                cosangzk2(nn) = cosang(i,j,ng)
+!----------------------------------------------------------------------c
+! note: the following are done to avoid the conservative scattering    c
+!       case, and to eliminate floating point errors in the            c
+!       exponential calculations, respectively.                        c
+!----------------------------------------------------------------------c
+      if ( omegastr2(nn   ).ge.1.0 ) omegastr2(nn   ) = 9.9999999E-01
+      if ( taustr2(nn   ).ge.1.0E+02 ) taustr2(nn   ) = 1.0E+02
              endif
            end do
-         end do
-       end do
 
 !----------------------------------------------------------------------c
 ! clear sky mode                                                       c
@@ -1801,68 +1947,70 @@ real, dimension(:,:,:), intent(out)    :: rlayerdir, rlayerdif,   &
 !----------------------------------------------------------------------c
 
      else
-       nn = 0
-       do k=KSRAD,KERAD
-         do j=JSRAD,JERAD
            do i=ISRAD,IERAD
-            if (fracday(i,j) /= 0.0) then
+            if (daylight(i,j) ) then
              nn = nn + 1
 	     cld_index(i,j,k) = nn
              gstr2(nn) = gstr(i,j,k)
              taustr2(nn) = taustr(i,j,k)
              omegastr2(nn) = omegastr(i,j,k)
              cosangzk2(nn) = cosang(i,j,ng)
-	    endif
-           end do
-         end do
-       end do
-    endif
-
-    ntot = nn
-
 !----------------------------------------------------------------------c
 ! note: the following are done to avoid the conservative scattering    c
 !       case, and to eliminate floating point errors in the            c
 !       exponential calculations, respectively.                        c
 !----------------------------------------------------------------------c
-
-    do nn = 1,ntot      
       if ( omegastr2(nn   ).ge.1.0 ) omegastr2(nn   ) = 9.9999999E-01
       if ( taustr2(nn   ).ge.1.0E+02 ) taustr2(nn   ) = 1.0E+02
-    end do
+	    endif
+           end do
+    endif
+
+    ntot = nn
+
+
+    do nn = 1,ntot      
+
  
 !----------------------------------------------------------------------c
 ! direct quantities                                                    c
 !----------------------------------------------------------------------c
  
-    do nn = 1,ntot      
-      q (nn,1 ) = 3.0 * ( 1.0 - omegastr2(nn   ) )
-      q (nn,2 ) = 1.0 - omegastr2(nn   ) * gstr2(nn   )
-      q (nn,3 ) = sqrt( q (nn,1 ) * q (nn,2 ) )
-      q (nn,4 ) = 1.0 + twodi3 * sqrt( q (nn,1 ) / q (nn,2 ) ) 
-      q (nn,5 ) = 1.0 - twodi3 * sqrt( q (nn,1 ) / q (nn,2 ) )
-      q (nn,6 ) = exp( -taustr2(nn   ) * q (nn,3 ) )
-      q (nn,7 ) = q (nn,4 ) / q (nn,6 ) - q (nn,5 ) * q (nn,6 ) *   &
-                  q (nn,5 ) / q (nn,4 )
-      q (nn,8 ) = 0.75 * omegastr2(nn   ) / ( 1.0 - ( q (nn,3 ) *  &
-                  cosangzk2(nn      ) ) ** 2 )
-      q (nn,9 ) = q (nn,8 ) * cosangzk2(nn      )*( 1.0 + gstr2(nn   )*&
-                  q (nn,1 ) * onedi3 )
-      q (nn,10) = q (nn ,8) * ( 1.0 + gstr2(nn   ) * q (nn,1 ) * &
-                  cosangzk2(nn      ) ** 2 )
-      q (nn,11) = q (nn,9 ) - twodi3 * q  (nn,10)     
-      q (nn,12) = q (nn,9 ) + twodi3 * q  (nn,10)     
-      q (nn,13) = exp( -taustr2(nn   ) / cosangzk2(nn      ) )
-      q (nn,14) = ( q  (nn,11) * q  (nn,13) - q  (nn,12) * q (nn,6 ) / &
-                  q (nn,4 ) * q (nn,5 ) ) / q (nn,7 )
-      q (nn,15) = ( q  (nn,12) - q (nn,5 ) * q  (nn,14) ) / q (nn,4 )
-      rlayerdir2(nn) = q (nn,5 ) * q  (nn,15) + q (nn,4 )*q  (nn,14) - &
-                       q  (nn,11)
-      tlayerdir2(nn) = ((q (nn,6 ) * q (nn,4 ) * q  (nn,15) + &
-                       q (nn,5 ) / q (nn,6 ) * q  (nn,14) -  &
-                       q  (nn,12) * q  (nn,13) ) + q  (nn,13) )
-      tlayerde2(nn) = q (nn,13)
-    end do
+      ww(1) = omegastr2(nn)
+      ww(2) = gstr2(nn)
+      ww(3) = taustr2(nn)
+      ww(4) = cosangzk2(nn)
+
+      qq(1)     = 3.0 * ( 1.0 - ww(1) )
+      qq(2)         = 1.0 - ww(1) * ww(2)
+      qq(3)     = qq(1)/qq(2)
+      qq(4) = sqrt( qq(1) * qq(2) )
+      qq(5) = sqrt (qq(3))
+      qq(6) = 1.0 + twodi3 * qq(5)         
+      qq(7) = 1.0 - twodi3 * qq(5)       
+
+      rr(1) = 1./qq(6)
+      rr(2) = qq(7)*rr(1)
+      rr(3) = exp( -ww(3)          * qq(4) )
+      rr(4) = 1.0/rr(3)
+      rr(5) = 1.0/(qq(6) * rr(4) - qq(7) * rr(3) *   &
+                      rr(2) )
+
+
+
+      ss(1) = 0.75 * ww(1)            / ( 1.0 - ( qq(4) *  &
+                  ww(4)               ) ** 2 )
+      ss(2) = ss(1) * ww(4)              *( 1.0 + ww(2)       *&
+                  qq(1) * onedi3 )
+      ss(3) = ss(1) * ( 1.0 + ww(2)        * qq(1) * &
+                  ww(4)               ** 2 )
+      ss(4) = ss(2) - twodi3 * ss(3)     
+      ss(5) = ss(2) + twodi3 * ss(3)     
+       ss(6) = exp( -ww(3)          / ww(4) )
+      ss(7) = ( ss(4) * ss(6) - ss(5) * rr(3) * &
+                  rr(2)      ) * rr(5)
+      ss(8) = ( ss(5) - qq(7) * ss(7) ) * rr(1)
+
 
 !----------------------------------------------------------------------c
 ! diffuse quantities                                                   c
@@ -1872,59 +2020,82 @@ real, dimension(:,:,:), intent(out)    :: rlayerdir, rlayerdif,   &
 !        this calculation is done only for ng=1.                       c
 !----------------------------------------------------------------------c
  
-    if ( ng.eq.1 ) then   
+       if ( ng.eq.1 ) then   
+      rsum = 0.0
+      tsum = 0.0
+      if (nstr4) then
       do ns = 1,NSTREAMS
-	do nn=1,ntot
-          q  (nn,8 ) = 0.75 * omegastr2(nn   ) / ( 1.0 - ( q (nn,3 ) * &
+
+
+          tt(1) = 0.75 * ww(1)            / ( 1.0 - ( qq(4) * &
                        cosangstr(ns) ) ** 2 )
-          q  (nn,9 ) = q  (nn,8 ) * cosangstr(ns) * ( 1.0 +  &
-                       gstr2(nn   ) * q (nn,1 ) * onedi3 )
-          q  (nn,10) = q  (nn,8 ) * ( 1.0 + gstr2(nn   ) * q (nn,1 )*&
+          tt(2) = tt(1) * cosangstr(ns) * ( 1.0 +  &
+                       ww(2)        * qq(1) * onedi3 )
+          tt(3) = tt(1) * ( 1.0 + ww(2)        * qq(1)*&
                        cosangstr(ns) ** 2 )
-          q  (nn,11) = q  (nn,9 ) - twodi3 * q   (nn,10)
-          q  (nn,12) = q  (nn,9 ) + twodi3 * q   (nn,10)
-          q  (nn,13) = exp( -taustr2(nn   ) / cosangstr(ns) )
-          q  (nn,14) = ( q   (nn,11) * q   (nn,13) - q   (nn,12) *  &
-                       q (nn,6 ) / q (nn,4 ) * q (nn,5 ) ) / q (nn,7 )
-          q  (nn,15) = ( q (nn,12) - q (nn,5 ) * q (nn,14) ) / q (nn,4 )
-          r  (nn,ns) = q (nn,5 ) * q(nn,15) + q(nn,4 ) * q (nn,14) -&
-                       q   (nn,11)
-          t  (nn,ns) = (q (nn,6 ) * q (nn,4 ) * q(nn,15) + q (nn,5 ) /&
-                       q (nn,6 ) * q   (nn,14) - q   (nn,12) * &
-                       q   (nn,13) ) + q   (nn,13)
-        end do
-      end do
+          tt(4) = tt(2) - twodi3 * tt(3)
+          tt(5) = tt(2) + twodi3 * tt(3)
+          tt(6) = exp( -ww(3)          / cosangstr(ns) )
+          tt(7) = ( tt(4) * tt(6) - tt(5) *  &
+                    rr(3) * rr(2)   ) * rr(5)
+          tt(8) = ( tt(5) - qq(7) * tt(7) )*rr(1)
 
-      sumr(:) = 0.0
-      sumt(:) = 0.0
- 
-      if (NSTREAMS == 1) then
-        do nn=1,ntot
-          sumr(nn) = r(nn,1)
-          sumt(nn) = t(nn,1)
-        end do
-      else
-        do ns = 1,NSTREAMS
-          do nn=1,ntot
-            sumr(nn) = sumr(nn) + r(nn,ns) * wtstr(ns) * cosangstr(ns)
-            sumt(nn) = sumt(nn) + t(nn,ns) * wtstr(ns) * cosangstr(ns)
-          end do
-        end do
-      endif
 
-   endif
+
+          rsum = rsum + (qq(7)*tt(8) + qq(6)*tt(7) - tt(4))*  &
+                   wtstr(ns)*cosangstr(ns)
+          tsum = tsum + ( (rr(3)*qq(6)*tt(8) + qq(7)*rr(4)*tt(7)    &
+                   -tt(5)*tt(6)) + tt(6))*  &
+                       wtstr(ns)*cosangstr(ns)
+            
+        end do
+        else 
+      do ns = 1,NSTREAMS
+
+
+          tt(1) = 0.75 * ww(1)            / ( 1.0 - ( qq(4) * &
+                       cosangstr(ns) ) ** 2 )
+          tt(2) = tt(1) * cosangstr(ns) * ( 1.0 +  &
+                       ww(2)        * qq(1) * onedi3 )
+          tt(3) = tt(1) * ( 1.0 + ww(2)        * qq(1)*&
+                       cosangstr(ns) ** 2 )
+          tt(4) = tt(2) - twodi3 * tt(3)
+          tt(5) = tt(2) + twodi3 * tt(3)
+          tt(6) = exp( -ww(3)          / cosangstr(ns) )
+          tt(7) = ( tt(4) * tt(6) - tt(5) *  &
+                    rr(3) * rr(2)   ) * rr(5)
+          tt(8) = ( tt(5) - qq(7) * tt(7) )*rr(1)
+
+
+
+          rsum = rsum + (qq(7)*tt(8) + qq(6)*tt(7) - tt(4))
+          tsum = tsum + ( (rr(3)*qq(6)*tt(8) + qq(7)*rr(4)*tt(7)    &
+                   -tt(5)*tt(6)) + tt(6))
+            
+        end do
+         endif
+           sumr(nn) = rsum
+           sumt(nn) = tsum
+
+
+       endif  !  ng == 1
+
+      rlayerdir2(nn) = qq(7) * ss(8) + qq(6)*ss(7) - &
+                       ss(4)
+      tlayerdir2(nn) = ((rr(3) * qq(6) * ss(8) + &
+                       qq(7) * rr(4) * ss(7) -  &
+                       ss(5) * ss(6) ) + ss(6) )
+      tlayerde2(nn) = ss(6)
+
+        end do  ! ntot loop
 
 !---------------------------------------------------------------------
 !     return results in proper locations in (i,j,k) arrays
 !---------------------------------------------------------------------
 
    if (present(cloud)) then
-     nn = 0
-     do k=KSRAD,KERAD
-       do j=JSRAD,JERAD
          do i=ISRAD,IERAD
-           if (cloud(i,j,k) .and. fracday(i,j) /= 0.0 ) then
-             nn = nn + 1
+           if (cloud(i,j,k) ) then
              rlayerdir(i,j,k) = rlayerdir2(cld_index(i,j,k))
              tlayerdir(i,j,k) = tlayerdir2(cld_index(i,j,k))
              tlayerde(i,j,k) = tlayerde2(cld_index(i,j,k))
@@ -1932,25 +2103,11 @@ real, dimension(:,:,:), intent(out)    :: rlayerdir, rlayerdif,   &
                rlayerdif(i,j,k) = sumr(cld_index(i,j,k))
                tlayerdif(i,j,k) = sumt(cld_index(i,j,k))
              endif
-	   else
-             rlayerdir(i,j,k) = 0.0
-             tlayerdir(i,j,k) = 0.0
-             tlayerde(i,j,k) = 0.0
-             if (ng .eq. 1) then
-               rlayerdif(i,j,k) = 0.0
-               tlayerdif(i,j,k) = 0.0
-             endif
            endif
          end do
-       end do
-     end do
    else
-     nn = 0
-     do k=KSRAD,KERAD
-       do j=JSRAD,JERAD
          do i=ISRAD,IERAD
-	   if (fracday(i,j) /= 0.0) then
-             nn = nn + 1
+	   if (daylight(i,j) ) then
              rlayerdir(i,j,k) = rlayerdir2(cld_index(i,j,k))
              tlayerdir(i,j,k) = tlayerdir2(cld_index(i,j,k))
              tlayerde(i,j,k) = tlayerde2(cld_index(i,j,k))
@@ -1958,28 +2115,13 @@ real, dimension(:,:,:), intent(out)    :: rlayerdir, rlayerdif,   &
                rlayerdif(i,j,k) = sumr(cld_index(i,j,k))
                tlayerdif(i,j,k) = sumt(cld_index(i,j,k))
              endif
-	   else
-             rlayerdir(i,j,k) = 0.0
-             tlayerdir(i,j,k) = 0.0
-             tlayerde(i,j,k) = 0.0
-             if (ng .eq. 1) then
-               rlayerdif(i,j,k) = 0.0
-               tlayerdif(i,j,k) = 0.0
-             endif
            endif
          end do
-       end do
+   endif
+
+
      end do
-   endif
-
-!-------------------------------------------------------------------
-   if  ( nn /= ntot) then
-     call error_mesg ('deledd', &
-          'final number of deledd points differs from original', FATAL)
-   endif
-
-!--------------------------------------------------------------------
-
+     end do
  
 end  subroutine deledd
 

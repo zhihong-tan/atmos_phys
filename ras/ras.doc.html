@@ -73,6 +73,8 @@
           constants_mod
      sat_vapor_pres_mod
           utilities_mod
+       diag_manager_mod
+       time_manager_mod
 
 Note: Version v2.0 was used by all modules for testing this version
       of ras_mod.
@@ -108,18 +110,29 @@ Notes:
 <!-- BEGIN ROUTINES -->
 <PRE>
 
-call ras_init ()
+       call ras_init (axes, Time )
 
-there are no arguments to this routine
+input
+    axes       Axes for diagnostics
+        	[integer, dimension(4) ]
+
+    Time       Time used for diagnostics 
+               [time_type]
 
 ---------------------------------------------------------------------
 
-  call ras ( temp0,  qvap0, uwnd0,  vwnd0,  pres0,  pres0_int, 
-             coldT0, dtime, dtemp0, dqvap0, duwnd0, dvwnd0, 
-             rain0,  snow0, kbot,   ql0,    qi0,    qa0,  
-             mc0,    Dl0,   Di0,    Da0 )
+        call ras( is,     js,      Time,    temp0,      qvap0,     &
+                  uwnd0,  vwnd0,   pres0,   pres0_int,  coldT0,    &
+                  dtime,  dtemp0,  dqvap0,  duwnd0,     dvwnd0,    &
+                  rain0,  snow0,   kbot,    ql0,        qi0,       &
+                  qa0,    mc0,     Dl0,     Di0,        Da0  )
 
 input
+    is, js     Starting indices for window
+               [integer]
+
+    Time       Time used for diagnostics 
+               [time_type]
 
     temp0      Temperature [deg k] at full model levels,
                [real, dimension(:,:,nlev)]
@@ -258,10 +271,20 @@ Notes:
 
    aratio       Ratio of critical cloud work function to standard
                 value of cloud work function
-                [real, default: aratio = 1.0 ]
+                [real, default: aratio = 1.4 ]
 
    cufric       Should Cumulus friction (momentum transport) occur?
                 [logical, default: cufric = .false. ]
+
+   rh_trig      Convection takes place only if the relative humidity
+                of the lowest model level exceeds rh_trig
+                [real, default: rh_trig = 0.0 ]
+
+   alm_min      Min value for entrainment parameter.
+                [real, default: alm_min = 0.0 ]
+
+   Tokioka_on   If true, alm_min computed using Tokioka formulation
+                [logical, default: Tokioka_on = .false. ]
 
  --- Evaporation of convective scale precip 
 
@@ -329,6 +352,34 @@ Notes:
 </PRE>
 </A><!-- END NAMELIST -->
 <!--------------------------------------------------------------------->
+<A NAME="DIAGNOSTICS">
+<HR>
+<H4>DIAGNOSTIC FIELDS</H4>
+<PRE>
+Diagnostic fields may be output to a netcdf file by specifying the
+module name <b>ras</b> and the desired field names (given below)
+in file <b>diag_table</b>. See the documentation for diag_manager.
+</PRE>
+<!-- BEGIN DIAGNOSTICS -->
+<PRE>
+
+Diagnostic fields for module name: <b>ras</b>
+
+   field name   field description
+   ----------   -----------------
+   tdt_revap    temperature tendency from re-evaporation of convective
+                precip [deg_K/s]
+   qdt_revap    specific humidity tendency from re-evaporation of convective
+                precip [kg/kg/s]
+  prec_revap    total convective precip evaporated [kg/m2/s]
+  snow_revap    frozen convective precip evaporated [kg/m2/s]
+  prec_conv_3d  3D precipitation rate  [kg/m2/s]
+  pcldb         Pressure at cloud base from RAS
+
+</PRE>
+</A><!-- END DIAGNOSTICS -->
+
+<!--------------------------------------------------------------------->
 <A NAME="CHANGES">
 <HR>
 <H4>CHANGE HISTORY</H4>
@@ -348,6 +399,12 @@ Notes:
     Code is rewritten to permit a user to request as diagnostic output
     the cumulus mass flux.  The cumulus mass flux may be requested 
     whether or not the strat cloud scheme is being run.
+
+<b>changes</b> (9/25/2001)
+
+    Code almost completely rewritten for increased efficiency and clarity.
+    Extra diagnostics added. Several new namelist options added.
+
 
 </PRE>
 </A><!-- END CHANGES -->
@@ -417,11 +474,7 @@ Notes:
 <!-- BEGIN PLANS -->
 <PRE>
 
-     A number of diagnostic fields will be archived.
-     Possible candidates so far include:
-       1) net mass flux
-       2) mass flux at cloud base by cloud type
-       3) pressure at the LCL, ie cloud base location
+  
 
 </PRE>
 </A><!-- END PLANS -->

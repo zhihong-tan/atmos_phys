@@ -303,7 +303,7 @@ character(len=5) :: mod_name = 'cloud'
 !
         
         character(len=128) :: version = '$Id: cloud_rad.F90,v 1.6 2001/07/05 17:18:16 fms Exp $'
-        character(len=128) :: tag = '$Name: eugene $'
+        character(len=128) :: tag = '$Name: fez $'
 
 ! 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

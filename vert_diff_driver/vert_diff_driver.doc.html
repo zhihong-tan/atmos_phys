@@ -269,6 +269,12 @@ input (optional for the step-mountain/eta coordinate)
 
            The default value of ntp in this version is incorrect
            (it should be 0), users should be aware of this.
+	   
+    do_conserve_energy
+           logical, default = .false.
+	   if true, kinetic energy that is lost due to vertical diffusion
+	   is returned as heat in the temperature tendency so as to 
+	   conserve energy
 
 </PRE>
 </A><!-- END NAMELIST -->
@@ -277,22 +283,26 @@ input (optional for the step-mountain/eta coordinate)
 <HR>
 <H4>DIAGNOSTIC FIELDS</H4>
 <PRE>
-Diagnostic fields may be output to a netcdf file by setting the
-namelist variable (type character) to the name of the netcdf file.
-For example,  temp_dt_diff_file = 'my_diag_fields.nc'
+Diagnostic fields may be output to a netcdf file by specifying the
+module name <b>vert_diff</b> and the desired field names (given below)
+in file <b>diag_table</b>. See the documentation for diag_manager.
 </PRE>
 <!-- BEGIN DIAGNOSTICS -->
 <PRE>
 
- namelist variable  netcdf name  units    long name description
- -----------------  -----------  -----    ---------------------
+Diagnostic fields for module name: <b>vert_diff</b>
 
- temp_dt_diff_file   tdt_vdif   deg_K/s  temperature tendency from vertical diffusion
-sphum_dt_diff_file   qdt_vdif   kg/kg/s  specific humidity tendency from vertical diffusion
- uwnd_dt_diff_file   udt_vdif   m/s2     zonal wind tendency from vertical diffusion
- vwnd_dt_diff_file   vdt_vdif   m/s2     meridional wind tendency from vertical diffusion
-    sens_diff_file   sens_vdif  W/m2     column integrated sensible heat flux from vertical diffusion
-    evap_diff_file   evap_vdif  kg/m2/s  column integrated evaporation flux from vertical diffusion
+   field name     field description
+   ----------     -----------------
+
+   tdt_vdif        Temperature tendency from vert diff (deg_K/s)
+   qdt_vdif        Spec humidity tendency from vert diff (kg/kg/s)
+   udt_vdif        Zonal wind tendency from vert diff (m/s2)
+   vdt_vdif        Meridional wind tendency from vert diff (m/s2)
+   sens_vdif       Integrated heat flux from vert diff (W/m2)
+   evap_vdif       Integrated moisture flux from vert diff (kg/m2/s)
+   tdt_diss_vdif   Dissipative heating from vert_diff (deg_K/s)
+   diss_heat_vdif  Integrated dissipative heating from vert diff (W/m2)
 
 </PRE>
 </A><!-- END DIAGNOSTICS -->
@@ -366,8 +376,7 @@ sphum_dt_diff_file   qdt_vdif   kg/kg/s  specific humidity tendency from vertica
 <!-- BEGIN PLANS -->
 <PRE>
 
-     Modifications will be needed for a new version of the 
-     vertical diffusion modules.
+     Incorporation of new tracer manager.
 
 </PRE>
 </A><!-- END PLANS -->

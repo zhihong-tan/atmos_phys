@@ -41,13 +41,16 @@ integer :: ntp = 0
 !    ntp  = number of fully prognostic tracers
 !           tracers (1:ntp) will be vertically diffused
 
-namelist /vert_diff_driver_nml/  ntp
+logical :: do_conserve_energy = .false.
+
+namelist /vert_diff_driver_nml/  ntp, do_conserve_energy
 
 !-----------------------------------------------------------------------
 !-------------------- diagnostics fields -------------------------------
 
 integer :: id_tdt_vdif, id_qdt_vdif, id_udt_vdif, id_vdt_vdif,  &
-           id_sens_vdif, id_evap_vdif
+           id_sens_vdif, id_evap_vdif,                          &
+           id_tdt_diss_vdif, id_diss_heat_vdif
 
 real :: missing_value = -999.
 
@@ -56,8 +59,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 1.2 2000/07/28 20:16:47 fms Exp $'
-character(len=128) :: tag = '$Name: eugene $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 1.3 2001/10/25 17:49:08 fms Exp $'
+character(len=128) :: tag = '$Name: fez $'
 
 logical :: do_init = .true.
 
@@ -93,6 +96,7 @@ integer, intent(in), dimension(:,:),   optional :: kbot
 
 real, dimension(size(trs,1),size(trs,2),1:ntp) :: flux_trs
 real, dimension(size(t,1),size(t,2),size(t,3)) :: tt, dpg
+real, dimension(size(t,1),size(t,2),size(t,3)) :: dissipative_heat
 integer :: k
 logical :: used
 real, dimension(size(t,1),size(t,2)) :: diag2
@@ -122,17 +126,9 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 !---- by 2 is necessary to get the correct value because sum_diag_phys
 !---- is called twice for this single field
 !-----------------------------------------------------------------------
-!------- diagnostics for dt/dt_diff -------
 
-    if ( id_tdt_vdif > 0 ) then
-       used = send_data ( id_tdt_vdif, -2.*dt_t, Time, is, js, 1, &
-                           rmask=mask )
-    endif
-!------- diagnostics for dq/dt_diff -------
-    if ( id_qdt_vdif > 0 ) then
-       used = send_data ( id_qdt_vdif, -2.*dt_q, Time, is, js, 1, &
-                          rmask=mask )
-    endif
+
+
 
 !------- diagnostics for uwnd_diff -------
     if ( id_udt_vdif > 0 ) then
@@ -146,27 +142,7 @@ real, dimension(size(t,1),size(t,2)) :: diag2
                           rmask=mask )
     endif
 
-!------ preliminary calculations for vert integrals -----
-    if ( id_sens_vdif > 0 .or. id_evap_vdif > 0 ) then
-            do k = 1, size(p_half,3)-1
-               dpg(:,:,k) = (p_half(:,:,k+1)-p_half(:,:,k))/grav
-            enddo
-            if (present(mask)) dpg = dpg*mask
-    endif
 
-!------- diagnostics for sens_diff -------
-    if ( id_sens_vdif > 0 ) then
-!         --- compute column changes ---
-          diag2 = sum( dt_t*dpg, 3 )
-          used = send_data ( id_sens_vdif, -2.*cp*diag2, Time, is, js )
-    endif
-
-!------- diagnostics for evap_diff -------
-    if ( id_evap_vdif > 0 ) then
-!         --- compute column changes ---
-          diag2 = sum( dt_q*dpg, 3 )
-          used = send_data ( id_evap_vdif, -2.*diag2, Time, is, js )
-    endif
 
 !-----------------------------------------------------------------------
 !---- local temperature ----
@@ -186,7 +162,7 @@ real, dimension(size(t,1),size(t,2)) :: diag2
                           diff_mom, diff_heat, p_half, z_full,         &
                           tau_x, tau_y, dtau_dv,  flux_trs,            &
                           dt_u, dt_v, dt_t, dt_q, dt_trs(:,:,:,1:ntp), &
-                          Surf_diff,  kbot                             )
+                          dissipative_heat, Surf_diff,  kbot           )
 
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
@@ -195,6 +171,42 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 !---- by 2 is necessary to get the correct value because sum_diag_phys
 !---- is called twice for this single field
 !-----------------------------------------------------------------------
+
+!------ preliminary calculations for vert integrals -----
+    if ( id_sens_vdif > 0 .or. id_evap_vdif > 0 .or. id_diss_heat_vdif > 0 ) then
+            do k = 1, size(p_half,3)-1
+               dpg(:,:,k) = (p_half(:,:,k+1)-p_half(:,:,k))/grav
+            enddo
+            if (present(mask)) dpg = dpg*mask
+    endif
+    
+!------- diagnostics for dt/dt_diff -------
+    if ( id_tdt_vdif > 0 ) then
+       used = send_data ( id_tdt_vdif, -2.*dt_t, Time, is, js, 1, &
+                           rmask=mask )
+    endif
+    
+!------- diagnostics for dq/dt_diff -------
+    if ( id_qdt_vdif > 0 ) then
+       used = send_data ( id_qdt_vdif, -2.*dt_q, Time, is, js, 1, &
+                          rmask=mask )
+    endif
+
+!------- diagnostics for sens_diff -------
+    if ( id_sens_vdif > 0 ) then
+!         --- compute column changes ---
+          diag2 = sum( dt_t*dpg, 3 )
+          used = send_data ( id_sens_vdif, -2.*cp*diag2, Time, is, js )
+    endif
+
+!------- diagnostics for evap_diff -------
+    if ( id_evap_vdif > 0 ) then
+!         --- compute column changes ---
+          diag2 = sum( dt_q*dpg, 3 )
+          used = send_data ( id_evap_vdif, -2.*diag2, Time, is, js )
+    endif
+    
+    
 
 !------- diagnostics for uwnd_diff -------
     if ( id_udt_vdif > 0 ) then
@@ -206,6 +218,19 @@ real, dimension(size(t,1),size(t,2)) :: diag2
     if ( id_vdt_vdif > 0 ) then
        used = send_data ( id_vdt_vdif, 2.*dt_v, Time, is, js, 1, &
                           rmask=mask )
+    endif
+    
+!------- diagnostics for dissipative heating -------
+    if ( id_tdt_diss_vdif > 0 ) then
+       used = send_data ( id_tdt_diss_vdif, dissipative_heat, Time, &
+                          is, js, 1, &
+                          rmask=mask)
+    endif
+
+!------- diagnostics for vertically integrated dissipative heating -------
+    if ( id_diss_heat_vdif > 0 ) then
+          diag2 = sum( cp*dissipative_heat*dpg, 3 )
+          used = send_data ( id_diss_heat_vdif, diag2, Time, is, js )
     endif
 
 !-----------------------------------------------------------------------
@@ -322,7 +347,7 @@ real, dimension(size(t,1),size(t,2)) :: diag2
 
 !-------- initialize gcm vertical diffusion ------
 
-   call gcm_vert_diff_init (Surf_diff, idim, jdim, kdim)
+   call gcm_vert_diff_init (Surf_diff, idim, jdim, kdim, do_conserve_energy)
 
 !-----------------------------------------------------------------------
 !--------------- initialize diagnostic fields --------------------
@@ -356,6 +381,17 @@ real, dimension(size(t,1),size(t,2)) :: diag2
    register_diag_field ( mod_name, 'evap_vdif', axes(1:2), Time,    &
                         'Integrated moisture flux from vert diff',  &
                         'kg/m2/s' )
+
+   id_tdt_diss_vdif = &
+   register_diag_field ( mod_name, 'tdt_diss_vdif', axes(1:3), Time,  &
+                        'Dissipative heating from vert_diff', 'deg_K/s', &
+                         missing_value=missing_value  ) 
+
+   id_diss_heat_vdif = &
+   register_diag_field ( mod_name, 'diss_heat_vdif', axes(1:2), Time,  &
+                        'Integrated dissipative heating from vert diff',  &
+                        'W/m2' )
+
 
 !-----------------------------------------------------------------------
 

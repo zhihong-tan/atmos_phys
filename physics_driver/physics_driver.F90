@@ -7,14 +7,14 @@ use constants_new_mod,    only: constants_new_init
 
 use sea_esf_rad_mod,      only: sea_esf_rad_init,  &
                                 sea_esf_rad, &
-				sea_esf_rad_time_vary, &
+                                sea_esf_rad_time_vary, &
                                 sea_esf_rad_end, &
                                 get_lrad
 
 use rad_utilities_mod,     only: Environment, environment_type
 
 use astronomy_package_mod, only: astronomy_driver, astronomy_dealloc, &
-				astronomy
+                                 astronomy
 
 use  moist_processes_mod, only: moist_processes,moist_processes_init,  &
                                 moist_processes_end
@@ -42,11 +42,11 @@ use        constants_mod, only: tfreeze,hlv,hlf,hls,kappa,  &
 
 use        utilities_mod, only: file_exist, error_mesg, FATAL, NOTE,  &
                                 open_file, close_file, get_my_pe, &
-				check_nml_error
+                                check_nml_error
 
 use     time_manager_mod, only: time_type, get_date_julian,  &
-				set_date_julian, get_time, &
-				set_time, operator (-), operator (/=)
+                                set_date_julian, get_time, &
+                                set_time, operator (-), operator (/=)
 
 use    tracer_driver_mod, only: tracer_driver_init, tracer_driver,  &
                                 tracer_driver_end
@@ -81,8 +81,8 @@ interface check_dim
 end interface
 
 !--------------------- version number ----------------------------------
-character(len=256) :: version = '$Id: physics_driver.F90,v 1.5 2001/07/05 17:26:32 fms Exp $'
-character(len=256) :: tag = '$Name: eugene $'
+character(len=256) :: version = '$Id: physics_driver.F90,v 1.6 2001/10/25 17:48:12 fms Exp $'
+character(len=256) :: tag = '$Name: fez $'
 !-----------------------------------------------------------------------
 
       logical :: do_init = .true., do_check_args = .true.
@@ -317,9 +317,9 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 !-----------------------------------------------------------------------
 !------------------------ damping --------------------------------------
 
-     call damping_driver (is, js,  &
-                          Time_next, p_full, p_half, z_full, z_half,   &
-                          u, v, t, q, r,  udt, vdt, tdt, qdt, rdt,     &
+     call damping_driver (is, js, Time_next, dt,                   &
+                          p_full, p_half, z_full, z_half,          &
+                          u, v, t, q, r,  udt, vdt, tdt, qdt, rdt, &
                           mask=mask, kbot=kbot)
 
 !-----------------------------------------------------------------------

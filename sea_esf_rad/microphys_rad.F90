@@ -38,8 +38,8 @@ private
 !----------- ****** VERSION NUMBER ******* -----------------------
 
 !   character(len=5), parameter  ::  version_number = 'v0.09'
-    character(len=128)  :: version =  '$Id: microphys_rad.F90,v 1.2 2001/07/05 17:32:05 fms Exp $'
-    character(len=128)  :: tag     =  '$Name: eugene $'
+    character(len=128)  :: version =  '$Id: microphys_rad.F90,v 1.3 2001/08/30 15:12:18 fms Exp $'
+    character(len=128)  :: tag     =  '$Name: fez $'
 
 
 
@@ -385,11 +385,13 @@ real, dimension(:), intent(in),optional :: cldhm_abs_in, cldml_abs_in
 !--------------------------------------------------------------------
 
      if (present (cldhm_abs_in)) then
-      allocate (cldhm_abs (1:jdf) )
+!     allocate (cldhm_abs (1:jdf) )
+      allocate (cldhm_abs (size(cldhm_abs_in)) )
       cldhm_abs = cldhm_abs_in
      endif
      if (present (cldml_abs_in)) then
-      allocate (cldml_abs (1:jdf) )
+!     allocate (cldml_abs (1:jdf) )
+      allocate (cldml_abs (size(cldml_abs_in)))
       cldml_abs = cldml_abs_in
      endif
 

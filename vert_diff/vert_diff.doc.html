@@ -153,7 +153,8 @@ notes:
 
 ==========================================================================
 
- subroutine gcm_vert_diff_init(Tri_surf, idim, jdim, kdim)
+ subroutine gcm_vert_diff_init(Tri_surf, idim, jdim, kdim, &
+                               conserve_energy)
  
     integer, intent(in)  :: idim, jdim, kdim 
         the three "global" dimensions of the fields to be diffused,
@@ -162,6 +163,11 @@ notes:
 
     type(surf_diff_type), intent(inout) :: Tri_surf
         where data needed outside of module is stored
+	
+    logical, intent(in) :: conserve_energy
+         .true. => kinetic energy that is lost due to vertical diffusion
+	 is returned as heat in the temperature tendency so as to 
+	 conserve energy
 
        
 
@@ -265,7 +271,7 @@ notes:
 
              For use with models in which different columns
              have different number of levels above the surface.
-             The levels k <= kbot are assumed to be above the surface.
+             The levels k &lt;= kbot are assumed to be above the surface.
 
              If kbot is present, the module will function properly
              if  diff = 0 for levels below the surface. Also, to avoid
@@ -279,7 +285,8 @@ notes:
                     p_half, z_full,                                  &
                     dtau_datmos, dsens_datmos, devap_datmos,         &
                     sens, evap, tau_u, tau_v, flux_tr,               &
-                    dt_u, dt_v, dt_t, dt_q, dt_tr, kbot)
+                    dt_u, dt_v, dt_t, dt_q, dt_tr, dissipative_heat, &
+		    kbot)
  
     input: 
 
@@ -386,6 +393,14 @@ notes:
 
          dt_tr -- real, dimension(:,:,:,:)
              Tracer tendency (see above)  size(dt_tr,4) = number of tracers
+	     
+     output: 
+         dissipative_heat -- real, dimension(:,:,:)
+             shape must conform to that of u, v, t, etc
+	     units: deg_K/s 
+	     
+	     (computed when do_conserve_energy = .true.
+	      and added to dt_t before temperature is diffused)
 
      optional input:
 
@@ -394,7 +409,7 @@ notes:
 
              For use with models in which different columns
              have different number of levels above the surface.
-             The levels k <= kbot are assumed to be above the surface.
+             The levels k &lt;= kbot are assumed to be above the surface.
 
              If kbot is present, the interface will function properly
              if  diff = 0 for levels below the surface. Also, to avoid
@@ -459,7 +474,7 @@ notes:
                           tau_u, tau_v, dtau_datmos,                       &
                           flux_tr,                                         &
                           dt_u, dt_v, dt_t, dt_q, dt_tr,                   &
-                          Tri_surf,                                        &
+                          dissipative_heat, Tri_surf,                      &
                           kbot)
 
     input: 
@@ -564,6 +579,15 @@ notes:
         Tri_surf -- type(surf_diff_type)
              information needed to pass 
                => surface modules => gcm_vert_diff_up
+	       
+     output: 
+     
+        dissipative_heat -- real, dimension(:,:,:)
+             shape must conform to that of u, v, t, etc
+	     units: deg_K/s 
+	     
+	     (computed when do_conserve_energy = .true.
+	      and added to dt_t before temperature is diffused)
 
      optional input:
 
@@ -572,7 +596,7 @@ notes:
 
              For use with models in which different columns
              have different number of levels above the surface.
-             The levels k <= kbot are assumed to be above the surface.
+             The levels k &lt;= kbot are assumed to be above the surface.
 
              If kbot is present, the interface will function properly
              if  diff = 0 for levels below the surface. Also, to avoid
@@ -618,7 +642,7 @@ subroutine gcm_vert_diff_up (is, js, delt, Tri_surf, dt_t, dt_q, kbot)
 
              For use with models in which different columns
              have different number of levels above the surface.
-             The levels k <= kbot are assumed to be above the surface.
+             The levels k &lt;= kbot are assumed to be above the surface.
 
              If kbot is present, the interface will function properly
              if  diff = 0 for levels below the surface. Also, to avoid

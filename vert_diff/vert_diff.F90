@@ -50,11 +50,12 @@ real,    allocatable, dimension(:,:,:) :: e_global, f_t_global, f_q_global
 
       
 logical :: do_init = .true.
+logical :: do_conserve_energy = .true.
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 1.4 2001/07/05 17:43:23 fms Exp $'
-character(len=128) :: tag = '$Name: eugene $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 1.5 2001/10/25 17:48:55 fms Exp $'
+character(len=128) :: tag = '$Name: fez $'
 
 real, parameter :: d608 = (rvgas-rdgas)/rdgas
 
@@ -62,10 +63,12 @@ contains
 
 !#######################################################################
 
-subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim)
+subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim, &
+                               do_conserve_energy_in)
 
  type(surf_diff_type), intent(inout) :: Tri_surf
  integer,              intent(in)    :: idim, jdim, kdim
+ logical,              intent(in)    :: do_conserve_energy_in
 
  integer :: unit
 
@@ -89,6 +92,8 @@ subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim)
  endif
 
  call alloc_surf_diff_type ( Tri_surf, idim, jdim )
+ 
+ do_conserve_energy = do_conserve_energy_in
 
 end subroutine gcm_vert_diff_init
 
@@ -143,7 +148,7 @@ subroutine gcm_vert_diff_down (is, js, delt,                &
                           tau_u, tau_v, dtau_datmos,        &
                           flux_tr,                          &
                           dt_u, dt_v, dt_t, dt_q, dt_tr,    &
-                          Tri_surf,                         &
+                          dissipative_heat, Tri_surf,       &
                           kbot                              )
 
 integer, intent(in)                        :: is, js
@@ -155,9 +160,10 @@ real,    intent(in)   , dimension(:,:,:,:) :: tr
 real,    intent(in)   , dimension(:,:)     :: dtau_datmos
 real,    intent(inout), dimension(:,:)     :: tau_u, tau_v
 real,    intent(inout), dimension(:,:,:)   :: flux_tr
-real,    intent(inout), dimension(:,:,:)   :: dt_u, dt_v
-real,    intent(in),    dimension(:,:,:)   :: dt_t, dt_q
+real,    intent(inout), dimension(:,:,:)   :: dt_u, dt_v, dt_t
+real,    intent(in),    dimension(:,:,:)   :: dt_q
 real,    intent(inout), dimension(:,:,:,:) :: dt_tr
+real,    intent(out)  , dimension(:,:,:)   :: dissipative_heat
 type(surf_diff_type), intent(inout)        :: Tri_surf
 
 integer, intent(in)   , dimension(:,:), optional :: kbot
@@ -178,8 +184,8 @@ integer :: i, j, kb, ie, je
     
  ie = is + size(t,1) -1
  je = js + size(t,2) -1
-
- gcp = grav/cp
+ 
+ gcp       = grav/cp
  tt  = t + z_full*gcp   ! the vertical gradient of tt determines the
                         ! diffusive flux of temperature
 
@@ -187,9 +193,10 @@ integer :: i, j, kb, ie, je
  call compute_nu (diff_m, p_half, z_full, t, q, nu) 
 
 !  diffuse u-momentum and v_momentum
- call uv_vert_diff (delt, mu, nu, u, v, dtau_datmos, tau_u, tau_v,  &
-                    dt_u, dt_v, kbot)
 
+ call uv_vert_diff (delt, mu, nu, u, v, dtau_datmos, tau_u, tau_v,  &
+                    dt_u, dt_v, dt_t, dissipative_heat, kbot)
+		    	
 !  recompute nu for a different diffusivity
  call compute_nu   (diff_t, p_half, z_full, t, q, nu)
 
@@ -254,7 +261,8 @@ subroutine gcm_vert_diff (delt, u, v, t, q, tr,                    &
                           diff_m, diff_t, p_half, z_full,          &
                           dtau_datmos, dsens_datmos, devap_datmos, &
                           sens, evap, tau_u, tau_v, flux_tr,       &
-                          dt_u, dt_v, dt_t, dt_q, dt_tr, kbot      )
+                          dt_u, dt_v, dt_t, dt_q, dt_tr,           &
+			  dissipative_heat, kbot      )
 
 !  one-step diffusion call for gcm in which there is no implicit dependence of 
 !    surface fluxes on surface temperature
@@ -269,6 +277,7 @@ real,    intent(inout), dimension(:,:,:)     :: flux_tr
 real,    intent(inout), dimension(:,:)       :: tau_u, tau_v, sens, evap
 real,    intent(inout), dimension(:,:,:)     :: dt_u, dt_v, dt_t, dt_q
 real,    intent(inout), dimension(:,:,:,:)   :: dt_tr
+real,    intent(out)  , dimension(:,:,:)     :: dissipative_heat
 
 integer, intent(in)   , dimension(:,:), optional :: kbot
 
@@ -280,10 +289,10 @@ real, dimension(size(u,1),size(u,2),size(u,3)) :: mu, nu
  call compute_mu (p_half, mu)
 
  call compute_nu (diff_m, p_half, z_full, t, q, nu) 
-
+ 
  call uv_vert_diff (delt, mu, nu, u, v, dtau_datmos, tau_u, tau_v, &
-                    dt_u, dt_v, kbot )
-
+                    dt_u, dt_v, dt_t, dissipative_heat, kbot )
+		    
  call compute_nu   (diff_t, p_half, z_full, t, q, nu)
 
  call tq_vert_diff (delt, mu, nu, t, q, z_full,  &
@@ -316,7 +325,6 @@ real, dimension(size(xi,1),size(xi,2),size(xi,3)-1) :: e, f
 real, dimension(size(xi,1),size(xi,2))  :: mu_delt_n, nu_n, e_n1,  &
                                            f_delt_n1, delta_xi_n
 
-
 !-----------------------------------------------------------------------
 
  call compute_mu    (p_half, mu)
@@ -338,29 +346,44 @@ end subroutine vert_diff
 !#######################################################################
 
 subroutine uv_vert_diff (delt, mu, nu, u, v,  &
-                         dtau_datmos, tau_u, tau_v, dt_u, dt_v, kbot )
+                         dtau_datmos, tau_u, tau_v, dt_u, dt_v, dt_t, &
+			 dissipative_heat, kbot )
 
 real,    intent(in)                        :: delt
 real,    intent(in)   , dimension(:,:,:)   :: u, v, mu, nu
 real,    intent(in)   , dimension(:,:)     :: dtau_datmos
 real,    intent(inout), dimension(:,:)     :: tau_u, tau_v
-real,    intent(inout), dimension(:,:,:)   :: dt_u, dt_v
+real,    intent(inout), dimension(:,:,:)   :: dt_u, dt_v, dt_t
+real,    intent(out)  , dimension(:,:,:)   :: dissipative_heat
 
 integer, intent(in)   , dimension(:,:), optional :: kbot
 
 real, dimension(size(u,1),size(u,2)) :: mu_delt_n, nu_n, e_n1,    &
                                         f_u_delt_n1, f_v_delt_n1, &
                                         delta_u_n, delta_v_n
+					
+real, dimension(size(u,1),size(u,2),size(u,3)) :: dt_u_temp, dt_v_temp
 
 real, dimension(size(u,1),size(u,2),size(u,3)-1) :: e, f_u, f_v
 integer :: i, j, kb
 
+real    :: half_delt, cp_inv
+
+
 !-----------------------------------------------------------------------
-  
+
+ half_delt = 0.5*delt
+ cp_inv    = 1.0/cp
+ 
+ if (do_conserve_energy) then
+   dt_u_temp = dt_u
+   dt_v_temp = dt_v
+ endif
+ 
  call vert_diff_down_2 &
      (delt, mu, nu, u, v, dt_u, dt_v, e, f_u, f_v, &
       mu_delt_n, nu_n, e_n1, f_u_delt_n1, f_v_delt_n1,  &
-      delta_u_n, delta_v_n, kbot)
+      delta_u_n, delta_v_n, kbot)	
 
  call diff_surface (mu_delt_n, nu_n, e_n1, f_u_delt_n1, &
                     dtau_datmos, tau_u, 1.0, delta_u_n)
@@ -370,6 +393,15 @@ integer :: i, j, kb
  call vert_diff_up (delt, e, f_u, delta_u_n, dt_u, kbot)
  call vert_diff_up (delt, e, f_v, delta_v_n, dt_v, kbot)
 
+ if (do_conserve_energy) then
+    dt_u_temp = dt_u - dt_u_temp
+    dt_v_temp = dt_v - dt_v_temp
+    dissipative_heat = - cp_inv*( (u + half_delt*dt_u_temp)*dt_u_temp &
+                                 +(v + half_delt*dt_v_temp)*dt_v_temp )
+    dt_t = dt_t + dissipative_heat
+ else
+    dissipative_heat = 0.0
+ endif
 
 !-----------------------------------------------------------------------
 

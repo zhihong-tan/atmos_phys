@@ -1,4 +1,3 @@
-
 MODULE STRAT_CLOUD_MOD
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -8,7 +7,7 @@ MODULE STRAT_CLOUD_MOD
 !       PROGNOSTIC CLOUD SCHEME
 !
 !
-!       April 2000
+!       October 2001
 !       Contact person: Steve Klein
 !
 !
@@ -53,7 +52,7 @@ MODULE STRAT_CLOUD_MOD
 !                            and N_ocean
 
         USE  SAT_VAPOR_PRES_MOD, ONLY :  ESCOMP,DESCOMP
-        USE  Utilities_Mod,      ONLY :  File_Exist, Open_File,  &
+        USE  Utilities_Mod,      ONLY :  File_Exist, Open_File, &
                                          error_mesg, FATAL, &
                                          get_my_pe, Close_File, &
                                          read_data, write_data, &
@@ -61,19 +60,21 @@ MODULE STRAT_CLOUD_MOD
         USE  Constants_Mod,      ONLY :  RDgas,RVgas,HLv,HLf,HLs,Cp,&
                                          Grav,Tfreeze,Dens_h2o
         USE  CLOUD_RAD_MOD,      ONLY :  CLOUD_RAD_INIT
-        use  time_manager_mod,    only:  time_type
-  
+	USE  diag_manager_mod,   ONLY :  register_diag_field, send_data
+        use  time_manager_mod,   only :  time_type
+        
+ 
         IMPLICIT NONE
-        PRIVATE
-
+	
         PUBLIC  STRAT_INIT,          &
                 STRAT_DRIV,          &
                 ADD_STRAT_TEND,      &
                 SUBTRACT_STRAT_TEND, &
-                STRAT_END,           &
+		STRAT_END,           &
                 STRAT_CLOUD_SUM,     &
                 STRAT_CLOUD_AVG,     &
                 DO_STRAT_CLOUD
+		
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -84,8 +85,7 @@ MODULE STRAT_CLOUD_MOD
 !
 
         REAL, ALLOCATABLE, DIMENSION(:,:,:) :: radturbten
-
-
+        
 !
 !     ------ data for cloud averaging code ------
 !
@@ -96,9 +96,11 @@ MODULE STRAT_CLOUD_MOD
 !
 !     ------ constants used by the scheme -------
 !
+
       real, parameter :: d622 = RDgas / RVgas
       real, parameter :: d378 = 1. - d622
-                                      
+      
+       
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -211,6 +213,9 @@ MODULE STRAT_CLOUD_MOD
 !
 !       strat_cloud_on Is the stratiform cloud scheme
 !                      operating? 
+!
+!       do_budget_diag Are any of the budget diagnostics
+!                      requested from this run?
 !                          
 !       num_strat_pts  number of grid points where 
 !                      instantaneous output will be 
@@ -234,22 +239,57 @@ MODULE STRAT_CLOUD_MOD
   
         REAL              :: U00            =  0.80
         REAL              :: rthresh        =  10.
-        REAL              :: N_land         =  3.E+08
-        REAL              :: N_ocean        =  1.E+08
-        REAL              :: rho_ice        =  100.
-        REAL              :: ELI            =  0.7
+        REAL              :: N_land         =  250.E+06
+        REAL              :: N_ocean        =  100.E+06
+        REAL,   PARAMETER :: rho_ice        =  100.
+        REAL,   PARAMETER :: ELI            =  0.7
         REAL              :: U_evap         =  1.0
-        REAL              :: eros_scale     =  1.E-06
+        REAL              :: eros_scale     =  1.E-05
         LOGICAL           :: tracer_advec   =  .false.
         REAL              :: qmin           =  1.E-10
         REAL              :: Dmin           =  1.E-08
         LOGICAL           :: do_average     =  .false.
         LOGICAL           :: strat_cloud_on =  .false.
-        INTEGER,PARAMETER :: max_strat_pts  = 5
-        INTEGER           :: num_strat_pts = 0
+        LOGICAL           :: do_budget_diag =  .false.		
+        INTEGER,PARAMETER :: max_strat_pts  =  5
+        INTEGER           :: num_strat_pts  =  0
         INTEGER,DIMENSION(2,max_strat_pts) :: strat_pts = 0
-        INTEGER           :: overlap = 1
+        INTEGER           :: overlap        =  2
 
+!
+!-----------------------------------------------------------------------
+!-------------------- diagnostics fields -------------------------------
+ 
+        integer :: id_qldt_cond,    id_qldt_eros,       id_qldt_fill,  &
+	           id_qldt_accr,    id_qldt_evap,       id_qldt_freez, &
+		   id_qldt_berg,    id_qldt_destr,      id_qldt_rime,  &
+		   id_qldt_auto
+        integer :: id_rain_clr,     id_rain_cld,        id_a_rain_clr, &
+		   id_a_rain_cld,   id_rain_evap,       id_rain_adj
+	integer :: id_qidt_fall,    id_qidt_fill,       id_qidt_melt,  &
+		   id_qidt_dep,     id_qidt_subl,       id_qidt_eros,  &
+		   id_qidt_destr
+	integer :: id_snow_clr,     id_snow_cld,        id_a_snow_clr, &
+	           id_a_snow_cld,   id_snow_subl,       id_snow_melt,  &
+		   id_snow_adj
+        integer :: id_ql_eros_col,  id_ql_cond_col,     id_ql_evap_col,&
+		   id_ql_accr_col,  id_ql_auto_col,     id_ql_fill_col,&
+		   id_ql_berg_col,  id_ql_destr_col,    id_ql_rime_col,&
+		   id_ql_freez_col    
+        integer :: id_rain_evap_col,id_rain_adj_col
+	integer :: id_qi_fall_col,  id_qi_fill_col,     id_qi_subl_col,&
+		   id_qi_melt_col,  id_qi_destr_col,    id_qi_eros_col,&
+		   id_qi_dep_col
+        integer :: id_snow_subl_col,id_snow_melt_col,   id_snow_adj_col
+        integer :: id_qadt_lsform,  id_qadt_eros,       id_qadt_fill,  &
+	           id_qadt_rhred,   id_qadt_destr
+	integer :: id_qa_lsform_col,id_qa_eros_col,     id_qa_fill_col,&
+	           id_qa_rhred_col, id_qa_destr_col
+	integer :: id_a_precip_cld, id_a_precip_clr
+		   
+        character(len=5) :: mod_name = 'strat'
+        real :: missing_value = -999.
+ 
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -258,9 +298,9 @@ MODULE STRAT_CLOUD_MOD
 !
 
         NAMELIST /STRAT_CLOUD_NML/ U00,rthresh,N_land,N_ocean,&
-                              rho_ice,ELI,U_evap,eros_scale,tracer_advec,&
-                              qmin,Dmin,num_strat_pts,strat_pts          
-
+                              U_evap,eros_scale,tracer_advec,&
+                              qmin,Dmin,num_strat_pts,strat_pts
+			      
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -268,8 +308,8 @@ MODULE STRAT_CLOUD_MOD
 !       DECLARE VERSION NUMBER OF SCHEME
 !
         
-        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 1.5 2001/07/05 17:19:53 fms Exp $'
-        Character(len=128) :: Tag = '$Name: eugene $'
+        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 1.6 2001/10/25 17:48:42 fms Exp $'
+        Character(len=128) :: Tag = '$Name: fez $'
          
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -281,18 +321,21 @@ MODULE STRAT_CLOUD_MOD
 !       STRAT_INIT    read namelist file, open logfile, initialize
 !                     constants and fields, read restart file
 !
+!       DIAG_FIELD_INIT 
+!                     initializes diagnostic fields
+!
 !       STRAT_DRIV    calculations of the cloud scheme are performed 
 !                     here
 !
 !       ADD_STRAT_TEND  
-!                     Adds a field to radturbten. This subroutine
-!                     is needed because of the method to calculate
-!                     the radiative and turbulent tendencies
+!                     Adds a field to radturbten. This subroutine is 
+!                     needed because of the method to calculate the 
+!                     radiative and turbulent tendencies.
 !
 !       SUBTRACT_STRAT_TEND 
 !                     Subtracts a field from radturbten.
 !
-!       STRAT_END     writes out radturbten to restart file
+!       STRAT_END     writes out restart data to a restart file.
 !
 !       STRAT_CLOUD_SUM
 !                     sum cloud scheme variables
@@ -308,9 +351,9 @@ MODULE STRAT_CLOUD_MOD
 CONTAINS
 
 
-!#######################################################################
-!#######################################################################
 
+!#######################################################################
+!#######################################################################
 
 
 SUBROUTINE STRAT_INIT(axes,Time,IDIM,JDIM,KDIM)
@@ -335,6 +378,11 @@ SUBROUTINE STRAT_INIT(axes,Time,IDIM,JDIM,KDIM)
 !	
 !         variable              definition                  unit
 !       ------------   -----------------------------   ---------------
+!
+!       axes           integers corresponding to the
+!                      x,y,z,z_half axes types
+!
+!       Time           time type variable
 !
 !       IDIM,JDIM      number of points in first 
 !                      and second dimensions
@@ -425,30 +473,35 @@ SUBROUTINE STRAT_INIT(axes,Time,IDIM,JDIM,KDIM)
 !       Read Restart file
 
         
-       !set up stratiform cloud storage
-       if (ALLOCATED(radturbten)) DEALLOCATE (radturbten)
-           ALLOCATE(radturbten(IDIM,JDIM,KDIM))
+        !set up stratiform cloud storage
+        if (ALLOCATED(radturbten)) DEALLOCATE (radturbten)
+            ALLOCATE(radturbten(IDIM,JDIM,KDIM))
+           
+            ALLOCATE( nsum(IDIM,JDIM),      &
+                     qlsum(IDIM,JDIM,KDIM), &
+                     qisum(IDIM,JDIM,KDIM), &
+                     cfsum(IDIM,JDIM,KDIM)  )
+        
+        !see if restart file exists
+        If (File_Exist('INPUT/strat_cloud.res')) Then
+                 unit = Open_File (FILE='INPUT/strat_cloud.res', &
+                                   FORM='native', ACTION='read')
+                 call read_data (unit, radturbten)
+ 	         call read_data (unit, nsum)
+                 call read_data (unit, qlsum)
+                 call read_data (unit, qisum)
+                 call read_data (unit, cfsum)
+                 Call Close_File (unit)
+        ELSE
+                 radturbten(:,:,:)=0.
+        	 qlsum=0.0; qisum=0.0; cfsum=0.0; nsum=0
+        EndIf
 
-           ALLOCATE( nsum(IDIM,JDIM),      &
-                    qlsum(IDIM,JDIM,KDIM), &
-                    qisum(IDIM,JDIM,KDIM), &
-                    cfsum(IDIM,JDIM,KDIM)  )
-       
-       !see if restart file exists for radturbten
-       If (File_Exist('INPUT/strat_cloud.res')) Then
-                unit = Open_File (FILE='INPUT/strat_cloud.res', &
-                                  FORM='native', ACTION='read')
-                call read_data (unit, radturbten)
-                call read_data (unit, nsum)
-                call read_data (unit, qlsum)
-                call read_data (unit, qisum)
-                call read_data (unit, cfsum)
-                Call Close_File (unit)
-       ELSE
-                radturbten(:,:,:)=0.
-                qlsum=0.0; qisum=0.0; cfsum=0.0; nsum=0
-       EndIf
-
+!-----------------------------------------------------------------------
+!
+!       Setup Diagnostics
+ 
+        CALL DIAG_FIELD_INIT(axes,Time)
 
 !-----------------------------------------------------------------------
 !
@@ -461,16 +514,445 @@ SUBROUTINE STRAT_INIT(axes,Time,IDIM,JDIM,KDIM)
 END SUBROUTINE STRAT_INIT
 
 
+!#######################################################################
+!#######################################################################
+
+
+SUBROUTINE DIAG_FIELD_INIT (axes,Time)
+
+
+        integer,         intent(in) :: axes(4)
+        type(time_type), intent(in) :: Time
+ 
+        integer, dimension(3) :: half = (/1,2,4/)
+
+
+!liquid water tendencies
+
+
+        id_qldt_cond = register_diag_field ( mod_name, &
+             'qldt_cond', axes(1:3), Time, &
+       'Liquid water specific humidity tendency from LS condensation', &
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_qldt_evap = register_diag_field ( mod_name, &
+             'qldt_evap', axes(1:3), Time, &
+        'Liquid water specific humidity tendency from LS evaporation', &
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_qldt_eros = register_diag_field ( mod_name, &
+             'qldt_eros', axes(1:3), Time, &
+             'Liquid water specific humidity tendency from erosion',   &
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_qldt_berg = register_diag_field ( mod_name, &
+             'qldt_berg', axes(1:3), Time, &
+       'Liquid water specific humidity tendency from Bergeron process',&
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_qldt_freez = register_diag_field ( mod_name, &
+             'qldt_freez', axes(1:3), Time, &
+    'Liquid water specific humidity tendency from homogenous freezing',&
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_qldt_rime = register_diag_field ( mod_name, &
+             'qldt_rime', axes(1:3), Time, &
+             'Liquid water specific humidity tendency from riming',    &
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_qldt_accr = register_diag_field ( mod_name, &
+             'qldt_accr', axes(1:3), Time, &
+             'Liquid water specific humidity tendency from accretion', &
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_qldt_auto = register_diag_field ( mod_name, &
+             'qldt_auto', axes(1:3), Time, &
+         'Liquid water specific humidity tendency from autoconversion',&
+             'kg/kg/sec', missing_value=missing_value               )
+        
+	id_qldt_fill = register_diag_field ( mod_name, &
+             'qldt_fill', axes(1:3), Time, &
+             'Liquid water specific humidity tendency from filler',    &
+             'kg/kg/sec', missing_value=missing_value               )
+                
+        id_qldt_destr = register_diag_field ( mod_name, &
+             'qldt_destr', axes(1:3), Time, &
+      'Liquid water specific humidity tendency from cloud destruction',&
+             'kg/kg/sec', missing_value=missing_value               )
+
+                
+!rain stuff
+
+
+        id_rain_adj = register_diag_field ( mod_name, &
+             'rain_adj', axes(1:3), Time, &
+            'Rain formation rate from removal of supersaturation',     &
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_rain_clr = register_diag_field ( mod_name, &
+             'rain_clr', axes(half), Time, &
+             'Clear sky rain rate averaged to grid box mean',          &
+	     'kg/m2/s', missing_value=missing_value                 )
+	     
+        id_rain_cld = register_diag_field ( mod_name, &
+             'rain_cld', axes(half), Time, &
+             'Cloudy sky rain rate averaged to grid box mean',         &
+	     'kg/m2/s', missing_value=missing_value                 )
+	     
+        id_a_rain_clr = register_diag_field ( mod_name, &
+             'a_rain_clr', axes(half), Time, &
+             'Clear sky rain fractional coverage',                     &
+	     'fraction', missing_value=missing_value                 )
+	     
+        id_a_rain_cld = register_diag_field ( mod_name, &
+             'a_rain_cld', axes(half), Time, &
+             'Cloudy sky rain fractional coverage',                    &
+	     'fraction', missing_value=missing_value                 )
+	     
+        id_rain_evap = register_diag_field ( mod_name, &
+             'rain_evap', axes(1:3), Time, &
+             'Water vapor tendency from rain evaporation',             &
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_a_precip_clr = register_diag_field ( mod_name, &
+             'a_precip_clr', axes(half), Time, &
+             'Clear sky precip fractional coverage',                   &
+	     'fraction', missing_value=missing_value                 )
+	     
+        id_a_precip_cld = register_diag_field ( mod_name, &
+             'a_precip_cld', axes(half), Time, &
+             'Cloudy sky precip fractional coverage',                  &
+	     'fraction', missing_value=missing_value                 )
+	     
+        
+!ice water tendencies
+
+	
+        id_qidt_dep = register_diag_field ( mod_name, &
+             'qidt_dep', axes(1:3), Time, &
+            'Ice water specific humidity tendency from LS deposition', &
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_qidt_subl = register_diag_field ( mod_name, &
+             'qidt_subl', axes(1:3), Time, &
+           'Ice water specific humidity tendency from LS sublimation', &
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_qidt_fall = register_diag_field ( mod_name, &
+             'qidt_fall', axes(1:3), Time, &
+             'Ice water specific humidity tendency from ice settling', &
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_qidt_eros = register_diag_field ( mod_name, &
+             'qidt_eros', axes(1:3), Time, &
+             'Ice water specific humidity tendency from erosion',      &
+             'kg/kg/sec', missing_value=missing_value               )
+
+        id_qidt_melt = register_diag_field ( mod_name, &
+             'qidt_melt', axes(1:3), Time, &
+	   'Ice water specific humidity tendency from melting to rain',&
+             'kg/kg/sec', missing_value=missing_value               )
+	
+        id_qidt_fill = register_diag_field ( mod_name, &
+             'qidt_fill', axes(1:3), Time, &
+             'Ice water specific humidity tendency from filler',       &
+             'kg/kg/sec', missing_value=missing_value               )
+        
+	id_qidt_destr = register_diag_field ( mod_name, &
+             'qidt_destr', axes(1:3), Time, &
+         'Ice water specific humidity tendency from cloud destruction',&
+             'kg/kg/sec', missing_value=missing_value               )
+        
+
+!snow stuff
+
+
+        id_snow_adj = register_diag_field ( mod_name, &
+             'snow_adj', axes(1:3), Time, &
+           'Snow formation rate from removal of supersaturation',      &
+             'kg/kg/sec', missing_value=missing_value               )
+                
+        id_snow_clr = register_diag_field ( mod_name, &
+             'snow_clr', axes(half), Time, &
+             'Clear sky snow rate averaged to grid box mean',          &
+	     'kg/m2/s', missing_value=missing_value                 )
+	     
+        id_snow_cld = register_diag_field ( mod_name, &
+             'snow_cld', axes(half), Time, &
+             'Cloudy sky snow rate averaged to grid box mean',         &
+	     'kg/m2/s', missing_value=missing_value                 )
+	     
+        id_a_snow_clr = register_diag_field ( mod_name, &
+             'a_snow_clr', axes(half), Time, &
+             'Clear sky snow fractional coverage',                     &
+	     'fraction', missing_value=missing_value                 )
+	     
+        id_a_snow_cld = register_diag_field ( mod_name, &
+             'a_snow_cld', axes(half), Time, &
+             'Cloudy sky snow fractional coverage',                    &
+	     'fraction', missing_value=missing_value                 )
+	     
+	id_snow_subl = register_diag_field ( mod_name, &
+             'snow_subl', axes(1:3), Time, &
+             'Water vapor tendency from snow sublimation',             &
+             'kg/kg/sec', missing_value=missing_value               )
+
+	id_snow_melt = register_diag_field ( mod_name, &
+             'snow_melt', axes(1:3), Time, &
+             'Rain water tendency from snow melting',                  &
+             'kg/kg/sec', missing_value=missing_value               )
+
+
+!cloud fraction tendencies
+
+        id_qadt_lsform = register_diag_field ( mod_name, &
+             'qadt_lsform', axes(1:3), Time, &
+       'Cloud fraction tendency from LS condensation',                 &
+             '1/sec', missing_value=missing_value               )
+
+        id_qadt_rhred = register_diag_field ( mod_name, &
+             'qadt_rhred', axes(1:3), Time, &
+       'Cloud fraction tendency from RH limiter',                      &
+             '1/sec', missing_value=missing_value               )
+ 
+        id_qadt_eros = register_diag_field ( mod_name, &
+             'qadt_eros', axes(1:3), Time, &
+             'Cloud fraction tendency from erosion',                   &
+             '1/sec', missing_value=missing_value               )
+
+        id_qadt_fill = register_diag_field ( mod_name, &
+             'qadt_fill', axes(1:3), Time, &
+             'Cloud fraction tendency from filler',                    &
+             '1/sec', missing_value=missing_value               )
+        
+	id_qadt_destr = register_diag_field ( mod_name, &
+             'qadt_destr', axes(1:3), Time, &
+         'Cloud fraction tendency from cloud destruction',             &
+             '1/sec', missing_value=missing_value               )
+        
+
+!column integrated liquid tendencies
+
+
+        id_ql_cond_col = register_diag_field ( mod_name, &
+             'ql_cond_col', axes(1:2), Time, &
+	     'Column integrated condensation',                         &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_ql_evap_col = register_diag_field ( mod_name, &
+             'ql_evap_col', axes(1:2), Time, &
+	     'Column integrated evaporation',                          &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_ql_eros_col = register_diag_field ( mod_name, &
+             'ql_eros_col', axes(1:2), Time, &
+	     'Column integrated liquid erosion',                       &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_ql_accr_col = register_diag_field ( mod_name, &
+             'ql_accr_col', axes(1:2), Time, &
+	     'Column integrated accretion',                            &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_ql_berg_col = register_diag_field ( mod_name, &
+             'ql_berg_col', axes(1:2), Time, &
+	     'Column integrated Bergeron process',                     &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_ql_freez_col = register_diag_field ( mod_name, &
+             'ql_freez_col', axes(1:2), Time, &
+	     'Column integrated homogeneous freezing',                 &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_ql_destr_col = register_diag_field ( mod_name, &
+             'ql_destr_col', axes(1:2), Time, &
+	     'Column integrated liquid destruction',                   &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_ql_rime_col = register_diag_field ( mod_name, &
+             'ql_rime_col', axes(1:2), Time, &
+	     'Column integrated riming',                               &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_ql_auto_col = register_diag_field ( mod_name, &
+             'ql_auto_col', axes(1:2), Time, &
+	     'Column integrated autoconversion',                       &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_ql_fill_col = register_diag_field ( mod_name, &
+             'ql_fill_col', axes(1:2), Time, &
+	     'Column integrated liquid filler',                        &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_rain_adj_col = register_diag_field ( mod_name, &
+             'rain_adj_col', axes(1:2), Time, &
+	     'Column integrated rain formation by adjustment',         &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_rain_evap_col = register_diag_field ( mod_name, &
+             'rain_evap_col', axes(1:2), Time, &
+	     'Column integrated rain evaporation',                     &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	
+!column integrated ice tendencies
+
+
+	id_qi_fall_col = register_diag_field ( mod_name, &
+             'qi_fall_col', axes(1:2), Time, &
+	     'Column integrated ice settling',                         &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_qi_fill_col = register_diag_field ( mod_name, &
+             'qi_fill_col', axes(1:2), Time, &
+	     'Column integrated ice filler',                           &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_qi_eros_col = register_diag_field ( mod_name, &
+             'qi_eros_col', axes(1:2), Time, &
+	     'Column integrated ice erosion',                          &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_qi_dep_col = register_diag_field ( mod_name, &
+             'qi_dep_col', axes(1:2), Time, &
+	     'Column integrated large-scale deposition',               &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_qi_subl_col = register_diag_field ( mod_name, &
+             'qi_subl_col', axes(1:2), Time, &
+	     'Column integrated large-scale sublimation',              &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_qi_destr_col = register_diag_field ( mod_name, &
+             'qi_destr_col', axes(1:2), Time, &
+	     'Column integrated ice destruction',                      &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_qi_melt_col = register_diag_field ( mod_name, &
+             'qi_melt_col', axes(1:2), Time, &
+	     'Column integrated ice melting',                          &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_snow_adj_col = register_diag_field ( mod_name, &
+             'snow_adj_col', axes(1:2), Time, &
+	     'Column integrated snow formation by adjustment',         &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_snow_subl_col = register_diag_field ( mod_name, &
+             'snow_subl_col', axes(1:2), Time, &
+	     'Column integrated snow sublimation',                     &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_snow_melt_col = register_diag_field ( mod_name, &
+             'snow_melt_col', axes(1:2), Time, &
+	     'Column integrated snow melting',                         &
+             'kg/m2/sec', missing_value=missing_value               )
+  
+  
+!column integrated cloud fraction tendencies
+
+
+	id_qa_lsform_col = register_diag_field ( mod_name, &
+             'qa_lsform_col', axes(1:2), Time, &
+	     'Column integrated large-scale formation',                &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_qa_rhred_col = register_diag_field ( mod_name, &
+             'qa_rhred_col', axes(1:2), Time, &
+	     'Column integrated RH reduction',                         &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_qa_eros_col = register_diag_field ( mod_name, &
+             'qa_eros_col', axes(1:2), Time, &
+	     'Column integrated cloud fraction erosion',               &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_qa_fill_col = register_diag_field ( mod_name, &
+             'qa_fill_col', axes(1:2), Time, &
+	     'Column integrated cloud fraction filler',                &
+             'kg/m2/sec', missing_value=missing_value               )
+        
+	id_qa_destr_col = register_diag_field ( mod_name, &
+             'qa_destr_col', axes(1:2), Time, &
+	     'Column integrated cloud fraction destruction',           &
+             'kg/m2/sec', missing_value=missing_value               )
+	     
+	     
+!-----------------------------------------------------------------------
+!
+!       set diagnostic flag
+
+        do_budget_diag = .false.
+	if ( id_qldt_cond     > 0 .or. id_qldt_eros     > 0 .or. &
+	     id_qldt_fill     > 0 .or. id_qldt_accr     > 0 .or. &
+	     id_qldt_evap     > 0 .or. id_qldt_freez    > 0 .or. &
+             id_qldt_berg     > 0 .or. id_qldt_destr    > 0 .or. &
+	     id_qldt_rime     > 0 .or. id_qldt_auto     > 0 ) then
+	     do_budget_diag = .true.
+	end if
+	if ( id_rain_clr      > 0 .or. id_rain_cld      > 0 .or. &
+	     id_a_rain_clr    > 0 .or. id_a_rain_cld    > 0 .or. &
+	     id_rain_evap     > 0 .or. id_rain_adj      > 0 ) then
+	     do_budget_diag = .true.
+	end if
+	if ( id_qidt_fall     > 0 .or. id_qidt_fill     > 0 .or. &
+             id_qidt_melt     > 0 .or. id_qidt_dep      > 0 .or. &
+	     id_qidt_subl     > 0 .or. id_qidt_eros     > 0 .or. &
+             id_qidt_destr    > 0 ) then
+	     do_budget_diag = .true.
+	end if
+	if ( id_snow_clr      > 0 .or. id_snow_cld      > 0 .or. &
+	     id_a_snow_clr    > 0 .or. id_a_snow_cld    > 0 .or. &
+	     id_snow_subl     > 0 .or. id_snow_melt     > 0 .or. &
+	     id_snow_adj      > 0 ) then
+	     do_budget_diag = .true.
+	end if
+	if ( id_ql_eros_col   > 0 .or. id_ql_cond_col   > 0 .or. &
+	     id_ql_evap_col   > 0 .or. id_ql_accr_col   > 0 .or. &
+	     id_ql_auto_col   > 0 .or. id_ql_fill_col   > 0 .or. &
+             id_ql_berg_col   > 0 .or. id_ql_destr_col  > 0 .or. &
+	     id_ql_rime_col   > 0 .or. id_ql_freez_col  > 0 ) then
+	     do_budget_diag = .true.
+	end if
+	if ( id_rain_evap_col > 0 .or. id_rain_adj_col  > 0 ) then
+	     do_budget_diag = .true. 
+	end if
+	if ( id_qi_fall_col   > 0 .or. id_qi_fill_col   > 0 .or. &
+	     id_qi_subl_col   > 0 .or. id_qi_melt_col   > 0 .or. &
+	     id_qi_destr_col  > 0 .or. id_qi_eros_col   > 0 .or. &
+             id_qi_dep_col    > 0 ) then
+	     do_budget_diag = .true.
+	end if
+	if ( id_snow_subl_col > 0 .or. id_snow_melt_col > 0 .or. &
+	     id_snow_adj_col  > 0 ) then
+	     do_budget_diag = .true.
+	end if
+	if ( id_qadt_lsform   > 0 .or. id_qadt_eros     > 0 .or. &
+	     id_qadt_fill     > 0 .or. id_qadt_rhred    > 0 .or. &
+	     id_qadt_destr    > 0 .or. id_qa_lsform_col > 0 .or. &
+	     id_qa_eros_col   > 0 .or. id_qa_fill_col   > 0 .or. &
+	     id_qa_rhred_col  > 0 .or. id_qa_destr_col  > 0 ) then
+	     do_budget_diag = .true.
+	end if
+	if ( id_a_precip_cld  > 0 .or. id_a_precip_clr  > 0 ) then
+	     do_budget_diag = .true.
+	end if
+		   
+       
+!-----------------------------------------------------------------------
+
+
+END SUBROUTINE DIAG_FIELD_INIT
+
 
 !#######################################################################
 !#######################################################################
 
 
-
-SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
+SUBROUTINE STRAT_DRIV(Time,is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
                       omega,Mc,LAND,ST,SQ,SL,SI,SA,surfrain,surfsnow,&
                       MASK)
-                               
+                              
 
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -505,6 +987,8 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !	
 !         variable              definition                  unit
 !       ------------   -----------------------------   ---------------
+!
+!       Time           time type variable 
 !
 !       is,ie          starting and ending i indices 
 !                      for data window
@@ -542,7 +1026,6 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       LAND           the fraction of the grid box    fraction
 !                      covered by land
 !                               
-!
 !
 !       -------
 !	OUTPUT:
@@ -590,7 +1073,6 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !                      indicating the point is below
 !                      the surface if equal to 0.
 !
-!
 !       -------------------
 !	INTERNAL VARIABLES:
 !       -------------------
@@ -610,6 +1092,8 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       i,unit,nn      temporary integers used in
 !                      instantaneous diagnostic
 !                      output.
+!
+!       inv_dtcloud    1 / dtcloud                     1/sec
 !
 !       airdens        air density                     kg air/(m*m*m)
 !
@@ -653,7 +1137,8 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !                      covered by the snow flux in
 !                      saturated air
 !
-!       deltp	       pressure thickness of grid box  Pa
+!       deltpg	       pressure thickness of grid box  kg air/(m*m)
+!                      divided by gravity
 !
 !	U	       grid box relative humidity      fraction
 !
@@ -786,58 +1271,250 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       ------------------------
 !
 
+        TYPE(time_type), INTENT (IN)           :: Time
         INTEGER, INTENT (IN)                   :: is,ie,js,je
         REAL, INTENT (IN)                      :: dtcloud
         REAL, INTENT (IN),    DIMENSION(:,:,:) :: pfull,phalf
-        REAL, INTENT (IN),    DIMENSION(:,:,:) :: T,qv,ql,qi,qa,omega
+	REAL, INTENT (IN),    DIMENSION(:,:,:) :: T,qv,ql,qi,qa,omega
         REAL, INTENT (IN),    DIMENSION(:,:,:) :: Mc
         REAL, INTENT (IN),    DIMENSION(:,:)   :: LAND
         REAL, INTENT (OUT),   DIMENSION(:,:,:) :: ST,SQ,SL,SI,SA
         REAL, INTENT (OUT),   DIMENSION(:,:)   :: surfrain,surfsnow
         REAL, INTENT (IN), OPTIONAL, DIMENSION(:,:,:) :: MASK
-        
+
 !
 !       Internal variables
 !       ------------------
 !
 
-        INTEGER                                :: KDIM,j,ipt,jpt
-        INTEGER                                :: i,unit,nn
-        REAL, DIMENSION(SIZE(T,1),SIZE(T,2),SIZE(T,3)) :: airdens
+        INTEGER                                        :: KDIM,j,ipt,jpt
+        INTEGER                                        :: i,unit,nn
+	REAL                                           :: inv_dtcloud
+	REAL, DIMENSION(SIZE(T,1),SIZE(T,2),SIZE(T,3)) :: airdens
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2),SIZE(T,3)) :: qs,dqsdT
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2),SIZE(T,3)) :: gamma
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2),SIZE(T,3)) :: A_plus_B
-        REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: rain_clr,rain_cld
+	
+	REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: rain_clr,rain_cld
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: a_rain_clr,a_rain_cld
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: snow_clr,snow_cld
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: a_snow_clr,a_snow_cld
-        REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: deltp,U
+        REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: deltpg,U
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: dqs_ls,da_ls
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: C_dt, D_dt
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: D1_dt,D2_dt,D_eros
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: ql_upd,qi_upd,qa_upd
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: ql_mean,qi_mean
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: qa_mean,qa_mean_lst
-        REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: dcond_ls,dcond_ls_ice        
-        REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: da_cld2clr,da_clr2cld
+        REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: dcond_ls,dcond_ls_ice 
+	REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: da_cld2clr,da_clr2cld
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: dprec_clr2cld
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: dprec_cld2clr
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: N,rad_liq
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: Vfall,lamda_f
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: U_clr
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2))   :: tmp1,tmp2
-        
+        	        
+        !diagnostic variables
+	REAL, ALLOCATABLE, DIMENSION(:,:,:) :: &
+	     qldt_cond,  qldt_evap, qldt_eros,   qldt_berg, qldt_freez,&
+	     qldt_rime,  qldt_accr, qldt_auto,   rain_adj,  qldt_fill, &
+	     qldt_destr, rain_evap, qidt_dep,    qidt_subl, qidt_eros, &
+	     qidt_melt,  qidt_fall, snow_adj,    qidt_fill, qidt_destr,&
+	     snow_subl,  snow_melt, qadt_lsform, qadt_eros, qadt_rhred,&
+	     qadt_destr, qadt_fill        
+	REAL, ALLOCATABLE, DIMENSION(:,:,:) :: &
+	     rain_clr_diag,     rain_cld_diag,    a_rain_clr_diag, &
+	     a_rain_cld_diag,   snow_clr_diag,    snow_cld_diag,   &
+	     a_snow_clr_diag,   a_snow_cld_diag,  mask3,           &
+	     a_precip_clr_diag, a_precip_cld_diag
+	LOGICAL :: used
+
+
 
 !-----------------------------------------------------------------------
 !       
 !       Code
 !
 
+
+!-----------------------------------------------------------------------
+!       
+!       allocate space for diagnostic variables if needed
+!
+
+        if (do_budget_diag) then
+	
+	     if (ALLOCATED(qldt_cond)) DEALLOCATE (qldt_cond)
+             ALLOCATE(qldt_cond(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qldt_evap)) DEALLOCATE (qldt_evap)
+             ALLOCATE(qldt_evap(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qldt_eros)) DEALLOCATE (qldt_eros)
+             ALLOCATE(qldt_eros(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qldt_berg)) DEALLOCATE (qldt_berg)
+             ALLOCATE(qldt_berg(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qldt_freez)) DEALLOCATE (qldt_freez)
+             ALLOCATE(qldt_freez(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qldt_rime)) DEALLOCATE (qldt_rime)
+             ALLOCATE(qldt_rime(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qldt_accr)) DEALLOCATE (qldt_accr)
+             ALLOCATE(qldt_accr(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qldt_auto)) DEALLOCATE (qldt_auto)
+             ALLOCATE(qldt_auto(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qldt_fill)) DEALLOCATE (qldt_fill)
+             ALLOCATE(qldt_fill(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qldt_destr)) DEALLOCATE (qldt_destr)
+             ALLOCATE(qldt_destr(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(rain_evap)) DEALLOCATE (rain_evap)
+             ALLOCATE(rain_evap(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(rain_adj)) DEALLOCATE (rain_adj)
+             ALLOCATE(rain_adj(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qidt_dep)) DEALLOCATE (qidt_dep)
+             ALLOCATE(qidt_dep(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qidt_eros)) DEALLOCATE (qidt_eros)
+             ALLOCATE(qidt_eros(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qidt_fall)) DEALLOCATE (qidt_fall)
+             ALLOCATE(qidt_fall(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qidt_fill)) DEALLOCATE (qidt_fill)
+             ALLOCATE(qidt_fill(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qidt_subl)) DEALLOCATE (qidt_subl)
+             ALLOCATE(qidt_subl(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qidt_melt)) DEALLOCATE (qidt_melt)
+             ALLOCATE(qidt_melt(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qidt_destr)) DEALLOCATE (qidt_destr)
+             ALLOCATE(qidt_destr(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(snow_melt)) DEALLOCATE (snow_melt)
+             ALLOCATE(snow_melt(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(snow_adj)) DEALLOCATE (snow_adj)
+             ALLOCATE(snow_adj(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(snow_subl)) DEALLOCATE (snow_subl)
+             ALLOCATE(snow_subl(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qadt_lsform)) DEALLOCATE (qadt_lsform)
+             ALLOCATE(qadt_lsform(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qadt_eros)) DEALLOCATE (qadt_eros)
+             ALLOCATE(qadt_eros(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qadt_rhred)) DEALLOCATE (qadt_rhred)
+             ALLOCATE(qadt_rhred(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qadt_destr)) DEALLOCATE (qadt_destr)
+             ALLOCATE(qadt_destr(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     if (ALLOCATED(qadt_fill)) DEALLOCATE (qadt_fill)
+             ALLOCATE(qadt_fill(SIZE(T,1),SIZE(T,2),SIZE(T,3)))
+	     
+	     if (ALLOCATED(rain_cld_diag)) DEALLOCATE (rain_cld_diag)
+             ALLOCATE(rain_cld_diag(SIZE(T,1),SIZE(T,2),SIZE(T,3)+1))
+	     if (ALLOCATED(rain_clr_diag)) DEALLOCATE (rain_clr_diag)
+             ALLOCATE(rain_clr_diag(SIZE(T,1),SIZE(T,2),SIZE(T,3)+1))
+	     if (ALLOCATED(a_rain_cld_diag)) &
+	       DEALLOCATE (a_rain_cld_diag)
+             ALLOCATE(a_rain_cld_diag(SIZE(T,1),SIZE(T,2),SIZE(T,3)+1))
+	     if (ALLOCATED(a_rain_clr_diag)) &
+	       DEALLOCATE (a_rain_clr_diag)
+             ALLOCATE(a_rain_clr_diag(SIZE(T,1),SIZE(T,2),SIZE(T,3)+1))
+	     if (ALLOCATED(snow_cld_diag)) DEALLOCATE (snow_cld_diag)
+             ALLOCATE(snow_cld_diag(SIZE(T,1),SIZE(T,2),SIZE(T,3)+1))
+	     if (ALLOCATED(snow_clr_diag)) DEALLOCATE (snow_clr_diag)
+             ALLOCATE(snow_clr_diag(SIZE(T,1),SIZE(T,2),SIZE(T,3)+1))
+	     if (ALLOCATED(a_snow_cld_diag)) &
+	       DEALLOCATE (a_snow_cld_diag)
+             ALLOCATE(a_snow_cld_diag(SIZE(T,1),SIZE(T,2),SIZE(T,3)+1))
+	     if (ALLOCATED(a_snow_clr_diag)) &
+	       DEALLOCATE (a_snow_clr_diag)
+             ALLOCATE(a_snow_clr_diag(SIZE(T,1),SIZE(T,2),SIZE(T,3)+1))
+	     if (ALLOCATED(a_precip_cld_diag)) &
+	       DEALLOCATE (a_precip_cld_diag)
+             ALLOCATE(a_precip_cld_diag &
+	          (SIZE(T,1),SIZE(T,2),SIZE(T,3)+1))
+	     if (ALLOCATED(a_precip_clr_diag)) &
+	       DEALLOCATE (a_precip_clr_diag)
+             ALLOCATE(a_precip_clr_diag &
+	          (SIZE(T,1),SIZE(T,2),SIZE(T,3)+1))
+	     
+	     if (ALLOCATED(mask3)) DEALLOCATE (mask3)
+             ALLOCATE(mask3(SIZE(T,1),SIZE(T,2),SIZE(T,3)+1))
+	                         
+	end if
+
+!-----------------------------------------------------------------------
+!
+!       Initialize select variables to zero. The variables reset
+!       are:
+!
+!       (1) changes of prognostic variables
+!
+!       (2) variables dealing with the rain/snow fluxes. 
+!
+!       (3) qa_mean of the level above the top level.
+!        
+!       (4) diagnostic output fields
+
+        ST(:,:,:) = 0.
+        SQ(:,:,:) = 0.
+        SL(:,:,:) = 0.
+        SI(:,:,:) = 0.
+        SA(:,:,:) = 0.
+   
+        rain_cld  (:,:) = 0.
+        rain_clr  (:,:) = 0.
+        a_rain_cld(:,:) = 0.
+        a_rain_clr(:,:) = 0.
+        snow_cld  (:,:) = 0.
+        snow_clr  (:,:) = 0.
+        a_snow_clr(:,:) = 0.
+        a_snow_cld(:,:) = 0.
+        
+        qa_mean_lst(:,:)= 0.
+
+        if (do_budget_diag) then
+             qldt_cond        (:,:,:) = 0.
+             qldt_evap        (:,:,:) = 0.
+             qldt_eros        (:,:,:) = 0.
+             qldt_accr        (:,:,:) = 0.
+             qldt_auto        (:,:,:) = 0.
+             qldt_berg        (:,:,:) = 0.
+	     qldt_freez       (:,:,:) = 0.
+	     qldt_rime        (:,:,:) = 0.
+             rain_adj         (:,:,:) = 0.
+	     qldt_fill        (:,:,:) = 0.
+	     qldt_destr       (:,:,:) = 0.
+	     rain_evap        (:,:,:) = 0.
+	     qidt_dep         (:,:,:) = 0.
+             qidt_subl        (:,:,:) = 0.
+             qidt_eros        (:,:,:) = 0.
+             qidt_fall        (:,:,:) = 0.
+             qidt_melt        (:,:,:) = 0.
+	     qidt_destr       (:,:,:) = 0.
+	     snow_subl        (:,:,:) = 0.
+	     snow_melt        (:,:,:) = 0.
+	     snow_adj         (:,:,:) = 0.
+	     qidt_fill        (:,:,:) = 0.
+	     rain_clr_diag    (:,:,:) = 0.
+	     rain_cld_diag    (:,:,:) = 0.
+	     a_rain_clr_diag  (:,:,:) = 0.
+	     a_rain_cld_diag  (:,:,:) = 0.
+	     a_precip_clr_diag(:,:,:) = 0.
+	     a_precip_cld_diag(:,:,:) = 0.
+	     snow_clr_diag    (:,:,:) = 0.
+	     snow_cld_diag    (:,:,:) = 0.
+	     a_snow_clr_diag  (:,:,:) = 0.
+	     a_snow_cld_diag  (:,:,:) = 0.
+	     qadt_lsform      (:,:,:) = 0.
+             qadt_rhred       (:,:,:) = 0.
+             qadt_eros        (:,:,:) = 0.
+             qadt_fill        (:,:,:) = 0.
+             qadt_destr       (:,:,:) = 0.
+        end if
+			        
 !-----------------------------------------------------------------------
 !
 !       Determine number of vertical levels
 
         KDIM = SIZE(T,3)
+
+!-----------------------------------------------------------------------
+!
+!       compute inverse time step
+
+        inv_dtcloud = 1.0 / dtcloud
 
 
 !-----------------------------------------------------------------------
@@ -914,19 +1591,11 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         qs(:,:,:)=d622*gamma(:,:,:)/qs(:,:,:)
          
         !calculate gamma
-        gamma(:,:,:) =  (HLv/Cp)*dqsdT(:,:,:)
-        
-        WHERE (T(:,:,:) .ge. Tfreeze-20. .and. &
-               T(:,:,:) .lt. Tfreeze)
-             gamma(:,:,:) =  (0.05*(T(:,:,:)-Tfreeze+20.)*HLv + &
-                        0.05*(Tfreeze-T(:,:,:))*HLs)*dqsdT(:,:,:)/Cp
-        END WHERE
-
-        WHERE (T(:,:,:) .lt. Tfreeze-20.)
-             gamma(:,:,:) =   (HLs/Cp)*dqsdT(:,:,:)
-        END WHERE
-        
-        
+        gamma(:,:,:) = dqsdT(:,:,:) * &
+             (min(1.,max(0.,0.05*(T(:,:,:)-Tfreeze+20.)))*HLv + &
+              min(1.,max(0.,0.05*(Tfreeze -T(:,:,:)   )))*HLs)/Cp
+             
+	     	
 !-----------------------------------------------------------------------
 !
 !       Calculate air density ignoring contributions from vapor and
@@ -946,34 +1615,6 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 
 !-----------------------------------------------------------------------
 !
-!       Initialize select variables to zero. The variables reset
-!       are:
-!
-!       (1) changes of prognostic variables
-!
-!       (2) variables dealing with the rain/snow fluxes. 
-!
-!       (3) qa_mean of the level above the top level.
-
-        ST(:,:,:) = 0.
-        SQ(:,:,:) = 0.
-        SL(:,:,:) = 0.
-        SI(:,:,:) = 0.
-        SA(:,:,:) = 0.
-   
-        rain_cld(:,:)   = 0.
-        rain_clr(:,:)   = 0.
-        a_rain_cld(:,:) = 0.
-        a_rain_clr(:,:) = 0.
-        snow_cld(:,:)   = 0.
-        snow_clr(:,:)   = 0.
-        a_snow_clr(:,:) = 0.
-        a_snow_cld(:,:) = 0.
-        
-        qa_mean_lst(:,:)= 0.
-
-!-----------------------------------------------------------------------
-!
 !       Enter the large loop over vertical levels.  Level 1 is the top
 !       level of the column and level KDIM is the bottom of the model.
 !       If MASK is present, each column may not have KDIM valid levels.
@@ -985,8 +1626,9 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !
 !       Calculate pressure thickness of level and relative humidity 
 
-        !calculate difference in pressure across the grid box
-        deltp(:,:) = phalf(:,:,j+1)-phalf(:,:,j)
+        !calculate difference in pressure across the grid box divided
+	!by Gravity
+        deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
          
         !calculate GRID box mean relative humidity 
         U(:,:) = MIN(MAX(0.,qv(:,:,j)/qs(:,:,j)),1.)
@@ -1013,8 +1655,20 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
                qa_upd(:,:) = qa(:,:,j)      
         END WHERE
         
-        WHERE (qa_upd(:,:) .gt. U(:,:))
-               SA(:,:,j)   = SA(:,:,j) + U(:,:) - qa(:,:,j)
+	if (do_budget_diag) then
+             
+	     WHERE (qa(:,:,j) .le. qmin)
+                    qadt_fill(:,:,j) = -1.*qa(:,:,j)*inv_dtcloud
+             ENDWHERE
+	     
+	     WHERE (qa_upd(:,:) .gt. U(:,:))
+                    qadt_rhred(:,:,j) = (qa_upd(:,:)-U(:,:))*inv_dtcloud
+             ENDWHERE
+	     
+	end if
+	        
+	WHERE (qa_upd(:,:) .gt. U(:,:))
+               SA(:,:,j)   = SA(:,:,j) + U(:,:) - qa_upd(:,:)
                qa_upd(:,:) = U(:,:)      
         END WHERE
                 
@@ -1026,7 +1680,13 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         ELSEWHERE
                ql_upd(:,:) = ql(:,:,j)
         END WHERE
-        
+
+        if ( do_budget_diag ) then
+	       WHERE (ql(:,:,j) .le. qmin .or. qa(:,:,j) .le. qmin)
+                    qldt_fill(:,:,j) = -1.*ql(:,:,j)*inv_dtcloud
+               ENDWHERE
+	end if
+	
         WHERE (qi(:,:,j) .le. qmin .or. qa(:,:,j) .le. qmin)
                SI(:,:,j)   = SI(:,:,j) - qi(:,:,j)
                SQ(:,:,j)   = SQ(:,:,j) + qi(:,:,j)
@@ -1036,6 +1696,11 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
                qi_upd(:,:) = qi(:,:,j)
         END WHERE
         
+        if ( do_budget_diag ) then
+	       WHERE (qi(:,:,j) .le. qmin .or. qa(:,:,j) .le. qmin)
+                    qidt_fill(:,:,j) = -1.*qi(:,:,j)*inv_dtcloud
+               ENDWHERE
+	end if
         
 !----------------------------------------------------------------------!
 !                                                                      !
@@ -1058,9 +1723,9 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       large-scale uplift, convection induced compensating subsidence,
 !       turbulence cooling and radiative cooling.  dqs_ls has the form:
 !
-!                (((omega+ Grav*Mc)/airdens/Cp)+radturbten)*dqsdT*dtcloud
-!   (7) dqs_ls = --------------------------------------------------------
-!                   1.  +   ( qa +  (da_ls/2.) ) * gamma
+!               (((omega+ Grav*Mc)/airdens/Cp)+radturbten)*dqsdT*dtcloud
+!   (7) dqs_ls= --------------------------------------------------------
+!                  1.  +   ( qa +  (da_ls/2.) ) * gamma
 !
 !       Here da_ls is the increase in cloud fraction due to non-
 !       convective processes.  Because this increase is also a function
@@ -1070,7 +1735,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 
         
         dqs_ls(:,:) = (((omega(:,:,j)+Grav*Mc(:,:,j)) &
-                       /airdens(:,:,j)/Cp) + radturbten(is:ie,js:je,j)) &
+                       /airdens(:,:,j)/Cp) + radturbten(is:ie,js:je,j))&
                        *dtcloud*dqsdT(:,:,j)
 
 
@@ -1150,7 +1815,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !
 
         WHERE (ql_upd(:,:) .gt. qmin .or. qi_upd(:,:) .gt. qmin)
-             D_eros(:,:) = qa_upd(:,:) * eros_scale * dtcloud *&
+             D_eros(:,:) = qa_upd(:,:) * eros_scale * dtcloud * &
                            qs(:,:,j) * (1.-U(:,:)) / &
                            (qi_upd(:,:) + ql_upd(:,:))
         ELSEWHERE
@@ -1190,16 +1855,17 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !
 !       Note that to reduce the number of variables, A is called C here,
 !       and B is called D here. At present, B = 0 because no large-scale
-!       or turbulent cloud evaporation is included.  qa goes to zero only
-!       in the case of ql and qi less than or equal to qmin; see code 
-!       near the end of this loop over levels.
+!       or turbulent cloud evaporation is included.  qa goes to zero 
+!       only in the case of ql and qi less than or equal to qmin; 
+!       see 'cloud destruction code' near the end of this loop over 
+!       levels.
         
         !compute C_dt; This is assigned to the large-scale source term
         !following (15). Reset D_dt.
         C_dt(:,:) = da_ls(:,:)/MAX((1.-qa_upd(:,:)),qmin)
-        D_dt(:,:) = D_eros(:,:)
-
-        !compute formula for total change in da
+	D_dt(:,:) = D_eros(:,:)
+        	
+	!compute formula for total change in da
         WHERE (D_dt(:,:) .gt. Dmin)
              tmp1(:,:) =  &
                ( (C_dt(:,:)/(C_dt(:,:)+D_dt(:,:))) - qa_upd(:,:))  *   &
@@ -1207,7 +1873,15 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         ELSEWHERE
              tmp1(:,:) = (1.-qa_upd(:,:))*(1.-exp(-1.*C_dt(:,:)))
         END WHERE
-          
+
+        if (do_budget_diag) then
+        
+	     tmp2(:,:) = (1.-qa_upd(:,:))*(1.-exp(-1.*C_dt(:,:)))
+	     qadt_eros(:,:,j) = (tmp2(:,:)-tmp1(:,:))*inv_dtcloud
+	     qadt_lsform(:,:,j) = tmp2(:,:)*inv_dtcloud
+	     
+	end if  
+	  
 !       The next step is to calculate the change in condensate
 !       due to non-convective condensation, dcond_ls. Note that this is
 !       not the final change but is used only to apportion condensate
@@ -1254,9 +1928,9 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !
 !       In the case of large-scale evaporation (dcond_ls<0.), it is
 !       assumed that cloud liquid will evaporate faster than cloud
-!       ice because if both are present in the same volume the saturation
-!       vapor pressure over the droplet is higher than that over the
-!       ice crystal
+!       ice because if both are present in the same volume the
+!       saturation vapor pressure over the droplet is higher than 
+!       that over the ice crystal.
 !
 !       The fraction of large-scale condensation that is liquid
 !       is stored in the temporary variable tmp1.   
@@ -1291,15 +1965,15 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         !calculate partitioning among liquid and ice to dcond_ls
         dcond_ls_ice(:,:)= tmp2(:,:)*dcond_ls(:,:)
         dcond_ls(:,:)    = tmp1(:,:)*dcond_ls(:,:)
-        
+
 !       The next step is to compute semi-implicit qa,ql,qi which are 
 !       used in many of the formulas below.  This gives a somewhat 
 !       implicitness to the scheme. Note that ql and qi are 
 !       incremented only when dcond_ls > 0.
   
         qa_mean(:,:) = qa_upd(:,:)
-        ql_mean(:,:) = ql_upd(:,:) + MAX(dcond_ls(:,:)    ,0.)        
-        qi_mean(:,:) = qi_upd(:,:) + MAX(dcond_ls_ice(:,:),0.)
+        ql_mean(:,:) = ql_upd(:,:) + MAX(dcond_ls(:,:)     ,0.)        
+        qi_mean(:,:) = qi_upd(:,:) + MAX(dcond_ls_ice (:,:),0.)
         
 !-----                                                            -----! 
 !                                                                      !
@@ -1339,8 +2013,8 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       precipitation that was in unsaturated air in the levels above 
 !       may enter saturated air and vice versa. These transfers are 
 !       calculated here under the assumption of maximum random or random 
-!       overlap between precipitation area and saturated area at the same 
-!       and adjacent levels.
+!       overlap between precipitation area and saturated area at the 
+!       same and adjacent levels.
 !
 !       For rain, the area of the grid box in which rain in saturated 
 !       air of the level above enters unsaturated air in the current 
@@ -1360,8 +2034,8 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       The grid mean flux of rain transfered from unsaturated air to 
 !       saturated air is given by rain_clr*da_clr2cld/a_rain_clr.
 !
-!       NOTE: the overlap assumption used is set by the namelist variable
-!             in cloud_rad
+!       NOTE: the overlap assumption used is set by the namelist 
+!             variable in cloud_rad
 !
 !       For snow fluxes the transfers are computed in exactly the same
 !       manner.
@@ -1461,7 +2135,13 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         snow_cld(:,:)=snow_cld(:,:)-dprec_cld2clr(:,:)&
                                    +dprec_clr2cld(:,:)
    
-   
+        !snow falling into cloud reduces the amount that
+	!falls out of cloud: a loss of cloud ice from settling
+	!is defined to be positive
+	if ( do_budget_diag ) &
+	     qidt_fall(:,:,j)= -1.*snow_cld(:,:)/deltpg(:,:)
+                             			     
+			               
 !-----------------------------------------------------------------------
 !
 !
@@ -1476,30 +2156,32 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 
         !compute grid mean change in snow flux to cool the
         !grid box to 2C and store in temporary variable tmp1
-        tmp1(:,:) = MAX((Cp*(T(:,:,j)-Tfreeze-2.)* & 
-                         deltp(:,:) / Grav / dtcloud / HLf) ,0.)
+        tmp1(:,:) = Cp*(T(:,:,j)-Tfreeze-2.)*deltpg(:,:)*inv_dtcloud/HLf
         
-        !change a_rain_clr
-        WHERE (T(:,:,j) .gt. Tfreeze+2. .and. &
-               a_snow_clr(:,:) .gt. qmin .and. &
-               a_rain_clr(:,:) .lt. a_snow_clr(:,:))
-             a_rain_clr(:,:) = a_snow_clr(:,:)
+        ! If snow_clr > tmp1, then the amount of snow melted is
+	! limited to tmp1, otherwise melt snow_clr.  The amount
+	! melted is stored in tmp2	
+	tmp2(:,:) = max(min(snow_clr(:,:),tmp1(:,:)),0.)	     
+		
+	ST(:,:,j) = ST(:,:,j) - HLf*tmp2(:,:)*dtcloud/deltpg(:,:)/Cp                
+        rain_clr(:,:) = rain_clr(:,:) + tmp2(:,:)
+        
+	!raise a_rain_clr to a_snow_clr IF AND ONLY IF melting occurs
+	!and a_rain_clr < a_snow_clr
+        WHERE (tmp2(:,:) .gt. 0. .and. a_snow_clr(:,:) .gt. qmin)
+             a_rain_clr(:,:) = max(a_rain_clr(:,:),a_snow_clr(:,:))
         END WHERE
-
-        !do melting in non-limited case first
-        WHERE (snow_clr(:,:) .lt. tmp1(:,:))
-             ST(:,:,j) = ST(:,:,j) - HLf*snow_clr(:,:)* &
-                                Grav*dtcloud/deltp(:,:)/Cp                
-             rain_clr(:,:) = rain_clr(:,:) + snow_clr(:,:)
+		
+	! If all of the snow has melted, then zero out a_snow_clr
+	WHERE (snow_clr(:,:).lt.tmp1(:,:) .and. a_snow_clr(:,:).gt.qmin)
              snow_clr(:,:) = 0.
              a_snow_clr(:,:) = 0.
-        ELSEWHERE  !do flux limited case 
-             ST(:,:,j) = ST(:,:,j) - HLf*tmp1(:,:)* &
-                                Grav*dtcloud/deltp(:,:)/Cp                
-             rain_clr(:,:) = rain_clr(:,:) + tmp1(:,:)
-             snow_clr(:,:) = snow_clr(:,:) - tmp1(:,:)
+	ELSEWHERE
+	     snow_clr(:,:) = snow_clr(:,:) - tmp2(:,:)     	     
         END WHERE
-        
+		
+	if ( do_budget_diag ) snow_melt(:,:,j) = tmp2(:,:)/deltpg(:,:)  	           
+        	     
 !----------------------------------------------------------------------!
 !
 !
@@ -1538,8 +2220,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         !of the grid box. Implicit here is the assumption that the
         !ice entering the cloud will be spread instantaneously over
         !all of the cloudy area.
-        qi_mean(:,:) = qi_mean(:,:) + &
-                       snow_cld(:,:)*Grav*dtcloud/deltp(:,:)        
+        qi_mean(:,:) = qi_mean(:,:) + snow_cld(:,:)*dtcloud/deltpg(:,:)        
 
         !compute lamda_f
         lamda_f(:,:) = 1.6 * 10**(3.+0.023*(Tfreeze-T(:,:,j)))
@@ -1648,7 +2329,9 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
                       (rad_liq(:,:)*rad_liq+20.5) ) * &
                      ((rain_cld(:,:)/MAX(a_rain_cld(:,:),qmin)&
                       /Dens_h2o)**(7./9.))
-                
+            
+	if ( do_budget_diag ) qldt_accr(:,:,j) = D1_dt(:,:)	
+	    
 !       Autoconversion
 !
 !       The autoconversion parameterization follow that of Manton
@@ -1717,12 +2400,14 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         
         !add autoconversion to D1_dt
         D1_dt(:,:) = D1_dt(:,:) + tmp1(:,:)
-        
-        !auto conversion will change a_rain_cld upto area of cloud
+	
+	!auto conversion will change a_rain_cld upto area of cloud
         WHERE (tmp1(:,:) .gt. Dmin)
              a_rain_cld(:,:) = qa_mean(:,:)
         END WHERE
-       
+	
+        if ( do_budget_diag ) qldt_auto(:,:,j) = tmp1(:,:)        
+        
 !       Bergeron-Findeisan Process 
 !
 !       Where ice and liquid coexist, the differential saturation
@@ -1734,57 +2419,59 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       ice crystal and write it in terms of ice specific humidity
 !       as:
 !
-!                 {(Ni/airdens)**2/3}*7.8*((Max(qi,Mio*Ni/airdens))**(1/3))
-!  (32) dqi/dt =  -------------------------------------------------------- X
-!                          [rhoice**1/3]* A_plus_B
+!                 {(Ni/airdens)**2/3}*7.8
+!  (32) dqi/dt =  ------------------------  X [(esl-esi)/esi] X
+!                 [rhoice**1/3]* A_plus_B
 !
-!                          [(esl-esi)/esi]
+!                 ((Max(qi,Mio*Ni/airdens))**(1/3))*
 !
 !       Here Ni is the ice crystal number which is taken from the 
 !       parameterization of Meyers et al. :
 !
 !  (33) Ni = 1000 * exp( (12.96* [(esl-esi)/esi]) - 0.639 )
 !
-!       The use of the maximum operator assumed that there is a background
-!       ice crystal always present on which deposition can occur.  Mio
-!       is an initial ice crystal mass taken to be 10-12kg.
+!       The use of the maximum operator assumed that there is a 
+!       background ice crystal always present on which deposition can 
+!       occur.  Mio is an initial ice crystal mass taken to be 10-12kg.
 !
 !       Figure 9.3 of Rogers and Yau (1998) shows the nearly linear
 !       variation of [(esl-esi)/esi] from 0. at 273.16K to 0.5 at 
 !       233.16K.  Analytically this is parameterized as (Tfreeze-T)/80.
 !
 !
-!       Generalizing (32) to grid mean conditions and writing it in terms
-!       of a loss of cloud liquid yields:
+!       Generalizing (32) to grid mean conditions and writing it in 
+!       terms of a loss of cloud liquid yields:
 !
-!                   qa {(1000 * exp((12.96* (Tfreeze-T)/80)-0.639)/airdens)**2/3}
-!  (34) dql/dt = -  -------------------------------------------------------- 
-!                            [rhoice**1/3]* A_plus_B * ql
+!                  (1000*exp((12.96*(Tfreeze-T)/80)-0.639)/airdens)**2/3
+!  (34) dql/dt = - ----------------------------------------------------- 
+!                           [rhoice**1/3]* A_plus_B * ql
 !
-!                  *7.8*((Max(qi/qa,Mio*Ni/airdens))**(1/3))*[(Tfreeze-T)/80]*ql
+!       *qa*7.8*((Max(qi/qa,Mio*Ni/airdens))**(1/3))*[(Tfreeze-T)/80]*ql
 !
-!       Note that the density of ice is set to 700 kg m3 the value appropriate
-!       for pristine ice crystals.  This value is necessarily different than
-!       the value of ice used in the riming and sublimation part of the code
-!       which is for larger particles which have much lower densities.
-        
-        !reset D2_dt
-        D2_dt(:,:)=0.
+!       Note that the density of ice is set to 700 kg m3 the value 
+!       appropriate for pristine ice crystals.  This value is 
+!       necessarily different than the value of ice used in the riming 
+!       and sublimation part of the code which is for larger particles 
+!       which have much lower densities.
         
         !do Bergeron process
         WHERE (T(:,:,j) .lt. Tfreeze .and. ql_mean(:,:) .gt. qmin &
-                    .and. qa_mean(:,:) .gt. qmin)
-           
+                    .and. qa_mean(:,:) .gt. qmin)           
              D2_dt(:,:) =  dtcloud * qa_mean(:,:) * &
-                         ((1000.*exp((12.96*0.0125*(Tfreeze-T(:,:,j)))-0.639)&
-                           / airdens(:,:,j))**(2./3.))* &
+                         ((1000.*exp((12.96*0.0125*(Tfreeze-T(:,:,j))) &
+			   -0.639)/ airdens(:,:,j))**(2./3.))* &
                            7.8* ((MAX(qi_mean(:,:)/qa_mean(:,:), &
                            1.E-12*1000.* &
-                           exp((12.96*0.0125*(Tfreeze-T(:,:,j)))-0.639)/&
-                           airdens(:,:,j)))**(1./3.))*&
+                           exp((12.96*0.0125*(Tfreeze-T(:,:,j)))-0.639)&
+			   /airdens(:,:,j)))**(1./3.))*&
                            0.0125*(Tfreeze-T(:,:,j))/ &
-                           ((700.**(1./3.))* A_plus_B(:,:,j)* ql_mean(:,:))
+                           ((700.**(1./3.))* A_plus_B(:,:,j)* &
+			     ql_mean(:,:))
+	ELSEWHERE
+	     D2_dt(:,:) = 0.0	     			   
         END WHERE
+       
+        if ( do_budget_diag ) qldt_berg(:,:,j) = D2_dt(:,:)
        
 !       Accretion of cloud liquid by ice ('Riming')
 !       
@@ -1810,30 +2497,43 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         WHERE (a_snow_cld(:,:) .gt. qmin .and. &
                   ql_mean(:,:) .gt. qmin .and. &
                   qa_mean(:,:) .gt. qmin .and. &
-                      T(:,:,j) .lt. Tfreeze)
-             D2_dt(:,:) = D2_dt(:,:) + (dtcloud*0.5*ELI* &
-                          lamda_f(:,:)*snow_cld(:,:)/ &
-                          qa_mean(:,:)/rho_ice)
+                      T(:,:,j) .lt. Tfreeze)		      		      
+             tmp1(:,:) =  dtcloud*0.5*ELI*lamda_f(:,:)* &
+	                  snow_cld(:,:)/qa_mean(:,:)/rho_ice			              		
+	ELSEWHERE
+	     tmp1(:,:) = 0.0												  			  
         END WHERE
         
+	D2_dt(:,:) = D2_dt(:,:) + tmp1(:,:)
+	
+	if ( do_budget_diag ) qldt_rime(:,:,j) = tmp1(:,:)
+	
 !       Freezing of cloud liquid to cloud ice occurs when
 !       the temperature is less than -40C. At these very cold temper-
 !       atures it is assumed that homogenous freezing of cloud liquid
 !       droplets will occur.   To accomplish this numerically in one 
 !       time step:
 !
-!  (36) D*dtcloud =  ln( ql/qmin).
+!  (36) D*dtcloud =  ln( ql / qmin ).
 !
 !       With this form it is guaranteed that if this is the only
 !       process acting that ql = qmin after one integration.
 
         !do homogenous freezing
         WHERE (T(:,:,j)     .lt. (Tfreeze-40.) .and. &
-               ql_mean(:,:) .gt. qmin .and. &
-               qa_mean(:,:) .gt. qmin)
+               ql_mean(:,:) .gt. qmin .and. qa_mean(:,:) .gt. qmin)
              D2_dt(:,:) = log ( ql_mean(:,:) / qmin )
         END WHERE
-       
+        
+	if ( do_budget_diag ) then
+	     WHERE (T(:,:,j)     .lt. (Tfreeze-40.) .and. &
+                    ql_mean(:,:) .gt. qmin .and. &
+                    qa_mean(:,:) .gt. qmin)
+                  qldt_freez(:,:,j) = D2_dt(:,:)
+	          qldt_rime(:,:,j) = 0.
+	          qldt_berg(:,:,j) = 0.	     
+             END WHERE
+	end if
         
 !       Analytic integration of ql equation
 !
@@ -1864,13 +2564,11 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         D_dt(:,:) = D1_dt(:,:) + D2_dt(:,:) + D_eros(:,:)
         
         !add in large_scale term,note use of ql mean
-        WHERE (dcond_ls(:,:).ge.0.)
-             C_dt(:,:)=C_dt(:,:)+dcond_ls(:,:)
-        ELSEWHERE
-             D_dt(:,:)=D_dt(:,:)-(dcond_ls(:,:)/MAX(ql_mean(:,:),qmin))
-        END WHERE
-        
-        !do analytic integration
+        C_dt(:,:)=C_dt(:,:) + max(dcond_ls(:,:)   ,0.)
+        D_dt(:,:)=D_dt(:,:) + max(-1.*dcond_ls (:,:)  ,0.)  / &
+	                      max(ql_mean(:,:),qmin) 
+			                
+	!do analytic integration
         WHERE (D_dt(:,:) .gt. Dmin)
              tmp1(:,:) = ( (C_dt(:,:)/D_dt(:,:)) - ql_upd(:,:) ) * &
                          ( 1.  - exp( -1.*D_dt(:,:) ) )
@@ -1897,53 +2595,53 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !                         (dcond_ls/C_dt)*(C_dt) -(D_eros/D)*(C*dt-SL)                      
 !                         where dcond_ls > 0.
 
+        !initialize tmp2 to hold (C*dt-SL)/D
+	tmp2(:,:) = (C_dt(:,:) - tmp1(:,:))/max(D_dt(:,:),Dmin)
         
-        !do phase changes due to large-scale condensation
-        WHERE (dcond_ls(:,:).ge.0.)
-             ST(:,:,j) = ST(:,:,j) + HLv*dcond_ls(:,:)/Cp
-             SQ(:,:,j) = SQ(:,:,j) - dcond_ls(:,:)
-        END WHERE
-        
-        WHERE (dcond_ls(:,:) .lt. 0. .and. D_dt(:,:) .gt. Dmin)
-             ST(:,:,j) = ST(:,:,j) + &
-                         HLv*(dcond_ls(:,:)/MAX(ql_mean(:,:),qmin)/ &
-                         D_dt(:,:))* (C_dt(:,:) - tmp1(:,:))/Cp
-             SQ(:,:,j) = SQ(:,:,j) - &
-                             (dcond_ls(:,:)/MAX(ql_mean(:,:),qmin)/ &
-                         D_dt(:,:))* (C_dt(:,:) - tmp1(:,:))
-        END WHERE
-        
-        
-        WHERE (D_dt(:,:) .gt. Dmin)
+        !do phase changes from large-scale processes 
+        ST(:,:,j) = ST(:,:,j) + HLv*max(dcond_ls (:,:)  ,0.)/Cp &
+          - HLv*(max(-1.*dcond_ls (:,:)  ,0.)/max(ql_mean(:,:),qmin))&
+	                   *tmp2(:,:)/Cp
+	       
+	SQ(:,:,j) = SQ(:,:,j) -      max(dcond_ls (:,:)  ,0.) &
+	     + (max(-1.*dcond_ls (:,:)  ,0.)/max(ql_mean(:,:),qmin))&
+	                   *tmp2(:,:)
+		     
+	!add in liquid to ice and cloud erosion to temperature tendency
+        ST(:,:,j) = ST(:,:,j) + (HLf*D2_dt(:,:)-HLv*D_eros(:,:))* &
+                                 tmp2(:,:)/Cp
 
-             !add in liquid to ice and cloud erosion to temperature 
-             !tendency
-             ST(:,:,j) = ST(:,:,j) + &
-                         (HLf*D2_dt(:,:)-HLv*D_eros(:,:))* &
-                         (C_dt(:,:)-tmp1(:,:))/Cp/D_dt(:,:)
-
-             !add conversion of liquid to rain to the rainflux
-             rain_cld(:,:) = rain_cld(:,:) + &
-                        (D1_dt(:,:)/D_dt(:,:))*(C_dt(:,:)-tmp1(:,:))* &
-                        deltp(:,:)/Grav/dtcloud
-        
-             !cloud evaporation adds to water vapor
-             SQ(:,:,j) = SQ(:,:,j) + &
-                         D_eros(:,:)*(C_dt(:,:)-tmp1(:,:))/D_dt(:,:)
-        
-             !add liquid converted to ice into ice equation source
-             C_dt(:,:) = (C_dt(:,:)-tmp1(:,:))*D2_dt(:,:)/D_dt(:,:)
-
-             !increment qi_mean by the frozen liquid
-             qi_mean(:,:) = qi_mean(:,:) + C_dt(:,:)
-
-        ELSEWHERE  !needed to initialize ice source with zero condensate
-
-             C_dt(:,:) = 0.     
+        !cloud evaporation adds to water vapor
+        SQ(:,:,j) = SQ(:,:,j) + D_eros(:,:)*tmp2(:,:)  
              
-        END WHERE 
-        
-        
+        !add conversion of liquid to rain to the rainflux
+        rain_cld(:,:) = rain_cld(:,:) +D1_dt(:,:)*tmp2(:,:)*deltpg(:,:)&
+	                               *inv_dtcloud
+     
+        !add liquid converted to ice into ice equation source
+        C_dt(:,:) = tmp2(:,:)*D2_dt(:,:)
+
+        !increment qi_mean by the frozen liquid
+        qi_mean(:,:) = qi_mean(:,:) + C_dt(:,:)
+     
+
+!
+!       diagnostics for cloud liquid tendencies
+!       
+
+        if ( do_budget_diag ) then
+     
+             qldt_cond(:,:,j) = max(dcond_ls(:,:),0.)*inv_dtcloud
+	     qldt_evap(:,:,j) = tmp2(:,:)*max(0.,-1.*dcond_ls (:,:))&
+	         *inv_dtcloud/max(ql_mean(:,:),qmin)
+	     qldt_accr(:,:,j) = qldt_accr(:,:,j)*tmp2(:,:)*inv_dtcloud
+             qldt_auto(:,:,j) = qldt_auto(:,:,j)*tmp2(:,:)*inv_dtcloud
+	     qldt_eros(:,:,j) = D_eros(:,:)*tmp2(:,:)*inv_dtcloud 
+             qldt_berg(:,:,j) = qldt_berg(:,:,j)*tmp2(:,:)*inv_dtcloud
+             qldt_rime(:,:,j) = qldt_rime(:,:,j)*tmp2(:,:)*inv_dtcloud
+             qldt_freez(:,:,j) = qldt_freez(:,:,j)*tmp2(:,:)*inv_dtcloud
+             
+        end if
         
 !-----                                                            -----! 
 !                                                                      !
@@ -1983,9 +2681,9 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       source term, and the flux out of the bottom of the layer is 
 !       equated to the sink term:
 !
-!  (40) C_dt =  snow_cld * dtcloud *Grav/deltp
+!  (40) C_dt =  snow_cld * dtcloud * Grav/deltp
 !
-!  (41) D_dt =  airdens*Grav*Vfall* dtcloud /deltp
+!  (41) D_dt =  airdens*Grav*Vfall*dtcloud/deltp
 !
 !       All ice crystals are assumed to fall with the same fall speed
 !       which is given as in Heymsfield and Donner (1990) as:
@@ -2005,9 +2703,9 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         !add to ice source the settling ice flux from above
         !note that because C_dt already contains the source
         !of liquid converted to ice from above
-        C_dt(:,:) = C_dt(:,:) + snow_cld(:,:)*Grav*dtcloud/deltp(:,:)
+        C_dt(:,:) = C_dt(:,:) + snow_cld(:,:)*dtcloud/deltpg(:,:)
         
-        !Compute settling of ice. The result is multiplied by 
+	!Compute settling of ice. The result is multiplied by 
         !dtcloud/deltp to convert to units of D_dt.  
         !Note that if tracers are not advected then this is done
         !relative to the local vertical motion.
@@ -2019,10 +2717,13 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         
         WHERE (qi_mean(:,:) .gt. qmin .and. qa_mean(:,:) .gt. qmin)
              D1_dt(:,:)= MAX( 0., &
-                         ((airdens(:,:,j)*Grav*Vfall(:,:))+tmp1(:,:)) &
-                          * dtcloud/deltp(:,:)) 
+                       ((airdens(:,:,j)*Vfall(:,:))+(tmp1(:,:)/Grav)) &
+                        *dtcloud/deltpg(:,:) )
+	     a_snow_cld(:,:) = qa_mean(:,:)	     
         ELSEWHERE
              D1_dt(:,:)= 0.
+	     snow_cld(:,:) = 0.
+	     a_snow_cld(:,:) = 0.	    
         END WHERE 
 
         
@@ -2043,29 +2744,32 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       assumption of particle size temperature dependence.
 !
 
-        !reset D2
-        D2_dt(:,:) = 0.0
-               
-        !do melting in non-limited case
-        WHERE ( T(:,:,j) .gt. Tfreeze .and. &
-               qi_mean(:,:) .gt. qmin .and. &
-               qa_mean(:,:) .gt. qmin .and. &
-               (HLf*qi_mean(:,:)) .le. (Cp*(T(:,:,j)-Tfreeze)))
-             D2_dt(:,:) = log ( qi_mean(:,:) / qmin )
-             D1_dt(:,:) = 0.
-        END WHERE
-               
-        !do melting in limited case
-        WHERE ( T(:,:,j) .gt. Tfreeze .and. &
-               qi_mean(:,:) .gt. qmin .and. &
-               qa_mean(:,:) .gt. qmin .and. &
-               (HLf*qi_mean(:,:)) .gt. (Cp*(T(:,:,j)-Tfreeze)))
-             D2_dt(:,:) = log ( qi_mean(:,:) / &
-                (qi_mean(:,:)-(Cp*(T(:,:,j)-Tfreeze)/HLf)) )
-        END WHERE
-        
 
+        !compute grid mean change in cloud ice to cool the
+        !grid box to 0C and store in temporary variable tmp1
+        tmp1(:,:) = Cp*(T(:,:,j)-Tfreeze)/HLf
 
+        ! If qi_mean > tmp1, then the amount of ice melted is
+	! limited to tmp1, otherwise melt all qi_mean.  The amount
+	! melted is stored in tmp2
+	tmp2(:,:) = max(min(qi_mean(:,:),tmp1(:,:)),0.)	     
+	
+	D2_dt(:,:) = max(0., log(max(qi_mean(:,:)          ,qmin) / &
+	                         max(qi_mean(:,:)-tmp2(:,:),qmin) ) )
+            
+        !melting of ice creates area to a_rain_cld
+	WHERE (D2_dt(:,:) .gt. Dmin) 
+	     a_rain_cld(:,:) = qa_mean(:,:)
+	ENDWHERE
+	           	       
+        !If all of the ice can melt, then don't permit any ice to fall
+	!out of the grid box and set a_snow_cld to zero.
+        WHERE (qi_mean(:,:) .lt. tmp1(:,:) .and. qi_mean(:,:) .gt. qmin) 
+	     D1_dt(:,:) = 0.
+	     snow_cld(:,:) = 0.
+	     a_snow_cld(:,:) = 0.
+        END WHERE
+             
 !       Analytic integration of qi equation
 !
 !       Following Tiedtke, the qi equation is written in the form
@@ -2094,13 +2798,12 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         
         D_dt(:,:) =  D1_dt(:,:) + D2_dt(:,:) + D_eros(:,:)
         
-        !add in large_scale term,note use of qi mean
-        WHERE (dcond_ls_ice(:,:).ge.0.)
-             C_dt(:,:)=C_dt(:,:)+dcond_ls_ice(:,:)
-        ELSEWHERE
-             D_dt(:,:)=D_dt(:,:)-(dcond_ls_ice(:,:)/MAX(qi_mean(:,:),qmin))
-        END WHERE
-        
+	!add in large_scale and convective boundary layer terms;
+	!note use of qi mean
+        C_dt(:,:)=C_dt(:,:) + max(dcond_ls_ice(:,:) ,0.)
+        D_dt(:,:)=D_dt(:,:) + max(-1.*dcond_ls_ice(:,:) ,0.) / &
+	                      max(qi_mean(:,:),qmin) 
+			                	
         !do analytic integration
         WHERE (D_dt(:,:) .gt. Dmin)
             tmp1(:,:) = ( (C_dt(:,:)/D_dt(:,:)) - qi_upd(:,:) ) * &
@@ -2109,7 +2812,6 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
             tmp1(:,:) = C_dt(:,:)
         END WHERE
         
-
         !update SI and qi
         qi_upd(:,:) = qi_upd(:,:) + tmp1(:,:)
         SI(:,:,j) = SI(:,:,j) + tmp1(:,:)
@@ -2130,69 +2832,48 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       melting of ice = (D2/D)*(C*dt-SI)*deltp/Grav/dtcloud
 !
 
+        !initialize tmp2 to hold (C*dt-SI)/D
+	tmp2(:,:) = (C_dt(:,:) - tmp1(:,:))/max(D_dt(:,:),Dmin)
         
-        !do phase changes due to large-scale condensation
-        WHERE (dcond_ls_ice(:,:) .ge. 0.)
-             ST(:,:,j) = ST(:,:,j) + HLs*dcond_ls_ice(:,:)/Cp
-             SQ(:,:,j) = SQ(:,:,j) - dcond_ls_ice(:,:)
-        END WHERE
-        
-        WHERE (dcond_ls_ice(:,:) .lt. 0. .and. D_dt(:,:) .gt. Dmin)
-             ST(:,:,j) = ST(:,:,j) + &
-                         HLs*(dcond_ls_ice(:,:)/MAX(qi_mean(:,:),qmin)/ &
-                         D_dt(:,:)) * (C_dt(:,:) - tmp1(:,:))/Cp
-             SQ(:,:,j) = SQ(:,:,j) - &
-                             (dcond_ls_ice(:,:)/MAX(qi_mean(:,:),qmin)/ &
-                         D_dt(:,:)) * (C_dt(:,:) - tmp1(:,:))
-        END WHERE
-        
-        !add settling ice flux to snow_cld and change a_snow_cld     
-        WHERE (D_dt(:,:) .gt. Dmin .and. D1_dt(:,:) .gt. 0.)        
-
-            !add settling ice flux to snow_cld 
-            snow_cld(:,:) = D1_dt(:,:)* &
-                            (C_dt(:,:)-tmp1(:,:))*deltp(:,:) / &
-                            D_dt(:,:)/ Grav/ dtcloud
+        !do phase changes from large-scale processes 
+        ST(:,:,j) = ST(:,:,j) &
+	     + HLs*max(dcond_ls_ice (:,:),0.)/Cp &
+             - HLs*(max(-1.*dcond_ls_ice (:,:),0.)/ &
+	            max(qi_mean(:,:),qmin))*tmp2(:,:)/Cp
+	       
+	SQ(:,:,j) = SQ(:,:,j) &
+	     -     max(dcond_ls_ice (:,:),0.) &
+	     +     (max(-1.*dcond_ls_ice (:,:),0.)/ &
+	            max(qi_mean(:,:),qmin))*tmp2(:,:)
+		     	
+        !Cloud erosion changes temperature and vapor
+        ST(:,:,j) = ST(:,:,j) - HLs*D_eros(:,:)* tmp2(:,:)/Cp
+        SQ(:,:,j) = SQ(:,:,j) +     D_eros(:,:)* tmp2(:,:)
+	
+	!add settling ice flux to snow_cld 
+        snow_cld(:,:) = D1_dt(:,:)*tmp2(:,:)*deltpg(:,:)*inv_dtcloud
        
-            a_snow_cld(:,:) = qa_mean(:,:)
+        !add melting of ice to temperature tendency
+        ST(:,:,j) = ST(:,:,j) - HLf*D2_dt(:,:)*tmp2(:,:)/Cp
 
-        ELSEWHERE
+        !add melting of ice to the rainflux
+        rain_cld(:,:) = rain_cld(:,:) + &
+                        D2_dt(:,:)*tmp2(:,:)*deltpg(:,:)*inv_dtcloud
 
-            snow_cld(:,:) = 0.
-            a_snow_cld(:,:) = 0.
-
-        END WHERE
         
-        WHERE (D_dt(:,:) .gt. Dmin .and. D2_dt(:,:) .gt. 0.)
-
-             !add melting of ice to temperature tendency
-             ST(:,:,j) = ST(:,:,j) - &
-                         HLf*D2_dt(:,:)* &
-                         (C_dt(:,:)-tmp1(:,:))/Cp/D_dt(:,:)
-
-             !add melting of ice to the rainflux
-             rain_cld(:,:) = rain_cld(:,:) + &
-                        (D2_dt(:,:)/D_dt(:,:))*(C_dt(:,:)-tmp1(:,:))* &
-                        deltp(:,:)/Grav/dtcloud
-              
-             !melting of ice creates area to a_rain_cld
-             a_rain_cld(:,:) = qa_mean(:,:)
-
-        END WHERE
-
-        !Cloud evaporation changes temperature and vapor
-        WHERE (D_dt(:,:) .gt. Dmin .and. D_eros(:,:) .gt. 0.) 
+!
+!       diagnostics for cloud ice tendencies
+!       
         
-             ST(:,:,j) = ST(:,:,j) - HLs*D_eros(:,:)* &
-                         (C_dt(:,:)-tmp1(:,:))/Cp/D_dt(:,:)
+        if ( do_budget_diag ) then
+	
+	     qidt_dep(:,:,j) = max(dcond_ls_ice(:,:),0.)*inv_dtcloud
+	     qidt_subl(:,:,j) =     max(0.,-1.*dcond_ls_ice (:,:)) * &
+	                    tmp2(:,:)*inv_dtcloud/max(qi_mean(:,:),qmin)
+	     qidt_melt(:,:,j) = D2_dt(:,:)*tmp2(:,:)*inv_dtcloud
+             qidt_eros(:,:,j) = D_eros(:,:)*tmp2(:,:)*inv_dtcloud       
         
-             SQ(:,:,j) = SQ(:,:,j) + D_eros(:,:)* &
-                         (C_dt(:,:)-tmp1(:,:))/D_dt(:,:)
-         
-        END WHERE
-
-
-
+	end if
         
 !-----                                                            -----! 
 !                                                                      !
@@ -2216,7 +2897,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !
 !
 !
-!                              RAIN EVAPORATION
+!                       RAIN EVAPORATION
 !                           
 !
 !       Rain evaporation is derived by integration of the growth 
@@ -2231,8 +2912,8 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       Numerically this equation integrated by use of time-centered
 !       values for qs and qv.   This leads to the solution:
 !
-!  (47) qv_clr(t+1)-qv_clr(t) = K3 *[qs(t)-qv_clr(t)]/{1.+0.5*K3*(1+gamma)}
-!
+!  (47) qv_clr(t+1)-qv_clr(t) = K3 *[qs(t)-qv_clr(t)]/
+!                               {1.+0.5*K3*(1+gamma)}
 !       where 
 !
 !       K3= 56788.636 * dtcloud * {rain_rate_local/Dens_h2o}^(11/18) /
@@ -2289,24 +2970,22 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
              (1.+(U_evap*(1.-qa_mean(:,:))+qa_mean(:,:))*gamma(:,:,j)) )
         
         !do limiter by amount available
-        WHERE ((tmp1(:,:)*deltp(:,:)*a_rain_clr(:,:)/Grav/dtcloud).ge. &
-               rain_clr(:,:) )
-             
-             SQ(:,:,j) = SQ(:,:,j)+rain_clr(:,:)*dtcloud*Grav/deltp(:,:)
-             ST(:,:,j) = ST(:,:,j)-HLv*rain_clr(:,:)*dtcloud*Grav &
-                                    /deltp(:,:)/Cp
+	tmp1(:,:)= tmp1(:,:)*a_rain_clr(:,:)*deltpg(:,:)*inv_dtcloud
+	tmp2(:,:)= max( min( rain_clr(:,:), tmp1(:,:) ), 0.)
+		    
+	SQ(:,:,j) = SQ(:,:,j) +     tmp2(:,:)*dtcloud/deltpg(:,:)
+        ST(:,:,j) = ST(:,:,j) - HLv*tmp2(:,:)*dtcloud/deltpg(:,:)/Cp
+        
+        !if all of the rain evaporates set things to zero.	    
+        WHERE (tmp1(:,:).gt.rain_clr(:,:).and.a_rain_clr(:,:).gt.qmin) 			    				    
              rain_clr(:,:) = 0.
              a_rain_clr(:,:) = 0.
+	ELSEWHERE
+	     rain_clr(:,:) = rain_clr(:,:) - tmp2(:,:)	     
+	ENDWHERE
+        
+        if ( do_budget_diag ) rain_evap(:,:,j) = tmp2(:,:)/deltpg(:,:)	
 
-        ELSEWHERE
-          
-             SQ(:,:,j) = SQ(:,:,j) + a_rain_clr(:,:)*tmp1(:,:)
-             ST(:,:,j) = ST(:,:,j) - HLv*a_rain_clr(:,:)*tmp1(:,:)/Cp        
-             rain_clr(:,:) = rain_clr(:,:) - &
-                       a_rain_clr(:,:)*tmp1(:,:)*deltp(:,:)/Grav/dtcloud
-        END WHERE
-        
-        
 
 !-----------------------------------------------------------------------
 !
@@ -2354,7 +3033,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
                     **(1./14.5) )  )
 
         !compute local change in vapor mixing ratio due to 
-        !snow evaporation
+        !snow sublimation
         tmp1(:,:) = tmp1(:,:) * qs(:,:,j) * (1. - U_clr(:,:)) / &
                   (1. + 0.5*tmp1(:,:)*(1.+gamma(:,:,j)))
 
@@ -2366,42 +3045,38 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
              (1.+(U_evap*(1.-qa_mean(:,:))+qa_mean(:,:))*gamma(:,:,j)) )
         
         !do limiter by amount available
-        WHERE ((tmp1(:,:)*deltp(:,:)*a_snow_clr(:,:)/Grav/dtcloud).ge. &
-               snow_clr(:,:) )
-             
-             SQ(:,:,j) = SQ(:,:,j)+snow_clr(:,:)*dtcloud*Grav/deltp(:,:)
-             ST(:,:,j) = ST(:,:,j)-HLs*snow_clr(:,:)*dtcloud*Grav &
-                                    /deltp(:,:)/Cp
+	tmp1(:,:)= tmp1(:,:)*a_snow_clr(:,:)*deltpg(:,:)*inv_dtcloud
+	tmp2(:,:)= max (min(snow_clr(:,:),tmp1(:,:)), 0.)
+		    
+	SQ(:,:,j) = SQ(:,:,j) +     tmp2(:,:)*dtcloud/deltpg(:,:)
+        ST(:,:,j) = ST(:,:,j) - HLs*tmp2(:,:)*dtcloud/deltpg(:,:)/Cp
+        
+	!if all of the snow sublimates set things to zero.	    
+        WHERE (tmp1(:,:).gt.snow_clr(:,:).and.a_snow_clr(:,:).gt.qmin) 			    				    
              snow_clr(:,:) = 0.
              a_snow_clr(:,:) = 0.
+	ELSEWHERE
+	     snow_clr(:,:) = snow_clr(:,:) - tmp2(:,:)	     
+	ENDWHERE
+         
+        if ( do_budget_diag ) snow_subl(:,:,j) = tmp2(:,:)/deltpg(:,:)	        
 
-        ELSEWHERE
-          
-             SQ(:,:,j) = SQ(:,:,j) + a_snow_clr(:,:)*tmp1(:,:)
-             ST(:,:,j) = ST(:,:,j) - HLs*a_snow_clr(:,:)*tmp1(:,:)/Cp        
-             snow_clr(:,:) = snow_clr(:,:) - &
-                       a_snow_clr(:,:)*tmp1(:,:)*deltp(:,:)/Grav/dtcloud
-        END WHERE
-        
 
 !-----------------------------------------------------------------------
 !
 !       Adjustment.  Due to numerical errors in detrainment or advection
-!       sometimes the current state of the grid box may be supersaturated.
-!       Under the assumption that the temperature is constant in the grid
-!       box and that q <= qs, the excess vapor is condensed and will be
-!       put into the precipitation fluxes at the end of the loop
+!       sometimes the current state of the grid box may be super-
+!       saturated. Under the assumption that the temperature is constant
+!       in the grid box and that q <= qs, the excess vapor is condensed 
+!       and put into the precipitation fluxes.
         
         !estimate current qs
         tmp2(:,:) = qs(:,:,j)+dqsdT(:,:,j)*ST(:,:,j)
 
         !compute excess over saturation
-        WHERE ((qv(:,:,j)+SQ(:,:,j)) .gt. tmp2(:,:))
-              tmp1(:,:) = (qv(:,:,j)+SQ(:,:,j)-tmp2(:,:))/(1.+gamma(:,:,j))
-        ELSEWHERE
-              tmp1(:,:) = 0.
-        END WHERE
-
+        tmp1(:,:) = (max(0.,qv(:,:,j)+SQ(:,:,j)-tmp2(:,:)))/ &
+	            (1.+gamma(:,:,j))
+        
         !change vapor content
         SQ(:,:,j)=SQ(:,:,j)-tmp1(:,:)
 
@@ -2409,24 +3084,31 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
         !increment temperature
         WHERE (T(:,:,j) .le. Tfreeze-20. .and. tmp1(:,:) .gt. 0.)
               snow_cld(:,:) = snow_cld(:,:) + &
-                        qa_mean(:,:) *tmp1(:,:)*deltp(:,:)/Grav/dtcloud
+                     qa_mean(:,:) *tmp1(:,:)*deltpg(:,:)*inv_dtcloud
               snow_clr(:,:) = snow_clr(:,:) + &
-                    (1.-qa_mean(:,:))*tmp1(:,:)*deltp(:,:)/Grav/dtcloud
+                 (1.-qa_mean(:,:))*tmp1(:,:)*deltpg(:,:)*inv_dtcloud
               a_snow_cld(:,:) = qa_mean(:,:)
               a_snow_clr(:,:) = 1.-qa_mean(:,:)
               ST(:,:,j) = ST(:,:,j) + HLs*tmp1(:,:)/Cp
         END WHERE
-        WHERE (T(:,:,j) .gt. Tfreeze-20. .and. tmp1(:,:) .gt. 0.)
-        
+        WHERE (T(:,:,j) .gt. Tfreeze-20. .and. tmp1(:,:) .gt. 0.)        
               rain_cld(:,:) = rain_cld(:,:) + &
-                        qa_mean(:,:) *tmp1(:,:)*deltp(:,:)/Grav/dtcloud
+                     qa_mean(:,:) *tmp1(:,:)*deltpg(:,:)*inv_dtcloud
               rain_clr(:,:) = rain_clr(:,:) + &
-                    (1.-qa_mean(:,:))*tmp1(:,:)*deltp(:,:)/Grav/dtcloud
+                 (1.-qa_mean(:,:))*tmp1(:,:)*deltpg(:,:)*inv_dtcloud
               a_rain_cld(:,:) = qa_mean(:,:)
               a_rain_clr(:,:) = 1.-qa_mean(:,:)
               ST(:,:,j) = ST(:,:,j) + HLv*tmp1(:,:)/Cp
         END WHERE
         
+	if ( do_budget_diag ) then	     
+	     WHERE (T(:,:,j) .le. Tfreeze-20.)
+	          snow_adj(:,:,j) = tmp1(:,:)*inv_dtcloud
+             ELSEWHERE
+	          rain_adj(:,:,j) = tmp1(:,:)*inv_dtcloud
+	     ENDWHERE
+	end if
+	
 !-----------------------------------------------------------------------
 !
 !       Cloud Destruction occurs where both ql and qi are .le. qmin, 
@@ -2434,7 +3116,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       In this case all tracers are set to zero conserving moisture
 !       and energy.
 
-        WHERE ((ql_upd(:,:) .le. qmin .and. qi_upd(:,:) .le. qmin)&
+        WHERE ((ql_upd(:,:) .le. qmin .and. qi_upd(:,:) .le. qmin) &
                .or. (qa_upd(:,:) .le. qmin))
              SL(:,:,j) = SL(:,:,j) - ql_upd(:,:)
              SI(:,:,j) = SI(:,:,j) - qi_upd(:,:)
@@ -2442,9 +3124,19 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
              ST(:,:,j) = ST(:,:,j) - &
                          (HLv*ql_upd(:,:) + HLs*qi_upd(:,:))/Cp
              SA(:,:,j) = SA(:,:,j) - qa_upd(:,:)
-        END WHERE
-                
-        
+	END WHERE
+	
+	if ( do_budget_diag ) then
+	
+	     WHERE ((ql_upd(:,:) .le. qmin .and. qi_upd(:,:) .le. qmin)&
+                    .or. (qa_upd(:,:) .le. qmin))
+                  qldt_destr(:,:,j) = ql_upd(:,:)*inv_dtcloud
+                  qidt_destr(:,:,j) = qi_upd(:,:)*inv_dtcloud
+                  qadt_destr(:,:,j) = qa_upd(:,:)*inv_dtcloud
+	     ENDWHERE
+
+	end if
+	
 !-----------------------------------------------------------------------
 !
 !       Save qa_mean of current level into qa_mean_lst.   This is used
@@ -2452,7 +3144,32 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 
         qa_mean_lst(:,:) = qa_mean(:,:)
         
+!-----------------------------------------------------------------------
+!
+!       add the ice falling out from cloud to qidt_fall
         
+	if ( do_budget_diag ) qidt_fall(:,:,j) = qidt_fall(:,:,j) +  & 
+	                        (snow_cld(:,:)/deltpg(:,:))
+        
+!-----------------------------------------------------------------------
+!
+!       Save rain and snow diagnostics
+
+        if ( do_budget_diag ) then
+             rain_clr_diag(:,:,j+1) = rain_clr(:,:)
+             rain_cld_diag(:,:,j+1) = rain_cld(:,:)
+	     a_rain_clr_diag(:,:,j+1)=a_rain_clr(:,:)
+             a_rain_cld_diag(:,:,j+1)=a_rain_cld(:,:)
+	     snow_clr_diag(:,:,j+1) = snow_clr(:,:)
+             snow_cld_diag(:,:,j+1) = snow_cld(:,:)
+	     a_snow_clr_diag(:,:,j+1)=a_snow_clr(:,:)
+             a_snow_cld_diag(:,:,j+1)=a_snow_cld(:,:)	
+	     a_precip_clr_diag(:,:,j+1) = &
+	                            max(a_rain_clr(:,:),a_snow_clr(:,:))
+             a_precip_cld_diag(:,:,j+1) = &
+	                            max(a_rain_cld(:,:),a_snow_cld(:,:))
+        end if
+	
 !-----------------------------------------------------------------------
 !
 !
@@ -2515,7 +3232,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 
            END IF
 
-       ELSE
+        ELSE
 
            !do code if we are at bottom of column
            IF (j .eq. KDIM) THEN
@@ -2523,7 +3240,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
                   surfsnow(:,:) = dtcloud*(snow_clr(:,:)+snow_cld(:,:))
            END IF
 
-       END IF 
+        END IF 
                   
 
 !-----------------------------------------------------------------------
@@ -2548,8 +3265,8 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !
      
         if (num_strat_pts > 0) then
-        do nn=1,num_strat_pts
-         if (strat_pts(1,nn) >= is .and. strat_pts(1,nn) <= ie .and.  &
+         do nn=1,num_strat_pts
+          if (strat_pts(1,nn) >= is .and. strat_pts(1,nn) <= ie .and.  &
              strat_pts(2,nn) >= js .and. strat_pts(2,nn) <= je) then
                 ipt=strat_pts(1,nn); jpt=strat_pts(2,nn)
                 i=ipt-is+1; j=jpt-js+1
@@ -2562,21 +3279,655 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
                 write (unit) ipt,jpt,     qv(i,j,:)+SQ(i,j,:)
                 write (unit) ipt,jpt,     pfull(i,j,:)
                 close (unit)
-         endif
-       enddo
-     endif
+          endif
+         enddo
+        endif
 
 
 !-----------------------------------------------------------------------
 !
+!       DIAGNOSTICS
+!
+
+        if ( do_budget_diag ) then
+
+        !------- set up half level mask --------
+        mask3(:,:,1:(kdim+1)) = 1.
+        if (present(mask)) then
+             WHERE (mask(:,:,1:kdim) <= 0.5)
+                  mask3(:,:,2:(kdim+1)) = 0.
+             END WHERE
+        endif
+        
+	
+        !cloud liquid and rain diagnostics
+        if ( id_qldt_cond > 0 ) then
+          used = send_data ( id_qldt_cond, qldt_cond, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+
+        if ( id_qldt_evap > 0 ) then
+          used = send_data ( id_qldt_evap, qldt_evap, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+
+        if ( id_qldt_eros > 0 ) then
+          used = send_data ( id_qldt_eros, qldt_eros, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_qldt_accr > 0 ) then
+          used = send_data ( id_qldt_accr, qldt_accr, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+
+        if ( id_qldt_auto > 0 ) then
+          used = send_data ( id_qldt_auto, qldt_auto, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+
+        if ( id_rain_adj > 0 ) then
+          used = send_data ( id_rain_adj, rain_adj, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_qldt_fill > 0 ) then
+          used = send_data ( id_qldt_fill, qldt_fill, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_qldt_berg > 0 ) then
+          used = send_data ( id_qldt_berg, qldt_berg, &
+	        Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_qldt_freez > 0 ) then
+          used = send_data ( id_qldt_freez, qldt_freez, &
+	        Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_qldt_rime > 0 ) then
+          used = send_data ( id_qldt_rime, qldt_rime, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_qldt_destr > 0 ) then
+          used = send_data ( id_qldt_destr, qldt_destr, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+
+        if ( id_rain_evap > 0 ) then
+          used = send_data ( id_rain_evap, rain_evap, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+
+        if ( id_rain_clr > 0 ) then
+          used = send_data ( id_rain_clr, rain_clr_diag, &
+	       Time, is, js, 1, rmask=mask3 )
+        end if
+         
+        if ( id_a_rain_clr > 0 ) then
+          used = send_data ( id_a_rain_clr, a_rain_clr_diag, &
+	       Time, is, js, 1, rmask=mask3 )
+        end if
+         
+        if ( id_rain_cld > 0 ) then
+          used = send_data ( id_rain_cld, rain_cld_diag, &
+	       Time, is, js, 1, rmask=mask3 )
+        end if
+         
+        if ( id_a_rain_cld > 0 ) then
+          used = send_data ( id_a_rain_cld, a_rain_cld_diag, &
+	       Time, is, js, 1,rmask=mask3 )
+        end if
+       
+        if ( id_a_precip_clr > 0 ) then
+          used = send_data ( id_a_precip_clr, a_precip_clr_diag, &
+	       Time, is, js, 1, rmask=mask3 )
+        end if
+         
+        if ( id_a_precip_cld > 0 ) then
+          used = send_data ( id_a_precip_cld, a_precip_cld_diag, &
+	       Time, is, js, 1,rmask=mask3 )
+        end if
+       
+       
+        !ice and snow diagnostics        
+        if ( id_qidt_dep > 0 ) then
+          used = send_data ( id_qidt_dep, qidt_dep, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_qidt_subl> 0 ) then
+          used = send_data ( id_qidt_subl, qidt_subl, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_qidt_eros > 0 ) then
+          used = send_data ( id_qidt_eros, qidt_eros, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_qidt_fall > 0 ) then
+          used = send_data ( id_qidt_fall, qidt_fall, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_qidt_melt > 0 ) then
+          used = send_data ( id_qidt_melt, qidt_melt, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_snow_adj > 0 ) then
+          used = send_data ( id_snow_adj, snow_adj, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_qidt_destr > 0 ) then
+          used = send_data ( id_qidt_destr, qidt_destr, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+
+        if ( id_qidt_fill > 0 ) then
+          used = send_data ( id_qidt_fill, qidt_fill, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+      
+        if ( id_snow_clr > 0 ) then
+          used = send_data ( id_snow_clr, snow_clr_diag, &
+	       Time, is, js, 1, rmask=mask3 )
+        end if
+         
+        if ( id_a_snow_clr > 0 ) then
+          used = send_data ( id_a_snow_clr, a_snow_clr_diag, &
+	       Time, is, js, 1, rmask=mask3 )
+        end if
+         
+        if ( id_snow_cld > 0 ) then
+          used = send_data ( id_snow_cld, snow_cld_diag, &
+	       Time, is, js, 1, rmask=mask3 )
+        end if
+         
+        if ( id_a_snow_cld > 0 ) then
+          used = send_data ( id_a_snow_cld, a_snow_cld_diag, &
+	       Time, is, js, 1, rmask=mask3 )
+        end if
+         
+        if ( id_snow_subl > 0 ) then
+          used = send_data ( id_snow_subl, snow_subl, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+   
+        if ( id_snow_melt > 0 ) then
+          used = send_data ( id_snow_melt, snow_melt, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+
+
+        !cloud fraction diagnostics        
+	if ( id_qadt_lsform > 0 ) then
+          used = send_data ( id_qadt_lsform, qadt_lsform, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+        
+	if ( id_qadt_rhred > 0 ) then
+          used = send_data ( id_qadt_rhred, qadt_rhred, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+        
+	if ( id_qadt_eros > 0 ) then
+          used = send_data ( id_qadt_eros, qadt_eros, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+        
+	if ( id_qadt_fill > 0 ) then
+          used = send_data ( id_qadt_fill, qadt_fill, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+        
+	if ( id_qadt_destr > 0 ) then
+          used = send_data ( id_qadt_destr, qadt_destr, &
+	       Time, is, js, 1, rmask=mask )
+        endif
+        
+        	   
+	!-------write out column integrated diagnostics------!
+	
+	!liquid and rain diagnostics
+	if ( id_ql_cond_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+		  qldt_cond    (:,:,j) = qldt_cond   (:,:,j)*deltpg(:,:)        
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qldt_cond    (:,:,KDIM) = qldt_cond    (:,:,KDIM) &
+		                          + qldt_cond    (:,:,j)
+             enddo
+	     used = send_data ( id_ql_cond_col, qldt_cond(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_ql_evap_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+		  qldt_evap    (:,:,j) = qldt_evap   (:,:,j)*deltpg(:,:)
+             enddo
+	     do j = KDIM-1, 1, -1
+	          qldt_evap    (:,:,KDIM) = qldt_evap    (:,:,KDIM) &
+		                          + qldt_evap    (:,:,j)             
+	     enddo
+             used = send_data ( id_ql_evap_col, qldt_evap(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_ql_eros_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+		  qldt_eros    (:,:,j) = qldt_eros   (:,:,j)*deltpg(:,:)             
+             enddo
+	     do j = KDIM-1, 1, -1
+	          qldt_eros    (:,:,KDIM) = qldt_eros    (:,:,KDIM) &
+		                          + qldt_eros    (:,:,j)
+	     enddo
+             used = send_data ( id_ql_eros_col, qldt_eros(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_ql_accr_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+		  qldt_accr    (:,:,j) = qldt_accr   (:,:,j)*deltpg(:,:)             
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qldt_accr    (:,:,KDIM) = qldt_accr    (:,:,KDIM) &
+		                          + qldt_accr    (:,:,j)
+             enddo
+             used = send_data ( id_ql_accr_col, qldt_accr(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_ql_auto_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+		  qldt_auto    (:,:,j) = qldt_auto   (:,:,j)*deltpg(:,:)             
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qldt_auto    (:,:,KDIM) = qldt_auto    (:,:,KDIM) &
+		                          + qldt_auto    (:,:,j)
+             enddo
+             used = send_data ( id_ql_auto_col, qldt_auto(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_ql_berg_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          qldt_berg    (:,:,j) = qldt_berg   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qldt_berg    (:,:,KDIM) = qldt_berg    (:,:,KDIM) &
+		                          + qldt_berg    (:,:,j)
+	     enddo
+             used = send_data ( id_ql_berg_col, qldt_berg(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_ql_freez_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          qldt_freez   (:,:,j) = qldt_freez  (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qldt_freez   (:,:,KDIM) = qldt_freez   (:,:,KDIM) &
+		                          + qldt_freez   (:,:,j)
+	     enddo
+             used = send_data ( id_ql_freez_col, qldt_freez(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_ql_destr_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          qldt_destr   (:,:,j) = qldt_destr  (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qldt_destr   (:,:,KDIM) = qldt_destr   (:,:,KDIM) &
+		                          + qldt_destr   (:,:,j)
+	     enddo
+             used = send_data ( id_ql_destr_col, qldt_destr(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_ql_rime_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          qldt_rime    (:,:,j) = qldt_rime   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qldt_rime    (:,:,KDIM) = qldt_rime    (:,:,KDIM) &
+		                          + qldt_rime    (:,:,j)
+	     enddo
+             used = send_data ( id_ql_rime_col, qldt_rime(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_ql_fill_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          qldt_fill    (:,:,j) = qldt_fill   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qldt_fill    (:,:,KDIM) = qldt_fill    (:,:,KDIM) &
+		                          + qldt_fill    (:,:,j)
+	     enddo
+             used = send_data ( id_ql_fill_col, qldt_fill(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_rain_adj_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          rain_adj     (:,:,j) = rain_adj    (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          rain_adj     (:,:,KDIM) = rain_adj     (:,:,KDIM) &
+		                          + rain_adj     (:,:,j)
+	     enddo
+             used = send_data ( id_rain_adj_col, rain_adj(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_rain_evap_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+                  rain_evap    (:,:,j) = rain_evap   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          rain_evap    (:,:,KDIM) = rain_evap    (:,:,KDIM) &
+		                          + rain_evap    (:,:,j)
+	     enddo
+             used = send_data ( id_rain_evap_col, rain_evap(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+	   
+	!ice and snow diagnostics   
+        if ( id_qi_fall_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          qidt_fall    (:,:,j) = qidt_fall   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qidt_fall    (:,:,KDIM) = qidt_fall    (:,:,KDIM) &
+		                          + qidt_fall    (:,:,j)
+	     enddo
+             used = send_data ( id_qi_fall_col, qidt_fall(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_qi_fill_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          qidt_fill    (:,:,j) = qidt_fill   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qidt_fill    (:,:,KDIM) = qidt_fill    (:,:,KDIM) &
+		                          + qidt_fill    (:,:,j)
+	     enddo
+             used = send_data ( id_qi_fill_col, qidt_fill(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_qi_dep_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          qidt_dep     (:,:,j) = qidt_dep    (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qidt_dep     (:,:,KDIM) = qidt_dep     (:,:,KDIM) &
+		                          + qidt_dep     (:,:,j)
+	     enddo
+             used = send_data ( id_qi_dep_col, qidt_dep(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_qi_subl_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          qidt_subl    (:,:,j) = qidt_subl   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qidt_subl    (:,:,KDIM) = qidt_subl    (:,:,KDIM) &
+		                          + qidt_subl    (:,:,j)
+	     enddo
+             used = send_data ( id_qi_subl_col, qidt_subl(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_qi_eros_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+                  qidt_eros    (:,:,j) = qidt_eros   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qidt_eros    (:,:,KDIM) = qidt_eros    (:,:,KDIM) &
+		                          + qidt_eros    (:,:,j)
+	     enddo
+             used = send_data ( id_qi_eros_col, qidt_eros(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_qi_destr_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+                  qidt_destr   (:,:,j) = qidt_destr  (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qidt_destr   (:,:,KDIM) = qidt_destr   (:,:,KDIM) &
+		                          + qidt_destr   (:,:,j)
+	     enddo
+             used = send_data ( id_qi_destr_col, qidt_destr(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_qi_melt_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          qidt_melt    (:,:,j) = qidt_melt   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qidt_melt    (:,:,KDIM) = qidt_melt    (:,:,KDIM) &
+		                          + qidt_melt    (:,:,j)
+	     enddo
+             used = send_data ( id_qi_melt_col, qidt_melt(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_snow_adj_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          snow_adj     (:,:,j) = snow_adj    (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          snow_adj     (:,:,KDIM) = snow_adj     (:,:,KDIM) &
+		                          + snow_adj     (:,:,j)
+	     enddo
+             used = send_data ( id_snow_adj_col, snow_adj(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_snow_melt_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+                  snow_melt    (:,:,j) = snow_melt   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          snow_melt    (:,:,KDIM) = snow_melt    (:,:,KDIM) &
+		                          + snow_melt    (:,:,j)
+	     enddo
+             used = send_data ( id_snow_melt_col, snow_melt(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_snow_subl_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          snow_subl    (:,:,j) = snow_subl   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          snow_subl    (:,:,KDIM) = snow_subl    (:,:,KDIM) &
+		                          + snow_subl    (:,:,j)
+	     enddo
+             used = send_data ( id_snow_subl_col, snow_subl(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	
+	
+	!cloud fraction and volume diagnostics
+	if ( id_qa_lsform_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+		  qadt_lsform  (:,:,j) = qadt_lsform (:,:,j)*deltpg(:,:)             
+             enddo
+	     do j = KDIM-1, 1, -1
+	          qadt_lsform  (:,:,KDIM) = qadt_lsform  (:,:,KDIM) &
+		                          + qadt_lsform  (:,:,j)
+	     enddo
+             used = send_data (id_qa_lsform_col, qadt_lsform(:,:,KDIM),&
+	          Time, is, js )
+        endif
+	
+	if ( id_qa_rhred_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+                  qadt_rhred   (:,:,j) = qadt_rhred  (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qadt_rhred   (:,:,KDIM) = qadt_rhred   (:,:,KDIM) &
+		                          + qadt_rhred   (:,:,j)
+	     enddo
+             used = send_data ( id_qa_rhred_col, qadt_rhred(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	
+	if ( id_qa_eros_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+		  qadt_eros    (:,:,j) = qadt_eros   (:,:,j)*deltpg(:,:)             
+             enddo
+	     do j = KDIM-1, 1, -1
+	          qadt_eros    (:,:,KDIM) = qadt_eros    (:,:,KDIM) &
+		                          + qadt_eros    (:,:,j)
+	     enddo
+             used = send_data ( id_qa_eros_col, qadt_eros(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        if ( id_qa_fill_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+	          qadt_fill    (:,:,j) = qadt_fill   (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qadt_fill    (:,:,KDIM) = qadt_fill    (:,:,KDIM) &
+		                          + qadt_fill    (:,:,j)
+	     enddo
+             used = send_data ( id_qa_fill_col, qadt_fill(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	           
+	if ( id_qa_destr_col > 0 ) then
+             do j = 1, KDIM
+	          deltpg(:,:) = (phalf(:,:,j+1)-phalf(:,:,j))/Grav
+                  if (present(MASK)) deltpg(:,:)=deltpg(:,:)*MASK(:,:,j)
+                  qadt_destr   (:,:,j) = qadt_destr  (:,:,j)*deltpg(:,:)
+	     enddo
+	     do j = KDIM-1, 1, -1
+	          qadt_destr   (:,:,KDIM) = qadt_destr   (:,:,KDIM) &
+		                          + qadt_destr   (:,:,j)
+	     enddo
+             used = send_data ( id_qa_destr_col, qadt_destr(:,:,KDIM), &
+	          Time, is, js )
+        endif
+	   
+        !---------------------------------
+	!DEALLOCATE SPACE FOR DIAGNOSTICS
+
+        DEALLOCATE (qldt_cond)
+	DEALLOCATE (qldt_evap)
+	DEALLOCATE (qldt_eros)
+	DEALLOCATE (qldt_fill)
+	DEALLOCATE (qldt_accr)
+	DEALLOCATE (qldt_auto)
+	DEALLOCATE (qldt_freez)
+	DEALLOCATE (qldt_berg)
+	DEALLOCATE (qldt_destr)
+	DEALLOCATE (qldt_rime)
+	DEALLOCATE (rain_clr_diag)
+	DEALLOCATE (rain_cld_diag)
+	DEALLOCATE (a_rain_clr_diag)
+	DEALLOCATE (a_rain_cld_diag)
+	DEALLOCATE (rain_adj)
+	DEALLOCATE (rain_evap)
+	DEALLOCATE (qidt_fall)
+	DEALLOCATE (qidt_fill)
+	DEALLOCATE (qidt_melt)
+	DEALLOCATE (qidt_dep)
+	DEALLOCATE (qidt_subl)
+	DEALLOCATE (qidt_eros)
+	DEALLOCATE (qidt_destr)
+	DEALLOCATE (snow_clr_diag)
+	DEALLOCATE (snow_cld_diag)
+	DEALLOCATE (a_snow_clr_diag)
+	DEALLOCATE (a_snow_cld_diag)
+	DEALLOCATE (snow_subl)
+	DEALLOCATE (snow_melt)
+	DEALLOCATE (snow_adj)
+	DEALLOCATE (qadt_lsform)
+	DEALLOCATE (qadt_eros)
+	DEALLOCATE (qadt_fill)
+	DEALLOCATE (qadt_rhred)
+	DEALLOCATE (qadt_destr)
+	DEALLOCATE (a_precip_cld_diag)
+	DEALLOCATE (a_precip_clr_diag)
+	DEALLOCATE (mask3)
+	     
+	end if  !for budget_diag
+	
+!-----------------------------------------------------------------------
+!
 !
 !       END OF SUBROUTINE
-!
-!
+
 
 
 END SUBROUTINE STRAT_DRIV
-
 
 
 !#######################################################################
@@ -2589,7 +3940,7 @@ SUBROUTINE ADD_STRAT_TEND(is,ie,js,je,tend)
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-!       This subroutine adds the fields tend to the radturbten
+!       This subroutine adds the fields tend to radturbten.
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -2598,9 +3949,9 @@ SUBROUTINE ADD_STRAT_TEND(is,ie,js,je,tend)
 !	VARIABLES
 !
 !
-!       -------------------
-!	INTERNAL VARIABLES:
-!       -------------------
+!       ----------------
+!	INPUT VARIABLES:
+!       ----------------
 !	
 !         variable              definition                  unit
 !       ------------   -----------------------------   ---------------
@@ -2611,10 +3962,9 @@ SUBROUTINE ADD_STRAT_TEND(is,ie,js,je,tend)
 !       js,je          starting and ending j indices 
 !                      for data window
 !
-!       tend           tendency of physical field      K/sec
+!       tend          temperature tendency from       K/sec
+!                      radiation or turbulence
 !
-!       
-!        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 
@@ -2623,9 +3973,8 @@ SUBROUTINE ADD_STRAT_TEND(is,ie,js,je,tend)
 !       ------------------------
 !
 
-        INTEGER, INTENT (IN)                   :: is,ie,js,je
-        REAL, INTENT(IN), DIMENSION(:,:,:)     :: tend
-        
+        INTEGER, INTENT (IN)                         :: is,ie,js,je
+        REAL, INTENT(IN), DIMENSION(:,:,:)           :: tend
 
 
 !-----------------------------------------------------------------------
@@ -2636,7 +3985,7 @@ SUBROUTINE ADD_STRAT_TEND(is,ie,js,je,tend)
         if (.not. strat_cloud_on) return
 
         radturbten(is:ie,js:je,:)=radturbten(is:ie,js:je,:)+tend(:,:,:)
-
+        
        
 END SUBROUTINE ADD_STRAT_TEND
 
@@ -2651,7 +4000,7 @@ SUBROUTINE SUBTRACT_STRAT_TEND(is,ie,js,je,tend)
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-!       This subroutine subtracts the field tend from the radturbten
+!       This subroutine subtracts the field tend from radturbten.
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -2660,9 +4009,9 @@ SUBROUTINE SUBTRACT_STRAT_TEND(is,ie,js,je,tend)
 !	VARIABLES
 !
 !
-!       -------------------
-!	INTERNAL VARIABLES:
-!       -------------------
+!       ----------------
+!	INPUT VARIABLES:
+!       ----------------
 !	
 !         variable              definition                  unit
 !       ------------   -----------------------------   ---------------
@@ -2673,9 +4022,9 @@ SUBROUTINE SUBTRACT_STRAT_TEND(is,ie,js,je,tend)
 !       js,je          starting and ending j indices 
 !                      for data window
 !
-!       tend           tendency of physical field      K/sec
+!       tend          temperature tendency from       K/sec
+!                      radiation or turbulence
 !
-!       
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -2685,9 +4034,9 @@ SUBROUTINE SUBTRACT_STRAT_TEND(is,ie,js,je,tend)
 !       ------------------------
 !
 
-        INTEGER, INTENT (IN)                   :: is,ie,js,je
-        REAL, INTENT(IN), DIMENSION(:,:,:)     :: tend
-        
+        INTEGER, INTENT (IN)                         :: is,ie,js,je
+        REAL, INTENT(IN), DIMENSION(:,:,:)           :: tend
+	
 
 
 !-----------------------------------------------------------------------
@@ -2698,7 +4047,7 @@ SUBROUTINE SUBTRACT_STRAT_TEND(is,ie,js,je,tend)
         if (.not. strat_cloud_on) return
 
         radturbten(is:ie,js:je,:)=radturbten(is:ie,js:je,:)-tend(:,:,:)
-
+	
        
 END SUBROUTINE SUBTRACT_STRAT_TEND
 
@@ -2751,7 +4100,7 @@ SUBROUTINE STRAT_END()
         unit = Open_File ('RESTART/strat_cloud.res', &
                           FORM='native', ACTION='write')
         call write_data (unit, radturbten)
-        call write_data (unit, nsum)
+	call write_data (unit, nsum)
         call write_data (unit, qlsum)
         call write_data (unit, qisum)
         call write_data (unit, cfsum)
@@ -2762,8 +4111,11 @@ END SUBROUTINE STRAT_END
 
 
 !#######################################################################
+!#######################################################################
+
 
  SUBROUTINE STRAT_CLOUD_SUM (is, js, ql, qi, cf)
+
 
 !-----------------------------------------------------------------------
    integer, intent(in)                   :: is, js
@@ -2790,11 +4142,16 @@ END SUBROUTINE STRAT_END
 
 !-----------------------------------------------------------------------
 
+
  END SUBROUTINE STRAT_CLOUD_SUM
 
+
+!#######################################################################
 !#######################################################################
 
+
  SUBROUTINE STRAT_CLOUD_AVG (is, js, ql, qi, cf, ierr)
+
 
 !-----------------------------------------------------------------------
    integer, intent(in)                    :: is, js
@@ -2840,21 +4197,30 @@ END SUBROUTINE STRAT_END
 
 !-----------------------------------------------------------------------
 
+
  END SUBROUTINE STRAT_CLOUD_AVG
 
+
+!#######################################################################
 !#######################################################################
 
- FUNCTION DO_STRAT_CLOUD ( ) RESULT (answer)
-  logical :: answer
 
-  answer = strat_cloud_on
+ FUNCTION DO_STRAT_CLOUD ( ) RESULT (answer)
+
+
+   logical :: answer
+   answer = strat_cloud_on
+
 
  END FUNCTION DO_STRAT_CLOUD
 
+
 !#######################################################################
 !#######################################################################
+
 
 
 END MODULE STRAT_CLOUD_MOD
 
-                
+	
+    

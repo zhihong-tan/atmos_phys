@@ -37,8 +37,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 1.2 2001/07/05 17:34:07 fms Exp $'
-character(len=128)  :: tag     =  '$Name: eugene $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 1.3 2001/10/25 17:47:50 fms Exp $'
+character(len=128)  :: tag     =  '$Name: fez $'
 
 
 !--------------------------------------------------------------------
@@ -54,7 +54,7 @@ public   &
 private   &
 	cupar_vect, precu_vect, polat_vect, cape_vect, ieq_x, satad, &
 	lcl, mulsub_vect, cloudm_vect, simult, meens, mesub, micro,  &
-	prean, andge, write_diagnostics
+	prean, andge, write_diagnostics, STRAT_CLOUD_DONNER_TEND
 
 
 !---------------------------------------------------------------------
@@ -1031,7 +1031,7 @@ end subroutine donner_deep_time_vary
 
 subroutine donner_deep (is, js, temold, ratold, pfull, phalf, coldT,   &
 		        omega_btm, iflag, ttnd, qtnd, rain, snow, &
-			Time, Lbot, cf, cfdel, qldel, qidel)
+			Time, Lbot, cf, qlin,qiin, qatend, qltend, qitend)
 
 !-------------------------------------------------------------------
 !   donner_deep is the prognostic interface between the model and the 
@@ -1047,11 +1047,13 @@ logical, dimension(:,:),    intent(in)           :: coldT
 real, dimension(:,:),       intent(in)           :: omega_btm
 !real, dimension(:,:,:),     intent(inout)        :: temold, ratold
 real, dimension(:,:,:),     intent(in)        :: temold, ratold
+real, dimension(:,:,:),     intent(in),optional        :: qlin,qiin
 real, dimension(:,:,:),     intent(out)       :: ttnd, qtnd
 real, dimension(:,:),       intent(out)       :: rain, snow
 integer,dimension(:,:,:),   intent(inout)        :: iflag
 type(time_type),            intent(in), optional :: Time
-real, dimension(:,:,:),     intent(out), optional:: cfdel, qldel, qidel
+real, dimension(:,:,:),     intent(out), optional:: qatend, qltend, qitend
+!real, dimension(:,:,:),     intent(out), optional:: cfdel, qldel, qidel
 real, dimension(:,:,:),     intent(in), optional :: cf
 integer, dimension(:,:), intent(in), optional   :: Lbot
 !--------------------------------------------------------------------
@@ -1071,6 +1073,11 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !                     (i,j) dimensions are size of physics_window
 !     omega_btm       omega field at lowest model level
 !                     (i,j) dimensions are size of physics_window
+!     qliN             on entry, large-scale cloud liquid specific
+!                     humidity (kg(liquid)/kg)
+!     qiin            on entry, large-scale cloud ice specific
+!                     humidity (kg(ice)/kg)
+!     cf              on entry, large-scale cloud fraction (0-1)
 !
 !   intent(inout) variables:
 !
@@ -1113,9 +1120,14 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 
        real, dimension (size(temold,1), size(temold,2),    &
 						 size(temold,3) ) ::  &
-	                         prini_vect, rini_vect, tini_vect, rsave
+	                         prini_vect, rini_vect, tini_vect,  &
+				 rsave, dmeso_3d, xliq_3d
+
+       real, dimension (size(temold,1), size(temold,2),    &
+                        size(temold,3)+1)    :: mhalf_3d
 
        real ::   ampu, contot, emdi, tprei, przm, prent, prztm, dgeicer 
+       real ::   dnna, dnnb
        real, dimension(size(temold,3))  :: prinp, rmuf, trf, xice  
 
        integer, dimension (size(temold,1) )     :: iabs
@@ -1127,6 +1139,8 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 !
 !      ampu       fractional area of mesoscale circulation
 !      contot     ratio of convective to total precipitation
+!      dnna       weight for averaging full-level mass fluxes to half levels
+!      dnnb       weight for averaging full-level mass fluxes to half levels
 !      emdi       vertical integral of  mesoscale-downdraft 
 !                 sublimation (mm/d)
 !      prinp      pressures at full levels (index 1 at model top) (Pa)
@@ -1218,6 +1232,9 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
 
        ttnd(:,:,:) = 0.0
        qtnd(:,:,:) = 0.0
+       qatend(:,:,:) = 0.0
+       qltend(:,:,:) = 0.0
+       qitend(:,:,:) = 0.0
 
 !---------------------------------------------------------------------
 !   calculate time integrated low-level displacement (Cu Closure E 
@@ -1436,6 +1453,55 @@ integer, dimension(:,:), intent(in), optional   :: Lbot
                 end do
               end do
             end do
+
+!
+!        Code to link Donner convection to Tiedtke/Rotstayn cloud
+!        fraction/microphysics
+!
+!        Calculate dmeso_3d, the detrainment rate from the convective system
+!        dmeso_3d has units of s**-1 and is (1/rho) dM/dz, where M is the
+!        detraining mass flux of the convective system (kg/(m**2 s))
+!
+         do ilon=iminp,imaxp
+           do jlat=jminp,jmaxp
+             do k=1,nlev
+               xliq_3d(ilon,jlat,k)=0.
+               if (xice_3d(ilon,jlat,k) .ge. 1.0e-10) then
+                 dmeso_3d(ilon,jlat,k)=emes_3d(ilon,jlat,k)/ &
+                                       xice_3d(ilon,jlat,k)
+               else
+                 dmeso_3d(ilon,jlat,k)=0.
+               end if
+             end do
+             do k=1,nlev-1
+               if ((uceml_3d(ilon,jlat,k) .le. 1.0e-10)  .and.   &
+                   (umeml_3d(ilon,jlat,k) .le. 1.0e-10)) then
+                 mhalf_3d(ilon,jlat,k)=0.
+                 mhalf_3d(ilon,jlat,k+1)=0.
+                 cycle
+               end if
+               dnna=phalf(ilon,jlat,k+1)-pfull(ilon,jlat,k)
+               dnnb=pfull(ilon,jlat,k+1)-phalf(ilon,jlat,k+1)
+               mhalf_3d(ilon,jlat,k+1)=(dnnb*uceml_3d(ilon,jlat,k) + &
+                                      dnna*uceml_3d(ilon,jlat,k+1)   &
+                                      +dnnb*umeml_3d(ilon,jlat,k)    &
+                              +dnna*umeml_3d(ilon,jlat,k+1))/(dnna+dnnb)
+             end do
+             mhalf_3d(ilon,jlat,nlev+1)=0.
+             mhalf_3d(ilon,jlat,1)=0.
+           end do
+         end do
+      call STRAT_CLOUD_DONNER_TEND(dmeso_3d,xliq_3d,xice_3d,mhalf_3d, &
+              phalf,qlin,qiin,cf,qltend,qitend,qatend)
+
+!
+!     Convert tendencies to increments.
+!
+       qltend(:,:,:)=qltend(:,:,:)*dt
+       qitend(:,:,:)=qitend(:,:,:)*dt
+       qatend(:,:,:)=qatend(:,:,:)*dt
+
+
 !---------------------------------------------------------------------
 !   END OF STANDARD TIMESTEP CODE
 !---------------------------------------------------------------------
@@ -9107,7 +9173,7 @@ logical                :: test2
          do 4 j=j1,ncap-1
          phrh=(p(j)+p(j+1))/2.
          phrl= p(j)-(dp/2.)
-            if (j .eq. 1) rkou=pl-pb
+            if (j .eq. 1 .and. (pl .ge. pb)) rkou=pl-pb
          if (phrl .gt. pl) phrl=pl
          if (phrl .gt. pb) phrl=pb
          if (phrh .lt. ph) phrh=ph
@@ -9140,8 +9206,7 @@ logical                :: test2
       endif
 
 
-         pver=(p(j+1)+p(j))/2.
-         if (pver   .le. ph       ) then
+         if (phrh   .le. ph       ) then
             rint=rint/rkou
             qrnl(i)=rint
             go to 30
@@ -9172,8 +9237,7 @@ logical                :: test2
          qlsu=qlsu+qrnl(i)*pi*(phr(i)-phr(i+1))
  9    continue
       qbl0=qbl
-      if (.not. thetl) qbl=(-qlsum/(ps-pb))+qbl
-      if (thetl) qbl=-qlsum/(ps-pb)
+      qbl=-qlsum/(ps-pb)
 
       if (debug_ijt) then
 	print *, 'DONNER_DEEP/verav: qbl= ',qbl
@@ -9630,8 +9694,153 @@ end subroutine write_restart_donner_deep
 !##################################################################
 
 
+ SUBROUTINE STRAT_CLOUD_DONNER_TEND (Dmeso, qlmeso, qimeso, &
+         Mtot, phalf, ql, qi, cf, qltend, qitend, cftend)
 
- 
+!-----------------------------------------------------------------------
+! input
+!
+!               vertical index 1 at model top
+! Dmeso		mass detrainment rate from mesoscale region to large-scale
+! 		region (sec-1)
+! qlmeso	cloud liquid specific humidity (kg condensate/kg air)
+! qimeso	cloud ice specific humidity (kg condensate/kg air)
+! Mtot		total mass flux = mesoscale_mass_flux + convective_mass_flux
+!               (kg /m2/sec) defined on level interfaces
+!
+!               NOTE: Regardless of what they contain, Mtot(:,:,1)
+!                     Mtot(:,:,kdim+1) will be assumed to be zero.
+!
+! phalf		pressure on model interfaces (Pa)
+! ql		large-scale cloud liquid specific humidity
+! qi		large-scale cloud ice specific humidity
+! cf		large-scale cloud fraction (0-1)
+!
+! output	
+!
+! qltend	large-scale cloud liquid tendency (kg cond/kg air/sec)
+! qitend	large-scale cloud ice tendency (kg cond/kg air/sec)
+! cftend	large-scale cloud fraction tendency (1/sec)
+!
+!-----------------------------------------------------------------------
+   real, intent(in),  dimension(:,:,:) :: Dmeso, qlmeso, qimeso
+   real, intent(in),  dimension(:,:,:) :: ql, qi, cf
+   real, intent(in),  dimension(:,:,:) :: Mtot,phalf
+   real, intent(out), dimension(:,:,:) :: qltend, qitend,cftend
+!-----------------------------------------------------------------------
+   integer kdim
+!ljd
+    integer kdima
+    integer kdimb
+!ljd
+   real, dimension(size(Dmeso,1),size(Dmeso,2),size(Dmeso,3)) :: mass    ! kg
+!  air/m2 of each level
+   integer k
+   integer kk
+!-----------------------------------------------------------------------
+
+   kdim = size(Dmeso,3)
+!ljd
+   kdima=size(Dmeso,1)
+   kdimb=size(Dmeso,2)
+!ljd
+   mass(:,:,1:kdim) = (phalf(:,:,2:kdim+1)-phalf(:,:,1:kdim))/gravm
+
+   qltend=0.
+   qitend=0.
+   cftend=0.
+    
+   !do incoming compensating subsidence fluxes from above
+   qltend(:,:,2:kdim)=qltend(:,:,2:kdim) +  Mtot(:,:,2:kdim) * &
+                      0.5*(ql(:,:,1:kdim-1)+ql(:,:,2:kdim))/mass(:,:,2:kdim)
+   qitend(:,:,2:kdim)=qitend(:,:,2:kdim) +  Mtot(:,:,2:kdim) * &
+                      0.5*(qi(:,:,1:kdim-1)+qi(:,:,2:kdim))/mass(:,:,2:kdim)
+   cftend(:,:,2:kdim)=cftend(:,:,2:kdim) +  Mtot(:,:,2:kdim) * &
+                      0.5*(cf(:,:,1:kdim-1)+cf(:,:,2:kdim))/mass(:,:,2:kdim)
+!ljd
+!  do ilon=1,kdima
+! do jlat=1,kdimb
+!		      do k=1,kdim
+!  if (qimeso(ilon,jlat,k) .ge. 1.0e-09) then
+!   kk=6
+!  write(6,*) 'kk,qltend,qitend,cftend= ',kk,qltend(ilon,jlat,kk), &
+!  qitend(ilon,jlat,kk), cftend(ilon,jlat,kk)
+!  go to 11
+!  end if
+!  end do
+!  end do
+!  end do
+! 11  continue
+!ljd   
+   !do outgoing compensating subsidence fluxes out the bottom
+   qltend(:,:,1:kdim-1)=qltend(:,:,1:kdim-1) -  Mtot(:,:,2:kdim) * &
+                      0.5*(ql(:,:,1:kdim-1)+ql(:,:,2:kdim))/mass(:,:,1:kdim-1)
+   qitend(:,:,1:kdim-1)=qitend(:,:,1:kdim-1) -  Mtot(:,:,2:kdim) * &
+                      0.5*(qi(:,:,1:kdim-1)+qi(:,:,2:kdim))/mass(:,:,1:kdim-1)
+   cftend(:,:,1:kdim-1)=cftend(:,:,1:kdim-1) -  Mtot(:,:,2:kdim) * &
+                      0.5*(cf(:,:,1:kdim-1)+cf(:,:,2:kdim))/mass(:,:,1:kdim-1)
+!ljd
+!  do ilon=1,kdima
+! do jlat=1,kdimb
+!  do k=1,kdim
+!  if (qimeso(ilon,jlat,k) .ge. 1.0e-09) then
+!   kk=6
+!  write(6,*) 'kk,qltend,qitend,cftend= ',kk,qltend(ilon,jlat,kk), &
+!  qitend(ilon,jlat,kk), cftend(ilon,jlat,kk)
+!  go to 12
+!  end if
+!  end do
+!  end do
+!  end do
+!  12 continue
+!ljd   
+   !do detrainment from meso region
+   qltend(:,:,:) = qltend(:,:,:) + Dmeso(:,:,:)*qlmeso(:,:,:)
+   qitend(:,:,:) = qitend(:,:,:) + Dmeso(:,:,:)*qimeso(:,:,:)
+   where ((qlmeso+qimeso) .ge. 1.e-10)
+   cftend(:,:,:) = cftend(:,:,:) + Dmeso(:,:,:)
+   end where
+!ljd
+!  do ilon=1,kdima
+! do jlat=1,kdimb
+!  do k=1,kdim
+!  if (qimeso(ilon,jlat,k) .ge. 1.0e-09) then
+!   kk=6
+!  write(6,*) 'kk,qltend,qitend,cftend= ',kk,qltend(ilon,jlat,kk), &
+!  qitend(ilon,jlat,kk), cftend(ilon,jlat,kk)
+!  go to 13
+!  end if
+!  end do
+!  end do
+!  end do
+! 13 continue
+!ljd
+!ljd
+!  do ilon=1,kdima
+! do jlat=1,kdimb
+! do k=1,kdim
+!  if (qimeso(ilon,jlat,k) .ge. 1.0e-09) then
+!  do kk=1,kdim
+!  write(6,*) 'kk,dmeso,qimeso= ',kk,dmeso(ilon,jlat,kk),  &
+!  qimeso(ilon,jlat,kk)
+!  write(6,*) 'kk,phalf,mtot= ',kk,phalf(ilon,jlat,kk),    &
+!  mtot(ilon,jlat,kk)
+!  write(6,*) 'kk,ql,qi,cf= ',kk,ql(ilon,jlat,kk),qi(ilon,jlat,kk), &
+!  cf(ilon,jlat,kk)
+!  write(6,*) 'kk,qltend,qitend,cftend= ',qltend(ilon,jlat,kk), &
+!  qitend(ilon,jlat,kk), cftend(ilon,jlat,kk)
+!  end do
+!  call error_mesg('strat_CLOUD_DONNER_TEND','diag stop',FATAL)
+!  end if
+!  end do
+!  end do
+!  end do
+!ljd
+      
+!-----------------------------------------------------------------------
+
+END SUBROUTINE STRAT_CLOUD_DONNER_TEND
+
 
 
 

@@ -30,14 +30,15 @@ OVERVIEW</h4>
 <!-- BEGIN OVERVIEW -->
 &nbsp;&nbsp;&nbsp;&nbsp; <b>MG_DRAG - MOUNTAIN GRAVITY
 WAVE DRAG</b> - PIerrehumbert (1986)
-<blockquote><font face="Times New Roman,Times">Calculates partial tendencies
+<blockquote>Calculates partial tendencies
 for the zonal and meridional winds due to the effect of mountain gravity
-wave drag.</font></blockquote>
-<!-- END OVERVIEW --><!---------------------------------------------------------------------><a NAME="DESCRIPTION"></a><!-- BEGIN DESCRIPTION -->
-<blockquote><font face="Times New Roman,Times">Given temperature and wind
+wave drag.</blockquote>
+<!-- END OVERVIEW -->
+<!---------------------------------------------------------------------><a NAME="DESCRIPTION"></a><!-- BEGIN DESCRIPTION -->
+<blockquote>Given temperature and wind
 profiles at the model's pressure levels, this module returns tendencies
-of wind due to orographically induced gravity wave drag.</font>
-<br>This parameterization was developed by Pierrehumbert (see reference)
+of wind due to orographically induced gravity wave drag.
+<br><br>This parameterization was developed by Pierrehumbert (see reference)
 and implemented by Bill Stern. This parameterization develops a saturation
 flux profile which s defined as a limiting amount of momentum flux, above
 which wave breaking will take place and flux absorption will take place
@@ -97,15 +98,16 @@ PUBLIC ROUTINES</h4>
 <br>&nbsp;real, intent(out), dimension(:,:), optional :: hprime
 <br>!--------------------------------------------------------------
 <br>&nbsp;
-<p>&nbsp; <B>call mg_drag</B> (is,js,uwnd,vwnd,temp,pfull,phalf,&nbsp;&nbsp; &amp;
+<p>&nbsp; <B>call mg_drag</B> (is,js,delt,uwnd,vwnd,temp,pfull,phalf,&nbsp;&nbsp; &amp;
 <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-zfull,zhalf,dtaux,dtauy,taub,kbot)
+zfull,zhalf,dtaux,dtauy,dtemp,taub,kbot)
 <p>!--------------------------------------------------------------
 <br>! Input Arguments
 <br>!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; IS,JS&nbsp;&nbsp; - integers containing
 the starting
 <br>!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 i,j indices from the full horizontal grid
+<br>!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; delt&nbsp;&nbsp;&nbsp; - time step in seconds (real)
 <br>!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; UWND&nbsp;&nbsp;&nbsp;&nbsp; Zonal
 wind (dimensioned IDIM x JDIM x KDIM)
 <br>!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; VWND&nbsp;&nbsp;&nbsp;&nbsp; Meridional
@@ -159,6 +161,9 @@ the zonal wind component deceleration
 the meridional wind component deceleration
 <br>!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 (dimensioned IDIM x JDIM x KDIM)
+<br>!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; DTEMP&nbsp;&nbsp;&nbsp; Tendency of
+the temperature due to the dissipation of momentum
+<br>!&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 <br>!---------------------------------------------------------------------
 <br>&nbsp;real, intent(out), dimension (:,:) :: taub
 <br>&nbsp;real, intent(out), dimension (:,:,:) :: dtaux, dtauy
@@ -183,7 +188,10 @@ NAMELIST</h4>
 
 &nbsp; low_lev_frac&nbsp; Fraction of atmosphere (from bottom up) considered to be&nbsp;
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; "low-level-layer" for base flux calc. and where no
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; wave breaking is allowed.</pre>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; wave breaking is allowed.
+
+&nbsp; do_conserve_energy&nbsp; If TRUE the heating due to the dissipation of kinetic energy
+                      by Rayleigh damping will be computed (default is FALSE).</pre>
 <!-- END NAMELIST --><!---------------------------------------------------------------------><a NAME="CHANGES"></a>
 <hr>
 <h4>

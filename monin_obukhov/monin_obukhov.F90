@@ -260,8 +260,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.4 2001/03/06 18:50:59 fms Exp $'
-character(len=128) :: tag = '$Name: eugene $'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.5 2001/08/30 15:15:24 fms Exp $'
+character(len=128) :: tag = '$Name: fez $'
 
 !=======================================================================
 
@@ -411,9 +411,8 @@ else
     end do
 
     call solve_zeta  &
-     (nptu, rich_1d, z_1d, z0_1d, zt_1d, fm_1d, fh_1d, unstable = .true.)
-    call solve_zeta  &
-     (nptu, rich_1d, z_1d, z0_1d, zq_1d, fm_1d, fq_1d, unstable = .true.)
+     (nptu, rich_1d, z_1d, z0_1d, zt_1d, zq_1d, fm_1d, fh_1d, fq_1d, &
+      unstable = .true.)
 
     do i = 1, nptu
       fm(unstabl(i)) = fm_1d(i)
@@ -432,9 +431,8 @@ else
     end do
 
     call solve_zeta  &
-     (npts, rich_1d, z_1d, z0_1d, zt_1d, fm_1d, fh_1d, unstable = .false.)
-    call solve_zeta  &
-     (npts, rich_1d, z_1d, z0_1d, zq_1d, fm_1d, fq_1d, unstable = .false.)
+     (npts, rich_1d, z_1d, z0_1d, zt_1d, zq_1d, fm_1d, fh_1d, fq_1d, &
+      unstable = .false.)
 
     do i = 1, npts
       fm(stabl(i)) = fm_1d(i)
@@ -482,17 +480,17 @@ end subroutine mo_drag_1d
 
 !=======================================================================
 
-subroutine solve_zeta(n, rich, z, z0, zt, f_m, f_h, unstable)
+subroutine solve_zeta(n, rich, z, z0, zt, zq, f_m, f_h, f_q, unstable)
 
 integer, intent(in) :: n
-real   , intent(in), dimension(n)  :: rich, z, z0, zt
+real   , intent(in), dimension(n)  :: rich, z, z0, zt, zq
 logical, intent (in) :: unstable
-real   , intent(out), dimension(n) :: f_m, f_h
+real   , intent(out), dimension(n) :: f_m, f_h, f_q
 
 real :: vk, vk2, error, max_cor, zeta_min
 real, dimension(n) ::   &
           d_rich, rich_1, correction,  &
-          z_z0, z_zt, ln_z_z0, ln_z_zt, zeta, corr
+          z_z0, z_zt, z_zq, ln_z_z0, ln_z_zt, ln_z_zq, zeta, zeta_q, corr
 
 integer :: iter, max_iter,nn
 
@@ -503,8 +501,10 @@ zeta_min = 1.e-6
 
 z_z0 = z/z0
 z_zt = z/zt
+z_zq = z/zq
 ln_z_z0 = log(z_z0)
 ln_z_zt = log(z_zt)
+ln_z_zq = log(z_zq)
 
 zeta = rich*ln_z_z0*ln_z_z0/ln_z_zt
 if(.not.unstable)  zeta = zeta/(1.0 - rich/rich_crit)
@@ -522,6 +522,12 @@ iter_loop: do iter = 1, max_iter
     where(corr.gt. error) zeta = zeta + correction
     cycle iter_loop
   else
+    zeta_q = zeta/z_zq
+    if(unstable) then
+      call mo_integral_uh(f_q, zeta, zeta_q, ln_z_zq)
+    else
+      call mo_integral_s (f_q, zeta, zeta_q, ln_z_zq)
+    end if
     return
   end if
 

@@ -18,7 +18,7 @@
 
 !       character(len=5), parameter  ::  version_number = 'v0.08'
 character(len=128)  :: version =  '$Id: store_rad_output.F,v 1.2 2001/08/30 15:16:03 fms Exp $'
-character(len=128)  :: tag     =  '$Name: eugene $'
+character(len=128)  :: tag     =  '$Name: fez $'
 
 !--------------------------------------------------------------------
 !-------  interfaces --------

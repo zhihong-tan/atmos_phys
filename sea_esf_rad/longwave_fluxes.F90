@@ -26,8 +26,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 !  character(len=5), parameter  ::  version_number = 'v0.08'
-   character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 1.2 2001/08/30 15:12:51 fms Exp $'
-   character(len=128)  :: tag     =  '$Name: eugene $'
+   character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 1.3 2001/10/25 17:48:33 fms Exp $'
+   character(len=128)  :: tag     =  '$Name: fez $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -214,36 +214,59 @@ real,    dimension (:,:,:), intent(in)     :: trans2, trans
 !------------------------------------------------------------------
 !  local variables
 !------------------------------------------------------------------
-       real, dimension(:,:,:), allocatable  ::  flux_tmp, flux_tmp2
+       real, dimension(:,:  ), allocatable  ::  flux4, flux4a
+       real :: flux3a, flux_tmp, flux_tmp2
 
-       integer     ::  kp
+       integer     ::  kp, i, j, k, nn, ntot
 
 !---------------------------------------------------------------------
-       allocate ( flux_tmp   (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
-       allocate ( flux_tmp2  (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
+       allocate ( flux4      (ISRAD:IERAD, JSRAD:JERAD         ) )
+       allocate ( flux4a     (ISRAD:IERAD, JSRAD:JERAD         ) )
 
-       do kp=klevel+1, KE+1
-         flux_tmp(:,:,kp) = source(:,:,klevel)*trans(:,:,kp-1+iof)
-         flux_tmp2(:,:,kp) = source(:,:,kp)*trans2(:,:,kp-1+iof)
-       end do
 
        do kp=klevel+1,KE+1
-         fluxn(:,:,kp,m) = fluxn(:,:,kp,m) +flux_tmp(:,:,kp)*   &
-                           cld_trans(:,:,kp)
-         fluxn(:,:,klevel,m) = fluxn(:,:,klevel,m) +    &
-                               flux_tmp2(:,:,kp)*cld_trans(:,:,kp)
+        do j=jsrad,jerad
+          do i=israd,ierad   
+         flux_tmp         = source(i,j,klevel)*trans(i,j,kp-1+iof)
+         fluxn(i,j,kp,m) = fluxn(i,j,kp,m) +flux_tmp        *   &
+                           cld_trans(i,j,kp)
+       if (Rad_control%do_totcld_forcing) then
+           fluxncf(i,j,kp,m) = fluxncf(i,j,kp,m) + flux_tmp         
+
+       endif
+       end do
+       end do
+         end do
+
+          flux4(:,:       ) = 0.0
+          flux4a(:,:       ) = 0.0
+       do kp=klevel+1,KE+1
+        do j=jsrad,jerad
+          do i=israd,ierad   
+
+         flux_tmp2         = source(i,j,kp)*trans2(i,j,kp-1+iof)
+          flux4(i,j         ) = flux4(i,j         ) +    &
+                               flux_tmp2        *cld_trans(i,j,kp)
+       if (Rad_control%do_totcld_forcing) then
+           flux4a (i,j         ) = flux4a (i,j         ) +  &
+                                   flux_tmp2        
+          endif
+            end do
+            end do
+            end do
+        do j=jsrad,jerad
+          do i=israd,ierad   
+           fluxn  (i,j,klevel,m) = fluxn  (i,j,klevel,m) +  &
+                                   flux4    (i,j       )
+       if (Rad_control%do_totcld_forcing) then
+           fluxncf(i,j,klevel,m) = fluxncf(i,j,klevel,m) +  &
+                                   flux4a   (i,j       )
+       endif
+       end do
        end do
 
-       if (Rad_control%do_totcld_forcing) then
-         do kp=klevel+1,KE+1
-           fluxncf(:,:,kp,m) = fluxncf(:,:,kp,m) + flux_tmp(:,:,kp)
-           fluxncf(:,:,klevel,m) = fluxncf(:,:,klevel,m) +  &
-                                   flux_tmp2(:,:,kp)
-         end do
-       endif
-
-       deallocate (flux_tmp  )
-       deallocate (flux_tmp2 )
+       deallocate (flux4     )
+       deallocate (flux4a    )
 !---------------------------------------------------------------------
 
 
