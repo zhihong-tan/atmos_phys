@@ -22,7 +22,7 @@
      <b>Contact:</b> &nbsp;  Bruce Wyman <br>
      <b>Reviewers:</b>&nbsp; <br>
      <b>Change History:&nbsp; </b><a HREF="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/atmos/shared/vert_advection/vert_advection.f90">WebCVS Log</a> <br>
-     <b>Last Modified:</b>&nbsp; $Date: 2002/07/16 22:43:11 $
+     <b>Last Modified:</b>&nbsp; $Date: 2003/04/09 21:33:29 $
 </div><br>
 
 <!-- END HEADER -->
@@ -67,8 +67,10 @@
 <pre>
 
 <b>use vert_advection_mod</b> [, only:  vert_advection,
-                                 SECOND_CENTERED, FOURTH_CENTERED, VAN_LEER_LINEAR,
-                                 FLUX_FORM, ADVECTIVE_FORM  ]
+                                 SECOND_CENTERED, FOURTH_CENTERED,
+                                 SECOND_CENTERED_NEW, FOURTH_CENTERED_NEW,
+                                 FINITE_VOLUME_LINEAR, FINITE_VOLUME_PARABOLIC,
+                                 VAN_LEER_LINEAR, FLUX_FORM, ADVECTIVE_FORM  ]
 
 </pre>
 <dl>
@@ -133,7 +135,13 @@ OPTIONAL INPUT
    scheme  spatial differencing scheme, use one of these values:
               SECOND_CENTERED = second-order centered
               FOURTH_CENTERED = fourth-order centered
-              VAN_LEER_LINEAR = piecewise linear, finite volume (van Leer)
+              SECOND_CENTERED_NEW = second-order centered with corrected weights
+                                    for unequal vertical level spacing
+              FOURTH_CENTERED_NEW = fourth-order centered with corrected weights
+                                    for unequal vertical level spacing
+              FINITE_VOLUME_LINEAR    = piecewise linear, finite volume
+              FINITE_VOLUME_PARABOLIC = piecewise parabolic, finite volume
+              VAN_LEER_LINEAR = same as FINITE_VOLUME_LINEAR
            <span class="type">[integer, default=VAN_LEER_LINEAR]</span>
 
    form    form of equations, use one of these values:
@@ -166,7 +174,9 @@ NOTE
     
     <dd><span class="errmsg">invalid value for optional argument scheme</span></dd>
     <dd>  The value of optional argument scheme must be one of the
-        public parameters SECOND_CENTERED, FOURTH_CENTERED, or VAN_LEER_LINEAR.
+        public parameters SECOND_CENTERED, FOURTH_CENTERED, SECOND_CENTERED_NEW,
+        FOURTH_CENTERED_NEW, FINITE_VOLUME_LINEAR, FINITE_VOLUME_PARABOLIC, or
+        VAN_LEER_LINEAR.
     <br><br></dd>
     
     <dd><span class="errmsg">invalid value for optional argument form</span></dd>
@@ -188,6 +198,10 @@ NOTE
      A class of the van Leer-type transport schemes and its application
      to the moisture in a general circulation model. <i>Mon. Wea. Rev.</i>,
      <b>122</b>, 1575-1593.</li>
+
+<li>     Colella, P. and P.R. Woodward, 1984: The piecewise parabolic
+      method (PPM) for gas-dynamical simulations.  <i>J. Comput. Phys.</i>,
+      <b>54</b>, 174-201.</li>
 
 </ol>
 </div><br>
@@ -221,7 +235,7 @@ NOTE
 <!-- BEGIN FUTURE PLANS -->
 <div>
 
-      Add option for finite volume, piecewise parabolic method.
+      None.
 
 </div><br>
 <!-- END FUTURE PLANS -->

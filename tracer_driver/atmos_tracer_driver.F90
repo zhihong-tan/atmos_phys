@@ -107,6 +107,11 @@ use atmos_carbon_aerosol_mod, only : atmos_blackc_sourcesink,  &
 use atmos_sulfur_hex_mod, only : atmos_sf6_sourcesink,     &
                                  atmos_sulfur_hex_init,    &
                                  atmos_sulfur_hex_end
+!chemistry start
+!use       chem_interface, only : sourcesink, &
+!                                 driver_init, &
+!                                 dries
+!chemistry end
 
 implicit none
 private
@@ -127,15 +132,16 @@ public  atmos_tracer_driver, atmos_tracer_driver_init, atmos_tracer_driver_end
 !
 !-----------------------------------------------------------------------
 
-integer :: nradon=0  ! tracer number for radon
-integer :: nbcphobic=0
-integer :: nbcphilic=0
-integer :: nocphobic=0
-integer :: nocphilic=0
-integer :: nclay    =0
-integer :: nsilt    =0
-integer :: nseasalt =0
-integer :: nsf6     =0
+integer :: nradon    =0  ! tracer number for radon
+integer :: nchem     =0  ! tracer number for chem_interface
+integer :: nbcphobic =0
+integer :: nbcphilic =0
+integer :: nocphobic =0
+integer :: nocphilic =0
+integer :: nclay     =0
+integer :: nsilt     =0
+integer :: nseasalt  =0
+integer :: nsf6      =0
 
 character(len=6), parameter :: module_name = 'tracer'
 
@@ -151,8 +157,8 @@ integer, allocatable :: local_indices(:)
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 1.2 2002/07/16 22:38:29 fms Exp $'
-character(len=128) :: tagname = '$Name: havana $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 1.3 2003/04/09 21:05:02 fms Exp $'
+character(len=128) :: tagname = '$Name: inchon $'
 !-----------------------------------------------------------------------
 
 contains
@@ -234,7 +240,10 @@ contains
 !     Integer array describing which model layer intercepts the surface.
 !   </IN>
  subroutine atmos_tracer_driver (is, ie, js, je, Time, lon, lat, land, phalf, pfull, r,  &
-                           u, v, t, q, u_star, rdt, rm, rdiag, kbot)
+                           u, v, t, q, u_star, rdt, rm, rdiag, &
+                           dt, z_half, z_full, t_surf_rad, albedo, coszen, &
+                           Time_next, &
+                           kbot)
 
 !-----------------------------------------------------------------------
 integer, intent(in)                           :: is, ie, js, je
@@ -246,12 +255,20 @@ real, intent(in),    dimension(:,:,:,:)       :: r
 real, intent(inout), dimension(:,:,:,:)       :: rdt
 real, intent(in),    dimension(:,:,:,:)       :: rm
 real, intent(inout), dimension(:,:,:,:)       :: rdiag
+real, intent(in)                              :: dt !timestep(used in chem_interface)
+real, intent(in),    dimension(:,:,:)         :: z_half !height in meters at half levels
+real, intent(in),    dimension(:,:,:)         :: z_full !height in meters at full levels
+real, intent(in),    dimension(:,:)           :: t_surf_rad !surface temperature
+real, intent(in),    dimension(:,:)           :: coszen
+real, intent(in),    dimension(:,:)           :: albedo
+type(time_type), intent(in)                    :: Time_next
 integer, intent(in), dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtnd, pwt
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndphob, rtndphil
 real, dimension(size(r,1),size(r,2)) :: dsinku
 integer :: k, kd, nt
+real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: chem_tend
 
 !-----------------------------------------------------------------------
 
@@ -282,6 +299,9 @@ integer :: k, kd, nt
     call dry_deposition(k, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
                         pwt(:,:,kd), pfull(:,:,kd), u_star, &
                         (land > 0.5), dsinku, r(:,:,kd,k), Time)
+!chemistry start
+!                        (land > 0.5), dsinku, r(:,:,kd,k), Time, dries(k))
+!chemistry end
     rdt(:,:,kd,k) = rdt(:,:,kd,k) - dsinku
   enddo
 
@@ -294,6 +314,25 @@ integer :: k, kd, nt
                                 rtnd, Time, kbot)
       rdt(:,:,:,nradon)=rdt(:,:,:,nradon)+rtnd(:,:,:)
    endif
+
+!chemistry start
+!   if(nchem > 0 .and. nchem <= nt) then
+!      if(present(kbot)) then
+!!       call sourcesink(lon,lat,land,pwt,r,chem_tend,Time,phalf,pfull,t,is,js,je,dt,&
+!        call sourcesink(lon,lat,land,pwt,r+rdt*dt,chem_tend,Time,phalf,pfull,t,is,js,je,dt,&
+!                          z_half, z_full,q,t_surf_rad,albedo,coszen, Time_next,&
+!                          rdiag,u,v,u_star,&
+!                          kbot)
+!      else
+!!      call sourcesink(lon,lat,land,pwt,r,chem_tend,Time,phalf,pfull,t,is,js,je,dt, &
+!       call sourcesink(lon,lat,land,pwt,r+rdt*dt,chem_tend,Time,phalf,pfull,t,is,js,je,dt, &
+!                          z_half, z_full,q, t_surf_rad, albedo, coszen, Time_next, &
+!                          rdiag,u,v,u_star &
+!                          )
+!      endif
+!      rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
+!   endif        
+!chemistry end
 
    if (nbcphobic > 0 .and. nbcphilic > 0 ) then
          if (nbcphobic > nt .or. nbcphilic > nt) &
@@ -374,13 +413,14 @@ integer :: k, kd, nt
 !   <INOUT NAME="r" TYPE="real" DIM="(:,:,:,:)">
 !     Tracer fields dimensioned as (nlon,nlat,nlev,ntrace). 
 !   </INOUT>
- subroutine atmos_tracer_driver_init (lonb, latb, r, axes, Time, mask)
+ subroutine atmos_tracer_driver_init (lonb, latb, r, axes, Time, phalf, mask)
 
 !-----------------------------------------------------------------------
            real, intent(in),    dimension(:)               :: lonb, latb
            real, intent(inout), dimension(:,:,:,:)         :: r
 type(time_type), intent(in)                                :: Time
         integer, intent(in)                                :: axes(4)
+           real, intent(in),    dimension(:,:,:)           :: phalf
            real, intent(in),    dimension(:,:,:), optional :: mask
 
 !-----------------------------------------------------------------------
@@ -404,6 +444,12 @@ type(time_type), intent(in)                                :: Time
         call atmos_radon_init(r, axes, Time, mask)
       endif
 
+!chemistry start
+!      nchem = get_tracer_index(MODEL_ATMOS,'CO')
+!      if (nchem > 0) then
+!        call driver_init(r, mask, axes, Time, lonb, latb, phalf)
+!      endif
+!chemistry end
 
       nbcphobic = get_tracer_index(MODEL_ATMOS,'bcphob')
 
