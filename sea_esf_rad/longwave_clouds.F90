@@ -8,11 +8,10 @@
 ! </REVIEWER>
 ! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
 ! <OVERVIEW>
-!  Code to calculate longwave cloud radiative parameters
-! </OVERVIEW>
-! <DESCRIPTION>
 !  This code calculates longwave cloud radiative parameters, i.e.
 !  cloud optical depth, flux, and heating rate.
+! </OVERVIEW>
+! <DESCRIPTION>
 ! </DESCRIPTION>
 !
 
@@ -20,6 +19,9 @@
 
 use fms_mod,           only: open_namelist_file, fms_init, &
                              mpp_pe, mpp_root_pe, stdlog, &
+                             mpp_clock_id, mpp_clock_begin, &
+                             mpp_clock_end, CLOCK_ROUTINE, &
+                             MPP_CLOCK_SYNC, &
                              file_exist, write_version_number, &
                              check_nml_error, error_mesg, &
                              FATAL, NOTE, WARNING, close_file
@@ -46,8 +48,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_clouds.F90,v 10.0 2003/10/24 22:00:42 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: longwave_clouds.F90,v 11.0 2004/09/28 19:21:58 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -197,7 +199,7 @@ end subroutine longwave_clouds_init
 !  </INOUT>
 ! </SUBROUTINE>
 !
-subroutine cldtau (Cldrad_props, Cld_spec, Lw_clouds)
+subroutine cldtau (nprofile, Cldrad_props, Cld_spec, Lw_clouds)
  
 !--------------------------------------------------------------------
 !    cldtau claculates the cloud transmission function for max overlap
@@ -205,6 +207,7 @@ subroutine cldtau (Cldrad_props, Cld_spec, Lw_clouds)
 !    parameterization bands.  
 !--------------------------------------------------------------------
 
+integer,                      intent(in)    :: nprofile
 type(cldrad_properties_type), intent(in)    :: Cldrad_props
 type(cld_specification_type), intent(in)    :: Cld_spec       
 type(lw_clouds_type),         intent(inout) :: Lw_clouds
@@ -226,6 +229,7 @@ type(lw_clouds_type),         intent(inout) :: Lw_clouds
 
       integer  :: is, ie, js, je, ks, ke
       integer   :: n, k, i, j
+      integer   :: emiss_index, profile_index
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -267,7 +271,7 @@ type(lw_clouds_type),         intent(inout) :: Lw_clouds
       do n = 1,NLWCLDB
         do k = KS,KE
           Lw_clouds%taucld_mxolw(:,:,k,n) = 1.0E+00 -    &
-                                           Cldrad_props%emmxolw(:,:,k,n)
+                                Cldrad_props%emmxolw(:,:,k,n, nprofile)
         end do
       end do
  
@@ -275,24 +279,55 @@ type(lw_clouds_type),         intent(inout) :: Lw_clouds
 !    define "weighted random cloud" layer transmission function
 !    over layers KS,KE
 !----------------------------------------------------------------------
-      do n = 1,NLWCLDB
-        do k = KS,KE
-          do j = JS,JE
-            do i = IS,IE
-              if (Cld_spec%crndlw(i,j,k) > 0.0E+00) then
-                Lw_clouds%taucld_rndlw(i,j,k,n) =   &
-                    (Cld_spec%crndlw(i,j,k)/(1.0E+00 - &
-                     Cld_spec%cmxolw(i,j,k)))*  &
-                     (1.0E+00 - Cldrad_props%emrndlw(i,j,k,n)) + &
-                      1.0E+00 - Cld_spec%crndlw(i,j,k)/   &
-                       (1.0E+00 - Cld_spec%cmxolw(i,j,k))
-              else
-                Lw_clouds%taucld_rndlw(i,j,k,n) = 1.0E+00
-              endif
+      if (Cldrad_control%do_stochastic_clouds) then
+        do n = 1,NLWCLDB
+          if (Cldrad_control%do_ica_calcs) then
+            profile_index = nprofile
+            emiss_index = nprofile
+          else
+            profile_index = n
+            emiss_index = 1
+          endif
+          do k = KS,KE
+            do j = JS,JE
+              do i = IS,IE
+                if (Cld_spec%crndlw_band(i,j,k,profile_index) >   &
+                                                          0.0E+00) then
+                  Lw_clouds%taucld_rndlw(i,j,k,n) =   &
+                        (Cld_spec%crndlw_band(i,j,k,profile_index)/ &
+                        (1.0E+00 - Cld_spec%cmxolw(i,j,k)))*  &
+                        (1.0E+00 -   &
+                          Cldrad_props%emrndlw(i,j,k,n,emiss_index)) + &
+                        1.0E+00 -    &
+                          Cld_spec%crndlw_band(i,j,k,profile_index)/   &
+                           (1.0E+00 - Cld_spec%cmxolw(i,j,k))
+                else
+                  Lw_clouds%taucld_rndlw(i,j,k,n) = 1.0E+00
+                endif
+              end do
             end do
           end do
         end do
-      end do
+      else
+        do n = 1,NLWCLDB
+          do k = KS,KE
+            do j = JS,JE
+              do i = IS,IE
+                if (Cld_spec%crndlw(i,j,k) > 0.0E+00) then
+                  Lw_clouds%taucld_rndlw(i,j,k,n) =   &
+                         (Cld_spec%crndlw(i,j,k)/(1.0E+00 - &
+                          Cld_spec%cmxolw(i,j,k)))*  &
+                    (1.0E+00 - Cldrad_props%emrndlw(i,j,k,n,1)) + &
+                         1.0E+00 - Cld_spec%crndlw(i,j,k)/   &
+                         (1.0E+00 - Cld_spec%cmxolw(i,j,k))
+                else
+                  Lw_clouds%taucld_rndlw(i,j,k,n) = 1.0E+00
+                endif
+              end do
+            end do
+          end do
+        end do
+      endif
  
 !--------------------------------------------------------------------
 !    define "nearby layer" cloud transmission function for max
@@ -743,9 +778,9 @@ type(lw_output_type),         intent(inout) :: Lw_output
                   Lw_output%flxnet(i,j,k) =   &
                         Lw_output%flxnet(i,j,k)*(1.0E+00 -    &
                         Cld_spec%cmxolw(i,j,k)*   &
-                        Cldrad_props%emmxolw(i,j,k,1)) +  &
+                        Cldrad_props%emmxolw(i,j,k,1,1)) +  &
                         tmp1(i,j,k)*Cld_spec%cmxolw(i,j,k)*   &
-                        Cldrad_props%emmxolw(i,j,k,1)
+                        Cldrad_props%emmxolw(i,j,k,1,1)
                 end do
               endif
             end do

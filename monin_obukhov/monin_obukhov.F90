@@ -57,8 +57,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 10.0 2003/10/24 22:00:35 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 11.0 2004/09/28 19:19:58 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 
 !=======================================================================
 
@@ -160,10 +160,10 @@ real, intent(in)   , dimension(:) :: pt, pt0, z, z0, zt, zq, speed
 real, intent(inout), dimension(:) :: drag_m, drag_t, drag_q, u_star, b_star
 logical, intent(in), optional, dimension(:) :: avail
 
-real   , dimension(size(pt)) :: rich, fm, ft, fq, zz
-logical, dimension(size(pt)) :: mask, mask_1, mask_2
+real   , dimension(size(pt(:))) :: rich, fm, ft, fq, zz
+logical, dimension(size(pt(:))) :: mask, mask_1, mask_2
 
-real   , dimension(size(pt)) :: delta_b, us, bs, qs
+real   , dimension(size(pt(:))) :: delta_b, us, bs, qs
 
 if(.not.module_is_initialized) call monin_obukhov_init
 
@@ -240,12 +240,12 @@ real,    intent(in) , dimension(:) :: z, z0, zt, zq, u_star, b_star, q_star
 real,    intent(out), dimension(:) :: del_m, del_t, del_q
 logical, intent(in) , optional, dimension(:) :: avail
 
-real, dimension(size(z)) :: zeta, zeta_0, zeta_t, zeta_q, zeta_ref, zeta_ref_t, &
+real, dimension(size(z(:))) :: zeta, zeta_0, zeta_t, zeta_q, zeta_ref, zeta_ref_t, &
                             ln_z_z0, ln_z_zt, ln_z_zq, ln_z_zref, ln_z_zref_t,  &
                             f_m_ref, f_m, f_t_ref, f_t, f_q_ref, f_q,           &
                             mo_length_inv
 
-logical, dimension(size(z)) :: mask
+logical, dimension(size(z(:))) :: mask
 
 if(.not. module_is_initialized) call monin_obukhov_init
 
@@ -397,13 +397,13 @@ integer, parameter :: max_iter = 20
 real    :: max_cor
 integer :: iter
 
-real, dimension(size(rich)) ::   &
+real, dimension(size(rich(:))) ::   &
           d_rich, rich_1, correction, corr, z_z0, z_zt, z_zq, &
           ln_z_z0, ln_z_zt, ln_z_zq, zeta,                    &
           phi_m, phi_m_0, phi_t, phi_t_0, rzeta,              &
           zeta_0, zeta_t, zeta_q, df_m, df_t
           
-logical, dimension(size(rich)) :: mask_1
+logical, dimension(size(rich(:))) :: mask_1
 
 
 z_z0 = z/z0
@@ -498,8 +498,8 @@ real    , intent(out),  dimension(:) :: phi_m
 real    , intent(in),   dimension(:) :: zeta
 logical , intent(in),   dimension(:) :: mask
 
-logical, dimension(size(zeta)) :: stable, unstable
-real   , dimension(size(zeta)) :: x
+logical, dimension(size(zeta(:))) :: stable, unstable
+real   , dimension(size(zeta(:))) :: x
 
 stable   = mask .and. zeta >= 0.0
 unstable = mask .and. zeta <  0.0
@@ -539,7 +539,7 @@ real    , intent(out),  dimension(:) :: phi_t
 real    , intent(in),   dimension(:) :: zeta
 logical , intent(in),   dimension(:) :: mask
 
-logical, dimension(size(zeta)) :: stable, unstable
+logical, dimension(size(zeta(:))) :: stable, unstable
 
 stable   = mask .and. zeta >= 0.0
 unstable = mask .and. zeta <  0.0
@@ -579,9 +579,9 @@ real    , intent(out), dimension(:) :: psi_t, psi_q
 real    , intent(in),  dimension(:) :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
 logical , intent(in),  dimension(:) :: mask
 
-real, dimension(size(zeta)) :: x, x_t, x_q
+real, dimension(size(zeta(:))) :: x, x_t, x_q
                                
-logical, dimension(size(zeta)) :: stable, unstable, &
+logical, dimension(size(zeta(:))) :: stable, unstable, &
                                   weakly_stable, strongly_stable
 
 stable   = mask .and. zeta >= 0.0
@@ -652,9 +652,9 @@ real    , intent(out), dimension(:) :: psi_m
 real    , intent(in),  dimension(:) :: zeta, zeta_0, ln_z_z0
 logical , intent(in),  dimension(:) :: mask
 
-real, dimension(size(zeta)) :: x, x_0, x1, x1_0, num, denom, y
+real, dimension(size(zeta(:))) :: x, x_0, x1, x1_0, num, denom, y
                                
-logical, dimension(size(zeta)) :: stable, unstable, &
+logical, dimension(size(zeta(:))) :: stable, unstable, &
                                   weakly_stable, strongly_stable
 
 stable   = mask .and. zeta >= 0.0
@@ -830,7 +830,7 @@ logical, intent(in) , optional, dimension(:) :: avail
 
 integer :: k
 
-do k = 1, size(zref)
+do k = 1, size(zref(:))
   if(present(avail)) then
     call mo_profile_1d (zref(k), zref(k), z, z0, zt, zq, &
        u_star, b_star, q_star, del_m(:,k), del_t(:,k), del_q(:,k), avail)
@@ -854,7 +854,7 @@ real,    intent(out), dimension(:) :: del_m, del_t, del_q
 
 integer :: k
 
-do k = 1, size(zref)
+do k = 1, size(zref(:))
   call mo_profile_0d (zref(k), zref(k), z, z0, zt, zq, &
        u_star, b_star, q_star, del_m(k), del_t(k), del_q(k))
 enddo
@@ -873,7 +873,7 @@ real,    intent(out), dimension(:,:,:) :: del_m, del_t, del_q
 
 integer :: k
 
-do k = 1, size(zref)
+do k = 1, size(zref(:))
   call mo_profile_2d (zref(k), zref(k), z, z0, zt, zq, &
        u_star, b_star, q_star, del_m(:,:,k), del_t(:,:,k), del_q(:,:,k))
 enddo
@@ -983,11 +983,11 @@ real, intent(in)                :: u_star, b_star
 real, intent(out), dimension(:) :: k_m, k_h
 
 real, dimension(1,1)            :: u_star2, b_star2
-real, dimension(1,1, size(z)) :: z2, k_m2, k_h2
+real, dimension(1,1, size(z(:))) :: z2, k_m2, k_h2
 
 integer :: n
 
-do n = 1, size(z)
+do n = 1, size(z(:))
   z2   (1,1,n) = z(n)
 enddo
 u_star2(1,1) = u_star
@@ -995,7 +995,7 @@ b_star2(1,1) = b_star
 
 call mo_diff_2d_n(z2, u_star2, b_star2, k_m2, k_h2)
 
-do n = 1, size(z)
+do n = 1, size(z(:))
   k_m(n) = k_m2(1,1,n)
   k_h(n) = k_h2(1,1,n)
 enddo

@@ -10,7 +10,6 @@
 !  Module that calculates gas transmission functions
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!  Module that calculates gas transmission functions
 ! </DESCRIPTION>
 
 !  shared modules:
@@ -45,8 +44,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: gas_tf.F90,v 10.0 2003/10/24 22:00:41 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: gas_tf.F90,v 11.0 2004/09/28 19:21:42 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -373,10 +372,10 @@ subroutine gas_tf_init (pref)
 !
 !--------------------------------------------------------------------
 
-real, dimension(:,:), intent(in), optional :: pref
+real, dimension(:,:), intent(in) :: pref
 
 !---------------------------------------------------------------------
-!  intent(in),optional variables:
+!  intent(in)  variables:
 !
 !     pref
 !
@@ -2098,7 +2097,7 @@ end subroutine get_control_gas_tf
 !  <INOUT NAME="Gas_tf" TYPE="gas_tf_type">
 !   gas_tf_type variable containing information needed
 !   to define the gas transmission functions
-!  </OUT>
+!  </INOUT>
 ! </SUBROUTINE>
 subroutine gas_tf_dealloc (Gas_tf)
 

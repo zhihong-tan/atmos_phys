@@ -8,10 +8,11 @@
 !-----------------------------------------------------------------------
 
 use horiz_interp_mod, only: horiz_interp
-use          fms_mod, only: file_exist, error_mesg, FATAL,  &
+use          fms_mod, only: file_exist, error_mesg, FATAL, NOTE,     &
                             open_namelist_file, close_file,          &
-                            check_nml_error, mpp_pe, mpp_root_pe, &
+                            check_nml_error, mpp_pe, mpp_root_pe,    &
                             write_version_number, stdlog, open_ieee32_file
+use fms_io_mod,       only: read_data
 use time_manager_mod, only: time_type, get_date
 use  time_interp_mod, only: time_interp
 
@@ -25,8 +26,8 @@ public  cloud_obs, cloud_obs_init, cloud_obs_end
 !-----------------------------------------------------------------------
 !   ---------- private data ------------
 
-   character(len=128) :: version = '$Id: cloud_obs.F90,v 10.0 2003/10/24 22:00:23 fms Exp $'
-   character(len=128) :: tagname = '$Name: jakarta $'
+   character(len=128) :: version = '$Id: cloud_obs.F90,v 11.0 2004/09/28 19:14:34 fms Exp $'
+   character(len=128) :: tagname = '$Name: khartoum $'
 
       real, allocatable, dimension(:,:,:) :: clda,cldb
       real, allocatable, dimension(:)     :: londat,latdat
@@ -78,6 +79,7 @@ type(time_type), intent(in)                    :: Time
       real  dmonth,dif
    logical,save :: useclimo1,useclimo2
    logical      :: unit_opened
+   integer :: nrecords, tlvl
 !-----------------------------------------------------------------------
 
    if ( .not. module_is_initialized)  &
@@ -112,13 +114,34 @@ type(time_type), intent(in)                    :: Time
       endif
 
 !-----------------------------------------------------------------------
-
+      ! This code works with the current 1 year (12 records) cloud_obs.data.nc
+      ! converted from a one year 12 records native format input file.
+      ! In the future, a multi-year, multi-month data series maybe introduced,
+      ! we can easily modify the code to accommodate the change. As of now,
+      ! since the native format data file does not contain any year information,
+      ! we don't process year and just use month to get data.
+      if(file_exist('INPUT/cloud_obs.data.nc')) then
+         call get_date (Time, year, month, day, hour, minute, second)
+         if(mpp_pe() == mpp_root_pe()) call error_mesg ('cloud_obs_mod',  &
+              'Reading NetCDF formatted input file: INPUT/cloud_obs.data.nc', NOTE)
+         call read_data('INPUT/cloud_obs.data.nc', 'nrecords', nrecords, no_domain=.true.)
+         tlvl = month
+         call read_data('INPUT/cloud_obs.data.nc', 'obs', obs, timelevel=tlvl, no_domain=.true.)
+         do n=1,3
+            call horiz_interp (obs(:,:,n),wb,sb,dx,dy,  &
+                 londat,latdat,cldb(:,:,n),  &
+                 verbose=verbose)
+         enddo
+         goto 381
+      end if
+      
       unit_opened=.false.
 
 !    assumption is being made that the record for (year1,month1)
 !    precedes the record for (year2,month2)
 
       if (year1 .ne. yrclda .or. month1 .ne. moclda) then
+         
           unit_opened=.true.
           unit = open_ieee32_file ( 'INPUT/cloud_obs.data', action='read' )
           irec=0
@@ -195,19 +218,19 @@ type(time_type), intent(in)                    :: Time
 
  381  continue
 
-   if (unit_opened) then
-      call close_file (unit)
+   if (unit_opened .or. file_exist('INPUT/cloud_obs.data.nc')) then
+      if(unit_opened) call close_file (unit)
       if (verbose > 0 .and. pe == 0) then
          call get_date (Time, year, month, day, hour, minute, second)
          write (*,600) year,month,day, hour,minute,second
- 600     format (/,'from cloud_obs:',   &
-                 /,' date(y/m/d h:m:s) = ', &
-                     i4,2('/',i2.2),1x,2(i2.2,':'),i2.2)
+600      format (/,'from cloud_obs:',   &
+              /,' date(y/m/d h:m:s) = ', &
+              i4,2('/',i2.2),1x,2(i2.2,':'),i2.2)
          print *, ' dmonth=',dmonth
          print *, ' year1,month1, yrclda,moclda, useclimo1=',  &
-                    year1,month1, yrclda,moclda, useclimo1
+              year1,month1, yrclda,moclda, useclimo1
          print *, ' year2,month2, yrcldb,mocldb, useclimo2=',  &
-                    year2,month2, yrcldb,mocldb, useclimo2
+              year2,month2, yrcldb,mocldb, useclimo2
          print *, ' '
       endif
    endif

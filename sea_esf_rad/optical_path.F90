@@ -1,4 +1,5 @@
                     module optical_path_mod
+
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
 ! </CONTACT>
@@ -10,7 +11,6 @@
 !  Module that set up optical depth calculaiton
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!  Module that set up optical depth calculaiton
 !  radiative fluxes
 ! </DESCRIPTION>
 
@@ -30,10 +30,12 @@ use constants_mod,         only: RDGAS, RVGAS, GRAV, wtmair, &
 use rad_utilities_mod,     only: looktab, longwave_tables3_type, &
                                  rad_utilities_init,  &
                                  radiative_gases_type, &
-                                 aerosol_type, &
+                                 aerosol_type,  &
+                                 aerosol_diagnostics_type,&
                                  aerosol_properties_type, &
                                  atmos_input_type, &
                                  Lw_parameters,  Lw_control, &
+                                 Rad_control, &
                                  optical_path_type, &
                                  gas_tf_type, &
                                  table_alloc
@@ -61,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-   character(len=128)  :: version =  '$Id: optical_path.F90,v 10.0 2003/10/24 22:00:44 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: jakarta $'
+   character(len=128)  :: version =  '$Id: optical_path.F90,v 11.0 2004/09/28 19:23:17 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -266,12 +268,13 @@ logical   :: module_is_initialized      = .false. ! module has been
 !  </TEMPLATE>
 ! </SUBROUTINE>
 !
-subroutine optical_path_init 
+subroutine optical_path_init(pref)
 
 !--------------------------------------------------------------------
 !    optical_path_init is the constructor for optical_path_mod.
 !--------------------------------------------------------------------
 
+      real, dimension(:,:), intent(in) :: pref
 !--------------------------------------------------------------------
 !  local variables:
 
@@ -343,7 +346,7 @@ subroutine optical_path_init
       call constants_init
       call rad_utilities_init
       call longwave_params_init
-      call lw_gases_stdtf_init
+      call lw_gases_stdtf_init(pref)
 
 !-----------------------------------------------------------------------
 !    read namelist.
@@ -601,7 +604,7 @@ end subroutine optical_path_init
 !
 subroutine optical_path_setup (is, ie, js, je, Atmos_input, &
                                Rad_gases, Aerosol, Aerosol_props,  &
-                               Optical) 
+                               Aerosol_diags, Optical) 
 
 !------------------------------------------------------------------
 !
@@ -612,6 +615,7 @@ type(atmos_input_type),        intent(in)    :: Atmos_input
 type(radiative_gases_type),    intent(in)    :: Rad_gases
 type(aerosol_type),            intent(in)    :: Aerosol      
 type(aerosol_properties_type), intent(inout) :: Aerosol_props      
+type(aerosol_diagnostics_type), intent(inout) :: Aerosol_diags      
 type(optical_path_type),       intent(inout) :: Optical     
 
 !---------------------------------------------------------------------
@@ -642,9 +646,10 @@ type(optical_path_type),       intent(inout) :: Optical
                        size(Atmos_input%press,2), &
                        size(Atmos_input%press,3) - 1 )  ::   &
                                                        rh2o, deltaz
+      real, dimension (size(Atmos_input%press,3) ) :: bsum
 
       integer      :: n_aerosol_bands
-      integer      :: k, i
+      integer      :: k, i, j
       integer      :: ix, jx, kx
 
 !--------------------------------------------------------------------
@@ -783,8 +788,56 @@ type(optical_path_type),       intent(inout) :: Optical
 !    to compute for aerosol optical depth. 
 !-------------------------------------------------------------------
         do n=1,n_aerosol_bands  !  loop on aerosol frequency bands
-          call optical_depth_aerosol (Atmos_input, n, Aerosol,   &
-                                      Aerosol_props, Optical)
+          call optical_depth_aerosol (js, Atmos_input, n, Aerosol,   &
+                                      Aerosol_props, Aerosol_diags, &
+                                      Optical)
+          if (Rad_control%volcanic_lw_aerosols) then
+            if (size(Aerosol_props%lw_ext,4) /= 0) then
+              do j=1,jx
+                do i=1,ix
+                  bsum(1) = 0.0
+                  do k=2,kx+1
+                    if (n == 5) then
+                      Aerosol_diags%lw_extopdep_vlcno(i,j,k,1) =  &
+                                     Aerosol_props%lw_ext(i,j,k-1,n)*&
+                                     Atmos_input%deltaz(i,j,k-1)
+                      Aerosol_diags%lw_absopdep_vlcno(i,j,k,1) =  &
+                           Aerosol_diags%lw_extopdep_vlcno(i,j,k,1) 
+!! NOT CURRENTLY AVAILABLE IN SEA LW CODE -- lw_ssa not processed
+!                     Aerosol_diags%lw_absopdep_vlcno(i,j,k,2) =  &
+!                              (1.0-Aerosol_props%lw_ssa(i,j,k-1,n))*  &
+!                                  Aerosol_props%lw_ext(i,j,k-1,n)*&
+!                                  Atmos_input%deltaz(i,j,k-1)
+                    endif
+                    if (n == 6) then
+                      Aerosol_diags%lw_extopdep_vlcno(i,j,k,2) =  &
+                                   Aerosol_props%lw_ext(i,j,k-1,n)*&
+                                   Atmos_input%deltaz(i,j,k-1)
+                      Aerosol_diags%lw_absopdep_vlcno(i,j,k,2) =  &
+                           Aerosol_diags%lw_extopdep_vlcno(i,j,k,2) 
+!! NOT CURRENTLY AVAILABLE IN SEA LW CODE -- lw_ssa not processed
+!                     Aerosol_diags%lw_absopdep_vlcno(i,j,k,1) =  &
+!                           (1.0-Aerosol_props%lw_ssa(i,j,k-1,n))*  &
+!                                  Aerosol_props%lw_ext(i,j,k-1,n)*&
+!                                  Atmos_input%deltaz(i,j,k-1)
+                    endif
+                    bsum(k) = bsum(k-1) +    &
+                              Aerosol_props%lw_ext(i,j,k-1,n)*&
+                              Atmos_input%deltaz(i,j,k-1)
+                  end do
+                  Optical%totaerooptdep(i,j,2:kx+1,n) =    &
+                        Optical%totaerooptdep(i,j,2:kx+1,n) +   &
+                        bsum(2:kx+1)
+                  if (n == n_aerosol_bands) then
+                    Optical%aerooptdep_KE_15(i,j) = &
+                                Optical%aerooptdep_KE_15(i,j) +  &
+                                Aerosol_props%lw_ext(i,j,kx,n)* &
+                                Atmos_input%deltaz(i,j,kx)
+                  endif
+                end do
+              end do
+            endif
+          endif
         end do
       endif
 
@@ -3280,17 +3333,20 @@ end subroutine cfc_optical_depth
 !  </INOUT>
 ! </SUBROUTINE>
 !
-subroutine optical_depth_aerosol (Atmos_input, n, Aerosol,    &
-                                  Aerosol_props, Optical)
+subroutine optical_depth_aerosol ( js, Atmos_input, n, Aerosol,    &
+                                  Aerosol_props, Aerosol_diags, &
+                                  Optical)
 
 !------------------------------------------------------------------
 !
 !------------------------------------------------------------------
 
+integer,                       intent(in)    :: js
 type(atmos_input_type),        intent(in)    :: Atmos_input
 integer,                       intent(in)    :: n
 type(aerosol_type),            intent(in)    :: Aerosol
 type(aerosol_properties_type), intent(inout) :: Aerosol_props
+type(aerosol_diagnostics_type),intent(inout) :: Aerosol_diags
 type(optical_path_type),       intent(inout) :: Optical
 
 !-----------------------------------------------------------------
@@ -3313,7 +3369,8 @@ type(optical_path_type),       intent(inout) :: Optical
       real, dimension (size(Aerosol%aerosol,1),  &
                        size(Aerosol%aerosol,2),  &
                        size(Aerosol%aerosol,3), &
-                       size(Aerosol%aerosol,4))   :: aerooptdepspec
+                       size(Aerosol%aerosol,4))   :: aerooptdepspec, &
+                                                     aerooptdepspec_cn
 
       real, dimension (size(Aerosol%aerosol,1),  &
                        size(Aerosol%aerosol,2),  &
@@ -3391,6 +3448,12 @@ type(optical_path_type),       intent(inout) :: Optical
                    diffac*Aerosol%aerosol(i,j,k,nsc)*&
                    (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
                           Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+                endif
               endif
             end do
           end do
@@ -3418,11 +3481,28 @@ type(optical_path_type),       intent(inout) :: Optical
                      diffac*Aerosol%aerosol(i,j,k,nsc)*   &
                      (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))*&
                             Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+                endif
               end if
             end do
           end do
         end do
       end do
+
+!---------------------------------------------------------------------
+!    save optical path contributions from each layer for band4 and the
+!    continuum band. note that if the lw scheme is changed to allow
+!    longwave scattering then the %absopdep must be defined approp-
+!    riately.
+!---------------------------------------------------------------------
+      if (n == 1) then
+        Aerosol_diags%extopdep(:,:,:,:,3) = aerooptdepspec_cn(:,:,:,:)
+        Aerosol_diags%absopdep(:,:,:,:,3) = aerooptdepspec_cn(:,:,:,:)
+      endif
 
 !---------------------------------------------------------------------
 !    sum optical depths over all species and obtain column optical depth

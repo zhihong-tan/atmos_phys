@@ -159,7 +159,7 @@ use       fms_mod, only:  error_mesg, FATAL, file_exist,    &
 
 !--------------------- version number ----------------------------------
  character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 10.0 2003/10/24 22:00:26 fms Exp $'
- character(len=128) :: tagname = '$Name: jakarta $'
+ character(len=128) :: tagname = '$Name: khartoum $'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 

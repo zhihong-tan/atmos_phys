@@ -11,7 +11,6 @@
 !  Module that computes longwave gas transmission functions
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!  Module that computes longwave gas transmission functions
 ! </DESCRIPTION>
 !
 
@@ -22,8 +21,8 @@ use fms_mod,              only: open_namelist_file, fms_init, &
                                 file_exist, write_version_number, &
                                 check_nml_error, error_mesg, &
                                 FATAL, NOTE, WARNING, close_file, &
-                                open_direct_file
-
+                                open_direct_file, mpp_error
+use fms_io_mod,           only: read_data
 !  shared radiation package modules:
 
 use rad_utilities_mod,    only: rad_utilities_init, Lw_parameters, &
@@ -59,8 +58,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 10.0 2003/10/24 22:00:43 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 11.0 2004/09/28 19:22:25 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -91,7 +90,6 @@ integer    :: NSTDCO2LVLS = 496 ! # of levels at which lbl tfs exist
 namelist/lw_gases_stdtf_nml/ &
                                    do_coeintdiag,    &
                                    NSTDCO2LVLS
-
 !---------------------------------------------------------------------
 !------- public data ------
 
@@ -142,9 +140,9 @@ real, dimension(:), allocatable   :: pa
 !----------------------------------------------------------------------
 !    ch4 data
 !----------------------------------------------------------------------
-integer, parameter                        ::  number_std_ch4_vmrs = 5
+integer, parameter                        ::  number_std_ch4_vmrs = 7
 real,    dimension(number_std_ch4_vmrs)   ::   ch4_std_vmr
-data ch4_std_vmr / 700.0, 1250.0, 1750.0, 2250.0, 2800.0 /
+data ch4_std_vmr / 300., 700., 1250., 1750., 2250., 2800., 4000. /
 
 integer, parameter                        ::  nfreq_bands_sea_ch4 = 1
 
@@ -161,9 +159,9 @@ data   ntbnd_ch4      /  3  /
 !----------------------------------------------------------------------
 !    n2o data
 !----------------------------------------------------------------------
-integer, parameter                        ::  number_std_n2o_vmrs = 4
+integer, parameter                        ::  number_std_n2o_vmrs = 6
 real,    dimension(number_std_n2o_vmrs)   ::  n2o_std_vmr
-data n2o_std_vmr / 275.0, 310.0, 340.0, 375.0/
+data n2o_std_vmr / 180., 275., 310., 340., 375., 500. /
 
 integer, parameter                        ::  nfreq_bands_sea_n2o = 3
 logical, dimension(nfreq_bands_sea_n2o)   ::  do_lyrcalc_n2o_nf, &
@@ -352,10 +350,10 @@ subroutine lw_gases_stdtf_init ( pref)
 !
 !-------------------------------------------------------------------
 
-real,  dimension(:,:), intent(in), optional :: pref
+real,  dimension(:,:), intent(in) :: pref
 
 !--------------------------------------------------------------------
-!  intent(n),optional variables:
+!  intent(in)  variables:
 !
 !    pref
 !
@@ -5444,11 +5442,11 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
 !  local variables:
 
       character(len=24) input_lblco2name(nfreq_bands_sea_co2,9)
-      character(len=24) input_lblch4name(nfreq_bands_sea_ch4,5)
-      character(len=24) input_lbln2oname(nfreq_bands_sea_n2o,4)
+      character(len=24) input_lblch4name(nfreq_bands_sea_ch4,7)
+      character(len=24) input_lbln2oname(nfreq_bands_sea_n2o,6)
       character(len=24) name_lo
       character(len=24) name_hi
-      character(len=32) filename
+      character(len=32) filename, ncname
 
       real, dimension(:,:), allocatable  :: trns_in
 
@@ -5483,24 +5481,32 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
         'cns_1320_700850  ', 'cns_1320_43um    '/
  
       data (input_lblch4name(n,1),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_700_12001400'/
+        'cns_300_12001400'/
       data (input_lblch4name(n,2),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_1250_12001400'/
+        'cns_700_12001400'/
       data (input_lblch4name(n,3),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_1750_12001400'/
+        'cns_1250_12001400'/
       data (input_lblch4name(n,4),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_2250_12001400'/
+        'cns_1750_12001400'/
       data (input_lblch4name(n,5),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_2250_12001400'/
+      data (input_lblch4name(n,6),n=1,nfreq_bands_sea_ch4)/          &
         'cns_2800_12001400'/
+      data (input_lblch4name(n,7),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_4000_12001400'/
  
       data (input_lbln2oname(n,1),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_275_12001400 ', 'cns_275_10701200 ', 'cns_275_560630   '/
+        'cns_180_12001400 ', 'cns_180_10701200 ', 'cns_180_560630   '/
       data (input_lbln2oname(n,2),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_310_12001400 ', 'cns_310_10701200 ', 'cns_310_560630   '/
+        'cns_275_12001400 ', 'cns_275_10701200 ', 'cns_275_560630   '/
       data (input_lbln2oname(n,3),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_340_12001400 ', 'cns_340_10701200 ', 'cns_340_560630   '/
+        'cns_310_12001400 ', 'cns_310_10701200 ', 'cns_310_560630   '/
       data (input_lbln2oname(n,4),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_340_12001400 ', 'cns_340_10701200 ', 'cns_340_560630   '/
+      data (input_lbln2oname(n,5),n=1,nfreq_bands_sea_n2o)/           &
         'cns_375_12001400 ', 'cns_375_10701200 ', 'cns_375_560630   '/
+      data (input_lbln2oname(n,6),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_500_12001400 ', 'cns_500_10701200 ', 'cns_500_560630   '/
 
 !--------------------------------------------------------------------
 !  local variables:
@@ -5508,11 +5514,6 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
 !     input_lblco2name    
 !
 !--------------------------------------------------------------------
-
-!---------------------------------------------------------------------
-!    allocate local arrays
-!---------------------------------------------------------------------
-      allocate (trns_in(NSTDCO2LVLS,NSTDCO2LVLS))
 
 !---------------------------------------------------------------------
 !
@@ -5533,38 +5534,55 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
 !-------------------------------------------------------------------
 !    read in tfs of higher std gas concentration
 !-------------------------------------------------------------------
-      filename = 'INPUT/' // name_hi 
-      inrad = open_direct_file (file=filename, action='read', &
-                         recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
-      nrec_inhi = 0
-      do nt=1,ntbnd(nf)
-        nrec_inhi = nrec_inhi + 1
-        read (inrad, rec = nrec_inhi) trns_in
-        trns_std_hi_nf(:,:,nt) = trns_in(:,:)
-      enddo
-      call close_file (inrad)
+      filename = 'INPUT/' // trim(name_hi)
+      ncname = trim(filename) // '.nc'
+      if(file_exist(trim(ncname))) then
+         if (mpp_pe() == mpp_root_pe()) call mpp_error ('lw_gases_stdtf_mod', &
+              'Reading NetCDF formatted input data file: ' // ncname, NOTE)
+         call read_data(ncname, 'trns_std_nf', trns_std_hi_nf(:,:,1:ntbnd(nf)), no_domain=.true.)
+      else
+         if (mpp_pe() == mpp_root_pe()) call mpp_error ('lw_gases_stdtf_mod', &
+              'Reading native formatted input data file: ' // filename, NOTE)
+         allocate (trns_in(NSTDCO2LVLS,NSTDCO2LVLS))
+         inrad = open_direct_file (file=filename, action='read', &
+              recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
+         nrec_inhi = 0
+         do nt=1,ntbnd(nf)
+            nrec_inhi = nrec_inhi + 1
+            read (inrad, rec = nrec_inhi) trns_in
+            trns_std_hi_nf(:,:,nt) = trns_in(:,:)
+         enddo
+         call close_file (inrad)
+         deallocate (trns_in)
+      endif
 
 !--------------------------------------------------------------------
 !    if necessary, read in tfs of lower standard gas concentration
 !-------------------------------------------------------------------
       if (callrctrns) then
-        filename = 'INPUT/' // name_lo 
-        inrad = open_direct_file (file=filename, action='read', &
-                           recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
-        nrec_inlo = 0
-        do nt=1,ntbnd(nf)
-          nrec_inlo = nrec_inlo + 1
-          read (inrad, rec = nrec_inlo) trns_in
-          trns_std_lo_nf(:,:,nt) = trns_in(:,:)
-        enddo
-        call close_file (inrad)
-      endif
+        filename = 'INPUT/' // trim(name_lo )
+        ncname = trim(filename) // '.nc'
+        if(file_exist(trim(ncname))) then
+           if (mpp_pe() == mpp_root_pe()) call mpp_error ('lw_gases_stdtf_mod', &
+                'Reading NetCDF formatted input data file: ' // ncname, NOTE)
+           call read_data(ncname, 'trns_std_nf', trns_std_lo_nf(:,:,1:ntbnd(nf)), no_domain=.true.)
+        else
+           if (mpp_pe() == mpp_root_pe()) call mpp_error ('lw_gases_stdtf_mod', &
+                'Reading native formatted input data file: ' // filename, NOTE)
+           allocate (trns_in(NSTDCO2LVLS,NSTDCO2LVLS))
+           inrad = open_direct_file (file=filename, action='read', &
+                recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
+           nrec_inlo = 0
+           do nt=1,ntbnd(nf)
+              nrec_inlo = nrec_inlo + 1
+              read (inrad, rec = nrec_inlo) trns_in
+              trns_std_lo_nf(:,:,nt) = trns_in(:,:)
+           enddo
+           call close_file (inrad)
+           deallocate (trns_in)
+        endif
+     endif
  
-!--------------------------------------------------------------------
-!
-!--------------------------------------------------------------------
-      deallocate (trns_in)
-
 !--------------------------------------------------------------------
 
 

@@ -10,8 +10,6 @@
 !    hemispheric physics integrals.
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!    diag_integral_mod computes and outputs global and / or 
-!    hemispheric physics integrals.
 ! </DESCRIPTION>
 
 !  shared modules:
@@ -43,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: diag_integral.F90,v 10.0 2003/10/24 22:00:27 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: diag_integral.F90,v 11.0 2004/09/28 19:15:46 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -318,8 +316,8 @@ real,dimension(:), intent(in), optional :: blon, blat
 !    the processor. sum over all processors and store the global
 !    number of columns in field_size.
 !---------------------------------------------------------------------
-      idim = size(blon) - 1
-      jdim = size(blat) - 1
+      idim = size(blon(:)) - 1
+      jdim = size(blat(:)) - 1
       field_size_local = idim*jdim
       rsize = real(field_size_local)
       call mpp_sum (rsize)
@@ -333,7 +331,7 @@ real,dimension(:), intent(in), optional :: blon, blat
 !---------------------------------------------------------------------
       allocate (area(idim,jdim))
       r2 = radius*radius
-      allocate (slat(size(blat)))
+      allocate (slat(size(blat(:))))
       slat = sin(blat)
       do j=1,jdim
         do i=1,idim

@@ -26,7 +26,7 @@ public   cloud_zonal, cloud_zonal_init, getcld
    real                    :: rad2deg
 
    character(len=128) :: version = '$Id: cloud_zonal.F90,v 10.0 2003/10/24 22:00:24 fms Exp $'
-   character(len=128) :: tagname = '$Name: jakarta $'
+   character(len=128) :: tagname = '$Name: khartoum $'
    logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------

@@ -1,4 +1,20 @@
+!FDOC_TAG_GFDL
       module lhsw_driver_mod
+! <CONTACT EMAIL="fei.liu@noaa.gov">
+!   fil
+! </CONTACT>
+! <REVIEWER EMAIL="">
+!   
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!            lacis-hansen shortwave parameterization
+!   
+! </OVERVIEW>
+! <DESCRIPTION>
+!   
+! </DESCRIPTION>
+!
 
 use rad_utilities_mod,     only: Environment, environment_type, &
                                  astronomy_type, &
@@ -32,8 +48,8 @@ private
 !--------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 10.0 2003/10/24 22:00:42 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: jakarta $'
+    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 11.0 2004/09/28 19:21:53 fms Exp $'
+    character(len=128)  :: tagname =  '$Name: khartoum $'
     logical             :: module_is_initialized = .false.
 
 
@@ -151,7 +167,23 @@ real  :: rco2air
 contains
 
 
-subroutine lhsw_driver_init (          pref )
+! <SUBROUTINE NAME="lhsw_driver_init">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call lhsw_driver_init ( pref )
+!		
+!  </TEMPLATE>
+!  <IN NAME="pref" TYPE="">
+! 
+!  </IN>
+! </SUBROUTINE>
+!
+subroutine lhsw_driver_init ( pref )
 
 real, dimension(:,:), intent(in) :: pref
 
@@ -233,6 +265,18 @@ end subroutine lhsw_driver_init
 
 
 !######################################################################
+! <SUBROUTINE NAME="lhsw_driver_end">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call lhsw_driver_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine lhsw_driver_end
 
 !------------------------------------------------------------------- 
@@ -246,6 +290,78 @@ end subroutine lhsw_driver_end
 
 !######################################################################
  
+! <SUBROUTINE NAME="swrad">
+!  <OVERVIEW>
+!     Swrad solves for shortwave radiation.
+!
+!     references:
+!
+!     (1)  lacis, a. a. and j. e. hansen, "a parameterization for the
+!          absorption of solar radiation in the earth's atmosphere,"
+!          journal of the atmospheric sciences, 31 (1974), 118-133.
+!
+!     author: m. d. schwarzkopf
+!
+!     revised: 1/1/93
+!
+!     certified:  radiation version 1.0
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call swrad ( is, ie, js, je,   &
+!		Astro,                with_clouds,    Atmos_input,   &
+!		Surface,  &
+!		Rad_gases,                                   &
+!		Cldrad_props, Cld_spec, Sw_output, Cldspace_rad, gwt)
+!		
+!  </TEMPLATE>
+!  <IN NAME=" is" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="Astro" TYPE="astronomy_type">
+! 
+!  </IN>
+!  <IN NAME="with_clouds" TYPE="logical">
+! 
+!  </IN>
+!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
+! 
+!  </IN>
+!  <IN NAME="Surface" TYPE="surface_type">
+! 
+!  </IN>
+!  <IN NAME="Rad_gases" TYPE="radiative_gases_type">
+! 
+!  </IN>
+!  <IN NAME="Cldrad_props" TYPE="cldrad_properties_type">
+! 
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+! 
+!  </IN>
+!  <INOUT NAME="Sw_output" TYPE="sw_output_type">
+! 
+!  </INOUT>
+!  <INOUT NAME="Cldspace_rad" TYPE="cld_space_properties_type">
+! 
+!  </INOUT>
+!  <IN NAME="gwt" TYPE="real">
+! 
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine swrad ( is, ie, js, je,   &
             Astro,                with_clouds,    Atmos_input,   &
              Surface,  &
@@ -455,7 +571,8 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
                    size(Atmos_input%press,2),1) :: cosangsolar
      real, dimension(size(Atmos_input%press,1),  &
                    size(Atmos_input%press,2)  ) :: fracday, &
-                                  cirabgd, cvisrfgd, cirrfgd
+                               cirabgd, cvisrfgd_dir, cirrfgd_dir, &
+                                  cvisrfgd_dif, cirrfgd_dif
 
      real, dimension(size(Atmos_input%press,1),   &
                 size(Atmos_input%press,2), &
@@ -470,8 +587,13 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 
      cosangsolar(:,:, 1) = Astro%cosz(:,:)
      fracday(:,:) = Astro%fracday(:,:)
-     cvisrfgd(:,:) = Surface%asfc(:,:)
-     cirrfgd(:,:) = Surface%asfc(:,:)
+!    cvisrfgd(:,:) = Surface%asfc(:,:)
+!    cirrfgd(:,:) = Surface%asfc(:,:)
+     cvisrfgd_dir(:,:) = Surface%asfc_vis_dir(:,:)
+     cirrfgd_dir(:,:) = Surface%asfc_nir_dir(:,:)
+     cvisrfgd_dif(:,:) = Surface%asfc_vis_dif(:,:)
+     cirrfgd_dif(:,:) = Surface%asfc_nir_dif(:,:)    
+
 
 ! convert press to cgs.
       press(:,:,:) = 10.0*Atmos_input%press(:,:,:)
@@ -519,8 +641,12 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
         allocate( cirabsw(ISRAD:IERAD, JSRAD:JERAD, 1:kcldsw        ) )
         allocate( cirrfsw(ISRAD:IERAD, JSRAD:JERAD, 1:kcldsw        ) )
         allocate( cvisrfsw(ISRAD:IERAD, JSRAD:JERAD,1:kcldsw        ) )
-
-
+        camtsw   = 0.0
+        ktopsw   = 0.0
+        kbtmsw   = 0.0
+        cirabsw  = 0.0
+        cirrfsw  = 0.0
+        cvisrfsw = 0.0
         call convert_to_cloud_space (is, ie, js, je,   Cldrad_props, &
            Cld_spec,      cirabsw, cirrfsw, cvisrfsw,  &
    ktopsw, kbtmsw, camtsw, Cldspace_rad)
@@ -530,17 +656,17 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
       else if (with_clouds) then
 !!!!! needed for radiation_diag_mod
        allocate ( Cldspace_rad%camtswkc(ie-is+1, je-js+1, 1 ))
-     allocate ( Cldspace_rad%cirabswkc(ie-is+1, je-js+1, 1 ))
-    allocate ( Cldspace_rad%cirrfswkc(ie-is+1, je-js+1, 1 ))
+       allocate ( Cldspace_rad%cirabswkc(ie-is+1, je-js+1, 1 ))
+       allocate ( Cldspace_rad%cirrfswkc(ie-is+1, je-js+1, 1 ))
        allocate ( Cldspace_rad%cvisrfswkc(ie-is+1, je-js+1, 1 ))
-      allocate ( Cldspace_rad%ktopswkc(ie-is+1, je-js+1,  1 ))
-     allocate ( Cldspace_rad%kbtmswkc(ie-is+1, je-js+1,  1 ))
-  Cldspace_rad%camtswkc = -99.0       
-    Cldspace_rad%cirabswkc = -99.0       
-     Cldspace_rad%cirrfswkc = -99.0       
-      Cldspace_rad%cvisrfswkc = -99.0        
+       allocate ( Cldspace_rad%ktopswkc(ie-is+1, je-js+1,  1 ))
+       allocate ( Cldspace_rad%kbtmswkc(ie-is+1, je-js+1,  1 ))
+       Cldspace_rad%camtswkc = -99.0       
+       Cldspace_rad%cirabswkc = -99.0       
+       Cldspace_rad%cirrfswkc = -99.0       
+       Cldspace_rad%cvisrfswkc = -99.0        
        Cldspace_rad%ktopswkc = -99.0      
-      Cldspace_rad%kbtmswkc = -99.0         
+       Cldspace_rad%kbtmswkc = -99.0         
       endif
   
 !--------------------------------------------------------------------
@@ -595,12 +721,25 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 
       allocate( absdo2  (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
       allocate( uo2     (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
+      absdo3 = 0.0 ; absuo3   = 0.0 ; alfa     = 0.0 ; alfau    = 0.0
+      alogtt   = 0.0 ; cr       = 0.0 ; ct       = 0.0 ; dfn      = 0.0
+      dfncltop = 0.0 ; dfnlbc   = 0.0 ; dfntop   = 0.0 ; dp       = 0.0
+      dpcldi   = 0.0 ; du       = 0.0 ; duco2    = 0.0 ; duo3     = 0.0
+      ff       = 0.0 ; ffco2    = 0.0 ; ffo3     = 0.0 ; pp       = 0.0
+      pptop    = 0.0 ; pr2      = 0.0 ; refl     = 0.0 ; rray     = 0.0
+      seczen   = 0.0 ; tdcltt   = 0.0 ; tdclbt   = 0.0 ; tdcltop  = 0.0
+      tdclbtm  = 0.0 ; tdco2    = 0.0 ; ttd      = 0.0 ; ttdb1    = 0.0
+      ttu      = 0.0 ; ttub1    = 0.0 ; tucltop  = 0.0 ; tuco2    = 0.0
+      ud       = 0.0 ; udco2    = 0.0 ; udo3     = 0.0 ; ufn      = 0.0
+      ufncltop = 0.0 ; ufnlbc   = 0.0 ; uu       = 0.0 ; uuco2    = 0.0
+      uuo3     = 0.0 ; absdo2   = 0.0 ; uo2      = 0.0
 
       if (present(gwt)) then
         allocate( dfswg   (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
         allocate( fswg    (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
         allocate( hswg    (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
         allocate( ufswg   (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
+        dfswg = 0.0 ; fswg = 0.0 ; hswg =0.0  ; ufswg =0.0
       endif
 !----------------------------------------------------------------------
 
@@ -813,8 +952,13 @@ type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !     one.  see reference (1)
 !-----------------------------------------------------------------------
       rray(:,:) = 2.19E-01/(1.0E+00 + 8.16E-01*cosangsolar(:,:,ngp))
+!! WHAT TO DO HERE ?
+!!  USING ONLY DIR ALBEDOES IN THIS SCHEME - the totals will be assigned
+!!  to _dir and the _dif fluxes will remain zero, pending a better
+!! assignment ??     
       refl(:,:) = rray(:,:) + (1.0E+00 - rray(:,:))*(1.0E+00 -    &
-                  rrayav)*cvisrfgd(:,:)/(1.0E+00 - cvisrfgd(:,:  )* &
+!                 rrayav)*cvisrfgd(:,:)/(1.0E+00 - cvisrfgd(:,:  )* &
+             rrayav)*cvisrfgd_dir(:,:)/(1.0E+00 - cvisrfgd_dir(:,:)* &
                   rrayav)
 
 !-----------------------------------------------------------------------
@@ -900,7 +1044,12 @@ else if(nband .GE. 3) then
             end do
           else
             do k=KS,KE+1
-              ufn(:,:,k) = cirrfgd(:,:)*ttu(:,:,k)
+!             ufn(:,:,k) = cirrfgd(:,:)*ttu(:,:,k)
+!! WHAT TO DO HERE ?
+!!  USING ONLY DIR ALBEDOES IN THIS SCHEME - the totals will be assigned
+!!  to _dir and the _dif fluxes will remain zero, pending a better
+!! assignment ??
+              ufn(:,:,k) = cirrfgd_dir(:,:)*ttu(:,:,k)
               dfn(:,:,k) = ttd(:,:,k)
             end do      
           endif
@@ -997,8 +1146,14 @@ else if(nband .GE. 3) then
             end do
 !! define this as zero -- could at some point be an input ??
             cirabgd(:,:) = 0.0
-            cr(:,:,1) = cirrfgd(:,:)
-            ct(:,:,1) = 1.0E+00 - (cirrfgd(:,:) + cirabgd(:,:))
+!! WHAT TO DO HERE ?
+!!  USING ONLY DIR ALBEDOES IN THIS SCHEME - the totals will be assigned
+!!  to _dir and the _dif fluxes will remain zero, pending a better
+!! assignment ??
+!           cr(:,:,1) = cirrfgd(:,:)
+!           ct(:,:,1) = 1.0E+00 - (cirrfgd(:,:) + cirabgd(:,:))
+            cr(:,:,1) = cirrfgd_dir(:,:)
+            ct(:,:,1) = 1.0E+00 - (cirrfgd_dir(:,:) + cirabgd(:,:))
             cr(:,:,2:kcldsw+1) = cirrfsw(:,:,1:kcldsw    )*  &
                                  camtsw(:,:,1:kcldsw)
             ct(:,:,2:kcldsw+1) = 1.0E+00 - camtsw(:,:,1:kcldsw  )*  &
@@ -1218,6 +1373,62 @@ else
 !##################################################################
 !####################################################################
 
+! <SUBROUTINE NAME="convert_to_cloud_space">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call convert_to_cloud_space (is, ie, js, je,  Cldrad_props, &
+!		Cld_spec,  &
+!		cirabswkc, cirrfswkc,  &
+!		cvisrfswkc, ktopswkc, kbtmswkc,  &
+!		camtswkc, Cldspace_rad)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="Cldrad_props" TYPE="cldrad_properties_type">
+! 
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+! 
+!  </IN>
+!  <OUT NAME="cirabswkc" TYPE="real">
+! 
+!  </OUT>
+!  <OUT NAME="cirrfswkc" TYPE="real">
+! 
+!  </OUT>
+!  <OUT NAME="cvisrfswkc" TYPE="real">
+! 
+!  </OUT>
+!  <OUT NAME="ktopswkc" TYPE="integer">
+! 
+!  </OUT>
+!  <OUT NAME="kbtmswkc" TYPE="integer">
+! 
+!  </OUT>
+!  <OUT NAME="camtswkc" TYPE="real">
+! 
+!  </OUT>
+!  <INOUT NAME="Cldspace_rad" TYPE="cld_space_properties_type">
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine convert_to_cloud_space (is, ie, js, je,  Cldrad_props, &
                                Cld_spec,  &
                                cirabswkc, cirrfswkc,  &

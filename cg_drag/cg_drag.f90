@@ -32,8 +32,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.f90,v 10.0 2003/10/24 22:00:22 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: cg_drag.f90,v 11.0 2004/09/28 19:14:07 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 
@@ -301,9 +301,9 @@ type(time_type),       intent(in)      :: Time
 !  define the grid dimensions. idf and jdf are the (i,j) dimensions of 
 !  domain on this processor, kmax is the number of model layers.
 !-------------------------------------------------------------------
-      kmax = size(pref) - 1
-      jdf  = size(latb) - 1
-      idf  = size(lonb) - 1
+      kmax = size(pref(:)) - 1
+      jdf  = size(latb(:)) - 1
+      idf  = size(lonb(:)) - 1
 
 !--------------------------------------------------------------------
 !    define the k level which will serve as source level for the grav-
@@ -796,7 +796,7 @@ subroutine cg_drag_end
 !    timestep.
 !-------------------------------------------------------------------
       if (mpp_pe() == mpp_root_pe() ) then
-        write (unit) restart_versions(size(restart_versions))
+        write (unit) restart_versions(size(restart_versions(:)))
         write (unit) cgdrag_alarm, cg_drag_freq
       endif
 

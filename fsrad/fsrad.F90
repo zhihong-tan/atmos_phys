@@ -24,7 +24,7 @@
 !-----------------------------------------------------------------------
 
       character(len=128) :: version = '$Id: fsrad.F90,v 10.0 2003/10/24 22:00:31 fms Exp $'
-      character(len=128) :: tagname = '$Name: jakarta $'
+      character(len=128) :: tagname = '$Name: khartoum $'
       logical            :: module_is_initialized = .false.
 
       real, parameter :: Day_Length=86400.

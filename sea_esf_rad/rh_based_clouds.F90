@@ -1,5 +1,22 @@
+!FDOC_TAG_GFDL
 
                  module rh_based_clouds_mod
+! <CONTACT EMAIL="fei.liu@noaa.gov">
+!   fil
+! </CONTACT>
+! <REVIEWER EMAIL="">
+!   
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!           module which defines cloud locations
+!                     based on model relative humidity
+!   
+! </OVERVIEW>
+! <DESCRIPTION>
+!   
+! </DESCRIPTION>
+!
 
 use fms_mod,                only: open_namelist_file, mpp_pe, &
                                   mpp_root_pe, stdlog,  &
@@ -34,8 +51,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 10.0 2003/10/24 22:00:46 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: jakarta $'
+  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 11.0 2004/09/28 19:23:55 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 
@@ -193,6 +210,18 @@ logical :: module_is_initialized = .false.
                            contains 
 
 
+! <SUBROUTINE NAME="rh_based_clouds_init">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call rh_based_clouds_init
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine rh_based_clouds_init 
 
 
@@ -244,6 +273,18 @@ end subroutine rh_based_clouds_init
 
 !####################################################################
 
+! <SUBROUTINE NAME="rh_based_clouds_end">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call rh_based_clouds_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine rh_based_clouds_end
 
 !----------------------------------------------------------------------
@@ -264,6 +305,78 @@ end subroutine rh_based_clouds_end
 
 !######################################################################
 
+! <SUBROUTINE NAME="rh_clouds_amt">
+!  <OVERVIEW>
+!    rh_clouds_amt defines the location, amount (cloud fraction), number
+!    and type (hi, mid, low) of clouds present on the model grid.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    rh_clouds_amt defines the location, amount (cloud fraction), number
+!    and type (hi, mid, low) of clouds present on the model grid.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call rh_clouds_amt (is, ie, js, je, press, lat, Cld_spec)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!   is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="press" TYPE="real">
+!      press        pressure at model levels (1:nlev), surface
+!                   pressure is stored at index value nlev+1
+!                   [ (kg /( m s^2) ]
+! 
+!  </IN>
+!  <IN NAME="lat" TYPE="real">
+!      lat          latitude of model points  [ radians ]
+! 
+!  </IN>
+!  <INOUT NAME="Cld_spec" TYPE="cld_specification_type">
+!      Cld_spec     cld_specification_type variable containing the
+!                   cloud specification input fields needed by the
+!                   radiation package
+!
+!               the following elements of Cld_spec are defined here:
+!
+!                  %cmxolw  fraction of maximally overlapped clouds
+!                           seen by the longwave radiation
+!                           [ dimensionless ]
+!                  %crndlw  fraction of randomly overlapped clouds
+!                           seen by the longwave radiation
+!                           [ dimensionless ]
+!                  %camtsw  cloud fraction seen by the shortwave
+!                           radiation; the sum of the maximally
+!                           overlapped and randomly overlapped
+!                           longwave cloud fractions  [ dimensionless ]
+!                  %nmxolw  number of maximally overlapped longwave
+!                           clouds in each grid column.
+!                  %nrndlw  number of randomly overlapped longwave
+!                           clouds in each grid column.
+!                  %ncldsw  number of clouds seen by he shortwave
+!                           radiation in each grid column.
+!                  %hi_cld  logical flag indicating the presence of
+!                           high clouds in a grid box
+!                 %mid_cld  logical flag indicating the presence of
+!                           middle clouds in a grid box
+!                 %low_cld  logical flag indicating the presence of
+!                           low clouds in a grid box
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine rh_clouds_amt (is, ie, js, je, press, lat, Cld_spec)
 
 !----------------------------------------------------------------------
@@ -538,6 +651,62 @@ end subroutine rh_clouds_amt
 
 !####################################################################
 
+! <SUBROUTINE NAME="obtain_bulk_lw_rh">
+!  <OVERVIEW>
+!    obtain_bulk_lw_rh defines bulk longwave cloud radiative
+!    properties for the rh cloud scheme.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    obtain_bulk_lw_rh defines bulk longwave cloud radiative
+!    properties for the rh cloud scheme.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call obtain_bulk_lw_rh (is, ie, js, je, Cld_spec, Cldrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+!      Cld_spec          cloud specification arrays defining the
+!                        location, amount and type (hi, middle, lo)
+!                        of clouds that are present, provides input
+!                        to this subroutine
+!                        [ cld_specification_type ]
+! 
+!  </IN>
+!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output
+!               from this routine:
+!
+!                    %emrndlw   longwave cloud emissivity for
+!                               randomly overlapped clouds
+!                               in each of the longwave
+!                               frequency bands  [ dimensionless ]
+!                    %emmxolw   longwave cloud emissivity for
+!                               maximally overlapped clouds
+!                               in each of the longwave
+!                               frequency bands  [ dimensionless ]
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine obtain_bulk_lw_rh (is, ie, js, je, Cld_spec, Cldrad_props)
 
 !---------------------------------------------------------------------
@@ -585,8 +754,9 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
 !-------------------------------------------------------------------
         call albcld_lw (Cld_spec%hi_cloud, Cld_spec%mid_cloud,  &
                         Cld_spec%low_cloud, Cld_spec%cmxolw,  &
-                        Cld_spec%crndlw,  Cldrad_props%emmxolw,  &
-                        Cldrad_props%emrndlw)
+                        Cld_spec%crndlw,    &
+                        Cldrad_props%emmxolw(:,:,:,:,1),  &
+                        Cldrad_props%emrndlw(:,:,:,:,1))
 
 
 end subroutine obtain_bulk_lw_rh
@@ -595,6 +765,68 @@ end subroutine obtain_bulk_lw_rh
 
 !######################################################################
 
+! <SUBROUTINE NAME="obtain_bulk_sw_rh">
+!  <OVERVIEW>
+!    obtain_bulk_sw_rh defines bulk shortwave cloud radiative
+!    properties for the rh cloud scheme.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    obtain_bulk_sw_rh defines bulk shortwave cloud radiative
+!    properties for the rh cloud scheme.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call obtain_bulk_sw_rh (is, ie, js, je, cosz, Cld_spec,   &
+!		Cldrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="cosz" TYPE="real">
+!      cosz         cosine of the zenith angle [ dimensionless ]
+! 
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+!      Cld_spec          cloud specification arrays defining the
+!                        location, amount and type (hi, middle, lo)
+!                        of clouds that are present, provides input
+!                        to this subroutine
+!                        [ cld_specification_type ]
+! 
+!  </IN>
+!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output
+!               from this routine:
+!
+!                    %cirabsw   absorptivity of clouds in the
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cirrfsw   reflectivity of clouds in the
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cvisrfsw  reflectivity of clouds in the
+!                               visible frequency band
+!                               [ dimensionless ]
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine obtain_bulk_sw_rh (is, ie, js, je, cosz, Cld_spec,   &
                               Cldrad_props)
 
@@ -683,6 +915,28 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
 
 !####################################################################
 
+! <SUBROUTINE NAME="cldalb">
+!  <OVERVIEW>
+!     cldalb calculates a zenith angle dependency for the cloud albedos.
+!     the cloud albedos are interpolated using data adapted from fritz
+!     (1954).  the solar zenith angle is the only input required.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!     cldalb calculates a zenith angle dependency for the cloud albedos.
+!     the cloud albedos are interpolated using data adapted from fritz
+!     (1954).  the solar zenith angle is the only input required.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call cldalb (zenith)
+!		
+!  </TEMPLATE>
+!  <IN NAME="zenith" TYPE="real">
+!   zenith angle
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine cldalb (zenith)
 
 !---------------------------------------------------------------------
@@ -743,6 +997,49 @@ end subroutine cldalb
 
 !##################################################################
 
+! <SUBROUTINE NAME="albcld_lw">
+!  <OVERVIEW>
+!     albcld_lw computes the lw cloud emissivities. This calculation is
+!     based on sigma and cloud thickness in the old scheme (cldht60)
+!     and sigma, cloud thickness and latitude in the new scheme
+!     (cldht93).
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!     albcld_lw computes the lw cloud emissivities. This calculation is
+!     based on sigma and cloud thickness in the old scheme (cldht60)
+!     and sigma, cloud thickness and latitude in the new scheme
+!     (cldht93).
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call albcld_lw(hi_cloud, mid_cloud, low_cloud,       &
+!		cmxolw, crndlw, emmxolw, emrndlw)
+!		
+!  </TEMPLATE>
+!  <IN NAME="hi_cloud" TYPE="logical">
+! 
+!  </IN>
+!  <IN NAME="mid_cloud" TYPE="logical">
+! 
+!  </IN>
+!  <IN NAME="low_cloud" TYPE="logical">
+! 
+!  </IN>
+!  <IN NAME="cmxolw" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="crndlw" TYPE="real">
+! 
+!  </IN>
+!  <INOUT NAME="emmxolw" TYPE="real">
+! 
+!  </INOUT>
+!  <INOUT NAME="emrndlw" TYPE="real">
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine albcld_lw(hi_cloud, mid_cloud, low_cloud,       &
              cmxolw, crndlw, emmxolw, emrndlw)
 
@@ -853,6 +1150,59 @@ end subroutine albcld_lw
 
 !####################################################################
 
+! <SUBROUTINE NAME="albcld_sw">
+!  <OVERVIEW>
+!     albcld_sw computes the cloud albedos. This calculation is based on
+!     sigma and cloud thickness in the old scheme (cldht60) and sigma,
+!     cloud thickness  and latitude in the new scheme (cldht93).
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!     albcld_sw computes the cloud albedos. This calculation is based on
+!     sigma and cloud thickness in the old scheme (cldht60) and sigma,
+!     cloud thickness  and latitude in the new scheme (cldht93).
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call albcld_sw(i,j, hi_cloud, mid_cloud, low_cloud,         &
+!		camtsw, cmxolw, crndlw, cvisrfsw, cirrfsw, cirabsw)
+!		
+!  </TEMPLATE>
+!  <INOUT NAME="i" TYPE="real">
+! 
+!  </INOUT>
+!  <IN NAME="j" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="hi_cloud" TYPE="logical">
+! 
+!  </IN>
+!  <IN NAME="mid_cloud" TYPE="logical">
+! 
+!  </IN>
+!  <IN NAME="low_cloud" TYPE="logical">
+! 
+!  </IN>
+!  <IN NAME="camtsw" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="cmxolw" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="crndlw" TYPE="real">
+! 
+!  </IN>
+!  <INOUT NAME="cvisrfsw" TYPE="real">
+! 
+!  </INOUT>
+!  <INOUT NAME="cirrfsw" TYPE="real">
+! 
+!  </INOUT>
+!  <INOUT NAME="cirabsw" TYPE="real">
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine albcld_sw(i,j, hi_cloud, mid_cloud, low_cloud,         &
      camtsw, cmxolw, crndlw, cvisrfsw, cirrfsw, cirabsw)
 

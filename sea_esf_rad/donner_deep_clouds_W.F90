@@ -1,5 +1,21 @@
+!FDOC_TAG_GFDL
 
                  module donner_deep_clouds_W_mod
+! <CONTACT EMAIL="fei.liu@noaa.gov">
+!   fil
+! </CONTACT>
+! <REVIEWER EMAIL="">
+!   
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!          donner deep cloud radiative properties module
+!   
+! </OVERVIEW>
+! <DESCRIPTION>
+!   
+! </DESCRIPTION>
+!
 
 use time_manager_mod,       only: time_type
 use donner_deep_mod,        only: donner_deep_avg, donner_deep_init
@@ -31,8 +47,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 10.0 2003/10/24 22:00:40 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: jakarta $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 11.0 2004/09/28 19:21:26 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 
@@ -76,6 +92,34 @@ contains
 
 
 
+! <SUBROUTINE NAME="donner_deep_clouds_W_init">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call donner_deep_clouds_W_init  (pref, lonb, latb, axes, Time)
+!		
+!  </TEMPLATE>
+!  <IN NAME="pref" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="lonb" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="latb" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="axes" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="Time" TYPE="time_type">
+! 
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine donner_deep_clouds_W_init  (pref, lonb, latb, axes, Time)
 
 real, dimension(:,:), intent(in) :: pref
@@ -104,8 +148,8 @@ type(time_type),       intent(in)      :: Time
          write (stdlog(),nml=donner_deep_clouds_W_nml)
       endif
 
-       ix = size(lonb)-1
-       jx = size(latb)-1
+       ix = size(lonb,1)-1
+       jx = size(latb,1)-1
        kx = size(pref,1) - 1
 
 !---------------------------------------------------------------------
@@ -120,6 +164,18 @@ type(time_type),       intent(in)      :: Time
 
 end subroutine donner_deep_clouds_W_init
 
+! <SUBROUTINE NAME="donner_deep_clouds_W_end">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call donner_deep_clouds_W_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine donner_deep_clouds_W_end
        
 !----------------------------------------------------------------------
@@ -139,6 +195,48 @@ end subroutine donner_deep_clouds_W_end
 
 !#################################################################
 
+! <SUBROUTINE NAME="donner_deep_clouds_amt2">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call donner_deep_clouds_amt2  (             &
+!		is, ie, js, je,    &
+!		cld_cell,        &
+!		Cell_microphys,  &
+!		cld_meso,        &
+!		Meso_microphys  )
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <OUT NAME="cld_cell" TYPE="real">
+! 
+!  </OUT>
+!  <INOUT NAME="Cell_microphys" TYPE="microphysics_type">
+! 
+!  </INOUT>
+!  <OUT NAME="cld_meso" TYPE="real">
+! 
+!  </OUT>
+!  <INOUT NAME="Meso_microphys" TYPE="microphysics_type">
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine donner_deep_clouds_amt2  (             &
                        is, ie, js, je,    &
                                 cld_cell,        &
@@ -180,6 +278,52 @@ end subroutine donner_deep_clouds_amt2
 
 !---------------------------------------------------------------------
 
+! <SUBROUTINE NAME="donner_deep_clouds_amt">
+!  <OVERVIEW>
+!    donner_deep_clouds_amt defines the distribution of cloud water and
+!    cloud ice concentration and particle size and total cloud fraction
+!    in both the mesoscale and convective cell-scale components of the
+!    clouds associated with donner_deep convection. these values will
+!    be combined with the large-scale cloud fields to produce the dist-
+!    ribution of cloud radiative properties that will be seen by the
+!    radiation package.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    donner_deep_clouds_amt defines the distribution of cloud water and
+!    cloud ice concentration and particle size and total cloud fraction
+!    in both the mesoscale and convective cell-scale components of the
+!    clouds associated with donner_deep convection. these values will
+!    be combined with the large-scale cloud fields to produce the dist-
+!    ribution of cloud radiative properties that will be seen by the
+!    radiation package.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call donner_deep_clouds_amt (is, ie, js, je, Cell_microphys,  &
+!		Meso_microphys)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <INOUT NAME="Cell_microphys" TYPE="microphysics_type">
+! 
+!  </INOUT>
+!  <INOUT NAME="Meso_microphys" TYPE="microphysics_type">
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine donner_deep_clouds_amt (is, ie, js, je, Cell_microphys,  &
                                    Meso_microphys)
 
@@ -224,6 +368,77 @@ end subroutine donner_deep_clouds_amt
 !#####################################################################
 
 
+! <SUBROUTINE NAME="donner_deep_clouds_calc">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call donner_deep_clouds_calc (             &
+!		is,ie,js,je,deltaz,press,temp,                 &
+!		cld_cell,               &
+!		cldext_cell, cldsct_cell, cldasymm_cell,  &
+!		abscoeff_cell,          &
+!		cld_meso,               &
+!		cldext_meso, cldsct_meso, cldasymm_meso,  &
+!		abscoeff_meso)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="deltaz" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="press" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="temp" TYPE="real">
+! 
+!  </IN>
+!  <INOUT NAME="cld_cell" TYPE="real">
+! 
+!  </INOUT>
+!  <OUT NAME="cldext_cell" TYPE="real">
+! 
+!  </OUT>
+!  <OUT NAME="cldsct_cell" TYPE="real">
+! 
+!  </OUT>
+!  <OUT NAME="cldasymm_cell" TYPE="real">
+! 
+!  </OUT>
+!  <OUT NAME="abscoeff_cell" TYPE="real">
+! 
+!  </OUT>
+!  <INOUT NAME="cld_meso" TYPE="real">
+! 
+!  </INOUT>
+!  <OUT NAME="cldext_meso" TYPE="real">
+! 
+!  </OUT>
+!  <OUT NAME="cldsct_meso" TYPE="real">
+! 
+!  </OUT>
+!  <OUT NAME="cldasymm_meso" TYPE="real">
+! 
+!  </OUT>
+!  <OUT NAME="abscoeff_meso" TYPE="real">
+! 
+!  </OUT>
+! </SUBROUTINE>
+!
 subroutine donner_deep_clouds_calc (             &
                   is,ie,js,je,deltaz,press,temp,                 &
                                     cld_cell,               &

@@ -7,12 +7,11 @@
 !  Dan Schwarzkopf
 ! </REVIEWER>
 ! <OVERVIEW>
-!  Code to define tables of longwave radiation parameters.
-! </OVERVIEW>
-! <DESCRIPTION>
 !  This code defines longwave radiation tables, it also
 !  allocate, compute related parameters based on prescribed
 !  tables.
+! </OVERVIEW>
+! <DESCRIPTION>
 ! </DESCRIPTION>
 !
 
@@ -50,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_tables.F90,v 10.0 2003/10/24 22:00:43 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: longwave_tables.F90,v 11.0 2004/09/28 19:22:18 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------

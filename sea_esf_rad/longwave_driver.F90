@@ -11,7 +11,6 @@
 !  Code to set up longwave radiation calculation
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!  This code initializes and calls longwave radiation radiation
 ! </DESCRIPTION>
 ! 
 
@@ -20,6 +19,7 @@ use fms_mod,            only: open_namelist_file, fms_init, &
                               file_exist, write_version_number, &
                               check_nml_error, error_mesg, &
                               FATAL, NOTE, WARNING, close_file
+use time_manager_mod,   only: time_type
 
 ! shared radiation package modules:
 
@@ -28,6 +28,7 @@ use rad_utilities_mod,  only: rad_utilities_init, Rad_control, &
                               cld_specification_type, lw_output_type, &
                               atmos_input_type, radiative_gases_type, &
                               aerosol_type, aerosol_properties_type,  &
+                              aerosol_diagnostics_type, &
                               lw_table_type, lw_diagnostics_type
 
 !   radiation package module:
@@ -48,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: longwave_driver.F90,v 10.0 2003/10/24 22:00:42 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: longwave_driver.F90,v 11.0 2004/09/28 19:22:03 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -290,9 +291,10 @@ end  subroutine longwave_driver_init
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine longwave_driver (is, ie, js, je, Atmos_input, Rad_gases, &
-                            Aerosol, Aerosol_props, Cldrad_props,  &
-                            Cld_spec, Lw_output, Lw_diagnostics)
+subroutine longwave_driver (is, ie, js, je, Rad_time, Atmos_input,  &
+                            Rad_gases, Aerosol, Aerosol_props,   &
+                            Cldrad_props, Cld_spec, Aerosol_diags, &
+                            Lw_output, Lw_diagnostics)
 
 !--------------------------------------------------------------------
 !    longwave_driver allocates and initializes longwave radiation out-
@@ -302,10 +304,12 @@ subroutine longwave_driver (is, ie, js, je, Atmos_input, Rad_gases, &
 !--------------------------------------------------------------------
 
 integer,                      intent(in)     :: is, ie, js, je
+type(time_type),              intent(in)     :: Rad_time
 type(atmos_input_type),       intent(in)     :: Atmos_input  
-type(radiative_gases_type),   intent(in)     :: Rad_gases   
+type(radiative_gases_type),   intent(inout)  :: Rad_gases   
 type(aerosol_type),           intent(in)     :: Aerosol     
 type(aerosol_properties_type),intent(inout)  :: Aerosol_props
+type(aerosol_diagnostics_type),intent(inout)  :: Aerosol_diags
 type(cldrad_properties_type), intent(in)     :: Cldrad_props
 type(cld_specification_type), intent(in)     :: Cld_spec     
 type(lw_output_type),         intent(inout)  :: Lw_output   
@@ -316,6 +320,10 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 !
 !      is,ie,js,je    starting/ending subdomain i,j indices of data in 
 !                     the physics_window being integrated
+!      Rad_time       time at which the climatologically-determined, 
+!                     time-varying input fields to radiation should 
+!                     apply    
+!                     [ time_type, days and seconds]
 !      Atmos_input    atmos_input_type variable containing the atmos-
 !                     pheric input fields needed by the radiation 
 !                     package
@@ -376,9 +384,10 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 !    call sealw99 to use the simplified-exchange-approximation (sea)
 !    parameterization.
 !----------------------------------------------------------------------
-        call sealw99 (is, ie, js, je, Atmos_input, Rad_gases, &
-                      Aerosol, Aerosol_props, Cldrad_props, Cld_spec, &
-                      Lw_output, Lw_diagnostics)
+        call sealw99 (is, ie, js, je, Rad_time, Atmos_input,  &
+                      Rad_gases, Aerosol, Aerosol_props, Cldrad_props, &
+                      Cld_spec, Aerosol_diags, Lw_output,  &
+                      Lw_diagnostics)
       else
 
 !--------------------------------------------------------------------
@@ -508,13 +517,25 @@ type(lw_output_type),      intent(inout) :: Lw_output
 !-------------------------------------------------------------------
       allocate (Lw_output%flxnet( ix, jx, kx+1) )
       allocate (Lw_output%heatra( ix, jx, kx  ) )
+      allocate (Lw_output%netlw_special   &
+                                ( ix, jx, Rad_control%mx_spec_levs  ) )
+      allocate (Lw_output%bdy_flx         &
+                                ( ix, jx, 4) )
       Lw_output%flxnet(:,:,:) = 0.0
       Lw_output%heatra(:,:,:) = 0.0
+      Lw_output%netlw_special(:,:,:) = 0.0
+      Lw_output%bdy_flx (:,:,:) = 0.0      
       if (Rad_control%do_totcld_forcing)  then
         allocate (Lw_output%flxnetcf( ix, jx, kx+1) )
         allocate (Lw_output%heatracf( ix, jx, kx  ) )
+        allocate (Lw_output%netlw_special_clr  &
+                                ( ix, jx, Rad_control%mx_spec_levs  ) )
+        allocate (Lw_output%bdy_flx_clr         &
+                                ( ix, jx, 4) )
         Lw_output%flxnetcf(:,:,:) = 0.0
         Lw_output%heatracf(:,:,:) = 0.0
+        Lw_output%netlw_special_clr(:,:,:) = 0.0
+        Lw_output%bdy_flx_clr (:,:,:) = 0.0      
       endif
     
 !--------------------------------------------------------------------

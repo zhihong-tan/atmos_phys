@@ -1,593 +1,733 @@
 !FDOC_TAG_GFDL
 module strat_cloud_mod
-! <CONTACT EMAIL="Stephen.Klein@noaa.gov">
-!   Stephen Klein
-! </CONTACT>
-! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
-! <OVERVIEW>
-!   
-! </OVERVIEW>
-! <DESCRIPTION>
-!
-!
-!       The prognostic scheme returns the time tendencies of liquid,
-!       ice, and saturated volume fraction that are suspended in 
-!       stratiform clouds.  The scheme diagnoses the fluxes of rain
-!       and snow in saturated and unsaturated areas.
-!
-!       The prognostic cloud scheme is responsible for determing
-!       cloud volume fractions, condensed water tendencies, and
-!       the stratiform precipitation rate.  It includes processes
-!       for evaporation, condensation, deposition, and sublimation
-!       of cloud water, conversion of cloud water to precipitation,
-!       evaporation of falling precipitation, the bergeron-findeisan 
-!       process, freezing of cloud liquid, accretion of cloud water 
-!       by precipitation, and melting of falling precipitation.
-!
-!       This scheme is based on the experience the author had 
-!       at the ECMWF in 1997. The saturated volume fraction formalism 
-!       and type of solution follow directly from the scheme of Tiedtke
-!       (1993): Monthly Weather Review, Volume 121, pages 3040-3061.
-!       The form of most of the microphysics follows Rotstayn , 1997:
-!       Quart. J. Roy. Met. Soc. vol 123, pages 1227-1282. The partial
-!       precipitation area formulism follows Jakob and Klein, 2000:
-!       Quart. J. Roy. Met. Soc. vol 126, pages 2525-2544. 
-!
-!   
-! </DESCRIPTION>
-!
+  ! <CONTACT EMAIL="Stephen.Klein@noaa.gov">
+  !   Stephen Klein
+  ! </CONTACT>
+  ! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+  ! <OVERVIEW>
+  !   Code to compute time tendencies of stratiform clouds and diagnoses
+  !   rain and snow flux with prognostic scheme.
+  !   
+  ! </OVERVIEW>
+  ! <DESCRIPTION>
+  !
+  !
+  !       The prognostic scheme returns the time tendencies of liquid,
+  !       ice, and saturated volume fraction that are suspended in 
+  !       stratiform clouds.  The scheme diagnoses the fluxes of rain
+  !       and snow in saturated and unsaturated areas.
+  !
+  !       The prognostic cloud scheme is responsible for determing
+  !       cloud volume fractions, condensed water tendencies, and
+  !       the stratiform precipitation rate.  It includes processes
+  !       for evaporation, condensation, deposition, and sublimation
+  !       of cloud water, conversion of cloud water to precipitation,
+  !       evaporation of falling precipitation, the bergeron-findeisan 
+  !       process, freezing of cloud liquid, accretion of cloud water 
+  !       by precipitation, and melting of falling precipitation.
+  !
+  !       This scheme is based on the experience the author had 
+  !       at the ECMWF in 1997. The saturated volume fraction formalism 
+  !       and type of solution follow directly from the scheme of Tiedtke
+  !       (1993): Monthly Weather Review, Volume 121, pages 3040-3061.
+  !       The form of most of the microphysics follows Rotstayn , 1997:
+  !       Quart. J. Roy. Met. Soc. vol 123, pages 1227-1282. The partial
+  !       precipitation area formulism follows Jakob and Klein, 2000:
+  !       Quart. J. Roy. Met. Soc. vol 126, pages 2525-2544. 
+  !
+  !   
+  ! </DESCRIPTION>
+  !
 
-        use  sat_vapor_pres_mod, only :  lookup_es,lookup_des
-        use             fms_mod, only :  file_exist, open_namelist_file,  &
-                                         error_mesg, FATAL, NOTE,         &
-                                         mpp_pe, mpp_root_pe, close_file, &
-                                         read_data, write_data,           &
-                                         check_nml_error, &
-                                         write_version_number, stdlog, &
-                                         open_restart_file, open_ieee32_file
-        use  constants_mod,      only :  rdgas,rvgas,hlv,hlf,hls,      &
-                                         cp_air,grav,tfreeze,dens_h2o
-        use  cloud_rad_mod,      only :  cloud_rad_init
-        use  diag_manager_mod,   only :  register_diag_field, send_data
-        use  time_manager_mod,   only :  time_type, get_date
-        use  edt_mod,            only :  edt_on, qaturb, qcturb,       &
-                                         tblyrtau        
- 
-        implicit none
+! <DATASET NAME="strat_cloud.res">
+!   native format of the restart file
+! </DATASET>
+! <DATASET NAME="strat_cloud.res.nc">
+!   netcdf format of the restart file
+! </DATASET>
 
-        public  strat_cloud_init,    &
-                strat_driv,          &
-                strat_cloud_end,     &
-                strat_cloud_sum,     &
-                strat_cloud_avg,     &
-                do_strat_cloud,      &
-                strat_cloud_on
 
-!        
+! <INFO>
+!   <REFERENCE>           
+!The saturation volume fraction formalism comes from:
+!
+!Tiedtke, M., 1993: Representation of clouds in large-scale models. Mon. Wea. Rev., 121, 3040-3061.
+!
+! </REFERENCE>
+!   <REFERENCE>           
+!The form of most of the microphysics follows:
+!
+!Rotstayn, L., 1997: A physically based scheme for the treatment of stratiform clouds and precipitation in large-scale models. I: Description and evaluation of microphysical processes. Quart. J. Roy. Met. Soc. 123, 1227-1282. 
+! </REFERENCE>
+!   <COMPILER NAME="">     </COMPILER>
+!   <PRECOMP FLAG="">      </PRECOMP>
+!   <LOADER FLAG="">       </LOADER>
+!   <TESTPROGRAM NAME="">  </TESTPROGRAM>
+!   <BUG>                  </BUG>
+!   <NOTE> 
+!1. qmin should be chosen such that the range of {qmin, max(qa,ql,qi)} is resolved by the precision of the numbers used. (default = 1.E-10)
+!   </NOTE>
+
+!   <NOTE> 
+!2. Dmin will be MACHINE DEPENDENT and occur when
+!   </NOTE>
+
+!   <NOTE> 
+!a. 1. -exp(-Dmin) = 0. instead of Dmin in the limit of very small Dmin
+!   </NOTE>
+
+!AND
+
+!   <NOTE> 
+!b. 1. - exp(-D) < D for all D > Dmin
+!   </NOTE>
+!   <FUTURE>               </FUTURE>
+
+! </INFO>
+
+  use  sat_vapor_pres_mod, only :  lookup_es,lookup_des
+  use             fms_mod, only :  file_exist, open_namelist_file,  &
+       error_mesg, FATAL, NOTE,         &
+       mpp_pe, mpp_root_pe, close_file, &
+       read_data, write_data,           &
+       check_nml_error, &
+       write_version_number, stdlog, &
+       open_restart_file, open_ieee32_file, &
+       mpp_error
+  use  fms_io_mod,         only :  get_restart_io_mode
+  use  constants_mod,      only :  rdgas,rvgas,hlv,hlf,hls,      &
+       cp_air,grav,tfreeze,dens_h2o
+  use  cloud_rad_mod,      only :  cloud_rad_init
+  use  diag_manager_mod,   only :  register_diag_field, send_data
+  use  time_manager_mod,   only :  time_type, get_date
+  use  edt_mod,            only :  edt_on, qaturb, qcturb,       &
+       tblyrtau        
+  use cloud_generator_mod, only :  do_cloud_generator,           &
+       compute_overlap_weighting
+
+  implicit none
+
+  public  strat_cloud_init,    &
+       strat_driv,          &
+       strat_cloud_end,     &
+       strat_cloud_sum,     &
+       strat_cloud_avg,     &
+       do_strat_cloud,      &
+       strat_cloud_on
+
+  !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!              GLOBAL STORAGE VARIABLES
-!
-!     radturbten    The sum of radiation and turbulent tendencies
-!                   for each grid box. (K/sec)
-!
+  !
+  !              GLOBAL STORAGE VARIABLES
+  !
+  !     radturbten    The sum of radiation and turbulent tendencies
+  !                   for each grid box. (K/sec)
+  !
 
-        
-!
-!     ------ data for cloud averaging code ------
-!
 
-      real,    allocatable, dimension (:,:,:) :: qlsum, qisum, cfsum
-      integer, allocatable, dimension (:,:)   :: nsum
+  !
+  !     ------ data for cloud averaging code ------
+  !
 
-!
-!     ------ constants used by the scheme -------
-!
+  real,    allocatable, dimension (:,:,:) :: qlsum, qisum, cfsum
+  integer, allocatable, dimension (:,:)   :: nsum
+  !
+  !     ------ constants used by the scheme -------
+  !
 
-      real, parameter :: d608 = (rvgas-rdgas) / rdgas
-      real, parameter :: d622 = rdgas / rvgas
-      real, parameter :: d378 = 1. - d622
-      
-       
-!        
+  real, parameter :: d608 = (rvgas-rdgas) / rdgas
+  real, parameter :: d622 = rdgas / rvgas
+  real, parameter :: d378 = 1. - d622
+  logical         :: do_netcdf_restart = .true.
+  !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!
-!       DECLARE CONSTANTS AND SET DEFAULT VALUES FOR PARAMETERS OF 
-!       THE SCHEME
-!
-!
-!
-!                  PHYSICAL CONSTANTS USED IN THE SCHEME
-!
-!
-!         constant              definition                  unit
-!       ------------   -----------------------------   ---------------
-!
-!           grav       gravitational acceleration      m/(s*s)
-!
-!           hlv        latent heat of vaporization     J/kg condensate
-!
-!           hlf        latent heat of fusion           J/kg condensate
-!
-!           hls        latent heat of sublimation      J/kg condensate
-!
-!           rdgas      gas constant of dry air         J/kg air/K
-!
-!           rvgas      gas constant of water vapor     J/kg air/K
-!
-!           cp_air     specific heat of air at         J/kg air/K
-!                      constant pressure
-!
-!           d622       rdgas divided by rvgas          dimensionless
-!
-!           d378       One minus d622                  dimensionless
-!
-!           tfreeze    Triple point of water           K
-!
-!           dens_h2o   Density of pure liquid          kg/(m*m*m)
-!
-!
-!
-!
-!                          PARAMETERS OF THE SCHEME 
-!
-!
-!         parameter              definition                  unit
-!       ------------   -----------------------------   ---------------
-!
-!            U00       threshold relative humidity     fraction
-!                      for cloud formation 
-!
-!       u00_profile    should low-level u00 ECMWF profile be applied?
-!
-!       rthresh        liquid cloud drop radius        microns
-!                      threshold for autoconversion
-!
-!       N_land         fixed number of cloud drops     1/(m*m*m)
-!                      per unit volume in liquid 
-!                      clouds on land
-!
-!       N_ocean        fixed number of cloud drops     1/(m*m*m)
-!                      per unit volume in liquid 
-!                      clouds over ocean
-!
-!       rho_ice        mass density of ice crystals    kg/(m*m*m)
-!
-!       ELI            collection efficiency of        dimensionless
-!                      cloud liquid by falling ice
-!
-!       U_evap         critical relative humidity      fraction
-!                      above which rain does not
-!                      evaporate
-!
-!       eros_scale     normal erosion rate constant    1/sec
-!                      cloud destruction
-!
-!       eros_choice    should enhanced erosion in      logical
-!                      turbulent conditions be done?
-!
-!       eros_scale_c   erosion rate constant for       1/sec
-!                      convective conditions
-!
-!       eros_scale_t   erosion rate constant for       1/sec
-!                      cloud destruction for
-!                      turbulent conditions
-!
-!       mc_thresh      Convective mass-flux            kg/m2/sec
-!                      threshold for enhanced
-!                      erosion to turn on.
-!
-!       diff_thresh    Diffusion coefficient           m2/s
-!                      threshold for enhanced
-!                      erosion to turn on.
-!
-!       super_choice   Should should excess vapor      logical
-!                      in supersaturated conditions    
-!                      be put into cloud water (true) 
-!                      or precipitation fluxes (false)
-!                 
-!       tracer_advec   Are cloud liquid,ice and        logical
-!                      fraction advected by the
-!                      grid resolved motion?
-!
-!       qmin           minimum permissible value of    kg condensate/
-!                      cloud liquid, cloud ice,        kg air
-!                      saturated volume fraction,
-!                      or rain and snow areas
-!
-!                      NOTE: qmin should be chosen
-!                      such that the range of
-!                      {qmin, max(qa,ql,qi)} is
-!                      resolved by the precision 
-!                      of the numbers used.
-!
-!       Dmin           minimum permissible             dimensionless
-!                      dissipation in analytic 
-!                      integration of qa, ql, qi
-!                      equations. This constant
-!                      only affects the method by
-!                      which the prognostic equations
-!                      are integrated.
-!
-!                      NOTE: Dmin will be MACHINE 
-!                      DEPENDENT and occur when 
-!                      a. 1. -exp(-Dmin)  = 0. 
-!                         instead of Dmin in the 
-!                         limit of very small Dmin
-!
-!                      AND 
-!
-!                      b. 1. - exp(-D) < D for
-!                         all D > Dmin
-!
-!       do_average     Average stratiform cloud properties
-!                      before computing clouds used by radiation?
-!
-!       strat_cloud_on Is the stratiform cloud scheme
-!                      operating? 
-!
-!       do_budget_diag Are any of the budget diagnostics
-!                      requested from this run?
-!                          
-!       num_strat_pts  number of grid points where 
-!                      instantaneous output will be 
-!                      saved to file strat.data
-!
-!                      num_strat_pts <= max_strat_pts
-!       
-!       max_strat_pts  maximum number of strat pts
-!                      for instantaneous output
-!
-!       strat_pts      "num_strat_pts" pairs of grid
-!                      indices, e.g., the global 
-!                      indices for i,j.
-!
-!       overlap        value of the overlap parameter
-!                      from cloud rad
-!                      overlap = 1 is maximum-random
-!                      overlap = 2 is random
+  !
+  !
+  !       DECLARE CONSTANTS AND SET DEFAULT VALUES FOR PARAMETERS OF 
+  !       THE SCHEME
+  !
+  !
+  !
+  !                  PHYSICAL CONSTANTS USED IN THE SCHEME
+  !
+  !
+  !         constant              definition                  unit
+  !       ------------   -----------------------------   ---------------
+  !
+  !           grav       gravitational acceleration      m/(s*s)
+  !
+  !           hlv        latent heat of vaporization     J/kg condensate
+  !
+  !           hlf        latent heat of fusion           J/kg condensate
+  !
+  !           hls        latent heat of sublimation      J/kg condensate
+  !
+  !           rdgas      gas constant of dry air         J/kg air/K
+  !
+  !           rvgas      gas constant of water vapor     J/kg air/K
+  !
+  !           cp_air     specific heat of air at         J/kg air/K
+  !                      constant pressure
+  !
+  !           d622       rdgas divided by rvgas          dimensionless
+  !
+  !           d378       One minus d622                  dimensionless
+  !
+  !           tfreeze    Triple point of water           K
+  !
+  !           dens_h2o   Density of pure liquid          kg/(m*m*m)
+  !
+  !
+  !
+  !
+  !                          PARAMETERS OF THE SCHEME 
+  !
+  !
+  !         parameter              definition                  unit
+  !       ------------   -----------------------------   ---------------
+  !
+  !            U00       threshold relative humidity     fraction
+  !                      for cloud formation 
+  !
+  !       u00_profile    should low-level u00 ECMWF profile be applied?
+  !
+  !       rthresh        liquid cloud drop radius        microns
+  !                      threshold for autoconversion
+  !
+  !       N_land         fixed number of cloud drops     1/(m*m*m)
+  !                      per unit volume in liquid 
+  !                      clouds on land
+  !
+  !       N_ocean        fixed number of cloud drops     1/(m*m*m)
+  !                      per unit volume in liquid 
+  !                      clouds over ocean
+  !
+  !       rho_ice        mass density of ice crystals    kg/(m*m*m)
+  !
+  !       ELI            collection efficiency of        dimensionless
+  !                      cloud liquid by falling ice
+  !
+  !       U_evap         critical relative humidity      fraction
+  !                      above which rain does not
+  !                      evaporate
+  !
+  !       eros_scale     normal erosion rate constant    1/sec
+  !                      cloud destruction
+  !
+  !       eros_choice    should enhanced erosion in      logical
+  !                      turbulent conditions be done?
+  !
+  !       eros_scale_c   erosion rate constant for       1/sec
+  !                      convective conditions
+  !
+  !       eros_scale_t   erosion rate constant for       1/sec
+  !                      cloud destruction for
+  !                      turbulent conditions
+  !
+  !       mc_thresh      Convective mass-flux            kg/m2/sec
+  !                      threshold for enhanced
+  !                      erosion to turn on.
+  !
+  !       diff_thresh    Diffusion coefficient           m2/s
+  !                      threshold for enhanced
+  !                      erosion to turn on.
+  !
+  !       super_choice   Should should excess vapor      logical
+  !                      in supersaturated conditions    
+  !                      be put into cloud water (true) 
+  !                      or precipitation fluxes (false)
+  !                 
+  !       tracer_advec   Are cloud liquid,ice and        logical
+  !                      fraction advected by the
+  !                      grid resolved motion?
+  !
+  !       qmin           minimum permissible value of    kg condensate/
+  !                      cloud liquid, cloud ice,        kg air
+  !                      saturated volume fraction,
+  !                      or rain and snow areas
+  !
+  !                      NOTE: qmin should be chosen
+  !                      such that the range of
+  !                      {qmin, max(qa,ql,qi)} is
+  !                      resolved by the precision 
+  !                      of the numbers used.
+  !
+  !       Dmin           minimum permissible             dimensionless
+  !                      dissipation in analytic 
+  !                      integration of qa, ql, qi
+  !                      equations. This constant
+  !                      only affects the method by
+  !                      which the prognostic equations
+  !                      are integrated.
+  !
+  !                      NOTE: Dmin will be MACHINE 
+  !                      DEPENDENT and occur when 
+  !                      a. 1. -exp(-Dmin)  = 0. 
+  !                         instead of Dmin in the 
+  !                         limit of very small Dmin
+  !
+  !                      AND 
+  !
+  !                      b. 1. - exp(-D) < D for
+  !                         all D > Dmin
+  !
+  !       do_average     Average stratiform cloud properties
+  !                      before computing clouds used by radiation?
+  !
+  !       strat_cloud_on Is the stratiform cloud scheme
+  !                      operating? 
+  !
+  !       do_budget_diag Are any of the budget diagnostics
+  !                      requested from this run?
+  !                          
+  !       num_strat_pts  number of grid points where 
+  !                      instantaneous output will be 
+  !                      saved to file strat.data
+  !
+  !                      num_strat_pts <= max_strat_pts
+  !       
+  !       max_strat_pts  maximum number of strat pts
+  !                      for instantaneous output
+  !
+  !       strat_pts      "num_strat_pts" pairs of grid
+  !                      indices, e.g., the global 
+  !                      indices for i,j.
+  !
+  !       overlap        value of the overlap parameter
+  !                      from cloud rad
+  !                      overlap = 1 is maximum-random
+  !                      overlap = 2 is random
 
-        real              :: U00            =  0.80
-        logical           :: u00_profile    =  .false.
-        real              :: rthresh        =  10.
-        real              :: N_land         =  250.E+06
-        real              :: N_ocean        =  100.E+06
-        real,   parameter :: rho_ice        =  100.
-        real,   parameter :: ELI            =  0.7
-        real              :: U_evap         =  1.0
-        real              :: eros_scale     =  1.E-06
-        logical           :: eros_choice    =  .false.
-        real              :: eros_scale_c   =  8.E-06
-        real              :: eros_scale_t   =  5.E-05
-        real              :: mc_thresh      =  0.001
-        real              :: diff_thresh    =  1.0
-        logical           :: super_choice   =  .false.
-        logical           :: tracer_advec   =  .false.
-        real              :: qmin           =  1.E-10
-        real              :: Dmin           =  1.E-08
-        logical           :: do_average     =  .false.
-        logical           :: strat_cloud_on =  .false.
-        logical           :: do_budget_diag =  .false.
-        integer,parameter :: max_strat_pts  =  5
-        integer           :: num_strat_pts  =  0
-        integer,dimension(2,max_strat_pts) :: strat_pts = 0
-        integer           :: overlap        =  2
-        real              :: efact          = 0.0
- 
-!
-!-----------------------------------------------------------------------
-!-------------------- diagnostics fields -------------------------------
+  real              :: U00            =  0.80
+  logical           :: u00_profile    =  .false.
+  real              :: rthresh        =  10.
+  real              :: N_land         =  250.E+06
+  real              :: N_ocean        =  100.E+06
+  real,   parameter :: rho_ice        =  100.
+  real,   parameter :: ELI            =  0.7
+  real              :: U_evap         =  1.0
+  real              :: eros_scale     =  1.E-06
+  logical           :: eros_choice    =  .false.
+  real              :: eros_scale_c   =  8.E-06
+  real              :: eros_scale_t   =  5.E-05
+  real              :: mc_thresh      =  0.001
+  real              :: diff_thresh    =  1.0
+  logical           :: super_choice   =  .false.
+  logical           :: tracer_advec   =  .false.
+  real              :: qmin           =  1.E-10
+  real              :: Dmin           =  1.E-08
+  logical           :: do_average     =  .false.
+  logical           :: strat_cloud_on =  .false.
+  logical           :: do_budget_diag =  .false.
+  integer,parameter :: max_strat_pts  =  5
+  integer           :: num_strat_pts  =  0
+  integer,dimension(2,max_strat_pts) :: strat_pts = 0
+  integer           :: overlap        =  2
+  real              :: efact          = 0.0
 
-        integer :: id_aliq,         id_aice,            id_aall,       &
-                   id_rvolume,      id_autocv,          id_vfall 
-        integer :: id_qldt_cond,    id_qldt_eros,       id_qldt_fill,  &
-                   id_qldt_accr,    id_qldt_evap,       id_qldt_freez, &
-                   id_qldt_berg,    id_qldt_destr,      id_qldt_rime,  &
-                   id_qldt_auto,    id_qldt_blcond,     id_qldt_blevap
-        integer :: id_rain_clr,     id_rain_cld,        id_a_rain_clr, &
-                   id_a_rain_cld,   id_rain_evap,       id_liq_adj
-        integer :: id_qidt_fall,    id_qidt_fill,       id_qidt_melt,  &
-                   id_qidt_dep,     id_qidt_subl,       id_qidt_eros,  &
-                   id_qidt_destr,   id_qidt_bldep,      id_qidt_blsubl
-        integer :: id_snow_clr,     id_snow_cld,        id_a_snow_clr, &
-                   id_a_snow_cld,   id_snow_subl,       id_snow_melt,  &
-                   id_ice_adj
-        integer :: id_ql_eros_col,  id_ql_cond_col,   id_ql_evap_col,  &
-                   id_ql_accr_col,  id_ql_auto_col,   id_ql_fill_col,  &
-                   id_ql_berg_col,  id_ql_destr_col,  id_ql_rime_col,  &       
-                   id_ql_freez_col, id_ql_blcond_col, id_ql_blevap_col    
-        integer :: id_rain_evap_col,id_liq_adj_col
-        integer :: id_qi_fall_col,  id_qi_fill_col,   id_qi_subl_col,  &
-                   id_qi_melt_col,  id_qi_destr_col,  id_qi_eros_col,  &
-                   id_qi_dep_col,   id_qi_bldep_col,  id_qi_blsubl_col
-        integer :: id_snow_subl_col,id_snow_melt_col, id_ice_adj_col
-        integer :: id_qadt_lsform,  id_qadt_eros,     id_qadt_fill,    &
-                   id_qadt_rhred,   id_qadt_destr,    id_qadt_blform,  &
-                   id_qadt_bldiss,  id_qadt_super   
-        integer :: id_qa_lsform_col,id_qa_eros_col,   id_qa_fill_col,  &
-                   id_qa_rhred_col, id_qa_destr_col,  id_qa_blform_col,&
-                   id_qa_bldiss_col,id_qa_super_col
-        integer :: id_a_precip_cld, id_a_precip_clr
-   
-        character(len=5) :: mod_name = 'strat'
-        real :: missing_value = -999.
- 
-!        
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!
-!       CREATE NAMELIST
-!
+  !
+  !-----------------------------------------------------------------------
+  !-------------------- diagnostics fields -------------------------------
 
-        NAMELIST /strat_cloud_nml/ U00,u00_profile,rthresh,N_land,     &
-                              N_ocean,U_evap,eros_scale,eros_choice,   &
-                              eros_scale_c,eros_scale_t,mc_thresh,     &
-                              diff_thresh,super_choice,tracer_advec,   &
-                              qmin,Dmin,num_strat_pts,strat_pts,efact
-!        
+  integer :: id_aliq,         id_aice,            id_aall,       &
+       id_rvolume,      id_autocv,          id_vfall 
+  integer :: id_qldt_cond,    id_qldt_eros,       id_qldt_fill,  &
+       id_qldt_accr,    id_qldt_evap,       id_qldt_freez, &
+       id_qldt_berg,    id_qldt_destr,      id_qldt_rime,  &
+       id_qldt_auto,    id_qldt_blcond,     id_qldt_blevap
+  integer :: id_rain_clr,     id_rain_cld,        id_a_rain_clr, &
+       id_a_rain_cld,   id_rain_evap,       id_liq_adj
+  integer :: id_qidt_fall,    id_qidt_fill,       id_qidt_melt,  &
+       id_qidt_dep,     id_qidt_subl,       id_qidt_eros,  &
+       id_qidt_destr,   id_qidt_bldep,      id_qidt_blsubl
+  integer :: id_snow_clr,     id_snow_cld,        id_a_snow_clr, &
+       id_a_snow_cld,   id_snow_subl,       id_snow_melt,  &
+       id_ice_adj
+  integer :: id_ql_eros_col,  id_ql_cond_col,   id_ql_evap_col,  &
+       id_ql_accr_col,  id_ql_auto_col,   id_ql_fill_col,  &
+       id_ql_berg_col,  id_ql_destr_col,  id_ql_rime_col,  &       
+       id_ql_freez_col, id_ql_blcond_col, id_ql_blevap_col    
+  integer :: id_rain_evap_col,id_liq_adj_col
+  integer :: id_qi_fall_col,  id_qi_fill_col,   id_qi_subl_col,  &
+       id_qi_melt_col,  id_qi_destr_col,  id_qi_eros_col,  &
+       id_qi_dep_col,   id_qi_bldep_col,  id_qi_blsubl_col
+  integer :: id_snow_subl_col,id_snow_melt_col, id_ice_adj_col
+  integer :: id_qadt_lsform,  id_qadt_eros,     id_qadt_fill,    &
+       id_qadt_rhred,   id_qadt_destr,    id_qadt_blform,  &
+       id_qadt_bldiss,  id_qadt_super   
+  integer :: id_qa_lsform_col,id_qa_eros_col,   id_qa_fill_col,  &
+       id_qa_rhred_col, id_qa_destr_col,  id_qa_blform_col,&
+       id_qa_bldiss_col,id_qa_super_col
+  integer :: id_a_precip_cld, id_a_precip_clr
+
+  character(len=5) :: mod_name = 'strat'
+  real :: missing_value = -999.
+
+  !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!
-!       DECLARE VERSION NUMBER OF SCHEME
-!
-        
-        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 10.0 2003/10/24 22:00:50 fms Exp $'
-        Character(len=128) :: Tagname = '$Name: jakarta $'
-        logical            :: module_is_initialized = .false.
-        integer, dimension(1) :: restart_versions = (/ 1 /)
-!        
+  !
+  !
+  !       CREATE NAMELIST
+  !
+
+! <NAMELIST NAME="strat_cloud_nml">
+!  <DATA NAME="do_netcdf_restart" UNITS="fraction" TYPE="logical" DIM="" DEFAULT="">
+!   netcdf/native restart format
+!  </DATA>
+!  <DATA NAME="U00" UNITS="" TYPE="real" DIM="" DEFAULT="">
+!     Threshold relative humidity for cloud formation by large-scale condensation. (default = 0.80) 
+!  </DATA>
+!  <DATA NAME="u00_profile" UNITS="microns" TYPE="logical" DIM="" DEFAULT="">
+! Should low-level u00 ECMWF profile be applied? (default = .false.) 
+!  </DATA>
+!  <DATA NAME="rthresh" UNITS="" TYPE="real" DIM="" DEFAULT="">
+!  Liquid cloud drop radius threshold for autoconversion. (default = 10.)
+!  </DATA>
+!  <DATA NAME="N_land" UNITS="1/(m*m*m)" TYPE="real" DIM="" DEFAULT="">
+! Fixed number of cloud drops per unit volume in liquid clouds on land. ( default = 250.E+06)
+!  </DATA>
+!  <DATA NAME="N_ocean" UNITS="1/(m*m*m)" TYPE="real" DIM="" DEFAULT="">
+!  Fixed number of cloud drops per unit volume in liquid clouds over ocean. ( default = 100.E+06)
+!  </DATA>
+!  <DATA NAME="U_evap" UNITS="fraction" TYPE="real" DIM="" DEFAULT="">
+!    Critical relative humidity above which rain does not evaporate. (default = 1.0) 
+!  </DATA>
+!  <DATA NAME="eros_scale" UNITS="1/sec" TYPE="real" DIM="" DEFAULT="">
+! Normal erosion rate constant cloud destruction (default = 1.E-06) 
+!  </DATA>
+!  <DATA NAME="eros_choice" UNITS="" TYPE="real" DIM="" DEFAULT="">
+! Should enhanced erosion in turbulent conditions be done? (default = .false.)
+!  </DATA>
+!  <DATA NAME="eros_scale_c" UNITS="1/sec" TYPE="real" DIM="" DEFAULT="">
+!  Erosion rate constant for convective conditions. (default = 8.E-05)
+!  </DATA>
+!  <DATA NAME="eros_scale_t" UNITS="1/sec" TYPE="real" DIM="" DEFAULT="">
+! Erosion rate constant for cloud destruction for turbulent conditions. (default = 5.E-05)
+!  </DATA>
+!  <DATA NAME="mc_thresh" UNITS="kg/m2/sec" TYPE="real" DIM="" DEFAULT="">
+!  Convective mass-flux threshold for enhanced erosion to turn on. (default = 0.001) 
+!  </DATA>
+!  <DATA NAME="diff_thresh" UNITS="m2/s" TYPE="real" DIM="" DEFAULT="">
+!  Diffusion coefficient threshold for enhanced erosion to turn on. (default = 1.0) 
+!  </DATA>
+!  <DATA NAME="super_choice" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+! Should should excess vapor in supersaturated conditions be put into cloud water (true) or precipitation fluxes (false)? (default = .false.) 
+!  </DATA>
+!  <DATA NAME="tracer_advec" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+! Are cloud liquid,ice and fraction advected by the grid resolved motion? (default = .false.) 
+!  </DATA>
+!  <DATA NAME="qmin" UNITS="kg condensate/kg air" TYPE="real" DIM="" DEFAULT="">
+!  Minimum permissible value of cloud liquid, cloud ice, saturated volume fraction, or rain and snow areas.
+
+! NOTE: qmin should be chosen such that the range of {qmin, max(qa,ql,qi)} is resolved by the precision of the numbers used. (default = 1.E-10) 
+!  </DATA>
+!  <DATA NAME="Dmin" UNITS="Dimensionless" TYPE="real" DIM="" DEFAULT="">
+! Minimum permissible dissipation in analytic integration of qa, ql, qi equations. This constant only affects the method by which the prognostic equations are integrated.
+
+!NOTE: Dmin will be MACHINE DEPENDENT and occur when
+
+!a. 1. -exp(-Dmin) = 0. instead of Dmin in the limit of very small Dmin
+
+!AND
+
+!b. 1. - exp(-D) < D for all D > Dmin
+
+!(default = 1.E-08) 
+!  </DATA>
+!  <DATA NAME="num_strat_pts" UNITS="" TYPE="integer" DIM="" DEFAULT="">
+! Number of grid points where instantaneous output will be saved to file strat.data
+
+!num_strat_pts <= max_strat_pts
+
+!(default = 0)
+!  </DATA>
+!  <DATA NAME="strat_pts" UNITS="" TYPE="integer" DIM="" DEFAULT="">
+!num_strat_pts" pairs of grid indices, e.g., the global indices for i,j. (default = 0) 
+!  </DATA>
+!  <DATA NAME="efact" UNITS="" TYPE="real" DIM="" DEFAULT="">
+! (default = 0.0) 
+!  </DATA>
+! </NAMELIST>
+
+  NAMELIST /strat_cloud_nml/ do_netcdf_restart,   &
+       U00,u00_profile,rthresh,N_land,          &
+       N_ocean,U_evap,eros_scale,eros_choice,   &
+       eros_scale_c,eros_scale_t,mc_thresh,     &
+       diff_thresh,super_choice,tracer_advec,   &
+       qmin,Dmin,num_strat_pts,strat_pts,efact
+  !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!
-!       The module contains the following subroutines:
-!
-!
-!       strat_cloud_init    read namelist file, open logfile, initialize
-!                     constants and fields, read restart file
-!
-!       diag_field_init 
-!                     initializes diagnostic fields
-!
-!       strat_driv    calculations of the cloud scheme are performed 
-!                     here
-!
-!       add_strat_tend  
-!                     Adds a field to radturbten. This subroutine is 
-!                     needed because of the method to calculate the 
-!                     radiative and turbulent tendencies.
-!
-!       subtract_strat_tend 
-!                     Subtracts a field from radturbten.
-!
-!       strat_cloud_end     writes out restart data to a restart file.
-!
-!       strat_cloud_sum
-!                     sum cloud scheme variables
-!
-!       strat_cloud_avg
-!                     return average of summed cloud scheme variables
-!
-!       do_strat_cloud
-!                     logical flag, is the scheme on?
-!
+  !
+  !
+  !       DECLARE VERSION NUMBER OF SCHEME
+  !
+
+  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 11.0 2004/09/28 19:24:51 fms Exp $'
+  Character(len=128) :: Tagname = '$Name: khartoum $'
+  logical            :: module_is_initialized = .false.
+  integer, dimension(1) :: restart_versions = (/ 1 /)
+  !        
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  !
+  !
+  !       The module contains the following subroutines:
+  !
+  !
+  !       strat_cloud_init    read namelist file, open logfile, initialize
+  !                     constants and fields, read restart file
+  !
+  !       diag_field_init 
+  !                     initializes diagnostic fields
+  !
+  !       strat_driv    calculations of the cloud scheme are performed 
+  !                     here
+  !
+  !       add_strat_tend  
+  !                     Adds a field to radturbten. This subroutine is 
+  !                     needed because of the method to calculate the 
+  !                     radiative and turbulent tendencies.
+  !
+  !       subtract_strat_tend 
+  !                     Subtracts a field from radturbten.
+  !
+  !       strat_cloud_end     writes out restart data to a restart file.
+  !
+  !       strat_cloud_sum
+  !                     sum cloud scheme variables
+  !
+  !       strat_cloud_avg
+  !                     return average of summed cloud scheme variables
+  !
+  !       do_strat_cloud
+  !                     logical flag, is the scheme on?
+  !
 
 
 CONTAINS
 
 
 
-!#######################################################################
-!#######################################################################
+  !#######################################################################
+  !#######################################################################
 
 
-! <SUBROUTINE NAME="strat_init">
-!  <OVERVIEW>
-!   
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!       Initializes strat_cloud.  Reads namelist, calls cloud_rad_init,
-!       reads restart (if present), initializes netcdf output.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call strat_init(axes,Time,idim,jdim,kdim)
-!		
-!  </TEMPLATE>
-!  <IN NAME="axes" TYPE="integer">
-!       Axes integer vector used for netcdf initialization.
-!  </IN>
-!  <IN NAME="Time" TYPE="time_type">
-!       Time type variable used for netcdf.
-!  </IN>
-!  <IN NAME="idim" TYPE="integer">
-!       Size of first array (usually longitude) dimension.
-!  </IN>
-!  <IN NAME="jdim" TYPE="integer">
-!       Size of second array (usually latitude) dimension.
-!  </IN>
-!  <IN NAME="kdim" TYPE="integer">
-!       Size of vertical array (usually height) dimension.
-!  </IN>
-! </SUBROUTINE>
-!
-subroutine strat_cloud_init(axes,Time,idim,jdim,kdim)
-                               
+  ! <SUBROUTINE NAME="strat_cloud_init">
+  !  <OVERVIEW>
+  !   
+  !  </OVERVIEW>
+  !  <DESCRIPTION>
+  !       Initializes strat_cloud.  Reads namelist, calls cloud_rad_init,
+  !       reads restart (if present), initializes netcdf output.
+  !  </DESCRIPTION>
+  !  <TEMPLATE>
+  !   call strat_cloud_init(axes,Time,idim,jdim,kdim)
+  !		
+  !  </TEMPLATE>
+  !  <IN NAME="axes" TYPE="integer">
+  !       Axes integer vector used for netcdf initialization.
+  !  </IN>
+  !  <IN NAME="Time" TYPE="time_type">
+  !       Time type variable used for netcdf.
+  !  </IN>
+  !  <IN NAME="idim" TYPE="integer">
+  !       Size of first array (usually longitude) dimension.
+  !  </IN>
+  !  <IN NAME="jdim" TYPE="integer">
+  !       Size of second array (usually latitude) dimension.
+  !  </IN>
+  !  <IN NAME="kdim" TYPE="integer">
+  !       Size of vertical array (usually height) dimension.
+  !  </IN>
+  ! </SUBROUTINE>
+  !
+  subroutine strat_cloud_init(axes,Time,idim,jdim,kdim)
 
-!        
+
+    !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!       This subroutine reads the namelist file, opens a logfile, 
-!       and initializes the physical constants of the routine.
-!        
+    !
+    !       This subroutine reads the namelist file, opens a logfile, 
+    !       and initializes the physical constants of the routine.
+    !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!
-!
-!       VARIABLES
-!
-!
-!       ------
-!       INPUT:
-!       ------
-!
-!         variable              definition                  unit
-!       ------------   -----------------------------   ---------------
-!
-!       axes           integers corresponding to the
-!                      x,y,z,z_half axes types
-!
-!       Time           time type variable
-!
-!       idim,jdim      number of points in first 
-!                      and second dimensions
-!
-!       kdim           number of points in vertical
-!                      dimension
-!
-!
-!       -------------------
-!       INTERNAL VARIABLES:
-!       -------------------
-!
-!         variable              definition                  unit
-!       ------------   -----------------------------   ---------------
-!
-!       unit           unit number for namelist and
-!                      restart file
-!
-!       io             internal variable for reading
-!                      of namelist file
-!
-!        
+    !
+    !
+    !
+    !       VARIABLES
+    !
+    !
+    !       ------
+    !       INPUT:
+    !       ------
+    !
+    !         variable              definition                  unit
+    !       ------------   -----------------------------   ---------------
+    !
+    !       axes           integers corresponding to the
+    !                      x,y,z,z_half axes types
+    !
+    !       Time           time type variable
+    !
+    !       idim,jdim      number of points in first 
+    !                      and second dimensions
+    !
+    !       kdim           number of points in vertical
+    !                      dimension
+    !
+    !
+    !       -------------------
+    !       INTERNAL VARIABLES:
+    !       -------------------
+    !
+    !         variable              definition                  unit
+    !       ------------   -----------------------------   ---------------
+    !
+    !       unit           unit number for namelist and
+    !                      restart file
+    !
+    !       io             internal variable for reading
+    !                      of namelist file
+    !
+    !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
+    !
 
 
-!        
-!       user Interface variables
-!       ------------------------
-!
+    !        
+    !       user Interface variables
+    !       ------------------------
+    !
 
-        integer, intent (in)                   :: idim,jdim,kdim,axes(4)
-        type(time_type), intent(in)            :: Time
-        
-!
-!       Internal variables
-!       ------------------
-!
+    integer, intent (in)                   :: idim,jdim,kdim,axes(4)
+    type(time_type), intent(in)            :: Time
 
-        integer                                :: unit,io,ierr
-        integer                                :: vers, vers2
-        character(len=4)                       :: chvers
-        character(len=5)                       :: chio
+    !
+    !       Internal variables
+    !       ------------------
+    !
+
+    integer                                :: unit,io,ierr
+    integer                                :: vers, vers2
+    character(len=4)                       :: chvers
+    character(len=5)                       :: chio
+    character(len=64)                      :: fname='INPUT/strat_cloud.res.nc'
+    integer, dimension(4)                  :: siz
+    !-----------------------------------------------------------------------
+    !       
+    !       Code
+    !
+
+    !-----------------------------------------------------------------------
+    !
+    !       Namelist functions
+
+    !       ----- read namelist -----
+
+    if ( file_exist('input.nml')) then
+       unit = open_namelist_file ()
+       ierr=1; do while (ierr /= 0)
+       read  (unit, nml=strat_cloud_nml, iostat=io, end=10)
+       ierr = check_nml_error(io,'strat_cloud_nml')
+    enddo
+10  call close_file (unit)
+ endif
+ call get_restart_io_mode(do_netcdf_restart)
+
+ !write namelist variables to logfile
+ if ( mpp_pe() == mpp_root_pe() ) then
+    call write_version_number(Version, Tagname)
+    write (stdlog(),nml=strat_cloud_nml)
+ endif
+
+ !-----------------------------------------------------------------------
+ !
+ !       initialize qmin, N_land, N_ocean and selected physical constants
+ !       in cloud_rad_mod
+
+ call cloud_rad_init(axes,Time,qmin_in=qmin,N_land_in=N_land,&
+      N_ocean_in=N_ocean,overlap_out=overlap)
+
+ !-----------------------------------------------------------------------
+ !
+ !       initialize strat_cloud_on to true
+
+ strat_cloud_on = .TRUE.
+
+ !-----------------------------------------------------------------------
+ !
+ !       Read Restart file
 
 
-!-----------------------------------------------------------------------
-!       
-!       Code
-!
+ !set up stratiform cloud storage
+ !           PRINT *, idim, jdim
+ allocate(nsum(idim, jdim),      &
+      qlsum(idim,jdim,kdim), &
+      qisum(idim,jdim,kdim), &
+      cfsum(idim,jdim,kdim)  )
 
-!-----------------------------------------------------------------------
-!
-!       Namelist functions
+ !see if restart file exists
+ if (file_exist('INPUT/strat_cloud.res.nc') ) then
+    if(mpp_pe() == mpp_root_pe() ) call mpp_error ('strat_cloud_mod', &
+         'Reading netCDF formatted restart file: INPUT/strat_cloud.res.nc', NOTE)
+    call read_data(fname, 'vers', vers, no_domain=.true.)
+    call read_data(fname, 'nsum',  nsum)
+    call read_data(fname, 'qlsum', qlsum)
+    call read_data(fname, 'qisum', qisum)
+    call read_data(fname, 'cfsum', cfsum)
+ else
+    If (file_exist('INPUT/strat_cloud.res')) Then
+       unit = open_restart_file (FILE='INPUT/strat_cloud.res', &
+            ACTION='read')
+       if(mpp_pe() == mpp_root_pe() ) call mpp_error ('strat_cloud_mod', &
+            'Reading native formatted restart file.', NOTE)
+       read (unit, iostat=io, err=142) vers, vers2
 
-!       ----- read namelist -----
+142    continue
+       if (io == 0) then
 
-        if ( file_exist('input.nml')) then
-        unit = open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-           read  (unit, nml=strat_cloud_nml, iostat=io, end=10)
-           ierr = check_nml_error(io,'strat_cloud_nml')
-        enddo
-10      call close_file (unit)
-        endif
+          !--------------------------------------------------------------------
+          !    if eor is not encountered, then the file includes radturbten.
+          !    that data is not needed, simply continue by reading next record.
+          !--------------------------------------------------------------------
+          call error_mesg ('strat_cloud_mod',  &
+               'reading pre-version number strat_cloud.res file, &
+               &ignoring radturbten', NOTE)
 
+          !--------------------------------------------------------------------
+          !    the file is a newer one with a version number included. read the 
+          !    version number. if it is not a valid version, stop execution with
+          !    a message.
+          !--------------------------------------------------------------------
+       else
+          if (.not. any(vers == restart_versions) ) then
+             write (chvers, '(i4)') vers
+             call error_mesg ('strat_cloud_mod',  &
+                  'restart version ' // chvers//' cannot be read &
+                  &by this version of strat_cloud_mod.', FATAL)
+          endif
+       endif
+       call read_data (unit, nsum)
+       call read_data (unit, qlsum)
+       call read_data (unit, qisum)
+       call read_data (unit, cfsum)
+       call close_file (unit)
+    else
+       qlsum=0.0; qisum=0.0; cfsum=0.0; nsum=0
+    endif
+ endif
+ !-----------------------------------------------------------------------
+ !
+ !       Setup Diagnostics
 
-        !write namelist variables to logfile
-        if ( mpp_pe() == mpp_root_pe() ) then
-           call write_version_number(Version, Tagname)
-           write (stdlog(),nml=strat_cloud_nml)
-        endif
+ call diag_field_init(axes,Time)
 
-!-----------------------------------------------------------------------
-!
-!       initialize qmin, N_land, N_ocean and selected physical constants
-!       in cloud_rad_mod
-
-        call cloud_rad_init(axes,Time,qmin_in=qmin,N_land_in=N_land,&
-                            N_ocean_in=N_ocean,overlap_out=overlap)
-
-!-----------------------------------------------------------------------
-!
-!       initialize strat_cloud_on to true
-
-        strat_cloud_on = .TRUE.
-
-!-----------------------------------------------------------------------
-!
-!       Read Restart file
-
-        
-        !set up stratiform cloud storage
-           
-            allocate( nsum(idim,jdim),      &
-                     qlsum(idim,jdim,kdim), &
-                     qisum(idim,jdim,kdim), &
-                     cfsum(idim,jdim,kdim)  )
-        
-        !see if restart file exists
-        If (file_exist('INPUT/strat_cloud.res')) Then
-                 unit = open_restart_file (FILE='INPUT/strat_cloud.res', &
-                                           ACTION='read')
-         read (unit, iostat=io, err=142) vers, vers2
-
-142       continue
-          if (io == 0) then
-
-!--------------------------------------------------------------------
-!    if eor is not encountered, then the file includes radturbten.
-!    that data is not needed, simply continue by reading next record.
-!--------------------------------------------------------------------
-            call error_mesg ('strat_cloud_mod',  &
-           'reading pre-version number strat_cloud.res file, &
-            &ignoring radturbten', NOTE)
- 
-!--------------------------------------------------------------------
-!    the file is a newer one with a version number included. read the 
-!    version number. if it is not a valid version, stop execution with
-!    a message.
-!--------------------------------------------------------------------
-           else
-             if (.not. any(vers == restart_versions) ) then
-               write (chvers, '(i4)') vers
-               call error_mesg ('strat_cloud_mod',  &
-                 'restart version ' // chvers//' cannot be read &
-                     &by this version of strat_cloud_mod.', FATAL)
-             endif
-           endif
-
-           call read_data (unit, nsum)
-           call read_data (unit, qlsum)
-           call read_data (unit, qisum)
-           call read_data (unit, cfsum)
-           call close_file (unit)
-        else
-         qlsum=0.0; qisum=0.0; cfsum=0.0; nsum=0
-        endif
-
-!-----------------------------------------------------------------------
-!
-!       Setup Diagnostics
- 
-        call diag_field_init(axes,Time)
-
-!-----------------------------------------------------------------------
-!
-!
-!       end of subroutine
-!
-!
-        module_is_initialized = .true.
+ !-----------------------------------------------------------------------
+ !
+ !
+ !       end of subroutine
+ !
+ !
+ module_is_initialized = .true.
 
 end subroutine strat_cloud_init
 
@@ -605,7 +745,7 @@ end subroutine strat_cloud_init
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call diag_field_init (axes,Time)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="axes" TYPE="integer">
 !         Integer array containing axes integers.
@@ -618,530 +758,530 @@ end subroutine strat_cloud_init
 subroutine diag_field_init (axes,Time)
 
 
-        integer,         intent(in) :: axes(4)
-        type(time_type), intent(in) :: Time
- 
-        integer, dimension(3) :: half = (/1,2,4/)
+ integer,         intent(in) :: axes(4)
+ type(time_type), intent(in) :: Time
+
+ integer, dimension(3) :: half = (/1,2,4/)
 
 
-! assorted items
+ ! assorted items
 
-        id_aall = register_diag_field ( mod_name, 'aall', axes(1:3),   &
-             Time, 'Cloud fraction for all clouds at midtimestep',     &
-             'dimensionless', missing_value=missing_value )
+ id_aall = register_diag_field ( mod_name, 'aall', axes(1:3),   &
+      Time, 'Cloud fraction for all clouds at midtimestep',     &
+      'dimensionless', missing_value=missing_value )
 
-        id_aliq = register_diag_field ( mod_name, 'aliq', axes(1:3),   &
-             Time, 'Cloud fraction for liquid clouds', 'dimensionless',&
-             missing_value=missing_value )
+ id_aliq = register_diag_field ( mod_name, 'aliq', axes(1:3),   &
+      Time, 'Cloud fraction for liquid clouds', 'dimensionless',&
+      missing_value=missing_value )
 
-        id_aice = register_diag_field ( mod_name, 'aice', axes(1:3),   &
-             Time, 'Cloud fraction for ice clouds', 'dimensionless',   &
-             missing_value=missing_value )
+ id_aice = register_diag_field ( mod_name, 'aice', axes(1:3),   &
+      Time, 'Cloud fraction for ice clouds', 'dimensionless',   &
+      missing_value=missing_value )
 
-        id_rvolume = register_diag_field ( mod_name, 'rv', axes(1:3),  &
-             Time, 'Cloud liquid mean volume radius', 'microns',       &
-             missing_value=missing_value )
+ id_rvolume = register_diag_field ( mod_name, 'rv', axes(1:3),  &
+      Time, 'Cloud liquid mean volume radius', 'microns',       &
+      missing_value=missing_value )
 
-        id_autocv = register_diag_field ( mod_name, 'aauto', axes(1:3),&
-             Time, 'Cloud fraction where autoconversion is occurring', &
-             'dimensionless', missing_value=missing_value )
+ id_autocv = register_diag_field ( mod_name, 'aauto', axes(1:3),&
+      Time, 'Cloud fraction where autoconversion is occurring', &
+      'dimensionless', missing_value=missing_value )
 
-        id_vfall = register_diag_field ( mod_name, 'vfall', axes(1:3), &
-             Time, 'Ice crystal fall speed', 'meters/second',          &
-             missing_value=missing_value )
-
-
-!liquid water tendencies
+ id_vfall = register_diag_field ( mod_name, 'vfall', axes(1:3), &
+      Time, 'Ice crystal fall speed', 'meters/second',          &
+      missing_value=missing_value )
 
 
-        id_qldt_cond = register_diag_field ( mod_name, &
-             'qldt_cond', axes(1:3), Time, &
-       'Liquid water specific humidity tendency from LS condensation', &
-             'kg/kg/sec', missing_value=missing_value               )
+ !liquid water tendencies
 
-        id_qldt_evap = register_diag_field ( mod_name, &
-             'qldt_evap', axes(1:3), Time, &
-        'Liquid water specific humidity tendency from LS evaporation', &
-             'kg/kg/sec', missing_value=missing_value               )
 
-        id_qldt_eros = register_diag_field ( mod_name, &
-             'qldt_eros', axes(1:3), Time, &
-             'Liquid water specific humidity tendency from erosion',   &
-             'kg/kg/sec', missing_value=missing_value               )
+ id_qldt_cond = register_diag_field ( mod_name, &
+      'qldt_cond', axes(1:3), Time, &
+      'Liquid water specific humidity tendency from LS condensation', &
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qldt_berg = register_diag_field ( mod_name, &
-             'qldt_berg', axes(1:3), Time, &
-       'Liquid water specific humidity tendency from Bergeron process',&
-             'kg/kg/sec', missing_value=missing_value               )
+ id_qldt_evap = register_diag_field ( mod_name, &
+      'qldt_evap', axes(1:3), Time, &
+      'Liquid water specific humidity tendency from LS evaporation', &
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qldt_freez = register_diag_field ( mod_name, &
-             'qldt_freez', axes(1:3), Time, &
-    'Liquid water specific humidity tendency from homogenous freezing',&
-             'kg/kg/sec', missing_value=missing_value               )
+ id_qldt_eros = register_diag_field ( mod_name, &
+      'qldt_eros', axes(1:3), Time, &
+      'Liquid water specific humidity tendency from erosion',   &
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qldt_rime = register_diag_field ( mod_name, &
-             'qldt_rime', axes(1:3), Time, &
-             'Liquid water specific humidity tendency from riming',    &
-             'kg/kg/sec', missing_value=missing_value               )
+ id_qldt_berg = register_diag_field ( mod_name, &
+      'qldt_berg', axes(1:3), Time, &
+      'Liquid water specific humidity tendency from Bergeron process',&
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qldt_accr = register_diag_field ( mod_name, &
-             'qldt_accr', axes(1:3), Time, &
-             'Liquid water specific humidity tendency from accretion', &
-             'kg/kg/sec', missing_value=missing_value               )
+ id_qldt_freez = register_diag_field ( mod_name, &
+      'qldt_freez', axes(1:3), Time, &
+      'Liquid water specific humidity tendency from homogenous freezing',&
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qldt_auto = register_diag_field ( mod_name, &
-             'qldt_auto', axes(1:3), Time, &
-         'Liquid water specific humidity tendency from autoconversion',&
-             'kg/kg/sec', missing_value=missing_value               )
-        
-        id_qldt_fill = register_diag_field ( mod_name, &
-             'qldt_fill', axes(1:3), Time, &
-             'Liquid water specific humidity tendency from filler',    &
-             'kg/kg/sec', missing_value=missing_value               )
-                
-        id_qldt_destr = register_diag_field ( mod_name, &
-             'qldt_destr', axes(1:3), Time, &
+ id_qldt_rime = register_diag_field ( mod_name, &
+      'qldt_rime', axes(1:3), Time, &
+      'Liquid water specific humidity tendency from riming',    &
+      'kg/kg/sec', missing_value=missing_value               )
+
+ id_qldt_accr = register_diag_field ( mod_name, &
+      'qldt_accr', axes(1:3), Time, &
+      'Liquid water specific humidity tendency from accretion', &
+      'kg/kg/sec', missing_value=missing_value               )
+
+ id_qldt_auto = register_diag_field ( mod_name, &
+      'qldt_auto', axes(1:3), Time, &
+      'Liquid water specific humidity tendency from autoconversion',&
+      'kg/kg/sec', missing_value=missing_value               )
+
+ id_qldt_fill = register_diag_field ( mod_name, &
+      'qldt_fill', axes(1:3), Time, &
+      'Liquid water specific humidity tendency from filler',    &
+      'kg/kg/sec', missing_value=missing_value               )
+
+ id_qldt_destr = register_diag_field ( mod_name, &
+      'qldt_destr', axes(1:3), Time, &
       'Liquid water specific humidity tendency from cloud destruction',&
-             'kg/kg/sec', missing_value=missing_value               )
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qldt_blcond = register_diag_field ( mod_name, &
-             'qldt_blcond', axes(1:3), Time, 'Liquid water specific '//&
-    'humidity tendency from boundary layer cloud condensation',&
-             'kg/kg/sec', missing_value=missing_value               )
+ id_qldt_blcond = register_diag_field ( mod_name, &
+      'qldt_blcond', axes(1:3), Time, 'Liquid water specific '//&
+      'humidity tendency from boundary layer cloud condensation',&
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qldt_blevap = register_diag_field ( mod_name, &
-             'qldt_blevap', axes(1:3), Time, 'Liquid water specific '//&
-     'humidity tendency from boundary layer cloud evaporation',&
-             'kg/kg/sec', missing_value=missing_value               )
-
-                
-!rain stuff
+ id_qldt_blevap = register_diag_field ( mod_name, &
+      'qldt_blevap', axes(1:3), Time, 'Liquid water specific '//&
+      'humidity tendency from boundary layer cloud evaporation',&
+      'kg/kg/sec', missing_value=missing_value               )
 
 
-        id_liq_adj = register_diag_field ( mod_name, &
-             'liq_adj', axes(1:3), Time, &
-            'Liquid condensation rate from removal of supersaturation',&
-             'kg/kg/sec', missing_value=missing_value               )
-
-        id_rain_clr = register_diag_field ( mod_name, &
-             'rain_clr', axes(half), Time, &
-             'Clear sky rain rate averaged to grid box mean',          &
-             'kg/m2/s', missing_value=missing_value                 )
-     
-        id_rain_cld = register_diag_field ( mod_name, &
-             'rain_cld', axes(half), Time, &
-             'cloudy sky rain rate averaged to grid box mean',         &
-             'kg/m2/s', missing_value=missing_value                 )
-     
-        id_a_rain_clr = register_diag_field ( mod_name, &
-             'a_rain_clr', axes(half), Time, &
-             'Clear sky rain fractional coverage',                     &
-             'fraction', missing_value=missing_value                 )
-     
-        id_a_rain_cld = register_diag_field ( mod_name, &
-             'a_rain_cld', axes(half), Time, &
-             'cloudy sky rain fractional coverage',                    &
-             'fraction', missing_value=missing_value                 )
-     
-        id_rain_evap = register_diag_field ( mod_name, &
-             'rain_evap', axes(1:3), Time, &
-             'Water vapor tendency from rain evaporation',             &
-             'kg/kg/sec', missing_value=missing_value               )
-
-        id_a_precip_clr = register_diag_field ( mod_name, &
-             'a_precip_clr', axes(half), Time, &
-             'Clear sky precip fractional coverage',                   &
-             'fraction', missing_value=missing_value                 )
-     
-        id_a_precip_cld = register_diag_field ( mod_name, &
-             'a_precip_cld', axes(half), Time, &
-             'cloudy sky precip fractional coverage',                  &
-             'fraction', missing_value=missing_value                 )
-     
-        
-!ice water tendencies
+ !rain stuff
 
 
-        id_qidt_dep = register_diag_field ( mod_name, &
-             'qidt_dep', axes(1:3), Time, &
-            'Ice water specific humidity tendency from LS deposition', &
-             'kg/kg/sec', missing_value=missing_value               )
+ id_liq_adj = register_diag_field ( mod_name, &
+      'liq_adj', axes(1:3), Time, &
+      'Liquid condensation rate from removal of supersaturation',&
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qidt_subl = register_diag_field ( mod_name, &
-             'qidt_subl', axes(1:3), Time, &
-           'Ice water specific humidity tendency from LS sublimation', &
-             'kg/kg/sec', missing_value=missing_value               )
+ id_rain_clr = register_diag_field ( mod_name, &
+      'rain_clr', axes(half), Time, &
+      'Clear sky rain rate averaged to grid box mean',          &
+      'kg/m2/s', missing_value=missing_value                 )
 
-        id_qidt_fall = register_diag_field ( mod_name, &
-             'qidt_fall', axes(1:3), Time, &
-             'Ice water specific humidity tendency from ice settling', &
-             'kg/kg/sec', missing_value=missing_value               )
+ id_rain_cld = register_diag_field ( mod_name, &
+      'rain_cld', axes(half), Time, &
+      'cloudy sky rain rate averaged to grid box mean',         &
+      'kg/m2/s', missing_value=missing_value                 )
 
-        id_qidt_eros = register_diag_field ( mod_name, &
-             'qidt_eros', axes(1:3), Time, &
-             'Ice water specific humidity tendency from erosion',      &
-             'kg/kg/sec', missing_value=missing_value               )
+ id_a_rain_clr = register_diag_field ( mod_name, &
+      'a_rain_clr', axes(half), Time, &
+      'Clear sky rain fractional coverage',                     &
+      'fraction', missing_value=missing_value                 )
 
-        id_qidt_melt = register_diag_field ( mod_name, &
-             'qidt_melt', axes(1:3), Time, &
-           'Ice water specific humidity tendency from melting to rain',&
-             'kg/kg/sec', missing_value=missing_value               )
+ id_a_rain_cld = register_diag_field ( mod_name, &
+      'a_rain_cld', axes(half), Time, &
+      'cloudy sky rain fractional coverage',                    &
+      'fraction', missing_value=missing_value                 )
 
-        id_qidt_fill = register_diag_field ( mod_name, &
-             'qidt_fill', axes(1:3), Time, &
-             'Ice water specific humidity tendency from filler',       &
-             'kg/kg/sec', missing_value=missing_value               )
-        
-        id_qidt_destr = register_diag_field ( mod_name, &
-             'qidt_destr', axes(1:3), Time, &
-         'Ice water specific humidity tendency from cloud destruction',&
-             'kg/kg/sec', missing_value=missing_value               )
+ id_rain_evap = register_diag_field ( mod_name, &
+      'rain_evap', axes(1:3), Time, &
+      'Water vapor tendency from rain evaporation',             &
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qidt_bldep = register_diag_field ( mod_name, &
-             'qidt_bldep', axes(1:3), Time, 'Ice water specific '//    &
-     'humidity tendency from boundary layer cloud deposition', &
-             'kg/kg/sec', missing_value=missing_value               )
+ id_a_precip_clr = register_diag_field ( mod_name, &
+      'a_precip_clr', axes(half), Time, &
+      'Clear sky precip fractional coverage',                   &
+      'fraction', missing_value=missing_value                 )
 
-        id_qidt_blsubl = register_diag_field ( mod_name, &
-             'qidt_blsubl', axes(1:3), Time, 'Ice water specific '//   &
-     'humidity tendency from boundary layer cloud sublimation',&
-             'kg/kg/sec', missing_value=missing_value               )
-
-              
-!snow stuff
+ id_a_precip_cld = register_diag_field ( mod_name, &
+      'a_precip_cld', axes(half), Time, &
+      'cloudy sky precip fractional coverage',                  &
+      'fraction', missing_value=missing_value                 )
 
 
-        id_ice_adj = register_diag_field ( mod_name, &
-             'ice_adj', axes(1:3), Time, &
-           'Frozen condensation rate from removal of supersaturation', &
-             'kg/kg/sec', missing_value=missing_value               )
-                
-        id_snow_clr = register_diag_field ( mod_name, &
-             'snow_clr', axes(half), Time, &
-             'Clear sky snow rate averaged to grid box mean',          &
-             'kg/m2/s', missing_value=missing_value                 )
-     
-        id_snow_cld = register_diag_field ( mod_name, &
-             'snow_cld', axes(half), Time, &
-             'cloudy sky snow rate averaged to grid box mean',         &
-             'kg/m2/s', missing_value=missing_value                 )
-     
-        id_a_snow_clr = register_diag_field ( mod_name, &
-             'a_snow_clr', axes(half), Time, &
-             'Clear sky snow fractional coverage',                     &
-             'fraction', missing_value=missing_value                 )
-     
-        id_a_snow_cld = register_diag_field ( mod_name, &
-             'a_snow_cld', axes(half), Time, &
-             'cloudy sky snow fractional coverage',                    &
-             'fraction', missing_value=missing_value                 )
-     
-        id_snow_subl = register_diag_field ( mod_name, &
-             'snow_subl', axes(1:3), Time, &
-             'Water vapor tendency from snow sublimation',             &
-             'kg/kg/sec', missing_value=missing_value               )
-
-        id_snow_melt = register_diag_field ( mod_name, &
-             'snow_melt', axes(1:3), Time, &
-             'Rain water tendency from snow melting',                  &
-             'kg/kg/sec', missing_value=missing_value               )
+ !ice water tendencies
 
 
-!cloud fraction tendencies
+ id_qidt_dep = register_diag_field ( mod_name, &
+      'qidt_dep', axes(1:3), Time, &
+      'Ice water specific humidity tendency from LS deposition', &
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qadt_lsform = register_diag_field ( mod_name, &
-             'qadt_lsform', axes(1:3), Time, &
-       'cloud fraction tendency from LS condensation',                 &
-             '1/sec', missing_value=missing_value               )
+ id_qidt_subl = register_diag_field ( mod_name, &
+      'qidt_subl', axes(1:3), Time, &
+      'Ice water specific humidity tendency from LS sublimation', &
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qadt_rhred = register_diag_field ( mod_name, &
-             'qadt_rhred', axes(1:3), Time, &
-       'cloud fraction tendency from RH limiter',                      &
-             '1/sec', missing_value=missing_value               )
- 
-        id_qadt_eros = register_diag_field ( mod_name, &
-             'qadt_eros', axes(1:3), Time, &
-             'cloud fraction tendency from erosion',                   &
-             '1/sec', missing_value=missing_value               )
+ id_qidt_fall = register_diag_field ( mod_name, &
+      'qidt_fall', axes(1:3), Time, &
+      'Ice water specific humidity tendency from ice settling', &
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qadt_fill = register_diag_field ( mod_name, &
-             'qadt_fill', axes(1:3), Time, &
-             'cloud fraction tendency from filler',                    &
-             '1/sec', missing_value=missing_value               )
-        
-        id_qadt_super = register_diag_field ( mod_name, &
-             'qadt_super', axes(1:3), Time, &
-             'cloud fraction tendency from supersaturation formation', &
-             '1/sec', missing_value=missing_value               )
-        
-        id_qadt_destr = register_diag_field ( mod_name, &
-             'qadt_destr', axes(1:3), Time, &
-         'cloud fraction tendency from cloud destruction',             &
-             '1/sec', missing_value=missing_value               )
-        
-        id_qadt_blform = register_diag_field ( mod_name, &
-             'qadt_blform', axes(1:3), Time, &
-             'cloud fraction tendency from boundary layer formation',  &
-             '1/sec', missing_value=missing_value               )
+ id_qidt_eros = register_diag_field ( mod_name, &
+      'qidt_eros', axes(1:3), Time, &
+      'Ice water specific humidity tendency from erosion',      &
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_qadt_bldiss = register_diag_field ( mod_name, &
-             'qadt_bldiss', axes(1:3), Time, &
-             'cloud fraction tendency from boundary layer dissipation',&
-             '1/sec', missing_value=missing_value               )
+ id_qidt_melt = register_diag_field ( mod_name, &
+      'qidt_melt', axes(1:3), Time, &
+      'Ice water specific humidity tendency from melting to rain',&
+      'kg/kg/sec', missing_value=missing_value               )
 
-        
+ id_qidt_fill = register_diag_field ( mod_name, &
+      'qidt_fill', axes(1:3), Time, &
+      'Ice water specific humidity tendency from filler',       &
+      'kg/kg/sec', missing_value=missing_value               )
 
-!column integrated liquid tendencies
+ id_qidt_destr = register_diag_field ( mod_name, &
+      'qidt_destr', axes(1:3), Time, &
+      'Ice water specific humidity tendency from cloud destruction',&
+      'kg/kg/sec', missing_value=missing_value               )
 
+ id_qidt_bldep = register_diag_field ( mod_name, &
+      'qidt_bldep', axes(1:3), Time, 'Ice water specific '//    &
+      'humidity tendency from boundary layer cloud deposition', &
+      'kg/kg/sec', missing_value=missing_value               )
 
-        id_ql_cond_col = register_diag_field ( mod_name, &
-             'ql_cond_col', axes(1:2), Time, &
-             'Column integrated condensation',                         &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ql_evap_col = register_diag_field ( mod_name, &
-             'ql_evap_col', axes(1:2), Time, &
-             'Column integrated evaporation',                          &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ql_eros_col = register_diag_field ( mod_name, &
-             'ql_eros_col', axes(1:2), Time, &
-             'Column integrated liquid erosion',                       &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ql_accr_col = register_diag_field ( mod_name, &
-             'ql_accr_col', axes(1:2), Time, &
-             'Column integrated accretion',                            &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ql_berg_col = register_diag_field ( mod_name, &
-             'ql_berg_col', axes(1:2), Time, &
-             'Column integrated Bergeron process',                     &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ql_freez_col = register_diag_field ( mod_name, &
-             'ql_freez_col', axes(1:2), Time, &
-             'Column integrated homogeneous freezing',                 &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ql_destr_col = register_diag_field ( mod_name, &
-             'ql_destr_col', axes(1:2), Time, &
-             'Column integrated liquid destruction',                   &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ql_rime_col = register_diag_field ( mod_name, &
-             'ql_rime_col', axes(1:2), Time, &
-             'Column integrated riming',                               &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ql_auto_col = register_diag_field ( mod_name, &
-             'ql_auto_col', axes(1:2), Time, &
-             'Column integrated autoconversion',                       &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ql_fill_col = register_diag_field ( mod_name, &
-             'ql_fill_col', axes(1:2), Time, &
-             'Column integrated liquid filler',                        &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_liq_adj_col = register_diag_field ( mod_name, &
-             'liq_adj_col', axes(1:2), Time, &
-             'Column integrated liquid condensation by adjustment',    &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_rain_evap_col = register_diag_field ( mod_name, &
-             'rain_evap_col', axes(1:2), Time, &
-             'Column integrated rain evaporation',                     &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ql_blcond_col = register_diag_field ( mod_name, &
-             'ql_blcond_col', axes(1:2), Time, &
-             'Column integrated boundary layer cloud condensation',    &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ql_blevap_col = register_diag_field ( mod_name, &
-             'ql_blevap_col', axes(1:2), Time, &
-             'Column integrated boundary layer cloud evaporation',     &
-             'kg/m2/sec', missing_value=missing_value               )
-        
+ id_qidt_blsubl = register_diag_field ( mod_name, &
+      'qidt_blsubl', axes(1:3), Time, 'Ice water specific '//   &
+      'humidity tendency from boundary layer cloud sublimation',&
+      'kg/kg/sec', missing_value=missing_value               )
 
 
-!column integrated ice tendencies
+ !snow stuff
 
 
-        id_qi_fall_col = register_diag_field ( mod_name, &
-             'qi_fall_col', axes(1:2), Time, &
-             'Column integrated ice settling',                         &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qi_fill_col = register_diag_field ( mod_name, &
-             'qi_fill_col', axes(1:2), Time, &
-             'Column integrated ice filler',                           &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qi_eros_col = register_diag_field ( mod_name, &
-             'qi_eros_col', axes(1:2), Time, &
-             'Column integrated ice erosion',                          &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qi_dep_col = register_diag_field ( mod_name, &
-             'qi_dep_col', axes(1:2), Time, &
-             'Column integrated large-scale deposition',               &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qi_subl_col = register_diag_field ( mod_name, &
-             'qi_subl_col', axes(1:2), Time, &
-             'Column integrated large-scale sublimation',              &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qi_destr_col = register_diag_field ( mod_name, &
-             'qi_destr_col', axes(1:2), Time, &
-             'Column integrated ice destruction',                      &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qi_melt_col = register_diag_field ( mod_name, &
-             'qi_melt_col', axes(1:2), Time, &
-             'Column integrated ice melting',                          &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_ice_adj_col = register_diag_field ( mod_name, &
-             'ice_adj_col', axes(1:2), Time, &
-             'Column integrated frozen condesation by adjustment',     &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_snow_subl_col = register_diag_field ( mod_name, &
-             'snow_subl_col', axes(1:2), Time, &
-             'Column integrated snow sublimation',                     &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_snow_melt_col = register_diag_field ( mod_name, &
-             'snow_melt_col', axes(1:2), Time, &
-             'Column integrated snow melting',                         &
-             'kg/m2/sec', missing_value=missing_value               )
-  
-        id_qi_bldep_col = register_diag_field ( mod_name, &
-             'qi_bldep_col', axes(1:2), Time, &
-             'Column integrated boundary layer cloud deposition',      &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qi_blsubl_col = register_diag_field ( mod_name, &
-             'qi_blsubl_col', axes(1:2), Time, &
-             'Column integrated boundary layer cloud sublimation',     &
-             'kg/m2/sec', missing_value=missing_value               )
-          
-  
-!column integrated cloud fraction tendencies
+ id_ice_adj = register_diag_field ( mod_name, &
+      'ice_adj', axes(1:3), Time, &
+      'Frozen condensation rate from removal of supersaturation', &
+      'kg/kg/sec', missing_value=missing_value               )
+
+ id_snow_clr = register_diag_field ( mod_name, &
+      'snow_clr', axes(half), Time, &
+      'Clear sky snow rate averaged to grid box mean',          &
+      'kg/m2/s', missing_value=missing_value                 )
+
+ id_snow_cld = register_diag_field ( mod_name, &
+      'snow_cld', axes(half), Time, &
+      'cloudy sky snow rate averaged to grid box mean',         &
+      'kg/m2/s', missing_value=missing_value                 )
+
+ id_a_snow_clr = register_diag_field ( mod_name, &
+      'a_snow_clr', axes(half), Time, &
+      'Clear sky snow fractional coverage',                     &
+      'fraction', missing_value=missing_value                 )
+
+ id_a_snow_cld = register_diag_field ( mod_name, &
+      'a_snow_cld', axes(half), Time, &
+      'cloudy sky snow fractional coverage',                    &
+      'fraction', missing_value=missing_value                 )
+
+ id_snow_subl = register_diag_field ( mod_name, &
+      'snow_subl', axes(1:3), Time, &
+      'Water vapor tendency from snow sublimation',             &
+      'kg/kg/sec', missing_value=missing_value               )
+
+ id_snow_melt = register_diag_field ( mod_name, &
+      'snow_melt', axes(1:3), Time, &
+      'Rain water tendency from snow melting',                  &
+      'kg/kg/sec', missing_value=missing_value               )
 
 
-        id_qa_lsform_col = register_diag_field ( mod_name, &
-             'qa_lsform_col', axes(1:2), Time, &
-             'Column integrated large-scale formation',                &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qa_rhred_col = register_diag_field ( mod_name, &
-             'qa_rhred_col', axes(1:2), Time, &
-             'Column integrated RH reduction',                         &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qa_eros_col = register_diag_field ( mod_name, &
-             'qa_eros_col', axes(1:2), Time, &
-             'Column integrated cloud fraction erosion',               &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qa_fill_col = register_diag_field ( mod_name, &
-             'qa_fill_col', axes(1:2), Time, &
-             'Column integrated cloud fraction filler',                &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qa_super_col = register_diag_field ( mod_name, &
-             'qa_super_col', axes(1:2), Time, &
-             'Column integrated cloud fraction supersaturation'//      &
-             ' formation', 'kg/m2/sec', missing_value=missing_value    )
-        
-        id_qa_destr_col = register_diag_field ( mod_name, &
-             'qa_destr_col', axes(1:2), Time, &
-             'Column integrated cloud fraction destruction',           &
-             'kg/m2/sec', missing_value=missing_value               )
+ !cloud fraction tendencies
 
-        id_qa_blform_col = register_diag_field ( mod_name, &
-             'qa_blform_col', axes(1:2), Time, &
-             'Column integrated boundary layer cloud formation',       &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-        id_qa_bldiss_col = register_diag_field ( mod_name, &
-             'qa_bldiss_col', axes(1:2), Time, &
-             'Column integrated boundary layer cloud dissipation',     &
-             'kg/m2/sec', missing_value=missing_value               )
-        
-     
-!-----------------------------------------------------------------------
-!
-!       set diagnostic flag
+ id_qadt_lsform = register_diag_field ( mod_name, &
+      'qadt_lsform', axes(1:3), Time, &
+      'cloud fraction tendency from LS condensation',                 &
+      '1/sec', missing_value=missing_value               )
 
-        do_budget_diag = .false.
-        if ( id_qldt_cond     > 0 .or. id_qldt_eros     > 0 .or. &
-             id_qldt_fill     > 0 .or. id_qldt_accr     > 0 .or. &
-             id_qldt_evap     > 0 .or. id_qldt_freez    > 0 .or. &
-             id_qldt_berg     > 0 .or. id_qldt_destr    > 0 .or. &
-             id_qldt_rime     > 0 .or. id_qldt_auto     > 0 .or. &
-             id_qldt_blcond   > 0 .or. id_qldt_blevap   > 0) then
-             do_budget_diag = .true.
-        end if
-        if ( id_rain_clr      > 0 .or. id_rain_cld      > 0 .or. &
-             id_a_rain_clr    > 0 .or. id_a_rain_cld    > 0 .or. &
-             id_rain_evap     > 0 .or. id_liq_adj       > 0 ) then
-             do_budget_diag = .true.
-        end if
-        if ( id_qidt_fall     > 0 .or. id_qidt_fill     > 0 .or. &
-             id_qidt_melt     > 0 .or. id_qidt_dep      > 0 .or. &
-             id_qidt_subl     > 0 .or. id_qidt_eros     > 0 .or. &
-             id_qidt_destr    > 0 .or. id_qidt_bldep    > 0 .or. &
-             id_qidt_blsubl   > 0) then
-             do_budget_diag = .true.
-        end if
-        if ( id_snow_clr      > 0 .or. id_snow_cld      > 0 .or. &
-             id_a_snow_clr    > 0 .or. id_a_snow_cld    > 0 .or. &
-             id_snow_subl     > 0 .or. id_snow_melt     > 0 .or. &
-             id_ice_adj       > 0 ) then
-             do_budget_diag = .true.
-        end if
-        if ( id_ql_eros_col   > 0 .or. id_ql_cond_col   > 0 .or. &
-             id_ql_evap_col   > 0 .or. id_ql_accr_col   > 0 .or. &
-             id_ql_auto_col   > 0 .or. id_ql_fill_col   > 0 .or. &
-             id_ql_berg_col   > 0 .or. id_ql_destr_col  > 0 .or. &
-             id_ql_rime_col   > 0 .or. id_ql_freez_col  > 0 .or. &
-             id_ql_blcond_col > 0 .or. id_ql_blevap_col > 0) then
-             do_budget_diag = .true.
-        end if
-        if ( id_rain_evap_col > 0 .or. id_liq_adj_col   > 0 ) then
-             do_budget_diag = .true. 
-        end if
-        if ( id_qi_fall_col   > 0 .or. id_qi_fill_col   > 0 .or. &
-             id_qi_subl_col   > 0 .or. id_qi_melt_col   > 0 .or. &
-             id_qi_destr_col  > 0 .or. id_qi_eros_col   > 0 .or. &
-             id_qi_dep_col    > 0 .or. id_qi_bldep_col  > 0 .or. &
-             id_qi_blsubl_col > 0) then
-             do_budget_diag = .true.
-        end if
-        if ( id_snow_subl_col > 0 .or. id_snow_melt_col > 0 .or. &
-             id_ice_adj_col   > 0 ) then
-             do_budget_diag = .true.
-        end if
-        if ( id_qadt_lsform   > 0 .or. id_qadt_eros     > 0 .or. &
-             id_qadt_fill     > 0 .or. id_qadt_rhred    > 0 .or. &
-             id_qadt_destr    > 0 .or. id_qadt_blform   > 0 .or. &
-             id_qadt_bldiss   > 0 .or. id_qadt_super    > 0 .or. &
-             id_qa_lsform_col > 0 .or. id_qa_super_col  > 0 .or. &
-             id_qa_eros_col   > 0 .or. id_qa_fill_col   > 0 .or. &
-             id_qa_rhred_col  > 0 .or. id_qa_destr_col  > 0 .or. &
-             id_qa_blform_col > 0 .or. id_qa_bldiss_col > 0) then
-             do_budget_diag = .true.
-        end if
-        if ( id_a_precip_cld  > 0 .or. id_a_precip_clr  > 0 ) then
-             do_budget_diag = .true.
-        end if
-                      
-!-----------------------------------------------------------------------
+ id_qadt_rhred = register_diag_field ( mod_name, &
+      'qadt_rhred', axes(1:3), Time, &
+      'cloud fraction tendency from RH limiter',                      &
+      '1/sec', missing_value=missing_value               )
+
+ id_qadt_eros = register_diag_field ( mod_name, &
+      'qadt_eros', axes(1:3), Time, &
+      'cloud fraction tendency from erosion',                   &
+      '1/sec', missing_value=missing_value               )
+
+ id_qadt_fill = register_diag_field ( mod_name, &
+      'qadt_fill', axes(1:3), Time, &
+      'cloud fraction tendency from filler',                    &
+      '1/sec', missing_value=missing_value               )
+
+ id_qadt_super = register_diag_field ( mod_name, &
+      'qadt_super', axes(1:3), Time, &
+      'cloud fraction tendency from supersaturation formation', &
+      '1/sec', missing_value=missing_value               )
+
+ id_qadt_destr = register_diag_field ( mod_name, &
+      'qadt_destr', axes(1:3), Time, &
+      'cloud fraction tendency from cloud destruction',             &
+      '1/sec', missing_value=missing_value               )
+
+ id_qadt_blform = register_diag_field ( mod_name, &
+      'qadt_blform', axes(1:3), Time, &
+      'cloud fraction tendency from boundary layer formation',  &
+      '1/sec', missing_value=missing_value               )
+
+ id_qadt_bldiss = register_diag_field ( mod_name, &
+      'qadt_bldiss', axes(1:3), Time, &
+      'cloud fraction tendency from boundary layer dissipation',&
+      '1/sec', missing_value=missing_value               )
+
+
+
+ !column integrated liquid tendencies
+
+
+ id_ql_cond_col = register_diag_field ( mod_name, &
+      'ql_cond_col', axes(1:2), Time, &
+      'Column integrated condensation',                         &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ql_evap_col = register_diag_field ( mod_name, &
+      'ql_evap_col', axes(1:2), Time, &
+      'Column integrated evaporation',                          &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ql_eros_col = register_diag_field ( mod_name, &
+      'ql_eros_col', axes(1:2), Time, &
+      'Column integrated liquid erosion',                       &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ql_accr_col = register_diag_field ( mod_name, &
+      'ql_accr_col', axes(1:2), Time, &
+      'Column integrated accretion',                            &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ql_berg_col = register_diag_field ( mod_name, &
+      'ql_berg_col', axes(1:2), Time, &
+      'Column integrated Bergeron process',                     &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ql_freez_col = register_diag_field ( mod_name, &
+      'ql_freez_col', axes(1:2), Time, &
+      'Column integrated homogeneous freezing',                 &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ql_destr_col = register_diag_field ( mod_name, &
+      'ql_destr_col', axes(1:2), Time, &
+      'Column integrated liquid destruction',                   &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ql_rime_col = register_diag_field ( mod_name, &
+      'ql_rime_col', axes(1:2), Time, &
+      'Column integrated riming',                               &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ql_auto_col = register_diag_field ( mod_name, &
+      'ql_auto_col', axes(1:2), Time, &
+      'Column integrated autoconversion',                       &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ql_fill_col = register_diag_field ( mod_name, &
+      'ql_fill_col', axes(1:2), Time, &
+      'Column integrated liquid filler',                        &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_liq_adj_col = register_diag_field ( mod_name, &
+      'liq_adj_col', axes(1:2), Time, &
+      'Column integrated liquid condensation by adjustment',    &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_rain_evap_col = register_diag_field ( mod_name, &
+      'rain_evap_col', axes(1:2), Time, &
+      'Column integrated rain evaporation',                     &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ql_blcond_col = register_diag_field ( mod_name, &
+      'ql_blcond_col', axes(1:2), Time, &
+      'Column integrated boundary layer cloud condensation',    &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ql_blevap_col = register_diag_field ( mod_name, &
+      'ql_blevap_col', axes(1:2), Time, &
+      'Column integrated boundary layer cloud evaporation',     &
+      'kg/m2/sec', missing_value=missing_value               )
+
+
+
+ !column integrated ice tendencies
+
+
+ id_qi_fall_col = register_diag_field ( mod_name, &
+      'qi_fall_col', axes(1:2), Time, &
+      'Column integrated ice settling',                         &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qi_fill_col = register_diag_field ( mod_name, &
+      'qi_fill_col', axes(1:2), Time, &
+      'Column integrated ice filler',                           &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qi_eros_col = register_diag_field ( mod_name, &
+      'qi_eros_col', axes(1:2), Time, &
+      'Column integrated ice erosion',                          &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qi_dep_col = register_diag_field ( mod_name, &
+      'qi_dep_col', axes(1:2), Time, &
+      'Column integrated large-scale deposition',               &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qi_subl_col = register_diag_field ( mod_name, &
+      'qi_subl_col', axes(1:2), Time, &
+      'Column integrated large-scale sublimation',              &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qi_destr_col = register_diag_field ( mod_name, &
+      'qi_destr_col', axes(1:2), Time, &
+      'Column integrated ice destruction',                      &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qi_melt_col = register_diag_field ( mod_name, &
+      'qi_melt_col', axes(1:2), Time, &
+      'Column integrated ice melting',                          &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_ice_adj_col = register_diag_field ( mod_name, &
+      'ice_adj_col', axes(1:2), Time, &
+      'Column integrated frozen condesation by adjustment',     &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_snow_subl_col = register_diag_field ( mod_name, &
+      'snow_subl_col', axes(1:2), Time, &
+      'Column integrated snow sublimation',                     &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_snow_melt_col = register_diag_field ( mod_name, &
+      'snow_melt_col', axes(1:2), Time, &
+      'Column integrated snow melting',                         &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qi_bldep_col = register_diag_field ( mod_name, &
+      'qi_bldep_col', axes(1:2), Time, &
+      'Column integrated boundary layer cloud deposition',      &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qi_blsubl_col = register_diag_field ( mod_name, &
+      'qi_blsubl_col', axes(1:2), Time, &
+      'Column integrated boundary layer cloud sublimation',     &
+      'kg/m2/sec', missing_value=missing_value               )
+
+
+ !column integrated cloud fraction tendencies
+
+
+ id_qa_lsform_col = register_diag_field ( mod_name, &
+      'qa_lsform_col', axes(1:2), Time, &
+      'Column integrated large-scale formation',                &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qa_rhred_col = register_diag_field ( mod_name, &
+      'qa_rhred_col', axes(1:2), Time, &
+      'Column integrated RH reduction',                         &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qa_eros_col = register_diag_field ( mod_name, &
+      'qa_eros_col', axes(1:2), Time, &
+      'Column integrated cloud fraction erosion',               &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qa_fill_col = register_diag_field ( mod_name, &
+      'qa_fill_col', axes(1:2), Time, &
+      'Column integrated cloud fraction filler',                &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qa_super_col = register_diag_field ( mod_name, &
+      'qa_super_col', axes(1:2), Time, &
+      'Column integrated cloud fraction supersaturation'//      &
+      ' formation', 'kg/m2/sec', missing_value=missing_value    )
+
+ id_qa_destr_col = register_diag_field ( mod_name, &
+      'qa_destr_col', axes(1:2), Time, &
+      'Column integrated cloud fraction destruction',           &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qa_blform_col = register_diag_field ( mod_name, &
+      'qa_blform_col', axes(1:2), Time, &
+      'Column integrated boundary layer cloud formation',       &
+      'kg/m2/sec', missing_value=missing_value               )
+
+ id_qa_bldiss_col = register_diag_field ( mod_name, &
+      'qa_bldiss_col', axes(1:2), Time, &
+      'Column integrated boundary layer cloud dissipation',     &
+      'kg/m2/sec', missing_value=missing_value               )
+
+
+ !-----------------------------------------------------------------------
+ !
+ !       set diagnostic flag
+
+ do_budget_diag = .false.
+ if ( id_qldt_cond     > 0 .or. id_qldt_eros     > 0 .or. &
+      id_qldt_fill     > 0 .or. id_qldt_accr     > 0 .or. &
+      id_qldt_evap     > 0 .or. id_qldt_freez    > 0 .or. &
+      id_qldt_berg     > 0 .or. id_qldt_destr    > 0 .or. &
+      id_qldt_rime     > 0 .or. id_qldt_auto     > 0 .or. &
+      id_qldt_blcond   > 0 .or. id_qldt_blevap   > 0) then
+    do_budget_diag = .true.
+ end if
+ if ( id_rain_clr      > 0 .or. id_rain_cld      > 0 .or. &
+      id_a_rain_clr    > 0 .or. id_a_rain_cld    > 0 .or. &
+      id_rain_evap     > 0 .or. id_liq_adj       > 0 ) then
+    do_budget_diag = .true.
+ end if
+ if ( id_qidt_fall     > 0 .or. id_qidt_fill     > 0 .or. &
+      id_qidt_melt     > 0 .or. id_qidt_dep      > 0 .or. &
+      id_qidt_subl     > 0 .or. id_qidt_eros     > 0 .or. &
+      id_qidt_destr    > 0 .or. id_qidt_bldep    > 0 .or. &
+      id_qidt_blsubl   > 0) then
+    do_budget_diag = .true.
+ end if
+ if ( id_snow_clr      > 0 .or. id_snow_cld      > 0 .or. &
+      id_a_snow_clr    > 0 .or. id_a_snow_cld    > 0 .or. &
+      id_snow_subl     > 0 .or. id_snow_melt     > 0 .or. &
+      id_ice_adj       > 0 ) then
+    do_budget_diag = .true.
+ end if
+ if ( id_ql_eros_col   > 0 .or. id_ql_cond_col   > 0 .or. &
+      id_ql_evap_col   > 0 .or. id_ql_accr_col   > 0 .or. &
+      id_ql_auto_col   > 0 .or. id_ql_fill_col   > 0 .or. &
+      id_ql_berg_col   > 0 .or. id_ql_destr_col  > 0 .or. &
+      id_ql_rime_col   > 0 .or. id_ql_freez_col  > 0 .or. &
+      id_ql_blcond_col > 0 .or. id_ql_blevap_col > 0) then
+    do_budget_diag = .true.
+ end if
+ if ( id_rain_evap_col > 0 .or. id_liq_adj_col   > 0 ) then
+    do_budget_diag = .true. 
+ end if
+ if ( id_qi_fall_col   > 0 .or. id_qi_fill_col   > 0 .or. &
+      id_qi_subl_col   > 0 .or. id_qi_melt_col   > 0 .or. &
+      id_qi_destr_col  > 0 .or. id_qi_eros_col   > 0 .or. &
+      id_qi_dep_col    > 0 .or. id_qi_bldep_col  > 0 .or. &
+      id_qi_blsubl_col > 0) then
+    do_budget_diag = .true.
+ end if
+ if ( id_snow_subl_col > 0 .or. id_snow_melt_col > 0 .or. &
+      id_ice_adj_col   > 0 ) then
+    do_budget_diag = .true.
+ end if
+ if ( id_qadt_lsform   > 0 .or. id_qadt_eros     > 0 .or. &
+      id_qadt_fill     > 0 .or. id_qadt_rhred    > 0 .or. &
+      id_qadt_destr    > 0 .or. id_qadt_blform   > 0 .or. &
+      id_qadt_bldiss   > 0 .or. id_qadt_super    > 0 .or. &
+      id_qa_lsform_col > 0 .or. id_qa_super_col  > 0 .or. &
+      id_qa_eros_col   > 0 .or. id_qa_fill_col   > 0 .or. &
+      id_qa_rhred_col  > 0 .or. id_qa_destr_col  > 0 .or. &
+      id_qa_blform_col > 0 .or. id_qa_bldiss_col > 0) then
+    do_budget_diag = .true.
+ end if
+ if ( id_a_precip_cld  > 0 .or. id_a_precip_clr  > 0 ) then
+    do_budget_diag = .true.
+ end if
+
+ !-----------------------------------------------------------------------
 
 
 end subroutine diag_field_init
@@ -1160,10 +1300,10 @@ end subroutine diag_field_init
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2, 
-!		T,qv,ql,qi,qa,omega,Mc,diff_t,LAND,              
-!		ST,SQ,SL,SI,SA,surfrain,                         
-!		surfsnow,qrat,ahuco,MASK)
-!		
+!                   T,qv,ql,qi,qa,omega,Mc,diff_t,LAND,              
+!                   ST,SQ,SL,SI,SA,surfrain,                         
+!                   surfsnow,qrat,ahuco,MASK)
+!
 !  </TEMPLATE>
 !  <IN NAME="Time" TYPE="time_type">
 !         Time
@@ -1269,159 +1409,159 @@ end subroutine diag_field_init
 
 
 subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
-                      T,qv,ql,qi,qa,omega,Mc,diff_t,LAND,              &
-                      ST,SQ,SL,SI,SA,surfrain,                         &
-                      surfsnow,qrat,ahuco,MASK)
-                              
+    T,qv,ql,qi,qa,omega,Mc,diff_t,LAND,              &
+    ST,SQ,SL,SI,SA,surfrain,                         &
+    surfsnow,qrat,ahuco,MASK)
 
-!        
+
+  !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!
-!
-!       VARIABLES
-!
-!
-!
-!       ------
-!       INPUT:
-!       ------
-!
-!         variable              definition                  unit
-!       ------------   -----------------------------   ---------------
-!
-!       Time           time type variable 
-!
-!       is,ie          starting and ending i indices 
-!                      for data window
-!
-!       js,je          starting and ending j indices 
-!                      for data window
-!
-!       dtcloud        time between this call and      s
-!                      the next call to strat_driv
-!
-!       pfull          pressure at full model levels   Pa
-!                      IMPORTANT NOTE: p(j)<p(j+1)
-!
-!       phalf          pressure at half model levels   Pa
-!                      phalf(j)<pfull(j)<phalf(j+1)
-!
-!       T              temperature                     K
-!
-!       qv             specific humidity of water      kg vapor/kg air
-!                      vapor
-!
-!       ql             specific humidity of cloud      kg condensate/
-!                      liquid                          kg air
-!
-!       qi             specific humidity of cloud      kg condensate/
-!                      ice                             kg air
-!
-!       qa             saturated volume fraction       fraction
-!
-!       qrat           ratio of large-scale spec       fraction
-!                      humidity to spec humidity
-!                      in environment outside
-!                      convective system (from
-!                      donner_deep) 
-!                      index 1 nearest ground
-!
-!       ahuco          fraction, cell+meso, from       fraction
-!                      donner_deep
-!                      index 1 nearest ground
-!
-!       omega          vertical pressure velocity      Pa/s
-!
-!       Mc             Cumulus mass flux defined       kg/(m*m)/s
-!                      on full levels
-!
-!       diff_t         Vertical diffusion coefficient  (m*m)/s
-!                      for temperature and tracer
-!
-!       LAND           the fraction of the grid box    fraction
-!                      covered by land
-!                               
-!
-!       -------
-!       OUTPUT:
-!       -------
-!
-!         variable              definition                  unit
-!       ------------   -----------------------------   ---------------
-!
-!       ST             temperature change due to       K
-!                      all stratiform processes
-!
-!       SQ             water vapor change due to       kg vapor/kg air
-!                      all stratiform processes
-!
-!       SL             cloud liquid change due to      kg condensate/
-!                      all stratiform processes        kg air
-!
-!       SI             cloud ice change due to         kg condensate/
-!                      all stratiform processes        kg air
-!
-!       SA             saturated volume fraction       fraction
-!                      change due to all stratiform 
-!                      processes
-!
-!       surfrain       rain that falls through the     kg condensate/
-!                      bottom of the column over       (m*m)
-!                      the time dtcloud
-!
-!       surfsnow       snow that falls through the     kg condensate/
-!                      bottom of the column over       (m*m)
-!                      the time dtcloud
-!
-!
-!       ---------------
-!       optional INPUT:
-!       ---------------
-!
-!         variable              definition                  unit
-!       ------------   -----------------------------   ---------------
-!
-!
-!       MASK           real array indicating the 
-!                      point is above the surface
-!                      if equal to 1.0 and 
-!                      indicating the point is below
-!                      the surface if equal to 0.
-!
-!       -------------------
-!       INTERNAL VARIABLES:
-!       -------------------
-!
-!         variable              definition                  unit
-!       ------------   -----------------------------   ---------------
-!
-!       kdim           number of vertical levels
-!
-!       j              model vertical level being 
-!                      processed
-!
-!       ipt,jpt        i and j point indice used only
-!                      in instantaneous diag-
-!                      nostic output
-!
-!       i,unit,nn      temporary integers used in
-!                      instantaneous diagnostic
-!                      output.
-!
-!       inv_dtcloud    1 / dtcloud                     1/sec
-!
-!       airdens        air density                     kg air/(m*m*m)
-!
-!       qs             saturation specific humidity    kg vapor/kg air
-!
-!       dqsdT          T derivative of qs              kg vapor/kg air/K
-!
-!       gamma          (L/cp)*dqsdT                    dimensionless
-!
-!       rain_clr       grid mean flux of rain enter-   kg condensate/
-!                      ing the grid box from above     (m*m)/s
-!                      and entering the unsaturated 
+  !
+  !
+  !
+  !       VARIABLES
+  !
+  !
+  !
+  !       ------
+  !       INPUT:
+  !       ------
+  !
+  !         variable              definition                  unit
+  !       ------------   -----------------------------   ---------------
+  !
+  !       Time           time type variable 
+  !
+  !       is,ie          starting and ending i indices 
+  !                      for data window
+  !
+  !       js,je          starting and ending j indices 
+  !                      for data window
+  !
+  !       dtcloud        time between this call and      s
+  !                      the next call to strat_driv
+  !
+  !       pfull          pressure at full model levels   Pa
+  !                      IMPORTANT NOTE: p(j)<p(j+1)
+  !
+  !       phalf          pressure at half model levels   Pa
+  !                      phalf(j)<pfull(j)<phalf(j+1)
+  !
+  !       T              temperature                     K
+  !
+  !       qv             specific humidity of water      kg vapor/kg air
+  !                      vapor
+  !
+  !       ql             specific humidity of cloud      kg condensate/
+  !                      liquid                          kg air
+  !
+  !       qi             specific humidity of cloud      kg condensate/
+  !                      ice                             kg air
+  !
+  !       qa             saturated volume fraction       fraction
+  !
+  !       qrat           ratio of large-scale spec       fraction
+  !                      humidity to spec humidity
+  !                      in environment outside
+  !                      convective system (from
+  !                      donner_deep) 
+  !                      index 1 nearest ground
+  !
+  !       ahuco          fraction, cell+meso, from       fraction
+  !                      donner_deep
+  !                      index 1 nearest ground
+  !
+  !       omega          vertical pressure velocity      Pa/s
+  !
+  !       Mc             Cumulus mass flux defined       kg/(m*m)/s
+  !                      on full levels
+  !
+  !       diff_t         Vertical diffusion coefficient  (m*m)/s
+  !                      for temperature and tracer
+  !
+  !       LAND           the fraction of the grid box    fraction
+  !                      covered by land
+  !                               
+  !
+  !       -------
+  !       OUTPUT:
+  !       -------
+  !
+  !         variable              definition                  unit
+  !       ------------   -----------------------------   ---------------
+  !
+  !       ST             temperature change due to       K
+  !                      all stratiform processes
+  !
+  !       SQ             water vapor change due to       kg vapor/kg air
+  !                      all stratiform processes
+  !
+  !       SL             cloud liquid change due to      kg condensate/
+  !                      all stratiform processes        kg air
+  !
+  !       SI             cloud ice change due to         kg condensate/
+  !                      all stratiform processes        kg air
+  !
+  !       SA             saturated volume fraction       fraction
+  !                      change due to all stratiform 
+  !                      processes
+  !
+  !       surfrain       rain that falls through the     kg condensate/
+  !                      bottom of the column over       (m*m)
+  !                      the time dtcloud
+  !
+  !       surfsnow       snow that falls through the     kg condensate/
+  !                      bottom of the column over       (m*m)
+  !                      the time dtcloud
+  !
+  !
+  !       ---------------
+  !       optional INPUT:
+  !       ---------------
+  !
+  !         variable              definition                  unit
+  !       ------------   -----------------------------   ---------------
+  !
+  !
+  !       MASK           real array indicating the 
+  !                      point is above the surface
+  !                      if equal to 1.0 and 
+  !                      indicating the point is below
+  !                      the surface if equal to 0.
+  !
+  !       -------------------
+  !       INTERNAL VARIABLES:
+  !       -------------------
+  !
+  !         variable              definition                  unit
+  !       ------------   -----------------------------   ---------------
+  !
+  !       kdim           number of vertical levels
+  !
+  !       j              model vertical level being 
+  !                      processed
+  !
+  !       ipt,jpt        i and j point indice used only
+  !                      in instantaneous diag-
+  !                      nostic output
+  !
+  !       i,unit,nn      temporary integers used in
+  !                      instantaneous diagnostic
+  !                      output.
+  !
+  !       inv_dtcloud    1 / dtcloud                     1/sec
+  !
+  !       airdens        air density                     kg air/(m*m*m)
+  !
+  !       qs             saturation specific humidity    kg vapor/kg air
+  !
+  !       dqsdT          T derivative of qs              kg vapor/kg air/K
+  !
+  !       gamma          (L/cp)*dqsdT                    dimensionless
+  !
+  !       rain_clr       grid mean flux of rain enter-   kg condensate/
+  !                      ing the grid box from above     (m*m)/s
+  !                      and entering the unsaturated 
 !                      portion of the grid box
 !
 !       rain_cld       grid mean flux of rain enter-   kg condensate/
@@ -1704,7 +1844,7 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              a_precip_clr_diag, a_precip_cld_diag
         real, allocatable, dimension(:,:,:) :: areaall, arealiq,   &
              areaice, areaautocv, rvolume, vfalldiag
-        logical :: used
+        logical :: used, cloud_generator_on
 
         integer :: year, month, day, hour, minute, second
 
@@ -1927,6 +2067,8 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              qadt_bldiss       = 0.
         end if
         
+        cloud_generator_on = do_cloud_generator()
+                     
 !-----------------------------------------------------------------------
 !
 !       Determine number of vertical levels
@@ -2701,9 +2843,9 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !       that exists in saturated air.  At the top of each level, some 
 !       precipitation that was in unsaturated air in the levels above 
 !       may enter saturated air and vice versa. These transfers are 
-!       calculated here under the assumption of maximum random or random 
-!       overlap between precipitation area and saturated area at the 
-!       same and adjacent levels.
+!       calculated here under an assumption for the overlap between 
+!       precipitation area and saturated area at the same and adjacent 
+!       levels.
 !
 !       For rain, the area of the grid box in which rain in saturated 
 !       air of the level above enters unsaturated air in the current 
@@ -2726,10 +2868,19 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !       NOTE: the overlap assumption used is set by the namelist 
 !             variable in cloud_rad
 !
-!       For snow fluxes the transfers are computed in exactly the same
-!       manner.
+!       Overlap values are:      1  = maximum
+!                                2  = random
 !
-         
+!       If cloud_generator is on, the overlap choice is taken from
+!       there, by computing a quantity alpha, which is weighting 
+!       between maximum and random overlap solutions.
+!
+!                alpha = 1 ---> maximum,
+!                alpha = 0 ---> random
+!
+!       alpha is stored in tmp3.
+!       tmp1 has the maximum overlap solution
+!       tmp2 has the random overlap solution
        
 !
 !
@@ -2745,6 +2896,17 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         if (overlap .eq. 2)                                            &
              da_cld2clr= min(a_rain_cld,max(0.,a_rain_cld*(1.-qa_mean)))
        
+        if (cloud_generator_on) then
+             tmp3 = 0.0
+             if (j.gt.1) then
+                  tmp3 = compute_overlap_weighting(qa_mean_lst,qa_mean,&
+                         pfull(:,:,j-1),pfull(:,:,j))
+                  tmp3 = min(1.,max(0.,tmp3))       
+             end if
+             tmp1 =      min(a_rain_cld,max(0.,a_rain_cld - qa_mean)   )             
+             tmp2 =      min(a_rain_cld,max(0.,a_rain_cld*(1.-qa_mean)))
+             da_cld2clr=min(a_rain_cld,max(0.,tmp3*tmp1+(1.-tmp3)*tmp2))             
+        end if      
 
         !-------------------------------
         !compute clear to cloud transfer
@@ -2753,6 +2915,12 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         if (overlap .eq. 2)                                            &
              da_clr2cld = min(max( a_rain_clr*qa_mean,0.),a_rain_clr)
 
+        if (cloud_generator_on) then
+             tmp1 =       min(max(qa_mean-qa_mean_lst,0.),a_rain_clr)             
+             tmp2 =       min(max( a_rain_clr*qa_mean,0.),a_rain_clr)
+             da_clr2cld=min(a_rain_clr,max(0.,tmp3*tmp1+(1.-tmp3)*tmp2))
+        end if      
+        
         !---------------------------------
         !calculate precipitation transfers
         dprec_cld2clr = rain_cld*(da_cld2clr/max(a_rain_cld,qmin))
@@ -2767,8 +2935,8 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 
 !
 !
-!       Snow transfers are done second
-!
+!       Snow transfers are done second, in a manner exactly like that
+!       done for the rain fluxes
 !
         
 
@@ -2779,6 +2947,11 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         if (overlap .eq. 2)                                            &
              da_cld2clr= min(a_snow_cld,max(0.,a_snow_cld*(1.-qa_mean)))
       
+        if (cloud_generator_on) then
+             tmp1 =      min(a_snow_cld,max(0.,a_snow_cld-qa_mean)     )             
+             tmp2 =      min(a_snow_cld,max(0.,a_snow_cld*(1.-qa_mean)))
+             da_cld2clr=min(a_snow_cld,max(0.,tmp3*tmp1+(1.-tmp3)*tmp2))
+        end if      
 
         !-------------------------------
         !compute clear to cloud transfer
@@ -2787,6 +2960,12 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         if (overlap .eq. 2)                                            &
              da_clr2cld = min(max(a_snow_clr*qa_mean,0.) ,a_snow_clr)
 
+        if (cloud_generator_on) then
+             tmp1 =       min(max(qa_mean-qa_mean_lst,0.),a_snow_clr)             
+             tmp2 =       min(max(a_snow_clr*qa_mean,0.) ,a_snow_clr)
+             da_clr2cld=min(a_snow_clr,max(0.,tmp3*tmp1+(1.-tmp3)*tmp2))
+        end if      
+        
         !---------------------------------
         !calculate precipitation transfers
         dprec_cld2clr = snow_cld*(da_cld2clr/max(a_snow_cld,qmin))
@@ -4988,22 +5167,35 @@ subroutine strat_cloud_end()
 !
 
         integer                                :: unit
-
+        character(len=64)                      :: fname='RESTART/strat_cloud.res.nc'
 
 !-----------------------------------------------------------------------
 !       
 !       Code
 !
-
-        unit = open_restart_file ('RESTART/strat_cloud.res', ACTION='write')
-        if (mpp_pe() == mpp_root_pe()) then
-          write (unit) restart_versions(size(restart_versions))
+        if( do_netcdf_restart) then
+           if (mpp_pe() == mpp_root_pe()) then
+              call mpp_error ('strat_cloud_mod', 'Writing netCDF formatted restart file: RESTART/strat_cloud.res.nc', NOTE)
+           endif
+           call write_data (fname, 'vers', restart_versions(size(restart_versions(:))) , no_domain=.true.)
+           call write_data (fname, 'nsum', nsum)
+           call write_data (fname, 'qlsum', qlsum)
+           call write_data (fname, 'qisum', qisum)
+           call write_data (fname, 'cfsum', cfsum)
+        else
+           if (mpp_pe() == mpp_root_pe()) then
+              call mpp_error ('strat_cloud_mod', 'Writing native formatted restart file.', NOTE)
+           endif
+           unit = open_restart_file ('RESTART/strat_cloud.res', ACTION='write')
+           if (mpp_pe() == mpp_root_pe()) then
+              write (unit) restart_versions(size(restart_versions(:)))
+           endif
+           call write_data (unit, nsum)
+           call write_data (unit, qlsum)
+           call write_data (unit, qisum)
+           call write_data (unit, cfsum)
+           call close_file (unit)
         endif
-        call write_data (unit, nsum)
-        call write_data (unit, qlsum)
-        call write_data (unit, qisum)
-        call write_data (unit, cfsum)
-        call close_file (unit)
         module_is_initialized = .false.
 
 end subroutine strat_cloud_end
@@ -5023,7 +5215,7 @@ end subroutine strat_cloud_end
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call  strat_cloud_sum (is, js, ql, qi, cf)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !        Starting integer for longitude window.
@@ -5088,7 +5280,7 @@ end subroutine strat_cloud_end
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call  strat_cloud_avg (is, js, ql, qi, cf, ierr)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      Starting integer for longitude window.
@@ -5174,7 +5366,7 @@ end subroutine strat_cloud_end
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   result =  do_strat_cloud ( ) result (answer)
-!		
+!
 !  </TEMPLATE>
 ! </FUNCTION>
 !
@@ -5194,6 +5386,3 @@ end subroutine strat_cloud_end
 
 
 end module strat_cloud_mod
-
-
-    

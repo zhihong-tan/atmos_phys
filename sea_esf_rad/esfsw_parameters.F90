@@ -49,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 10.0 2003/10/24 22:00:41 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 11.0 2004/09/28 19:21:37 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 !--------------------------------------------------------------------
 !----- interfaces ------
@@ -211,10 +211,17 @@ subroutine esfsw_parameters_init
                         write (stdlog(), nml=esfsw_parameters_nml)
 
 !-------------------------------------------------------------------
+!    indicate that visible_band_indx has not yet been defined.
+!-------------------------------------------------------------------
+      Solar_spect%visible_band_indx = -10000000
+      Solar_spect%visible_band_indx_iz = .false.
+
+!-------------------------------------------------------------------
 !    allocate space for the array components of the solar_spect_type
 !    variable.
 !-------------------------------------------------------------------
       allocate (Solar_spect%solflxband (Solar_spect%nbands) )
+      allocate (Solar_spect%solflxbandref (Solar_spect%nbands) )
       allocate (Solar_spect%endwvnbands (0:Solar_spect%nbands) )
       allocate (Solar_spect%solarfluxtoa (Solar_spect%tot_wvnums))
 
@@ -268,6 +275,7 @@ subroutine esfsw_parameters_end
 !    deallocate the components of the solar_spect_type variable.
 !---------------------------------------------------------------------
       deallocate (Solar_spect%solflxband, &
+                  Solar_spect%solflxbandref, &
                   Solar_spect%endwvnbands, &
                   Solar_spect%solarfluxtoa)
 

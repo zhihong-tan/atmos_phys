@@ -12,10 +12,6 @@
 !    radiation packages.
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!    astronomy_mod provides astronomical variables for use
-!    by other modules within fms. the only currently used interface is 
-!    for determination of astronomical values needed by the shortwave
-!    radiation packages.
 ! </DESCRIPTION>
 
 !  shared modules:
@@ -49,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: astronomy.F90,v 10.0 2003/10/24 22:00:22 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: astronomy.F90,v 11.0 2004/09/28 19:14:02 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -342,8 +338,8 @@ real,   dimension(:), intent(in), optional   :: lonb
 !    the total number of points that the processor is responsible for.
 !--------------------------------------------------------------------
       if (present(latb)) then
-        jd = size(latb) - 1
-        id = size(lonb) - 1
+        jd = size(latb(:)) - 1
+        id = size(lonb(:)) - 1
         allocate (cosz_ann(jd))
         allocate (solar_ann(jd))
         allocate (fracday_ann(jd))
@@ -1984,8 +1980,8 @@ subroutine daily_mean_solar_1d (lat, time_since_ae, cosz, h_out, rr_out)
 !----------------------------------------------------------------------
 real, intent(in), dimension(:) :: lat
 real, intent(in) :: time_since_ae
-real, intent(out), dimension(size(lat)) ::        cosz
-real, intent(out), dimension(size(lat))           :: h_out
+real, intent(out), dimension(size(lat(:))) ::        cosz
+real, intent(out), dimension(size(lat(:)))           :: h_out
 real, intent(out)           :: rr_out
 !----------------------------------------------------------------------
 
@@ -2058,7 +2054,7 @@ subroutine daily_mean_solar_2level (lat, time_since_ae, cosz, solar)
 !----------------------------------------------------------------------
 real, intent(in), dimension(:)          :: lat
 real, intent(in)                        :: time_since_ae
-real, intent(out), dimension(size(lat)) :: cosz, solar
+real, intent(out), dimension(size(lat(:))) :: cosz, solar
 !----------------------------------------------------------------------
 
 !----------------------------------------------------------------------
@@ -2846,7 +2842,7 @@ real, dimension(:), intent(out)    :: cosz, solar
 !--------------------------------------------------------------------
         lat_2d(:,1) = lat
         jst = 1
-        jnd = size(lat)
+        jnd = size(lat(:))
 
 !--------------------------------------------------------------------
 !    call annual_mean_solar_2d to calculate the astronomy fields.

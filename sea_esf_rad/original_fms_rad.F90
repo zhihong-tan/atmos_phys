@@ -1,4 +1,19 @@
+!FDOC_TAG_GFDL
                 module original_fms_rad_mod
+! <CONTACT EMAIL="fei.liu@noaa.gov">
+!   
+! </CONTACT>
+! <REVIEWER EMAIL="">
+!   
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!   
+! </OVERVIEW>
+! <DESCRIPTION>
+!   
+! </DESCRIPTION>
+!
 
 
 !-----------------------------------------------------------------------
@@ -83,8 +98,8 @@ public    original_fms_rad_init, original_fms_rad_end, original_fms_rad
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: original_fms_rad.F90,v 10.0 2003/10/24 22:00:45 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: original_fms_rad.F90,v 11.0 2004/09/28 19:23:22 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)
@@ -284,6 +299,18 @@ real               ::  rh2o_lower_limit
 
 !####################################################################
 
+! <SUBROUTINE NAME="original_fms_rad_init">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call original_fms_rad_init
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
    subroutine original_fms_rad_init ( lonb, latb, pref, axes, Time , &
 !      co2std, ratio, kmax,  &
 !                     kmax,  &
@@ -335,8 +362,8 @@ type(time_type), intent(in)                 :: Time
       endif
 
 
-    jd = size(latb)-1
-    id = size(lonb)-1
+    jd = size(latb(:))-1
+    id = size(lonb(:))-1
     
 !--------------------------------------------------------------------
 !  define location of radiation diagnostics column, if present
@@ -349,8 +376,8 @@ type(time_type), intent(in)                 :: Time
        ' bad values specified for lat_diag or long_diag', FATAL) 
        endif
        
-!      jd = size(latb)-1
-!      id = size(lonb) - 1
+!      jd = size(latb(:))-1
+!      id = size(lonb(:)) - 1
        lat_diag = lat_diag*4.0*atan(1.0)/180.0
        long_diag = long_diag*4.0*atan(1.0)/180.0
        if (  (lat_diag >= latb(1) .and. lat_diag <= latb(jd+1))   .and. &
@@ -409,6 +436,18 @@ type(time_type), intent(in)                 :: Time
 
 !#######################################################################
 
+! <SUBROUTINE NAME="original_fms_rad_end">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call original_fms_rad_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine original_fms_rad_end
 
 !   --- terminate other modules ---
@@ -427,6 +466,81 @@ end subroutine original_fms_rad_end
 !subroutine original_fms_rad (is, ie, js, je, kerad, ipgl, jpgl,   &
 !subroutine original_fms_rad (lat_in, lon_in, is, ie, js, je, kerad,   &
 !subroutine original_fms_rad (is, ie, js, je, kerad, lat_in, lon_in, &
+! <SUBROUTINE NAME="original_fms_rad">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call original_fms_rad (is, ie, js, je, phalf, lat_in, lon_in, &
+!		do_clear_sky_pass, &
+!		Rad_time, Time_diag, Atmos_input, &
+!		Surface, &
+!		Astro, Rad_gases, Cldrad_props, Cld_spec, &
+!		Fsrad_output, mask, kbot) 
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="phalf" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="lat_in" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="lon_in" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="do_clear_sky_pass" TYPE="logical">
+! 
+!  </IN>
+!  <IN NAME="Rad_time" TYPE="time_type">
+! 
+!  </IN>
+!  <IN NAME="Time_diag" TYPE="time_type">
+! 
+!  </IN>
+!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
+! 
+!  </IN>
+!  <IN NAME="Surface" TYPE="surface_type">
+! 
+!  </IN>
+!  <IN NAME="Astro" TYPE="astronomy_type">
+! 
+!  </IN>
+!  <IN NAME="Rad_gases" TYPE="radiative_gases_type">
+! 
+!  </IN>
+!  <IN NAME="Cldrad_props" TYPE="cldrad_properties_type">
+! 
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+! 
+!  </IN>
+!  <INOUT NAME="Fsrad_output" TYPE="fsrad_output_type">
+! 
+!  </INOUT>
+!  <IN NAME="mask" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="kbot" TYPE="integer">
+! 
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine original_fms_rad (is, ie, js, je, phalf, lat_in, lon_in, &
                              do_clear_sky_pass, &
                              Rad_time, Time_diag, Atmos_input, &
@@ -707,6 +821,44 @@ end subroutine original_fms_rad
 !#####################################################################
 
 !subroutine define_diag_column (is, ie, js, je, ipgl, jpgl, lat,  &
+! <SUBROUTINE NAME="define_diag_column">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call define_diag_column (is, ie, js, je,             lat,  &
+!		lon, ip, jp) 
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="lat" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="lon" TYPE="real">
+! 
+!  </IN>
+!  <OUT NAME="ip" TYPE="integer">
+! 
+!  </OUT>
+!  <OUT NAME="jp" TYPE="integer">
+! 
+!  </OUT>
+! </SUBROUTINE>
+!
 subroutine define_diag_column (is, ie, js, je,             lat,  &
                                lon, ip, jp) 
 

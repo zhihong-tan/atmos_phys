@@ -1,4 +1,21 @@
+!FDOC_TAG_GFDL
                module bulkphys_rad_mod
+! <CONTACT EMAIL="fei.liu@noaa.gov">
+!   fil
+! </CONTACT>
+! <REVIEWER EMAIL="">
+!  
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!    bulkphys_rad_mod defines cloud radiative properties based on
+!    bulk cloud physics values in contrast to microphysically-based
+!    properties.
+! </OVERVIEW>
+! <DESCRIPTION>
+!   
+! </DESCRIPTION>
+!
  
 !    shared modules:
 
@@ -53,8 +70,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 10.0 2003/10/24 22:00:39 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 11.0 2004/09/28 19:20:59 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 
@@ -156,6 +173,37 @@ logical  :: module_is_initialized = .false.
     
 !#####################################################################
 
+! <SUBROUTINE NAME="bulkphys_rad_init">
+!  <OVERVIEW>
+!    subroutine bulkphys_rad_init is the constructor for
+!    bulkphys_rad_mod.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    subroutine bulkphys_rad_init is the constructor for
+!    bulkphys_rad_mod.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call bulkphys_rad_init (pref, lonb, latb)
+!		
+!  </TEMPLATE>
+!  <IN NAME="pref" TYPE="real">
+!       pref      array containing two reference pressure profiles
+!                 for use in defining transmission functions [ Pa ]
+! 
+!  </IN>
+!  <IN NAME="lonb" TYPE="real">
+!       lonb      array of model longitudes on cell boundaries
+!                 [ radians ]
+! 
+!  </IN>
+!  <IN NAME="latb" TYPE="real">
+!       latb      array of model latitudes at cell boundaries [radians]
+! 
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine bulkphys_rad_init (pref, lonb, latb)
 
 !---------------------------------------------------------------------
@@ -208,7 +256,7 @@ real, dimension(:),   intent(in) :: lonb, latb
       call time_manager_init
       call rad_utilities_init
       if (Cldrad_control%do_diag_clouds)  call diag_clouds_W_init (idum)
-      if (Cldrad_control%do_strat_clouds) call strat_clouds_W_init
+      if (Cldrad_control%do_strat_clouds) call strat_clouds_W_init(latb, lonb)
       if (Cldrad_control%do_rh_clouds)    call rh_based_clouds_init 
 
 !---------------------------------------------------------------------
@@ -284,6 +332,68 @@ end subroutine bulkphys_rad_init
 
 !#################################################################
 
+! <SUBROUTINE NAME="bulkphys_sw_driver">
+!  <OVERVIEW>
+!    bulkphys_sw_driver obtains bulk shortwave cloud radiative
+!    properties for the active cloud scheme.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    bulkphys_sw_driver obtains bulk shortwave cloud radiative
+!    properties for the active cloud scheme.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call bulkphys_sw_driver (is, ie, js, je, cosz, Cld_spec,   &
+!		Cldrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="cosz" TYPE="real">
+!      cosz         cosine of the zenith angle [ dimensionless ]
+! 
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+!      Cld_spec     cloud specification arrays defining the
+!                   location, amount and type (hi, middle, lo)
+!                   of clouds that are present, provides input
+!                   to this subroutine
+!                   [ cld_specification_type ]
+! 
+!  </IN>
+!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output
+!               from this routine:
+!
+!                    %cirabsw   absorptivity of clouds in the
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cirrfsw   reflectivity of clouds in the
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cvisrfsw  reflectivity of clouds in the
+!                               visible frequency band
+!                               [ dimensionless ]
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine bulkphys_sw_driver (is, ie, js, je, cosz, Cld_spec,   &
                               Cldrad_props)
 
@@ -405,6 +515,62 @@ end subroutine bulkphys_sw_driver
 
 !####################################################################
 
+! <SUBROUTINE NAME="bulkphys_lw_driver">
+!  <OVERVIEW>
+!    bulkphys_lw_driver defines bulk longwave cloud radiative
+!    properties for the active cloud scheme.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    bulkphys_lw_driver defines bulk longwave cloud radiative
+!    properties for the active cloud scheme.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call bulkphys_lw_driver (is, ie, js, je, Cld_spec, Cldrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+!      Cld_spec          cloud specification arrays defining the
+!                        location, amount and type (hi, middle, lo)
+!                        of clouds that are present, provides input
+!                        to this subroutine
+!                        [ cld_specification_type ]
+! 
+!  </IN>
+!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output
+!               from this routine:
+!
+!                    %emrndlw   longwave cloud emissivity for
+!                               randomly overlapped clouds
+!                               in each of the longwave
+!                               frequency bands  [ dimensionless ]
+!                    %emmxolw   longwave cloud emissivity for
+!                               maximally overlapped clouds
+!                               in each of the longwave
+!                               frequency bands  [ dimensionless ]
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine bulkphys_lw_driver (is, ie, js, je, Cld_spec, Cldrad_props)
 
 !---------------------------------------------------------------------
@@ -472,11 +638,11 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
           do j=1,size(Cld_spec%hi_cloud,2)
             do i=1,size(Cld_spec%hi_cloud,1)
               if (Cld_spec%hi_cloud(i,j,k)) then
-                Cldrad_props%emrndlw(i,j,k,:)  = cldem_hi
+                Cldrad_props%emrndlw(i,j,k,:,1)  = cldem_hi
               else if (Cld_spec%mid_cloud(i,j,k)) then
-                Cldrad_props%emrndlw(i,j,k,:)  = cldem_mid
+                Cldrad_props%emrndlw(i,j,k,:,1)  = cldem_mid
               else if (Cld_spec%low_cloud(i,j,k)) then
-                Cldrad_props%emmxolw(i,j,k,:)  = cldem_low
+                Cldrad_props%emmxolw(i,j,k,:,1)  = cldem_low
               endif
             end do
           end do
@@ -516,6 +682,20 @@ end subroutine bulkphys_lw_driver
 
 !###################################################################
  
+! <SUBROUTINE NAME="bulkphys_rad_end">
+!  <OVERVIEW>
+!    bulkphys_rad_end is the destructor for bulkphys_rad_mod.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    bulkphys_rad_end is the destructor for bulkphys_rad_mod.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call bulkphys_rad_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine bulkphys_rad_end
 
 !-------------------------------------------------------------------

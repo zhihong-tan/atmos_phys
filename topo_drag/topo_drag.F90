@@ -8,11 +8,11 @@ module topo_drag_mod
 !  Calculates horizontal velocity tendency due to topographic drag
 !--------------------------------------------------------------------------
 
-  use       Fms_Mod, only: FILE_EXIST, OPEN_NAMELIST_FILE, ERROR_MESG, FATAL, &
+  use       Fms_Mod, only: FILE_EXIST, OPEN_NAMELIST_FILE, ERROR_MESG, FATAL, NOTE, &
                            READ_DATA, WRITE_DATA, CLOSE_FILE, mpp_pe, mpp_root_pe, &
                            write_version_number, stdlog, open_restart_file
+  use fms_io_mod,    only: get_restart_io_mode, write_data
   use Constants_Mod, only: Grav,Cp_Air,Rdgas,Radius,Pi,Radian
-  use mpp_mod
 
   implicit none
 
@@ -21,8 +21,8 @@ module topo_drag_mod
   logical :: do_init = .true.
   logical :: do_restart_write = .true.
 
-  character(len=128) :: version = '$Id: topo_drag.F90,v 10.0 2003/10/24 22:00:51 fms Exp $'
-  character(len=128) :: tagname = '$Name: jakarta $'
+  character(len=128) :: version = '$Id: topo_drag.F90,v 11.0 2004/09/28 19:25:02 fms Exp $'
+  character(len=128) :: tagname = '$Name: khartoum $'
   logical            :: module_is_initialized = .false.
 
 ! horizontal array size
@@ -60,8 +60,9 @@ module topo_drag_mod
   logical :: &
    calculate_pbl_top=.true. ! calculate pbl top in this module, rather
                             ! than using input array
+  logical :: do_netcdf_restart = .true. ! use netCDF version of the restart file
 
-  NAMELIST /topo_drag_nml/ &
+  NAMELIST /topo_drag_nml/ do_netcdf_restart, &
      & frcrit,anonlin,beta,gamma, &
 !    & zref_fac,no_drag_frac
 !RSH ADD:
@@ -506,74 +507,96 @@ contains
 
     if (module_is_initialized) return
 
-    nlon = size(lonb)-1
-    nlat = size(latb)-1
+    nlon = size(lonb(:))-1
+    nlat = size(latb(:))-1
 
-!   Read namelist
+    !   Read namelist
 
     if (FILE_EXIST('input.nml')) then
-      unit = OPEN_NAMELIST_FILE ()
-      io = 1
-      do while (io /= 0)
-        read (unit, nml = topo_drag_nml, iostat = io, end = 10) 
-      enddo
-10    continue
-      call CLOSE_FILE (unit)
+       unit = OPEN_NAMELIST_FILE ()
+       io = 1
+       do while (io /= 0)
+          read (unit, nml = topo_drag_nml, iostat = io, end = 10) 
+       enddo
+10     continue
+       call CLOSE_FILE (unit)
     endif
+    call get_restart_io_mode(do_netcdf_restart)
 
-!   Output version details
+    !   Output version details
 
     if ( mpp_pe() == mpp_root_pe() ) then
-      call write_version_number(version, tagname)
-      write(stdlog(), nml = topo_drag_nml) 
+       call write_version_number(version, tagname)
+       write(stdlog(), nml = topo_drag_nml) 
     endif
 
-!RSHif (gamma == beta) gamma = beta + 1.e-6
+    !RSHif (gamma == beta) gamma = beta + 1.e-6
     if (gamma == beta + epsi) gamma = beta + epsi + 1.e-6
 
 
     allocate (flat(nlat))
     do j=1,nlat
-      flat(j) = 1./sqrt(max(1., 2.*sin(.5*Radian*(latb(j) + latb(j+1)))))
+       flat(j) = 1./sqrt(max(1., 2.*sin(.5*Radian*(latb(j) + latb(j+1)))))
     enddo
 
     module_is_initialized = .true.
 
-!   Read and interpolate mountain drag dataset
-        
-    if (FILE_EXIST('INPUT/topo_drag.res')) then
+    !   Read and interpolate mountain drag dataset
+    if (file_exist('INPUT/topo_drag.res.nc')) then
 
-      unit = OPEN_RESTART_FILE (file = 'INPUT/topo_drag.res', action = 'READ')
+       if(mpp_pe() == mpp_root_pe()) call error_mesg('topo_drag_mod', &
+            'Reading NetCDF formatted restart file : INPUT/topo_drag.res.nc', NOTE)
 
-    else if (FILE_EXIST('INPUT/topo_drag')) then
+       allocate (t11(nlon,nlat),t21(nlon,nlat),t12(nlon,nlat),t22(nlon,nlat))
+       allocate (umin(nlon,nlat),vmin(nlon,nlat),umax(nlon,nlat),vmax(nlon,nlat))
 
-      unit = OPEN_RESTART_FILE (file = 'INPUT/topo_drag', action = 'READ')
+       call read_data('INPUT/topo_drag.res.nc', 't11', t11, no_domain=.true.)
+       call read_data('INPUT/topo_drag.res.nc', 't21', t21, no_domain=.true.)
+       call read_data('INPUT/topo_drag.res.nc', 't12', t12, no_domain=.true.)
+       call read_data('INPUT/topo_drag.res.nc', 't22', t22, no_domain=.true.)
+       call read_data('INPUT/topo_drag.res.nc', 'umin', umin, no_domain=.true.)
+       call read_data('INPUT/topo_drag.res.nc', 'vmin', vmin, no_domain=.true.)
+       call read_data('INPUT/topo_drag.res.nc', 'umax', umax, no_domain=.true.)
+       call read_data('INPUT/topo_drag.res.nc', 'vmax', vmax, no_domain=.true.)
+    else       
 
-    else
+       if (FILE_EXIST('INPUT/topo_drag.res')) then
 
-      call ERROR_MESG ('topo_drag_init',  &
-                       'No sub-grid orography specified in topo_drag', &
-                       FATAL)
-      do_restart_write = .false.
-      return
+          unit = OPEN_RESTART_FILE (file = 'INPUT/topo_drag.res', action = 'READ')
 
+       else if (FILE_EXIST('INPUT/topo_drag')) then
+
+          unit = OPEN_RESTART_FILE (file = 'INPUT/topo_drag', action = 'READ')
+
+       else
+
+          call ERROR_MESG ('topo_drag_init',  &
+               'No sub-grid orography specified in topo_drag', &
+               FATAL)
+          do_restart_write = .false.
+          return
+
+       endif
+
+       if(mpp_pe() == mpp_root_pe()) call error_mesg('topo_drag_mod', &
+            'Reading native formatted restart file : INPUT/topo_drag.res', NOTE)
+
+       allocate (t11(nlon,nlat),t21(nlon,nlat),t12(nlon,nlat),t22(nlon,nlat))
+       allocate (umin(nlon,nlat),vmin(nlon,nlat),umax(nlon,nlat),vmax(nlon,nlat))
+
+       call READ_DATA (unit,t11)
+       call READ_DATA (unit,t21)
+       call READ_DATA (unit,t12)
+       call READ_DATA (unit,t22)
+       call READ_DATA (unit,umin)
+       call READ_DATA (unit,vmin)
+       call READ_DATA (unit,umax)
+       call READ_DATA (unit,vmax)
+
+       call close_file (unit)
+
+       return
     endif
-
-    allocate (t11(nlon,nlat),t21(nlon,nlat),t12(nlon,nlat),t22(nlon,nlat))
-    allocate (umin(nlon,nlat),vmin(nlon,nlat),umax(nlon,nlat),vmax(nlon,nlat))
-
-    call READ_DATA (unit,t11)
-    call READ_DATA (unit,t21)
-    call READ_DATA (unit,t12)
-    call READ_DATA (unit,t22)
-    call READ_DATA (unit,umin)
-    call READ_DATA (unit,vmin)
-    call READ_DATA (unit,umax)
-    call READ_DATA (unit,vmax)
-
-    call close_file (unit)
-
-    return
   end subroutine topo_drag_init
 
   !=====================================================================
@@ -673,19 +696,35 @@ contains
     if (.not. do_restart_write) return
 
 !   write out global arrays to restart file
+    if (do_netcdf_restart) then
 
-    unit = OPEN_RESTART_FILE (file = 'RESTART/topo_drag.res', action = 'WRITE')
+       if(mpp_pe() == mpp_root_pe()) call error_mesg('topo_drag_mod', &
+            'Writing NetCDF formatted restart file : RESTART/topo_drag.res.nc', NOTE)
+       call write_data('RESTART/topo_drag.res.nc', 't11', t11, no_domain=.true.)
+       call write_data('RESTART/topo_drag.res.nc', 't21', t21, no_domain=.true.)
+       call write_data('RESTART/topo_drag.res.nc', 't12', t12, no_domain=.true.)
+       call write_data('RESTART/topo_drag.res.nc', 't22', t22, no_domain=.true.)
+       call write_data('RESTART/topo_drag.res.nc', 'umin', umin, no_domain=.true.)
+       call write_data('RESTART/topo_drag.res.nc', 'vmin', vmin, no_domain=.true.)
+       call write_data('RESTART/topo_drag.res.nc', 'umax', umax, no_domain=.true.)
+       call write_data('RESTART/topo_drag.res.nc', 'vmax', vmax, no_domain=.true.)
+    else    
+       
+       if(mpp_pe() == mpp_root_pe()) call error_mesg('topo_drag_mod', &
+            'Writing native formatted restart file : RESTART/topo_drag.res', NOTE)
+       unit = OPEN_RESTART_FILE (file = 'RESTART/topo_drag.res', action = 'WRITE')
+       
+       call WRITE_DATA (unit,t11)
+       call WRITE_DATA (unit,t21)
+       call WRITE_DATA (unit,t12)
+       call WRITE_DATA (unit,t22)
+       call WRITE_DATA (unit,umin)
+       call WRITE_DATA (unit,vmin)
+       call WRITE_DATA (unit,umax)
+       call WRITE_DATA (unit,vmax)
 
-    call WRITE_DATA (unit,t11)
-    call WRITE_DATA (unit,t21)
-    call WRITE_DATA (unit,t12)
-    call WRITE_DATA (unit,t22)
-    call WRITE_DATA (unit,umin)
-    call WRITE_DATA (unit,vmin)
-    call WRITE_DATA (unit,umax)
-    call WRITE_DATA (unit,vmax)
-
-    call CLOSE_FILE (unit)
+       call CLOSE_FILE (unit)
+    endif
  
       module_is_initialized = .false.
  

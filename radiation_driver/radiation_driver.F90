@@ -15,14 +15,108 @@
 !    modeling system.
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!    radiation_driver_mod is the interface between physics_driver_mod
-!    and a specific radiation parameterization, currently either the
-!    original_fms_rad or sea_esf_rad radiation package. it provides 
-!    radiative heating rates, boundary radiative fluxes, and any other 
-!    radiation package output fields to other component models of the
-!    modeling system.
+! The following modules are called from this driver module:
+!
+!   1) astronomy
+!
+!   2) cloud properties
+!
+!   3) prescribed zonal ozone
+!
+!   4) longwave and shortwave radiation driver
 ! </DESCRIPTION>
+!  <DIAGFIELDS>
+!  Diagnostic fields may be output to a netcdf file by specifying the
+!  module name radiation and the desired field names (given below)
+!  in file diag_table. See the documentation for diag_manager.
+!  
+!  Diagnostic fields for module name: radiation
+!  
+!     field name      field description
+!     ----------      -----------------
+!  
+!     alb_sfc         surface albedo (percent)
+!     coszen          cosine of the solar zenith angle
+!  
+!     tdt_sw          temperature tendency for SW radiation (deg_K/sec)
+!     tdt_lw          Temperature tendency for LW radiation (deg_K/sec)
+!     swdn_toa        SW flux down at TOA (watts/m2)
+!     swup_toa        SW flux up at TOA (watts/m2)
+!     olr             outgoing longwave radiation (watts/m2)
+!     swup_sfc        SW flux up at surface (watts/m2)
+!     swdn_sfc        SW flux down at surface (watts/m2)
+!     lwup_sfc        LW flux up at surface  (watts/m2)
+!     lwdn_sfc        LW flux down at surface (watts/m2)
+!  
+!  NOTE: When namelist variable do_clear_sky_pass = .true. an additional clear sky
+!        diagnostic fields may be saved.
+!  
+!     tdt_sw_clr      clear sky temperature tendency for SW radiation (deg_K/sec)
+!     tdt_lw_clr      clear sky Temperature tendency for LW radiation (deg_K/sec)
+!     swdn_toa_clr    clear sky SW flux down at TOA (watts/m2)
+!     swup_toa_clr    clear sky SW flux up at TOA (watts/m2)
+!     olr_clr         clear sky outgoing longwave radiation (watts/m2)
+!     swup_sfc_clr    clear sky SW flux up at surface (watts/m2)
+!     swdn_sfc_clr    clear sky SW flux down at surface (watts/m2)
+!     lwup_sfc_clr    clear sky LW flux up at surface  (watts/m2)
+!     lwdn_sfc_clr    clear sky LW flux down at surface (watts/m2)
+!  </DIAGFIELDS>
 
+! <INFO>
+
+!   <REFERENCE>  For a specific list of radiation references see the
+!     longwave and shortwave documentation.          </REFERENCE>
+!   <COMPILER NAME="">     </COMPILER>
+!   <PRECOMP FLAG="">      </PRECOMP>
+!   <LOADER FLAG="">       </LOADER>
+!   <TESTPROGRAM NAME="">  </TESTPROGRAM>
+!   <BUG>
+!For some of the diagnostics fields that represent fractional amounts,
+!    such as reflectivity and absorptivity, the units are incorrectly
+!    given as percent.
+!</BUG>
+!   <NOTE> 
+!CHANGE HISTORY
+!changes prior to 1/24/2000
+!
+!  * Modified the radiation alarm. 
+!    The module can now be stopped/started on a time step that is not the
+!    radiation time step.
+!
+!  * Modified the radiation restart format.
+!    Added a version number and radiation alarm information.
+!
+!  * Fixed a bug that occurred when namelist variable do_average = true.
+!    An addition averaging variable was added for array "solar". 
+!    This averaging information was also added to the restart file.
+!    ***NOTE: As of this code, this namelist variable has been removed.***
+!
+!  * Removed the initialization for the astronomy package. This is now done
+!    by the astronomy namelist.
+!
+!changes prior to 10/4/1999
+!
+!  * MPP version created. Changes to open_file and error_mesg arguments, 
+!    Fortran write statements to standard output only on PE 0, Fortran close
+!    statement changed to call close_file, and Fortran read/write statements
+!    for restart files changed to call read_data/write_data.
+!
+!  * Implementation of the new MPP diagnostics package. This required major
+!    changes to the diagnostic interface and the manner in which diagnostics
+!    quantities are selected.
+!
+!  * There were no changes made that would cause answers to changes.
+!
+!changes prior to 5/26/1999
+!
+!  * added namelist variables for modifying the co2 mixing ratio.
+!
+!  * changed the units of namelist variable solar_constant from ly/min to watts/m2.
+!
+!   </NOTE>
+!   <FUTURE>               </FUTURE>
+
+! </INFO>
 !   shared modules:
 
 use fms_mod,               only: fms_init, mpp_clock_id, &
@@ -33,17 +127,21 @@ use fms_mod,               only: fms_init, mpp_clock_id, &
                                  file_exist, FATAL, WARNING, NOTE, &
                                  close_file, read_data, write_data, &
                                  write_version_number, check_nml_error,&
-                                 error_mesg, open_restart_file
+                                 error_mesg, open_restart_file, &
+                                 read_data, mpp_error
+use fms_io_mod,            only: get_restart_io_mode
 use diag_manager_mod,      only: register_diag_field, send_data, &
-                                 diag_manager_init
+                                 diag_manager_init, get_base_time
 use time_manager_mod,      only: time_type, set_date, set_time,  &
                                  get_time,    operator(+),       &
-                                 time_manager_init, &
+                                 print_date, time_manager_init, &
                                  operator(-), operator(/=), get_date,&
                                  operator(<), operator(>=), operator(>)
 use sat_vapor_pres_mod,    only: sat_vapor_pres_init, lookup_es
 use constants_mod,         only: constants_init, RDGAS, RVGAS,   &
-                                 STEFAN, GRAV, SECONDS_PER_DAY
+                                 STEFAN, GRAV, SECONDS_PER_DAY,  &
+                                 RADIAN
+use data_override_mod,     only: data_override
 
 ! shared radiation package modules:
 
@@ -53,6 +151,7 @@ use rad_utilities_mod,     only: radiation_control_type, Rad_control, &
                                  cldrad_properties_type, &
                                  astronomy_type, surface_type, &
                                  cld_specification_type, &
+                                 aerosol_diagnostics_type, &
                                  atmos_input_type, rad_utilities_init,&
                                  aerosol_properties_type, aerosol_type,&
                                  sw_output_type, lw_output_type, &
@@ -62,6 +161,7 @@ use rad_utilities_mod,     only: radiation_control_type, Rad_control, &
                                  environment_type, Environment, &
                                  cloudrad_control_type, Cldrad_control,&
                                  rad_utilities_end
+use esfsw_parameters_mod,  only: Solar_spect, esfsw_parameters_init  
 
 !  physics support modules:
 
@@ -108,12 +208,31 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 10.0 2003/10/24 22:00:37 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 11.0 2004/09/28 19:20:30 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
 !------ interfaces -----
+! <PUBLIC>
+!use radiation_driver_mod [,only: radiation_driver_init,
+!                                 radiation_driver,
+!                                 radiation_driver_end]
+!   radiation_driver_init
+!       Must be called once before subroutine radiation_driver to
+!       initialize the module (read namelist input and restart file).
+!       Also calls the initialization routines for other modules used.
+!   radiation_driver
+!       Called every time step (not on the radiation time step)
+!       to compute the longwave and shortwave radiative tendencies.
+!   radiation_driver_end
+!       Called once at the end of a model run to terminate the module (write
+!       a restart file). Also calls the termination routines for other
+!       modules used.
+!Notes:
+! 1) A namelist interface controls runtime options.
+! 3) A restart file radiation_driver.res is generated by this module.
+!</PUBLIC>
 
 public    radiation_driver_init, radiation_driver,   &
           define_rad_times, define_atmos_input_fields,  &
@@ -124,12 +243,16 @@ private  &
 
 ! called from radiation_driver_init:
           read_restart_file, initialize_diagnostic_integrals,   &
-          diag_field_init, &
+          diag_field_init, read_restart_nc, &
+
+! called from radiation_driver_end:
+          write_restart_file, write_restart_nc, &
 
 ! called from radiation_driver:
           obtain_astronomy_variables, radiation_calc,    &
           update_rad_fields, produce_radiation_diagnostics,  &
           deallocate_arrays, &
+          flux_trop_calc, &
 
 ! called from define_atmos_input_fields:
           calculate_auxiliary_variables
@@ -137,7 +260,6 @@ private  &
 
 !-----------------------------------------------------------------------
 !------- namelist ---------
-
 integer ::  rad_time_step = 0         !  radiative time step in seconds
 logical ::  do_clear_sky_pass= .false.!  are the clear-sky radiation
                                       !  diagnostics to be calculated ?
@@ -197,9 +319,198 @@ logical :: use_mixing_ratio = .false. !  assumes q is mixing ratio
                                       !  rather than specific humidity
 real    :: solar_constant = 1365.0    !  annual mean solar flux at top 
                                       !  of atmosphere [ W/(m**2) ]
+logical :: doing_data_override = .false.  
+                                      !  input fields to the radiation
+                                      !  package are being overriden
+                                      !  using data_override_mod ?
+logical :: overriding_temps = .false. !  temperature and ts fields are
+                                      !  overriden ?
+logical :: overriding_sphum = .false. !  specific humidity field is
+                                      !  overriden ?
+logical :: overriding_clouds = .false.!  cloud specification fields are
+                                      !  overriden ?
+logical :: overriding_albedo = .false.!  surface albedo field is
+                                      !  overriden ?
+logical :: overriding_aerosol = .false.
+                                      !  aerosol fields are overriden ?
+real    :: trop_ht_at_poles = 30000.  !  assumed height of tropoause at
+                                      !  poles for case of tropause
+                                      !  linearly varying with latitude
+                                      !  [ Pa ]
+real    :: trop_ht_at_eq    = 10000.  !  assumed height of tropoause at
+                                      !  equator for case of tropause
+                                      !  linearly varying with latitude
+                                      !  [ Pa ]
+real    :: trop_ht_constant = 20000.  !  assumed height of tropoause   
+                                      !  when assumed constant       
+                                      !  [ Pa ]
+logical :: constant_tropo = .true.    !  generate tropopause fluxes when
+                                      !  tropopause ht assumed constant?
+logical :: linear_tropo   = .true.    !  generate tropopause fluxes when
+                                      !  tropopause assumed to vary
+                                      !  linearly with latitude?
+logical :: thermo_tropo   = .false.   !  generate tropopause fluxes when
+                                      !  tropopause determined thermo-
+                                      !  dynamically ?
+logical :: time_varying_solar_constant = .false. 
+                                      !  solar_constant is to vary with
+                                      !  time ?
+logical :: do_netcdf_restart = .true. !  netcdf/native restart
 
-
-namelist /radiation_driver_nml/ rad_time_step, do_clear_sky_pass, &
+integer, dimension(6) :: solar_dataset_entry = (/ 1, 1, 1, 0, 0, 0 /)
+                                      ! time in solar data set corresp-
+                                      ! onding to model initial time
+                                      ! (yr, mo, dy, hr, mn, sc)
+! <NAMELIST NAME="radiation_driver_nml">
+!  <DATA NAME="do_netcdf_restart" UNITS="" TYPE="logical" DIM="" DEFAULT=".TRUE.">
+! netcdf/native restart file format
+!  </DATA>
+!  <DATA NAME="rad_time_step" UNITS="" TYPE="integer" DIM="" DEFAULT="14400">
+!The radiative time step in seconds.
+!  </DATA>
+!  <DATA NAME="do_clear_sky_pass" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+! are the clear-sky radiation
+!  diagnostics to be calculated ?
+!  </DATA>
+!  <DATA NAME="zenith_spec" UNITS="" TYPE="character" DIM="" DEFAULT="">
+!string defining how zenith 
+!  angle is computed. acceptable
+!  values: 'daily_mean', 'annual_
+!  mean', 'diurnally_varying'
+!  </DATA>
+!  <DATA NAME="rad_package" UNITS="" TYPE="character" DIM="" DEFAULT="">
+!string defining the radiation
+!  package being used. acceptable
+!  values : 'sea_esf', 
+!  'original_fms'
+!  </DATA>
+!  <DATA NAME="calc_hemi_integrals" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!are hemispheric integrals 
+!  desired ?
+!  </DATA>
+!  <DATA NAME="all_step_diagnostics" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!are lw and sw radiative bdy
+!  fluxes and atmospheric heating 
+!  rates to be output on physics 
+!  steps ?
+!  </DATA>
+!  <DATA NAME="renormalize_sw_fluxes" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!should sw fluxes and the zenith
+!  angle be renormalized on each 
+!  timestep because of the 
+!  movement of earth wrt the sun ?
+!  </DATA>
+!  <DATA NAME="rad_date" UNITS="" TYPE="integer" DIM="" DEFAULT="">
+!fixed date for which radiation
+!  is to be valid (applies to
+!  solar info, ozone, clouds)
+!  [yr, mo, day, hr, min, sec]
+!  </DATA>
+!  <DATA NAME="all_level_radiation" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!is radiation to be calculated 
+!  at all model levels ?
+!  </DATA>
+!  <DATA NAME="topmost_radiation_level" UNITS="" TYPE="integer" DIM="" DEFAULT="">
+!if all_level_radiation is 
+!  false., this is the lowest
+!  model index at which radiation
+!  is calculated
+!  </DATA>
+!  <DATA NAME="drop_upper_levels" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!if all_level_radiation is false
+!  and drop_upper_levels is true,
+!  radiation will be calculated
+!  at all model levels from
+!  topmost_radiation_level to the
+!  surface
+!  </DATA>
+!  <DATA NAME="all_column_radiation" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!is radiation to be calculated
+!  in all model columns ?
+!  </DATA>
+!  <DATA NAME="rsd" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!(repeat same day) - call 
+!  radiation for the specified 
+!  rad_date (yr,mo,day), but run 
+!  through the diurnal cycle (hr,
+!  min,sec)
+!  </DATA>
+!  <DATA NAME="use_mixing_ratio" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!assumes q is mixing ratio
+!  rather than specific humidity
+!  </DATA>
+!  <DATA NAME="solar_constant" UNITS="" TYPE="real" DIM="" DEFAULT="">
+!annual mean solar flux at top 
+!  of atmosphere [ W/(m**2) ]
+!  </DATA>
+!  <DATA NAME="doing_data_override" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!input fields to the radiation
+!  package are being overriden
+!  using data_override_mod ?
+!  </DATA>
+!  <DATA NAME="overriding_temps" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!temperature and ts fields are
+!  overriden ?
+!  </DATA>
+!  <DATA NAME="overriding_sphum" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+! specific humidity field is
+!  overriden ?
+!  </DATA>
+!  <DATA NAME="overriding_clouds" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+! cloud specification fields are
+!  overriden ?
+!  </DATA>
+!  <DATA NAME="overriding_albedo" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+! surface albedo field is
+!  overriden ?
+!  </DATA>
+!  <DATA NAME="overriding_aerosol" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!aerosol fields are overriden ?
+!  </DATA>
+!  <DATA NAME="trop_ht_at_poles" UNITS="" TYPE="" DIM="" DEFAULT="">
+!assumed height of tropoause at
+!  poles for case of tropause
+!  linearly varying with latitude
+!  [ Pa ]
+!  </DATA>
+!  <DATA NAME="trop_ht_at_eq" UNITS="" TYPE="real" DIM="" DEFAULT="">
+!assumed height of tropoause at
+!  equator for case of tropause
+!  linearly varying with latitude
+!  [ Pa ]
+!  </DATA>
+!  <DATA NAME="trop_ht_constant" UNITS="" TYPE="real" DIM="" DEFAULT="">
+!assumed height of tropoause   
+!  when assumed constant       
+!  [ Pa ]
+!  </DATA>
+!  <DATA NAME="constant_tropo" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+! generate tropopause fluxes when
+!  tropopause ht assumed constant?
+!  </DATA>
+!  <DATA NAME="linear_tropo" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+! generate tropopause fluxes when
+!  tropopause assumed to vary
+!  linearly with latitude?
+!  </DATA>
+!  <DATA NAME="thermo_tropo" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+! generate tropopause fluxes when
+!  tropopause determined thermo-
+!  dynamically ?
+!  </DATA>
+!  <DATA NAME="time_varying_solar_constant" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!solar_constant is to vary with
+!  time ?
+!  </DATA>
+!  <DATA NAME="solar_dataset_entry" UNITS="" TYPE="integer" DIM="" DEFAULT="">
+!time in solar data set corresp-
+! onding to model initial time
+! (yr, mo, dy, hr, mn, sc)
+!  </DATA>
+! </NAMELIST>
+!
+namelist /radiation_driver_nml/ do_netcdf_restart, &
+                                rad_time_step, do_clear_sky_pass, &
                                 zenith_spec, rad_package,    &
                                 calc_hemi_integrals,     &
                                 all_step_diagnostics, &
@@ -208,8 +519,16 @@ namelist /radiation_driver_nml/ rad_time_step, do_clear_sky_pass, &
                                 topmost_radiation_level,   &
                                 drop_upper_levels,  &
                                 all_column_radiation, rsd,    &
-                                use_mixing_ratio, solar_constant
-
+                                use_mixing_ratio, solar_constant, &
+                                doing_data_override, &
+                                overriding_temps, overriding_sphum, &
+                                overriding_clouds, overriding_albedo, &
+                                overriding_aerosol, &
+                                trop_ht_at_poles, trop_ht_at_eq, &
+                                trop_ht_constant, constant_tropo, &
+                                linear_tropo, thermo_tropo, &
+                                time_varying_solar_constant, &
+                                solar_dataset_entry
 !---------------------------------------------------------------------
 !---- public data ----
 
@@ -228,13 +547,17 @@ logical ::  use_rad_date                    ! specify time of radiation
 logical ::  do_sea_esf_rad                  ! using sea_esf_rad package?
 
 !---------------------------------------------------------------------
-!    list of restart versions of radiation_driver.res readable by this 
-!    module, dependent on which radiation package is activated. restart 
-!    version 1 of radiation_driver.res is not readable by this module; 
-!    however, restart version 1 of sea_esf_rad.res IS readable within 
-!    this code.
+!    list of restart files readable by this module.
+!
+!                 sea_esf_rad.res:
+!
 !     version 1:  sea_esf_rad.res file version used initially in 
-!                 AM2 model series  
+!                 AM2 model series (through galway code, AM2p8). this
+!                 is the only version of sea_esf_rad.res ever produced.
+!
+!                 radiation_driver.res:
+!
+!     version 1:  not readable by this module.
 !     version 2:  added cosine of zenith angle as an output to
 !                 radiation_driver.res  (6/27/00)
 !     version 3:  added restart variables needed when sw renormalization
@@ -244,10 +567,19 @@ logical ::  do_sea_esf_rad                  ! using sea_esf_rad package?
 !                 and entrain_mod. (7/17/02)
 !     version 5:  removed variables associated with the former 
 !                 do_average namelist option (7/23/03)
+!     version 6:  added writing of sw tropospheric fluxes (up and
+!                 down) so that they are available for the renormal-
+!                 ization case (developed by ds, 10/03; added to 
+!                 trunk code 01/14/04).
+!     version 7:  added swdn to saved variables (developed by slm 
+!                 11/23/03, added to trunk code 01/14/04).
+!     version 8:  includes additional sw fluxes at sfc, used with
+!                 land model (11/13/03).
+!     version 9:  consolidation of version 6 and version 8. (version 7
+!                 replaced by version 8.)
 !---------------------------------------------------------------------
-integer, dimension(4) :: restart_versions     = (/ 2, 3, 4, 5 /)
-integer, dimension(4) :: restart_versions_sea = (/ 2, 3, 4, 5 /)
-
+integer, dimension(8) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
+                                                   7, 8, 9 /)
 
 !-----------------------------------------------------------------------
 !    these arrays must be preserved across timesteps:
@@ -256,6 +588,15 @@ integer, dimension(4) :: restart_versions_sea = (/ 2, 3, 4, 5 /)
 !    components:
 !          tdt_rad        radiative (sw + lw) heating rate
 !          flux_sw_surf   net (down-up) sw flux at surface
+!          flux_sw_surf_dir   net (down-up) sw flux at surface
+!          flux_sw_surf_dif   net (down-up) sw flux at surface
+!          flux_sw_down_vis_dir  downward visible sw flux at surface
+!          flux_sw_down_vis_dif  downward visible sw flux at surface
+!          flux_sw_down_total_dir  downward total sw flux at surface
+!          flux_sw_down_total_dif  downward total sw flux at surface
+!          flux_sw_vis    net visible sw flux at surface
+!          flux_sw_vis_dir    net visible sw flux at surface
+!          flux_sw_vis_dif net visible sw flux at surface
 !          flux_lw_surf   downward lw flux at surface
 !          coszen_angle   cosine of the zenith angle (used for the 
 !                         last radiation calculation)
@@ -271,9 +612,16 @@ integer, dimension(4) :: restart_versions_sea = (/ 2, 3, 4, 5 /)
 !    timestep to reflect the current solar forcing.
 !
 !    sw_heating_clr, tot_heating_clr_save, sw_heating_save, 
-!    tot_heating_save, flux_sw_surf_save are the radiative forcing terms
-!    on radiation steps which also must be saved when renormalization 
-!    is activated. 
+!    tot_heating_save, flux_sw_surf_save, flux_sw_surf_dir_save,
+!    flux_sw_surf_dif_save, flux_sw_down_vis_dir_save, 
+!    flux_sw_down_vis_dif_save
+!    flux_sw_down_total_dir_save, flux_sw_down_total_dif_save and 
+!    flux_sw_vis_save, flux_sw_vis_dir_save, flux_sw_vis_dif_save are 
+!    the radiative forcing terms on radiation steps which also must be 
+!    saved when renormalization is activated.
+
+!    swdn_special_save, swup_special_save, swdn_special_clr_save,
+!    swup_special_clr_save are also saved.
 !
 !    the ***sw_save arrays are currently saved so that their values may
 !    be adjusted during sw renormalization for diagnostic purposes.
@@ -285,7 +633,17 @@ integer, dimension(4) :: restart_versions_sea = (/ 2, 3, 4, 5 /)
 !-----------------------------------------------------------------------
 
 type(rad_output_type),save          ::  Rad_output
-real, allocatable, dimension(:,:)   ::  solar_save, flux_sw_surf_save
+real, allocatable, dimension(:,:)   ::  solar_save, flux_sw_surf_save, &
+                                        dum_idjd, &
+                                        flux_sw_surf_dir_save, &
+                                        flux_sw_surf_dif_save, &
+                                        flux_sw_down_vis_dir_save, &
+                                        flux_sw_down_vis_dif_save, &
+                                        flux_sw_down_total_dir_save, &
+                                        flux_sw_down_total_dif_save, &
+                                        flux_sw_vis_save, &
+                                        flux_sw_vis_dir_save, &
+                                        flux_sw_vis_dif_save
 real, allocatable, dimension(:,:,:) ::  sw_heating_save,    &
                                         tot_heating_save,  &
                                         sw_heating_clr_save, &
@@ -294,11 +652,16 @@ real, allocatable, dimension(:,:,:) ::  sw_heating_save,    &
                                         hsw_save, dfswcf_save,   &
                                         ufswcf_save, fswcf_save, &
                                         hswcf_save
-
 real, allocatable, dimension(:,:,:) ::  tdtlw_save, tdtlw_clr_save
 real, allocatable, dimension(:,:)   ::  olr_save, lwups_save, &
                                         lwdns_save, olr_clr_save, &
                                         lwups_clr_save, lwdns_clr_save
+real, allocatable, dimension(:,:,:) ::  swdn_special_save, &
+                                        swdn_special_clr_save, &  
+                                        swup_special_save,&
+                                        swup_special_clr_save, &
+                                        netlw_special_save, &
+                                        netlw_special_clr_save
 
 !-----------------------------------------------------------------------
 !    time-step-related constants
@@ -321,14 +684,38 @@ integer    :: dt             !  physics time step (frequency of calling
 
 !-----------------------------------------------------------------------
 !    diagnostics variables
+integer, parameter :: MX_SPEC_LEVS = 3 
+                             ! number of special levels at
+                             ! which radiative fluxes are to be 
+                             ! calculated for diagnostic purposes
 
 character(len=16)            :: mod_name = 'radiation'
-integer                      :: id_alb_sfc, id_cosz, id_fracday 
+integer                      :: id_alb_sfc, id_cosz, id_fracday, &
+                                id_alb_sfc_vis_dir, id_alb_sfc_nir_dir,&
+                                id_alb_sfc_vis_dif, id_alb_sfc_nir_dif
+integer                      :: id_flux_sw_dir, id_flux_sw_dif, &
+                                id_flux_sw_down_vis_dir, &
+                                id_flux_sw_down_vis_dif, &
+                                id_flux_sw_down_total_dir, &
+                                id_flux_sw_down_total_dif, &
+                                id_flux_sw_vis, &
+                                id_flux_sw_vis_dir, &
+                                id_flux_sw_vis_dif, &
+                                id_rrvco2, id_rrvf11, id_rrvf12, &
+                                id_rrvf113, id_rrvf22, id_rrvch4, &
+                                id_rrvn2o, id_co2_tf, id_ch4_tf, &
+                                id_n2o_tf, id_sol_con
+integer                      :: id_conc_drop, id_conc_ice
 
 integer, dimension(2)        :: id_tdt_sw,   id_tdt_lw,  &
                                 id_swdn_toa, id_swup_toa, id_olr, &
+                                id_netrad_toa,   &
                                 id_swup_sfc, id_swdn_sfc,         &
                                 id_lwup_sfc, id_lwdn_sfc
+integer, dimension(MX_SPEC_LEVS,2)   :: id_swdn_special,   &
+                                        id_swup_special,  &
+                                        id_netlw_special
+
 
 real                         :: missing_value = -999.
 character(len=8)             :: std_digits   = 'f8.3'
@@ -391,8 +778,37 @@ real,parameter ::  D622 = RDGAS/RVGAS
                               ! water vapor
 real,parameter ::  D378 = 1.0 - D622  
                               ! 1 - gas constant ratio
+integer :: id, jd
 
+real, dimension(:,:), allocatable :: solflxtot_lean
+real            :: solflxtot_lean_ann_1882, solflxtot_lean_ann_2000
+integer         ::   first_yr_lean, last_yr_lean,   &
+                     nvalues_per_year_lean, numbands_lean
+integer         ::   years_of_data_lean 
 
+type(time_type) :: Model_init_time, Solar_offset, &
+                   Solar_entry
+logical         :: negative_offset = .false.
+
+! <DATASET NAME="CO2 transmission functions">
+! Several ascii files are required that can be easily setup by a
+!     script for getting physics data sets.
+! </DATASET>
+! <DATASET NAME="Restart file">
+! A restart data set called radiation_driver.res(.nc) saves the
+!     global fields for the current radiative tendency, net shortwave
+!     surface flux, downward longwave surface flux, and cosine of the
+!     zenith angle. If the namelist variable do_average=true,
+!     then additional time averaged global data is written.
+!     If the restart file is not present when initializing then the
+!     radiative tendency is set to zero, the SW and LW surface fluxes
+!     to 50 watts/m2, and the cosine of the zenith angle to 0.50.
+!     Since radiation is usually computed on the first time step when
+!     restarting, these values may have little or no effect.  If the
+!     restart file is not present time average data is also set to zero.
+! </DATASET>
+!<REFERENCE> For a specific list of radiation references see the
+!     longwave and shortwave documentation.</REFERENCE>
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
 
@@ -452,10 +868,25 @@ real,parameter ::  D378 = 1.0 - D622
 !  <IN NAME="aerosol_names" TYPE="character">
 !   Aerosol names
 !  </IN>
+!   <ERROR MSG="must have two reference pressure profile" STATUS="FATAL">
+!     The input argument pref must have a second dimension size of 2.
+!   </ERROR>
+!   <ERROR MSG="restart version ## cannot be read by this module version" STATUS="FATAL">
+!     You have attempted to read a radiation_driver.res file with either
+!       no restart version number or an incorrect restart version number.
+!   </ERROR>
+!
+!   <NOTE>
+!    radiation time step has changed, next radiation time also changed
+!       The radiation time step from the namelist input did not match
+!       the radiation time step from the radiation restart file.
+!       The next time for radiation will be adjusted for the new  namelist
+!       input) value.
+!   </NOTE>
 ! </SUBROUTINE>
 !
 subroutine radiation_driver_init (lonb, latb, pref, axes, Time, &
-                                  aerosol_names)
+                                  aerosol_names, aerosol_family_names)
 
 !---------------------------------------------------------------------
 !   radiation_driver_init is the constructor for radiation_driver_mod.
@@ -467,6 +898,7 @@ real, dimension(:,:),            intent(in)  :: pref
 integer, dimension(4),           intent(in)  :: axes
 type(time_type),                 intent(in)  :: Time
 character(len=*), dimension(:), intent(in)   :: aerosol_names
+character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 !----------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -483,6 +915,9 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
 !       Time           current time [time_type(days, seconds)]
 !       aerosol_names  names associated with the activated aerosol
 !                      species
+!       aerosol_family_names  
+!                      names associated with the activated aerosol
+!                      families
 !
 !----------------------------------------------------------------------
 
@@ -490,7 +925,9 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
 !   local variables
 
       integer           ::   unit, io, ierr
-      integer           ::   id, jd, kmax 
+      integer           ::   kmax 
+      integer           ::   nyr, nv, nband
+      integer           ::   yr, month, year, dum
 
 !---------------------------------------------------------------------
 !   local variables
@@ -512,7 +949,10 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
 
 !---------------------------------------------------------------------
 !    verify that modules used by this module that are not called later
-!    have already been initialized.
+!    have already been initialized. note that data_override_init cannot
+!    be called successfully from here (a data_override_mod feature);
+!    instead it relies upon a check for previous initialization when
+!    subroutine data_override is called.
 !---------------------------------------------------------------------
       call fms_init
       call rad_utilities_init
@@ -521,6 +961,7 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
       call sat_vapor_pres_init
       call constants_init
       call diag_integral_init
+      call esfsw_parameters_init
 
 !---------------------------------------------------------------------
 !    read namelist.
@@ -532,6 +973,20 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
         ierr = check_nml_error(io,'radiation_driver_nml')
         enddo
 10      call close_file (unit)
+      endif
+      call get_restart_io_mode(do_netcdf_restart)
+
+!--------------------------------------------------------------------
+!    make sure other namelist variables are consistent with 
+!    doing_data_override. Validate here to prevent potentially mis-
+!    leading values from going into the stdlog file.
+!--------------------------------------------------------------------
+      if (.not. doing_data_override) then
+        overriding_temps   = .false.
+        overriding_sphum   = .false.
+        overriding_albedo  = .false.
+        overriding_clouds  = .false.
+        overriding_aerosol = .false.
       endif
 
 !---------------------------------------------------------------------
@@ -558,6 +1013,15 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
            'string provided for rad_package is not valid', FATAL)
       endif
 
+!---------------------------------------------------------------------
+!    stop execution if overriding of aerosol data has been requested.
+!    code to do so has not yet been written.
+!---------------------------------------------------------------------
+      if (overriding_aerosol) then
+        call error_mesg ('radiation_driver_mod', &
+                'overriding of aerosol data not yet implemented', FATAL)
+      endif
+
 !--------------------------------------------------------------------
 !    set logical variables defining how the solar zenith angle is to
 !    be  defined from the namelist-input character string.  exit if the
@@ -580,7 +1044,172 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
             'string provided for zenith_spec is invalid', FATAL)
       endif
 
-      Sw_control%solar_constant = solar_constant
+!--------------------------------------------------------------------
+!     code to handle time-varying solar input
+!--------------------------------------------------------------------
+        if (file_exist('INPUT/lean_solar_spectral_data.dat')) then
+          unit = open_namelist_file   &
+                                 ('INPUT/lean_solar_spectral_data.dat')
+          read (unit, FMT = '(4i8)') first_yr_lean, last_yr_lean,  &
+                                   nvalues_per_year_lean, numbands_lean
+          if (numbands_lean /= Solar_spect%nbands) then
+            call error_mesg ('radiation_driver_mod', &
+            ' number of sw parameterization bands in solar_spectral &
+            &data file differs from that defined in esfsw_parameters',&
+                                                           FATAL)
+          endif
+          years_of_data_lean = last_yr_lean - first_yr_lean + 1
+          allocate (solflxtot_lean   &
+                           (years_of_data_lean, nvalues_per_year_lean))
+          allocate (Solar_spect%solflxband_lean   &
+             (years_of_data_lean, nvalues_per_year_lean, numbands_lean))
+          allocate (Solar_spect%solflxband_lean_ann_1882(numbands_lean))
+          read (unit, FMT = '(2i6,f17.4)') yr, month, &
+                                          solflxtot_lean_ann_1882
+          read (unit, FMT = '(6e12.5 )')   &
+                 (Solar_spect%solflxband_lean_ann_1882 &
+                                 (nband), nband =1,numbands_lean)
+          do nyr=1,years_of_data_lean
+            do nv=1,nvalues_per_year_lean
+              read (unit, FMT = '(2i6,f17.4)') yr, month, &
+                                       solflxtot_lean(nyr,nv)
+              read (unit, FMT = '(6e12.5 )')   &
+                 (Solar_spect%solflxband_lean  &
+                                (nyr,nv,nband), nband =1,numbands_lean)
+            end do
+          end do
+          allocate (Solar_spect%solflxband_lean_ann_2000(numbands_lean))
+          read (unit, FMT = '(2i6,f17.4)') yr, month, &
+                                           solflxtot_lean_ann_2000
+          read (unit, FMT = '(6e12.5 )')   &
+              (Solar_spect%solflxband_lean_ann_2000 &
+                              (nband), nband =1,numbands_lean)
+          call close_file (unit) 
+        else
+          if (time_varying_solar_constant) then
+            call error_mesg ('radiation_driver_mod', &
+             'desired solar_spectral_data input file is not present', &
+                                                             FATAL)
+          endif
+        endif
+        
+        if (time_varying_solar_constant) then
+        if (solar_dataset_entry(1) == 1 .and. &
+            solar_dataset_entry(2) == 1 .and. &
+            solar_dataset_entry(3) == 1 .and. &
+            solar_dataset_entry(4) == 0 .and. &
+            solar_dataset_entry(5) == 0 .and. &
+            solar_dataset_entry(6) == 0 ) then
+          call error_mesg ('radiation_driver_mod', &
+                'must set solar_dataset_entry when using  &
+                                    &time-varying solar inputs', FATAL)
+        endif
+ 
+!----------------------------------------------------------------------
+!    define the offset from model base time (defined in diag_table) to 
+!    solar_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        Model_init_time = get_base_time()
+        Solar_entry  = set_date (solar_dataset_entry(1), &
+                                 solar_dataset_entry(2), &
+                                 solar_dataset_entry(3), &
+                                 solar_dataset_entry(4), &
+                                 solar_dataset_entry(5), &
+                                 solar_dataset_entry(6))
+        call error_mesg ('radiation_driver_mod', &
+             'Solar data is varying in time', NOTE)
+        call print_date (Solar_entry , str='Data from solar timeseries &
+                                            &at time:')
+        call print_date (Model_init_time , str='This data is mapped to &
+                                             &model time:')
+        Solar_offset = Solar_entry - Model_init_time
+ 
+        if (Model_init_time > Solar_entry) then
+          negative_offset = .true.
+        else
+          negative_offset = .false.
+        endif
+        Rad_control%using_solar_timeseries_data = .true.
+        Rad_control%using_solar_timeseries_data_iz = .true.
+
+!---------------------------------------------------------------------
+!    if solar input not time-varying, define solar constant and set 
+!    offset to 0.0.
+!---------------------------------------------------------------------
+      else
+        if (solar_dataset_entry(1) == 1 .and. &
+          solar_dataset_entry(2) == 1 .and. &
+          solar_dataset_entry(3) == 1 .and. &
+          solar_dataset_entry(4) == 0 .and. &
+          solar_dataset_entry(5) == 0 .and. &
+          solar_dataset_entry(6) == 0 ) then
+          Sw_control%solar_constant = solar_constant
+          Solar_offset = set_time(0,0)
+          call error_mesg ('radiation_driver_mod', &
+                   'Solar data is fixed in time at nml value', NOTE)
+          Rad_control%using_solar_timeseries_data = .false.
+          Rad_control%using_solar_timeseries_data_iz = .true.
+        else
+ 
+!----------------------------------------------------------------------
+!    convert solar_dataset_entry to a time_type variable.
+!----------------------------------------------------------------------
+          Solar_entry  = set_date (solar_dataset_entry(1), &
+                                   solar_dataset_entry(2), &
+                                   solar_dataset_entry(3), &
+                                   solar_dataset_entry(4), &
+                                   solar_dataset_entry(5), &
+                                   solar_dataset_entry(6))
+          call error_mesg ('radiation_driver_mod', &
+                                'Solar data is fixed in time', NOTE)
+          call print_date (Solar_entry ,    &
+             str='Data used in this experiment is from solar &
+                  &timeseries at time:')
+          if (size(Solar_spect%solflxband(:)) /= numbands_lean) then
+            call error_mesg ('radiation_driver_mod', &
+             'bands present in solar constant time data differs from &
+               &model parameterization band number', FATAL)
+          endif
+
+!--------------------------------------------------------------------
+!    define time to be used for solar input data.
+!--------------------------------------------------------------------
+          call get_date (Solar_entry, year, month, dum, dum, dum, dum)
+
+!--------------------------------------------------------------------
+!    define input value based on year and month of Solar_time.
+!--------------------------------------------------------------------
+          if (year < first_yr_lean) then
+            Sw_control%solar_constant = solflxtot_lean_ann_1882
+            do nband=1,numbands_lean
+              Solar_spect%solflxband(nband) =  &
+                       Solar_spect%solflxband_lean_ann_1882(nband)
+            end do
+          else if (year > last_yr_lean) then
+            Sw_control%solar_constant = solflxtot_lean_ann_2000    
+            do nband=1,numbands_lean
+              Solar_spect%solflxband(nband) =  &
+                  Solar_spect%solflxband_lean_ann_2000(nband)
+            end do
+          else
+            Sw_control%solar_constant =   & 
+                            solflxtot_lean(year-first_yr_lean+1, month)
+            do nband=1,numbands_lean
+              Solar_spect%solflxband(nband) =  &
+         Solar_spect%solflxband_lean(year-first_yr_lean+1, month, nband)
+            end do
+          endif
+          Rad_control%using_solar_timeseries_data = .true.
+          Rad_control%using_solar_timeseries_data_iz = .true.
+        endif
+      endif
+
+!---------------------------------------------------------------------
+!     include logical control in Rad_control derived-type variable.
+!---------------------------------------------------------------------
+      Rad_control%time_varying_solar_constant =  &
+                                        time_varying_solar_constant
+      Rad_control%time_varying_solar_constant_iz = .true.
 
 !---------------------------------------------------------------------
 !    set flags indicating that the Sw_control variables have been 
@@ -636,12 +1265,35 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
               FATAL)
       endif
 
+      Rad_control%rad_time_step = rad_time_step
+      Rad_control%rad_time_step_iz  = .true.         
+
+      if (MOD(INT(SECONDS_PER_DAY), rad_time_step) /= 0) then
+        call error_mesg ('radiation_driver_mod', &
+             'radiation timestep currently restricted to be an &
+                       &integral factor of seconds in a day', FATAL)
+      endif
+
+!----------------------------------------------------------------------
+!    store the radiation time step in a derived-type variable for 
+!    transfer to other modules.
+!----------------------------------------------------------------------
+      Rad_control%rad_time_step = rad_time_step
+      Rad_control%rad_time_step_iz = .true.
+
 !---------------------------------------------------------------------
 !    define the dimensions of the local processors portion of the grid.
 !---------------------------------------------------------------------
       id    = size(lonb,1) - 1 
       jd    = size(latb,1) - 1
       kmax  = size(pref,1) - 1 
+
+!---------------------------------------------------------------------
+!    save the number of special levels at which fluxes may be defined
+!    for diagnostic purposes. 
+!---------------------------------------------------------------------
+      Rad_control%mx_spec_levs = MX_SPEC_LEVS
+      Rad_control%mx_spec_levs_iz = .true.        
 
 !---------------------------------------------------------------------
 !    check for consistency if drop_upper_levels is activated.
@@ -719,13 +1371,25 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
 !---------------------------------------------------------------------
       if (renormalize_sw_fluxes .or. all_step_diagnostics) then
         allocate (solar_save             (id,jd))
+        allocate (dum_idjd               (id,jd))
         allocate (flux_sw_surf_save      (id,jd))
+        allocate (flux_sw_surf_dir_save      (id,jd))
+        allocate (flux_sw_surf_dif_save      (id,jd))
+        allocate (flux_sw_down_vis_dir_save      (id,jd))
+        allocate (flux_sw_down_vis_dif_save      (id,jd))
+        allocate (flux_sw_down_total_dir_save      (id,jd))
+        allocate (flux_sw_down_total_dif_save      (id,jd))
+        allocate (flux_sw_vis_save      (id,jd))
+        allocate (flux_sw_vis_dir_save      (id,jd))
+        allocate (flux_sw_vis_dif_save      (id,jd))
         allocate (sw_heating_save        (id,jd,kmax))
         allocate (tot_heating_save       (id,jd,kmax))
         allocate (dfsw_save              (id,jd,kmax+1))
         allocate (ufsw_save              (id,jd,kmax+1))
         allocate ( fsw_save              (id,jd,kmax+1))
         allocate ( hsw_save              (id,jd,kmax))
+        allocate (swdn_special_save      (id,jd,MX_SPEC_LEVS))
+        allocate (swup_special_save      (id,jd,MX_SPEC_LEVS))
         if (do_clear_sky_pass) then 
           allocate (sw_heating_clr_save  (id,jd,kmax))
           allocate (tot_heating_clr_save (id,jd,kmax))
@@ -733,6 +1397,8 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
           allocate (ufswcf_save          (id,jd,kmax+1))
           allocate ( fswcf_save          (id,jd,kmax+1))
           allocate ( hswcf_save          (id,jd,kmax))
+          allocate (swdn_special_clr_save(id,jd, MX_SPEC_LEVS))
+          allocate (swup_special_clr_save(id,jd, MX_SPEC_LEVS))
         endif
       endif
 
@@ -745,16 +1411,20 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
         allocate (lwups_save           (id,jd))
         allocate (lwdns_save           (id,jd))
         allocate (tdtlw_save           (id,jd,kmax))
+        allocate (netlw_special_save   (id,jd,MX_SPEC_LEVS))
         if (do_clear_sky_pass) then
-          allocate (olr_clr_save       (id,jd))
-          allocate (lwups_clr_save     (id,jd))
-          allocate (lwdns_clr_save     (id,jd))
-          allocate (tdtlw_clr_save     (id,jd,kmax))
+          allocate (olr_clr_save           (id,jd))
+          allocate (lwups_clr_save         (id,jd))
+          allocate (lwdns_clr_save         (id,jd))
+          allocate (tdtlw_clr_save         (id,jd,kmax))
+          allocate (netlw_special_clr_save (id,jd,MX_SPEC_LEVS))
         endif
       endif
 
       if (Environment%running_gcm .or. &
-          Environment%running_sa_model) then
+          Environment%running_sa_model .or. &
+          (Environment%running_standalone .and. &
+           Environment%column_type == 'fms')) then
 !---------------------------------------------------------------------
 !    allocate space for module variables to contain values which must
 !    be saved between timesteps (these are used on every timestep,
@@ -765,6 +1435,15 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
         allocate (Rad_output%tdtsw       (id,jd,kmax))
         allocate (Rad_output%tdtsw_clr   (id,jd,kmax))
         allocate (Rad_output%tdtlw       (id,jd,kmax))
+        allocate (Rad_output%flux_sw_surf_dir(id,jd))
+        allocate (Rad_output%flux_sw_surf_dif(id,jd))
+        allocate (Rad_output%flux_sw_down_vis_dir(id,jd))
+        allocate (Rad_output%flux_sw_down_vis_dif(id,jd))
+        allocate (Rad_output%flux_sw_down_total_dir(id,jd))
+        allocate (Rad_output%flux_sw_down_total_dif(id,jd))
+        allocate (Rad_output%flux_sw_vis(id,jd))
+        allocate (Rad_output%flux_sw_vis_dir(id,jd))
+        allocate (Rad_output%flux_sw_vis_dif(id,jd))
         allocate (Rad_output%flux_sw_surf(id,jd))
         allocate (Rad_output%flux_lw_surf(id,jd))
         allocate (Rad_output%coszen_angle(id,jd))
@@ -785,7 +1464,9 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
 !-----------------------------------------------------------------------
 !    if a valid restart file exists, call read_restart_file to read it.
 !-----------------------------------------------------------------------
-        if ( (do_sea_esf_rad .and.   &
+        if ( file_exist('INPUT/radiation_driver.res.nc')) then
+          call read_restart_nc
+        else if ( (do_sea_esf_rad .and.   &
              (file_exist('INPUT/sea_esf_rad.res')  .or. &
               file_exist('INPUT/radiation_driver.res') )  ) .or. &
              (.not. do_sea_esf_rad .and.   &
@@ -800,10 +1481,26 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
 !-----------------------------------------------------------------------
         else
           rad_alarm                = 1
+          if (mpp_pe() == mpp_root_pe() ) then
+          call error_mesg ('radiation_driver_mod', &
+           'radiation to be calculated on first step: no restart file&
+                                                 & present', NOTE)
+          endif
           Rad_output%tdt_rad       = 0.0
           Rad_output%tdt_rad_clr   = 0.0
           Rad_output%tdtlw         = 0.0
           Rad_output%flux_sw_surf  = surf_flx_init
+!!! BETTER INITIAL VALUES FOR THESE ARRAYS NEEDED ??
+          Rad_output%flux_sw_surf_dir  = surf_flx_init
+          Rad_output%flux_sw_surf_dif  = surf_flx_init
+!!! BETTER INITIAL VALUES FOR THESE ARRAYS NEEDED ??
+          Rad_output%flux_sw_down_vis_dir  = 0.0
+          Rad_output%flux_sw_down_vis_dif  = 0.0
+          Rad_output%flux_sw_down_total_dir  = 0.0
+          Rad_output%flux_sw_down_total_dif  = 0.0
+          Rad_output%flux_sw_vis  = 0.0
+          Rad_output%flux_sw_vis_dir  = 0.0
+          Rad_output%flux_sw_vis_dif  = 0.0
           Rad_output%flux_lw_surf  = surf_flx_init
           Rad_output%coszen_angle  = coszen_angle_init
           if (mpp_pe() == mpp_root_pe() ) then
@@ -834,8 +1531,9 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
         call sea_esf_rad_init        (lonb, latb, pref(ks:ke+1,:))
         call cloudrad_package_init   (pref(ks:ke+1,:), lonb, latb,  &
                                       axes, Time)
-        call aerosolrad_package_init (aerosol_names)
-        call rad_output_file_init    (axes, Time, aerosol_names)
+        call aerosolrad_package_init (kmax, aerosol_names, lonb, latb)
+        call rad_output_file_init    (axes, Time, aerosol_names, &
+                                      aerosol_family_names)
 
 !---------------------------------------------------------------------
 !    do the initialization specific to the original fms radiation
@@ -855,7 +1553,9 @@ character(len=*), dimension(:), intent(in)   :: aerosol_names
       endif
 
       if (Environment%running_gcm .or.  &
-          Environment%running_sa_model) then
+          Environment%running_sa_model .or. &
+          (Environment%running_standalone .and. &
+           Environment%column_type == 'fms')) then
 !---------------------------------------------------------------------
 !    initialize the total number of columns in the processor's domain.
 !---------------------------------------------------------------------
@@ -1002,6 +1702,15 @@ end subroutine radiation_driver_init
 !   OPTIONAL: present when running eta vertical coordinate,
 !                        mask to remove points below ground
 !  </IN>
+! <ERROR MSG="radiation_driver_init must first be called" STATUS="FALTA">
+! You have not called radiation_driver_init before calling
+!       radiation_driver.
+! </ERROR>
+! <ERROR MSG="Time_next <= Time" STATUS="FALTA">
+! Time arguments to radiation_driver are producing a time step <= 0.
+!       Check that the time argumnets passed to the physics_driver are
+!       correct.
+! </ERROR>
 ! </SUBROUTINE>
 !
 subroutine radiation_driver (is, ie, js, je, Time, Time_next,  &
@@ -1120,6 +1829,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
       type(sw_output_type)               :: Sw_output
       type(fsrad_output_type)            :: Fsrad_output
       type(aerosol_properties_type)      :: Aerosol_props
+      type(aerosol_diagnostics_type)     :: Aerosol_diags
 
       real, dimension (ie-is+1, je-js+1) :: flux_ratio
  
@@ -1168,7 +1878,46 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
       if (do_rad) then
         if (Rad_control%do_aerosol) then
           call aerosol_radiative_properties (is, ie, js, je, &
+                                             Rad_time,   &
+                                             Atmos_input%pflux, &
+                                             Aerosol_diags, &
                                              Aerosol, Aerosol_props)
+!         allocate (Aerosol_diags%extopdep (size(Aerosol%aerosol,1), &
+!                                           size(Aerosol%aerosol,2), &
+!                                           size(Aerosol%aerosol,3), &
+!                                           size(Aerosol%aerosol,4) ))
+!         Aerosol_diags%extopdep = 0.0
+!         allocate (Aerosol_diags%absopdep (size(Aerosol%aerosol,1), &
+!                                           size(Aerosol%aerosol,2), &
+!                                           size(Aerosol%aerosol,3), &
+!                                           size(Aerosol%aerosol,4) ))
+!         Aerosol_diags%absopdep = 0.0
+!         allocate (Aerosol_diags%extopdep_vlcno    &
+!                                          (size(Aerosol%aerosol,1), &
+!                                           size(Aerosol%aerosol,2), &
+!                                           size(Aerosol%aerosol,3),3)) 
+!         Aerosol_diags%extopdep_vlcno = 0.0
+!         allocate (Aerosol_diags%absopdep_vlcno  &
+!                                          (size(Aerosol%aerosol,1), &
+!                                           size(Aerosol%aerosol,2), &
+!                                           size(Aerosol%aerosol,3),3))
+!         Aerosol_diags%absopdep_vlcno = 0.0
+!         allocate (Aerosol_diags%sw_heating_vlcno  &
+!                                          (size(Aerosol%aerosol,1), &
+!                                           size(Aerosol%aerosol,2), &
+!                                           size(Aerosol%aerosol,3)))
+!         Aerosol_diags%sw_heating_vlcno = 0.0
+!         allocate (Aerosol_diags%lw_extopdep_vlcno    &
+!                                          (size(Aerosol%aerosol,1), &
+!                                           size(Aerosol%aerosol,2), &
+!                                         size(Aerosol%aerosol,3)+1,3)) 
+!         Aerosol_diags%lw_extopdep_vlcno = 0.0
+!         allocate (Aerosol_diags%lw_absopdep_vlcno  &
+!                                          (size(Aerosol%aerosol,1), &
+!                                           size(Aerosol%aerosol,2), &
+!                                         size(Aerosol%aerosol,3)+1,3))
+!         Aerosol_diags%lw_absopdep_vlcno = 0.0
+        
         endif
       endif
       call mpp_clock_end (misc_clock)
@@ -1212,7 +1961,8 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
                              lon, Atmos_input, Surface, Rad_gases,  &
                              Aerosol_props, Aerosol, Cldrad_props, &
                              Cld_spec, Astro, Rad_output, Lw_output, &
-                             Sw_output, Fsrad_output, mask=mask,   &
+                             Sw_output, Fsrad_output, Aerosol_diags, &
+                             mask=mask,   &
                              kbot=kbot)       
       endif
 
@@ -1226,7 +1976,9 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !-------------------------------------------------------------------
       call mpp_clock_begin (misc_clock)
       if (Environment%running_gcm .or.  &
-          Environment%running_sa_model) then
+          Environment%running_sa_model .or. &
+          (Environment%running_standalone .and. &
+           Environment%column_type == 'fms')) then
         call update_rad_fields (is, ie, js, je, Time_next, Astro2, &
                                 Sw_output, Astro, Rad_output,    &
                                 flux_ratio)
@@ -1238,16 +1990,19 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
         if (do_sea_esf_rad) then
           call produce_radiation_diagnostics        &
                             (is, ie, js, je, Time_next, lat, &
-                             Atmos_input%tsfc, Surface%asfc,  &
+                             Atmos_input%tsfc, Surface,  &
                              flux_ratio,  Astro, Rad_output,  &
-                             Lw_output=Lw_output,&
-                             Sw_output=Sw_output)
+                             Rad_gases, Lw_output=Lw_output,&
+                             Sw_output=Sw_output,  &
+                             Cld_spec=Cld_spec,  &
+                             Lsc_microphys=Lsc_microphys)
         else
           call produce_radiation_diagnostics        &
                             (is, ie, js, je, Time_next, lat, &
-                             Atmos_input%tsfc, Surface%asfc,  &
+                             Atmos_input%tsfc, Surface,  &
                              flux_ratio,  Astro, Rad_output,  &
-                             Fsrad_output=Fsrad_output, mask=mask)
+                             Rad_gases, Fsrad_output=Fsrad_output, &
+                             mask=mask)
         endif 
 
 !---------------------------------------------------------------------
@@ -1264,7 +2019,10 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
                                         Rad_output, Sw_output,  &
                                         Lw_output, Rad_gases,   & 
                                         Cldrad_props, Cld_spec, & 
-                                        Time_next, Aerosol%aerosol)
+                                        Time_next,  &
+                                        Aerosol=Aerosol, &
+                                        Aerosol_props=Aerosol_props, &
+                                        Aerosol_diags=Aerosol_diags)
           else
             call write_rad_output_file (is, ie, js, je,  &
                                         Atmos_input,Surface, &
@@ -1281,7 +2039,9 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !    with stack-resident derived-type variables.
 !---------------------------------------------------------------------
         call deallocate_arrays (Cldrad_props, Astro, Astro2,    &
-                                Lw_output, Fsrad_output, Sw_output) 
+                                Aerosol_props, &
+                                Lw_output, Fsrad_output, Sw_output, &
+                                Aerosol_diags)
 
 !---------------------------------------------------------------------
 !    complete radiation step when running within a gcm. update the 
@@ -1292,7 +2052,9 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !    the alarm goes off.
 !--------------------------------------------------------------------
       if (Environment%running_gcm .or.  &
-          Environment%running_sa_model) then
+          Environment%running_sa_model .or. &
+          (Environment%running_standalone .and. &
+           Environment%column_type == 'fms')) then
         num_pts = num_pts + size(lat,1) * size(lat,2)
         if (num_pts == total_pts) then
           num_pts = 0
@@ -1318,6 +2080,24 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
                                   Rad_output%tdt_rad(is:ie,js:je,:)
         Radiation%flux_sw_surf(:,:) =    &
                                   Rad_output%flux_sw_surf(is:ie,js:je)
+        Radiation%flux_sw_surf_dir(:,:) =   &
+                              Rad_output%flux_sw_surf_dir(is:ie,js:je)
+        Radiation%flux_sw_surf_dif(:,:) =   &
+                              Rad_output%flux_sw_surf_dif(is:ie,js:je)
+        Radiation%flux_sw_down_vis_dir(:,:) =   &
+                         Rad_output%flux_sw_down_vis_dir(is:ie,js:je)
+        Radiation%flux_sw_down_vis_dif(:,:) =   &
+                         Rad_output%flux_sw_down_vis_dif(is:ie,js:je)
+        Radiation%flux_sw_down_total_dir(:,:) =   &
+                         Rad_output%flux_sw_down_total_dir(is:ie,js:je)
+        Radiation%flux_sw_down_total_dif(:,:) =   &
+                         Rad_output%flux_sw_down_total_dif(is:ie,js:je)
+        Radiation%flux_sw_vis (:,:) =   &
+                               Rad_output%flux_sw_vis (is:ie,js:je)
+        Radiation%flux_sw_vis_dir (:,:) =   &
+                           Rad_output%flux_sw_vis_dir (is:ie,js:je)
+        Radiation%flux_sw_vis_dif (:,:) =   &
+                          Rad_output%flux_sw_vis_dif (is:ie,js:je)
         Radiation%flux_lw_surf(:,:)    =   &
                                   Rad_output%flux_lw_surf(is:ie,js:je)
         Radiation%tdtlw(:,:,:)         =     &
@@ -1349,7 +2129,7 @@ end subroutine radiation_driver
 !    need to be retrieved on the current step.
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call  define_rad_times (Time, Time_next, dt_in, Rad_time_out,    &
+!   call  define_rad_times (Time, Time_next, Rad_time_out,    &
 !                             need_aerosols, need_clouds, need_gases,  &
 !                             need_basic)
 !  </TEMPLATE>
@@ -1358,9 +2138,6 @@ end subroutine radiation_driver
 !  </IN>
 !  <IN NAME="Time_next" TYPE="time_type">
 !   The time used for diagnostic output
-!  </IN>
-!  <IN NAME="dt_in" TYPE="real">
-!   physics time step (frequency of calling radiaiton_driver)
 !  </IN>
 !  <INOUT NAME="Rad_time_out" TYPE="time_type">
 !   time at which the climatologically-determined,
@@ -1381,7 +2158,7 @@ end subroutine radiation_driver
 !  </OUT>
 ! </SUBROUTINE>
 !
-subroutine define_rad_times (Time, Time_next, dt_in, Rad_time_out,    &
+subroutine define_rad_times (Time, Time_next, Rad_time_out,    &
                              need_aerosols, need_clouds, need_gases,  &
                              need_basic)
 
@@ -1394,7 +2171,6 @@ subroutine define_rad_times (Time, Time_next, dt_in, Rad_time_out,    &
 
 !---------------------------------------------------------------------
 type(time_type), intent(in)     ::  Time, Time_next
-real,            intent(in)     ::  dt_in
 type(time_type), intent(inout)  ::  Rad_time_out
 logical,         intent(out)    ::  need_aerosols, need_clouds,   &
                                     need_gases, need_basic
@@ -1407,9 +2183,6 @@ logical,         intent(out)    ::  need_aerosols, need_clouds,   &
 !                     [ time_type, days and seconds]
 !     Time_next       model time on the next atmospheric timestep
 !                     [ time_type, days and seconds]
-!     dt_in           physics time step (frequency of calling 
-!                     radiation_driver)
-!                     [ seconds ]
 !     
 !   intent(inout) variables:
 !
@@ -1430,8 +2203,10 @@ logical,         intent(out)    ::  need_aerosols, need_clouds,   &
 !---------------------------------------------------------------------
 !   local variables:
 
-      integer        :: day, sec
+      integer        :: year, month, day, sec
       integer        :: dum, tod(3)
+      integer        :: nband
+      type(time_type) :: Solar_time
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -1458,7 +2233,8 @@ logical,         intent(out)    ::  need_aerosols, need_clouds,   &
 !    store the atmospheric timestep into a module variable for later
 !    use.
 !--------------------------------------------------------------------
-      dt = dt_in
+      call get_time (Time_next-Time, sec, day)    
+      dt = day*SECONDS_PER_DAY + sec
 
 !--------------------------------------------------------------------
 !    verify that the radiation timestep is an even multiple of the 
@@ -1533,6 +2309,52 @@ logical,         intent(out)    ::  need_aerosols, need_clouds,   &
         endif  ! (rsd)
       endif  ! (running_standalone)
 
+!---------------------------------------------------------------------
+!    define the solar_constant appropriate at Rad_time, including any
+!    offset defined via the namelist.
+!---------------------------------------------------------------------
+      if (Rad_control%time_varying_solar_constant) then
+        if (size(Solar_spect%solflxband(:)) /= numbands_lean) then
+          call error_mesg ('radiation_driver_mod', &
+             'bands present in solar constant time data differs from &
+               &model parameterization band number', FATAL)
+        endif
+
+!--------------------------------------------------------------------
+!    define time to be used for solar input data.
+!--------------------------------------------------------------------
+        if (negative_offset) then
+          Solar_time = Rad_time - Solar_offset
+        else
+          Solar_time = Rad_time + Solar_offset
+        endif
+        call get_date (Solar_time, year, month, dum, dum, dum, dum)
+
+!--------------------------------------------------------------------
+!    define input value based on year and month of Solar_time.
+!--------------------------------------------------------------------
+        if (year < first_yr_lean) then
+          Sw_control%solar_constant = solflxtot_lean_ann_1882
+          do nband=1,numbands_lean
+            Solar_spect%solflxband(nband) =  &
+                       Solar_spect%solflxband_lean_ann_1882(nband)
+          end do
+        else if (year > last_yr_lean) then
+          Sw_control%solar_constant = solflxtot_lean_ann_2000           
+          do nband=1,numbands_lean
+            Solar_spect%solflxband(nband) =  &
+                  Solar_spect%solflxband_lean_ann_2000(nband)
+          end do
+        else
+          Sw_control%solar_constant =   &
+                            solflxtot_lean(year-first_yr_lean+1, month)
+          do nband=1,numbands_lean
+            Solar_spect%solflxband(nband) =  &
+            Solar_spect%solflxband_lean(year-first_yr_lean+1, month, nband)
+          end do
+        endif
+      endif
+          
 !--------------------------------------------------------------------
 !    set a logical variable indicating whether radiative gas input data
 !    is needed on this step.
@@ -1785,6 +2607,16 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
  
       integer :: i, j, k, kb
       integer :: kmax
+      integer  :: d1, d2, d3, d4, d5, d6
+      logical :: override
+      type(time_type)  :: Data_time
+      real, dimension (size(q,1), size(q,2), size(q,3)) :: q2
+      real, dimension (size(t,1), size(t,2), size(t,3)) :: t2, pfull2
+      real, dimension (size(t,1), size(t,2), size(t,3)+1) ::  phalf2
+      real, dimension (size(ts,1), size(ts,2)) ::  ts2
+      real, dimension (id, jd, size(t,3)) :: r_proc, t_proc, press_proc
+      real, dimension (id, jd, size(t,3)+1) :: phalf_proc
+      real, dimension (id, jd) :: ts_proc
 
 !---------------------------------------------------------------------
 !  local variables
@@ -1826,6 +2658,132 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
       kmax = size(t,3)
 
 !---------------------------------------------------------------------
+!    if the temperature, cloud, or aerosol input data is to be over-
+!    riden, define the time slice of data which is to be used. allocate
+!    storage for the temperature data which will be needed for these
+!    cases.
+!---------------------------------------------------------------------
+      if (doing_data_override) then
+        Data_time = Rad_time + set_time (rad_time_step, 0) 
+        if (overriding_temps .or. overriding_aerosol .or. &
+            overriding_clouds) then
+
+!---------------------------------------------------------------------
+!    call data_override to retrieve the processor subdomain's temper-
+!    ature data from the override file. if the process fails, write
+!    an error message; if it succeeds move the data fro the current
+!    window into array t2.
+!---------------------------------------------------------------------
+          call data_override ('ATM', 'tnew', t_proc, Data_time ,  &
+                              override=override)
+          if ( .not. override) then
+            call error_mesg ('radiation_driver_mod', &
+                      'temp => t not overridden successfully', FATAL)
+          else
+            t2(:,:,1:kmax) = t_proc(is:ie,js:je,:)
+          endif
+        else
+          t2 = t
+        endif
+
+!---------------------------------------------------------------------
+!    if the temperature data is to be overriden, allocate storage for 
+!    the surface temperature data which will be needed in this cases.
+!---------------------------------------------------------------------
+        if (overriding_temps) then
+
+!---------------------------------------------------------------------
+!    call data_override to retrieve the processor subdomain's surface
+!    temperature data from the override file. if the process fails,
+!    write an error message; if it succeeds move the data from the 
+!    current window into array ts2, and also into array ts2.
+!---------------------------------------------------------------------
+          call data_override ('ATM', 'ts', ts_proc, Data_time ,  &
+                              override=override)
+          if ( .not. override) then
+            call error_mesg ('radiation_driver_mod', &
+              't_surf => ts not overridden successfully', FATAL)
+          else
+            ts2(:,:) = ts_proc(is:ie,js:je)
+            t2(:,:,kmax+1) = ts_proc(is:ie,js:je)
+          endif
+        else
+          ts2 = ts
+        endif
+
+!---------------------------------------------------------------------
+!    if the humidity, cloud, or aerosol input data is to be over-
+!    riden, define the time slice of data which is to be used. allocate
+!    storage for the humidity data which will be needed for these
+!    cases.
+!---------------------------------------------------------------------
+        if (overriding_sphum .or. overriding_aerosol .or. &
+            overriding_clouds) then
+
+!---------------------------------------------------------------------
+!    call data_override to retrieve the processor subdomain's surface
+!    humidity data from the override file. if the process fails,
+!    write an error message; if it succeeds move the data from the 
+!    current window into array q2.
+!---------------------------------------------------------------------
+          call data_override ('ATM', 'q', r_proc, Data_time ,  &
+                              override=override)
+          if ( .not. override) then
+            call error_mesg ('radiation_driver_mod', &
+                 'sphum => q not overridden successfully', FATAL)
+          else
+            q2(:,:,:) = r_proc(is:ie,js:je,:)
+          endif
+        else
+          q2 = q
+        endif
+
+!---------------------------------------------------------------------
+!    if the aerosol input data is to be overriden, allocate storage 
+!    for the pressure data which will be needed in this case.
+!---------------------------------------------------------------------
+        if (overriding_aerosol) then
+
+!---------------------------------------------------------------------
+!    call data_override to retrieve the processor subdomain's pressure
+!    data from the override file. if the process fails, write an error
+!    message; if it succeeds move the data from the current window into
+!    array pfull2 and phalf2.
+!---------------------------------------------------------------------
+          call data_override ('ATM', 'pfull2', press_proc,  &
+                              Data_time , override=override)
+          if ( .not. override) then
+            call error_mesg ('radiation_driver_mod', &
+                 'pressm => pfull2 not overridden successfully', FATAL)
+          else
+            pfull2(:,:,:) = press_proc(is:ie,js:je,:)
+          endif
+          call data_override ('ATM', 'phalf2', phalf_proc,  &
+                              Data_time, override=override)
+          if ( .not. override) then
+            call error_mesg ('radiation_driver_mod', &
+                 'phalfm => phalf2 not overridden successfully', FATAL)
+          else
+            phalf2(:,:,kmax+1) = phalf_proc(is:ie,js:je,kmax+1)
+          endif
+        else
+          pfull2 = pfull
+          phalf2(:,:,kmax+1) = phalf(:,:,kmax+1)
+        endif
+        
+!---------------------------------------------------------------------
+!    if not doing data_override, define the arrays which will be 
+!    used to define the components of Atmos_input%.
+!---------------------------------------------------------------------
+      else
+        t2 = t
+        ts2 = ts
+        q2 = q
+        pfull2 = pfull
+        phalf2(:,:,kmax+1) = phalf(:,:,kmax+1)
+      endif
+
+!---------------------------------------------------------------------
 !    allocate space for the components of the derived type variable
 !    Atmos_input.
 !---------------------------------------------------------------------
@@ -1861,7 +2819,11 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
       if (present (cloudtemp) ) then
         Atmos_input%cloudtemp(:,:,:)   = cloudtemp(:,:,:)
       else
-        Atmos_input%cloudtemp(:,:,:)   = t(:,:,:)
+        if (overriding_clouds) then
+          Atmos_input%cloudtemp(:,:,:)   = t2(:,:,:)
+        else
+          Atmos_input%cloudtemp(:,:,:)   = t(:,:,:)
+        endif
       endif
 
 !---------------------------------------------------------------------
@@ -1870,7 +2832,11 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
       if (present (cloudvapor) ) then
         Atmos_input%cloudvapor(:,:,:)   = cloudvapor(:,:,:)
       else
-        Atmos_input%cloudvapor(:,:,:)   = q(:,:,:)
+        if (overriding_clouds) then
+          Atmos_input%cloudvapor(:,:,:)   = q2(:,:,:)
+        else
+          Atmos_input%cloudvapor(:,:,:)   = q(:,:,:)
+        endif
       endif
 
 !---------------------------------------------------------------------
@@ -1879,7 +2845,11 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
       if (present (aerosoltemp) ) then
         Atmos_input%aerosoltemp(:,:,:)   = aerosoltemp(:,:,:)
       else
-        Atmos_input%aerosoltemp(:,:,:)   = t(:,:,:)
+        if (overriding_aerosol) then
+          Atmos_input%aerosoltemp(:,:,:)   = t2(:,:,:)
+        else
+          Atmos_input%aerosoltemp(:,:,:)   = t(:,:,:)
+        endif
       endif
  
 !---------------------------------------------------------------------
@@ -1888,7 +2858,11 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
       if (present (aerosolvapor) ) then
         Atmos_input%aerosolvapor(:,:,:)   = aerosolvapor(:,:,:)
       else
-        Atmos_input%aerosolvapor(:,:,:)   = q(:,:,:)
+        if (overriding_aerosol) then
+          Atmos_input%aerosolvapor(:,:,:)   = q2(:,:,:)
+        else
+          Atmos_input%aerosolvapor(:,:,:)   = q(:,:,:)
+        endif
       endif
 
 !---------------------------------------------------------------------
@@ -1898,26 +2872,26 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
         do j=1,je-js+1
           do i=1,ie-is+1
             kb = kbot(i,j)
-            Atmos_input%psfc(i,j) = phalf(i,j,kb+1)
+            Atmos_input%psfc(i,j) = phalf2(i,j,kb+1)
           end do
         end do
       else
-        Atmos_input%psfc(:,:) = phalf(:,:,kmax+1)
+        Atmos_input%psfc(:,:) = phalf2(:,:,kmax+1)
       endif
 
-      Atmos_input%tsfc(:,:) = ts(:,:)
+      Atmos_input%tsfc(:,:) = ts2(:,:)
 
 !------------------------------------------------------------------
 !    define the atmospheric pressure and temperature arrays.
 !------------------------------------------------------------------
       do k=1,kmax 
-        Atmos_input%press(:,:,k) = pfull(:,:,k)
+        Atmos_input%press(:,:,k) = pfull2(:,:,k)
         Atmos_input%phalf(:,:,k) = phalf(:,:,k)
-        Atmos_input%temp (:,:,k) = t(:,:,k)
+        Atmos_input%temp (:,:,k) = t2(:,:,k)
       end do
-      Atmos_input%press(:,:,kmax+1) = phalf(:,:,kmax+1)
-      Atmos_input%phalf(:,:,kmax+1) = phalf(:,:,kmax+1)
-      Atmos_input%temp (:,:,kmax+1) = ts  (:,:)
+      Atmos_input%press(:,:,kmax+1) = phalf2(:,:,kmax+1)
+      Atmos_input%phalf(:,:,kmax+1) = phalf2(:,:,kmax+1)
+      Atmos_input%temp (:,:,kmax+1) = ts2 (:,:)
 
 !---------------------------------------------------------------------
 !    define the aerosolpress component of Atmos_input.
@@ -1927,11 +2901,18 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
           Atmos_input%aerosolpress(:,:,k)   = aerosolpress(:,:,k)
         end do
       else
-        do k=1,kmax
-          Atmos_input%aerosolpress(:,:,k)   = pfull(:,:,k)
-        end do
+        if (overriding_aerosol) then
+          do k=1,kmax
+            Atmos_input%aerosolpress(:,:,k)   = pfull2(:,:,k)
+          end do
+          Atmos_input%aerosolpress(:,:,kmax+1)   = phalf2(:,:,kmax+1)
+        else
+          do k=1,kmax
+            Atmos_input%aerosolpress(:,:,k)   = pfull(:,:,k)
+          end do
+          Atmos_input%aerosolpress(:,:,kmax+1)   = phalf(:,:,kmax+1)
+        endif
       endif
-      Atmos_input%aerosolpress(:,:,kmax+1)   = phalf(:,:,kmax+1)
  
 !------------------------------------------------------------------
 !    if in eta coordinates, fill in underground temperatures with 
@@ -1956,20 +2937,32 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
 !    mixing ratio is the input in the standalone case.
 !------------------------------------------------------------------
       if (Environment%running_gcm .or. &
-          Environment%running_sa_model) then
+          Environment%running_sa_model .or. &
+          (Environment%running_standalone .and. &
+           Environment%column_type == 'fms')) then
         if(use_mixing_ratio) then
-          Atmos_input%rh2o (:,:,:) = q(:,:,:)
+          Atmos_input%rh2o (:,:,:) = q2(:,:,:)
         else
-          Atmos_input%rh2o (:,:,:) = q(:,:,:)/(1.0 - q(:,:,:))
-          Atmos_input%cloudvapor(:,:,:) =    &
+          if (.not. overriding_sphum .and. &
+              .not. overriding_clouds .and.  &
+              .not. overriding_aerosol) then
+            Atmos_input%rh2o (:,:,:) = q2(:,:,:)/(1.0 - q2(:,:,:))
+          else ! for override, values are already mixing ratio
+            Atmos_input%rh2o (:,:,:) = q2(:,:,:)
+          endif
+          if (.not. overriding_clouds) then
+            Atmos_input%cloudvapor(:,:,:) =    &
                                  Atmos_input%cloudvapor(:,:,:)/  &
                             (1.0 - Atmos_input%cloudvapor(:,:,:))
-          Atmos_input%aerosolvapor(:,:,:) =    &
+          endif
+          if (.not. overriding_aerosol) then
+            Atmos_input%aerosolvapor(:,:,:) =    &
                                  Atmos_input%aerosolvapor(:,:,:)/  &
                             (1.0 - Atmos_input%aerosolvapor(:,:,:))
+          endif
         endif
       else if (Environment%running_standalone) then
-        Atmos_input%rh2o (:,:,:) = q(:,:,:)
+        Atmos_input%rh2o (:,:,:) = q2(:,:,:)
       endif ! (running gcm)
  
 !------------------------------------------------------------------
@@ -2046,7 +3039,9 @@ end subroutine define_atmos_input_fields
 !  </INOUT>
 ! </SUBROUTINE>
 !
-subroutine define_surface (is, ie, js, je, albedo, land, Surface)
+subroutine define_surface (is, ie, js, je, albedo, albedo_vis_dir,   &
+                           albedo_nir_dir, albedo_vis_dif, &
+                           albedo_nir_dif, land, Surface)
 
 !---------------------------------------------------------------------
 !    define_surface stores the input values of land fraction and 
@@ -2054,7 +3049,11 @@ subroutine define_surface (is, ie, js, je, albedo, land, Surface)
 !---------------------------------------------------------------------
      
 integer,                 intent(in)              :: is, ie, js, je
-real, dimension(:,:),    intent(in)              :: albedo, land 
+real, dimension(:,:),    intent(in)              :: albedo, land, &
+                                                    albedo_vis_dir,    &
+                                                    albedo_nir_dir, &
+                                                    albedo_vis_dif,    &
+                                                    albedo_nir_dif
 type(surface_type),      intent(inout)           :: Surface     
 
 !---------------------------------------------------------------------
@@ -2063,6 +3062,10 @@ type(surface_type),      intent(inout)           :: Surface
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in 
 !                   the physics_window being integrated
 !      albedo       surface albedo  [ dimensionless ]
+!      albedo_vis_dir surface visible direct albedo  [ dimensionless ]
+!      albedo_nir_dir surface nir direct albedo  [ dimensionless ]
+!      albedo_vis_dif surface visible diffuse albedo  [ dimensionless ]
+!      albedo_nir_dif surface nir diffuse albedo  [ dimensionless ]
 !      land         fraction of grid box which is land [ dimensionless ]
 !
 !   intent(out) variables:
@@ -2071,10 +3074,31 @@ type(surface_type),      intent(inout)           :: Surface
 !                    following components defined in this subroutine
 !         asfc          surface albedo
 !                       [ non-dimensional ]
+!         asfc_vis_dir  surface direct visible albedo
+!                       [ non-dimensional ]
+!         asfc_nir_dir  surface direct nir albedo
+!                       [ non-dimensional ]
+!         asfc_vis_dif  surface diffuse visible albedo
+!                       [ non-dimensional ]
+!         asfc_nir_dif  surface diffuse nir albedo
+!                       [ non-dimensional ]
 !         land          fraction of grid box covered by land
 !                       [ non-dimensional ]
 !
 !---------------------------------------------------------------------
+
+     logical :: override
+     type(time_type)  :: Data_time
+     real, dimension (size(albedo,1), size(albedo,2)) :: albedo2, &
+                                                    albedo_vis_dir2,   &
+                                                    albedo_nir_dir2, &
+                                                    albedo_vis_dif2,  &
+                                                    albedo_nir_dif2
+     real, dimension (id,jd) :: albedo_proc, &
+                                albedo_vis_dir_proc, &
+                                albedo_nir_dir_proc, &
+                                albedo_vis_dif_proc,  &
+                                albedo_nir_dif_proc
 
 !-------------------------------------------------------------------
 !    verify that the module has been initialized. if not, exit.
@@ -2083,11 +3107,105 @@ type(surface_type),      intent(inout)           :: Surface
           call error_mesg ('radiation_driver_mod',  &
                'module has not been initialized', FATAL)
 
+      if (do_rad) then
+        if (doing_data_override) then        
+!---------------------------------------------------------------------
+!    if the albedo data is to be overriden, define the time from which
+!    the data is to be retrieved.
+!---------------------------------------------------------------------
+          if (overriding_albedo) then
+            Data_time = Rad_time + set_time (rad_time_step, 0) 
+
+!---------------------------------------------------------------------
+!    call data_override to retrieve the processor subdomain's surface
+!    albedo data from the override file. if the process fails,
+!    write an error message; if it succeeds move the data from the 
+!    current window into array albedo2.
+!---------------------------------------------------------------------
+!           call data_override ('ATM', 'albedonew', albedo_proc,   &
+!                             Data_time, override=override)
+!           if ( .not. override) then
+!             call error_mesg ('radiation_driver_mod', &
+!             'cvisrfgd => albedo not overridden successfully', FATAL)
+!           else
+!             albedo2(:,:) =      albedo_proc(is:ie,js:je)
+!           endif
+            
+            call data_override ('ATM', 'albedo_nir_dir_new',   &
+                                albedo_nir_dir_proc,   &
+                                Data_time, override=override)
+            if ( .not. override) then
+              call error_mesg ('radiation_driver_mod', &
+                'nirdir => albedo not overridden successfully', FATAL)
+            else
+              albedo_nir_dir2(:,:) = albedo_nir_dir_proc(is:ie,js:je)
+            endif
+
+            call data_override ('ATM', 'albedo_nir_dif_new',   &
+                                albedo_nir_dif_proc,   &
+                                Data_time, override=override)
+            if ( .not. override) then
+              call error_mesg ('radiation_driver_mod', &
+                'nirdif => albedo not overridden successfully', FATAL)
+            else
+              albedo_nir_dif2(:,:) = albedo_nir_dif_proc(is:ie,js:je)
+            endif
+
+            call data_override ('ATM', 'albedo_vis_dir_new',   &
+                                albedo_vis_dir_proc,   &
+                                Data_time, override=override)
+            if ( .not. override) then
+              call error_mesg ('radiation_driver_mod', &
+               'visdir => albedo not overridden successfully', FATAL)
+            else
+              albedo_vis_dir2(:,:) = albedo_vis_dir_proc(is:ie,js:je)
+            endif
+
+            call data_override ('ATM', 'albedo_vis_dif_new',   &
+                                albedo_vis_dif_proc,   &
+                                Data_time, override=override)
+            if ( .not. override) then
+              call error_mesg ('radiation_driver_mod', &
+              'visdif => albedo not overridden successfully', FATAL)
+            else
+              albedo_vis_dif2(:,:) = albedo_vis_dif_proc(is:ie,js:je)
+           endif
+
+!--------------------------------------------------------------------
+!    if albedo data is not being overriden, define albedo2 to be the 
+!    model value of albedo.
+!--------------------------------------------------------------------
+          else
+!           albedo2 = albedo
+            albedo_vis_dir2 = albedo_vis_dir
+            albedo_nir_dir2 = albedo_nir_dir
+            albedo_vis_dif2 = albedo_vis_dif
+            albedo_nir_dif2 = albedo_nir_dif
+          endif
+        else ! (doing data_override)       
+!         albedo2 = albedo
+          albedo_vis_dir2 = albedo_vis_dir
+          albedo_nir_dir2 = albedo_nir_dir
+          albedo_vis_dif2 = albedo_vis_dif
+          albedo_nir_dif2 = albedo_nir_dif
+        endif
+      else ! (do_rad)
+!       albedo2 = albedo
+        albedo_vis_dir2 = albedo_vis_dir
+        albedo_nir_dir2 = albedo_nir_dir
+        albedo_vis_dif2 = albedo_vis_dif
+        albedo_nir_dif2 = albedo_nir_dif
+      endif ! (do_rad)
+
 !---------------------------------------------------------------------
 !    allocate space for the components of the derived type variable
 !    Surface.     
 !---------------------------------------------------------------------
       allocate (Surface%asfc (size(albedo,1), size(albedo,2)) )
+      allocate (Surface%asfc_vis_dir (size(albedo,1), size(albedo,2) ) )
+      allocate (Surface%asfc_nir_dir (size(albedo,1), size(albedo,2) ) )
+      allocate (Surface%asfc_vis_dif (size(albedo,1), size(albedo,2) ) )
+      allocate (Surface%asfc_nir_dif (size(albedo,1), size(albedo,2) ) )
       allocate (Surface%land (size(albedo,1), size(albedo,2)) )
 
  
@@ -2096,7 +3214,16 @@ type(surface_type),      intent(inout)           :: Surface
 !    albedo from the input argument values.
 !------------------------------------------------------------------
       Surface%land(:,:) = land(:,:)
-      Surface%asfc(:,:) = albedo(:,:)
+      Surface%asfc(:,:) = albedo (:,:)
+
+!pjp  Should the albedos below all be set to albedo2,
+!pjp  or should they be included in the override data,
+!pjp  or should it not be changed?
+
+      Surface%asfc_vis_dir(:,:) = albedo_vis_dir2(:,:)
+      Surface%asfc_nir_dir(:,:) = albedo_nir_dir2(:,:)
+      Surface%asfc_vis_dif(:,:) = albedo_vis_dif2(:,:)
+      Surface%asfc_nir_dif(:,:) = albedo_nir_dif2(:,:)
      
 
 !----------------------------------------------------------------------
@@ -2152,6 +3279,10 @@ type(surface_type), intent(inout) :: Surface
 !    deallocate components of surface_type structure.
 !-------------------------------------------------------------------
       deallocate (Surface%asfc)
+      deallocate (Surface%asfc_vis_dir )
+      deallocate (Surface%asfc_nir_dir )
+      deallocate (Surface%asfc_vis_dif )
+      deallocate (Surface%asfc_nir_dif )
       deallocate (Surface%land)
 
 !--------------------------------------------------------------------
@@ -2254,79 +3385,19 @@ subroutine radiation_driver_end
 !    radiation_driver_end is the destructor for radiation_driver_mod.
 !----------------------------------------------------------------------
 
-!---------------------------------------------------------------------
-!  local variables
-
-      integer :: unit
-
 !-------------------------------------------------------------------
 !    verify that this module has been initialized. if not, exit.
 !-------------------------------------------------------------------
       if (.not. module_is_initialized)   &
           call error_mesg ('radiation_driver_mod',  &
                'module has not been initialized', FATAL)
-
-!----------------------------------------------------------------------
-!    when running in gcm, write a restart file. this is not done in the
-!    standalone case.
-!---------------------------------------------------------------------
       if (Environment%running_gcm) then
-        unit = open_restart_file   &
-                         ('RESTART/radiation_driver.res', 'write')
-
-!---------------------------------------------------------------------
-!    only the root pe will write control information -- the last value 
-!    in the list of restart versions and the alarm information.
-!---------------------------------------------------------------------
-        if (mpp_pe() == mpp_root_pe() ) then
-          write (unit) restart_versions(size(restart_versions))
-          write (unit) rad_alarm, rad_time_step
-        endif
-
-!---------------------------------------------------------------------
-!    write out the restart data.
-!---------------------------------------------------------------------
-        call write_data (unit, Rad_output%tdt_rad)
-        call write_data (unit, Rad_output%tdtlw)
-        call write_data (unit, Rad_output%flux_sw_surf)
-        call write_data (unit, Rad_output%flux_lw_surf)
-        call write_data (unit, Rad_output%coszen_angle)
-
-!---------------------------------------------------------------------
-!    write out the optional time average restart data. note that 
-!    do_average and renormalize_sw_fluxes may not both be true.
-!---------------------------------------------------------------------
-        if (mpp_pe() == mpp_root_pe() ) then
-          write (unit) renormalize_sw_fluxes, do_clear_sky_pass
-        endif
-
-!---------------------------------------------------------------------
-!    write out the optional shortwave renormalization data. 
-!---------------------------------------------------------------------
-        if (renormalize_sw_fluxes) then   
-          call write_data (unit, solar_save)
-          call write_data (unit, flux_sw_surf_save)
-          call write_data (unit, sw_heating_save)
-          call write_data (unit, tot_heating_save)
-          call write_data (unit, dfsw_save) 
-          call write_data (unit, ufsw_save) 
-          call write_data (unit, fsw_save)  
-          call write_data (unit, hsw_save)
-          if (do_clear_sky_pass) then
-            call write_data (unit, sw_heating_clr_save)
-            call write_data (unit, tot_heating_clr_save)
-            call write_data (unit, dfswcf_save) 
-            call write_data (unit, ufswcf_save) 
-            call write_data (unit, fswcf_save)  
-            call write_data (unit, hswcf_save)
-          endif
-        endif    ! (renormalize)
-
-!---------------------------------------------------------------------
-!    close the radiation_driver.res file
-!---------------------------------------------------------------------
-        call close_file (unit)
-      endif   ! (running_gcm)
+         if ( do_netcdf_restart ) then
+            call write_restart_nc
+         else
+            call write_restart_file
+         endif
+      endif
 
 !---------------------------------------------------------------------
 !    wrap up modules initialized by this module.
@@ -2351,11 +3422,23 @@ subroutine radiation_driver_end
 !---------------------------------------------------------------------
       if (renormalize_sw_fluxes .or. all_step_diagnostics)  then
         deallocate (solar_save, flux_sw_surf_save, sw_heating_save, &
+                    dum_idjd,   &
+                    flux_sw_surf_dir_save,   &
+                    flux_sw_surf_dif_save,   &
+                    flux_sw_down_vis_dir_save,   &
+                    flux_sw_down_vis_dif_save,   &
+                    flux_sw_down_total_dir_save, &
+                    flux_sw_down_total_dif_save, &
+                    flux_sw_vis_save, &
+                    flux_sw_vis_dir_save, &
+                    flux_sw_vis_dif_save, &
                     tot_heating_save, dfsw_save, ufsw_save,   &
+                    swdn_special_save, swup_special_save,          &
                     fsw_save, hsw_save)
         if (do_clear_sky_pass) then
           deallocate (sw_heating_clr_save, tot_heating_clr_save,  &
                       dfswcf_save, ufswcf_save, fswcf_save,   &
+                      swdn_special_clr_save, swup_special_clr_save,   &
                       hswcf_save)
         endif
       endif
@@ -2365,9 +3448,11 @@ subroutine radiation_driver_end
 !---------------------------------------------------------------------
       if (all_step_diagnostics)  then
         deallocate (olr_save, lwups_save, lwdns_save, tdtlw_save)
+        deallocate (netlw_special_save)
         if (do_clear_sky_pass) then
           deallocate (olr_clr_save, lwups_clr_save, lwdns_clr_save, &
                       tdtlw_clr_save)
+          deallocate (netlw_special_clr_save)
         endif
       endif
 
@@ -2376,12 +3461,32 @@ subroutine radiation_driver_end
 !    timesteps.
 !---------------------------------------------------------------------
       if (Environment%running_gcm  .or. &
-          Environment%running_sa_model) then
+          Environment%running_sa_model .or. &
+          (Environment%running_standalone .and. &
+           Environment%column_type == 'fms')) then
         deallocate (Rad_output%tdt_rad, Rad_output%tdt_rad_clr,  & 
                     Rad_output%tdtsw, Rad_output%tdtsw_clr, &
                     Rad_output%tdtlw, Rad_output%flux_sw_surf,  &
+                    Rad_output%flux_sw_surf_dir,  &
+                    Rad_output%flux_sw_surf_dif,  &
+                    Rad_output%flux_sw_down_vis_dir,  &
+                    Rad_output%flux_sw_down_vis_dif,  &
+                    Rad_output%flux_sw_down_total_dir,  &
+                    Rad_output%flux_sw_down_total_dif,  &
+                    Rad_output%flux_sw_vis,  &
+                    Rad_output%flux_sw_vis_dir,  &
+                    Rad_output%flux_sw_vis_dif,  &
                     Rad_output%flux_lw_surf, Rad_output%coszen_angle)
       endif    ! (running_gcm)
+
+!----------------------------------------------------------------------
+!    deallocate arrays related to the time_varying solar constant.
+!----------------------------------------------------------------------
+      if (time_varying_solar_constant) then
+        deallocate (solflxtot_lean, Solar_spect%solflxband_lean, &
+                    Solar_spect%solflxband_lean_ann_1882, &
+                    Solar_spect%solflxband_lean_ann_2000)  
+      endif
 
 !---------------------------------------------------------------------
 !    call rad_utilities_end to uninitialize that module.
@@ -2397,16 +3502,185 @@ subroutine radiation_driver_end
 
 end subroutine radiation_driver_end
 
-
-
-
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !
 !                    PRIVATE SUBROUTINES
 !
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+subroutine write_restart_file
 
+     integer :: unit
+
+!----------------------------------------------------------------------
+!    when running in gcm, write a restart file. this is not done in the
+!    standalone case.
+!---------------------------------------------------------------------
+     if(mpp_pe() == mpp_root_pe()) then
+       call error_mesg('radiation_driver_mod', 'Writing native formatted restart file.', NOTE)
+     endif
+        unit = open_restart_file   &
+                         ('RESTART/radiation_driver.res', 'write')
+
+!---------------------------------------------------------------------
+!    only the root pe will write control information -- the last value 
+!    in the list of restart versions and the alarm information.
+!---------------------------------------------------------------------
+        if (mpp_pe() == mpp_root_pe() ) then
+          write (unit) restart_versions(size(restart_versions(:)))
+          write (unit) rad_alarm, rad_time_step
+        endif
+
+!---------------------------------------------------------------------
+!    write out the restart data.
+!---------------------------------------------------------------------
+        call write_data (unit, Rad_output%tdt_rad)
+        call write_data (unit, Rad_output%tdtlw)
+        call write_data (unit, Rad_output%flux_sw_surf)
+        call write_data (unit, Rad_output%flux_sw_surf_dir)
+        call write_data (unit, Rad_output%flux_sw_surf_dif)
+        call write_data (unit, Rad_output%flux_sw_down_vis_dir)
+        call write_data (unit, Rad_output%flux_sw_down_vis_dif)
+        call write_data (unit, Rad_output%flux_sw_down_total_dir)
+        call write_data (unit, Rad_output%flux_sw_down_total_dif)
+        call write_data (unit, Rad_output%flux_sw_vis)
+        call write_data (unit, Rad_output%flux_sw_vis_dir)
+        call write_data (unit, Rad_output%flux_sw_vis_dif)
+        call write_data (unit, Rad_output%flux_lw_surf)
+        call write_data (unit, Rad_output%coszen_angle)
+
+!---------------------------------------------------------------------
+!    write out the optional time average restart data. note that 
+!    do_average and renormalize_sw_fluxes may not both be true.
+!---------------------------------------------------------------------
+        if (mpp_pe() == mpp_root_pe() ) then
+          write (unit) renormalize_sw_fluxes, do_clear_sky_pass
+        endif
+
+!---------------------------------------------------------------------
+!    write out the optional shortwave renormalization data. 
+!---------------------------------------------------------------------
+        if (renormalize_sw_fluxes) then   
+          call write_data (unit, solar_save)
+          call write_data (unit, flux_sw_surf_save)
+          call write_data (unit, flux_sw_surf_dir_save)
+          call write_data (unit, flux_sw_surf_dif_save)
+          call write_data (unit, flux_sw_down_vis_dir_save)
+          call write_data (unit, flux_sw_down_vis_dif_save)
+          call write_data (unit, flux_sw_down_total_dir_save)
+          call write_data (unit, flux_sw_down_total_dif_save)
+          call write_data (unit, flux_sw_vis_save)
+          call write_data (unit, flux_sw_vis_dir_save)
+          call write_data (unit, flux_sw_vis_dif_save)
+          call write_data (unit, sw_heating_save)
+          call write_data (unit, tot_heating_save)
+          call write_data (unit, dfsw_save) 
+          call write_data (unit, ufsw_save) 
+          call write_data (unit, fsw_save)  
+          call write_data (unit, hsw_save)
+          call write_data (unit, swdn_special_save)
+          call write_data (unit, swup_special_save)
+          if (do_clear_sky_pass) then
+            call write_data (unit, sw_heating_clr_save)
+            call write_data (unit, tot_heating_clr_save)
+            call write_data (unit, dfswcf_save) 
+            call write_data (unit, ufswcf_save) 
+            call write_data (unit, fswcf_save)  
+            call write_data (unit, hswcf_save)
+            call write_data (unit, swdn_special_clr_save)
+            call write_data (unit, swup_special_clr_save)
+          endif
+        endif    ! (renormalize)
+
+!---------------------------------------------------------------------
+!    close the radiation_driver.res file
+!---------------------------------------------------------------------
+        call close_file (unit)
+
+end subroutine write_restart_file
+
+!---------------------------------------------------------------------
+
+subroutine write_restart_nc
+
+  character(len=65)        :: fname='RESTART/radiation_driver.res.nc'
+  real                     :: flag1=0., flag2=0.
+
+!---------------------------------------------------------------------
+!    only the root pe will write control information -- the last value 
+!    in the list of restart versions and the alarm information.
+!---------------------------------------------------------------------
+        if (mpp_pe() == mpp_root_pe() ) then
+         call error_mesg('radiation_driver_mod', 'Writing netCDF formatted restart file: RESTART/radiation_driver.res.nc', NOTE)
+        endif
+        call write_data(fname, 'vers', restart_versions(size(restart_versions(:))), no_domain=.true.)
+        call write_data(fname, 'rad_alarm', rad_alarm, no_domain=.true.)
+        call write_data(fname, 'rad_time_step', rad_time_step, no_domain=.true.)
+
+!---------------------------------------------------------------------
+!    write out the restart data.
+!---------------------------------------------------------------------
+        call write_data (fname, 'tdt_rad',                Rad_output%tdt_rad)
+        call write_data (fname, 'tdtlw',                  Rad_output%tdtlw)
+        call write_data (fname, 'flux_sw_surf',           Rad_output%flux_sw_surf)
+        call write_data (fname, 'flux_sw_surf_dir',       Rad_output%flux_sw_surf_dir)
+        call write_data (fname, 'flux_sw_surf_dif',       Rad_output%flux_sw_surf_dif)
+        call write_data (fname, 'flux_sw_down_vis_dir',   Rad_output%flux_sw_down_vis_dir)
+        call write_data (fname, 'flux_sw_down_vis_dif',   Rad_output%flux_sw_down_vis_dif)
+        call write_data (fname, 'flux_sw_down_total_dir', Rad_output%flux_sw_down_total_dir)
+        call write_data (fname, 'flux_sw_down_total_dif', Rad_output%flux_sw_down_total_dif)
+        call write_data (fname, 'flux_sw_vis',            Rad_output%flux_sw_vis)
+        call write_data (fname, 'flux_sw_vis_dir',        Rad_output%flux_sw_vis_dir)
+        call write_data (fname, 'flux_sw_vis_dif',        Rad_output%flux_sw_vis_dif)
+        call write_data (fname, 'flux_lw_surf',           Rad_output%flux_lw_surf)
+        call write_data (fname, 'coszen_angle',           Rad_output%coszen_angle)
+
+!---------------------------------------------------------------------
+!    write out the optional time average restart data. note that 
+!    do_average and renormalize_sw_fluxes may not both be true.
+!---------------------------------------------------------------------
+        if(renormalize_sw_fluxes) flag1 = 1.0
+        if(do_clear_sky_pass) flag2 = 1.0
+        call write_data(fname, 'renormalize_sw_fluxes', flag1, no_domain=.true.)
+        call write_data(fname, 'do_clear_sky_pass', flag2, no_domain=.true.)
+
+!---------------------------------------------------------------------
+!    write out the optional shortwave renormalization data. 
+!---------------------------------------------------------------------
+        if (renormalize_sw_fluxes ) then   
+          call write_data (fname, 'solar_save', solar_save)
+          call write_data (fname, 'flux_sw_surf_save', flux_sw_surf_save)
+          call write_data (fname, 'flux_sw_surf_dir_save', flux_sw_surf_dir_save)
+          call write_data (fname, 'flux_sw_surf_dif_save', flux_sw_surf_dif_save)
+          call write_data (fname, 'flux_sw_down_vis_dir_save', flux_sw_down_vis_dir_save)
+          call write_data (fname, 'flux_sw_down_vis_dif_save', flux_sw_down_vis_dif_save)
+          call write_data (fname, 'flux_sw_down_total_dir_save', flux_sw_down_total_dir_save)
+          call write_data (fname, 'flux_sw_down_total_dif_save', flux_sw_down_total_dif_save)
+          call write_data (fname, 'flux_sw_vis_save', flux_sw_vis_save)
+          call write_data (fname, 'flux_sw_vis_dir_save', flux_sw_vis_dir_save)
+          call write_data (fname, 'flux_sw_vis_dif_save', flux_sw_vis_dif_save)
+          call write_data (fname, 'sw_heating_save', sw_heating_save)
+          call write_data (fname, 'tot_heating_save', tot_heating_save)
+          call write_data (fname, 'dfsw_save', dfsw_save) 
+          call write_data (fname, 'ufsw_save', ufsw_save) 
+          call write_data (fname, 'fsw_save', fsw_save)  
+          call write_data (fname, 'hsw_save', hsw_save)
+          call write_data (fname, 'swdn_special_save', swdn_special_save)
+          call write_data (fname, 'swup_special_save', swup_special_save)
+          if (do_clear_sky_pass) then
+            call write_data (fname, 'sw_heating_clr_save', sw_heating_clr_save)
+            call write_data (fname, 'tot_heating_clr_save', tot_heating_clr_save)
+            call write_data (fname, 'dfswcf_save', dfswcf_save) 
+            call write_data (fname, 'ufswcf_save', ufswcf_save) 
+            call write_data (fname, 'fswcf_save', fswcf_save)  
+            call write_data (fname, 'hswcf_save', hswcf_save)
+            call write_data (fname, 'swdn_special_clr_save', swdn_special_clr_save)
+            call write_data (fname, 'swup_special_clr_save', swup_special_clr_save)
+          endif
+        endif    ! (renormalize)
+
+
+end subroutine write_restart_nc
 
 !#####################################################################
 ! <SUBROUTINE NAME="read_restart_file">
@@ -2478,12 +3752,17 @@ subroutine read_restart_file
 !                         which wrote the restart file
 !
 !---------------------------------------------------------------------
+      if (mpp_pe() == mpp_root_pe() ) then
+         call error_mesg('radiation_driver_mod', 'Reading native formatted restart file.', NOTE)
+      endif
 
 !---------------------------------------------------------------------
 !    if one is using the sea_esf_rad package and there is a 
 !    sea_esf_rad.res restart file present in the input directory, it 
 !    must be version 1 in order to be readable by the current module.
-!    otherwise, exit.
+!    this file is where radiation restart data for the sea_esf radiation
+!    package was written, through AM2p8, or the galway code release.
+!    if this file is present and not version 1, exit.
 !---------------------------------------------------------------------
       if (do_sea_esf_rad .and. file_exist('INPUT/sea_esf_rad.res')) then
         unit = open_restart_file ('INPUT/sea_esf_rad.res', 'read')
@@ -2498,30 +3777,17 @@ subroutine read_restart_file
 !---------------------------------------------------------------------
 !    if a radiation_driver.res file is present, then it must be one
 !    of the versions listed as readable for the radiation package
-!    being employed. for the original_fms package, these versions are
-!    found in the array restart_versions, while for the sea_esf_rad
-!    package, they are found in restart_versions_sea. if the version
-!    is not acceptable, exit.
+!    being employed. these allowable versions are found in the array
+!    restart_versions. if the version is not acceptable, exit.
 !---------------------------------------------------------------------
       else if ( file_exist('INPUT/radiation_driver.res')  )  then   
         unit = open_restart_file ('INPUT/radiation_driver.res', 'read')
         read (unit) vers
-        if (do_sea_esf_rad) then
-          if ( .not. any(vers == restart_versions_sea) ) then
-            write (chvers,'(i4)') vers
-            call error_mesg ('radiation_driver_mod', &
+        if ( .not. any(vers == restart_versions) ) then
+          write (chvers,'(i4)') vers
+          call error_mesg ('radiation_driver_mod', &
                     'restart version '//chvers//' cannot be read '//&
-                 'by this module version when using sea_esf_rad '//&
-                                            'radiation_package', FATAL)
-          endif
-        else
-          if ( .not. any(vers == restart_versions) ) then
-            write (chvers,'(i4)') vers
-            call error_mesg ('radiation_driver_mod', &
-                    'restart version '//chvers//' cannot be read '//&
-               'by this module version when using the original_'//&
-                                         'fms radiation package', FATAL)
-          endif
+                    'by this module version', FATAL)
         endif
       endif
 
@@ -2537,8 +3803,18 @@ subroutine read_restart_file
         read (unit) null 
         old_time_step = SECONDS_PER_DAY*null(4) + null(3)
         rad_alarm = 1        
+        if (mpp_pe() == mpp_root_pe() ) then
+        call error_mesg ('radiation_driver_mod', &
+        ' radiation to be calculated on first step: restart file&
+          & is sea_esf_rad.res, additional fields needed to run with &
+                                          &current code', NOTE)
+        endif
       else
         read (unit) rad_alarm, old_time_step    
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'NOTE from PE 0: rad_alarm as read from restart &
+                      &file is ', rad_alarm, 'second(s).'
+        endif
       endif
 
 !---------------------------------------------------------------------
@@ -2559,6 +3835,38 @@ subroutine read_restart_file
         Rad_output%tdtlw = 0.0
       endif
       call read_data (unit, Rad_output%flux_sw_surf )
+      if (vers == 7) then
+        call read_data (unit, dum_idjd )
+        rad_alarm = 1
+        if (mpp_pe() == mpp_root_pe() ) then
+        call error_mesg ('radiation_driver_mod', &
+        ' radiation to be calculated on first step: restart file&
+          & is version 7, additional fields needed to run with &
+                                          &current code', NOTE)
+        endif
+      endif
+      if (vers >= 8) then
+        call read_data (unit, Rad_output%flux_sw_surf_dir )
+        call read_data (unit, Rad_output%flux_sw_surf_dif )
+        call read_data (unit, Rad_output%flux_sw_down_vis_dir )
+        call read_data (unit, Rad_output%flux_sw_down_vis_dif )
+        call read_data (unit, Rad_output%flux_sw_down_total_dir )
+        call read_data (unit, Rad_output%flux_sw_down_total_dif )
+        call read_data (unit, Rad_output%flux_sw_vis )
+        call read_data (unit, Rad_output%flux_sw_vis_dir )
+        call read_data (unit, Rad_output%flux_sw_vis_dif )
+      else
+!    SUITABLE INITIALIZATION ??
+        Rad_output%flux_sw_surf_dir = 0.0
+        Rad_output%flux_sw_surf_dif = 0.0
+        Rad_output%flux_sw_down_vis_dir = 0.0
+        Rad_output%flux_sw_down_vis_dif = 0.0
+        Rad_output%flux_sw_down_total_dir = 0.0
+        Rad_output%flux_sw_down_total_dif = 0.0
+        Rad_output%flux_sw_vis = 0.0
+        Rad_output%flux_sw_vis_dir = 0.0
+        Rad_output%flux_sw_vis_dif = 0.0
+      endif
       call read_data (unit, Rad_output%flux_lw_surf )
       if (vers /= 1) then
         call read_data (unit, Rad_output%coszen_angle)
@@ -2595,6 +3903,10 @@ subroutine read_restart_file
             call read_data (unit, ufsw_save)  
             call read_data (unit, fsw_save)  
             call read_data (unit, hsw_save)
+!           if (vers >= 6) then
+!      call read_data (unit, swdn_trop_save)
+!      call read_data (unit, swup_trop_save)
+!    endif
 
 !---------------------------------------------------------------------
 !    if cldfree data is desired and the data is present in the
@@ -2608,6 +3920,10 @@ subroutine read_restart_file
                 call read_data (unit, ufswcf_save) 
                 call read_data (unit, fswcf_save)  
                 call read_data (unit, hswcf_save)
+!               if (vers >= 6) then
+!          call read_data (unit, swdn_trop_clr_save)
+!          call read_data (unit, swup_trop_clr_save)
+!        endif
 
 !--------------------------------------------------------------------
 !    if cldfree data is desired and the data is not present in the
@@ -2615,6 +3931,12 @@ subroutine read_restart_file
 !---------------------------------------------------------------------
               else
         rad_alarm = 1
+        if (mpp_pe() == mpp_root_pe() ) then
+        call error_mesg ('radiation_driver_mod', &
+        ' radiation to be calculated on first step: cloud-free &
+          &calculations are desired, but needed fluxes and heating &
+                      &rates are notpresent in restart file', NOTE)
+        endif
       endif  ! (cldfree_present)
             endif
 
@@ -2624,9 +3946,16 @@ subroutine read_restart_file
 !---------------------------------------------------------------------
           else  ! (renorm_present)
             rad_alarm = 1
+            if (mpp_pe() == mpp_root_pe() ) then
+            call error_mesg ('radiation_driver_mod', &
+             ' radiation to be calculated on first step: renormaliz&
+              &ation of sw fluxes is desired, but needed data is not &
+              &present in restart file', NOTE)
+            endif
           endif ! (renorm_present)
         endif ! (renormalize)
-      else if (vers == 5) then
+!     else if (vers == 5) then
+      else if (vers >= 5) then
 
 !---------------------------------------------------------------------
 !    determine if accumulation arrays are present in the restart file.
@@ -2644,12 +3973,55 @@ subroutine read_restart_file
           if (renorm_present) then     
             call read_data (unit, solar_save)
             call read_data (unit, flux_sw_surf_save)
+            if (vers == 7) then
+               call read_data (unit, dum_idjd           )
+            endif
+            if (vers >= 8) then
+              call read_data (unit, flux_sw_surf_dir_save)
+              call read_data (unit, flux_sw_surf_dif_save)
+              call read_data (unit, flux_sw_down_vis_dir_save)
+              call read_data (unit, flux_sw_down_vis_dif_save)
+              call read_data (unit, flux_sw_down_total_dir_save)
+              call read_data (unit, flux_sw_down_total_dif_save)
+              call read_data (unit, flux_sw_vis_save)
+              call read_data (unit, flux_sw_vis_dir_save)
+              call read_data (unit, flux_sw_vis_dif_save)
+            else
+!! SUITABLE INITIALIZATION ??
+              flux_sw_surf_dir_save =0.0
+              flux_sw_surf_dif_save =0.0
+              flux_sw_down_vis_dir_save =0.0
+              flux_sw_down_vis_dif_save =0.0
+              flux_sw_down_total_dir_save =0.0
+              flux_sw_down_total_dif_save =0.0
+              flux_sw_vis_save =0.0
+              flux_sw_vis_dir_save =0.0
+              flux_sw_vis_dif_save =0.0
+            endif
             call read_data (unit, sw_heating_save)
             call read_data (unit, tot_heating_save)
             call read_data (unit, dfsw_save) 
             call read_data (unit, ufsw_save)  
             call read_data (unit, fsw_save)  
             call read_data (unit, hsw_save)
+
+!---------------------------------------------------------------------
+!    if this is a pre-version 9 restart (other than version 6), then 
+!    radiation must be called on the first step in order to define the 
+!    troopause fluxes.
+!---------------------------------------------------------------------
+            if ( (vers >= 9) .or. (vers == 6) ) then
+              call read_data (unit, swdn_special_save(:,:,:))
+              call read_data (unit, swup_special_save(:,:,:))
+            else
+              rad_alarm = 1
+              if (mpp_pe() == mpp_root_pe() ) then
+              call error_mesg ('radiation_driver_mod', &
+             ' radiation to be calculated on first step: tropopause &
+              &fluxes diagnostics are desired, but needed data is not &
+              &present in restart file', NOTE)
+              endif
+            endif
 
 !---------------------------------------------------------------------
 !    if cldfree data is desired and the data is present in the
@@ -2664,12 +4036,36 @@ subroutine read_restart_file
                 call read_data (unit, fswcf_save)  
                 call read_data (unit, hswcf_save)
 
+!---------------------------------------------------------------------
+!    if this is a pre-version 9 restart (other than version 6), then 
+!    radiation must be called on the first step in order to define the 
+!    troopause fluxes.
+!---------------------------------------------------------------------
+                if ( (vers >= 9) .or. (vers == 6) ) then
+                  call read_data (unit, swdn_special_clr_save(:,:,:))
+                  call read_data (unit, swup_special_clr_save(:,:,:))
+                else
+                  rad_alarm = 1
+                  if (mpp_pe() == mpp_root_pe() ) then
+                  call error_mesg ('radiation_driver_mod', &
+             ' radiation to be calculated on first step: tropopause &
+              &fluxes diagnostics are desired, but needed data is not &
+              &present in restart file', NOTE)
+                  endif
+                endif
+
 !--------------------------------------------------------------------
 !    if cldfree data is desired and the data is not present in the
 !    restart file, force a radiation call on next model step.  
 !---------------------------------------------------------------------
               else
                 rad_alarm = 1
+                if (mpp_pe() == mpp_root_pe() ) then
+                call error_mesg ('radiation_driver_mod', &
+             ' radiation to be calculated on first step: cloud-free &
+              &diagnostics are desired, but needed data is not &
+              &present in restart file', NOTE)
+                endif
               endif  ! (cldfree_present)
             endif
 
@@ -2679,6 +4075,12 @@ subroutine read_restart_file
 !---------------------------------------------------------------------
           else  ! (renorm_present)
             rad_alarm = 1
+            if (mpp_pe() == mpp_root_pe() ) then
+            call error_mesg ('radiation_driver_mod', &
+             ' radiation to be calculated on first step: renormaliz&
+              &ation of sw fluxes is desired, but needed data is not &
+              &present in restart file', NOTE)
+            endif
           endif ! (renorm_present)
         endif ! (renormalize)
       endif    ! (vers == 3 or 4)
@@ -2689,32 +4091,48 @@ subroutine read_restart_file
       call close_file (unit)
 
 !----------------------------------------------------------------------
-!    set rad_alarm to 1 to force radiation call to generate lw diagnos-
-!    tcs if all_step_diagnostics is active.
+!    if all_step_diagnostics is active and rad_alarm is not 1, abort 
+!    job with error message. all_step_diagnostics may only be activated
+!    when radiation is to be calculated on the first step of a job, 
+!    unless additional arrays are added to the radiation restart file.
 !----------------------------------------------------------------------
       if (rad_alarm /= 1 .and. all_step_diagnostics) then
-        rad_alarm = 1
+        if (mpp_pe() == mpp_root_pe() ) then
+          call error_mesg ('radiation_driver_mod', &
+           'cannot set all_step_diagnostics to be .true. unless &
+            & starting job on step just prior to radiation call; &
+            &doing so will lead to non-reproducibility of restarts', &
+                                                                 FATAL)
+        endif
       endif
 
 !----------------------------------------------------------------------
 !    adjust radiation alarm if radiation step has changed from restart 
 !    file value, if it has not already been set to the first step.
 !----------------------------------------------------------------------
-      if (rad_alarm == 1) then
-        if (mpp_pe() == mpp_root_pe() ) then
-          call error_mesg ('radiation_driver_mod',          &
-               'radiation will be called on first step of run', NOTE)
-        endif
-      else
+      if (rad_alarm /= 1) then
+!     if (rad_alarm == 1) then
+!       if (mpp_pe() == mpp_root_pe() ) then
+!         call error_mesg ('radiation_driver_mod',          &
+!              'radiation will be called on first step of run', NOTE)
+!       endif
+!     else
         if (rad_time_step /= old_time_step ) then
           new_rad_time = rad_alarm - old_time_step + rad_time_step
           if ( new_rad_time > 0 ) then
             if (mpp_pe() == mpp_root_pe() ) then
-              call error_mesg ('radiation_driver_mod',          &
-                  'radiation time step has changed, therefore '//&
-                  'next radiation time also changed', NOTE)
+              print *, 'radiation time step has changed, therefore '//&
+                  'next time to next do radiation also changed;  &
+                   &new rad_alarm is', new_rad_time
             endif
             rad_alarm = new_rad_time
+          else
+            rad_alarm = 1
+            if (mpp_pe() == mpp_root_pe() ) then
+               call error_mesg ('radiation_driver_mod', &
+             ' radiation to be calculated on first step: radiation &
+              &timestep has gotten shorter and is past due', NOTE)
+            endif
           endif
         endif  
       endif   ! (rad_alarm == 1)
@@ -2724,6 +4142,165 @@ subroutine read_restart_file
 
 end subroutine read_restart_file
 
+!#####################################################################
+! <SUBROUTINE NAME="read_restart_nc">
+!  <OVERVIEW>
+!    read_restart_nc reads a netcdf restart file containing radiation
+!    restart information.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    read_restart_nc reads a netcdf restart file containing radiation
+!    restart information.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call read_restart_nc
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
+subroutine read_restart_nc
+
+  character(len=64) :: fname='INPUT/radiation_driver.res.nc'
+  real              :: flag1, flag2
+  integer           :: vers
+  logical           :: renorm_present, cldfree_present
+  integer           :: new_rad_time, old_time_step
+!----------------------------------------------------------------------
+!    when running in gcm, read a restart file. this is not done in the
+!    standalone case.
+!---------------------------------------------------------------------
+  if (mpp_pe() == mpp_root_pe() ) then
+    call error_mesg('radiation_driver_mod', 'Reading netCDF formatted restart file: INPUT/radiation_driver.res.nc', NOTE)
+  endif
+  call read_data(fname, 'rad_alarm', rad_alarm, no_domain=.true.)
+  call read_data(fname, 'rad_time_step', old_time_step, no_domain=.true.)
+  call read_data(fname, 'renormalize_sw_fluxes', flag1, no_domain=.true.)
+  call read_data(fname, 'do_clear_sky_pass', flag2, no_domain=.true.)
+  renorm_present = .false.
+  cldfree_present = .false.
+  if(flag1 .EQ. 1.0) renorm_present = .true.
+  if(flag2 .EQ. 1.0) cldfree_present = .true.
+
+!---------------------------------------------------------------------
+!    read the restart data.
+!---------------------------------------------------------------------
+        call read_data (fname, 'tdt_rad',                Rad_output%tdt_rad)
+        call read_data (fname, 'tdtlw',                  Rad_output%tdtlw)
+        call read_data (fname, 'flux_sw_surf',           Rad_output%flux_sw_surf)
+        call read_data (fname, 'flux_sw_surf_dir',       Rad_output%flux_sw_surf_dir)
+        call read_data (fname, 'flux_sw_surf_dif',       Rad_output%flux_sw_surf_dif)
+        call read_data (fname, 'flux_sw_down_vis_dir',   Rad_output%flux_sw_down_vis_dir)
+        call read_data (fname, 'flux_sw_down_vis_dif',   Rad_output%flux_sw_down_vis_dif)
+        call read_data (fname, 'flux_sw_down_total_dir', Rad_output%flux_sw_down_total_dir)
+        call read_data (fname, 'flux_sw_down_total_dif', Rad_output%flux_sw_down_total_dif)
+        call read_data (fname, 'flux_sw_vis',            Rad_output%flux_sw_vis)
+        call read_data (fname, 'flux_sw_vis_dir',        Rad_output%flux_sw_vis_dir)
+        call read_data (fname, 'flux_sw_vis_dif',        Rad_output%flux_sw_vis_dif)
+        call read_data (fname, 'flux_lw_surf',           Rad_output%flux_lw_surf)
+        call read_data (fname, 'coszen_angle',           Rad_output%coszen_angle)
+
+!---------------------------------------------------------------------
+!    read the optional time average restart data. note that 
+!    do_average and renormalize_sw_fluxes may not both be true.
+!---------------------------------------------------------------------
+        call read_data(fname, 'renormalize_sw_fluxes', flag1, no_domain=.true.)
+        call read_data(fname, 'do_clear_sky_pass', flag2, no_domain=.true.)
+        if(flag1 == 1.) then
+          renormalize_sw_fluxes = .true.
+        else
+          renormalize_sw_fluxes = .false.
+        endif
+        if(flag2 == 1.) then
+          do_clear_sky_pass = .true.
+        else
+          do_clear_sky_pass = .false.
+        endif
+
+!---------------------------------------------------------------------
+!    read the optional shortwave renormalization data. 
+!---------------------------------------------------------------------
+        if (renormalize_sw_fluxes ) then   
+         if(renorm_present) then
+          call read_data (fname, 'solar_save', solar_save)
+          call read_data (fname, 'flux_sw_surf_save', flux_sw_surf_save)
+          call read_data (fname, 'flux_sw_surf_dir_save', flux_sw_surf_dir_save)
+          call read_data (fname, 'flux_sw_surf_dif_save', flux_sw_surf_dif_save)
+          call read_data (fname, 'flux_sw_down_vis_dir_save', flux_sw_down_vis_dir_save)
+          call read_data (fname, 'flux_sw_down_vis_dif_save', flux_sw_down_vis_dif_save)
+          call read_data (fname, 'flux_sw_down_total_dir_save', flux_sw_down_total_dir_save)
+          call read_data (fname, 'flux_sw_down_total_dif_save', flux_sw_down_total_dif_save)
+          call read_data (fname, 'flux_sw_vis_save', flux_sw_vis_save)
+          call read_data (fname, 'flux_sw_vis_dir_save', flux_sw_vis_dir_save)
+          call read_data (fname, 'flux_sw_vis_dif_save', flux_sw_vis_dif_save)
+          call read_data (fname, 'sw_heating_save', sw_heating_save)
+          call read_data (fname, 'tot_heating_save', tot_heating_save)
+          call read_data (fname, 'dfsw_save', dfsw_save) 
+          call read_data (fname, 'ufsw_save', ufsw_save) 
+          call read_data (fname, 'fsw_save', fsw_save)  
+          call read_data (fname, 'hsw_save', hsw_save)
+          call read_data (fname, 'swdn_special_save', swdn_special_save)
+          call read_data (fname, 'swup_special_save', swup_special_save)
+          if (do_clear_sky_pass) then
+           if(cldfree_present) then
+            call read_data (fname, 'sw_heating_clr_save', sw_heating_clr_save)
+            call read_data (fname, 'tot_heating_clr_save', tot_heating_clr_save)
+            call read_data (fname, 'dfswcf_save', dfswcf_save) 
+            call read_data (fname, 'ufswcf_save', ufswcf_save) 
+            call read_data (fname, 'fswcf_save', fswcf_save)  
+            call read_data (fname, 'hswcf_save', hswcf_save)
+            call read_data (fname, 'swdn_special_clr_save', swdn_special_clr_save)
+            call read_data (fname, 'swup_special_clr_save', swup_special_clr_save)
+            endif
+         endif
+      endif  ! (do_clear_sky_pass)
+   endif  ! (renormalize_sw_fluxes)
+!----------------------------------------------------------------------
+!    if all_step_diagnostics is active and rad_alarm is not 1, abort 
+!    job with error message. all_step_diagnostics may only be activated
+!    when radiation is to be calculated on the first step of a job, 
+!    unless additional arrays are added to the radiation restart file.
+!----------------------------------------------------------------------
+   if (rad_alarm /= 1 .and. all_step_diagnostics) then
+     if (mpp_pe() == mpp_root_pe() ) then
+        call error_mesg ('radiation_driver_mod', &
+       'cannot set all_step_diagnostics to be .true. unless &
+         & starting job on step just prior to radiation call; &
+         &doing so will lead to non-reproducibility of restarts', &
+                                                                 FATAL)
+     endif
+  endif
+
+  !----------------------------------------------------------------------
+  !    adjust radiation alarm if radiation step has changed from restart 
+  !    file value, if it has not already been set to the first step.
+  !----------------------------------------------------------------------
+  if (rad_alarm /= 1) then
+     !     if (rad_alarm == 1) then
+     !       if (mpp_pe() == mpp_root_pe() ) then
+     !         call error_mesg ('radiation_driver_mod',          &
+     !              'radiation will be called on first step of run', NOTE)
+     !       endif
+     !     else
+     if (rad_time_step /= old_time_step ) then
+        new_rad_time = rad_alarm - old_time_step + rad_time_step
+        if ( new_rad_time > 0 ) then
+           if (mpp_pe() == mpp_root_pe() ) then
+              print *, 'radiation time step has changed, therefore '//&
+                   'next time to next do radiation also changed;  &
+                   &new rad_alarm is', new_rad_time
+           endif
+           rad_alarm = new_rad_time
+        else
+           rad_alarm = 1
+           if (mpp_pe() == mpp_root_pe() ) then
+              call error_mesg ('radiation_driver_mod', &
+                   ' radiation to be calculated on first step: radiation &
+                   &timestep has gotten shorter and is past due', NOTE)
+           endif
+        endif
+     endif
+  endif   ! (rad_alarm == 1)
+
+end subroutine read_restart_nc
 
 
 !#####################################################################
@@ -2878,6 +4455,45 @@ integer        , intent(in) :: axes(4)
           clr2 = "clear sky "
         endif
 
+        id_swdn_special(1,i) = register_diag_field (mod_name,   &
+                'swdn_200hPa'//trim(clr), axes(1:2), Time, &
+                trim(clr2)//'SW flux down at 200 hPa', &
+                'watts/m2', missing_value=missing_value)
+        id_swdn_special(2,i) = register_diag_field (mod_name,   &
+                'swdn_lin_trop'//trim(clr), axes(1:2), Time, &
+                trim(clr2)//'SW flux down at linear tropopause', &
+                'watts/m2', missing_value=missing_value)
+        id_swdn_special(3,i) = register_diag_field (mod_name,   &
+                'swdn_therm_trop'//trim(clr), axes(1:2), Time, &
+                trim(clr2)//'SW flux down at thermo tropopause', &
+                'watts/m2', missing_value=missing_value)
+
+        id_swup_special(1,i) = register_diag_field (mod_name,   &
+                'swup_200hPa'//trim(clr), axes(1:2), Time, &
+                trim(clr2)//'SW flux up at 200 hPa', &
+                'watts/m2', missing_value=missing_value)
+        id_swup_special(2,i) = register_diag_field (mod_name,   &
+                'swup_lin_trop'//trim(clr), axes(1:2), Time, &
+                trim(clr2)//'SW flux up at linear tropopause', &
+                'watts/m2', missing_value=missing_value)
+        id_swup_special(3,i) = register_diag_field (mod_name,   &
+                'swup_therm_trop'//trim(clr), axes(1:2), Time, &
+                trim(clr2)//'SW flux up at thermo tropopause', &
+                'watts/m2', missing_value=missing_value)
+
+        id_netlw_special(1,i) = register_diag_field (mod_name,   &
+                'netlw_200hPa'//trim(clr), axes(1:2), Time, &
+                trim(clr2)//'net LW flux at 200 hPa', &
+                'watts/m2', missing_value=missing_value)
+        id_netlw_special(2,i) = register_diag_field (mod_name,   &
+                'netlw_lin_trop'//trim(clr), axes(1:2), Time, &
+                trim(clr2)//'net LW flux at linear tropopause', &
+                'watts/m2', missing_value=missing_value)
+        id_netlw_special(3,i) = register_diag_field (mod_name,   &
+                'netlw_therm_trop'//trim(clr), axes(1:2), Time, &
+                trim(clr2)//'net LW flux at thermo tropopause', &
+                'watts/m2', missing_value=missing_value)
+
         id_tdt_sw(i) = register_diag_field (mod_name,   &
                 'tdt_sw'//trim(clr), axes(1:3), Time, & 
                 trim(clr2)//'temperature tendency for SW radiation', &
@@ -2901,6 +4517,11 @@ integer        , intent(in) :: axes(4)
         id_olr(i) = register_diag_field (mod_name,   &
                 'olr'//trim(clr), axes(1:2), Time, &
                 trim(clr2)//'outgoing longwave radiation', &
+                'watts/m2', missing_value=missing_value)
+
+        id_netrad_toa(i) = register_diag_field (mod_name,   &
+                'netrad_toa'//trim(clr), axes(1:2), Time, &
+                trim(clr2)//'net radiation (lw + sw) at toa', &
                 'watts/m2', missing_value=missing_value)
 
         id_swup_sfc(i) = register_diag_field (mod_name,    &
@@ -2928,12 +4549,153 @@ integer        , intent(in) :: axes(4)
 !----------------------------------------------------------------------
 !    register fields that are not clear-sky depedent.
 !----------------------------------------------------------------------
+      if (Environment%running_gcm .or. &
+          Environment%running_sa_model .or. &
+          (Environment%running_standalone .and. &
+           Environment%column_type == 'fms')) then
+        id_conc_drop = register_diag_field (mod_name,   &
+                   'conc_drop', axes(1:3), Time, & 
+                   'drop concentration ', &
+                   'g/m^3', missing_value=missing_value) 
+    
+        id_conc_ice = register_diag_field (mod_name,   &
+                   'conc_ice', axes(1:3), Time, & 
+                   'ice concentration ', &
+                   'g/m^3', missing_value=missing_value) 
+ 
+      endif
+      
+      id_flux_sw_dir = register_diag_field (mod_name,    &
+                'flux_sw_dir', axes(1:2), Time, &
+                'net direct sfc sw flux', 'watts/m2', &
+                missing_value=missing_value)
+
+      id_flux_sw_dif = register_diag_field (mod_name,    &
+                'flux_sw_dif', axes(1:2), Time, &
+                'net diffuse sfc sw flux', 'watts/m2', &
+                missing_value=missing_value)
+
+      id_flux_sw_down_vis_dir = register_diag_field (mod_name,    &
+                'flux_sw_down_vis_dir', axes(1:2), Time, &
+                'downward direct visible sfc sw flux', 'watts/m2', &
+                 missing_value=missing_value)
+
+      id_flux_sw_down_vis_dif = register_diag_field (mod_name,    &
+                'flux_sw_down_vis_dif', axes(1:2), Time, &
+                'downward diffuse visible sfc sw flux', 'watts/m2', &
+                 missing_value=missing_value)
+
+      id_flux_sw_down_total_dir = register_diag_field (mod_name,    &
+                'flux_sw_down_total_dir', axes(1:2), Time, &
+                'downward direct total sfc sw flux', 'watts/m2', &
+                 missing_value=missing_value)
+
+      id_flux_sw_down_total_dif = register_diag_field (mod_name,    &
+               'flux_sw_down_total_dif', axes(1:2), Time, &
+               'downward diffuse total sfc sw flux', 'watts/m2', &
+                missing_value=missing_value)
+
+      id_flux_sw_vis = register_diag_field (mod_name,    &
+               'flux_sw_vis', axes(1:2), Time, &
+               'net visible sfc sw flux', 'watts/m2', &
+                 missing_value=missing_value)
+
+      id_flux_sw_vis_dir = register_diag_field (mod_name,    &
+               'flux_sw_vis_dir', axes(1:2), Time, &
+               'net direct visible sfc sw flux', 'watts/m2', &
+                 missing_value=missing_value)
+
+      id_flux_sw_vis_dif = register_diag_field (mod_name,    &
+                'flux_sw_vis_dif', axes(1:2), Time, &
+                'net diffuse visible sfc sw flux', 'watts/m2', &
+                  missing_value=missing_value)
+
+
+      id_sol_con = register_diag_field (mod_name,    &
+                  'solar_constant', Time, &
+                  'solar constant', 'watts/m2', &
+                  missing_value=missing_value)      
+                           
+      id_co2_tf = register_diag_field (mod_name,    &
+                  'co2_tf', Time, &
+                  'co2 mixing ratio used for tf calculation', 'ppmv', &
+                  missing_value=missing_value)      
+                           
+      id_ch4_tf = register_diag_field (mod_name,    &
+                  'ch4_tf', Time, &
+                  'ch4 mixing ratio used for tf calculation', 'ppbv', &
+                  missing_value=missing_value)      
+                           
+      id_n2o_tf = register_diag_field (mod_name,    &
+                  'n2o_tf', Time, &
+                  'n2o mixing ratio used for tf calculation', 'ppbv', &
+                  missing_value=missing_value)      
+                           
+      id_rrvco2 = register_diag_field (mod_name,    &
+                  'rrvco2', Time, &
+                  'co2 mixing ratio', 'ppmv', &
+                  missing_value=missing_value)      
+                           
+      id_rrvf11 = register_diag_field (mod_name,    &
+                  'rrvf11', Time, &
+                  'f11 mixing ratio', 'pptv', &
+                  missing_value=missing_value)
+        
+      id_rrvf12 = register_diag_field (mod_name,    &
+                  'rrvf12', Time, &
+                  'f12 mixing ratio', 'pptv', &
+                  missing_value=missing_value)
+
+      id_rrvf113 = register_diag_field (mod_name,    &
+                   'rrvf113', Time, &
+                   'f113 mixing ratio', 'pptv', &
+                   missing_value=missing_value)
+ 
+       id_rrvf22 = register_diag_field (mod_name,    &
+                   'rrvf22', Time, &
+                   'f22 mixing ratio', 'pptv', &
+                   missing_value=missing_value)
+
+       id_rrvch4 = register_diag_field (mod_name,    &
+                   'rrvch4', Time, &
+                   'ch4 mixing ratio', 'ppbv', &
+                   missing_value=missing_value)
+
+       id_rrvn2o = register_diag_field (mod_name,    &
+                   'rrvn2o', Time, &
+                   'n2o mixing ratio', 'ppbv', &
+                   missing_value=missing_value)
+
       id_alb_sfc = register_diag_field (mod_name,    &
                 'alb_sfc', axes(1:2), Time, &
                 'surface albedo', 'percent', &
                   missing_value=missing_value) 
 
-
+      id_alb_sfc_vis_dir = register_diag_field (mod_name,    &
+                'alb_sfc_vis_dir', axes(1:2), Time, &
+!               'surface albedo_vis_dir', 'percent')
+! BUGFIX
+                'surface albedo_vis_dir', 'percent', &
+                 missing_value=missing_value)
+      id_alb_sfc_nir_dir = register_diag_field (mod_name,    &
+                'alb_sfc_nir_dir', axes(1:2), Time, &
+!               'surface albedo_nir', 'percent')
+! BUGFIX
+                'surface albedo_nir_dir', 'percent', &
+                  missing_value=missing_value)
+ 
+      id_alb_sfc_vis_dif = register_diag_field (mod_name,    &
+                 'alb_sfc_vis_dif', axes(1:2), Time, &
+!               'surface albedo_vis', 'percent')
+! BUGFIX
+                 'surface albedo_vis_dif', 'percent', &
+                  missing_value=missing_value)
+      id_alb_sfc_nir_dif = register_diag_field (mod_name,    &
+                 'alb_sfc_nir_dif', axes(1:2), Time, &
+!               'surface albedo_nir', 'percent')
+! BUGFIX
+                 'surface albedo_nir_dif', 'percent', &
+                   missing_value=missing_value)
       id_cosz = register_diag_field (mod_name,    &
                 'cosz',axes(1:2),  Time,    &
                 'cosine of zenith angle',    &
@@ -3357,7 +5119,8 @@ subroutine radiation_calc (is, ie, js, je, Rad_time, Time_diag,  &
                            lat, lon, Atmos_input, Surface, Rad_gases, &
                            Aerosol_props, Aerosol, Cldrad_props,   &
                            Cld_spec, Astro, Rad_output, Lw_output,   &
-                           Sw_output, Fsrad_output, mask, kbot)
+                           Sw_output, Fsrad_output, Aerosol_diags, &
+                           mask, kbot)
 
 !--------------------------------------------------------------------
 !    radiation_calc is called on radiation timesteps and calculates
@@ -3373,7 +5136,7 @@ type(time_type),              intent(in)             :: Rad_time,   &
 real, dimension(:,:),         intent(in)             :: lat, lon
 type(atmos_input_type),       intent(in)             :: Atmos_input 
 type(surface_type),           intent(in)             :: Surface
-type(radiative_gases_type),   intent(in)             :: Rad_gases
+type(radiative_gases_type),   intent(inout)          :: Rad_gases
 type(aerosol_type),           intent(in)             :: Aerosol
 type(aerosol_properties_type),intent(inout)          :: Aerosol_props
 type(cldrad_properties_type), intent(in)             :: Cldrad_props
@@ -3383,6 +5146,7 @@ type(rad_output_type),        intent(inout)          :: Rad_output
 type(lw_output_type),         intent(inout)          :: Lw_output
 type(sw_output_type),         intent(inout)          :: Sw_output
 type(fsrad_output_type),      intent(inout)          :: Fsrad_output
+type(aerosol_diagnostics_type), intent(inout)        :: Aerosol_diags
 real, dimension(:,:,:),       intent(in),   optional :: mask
 integer, dimension(:,:),      intent(in),   optional :: kbot
 
@@ -3421,6 +5185,9 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
 !      Astro             astronomical input data for the radiation 
 !                        package 
 !                        [ astronomy_type ]
+!      Aerosol_diags     aerosol diagnostic output                  
+!                        [ aerosol_diagnostics_type ]
+!
 !
 !    intent(out) variables:
 !
@@ -3473,10 +5240,17 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
 !    sea_esf_rad or original_fms_rad radiation package.
 !---------------------------------------------------------------------
         if (do_sea_esf_rad) then
-          call sea_esf_rad (is, ie, js, je, Atmos_input, Surface,  &
-                            Astro, Rad_gases, Aerosol,  Aerosol_props,&
-                            Cldrad_props, Cld_spec, Lw_output,   &
-                            Sw_output)
+          call sea_esf_rad (is, ie, js, je, Rad_time, Atmos_input, &
+                            Surface, Astro, Rad_gases, Aerosol,  &
+                            Aerosol_props, Cldrad_props, Cld_spec,  &
+                            Lw_output, Sw_output, Aerosol_diags)
+
+!--------------------------------------------------------------------
+!    define tropopause fluxes for diagnostic use later.
+!--------------------------------------------------------------------
+          call flux_trop_calc (is, ie, js, je, lat,  &
+                               Atmos_input, Lw_output, Sw_output )
+
         else  
           call original_fms_rad (is, ie, js, je, Atmos_input%phalf,  &
                                  lat, lon, do_clear_sky_pass,   &
@@ -3514,7 +5288,9 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
 !    necessary.
 !---------------------------------------------------------------------
       if (Environment%running_gcm .or.  &
-          Environment%running_sa_model) then
+          Environment%running_sa_model .or. &
+          (Environment%running_standalone .and. &
+            Environment%column_type == 'fms')) then
         if (do_sea_esf_rad) then
           Rad_output%tdtsw(is:ie,js:je,:) = Sw_output%hsw(:,:,:)/  &
                                             SECONDS_PER_DAY
@@ -3556,6 +5332,27 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
           Rad_output%flux_sw_surf(is:ie,js:je) =   &
                                          Sw_output%dfsw(:,:,kmax+1) - &
                                          Sw_output%ufsw(:,:,kmax+1)
+           Rad_output%flux_sw_surf_dir(is:ie,js:je) =   &
+                                         Sw_output%dfsw_dir_sfc(:,:)
+           Rad_output%flux_sw_surf_dif(is:ie,js:je) =   &
+                                         Sw_output%dfsw_dif_sfc(:,:) - &
+                                         Sw_output%ufsw_dif_sfc(:,:)
+           Rad_output%flux_sw_down_vis_dir(is:ie,js:je) =   &
+                                         Sw_output%dfsw_vis_sfc_dir(:,:)
+           Rad_output%flux_sw_down_vis_dif(is:ie,js:je) =   &
+                                         Sw_output%dfsw_vis_sfc_dif(:,:)
+           Rad_output%flux_sw_down_total_dir(is:ie,js:je) =   &
+                                         Sw_output%dfsw_dir_sfc(:,:)
+           Rad_output%flux_sw_down_total_dif(is:ie,js:je) =   &
+                                         Sw_output%dfsw_dif_sfc(:,:)
+           Rad_output%flux_sw_vis (is:ie,js:je) =   &
+                                         Sw_output%dfsw_vis_sfc(:,:) - &
+                                         Sw_output%ufsw_vis_sfc(:,:)
+           Rad_output%flux_sw_vis_dir (is:ie,js:je) =   &
+                                         Sw_output%dfsw_vis_sfc_dir(:,:)
+           Rad_output%flux_sw_vis_dif (is:ie,js:je) =   &
+                                     Sw_output%dfsw_vis_sfc_dif(:,:) - &
+                                     Sw_output%ufsw_vis_sfc_dif(:,:)
           Rad_output%flux_lw_surf(is:ie,js:je) =    &
                        STEFAN*Atmos_input%temp(:,:,kmax+1)**4 -   &
                        Lw_output%flxnet(:,:,kmax+1)
@@ -3707,8 +5504,7 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
 !---------------------------------------------------------------------
 !  local variables:
 !
-      real, dimension (size(Rad_output%tdt_rad,1),                    &
-                       size(Rad_output%tdt_rad,2),                    &
+      real, dimension (is:ie, js:je,                                  &
                        size(Rad_output%tdt_rad,3))  ::  tdtlw, tdtlw_clr
       integer   ::   i, j, k
 
@@ -3738,10 +5534,32 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
           hsw_save(is:ie,js:je,:)  = Sw_output%hsw(:, :,:)
           flux_sw_surf_save(is:ie,js:je) =    &
                                     Rad_output%flux_sw_surf(is:ie,js:je)
+          flux_sw_surf_dir_save(is:ie,js:je) =    &
+                                Rad_output%flux_sw_surf_dir(is:ie,js:je)
+          flux_sw_surf_dif_save(is:ie,js:je) =    &
+                                Rad_output%flux_sw_surf_dif(is:ie,js:je)
+          flux_sw_down_vis_dir_save(is:ie,js:je) =    &
+                            Rad_output%flux_sw_down_vis_dir(is:ie,js:je)
+          flux_sw_down_vis_dif_save(is:ie,js:je) =    &
+                            Rad_output%flux_sw_down_vis_dif(is:ie,js:je)
+          flux_sw_down_total_dir_save(is:ie,js:je) =    &
+                      Rad_output%flux_sw_down_total_dir(is:ie,js:je)
+          flux_sw_down_total_dif_save(is:ie,js:je) =    &
+                         Rad_output%flux_sw_down_total_dif(is:ie,js:je)
+          flux_sw_vis_save(is:ie,js:je) =    &
+                              Rad_output%flux_sw_vis(is:ie,js:je)
+          flux_sw_vis_dir_save(is:ie,js:je) =    &
+                   Rad_output%flux_sw_vis_dir(is:ie,js:je)
+          flux_sw_vis_dif_save(is:ie,js:je) =    &
+                               Rad_output%flux_sw_vis_dif(is:ie,js:je)
           sw_heating_save(is:ie,js:je,:) =    &
                               Rad_output%tdtsw(is:ie,js:je,:)
           tot_heating_save(is:ie,js:je,:) =    &
                               Rad_output%tdt_rad(is:ie,js:je,:)
+          swdn_special_save(is:ie,js:je,:) =   &
+                                     Sw_output%swdn_special(:,:,:)
+          swup_special_save(is:ie,js:je,:) =   &
+                                     Sw_output%swup_special(:,:,:)
           if (do_clear_sky_pass) then
             sw_heating_clr_save(is:ie,js:je,:) =    &
                               Rad_output%tdtsw_clr(is:ie,js:je,:)
@@ -3751,6 +5569,10 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
             ufswcf_save(is:ie,js:je,:) = Sw_output%ufswcf(:, :,:)
             fswcf_save(is:ie,js:je,:)  = Sw_output%fswcf(:, :,:)
             hswcf_save(is:ie,js:je,:)  = Sw_output%hswcf(:, :,:)
+            swdn_special_clr_save(is:ie,js:je,:) =  &
+                                Sw_output%swdn_special_clr(:,:,:)
+            swup_special_clr_save(is:ie,js:je,:) =  &
+                                Sw_output%swup_special_clr(:,:,:)
           endif 
 
 !---------------------------------------------------------------------
@@ -3809,6 +5631,26 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
                                        Rad_output%tdtsw(is:ie,js:je,:)
         Rad_output%flux_sw_surf(is:ie,js:je) = flux_ratio(:,:)*    &
                                           flux_sw_surf_save(is:ie,js:je)
+        Rad_output%flux_sw_surf_dir(is:ie,js:je) = flux_ratio(:,:)*    &
+                                    flux_sw_surf_dir_save(is:ie,js:je)
+        Rad_output%flux_sw_surf_dif(is:ie,js:je) = flux_ratio(:,:)*    &
+                           flux_sw_surf_dif_save(is:ie,js:je)
+        Rad_output%flux_sw_down_vis_dir(is:ie,js:je) = flux_ratio(:,:)*&
+                         flux_sw_down_vis_dir_save(is:ie,js:je)
+       Rad_output%flux_sw_down_vis_dif(is:ie,js:je) = flux_ratio(:,:)* &
+                                flux_sw_down_vis_dif_save(is:ie,js:je)
+        Rad_output%flux_sw_down_total_dir(is:ie,js:je) =   &
+                                             flux_ratio(:,:)*&
+                                flux_sw_down_total_dir_save(is:ie,js:je)
+        Rad_output%flux_sw_down_total_dif(is:ie,js:je) =   &
+                              flux_ratio(:,:) * &
+                           flux_sw_down_total_dif_save(is:ie,js:je)
+         Rad_output%flux_sw_vis(is:ie,js:je) = flux_ratio(:,:)*    &
+                                           flux_sw_vis_save(is:ie,js:je)
+         Rad_output%flux_sw_vis_dir(is:ie,js:je) = flux_ratio(:,:)*    &
+                                       flux_sw_vis_dir_save(is:ie,js:je)
+         Rad_output%flux_sw_vis_dif(is:ie,js:je) = flux_ratio(:,:)*    &
+                                       flux_sw_vis_dif_save(is:ie,js:je)
         if (do_clear_sky_pass) then
           tdtlw_clr(:,:,:) = tot_heating_clr_save  (is:ie,js:je,:) -&
                              sw_heating_clr_save (is:ie,js:je,:)
@@ -3833,10 +5675,32 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
           hsw_save(is:ie,js:je,:)  = Sw_output%hsw(:, :,:)
           flux_sw_surf_save(is:ie,js:je) =    &
                               Rad_output%flux_sw_surf(is:ie,js:je)
+          flux_sw_surf_dir_save(is:ie,js:je) =    &
+                              Rad_output%flux_sw_surf_dir(is:ie,js:je)
+          flux_sw_surf_dif_save(is:ie,js:je) =    &
+                              Rad_output%flux_sw_surf_dif(is:ie,js:je)
+          flux_sw_down_vis_dir_save(is:ie,js:je) =    &
+                          Rad_output%flux_sw_down_vis_dir(is:ie,js:je)
+          flux_sw_down_vis_dif_save(is:ie,js:je) =    &
+                            Rad_output%flux_sw_down_vis_dif(is:ie,js:je)
+          flux_sw_down_total_dir_save(is:ie,js:je) =    &
+                          Rad_output%flux_sw_down_total_dir(is:ie,js:je)
+          flux_sw_down_total_dif_save(is:ie,js:je) =    &
+                          Rad_output%flux_sw_down_total_dif(is:ie,js:je)
+          flux_sw_vis_save(is:ie,js:je) =    &
+                               Rad_output%flux_sw_vis(is:ie,js:je)
+          flux_sw_vis_dir_save(is:ie,js:je) =    &
+                            Rad_output%flux_sw_vis_dir(is:ie,js:je)
+          flux_sw_vis_dif_save(is:ie,js:je) =    &
+                               Rad_output%flux_sw_vis_dif(is:ie,js:je)
           sw_heating_save(is:ie,js:je,:) =    &
                              Rad_output%tdtsw(is:ie,js:je,:)
           tot_heating_save(is:ie,js:je,:) =    &
                                Rad_output%tdt_rad(is:ie,js:je,:)
+          swdn_special_save(is:ie,js:je,:) =   &
+                                 Sw_output%swdn_special(:,:,:)
+          swup_special_save(is:ie,js:je,:) =   &
+                                 Sw_output%swup_special(:,:,:)
           if (do_clear_sky_pass) then
             sw_heating_clr_save(is:ie,js:je,:) =    &
                         Rad_output%tdtsw_clr(is:ie,js:je,:)
@@ -3846,6 +5710,10 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
             ufswcf_save(is:ie,js:je,:) = Sw_output%ufswcf(:, :,:)
             fswcf_save(is:ie,js:je,:)  = Sw_output%fswcf(:, :,:)
             hswcf_save(is:ie,js:je,:)  = Sw_output%hswcf(:, :,:)
+            swdn_special_clr_save(is:ie,js:je,:) =   &
+                                   Sw_output%swdn_special_clr(:,:,:)
+            swup_special_clr_save(is:ie,js:je,:) =   &
+                                   Sw_output%swup_special_clr(:,:,:)
           endif
         endif
       else
@@ -3858,6 +5726,215 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
 
 end subroutine update_rad_fields 
 
+
+
+!####################################################################
+
+! <SUBROUTINE NAME="flux_trop_calc">
+!  <OVERVIEW>
+!    flux_trop_calc defines the shortwave and longwave fluxes at the
+!    tropopause immediately after the computation of fluxes at model
+!    levels by the radiation algorithms (invoked by radiation_calc).
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    flux_trop_calc defines the shortwave and longwave fluxes at the
+!    tropopause immediately after the computation of fluxes at model
+!    levels by the radiation algorithms (invoked by radiation_calc).
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call flux_trop_calc          (is, ie, js, je, lat,      &
+!                                 Atmos_input,              &
+!                                 Lw_output, Sw_output )
+!  </TEMPLATE>
+!  <IN NAME="is, ie, js, je" TYPE="integer">
+!   starting/ending i,j indices in global storage arrays
+!  </IN>
+!  <IN NAME="lat" TYPE="real">
+!    mean latitude (in radians) of all grid boxes processed by this
+!    call to flux_trop_calc   [real, dimension(:,:)]
+!  </IN>
+!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
+!   Atmospheric input data to radiation package
+!  </IN>
+!  <INOUT NAME="Lw_output" TYPE="lw_output_type">
+!      longwave radiation output data from the 
+!                        sea_esf_rad radiation package, when that 
+!                        package is active
+!  </INOUT>
+!  <INOUT NAME="Sw_output" TYPE="sw_output_type">
+!   shortwave radiation output data from the 
+!                        sea_esf_rad radiation package  when that 
+!                        package is active
+!  </INOUT>
+! </SUBROUTINE>
+
+subroutine flux_trop_calc    (is, ie, js, je, lat, Atmos_input, &
+                              Lw_output, Sw_output )
+
+integer,                 intent(in)             :: is, ie, js, je
+real,dimension(:,:),     intent(in)             :: lat
+type(atmos_input_type),  intent(in)             :: Atmos_input
+type(lw_output_type),    intent(inout)          :: Lw_output
+type(sw_output_type),    intent(inout)          :: Sw_output
+
+!---------------------------------------------------------------------
+!   intent(in) variables:
+!
+!      is,ie,js,je  starting/ending subdomain i,j indices of data 
+!                   in the physics_window being integrated
+!      lat          latitude of model points  [ radians ]
+!      Atmos_input  component pflux (pressure at layer boundaries [ Pa ]
+!                   is used
+!
+!   intent(inout) variables:
+!      Lw_output    lw_output_type variable containing output from 
+!                   the longwave radiation code of the
+!                   sea_esf_rad package, on the model grid
+!      Sw_output    sw_output_type variable containing output from 
+!                   the shortwave radiation code of the
+!                   sea_esf_rad package, on the model grid
+
+      real, dimension (ie-is+1,je-js+1) ::      lat_deg, tropo_ht
+      real, dimension (ie-is+1,je-js+1) ::      netlw_trop,  &
+                                                swdn_trop, swup_trop, &
+                                                netlw_trop_clr, &
+                                                swdn_trop_clr,  &
+                                                swup_trop_clr
+      integer           :: j, k
+      integer           :: ki, i
+      integer           :: kmax
+      real              :: wtlo, wthi
+
+      kmax = size(Atmos_input%pflux,3) - 1
+
+      if (constant_tropo) then
+        tropo_ht(:,:) = trop_ht_constant
+! interpolate the fluxes between the appropriate pressures bracketing
+! (trop) 
+
+        do j = 1,je-js+1
+          do i = 1,ie-is+1
+            do k = kmax+1,2,-1
+              if (Atmos_input%pflux(i,j,k) >= tropo_ht(i,j) .and.     &
+                  Atmos_input%pflux(i,j,k-1) < tropo_ht(i,j))      then
+                ki = k
+!   the indices for high,low pressure bracketing "tropo_ht" are ki, ki-1
+            wtlo = (tropo_ht(i,j) - Atmos_input%pflux(i,j,ki-1))/ &
+              (Atmos_input%pflux(i,j,ki) - Atmos_input%pflux(i,j,ki-1))
+            wthi = 1.0 - wtlo
+            netlw_trop(i,j) = wtlo*Lw_output%flxnet(i,j,ki) + &
+                              wthi*Lw_output%flxnet(i,j,ki-1)
+            swdn_trop(i,j) = wtlo*Sw_output%dfsw(i,j,ki) + &
+                             wthi*Sw_output%dfsw(i,j,ki-1)
+            swup_trop(i,j) = wtlo*Sw_output%ufsw(i,j,ki) + &
+                             wthi*Sw_output%ufsw(i,j,ki-1)
+            Lw_output%netlw_special(i,j,1) = netlw_trop(i,j)
+            Sw_output%swdn_special(i,j,1) = swdn_trop(i,j)
+            Sw_output%swup_special(i,j,1) = swup_trop(i,j)
+            if (do_clear_sky_pass) then
+              netlw_trop_clr(i,j) = wtlo*Lw_output%flxnetcf(i,j,ki) + &
+                                    wthi*Lw_output%flxnetcf(i,j,ki-1)
+              swdn_trop_clr(i,j) = wtlo*Sw_output%dfswcf(i,j,ki) + &
+                                   wthi*Sw_output%dfswcf(i,j,ki-1)
+              swup_trop_clr(i,j) = wtlo*Sw_output%ufswcf(i,j,ki) + &
+                                   wthi*Sw_output%ufswcf(i,j,ki-1)
+              Lw_output%netlw_special_clr(i,j,1) = netlw_trop_clr(i,j)
+              Sw_output%swdn_special_clr(i,j,1) = swdn_trop_clr(i,j)
+              Sw_output%swup_special_clr(i,j,1) = swup_trop_clr(i,j)
+            endif
+            exit
+          endif
+          enddo
+        enddo
+        enddo
+      endif
+      if (linear_tropo) then
+        lat_deg(:,:) = lat(:,:)*RADIAN
+        tropo_ht(:,:) = trop_ht_at_eq + ABS(lat_deg(:,:))*  &
+                        (trop_ht_at_poles - trop_ht_at_eq)/90.
+! interpolate the fluxes between the appropriate pressures bracketing
+! (trop) 
+
+        do i = 1,ie-is+1
+         do j = 1,je-js+1
+          do k = kmax+1,2,-1
+          if (Atmos_input%pflux(i,j,k) >= tropo_ht(i,j) .and.     &
+              Atmos_input%pflux(i,j,k-1) < tropo_ht(i,j))      then
+            ki = k
+!   the indices for high,low pressure bracketing "tropo_ht" are ki, ki-1
+            wtlo = (tropo_ht(i,j) - Atmos_input%pflux(i,j,ki-1))/ &
+              (Atmos_input%pflux(i,j,ki) - Atmos_input%pflux(i,j,ki-1))
+            wthi = 1.0 - wtlo
+            netlw_trop(i,j) = wtlo*Lw_output%flxnet(i,j,ki) + &
+                              wthi*Lw_output%flxnet(i,j,ki-1)
+            swdn_trop(i,j) = wtlo*Sw_output%dfsw(i,j,ki) + &
+                             wthi*Sw_output%dfsw(i,j,ki-1)
+            swup_trop(i,j) = wtlo*Sw_output%ufsw(i,j,ki) + &
+                             wthi*Sw_output%ufsw(i,j,ki-1)
+            Lw_output%netlw_special(i,j,2) = netlw_trop(i,j)
+            Sw_output%swdn_special(i,j,2) = swdn_trop(i,j)
+            Sw_output%swup_special(i,j,2) = swup_trop(i,j)
+            if (do_clear_sky_pass) then
+              netlw_trop_clr(i,j) = wtlo*Lw_output%flxnetcf(i,j,ki) + &
+                                    wthi*Lw_output%flxnetcf(i,j,ki-1)
+              swdn_trop_clr(i,j) = wtlo*Sw_output%dfswcf(i,j,ki) + &
+                                   wthi*Sw_output%dfswcf(i,j,ki-1)
+              swup_trop_clr(i,j) = wtlo*Sw_output%ufswcf(i,j,ki) + &
+                                   wthi*Sw_output%ufswcf(i,j,ki-1)
+              Lw_output%netlw_special_clr(i,j,2) = netlw_trop_clr(i,j)
+              Sw_output%swdn_special_clr(i,j,2) = swdn_trop_clr(i,j)
+              Sw_output%swup_special_clr(i,j,2) = swup_trop_clr(i,j)
+            endif
+            exit
+          endif
+          enddo
+        enddo
+        enddo
+      endif
+      if (thermo_tropo) then
+        call error_mesg ( 'radiation_driver_mod', &
+              'thermo_tropo option not yet available', FATAL)
+! interpolate the fluxes between the appropriate pressures bracketing
+! (trop) 
+
+        do i = 1,ie-is+1
+         do j = 1,je-js+1
+          do k = kmax+1,2,-1
+          if (Atmos_input%pflux(i,j,k) >= tropo_ht(i,j) .and.     &
+              Atmos_input%pflux(i,j,k-1) < tropo_ht(i,j))      then
+            ki = k
+!   the indices for high,low pressure bracketing "tropo_ht" are ki, ki-1
+            wtlo = (tropo_ht(i,j) - Atmos_input%pflux(i,j,ki-1))/ &
+              (Atmos_input%pflux(i,j,ki) - Atmos_input%pflux(i,j,ki-1))
+            wthi = 1.0 - wtlo
+            netlw_trop(i,j) = wtlo*Lw_output%flxnet(i,j,ki) + &
+                              wthi*Lw_output%flxnet(i,j,ki-1)
+            swdn_trop(i,j) = wtlo*Sw_output%dfsw(i,j,ki) + &
+                             wthi*Sw_output%dfsw(i,j,ki-1)
+            swup_trop(i,j) = wtlo*Sw_output%ufsw(i,j,ki) + &
+                             wthi*Sw_output%ufsw(i,j,ki-1)
+            Lw_output%netlw_special(i,j,3) = netlw_trop(i,j)
+            Sw_output%swdn_special(i,j,3) = swdn_trop(i,j)
+            Sw_output%swup_special(i,j,3) = swup_trop(i,j)
+            if (do_clear_sky_pass) then
+              netlw_trop_clr(i,j) = wtlo*Lw_output%flxnetcf(i,j,ki) + &
+                                    wthi*Lw_output%flxnetcf(i,j,ki-1)
+              swdn_trop_clr(i,j) = wtlo*Sw_output%dfswcf(i,j,ki) + &
+                                   wthi*Sw_output%dfswcf(i,j,ki-1)
+              swup_trop_clr(i,j) = wtlo*Sw_output%ufswcf(i,j,ki) + &
+                                   wthi*Sw_output%ufswcf(i,j,ki-1)
+              Lw_output%netlw_special_clr(i,j,3) = netlw_trop_clr(i,j)
+              Sw_output%swdn_special_clr(i,j,3) = swdn_trop_clr(i,j)
+              Sw_output%swup_special_clr(i,j,3) = swup_trop_clr(i,j)
+            endif
+            exit
+          endif
+          enddo
+        enddo
+        enddo
+      endif
+
+end subroutine flux_trop_calc 
 
 
 !####################################################################
@@ -3874,7 +5951,8 @@ end subroutine update_rad_fields
 !   call produce_radiation_diagnostics          &
 !                            (is, ie, js, je, Time_diag, lat, ts, asfc, &
 !                             flux_ratio, Astro, Rad_output, Lw_output, &
-!                             Sw_output, Fsrad_output, mask) 
+!                             Sw_output, Cld_spec, Lsc_microphys,    &
+!                             Fsrad_output, mask)
 !  </TEMPLATE>
 !  <IN NAME="is, ie, js, je" TYPE="integer">
 !   starting/ending i,j indices in global storage arrays
@@ -3918,6 +5996,14 @@ end subroutine update_rad_fields
 !                        sea_esf_rad radiation package  when that 
 !                        package is active
 !  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+!   Cloud microphysical and physical parameters to radiation package, 
+!                        when the microphysical package is active
+!  </IN>
+!  <IN NAME="Lsc_microphys" TYPE="microphysics_type">
+!   microphysical specification for large-scale clouds,
+!                        when the microphysical package is active
+!  </IN>
 !  <IN NAME="mask" TYPE="real">
 !   OPTIONAL: present when running eta vertical coordinate,
 !                        mask to remove points below ground
@@ -3925,9 +6011,10 @@ end subroutine update_rad_fields
 ! </SUBROUTINE>
 !
 subroutine produce_radiation_diagnostics          &
-                            (is, ie, js, je, Time_diag, lat, ts, asfc, &
-                             flux_ratio, Astro, Rad_output, Lw_output, &
-                             Sw_output, Fsrad_output, mask) 
+                        (is, ie, js, je, Time_diag, lat, ts, Surface, &
+                             flux_ratio, Astro, Rad_output, Rad_gases,&
+                             Lw_output, Sw_output, Cld_spec,   &
+                             Lsc_microphys, Fsrad_output, mask)
 
 !--------------------------------------------------------------------
 !    produce_radiation_diagnostics produces netcdf output and global 
@@ -3938,12 +6025,16 @@ subroutine produce_radiation_diagnostics          &
 integer,                 intent(in)             :: is, ie, js, je
 type(time_type),         intent(in)             :: Time_diag
 real,dimension(:,:),     intent(in)             :: lat, ts
-real,dimension(:,:),     intent(in)             :: asfc, flux_ratio
+type(surface_type),      intent(in)             :: Surface
+real,dimension(:,:),     intent(in)             :: flux_ratio
 type(astronomy_type),    intent(in)             :: Astro
 type(rad_output_type),   intent(in)             :: Rad_output
+type(radiative_gases_type), intent(in)          :: Rad_gases
 type(lw_output_type),    intent(in), optional   :: Lw_output
 type(fsrad_output_type), intent(in), optional   :: Fsrad_output
 type(sw_output_type),    intent(in), optional   :: Sw_output
+type(cld_specification_type), intent(in), optional   :: Cld_spec
+type(microphysics_type), intent(in), optional   :: Lsc_microphys
 real,dimension(:,:,:),   intent(in), optional   :: mask
 !--------------------------------------------------------------------
 
@@ -3963,6 +6054,8 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !                   package [ dimensionless ]
 !      Rad_output   rad_output_type variable containing radiation 
 !                   output fields
+!      Rad_gases    radiative_gases_type variable containing co2 mixing
+!                   ratio
 !
 !
 !    intent(in) optional variables:
@@ -3973,6 +6066,13 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !      Sw_output    sw_output_type variable containing output from 
 !                   the shortwave radiation code of the
 !                   sea_esf_rad package, on the model grid
+!      Cld_spec     cloud specification input data for the 
+!                   radiation package
+!                   [ cld_specification_type ]
+!      Lsc_microphys  microphysics_type structure, contains variables
+!                     describing the microphysical properties of the
+!                     large-scale clouds, passed through to lower
+!                     level routines
 !      Fsrad_output fsrad_output_type variable containing 
 !                   output from the original_fms_rad radiation
 !                   package, on the model grid
@@ -3985,12 +6085,24 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !  local variables
 
       real, dimension (ie-is+1,je-js+1) ::           & 
+                                                asfc, asfc_vis_dir,  &
+                                                asfc_nir_dir,   &
+                                                asfc_vis_dif,  &
+                                                asfc_nir_dif, &
                                                 swin, swout, olr, &
                                                 swups, swdns, lwups, &
                                                 lwdns, swin_clr,   &
                                                 swout_clr, olr_clr, &
                                                 swups_clr, swdns_clr,&
                                                 lwups_clr, lwdns_clr
+
+      real, dimension (ie-is+1,je-js+1, MX_SPEC_LEVS) ::           & 
+                                                swdn_trop,  &
+                                                swdn_trop_clr, &
+                                                swup_trop, &
+                                                swup_trop_clr, &
+                                                netlw_trop, &
+                                                netlw_trop_clr
 
       real, dimension (ie-is+1,je-js+1, size(Rad_output%tdtsw,3)) ::  &
                                                 tdtlw, tdtlw_clr,&
@@ -4006,6 +6118,12 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
       logical           :: used
       integer           :: iind, jind
       integer           :: kmax
+
+!      asfc         surface albedo  [ dimensionless ]
+!      asfc_vis_dir surface visible albedo  [ dimensionless ]
+!      asfc_nir_dir surface nir albedo  [ dimensionless ]
+!      asfc_vis_dif surface visible albedo  [ dimensionless ]
+!      asfc_nir_dif surface nir albedo  [ dimensionless ]
 
 !---------------------------------------------------------------------
 !    if sw flux renormalization is active, modify the fluxes calculated
@@ -4023,6 +6141,12 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
           ufsw(:,:,k) = ufsw_save(is:ie,js:je,k)*flux_ratio(:,:)
           fsw(:,:,k) = fsw_save(is:ie,js:je,k)*flux_ratio(:,:)
         end do
+        do k=1,Rad_control%mx_spec_levs
+        swdn_trop(:,:,k) = swdn_special_save(is:ie,js:je,k)*  &
+                           flux_ratio(:,:)
+        swup_trop(:,:,k) = swup_special_save(is:ie,js:je,k)*   &
+                           flux_ratio(:,:)
+        end do
         if (do_clear_sky_pass) then
           do k=1, kmax            
             hswcf(:,:,k) = hswcf_save(is:ie,js:je,k)*flux_ratio(:,:)
@@ -4032,6 +6156,12 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
             ufswcf(:,:,k) = ufswcf_save(is:ie,js:je,k)*flux_ratio(:,:)
             fswcf(:,:,k) = fswcf_save(is:ie,js:je,k)*flux_ratio(:,:)
           end do
+        do k=1,Rad_control%mx_spec_levs
+          swdn_trop_clr(:,:,k) = swdn_special_clr_save(is:ie,js:je,k)* &
+                                 flux_ratio(:,:)
+          swup_trop_clr(:,:,k) = swup_special_clr_save(is:ie,js:je,k)* &
+                                 flux_ratio(:,:)
+        end do
         endif
 
 !----------------------------------------------------------------------
@@ -4048,6 +6178,8 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
           ufsw(:,:,k) = Sw_output%ufsw(:,:,k)
           fsw(:,:,k) = Sw_output%fsw(:,:,k)
         end do
+        swdn_trop(:,:,:) = Sw_output%swdn_special(:,:,:)
+        swup_trop(:,:,:) = Sw_output%swup_special(:,:,:)
         if (do_clear_sky_pass) then
           do k=1, kmax             
             hswcf(:,:,k) = Sw_output%hswcf(:,:,k)
@@ -4057,6 +6189,8 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
             ufswcf(:,:,k) = Sw_output%ufswcf(:,:,k)
             fswcf(:,:,k) = Sw_output%fswcf(:,:,k)
           end do
+          swdn_trop_clr(:,:,:) = Sw_output%swdn_special_clr(:,:,:)
+          swup_trop_clr(:,:,:) = Sw_output%swup_special_clr(:,:,:)
         endif
 
 !----------------------------------------------------------------------
@@ -4074,6 +6208,8 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
           ufsw(:,:,k) = ufsw_save(is:ie,js:je,k)
           fsw(:,:,k) = fsw_save(is:ie,js:je,k)
         end do
+        swdn_trop(:,:,:) = swdn_special_save(is:ie,js:je,:)
+        swup_trop(:,:,:) = swup_special_save(is:ie,js:je,:)
         if (do_clear_sky_pass) then
           do k=1, kmax
             hswcf(:,:,k) = hswcf_save(is:ie,js:je,k)
@@ -4083,6 +6219,8 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
             ufswcf(:,:,k) = ufswcf_save(is:ie,js:je,k)
             fswcf(:,:,k) = fswcf_save(is:ie,js:je,k)
           end do
+          swdn_trop_clr(:,:,:) = swdn_special_clr_save(is:ie,js:je,:)
+          swup_trop_clr(:,:,:) = swup_special_clr_save(is:ie,js:je,:)
         endif
       endif
 
@@ -4144,6 +6282,44 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
                             Time_diag, is, js )
         endif
 
+!------- incoming sw flux trop -------
+        if (id_swdn_special(1,ipass) > 0 ) then
+          used = send_data (id_swdn_special(1,ipass),   &
+                            swdn_trop(:,:,1), &
+                            Time_diag, is, js )
+        endif
+!------- incoming sw flux trop -------
+        if (id_swdn_special(2,ipass) > 0 ) then
+          used = send_data (id_swdn_special(2,ipass),   &
+                            swdn_trop(:,:,2), &
+                            Time_diag, is, js )
+        endif
+!------- incoming sw flux trop -------
+        if (id_swdn_special(3, ipass) > 0 ) then
+          used = send_data (id_swdn_special(3,ipass),   &
+                            swdn_trop(:,:,3), &
+                            Time_diag, is, js )
+        endif
+
+!------- outgoing sw flux trop -------
+        if (id_swup_special(1,ipass) > 0 ) then
+          used = send_data (id_swup_special(1,ipass),   &
+                            swup_trop(:,:,1), &
+                            Time_diag, is, js )
+        endif
+!------- outgoing sw flux trop -------
+        if (id_swup_special(2,ipass) > 0 ) then
+          used = send_data (id_swup_special(2,ipass),   &
+                            swup_trop(:,:,2), &
+                            Time_diag, is, js )
+        endif
+!------- outgoing sw flux trop -------
+        if (id_swup_special(3,ipass) > 0 ) then
+          used = send_data (id_swup_special(3,ipass),   &
+                            swup_trop(:,:,3), &
+                            Time_diag, is, js )
+        endif
+
 
 !------- upward sw flux surface -------
         if (id_swup_sfc(ipass) > 0 ) then
@@ -4182,6 +6358,44 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
                               Time_diag, is, js )
           endif
 
+!------- incoming sw flux trop -------
+          if (id_swdn_special(1,ipass) > 0 ) then
+            used = send_data (id_swdn_special(1, ipass),    &
+                              swdn_trop_clr(:,:,1), &
+                              Time_diag, is, js )
+          endif
+!------- incoming sw flux trop -------
+          if (id_swdn_special(2,ipass) > 0 ) then
+            used = send_data (id_swdn_special(2, ipass),    &
+                              swdn_trop_clr(:,:,2), &
+                              Time_diag, is, js )
+          endif
+!------- incoming sw flux trop -------
+          if (id_swdn_special(3,ipass) > 0 ) then
+            used = send_data (id_swdn_special(3, ipass),    &
+                              swdn_trop_clr(:,:,3), &
+                              Time_diag, is, js )
+          endif
+
+!------- outgoing sw flux trop -------
+          if (id_swup_special(1,ipass) > 0 ) then
+            used = send_data (id_swup_special(1,ipass),   &
+                              swup_trop_clr(:,:,1),  &
+                              Time_diag, is, js )
+          endif
+!------- outgoing sw flux trop -------
+          if (id_swup_special(2,ipass) > 0 ) then
+            used = send_data (id_swup_special(2,ipass),   &
+                              swup_trop_clr(:,:,2),  &
+                              Time_diag, is, js )
+          endif
+!------- outgoing sw flux trop -------
+          if (id_swup_special(3,ipass) > 0 ) then
+            used = send_data (id_swup_special(3,ipass),   &
+                              swup_trop_clr(:,:,3),  &
+                              Time_diag, is, js )
+          endif
+
 !------- upward sw flux surface -------
           if (id_swup_sfc(ipass) > 0 ) then
             used = send_data (id_swup_sfc(ipass), swups_clr,   &
@@ -4199,9 +6413,190 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !    send cloud-forcing-independent diagnostics to diagnostics manager.
 !-----------------------------------------------------------------------
 
+        if (Environment%running_gcm .or. &
+            Environment%running_sa_model .or. &
+            (Environment%running_standalone .and. &
+             Environment%column_type == 'fms')) then
+!------- conc_drop  -------------------------
+          if (do_rad) then
+            if ( id_conc_drop > 0 ) then
+              used = send_data (id_conc_drop, Lsc_microphys%conc_drop, &
+                                Time_diag, is, js, 1, rmask=mask )
+            endif
+          endif
+  
+!------- conc_ice  -------------------------
+          if (do_rad) then
+            if (id_conc_ice > 0 ) then
+              used = send_data (id_conc_ice, Lsc_microphys%conc_ice, &
+                                Time_diag, is, js, 1, rmask=mask )
+            endif
+          endif
+        endif
+
+!------- solar constant  -------------------------
+        if (do_rad) then
+          if ( id_sol_con > 0 ) then
+            used = send_data ( id_sol_con, Sw_control%solar_constant,  &
+                               Time_diag )
+          endif
+        endif
+
+!------- co2 mixing ratio used for tf calculation  -------------------
+        if (do_rad) then
+          if ( id_co2_tf > 0 ) then
+            used = send_data ( id_co2_tf,   &
+                               1.0E6*Rad_gases%co2_for_last_tf_calc,  &
+                               Time_diag )
+          endif
+        endif
+ 
+!------- ch4 mixing ratio used for tf calculation   ---------------
+        if (do_rad) then
+          if ( id_ch4_tf > 0 ) then
+            used = send_data ( id_ch4_tf,  &
+                               1.0E9*Rad_gases%ch4_for_last_tf_calc,  &
+                               Time_diag )
+          endif
+        endif
+ 
+!------- n2o mixing ratio used for tf calculation  ---------------
+        if (do_rad) then
+          if ( id_n2o_tf > 0 ) then
+            used = send_data ( id_n2o_tf,   &
+                               1.0E9*Rad_gases%n2o_for_last_tf_calc,  &
+                               Time_diag )
+          endif
+        endif
+ 
+!------- co2 mixing ratio  -------------------------
+        if (do_rad) then
+          if ( id_rrvco2 > 0 ) then
+            used = send_data ( id_rrvco2, 1.0E6*Rad_gases%rrvco2,  &
+                               Time_diag )
+          endif
+        endif
+ 
+!------- f11 mixing ratio  -------------------------
+        if (do_rad) then
+          if ( id_rrvf11 > 0 ) then
+            used = send_data ( id_rrvf11, 1.0E12*Rad_gases%rrvf11,  &
+                               Time_diag )
+          endif
+        endif
+ 
+!------- f12 mixing ratio  -------------------------
+        if (do_rad) then
+          if ( id_rrvf12 > 0 ) then
+            used = send_data ( id_rrvf12, 1.0E12*Rad_gases%rrvf12,  &
+                               Time_diag )
+          endif
+        endif
+ 
+!------- f113 mixing ratio  -------------------------
+        if (do_rad) then
+          if ( id_rrvf113 > 0 ) then
+            used = send_data ( id_rrvf113, 1.0E12*Rad_gases%rrvf113,  &
+                               Time_diag )
+          endif
+        endif
+
+!------- f22 mixing ratio  -------------------------
+        if (do_rad) then
+          if ( id_rrvf22 > 0 ) then
+            used = send_data ( id_rrvf22, 1.0E12*Rad_gases%rrvf22,  &
+                               Time_diag )
+          endif
+        endif
+
+!------- ch4 mixing ratio  -------------------------
+        if (do_rad) then
+          if ( id_rrvch4 > 0 ) then
+            used = send_data ( id_rrvch4, 1.0E9*Rad_gases%rrvch4,  &
+                               Time_diag )
+          endif
+        endif
+
+!------- n2o mixing ratio  -------------------------
+        if (do_rad) then
+          if ( id_rrvn2o > 0 ) then
+            used = send_data ( id_rrvn2o, 1.0E9*Rad_gases%rrvn2o,  &
+                               Time_diag )
+          endif
+        endif
+
 !------- surface albedo  -------------------------
         if ( id_alb_sfc > 0 ) then
-          used = send_data ( id_alb_sfc, 100.*asfc, Time_diag, is, js )
+          used = send_data ( id_alb_sfc, 100.*Surface%asfc, &
+                     Time_diag, is, js )
+        endif
+
+!------- surface visible albedo  -------------------------
+        if ( id_alb_sfc_vis_dir > 0 ) then
+          used = send_data ( id_alb_sfc_vis_dir, &
+                         100.*Surface%asfc_vis_dir, Time_diag, is, js )
+        endif
+        if ( id_alb_sfc_vis_dif > 0 ) then
+          used = send_data ( id_alb_sfc_vis_dif, &
+                         100.*Surface%asfc_vis_dif, Time_diag, is, js )
+        endif
+ 
+!------- surface nir albedo  -------------------------
+        if ( id_alb_sfc_nir_dir > 0 ) then
+          used = send_data ( id_alb_sfc_nir_dir, &
+                         100.*Surface%asfc_nir_dir, Time_diag, is, js )
+        endif
+        if ( id_alb_sfc_nir_dif > 0 ) then
+           used = send_data ( id_alb_sfc_nir_dif, &
+                         100.*Surface%asfc_nir_dif, Time_diag, is, js )
+        endif
+ 
+!------- surface net sw flux, direct and diffuse  --------------------
+        if ( id_flux_sw_dir > 0 ) then
+         used = send_data ( id_flux_sw_dir, &
+          Rad_output%flux_sw_surf_dir( is:ie,js:je), Time_diag, is, js )
+        endif
+        if ( id_flux_sw_dif > 0 ) then
+          used = send_data ( id_flux_sw_dif, &
+           Rad_output%flux_sw_surf_dif(is:ie,js:je), Time_diag, is, js )
+        endif
+
+!------- surface downward visible sw flux, direct and diffuse ----------
+        if ( id_flux_sw_down_vis_dir > 0 ) then
+          used = send_data ( id_flux_sw_down_vis_dir, &
+                     Rad_output%flux_sw_down_vis_dir(is:ie,js:je), &
+                     Time_diag, is, js )
+        endif
+        if ( id_flux_sw_down_vis_dif > 0 ) then
+          used = send_data ( id_flux_sw_down_vis_dif, &
+                     Rad_output%flux_sw_down_vis_dif(is:ie, js:je), &
+                     Time_diag, is, js )
+        endif
+ 
+!------- surface downward total sw flux, direct and diffuse  ----------
+        if ( id_flux_sw_down_total_dir > 0 ) then
+          used = send_data ( id_flux_sw_down_total_dir,  &
+                     Rad_output%flux_sw_down_total_dir(is:ie,js:je),  &
+                     Time_diag, is, js )
+        endif
+        if ( id_flux_sw_down_vis_dif > 0 ) then
+         used = send_data ( id_flux_sw_down_total_dif,  &
+                    Rad_output%flux_sw_down_total_dif(is:ie,js:je),  &
+                    Time_diag, is, js )
+        endif
+ 
+!------- surface net visible sw flux, total, direct and diffuse -------
+        if ( id_flux_sw_vis > 0 ) then
+          used = send_data ( id_flux_sw_vis,   &
+                Rad_output%flux_sw_vis(is:ie,js:je), Time_diag, is, js )
+        endif
+        if ( id_flux_sw_vis_dir > 0 ) then
+          used = send_data ( id_flux_sw_vis_dir,   &
+            Rad_output%flux_sw_vis_dir(is:ie,js:je), Time_diag, is, js )
+        endif
+        if ( id_flux_sw_vis_dif > 0 ) then
+          used = send_data ( id_flux_sw_vis_dif,  &
+            Rad_output%flux_sw_vis_dif(is:ie,js:je), Time_diag, is, js )
         endif
 
 !------- cosine of zenith angle ----------------
@@ -4227,6 +6622,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
           lwups(:,:)   =   STEFAN*ts(:,:  )**4
           lwdns(:,:)   = lwups(:,:) - Lw_output%flxnet(:,:,kmax+1)
           tdtlw(:,:,:) = Lw_output%heatra(:,:,:)/ SECONDS_PER_DAY
+          netlw_trop(:,:,:) = Lw_output%netlw_special(:,:,:)
 
           if (do_clear_sky_pass) then
             olr_clr  (:,:)   = Lw_output%flxnetcf(:,:,1)
@@ -4234,6 +6630,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
             lwdns_clr(:,:)   = lwups_clr(:,:) -    & 
                                Lw_output%flxnetcf(:,:,kmax+1)
             tdtlw_clr(:,:,:) = Lw_output%heatracf(:,:,:)/SECONDS_PER_DAY
+            netlw_trop_clr(:,:,:) = Lw_output%netlw_special_clr(:,:,:)
           endif
 
 !---------------------------------------------------------------------
@@ -4245,12 +6642,15 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
             lwups_save(is:ie,js:je)   = lwups(:,:)
             lwdns_save(is:ie,js:je)   = lwdns(:,:)
             tdtlw_save(is:ie,js:je,:) = tdtlw(:,:,:)
+            netlw_special_save(is:ie,js:je,:) = netlw_trop(:,:,:)
 
             if (do_clear_sky_pass) then
               olr_clr_save  (is:ie,js:je)   = olr_clr(:,:)
               lwups_clr_save(is:ie,js:je)   = lwups_clr(:,:)
               lwdns_clr_save(is:ie,js:je)   = lwdns_clr(:,:)
               tdtlw_clr_save(is:ie,js:je,:) = tdtlw_clr(:,:,:)
+              netlw_special_clr_save(is:ie,js:je,:) =   &
+                                         netlw_trop_clr(:,:,:)
             endif
            endif
 
@@ -4263,12 +6663,15 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
            lwups(:,:)   = lwups_save(is:ie,js:je)
            lwdns(:,:)   = lwdns_save(is:ie,js:je)
            tdtlw(:,:,:) = tdtlw_save(is:ie,js:je,:)
+           netlw_trop(:,:,:) = netlw_special_save(is:ie,js:je,:)
 
            if (do_clear_sky_pass) then
              olr_clr(:,:)     = olr_clr_save  (is:ie,js:je)
              lwups_clr(:,:)   = lwups_clr_save(is:ie,js:je)
              lwdns_clr(:,:)   = lwdns_clr_save(is:ie,js:je)
              tdtlw_clr(:,:,:) = tdtlw_clr_save(is:ie,js:je,:)
+             netlw_trop_clr(:,:,:) =   &
+                               netlw_special_clr_save(is:ie,js:je,:)
            endif
          endif
 
@@ -4314,6 +6717,32 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
                             Time_diag, is, js )
         endif
 
+!------- net radiation (lw + sw) at toa -------
+        if (id_netrad_toa(ipass) > 0 ) then
+          used = send_data (id_netrad_toa(ipass),   &
+                            swin - swout - olr, &
+                            Time_diag, is, js )
+        endif
+
+!------- net lw flux trop (netlw_trop) -------
+        if (id_netlw_special(1,ipass) > 0 ) then
+          used = send_data (id_netlw_special(1, ipass),   &
+                            netlw_trop(:,:,1),  &
+                            Time_diag, is, js )
+        endif
+!------- net lw flux trop (netlw_trop) -------
+        if (id_netlw_special(2,ipass) > 0 ) then
+          used = send_data (id_netlw_special(2, ipass),   &
+                            netlw_trop(:,:,2),  &
+                            Time_diag, is, js )
+        endif
+!------- net lw flux trop (netlw_trop) -------
+        if (id_netlw_special(3,ipass) > 0 ) then
+          used = send_data (id_netlw_special(3, ipass),   &
+                            netlw_trop(:,:,3),  &
+                            Time_diag, is, js )
+        endif
+
 !------- upward lw flux surface -------
         if ( id_lwup_sfc(ipass) > 0 ) then
           used = send_data (id_lwup_sfc(ipass), lwups,    &
@@ -4341,6 +6770,33 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !------- outgoing lw flux toa (olr) -------
           if (id_olr(ipass) > 0 ) then
             used = send_data (id_olr(ipass), olr_clr,   &
+                              Time_diag, is, js )
+          endif
+
+!------- net radiation (lw + sw) toa -------
+          if (id_netrad_toa(ipass) > 0 ) then
+            used = send_data (id_netrad_toa(ipass),   &
+                              swin_clr - swout_clr - olr_clr,   &
+                              Time_diag, is, js )
+          endif
+
+!------- net lw flux trop (netlw_trop) -------
+          if (id_netlw_special(1,ipass) > 0 ) then
+            used = send_data (id_netlw_special(1, ipass),    &
+                              netlw_trop_clr(:,:,1),    &
+                              Time_diag, is, js )
+          endif
+
+!------- net lw flux trop (netlw_trop) -------
+          if (id_netlw_special(2,ipass) > 0 ) then
+            used = send_data (id_netlw_special(2, ipass),    &
+                              netlw_trop_clr(:,:,2),    &
+                              Time_diag, is, js )
+          endif
+!------- net lw flux trop (netlw_trop) -------
+          if (id_netlw_special(3,ipass) > 0 ) then
+            used = send_data (id_netlw_special(3, ipass),    &
+                              netlw_trop_clr(:,:,3),    &
                               Time_diag, is, js )
           endif
 
@@ -4387,7 +6843,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
                                             is, ie, j, j)
               call sum_diag_integral_field ('sngrd_tot_sh ',   &
                                             swdns-swups, is, ie, j, j)
-              call sum_diag_integral_field ('lwgrd_tot_sh ',   &
+               call sum_diag_integral_field ('lwgrd_tot_sh ',   &
                                           Lw_output%flxnet(:,:,kmax+1),&
                                           is, ie,  j, j)
               if (do_clear_sky_pass) then
@@ -4505,8 +6961,9 @@ end subroutine produce_radiation_diagnostics
 !  </INOUT>
 ! </SUBROUTINE>
 !
-subroutine deallocate_arrays (Cldrad_props, Astro, Astro2, Lw_output, &
-                              Fsrad_output, Sw_output)
+subroutine deallocate_arrays (Cldrad_props, Astro, Astro2,  &
+                              Aerosol_props, Lw_output, &
+                              Fsrad_output, Sw_output, Aerosol_diags)
 
 !---------------------------------------------------------------------
 !    deallocate_arrays deallocates the array space of local 
@@ -4515,9 +6972,27 @@ subroutine deallocate_arrays (Cldrad_props, Astro, Astro2, Lw_output, &
 
 type(cldrad_properties_type), intent(inout)   :: Cldrad_props
 type(astronomy_type)        , intent(inout)   :: Astro, Astro2
+type(aerosol_properties_type), intent(inout)  :: Aerosol_props
 type(lw_output_type)        , intent(inout)   :: Lw_output
 type(fsrad_output_type)     , intent(inout)   :: Fsrad_output
 type(sw_output_type)        , intent(inout)   :: Sw_output
+type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
+
+!--------------------------------------------------------------------
+!    deallocate the variables in Aerosol_props.
+!--------------------------------------------------------------------
+      if ( do_rad .and. Rad_control%do_aerosol) then 
+        if (Rad_control%volcanic_sw_aerosols) then
+          deallocate (Aerosol_props%sw_ext)
+          deallocate (Aerosol_props%sw_ssa)
+          deallocate (Aerosol_props%sw_asy)
+        endif
+        if (Rad_control%volcanic_lw_aerosols) then
+          deallocate (Aerosol_props%lw_ext)
+          deallocate (Aerosol_props%lw_ssa)
+          deallocate (Aerosol_props%lw_asy)
+        endif
+      endif
 
 !--------------------------------------------------------------------
 !    deallocate the variables in Astro and Astro2.
@@ -4543,9 +7018,13 @@ type(sw_output_type)        , intent(inout)   :: Sw_output
         if (do_rad) then
           deallocate (Lw_output%heatra    )
           deallocate (Lw_output%flxnet    )
+          deallocate (Lw_output%netlw_special)
+          deallocate (Lw_output%bdy_flx)
           if (Rad_control%do_totcld_forcing) then
             deallocate (Lw_output%heatracf  )
             deallocate (Lw_output%flxnetcf  )
+            deallocate (Lw_output%netlw_special_clr)
+            deallocate (Lw_output%bdy_flx_clr)
           endif
 
 !--------------------------------------------------------------------
@@ -4553,13 +7032,27 @@ type(sw_output_type)        , intent(inout)   :: Sw_output
 !--------------------------------------------------------------------
           deallocate (Sw_output%dfsw     )
           deallocate (Sw_output%ufsw     )
+          deallocate (Sw_output%dfsw_dir_sfc )
+          deallocate (Sw_output%dfsw_dif_sfc )
+          deallocate (Sw_output%ufsw_dif_sfc )
           deallocate (Sw_output%fsw     )
           deallocate (Sw_output%hsw     )
+          deallocate (Sw_output%dfsw_vis_sfc    )
+          deallocate (Sw_output%ufsw_vis_sfc    )
+          deallocate (Sw_output%dfsw_vis_sfc_dir    )
+          deallocate (Sw_output%dfsw_vis_sfc_dif    )
+          deallocate (Sw_output%ufsw_vis_sfc_dif    )
+          deallocate (Sw_output%swdn_special)
+          deallocate (Sw_output%swup_special)
+          deallocate (Sw_output%bdy_flx)
           if (Rad_control%do_totcld_forcing) then
             deallocate (Sw_output%dfswcf   )
             deallocate (Sw_output%ufswcf   )
             deallocate (Sw_output%fswcf   )
             deallocate (Sw_output%hswcf   )
+            deallocate (Sw_output%swdn_special_clr)
+            deallocate (Sw_output%swup_special_clr)
+            deallocate (Sw_output%bdy_flx_clr)
           endif
         endif
       endif
@@ -4598,6 +7091,19 @@ type(sw_output_type)        , intent(inout)   :: Sw_output
            deallocate (Fsrad_output%olr_clr   )
         endif 
       endif 
+
+!--------------------------------------------------------------------
+!    deallocate the window-resident variables in Aerosol_props.
+!--------------------------------------------------------------------
+      if (do_rad .and. Rad_control%do_aerosol) then
+        deallocate (Aerosol_diags%extopdep)
+        deallocate (Aerosol_diags%absopdep)
+        deallocate (Aerosol_diags%extopdep_vlcno)
+        deallocate (Aerosol_diags%absopdep_vlcno)
+        deallocate (Aerosol_diags%sw_heating_vlcno)
+        deallocate (Aerosol_diags%lw_extopdep_vlcno)
+        deallocate (Aerosol_diags%lw_absopdep_vlcno)
+      endif
 
 !---------------------------------------------------------------------
 
@@ -4740,12 +7246,7 @@ type(atmos_input_type), intent(inout)  :: Atmos_input
 end subroutine calculate_auxiliary_variables
 
 
-
 !#######################################################################
 
 
-
-
-
                  end module radiation_driver_mod
-

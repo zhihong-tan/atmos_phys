@@ -246,8 +246,8 @@ real, parameter :: d608 = (rvgas-rdgas)/rdgas
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: entrain.F90,v 10.0 2003/10/24 22:00:30 fms Exp $'
-character(len=128) :: Tagname = '$Name: jakarta $'
+character(len=128) :: Version = '$Id: entrain.F90,v 11.0 2004/09/28 19:16:32 fms Exp $'
+character(len=128) :: Tagname = '$Name: khartoum $'
 logical            :: module_is_initialized = .false.      
 !-----------------------------------------------------------------------
 !
@@ -374,7 +374,7 @@ real                           :: dellat, dellon
 !    allocate and initialize a flag array which indicates the latitudes
 !    containing columns where radiation diagnostics are desired.
 !-----------------------------------------------------------------------
-      allocate (do_ent_dg (size(latb)-1) )
+      allocate (do_ent_dg (size(latb(:))-1) )
       do_ent_dg(:) = .false.
 
 !-----------------------------------------------------------------------
@@ -455,10 +455,10 @@ real                           :: dellat, dellon
 !    i and j processor-coordinates and the latitude and longitude of 
 !    the diagnostics column.
 !-----------------------------------------------------------------------
-          do j=1,size(latb) - 1
+          do j=1,size(latb(:)) - 1
             if (lat_entprt(nn) .ge. latb(j)*radian .and.   &
                 lat_entprt(nn) .lt. latb(j+1)*radian) then
-              do i=1,size(lonb) - 1
+              do i=1,size(lonb(:)) - 1
                 if (lon_entprt(nn) .ge. lonb(i)*radian     &
                                   .and.&
                     lon_entprt(nn) .lt. lonb(i+1)*radian)  &

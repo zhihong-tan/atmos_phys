@@ -5,9 +5,6 @@
 ! <CONTACT EMAIL="Stephen.Klein@noaa.gov">
 !   Steve Klein
 ! </CONTACT>
-! <REVIEWER EMAIL="reviewer_email@gfdl.noaa.gov">
-!   Reviewer_name_here
-! </REVIEWER>
 ! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
 ! <OVERVIEW>
 !        The cloud radiation module uses the stored values of the
@@ -42,20 +39,181 @@
 !     whereas the effective radius of ice clouds is parameterized using
 !     that of Donner et al. (1997).
 !
-!     The module has two important diagnostic subroutines. In 
-!     ISCCP_CLOUDTYPES, the satellite view of clouds is simulated for
-!     direct comparison to the ISCCP satellite data.  This allows one
-!     to quantify the occurrence of clouds stratified by their cloud
-!     top pressure and optical thickness.  The algorithm to do this
-!     is described fully in Klein and Jakob (1999).
-!
-!     In TAU_REFF_DIAG the optical thickness of low clouds is diagnosed.
-!     In addition, the mean ice and liquid particle size from the cloud
-!     tops visible to a satellite (i.e. not obscured by higher level
-!     clouds) is diagnosed.
-  
+!  
 ! </DESCRIPTION>
 !
+
+!  <DIAGFIELDS>
+!  ************************Note***********************
+!   This part of the documentation needs to be updated
+!  ***************************************************
+!
+!  Diagnostic fields may be output to a netcdf file by specifying the
+!  module name cloud_rad and the desired field names (given below)
+!  in file diag_table. See the documentation for diag_manager.
+!  
+!  Diagnostic fields for module name: cloud_rad
+!  
+!     nisccp       frequency of sunlit times at the times of the radiation
+!                  calculation at each point {fraction} [real,dimension(:,:)]
+!  
+!     pc#tau%      where # is a number from 1 to 7
+!                  and   % is a number from 1 to 7
+!                  {fraction} [real,dimension(:,:)]
+!  
+!                  Thus there are 49 diagnostic fields of this type.  All
+!                  of them are necessary to receive the complete decomposition
+!                  of clouds visible from space into the ISCCP categories.
+!  
+!                  The 7 cloud top pressure ("pc") categories and 7 optical
+!                  depth ("tau") categories are defined as:
+!  
+!                  pc #      pc range (mb)    tau %        tau range
+!                  ----    ----------------   -----    ---------------------
+!  
+!                   1              pc < 180     1     0.0    < tau < taumin 
+!                   2        180 < pc < 310     2     taumin < tau < 1.3
+!                   3        310 < pc < 440     3     1.3    < tau < 3.6
+!                   4        440 < pc < 560     4     3.6    < tau < 9.4
+!                   5        560 < pc < 680     5     9.4    < tau < 23
+!                   6        680 < pc < 800     6     23     < tau < 60
+!                   7        800 < pc                 60     < tau
+!  
+!                  What is saved in these diagnostics is the time mean of
+!                  the area covered by clouds of this type when the sun is
+!                  above the horizon. This is done so that the calculation 
+!                  will mimic the ISCCP product which is broken down into 
+!                  these categories only for sunlit places.
+!  
+!                  NOTE:  TO DETERMINE THE MEAN AREA COVERED BY A CLOUD TYPE 
+!                         WHEN THE SUN IS ABOVE THE HORIZON YOU MUST DIVIDE
+!                         BY NISCCP:
+!  
+!                         area of cloud type pc#tau% =   pc#tau% / nisccp
+!  
+!     aice         fractional area of sunlit clouds seen from space whose cloud 
+!                  top contains ice. {fraction} [real,dimension(:,:)]
+!  
+!     reffice      time mean ice effective radius of cloud tops visible from
+!                  space including areas where there is no such cloud {microns} 
+!                  [real,dimension(:,:)]
+!  
+!                  NOTE:  THUS THE TIME MEAN CLOUD TOP EFFECTIVE RADIUS OF CLOUD 
+!                         TOPS WITH ICE VISIBLE FROM SPACE IS:
+!  
+!                         mean reffice  =    reffice /  aice
+!        
+!     aliq         fractional area of sunlit clouds seen from space whose cloud 
+!                  top contains liquid. {fraction} [real,dimension(:,:)]
+!  
+!     reffliq      time mean cloud droplet effective radius of cloud tops 
+!                  visible from space including areas where there is no such 
+!                  cloud {microns} [real,dimension(:,:)]
+!     
+!                  NOTE:  mean reffliq  =    reffliq / aliq
+!  
+!     alow         fractional area of sunlit clouds seen from space whose cloud 
+!                  tops are low (pc > 680 mb). {fraction} [real,dimension(:,:)]
+!  
+!     tauicelow    time mean optical depth of ice for cloud tops visible from 
+!                  space including areas where there is no such cloud {microns} 
+!                  [real,dimension(:,:)]
+!    
+!     tauliqlow    time mean optical depth of liquid for cloud tops visible from 
+!                  space including areas where there is no such cloud {microns} 
+!                  [real,dimension(:,:)]
+!     
+!     tlaylow      time mean of the low level mean temperature (pc > 680 mb) 
+!                  when low cloud tops are visible from space including times 
+!                  where there is no such cloud {microns} 
+!                  [real,dimension(:,:)]
+!        
+!     tcldlow      time mean of the cloud top temperature for cloud tops visible 
+!                  from space including times where there is no such cloud 
+!                  {microns}  [real,dimension(:,:)]
+!        
+!                  NOTE:  mean tauicelow  =    tauicelow / alow
+!                         mean tauliqlow  =    tauliqlow / alow
+!                         mean tlaylow    =    tlaylow   / alow
+!                         mean tcldlow    =    tcldlow   / alow
+!  
+! </DIAGFIELDS>
+!  
+!  
+! <DATASET NAME="">
+!
+! </DATASET>
+!  
+!  
+! <INFO>
+!  
+!   <REFERENCE>            
+! The shortwave properties of liquid clouds come from:
+! 
+ !     Slingo, A., 1989: A GCM parameterization for the shortwave 
+ !     radiative properties of water clouds. J. Atmos. Sci., vol. 46, 
+ !     pp. 1419-1427.
+!
+!   </REFERENCE>
+
+!   <REFERENCE>            
+! The shortwave and longwave properties of ice clouds come from:
+! 
+ !     Ebert, E. E. and J. A. Curry, 1992: A parameterization of ice cloud
+ !     optical properties for climate models. J. Geophys. Res., vol. 97,
+ !     D1, pp. 3831-3836.
+!
+!   </REFERENCE>
+
+!   <REFERENCE>            
+! The longwave emissivity parameterization of liquid clouds comes from:
+! 
+ !     Stephens, G. L., 1978: Radiation profiles in extended water clouds.
+ !     II: Parameterization schemes. J. Atmos. Sci., vol. 35, 
+ !     pp. 2123-2132.
+!
+!   </REFERENCE>
+
+!   <REFERENCE>            
+! The parameterization of liquid cloud effective radius comes from:
+! 
+ !     Martin, G. M., D. W. Johnson, and A. Spice, 1994: The measurement 
+ !     and parameterization of effective radius of droplets in warm stratocumulus
+ !     clouds. J. Atmos. Sci, vol 51, pp. 1823-1842.
+!
+!   </REFERENCE>
+
+!   <REFERENCE>            
+! The parameterization of ice cloud effective radius comes from:
+! 
+ !     Donner, L. J., C. J. Seman, B. J. Soden, R. S. Hemler, J. C. Warren,
+ !     J. Strom, and K.-N. Liou, 1997: Large-scale ice clouds in the GFDL
+ !     SKYHI general circulation model. J. Geophys. Res., vol. 102, D18,
+ !     pp. 21,745-21,768.
+!
+!   </REFERENCE>
+
+!   <REFERENCE>            
+! The algorithm to reproduce the ISCCP satellite view of clouds comes from:
+! 
+ !     Klein, S. A., and C. Jakob, 1999: Validation and sensitivities of 
+ !     frontal clouds simulated by the ECMWF model. Monthly Weather Review,
+ !     127(10),  2514-2531.
+!
+!   </REFERENCE>
+
+!   <COMPILER NAME="">     </COMPILER>
+!   <PRECOMP FLAG="">      </PRECOMP>
+!   <LOADER FLAG="">       </LOADER>
+!   <TESTPROGRAM NAME="">  </TESTPROGRAM>
+!   <BUG>                  </BUG>
+!   <NOTE> 
+!     
+!   </NOTE>
+!   <FUTURE>The optical depth and particle size for every model level will
+!     become a diagnostic output field.               </FUTURE>
+
+! </INFO>
 
 !   shared modules:
 
@@ -71,11 +229,6 @@ use  constants_mod,       only:  RDGAS, GRAV, TFREEZE, DENS_H2O, &
 use  diag_manager_mod,    only:  diag_manager_init,    &
                                  register_diag_field, send_data
 use  time_manager_mod,    only:  time_type, time_manager_init
-
-!   support module:
-
-use isccp_clouds_mod,     only:  tau_reff_diag2, isccp_cloudtypes, &
-                                 isccp_clouds_init, isccp_output
 
 implicit none
 private
@@ -99,8 +252,8 @@ private
 !---------------------------------------------------------------------
 !------------ version number for this module -------------------------
         
-character(len=128) :: version = '$Id: cloud_rad.F90,v 10.0 2003/10/24 22:00:23 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: cloud_rad.F90,v 11.0 2004/09/28 19:14:43 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------- 
@@ -113,7 +266,6 @@ public     &
          lw_emissivity, &
          sw_optical_properties, &
          cloud_summary3, &
-         get_strat_cloud_diagnostics, &
          cloud_rad_k_diag,  &
          cloud_rad
 
@@ -142,11 +294,6 @@ public     &
 !                        (tau, w0,and g) for the visible and near infra-
 !                        red bands.  It also computes the longwave 
 !                        emissivity of each cloud.
-!       isccp_cloudtypes
-!                        computes the ISCCP view of model clouds
-!       tau_reff_diag       
-!                        computes diagnostics on cloud optical depth,
-!                        effective radius, and cloud temperature.
 !
 !----------------------------------------------------------------------
 
@@ -214,7 +361,56 @@ logical      :: do_brenguier = .true.
 !                     scaled?
 !
 !----------------------------------------------------------------------
- 
+
+! <NAMELIST NAME="cloud_rad_nml">
+!  <DATA NAME="overlap" UNITS="" TYPE="" DIM="" DEFAULT="">
+!integer variable indicating which overlap 
+!                     assumption to use:
+!                     overlap = 1. means condensate in adjacent levels 
+!                                  is treated as part of the same cloud
+!                                  i.e. maximum-random overlap
+!                     overlap = 2. means condensate in adjacent levels 
+!                                  is treated as different clouds
+!                                  i.e. random overlap
+!  </DATA>
+!  <DATA NAME="l2strem" UNITS="" TYPE="" DIM="" DEFAULT="">
+!logical variable indicating which solution for 
+!                     cloud radiative properties is being used.
+!                     l2strem = T  2 stream solution
+!                     l2strem = F  Delta-Eddington solution
+!                     Note that IF l2strem = T then the solution does 
+!                     not depend on solar zenith angle
+!  </DATA>
+!  <DATA NAME="taucrit" UNITS="" TYPE="" DIM="" DEFAULT="">
+! critical optical depth for switching direct beam 
+!                     to diffuse beam for use in Delta-Eddington 
+!                     solution [ dimensionless] 
+!  </DATA>
+!  <DATA NAME="adjust_top" UNITS="" TYPE="" DIM="" DEFAULT="">
+!logical variable indicating whether or not to use 
+!                     the code which places the top and bottom of the 
+!                     cloud at the faces which are most in view from
+!                     the top and bottom of the cloud block. this is 
+!                     done to avoid undue influence of very small cloud
+!                     fractions. if true this adjustment of tops is 
+!                     performed; if false this is not performed.
+!  </DATA>
+!  <DATA NAME="scale_factor" UNITS="" TYPE="" DIM="" DEFAULT="">
+!factor which multiplies actual cloud optical 
+!                     depths to account for the plane-parallel homo-
+!                     genous cloud bias  (e.g. Cahalan effect).
+!                     [ dimensionless] 
+!  </DATA>
+!  <DATA NAME="qamin" UNITS="" TYPE="" DIM="" DEFAULT="">
+!minimum permissible cloud fraction 
+!                     [ dimensionless] 
+!  </DATA>
+!  <DATA NAME="do_brenguier" UNITS="" TYPE="" DIM="" DEFAULT="">
+!should drops at top of stratocumulus clouds be
+!                     scaled?
+!  </DATA>
+! </NAMELIST>
+!
 
 namelist /cloud_rad_nml/                                       &
                          overlap, l2strem, taucrit,     &
@@ -261,11 +457,6 @@ real                :: missing_value = -999.
 integer ::            id_aice, id_reffice, id_aliq, id_reffliq, &
            id_alow, id_tauicelow, id_tauliqlow, id_tlaylow, id_tcldlow
 
-logical :: do_isccp    = .false.     ! are isccp diagnostics desired ?
-logical :: do_tau_reff = .false.     ! are the isccp summary diagnostics
-                                    ! desired ?
-logical :: do_sunlit = .false.   ! do isccp clouds during sunlit hours
-                                 ! only ? 
 
 !---------------------------------------------------------------------
 !   logical variables:
@@ -314,8 +505,8 @@ logical   :: module_is_initialized = .false.  ! is module initialized ?
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call cloud_rad_init (axes, Time, qmin_in, N_land_in, N_ocean_in, &
-!		overlap_out)
-!		
+!                        overlap_out)
+!
 !  </TEMPLATE>
 !  <IN NAME="axes" TYPE="integer, optional">
 !    Axis integers for diagnostics
@@ -339,6 +530,17 @@ logical   :: module_is_initialized = .false.  ! is module initialized ?
 !    Integer indicating the overlap assumption being used 
 !                       (1 = maximum-random, 2 = random)
 !  </OUT>
+!  <ERROR MSG="" STATUS="FATAL">
+!   Fatal crashes occur in initialization of the module if:
+!
+!   1. overlap does not equal 1 or 2
+!
+!   2. taucrit < 0.
+!
+!   3. scale_factor < 0.
+!
+!   4. qamin outside of the range of 0 to 1.
+!  </ERROR>
 ! </SUBROUTINE>
 !
 subroutine cloud_rad_init (axes, Time, qmin_in, N_land_in, N_ocean_in, &
@@ -488,12 +690,6 @@ INTEGER                                  :: unit,io,ierr
               overlap_out = overlap
         end if
         
-        
-       call isccp_clouds_init (axes, Time, do_sunlit_out = do_sunlit, &
-                               do_isccp_out = do_isccp, &
-                                do_tau_reff_out = do_tau_reff)
-
-
        module_is_initialized = .true.
 
 end subroutine cloud_rad_init
@@ -522,54 +718,6 @@ subroutine cloud_rad_end
 
 end subroutine cloud_rad_end
 
-!###################################################################
-
-! <SUBROUTINE NAME="get_strat_cloud_diagnostics">
-!  <OVERVIEW>
-!
-!    A subroutine to return values of the overlap assumption and the
-!    minimum permissible cloud liquid, ice, or fraction.
-!
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!
-!    This subroutine returns the values of the overlap assumption and
-!    the minimum permissible cloud liquid, ice, or fraction.
-!
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call get_strat_cloud_diagnostics (overlap_out, qmin_out)
-!		
-!  </TEMPLATE>
-!  <OUT NAME="overlap_out" TYPE="integer">
-!     Integer indicating the overlap assumption being used.
-!     (1 = maximum-random, 2 = random)
-!  </OUT>
-!  <OUT NAME="qmin_out" TYPE="real">
-!    Value of minimum permissible cloud liquid, ice, or fraction.
-!  </OUT>
-! </SUBROUTINE>
-!
-subroutine get_strat_cloud_diagnostics (overlap_out, qmin_out)
-
-integer, intent(out) :: overlap_out
-real, intent(out)    :: qmin_out
-
-    if (module_is_initialized) then
-    
-     overlap_out = overlap
-     qmin_out = qmin
-     else
-    call error_mesg ( 'cloud_rad_mod',  &
-     'calling get_strat_cloud_diagnostics before cloud_rad_init', FATAL)
-    endif
-
-end subroutine get_strat_cloud_diagnostics
-
-
-
-
-
 !#####################################################################
 
 ! <SUBROUTINE NAME="lw_emissivity">
@@ -584,8 +732,8 @@ end subroutine get_strat_cloud_diagnostics
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call lw_emissivity (is, js, lwp, iwp, reff_liq, reff_ice,   &
-!		nclds, em_lw)
-!		
+!                       nclds, em_lw)
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !     Starting subdomain i index of data 
@@ -704,10 +852,10 @@ end subroutine lw_emissivity
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call cloud_summary3 (is, js, land, ql, qi, qa, pfull, phalf, &
-!		tkel, nclds, cldamt, lwp, iwp, reff_liq,  &
-!		reff_ice, ktop, kbot, conc_drop, conc_ice, &
-!		size_drop, size_ice)
-!		
+!                        tkel, nclds, cldamt, lwp, iwp, reff_liq,  &
+!                        reff_ice, ktop, kbot, conc_drop, conc_ice, &
+!                        size_drop, size_ice)
+!
 !  </TEMPLATE>
 !  <IN NAME="is,js" TYPE="integer">
 !    Indices for model slab
@@ -856,6 +1004,7 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
                                                 qi_local
 
       real,dimension (size(ql,1),size(ql,2)) :: N_drop, k_ratio
+      integer :: i,j,k
 
 !--------------------------------------------------------------------
 !    local variables:
@@ -873,20 +1022,26 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !    the values of (qi,ql) which are 0 < (qi,ql) < qmin   or
 !    (qi,ql) > qmin and qa <= qamin.
 !--------------------------------------------------------------------
-      qa_local(:,:,:) = 0.
 
-      where ( (qa(:,:,:) .gt. qamin) .and. (ql(:,:,:) .gt. qmin) )
-        ql_local(:,:,:) = ql(:,:,:)
-        qa_local(:,:,:) = qa(:,:,:)
-      elsewhere
-        ql_local(:,:,:) = 0.
-      end where
-      where ( (qa(:,:,:) .gt. qamin) .and. (qi(:,:,:) .gt. qmin) )
-        qi_local(:,:,:) = qi(:,:,:)
-        qa_local(:,:,:) = qa(:,:,:)
-      elsewhere
-        qi_local(:,:,:) = 0.
-      end where
+      do k=1, size(ql,3)
+        do j=1, size(ql,2)
+          do i=1, size(ql,1)
+            qa_local(i,j,k) = 0.
+            if ((qa(i,j,k) > qamin) .and. (ql(i,j,k) > qmin) ) then
+              ql_local(i,j,k) = ql(i,j,k)
+              qa_local(i,j,k) = qa(i,j,k)
+            else
+              ql_local(i,j,k) = 0.
+            endif      
+            if ((qa(i,j,k) > qamin) .and. (qi(i,j,k) > qmin) ) then
+              qi_local(i,j,k) = qi(i,j,k)
+              qa_local(i,j,k) = qa(i,j,k)
+            else
+              qi_local(i,j,k) = 0.
+            endif       
+          end do
+        end do
+      end do
 
 !--------------------------------------------------------------------
 !    define the cloud droplet concentration and the ratio of the 
@@ -1013,9 +1168,9 @@ end subroutine cloud_summary3
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
-!		k_ratio, nclds, ktop, kbot, cldamt, lwp,  &
-!		iwp, reff_liq, reff_ice)
-!		
+!                         k_ratio, nclds, ktop, kbot, cldamt, lwp,  &
+!                         iwp, reff_liq, reff_ice)
+!
 !  </TEMPLATE>
 !  <IN NAME="ql" TYPE="real">
 !    Cloud liquid condensate [ kg condensate/kg air ]
@@ -1525,10 +1680,10 @@ end subroutine max_rnd_overlap
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call rnd_overlap    (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
-!		k_ratio, nclds, cldamt, lwp, iwp, reff_liq, &
-!		reff_ice, conc_drop_org, conc_ice_org,  &
-!		size_drop_org, size_ice_org)
-!		
+!                        k_ratio, nclds, cldamt, lwp, iwp, reff_liq, &
+!                        reff_ice, conc_drop_org, conc_ice_org,  &
+!                        size_drop_org, size_ice_org)
+!
 !  </TEMPLATE>
 !  <IN NAME="ql" TYPE="real">
 !    Cloud liquid condensate [ kg condensate/kg air ]
@@ -1713,9 +1868,9 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !--------------------------------------------------------------------
 !    find the layers with cloud in each column, starting at model top. 
 !--------------------------------------------------------------------
-      do j=1,size(ql,2)
-        do i=1,size(ql,1)
-          do k=1,size(ql,3)
+      do k=1,size(ql,3)
+        do j=1,size(ql,2)
+          do i=1,size(ql,1)
             if (ql(i,j,k) > qmin .or. qi(i,j,k) > qmin) then
                
 !---------------------------------------------------------------------
@@ -1976,7 +2131,7 @@ end subroutine rnd_overlap
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call CLOUD_RAD_k_diag(tau, direct, w0,gg,coszen,r_uv,r_nir,ab_uv,ab_nir)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="tau" TYPE="real">
 !    Optical depth in 4 bands [ dimensionless ]
@@ -2417,8 +2572,8 @@ END SUBROUTINE CLOUD_RAD_k_diag
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call cloud_rad_k (tau, w0, gg, coszen, r_uv, r_nir,    &
-!		ab_nir, ab_uv_out)
-!		
+!                     ab_nir, ab_uv_out)
+!
 !  </TEMPLATE>
 !  <IN NAME="tau" TYPE="real">
 !    Optical depth [ dimensionless ]
@@ -3201,8 +3356,8 @@ END SUBROUTINE CLOUD_RAD
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call sw_optical_properties (nclds, lwp, iwp, reff_liq, reff_ice, &
-!		coszen, r_uv, r_nir, ab_nir)
-!		
+!                               coszen, r_uv, r_nir, ab_nir)
+!
 !  </TEMPLATE>
 !  <IN NAME="nclds" TYPE="integer">
 !    Number of random overlapping clouds in column
@@ -3656,19 +3811,11 @@ REAL, DIMENSION(:,:,:), allocatable               :: conc_drop_local,conc_ice_lo
 REAL, DIMENSION(:,:,:), allocatable               :: size_drop_local,size_ice_local
 REAL, DIMENSION(:,:,:), allocatable               :: LWP,IWP,Reff_liq,Reff_ice
 REAL, DIMENSION(:,:,:,:), allocatable             :: tau,tau_ice,w0,gg
-REAL, DIMENSION(:,:,:,:), allocatable             :: fq_isccp
-REAL, DIMENSION(:,:), allocatable                 :: npoints
 REAL, DIMENSION(:), allocatable                   :: tau_local,em_local,cldamt_local
 LOGICAL                                           :: used
 
 integer :: n
-integer, dimension(size(phalf,1), size(phalf,2), &
-                   size(phalf,3)-1 ) :: cld_thickness
-real   , dimension(size(phalf,1), size(phalf,2), &
-                   size(phalf,3)-1 ) :: cld_a2, reff_liq_a2, &
-                                        reff_ice_a2
-real   , dimension(size(phalf,1), size(phalf,2), &
-                   size(phalf,3)-1, 4 ) :: tau_a2, tau_ice_a2
+
 !
 ! Code
 ! ----
@@ -3844,161 +3991,6 @@ real   , dimension(size(phalf,1), size(phalf,2), &
          DEALLOCATE(gg)
          
     end if
-
-    !do solution for isccp clouds
-    if (do_isccp .or. do_tau_reff) then
-
-         !make sure Time is present
-         if (.not.present(Time)) then
-              call error_mesg  ('cloud_rad_mod', &
-                      'Time has not been passed to cloud '//&  
-                      'summary, needed for diagnostics', FATAL)
-         end if
-        
-         !initialize temporary variables
-         allocate (cldamt_diag(Idim,jdim,size(cldamt,3)))
-         ALLOCATE(em_lw_local(IDIM,JDIM,KDIM))
-         ALLOCATE(LWP(IDIM,JDIM,KDIM))
-         ALLOCATE(IWP(IDIM,JDIM,KDIM))
-         ALLOCATE(Reff_liq(IDIM,JDIM,KDIM))
-         ALLOCATE(Reff_ice(IDIM,JDIM,KDIM))
-         ALLOCATE(tau(IDIM,JDIM,KDIM,4))
-         ALLOCATE(tau_ice(IDIM,JDIM,KDIM,4))
-         ALLOCATE(w0(IDIM,JDIM,KDIM,4))
-         ALLOCATE(gg(IDIM,JDIM,KDIM,4))
-
-
-         em_lw_local(:,:,:)  = 0.
-         LWP(:,:,:)    = 0.
-         IWP(:,:,:)    = 0.
-         Reff_liq(:,:,:) = 10.
-         Reff_ice(:,:,:) = 30.
-         tau(:,:,:,:)    = 0.
-         tau_ice(:,:,:,:) = 0.
-         w0(:,:,:,:)     = 0.
-         gg(:,:,:,:)     = 0.
-
-         
-         call cloud_organize(ql_local,qi_local,qa_local,&
-              pfull,phalf,TKel,coszen,N_drop,&
-              k_ratio,nclds,ktop,kbot,cldamt_diag,&
-              LWP_in=LWP,IWP_in=IWP,Reff_liq_in=Reff_liq,Reff_ice_in=Reff_ice)
-         
-         !find maximum number of clouds
-         max_cld  = MAXVAL(nclds(:,:))
-         
-         if (max_cld .ge. 1) then
-         
-         CALL CLOUD_OPTICAL_PROPERTIES(          LWP(:,:,1:max_cld)  ,&
-                       IWP(:,:,1:max_cld)  ,Reff_liq(:,:,1:max_cld)  ,&
-                  Reff_ice(:,:,1:max_cld)  ,     tau(:,:,1:max_cld,:),&
-                        w0(:,:,1:max_cld,:),      gg(:,:,1:max_cld,:),&
-               em_lw_local(:,:,1:max_cld)  ,  &
-                  tau_ice_diag = tau_ice(:,:,1:max_cld,:))
-                          
-         end if  !max_cld
-
-         if (do_isccp) then
-
-         !allocate temporary arrays
-         ALLOCATE(fq_isccp(IDIM,JDIM,7,7))
-         ALLOCATE(npoints(IDIM,JDIM))
-         ALLOCATE(cldamt_local(KDIM))
-         ALLOCATE(tau_local(KDIM))
-         ALLOCATE(em_local(KDIM))
-         fq_isccp(:,:,:,:) = 0.
-         npoints(:,:) = 0.
-                
-         !---loop over points and nclds----!
-         DO i = 1, IDIM
-         DO j = 1, JDIM
-
-              !move from cloud space to model level space
-              cldamt_local(:) = 0.
-              tau_local(:) = 0.
-              em_local(:) = 0.
-              do k = 1, nclds(i,j)
-                    cldamt_local(ktop(i,j,k):kbot(i,j,k)) =   &
-                                               cldamt_diag(i,j,k)      
-                    tau_local(ktop(i,j,k):kbot(i,j,k)) =    &
-                                           tau(i,j,k,1)/ &
-                                          real(kbot(i,j,k)-ktop(i,j,k)+1)
-                    em_local(ktop(i,j,k):kbot(i,j,k)) = 1. - &
-                         ( (1.-em_lw_local(i,j,k))** &
-                           (1./real(kbot(i,j,k)-ktop(i,j,k)+1)) )
-              enddo
-
-              if (do_sunlit .and. coszen(i,j) .gt. 1.E-06) then
-                    call ISCCP_CLOUDTYPES(pfull(i,j,:),phalf(i,j,:),&
-                         qv(i,j,:),TKel(i,j,:),skt(i,j),cldamt_local,&
-                         tau_local,em_local,fq_isccp(i,j,:,:))
-                    npoints(i,j) = 1.
-              end if
-
-              if ( .not. do_sunlit ) then
-                    call ISCCP_CLOUDTYPES(pfull(i,j,:),phalf(i,j,:),&
-                         qv(i,j,:),TKel(i,j,:),skt(i,j),cldamt_local,&
-                         tau_local,em_local,fq_isccp(i,j,:,:))
-                    npoints(i,j) = 1.
-              end if
-         END DO
-         END DO
-         
-         !5. netcdf diagnostics....
-         call isccp_output (is, js, fq_isccp, npoints, Time)
-         
-
-         !deallocate temporary arrays
-         DEALLOCATE(fq_isccp)
-         DEALLOCATE(npoints)
-         DEALLOCATE(cldamt_local)
-         DEALLOCATE(tau_local)
-         DEALLOCATE(em_local)
-         
-         end if   !for do_isccp
-
-         if (do_tau_reff) then
-
-         do j=1, jdim
-         DO i = 1, IDIM
-              cld_thickness(i,j,:)        = 0                              
-              cld_a2(i,j,:) = 0.0                  
-              tau_a2(i,j,:,1) = 0.0            
-              tau_ice_a2(i,j,:,1) = 0.0                
-              reff_liq_a2(i,j,:) = 10.0               
-              reff_ice_a2(i,j,:) = 30.0                  
-         do n=1,nclds(i,j)
-            do k=ktop(i,j,n), kbot(i,j,n)
-              cld_thickness(i,j,k) = kbot(i,j,n) - ktop(i,j,n) + 1
-              cld_a2(i,j,k) = cldamt_diag(i,j,n)
-              tau_a2(i,j,k,1) = tau(i,j,n,1)
-              tau_ice_a2(i,j,k,1) = tau_ice(i,j,n,1)
-              reff_liq_a2(i,j,k) = reff_liq(i,j,n)
-              reff_ice_a2(i,j,k) = reff_ice(i,j,n)
-         end do
-         end do
-         end do
-         end do
-         call TAU_REFF_DIAG2(is,js,Time,coszen,nclds,cld_thickness, &
-             cld_a2     ,TKel,phalf,tau_a2(:,:,:,1),tau_ice_a2(:,:,:,1),&
-             Reff_liq_a2,Reff_ice_a2)
-         
-         end if   !for do_tau_reff
-        
-         DEALLOCATE(cldamt_diag)
-         DEALLOCATE(em_lw_local)
-         DEALLOCATE(LWP)
-         DEALLOCATE(IWP)
-         DEALLOCATE(Reff_liq)
-         DEALLOCATE(Reff_ice)
-         DEALLOCATE(tau)
-         DEALLOCATE(tau_ice)
-         DEALLOCATE(w0)
-         DEALLOCATE(gg)
-         
-    end if   !for do_isccp .or. do_tau_reff
-   
-    
     
 END SUBROUTINE CLOUD_SUMMARY
 

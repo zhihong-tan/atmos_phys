@@ -10,8 +10,6 @@
 !    associated with the atmospheric aerosols.
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!    aerosolrad_package_mod provides the radiative properties 
-!    associated with the atmospheric aerosols.
 ! </DESCRIPTION>
 !    shared modules:
 
@@ -23,6 +21,13 @@ use fms_mod,               only: open_namelist_file, fms_init, &
 use mpp_io_mod,            only: mpp_open, mpp_close, MPP_RDONLY,   &
                                  MPP_ASCII, MPP_SEQUENTIAL, MPP_MULTI, &
                                  MPP_SINGLE, mpp_io_init
+use time_manager_mod,      only: time_type, time_manager_init,  &
+                                 get_date, set_date, operator(+), &
+                                 print_date, operator(-), operator(>)
+use diag_manager_mod,      only: diag_manager_init, get_base_time
+use interpolator_mod,      only: interpolate_type, interpolator_init, &
+                                 interpolator, interpolator_end, &
+                                 CONSTANT, INTERP_WEIGHTED_P
 
 ! shared radiation package modules:
                                 
@@ -30,6 +35,7 @@ use rad_utilities_mod,     only: shortwave_control_type, Sw_control, &
                                  longwave_control_type, Lw_control, &
                                  radiation_control_type, Rad_control,&
                                  aerosol_type, aerosol_properties_type,&
+                                 aerosol_diagnostics_type, &
                                  longwave_parameter_type,  &
                                  Lw_parameters, rad_utilities_init, &
                                  solar_spectrum_type,  &
@@ -51,8 +57,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 10.0 2003/10/24 22:00:39 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 11.0 2004/09/28 19:20:54 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -97,13 +103,96 @@ character(len=64)    ::        &
 character(len=64)    ::        &
              optical_filename = ' '    ! name of file containing the
                                        ! aerosol optical property types
+logical              ::        &
+             using_volcanic_sw_files = .false.
+                                       ! files containing sw aerosol
+                                       ! optical properties from vol-
+                                       ! canic activity are to be
+                                       ! used to supplement those cal-
+                                       ! culated by model ?
+logical              ::        &
+             using_volcanic_lw_files = .false.
+                                       ! files containing lw aerosol
+                                       ! optical properties from vol-
+                                       ! canic activity are to be
+                                       ! used to supplement those cal-
+                                       ! culated by model ?
+character(len=64)    ::        &
+              sw_ext_filename = ' '    ! name of file containing the
+                                       ! aerosol sw extinction optical
+                                       ! depth
+character(len=64)    ::        &
+              sw_ssa_filename = ' '    ! name of file containing the
+                                       ! aerosol sw single scattering 
+                                       ! albedo
+character(len=64)    ::        &
+              sw_asy_filename = ' '    ! name of file containing the
+                                       ! aerosol sw asymmetry factor   
+character(len=64)    ::        &
+              lw_ext_filename = ' '    ! name of file containing the
+                                       ! aerosol lw extinction optical
+                                       ! depth
+character(len=64)    ::        &
+              lw_ssa_filename = ' '    ! name of file containing the
+                                       ! aerosol lw single scattering 
+                                       ! albedo
+character(len=64)    ::        &
+              lw_asy_filename = ' '    ! name of file containing the
+                                       ! aerosol lw asymmetry factor   
+                                       ! the supplemental input files
+character(len=64)    ::        &
+              sw_ext_root                  = '   ' 
+                                       ! names given to sw extopdep in
+                                       ! input netcdf file
+character(len=64)    ::        &
+              sw_ssa_root                  = '   ' 
+                                       ! name given to sw single scat-
+                                       ! tering albedo in input netcdf 
+                                       ! file
+character(len=64)    ::        &
+              sw_asy_root                  = '   ' 
+                                       ! name given to sw asymmetry
+                                       ! factor in input netcdf file
+character(len=64)    ::        &
+              lw_ext_root                  = '   ' 
+                                       ! name given to lw extopdep in
+                                       ! input netcdf file
+character(len=64)    ::        &
+              lw_ssa_root                  = '   '  
+                                       ! name given to lw single scat-
+                                       ! tering albedo in input netcdf 
+                                       ! file
+character(len=64)    ::        &
+              lw_asy_root                  = '   '      
+                                       ! name given to lw asymmetry
+                                       ! factor in input netcdf file
+integer, dimension(6) ::       &
+              volcanic_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /) 
+                                       ! time in volcanic data set
+                                       ! corresponding to model
+                                       ! initial time 
+                                       ! (yr, mo, dy, hr, mn, sc)
+logical :: interpolating_volcanic_data = .true.
+                                       ! volcanic datasets will be
+                                       ! time interpolated rather than
+                                       ! held constant for a month ?
 
 
 namelist / aerosolrad_package_nml /                          &
                                     do_lwaerosol, do_swaerosol, &
                                     aerosol_data_set, &
                                     aerosol_optical_names, &
-                                    optical_filename   
+                                    optical_filename   , &
+                                    using_volcanic_sw_files, &
+                                    using_volcanic_lw_files, &
+                                    volcanic_dataset_entry, &
+                                    interpolating_volcanic_data, &
+                                    sw_ext_filename, sw_ssa_filename, &
+                                    sw_asy_filename, lw_ext_filename, &
+                                    lw_ssa_filename, lw_asy_filename, &
+                                    sw_ext_root, sw_ssa_root,   &
+                                    sw_asy_root, lw_ext_root,   &
+                                    lw_ssa_root, lw_asy_root
 
 !---------------------------------------------------------------------
 !------- public data ------
@@ -112,6 +201,18 @@ namelist / aerosolrad_package_nml /                          &
 !---------------------------------------------------------------------
 !------- private data ------
 
+
+!---------------------------------------------------------------------
+!   the following are interpolate_type variables containing the
+!   additional aerosol optical properties that may be included as
+!   input to the radiation package.
+!---------------------------------------------------------------------
+type(interpolate_type), save  :: Sw_aer_extopdep_interp
+type(interpolate_type), save  :: Sw_aer_ssalb_interp
+type(interpolate_type), save  :: Sw_aer_asymm_interp
+type(interpolate_type), save  :: Lw_aer_extopdep_interp
+type(interpolate_type), save  :: Lw_aer_ssalb_interp
+type(interpolate_type), save  :: Lw_aer_asymm_interp
 
 !---------------------------------------------------------------------
 !    the following variables define the number and type of different
@@ -124,6 +225,9 @@ integer, parameter ::    &
 integer, parameter ::     &
          N_AEROSOL_BANDS_CO = 1 ! number of continuum ir aerosol
                                 ! emissivity bands  
+integer, parameter ::     &
+         N_AEROSOL_BANDS_CN = 1 ! number of diagnostic continuum ir 
+                                ! aerosol emissivity bands  
 integer, parameter ::    &
          N_AEROSOL_BANDS = N_AEROSOL_BANDS_FR + N_AEROSOL_BANDS_CO
                                 ! total number of ir aerosol emissivity
@@ -194,7 +298,7 @@ real,    dimension(:,:), allocatable   :: aeroextivl, aerossalbivl, &
 !                      eterization band ni
 !
 !----------------------------------------------------------------------
-real,    dimension(:,:), allocatable   :: sflwwts
+real,    dimension(:,:), allocatable   :: sflwwts, sflwwts_cn
 
 !--------------------------------------------------------------------
 !    logical flags 
@@ -207,6 +311,60 @@ logical :: module_is_initialized      = .false. ! module has been
                                                 ! initialized ?
 logical :: doing_predicted_aerosols   = .false. ! predicted aerosol 
                                                 ! scheme being used ?
+
+type(time_type) :: Model_init_time  ! initial calendar time for model  
+                                    ! [ time_type ]
+type(time_type) :: Volcanic_offset  ! difference between model initial
+                                    ! time and volcanic timeseries app-
+                                    ! lied at model initial time
+                                    ! [ time_type ]
+type(time_type) :: Volcanic_entry   ! time in volcanic timeseries which
+                                    ! is mapped to model initial time
+                                    ! [ time_type ]
+logical    :: negative_offset = .false.
+                                !  the model initial time is later than
+                                !  the volcanic_dataset_entry time  ?
+integer :: nfields_sw_ext = 0   ! number of fields contained in 
+                                ! supplemental sw_ext file
+integer :: nfields_sw_ssa = 0   ! number of fields contained in 
+                                ! supplemental sw_ssa file
+integer :: nfields_sw_asy = 0   ! number of fields contained in 
+                                ! supplemental sw_asy file
+integer :: nfields_lw_ext = 0   ! number of fields contained in 
+                                ! supplemental lw_ext file
+integer :: nfields_lw_ssa = 0   ! number of fields contained in 
+                                ! supplemental lw_ssa file
+integer :: nfields_lw_asy = 0   ! number of fields contained in 
+                                ! supplemental lw_asy file
+
+!-------------------------------------------------------------------
+!   arrays holding variable names:
+character(len=64), dimension(:), allocatable ::   &
+                                sw_ext_name, sw_ssa_name, sw_asy_name, &
+                                lw_ext_name, lw_ssa_name, lw_asy_name
+
+!-------------------------------------------------------------------
+!    arrays to hold data when not interpolating on every step:
+real, dimension(:,:,:,:), allocatable :: sw_ext_save
+real, dimension(:,:,:,:), allocatable :: sw_ssa_save
+real, dimension(:,:,:,:), allocatable :: sw_asy_save
+real, dimension(:,:,:,:), allocatable :: lw_ext_save
+
+!---------------------------------------------------------------------
+!    logical variables indicating whether interpolation is currently
+!    needed:
+logical :: need_sw_ext = .true.
+logical :: need_sw_ssa = .true.
+logical :: need_sw_asy = .true.
+logical :: need_lw_ext = .true.
+
+!---------------------------------------------------------------------
+!    counters associated with determining when interpolation needs to
+!    be done:
+integer :: tot_points 
+integer :: pts_processed = 0
+logical :: mo_save_set = .false.
+integer :: mo_save = 0
 
 
 !---------------------------------------------------------------------
@@ -242,7 +400,7 @@ logical :: doing_predicted_aerosols   = .false. ! predicted aerosol
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine aerosolrad_package_init (aerosol_names)
+subroutine aerosolrad_package_init (kmax, aerosol_names, lonb, latb)
 
 !---------------------------------------------------------------------
 !     aerosolrad_package_init is the constructor for 
@@ -251,14 +409,24 @@ subroutine aerosolrad_package_init (aerosol_names)
 
 !---------------------------------------------------------------------
 !character(len=64), dimension(:), intent(in)  :: aerosol_names
+integer,                         intent(in)  :: kmax
 character(len=*), dimension(:), intent(in)  :: aerosol_names
+real, dimension(:),              intent(in)  :: lonb,latb
+
+
+
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
+!      kmax              number of model levels
 !      aerosol_names     the names assigned to each of the activated
 !                        aerosol species
+!       lonb           array of model longitudes on cell boundaries
+!                      [ radians ]
+!       latb           array of model latitudes at cell boundaries
+!                      [ radians ]
 !
 !---------------------------------------------------------------------
 
@@ -266,6 +434,8 @@ character(len=*), dimension(:), intent(in)  :: aerosol_names
 !  local variables:
 
       integer        :: unit, ierr, io
+      integer        :: n
+      character(len=16) :: chvers
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -288,6 +458,8 @@ character(len=*), dimension(:), intent(in)  :: aerosol_names
 !---------------------------------------------------------------------
       call mpp_io_init
       call fms_init
+      call diag_manager_init
+      call time_manager_init
       call rad_utilities_init
       call esfsw_parameters_init
       call longwave_params_init
@@ -372,7 +544,7 @@ character(len=*), dimension(:), intent(in)  :: aerosol_names
 !    exit if aerosol effects are desired but the aerosol input file
 !    provided no aerosol fields.
 !---------------------------------------------------------------------
-      if (Rad_control%do_aerosol .and. size(aerosol_names) == 0) then
+      if (Rad_control%do_aerosol .and. size(aerosol_names(:)) == 0) then
         call error_mesg ('aerosolrad_package_mod', &
           ' aerosols desired  for radiation but no aerosol '//&
             'data_names supplied', FATAL)
@@ -449,6 +621,310 @@ character(len=*), dimension(:), intent(in)  :: aerosol_names
       endif
 
 !---------------------------------------------------------------------
+!    make sure consistent nml settings are present. Cannot use volcanic
+!    aerosols unless model aerosols are also activated.
+!---------------------------------------------------------------------
+      if (.not. do_swaerosol  .and.   &
+          using_volcanic_sw_files) then
+        call error_mesg ('aerosolrad_package_mod', &
+         'cant use sw volcanic aerosols without activating standard &
+                                               & sw aerosols', FATAL)
+      endif
+      if (.not. do_lwaerosol  .and.   &
+          using_volcanic_lw_files) then
+        call error_mesg ('aerosolrad_package_mod', &
+         'cant use lw volcanic aerosols without activating standard &
+                                               & lw aerosols', FATAL)
+      endif
+
+!---------------------------------------------------------------------
+!    set the volcanic control variables to .false. when the model 
+!    aerosols are not active.
+!---------------------------------------------------------------------
+      if (.not. do_swaerosol) then          
+        Rad_control%volcanic_lw_aerosols = .false.
+        Rad_control%volcanic_lw_aerosols_iz = .true.
+      endif
+      if (.not. do_swaerosol) then          
+        Rad_control%volcanic_sw_aerosols = .false.
+        Rad_control%volcanic_sw_aerosols_iz = .true.
+      endif
+
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the volcanic files are
+!    to be used.
+!---------------------------------------------------------------------
+      if (using_volcanic_sw_files .or.  &
+          using_volcanic_lw_files) then
+        if (volcanic_dataset_entry(1) == 1 .and. &
+            volcanic_dataset_entry(2) == 1 .and. &
+            volcanic_dataset_entry(3) == 1 .and. &
+            volcanic_dataset_entry(4) == 0 .and. &
+            volcanic_dataset_entry(5) == 0 .and. &
+            volcanic_dataset_entry(6) == 0 ) then      
+          call error_mesg ('aerosolrad_package_mod', &
+           'must set volcanic_dataset_entry when using volcanic &
+                                             &input files', FATAL)
+        endif
+      endif
+
+!----------------------------------------------------------------------
+!    define the offset from model base time  (defined in diag_table) 
+!    to volcanic_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+      Model_init_time = get_base_time()
+      Volcanic_entry  = set_date (volcanic_dataset_entry(1), &
+                                  volcanic_dataset_entry(2), &
+                                  volcanic_dataset_entry(3), &
+                                  volcanic_dataset_entry(4), &
+                                  volcanic_dataset_entry(5), &
+                                  volcanic_dataset_entry(6))
+      if (using_volcanic_sw_files .or.  &
+          using_volcanic_lw_files) then
+        call print_date(Volcanic_entry , str='Data from volcano &
+                                           &timeseries at time:')
+        call print_date(Model_init_time , str='This data is mapped to &
+                                                  &model time:')
+      endif
+      Volcanic_offset = Volcanic_entry - Model_init_time
+
+      if (Model_init_time > Volcanic_entry) then
+        negative_offset = .true.
+      else
+        negative_offset = .false.
+      endif
+
+!--------------------------------------------------------------------
+!    define the processor's total number of columns.
+!--------------------------------------------------------------------
+      tot_points = ( size(lonb(:))-1)*( size(latb(:)) -1)
+
+!----------------------------------------------------------------------
+!    if the volcanic sw aerosol properties are to be used, set control
+!    variables so indicating.
+!----------------------------------------------------------------------
+      if (using_volcanic_sw_files) then
+        Rad_control%volcanic_sw_aerosols = .true.
+        Rad_control%volcanic_sw_aerosols_iz = .true.
+
+!-----------------------------------------------------------------------
+!    if desired, process the sw extinction coefficient file. allocate 
+!    space for and define the names of each variable. if not interpol-
+!    ating the data, allocate an array to store it between timesteps. 
+!    call interpolator_init to initialize the interpolation module for
+!    the file.
+!-----------------------------------------------------------------------
+        if (trim(sw_ext_root) /= ' '  ) then
+          nfields_sw_ext = Solar_spect%nbands
+          allocate (sw_ext_name (nfields_sw_ext))
+          if (.not. interpolating_volcanic_data) then
+            allocate (sw_ext_save(size(lonb(:))-1, size(latb(:))-1, &
+                                  kmax, nfields_sw_ext) )
+            sw_ext_save = 0.0
+          endif
+          do n=1, nfields_sw_ext
+            if (n<= 9) then
+              write (chvers, '(i1)') n
+             sw_ext_name(n) = trim(sw_ext_root) // '_b0' // trim(chvers)
+            else if (n <= 99) then
+              write (chvers, '(i2)') n
+              sw_ext_name(n) = trim(sw_ext_root) // '_b' // trim(chvers)
+            else 
+              call error_mesg ('aerosolrad_package_mod', &
+                  ' code only handles up to 100 fields', FATAL)
+            endif
+          end do
+          call interpolator_init (Sw_aer_extopdep_interp,  &
+                                  sw_ext_filename, lonb, latb,  &
+                                  sw_ext_name(:nfields_sw_ext),   &
+                                  data_out_of_bounds=(/CONSTANT/), &
+                                  vert_interp=(/INTERP_WEIGHTED_P/) )  
+        endif
+
+!--------------------------------------------------------------------
+!    if desired, process the sw single scattering albedo file. allocate 
+!    space for and define the names of each variable. if not interpol-
+!    ating the data, allocate an array to store it between timesteps. 
+!    call interpolator_init to initialize the interpolation module for
+!    the file.
+!-----------------------------------------------------------------------
+        if (trim(sw_ssa_root) /= ' '  ) then
+          nfields_sw_ssa = Solar_spect%nbands
+          allocate (sw_ssa_name (nfields_sw_ssa))
+          if (.not. interpolating_volcanic_data) then
+            allocate (sw_ssa_save(size(lonb(:))-1, size(latb(:))-1, &
+                                  kmax, nfields_sw_ssa) )
+            sw_ssa_save = 0.0
+          endif
+          do n=1, nfields_sw_ssa
+            if (n<= 9) then
+              write (chvers, '(i1)') n
+             sw_ssa_name(n) = trim(sw_ssa_root) // '_b0' // trim(chvers)
+            else if (n <= 99) then
+              write (chvers, '(i2)') n
+              sw_ssa_name(n) = trim(sw_ssa_root) // '_b' // trim(chvers)
+            else 
+              call error_mesg ('aerosolrad_package_mod', &
+                  ' code only handles up to 100 fields', FATAL)
+            endif
+          end do
+          call interpolator_init (Sw_aer_ssalb_interp,   &
+                                  sw_ssa_filename,  lonb, latb,    &
+                                  sw_ssa_name(:nfields_sw_ssa),   &
+                                  data_out_of_bounds=(/CONSTANT/), &
+                                  vert_interp=(/INTERP_WEIGHTED_P/) ) 
+        endif
+
+!--------------------------------------------------------------------
+!    if desired, process the sw asymmetry factor file. allocate 
+!    space for and define the names of each variable. if not interpol-
+!    ating the data, allocate an array to store it between timesteps. 
+!    call interpolator_init to initialize the interpolation module for
+!    the file.
+!-----------------------------------------------------------------------
+        if (trim(sw_asy_root)    /= ' '  ) then
+          nfields_sw_asy = Solar_spect%nbands
+          allocate (sw_asy_name (nfields_sw_asy))
+          if (.not. interpolating_volcanic_data) then
+            allocate (sw_asy_save(size(lonb(:))-1, size(latb(:))-1, &
+                                  kmax, nfields_sw_asy) )
+            sw_asy_save = 0.0
+          endif
+          do n=1, nfields_sw_asy
+            if (n<= 9) then
+              write (chvers, '(i1)') n
+             sw_asy_name(n) = trim(sw_asy_root) // '_b0' // trim(chvers)
+            else if (n <= 99) then
+              write (chvers, '(i2)') n
+              sw_asy_name(n) = trim(sw_asy_root) // '_b' // trim(chvers)
+            else 
+              call error_mesg ('aerosolrad_package_mod', &
+                  ' code only handles up to 100 fields', FATAL)
+            endif
+          end do
+          call interpolator_init (Sw_aer_asymm_interp,   &
+                                  sw_asy_filename, lonb, latb,   &
+                                  sw_asy_name(:nfields_sw_asy),   &
+                                  data_out_of_bounds=(/CONSTANT/), &
+                                  vert_interp=(/INTERP_WEIGHTED_P/) )  
+        endif
+
+!----------------------------------------------------------------------
+!    if sw volcanic files are not being used, set a flag to indicate
+!    that the control variable has the proper value.
+!----------------------------------------------------------------------
+      else
+        Rad_control%volcanic_sw_aerosols_iz = .true.
+      endif
+
+!----------------------------------------------------------------------
+!    if the volcanic lw aerosol properties are to be used, set control
+!    variables so indicating.
+!----------------------------------------------------------------------
+      if (using_volcanic_lw_files) then
+        Rad_control%volcanic_lw_aerosols = .true.
+        Rad_control%volcanic_lw_aerosols_iz = .true.
+
+!-----------------------------------------------------------------------
+!    if desired, process the lw extinction coefficient file. allocate 
+!    space for and define the names of each variable. if not interpol-
+!    ating the data, allocate an array to store it between timesteps. 
+!    call interpolator_init to initialize the interpolation module for
+!    the file.
+!-----------------------------------------------------------------------
+        if (trim(lw_ext_root)    /= ' '  ) then
+          nfields_lw_ext = N_AEROSOL_BANDS
+          allocate (lw_ext_name (nfields_lw_ext))
+          if (.not. interpolating_volcanic_data) then
+            allocate (lw_ext_save(size(lonb(:))-1, size(latb(:))-1, &
+                                  kmax, nfields_lw_ext) )
+            lw_ext_save = 0.0
+          endif
+          do n=1, nfields_lw_ext
+            if (n<= 9) then
+              write (chvers, '(i1)') n
+             lw_ext_name(n) = trim(lw_ext_root) // '_b0' // trim(chvers)
+            else if (n <= 99) then
+              write (chvers, '(i2)') n
+              lw_ext_name(n) = trim(lw_ext_root) // '_b' // trim(chvers)
+            else 
+              call error_mesg ('aerosolrad_package_mod', &
+                  ' code only handles up to 100 fields', FATAL)
+            endif
+          end do
+          call interpolator_init (Lw_aer_extopdep_interp,   &
+                                  lw_ext_filename, lonb,  latb,  &
+                                  lw_ext_name(:nfields_lw_ext),   &
+                                  data_out_of_bounds=(/CONSTANT/), &
+                                  vert_interp=(/INTERP_WEIGHTED_P/) )
+        endif
+
+!--------------------------------------------------------------------
+!    if desired, process the lw single scattering albedo file.  it 
+!    currently is not needed with the sea lw radiation package. allocate
+!    space for and define the names of each variable. call 
+!    interpolator_init to initialize the interpolation module for the 
+!    file.
+!-----------------------------------------------------------------------
+        if (trim(lw_ssa_root)    /= ' '  ) then
+          nfields_lw_ssa = N_AEROSOL_BANDS
+          allocate (lw_ssa_name (nfields_lw_ssa))
+          do n=1, nfields_lw_ssa
+            if (n<= 9) then
+              write (chvers, '(i1)') n
+             lw_ssa_name(n) = trim(lw_ssa_root) // '_b0' // trim(chvers)
+            else if (n <= 99) then
+              write (chvers, '(i2)') n
+              lw_ssa_name(n) = trim(lw_ssa_root) // '_b' // trim(chvers)
+            else 
+              call error_mesg ('aerosolrad_package_mod', &
+                  ' code only handles up to 100 fields', FATAL)
+            endif
+          end do
+          call interpolator_init (Lw_aer_ssalb_interp,  &
+                                  lw_ssa_filename, lonb, latb,  &
+                                  lw_ssa_name(:nfields_lw_ssa),   &
+                                  data_out_of_bounds=(/CONSTANT/), &
+                                  vert_interp=(/INTERP_WEIGHTED_P/) )  
+        endif
+
+!--------------------------------------------------------------------
+!    if desired, process the lw asymmetry factor file.  it currently is
+!    not needed with the sea lw radiation package. allocate space for 
+!    and define the names of each variable. call interpolator_init to
+!    initialize the interpolation module for the file.
+!-----------------------------------------------------------------------
+        if (trim(lw_asy_root)    /= ' '  ) then
+          nfields_lw_asy = N_AEROSOL_BANDS
+          allocate (lw_asy_name (nfields_lw_asy))
+          do n=1, nfields_lw_asy
+            if (n<= 9) then
+              write (chvers, '(i1)') n
+             lw_asy_name(n) = trim(lw_asy_root) // '_b0' // trim(chvers)
+            else if (n <= 99) then
+              write (chvers, '(i2)') n
+              lw_asy_name(n) = trim(lw_asy_root) // '_b' // trim(chvers)
+            else 
+              call error_mesg ('aerosolrad_package_mod', &
+                  ' code only handles up to 100 fields', FATAL)
+            endif
+          end do
+          call interpolator_init (Lw_aer_asymm_interp,   &
+                                   lw_asy_filename,  lonb, latb,  &
+                                   lw_asy_name(:nfields_lw_asy),   &
+                                   data_out_of_bounds=(/CONSTANT/), &
+                                   vert_interp=(/INTERP_WEIGHTED_P/) )  
+        endif
+
+!----------------------------------------------------------------------
+!    if lw volcanic files are not being used, set a flag to indicate
+!    that the control variable has the proper value.
+!----------------------------------------------------------------------
+     else
+       Rad_control%volcanic_lw_aerosols_iz = .true.
+     endif
+
+!---------------------------------------------------------------------
 !    mark the module as initialized.
 !---------------------------------------------------------------------
       module_is_initialized = .true.
@@ -494,6 +970,7 @@ end subroutine aerosolrad_package_init
 ! </SUBROUTINE>
 !
 subroutine aerosol_radiative_properties (is, ie, js, je, &
+                                         Time, p_half, Aerosol_diags, &
                                          Aerosol, Aerosol_props_out)
 
 !---------------------------------------------------------------------
@@ -504,13 +981,19 @@ subroutine aerosol_radiative_properties (is, ie, js, je, &
 !---------------------------------------------------------------------
 
 integer,                       intent(in)    :: is, ie, js, je
+type(time_type),               intent(in)    :: Time
+real, dimension(:,:,:),        intent(in)    :: p_half
 type(aerosol_type),            intent(in)    :: Aerosol
+type(aerosol_diagnostics_type), intent(inout) :: Aerosol_diags
 type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
  
 !----------------------------------------------------------------------
 ! local variables:                                                     
 
+      type(time_type) :: Volcano_time
       integer  :: na, nw, ni, nmodel       ! do-loop indices
+      integer  :: n
+      integer  :: yr, mo, dy, hr, mn, sc
      
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
@@ -519,6 +1002,45 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
         call error_mesg ('aerosolrad_package_mod',   &
              'module has not been initialized', FATAL )
       endif
+
+!---------------------------------------------------------------------
+!    allocate and initialize arrays to hold aerosol diagnostics.
+!---------------------------------------------------------------------
+      allocate (Aerosol_diags%extopdep (size(Aerosol%aerosol,1), &
+                                        size(Aerosol%aerosol,2), &
+                                        size(Aerosol%aerosol,3), &
+                                        size(Aerosol%aerosol,4), 4 ))
+      Aerosol_diags%extopdep = 0.0
+      allocate (Aerosol_diags%absopdep (size(Aerosol%aerosol,1), &
+                                        size(Aerosol%aerosol,2), &
+                                        size(Aerosol%aerosol,3), &
+                                        size(Aerosol%aerosol,4), 4 ))
+      Aerosol_diags%absopdep = 0.0
+      allocate (Aerosol_diags%extopdep_vlcno    &
+                                        (size(Aerosol%aerosol,1), &
+                                         size(Aerosol%aerosol,2), &
+                                         size(Aerosol%aerosol,3),2))
+      Aerosol_diags%extopdep_vlcno = 0.0
+      allocate (Aerosol_diags%absopdep_vlcno  &
+                                        (size(Aerosol%aerosol,1), &
+                                         size(Aerosol%aerosol,2), &
+                                         size(Aerosol%aerosol,3),2))
+      Aerosol_diags%absopdep_vlcno = 0.0
+      allocate (Aerosol_diags%sw_heating_vlcno  &
+                                        (size(Aerosol%aerosol,1), &
+                                         size(Aerosol%aerosol,2), &
+                                         size(Aerosol%aerosol,3)))
+      Aerosol_diags%sw_heating_vlcno = 0.0
+      allocate (Aerosol_diags%lw_extopdep_vlcno    &
+                                        (size(Aerosol%aerosol,1), &
+                                         size(Aerosol%aerosol,2), &
+                                         size(Aerosol%aerosol,3)+1,2))
+      Aerosol_diags%lw_extopdep_vlcno = 0.0
+      allocate (Aerosol_diags%lw_absopdep_vlcno  &
+                                        (size(Aerosol%aerosol,1), &
+                                         size(Aerosol%aerosol,2), &
+                                         size(Aerosol%aerosol,3)+1,2))
+      Aerosol_diags%lw_absopdep_vlcno = 0.0
 
 !---------------------------------------------------------------------
 !    the following code applies to the non-predicted-aerosol case, 
@@ -549,7 +1071,7 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
                            Solar_spect%nbands, aeroextivl(:,nmodel), &
                            aerossalbivl(:,nmodel),    &
                            aeroasymmivl(:,nmodel), solivlaero,   &
-                           Solar_spect%solflxband,       & 
+                           Solar_spect%solflxbandref,       & 
                            Aerosol_props%aerextband(:,nmodel),    &
                            Aerosol_props%aerssalbband(:,nmodel),   &
                            Aerosol_props%aerasymmband(:,nmodel))
@@ -562,12 +1084,123 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
         endif
 
 !---------------------------------------------------------------------
+!    define the time for which the volcanic properties will be obtained.
+!---------------------------------------------------------------------
+        if (using_volcanic_sw_files .or.   &
+            using_volcanic_lw_files) then
+          if (negative_offset) then
+             Volcano_time = Time - Volcanic_offset
+          else 
+             Volcano_time = Time + Volcanic_offset
+          endif
+
+!--------------------------------------------------------------------
+!    decide whether the volcanic data must be interpolated on this step.
+!    if interpolating_volcanic_data is true, then all variables will
+!    always be interpolated. when this is not .true., determine if the
+!    month of the data desired has changed from the previous value. if
+!    it has set the Volcano_time to 12Z on the 15th of the month, and
+!    indicate that new data is needed. On the initial call of the job,
+!    one always obtains the data (mo_save_set = .false.).
+!--------------------------------------------------------------------
+          if (interpolating_volcanic_data) then
+            need_sw_ext = .true.
+            need_sw_ssa = .true.
+            need_sw_asy = .true.
+            need_lw_ext = .true.
+          else
+            call get_date (Volcano_time, yr,mo,dy,hr,mn,sc)
+            Volcano_time =  set_date (yr, mo,15,12,0,0)
+            if (mo_save_set) then
+              if (mo /= mo_save) then
+                need_sw_ext = .true.
+                need_sw_ssa = .true.
+                need_sw_asy = .true.
+                need_lw_ext = .true.
+              endif
+            else
+              need_sw_ext = .true.
+              need_sw_ssa = .true.
+              need_sw_asy = .true.
+              need_lw_ext = .true.
+            endif
+          endif
+        endif
+
+!--------------------------------------------------------------------
+!    if the volcanic sw aerosol optical properties file is being used,
+!    allocate space to hold the volcanic properties.
+!--------------------------------------------------------------------
+        if (using_volcanic_sw_files) then
+          allocate (Aerosol_props%sw_ext(size(p_half,1),  &
+                                         size(p_half,2), &
+                                         size(p_half,3)-1, &
+                                         nfields_sw_ext) )
+          allocate (Aerosol_props%sw_ssa(size(p_half,1), &
+                                         size(p_half,2), &
+                                         size(p_half,3)-1, &
+                                         nfields_sw_ssa) )
+          allocate (Aerosol_props%sw_asy(size(p_half,1), &
+                                         size(p_half,2), &
+                                         size(p_half,3)-1, &
+                                         nfields_sw_asy) )
+
+!---------------------------------------------------------------------
+!    if new sw extinction data is needed, call interpolator to obtain 
+!    it. otherwise, retrieve it from the storage variable.
+!---------------------------------------------------------------------
+          if (need_sw_ext) then
+            if (nfields_sw_ext >= 1) then
+              call interpolator (Sw_aer_extopdep_interp, Volcano_Time, &
+                                 p_half, Aerosol_props%sw_ext,    &
+                                 sw_ext_name(1), is, js)
+            endif
+          else
+            Aerosol_props%sw_ext = sw_ext_save(is:ie,js:je,:,:)
+          endif
+
+!---------------------------------------------------------------------
+!    if new sw single scattering albedo data is needed, call 
+!    interpolator to obtain it. otherwise, retrieve it from the storage
+!    variable.
+!---------------------------------------------------------------------
+          if (need_sw_ssa) then
+            if (nfields_sw_ssa >= 1) then
+              call interpolator (Sw_aer_ssalb_interp, Volcano_Time,  &
+                                 p_half, Aerosol_props%sw_ssa,    &
+                                 sw_ssa_name(1), is, js)
+            endif
+          else
+            Aerosol_props%sw_ssa = sw_ssa_save(is:ie,js:je,:,:)
+          endif
+
+!---------------------------------------------------------------------
+!    if new sw asymmetry factor data is needed, call interpolator to 
+!    obtain it. otherwise, retrieve it from the storage variable.
+!---------------------------------------------------------------------
+          if (need_sw_asy) then
+            if (nfields_sw_asy >= 1) then
+              call interpolator (Sw_aer_asymm_interp, Volcano_Time,  &
+                                 p_half, Aerosol_props%sw_asy,    &
+                                 sw_asy_name(1), is, js)
+            endif
+          else
+            Aerosol_props%sw_asy = sw_asy_save(is:ie,js:je,:,:)
+          endif
+        endif
+
+!---------------------------------------------------------------------
 !    if longwave aerosol effects are desired, and the following cal-
 !    culation has not already been done, calculate the aerosol 
 !    properties for each aerosol properties type nw over each aerosol 
 !    emissivity band na using the weighted contributions from each
 !    aerosol parameterization band ni. mark the calculation as com-
 !    pleted.
+!
+!    the units of extinction coefficient (aeroextivl) are m**2/gm.
+!    to make the lw band extinction coefficient (aerextbandlw) have
+!    units (m**2/Kg) consistent with the units in FMS models, one
+!    must multiply by 1000. this is done below.
 !---------------------------------------------------------------------
         if (Lw_control%do_lwaerosol .and.  &
             .not. band_calculation_completed) then
@@ -576,15 +1209,120 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
               do ni=1,num_wavenumbers 
                 Aerosol_props%aerextbandlw(na,nw) =    &
                                   Aerosol_props%aerextbandlw(na,nw) + &
-                                  aeroextivl(ni,nw)*sflwwts(na,ni)
+                                  aeroextivl(ni,nw)*sflwwts(na,ni)*  &
+                                  1.0E+03
                 Aerosol_props%aerssalbbandlw(na,nw) =     &
                                   Aerosol_props%aerssalbbandlw(na,nw) +&
                                   aerossalbivl(ni,nw)*sflwwts(na,ni)
               end do
             end do
           end do
+          do nw=1,naermodels    
+            do na=1,N_AEROSOL_BANDS_CN
+              do ni=1,num_wavenumbers 
+                Aerosol_props%aerextbandlw_cn(na,nw) =    &
+                                  Aerosol_props%aerextbandlw_cn(na,nw) + &
+                                  aeroextivl(ni,nw)*sflwwts_cn(na,ni)*  &
+                                  1.0E+03
+                Aerosol_props%aerssalbbandlw_cn(na,nw) =     &
+                                  Aerosol_props%aerssalbbandlw_cn(na,nw) +&
+                                  aerossalbivl(ni,nw)*sflwwts_cn(na,ni)
+              end do
+            end do
+          end do
           band_calculation_completed = .true.
         endif ! (do_lwaerosol)
+
+!--------------------------------------------------------------------
+!    if the volcanic lw aerosol optical properties file is being used,
+!    allocate space to hold the volcanic properties.
+!--------------------------------------------------------------------
+        if (using_volcanic_lw_files) then
+          allocate (Aerosol_props%lw_ssa(size(p_half,1), &
+                                         size(p_half,2), &
+                                         size(p_half,3)-1, &
+                                         nfields_lw_ssa) )
+          allocate (Aerosol_props%lw_asy(size(p_half,1), &
+                                         size(p_half,2), &
+                                         size(p_half,3)-1, &
+                                         nfields_lw_asy) )
+          allocate (Aerosol_props%lw_ext(size(p_half,1), &
+                                         size(p_half,2), &
+                                         size(p_half,3)-1, &
+                                         nfields_lw_ext) )
+
+!---------------------------------------------------------------------
+!    if new lw extinction data is needed, call interpolator to obtain 
+!    it. otherwise, retrieve it from the storage variable.
+!---------------------------------------------------------------------
+          if (need_lw_ext) then
+            if (nfields_lw_ext >= 1) then
+              call interpolator (Lw_aer_extopdep_interp, Volcano_Time, &
+                                 p_half, Aerosol_props%lw_ext,    &
+                                 lw_ext_name(1), is, js)
+            endif
+          else
+            Aerosol_props%lw_ext = lw_ext_save(is:ie,js:je,:,:)
+          endif
+
+!---------------------------------------------------------------------
+!    if lw single scattering albedo data is needed, call interpolator 
+!    to obtain it. Since it is not currently used in sea radiation, it 
+!    has not yet been adapted to the treatment afforded to lw_ext.
+!---------------------------------------------------------------------
+          if (nfields_lw_ssa >= 1) then
+            call interpolator (Lw_aer_ssalb_interp, Volcano_Time,  &
+                               p_half, Aerosol_props%lw_ssa,    &
+                               lw_ssa_name(1), is, js)
+          endif
+
+!---------------------------------------------------------------------
+!    if lw asymmetry factor is needed, call interpolator 
+!    to obtain it. Since it is not currently used in the sea radiation, 
+!    it has not yet been adapted to the treatment afforded to lw_ext.
+!---------------------------------------------------------------------
+          if (nfields_lw_asy >= 1) then
+            call interpolator (Lw_aer_asymm_interp, Volcano_Time, &
+                               p_half, Aerosol_props%lw_asy,    &
+                               lw_asy_name(1), is, js)
+          endif
+        endif
+
+!---------------------------------------------------------------------
+!    when data is not always interpolated, set flags to indicate whether
+!    data must be obtained on the next call to this subroutine. if 
+!    the current call has obtained data, increment the points processed
+!    counter. if all processor points have now obtained new data, set
+!    the flag indicating that data is not needed on the next call.
+!    also set the flag to indicate that the initial call has been com-
+!    pleted (mo_save_set), and that the month for which data was obtain-
+!    ed has been defined (mo_save). set the points processed counter to
+!    zero so it is ready when new data is again required.
+!---------------------------------------------------------------------
+        if (.not. interpolating_volcanic_data) then
+          if (need_sw_ext) then
+            pts_processed = pts_processed + (ie-is+1) *(je-js+1)
+            if (pts_processed >= tot_points)   then
+              need_sw_ext = .false.
+              need_sw_ssa = .false.
+              need_sw_asy = .false.
+              need_lw_ext = .false.
+              mo_save_set = .true.
+              mo_save = mo
+              pts_processed = 0
+            endif
+          endif
+        endif
+
+!---------------------------------------------------------------------
+!    return the aerosol_properties_type variable to the calling 
+!    routine. this variable contains the aerosol radiative properties 
+!    for each aerosol properties type over each solar and aerosol
+!    emissivity band.
+!---------------------------------------------------------------------
+        Aerosol_props_out = Aerosol_props 
+
+!--------------------------------------------------------------------
 
 !---------------------------------------------------------------------
 !    code for predicted aerosols will be placed here, when available.
@@ -594,20 +1332,11 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
                     'predicted aerosols not yet implenmented', FATAL)
       endif ! ( ,not. doing_predicted_aerosols)
 
-!---------------------------------------------------------------------
-!    return the aerosol_properties_type variable to the calling 
-!    routine. this variable contains the aerosol radiative properties 
-!    for each aerosol properties type over each solar and aerosol
-!    emissivity band.
-!---------------------------------------------------------------------
-      Aerosol_props_out = Aerosol_props 
+!----------------------------------------------------------------------
 
-!--------------------------------------------------------------------
 
 
 end subroutine aerosol_radiative_properties
-
-
 
 
 !#####################################################################
@@ -649,6 +1378,7 @@ subroutine aerosolrad_package_end
       endif
       if (do_lwaerosol) then
         deallocate ( sflwwts)
+        deallocate ( sflwwts_cn)
       endif
       
 !---------------------------------------------------------------------
@@ -661,11 +1391,53 @@ subroutine aerosolrad_package_end
       endif
       if (do_lwaerosol) then
         deallocate ( Aerosol_props%aerextbandlw,    &
-                     Aerosol_props%aerssalbbandlw   )
+                     Aerosol_props%aerssalbbandlw,  &
+                     Aerosol_props%aerextbandlw_cn,    &
+                     Aerosol_props%aerssalbbandlw_cn )
       endif
       if (Rad_control%do_aerosol) then
         deallocate ( Aerosol_props%sulfate_index,   &
                      Aerosol_props%optical_index    )
+      endif
+
+!     if (Rad_control%volcanic_lw_aerosols) then
+!       deallocate ( Aerosol_props%lw_ext, &
+!                    Aerosol_props%lw_ssa, &
+!                    Aerosol_props%lw_asy)  
+!     endif
+
+!     if (Rad_control%volcanic_sw_aerosols) then
+!       deallocate ( Aerosol_props%sw_ext, &
+!                    Aerosol_props%sw_ssa, &
+!                    Aerosol_props%sw_asy)  
+!     endif
+      
+      if (Rad_control%volcanic_lw_aerosols) then
+        if (nfields_lw_ext /= 0) then
+          call interpolator_end (Lw_aer_extopdep_interp)
+        endif
+        if (nfields_lw_ssa /= 0) then
+        call interpolator_end (Lw_aer_ssalb_interp)
+        endif
+        if (nfields_lw_asy /= 0) then
+        call interpolator_end (Lw_aer_asymm_interp)
+        endif
+      endif
+
+      if (Rad_control%volcanic_sw_aerosols) then
+        if (nfields_sw_ext /= 0) then
+        call interpolator_end (Sw_aer_extopdep_interp)
+        endif
+        if (nfields_sw_ssa /= 0) then
+        call interpolator_end (Sw_aer_ssalb_interp)
+        endif
+        if (nfields_sw_asy /= 0) then
+        call interpolator_end (Sw_aer_asymm_interp)
+        endif
+      endif
+
+      if (.not. interpolating_volcanic_data) then
+        deallocate (sw_ext_save, sw_ssa_save, sw_asy_save, lw_ext_save)
       endif
 
 !---------------------------------------------------------------------
@@ -850,7 +1622,7 @@ integer                               :: index  ! function value
 !---------------------------------------------------------------------
 !    be sure the desired aerosol index is valid.
 !---------------------------------------------------------------------
-      nfields = size(Aerosol_props%optical_index)
+      nfields = size(Aerosol_props%optical_index(:))
       if (naerosol > nfields) then
         call error_mesg( 'aerosolrad_package_mod', &
            'aerosol index exceeds number of aerosol fields', FATAL )
@@ -968,7 +1740,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    define the number of activated aerosol species.
 !---------------------------------------------------------------------
-      nfields = size (aerosol_names)
+      nfields = size (aerosol_names(:))
 
 !---------------------------------------------------------------------
 !    allocate components of the aerosol_properties_type module variable
@@ -1523,6 +2295,17 @@ subroutine lw_aerosol_interaction
 
       integer, dimension (N_AEROSOL_BANDS_CO)  :: iendaerband_co =  &
       (/ 80  /)
+      real, dimension (N_AEROSOL_BANDS_CN)     :: aerbandlo_cn =  &
+      (/ 800.0 /)
+
+      real, dimension (N_AEROSOL_BANDS_CN)     :: aerbandhi_cn =  &
+      (/ 1200.0 /)
+
+      integer, dimension (N_AEROSOL_BANDS_CN)  :: istartaerband_cn =  &
+      (/ 81  /)
+
+      integer, dimension (N_AEROSOL_BANDS_CN)  :: iendaerband_cn =  &
+      (/ 120 /)
 
       real,    dimension(N_AEROSOL_BANDS)      :: aerbandlo, aerbandhi
       integer, dimension(N_AEROSOL_BANDS)      :: istartaerband,    &
@@ -1559,8 +2342,11 @@ subroutine lw_aerosol_interaction
                                                   nivl2aer_fr
       integer, dimension (N_AEROSOL_BANDS_CO)  :: nivl1aer_co,   &
                                                   nivl2aer_co
+      integer, dimension (N_AEROSOL_BANDS_CN)  :: nivl1aer_cn,   &
+                                                  nivl2aer_cn
       integer, dimension (N_AEROSOL_BANDS)     :: nivl1aer, nivl2aer
       real,    dimension (N_AEROSOL_BANDS)     :: planckaerband
+      real,    dimension (N_AEROSOL_BANDS_CN)  :: planckaerband_cn
 
 !----------------------------------------------------------------------
 !    the following arrays relate the ir aerosol emissivity band n to
@@ -1615,6 +2401,8 @@ subroutine lw_aerosol_interaction
       real,    dimension (N_AEROSOL_BANDS_CO, num_wavenumbers) :: &
                                                   planckivlaer_co, &
                                                   sflwwts_co
+      real,    dimension (N_AEROSOL_BANDS_CN, num_wavenumbers) :: &
+                                                  planckivlaer_cn   
       real,    dimension (N_AEROSOL_BANDS, num_wavenumbers)  ::    &
                                                   planckivlaer
       integer, dimension (num_wavenumbers)    ::  iendsfbands
@@ -1665,6 +2453,7 @@ subroutine lw_aerosol_interaction
 !    ization bands.
 !--------------------------------------------------------------------
       allocate (sflwwts (N_AEROSOL_BANDS, num_wavenumbers))
+      allocate (sflwwts_cn (N_AEROSOL_BANDS_CN, num_wavenumbers))
 
 !--------------------------------------------------------------------
 !    define the ending aerosol band index for each of the aerosol
@@ -1696,6 +2485,12 @@ subroutine lw_aerosol_interaction
       do n = 1,N_AEROSOL_BANDS
         do ib = istartaerband(n),iendaerband(n)
           planckaerband(n) = planckaerband(n) + src1nb(ib)
+        end do
+      end do
+      planckaerband_cn(:) = 0.0E+00
+      do n = 1,N_AEROSOL_BANDS_CN
+        do ib = istartaerband_cn(n),iendaerband_cn(n)
+          planckaerband_cn(n) = planckaerband_cn(n) + src1nb(ib)
         end do
       end do
  
@@ -1796,6 +2591,54 @@ subroutine lw_aerosol_interaction
       end do
 
 !--------------------------------------------------------------------
+!    define the weights and interval counters that are needed to  
+!    map the aerosol parameterization spectral intervals onto the 
+!    continuum ir aerosol emissivity bands and so determine the 
+!    single-scattering properties on the ir aerosol emissivity bands.
+!--------------------------------------------------------------------
+      nivl = 1
+      sumplanck = 0.0
+      nband = 1
+      planckivlaer_cn(:,:) = 0.0
+      nivl1aer_cn(1) = 1
+      do_band1 = .true.
+ 
+      do nw = 1,NBLW
+        sumplanck = sumplanck + src1nb(nw)
+        if ( nw == iendsfbands(nivl) ) then
+          planckivlaer_cn(nband,nivl) = sumplanck
+          sumplanck = 0.0
+        end if
+        if ( nw == iendaerband_cn(nband) ) then
+          if ( nw /= iendsfbands(nivl) ) then
+            planckivlaer_cn(nband,nivl) = sumplanck 
+            sumplanck = 0.0
+          end if
+          nivl2aer_cn(nband) = nivl
+          nband = nband + 1
+          if ( nband <= N_AEROSOL_BANDS_CN ) then
+            if ( nw == iendsfbands(nivl) ) then
+              nivl1aer_cn(nband) = nivl + 1
+            else
+              nivl1aer_cn(nband) = nivl
+            end if
+          end if
+        end if
+        if ( nw == iendsfbands(nivl) ) then
+          nivl = nivl + 1
+          if (do_band1 .and. nband == 1 .and.  &
+              iendsfbands(nivl-1) >= istartaerband_cn(1) .and.  &
+              iendsfbands(nivl-1) < iendaerband_cn(1)) then
+            nivl1aer_cn(nband) = nivl-1
+            do_band1 = .false.
+          endif
+        endif
+        if ( nw >= iendaerband_cn(N_AEROSOL_BANDS_CN) ) then
+          exit
+        endif
+      end do
+
+!--------------------------------------------------------------------
 !    define the planck-function-weighted band weights for the aerosol
 !    parameterization bands onto the non-continuum and continuum ir 
 !    aerosol emissivity bands.
@@ -1811,6 +2654,13 @@ subroutine lw_aerosol_interaction
         do ni=nivl1aer_co(n),nivl2aer_co(n)
           sflwwts_co(n,ni) = planckivlaer_co(n,ni)/     &
                              planckaerband(N_AEROSOL_BANDS_FR+n)
+        end do
+      end do
+      sflwwts_cn(:,:) = 0.0E+00
+      do n=1,N_AEROSOL_BANDS_CN
+        do ni=nivl1aer_cn(n),nivl2aer_cn(n)
+          sflwwts_cn(n,ni) = planckivlaer_cn(n,ni)/     &
+                             planckaerband_cn(n)
         end do
       end do
 
@@ -1836,9 +2686,13 @@ subroutine lw_aerosol_interaction
 !----------------------------------------------------------------
       allocate     &
          (Aerosol_props%aerextbandlw   (N_AEROSOL_BANDS, naermodels), &
-          Aerosol_props%aerssalbbandlw (N_AEROSOL_BANDS, naermodels) )
+          Aerosol_props%aerssalbbandlw (N_AEROSOL_BANDS, naermodels), &
+     Aerosol_props%aerextbandlw_cn   (N_AEROSOL_BANDS_CN, naermodels), &
+     Aerosol_props%aerssalbbandlw_cn (N_AEROSOL_BANDS_CN, naermodels) )
       Aerosol_props%aerextbandlw   = 0.0E+00
       Aerosol_props%aerssalbbandlw = 0.0E+00
+      Aerosol_props%aerextbandlw_cn   = 0.0E+00
+      Aerosol_props%aerssalbbandlw_cn = 0.0E+00
 
 !----------------------------------------------------------------------
 

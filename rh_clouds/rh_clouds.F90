@@ -83,8 +83,8 @@ end interface
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: rh_clouds.F90,v 10.0 2003/10/24 22:00:39 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: rh_clouds.F90,v 11.0 2004/09/28 19:20:44 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 
 !=======================================================================
 
@@ -565,12 +565,12 @@ integer, intent(out)                 :: n_cloud
 real   , intent(out), dimension(:)   :: cldamt,alb_uv,alb_nir,abs_uv
 real   , intent(out), dimension(:)   :: abs_nir,emiss
 
-real, dimension(1, 1,size(rh)) :: rh_3d, p_full_3d
-real, dimension(1, 1         ) :: p_surf_3d, zenith_3d,deg_lat_3d
-real, dimension(1, 1,size(rh)) :: cldamt_3d,alb_uv_3d,alb_nir_3d
-real, dimension(1, 1,size(rh)) :: abs_uv_3d,abs_nir_3d,emiss_3d
-integer, dimension(1, 1, size(rh)) :: top_3d, bot_3d
-integer, dimension(1, 1          ) :: n_cloud_3d
+real, dimension(1, 1,size(rh(:))) :: rh_3d, p_full_3d
+real, dimension(1, 1            ) :: p_surf_3d, zenith_3d,deg_lat_3d
+real, dimension(1, 1,size(rh(:))) :: cldamt_3d,alb_uv_3d,alb_nir_3d
+real, dimension(1, 1,size(rh(:))) :: abs_uv_3d,abs_nir_3d,emiss_3d
+integer, dimension(1, 1, size(rh(:))) :: top_3d, bot_3d
+integer, dimension(1, 1             ) :: n_cloud_3d
 
 !assign variables to 3d matrices
 rh_3d(1,1,:) = rh

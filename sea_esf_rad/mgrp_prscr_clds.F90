@@ -1,5 +1,23 @@
+!FDOC_TAG_GFDL
 
                  module mgrp_prscr_clds_mod
+! <CONTACT EMAIL="fei.liu@noaa.gov">
+!  fil   
+! </CONTACT>
+! <REVIEWER EMAIL="">
+!   
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!       mgroup prescribed cloud properties module
+!               (this module runnable in SKYHI and FMS;
+!                zonal_clouds_mod is FMS native equivalent)
+!   
+! </OVERVIEW>
+! <DESCRIPTION>
+!   
+! </DESCRIPTION>
+!
 
 use fms_mod,                only: open_namelist_file, file_exist, &
                                   check_nml_error, error_mesg,   &
@@ -37,8 +55,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 10.0 2003/10/24 22:00:43 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: jakarta $'
+  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 11.0 2004/09/28 19:22:31 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 
@@ -163,6 +181,25 @@ logical :: module_is_initialized = .false.
  contains 
 
 
+! <SUBROUTINE NAME="mgrp_prscr_clds_init">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call mgrp_prscr_clds_init (    pref, latb      )
+!		
+!  </TEMPLATE>
+!  <IN NAME="pref" TYPE="">
+! 
+!  </IN>
+!  <IN NAME="latb" TYPE="real">
+! 
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine mgrp_prscr_clds_init (    pref, latb      )
 
 !------------------------------------------------------------------
@@ -206,7 +243,7 @@ real, dimension(:,:), intent(in)             :: pref
        kerad = size(pref,1) - 1
       jdf = size(latb,1) - 1
 
-         allocate (jindx2  (size(latb,1)-1))
+         allocate (jindx2  (size(latb,1)-1)) ; jindx2 = 0.0
          call find_nearest_index (latb, jindx2)
 
 !---------------------------------------------------------------------
@@ -218,8 +255,8 @@ real, dimension(:,:), intent(in)             :: pref
 !   allocate space to hold the cloud radiative properties on the model
 !   grid (j,k)
 !---------------------------------------------------------------------
-      allocate( zcamtmxo    (jdf , KERAD))
-      allocate( zcamtrnd    (jdf , KERAD))
+      allocate( zcamtmxo    (jdf , KERAD)) ; zcamtmxo = 0.0
+      allocate( zcamtrnd    (jdf , KERAD)) ; zcamtrnd = 0.0
 
       allocate( zhi_cloud_gl(jdf ,     kerad  ))
       allocate( zmid_cloud_gl(jdf ,    kerad   ))
@@ -274,6 +311,18 @@ end subroutine mgrp_prscr_clds_init
 
 !######################################################################
 
+! <SUBROUTINE NAME="mgrp_prscr_clds_end">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call mgrp_prscr_clds_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine mgrp_prscr_clds_end
         
 !----------------------------------------------------------------------
@@ -295,6 +344,25 @@ end subroutine mgrp_prscr_clds_end
 
 !#####################################################################
 
+! <SUBROUTINE NAME="find_nearest_index">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call find_nearest_index (latb, jindx2)
+!		
+!  </TEMPLATE>
+!  <IN NAME="latb" TYPE="real">
+! 
+!  </IN>
+!  <OUT NAME="jindx2" TYPE="integer">
+! 
+!  </OUT>
+! </SUBROUTINE>
+!
 subroutine find_nearest_index (latb, jindx2)
 
 real, dimension(:), intent(in) :: latb
@@ -336,6 +404,38 @@ end subroutine find_nearest_index
 
 !######################################################################
 
+! <SUBROUTINE NAME="prscr_clds_amt">
+!  <OVERVIEW>
+!    prscr_clds_amt defines the location, amount (cloud fraction),
+!    number and type (hi, mid, low) of clouds present on the model grid.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    prscr_clds_amt defines the location, amount (cloud fraction),
+!    number and type (hi, mid, low) of clouds present on the model grid.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call prscr_clds_amt (is, ie, js, je, Cld_spec)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <INOUT NAME="Cld_spec" TYPE="cld_specification_type">
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine prscr_clds_amt (is, ie, js, je, Cld_spec)
 
 !---------------------------------------------------------------------
@@ -442,6 +542,62 @@ end subroutine prscr_clds_amt
 
 !######################################################################
 
+! <SUBROUTINE NAME="obtain_bulk_lw_prscr">
+!  <OVERVIEW>
+!    obtain_bulk_lw_prscr defines bulk longwave cloud radiative
+!    properties for the mgrp_prscr_clds cloud scheme.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    obtain_bulk_lw_prscr defines bulk longwave cloud radiative
+!    properties for the mgrp_prscr_clds cloud scheme.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call obtain_bulk_lw_prscr (is, ie, js, je, Cld_spec, Cldrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <INOUT NAME="Cld_spec" TYPE="cld_specification_type">
+!      Cld_spec          cloud specification arrays defining the
+!                        location, amount and type (hi, middle, lo)
+!                        of clouds that are present, provides input
+!                        to this subroutine
+!                        [ cld_specification_type ]
+! 
+!  </INOUT>
+!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output
+!               from this routine:
+!
+!                    %emrndlw   longwave cloud emissivity for
+!                               randomly overlapped clouds
+!                               in each of the longwave
+!                               frequency bands  [ dimensionless ]
+!                    %emmxolw   longwave cloud emissivity for
+!                               maximally overlapped clouds
+!                               in each of the longwave
+!                               frequency bands  [ dimensionless ]
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine obtain_bulk_lw_prscr (is, ie, js, je, Cld_spec, Cldrad_props)
 
 !---------------------------------------------------------------------
@@ -499,11 +655,11 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
         do j=1,size(Cld_spec%hi_cloud,2)
           do i=1,size(Cld_spec%hi_cloud,1)
             if (Cld_spec%hi_cloud(i,j,k)) then
-              Cldrad_props%emrndlw(i,j,k,:)  = cldem_hi
+              Cldrad_props%emrndlw(i,j,k,:,1)  = cldem_hi
             else if (Cld_spec%mid_cloud(i,j,k)) then
-              Cldrad_props%emrndlw(i,j,k,:)  = cldem_mid
+              Cldrad_props%emrndlw(i,j,k,:,1)  = cldem_mid
             else if (Cld_spec%low_cloud(i,j,k)) then
-              Cldrad_props%emmxolw(i,j,k,:)  = cldem_low
+              Cldrad_props%emmxolw(i,j,k,:,1)  = cldem_low
             endif
           end do
         end do
@@ -519,6 +675,63 @@ end subroutine obtain_bulk_lw_prscr
 
 !#####################################################################
 
+! <SUBROUTINE NAME="obtain_bulk_sw_prscr">
+!  <OVERVIEW>
+!    obtain_bulk_sw_zonal defines bulk shortwave cloud radiative
+!    properties for the zonal cloud scheme.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    obtain_bulk_sw_zonal defines bulk shortwave cloud radiative
+!    properties for the zonal cloud scheme.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call obtain_bulk_sw_prscr (is, ie, js, je, Cld_spec, Cldrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <INOUT NAME="Cld_spec" TYPE="cld_specification_type">
+!      Cld_spec          cloud specification arrays defining the
+!                        location, amount and type (hi, middle, lo)
+!                        of clouds that are present, provides input
+!                        to this subroutine
+!                        [ cld_specification_type ]
+! 
+!  </INOUT>
+!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output
+!               from this routine:
+!
+!                    %cirabsw   absorptivity of clouds in the
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cirrfsw   reflectivity of clouds in the
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cvisrfsw  reflectivity of clouds in the
+!                               visible frequency band
+!                               [ dimensionless ]
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine obtain_bulk_sw_prscr (is, ie, js, je, Cld_spec, Cldrad_props)
 
 !---------------------------------------------------------------------
@@ -609,6 +822,54 @@ end subroutine obtain_bulk_sw_prscr
 !##################################################################
 
 
+! <SUBROUTINE NAME="cldht">
+!  <OVERVIEW>
+!  This subroutine computes the heights of the cloud tops
+!  and bottoms for the fixed cloud model.  The observed data
+!  are from London (1954, 1957).  This data is a function of 10 deg.
+!  latitude bands (0-10, 10-20 and etc.), season and height
+!  in the orginal paper and only for
+!  the Northern Hemisphere for various cloud types.
+!  Dick and Suki averaged the four seasons together to get annual
+!  mean cloud heights for three type of clouds (hi, middle and low).
+!  Somebody also interpolated the data from the 10 deg latitude
+!  bands to 5 deg bands.  At the equator, this interpolation
+!  was more like an extrapolation.
+!  These heights were then put in pressure coordinates using
+!  a Skew-T diagram which assumes a "standard atmosphere".
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!  This subroutine computes the heights of the cloud tops
+!  and bottoms for the fixed cloud model.  The observed data
+!  are from London (1954, 1957).  This data is a function of 10 deg.
+!  latitude bands (0-10, 10-20 and etc.), season and height
+!  in the orginal paper and only for
+!  the Northern Hemisphere for various cloud types.
+!  Dick and Suki averaged the four seasons together to get annual
+!  mean cloud heights for three type of clouds (hi, middle and low).
+!  Somebody also interpolated the data from the 10 deg latitude
+!  bands to 5 deg bands.  At the equator, this interpolation
+!  was more like an extrapolation.
+!  These heights were then put in pressure coordinates using
+!  a Skew-T diagram which assumes a "standard atmosphere".
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call cldht (plevel, kkbh, kkth)
+!		
+!  </TEMPLATE>
+!  <IN NAME="plevel" TYPE="real">
+! 
+!  </IN>
+!  <OUT NAME="kkbh" TYPE="integer">
+! 
+!  </OUT>
+!  <OUT NAME="kkth" TYPE="integer">
+! 
+!  </OUT>
+! </SUBROUTINE>
+!
 subroutine cldht (plevel, kkbh, kkth)
 
 real, dimension(:), intent(in) :: plevel
@@ -762,6 +1023,35 @@ end subroutine cldht
 
 !##################################################################
 
+! <SUBROUTINE NAME="cldint">
+!  <OVERVIEW>
+!  This subroutine computes the indexes for the heights of the cloud
+!  tops and bottoms for the fixed cloud model.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!  This subroutine computes the indexes for the heights of the cloud
+!  tops and bottoms for the fixed cloud model.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call cldint(plevel, cldobs, kindex, nl)
+!		
+!  </TEMPLATE>
+!  <IN NAME="plevel" TYPE="real">
+! 
+!  </IN>
+!  <IN NAME="cldobs" TYPE="real">
+! 
+!  </IN>
+!  <OUT NAME="kindex" TYPE="integer">
+! 
+!  </OUT>
+!  <IN NAME="nl" TYPE="integer">
+! 
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine cldint(plevel, cldobs, kindex, nl)
  
 !-------------------------------------------------------------------
@@ -780,7 +1070,7 @@ real, dimension(:), intent(in) :: plevel
       integer                     :: j, k
       integer                     :: kerad
  
-      kerad = size(plevel) - 1
+      kerad = size(plevel(:)) - 1
 !---------------------------------------------------------------------
 !  Fill in Southern hemisphere cloud heights
 !---------------------------------------------------------------------

@@ -16,7 +16,7 @@ module vert_turb_driver_mod
 
 
 use      my25_turb_mod, only: my25_turb_init, my25_turb_end,  &
-                              my25_turb, tke_surf, tke
+                              my25_turb, tke_surf, get_tke
 
 use    diffusivity_mod, only: diffusivity, molecular_diff
 
@@ -57,8 +57,8 @@ public   vert_turb_driver_init, vert_turb_driver_end, vert_turb_driver
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 10.0 2003/10/24 22:00:53 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 11.0 2004/09/28 19:25:18 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
@@ -143,7 +143,7 @@ integer, intent(in),optional, dimension(:,:) :: kbot
 real   , dimension(size(t,1),size(t,2),size(t,3))   :: ape, thv
 logical, dimension(size(t,1),size(t,2),size(t,3)+1) :: lmask
 real   , dimension(size(t,1),size(t,2),size(t,3)+1) :: el, diag3
-real   , dimension(size(t,1),size(t,2),size(t,3)+1) :: tke_edt
+real   , dimension(size(t,1),size(t,2),size(t,3)+1) :: tke
 real   , dimension(size(t,1),size(t,2))             :: stbltop
 real   , dimension(size(t,1),size(t,2))             :: el0, vspblcap
 real   , dimension(size(diff_t,1),size(diff_t,2), &
@@ -245,20 +245,20 @@ if (do_mellor_yamada) then
 !    ---- compute tke, master length scale (el0),  -------------
 !    ---- length scale (el), and vert mix coeffs (diff_t,diff_m) ----
 
-     call tke_surf  (u_star, tke(is:ie,js:je,:), kbot=kbot)
+     call tke_surf  (is, js, u_star, kbot=kbot)
 
 
 
      if ( id_z_pbl > 0 ) then
      !------ compute pbl depth from k_profile if diagnostic needed -----
-     call my25_turb (dt_tke, frac_land, p_half, p_full, thv, uu, vv, &
-                     z_half, z_full, rough, tke(is:ie,js:je,:),      &
+     call my25_turb (is, js, dt_tke, frac_land, p_half, p_full, thv, uu, vv, &
+                     z_half, z_full, rough,   &
                      el0, el, diff_m, diff_t, &
                      mask=mask, kbot=kbot, &
                      ustar=u_star,bstar=b_star,h=z_pbl)
      else
-     call my25_turb (dt_tke, frac_land, p_half, p_full, thv, uu, vv, &
-                     z_half, z_full, rough, tke(is:ie,js:je,:),      &
+     call my25_turb (is, js, dt_tke, frac_land, p_half, p_full, thv, uu, vv, &
+                     z_half, z_full, rough,   &
                      el0, el, diff_m, diff_t, &
                      mask=mask, kbot=kbot)
      end if
@@ -292,12 +292,12 @@ else if (do_edt) then
       dt_tke = real(sec+day*86400)
  
 
-      tke_edt = 0.0
+      tke = 0.0
 
     call edt(is,ie,js,je,dt_tke,Time_next,tdtlw, u_star,b_star,q_star, &
              tt,qq,  &
              qlin,qiin,qain,uu,vv,z_full,p_full,z_half,p_half,stbltop, &
-             diff_m,diff_t,z_pbl,kbot=kbot,tke=tke_edt)
+             diff_m,diff_t,z_pbl,kbot=kbot,tke=tke)
 
 
  endif
@@ -389,8 +389,9 @@ if (do_mellor_yamada) then
 
 !------- tke --------------------------------
       if ( id_tke > 0 ) then
-         used = send_data ( id_tke, tke(is:ie,js:je,:), Time_next,  &
-                            is, js, 1, mask=lmask )
+         call get_tke(is,ie,js,je,tke)
+         used = send_data ( id_tke, tke, Time_next, is, js, 1, &
+                            mask=lmask )
       endif
 
 !------- length scale (at half levels) ------
@@ -418,7 +419,7 @@ if (do_edt) then
 
 !------- tke --------------------------------
       if ( id_tke > 0 ) then
-        used = send_data ( id_tke, tke_edt, Time_next, is, js, 1,     &
+        used = send_data ( id_tke, tke, Time_next, is, js, 1,     &
                           mask=lmask )
       endif
  

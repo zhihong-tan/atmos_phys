@@ -17,18 +17,18 @@
  private
 !---------------------------------------------------------------------
 
- public :: MY25_TURB, MY25_TURB_INIT, MY25_TURB_END, TKE_SURF
+ public :: MY25_TURB, MY25_TURB_INIT, MY25_TURB_END, TKE_SURF, get_tke
 
 !---------------------------------------------------------------------
 ! --- GLOBAL STORAGE
 !---------------------------------------------------------------------
 
-  real, public, allocatable, dimension(:,:,:) :: TKE
+  real, allocatable, dimension(:,:,:) :: TKE
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: my25_turb.F90,v 10.0 2003/10/24 22:00:36 fms Exp $'
- character(len=128) :: tagname = '$Name: jakarta $'
+ character(len=128) :: version = '$Id: my25_turb.F90,v 11.0 2004/09/28 19:20:03 fms Exp $'
+ character(len=128) :: tagname = '$Name: khartoum $'
  logical            :: module_is_initialized = .false.
  
  logical :: init_tke
@@ -89,9 +89,9 @@
 
 !#######################################################################
 
- SUBROUTINE MY25_TURB( delt, fracland, phalf, pfull, theta, &   
+ SUBROUTINE MY25_TURB( is, js, delt, fracland, phalf, pfull, theta, &   
                        um,   vm,       zhalf, zfull, z0,    &
-                       TKE,  el0,      el,    akm,   akh,   &
+                       el0,      el,    akm,   akh,   &
                        mask, kbot,     ustar, bstar, h    )
 
 !=======================================================================
@@ -113,6 +113,7 @@
 !       ustar    -  OPTIONAL:friction velocity (m/sec)
 !       bstar    -  OPTIONAL:buoyancy scale (m/sec**2)
 !---------------------------------------------------------------------
+  integer, intent(in)                   :: is, js
   real,    intent(in)                   :: delt 
   real,    intent(in), dimension(:,:)   :: fracland, z0
   real,    intent(in), dimension(:,:,:) :: phalf, pfull, zhalf, zfull
@@ -121,12 +122,6 @@
   integer, intent(in), OPTIONAL, dimension(:,:)   :: kbot
   real,    intent(in), OPTIONAL, dimension(:,:,:) :: mask
   real,    intent(in), OPTIONAL, dimension(:,:)   :: ustar, bstar
-
-!---------------------------------------------------------------------
-! Arguments (Intent in/out)
-!       TKE  -  turbulent kinetic energy
-!---------------------------------------------------------------------
-  real, intent(inout), dimension(:,:,:) :: TKE
 
 !---------------------------------------------------------------------
 ! Arguments (Intent out)
@@ -144,7 +139,7 @@
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
-  integer :: ix, jx, kx, i, j, k
+  integer :: ix, jx, kx, i, j, k, ism, jsm
   integer :: kxp, kxm, klim, it, itermax
   real    :: cvfqdt, dvfqdt
 
@@ -171,6 +166,8 @@
   kx  = SIZE( um, 3 )
   kxp = kx + 1
   kxm = kx - 1
+  ism = is - 1
+  jsm = js - 1
 
 !====================================================================
 ! --- SURFACE HEIGHT     
@@ -222,13 +219,19 @@
 !====================================================================
 
   if( PRESENT( mask ) ) then
-    where (mask(:,:,2:kx) < 0.1)   ! assume mask(k=1) always eq 1 ?
-         TKE(:,:,3:kxp) = 0.0
-        dsdz(:,:,2:kx ) = 0.0
-       dsdzh(:,:,1:kxm) = 0.0
-       shear(:,:,1:kxm) = 0.0
-      buoync(:,:,1:kxm) = 0.0
-    endwhere
+    do k=2,kx
+    do j=1,jx
+    do i=1,ix
+      if(mask(i,j,k) < 0.1) then
+          TKE(ism+i,jsm+j,k+1) = 0.0
+         dsdz(i,j,k  ) = 0.0
+        dsdzh(i,j,k-1) = 0.0
+        shear(i,j,k-1) = 0.0
+       buoync(i,j,k-1) = 0.0
+      endif
+    enddo
+    enddo
+    enddo
   endif
   
 !====================================================================
@@ -250,12 +253,18 @@
 ! --- SOME TKE STUFF
 !====================================================================
 
-  xx1(:,:,1:kx)  = 2.0 * TKE(:,:,2:kxp)
-  where (xx1(:,:,1:kx) > 0.0)
-    qm(:,:,1:kx)  = SQRT( xx1(:,:,1:kx) )
-  elsewhere
-    qm(:,:,1:kx)  = 0.0
-  endwhere
+  do k=1,kx
+  do j=1,jx
+  do i=1,ix
+    xx1(i,j,k) = 2*TKE(ism+i,jsm+j,k+1)
+    if(xx1(i,j,k) > 0.0) then
+      qm(i,j,k) = sqrt(xx1(i,j,k))
+    else
+      qm(i,j,k) = 0.0
+    endif
+  enddo
+  enddo
+  enddo
 
   qm2(:,:,1:kxm)  = xx1(:,:,1:kxm) 
   qm3(:,:,1:kxm)  =  qm(:,:,1:kxm) * qm2(:,:,1:kxm) 
@@ -441,11 +450,17 @@
 ! --- AND ENERGY DISSIPATION TERM 
 !-------------------------------------------------------------------
  
-  aaa(:,:,1:kxm) = -cvfqdt * xx1(:,:,2:kx ) * dsdzh(:,:,1:kxm)
-  ccc(:,:,1:kxm) = -cvfqdt * xx1(:,:,1:kxm) * dsdzh(:,:,1:kxm)
-  bbb(:,:,1:kxm) =     1.0 - aaa(:,:,1:kxm) -   ccc(:,:,1:kxm) 
-  bbb(:,:,1:kxm) =           bbb(:,:,1:kxm) +  xxm1(:,:,1:kxm)
-  ddd(:,:,1:kxm) =           TKE(:,:,2:kx )
+  do k=1,kxm
+  do j=1,jx
+  do i=1,ix
+    aaa(i,j,k) = -cvfqdt * xx1(i,j,k+1) * dsdzh(i,j,k)
+    ccc(i,j,k) = -cvfqdt * xx1(i,j,k  ) * dsdzh(i,j,k)
+    bbb(i,j,k) =     1.0 - aaa(i,j,k  ) -   ccc(i,j,k) 
+    bbb(i,j,k) =           bbb(i,j,k  ) +  xxm1(i,j,k)
+    ddd(i,j,k) =           TKE(ism+i,jsm+j,k+1)
+  enddo
+  enddo
+  enddo
 
 ! correction for vertical diffusion of TKE surface boundary condition
 
@@ -453,13 +468,15 @@
      do j = 1,jx
      do i = 1,ix
           k = kbot(i,j)
-          ddd(:,:,k-1) = ddd(:,:,k-1) - aaa(:,:,k-1) * TKE(:,:,k+1)
-!would this be correct? (arl)
-!          ddd(i,j,k-1) = ddd(i,j,k-1) - aaa(i,j,k-1) * TKE(i,j,k+1)
+          ddd(i,j,k-1) = ddd(i,j,k-1) - aaa(i,j,k-1) * TKE(ism+i,jsm+j,k+1)
      enddo
      enddo
   else
-          ddd(:,:,kxm) = ddd(:,:,kxm) - aaa(:,:,kxm) * TKE(:,:,kxp)
+     do j = 1,jx
+     do i = 1,ix
+          ddd(i,j,kxm) = ddd(i,j,kxm) - aaa(i,j,kxm) * TKE(ism+i,jsm+j,kxp)
+     enddo
+     enddo
   endif
 
 ! mask out terms below ground
@@ -477,7 +494,13 @@
 !-------------------------------------------------------------------
 
  if( PRESENT( mask ) ) then
-    where (mask(:,:,2:kx) < 0.1) xxm1(:,:,1:kxm) = TKE(:,:,2:kx)
+   do k=1,kxm
+   do j=1,jx
+   do i=1,ix
+     if(mask(i,j,k+1) < 0.1) xxm1(i,j,k) = TKE(ism+i,jsm+j,k+1)
+   enddo
+   enddo
+   enddo
  endif
 
 !-------------------------------------------------------------------
@@ -491,18 +514,30 @@
 ! --- UPDATE TURBULENT KINETIC ENERGY
 !-------------------------------------------------------------------
 
-  TKE(:,:,1)    = 0.0
-  TKE(:,:,2:kx) = xxm1(:,:,1:kxm) +  xxm2(:,:,1:kxm)
+  do j=1,jx
+  do i=1,ix
+    TKE(ism+i,jsm+j,1) = 0.0
+    do k=2,kx
+      TKE(ism+i,jsm+j,k) = xxm1(i,j,k-1) + xxm2(i,j,k-1)
+    enddo
+  enddo
+  enddo
 
 !====================================================================
 ! --- BOUND TURBULENT KINETIC ENERGY
 !====================================================================
 
-  TKE = MIN( TKE, TKEmax )
-  TKE = MAX( TKE, TKEmin )
+  TKE(is:ism+ix,js:jsm+jx,:) = MIN( TKE(is:ism+ix,js:jsm+jx,:), TKEmax )
+  TKE(is:ism+ix,js:jsm+jx,:) = MAX( TKE(is:ism+ix,js:jsm+jx,:), TKEmin )
 
   if( PRESENT( mask ) ) then
-     where (mask(:,:,1:kx) < 0.1) TKE(:,:,2:kxp) = 0.0
+    do k=1,kx
+    do j=1,jx
+    do i=1,ix
+      if(mask(i,j,k) < 0.1) TKE(ism+i,jsm+j,k+1) = 0.0
+    enddo
+    enddo
+    enddo
   endif
 
 !====================================================================
@@ -533,6 +568,18 @@
 !====================================================================
   end SUBROUTINE MY25_TURB 
 
+!#######################################################################
+subroutine get_tke(is, ie, js, je, tke_out)
+integer, intent(in) :: is, ie, js, je
+real, intent(out), dimension(:,:,:) :: tke_out
+
+if( .not. module_is_initialized ) then
+  CALL ERROR_MESG(' MY25_TURB','MY25_TURB_INIT has not been called',FATAL)
+endif
+
+tke_out = TKE(is:ie,js:je,:)
+
+end subroutine get_tke
 !#######################################################################
 
   SUBROUTINE MY25_TURB_INIT( ix, jx, kx )
@@ -620,7 +667,7 @@
 !---------------------------------------------------------------------
 
   if( ALLOCATED( TKE ) ) DEALLOCATE( TKE )
-                           ALLOCATE( TKE(ix,jx,kx+1) )
+                           ALLOCATE( TKE(ix,jx,kx+1) ) ; TKE = TKEmin
 
 !---------------------------------------------------------------------
 ! --- Input TKE
@@ -762,7 +809,7 @@ enddo
 
 !#######################################################################
 
- SUBROUTINE TKE_SURF ( u_star, TKE, kbot )
+ SUBROUTINE TKE_SURF ( is, js, u_star, kbot )
 
 !=======================================================================
 !---------------------------------------------------------------------
@@ -771,15 +818,10 @@ enddo
 !       kbot   -  OPTIONAL;lowest model level index (integer);
 !                 at levels > Kbot, Mask = 0.
 !---------------------------------------------------------------------
+  integer, intent(in) :: is, js
   real, intent(in), dimension(:,:)   :: u_star
 
   integer, intent(in), OPTIONAL, dimension(:,:) :: kbot
-
-!---------------------------------------------------------------------
-! Arguments (Intent inout)
-!       TKE  -  turbulent kinetic energy
-!---------------------------------------------------------------------
-  real, intent(inout), dimension(:,:,:) :: TKE
 
 !---------------------------------------------------------------------
 !  (Intent local)
@@ -800,12 +842,16 @@ enddo
   if( PRESENT( kbot ) ) then
     do j = 1,jx
     do i = 1,ix
-       k = kbot(i,j) + 1
-      TKE(i,j,k) = x1(i,j) 
+      k = kbot(i,j) + 1
+      TKE(is+i-1,js+j-1,k) = x1(i,j) 
     end do
     end do
   else
-      TKE(:,:,kxp) = x1(:,:) 
+    do j = 1,jx
+    do i = 1,ix
+      TKE(is+i-1,js+j-1,kxp) = x1(i,j) 
+    end do
+    end do
   endif
 
 !=======================================================================

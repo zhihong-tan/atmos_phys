@@ -47,8 +47,8 @@ public :: moist_conv, moist_conv_Init, moist_conv_end
 !-----------------------------------------------------------------------
 !---- VERSION NUMBER -----
 
- character(len=128) :: version = '$Id: moist_conv.F90,v 10.0 2003/10/24 22:00:34 fms Exp $'
- character(len=128) :: tagname = '$Name: jakarta $'
+ character(len=128) :: version = '$Id: moist_conv.F90,v 11.0 2004/09/28 19:19:43 fms Exp $'
+ character(len=128) :: tagname = '$Name: khartoum $'
  logical            :: module_is_initialized = .false.
 
 !---------- initialize constants used by this module -------------------
@@ -59,8 +59,8 @@ public :: moist_conv, moist_conv_Init, moist_conv_end
  real, parameter :: rocp = rdgas/cp_air
 
 real :: missing_value = -999.
-integer               :: num_tracers
-integer, allocatable, dimension(:) :: id_tracer_conv, id_tracer_conv_col
+!integer               :: num_tracers
+!nteger, allocatable, dimension(:) :: id_tracer_conv, id_tracer_conv_col
  integer :: nsphum, nql, nqi, nqa   ! tracer indices for stratiform clouds
 
 integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
@@ -71,6 +71,11 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
 character(len=3) :: mod_name = 'mca'
 logical :: used
 
+logical :: do_mca_tracer = .false.
+integer :: num_mca_tracers = 0
+integer               :: num_tracers
+integer, allocatable, dimension(:) :: id_tracer_conv, id_tracer_conv_col
+
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 
@@ -80,8 +85,10 @@ CONTAINS
 
  subroutine moist_conv ( Tin, Qin, Pfull, Phalf, coldT,    &
                          Tdel, Qdel, Rain, Snow, Lbot, &
-                         do_strat, tracer, tracertnd, &
-                         dtinv, Time, mask, is, js, Conv )
+                         do_strat, ql, qi, cf,  &
+                         qldel, qidel, cfdel,   &
+                         dtinv, Time, mask, is, js, Conv, &
+                         tracers, qtrmca )
 
 !-----------------------------------------------------------------------
 !
@@ -128,8 +135,10 @@ CONTAINS
  logical, intent(in)                                :: do_strat
     real, intent(IN)                                :: dtinv
  integer, intent(IN)                                :: is, js     
-    real, intent(INOUT), dimension(:,:,:,:)         :: tracer
-    real, intent(INOUT), dimension(:,:,:,:), target :: tracertnd
+    real, intent(INOUT), dimension(:,:,:) :: ql, qi, cf
+    real, dimension(:,:,:,:), intent(in), optional :: tracers
+    real, dimension(:,:,:,:), intent(out), optional :: qtrmca
+    real, intent(INOUT), dimension(:,:,:) :: qldel, qidel, cfdel
 type(time_type), intent(in)                         :: Time
    real, intent(in) ,    dimension(:,:,:), optional :: mask
          
@@ -155,13 +164,14 @@ integer :: i,j,k,kk,KX,ITER,MXLEV,MXLEV1,kstart,KTOP,KBOT,KBOTM1
 real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta
 
 
-real, dimension(SIZE(tracer,1),SIZE(tracer,2),SIZE(tracer,3)) :: cf
-real, pointer, dimension(:,:,:) :: cfdel => NULL(), &
-                                   qldel => NULL(), &
-                                   qidel => NULL()
+!real, dimension(SIZE(tracer,1),SIZE(tracer,2),SIZE(tracer,3)) :: cf
+!real, pointer, dimension(:,:,:) :: cfdel => NULL(), &
+!                                   qldel => NULL(), &
+!                                   qidel => NULL()
 logical :: cf_Present
 real, dimension(size(Phalf,1),size(Phalf,2),size(Phalf,3)) :: pmass
 real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
+integer  :: tr
 !-----------------------------------------------------------------------
 
       if (.not. module_is_initialized) call ERROR_MESG( 'MCA',  &
@@ -171,10 +181,10 @@ real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
       cf_Present = .FALSE.
       if ( do_strat ) then
         cf_Present = .TRUE.
-        cf=tracer(:,:,:,nqa)
-        cfdel => tracertnd(:,:,:,nqa)
-        qldel => tracertnd(:,:,:,nql)
-        qidel => tracertnd(:,:,:,nqi)
+!       cf=tracer(:,:,:,nqa)
+!       cfdel => tracertnd(:,:,:,nqa)
+!       qldel => tracertnd(:,:,:,nql)
+!       qidel => tracertnd(:,:,:,nqi)
       endif  
 
         do k=1,size(Phalf,3)
@@ -524,15 +534,24 @@ real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
 !-------              in the case of strat                 -----------
 
       if (do_strat) then
-         tracer(:,:,:,nql)=tracer(:,:,:,nql)+tracertnd(:,:,:,nql)
-         tracer(:,:,:,nqi)=tracer(:,:,:,nqi)+tracertnd(:,:,:,nqi)
-         tracer(:,:,:,nqa)=tracer(:,:,:,nqa)+tracertnd(:,:,:,nqa)
-
-         tracertnd(:,:,:,nql)=tracertnd(:,:,:,nql)*dtinv
-         tracertnd(:,:,:,nqi)=tracertnd(:,:,:,nqi)*dtinv
-         tracertnd(:,:,:,nqa)=tracertnd(:,:,:,nqa)*dtinv
+         ql    (:,:,:    )=ql    (:,:,:    )+qldel    (:,:,:    )
+         qi    (:,:,:    )=qi    (:,:,:    )+qidel    (:,:,:    )
+         cf    (:,:,:    )=cf    (:,:,:    )+cfdel    (:,:,:    )
+ 
+         qldel    (:,:,:)=qldel    (:,:,:)*dtinv
+         qidel    (:,:,:)=qidel    (:,:,:)*dtinv
+         cfdel    (:,:,:)=cfdel    (:,:,:)*dtinv
       endif   
       
+!---------------------------------------------------------------------
+!   define the effect of moist convective adjustment on the tracer 
+!   fields. code to do so does not currently exist.
+!---------------------------------------------------------------------
+      if (present(qtrmca)) then
+        qtrmca = 0.
+      endif
+ 
+
 !------- diagnostics for dt/dt_ras -------
       if ( id_tdt_conv > 0 ) then
         used = send_data ( id_tdt_conv, Tdel, Time, is, js, 1, &
@@ -575,19 +594,19 @@ real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
 
       !------- diagnostics for dql/dt from RAS or donner -------
       if ( id_qldt_conv > 0 ) then
-        used = send_data ( id_qldt_conv, tracertnd(:,:,:,nql), Time, is, js, 1, &
+        used = send_data ( id_qldt_conv, qldel(:,:,:), Time, is, js, 1, &
                            rmask=mask )
       endif
       
       !------- diagnostics for dqi/dt from RAS or donner -------
       if ( id_qidt_conv > 0 ) then
-        used = send_data ( id_qidt_conv, tracertnd(:,:,:,nqi), Time, is, js, 1, &
+        used = send_data ( id_qidt_conv, qidel(:,:,:), Time, is, js, 1, &
                            rmask=mask )
       endif
       
       !------- diagnostics for dqa/dt from RAS or donner -------
       if ( id_qadt_conv > 0 ) then
-        used = send_data ( id_qadt_conv, tracertnd(:,:,:,nqa), Time, is, js, 1, &
+        used = send_data ( id_qadt_conv, cfdel(:,:,:), Time, is, js, 1, &
                            rmask=mask )
       endif
 
@@ -595,7 +614,7 @@ real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
       if ( id_ql_conv_col > 0 ) then
         tempdiag(:,:)=0.
         do k=1,kx
-          tempdiag(:,:) = tempdiag(:,:) + tracertnd(:,:,k,nql)*pmass(:,:,k)
+          tempdiag(:,:) = tempdiag(:,:) + qldel(:,:,k)*pmass(:,:,k)
         end do
         used = send_data ( id_ql_conv_col, tempdiag, Time, is, js )
       end if
@@ -604,7 +623,7 @@ real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
       if ( id_qi_conv_col > 0 ) then
         tempdiag(:,:)=0.
         do k=1,kx
-          tempdiag(:,:) = tempdiag(:,:) + tracertnd(:,:,k,nqi)*pmass(:,:,k)
+          tempdiag(:,:) = tempdiag(:,:) + qidel(:,:,k)*pmass(:,:,k)
         end do
         used = send_data ( id_qi_conv_col, tempdiag, Time, is, js )
       end if
@@ -613,12 +632,31 @@ real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
       if ( id_qa_conv_col > 0 ) then
         tempdiag(:,:)=0.
         do k=1,kx
-          tempdiag(:,:) = tempdiag(:,:) + tracertnd(:,:,k,nqa)*pmass(:,:,k)
+          tempdiag(:,:) = tempdiag(:,:) + cfdel(:,:,k)*pmass(:,:,k)
         end do
         used = send_data ( id_qa_conv_col, tempdiag, Time, is, js )
       end if
          
    end if !end do strat if
+
+   do tr = 1, num_mca_tracers
+!------- diagnostics for dtracer/dt from RAS -------------
+     if ( id_tracer_conv(tr) > 0 ) then
+       used = send_data ( id_tracer_conv(tr), qtrmca(:,:,:,tr), Time, is, js, 1, &
+                          rmask=mask )
+     endif
+ 
+!------- diagnostics for column tracer path tendency -----
+     if ( id_tracer_conv_col(tr) > 0 ) then
+       tempdiag(:,:)=0.
+       do k=1,kx
+         tempdiag(:,:) = tempdiag(:,:) + qtrmca(:,:,k,tr)*pmass(:,:,k)
+       end do
+       used = send_data ( id_tracer_conv_col(tr), tempdiag, Time, is, js )
+     end if
+
+ 
+   enddo
 
  end subroutine moist_conv
 
@@ -764,14 +802,18 @@ END SUBROUTINE CONV_DETR
 
 !#######################################################################
 
- subroutine moist_conv_init (axes, Time)
+subroutine moist_conv_init (axes, Time, tracers_in_mca)
 
  integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
+ logical, dimension(:), intent(in), optional :: tracers_in_mca
 
 !-----------------------------------------------------------------------
       
  integer :: unit, io, ierr
+ integer :: nn, tr
+ character(len=128) :: diagname, diaglname, tendunits, name, units
+
 
 !-----------------------------------------------------------------------
 
@@ -823,19 +865,71 @@ END SUBROUTINE CONV_DETR
 !---------------------------------------------------------------------
   call get_number_tracers(MODEL_ATMOS,num_tracers)
   if ( num_tracers .gt. 0 ) then
-    allocate(id_tracer_conv(num_tracers))
-    allocate(id_tracer_conv_col(num_tracers))
   else
     call error_mesg('moist_conv_init', 'No atmospheric tracers found', FATAL)
   endif
-!  call get_tracer_indices(MODEL_ATMOS, tr_indices)  
-!  if (do_strat) then
     ! get tracer indices for stratiform cloud variables
       nsphum = get_tracer_index ( MODEL_ATMOS, 'sphum' )
       nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
       nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
       nqa = get_tracer_index ( MODEL_ATMOS, 'cld_amt' )
-!  endif
+
+     
+!----------------------------------------------------------------------
+!    determine how many tracers are to be transported by moist_conv_mod.
+!----------------------------------------------------------------------
+      num_mca_tracers = count(tracers_in_mca)
+      if (num_mca_tracers > 0) then
+        do_mca_tracer = .true.
+      else
+        do_mca_tracer = .false.
+      endif
+
+!---------------------------------------------------------------------
+!    allocate the arrays to hold the diagnostics for the moist_conv 
+!    tracers.
+!---------------------------------------------------------------------
+      allocate(id_tracer_conv    (num_mca_tracers)) ; id_tracer_conv = 0
+      allocate(id_tracer_conv_col(num_mca_tracers)) ; id_tracer_conv_col = 0
+      nn = 1
+      do tr = 1,num_tracers
+        if (tracers_in_mca(tr)) then
+          call get_tracer_names(MODEL_ATMOS, tr, name=name, units=units)
+ 
+!----------------------------------------------------------------------
+!    for the column tendencies, the name for the diagnostic will be 
+!    the name of the tracer followed by 'dt_MCA'. the longname will be 
+!    the name of the tracer followed by ' tendency from MCA'. units are
+!    the supplied units of the tracer divided by seconds.
+!----------------------------------------------------------------------
+      diagname = trim(name)//'dt_MCA'
+      diaglname = trim(name)//' tendency from MCA'
+      tendunits = trim(units)//'/s'
+      id_tracer_conv(nn) = register_diag_field ( mod_name, &
+                             trim(diagname), axes(1:3), Time, &
+                             trim(diaglname), trim(tendunits),  &
+                             missing_value=missing_value        )
+
+!----------------------------------------------------------------------
+!    for the column integral  tendencies, the name for the diagnostic 
+!    will be the name of the tracer followed by 'dt_MCA_col'. the long-
+!    name will be the name of the tracer followed by ' path tendency 
+!    from MCA'. units are the supplied units of the tracer multiplied
+!    by m**2 /kg divided by seconds.
+!----------------------------------------------------------------------
+      diagname = trim(name)//'dt_MCA_col'
+      diaglname = trim(name)//' path tendency from MCA'
+      tendunits = trim(units)//'m2/kg/s'
+      id_tracer_conv_col(nn) = register_diag_field ( mod_name, &
+                                 trim(diagname), axes(1:2), Time, &
+                                 trim(diaglname), trim(tendunits),  &
+                                 missing_value=missing_value)
+      nn = nn + 1
+     endif
+    end do
+
+
+
 
       module_is_initialized = .true.
 

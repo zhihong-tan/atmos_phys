@@ -1,5 +1,20 @@
+!FDOC_TAG_GFDL
  
                  module standalone_clouds_mod
+! <CONTACT EMAIL="fei.liu@noaa.gov">
+! fil   
+! </CONTACT>
+! <REVIEWER EMAIL="">
+!   
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!   
+! </OVERVIEW>
+! <DESCRIPTION>
+!   
+! </DESCRIPTION>
+!
 
 use time_manager_mod,           only: time_type, time_manager_init
 use fms_mod,                    only: fms_init, open_namelist_file, &
@@ -41,8 +56,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 10.0 2003/10/24 22:00:47 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: jakarta $'
+  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 11.0 2004/09/28 19:24:21 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 
@@ -161,6 +176,37 @@ real  ::       pie
 
 !####################################################################
 
+! <SUBROUTINE NAME="standalone_clouds_init">
+!  <OVERVIEW>
+!    subroutine standalone_clouds_init is the constructor for the
+!    standalone_clouds_mod.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    subroutine standalone_clouds_init is the constructor for the
+!    standalone_clouds_mod.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call standalone_clouds_init (pref, lonb, latb)
+!		
+!  </TEMPLATE>
+!  <IN NAME="pref" TYPE="real">
+!       pref      array containing two reference pressure profiles
+!                 for use in defining transmission functions [ Pa ]
+! 
+!  </IN>
+!  <IN NAME="lonb" TYPE="real">
+!       lonb      array of model longitudes on cell boundaries
+!                 [ radians ]
+! 
+!  </IN>
+!  <IN NAME="latb" TYPE="real">
+!       latb      array of model latitudes at cell boundaries [radians]
+! 
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine standalone_clouds_init (pref, lonb, latb)
 
 !--------------------------------------------------------------------
@@ -422,6 +468,11 @@ real, dimension(:),   intent(in)    ::  lonb, latb
           icm  = 9 
           ict  = 10 
           icb  = 12 
+         else if (trim(Environment%column_type) == 'fms') then  
+          ich  = 6   
+          icm  = 9       
+          ict  = 10  
+          icb  = 12
         else
           call error_mesg ('standalone_clouds_mod', &
             'cloud properties have not been specified for'//&
@@ -513,6 +564,39 @@ end subroutine standalone_clouds_init
 
 !####################################################################
 
+! <SUBROUTINE NAME="define_column_properties">
+!  <OVERVIEW>
+!    subroutine define_column_properties defines values for lw emiss-
+!    ivity, visible and nir reflectivity and nir absorption to be used
+!    with standalone clouds.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    subroutine define_column_properties defines values for lw emiss-
+!    ivity, visible and nir reflectivity and nir absorption to be used
+!    with standalone clouds.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call define_column_properties (pref, lonb, latb)
+!		
+!  </TEMPLATE>
+!  <IN NAME="pref" TYPE="real">
+!       pref      array containing two reference pressure profiles
+!                 for use in defining transmission functions [ Pa ]
+! 
+!  </IN>
+!  <IN NAME="lonb" TYPE="real">
+!       lonb      array of model longitudes on cell boundaries
+!                 [ radians ]
+! 
+!  </IN>
+!  <IN NAME="latb" TYPE="real">
+!       latb      array of model latitudes at cell boundaries [radians]
+! 
+!  </IN>
+! </SUBROUTINE>
+!
 subroutine define_column_properties (pref, lonb, latb)
 
 !---------------------------------------------------------------------
@@ -762,6 +846,20 @@ end subroutine define_column_properties
 
 !######################################################################
 
+! <SUBROUTINE NAME="standalone_clouds_end">
+!  <OVERVIEW>
+!    standalone_clouds_end is the destructor for standalone_clouds_mod.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    standalone_clouds_end is the destructor for standalone_clouds_mod.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call standalone_clouds_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine standalone_clouds_end
         
 !----------------------------------------------------------------------
@@ -782,6 +880,79 @@ end subroutine standalone_clouds_end
 
 !#################################################################
 
+! <SUBROUTINE NAME="standalone_clouds_amt">
+!  <OVERVIEW>
+!    standalone_clouds_amt defines the number, amount (cloud fraction),
+!    and type (hi, mid, low) of clouds present on the model grid.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    standalone_clouds_amt defines the number, amount (cloud fraction),
+!    and type (hi, mid, low) of clouds present on the model grid.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call standalone_clouds_amt (is, ie, js, je, lat, press_mks,  &
+!		Cld_spec)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+! 
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="lat" TYPE="real">
+!      lat          latitude of model points  [ radians ]
+! 
+!  </IN>
+!  <IN NAME="press_mks" TYPE="real">
+!      press_mks    pressure at model levels (1:nlev), surface
+!                   pressure is stored at index value nlev+1
+!                   [ (kg /( m s^2) ]
+! 
+!  </IN>
+!  <INOUT NAME="Cld_spec" TYPE="cld_specification_type">
+!      Cld_spec     cld_specification_type variable containing the
+!                   cloud specification input fields needed by the
+!                   radiation package
+!
+!               the following elements of Cld_spec are defined here:
+!
+!                  %cmxolw  fraction of maximally overlapped clouds
+!                           seen by the longwave radiation
+!                           [ dimensionless ]
+!                  %crndlw  fraction of randomly overlapped clouds
+!                           seen by the longwave radiation
+!                           [ dimensionless ]
+!                  %camtsw  cloud fraction seen by the shortwave
+!                           radiation; the sum of the maximally
+!                           overlapped and randomly overlapped
+!                           longwave cloud fractions  [ dimensionless ]
+!                  %nmxolw  number of maximally overlapped longwave
+!                           clouds in each grid column.
+!                  %nrndlw  number of randomly overlapped longwave
+!                           clouds in each grid column.
+!                  %ncldsw  number of clouds seen by he shortwave
+!                           radiation in each grid column.
+!                  %hi_cld  logical flag indicating the presence of
+!                           high clouds in a grid box
+!                 %mid_cld  logical flag indicating the presence of
+!                           middle clouds in a grid box
+!                 %low_cld  logical flag indicating the presence of
+!                           low clouds in a grid box
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine standalone_clouds_amt (is, ie, js, je, lat, press_mks,  &
                                   Cld_spec)
 
@@ -958,6 +1129,75 @@ end subroutine standalone_clouds_amt
 
 !#####################################################################
 
+! <SUBROUTINE NAME="obtain_micro_lw_sa">
+!  <OVERVIEW>
+!    obtain_micro_lw_sa defines microphysically-based longwave cloud
+!    radiative properties when the code is executed in standalone
+!    columns mode.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    obtain_micro_lw_sa defines microphysically-based longwave cloud
+!    radiative properties when the code is executed in standalone
+!    columns mode.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call obtain_micro_lw_sa (is, ie, js, je, Lsc_microphys, &
+!		Meso_microphys, Cell_microphys, &
+!		Lscrad_props,  Mesorad_props, &
+!		Cellrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <INOUT NAME="Lsc_microphys" TYPE="microphysics_type">
+!      Lsc_microphys     microphysical specification for large-scale
+!                        clouds, provides input to this subroutine
+!                        [ microphysics_type ]
+! 
+!  </INOUT>
+!  <INOUT NAME="Meso_microphys" TYPE="microphysics_type">
+!      Meso_microphys    microphysical specification for meso-scale
+!                        clouds, provides input to this subroutine
+!                        [ microphysics_type ]
+! 
+!  </INOUT>
+!  <INOUT NAME="Cell_microphys" TYPE="microphysics_type">
+!      Cell_microphys    microphysical specification for cell-scale
+!                        clouds, provides input to this subroutine
+!                        [ microphysics_type ]
+! 
+!  </INOUT>
+!  <INOUT NAME="Lscrad_props" TYPE="microrad_properties_type">
+!      Lscrad_props      cloud radiative properties on model grid,
+!                        [ microrad_properties_type ]
+! 
+!  </INOUT>
+!  <INOUT NAME="Mesorad_props" TYPE="microrad_properties_type">
+!      Mesorad_props     meso-scale cloud radiative properties on
+!                        model grid, [ microrad_properties_type ]
+! 
+!  </INOUT>
+!  <INOUT NAME="Cellrad_props" TYPE="microrad_properties_type">
+!      Cellrad_props     cell-scale cloud radiative properties on
+!                        model grid, [ microrad_properties_type ]
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine obtain_micro_lw_sa (is, ie, js, je, Lsc_microphys, &
                                Meso_microphys, Cell_microphys, &
                                Lscrad_props,  Mesorad_props, &
@@ -1041,6 +1281,58 @@ end subroutine obtain_micro_lw_sa
 
 !#####################################################################
 
+! <SUBROUTINE NAME="obtain_micro_sw_sa">
+!  <OVERVIEW>
+!    obtain_micro_sw_sa defines microphysically-based shortwave cloud
+!    radiative properties for the standalone cloud scheme when run in
+!    columns mode.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    obtain_micro_sw_sa defines microphysically-based shortwave cloud
+!    radiative properties for the standalone cloud scheme when run in
+!    columns mode.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call obtain_micro_sw_sa (is, ie, js, je, Lsc_microphys,   &
+!		Meso_microphys, Cell_microphys,   &
+!		Lscrad_props, Mesorad_props,   &
+!		Cellrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <INOUT NAME="Lsc_microphys" TYPE="microphysics_type">
+! 
+!  </INOUT>
+!  <INOUT NAME="Meso_microphys" TYPE="microphysics_type">
+! 
+!  </INOUT>
+!  <INOUT NAME="Cell_microphys" TYPE="microphysics_type">
+! 
+!  </INOUT>
+!  <INOUT NAME="Lscrad_props" TYPE="microrad_properties_type">
+! 
+!  </INOUT>
+!  <INOUT NAME="Mesorad_props" TYPE="microrad_properties_type">
+! 
+!  </INOUT>
+!  <INOUT NAME="Cellrad_props" TYPE="microrad_properties_type">
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine obtain_micro_sw_sa (is, ie, js, je, Lsc_microphys,   &
                                Meso_microphys, Cell_microphys,   &
                                Lscrad_props, Mesorad_props,   &
@@ -1133,6 +1425,54 @@ end subroutine obtain_micro_sw_sa
 
 !#####################################################################
 
+! <SUBROUTINE NAME="obtain_bulk_lw_sa">
+!  <OVERVIEW>
+!    obtain_bulk_lw_sa defines bulk longwave cloud radiative properties
+!    when using specified clouds in the standalone columns mode.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    obtain_bulk_lw_sa defines bulk longwave cloud radiative properties
+!    when using specified clouds in the standalone columns mode.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call obtain_bulk_lw_sa (is, ie, js, je, Cldrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+! 
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output
+!               from this routine:
+!
+!                    %emrndlw   longwave cloud emissivity for
+!                               randomly overlapped clouds
+!                               in each of the longwave
+!                               frequency bands  [ dimensionless ]
+!                    %emmxolw   longwave cloud emissivity for
+!                               maximally overlapped clouds
+!                               in each of the longwave
+!                               frequency bands  [ dimensionless ]
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine obtain_bulk_lw_sa (is, ie, js, je, Cldrad_props)
 
 !---------------------------------------------------------------------
@@ -1179,8 +1519,8 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
 !--------------------------------------------------------------------
       do j=1,size(Cldrad_props%emrndlw,2)
         do i=1,cloud_data_points
-          Cldrad_props%emmxolw(i,j,:,:) = emlw_band_in(i,:,:)
-          Cldrad_props%emrndlw(i,j,:,:) = emlw_band_in(i,:,:)
+          Cldrad_props%emmxolw(i,j,:,:,1) = emlw_band_in(i,:,:)
+          Cldrad_props%emrndlw(i,j,:,:,1) = emlw_band_in(i,:,:)
         end do
       end do
 
@@ -1192,6 +1532,40 @@ end subroutine obtain_bulk_lw_sa
 
 !#####################################################################
 
+! <SUBROUTINE NAME="obtain_bulk_sw_sa">
+!  <OVERVIEW>
+!    obtain_bulk_sw_sa defines bulk shortwave cloud radiative
+!    properties for the specified cloud scheme when running in
+!    standalone columns mode.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    obtain_bulk_sw_sa defines bulk shortwave cloud radiative
+!    properties for the specified cloud scheme when running in
+!    standalone columns mode.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call obtain_bulk_sw_sa (is, ie, js, je, Cldrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine obtain_bulk_sw_sa (is, ie, js, je, Cldrad_props)
 
 !---------------------------------------------------------------------

@@ -10,7 +10,6 @@
 !  Module that supplies cloud radiative properties
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!  Module that supplies cloud radiative properties
 ! </DESCRIPTION>
 
 ! shared modules:
@@ -64,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 10.0 2003/10/24 22:00:40 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 11.0 2004/09/28 19:21:09 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -298,7 +297,8 @@ type(time_type),         intent(in)    ::   Time
 !    with an error message.
 !---------------------------------------------------------------------
         if (Cldrad_control%do_strat_clouds .or. &
-            Cldrad_control%do_donner_deep_clouds) then
+            Cldrad_control%do_donner_deep_clouds .or. &
+            Cldrad_control%do_zetac_clouds) then
           if (Cldrad_control%do_sw_micro .and.   &
               Cldrad_control%do_lw_micro) then
             Cldrad_control%do_pred_cld_microphys = .true.
@@ -370,7 +370,13 @@ type(time_type),         intent(in)    ::   Time
                'must specify microphys_form when using microphysica'//&
                 'lly-based cld rad scheme', FATAL)
           else
-            Cldrad_control%do_bulk_microphys = .true.
+            if ((Environment%running_standalone .and. &
+                 Environment%column_type == 'fms')) then
+              call error_mesg ('cloudrad_package_mod',  &
+              ' bulk microphysics not allowed with fms columns', FATAL)
+            else
+              Cldrad_control%do_bulk_microphys = .true.
+            endif
           endif
         endif
 
@@ -411,9 +417,11 @@ type(time_type),         intent(in)    ::   Time
 !    call cloudrad_diagnostics_init to initialize the netcdf diagnostics
 !    associated with the cloudrad package.
 !-------------------------------------------------------------------
-      if ( (Environment%running_gcm .or.    &
-            Environment%running_sa_model)   .and. &
-            .not. Cldrad_control%do_no_clouds) then
+      if ( ((Environment%running_gcm .or.    &  
+             Environment%running_sa_model)   .or. &     
+            (Environment%running_standalone .and. &     
+             Environment%column_type == 'fms')) .and. &
+           .not. Cldrad_control%do_no_clouds) then
         call cloudrad_diagnostics_init (axes, Time)
       endif
 
@@ -610,15 +618,25 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !---------------------------------------------------------------------
       if (.not. Cldrad_control%do_no_clouds) then
         if (Cldrad_control%do_lw_micro) then
-          call microphys_lw_driver (is, ie, js, je, Lsc_microphys,  &
-                                    Lscrad_props)
+          if (Cldrad_control%do_ica_calcs) then
+            call microphys_lw_driver (is, ie, js, je, Lsc_microphys,  &
+                                      Cloud_rad_props=Cldrad_props)
+          else
+            call microphys_lw_driver (is, ie, js, je, Lsc_microphys,  &
+                                      Micro_rad_props=Lscrad_props)
+          endif
         else
           call bulkphys_lw_driver (is, ie, js, je, Cld_spec,    &
                                    Cldrad_props)
         endif
         if (Cldrad_control%do_sw_micro) then
-          call microphys_sw_driver (is, ie, js, je, Lsc_microphys,  &
-                                    Lscrad_props)
+          if (Cldrad_control%do_ica_calcs) then
+            call microphys_sw_driver (is, ie, js, je, Lsc_microphys,  &
+                                      Cloud_rad_props=Cldrad_props)
+          else
+            call microphys_sw_driver (is, ie, js, je, Lsc_microphys,  &
+                                      Micro_rad_props=Lscrad_props)
+          endif
         else
           call bulkphys_sw_driver (is, ie, js, je, Astro%cosz,   &
                                    Cld_spec, Cldrad_props)
@@ -635,16 +653,16 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !----------------------------------------------------------------------
         if (Cldrad_control%do_donner_deep_clouds) then
           call microphys_lw_driver (is, ie, js, je, Meso_microphys,  &
-                                    Mesorad_props,   &
+                                    Micro_rad_props=Mesorad_props,   &
                                     donner_flag=donner_flag)
           call microphys_lw_driver (is, ie, js, je, Cell_microphys,  &
-                                    Cellrad_props, &
+                                    Micro_rad_props=Cellrad_props, &
                                     donner_flag=donner_flag)
           call microphys_sw_driver (is, ie, js, je, Meso_microphys,  &
-                                    Mesorad_props, &
+                                    Micro_rad_props=Mesorad_props, &
                                     donner_flag=donner_flag)
           call microphys_sw_driver (is, ie, js, je, Cell_microphys,  &
-                                    Cellrad_props, &
+                                    Micro_rad_props=Cellrad_props, &
                                     donner_flag=donner_flag)
         endif
       endif ! ( .not. do_no_clouds)
@@ -658,13 +676,15 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !    cloud values. this procedure is only needed when microphysically-
 !    based properties are being used.
 !---------------------------------------------------------------------
-      if (Cldrad_control%do_sw_micro  .or. &
-          Cldrad_control%do_lw_micro) then
-        call combine_cloud_properties (Atmos_input%deltaz, &
-                                       Lsc_microphys, Meso_microphys, &
-                                       Cell_microphys, Lscrad_props,  &
-                                       Mesorad_props, Cellrad_props, &
-                                       Cldrad_props)
+      if (.not. Cldrad_control%do_ica_calcs) then
+        if (Cldrad_control%do_sw_micro  .or. &
+            Cldrad_control%do_lw_micro) then  
+          call combine_cloud_properties (Atmos_input%deltaz, &
+                                         Lsc_microphys, Meso_microphys,&
+                                         Cell_microphys, Lscrad_props, &
+                                         Mesorad_props, Cellrad_props, &
+                                         Cldrad_props)
+        endif  
       endif  
 
 !----------------------------------------------------------------------
@@ -724,7 +744,7 @@ end subroutine cloud_radiative_properties
 !  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
 !   cldrad_properties_type variable containing cloud 
 !   radiative properties
-!  </IN>
+!  </INOUT>
 ! </SUBROUTINE>
 !
 subroutine cldrad_props_dealloc (Cldrad_props)
@@ -963,14 +983,21 @@ type(cldrad_properties_type),   intent(inout) :: Cldrad_props
 !    properties. initialize to appropriate non-cloudy values.
 !--------------------------------------------------------------------
       nlwcldb = Cldrad_control%nlwcldb
-      allocate (Cldrad_props%emmxolw  (ix, jx, kx, nlwcldb) )
-      allocate (Cldrad_props%emrndlw  (ix, jx, kx, nlwcldb) )
-      allocate (Cldrad_props%abscoeff (ix, jx, kx, nlwcldb) )
-      allocate (Cldrad_props%cldemiss (ix, jx, kx, nlwcldb) )
-      Cldrad_props%emmxolw(:,:,:,:)  = 1.0E+00
-      Cldrad_props%emrndlw(:,:,:,:)  = 1.0E+00
-      Cldrad_props%abscoeff(:,:,:,:) = 0.0E+00
-      Cldrad_props%cldemiss(:,:,:,:) = 0.0E+00
+      if (Cldrad_control%do_ica_calcs) then
+        allocate (Cldrad_props%emmxolw  (ix, jx, kx, nlwcldb,nlwcldb) )
+        allocate (Cldrad_props%emrndlw  (ix, jx, kx, nlwcldb,nlwcldb) )
+        allocate (Cldrad_props%abscoeff (ix, jx, kx, nlwcldb,nlwcldb) )
+        allocate (Cldrad_props%cldemiss (ix, jx, kx, nlwcldb,nlwcldb) )
+      else
+        allocate (Cldrad_props%emmxolw  (ix, jx, kx, nlwcldb,1) )
+        allocate (Cldrad_props%emrndlw  (ix, jx, kx, nlwcldb,1) )
+        allocate (Cldrad_props%abscoeff (ix, jx, kx, nlwcldb,1) )
+        allocate (Cldrad_props%cldemiss (ix, jx, kx, nlwcldb,1) )
+      endif
+      Cldrad_props%emmxolw           = 1.0E+00
+      Cldrad_props%emrndlw           = 1.0E+00
+      Cldrad_props%abscoeff          = 0.0E+00
+      Cldrad_props%cldemiss          = 0.0E+00
 
 !---------------------------------------------------------------------
 !    allocate and initialize the microphysically-based shortwave cloud 
@@ -978,12 +1005,21 @@ type(cldrad_properties_type),   intent(inout) :: Cldrad_props
 !---------------------------------------------------------------------
       if (Cldrad_control%do_sw_micro) then
         n_esfsw_bands = Solar_spect%nbands 
-        allocate (Cldrad_props%cldext  (ix, jx, kx, n_esfsw_bands) )
-        allocate (Cldrad_props%cldsct  (ix, jx, kx, n_esfsw_bands) )
-        allocate (Cldrad_props%cldasymm(ix, jx, kx, n_esfsw_bands) )
-        Cldrad_props%cldsct  (:,:,:,:) = 0.0E+00
-        Cldrad_props%cldext  (:,:,:,:) = 0.0E+00
-        Cldrad_props%cldasymm(:,:,:,:) = 1.0E+00
+        if (Cldrad_control%do_ica_calcs) then
+          allocate (Cldrad_props%cldext  (ix, jx, kx, n_esfsw_bands, &
+                    n_esfsw_bands) )
+          allocate (Cldrad_props%cldsct  (ix, jx, kx, n_esfsw_bands, &
+                    n_esfsw_bands) )
+          allocate (Cldrad_props%cldasymm(ix, jx, kx, n_esfsw_bands, &
+                    n_esfsw_bands) )
+        else
+          allocate (Cldrad_props%cldext  (ix, jx, kx, n_esfsw_bands, 1))
+          allocate (Cldrad_props%cldsct  (ix, jx, kx, n_esfsw_bands, 1))
+          allocate (Cldrad_props%cldasymm(ix, jx, kx, n_esfsw_bands, 1))
+        endif
+        Cldrad_props%cldsct            = 0.0E+00
+        Cldrad_props%cldext            = 0.0E+00
+        Cldrad_props%cldasymm          = 1.0E+00
 
 !---------------------------------------------------------------------
 !    allocate and initialize the bulk-based shortwave cloud 
@@ -1194,12 +1230,14 @@ type(cldrad_properties_type), intent(inout)   :: Cldrad_props
 !----------------------------------------------------------------------
       else
         if (Cldrad_control%do_sw_micro) then
-          Cldrad_props%cldsct   = Lscrad_props%cldsct
-          Cldrad_props%cldext   = Lscrad_props%cldext
-          Cldrad_props%cldasymm = Lscrad_props%cldasymm
+          Cldrad_props%cldsct(:,:,:,:,1) = Lscrad_props%cldsct(:,:,:,:)
+          Cldrad_props%cldext(:,:,:,:,1) = Lscrad_props%cldext(:,:,:,:)
+          Cldrad_props%cldasymm(:,:,:,:,1) =  &
+                                         Lscrad_props%cldasymm(:,:,:,:)
         endif
         if (Cldrad_control%do_lw_micro) then
-          Cldrad_props%abscoeff = Lscrad_props%abscoeff
+          Cldrad_props%abscoeff(:,:,:,:,1) =   &
+                                      Lscrad_props%abscoeff(:,:,:,:)
         endif
       endif
 

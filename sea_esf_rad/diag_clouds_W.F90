@@ -1,5 +1,22 @@
+!FDOC_TAG_GFDL
 
                  module diag_clouds_W_mod
+! <CONTACT EMAIL="fei.liu@noaa.gov">
+!    fil
+! </CONTACT>
+! <REVIEWER EMAIL="">
+! </REVIEWER>
+! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
+! <OVERVIEW>
+!           diag cloud radiative properties module
+!            currently a wrapper until SKYHI goes away and this
+!            module can be consolidated with diag_cloud_mod
+!   
+! </OVERVIEW>
+! <DESCRIPTION>
+!   
+! </DESCRIPTION>
+!
 
 use time_manager_mod,       only: time_type
 use diag_cloud_mod,         only: diag_cloud_avg, diag_cloud_driver, &
@@ -39,8 +56,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 10.0 2003/10/24 22:00:40 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: jakarta $'
+   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 11.0 2004/09/28 19:21:21 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 
@@ -89,6 +106,22 @@ contains
 
 
 
+! <SUBROUTINE NAME="diag_clouds_W_init">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call diag_clouds_W_init  (num_slingo_bands_out)
+!		
+!  </TEMPLATE>
+!  <OUT NAME="num_slingo_bands_out" TYPE="integer">
+! 
+!  </OUT>
+! </SUBROUTINE>
+!
 subroutine diag_clouds_W_init  (num_slingo_bands_out)
 
 
@@ -124,6 +157,18 @@ end subroutine diag_clouds_W_init
 
 !#####################################################################
 
+! <SUBROUTINE NAME="diag_clouds_W_end">
+!  <OVERVIEW>
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call diag_clouds_W_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
 subroutine diag_clouds_W_end
  
 !----------------------------------------------------------------------
@@ -144,6 +189,100 @@ end subroutine diag_clouds_W_end
 
 !#################################################################
 
+! <SUBROUTINE NAME="diag_clouds_amt">
+!  <OVERVIEW>
+!    diag_clouds_amt defines the location, amount (cloud fraction),
+!    number, optical depth, thickness and liquid percentage of clouds
+!    present on the model grid.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    diag_clouds_amt defines the location, amount (cloud fraction),
+!    number, optical depth, thickness and liquid percentage of clouds
+!    present on the model grid.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call diag_clouds_amt (is, ie, js, je, lat, pflux, press,   &
+!		Rad_time, Cld_spec, Lsc_microphys) 
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="lat" TYPE="real">
+!      lat          latitude of model points  [ radians ]
+! 
+!  </IN>
+!  <IN NAME="pflux" TYPE="real">
+!      pflux        average of pressure at adjacent model levels
+!                   [ (kg /( m s^2) ]
+! 
+!  </IN>
+!  <IN NAME="press" TYPE="real">
+!      press        pressure at model levels (1:nlev), surface
+!                   pressure is stored at index value nlev+1
+!                   [ (kg /( m s^2) ]
+! 
+!  </IN>
+!  <IN NAME="Rad_time" TYPE="time_type">
+!      Rad_time     time at which the climatologically-determined,
+!                   time-varying zonal cloud fields should apply
+!                   [ time_type, days and seconds]
+! 
+!  </IN>
+!  <INOUT NAME="Cld_spec" TYPE="cld_specification_type">
+!      Cld_spec     cld_specification_type variable containing the
+!                   cloud specification input fields needed by the
+!                   radiation package
+!
+!               the following elements of Cld_spec are defined here:
+!
+!                  %cmxolw  fraction of maximally overlapped clouds
+!                           seen by the longwave radiation
+!                           [ dimensionless ]
+!                  %crndlw  fraction of randomly overlapped clouds
+!                           seen by the longwave radiation
+!                           [ dimensionless ]
+!                  %camtsw  cloud fraction seen by the shortwave
+!                           radiation; the sum of the maximally
+!                           overlapped and randomly overlapped
+!                           longwave cloud fractions  [ dimensionless ]
+!                  %nmxolw  number of maximally overlapped longwave
+!                           clouds in each grid column.
+!                  %nrndlw  number of randomly overlapped longwave
+!                           clouds in each grid column.
+!                  %ncldsw  number of clouds seen by he shortwave
+!                           radiation in each grid column.
+!                  %liq_frac
+!                           percentage of cloud condensate in a grid
+!                           box which is liquid  [ dimensionless ]
+!                  %tau     cloud optical depth  [ dimensionless ]
+!                  %cloud_thickness
+!                           number of model layers over which the cloud
+!                           in this grid box extends
+!                  %ice_cloud
+!                           logical variable, which if true, indicates
+!                           that the grid box will contain ice cloud;
+!                           if false, the box will contain liquid cloud
+! 
+!  </INOUT>
+!  <INOUT NAME="Lsc_microphys" TYPE="microphysics_type">
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine diag_clouds_amt (is, ie, js, je, lat, pflux, press,   &
                             Rad_time, Cld_spec, Lsc_microphys) 
 
@@ -326,6 +465,62 @@ end subroutine diag_clouds_amt
 
 !#####################################################################
 
+! <SUBROUTINE NAME="obtain_bulk_lw_diag">
+!  <OVERVIEW>
+!    obtain_bulk_lw_diag defines bulk longwave cloud radiative
+!    properties for the gordon diag cloud scheme.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    obtain_bulk_lw_diag defines bulk longwave cloud radiative
+!    properties for the gordon diag cloud scheme.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call obtain_bulk_lw_diag (is, ie, js, je, Cld_spec, Cldrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+!      Cld_spec          cloud specification arrays defining the
+!                        location, amount and type (hi, middle, lo)
+!                        of clouds that are present, provides input
+!                        to this subroutine
+!                        [ cld_specification_type ]
+! 
+!  </IN>
+!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output
+!               from this routine:
+!
+!                    %emrndlw   longwave cloud emissivity for
+!                               randomly overlapped clouds
+!                               in each of the longwave
+!                               frequency bands  [ dimensionless ]
+!                    %emmxolw   longwave cloud emissivity for
+!                               maximally overlapped clouds
+!                               in each of the longwave
+!                               frequency bands  [ dimensionless ]
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine obtain_bulk_lw_diag (is, ie, js, je, Cld_spec, Cldrad_props)
 
 !---------------------------------------------------------------------
@@ -417,8 +612,8 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
         do k=1,size(Cldrad_props%emrndlw,3)
           do j=1,size(Cldrad_props%emrndlw,2)
             do i=1,size(Cldrad_props%emrndlw,1)
-              Cldrad_props%emrndlw(i,j,k,:) = emcld(i,j,k) 
-              Cldrad_props%emmxolw(i,j,k,:) = emcld(i,j,k) 
+              Cldrad_props%emrndlw(i,j,k,:,1) = emcld(i,j,k) 
+              Cldrad_props%emmxolw(i,j,k,:,1) = emcld(i,j,k) 
             end do
           end do
         end do
@@ -434,6 +629,68 @@ end subroutine obtain_bulk_lw_diag
 
 !#####################################################################
 
+! <SUBROUTINE NAME="obtain_bulk_sw_diag">
+!  <OVERVIEW>
+!    obtain_bulk_sw_diag defines bulk shortwave cloud radiative
+!    properties for the gordon diag cloud scheme.
+!   
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    obtain_bulk_sw_diag defines bulk shortwave cloud radiative
+!    properties for the gordon diag cloud scheme.
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call obtain_bulk_sw_diag (is, ie, js, je, cosz, Cld_spec,  &   
+!		Cldrad_props)
+!		
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!      is,ie,js,je  starting/ending subdomain i,j indices of data in
+!                   the physics_window being integrated
+! 
+!  </IN>
+!  <IN NAME="ie" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="je" TYPE="integer">
+! 
+!  </IN>
+!  <IN NAME="cosz" TYPE="real">
+!      cosz         cosine of the zenith angle  [ dimensionless ]
+! 
+!  </IN>
+!  <IN NAME="Cld_spec" TYPE="cld_specification_type">
+!      Cld_spec          cloud specification arrays defining the
+!                        location, amount and type (hi, middle, lo)
+!                        of clouds that are present, provides input
+!                        to this subroutine
+!                        [ cld_specification_type ]
+! 
+!  </IN>
+!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
+!      Cldrad_props      cloud radiative properties on model grid,
+!                        [ cldrad_properties_type ]
+!
+!               the following components of this variable are output
+!               from this routine:
+!
+!                    %cirabsw   absorptivity of clouds in the
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cirrfsw   reflectivity of clouds in the
+!                               infrared frequency band
+!                               [ dimensionless ]
+!                    %cvisrfsw  reflectivity of clouds in the
+!                               visible frequency band
+!                               [ dimensionless ]
+! 
+!  </INOUT>
+! </SUBROUTINE>
+!
 subroutine obtain_bulk_sw_diag (is, ie, js, je, cosz, Cld_spec,  &   
                                 Cldrad_props)
 

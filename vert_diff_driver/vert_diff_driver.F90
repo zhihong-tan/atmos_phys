@@ -63,8 +63,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 10.0 2003/10/24 22:00:52 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 11.0 2004/09/28 19:25:08 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 
 logical :: module_is_initialized = .false.
 
@@ -365,8 +365,8 @@ integer :: ie, je
 !-----------------------------------------------------------------------
 
    if(do_mcm_vert_diff_tq) then
-     allocate(dt_t_save(idim,jdim,kdim))
-     allocate(dt_q_save(idim,jdim,kdim))
+     allocate(dt_t_save(idim,jdim,kdim)) ; dt_t_save = 0.0
+     allocate(dt_q_save(idim,jdim,kdim)) ; dt_q_save = 0.0
    endif
 
 !--------------- initialize diagnostic fields --------------------

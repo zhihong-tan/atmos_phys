@@ -12,18 +12,19 @@
 !    and makes them available to the radiation package.
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!    strat_clouds_W_mod obtains the cloud specification variables
-!    for the klein strat cloud parameterization from cloud_rad_mod
-!    and makes them available to the radiation package.
 ! </DESCRIPTION>
 
 !   shared modules:
 
+use constants_mod,          only: radian
 use time_manager_mod,       only: time_type, time_manager_init
 use fms_mod,                only: open_namelist_file, mpp_pe, &
                                   mpp_root_pe, stdlog,  fms_init, &
                                   write_version_number, file_exist, &
                                   check_nml_error, error_mesg,   &
+                                  mpp_clock_id, mpp_clock_begin, &
+                                  mpp_clock_end, CLOCK_ROUTINE, &
+                                  MPP_CLOCK_SYNC, &
                                   FATAL, NOTE, WARNING, close_file
 
 !   shared radiation package modules:
@@ -31,13 +32,22 @@ use fms_mod,                only: open_namelist_file, mpp_pe, &
 use rad_utilities_mod,      only: Environment, rad_utilities_init, &
                                   cldrad_properties_type,  &
                                   cld_specification_type, &
+                                  solar_spectrum_type, &
                                   microphysics_type, Cldrad_control
+use esfsw_parameters_mod,   only: Solar_spect, esfsw_parameters_init
 
 !   cloud parameterization module:
 
 use cloud_rad_mod,          only: cloud_rad_init, cloud_summary3, &
                                   lw_emissivity, sw_optical_properties
 
+!    stochastic cloud generator module
+use random_numbers_mod,     only: randomNumberStream,           &
+                                  initializeRandomNumberStream, &
+                                  constructSeed
+use cloud_generator_mod,    only: cloud_generator_init, &
+                                  generate_stochastic_clouds,&
+                                  cloud_generator_end
 !--------------------------------------------------------------------
 
 implicit none
@@ -53,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 10.0 2003/10/24 22:00:48 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 11.0 2004/09/28 19:24:26 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -67,11 +77,11 @@ public          &
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-integer   :: dummy = 0
+logical   :: do_stochastic_clouds = .false.
 
 
 namelist /strat_clouds_W_nml /                      &
-                                 dummy
+                                do_stochastic_clouds
 
 
 !----------------------------------------------------------------------
@@ -82,9 +92,8 @@ namelist /strat_clouds_W_nml /                      &
 !----  private data -------
 
 
-logical :: module_is_initialized = .false.  ! module is initialized ?
-
-
+logical                               :: module_is_initialized = .false.  ! module is initialized ?
+real,    dimension(:),    allocatable :: lats, lons  ! lats and lons in this processor window (degrees)
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
 
@@ -113,11 +122,15 @@ logical :: module_is_initialized = .false.  ! module is initialized ?
 !  </TEMPLATE>
 ! </SUBROUTINE>
 !  
-subroutine strat_clouds_W_init 
-
+subroutine strat_clouds_W_init(latb, lonb)
+  real, dimension(:), intent( in) :: latb, lonb
 !---------------------------------------------------------------------
 !    strat_clouds_W_init is the constructor for strat_clouds_W_mod.
 !---------------------------------------------------------------------
+!       lonb      array of model longitudes on cell boundaries 
+!                 [ radians ]
+!       latb      array of model latitudes at cell boundaries [radians]
+
 
 !----------------------------------------------------------------------
 !   local variables:
@@ -139,12 +152,19 @@ subroutine strat_clouds_W_init
       if (module_is_initialized) return
 
 !---------------------------------------------------------------------
+!    Save copies of lat and lon values for this window
+!---------------------------------------------------------------------
+      allocate(lats(size(latb)), lons(size(lonb)))
+      lats(:) = latb(:) * radian
+      lons(:) = lonb(:) * radian
+!---------------------------------------------------------------------
 !    verify that modules used by this module that are not called later
 !    have already been initialized.
 !---------------------------------------------------------------------
       call fms_init
       call time_manager_init
       call rad_utilities_init
+      call esfsw_parameters_init
       call cloud_rad_init
 
 !---------------------------------------------------------------------
@@ -166,13 +186,21 @@ subroutine strat_clouds_W_init
       if (mpp_pe() == mpp_root_pe() ) &
                  write (stdlog(), nml=strat_clouds_W_nml)
 
+!--------------------------------------------------------------------
+!    save the flags indicating whether stochastic clouds are to be
+!    used.
+!--------------------------------------------------------------------
+      Cldrad_control%do_stochastic_clouds = do_stochastic_clouds
+      Cldrad_control%do_stochastic_clouds_iz = .true.
+      if (do_stochastic_clouds) &
+                 call cloud_generator_init
+
 !---------------------------------------------------------------------
 !    mark the module as initialized.
 !---------------------------------------------------------------------
       module_is_initialized = .true.
 
 !----------------------------------------------------------------------
-
 
 end subroutine strat_clouds_W_init
 
@@ -195,12 +223,15 @@ end subroutine strat_clouds_W_init
 !    provided.
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call strat_clouds_amt (is, ie, js, je, pflux, press, temp, land, &
-!                             Cld_spec, Lsc_microphys)
+!   call strat_clouds_amt (is, ie, js, je, Rad_time, pflux, press, 
+!                          temp, land, Cld_spec, Lsc_microphys)
 !  </TEMPLATE>
 !  <IN NAME="is, ie, js, je" TYPE="integer">
 !   starting/ending subdomain i,j indices of data in
 !                   the physics_window being integrated
+!  </IN>
+!  <IN NAME="Rad_time" TYPE="time_type">
+!   time at which radiation calculation is to apply
 !  </IN>
 !  <IN NAME="pflux" TYPE="real">
 !   pressure values at flux levels (average of pressure values at
@@ -231,8 +262,9 @@ end subroutine strat_clouds_W_init
 !  </INOUT>
 ! </SUBROUTINE>
 !
-subroutine strat_clouds_amt (is, ie, js, je, pflux, press, temp, land, &
-                             Cld_spec, Lsc_microphys)
+subroutine strat_clouds_amt (is, ie, js, je, Rad_time, pflux, &
+                             press, temp,&
+                             land, Cld_spec, Lsc_microphys)
 
 !---------------------------------------------------------------------
 !    strat_clouds_amt defines the location, amount (cloud fraction), 
@@ -244,6 +276,7 @@ subroutine strat_clouds_amt (is, ie, js, je, pflux, press, temp, land, &
 !----------------------------------------------------------------------
 
 integer,                      intent(in)        :: is, ie, js, je
+type(time_type),              intent(in)        :: Rad_time
 real,    dimension(:,:,:),    intent(in)        :: pflux, press, temp
 real,    dimension(:,:),      intent(in)        :: land
 type(cld_specification_type), intent(inout)     :: Cld_spec      
@@ -254,6 +287,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in 
 !                   the physics_window being integrated
+!      Rad_time     time type variable containing radiation time
 !      pflux        average of pressure at adjacent model levels
 !                   [ (kg /( m s^2) ] 
 !      press        pressure at model levels (1:nlev), surface 
@@ -328,14 +362,24 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                        size(pflux,3)-1) ::      cldamt, lwp, iwp,  &
                                                 reff_liq, reff_ice
 
+      real, dimension (size(pflux,1), size(pflux,2),  &
+                       size(pflux,3)-1, Cldrad_control%nlwcldb) :: &
+                         ql_stoch_lw, qi_stoch_lw, qa_stoch_lw
+
+      real, dimension (size(pflux,1), size(pflux,2),  &
+                       size(pflux,3)-1, Solar_spect%nbands) :: &
+                         ql_stoch_sw, qi_stoch_sw, qa_stoch_sw
+
       integer, dimension (size(pflux,1), size(pflux,2), &
                           size(pflux,3)-1) ::   ktop, kbtm
 
       integer, dimension (size(pflux,1), size(pflux,2)) :: &
                                                  ncldlvls
 
-      integer     ::    kx
-      integer     ::    i, j, k, kc
+      type(randomNumberStream), &
+                dimension(size(pflux,1), size(pflux,2)) :: streams
+      integer     ::    kx 
+      integer     ::    i, j, k, kc, nb
 
 !-------------------------------------------------------------------
 !    local variables:
@@ -385,6 +429,16 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !----------------------------------------------------------------------
         if (Cldrad_control%do_pred_cld_microphys .or. &
             Cldrad_control%do_presc_cld_microphys) then
+
+!--------------------------------------------------------------------
+!    call cloud_summary3 with the full cloud field, regardless of 
+!    whether or not stochastic clouds are active.
+!    the full cloud field is assumed random overlap when stochastic
+!    clouds are activated.
+!--------------------------------------------------------------------
+            where (Cld_spec%cloud_area(:,:,:) > 0.0) 
+              Cld_spec%cld_thickness(:,:,:) = 1
+            end where
           call cloud_summary3 (is, js, land, Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
@@ -394,18 +448,153 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                                conc_ice = Lsc_microphys%conc_ice, &
                                size_drop =Lsc_microphys%size_drop,   &
                                size_ice = Lsc_microphys%size_ice)
+          if (Environment%running_gcm    .or.  &
+              Environment%running_sa_model .or. &
+             (Environment%running_standalone .and. &
+              Environment%column_type == 'fms')) then
+            Cld_spec%ncldsw        = ncldlvls
+            Cld_spec%nrndlw        = ncldlvls         
+            Cld_spec%camtsw        = cldamt           
+            Cld_spec%crndlw        = cldamt
+            Lsc_microphys%cldamt   = cldamt            
+          endif
+
+!---------------------------------------------------------------------
+!    if using stochastic clouds for either sw or lw, Initialize the random number streams, 
+!       one per grid cell, with unique and replicable integer based 
+!       on grid location and model date/time
+!---------------------------------------------------------------------
+          if (do_stochastic_clouds) then
+            do j = 1, size(Cld_spec%cloud_water, 2)
+              do i = 1, size(Cld_spec%cloud_water, 1)
+                streams(i, j) =   &
+                         initializeRandomNumberStream(  &
+                            constructSeed(nint(lons(is + i - 1)), &
+                                          nint(lats(js + j - 1)), &
+                                                              Rad_time))
+              end do
+            end do
+          endif
+
+!---------------------------------------------------------------------
+!    if using stochastic clouds for the lw calculation, call routine to 
+!    obtain band-dependent values of ql, qi and qa. 
+!---------------------------------------------------------------------
+          if (do_stochastic_clouds) then
+            call generate_stochastic_clouds (        &
+                     streams,                &
+                     Cld_spec%cloud_water,   &
+                     Cld_spec%cloud_ice,     &
+                     Cld_spec%cloud_area,    &
+                     pFull = press(:, :, :kx),&
+                     temperature = temp(:, :, :kx),        &
+                     cld_thickness = Cld_spec%cld_thickness_lw_band, &
+                     ql_stoch = ql_stoch_lw, &
+                     qi_stoch = qi_stoch_lw, &
+                     qa_stoch = qa_stoch_lw)
+
+!---------------------------------------------------------------------
+!    call cloud_summary3 for each lw band, using the band-dependent
+!    cloud inputs, to obtain band-dependent values of liquid and ice
+!    size and concentration.
+!---------------------------------------------------------------------
+            do nb=1,Cldrad_control%nlwcldb
+              call cloud_summary3 (          &
+                is, js, land, ql_stoch_lw(:,:,:,nb),&
+                qi_stoch_lw(:,:,:,nb), qa_stoch_lw(:,:,:,nb),&
+                press(:,:,1:kx), pflux, temp, ncldlvls, &
+                cldamt, Cld_spec%lwp_lw_band(:,:,:,nb),&
+                Cld_spec%iwp_lw_band(:,:,:,nb),   &
+                Cld_spec%reff_liq_lw_band(:,:,:,nb), &
+                Cld_spec%reff_ice_lw_band(:,:,:,nb), &
+                conc_drop= Lsc_microphys%lw_stoch_conc_drop(:,:,:,nb), &
+                conc_ice = Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb), &
+                size_drop =Lsc_microphys%lw_stoch_size_drop(:,:,:,nb), &
+                size_ice = Lsc_microphys%lw_stoch_size_ice(:,:,:,nb))
+              if (Environment%running_gcm    .or.  &
+                  Environment%running_sa_model .or. &
+                 (Environment%running_standalone .and. &
+                  Environment%column_type == 'fms')) then
+                Cld_spec%nrndlw_band(:,:,nb) = ncldlvls(:,:)
+                Lsc_microphys%lw_stoch_cldamt(:,:,:,nb) = cldamt
+              endif
+            end do
+          endif
+
+!---------------------------------------------------------------------
+!    if using stochastic clouds for the sw calculation, call routine to 
+!    obtain band-dependent values of ql, qi and qa. 
+!---------------------------------------------------------------------
+          if (do_stochastic_clouds) then
+            call generate_stochastic_clouds (        &
+                     streams,                &
+                     Cld_spec%cloud_water,   &
+                     Cld_spec%cloud_ice,     &
+                     Cld_spec%cloud_area,    &
+                     pFull    = press(:, :, :kx),     &
+                     temperature = temp(:, :, :kx),   &
+                     cld_thickness = Cld_spec%cld_thickness_sw_band, &
+                     ql_stoch = ql_stoch_sw, &
+                     qi_stoch = qi_stoch_sw, &
+                     qa_stoch = qa_stoch_sw)
+
+!---------------------------------------------------------------------
+!    call cloud_summary3 for each sw band, using the band-dependent
+!    cloud inputs, to obtain band-dependent values of liquid and ice
+!    size and concentration.
+!---------------------------------------------------------------------
+            do nb=1,size(Lsc_microphys%sw_stoch_conc_ice,4)
+              call cloud_summary3 (                            &
+                is, js, land, ql_stoch_sw(:,:,:,nb), &
+                qi_stoch_sw(:,:,:,nb), qa_stoch_sw(:,:,:,nb),&
+                press(:,:,1:kx), pflux, temp, ncldlvls, &
+                cldamt, Cld_spec%lwp_sw_band(:,:,:,nb), &
+                Cld_spec%iwp_sw_band(:,:,:,nb),   &
+                Cld_spec%reff_liq_sw_band(:,:,:,nb), &
+                Cld_spec%reff_ice_sw_band(:,:,:,nb), &
+                conc_drop= Lsc_microphys%sw_stoch_conc_drop(:,:,:,nb), &
+                conc_ice = Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb), &
+                size_drop =Lsc_microphys%sw_stoch_size_drop(:,:,:,nb), &
+                size_ice = Lsc_microphys%sw_stoch_size_ice(:,:,:,nb))
+              if (Environment%running_gcm    .or.  &
+                  Environment%running_sa_model .or. &
+                 (Environment%running_standalone .and. &
+                  Environment%column_type == 'fms')) then
+                Cld_spec%ncldsw_band(:,:,nb) = ncldlvls(:,:)
+                Lsc_microphys%sw_stoch_cldamt(:,:,:,nb) = cldamt
+              endif
+            end do
+          endif
 
 !---------------------------------------------------------------------
 !    if microphysically-based radiative properties are not needed, call
 !    cloud_summary3 without the Lsc_microphys% optional arguments.
 !----------------------------------------------------------------------
         else  ! (not micro)
+
+!--------------------------------------------------------------------
+!    define the cloud thickness to be 1 at those points with cloud
+!    present.
+!---------------------------------------------------------------------
+          where (Cld_spec%cloud_area(:,:,:) > 0.0) 
+            Cld_spec%cld_thickness(:,:,:) = 1
+          end where
           call cloud_summary3 (is, js, land, Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
                                cldamt, Cld_spec%lwp,   &
                                Cld_spec%iwp, Cld_spec%reff_liq,   &
                                Cld_spec%reff_ice)
+          if (Environment%running_gcm    .or.  &
+              Environment%running_sa_model .or. &
+             (Environment%running_standalone .and. &
+              Environment%column_type == 'fms')) then
+            Cld_spec%ncldsw        = ncldlvls
+            Cld_spec%nrndlw        = ncldlvls         
+            Cld_spec%camtsw        = cldamt           
+            Cld_spec%crndlw        = cldamt
+            Lsc_microphys%cldamt   = cldamt            
+          endif
         endif
 
 !----------------------------------------------------------------------
@@ -414,22 +603,11 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !    input characteristics.
 !----------------------------------------------------------------------
         if (Environment%running_gcm    .or.  &
-            Environment%running_sa_model ) then
-          Cld_spec%ncldsw        = ncldlvls
-          Cld_spec%nrndlw        = ncldlvls         
+            Environment%running_sa_model .or. &
+           (Environment%running_standalone .and. &
+            Environment%column_type == 'fms')) then
           Cld_spec%nmxolw        = 0 
-          Cld_spec%camtsw        = cldamt           
-          Cld_spec%crndlw        = cldamt
           Cld_spec%cmxolw        = 0.0E+00
-          Lsc_microphys%cldamt   = cldamt            
-
-!--------------------------------------------------------------------
-!    define the cloud thickness to be 1 at those points with cloud
-!    present.
-!---------------------------------------------------------------------
-          where (cldamt(:,:,:) > 0.0) 
-            Cld_spec%cld_thickness(:,:,:) = 1
-          end where
         endif
 
 !---------------------------------------------------------------------
@@ -472,7 +650,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
           do j=1, size(press,2)
             do i=1, size(press,1)
               Cld_spec%ncldsw(i,j) = ncldlvls(i,j)
-              do kc=1, ncldlvls(i,j)         
+              do kc=1, Cld_spec%ncldsw(i,j)         
                 do k=ktop(i,j,kc), kbtm(i,j,kc)
                   if (ktop(i,j,kc) == kbtm(i,j,kc)) then
                     Cld_spec%crndlw(i,j,k) = Cld_spec%camtsw(i,j,k)
@@ -501,7 +679,6 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 
 
 end subroutine strat_clouds_amt  
-
 
 
 
@@ -625,8 +802,8 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
         do k=1,size(Cld_spec%lwp,3)
           do j=1,size(Cld_spec%lwp,2)
             do i=1,size(Cld_spec%lwp,1)
-              Cldrad_props%emrndlw(i,j,k,:) = emcld(i,j,k)
-              Cldrad_props%emmxolw(i,j,k,:) = emcld(i,j,k)
+              Cldrad_props%emrndlw(i,j,k,:,1) = emcld(i,j,k)
+              Cldrad_props%emmxolw(i,j,k,:,1) = emcld(i,j,k)
             end do
           end do
         end do
@@ -785,6 +962,13 @@ subroutine strat_clouds_W_end
         call error_mesg ('strat_clouds_W_mod',   &
              'module has not been initialized', FATAL )
       endif
+
+!---------------------------------------------------------------------
+! close cloud_generator
+!---------------------------------------------------------------------
+      deallocate (lats, lons)
+      if (do_stochastic_clouds) &
+                call cloud_generator_end()
 
 !---------------------------------------------------------------------
 !    mark the module as not initialized.

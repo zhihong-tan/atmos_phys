@@ -7,22 +7,24 @@
 ! </REVIEWER>
 ! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
 ! <OVERVIEW>
-!  Code to initialize/allocate ozone climatology
-! </OVERVIEW>
-! <DESCRIPTION>
 !  This code supplies mass mixing ratios of ozone (g/g) to the 
 !  sea_esf_rad radiation_package (and the original_fms_rad package).
+! </OVERVIEW>
+! <DESCRIPTION>
 ! </DESCRIPTION>
 !   shared modules:
 
 use fms_mod,             only:  open_namelist_file, file_exist,    &
                                 check_nml_error, error_mesg,  &
-                                fms_init, stdlog, &
+                                fms_init, stdlog, open_restart_file, &
                                 write_version_number, FATAL, NOTE, &
                                 WARNING, mpp_pe, mpp_root_pe, close_file
+use fms_io_mod,          only:  read_data, open_restart_file
 use time_manager_mod,    only:  time_type, days_in_year, &
-                                time_manager_init, &
-                                get_date
+                                time_manager_init, operator(+), &
+                                set_date, operator(-), print_date, &
+                                set_time, operator(>), get_date, days_in_month
+use diag_manager_mod,    only:  diag_manager_init, get_base_time
 use time_interp_mod,     only:  fraction_of_year, &
                                 time_interp_init  
 use constants_mod,       only:  constants_init, radian
@@ -51,8 +53,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: ozone.F90,v 10.0 2003/10/24 22:00:45 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: ozone.F90,v 11.0 2004/09/28 19:23:28 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -81,13 +83,23 @@ end interface
 
 character(len=24)  ::   basic_ozone_type = 'clim_zonal'     
                       ! label for ozone type, currently unused      
+		      ! 'clim_zonal' or 'time_varying' or 'fixed_year'
+character(len=32)  :: filename = 'o3.trend.nc'
+                      ! name of file which contains the ozone data 
+integer, parameter :: MAX_DATA_FIELDS = 1
+character(len=32)  :: data_name(MAX_DATA_FIELDS) = 'ozone_1990'
+                      ! name of variable in the data file to be used
 character(len=24)  ::   ozone_data_source = 'fortuin_kelder' 
                       ! source for the ozone data being used, either 
-                      ! 'input', fortuin_kelder', or 'gfdl_zonal_ozone'
+                      ! 'input', 'gfdl_zonal_ozone',
+		      ! or externally-derived datasets:
+		      ! 'fortuin_kelder', 'mozart_moztop_fk',
+		      ! 'mozart_trop_fk'
 character(len=24)  ::   clim_base_year = '1990'
                       ! year with which the ozone data set is assoc-
-                      ! iated, used with fortuin_kelder, either '1979',
-                      ! '1990' or '1997'
+                      ! iated, used with fortuin_kelder( either '1979',
+                      ! '1990' or '1997'), or mozart datasets
+		      ! (presently either '1850' or '1860' or '1990')
 character(len=24)  ::   trans_data_type = 'linear'
                       ! time interpolation method to be used if trans-
                       ! ient ozone is activated, not yet available
@@ -98,6 +110,10 @@ character(len=24)  ::   gfdl_zonal_ozone_type = 'seasonally_varying'
                       ! 'seasonally_varying'
 logical            ::   do_mcm_o3_clim = .false.
                       ! treat ozone as in the manabe climate model ?
+integer, dimension(6) ::       &
+                        ozone_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+                      ! time in ozone data set corresponding to model
+                      ! initial time  (yr, mo, dy, hr, mn, sc)
 
 
 namelist /ozone_nml/             &
@@ -105,7 +121,10 @@ namelist /ozone_nml/             &
                        ozone_data_source, &
                        clim_base_year, &
                        trans_data_type, &
+                       data_name, &
+                       filename, &
                        gfdl_zonal_ozone_type, &
+                       ozone_dataset_entry, &
                        do_mcm_o3_clim
 
 !---------------------------------------------------------------------
@@ -137,8 +156,9 @@ real, dimension (19,81)     ::    rstd
 
 !----------------------------------------------------------------------
 !    O3 is an interpolate_type variable containing the relevant 
-!    information about the clim_zonal_ozone data set. used when
-!    ozone_data_source = 'fortuin_kelder'.  
+!    information about the ozone data set. used when
+!    ozone_data_source = 'fortuin_kelder', 'mozart_moztop_fk',
+!    'mozart_trop_fk', and others in the future.
 !---------------------------------------------------------------------- 
 type(interpolate_type),save         ::  O3_interp 
 
@@ -157,6 +177,19 @@ logical     ::  do_clim_zonal_ozone=.false.
 logical     ::  do_column_input_ozone=.false.
                            ! using ozone column input data set ?
 logical     ::  module_is_initialized=.false.  ! module initialized ?
+
+type(time_type) :: Model_init_time  ! initial calendar time for model  
+                                    ! [ time_type ]
+type(time_type) :: Ozone_offset     ! difference between model initial
+                                    ! time and ozone timeseries app-
+                                    ! lied at model initial time
+                                    ! [ time_type ]
+type(time_type) :: Ozone_entry      ! time in ozone timeseries which
+                                    ! is mapped to model initial time
+                                    ! [ time_type ]
+logical    :: negative_offset = .false.
+                            !  the model initial time is later than
+                            !  the ozone_dataset_entry time  ?
 
 
 !-------------------------------------------------------------------
@@ -238,6 +271,7 @@ real, dimension(:),   intent(in) :: latb, lonb
       call fms_init
       call rad_utilities_init
       call time_manager_init   
+      call diag_manager_init   
       call time_interp_init   
       call constants_init
  
@@ -261,26 +295,107 @@ real, dimension(:),   intent(in) :: latb, lonb
                         write (stdlog(), nml=ozone_nml)
 
 !---------------------------------------------------------------------
-!    when running standalone code, ozone_data_source must be 'input'.
+!    when running standalone codei on SKYHI level structure,
+!    ozone_data_source must be 'input'.
 !---------------------------------------------------------------------
-       if ((Environment%running_standalone  .and.       &
-            .not. Environment%running_sa_model) .and.   &
-             trim(ozone_data_source) /= 'input') then
-        call error_mesg ('ozone_mod', &
-            ' must supply ozone via input file when running '//&
-                                              'standalone code', FATAL)
-      endif
+!      if (Environment%running_standalone)  then 
+       if (Environment%running_standalone .and.  &
+          .not. Environment%running_sa_model  .and. &
+          trim(ozone_data_source) /= 'input') then
+          if  (Environment%column_type /= 'fms') then
+             call error_mesg ('ozone_mod', &
+             ' must supply ozone via input file when running '//&
+                           ' standalone code on SKYHI levels', FATAL)
+          endif
+       endif
 
 !---------------------------------------------------------------------
 !    check for a valid value of clim_base_year.
 !---------------------------------------------------------------------
-      if (trim(clim_base_year)  == '1990' .or.        &
-          trim(clim_base_year)  == '1979' .or.        &
-          trim(clim_base_year)  == '1997'             ) then
+      if (trim(basic_ozone_type) == 'clim_zonal' ) then 
+        if (trim(clim_base_year)  == '1990' .or.        &
+            trim(clim_base_year)  == '1979' .or.        &
+            trim(clim_base_year)  == '1850' .or.        &
+            trim(clim_base_year)  == '1860' .or.        &
+            trim(clim_base_year)  == '1997')            then
+        else
+          call error_mesg ('ozone_mod', &
+              ' clim_base_year must be 1990, 1979, 1850, 1860 &
+                                        &or 1997 at present', FATAL)
+        endif
+        Ozone_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *,   &
+           'Ozone data is obtained from a clim_zonal ozone file &
+             &for year ', trim(clim_base_year)
+        endif
+
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the ozone timeseries 
+!    files are to be used.                                
+!---------------------------------------------------------------------
+      else if (trim(basic_ozone_type) == 'time_varying') then
+        if (ozone_dataset_entry(1) == 1 .and. &
+            ozone_dataset_entry(2) == 1 .and. &
+            ozone_dataset_entry(3) == 1 .and. &
+            ozone_dataset_entry(4) == 0 .and. &
+            ozone_dataset_entry(5) == 0 .and. &
+            ozone_dataset_entry(6) == 0 ) then
+           call error_mesg ('ozone_mod', &
+            'must set ozone_dataset_entry when using  &
+                                  &time-varying ozone', FATAL)
+        endif
+
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to ozone_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        Model_init_time = get_base_time()
+        Ozone_entry  = set_date (ozone_dataset_entry(1), &
+                                 ozone_dataset_entry(2), &
+                                 ozone_dataset_entry(3), &
+                                 ozone_dataset_entry(4), &
+                                 ozone_dataset_entry(5), &
+                                 ozone_dataset_entry(6))
+        call print_date (Ozone_entry , str='Data from ozone timeseries &
+                                           &at time:')
+        call print_date (Model_init_time , str='This data is mapped to &
+                                                &model time:')
+        Ozone_offset = Ozone_entry - Model_init_time
+ 
+        if (Model_init_time > Ozone_entry) then
+          negative_offset = .true.
+        else
+          negative_offset = .false.
+        endif
+      else if (trim(basic_ozone_type) == 'fixed_year') then
+        if (ozone_dataset_entry(1) == 1 .and. &
+            ozone_dataset_entry(2) == 1 .and. &
+            ozone_dataset_entry(3) == 1 .and. &
+            ozone_dataset_entry(4) == 0 .and. &
+            ozone_dataset_entry(5) == 0 .and. &
+            ozone_dataset_entry(6) == 0 ) then
+           call error_mesg ('ozone_mod', &
+            'must set ozone_dataset_entry when using  &
+                                  &fixed_year ozone', FATAL)
+        endif
+
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to ozone_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        Ozone_entry  = set_date (ozone_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('ozone_mod', &
+           'Ozone data is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'Ozone data obtained from ozone timeseries &
+                    &for year:', ozone_dataset_entry(1)
+        endif
       else
         call error_mesg ('ozone_mod', &
-         ' clim_base_year must be 1990, 1979 or 1997 at present', &
-                                                              FATAL)
+          'invalid specification of basic_ozone_type', FATAL)
       endif
 
 !------------------------------------------------------------------
@@ -315,6 +430,14 @@ real, dimension(:),   intent(in) :: latb, lonb
         call obtain_gfdl_zonal_ozone_data (iseason)
 
       else if (trim(ozone_data_source) == 'fortuin_kelder' ) then
+        do_clim_zonal_ozone = .true.
+        call obtain_clim_zonal_ozone_data (lonb, latb)
+
+      else if (trim(ozone_data_source) == 'mozart_moztop_fk' ) then
+        do_clim_zonal_ozone = .true.
+        call obtain_clim_zonal_ozone_data (lonb, latb)
+
+      else if (trim(ozone_data_source) == 'mozart_trop_fk' ) then
         do_clim_zonal_ozone = .true.
         call obtain_clim_zonal_ozone_data (lonb, latb)
 
@@ -439,7 +562,7 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
 !    column data over the entire horizontal domain.
 !-----------------------------------------------------------------------
       if (do_column_input_ozone) then 
-        if (size(qqo3) /= kmax) then
+        if (size(qqo3(:)) /= kmax) then
            call error_mesg ('ozone_mod', &
              'size of ozone profile in input file does not match '//&
                                               'model grid.', FATAL)
@@ -458,8 +581,9 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
             phaf(:,:,k) = 100000.*Atmos_input%phalf(:,:,k)/  &
                           Atmos_input%phalf(:,:,kmax+1)
           else
-            phaf(:,:,k) = (Atmos_input%pflux(:,:,k))*101325./   &
-                          (Atmos_input%pflux(:,:,kmax +1))
+            phaf(:,:,k) = (Atmos_input%pflux(:,:,k))
+!           phaf(:,:,k) = (Atmos_input%pflux(:,:,k))*101325./   &
+!                         (Atmos_input%pflux(:,:,kmax +1))
           endif
         end do
 
@@ -725,8 +849,19 @@ integer, intent(in) :: season
 !    open the file and read the data set.  close the file upon 
 !    completion. if it is not present, write an error message.
 !---------------------------------------------------------------------
-      if (file_exist ( 'INPUT/zonal_ozone_data') ) then
-        iounit = open_namelist_file ('INPUT/zonal_ozone_data')
+      if (file_exist ( 'INPUT/zonal_ozone_data.nc')) then
+        if(mpp_pe() == mpp_root_pe()) &
+             call error_mesg('ozone_mod','Reading netCDF input data: zonal_ozone_data.nc',NOTE)
+        call read_data('INPUT/zonal_ozone_data.nc', 'ph3', ph3, no_domain=.true.)
+        call read_data('INPUT/zonal_ozone_data.nc', 'o3hi', o3hi, no_domain=.true.)
+        call read_data('INPUT/zonal_ozone_data.nc', 'o3lo1', o3lo1, no_domain=.true.)
+        call read_data('INPUT/zonal_ozone_data.nc', 'o3lo2', o3lo2, no_domain=.true.)
+        call read_data('INPUT/zonal_ozone_data.nc', 'o3lo3', o3lo3, no_domain=.true.)
+        call read_data('INPUT/zonal_ozone_data.nc', 'o3lo4', o3lo4, no_domain=.true.)
+      else if (file_exist ( 'INPUT/zonal_ozone_data') ) then
+        iounit = open_restart_file ('INPUT/zonal_ozone_data', action='read')
+        if(mpp_pe() == mpp_root_pe()) &
+             call error_mesg('ozone_mod','Reading native input data: zonal_ozone_data',NOTE)
         read (iounit) ph3
         read (iounit)    
         read (iounit) o3hi
@@ -912,17 +1047,16 @@ real, dimension(:), intent(in) :: lonb, latb
 !
 !-----------------------------------------------------------------
 
-
 !---------------------------------------------------------------------
 !    call interpolator_init to initialize an interp_type variable
 !    O3_interp which will be used to retrieve interpolated ozone
 !    data when requested.
 !---------------------------------------------------------------------
-      if (trim(ozone_data_source) == 'fortuin_kelder') then
-        call interpolator_init (O3_interp, "o3.trend.nc", lonb, latb, &
-                                data_out_of_bounds=(/CONSTANT/), &
+        call interpolator_init (O3_interp, filename, lonb, &
+                                latb, data_out_of_bounds=(/CONSTANT/), &
+                                data_names = data_name, &
                                 vert_interp=(/INTERP_WEIGHTED_P/) )
-      endif
+
 
 !----------------------------------------------------------------------
 
@@ -1363,16 +1497,44 @@ real, dimension(:,:,:), intent(out)     :: model_data
 !
 !   local variables
  
-      character(len=24) :: field_name ! name of the ozone data set from
-                                      ! which the data is to be obtained
+      type(time_type) :: Ozone_time
+      integer         :: yr, mo, dy, hr, mn, sc, dum
+      integer         :: dayspmn, mo_yr
+
+      if(trim(basic_ozone_type) == 'time_varying') then
+!--------------------------------------------------------------------
+!    define the time in the ozone data set from which data is to be 
+!    taken. if ozone is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+      if (negative_offset) then
+        Ozone_time = model_time - Ozone_offset
+      else
+        Ozone_time = model_time + Ozone_offset
+      endif
+    else if(trim(basic_ozone_type) == 'fixed_year') then
+      call get_date (Ozone_entry, yr, dum,dum,dum,dum,dum)
+      call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+      if (mo ==2 .and. dy == 29) then
+        dayspmn = days_in_month(Ozone_entry)
+        if (dayspmn /= 29) then
+          Ozone_time = set_date (yr, mo, dy-1, hr, mn, sc)
+        else
+          Ozone_time = set_date (yr, mo, dy, hr, mn, sc)
+        endif
+      else
+        Ozone_time = set_date (yr, mo, dy, hr, mn, sc)
+      endif
+    else if(trim(basic_ozone_type) == 'clim_zonal') then
+        Ozone_time = model_time
+    endif
 
 !--------------------------------------------------------------------
-!    define the ozone data set to be accessed. call interpolator to 
-!    obtain data at the specified grid points and specified time.
+!    call interpolator to obtain data at the specified grid points and 
+!    specified time.
 !--------------------------------------------------------------------
-      field_name = "ozone_"//trim(clim_base_year)
-      call interpolator (O3_interp, model_time, p_half, model_data,  &
-                         trim(field_name), is, js)
+      
+      call interpolator (O3_interp, Ozone_time, p_half, model_data,  &
+                         trim(data_name(1)), is, js)
 
 !----------------------------------------------------------------------
 

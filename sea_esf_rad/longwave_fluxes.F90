@@ -8,11 +8,10 @@
 ! </REVIEWER>
 ! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
 ! <OVERVIEW>
-!  Code to operate on the longwave flux variables.
-! </OVERVIEW>
-! <DESCRIPTION>
 !  This code is a helper module that provides various operations on 
 !  longwave flux variables.
+! </OVERVIEW>
+! <DESCRIPTION>
 ! </DESCRIPTION>
 !
 !  shared modules:
@@ -43,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 10.0 2003/10/24 22:00:42 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 11.0 2004/09/28 19:22:09 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------

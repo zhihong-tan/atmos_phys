@@ -24,6 +24,7 @@ use fms_mod,               only: open_namelist_file, fms_init, &
                                  file_exist, write_version_number, &
                                  check_nml_error, error_mesg, &
                                  FATAL, NOTE, WARNING, close_file
+use time_manager_mod,      only: time_type
 
 !--------------------------------------------------------------------
 
@@ -40,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 10.0 2003/10/24 22:00:46 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 11.0 2004/09/28 19:23:50 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -64,6 +65,8 @@ end interface
 interface thickavg
    module procedure thickavg_3d
    module procedure thickavg_0d
+   module procedure thickavg_1band
+   module procedure thickavg_isccp
 end interface
 
 !------------------------------------------------------------------
@@ -72,14 +75,39 @@ public   aerosol_type
   
 !    aerosol
 !    aerosol_names
+!    family_members
 
 type aerosol_type
      real, dimension(:,:,:,:),        pointer :: aerosol=>NULL()
+     logical, dimension(:,:),        pointer :: family_members=>NULL()
      character(len=64), dimension(:), pointer :: aerosol_names=>NULL()
 end type aerosol_type              
 
 !------------------------------------------------------------------
  
+public   aerosol_diagnostics_type
+ 
+!    extopdep
+!    absopdep
+!    extopdep_vlcno
+!    absopdep_vlcno
+!    lw_extopdep_vlcno
+!    lw_absopdep_vlcno
+!    sw_heating_vlcno
+ 
+type aerosol_diagnostics_type
+     real, dimension(:,:,:),   pointer  :: sw_heating_vlcno=>NULL()
+     real, dimension(:,:,:,:,:), pointer  :: extopdep=>NULL(), &
+                                             absopdep=>NULL()
+     real, dimension(:,:,:,:), pointer  :: extopdep_vlcno=>NULL(), &
+                                           absopdep_vlcno=>NULL(), &
+                                           lw_extopdep_vlcno=>NULL(), &
+                                           lw_absopdep_vlcno=>NULL()
+ 
+end type aerosol_diagnostics_type
+ 
+!------------------------------------------------------------------
+
 public   aerosol_properties_type
 
 !    aerextband
@@ -95,7 +123,15 @@ type aerosol_properties_type
                                        aerssalbband=>NULL(), &
                                        aerasymmband=>NULL(), &
                                        aerextbandlw=>NULL(), &
-                                       aerssalbbandlw=>NULL()
+                                       aerssalbbandlw=>NULL(), &
+                                       aerextbandlw_cn=>NULL(), &
+                                       aerssalbbandlw_cn=>NULL()
+     real, dimension(:,:,:,:), pointer :: sw_ext=>NULL(), &
+                                          sw_ssa=>NULL(), &
+                                          sw_asy=>NULL(), &
+                                          lw_ext=>NULL(), &
+                                          lw_ssa=>NULL(), &
+                                          lw_asy=>NULL()
      integer, dimension(:), pointer :: sulfate_index=>NULL()
      integer, dimension(:), pointer :: optical_index=>NULL()
 end type aerosol_properties_type
@@ -123,6 +159,7 @@ public atmos_input_type
 !    press
 !    temp
 !    rh2o
+!    zfull
 !    pflux
 !    tflux
 !    deltaz
@@ -142,6 +179,7 @@ type atmos_input_type
      real, dimension(:,:,:), pointer :: press=>NULL(),   &
                                         temp=>NULL(), &
                                         rh2o=>NULL(),  &
+                                        zfull=>NULL(),  &
                                         pflux=>NULL(), &
                                         tflux=>NULL(),  &
                                         deltaz=>NULL(),  &
@@ -174,9 +212,10 @@ public cldrad_properties_type
 !    cvisrfsw
 
 type cldrad_properties_type
-     real, dimension(:,:,:,:), pointer :: cldext=>NULL(),   &
+     real, dimension(:,:,:,:,:), pointer :: cldext=>NULL(),   &
                                           cldasymm=>NULL(), &
-                                          cldsct=>NULL(), &
+                                          cldsct=>NULL()
+     real, dimension(:,:,:,:,:), pointer ::                   &
                                           emmxolw=>NULL(), &
                                           emrndlw=>NULL(),  &
                                           abscoeff=>NULL(),  &
@@ -234,7 +273,17 @@ public cld_specification_type
 !    ice_cloud
 
 type cld_specification_type
-   real, dimension(:,:,:,:),  pointer :: tau=>NULL()
+   real, dimension(:,:,:,:),  pointer :: tau=>NULL(),  &
+                                         camtsw_band=>NULL(), &
+                                         crndlw_band=>NULL(), &
+                                         lwp_lw_band=>NULL(), &
+                                         iwp_lw_band=>NULL(), &
+                                         lwp_sw_band=>NULL(), &
+                                         iwp_sw_band=>NULL(), &
+                                         reff_liq_lw_band=>NULL(),   &
+                                         reff_ice_lw_band=>NULL(), &
+                                         reff_liq_sw_band=>NULL(),   &
+                                         reff_ice_sw_band=>NULL()
    real, dimension(:,:,:),    pointer :: lwp=>NULL(),   &
                                          iwp=>NULL(),  &
                                          reff_liq=>NULL(),   &
@@ -249,9 +298,13 @@ type cld_specification_type
                                          cmxolw=>NULL(),  &
                                          crndlw=>NULL()
    integer, dimension(:,:,:), pointer :: cld_thickness=>NULL()
+   integer, dimension(:,:,:,:), pointer :: cld_thickness_lw_band=>NULL()
+   integer, dimension(:,:,:,:), pointer :: cld_thickness_sw_band=>NULL()
    integer, dimension(:,:),   pointer :: ncldsw=>NULL(),   &
                                          nmxolw=>NULL(),&
                                          nrndlw=>NULL()
+   integer, dimension(:,:,:), pointer :: ncldsw_band=>NULL(),   &
+                                         nrndlw_band=>NULL()
    logical, dimension(:,:,:), pointer :: hi_cloud=>NULL(),   &
                                          mid_cloud=>NULL(),  &
                                          low_cloud=>NULL(),   &
@@ -277,8 +330,11 @@ type cloudrad_control_type
     logical :: do_diag_clouds        
     logical :: do_specified_clouds        
     logical :: do_donner_deep_clouds
+    logical :: do_zetac_clouds
     logical :: do_random_overlap
     logical :: do_max_random_overlap
+    logical :: do_stochastic_clouds
+    logical :: do_ica_calcs
     integer :: nlwcldb                   !   number of frequency bands 
                                          !   for which lw cloud emissiv-
                                          !   ities are defined.
@@ -301,8 +357,11 @@ type cloudrad_control_type
     logical :: do_diag_clouds_iz
     logical :: do_specified_clouds_iz
     logical :: do_donner_deep_clouds_iz
+    logical :: do_zetac_clouds_iz
     logical :: do_random_overlap_iz
     logical :: do_max_random_overlap_iz
+    logical :: do_stochastic_clouds_iz
+    logical :: do_ica_calcs_iz
 end type cloudrad_control_type
 
 !------------------------------------------------------------------
@@ -527,12 +586,18 @@ public lw_output_type
 !    flxnet
 !    heatracf
 !    flxnetcf
+!    netlw_special
+!    netlw_special_clr
 
 type lw_output_type
      real, dimension(:,:,:), pointer :: heatra=>NULL(), &
                                         flxnet=>NULL(),  &
                                         heatracf=>NULL(), &
                                         flxnetcf=>NULL()
+     real, dimension(:,:,:), pointer   :: netlw_special=>NULL(), &
+                                          netlw_special_clr=>NULL(), &
+                                          bdy_flx=>NULL(), &
+                                          bdy_flx_clr=>NULL()
 end type lw_output_type
 
 !------------------------------------------------------------------
@@ -566,6 +631,21 @@ public microphysics_type
 !    size_rain
 !    conc_rain
 !    cldamt
+!    stoch_conc_ice
+!    stoch_conc_drop
+!    stoch_size_ice
+!    stoch_size_drop
+!    stoch_cldamt
+!    lw_stoch_conc_ice
+!    lw_stoch_conc_drop
+!    lw_stoch_size_ice
+!    lw_stoch_size_drop
+!    lw_stoch_cldamt
+!    sw_stoch_conc_ice
+!    sw_stoch_conc_drop
+!    sw_stoch_size_ice
+!    sw_stoch_size_drop
+!    sw_stoch_cldamt
 
 type microphysics_type
    real, dimension(:,:,:), pointer :: conc_ice=>NULL(),   &
@@ -577,6 +657,27 @@ type microphysics_type
                                       size_rain=>NULL(),     &
                                       conc_rain=>NULL(),   &
                                       cldamt=>NULL()
+real, dimension(:,:,:,:), pointer :: stoch_conc_ice=>NULL(),   &
+                                     stoch_conc_drop=>NULL(),  &
+                                     stoch_size_ice=>NULL(),   &
+                                     stoch_size_drop=>NULL(),  &
+                                     stoch_cldamt=>NULL() 
+!
+! In practice, we allocate a single set of columns for the stochastic
+!   clouds, then point to sections of the larger array with the 
+!   lw_ and sw_type. 
+!   I.e. lw_stoch_conc_ice => stoch_conc_ice(:, :, :, 1:numLwBands)
+!
+real, dimension(:,:,:,:), pointer :: lw_stoch_conc_ice=>NULL(),   &
+                                     lw_stoch_conc_drop=>NULL(),  &
+                                     lw_stoch_size_ice=>NULL(),   &
+                                     lw_stoch_size_drop=>NULL(),  &
+                                     lw_stoch_cldamt=>NULL(),     &
+                                     sw_stoch_conc_ice=>NULL(),   &
+                                     sw_stoch_conc_drop=>NULL(),  &
+                                     sw_stoch_size_ice=>NULL(),   &
+                                     sw_stoch_size_drop=>NULL(),  &
+                                     sw_stoch_cldamt=>NULL()
 end type microphysics_type
 
 !-------------------------------------------------------------------
@@ -681,8 +782,50 @@ public radiation_control_type
 type radiation_control_type
     logical  :: do_totcld_forcing
     logical  :: do_aerosol
+    integer  :: rad_time_step
+    real     :: co2_tf_calc_intrvl
+    logical  :: use_current_co2_for_tf
+    logical  :: calc_co2_tfs_on_first_step
+    logical  :: calc_co2_tfs_monthly
+    real     :: co2_tf_time_displacement
+    real     :: ch4_tf_calc_intrvl
+    logical  :: use_current_ch4_for_tf
+    logical  :: calc_ch4_tfs_on_first_step
+    logical  :: calc_ch4_tfs_monthly
+    real     :: ch4_tf_time_displacement
+    real     :: n2o_tf_calc_intrvl
+    logical  :: use_current_n2o_for_tf
+    logical  :: calc_n2o_tfs_on_first_step
+    logical  :: calc_n2o_tfs_monthly
+    real     :: n2o_tf_time_displacement
+    integer  :: mx_spec_levs
+    logical  :: time_varying_solar_constant
+    logical  :: volcanic_sw_aerosols
+    logical  :: volcanic_lw_aerosols
+    logical  :: using_solar_timeseries_data
     logical  :: do_totcld_forcing_iz
     logical  :: do_aerosol_iz
+    logical  :: rad_time_step_iz
+    logical  :: co2_tf_calc_intrvl_iz
+    logical  :: use_current_co2_for_tf_iz
+    logical  :: calc_co2_tfs_on_first_step_iz
+    logical  :: calc_co2_tfs_monthly_iz
+    logical  :: ch4_tf_calc_intrvl_iz
+    logical  :: use_current_ch4_for_tf_iz
+    logical  :: calc_ch4_tfs_on_first_step_iz
+    logical  :: calc_ch4_tfs_monthly_iz
+    logical  :: n2o_tf_calc_intrvl_iz
+    logical  :: use_current_n2o_for_tf_iz
+    logical  :: calc_n2o_tfs_on_first_step_iz
+    logical  :: calc_n2o_tfs_monthly_iz
+    logical  :: co2_tf_time_displacement_iz
+    logical  :: ch4_tf_time_displacement_iz
+    logical  :: n2o_tf_time_displacement_iz
+    logical  :: mx_spec_levs_iz
+    logical  :: time_varying_solar_constant_iz
+    logical  :: volcanic_sw_aerosols_iz
+    logical  :: volcanic_lw_aerosols_iz
+    logical  :: using_solar_timeseries_data_iz
 end type radiation_control_type
 
 !------------------------------------------------------------------
@@ -714,7 +857,16 @@ type radiative_gases_type
      real                            :: rrvch4, rrvn2o, rrvco2,    &
                                         rrvf11, rrvf12, rrvf113,  &
                                         rrvf22, rf11air, rf12air,  &
-                                        rf113air, rf22air
+                                        rf113air, rf22air, &
+                                        co2_for_last_tf_calc,  &
+                                        co2_tf_offset, &
+                                        co2_for_next_tf_calc, &
+                                        ch4_for_last_tf_calc,  &
+                                        ch4_tf_offset, &
+                                        ch4_for_next_tf_calc, &
+                                        n2o_for_last_tf_calc,  &
+                                        n2o_tf_offset, &
+                                        n2o_for_next_tf_calc
      logical                         :: time_varying_co2,  &
                                         time_varying_f11, &
                                         time_varying_f12,  &
@@ -722,6 +874,7 @@ type radiative_gases_type
                                         time_varying_f22,  &
                                         time_varying_ch4, &
                                         time_varying_n2o
+     type(time_type)                 :: Co2_time, Ch4_time, N2o_time
 end type radiative_gases_type
 
 !------------------------------------------------------------------
@@ -744,6 +897,15 @@ type rad_output_type
                                         tdtsw_clr=>NULL(),  &
                                         tdtlw=>NULL()
      real, dimension(:,:),   pointer :: flux_sw_surf=>NULL(), &
+                                        flux_sw_surf_dir=>NULL(), &
+                                        flux_sw_surf_dif=>NULL(), &
+                                        flux_sw_down_vis_dir=>NULL(), &
+                                        flux_sw_down_vis_dif=>NULL(), &
+                                       flux_sw_down_total_dir=>NULL(), &
+                                       flux_sw_down_total_dif=>NULL(), &
+                                        flux_sw_vis=>NULL(), &
+                                        flux_sw_vis_dir=>NULL(), &
+                                        flux_sw_vis_dif=>NULL(), &
                                         flux_lw_surf=>NULL(), &
                                         coszen_angle=>NULL()
 end type rad_output_type
@@ -759,6 +921,7 @@ type shortwave_control_type
     logical  :: do_diurnal
     logical  :: do_annual
     logical  :: do_daily_mean
+    logical  :: do_cmip_diagnostics
     real     :: solar_constant
     logical  :: do_lhsw_iz
     logical  :: do_esfsw_iz
@@ -766,6 +929,7 @@ type shortwave_control_type
     logical  :: do_diurnal_iz
     logical  :: do_annual_iz
     logical  :: do_daily_mean_iz
+    logical  :: do_cmip_diagnostics_iz
 end type shortwave_control_type
 
 !---------------------------------------------------------------------
@@ -775,6 +939,12 @@ public solar_spectrum_type
 !    solarfluxtoa      highly-resolved solar flux at toa in 
 !                      Sw_control%tot_wvnums 
 !                      bands [         ]
+!    solflxband_lean   a time series of toa solar flux in each
+!                      parameterization band
+!    solflxband_lean_ann_1882   1882 average toa solar flux in each
+!                               parameterization band
+!    solflxband_lean_ann_2000   2000 average toa solar flux in each
+!                               parameterization band
 !    solflxband        toa solar flux in each parameterization band
 !                      [         ]
 !    endwvnbands       highest wave number in each of the solar
@@ -784,16 +954,26 @@ public solar_spectrum_type
 !    nfrqpts
 !    nstreams
 !    nh2obands
+!    visible_band_indx
+!    one_micron_indx
+!    visible_band_indx_iz
+!    one_micron_indx_iz
 
 type solar_spectrum_type
     real, dimension(:),    pointer   :: solarfluxtoa=>null()
     real, dimension(:),    pointer   :: solflxband=>NULL()
+    real, dimension(:),    pointer   :: solflxbandref=>NULL()
+    real, dimension(:),    pointer   :: solflxband_lean_ann_1882=>NULL()
+    real, dimension(:),    pointer   :: solflxband_lean_ann_2000=>NULL()
+    real, dimension(:,:,:),pointer   :: solflxband_lean=>NULL()
     integer, dimension(:), pointer   :: endwvnbands=>NULL()
     integer         :: tot_wvnums
     integer         :: nbands
     integer         :: nfrqpts
     integer         :: nstreams
     integer         :: nh2obands
+    integer         :: visible_band_indx, one_micron_indx
+    logical         :: visible_band_indx_iz, one_micron_indx_iz
 end type solar_spectrum_type
 
 !---------------------------------------------------------------------
@@ -805,7 +985,11 @@ public surface_type
 
 type surface_type
     real, dimension(:,:),   pointer ::  asfc=>NULL(),   &
-                                        land=>NULL()
+                                        land=>NULL(),  &
+                                        asfc_vis_dir=>NULL(), &
+                                        asfc_nir_dir=>NULL(), &
+                                        asfc_vis_dif=>NULL(), &
+                                        asfc_nir_dif=>NULL()
 end type surface_type
  
 !-------------------------------------------------------------------
@@ -820,6 +1004,10 @@ public sw_output_type
 !    ufswcf
 !    fswcf
 !    hswcf
+!    swdn_special
+!    swup_special
+!    swdn_special_clr
+!    swup_special_clr
 
 type sw_output_type
      real, dimension(:,:,:), pointer :: dfsw=>NULL(),   &
@@ -830,6 +1018,21 @@ type sw_output_type
                                         ufswcf=>NULL(),&
                                         fswcf=>NULL(),  &
                                         hswcf=>NULL()
+      real, dimension(:,:), pointer :: dfsw_vis_sfc=>NULL(),   &
+                                       ufsw_vis_sfc=>NULL()
+      real, dimension(:,:), pointer :: dfsw_dir_sfc=>NULL()
+      real, dimension(:,:), pointer :: dfsw_dif_sfc=>NULL(),   &
+                                       ufsw_dif_sfc=>NULL()
+      real, dimension(:,:), pointer :: dfsw_vis_sfc_dir=>NULL()
+      real, dimension(:,:), pointer :: dfsw_vis_sfc_dif=>NULL(),   &
+                                       ufsw_vis_sfc_dif=>NULL()
+      real, dimension(:,:,:), pointer   ::                       &
+                                        bdy_flx=>NULL(), &
+                                        bdy_flx_clr=>NULL(), &
+                                        swup_special=>NULL(), &
+                                        swup_special_clr=>NULL()
+     real, dimension(:,:,:), pointer   :: swdn_special=>NULL(), &
+                                          swdn_special_clr=>NULL()
 end type sw_output_type
 
 !-------------------------------------------------------------------
@@ -880,28 +1083,49 @@ type (longwave_control_type),  public   ::    &
 type (shortwave_control_type), public   ::  &
     Sw_control = shortwave_control_type( .false., .false., .false. , &
                                          .false., .false., .false., &
+                                         .false., &
                                          0.0, &
                                          .false., .false., .false. , &
+                                         .false., &
                                          .false., .false., .false.)
 
 type (radiation_control_type), public   ::  &
-   Rad_control = radiation_control_type( .false., .false. , &
-                                         .false., .false.)
+   Rad_control = radiation_control_type( .false., .false., 0,    &
+                                         0.0,  .true.,  .false.,&
+                                         .false.,  0.0, &
+                                         0.0, .true., .false.,  &
+                                         .false.,  0.0,  &
+                                         0.0, .true., .false.,   &
+                                         .false., 0.0, &
+                                         0, .false., .false.,   &
+                                         .false., .false.,&
+! _iz variables:
+                                         .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false., .false., &
+                                         .false., .false., &
+                                         .false.,          &
+                                         .false., .false., .false.)
 
 type (cloudrad_control_type), public    ::   &
  Cldrad_control = cloudrad_control_type( .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false., .false., &
-                                         .false., .false.,          &
+                                         .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false.,                   &
                                          0,0,0,0,0,0 , &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false., .false., &
-                                         .false., .false.)
+                                         .false., .false., .false., &
+                                         .false., .false., .false., &
+                                         .false.)
 
 type (environment_type), public         ::   &
          Environment = environment_type( .false.,  .false., .false., &
@@ -1094,6 +1318,7 @@ subroutine check_derived_types
           Sw_control%do_swaerosol_iz .and. &
           Sw_control%do_diurnal_iz .and. &
           Sw_control%do_annual_iz .and. &
+          Sw_control%do_cmip_diagnostics_iz .and. &
           Sw_control%do_daily_mean_iz ) then  
       else
         call error_mesg ('rad_utilities_mod', &
@@ -1105,7 +1330,24 @@ subroutine check_derived_types
 !    check the components of Rad_control.
 !--------------------------------------------------------------------
       if (Rad_control%do_totcld_forcing_iz .and. &
-          Rad_control%do_aerosol_iz ) then 
+          Rad_control%do_aerosol_iz .and.     &
+          Rad_control%mx_spec_levs_iz .and.   &
+          Rad_control%use_current_co2_for_tf_iz .and. &
+          Rad_control%co2_tf_calc_intrvl_iz .and. &
+          Rad_control%calc_co2_tfs_on_first_step_iz .and. &
+          Rad_control%calc_co2_tfs_monthly_iz .and. &
+          Rad_control%co2_tf_time_displacement_iz .and. &
+          Rad_control%use_current_ch4_for_tf_iz .and. &
+          Rad_control%ch4_tf_calc_intrvl_iz .and. &
+          Rad_control%calc_ch4_tfs_on_first_step_iz .and. &
+          Rad_control%calc_ch4_tfs_monthly_iz .and. &
+          Rad_control%ch4_tf_time_displacement_iz .and. &
+          Rad_control%use_current_n2o_for_tf_iz .and. &
+          Rad_control%n2o_tf_calc_intrvl_iz .and. &
+          Rad_control%calc_n2o_tfs_on_first_step_iz .and. &
+          Rad_control%calc_n2o_tfs_monthly_iz .and. &
+          Rad_control%n2o_tf_time_displacement_iz .and. &
+          Rad_control%rad_time_step_iz ) then
       else
         call error_mesg ('rad_utilities_mod', &
           ' at least one component of Rad_control has not been '//&
@@ -1121,6 +1363,7 @@ subroutine check_derived_types
           Cldrad_control%do_sw_micro_iz .and. &
           Cldrad_control%do_lw_micro_iz .and. &
           Cldrad_control%do_strat_clouds_iz .and. &
+          Cldrad_control%do_rh_clouds_iz .and. &
           Cldrad_control%do_zonal_clouds_iz .and. &
           Cldrad_control%do_mgroup_prescribed_iz .and. &
           Cldrad_control%do_obs_clouds_iz .and. &
@@ -1128,8 +1371,10 @@ subroutine check_derived_types
           Cldrad_control%do_diag_clouds_iz .and. &
           Cldrad_control%do_specified_clouds_iz .and. &
           Cldrad_control%do_donner_deep_clouds_iz .and. &
+          Cldrad_control%do_stochastic_clouds_iz .and. &
           Cldrad_control%do_random_overlap_iz .and. &
-          Cldrad_control%do_max_random_overlap_iz ) then 
+          Cldrad_control%do_ica_calcs_iz .and. &
+          Cldrad_control%do_max_random_overlap_iz ) then     
       else
         call error_mesg ('rad_utilities_mod', &
           ' at least one component of Cldrad_control has not been '//&
@@ -1906,7 +2151,7 @@ end subroutine table3_alloc
 ! </SUBROUTINE>
 !
 subroutine thickavg_3d (nivl1, nivl2, nivls, nbands, extivl, ssalbivl,&
-                        asymmivl, solflxivl, solflxband, extband,  &
+                        asymmivl, solflxivl, solflxband, mask, extband,&
                         ssalbband, asymmband)
  
 !---------------------------------------------------------------------
@@ -1929,6 +2174,7 @@ real, dimension(:,:),     intent(in)       :: solflxivl
 real, dimension(:),       intent(in)       :: solflxband            
 real, dimension(:,:,:,:), intent(out)      :: extband, ssalbband,   &
                                               asymmband
+logical, dimension(:,:,:), intent(in)      :: mask
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
@@ -2006,8 +2252,7 @@ real, dimension(:,:,:,:), intent(out)      :: extband, ssalbband,   &
                                                                  FATAL)
       endif
 
-!--------------------------------------------------------------------
-!
+!------------------------------------------------------ --------------
 !--------------------------------------------------------------------
       do nband = 1,nbands
         sumk(:,:,:) = 0.0
@@ -2015,11 +2260,11 @@ real, dimension(:,:,:,:), intent(out)      :: extband, ssalbband,   &
         sumomegakg(:,:,:) = 0.0
         sumrefthick(:,:,:) = 0.0
         do ni = nivl1(nband),nivl2(nband)
+!
           do k=1, size(ssalbivl,3)
             do j=1,size(ssalbivl,2)
               do i=1,size(ssalbivl,1)
-                if ((ssalbivl(i,j,k,ni) +    &
-                     asymmivl(i,j,k,ni)) /= 0.0) then
+                if (mask(i,j,k)) then
                   ssalbivl(i,j,k,ni) = MIN(ssalbivl(i,j,k,ni), 1.0)
                   sp(i,j,k) = sqrt( ( 1.0 - ssalbivl(i,j,k,ni) ) /    &
                                     ( 1.0 - ssalbivl(i,j,k,ni) *      &
@@ -2249,7 +2494,7 @@ real, dimension(:),       intent(out)      :: extband, ssalbband, &
         sumomegakg  = 0.0
         sumrefthick = 0.0
         do ni = nivl1(nband),nivl2(nband)
-          if ( (ssalbivl(ni) + asymmivl(ni)) /= 0.0 ) then
+          if (extivl(ni) /= 0.0) then
             ssalbivl(ni) = MIN(ssalbivl(ni), 1.0)
             sp = sqrt( ( 1.0 - ssalbivl(ni) ) /    &
                        ( 1.0 - ssalbivl(ni) * asymmivl(ni) ) )
@@ -2281,6 +2526,376 @@ real, dimension(:),       intent(out)      :: extband, ssalbband, &
 end subroutine thickavg_0d
 
 
+!##################################################################
+
+! <SUBROUTINE NAME="thickavg_isccp">
+!  <OVERVIEW>
+!   Subroutine to use thick-averaging technique to define band interval
+!   single scattering properties for a single specified band.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+! use the thick-averaging technique to define the single-scattering    
+! properties of the specified parameterization band spectral interval 
+! from the specified spectral intervals of the particular scatterer.    
+!                                                                      
+! references:                                                          
+!                                                                      
+! edwards,j.m. and a. slingo, studies with a flexible new radiation    
+!      code I: choosing a configuration for a large-scale model.,      
+!      q.j.r. meteorological society, 122, 689-719, 1996.              
+!                                                                      
+! note: the 1.0E-100 factor to calculate asymmband is to prevent        
+!       division by zero.                                              
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call subroutine thickavg (nband, nivl1, nivl2, extivl, solflxivl, &
+!                             solflxband, mask, extband )
+!  </TEMPLATE>
+!  <IN NAME="nband" TYPE="integer">
+!
+!  </IN>
+!  <IN NAME="nivl1" TYPE="integer">
+!   interval number for the specified single-scattering                
+!              properties corresponding to the first psuedo-           
+!              monochromatic frequency in a given parameterization     
+!              band  
+!  </IN>
+!  <IN NAME="nivl2" TYPE="integer">
+!   interval number for the specified single-scattering     
+!              properties corresponding to the last psuedo-            
+!              monochromatic frequency in a given parameterization     
+!              band
+!  </IN>
+!  <IN NAME="extivl" TYPE="real">
+!   the specified spectral values of the extinction coefficient 
+!  </IN>
+!  <IN NAME="solflxivl" TYPE="real">
+!   the solar flux in each specified scattering spectral interval
+!  </IN>
+!  <IN NAME="solflxband" TYPE="real">
+!   the solar flux in each parameterization band
+!  </IN>
+!  <IN NAME="mask" TYPE="logical">
+!   mask is .true. at gridpoints where extband needs to be calculated
+!  </IN>
+!  <OUT NAME="extband" TYPE="real">
+!   the parameterization band values of the extinction coefficient
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine thickavg_isccp (nband, nivl1, nivl2, extivl,          &
+                           solflxivl, solflxband, mask, extband)
+ 
+!---------------------------------------------------------------------
+!    thickavg_isccp uses the thick-averaging technique to define the 
+!    solar extinction for the single specified parameterization band 
+!    spectral interval (nband) from the  specified spectral intervals 
+!    of the particular scatterer, using 3d input arrays.   
+!    references:                                                       
+!    edwards,j.m. and a. slingo, studies with a flexible new radiation  
+!      code I: choosing a configuration for a large-scale model.,   
+!      q.j.r. meteorological society, 122, 689-719, 1996.            
+!--------------------------------------------------------------------
+
+integer,                  intent(in)       :: nband
+integer,                  intent(in)       :: nivl1, nivl2
+real, dimension(:,:,:,:), intent(in)       :: extivl
+real, dimension(:,:),     intent(in)       :: solflxivl             
+real,                     intent(in)       :: solflxband            
+logical, dimension(:,:,:),intent(in)       :: mask
+real, dimension(:,:,:),   intent(out)      :: extband
+
+!---------------------------------------------------------------------
+!  intent(in) variables:
+!
+!    nband       the sw parameterization band for which the optical
+!                properties are being calculated
+!    nivl1       interval number for the specified single-scattering  
+!                properties corresponding to the first psuedo-         
+!                monochromatic frequency in a given parameterization    
+!                band                                                  
+!    nivl2       interval number for the specified single-scattering 
+!                properties corresponding to the last psuedo-          
+!                monochromatic frequency in a given parameterization    
+!                band                                                 
+!    extivl      specified spectral values of the extinction coefficient
+!    solflxband  the solar flux in each parameterization band  
+!    mask        logical indicating the points at which the band values 
+!                should be calculated       
+!
+!  intent(out) variables:
+!
+!    extband     the parameterization band values of the extinction 
+!                coefficient                                      
+!    
+!--------------------------------------------------------------------
+ 
+!--------------------------------------------------------------------
+!  local variables:
+ 
+      real     ::  sumk
+      integer  ::  i, j, k, ni
+ 
+!--------------------------------------------------------------------
+!  local variables:
+!
+!     sumk
+!     i,j,k,ni
+!
+!--------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+!    be sure module has been initialized.
+!--------------------------------------------------------------------
+      if (.not. module_is_initialized) then
+        call error_mesg ('rad_utilities_mod',  &
+         'initialization routine of this module was never called', &
+                                                                 FATAL)
+      endif
+
+!--------------------------------------------------------------------
+!
+      do k=1, size(extivl,3)
+        do j=1,size(extivl,2)
+          do i=1,size(extivl,1)
+            if (mask(i,j,k)) then
+              sumk = 0.0
+              do ni = nivl1,nivl2
+                sumk = sumk + extivl(i,j,k,ni)*solflxivl(nband,ni)
+              end do
+              extband(i,j,k) = sumk/solflxband
+            endif
+          end do
+        end do
+      end do
+
+!---------------------------------------------------------------------
+
+  
+end subroutine thickavg_isccp
+
+!##################################################################
+
+! <SUBROUTINE NAME="thickavg_1band">
+!  <OVERVIEW>
+!   Subroutine to use thick-averaging technique to define band interval
+!   single scattering properties for a single specified band.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+! use the thick-averaging technique to define the single-scattering    
+! properties of the specified parameterization band spectral interval 
+! from the specified spectral intervals of the particular scatterer.    
+!                                                                      
+! references:                                                          
+!                                                                      
+! edwards,j.m. and a. slingo, studies with a flexible new radiation    
+!      code I: choosing a configuration for a large-scale model.,      
+!      q.j.r. meteorological society, 122, 689-719, 1996.              
+!                                                                      
+! note: the 1.0E-100 factor to calculate asymmband is to prevent        
+!       division by zero.                                              
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call subroutine thickavg (nband, nivl1  , nivl2   , nivls   , &
+!                        nbands, &
+!                        extivl   , ssalbivl  , asymmivl, solflxivl, &
+!                        solflxband,  mask, extband  , ssalbband ,  &
+!                        asymmband)
+!  </TEMPLATE>
+!  <IN NAME="nband" TYPE="integer">
+!
+!  </IN>
+!  <IN NAME="nivl1" TYPE="integer">
+!   interval number for the specified single-scattering                
+!              properties corresponding to the first psuedo-           
+!              monochromatic frequency in a given parameterization     
+!              band  
+!  </IN>
+!  <IN NAME="nivl2" TYPE="integer">
+!   interval number for the specified single-scattering     
+!              properties corresponding to the last psuedo-            
+!              monochromatic frequency in a given parameterization     
+!              band
+!  </IN>
+!  <IN NAME="nivls" TYPE="integer">
+!   number of specified scattering spectral intervals
+!  </IN>
+!  <IN NAME="nbands" TYPE="integer">
+!   number of spectral bands
+!  </IN>
+!  <IN NAME="extivl" TYPE="real">
+!   the specified spectral values of the extinction coefficient 
+!  </IN>
+!  <INOUT NAME="ssalbivl" TYPE="real">
+!   the specified spectral values of the single-scattering albedo
+!  </INOUT>
+!  <IN NAME="asymmivl" TYPE="real">
+!   the specified spectral values of the asymmetry factor
+!  </IN>
+!  <IN NAME="solflxivl" TYPE="real">
+!   the solar flux in each specified scattering spectral interval
+!  </IN>
+!  <IN NAME="solflxband" TYPE="real">
+!   the solar flux in each parameterization band
+!  </IN>
+!  <IN NAME="mask" TYPE="logical">
+!   mask is .true. at gridpoints where band calculations are needed
+!  </IN>
+!  <OUT NAME="extband" TYPE="real">
+!   the parameterization band values of the extinction coefficient
+!  </OUT>
+!  <OUT NAME="ssalbband" TYPE="real">
+!   the parameterization band values of the single-scattering albedo
+!  </OUT>
+!  <OUT NAME="asymmband" TYPE="real">
+!   the parameterization band values of the asymmetry factor
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine thickavg_1band (nband, nivl1, nivl2, nivls, nbands, extivl, &
+                           ssalbivl, asymmivl, solflxivl, solflxband, &
+                           mask, extband, ssalbband, asymmband)
+ 
+!---------------------------------------------------------------------
+!    thickavg_1band uses the thick-averaging technique to define the 
+!    single-scattering properties of the specified parameterization band
+!    spectral interval from the  specified spectral intervals of the 
+!    particular scatterer, using 3d input arrays.   
+!    references:                                                       
+!    edwards,j.m. and a. slingo, studies with a flexible new radiation  
+!      code I: choosing a configuration for a large-scale model.,   
+!      q.j.r. meteorological society, 122, 689-719, 1996.            
+!--------------------------------------------------------------------
+
+integer,                  intent(in)       :: nband
+integer,                  intent(in)       :: nivl1, nivl2
+integer,                  intent(in)       :: nivls
+integer,                  intent(in)       :: nbands
+real, dimension(:,:,:,:), intent(in)       :: extivl, asymmivl
+real, dimension(:,:,:,:), intent(inout)    :: ssalbivl
+real, dimension(:,:),     intent(in)       :: solflxivl             
+real,                     intent(in)       :: solflxband            
+real, dimension(:,:,:  ), intent(inout)      :: extband, ssalbband,   &
+                                              asymmband
+logical, dimension(:,:,:), intent(in)      :: mask
+
+!---------------------------------------------------------------------
+!  intent(in) variables:
+!
+!    nband       the sw parameterization band for which the optical
+!                properties are being calculated
+!    nivl1       interval number for the specified single-scattering  
+!                properties corresponding to the first psuedo-         
+!                monochromatic frequency in a given parameterization    
+!                band                                                  
+!    nivl2       interval number for the specified single-scattering 
+!                properties corresponding to the last psuedo-          
+!                monochromatic frequency in a given parameterization    
+!                band                                                 
+!    nivls       number of specified scattering spectral intervals      
+!    nbands
+!    extivl      specified spectral values of the extinction coefficient
+!    asymmivl    the specified spectral values of the asymmetry     
+!                factor                                           
+!    solflxivl   the solar flux in each specified scattering spectral
+!                interval                                         
+!    solflxband  the solar flux in each parameterization band  
+!    mask        logical indicating the points at which the band values 
+!                should be calculated       
+!
+!  intent(inout) variables:
+!
+!    ssalbivl    the specified spectral values of the single-       
+!                scattering albedo                                   
+!
+!  intent(out) variables:
+!
+!    extband     the parameterization band values of the extinction 
+!                coefficient                                      
+!    ssalbband   the parameterization band values of the single-   
+!                scattering albedo                                  
+!    asymmband   the parameterization band values of the asymmetry   
+!                factor                                               
+!    
+!--------------------------------------------------------------------
+ 
+!--------------------------------------------------------------------
+!  local variables:
+ 
+      real :: refband, sp, refthick
+      real :: sumk, sumomegak, sumomegakg,  sumrefthick
+
+      integer  :: i, j, k, ni
+ 
+!--------------------------------------------------------------------
+!  local variables:
+!
+!     refband
+!     refthick
+!     sp
+!     sumk
+!     sumomegak
+!     sumomegakg
+!     sumrefthck
+!     nband
+!     i,j,k,ni
+!
+!--------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+!    be sure module has been initialized.
+!--------------------------------------------------------------------
+      if (.not. module_is_initialized) then
+        call error_mesg ('rad_utilities_mod',  &
+         'initialization routine of this module was never called', &
+                                                                 FATAL)
+      endif
+
+!--------------------------------------------------------------------
+!
+!--------------------------------------------------------------------
+      do k=1, size(ssalbivl,3)
+        do j=1,size(ssalbivl,2)
+          do i=1,size(ssalbivl,1)
+            if (mask(i,j,k)) then
+              sumk        = 0.0
+              sumomegak        = 0.0
+              sumomegakg        = 0.0
+              sumrefthick        = 0.0
+              do ni = nivl1,nivl2
+                ssalbivl(i,j,k,ni) = MIN(ssalbivl(i,j,k,ni), 1.0)
+                sp = sqrt((1.0 - ssalbivl(i,j,k,ni) ) /    &
+                          (1.0 - ssalbivl(i,j,k,ni)*asymmivl(i,j,k,ni)))
+                refthick = (1.0 - sp)/(1.0 + sp)
+                sumrefthick = sumrefthick + refthick*solflxivl(nband,ni)
+                sumk = sumk + extivl(i,j,k,ni)*solflxivl(nband,ni)
+                sumomegak = sumomegak + ssalbivl(i,j,k,ni)*   &
+                                        extivl(i,j,k,ni)*   &
+                                        solflxivl(nband,ni)
+                sumomegakg = sumomegakg + ssalbivl(i,j,k,ni)*&
+                                          extivl(i,j,k,ni)*  &
+                                          asymmivl(i,j,k,ni)* &
+                                          solflxivl(nband,ni)
+              end do
+
+!---------------------------------------------------------------------
+!    the 1.0E-100 factor to calculate asymmband is to prevent        
+!    division by zero.                                             
+!---------------------------------------------------------------------
+              extband(i,j,k) = sumk/solflxband
+              asymmband(i,j,k) = sumomegakg/(sumomegak + 1.0E-100)
+              refband  = sumrefthick/solflxband        
+              ssalbband(i,j,k) = 4.0*refband/((1.0 + refband) ** 2 - &
+                                 asymmband(i,j,k)*(1.0 - refband)**2 )
+            endif
+          end do
+        end do
+      end do
+
+!---------------------------------------------------------------------
+
+  
+end subroutine thickavg_1band
 
 !####################################################################
 ! <SUBROUTINE NAME="thinavg">

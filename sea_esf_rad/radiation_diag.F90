@@ -13,9 +13,6 @@
 !    sea_esf_rad radiation package.
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!  Module that provides a diagnostic output file of radiation-
-!    related variables in user-specified atmospheric columns for the
-!    sea_esf_rad radiation package.
 ! </DESCRIPTION>
 
 !  shared modules:
@@ -55,8 +52,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: radiation_diag.F90,v 10.0 2003/10/24 22:00:45 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version =  '$Id: radiation_diag.F90,v 11.0 2004/09/28 19:23:33 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -257,7 +254,7 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !    allocate and initialize a flag array which indicates the latitudes
 !    containing columns where radiation diagnostics are desired.
 !---------------------------------------------------------------------
-      allocate (do_raddg (size(latb)-1) )
+      allocate (do_raddg (size(latb(:))-1) )
       do_raddg(:) = .false.
 
 !-------------------------------------------------------------------
@@ -338,10 +335,10 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !    i and j processor-coordinates and the latitude and longitude of 
 !    the diagnostics column.
 !--------------------------------------------------------------------
-          do j=1,size(latb) - 1
+          do j=1,size(latb(:)) - 1
             if (latradprt(nn) .ge. latb(j)*radian .and.  &
                 latradprt(nn) .lt. latb(j+1)*radian) then
-              do i=1,size(lonb) - 1
+              do i=1,size(lonb(:)) - 1
                 if (lonradprt(nn) .ge. lonb(i)*radian   &
                                   .and.&
                     lonradprt(nn) .lt. lonb(i+1)*radian)  &
@@ -371,9 +368,9 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !    save the input fields from the lw_tables_type variable that will
 !    be used by this module.
 !----------------------------------------------------------------------
-        nbly              = size(Lw_tables%bdlocm)
-        nblw              = size(Lw_tables%bandlo)
-        n_continuum_bands = size(Lw_tables%iband)
+        nbly              = size(Lw_tables%bdlocm(:))
+        nblw              = size(Lw_tables%bandlo(:))
+        n_continuum_bands = size(Lw_tables%iband(:))
 
         allocate ( bdlocm (nbly) )
         allocate ( bdhicm (nbly) )
@@ -936,10 +933,17 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                            ! [ dimensionless ]
       real    :: cldssalb  ! cloud single-scattering albedo 
                            ! [ dimensionless ]
-      real    :: cvisrfgd  ! visible sfc albedo
+      real    :: cvisrfgd_dir  ! visible direct beam sfc albedo
                            ! [ dimensionless ]
-      real    :: cirrfgd   ! infrared sfc albedo
+      real    :: cvisrfgd_dif  ! visible diffuse beam sfc albedo
                            ! [ dimensionless ]
+      real    :: cirrfgd_dir   ! infrared direct beam sfc albedo
+                           ! [ dimensionless ]
+      real    :: cirrfgd_dif   ! infrared diffuse beam sfc albedo
+                           ! [ dimensionless ]
+      real    :: dfsw_nir, dfsw_nir_dir, dfsw_nir_dif
+!     real    :: ufsw_nir, ufsw_nir_dir, ufsw_nir_dif
+      real    :: ufsw_nir,               ufsw_nir_dif
       integer :: ks=1      ! index of top level of radiation grid
       integer :: ke        ! index of lowest radiation grid level
       integer :: nlwcldb   ! number of lw cloud bands
@@ -1004,8 +1008,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                   crndlw(k) = Cld_spec%crndlw(iloc, jloc, k)
                   if (cmxolw(k) > 0.0 .or. crndlw(k) > 0.0)  then
                     write (radiag_unit,9030)   k,    &
-                      cmxolw(k), Cldrad_props%emmxolw(iloc,jloc,k,n), &
-                      crndlw(k), Cldrad_props%emrndlw(iloc,jloc,k,n)
+                      cmxolw(k), Cldrad_props%emmxolw(iloc,jloc,k,n,1),&
+                      crndlw(k), Cldrad_props%emrndlw(iloc,jloc,k,n,1)
                   endif
                 end do
               end do
@@ -1075,19 +1079,19 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                   write (radiag_unit,9040) n
                   do k=ks,ke
                     if (Cld_spec%camtsw(iloc,jloc,k) > 0.0) then
-                      cldext = Cldrad_props%cldext(iloc,jloc,k,n)*   &
+                      cldext = Cldrad_props%cldext(iloc,jloc,k,n,1)*   &
                                Atmos_input%clouddeltaz(iloc,jloc,k)* &
                                1.0E-03
                       if (cldext > 0.0) then           
-                        cldssalb = Cldrad_props%cldsct(iloc,jloc,k,n)/ &
-                                   Cldrad_props%cldext(iloc,jloc,k,n)
+                        cldssalb = Cldrad_props%cldsct(iloc,jloc,k,n,1)/ &
+                                   Cldrad_props%cldext(iloc,jloc,k,n,1)
                       else
                         cldssalb = 0.0
                       endif
                       write (radiag_unit,9050) k,     &
                              Cld_spec%camtsw (iloc,jloc,k),   &
                              cldext, cldssalb,                      &
-                             Cldrad_props%cldasymm(iloc,jloc,k,n)
+                             Cldrad_props%cldasymm(iloc,jloc,k,n,1)
                     endif
                   end do
                 end do
@@ -1137,10 +1141,16 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !    currently these are both given the same value (Surface%asfc), 
 !    but could be different in the future.
 !--------------------------------------------------------------------
-            cvisrfgd = Surface%asfc(iloc,jloc)
-            cirrfgd  = Surface%asfc(iloc,jloc)
+!           cvisrfgd = Surface%asfc(iloc,jloc)
+!           cirrfgd  = Surface%asfc(iloc,jloc)
+            cvisrfgd_dir = Surface%asfc_vis_dir(iloc,jloc)
+            cirrfgd_dir  = Surface%asfc_nir_dir(iloc,jloc)
+            cvisrfgd_dif = Surface%asfc_vis_dif(iloc,jloc)
+            cirrfgd_dif  = Surface%asfc_nir_dif(iloc,jloc)
             write (radiag_unit,9059)
-            write (radiag_unit,9060) cvisrfgd, cirrfgd 
+!           write (radiag_unit,9060) cvisrfgd, cirrfgd 
+            write (radiag_unit,9060) cvisrfgd_dir, cirrfgd_dir, &
+                                     cvisrfgd_dif, cirrfgd_dif
 
 !----------------------------------------------------------------------
 !     write out the amounts of the radiative gases that the radiation
@@ -1254,6 +1264,28 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                                      Sw_output%dfsw (iloc,jloc,ke+1), &
                                      Sw_output%ufsw (iloc,jloc,ke+1), &
                                      pflux          (ke+1)
+
+            if (Sw_control%do_esfsw) then
+              dfsw_nir = Sw_output%dfsw(iloc,jloc,ke+1) -   &
+                           Sw_output%dfsw_vis_sfc(iloc,jloc)
+              dfsw_nir_dir = Sw_output%dfsw_dir_sfc(iloc,jloc) -   &
+                             Sw_output%dfsw_vis_sfc_dir(iloc,jloc)
+              dfsw_nir_dif = Sw_output%dfsw_dif_sfc(iloc,jloc) -   &
+                             Sw_output%dfsw_vis_sfc_dif(iloc,jloc)
+              ufsw_nir = Sw_output%ufsw(iloc,jloc,ke+1) -   &
+                         Sw_output%ufsw_vis_sfc(iloc,jloc)
+              ufsw_nir_dif = Sw_output%ufsw_dif_sfc(iloc,jloc) -   &
+                            Sw_output%ufsw_vis_sfc_dif(iloc,jloc)
+              write (radiag_unit, 99026)    &
+                           Sw_output%dfsw_vis_sfc(iloc,jloc), &
+                           Sw_output%ufsw_vis_sfc(iloc,jloc), &
+                           Sw_output%dfsw_vis_sfc_dir(iloc,jloc), &
+                           Sw_output%dfsw_vis_sfc_dif(iloc,jloc), &
+                           Sw_output%ufsw_vis_sfc_dif(iloc,jloc), &
+                           dfsw_nir, ufsw_nir,  &
+                           dfsw_nir_dir,               &
+                           dfsw_nir_dif, ufsw_nir_dif
+            endif
 
 !----------------------------------------------------------------------
 !    compute and write out total radiative heating and total fluxes 
@@ -1708,6 +1740,20 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                &DIURNALLY VARYING ZENITH ANGLES')
 99025  format (' SHORTWAVE CALCULATIONS BASED ON  &
                &ANNUAL MEAN ZENITH ANGLES')
+99026  format ( '      VISIBLE SFC SW FLUXES:', //, &
+                ' total downward   = ', F12.6,   &
+                '   total upward   = ', F12.6,   /, &
+                ' downward direct  = ', F12.6,  &
+                '   upward direct  =   NONEXISTENT', /,    &
+                ' downward diffuse = ', F12.6,  &
+                '   upward diffuse = ', F12.6,  //,   &
+                '       NIR SFC SW FLUXES:', //, &
+                ' total downward   = ', F12.6, &
+                '   total upward   = ', F12.6,  /,  &
+                ' downward direct  = ', F12.6, &
+                '   upward direct  =   NONEXISTENT', /,    &
+                ' downward diffuse = ', F12.6, &
+                '   upward diffuse = ', F12.6)
 99030  format (' SHORTWAVE CALCULATIONS BASED ON &
                &DIURNALLY AVERAGED ZENITH ANGLES')
 9009   format (///, ' ************ LONGWAVE CLOUD DATA ***************')
@@ -1732,8 +1778,12 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 9052   format (/, ' THIS LW RADIATION CALL SEES NO CLOUDS.')
 9053   format (/, ' THIS SW RADIATION CALL SEES NO CLOUDS.')
 9059   format (//, ' *********** SURFACE ALBEDO DATA ****************')
-9060   format (/,10X,'VIS. SFC. ALBEDO=',F12.6,' IR SFC. ALBEDO=',  &
-               F12.6)
+!9060   format (/,10X,'VIS. SFC. ALBEDO=',F12.6,' IR SFC. ALBEDO=',  &
+!              F12.6)
+9060   format (/,'ALBEDO, VIS. SFC. DIRECT =',F10.6,' ALBEDO, NIR SFC. DIRECT =',  &
+               F10.6,   &
+              /,'ALBEDO, VIS. SFC. DIFFUSE=',F10.6,' ALBEDO, NIR SFC. DIFFUSE=',  &
+               F10.6)
 9069   format (//, ' *********** RADIATIVE GAS DATA ****************')
 9070   format (/,' CO2 VOL.  MIXING RATIO = ', 6PF10.2,' ppmv')
 9071   format (' F11 VOL.  MIXING RATIO = ',12PF10.2,' pptv')

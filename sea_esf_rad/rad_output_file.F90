@@ -12,8 +12,6 @@
 !  history file
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!  Module that provides subroutines to write radiation output to
-!  history file
 ! </DESCRIPTION>
 
 !   shared modules:
@@ -34,8 +32,12 @@ use rad_utilities_mod, only:  Environment, environment_type, &
                               rad_utilities_init, radiative_gases_type,&
                               rad_output_type, cldrad_properties_type, &
                               cld_specification_type, atmos_input_type,&
+                              Sw_control, aerosol_diagnostics_type, &
+                              aerosol_type, aerosol_properties_type, &
                               surface_type, sw_output_type,  &
+                              Lw_control, &
                               lw_output_type, Rad_control
+use esfsw_parameters_mod, only : esfsw_parameters_init, Solar_spect
 
 !--------------------------------------------------------------------
 
@@ -57,8 +59,9 @@ private
 !-------------------------------------------------------------------
 !----------- version number for this module ------------------------
 
-character(len=128)  :: version =  '$Id: rad_output_file.F90,v 10.0 2003/10/24 22:00:46 fms Exp $'
-character(len=128)  :: tagname =  '$Name: jakarta $'
+character(len=128)  :: version = &
+'$Id: rad_output_file.F90,v 11.0 2004/09/28 19:23:45 fms Exp $'
+character(len=128)  :: tagname =  '$Name: khartoum $'
 
 
 !---------------------------------------------------------------------
@@ -108,15 +111,43 @@ real, parameter  :: DU_factor2 = DU_factor/GRAV
 character(len=16), parameter       :: mod_name='radiation'
 real                               :: missing_value = -999.
 integer, dimension(:), allocatable :: id_aerosol, id_aerosol_column
+!integer, dimension(:), allocatable :: id_aerosol, id_aerosol_column, &
+!                                     id_absopdep, id_absopdep_column, &
+integer, dimension(:,:), allocatable :: id_absopdep,  &
+                                        id_absopdep_column, &
+                                      id_extopdep, id_extopdep_column
+integer, dimension(2)              :: id_lw_absopdep_vlcno_column, &
+                                      id_lw_extopdep_vlcno_column, &
+                                      id_lwext_vlcno, id_lwssa_vlcno, &
+                                      id_lwasy_vlcno, id_lw_xcoeff_vlcno
+integer, dimension(2)              :: id_absopdep_vlcno_column, &
+                                      id_extopdep_vlcno_column, &
+                                      id_swext_vlcno, id_swssa_vlcno, &
+                                      id_swasy_vlcno, id_sw_xcoeff_vlcno
+integer, dimension(4)              :: id_lw_bdyflx_clr, id_lw_bdyflx, &
+                                      id_sw_bdyflx_clr, id_sw_bdyflx
+integer                            :: id_swheat_vlcno
+integer, dimension(:), allocatable :: id_aerosol_fam, &
+                                      id_aerosol_fam_column    
+integer, dimension(:,:), allocatable :: id_absopdep_fam,  &
+                                        id_absopdep_fam_column, &
+                                        id_extopdep_fam,  &
+                                        id_extopdep_fam_column
 integer                            :: id_radswp, id_radp, id_temp, &
                                       id_rh2o, id_qo3, id_qo3_col,  &
                                       id_cmxolw, id_crndlw, id_flxnet, &
                                       id_fsw, id_ufsw, id_psj, &
-                                      id_tmpsfc, id_cvisrfgd,  &
-                                      id_cirrfgd, id_radswpcf,  &
+                                      id_tmpsfc, id_cvisrfgd_dir,  &
+                                      id_cirrfgd_dir, &
+                                      id_cvisrfgd_dif, id_cirrfgd_dif, &
+                                      id_radswpcf,  &
+                                      id_cldwater, id_cldice,  &
+                                      id_cldarea, &
                                       id_radpcf, id_flxnetcf, &
                                       id_fswcf, id_ufswcf, id_pressm,  &
-                                      id_phalfm, id_pfluxm
+                                      id_phalfm, id_pfluxm, &
+                                      id_dphalf, id_dpflux, &
+                                      id_ptop
 
 
 
@@ -125,6 +156,8 @@ integer                            :: id_radswp, id_radp, id_temp, &
 !---------------------------------------------------------------------
 integer :: naerosol=0                      ! number of active aerosols
 logical :: module_is_initialized= .false.  ! module initialized ?
+character(len=16), dimension(4) ::   &
+                     band_suffix = (/ '_vis', '_nir', '_con', '    ' /)
 
 
 !---------------------------------------------------------------------
@@ -164,7 +197,7 @@ logical :: module_is_initialized= .false.  ! module initialized ?
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine rad_output_file_init (axes, Time, names)
+subroutine rad_output_file_init (axes, Time, names, family_names)
 
 !--------------------------------------------------------------------
 !    rad_output_file_init is the constructor for rad_output_file_mod.
@@ -174,6 +207,7 @@ integer, dimension(4),           intent(in)    :: axes
 type(time_type),                 intent(in)    :: Time
 !character(len=64), dimension(:), intent(in)    :: names
 character(len=*), dimension(:), intent(in)    :: names
+character(len=*), dimension(:), intent(in)    :: family_names
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
@@ -184,6 +218,8 @@ character(len=*), dimension(:), intent(in)    :: names
 !       axes      diagnostic variable axes for netcdf files
 !       Time      current time [ time_type(days, seconds) ]
 !       names     names of active aerosols
+!       family_names 
+!                 names of active aerosol families
 !
 !----------------------------------------------------------------------
 
@@ -215,8 +251,11 @@ character(len=*), dimension(:), intent(in)    :: names
       call fms_init
       call constants_init
       call rad_utilities_init
+      call esfsw_parameters_init
       if (Environment%running_gcm .or.  &
-          Environment%running_sa_model) then
+          Environment%running_sa_model .or. &   
+          (Environment%running_standalone .and. &  
+           Environment%column_type == 'fms')) then
         call diag_manager_init  
       endif
       call time_manager_init 
@@ -244,14 +283,17 @@ character(len=*), dimension(:), intent(in)    :: names
 !    if running gcm, continue on if data file is to be written. 
 !--------------------------------------------------------------------
       if (Environment%running_gcm .or. &
-          Environment%running_sa_model) then
+          Environment%running_sa_model .or. &   
+          (Environment%running_standalone .and. &  
+           Environment%column_type == 'fms')) then
         if (write_data_file) then
 
 !---------------------------------------------------------------------
 !    register the diagnostic fields for output.
 !---------------------------------------------------------------------
-          nfields = size(names)
-          call register_fields (Time, axes, nfields, names)
+          nfields = size(names(:))
+          call register_fields (Time, axes, nfields, names,  &
+                                family_names)
         endif
 
 !--------------------------------------------------------------------
@@ -345,7 +387,8 @@ end subroutine rad_output_file_init
 subroutine write_rad_output_file (is, ie, js, je, Atmos_input, Surface,&
                                   Rad_output, Sw_output, Lw_output,    &
                                   Rad_gases, Cldrad_props, Cld_spec,   &
-                                  Time_diag, aerosol_in)
+                                  Time_diag, Aerosol, Aerosol_props, &
+                                  Aerosol_diags)
 
 !----------------------------------------------------------------
 !    write_rad_output_file produces a netcdf output file containing
@@ -362,7 +405,9 @@ type(radiative_gases_type),   intent(in)            ::  Rad_gases
 type(cldrad_properties_type), intent(in)            ::  Cldrad_props
 type(cld_specification_type), intent(in)            ::  Cld_spec      
 type(time_type),              intent(in)            ::  Time_diag
-real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
+type(aerosol_type),           intent(in), optional  ::  Aerosol
+type(aerosol_properties_type), intent(in), optional ::  Aerosol_props
+type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
 
 !------------------------------------------------------------------
 !  intent(in) variables:
@@ -406,7 +451,9 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
 
       real, dimension (size(Atmos_input%press,1),   &
                        size(Atmos_input%press,2) )  ::  &
-                           tmpsfc, psj, cvisrfgd, cirrfgd, qo3_col
+                           tmpsfc, psj, cvisrfgd_dir, cirrfgd_dir,  &
+                           cvisrfgd_dif, cirrfgd_dif, qo3_col, &
+                           ptop
 
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2), &
@@ -418,13 +465,27 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
                        size(Atmos_input%press,2), &
                        size(Atmos_input%press,3)-1 ) ::  &
                        temp, rh2o, qo3, cmxolw, crndlw, radp, radswp, &
-                       radpcf, radswpcf, pressm
+                       radpcf, radswpcf, pressm, dphalf, dpflux, deltaz
 
-      real, dimension(:,:,:), allocatable :: aerosol_col
+      real, dimension(:,:,:),   allocatable :: aerosol_col
+      real, dimension(:,:,:,:),   allocatable :: extopdep_col
+      real, dimension(:,:,:,:),   allocatable :: absopdep_col
+      real, dimension(:,:,:),   allocatable :: lw_extopdep_vlcno_col
+      real, dimension(:,:,:),   allocatable :: lw_absopdep_vlcno_col
+      real, dimension(:,:,:),   allocatable :: extopdep_vlcno_col
+      real, dimension(:,:,:),   allocatable :: absopdep_vlcno_col
+      real, dimension(:,:,:,:),   allocatable :: absopdep_fam_col
+      real, dimension(:,:,:,:),   allocatable :: extopdep_fam_col
+      real, dimension(:,:,:),   allocatable :: aerosol_fam_col
+      real, dimension(:,:,:,:,:), allocatable :: absopdep_fam
+      real, dimension(:,:,:,:,:), allocatable :: extopdep_fam
+      real, dimension(:,:,:,:), allocatable :: aerosol_fam
 
       logical   :: used  
       integer   :: kerad ! number of model layers
-      integer   :: n, k
+      integer   :: n, k, na, nfamilies, nl
+      integer   :: nv, vis_indx, nir_indx
+      integer   :: co_indx, bnd_indx
 
 !----------------------------------------------------------------------
 !  local variables:
@@ -487,29 +548,45 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
 !    retrieve the desired fields from the input derived data types.
 !--------------------------------------------------------------------
         tmpsfc(:,:)     = Atmos_input%temp(:,:,kerad+1)
-        psj   (:,:)     = 0.01*Atmos_input%press(:,:,kerad+1)
-        pressm(:,:,:)   = 0.01*Atmos_input%press(:,:,1:kerad)
-        phalfm(:,:,:)   = 0.01*Atmos_input%phalf(:,:,:)
-        pfluxm(:,:,:)   = 0.01*Atmos_input%pflux(:,:,:)
+        psj   (:,:)     = Atmos_input%press(:,:,kerad+1)
+        pressm(:,:,:)   = Atmos_input%press(:,:,1:kerad)
+        phalfm(:,:,:)   = Atmos_input%phalf(:,:,:)
+        pfluxm(:,:,:)   = Atmos_input%pflux(:,:,:)
         temp(:,:,:)     = Atmos_input%temp(:,:,1:kerad)
         rh2o(:,:,:)     = Atmos_input%rh2o(:,:,:)
-        radp(:,:,:)     = Rad_output%tdt_rad(:,js:je,:)
-        radswp(:,:,:)   = Rad_output%tdtsw  (:,js:je,:)
-        cirrfgd(:,:)    = Surface%asfc(:,:)
-        cvisrfgd(:,:)   = Surface%asfc(:,:)
+        radp(:,:,:)     = Rad_output%tdt_rad(is:ie,js:je,:)
+        radswp(:,:,:)   = Rad_output%tdtsw  (is:ie,js:je,:)
+!       cirrfgd(:,:)    = Surface%asfc(:,:)
+!       cvisrfgd(:,:)   = Surface%asfc(:,:)
+        cirrfgd_dir(:,:)    = Surface%asfc_nir_dir(:,:)
+        cvisrfgd_dir(:,:)   = Surface%asfc_vis_dir(:,:)
+        cirrfgd_dif(:,:)    = Surface%asfc_nir_dif(:,:)
+        cvisrfgd_dif(:,:)   = Surface%asfc_vis_dif(:,:)
         fsw(:,:,:)      = Sw_output% fsw(:,:,:)
         ufsw(:,:,:)     = Sw_output%ufsw(:,:,:)
         flxnet(:,:,:)   = Lw_output%flxnet(:,:,:)
         qo3(:,:,:)      = Rad_gases%qo3(:,:,:)
         cmxolw(:,:,:)   = 100.0*Cld_spec%cmxolw(:,:,:)
         crndlw(:,:,:)   = 100.0*Cld_spec%crndlw(:,:,:)
+        deltaz(:,:,:)   = Atmos_input%deltaz(:,:,:)
+
+        if (Environment%running_gcm .or.  &
+            Environment%running_sa_model .or. &
+            (Environment%running_standalone .and. &
+             Environment%column_type == 'fms')) then
+          do k = 1,kerad
+            dphalf(:,:,k)   = phalfm(:,:,k+1) - phalfm(:,:,k)
+            dpflux(:,:,k)   = pfluxm(:,:,k+1) - pfluxm(:,:,k)
+          enddo
+          ptop(:,:) = 0.01*Atmos_input%phalf(:,:,1)
+        endif
 
         if (Rad_control%do_totcld_forcing) then 
           fswcf(:,:,:)    = Sw_output%fswcf(:,:,:)
           ufswcf(:,:,:)   = Sw_output%ufswcf(:,:,:)
           flxnetcf(:,:,:) = Lw_output%flxnetcf(:,:,:)
-          radpcf(:,:,:)   = Rad_output%tdt_rad_clr(:,js:je,:)
-          radswpcf(:,:,:) = Rad_output%tdtsw_clr  (:,js:je,:)
+          radpcf(:,:,:)   = Rad_output%tdt_rad_clr(is:ie,js:je,:)
+          radswpcf(:,:,:) = Rad_output%tdtsw_clr  (is:ie,js:je,:)
         endif
 
 !---------------------------------------------------------------------
@@ -528,11 +605,154 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
 !    define the aerosol fields and calculate the column aerosol. 
 !---------------------------------------------------------------------
         if (Rad_control%do_aerosol) then
-          allocate ( aerosol_col(size(aerosol_in, 1), &
-                                 size(aerosol_in, 2), &
-                                 size(aerosol_in, 4)) )       
-          aerosol_col(:,:,:) = SUM (aerosol_in(:,:,:,:), 3)
+          allocate ( aerosol_col(size(Aerosol%aerosol, 1), &
+                                 size(Aerosol%aerosol, 2), &
+                                 size(Aerosol%aerosol, 4)) )       
+          aerosol_col(:,:,:) = SUM (Aerosol%aerosol(:,:,:,:), 3)
+!         if (Sw_control%do_swaerosol) then
+            allocate ( extopdep_col(size(Aerosol_diags%extopdep  , 1), &
+                                    size(Aerosol_diags%extopdep  , 2), &
+                               size(Aerosol_diags%extopdep  , 4), 4) )
+            extopdep_col(:,:,:,:) =    &
+                          SUM (Aerosol_diags%extopdep  (:,:,:,:,:), 3)
+            allocate ( absopdep_col(size(Aerosol_diags%absopdep  , 1), &
+                                    size(Aerosol_diags%absopdep  , 2), &
+                              size(Aerosol_diags%absopdep  , 4), 4) )
+            absopdep_col(:,:,:,:) =    &
+                           SUM (Aerosol_diags%absopdep  (:,:,:,:,:), 3)
+          if (Sw_control%do_swaerosol) then
+            if (Rad_control%volcanic_sw_aerosols) then
+              allocate ( extopdep_vlcno_col(   &
+                           size(Aerosol_diags%extopdep_vlcno  , 1), &
+                           size(Aerosol_diags%extopdep_vlcno  , 2),2))
+              extopdep_vlcno_col(:,:,:) =    &
+                        SUM (Aerosol_diags%extopdep_vlcno  (:,:,:,:), 3)
+              allocate ( absopdep_vlcno_col(    &
+                            size(Aerosol_diags%absopdep_vlcno  , 1), &
+                            size(Aerosol_diags%absopdep_vlcno  , 2),2))
+              absopdep_vlcno_col(:,:,:) =    &
+                        SUM (Aerosol_diags%absopdep_vlcno  (:,:,:,:), 3)
+            endif
+              
+          endif
+          if (Lw_control%do_lwaerosol) then
+            if (Rad_control%volcanic_lw_aerosols) then
+              allocate ( lw_extopdep_vlcno_col(   &
+                         size(Aerosol_diags%lw_extopdep_vlcno  , 1), &
+                         size(Aerosol_diags%lw_extopdep_vlcno  , 2),2))
+              lw_extopdep_vlcno_col(:,:,:) =    &
+                    SUM (Aerosol_diags%lw_extopdep_vlcno  (:,:,:,:), 3)
+              allocate ( lw_absopdep_vlcno_col(    &
+                          size(Aerosol_diags%lw_absopdep_vlcno  , 1), &
+                          size(Aerosol_diags%lw_absopdep_vlcno  , 2),2))
+              lw_absopdep_vlcno_col(:,:,:) =    &
+                    SUM (Aerosol_diags%lw_absopdep_vlcno  (:,:,:,:), 3)
+            endif
+          endif
         endif
+        
+!---------------------------------------------------------------------
+!    define the aerosol family output fields.
+!---------------------------------------------------------------------
+        if (Rad_control%do_aerosol) then
+          nfamilies = size(Aerosol%family_members,2)
+          if (nfamilies > 0) then
+            allocate (aerosol_fam (     &
+                                    size(Aerosol%aerosol,1), &
+                                    size(Aerosol%aerosol,2), &
+                                    size(Aerosol%aerosol,3), &
+                                    nfamilies))
+            allocate (aerosol_fam_col (     &
+                                    size(Aerosol%aerosol,1), &
+                                    size(Aerosol%aerosol,2), &
+                                    nfamilies))
+            allocate (extopdep_fam (     &
+                                    size(Aerosol%aerosol,1), &
+                                    size(Aerosol%aerosol,2), &
+                                    size(Aerosol%aerosol,3), &
+                                    nfamilies, 4))
+            allocate (absopdep_fam (     &
+                                    size(Aerosol%aerosol,1), &
+                                    size(Aerosol%aerosol,2), &
+                                    size(Aerosol%aerosol,3), &
+                                    nfamilies, 4))
+            allocate (extopdep_fam_col (     &
+                                    size(Aerosol%aerosol,1), &
+                                    size(Aerosol%aerosol,2), &
+                                    nfamilies, 4))
+            allocate (absopdep_fam_col (     &
+                                    size(Aerosol%aerosol,1), &
+                                    size(Aerosol%aerosol,2), &
+                                    nfamilies, 4))
+            aerosol_fam = 0.
+            aerosol_fam_col = 0.
+            extopdep_fam = 0.
+            absopdep_fam = 0.
+            extopdep_fam_col = 0.
+            absopdep_fam_col = 0.
+            do n = 1, nfamilies                      
+              do na = 1, naerosol                
+                if (Aerosol%family_members(na,n)) then
+                  aerosol_fam(:,:,:,n) = aerosol_fam(:,:,:,n) +  &
+                                         Aerosol%aerosol(:,:,:,na)
+                  aerosol_fam_col(:,:,n) = aerosol_fam_col(:,:,n) +  &
+                                         aerosol_col(:,:,na)
+                  do nl = 1,4
+                extopdep_fam(:,:,:,n,nl) = extopdep_fam(:,:,:,n,nl) +  &
+                                    Aerosol_diags%extopdep(:,:,:,na,nl)
+            extopdep_fam_col(:,:,n,nl) = extopdep_fam_col(:,:,n,nl) +  &
+                                      extopdep_col(:,:,na,nl)
+            absopdep_fam(:,:,:,n,nl) = absopdep_fam(:,:,:,n,nl) +  &
+                                    Aerosol_diags%absopdep(:,:,:,na,nl)
+            absopdep_fam_col(:,:,n,nl) = absopdep_fam_col(:,:,n,nl) +  &
+                                      absopdep_col(:,:,na,nl)
+                  end do ! (nl)
+                endif
+              end do
+            end do
+          do n = 1,nfamilies
+            if (id_aerosol_fam(n)  > 0 ) then
+              used = send_data (id_aerosol_fam(n),  &
+                                aerosol_fam(:,:,:,n)/deltaz(:,:,:),   &
+                                Time_diag, is, js, 1)
+            endif
+            if (id_aerosol_fam_column(n)  > 0 ) then
+              used = send_data (id_aerosol_fam_column(n),     &
+                                aerosol_fam_col(:,:,n), Time_diag, is, js)
+            endif
+!           if (Sw_control%do_swaerosol) then
+            do nl=1,4
+              if (id_extopdep_fam(n,nl)  > 0 ) then
+                used = send_data (id_extopdep_fam(n,nl),    &
+                                  extopdep_fam  (:,:,:,n,nl), &
+                                  Time_diag, is, js, 1)
+              endif
+              if (id_extopdep_fam_column(n,nl)  > 0 ) then
+                used = send_data (id_extopdep_fam_column(n,nl),     &
+                                 extopdep_fam_col(:,:,n,nl), Time_diag, is, js)
+              endif
+              if (id_absopdep_fam(n,nl)  > 0 ) then
+                used = send_data (id_absopdep_fam(n,nl),    &
+                                  absopdep_fam  (:,:,:,n,nl), &
+                                  Time_diag, is, js, 1)
+              endif
+              if (id_absopdep_fam_column(n,nl)  > 0 ) then
+                used = send_data (id_absopdep_fam_column(n,nl),     &
+                                 absopdep_fam_col(:,:,n,nl), Time_diag, is, js)
+              endif
+            end do  
+!           endif
+        end do
+          deallocate (aerosol_fam)
+          deallocate (aerosol_fam_col)
+!         if (Sw_control%do_swaerosol) then
+            deallocate (extopdep_fam)
+            deallocate (absopdep_fam)
+            deallocate (extopdep_fam_col)
+            deallocate (absopdep_fam_col)
+!         endif
+      endif
+    endif
         
 !---------------------------------------------------------------------
 !    send the user-designated data to diag_manager_mod for processing.
@@ -565,6 +785,21 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
           used = send_data (id_rh2o, rh2o, Time_diag, is, js, 1)
         endif
 
+        if (id_cldwater > 0 ) then
+          used = send_data (id_cldwater, Cld_spec%cloud_water,  &
+                            Time_diag, is, js, 1)
+        endif
+
+        if (id_cldice > 0 ) then
+          used = send_data (id_cldice, Cld_spec%cloud_ice,  &
+                            Time_diag, is, js, 1)
+        endif
+
+        if (id_cldarea > 0 ) then
+          used = send_data (id_cldarea, Cld_spec%cloud_area,  &
+                            Time_diag, is, js, 1)
+        endif
+
         if (id_qo3  > 0 ) then
           used = send_data (id_qo3, qo3, Time_diag, is, js, 1)
         endif
@@ -573,18 +808,186 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
           used = send_data (id_qo3_col, qo3_col, Time_diag, is, js)
         endif
 
+        if (Environment%running_gcm .or.  &
+            Environment%running_sa_model .or. &
+            (Environment%running_standalone .and. &
+             Environment%column_type == 'fms')) then
+          if (id_dphalf > 0 ) then
+            used = send_data (id_dphalf, dphalf, Time_diag, is, js, 1)
+          endif
+
+          if (id_dpflux > 0 ) then
+            used = send_data (id_dpflux, dpflux, Time_diag, is, js, 1)
+          endif
+
+          if (id_ptop  > 0 ) then
+            used = send_data (id_ptop, ptop, Time_diag, is, js)
+          endif
+        endif
         if (Rad_control%do_aerosol) then
           do n = 1,naerosol
             if (id_aerosol(n)  > 0 ) then
-              used = send_data (id_aerosol(n), aerosol_in(:,:,:,n),   &
+              used = send_data (id_aerosol(n),  &
+                                Aerosol%aerosol(:,:,:,n)/deltaz(:,:,:),&
                                 Time_diag, is, js, 1)
             endif
             if (id_aerosol_column(n)  > 0 ) then
               used = send_data (id_aerosol_column(n),     &
                                 aerosol_col(:,:,n), Time_diag, is, js)
             endif
+!           if (Sw_control%do_swaerosol) then
+            do nl=1,4
+              if (id_extopdep(n,nl)  > 0 ) then
+                used = send_data (id_extopdep(n,nl),    &
+                                  Aerosol_diags%extopdep  (:,:,:,n,nl), &
+                                  Time_diag, is, js, 1)
+              endif
+              if (id_extopdep_column(n,nl)  > 0 ) then
+                used = send_data (id_extopdep_column(n,nl),     &
+                                 extopdep_col(:,:,n,nl), Time_diag, is, js)
+              endif
+              if (id_absopdep(n,nl)  > 0 ) then
+                used = send_data (id_absopdep(n,nl),    &
+                                  Aerosol_diags%absopdep  (:,:,:,n,nl), &
+                                  Time_diag, is, js, 1)
+              endif
+              if (id_absopdep_column(n,nl)  > 0 ) then
+                used = send_data (id_absopdep_column(n,nl),     &
+                                 absopdep_col(:,:,n,nl), Time_diag, is, js)
+              endif
+!           endif
+            end do
           end do
+          if (Rad_control%volcanic_lw_aerosols) then
+!           co_indx = size(Aerosol_props%lw_ext,4)
+            co_indx = 5
+            if (id_lwext_vlcno(1)  > 0 ) then
+              used = send_data (id_lwext_vlcno(1),     &
+                         Aerosol_props%lw_ext(:,:,:,co_indx)*  &
+                         Atmos_input%deltaz(:,:,:),  &
+                         Time_diag, is, js,1)
+            endif
+            if (id_lw_xcoeff_vlcno(1)  > 0 ) then
+              used = send_data (id_lw_xcoeff_vlcno(1),     &
+                            Aerosol_props%lw_ext(:,:,:,co_indx),  &
+                            Time_diag, is, js,1)
+            endif
+            if (id_lwssa_vlcno(1)  > 0 ) then
+              used = send_data (id_lwssa_vlcno(1),     &
+                            Aerosol_props%lw_ssa(:,:,:,co_indx),  &
+                            Time_diag, is, js,1)
+            endif
+            if (id_lwasy_vlcno(1)  > 0 ) then
+              used = send_data (id_lwasy_vlcno(1),     &
+                           Aerosol_props%lw_asy(:,:,:,co_indx),  &
+                           Time_diag, is, js,1)
+            endif
+!           bnd_indx = 4
+            bnd_indx = 6
+            if (id_lwext_vlcno(2)  > 0 ) then
+              used = send_data (id_lwext_vlcno(2),     &
+                               Aerosol_props%lw_ext(:,:,:,bnd_indx)* &
+                               Atmos_input%deltaz(:,:,:),  &
+                               Time_diag, is, js,1)
+            endif
+            if (id_lw_xcoeff_vlcno(2)  > 0 ) then
+              used = send_data (id_lw_xcoeff_vlcno(2),     &
+                               Aerosol_props%lw_ext(:,:,:,bnd_indx),  &
+                               Time_diag, is, js,1)
+            endif
+            if (id_lwssa_vlcno(2)  > 0 ) then
+              used = send_data (id_lwssa_vlcno(2),     &
+                               Aerosol_props%lw_ssa(:,:,:,bnd_indx), &
+                               Time_diag, is, js,1)
+            endif
+            if (id_lwasy_vlcno(2)  > 0 ) then
+              used = send_data (id_lwasy_vlcno(2),     &
+                              Aerosol_props%lw_asy(:,:,:,bnd_indx), &
+                              Time_diag, is, js,1)
+            endif
+            do nv=1,2
+              if (id_lw_extopdep_vlcno_column(nv)  > 0 ) then
+                used = send_data (id_lw_extopdep_vlcno_column(nv),     &
+                                  lw_extopdep_vlcno_col(:,:,nv),  &
+                                  Time_diag, is, js)
+              endif
+              if (id_lw_absopdep_vlcno_column(nv)  > 0 ) then
+                used = send_data (id_lw_absopdep_vlcno_column(nv),     &
+                                  lw_absopdep_vlcno_col(:,:,nv),  &
+                                  Time_diag, is, js)
+              endif
+            end do
+            deallocate (lw_absopdep_vlcno_col, lw_extopdep_vlcno_col)
+          endif
+          if (Rad_control%volcanic_sw_aerosols) then
+            vis_indx = Solar_spect%visible_band_indx
+            if (id_swext_vlcno(1)  > 0 ) then
+              used = send_data (id_swext_vlcno(1),     &
+                                Aerosol_props%sw_ext(:,:,:,vis_indx)* &
+                                Atmos_input%deltaz(:,:,:),  &
+                                Time_diag, is, js,1)
+            endif
+            if (id_sw_xcoeff_vlcno(1)  > 0 ) then
+              used = send_data (id_sw_xcoeff_vlcno(1),     &
+                               Aerosol_props%sw_ext(:,:,:,vis_indx),  &
+                               Time_diag, is, js,1)
+            endif
+            if (id_swssa_vlcno(1)  > 0 ) then
+              used = send_data (id_swssa_vlcno(1),     &
+                                 Aerosol_props%sw_ssa(:,:,:,vis_indx), &
+                                 Time_diag, is, js,1)
+            endif
+            if (id_swasy_vlcno(1)  > 0 ) then
+              used = send_data (id_swasy_vlcno(1),     &
+                                Aerosol_props%sw_asy(:,:,:,vis_indx), &
+                                Time_diag, is, js,1)
+            endif
+            if (id_swheat_vlcno  > 0 ) then
+              used = send_data (id_swheat_vlcno ,    &
+                                Aerosol_diags%sw_heating_vlcno(:,:,:), &
+                                Time_diag, is, js, 1)
+            endif
+            nir_indx = Solar_spect%one_micron_indx
+            if (id_swext_vlcno(2)  > 0 ) then
+              used = send_data (id_swext_vlcno(2),     &
+                               Aerosol_props%sw_ext(:,:,:,nir_indx)*  &
+                               Atmos_input%deltaz(:,:,:),  &
+                               Time_diag, is, js,1)
+            endif
+            if (id_sw_xcoeff_vlcno(2)  > 0 ) then
+              used = send_data (id_sw_xcoeff_vlcno(2),     &
+                               Aerosol_props%sw_ext(:,:,:,nir_indx),  &
+                               Time_diag, is, js,1)
+            endif
+            if (id_swssa_vlcno(2)  > 0 ) then
+              used = send_data (id_swssa_vlcno(2),     &
+                                Aerosol_props%sw_ssa(:,:,:,nir_indx),  &
+                                Time_diag, is, js,1)
+            endif
+            if (id_swasy_vlcno(2)  > 0 ) then
+              used = send_data (id_swasy_vlcno(2),     &
+                                Aerosol_props%sw_asy(:,:,:,vis_indx), &
+                                Time_diag, is, js,1)
+            endif
+            do nv=1,2
+              if (id_extopdep_vlcno_column(nv)  > 0 ) then
+                used = send_data (id_extopdep_vlcno_column(nv),     &
+                                  extopdep_vlcno_col(:,:,nv),  &
+                                  Time_diag, is, js)
+              endif
+              if (id_absopdep_vlcno_column(nv)  > 0 ) then
+                used = send_data (id_absopdep_vlcno_column(nv),     &
+                                  absopdep_vlcno_col(:,:,nv),  &
+                                  Time_diag, is, js)
+              endif
+            end do
+            deallocate (absopdep_vlcno_col, extopdep_vlcno_col)
+          endif
           deallocate (aerosol_col)
+          if (Sw_control%do_swaerosol) then
+            deallocate (extopdep_col)
+            deallocate (absopdep_col)
+          endif
         endif
 
         if (id_cmxolw > 0 ) then
@@ -615,15 +1018,47 @@ real, dimension(:,:,:,:),     intent(in), optional  ::  aerosol_in
           used = send_data (id_tmpsfc, tmpsfc, Time_diag, is, js)
         endif
 
-        if (id_cvisrfgd > 0 ) then
-          used = send_data (id_cvisrfgd, cvisrfgd, Time_diag, is, js)
+        if (id_cvisrfgd_dir > 0 ) then
+          used = send_data (id_cvisrfgd_dir, cvisrfgd_dir, Time_diag, is, js)
+        endif
+ 
+        if (id_cvisrfgd_dif > 0 ) then
+          used = send_data (id_cvisrfgd_dif, cvisrfgd_dif, Time_diag, is, js)
         endif
 
-        if (id_cirrfgd > 0 ) then
-          used = send_data (id_cirrfgd , cirrfgd , Time_diag, is, js)
+        if (id_cirrfgd_dir > 0 ) then
+          used = send_data (id_cirrfgd_dir , cirrfgd_dir , Time_diag, is,js)
         endif
+ 
+        if (id_cirrfgd_dif > 0 ) then
+          used = send_data (id_cirrfgd_dif , cirrfgd_dif , Time_diag, is,js)
+        endif
+
+     do n=1, 4
+        if (id_lw_bdyflx(n) > 0 ) then
+          used = send_data (id_lw_bdyflx(n) , Lw_output%bdy_flx(:,:,n),&
+                            Time_diag, is,js)
+        endif
+        if (id_sw_bdyflx(n) > 0 ) then
+          used = send_data (id_sw_bdyflx(n) , Sw_output%bdy_flx(:,:,n),&
+                            Time_diag, is,js)
+        endif
+     end do
 
         if (Rad_control%do_totcld_forcing) then
+     do n=1, 4
+        if (id_lw_bdyflx_clr(n) > 0 ) then
+          used = send_data (id_lw_bdyflx_clr(n) ,   &
+                            Lw_output%bdy_flx_clr(:,:,n),&
+                            Time_diag, is,js)
+        endif
+        if (id_sw_bdyflx_clr(n) > 0 ) then
+          used = send_data (id_sw_bdyflx_clr(n) ,   &
+                            Sw_output%bdy_flx_clr(:,:,n),&
+                            Time_diag, is,js)
+        endif
+     end do
+
           if (id_radswpcf > 0 ) then
             used = send_data (id_radswpcf, radswpcf, Time_diag,   &
                               is, js, 1)
@@ -727,7 +1162,7 @@ end subroutine rad_output_file_end
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine register_fields (Time, axes, nfields, names)
+subroutine register_fields (Time, axes, nfields, names, family_names)
 
 !--------------------------------------------------------------------
 !    register_fields send the relevant information concerning the 
@@ -738,7 +1173,7 @@ type(time_type),                 intent(in) :: Time
 integer, dimension(4),           intent(in) :: axes
 integer,                         intent(in) :: nfields
 !character(len=64), dimension(:), intent(in) :: names
-character(len=*), dimension(:), intent(in) :: names
+character(len=*), dimension(:), intent(in) :: names, family_names
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
@@ -747,6 +1182,8 @@ character(len=*), dimension(:), intent(in) :: names
 !       axes      diagnostic variable axes for netcdf files
 !       nfields   number of active aerosol species
 !       names     names of active aerosol species
+!       family_names  
+!                 names of active aerosol families
 !
 !----------------------------------------------------------------------
 
@@ -754,9 +1191,20 @@ character(len=*), dimension(:), intent(in) :: names
 !   local variables:
 
       character(len=64), dimension(:), allocatable ::   & 
-                                               aerosol_column_names
+                                               aerosol_column_names, &
+                                              extopdep_column_names, &
+                                              absopdep_column_names, &
+                                                 extopdep_names, &
+                                                 absopdep_names, &
+                                          aerosol_fam_column_names, &
+                                         extopdep_fam_column_names, &
+                                        absopdep_fam_column_names, &
+                                        extopdep_fam_names, &
+                                        absopdep_fam_names
       integer, dimension(4)    :: bxes
-      integer                  :: n
+      integer                  :: n, nl
+      integer                  :: nfamilies
+      real                     :: trange(2)
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -776,6 +1224,7 @@ character(len=*), dimension(:), intent(in) :: names
       bxes(1:2) = axes(1:2)
       bxes(3) = axes(4)
       bxes(4) = axes(4)
+      trange =(/ 100., 400. /)
 
 !---------------------------------------------------------------------
 !    register the potential diagnostic variables from this module.
@@ -795,27 +1244,64 @@ character(len=*), dimension(:), intent(in) :: names
       id_temp   = &
          register_diag_field (mod_name, 'temp', axes(1:3), Time, &
                           'temperature field', &
-                          'deg_K', missing_value=missing_value)
+                          'deg_K', missing_value=trange(1), &
+                          range=trange)
 
       id_pressm  = &
          register_diag_field (mod_name, 'pressm', axes(1:3), Time, &
                            'model level pressure', &
-                           'hPa', missing_value=missing_value)
+                           'Pa', missing_value=missing_value)
  
       id_phalfm  = &
          register_diag_field (mod_name, 'phalfm', bxes(1:3), Time, &
                            'model interface level pressure', &
-                           'hPa', missing_value=missing_value)
+                           'Pa', missing_value=missing_value)
 
       id_pfluxm  = &
           register_diag_field (mod_name, 'pfluxm', bxes(1:3), Time, &
                            'radiation flux level pressures', &
+                           'Pa', missing_value=missing_value)
+
+      if (Environment%running_gcm .or.  &
+          Environment%running_sa_model .or. &
+          (Environment%running_standalone .and. &
+           Environment%column_type == 'fms')) then
+        id_dpflux  = &
+          register_diag_field (mod_name, 'dpflux', axes(1:3), Time,  &
+                           'radiation flux layer thickness', &
                            'hPa', missing_value=missing_value)
+   
+        id_dphalf  = &
+          register_diag_field (mod_name, 'dphalf', axes(1:3), Time,  &
+                           'radiation model layer thickness', &
+                           'hPa', missing_value=missing_value)
+   
+        id_ptop  = &
+          register_diag_field (mod_name, 'ptop', axes(1:2), Time, &
+                           'pressure at model top', &
+                           'hPa', missing_value=missing_value)
+ 
+      endif
 
       id_rh2o   = &
          register_diag_field (mod_name, 'rh2o', axes(1:3), Time, &
                           'water vapor mixing ratio', &
                           'kg/kg', missing_value=missing_value)
+
+      id_cldwater = &
+         register_diag_field (mod_name, 'cloud_water', axes(1:3), Time,&
+                          'cloud water specific humidity', &
+                          'kg/kg', missing_value=missing_value)
+
+      id_cldice = &
+         register_diag_field (mod_name, 'cloud_ice', axes(1:3), Time,&
+                          'cloud ice specific humidity', &
+                          'kg/kg', missing_value=missing_value)
+
+      id_cldarea = &
+         register_diag_field (mod_name, 'cloud_area', axes(1:3), Time,&
+                          'cloud fractional area', &
+                          'fraction', missing_value=missing_value)
 
       id_qo3    = &
          register_diag_field (mod_name, 'qo3', axes(1:3), Time, &
@@ -842,7 +1328,7 @@ character(len=*), dimension(:), intent(in) :: names
           id_aerosol(n)    = &
              register_diag_field (mod_name, TRIM(names(n)), axes(1:3), &
                                   Time, TRIM(names(n)),&
-                                  'kg/m2', missing_value=missing_value)
+                                  'kg/m3', missing_value=missing_value)
           id_aerosol_column(n)    = &
              register_diag_field (mod_name,   &
                       TRIM(aerosol_column_names(n)), axes(1:2), Time, &
@@ -850,7 +1336,261 @@ character(len=*), dimension(:), intent(in) :: names
                       'kg/m2', missing_value=missing_value)
         end do
         deallocate (aerosol_column_names)
+
+        allocate (extopdep_names(naerosol))
+        allocate (extopdep_column_names(naerosol))
+        allocate (absopdep_names(naerosol))
+        allocate (absopdep_column_names(naerosol))
+        allocate (id_extopdep(naerosol, 4))
+        allocate (id_extopdep_column(naerosol, 4)) 
+        allocate (id_absopdep(naerosol, 4))
+        allocate (id_absopdep_column(naerosol, 4)) 
+     do nl=1,4
+        do n = 1,naerosol                           
+          extopdep_names(n) =   &
+                TRIM(names(n) ) // "_exopdep" // TRIM(band_suffix(nl))
+          extopdep_column_names(n) =   &
+             TRIM(names(n) ) // "_exopdep_col" // TRIM(band_suffix(nl))
+          absopdep_names(n) =   &
+             TRIM(names(n) ) // "_abopdep" // TRIM(band_suffix(nl))
+          absopdep_column_names(n) =   &
+             TRIM(names(n) ) // "_abopdep_col" // TRIM(band_suffix(nl))
+        end do
+        do n = 1,naerosol
+          id_extopdep(n,nl)    = &
+             register_diag_field (mod_name, TRIM(extopdep_names(n)), axes(1:3), &
+                                  Time, TRIM(extopdep_names(n)),&
+                                  'dimensionless', missing_value=missing_value)
+          id_extopdep_column(n,nl)    = &
+             register_diag_field (mod_name,   &
+                      TRIM(extopdep_column_names(n)), axes(1:2), Time, &
+                      TRIM(extopdep_column_names(n)), &
+                      'dimensionless', missing_value=missing_value)
+          id_absopdep(n,nl)    = &
+             register_diag_field (mod_name, TRIM(absopdep_names(n)), axes(1:3), &
+                                  Time, TRIM(absopdep_names(n)),&
+                                  'dimensionless', missing_value=missing_value)
+          id_absopdep_column(n,nl)    = &
+             register_diag_field (mod_name,   &
+                      TRIM(absopdep_column_names(n)), axes(1:2), Time, &
+                      TRIM(absopdep_column_names(n)), &
+                      'dimensionless', missing_value=missing_value)
+        end do
+      end do
+        deallocate (extopdep_names)
+        deallocate (extopdep_column_names)
+        deallocate (absopdep_names)
+        deallocate (absopdep_column_names)
       endif
+
+      if (size(family_names(:)) /= 0) then
+        nfamilies = size(family_names(:))
+        allocate (id_aerosol_fam(nfamilies))
+        allocate (id_aerosol_fam_column(nfamilies)) 
+        allocate (aerosol_fam_column_names(naerosol))
+        do n=1,nfamilies      
+          aerosol_fam_column_names(n) = TRIM(family_names(n) ) // "_col"
+        end do
+        do n = 1,nfamilies
+          id_aerosol_fam(n)    = &
+             register_diag_field (mod_name, TRIM(family_names(n)), axes(1:3), &
+                                  Time, TRIM(family_names(n)),&
+                                  'kg/m3', missing_value=missing_value)
+          id_aerosol_fam_column(n)    = &
+             register_diag_field (mod_name,   &
+                      TRIM(aerosol_fam_column_names(n)), axes(1:2), Time, &
+                      TRIM(aerosol_fam_column_names(n)), &
+                      'kg/m2', missing_value=missing_value)
+        end do
+        deallocate (aerosol_fam_column_names)
+
+
+        allocate (id_extopdep_fam(nfamilies, 4))
+        allocate (id_extopdep_fam_column(nfamilies, 4)) 
+        allocate (id_absopdep_fam(nfamilies, 4))
+        allocate (id_absopdep_fam_column(nfamilies, 4)) 
+        allocate (extopdep_fam_names(naerosol))
+        allocate (extopdep_fam_column_names(naerosol))
+        allocate (absopdep_fam_names(naerosol))
+        allocate (absopdep_fam_column_names(naerosol))
+   do nl=1, 4
+        do n=1,nfamilies      
+          extopdep_fam_names(n) =   &
+           TRIM(family_names(n) ) // "_exopdep" // TRIM(band_suffix(nl))
+          extopdep_fam_column_names(n) =   &
+       TRIM(family_names(n) ) // "_exopdep_col" // TRIM(band_suffix(nl))
+          absopdep_fam_names(n) =   &
+          TRIM(family_names(n) ) // "_abopdep" // TRIM(band_suffix(nl))
+          absopdep_fam_column_names(n) =  &
+       TRIM(family_names(n) ) // "_abopdep_col" // TRIM(band_suffix(nl))
+        end do
+        do n = 1,nfamilies
+          id_extopdep_fam(n,nl)    = &
+             register_diag_field (mod_name, TRIM(extopdep_fam_names(n)), axes(1:3), &
+                                  Time, TRIM(extopdep_fam_names(n)),&
+                                  'dimensionless', missing_value=missing_value)
+          id_extopdep_fam_column(n,nl)    = &
+             register_diag_field (mod_name,   &
+                      TRIM(extopdep_fam_column_names(n)), axes(1:2), Time, &
+                      TRIM(extopdep_fam_column_names(n)), &
+                      'dimensionless', missing_value=missing_value)
+          id_absopdep_fam(n,nl)    = &
+             register_diag_field (mod_name, TRIM(absopdep_fam_names(n)), axes(1:3), &
+                                  Time, TRIM(absopdep_fam_names(n)),&
+                                  'dimensionless', missing_value=missing_value)
+          id_absopdep_fam_column(n,nl)    = &
+             register_diag_field (mod_name,   &
+                      TRIM(absopdep_fam_column_names(n)), axes(1:2), Time, &
+                      TRIM(absopdep_fam_column_names(n)), &
+                      'dimensionless', missing_value=missing_value)
+        end do
+   end do
+        deallocate (extopdep_fam_names)
+        deallocate (extopdep_fam_column_names)
+        deallocate (absopdep_fam_names)
+        deallocate (absopdep_fam_column_names)
+      endif
+      
+      if (Rad_control%volcanic_lw_aerosols_iz) then
+        if (Rad_control%volcanic_lw_aerosols) then
+          id_lw_extopdep_vlcno_column(1) = &
+             register_diag_field (mod_name,   &
+                    'lw_b5_extopdep_vlcno_c', axes(1:2), Time, &
+                    'lw 900-990 band column volcanic extopdep',  &
+                      'dimensionless', missing_value=missing_value)
+          id_lw_absopdep_vlcno_column(1)    = &
+             register_diag_field (mod_name,   &
+                    'lw_b5_absopdep_vlcno_c', axes(1:2), Time, &
+                    'lw 900-990 band column volcanic absopdep',  &
+                      'dimensionless', missing_value=missing_value)
+          id_lwext_vlcno(1)    = &
+             register_diag_field (mod_name,   &
+                    'bnd5_extopdep_vlcno', axes(1:3), Time, &
+                    '900-990 band volcanic lw extopdep  ',  &
+                      'dimensionless', missing_value=missing_value)
+          id_lw_xcoeff_vlcno(1)    = &
+             register_diag_field (mod_name,   &
+                    'bnd5_lwext_vlcno', axes(1:3), Time, &
+                    '900-990 band volcanic lw extinction',  &
+                      'meter**(-1)  ', missing_value=missing_value)
+          id_lwssa_vlcno(1)    = &
+             register_diag_field (mod_name,   &
+                    'bnd5_lwssa_vlcno', axes(1:3), Time, &
+                    '900-990   band volcanic lw scattering albedo', &
+                      'dimensionless', missing_value=missing_value)
+          id_lwasy_vlcno(1)    = &
+             register_diag_field (mod_name,   &
+                    'bnd5_lwasy_vlcno', axes(1:3), Time, &
+                    '900-990 band volcanic lw asymmetry',  &
+                      'dimensionless', missing_value=missing_value)
+          id_lw_extopdep_vlcno_column(2) = &
+             register_diag_field (mod_name,   &
+                    'bnd6_extopdep_vlcno_c', axes(1:2), Time, &
+                    '990-1070 column volcanic extopdep',  &
+                      'dimensionless', missing_value=missing_value)
+          id_lw_absopdep_vlcno_column(2)    = &
+             register_diag_field (mod_name,   &
+                    'bnd6_absopdep_vlcno_c', axes(1:2), Time, &
+                    '990-1070 column volcanic absopdep',  &
+                      'dimensionless', missing_value=missing_value)
+          id_lwext_vlcno(2)    = &
+             register_diag_field (mod_name,   &
+                    'bnd6_extopdep_vlcno', axes(1:3), Time, &
+                    '990-1070 volcanic lw extopdep  ',  &
+                      'dimensionless', missing_value=missing_value)
+          id_lw_xcoeff_vlcno(2)    = &
+             register_diag_field (mod_name,   &
+                    'bnd6_lwext_vlcno', axes(1:3), Time, &
+                    '990-1070 volcanic lw extinction',  &
+                      'meter**(-1)  ', missing_value=missing_value)
+          id_lwssa_vlcno(2)    = &
+             register_diag_field (mod_name,   &
+                    'bnd6_lwssa_vlcno', axes(1:3), Time, &
+                    '990-1070 volcanic lw scattering albedo',  &
+                      'dimensionless', missing_value=missing_value)
+          id_lwasy_vlcno(2)    = &
+             register_diag_field (mod_name,   &
+                    'bnd6_lwasy_vlcno', axes(1:3), Time, &
+                    '990-1070 volcanic lw asymmetry',  &
+                      'dimensionless', missing_value=missing_value)
+        endif
+      else 
+        call error_mesg ('rad_output_file_mod', &
+            'Rad_control%volcanic_lw_aerosols not yet defined', FATAL)
+      endif
+      if (Rad_control%volcanic_sw_aerosols_iz) then
+        if (Rad_control%volcanic_sw_aerosols) then
+          id_extopdep_vlcno_column(1) = &
+             register_diag_field (mod_name,   &
+                    'vis_extopdep_vlcno_c', axes(1:2), Time, &
+                    'visband column volcanic extopdep',  &
+                      'dimensionless', missing_value=missing_value)
+          id_absopdep_vlcno_column(1)    = &
+             register_diag_field (mod_name,   &
+                    'vis_absopdep_vlcno_c', axes(1:2), Time, &
+                    'visband column volcanic absopdep',  &
+                      'dimensionless', missing_value=missing_value)
+          id_swext_vlcno(1)    = &
+             register_diag_field (mod_name,   &
+                    'visband_swextopdep_vlcno', axes(1:3), Time, &
+                    'visband volcanic sw extopdep  ',  &
+                      'dimensionless', missing_value=missing_value)
+          id_sw_xcoeff_vlcno(1)    = &
+             register_diag_field (mod_name,   &
+                    'visband_swext_vlcno', axes(1:3), Time, &
+                    'visband volcanic sw extinction',  &
+                      'meter**(-1)', missing_value=missing_value)
+          id_swssa_vlcno(1)    = &
+             register_diag_field (mod_name,   &
+                    'visband_swssa_vlcno', axes(1:3), Time, &
+                    'visband volcanic sw scattering albedo',  &
+                      'dimensionless', missing_value=missing_value)
+          id_swasy_vlcno(1)    = &
+             register_diag_field (mod_name,   &
+                    'visband_swasy_vlcno', axes(1:3), Time, &
+                    'visband volcanic sw asymmetry',  &
+                      'dimensionless', missing_value=missing_value)
+          id_extopdep_vlcno_column(2) = &
+             register_diag_field (mod_name,   &
+                    'nir_extopdep_vlcno_c', axes(1:2), Time, &
+                    'nirband column volcanic extopdep',  &
+                      'dimensionless', missing_value=missing_value)
+          id_absopdep_vlcno_column(2)    = &
+             register_diag_field (mod_name,   &
+                    'nir_absopdep_vlcno_c', axes(1:2), Time, &
+                    'nirband column volcanic absopdep',  &
+                      'dimensionless', missing_value=missing_value)
+          id_swext_vlcno(2)    = &
+             register_diag_field (mod_name,   &
+                    'nirband_swextopdep_vlcno', axes(1:3), Time, &
+                    'nirband volcanic sw extopdep  ',  &
+                      'dimensionless', missing_value=missing_value)
+          id_sw_xcoeff_vlcno(2)    = &
+             register_diag_field (mod_name,   &
+                    'nirband_swext_vlcno', axes(1:3), Time, &
+                    'nirband volcanic sw extinction',  &
+                      'meter**(-1)', missing_value=missing_value)
+          id_swssa_vlcno(2)    = &
+             register_diag_field (mod_name,   &
+                    'nirband_swssa_vlcno', axes(1:3), Time, &
+                    'nirband volcanic sw scattering albedo',  &
+                      'dimensionless', missing_value=missing_value)
+          id_swasy_vlcno(2)    = &
+             register_diag_field (mod_name,   &
+                    'nirband_swasy_vlcno', axes(1:3), Time, &
+                    'nirband volcanic sw asymmetry',  &
+                      'dimensionless', missing_value=missing_value)
+          id_swheat_vlcno    = &
+             register_diag_field (mod_name,   &
+                    'sw_heating_vlcno', axes(1:3), Time, &
+                    'sw heating due to vlcnic aero',  &
+                      'deg K per day', missing_value=missing_value)
+        endif
+      else 
+        call error_mesg ('rad_output_file_mod', &
+           'Rad_control%volcanic_sw_aerosols not yet defined', FATAL)
+      endif
+
 
       id_cmxolw = &
          register_diag_field (mod_name, 'cmxolw', axes(1:3), Time, &
@@ -880,22 +1620,76 @@ character(len=*), dimension(:), intent(in) :: names
       id_psj    = &
          register_diag_field (mod_name, 'psj', axes(1:2), Time, &
                           'surface pressure', &
-                          'hPa', missing_value=missing_value)
+                          'Pa', missing_value=missing_value)
 
       id_tmpsfc = &
          register_diag_field (mod_name, 'tmpsfc', axes(1:2), Time, &
                           'surface temperature', &
                           'deg_K', missing_value=missing_value)
 
-      id_cvisrfgd = &
-         register_diag_field (mod_name, 'cvisrfgd', axes(1:2), Time, &
-                          'visible surface albedo', &
-                          'dimensionless', missing_value=missing_value)
+      id_cvisrfgd_dir = &
+         register_diag_field (mod_name, 'cvisrfgd_dir', axes(1:2), Time , &
+                         'direct visible surface albedo', &
+                        'dimensionless', missing_value=missing_value)
 
-      id_cirrfgd = &
-         register_diag_field (mod_name, 'cirrfgd', axes(1:2), Time, &
-                          'visible infra-red albedo', &
+       id_cvisrfgd_dif = &
+       register_diag_field (mod_name, 'cvisrfgd_dif', axes(1:2), Time, &
+                          'diffuse visible surface albedo', &
                           'dimensionless', missing_value=missing_value)
+ 
+       id_cirrfgd_dir = &
+        register_diag_field (mod_name, 'cirrfgd_dir', axes(1:2), Time, &
+                       'direct infra-red surface albedo', &
+                       'dimensionless', missing_value=missing_value)
+
+       id_cirrfgd_dif = &
+         register_diag_field (mod_name, 'cirrfgd_dif', axes(1:2), Time, &
+                       'diffuse infra-red surface albedo', &
+                      'dimensionless', missing_value=missing_value)
+
+       id_lw_bdyflx(1) = &
+         register_diag_field (mod_name, 'olr_800_1200', axes(1:2), Time, &
+                       'olr in 800_1200  band', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_lw_bdyflx(2) = &
+         register_diag_field (mod_name, 'olr_900_990', axes(1:2), Time, &
+                       'olr in 800_900  band', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_lw_bdyflx(3) = &
+         register_diag_field (mod_name, 'sfc_800_1200', axes(1:2),&
+                             Time, 'lw sfc flx in 800_1200  band', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_lw_bdyflx(4) = &
+         register_diag_field (mod_name, 'sfc_900_990', axes(1:2), &
+                              Time, 'lw sfc flx in 900_990 band', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_sw_bdyflx(1) = &
+         register_diag_field (mod_name, 'swup_toa_vis', axes(1:2),  &
+                       Time, &
+                       'sw up flx in vis band at toa', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_sw_bdyflx(2) = &
+         register_diag_field (mod_name, 'swup_toa_1p6', axes(1:2),  &
+                       Time, &
+                       'sw up flx in 1.6 micron band at toa', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_sw_bdyflx(3) = &
+         register_diag_field (mod_name, 'swnt_sfc_vis', axes(1:2),  &
+                       Time, &
+                       'net sw flx in vis band at sfc', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_sw_bdyflx(4) = &
+         register_diag_field (mod_name, 'swnt_sfc_1p6', axes(1:2),  &
+                       Time, &
+                       'net sw flx in 1.6 micron band at sfc', &
+                      'W/m**2', missing_value=missing_value)
 
 !-------------------------------------------------------------------
 !    verify that Rad_control%do_totcld_forcing has been initialized.
@@ -932,6 +1726,50 @@ character(len=*), dimension(:), intent(in) :: names
            register_diag_field (mod_name, 'ufswcf', bxes(1:3), Time, &
                             'upward shortwave flux w/o clouds', &
                             'W/m**2', missing_value=missing_value)
+
+       id_lw_bdyflx_clr(1) = &
+         register_diag_field (mod_name, 'olr_800_1200_cf', axes(1:2), Time, &
+                       'clr sky olr in 800_1200  band', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_lw_bdyflx_clr(2) = &
+         register_diag_field (mod_name, 'olr_900_990_cf', axes(1:2), Time, &
+                       'clr sky olr in 800_900  band', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_lw_bdyflx_clr(3) = &
+         register_diag_field (mod_name, 'sfc_800_1200_cf', axes(1:2),&
+                             Time, 'clr sky lw sfc flx in 800_1200 band', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_lw_bdyflx_clr(4) = &
+         register_diag_field (mod_name, 'sfc_900_990_cf', axes(1:2), &
+                              Time, 'clr sky lw sfc flx in 900_990 band', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_sw_bdyflx_clr(1) = &
+         register_diag_field (mod_name, 'swup_toa_vis_cf', axes(1:2),  &
+                       Time, &
+                       'clr sky sw up flx in vis band at toa', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_sw_bdyflx_clr(2) = &
+         register_diag_field (mod_name, 'swup_toa_1p6_cf', axes(1:2),  &
+                       Time, &
+                       'clr sky sw up flx in 1.6 micron band at toa', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_sw_bdyflx_clr(3) = &
+         register_diag_field (mod_name, 'swnt_sfc_vis_cf', axes(1:2),  &
+                       Time, &
+                       'clr sky net sw flx in vis band at sfc', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_sw_bdyflx_clr(4) = &
+         register_diag_field (mod_name, 'swnt_sfc_1p6_cf', axes(1:2),  &
+                       Time, &
+                       'clr sky net sw flx in 1.6 micron band at sfc', &
+                      'W/m**2', missing_value=missing_value)
 
       endif
 

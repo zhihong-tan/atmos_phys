@@ -12,9 +12,6 @@
 !  coefficients embedded in the code.
 ! </OVERVIEW>
 ! <DESCRIPTION>
-!  This code provides the core functionality of FMS longwave
-!  radiation. It is based on exchange method with prescribed
-!  coefficients embedded in the code.
 ! </DESCRIPTION>
 !
 !  shared modules:
@@ -24,6 +21,8 @@ use fms_mod,             only: open_namelist_file, fms_init, &
                                file_exist, write_version_number, &
                                check_nml_error, error_mesg, &
                                FATAL, NOTE, WARNING, close_file
+use time_manager_mod,    only: time_type, operator(>=), get_time, &
+                               operator(-), get_date
 use constants_mod,       only: constants_init, diffac, radcon_mks, &
                                SECONDS_PER_DAY, radcon
 
@@ -37,6 +36,7 @@ use rad_utilities_mod,   only: rad_utilities_init, Lw_control, &
                                longwave_tables3_type, atmos_input_type,&
                                Cldrad_control, radiative_gases_type, &
                                aerosol_type, aerosol_properties_type, &
+                               aerosol_diagnostics_type, &
                                optical_path_type, gas_tf_type, &
                                lw_table_type, Lw_parameters, &
                                lw_diagnostics_type, lw_clouds_type, &
@@ -92,8 +92,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-    character(len=128)  :: version =  '$Id: sealw99.F90,v 10.0 2003/10/24 22:00:47 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: jakarta $'
+    character(len=128)  :: version =  '$Id: sealw99.F90,v 11.0 2004/09/28 19:24:05 fms Exp $'
+    character(len=128)  :: tagname =  '$Name: khartoum $'
     logical             ::  module_is_initialized = .false.
 
 !---------------------------------------------------------------------
@@ -103,11 +103,12 @@ public       &
          sealw99_init,   sealw99,  sealw99_end
 
 private   &
+          check_tf_interval, obtain_gas_tfs, &
           sealw99_alloc, &
           cool_to_space_approx,   cool_to_space_exact, &
           e1e290, e290, esfc, enear, &
           co2_source_calc, nlte, co2curt, &
-          co2_time_vary, ch4_n2o_time_vary
+          co2_time_vary, ch4_time_vary, n2o_time_vary
 
 
 !---------------------------------------------------------------------
@@ -134,12 +135,100 @@ character(len=16)  ::  &
 character(len=16)  ::  &
         linecatalog_form = '    '   ! line catalog specification; either
                                     ! 'hitran_1992' or 'hitran_2000'
- 
+real               ::  &
+        co2_tf_calc_intrvl = 1.0E6  ! interval between recalculating co2
+                                    ! transmission functions, relevant
+                                    ! for time-varying co2 cases 
+                                    ! [ hours ]
+logical            ::  &
+        calc_co2_tfs_on_first_step = .true. 
+                                    ! always calculate co2 tfs on 
+                                    ! first time step of job ?
+logical            ::  &
+        use_current_co2_for_tf = .false.  
+                                    ! use current co2 mixing ratio for  
+                                    ! calculating tfs ?
+real               ::  &
+        co2_tf_time_displacement = 0.0 
+                                    ! time displacement from job start 
+                                    ! to the point in time where co2 
+                                    ! tfs are to be valid -- may be (-),
+                                    ! 0.0 or (+); used only when
+                                    ! calc_co2_tfs_on_first_step is true
+                                    ! [ hours ]
+real               ::  &
+        ch4_tf_calc_intrvl = 1.0E6  ! interval between recalculating ch4
+                                    ! transmission functions, relevant
+                                    ! for time-varying ch4 cases 
+                                    ! [ hours ]
+logical            ::  &
+        calc_ch4_tfs_on_first_step = .true. 
+                                    ! always calculate ch4 tfs on 
+                                    ! first time step of job ?
+logical            ::  &
+        use_current_ch4_for_tf = .false. 
+                                    ! use current ch4 mixing ratio for  
+                                    ! calculating tfs ?
+real               ::  &
+        ch4_tf_time_displacement = 0.0 
+                                    ! time displacement from job start 
+                                    ! to the point in time where ch4 
+                                    ! tfs are to be valid -- may be (-),
+                                    ! 0.0 or (+); used only when
+                                    ! calc_ch4_tfs_on_first_step is true
+                                    ! [ hours ]
+real               ::  &
+        n2o_tf_calc_intrvl = 1.0E6  ! interval between recalculating n2o
+                                    ! transmission functions, relevant
+                                    ! for time-varying n2o cases 
+                                    ! [ hours ]
+logical            ::  &
+        calc_n2o_tfs_on_first_step = .true. 
+                                    ! always calculate n2o tfs on 
+                                    ! first time step of job ?
+logical            ::  &
+        use_current_n2o_for_tf = .false. 
+                                    ! use current n2o mixing ratio for  
+                                    ! calculating tfs ?
+real               ::  &
+        n2o_tf_time_displacement = 0.0 
+                                    ! time displacement from job start 
+                                    ! to the point in time where n2o 
+                                    ! tfs are to be valid -- may be (-),
+                                    ! 0.0 or (+); used only when
+                                    ! calc_n2o_tfs_on_first_step is true
+                                    ! [ hours ]
+integer            ::  &
+        verbose = 0                 ! verbosity level, ranges from 0
+                                    ! (min output) to 5 (max output)
+logical            ::  &
+       calc_co2_tfs_monthly = .false.
+logical            ::  &
+       calc_ch4_tfs_monthly = .false.
+logical            ::  &
+       calc_n2o_tfs_monthly = .false.
+
 
 namelist / sealw99_nml /                          &
                           do_thick, do_lwcldemiss, &
                           do_nlte, do_ch4n2olbltmpint, &
-                          continuum_form, linecatalog_form
+                          continuum_form, linecatalog_form, &
+                          verbose, &
+                          calc_co2_tfs_monthly, &
+                          calc_ch4_tfs_monthly, &
+                          calc_n2o_tfs_monthly, &
+                          calc_co2_tfs_on_first_step, &
+                          use_current_co2_for_tf, &
+                          co2_tf_calc_intrvl, &
+                          co2_tf_time_displacement, &
+                          calc_ch4_tfs_on_first_step, &
+                          use_current_ch4_for_tf, &
+                          ch4_tf_calc_intrvl, &
+                          ch4_tf_time_displacement, &
+                          calc_n2o_tfs_on_first_step, &
+                          use_current_n2o_for_tf, &
+                          n2o_tf_calc_intrvl, &
+                          n2o_tf_time_displacement
 
 !---------------------------------------------------------------------
 !------- public data ------
@@ -187,9 +276,21 @@ integer    ::  nbly      ! number of frequency bands for exact
 integer    ::  nbtrge
 integer    ::  ixprnlte
 integer    ::  ks, ke
-logical    ::  do_ch4_n2o_init = .true.
-logical    ::  do_co2_init = .true.
+logical    ::  do_co2_tf_calc = .true.
+logical    ::  do_ch4_tf_calc = .true.
+logical    ::  do_n2o_tf_calc = .true.
+logical    ::  do_co2_tf_calc_init = .true.
+logical    ::  do_ch4_tf_calc_init = .true.
+logical    ::  do_n2o_tf_calc_init = .true.
 
+integer    ::  month_of_co2_tf_calc = 0
+integer    ::  month_of_ch4_tf_calc = 0
+integer    ::  month_of_n2o_tf_calc = 0
+
+integer    :: co2_pts_processed
+integer    :: ch4_pts_processed
+integer    :: n2o_pts_processed
+integer    :: total_points 
 
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
@@ -299,6 +400,7 @@ type(lw_table_type), intent(inout) :: Lw_tables
        integer         ::     kmax, kmin
        integer         :: inrad
        real            :: dum
+       character(len=4)  :: gas_name
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -372,9 +474,100 @@ type(lw_table_type), intent(inout) :: Lw_tables
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
-    kmax = size(pref,1) - 1   ! radiation grid size
-     ks = 1
-     ke = kmax
+      kmax = size(pref,1) - 1   ! radiation grid size
+      ks = 1
+      ke = kmax
+
+!---------------------------------------------------------------------
+!    be sure that the radiation time step has been defined before using
+!    it.
+!---------------------------------------------------------------------
+      if (Rad_control%rad_time_step_iz) then
+      else
+        call error_mesg ('sealw99_mod', &
+               'must define rad_time_step before using it', FATAL)
+      endif
+
+!---------------------------------------------------------------------
+!    call check_tf_interval to verify that the namelist input variables
+!    related to co2 are consistent.
+!---------------------------------------------------------------------
+      gas_name = 'co2 '
+      call check_tf_interval (gas_name, co2_tf_calc_intrvl, &
+                              calc_co2_tfs_on_first_step,   &
+                              calc_co2_tfs_monthly, &
+                              use_current_co2_for_tf)
+
+!--------------------------------------------------------------------
+!    define the radiation_control_type variable components related to
+!    co2 tf calculation.
+!--------------------------------------------------------------------
+      Rad_control%co2_tf_calc_intrvl = co2_tf_calc_intrvl
+      Rad_control%use_current_co2_for_tf = use_current_co2_for_tf
+      Rad_control%calc_co2_tfs_monthly       =   &
+                                             calc_co2_tfs_monthly      
+      Rad_control%calc_co2_tfs_on_first_step =   &
+                                             calc_co2_tfs_on_first_step
+      Rad_control%co2_tf_time_displacement = co2_tf_time_displacement
+      Rad_control%co2_tf_calc_intrvl_iz = .true.             
+      Rad_control%use_current_co2_for_tf_iz = .true.
+      Rad_control%calc_co2_tfs_on_first_step_iz = .true.
+      Rad_control%calc_co2_tfs_monthly_iz    =  .true.
+      Rad_control%co2_tf_time_displacement_iz = .true.
+
+!---------------------------------------------------------------------
+!    call check_tf_interval to verify that the namelist input variables
+!    related to ch4 are consistent.
+!---------------------------------------------------------------------
+      gas_name = 'ch4 '
+      call check_tf_interval (gas_name, ch4_tf_calc_intrvl, &
+                              calc_ch4_tfs_on_first_step,   &
+                              calc_ch4_tfs_monthly, &
+                              use_current_ch4_for_tf)
+
+!--------------------------------------------------------------------
+!    define the radiation_control_type variable components related to
+!    ch4 tf calculation.
+!--------------------------------------------------------------------
+      Rad_control%ch4_tf_calc_intrvl = ch4_tf_calc_intrvl
+      Rad_control%use_current_ch4_for_tf = use_current_ch4_for_tf
+      Rad_control%calc_ch4_tfs_on_first_step =   &
+                                             calc_ch4_tfs_on_first_step
+      Rad_control%calc_ch4_tfs_monthly       =   &
+                                             calc_ch4_tfs_monthly      
+      Rad_control%ch4_tf_time_displacement = ch4_tf_time_displacement
+      Rad_control%ch4_tf_calc_intrvl_iz = .true.             
+      Rad_control%use_current_ch4_for_tf_iz = .true.
+      Rad_control%calc_ch4_tfs_on_first_step_iz = .true.
+      Rad_control%calc_ch4_tfs_monthly_iz    =  .true.
+      Rad_control%ch4_tf_time_displacement_iz = .true.
+
+!---------------------------------------------------------------------
+!    call check_tf_interval to verify that the namelist input variables
+!    related to n2o are consistent.
+!---------------------------------------------------------------------
+      gas_name = 'n2o '
+      call check_tf_interval (gas_name, n2o_tf_calc_intrvl, &
+                              calc_n2o_tfs_on_first_step,   &
+                              calc_n2o_tfs_monthly, &
+                              use_current_n2o_for_tf)
+
+!--------------------------------------------------------------------
+!    define the radiation_control_type variable components related to
+!    n2o tf calculation.
+!--------------------------------------------------------------------
+      Rad_control%n2o_tf_calc_intrvl = n2o_tf_calc_intrvl
+      Rad_control%use_current_n2o_for_tf = use_current_n2o_for_tf
+      Rad_control%calc_n2o_tfs_on_first_step =   &
+                                           calc_n2o_tfs_on_first_step
+      Rad_control%calc_n2o_tfs_monthly       =   &
+                                             calc_n2o_tfs_monthly      
+      Rad_control%n2o_tf_time_displacement = n2o_tf_time_displacement
+      Rad_control%n2o_tf_calc_intrvl_iz = .true.             
+      Rad_control%use_current_n2o_for_tf_iz = .true.
+      Rad_control%calc_n2o_tfs_on_first_step_iz = .true.
+      Rad_control%calc_n2o_tfs_monthly_iz    =  .true.
+      Rad_control%n2o_tf_time_displacement_iz = .true.
 
 !---------------------------------------------------------------------
 !
@@ -511,8 +704,12 @@ type(lw_table_type), intent(inout) :: Lw_tables
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
       call lw_gases_stdtf_init   (pref)
-      call optical_path_init 
+      call optical_path_init (pref)
       call longwave_tables_init (Lw_tables, tabsr, &
                                  tab1, tab2, tab3, tab1w, &
                                  tab1a, tab2a, tab3a)
@@ -674,6 +871,15 @@ type(lw_table_type), intent(inout) :: Lw_tables
 !---------------------------------------------------------------------
       call longwave_fluxes_init
 
+!--------------------------------------------------------------------
+!    define the total number of columns on the processor. set the 
+!    number of columns processed on the current time step to 0.
+!---------------------------------------------------------------------
+      total_points = (size(latb)-1)*(size(lonb)-1)
+      co2_pts_processed = 0
+      ch4_pts_processed = 0
+      n2o_pts_processed = 0
+
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
@@ -683,8 +889,6 @@ type(lw_table_type), intent(inout) :: Lw_tables
 
 
 end subroutine sealw99_init
-
-
 
 
 !#####################################################################
@@ -753,9 +957,9 @@ end subroutine sealw99_init
 !  </INOUT>
 ! </SUBROUTINE>
 !
-subroutine sealw99 (is, ie, js, je, Atmos_input, Rad_gases, &
+subroutine sealw99 (is, ie, js, je, Rad_time, Atmos_input, Rad_gases, &
                     Aerosol, Aerosol_props, Cldrad_props, Cld_spec, &
-                    Lw_output, Lw_diagnostics)
+                    Aerosol_diags, Lw_output, Lw_diagnostics)
 
 !---------------------------------------------------------------------
 !    sealw99 is the longwave driver subroutine.
@@ -788,10 +992,12 @@ subroutine sealw99 (is, ie, js, je, Atmos_input, Rad_gases, &
 !---------------------------------------------------------------------
 
 integer,                       intent(in)    ::  is, ie, js, je
+type(time_type),               intent(in)    ::  Rad_time
 type(atmos_input_type),        intent(in)    ::  Atmos_input  
-type(radiative_gases_type),    intent(in)    ::  Rad_gases   
+type(radiative_gases_type),    intent(inout)    ::  Rad_gases   
 type(aerosol_type),            intent(in)    ::  Aerosol      
 type(aerosol_properties_type), intent(inout) ::  Aerosol_props      
+type(aerosol_diagnostics_type), intent(inout) ::  Aerosol_diags      
 type(cldrad_properties_type),  intent(in)    ::  Cldrad_props
 type(cld_specification_type),  intent(in)    ::  Cld_spec
 type(lw_output_type),          intent(inout) ::  Lw_output   
@@ -906,7 +1112,10 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2),  &     
                        size(Atmos_input%press,3)-1 )  :: &
-           pdfinv
+            pdfinv, heatra_save
+      real, dimension (size(Atmos_input%press,1),    &
+                       size(Atmos_input%press,2),  &
+                       size(Atmos_input%press,3) )  :: flxnet_save
 
       type(lw_clouds_type)       :: Lw_clouds
       type(optical_path_type)    :: Optical
@@ -916,6 +1125,8 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
       integer                    :: ix, jx, kx
       integer                    :: n, k, kp, m, j
       integer                    :: kk, i, l
+      integer                    :: nprofiles, nnn
+      character(len=4)           :: gas_name
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -1062,16 +1273,6 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !----------------------------------------------------------------------
 !
 !--------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o .and.   &
-          (do_ch4_n2o_init .or. Rad_gases%time_varying_ch4 .or. &
-           Rad_gases%time_varying_n2o) ) then
-        call ch4_n2o_time_vary (Rad_gases%rrvch4, Rad_gases%rrvn2o)
-        do_ch4_n2o_init = .false.
-      endif
-
-!----------------------------------------------------------------------
-!
-!--------------------------------------------------------------------
       if (Rad_gases%time_varying_co2) then 
         if (.not. calc_co2) then
           call error_mesg ('sealw99_mod', &
@@ -1081,18 +1282,171 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
       endif
 
 !----------------------------------------------------------------------
-!
+!    if ch4 is activated in this job, varying in time, and 
+!    calculation of ch4 tfs are requested, call obtain_gas_tfs to
+!    define the tfs.
 !--------------------------------------------------------------------
-      if (Lw_control%do_co2 .and.    &
-          (do_co2_init  .or. Rad_gases%time_varying_co2) ) then
-        call co2_time_vary (Rad_gases%rrvco2)
-        do_co2_init = .false.
-      endif
+      if (Rad_gases%time_varying_ch4) then
+        if (Lw_control%do_ch4_n2o) then
+          if (do_ch4_tf_calc) then
+            gas_name = 'ch4 '
+            call obtain_gas_tfs (gas_name, Rad_time,   &
+                                 Rad_gases%Ch4_time,  &
+                                 ch4_tf_calc_intrvl,&
+                                 Rad_gases%ch4_tf_offset,  &
+                                 calc_ch4_tfs_on_first_step, &
+                                 calc_ch4_tfs_monthly, &
+                                 month_of_ch4_tf_calc, &
+                                 Rad_gases%ch4_for_next_tf_calc,  &
+                                 Rad_gases%ch4_for_last_tf_calc, &
+                                 do_ch4_tf_calc, do_ch4_tf_calc_init)
+          endif  ! (do_ch4_tf_calc)
+
+!--------------------------------------------------------------------
+!    increment the points processed counter for this time step. check
+!    if all processor points have been processed; if so, set the
+!    calculation flag to .true., and reset the points processed counter
+!    to 0.
+!--------------------------------------------------------------------
+          if (.not. calc_ch4_tfs_on_first_step) then
+            ch4_pts_processed = ch4_pts_processed +  &
+                                size(Atmos_input%press,1) * &
+                                size(Atmos_input%press,2)
+            if (ch4_pts_processed == total_points) then
+              do_ch4_tf_calc = .true.
+              ch4_pts_processed = 0
+            endif
+          endif  ! (.not. calc_ch4_tfs_on_first_step)
+        endif ! (do_ch4)
+
+!---------------------------------------------------------------------
+!    if ch4 is not time-varying and it is the initial call to sealw99,
+!    call ch4_time_vary to calculate the tfs. set flags to indicate
+!    the calculation has been done.
+!---------------------------------------------------------------------
+      else ! (time_varying_ch4)
+        if (Lw_control%do_ch4_n2o .and. do_ch4_tf_calc ) then
+          call ch4_time_vary (Rad_gases%rrvch4)
+          do_ch4_tf_calc = .false.
+          do_ch4_tf_calc_init = .false.
+        else if (.not. Lw_control%do_ch4_n2o) then
+          do_ch4_tf_calc = .false.
+          do_ch4_tf_calc_init = .false.
+        endif
+      endif  ! (time_varying_ch4)
+
+!----------------------------------------------------------------------
+!    if n2o is activated in this job, varying in time, and 
+!    calculation of n2o tfs are requested, call obtain_gas_tfs to
+!    define the tfs.
+!--------------------------------------------------------------------
+      if (Rad_gases%time_varying_n2o) then
+        if (Lw_control%do_ch4_n2o) then
+          if (do_n2o_tf_calc) then
+            gas_name = 'n2o '
+            call obtain_gas_tfs (gas_name, Rad_time,   &
+                                 Rad_gases%N2o_time,  &
+                                 n2o_tf_calc_intrvl,&
+                                 Rad_gases%n2o_tf_offset,  &
+                                 calc_n2o_tfs_on_first_step, &
+                                 calc_n2o_tfs_monthly, &
+                                 month_of_n2o_tf_calc, &
+                                 Rad_gases%n2o_for_next_tf_calc,  &
+                                 Rad_gases%n2o_for_last_tf_calc, &
+                                 do_n2o_tf_calc, do_n2o_tf_calc_init)
+          endif  ! (do_n2o_tf_calc)
+
+!--------------------------------------------------------------------
+!    increment the points processed counter for this time step. check
+!    if all processor points have been processed; if so, set the
+!    calculation flag to .true., and reset the points processed counter
+!    to 0.
+!--------------------------------------------------------------------
+          if (.not. calc_n2o_tfs_on_first_step) then
+            n2o_pts_processed = n2o_pts_processed +  &
+                                size(Atmos_input%press,1) * &
+                                size(Atmos_input%press,2)
+            if (n2o_pts_processed == total_points) then
+              do_n2o_tf_calc = .true.
+              n2o_pts_processed = 0
+            endif
+          endif  ! (.not. calc_n2o_tfs_on_first_step)
+        endif ! (do_n2o)
+
+!---------------------------------------------------------------------
+!    if n2o is not time-varying and it is the initial call to sealw99,
+!    call n2o_time_vary to calculate the tfs. set flags to indicate
+!    the calculation has been done.
+!---------------------------------------------------------------------
+      else
+        if (Lw_control%do_ch4_n2o .and. do_n2o_tf_calc) then
+          call n2o_time_vary (Rad_gases%rrvn2o)
+          do_n2o_tf_calc = .false.
+          do_n2o_tf_calc_init = .false.
+        else if (.not. Lw_control%do_ch4_n2o) then
+          do_n2o_tf_calc = .false.
+          do_n2o_tf_calc_init = .false.
+        endif
+      endif  ! (time_varying_n2o)
+
+
+!----------------------------------------------------------------------
+!    if co2 is activated in this job, varying in time, and 
+!    calculation of co2 tfs are requested, call obtain_gas_tfs to
+!    define the tfs.
+!--------------------------------------------------------------------
+      if (Rad_gases%time_varying_co2) then
+        if (Lw_control%do_co2) then
+          if (do_co2_tf_calc) then
+            gas_name = 'co2 '
+            call obtain_gas_tfs (gas_name, Rad_time,  &
+                                 Rad_gases%Co2_time,  &
+                                 co2_tf_calc_intrvl,&
+                                 Rad_gases%co2_tf_offset,  &
+                                 calc_co2_tfs_on_first_step, &
+                                 calc_co2_tfs_monthly, &
+                                 month_of_co2_tf_calc, &
+                                 Rad_gases%co2_for_next_tf_calc,  &
+                                 Rad_gases%co2_for_last_tf_calc, &
+                                 do_co2_tf_calc, do_co2_tf_calc_init)
+          endif  ! (do_co2_tf_calc)
+
+!--------------------------------------------------------------------
+!    increment the points processed counter for this time step. check
+!    if all processor points have been processed; if so, set the
+!    calculation flag to .true., and reset the points processed counter
+!    to 0.
+!--------------------------------------------------------------------
+          if (.not. calc_co2_tfs_on_first_step ) then  
+            co2_pts_processed = co2_pts_processed +  &
+                                size(Atmos_input%press,1) * &
+                                size(Atmos_input%press,2)
+            if (co2_pts_processed == total_points) then
+              do_co2_tf_calc = .true.
+              co2_pts_processed = 0
+            endif
+          endif  ! (.not. calc_co2_tfs_on_first_step)
+        endif ! (do_co2)
+
+!---------------------------------------------------------------------
+!    if co2 is not time-varying and it is the initial call to sealw99,
+!    call co2_time_vary to calculate the tfs. set flags to indicate
+!    the calculation has been done.
+!---------------------------------------------------------------------
+      else
+        if (Lw_control%do_co2 .and. do_co2_tf_calc) then
+          call co2_time_vary (Rad_gases%rrvco2)
+          do_co2_tf_calc = .false.
+          do_co2_tf_calc_init = .false.
+        endif
+      endif  ! (time_varying_co2)
 
 !----------------------------------------------------------------------
 !
 !--------------------------------------------------------------------
-      if (calc_co2 .or. calc_ch4 .or. calc_n2o) then
+      if ((Lw_control%do_co2 .and. calc_co2) .or. &
+          (Lw_control%do_ch4_n2o .and. calc_ch4) .or. &
+          (Lw_control%do_ch4_n2o .and. calc_n2o)) then
         call lw_gases_stdtf_dealloc
       endif
 
@@ -1113,14 +1467,9 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !
 !--------------------------------------------------------------------
       call optical_path_setup (is, ie, js, je, Atmos_input, Rad_gases, &
-                               Aerosol, Aerosol_props, Optical)
-
-!----------------------------------------------------------------------
-!    call cldtau to compute cloud layer transmission functions for 
-!    all layers.
-!-------------------------------------------------------------------
-      call cldtau (Cldrad_props, Cld_spec, Lw_clouds)
-
+                               Aerosol, Aerosol_props, Aerosol_diags, &
+                               Optical)
+    
 !--------------------------------------------------------------------
 !    call co2coef to compute some co2 temperature and pressure   
 !    interpolation quantities and to compute temperature-corrected co2
@@ -1133,6 +1482,42 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !-----------------------------------------------------------------------
       call co2_source_calc (Atmos_input, Rad_gases, sorc, Gas_tf, &
                             source_band, dsrcdp_band)
+      
+      if (Cldrad_control%do_ica_calcs) then
+        nprofiles = Cldrad_control%nlwcldb
+        heatra_save = 0.
+        flxnet_save = 0.0
+      else
+        nprofiles = 1
+      endif
+ 
+      do nnn = 1, nprofiles
+
+!  reinitialize these values (done in sealw99_alloc)
+       Lw_diagnostics%flx1e1   = 0.
+       Lw_diagnostics%cts_out    = 0.
+       Lw_diagnostics%cts_outcf = 0.
+       Lw_diagnostics%gxcts    = 0.
+       Lw_diagnostics%excts  = 0.
+       Lw_diagnostics%exctsn   = 0.
+       Lw_diagnostics%fctsg   = 0.
+
+       Lw_diagnostics%fluxn  (:,:,:,:) = 0.0
+
+       if (Rad_control%do_totcld_forcing) then
+         Lw_diagnostics%fluxncf(:,:,:,:) = 0.0
+       endif
+
+       if (Lw_control%do_ch4_n2o) then
+         Lw_diagnostics%flx1e1f  = 0.
+       end if
+
+!----------------------------------------------------------------------
+!    call cldtau to compute cloud layer transmission functions for 
+!    all layers.
+!-------------------------------------------------------------------
+      call cldtau (nnn, Cldrad_props, Cld_spec, Lw_clouds)
+
 
 !---------------------------------------------------------------------
 !    BEGIN LEVEL KS CALCULATIONS
@@ -1711,7 +2096,39 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
       call longwave_fluxes_sum (is, ie, js, je, flx, NBTRGE, &
                                 Lw_diagnostics)
     endif
+    Lw_output%bdy_flx(:,:,1) = Lw_output%bdy_flx(:,:,1) + &
+                               Lw_diagnostics%fluxn(:,:,1,3) + &
+                               Lw_diagnostics%fluxn(:,:,1,4) + &
+                               Lw_diagnostics%fluxn(:,:,1,5) + &
+                               Lw_diagnostics%fluxn(:,:,1,6) 
+    Lw_output%bdy_flx(:,:,2) = Lw_output%bdy_flx(:,:,2) + &
+                               Lw_diagnostics%fluxn(:,:,1,4) 
+    Lw_output%bdy_flx(:,:,3) = Lw_output%bdy_flx(:,:,3) + &
+                               Lw_diagnostics%fluxn(:,:,ke+1,3) + &
+                               Lw_diagnostics%fluxn(:,:,ke+1,4) + &
+                               Lw_diagnostics%fluxn(:,:,ke+1,5) + &
+                               Lw_diagnostics%fluxn(:,:,ke+1,6) 
+    Lw_output%bdy_flx(:,:,4) = Lw_output%bdy_flx(:,:,4) + &
+                               Lw_diagnostics%fluxn(:,:,ke+1,4) 
+!   Lw_output%bdy_flx = 1.0E-03*Lw_output%bdy_flx
 
+    if (nnn == 1) then ! need do only once
+    if (Rad_control%do_totcld_forcing) then
+      Lw_output%bdy_flx_clr(:,:,1) = Lw_diagnostics%fluxncf(:,:,1,3) + &
+                                 Lw_diagnostics%fluxncf(:,:,1,4) + &
+                                 Lw_diagnostics%fluxncf(:,:,1,5) + &
+                                 Lw_diagnostics%fluxncf(:,:,1,6) 
+      Lw_output%bdy_flx_clr(:,:,2) = Lw_diagnostics%fluxncf(:,:,1,4) 
+      Lw_output%bdy_flx_clr(:,:,3) = Lw_diagnostics%fluxncf(:,:,ke+1,3) + &
+                                 Lw_diagnostics%fluxncf(:,:,ke+1,4) + &
+                                 Lw_diagnostics%fluxncf(:,:,ke+1,5) + &
+                                 Lw_diagnostics%fluxncf(:,:,ke+1,6) 
+      Lw_output%bdy_flx_clr(:,:,4) = Lw_diagnostics%fluxncf(:,:,ke+1,4) 
+      Lw_output%bdy_flx_clr = 1.0E-03*Lw_output%bdy_flx_clr
+    endif
+    endif
+
+    
 !-----------------------------------------------------------------------
 !     compute emissivity heating rates.
 !-----------------------------------------------------------------------
@@ -1792,6 +2209,7 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
          end do
       end do
 
+    if (nnn == 1) then ! only need to do once
     if (Rad_control%do_totcld_forcing) then                    
       do kk = KS,KE
          do j = 1,size(Lw_output%heatracf(:,:,:),2)
@@ -1802,6 +2220,7 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
          end do
       end do
     endif
+    endif !  (nnn == 1)
 
 !-----------------------------------------------------------------------
 !     compute the flux at each flux level using the flux at the
@@ -1836,6 +2255,7 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
             Lw_diagnostics%flx1e1(i,j) = 1.0e-03*Lw_diagnostics%flx1e1(i,j)
          end do
       end do
+      if (Lw_control%do_ch4_n2o) then
       do kk = 1,size(Lw_diagnostics%flx1e1f(:,:,:),3)
          do j = 1,size(Lw_diagnostics%flx1e1f(:,:,:),2)
             do i = 1,size(Lw_diagnostics%flx1e1f(:,:,:),1)
@@ -1844,6 +2264,7 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
             end do
          end do
       end do
+      endif
 
 
 !---------------------------------------------------------------------
@@ -1865,6 +2286,7 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
       end do
     enddo
 
+   if (nnn == 1) then   ! only need to do once
    if (Rad_control%do_totcld_forcing) then                    
      do j = 1,size(Lw_output%flxnetcf(:,:,:),2)
         do i = 1,size(Lw_output%flxnetcf(:,:,:),1)
@@ -1890,6 +2312,22 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
        end do
      enddo
    endif
+   endif  ! (nnn == 1) 
+ 
+   if (Cldrad_control%do_ica_calcs) then
+     heatra_save = heatra_save + Lw_output%heatra
+     flxnet_save = flxnet_save + Lw_output%flxnet
+   endif
+ 
+   end do  ! (profiles loop)
+ 
+ 
+
+    if (Cldrad_control%do_ica_calcs) then
+      Lw_output%heatra = heatra_save / Float(nprofiles)
+      Lw_output%flxnet = flxnet_save / Float(nprofiles)
+      Lw_output%bdy_flx = 1.0e-03*Lw_output%bdy_flx/Float(nprofiles)
+    endif
 
 !-----------------------------------------------------------------------
 !    call thickcld to perform "pseudo-convective adjustment" for
@@ -1939,7 +2377,6 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 
 
 end subroutine sealw99 
-
 
 !#####################################################################
 ! <SUBROUTINE NAME="sealw99_end">
@@ -2000,6 +2437,568 @@ end subroutine sealw99_end
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
                                  
+!#####################################################################
+! <SUBROUTINE NAME="check_tf_interval">
+!  <OVERVIEW>
+!   check_tf_interval verifies that requested tf calculation intervals
+!   are compatible with radiation time step
+!  </OVERVIEW>
+!
+!  <DESCRIPTION>
+!   check_tf_interval verifies the following relationships:
+!     1) that the tf calculation interval is no smaller than the
+!        radiation time step;
+!     2) that the tf calculation interval is an integral multiple of
+!        the radiation time step;
+!     3) that the specification for calculating tfs on the first step
+!        of the job is done properly.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call check_tf_interval (gas, gas_tf_calc_intrvl, &
+!                           calc_gas_tfs_on_first_step,  &
+!                           use_current_gas_for_tf)
+!   call sealw99_alloc (ix, jx, kx, Lw_diagnostics)  
+!  </TEMPLATE>
+!  <IN NAME="gas">    
+!   name associated with the gas
+!  </IN>
+!  <IN NAME="gas_tf_calc_intrvl">    
+!   time interval between recalculating transmission fumctions [ hours ]
+!  </IN>
+!  <IN NAME="calc_gas_tfs_on_first_step">  
+!   flag indicating if tfs are to be calculated only on first step 
+!   of job
+!  </IN>
+!  <IN NAME="use_current_gas_for_tf">  
+!   flag indicating if gas mixing ratio at current time is to be used
+!   for calculation of gas tfs 
+!  </IN>
+! </SUBROUTINE>
+! <PUBLICROUTINE>
+!
+!NOTE: THIS IS A PRIVATE SUBROUTINE.
+!
+
+subroutine check_tf_interval (gas, gas_tf_calc_intrvl, &
+                              calc_gas_tfs_on_first_step,  &
+                              calc_gas_tfs_monthly,        &
+                              use_current_gas_for_tf)
+
+!--------------------------------------------------------------------
+character(len=4), intent(in) :: gas
+real,             intent(in) :: gas_tf_calc_intrvl
+logical,          intent(in) :: calc_gas_tfs_on_first_step,  &
+                                calc_gas_tfs_monthly,        &
+                                use_current_gas_for_tf
+
+! </PUBLICROUTINE>
+
+!---------------------------------------------------------------------
+!    if tfs are not being calculated on the first step, the requested 
+!    gas transmission function recalculation interval must be greater
+!    than the radiation time step. 
+!---------------------------------------------------------------------
+      if (.not. calc_gas_tfs_on_first_step .and. &
+          .not. calc_gas_tfs_monthly) then
+        if (INT(3600.0*gas_tf_calc_intrvl) <   &
+            Rad_control%rad_time_step) then
+          call error_mesg ('sealw99_mod', &
+             trim(gas)// ' tf calculation interval must be greater&
+                    & than or equal to the radiation time step', FATAL)
+        endif
+
+!---------------------------------------------------------------------
+!    be sure that the tf calculation interval is an integral multiple 
+!    of the radiation timestep.
+!---------------------------------------------------------------------
+        if (mod(INT(3600.0*gas_tf_calc_intrvl),   &
+                Rad_control%rad_time_step) /= 0) then
+          call  error_mesg ('sealw99_mod',  &
+           trim(gas)//' transmission function calculation interval &
+           &must be integral multiple of radiation time step', FATAL)
+        endif
+      endif ! (.not. calc_gas_tfs_on_first_step)
+
+!---------------------------------------------------------------------
+!    to calculate the tfs using the gas value at the start of the run,
+!    one must set use_current_gas_for_tf to .false, and set the 
+!    gas_tf_time_displacement to 0.0, rather than setting 
+!    use_current_gas_for_tf to .true.
+!---------------------------------------------------------------------
+      if (calc_gas_tfs_on_first_step) then
+        if (use_current_gas_for_tf) then
+          call error_mesg ('sealw99_mod', &
+              'cannot specify use of current '//trim(gas)//' value&
+              & for tfs when calculating tfs on first step; instead   &
+              &set use_current_'//trim(gas)//'_for_tf to false and set &
+              & '//trim(gas)//'_tf_time_displacement =    0.0', FATAL)
+        endif
+      endif
+
+      if (calc_gas_tfs_on_first_step .and. &
+          calc_gas_tfs_monthly) then
+        call error_mesg ( 'sealw99_mod',  &
+          'cannot request calc of tfs both on first step and monthly',&
+                                                                FATAL)
+      endif
+
+!---------------------------------------------------------------------
+
+
+end subroutine check_tf_interval
+
+
+
+!####################################################################
+! <SUBROUTINE NAME="obtain_gas_tfs">
+!  <OVERVIEW>
+!   obtain_gas_tfs obtains the transmission functions for the requested
+!   gas
+!  </OVERVIEW>
+!
+!  <DESCRIPTION>
+!   obtain_gas_tfs performs the following functions:
+!     a) if time variation of the gas has begun at the current time:
+!        1) defines how long the gas has been varying and whether
+!           the tfs are due to be recalculated at the current time;
+!        2) if the tfs are not to be always recalculated on the first
+!           step:
+!           a) if this is a recalculation step;
+!             1) call the routine to calculate the tfs for the input 
+!                gas;
+!             2) redefine the value of the gas mixing ratio used fro the
+!                last tf calculation to be the one just used;
+!             3) set the flag indicating the need to initially calculate
+!                the tfs to .false.
+!           b) if this is not a recalculation step:
+!             1) if this is the initial step, call the routine to calc-
+!                ulate the tfs for the input gas;
+!             2) set the flag indicating the need to initially calculate
+!                the tfs to .false.
+!        3) if the tfs are to be always calculated on the first step:
+!           a) call the routine to calculate the tfs for the input gas;
+!           b) redefine the value of the gas mixing ratio used from the
+!              last tf calculation to be the one just used;
+!           c) set the flag indicating the need to initially calculate
+!              the tfs to .false.
+!     b) if time variation of the gas has not begun at the current time:
+!         1) if this is the initial call of the job, call the routine
+!            to calculate the tfs for the input gas;
+!         2) set a flag to indicate that the initial call has been made.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call obtain_gas_tfs (gas, Rad_time, Gas_time, gas_tf_calc_intrvl,&
+!                       gas_tf_offset, calc_gas_tfs_on_first_step, &
+!                       gas_for_next_tf_calc, gas_for_last_tf_calc, &
+!                       do_gas_tf_calc, do_gas_tf_calc_init)
+!  </TEMPLATE>
+!  <IN NAME="gas">    
+!   name associated with the gas
+!  </IN>
+!  <IN NAME="Rad_time">
+!   current model time [ time_type ]
+!  </IN>
+!  <IN NAME="Gas_time">
+!   time since time variation of gas began [ time_type ]
+!  </IN>
+!  <IN NAME="gas_tf_calc_intrvl">    
+!   time interval between recalculating transmission fumctions [ hours ]
+!  </IN>
+!  <IN NAME="gas_tf_offset">
+!   time difference between current time and the time for which the 
+!   tfs are calculated
+!  </IN>
+!  <IN NAME="calc_gas_tfs_on_first_step">  
+!   flag indicating if tfs are to be calculated only on first step 
+!   of job
+!  </IN>
+!  <INOUT NAME="gas_for_next_tf_calc">  
+!   value of gas mixing ratio to be used when tfs are next calculated
+!   [ no. / no. ]
+!  </INOUT>
+!  <INOUT NAME="gas_for_last_tf_calc">  
+!   value of gas mixing ratio to be used when tfs were last calculated
+!   [ no. / no. ]
+!  </INOUT>
+!  <INOUT NAME="do_gas_tf_calc">
+!   if true, calculate gas tfs when alarm again goes off
+!  </INOUT>
+!  <INOUT NAME="do_gas_tf_calc_init">
+!   this variable is true initially to force calculation of the tfs on 
+!   the first call of the job; it is then set to false
+!  </INOUT>
+!</SUBROUTINE>
+!
+!NOTE: THIS IS A PRIVATE SUBROUTINE.
+!
+subroutine obtain_gas_tfs (gas, Rad_time, Gas_time, gas_tf_calc_intrvl,&
+                           gas_tf_offset, calc_gas_tfs_on_first_step, &
+                           calc_gas_tfs_monthly,month_of_gas_tf_calc, &
+                           gas_for_next_tf_calc, gas_for_last_tf_calc, &
+                           do_gas_tf_calc, do_gas_tf_calc_init)
+
+!----------------------------------------------------------------------
+character(len=4),       intent(in)    :: gas
+type(time_type),        intent(in)    :: Rad_time, Gas_time
+real,                   intent(in)    :: gas_tf_calc_intrvl,  &
+                                         gas_tf_offset
+logical,                intent(in)    :: calc_gas_tfs_on_first_step
+integer,                intent(inout) :: month_of_gas_tf_calc
+logical,                intent(in)    :: calc_gas_tfs_monthly       
+real,                   intent(inout) :: gas_for_next_tf_calc, &
+                                         gas_for_last_tf_calc
+logical,                intent(inout) :: do_gas_tf_calc,&
+                                         do_gas_tf_calc_init
+                       
+!---------------------------------------------------------------------
+!  local variables:
+
+      type(time_type)      :: Time_since_gas_start
+      integer              :: seconds, days, minutes_from_start, alarm
+      integer              :: year, month, day, hour, minute, second
+      character(len=4)     :: chvers, chvers2, chvers3, chvers4, &
+                              chvers5, chvers6
+      character(len=12)    :: chvers10
+      character(len=16)    :: chvers7
+
+!---------------------------------------------------------------------
+!  local variables:
+!
+!     Time_since_gas_start   length of time that gas has been varying
+!                            [ time_type ]
+!     seconds                seconds component of Time_since_gas_start
+!                            [ seconds ]
+!     days                   days component of Time_since_gas_start
+!                            [ days ]
+!     minutes_from_start     minutes since time variation started
+!                            [ minutes ]
+!     alarm                  if alarm = 0, it is time to calculate the
+!                            tfs [ minutes ]
+!     year                   year component of current time
+!     month                  month component of current time
+!     day                    day component of current time
+!     hour                   hour component of current time
+!     minute                 minute component of current time
+!     second                 second component of current time
+!     chvers, chversx        characters used to output model variables
+!                            through the error_mesg interface
+!      
+!---------------------------------------------------------------------
+
+
+!--------------------------------------------------------------------
+!    if gas variation is underway, define how long it has been since
+!    that started, and whether the current time is an integral multiple
+!    of the calculation interval from that gas starting time. put
+!    the current time into character variables for output via the
+!    error_mesg interface.
+!--------------------------------------------------------------------
+      if (Rad_time >= Gas_time) then 
+        Time_since_gas_start = Rad_time - Gas_time
+        call get_time (Time_since_gas_start, seconds, days)
+        call get_date (Rad_time, year, month, day, hour, minute, second)
+        write (chvers, '(i4)') year
+        write (chvers2, '(i4)') month
+        write (chvers3, '(i4)') day  
+        write (chvers4, '(i4)') hour 
+        write (chvers5, '(i4)') minute
+        write (chvers6, '(i4)') second
+        write (chvers10, '( f9.3)') gas_tf_offset    
+
+!---------------------------------------------------------------------
+!    if tfs are not automatically calculated on the first step of the
+!    job and if the current time is a desired recalculation time, call 
+!    xxx_time_vary to do the calculation.
+!---------------------------------------------------------------------
+!       if (.not. calc_gas_tfs_on_first_step) then
+        if (.not. calc_gas_tfs_on_first_step .and. &
+            .not. calc_gas_tfs_monthly) then
+          minutes_from_start = INT(days*1440.0 + real(seconds)/60.)
+          if (gas_tf_calc_intrvl /= 0.0) then
+            alarm = MOD (minutes_from_start,   &
+                         INT(gas_tf_calc_intrvl*60.0))
+          endif
+          if (alarm == 0) then
+            if (trim(gas) == 'ch4') then
+              call ch4_time_vary (gas_for_next_tf_calc)
+              write (chvers7, '(4pe15.7)')  gas_for_next_tf_calc
+            else if (trim(gas) == 'n2o') then
+              call n2o_time_vary (gas_for_next_tf_calc)
+              write (chvers7, '(3pe15.7)') gas_for_next_tf_calc
+            else if (trim(gas) == 'co2') then
+              call co2_time_vary (gas_for_next_tf_calc)
+              write (chvers7, '(3pe15.7)')  gas_for_next_tf_calc
+            endif
+
+!--------------------------------------------------------------------
+!    redefine the value for the gas mixing ratio used fro the last tf 
+!    calculation.
+!--------------------------------------------------------------------
+            gas_for_last_tf_calc = gas_for_next_tf_calc
+
+!---------------------------------------------------------------------
+!    if a record of the tf calculation path is desired, print out the
+!    relevant data.
+!---------------------------------------------------------------------
+            if (verbose >= 1) then
+              if (gas_tf_offset /= 0.0) then
+                call error_mesg ('sealw99_mod',  &
+                 'calculating '//trim(gas)//' transmission functions&
+                 & at time '//chvers//chvers2//chvers3//chvers4//  &
+                 chvers5// chvers6// ', using '//trim(gas)//' &
+                 &mixing ratio of:' // chvers7 //', which&
+                 & is the value '//chvers10// 'hours from current &
+                                                         & time.', NOTE)
+              else
+                call error_mesg ('sealw99_mod',  &
+                 'calculating '//trim(gas)//' transmission functions&
+                 & at time ' //chvers//chvers2//chvers3//chvers4//&
+                 chvers5// chvers6// ', using '//trim(gas)//'  &
+                 &mixing ratio of:' // chvers7 //', which&
+                             & is the value at the current time', NOTE)
+              endif
+            endif ! (verbose)
+
+!---------------------------------------------------------------------
+!    set the flag to indicate that the initial tf calculation has been 
+!    completed.
+!---------------------------------------------------------------------
+            do_gas_tf_calc_init = .false.
+
+!----------------------------------------------------------------------
+!    if alarm is not 0 and the tfs have not yet been calculated, call 
+!    xxx_time_vary to do the calculation. set the flag appropriately.
+!---------------------------------------------------------------------
+          else
+            if (do_gas_tf_calc_init) then
+              if (trim(gas) == 'ch4') then
+                call ch4_time_vary (gas_for_last_tf_calc)
+                write (chvers7, '(4pe15.7)') gas_for_last_tf_calc
+              else if (trim(gas) == 'n2o') then
+                call n2o_time_vary (gas_for_last_tf_calc)
+                write (chvers7, '(3pe15.7)') gas_for_last_tf_calc
+              else if (trim(gas) == 'co2') then
+                call co2_time_vary (gas_for_last_tf_calc)
+                write (chvers7, '(3pe15.7)') gas_for_last_tf_calc
+              endif
+              do_gas_tf_calc_init = .false.
+
+!---------------------------------------------------------------------
+!    if a record of the tf calculation path is desired, print out the
+!    relevant data.
+!---------------------------------------------------------------------
+              if (verbose >= 1) then
+                if (gas_tf_offset /= 0.0) then
+                  call error_mesg ('sealw99_mod',  &
+                       'initial '//gas//' transmission function  &
+                        &calculation uses '//trim(gas)//' mixing ratio &
+                        &of:'//chvers7//'.', NOTE) 
+                else
+                  call error_mesg ('sealw99_mod',  &
+                        'initial '//trim(gas)//' transmission function&
+                         & calculation uses '//trim(gas)//' mixing &
+                        &ratio of:' // chvers7 //', which is the value &
+                        &at the current time.', NOTE)
+                endif
+              endif
+            endif
+          endif !(alarm == 0)
+
+!---------------------------------------------------------------------
+!    if it is desired that the tfs be calculated only on the first 
+!    step, call the appropriate subroutines to do so. redefine the
+!    gas values used for the last tf calculation  redefine the
+!    gas values used for the last tf calculation. 
+!---------------------------------------------------------------------
+!       else ! (.not. calc_gas_tfs_on_first_step)
+        else  if (calc_gas_tfs_on_first_step) then
+          if (trim(gas) == 'ch4') then
+            call ch4_time_vary (gas_for_next_tf_calc)
+            write (chvers7, '(4pe15.7)') gas_for_next_tf_calc
+          else if (trim(gas) == 'n2o') then
+            call n2o_time_vary (gas_for_next_tf_calc)
+            write (chvers7, '(3pe15.7)') gas_for_next_tf_calc
+          else if (trim(gas) == 'co2') then
+            call co2_time_vary (gas_for_next_tf_calc)
+            write (chvers7, '(3pe15.7)') gas_for_next_tf_calc
+          endif
+          gas_for_last_tf_calc = gas_for_next_tf_calc
+
+!---------------------------------------------------------------------
+!    if a record of the tf calculation path is desired, print out the
+!    relevant data.
+!---------------------------------------------------------------------
+          if (verbose >= 1) then
+            if (gas_tf_offset /= 0.0) then
+              call error_mesg ('sealw99_mod',  &
+                  'calculating '//trim(gas)//' transmission functions&
+                  & at time '  //chvers//chvers2//chvers3//chvers4// &
+                  chvers5//chvers6// ', using '//trim(gas)//' mixing &
+                  &ratio of:' // chvers7 //', which is the value ' &
+                  //chvers10// 'hours from current time.', NOTE)
+            else
+              call error_mesg ('sealw99_mod',  &
+                   'calculating '//trim(gas)//' transmission functions&
+                   & at time ' //chvers//chvers2//chvers3//chvers4//&
+                   chvers5//chvers6// ', using '//trim(gas)//' mixing &
+                   &ratio of:' // chvers7 //', which is the value at &
+                   &the current time.', NOTE)
+            endif
+          endif
+
+!---------------------------------------------------------------------
+!    set the flag to indicate that the initial tf calculation has been 
+!    completed.
+!---------------------------------------------------------------------
+          do_gas_tf_calc_init = .false.
+        else if (calc_gas_tfs_monthly) then
+          if (do_gas_tf_calc_init)  then          
+            if (trim(gas) == 'ch4') then
+              call ch4_time_vary (gas_for_next_tf_calc)
+              write (chvers7, '(4pe15.7)') gas_for_next_tf_calc
+            else if (trim(gas) == 'n2o') then
+              call n2o_time_vary (gas_for_next_tf_calc)
+              write (chvers7, '(3pe15.7)') gas_for_next_tf_calc
+            else if (trim(gas) == 'co2') then
+              call co2_time_vary (gas_for_next_tf_calc)
+              write (chvers7, '(3pe15.7)') gas_for_next_tf_calc
+            endif
+            gas_for_last_tf_calc = gas_for_next_tf_calc
+
+!---------------------------------------------------------------------
+!    if a record of the tf calculation path is desired, print out the
+!    relevant data.
+!---------------------------------------------------------------------
+            if (verbose >= 1) then
+              if (gas_tf_offset /= 0.0) then
+                call error_mesg ('sealw99_mod',  &
+                  'calculating '//trim(gas)//' transmission functions&
+                  & at time '  //chvers//chvers2//chvers3//chvers4// &
+                  chvers5//chvers6// ', using '//trim(gas)//' mixing &
+                  &ratio of:' // chvers7 //', which is the value ' &
+                  //chvers10// 'hours from current time  .', NOTE)
+              else
+                call error_mesg ('sealw99_mod',  &
+                   'calculating '//trim(gas)//' transmission functions&
+                   & at time ' //chvers//chvers2//chvers3//chvers4//&
+                   chvers5//chvers6// ', using '//trim(gas)//' mixing &
+                   &ratio of:' // chvers7 //', which is the value at &
+                   &the current time.', NOTE)
+              endif
+            endif
+
+!---------------------------------------------------------------------
+!    set the flag to indicate that the initial tf calculation has been 
+!    completed.
+!---------------------------------------------------------------------
+            do_gas_tf_calc_init = .false.
+            month_of_gas_tf_calc = month
+          else ! (do_gas_tf_calc_init)
+            if (month /= month_of_gas_tf_calc) then
+              if (trim(gas) == 'ch4') then
+                call ch4_time_vary (gas_for_next_tf_calc)
+                write (chvers7, '(4pe15.7)') gas_for_next_tf_calc
+              else if (trim(gas) == 'n2o') then
+                call n2o_time_vary (gas_for_next_tf_calc)
+                write (chvers7, '(3pe15.7)') gas_for_next_tf_calc
+              else if (trim(gas) == 'co2') then
+                call co2_time_vary (gas_for_next_tf_calc)
+                write (chvers7, '(3pe15.7)') gas_for_next_tf_calc
+              endif
+              gas_for_last_tf_calc = gas_for_next_tf_calc
+
+!---------------------------------------------------------------------
+!    if a record of the tf calculation path is desired, print out the
+!    relevant data.
+!---------------------------------------------------------------------
+              if (verbose >= 1) then
+                if (gas_tf_offset /= 0.0) then
+                  call error_mesg ('sealw99_mod',  &
+                  'calculating '//trim(gas)//' transmission functions&
+                  & at time '  //chvers//chvers2//chvers3//chvers4// &
+                  chvers5//chvers6// ', using '//trim(gas)//' mixing &
+                  &ratio of:' // chvers7 //', which is the value ' &
+                  //chvers10// 'hours from current time.', NOTE)
+                else
+                  call error_mesg ('sealw99_mod',  &
+                   'calculating '//trim(gas)//' transmission functions&
+                   & at time ' //chvers//chvers2//chvers3//chvers4//&
+                   chvers5//chvers6// ', using '//trim(gas)//' mixing &
+                   &ratio of:' // chvers7 //', which is the value at &
+                   &the current time.', NOTE)
+                endif
+              endif
+
+!---------------------------------------------------------------------
+!    set the flag to indicate that the initial tf calculation has been 
+!    completed.
+!---------------------------------------------------------------------
+              month_of_gas_tf_calc = month
+            endif
+          endif ! (do_gas_tf_calc_init)
+        endif ! (.not. calc_gas_tfs_on_first_step)
+
+!---------------------------------------------------------------------
+!    set the flag to indicate that the tf calculation has been 
+!    completed on the current timestep.
+!---------------------------------------------------------------------
+        do_gas_tf_calc = .false.
+
+!---------------------------------------------------------------------
+!    if the time variation of the gas has not yet begun, and it is the 
+!    initial call of the job, call the appropriate subroutines to
+!    define the transmission functions.
+!---------------------------------------------------------------------
+      else ! (Rad_time >= Gas_time)
+        if (do_gas_tf_calc_init) then
+          if (trim(gas) == 'ch4') then
+            call ch4_time_vary (gas_for_last_tf_calc)
+            write (chvers7, '(4pe15.7)') gas_for_last_tf_calc
+          else if (trim(gas) == 'n2o') then
+            call n2o_time_vary (gas_for_last_tf_calc)
+            write (chvers7, '(3pe15.7)') gas_for_last_tf_calc
+          else if (trim(gas) == 'co2') then
+            call co2_time_vary (gas_for_last_tf_calc)
+            write (chvers7, '(3pe15.7)') gas_for_last_tf_calc
+          endif
+
+!---------------------------------------------------------------------
+!    set the flag to indicate that the initial tf calculation has been 
+!    completed.
+!---------------------------------------------------------------------
+          do_gas_tf_calc_init = .false.
+
+!---------------------------------------------------------------------
+!    if a record of the tf calculation path is desired, print out the
+!    relevant data.
+!---------------------------------------------------------------------
+          if (verbose >= 1) then
+            write (chvers10, '( f9.3)') gas_tf_offset    
+            if (gas_tf_offset /= 0.0) then
+              call error_mesg ('sealw99_mod',  &
+                 'initial '//trim(gas)//' transmission function  &
+                 &calculation uses '//trim(gas)//' mixing ratio of:'  &
+                 // chvers7 //', which is the value '//chvers10//  &
+                 'hours from current time.', NOTE)
+            else
+              call error_mesg ('sealw99_mod',  &
+                 'initial '//trim(gas)//' transmission function   &
+                 &calculation uses '//trim(gas)//' mixing ratio of:'  &
+                 // chvers7 //', which is the value at the current  &
+                                                        &time.', NOTE)
+            endif
+          endif
+        endif ! (do_gas_tf_calc_init)
+      endif   ! (Rad_time >= Gas_time) 
+
+!--------------------------------------------------------------------
+
+
+end subroutine obtain_gas_tfs 
+
+
+
+
                                   
 !#####################################################################
 ! <SUBROUTINE NAME="sealw99_alloc">
@@ -2086,10 +3085,8 @@ type(lw_diagnostics_type), intent(inout) :: Lw_diagnostics
         Lw_diagnostics%fluxncf(:,:,:,:) = 0.0
       endif
 
-      if (Lw_control%do_ch4_n2o) then
         allocate( Lw_diagnostics%flx1e1f  (ix, jx,       NBTRGE  ) )
          Lw_diagnostics%flx1e1f  = 0.
-      end if
 
 !--------------------------------------------------------------------
 
@@ -5976,7 +6973,7 @@ end subroutine co2_time_vary
 
 
 !####################################################################
-! <SUBROUTINE NAME="ch4_n2o_time_vary">
+! <SUBROUTINE NAME="ch4_time_vary">
 !  <OVERVIEW>
 !   Calculate CH4 and N2O absorption coefficients from their
 !   mixing ratios using precomputed lbl tables
@@ -5996,19 +6993,18 @@ end subroutine co2_time_vary
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine ch4_n2o_time_vary (rrvch4, rrvn2o)
+subroutine ch4_time_vary (rrvch4)
 
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
 
-real, intent(in) :: rrvch4, rrvn2o               
+real, intent(in) :: rrvch4         
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
 !      rrvch4
-!      rrvn2o
 !
 !---------------------------------------------------------------------
 
@@ -6016,7 +7012,6 @@ real, intent(in) :: rrvch4, rrvn2o
 !  local variables:
  
      real   ::  ch4_vmr !
-     real   ::  n2o_vmr !
 
 !---------------------------------------------------------------------
 !  the ch4 volume mixing ratio is set to the initial value (rch4) and 
@@ -6033,12 +7028,78 @@ real, intent(in) :: rrvch4, rrvn2o
 !  routines are called to calculate the lbl transmission functions for 
 !  n2o. after first access, this routine does nothing. 
 !--------------------------------------------------------------------
+!        n2o_vmr = rrvn2o*1.0E+09
+!        call N2o_lblinterp (n2o_vmr)
+
+!----------------------------------------------------------------------
+
+end subroutine ch4_time_vary
+
+
+!####################################################################
+! <SUBROUTINE NAME="n2o_time_vary">
+!  <OVERVIEW>
+!   Calculate CH4 and N2O absorption coefficients from their
+!   mixing ratios using precomputed lbl tables
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Calculate CH4 and N2O absorption coefficients from their
+!   mixing ratios using precomputed lbl tables
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call ch4_n2o_time_vary (rrvch4, rrvn2o)
+!  </TEMPLATE>
+!  <IN NAME="rrvch4" TYPE="real">
+!   ch4 volume mixing ratio
+!  </IN>
+!  <IN NAME="rrvn2o" TYPE="real">
+!   n2o volume mixing ratio
+!  </IN>
+! </SUBROUTINE>
+!
+subroutine n2o_time_vary (rrvn2o)
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+
+real, intent(in) :: rrvn2o               
+
+!---------------------------------------------------------------------
+!  intent(in) variables:
+!
+!      rrvch4
+!      rrvn2o
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!  local variables:
+ 
+!    real   ::  ch4_vmr !
+     real   ::  n2o_vmr !
+
+!---------------------------------------------------------------------
+!  the ch4 volume mixing ratio is set to the initial value (rch4) and 
+!  the mass mixing ratio is defined on the first access of this
+!  routine. then the lbl transmission function is calculated. after 
+!  first access, this routine does nothing. 
+!--------------------------------------------------------------------
+!        ch4_vmr = rrvch4*1.0E+09
+!        call Ch4_lblinterp  (ch4_vmr)
+
+!---------------------------------------------------------------------
+!  the n2o volume mixing ratio is set to initial value (rn2o) and the 
+!  mass mixing ratio is defined on the first access of this routine. 
+!  routines are called to calculate the lbl transmission functions for 
+!  n2o. after first access, this routine does nothing. 
+!--------------------------------------------------------------------
          n2o_vmr = rrvn2o*1.0E+09
          call N2o_lblinterp (n2o_vmr)
 
 !----------------------------------------------------------------------
 
-end subroutine ch4_n2o_time_vary
+end subroutine n2o_time_vary
 
 
 

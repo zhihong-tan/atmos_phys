@@ -38,8 +38,8 @@
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- character(len=128) :: version = '$Id: ras.F90,v 10.0 2003/10/24 22:00:38 fms Exp $'
- character(len=128) :: tagname = '$Name: jakarta $'
+ character(len=128) :: version = '$Id: ras.F90,v 11.0 2004/09/28 19:20:35 fms Exp $'
+ character(len=128) :: tagname = '$Name: khartoum $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -176,12 +176,16 @@ integer :: id_tdt_revap,  id_qdt_revap,    id_prec_revap,  &
            id_q_conv_col, id_t_conv_col, id_mc,&
            id_qldt_conv, id_qidt_conv, id_qadt_conv, &
            id_ql_conv_col, id_qi_conv_col, id_qa_conv_col
+integer, allocatable, dimension(:) :: id_tracer_conv, id_tracer_conv_col
 
 character(len=3) :: mod_name = 'ras'
 
 real :: missing_value = -999.
-integer               :: num_tracers
-integer, allocatable, dimension(:) :: tr_indices, id_tracer_conv, id_tracer_conv_col
+
+integer, allocatable, dimension(:) :: tr_indices
+ 
+integer  :: num_ras_tracers = 0
+logical  :: do_ras_tracer = .false.
 
 !---------------------------------------------------------------------
 
@@ -190,7 +194,7 @@ integer, allocatable, dimension(:) :: tr_indices, id_tracer_conv, id_tracer_conv
 !#####################################################################
 !#####################################################################
 
-  SUBROUTINE RAS_INIT( do_strat, axes, Time )
+  SUBROUTINE RAS_INIT( do_strat, axes, Time, tracers_in_ras )
 
 !=======================================================================
 ! ***** INITIALIZE RAS
@@ -202,6 +206,7 @@ integer, allocatable, dimension(:) :: tr_indices, id_tracer_conv, id_tracer_conv
  logical,         intent(in) :: do_strat
  integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
+ logical, dimension(:), intent(in), optional :: tracers_in_ras
 
 !---------------------------------------------------------------------
 !  (Intent local)
@@ -211,9 +216,10 @@ integer, allocatable, dimension(:) :: tr_indices, id_tracer_conv, id_tracer_conv
  real                :: actp, facm 
  real, dimension(15) :: au,   tem
  integer, dimension(3) :: half = (/1,2,4/)
- character(len=128)    :: diagname, diaglname, tendunits, name, longname, units
+ character(len=128)    :: diagname, diaglname, tendunits, name, units
  integer               :: tr
- character(len=80) :: scheme
+ integer               :: num_tracers
+ integer :: nn
 !=====================================================================
 
 !---------------------------------------------------------------------
@@ -242,9 +248,7 @@ integer, allocatable, dimension(:) :: tr_indices, id_tracer_conv, id_tracer_conv
 !---------------------------------------------------------------------
   call get_number_tracers(MODEL_ATMOS,num_prog=num_tracers)
   if ( num_tracers .gt. 0 ) then
-    allocate(tr_indices(num_tracers))
-    allocate(id_tracer_conv(num_tracers))
-    allocate(id_tracer_conv_col(num_tracers))
+    allocate(tr_indices(num_tracers)) ; tr_indices = 0
   else
     call error_mesg('ras_init', 'No atmospheric tracers found', FATAL)
   endif
@@ -401,49 +405,58 @@ if ( do_strat ) then
       
 endif
 
-! Put tracer tendencies due to RAS convection here.
-! The name for the diagnostic will be made up from the name of the tracer
-! followed by dt_RAS
-! The longname output to the Netcdf file will be the name of the tracer 
-! followed by ' tendency from RAS'
-! the units 
-    do tr = 1,num_tracers
-      id_tracer_conv(tr) = -1
-      id_tracer_conv_col(tr) = -1
-      if (tr_indices(tr) .eq. NO_TRACER ) cycle
-      call get_tracer_names(MODEL_ATMOS, tr_indices(tr), name, longname, units)
-      if ( query_method ( 'convection',MODEL_ATMOS,tr,scheme)) then
-        select case (scheme)
-          case ("off")
-            tr_indices(tr) = NO_TRACER
-            write (stdlog(),'(a)') 'Turning off convection for tracer '//name
-          case ("no_RAS")
-            tr_indices(tr) = NO_TRACER
-            write (stdlog(),'(a)') 'Turning off RAS convection for tracer '//name
-          case default  
-        end select
+!----------------------------------------------------------------------
+!    determine how many tracers are to be transported by ras_mod.
+!----------------------------------------------------------------------
+      num_ras_tracers = count(tracers_in_ras)
+      if (num_ras_tracers > 0) then
+        do_ras_tracer = .true.
+      else
+        do_ras_tracer = .false.
       endif
-! Diagnostic for column tendency
-      diagname = trim(name)//'dt_RAS'
-      diaglname = trim(name)//' tendency from RAS'
-      tendunits = trim(units)//'/s'
 
-      id_tracer_conv(tr) = register_diag_field ( mod_name, &
-      trim(diagname), axes(1:3), Time, &
-      trim(diaglname) ,             trim(tendunits),  &
-                        missing_value=missing_value               )
+!---------------------------------------------------------------------
+!    allocate the arrays to hold the diagnostics for the ras tracers.
+!---------------------------------------------------------------------
+     allocate(id_tracer_conv    (num_ras_tracers)) ; id_tracer_conv = 0
+     allocate(id_tracer_conv_col(num_ras_tracers)) ; id_tracer_conv_col = 0
+     nn = 1
+    do tr = 1,num_tracers
+      if (tracers_in_ras(tr)) then
+        call get_tracer_names(MODEL_ATMOS, tr, name=name, units=units)
+ 
+!----------------------------------------------------------------------
+!    for the column tendencies, the name for the diagnostic will be 
+!    the name of the tracer followed by 'dt_RAS'. the longname will be 
+!    the name of the tracer followed by ' tendency from RAS'. units are
+!    the supplied units of the tracer divided by seconds.
+!----------------------------------------------------------------------
+        diagname = trim(name)//'dt_RAS'
+        diaglname = trim(name)//' tendency from RAS'
+        tendunits = trim(units)//'/s'
+        id_tracer_conv(nn) = register_diag_field ( mod_name, &
+                             trim(diagname), axes(1:3), Time, &
+                             trim(diaglname), trim(tendunits),  &
+                             missing_value=missing_value               )
 
-! Diagnostic for column integral tendency
+!----------------------------------------------------------------------
+!    for the column integral  tendencies, the name for the diagnostic 
+!    will be the name of the tracer followed by 'dt_RAS_col'. the long-
+!    name will be the name of the tracer followed by ' path tendency 
+!    from RAS'. units are the supplied units of the tracer multiplied
+!    by m**2 /kg divided by seconds.
+!----------------------------------------------------------------------
       diagname = trim(name)//'dt_RAS_col'
       diaglname = trim(name)//' path tendency from RAS'
       tendunits = trim(units)//'m2/kg/s'
+      id_tracer_conv_col(nn) = register_diag_field ( mod_name, &
+                               trim(diagname), axes(1:2), Time, &
+                               trim(diaglname), trim(tendunits),  &
+                               missing_value=missing_value)
+       nn = nn + 1
+      endif
+     end do
 
-      id_tracer_conv_col(tr) = register_diag_field ( mod_name, &
-      trim(diagname), axes(1:2), Time, &
-      trim(diaglname) ,             trim(tendunits),  &
-                        missing_value=missing_value               )
-
-    enddo
   module_is_initialized = .true.
 
 !=====================================================================
@@ -471,7 +484,8 @@ end subroutine ras_end
           uwnd0,  vwnd0,  pres0,   pres0_int, zhalf0,  coldT0,    &
                   dtime,  dtemp0,  dqvap0,    duwnd0,  dvwnd0,    &
                   rain0,  snow0,   do_strat,  mask,    kbot,      &
-                  mc0,    R0,      DR0 )
+                  mc0,    ql0, qi0, qa0,  dl0, di0, da0, &
+                  ras_tracers, qtrras)
 
 !=======================================================================
 ! ***** DRIVER FOR RAS
@@ -506,7 +520,8 @@ end subroutine ras_end
   logical,         intent(in)                   :: do_strat
   real, intent(in) , dimension(:,:,:), OPTIONAL :: mask
   integer, intent(in), OPTIONAL, dimension(:,:) :: kbot
-  real,  intent(inout), dimension(:,:,:,:)         :: R0
+  real,  intent(inout), dimension(:,:,:)         :: ql0, qi0, qa0
+  real,  intent(in), dimension(:,:,:,:),optional :: ras_tracers
 !---------------------------------------------------------------------
 ! Arguments (Intent out)
 !       rain0  - surface rain
@@ -525,12 +540,12 @@ end subroutine ras_end
   real, intent(out), dimension(:,:)   :: rain0,  snow0
   
   real, intent(out), OPTIONAL, dimension(:,:,:) :: mc0
-  real, intent(out), OPTIONAL, dimension(:,:,:,:) :: DR0
+  real, intent(out), OPTIONAL, dimension(:,:,:) :: dl0, di0, da0
+  real,  intent(out), dimension(:,:,:,:), optional :: qtrras
 
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
-  real, dimension(size(R0,1),size(R0,2),size(R0,3)) :: ql0,qi0,qa0,Dl0,Di0,Da0
 
  real, parameter :: p00 = 1000.0E2
 
@@ -546,8 +561,7 @@ end subroutine ras_end
        cp_by_dp,   dqvap_sat,  qvap_sat,    alpha, beta,  gamma, &
        dtcu, dqcu, ducu, dvcu, Dlcu, Dicu,  Dacu
 
- real, dimension(SIZE(R0,3),SIZE(R0,4)) :: tracer, dtracer, dtracercu
-
+ real, dimension(SIZE(temp0      ,3),num_ras_tracers) :: tracer, dtracer, dtracercu
  real, dimension(SIZE(temp0,3)+1) ::  pres_int, mc, pi_int, mccu, zhalf
 
  logical, dimension(size(temp0,1),size(temp0,2)) :: rhtrig_mask
@@ -565,7 +579,7 @@ end subroutine ras_end
  integer :: i, imax, j, jmax, k, kmax, tr
  integer :: ncmax, nc, ib
  real    :: rasal, frac, zbase
- real    :: dpfac, dtcu_pbl, dqcu_pbl, ducu_pbl, dvcu_pbl, dtracercu_pbl(SIZE(R0,4))
+ real    :: dpfac, dtcu_pbl, dqcu_pbl, ducu_pbl, dvcu_pbl, dtracercu_pbl(num_ras_tracers)
  
 !--- For extra diagnostics
 
@@ -590,11 +604,21 @@ end subroutine ras_end
 ! --- Check for presence of optional arguments
   Lkbot      = PRESENT( kbot )
   Lda0       = do_strat
-  ql0(:,:,:) = R0(:,:,:,nql)
-  qi0(:,:,:) = R0(:,:,:,nqi)
-  qa0(:,:,:) = R0(:,:,:,nqa)
   Lmc0       = ( do_strat .or. id_mc > 0 )
   LR0        = .TRUE. !PRESENT( R0 )
+
+  if (num_ras_tracers > 0) then
+    if (present (ras_tracers) .and. present(qtrras)) then
+    else
+      call error_mesg ('ras_mod', &
+          'num_ras_tracers > 0, but missing arguments', FATAL)
+    endif
+  else
+    if (present (ras_tracers) .or. present(qtrras)) then
+      call error_mesg ('ras_mod', &
+        'num_ras_tracers = 0, but tracer argument(s) present', FATAL)
+    endif
+  endif
 
 ! --- Set dimensions
   imax  = size( temp0, 1 )
@@ -625,7 +649,12 @@ end subroutine ras_end
       mc0 = 0.0
   end if
 ! Initialize the tracer tendencies
-    DR0        = 0.0
+    dl0 = 0.
+    di0 = 0.
+    da0 = 0.
+    if (present (qtrras)) then
+    qtrras = 0.0
+    endif
 
   do k=1,kmax
     pmass(:,:,k) = (pres0_int(:,:,k+1)-pres0_int(:,:,k))/GRAV
@@ -747,11 +776,9 @@ end subroutine ras_end
   end if
 
 ! Get the column of tracer data
-    do tr = 1,SIZE(R0,4)
+    do tr = 1,num_ras_tracers
       dtracer(:,tr) = 0.0
-      tracer(:,tr) = 0.0
-      if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
-      tracer(:,tr)  = R0(i,j,:,tr)
+      tracer(:,tr)  = ras_tracers(i,j,:,tr)
     enddo
 
     if( coldT ) then
@@ -857,8 +884,7 @@ end subroutine ras_end
   end if
 
   if ( LR0 ) then
-    do tr = 1,SIZE(R0,4)
-      if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+    do tr = 1,num_ras_tracers
       dtracercu(:,tr) = dtracercu(:,tr) * dtime
     enddo
   end if
@@ -878,8 +904,7 @@ end subroutine ras_end
     dqcu_pbl = dpfac * dqcu(klcl) 
     ducu_pbl = dpfac * ducu(klcl) 
     dvcu_pbl = dpfac * dvcu(klcl) 
-    do tr = 1,SIZE(R0,4)
-      if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+    do tr = 1,num_ras_tracers
       dtracercu_pbl(tr) = dpfac * dtracercu(klcl,tr)
     enddo
     do k = klcl,ksfc-1
@@ -888,8 +913,7 @@ end subroutine ras_end
       ducu(k) = ducu_pbl
       dvcu(k) = dvcu_pbl
       if ( LR0 ) then
-        do tr = 1,SIZE(R0,4)
-          if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+        do tr = 1,num_ras_tracers
           dtracercu(k,tr) = dtracercu_pbl(tr)
         enddo
       end if
@@ -917,8 +941,7 @@ end subroutine ras_end
 ! --- Update prognostic tracers
 !     NOTE: negative values of tracers are not prevented
   if ( LR0 ) then  
-    do tr = 1,SIZE(R0,4)
-      if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+    do tr = 1,num_ras_tracers
          tracer(:,tr)   = tracer(:,tr) + dtracercu(:,tr)
     enddo  
   end if
@@ -1001,8 +1024,7 @@ endif
   if ( Lmc0 ) then
     mc(:) = mc(:) + mccu(:)
   end if
-  do tr = 1,SIZE(R0,4)
-    if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
+  do tr = 1,num_ras_tracers
     dtracer(:,tr) = dtracer(:,tr) + dtracercu(:,tr)
   enddo  
 
@@ -1043,9 +1065,8 @@ endif
   if ( Lmc0 ) then
         mc0(i,j,:) = mc(:)
   end if
-  do tr = 1,SIZE(R0,4)
-      if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
-      DR0(i,j,:,tr) = dtracer(:,tr)
+  do tr = 1,num_ras_tracers
+    qtrras(i,j,:,tr) = dtracer(:,tr)
   enddo    
 
 ! --- For extra diagnostics
@@ -1084,23 +1105,18 @@ endif
 !-------              in the case of strat                 -----------
 
       if (do_strat) then
-         R0(:,:,:,nql) = R0(:,:,:,nql)+Dl0(:,:,:)
-         R0(:,:,:,nqi) = R0(:,:,:,nqi)+Di0(:,:,:)
-         R0(:,:,:,nqa) = R0(:,:,:,nqa)+Da0(:,:,:)
+        ql0(:,:,:) = ql0(:,:,:)+Dl0(:,:,:)
+        qi0(:,:,:) = qi0(:,:,:)+Di0(:,:,:)
+        qa0(:,:,:) = qa0(:,:,:)+Da0(:,:,:)
 
          Dl0(:,:,:)=Dl0(:,:,:)*dtinv
          Di0(:,:,:)=Di0(:,:,:)*dtinv
          Da0(:,:,:)=Da0(:,:,:)*dtinv
 
-         DR0(:,:,:,nql) = Dl0(:,:,:)
-         DR0(:,:,:,nqi) = Di0(:,:,:)
-         DR0(:,:,:,nqa) = Da0(:,:,:)
- 
       end if
   if ( LR0 ) then
-    do tr = 1,SIZE(R0,4)
-        if ( tr_indices(tr) .eq. NO_TRACER ) cycle ! Avoid the water tracers 
-        DR0(:,:,:,tr) = DR0(:,:,:,tr)*dtinv
+    do tr = 1,num_ras_tracers
+      qtrras(:,:,:,tr) = qtrras(:,:,:,tr)*dtinv
     enddo    
   end if
 
@@ -1228,11 +1244,10 @@ endif
          
    end if !end do strat if
 
-!if ( LR0 ) then
-   do tr = 1, num_tracers
+   do tr = 1, num_ras_tracers
       !------- diagnostics for dtracer/dt from RAS -------------
       if ( id_tracer_conv(tr) > 0 ) then
-        used = send_data ( id_tracer_conv(tr), DR0(:,:,:,tr), Time, is, js, 1, &
+        used = send_data ( id_tracer_conv(tr), qtrras(:,:,:,tr), Time, is, js, 1, &
                            rmask=mask )
       endif
 
@@ -1240,14 +1255,13 @@ endif
       if ( id_tracer_conv_col(tr) > 0 ) then
         tempdiag(:,:)=0.
         do k=1,kmax
-          tempdiag(:,:) = tempdiag(:,:) + DR0(:,:,k,tr)*pmass(:,:,k)
+          tempdiag(:,:) = tempdiag(:,:) + qtrras(:,:,k,tr)*pmass(:,:,k)
         end do
         used = send_data ( id_tracer_conv_col(tr), tempdiag, Time, is, js )
       end if
 
 
    enddo
-!endif
 !=====================================================================
 
 
@@ -1295,7 +1309,7 @@ endif
  real, intent(in), dimension(:) :: theta, qvap, uwnd, vwnd, pres_int, pi_int
  real, intent(in), dimension(:) :: alf,   bet,  gam,  pi,   cp_by_dp
  real, intent(in), OPTIONAL, dimension(:) :: ql,qi,qa
- real, intent(in), OPTIONAL, dimension(:,:) :: tracer
+ real, intent(in), dimension(:,:) :: tracer
 !---------------------------------------------------------------------
 ! Arguments (Intent out)
 !     dpcu    : Precip for cloud type ic.
@@ -1313,7 +1327,7 @@ endif
  real, intent(out)  :: dpcu
  real, intent(out), dimension(:) :: dtcu, dqcu, ducu, dvcu
  real, intent(out), OPTIONAL, dimension(:) :: mccu, Dacu, Dlcu, Dicu
- real, intent(out), OPTIONAL, dimension(:,:) :: dtracercu
+ real, intent(out), dimension(:,:) :: dtracercu
 
 !---------------------------------------------------------------------
 !    (Intent local)
@@ -1333,7 +1347,6 @@ endif
  
  real, dimension(size(theta,1)) :: gmh, eta, hol, hst, qol
  real, dimension(SIZE(tracer,2)) :: wlR
-! real, dimension(30) :: wlR
 
  logical :: Ldacu, Lmccu, LRcu
 
@@ -1342,7 +1355,7 @@ endif
 ! --- Check for presence of optional arguments
   Ldacu = PRESENT( Dacu )
   Lmccu = PRESENT( mccu ) 
-  LRcu  = PRESENT( tracer )
+  LRcu  = .TRUE.
 
 ! Initialize
   dtcu = 0.0
@@ -2013,7 +2026,7 @@ if ( LRcu ) then
 
 !=======================================================================
 
-  kmax   = size(temp)
+  kmax   = size(temp(:))
   itopp1 = type + 1
 
 ! --- Initalize
@@ -2083,7 +2096,7 @@ if ( LRcu ) then
 
 !=======================================================================
 
- kmax = size( ic )
+ kmax = size( ic(:) )
 
  km1   = kmax  - 1
  kcr   = MIN( km1, krmax )
@@ -2140,7 +2153,7 @@ if ( LRcu ) then
 !---------------------------------------------------------------------
  real, parameter :: rhmax  = 0.9999 
 
- real, dimension(size(theta)) :: ssl, hst
+ real, dimension(size(theta(:))) :: ssl, hst
  real                         :: zzl, hol_k, qol_k
  integer                      :: km1, ic, ic1, l
 
@@ -2274,7 +2287,7 @@ if ( LRcu ) then
 FUNCTION ran0(idum)
 
 
-!     $Id: ras.F90,v 10.0 2003/10/24 22:00:38 fms Exp $
+!     $Id: ras.F90,v 11.0 2004/09/28 19:20:35 fms Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

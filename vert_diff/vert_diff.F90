@@ -60,8 +60,8 @@ integer :: sphum, mix_rat
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 10.0 2003/10/24 22:00:52 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 11.0 2004/09/28 19:25:13 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
@@ -112,9 +112,9 @@ subroutine vert_diff_init (Tri_surf, idim, jdim, kdim,    &
     if (allocated(f_t_global ))    deallocate (f_t_global )
     if (allocated(f_q_global ))    deallocate (f_q_global )
 
-    allocate(  e_global (idim, jdim, kdim-1))
-    allocate(f_t_global (idim, jdim, kdim-1))
-    allocate(f_q_global (idim, jdim, kdim-1))
+    allocate(  e_global (idim, jdim, kdim-1)) ;   e_global = 0.0
+    allocate(f_t_global (idim, jdim, kdim-1)) ; f_t_global = 0.0 
+    allocate(f_q_global (idim, jdim, kdim-1)) ; f_q_global = 0.0
 
     module_is_initialized = .true.
 
@@ -133,13 +133,13 @@ subroutine alloc_surf_diff_type ( Tri_surf, idim, jdim )
 type(surf_diff_type), intent(inout) :: Tri_surf
 integer,              intent(in)    :: idim, jdim
 
-    allocate( Tri_surf%dtmass    (idim, jdim) )
-    allocate( Tri_surf%dflux_t   (idim, jdim) )
-    allocate( Tri_surf%dflux_q   (idim, jdim) )
-    allocate( Tri_surf%delta_t   (idim, jdim) )
-    allocate( Tri_surf%delta_q   (idim, jdim) )
-    allocate( Tri_surf%delta_u   (idim, jdim) )
-    allocate( Tri_surf%delta_v   (idim, jdim) )
+    allocate( Tri_surf%dtmass    (idim, jdim) ) ; Tri_surf%dtmass  = 0.0
+    allocate( Tri_surf%dflux_t   (idim, jdim) ) ; Tri_surf%dflux_t = 0.0
+    allocate( Tri_surf%dflux_q   (idim, jdim) ) ; Tri_surf%dflux_q = 0.0
+    allocate( Tri_surf%delta_t   (idim, jdim) ) ; Tri_surf%delta_t = 0.0
+    allocate( Tri_surf%delta_q   (idim, jdim) ) ; Tri_surf%delta_q = 0.0
+    allocate( Tri_surf%delta_u   (idim, jdim) ) ; Tri_surf%delta_u = 0.0
+    allocate( Tri_surf%delta_v   (idim, jdim) ) ; Tri_surf%delta_v = 0.0
 
 
 end subroutine alloc_surf_diff_type

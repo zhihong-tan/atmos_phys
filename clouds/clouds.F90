@@ -21,7 +21,6 @@ use  strat_cloud_mod, only:  do_strat_cloud, strat_cloud_avg
 use   diag_cloud_mod, only:  do_diag_cloud, diag_cloud_driver, &
                              diag_cloud_avg
 use diag_manager_mod, only:  register_diag_field, send_data
-use isccp_clouds_mod, only:  isccp_clouds_init
 
 implicit none
 private
@@ -32,8 +31,8 @@ public   clouds, clouds_init, clouds_end
 
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: clouds.F90,v 10.0 2003/10/24 22:00:24 fms Exp $'
- character(len=128) :: tagname = '$Name: jakarta $'
+ character(len=128) :: version = '$Id: clouds.F90,v 11.0 2004/09/28 19:14:49 fms Exp $'
+ character(len=128) :: tagname = '$Name: khartoum $'
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !   note:  the fels-schwarzkopf radiation code permits bi-spectral
@@ -733,7 +732,6 @@ type(time_type), intent(in)               :: Time
 !-----------------------------------------------------------------------
        if (do_strat_cloud() ) then
          call cloud_rad_init
-         call isccp_clouds_init (axes, Time)
        endif
 
       module_is_initialized =.true.

@@ -260,8 +260,8 @@ real, parameter :: tkemin  =   1.e-6  ! tke minimum (m2/s2)
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: edt.F90,v 10.0 2003/10/24 22:00:29 fms Exp $'
-character(len=128) :: Tagname = '$Name: jakarta $'
+character(len=128) :: Version = '$Id: edt.F90,v 11.0 2004/09/28 19:16:23 fms Exp $'
+character(len=128) :: Tagname = '$Name: khartoum $'
 logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !
@@ -372,7 +372,7 @@ real         :: dellat, dellon
 !    allocate and initialize a flag array which indicates the latitudes
 !    containing columns where radiation diagnostics are desired.
 !---------------------------------------------------------------------
-      allocate (do_edt_dg (size(latb)-1) )
+      allocate (do_edt_dg (size(latb(:))-1) )
       do_edt_dg(:) = .false.
 
 !-------------------------------------------------------------------
@@ -453,10 +453,10 @@ real         :: dellat, dellon
 !    i and j processor-coordinates and the latitude and longitude of 
 !    the diagnostics column.
 !--------------------------------------------------------------------
-          do j=1,size(latb) - 1
+          do j=1,size(latb(:)) - 1
             if (lat_edtprt(nn) .ge. latb(j)*radian .and.  &
                 lat_edtprt(nn) .lt. latb(j+1)*radian) then
-              do i=1,size(lonb) - 1
+              do i=1,size(lonb(:)) - 1
                 if (lon_edtprt(nn) .ge. lonb(i)*radian   &
                                   .and.&
                     lon_edtprt(nn) .lt. lonb(i+1)*radian)  &
@@ -1598,7 +1598,7 @@ integer :: unit
        unit = Open_restart_File ('RESTART/edt.res', ACTION='write')
 
       if (mpp_pe() == mpp_root_pe()) then
-        write (unit) restart_versions(size(restart_versions))
+        write (unit) restart_versions(size(restart_versions(:)))
        endif
 
        call write_data (unit, qaturb)

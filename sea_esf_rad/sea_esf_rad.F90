@@ -37,6 +37,7 @@ use rad_utilities_mod,    only: rad_utilities_init, Rad_control, &
                                 cld_specification_type,  &
                                 astronomy_type, atmos_input_type, &
                                 surface_type, lw_diagnostics_type, &
+                                aerosol_diagnostics_type, &
                                 cld_space_properties_type, &
                                 lw_table_type, &
                                 aerosol_type, aerosol_properties_type,&
@@ -69,8 +70,8 @@ private
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 
-character(len=128) :: version = '$Id: sea_esf_rad.F90,v 10.0 2003/10/24 22:00:46 fms Exp $'
-character(len=128) :: tagname = '$Name: jakarta $'
+character(len=128) :: version = '$Id: sea_esf_rad.F90,v 11.0 2004/09/28 19:24:00 fms Exp $'
+character(len=128) :: tagname = '$Name: khartoum $'
 
 
 !--------------------------------------------------------------------
@@ -320,9 +321,10 @@ end subroutine sea_esf_rad_init
 !   </IN>
 ! </SUBROUTINE>
 
-subroutine sea_esf_rad (is, ie, js, je, Atmos_input, Surface, Astro, &
-                        Rad_gases, Aerosol, Aerosol_props,    &
-                        Cldrad_props, Cld_spec, Lw_output, Sw_output)
+subroutine sea_esf_rad (is, ie, js, je, Rad_time, Atmos_input, Surface,&
+                        Astro, Rad_gases, Aerosol, Aerosol_props,    &
+                        Cldrad_props, Cld_spec, Lw_output, Sw_output, &
+                        Aerosol_diags)
 
 !-----------------------------------------------------------------------
 !     sea_esf_rad calls the modules which calculate the long- and short-
@@ -331,22 +333,28 @@ subroutine sea_esf_rad (is, ie, js, je, Atmos_input, Surface, Astro, &
 !-----------------------------------------------------------------------
 
 integer,                      intent(in)     :: is, ie, js, je
+type(time_type),              intent(in)     :: Rad_time
 type(atmos_input_type),       intent(in)     :: Atmos_input
 type(surface_type),           intent(in)     :: Surface     
 type(astronomy_type),         intent(in)     :: Astro
-type(radiative_gases_type),   intent(in)     :: Rad_gases
+type(radiative_gases_type),   intent(inout)  :: Rad_gases
 type(aerosol_type),           intent(in)     :: Aerosol      
 type(aerosol_properties_type),intent(inout)  :: Aerosol_props
 type(cldrad_properties_type), intent(in)     :: Cldrad_props
 type(cld_specification_type), intent(in)     :: Cld_spec       
 type(lw_output_type),         intent(inout)  :: Lw_output 
 type(sw_output_type),         intent(inout)  :: Sw_output 
+type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
 !      is,ie,js,je   starting/ending subdomain i,j indices of data in 
 !                    the physics_window being integrated
+!      Rad_time      time at which the climatologically-determined, 
+!                    time-varying input fields to radiation should 
+!                    apply    
+!                    [ time_type, days and seconds]
 !      Atmos_input   atmospheric input fields          
 !                    [ atmos_input_type ]
 !      Surface       surface variables 
@@ -407,9 +415,10 @@ type(sw_output_type),         intent(inout)  :: Sw_output
 !    compute longwave radiation.
 !----------------------------------------------------------------------
       call mpp_clock_begin (longwave_clock)
-      call longwave_driver (is, ie, js, je, Atmos_input, Rad_gases,  &
-                            Aerosol, Aerosol_props, Cldrad_props,   &
-                            Cld_spec, Lw_output, Lw_diagnostics)
+      call longwave_driver (is, ie, js, je, Rad_time, Atmos_input,  &
+                            Rad_gases, Aerosol, Aerosol_props,   &
+                            Cldrad_props, Cld_spec, Aerosol_diags, &
+                            Lw_output, Lw_diagnostics)
       call mpp_clock_end (longwave_clock)
 
 !----------------------------------------------------------------------
@@ -419,7 +428,7 @@ type(sw_output_type),         intent(inout)  :: Sw_output
       call shortwave_driver (is, ie, js, je, Atmos_input, Surface,  &
                              Astro, Aerosol, Aerosol_props, Rad_gases, &
                              Cldrad_props, Cld_spec, Sw_output,   &
-                             Cldspace_rad)
+                             Cldspace_rad, Aerosol_diags)
       call mpp_clock_end (shortwave_clock)
 
 !--------------------------------------------------------------------

@@ -12,9 +12,9 @@ module mg_drag_mod
  use  topography_mod, only: get_topog_stdev
 
  use         fms_mod, only: mpp_npes, field_size, file_exist, write_version_number, stdlog, &
-                            mpp_pe, mpp_root_pe, error_mesg, FATAL, read_data, write_data,  &
-                            open_namelist_file, close_file, check_nml_error, open_restart_file
-
+                            mpp_pe, mpp_root_pe, error_mesg, FATAL, NOTE, read_data, write_data,  &
+                            open_namelist_file, close_file, check_nml_error, open_restart_file, mpp_error
+ use      fms_io_mod, only: get_restart_io_mode
  use   constants_mod, only: Grav, Kappa, RDgas, cp_air
 
 !-----------------------------------------------------------------------
@@ -23,8 +23,8 @@ module mg_drag_mod
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 10.0 2003/10/24 22:00:34 fms Exp $'
- character(len=128) :: tagname = '$Name: jakarta $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 11.0 2004/09/28 19:19:38 fms Exp $'
+ character(len=128) :: tagname = '$Name: khartoum $'
 
  real, parameter :: p00 = 1.e5
 
@@ -33,7 +33,6 @@ module mg_drag_mod
 !-----------------------------------------------------------------------
 
   real, allocatable, dimension(:,:) :: Ghprime
-
 !-----------------------------------------------------------------------
 !Contants
 !     grav    value of gravity
@@ -54,6 +53,7 @@ module mg_drag_mod
 !     low_lev_frac - fraction of atmosphere (from bottom up) considered
 !              to be "low-level-layer for base flux calc. and where no
 !              wave breaking is allowed.
+!     flux_cut_level pressure level (Pa) above which flux divergence is set to zero 
 !-----------------------------------------------------------------------
 
  real :: &
@@ -64,13 +64,17 @@ module mg_drag_mod
 !  v197 value for low-level-layer
       ,low_lev_frac = .23
 
+real  ::  flux_cut_level= 0.0
+
+logical :: do_netcdf_restart = .true.
 logical :: do_conserve_energy = .false.
 logical :: do_mcm_mg_drag = .false.
 character(len=128) :: source_of_sgsmtn = 'input'
 
-    namelist / mg_drag_nml / xl_mtn, gmax, acoef, rho, low_lev_frac, &
+    namelist / mg_drag_nml / do_netcdf_restart,  &
+                             xl_mtn, gmax, acoef, rho, low_lev_frac, &
                              do_conserve_energy, do_mcm_mg_drag,     &
-                             source_of_sgsmtn 
+                             source_of_sgsmtn, flux_cut_level 
 
  public mg_drag, mg_drag_init, mg_drag_end
 
@@ -619,6 +623,8 @@ subroutine mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
 !  type loop indicies
  integer i, j, k, kb, kt, kbp1, ktm1 
 !-----------------------------------------------------------------------
+!  type flux cutoff 
+ integer kcut
 !=======================================================================
 
 
@@ -848,6 +854,21 @@ subroutine mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
          endwhere
        end do
 
+
+! -------------------------------------------
+!        tausat(:,:,1) = 0.             ! use all forcing
+!         Instead,  let remaining flux escape above flux_cut_level
+      if( flux_cut_level > 0.0 ) then 
+         kcut= 1 
+         do while( phalf(1,1,kcut) < flux_cut_level )
+            kcut= kcut+1
+         enddo
+
+        do k= 1, kcut-1
+            taus(:,:,k)= taus(:,:,kcut)
+        enddo
+      endif
+
 end subroutine mgwd_satur_flux
 
 !#############################################################################      
@@ -967,6 +988,8 @@ if(module_is_initialized) return
    end do
 10 continue
    call close_file ( unit )
+   call get_restart_io_mode(do_netcdf_restart)
+
 ! -------------------------------------
   end if
 
@@ -981,11 +1004,11 @@ if(module_is_initialized) return
 ! --- Allocate storage for Ghprime
 !---------------------------------------------------------------------
 
-  ix = size(lonb) - 1
-  iy = size(latb) - 1
+  ix = size(lonb(:)) - 1
+  iy = size(latb(:)) - 1
 
-  allocate( Ghprime(ix,iy) )
-
+  allocate( Ghprime(ix,iy) ) ; Ghprime = 0.0
+  
 !-------------------------------------------------------------------
   module_is_initialized = .true.
 !---------------------------------------------------------------------
@@ -999,15 +1022,19 @@ if(module_is_initialized) return
                       ', but topography data file does not exist', FATAL)
     endif
   else if ( trim(source_of_sgsmtn) == 'input' ) then
-    if ( file_exist( 'INPUT/mg_drag.data.nc' ) ) then
-      call read_data( 'INPUT/mg_drag.data.nc', 'ghprime', Ghprime)
+    if ( file_exist( 'INPUT/mg_drag.res.nc' ) ) then
+       if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
+            'Reading NetCDF formatted restart file: INPUT/mg_drag.res.nc', NOTE)
+       call read_data ('INPUT/mg_drag.res.nc', 'ghprime', Ghprime)
     else if ( file_exist( 'INPUT/mg_drag.res' ) ) then
+       if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
+            'Reading native formatted restart file.', NOTE)
       unit = open_restart_file('INPUT/mg_drag.res','read')
       call read_data(unit, Ghprime)
       call close_file(unit)
     else
       call error_mesg ('mg_drag_init','source_of_sgsmtn="'//trim(source_of_sgsmtn)//'"'// &
-                       ', but neither ./INPUT/mg_drag.data.nc  or  ./INPUT/mg_drag.res  exists', FATAL)
+                       ', but neither ./INPUT/mg_drag.res.nc  or  ./INPUT/mg_drag.res  exists', FATAL)
     endif
   else
     call error_mesg ('mg_drag_init','"'//trim(source_of_sgsmtn)//'"'// &
@@ -1026,11 +1053,17 @@ if(module_is_initialized) return
   integer :: unit
 
   if(.not.module_is_initialized) return
-
-  unit = open_restart_file('RESTART/mg_drag.res','write')
-  call write_data(unit, Ghprime)
-  call close_file(unit)
-
+  if(do_netcdf_restart) then
+     if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
+          'Writing NetCDF formatted restart file: RESTART/mg_drag.res.nc', NOTE)
+     call write_data('RESTART/mg_drag.res.nc', 'ghprime', ghprime)
+  else
+     if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
+          'Writing native formatted restart file.', NOTE)
+     unit = open_restart_file('RESTART/mg_drag.res','write')
+     call write_data(unit, Ghprime)
+     call close_file(unit)
+  endif
   deallocate(ghprime)
   module_is_initialized = .false.
 
