@@ -263,8 +263,13 @@ input (optional) - for use with the step-mountain (eta) vertical coordinate
    akmax         Max value for akm & akh
                  [real, default: akmax = 1.0e4 m^2/sec]
 
-   akmin         Min value for akm & akh
-                 [real, default: akmin = 5.0 m^2/sec]
+   akmin_land    Min value for akm & akh over land points
+                 (Applied to the lowest nk_lim levels)
+                 [real, default: akmin_land = 5.0 m^2/sec]
+
+   akmin_sea     Min value for akm & akh over all ocean points
+                 (Applied to the lowest nk_lim levels)
+                 [real, default: akmin_sea = 0.0 m^2/sec]
 
    nk_lim        Lower bound on akm & akh applied at lowest nk_lim levels
                  [integer, default: nk_lim = 2 ]
@@ -284,9 +289,6 @@ input (optional) - for use with the step-mountain (eta) vertical coordinate
 
    alpha_sea     Constant used in computing el0 ( sea value )
                  [real, default: alpha_land = 0.10 ]
-
-   wind_min      Min wind value for lowest level wind 
-                 [real, default: wind_min = 1.0 m/sec]
 
    do_thv_stab   If false, buoyancy computed using constant
                  reference potential temperature.

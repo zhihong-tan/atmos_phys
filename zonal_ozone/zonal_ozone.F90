@@ -25,7 +25,7 @@ real :: pref = 101325.
 real :: twopi,rad2deg
 
 character(len=128) :: version = '$Id: zonal_ozone.F90,v 1.2 2000/08/04 19:04:56 fms Exp $'
-character(len=128) :: tag = '$Name: damascus $'
+character(len=128) :: tag = '$Name: eugene $'
 
 !-----------------------------------------------------------------------
 

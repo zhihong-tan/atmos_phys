@@ -25,63 +25,36 @@ public :: gcm_vert_diff_init,          &
           gcm_vert_diff_end,           &
           gcm_vert_diff,               &
           gcm_vert_diff_down,          &
-          gcm_vert_diff_surf_down,     &
-          gcm_vert_diff_surf_up,       &
           gcm_vert_diff_up,            &
           vert_diff,                   &
-          surf_diff_type,              &
-          switch_surf_diff_type_order, &
-          alloc_surf_diff_type,        &
-          dealloc_surf_diff_type
+          surf_diff_type
+
 !=======================================================================
 
 ! form of interfaces
 !=======================================================================
 
 
-
-interface alloc_surf_diff_type
-   module procedure alloc_surf_diff_type_1d, alloc_surf_diff_type_2d
-end interface
-
-
-
 type surf_diff_type
-  integer :: array_order
 
-  real, pointer, dimension(:,:) :: mu_delt_n,    &
-                                   nu_n,         &
-                                   e_n1,         &
-                                   f_t_delt_n1,  &
-                                   f_q_delt_n1,  &
-                                   delta_t_n,    &
-                                   delta_q_n
-
-  real, pointer, dimension(:) :: x_mu_delt_n,    &
-                                 x_nu_n,         &
-                                 x_e_n1,         &
-                                 x_f_t_delt_n1,  &
-                                 x_f_q_delt_n1,  &
-                                 x_delta_t_n,    &
-                                 x_delta_q_n    
-
-  real, pointer, dimension(:) :: x_e_t_n,        &
-                                 x_e_q_n,        &
-                                 x_f_t_delt_n,   &
-                                 x_f_q_delt_n    
+  real, pointer, dimension(:,:) :: dtmass,    &
+                                   dflux_t,   & 
+                                   dflux_q,   & 
+                                   delta_t,   &
+                                   delta_q
+ 
 end type surf_diff_type
 
 
 real,    allocatable, dimension(:,:,:) :: e_global, f_t_global, f_q_global 
-integer, allocatable, dimension(:,:)   :: order
 
       
 logical :: do_init = .true.
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 1.3 2000/12/05 13:25:07 fms Exp $'
-character(len=128) :: tag = '$Name: damascus $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 1.4 2001/07/05 17:43:23 fms Exp $'
+character(len=128) :: tag = '$Name: eugene $'
 
 real, parameter :: d608 = (rvgas-rdgas)/rdgas
 
@@ -103,17 +76,14 @@ subroutine gcm_vert_diff_init (Tri_surf, idim, jdim, kdim)
 
  if (do_init) then
 
-    if (allocated(  order    ))    deallocate (  order    )
     if (allocated(  e_global ))    deallocate (  e_global )
     if (allocated(f_t_global ))    deallocate (f_t_global )
     if (allocated(f_q_global ))    deallocate (f_q_global )
 
-    allocate(  order    (idim, jdim)        )
     allocate(  e_global (idim, jdim, kdim-1))
     allocate(f_t_global (idim, jdim, kdim-1))
     allocate(f_q_global (idim, jdim, kdim-1))
 
-    order = 0
     do_init = .false.
 
  endif
@@ -124,46 +94,18 @@ end subroutine gcm_vert_diff_init
 
 !#######################################################################
 
-subroutine alloc_surf_diff_type_1d ( Tri_surf, idim )
-
-type(surf_diff_type), intent(inout) :: Tri_surf
-integer,              intent(in)    :: idim
-
-    Tri_surf%array_order = 1
-
-    allocate( Tri_surf%x_mu_delt_n   (idim) )
-    allocate( Tri_surf%x_nu_n        (idim) )
-    allocate( Tri_surf%x_e_n1        (idim) )
-    allocate( Tri_surf%x_f_t_delt_n1 (idim) )
-    allocate( Tri_surf%x_f_q_delt_n1 (idim) )
-    allocate( Tri_surf%x_delta_t_n   (idim) )
-    allocate( Tri_surf%x_delta_q_n   (idim) )
-
-    allocate( Tri_surf%x_e_t_n       (idim) )
-    allocate( Tri_surf%x_e_q_n       (idim) )
-    allocate( Tri_surf%x_f_t_delt_n  (idim) )
-    allocate( Tri_surf%x_f_q_delt_n  (idim) )
-
-end subroutine alloc_surf_diff_type_1d
-
-!#######################################################################
-
-subroutine alloc_surf_diff_type_2d ( Tri_surf, idim, jdim )
+subroutine alloc_surf_diff_type ( Tri_surf, idim, jdim )
 
 type(surf_diff_type), intent(inout) :: Tri_surf
 integer,              intent(in)    :: idim, jdim
 
-    Tri_surf%array_order = 2
+    allocate( Tri_surf%dtmass    (idim, jdim) )
+    allocate( Tri_surf%dflux_t   (idim, jdim) )
+    allocate( Tri_surf%dflux_q   (idim, jdim) )
+    allocate( Tri_surf%delta_t   (idim, jdim) )
+    allocate( Tri_surf%delta_q   (idim, jdim) )
 
-    allocate( Tri_surf%mu_delt_n   (idim, jdim) )
-    allocate( Tri_surf%nu_n        (idim, jdim) )
-    allocate( Tri_surf%e_n1        (idim, jdim) )
-    allocate( Tri_surf%f_t_delt_n1 (idim, jdim) )
-    allocate( Tri_surf%f_q_delt_n1 (idim, jdim) )
-    allocate( Tri_surf%delta_t_n   (idim, jdim) )
-    allocate( Tri_surf%delta_q_n   (idim, jdim) )
-
-end subroutine alloc_surf_diff_type_2d
+end subroutine alloc_surf_diff_type
 
 !#######################################################################
 
@@ -171,32 +113,11 @@ subroutine dealloc_surf_diff_type ( Tri_surf )
 
 type(surf_diff_type), intent(inout) :: Tri_surf
 
-  if ( Tri_surf%array_order == 1 ) then
-
-      deallocate( Tri_surf%x_mu_delt_n   )
-      deallocate( Tri_surf%x_nu_n        )
-      deallocate( Tri_surf%x_e_n1        )
-      deallocate( Tri_surf%x_f_t_delt_n1 )
-      deallocate( Tri_surf%x_f_q_delt_n1 )
-      deallocate( Tri_surf%x_delta_t_n   )
-      deallocate( Tri_surf%x_delta_q_n   )
-
-      deallocate( Tri_surf%x_e_t_n       )
-      deallocate( Tri_surf%x_e_q_n       )
-      deallocate( Tri_surf%x_f_t_delt_n  )
-      deallocate( Tri_surf%x_f_q_delt_n  )
-
-  else if ( Tri_surf%array_order == 2 ) then
-
-      deallocate( Tri_surf%mu_delt_n   )
-      deallocate( Tri_surf%nu_n        )
-      deallocate( Tri_surf%e_n1        )
-      deallocate( Tri_surf%f_t_delt_n1 )
-      deallocate( Tri_surf%f_q_delt_n1 )
-      deallocate( Tri_surf%delta_t_n   )
-      deallocate( Tri_surf%delta_q_n   )
-
-  endif
+      deallocate( Tri_surf%dtmass    )
+      deallocate( Tri_surf%dflux_t   )
+      deallocate( Tri_surf%dflux_q   )
+      deallocate( Tri_surf%delta_t   )
+      deallocate( Tri_surf%delta_q   )
 
 end subroutine dealloc_surf_diff_type
 
@@ -242,6 +163,10 @@ type(surf_diff_type), intent(inout)        :: Tri_surf
 integer, intent(in)   , dimension(:,:), optional :: kbot
 
 real, dimension(size(u,1),size(u,2),size(u,3)) :: tt, mu, nu
+
+real, dimension(size(u,1),size(u,2)) :: f_t_delt_n1, f_q_delt_n1, &
+            mu_delt_n, nu_n, e_n1, delta_t_n, delta_q_n
+
 real    :: gcp
 integer :: i, j, kb, ie, je
 
@@ -253,11 +178,6 @@ integer :: i, j, kb, ie, je
     
  ie = is + size(t,1) -1
  je = js + size(t,2) -1
-
- order(is:ie,js:je) = order(is:ie,js:je) +1
- if (count(order(is:ie,js:je) /= 1) > 0) call error_mesg (  &
-          'gcm_vert_diff_down in vert_diff_mod', &
-          'subroutine called out of order', FATAL)
 
  gcp = grav/cp
  tt  = t + z_full*gcp   ! the vertical gradient of tt determines the
@@ -282,98 +202,20 @@ integer :: i, j, kb, ie, je
          e_global             (is:ie,js:je,:),    &
          f_t_global           (is:ie,js:je,:),    &
          f_q_global           (is:ie,js:je,:),    &
-         Tri_surf%mu_delt_n   (is:ie,js:je),      &
-         Tri_surf%nu_n        (is:ie,js:je),      &
-         Tri_surf%e_n1        (is:ie,js:je),      &
-         Tri_surf%f_t_delt_n1 (is:ie,js:je),      &
-         Tri_surf%f_q_delt_n1 (is:ie,js:je),      &
-         Tri_surf%delta_t_n   (is:ie,js:je),      &
-         Tri_surf%delta_q_n   (is:ie,js:je), kbot)
+         mu_delt_n, nu_n, e_n1, f_t_delt_n1, f_q_delt_n1, &
+         delta_t_n, delta_q_n, kbot)
+
+! store information needed by flux_exchange module
+
+    Tri_surf%delta_t (is:ie,js:je) = delta_t_n + mu_delt_n*nu_n*f_t_delt_n1
+    Tri_surf%delta_q (is:ie,js:je) = delta_q_n + mu_delt_n*nu_n*f_q_delt_n1
+    Tri_surf%dflux_t (is:ie,js:je) = -nu_n*(1.0 - e_n1)
+    Tri_surf%dflux_q (is:ie,js:je) = -nu_n*(1.0 - e_n1)
+    Tri_surf%dtmass  (is:ie,js:je) = mu_delt_n
 
 !-----------------------------------------------------------------------
 
 end subroutine gcm_vert_diff_down
-
-!#######################################################################
-
-subroutine gcm_vert_diff_surf_down (avail, dsens_datmos, dsens_dsurf,  &
-                                           devap_datmos, devap_dsurf,  &
-                                           drad_dsurf,                 &
-                                           sens, evap, Tri_surf        )
-
-!-----------------------------------------------------------------------
-
-logical, intent(in), dimension(:) :: avail
-real   , intent(in), dimension(:) :: dsens_datmos, devap_datmos, drad_dsurf
-real, intent(inout), dimension(:) :: sens, dsens_dsurf, evap, devap_dsurf
-type(surf_diff_type), intent(inout) :: Tri_surf
-
-real, dimension(size(sens)) :: zero
-
-!-----------------------------------------------------------------------
-
-! assume this is called for all points
- order = order +1
- if (count(order /= 2) > 0) call error_mesg (  &
-          'gcm_vert_diff_surf_down in vert_diff_mod', &
-          'subroutine called out of order', FATAL     )
-
-! temperature
-  call diff_surface_down_1d (avail, Tri_surf%x_mu_delt_n, Tri_surf%x_nu_n,   &
-                                    Tri_surf%x_e_n1, Tri_surf%x_f_t_delt_n1, &
-                                    Tri_surf%x_delta_t_n,                    &
-                             dsens_datmos, dsens_dsurf, drad_dsurf, sens,    &
-                             cp, Tri_surf%x_e_t_n, Tri_surf%x_f_t_delt_n     )
-
-! moisture
-  zero = 0.0
-  call diff_surface_down_1d (avail, Tri_surf%x_mu_delt_n, Tri_surf%x_nu_n,   &
-                                    Tri_surf%x_e_n1, Tri_surf%x_f_q_delt_n1, &
-                                    Tri_surf%x_delta_q_n,                    &
-                             devap_datmos, devap_dsurf, zero, evap,          &
-                             1.0, Tri_surf%x_e_q_n, Tri_surf%x_f_q_delt_n    )
-
-!-----------------------------------------------------------------------
-
-end subroutine gcm_vert_diff_surf_down
-
-!#######################################################################
-
-subroutine gcm_vert_diff_surf_up (avail, delta_t_surf, &
-                                  dsens_dsurf, devap_dsurf, drad_dsurf, &
-                                  sens, evap, rad, Tri_surf)
-
-!-----------------------------------------------------------------------
-
-logical, intent(in), dimension(:) :: avail
-real   , intent(in), dimension(:) :: delta_t_surf, dsens_dsurf,  &
-                                     drad_dsurf, devap_dsurf
-real, intent(inout), dimension(:) :: sens, evap, rad
-type(surf_diff_type), intent(inout) :: Tri_surf
-
-real, dimension(size(sens)) :: zero
-!-----------------------------------------------------------------------
-
-! assume this is called for all points
- order = order +1
- if (count(order /= 3) > 0) call error_mesg (  &
-          'gcm_vert_diff_surf_up in vert_diff_mod', &
-          'subroutine called out of order', FATAL   )
-
- zero = 0.0
-
-! temperature
- call diff_surface_up_1d (avail, Tri_surf%x_e_t_n, Tri_surf%x_f_t_delt_n,   &
-                          delta_t_surf, dsens_dsurf, drad_dsurf, sens, rad, &
-                          Tri_surf%x_delta_t_n                              )
-! water vapor
- call diff_surface_up_1d (avail, Tri_surf%x_e_q_n, Tri_surf%x_f_q_delt_n,   &
-                          delta_t_surf, devap_dsurf, zero, evap, zero,      &
-                          Tri_surf%x_delta_q_n                              )
-
-!-----------------------------------------------------------------------
-
-end subroutine gcm_vert_diff_surf_up
 
 !#######################################################################
 
@@ -390,24 +232,19 @@ integer :: ie, je
  ie = is + size(dt_t,1) -1
  je = js + size(dt_t,2) -1
 
- order(is:ie,js:je) = order(is:ie,js:je) +1
- if (count(order(is:ie,js:je) /= 4) > 0) call error_mesg (  &
-          'gcm_vert_diff_up in vert_diff_mod',   &
-          'subroutine called out of order', FATAL)
 
- call vert_diff_up (delt ,                               &
-                    e_global           (is:ie,js:je,:) , &
-                    f_t_global         (is:ie,js:je,:) , &
-                    Tri_surf%delta_t_n (is:ie,js:je) ,   &
+ call vert_diff_up (delt ,                              &
+                    e_global          (is:ie,js:je,:) , &
+                    f_t_global        (is:ie,js:je,:) , &
+                    Tri_surf%delta_t  (is:ie,js:je) ,   &
                     dt_t, kbot )
 
- call vert_diff_up (delt ,                               &
-                    e_global           (is:ie,js:je,:) , &
-                    f_q_global         (is:ie,js:je,:) , &
-                    Tri_surf%delta_q_n (is:ie,js:je) ,   &
+ call vert_diff_up (delt ,                              &
+                    e_global          (is:ie,js:je,:) , &
+                    f_q_global        (is:ie,js:je,:) , &
+                    Tri_surf%delta_q  (is:ie,js:je) ,   &
                     dt_q, kbot )
 
- order(is:ie,js:je) = 0
 
 end subroutine gcm_vert_diff_up
 
@@ -832,157 +669,35 @@ end subroutine vert_diff_down_n
 
 !#######################################################################
 
-subroutine diff_surface (mu_delt, nu, e_n1, f_n1_delt,  &
+subroutine diff_surface (mu_delt, nu, e_n1, f_delt_n1,  &
                          dflux_datmos, flux, factor, delta_xi)
 
 !-----------------------------------------------------------------------
 
-real, intent(in)   , dimension(:,:) :: mu_delt, nu, e_n1, f_n1_delt,  &
+real, intent(in)   , dimension(:,:) :: mu_delt, nu, e_n1, f_delt_n1,  &
                                        dflux_datmos
 real, intent(inout), dimension(:,:) :: flux, delta_xi
 real, intent(in) :: factor
 
 !-----------------------------------------------------------------------
 
- real, dimension(size(flux,1),size(flux,2)) :: b, c, g, e_n, f_n_delt, zero
+ real, dimension(size(flux,1),size(flux,2)) :: dflux
+ real :: fff
 
- zero = 0.0
+ fff = 1.0/factor
 
- call diff_surface_down_2d (mu_delt, nu, e_n1, f_n1_delt, delta_xi, &
-                 dflux_datmos, zero, zero, flux, factor, e_n, f_n_delt)
+ dflux    = - nu*(1.0 - e_n1)
+ delta_xi = delta_xi + mu_delt*nu*f_delt_n1
 
- call diff_surface_up_2d (e_n, f_n_delt, zero, zero, zero,  &
-                          flux, zero, delta_xi)
+ delta_xi = (delta_xi + mu_delt*flux*fff)/&
+                      (1.0 - mu_delt*(dflux + dflux_datmos*fff))  
+
+ flux     = flux + dflux_datmos*delta_xi
+
 
 !-----------------------------------------------------------------------
 
 end subroutine diff_surface
-
-!#######################################################################
-
-subroutine diff_surface_down_2d (mu_delt, nu, e_n1, f_n1_delt, delta_xi,  &
-                                 dflux_datmos, dflux_dsurf, dflux1_dsurf, &
-                                 flux, factor, e_n, f_n_delt)
-
-!-----------------------------------------------------------------------
-
-real, intent(in)   , dimension(:,:) :: mu_delt, nu, e_n1, f_n1_delt,  &
-                                       dflux_datmos, delta_xi, dflux1_dsurf
-real, intent(inout), dimension(:,:) :: flux, dflux_dsurf
-real, intent(out)  , dimension(:,:) :: e_n, f_n_delt
-real, intent(in) :: factor
-
-!-----------------------------------------------------------------------
-
- real, dimension(size(flux,1),size(flux,2)) :: a, b, c, g
- real :: fff
-
- fff = 1.0/factor
-
- c     = - mu_delt * nu
- b     =   1.0 - c - mu_delt * dflux_datmos*fff
- a     = - mu_delt *dflux_dsurf*fff
- g     =   1./ (b + c * e_n1)
-
- e_n      = - a * g
- f_n_delt = (delta_xi + mu_delt * flux * fff- c * f_n1_delt) * g    
-
- flux        =  flux        + dflux_datmos * f_n_delt 
- dflux_dsurf =  dflux_dsurf + dflux_datmos * e_n  
-
-!-----------------------------------------------------------------------
-
-end subroutine diff_surface_down_2d
-
-!#######################################################################
-
-subroutine diff_surface_down_1d (avail, mu_delt, nu, e_n1, f_n1_delt, &
-                                 delta_xi, dflux_datmos, dflux_dsurf, &
-                                 dflux1_dsurf, flux, factor, e_n, f_n_delt)
-
-!-----------------------------------------------------------------------
-
-logical, intent(in)   , dimension(:) :: avail
-real, intent(in)   , dimension(:) :: mu_delt, nu, e_n1, f_n1_delt,  &
-                                     dflux_datmos, delta_xi, dflux1_dsurf
-real, intent(inout), dimension(:) :: flux, dflux_dsurf
-real, intent(out)  , dimension(:) :: e_n, f_n_delt
-real, intent(in) :: factor
-
-!-----------------------------------------------------------------------
-
- real, dimension(size(flux)) :: a, b, c, g
- real :: fff
-
- fff = 1.0/factor
-
- where(avail)
-
-   c     = - mu_delt * nu
-   b     =   1.0 - c - mu_delt * dflux_datmos*fff
-   a     = - mu_delt *dflux_dsurf*fff
-   g     =   1./ (b + c * e_n1)
-
-   e_n      = - a * g
-   f_n_delt = (delta_xi + mu_delt * flux * fff- c * f_n1_delt) * g    
-
-   flux        =  flux        + dflux_datmos * f_n_delt 
-   dflux_dsurf =  dflux_dsurf + dflux_datmos * e_n   
-
- endwhere
-
-!-----------------------------------------------------------------------
-
-end subroutine diff_surface_down_1d
-
-!#######################################################################
-
-subroutine diff_surface_up_2d (e_n, f_n_delt, delta_surf, dflux_dsurf, &
-                               dflux1_dsurf, flux, flux1, delta_xi)
-
-!-----------------------------------------------------------------------
-
-real, intent(in)   , dimension(:,:) :: e_n, f_n_delt, delta_surf,  &
-                                       dflux_dsurf, dflux1_dsurf
-real, intent(inout), dimension(:,:) :: flux, flux1
-real, intent(out)  , dimension(:,:) :: delta_xi
-
-!-----------------------------------------------------------------------
-
- flux     = flux       + delta_surf * dflux_dsurf
- flux1    = flux1      - delta_surf * dflux1_dsurf
- delta_xi = f_n_delt   + delta_surf * e_n
-
-!-----------------------------------------------------------------------
-
-end subroutine diff_surface_up_2d
-
-!#######################################################################
-
-subroutine diff_surface_up_1d (avail, e_n, f_n_delt, delta_surf, dflux_dsurf, &
-                               dflux1_dsurf, flux, flux1, delta_xi)
-
-!-----------------------------------------------------------------------
-
-logical, intent(in), dimension(:) :: avail
-real, intent(in)   , dimension(:) :: e_n, f_n_delt, delta_surf,  &
-                                     dflux_dsurf, dflux1_dsurf
-real, intent(inout), dimension(:) :: flux, flux1
-real, intent(out)  , dimension(:) :: delta_xi
-
-!-----------------------------------------------------------------------
-
- delta_xi = 0.0
-
- where(avail)
-   flux     = flux       + delta_surf * dflux_dsurf
-   flux1    = flux1      - delta_surf * dflux1_dsurf
-   delta_xi = f_n_delt   + delta_surf * e_n
- endwhere
-
-!-----------------------------------------------------------------------
-
-end subroutine diff_surface_up_1d
 
 !#######################################################################
 
@@ -1146,69 +861,6 @@ nu(:,:,2:nlev) = rho_half(:,:,2:nlev)*diff(:,:,2:nlev) /  &
 !-----------------------------------------------------------------------
 
 end subroutine compute_nu
-
-!#######################################################################
-
-subroutine switch_surf_diff_type_order ( Tri_surf_in, Tri_surf_out )
-
-type(surf_diff_type), intent(in)    :: Tri_surf_in
-type(surf_diff_type), intent(inout) :: Tri_surf_out
-
-integer :: j, is, ie, nlon, nlat
-
-  if ( Tri_surf_in%array_order == 2 .and. Tri_surf_out%array_order == 1 ) then
-
-     nlon = size( Tri_surf_in%nu_n, 1 )
-     nlat = size( Tri_surf_in%nu_n, 2 )
-
-     if ( size( Tri_surf_out%x_nu_n ) /= nlat ) call error_mesg (   &
-                    'switch_surf_diff_type_order in vert_diff_mod', &
-                    'inconsistent dimensions', FATAL )
-
-     do j = 1, nlat
-
-       is = nlon*(j-1)+1
-       ie = nlon*j
-
-       Tri_surf_out%x_mu_delt_n   (is:ie) = Tri_surf_in%mu_delt_n   (:,j)
-       Tri_surf_out%x_nu_n        (is:ie) = Tri_surf_in%nu_n        (:,j)
-       Tri_surf_out%x_e_n1        (is:ie) = Tri_surf_in%e_n1        (:,j)
-       Tri_surf_out%x_f_t_delt_n1 (is:ie) = Tri_surf_in%f_t_delt_n1 (:,j)
-       Tri_surf_out%x_f_q_delt_n1 (is:ie) = Tri_surf_in%f_q_delt_n1 (:,j)
-       Tri_surf_out%x_delta_t_n   (is:ie) = Tri_surf_in%delta_t_n   (:,j)
-       Tri_surf_out%x_delta_q_n   (is:ie) = Tri_surf_in%delta_q_n   (:,j)
-
-     enddo
-
-  else if ( Tri_surf_in %array_order == 1 .and.  &
-            Tri_surf_out%array_order == 2 ) then
-
-     nlon = size( Tri_surf_out%nu_n, 1 )
-     nlat = size( Tri_surf_out%nu_n, 2 )
-
-     if ( size( Tri_surf_out%x_nu_n ) /= nlat ) call error_mesg (   &
-                    'switch_surf_diff_type_order in vert_diff_mod', &
-                    'inconsistent dimensions', FATAL )
-
-     do j = 1, nlat
-
-       is = nlon*(j-1)+1
-       ie = nlon*j
-
-       Tri_surf_out%delta_t_n (:,j) = Tri_surf_in%x_delta_t_n (is:ie)
-       Tri_surf_out%delta_q_n (:,j) = Tri_surf_in%x_delta_q_n (is:ie)
-
-     enddo
-
-  else
-
-     if ( Tri_surf_in%array_order + Tri_surf_out%array_order /= 3 )  &
-      call error_mesg ('switch_surf_diff_type_order in vert_diff_mod', &
-                       'arguments have the wrong order', FATAL )
-
-  endif
-
-end subroutine switch_surf_diff_type_order
 
 !#######################################################################
 

@@ -56,6 +56,7 @@ OTHER MODULES USED</h4>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 constants_mod
 <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; utilities_mod
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; topography_mod
 <br>&nbsp;
 <br>&nbsp;
 <br>&nbsp;
@@ -82,21 +83,21 @@ options.
 <h4>
 PUBLIC ROUTINES</h4>
 <!-- BEGIN ROUTINES -->
-call mg_drag_init (ix,iy,ierr)
+<B>call mg_drag_init</B> (lonb,latb,hprime)
 <p>!--------------------------------------------------------------
 <br>! Input Arguments
-<br>!&nbsp;&nbsp;&nbsp;&nbsp; IX, IY&nbsp; - Horizontal dimensions for
-global storage arrays
+<br>!&nbsp;&nbsp;&nbsp;&nbsp; lonb&nbsp; - longitude in radians of the grid box edges
+<br>!&nbsp;&nbsp;&nbsp;&nbsp; latb&nbsp; - latitude  in radians of the grid box edges
 <br>!---------------------------------------------------------------------
-<br>&nbsp;integer, intent(in) :: ix, iy
+<br>&nbsp;real, intent(in), dimension(:) :: lonb,latb
 <p>!---------------------------------------------------------------------
-<br>! Output Argument
-<br>!&nbsp;&nbsp;&nbsp; IERR - Error flag
+<br>! Optional Output Argument
+<br>!&nbsp;&nbsp;&nbsp; hprime - array of sub-grid scale mountain heights (in meters)
 <br>!---------------------------------------------------------------------
-<br>&nbsp;integer, intent(out) :: ierr
+<br>&nbsp;real, intent(out), dimension(:,:), optional :: hprime
 <br>!--------------------------------------------------------------
 <br>&nbsp;
-<p>&nbsp; call mg_drag (is,js,uwnd,vwnd,temp,pfull,phalf,&nbsp;&nbsp; &amp;
+<p>&nbsp; <B>call mg_drag</B> (is,js,uwnd,vwnd,temp,pfull,phalf,&nbsp;&nbsp; &amp;
 <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 zfull,zhalf,dtaux,dtauy,taub,kbot)
 <p>!--------------------------------------------------------------
@@ -163,7 +164,7 @@ the meridional wind component deceleration
 <br>&nbsp;real, intent(out), dimension (:,:,:) :: dtaux, dtauy
 <br>!-----------------------------------------------------------------------
 <br>&nbsp;
-<p>call mg_drag_end ()
+<p><B>call mg_drag_end</B> ()
 <br>there are no arguments to this routine
 <br><!-- END ROUTINES --><!---------------------------------------------------------------------><a NAME="NAMELIST"></a>
 <hr>
@@ -237,6 +238,21 @@ NOTES</h4>
 &nbsp;&nbsp; Original code ~ Summer 1986.
 &nbsp;&nbsp; First Fortran 90 version created by Bill Stern in June 1999.
 &nbsp;&nbsp; 
+
+   -------------------------------------------------------------------
+<B>   Important Note:</B>
+
+   The subgrid scale topography is now generated automatically
+   (using topograpy_mod) when mg_drag_init is called and the navy
+   hires-topography file is present.
+
+   Users can still read their own subgrid scale topography from file
+   INPUT/mg_drag.res if they remove the navy hires-topography file.
+
+   Refer to module topograpy_mod for details on how the subgrid scale
+   topography is computed.
+
+   -------------------------------------------------------------------
 
 <br>&nbsp;
 <p>

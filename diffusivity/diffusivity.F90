@@ -25,7 +25,7 @@ private
 ! public interfaces
 !=======================================================================
 
- public diffusivity, pbl_depth
+ public diffusivity, pbl_depth, molecular_diff
 
 !=======================================================================
 
@@ -93,8 +93,8 @@ private
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: diffusivity.F90,v 1.2 2000/08/04 18:44:23 fms Exp $'
-character(len=128) :: tag = '$Name: damascus $'
+character(len=128) :: version = '$Id: diffusivity.F90,v 1.3 2001/07/05 17:25:34 fms Exp $'
+character(len=128) :: tag = '$Name: eugene $'
 
 !=======================================================================
 
@@ -115,13 +115,18 @@ real    :: mix_len             = 30.
 real    :: rich_prandtl        =  1.00
 real    :: background_m        =  0.0
 real    :: background_t        =  0.0
+logical :: ampns               = .false. ! include delta z factor in 
+					 ! defining ri ?
+real    :: ampns_max           = 1.0E20  ! limit to reduction factor
+					 ! applied to ri due to delta z
+					 ! factor
 
 namelist /diffusivity_nml/ fixed_depth, depth_0, frac_inner,& 
                            rich_crit_pbl, entr_ratio, parcel_buoy,&
                            znom, free_atm_diff, free_atm_skyhi_diff,&
                            pbl_supersource,&
                            rich_crit_diff, mix_len, rich_prandtl,&
-                           background_m, background_t
+                           background_m, background_t, ampns, ampns_max
                           
 !=======================================================================
 
@@ -130,6 +135,9 @@ namelist /diffusivity_nml/ fixed_depth, depth_0, frac_inner,&
 real    :: small  = 1.e-04
 real    :: gcp    = grav/cp
 logical :: init   = .false.
+real    :: beta   = 1.458e-06
+real    :: rbop1  = 110.4
+real    :: rbop2  = 1.405
 
 real, parameter :: d608 = (rvgas-rdgas)/rdgas
 
@@ -184,6 +192,13 @@ integer :: unit, ierr, io
          if (background_t .lt. 0.) &
             call error_mesg ('diffusivity_init',  &
             'background_t must be greater than or equal to zero', FATAL)
+         if (ampns_max .lt. 1.) &
+            call error_mesg ('diffusivity_init',  &
+            'ampns_max must be greater than or equal to one', FATAL)
+         if (ampns .and. .not. free_atm_skyhi_diff) &
+            call error_mesg ('diffusivity_init',  &
+            'ampns is only valid when free_atm_skyhi_diff is &
+	           & also true', FATAL)
       
       endif  !end of reading input.nml
 
@@ -210,11 +225,12 @@ subroutine diffusivity(t, q, u, v, z_full, z_half, u_star, b_star,&
 real,    intent(in),           dimension(:,:,:) :: t, q, u, v
 real,    intent(in),           dimension(:,:,:) :: z_full, z_half
 real,    intent(in),           dimension(:,:)   :: u_star, b_star
-real,    intent(out),          dimension(:,:,:) :: k_m, k_t
+real,    intent(inout),        dimension(:,:,:) :: k_m, k_t
 real,    intent(out),          dimension(:,:)   :: h
 integer, intent(in), optional, dimension(:,:)   :: kbot
 
-real, dimension(size(t,1),size(t,2),size(t,3))  :: svcp,z_full_ag
+real, dimension(size(t,1),size(t,2),size(t,3))  :: svcp,z_full_ag, &
+						   k_m_save, k_t_save
 real, dimension(size(t,1),size(t,2),size(t,3)+1):: z_half_ag
 real, dimension(size(t,1),size(t,2))            :: z_surf
 integer                                         :: i,j,k,nlev,nlat,nlon
@@ -222,6 +238,9 @@ integer                                         :: i,j,k,nlev,nlat,nlon
 if(.not.init) call diffusivity_init
 
 nlev = size(t,3)
+
+k_m_save = k_m
+k_t_save = k_t
 
 !compute height of surface
 if (present(kbot)) then
@@ -261,6 +280,9 @@ end if
 
 if(free_atm_diff) &
    call diffusivity_free (svcp, u, v, z_full_ag, z_half_ag, h, k_m, k_t)
+
+k_m = k_m + k_m_save
+k_t = k_t + k_t_save
 
 !NOTE THAT THIS LINE MUST FOLLOW DIFFUSIVITY_FREE SO THAT ENTRAINMENT
 !K's DO NOT GET OVERWRITTEN IN DIFFUSIVITY_FREE SUBROUTINE
@@ -382,7 +404,7 @@ subroutine diffusivity_pbl(t, u, v, z_half, h, u_star, b_star, &
 
 real,    intent(in)  ,           dimension(:,:,:) :: t, u, v, z_half
 real,    intent(in)  ,           dimension(:,:)   :: h, u_star, b_star
-real,    intent(out) ,           dimension(:,:,:) :: k_m, k_t
+real,    intent(inout) ,           dimension(:,:,:) :: k_m, k_t
 integer, intent(in)  , optional, dimension(:,:)   :: kbot
 
 real, dimension(size(t,1),size(t,2))              :: h_inner, k_m_ref,&
@@ -439,7 +461,7 @@ subroutine diffusivity_pbl_supersource(u, v, z_full, z_half, h, k_m, k_t)
 
 real, intent(in)  , dimension(:,:,:) :: u, v, z_full, z_half
 real, intent(in)  , dimension(:,:)   :: h
-real, intent(out) , dimension(:,:,:) :: k_m, k_t
+real, intent(inout) , dimension(:,:,:) :: k_m, k_t
 
 integer                                        :: k, nlev
 real, dimension(size(z_full,1),size(z_full,2)) :: elmix, htcrit
@@ -486,38 +508,125 @@ real, intent(in)    , dimension(:,:,:) :: t, u, v, z, zz
 real, intent(in)    , dimension(:,:)   :: h
 real, intent(inout) , dimension(:,:,:) :: k_m, k_t
 
-real, dimension(size(t,1),size(t,2))   :: dz, b, speed2, rich, fri
+real, dimension(size(t,1),size(t,2))   :: dz, b, speed2, rich, fri, &
+                                          alpz, fri2
 integer                                :: k
 
 do k = 2, size(t,3)
 
+!----------------------------------------------------------------------
+!  define the richardson number. set it to zero if it is negative. save
+!  a copy of it for later use (rich2).
+!----------------------------------------------------------------------
   dz     = z(:,:,k-1) - z(:,:,k)
   b      = grav*(t(:,:,k-1)-t(:,:,k))/t(:,:,k)
   speed2 = (u(:,:,k-1) - u(:,:,k))**2 + (v(:,:,k-1) - v(:,:,k))**2 
   rich= b*dz/(speed2+small)
   rich = max(rich, 0.0)
-  if (free_atm_skyhi_diff) &
-        rich(:,:) = rich(:,:) / (1.  + 1.e-04*(dz(:,:)**1.5))
-  
-  fri(:,:) = (1.0 - rich/rich_crit_diff)**2
-  
-  if (free_atm_skyhi_diff) then
-         where (rich < rich_crit_diff .and. zz(:,:,k) > h) 
-                k_m(:,:,k) = mix_len*mix_len*sqrt(speed2)*fri(:,:) &
-                           * (1.  + 1.e-04*(dz(:,:)**1.5))/dz
-                k_t(:,:,k) = k_m(:,:,k)* (0.1 + 0.9*fri(:,:))
-         end where
-  else
-         where (rich < rich_crit_diff .and. zz(:,:,k) > h) 
-                k_t(:,:,k) = mix_len*mix_len*sqrt(speed2)*fri(:,:)/dz
-                k_m(:,:,k) = k_t(:,:,k)*rich_prandtl
-         end where
-  end if
 
+  if (free_atm_skyhi_diff) then
+!---------------------------------------------------------------------
+!   limit the standard richardson number to between 0 and the critical 
+!   value (rich2). compute the richardson number factor needed in the 
+!   eddy mixing coefficient using this standard richardson number.
+!---------------------------------------------------------------------
+    where (rich(:,:) >= rich_crit_diff) 
+      fri2(:,:) = 0.0
+    elsewhere
+      fri2(:,:)  = (1.0 - rich/rich_crit_diff)**2
+    endwhere
+  endif
+
+!---------------------------------------------------------------------
+!  if ampns is activated, compute the delta z factor. define rich 
+!  including this factor.
+!---------------------------------------------------------------------
+  if (ampns) then
+    alpz(:,:) = MIN ( (1.  + 1.e-04*(dz(:,:)**1.5)), ampns_max)
+    rich(:,:) = rich(:,:) / alpz(:,:)
+  endif
+
+!---------------------------------------------------------------------
+!   compute the richardson number factor to be used in the eddy 
+!   mixing coefficient. if ampns is on, this value includes it; other-
+!   wise it does not.
+!---------------------------------------------------------------------
+  fri(:,:)   = (1.0 - rich/rich_crit_diff)**2
+
+!---------------------------------------------------------------------
+!   compute the eddy mixing coefficients in the free atmosphere ( zz 
+!   > h). in the non-ampns case, values are obtained only when the 
+!   standard richardson number is sub-critical; in the ampns case values
+!   are obtained only when the richardson number computed with the 
+!   ampns factor is sub critical. when the ampns factor is activated,
+!   it is also included in the mixing coefficient. the value of mixing
+!   for temperature, etc. is reduced dependent on the ri stability 
+!   factor calculated without the ampns factor.
+!---------------------------------------------------------------------
+  if (free_atm_skyhi_diff) then
+
+!---------------------------------------------------------------------
+!   this is the skyhi-like formulation -- possible ampns factor, ratio
+!   of k_m to k_t defined based on computed stability factor.
+!---------------------------------------------------------------------
+    if (ampns) then
+      where (rich < rich_crit_diff .and. zz(:,:,k) > h) 
+           k_m(:,:,k) = mix_len*mix_len*sqrt(speed2)*fri(:,:)* &
+                        ( 1.  + 1.e-04*(dz(:,:)**1.5))/dz
+           k_t(:,:,k) = k_m(:,:,k)* (0.1 + 0.9*fri2(:,:))
+      end where
+    else
+      where (rich < rich_crit_diff .and. zz(:,:,k) > h)
+        k_m(:,:,k) = mix_len*mix_len*sqrt(speed2)*fri(:,:)/dz
+        k_t(:,:,k) = k_m(:,:,k)* (0.1 + 0.9*fri2(:,:))
+      end where
+    endif
+  else
+
+!---------------------------------------------------------------------
+!   this is the non-skyhi-like formulation -- no ampns factor, ratio
+!   of k_m to k_t defined by rich_prandtl.
+!---------------------------------------------------------------------
+    where (rich < rich_crit_diff .and. zz(:,:,k) > h) 
+         k_t(:,:,k) = mix_len*mix_len*sqrt(speed2)*fri(:,:)/dz
+         k_m(:,:,k) = k_t(:,:,k)*rich_prandtl
+    end where
+  end if
 end do
 
-return
+
 end subroutine diffusivity_free
+
+!=======================================================================
+
+subroutine molecular_diff ( temp, press, k_m, k_t)
+
+real, intent(in),    dimension (:,:,:)  ::  temp, press
+real, intent(inout), dimension (:,:,:)  ::  k_m, k_t    
+
+      real, dimension (size(temp,1), size(temp,2)) :: temp_half, &
+						      rho_half, rbop2d
+      integer      :: k
+
+!---------------------------------------------------------------------
+
+      do k=2,size(temp,3)
+        temp_half(:,:) = 0.5*(temp(:,:,k) + temp(:,:,k-1))
+        rho_half(:,:) = press(:,:,k)/(rdgas*temp_half(:,:) )
+        rbop2d(:,:)  = beta*temp_half(:,:)*sqrt(temp_half(:,:))/  & 
+                       (rho_half(:,:)*(temp_half(:,:)+rbop1))
+        k_m(:,:,k) = rbop2d(:,:)
+        k_t(:,:,k) = rbop2d(:,:)*rbop2
+      end do
+
+      k_m(:,:,1) = 0.0
+      k_t(:,:,1) = 0.0
+
+
+
+end subroutine molecular_diff 
+
+
 
 !=======================================================================
 
@@ -545,4 +654,3 @@ end subroutine diffusivity_entr
 
 end module diffusivity_mod
 
-!=======================================================================

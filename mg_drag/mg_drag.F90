@@ -10,8 +10,10 @@ MODULE MG_DRAG_MOD
 !-------------------------------------------------------------------
 
 
+ use topography_mod, only:  compute_stdev
  use Utilities_Mod, ONLY: FILE_EXIST, OPEN_FILE, ERROR_MESG, FATAL, &
-                          get_my_pe, READ_DATA, WRITE_DATA, CLOSE_FILE
+                          get_my_pe, READ_DATA, WRITE_DATA,         &
+                          CLOSE_FILE, check_nml_error
  use  Constants_Mod, ONLY:  Grav,Kappa,RDgas,p00
 
 !-----------------------------------------------------------------------
@@ -20,8 +22,8 @@ MODULE MG_DRAG_MOD
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 1.2 2000/08/04 18:50:23 fms Exp $'
- character(len=128) :: tag = '$Name: damascus $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 1.3 2001/07/05 17:39:11 fms Exp $'
+ character(len=128) :: tag = '$Name: eugene $'
 
 !---------------------------------------------------------------------
 ! --- GLOBAL STORAGE FOR:
@@ -29,7 +31,6 @@ MODULE MG_DRAG_MOD
 !-----------------------------------------------------------------------
 
   real, allocatable, dimension(:,:) :: Ghprime
-
 
 !-----------------------------------------------------------------------
 !Contants
@@ -39,6 +40,7 @@ MODULE MG_DRAG_MOD
 !-----------------------------------------------------------------------
 
  logical :: do_init = .true.
+ logical :: do_restart_write = .false.
 
 !---------------------------------------------------------------------
 ! --- NAMELIST (mg_drag_nml)
@@ -749,7 +751,7 @@ end SUBROUTINE MGWD_TEND
 
 !#######################################################################
 
-  SUBROUTINE MG_DRAG_INIT( ix, iy,ierr )
+  SUBROUTINE MG_DRAG_INIT( lonb, latb, hprime )
 
 !=======================================================================
 ! ***** INITIALIZE Mountain Gravity Wave Drag
@@ -758,32 +760,34 @@ end SUBROUTINE MGWD_TEND
 
 !---------------------------------------------------------------------
 ! Arguments (Intent in)
-!     ix, iy  - Horizontal dimensions for global storage arrays
+!     lonb  = longitude in radians of the grid box edges
+!     latb  = latitude  in radians of the grid box edges
 !---------------------------------------------------------------------
- integer, intent(in) :: ix, iy
+ real, intent(in), dimension(:) :: lonb, latb
  
 !---------------------------------------------------------------------
-! Arguments (Intent out)
-!     ierr - Error flag
+! Arguments (Intent out - optional)
+!     hprime  = array of sub-grid scale mountain heights
 !---------------------------------------------------------------------
- integer, intent(out) :: ierr
-
+ real, intent(out), dimension(:,:), optional :: hprime
+ 
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer             :: unit, io
+ integer  ::  ix, iy, unit, io, ierr
+ logical  ::  answer
 
 !=====================================================================
-
 !---------------------------------------------------------------------
 ! --- Read namelist
 !---------------------------------------------------------------------
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
    unit = OPEN_FILE ( file = 'input.nml', action = 'read' )
-   io = 1
-   do while( io .ne. 0 )
+   ierr = 1
+   do while( ierr .ne. 0 )
    READ ( unit,  nml = mg_drag_nml, iostat = io, end = 10 ) 
+   ierr = check_nml_error(io,'mg_drag_nml')
    end do
 10 continue
    CALL CLOSE_FILE ( unit )
@@ -805,6 +809,9 @@ end SUBROUTINE MGWD_TEND
 ! --- Allocate storage for Ghprime
 !---------------------------------------------------------------------
 
+  ix = size(lonb) - 1
+  iy = size(latb) - 1
+
   if( ALLOCATED( Ghprime ) ) DEALLOCATE( Ghprime )
                            ALLOCATE( Ghprime(ix,iy) )
 
@@ -814,12 +821,16 @@ end SUBROUTINE MGWD_TEND
 ! --- Input hprime
 !---------------------------------------------------------------------
 
-  if ( FILE_EXIST( 'INPUT/mg_drag.res' ) ) then
+  answer = compute_stdev ( lonb, latb, Ghprime )
+
+  if ( .not. answer ) then
+  if (  FILE_EXIST( 'INPUT/mg_drag.res' ) ) then
 
       unit = OPEN_FILE ( file = 'INPUT/mg_drag.res',  &
                          form = 'NATIVE', action = 'READ' )
       CALL READ_DATA ( unit, Ghprime )
       CALL CLOSE_FILE ( unit )
+      do_restart_write = .true.
 
   else
 
@@ -828,6 +839,10 @@ end SUBROUTINE MGWD_TEND
                        FATAL)
 
   endif
+  endif
+
+! return sub-grid scale topography?
+  if (present(hprime)) hprime = Ghprime
  
 !=====================================================================
   end SUBROUTINE MG_DRAG_INIT
@@ -839,6 +854,8 @@ end SUBROUTINE MGWD_TEND
 !=======================================================================
   integer :: unit
 !=======================================================================
+
+      if (.not.do_restart_write) return
 
       unit = OPEN_FILE ( file = 'RESTART/mg_drag.res', &
                          form = 'NATIVE', action = 'WRITE' )

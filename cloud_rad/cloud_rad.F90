@@ -75,7 +75,8 @@ MODULE CLOUD_RAD_MOD
         USE  Utilities_Mod,      ONLY :  File_Exist, Open_File,  &
                                          print_version_number,  &
                                          error_mesg, FATAL,     &
-                                         Close_File, get_my_pe
+                                         Close_File, get_my_pe, &
+					 check_nml_error
         use  diag_manager_mod,    only:  register_diag_field, &
                                          send_data
         use  time_manager_mod,    only:  time_type
@@ -301,8 +302,8 @@ character(len=5) :: mod_name = 'cloud'
 !       DECLARE VERSION NUMBER OF SCHEME
 !
         
-        character(len=128) :: version = '$Id: cloud_rad.F90,v 1.5 2001/03/07 17:49:38 fms Exp $'
-        character(len=128) :: tag = '$Name: damascus $'
+        character(len=128) :: version = '$Id: cloud_rad.F90,v 1.6 2001/07/05 17:18:16 fms Exp $'
+        character(len=128) :: tag = '$Name: eugene $'
 
 ! 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -385,7 +386,7 @@ INTEGER,  INTENT (OUT), OPTIONAL          :: overlap_out
 !  ------------------
 
 
-INTEGER                                  :: unit,io
+INTEGER                                  :: unit,io,ierr
 
 !-----------------------------------------------------------------------
 !       
@@ -397,17 +398,17 @@ INTEGER                                  :: unit,io
 !
 !       Namelist functions
 
-        !read namelist if it exists
-        If (File_Exist('input.nml')) Then
-             unit = Open_File ('input.nml', action='read')
-             io=1
-             Do While (io .ne. 0)
-                   Read  (unit, nml=CLOUD_RAD_NML, iostat=io, End=10)
-             EndDo
-  10         Call Close_File (unit)
-        EndIf
-
-        !write namelist variables to logfile
+	!read namelist file if it exists
+        if ( file_exist('input.nml')) then
+        unit = open_file (file='input.nml', action='read')
+        ierr=1; do while (ierr /= 0)
+           read  (unit, nml=cloud_rad_nml, iostat=io, end=10)
+           ierr = check_nml_error(io,'cloud_rad_nml')
+        enddo
+10      call close_file (unit)
+        endif
+	
+	!write namelist variables to logfile
         unit = Open_File ('logfile.out', action='APPEND')
         if ( get_my_pe() == 0 ) then
              Write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
@@ -3392,7 +3393,7 @@ END SUBROUTINE TAU_REFF_DIAG
 FUNCTION ran0(idum)
 
 
-!     $Id: cloud_rad.F90,v 1.5 2001/03/07 17:49:38 fms Exp $
+!     $Id: cloud_rad.F90,v 1.6 2001/07/05 17:18:16 fms Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

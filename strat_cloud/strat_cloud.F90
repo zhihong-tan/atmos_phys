@@ -56,7 +56,8 @@ MODULE STRAT_CLOUD_MOD
         USE  Utilities_Mod,      ONLY :  File_Exist, Open_File,  &
                                          error_mesg, FATAL, &
                                          get_my_pe, Close_File, &
-                                         read_data, write_data
+                                         read_data, write_data, &
+					 check_nml_error
         USE  Constants_Mod,      ONLY :  RDgas,RVgas,HLv,HLf,HLs,Cp,&
                                          Grav,Tfreeze,Dens_h2o
         USE  CLOUD_RAD_MOD,      ONLY :  CLOUD_RAD_INIT
@@ -267,8 +268,8 @@ MODULE STRAT_CLOUD_MOD
 !       DECLARE VERSION NUMBER OF SCHEME
 !
         
-        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 1.4 2001/03/06 18:52:22 fms Exp $'
-        Character(len=128) :: Tag = '$Name: damascus $'
+        Character(len=128) :: Version = '$Id: strat_cloud.F90,v 1.5 2001/07/05 17:19:53 fms Exp $'
+        Character(len=128) :: Tag = '$Name: eugene $'
          
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -373,7 +374,7 @@ SUBROUTINE STRAT_INIT(axes,Time,IDIM,JDIM,KDIM)
 !       ------------------
 !
 
-        INTEGER                                :: unit,io
+        INTEGER                                :: unit,io,ierr
 
 
 !-----------------------------------------------------------------------
@@ -385,15 +386,17 @@ SUBROUTINE STRAT_INIT(axes,Time,IDIM,JDIM,KDIM)
 !
 !       Namelist functions
 
-        !read namelist if it exists
-        If (File_Exist('input.nml')) Then
-             unit = Open_File ('input.nml', action='read')
-             io=1
-             Do While (io .ne. 0)
-                   Read  (unit, nml=STRAT_CLOUD_NML, iostat=io, End=10)
-             EndDo
-  10         Call Close_File (unit)
-        EndIf
+!       ----- read namelist -----
+
+        if ( file_exist('input.nml')) then
+        unit = open_file (file='input.nml', action='read')
+        ierr=1; do while (ierr /= 0)
+           read  (unit, nml=strat_cloud_nml, iostat=io, end=10)
+           ierr = check_nml_error(io,'strat_cloud_nml')
+        enddo
+10      call close_file (unit)
+        endif
+	
 
         !write namelist variables to logfile
         unit = Open_File ('logfile.out', action='append')
@@ -534,7 +537,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !       omega          vertical pressure velocity      Pa/s
 !
 !       Mc             Cumulus mass flux defined       kg/(m*m)/s
-!                      on same levels as phalf
+!                      on full levels
 !
 !       LAND           the fraction of the grid box    fraction
 !                      covered by land
@@ -1066,7 +1069,7 @@ SUBROUTINE STRAT_DRIV(is,ie,js,je,dtcloud,pfull,phalf,T,qv,ql,qi,qa,&
 !
 
         
-        dqs_ls(:,:) = (((omega(:,:,j)+0.5*Grav*(Mc(:,:,j)+Mc(:,:,j+1))) &
+        dqs_ls(:,:) = (((omega(:,:,j)+Grav*Mc(:,:,j)) &
                        /airdens(:,:,j)/Cp) + radturbten(is:ie,js:je,j)) &
                        *dtcloud*dqsdT(:,:,j)
 

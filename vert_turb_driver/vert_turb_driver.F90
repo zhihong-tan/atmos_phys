@@ -16,7 +16,7 @@ module vert_turb_driver_mod
 use      my25_turb_mod, only: my25_turb_init, my25_turb_end,  &
                               my25_turb, tke_surf, tke
 
-use    diffusivity_mod, only: diffusivity
+use    diffusivity_mod, only: diffusivity, molecular_diff
 
 use   shallow_conv_mod, only: shallow_conv_init, shallow_conv
 
@@ -27,6 +27,7 @@ use   time_manager_mod, only: time_type, get_time, operator(-)
 use      constants_mod, only: rdgas, rvgas, kappa, p00
 
 use      utilities_mod, only: error_mesg, open_file, file_exist, &
+                              check_nml_error,            &
                               get_my_pe, close_file, FATAL
 
 implicit none
@@ -40,8 +41,8 @@ public   vert_turb_driver_init, vert_turb_driver_end, vert_turb_driver
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 1.4 2001/03/06 18:58:55 fms Exp $'
-character(len=128) :: tag = '$Name: damascus $'
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 1.5 2001/07/05 17:33:50 fms Exp $'
+character(len=128) :: tag = '$Name: eugene $'
 
 !-----------------------------------------------------------------------
 
@@ -62,6 +63,7 @@ character(len=128) :: tag = '$Name: damascus $'
  logical :: do_shallow_conv  = .false.
  logical :: do_mellor_yamada = .true.
  logical :: use_tau          = .true.
+ logical :: do_molecular_diffusion = .false.
 
  character(len=24) :: gust_scheme  = 'constant' ! valid schemes are:
                                                 !   => 'constant'
@@ -69,7 +71,8 @@ character(len=128) :: tag = '$Name: damascus $'
  real              :: constant_gust = 1.0
 
  namelist /vert_turb_driver_nml/ do_shallow_conv, do_mellor_yamada, &
-                                 gust_scheme, constant_gust, use_tau
+                                 gust_scheme, constant_gust, use_tau, &
+                                 do_molecular_diffusion
 
 !-------------------- diagnostics fields -------------------------------
 
@@ -147,6 +150,7 @@ logical :: used
           qq = qm + dt*qdt
       endif
 
+!-----------------------------------------------------------------------
 
 !---------------------------
  if (do_mellor_yamada) then
@@ -186,6 +190,16 @@ logical :: used
 
 !---------------------------
  else
+!--------------------------------------------------------------------
+!----------- compute molecular diffusion, if desired  ---------------
+
+    if (do_molecular_diffusion) then
+      call molecular_diff (tt, p_half, diff_m, diff_t)
+    else
+      diff_m = 0.0
+      diff_t = 0.0
+    endif
+
 !---------------------------
 !------------------- non-local K scheme --------------
 
@@ -321,8 +335,9 @@ subroutine vert_turb_driver_init (id, jd, kd, axes, Time)
 
       if (file_exist('input.nml')) then
          unit = open_file (file='input.nml', action='read')
-         io=1; do while (io .ne. 0)
+         ierr=1; do while (ierr /= 0)
             read  (unit, nml=vert_turb_driver_nml, iostat=io, end=10)
+            ierr = check_nml_error (io, 'vert_turb_driver_nml')
          enddo
   10     call close_file (unit)
       endif
@@ -342,6 +357,10 @@ subroutine vert_turb_driver_init (id, jd, kd, axes, Time)
          ('vert_turb_driver_mod', 'invalid value for namelist &
           &variable GUST_SCHEME', FATAL)
 
+      if (do_molecular_diffusion .and. do_mellor_yamada)  &
+          call error_mesg ( 'vert_turb_driver_mod', 'cannot activate &
+	  &molecular diffusion with mellor_yamada', FATAL)
+ 
 !-----------------------------------------------------------------------
 
       if (do_mellor_yamada) call my25_turb_init (id, jd, kd)

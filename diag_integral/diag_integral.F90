@@ -31,6 +31,7 @@ public   diag_integral_output, diag_integral_init, diag_integral_end,  &
 
 interface sum_diag_integral_field
    module procedure sum_field_2d,   &
+		    sum_field_2d_hemi, &
                     sum_field_3d,   &
                     sum_field_wght_3d
 end interface
@@ -39,21 +40,25 @@ end interface
 !------ namelist -------
 
    integer, parameter :: mxch = 64
-   integer, parameter :: max_num_field = 10
+   integer, parameter :: max_num_field = 32
 
    real                :: output_interval = -1.0
    character(len=8)    :: time_units = 'hours'
    character(len=mxch) :: file_name = ' '
    logical             :: print_header = .true.
+   logical             :: do_standard_printout = .true.
+   integer             :: fields_per_print_line = 4
 
    namelist /diag_integral_nml/ output_interval, time_units,  &
-                                file_name, print_header
+                                file_name, print_header, &
+				fields_per_print_line, &
+				do_standard_printout
 
 !-----------------------------------------------------------------------
 !----- version number -----
 
-   character(len=128) :: version = '$Id: diag_integral.F90,v 1.2 2000/08/04 18:43:06 fms Exp $'
-   character(len=128) :: tag = '$Name: damascus $'
+   character(len=128) :: version = '$Id: diag_integral.F90,v 1.3 2001/07/05 17:25:27 fms Exp $'
+   character(len=128) :: tag = '$Name: eugene $'
 
    type (time_type) :: Next_alarm_time, Alarm_interval,  &
                        Zero_time
@@ -71,7 +76,8 @@ end interface
 
 !-----------------------------------------------------------------------
 
-   integer, parameter :: max_len_name   = 8
+!  integer, parameter :: max_len_name   = 8
+   integer, parameter :: max_len_name   = 12
    integer, parameter :: max_field_name = 10
 
    integer                     :: num_field = 0
@@ -79,6 +85,8 @@ end interface
    character(len=16)           :: field_format (max_num_field)
    real                        :: field_sum    (max_num_field)
    integer                     :: field_count  (max_num_field)
+   integer                     :: field_fraction (max_num_field)
+   logical                     :: standard_field (max_num_field)
 
    integer            :: nt,             nd
    character(len=160) :: format_text,    format_data
@@ -96,7 +104,8 @@ contains
 !-----------------------------------------------------------------------
 !----- check alarm -------
 
-      if ( diag_unit == 0 )                  return
+      if (diag_unit == 0 .and. do_standard_printout) return
+
       if ( .not. diag_integral_alarm(Time) ) return
 
 !-----------------------------------------------------------------------
@@ -121,7 +130,7 @@ contains
 !-----------------------------------------------------------------------
 !----- output here if alarm not turned on -----
 
-      if ( diag_unit == 0 )              return
+      if (diag_unit == 0 .and. do_standard_printout) return
       if ( Alarm_interval /= Zero_time ) return
 
 !-----------------------------------------------------------------------
@@ -141,41 +150,67 @@ contains
 
   integer :: i, kount
   real    :: xtime, field_avg(max_num_field)
+  integer :: nn, ninc, nst, nend, fields_to_print
 
   real :: rcount
 !-----------------------------------------------------------------------
 !------ compute averages and output -------
 
-      if (print_header)   call format_text_init
-      if (do_format_data) call format_data_init
+      if (do_standard_printout) then
+        if (print_header)   call format_text_init
+        if (do_format_data) call format_data_init
+      endif
 
+      fields_to_print = 0
       do i = 1, num_field
-         rcount = real(field_count(i))
-         call mpp_sum (rcount, 1)
-         call mpp_sum (field_sum(i), 1)
-         field_count(i) = nint(rcount)
+        if (do_standard_printout .and. (.not. standard_field(i)) ) cycle
+        fields_to_print = fields_to_print + 1
+        rcount = real(field_count(i))
+        call mpp_sum (rcount, 1)
+        call mpp_sum (field_sum(i), 1)
+        field_count(i) = nint(rcount)
 
-         if ( field_count(i) == 0 ) call error_mesg &
+        if ( field_count(i) == 0 ) call error_mesg &
                      ('write_field_averages in diag_integral_mod',  &
                       'field_count equals zero for field_name ' //  &
                        field_name(i)(1:len_trim(field_name(i))), FATAL )
-         kount = field_count(i) / field_size
-         if ( field_size * kount /= field_count(i) ) call error_mesg &
+        kount = field_count(i)*field_fraction(i)/ field_size
+        if ((field_size/field_fraction(i))*kount /= field_count(i)) &
+             call error_mesg &
                     ('write_field_averages in diag_integral_mod',  &
                      'field_count not a multiple of field_size', FATAL )
 
-         field_avg  (i) = field_sum(i) / (sum_area * float(kount))
-         field_sum  (i) = 0.0
-         field_count(i) = 0
+        field_avg(fields_to_print) = field_sum(i)/  &
+				       (sum_area*float(kount))
+        field_sum  (i) = 0.0
+        field_count(i) = 0
       enddo
 
       if ( get_my_pe() /= 0 ) return
 
       xtime = get_axis_time (Time-Time_init_save, time_units)
 
-      write (diag_unit,format_data(1:nd)) &
-                       xtime, (field_avg(i),i=1,num_field)
-
+      if (do_standard_printout) then
+        write (diag_unit,format_data(1:nd)) &
+                     xtime, (field_avg(i),i=1,fields_to_print)
+      else
+        nst = 1
+        nend = fields_per_print_line
+        ninc = (num_field-1)/fields_per_print_line + 1
+        do nn=1, ninc
+          nst = 1 + (nn-1)*fields_per_print_line
+          nend = MIN (nn*fields_per_print_line, num_field)
+          if (print_header)  call format_text_init (nst, nend)
+          call format_data_init (nst, nend)
+	  if (diag_unit /= 0) then
+            write (diag_unit,format_data(1:nd)) &
+                   xtime, (field_avg(i),i=nst,nend)
+	  else
+            write (*, format_data(1:nd)) &
+                   xtime, (field_avg(i),i=nst,nend)
+	  endif
+        end do
+      endif
 !-----------------------------------------------------------------------
 
    end subroutine write_field_averages
@@ -296,41 +331,78 @@ contains
 
 !#######################################################################
 
-   subroutine format_text_init
+   subroutine format_text_init (nst_in, nend_in)
 
-   integer :: i, nc
+   integer, intent(in), optional :: nst_in, nend_in
 
-     if (diag_unit   == 0) return
+
+   integer :: i, nc, nst, nend
+
+     if (diag_unit   == 0 .and. do_standard_printout) return
      if (get_my_pe() /= 0) return
+
+     if (present (nst_in) ) then
+       nst = nst_in
+       nend = nend_in
+     else
+       nst = 1
+       nend = num_field
+     endif
 
       nt = 11
       format_text(1:nt) = "('#    time"
 
-      do i = 1, num_field
+      do i = nst,nend
+      if (do_standard_printout .and. (.not. standard_field(i)) ) cycle
 !        ---- text format ----
          nc = len_trim(field_name(i))
-         format_text(nt+1:nt+nc+5) =  '     ' // field_name(i)(1:nc)
-         nt = nt+nc+5
+	 if (standard_field(i)) then
+           format_text(nt+1:nt+nc+5) =  '     ' // field_name(i)(1:nc)
+           nt = nt+nc+5
+	 else
+!         format_text(nt+1:nt+nc+8) =  '        ' // field_name(i)(1:nc)
+          format_text(nt+1:nt+nc+5) =  '     ' // field_name(i)(1:nc)
+!          nt = nt+nc+8
+           nt = nt+nc+5
+	 endif
       enddo
          format_text(nt+1:nt+2) = "')"
          nt = nt+2
 
-      write (diag_unit, format_text(1:nt))
+      if (diag_unit /= 0) then
+        write (diag_unit, format_text(1:nt))
+      else
+        write (*, format_text(1:nt))
+      endif
 
-      print_header = .false.
+      if ( do_standard_printout) then
+        print_header = .false.
+      endif
 
    end subroutine format_text_init
 
 !#######################################################################
 
-   subroutine format_data_init
+   subroutine format_data_init (nst_in,nend_in)
 
-   integer :: i, nc
+   integer, intent(in), optional :: nst_in, nend_in
+   
+
+   integer :: i, nc, nst, nend
 
       nd = 9
       format_data(1:nd) = '(1x,f10.2'
 
-      do i = 1, num_field
+      if ( present (nst_in) ) then
+	nst = nst_in
+	nend = nend_in
+      else
+	nst = 1 
+	nend = num_field
+      endif
+
+      do i = nst,nend
+	 if (do_standard_printout .and. (.not. standard_field(i)) ) cycle
 !        ---- data format ----
          nc = len_trim(field_format(i))
          format_data(nd+1:nd+nc+5) =  ',1x,' // field_format(i)(1:nc)
@@ -339,7 +411,9 @@ contains
       format_data(nd+1:nd+1) = ')'
       nd=nd+1
 
+      if (do_standard_printout) then
       do_format_data = .false.
+      endif
 
    end subroutine format_data_init
 
@@ -397,9 +471,11 @@ contains
 
 !#######################################################################
 
- subroutine diag_integral_field_init (name, format)
+ subroutine diag_integral_field_init (name, format, extended, hemi)
 
    character(len=*), intent(in) :: name, format
+   integer, intent(in), optional :: hemi
+   logical, intent(in), optional :: extended
 
    integer :: field
 
@@ -422,7 +498,16 @@ contains
    field_format (num_field) = format
    field_sum    (num_field) = 0.0
    field_count  (num_field) = 0
-
+   if (present (hemi) ) then
+     field_fraction (num_field) = hemi
+   else
+     field_fraction (num_field) = 1
+   endif
+   if (present(extended)) then
+     standard_field(num_field) = .false.
+   else
+     standard_field(num_field) = .true.
+   endif
 
  end subroutine diag_integral_field_init
 
@@ -509,6 +594,41 @@ contains
 
 !#######################################################################
 
+ subroutine sum_field_2d_hemi (name, data, is, ie, js, je)
+
+   character(len=*),  intent(in) :: name
+   real,              intent(in) :: data(:,:)
+   integer,           intent(in) :: is, js, ie, je
+
+   integer :: field, i1, j1, i2, j2
+
+   field = get_field_index (name)
+   if (field == 0) call error_mesg ('sum_diag_integral_field', &
+                                    'field does not exist', FATAL)
+
+!----------------------------------------------------------------------
+!  this form needed to handle case of 2d domain decomposition with 
+!  physics window smaller than processor domain size.
+!----------------------------------------------------------------------
+   i1 = mod ( (is-1), size(data,1) ) + 1
+   i2 = i1 + size(data,1) - 1
+
+!--------------------------------------------------------------------
+!  for a hemispheric sum, sum one jrow at a time in case a processor
+!  has data from both hemispheres.
+!--------------------------------------------------------------------
+   j1 = mod ( (js-1) ,size(data,2) ) + 1
+   j2 = j1
+
+   field_count (field) = field_count (field) + (i2-i1+1)*(j2-j1+1)
+   field_sum   (field) = field_sum   (field) +  &
+                               sum (data(i1:i2,j1:j2)*area(is:ie,js:je))
+
+ end subroutine sum_field_2d_hemi
+
+
+!##################################################################
+
  function vert_diag_integral (data, wt) result (data2)
 
    real, intent(in), dimension(:,:,:) :: data, wt
@@ -545,6 +665,7 @@ contains
  end function get_field_index
 
 !#######################################################################
+
 
 end module diag_integral_mod
 

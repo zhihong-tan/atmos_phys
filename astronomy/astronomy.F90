@@ -26,8 +26,8 @@ public :: set_orbital_parameters, &
           set_period,             &
           get_period
 
-character(len=128) :: version = '$Id: astronomy.F90,v 1.2 2000/08/04 18:05:13 fms Exp $'
-character(len=128) :: tag = '$Name: damascus $'
+character(len=128) :: version = '$Id: astronomy.F90,v 1.3 2001/07/05 17:25:15 fms Exp $'
+character(len=128) :: tag = '$Name: eugene $'
 
 ! description of public interfaces
 
@@ -529,12 +529,16 @@ end function declination
 
 !------------------------------------------------------------
 
-subroutine diurnal_solar_2d(cosz, solar, lat, lon, gmt, time_since_ae, dt) 
+subroutine diurnal_solar_2d(cosz, solar, lat, lon, gmt, time_since_ae, &
+			    dt, fracday, rrsun) 
 
 real, intent(in), dimension(:,:) :: lat, lon
 real, intent(in) :: gmt, time_since_ae
 real, intent(in), optional :: dt
 real, intent(out), dimension(size(lat,1),size(lat,2)) :: cosz, solar
+real, intent(out), dimension(size(lat,1),size(lat,2)), optional ::   &
+                                                      fracday
+real, intent(out), optional :: rrsun
 
 
 real, dimension(size(lat,1),size(lat,2)) :: t, tt, h, aa, bb, st, stt, sh
@@ -556,6 +560,95 @@ bb = cos(lat)*cos(dec)
 t = gmt + lon - pi
 where(t >= pi) t = t - twopi  
 where(t < -pi) t = t + twopi   
+
+if ( present (fracday) ) then
+
+
+if ( present(dt) ) then   ! (perform time averaging)
+
+
+! t = time of day with respect to local noon (2*pi = 1 day)
+
+! averaging from t to t+dt 
+
+  tt = t + dt
+  h   = half_day_2d(lat,dec)
+  st  = sin(t)
+  stt = sin(tt)
+  sh  = sin(h)
+  cosz = 0.0
+!       entire averaging period is before sunrise
+  where(      t < -h .and.      tt < -h) cosz = 0.0
+
+!       averaging period begins before sunrise, ends after sunrise but
+!       before sunset
+  where( (tt+h) /= 0.0 .and.   t < -h .and. abs(tt) <= h) cosz = aa                     + bb*(stt + sh)/ (tt + h)
+
+!       averaging period begins before sunrise, ends after sunset, but
+!       before the next sunrise. modify if averaging period extends past
+!       the next day's sunrise, but if averaging period is less than 
+!       a half- day (pi) that circumstance will never occur.
+  where(t < -h .and. h /= 0.0 .and. h < tt) cosz = aa                                   + bb*( sh + sh)/(h+h)
+
+!       averaging period begins after sunrise, ends before sunset
+  where( abs(t) <= h .and. abs(tt) <= h) cosz = aa                                    + bb*(stt - st)/ (tt - t)
+
+!       averaging period begins after sunrise, ends after sunset. modify
+!       when averaging period extends past the next day's sunrise.
+  where( (h-t) /= 0.0 .and. abs(t) <= h .and.  h < tt) cosz = aa                      + bb*( sh - st)/ (h-t)
+
+!       averaging period begins after sunrise , ends after the
+!       next day's sunrise. note that this includes the case when the
+!       day length is one day (h = pi).
+  where( twopi - h < tt .and. (tt+h-twopi) /= 0.0 .and. t <= h)
+      cosz = (cosz*(h - t) + (aa*(tt + h - twopi) + bb*(stt + sh)) ) / &
+ 	     ((h - t) + (tt + h - twopi))
+  end where
+
+!       averaging period begins after sunset and ends before the
+!       next day's sunrise
+  where(  h <  t .and. twopi - h >= tt  ) cosz = 0.0
+
+!       averaging period begins after sunset and ends after the
+!       next day's sunrise but before the next day's sunset. if the
+!       averaging period is less than a half-day (pi) the latter
+!       circumstance will never occur.
+  where(  h <  t .and. twopi - h < tt  ) 
+      cosz = aa + bb*(stt + sh) / (tt + h - twopi)
+  end where
+
+! 
+!       day fraction is just the fraction of the averaging period
+!       contained within the (-h,h) period.
+  where(      t < -h .and.      tt < -h) fracday = 0.0
+  where(      t < -h .and. abs(tt) <= h) fracday = (tt + h )/dt
+  where(      t < -h .and.       h < tt) fracday = ( h + h )/dt
+  where( abs(t) <= h .and. abs(tt) <= h) fracday = (tt - t )/dt
+  where( abs(t) <= h .and.       h < tt) fracday = ( h - t )/dt
+  where(      h <  t                   ) fracday = 0.0
+  where( twopi - h < tt) fracday = fracday + (tt + h - twopi)/dt
+
+
+else  ! (no time averaging)
+
+
+! t = time of day with respect to local noon (2*pi = 1 day)
+
+  where (abs(t) < h)
+    cosz = aa + bb*cos(t)
+    fracday = 1.0
+  else where
+    cosz = 0.0
+    fracday = 0.0
+  end where
+
+end if
+
+cosz = max(0.0, cosz)
+rrsun = rr
+
+else
+
 
 ! t = time of day with respect to local noon (2*pi = 1 day)
 
@@ -582,29 +675,54 @@ endif
 cosz = max(0.0, cosz)
 solar = cosz*rr
   
+endif
+
 return
 end subroutine diurnal_solar_2d
 !------------------------------------------------------------
 
-subroutine diurnal_solar_1d(cosz, solar, lat, lon, gmt, time_since_ae, dt)
+subroutine diurnal_solar_1d(cosz, solar, lat, lon, gmt, time_since_ae, &
+			     dt, fracday, rrsun)
 
 real, intent(in), dimension(:) :: lat, lon
 real, intent(in) :: gmt, time_since_ae
-real, optional :: dt
+real, intent(in), optional :: dt
+real, intent(out), optional :: rrsun
 real, intent(out), dimension(size(lat)) :: cosz, solar
+real, intent(out), dimension(size(lat)), optional :: fracday
 
-real, dimension(size(lat),1) :: lat_2d, lon_2d, cosz_2d, solar_2d
+real, dimension(size(lat),1) :: lat_2d, lon_2d, cosz_2d, solar_2d, &
+				fracday_2d
 
 lat_2d(:,1) = lat
 lon_2d(:,1) = lon
+if (present (fracday) ) then
 
 if(present(dt)) then
   call diurnal_solar_2d &
-            (cosz_2d, solar_2d, lat_2d, lon_2d, gmt, time_since_ae, dt)
+            (cosz_2d, solar_2d, lat_2d, lon_2d, gmt, time_since_ae,   &
+	     dt=dt, fracday=fracday_2d, rrsun=rrsun)
+else
+    call diurnal_solar_2d &
+            (cosz_2d, solar_2d, lat_2d, lon_2d, gmt, time_since_ae, &
+	      fracday=fracday_2d, rrsun=rrsun)
+end if
+
+fracday = fracday_2d(:,1)
+
+else
+
+if(present(dt)) then
+  call diurnal_solar_2d &
+            (cosz_2d, solar_2d, lat_2d, lon_2d, gmt, time_since_ae,  &
+	     dt=dt)
 else
     call diurnal_solar_2d &
             (cosz_2d, solar_2d, lat_2d, lon_2d, gmt, time_since_ae)
 end if
+
+endif
+
 cosz  = cosz_2d (:,1)
 solar = solar_2d(:,1)
 
@@ -613,24 +731,46 @@ end subroutine diurnal_solar_1d
 
 !------------------------------------------------------------
 
-subroutine diurnal_solar_0d(cosz, solar, lat, lon, gmt, time_since_ae, dt)
+subroutine diurnal_solar_0d(cosz, solar, lat, lon, gmt, time_since_ae, &
+			    dt, fracday, rrsun)
 
 real, intent(in) :: lat, lon, gmt, time_since_ae
 real, optional :: dt
 real, intent(out) :: cosz, solar
+real, intent(out), optional :: fracday, rrsun
 
-real, dimension(1,1) :: lat_2d, lon_2d, cosz_2d, solar_2d
+real, dimension(1,1) :: lat_2d, lon_2d, cosz_2d, solar_2d, fracday_2d
 
 lat_2d = lat
 lon_2d = lon
 
+if (present ( fracday)) then
+
 if(present(dt)) then
   call diurnal_solar_2d &
-            (cosz_2d, solar_2d, lat_2d, lon_2d, gmt, time_since_ae, dt)
+            (cosz_2d, solar_2d, lat_2d, lon_2d, gmt, time_since_ae,  &
+	     dt=dt, fracday=fracday_2d, rrsun=rrsun)
+else
+    call diurnal_solar_2d &
+            (cosz_2d, solar_2d, lat_2d, lon_2d, gmt, time_since_ae, &
+	     fracday=fracday_2d, rrsun=rrsun)
+end if
+
+fracday = fracday_2d(1,1)
+
+else
+
+if(present(dt)) then
+  call diurnal_solar_2d &
+            (cosz_2d, solar_2d, lat_2d, lon_2d, gmt, time_since_ae,  &
+	     dt=dt)
 else
     call diurnal_solar_2d &
             (cosz_2d, solar_2d, lat_2d, lon_2d, gmt, time_since_ae)
 end if
+
+endif
+
 cosz = cosz_2d(1,1)
 solar = solar_2d(1,1)
 
@@ -639,12 +779,16 @@ end subroutine diurnal_solar_0d
 
 !-------------------------------------------------------------
 
-subroutine diurnal_solar_cal_2d(cosz, solar, lat, lon, time, dt_time) 
+subroutine diurnal_solar_cal_2d(cosz, solar, lat, lon, time, dt_time, &
+				fracday, rrsun) 
 
 real, intent(in), dimension(:,:) :: lat, lon
 type(time_type), intent(in) :: time
 type(time_type), optional:: dt_time
 real, intent(out), dimension(size(lat,1),size(lat,2)) :: cosz, solar
+real, intent(out), dimension(size(lat,1),size(lat,2)), optional ::    &
+				   fracday
+real, intent(out), optional :: rrsun
 
 real :: dt
 real :: gmt, time_since_ae
@@ -656,57 +800,111 @@ dt = 0.0
 if(present(dt_time)) dt = universal_time(dt_time)
 time_since_ae = orbital_time(time)
 
+if ( present(fracday) ) then
+  if(dt.gt.0.0) then
+    call diurnal_solar_2d (cosz, solar, lat, lon, gmt, time_since_ae, &
+		           dt=dt, fracday=fracday, rrsun=rrsun)
+  else
+    call diurnal_solar_2d (cosz, solar, lat, lon, gmt, time_since_ae, &
+		           fracday=fracday, rrsun=rrsun)
+  end if
+else
+
 if(dt.gt.0.0) then
-  call diurnal_solar_2d(cosz, solar, lat, lon, gmt, time_since_ae, dt)
+  call diurnal_solar_2d(cosz, solar, lat, lon, gmt, time_since_ae, dt=dt)
 else
   call diurnal_solar_2d(cosz, solar, lat, lon, gmt, time_since_ae)
 end if
 
+endif
+
 return
+
 end subroutine diurnal_solar_cal_2d
 !------------------------------------------------------------
 
-subroutine diurnal_solar_cal_1d(cosz, solar, lat, lon, time, dt_time)
+!subroutine diurnal_solar_cal_1d(cosz, solar, lat, lon, time, dt_time)
+subroutine diurnal_solar_cal_1d(cosz, solar, lat, lon, time, dt_time, &
+				fracday, rrsun)
 
 real, intent(in), dimension(:) :: lat, lon
 type(time_type), intent(in) :: time
 type(time_type), optional   :: dt_time
 real, intent(out), dimension(size(lat)) :: cosz, solar
+real, intent(out), dimension(size(lat)), optional :: fracday    
+real, intent(out) :: rrsun
 
 
-real, dimension(size(lat),1) :: lat_2d, lon_2d, cosz_2d, solar_2d
+real, dimension(size(lat),1) :: lat_2d, lon_2d, cosz_2d, solar_2d, &
+				fracday_2d
 
 lat_2d(:,1) = lat
 lon_2d(:,1) = lon
+
+if (present (fracday) ) then
+
+if(present(dt_time)) then
+  call diurnal_solar_cal_2d(cosz_2d, solar_2d, lat_2d, lon_2d, time,  &
+			    dt_time, fracday=fracday_2d, rrsun=rrsun)
+else
+  call diurnal_solar_cal_2d(cosz_2d, solar_2d, lat_2d, lon_2d, time, &
+			     fracday=fracday_2d, rrsun=rrsun)
+end if
+
+fracday = fracday_2d(:,1)
+
+else
 
 if(present(dt_time)) then
   call diurnal_solar_cal_2d(cosz_2d, solar_2d, lat_2d, lon_2d, time, dt_time)
 else
   call diurnal_solar_cal_2d(cosz_2d, solar_2d, lat_2d, lon_2d, time)
 end if
+
+endif
+
 cosz  = cosz_2d (:,1)
 solar = solar_2d(:,1)
 
 return
 end subroutine diurnal_solar_cal_1d
 !------------------------------------------------------------
-subroutine diurnal_solar_cal_0d(cosz, solar, lat, lon, time, dt_time)
+subroutine diurnal_solar_cal_0d(cosz, solar, lat, lon, time, dt_time, &
+				 fracday, rrsun)
 
 real, intent(in) :: lat, lon
 type(time_type), intent(in) :: time
 type(time_type), optional   :: dt_time
 real, intent(out) :: cosz, solar
+real, intent(out), optional ::    fracday
+real, intent(out), optional :: rrsun
 
-real, dimension(1,1) :: lat_2d, lon_2d, cosz_2d, solar_2d
+real, dimension(1,1) :: lat_2d, lon_2d, cosz_2d, solar_2d, fracday_2d
 
 lat_2d = lat
 lon_2d = lon
+
+if (present(fracday) ) then
+
+  if(present(dt_time)) then
+   call diurnal_solar_cal_2d(cosz_2d, solar_2d, lat_2d, lon_2d, time, &
+			    dt_time, fracday=fracday_2d, rrsun=rrsun)
+  else
+   call diurnal_solar_cal_2d(cosz_2d, solar_2d, lat_2d, lon_2d, time, &
+			     fracday=fracday_2d, rrsun=rrsun)
+  end if
+
+  fracday= fracday_2d(1,1)
+
+else
 
 if(present(dt_time)) then
   call diurnal_solar_cal_2d(cosz_2d, solar_2d, lat_2d, lon_2d, time, dt_time)
 else
   call diurnal_solar_cal_2d(cosz_2d, solar_2d, lat_2d, lon_2d, time)
 end if
+
+endif
 
 cosz = cosz_2d(1,1)
 solar = solar_2d(1,1)
@@ -755,11 +953,15 @@ return
 end function half_day_0d
 !---------------------------------------------------------------
 
-subroutine daily_mean_solar_2d(cosz, solar, lat, time_since_ae) 
+subroutine daily_mean_solar_2d(cosz, solar, lat, time_since_ae, &
+			       h_out, rr_out) 
 
 real, intent(in), dimension(:,:) :: lat
 real, intent(in) :: time_since_ae
 real, intent(out), dimension(size(lat,1),size(lat,2)) :: solar, cosz
+real, intent(out), dimension(size(lat,1),size(lat,2)), optional :: h_out
+real, intent(out), optional :: rr_out
+
 real, dimension(size(lat,1),size(lat,2)) :: h
 real :: ang, dec, rr
 
@@ -783,21 +985,35 @@ end where
 
 solar = cosz*rr*h/pi
 
+if (present (h_out) ) then
+  h_out = h/pi
+  rr_out = rr
+endif
 
 
 return
 end subroutine daily_mean_solar_2d
 
 !--------------------------------------------------------------
-subroutine daily_mean_solar_1d(cosz, solar, lat, time_since_ae) 
+subroutine daily_mean_solar_1d(cosz, solar, lat, time_since_ae, &
+				h_out, rr_out) 
 
 real, intent(in), dimension(:) :: lat
 real, intent(in) :: time_since_ae
 real, intent(out), dimension(size(lat)) :: solar, cosz
-real, dimension(size(lat),1) :: lat_2d, solar_2d, cosz_2d
+real, intent(out), dimension(size(lat)), optional :: h_out
+real, intent(out), optional :: rr_out
+real, dimension(size(lat),1) :: lat_2d, solar_2d, cosz_2d, hout_2d
 
 lat_2d(:,1) = lat
-call daily_mean_solar_2d(cosz_2d, solar_2d, lat_2d, time_since_ae)
+if (present (h_out)) then
+  call daily_mean_solar_2d(cosz_2d, solar_2d, lat_2d, time_since_ae, &
+			    hout_2d, rr_out)
+   h_out = hout_2d(:,1)
+else
+  call daily_mean_solar_2d(cosz_2d, solar_2d, lat_2d, time_since_ae)
+endif
+
 solar = solar_2d(:,1)
 cosz  = cosz_2d(:,1)
 
@@ -805,14 +1021,22 @@ return
 end subroutine daily_mean_solar_1d
 
 !--------------------------------------------------------------
-subroutine daily_mean_solar_0d(cosz, solar, lat, time_since_ae) 
+subroutine daily_mean_solar_0d(cosz, solar, lat, time_since_ae, &
+			       h_out, rr_out) 
 
 real, intent(in) :: lat, time_since_ae
 real, intent(out) :: solar, cosz
-real, dimension(1,1) :: lat_2d, solar_2d, cosz_2d
+real, intent(out), optional  :: h_out, rr_out
+real, dimension(1,1) :: lat_2d, solar_2d, cosz_2d, hout_2d
 
 lat_2d = lat
-call daily_mean_solar_2d(cosz_2d, solar_2d, lat_2d, time_since_ae)
+if (present (h_out)) then
+  call daily_mean_solar_2d(cosz_2d, solar_2d, lat_2d, time_since_ae, &
+			    hout_2d, rr_out)
+  h_out = hout_2d(1,1)
+else
+  call daily_mean_solar_2d(cosz_2d, solar_2d, lat_2d, time_since_ae)
+endif
 solar = solar_2d(1,1)
 cosz  = cosz_2d(1,1)
 
@@ -820,11 +1044,15 @@ return
 end subroutine daily_mean_solar_0d
 
 !--------------------------------------------------------------
-subroutine daily_mean_solar_cal_2d(cosz, solar, lat, time) 
+subroutine daily_mean_solar_cal_2d(cosz, solar, lat, time, fracday,  &
+				   rrsun) 
 
 real, intent(in), dimension(:,:) :: lat
 type(time_type), intent(in) :: time
 real, intent(out), dimension(size(lat,1),size(lat,2)) :: solar, cosz
+real, intent(out), dimension(size(lat,1),size(lat,2)), optional ::  &
+					   fracday 
+real, intent(out), optional :: rrsun
 
 real :: time_since_ae
 
@@ -836,21 +1064,36 @@ if(time_since_ae.lt.0.0.or.time_since_ae.gt.twopi) &
      call error_mesg('DAILY_MEAN_SOLAR in ASTRONOMY_MOD', &
                            'time_since_ae not between 0 and 2pi', FATAL)
 
-call daily_mean_solar_2d(cosz, solar, lat, time_since_ae) 
+if (present (fracday) ) then
+  call daily_mean_solar_2d(cosz, solar, lat, time_since_ae,  &
+			   h_out=fracday, rr_out=rrsun)
+else
+  call daily_mean_solar_2d(cosz, solar, lat, time_since_ae) 
+endif
 
 return
 end subroutine daily_mean_solar_cal_2d
 
 !--------------------------------------------------------------
-subroutine daily_mean_solar_cal_1d(cosz, solar, lat, time) 
+subroutine daily_mean_solar_cal_1d(cosz, solar, lat, time, fracday, &
+				   rrsun) 
 
 real, intent(in), dimension(:) :: lat
 type(time_type), intent(in) :: time
 real, intent(out), dimension(size(lat)) :: solar, cosz
-real, dimension(size(lat),1) :: lat_2d, solar_2d, cosz_2d
+real, intent(out), dimension(size(lat)), optional :: fracday
+real, intent(out), optional :: rrsun
+real, dimension(size(lat),1) :: lat_2d, solar_2d, cosz_2d, fracday_2d
 
 lat_2d(:,1) = lat
-call daily_mean_solar_cal_2d(cosz_2d, solar_2d, lat_2d, time)
+if (present (fracday) ) then
+   call daily_mean_solar_cal_2d(cosz_2d, solar_2d, lat_2d, time,   &
+				fracday=fracday_2d, rrsun=rrsun)
+   fracday = fracday_2d(:,1)
+else
+   call daily_mean_solar_cal_2d(cosz_2d, solar_2d, lat_2d, time)
+endif
+
 solar = solar_2d(:,1)
 cosz  = cosz_2d(:,1)
 
@@ -858,15 +1101,25 @@ return
 end subroutine daily_mean_solar_cal_1d
 
 !--------------------------------------------------------------
-subroutine daily_mean_solar_cal_0d(cosz, solar, lat, time) 
+subroutine daily_mean_solar_cal_0d(cosz, solar, lat, time, fracday, &
+				    rrsun) 
 
 real, intent(in) :: lat
 type(time_type), intent(in) :: time
 real, intent(out) :: solar, cosz
-real, dimension(1,1) :: lat_2d, solar_2d, cosz_2d
+real, intent(out), optional :: fracday, rrsun
+real, dimension(1,1) :: lat_2d, solar_2d, cosz_2d, fracday_2d
 
 lat_2d = lat
-call daily_mean_solar_cal_2d(cosz_2d, solar_2d, lat_2d, time)
+
+if (present(fracday) ) then
+  call daily_mean_solar_cal_2d(cosz_2d, solar_2d, lat_2d, time,   &
+			       fracday=fracday_2d, rrsun=rrsun)
+  fracday = fracday_2d(1,1)
+else
+  call daily_mean_solar_cal_2d(cosz_2d, solar_2d, lat_2d, time)
+endif
+
 solar = solar_2d(1,1)
 cosz  = cosz_2d(1,1)
 
@@ -875,10 +1128,14 @@ end subroutine daily_mean_solar_cal_0d
 
 !--------------------------------------------------------------
 
-subroutine annual_mean_solar_2d(cosz,solar,lat)
+subroutine annual_mean_solar_2d(cosz,solar,lat, fracday, rrsun)
 
 real, intent(in) :: lat(:,:)
 real, intent(out), dimension(size(lat,1),size(lat,2)) :: solar, cosz
+real, intent(out), dimension(size(lat,1),size(lat,2)), optional :: &
+					      fracday
+real, intent(out), optional :: rrsun
+
 real, dimension(size(lat,1),size(lat,2)) :: s,z
 real :: t
 integer :: i
@@ -902,20 +1159,52 @@ elsewhere
   cosz = cosz/solar
 end where
 
+if (present(fracday) ) then
+
+!-------------------------------------------------------------------
+!  define avg fracday such as to make the avg flux (solar) equal to the 
+!  product of the avg cosz * avg fracday * assumed mean avg radius 
+!  of 1.0. it is unlikely that these avg fracday and avg rr will ever
+!  be used.
+!--------------------------------------------------------------------
+
+  where(solar  .eq.0.0) 
+    fracday = 0.0
+  elsewhere
+    fracday = solar/cosz
+  end where
+
+  rrsun = 1.00
+
+endif
+
 return
+
 end subroutine annual_mean_solar_2d
 
 !--------------------------------------------------------------
 
-subroutine annual_mean_solar_1d(cosz,solar,lat)
+subroutine annual_mean_solar_1d(cosz,solar,lat, fracday, rrsun_out)
 
 real, intent(in) :: lat(:)
 real, intent(out), dimension(size(lat)) :: solar, cosz
+real, intent(out), dimension(size(lat)), optional :: fracday
+real, intent(out), optional :: rrsun_out
 
-real, dimension(size(lat),1) :: lat_2d, solar_2d, cosz_2d
+real, dimension(size(lat),1) :: lat_2d, solar_2d, cosz_2d, fracday_2d
+real :: rrsun
 
 lat_2d(:,1) = lat
-call annual_mean_solar_2d(cosz_2d, solar_2d, lat_2d)
+
+if (present (fracday)) then
+  call annual_mean_solar_2d(cosz_2d, solar_2d, lat_2d,   &
+			    fracday=fracday_2d, rrsun=rrsun)
+  fracday = fracday_2d(:,1)
+  rrsun_out = rrsun
+else
+  call annual_mean_solar_2d(cosz_2d, solar_2d, lat_2d)
+endif
+
 solar = solar_2d(:,1)
 cosz  =  cosz_2d(:,1)
 

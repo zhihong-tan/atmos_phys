@@ -233,7 +233,8 @@ call radiation_driver_end
   do_diurnal         Switch to turn on/off diurnal radiation.
                        [logical, default: do_diurnal=.false.]
 
-  do_annual          Switch to turn on/off mean annual radiation,
+  do_annual          Switch to turn on/off mean annual radiation. 
+		     NB: Fatal error results if do_diurnal==.true. and do_annual==.true.
                        [logical, default: do_annual=.false.]
 
   do_average         Switch to turn on/off time averaged input data over the radiation
@@ -248,11 +249,17 @@ call radiation_driver_end
   solar_constant     The solar constant in watts/m2.
                        [real, default: solar_constant=1365.]
 
+  rsd                Switch that determines whether repeating-single-day forcing is to be used. Used with
+		     rad_date (see below).
+			[logical, default: false]
+
   rad_date           A fixed date (year,month,day,hour,min,sec) for the radiation 
                      calculation. This date will be used for the solar information,
                      prescribed ozone, and prescribed clouds. If no year is
                      specified (rad_date(1)=0) then the input argument time
-                     (see interface radiation_driver) will be used, this is the default.
+                     (see interface radiation_driver) will be used, this is the default. 
+		     If rsd=.true., the (year,month,day) entries are used as the single fixed calendar date
+		     for a repeating-single-day integration, and the time of day used is the model time of day.
                        [real, dimension(6), default: rad_date=0,0,0,0,0,0]
 
   co2std             The standard co2 volume mixing ratio (either 300 or 330 ppmv).
@@ -261,6 +268,8 @@ call radiation_driver_end
   ratio              The co2 volume mixing ratio in units of the standard volume
                      mixing ratio (co2std), where ratio must lie between 0.5 and 4.0.
                        [real, default: ratio=1.0]
+
+  ipt,jpt	     Specify columns in which radiation diagnostics are desired. [integer, default: ipt = -35, jpt = -35]
 
 Note:
 

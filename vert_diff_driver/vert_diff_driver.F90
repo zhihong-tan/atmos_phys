@@ -57,7 +57,7 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !---- version number ----
 
 character(len=128) :: version = '$Id: vert_diff_driver.F90,v 1.2 2000/07/28 20:16:47 fms Exp $'
-character(len=128) :: tag = '$Name: damascus $'
+character(len=128) :: tag = '$Name: eugene $'
 
 logical :: do_init = .true.
 

@@ -7,6 +7,7 @@
 !         ---------------------------------------
 !             moist convective adjustment
 !             relaxed arakawa-schubert
+!             donner deep convection
 !             large-scale condensation
 !             stratiform prognostic cloud scheme 
 !             rel humidity cloud scheme 
@@ -14,6 +15,8 @@
 !
 !-----------------------------------------------------------------------
 
+use      donner_deep_mod,only: donner_deep_init, donner_deep_time_vary,&
+			       donner_deep, donner_deep_end
 use      moist_conv_mod, only: moist_conv, moist_conv_init
 use     lscale_cond_mod, only: lscale_cond, lscale_cond_init
 use  sat_vapor_pres_mod, only: tcheck,escomp
@@ -57,6 +60,7 @@ private
 !-----------------------------------------------------------------------
 !-------------------- private data -------------------------------------
 
+
    integer           :: num_calls, len_pat, tot_pts, num_pts
       real,parameter :: epst=200.
    logical           :: do_init=.true.
@@ -65,8 +69,8 @@ private
    real, parameter :: d378 = 1.-d622
 
 !--------------------- version number ----------------------------------
-   character(len=128) :: version = '$Id: moist_processes.F90,v 1.5 2001/03/06 18:50:47 fms Exp $'
-   character(len=128) :: tag = '$Name: damascus $'
+   character(len=128) :: version = '$Id: moist_processes.F90,v 1.6 2001/07/05 17:26:19 fms Exp $'
+   character(len=128) :: tag = '$Name: eugene $'
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
 
@@ -74,8 +78,12 @@ private
    logical :: do_mca=.true., do_lsc=.true., do_ras=.false.,  &
               do_strat=.false., do_dryadj=.false., &
               do_rh_clouds=.false., do_diag_clouds=.false., &
-              use_tau=.false.
+	      do_donner_deep=.false., &
+              use_tau=.false., &
+	      reset_t_for_estable = .false.
    character(len=8) :: call_pat = 'x       '
+   real  :: reset_delta = 0.01   ! if t is reset, it is set to be this
+				 ! far away from table limit
 
 !------ tracer mapping for stratiform cloud scheme ------
 
@@ -92,6 +100,8 @@ private
 !                [logical, default: do_lsc=true ]
 !   do_ras   = switch to turn on/off relaxed arakawa shubert
 !                [logical, default: do_ras=false ]
+! do_donner_deep = switch to turn on/off donner deep convection scheme
+!                [logical, default: do_donner_deep=false ]
 !   do_strat = switch to turn on/off stratiform cloud scheme
 !                [logical, default: do_strat=false ]
 ! do_rh_clouds = switch to turn on/off simple relative humidity cloud scheme
@@ -113,7 +123,7 @@ private
 !                [real, default: tfreeze=273.16]
 !   nql,nqi,nqa  = tracer number (index) for cloud liquid water,ice,and
 !                fraction,respectively.  [integer, default: nql=nqi=nqa=0]
-!   notes: 1) do_mca and do_ras   cannot both be true
+!   notes: 1) only one of do_mca, do_donner_deep and do_ras may be true
 !          2) do_lsc and do_strat cannot both be true
 !          3) pdepth and tfreeze are used to determine liquid vs. solid
 !             precipitation for mca, lsc, and ras schemes, the 
@@ -126,7 +136,9 @@ private
 namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_strat,  &
                                do_dryadj, pdepth, tfreeze,        &
                                nql, nqi, nqa, use_tau, call_pat,  &
-                               do_rh_clouds, do_diag_clouds
+                               do_rh_clouds, do_diag_clouds,      &
+			       do_donner_deep, reset_t_for_estable, &
+			       reset_delta
 
 !-----------------------------------------------------------------------
 !-------------------- diagnostics fields -------------------------------
@@ -134,10 +146,14 @@ namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_strat,  &
 integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_tdt_ls  , id_qdt_ls  , id_prec_ls  , id_snow_ls  , &
            id_precip  , id_WVP, id_LWP, id_IWP, &
-           id_tdt_dadj, id_rh,  id_mc
+           id_tdt_dadj, id_rh,  id_mc, &
+	   id_tdt_deep_donner, id_tdt_mca_donner, id_qdt_deep_donner,  &
+	   id_qdt_mca_donner, id_prec_deep_donner, id_prec_mca_donner,&
+	   id_snow_deep_donner, id_snow_mca_donner
 
 character(len=5) :: mod_name = 'moist'
 
+logical :: reset_temp
 real :: missing_value = -999.
 
 !-----------------------------------------------------------------------
@@ -244,14 +260,19 @@ type(time_type), intent(in)              :: Time
 integer, intent(in) , dimension(:,:),   optional :: kbot
 
 !-----------------------------------------------------------------------
-real, dimension(size(t,1),size(t,2),size(t,3)) :: tin,qin,ttnd,qtnd
+!real, dimension(size(t,1),size(t,2),size(t,3)) :: tin,qin,ttnd,qtnd
+real, dimension(size(t,1),size(t,2),size(t,3)) :: tin,qin,ttnd,qtnd, &
+						  rin, rtnd, rfct
+real, dimension(size(t,1),size(t,2),size(t,3)) :: ttnd_save,qtnd_save
 real, dimension(size(t,1),size(t,2))           :: tsnow,snow
+real, dimension(size(t,1),size(t,2))           :: snow_save, rain_save
 logical,dimension(size(t,1),size(t,2))         :: coldT
 real, dimension(size(t,1),size(t,2),size(t,3)) :: utnd,vtnd,uin,vin
 
 real, dimension(size(t,1),size(t,2),size(t,3)) :: qltnd,qitnd,qatnd, &
                                                   qlin, qiin, qain
 real, dimension(size(t,1),size(t,2),size(t,3)+1) :: mc,mask3
+real, dimension(size(t,1),size(t,2),size(t,3)) :: mc_full
 real, dimension(size(t,1),size(t,2),size(t,3)) :: RH, pmass
 real, dimension(size(t,1),size(t,2))           :: rain, precip
 real, dimension(size(t,1),size(t,2))           :: wvp,lwp,iwp
@@ -260,6 +281,14 @@ integer unit,n
 integer :: i, j, k, ix, jx, kx, nt, ipat, ip
 real    :: dtinv, fdt
 logical :: use_mask, do_adjust, used
+
+real, dimension(size(t,1),size(t,2),size(t,3)+1) :: press
+real, dimension(size(t,1),size(t,2),size(t,3)) :: tin_in
+integer, dimension(size(t,1),size(t,2),size(t,3)) :: iflag
+real, dimension(size(t,1),size(t,2)            ) :: omega_btm
+
+real :: tinsave
+
 !-----------------------------------------------------------------------
 
 ! The following local quantitities are used exclusively for diagnostic clouds
@@ -388,7 +417,11 @@ if (do_adjust .or. do_strat) then
 
 !------ check temperatures (must be with range of es lookup table) -----
 
-      call tempcheck (is,ie,js,je,tin)
+      if (reset_temp) then
+        call tempcheck (is,ie,js,je,tin, reset_temp)
+      else
+        call tempcheck (is,ie,js,je,tin)
+      endif
 
 !----------------- mean temp in lower atmosphere -----------------------
 !----------------- used for determination of rain vs. snow -------------
@@ -422,6 +455,177 @@ if (do_dryadj) then
      endif
 ! ----------------------------------------------------------------------
 end if
+
+!---------------------------------------------------------------------
+!   activate donner convection scheme
+!---------------------------------------------------------------------
+
+if (do_donner_deep) then
+
+ if (do_adjust) then
+   iflag(:,:,:) = 0
+   call donner_deep_time_vary  (dt_in=dt, Time_in=Time)
+   omega_btm(:,:) = omega(:,:,kx)
+
+!--------------------------------------------------------------------
+! convert specific humidity to mixing ratio for input to donner_deep
+!--------------------------------------------------------------------
+   rin = qin/(1.0 - qin/d622)
+   if (do_strat) then
+     call donner_deep (is, js, tin, rin, pfull, phalf, coldT,   &
+		       omega_btm, iflag, ttnd, rtnd, rain, snow,   &
+		       Lbot=kbot, cf=qain, cfdel=qatnd, qldel=qltnd, &
+		       qidel=qitnd, Time=Time)
+   else
+     call donner_deep (is, js, tin, rin, pfull, phalf, coldT,   &
+		       omega_btm, iflag, ttnd, rtnd, rain, snow,   &
+		       Lbot=kbot, Time=Time)
+   endif
+
+!--------------------------------------------------------------------
+!  convert mixing ratio tendency from donner_deep to specific humidity 
+!  tendency
+!--------------------------------------------------------------------
+   rfct = 1.0 + rin/d622
+   qtnd =  rtnd/rfct
+
+!------- update input values and compute tendency -------
+                    
+      tin=tin+ttnd;    qin=qin+qtnd
+      
+      ttnd=ttnd*dtinv; qtnd=qtnd*dtinv
+      rain=rain*dtinv; snow=snow*dtinv
+
+!------- add on tendency ----------
+
+     tdt=tdt+ttnd; qdt=qdt+qtnd
+
+!----------------------------------------------------------------
+!  save tendencies and precip forms due to deep convection as diag-
+!  nosed in donner_deep
+!----------------------------------------------------------------
+     if (id_tdt_deep_donner > 0) then
+       used = send_data ( id_tdt_deep_donner, ttnd, Time, is, js, 1, &
+                        rmask=mask )
+     endif
+
+     if (id_qdt_deep_donner > 0) then
+       used = send_data ( id_qdt_deep_donner, qtnd, Time, is, js, 1, &
+                        rmask=mask )
+     endif
+
+     if (id_prec_deep_donner > 0) then
+       used = send_data ( id_prec_deep_donner, rain+snow, Time, is, js )
+     endif
+
+     if (id_snow_deep_donner > 0) then
+       used = send_data ( id_snow_deep_donner, snow, Time, is, js)
+     endif
+
+
+!------- update input values , compute and add on tendency -----------
+!-------              in the case of strat                 -----------
+
+      if (do_strat) then
+!        qlin=qlin+qltnd; qiin=qiin+qitnd; qain=qain+qatnd
+
+!        qltnd=qltnd*dtinv; qitnd=qitnd*dtinv; qatnd=qatnd*dtinv
+         
+!        rdt(:,:,:,nql)=rdt(:,:,:,nql)+qltnd(:,:,:)
+!        rdt(:,:,:,nqi)=rdt(:,:,:,nqi)+qitnd(:,:,:)
+!        rdt(:,:,:,nqa)=rdt(:,:,:,nqa)+qatnd(:,:,:)
+
+      end if
+
+!------- save total precip and snow ---------
+      lprec=lprec+rain
+      fprec=fprec+snow
+      precip=precip+rain+snow
+
+      rain_save = rain
+      snow_save = snow
+      ttnd_save = ttnd
+      qtnd_save = qtnd
+
+!------ check temperatures (must be with range of es lookup table) -----
+
+      if (reset_temp) then
+        call tempcheck (is,ie,js,je,tin, reset_temp)
+      else
+        call tempcheck (is,ie,js,je,tin)
+      endif
+
+!--------------------------------------------------------------------
+!  call moist convective adjustment to handle any shallow convection
+!--------------------------------------------------------------------
+
+      call moist_conv (tin,qin,pfull,phalf,coldT,&
+                       ttnd,qtnd,rain,snow,Lbot=kbot)
+
+!------- update input values and compute tendency -------
+                    
+      tin=tin+ttnd;    qin=qin+qtnd
+      
+      ttnd=ttnd*dtinv; qtnd=qtnd*dtinv
+      rain=rain*dtinv; snow=snow*dtinv
+      
+
+!------- add on tendency ----------
+      tdt=tdt+ttnd; qdt=qdt+qtnd
+
+!---------------------------------------------------------------------
+!   save the tendencies and precip from the moist convective 
+!   adjustment pass associated with donner_deep
+!---------------------------------------------------------------------
+      if (id_tdt_mca_donner > 0) then
+        used = send_data ( id_tdt_mca_donner, ttnd, Time, is, js, 1, &
+                         rmask=mask )
+      endif
+
+      if (id_qdt_mca_donner > 0) then
+        used = send_data ( id_qdt_mca_donner, qtnd, Time, is, js, 1, &
+                         rmask=mask )
+      endif
+
+      if (id_prec_mca_donner > 0) then
+        used = send_data ( id_prec_mca_donner, rain+snow, Time, is, js ) 
+      endif
+
+      if (id_snow_mca_donner > 0) then
+        used = send_data ( id_snow_mca_donner, snow, Time, is, js)
+      endif
+
+
+!------- update input values , compute and add on tendency -----------
+!-------              in the case of strat                 -----------
+
+      if (do_strat) then
+!        qlin=qlin+qltnd; qiin=qiin+qitnd; qain=qain+qatnd
+
+!        qltnd=qltnd*dtinv; qitnd=qitnd*dtinv; qatnd=qatnd*dtinv
+         
+!        rdt(:,:,:,nql)=rdt(:,:,:,nql)+qltnd(:,:,:)
+!        rdt(:,:,:,nqi)=rdt(:,:,:,nqi)+qitnd(:,:,:)
+!        rdt(:,:,:,nqa)=rdt(:,:,:,nqa)+qatnd(:,:,:)
+
+      end if
+
+!------- save total precip and snow ---------
+      lprec=lprec+rain
+      fprec=fprec+snow
+      precip=precip+rain+snow
+
+!--------------------------------------------------------------------
+!  define sum of contributions from the deep pass and the moist conv
+!  pass
+!--------------------------------------------------------------------
+      rain = rain_save + rain
+      snow = snow_save + snow
+      ttnd = ttnd_save + ttnd
+      qtnd = qtnd_save + qtnd
+
+    endif  ! do_adjust
+endif  ! do_donner_deep
 
 !-----------------------------------------------------------------------
 !***********************************************************************
@@ -485,6 +689,9 @@ if (do_adjust) then
    if (do_strat) then
       call ras (tin,qin,uin,vin,pfull,phalf,coldT,dt,ttnd,qtnd,&
          utnd,vtnd,rain,snow,kbot,qlin,qiin,qain,mc,qltnd,qitnd,qatnd)
+!     do k=1,kx
+!       mc_full(:,:,k) = 0.5*(mc(:,:,k) + mc(:,:,k+1))
+!     end do
    else if ( id_mc > 0 ) then
       call ras (tin,qin,uin,vin,pfull,phalf,coldT,dt,ttnd,qtnd,&
          utnd,vtnd,rain,snow,kbot=kbot,mc0=mc)
@@ -531,7 +738,7 @@ endif
 !***********************************************************************
 !--------------- DIAGNOSTICS FOR CONVECTIVE SCHEME ---------------------
 !-----------------------------------------------------------------------
- if ( do_mca .or. do_ras ) then
+ if ( do_mca .or. do_ras .or. do_donner_deep ) then
 !------- diagnostics for dt/dt_ras -------
       if ( id_tdt_conv > 0 ) then
         used = send_data ( id_tdt_conv, ttnd, Time, is, js, 1, &
@@ -619,7 +826,11 @@ if (do_adjust) then
            
 !--- check adjusted temperatures to be within es lookup table range -----
 
-      call tempcheck (is,ie,js,je,tin)
+      if (reset_temp) then
+        call tempcheck (is,ie,js,je,tin, reset_temp)
+      else
+        call tempcheck (is,ie,js,je,tin)
+      endif
 
 ! pass cloud predictors to diag_cloud_sum
            call diag_cloud_sum (is,js, &
@@ -642,9 +853,14 @@ endif
                      if (do_strat) then
 !-----------------------------------------------------------------------
 !del if (do_adjust) then
+         do k=1,kx
+	   mc_full(:,:,k) = 0.5*(mc(:,:,k) + mc(:,:,k+1))
+         end do
          call strat_driv (is,ie,js,je,dt*fdt,pfull,phalf,&
                           tin,qin,qlin,qiin,qain,&
-                          omega,mc,land,ttnd,qtnd,qltnd,qitnd,qatnd,&
+!                         omega,mc,land,ttnd,qtnd,qltnd,qitnd,qatnd,&
+                          omega,mc_full,land,ttnd,qtnd,qltnd,qitnd, &
+			  qatnd,&
                           rain,snow,mask=mask)
       
 !------- update fields before passing to the clouds
@@ -821,6 +1037,21 @@ integer  unit,io,ierr,nt
          if (do_strat) then
          endif
 
+         if (do_mca .and. do_donner_deep) call error_mesg &
+                 ('moist_processes_init',  &
+            'both do_donner_deep and do_mca cannot be specified', FATAL)
+
+         if (do_ras .and. do_donner_deep) call error_mesg &
+                 ('moist_processes_init',  &
+            'both do_donner_deep and do_ras cannot be specified', FATAL)
+
+      endif
+
+
+      if (reset_t_for_estable) then
+        reset_temp = .true.
+      else 
+        reset_temp = .false.
       endif
 
 !----------- determine length of calling pattern ------------
@@ -860,6 +1091,7 @@ integer  unit,io,ierr,nt
       if (do_ras)    call         ras_init ()
       if (do_strat)  call       strat_init (axes,Time,id,jd,kd)
       if (do_dryadj) call     dry_adj_init ()
+      if (do_donner_deep) call donner_deep_init (kd, Time, axes)
 
 !----- initialize quantities for global integral package -----
 
@@ -893,6 +1125,7 @@ integer  unit
       if (do_strat)     call     strat_end
       if (do_rh_clouds) call rh_clouds_end
       if (do_diag_clouds) call diag_cloud_end
+      if (do_donner_deep) call donner_deep_end
 
 !-----------------------------------------------------------------------
 
@@ -958,43 +1191,68 @@ end subroutine moist_processes_end
 
 !#######################################################################
 
-      subroutine tempcheck (is,ie,js,je,temp)
+      subroutine tempcheck (is, ie, js, je, temp, reset)
 
 !-----------------------------------------------------------------------
-      integer, intent(in)                   :: is,ie,js,je
-         real, intent(in), dimension(:,:,:) :: temp
+!   tempcheck checks to determine if temperatures are within the range 
+!   of es lookup table, and optionally may reset them to so be.
 !-----------------------------------------------------------------------
-      integer numbad,i,j,k
 
-!------ check temperatures (must be with range of es lookup table) -----
+integer,                intent(in)              :: is,ie,js,je
+real,  dimension(:,:,:),intent(inout)           :: temp
+logical,                intent(in),   optional  :: reset
 
-              call tcheck (temp,numbad)
 
-              if (numbad > 0) then
+!---------------------------------------------------------------------
+        integer numbad, k, j
 
-                   print *, 'pe,numbad,is,js=',get_my_pe(),numbad,is,js
+!--------------------------------------------------------------------
+!   call tcheck to check for bad temperatures. if reset is present,
+!   then any bad temps will be reset to a value reset_delta from the 
+!   table edge.
+!--------------------------------------------------------------------
+        if (present (reset) ) then
+          call tcheck (temp, numbad, reset_delta)
 
-                   do k=1,size(temp,3)
-                     call tcheck (temp(:,:,k),numbad)
-                     print *, 'pe,k,numbad=',get_my_pe(),k,numbad
-                   enddo
+!---------------------------------------------------------------------
+!   any bad temps are printed for evaluation.
+!---------------------------------------------------------------------
+          if (numbad > 0) then
+            print *, 'the above ',numbad , ' values were found on &
+	      & pe ', get_my_pe(), 'in the window with is and js == ', &
+	       is, js
+          endif
 
-                 if (size(temp,2) > 1) then
-                   do j=1,size(temp,2)
-                     call tcheck (temp(:,j,:),numbad)
-!del                 print *, 'pe,j,numbad=',get_my_pe(),j,numbad
-                   enddo
-                 endif
+!---------------------------------------------------------------------
+!   if reset is not present, any bad temps will cause job shutdown.
+!   print desired information in such a case.
+!---------------------------------------------------------------------
+        else
+          call tcheck (temp, numbad)
+          if (numbad > 0) then
+            print *, 'pe,numbad,is,js=',get_my_pe(),numbad,is,js
+            do k=1,size(temp,3)
+              call tcheck (temp(:,:,k),numbad)
+              print *, 'pe,k,numbad=', get_my_pe(), k,numbad
+            enddo
+            if (size(temp,2) > 1) then
+	      do j=1,size(temp,2)
+	        call tcheck (temp(:,j,:), numbad)
+!del            print *, 'pe,j,numbad=', get_my_pe(), j, numbad
+	      end do
+            endif
+	    call error_mesg ('moist_processes', &
+	     'temperatures not within range of es lookup table', &
+	     FATAL)
+          endif
+       endif
 
-                 call error_mesg ('moist_processes',  &
-                   'temperatures not within range of es lookup table', &
-                    FATAL)
+!--------------------------------------------------------------------
 
-              endif
-
-!-----------------------------------------------------------------------
 
       end subroutine tempcheck
+
+
 
 !#######################################################################
 
@@ -1102,6 +1360,28 @@ if ( do_ras ) then
 
 endif
 
+if ( do_donner_deep ) then
+
+   id_tdt_conv = register_diag_field ( mod_name, &
+     'tdt_conv', axes(1:3), Time, &
+     'Temperature tendency from donner_deep   ',     'deg_K/s',  &
+                        missing_value=missing_value               )
+
+   id_qdt_conv = register_diag_field ( mod_name, &
+     'qdt_conv', axes(1:3), Time, &
+     'Spec humidity tendency from donner_deep   ',   'kg/kg/s',  &
+                        missing_value=missing_value               )
+
+   id_prec_conv = register_diag_field ( mod_name, &
+     'prec_conv', axes(1:2), Time, &
+    'Precipitation rate from donner_deep   ',       'kg/m2/s' )
+
+   id_snow_conv = register_diag_field ( mod_name, &
+     'snow_conv', axes(1:2), Time, &
+    'Frozen precip rate from donner_deep   ',       'kg/m2/s' )
+
+endif
+
 if ( do_lsc ) then
 
    id_tdt_ls = register_diag_field ( mod_name, &
@@ -1185,6 +1465,49 @@ if ( do_ras ) then
 
 endif
    
+if (do_donner_deep) then
+
+   id_tdt_deep_donner= register_diag_field ( mod_name, &
+           'tdt_deep_donner', axes(1:3), Time, &
+           ' heating rate - deep portion', 'deg K/s', &
+                        missing_value=missing_value               )
+
+   id_tdt_mca_donner = register_diag_field ( mod_name, &
+           'tdt_mca_donner', axes(1:3), Time, &
+           ' heating rate - mca  portion', 'deg K/s', &
+                        missing_value=missing_value               )
+
+   id_qdt_deep_donner = register_diag_field ( mod_name, &
+           'qdt_deep_donner', axes(1:3), Time, &
+           ' moistening rate - deep portion', 'kg/kg/s', &
+                        missing_value=missing_value               )
+
+   id_qdt_mca_donner = register_diag_field ( mod_name, &
+           'qdt_mca_donner', axes(1:3), Time, &
+           ' moistening rate - mca  portion', 'kg/kg/s', &
+                        missing_value=missing_value               )
+
+   id_prec_deep_donner = register_diag_field ( mod_name, &
+           'prc_deep_donner', axes(1:2), Time, &
+           ' total precip rate - deep portion', 'kg/m2/s', &
+                        missing_value=missing_value               )
+
+   id_prec_mca_donner = register_diag_field ( mod_name, &
+           'prc_mca_donner', axes(1:2), Time, &
+           ' total precip rate - mca  portion', 'kg/m2/s', &
+                        missing_value=missing_value               )
+
+   id_snow_deep_donner = register_diag_field ( mod_name, &
+           'snow_deep_donner', axes(1:2), Time, &
+           ' frozen precip rate - deep portion', 'kg/m2/s', &
+                        missing_value=missing_value               )
+
+   id_snow_mca_donner = register_diag_field ( mod_name, &
+           'snow_mca_donner', axes(1:2), Time, &
+           ' frozen precip rate -  mca portion', 'kg/m2/s', &
+                        missing_value=missing_value               )
+
+endif
 !-----------------------------------------------------------------------
 
 end subroutine diag_field_init
@@ -1192,4 +1515,3 @@ end subroutine diag_field_init
 !#######################################################################
 
                  end module moist_processes_mod
-

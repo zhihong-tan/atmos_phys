@@ -261,7 +261,7 @@ end interface
 !--------------------- version number ---------------------------------
 
 character(len=128) :: version = '$Id: monin_obukhov.F90,v 1.4 2001/03/06 18:50:59 fms Exp $'
-character(len=128) :: tag = '$Name: damascus $'
+character(len=128) :: tag = '$Name: eugene $'
 
 !=======================================================================
 

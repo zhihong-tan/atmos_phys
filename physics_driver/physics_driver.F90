@@ -3,6 +3,19 @@ module physics_driver_mod
 
 !-----------------------------------------------------------------------
 
+use constants_new_mod,    only: constants_new_init
+
+use sea_esf_rad_mod,      only: sea_esf_rad_init,  &
+                                sea_esf_rad, &
+				sea_esf_rad_time_vary, &
+                                sea_esf_rad_end, &
+                                get_lrad
+
+use rad_utilities_mod,     only: Environment, environment_type
+
+use astronomy_package_mod, only: astronomy_driver, astronomy_dealloc, &
+				astronomy
+
 use  moist_processes_mod, only: moist_processes,moist_processes_init,  &
                                 moist_processes_end
 
@@ -28,9 +41,12 @@ use        constants_mod, only: tfreeze,hlv,hlf,hls,kappa,  &
                                 rdgas,rvgas,cp,grav
 
 use        utilities_mod, only: file_exist, error_mesg, FATAL, NOTE,  &
-                                open_file, close_file, get_my_pe
+                                open_file, close_file, get_my_pe, &
+				check_nml_error
 
-use     time_manager_mod, only: time_type, get_time, operator(-)
+use     time_manager_mod, only: time_type, get_date_julian,  &
+				set_date_julian, get_time, &
+				set_time, operator (-), operator (/=)
 
 use    tracer_driver_mod, only: tracer_driver_init, tracer_driver,  &
                                 tracer_driver_end
@@ -38,6 +54,17 @@ use    tracer_driver_mod, only: tracer_driver_init, tracer_driver,  &
 
 implicit none
 private
+
+!-----------------------------------------------------------------------
+!------- namelist ------
+
+character(len=16)    :: rad_step_physics='default'
+
+
+namelist / physics_driver_nml /    &
+                                 rad_step_physics
+
+
 
 !-----------------------------------------------------------------------
 !  -------- public interfaces ---------
@@ -54,11 +81,12 @@ interface check_dim
 end interface
 
 !--------------------- version number ----------------------------------
-character(len=256) :: version = '$Id: physics_driver.F90,v 1.4 2001/03/06 18:51:14 fms Exp $'
-character(len=256) :: tag = '$Name: damascus $'
+character(len=256) :: version = '$Id: physics_driver.F90,v 1.5 2001/07/05 17:26:32 fms Exp $'
+character(len=256) :: tag = '$Name: eugene $'
 !-----------------------------------------------------------------------
 
       logical :: do_init = .true., do_check_args = .true.
+      logical :: do_sea_esf_physics
 
 !-----------------------------------------------------------------------
 
@@ -113,7 +141,7 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 !  is,ie,js,je  starting and ending global indices
 !  Time_prev    previous time, for variables um,vm,tm,qm,rm (time_type)
 !  Time         current time, for variables u,v,t,q,r  (time_type)
-!  Time_next    next time, used for diagnostics  (time_type)
+!  Time_next    next time, used for diagnostics   (time_type)
 !  lat          latitude in radians
 !  lon          longitude in radians
 !  area         grid box area (in m2) - currently not used
@@ -150,8 +178,15 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 !-----------------------------------------------------------------------
 
    real, dimension(size(u,1),size(u,2),size(u,3)) :: diff_t,  diff_m
-   real    :: dt
-   integer :: day, sec
+
+   type(time_type)  :: Rad_time, Set_dat5, Delta_t, Tim_minus
+   logical          :: do_rad, do_average
+   integer          :: dt_rad
+   integer          :: year, month, day, hour, min2, sec, jld, jld2
+   integer          :: sec_d, idt
+   real             :: dt
+   real             :: fjd, fjulan
+
 
 !-----------------------------------------------------------------------
       if (do_init) call error_mesg ('physics_driver',  &
@@ -163,19 +198,121 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
                        u, v, t, q, r, um, vm, tm, qm, rm,              &
                        udt, vdt, tdt, qdt, rdt)
 
-!     --- compute the time step (from tau-1 to tau+1) ---
+!     --- compute the time step (from tau-1 to tau+1) -----
 
       call get_time (Time_next-Time_prev, sec, day)
-      dt = real(sec+day*86400)
+      dt = real(sec + day*86400)
 
 !-----------------------------------------------------------------------
 !-------------------------- radiation ----------------------------------
 
-     call radiation_driver (is, ie, js, je, Time, Time_next,  &
-                            lat, lon, p_full, p_half,         &
-                            t, q, t_surf_rad, frac_land,      &
-                            albedo, tdt, flux_sw, flux_lw,    &
-                            coszen,      mask=mask, kbot=kbot )
+!******************************************************************
+
+!--------------------------------------------------------------------
+!  the following is needed to implement sea_esf radiation-step physics.
+!--------------------------------------------------------------------
+      if (do_sea_esf_physics) then
+
+!--------------------------------------------------------------------
+!  call get_lrad to : a)determine whether this is a radiation time step,
+!  b) determine if averaging of input data is desired, c) determine 
+!  the radiation time-step, and d) determine the next calendar time at 
+!  which radiation is to be calculated.
+!--------------------------------------------------------------------
+        call get_lrad (Time, do_rad, do_average, dt_rad, Rad_time)
+
+!-------------------------------------------------------------------
+!  define the julian date (julian day number and fraction).
+!--------------------------------------------------------------------
+        if (Environment%using_sky_periphs) then
+          call get_date_julian (Rad_time, year, month, day, hour,  &
+                                min2, sec)
+          Set_dat5 = set_date_julian (year, month, day, hour, min2, sec)
+          call get_time(Set_dat5, sec_d  , jld )
+          fjd = float(sec_d)/86400.0
+!-------------------------------------------------------------------
+!  define the time of the last physics time step.
+!--------------------------------------------------------------------
+          idt =nint(dt)
+          Delta_t = set_time(idt, 0)
+          Tim_minus = Rad_time - Delta_t
+
+!-------------------------------------------------------------------
+!  define the julian date of the previous timestep(fjulan).
+!--------------------------------------------------------------------
+          call get_date_julian (Tim_minus, year, month, day, hour, &
+                                min2, sec)
+          Set_dat5 = set_date_julian (year, month, day, hour, min2, sec)
+          call get_time(Set_dat5, sec_d, jld2 )
+          fjulan = float(sec_d)/86400.0
+
+!--------------------------------------------------------------------
+!  call astronomy to calculate solar orbital parameters for the rad-
+!  iation time desired. convert fms julian day to skyhi julian day
+!  number.
+!--------------------------------------------------------------------
+          jld = jld + 1721411
+          fjd = fjd - 0.5
+          if (fjd < 0.0) then
+            fjd = fjd + 1.0
+            jld = jld - 1
+          endif
+          fjulan = fjulan - 0.5
+          if (fjulan < 0.0) then
+            fjulan = fjulan + 1.0
+          endif
+          call astronomy (do_rad, fjd, jld)
+        endif
+
+!-------------------------------------------------------------------
+!  call sea_esf_rad_time_vary to handle the temporal variation of
+!  any other radiative inputs (radiative gases, solar constant).
+!-------------------------------------------------------------------
+        call sea_esf_rad_time_vary (Rad_time)
+ 
+!------------------------------------------------------------------
+!  call astronomy driver to calculate zenith angles and daylight frac-
+!  tion at the current time, if a radiation step, or, if not, at the 
+!  next radiation time, and then call sea_esf_rad to do the calculations
+!  and/or update the temperature tendency, then deallocate the astron-
+!  omy variables in astronomy_dealloc.
+!------------------------------------------------------------------
+        if (Environment%using_sky_periphs) then
+          call astronomy_driver (is, ie, js, je, dt, dt_rad, do_rad, &
+		                 Time=Time, lat=lat, lon=lon,   &
+			         Rad_time=Rad_time,   &
+			         do_average=do_average, fjd=fjd,  &
+			         fjulan=fjulan )
+	else
+          call astronomy_driver (is, ie, js, je, dt, dt_rad, do_rad, &
+	 	                 Time=Time, lat=lat, lon=lon,   &
+			         Rad_time=Rad_time,   &
+				 do_average=do_average)
+        endif
+
+        call sea_esf_rad (is, ie, js, je,   &
+		 	  p_full, p_half, t, q, t_surf_rad, Time=Time, &
+			  Time_next=Time_next,  lat=lat, lon=lon,  &
+			  land=frac_land, albedo_in=albedo, &
+			  tdt=tdt, flux_sw=flux_sw, &
+			  flux_lw=flux_lw, mask=mask, kbot=kbot, &
+			  coszen = coszen)
+        call astronomy_dealloc
+
+!-------------------------------------------------------------------
+!  if fms radiation-step physics is to be done, call radiation_driver.
+!-------------------------------------------------------------------
+
+      else
+
+	call radiation_driver (is, ie, js, je, Time, Time_next, lat,  &
+			       lon, p_full, p_half, t, q, t_surf_rad,&
+			       frac_land, albedo, tdt, flux_sw, &
+			       flux_lw,  coszen,     &
+			       mask=mask, kbot=kbot)
+      endif
+
+!******************************************************************
 
 !-----------------------------------------------------------------------
 !------------------------ damping --------------------------------------
@@ -255,7 +392,7 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 !  is,ie,js,je  starting and ending global indices
 !  Time_prev    previous time, for variables um,vm,tm,qm,rm (time_type)
 !  Time         current time, for variables u,v,t,q,r  (time_type)
-!  Time_next    next time, used for diagnostics  (time_type)
+!  Time_next    next time, used for diagnostics   (time_type)
 !  lat          latitude in radians
 !  lon          longitude in radians
 !  area         grid box area (in m2) - currently not used
@@ -272,7 +409,7 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 !  tm,qm        temperature and specific humidity at previous time step
 !  rm           multiple 3d tracer fields at previous time step
 !
-!-----------------------------------------------------------------------
+!---------------------------------------------------------------------
    real    :: dt
    integer :: day, sec
 
@@ -283,7 +420,7 @@ type(time_type),          intent(in)       :: Time_prev, Time, Time_next
 
 !----------------------- vertical diffusion ----------------------------
 
-    call vert_diff_driver_up (is, js, Time_next, dt, p_half, Surf_diff, &
+    call vert_diff_driver_up (is, js, Time_next, dt, p_half, Surf_diff,&
                               tdt, qdt,  mask=mask, kbot=kbot)
 
 !-----------------------------------------------------------------------
@@ -316,8 +453,8 @@ type(surf_diff_type), intent(inout) :: Surf_diff
 !-----------------------------------------------------------------------
 !
 !     Time       = current time (time_type)
-!     lonb       = latitude in radians of the grid box edge
-!     latb       = latitude in radians of the grid box edge
+!     lonb       = longitude in radians of the grid box edges
+!     latb       = latitude  in radians of the grid box edges
 !     axes       = axis indices, (/x,y,pf,ph/)
 !                    (returned from diag axis manager)
 !     pref       = two reference profiles of pressure at nlev+1 levels
@@ -325,15 +462,40 @@ type(surf_diff_type), intent(inout) :: Surf_diff
 !
 !-----------------------------------------------------------------------
       integer  unit, id, jd, kd
+      integer  :: ierr, io, unit
 
       id = size(lonb)-1; jd = size(latb)-1; kd = size(trs,3)
 
-!-----------------------------------------------------------------------
+!--------------------------------------------------------------------
+!----- read namelist -----
+ 
+   if ( file_exist('input.nml')) then
+    unit = open_file (file='input.nml', action='read')
+    ierr=1; do while (ierr /= 0)
+    read  (unit, nml=physics_driver_nml, iostat=io, end=10)
+    ierr = check_nml_error(io,'physics_driver_nml')
+    enddo
+10   call close_file (unit)
+   endif
 
-      unit = open_file ('logfile.out', action='append')
-      if (get_my_pe() == 0)  &
-          write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-      call close_file (unit)
+!!      ----- write namelist -----
+
+    unit = open_file ('logfile.out', action='append')
+    if (get_my_pe() == 0) then
+      write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
+      write (unit, nml=physics_driver_nml)
+    endif
+    call close_file (unit)
+
+
+    if (rad_step_physics == 'default') then
+      do_sea_esf_physics = .false.
+    else if (rad_step_physics == 'sea_esf') then
+      do_sea_esf_physics = .true.
+    else 
+      call error_mesg ('sea_esf_rad_init',  &
+	'rad_step_physics is not a valid value', FATAL)
+    endif
 
 !-----------------------------------------------------------------------
 !------------- initialization for various schemes ----------------------
@@ -344,9 +506,15 @@ type(surf_diff_type), intent(inout) :: Surf_diff
 
       call vert_diff_driver_init ( Surf_diff, id, jd, kd, axes, Time )
 
-      call   damping_driver_init ( id, jd, axes, Time )
+      call   damping_driver_init ( lonb, latb, axes, Time )
 
-      call radiation_driver_init ( lonb, latb, pref, axes, Time)
+      if (do_sea_esf_physics) then
+        call constants_new_init
+        call sea_esf_rad_init (kd, axes, lonb=lonb, latb=latb,    &
+		      	       pref=pref, timesince=time)
+      else
+        call radiation_driver_init (lonb, latb, pref, axes, time)
+      endif
 
       call    tracer_driver_init ( grav, trs, mask)
 
@@ -367,7 +535,13 @@ type(surf_diff_type), intent(inout) :: Surf_diff
 
       call vert_turb_driver_end
       call vert_diff_driver_end
-      call radiation_driver_end
+
+      if (do_sea_esf_physics) then
+        call sea_esf_rad_end
+      else
+        call radiation_driver_end
+      endif
+
       call  moist_processes_end
       call    tracer_driver_end
       call   damping_driver_end
@@ -535,6 +709,9 @@ type(surf_diff_type), intent(inout) :: Surf_diff
       end function check_dim_4d
 
 !#######################################################################
-
+ 
+ 
+ 
 end module physics_driver_mod
-
+ 
+ 

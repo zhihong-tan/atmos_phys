@@ -37,7 +37,7 @@ MODULE DIAG_CLOUD_MOD
 
 !--------------------- version number ----------------------------------
  character(len=128) :: version = '$Id: diag_cloud.F90,v 1.3 2001/03/06 18:50:04 fms Exp $'
- character(len=128) :: tag = '$Name: damascus $'
+ character(len=128) :: tag = '$Name: eugene $'
 !-----------------------------------------------------------------------
 
 !  parmameter mxband = max number of radiative bands to be considered for some

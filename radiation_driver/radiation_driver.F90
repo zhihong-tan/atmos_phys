@@ -16,7 +16,7 @@
    use       utilities_mod, only: file_exist, error_mesg, FATAL, NOTE, &
                                   check_nml_error, open_file,          &
                                   read_data, write_data, close_file,   &
-                                  get_my_pe
+                                  get_my_pe, get_domain_decomp
 
    use          clouds_mod, only:  clouds, clouds_init, clouds_end
 
@@ -24,7 +24,7 @@
 
    use    time_manager_mod, only:  time_type, set_date, set_time,  &
                                    get_time,    operator(+),       &
-                                   operator(-), operator(/=)
+                                   operator(-), operator(/=), get_date
 
    use     strat_cloud_mod, only:  add_strat_tend
 
@@ -41,8 +41,8 @@
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: radiation_driver.F90,v 1.4 2001/03/06 18:51:29 fms Exp $'
-character(len=128) :: tag = '$Name: damascus $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 1.5 2001/07/05 17:26:45 fms Exp $'
+character(len=128) :: tag = '$Name: eugene $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)
@@ -127,16 +127,19 @@ character(len=128) :: tag = '$Name: damascus $'
    integer :: dt_rad=43200, offset=1
    logical :: do_diurnal=.false., do_annual=.false.,  &
               do_clear_sky_diag=.false., do_average=.false.
+   logical :: rsd=.false.
 !!!   real :: solar_constant = 1.96  !(1367.44w/m2)
       real :: solar_constant = 1365.
    integer, dimension(6) :: rad_date = (/ 0, 0, 0, 0, 0, 0 /)
       real :: co2std = 330., ratio = 1.0
+      integer :: jpt = -35, ipt = -35
 
 namelist /radiation_driver_nml/ dt_rad, offset, do_average, &
                                 do_diurnal, do_annual,      &
                                 do_clear_sky_diag,          &
                                 solar_constant, rad_date,   &
-                                co2std, ratio
+                                co2std, ratio, jpt, ipt, &
+				rsd
 
 !-----------------------------------------------------------------------
 !-------------------- diagnostics fields -------------------------------
@@ -151,6 +154,7 @@ integer, dimension(2) :: id_tdt_sw,   id_tdt_lw,  &
 character(len=9), parameter :: mod_name = 'radiation'
 
 real :: missing_value = -999.
+integer  :: x(4), y(4)
 
 !-----------------------------------------------------------------------
 
@@ -190,7 +194,6 @@ contains
 !         mask
 !         kbot
 !
-!
 !  NOTE:   "dt" the time step in seconds, is the interval that 
 !          radiation_driver is called (not the interval that radiation
 !          calculations are done.
@@ -210,7 +213,7 @@ type(time_type), intent(in)            :: Time, Time_next
 integer, intent(in), dimension(:,:),optional     :: kbot
 !-----------------------------------------------------------------------
 integer :: day, sec, dt
-  
+ 
 !-----------------------------------------------------------------------
 
       if (do_init) call error_mesg ('radiation_driver',  &
@@ -223,7 +226,7 @@ integer :: day, sec, dt
       dt = day*86400 + sec
 
       if (dt <= 0) call error_mesg ('radiation_driver_mod', &
-                                    'Time_next <= Time', FATAL)
+	         	              'Time_next <= Time', FATAL)
 
       if ( num_pts == 0 ) rad_alarm = rad_alarm - dt
       num_pts = num_pts + size(t,1) * size(t,2)
@@ -236,7 +239,7 @@ integer :: day, sec, dt
 
    if (do_rad .or. do_average) then
        call radiation_calc (is, ie, js, je, Time, Time_next, dt,   &
-                            lat, lon,  pfull, phalf, t, q, ts,     &
+			      lat, lon,  pfull, phalf, t, q, ts,     &
                             land, albedo, mask, kbot)
    endif
 
@@ -312,6 +315,8 @@ integer,dimension(size(t,1),size(t,2))   :: nclds
                                             psfc,tsfc,asfc,cosz1
 
 integer :: i, j, k, n, id, jd, kd, ipass, npass, ip, jp, kb
+!dummy variable and time of day
+integer :: dum, tod(3)
 logical :: no_clouds, used
 type(time_type) :: Rad_time, Dt_zen
 
@@ -322,7 +327,17 @@ type(time_type) :: Rad_time, Dt_zen
 !-----------------------------------------------------------------------
 !------------- date related stuff --------------------------------------
   
-      if (use_rad_date) then
+      if (rsd) then
+
+        if (.not. use_rad_date) call error_mesg ('radiation_calc', &  
+              'if (rsd), must set rad_date(1:3) to valid date', FATAL)
+
+        call get_date(Time,dum,dum,dum,tod(1),tod(2),tod(3))
+
+        Rad_time = set_date (rad_date(1), rad_date(2), rad_date(3),   &
+                tod(1),tod(2),tod(3))
+	
+      else if (use_rad_date) then
           Rad_time = set_date (rad_date(1), rad_date(2), rad_date(3),  &
                                rad_date(4), rad_date(5), rad_date(6))
       else
@@ -342,10 +357,10 @@ type(time_type) :: Rad_time, Dt_zen
          call diurnal_solar (cosz , solar, lat,lon, Rad_time       , Dt_zen)
       else if (do_annual) then
          call annual_mean_solar (cosz, solar, lat)
-         cosz1 = cosz
+	   cosz1 = cosz
       else
          call daily_mean_solar  (cosz, solar, lat, Rad_time)
-         cosz1 = cosz
+	   cosz1 = cosz
       endif
 
       solar = solar * solar_constant
@@ -436,6 +451,7 @@ type(time_type) :: Rad_time, Dt_zen
       else
          npass=1
       endif
+	
 
    do ipass = 1, npass
 
@@ -446,17 +462,31 @@ type(time_type) :: Rad_time, Dt_zen
       if (ipass == npass) no_clouds = .false.
       
       call clouds (is,js, no_clouds, Rad_time, Time_diag, lat, land, tsfc, &
-                    press(:,:,1:kd), p_int, temp(:,:,1:kd), q,  &
+		      press(:,:,1:kd), p_int, temp(:,:,1:kd), q,  &
                     cosz,nclds, ktopsw, kbtmsw, ktop, kbtm,   &
                     cldamt, cuvrf, cirrf, cirab, emcld, mask, kbot)
  
 !-----------------------------------------------------------------------
 !----------------------------- radiation -------------------------------
 
-     if (js == -35) then
-        ip=20; jp=1
+!----------------------------------------------------------------------
+!   determine if radiation diagnostics column is present in current 
+!   physics window. if so, determine its coordinates in the 
+!   physics_window space. if not present, set ip and jp to 0.
+!----------------------------------------------------------------------
+     if ( (x(3) <= ipt .and. x(4) >= ipt) .and.    &
+	  (y(3) <= jpt .and. y(4) >= jpt) ) then
+       ip = ipt -x(3) + 1
+       jp = jpt -y(3) + 1
+       if (js > jp .or. je < jp ) then
+         ip = 0 ; jp = 0
+       else if (is > ip .or. ie < ip ) then
+         ip = 0 ; jp = 0
+       else
+         ip = ip - is + 1; jp = jp - js + 1
+       endif
      else
-        ip=0; jp=0
+       ip =0 ; jp = 0
      endif
 
      if (present(kbot)) then
@@ -604,6 +634,16 @@ type(time_type), intent(in)                 :: Time
     endif
     call close_file (unit)
 
+    if (do_annual .and. do_diurnal) then
+      call error_mesg ( 'radiation_driver_init', &
+         'Cannot have both do_annual and do_diurnal as .true.', FATAL)
+    endif
+
+    
+!--------------------------------------------------------------------
+!  retrieve global and subdomain indices
+!--------------------------------------------------------------------
+      call get_domain_decomp (x,y)
 
 !-------- set default alarm info --------
 

@@ -25,7 +25,7 @@ public   cloud_zonal, cloud_zonal_init, getcld
    real                    :: rad2deg
 
    character(len=128) :: version = '$Id: cloud_zonal.F90,v 1.3 2000/11/22 14:33:32 fms Exp $'
-   character(len=128) :: tag = '$Name: damascus $'
+   character(len=128) :: tag = '$Name: eugene $'
 
 !-----------------------------------------------------------------------
 !--------cloud amounts every 5 deg. for high,mid, & low-----------------

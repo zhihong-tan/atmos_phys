@@ -5,7 +5,8 @@
 !=======================================================================
 
  use Utilities_Mod,   ONLY: FILE_EXIST, OPEN_FILE, ERROR_MESG, FATAL, &
-                            get_my_pe, read_data, write_data, CLOSE_FILE
+                            get_my_pe, read_data, write_data, CLOSE_FILE,&
+                            check_nml_error
  use Tridiagonal_Mod, ONLY: TRI_INVERT, CLOSE_TRIDIAGONAL
  use constants_mod,   only: grav, vonkarm
  use monin_obukhov_mod, only : mo_diff
@@ -25,8 +26,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: my25_turb.F90,v 1.2 2000/08/04 18:52:36 fms Exp $'
- character(len=128) :: tag = '$Name: damascus $'
+ character(len=128) :: version = '$Id: my25_turb.F90,v 1.3 2001/07/05 17:39:25 fms Exp $'
+ character(len=128) :: tag = '$Name: eugene $'
 
  logical :: do_init = .true.
  logical :: init_tke
@@ -65,9 +66,9 @@
  real    :: el0min       =  0.0
  real    :: alpha_land   =  0.10
  real    :: alpha_sea    =  0.10
- real    :: wind_min     =  1.0
  real    :: akmax        =  1.0e4
- real    :: akmin        =  5.0
+ real    :: akmin_land   =  5.0
+ real    :: akmin_sea    =  0.0
  integer :: nk_lim       =  2
  integer :: init_iters   =  20
  logical :: do_thv_stab  = .true.
@@ -75,10 +76,10 @@
  real    :: kcrit        =  0.01
 
   NAMELIST / my25_turb_nml /                           &
-         TKEmax,   TKEmin,                             &
-         akmax,    akmin,   nk_lim, init_iters,        &
+         TKEmax,   TKEmin,   init_iters,               &
+         akmax,    akmin_land, akmin_sea, nk_lim,      &
          el0max,   el0min,  alpha_land,  alpha_sea,    &
-         wind_min, do_thv_stab, use_old_cons,          &
+         do_thv_stab, use_old_cons,                    &
          kcrit      
 
 !---------------------------------------------------------------------
@@ -146,7 +147,7 @@
   integer :: kxp, kxm, klim, it, itermax
   real    :: cvfqdt, dvfqdt
 
-  real, dimension(SIZE(um,1),SIZE(um,2)) :: zsfc, x1, x2
+  real, dimension(SIZE(um,1),SIZE(um,2)) :: zsfc, x1, x2, akmin
 
   real, dimension(SIZE(um,1),SIZE(um,2),SIZE(um,3)-1) ::     &
         dsdzh, shear, buoync, qm2,  qm3, qm4, el2,           &
@@ -220,11 +221,13 @@
 !====================================================================
 
   if( PRESENT( mask ) ) then
-      TKE(:,:,2:kxp) =    TKE(:,:,2:kxp) * mask(:,:,1:kx) 
-      dsdz(:,:,1:kx ) =   dsdz(:,:,1:kx ) * mask(:,:,1:kx) 
-     dsdzh(:,:,1:kxm) =  dsdzh(:,:,1:kxm) * mask(:,:,2:kx) 
-     shear(:,:,1:kxm) =  shear(:,:,1:kxm) * mask(:,:,2:kx) 
-    buoync(:,:,1:kxm) = buoync(:,:,1:kxm) * mask(:,:,2:kx) 
+    where (mask(:,:,2:kx) < 0.1)   ! assume mask(k=1) always eq 1 ?
+         TKE(:,:,3:kxp) = 0.0
+        dsdz(:,:,2:kx ) = 0.0
+       dsdzh(:,:,1:kxm) = 0.0
+       shear(:,:,1:kxm) = 0.0
+      buoync(:,:,1:kxm) = 0.0
+    endwhere
   endif
   
 !====================================================================
@@ -247,7 +250,11 @@
 !====================================================================
 
   xx1(:,:,1:kx)  = 2.0 * TKE(:,:,2:kxp)
-   qm(:,:,1:kx)  = SQRT( xx1(:,:,1:kx) )
+  where (xx1(:,:,1:kx) > 0.0)
+    qm(:,:,1:kx)  = SQRT( xx1(:,:,1:kx) )
+  elsewhere
+    qm(:,:,1:kx)  = 0.0
+  endwhere
 
   qm2(:,:,1:kxm)  = xx1(:,:,1:kxm) 
   qm3(:,:,1:kxm)  =  qm(:,:,1:kxm) * qm2(:,:,1:kxm) 
@@ -278,19 +285,19 @@
        xx2(:,:,kx) = xx1(:,:,kx) * z0(:,:)
   endif
 
-  x1 = SUM( xx1, 3 )
-  x2 = SUM( xx2, 3 )
+  if (PRESENT(mask)) then
+    x1 = SUM( xx1, 3, mask=mask.gt.0.1 )
+    x2 = SUM( xx2, 3, mask=mask.gt.0.1 )
+  else
+    x1 = SUM( xx1, 3 )
+    x2 = SUM( xx2, 3 )
+  endif
 
 !---- should never be equal to zero ----
   if (count(x1 <= 0.0) > 0) CALL ERROR_MESG( ' MY25_TURB',  &
                              'divid by zero, x1 <= 0.0', FATAL)
   el0 = x2 / x1
-
-  where( fracland < 0.5 ) 
-     el0 = alpha_sea  * el0
-  else where
-     el0 = alpha_land * el0
-  endwhere
+  el0 = el0 * (alpha_land*fracland + alpha_sea*(1.-fracland))
 
   el0 = MIN( el0, el0max )
   el0 = MAX( el0, el0min )
@@ -308,8 +315,9 @@
   if( PRESENT( kbot ) ) then
      do j = 1,jx
      do i = 1,ix
-        k = kbot(i,j) 
-        xx1(i,j,k) = x1(i,j)
+        do k = kbot(i,j), kx
+          xx1(i,j,k) = x1(i,j)
+        end do
      end do
      end do
   else
@@ -320,14 +328,6 @@
     el(:,:,k+1) = xx1(:,:,k) / ( 1.0 + xx1(:,:,k) / el0(:,:) )
   end do
     el(:,:,1)   = el0(:,:)
-
-  if( PRESENT( mask ) ) then
-        x1(:,:) = x1(:,:) / ( 1.0 + x1(:,:) / el0(:,:) )
-     do k = 1, kx
-        el(:,:,k+1) = mask(:,:,k)   * el(:,:,k+1)     &
-            + ( 1.0 - mask(:,:,k) ) * x1(:,:)        
-     end do
-  end if
 
   el2(:,:,1:kxm) = el(:,:,2:kx) * el(:,:,2:kx)
 
@@ -381,20 +381,25 @@
 !  where( akh(:,:,1:klim) < small )  akh(:,:,1:klim) = 0.0
 
 ! --- LOWER BOUND NEAR SURFACE
+
+  akmin = akmin_land*fracland + akmin_sea*(1.-fracland)
+
   if( PRESENT( kbot ) ) then
      do j = 1,jx
      do i = 1,ix
              klim = kbot(i,j) - nk_lim + 1
      do  k = klim,kbot(i,j)
-        akm(i,j,k) = MAX( akm(i,j,k), akmin )
-        akh(i,j,k) = MAX( akh(i,j,k), akmin )
+        akm(i,j,k) = MAX( akm(i,j,k), akmin(i,j) )
+        akh(i,j,k) = MAX( akh(i,j,k), akmin(i,j) )
      end do
      end do
      end do
   else
-                klim = kx - nk_lim + 1
-        akm(:,:,klim:kx) = MAX( akm(:,:,klim:kx), akmin )
-        akh(:,:,klim:kx) = MAX( akh(:,:,klim:kx), akmin )
+             klim = kx - nk_lim + 1
+     do  k = klim,kx
+        akm(:,:,k) = MAX( akm(:,:,k), akmin(:,:) )
+        akh(:,:,k) = MAX( akh(:,:,k), akmin(:,:) )
+     end do
   endif
 
 !-------------------------------------------------------------------
@@ -441,6 +446,26 @@
   bbb(:,:,1:kxm) =           bbb(:,:,1:kxm) +  xxm1(:,:,1:kxm)
   ddd(:,:,1:kxm) =           TKE(:,:,2:kx )
 
+! correction for vertical diffusion of TKE surface boundary condition
+
+  if (present(kbot)) then
+     do j = 1,jx
+     do i = 1,ix
+          k = kbot(i,j)
+          ddd(:,:,k-1) = ddd(:,:,k-1) - aaa(:,:,k-1) * TKE(:,:,k+1)
+     enddo
+     enddo
+  else
+          ddd(:,:,kxm) = ddd(:,:,kxm) - aaa(:,:,kxm) * TKE(:,:,kxp)
+  endif
+
+! mask out terms below ground
+
+  if (present(mask)) then
+     where (mask(:,:,2:kx) < 0.1) ddd(:,:,1:kxm) = 0.0
+  endif
+
+
   CALL TRI_INVERT( xxm1, ddd, aaa, bbb, ccc ) 
   CALL CLOSE_TRIDIAGONAL
 
@@ -449,8 +474,7 @@
 !-------------------------------------------------------------------
 
  if( PRESENT( mask ) ) then
-     xxm1(:,:,1:kxm) = xxm1(:,:,1:kxm) * mask(:,:,2:kx) &
-               + TKE(:,:,2:kx) * ( 1.0 - mask(:,:,2:kx) )
+    where (mask(:,:,2:kx) < 0.1) xxm1(:,:,1:kxm) = TKE(:,:,2:kx)
  endif
 
 !-------------------------------------------------------------------
@@ -474,7 +498,9 @@
   TKE = MIN( TKE, TKEmax )
   TKE = MAX( TKE, TKEmin )
 
-  if( PRESENT( mask ) ) TKE(:,:,2:kxp) = TKE(:,:,2:kxp) * mask(:,:,1:kx)
+  if( PRESENT( mask ) ) then
+     where (mask(:,:,1:kx) < 0.1) TKE(:,:,2:kxp) = 0.0
+  endif
 
 !====================================================================
 ! --- COMPUTE PBL DEPTH IF DESIRED
@@ -520,7 +546,7 @@
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer             :: unit, io
+ integer             :: unit, io, ierr
  real                :: actp, facm 
  real, dimension(15) :: au,   tem
 
@@ -533,9 +559,10 @@
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
    unit = OPEN_FILE ( file = 'input.nml', action = 'read' )
-   io = 1
-   do while( io .ne. 0 )
+   ierr = 1
+   do while( ierr .ne. 0 )
    READ ( unit,  nml = my25_turb_nml, iostat = io, end = 10 ) 
+   ierr = check_nml_error (io, 'my25_turb_nml')
    end do
 10 continue
    CALL CLOSE_FILE( unit )

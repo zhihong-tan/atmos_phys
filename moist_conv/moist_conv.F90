@@ -33,7 +33,7 @@ public :: moist_conv, moist_conv_Init
 !---- VERSION NUMBER -----
 
  character(len=128) :: version = '$Id: moist_conv.F90,v 1.2 2000/07/28 20:16:40 fms Exp $'
- character(len=128) :: tag = '$Name: damascus $'
+ character(len=128) :: tag = '$Name: eugene $'
 
 !---------- initialize constants used by this module -------------------
 

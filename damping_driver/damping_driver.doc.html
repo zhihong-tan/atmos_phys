@@ -179,13 +179,15 @@ Input (Optional)
 
 ----------------------------------------------------------------------
 
-call damping_driver_init (nlon, nlat, axes, Time)
+call damping_driver_init (lonb, latb, axes, Time)
 
 input
 
-   nlon, nlat   size of the global grid; i.e., the number of 
-                grid points along the x and y axis, repectively.
-                   [integer]
+   lonb      The longitude in radians of the grid box edges.
+                [real, dimension(:)]
+
+   latb      The latitude in radians of the grid box edges.
+                [real, dimension(:)]
 
    axes      The axis indices that are returned by previous calls to
              diag_axis_init. The values of this array corresponds to the
@@ -249,6 +251,7 @@ Diagnostic fields for module name: <b>damping</b>
    udt_gwd        u wind tendency for gravity wave drag (m/s2)
    vdt_gwd        v wind tendency for gravity wave drag (m/s2)
    taub           base flux for gravity wave drag (kg/m/s2)
+   sgsmtn         sub-grid scale topography for gravity wave drag (m)
 
 </PRE>
 </A><!-- END DIAGNOSTICS -->

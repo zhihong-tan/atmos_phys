@@ -16,7 +16,8 @@ module damping_driver_mod
  use    utilities_mod, only:  file_exist, open_file, error_mesg, &
                               check_nml_error,                   &
                               get_my_pe, FATAL, close_file
- use diag_manager_mod, only:  register_diag_field, send_data
+ use diag_manager_mod, only:  register_diag_field,  &
+                              register_static_field, send_data
  use time_manager_mod, only:  time_type
 
  implicit none
@@ -48,8 +49,9 @@ module damping_driver_mod
 !-----------------------------------------------------------------------
 !----- id numbers for diagnostic fields -----
 
-integer :: id_udt_rdamp,  id_vdt_rdamp,                 &
-           id_udt_gwd,    id_vdt_gwd,    id_taub
+integer :: id_udt_rdamp,  id_vdt_rdamp,   &
+           id_udt_gwd,    id_vdt_gwd,     &
+           id_taub,       id_sgsmtn
 
 !----- missing value for all fields ------
 
@@ -69,8 +71,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 1.2 2000/08/04 18:41:02 fms Exp $'
- character(len=128) :: tag = '$Name: damascus $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 1.3 2001/07/05 17:38:51 fms Exp $'
+ character(len=128) :: tag = '$Name: eugene $'
 
 !-----------------------------------------------------------------------
 
@@ -160,12 +162,21 @@ contains
 
 !#######################################################################
 
- subroutine damping_driver_init ( nlon, nlat, axes, Time )
+ subroutine damping_driver_init ( lonb, latb, axes, Time )
 
- integer,         intent(in) :: nlon, nlat, axes(4)
+ real,            intent(in) :: lonb(:), latb(:)
+ integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
 !-----------------------------------------------------------------------
+!     lonb  = longitude in radians of the grid box edges
+!     latb  = latitude  in radians of the grid box edges
+!     axes  = axis indices, (/x,y,pf,ph/)
+!               (returned from diag axis manager)
+!     Time  = current time (time_type)
+!-----------------------------------------------------------------------
  integer :: unit, ierr, io
+ logical :: used
+ real, dimension(size(lonb)-1,size(latb)-1) :: sgsmtn
 
 !-----------------------------------------------------------------------
 !----------------- namelist (read & write) -----------------------------
@@ -205,7 +216,7 @@ contains
 !-----------------------------------------------------------------------
 !----- mountain gravity wave drag -----
 
-   if (do_mg_drag) call mg_drag_init (nlon, nlat, ierr)
+   if (do_mg_drag) call mg_drag_init (lonb, latb, sgsmtn)
 
 !-----------------------------------------------------------------------
 !----- initialize diagnostic fields -----
@@ -225,6 +236,13 @@ endif
 
 if (do_mg_drag) then
 
+ ! register and send static field
+   id_sgsmtn = &
+   register_static_field ( mod_name, 'sgsmtn', axes(1:2), &
+               'sub-grid scale topography for gravity wave drag', 'm')
+   if (id_sgsmtn > 0) used = send_data (id_sgsmtn, sgsmtn, Time)
+
+ ! register non-static field
    id_udt_gwd = &
    register_diag_field ( mod_name, 'udt_gwd', axes(1:3), Time,        &
                      'u wind tendency for gravity wave drag', 'm/s2', &

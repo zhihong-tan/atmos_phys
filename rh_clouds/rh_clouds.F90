@@ -7,6 +7,9 @@ module rh_clouds_mod
 !
 !=======================================================================
 
+
+use rad_output_file_mod, only:  hold_clouds
+
 use utilities_mod, only:  error_mesg, FATAL, file_exist,    &
                           check_nml_error, open_file,       &
                           close_file, get_my_pe, read_data, write_data
@@ -17,7 +20,7 @@ implicit none
 private
 
 public  rh_clouds, rh_clouds_init, rh_clouds_end,  &
-        rh_clouds_sum, rh_clouds_avg, do_rh_clouds
+        rh_clouds_sum, rh_clouds_avg, do_rh_clouds, get_global_clouds
 
 !=======================================================================
 
@@ -81,8 +84,8 @@ end interface
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: rh_clouds.F90,v 1.2 2000/08/04 19:00:11 fms Exp $'
-character(len=128) :: tag = '$Name: damascus $'
+character(len=128) :: version = '$Id: rh_clouds.F90,v 1.3 2001/07/05 17:27:08 fms Exp $'
+character(len=128) :: tag = '$Name: eugene $'
 
 !=======================================================================
 
@@ -579,5 +582,100 @@ end subroutine rh_clouds_1d
 
 !#######################################################################
 
+subroutine get_global_clouds (is, js, press, cldflag_out)
+
+integer, intent(in)  ::  is, js
+real, dimension(:,:,:), intent(in) :: press
+integer, dimension(:,:,:), intent(out) :: cldflag_out
+!------------------------------------------------------------------
+ 
+     real, dimension(size(press,1), size(press,2), size(press,3)-1) :: &
+						     rh
+     real, dimension(size(press,1), size(press,2)) :: rh_crit, sigma, &
+					       icount_hi, icount_mid, &
+	            		               icount_low,  &
+					       cld_isccp_hi,  &
+					       cld_isccp_mid, &
+			                       cld_isccp_low, tot_clds
+
+     integer                                :: k, ks, ke, ierr,  &
+					       i, j, it, if, jt, jf
+!------------------------------------------------------------------
+
+     ks = lbound(press,3)
+     ke = ubound(press,3) - 1
+
+     ierr = -1
+
+     call rh_clouds_avg (is, js, rh, ierr)
+
+     if (ierr ==  0) then
+       do k = ks, ke 
+         sigma   = press(:,:,k)/press(:,:,ke+1)
+         rh_crit = rh_crit_top + sigma*(rh_crit_bot - rh_crit_top)
+         where(rh(:,:,k) >= rh_crit) 
+           cldflag_out(:,:,k) = 1
+         else where
+           cldflag_out(:,:,k) = 0
+         endwhere
+       end do
+     else
+       cldflag_out(:,:,:) = 0
+     endif
+
+!!! MAY BE a slight inconsistency here in the pressure level boun-
+!!! daries for the isccp cloud types compared with skyhi.
+
+   it = 1
+   jt = 1
+   if =  size(rh,1) 
+   jf =  size(rh,2)  
+   do j=jt,jf        
+     do i=it,if       
+       tot_clds(i,j) = 0.0
+       icount_hi(i,j) = 1.0
+       icount_mid(i,j) = 1.
+       icount_low(i,j) = 1.
+       cld_isccp_hi (i,j) = 0.0
+       cld_isccp_mid(i,j) = 0.0
+       cld_isccp_low(i,j) = 0.0
+       do k=ks,ke
+	 if (cldflag_out(i,j,k) == 1) tot_clds(i,j) = 1.0E+00
+         if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) >=  10000. &
+         .and. press(i,j,k) <= 440000. .and. icount_hi(i,j) == 1.)  &
+	 then
+	   cld_isccp_hi(i,j) = 1.0
+	   icount_hi(i,j) =0.0
+	   icount_mid(i,j) =0.0
+	   icount_low(i,j) =0.0
+         endif
+ 	 if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) >  440000. &
+         .and. press(i,j,k) <= 680000. .and. icount_mid(i,j) == 1.)  &
+	 then
+	   cld_isccp_mid(i,j) = 1.0
+	   icount_mid(i,j) =0.
+	   icount_low(i,j) =0.
+         endif
+	 if (cldflag_out(i,j,k) == 1 .and. press(i,j,k) > 680000. &
+         .and. press(i,j,k) <= 1000000. .and. icount_low(i,j) == 1.) &
+         then
+           cld_isccp_low(i,j) = 1.0
+           icount_low(i,j) =0.
+         endif
+       end do
+     end do
+   end do
+
+   call hold_clouds (tot_clds, cld_isccp_hi, cld_isccp_mid,  &
+                       cld_isccp_low)
+
+
+end subroutine get_global_clouds 
+
+!#######################################################################
+
+
+
 end module rh_clouds_mod
+
 
