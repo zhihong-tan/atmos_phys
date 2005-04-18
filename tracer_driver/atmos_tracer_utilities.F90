@@ -27,7 +27,9 @@ use            fms_mod, only : lowercase, &
                                write_version_number, &
                                stdlog, &
                                mpp_pe, &
-                               mpp_root_pe
+                               mpp_root_pe, &
+                               error_mesg, &
+                               NOTE
 use   time_manager_mod, only : time_type
 use   diag_manager_mod, only : send_data, &
                                register_diag_field
@@ -57,8 +59,8 @@ public  wet_deposition,    &
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 11.0 2004/09/28 19:26:56 fms Exp $'
-character(len=128) :: tagname = '$Name: khartoum $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 12.0 2005/04/14 15:52:18 fms Exp $'
+character(len=128) :: tagname = '$Name: lima $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 !-----------------------------------------------------------------------
@@ -160,12 +162,25 @@ call get_tracer_names(MODEL_ATMOS,n,tracer_names(n),tracer_longnames(n),tracer_u
           tracer_ddep_longnames(n) = &
                   trim(tracer_longnames(n)) // ' dry deposition for tracers'
       endif
-      if(trim(tracer_units(n)) == 'mmr') then
-        units = 'kg/m2/s'
-      endif
-      if(trim(tracer_units(n)) == 'vmr') then
-        units = 'mole/m2/s'
-      endif
+
+      select case (trim(tracer_units(n)))
+        case ('mmr')
+          units = 'kg/m2/s'
+        case ('kg/kg')
+          units = 'kg/m2/s'
+        case ('vmr')
+          units = 'mole/m2/s'
+        case ('mol/mol')
+          units = 'mole/m2/s'
+        case ('mole/mole')
+          units = 'mole/m2/s'
+        case default
+          units = trim(tracer_units(n))//' kg/(m2 s)'
+          call error_mesg('atmos_tracer_utilities_init',&
+          ' Dry dep units set to '//trim(units)//' in atmos_tracer_utilities for '//trim(tracer_names(n)),&
+           NOTE)
+      end select
+
 
      id_tracer_ddep(n) = register_diag_field ( mod_name,               &
                      trim(tracer_ddep_names(n)), mass_axes(1:2), Time, &
@@ -384,14 +399,28 @@ endwhere
 ! so rho drops out of the equation
     if (id_tracer_ddep(n) > 0 ) then
       call get_tracer_names(MODEL_ATMOS,n,names,units=units)
-        if(units(1:3) == 'mmr') then
-         used = send_data ( id_tracer_ddep(n), dsinku*pwt, Time, &
-         is_in =is,js_in=js)
-        endif
-        if(units(1:3) == 'vmr') then
+      select case (trim(units))
+        case ('mmr')
+          used = send_data ( id_tracer_ddep(n), dsinku*pwt, Time, &
+          is_in =is,js_in=js)
+        case ('kg/kg')
+          used = send_data ( id_tracer_ddep(n), dsinku*pwt, Time, &
+          is_in =is,js_in=js)
+        case ('vmr')
           used = send_data(id_tracer_ddep(n),dsinku*pwt/mw_air,Time,&
           is_in=is,js_in=js)
-        endif     
+        case ('mol/mol')
+          used = send_data(id_tracer_ddep(n),dsinku*pwt/mw_air,Time,&
+          is_in=is,js_in=js)
+        case ('mole/mole')
+          used = send_data(id_tracer_ddep(n),dsinku*pwt/mw_air,Time,&
+          is_in=is,js_in=js)
+        case default
+          used = send_data ( id_tracer_ddep(n), dsinku*pwt, Time, &
+          is_in =is,js_in=js)
+      end select
+
+
     endif
 end subroutine dry_deposition
 !</SUBROUTINE>

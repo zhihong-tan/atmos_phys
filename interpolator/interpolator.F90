@@ -86,8 +86,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 11.0 2004/09/28 19:26:26 fms Exp $'
-character(len=128) :: tagname = '$Name: khartoum $'
+'$Id: interpolator.F90,v 12.0 2005/04/14 15:51:43 fms Exp $'
+character(len=128) :: tagname = '$Name: lima $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -177,9 +177,10 @@ real ::  missing_value = -1.e10
 ! sjs integer :: itaum, itaup
 
 logical :: read_all_on_init = .false.
+integer :: verbose = 0  
 
 namelist /interpolator_nml/    &
-                             read_all_on_init
+                             read_all_on_init, verbose
 
 contains
 !
@@ -1195,8 +1196,18 @@ end do
             clim_type%time_init(i,2) = taup
           endif
         end do
-        clim_type%pmon_nyear = 0.0
-        clim_type%nmon_nyear = 0.0
+
+!       clim_type%pmon_nyear = 0.0
+!       clim_type%nmon_nyear = 0.0
+
+! set to zero so when next return to bilinear section will be sure to
+! have proper data (relevant when running fixed_year case for more than
+! one year in a single job)
+          clim_type%indexm(:) = 0       
+          clim_type%indexp(:) = 0        
+          clim_type%climatology(:) = 0             
+
+
 !       tweight3 = 0.0 ! This makes [pn]mon_nyear irrelevant. Set them to 0 to test.
         tweight1 = 0.0 
         tweight2 = 0.0 
@@ -1321,9 +1332,11 @@ do j = 1, size(phalf,2)
    do ilon=1,size(phalf,1)
       pclim = p_fact(ilon,j)*clim_type%halflevs
       if ( maxval(phalf(ilon,j,:)) > maxval(pclim) ) then
+         if (verbose > 3) then
          call mpp_error(NOTE,"Interpolator: model surface pressure&
                              & is greater than climatology surface pressure for "&
                              // trim(clim_type%file_name))
+         endif
          select case(clim_type%out_of_bounds(i))
             case(CONSTANT)
                pclim( maxloc(pclim) ) = maxval( phalf(ilon,j,:) )
@@ -1332,9 +1345,11 @@ do j = 1, size(phalf,2)
          end select
       endif
       if ( minval(phalf(ilon,j,:)) < minval(pclim) ) then
+         if (verbose > 3) then
          call mpp_error(NOTE,"Interpolator: model top pressure&
                              & is less than climatology top pressure for "&
                              // trim(clim_type%file_name))
+         endif
          select case(clim_type%out_of_bounds(i))
             case(CONSTANT)
                pclim( minloc(pclim) ) = minval( phalf(ilon,j,:) )
@@ -1521,6 +1536,7 @@ do i= 1,size(clim_type%field_name(:))
         call time_interp(t_next, month, tweight2, taum, taup ) ! tweight1 is the time weight between the climatology years.
 
 
+
         if (indexm == clim_type%indexm(i) .and.  &
           indexp == clim_type%indexp(i) .and. &
           climatology == clim_type%climatology(i)) then
@@ -1556,8 +1572,18 @@ do i= 1,size(clim_type%field_name(:))
           call read_data(clim_type,clim_type%field_type(i), clim_type%nmon_pyear(:,:,:,i), taup,i,Time)
 !RSHbug   clim_type%pmon_nyear = 0.0
 !RSHbug   clim_type%nmon_nyear = 0.0
-          clim_type%pmon_nyear(:,:,:,i) = 0.0
-          clim_type%nmon_nyear(:,:,:,i) = 0.0
+
+!         clim_type%pmon_nyear(:,:,:,i) = 0.0
+!         clim_type%nmon_nyear(:,:,:,i) = 0.0
+
+! set to zero so when next return to bilinear section will be sure to
+! have proper data (relevant when running fixed_year case for more than
+! one year in a single job)
+          clim_type%indexm(i) = 0       
+          clim_type%indexp(i) = 0        
+          clim_type%climatology(i) = 0             
+
+
           clim_type%time_init(i,1) = taum
           clim_type%time_init(i,2) = taup
         endif
@@ -1667,9 +1693,11 @@ do j = 1, size(phalf,2)
    do ilon=1,size(phalf,1)
       pclim = p_fact(ilon,j)*clim_type%halflevs
       if ( maxval(phalf(ilon,j,:)) > maxval(pclim) ) then
+         if (verbose > 3) then
          call mpp_error(NOTE,"Interpolator: model surface pressure&
                              & is greater than climatology surface pressure for "&
                              // trim(clim_type%file_name))
+         endif
          select case(clim_type%out_of_bounds(i))
             case(CONSTANT)
                pclim( maxloc(pclim) ) = maxval( phalf(ilon,j,:) )
@@ -1678,9 +1706,11 @@ do j = 1, size(phalf,2)
          end select
       endif
       if ( minval(phalf(ilon,j,:)) < minval(pclim) ) then
+         if (verbose > 3) then
          call mpp_error(NOTE,"Interpolator: model top pressure&
                              & is less than climatology top pressure for "&
                              // trim(clim_type%file_name))
+         endif
          select case(clim_type%out_of_bounds(i))
             case(CONSTANT)
                pclim( minloc(pclim) ) = minval( phalf(ilon,j,:) )
