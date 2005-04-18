@@ -57,8 +57,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 11.0 2004/09/28 19:20:54 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 12.0 2005/04/14 15:44:12 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -1009,12 +1009,12 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
       allocate (Aerosol_diags%extopdep (size(Aerosol%aerosol,1), &
                                         size(Aerosol%aerosol,2), &
                                         size(Aerosol%aerosol,3), &
-                                        size(Aerosol%aerosol,4), 4 ))
+                                        size(Aerosol%aerosol,4), 5 ))
       Aerosol_diags%extopdep = 0.0
       allocate (Aerosol_diags%absopdep (size(Aerosol%aerosol,1), &
                                         size(Aerosol%aerosol,2), &
                                         size(Aerosol%aerosol,3), &
-                                        size(Aerosol%aerosol,4), 4 ))
+                                        size(Aerosol%aerosol,4), 5 ))
       Aerosol_diags%absopdep = 0.0
       allocate (Aerosol_diags%extopdep_vlcno    &
                                         (size(Aerosol%aerosol,1), &

@@ -45,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: astronomy.F90,v 11.0 2004/09/28 19:14:02 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: astronomy.F90,v 12.0 2005/04/14 15:38:31 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -1559,6 +1559,11 @@ type(time_type),      intent(in), optional  :: dt_time
           call error_mesg ( 'astronomy_mod', &
              'radiation time step must be no longer than 12 hrs', &
                                                           FATAL)
+        endif
+        if (dt == 0.0) then
+          call error_mesg ( 'astronomy_mod', &
+              'radiation time step must not be an integral &
+                                     &number of days', FATAL)
         endif
 
 !--------------------------------------------------------------------

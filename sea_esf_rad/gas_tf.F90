@@ -26,9 +26,7 @@ use constants_mod,         only : constants_init, RDGAS, GRAV, pstd
 
 use rad_utilities_mod,     only : rad_utilities_init,  &
                                   longwave_control_type, Lw_control,&
-                                  atmos_input_type, &
-                                  gas_tf_type, Environment,   &
-                                  environment_type
+                                  atmos_input_type, gas_tf_type
 use longwave_params_mod,   only : longwave_params_init, NBCO215
 
 !---------------------------------------------------------------------
@@ -44,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: gas_tf.F90,v 11.0 2004/09/28 19:21:42 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: gas_tf.F90,v 12.0 2005/04/14 15:45:25 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -338,6 +336,7 @@ logical :: module_is_initialized = .false.  ! module is initialized ?
 
 
 
+
                          contains
 
 
@@ -470,10 +469,16 @@ real, dimension(:,:), intent(in) :: pref
 !--------------------------------------------------------------------
 !    check on consistency between namelist values
 !--------------------------------------------------------------------
-      if ( (Lw_control%do_ch4n2olbltmpint) .and.    &
-           (.not.(Lw_control%do_ch4_n2o)) ) then
+      if ( (Lw_control%do_ch4lbltmpint) .and.    &
+           (.not.(Lw_control%do_ch4)) ) then
         call error_mesg ( 'gas_tf_mod', &
-       'cannot have do_ch4n2olbltmpint active when do_ch4_n2o is off',& 
+       'cannot have do_ch4lbltmpint active when do_ch4 is off',& 
+                                                                 FATAL)
+      endif
+      if ( (Lw_control%do_n2olbltmpint) .and.    &
+           (.not.(Lw_control%do_n2o)) ) then
+        call error_mesg ( 'gas_tf_mod', &
+       'cannot have do_n2olbltmpint active when do_n2o is off',& 
                                                                  FATAL)
       endif
 
@@ -494,38 +499,59 @@ real, dimension(:,:), intent(in) :: pref
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
-      if (do_writestdco2tfs .and. do_readstdco2tfs) then
-        call error_mesg ( 'gas_tf_mod', &
-           ' cannot read and write std tfs in same job', FATAL)
-      endif
+      if (Lw_control%do_co2_iz) then
+        if (Lw_control%do_co2) then
+          if (do_writestdco2tfs .and. do_readstdco2tfs) then
+            call error_mesg ( 'gas_tf_mod', &
+                ' cannot read and write std tfs in same job', FATAL)
+          endif
 
-      if (do_writestdco2tfs .and. .not. do_calcstdco2tfs) then
-        call error_mesg ( 'gas_tf_mod', &
-          ' cannot write std tfs without calculating them', FATAL)
-      endif
-
-!---------------------------------------------------------------------
-!
-!---------------------------------------------------------------------
-      if (do_writestdch4tfs .and. do_readstdch4tfs) then
-        call error_mesg ( 'gas_tf_mod', &
-           ' cannot read and write std tfs in same job', FATAL)
-      endif
-      if (do_writestdch4tfs .and. .not. do_calcstdch4tfs) then
-        call error_mesg ( 'gas_tf_mod', &
-           ' cannot write std tfs without calculating them', FATAL)
+          if (do_writestdco2tfs .and. .not. do_calcstdco2tfs) then
+            call error_mesg ( 'gas_tf_mod', &
+              ' cannot write std tfs without calculating them', FATAL)
+          endif
+        endif
+      else
+        call error_mesg ('gas_tf_mod', &
+              'do_co2 has not yet been defined', FATAL)
       endif
 
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
-      if (do_writestdn2otfs .and. do_readstdn2otfs) then
-        call error_mesg ( 'gas_tf_mod', &
-          ' cannot read and write std tfs in same job', FATAL)
+      if (Lw_control%do_ch4_iz) then
+        if (Lw_control%do_ch4) then
+          if (do_writestdch4tfs .and. do_readstdch4tfs) then
+            call error_mesg ( 'gas_tf_mod', &
+              ' cannot read and write std tfs in same job', FATAL)
+          endif
+          if (do_writestdch4tfs .and. .not. do_calcstdch4tfs) then
+            call error_mesg ( 'gas_tf_mod', &
+              ' cannot write std tfs without calculating them', FATAL)
+          endif
+        endif
+      else
+        call error_mesg ('gas_tf_mod', &
+                 'do_ch4 has not yet been defined', FATAL)
       endif
-      if (do_writestdn2otfs .and. .not. do_calcstdn2otfs) then
-        call error_mesg ( 'gas_tf_mod', &
-           ' cannot write std tfs without calculating them', FATAL)
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+      if (Lw_control%do_n2o_iz) then
+        if (Lw_control%do_n2o) then
+          if (do_writestdn2otfs .and. do_readstdn2otfs) then
+            call error_mesg ( 'gas_tf_mod', &
+              ' cannot read and write std tfs in same job', FATAL)
+          endif
+          if (do_writestdn2otfs .and. .not. do_calcstdn2otfs) then
+            call error_mesg ( 'gas_tf_mod', &
+               ' cannot write std tfs without calculating them', FATAL)
+          endif
+        endif
+      else
+        call error_mesg ('gas_tf_mod', &
+              'do_n2o has not yet been defined', FATAL)
       endif
 
 !--------------------------------------------------------------------
@@ -562,6 +588,7 @@ real, dimension(:,:), intent(in) :: pref
 !    allocate co2 transmission function arrays to hold data which will 
 !    either be read in or will be coming from lw_gases_stdtf module.
 !----------------------------------------------------------------------
+     if (Lw_control%do_co2) then
       allocate (cdtm51(KSRAD:KERAD) , &
                 co2m51(KSRAD:KERAD) , &
                 c2dm51(KSRAD:KERAD) , &
@@ -582,19 +609,22 @@ real, dimension(:,:), intent(in) :: pref
                 c2d58(KSRAD:KERAD+1, KSRAD:KERAD+1)   )
       allocate (co211(KSRAD:KERAD+1) , &
                 co218(KSRAD:KERAD+1) )
+     endif
 
 !----------------------------------------------------------------------
 !    allocate ch4 and n2o transmission function arrays to hold data 
 !    which will either be read in or will be coming from 
 !    lw_gases_stdtf module.
 !----------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (Lw_control%do_ch4) then
         allocate (ch4dt51(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
                   ch451(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
                   ch4d2t51(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
                   ch4dt58(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
                   ch458(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
                   ch4d2t58(KSRAD:KERAD+1, KSRAD:KERAD+1)   )
+      endif
+      if (Lw_control%do_n2o) then
         allocate (n2odt51(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
                   n2o51(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
                   n2od2t51(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
@@ -734,8 +764,8 @@ type(atmos_input_type), intent(in)    :: Atmos_input
       allocate (Gas_tf%tn2o17  (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
       allocate (Gas_tf%co2spnb (ISRAD:IERAD, JSRAD:JERAD,  &
                                                KSRAD:KERAD+1,  NBCO215))
-      Gas_tf%co2nbl  = 0.0                                         
-      Gas_tf%co2spnb = 0.0                                           
+      Gas_tf%co2nbl  = 1.0                                         
+      Gas_tf%co2spnb = 1.0                                           
       Gas_tf%n2o9c  = 0.                                          
       Gas_tf%tn2o17  = 0.0                                        
 
@@ -816,7 +846,9 @@ type(atmos_input_type), intent(in)    :: Atmos_input
 !    call transfn to compute temperature-corrected co2 transmission 
 !    functions (co2spnb and co2nbl). 
 !---------------------------------------------------------------------
+    if (Lw_control%do_co2) then
       call transfn (Gas_tf)
+    endif
 
 !-------------------------------------------------------------------
 
@@ -1141,24 +1173,36 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
 !       pressure interpolation
 !-----------------------------------------------------------------------
       do kp=kcols,kcole
+        if (Lw_control%do_co2) then
         co2p  (:,:,kp) = Gas_tf%a1(:,:)*co251(kp,krow) +  &
                          Gas_tf%a2(:,:)*co258(kp,krow)
         dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt51(kp,krow) +   &
                                   Gas_tf%a2(:,:)*cdt58(kp,krow))
         d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d51(kp,krow) +   &
                                   Gas_tf%a2(:,:)*c2d58(kp,krow))
-        if (Lw_control%do_ch4_n2o) then
-          if (Lw_control%do_ch4n2olbltmpint) then
+        endif
+        if (Lw_control%do_ch4) then
+          if (Lw_control%do_ch4lbltmpint) then
             ch4p (:,:,kp)  = Gas_tf%a1(:,:)*ch451(kp,krow) +  &
                              Gas_tf%a2(:,:)*ch458(kp,krow)
+            dch4dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*ch4dt51(kp,krow) +&
+                                      Gas_tf%a2(:,:)*ch4dt58(kp,krow))
+            d2ch4dt2(:,:,kp) = 1.0E-03*  &
+                                  (Gas_tf%a1(:,:)*ch4d2t51(kp,krow) +  &
+                                   Gas_tf%a2(:,:)*ch4d2t58(kp,krow))
+          else
+            ch41c(:,:,kp)  = Gas_tf%a1(:,:)*ch451(kp,krow) +  &
+                             Gas_tf%a2(:,:)*ch458(kp,krow)
+          endif
+        endif
+        if (Lw_control%do_n2o) then
+          if (Lw_control%do_n2olbltmpint) then
             n2op (:,:,kp)  = Gas_tf%a1(:,:)*n2o51(kp,krow) + &
                              Gas_tf%a2(:,:)*n2o58(kp,krow)
             n2o17p(:,:,kp) = Gas_tf%a1(:,:)*n2o71(kp,krow) + &
                              Gas_tf%a2(:,:)*n2o78(kp,krow)
             n2o9p(:,:,kp) = Gas_tf%a1(:,:)*n2o91(kp,krow) + &
                             Gas_tf%a2(:,:)*n2o98(kp,krow)
-            dch4dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*ch4dt51(kp,krow) +&
-                                      Gas_tf%a2(:,:)*ch4dt58(kp,krow))
             dn2odt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*n2odt51(kp,krow) +&
                                     Gas_tf%a2(:,:)*n2odt58(kp,krow))
             dn2o17dt(:,:,kp) = 1.0E-02* &
@@ -1167,9 +1211,6 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
             dn2o9dt(:,:,kp) = 1.0E-02*  &
                                     (Gas_tf%a1(:,:)*n2odt91(kp,krow) + &
                                      Gas_tf%a2(:,:)*n2odt98(kp,krow))
-            d2ch4dt2(:,:,kp) = 1.0E-03*  &
-                                  (Gas_tf%a1(:,:)*ch4d2t51(kp,krow) +  &
-                                   Gas_tf%a2(:,:)*ch4d2t58(kp,krow))
             d2n2odt2(:,:,kp) = 1.0E-03*  &
                                   (Gas_tf%a1(:,:)*n2od2t51(kp,krow) +  &
                                    Gas_tf%a2(:,:)*n2od2t58(kp,krow))
@@ -1180,8 +1221,6 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
                                   (Gas_tf%a1(:,:)*n2od2t91(kp,krow) +  &
                                    Gas_tf%a2(:,:)*n2od2t98(kp,krow))
           else
-            ch41c(:,:,kp)  = Gas_tf%a1(:,:)*ch451(kp,krow) +  &
-                             Gas_tf%a2(:,:)*ch458(kp,krow)
             n2o1c(:,:,kp)  = Gas_tf%a1(:,:)*n2o51(kp,krow) + &
                              Gas_tf%a2(:,:)*n2o58(kp,krow)
             n2o17c(:,:,kp) = Gas_tf%a1(:,:)*n2o71(kp,krow) + &
@@ -1196,12 +1235,16 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
 !    temperature interpolation
 !----------------------------------------------------------------------
       do kp=kcols,kcole
+        if (Lw_control%do_co2) then
         co21c (:,:,kp) = co2p(:,:,kp) + dift(:,:,kp)*(dco2dt(:,:,kp) + &
                          0.5E+00*dift(:,:,kp)*d2cdt2(:,:,kp))
-        if (Lw_control%do_ch4n2olbltmpint) then
+        endif
+        if (Lw_control%do_ch4lbltmpint) then
           ch41c (:,:,kp) = ch4p(:,:,kp) + dift(:,:,kp)* &
                            (dch4dt(:,:,kp) + 0.5E+00*dift(:,:,kp)* &
                             d2ch4dt2(:,:,kp))
+        endif
+        if (Lw_control%do_n2olbltmpint) then
           n2o1c (:,:,kp) = n2op(:,:,kp) + dift(:,:,kp)* &
                            (dn2odt(:,:,kp) + 0.5E+00*dift(:,:,kp)* &
                             d2n2odt2(:,:,kp))
@@ -1219,8 +1262,10 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
 !    (Eqs. 7a-7c, Ref. (2))
 !---------------------------------------------------------------------
       do kp=kcols,kcole
+        if (Lw_control%do_co2) then
         co21c(:,:,kp) = co21c(:,:,kp)*(1.0E+00 -  &
                         Gas_tf%tlsqu(:,:,kp)) + Gas_tf%tlsqu(:,:,kp)
+        endif
       enddo
 
 !-----------------------------------------------------------------------
@@ -1235,46 +1280,57 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
 !    entirely within (kcols,kcole), in which case the dift computed
 !    for column tfs is applicable to row tfs.
 !-----------------------------------------------------------------------
-      if (kcol  .NE. krow   .or. krows .LT. kcols  .or.  &
-          krowe .GT. kcole)     then
-        do kp = krows,krowe
-          if (kp .NE. krow) then
-            dift(:,:,kp) = (Gas_tf%tdav(:,:,kp) -  &
-                            Gas_tf%tdav(:,:,krow))/  &
-                           (Gas_tf%tstdav(:,:,kp) -  &
-                            Gas_tf%tstdav(:,:,krow))
-          elseif (krow .NE. KSRAD) then
-            dift(:,:,kp) = 0.5E+00*(Gas_tf%tmpdiff(:,:,kp) +  &
-                                    Gas_tf%tmpdiff(:,:,kp-1))
-          else
-            dift(:,:,kp) = 0.0E+00
-          endif
-        end do
-      endif
+      if (Lw_control%do_co2) then
+        if (kcol  .NE. krow   .or. krows .LT. kcols  .or.  &
+            krowe .GT. kcole)     then
+          do kp = krows,krowe
+            if (kp .NE. krow) then
+              dift(:,:,kp) = (Gas_tf%tdav(:,:,kp) -  &
+                              Gas_tf%tdav(:,:,krow))/  &
+                             (Gas_tf%tstdav(:,:,kp) -  &
+                              Gas_tf%tstdav(:,:,krow))
+            elseif (krow .NE. KSRAD) then
+              dift(:,:,kp) = 0.5E+00*(Gas_tf%tmpdiff(:,:,kp) +  &
+                                      Gas_tf%tmpdiff(:,:,kp-1))
+            else
+              dift(:,:,kp) = 0.0E+00
+            endif
+          end do
+        endif
+      endif  ! (do_co2)
 
 !--------------------------------------------------------------------
 !    pressure interpolation
 !--------------------------------------------------------------------
       do kp=krows,krowe
+        if (Lw_control%do_co2) then
         co2p  (:,:,kp) = Gas_tf%a1(:,:)*co251(kcol,kp) +  &
                          Gas_tf%a2(:,:)*co258(kcol,kp)
         dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt51(kcol,kp) +   &
                                   Gas_tf%a2(:,:)*cdt58(kcol,kp))
         d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d51(kcol,kp) +   &
                                   Gas_tf%a2(:,:)*c2d58(kcol,kp))
-        if (Lw_control%do_ch4_n2o) then
-          if (Lw_control%do_ch4n2olbltmpint) then
+        endif
+        if (Lw_control%do_ch4) then
+          if (Lw_control%do_ch4lbltmpint) then
             ch4p (:,:,kp)  = Gas_tf%a1(:,:)*ch451(kcol,kp) +  &
                              Gas_tf%a2(:,:)*ch458(kcol,kp)
+            dch4dt(:,:,kp) = 1.0E-02* &
+                             (Gas_tf%a1(:,:)*ch4dt51(kcol,kp) +   &
+                              Gas_tf%a2(:,:)*ch4dt58(kcol,kp))
+            d2ch4dt2(:,:,kp) = 1.0E-03*  &
+                               (Gas_tf%a1(:,:)*ch4d2t51(kcol,kp) +  &
+                                Gas_tf%a2(:,:)*ch4d2t58(kcol,kp))
+          endif
+        endif
+        if (Lw_control%do_n2o) then
+          if (Lw_control%do_n2olbltmpint) then
             n2op (:,:,kp)  = Gas_tf%a1(:,:)*n2o51(kcol,kp) +&
                              Gas_tf%a2(:,:)*n2o58(kcol,kp)
             n2o17p(:,:,kp) = Gas_tf%a1(:,:)*n2o71(kcol,kp) + &
                              Gas_tf%a2(:,:)*n2o78(kcol,kp)
             n2o9p(:,:,kp) = Gas_tf%a1(:,:)*n2o91(kcol,kp) + &
                             Gas_tf%a2(:,:)*n2o98(kcol,kp)
-            dch4dt(:,:,kp) = 1.0E-02* &
-                             (Gas_tf%a1(:,:)*ch4dt51(kcol,kp) +   &
-                              Gas_tf%a2(:,:)*ch4dt58(kcol,kp))
             dn2odt(:,:,kp) = 1.0E-02* &
                              (Gas_tf%a1(:,:)*n2odt51(kcol,kp) +  &
                               Gas_tf%a2(:,:)*n2odt58(kcol,kp))
@@ -1284,9 +1340,6 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
             dn2o9dt(:,:,kp) = 1.0E-02* &
                               (Gas_tf%a1(:,:)*n2odt91(kcol,kp) +   &
                                Gas_tf%a2(:,:)*n2odt98(kcol,kp))
-            d2ch4dt2(:,:,kp) = 1.0E-03*  &
-                               (Gas_tf%a1(:,:)*ch4d2t51(kcol,kp) +  &
-                                Gas_tf%a2(:,:)*ch4d2t58(kcol,kp))
             d2n2odt2(:,:,kp) = 1.0E-03* &
                                (Gas_tf%a1(:,:)*n2od2t51(kcol,kp) +   &
                                 Gas_tf%a2(:,:)*n2od2t58(kcol,kp))
@@ -1296,7 +1349,6 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
             d2n2o9dt2(:,:,kp) = 1.0E-03* &
                                 (Gas_tf%a1(:,:)*n2od2t91(kcol,kp) +   &
                                  Gas_tf%a2(:,:)*n2od2t98(kcol,kp))
-          else
           endif
         endif
       enddo
@@ -1305,8 +1357,10 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
 !    temperature interpolation
 !---------------------------------------------------------------------
       do kp=krows,krowe
+        if (Lw_control%do_co2) then
         co21r (:,:,kp) = co2p(:,:,kp) + dift(:,:,kp)*(dco2dt(:,:,kp) +&
                          0.5E+00*dift(:,:,kp)*d2cdt2(:,:,kp))
+        endif
       enddo
 
 !---------------------------------------------------------------------
@@ -1314,16 +1368,18 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
 !    (Eqs. 7a-7c, Ref. (2))
 !---------------------------------------------------------------------
       do kp=krows,krowe
+        if (Lw_control%do_co2) then
         co21r(:,:,kp) = co21r(:,:,kp)*(1.0E+00 -  &
                         Gas_tf%tlsqu(:,:,kcol)) +  &
                         Gas_tf%tlsqu(:,:,kcol)
+        endif
       enddo
 
 !----------------------------------------------------------------------
 !    save the values which are needed elsewhere
 !    tn2o17 results are for 560-630 cm-1 band. (if NBCO215=3)
 !----------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (Lw_control%do_ch4 .or. Lw_control%do_n2o) then
         if (kcols == 1) then
           tch4n2oe(:,:,kcols,1) = ch41c(:,:,kcols)*n2o1c(:,:,kcols)
         endif

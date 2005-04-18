@@ -24,7 +24,7 @@ module mg_drag_mod
  private
 
  character(len=128) :: version = '$Id: mg_drag.F90,v 11.0 2004/09/28 19:19:38 fms Exp $'
- character(len=128) :: tagname = '$Name: khartoum $'
+ character(len=128) :: tagname = '$Name: lima $'
 
  real, parameter :: p00 = 1.e5
 

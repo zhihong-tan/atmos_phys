@@ -41,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 11.0 2004/09/28 19:23:50 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 12.0 2005/04/14 15:47:32 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -151,6 +151,21 @@ type astronomy_type
                                        fracday=>NULL()
      real    :: rrsun
 end type astronomy_type
+
+!--------------------------------------------------------------------
+ 
+public astronomy_inp_type
+ 
+!    zenith_angle   specified zenith angles [ degrees ]
+!    fracday        specified daylight fraction [ fraction ]
+!    rrsun          specified earth-sun distance, normalized by mean
+!                   distance 
+
+type astronomy_inp_type
+     real, dimension(:,:), pointer  :: zenith_angle=>NULL()
+     real, dimension(:,:), pointer  :: fracday=>NULL()
+     real                           :: rrsun
+end type astronomy_inp_type
 
 !--------------------------------------------------------------------
 
@@ -334,6 +349,7 @@ type cloudrad_control_type
     logical :: do_random_overlap
     logical :: do_max_random_overlap
     logical :: do_stochastic_clouds
+    logical :: do_specified_strat_clouds
     logical :: do_ica_calcs
     integer :: nlwcldb                   !   number of frequency bands 
                                          !   for which lw cloud emissiv-
@@ -361,21 +377,9 @@ type cloudrad_control_type
     logical :: do_random_overlap_iz
     logical :: do_max_random_overlap_iz
     logical :: do_stochastic_clouds_iz
+    logical :: do_specified_strat_clouds_iz
     logical :: do_ica_calcs_iz
 end type cloudrad_control_type
-
-!------------------------------------------------------------------
-
-public environment_type
-
-type environment_type
-    logical           ::  using_sky_periphs
-    logical           ::  using_fms_periphs
-    logical           ::  running_gcm     
-    logical           ::  running_standalone
-    logical           ::  running_sa_model
-    character(len=16) ::  column_type
-end type environment_type
 
 !------------------------------------------------------------------
 
@@ -461,16 +465,24 @@ type longwave_control_type
     character(len=16) :: linecatalog_form
     logical           :: do_cfc
     logical           :: do_lwaerosol
-    logical           :: do_ch4_n2o
-    logical           :: do_ch4n2olbltmpint
+    logical           :: do_ch4
+    logical           :: do_n2o
+    logical           :: do_ch4lbltmpint
+    logical           :: do_n2olbltmpint
     logical           :: do_co2
     logical           :: do_lwcldemiss
+    logical           :: do_h2o
+    logical           :: do_o3 
     logical           :: do_cfc_iz
     logical           :: do_lwaerosol_iz
-    logical           :: do_ch4_n2o_iz
-    logical           :: do_ch4n2olbltmpint_iz
+    logical           :: do_ch4_iz
+    logical           :: do_n2o_iz
+    logical           :: do_ch4lbltmpint_iz
+    logical           :: do_n2olbltmpint_iz
     logical           :: do_co2_iz
     logical           :: do_lwcldemiss_iz
+    logical           :: do_h2o_iz
+    logical           :: do_o3_iz 
 end type longwave_control_type
 
 !---------------------------------------------------------------------
@@ -903,6 +915,8 @@ type rad_output_type
                                         flux_sw_down_vis_dif=>NULL(), &
                                        flux_sw_down_total_dir=>NULL(), &
                                        flux_sw_down_total_dif=>NULL(), &
+                                  flux_sw_down_total_dir_clr=>NULL(), &
+                                  flux_sw_down_total_dif_clr=>NULL(), &
                                         flux_sw_vis=>NULL(), &
                                         flux_sw_vis_dir=>NULL(), &
                                         flux_sw_vis_dif=>NULL(), &
@@ -1021,7 +1035,9 @@ type sw_output_type
       real, dimension(:,:), pointer :: dfsw_vis_sfc=>NULL(),   &
                                        ufsw_vis_sfc=>NULL()
       real, dimension(:,:), pointer :: dfsw_dir_sfc=>NULL()
+      real, dimension(:,:), pointer :: dfsw_dir_sfc_clr=>NULL()
       real, dimension(:,:), pointer :: dfsw_dif_sfc=>NULL(),   &
+                                       dfsw_dif_sfc_clr=>NULL(),   &
                                        ufsw_dif_sfc=>NULL()
       real, dimension(:,:), pointer :: dfsw_vis_sfc_dir=>NULL()
       real, dimension(:,:), pointer :: dfsw_vis_sfc_dif=>NULL(),   &
@@ -1054,19 +1070,11 @@ end type table_axis_type
 !--------------------------------------------------------------------
 !-------- namelist  ---------
 
-character(len=16) ::    &
-       application_type  = '    '  ! type of program in which the rad-
-                                   ! iation package is being run; either
-                                   ! 'gcm', 'sa_gcm' or 'standalone'
-character(len=16) ::     &
-       column_type       = '    '  ! when running with application_type
-                                   ! of 'standalone' the column type 
-                                   ! being employed
+integer            ::  dummy = 0
 
 
 namelist / rad_utilities_nml /   &
-                                application_type, &
-                                column_type
+                                dummy
 
 
 !---------------------------------------------------------------------
@@ -1076,8 +1084,12 @@ namelist / rad_utilities_nml /   &
 type (longwave_control_type),  public   ::    &
      Lw_control = longwave_control_type( '    ', '    ', '    ', &
                                          .false., .false., .false.,  &
-                                         .false., .true., .false.,  &
                                          .false., .false., .false.,  &
+                                         .false., .false.,  &
+                                         .false., .false.,  &
+                                         .false., .false., .false.,  &
+                                         .false., .false.,  &
+                                         .false., .false.,  &
                                          .false., .false., .false.   )
 
 type (shortwave_control_type), public   ::  &
@@ -1117,7 +1129,7 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false.,                   &
+                                         .false., .false.,          &
                                          0,0,0,0,0,0 , &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
@@ -1125,11 +1137,8 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false.)
+                                         .false., .false.)
 
-type (environment_type), public         ::   &
-         Environment = environment_type( .false.,  .false., .false., &
-                                         .false.,  .false.,  '      ')
 
 type (longwave_parameter_type), public  ::   &
 Lw_parameters = longwave_parameter_type( 0, 0, 0, 0, 0, 10.0, &
@@ -1228,33 +1237,6 @@ subroutine rad_utilities_init
       if (mpp_pe() == mpp_root_pe() ) &
                         write (stdlog(), nml=rad_utilities_nml)
 
-!--------------------------------------------------------------------
-!    define the type of program in which the radiation package is 
-!    being used.
-!----------------------------------------------------------------------
-      if (trim(application_type) == 'gcm') then
-        Environment%running_gcm = .true.
-        Environment%running_standalone = .false.
-        Environment%running_sa_model = .false.
-      else if (trim(application_type) == 'standalone') then
-        Environment%running_gcm = .false.
-        Environment%running_standalone = .true.
-        Environment%running_sa_model = .false.
-      else if (trim(application_type) == 'sa_gcm') then
-        Environment%running_gcm = .false.
-        Environment%running_standalone = .true.
-        Environment%running_sa_model = .true.
-      else
-        call error_mesg ('rad_utilities_mod', &
-           ' application_type not acceptable', FATAL)
-      endif
-
-!--------------------------------------------------------------------
-!    define the selected column_type (only used when running in 
-!    standalone columns mode).
-!--------------------------------------------------------------------
-      Environment%column_type = column_type
-
 !-------------------------------------------------------------------
 !    mark the module as initialized.
 !-------------------------------------------------------------------
@@ -1300,9 +1282,13 @@ subroutine check_derived_types
 !--------------------------------------------------------------------
       if (Lw_control%do_cfc_iz .and. &
           Lw_control%do_lwaerosol_iz .and. &
-          Lw_control%do_ch4_n2o_iz .and. &
-          Lw_control%do_ch4n2olbltmpint_iz .and. &
+          Lw_control%do_ch4_iz .and. &
+          Lw_control%do_n2o_iz .and. &
+          Lw_control%do_ch4lbltmpint_iz .and. &
+          Lw_control%do_n2olbltmpint_iz .and. &
           Lw_control%do_co2_iz .and. &
+          Lw_control%do_h2o_iz .and. &
+          Lw_control%do_o3_iz .and. &
           Lw_control%do_lwcldemiss_iz ) then  
       else
         call error_mesg ('rad_utilities_mod', &
@@ -1370,6 +1356,7 @@ subroutine check_derived_types
           Cldrad_control%do_no_clouds_iz .and. &
           Cldrad_control%do_diag_clouds_iz .and. &
           Cldrad_control%do_specified_clouds_iz .and. &
+          Cldrad_control%do_specified_strat_clouds_iz .and. &
           Cldrad_control%do_donner_deep_clouds_iz .and. &
           Cldrad_control%do_stochastic_clouds_iz .and. &
           Cldrad_control%do_random_overlap_iz .and. &
@@ -1395,6 +1382,19 @@ subroutine check_derived_types
           ' at least one component of Lw_parameters has not been '//&
                                      'initialized', FATAL)
       endif
+
+!---------------------------------------------------------------------
+!    check for consistency between band structure and cfc and lwaerosol
+!    effects.
+!---------------------------------------------------------------------
+      if (Lw_parameters%nbtrge == 0) then
+        if (Lw_control%do_cfc .or. Lw_control%do_lwaerosol) then
+          call error_mesg ('rad_utilities_mod', &
+             'when do_cfc and / or do_lwaerosol is .true., must set &
+              &sealw99_nml variable no_h2o_bands_1200_1400 > 0 ', FATAL)
+        endif
+      endif
+!--------------------------------------------------------------------
 
 !--------------------------------------------------------------------
 

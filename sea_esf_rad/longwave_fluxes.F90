@@ -43,7 +43,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 11.0 2004/09/28 19:22:09 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------

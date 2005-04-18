@@ -24,11 +24,10 @@ use       fms_mod,          only: open_namelist_file, file_exist,   &
                                   close_file, FATAL, NOTE, &
                                   WARNING, mpp_pe, mpp_root_pe, &
                                   write_version_number, stdlog
-use rad_utilities_mod,      only: Environment, environment_type, &
-                                  longwave_control_type, Lw_control, &
-                                   shortwave_control_type, Sw_control,&
+use rad_utilities_mod,      only: longwave_control_type, Lw_control, &
+                                  shortwave_control_type, Sw_control,&
                                   microphysics_type,  &
-                                   microrad_properties_type, &
+                                  microrad_properties_type, &
                                   cld_specification_type, &
                                   cloudrad_control_type, Cldrad_control
 
@@ -47,8 +46,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 11.0 2004/09/28 19:21:26 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: khartoum $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 12.0 2005/04/14 15:45:00 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: lima $'
 
 
 
@@ -153,11 +152,7 @@ type(time_type),       intent(in)      :: Time
        kx = size(pref,1) - 1
 
 !---------------------------------------------------------------------
-      if (Environment%running_gcm .or.    &
-          Environment%running_sa_model) then
-      else
-        call donner_deep_init(lonb, latb, pref(:,1), axes, Time)
-      endif
+       call donner_deep_init(lonb, latb, pref(:,1), axes, Time)
 
        module_is_initialized = .true.
 
@@ -472,7 +467,6 @@ integer :: unit
      jdim = size(cld_cell,2)
      kdim = size(cld_cell,3)
 
-if (Environment%running_gcm) then
 !--------------------------------------------------------------------
 
 
@@ -544,9 +538,7 @@ if (Environment%running_gcm) then
 
 
 
-  else if (Environment%running_standalone) then ! (running_standalone)
  
-     if (Cldrad_control%do_pred_cld_microphys) then
 
 !
 !--------------------------------------------------------------------
@@ -582,15 +574,7 @@ if (Environment%running_gcm) then
   
 
 
-  else !  (standalone, not with pred_cld_microphys)
 
-       call error_mesg ('donner_deep_clouds_W',   &
-    ' standalone donner_deep_cloud only available with pred microphys', FATAL)
- 
-  
-  endif  ! (standalone, microphys)
-
- endif  ! (gcm or standalone)
 
 
 end subroutine donner_deep_clouds_calc

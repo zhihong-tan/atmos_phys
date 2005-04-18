@@ -41,7 +41,7 @@ use data_override_mod,        only: data_override
 
 ! shared radiation package modules:
 
-use rad_utilities_mod,        only: Environment, rad_utilities_init, &
+use rad_utilities_mod,        only: rad_utilities_init, &
                                     cld_specification_type, &
                                     atmos_input_type, &
                                     surface_type, &
@@ -96,8 +96,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 11.0 2004/09/28 19:21:14 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 12.0 2005/04/14 15:44:28 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -123,6 +123,7 @@ character(len=16)  ::      &
                                         ! 'deep',  'stratdeep', 'zonal',
                                         ! 'obs', 'prescribed', 'diag', 
                                         ! 'none', 'specified', 'zetac'
+                                        ! 'specified_strat'
                                         ! or 'not_sea_esf'       
 real :: wtr_cld_reff=10.                ! assumed cloud drop efective
                                         ! radius [ microns ]  
@@ -353,35 +354,18 @@ type(time_type),          intent(in)   ::  Time
 !-------------------------------------------------------------------
         Cldrad_control%do_strat_clouds = .true.
         call strat_clouds_W_init(latb, lonb)
-        if (Environment%running_gcm    .or.  &
-            Environment%running_sa_model .or. &
-           (Environment%running_standalone .and. &
-            Environment%column_type == 'fms')) then
-        else
-          call standalone_clouds_init (pref, lonb, latb)
-        endif
-      else 
 
-!---------------------------------------------------------------------
-!    set the flag indicating that the stochastic clouds flag has been
-!    initialized, it can only be activated when strat_clouds are active.
-!---------------------------------------------------------------------
-        Cldrad_control%do_stochastic_clouds_iz = .true.
-
-!---------------------------------------------------------------------
-!    check the potential cloud parameterizations that are only valid for
-!    the gcm and sa_gcm modes.
-!---------------------------------------------------------------------
-        if (Environment%running_gcm    .or.  &
-            Environment%running_sa_model .or. &
-           (Environment%running_standalone .and. &
-            Environment%column_type == 'fms')) then
+      else if (trim(cloud_type_form) == 'specified_strat')  then
+        Cldrad_control%do_specified_strat_clouds = .true.
+        Cldrad_control%do_strat_clouds = .true.
+        call strat_clouds_W_init(latb, lonb)
+        call standalone_clouds_init (pref, lonb, latb)
 
 !-------------------------------------------------------------------
 !    cloud fractions, heights are diagnosed based on model relative 
 !    humidity.
 !-------------------------------------------------------------------
-          if (trim(cloud_type_form)  == 'rh')   then
+          else if (trim(cloud_type_form)  == 'rh')   then
             Cldrad_control%do_rh_clouds = .true.
             call rh_based_clouds_init 
 
@@ -451,24 +435,9 @@ type(time_type),          intent(in)   ::  Time
             Cldrad_control%do_no_clouds = .true.
 
 !-------------------------------------------------------------------
-!    failure message if none of the above options was chosen.
-!-------------------------------------------------------------------
-          else
-            call error_mesg ('cloud_spec_mod',  &
-            ' invalid value for cloud_type_form', FATAL)
-          endif
-
-!---------------------------------------------------------------------
-!    check the potential cloud parameterizations that are specific to
-!    the standalone columns mode.
-!---------------------------------------------------------------------
-        else if (Environment%running_standalone .and. &
-                 Environment%column_type /= 'fms') then
-
-!-------------------------------------------------------------------
 !    model is run with specified clouds and cloud properties.
 !-------------------------------------------------------------------
-          if (trim(cloud_type_form)  == 'specified')  then
+          else if (trim(cloud_type_form)  == 'specified')  then
             Cldrad_control%do_specified_clouds = .true.
             call standalone_clouds_init (pref, lonb, latb)
 
@@ -478,8 +447,6 @@ type(time_type),          intent(in)   ::  Time
           else
             call error_mesg ('cloud_spec_mod',  &
               'invalid cloud_type_form specified', FATAL)
-          endif
-        endif ! (running_gcm or running_sa_model)
       endif  ! (strat)
 
 !--------------------------------------------------------------------
@@ -507,7 +474,6 @@ type(time_type),          intent(in)   ::  Time
 !    obtain the tracer indices for the strat_cloud variables when
 !    running gcm.
 !---------------------------------------------------------------------
-      if (Environment%running_gcm) then
         if (Cldrad_control%do_strat_clouds .or.  &
             Cldrad_control%do_zetac_clouds) then
           nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
@@ -524,7 +490,6 @@ type(time_type),          intent(in)   ::  Time
             'tracers indices cannot be the same (i.e., nql=nqi=nqa).', &
                                                               FATAL)
         endif
-      endif
 
 !---------------------------------------------------------------------
 !    define the variables indicating that the cloud parameterization
@@ -538,8 +503,10 @@ type(time_type),          intent(in)   ::  Time
       Cldrad_control%do_no_clouds_iz = .true.
       Cldrad_control%do_diag_clouds_iz = .true.
       Cldrad_control%do_specified_clouds_iz = .true.
+      Cldrad_control%do_specified_strat_clouds_iz = .true.
       Cldrad_control%do_donner_deep_clouds_iz = .true.
       Cldrad_control%do_zetac_clouds_iz = .true.
+      Cldrad_control%do_stochastic_clouds_iz = .true.
  
 !---------------------------------------------------------------------
 !    mark the module initialized.
@@ -729,40 +696,22 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !
 !---------------------------------------------------------------------
 
+!---------------------------------------------------------------------
+!    check for the presence of optional input arguments.
+!---------------------------------------------------------------------
       ierr = 1
-!-------------------------------------------------------------------
-!    verify that the optional arguments required when running in
-!    sa-model mode are present. if they are, set ierr to indicate that
-!    cloud data has been successfully obtained. if they are not present,
-!    write an error message and stop.
-!-------------------------------------------------------------------
-      if (Environment%running_sa_model) then
-        if (present(cloud_water_in) .and.   &
-            present(cloud_ice_in) .and. &
-            present(cloud_area_in)) then
+      if (present(cloud_water_in) .and.   &
+          present(cloud_ice_in) .and. &
+          present(cloud_area_in)) then
+        ierr = 0
+      else
+        if (present (r)) then
           ierr = 0
         else
           call error_mesg ('cloud_spec_mod', &
-               'must pass cloud_water, cloud_ice and cloud_area to '//&
-                   'cloud_spec when running sa model', FATAL)
-        endif
-
-!---------------------------------------------------------------------
-!    for the standalone columns case with predicted cloud microphysics, 
-!    cloud-water and cloud_ice are required inputs. if present, set ierr
-!    to indicate that cloud data has been successfully obtained. if they
-!    are not present, write an error message and stop. 
-!---------------------------------------------------------------------
-      else if (Environment%running_standalone) then
-        if (Cldrad_control%do_pred_cld_microphys) then
-          if (present(cloud_water_in) .and.  &
-              present(cloud_ice_in) ) then
-            ierr = 0
-          else
-            call error_mesg ('cloud_spec_mod', &
-           ' cloud_ice and cloud_water values must be supplied when'//&
-            ' using pred_cld_microphys in standalone mode', FATAL)
-          endif
+              'must input either r or cloud_water_in and  &
+              &cloud_ice_in when using predicted cloud microphysics', &
+                                                               FATAL)
         endif
       endif
 
@@ -809,18 +758,17 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !    when running in standalone columns mode, call standalone_clouds_amt
 !    to obtain the cloud specification variables. 
 !---------------------------------------------------------------------
-        if ((Environment%running_standalone .and.       &
-            .not. Environment%running_sa_model) .and.  &
-                  Environment%column_type /= 'fms') then
+        if (Cldrad_control%do_specified_clouds .or. &
+            Cldrad_control%do_specified_strat_clouds )   then
+
           call standalone_clouds_amt (is, ie, js, je, lat,     &
                                       Atmos_input%press, Cld_spec)
-        endif
 
 !---------------------------------------------------------------------
 !    if the rh diagnostic cloud scheme is active, call rh_clouds_amt
 !    to define the needed cloud specification variables.
 !---------------------------------------------------------------------
-        if (Cldrad_control%do_rh_clouds) then
+        else if (Cldrad_control%do_rh_clouds) then
           call rh_clouds_amt (is, ie, js, je, Atmos_input%press, lat,  &
                               Cld_spec)
 
@@ -859,22 +807,23 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
             Cld_spec%cloud_water(:,:,:) = r(:,:,:,nql)
             Cld_spec%cloud_ice  (:,:,:) = r(:,:,:,nqi)
             Cld_spec%cloud_area (:,:,:) = r(:,:,:,nqa)
-            ierr = 0
-          else
-            call error_mesg ('cloud_spec_mod', &
-              ' must pass tracer array r when using zetac clouds', &
-                                                              FATAL)
+!           ierr = 0
+!         else
+!           call error_mesg ('cloud_spec_mod', &
+!             ' must pass tracer array r when using zetac clouds', &
+!                                                             FATAL)
           endif
           call zetac_clouds_amt (is, ie, js, je, z_half, z_full, &
                                  Surface%land, Atmos_input%phalf, &
                                  Atmos_input%deltaz, Cld_spec, &
                                  Lsc_microphys)
 
+        endif ! (do_rh_clouds)
 !--------------------------------------------------------------------
 !    if klein prognostic clouds are active, call strat_clouds_amt to 
 !    obtain the needed cloud specification variables.
 !--------------------------------------------------------------------
-        else if (Cldrad_control%do_strat_clouds) then
+        if (Cldrad_control%do_strat_clouds) then
 
 !---------------------------------------------------------------------
 !    if the gcm is being executed, call strat_cloud_avg to obtain the
@@ -885,18 +834,11 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !    cloud area have been input as optional arguments to this sub-
 !    routine.
 !---------------------------------------------------------------------
-          if (.not. Environment%running_standalone) then
             if (present (r)) then
               Cld_spec%cloud_water(:,:,:) = r(:,:,:,nql)
               Cld_spec%cloud_ice  (:,:,:) = r(:,:,:,nqi)
               Cld_spec%cloud_area (:,:,:) = r(:,:,:,nqa)
-              ierr = 0
-            else
-              call error_mesg ('cloud_spec_mod', &
-                 ' must pass tracer array r when running in gcm', &
-                                                            FATAL)
             endif
-          endif ! (running_standalone)
 
 !---------------------------------------------------------------------
 !    if the cloud input data is to be overriden, define the time slice
@@ -984,7 +926,7 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
                                   size(Atmos_input%press,2)
             endif
           endif
-        endif ! (do_rh_clouds)
+        endif ! (do_strat_clouds)
 
 !--------------------------------------------------------------------
 !    since donner_deep_clouds may be active along with strat clouds, 
@@ -1014,10 +956,7 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !    when microphysically-based properties are present, and when
 !    either strat clouds and / or donner deep clouds is activated.
 !---------------------------------------------------------------------
-        if (Environment%running_sa_model .or.     &
-            Environment%running_gcm  .or.  &
-           (Environment%running_standalone .and. &
-            Environment%column_type == 'fms')) then
+        if ( .not. Cldrad_control%do_specified_strat_clouds ) then
           if (Cldrad_control%do_sw_micro  .or.    &
               Cldrad_control%do_lw_micro) then
             if (Cldrad_control%do_strat_clouds .or.    &
@@ -1035,7 +974,7 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !    if microphysics is active and strat_clouds is not, define the water
 !    paths (in units of kg / m**2).  if strat_clouds is active, these 
 !    values will have already been defined. when microphysics is active,
-!    define the effective radius for the liquid and ice particles.
+!    define the effective sizes for the liquid and ice particles.
 !--------------------------------------------------------------------
       if (Cldrad_control%do_lw_micro .or.    &
           Cldrad_control%do_sw_micro)  then
@@ -1046,8 +985,8 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
           Cld_spec%iwp = 1.0E-03*Lsc_microphys%conc_ice(:,:,:)*  &
                          Atmos_input%clouddeltaz(:,:,:)
         endif
-        Cld_spec%reff_liq_micro = 0.5*Lsc_microphys%size_drop
-        Cld_spec%reff_ice_micro = 0.5*Lsc_microphys%size_ice
+        Cld_spec%reff_liq_micro = Lsc_microphys%size_drop
+        Cld_spec%reff_ice_micro = Lsc_microphys%size_ice
       endif
 
 !---------------------------------------------------------------------
@@ -1103,6 +1042,8 @@ type(cld_specification_type), intent(inout) :: Cld_spec
 type(microphysics_type),      intent(inout) :: Lsc_microphys,   &
                                                Meso_microphys, &
                                                Cell_microphys
+
+integer :: ier
 
 !----------------------------------------------------------------------
 !    deallocate the array elements of Cld_spec.
@@ -1161,17 +1102,17 @@ type(microphysics_type),      intent(inout) :: Lsc_microphys,   &
       deallocate (Lsc_microphys%size_snow   )
       deallocate (Lsc_microphys%cldamt      )
       if (Cldrad_control%do_stochastic_clouds) then
-        nullify (Lsc_microphys%lw_stoch_conc_drop   )
-        nullify (Lsc_microphys%lw_stoch_conc_ice    )
-        nullify (Lsc_microphys%lw_stoch_size_drop   )
-        nullify (Lsc_microphys%lw_stoch_size_ice    )
-        nullify (Lsc_microphys%lw_stoch_cldamt      )
+        deallocate (Lsc_microphys%lw_stoch_conc_drop   , stat=ier)
+        deallocate (Lsc_microphys%lw_stoch_conc_ice    , stat=ier)
+        deallocate (Lsc_microphys%lw_stoch_size_drop   , stat=ier)
+        deallocate (Lsc_microphys%lw_stoch_size_ice    , stat=ier)
+        deallocate (Lsc_microphys%lw_stoch_cldamt      , stat=ier)
 
-        nullify (Lsc_microphys%sw_stoch_conc_drop   )
-        nullify (Lsc_microphys%sw_stoch_conc_ice    )
-        nullify (Lsc_microphys%sw_stoch_size_drop   )
-        nullify (Lsc_microphys%sw_stoch_size_ice    )
-        nullify (Lsc_microphys%sw_stoch_cldamt      )
+        deallocate (Lsc_microphys%sw_stoch_conc_drop   , stat=ier)
+        deallocate (Lsc_microphys%sw_stoch_conc_ice    , stat=ier)
+        deallocate (Lsc_microphys%sw_stoch_size_drop   , stat=ier)
+        deallocate (Lsc_microphys%sw_stoch_size_ice    , stat=ier)
+        deallocate (Lsc_microphys%sw_stoch_cldamt      , stat=ier)
 
         deallocate (Lsc_microphys%stoch_conc_drop   )
         deallocate (Lsc_microphys%stoch_conc_ice    )
@@ -1258,9 +1199,8 @@ subroutine cloud_spec_end
           if (Cldrad_control%do_donner_deep_clouds) then
             call donner_deep_clouds_W_end
           endif
-          if (Environment%running_gcm  .or.  &
-              Environment%running_sa_model) then
-          else
+          if (Cldrad_control%do_specified_strat_clouds .or. &
+              Cldrad_control%do_specified_clouds ) then 
             call standalone_clouds_end
           endif
 

@@ -78,7 +78,6 @@ use    rad_utilities_mod, only: rad_utilities_init, &
                                 sw_output_type, lw_output_type, &
                                 rad_output_type, &
                                 fsrad_output_type, &
-                                environment_type, Environment, &
                                 cloudrad_control_type, &
                                 rad_utilities_init, &
                                 Cldrad_control
@@ -98,8 +97,8 @@ public    original_fms_rad_init, original_fms_rad_end, original_fms_rad
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: original_fms_rad.F90,v 11.0 2004/09/28 19:23:22 fms Exp $'
-character(len=128) :: tagname = '$Name: khartoum $'
+character(len=128) :: version = '$Id: original_fms_rad.F90,v 12.0 2005/04/14 15:47:06 fms Exp $'
+character(len=128) :: tagname = '$Name: lima $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)

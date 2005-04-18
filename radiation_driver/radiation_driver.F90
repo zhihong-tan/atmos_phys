@@ -157,8 +157,9 @@ use rad_utilities_mod,     only: radiation_control_type, Rad_control, &
                                  sw_output_type, lw_output_type, &
                                  rad_output_type, microphysics_type, &
                                  shortwave_control_type, Sw_control, &
+                                 Lw_control, &
                                  fsrad_output_type, &
-                                 environment_type, Environment, &
+                                 astronomy_inp_type, &
                                  cloudrad_control_type, Cldrad_control,&
                                  rad_utilities_end
 use esfsw_parameters_mod,  only: Solar_spect, esfsw_parameters_init  
@@ -208,8 +209,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 11.0 2004/09/28 19:20:30 fms Exp $'
-character(len=128) :: tagname = '$Name: khartoum $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 12.0 2005/04/14 15:43:35 fms Exp $'
+character(len=128) :: tagname = '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -356,7 +357,26 @@ logical :: time_varying_solar_constant = .false.
                                       !  solar_constant is to vary with
                                       !  time ?
 logical :: do_netcdf_restart = .true. !  netcdf/native restart
+logical :: use_uniform_solar_input = .false.
+                                      !  the (lat,lon) values used to
+                                      !  calculate zenith angle are
+                                      !  uniform across the grid ?
+real    :: lat_for_solar_input = 100. !  latitude to be used when uni-
+                                      !  form solar input is activated
+                                      !  [ degrees ]
+real    :: lon_for_solar_input = 500. !  longitude to be used when uni-
+                                      !  form solar input is activated
+                                      !  [ degrees ]
 
+logical :: always_calculate = .false. !  radiation calculation is done
+                                      !  on every call to 
+                                      !  radiation_driver ?
+logical :: do_h2o         = .true.    !  h2o radiative effects are 
+                                      !  included in the radiation 
+                                      !  calculation ? 
+logical :: do_o3          = .true.    !  o3 radiative effects are 
+                                      !  included in the radiation 
+                                      !  calculation ? 
 integer, dimension(6) :: solar_dataset_entry = (/ 1, 1, 1, 0, 0, 0 /)
                                       ! time in solar data set corresp-
                                       ! onding to model initial time
@@ -502,10 +522,41 @@ integer, dimension(6) :: solar_dataset_entry = (/ 1, 1, 1, 0, 0, 0 /)
 !solar_constant is to vary with
 !  time ?
 !  </DATA>
+!  <DATA NAME="always_calculate" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!  calculate radiative fluxes and heating rates on every call to 
+!  radiation_driver ?
+!  </DATA>
+!  <DATA NAME="do_h2o" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!  include h2o effects in radiation calculation ?
+!  </DATA>
+!  <DATA NAME="do_o3" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!  include o3 effects in radiation calculation ?
+!  </DATA>
 !  <DATA NAME="solar_dataset_entry" UNITS="" TYPE="integer" DIM="" DEFAULT="">
 !time in solar data set corresp-
 ! onding to model initial time
 ! (yr, mo, dy, hr, mn, sc)
+!  </DATA>
+!  <DATA NAME="always_calculate" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!fluxes and heating rates should
+! be calculatd on each call to
+! radiation_driver ? (true for
+! standalone applications)
+!  </DATA>
+!  <DATA NAME="use_uniform_solar_input" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!  the (lat,lon) values used to
+!  calculate zenith angle are
+!  uniform across the grid ?
+!  </DATA>
+!  <DATA NAME="lat_for_solar_input" UNITS="" TYPE="real" DIM="" DEFAULT="">
+!  latitude to be used when uni-
+!  form solar input is activated
+!  [ degrees ]
+!  </DATA>
+!  <DATA NAME="lon_for_solar_input" UNITS="" TYPE="real" DIM="" DEFAULT="">
+!  longitude to be used when uni-
+!  form solar input is activated
+!  [ degrees ]
 !  </DATA>
 ! </NAMELIST>
 !
@@ -528,7 +579,10 @@ namelist /radiation_driver_nml/ do_netcdf_restart, &
                                 trop_ht_constant, constant_tropo, &
                                 linear_tropo, thermo_tropo, &
                                 time_varying_solar_constant, &
-                                solar_dataset_entry
+                                solar_dataset_entry, &
+                                always_calculate,  do_h2o, do_o3, &
+                                use_uniform_solar_input, &
+                                lat_for_solar_input, lon_for_solar_input
 !---------------------------------------------------------------------
 !---- public data ----
 
@@ -577,9 +631,11 @@ logical ::  do_sea_esf_rad                  ! using sea_esf_rad package?
 !                 land model (11/13/03).
 !     version 9:  consolidation of version 6 and version 8. (version 7
 !                 replaced by version 8.)
+!     version 10: adds 2 clr sky sw down diffuse and direct sfc flux
+!                 diagnostic variables (10/18/04)
 !---------------------------------------------------------------------
-integer, dimension(8) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
-                                                   7, 8, 9 /)
+integer, dimension(9) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
+                                                   7, 8, 9, 10 /)
 
 !-----------------------------------------------------------------------
 !    these arrays must be preserved across timesteps:
@@ -594,6 +650,10 @@ integer, dimension(8) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
 !          flux_sw_down_vis_dif  downward visible sw flux at surface
 !          flux_sw_down_total_dir  downward total sw flux at surface
 !          flux_sw_down_total_dif  downward total sw flux at surface
+!          flux_sw_down_total_dir_clr  downward total sw flux at surface
+!                                      (clear sky)
+!          flux_sw_down_total_dif_clr  downward total sw flux at surface
+!                                      (clear sky)
 !          flux_sw_vis    net visible sw flux at surface
 !          flux_sw_vis_dir    net visible sw flux at surface
 !          flux_sw_vis_dif net visible sw flux at surface
@@ -615,6 +675,7 @@ integer, dimension(8) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
 !    tot_heating_save, flux_sw_surf_save, flux_sw_surf_dir_save,
 !    flux_sw_surf_dif_save, flux_sw_down_vis_dir_save, 
 !    flux_sw_down_vis_dif_save
+!    flux_sw_down_total_dir_clr_save, flux_sw_down_total_dif_clr_save,
 !    flux_sw_down_total_dir_save, flux_sw_down_total_dif_save and 
 !    flux_sw_vis_save, flux_sw_vis_dir_save, flux_sw_vis_dif_save are 
 !    the radiative forcing terms on radiation steps which also must be 
@@ -641,6 +702,8 @@ real, allocatable, dimension(:,:)   ::  solar_save, flux_sw_surf_save, &
                                         flux_sw_down_vis_dif_save, &
                                         flux_sw_down_total_dir_save, &
                                         flux_sw_down_total_dif_save, &
+                                    flux_sw_down_total_dir_clr_save, &
+                                    flux_sw_down_total_dif_clr_save, &
                                         flux_sw_vis_save, &
                                         flux_sw_vis_dir_save, &
                                         flux_sw_vis_dif_save
@@ -691,6 +754,7 @@ integer, parameter :: MX_SPEC_LEVS = 3
 
 character(len=16)            :: mod_name = 'radiation'
 integer                      :: id_alb_sfc, id_cosz, id_fracday, &
+                                id_alb_sfc_avg, &
                                 id_alb_sfc_vis_dir, id_alb_sfc_nir_dir,&
                                 id_alb_sfc_vis_dif, id_alb_sfc_nir_dif
 integer                      :: id_flux_sw_dir, id_flux_sw_dif, &
@@ -698,6 +762,8 @@ integer                      :: id_flux_sw_dir, id_flux_sw_dif, &
                                 id_flux_sw_down_vis_dif, &
                                 id_flux_sw_down_total_dir, &
                                 id_flux_sw_down_total_dif, &
+                                id_flux_sw_down_total_dir_clr, &
+                                id_flux_sw_down_total_dif_clr, &
                                 id_flux_sw_vis, &
                                 id_flux_sw_vis_dir, &
                                 id_flux_sw_vis_dif, &
@@ -789,6 +855,7 @@ integer         ::   years_of_data_lean
 type(time_type) :: Model_init_time, Solar_offset, &
                    Solar_entry
 logical         :: negative_offset = .false.
+real, dimension(:,:), allocatable :: swups_acc, swdns_acc
 
 ! <DATASET NAME="CO2 transmission functions">
 ! Several ascii files are required that can be easily setup by a
@@ -1014,6 +1081,26 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
       endif
 
 !---------------------------------------------------------------------
+!    set control variable indicating whether water vapor effects are to
+!    be included in the radiative calculation. if h2o effects are not 
+!    to be included in the radiative calculations, set the lower limit 
+!    for h2o to zero. set flag to indicate do_h2o has been initialized.
+!---------------------------------------------------------------------
+      Lw_control%do_h2o = do_h2o 
+      if (.not. do_h2o) then
+        rh2o_lower_limit = 0.0
+      endif
+      Lw_control%do_h2o_iz = .true.
+
+!---------------------------------------------------------------------
+!    set control variable indicating whether ozone effects are to be
+!    included in the radiative calculation. set flag to indicate the
+!    control variable has been initialized.
+!---------------------------------------------------------------------
+      Lw_control%do_o3 = do_o3 
+      Lw_control%do_o3_iz = .true.
+      
+!---------------------------------------------------------------------
 !    stop execution if overriding of aerosol data has been requested.
 !    code to do so has not yet been written.
 !---------------------------------------------------------------------
@@ -1042,6 +1129,30 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
       else
         call error_mesg ('radiation_driver_mod', &    
             'string provided for zenith_spec is invalid', FATAL)
+      endif
+
+!--------------------------------------------------------------------
+!    check if spacially-uniform solar input has been requested. if it
+!    has, verify that the requested lat and lon are valid, and convert
+!    them to radians.
+!--------------------------------------------------------------------
+      if (use_uniform_solar_input) then
+        if (lat_for_solar_input < -90. .or. &
+            lat_for_solar_input >  90. ) then
+          call error_mesg ('radiation_driver_mod', &
+            'specified latitude for uniform solar input is invalid', &
+                                                            FATAL)
+        else
+          lat_for_solar_input = lat_for_solar_input/RADIAN
+        endif
+        if (lon_for_solar_input < 0. .or. &
+            lon_for_solar_input > 360. ) then
+          call error_mesg ('radiation_driver_mod', &
+            'specified longitude for uniform solar input is invalid', &
+                                                             FATAL)
+        else
+          lon_for_solar_input = lon_for_solar_input/RADIAN
+        endif
       endif
 
 !--------------------------------------------------------------------
@@ -1354,17 +1465,6 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
          'must provide two reference pressure profiles (pref).', FATAL)
 
 !---------------------------------------------------------------------
-!    the renormalize_sw_fluxes option is not allowed when running the 
-!    standalone code.
-!---------------------------------------------------------------------
-      if (Environment%running_standalone .and.  &
-          renormalize_sw_fluxes) then
-        call error_mesg ( 'radiation_driver_mod', &
-               'renormalizing sw fluxes when running standalone'//&
-                           ' radiation code is not available', FATAL)
-      endif
-
-!---------------------------------------------------------------------
 !    allocate space for variables which must be saved when sw fluxes
 !    are renormalized or diagnostics are desired to be output on every
 !    physics step.
@@ -1397,6 +1497,8 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
           allocate (ufswcf_save          (id,jd,kmax+1))
           allocate ( fswcf_save          (id,jd,kmax+1))
           allocate ( hswcf_save          (id,jd,kmax))
+          allocate (flux_sw_down_total_dir_clr_save  (id,jd))
+          allocate (flux_sw_down_total_dif_clr_save  (id,jd))
           allocate (swdn_special_clr_save(id,jd, MX_SPEC_LEVS))
           allocate (swup_special_clr_save(id,jd, MX_SPEC_LEVS))
         endif
@@ -1421,10 +1523,6 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
         endif
       endif
 
-      if (Environment%running_gcm .or. &
-          Environment%running_sa_model .or. &
-          (Environment%running_standalone .and. &
-           Environment%column_type == 'fms')) then
 !---------------------------------------------------------------------
 !    allocate space for module variables to contain values which must
 !    be saved between timesteps (these are used on every timestep,
@@ -1441,6 +1539,8 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
         allocate (Rad_output%flux_sw_down_vis_dif(id,jd))
         allocate (Rad_output%flux_sw_down_total_dir(id,jd))
         allocate (Rad_output%flux_sw_down_total_dif(id,jd))
+        allocate (Rad_output%flux_sw_down_total_dir_clr(id,jd))
+        allocate (Rad_output%flux_sw_down_total_dif_clr(id,jd))
         allocate (Rad_output%flux_sw_vis(id,jd))
         allocate (Rad_output%flux_sw_vis_dir(id,jd))
         allocate (Rad_output%flux_sw_vis_dif(id,jd))
@@ -1498,6 +1598,8 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
           Rad_output%flux_sw_down_vis_dif  = 0.0
           Rad_output%flux_sw_down_total_dir  = 0.0
           Rad_output%flux_sw_down_total_dif  = 0.0
+          Rad_output%flux_sw_down_total_dir_clr  = 0.0
+          Rad_output%flux_sw_down_total_dif_clr  = 0.0
           Rad_output%flux_sw_vis  = 0.0
           Rad_output%flux_sw_vis_dir  = 0.0
           Rad_output%flux_sw_vis_dif  = 0.0
@@ -1509,7 +1611,6 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
            ' will initialize input fields', NOTE)
           endif
         endif
-      endif   ! (running_gcm)
 
 !--------------------------------------------------------------------
 !    do the initialization specific to the sea_esf_rad radiation
@@ -1552,10 +1653,6 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
         call astronomy_init
       endif
 
-      if (Environment%running_gcm .or.  &
-          Environment%running_sa_model .or. &
-          (Environment%running_standalone .and. &
-           Environment%column_type == 'fms')) then
 !---------------------------------------------------------------------
 !    initialize the total number of columns in the processor's domain.
 !---------------------------------------------------------------------
@@ -1582,7 +1679,6 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 !    diagnostics_manager.
 !----------------------------------------------------------------------
         call diag_field_init (Time, axes)
-      endif
 
 !--------------------------------------------------------------------
 !    initialize clocks to time portions of the code called from 
@@ -1717,7 +1813,8 @@ subroutine radiation_driver (is, ie, js, je, Time, Time_next,  &
                              lat, lon, Surface, Atmos_input, &
                              Aerosol, Cld_spec, Rad_gases, &
                              Lsc_microphys, Meso_microphys,    &
-                             Cell_microphys, Radiation, mask, kbot)
+                             Cell_microphys, Radiation, Astronomy_inp, &
+                             mask, kbot)
 
 !---------------------------------------------------------------------
 !    radiation_driver adds the radiative heating rate to the temperature
@@ -1738,6 +1835,7 @@ type(microphysics_type),      intent(inout)        :: Lsc_microphys,&
                                                       Meso_microphys,&
                                                       Cell_microphys
 type(rad_output_type),     intent(inout), optional :: Radiation
+type(astronomy_inp_type),  intent(inout), optional :: Astronomy_inp
 real, dimension(:,:,:),    intent(in),    optional :: mask
 integer, dimension(:,:),   intent(in),    optional :: kbot
 !----------------------------------------------------------------------
@@ -1810,6 +1908,10 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !                        [ dimensionless ]
 !        tdtlw           longwave heating rate
 !                        [ deg K / sec ]
+!      Astronomy_inp  astronomy_input_type structure, optionally used
+!                     to input astronomical forcings, when it is desired
+!                     to specify them rather than use astronomy_mod.
+!                     Used in various standalone applications.
 !
 !   intent(in), optional variables:
 !
@@ -1831,7 +1933,8 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
       type(aerosol_properties_type)      :: Aerosol_props
       type(aerosol_diagnostics_type)     :: Aerosol_diags
 
-      real, dimension (ie-is+1, je-js+1) :: flux_ratio
+      real, dimension (ie-is+1, je-js+1) :: flux_ratio, &
+                                            lat_uniform, lon_uniform
  
 !-------------------------------------------------------------------
 !   local variables:
@@ -1871,10 +1974,32 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !---------------------------------------------------------------------
       call mpp_clock_begin (misc_clock)
       if (do_rad .or. renormalize_sw_fluxes) then 
-        call obtain_astronomy_variables (is, ie, js, je, lat, lon,  &
-                                         Astro, Astro2)  
+        if (use_uniform_solar_input) then
+          if (present (Astronomy_inp)) then
+            call error_mesg ('radiation_driver_mod', &
+              'cannot specify both use_uniform_solar_input AND use&
+              & Astronomy_inp to specify astronomical variables', &
+                                                               FATAL)
+          endif
+          lat_uniform(:,:) = lat_for_solar_input
+          lon_uniform(:,:) = lon_for_solar_input
+          call obtain_astronomy_variables (is, ie, js, je,  &
+                                           lat_uniform, lon_uniform,  &
+                                           Astro, Astro2)
+        else
+          if (present (Astronomy_inp)) then
+            Sw_control%do_diurnal = .false.
+            Sw_control%do_annual = .false.
+            Sw_control%do_daily_mean = .false.
+          endif
+          call obtain_astronomy_variables (is, ie, js, je, lat, lon,  &
+                                           Astro, Astro2, &
+                                           Astronomy_inp =  &
+                                                          Astronomy_inp)
+        endif
       endif
 
+!     print *, 'before aerosol  ', mpp_pe()
       if (do_rad) then
         if (Rad_control%do_aerosol) then
           call aerosol_radiative_properties (is, ie, js, je, &
@@ -1930,6 +2055,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !    are to be time-averaged, this call is made on all steps; otherwise
 !    just on radiation steps.
 !--------------------------------------------------------------------
+!     print *, 'before cloud_rad', mpp_pe()
       call mpp_clock_begin (clouds_clock)
       if (do_rad) then
         if (do_sea_esf_rad) then
@@ -1955,6 +2081,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !    on radiation timesteps, call radiation_calc to determine new radia-
 !    tive fluxes and heating rates.
 !---------------------------------------------------------------------
+!     print *, 'before _calc    ', mpp_pe()
       call mpp_clock_begin (calc_clock)
       if (do_rad) then
         call radiation_calc (is, ie, js, je, Rad_time, Time_next, lat, &
@@ -1974,11 +2101,12 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !    change in zenith angle since the last radiation timestep, that also
 !    is done in this subroutine. 
 !-------------------------------------------------------------------
+!     print *, 'before update   ', mpp_pe()
       call mpp_clock_begin (misc_clock)
-      if (Environment%running_gcm .or.  &
-          Environment%running_sa_model .or. &
-          (Environment%running_standalone .and. &
-           Environment%column_type == 'fms')) then
+!     if (Environment%running_gcm .or.  &
+!         Environment%running_sa_model .or. &
+!         (Environment%running_standalone .and. &
+!          Environment%column_type == 'fms')) then
         call update_rad_fields (is, ie, js, je, Time_next, Astro2, &
                                 Sw_output, Astro, Rad_output,    &
                                 flux_ratio)
@@ -2032,7 +2160,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
                                         Time_next)
           endif
         endif ! (do_rad and do_sea_esf_rad)
-      endif  ! (running_gcm)
+!     endif  ! (running_gcm)
 
 !---------------------------------------------------------------------
 !    call deallocate_arrays to deallocate the array space associated 
@@ -2051,10 +2179,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !    set do_rad to false, so that radiation will not be calculated until
 !    the alarm goes off.
 !--------------------------------------------------------------------
-      if (Environment%running_gcm .or.  &
-          Environment%running_sa_model .or. &
-          (Environment%running_standalone .and. &
-           Environment%column_type == 'fms')) then
+      if (.not. always_calculate) then
         num_pts = num_pts + size(lat,1) * size(lat,2)
         if (num_pts == total_pts) then
           num_pts = 0
@@ -2063,7 +2188,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
             do_rad = .false.
           endif
         endif
-      endif  ! (running_gcm)
+      endif  ! (always_calculate)
 
 !--------------------------------------------------------------------
  
@@ -2251,7 +2376,7 @@ logical,         intent(out)    ::  need_aerosols, need_clouds,   &
 !    every step, using climatological variable values at the time spec-
 !    ified by the input argument Time. 
 !-------------------------------------------------------------------
-      if (Environment%running_standalone) then
+      if (always_calculate) then
         do_rad = .true.
         Rad_time = Time
 
@@ -2307,7 +2432,7 @@ logical,         intent(out)    ::  need_aerosols, need_clouds,   &
         else
           Rad_time = Time
         endif  ! (rsd)
-      endif  ! (running_standalone)
+      endif  ! (always_calculate)
 
 !---------------------------------------------------------------------
 !    define the solar_constant appropriate at Rad_time, including any
@@ -2635,23 +2760,6 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
           call error_mesg ('radiation_driver_mod',  &
                'module has not been initialized', FATAL)
 
-!-------------------------------------------------------------------
-!    verify that optional arguments that are required when running in
-!    sa-model mode are present.
-!-------------------------------------------------------------------
-      if (Environment%running_sa_model) then
-        if (present(cloudtemp)   .and.   &
-            present(cloudvapor)  .and.   &
-            present(aerosoltemp)  .and.   &
-            present(aerosolvapor)  .and.   &
-            present(aerosolpress) ) then        
-        else
-            call error_mesg ('radiation_driver_mod', &
-                    'must pass optional arguments  to'//&
-                    'radiation_driver when running sa model', FATAL)
-        endif
-      endif
-
 !----------------------------------------------------------------------
 !    define the number of model layers.
 !----------------------------------------------------------------------
@@ -2936,11 +3044,7 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
 !    humidity field to mixing ratio. it is assumed that water vapor 
 !    mixing ratio is the input in the standalone case.
 !------------------------------------------------------------------
-      if (Environment%running_gcm .or. &
-          Environment%running_sa_model .or. &
-          (Environment%running_standalone .and. &
-           Environment%column_type == 'fms')) then
-        if(use_mixing_ratio) then
+        if (use_mixing_ratio) then
           Atmos_input%rh2o (:,:,:) = q2(:,:,:)
         else
           if (.not. overriding_sphum .and. &
@@ -2961,9 +3065,6 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
                             (1.0 - Atmos_input%aerosolvapor(:,:,:))
           endif
         endif
-      else if (Environment%running_standalone) then
-        Atmos_input%rh2o (:,:,:) = q2(:,:,:)
-      endif ! (running gcm)
  
 !------------------------------------------------------------------
 !    be sure that the magnitude of the water vapor mixing ratio field 
@@ -2973,6 +3074,9 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
 !    code. Likewise, the temperature that the radiation code sees is
 !    constrained to lie between 100K and 370K. these are the limits of
 !    the tables referenced within the radiation package.
+!      exception:
+!    if do_h2o is false, the lower limit of h2o is zero, and radiation
+!    tables will not be called.
 !-----------------------------------------------------------------------
       if (do_rad) then
         Atmos_input%rh2o(:,:,ks:ke) =    &
@@ -3391,13 +3495,11 @@ subroutine radiation_driver_end
       if (.not. module_is_initialized)   &
           call error_mesg ('radiation_driver_mod',  &
                'module has not been initialized', FATAL)
-      if (Environment%running_gcm) then
          if ( do_netcdf_restart ) then
             call write_restart_nc
          else
             call write_restart_file
          endif
-      endif
 
 !---------------------------------------------------------------------
 !    wrap up modules initialized by this module.
@@ -3439,6 +3541,8 @@ subroutine radiation_driver_end
           deallocate (sw_heating_clr_save, tot_heating_clr_save,  &
                       dfswcf_save, ufswcf_save, fswcf_save,   &
                       swdn_special_clr_save, swup_special_clr_save,   &
+                     flux_sw_down_total_dir_clr_save, &
+                     flux_sw_down_total_dif_clr_save, &
                       hswcf_save)
         endif
       endif
@@ -3460,10 +3564,6 @@ subroutine radiation_driver_end
 !    release space used for module variables that hold data between
 !    timesteps.
 !---------------------------------------------------------------------
-      if (Environment%running_gcm  .or. &
-          Environment%running_sa_model .or. &
-          (Environment%running_standalone .and. &
-           Environment%column_type == 'fms')) then
         deallocate (Rad_output%tdt_rad, Rad_output%tdt_rad_clr,  & 
                     Rad_output%tdtsw, Rad_output%tdtsw_clr, &
                     Rad_output%tdtlw, Rad_output%flux_sw_surf,  &
@@ -3473,11 +3573,12 @@ subroutine radiation_driver_end
                     Rad_output%flux_sw_down_vis_dif,  &
                     Rad_output%flux_sw_down_total_dir,  &
                     Rad_output%flux_sw_down_total_dif,  &
+                   Rad_output%flux_sw_down_total_dir_clr,  &
+                   Rad_output%flux_sw_down_total_dif_clr,  &
                     Rad_output%flux_sw_vis,  &
                     Rad_output%flux_sw_vis_dir,  &
                     Rad_output%flux_sw_vis_dif,  &
                     Rad_output%flux_lw_surf, Rad_output%coszen_angle)
-      endif    ! (running_gcm)
 
 !----------------------------------------------------------------------
 !    deallocate arrays related to the time_varying solar constant.
@@ -3587,6 +3688,8 @@ subroutine write_restart_file
             call write_data (unit, ufswcf_save) 
             call write_data (unit, fswcf_save)  
             call write_data (unit, hswcf_save)
+            call write_data (unit, flux_sw_down_total_dir_clr_save)
+            call write_data (unit, flux_sw_down_total_dif_clr_save)
             call write_data (unit, swdn_special_clr_save)
             call write_data (unit, swup_special_clr_save)
           endif
@@ -3674,6 +3777,8 @@ subroutine write_restart_nc
             call write_data (fname, 'ufswcf_save', ufswcf_save) 
             call write_data (fname, 'fswcf_save', fswcf_save)  
             call write_data (fname, 'hswcf_save', hswcf_save)
+            call write_data (fname, 'flux_sw_down_total_dir_clr_save', flux_sw_down_total_dir_clr_save)
+            call write_data (fname, 'flux_sw_down_total_dif_clr_save', flux_sw_down_total_dif_clr_save)
             call write_data (fname, 'swdn_special_clr_save', swdn_special_clr_save)
             call write_data (fname, 'swup_special_clr_save', swup_special_clr_save)
           endif
@@ -3920,6 +4025,7 @@ subroutine read_restart_file
                 call read_data (unit, ufswcf_save) 
                 call read_data (unit, fswcf_save)  
                 call read_data (unit, hswcf_save)
+
 !               if (vers >= 6) then
 !          call read_data (unit, swdn_trop_clr_save)
 !          call read_data (unit, swup_trop_clr_save)
@@ -4035,6 +4141,13 @@ subroutine read_restart_file
                 call read_data (unit, ufswcf_save) 
                 call read_data (unit, fswcf_save)  
                 call read_data (unit, hswcf_save)
+                if (vers >= 10) then
+                  call read_data (unit, flux_sw_down_total_dir_clr_save)
+                  call read_data (unit, flux_sw_down_total_dif_clr_save)
+                else
+                  flux_sw_down_total_dir_clr_save =0.0
+                  flux_sw_down_total_dif_clr_save =0.0
+                endif
 
 !---------------------------------------------------------------------
 !    if this is a pre-version 9 restart (other than version 6), then 
@@ -4171,6 +4284,7 @@ subroutine read_restart_nc
   if (mpp_pe() == mpp_root_pe() ) then
     call error_mesg('radiation_driver_mod', 'Reading netCDF formatted restart file: INPUT/radiation_driver.res.nc', NOTE)
   endif
+  call read_data(fname, 'vers', vers, no_domain=.true.)
   call read_data(fname, 'rad_alarm', rad_alarm, no_domain=.true.)
   call read_data(fname, 'rad_time_step', old_time_step, no_domain=.true.)
   call read_data(fname, 'renormalize_sw_fluxes', flag1, no_domain=.true.)
@@ -4197,23 +4311,6 @@ subroutine read_restart_nc
         call read_data (fname, 'flux_sw_vis_dif',        Rad_output%flux_sw_vis_dif)
         call read_data (fname, 'flux_lw_surf',           Rad_output%flux_lw_surf)
         call read_data (fname, 'coszen_angle',           Rad_output%coszen_angle)
-
-!---------------------------------------------------------------------
-!    read the optional time average restart data. note that 
-!    do_average and renormalize_sw_fluxes may not both be true.
-!---------------------------------------------------------------------
-        call read_data(fname, 'renormalize_sw_fluxes', flag1, no_domain=.true.)
-        call read_data(fname, 'do_clear_sky_pass', flag2, no_domain=.true.)
-        if(flag1 == 1.) then
-          renormalize_sw_fluxes = .true.
-        else
-          renormalize_sw_fluxes = .false.
-        endif
-        if(flag2 == 1.) then
-          do_clear_sky_pass = .true.
-        else
-          do_clear_sky_pass = .false.
-        endif
 
 !---------------------------------------------------------------------
 !    read the optional shortwave renormalization data. 
@@ -4247,6 +4344,13 @@ subroutine read_restart_nc
             call read_data (fname, 'ufswcf_save', ufswcf_save) 
             call read_data (fname, 'fswcf_save', fswcf_save)  
             call read_data (fname, 'hswcf_save', hswcf_save)
+            if (vers >= 10) then
+              call read_data (fname, 'flux_sw_down_total_dir_clr_save', flux_sw_down_total_dir_clr_save)
+              call read_data (fname, 'flux_sw_down_total_dif_clr_save', flux_sw_down_total_dif_clr_save)
+            else
+              flux_sw_down_total_dir_clr_save = 0.0
+              flux_sw_down_total_dif_clr_save = 0.0
+            endif
             call read_data (fname, 'swdn_special_clr_save', swdn_special_clr_save)
             call read_data (fname, 'swup_special_clr_save', swup_special_clr_save)
             endif
@@ -4549,10 +4653,6 @@ integer        , intent(in) :: axes(4)
 !----------------------------------------------------------------------
 !    register fields that are not clear-sky depedent.
 !----------------------------------------------------------------------
-      if (Environment%running_gcm .or. &
-          Environment%running_sa_model .or. &
-          (Environment%running_standalone .and. &
-           Environment%column_type == 'fms')) then
         id_conc_drop = register_diag_field (mod_name,   &
                    'conc_drop', axes(1:3), Time, & 
                    'drop concentration ', &
@@ -4563,7 +4663,6 @@ integer        , intent(in) :: axes(4)
                    'ice concentration ', &
                    'g/m^3', missing_value=missing_value) 
  
-      endif
       
       id_flux_sw_dir = register_diag_field (mod_name,    &
                 'flux_sw_dir', axes(1:2), Time, &
@@ -4594,6 +4693,20 @@ integer        , intent(in) :: axes(4)
                'flux_sw_down_total_dif', axes(1:2), Time, &
                'downward diffuse total sfc sw flux', 'watts/m2', &
                 missing_value=missing_value)
+
+    if (do_clear_sky_pass) then
+
+      id_flux_sw_down_total_dir_clr = register_diag_field (mod_name,  &
+               'flux_sw_down_total_dir_clr', axes(1:2), Time, &
+               'downward clearsky direct total sfc sw flux',  &
+               'watts/m2',  missing_value=missing_value)
+  
+      id_flux_sw_down_total_dif_clr = register_diag_field (mod_name,  &
+               'flux_sw_down_total_dif_clr', axes(1:2), Time, &
+               'downward clearsky diffuse total sfc sw flux',  &
+               'watts/m2', missing_value=missing_value)
+
+    endif 
 
       id_flux_sw_vis = register_diag_field (mod_name,    &
                'flux_sw_vis', axes(1:2), Time, &
@@ -4666,6 +4779,16 @@ integer        , intent(in) :: axes(4)
                    'n2o mixing ratio', 'ppbv', &
                    missing_value=missing_value)
 
+         id_alb_sfc_avg = register_diag_field (mod_name,    &
+                 'averaged_alb_sfc', axes(1:2), Time, &
+                 'surface albedo', 'percent', &
+                 missing_value=missing_value)
+         if (id_alb_sfc_avg > 0) then
+           allocate (swdns_acc(id,jd))
+           allocate (swups_acc(id,jd))
+           swups_acc = 0.0
+           swdns_acc = 1.0e-35
+         endif
       id_alb_sfc = register_diag_field (mod_name,    &
                 'alb_sfc', axes(1:2), Time, &
                 'surface albedo', 'percent', &
@@ -4742,6 +4865,11 @@ end subroutine diag_field_init
 !                    as for Astro, but they are valid over the current
 !                    physics timestep.
 !  </INOUT>
+!  <INOUT NAME="Astronomy_inp" TYPE="astronomy_inp_type">
+!     astronomy_inp_type structure, optionally used to input astronom-
+!     ical forcings, when it is desired to specify them rather than use
+!     astronomy_mod. Used in various standalone applications.
+!  </INOUT>
 !  <IN NAME="lon" TYPE="real">
 !    lon        mean longitude (in radians) of all grid boxes processed by
 !               this call to radiation_driver   [real, dimension(:,:)]
@@ -4753,7 +4881,7 @@ end subroutine diag_field_init
 ! </SUBROUTINE>
 !
 subroutine obtain_astronomy_variables (is, ie, js, je, lat, lon,     &
-                                       Astro, Astro2)  
+                                       Astro, Astro2, Astronomy_inp)  
 
 !---------------------------------------------------------------------
 !    obtain_astronomy_variables retrieves astronomical variables, valid 
@@ -4762,6 +4890,8 @@ subroutine obtain_astronomy_variables (is, ie, js, je, lat, lon,     &
 integer,                     intent(in)    ::  is, ie, js, je
 real, dimension(:,:),        intent(in)    ::  lat, lon
 type(astronomy_type),        intent(inout) ::  Astro, Astro2
+type(astronomy_inp_type),   intent(inout), optional ::  &
+                                               Astronomy_inp
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -4877,9 +5007,21 @@ type(astronomy_type),        intent(inout) ::  Astro, Astro2
       allocate ( Astro%solar  (size(lat,1), size(lat,2) ) )
 
 !---------------------------------------------------------------------
+!    case 0: input parameters.
+!---------------------------------------------------------------------
+      if (present (Astronomy_inp)) then
+        Astro%rrsun = Astronomy_inp%rrsun
+        Astro%fracday(:,:) = Astronomy_inp%fracday(is:ie,js:je)
+        Astro%cosz (:,:) = cos(   &
+                        Astronomy_inp%zenith_angle(is:ie,js:je)/RADIAN)
+        Astro%solar(:,:) = Astro%cosz(:,:)*Astro%fracday(:,:)* &
+                           Astro%rrsun
+        Rad_output%coszen_angle(is:ie,js:je) = Astro%cosz(:,:)
+
+!---------------------------------------------------------------------
 !    case 1: diurnally-varying shortwave radiation.
 !---------------------------------------------------------------------
-      if (Sw_control%do_diurnal) then
+      else if (Sw_control%do_diurnal) then
 
 !-------------------------------------------------------------------
 !    convert the radiation timestep and the model physics timestep
@@ -4933,9 +5075,9 @@ type(astronomy_type),        intent(inout) ::  Astro, Astro2
             Astro%fracday = fracday_r
             Astro%solar   = solar_r
             Astro%rrsun   = rrsun_r
-            allocate ( Astro2%fracday(size(lat,1), size(lat,2) ) )
-            allocate ( Astro2%cosz   (size(lat,1), size(lat,2) ) )
-            allocate ( Astro2%solar  (size(lat,1), size(lat,2) ) )
+          allocate ( Astro2%fracday(size(lat,1), size(lat,2) ) )
+          allocate ( Astro2%cosz   (size(lat,1), size(lat,2) ) )
+          allocate ( Astro2%solar  (size(lat,1), size(lat,2) ) )
             Astro2%cosz    = cosz_p
             Astro2%fracday = fracday_p
             Astro2%solar   = solar_p
@@ -4960,28 +5102,24 @@ type(astronomy_type),        intent(inout) ::  Astro, Astro2
 !    defined and provided as input to the radiation package on the next
 !    timestep.
 !----------------------------------------------------------------------
-        if (Environment%running_gcm) then       
-          if (do_rad) then
-            call diurnal_solar (lat, lon, Rad_time+Dt_zen, cosz_a,   &
-                                fracday_a, rrsun_a, dt_time=Dt_zen)
-            Rad_output%coszen_angle(is:ie,js:je) = cosz_a(:,:)
-          endif  ! (do_rad)
-        endif ! (running_gcm)
+        if (do_rad) then
+          call diurnal_solar (lat, lon, Rad_time+Dt_zen, cosz_a,   &
+                              fracday_a, rrsun_a, dt_time=Dt_zen)
+          Rad_output%coszen_angle(is:ie,js:je) = cosz_a(:,:)
+        endif  ! (do_rad)
 
 !---------------------------------------------------------------------
 !    case 2: annual-mean shortwave radiation.
 !---------------------------------------------------------------------
       else if (Sw_control%do_annual) then
-        call annual_mean_solar (js, je, lat, Astro%cosz, Astro%solar, &
+        call annual_mean_solar (js, je, lat, Astro%cosz, Astro%solar,&
                                 Astro%fracday, Astro%rrsun)
 
 !---------------------------------------------------------------------
 !    save the cosine of zenith angle on the current step to be used to 
 !    calculate ocean albedo for use on the next radiation timestep.
 !---------------------------------------------------------------------
-        if (Environment%running_gcm) then       
-          Rad_output%coszen_angle(is:ie,js:je) = Astro%cosz(:,:)
-        endif
+        Rad_output%coszen_angle(is:ie,js:je) = Astro%cosz(:,:)
 
 !---------------------------------------------------------------------
 !    case 3: daily-mean shortwave radiation.
@@ -4995,9 +5133,7 @@ type(astronomy_type),        intent(inout) ::  Astro, Astro2
 !    save the cosine of zenith angle on the current step to be used to 
 !    calculate ocean albedo for use on the next radiation timestep.
 !---------------------------------------------------------------------
-        if (Environment%running_gcm) then       
-          Rad_output%coszen_angle(is:ie,js:je) = Astro%cosz(:,:)
-        endif
+        Rad_output%coszen_angle(is:ie,js:je) = Astro%cosz(:,:)
 
 !----------------------------------------------------------------------
 !    if none of the above options are active, write an error message and
@@ -5287,10 +5423,6 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
 !    and short-wave fluxes.  mask out any below ground values if 
 !    necessary.
 !---------------------------------------------------------------------
-      if (Environment%running_gcm .or.  &
-          Environment%running_sa_model .or. &
-          (Environment%running_standalone .and. &
-            Environment%column_type == 'fms')) then
         if (do_sea_esf_rad) then
           Rad_output%tdtsw(is:ie,js:je,:) = Sw_output%hsw(:,:,:)/  &
                                             SECONDS_PER_DAY
@@ -5315,6 +5447,10 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
             Rad_output%tdtsw_clr(is:ie,js:je,:) =   &
                                           Sw_output%hswcf(:,:,:)/  &
                                           SECONDS_PER_DAY
+            Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je) =   &
+                                        Sw_output%dfsw_dir_sfc_clr(:,:)
+            Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je) =   &
+                                        Sw_output%dfsw_dif_sfc_clr(:,:)
             if (present(mask)) then
               Rad_output%tdt_rad_clr(is:ie,js:je,:) =    &
                          (Rad_output%tdtsw_clr(is:ie,js:je,:) +  &
@@ -5385,7 +5521,6 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
                                              Fsrad_output%swups(:,:)
           Rad_output%flux_lw_surf(is:ie,js:je) = Fsrad_output%lwdns(:,:)
         endif ! (do_sea_esf_rad)
-      endif ! (running_gcm)
 
 
 !---------------------------------------------------------------------
@@ -5569,6 +5704,10 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
             ufswcf_save(is:ie,js:je,:) = Sw_output%ufswcf(:, :,:)
             fswcf_save(is:ie,js:je,:)  = Sw_output%fswcf(:, :,:)
             hswcf_save(is:ie,js:je,:)  = Sw_output%hswcf(:, :,:)
+            flux_sw_down_total_dir_clr_save(is:ie,js:je) =    &
+                   Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je)
+            flux_sw_down_total_dif_clr_save(is:ie,js:je) =    &
+                    Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je)
             swdn_special_clr_save(is:ie,js:je,:) =  &
                                 Sw_output%swdn_special_clr(:,:,:)
             swup_special_clr_save(is:ie,js:je,:) =  &
@@ -5654,6 +5793,12 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
         if (do_clear_sky_pass) then
           tdtlw_clr(:,:,:) = tot_heating_clr_save  (is:ie,js:je,:) -&
                              sw_heating_clr_save (is:ie,js:je,:)
+          Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je) =   &
+                                              flux_ratio(:,:)*&
+                           flux_sw_down_total_dir_clr_save(is:ie,js:je)
+          Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je) =   &
+                               flux_ratio(:,:) * &
+                            flux_sw_down_total_dif_clr_save(is:ie,js:je)
           do k=1, size(Rad_output%tdt_rad,3)
             Rad_output%tdtsw_clr(is:ie,js:je,k) =   &
                            sw_heating_clr_save (is:ie,js:je,k)*   &
@@ -5710,6 +5855,10 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
             ufswcf_save(is:ie,js:je,:) = Sw_output%ufswcf(:, :,:)
             fswcf_save(is:ie,js:je,:)  = Sw_output%fswcf(:, :,:)
             hswcf_save(is:ie,js:je,:)  = Sw_output%hswcf(:, :,:)
+            flux_sw_down_total_dir_clr_save(is:ie,js:je) =    &
+                     Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je)
+            flux_sw_down_total_dif_clr_save(is:ie,js:je) =    &
+                      Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je)
             swdn_special_clr_save(is:ie,js:je,:) =   &
                                    Sw_output%swdn_special_clr(:,:,:)
             swup_special_clr_save(is:ie,js:je,:) =   &
@@ -6253,6 +6402,11 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
           endif
         endif  ! do_sea_esf_rad
 
+        if (id_alb_sfc_avg > 0) then
+          swups_acc(is:ie,js:je) = swups_acc(is:ie, js:je) + swups(:,:)
+          swdns_acc(is:ie,js:je) = swdns_acc(is:ie, js:je) + swdns(:,:)
+        endif
+ 
 !---------------------------------------------------------------------
 !   send standard sw diagnostics to diag_manager.
 !---------------------------------------------------------------------
@@ -6413,10 +6567,6 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !    send cloud-forcing-independent diagnostics to diagnostics manager.
 !-----------------------------------------------------------------------
 
-        if (Environment%running_gcm .or. &
-            Environment%running_sa_model .or. &
-            (Environment%running_standalone .and. &
-             Environment%column_type == 'fms')) then
 !------- conc_drop  -------------------------
           if (do_rad) then
             if ( id_conc_drop > 0 ) then
@@ -6432,7 +6582,6 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
                                 Time_diag, is, js, 1, rmask=mask )
             endif
           endif
-        endif
 
 !------- solar constant  -------------------------
         if (do_rad) then
@@ -6526,8 +6675,15 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
         endif
 
 !------- surface albedo  -------------------------
+        if ( id_alb_sfc_avg > 0 ) then
+!         used = send_data ( id_alb_sfc, 100.*Surface%asfc, &
+          used = send_data ( id_alb_sfc_avg,  &
+                  100.*swups_acc(is:ie,js:je)/swdns_acc(is:ie,js:je), &
+                     Time_diag, is, js )
+        endif
         if ( id_alb_sfc > 0 ) then
-          used = send_data ( id_alb_sfc, 100.*Surface%asfc, &
+!         used = send_data ( id_alb_sfc, 100.*Surface%asfc, &
+          used = send_data ( id_alb_sfc, 100.*swups/(1.0e-35 + swdns), &
                      Time_diag, is, js )
         endif
 
@@ -6579,11 +6735,26 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
                      Rad_output%flux_sw_down_total_dir(is:ie,js:je),  &
                      Time_diag, is, js )
         endif
-        if ( id_flux_sw_down_vis_dif > 0 ) then
+        if ( id_flux_sw_down_total_dif > 0 ) then
          used = send_data ( id_flux_sw_down_total_dif,  &
                     Rad_output%flux_sw_down_total_dif(is:ie,js:je),  &
                     Time_diag, is, js )
         endif
+
+      if (do_clear_sky_pass) then
+ 
+!------- surface downward total sw flux, direct and diffuse  ----------
+        if ( id_flux_sw_down_total_dir_clr > 0 ) then
+          used = send_data ( id_flux_sw_down_total_dir_clr,  &
+                 Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je),  &
+                 Time_diag, is, js )
+        endif
+        if ( id_flux_sw_down_total_dif_clr > 0 ) then
+          used = send_data ( id_flux_sw_down_total_dif_clr,  &
+                  Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je),  &
+                  Time_diag, is, js )
+        endif
+      endif
  
 !------- surface net visible sw flux, total, direct and diffuse -------
         if ( id_flux_sw_vis > 0 ) then
@@ -7001,13 +7172,11 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
         deallocate (Astro%solar)
         deallocate (Astro%cosz )
         deallocate (Astro%fracday)
-        if (Environment%running_gcm) then
           if ( do_rad .and. renormalize_sw_fluxes   &
               .and. Sw_control%do_diurnal ) then 
             deallocate (Astro2%solar)
             deallocate (Astro2%cosz )
             deallocate (Astro2%fracday)
-          endif
         endif
       endif
 
@@ -7050,6 +7219,8 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
             deallocate (Sw_output%ufswcf   )
             deallocate (Sw_output%fswcf   )
             deallocate (Sw_output%hswcf   )
+            deallocate (Sw_output%dfsw_dir_sfc_clr)
+            deallocate (Sw_output%dfsw_dif_sfc_clr)
             deallocate (Sw_output%swdn_special_clr)
             deallocate (Sw_output%swup_special_clr)
             deallocate (Sw_output%bdy_flx_clr)

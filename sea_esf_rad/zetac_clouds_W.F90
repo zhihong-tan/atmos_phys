@@ -26,7 +26,7 @@ use constants_mod,          only: GRAV, constants_init
 
 !   shared radiation package modules:
 
-use rad_utilities_mod,      only: Environment, rad_utilities_init, &
+use rad_utilities_mod,      only: rad_utilities_init, &
                                   cldrad_properties_type,  &
                                   cld_specification_type, &
                                   microphysics_type, Cldrad_control
@@ -50,8 +50,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: zetac_clouds_W.F90,v 11.0 2004/09/28 19:24:30 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: zetac_clouds_W.F90,v 12.0 2005/04/14 15:48:58 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------

@@ -24,8 +24,7 @@ use       fms_mod,      only:  open_namelist_file, file_exist,   &
                                FATAL, NOTE, WARNING, close_file, &
                                mpp_pe, mpp_root_pe, &
                                write_version_number, stdlog
-use rad_utilities_mod,  only:  Environment, environment_type,  &
-                               cldrad_properties_type, &
+use rad_utilities_mod,  only:  cldrad_properties_type, &
                                cloudrad_control_type, Cldrad_control, &
                                cld_specification_type
 use constants_mod,      only:  pstd_mks
@@ -46,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: specified_clouds_W.F90,v 11.0 2004/09/28 19:24:16 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: khartoum $'
+  character(len=128)  :: version =  '$Id: specified_clouds_W.F90,v 12.0 2005/04/14 15:48:33 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: lima $'
 
 
 

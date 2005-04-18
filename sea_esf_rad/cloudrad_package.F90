@@ -25,7 +25,6 @@ use time_manager_mod,         only: time_type, time_manager_init
 ! shared radiation package modules:
 
 use rad_utilities_mod,        only: rad_utilities_init, Lw_control, &
-                                    Environment, environment_type, &
                                     Sw_control, cldrad_properties_type,&
                                     cld_specification_type, &
                                     microrad_properties_type, &
@@ -63,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 11.0 2004/09/28 19:21:09 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 12.0 2005/04/14 15:44:44 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -370,13 +369,7 @@ type(time_type),         intent(in)    ::   Time
                'must specify microphys_form when using microphysica'//&
                 'lly-based cld rad scheme', FATAL)
           else
-            if ((Environment%running_standalone .and. &
-                 Environment%column_type == 'fms')) then
-              call error_mesg ('cloudrad_package_mod',  &
-              ' bulk microphysics not allowed with fms columns', FATAL)
-            else
               Cldrad_control%do_bulk_microphys = .true.
-            endif
           endif
         endif
 
@@ -417,11 +410,7 @@ type(time_type),         intent(in)    ::   Time
 !    call cloudrad_diagnostics_init to initialize the netcdf diagnostics
 !    associated with the cloudrad package.
 !-------------------------------------------------------------------
-      if ( ((Environment%running_gcm .or.    &  
-             Environment%running_sa_model)   .or. &     
-            (Environment%running_standalone .and. &     
-             Environment%column_type == 'fms')) .and. &
-           .not. Cldrad_control%do_no_clouds) then
+      if (.not. Cldrad_control%do_no_clouds) then
         call cloudrad_diagnostics_init (axes, Time)
       endif
 
@@ -704,14 +693,11 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !    call cloudrad_netcdf to generate netcdf output fields.
 !-------------------------------------------------------------------
       if (.not. Cldrad_control%do_no_clouds) then 
-        if (Environment%running_gcm .or.    &
-            Environment%running_sa_model) then 
           call cloudrad_netcdf (is, js, Time_next, Atmos_input,&
                                 Astro%cosz, Lsc_microphys, &
                                 Meso_microphys, Cell_microphys,   &
                                 Lscrad_props, Mesorad_props,    &
                                 Cellrad_props, Cldrad_props, Cld_spec)
-        endif  
       endif   ! (do_no_clouds)
 
 !--------------------------------------------------------------------
@@ -814,9 +800,7 @@ subroutine cloudrad_package_end
 !    deactivate the modules which are component modules of
 !    cloudrad_package_mod.
 !-------------------------------------------------------------------
-      if ( (Environment%running_gcm .or.    &
-            Environment%running_sa_model)   .and. &
-            .not. Cldrad_control%do_no_clouds) then
+      if (.not. Cldrad_control%do_no_clouds) then
         call cloudrad_diagnostics_end
       endif
       if (Cldrad_control%do_presc_cld_microphys  .or.  &
@@ -1284,9 +1268,9 @@ subroutine cloudrad_package_dealloc (Lscrad_props, Mesorad_props,   &
 !    derived-type variables.
 !---------------------------------------------------------------------
         
-type(microrad_properties_type), intent(in) :: Lscrad_props,  &
-                                              Mesorad_props, &
-                                              Cellrad_props
+type(microrad_properties_type), intent(inout) :: Lscrad_props,  &
+                                                 Mesorad_props, &
+                                                 Cellrad_props
 
 !---------------------------------------------------------------------
 !   intent(in) variables:

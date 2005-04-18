@@ -29,7 +29,7 @@ use fms_mod,                only: open_namelist_file, mpp_pe, &
 
 !   shared radiation package modules:
 
-use rad_utilities_mod,      only: Environment, rad_utilities_init, &
+use rad_utilities_mod,      only: rad_utilities_init, &
                                   cldrad_properties_type,  &
                                   cld_specification_type, &
                                   solar_spectrum_type, &
@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 11.0 2004/09/28 19:24:26 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 12.0 2005/04/14 15:48:49 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -448,10 +448,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                                conc_ice = Lsc_microphys%conc_ice, &
                                size_drop =Lsc_microphys%size_drop,   &
                                size_ice = Lsc_microphys%size_ice)
-          if (Environment%running_gcm    .or.  &
-              Environment%running_sa_model .or. &
-             (Environment%running_standalone .and. &
-              Environment%column_type == 'fms')) then
+          if (.not. Cldrad_control%do_specified_strat_clouds) then
             Cld_spec%ncldsw        = ncldlvls
             Cld_spec%nrndlw        = ncldlvls         
             Cld_spec%camtsw        = cldamt           
@@ -511,10 +508,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 conc_ice = Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb), &
                 size_drop =Lsc_microphys%lw_stoch_size_drop(:,:,:,nb), &
                 size_ice = Lsc_microphys%lw_stoch_size_ice(:,:,:,nb))
-              if (Environment%running_gcm    .or.  &
-                  Environment%running_sa_model .or. &
-                 (Environment%running_standalone .and. &
-                  Environment%column_type == 'fms')) then
+          if (.not. Cldrad_control%do_specified_strat_clouds) then
                 Cld_spec%nrndlw_band(:,:,nb) = ncldlvls(:,:)
                 Lsc_microphys%lw_stoch_cldamt(:,:,:,nb) = cldamt
               endif
@@ -556,10 +550,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 conc_ice = Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb), &
                 size_drop =Lsc_microphys%sw_stoch_size_drop(:,:,:,nb), &
                 size_ice = Lsc_microphys%sw_stoch_size_ice(:,:,:,nb))
-              if (Environment%running_gcm    .or.  &
-                  Environment%running_sa_model .or. &
-                 (Environment%running_standalone .and. &
-                  Environment%column_type == 'fms')) then
+          if (.not. Cldrad_control%do_specified_strat_clouds) then
                 Cld_spec%ncldsw_band(:,:,nb) = ncldlvls(:,:)
                 Lsc_microphys%sw_stoch_cldamt(:,:,:,nb) = cldamt
               endif
@@ -585,10 +576,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                                cldamt, Cld_spec%lwp,   &
                                Cld_spec%iwp, Cld_spec%reff_liq,   &
                                Cld_spec%reff_ice)
-          if (Environment%running_gcm    .or.  &
-              Environment%running_sa_model .or. &
-             (Environment%running_standalone .and. &
-              Environment%column_type == 'fms')) then
+          if (.not. Cldrad_control%do_specified_strat_clouds) then
             Cld_spec%ncldsw        = ncldlvls
             Cld_spec%nrndlw        = ncldlvls         
             Cld_spec%camtsw        = cldamt           
@@ -602,10 +590,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !    overlapped. in columns mode, no change is made to the specified 
 !    input characteristics.
 !----------------------------------------------------------------------
-        if (Environment%running_gcm    .or.  &
-            Environment%running_sa_model .or. &
-           (Environment%running_standalone .and. &
-            Environment%column_type == 'fms')) then
+        if (.not. Cldrad_control%do_specified_strat_clouds) then
           Cld_spec%nmxolw        = 0 
           Cld_spec%cmxolw        = 0.0E+00
         endif

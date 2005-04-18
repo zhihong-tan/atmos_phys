@@ -50,8 +50,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 11.0 2004/09/28 19:16:04 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 12.0 2005/04/14 15:40:45 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !--------------------------------------------------------------------
@@ -1169,15 +1169,15 @@ real, dimension(:,:,:),  intent(out), optional :: mtot
 !---------------------------------------------------------------------
       do j=1,jsize       
         do i=1,isize        
-          omint_acc(i,j+js-1) = omint_acc(i,j+js-1) +   &
+          omint_acc(i+is-1,j+js-1) = omint_acc(i+is-1,j+js-1) +   &
                                 omega(i,j, nlev)*dt
-          omint_acc(i,j+js-1) = MIN (0.0, omint_acc(i,j+js-1))
-          omint_acc(i,j+js-1) = MAX (omint_acc(i,j+js-1),  &
+          omint_acc(i+is-1,j+js-1) = MIN (0.0, omint_acc(i+is-1,j+js-1))
+          omint_acc(i+is-1,j+js-1) = MAX (omint_acc(i+is-1,j+js-1),  &
                                      -phalf(i,j,nlev+1))
           if (omega(i,j,nlev) > 0.)   then
             omint(i,j) = 0. 
           else
-            omint(i,j) = omint_acc(i,j+js-1)
+            omint(i,j) = omint_acc(i+is-1,j+js-1)
           endif
         end do
       end do
@@ -2351,16 +2351,16 @@ type(donner_cape_type), intent(inout) ::  Don_cape
        do k=1,model_levels_in_sfcbl
          do j=1,jsize    
            do i=1,isize       
-             tempbl(i,j+js-1 ,k) = cape_input_temp  (i,j,nlev-k+1)
-             ratpbl(i,j+js-1 ,k) = cape_input_vapor(i,j,nlev-k+1) 
+             tempbl(i+is-1,j+js-1 ,k) = cape_input_temp  (i,j,nlev-k+1)
+             ratpbl(i+is-1,j+js-1 ,k) = cape_input_vapor(i,j,nlev-k+1) 
            end do
          end do
        end do
 
        do j=1,jsize    
          do i=1,isize       
-           qint_lag(i,j+js-1 ) = Don_cape%qint(i,j)
-           xcape_lag(i,j+js-1 ) = Don_cape%xcape(i,j)
+           qint_lag(i+is-1,j+js-1 ) = Don_cape%qint(i,j)
+           xcape_lag(i+is-1,j+js-1 ) = Don_cape%xcape(i,j)
          end do
        end do
          
@@ -2483,7 +2483,7 @@ real, dimension(:,:,:,:), intent(in), optional :: tracers
 !    call define_donner_anvil_ice to define the distribution of anvil
 !    ice associated with deep convection.
 !---------------------------------------------------------------------
-        call define_donner_anvil_ice (js, pfull, temp, Don_conv)
+        call define_donner_anvil_ice (is, js, pfull, temp, Don_conv)
 
 !---------------------------------------------------------------------
 !    call define_donner_mass_flux to define the distribution of mass
@@ -2681,8 +2681,8 @@ type(donner_conv_type), intent(inout) :: Don_conv
          do k=1,nlev
            do j=1,jsize      
              do i=1,isize       
-               ttnd  (i,j,k) = cemetf(i,j+js-1 ,k)*dt
-               qtnd  (i,j,k) = cememf(i,j+js-1 ,k)*dt
+               ttnd  (i,j,k) = cemetf(i+is-1,j+js-1 ,k)*dt
+               qtnd  (i,j,k) = cememf(i+is-1,j+js-1 ,k)*dt
                if ((mixing_ratio(i,j,k) + qtnd(i,j,k)) .lt. 0.) then
                  if (mixing_ratio(i,j,k) .gt. 0.) then
                     qtnd  (i,j,k) = -mixing_ratio(i,j,k)/dt
@@ -2692,7 +2692,7 @@ type(donner_conv_type), intent(inout) :: Don_conv
                    qtnd(i,j,k) = 0.0
                  end if
                else
-                 Don_conv%cememf_mod(i,j,k) = cememf(i,j+js-1 ,k)
+                 Don_conv%cememf_mod(i,j,k) = cememf(i+is-1,j+js-1 ,k)
                end if
              end do
            end do
@@ -2718,7 +2718,7 @@ type(donner_conv_type), intent(inout) :: Don_conv
 !           rain(i,j) = tprea1(i,j+js-1 )*dt/86400.
 !           snow(i,j) = 0.0
 !         endif
-         precip (i,j) = tprea1(i,j+js-1 )*dt/86400.
+         precip (i,j) = tprea1(i+is-1,j+js-1 )*dt/86400.
         end do
       end do
 
@@ -2826,7 +2826,7 @@ real, dimension(:,:,:), intent(in)   :: pmass
                      size(Don_conv%ceefc,2))  ::   tempdiag
 
 
-      used = send_data (id_cemetf_deep, cemetf(:,js:je,:), Time,   &
+      used = send_data (id_cemetf_deep, cemetf(is:ie,js:je,:), Time,   &
                         is, js, 1)
       used = send_data (id_ceefc_deep,   Don_conv%ceefc(:,:,:), Time,&
                         is, js, 1)
@@ -2834,7 +2834,7 @@ real, dimension(:,:,:), intent(in)   :: pmass
                         is, js, 1)
        used = send_data (id_cemfc_deep, Don_conv%cemfc(:,:,:), Time,&
                         is, js, 1)
-       used = send_data (id_cememf_deep, cememf(:,js:je,:),  &
+       used = send_data (id_cememf_deep, cememf(is:ie,js:je,:),  &
                          Time, is, js, 1)
       used = send_data (id_cememf_mod_deep, Don_conv%cememf_mod(:,:,:),&
                         Time, is, js, 1)
@@ -2925,14 +2925,14 @@ real, dimension(:,:,:), intent(in)   :: pmass
         used = send_data (id_plzb_deep, Don_cape%plzb(:,:), Time,&
                         is, js)
         used = send_data (id_xcape_deep,    &
-                          xcape_lag(:,js:je),  &
+                          xcape_lag(is:ie,js:je),  &
                           Time, is, js)
         used = send_data (id_coin_deep, Don_cape%coin(:,:), Time,&
                         is, js)
          used = send_data (id_dcape_deep, Don_conv%dcape(:,:), Time,&
                         is, js)
          used = send_data (id_qint_deep,     &
-                           qint_lag(:,js:je),   &
+                           qint_lag(is:ie,js:je),   &
                            Time, is, js)
          used = send_data (id_a1_deep, Don_conv%a1(:,:), Time,&
                            is, js)
@@ -2941,12 +2941,12 @@ real, dimension(:,:,:), intent(in)   :: pmass
          used = send_data (id_amos_deep, Don_conv%amos(:,:), Time,&
                            is, js)
          used = send_data (id_tprea1_deep,    &
-                           tprea1(:,js:je),  &
+                           tprea1(is:ie,js:je),  &
                            Time, is, js)
          used = send_data (id_ampta1_deep, Don_conv%ampta1(:,:), Time,&
                             is, js)
          used = send_data (id_omint_deep,    &
-                           omint_acc(:,js:je),  &
+                           omint_acc(is:ie,js:je),  &
                            Time, is, js)
          used = send_data (id_rcoa1_deep, Don_conv%rcoa1(:,:), Time,&
                             is, js)
@@ -3184,9 +3184,9 @@ end subroutine define_donner_mass_flux
 
 !######################################################################
 
-subroutine define_donner_anvil_ice (js, pfull, temp, Don_conv)
+subroutine define_donner_anvil_ice (is, js, pfull, temp, Don_conv)
 
-integer, intent(in) :: js
+integer, intent(in) :: is, js
 real, dimension(:,:,:), intent(in) :: pfull, temp
 type(donner_conv_type), intent(inout) :: Don_conv
             
@@ -3206,7 +3206,7 @@ type(donner_conv_type), intent(inout) :: Don_conv
 !                 of ice at full GCM levels
 !      dgeicer    generalized effective size of ice crystals in anvil 
 !                 (micrometers) defined as in Fu (1996, J. Clim.)
-  integer :: ilon, jlat, k, jgl, n
+  integer :: ilon, jlat, k, jgl, n, igl
   real :: ampu, emdi,         tprei, przm, prztm, prent, dgeicer
   real, dimension(size(pfull,3)) :: prinp, rmuf, trf, xice
 
@@ -3226,10 +3226,11 @@ type(donner_conv_type), intent(inout) :: Don_conv
     do ilon=1,isize        
       do jlat=1,jsize       
         jgl=jlat+js-1
+        igl=ilon+is-1
         ampu=Don_conv%ampta1(ilon,jlat)
         emdi=Don_conv%emdi_v(ilon,jlat)
 !        contot=Don_conv%contot_v(ilon,jlat)
-        tprei=tprea1(ilon,jgl)
+        tprei=tprea1(igl ,jgl)
         do k=1,nlev
           prinp(k)=pfull(ilon,jlat,k)
           rmuf(k)=Don_conv%umeml(ilon,jlat,k)
@@ -3632,6 +3633,7 @@ real, dimension(:,:,:,:), intent(in), optional :: tracers
       integer :: unit
       integer :: n, k
       integer  :: i, j, jlat, ilon, jgl, jinv
+      integer  :: igl
       real  :: disbar
 
 !--------------------------------------------------------------------
@@ -3652,10 +3654,10 @@ real, dimension(:,:,:,:), intent(in), optional :: tracers
            do i=1,isize        
              do j=1,jsize     
                dqls_v(i,j) = (Don_cape%qint(i,j) -   &
-                              qint_lag(i,j+js-1))/dt
+                              qint_lag(i+is-1,j+js-1))/dt
                qlsd_v(i,j) = Don_cape%qint(i,j)/donner_deep_freq
                Don_conv%dcape(i,j) = (Don_cape%xcape(i,j) -    &
-               xcape_lag(i,j+js-1 ))/dt
+               xcape_lag(i+is-1,j+js-1 ))/dt
              end do
            end do
 
@@ -3737,6 +3739,7 @@ real, dimension(:,:,:,:), intent(in), optional :: tracers
       do jlat=1,je-js+1  
         do ilon=1,ie-is+1
           jgl = js+jlat-1
+          igl = is+ilon-1 
 
 
 
@@ -3744,11 +3747,11 @@ real, dimension(:,:,:,:), intent(in), optional :: tracers
 !   initialize fields.
 !--------------------------------------------------------------------
           do j=1,nlev
-            cemetf(ilon,jgl ,j          )=0.
-            cememf(ilon,jgl ,j          )=0.
+            cemetf(igl ,jgl ,j          )=0.
+            cememf(igl ,jgl ,j          )=0.
             cuq_v(ilon,jlat,j) = 0.0
             cuql_v(ilon,jlat,j) = 0.0
-            tprea1(ilon,jgl ) = 0.0
+            tprea1(igl ,jgl ) = 0.0
           end do
         end do
       end do
@@ -4130,14 +4133,15 @@ real, dimension(:,:,:,:), intent(in), optional :: tracers
           jgl = jlat+js-1 
           do ilon=1,ie-is+1  
             if (.not. exit_flag(ilon,jlat)) then
+              igl = ilon+is-1
               do j=1,nlev
                 jinv=nlev+1-j
 
-                cemetf(ilon,jgl ,jinv          )=disa_v(ilon,jlat,j)
+                cemetf(igl ,jgl ,jinv          )=disa_v(ilon,jlat,j)
                 Don_conv%ceefc(ilon,jlat,jinv )=disb_v(ilon,jlat,j)
                 Don_conv%cecon(ilon,jlat,jinv   )=disc_v(ilon,jlat,j)
                 Don_conv%cemfc(ilon,jlat,jinv  )=disd_v(ilon,jlat,j)
-                cememf(ilon,jgl ,jinv   )=dise_v(ilon,jlat,j)
+                cememf(igl ,jgl ,jinv   )=dise_v(ilon,jlat,j)
                 Don_conv%cual(ilon,jlat,jinv  )=cual_v(ilon,jlat,j)
                 Don_conv%fre   (ilon,jlat,jinv )=fre_v(ilon,jlat,j)
                 Don_conv%elt   (ilon,jlat,jinv) = elt_v(ilon,jlat,j)
@@ -4179,11 +4183,13 @@ real, dimension(:,:,:,:), intent(in), optional :: tracers
 
       do jlat=1,je-js+1     
         do ilon=1,ie-is+1      
+        jgl=jlat+js-1
+        igl=ilon+is-1
           if (.not. exit_flag(ilon,jlat) ) then
             Don_conv%a1(ilon,jlat) = a1_v(ilon,jlat)
             Don_conv%amax(ilon,jlat) = amax_v(ilon,jlat)
             Don_conv%amos(ilon,jlat         )=amos_v(ilon,jlat)
-            tprea1(ilon,jgl      )=tpre_v(ilon,jlat)*a1_v(ilon,jlat)
+            tprea1(igl ,jgl      )=tpre_v(ilon,jlat)*a1_v(ilon,jlat)
             Don_conv%ampta1(ilon,jlat)=ampt_v(ilon,jlat)*a1_v(ilon,jlat)
             Don_conv%rcoa1(ilon,jlat)=rco_v(ilon,jlat)*a1_v(ilon,jlat)
             Don_conv%emdi_v(ilon,jlat)=  &
@@ -8642,7 +8648,7 @@ real, intent(out) :: dtdp, drdp, dwdp
 !
 !        tc   cu temperature (K) at pressure p (Pa)
 !        rda  cu radius at pressure p
-!        rmu  entrainment coefficient (/s)
+!        rmu  entrainment coefficient (/m)
 !        te   environmental temperature (K) at pressure p
 !        qe   environmental mixing ratio at pressure p
 !        wv   cu vertical velocity (m/s) at pressure p
@@ -10125,7 +10131,7 @@ logical,      intent(in) :: debug_ijt
 !        rr     cloud radius (m)
 !        qrw    rain water (g(H2O)/m**3)
 !        qcw    cloud water (g(H2O)/m**3)
-!        rmu    entrainment coefficient (/s)
+!        rmu    entrainment coefficient (/m)
 !
 !     On Output:
 !        qlw    total liquid water (kg(H2O)/kg)

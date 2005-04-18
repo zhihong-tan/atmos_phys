@@ -49,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: microphys_rad.F90,v 11.0 2004/09/28 19:22:41 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: microphys_rad.F90,v 12.0 2005/04/14 15:46:48 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -521,9 +521,11 @@ subroutine microphys_rad_init
       if (Cldrad_control%do_strat_clouds_iz) then     
         if (Cldrad_control%do_strat_clouds) then     
           if (Cldrad_control%do_stochastic_clouds_iz) then
-            if (trim(lwem_form)  == 'ebertcurry') then
-            call error_mesg ('microphys_rad_mod',  &
+            if (Cldrad_control%do_stochastic_clouds) then
+              if (trim(lwem_form)  == 'ebertcurry') then
+                call error_mesg ('microphys_rad_mod',  &
               'ebert-curry not allowed with stochastic clouds', FATAL)
+              endif
             endif
           else
             call error_mesg ('microphys_rad_mod', &
@@ -1347,11 +1349,19 @@ logical,                        intent(in),                         &
 !    of drops and ice) based on the ebert and curry parameterization.
 !---------------------------------------------------------------------
       else if (trim(lwem_form) == 'ebertcurry') then
+       if (present(Cloud_rad_props)) then
         call cloud_lwem_oneband (Cloud_microphysics%conc_drop,   &
                                  Cloud_microphysics%conc_ice,    &
                                  Cloud_microphysics%size_drop,    &
                                  Cloud_microphysics%size_ice,      &
-                                 Cloud_rad_props%abscoeff(:,:,:,:,1))
+                                 Cloud_rad_props%abscoeff(:,:,:,1,1))
+       else
+        call cloud_lwem_oneband (Cloud_microphysics%conc_drop,   &
+                                 Cloud_microphysics%conc_ice,    &
+                                 Cloud_microphysics%size_drop,    &
+                                 Cloud_microphysics%size_ice,      &
+                                 Micro_rad_props%abscoeff(:,:,:,1))
+       endif
       endif
 
 !-------------------------------------------------------------------
@@ -1391,7 +1401,7 @@ logical,                        intent(in),                         &
                                 Cloud_microphysics%conc_ice,    &
                                 Cloud_microphysics%size_drop,    &
                                 Cloud_microphysics%size_ice,      &
-                                Cloud_rad_props%abscoeff(:,:,:,:,1))
+                                Cloud_rad_props%abscoeff(:,:,:,1,1))
      endif
    endif
 
@@ -1717,7 +1727,7 @@ real, intent(out), dimension(:,:,:,:)           :: abscoeff
                                  Cloud_microphysics%conc_ice,    &
                                  Cloud_microphysics%size_drop,    &
                                  Cloud_microphysics%size_ice,      &
-                                 tmpabscoeff(:,:,:,:))
+                                 tmpabscoeff(:,:,:,1))
                                  
         abscoeff(:,:,:,nnn)=tmpabscoeff(:,:,:,1)                         
       endif
@@ -4616,7 +4626,8 @@ end subroutine cloud_lwpar
 
 real, dimension (:,:,:),   intent(in)     ::   conc_drop, conc_ice, &
                                                size_drop, size_ice
-real, dimension (:,:,:,:), intent(out)    ::   abscoeff         
+!real, dimension (:,:,:,:), intent(out)    ::   abscoeff         
+real, dimension (:,:,:), intent(out)    ::   abscoeff         
 
 !----------------------------------------------------------------------
 !
@@ -4684,7 +4695,8 @@ real, dimension (:,:,:,:), intent(out)    ::   abscoeff
 !    factor to obtain [km**-1] is unity.
 !--------------------------------------------------------------------- 
  
-       abscoeff(:,:,:,1) = ( k_liq(:,:,:)*conc_drop(:,:,:) +       &
+!      abscoeff(:,:,:,1) = ( k_liq(:,:,:)*conc_drop(:,:,:) +       &
+       abscoeff(:,:,:  ) = ( k_liq(:,:,:)*conc_drop(:,:,:) +       &
                              k_ice(:,:,:)*conc_ice (:,:,:))/diffac
       
 !---------------------------------------------------------------------

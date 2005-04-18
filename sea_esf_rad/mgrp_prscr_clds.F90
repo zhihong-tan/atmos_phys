@@ -56,7 +56,7 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
   character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 11.0 2004/09/28 19:22:31 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: khartoum $'
+  character(len=128)  :: tagname =  '$Name: lima $'
 
 
 

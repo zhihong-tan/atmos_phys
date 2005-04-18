@@ -1,5 +1,4 @@
                   module lw_gases_stdtf_mod
-!    set flag indicating these values have been initialized.
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
 ! </CONTACT>
@@ -58,8 +57,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 11.0 2004/09/28 19:22:25 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 12.0 2005/04/14 15:46:24 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -140,9 +139,9 @@ real, dimension(:), allocatable   :: pa
 !----------------------------------------------------------------------
 !    ch4 data
 !----------------------------------------------------------------------
-integer, parameter                        ::  number_std_ch4_vmrs = 7
+integer, parameter                        ::  number_std_ch4_vmrs = 8
 real,    dimension(number_std_ch4_vmrs)   ::   ch4_std_vmr
-data ch4_std_vmr / 300., 700., 1250., 1750., 2250., 2800., 4000. /
+data ch4_std_vmr / 0., 300., 700., 1250., 1750., 2250., 2800., 4000. /
 
 integer, parameter                        ::  nfreq_bands_sea_ch4 = 1
 
@@ -159,9 +158,9 @@ data   ntbnd_ch4      /  3  /
 !----------------------------------------------------------------------
 !    n2o data
 !----------------------------------------------------------------------
-integer, parameter                        ::  number_std_n2o_vmrs = 6
+integer, parameter                        ::  number_std_n2o_vmrs = 7
 real,    dimension(number_std_n2o_vmrs)   ::  n2o_std_vmr
-data n2o_std_vmr / 180., 275., 310., 340., 375., 500. /
+data n2o_std_vmr / 0., 180., 275., 310., 340., 375., 500. /
 
 integer, parameter                        ::  nfreq_bands_sea_n2o = 3
 logical, dimension(nfreq_bands_sea_n2o)   ::  do_lyrcalc_n2o_nf, &
@@ -177,9 +176,9 @@ data ntbnd_n2o /  3, 3, 3/
 !----------------------------------------------------------------------
 !    co2 data
 !----------------------------------------------------------------------
-integer, parameter                        ::  number_std_co2_vmrs = 9
+integer, parameter                        ::  number_std_co2_vmrs = 10
 real,    dimension(number_std_co2_vmrs)   ::  co2_std_vmr
-data co2_std_vmr / 165.0, 300.0, 330.0, 348.0, 356.0, 360.0,  &
+data co2_std_vmr / 0., 165.0, 300.0, 330.0, 348.0, 356.0, 360.0,  &
                    600.0, 660.0, 1320.0/
 
 integer, parameter                        ::  nfreq_bands_sea_co2 = 5
@@ -443,33 +442,6 @@ real,  dimension(:,:), intent(in) :: pref
 !    transmission functions.
 !--------------------------------------------------------------------- 
       call std_lblpressures
-
-!---------------------------------------------------------------------
-!    make sure that Lw_control%do_ch4_n2o has been defined. 
-!---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o_iz) then
-      else
-        call error_mesg ('lw_gases_stdtf_mod', &
-          'Lw_control%do_ch4_n2o has not been initialized yet.', FATAL)
-      endif
-      
-!---------------------------------------------------------------------
-!    define the number of individual bands in the 1200 - 1400 cm-1 
-!    region when ch4 and n2o are active.
-!---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then                    
-        Lw_parameters%NBTRG  = 1
-        Lw_parameters%NBTRGE = 1
-      else
-        Lw_parameters%NBTRG  = 0                                       
-        Lw_parameters%NBTRGE = 0
-      endif
- 
-!---------------------------------------------------------------------
-!    set flag indicating these values have been initialized.
-!---------------------------------------------------------------------
-      Lw_parameters%NBTRG_iz = .true.                         
-      Lw_parameters%NBTRGE_iz = .true.
 
 !---------------------------------------------------------------------
 !    mark the module as initialized.
@@ -747,6 +719,7 @@ real,              intent(in)  :: ch4_vmr
 !---------------------------------------------------------------------
 !    load in appropriate ch4 transmission functions
 !---------------------------------------------------------------------
+          if (ch4_vmr /= 0.0) then
           do nt = 1,ntbnd_ch4(nf)   ! temperature structure loop.
             trns_std_hi(:,:) = trns_std_hi_nf(:,:,nt)
             if (callrctrns_ch4) then
@@ -762,10 +735,12 @@ real,              intent(in)  :: ch4_vmr
             trns_interp_lvl_ps_nf(:,:,nt) = trns_interp_lvl_ps(:,:)
             trns_interp_lvl_ps8_nf(:,:,nt) = trns_interp_lvl_ps8(:,:)
           enddo   ! temperature structure loop
+       endif
  
 !--------------------------------------------------------------------
 !    perform final processing for each frequency band.
 !--------------------------------------------------------------------
+          if (ch4_vmr /= 0.0) then
           call gasins(gas_type, do_lvlcalc_ch4, do_lvlctscalc_ch4,   &
                       do_lyrcalc_ch4, nf, ntbnd_ch4(nf), ndimkp, ndimk,&
                       dgasdt10_lvl, dgasdt10_lvlcts, dgasdt10_lyr,   &
@@ -775,11 +750,20 @@ real,              intent(in)  :: ch4_vmr
                       gasp8_lvl,  gasp8_lvlcts,  gasp8_lyr ,   &
                       d2gast8_lvl,  d2gast8_lvlcts,  d2gast8_lyr )
  
+         else
 !---------------------------------------------------------------------
 !    define arrays for the SEA module. the SEA model nomenclature
 !    has been used here and the values of do_lvlcalc, do_lvlctscalc,
 !    and do_lyrcalc are assumed to be from the data statement.
 !---------------------------------------------------------------------
+!15
+           gasp10_lyr = 1.0 
+           gasp8_lyr = 1.0 
+           dgasdt10_lyr = 0.0
+           dgasdt8_lyr = 0.0
+           d2gast10_lyr = 0.0
+           d2gast8_lyr = 0.0
+         endif
           call put_ch4_stdtf_for_gas_tf (gasp10_lyr, gasp8_lyr,    &
                                          dgasdt10_lyr, dgasdt8_lyr,  &
                                          d2gast10_lyr,  d2gast8_lyr)
@@ -987,6 +971,7 @@ real,             intent(in)     ::  co2_vmr
 !--------------------------------------------------------------------
 !    load in appropriate co2 transmission functions
 !--------------------------------------------------------------------
+        if (co2_vmr /= 0.0) then
           do nt = 1,ntbnd_co2(nf)    !  temperature structure loop.
             trns_std_hi(:,:) = trns_std_hi_nf(:,:,nt)
             if (callrctrns_co2) then
@@ -1007,9 +992,11 @@ real,             intent(in)     ::  co2_vmr
             trns_interp_lvl_ps8_nf(:,:,nt) = trns_interp_lvl_ps8(:,:)
           enddo        !  temperature structure loop
  
+        endif
 !--------------------------------------------------------------------
 !    perform final processing for each frequency band.
 !--------------------------------------------------------------------
+        if (co2_vmr /= 0.0) then
           call gasins('co2',                                 &
                       do_lvlcalc_co2, do_lvlctscalc_co2,    &
                       do_lyrcalc_co2, &
@@ -1021,6 +1008,26 @@ real,             intent(in)     ::  co2_vmr
                       dgasdt8_lvl,  dgasdt8_lvlcts,  dgasdt8_lyr ,    & 
                       gasp8_lvl,  gasp8_lvlcts,  gasp8_lyr ,        & 
                       d2gast8_lvl,  d2gast8_lvlcts,  d2gast8_lyr )
+        else
+          dgasdt10_lvl = 0.
+          dgasdt10_lvlcts  = 0.
+          dgasdt10_lyr = 0.
+          gasp10_lvl  = 1.
+          gasp10_lvlcts = 1.
+          gasp10_lyr = 1.
+          d2gast10_lvl = 0.
+          d2gast10_lvlcts   = 0.
+          d2gast10_lyr = 0.
+          dgasdt8_lvl = 0.
+          dgasdt8_lvlcts = 0.
+          dgasdt8_lyr      = 0.
+          gasp8_lvl  = 1.
+          gasp8_lvlcts  = 1.
+          gasp8_lyr  = 1.
+          d2gast8_lvl  = 0.
+          d2gast8_lvlcts  = 0.
+          d2gast8_lyr = 0.
+        endif
  
 !--------------------------------------------------------------------
 !    define arrays for the SEA module. the SEA model nomenclature
@@ -1245,6 +1252,7 @@ real,             intent(in)   :: n2o_vmr
 !----------------------------------------------------------------------
 !    load in appropriate n2o transmission functions
 !----------------------------------------------------------------------
+          if (n2o_vmr /= 0.0) then
           do nt = 1,ntbnd_n2o(nf) ! temperature structure loop
             trns_std_hi(:,:) = trns_std_hi_nf(:,:,nt)
             if (callrctrns_n2o) then
@@ -1259,10 +1267,12 @@ real,             intent(in)   :: n2o_vmr
             trns_interp_lvl_ps_nf(:,:,nt) = trns_interp_lvl_ps(:,:)
             trns_interp_lvl_ps8_nf(:,:,nt) = trns_interp_lvl_ps8(:,:)
           enddo    ! temperature structure loop
+        endif 
 
 !--------------------------------------------------------------------
 !    perform final processing for each frequency band.
 !--------------------------------------------------------------------
+          if (n2o_vmr /= 0.0) then
           call gasins('n2o',                                        &
                       do_lvlcalc_n2o, do_lvlctscalc_n2o,   &
                       do_lyrcalc_n2o, nf, ntbnd_n2o(nf),   &
@@ -1273,6 +1283,15 @@ real,             intent(in)   :: n2o_vmr
                       dgasdt8_lvl,  dgasdt8_lvlcts,  dgasdt8_lyr ,    &
                       gasp8_lvl,  gasp8_lvlcts,  gasp8_lyr ,      &
                       d2gast8_lvl,  d2gast8_lvlcts,  d2gast8_lyr )
+          else
+!15
+           gasp10_lyr = 1.0 
+           gasp8_lyr = 1.0 
+           dgasdt10_lyr = 0.0
+           dgasdt8_lyr = 0.0
+           d2gast10_lyr = 0.0
+           d2gast8_lyr = 0.0
+         endif
  
 !--------------------------------------------------------------------
 !    define arrays for the SEA module. the SEA model nomenclature
@@ -5441,9 +5460,9 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
 !--------------------------------------------------------------------
 !  local variables:
 
-      character(len=24) input_lblco2name(nfreq_bands_sea_co2,9)
-      character(len=24) input_lblch4name(nfreq_bands_sea_ch4,7)
-      character(len=24) input_lbln2oname(nfreq_bands_sea_n2o,6)
+      character(len=24) input_lblco2name(nfreq_bands_sea_co2,10)
+      character(len=24) input_lblch4name(nfreq_bands_sea_ch4,8)
+      character(len=24) input_lbln2oname(nfreq_bands_sea_n2o,7)
       character(len=24) name_lo
       character(len=24) name_hi
       character(len=32) filename, ncname
@@ -5453,59 +5472,66 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
       integer        :: n, nt, nrec_inhi, inrad, nrec_inlo
  
       data (input_lblco2name(n,1),n=1,nfreq_bands_sea_co2)/            &
+        'cns_0_490850   ', 'cns_0_490630   ', 'cns_0_630700   ', &
+        'cns_0_700850   ', 'cns_0_43um     '/
+      data (input_lblco2name(n,2),n=1,nfreq_bands_sea_co2)/            &
         'cns_165_490850   ', 'cns_165_490630   ', 'cns_165_630700   ', &
         'cns_165_700850   ', 'cns_165_43um     '/
-      data (input_lblco2name(n,2),n=1,nfreq_bands_sea_co2)/            &
+      data (input_lblco2name(n,3),n=1,nfreq_bands_sea_co2)/            &
         'cns_300_490850   ', 'cns_300_490630   ', 'cns_300_630700   ', &
         'cns_300_700850   ', 'cns_300_43um     '/
-      data (input_lblco2name(n,3),n=1,nfreq_bands_sea_co2)/            &
+      data (input_lblco2name(n,4),n=1,nfreq_bands_sea_co2)/            &
         'cns_330_490850   ', 'cns_330_490630   ', 'cns_330_630700   ', &
         'cns_330_700850   ', 'cns_330_43um     '/
-      data (input_lblco2name(n,4),n=1,nfreq_bands_sea_co2)/            &
+      data (input_lblco2name(n,5),n=1,nfreq_bands_sea_co2)/            &
         'cns_348_490850   ', 'cns_348_490630   ', 'cns_348_630700   ', &
         'cns_348_700850   ', 'cns_348_43um     '/
-      data (input_lblco2name(n,5),n=1,nfreq_bands_sea_co2)/            &
+      data (input_lblco2name(n,6),n=1,nfreq_bands_sea_co2)/            &
         'cns_356_490850   ', 'cns_356_490630   ', 'cns_356_630700   ', &
         'cns_356_700850   ', 'cns_356_43um     '/
-      data (input_lblco2name(n,6),n=1,nfreq_bands_sea_co2)/            &
+      data (input_lblco2name(n,7),n=1,nfreq_bands_sea_co2)/            &
         'cns_360_490850   ', 'cns_360_490630   ', 'cns_360_630700   ', &
         'cns_360_700850   ', 'cns_360_43um     '/
-      data (input_lblco2name(n,7),n=1,nfreq_bands_sea_co2)/            &
+      data (input_lblco2name(n,8),n=1,nfreq_bands_sea_co2)/            &
         'cns_600_490850   ', 'cns_600_490630   ', 'cns_600_630700   ', &
         'cns_600_700850   ', 'cns_600_43um     '/
-      data (input_lblco2name(n,8),n=1,nfreq_bands_sea_co2)/            &
+      data (input_lblco2name(n,9),n=1,nfreq_bands_sea_co2)/            &
         'cns_660_490850   ', 'cns_660_490630   ', 'cns_660_630700   ', &
         'cns_660_700850   ', 'cns_660_43um     '/
-      data (input_lblco2name(n,9),n=1,nfreq_bands_sea_co2)/            &
+      data (input_lblco2name(n,10),n=1,nfreq_bands_sea_co2)/           &
         'cns_1320_490850  ', 'cns_1320_490630  ', 'cns_1320_630700  ', &
         'cns_1320_700850  ', 'cns_1320_43um    '/
  
       data (input_lblch4name(n,1),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_300_12001400'/
+        'cns_0_12001400'/
       data (input_lblch4name(n,2),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_700_12001400'/
+        'cns_300_12001400'/
       data (input_lblch4name(n,3),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_1250_12001400'/
+        'cns_700_12001400'/
       data (input_lblch4name(n,4),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_1750_12001400'/
+        'cns_1250_12001400'/
       data (input_lblch4name(n,5),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_2250_12001400'/
+        'cns_1750_12001400'/
       data (input_lblch4name(n,6),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_2800_12001400'/
+        'cns_2250_12001400'/
       data (input_lblch4name(n,7),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_2800_12001400'/
+      data (input_lblch4name(n,8),n=1,nfreq_bands_sea_ch4)/          &
         'cns_4000_12001400'/
  
       data (input_lbln2oname(n,1),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_180_12001400 ', 'cns_180_10701200 ', 'cns_180_560630   '/
+        'cns_0_12001400 ', 'cns_0_10701200 ', 'cns_0_560630   '/
       data (input_lbln2oname(n,2),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_275_12001400 ', 'cns_275_10701200 ', 'cns_275_560630   '/
+        'cns_180_12001400 ', 'cns_180_10701200 ', 'cns_180_560630   '/
       data (input_lbln2oname(n,3),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_310_12001400 ', 'cns_310_10701200 ', 'cns_310_560630   '/
+        'cns_275_12001400 ', 'cns_275_10701200 ', 'cns_275_560630   '/
       data (input_lbln2oname(n,4),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_340_12001400 ', 'cns_340_10701200 ', 'cns_340_560630   '/
+        'cns_310_12001400 ', 'cns_310_10701200 ', 'cns_310_560630   '/
       data (input_lbln2oname(n,5),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_375_12001400 ', 'cns_375_10701200 ', 'cns_375_560630   '/
+        'cns_340_12001400 ', 'cns_340_10701200 ', 'cns_340_560630   '/
       data (input_lbln2oname(n,6),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_375_12001400 ', 'cns_375_10701200 ', 'cns_375_560630   '/
+      data (input_lbln2oname(n,7),n=1,nfreq_bands_sea_n2o)/           &
         'cns_500_12001400 ', 'cns_500_10701200 ', 'cns_500_560630   '/
 
 !--------------------------------------------------------------------

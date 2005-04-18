@@ -1,4 +1,5 @@
                     module sea_esf_rad_mod
+
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !   fil
 ! </CONTACT>
@@ -42,7 +43,7 @@ use rad_utilities_mod,    only: rad_utilities_init, Rad_control, &
                                 lw_table_type, &
                                 aerosol_type, aerosol_properties_type,&
                                 sw_output_type, lw_output_type, &
-                                Sw_control, Lw_control
+                                Sw_control, Lw_control, Lw_parameters
 
 !   radiation package modules:
 
@@ -70,8 +71,8 @@ private
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 
-character(len=128) :: version = '$Id: sea_esf_rad.F90,v 11.0 2004/09/28 19:24:00 fms Exp $'
-character(len=128) :: tagname = '$Name: khartoum $'
+character(len=128) :: version = '$Id: sea_esf_rad.F90,v 12.0 2005/04/14 15:48:08 fms Exp $'
+character(len=128) :: tagname = '$Name: lima $'
 
 
 !--------------------------------------------------------------------
@@ -573,7 +574,7 @@ type(cld_space_properties_type), intent(inout)   :: Cldspace_rad
       deallocate (Lw_diagnostics%excts )
       deallocate (Lw_diagnostics%exctsn)
       deallocate (Lw_diagnostics%fctsg )
-      if (Lw_control%do_ch4_n2o) then
+      if (Lw_parameters%nbtrge > 0) then
         deallocate (Lw_diagnostics%flx1e1f)
       endif
       if (Rad_control%do_totcld_forcing) then

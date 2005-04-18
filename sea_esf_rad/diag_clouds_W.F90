@@ -28,9 +28,8 @@ use       fms_mod,          only: open_namelist_file, file_exist,   &
                                   write_version_number, FATAL, NOTE, &
                                   WARNING, mpp_pe, mpp_root_pe, &
                                   close_file, stdlog
-use rad_utilities_mod,      only: Environment, environment_type, &
-                                  longwave_control_type, Lw_control, &
-                                   microphysics_type, &
+use rad_utilities_mod,      only: longwave_control_type, Lw_control, &
+                                  microphysics_type, &
                                   cld_specification_type, &
                                   cldrad_properties_type, &
                                   shortwave_control_type, Sw_control,&
@@ -56,8 +55,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 11.0 2004/09/28 19:21:21 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: khartoum $'
+   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 12.0 2005/04/14 15:44:52 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: lima $'
 
 
 

@@ -60,8 +60,8 @@ integer :: sphum, mix_rat
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 11.0 2004/09/28 19:25:13 fms Exp $'
-character(len=128) :: tagname = '$Name: khartoum $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 12.0 2005/04/14 15:50:38 fms Exp $'
+character(len=128) :: tagname = '$Name: lima $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
@@ -181,8 +181,8 @@ end subroutine vert_diff_end
 subroutine gcm_vert_diff_down (is, js, delt,                &
                           u, v, t, q, tr,                   &
                           diff_m, diff_t, p_half, p_full,   &
-                          z_full, tau_u, tau_v, dtau_datmos,&
-                          flux_tr,                          &
+                          z_full, tau_u, tau_v,             &
+                          dtau_du, dtau_dv,                 &
                           dt_u, dt_v, dt_t, dt_q, dt_tr,    &
                           dissipative_heat, Tri_surf,       &
                           kbot                              )
@@ -194,9 +194,8 @@ real,    intent(in)   , dimension(:,:,:)   :: u, v, t, q,     &
                                               p_half, p_full, &
                                               z_full
 real,    intent(in)   , dimension(:,:,:,:) :: tr
-real,    intent(in)   , dimension(:,:)     :: dtau_datmos
+real,    intent(in)   , dimension(:,:)     :: dtau_du, dtau_dv
 real,    intent(inout), dimension(:,:)     :: tau_u, tau_v
-real,    intent(inout), dimension(:,:,:)   :: flux_tr
 real,    intent(inout), dimension(:,:,:)   :: dt_u, dt_v, dt_t
 real,    intent(in),    dimension(:,:,:)   :: dt_q
 real,    intent(inout), dimension(:,:,:,:) :: dt_tr
@@ -232,7 +231,7 @@ integer :: i, j, kb, ie, je
 
 !  diffuse u-momentum and v_momentum
 
- call uv_vert_diff (delt, mu, nu, u, v, dtau_datmos, tau_u, tau_v,  &
+ call uv_vert_diff (delt, mu, nu, u, v, dtau_du, dtau_dv, tau_u, tau_v,  &
                     dt_u, dt_v, dt_t, delta_u_n, delta_v_n,         &
                     dissipative_heat, kbot)
                             
@@ -240,7 +239,7 @@ integer :: i, j, kb, ie, je
  call compute_nu   (diff_t, p_half, p_full, z_full, t, q, nu)
 
 !  diffuse tracers 
- call tr_vert_diff (delt, mu, nu, tr, flux_tr, dt_tr, kbot )
+ call tr_vert_diff (delt, mu, nu, tr, dt_tr, kbot )
 
 !  downward sweep of tridiagonal solver for temperature and specific humidity
  call vert_diff_down_2                            & 
@@ -300,8 +299,8 @@ end subroutine gcm_vert_diff_up
 
 subroutine gcm_vert_diff (delt, u, v, t, q, tr,                    &
                           diff_m, diff_t, p_half, p_full, z_full,  &
-                          dtau_datmos, dsens_datmos, devap_datmos, &
-                          sens, evap, tau_u, tau_v, flux_tr,       &
+                          dtau_du, dtau_dv, dsens_datmos, devap_datmos, &
+                          sens, evap, tau_u, tau_v,                &
                           dt_u, dt_v, dt_t, dt_q, dt_tr,           &
                           dissipative_heat, kbot      )
 
@@ -312,9 +311,8 @@ real,    intent(in)                          :: delt
 real,    intent(in)   , dimension(:,:,:)     :: u, v, t, q, p_half, p_full, &
                                                 z_full, diff_m, diff_t
 real,    intent(in)   , dimension(:,:,:,:)   :: tr
-real,    intent(in)   , dimension(:,:)       :: dtau_datmos, dsens_datmos, &
+real,    intent(in)   , dimension(:,:)       :: dtau_du, dtau_dv, dsens_datmos, &
                                                 devap_datmos
-real,    intent(inout), dimension(:,:,:)     :: flux_tr
 real,    intent(inout), dimension(:,:)       :: tau_u, tau_v, sens, evap
 real,    intent(inout), dimension(:,:,:)     :: dt_u, dt_v, dt_t, dt_q
 real,    intent(inout), dimension(:,:,:,:)   :: dt_tr
@@ -332,7 +330,7 @@ real, dimension(size(u,1),size(u,2))           :: delta_u_n, delta_v_n
 
  call compute_nu (diff_m, p_half, p_full, z_full, t, q, nu) 
  
- call uv_vert_diff (delt, mu, nu, u, v, dtau_datmos, tau_u, tau_v, &
+ call uv_vert_diff (delt, mu, nu, u, v, dtau_du, dtau_dv, tau_u, tau_v, &
                     dt_u, dt_v, dt_t, delta_u_n, delta_v_n,        &
                     dissipative_heat, kbot)
                     
@@ -342,7 +340,7 @@ real, dimension(size(u,1),size(u,2))           :: delta_u_n, delta_v_n
                     dsens_datmos, devap_datmos,  &
                     sens, evap, dt_t, dt_q, kbot )
 
- call tr_vert_diff (delt, mu, nu, tr, flux_tr, dt_tr, kbot )
+ call tr_vert_diff (delt, mu, nu, tr, dt_tr, kbot )
 
 end subroutine gcm_vert_diff
 
@@ -389,12 +387,12 @@ end subroutine vert_diff
 !#######################################################################
 
 subroutine uv_vert_diff (delt, mu, nu, u, v,  &
-                         dtau_datmos, tau_u, tau_v, dt_u, dt_v, dt_t, &
+                         dtau_du, dtau_dv, tau_u, tau_v, dt_u, dt_v, dt_t, &
                           delta_u_n, delta_v_n, dissipative_heat, kbot )
 
 real,    intent(in)                        :: delt
 real,    intent(in)   , dimension(:,:,:)   :: u, v, mu, nu
-real,    intent(in)   , dimension(:,:)     :: dtau_datmos
+real,    intent(in)   , dimension(:,:)     :: dtau_du, dtau_dv
 real,    intent(inout), dimension(:,:)     :: tau_u, tau_v
 real,    intent(inout), dimension(:,:,:)   :: dt_u, dt_v, dt_t
 real,    intent(out)  , dimension(:,:,:)   :: dissipative_heat
@@ -433,9 +431,9 @@ real    :: half_delt, cp_inv
       delta_u_n, delta_v_n, kbot)        
 
  call diff_surface (mu_delt_n, nu_n, e_n1, f_u_delt_n1, &
-                    dtau_datmos, tau_u, 1.0, delta_u_n)
+                    dtau_du, tau_u, 1.0, delta_u_n)
  call diff_surface (mu_delt_n, nu_n, e_n1, f_v_delt_n1, &
-                    dtau_datmos, tau_v, 1.0, delta_v_n)
+                    dtau_dv, tau_v, 1.0, delta_v_n)
 
  call vert_diff_up (delt, e, f_u, delta_u_n, dt_u, kbot)
  call vert_diff_up (delt, e, f_v, delta_v_n, dt_v, kbot)
@@ -506,57 +504,74 @@ end subroutine tq_vert_diff
 
 !#######################################################################
 
-subroutine tr_vert_diff (delt, mu, nu, tr, flux, dt_tr, kbot )
+subroutine tr_vert_diff (delt, mu, nu, tr, dt_tr, kbot )
 
 real,    intent(in)                        :: delt
 real,    intent(in)   , dimension(:,:,:)   :: mu, nu
 real,    intent(in)   , dimension(:,:,:,:) :: tr
-real,    intent(inout), dimension(:,:,:)   :: flux
 real,    intent(inout), dimension(:,:,:,:) :: dt_tr
 
 integer, intent(in)   , dimension(:,:), optional :: kbot
 
 real, dimension(size(tr,1),size(tr,2)) :: mu_delt_n, nu_n, e_n1
 
-real, dimension(size(tr,1),size(tr,2),size(tr,4)) :: f_delt_n1, delta_tr_n
-real, dimension(size(tr,1),size(tr,2)) :: dflux_dtr
-
-real, dimension(size(tr,1),size(tr,2),size(tr,3)-1,size(tr,4)) :: f
-
-real, dimension(size(tr,1),size(tr,2),size(tr,3)-1) :: e
-integer :: i, j, n, kb, ntr
+real, dimension(size(tr,1),size(tr,2)) :: f_delt_n1, delta_tr_n
+real, dimension(size(tr,1),size(tr,2)) :: dflux_dtr, flux
+real, dimension(size(tr,1),size(tr,2),size(tr,3)-1) :: ftr
+real, dimension(size(tr,1),size(tr,2),size(tr,3)-1) :: etr
+real, dimension(size(tr,1),size(tr,2),size(tr,3)) :: a, b, c, g
+integer :: i, j, k, kb, n, ntr, nlev
 character(len=128) :: scheme
-logical, dimension(size(dt_tr,4)) :: skip_tracer_diff
 !-----------------------------------------------------------------------
 
  ntr  = size(tr,4) ! number of prognostic tracers
 
- ! setup flags for tracer diffusion
- ! this could be moved to the initialization
- skip_tracer_diff(1:ntr) = .true.
- do n=1,ntr
-   ! skip specific humidity (done separately)
-     if ( n == sphum .or. n == mix_rat) cycle
-   ! skip tracers if diffusion scheme truned off
-     if (query_method('diff_vert',MODEL_ATMOS,n,scheme)) then
-         if(uppercase(trim(scheme)) == 'NONE') cycle
-     endif
-     skip_tracer_diff(n) = .false.
- enddo
-
  dflux_dtr = 0.0
+ call compute_e (delt, mu, nu, etr, a, b, c, g)
+ if (present(kbot)) then
+   do j=1,size(tr,2)
+   do i=1,size(tr,1)
+      kb = kbot(i,j)
+      mu_delt_n(i,j) =  mu(i,j,kb  )*delt
+           nu_n(i,j) =  nu(i,j,kb  )
+           e_n1(i,j) = etr(i,j,kb-1)
+   enddo
+   enddo
+ else
+   nlev = size(mu,3)
+   mu_delt_n(:,:) =  mu(:,:,nlev  )*delt
+        nu_n(:,:) =  nu(:,:,nlev  )
+        e_n1(:,:) = etr(:,:,nlev-1)
+ endif
   
- call vert_diff_down_n &
-     (delt, mu, nu, tr, dt_tr, e, f, mu_delt_n, nu_n,  &
-      e_n1, f_delt_n1, delta_tr_n, skip_tracer_diff, kbot)
-
  do n = 1, ntr
-   if (skip_tracer_diff(n)) cycle
-   call diff_surface (mu_delt_n, nu_n, e_n1, f_delt_n1(:,:,n),  &
-                      dflux_dtr, flux(:,:,n), 1.0, delta_tr_n(:,:,n))
+   if ( n == sphum .or. n == mix_rat) cycle
+   if (query_method('diff_vert',MODEL_ATMOS,n,scheme)) then
+     if(uppercase(trim(scheme)) == 'NONE') cycle
+   endif
+   call explicit_tend (mu, nu, tr(:,:,:,n), dt_tr(:,:,:,n))
+   call compute_f (dt_tr(:,:,:,n), b, c, g, ftr)
+   if (present(kbot)) then
+     do j=1,size(tr,2)
+     do i=1,size(tr,1)
+       kb = kbot(i,j)
+       f_delt_n1(i,j)  =   ftr(i,j,kb-1)*delt
+       delta_tr_n(i,j) = dt_tr(i,j,kb,n)*delt
+     enddo
+     enddo
+   else
+      f_delt_n1(:,:) =   ftr(:,:,nlev-1)*delt
+     delta_tr_n(:,:) = dt_tr(:,:,nlev  ,n)*delt
+   endif
+   flux = 0.0
+   call diff_surface (mu_delt_n, nu_n, e_n1, f_delt_n1, dflux_dtr, flux, 1.0, delta_tr_n)
 
-   call vert_diff_up (delt, e, f(:,:,:,n), delta_tr_n(:,:,n),  &
-                      dt_tr(:,:,:,n), kbot)
+! If flux needs to be saved then it should be made a module variable.
+! vert_diff_init must allocate it and then call assign_tracer_field
+! to set a pointer in tracer_manager_mod. It can be allocated as a
+! 3 dimensional array with the 3'd index for tracer number.
+
+   call vert_diff_up (delt, etr, ftr, delta_tr_n, dt_tr(:,:,:,n), kbot)
  end do
 
 !-----------------------------------------------------------------------
@@ -693,86 +708,6 @@ integer :: i, j, k, kb, nlev
 !-----------------------------------------------------------------------
 
 end subroutine vert_diff_down_2
-
-!#######################################################################
-
-subroutine vert_diff_down_n &
-      (delt, mu, nu, tr, dt_tr, e, f, mu_delt_n, nu_n,  &
-       e_n1, f_delt_n1, delta_tr_n, skip, kbot)
-
-!-----------------------------------------------------------------------
-
-real,    intent(in)                         :: delt
-real,    intent(in)    , dimension(:,:,:)   :: mu, nu
-real,    intent(in)    , dimension(:,:,:,:) :: tr
-real,    intent(inout) , dimension(:,:,:,:) :: dt_tr
-real,    intent(out)   , dimension(:,:,:)   :: e
-real,    intent(out)   , dimension(:,:,:,:) :: f
-real,    intent(out)   , dimension(:,:)     :: mu_delt_n, nu_n, e_n1
-real,    intent(out)   , dimension(:,:,:)   :: f_delt_n1, delta_tr_n
-
-logical, intent(in),    dimension(:),   optional :: skip
-integer, intent(in),    dimension(:,:), optional :: kbot
-
-real, dimension(size(tr,1),size(tr,2),size(tr,3)) :: a, b, c, g
-
-integer :: i, j, k, n, kb, nlev, ntr
-
-!-----------------------------------------------------------------------
-
-  ntr = size(tr,4)
-
- call compute_e  (delt, mu, nu, e, a, b, c, g)
-
- do n = 1, ntr
-   if (present(skip)) then
-       if(skip(n)) cycle
-   endif
-   call explicit_tend (mu, nu, tr(:,:,:,n), dt_tr(:,:,:,n))
-   call compute_f (dt_tr(:,:,:,n), b, c, g, f(:,:,:,n))
- end do
-
-
- if (present(kbot)) then
-    do j=1,size(tr,2)
-    do i=1,size(tr,1)
-        kb = kbot(i,j)
-        mu_delt_n(i,j) =  mu(i,j,kb  )*delt
-             nu_n(i,j) =  nu(i,j,kb  )
-            e_n1(i,j) =   e(i,j,kb-1)
-    enddo
-    enddo
-    do n=1,size(tr,4)
-    if (present(skip)) then
-       if(skip(n)) cycle
-    endif
-    do j=1,size(tr,2)
-    do i=1,size(tr,1)
-        kb = kbot(i,j)
-       f_delt_n1(i,j,n)  =     f(i,j,kb-1,n)*delt
-       delta_tr_n(i,j,n) = dt_tr(i,j,kb  ,n)*delt
-    enddo
-    enddo
-    enddo
- else
-    nlev = size(mu,3)
-    mu_delt_n(:,:)  =  mu(:,:,nlev  )*delt
-         nu_n(:,:)  =  nu(:,:,nlev  )
-         e_n1(:,:)  =   e(:,:,nlev-1)
-    do n=1,size(tr,4)
-      if (present(skip)) then
-          if(skip(n)) cycle
-      endif
-       f_delt_n1(:,:,n) =     f(:,:,nlev-1,n)*delt
-      delta_tr_n(:,:,n) = dt_tr(:,:,nlev  ,n)*delt
-    enddo
- endif
-
-
-
-!-----------------------------------------------------------------------
-
-end subroutine vert_diff_down_n
 
 !#######################################################################
 

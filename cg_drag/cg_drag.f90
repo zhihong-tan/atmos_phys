@@ -32,8 +32,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.f90,v 11.0 2004/09/28 19:14:07 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: cg_drag.f90,v 12.0 2005/04/14 15:38:42 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 
@@ -69,10 +69,20 @@ real        :: cmax=99.6          ! maximum phase speed in gravity wave
 real        :: dc=1.2             ! gravity wave spectral resolution 
                                   ! [ m/s ]
                                   ! previous values: 0.6
-real        :: Bt_0=.006          ! sum across the wave spectrum of 
+real        :: Bt_0=.003          ! sum across the wave spectrum of 
                                   ! the magnitude of momentum flux, 
                                   ! divided by density [ m^2/s^2 ]
-                                  ! previous values: 0.015             
+            
+real        :: Bt_aug=.000        ! magnitude of momentum flux divided by density 
+
+real        :: Bt_nh=.003         ! magnitude of momentum flux divided by density   (SH limit )
+
+real        :: Bt_sh=.003         ! magnitude of momentum flux divided by density  (SH limit )
+
+real        :: Bt_eq=.000         ! magnitude of momentum flux divided by density  (equator) 
+
+real        :: Bt_eq_width=4.0    ! scaling for width of equtorial momentum flux  (equator) 
+
 
 logical     :: calculate_ked=.false. 
                                   ! calculate ked diagnostic ?
@@ -100,7 +110,8 @@ real,    dimension(MAX_PTS)  ::  lon_coords_gl=-999.
 namelist / cg_drag_nml /         &
                           cg_drag_freq, cg_drag_offset, &
                           source_level_pressure,   &
-                          nk, cmax, dc, Bt_0,   &
+                          nk, cmax, dc, Bt_0, Bt_aug,  &
+                          Bt_sh, Bt_nh, Bt_eq,  Bt_eq_width,  &
                           calculate_ked,    &
                           num_diag_pts_ij, num_diag_pts_latlon, &
                           i_coords_gl, j_coords_gl,   &
@@ -504,6 +515,11 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
       integer, dimension (size(uuu,1), size(uuu,2))               ::  &
                                          source_level
 
+      real   , dimension (size(uuu,1), size(uuu,2))               ::  &
+                                         source_amp
+
+
+
       integer           :: iz0
       logical           :: used
       real              :: bflim = 2.5E-5
@@ -572,6 +588,10 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
           do i=1,imax
             source_level(i,j) = (kmax + 1) - ((kmax + 1 -    &
                                 klevel_of_source)*cos(lat(i,j)) + 0.5)
+
+            source_amp(i,j)= Bt_0 +                         &
+                             Bt_eq*exp( -Bt_eq_width*lat(i,j)*lat(i,j) )  + &
+                             (Bt_nh-Bt_sh)*(1.0+tanh(4.0*lat(i,j)))/2.0 + Bt_sh
           end do
         end do
         source_level = MIN (source_level, kmax-1)
@@ -585,7 +605,7 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
         do j=1,jmax
           do i=1,imax
             iz0 = source_level(i,j)
-            dtdz(i,j,1) = (temp  (i,j,1) - temp  (i,j,2))/    & 
+            dtdz(i,j,1) = (temp  (i,j,1) - temp  (i,j,2))/    &
                           (zfull(i,j,1) - zfull(i,j,2))
             do k=2,iz0
               dtdz(i,j,k) = (temp  (i,j,k-1) - temp  (i,j,k+1))/   &
@@ -658,8 +678,8 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
 !    LEVEL!!!
 !---------------------------------------------------------------------
         if (calculate_ked) then
-          call gwfc (is, ie, js, je, source_level, zden, zu, zbf,   &
-                     zzchm, gwd_xtnd, ked_xtnd)
+          call gwfc (is, ie, js, je, source_level, source_amp,    &
+                     zden, zu, zbf,zzchm, gwd_xtnd, ked_xtnd)
 !!! CORRECTED LINES (BUGFIX #2):
           gwfcng(:,:,1:kmax) = gwd_xtnd(:,:,1:kmax  )
           ked_gwfc(:,:,1:kmax) = ked_xtnd(:,:,1:kmax  )
@@ -667,8 +687,8 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
 !         gwfcng(:,:,1:kmax) = gwd_xtnd(:,:,0:kmax-1)
 !         ked_gwfc(:,:,1:kmax) = ked_xtnd(:,:,0:kmax-1)
         else
-          call gwfc (is, ie, js, je, source_level, zden, zu, zbf,   &
-                     zzchm, gwd_xtnd)
+          call gwfc (is, ie, js, je, source_level, source_amp,    &
+                     zden, zu, zbf, zzchm, gwd_xtnd)
 !!! CORRECTED LINE (BUGFIX #2):
           gwfcng(:,:,1:kmax) = gwd_xtnd(:,:,1:kmax  )
 !!! ORIGINAL  LINE (BUG #2):
@@ -694,7 +714,7 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
                                               '  source_level  =', iz0
                   write (diag_units(nn),'(a)')     &
                          '   k         u           z        density&
-                         &         bf      gwforcing'
+		         &         bf      gwforcing'
                   do k=0,iz0 
                     write (diag_units(nn), '(i5, 2x, 5e12.5)')   &
                                        k,                         &
@@ -954,8 +974,8 @@ end subroutine read_restart_file
 
 !####################################################################
 
-subroutine gwfc (is, ie, js, je, source_level, rho, u, bf, z,    &
-                 gwf, ked)
+subroutine gwfc (is, ie, js, je, source_level, source_amp, rho, u,    &
+                 bf, z, gwf, ked)
 
 !-------------------------------------------------------------------
 !    subroutine gwfc computes the gravity wave-driven-forcing on the
@@ -968,6 +988,7 @@ subroutine gwfc (is, ie, js, je, source_level, rho, u, bf, z,    &
 !-------------------------------------------------------------------
 integer,                     intent(in)             :: is, ie, js, je
 integer, dimension(:,:),     intent(in)             :: source_level
+real,    dimension(:,:),     intent(in)             :: source_amp
 real,    dimension(:,:,0:),  intent(in)             :: rho, u, bf, z
 real,    dimension(:,:,0:),  intent(out)            :: gwf
 real,    dimension(:,:,0:),  intent(out), optional  :: ked
@@ -979,6 +1000,8 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
 !                       in the physics_window being integrated
 !      source_level     k index of model level serving as gravity wave
 !                       source
+!      source_amp     amplitude of  gravity wave source
+!                       
 !      rho              atmospheric density [ kg/m^3 ] 
 !      u                zonal wind component [ m/s ]
 !      bf               buoyancy frequency [ /s ]
@@ -1007,7 +1030,7 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
                                    eps, Bsum
       integer                 ::   iz0 
       integer                 ::   i, j, k, ink, n
-
+      real                    ::   ampl
 !------------------------------------------------------------------
 !  local variables:
 ! 
@@ -1045,6 +1068,7 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
 !      i,j,k       spatial do loop indices
 !      ink         wavenumber loop index 
 !      n           phase speed loop index 
+!      ampl        phase speed loop index 
 !
 !--------------------------------------------------------------------
 
@@ -1061,6 +1085,7 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
       do j=1,size(u,2)
         do i=1,size(u,1)  
           iz0 = source_level(i,j)
+          ampl= source_amp(i,j)
 
 !--------------------------------------------------------------------
 !    define wave momentum flux (B0) at source level for each phase 
@@ -1103,7 +1128,8 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
             call error_mesg ('cg_drag_mod', &
                ' zero flux input at source level', FATAL)
           endif
-          eps = (Bt_0*1.5/nk)/Bsum
+!!          eps = (Bt_0*1.5/nk)/Bsum
+          eps = (ampl*1.5/nk)/Bsum
 
 !--------------------------------------------------------------------
 !    loop over the nk different wavelengths in the spectrum.

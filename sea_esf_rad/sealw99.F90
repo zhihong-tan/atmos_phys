@@ -1,4 +1,5 @@
                            module sealw99_mod
+
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
 ! </CONTACT>
@@ -92,8 +93,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-    character(len=128)  :: version =  '$Id: sealw99.F90,v 11.0 2004/09/28 19:24:05 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: khartoum $'
+    character(len=128)  :: version =  '$Id: sealw99.F90,v 12.0 2005/04/14 15:48:16 fms Exp $'
+    character(len=128)  :: tagname =  '$Name: lima $'
     logical             ::  module_is_initialized = .false.
 
 !---------------------------------------------------------------------
@@ -122,8 +123,11 @@ logical            ::    &
             do_lwcldemiss = .false. ! use multiple bands to calculate
                                     ! lw cloud emissivites ? 
 logical            ::    &
-      do_ch4n2olbltmpint  = .false. ! perform and save intermediate
-                                    ! flux calculations ?
+      do_ch4lbltmpint  = .false.    ! perform and save intermediate
+                                    ! flux calculations for ch4?
+logical            ::    &
+      do_n2olbltmpint  = .false. ! perform and save intermediate
+                                    ! flux calculations for n2o?
 logical            ::   &
            do_nlte = .false.        ! there is a non-local thermodynamic
                                     ! equilibrium region at top 
@@ -207,13 +211,29 @@ logical            ::  &
        calc_ch4_tfs_monthly = .false.
 logical            ::  &
        calc_n2o_tfs_monthly = .false.
+integer            ::      &
+       no_h2o_bands_1200_1400 = 1 ! number of bands in the lw par-
+                                  ! ameterization between 1200 and 1400
+                                  ! cm (-1); 0 and 1 have been
+                                  ! tested. other potentially available
+                                  ! values are 2, 4, 10  and 20. 
+logical            ::      &
+    use_bnd1_cldtf_for_h2o_bands = .false. ! the 1200-1400 cm(-1) band
+                                             ! uses the same radiative
+                                             ! properties as the 0-160,
+                                             ! 1400-2200 band. needed 
+                                             ! for backward compatibil-
+                                             ! ity
 
 
 namelist / sealw99_nml /                          &
                           do_thick, do_lwcldemiss, &
-                          do_nlte, do_ch4n2olbltmpint, &
+!                         do_nlte, do_ch4n2olbltmpint, &
+                          do_nlte, do_ch4lbltmpint, do_n2olbltmpint, &
                           continuum_form, linecatalog_form, &
                           verbose, &
+                          no_h2o_bands_1200_1400, &
+                          use_bnd1_cldtf_for_h2o_bands, &
                           calc_co2_tfs_monthly, &
                           calc_ch4_tfs_monthly, &
                           calc_n2o_tfs_monthly, &
@@ -273,7 +293,7 @@ integer, dimension (:), allocatable    ::  cld_indx
 !---------------------------------------------------------------------
 integer    ::  nbly      ! number of frequency bands for exact
                          ! cool-to-space computations.
-integer    ::  nbtrge
+integer    ::  nbtrge, nbtrg
 integer    ::  ixprnlte
 integer    ::  ks, ke
 logical    ::  do_co2_tf_calc = .true.
@@ -297,7 +317,7 @@ integer    :: total_points
 
 
 
-contains
+                          contains
 
 
 
@@ -602,8 +622,10 @@ type(lw_table_type), intent(inout) :: Lw_tables
 !---------------------------------------------------------------------
     Lw_control%continuum_form     = continuum_form
     Lw_control%linecatalog_form   = linecatalog_form
-    Lw_control%do_ch4n2olbltmpint = do_ch4n2olbltmpint
-    Lw_control%do_ch4n2olbltmpint_iz  = .true.
+    Lw_control%do_ch4lbltmpint = do_ch4lbltmpint
+    Lw_control%do_n2olbltmpint = do_n2olbltmpint
+    Lw_control%do_ch4lbltmpint_iz  = .true.
+    Lw_control%do_n2olbltmpint_iz  = .true.
 
 !---------------------------------------------------------------------
 !
@@ -706,6 +728,22 @@ type(lw_table_type), intent(inout) :: Lw_tables
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
+!    define the number of separate bands in the 1200 - 1400 cm-1
+!    region. this region may be broken into 1, 2 , 4, 10 or 20 individ-
+!    ual bands, or it may remain part of the 0-160, 1200-2200 band. 
+!---------------------------------------------------------------------
+      nbtrge = no_h2o_bands_1200_1400 
+      nbtrg  = no_h2o_bands_1200_1400 
+      Lw_parameters%NBTRG  = nbtrg
+      Lw_parameters%NBTRGE = nbtrge
+
+!---------------------------------------------------------------------
+!    set flag indicating these values have been initialized.
+!---------------------------------------------------------------------
+      Lw_parameters%NBTRG_iz = .true.
+      Lw_parameters%NBTRGE_iz = .true.
+
+!---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
       call lw_gases_stdtf_init   (pref)
@@ -713,6 +751,16 @@ type(lw_table_type), intent(inout) :: Lw_tables
       call longwave_tables_init (Lw_tables, tabsr, &
                                  tab1, tab2, tab3, tab1w, &
                                  tab1a, tab2a, tab3a)
+      if (Lw_control%do_co2_iz) then
+        if (do_nlte .and. .not. Lw_control%do_co2) then
+          call error_mesg ('sealw99_mod', &
+         ' cannot activate nlte when co2 not active as radiative gas',&
+                                                          FATAL)
+        endif 
+      else  ! (do_co2_iz)
+        call error_mesg ('sealw99_mod', &
+           'do_co2 not yet defined', FATAL)
+      endif ! (do_co2_iz)
 
 !---------------------------------------------------------------------
 !    define pressure-dependent index values used in the infrared
@@ -848,12 +896,6 @@ type(lw_table_type), intent(inout) :: Lw_tables
         bcomb = bcomb_n
       endif
 
-!--------------------------------------------------------------------
-!    define the cloud band index to be used in the longwave transmission
-!    calculations for each cloud band. 
-!--------------------------------------------------------------------
-      NBTRGE = Lw_parameters%NBTRGE
-
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
@@ -865,6 +907,15 @@ type(lw_table_type), intent(inout) :: Lw_tables
           cld_indx(nn) = nn
         endif
       end do
+      if (NBTRGE == 0 .and. .not. use_bnd1_cldtf_for_h2o_bands) then
+        call error_mesg ('sealw99_mod', &
+        'must use band1 cld tfs for the 1200-1400 cm(-1) bands when &
+          & they are included in the 1200-2200 cm(-1) band', FATAL)
+      endif 
+
+      if (NBTRGE  > 0 .and. use_bnd1_cldtf_for_h2o_bands) then
+        cld_indx(7:) = 1
+      endif
 
 !--------------------------------------------------------------------
 !
@@ -1287,7 +1338,7 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !    define the tfs.
 !--------------------------------------------------------------------
       if (Rad_gases%time_varying_ch4) then
-        if (Lw_control%do_ch4_n2o) then
+        if (Lw_control%do_ch4) then
           if (do_ch4_tf_calc) then
             gas_name = 'ch4 '
             call obtain_gas_tfs (gas_name, Rad_time,   &
@@ -1325,11 +1376,11 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !    the calculation has been done.
 !---------------------------------------------------------------------
       else ! (time_varying_ch4)
-        if (Lw_control%do_ch4_n2o .and. do_ch4_tf_calc ) then
+        if (Lw_control%do_ch4 .and. do_ch4_tf_calc ) then
           call ch4_time_vary (Rad_gases%rrvch4)
           do_ch4_tf_calc = .false.
           do_ch4_tf_calc_init = .false.
-        else if (.not. Lw_control%do_ch4_n2o) then
+        else if (.not. Lw_control%do_ch4) then
           do_ch4_tf_calc = .false.
           do_ch4_tf_calc_init = .false.
         endif
@@ -1341,7 +1392,7 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !    define the tfs.
 !--------------------------------------------------------------------
       if (Rad_gases%time_varying_n2o) then
-        if (Lw_control%do_ch4_n2o) then
+        if (Lw_control%do_n2o) then
           if (do_n2o_tf_calc) then
             gas_name = 'n2o '
             call obtain_gas_tfs (gas_name, Rad_time,   &
@@ -1379,11 +1430,11 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !    the calculation has been done.
 !---------------------------------------------------------------------
       else
-        if (Lw_control%do_ch4_n2o .and. do_n2o_tf_calc) then
+        if (Lw_control%do_n2o .and. do_n2o_tf_calc) then
           call n2o_time_vary (Rad_gases%rrvn2o)
           do_n2o_tf_calc = .false.
           do_n2o_tf_calc_init = .false.
-        else if (.not. Lw_control%do_ch4_n2o) then
+        else if (.not. Lw_control%do_n2o) then
           do_n2o_tf_calc = .false.
           do_n2o_tf_calc_init = .false.
         endif
@@ -1438,6 +1489,9 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
           call co2_time_vary (Rad_gases%rrvco2)
           do_co2_tf_calc = .false.
           do_co2_tf_calc_init = .false.
+        else if (.not. Lw_control%do_co2) then
+          do_co2_tf_calc = .false.
+          do_co2_tf_calc_init = .false.
         endif
       endif  ! (time_varying_co2)
 
@@ -1445,8 +1499,8 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !
 !--------------------------------------------------------------------
       if ((Lw_control%do_co2 .and. calc_co2) .or. &
-          (Lw_control%do_ch4_n2o .and. calc_ch4) .or. &
-          (Lw_control%do_ch4_n2o .and. calc_n2o)) then
+          (Lw_control%do_ch4 .and. calc_ch4) .or. &
+          (Lw_control%do_n2o .and. calc_n2o)) then
         call lw_gases_stdtf_dealloc
       endif
 
@@ -1508,7 +1562,7 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
          Lw_diagnostics%fluxncf(:,:,:,:) = 0.0
        endif
 
-       if (Lw_control%do_ch4_n2o) then
+       if (NBTRGE > 0) then
          Lw_diagnostics%flx1e1f  = 0.
        end if
 
@@ -2255,7 +2309,7 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
             Lw_diagnostics%flx1e1(i,j) = 1.0e-03*Lw_diagnostics%flx1e1(i,j)
          end do
       end do
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE> 0) then
       do kk = 1,size(Lw_diagnostics%flx1e1f(:,:,:),3)
          do j = 1,size(Lw_diagnostics%flx1e1f(:,:,:),2)
             do i = 1,size(Lw_diagnostics%flx1e1f(:,:,:),1)
@@ -3631,9 +3685,10 @@ real, dimension(:,:),      intent(inout)  :: gxctscf
         enddo
 
 !-----------------------------------------------------------------------
-!     tt is the cloud-free cool-to-space transmission function.
+!     tt is the cloud-free h2o cool-to-space transmission function.
 !-----------------------------------------------------------------------
 
+      if (Lw_control%do_h2o) then
         do kk = KS,KE
            do j = 1,size(fac1(:,:,:),2)
               do i = 1,size(fac1(:,:,:),1)
@@ -3658,6 +3713,15 @@ real, dimension(:,:),      intent(inout)  :: gxctscf
            end do
         end do
 
+      else
+        do kk = KS,KE
+          do j = 1,size(tmp1(:,:,:),2)
+            do i = 1,size(tmp1(:,:,:),1)
+              tmp1(i,j,kk) = 0.0
+            end do
+          end do
+        end do
+      endif
         
 
 
@@ -4484,12 +4548,12 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
                        size(Atmos_input%temp,3)) ::   &
                                      temp, tflux, totaer_tmp, taero8, &
                                      tmp1, tmp2, e1cts1, e1cts2, &
-                                     avphilog, dt1, du, dup
+                                     avphilog, dt1, du, dup, du1, dup1
 
       integer, dimension (size(Atmos_input%temp,1),    &
                        size(Atmos_input%temp,2), &
                        size(Atmos_input%temp,3)) ::   &
-                                                  ixo1, iyo, iyop 
+                                         ixo1, iyo, iyop, iyo1, iyop1 
 
       real, dimension (size(Atmos_input%temp,1),    &
                        size(Atmos_input%temp,2)) :: &
@@ -4588,6 +4652,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
 
 
 
+   if (Lw_control%do_h2o) then
       do kk = KS,KE+1
          do j = 1,size(avphilog(:,:,:),2)
             do i = 1,size(avphilog(:,:,:),1)
@@ -4596,8 +4661,15 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
          end do
       end do
       call locate_in_table (mass_1, avphilog, du, iyo, KS, KE+1)
+      iyo(:,:,KS:KE+1) = iyo(:,:,KS:KE+1) + 1
       call looktab (tab2, ixoe2, iyo, dte2, du, &
                     trans_band2(:,:,:,1), KS, KE+1)
+   else
+     iyo1(:,:,KS:KE+1) = 1
+     du1(:,:,KS:KE+1) = 0.0
+     call looktab (tab2, ixoe2, iyo1, dte2, du1, &
+                   trans_band2(:,:,:,1), KS, KE+1)
+   endif
 
 !-----------------------------------------------------------------------
 !     the special case emiss(:,:,KE+1) for layer KE+1 is obtained by 
@@ -4621,11 +4693,11 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
 !---------------------------------------------------------------------
 !     perform calculations for the e1 function. the terms involving top
 !     layer du are not known.  we use index two to represent index one
-!     in previous calculations.
+!     in previous calculations. (now 3)
 !--------------------------------------------------------------------
       do j = 1,size(iyop(:,:,:),2)
          do i = 1,size(iyop(:,:,:),1)
-            iyop(i,j,KS) = 1
+            iyop(i,j,KS) = 2
          end do
       end do
       do kk = KS+1,KE+1
@@ -4660,6 +4732,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
         end do
       enddo
 
+    if (Lw_control%do_h2o) then
 !-----------------------------------------------------------------------
 !     e1flx(:,:,KS) equals e1cts1(:,:,KS).
 !-----------------------------------------------------------------------
@@ -4669,13 +4742,24 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
                     trans_band1(:,:,:,1), KS, KE+1)
       call looktab (tab1w, ixoe1, iyop, dte1, dup, e1ctw1, KS, KE+1)
       call looktab (tab1w, ixoe1, iyo, dte1, du, e1ctw2, KS, KE)
+    else
+      iyop1(:,:,:) = 1
+      dup1 (:,:,:) = 0.0
+      call looktab (tab1, ixoe1, iyop1, dte1, dup1, e1cts1, KS, KE+1)
+      call looktab (tab1, ixoe1, iyo1, dte1, du1, e1cts2, KS, KE)
+      call looktab (tab1, ixo1, iyop1, dt1, dup1, &
+                    trans_band1(:,:,:,1), KS, KE+1)
+      call looktab (tab1w, ixoe1, iyop1, dte1, dup1, e1ctw1, KS, KE+1)
+      call looktab (tab1w, ixoe1, iyo1, dte1, du1, e1ctw2, KS, KE)
+    endif
 
 !--------------------------------------------------------------------
 !     calculations with ch4 and n2o require NBTRGE separate emissivity
 !     bands for h2o.
 !--------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE > 0) then
         do m=1,NBTRGE
+          if (Lw_control%do_h2o) then
           do kk = KS,KE+1
              do j = 1,size(avphilog(:,:,:),2)
                 do i = 1,size(avphilog(:,:,:),1)
@@ -4684,9 +4768,10 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
              end do
           end do
           call locate_in_table (mass_1, avphilog, du, iyo, KS , KE+1)
+          iyo(:,:,KS:KE+1) = iyo(:,:,KS:KE+1) + 1
           do j = 1,size(iyop(:,:,:),2)
              do i = 1,size(iyop(:,:,:),1)
-                iyop(i,j,KS) = 1
+                iyop(i,j,KS) = 2
              end do
           end do
           do kk = KS+1,KE+1
@@ -4716,6 +4801,20 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
                         KS, KE, m)
           call looktab (tab1a, ixo1, iyop, dt1, dup,   &
                         trans_band1(:,:,:,6+m), KS, KE+1, m)
+         else
+          iyo1(:,:,KS:KE+1) = 1
+          iyop1(:,:,KS:KE+1) = 1
+          du1(:,:,KS:KE+1) = 0.0
+          dup1(:,:,KS:KE+1) = 0.0
+          call looktab (tab2a, ixoe2, iyo1, dte2, du1, &
+                        trans_band2(:,:,:,6+m), KS, KE+1, m)
+          call looktab (tab1a, ixoe1, iyop1, dte1, dup1,    &
+                        e1cts1f(:,:,:,m), KS, KE+1, m)
+          call looktab (tab1a, ixoe1, iyo1, dte1, du1, &
+                        e1cts2f(:,:,:,m), KS, KE, m)
+          call looktab (tab1a, ixo1, iyop1, dt1, dup1,   &
+                        trans_band1(:,:,:,6+m), KS, KE+1, m)
+        endif
         enddo
 
 !--------------------------------------------------------------------
@@ -4749,7 +4848,8 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
 !    thus, tch4e and tn2oe are obtained directly from the transmission
 !    functions. 
 !----------------------------------------------------------------------
-   if (Lw_control%do_ch4_n2o) then
+   if (NBTRGE > 0) then
+   if (Lw_control%do_ch4 .or. Lw_control%do_n2o) then
      do kk = KS+1,KE+1
         do j = 1,size(trans_band1(:,:,:,:),2)
            do i = 1,size(trans_band1(:,:,:,:),1)
@@ -4782,6 +4882,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
            end do
         end do
      end do
+   endif
  
 !----------------------------------------------------------------------
 !    add cfc transmissivities if species which absorb in this fre-
@@ -4875,7 +4976,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
           end do
        end do
      endif
-   endif
+   endif  ! (NBTRGE > 0) 
 
 !-----------------------------------------------------------------------
 !     obtain the flux at the top of the atmosphere in the 0-160, 
@@ -4948,7 +5049,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
         end do
       enddo
     endif
-    if (Lw_control%do_ch4_n2o) then
+    if (NBTRGE > 0) then
       do m=1,NBTRGE
         do j = 1,size(s1a(:,:),2)
            do i = 1,size(s1a(:,:),1)
@@ -4978,7 +5079,8 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
           end do
           do j = 1,size(Lw_diagnostics%flx1e1f(:,:,:),2)
              do i = 1,size(Lw_diagnostics%flx1e1f(:,:,:),1)
-                Lw_diagnostics%flx1e1f(i,j,m) = Lw_diagnostics%flx1e1f(i,j,m) + tmp1(i,j,k)*   &
+                Lw_diagnostics%flx1e1f(i,j,m) =  &
+                       Lw_diagnostics%flx1e1f(i,j,m) + tmp1(i,j,k)*   &
                            cldtf(i,j,k,cld_indx(7)) - tmp2(i,j,k)*  &
                            cldtf(i,j,k+1,cld_indx(7))
              end do
@@ -4988,7 +5090,9 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
       do m=1,NBTRGE
         do j = 1,size(Lw_diagnostics%flx1e1(:,:),2)
            do i = 1,size(Lw_diagnostics%flx1e1(:,:),1)
-              Lw_diagnostics%flx1e1(i,j) = Lw_diagnostics%flx1e1(i,j) + Lw_diagnostics%flx1e1f(i,j,m)
+              Lw_diagnostics%flx1e1(i,j) =    &
+                                 Lw_diagnostics%flx1e1(i,j) +  &
+                                 Lw_diagnostics%flx1e1f(i,j,m)
            end do
         end do
       enddo
@@ -5021,7 +5125,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
           end do
         enddo
       endif
-    endif
+    endif  ! (ntrge > 0)
 
 !----------------------------------------------------------------------
 
@@ -5150,12 +5254,12 @@ real, dimension(:,:,:),   intent(inout) :: tcfc8
                           size(Atmos_input%temp,2), &
                           size(Atmos_input%temp,3)) ::    &
                                   temp, tflux, totaer_tmp, taero8, &
-                                  taero8kp, avphilog, dtk, du
+                                  taero8kp, avphilog, dtk, du, du1
 
       integer, dimension (size(Atmos_input%temp,1),    &
                           size(Atmos_input%temp,2), &
                           size(Atmos_input%temp,3)) ::              &
-                                                  ixok, iyo          
+                                                  ixok, iyo, iyo1    
 
       real,    dimension (size(trans_band2,1), &
                           size(trans_band2,2), &
@@ -5183,8 +5287,10 @@ real, dimension(:,:,:),   intent(inout) :: tcfc8
 !      avphilog
 !      dtk
 !      du
+!      du1
 !      ixok
 !      iyo
+!      iyo1
 !      dte1
 !      dte2
 !      ixoe1
@@ -5256,6 +5362,7 @@ real, dimension(:,:,:),   intent(inout) :: tcfc8
         end do
       end do
 
+   if (Lw_control%do_h2o) then
       do kk = k,KE+1
          do j = 1,size(avphilog(:,:,:),2)
             do i = 1,size(avphilog(:,:,:),1)
@@ -5264,10 +5371,19 @@ real, dimension(:,:,:),   intent(inout) :: tcfc8
          end do
       end do
       call locate_in_table (mass_1, avphilog, du, iyo,k, KE+1)
+      iyo(:,:,k:KE+1) = iyo(:,:,k:KE+1) + 1
       call looktab (tab2, ixoe2, iyo, dte2, du, &
                     trans_band2(:,:,:,1), k, KE+1)
       call looktab (tab2, ixok, iyo, dtk, du, &
                     trans_band1(:,:,:,1), k, KE)
+   else
+     iyo1(:,:,k:KE+1) = 1
+     du1(:,:,k:KE+1) = 0.0
+     call looktab (tab2, ixoe2, iyo1, dte2, du1, &
+                   trans_band2(:,:,:,1), k, KE+1)
+     call looktab (tab2, ixok, iyo1, dtk, du1, &
+                   trans_band1(:,:,:,1), k, KE)
+   endif
        ttmp0(:,:,:)=trans_band1(:,:,:,1)
        do kk = k+1,KE+1
           do j = 1,size(trans_band1(:,:,:,:),2)
@@ -5302,8 +5418,9 @@ real, dimension(:,:,:),   intent(inout) :: tcfc8
 !     bands for h2o. reqults are in emissf (flux level k) and
 !     emissbf (other levels).
 !-------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (nbtrge > 0) then
         do m=1,NBTRGE
+   if (Lw_control%do_h2o) then
           do kk = k,KE+1
              do j = 1,size(avphilog(:,:,:),2)
                 do i = 1,size(avphilog(:,:,:),1)
@@ -5312,10 +5429,19 @@ real, dimension(:,:,:),   intent(inout) :: tcfc8
              end do
           end do
           call locate_in_table (mass_1, avphilog, du, iyo, k, KE+1)
+          iyo(:,:,k:KE+1) = iyo(:,:,k:KE+1) + 1
           call looktab (tab2a, ixoe2, iyo, dte2, du, &
                         trans_band2(:,:,:,6+m), k, KE+1, m)
           call looktab (tab2a, ixok, iyo, dtk, du, &
                         trans_band1(:,:,:,6+m), k, KE, m)
+   else
+      iyo1(:,:,k:KE+1) = 1
+      du1(:,:,k:KE+1) = 0.0
+      call looktab (tab2a, ixoe2, iyo1, dte2, du1, &
+                    trans_band2(:,:,:,6+m), k, KE+1, m)
+      call looktab (tab2a, ixok, iyo1, dtk, du1, &
+                    trans_band1(:,:,:,6+m), k, KE, m)
+   endif
        ttmp0(:,:,:)=trans_band1(:,:,:,6+m)
        do kk = k+1,KE+1
           do j = 1,size(trans_band1(:,:,:,:),2)
@@ -5356,7 +5482,8 @@ real, dimension(:,:,:),   intent(inout) :: tcfc8
 !    thus, tch4e and tn2oe are obtained directly from the transmission
 !    functions. 
 !---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+    if (nbtrge > 0) then
+      if (Lw_control%do_ch4 .or. Lw_control%do_n2o) then
         do kk = k+1,KE+1
            do j = 1,size(trans_band1(:,:,:,:),2)
               do i = 1,size(trans_band1(:,:,:,:),1)
@@ -5372,6 +5499,7 @@ real, dimension(:,:,:),   intent(inout) :: tcfc8
               end do
            end do
         end do
+      endif 
 
 !--------------------------------------------------------------------
 !    add cfc transmissivities if species which absorb in this fre-
@@ -5440,7 +5568,7 @@ real, dimension(:,:,:),   intent(inout) :: tcfc8
              end do
           end do
         endif
-      endif
+      endif  ! (nbtrge > 0)
 
 !--------------------------------------------------------------------
 
@@ -5522,12 +5650,12 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
                        size(Atmos_input%temp,3)) :: &
                                      temp, tflux, tpl1, tpl2, dte1, &
                                      dte2, dxsp, ylog, dysp, emiss, &
-                                     emd1, emd2
+                                     emd1, emd2, dysp1
 
       integer, dimension (size(Atmos_input%temp,1),   &
                           size(Atmos_input%temp,2), &
                           size(Atmos_input%temp,3)) :: &
-                                               ixsp, iysp, ixoe1, ixoe2
+                                        ixsp, iysp, iysp1, ixoe1, ixoe2
       real, dimension (size(Atmos_input%temp,1),   &
                        size(Atmos_input%temp,2),   &
                        size(Atmos_input%temp,3)) :: ttmp
@@ -5549,11 +5677,13 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
 !      dxsp
 !      ylog
 !      dysp
+!      dysp1
 !      emiss
 !      emd1
 !      emd2
 !      ixsp
 !      iysp
+!      iysp1
 !      ixoe1
 !      ixoe2
 !      emissf
@@ -5674,6 +5804,7 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
          end do
       end do
 
+    if (Lw_control%do_h2o) then
       do j = 1,size(ylog(:,:,:),2)
          do i = 1,size(ylog(:,:,:),1)
             ylog(i,j,KE  ) = ALOG10(Optical%var2(i,j,KE))
@@ -5686,6 +5817,7 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
       end do
 
       call locate_in_table (mass_1, ylog, dysp, iysp, KE, KE+1)
+      iysp(:,:,KE:KE+1) = iysp(:,:,KE:KE+1) + 1
 
 !--------------------------------------------------------------------
 !     compute exchange terms in the flux equation for two terms used
@@ -5693,12 +5825,19 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
 !--------------------------------------------------------------------
       call looktab (tab2, ixsp, iysp, dxsp, dysp, emiss, KE, KE+1)
 
+    else
+      iysp1(:,:,KE:KE+1) = 1
+      dysp1(:,:,KE:KE+1) = 0.0
+      call looktab (tab2, ixsp, iysp1, dxsp, dysp1, emiss, KE, KE+1)
+    endif
+
 !----------------------------------------------------------------------
 !     obtain index values of h2o pressure-scaled mass for each band
 !     in the 1200-1400 range.
 !---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (nbtrge > 0) then
         do m=1,NBTRGE
+    if (Lw_control%do_h2o) then
           do j = 1,size(ylog(:,:,:),2)
              do i = 1,size(ylog(:,:,:),1)
                 ylog(i,j,KE  ) = ALOG10(Optical%vrpfh2o(i,j,KE,m))
@@ -5711,6 +5850,7 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
           end do
 
           call locate_in_table (mass_1, ylog, dysp, iysp, KE, KE+1)
+          iysp(:,:,KE:KE+1) = iysp(:,:,KE:KE+1) + 1
 
 !-----------------------------------------------------------------------
 !     compute exchange terms in the flux equation for two terms used
@@ -5718,11 +5858,18 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
 !---------------------------------------------------------------------
           call looktab (tab2a, ixsp, iysp, dxsp, dysp, &
                         emissf(:,:,:,m), KE, KE+1, m)
+   else
+        iysp1(:,:,KE:KE+1) = 1
+        dysp1(:,:,KE:KE+1) = 0.0
+        call looktab (tab2a, ixsp, iysp1, dxsp, dysp1, &
+                      emissf(:,:,:,m), KE, KE+1, m)
+   endif
         enddo
       endif
 !-----------------------------------------------------------------------
 !     compute nearby layer transmissivities for h2o.
 !--------------------------------------------------------------------
+    if (Lw_control%do_h2o) then
       call locate_in_table (temp_1, tpl1, dxsp, ixsp, KS, KE+1)
       do kk = KS,KE+1
          do j = 1,size(ylog(:,:,:),2)
@@ -5732,14 +5879,22 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
          end do
       end do
       call locate_in_table (mass_1, ylog, dysp, iysp, KS, KE+1)
+      iysp(:,:,KS:KE+1) = iysp(:,:,KS:KE+1) + 1
       call looktab (tab3, ixsp, iysp, dxsp, dysp, emd1, KS, KE+1)
+   else
+     call locate_in_table (temp_1, tpl1, dxsp, ixsp, KS, KE+1)
+     iysp1(:,:,KS:KE+1) = 1
+     dysp1(:,:,KS:KE+1) = 0.0
+     call looktab (tab3, ixsp, iysp1, dxsp, dysp1, emd1, KS, KE+1)
+   endif
 
 !----------------------------------------------------------------------
 !     obtain index values of h2o pressure-scaled mass for each band
 !     in the 1200-1400 range.
 !------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (nbtrge > 0) then
         do m=1,NBTRGE
+   if (Lw_control%do_h2o) then
           do kk = KS,KE+1
              do j = 1,size(ylog(:,:,:),2)
                 do i = 1,size(ylog(:,:,:),1)
@@ -5748,14 +5903,22 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
              end do
           end do
           call locate_in_table (mass_1, ylog, dysp, iysp, KS, KE+1)
+          iysp(:,:,KS:KE+1) = iysp(:,:,KS:KE+1) + 1
           call looktab (tab3a, ixsp, iysp, dxsp, dysp, &
                         emd1f(:,:,:,m), KS, KE+1, m)
+    else
+      iysp1(:,:,KS:KE+1) = 1
+      dysp1(:,:,KS:KE+1) = 0.0
+      call looktab (tab3a, ixsp, iysp1, dxsp, dysp1, &
+                    emd1f(:,:,:,m), KS, KE+1, m)
+    endif
         enddo
       endif
 
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
+  if (Lw_control%do_h2o) then
       call locate_in_table (temp_1, tpl2, dxsp, ixsp, KS+1, KE+1)
       do kk = KS+1,KE+1
          do j = 1,size(ylog(:,:,:),2)
@@ -5765,14 +5928,22 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
          end do
       end do
       call locate_in_table (mass_1, ylog, dysp, iysp, KS+1, KE+1)
+      iysp(:,:,KS+1:KE+1) = iysp(:,:,KS+1:KE+1) + 1
       call looktab (tab3, ixsp, iysp, dxsp, dysp, emd2, KS+1, KE+1)
+  else
+     call locate_in_table (temp_1, tpl2, dxsp, ixsp, KS+1, KE+1)
+     iysp1(:,:,KS+1:KE+1) = 1
+     dysp1(:,:,KS+1:KE+1) = 0.0
+     call looktab (tab3, ixsp, iysp1, dxsp, dysp1, emd2, KS+1, KE+1)
+   endif
 
 !----------------------------------------------------------------------
 !     obtain index values of h2o pressure-scaled mass for each band
 !     in the 1200-1400 range.
 !---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (nbtrge > 0 ) then
         do m=1,NBTRGE
+    if (Lw_control%do_h2o) then
           do kk = KS+1,KE+1
              do j = 1,size(ylog(:,:,:),2)
                 do i = 1,size(ylog(:,:,:),1)
@@ -5781,8 +5952,15 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
              end do
           end do
           call locate_in_table (mass_1, ylog, dysp, iysp, KS+1, KE+1)
+          iysp(:,:,KS+1:KE+1) = iysp(:,:,KS+1:KE+1) + 1
           call looktab (tab3a, ixsp, iysp, dxsp, dysp, &
                         emd2f(:,:,:,m), KS+1, KE+1, m)
+    else
+      iysp1(:,:,KS+1:KE+1) = 1
+      dysp1(:,:,KS+1:KE+1) = 0.0
+      call looktab (tab3a, ixsp, iysp1, dxsp, dysp1, &
+                    emd2f(:,:,:,m), KS+1, KE+1, m)
+    endif
         enddo
       endif
 
@@ -5790,6 +5968,7 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
 !     compute nearby layer and special-case transmissivities for
 !     emissivity using methods for h2o given in reference (4).
 !-------------------------------------------------------------------- 
+     if (Lw_control%do_h2o) then   
       do j = 1,size(emspec(:,:,:),2)
          do i = 1,size(emspec(:,:,:),1)
             emspec(i,j,KS     ) = (emd1(i,j,KS)*Optical%empl1(i,j,KS) -    &
@@ -5805,9 +5984,25 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
                            Optical%emx2(i,j)
          end do
       end do
+   else
+     do j = 1,size(emspec(:,:,:),2)
+       do i = 1,size(emspec(:,:,:),1)
+         emspec(i,j,KS     ) = (emd1(i,j,KS) - emd1(i,j,KE+1)) /  &
+                              (Atmos_input%press(i,j,KE) - Atmos_input%pflux(i,j,KE)) + &
+                               0.25E+00*(emiss(i,j,KE) + emiss(i,j,KE+1))
+        end do
+      end do
+      do j = 1,size(emspec(:,:,:),2)
+        do i = 1,size(emspec(:,:,:),1)
+            emspec(i,j,KS+1) = 2.0E+00*(emd1(i,j,KS) -  emd2(i,j,KE+1)) /  &
+                      (Atmos_input%pflux(i,j,KE+1) - Atmos_input%press(i,j,KE))
+        end do
+      end do
+    endif
 
-     if (Lw_control%do_ch4_n2o) then
+     if (nbtrge > 0) then
        do m=1,NBTRGE
+     if (Lw_control%do_h2o) then
          do j = 1,size(emspecf(:,:,:,:),2)
             do i = 1,size(emspecf(:,:,:,:),1)
                emspecf(i,j,KS,m   ) = (emd1f(i,j,KS,m)*Optical%empl1f(i,j,KS,m) -   &
@@ -5824,6 +6019,22 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
                               Optical%emx2f(i,j,m)
             end do
          end do
+     else
+       do j = 1,size(emspecf(:,:,:,:),2)
+           do i = 1,size(emspecf(:,:,:,:),1)
+               emspecf(i,j,KS,m   ) = (emd1f(i,j,KS,m) - emd1f(i,j,KE+1,m)) / &
+                            (Atmos_input%press(i,j,KE) - Atmos_input%pflux(i,j,KE)) + &
+                               0.25E+00*(emissf(i,j,KE,m) +  emissf(i,j,KE+1,m))
+            end do
+          end do
+          do j = 1,size(emspecf(:,:,:,:),2)
+            do i = 1,size(emspecf(:,:,:,:),1)
+              emspecf(i,j,KS+1,m) = 2.0E+00*    &
+                                  (emd1f(i,j,KS,m) - emd2f(i,j,KE+1,m)) / &
+                          (Atmos_input%pflux(i,j,KE+1) - Atmos_input%press(i,j,KE))
+             end do
+          end do
+        endif
 
        enddo
      endif
@@ -5834,7 +6045,8 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
 !    thus, tch4e and tn2oe are obtained directly from the transmission
 !    functions. 
 !----------------------------------------------------------------------
-    if (Lw_control%do_ch4_n2o) then
+  if (nbtrge > 0) then
+    if (Lw_control%do_ch4 .or. Lw_control%do_n2o) then
       do k=KS,KS+1
         do j = 1,size(emspecf(:,:,:,:),2)
            do i = 1,size(emspecf(:,:,:,:),1)
@@ -5842,6 +6054,7 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
            end do
         end do
       end do
+     endif 
 
 !--------------------------------------------------------------------
 !     add cfc transmissivities if species which absorb in this fre-
@@ -5857,7 +6070,7 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
           end do
         end do
       endif
-    endif
+    endif ! (nbtrge > 0)
 
 !------------------------------------------------------------------
 
@@ -5949,13 +6162,13 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
       real, dimension (size(Atmos_input%temp,1),   &
                        size(Atmos_input%temp,2), &
                        size(Atmos_input%temp,3)) :: &
-                                   temp, tflux, tpl1, tpl2, &
-                                   dxsp, ylog, dysp, emiss, emd1, emd2
+                             temp, tflux, tpl1, tpl2, &
+                             dxsp, ylog, dysp, dysp1, emiss, emd1, emd2
 
       integer, dimension (size(Atmos_input%temp,1),   &
                           size(Atmos_input%temp,2), &
                           size(Atmos_input%temp,3)) :: &
-                                                       ixsp, iysp    
+                                                       ixsp, iysp, iysp1
 
       real, dimension (size(Atmos_input%temp,1),   &
                        size(Atmos_input%temp,2), &
@@ -5976,11 +6189,13 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
 !      dxsp
 !      ylog
 !      dysp
+!      dysp1
 !      emiss
 !      emd1
 !      emd2
 !      ixsp
 !      iysp
+!      iysp1
 !      emissf
 !      emd2f
 !      emd1f
@@ -6107,6 +6322,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
 !-----------------------------------------------------------------------
 !     compute nearby layer transmissivities for h2o.
 !--------------------------------------------------------------------
+   if (Lw_control%do_h2o) then
       call locate_in_table (temp_1, tpl1, dxsp, ixsp, KS, KE+1)
       do kk = KS,KE+1
          do j = 1,size(ylog(:,:,:),2)
@@ -6116,14 +6332,22 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
          end do
       end do
       call locate_in_table (mass_1, ylog, dysp, iysp, KS, KE+1)
+      iysp(:,:,KS:KE+1) = iysp(:,:,KS:KE+1) + 1
       call looktab (tab3, ixsp, iysp, dxsp, dysp, emd1, KS, KE+1)
+   else
+      call locate_in_table (temp_1, tpl1, dxsp, ixsp, KS, KE+1)
+      iysp1(:,:,KS:KE+1) = 1
+      dysp1(:,:,KS:KE+1) = 0.0
+      call looktab (tab3, ixsp, iysp1, dxsp, dysp1, emd1, KS, KE+1)
+   endif
 
 !----------------------------------------------------------------------
 !     obtain index values of h2o pressure-scaled mass for each band
 !     in the 1200-1400 range.
 !------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (nbtrge > 0) then
         do m=1,NBTRGE
+    if (Lw_control%do_h2o) then
           do kk = KS,KE+1
              do j = 1,size(ylog(:,:,:),2)
                 do i = 1,size(ylog(:,:,:),1)
@@ -6132,14 +6356,22 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
              end do
           end do
           call locate_in_table (mass_1, ylog, dysp, iysp, KS, KE+1)
+          iysp(:,:,KS:KE+1) = iysp(:,:,KS:KE+1) + 1
           call looktab (tab3a, ixsp, iysp, dxsp, dysp, &
                         emd1f(:,:,:,m), KS, KE+1, m)
+    else
+          iysp1(:,:,KS:KE+1) = 1
+          dysp1(:,:,KS:KE+1) = 0.0
+          call looktab (tab3a, ixsp, iysp1, dxsp, dysp1, &
+                        emd1f(:,:,:,m), KS, KE+1, m)
+    endif
         enddo
       endif
 
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
+   if (Lw_control%do_h2o) then
       call locate_in_table (temp_1, tpl2, dxsp, ixsp, KS+1, KE+1)
       do kk = KS+1,KE+1
          do j = 1,size(ylog(:,:,:),2)
@@ -6149,14 +6381,22 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
          end do
       end do
       call locate_in_table (mass_1, ylog, dysp, iysp, KS+1, KE+1)
+      iysp(:,:,KS+1:KE+1) = iysp(:,:,KS+1:KE+1) + 1
       call looktab (tab3, ixsp, iysp, dxsp, dysp, emd2, KS+1, KE+1)
+   else
+      call locate_in_table (temp_1, tpl2, dxsp, ixsp, KS+1, KE+1)
+      iysp1(:,:,KS+1:KE+1) = 1
+      dysp1(:,:,KS+1:KE+1) = 0.0
+      call looktab (tab3, ixsp, iysp1, dxsp, dysp1, emd2, KS+1, KE+1)
+   endif
 
 !----------------------------------------------------------------------
 !     obtain index values of h2o pressure-scaled mass for each band
 !     in the 1200-1400 range.
 !---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (nbtrge > 0) then
         do m=1,NBTRGE
+   if (Lw_control%do_h2o) then
           do kk = KS+1,KE+1
              do j = 1,size(ylog(:,:,:),2)
                 do i = 1,size(ylog(:,:,:),1)
@@ -6165,8 +6405,15 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
              end do
           end do
           call locate_in_table (mass_1, ylog, dysp, iysp, KS+1, KE+1)
+          iysp(:,:,KS+1:KE+1) = iysp(:,:,KS+1:KE+1) + 1
           call looktab (tab3a, ixsp, iysp, dxsp, dysp, &
                         emd2f(:,:,:,m), KS+1, KE+1, m)
+    else
+          iysp1(:,:,KS+1:KE+1) = 1
+          dysp1(:,:,KS+1:KE+1) = 0.0
+          call looktab (tab3a, ixsp, iysp1, dxsp, dysp1, &
+                        emd2f(:,:,:,m), KS+1, KE+1, m)
+    endif
         enddo
       endif
 
@@ -6187,7 +6434,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
          end do
       end do
 
-     if (Lw_control%do_ch4_n2o) then
+     if (nbtrge > 0) then
        do m=1,NBTRGE
          do kk = KS+1,KE
             do j = 1,size(emisdgf(:,:,:,:),2)
@@ -6211,7 +6458,8 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
 !    thus, tch4e and tn2oe are obtained directly from the transmission
 !    functions. 
 !----------------------------------------------------------------------
-    if (Lw_control%do_ch4_n2o) then
+  if (nbtrge > 0) then
+    if (Lw_control%do_ch4 .or. Lw_control%do_n2o) then
       do kk = KS+1,KE+1
          do j = 1,size(emisdgf(:,:,:,:),2)
             do i = 1,size(emisdgf(:,:,:,:),1)
@@ -6220,6 +6468,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
             end do
          end do
       end do
+     endif 
 
 !--------------------------------------------------------------------
 !     add cfc transmissivities if species which absorb in this fre-
@@ -6236,7 +6485,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
            end do
         end do
       endif
-    endif
+    endif ! (nbtrge > 0)
 
 !------------------------------------------------------------------
 

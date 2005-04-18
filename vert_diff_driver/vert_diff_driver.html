@@ -77,21 +77,21 @@
 <PRE>
 
 use vert_diff_driver_mod [, only: vert_diff_driver_init,
-                                  vert_diff_down,
-                                  vert_diff_up    ]
+                                  vert_diff_driver_down,
+                                  vert_diff_driver_up  ]
 
 vert_diff_driver_init: Initialization routine for module that must be
                        called once before calling vert_diff_down or
                        vert_diff_up.
 
-vert_diff_down:  Updates the tendencies of the momentum components and
-                 tracers for vertical diffusion. The downward sweep
-                 of the standard tridiagonal elimination is performed
-                 for heat and moisture.
+vert_diff_driver_down: Updates the tendencies of the momentum components and
+                       tracers for vertical diffusion. The downward sweep
+                       of the standard tridiagonal elimination is performed
+                       for heat and moisture.
 
-vert_diff_up:    Updates the tendencies of heat and moisture for
-                 vertical diffusion by completing the upward sweep
-                 of the standard tridiagonal elimination.
+vert_diff_driver_up:   Updates the tendencies of heat and moisture for
+                       vertical diffusion by completing the upward sweep
+                       of the standard tridiagonal elimination.
 
 Notes:
 
@@ -138,7 +138,7 @@ notes
 <b>call vert_diff_driver_down</b> ( is, js, Time, delt, p_half, p_full,
                              z_full, diff_mom, diff_heat,   
                              u, v, t, q, trs,  
-                             dtau_dv, tau_x, tau_y,
+                             dtau_du, dtau_dv, tau_x, tau_y,
                              dt_u, dt_v, dt_t, dt_q, dt_trs, 
                              Surf_diff, mask, kbot )
 
@@ -186,8 +186,11 @@ input
    trs        arbitrary number of tracers at full levels
                 [real, dimension(:,:,nlev,:)]
 
-   dtau_dv    derivative of wind stress w.r.t. wind speed at the lowest
-              model level   [real, dimension(:,:)]
+   dtau_du    derivative of wind stress w.r.t. zonal wind speed
+              at the lowest model level   [real, dimension(:,:)]
+
+   dtau_dv    derivative of wind stress w.r.t. meridional wind speed
+              at the lowest model level   [real, dimension(:,:)]
 
 input/output
 

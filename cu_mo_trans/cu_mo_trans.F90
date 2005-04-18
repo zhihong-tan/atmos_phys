@@ -85,7 +85,7 @@ namelist/cu_mo_trans_nml/ diff_norm
 !--------------------- version number ---------------------------------
 
 character(len=128) :: version = '$Id: cu_mo_trans.F90,v 10.0 2003/10/24 22:00:25 fms Exp $'
-character(len=128) :: tagname = '$Name: khartoum $'
+character(len=128) :: tagname = '$Name: lima $'
 
 contains
 

@@ -28,8 +28,7 @@ use constants_mod,     only: constants_init, GRAV
 
 !  radiation package shared modules:
 
-use rad_utilities_mod, only:  Environment, environment_type, &
-                              rad_utilities_init, radiative_gases_type,&
+use rad_utilities_mod, only:  rad_utilities_init, radiative_gases_type,&
                               rad_output_type, cldrad_properties_type, &
                               cld_specification_type, atmos_input_type,&
                               Sw_control, aerosol_diagnostics_type, &
@@ -60,8 +59,8 @@ private
 !----------- version number for this module ------------------------
 
 character(len=128)  :: version = &
-'$Id: rad_output_file.F90,v 11.0 2004/09/28 19:23:45 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+'$Id: rad_output_file.F90,v 12.0 2005/04/14 15:47:24 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -156,8 +155,10 @@ integer                            :: id_radswp, id_radp, id_temp, &
 !---------------------------------------------------------------------
 integer :: naerosol=0                      ! number of active aerosols
 logical :: module_is_initialized= .false.  ! module initialized ?
-character(len=16), dimension(4) ::   &
-                     band_suffix = (/ '_vis', '_nir', '_con', '    ' /)
+integer, parameter              :: N_DIAG_BANDS = 5
+character(len=16), dimension(N_DIAG_BANDS) ::   &
+                     band_suffix = (/ '_vis', '_nir', '_con',  &
+                                      '_bd5', '_bd6' /)
 
 
 !---------------------------------------------------------------------
@@ -252,12 +253,7 @@ character(len=*), dimension(:), intent(in)    :: family_names
       call constants_init
       call rad_utilities_init
       call esfsw_parameters_init
-      if (Environment%running_gcm .or.  &
-          Environment%running_sa_model .or. &   
-          (Environment%running_standalone .and. &  
-           Environment%column_type == 'fms')) then
-        call diag_manager_init  
-      endif
+      call diag_manager_init  
       call time_manager_init 
 
 !-----------------------------------------------------------------------
@@ -282,10 +278,6 @@ character(len=*), dimension(:), intent(in)    :: family_names
 !--------------------------------------------------------------------
 !    if running gcm, continue on if data file is to be written. 
 !--------------------------------------------------------------------
-      if (Environment%running_gcm .or. &
-          Environment%running_sa_model .or. &   
-          (Environment%running_standalone .and. &  
-           Environment%column_type == 'fms')) then
         if (write_data_file) then
 
 !---------------------------------------------------------------------
@@ -295,16 +287,6 @@ character(len=*), dimension(:), intent(in)    :: family_names
           call register_fields (Time, axes, nfields, names,  &
                                 family_names)
         endif
-
-!--------------------------------------------------------------------
-!    if running standalone and data file desired, write error message.
-!--------------------------------------------------------------------
-      else
-        if (write_data_file) then
-          call error_mesg ('rad_output_file_mod', &
-          ' can only write output file when running in gcm', FATAL)
-        endif
-      endif
 
 !--------------------------------------------------------------------
 !    mark the module as initialized.
@@ -570,16 +552,11 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
         crndlw(:,:,:)   = 100.0*Cld_spec%crndlw(:,:,:)
         deltaz(:,:,:)   = Atmos_input%deltaz(:,:,:)
 
-        if (Environment%running_gcm .or.  &
-            Environment%running_sa_model .or. &
-            (Environment%running_standalone .and. &
-             Environment%column_type == 'fms')) then
           do k = 1,kerad
             dphalf(:,:,k)   = phalfm(:,:,k+1) - phalfm(:,:,k)
             dpflux(:,:,k)   = pfluxm(:,:,k+1) - pfluxm(:,:,k)
           enddo
           ptop(:,:) = 0.01*Atmos_input%phalf(:,:,1)
-        endif
 
         if (Rad_control%do_totcld_forcing) then 
           fswcf(:,:,:)    = Sw_output%fswcf(:,:,:)
@@ -612,12 +589,14 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
 !         if (Sw_control%do_swaerosol) then
             allocate ( extopdep_col(size(Aerosol_diags%extopdep  , 1), &
                                     size(Aerosol_diags%extopdep  , 2), &
-                               size(Aerosol_diags%extopdep  , 4), 4) )
+                               size(Aerosol_diags%extopdep  , 4), &
+                                    N_DIAG_BANDS) )
             extopdep_col(:,:,:,:) =    &
                           SUM (Aerosol_diags%extopdep  (:,:,:,:,:), 3)
             allocate ( absopdep_col(size(Aerosol_diags%absopdep  , 1), &
                                     size(Aerosol_diags%absopdep  , 2), &
-                              size(Aerosol_diags%absopdep  , 4), 4) )
+                              size(Aerosol_diags%absopdep  , 4), &
+                                   N_DIAG_BANDS) )
             absopdep_col(:,:,:,:) =    &
                            SUM (Aerosol_diags%absopdep  (:,:,:,:,:), 3)
           if (Sw_control%do_swaerosol) then
@@ -670,20 +649,20 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                                     size(Aerosol%aerosol,1), &
                                     size(Aerosol%aerosol,2), &
                                     size(Aerosol%aerosol,3), &
-                                    nfamilies, 4))
+                                    nfamilies, N_DIAG_BANDS))
             allocate (absopdep_fam (     &
                                     size(Aerosol%aerosol,1), &
                                     size(Aerosol%aerosol,2), &
                                     size(Aerosol%aerosol,3), &
-                                    nfamilies, 4))
+                                    nfamilies, N_DIAG_BANDS))
             allocate (extopdep_fam_col (     &
                                     size(Aerosol%aerosol,1), &
                                     size(Aerosol%aerosol,2), &
-                                    nfamilies, 4))
+                                    nfamilies, N_DIAG_BANDS))
             allocate (absopdep_fam_col (     &
                                     size(Aerosol%aerosol,1), &
                                     size(Aerosol%aerosol,2), &
-                                    nfamilies, 4))
+                                    nfamilies, N_DIAG_BANDS))
             aerosol_fam = 0.
             aerosol_fam_col = 0.
             extopdep_fam = 0.
@@ -697,7 +676,7 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                                          Aerosol%aerosol(:,:,:,na)
                   aerosol_fam_col(:,:,n) = aerosol_fam_col(:,:,n) +  &
                                          aerosol_col(:,:,na)
-                  do nl = 1,4
+                  do nl = 1,N_DIAG_BANDS
                 extopdep_fam(:,:,:,n,nl) = extopdep_fam(:,:,:,n,nl) +  &
                                     Aerosol_diags%extopdep(:,:,:,na,nl)
             extopdep_fam_col(:,:,n,nl) = extopdep_fam_col(:,:,n,nl) +  &
@@ -709,7 +688,35 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                   end do ! (nl)
                 endif
               end do
-            end do
+
+              if (Aerosol%family_members(naerosol+1,n)) then
+           if (Sw_control%do_swaerosol) then
+             if (Rad_control%volcanic_sw_aerosols) then
+             extopdep_fam_col(:,:,n,1) = extopdep_fam_col(:,:,n,1) +  &
+                                       extopdep_vlcno_col(:,:,1)
+             absopdep_fam_col(:,:,n,1) = absopdep_fam_col(:,:,n,1) +  &
+                                       absopdep_vlcno_col(:,:,1)
+             extopdep_fam_col(:,:,n,2) = extopdep_fam_col(:,:,n,2) +  &
+                                       extopdep_vlcno_col(:,:,2)
+             absopdep_fam_col(:,:,n,2) = absopdep_fam_col(:,:,n,2) +  &
+                                       absopdep_vlcno_col(:,:,2)
+           endif
+          endif
+          if (Lw_control%do_lwaerosol) then
+            if (Rad_control%volcanic_lw_aerosols) then
+             extopdep_fam_col(:,:,n,4) = extopdep_fam_col(:,:,n,4) +  &
+                                    lw_extopdep_vlcno_col(:,:,1)
+             absopdep_fam_col(:,:,n,4) = absopdep_fam_col(:,:,n,4) +  &
+                                    lw_absopdep_vlcno_col(:,:,1)
+             extopdep_fam_col(:,:,n,5) = extopdep_fam_col(:,:,n,5) +  &
+                                    lw_extopdep_vlcno_col(:,:,2)
+             absopdep_fam_col(:,:,n,5) = absopdep_fam_col(:,:,n,5) +  &
+                                    lw_absopdep_vlcno_col(:,:,2)
+            endif
+           endif
+          endif
+           end do
+
           do n = 1,nfamilies
             if (id_aerosol_fam(n)  > 0 ) then
               used = send_data (id_aerosol_fam(n),  &
@@ -721,7 +728,7 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                                 aerosol_fam_col(:,:,n), Time_diag, is, js)
             endif
 !           if (Sw_control%do_swaerosol) then
-            do nl=1,4
+            do nl=1,N_DIAG_BANDS
               if (id_extopdep_fam(n,nl)  > 0 ) then
                 used = send_data (id_extopdep_fam(n,nl),    &
                                   extopdep_fam  (:,:,:,n,nl), &
@@ -808,10 +815,6 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
           used = send_data (id_qo3_col, qo3_col, Time_diag, is, js)
         endif
 
-        if (Environment%running_gcm .or.  &
-            Environment%running_sa_model .or. &
-            (Environment%running_standalone .and. &
-             Environment%column_type == 'fms')) then
           if (id_dphalf > 0 ) then
             used = send_data (id_dphalf, dphalf, Time_diag, is, js, 1)
           endif
@@ -823,7 +826,6 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
           if (id_ptop  > 0 ) then
             used = send_data (id_ptop, ptop, Time_diag, is, js)
           endif
-        endif
         if (Rad_control%do_aerosol) then
           do n = 1,naerosol
             if (id_aerosol(n)  > 0 ) then
@@ -836,7 +838,7 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                                 aerosol_col(:,:,n), Time_diag, is, js)
             endif
 !           if (Sw_control%do_swaerosol) then
-            do nl=1,4
+            do nl=1,N_DIAG_BANDS
               if (id_extopdep(n,nl)  > 0 ) then
                 used = send_data (id_extopdep(n,nl),    &
                                   Aerosol_diags%extopdep  (:,:,:,n,nl), &
@@ -1262,10 +1264,6 @@ character(len=*), dimension(:), intent(in) :: names, family_names
                            'radiation flux level pressures', &
                            'Pa', missing_value=missing_value)
 
-      if (Environment%running_gcm .or.  &
-          Environment%running_sa_model .or. &
-          (Environment%running_standalone .and. &
-           Environment%column_type == 'fms')) then
         id_dpflux  = &
           register_diag_field (mod_name, 'dpflux', axes(1:3), Time,  &
                            'radiation flux layer thickness', &
@@ -1281,7 +1279,6 @@ character(len=*), dimension(:), intent(in) :: names, family_names
                            'pressure at model top', &
                            'hPa', missing_value=missing_value)
  
-      endif
 
       id_rh2o   = &
          register_diag_field (mod_name, 'rh2o', axes(1:3), Time, &
@@ -1341,11 +1338,11 @@ character(len=*), dimension(:), intent(in) :: names, family_names
         allocate (extopdep_column_names(naerosol))
         allocate (absopdep_names(naerosol))
         allocate (absopdep_column_names(naerosol))
-        allocate (id_extopdep(naerosol, 4))
-        allocate (id_extopdep_column(naerosol, 4)) 
-        allocate (id_absopdep(naerosol, 4))
-        allocate (id_absopdep_column(naerosol, 4)) 
-     do nl=1,4
+        allocate (id_extopdep(naerosol, N_DIAG_BANDS))
+        allocate (id_extopdep_column(naerosol, N_DIAG_BANDS))
+        allocate (id_absopdep(naerosol, N_DIAG_BANDS))
+        allocate (id_absopdep_column(naerosol, N_DIAG_BANDS))
+     do nl=1,N_DIAG_BANDS
         do n = 1,naerosol                           
           extopdep_names(n) =   &
                 TRIM(names(n) ) // "_exopdep" // TRIM(band_suffix(nl))
@@ -1405,15 +1402,15 @@ character(len=*), dimension(:), intent(in) :: names, family_names
         deallocate (aerosol_fam_column_names)
 
 
-        allocate (id_extopdep_fam(nfamilies, 4))
-        allocate (id_extopdep_fam_column(nfamilies, 4)) 
-        allocate (id_absopdep_fam(nfamilies, 4))
-        allocate (id_absopdep_fam_column(nfamilies, 4)) 
+        allocate (id_extopdep_fam(nfamilies, N_DIAG_BANDS))
+        allocate (id_extopdep_fam_column(nfamilies, N_DIAG_BANDS))
+        allocate (id_absopdep_fam(nfamilies, N_DIAG_BANDS))
+        allocate (id_absopdep_fam_column(nfamilies, N_DIAG_BANDS))
         allocate (extopdep_fam_names(naerosol))
         allocate (extopdep_fam_column_names(naerosol))
         allocate (absopdep_fam_names(naerosol))
         allocate (absopdep_fam_column_names(naerosol))
-   do nl=1, 4
+   do nl=1,N_DIAG_BANDS
         do n=1,nfamilies      
           extopdep_fam_names(n) =   &
            TRIM(family_names(n) ) // "_exopdep" // TRIM(band_suffix(nl))

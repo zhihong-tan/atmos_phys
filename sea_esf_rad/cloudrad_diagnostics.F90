@@ -28,7 +28,7 @@ use diag_manager_mod,        only: register_diag_field, send_data, &
 
 ! shared radiation package modules:
 
-use rad_utilities_mod,       only: rad_utilities_init, Environment, &
+use rad_utilities_mod,       only: rad_utilities_init, &
                                    cldrad_properties_type, &
                                    cld_specification_type, &
                                    solar_spectrum_type, &
@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 11.0 2004/09/28 19:21:04 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 12.0 2005/04/14 15:44:36 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -263,10 +263,7 @@ type(time_type),         intent(in)    ::   Time
       call rad_utilities_init
       call time_manager_init
       call esfsw_parameters_init
-      if (Environment%running_gcm .or. &
-          Environment%running_sa_model) then
-        call diag_manager_init
-      endif
+      call diag_manager_init
 
 !---------------------------------------------------------------------
 !    read namelist.
@@ -300,9 +297,7 @@ type(time_type),         intent(in)    ::   Time
 !-------------------------------------------------------------------
 !    initialize the netcdf diagnostics provided with this module.
 !-------------------------------------------------------------------
-      if ( (Environment%running_gcm .or.    &
-            Environment%running_sa_model)   .and. &
-            .not. Cldrad_control%do_no_clouds) then
+      if (.not. Cldrad_control%do_no_clouds) then
         call diag_field_init (Time, axes)
       endif
 
@@ -310,10 +305,7 @@ type(time_type),         intent(in)    ::   Time
 !    initialize isccp_clouds_init 
 !---------------------------------------------------------------------
       if (Cldrad_control%do_strat_clouds) then
-        if (EnvironmenT%running_gcm .or.   &
-            Environment%running_sa_model) then
           if (do_isccp) call isccp_clouds_init (axes, Time)
-        endif 
       endif 
 
 !--------------------------------------------------------------------
@@ -607,8 +599,6 @@ real, dimension(:,:,:),         intent(in), optional :: mask
 !---------------------------------------------------------------------
 
       if (do_isccp) then
-        if (Environment%running_gcm .or.     &
-            Environment%running_sa_model) then
           if (Cldrad_control%do_strat_clouds) then
 !
 ! Which bands to use for ISCCP cloud detection?
@@ -689,7 +679,6 @@ real, dimension(:,:,:),         intent(in), optional :: mask
             end if
             deallocate(Tau, LwEm)
          endif
-        endif
       endif
 
 !---------------------------------------------------------------------
@@ -1508,12 +1497,9 @@ subroutine cloudrad_diagnostics_end
 !--------------------------------------------------------------------
 !    close out the component modules.
 !--------------------------------------------------------------------
-      if (Environment%running_gcm .or.    &
-          Environment%running_sa_model) then
         if (Cldrad_control%do_strat_clouds) then
           if (do_isccp) call isccp_clouds_end
         endif
-      endif
 
 !--------------------------------------------------------------------
 !    mark the module as not initialized.
@@ -1741,8 +1727,9 @@ integer        , intent(in) :: axes(4)
                                 'percent', missing_value=missing_value)
 
         id_lsc_cld_asymm_nir = register_diag_field   &
-                               (mod_name, 'lsc_cld_sct_nir', axes(1:3),&
-                                Time, '1.4um lsc cloud sct coeff', &
+                               (mod_name, 'lsc_cld_asymm_nir',  &
+                                axes(1:3), Time,   &
+                                '1.4um lsc cloud asymm coeff', &
                                 'percent', missing_value=missing_value)
 
       endif

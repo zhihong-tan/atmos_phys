@@ -287,7 +287,7 @@ notes:
 
  subroutine  gcm_vert_diff(delt, u, v, t, q, tr, diff_m, diff_t,     &
                     p_half, z_full,                                  &
-                    dtau_datmos, dsens_datmos, devap_datmos,         &
+                    dtau_du, dtau_dv, dsens_datmos, devap_datmos,    &
                     sens, evap, tau_u, tau_v, flux_tr,               &
                     dt_u, dt_v, dt_t, dt_q, dt_tr, dissipative_heat, &
 		    kbot)
@@ -333,7 +333,8 @@ notes:
              units = meters
 
 
-         dtau_datmos  -- real, dimension(:,:)
+         dtau_du  -- real, dimension(:,:)
+         dtau_dv  -- real, dimension(:,:)
          dsens_datmos -- real, dimension(:,:)
          devap_datmos -- real, dimension(:,:)
              shape must conform to first two dimensions of input fields
@@ -341,8 +342,12 @@ notes:
              If dependence of flux on lowest level of atmosphere is
              treated implicitly, set 
 
-                dtau_datmos = derivative of surface stress with respect to 
-                     wind component in lowest model layer.
+                dtau_du = derivative of surface stress with respect to 
+                     zonal wind component in lowest model layer.
+                     Units = kg/(m**2 s)
+
+                dtau_dv = derivative of surface stress with respect to 
+                     meridional wind component in lowest model layer.
                      Units = kg/(m**2 s)
 
                 dsens_datmos = derivative of surface sensible heat flux 
@@ -475,7 +480,7 @@ notes:
  subroutine gcm_vert_diff_down (is, js, delt,                              &
                           u, v, t, q, tr,                                  &
                           diff_m, diff_t, p_half, p_full, z_full,          &
-                          tau_u, tau_v, dtau_datmos,                       &
+                          tau_u, tau_v, dtau_du, dtau_dv,                  &
                           flux_tr,                                         &
                           dt_u, dt_v, dt_t, dt_q, dt_tr,                   &
                           dissipative_heat, Tri_surf,                      &
@@ -533,12 +538,12 @@ notes:
              shape must conform to that of xi
              units = meters
 
-	 dtau_datmos  -- real, dimension(:,:)
+	 dtau_du, dtau_dv  -- real, dimension(:,:)
 	     shape must conform to first two dimensions of input fields
 	     Set = 0.0 if the surface flux is treated explicitly. If
 	     dependence of flux on lowest level of atmosphere is
-	     treated implicitly, set = derivative of surface stress
-	     with respect to wind component in lowest model layer.  
+	     treated implicitly, set = derivatives of surface stress
+	     with respect to wind components in lowest model layer.  
              Units = kg/(m**2 s)
 
         dt_t, dt_q -- real, dimension(:,:,:)
@@ -560,9 +565,9 @@ notes:
 
              Flux should be evaluated at time i   for two-time level schemes
                                    and at time i-1 for leapgrog
-             If dtau_datmos is non-zero, input stress is modified by 
+             If dtau_du or dtau_dv is non-zero, input stress is modified by 
              the implicit correction 
-                 tau_u(i+1) = tau_u(i or i-1) + delt*dtau_datmos*dt_u(:,:,N)
+                 tau_u(i+1) = tau_u(i or i-1) + delt*dtau_du*dt_u(:,:,N)
                  where dt_u is the final (output) tendency and 
                  N is the lowest model level; similarly for tau_v
 

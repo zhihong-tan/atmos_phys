@@ -1,4 +1,5 @@
                   module radiative_gases_mod
+
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
 ! </CONTACT>
@@ -13,6 +14,10 @@
 !    package.
 ! </OVERVIEW>
 ! <DESCRIPTION>
+!  Module that defines mixing ratios of radiatively-active 
+!    gases to be used in the calculation of longwave and shortwave
+!    radiative fluxes and heating rates in the sea_esf_rad radiation
+!    package.
 ! </DESCRIPTION>
 
 !  shared modules:
@@ -38,7 +43,7 @@ use constants_mod,       only: SECONDS_PER_DAY
 !  shared radiation package modules:
 
 use rad_utilities_mod,   only: rad_utilities_init, Lw_control, &
-                               Environment, atmos_input_type, &
+                               atmos_input_type, &
                                radiative_gases_type, Rad_control
 
 ! component modules:
@@ -62,8 +67,8 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 11.0 2004/09/28 19:23:38 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+'$Id: radiative_gases.F90,v 12.0 2005/04/14 15:47:49 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -512,67 +517,64 @@ real, dimension(:),   intent(in) :: latb, lonb
                        write (stdlog(), nml=radiative_gases_nml)
 
 !---------------------------------------------------------------------
-!    enforce necessary conditions on data source for ch4 and n2o. in
-!    the future this constraint may be removed.
+!    force xxx_data_source to be 'input' when gas is time-varying and
+!    that variation is specified via a time-series file.
 !----------------------------------------------------------------------
-      if ( .not. time_varying_ch4 .and. .not. time_varying_n2o) then
-        if (trim(ch4_data_source) /= trim(n2o_data_source)) then
-          call error_mesg ( 'radiative_gases_mod', &
-            ' currently ch4 and n2o must have the same data source', &
-                                                                 FATAL)
-        endif
-      endif
-
-!---------------------------------------------------------------------
-!    define logical variables indicating whether ch4 and / or n2o are
-!    active.
-!---------------------------------------------------------------------
-      if (trim(ch4_data_source) /= 'absent' .or. &
-          trim(n2o_data_source) /= 'absent') then
-        Lw_control%do_ch4_n2o = .true.
-      else
-        Lw_control%do_ch4_n2o = .false.
-      endif
-
-!--------------------------------------------------------------------
-!    set flag to indicate variable has been initialized.
-!--------------------------------------------------------------------
-      Lw_control%do_ch4_n2o_iz = .true.
-
-!---------------------------------------------------------------------
-!    if any of the cfcs are activated, set a flag indicating that cfcs
-!    are active.
-!---------------------------------------------------------------------
-      if (trim(f11_data_source) /= 'absent' .or. &
-          trim(f12_data_source) /= 'absent' .or. &
-          trim(f113_data_source) /= 'absent' .or. &
-          trim(f22_data_source) /= 'absent' ) then 
-        Lw_control%do_cfc = .true.
-      else
-        Lw_control%do_cfc = .false.
-      endif
-
-!---------------------------------------------------------------------
-!    set flag to indicate variable has been initialized.
-!---------------------------------------------------------------------
-      Lw_control%do_cfc_iz = .true.
-
-!---------------------------------------------------------------------
-!    define a logical variable indicating whether co2 is to be 
-!    activated. currently co2 must be activated. 
-!---------------------------------------------------------------------
-      if (trim(co2_data_source) == 'absent') then
+      if (time_varying_ch4 .and.   &
+          trim(ch4_specification_type) == 'time_series' .and. &
+          trim (ch4_data_source) /= 'input') then
         call error_mesg ('radiative_gases_mod', &
-         ' currently MUST include co2 as a radiative gas', FATAL)
-        Lw_control%do_co2 = .false.
-      else
-        Lw_control%do_co2 = .true.
+          ' when ch4 is time-varying and comes from a timeseries,&
+          & data source must be specified as "input" ', FATAL)  
       endif
 
-!---------------------------------------------------------------------
-!    set flag to indicate variable has been initialized.
-!---------------------------------------------------------------------
-      Lw_control%do_co2_iz = .true.
+      if (time_varying_n2o .and.   &
+          trim(n2o_specification_type) == 'time_series' .and. &
+          trim (n2o_data_source) /= 'input') then
+        call error_mesg ('radiative_gases_mod', &
+          ' when n2o is time-varying and comes from a timeseries,&
+          & data source must be specified as "input" ', FATAL)  
+      endif
+
+      if (time_varying_co2 .and.   &
+          trim(co2_specification_type) == 'time_series' .and. &
+          trim (co2_data_source) /= 'input') then
+        call error_mesg ('radiative_gases_mod', &
+          ' when co2 is time-varying and comes from a timeseries,&
+          & data source must be specified as "input" ', FATAL)  
+      endif
+
+      if (time_varying_f11 .and.   &
+          trim(f11_specification_type) == 'time_series' .and. &
+          trim (f11_data_source) /= 'input') then
+        call error_mesg ('radiative_gases_mod', &
+          ' when f11 is time-varying and comes from a timeseries,&
+          & data source must be specified as "input" ', FATAL)  
+      endif
+
+      if (time_varying_f12 .and.   &
+          trim(f12_specification_type) == 'time_series' .and. &
+          trim (f12_data_source) /= 'input') then
+        call error_mesg ('radiative_gases_mod', &
+          ' when f12 is time-varying and comes from a timeseries,&
+          & data source must be specified as "input" ', FATAL)  
+      endif
+
+      if (time_varying_f113 .and.   &
+          trim(f113_specification_type) == 'time_series' .and. &
+          trim (f113_data_source) /= 'input') then
+        call error_mesg ('radiative_gases_mod', &
+          ' when f113 is time-varying and comes from a timeseries,&
+          & data source must be specified as "input" ', FATAL)  
+      endif
+
+      if (time_varying_f22 .and.   &
+          trim(f22_specification_type) == 'time_series' .and. &
+          trim (f22_data_source) /= 'input') then
+        call error_mesg ('radiative_gases_mod', &
+          ' when f22 is time-varying and comes from a timeseries,&
+          & data source must be specified as "input" ', FATAL)  
+      endif
 
 !--------------------------------------------------------------------
 !    time variation of radiative gases is not currently available if the
@@ -624,6 +626,63 @@ real, dimension(:),   intent(in) :: latb, lonb
       call define_f113(f113_data_source)
       call define_f22 (f22_data_source)
       call define_co2 (co2_data_source)
+
+!---------------------------------------------------------------------
+!    define logical variable indicating whether ch4 is active.
+!---------------------------------------------------------------------
+      if ((.not. time_varying_ch4) .and. rch4 == 0.0) then
+        Lw_control%do_ch4 = .false.
+      else
+        Lw_control%do_ch4 = .true.
+      endif
+
+!---------------------------------------------------------------------
+!    define logical variable indicating whether n2o is active.
+!---------------------------------------------------------------------
+      if ((.not. time_varying_n2o) .and. rn2o == 0.0) then
+        Lw_control%do_n2o = .false.
+      else
+        Lw_control%do_n2o = .true.
+      endif
+
+!--------------------------------------------------------------------
+!    set flag to indicate variable has been initialized.
+!--------------------------------------------------------------------
+      Lw_control%do_ch4_iz = .true.
+      Lw_control%do_n2o_iz = .true.
+
+!---------------------------------------------------------------------
+!    if any of the cfcs are activated, set a flag indicating that cfcs
+!    are active.
+!---------------------------------------------------------------------
+      if ((.not. time_varying_f11) .and. rf11 == 0.0 .and. &
+          (.not. time_varying_f12) .and. rf12 == 0.0 .and. &
+          (.not. time_varying_f113) .and. rf113 == 0.0 .and. &
+          (.not. time_varying_f22) .and. rf22 == 0.0 )  then 
+        Lw_control%do_cfc = .false.
+      else
+        Lw_control%do_cfc = .true.
+      endif
+
+!---------------------------------------------------------------------
+!    set flag to indicate variable has been initialized.
+!---------------------------------------------------------------------
+      Lw_control%do_cfc_iz = .true.
+
+!---------------------------------------------------------------------
+!    define a logical variable indicating whether co2 is to be 
+!    activated. currently co2 must be activated. 
+!---------------------------------------------------------------------
+      if ((.not. time_varying_co2) .and. rco2 == 0.0) then
+        Lw_control%do_co2 = .false.
+      else
+        Lw_control%do_co2 = .true.
+      endif
+
+!---------------------------------------------------------------------
+!    set flag to indicate variable has been initialized.
+!---------------------------------------------------------------------
+      Lw_control%do_co2_iz = .true.
 
 !--------------------------------------------------------------------
 !    define module variable which will be contain mixing ratio of each 
@@ -806,7 +865,7 @@ end subroutine radiative_gases_init
 ! </SUBROUTINE>
 !
 subroutine define_radiative_gases (is, ie, js, je, Rad_time, lat, &
-                                   Atmos_input, Time_next, Rad_gases)
+                                   Atmos_input, r, Time_next, Rad_gases)
 
 !-------------------------------------------------------------------
 !    define_radiative_gases returns the current values of the radiative 
@@ -817,6 +876,7 @@ integer,                    intent(in)    :: is, ie, js, je
 type(time_type),            intent(in)    :: Rad_time, Time_next
 real, dimension(:,:),       intent(in)    :: lat
 type(atmos_input_type),     intent(in)    :: Atmos_input
+real, dimension(:,:,:,:),   intent(in)    :: r
 type(radiative_gases_type), intent(inout) :: Rad_gases
 
 !---------------------------------------------------------------------
@@ -832,6 +892,9 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
 !      lat          latitude of model points  [ radians ]
 !      Atmos_input  atmos_input_type variable containing the atmospheric
 !                   input fields needed by the radiation package
+!      r            array of tracers, some of which may represent
+!                   evolving, radiatively active gases (e.g. ozone) 
+!
 !
 !  intent(inout) variables:
 !
@@ -1177,7 +1240,7 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
                               size(Atmos_input%press,3) - 1))
       Rad_gases%qo3 = 0.
       call ozone_driver (is, ie, js, je, lat, Rad_time, Atmos_input, &
-                         Rad_gases)
+                         r, Rad_gases)
 
 !---------------------------------------------------------------------
 !    print out the current gas mixing ratios, if desired.
@@ -1251,13 +1314,11 @@ subroutine radiative_gases_end
 !---------------------------------------------------------------------
 !    write out the radiative_gases restart file.
 !---------------------------------------------------------------------
-      if (Environment%running_gcm) then 
         if( do_netcdf_restart) then
             call write_restart_nc
          else
             call write_restart_radiative_gases
          endif
-      endif
 
 !--------------------------------------------------------------------
 !    deallocate the timeseries arrays.
@@ -1822,7 +1883,6 @@ character(len=8)     :: gas_name ! name associated with current
 !                     from input file
 !    'predicted'  --> from restart file; if restart not present, 
 !                     from input file
-!    'absent'     --> 0.0; ch4 not active in this experiment
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -1929,13 +1989,6 @@ character(len=8)     :: gas_name ! name associated with current
         rch4 = ch4_base_value
 
 !--------------------------------------------------------------------
-!    if data_source is 'absent', set the mixing ratio to 0.0. ch4 is
-!    inactive in the current experiment.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'absent') then
-         rch4 = 0.0
-
-!--------------------------------------------------------------------
 !    write an error message if the data_source is invalid.
 !--------------------------------------------------------------------
       else
@@ -2037,7 +2090,6 @@ character(len=8)     :: gas_name ! name associated with current
 !                     from input file
 !    'predicted'  --> from restart file; if restart not present, 
 !                     from input file
-!    'absent'     --> 0.0; n2o not active in this experiment
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -2147,13 +2199,6 @@ character(len=8)     :: gas_name ! name associated with current
         rn2o = n2o_base_value
 
 !--------------------------------------------------------------------
-!    if data_source is 'absent', set the mixing ratio to 0.0. n2o is
-!    inactive in the current experiment.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'absent') then
-         rn2o = 0.0
-
-!--------------------------------------------------------------------
 !    write an error message if the data_source is invalid.
 !--------------------------------------------------------------------
       else
@@ -2257,7 +2302,6 @@ character(len=8)     :: gas_name ! name associated with current
 !                     from input file
 !    'predicted'  --> from restart file; if restart not present, 
 !                     from input file
-!    'absent'     --> 0.0; f11 not active in this experiment
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -2364,13 +2408,6 @@ character(len=8)     :: gas_name ! name associated with current
         rf11 = f11_base_value
 
 !--------------------------------------------------------------------
-!    if data_source is 'absent', set the mixing ratio to 0.0. f11 is
-!    inactive in the current experiment.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'absent') then
-         rf11 = 0.0
-
-!--------------------------------------------------------------------
 !    write an error message if the data_source is invalid.
 !--------------------------------------------------------------------
       else
@@ -2474,7 +2511,6 @@ character(len=8)     :: gas_name ! name associated with current
 !                     from input file
 !    'predicted'  --> from restart file; if restart not present, 
 !                     from input file
-!    'absent'     --> 0.0; f12 not active in this experiment
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -2584,13 +2620,6 @@ character(len=8)     :: gas_name ! name associated with current
         rf12 = f12_base_value
 
 !--------------------------------------------------------------------
-!    if data_source is 'absent', set the mixing ratio to 0.0. f12 is
-!    inactive in the current experiment.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'absent') then
-         rf12 = 0.0
-
-!--------------------------------------------------------------------
 !    write an error message if the data_source is invalid.
 !--------------------------------------------------------------------
       else
@@ -2694,7 +2723,6 @@ character(len=8)     :: gas_name ! name associated with current
 !                     from input file
 !    'predicted'  --> from restart file; if restart not present, 
 !                     from input file
-!    'absent'     --> 0.0; f113 not active in this experiment
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -2807,13 +2835,6 @@ character(len=8)     :: gas_name ! name associated with current
         rf113 = f113_base_value
 
 !--------------------------------------------------------------------
-!    if data_source is 'absent', set the mixing ratio to 0.0. f113 is
-!    inactive in the current experiment.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'absent') then
-         rf113 = 0.0
-
-!--------------------------------------------------------------------
 !    write an error message if the data_source is invalid.
 !--------------------------------------------------------------------
       else
@@ -2916,7 +2937,6 @@ character(len=8)     :: gas_name ! name associated with current
 !                     from input file
 !    'predicted'  --> from restart file; if restart not present, 
 !                     from input file
-!    'absent'     --> 0.0; f22 not active in this experiment
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -3032,13 +3052,6 @@ character(len=8)     :: gas_name ! name associated with current
         rf22 = f22_base_value
 
 !--------------------------------------------------------------------
-!    if data_source is 'absent', set the mixing ratio to 0.0. f22 is
-!    inactive in the current experiment.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'absent') then
-         rf22 = 0.0
-
-!--------------------------------------------------------------------
 !    write an error message if the data_source is invalid.
 !--------------------------------------------------------------------
       else
@@ -3145,7 +3158,6 @@ character(len=8)     :: gas_name ! name associated with current
 !                     from input file
 !    'predicted'  --> from restart file; if restart not present, 
 !                     from input file
-!    'absent'     --> 0.0; co2 not active in this experiment
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -3256,14 +3268,6 @@ character(len=8)     :: gas_name ! name associated with current
 !-------------------------------------------------------------------
       else if (trim(data_source) == 'namelist') then
         rco2 = co2_base_value
-
-!--------------------------------------------------------------------
-!    if data_source is 'absent', write an error message and stop. co2
-!    currently must be activated.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'absent') then
-        call error_mesg ('radiative_gases_mod', &
-             ' currently MUST include co2 as a radiative gas', FATAL)
 
 !--------------------------------------------------------------------
 !    write an error message if the data_source is invalid.

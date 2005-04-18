@@ -24,8 +24,7 @@ use fms_mod,                    only: fms_init, open_namelist_file, &
                                       error_mesg, FATAL, NOTE,   &
                                       WARNING, close_file,  &
                                       read_data, write_data
-use rad_utilities_mod,          only: Environment, environment_type, &
-                                      rad_utilities_init, &
+use rad_utilities_mod,          only: rad_utilities_init, &
                                       longwave_control_type,   &
                                       Lw_control, &
                                       cloudrad_control_type, &
@@ -56,8 +55,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 11.0 2004/09/28 19:24:21 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: khartoum $'
+  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 12.0 2005/04/14 15:48:41 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: lima $'
 
 
 
@@ -453,22 +452,22 @@ real, dimension(:),   intent(in)    ::  lonb, latb
 !    the L18 NMC model, and the R30L14 supersource model. if column_type
 !    is not recognized, print an error message and stop.
 !----------------------------------------------------------------------
-        if (trim(Environment%column_type) == 'skyl40') then
+        if (trim(cldht_type_form)         == 'skyl40') then
           ich  = 29 
           icm  = 34
           ict  = 35 
           icb  = 37 
-        else if (trim(Environment%column_type) == 'nmcl18') then
+        else if (trim(cldht_type_form)         == 'nmcl18') then
           ich  =  5 
           icm  = 11 
           ict  = 12 
           icb  = 14 
-        else if (trim(Environment%column_type) == 'r30l14') then
+        else if (trim(cldht_type_form)         == 'r30l14') then
           ich  = 6 
           icm  = 9 
           ict  = 10 
           icb  = 12 
-         else if (trim(Environment%column_type) == 'fms') then  
+        else if (trim(cldht_type_form)         == 'fmsl18') then
           ich  = 6   
           icm  = 9       
           ict  = 10  

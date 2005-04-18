@@ -63,8 +63,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 11.0 2004/09/28 19:25:08 fms Exp $'
-character(len=128) :: tagname = '$Name: khartoum $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 12.0 2005/04/14 15:50:48 fms Exp $'
+character(len=128) :: tagname = '$Name: lima $'
 
 logical :: module_is_initialized = .false.
 
@@ -76,7 +76,7 @@ contains
  subroutine vert_diff_driver_down (is, js, Time, delt, p_half, p_full, &
                                    z_full, diff_mom, diff_heat,        &
                                    u, v, t, q, trs,                    &
-                                   dtau_dv, tau_x, tau_y,              &
+                                   dtau_du, dtau_dv, tau_x, tau_y,     &
                                    dt_u, dt_v, dt_t, dt_q, dt_trs,     &
                                    Surf_diff,  mask, kbot              )
 
@@ -87,7 +87,7 @@ real, intent(in)   , dimension(:,:,:)   :: p_half, p_full, z_full,  &
                                            diff_mom, diff_heat
 real, intent(in),    dimension(:,:,:)   :: u, v, t, q
 real, intent(in),    dimension(:,:,:,:) :: trs
-real, intent(in),    dimension(:,:)     :: dtau_dv
+real, intent(in),    dimension(:,:)     :: dtau_du, dtau_dv
 
 real, intent(inout), dimension(:,:)     :: tau_x, tau_y
 real, intent(inout), dimension(:,:,:)   :: dt_u, dt_v, dt_t, dt_q
@@ -98,7 +98,6 @@ type(surf_diff_type), intent(inout)     :: Surf_diff
 real   , intent(in), dimension(:,:,:), optional :: mask
 integer, intent(in), dimension(:,:),   optional :: kbot
 
-real, dimension(size(trs,1),size(trs,2),size(dt_trs,4)) :: flux_trs
 real, dimension(size(t,1),size(t,2),size(t,3)) :: tt, dpg, q_2
 real, dimension(size(t,1),size(t,2),size(t,3)) :: dissipative_heat
 integer :: k, ntp
@@ -165,8 +164,6 @@ integer :: ie, je
 !---- heat/moisture diffusion (down only) ----
 !---- tracer diffusion (no surface flux) ----
 
- flux_trs = 0.0
-
  q_2 = q
  if (do_mcm_no_neg_q) then
    where (q_2 < 0.0)  q_2 = 0.0
@@ -174,7 +171,7 @@ integer :: ie, je
 
  call gcm_vert_diff_down (is, js, delt, u, v, tt, q_2, trs(:,:,:,1:ntp), &
                           diff_mom, diff_heat, p_half, p_full, z_full,   &
-                          tau_x, tau_y, dtau_dv,  flux_trs,            &
+                          tau_x, tau_y, dtau_du, dtau_dv,                &
                           dt_u, dt_v, dt_t, dt_q, dt_trs(:,:,:,1:ntp), &
                           dissipative_heat, Surf_diff,  kbot           )
 

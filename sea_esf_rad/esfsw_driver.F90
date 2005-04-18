@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 11.0 2004/09/28 19:21:32 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 12.0 2005/04/14 15:45:10 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -327,6 +327,8 @@ subroutine esfsw_driver_init
       integer   :: iounit, nband, nf, ni, nw, nw1, nw2, nintsolar
       integer   :: unit, io, ierr
       integer   :: i
+      integer   :: n
+      real      :: input_flag = 1.0e-99
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -622,24 +624,86 @@ subroutine esfsw_driver_init
 !----------------------------------------------------------------------
 !
 !----------------------------------------------------------------------
-      c4co2(:) = c1co2(:) * c2co2(:) ** c3co2(:)
-      c4co2str(:) = c1co2str(:) * c2co2str(:) ** c3co2str(:)
-      c4o2(:) = c1o2(:) * c2o2(:) ** c3o2(:)
-      c4o2str(:) = c1o2str(:) * c2o2str(:) ** c3o2str(:)
+      do n=1,NH2OBANDS
+        if (c1co2(n) /= input_flag .and.  &
+            c2co2(n) /= input_flag .and.  &
+            c3co2(n) /= input_flag ) then
+          c4co2(n) = c1co2(n) * c2co2(n) ** c3co2(n)
+          c4co2str(n) = c1co2str(n) * c2co2str(n) ** c3co2str(n)
+          totco2max(n) = ( (1.0/c1co2(n) ) + c2co2(n) ** c3co2(n) ) ** &
+                       (1.0/c3co2(n) ) - c2co2(n)
+          if (nbands == 18) then
+            if ( n /= 4) then
+              totco2strmax(n) = ( (1.0/c1co2str(n) ) + c2co2str(n) ** &
+                                 c3co2str(n) ) ** (1.0/c3co2str(n) ) - &
+                                c2co2str(n)
+            else 
+              totco2strmax(n) = HUGE (c4o2strschrun) 
+            endif
+          else
+              totco2strmax(n) = ( (1.0/c1co2str(n) ) + c2co2str(n) ** &
+                                 c3co2str(n) ) ** (1.0/c3co2str(n) ) - &
+                                c2co2str(n)
+          endif
+        else
+          c4co2(n) = 0.0                              
+          c4co2str(n) = 0.0
+          totco2max(n) = 0.0                                            
+          totco2strmax(n) = 0.0
+        endif
+        if (c1o2(n) /= input_flag .and.   &
+            c2o2(n) /= input_flag .and.   &
+            c3o2(n) /= input_flag ) then
+          c4o2(n) = c1o2(n) * c2o2(n) ** c3o2(n)
+          c4o2str(n) = c1o2str(n) * c2o2str(n) ** c3o2str(n)
+          toto2max(n) = ( (1.0/c1o2(n) ) + c2o2(n) ** c3o2(n) ) ** &
+                          (1.0/c3o2(n) ) - c2o2(n)
+          if (nbands == 18) then
+            if ( n /= 4) then
+              toto2strmax(n) = ( (1.0/c1o2str(n) ) + c2o2str(n) ** &
+                                c3o2str(n) ) ** (1.0/c3o2str(n) ) - &
+                                c2o2str(n)
+            else
+              toto2strmax(n) = HUGE (c4o2strschrun) 
+            endif
+          else
+              toto2strmax(n) = ( (1.0/c1o2str(n) ) + c2o2str(n) ** &
+                                c3o2str(n) ) ** (1.0/c3o2str(n) ) - &
+                                c2o2str(n)
+          endif
+        else
+          c4o2(n) = 0.0                              
+          c4o2str(n) = 0.0
+          toto2max(n) = 0.0                                            
+          toto2strmax(n) = 0.0
+        endif
+      end do
       c4o2strschrun = c1o2strschrun * c2o2strschrun ** c3o2strschrun
-      totco2max(:) = ( (1.0/c1co2(:) ) + c2co2(:) ** c3co2(:) ) ** &
-                       (1.0/c3co2(:) ) - c2co2(:)
-      toto2max(:) = ( (1.0/c1o2(:) ) + c2o2(:) ** c3o2(:) ) ** &
-                      (1.0/c3o2(:) ) - c2o2(:)
-      totco2strmax(:) = ( (1.0/c1co2str(:) ) + c2co2str(:) ** &
-                           c3co2str(:) ) ** (1.0/c3co2str(:) ) - &
-                           c2co2str(:)
-      toto2strmax(:) = ( (1.0/c1o2str(:) ) + c2o2str(:) ** &
-                           c3o2str(:) ) ** (1.0/c3o2str(:) ) - &
-                           c2o2str(:)
       toto2strmaxschrun = ( (1.0/c1o2strschrun) + c2o2strschrun ** &
                              c3o2strschrun) ** (1.0/c3o2strschrun) - &
                              c2o2strschrun
+
+!     if (mpp_pe() == 0) then
+!       print *, 'c1co2    ', c1co2    
+!       print *, 'c2co2    ', c2co2    
+!       print *, 'c3co2    ', c3co2    
+!       print *, 'c4co2    ', c4co2    
+!       print *, 'totco2max', totco2max
+!       print *, 'c1co2str ', c1co2str    
+!       print *, 'c2co2str ', c2co2str    
+!       print *, 'c3co2str ', c3co2str    
+!       print *, 'c4co2str ', c4co2str    
+!       print *, '1/c1', 1.0/c1co2str
+!       print *, '1/c3', 1.0/c3co2str
+!       print *, 'c2**c3', c2co2str**c3co2str
+!       print *, '(1 / + c2**c3)**1/c3',  &
+!                 (1.0/c1co2str + c2co2str**c3co2str)**(1./c3co2str)
+!       print *, 'totco2strmax', totco2strmax
+!       print *, 'c4o2    ', c4o2    
+!       print *, 'c4o2str    ', c4o2str    
+!       print *, 'toto2max', toto2max
+!       print *, 'toto2strmax', toto2strmax
+!     endif
 
 !----------------------------------------------------------------------
 !
@@ -880,7 +944,7 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
             scalestr,        sctopdepclr,    sctopdepovc,      &
             ssalbclr,        ssalbovc,       sumre,            &
             sumtr,           taustrclr,      taustrovc,        &
-            sumtr_dir,                                    &
+            sumtr_dir,       sumtr_dir_clr,                    &
             tco2,            tlayerde,       tlayerdeclr,      &
             tlayerdeovc,     tlayerdif,      tlayerdifclr,     &
             tlayerdifovc,    tlayerdir,      tlayerdirclr,     &
@@ -1060,9 +1124,11 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
              (sumtrclr        (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
         allocate     &
              (transmittanceclr(ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
+      allocate ( sumtr_dir_clr    (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
         reflectanceclr = 0.0
         sumreclr = 0.0
         sumtrclr = 0.0
+        sumtr_dir_clr = 0.0
         transmittanceclr = 0.0
       endif
 
@@ -1828,6 +1894,7 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
         if (Rad_control%do_totcld_forcing) then
           sumtrclr(:,:,:) = 0.0
           sumreclr(:,:,:) = 0.0
+          sumtr_dir_clr(:,:,:) = 0.0
         endif
 
 !-----------------------------------------------------------------
@@ -2126,12 +2193,16 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
                       sumtrclr(i,j,k) = sumtrclr(i,j,k) +         &
                                         transmittanceclr(i,j,k)*  &
                                         wtfac(i,j) 
+                      sumtr_dir_clr(i,j,k) = sumtr_dir_clr(i,j,k) +  &
+                                          tr_dirclr(i,j,k)*wtfac(i,j)
                       sumreclr(i,j,k) = sumreclr(i,j,k) +         &
                                         reflectanceclr(i,j,k)*wtfac(i,j)
                     else if (daylight(i,j) ) then
                       sumtrclr(i,j,k) = sumtrclr(i,j,k) +   &
                                         transmittance(i,j,k)*   &
                                         wtfac(i,j)
+                      sumtr_dir_clr(i,j,k) = sumtr_dir_clr(i,j,k) +  &
+                                        tr_dir(i,j,k)*wtfac(i,j)
                       sumreclr(i,j,k) = sumreclr(i,j,k) +   &
                                         reflectance(i,j,k)*wtfac(i,j)
                     endif
@@ -2259,6 +2330,15 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
          if (nprofile == 1) then  ! clr sky need be done only for first
                                   ! cloud profile
         if (Rad_control%do_totcld_forcing) then
+          do j=JSRAD,JERAD
+            do i=ISRAD,IERAD
+              if (daylight(i,j) ) then
+                Sw_output%dfsw_dir_sfc_clr(i,j) =   &
+                                   Sw_output%dfsw_dir_sfc_clr(i,j) +   &
+                              sumtr_dir_clr(i,j,KERAD+1)*solarflux(i,j)
+              endif
+            end do
+          end do
         if (nband == Solar_spect%visible_band_indx) then
           Sw_output%bdy_flx_clr(:,:,1) = sumreclr(:,:,1) *   &
                                          solarflux(:,:)
@@ -2383,6 +2463,18 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
             endif
           end do
         end do
+
+        if (Rad_control%do_totcld_forcing) then
+          do j=JSRAD,JERAD
+            do i=ISRAD,IERAD
+              if (daylight(i,j) ) then
+                Sw_output%dfsw_dif_sfc_clr(i,j) =   &
+                                  Sw_output%dfswcf(i,j,KERAD+1) -   &
+                                  Sw_output%dfsw_dir_sfc_clr(i,j)
+              endif
+            end do
+          end do
+        endif
 
           do j=JSRAD,JERAD
             do i=ISRAD,IERAD
@@ -2533,6 +2625,7 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
       if (Rad_control%do_totcld_forcing) then
         deallocate (  transmittanceclr )
         deallocate (  tr_dirclr )
+        deallocate (  sumtr_dir_clr     )
         deallocate (  sumtrclr         )
         deallocate (  sumreclr         )
         deallocate (  reflectanceclr   )

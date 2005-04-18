@@ -20,7 +20,7 @@
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   character(len=128) :: version = '$Id: stable_bl_turb.F90,v 10.0 2003/10/24 22:00:50 fms Exp $'
-  character(len=128) :: tagname = '$Name: khartoum $'
+  character(len=128) :: tagname = '$Name: lima $'
   logical            :: module_is_initialized = .false.
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

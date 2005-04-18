@@ -28,8 +28,7 @@ use time_manager_mod,       only: time_type, time_manager_init
 
 !    shared radiation package modules:
 
-use rad_utilities_mod,      only: Environment, environment_type, &
-                                  rad_utilities_init, &
+use rad_utilities_mod,      only:  rad_utilities_init, &
                                   shortwave_control_type, Sw_control, &
                                   cldrad_properties_type, &
                                   microrad_properties_type, &
@@ -70,8 +69,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 11.0 2004/09/28 19:20:59 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 12.0 2005/04/14 15:44:20 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 
@@ -284,8 +283,7 @@ real, dimension(:),   intent(in) :: lonb, latb
 !    high clouds. the values used are different for different cloud 
 !    parameterizations.
 !---------------------------------------------------------------------
-      if (Environment%running_sa_model .or.    &
-          Environment%running_gcm) then
+        if (Cldrad_control%do_mgroup_prescribed_iz) then
         if (Cldrad_control%do_mgroup_prescribed) then
           crfvis_hi  = crfvis_hi_2
           crfir_hi   = crfir_hi_2
@@ -307,15 +305,26 @@ real, dimension(:),   intent(in) :: lonb, latb
           cabir_mid  = cabir_mid_1
           cabir_low  = cabir_low_1
         endif
+      else
+        call error_mesg ('bulkphys_rad_mod', &
+        ' do_mgroup_prescribed not yet defined', FATAL)
+      endif
 
 !---------------------------------------------------------------------
 !    when running in standalone columns mode, call 
 !    define_column_properties to define the cloud radiative properties.
 !---------------------------------------------------------------------
-      else if (Environment%running_standalone) then
+    if (Cldrad_control%do_specified_strat_clouds_iz .and.  &
+        Cldrad_control%do_specified_clouds_iz) then
+       if (Cldrad_control%do_specified_strat_clouds  .or.  &
+           Cldrad_control%do_specified_clouds ) then 
         call standalone_clouds_init   (pref, lonb, latb)
         call define_column_properties (pref, lonb, latb)
-      endif  ! (running_gcm)
+       endif 
+    else
+        call error_mesg ('bulkphys_rad_mod', &
+        ' do_specified_strat not yet defined', FATAL)
+   endif
 
 !---------------------------------------------------------------------
 !    mark the module as initialized.

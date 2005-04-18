@@ -135,8 +135,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 11.0 2004/09/28 19:20:17 fms Exp $'
-character(len=128) :: tagname = '$Name: khartoum $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 12.0 2005/04/14 15:43:27 fms Exp $'
+character(len=128) :: tagname = '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -634,7 +634,7 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !                                frac_land, rough_mom,                 &
 !                                albedo,    t_surf_rad,                &
 !                                u_star,    b_star, q_star,            &
-!                                dtau_dv,  tau_x,  tau_y,              &
+!                                dtau_du,  dtau_dv,  tau_x,  tau_y,    &
 !                                udt, vdt, tdt, qdt, rdt,              &
 !                                flux_sw,  flux_lw,  coszen,  gust,    &
 !                                Surf_diff,                            &
@@ -724,8 +724,11 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !  <IN NAME="q_star" TYPE="real">
 !   boundary layer specific humidity
 !  </IN>
+!  <IN NAME="dtau_du" TYPE="real">
+!   derivative of zonal surface stress w.r.t zonal wind speed
+!  </IN>
 !  <IN NAME="dtau_dv" TYPE="real">
-!   derivative of surface shear against frictional speed
+!   derivative of meridional surface stress w.r.t meridional wind speed
 !  </IN>
 !  <INOUT NAME="tau_x" TYPE="real">
 !   boundary layer meridional component of wind shear
@@ -795,7 +798,7 @@ subroutine physics_driver_down (is, ie, js, je,                       &
                                 albedo_vis_dif, albedo_nir_dif,       &
                                 t_surf_rad,                           &
                                 u_star,    b_star, q_star,            &
-                                dtau_dv,  tau_x,  tau_y,              &
+                                dtau_du, dtau_dv,  tau_x,  tau_y,     &
                                 udt, vdt, tdt, qdt, rdt,              &
                                 flux_sw,                              &
                                 flux_sw_dir,                          &
@@ -827,7 +830,7 @@ real,dimension(:,:,:),   intent(in)             :: p_half, p_full,   &
                                                    z_half, z_full,   &
                                                    u , v , t , q ,   &
                                                    um, vm, tm, qm
-real,dimension(:,:,:,:), intent(in)             :: r
+real,dimension(:,:,:,:), intent(inout)          :: r
 real,dimension(:,:,:,:), intent(inout)          :: rm
 real,dimension(:,:),     intent(in)             :: frac_land,   &
                                                    rough_mom, &
@@ -835,7 +838,7 @@ real,dimension(:,:),     intent(in)             :: frac_land,   &
                                                    albedo_vis_dir, albedo_nir_dir, &
                                                    albedo_vis_dif, albedo_nir_dif, &
                                                    u_star, b_star,    &
-                                                   q_star, dtau_dv
+                                                   q_star, dtau_du, dtau_dv
 real,dimension(:,:),     intent(inout)          :: tau_x,  tau_y
 real,dimension(:,:,:),   intent(inout)          :: udt,vdt,tdt,qdt
 real,dimension(:,:,:,:), intent(inout)          :: rdt
@@ -894,6 +897,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !      u_star
 !      b_star
 !      q_star
+!      dtau_du
 !      dtau_dv
 !
 !  intent(inout) variables:
@@ -1115,7 +1119,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !---------------------------------------------------------------------
       if (need_gases) then
         call define_radiative_gases (is, ie, js, je, Rad_time, lat, &
-                                     Atmos_input, Time_next, Rad_gases)
+                                     Atmos_input, r, Time_next, Rad_gases)
       endif
 
 !---------------------------------------------------------------------
@@ -1348,7 +1352,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                                   diff_m(is:ie,js:je,:),         &
                                   diff_t(is:ie,js:je,:),         &
                                   um ,vm ,tm ,qm ,rm(:,:,:,1:ntp), &
-                                  dtau_dv, tau_x, tau_y,         &
+                                  dtau_du, dtau_dv, tau_x, tau_y,  &
                                   udt, vdt, tdt, qdt, rdt,       &
                                   Surf_diff,                     &
                                   mask=mask, kbot=kbot           )
@@ -1562,6 +1566,7 @@ integer,dimension(:,:), intent(in),   optional :: kbot
 !      u_star
 !      b_star
 !      q_star
+!      dtau_du
 !      dtau_dv
 !
 !  intent(inout) variables:

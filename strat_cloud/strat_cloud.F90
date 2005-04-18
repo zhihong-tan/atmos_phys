@@ -297,6 +297,10 @@ module strat_cloud_mod
   !                      from cloud rad
   !                      overlap = 1 is maximum-random
   !                      overlap = 2 is random
+  !
+  !     do_old_snowmelt  Should the cloud scheme be run with
+  !                      the snowmelt bug?
+  
 
   real              :: U00            =  0.80
   logical           :: u00_profile    =  .false.
@@ -324,7 +328,8 @@ module strat_cloud_mod
   integer,dimension(2,max_strat_pts) :: strat_pts = 0
   integer           :: overlap        =  2
   real              :: efact          = 0.0
-
+  logical           :: do_old_snowmelt= .false.
+  
   !
   !-----------------------------------------------------------------------
   !-------------------- diagnostics fields -------------------------------
@@ -447,6 +452,9 @@ module strat_cloud_mod
 !  <DATA NAME="efact" UNITS="" TYPE="real" DIM="" DEFAULT="">
 ! (default = 0.0) 
 !  </DATA>
+!  <DATA NAME="do_old_snowmelt" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+! Should the old version of snow melting, which has a bug,be run? (default = .false.) 
+!  </DATA>
 ! </NAMELIST>
 
   NAMELIST /strat_cloud_nml/ do_netcdf_restart,   &
@@ -454,7 +462,9 @@ module strat_cloud_mod
        N_ocean,U_evap,eros_scale,eros_choice,   &
        eros_scale_c,eros_scale_t,mc_thresh,     &
        diff_thresh,super_choice,tracer_advec,   &
-       qmin,Dmin,num_strat_pts,strat_pts,efact
+       qmin,Dmin,num_strat_pts,strat_pts,efact, &
+       do_old_snowmelt
+       
   !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !
@@ -462,8 +472,8 @@ module strat_cloud_mod
   !       DECLARE VERSION NUMBER OF SCHEME
   !
 
-  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 11.0 2004/09/28 19:24:51 fms Exp $'
-  Character(len=128) :: Tagname = '$Name: khartoum $'
+  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 12.0 2005/04/14 15:50:21 fms Exp $'
+  Character(len=128) :: Tagname = '$Name: lima $'
   logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   !        
@@ -1282,6 +1292,7 @@ subroutine diag_field_init (axes,Time)
  end if
 
  !-----------------------------------------------------------------------
+
 
 
 end subroutine diag_field_init
@@ -2978,11 +2989,6 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         snow_clr = snow_clr + dprec_cld2clr - dprec_clr2cld
         snow_cld = snow_cld - dprec_cld2clr + dprec_clr2cld
    
-        !snow falling into cloud reduces the amount that
-        !falls out of cloud: a loss of cloud ice from settling
-        !is defined to be positive
-        if (do_budget_diag) qidt_fall(:,:,j)= -1.*snow_cld/deltpg
-                                  
                
 !-----------------------------------------------------------------------
 !
@@ -2990,15 +2996,21 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !                        MELTING OF CLEAR SKY SNOW FLUX
 !
 !
-!       Melting of falling ice to rain occurs when T > 2C. The amount 
-!       of melting is limited to the melted amount that would cool the 
-!       temperature to 2C.   In cloud melting of ice occurs
-!       in the ice microphysics section.
+!       Melting of falling ice to rain occurs when T > tfreeze. The 
+!       amount of melting is limited to the melted amount that would 
+!       cool the temperature to tfreeze.
 !
+!       In the snowmelt bug version, the temperature of melting was 
+!       tfreeze + 2. like the original Tiedtke (1993) paper, instead of 
+!       tfreeze.
 
         !compute grid mean change in snow flux to cool the
-        !grid box to 2C and store in temporary variable tmp1
-        tmp1 = cp_air*(T(:,:,j)-tfreeze-2.)*deltpg*inv_dtcloud/hlf
+        !grid box to tfreeze and store in temporary variable tmp1
+        if (do_old_snowmelt) then
+             tmp1 = cp_air*(T(:,:,j)-tfreeze-2.)*deltpg*inv_dtcloud/hlf
+        else
+             tmp1 = cp_air*(T(:,:,j)-tfreeze)*deltpg*inv_dtcloud/hlf
+        end if
         
         ! If snow_clr > tmp1, then the amount of snow melted is
         ! limited to tmp1, otherwise melt snow_clr.  The amount
@@ -3024,6 +3036,60 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 
         if (do_budget_diag) snow_melt(:,:,j) = tmp2/deltpg             
              
+!-----------------------------------------------------------------------
+!
+!
+!                        MELTING OF CLOUDY SKY SNOW FLUX
+!
+!
+!       Melting of falling ice to rain occurs when T > tfreeze. The 
+!       amount of melting is limited to the melted amount that would 
+!       cool the temperature to tfreeze.
+!
+
+        if (.not.do_old_snowmelt) then
+
+        !compute grid mean change in snow flux to cool the
+        !grid box to tfreeze and store in temporary variable tmp1
+        !
+        !note that tmp1 already has the value of this variable 
+        !from the clear-sky melt calculation, so one does not need
+        !to repeat the calculation here.
+        !
+        !However, note that clear-sky snow melt may have already 
+        !reduced the temperature of the grid box - this snow melt is in 
+        !variable tmp2 from lines above. Thus the amount that one
+        !can melt is less.
+        
+        tmp1 = tmp1 - tmp2
+        
+        ! If snow_cld > tmp1, then the amount of snow melted is
+        ! limited to tmp1, otherwise melt snow_cld.  The amount
+        ! melted is stored in tmp2
+        tmp2 = max(min(snow_cld,tmp1),0.)     
+
+        ST(:,:,j) = ST(:,:,j) - hlf*tmp2*dtcloud/deltpg/cp_air                
+        rain_cld  = rain_cld + tmp2
+        
+        !raise a_rain_cld to a_snow_cld IF AND only IF melting occurs
+        !and a_rain_cld < a_snow_cld
+        where (tmp2 .gt. 0. .and. a_snow_cld .gt. qmin)
+             a_rain_cld = max(a_rain_cld,a_snow_cld)
+        end where
+
+        ! If all of the snow has melted, then zero out a_snow_cld
+        where (snow_cld.lt.tmp1 .and. a_snow_cld.gt.qmin)
+             snow_cld = 0.
+             a_snow_cld = 0.
+        elsewhere
+             snow_cld = snow_cld - tmp2          
+        end where
+
+        if (do_budget_diag) snow_melt(:,:,j) =  snow_melt(:,:,j) + &
+                                                tmp2/deltpg             
+
+        end if  !for snowmelt bugfix
+                            
 !----------------------------------------------------------------------!
 !
 !
@@ -3064,6 +3130,11 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         !all of the cloudy area.
         qi_mean = qi_mean + snow_cld*dtcloud/deltpg        
 
+        !snow falling into cloud reduces the amount that
+        !falls out of cloud: a loss of cloud ice from settling
+        !is defined to be positive
+        if (do_budget_diag) qidt_fall(:,:,j)= -1.*snow_cld/deltpg
+         
         !compute lamda_f
         lamda_f = 1.6 * 10**(3.+0.023*(tfreeze-T(:,:,j)))
         
@@ -3326,17 +3397,22 @@ subroutine strat_driv(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !                   ( ELI * lamda_f * snow_cld / 2/ rho_ice ) * ql 
 !
 !
-!       Note that the temperature range of riming is limited to 
-!       temperatures less than tfreeze.  Freezing cannot take place
-!       of rimed condensate for temperatures greater than this.       
+!       Note that in the version with the snowmelt bug, riming was
+!       prevented when temperatures were in excess of freezing.
 
         !add in accretion of cloud liquid by ice
-        where ((a_snow_cld.gt.qmin) .and. (ql_mean.gt.qmin) .and.      &
-               (   qa_mean.gt.qmin) .and. (T(:,:,j) .lt. tfreeze) )            
-             tmp1 =  dtcloud*0.5*ELI*lamda_f*snow_cld/qa_mean/rho_ice              
-        elsewhere
-             tmp1 = 0.0    
-        end where
+        tmp1 = 0.0
+        if (do_old_snowmelt) then
+             where ((a_snow_cld.gt.qmin) .and. (ql_mean.gt.qmin) .and. &
+                    (   qa_mean.gt.qmin) .and. (T(:,:,j) .lt. tfreeze) )            
+                 tmp1 = dtcloud*0.5*ELI*lamda_f*snow_cld/qa_mean/rho_ice              
+             end where
+        else
+             where ((a_snow_cld.gt.qmin) .and. (ql_mean.gt.qmin) .and. &
+                    (   qa_mean.gt.qmin) )            
+                 tmp1 = dtcloud*0.5*ELI*lamda_f*snow_cld/qa_mean/rho_ice              
+             end where
+        end if        
         
         D2_dt = D2_dt + tmp1
 

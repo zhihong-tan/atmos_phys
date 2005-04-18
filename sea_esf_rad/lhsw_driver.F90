@@ -16,8 +16,7 @@
 ! </DESCRIPTION>
 !
 
-use rad_utilities_mod,     only: Environment, environment_type, &
-                                 astronomy_type, &
+use rad_utilities_mod,     only: astronomy_type, &
                                  shortwave_control_type, Sw_control, &
                                  atmos_input_type, &
                                  surface_type, &
@@ -48,8 +47,8 @@ private
 !--------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 11.0 2004/09/28 19:21:53 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: khartoum $'
+    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 12.0 2005/04/14 15:45:40 fms Exp $'
+    character(len=128)  :: tagname =  '$Name: lima $'
     logical             :: module_is_initialized = .false.
 
 

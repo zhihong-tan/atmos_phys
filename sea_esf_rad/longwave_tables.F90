@@ -49,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_tables.F90,v 11.0 2004/09/28 19:22:18 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: longwave_tables.F90,v 12.0 2005/04/14 15:46:16 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -101,7 +101,7 @@ real, dimension(:), allocatable :: acomb, bcomb, apcm, bpcm, atpcm,  &
                                    btpcm, bdlocm, bdhicm
 
 integer, parameter              :: NTTABH2O   = 28
-integer, parameter              :: NUTABH2O   = 180
+integer, parameter              :: NUTABH2O   = 181
 
 real, dimension (NBLW)          :: bandlo, bandhi, arndm, brndm, betad
 integer, dimension(40)          :: iband
@@ -117,6 +117,7 @@ logical :: module_is_initialized = .false.   !  module is initialized ?
 
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
+
 
 
 
@@ -424,19 +425,12 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !----------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o_iz) then
-      else
-        call error_mesg ('longwave_tables_mod', &
-           'Lw_control%do_ch4_n2o not yet initialized', FATAL)
-      endif
-
-!----------------------------------------------------------------------
-!
-!---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE > 0) then
         allocate ( fbdlo_12001400 (NBTRGE) )
         allocate ( fbdhi_12001400 (NBTRGE) )
         allocate ( dummy_ch4n2o (NBTRGE) )
+      endif
+      if (NBTRG  > 0) then
         allocate ( afach4 (NBTRG ) )
         allocate ( afan2o (NBTRG ) )
         allocate ( bdlahcn(NBTRG ) )
@@ -447,10 +441,12 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
         allocate ( dn2o   (NBTRG ) )
         allocate ( ech4   (NBTRG ) )
         allocate ( en2o   (NBTRG ) )
+      endif
 
 !----------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
+      if (NBTRGE > 0) then
         if (trim(Lw_control%linecatalog_form) == 'hitran_1992') then
           inrad = open_namelist_file ('INPUT/h2o12001400_hi92_data')
         else if(trim(Lw_control%linecatalog_form) == 'hitran_2000') then
@@ -603,7 +599,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
       call table_alloc (tab2 , NTTABH2O, NUTABH2O)
       call table_alloc (tab3 , NTTABH2O, NUTABH2O)
       call table_alloc (tab1w, NTTABH2O, NUTABH2O)
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE > 0) then
         call table_alloc (tab1a, NTTABH2O, NUTABH2O, NBTRGE)
         call table_alloc (tab2a, NTTABH2O, NUTABH2O, NBTRGE)
         call table_alloc (tab3a, NTTABH2O, NUTABH2O, NBTRGE)
@@ -913,7 +909,7 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 !----------------------------------------------------------------------
 !
 !----------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE > 0) then
         allocate ( r1a     (NTTABH2O,NBTRGE) )
         allocate (r2a      (NTTABH2O,NBTRGE) )
         allocate (s2a      (NTTABH2O,NBTRGE) )
@@ -959,7 +955,7 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 !-------------------------------------------------------------------
 !   define critical frequency (cutoff for wide band ?? )
 !------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE > 0) then
         freq_cutoff = 1400.
       else
         freq_cutoff = 1200.
@@ -972,11 +968,12 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 !    arrays with dimension of NTTABH2O=28 imply a restriction of model 
 !    temperatures from 100k to 370k.
 !    the dimensioning of zmass, zroot and other arrays with 
-!    dimension of NUTABH2O=180 imply a restriction of model h2o amounts
+!    dimension of NUTABH2O=181 imply a restriction of model h2o amounts
 !    such that optical paths are between 10**-16 and 10**2, in cgs 
-!    units.
+!    units (index 2-181), plus zero (index 1).
 !---------------------------------------------------------------------
-      zmass(1) = 10.0E+00**mass_1%min_val
+      zmass(1) = 0.0
+      zmass(2) = 10.0E+00**mass_1%min_val
       zmassincr = 10.0E+00**mass_1%tab_inc
  
 !---------------------------------------------------------------------
@@ -984,10 +981,11 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 !    all previous versions, in which it is 1.258925411E+00. This
 !    produces slightly different answers (fluxes differ by 1.0e-6 W/m2).
 !---------------------------------------------------------------------
-      do jtab=2,NUTABH2O
+      do jtab=3,NUTABH2O
         zmass(jtab) = zmass(jtab-1)*zmassincr
       enddo
-      do jtab=1,NUTABH2O
+      zroot(1) = 0.0
+      do jtab=2,NUTABH2O
         zroot(jtab) = SQRT(zmass(jtab))
       enddo 
       do itab=1,NTTABH2O
@@ -1140,7 +1138,7 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
         sum4wd(itab) = 0.0E+00
       enddo
 
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE > 0) then
         sum4a (:,:)    = 0.0E+00
         sum6a (:,:)    = 0.0E+00
         sum7a (:,:)    = 0.0E+00
@@ -1166,7 +1164,7 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
           enddo
         endif
 
-        if (Lw_control%do_ch4_n2o) then
+        if (NBTRGE > 0) then
 
 !---------------------------------------------------------------------
 !    perform summations for frequency range of 1200-1400 cm-1
@@ -1219,7 +1217,7 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
           sumwde(itab,jtab) = 0.0E+00
         enddo
       enddo
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE > 0) then
         do m=1,NBTRGE
           r1a(:,m)   = sum4a(:,m)/tfour(:)
           r2a(:,m)   = sum6a(:,m)/fortcu(:)
@@ -1251,7 +1249,7 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
             x2  (jtab) = arotnb(n)*zroot(jtab) 
             expo(jtab) = EXP( - x2(jtab))
           enddo
-          do jtab=121,NUTABH2O
+          do jtab=122,NUTABH2O
             fac(jtab) = (1.0E+00 - (1.0E+00 + x2(jtab))*expo(jtab))/ &
                         (alfanb(n)*zmass(jtab))
           enddo
@@ -1263,7 +1261,7 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
                                   dbdtnb(itab,n)*expo(jtab)
             enddo
           enddo 
-          do jtab=121,NUTABH2O
+          do jtab=122,NUTABH2O
             do itab=1,NTTABH2O 
               sum3(itab,jtab) = sum3(itab,jtab) +    &
                                 dbdtnb(itab,n)*fac(jtab)
@@ -1275,14 +1273,14 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 !    perform calculations over the frequency range 1200-1400 cm-1. 
 !    the calculations depend on the value of NBTRGE.
 !-------------------------------------------------------------------
-        if (Lw_control%do_ch4_n2o) then
+        if (NBTRGE > 0) then 
           if (cent .GT. 1.2E+03 .AND. cent .LE. 1.4E+03) then
             do m=1,NBTRGE
               if (cent .GT. fbdlo_12001400(m) .AND.   &
                   cent .LE. fbdhi_12001400(m)) then
                 x2  (:) = arotnb(n)*zroot(:) 
                 expo(:) = EXP( - x2(:))
-                do jtab=121,NUTABH2O
+                do jtab=122,NUTABH2O
                   fac(jtab) = (1.0E+00 - (1.0E+00 + x2(jtab))*  &
                                expo(jtab))/(alfanb(n)*zmass(jtab))
                 enddo
@@ -1292,7 +1290,7 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
                   sumdbea(:,jtab,m) = sumdbea(:,jtab,m) +   &
                                       dbdtnb(:,n)*expo(jtab)
                 enddo
-                do jtab=121,NUTABH2O 
+                do jtab=122,NUTABH2O 
                   sum3a(:,jtab,m)   = sum3a(:,jtab,m) +   &
                                       dbdtnb(:,n)*fac(jtab)
                 enddo
@@ -1324,17 +1322,17 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
           tab2%vae(itab,jtab) = sumdbe(itab,jtab)/fortcu(itab)
         enddo 
       enddo
-      do jtab=121,NUTABH2O
+      do jtab=122,NUTABH2O
         do itab=1,NTTABH2O
           tab3%vae(itab,jtab) = sum3(itab,jtab)/fortcu(itab)
         enddo
       enddo
-      do jtab=1,2
+      do jtab=1,3
         do itab=1,NTTABH2O
           tab1%vae      (itab,jtab) = r1(itab)
         enddo
       enddo
-      do jtab=1,120
+      do jtab=1,121
         do itab=1,NTTABH2O
           tab3%vae(itab,jtab) = r2(itab)/2.0E+00 -    &
                                 s2(itab)*zroot(jtab)/3.0E+00 +   &
@@ -1350,7 +1348,7 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
           tab1w%vae      (itab,jtab) = sumwde(itab,jtab)/tfour(itab)
         enddo
       enddo
-      do jtab=1,2
+      do jtab=1,3
         do itab=1,NTTABH2O
           tab1w%vae      (itab,jtab) = r1wd(itab)
         enddo 
@@ -1399,7 +1397,7 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 !---------------------------------------------------------------------
 !    compute table entries for mass derivatives.
 !---------------------------------------------------------------------
-      do jtab=1,NUTABH2O-1
+      do jtab=2,NUTABH2O-1
         do itab=1,NTTABH2O
           tab1%md (itab,jtab) =   &
      (tab1%vae (itab,jtab+1) - tab1%vae (itab,jtab))/mass_1%tab_inc
@@ -1419,7 +1417,7 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 !---------------------------------------------------------------------
 !    compute table entries for cross derivatives.
 !---------------------------------------------------------------------
-      do jtab=1,NUTABH2O-1
+      do jtab=2,NUTABH2O-1
         do itab=1,NTTABH2O-1
       tab1%cd (itab,jtab) =    &
              (tab1%vae (itab+1,jtab+1) - tab1%vae (itab+1,jtab) -   &
@@ -1447,19 +1445,19 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 
         enddo
       enddo
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE > 0) then
         do m=1,NBTRGE
           do jtab=1,NUTABH2O
             tab1a%vae      (:,jtab,m) = suma(:,jtab,m)/tfour(:)
             tab2a%vae (:,jtab,m) = sumdbea(:,jtab,m)/fortcu(:) 
           enddo
-          do jtab=121,NUTABH2O
+          do jtab=122,NUTABH2O
             tab3a%vae(:,jtab,m) = sum3a(:,jtab,m)/fortcu(:)
           enddo
-          do jtab=1,2
+          do jtab=1,3
             tab1a%vae      (:,jtab,m) = r1a(:,m)
           enddo
-          do jtab=1,120
+          do jtab=1,121
             tab3a%vae(:,jtab,m) = r2a(:,m)/2.0E+00 -     &
                                   s2a(:,m)*zroot(jtab)/3.0E+00 +   &
                                   t3a(:,m)*zmass(jtab)/8.0E+00
@@ -1491,30 +1489,30 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
                   (tab3a%vae(2:NTTABH2O,1:NUTABH2O,:) -  &
                    tab3a%vae(1:NTTABH2O-1,1:NUTABH2O,:))/temp_1%tab_inc
 
-        tab1a%md(1:NTTABH2O,1:NUTABH2O-1,:) =     &
-                  (tab1a%vae(1:NTTABH2O,2:NUTABH2O,:) -   &
-                   tab1a%vae(1:NTTABH2O,1:NUTABH2O-1,:))/mass_1%tab_inc
+        tab1a%md(1:NTTABH2O,2:NUTABH2O-1,:) =     &
+                  (tab1a%vae(1:NTTABH2O,3:NUTABH2O,:) -   &
+                   tab1a%vae(1:NTTABH2O,2:NUTABH2O-1,:))/mass_1%tab_inc
 
-        tab2a%md (1:NTTABH2O,1:NUTABH2O-1,:) =   &
-                 (tab2a%vae (1:NTTABH2O,2:NUTABH2O,:) -   &
-                  tab2a%vae (1:NTTABH2O,1:NUTABH2O-1,:))/mass_1%tab_inc
+        tab2a%md (1:NTTABH2O,2:NUTABH2O-1,:) =   &
+                 (tab2a%vae (1:NTTABH2O,3:NUTABH2O,:) -   &
+                  tab2a%vae (1:NTTABH2O,2:NUTABH2O-1,:))/mass_1%tab_inc
 
-        tab3a%md(1:NTTABH2O,1:NUTABH2O-1,:) =     &
-                  (tab3a%vae(1:NTTABH2O,2:NUTABH2O,:) -   &
-                   tab3a%vae(1:NTTABH2O,1:NUTABH2O-1,:))/mass_1%tab_inc
+        tab3a%md(1:NTTABH2O,2:NUTABH2O-1,:) =     &
+                  (tab3a%vae(1:NTTABH2O,3:NUTABH2O,:) -   &
+                   tab3a%vae(1:NTTABH2O,2:NUTABH2O-1,:))/mass_1%tab_inc
 
-        tab1a%cd(1:NTTABH2O-1,1:NUTABH2O-1,:) =     &
-                        (tab1a%vae(2:NTTABH2O,2:NUTABH2O,:) -    &
-                         tab1a%vae(2:NTTABH2O,1:NUTABH2O-1,:)   -  &
-                         tab1a%vae(1:NTTABH2O-1,2:NUTABH2O,:)   +  &
-                         tab1a%vae(1:NTTABH2O-1,1:NUTABH2O-1,:))/  &
+        tab1a%cd(1:NTTABH2O-1,2:NUTABH2O-1,:) =     &
+                        (tab1a%vae(2:NTTABH2O,3:NUTABH2O,:) -    &
+                         tab1a%vae(2:NTTABH2O,2:NUTABH2O-1,:)   -  &
+                         tab1a%vae(1:NTTABH2O-1,3:NUTABH2O,:)   +  &
+                         tab1a%vae(1:NTTABH2O-1,2:NUTABH2O-1,:))/  &
                                          (temp_1%tab_inc*mass_1%tab_inc)
 
-        tab3a%cd(1:NTTABH2O-1,1:NUTABH2O-1,:) =    &
-                        (tab3a%vae(2:NTTABH2O,2:NUTABH2O,:) -    &
-                         tab3a%vae(2:NTTABH2O,1:NUTABH2O-1,:)   -  &
-                         tab3a%vae(1:NTTABH2O-1,2:NUTABH2O,:)   +  &
-                         tab3a%vae(1:NTTABH2O-1,1:NUTABH2O-1,:))/  &
+        tab3a%cd(1:NTTABH2O-1,2:NUTABH2O-1,:) =    &
+                        (tab3a%vae(2:NTTABH2O,3:NUTABH2O,:) -    &
+                         tab3a%vae(2:NTTABH2O,2:NUTABH2O-1,:)   -  &
+                         tab3a%vae(1:NTTABH2O-1,3:NUTABH2O,:)   +  &
+                         tab3a%vae(1:NTTABH2O-1,2:NUTABH2O-1,:))/  &
                                         (temp_1%tab_inc*mass_1%tab_inc)
      
 !---------------------------------------------------------------------

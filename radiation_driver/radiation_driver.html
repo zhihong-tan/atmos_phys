@@ -15,12 +15,12 @@
         </STYLE>
 </head>
 <body>
-<a name="TOP"></a><font class="header" size="1"><a href="#PUBLIC%20INTERFACE">PUBLIC INTERFACE </a>~
-          <a href="#PUBLIC%20DATA">PUBLIC DATA </a>~
-          <a href="#PUBLIC%20ROUTINES">PUBLIC ROUTINES </a>~
+<a name="TOP"></a><font class="header" size="1"><a href="#PUBLIC INTERFACE">PUBLIC INTERFACE </a>~
+          <a href="#PUBLIC DATA">PUBLIC DATA </a>~
+          <a href="#PUBLIC ROUTINES">PUBLIC ROUTINES </a>~
           <a href="#NAMELIST">NAMELIST </a>~
-          <a href="#DIAGNOSTIC%20FIELDS">DIAGNOSTIC FIELDS </a>~
-          <a href="#ERROR%20MESSAGES">ERROR MESSAGES </a>~
+          <a href="#DIAGNOSTIC FIELDS">DIAGNOSTIC FIELDS </a>~
+          <a href="#ERROR MESSAGES">ERROR MESSAGES </a>~
           <a href="#REFERENCES">REFERENCES </a>~ 
           <a href="#NOTES">NOTES</a></font>
 <hr>
@@ -65,7 +65,7 @@
    4) longwave and shortwave radiation driver </div>
 <br>
 <!-- END DESCRIPTION -->
-<a name="OTHER%20MODULES%20USED"></a>
+<a name="OTHER MODULES USED"></a>
 <hr>
 <h4>OTHER MODULES USED</h4>
 <!-- BEGIN OTHER MODULES USED -->
@@ -74,7 +74,7 @@
 </div>
 <!-- END OTHER MODULES USED -->
 <!-- BEGIN PUBLIC INTERFACE -->
-<a name="PUBLIC%20INTERFACE"></a>
+<a name="PUBLIC INTERFACE"></a>
 <hr>
 <h4>PUBLIC INTERFACE</h4>
 <div>   use radiation_driver_mod [,only: radiation_driver_init,
@@ -189,7 +189,7 @@
 </div>
 <br>
 <!-- END PUBLIC INTERFACE -->
-<a name="PUBLIC%20DATA"></a>
+<a name="PUBLIC DATA"></a>
 <hr>
 <h4>PUBLIC DATA</h4>
 <!-- BEGIN PUBLIC DATA -->
@@ -197,7 +197,7 @@
 <br>
 </div>
 <!-- END PUBLIC DATA -->
-<a name="PUBLIC%20ROUTINES"></a>
+<a name="PUBLIC ROUTINES"></a>
 <hr>
 <h4>PUBLIC ROUTINES</h4>
 <!-- BEGIN PUBLIC ROUTINES -->
@@ -751,6 +751,11 @@
    as for Astro, but they are valid over the current
    physics timestep. <br>&nbsp;&nbsp;&nbsp;<span class="type">[astronomy_type]</span></td>
 </tr>
+<tr>
+<td valign="top" align="left"><tt>Astronomy_inp&nbsp;&nbsp;&nbsp;</tt></td><td>   astronomy_inp_type structure, optionally used to input astronom-
+   ical forcings, when it is desired to specify them rather than use
+   astronomy_mod. Used in various standalone applications. <br>&nbsp;&nbsp;&nbsp;<span class="type">[astronomy_inp_type]</span></td>
+</tr>
 </table>
 </dd>
 <br>
@@ -1145,7 +1150,7 @@
 </li>
 </ol>
 <!-- END PUBLIC ROUTINES -->
-<a name="PUBLIC%20TYPES"></a>
+<a name="PUBLIC TYPES"></a>
 <!-- BEGIN PUBLIC TYPES -->
 <!-- END PUBLIC TYPES --><a name="NAMELIST"></a>
 <!-- BEGIN NAMELIST -->
@@ -1385,6 +1390,25 @@
 <span class="type">[logical, dimension, units: , default: ]</span>
 </dl>
 <dt>
+<tt>always_calculate</tt>
+</dt>
+<dl>   calculate radiative fluxes and heating rates on every call to 
+   radiation_driver ? <br>
+<span class="type">[logical, dimension, units: , default: ]</span>
+</dl>
+<dt>
+<tt>do_h2o</tt>
+</dt>
+<dl>   include h2o effects in radiation calculation ? <br>
+<span class="type">[logical, dimension, units: , default: ]</span>
+</dl>
+<dt>
+<tt>do_o3</tt>
+</dt>
+<dl>   include o3 effects in radiation calculation ? <br>
+<span class="type">[logical, dimension, units: , default: ]</span>
+</dl>
+<dt>
 <tt>solar_dataset_entry</tt>
 </dt>
 <dl>   time in solar data set corresp-
@@ -1392,12 +1416,45 @@
    (yr, mo, dy, hr, mn, sc) <br>
 <span class="type">[integer, dimension, units: , default: ]</span>
 </dl>
+<dt>
+<tt>always_calculate</tt>
+</dt>
+<dl>   fluxes and heating rates should
+   be calculatd on each call to
+   radiation_driver ? (true for
+   standalone applications) <br>
+<span class="type">[logical, dimension, units: , default: ]</span>
+</dl>
+<dt>
+<tt>use_uniform_solar_input</tt>
+</dt>
+<dl>   the (lat,lon) values used to
+   calculate zenith angle are
+   uniform across the grid ? <br>
+<span class="type">[logical, dimension, units: , default: ]</span>
+</dl>
+<dt>
+<tt>lat_for_solar_input</tt>
+</dt>
+<dl>   latitude to be used when uni-
+   form solar input is activated
+   [ degrees ] <br>
+<span class="type">[real, dimension, units: , default: ]</span>
+</dl>
+<dt>
+<tt>lon_for_solar_input</tt>
+</dt>
+<dl>   longitude to be used when uni-
+   form solar input is activated
+   [ degrees ] <br>
+<span class="type">[real, dimension, units: , default: ]</span>
+</dl>
 </dl>
 </div>
 </div>
 <br>
 <!-- END NAMELIST -->
-<a name="DIAGNOSTIC%20FIELDS"></a>
+<a name="DIAGNOSTIC FIELDS"></a>
 <!-- BEGIN DIAGNOSTIC FIELDS -->
 <hr>
 <h4>DIAGNOSTIC FIELDS</h4>
@@ -1418,7 +1475,7 @@
 </div>
 </div>
 <!-- END DIAGNOSTIC FIELDS -->
-<a name="DATA%20SETS"></a>
+<a name="DATA SETS"></a>
 <!-- BEGIN DATA SETS -->
 <hr>
 <h4>DATA SETS</h4>
@@ -1443,9 +1500,9 @@
 <br>
 </div>
 <!-- END DATA SETS -->
-<a name="PUBLIC%20CODE"></a>
+<a name="PUBLIC CODE"></a>
 <!-- BEGIN PUBLIC CODE -->
-<!-- END PUBLIC CODE --><a name="ERROR%20MESSAGES"></a>
+<!-- END PUBLIC CODE --><a name="ERROR MESSAGES"></a>
 <!-- BEGIN ERROR MESSAGES -->
 <hr>
 <h4>ERROR MESSAGES</h4>
@@ -1499,7 +1556,7 @@
 </div>
 <br>
 <!-- END REFERENCES -->
-<a name="COMPILER%20SPECIFICS"></a>
+<a name="COMPILER SPECIFICS"></a>
 <hr>
 <h4>COMPILER SPECIFICS</h4>
 <!-- BEGIN COMPILER SPECIFICS -->
@@ -1512,7 +1569,7 @@
 </div>
 <br>
 <!-- END COMPILER SPECIFICS -->
-<a name="PRECOMPILER%20OPTIONS"></a>
+<a name="PRECOMPILER OPTIONS"></a>
 <hr>
 <h4>PRECOMPILER OPTIONS</h4>
 <!-- BEGIN PRECOMPILER OPTIONS -->
@@ -1525,7 +1582,7 @@
 </div>
 <br>
 <!-- END PRECOMPILER OPTIONS -->
-<a name="LOADER%20OPTIONS"></a>
+<a name="LOADER OPTIONS"></a>
 <hr>
 <h4>LOADER OPTIONS</h4>
 <!-- BEGIN LOADER -->
@@ -1536,7 +1593,7 @@
 </pre>
 </div>
 <!-- END LOADER OPTIONS -->
-<a name="TEST%20PROGRAM"></a>
+<a name="TEST PROGRAM"></a>
 <hr>
 <h4>TEST PROGRAM</h4>
 <!-- BEGIN TEST PROGRAM -->
@@ -1549,7 +1606,7 @@
 </div>
 <br>
 <!-- END TEST PROGRAM -->
-<a name="KNOWN%20BUGS"></a>
+<a name="KNOWN BUGS"></a>
 <hr>
 <h4>KNOWN BUGS</h4>
 <!-- BEGIN KNOWN BUGS -->
@@ -1616,7 +1673,7 @@
 </div>
 <br>
 <!-- END NOTES -->
-<a name="FUTURE%20PLANS"></a>
+<a name="FUTURE PLANS"></a>
 <hr>
 <h4>FUTURE PLANS</h4>
 <!-- BEGIN FUTURE PLANS -->

@@ -24,8 +24,7 @@ use fms_mod,                only: open_namelist_file, mpp_pe, &
                                   check_nml_error, error_mesg,   &
                                   FATAL, NOTE, WARNING, close_file
 use rh_clouds_mod,          only: rh_clouds_avg      
-use rad_utilities_mod,      only: Environment, environment_type, &
-                                  shortwave_control_type, Sw_control, &
+use rad_utilities_mod,      only: shortwave_control_type, Sw_control, &
                                   cldrad_properties_type, &
                                   longwave_control_type, Lw_control, &
                                   cld_specification_type, &
@@ -51,8 +50,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 11.0 2004/09/28 19:23:55 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: khartoum $'
+  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 12.0 2005/04/14 15:47:59 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: lima $'
 
 
 

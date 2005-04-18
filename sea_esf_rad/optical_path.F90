@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-   character(len=128)  :: version =  '$Id: optical_path.F90,v 11.0 2004/09/28 19:23:17 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: khartoum $'
+   character(len=128)  :: version =  '$Id: optical_path.F90,v 12.0 2005/04/14 15:46:57 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -93,11 +93,14 @@ private    &
 !---------------------------------------------------------------------
 !---- namelist   -----
 
-real                :: dummy = 0.0
+logical   :: tmp_dpndnt_h2o_lines = .true.  ! the 1200-1400 cm(-1)
+                                            ! band h2o line intensities
+                                            ! are temperature dependent?
+
 
 
 namelist / optical_path_nml /    &
-                                dummy
+                                 tmp_dpndnt_h2o_lines
 
 !-------------------------------------------------------------------
 !-----  public data ----
@@ -243,6 +246,7 @@ logical   :: module_is_initialized      = .false. ! module has been
 
 
 
+
                               contains
 
 
@@ -383,6 +387,12 @@ subroutine optical_path_init(pref)
            ' Lw_parameters%NBTRGE not yet initialized', FATAL)
       endif
 
+      if (nbtrge == 0 .and. tmp_dpndnt_h2o_lines) then
+        call error_mesg ('optical_path_mod', &
+        'cannot have temperature-dependent h2o line intensities &
+             &without having separate 1200-1400 cm(-1) band(s)', FATAL) 
+      endif
+        
 !---------------------------------------------------------------------
 !    read needed data from raduiation input files.
 !---------------------------------------------------------------------
@@ -473,18 +483,27 @@ subroutine optical_path_init(pref)
       read (inrad,2001) (bo3rnd(k),k=1,3)
 
 !---------------------------------------------------------------------
-!    verify that Lw_control%do_ch4_n2o has been initialized.
+!    verify that Lw_control%do_ch4 has been initialized.
 !--------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o_iz) then
+      if (Lw_control%do_ch4_iz) then
       else
         call error_mesg ( 'optical_path_mod',  &
-                      ' do_ch4_n2o not yet initialized', FATAL)
+                      ' do_ch4 not yet initialized', FATAL)
+      endif
+
+!---------------------------------------------------------------------
+!    verify that Lw_control%do_n2o has been initialized.
+!--------------------------------------------------------------------
+      if (Lw_control%do_n2o_iz) then
+      else
+        call error_mesg ( 'optical_path_mod',  &
+                      ' do_n2o not yet initialized', FATAL)
       endif
 
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE > 0) then
         allocate ( csfah2o(2, NBTRGE) )
         if (trim(Lw_control%linecatalog_form) == 'hitran_1992') then
           inrad = open_namelist_file('INPUT/h2o12001400_hi92_data')
@@ -708,7 +727,7 @@ type(optical_path_type),       intent(inout) :: Optical
       allocate (Optical%tfac     (ISRAD:IERAD, JSRAD:JERAD, KS:KE  ) )
       allocate (Optical%avephi   (ISRAD:IERAD, JSRAD:JERAD, KS:KE+1) )
 
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE > 0) then
         allocate (Optical%avephif(ISRAD:IERAD, JSRAD:JERAD,    &
                                   KS:KE+1, NBTRGE) )
       endif
@@ -722,7 +741,7 @@ type(optical_path_type),       intent(inout) :: Optical
       Optical%tfac    = 0.                                       
       Optical%avephi   = 0.
 
-      if (Lw_control%do_ch4_n2o) then
+      if (NBTRGE > 0) then
         Optical%avephif   = 0.
       endif
  
@@ -950,11 +969,17 @@ type(gas_tf_type),       intent(inout) ::  Gas_tf
 !    compute transmission functions in 990-1070 cm-1 range, including
 !    ozone and h2o continuum, from level KS to all other levels. 
 !------------------------------------------------------------------
-      tmp1  (:,:,KS:KE) = bo3rnd(2)*Optical%tphio3(:,:,KS+1:KE+1)/  &
-                          Optical%toto3(:,:,KS+1:KE+1)
-      tmp2(:,:,KS:KE) = 0.5*(tmp1(:,:,KS:KE)*(SQRT(1.0E+00 + (4.0E+00*&
-                        ao3rnd(2)*Optical%toto3(:,:,KS+1:KE+1))/  &
-      tmp1(:,:,KS:KE))  - 1.0E+00))
+      if (Lw_control%do_o3) then
+        tmp1  (:,:,KS:KE) = bo3rnd(2)*Optical%tphio3(:,:,KS+1:KE+1)/  &
+                            Optical%toto3(:,:,KS+1:KE+1)
+        tmp2(:,:,KS:KE) = 0.5*(tmp1(:,:,KS:KE)*(SQRT(1.0E+00 +   &
+                              (4.0E+00*ao3rnd(2)*  &
+                               Optical%toto3(:,:,KS+1:KE+1))/  &
+                               tmp1(:,:,KS:KE))  - 1.0E+00))
+      else
+        tmp2(:,:,KS:KE)  = 0.0E+00
+      endif
+
       if (trim(Lw_control%continuum_form) == 'ckd2.1' .or.     &
           trim(Lw_control%continuum_form) == 'ckd2.4' ) then
         call get_totch2obd(6, Optical, totch2o_tmp)
@@ -988,7 +1013,11 @@ type(gas_tf_type),       intent(inout) ::  Gas_tf
 !    add contributions from h2o(lines) and h2o(continuum).
 !    h2o(continuum) contributions are either Roberts or CKD2.1
 !---------------------------------------------------------------------
-      tmp1(:,:,KS:KE) = SQRT(ab15wd*Optical%totphi(:,:,KS+1:KE+1)) 
+      if (Lw_control%do_h2o) then
+        tmp1(:,:,KS:KE) = SQRT(ab15wd*Optical%totphi(:,:,KS+1:KE+1)) 
+      else
+        tmp1(:,:,:) = 0.0
+      endif
       if (trim(Lw_control%continuum_form) == 'ckd2.1' .or.     &
           trim(Lw_control%continuum_form) == 'ckd2.4' ) then
         tmp1(:,:,KS:KE) = tmp1(:,:,KS:KE) + diffac*   &
@@ -1020,7 +1049,7 @@ type(gas_tf_type),       intent(inout) ::  Gas_tf
 !    the expression with tn2o17 retains the 560-630 cm-1 equi-
 !    valent widths in evaluating 560-800 cm-1 transmissivities.
 !---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (Lw_control%do_n2o) then
         tn2o17(:,:,ks+1:ke+1) = Gas_tf%tn2o17(:,:,ks+1:ke+1)
         if (NBCO215 .EQ. 2) then
           overod(:,:,KS+1:KE+1) = overod(:,:,KS+1:KE+1) *    &
@@ -1117,15 +1146,26 @@ type(gas_tf_type),       intent(inout) ::  Gas_tf
 !    erature dependent intensity, similar evaluation for (mbar*phibar)
 !    is performed, with a special value for the lowest layer
 !----------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
-        do m=1,NBTRGE
-          Optical%avephif(:,:,KS:KE,m) =     &
+      if (NBTRGE > 0) then
+        if (tmp_dpndnt_h2o_lines) then
+          do m=1,NBTRGE
+            Optical%avephif(:,:,KS:KE,m) =     &
                                        Optical%tphfh2o(:,:,KS+1:KE+1,m)
-        end do
-        do m=1,NBTRGE
-          Optical%avephif(:,:,KE+1,m) = Optical%avephif(:,:,KE-1,m) +  &
+          end do
+          do m=1,NBTRGE
+            Optical%avephif(:,:,KE+1,m) =   &
+                                        Optical%avephif(:,:,KE-1,m) +  &
                                         Optical%emx1f(:,:,m)
-        end do
+          end do
+        else 
+          do m=1,NBTRGE
+            Optical%avephif(:,:,KS:KE,m) =     &
+                                       Optical%avephi(:,:,KS:KE)
+          end do
+          do m=1,NBTRGE
+            Optical%avephif(:,:,KE+1,m) = Optical%avephi(:,:,KE+1)
+          end do
+        endif
       endif
 
 !----------------------------------------------------------------------
@@ -1258,8 +1298,10 @@ type(gas_tf_type),       intent(inout)  :: Gas_tf
       do kp=1,KE+1-k
         avmo3 (:,:,kp+k-1) = Optical%toto3 (:,:,kp+k) -    &
                              Optical%toto3 (:,:,k)
+        avmo3 (:,:,kp+k-1) = max(avmo3 (:,:,kp+k-1),1.0e-10)
         avpho3(:,:,kp+k-1) = Optical%tphio3(:,:,kp+k) -    &
                              Optical%tphio3(:,:,k) 
+        avpho3 (:,:,kp+k-1) = max(avpho3 (:,:,kp+k-1),1.0e-12)
         if (trim(Lw_control%continuum_form) == 'ckd2.1' .or.     &
             trim(Lw_control%continuum_form) == 'ckd2.4' ) then
           avckdwd(:,:,kp+k-1) = Optical%totch2obdwd(:,:,kp+k) -   &
@@ -1291,16 +1333,26 @@ type(gas_tf_type),       intent(inout)  :: Gas_tf
 !    erature dependent intensity, similar evaluation for (mbar*phibar)
 !    is performed, with a special value for the lowest layer
 !---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
-        do m=1,NBTRGE
-          do kp=1,KE+1-k
-            Optical%avephif(:,:,kp+k-1,m) =   &
+      if (NBTRGE > 0) then
+        if (tmp_dpndnt_h2o_lines) then
+          do m=1,NBTRGE
+            do kp=1,KE+1-k
+              Optical%avephif(:,:,kp+k-1,m) =   &
                                      Optical%tphfh2o(:,:,kp+k,m) -  &
                                      Optical%tphfh2o(:,:,k,   m)
-          end do
-          Optical%avephif(:,:,KE+1,m) = Optical%avephif(:,:,KE-1,m) + &
+            end do
+            Optical%avephif(:,:,KE+1,m) =   &
+                                         Optical%avephif(:,:,KE-1,m) + &
                                          Optical%emx1f(:,:,m)
-        end do
+          end do
+        else
+          do m=1,NBTRGE
+            do kp=1,KE+1-k
+              Optical%avephif(:,:,kp+k-1,m) = Optical%avephi(:,:,kp+k-1)
+            end do
+            Optical%avephif(:,:,KE+1,m) = Optical%avephi(:,:,KE+1) 
+          end do
+        endif
       endif
 
 !----------------------------------------------------------------------
@@ -1310,7 +1362,12 @@ type(gas_tf_type),       intent(inout)  :: Gas_tf
 !    add contributions from h2o(lines) and h2o(continuum).
 !    h2o(continuum) contributions are either Roberts or CKD2.1
 !----------------------------------------------------------------------
-      tmp1     (:,:,k:KE) = SQRT(ab15wd*Optical%avephi(:,:,k:KE)) 
+      if (Lw_control%do_h2o) then 
+        tmp1(:,:,k:KE) = SQRT(ab15wd*Optical%avephi(:,:,k:KE)) 
+      else
+        tmp1(:,:,k:KE) = 0.0
+      endif
+
       if (trim(Lw_control%continuum_form) == 'ckd2.1' .or.     &
           trim(Lw_control%continuum_form) == 'ckd2.4' ) then
         tmp1(:,:,k:KE) = tmp1(:,:,k:KE) + diffac*   &
@@ -1343,7 +1400,7 @@ type(gas_tf_type),       intent(inout)  :: Gas_tf
 !    the expression with tn2o17 retains the 560-630 cm-1 equi-
 !    valent widths in evaluating 560-800 cm-1 transmissivities.
 !---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (Lw_control%do_n2o) then
         tn2o17(:,:,k+1:ke+1) = Gas_tf%tn2o17(:,:,k+1:ke+1)
         if (NBCO215 .EQ. 2) then
           overod(:,:,k+1:KE+1) = overod(:,:,k+1:KE+1) *(130./240. +  &
@@ -1367,10 +1424,15 @@ type(gas_tf_type),       intent(inout)  :: Gas_tf
 !    compute transmission functions in 990-1070 cm-1 range, including
 !    ozone and h2o continuum, from level k to all other levels. 
 !---------------------------------------------------------------------
-      tmp1  (:,:,k:KE) = bo3rnd(2)*avpho3(:,:,k:KE)/avmo3(:,:,k:KE)
-      tmp2(:,:,k:KE) = 0.5*(tmp1(:,:,k:KE)*(SQRT(1.0E+00 + (4.0E+00* &
-                       ao3rnd(2)*avmo3(:,:,k:KE))/tmp1(:,:,k:KE))  &
-                       - 1.0E+00))
+      if (Lw_control%do_o3) then
+        tmp1  (:,:,k:KE) = bo3rnd(2)*avpho3(:,:,k:KE)/avmo3(:,:,k:KE)
+        tmp2(:,:,k:KE) = 0.5*(tmp1(:,:,k:KE)*(SQRT(1.0E+00 + (4.0E+00* &
+                           ao3rnd(2)*avmo3(:,:,k:KE))/tmp1(:,:,k:KE))  &
+                           - 1.0E+00))
+      else
+        tmp2(:,:,k:KE) = 0.0
+      endif
+
       if (trim(Lw_control%continuum_form) == 'ckd2.1' .or.     &
           trim(Lw_control%continuum_form) == 'ckd2.4' ) then
         tmp2(:,:,k:KE) = tmp2(:,:,k:KE) + diffac*   &
@@ -1489,7 +1551,11 @@ type(gas_tf_type),       intent(inout) :: Gas_tf
 !    h2o(continuum). h2o(continuum) contributions are either Roberts 
 !    or CKD2.1 or CKD2.4.
 !----------------------------------------------------------------------
-      tmp1     (:,:,KE) = SQRT(ab15wd*Optical%var2  (:,:,KE)) 
+      if (Lw_control%do_h2o) then
+        tmp1     (:,:,KE) = SQRT(ab15wd*Optical%var2  (:,:,KE)) 
+      else
+        tmp1     (:,:,KE) = 0.0
+      endif
       if (trim(Lw_control%continuum_form) == 'ckd2.1' .or.     &
           trim(Lw_control%continuum_form) == 'ckd2.4' ) then
         tmp1(:,:,KE) = tmp1(:,:,KE) + diffac*   &
@@ -1519,7 +1585,7 @@ type(gas_tf_type),       intent(inout) :: Gas_tf
 !    the expression with tn2o17 retains the 560-630 cm-1 equi-
 !    valent widths in evaluating 560-800 cm-1 transmissivities.
 !---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
+      if (Lw_control%do_n2o) then
         tn2o17(:,:,ke+1    ) = Gas_tf%tn2o17(:,:,ke+1)
         if (NBCO215 .EQ. 2) then
           overod(:,:,KE+1) = overod(:,:,KE+1) *  &
@@ -1543,11 +1609,15 @@ type(gas_tf_type),       intent(inout) :: Gas_tf
 !    compute transmission functions in 990-1070 cm-1 range, including
 !    ozone and h2o continuum, from level KS to all other levels. 
 !---------------------------------------------------------------------
-      tmp1  (:,:,KE) = bo3rnd(2)*Optical%var4(:,:,KE)/  &
-                       Optical%var3(:,:,KE)
-      tmp2(:,:,KE) = 0.5*(tmp1(:,:,KE)*(SQRT(1.0E+00 + (4.0E+00*  &
-                     ao3rnd(2)*Optical%var3 (:,:,KE))/  &
-                     tmp1(:,:,KE)) - 1.0E+00))
+      if (Lw_control%do_o3) then
+        tmp1  (:,:,KE) = bo3rnd(2)*Optical%var4(:,:,KE)/  &
+                         Optical%var3(:,:,KE)
+        tmp2(:,:,KE) = 0.5*(tmp1(:,:,KE)*(SQRT(1.0E+00 + (4.0E+00*  &
+                       ao3rnd(2)*Optical%var3 (:,:,KE))/  &
+                       tmp1(:,:,KE)) - 1.0E+00))
+      else
+        tmp2(:,:,KE) = 0.0
+      endif
 
       if (trim(Lw_control%continuum_form) == 'ckd2.1' .or.     &
           trim(Lw_control%continuum_form) == 'ckd2.4' ) then
@@ -2140,8 +2210,9 @@ type(optical_path_type), intent(inout) :: Optical
        deallocate (Optical%totphi         )
        deallocate (Optical%emx1           )
        deallocate (Optical%emx2           )
+
  
-       if (Lw_control%do_ch4_n2o) then
+       if (NBTRGE > 0) then
          deallocate (Optical%avephif        )
          deallocate (Optical%emx1f          )
          deallocate (Optical%emx2f          )
@@ -3086,12 +3157,12 @@ type(optical_path_type), intent(inout) ::  Optical
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
-      if (Lw_control%do_ch4_n2o) then
-        allocate ( Optical%empl1f (ISRAD:IERAD , JSRAD:JERAD ,    &
-                                                  KS:KE+1,  NBTRGE ) )
-        allocate ( Optical%empl2f (ISRAD:IERAD , JSRAD:JERAD ,     &
-                                                  KS:KE+1,  NBTRGE ) )
-        allocate ( Optical%tphfh2o(ISRAD:IERAD , JSRAD:JERAD ,     &
+      if (NBTRGE > 0) then
+        allocate ( Optical%empl1f (ISRAD:IERAD , JSRAD:JERAD ,    & 
+                                                  KS:KE+1,  NBTRGE ) ) 
+        allocate ( Optical%empl2f (ISRAD:IERAD , JSRAD:JERAD ,     &  
+                                                  KS:KE+1,  NBTRGE ) ) 
+        allocate ( Optical%tphfh2o(ISRAD:IERAD , JSRAD:JERAD ,     & 
                                                   KS:KE+1,  NBTRGE ) ) 
         allocate ( Optical%vrpfh2o(ISRAD:IERAD , JSRAD:JERAD ,    &
                                                   KS:KE+1,  NBTRGE ) )
@@ -3106,64 +3177,78 @@ type(optical_path_type), intent(inout) ::  Optical
         Optical%emx1f   = 0.
         Optical%emx2f  = 0.                               
 
+        if (tmp_dpndnt_h2o_lines) then
 !----------------------------------------------------------------------
 !    compute h2o optical paths for use in the 1200-1400 cm-1 range if
 !    temperature dependence of line intensities is accounted for.
 !----------------------------------------------------------------------
-        tdif(:,:,KS:KE) = temp(:,:,KS:KE)-2.5E+02
+          tdif(:,:,KS:KE) = temp(:,:,KS:KE)-2.5E+02
 
-        do m=1,NBTRGE
-          Optical%vrpfh2o(:,:,KS:KE,m) = Optical%var2(:,:,KS:KE) *    &
-                                         EXP(csfah2o(1,m)*   &
-                                             (tdif(:,:,KS:KE)) +   &
-                                             csfah2o(2,m)*   &
-                                             (tdif(:,:,KS:KE))**2 )
-        end do
-        do m=1,NBTRGE
-          Optical%tphfh2o(:,:,KS,m) = 0.0E+00
-          do k=KS+1,KE+1
-            Optical%tphfh2o(:,:,k,m) = Optical%tphfh2o(:,:,k-1,m) +   &
-                                       Optical%vrpfh2o(:,:,k-1,m)
+          do m=1,NBTRGE
+            Optical%vrpfh2o(:,:,KS:KE,m) = Optical%var2(:,:,KS:KE)*   &
+                                           EXP(csfah2o(1,m)*   &
+                                               (tdif(:,:,KS:KE)) +   &
+                                               csfah2o(2,m)*   &
+                                               (tdif(:,:,KS:KE))**2 )
           end do
-        end do
+          do m=1,NBTRGE
+            Optical%tphfh2o(:,:,KS,m) = 0.0E+00
+            do k=KS+1,KE+1
+              Optical%tphfh2o(:,:,k,m) = Optical%tphfh2o(:,:,k-1,m) +  &
+                                         Optical%vrpfh2o(:,:,k-1,m)
+            end do
+          end do
 
-        tdif2(:,:,KS+1:KE+1) = tpl2(:,:,KS+1:KE+1)-2.5E+02
-        tdif (:,:,KS+1:KE+1) = tpl1(:,:,KS+1:KE+1)-2.5E+02
+          tdif2(:,:,KS+1:KE+1) = tpl2(:,:,KS+1:KE+1)-2.5E+02
+          tdif (:,:,KS+1:KE+1) = tpl1(:,:,KS+1:KE+1)-2.5E+02
 
 !---------------------------------------------------------------------
 !    compute this additional mass, for use in the 1200-1400 cm-1 range,
 !    if temperature dependence of line intensities is accounted for.
 !--------------------------------------------------------------------
-        do m=1,NBTRGE
-          Optical%emx1f(:,:,m) = Optical%emx1(:,:) *    &
-                                 EXP(csfah2o(1,m)*(tdif2(:,:,KE+1)) + &
+          do m=1,NBTRGE
+            Optical%emx1f(:,:,m) = Optical%emx1(:,:) *    &
+                                   EXP(csfah2o(1,m)*(tdif2(:,:,KE+1)) +&
                                      csfah2o(2,m)*(tdif2(:,:,KE+1))**2 )
-          Optical%emx2f(:,:,m) = Optical%emx2(:,:) *    &
+            Optical%emx2f(:,:,m) = Optical%emx2(:,:) *    &
                                  EXP(csfah2o(1,m)*(tdif (:,:,KE+1)) + &
                                      csfah2o(2,m)*(tdif (:,:,KE+1))**2 )
-        end do
+          end do
 
 !----------------------------------------------------------------------
 !    compute this additional mass, for use in the 1200-1400 cm-1 range,
 !    if temperature dependence of line intensities is accounted for.
 !----------------------------------------------------------------------
-        do m=1,NBTRGE
-          Optical%empl1f(:,:,KS+1:KE+1,m) =     &
+          do m=1,NBTRGE
+            Optical%empl1f(:,:,KS+1:KE+1,m) =     &
                                         Optical%empl1(:,:,KS+1:KE+1)*&
                                         EXP(csfah2o(1,m)*   &
                                             (tdif(:,:,KS+1:KE+1)) + &
                                             csfah2o(2,m)*   &
                                             (tdif(:,:,KS+1:KE+1))**2 )
-          Optical%empl2f(:,:,KS+1:KE,m) = Optical%empl2(:,:,KS+1:KE)* &
+            Optical%empl2f(:,:,KS+1:KE,m) = Optical%empl2(:,:,KS+1:KE)*&
                                           EXP(csfah2o(1,m)*  &
                                               (tdif2(:,:,KS+1:KE)) +   &
                                               csfah2o(2,m)*  &
                                               (tdif2(:,:,KS+1:KE))**2 )
-          Optical%empl1f(:,:,KS ,m) = Optical%vrpfh2o(:,:,KE,m)
-          Optical%empl2f(:,:,KE+1,m) = Optical%empl2f(:,:,KE,m)
-        end do
+            Optical%empl1f(:,:,KS ,m) = Optical%vrpfh2o(:,:,KE,m)
+            Optical%empl2f(:,:,KE+1,m) = Optical%empl2f(:,:,KE,m)
+          end do
+        else
+          do m=1,NBTRGE
+            Optical%empl1f(:,:,ks+1:ke+1,m) =   &
+                                           Optical%empl1(:,:,ks+1:ke+1)
+            Optical%empl2f(:,:,ks+1:ke,m) = Optical%empl2(:,:,ks+1:ke)
+            Optical%emx1f(:,:,m)   = Optical%emx1(:,:)
+            Optical%emx2f(:,:,m)  = Optical%emx2(:,:)              
+            Optical%tphfh2o(:,:,:,m) = Optical%totphi (:,:,:)
+            Optical%vrpfh2o(:,:,KE,m) = Optical%var2(:,:,KE)
+            Optical%vrpfh2o(:,:,KS:ke,m) = Optical%var2(:,:,KS:Ke)
+            Optical%empl1f(:,:,KS,m) = Optical%vrpfh2o(:,:,KE,1)
+            Optical%empl2f(:,:,KE+1,m) = Optical%empl2f (:,:,KE,1)
+          end do
+        endif
       endif
-
 !---------------------------------------------------------------------
 
 
@@ -3454,6 +3539,14 @@ type(optical_path_type),       intent(inout) :: Optical
                  (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
                         Aerosol_props%aerextbandlw_cn(n,opt_index)
                 endif
+                if (n ==  5) then
+                  Aerosol_diags%extopdep(i,j,k,nsc,4) =  &
+                      aerooptdepspec(i,j,k,nsc)
+                endif
+                if (n ==  6) then
+                  Aerosol_diags%extopdep(i,j,k,nsc,5) =  &
+                        aerooptdepspec(i,j,k,nsc)
+                 endif
               endif
             end do
           end do
@@ -3486,6 +3579,14 @@ type(optical_path_type),       intent(inout) :: Optical
                      diffac*Aerosol%aerosol(i,j,k,nsc)*   &
                  (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
                         Aerosol_props%aerextbandlw_cn(n,opt_index)
+                endif
+                if (n ==  5) then
+                  Aerosol_diags%extopdep(i,j,k,nsc,4) =  &
+                       aerooptdepspec(i,j,k,nsc)
+                endif
+                if (n ==  6) then
+                  Aerosol_diags%extopdep(i,j,k,nsc,5) =  &
+                        aerooptdepspec(i,j,k,nsc)
                 endif
               end if
             end do

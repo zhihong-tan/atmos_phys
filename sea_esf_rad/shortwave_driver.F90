@@ -30,8 +30,9 @@ use fms_mod,              only:  open_namelist_file, fms_init, &
 !   shared radiation package modules:
  
 use rad_utilities_mod,    only:  rad_utilities_init, Rad_control,  &
-                                 Environment, cldrad_properties_type, &
+                                 cldrad_properties_type, &
                                  cld_specification_type, Sw_control, &
+                                 Cldrad_control, &
                                  radiative_gases_type,   &
                                  aerosol_diagnostics_type, &
                                  aerosol_type, aerosol_properties_type,&
@@ -60,8 +61,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module  -------------------------
 
-character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 11.0 2004/09/28 19:24:11 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 12.0 2005/04/14 15:48:25 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -213,11 +214,8 @@ real, dimension(:,:), intent(in) :: pref
 !---------------------------------------------------------------------
       if (trim(swform) == 'lhsw') then
         Sw_control%do_lhsw  = .true.
-        if (Environment%running_sa_model) then
-          call error_mesg ( 'shortwave_driver_mod', &
-            'must use esfsw parameterization with sa_gcm',  FATAL)
-        endif
         call lhsw_driver_init (pref)
+        Cldrad_control%do_ica_calcs_iz = .true.
       else if (trim(swform) == 'esfsw99') then
         Sw_control%do_esfsw = .true.
         call esfsw_parameters_init
@@ -755,6 +753,8 @@ type(sw_output_type), intent(inout)  ::  Sw_output
         allocate (Sw_output%dfswcf (ix, jx, kx+1) )
         allocate (Sw_output%ufswcf (ix, jx, kx+1) )
         allocate (Sw_output%hswcf  (ix, jx, kx  ) )
+        allocate (Sw_output%dfsw_dir_sfc_clr (ix, jx) )
+        allocate (Sw_output%dfsw_dif_sfc_clr (ix, jx) )
         allocate (Sw_output%swdn_special_clr    &
                                  (ix, jx, Rad_control%mx_spec_levs) )
         allocate (Sw_output%swup_special_clr   &
@@ -766,6 +766,8 @@ type(sw_output_type), intent(inout)  ::  Sw_output
         Sw_output%dfswcf(:,:,:) = 0.0
         Sw_output%ufswcf(:,:,:) = 0.0
         Sw_output%hswcf (:,:,:) = 0.0
+        Sw_output%dfsw_dir_sfc_clr = 0.0
+        Sw_output%dfsw_dif_sfc_clr  = 0.0
         Sw_output%swdn_special_clr  (:,:,:) = 0.0
         Sw_output%swup_special_clr  (:,:,:) = 0.0
         Sw_output%bdy_flx_clr (:,:,:) = 0.0

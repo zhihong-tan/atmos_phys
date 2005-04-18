@@ -52,8 +52,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: radiation_diag.F90,v 11.0 2004/09/28 19:23:33 fms Exp $'
-character(len=128)  :: tagname =  '$Name: khartoum $'
+character(len=128)  :: version =  '$Id: radiation_diag.F90,v 12.0 2005/04/14 15:47:41 fms Exp $'
+character(len=128)  :: tagname =  '$Name: lima $'
 
 
 !---------------------------------------------------------------------
@@ -143,6 +143,7 @@ logical     :: module_is_initialized = .false.
 
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
+
 
 
 
@@ -1117,8 +1118,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !    Cld_spec.
 !    %lwp        liquid water path                   [ kg / m**2 ]
 !    %iwp        ice water path                      [ kg / m**2 ]
-!    %reff_liq_micro effective cloud drop radius         [ microns ]
-!    %reff_ice_micro effective radius of ice crystals    [ microns ]
+!    %reff_liq_micro effective cloud drop size       [ microns ]
+!    %reff_ice_micro effective ice crystal size      [ microns ]
 !----------------------------------------------------------------------
             if (ncldsw /= 0) then
               if (Lw_control%do_lwcldemiss .or.    &
@@ -1129,8 +1130,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                     write (radiag_unit, 9520)   k,                &
                      1.0e03*Cld_spec%lwp      (iloc,jloc,k),   &
                      1.0e03*Cld_spec%iwp      (iloc,jloc,k),    &
-                     2.0*Cld_spec%reff_liq_micro(iloc,jloc,k),  &
-                     2.0*Cld_spec%reff_ice_micro(iloc,jloc,k)
+                     Cld_spec%reff_liq_micro(iloc,jloc,k),  &
+                     Cld_spec%reff_ice_micro(iloc,jloc,k)
                   endif
                 end do
               endif
@@ -1174,8 +1175,10 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
               write (radiag_unit,99020) 
             else if (Sw_control%do_annual) then
               write (radiag_unit,99025)
-            else
+            else if (Sw_control%do_daily_mean) then
               write (radiag_unit,99030)
+            else ! (if all 3 are false)
+              write (radiag_unit,99040)
             endif
 
 !----------------------------------------------------------------------
@@ -1400,7 +1403,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                 flx5cf(k) = Lw_diagnostics%fluxncf(iloc, jloc, k,5)
                 flx6cf(k) = Lw_diagnostics%fluxncf(iloc, jloc, k,6)
               endif
-              if (Lw_control%do_ch4_n2o) then
+              if (nbtrge > 0) then
                 do m=1,nbtrge
                   if (Rad_control%do_totcld_forcing) then
                     flx7cf(k,m) =     &
@@ -1434,7 +1437,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
               htem5(k) = (flx5(k+1) - flx5(k))*convert(k)
               htem6(k) = (flx6(k+1) - flx6(k))*convert(k)
             end do
-            if (Lw_control%do_ch4_n2o) then
+            if (nbtrge > 0) then
               do m=1,nbtrge
                 do k=ks,ke
                   htem7(k,m) = (flx7(k+1,m) - flx7(k,m))* convert(k)
@@ -1459,7 +1462,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
               htem(k) = htem1(k) + htem2(k) + htem3(k) + htem4(k) +   &
                         htem5(k) + htem6(k)
             end do
-            if (Lw_control%do_ch4_n2o) then
+            if (nbtrge > 0) then
               do k=ks,ke
                 htem(k) = htem(k) + htem7t(k)
               enddo
@@ -1468,7 +1471,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !----------------------------------------------------------------------
 !    write approximate emissivity heating rates.
 !----------------------------------------------------------------------
-            if (.not. Lw_control%do_ch4_n2o) then
+            if (nbtrge == 0) then
               write (radiag_unit,9200)
               write (radiag_unit,9210) (k, press(k), htem1(k),   &
                                         htem2(k), htem3(k), htem4(k), &
@@ -1579,7 +1582,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
               flxem(k) = flx1(k) + flx2(k) + flx3(k) + flx4(k) +  &
                          flx5(k) + flx6(k)
             end do
-            if (Lw_control%do_ch4_n2o) then
+            if (nbtrge > 0) then
               flxemch4n2o(:) = 0.0E+00
               do m=1,nbtrge
                 do k=ks,ke+1 
@@ -1640,7 +1643,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                                     Lw_diagnostics%flx1e1(iloc,jloc)),&
                                 Lw_output%flxnet(iloc,jloc,ke+1), &
                                 fdiff
-            if (Lw_control%do_ch4_n2o) then
+            if (nbtrge > 0) then
               do m=1,nbtrge
                 write (radiag_unit,9271) m,    &
                                    Lw_diagnostics%flx1e1f(iloc,jloc,m)
@@ -1690,7 +1693,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !    write out emissivity fluxes.
 !----------------------------------------------------------------------
             write (radiag_unit,9310)
-            if (.not. Lw_control%do_ch4_n2o) then
+            if (nbtrge == 0) then
               write (radiag_unit,9320) 
               write (radiag_unit,9330) (k, flx1(k),flx2(k), flx3(k),  &
                                        flx4(k), flx5(k), flx6(k), &
@@ -1756,6 +1759,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                 '   upward diffuse = ', F12.6)
 99030  format (' SHORTWAVE CALCULATIONS BASED ON &
                &DIURNALLY AVERAGED ZENITH ANGLES')
+99040  format (' SHORTWAVE CALCULATIONS BASED ON &
+               &SPECIFIED ASTRONOMICAL INPUTS')
 9009   format (///, ' ************ LONGWAVE CLOUD DATA ***************')
 9010   format (/,' NO. MAX OVERLAP CLOUDS= ',I2,    &
                   ' NO. RANDOM OVERLAP CLOUDS= ',I2)

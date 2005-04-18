@@ -87,8 +87,8 @@ private
    integer :: nsphum, nql, nqi, nqa   ! tracer indices for stratiform clouds
 
 !--------------------- version number ----------------------------------
-   character(len=128) :: version = '$Id: moist_processes.F90,v 11.0 2004/09/28 19:19:53 fms Exp $'
-   character(len=128) :: tagname = '$Name: khartoum $'
+   character(len=128) :: version = '$Id: moist_processes.F90,v 12.0 2005/04/14 15:42:59 fms Exp $'
+   character(len=128) :: tagname = '$Name: lima $'
    logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
@@ -821,20 +821,20 @@ end if
 
       !------- diagnostics for tracers from convection -------
 !  allow any tracer to be activated here (allows control cases)
-      do n=1,num_tracers
-        if ( id_conv_tracer(n) > 0 ) then
-          used = send_data ( id_conv_tracer(n), tracer(:,:,:,n), Time, is, js, 1, &
-                            rmask=mask )
-         endif
+!     do n=1,num_tracers
+!       if ( id_conv_tracer(n) > 0 ) then
+!         used = send_data ( id_conv_tracer(n), tracer(:,:,:,n), Time, is, js, 1, &
+!                           rmask=mask )
+!        endif
 !------- diagnostics for tracers column integral tendency ------
-         if ( id_conv_tracer_col(n) > 0 ) then
-           tempdiag(:,:)=0.
-           do k=1,kx
-             tempdiag(:,:) = tempdiag(:,:) + tracer   (:,:,k,n)*pmass(:,:,k)
-           end do
-           used = send_data ( id_conv_tracer_col(n), tempdiag, Time, is, js )
-        end if
-      enddo
+!        if ( id_conv_tracer_col(n) > 0 ) then
+!          tempdiag(:,:)=0.
+!          do k=1,kx
+!            tempdiag(:,:) = tempdiag(:,:) + tracer   (:,:,k,n)*pmass(:,:,k)
+!          end do
+!          used = send_data ( id_conv_tracer_col(n), tempdiag, Time, is, js )
+!       end if
+!     enddo
 
       !------- diagnostics for tracers from convection -------
       do n = 1, num_donner_tracers
@@ -896,8 +896,26 @@ end if
     endif
 
 endif  ! do_donner_deep
-
 !    print *, 'end do_donner_deep loop  ', mpp_pe()
+
+
+      !------- diagnostics for tracers from convection -------
+!  allow any tracer to be activated here (allows control cases)
+      do n=1,num_tracers
+        if ( id_conv_tracer(n) > 0 ) then
+          used = send_data ( id_conv_tracer(n), tracer(:,:,:,n), Time, is, js, 1, &
+                            rmask=mask )
+         endif
+!------- diagnostics for tracers column integral tendency ------
+         if ( id_conv_tracer_col(n) > 0 ) then
+           tempdiag(:,:)=0.
+           do k=1,kx
+             tempdiag(:,:) = tempdiag(:,:) + tracer   (:,:,k,n)*pmass(:,:,k)
+           end do
+           used = send_data ( id_conv_tracer_col(n), tempdiag, Time, is, js )
+        end if
+      enddo
+
 !-----------------------------------------------------------------------
 !***********************************************************************
 !----------------- moist convective adjustment -------------------------

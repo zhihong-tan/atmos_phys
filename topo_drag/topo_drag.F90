@@ -22,7 +22,7 @@ module topo_drag_mod
   logical :: do_restart_write = .true.
 
   character(len=128) :: version = '$Id: topo_drag.F90,v 11.0 2004/09/28 19:25:02 fms Exp $'
-  character(len=128) :: tagname = '$Name: khartoum $'
+  character(len=128) :: tagname = '$Name: lima $'
   logical            :: module_is_initialized = .false.
 
 ! horizontal array size
