@@ -19,8 +19,8 @@
 
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  character(len=128) :: version = '$Id: stable_bl_turb.F90,v 10.0 2003/10/24 22:00:50 fms Exp $'
-  character(len=128) :: tagname = '$Name: lima $'
+  character(len=128) :: version = '$Id: stable_bl_turb.F90,v 13.0 2006/03/28 21:14:11 fms Exp $'
+  character(len=128) :: tagname = '$Name: memphis $'
   logical            :: module_is_initialized = .false.
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -196,7 +196,7 @@ real :: missing_value = -999.
 
   real, dimension(SIZE(um,1),SIZE(um,2),SIZE(um,3)-1) ::             &
         dsdzh, shear, buoync, Ri, Ritmp, fm, fh, lm, lh, xxm1, xxm2, &
-        phi, zfunc, zfunc2, cmtmp, chtmp, fmtmp, fhtmp
+        phi, zfunc, cmtmp, chtmp, fmtmp, fhtmp
 
   real, dimension(SIZE(um,1),SIZE(um,2),SIZE(um,3))  :: mask, hleff
   real, dimension(SIZE(um,1),SIZE(um,2),SIZE(um,3))  :: zfull_ag, slv

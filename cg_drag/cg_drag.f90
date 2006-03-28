@@ -32,8 +32,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.f90,v 12.0 2005/04/14 15:38:42 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: cg_drag.f90,v 13.0 2006/03/28 21:07:22 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 
@@ -288,7 +288,7 @@ type(time_type),       intent(in)      :: Time
       call time_manager_init
       call diag_manager_init
       call constants_init
-      call column_diagnostics_init (lonb, latb) 
+      call column_diagnostics_init 
 
 !---------------------------------------------------------------------
 !    read namelist.
@@ -366,8 +366,8 @@ type(time_type),       intent(in)      :: Time
         call initialize_diagnostic_columns    &
                      (mod_name, num_diag_pts_latlon, num_diag_pts_ij, &
                       i_coords_gl, j_coords_gl, lat_coords_gl,   &
-                      lon_coords_gl, do_column_diagnostics, diag_lon, &
-                      diag_lat, diag_i, diag_j, diag_units)
+                      lon_coords_gl, lonb, latb, do_column_diagnostics, &
+                      diag_lon, diag_lat, diag_i, diag_j, diag_units)
       endif
 
 !---------------------------------------------------------------------
@@ -872,7 +872,7 @@ subroutine read_restart_file
       character(len=8)        :: chvers
       integer                 :: vers
       integer, dimension(5)   :: null
-      integer                 :: old_time_step, new_cg_time
+      integer                 :: old_time_step
       real                    :: secs_per_day = 86400.
 
 !-------------------------------------------------------------------
@@ -883,7 +883,6 @@ subroutine read_restart_file
 !       vers           restart version 
 !       null           array to hold restart version 1 control variables
 !       old_time_step  cg_drag timestep used in previous model run [ s ]
-!       new_cg_time    time remaining before next call to cg_drag [ s ]
 !       secs_per_day   seconds in a day [ s ]
 !
 !---------------------------------------------------------------------

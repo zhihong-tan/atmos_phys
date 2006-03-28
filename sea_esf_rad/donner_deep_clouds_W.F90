@@ -18,7 +18,6 @@
 !
 
 use time_manager_mod,       only: time_type
-use donner_deep_mod,        only: donner_deep_avg, donner_deep_init
 use       fms_mod,          only: open_namelist_file, file_exist,   &
                                   check_nml_error, error_mesg,   &
                                   close_file, FATAL, NOTE, &
@@ -46,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 12.0 2005/04/14 15:45:00 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: lima $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 13.0 2006/03/28 21:11:38 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 
@@ -55,7 +54,7 @@ private
 !-------  interfaces --------
 
 public          &
-          donner_deep_clouds_W_init, donner_deep_clouds_calc,  &
+          donner_deep_clouds_W_init,   &
           donner_deep_clouds_W_end , donner_deep_clouds_amt
 
 !---------------------------------------------------------------------
@@ -127,7 +126,6 @@ integer, dimension(4), intent(in)      :: axes
 type(time_type),       intent(in)      :: Time
 
       integer            :: unit, ierr, io
-      integer            :: ix, jx, kx
 
      if (module_is_initialized) return
 !---------------------------------------------------------------------
@@ -147,12 +145,7 @@ type(time_type),       intent(in)      :: Time
          write (stdlog(),nml=donner_deep_clouds_W_nml)
       endif
 
-       ix = size(lonb,1)-1
-       jx = size(latb,1)-1
-       kx = size(pref,1) - 1
-
 !---------------------------------------------------------------------
-       call donner_deep_init(lonb, latb, pref(:,1), axes, Time)
 
        module_is_initialized = .true.
 
@@ -190,86 +183,6 @@ end subroutine donner_deep_clouds_W_end
 
 !#################################################################
 
-! <SUBROUTINE NAME="donner_deep_clouds_amt2">
-!  <OVERVIEW>
-!   
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call donner_deep_clouds_amt2  (             &
-!		is, ie, js, je,    &
-!		cld_cell,        &
-!		Cell_microphys,  &
-!		cld_meso,        &
-!		Meso_microphys  )
-!		
-!  </TEMPLATE>
-!  <IN NAME="is" TYPE="integer">
-! 
-!  </IN>
-!  <IN NAME="ie" TYPE="integer">
-! 
-!  </IN>
-!  <IN NAME="js" TYPE="integer">
-! 
-!  </IN>
-!  <IN NAME="je" TYPE="integer">
-! 
-!  </IN>
-!  <OUT NAME="cld_cell" TYPE="real">
-! 
-!  </OUT>
-!  <INOUT NAME="Cell_microphys" TYPE="microphysics_type">
-! 
-!  </INOUT>
-!  <OUT NAME="cld_meso" TYPE="real">
-! 
-!  </OUT>
-!  <INOUT NAME="Meso_microphys" TYPE="microphysics_type">
-! 
-!  </INOUT>
-! </SUBROUTINE>
-!
-subroutine donner_deep_clouds_amt2  (             &
-                       is, ie, js, je,    &
-                                cld_cell,        &
-                          Cell_microphys,  &
-                       cld_meso,        &
-                        Meso_microphys  )
-
-
-integer, intent(in) :: is,ie,js,je
-type(microphysics_type), intent(inout) :: Cell_microphys, Meso_microphys
-real, dimension(:,:,:), intent(  out) :: cld_cell, cld_meso
-
-
-!-------------------------------------------------------------------
-!   local variables
-!-------------------------------------------------------------------
-
-
-
-!---------------------------------------------------------------------
-!     obtain the deep cloud areas and properties
-!---------------------------------------------------------------------
-
-
-      call donner_deep_avg(  is, ie, js, je,           &
-                             cell_cloud_frac_out  = cld_cell,        &
-                      cell_liquid_amt_out  = Cell_microphys%conc_drop, &
-                 cell_liquid_size_out = Cell_microphys%size_drop,&
-               cell_ice_amt_out     = Cell_microphys%conc_ice,    &
-              cell_ice_size_out    = Cell_microphys%size_ice,   &
-                             meso_cloud_frac_out  = cld_meso,        &
-               meso_liquid_amt_out  = Meso_microphys%conc_drop , &
-               meso_liquid_size_out = Meso_microphys%size_drop,&
-               meso_ice_amt_out     = Meso_microphys%conc_ice,   &
-            meso_ice_size_out    = Meso_microphys%size_ice    )
-
-
-end subroutine donner_deep_clouds_amt2 
 
 !---------------------------------------------------------------------
 
@@ -319,8 +232,12 @@ end subroutine donner_deep_clouds_amt2
 !  </INOUT>
 ! </SUBROUTINE>
 !
-subroutine donner_deep_clouds_amt (is, ie, js, je, Cell_microphys,  &
-                                   Meso_microphys)
+subroutine donner_deep_clouds_amt (is, ie, js, je,   &
+                   cell_cloud_frac, cell_liquid_amt, cell_liquid_size, &
+                   cell_ice_amt, cell_ice_size, &
+                   meso_cloud_frac, meso_liquid_amt, meso_liquid_size, &
+                   meso_ice_amt, meso_ice_size,  nsum_out, &
+                   Cell_microphys,  Meso_microphys)
 
 !---------------------------------------------------------------------
 !    donner_deep_clouds_amt defines the distribution of cloud water and
@@ -333,6 +250,12 @@ subroutine donner_deep_clouds_amt (is, ie, js, je, Cell_microphys,  &
 !----------------------------------------------------------------------
 
 integer,                 intent(in)    :: is,ie,js,je
+real, dimension(:,:,:), intent(inout) ::   &
+                   cell_cloud_frac, cell_liquid_amt, cell_liquid_size, &
+                   cell_ice_amt, cell_ice_size, &
+                   meso_cloud_frac, meso_liquid_amt, meso_liquid_size, &
+                   meso_ice_amt, meso_ice_size
+integer, dimension(:,:), intent(inout) ::  nsum_out
 type(microphysics_type), intent(inout) :: Cell_microphys, Meso_microphys
 
 !---------------------------------------------------------------------
@@ -342,16 +265,16 @@ type(microphysics_type), intent(inout) :: Cell_microphys, Meso_microphys
 !---------------------------------------------------------------------
       call donner_deep_avg (                           &
                       is, ie, js, je,           &
-                      cell_cloud_frac_out  = Cell_microphys%cldamt, &
-                      cell_liquid_amt_out  = Cell_microphys%conc_drop, &
-                      cell_liquid_size_out = Cell_microphys%size_drop,&
-                      cell_ice_amt_out     = Cell_microphys%conc_ice, &
-                      cell_ice_size_out    = Cell_microphys%size_ice, &
-                      meso_cloud_frac_out  = Meso_microphys%cldamt,   &
-                      meso_liquid_amt_out  = Meso_microphys%conc_drop, &
-                      meso_liquid_size_out = Meso_microphys%size_drop,&
-                      meso_ice_amt_out     = Meso_microphys%conc_ice, &
-                      meso_ice_size_out    = Meso_microphys%size_ice )
+                      cell_cloud_frac,  Cell_microphys%cldamt, &
+                      cell_liquid_amt, Cell_microphys%conc_drop, &
+                      cell_liquid_size, Cell_microphys%size_drop,&
+                      cell_ice_amt, Cell_microphys%conc_ice, &
+                      cell_ice_size, Cell_microphys%size_ice, &
+                      meso_cloud_frac, Meso_microphys%cldamt,   &
+                      meso_liquid_amt, Meso_microphys%conc_drop, &
+                      meso_liquid_size, Meso_microphys%size_drop,&
+                      meso_ice_amt, Meso_microphys%conc_ice, &
+                      meso_ice_size, Meso_microphys%size_ice, nsum_out)
 
 !---------------------------------------------------------------------
 
@@ -360,228 +283,231 @@ type(microphysics_type), intent(inout) :: Cell_microphys, Meso_microphys
 end subroutine donner_deep_clouds_amt  
 
 
-!#####################################################################
-
-
-! <SUBROUTINE NAME="donner_deep_clouds_calc">
-!  <OVERVIEW>
-!   
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call donner_deep_clouds_calc (             &
-!		is,ie,js,je,deltaz,press,temp,                 &
-!		cld_cell,               &
-!		cldext_cell, cldsct_cell, cldasymm_cell,  &
-!		abscoeff_cell,          &
-!		cld_meso,               &
-!		cldext_meso, cldsct_meso, cldasymm_meso,  &
-!		abscoeff_meso)
-!		
-!  </TEMPLATE>
-!  <IN NAME="is" TYPE="integer">
-! 
-!  </IN>
-!  <IN NAME="ie" TYPE="integer">
-! 
-!  </IN>
-!  <IN NAME="js" TYPE="integer">
-! 
-!  </IN>
-!  <IN NAME="je" TYPE="integer">
-! 
-!  </IN>
-!  <IN NAME="deltaz" TYPE="real">
-! 
-!  </IN>
-!  <IN NAME="press" TYPE="real">
-! 
-!  </IN>
-!  <IN NAME="temp" TYPE="real">
-! 
-!  </IN>
-!  <INOUT NAME="cld_cell" TYPE="real">
-! 
-!  </INOUT>
-!  <OUT NAME="cldext_cell" TYPE="real">
-! 
-!  </OUT>
-!  <OUT NAME="cldsct_cell" TYPE="real">
-! 
-!  </OUT>
-!  <OUT NAME="cldasymm_cell" TYPE="real">
-! 
-!  </OUT>
-!  <OUT NAME="abscoeff_cell" TYPE="real">
-! 
-!  </OUT>
-!  <INOUT NAME="cld_meso" TYPE="real">
-! 
-!  </INOUT>
-!  <OUT NAME="cldext_meso" TYPE="real">
-! 
-!  </OUT>
-!  <OUT NAME="cldsct_meso" TYPE="real">
-! 
-!  </OUT>
-!  <OUT NAME="cldasymm_meso" TYPE="real">
-! 
-!  </OUT>
-!  <OUT NAME="abscoeff_meso" TYPE="real">
-! 
-!  </OUT>
-! </SUBROUTINE>
-!
-subroutine donner_deep_clouds_calc (             &
-                  is,ie,js,je,deltaz,press,temp,                 &
-                                    cld_cell,               &
- cldext_cell, cldsct_cell, cldasymm_cell,  &
-    abscoeff_cell,          &
-                                    cld_meso,               &
- cldext_meso, cldsct_meso, cldasymm_meso,  &
-    abscoeff_meso)
-
-
-integer, intent(in) :: is,ie,js,je
-real, dimension(:,:,:), intent(in) :: deltaz, press, temp
-real, dimension(:,:,:), intent(inout) :: cld_cell, cld_meso
-real, dimension(:,:,:,:), intent(out) :: cldext_cell, cldsct_cell,  &
-                                         cldasymm_cell, abscoeff_cell
-real, dimension(:,:,:,:), intent(out) :: cldext_meso, cldsct_meso,  &
-                                         cldasymm_meso, abscoeff_meso
-
-
-!-------------------------------------------------------------------
-!   local variables
-!-------------------------------------------------------------------
-
-integer   :: idim, jdim, kdim
-real, dimension(size(cld_cell,1),size(cld_cell,2),size(cld_cell,3)) :: &
-      cell_liquid_amt, cell_ice_amt, cell_liquid_size, cell_ice_size,  &
-      meso_liquid_amt, meso_ice_amt, meso_liquid_size, meso_ice_size
-integer :: unit
-
-     idim = size(cld_cell,1)
-     jdim = size(cld_cell,2)
-     kdim = size(cld_cell,3)
-
-!--------------------------------------------------------------------
-
-
-!---------------------------------------------------------------------
-!     obtain the deep cloud areas and properties
-!---------------------------------------------------------------------
-
-
-      call donner_deep_avg(  is, ie, js, je,           &
-                             cell_cloud_frac_out  = cld_cell,        &
-                             cell_liquid_amt_out  = cell_liquid_amt, &
-                             cell_liquid_size_out = cell_liquid_size,&
-                             cell_ice_amt_out     = cell_ice_amt,    &
-                             cell_ice_size_out    = cell_ice_size,   &
-                             meso_cloud_frac_out  = cld_meso,        &
-                             meso_liquid_amt_out  = meso_liquid_amt, &
-                             meso_liquid_size_out = meso_liquid_size,&
-                             meso_ice_amt_out     = meso_ice_amt,    &
-                             meso_ice_size_out    = meso_ice_size    )
- 
-!      unit = open_file ('fort.149', action='append',threading='multi')
-!      call print_version_number (unit, 'microphys_rad', version_number)
-!        write (unit,*) ' donner_deep_clouds_w'
-! write (unit,*) idim,jdim,kdim
-! write (unit,*) ' jabs = ', jabs
-!        write (unit,*) ' cld_cell'
-! write (unit,*) cld_cell
-!        write (unit,*) ' cell_liquid_amt'
-! write (unit,*) cell_liquid_amt
-!        write (unit,*) ' cell_liquid_size'
-! write (unit,*) cell_liquid_size
-!        write (unit,*) ' cell_ice_amt'
-! write (unit,*) cell_ice_amt
-!        write (unit,*) ' cell_ice_size'
-! write (unit,*) cell_ice_size
-!      call close_file (unit)
-  
-!
-!--------------------------------------------------------------------
-!  if microphysics is being used for either sw or lw calculation, call
-!  microphys_rad_driver to obtain cloud radiative properties.
-!--------------------------------------------------------------------
-
-!         call microphys_rad_driver(                         &
-!                 is,ie,js,je,deltaz,press,temp,                  &
-!                   conc_drop_in=cell_liquid_amt,        &
-!   conc_ice_in=cell_ice_amt,            &
-!   size_drop_in=cell_liquid_size,       &
-!   size_ice_in=cell_ice_size,           &
-!   cldext=cldext_cell,               &
-!   cldsct=cldsct_cell,               &
-!   cldasymm=cldasymm_cell,           &
-!   abscoeff=abscoeff_cell,           &
-!   using_dge_sw=using_dge_sw,        &
-!   using_dge_lw=using_dge_lw)
-
-!         call microphys_rad_driver(                         &
-!                 is,ie,js,je,deltaz,press,temp,                  &
-!                   conc_drop_in=meso_liquid_amt,        &
-!   conc_ice_in=meso_ice_amt,            &
-!   size_drop_in=meso_liquid_size,       &
-!   size_ice_in=meso_ice_size,           &
-!   cldext=cldext_meso,               &
-!   cldsct=cldsct_meso,               &
-!   cldasymm=cldasymm_meso,           &
-!   abscoeff=abscoeff_meso,           &
-!   using_dge_sw=using_dge_sw,        &
-!   using_dge_lw=using_dge_lw)
-
-
-
- 
-
-!
-!--------------------------------------------------------------------
-!  if microphysics is being used for either sw or lw calculation, call
-!  microphys_rad_driver to obtain cloud radiative properties.
-!--------------------------------------------------------------------
-!         call microphys_rad_driver(                         &
-!                 is,ie,js,je,deltaz,press,temp,                  &
-!                   conc_drop_in=cell_liquid_amt,        &
-!   conc_ice_in=cell_ice_amt,            &
-!   size_drop_in=cell_liquid_size,       &
-!   size_ice_in=cell_ice_size,           &
-!   cldext=cldext_cell,               &
-!   cldsct=cldsct_cell,               &
-!   cldasymm=cldasymm_cell,           &
-!   abscoeff=abscoeff_cell,           &
-!   using_dge_sw=using_dge_sw,        &
-!   using_dge_lw=using_dge_lw)
-
-!         call microphys_rad_driver(                         &
-!                 is,ie,js,je,deltaz,press,temp,                  &
-!                   conc_drop_in=meso_liquid_amt,        &
-!   conc_ice_in=meso_ice_amt,            &
-!   size_drop_in=meso_liquid_size,       &
-!   size_ice_in=meso_ice_size,           &
-!   cldext=cldext_meso,               &
-!   cldsct=cldsct_meso,               &
-!   cldasymm=cldasymm_meso,           &
-!   abscoeff=abscoeff_meso,           &
-!   using_dge_sw=using_dge_sw,        &
-!   using_dge_lw=using_dge_lw)
-
-  
-
-
-
-
-
-end subroutine donner_deep_clouds_calc
-
 
 !####################################################################
 
+subroutine donner_deep_avg    &
+               (is, ie, js, je,           &
+                cell_cloud_frac,  cell_cloud_frac_out,   &
+                cell_liquid_amt, cell_liquid_amt_out,      &
+                cell_liquid_size, cell_liquid_size_out    ,&
+                cell_ice_amt, cell_ice_amt_out, &
+                cell_ice_size, cell_ice_size_out, &
+                meso_cloud_frac, meso_cloud_frac_out, &
+                meso_liquid_amt, meso_liquid_amt_out, &
+                meso_liquid_size, meso_liquid_size_out,&
+                meso_ice_amt, meso_ice_amt_out, &
+                meso_ice_size, meso_ice_size_out, nsum)
+
+!------------------------------------------------------------------
+!    subroutine donner_deep_avg outputs the cloud microphysical quant-
+!    ities associated with donner_deep convection for use by the rad-
+!    iation package. these fields are the cloud liquid and ice amounts,
+!    liquid and ice sizes, and fractional coverage, for both the con-
+!    vective cell and mesoscale components of the convective system.
+!--------------------------------------------------------------------
+
+integer,                   intent(in)  :: is, ie, js, je
+real,    dimension(:,:,:), intent(inout) :: cell_cloud_frac,        &
+                                          cell_liquid_amt,   &
+                                          cell_liquid_size,  &
+                                          cell_ice_amt, &
+                                          cell_ice_size,   &
+                                          meso_cloud_frac,   &
+                                          meso_liquid_amt, &
+                                          meso_liquid_size, &
+                                          meso_ice_amt,  &
+                                          meso_ice_size
+integer, dimension(:,:), intent(inout) :: nsum                        
+real,    dimension(:,:,:), intent(out) :: cell_cloud_frac_out,        &
+                                          cell_liquid_amt_out,   &
+                                          cell_liquid_size_out,  &
+                                          cell_ice_amt_out, &
+                                          cell_ice_size_out,   &
+                                          meso_cloud_frac_out,   &
+                                          meso_liquid_amt_out, &
+                                          meso_liquid_size_out, &
+                                          meso_ice_amt_out,  &
+                                          meso_ice_size_out
+
+!----------------------------------------------------------------------
+!  intent(in) variables:
+!
+!     is, ie         first and last values of i index values of points 
+!                    in this physics window (processor coordinates)
+!     js, je         first and last values of j index values of points 
+!                    in this physics window (processor coordinates)
+!
+!  intent(out) variables:
+!
+!     cell_cloud_frac_out  fractional coverage of convective cells in 
+!                          grid box [ dimensionless ]
+!     cell_liquid_amt_out  liquid water content of convective cells 
+!                          [ kg(h2o) / kg(air) ]
+!     cell_liquid_size_out assumed effective size of cell liquid drops
+!                          [ microns ]
+!     cell_ice_amt_out     ice water content of cells 
+!                          [ kg(h2o) / kg(air) ]
+!     cell_ice_size_out    generalized effective diameter for ice in
+!                          convective cells [ microns ]
+!     meso_cloud_frac_out  fractional area of mesoscale clouds in grid 
+!                          box [ dimensionless ]
+!     meso_liquid_amt_out  liquid water content in mesoscale clouds
+!                          [ kg(h2o) / kg(air) ]
+!     meso_liquid_size_out assumed effective size of mesoscale drops
+!                          [ microns ]
+!     meso_ice_amt_out     ice water content of mesoscale elements 
+!                          [ kg(h2o) / kg(air) ]
+!     meso_ice_size_out    generalized ice effective size for anvil ice
+!                          [ microns ]
+!
+!---------------------------------------------------------------------
+
+   
+!------------------------------------------------------------------
+!   local variables
+
+      real, dimension(size(cell_cloud_frac_out,1), &
+                      size(cell_cloud_frac_out,2))   :: inv_nsum
+      integer                                        :: num
+      integer                                        ::   k
+   
+!---------------------------------------------------------------------
+!   local variables:
+!
+!       inv_sum     inverse of number of elements in the time averaged
+!                   output fields
+!       num         number of grid columns which have not been given
+!                   values for the output variables by donner_deep_mod
+!       i,j,k       do-loop indices
+!
+!--------------------------------------------------------------------- 
+
+!---------------------------------------------------------------------
+!    check to make sure dimensions of arguments match the module
+!    variable dimensions.
+!---------------------------------------------------------------------
+      if (size(cell_cloud_frac_out,3) /= size(cell_cloud_frac,3)) &
+        call error_mesg (  'donner_rad_mod',  &
+                         'input argument has the wrong size',FATAL)
+
+!---------------------------------------------------------------------
+!    check to see that all columns have been given values for the module
+!    variables that are going to be averaged. 
+!----------------------------------------------------------------------
+      num = count(        nsum(:,:) == 0)
+
+!----------------------------------------------------------------------
+!    if all points have values of 0, then the scheme has not yet been
+!    called. use the initialized values that are present.
+!----------------------------------------------------------------------
+      if (num == (ie-is+1)*(je-js+1) ) then
+        cell_cloud_frac_out             = cell_cloud_frac
+        cell_liquid_amt_out             = cell_liquid_amt
+        cell_liquid_size_out            = cell_liquid_size
+        cell_ice_amt_out                = cell_ice_amt
+        cell_ice_size_out               = cell_ice_size
+        meso_cloud_frac_out             = meso_cloud_frac
+        meso_liquid_amt_out             = meso_liquid_amt
+        meso_liquid_size_out            = meso_liquid_size
+        meso_ice_amt_out                = meso_ice_amt
+        meso_ice_size_out               = meso_ice_size
+        
+!----------------------------------------------------------------------
+!    if any columns have not been given values, stop execution with an 
+!    error message. 
+!----------------------------------------------------------------------
+      else if (num > 0) then
+        call error_mesg ( 'donner_rad_mod', &
+                         'nsum has some zero entries', FATAL)
+
+!----------------------------------------------------------------------
+!    if all columns have valid data, produce time averaged values of
+!    the desired output fields.
+!----------------------------------------------------------------------
+      else
+        inv_nsum(:,:) = 1.0/float(nsum(  :  , :   ))
+        do k=1,size(cell_cloud_frac_out,3)
+          cell_cloud_frac_out(:,:,k) =   &
+                              cell_cloud_frac(:,:,        k)*inv_nsum
+          cell_liquid_amt_out(:,:,k) =   &
+                              cell_liquid_amt(:,:,        k)*inv_nsum
+          cell_liquid_size_out(:,:,k) =  &
+                              cell_liquid_size(:,:,k        )*inv_nsum
+          cell_ice_amt_out(:,:,k) =      &
+                              cell_ice_amt(:,:,k        )*inv_nsum
+          cell_ice_size_out(:,:,k) =     &
+                              cell_ice_size(:,:,k        )*inv_nsum
+          meso_cloud_frac_out(:,:,k) =   &
+                              meso_cloud_frac(:,:,        k)*inv_nsum
+          meso_liquid_amt_out(:,:,k) =   &
+                              meso_liquid_amt(:,:,        k)*inv_nsum
+          meso_liquid_size_out(:,:,k) =  &
+                              meso_liquid_size(:,:,        k)*inv_nsum
+          meso_ice_amt_out(:,:,k) =      &
+                              meso_ice_amt(:,:,        k)*inv_nsum
+          meso_ice_size_out(:,:,k) =     & 
+                              meso_ice_size(:,:,        k)*inv_nsum
+        end do
+     
+!---------------------------------------------------------------------
+!     prevent the occurrence of cloud area with no condensate and cond-
+!     ensate with no area, for both the convective cell clouds and the
+!     mesoscale cloud.
+!---------------------------------------------------------------------
+        where (cell_cloud_frac_out  > 0.0 .and.  &
+               cell_liquid_amt_out == 0.0 .and.  &
+               cell_ice_amt_out    == 0.0)
+          cell_cloud_frac_out  = 0.0
+        end where
+        where (cell_cloud_frac_out == 0.0 .and.   &
+               cell_liquid_amt_out  > 0.0)
+          cell_liquid_amt_out  = 0.0
+        end where
+        where (cell_cloud_frac_out == 0.0 .and.   &
+               cell_ice_amt_out     > 0.0)
+          cell_ice_amt_out     = 0.0
+        end where
+
+        where (meso_cloud_frac_out  > 0.0 .and.  &
+               meso_liquid_amt_out == 0.0 .and.  &
+               meso_ice_amt_out    == 0.0)
+          meso_cloud_frac_out  = 0.0
+        end where
+        where (meso_cloud_frac_out == 0.0 .and.   &
+               meso_liquid_amt_out  > 0.0)
+          meso_liquid_amt_out  = 0.0
+        end where
+        where (meso_cloud_frac_out == 0.0 .and.   &
+               meso_ice_amt_out     > 0.0)
+          meso_ice_amt_out     = 0.0
+        end where
+      endif
+ 
+!----------------------------------------------------------------------
+!    reset the variables just processed so that new sums may be begun 
+!    when donner_deep is called again.
+!----------------------------------------------------------------------
+      cell_cloud_frac                 = 0.0
+      cell_liquid_amt                 = 0.0
+      cell_liquid_size                = 0.0
+      cell_ice_amt                    = 0.0
+      cell_ice_size                   = 0.0
+      meso_cloud_frac                 = 0.0
+      meso_liquid_amt                 = 0.0
+      meso_liquid_size                = 0.0
+      meso_ice_amt                    = 0.0
+      meso_ice_size                   = 0.0
+      nsum                            = 0
+       
+!----------------------------------------------------------------------
+
+
+
+end subroutine donner_deep_avg
+
+
+!#####################################################################
 
        end module donner_deep_clouds_W_mod
 

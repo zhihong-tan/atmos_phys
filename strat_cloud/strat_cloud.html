@@ -74,8 +74,12 @@
    precipitation area formulism follows Jakob and Klein, 2000:
    Quart. J. Roy. Met. Soc. vol 126, pages 2525-2544. 
    <br>
-<br> 
-</div>
+<br>
+   The statistical cloud scheme treatment, which is used as
+   a replacement for the Tiedtke cloud fraction scheme, is based
+   on a number of publications: Tompkins, A., 2002: J. Atmos. 
+   Sci., 59, 1917-1942, Klein et al., 2005: J. Geophys. Res., 
+   110, D15S06, doi:10.1029/2004JD005017. </div>
 <br>
 <!-- END DESCRIPTION -->
 <a name="OTHER MODULES USED"></a>
@@ -83,7 +87,7 @@
 <h4>OTHER MODULES USED</h4>
 <!-- BEGIN OTHER MODULES USED -->
 <div>
-<pre> sat_vapor_pres_mod<br>            fms_mod<br>         fms_io_mod<br>      constants_mod<br>      cloud_rad_mod<br>   diag_manager_mod<br>   time_manager_mod<br>            edt_mod<br>cloud_generator_mod</pre>
+<pre> sat_vapor_pres_mod<br>            fms_mod<br>         fms_io_mod<br>      constants_mod<br>      cloud_rad_mod<br>   diag_manager_mod<br>   time_manager_mod<br>cloud_generator_mod<br>      beta_dist_mod<br>  rad_utilities_mod<br>    aer_ccn_act_mod</pre>
 </div>
 <!-- END OTHER MODULES USED -->
 <!-- BEGIN PUBLIC INTERFACE -->
@@ -101,7 +105,7 @@
 <dd> 
 </dd>
 <dt>
-<a href="#strat_driv">strat_driv</a>:</dt>
+<a href="#strat_cloud">strat_cloud</a>:</dt>
 <dd> 
 </dd>
 <dt>
@@ -204,10 +208,10 @@
 </dl>
 </li>
 <li>
-<a name="strat_driv"></a>
-<h4>strat_driv</h4>
+<a name="strat_cloud"></a>
+<h4>strat_cloud</h4>
 <pre>
-<b>call strat_driv </b>(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2, T,qv,ql,qi,qa,omega,Mc,diff_t,LAND, ST,SQ,SL,SI,SA,surfrain, surfsnow,qrat,ahuco,MASK)</pre>
+<b>call strat_cloud </b>(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2, T,qv,ql,qi,qa,omega,Mc,diff_t,LAND, ST,SQ,SL,SI,SA,surfrain, surfsnow,qrat,ahuco,MASK, qn, SN, Aerosol)</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
@@ -225,7 +229,7 @@
 <td valign="top" align="left"><tt>Time&nbsp;&nbsp;&nbsp;</tt></td><td>   Time <br>&nbsp;&nbsp;&nbsp;<span class="type">[time_type]</span></td>
 </tr>
 <tr>
-<td valign="top" align="left"><tt>is&nbsp;&nbsp;&nbsp;</tt></td><td>   Indice of starting point in the longitude direction of the slab being passed to strat_driv <br>&nbsp;&nbsp;&nbsp;<span class="type">[integer]</span></td>
+<td valign="top" align="left"><tt>is&nbsp;&nbsp;&nbsp;</tt></td><td>   Indice of starting point in the longitude direction of the slab being passed to strat_cloud <br>&nbsp;&nbsp;&nbsp;<span class="type">[integer]</span></td>
 </tr>
 <tr>
 <td valign="top" align="left"><tt>ie&nbsp;&nbsp;&nbsp;</tt></td><td>   Indice of ending point in the longitude direction of the slab being passed <br>&nbsp;&nbsp;&nbsp;<span class="type">[integer]</span></td>
@@ -262,6 +266,9 @@
 </tr>
 <tr>
 <td valign="top" align="left"><tt>qa&nbsp;&nbsp;&nbsp;</tt></td><td>   Cloud fraction (3d array and a prognostic variable) (fraction) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>qn&nbsp;&nbsp;&nbsp;</tt></td><td>   Cloud droplet number (3d array and a prognostic variable) (#/kg air) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
 <td valign="top" align="left"><tt>omega&nbsp;&nbsp;&nbsp;</tt></td><td>   Vertical pressure velocity (Pa/sec) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
@@ -317,25 +324,34 @@
 <dd>
 <table border="0">
 <tr>
-<td valign="top" align="left"><tt>ST&nbsp;&nbsp;&nbsp;</tt></td><td>   Change in temperature due to strat_driv (K) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+<td valign="top" align="left"><tt>ST&nbsp;&nbsp;&nbsp;</tt></td><td>   Change in temperature due to strat_cloud (K) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
-<td valign="top" align="left"><tt>SQ&nbsp;&nbsp;&nbsp;</tt></td><td>   Change in water vapor due to strat_driv (kg vapor/kg air) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+<td valign="top" align="left"><tt>SQ&nbsp;&nbsp;&nbsp;</tt></td><td>   Change in water vapor due to strat_cloud (kg vapor/kg air) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
-<td valign="top" align="left"><tt>SL&nbsp;&nbsp;&nbsp;</tt></td><td>   Change in cloud liquid due to strat_driv (kg liquid/kg air) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+<td valign="top" align="left"><tt>SL&nbsp;&nbsp;&nbsp;</tt></td><td>   Change in cloud liquid due to strat_cloud (kg liquid/kg air) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
-<td valign="top" align="left"><tt>SI&nbsp;&nbsp;&nbsp;</tt></td><td>   Change in cloud ice due to strat_driv (kg ice/kg air) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+<td valign="top" align="left"><tt>SI&nbsp;&nbsp;&nbsp;</tt></td><td>   Change in cloud ice due to strat_cloud (kg ice/kg air) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
-<td valign="top" align="left"><tt>SA&nbsp;&nbsp;&nbsp;</tt></td><td>   Change in cloud fraction due to strat_driv (fraction) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+<td valign="top" align="left"><tt>SA&nbsp;&nbsp;&nbsp;</tt></td><td>   Change in cloud fraction due to strat_cloud (fraction) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>SN&nbsp;&nbsp;&nbsp;</tt></td><td>   Change in cloud droplet number due to strat_cloud (fraction) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
 <td valign="top" align="left"><tt>surfrain&nbsp;&nbsp;&nbsp;</tt></td><td>   Surface rain fall over time step dtcloud (kg liquid/m2) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
 <td valign="top" align="left"><tt>surfsnow&nbsp;&nbsp;&nbsp;</tt></td><td>   Surface snow fall over time step dtcloud (kg ice/m2) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>rain3d&nbsp;&nbsp;&nbsp;</tt></td><td>   3D rain fall over time step dtcloud (kg liquid/m2) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>snow3d&nbsp;&nbsp;&nbsp;</tt></td><td>   3D snow fall over time step dtcloud (kg ice/m2) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 </table>
 </dd>
@@ -487,13 +503,19 @@
 <tt>u00_profile</tt>
 </dt>
 <dl>   Should low-level u00 ECMWF profile be applied? (default = .false.) <br>
-<span class="type">[logical, dimension, units: microns, default: ]</span>
+<span class="type">[logical, dimension, units: , default: ]</span>
 </dl>
 <dt>
 <tt>rthresh</tt>
 </dt>
 <dl>   Liquid cloud drop radius threshold for autoconversion. (default = 10.) <br>
-<span class="type">[real, dimension, units: , default: ]</span>
+<span class="type">[real, dimension, units: microns, default: ]</span>
+</dl>
+<dt>
+<tt>use_kk_auto</tt>
+</dt>
+<dl>   Should the Khairoutdinov and Kogan (2000) autoconversion be used? ( default = .false.) <br>
+<span class="type">[logical, dimension, units: , default: ]</span>
 </dl>
 <dt>
 <tt>N_land</tt>
@@ -604,6 +626,48 @@
 </dt>
 <dl>   Should the old version of snow melting, which has a bug,be run? (default = .false.) <br>
 <span class="type">[logical, dimension, units: , default: ]</span>
+</dl>
+<dt>
+<tt>do_liq_num</tt>
+</dt>
+<dl>   Should the prognostic droplet number code be run? (default = .false.) <br>
+<span class="type">[logical, dimension, units: , default: ]</span>
+</dl>
+<dt>
+<tt>do_pdf_clouds</tt>
+</dt>
+<dl>   Should the statistical cloud scheme be run? (default = .false.) <br>
+<span class="type">[logical, dimension, units: , default: ]</span>
+</dl>
+<dt>
+<tt>qthalfwidth</tt>
+</dt>
+<dl>   Half-width to the qt PDF - used only if do_pdf_clouds is true and diagnostic variance(default = 0.1) <br>
+<span class="type">[real, dimension, units: none, default: ]</span>
+</dl>
+<dt>
+<tt>nsublevels</tt>
+</dt>
+<dl>   Number of sublevels to vertical sub-grid cloud structure - used only if do_pdf_cloud is true (default = 1) <br>
+<span class="type">[integer, dimension, units: none, default: ]</span>
+</dl>
+<dt>
+<tt>kmap</tt>
+</dt>
+<dl>   PPM partial remap integer - used only if do_pdf_cloud is true and if vertical subgrid structure is used(default = 1) <br>
+<span class="type">[integer, dimension, units: none, default: ]</span>
+</dl>
+<dt>
+<tt>kord</tt>
+</dt>
+<dl>   PPM method number - used only if do_pdf_cloud is true and if vertical subgrid structure is used (default = 7) <br>
+<span class="type">[integer, dimension, units: none, default: ]</span>
+</dl>
+<dt>
+<tt>betaP</tt>
+</dt>
+<dl>   p-parameter to the beta distribution - used only if do_pdf_clouds is true (default = 5) <br>
+<span class="type">[integer, dimension, units: none, default: ]</span>
 </dl>
 </dl>
 </div>

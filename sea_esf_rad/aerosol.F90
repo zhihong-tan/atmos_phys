@@ -21,7 +21,16 @@ use time_manager_mod,  only: time_type, time_manager_init, operator(+),&
                              set_date, operator(-), print_date, &
                              set_time, days_in_month, get_date, &
                              operator(>), operator(/=)
-use diag_manager_mod,  only: diag_manager_init, get_base_time
+use diag_manager_mod,  only: diag_manager_init, get_base_time, &
+                             send_data, register_diag_field,  &
+                             register_static_field
+use field_manager_mod, only: MODEL_ATMOS
+use tracer_manager_mod,only: get_tracer_index,   &
+                             get_tracer_names,   &
+                             get_tracer_indices, &
+                             get_number_tracers, &
+                             MAX_TRACER_FIELDS,  &
+                             query_method
 use fms_mod,           only: open_namelist_file, fms_init, &
                              mpp_pe, mpp_root_pe, stdlog, &
                              file_exist, write_version_number, &
@@ -33,11 +42,13 @@ use interpolator_mod,  only: interpolate_type, interpolator_init, &
 use mpp_io_mod,        only: mpp_open, mpp_close, MPP_RDONLY,   &
                              MPP_ASCII, MPP_SEQUENTIAL, MPP_MULTI,  &
                              MPP_SINGLE, mpp_io_init
-use constants_mod,     only: constants_init, RADIAN
+use constants_mod,     only: constants_init, RADIAN, GRAV
 
 !  shared radiation package modules:
 
-use rad_utilities_mod, only: aerosol_type, rad_utilities_init
+use   rad_utilities_mod, only  : aerosol_type, rad_utilities_init, &
+                                 get_radiative_param,              &
+                                 atmos_input_type     
 
 !---------------------------------------------------------------------
 
@@ -53,8 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: aerosol.F90,v 12.0 2005/04/14 15:44:04 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: aerosol.F90,v 13.0 2006/03/28 21:11:06 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 
 
 !-----------------------------------------------------------------------
@@ -77,6 +88,7 @@ public          &
                                    ! single column 'input' file or
                                    ! calculate a column for location and
                                    ! time specified ('calculate_column')
+                                   ! or 'predicted' (calculated online)
 integer, parameter     ::      &
         MAX_DATA_FIELDS = 100     ! maximum number of aerosol species
 integer, parameter     ::      &
@@ -199,8 +211,12 @@ integer , dimension(:), allocatable :: data_out_of_bounds, vert_interp
 logical, dimension(:), allocatable :: using_fixed_year_data 
                                     ! are we using a fixed year
                                     !  of data from a timeseries file ?
+integer, dimension (MAX_DATA_FIELDS) :: aerosol_tracer_index
+                                    ! tracer index for each of the 
+                                    ! prognostic tracer to be seen as 
+                                    ! aerosols by the radiation package
 
-#include "/usr/local/include/netcdf.inc"
+#include <netcdf.inc>
  
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
@@ -267,7 +283,14 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !----------------------------------------------------------------------
 !  local variables:
       
+      character(len=64)  :: data_names_predicted (MAX_DATA_FIELDS) = '  '
+                              ! predicted aerosol names to be 
+                              ! seen by radiation code
+      logical :: flag,rad_forc_online
+      character(len=80)       ::tr_rad_name, tr_clim_name
+      character(len=80)       :: name,control
       integer   ::   unit, ierr, io       
+      integer   ::   ntrace
       integer   ::   n
 
 !---------------------------------------------------------------------
@@ -336,16 +359,37 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !    array to return the names of the activated species to the calling 
 !    routine.
 !-----------------------------------------------------------------------
-        do n=1,MAX_DATA_FIELDS
-          if (data_names(n) /= ' '  ) then
-            nfields = n
-          else
-            exit
-          endif
-        end do
-
-        allocate (aerosol_names(nfields))
-        aerosol_names (:) = data_names(1:nfields)
+        if (trim(aerosol_data_source) == 'predicted') then
+          call get_number_tracers(MODEL_ATMOS, num_tracers= ntrace)
+            do n = 1, ntrace
+              flag = query_method ('radiative_param', MODEL_ATMOS, &
+                                   n, name, control)
+              if (flag) then
+                call get_radiative_param(name,control,rad_forc_online, &
+                                         tr_rad_name, tr_clim_name)
+                if (rad_forc_online) then
+                  nfields = nfields +1
+                  aerosol_tracer_index(nfields) = n
+                  data_names_predicted(nfields) = trim(tr_rad_name)
+!                 data_names(nfields)           = trim(tr_clim_name)
+                  data_names(nfields)           = trim(tr_rad_name)
+                endif
+              endif
+            end do
+            allocate (aerosol_names(nfields))
+            aerosol_names(:)        = data_names_predicted(1:nfields)
+          else                                                     
+          do n=1,MAX_DATA_FIELDS
+            if (data_names(n) /= ' '  ) then
+              nfields = n
+            else
+              exit
+            endif
+          end do
+  
+          allocate (aerosol_names(nfields))
+          aerosol_names (:) = data_names(1:nfields)
+        endif
 
 !----------------------------------------------------------------------
 !    allocate module variables.
@@ -365,13 +409,14 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !----------------------------------------------------------------------
 !    process the aerosol timeseries file.  
 !----------------------------------------------------------------------
+        if (trim(aerosol_data_source) /= 'predicted') then
         do n=1,nfields           
           if (use_aerosol_timeseries) then
             using_fixed_year_data(n) = .false.
   
 !---------------------------------------------------------------------
-!    a dataset entry point must be supplied when a aerosol timeseries
-!    file is to be used.
+!    if no dataset entry point is supplied when a aerosol timeseries
+!    file is being used, define the entry point as the model base time.
 !---------------------------------------------------------------------
             if (aerosol_dataset_entry(1,n) == 1 .and. &
                 aerosol_dataset_entry(2,n) == 1 .and. &
@@ -379,21 +424,20 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
                 aerosol_dataset_entry(4,n) == 1 .and. &
                 aerosol_dataset_entry(5,n) == 1 .and. &
                 aerosol_dataset_entry(6,n) == 1 ) then
-              call error_mesg ('aerosol_mod', &
-               'must set aerosol_dataset_entry when using  &
-                                   &aerosol timeseries', FATAL)
-            endif
+              Aerosol_entry(n) = Model_init_time
 
 !----------------------------------------------------------------------
 !    define the offset from model base time to aerosol_dataset_entry
 !    as a time_type variable.
 !----------------------------------------------------------------------
-            Aerosol_entry(n) = set_date (aerosol_dataset_entry(1,n), &
-                                         aerosol_dataset_entry(2,n), &
-                                         aerosol_dataset_entry(3,n), &
-                                         aerosol_dataset_entry(4,n), &
-                                         aerosol_dataset_entry(5,n), &
-                                         aerosol_dataset_entry(6,n))
+            else
+              Aerosol_entry(n) = set_date (aerosol_dataset_entry(1,n), &
+                                           aerosol_dataset_entry(2,n), &
+                                           aerosol_dataset_entry(3,n), &
+                                           aerosol_dataset_entry(4,n), &
+                                           aerosol_dataset_entry(5,n), &
+                                           aerosol_dataset_entry(6,n))
+            endif
             call error_mesg ( 'aerosol_mod', &
              'PROCESSING AEROSOL TIMESERIES FOR ' //&
                                       & trim(aerosol_names(n)), NOTE)
@@ -455,8 +499,6 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
             exit
           endif
         end do
-        allocate (aerosol_family_names(nfamilies))
-        aerosol_family_names (:) = family_names(1:nfamilies)
 
 !-----------------------------------------------------------------------
 !    initialize the interpolation module if any aerosol species have
@@ -508,6 +550,9 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
           endif
         endif
       endif
+        allocate (aerosol_family_names(nfamilies))
+        aerosol_family_names (:) = family_names(1:nfamilies)
+      endif   ! ('aerosol_data_source == 'input')
 
 !---------------------------------------------------------------------
 !    mark the module as initialized.
@@ -537,6 +582,9 @@ end subroutine aerosol_init
 !  <IN NAME="model_time" TYPE="time_type">
 !   The internal model simulation time, i.e. Jan. 1 1982
 !  </IN>
+!  <IN NAME="tracer" TYPE="real">
+!   4 dimensional array of tracers, last index is the number of all tracers
+!  </IN>
 !  <IN NAME="p_half" TYPE="real">
 !   The array of model layer pressure values
 !  </IN>
@@ -548,7 +596,9 @@ end subroutine aerosol_init
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine aerosol_driver (is, js, model_time, p_half, Aerosol)
+subroutine aerosol_driver (is, js, model_time, tracer, &
+                           p_half, p_flux, Aerosol)
+!                           Atmos_input, Aerosol)
 
 !-----------------------------------------------------------------------
 !    aerosol_driver returns the names and concentrations of activated 
@@ -558,7 +608,9 @@ subroutine aerosol_driver (is, js, model_time, p_half, Aerosol)
 
 integer,                  intent(in)     :: is,js
 type(time_type),          intent(in)     :: model_time
-real, dimension(:,:,:),   intent(in)     :: p_half
+real, dimension(:,:,:,:), intent(in)     :: tracer
+real, dimension(:,:,:),   intent(in)  :: p_half, p_flux
+!type(atmos_input_type),   intent(inout)  :: Atmos_input
 type(aerosol_type),       intent(inout)  :: Aerosol
 
 !--------------------------------------------------------------------
@@ -586,8 +638,12 @@ type(aerosol_type),       intent(inout)  :: Aerosol
 !---------------------------------------------------------------------
 !  local variables:
 
-      real, dimension(1,1, size(p_half,3)-1, nfields) :: aerosol_data
-      real, dimension(1,1, size(p_half,3))            :: p_half_col
+      real, dimension(1,1, size(p_half,3)-1,    &
+!      real, dimension(1,1, size(Atmos_input%phalf,3)-1,    &
+                                               nfields) :: aerosol_data
+      real, dimension(1,1, size(p_half,3))   :: p_half_col
+!      real, dimension(1,1, size(Atmos_input%phalf,3))   :: p_half_col
+      logical         :: flag, rad_forc_online
       type(time_type) :: Aerosol_time          ! time for which data is
                                                ! obtained from aerosol
                                                ! timeseries
@@ -595,6 +651,7 @@ type(aerosol_type),       intent(inout)  :: Aerosol
                                                ! to be done one at a 
                                                ! time
       integer         :: n, k, j, i, na            ! do-loop index
+      integer         :: nn, kd
 
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
@@ -613,8 +670,13 @@ type(aerosol_type),       intent(inout)  :: Aerosol
         allocate (Aerosol%aerosol_names (nfields))
         Aerosol%aerosol_names(1) = 'total_aerosol'
         allocate (Aerosol%family_members(nfields, nfamilies))
-        allocate (Aerosol%aerosol(size(p_half,1), size(p_half,2), &
-                                  size(p_half,3) - 1, nfields))
+!        allocate (Aerosol%aerosol(size(Atmos_input%phalf,1),   &
+!                                  size(Atmos_input%phalf,2), &
+!                                  size(Atmos_input%phalf,3) - 1,  &
+        allocate (Aerosol%aerosol(size(p_half,1),   &
+                                  size(p_half,2), &
+                                  size(p_half,3) - 1,  &
+                                                               nfields))
         do k=1, size(Aerosol%aerosol,3)
           Aerosol%aerosol(:,:,k,1) = specified_aerosol(k)
         end do
@@ -628,11 +690,11 @@ type(aerosol_type),       intent(inout)  :: Aerosol
 
 !--------------------------------------------------------------------
 !    allocate and define an array which defines the members of the
-!    requested aerosol families. the additional field is the volcanic 
-!    aerosol.
+!    requested aerosol families.
 !---------------------------------------------------------------------
       allocate (Aerosol%family_members(nfields+1, nfamilies))
       if (nfamilies > 0) then
+          if (trim(aerosol_data_source) /= 'predicted') then
         do n=1,nfamilies
           do na = 1, nfields
           select case(n)
@@ -664,14 +726,20 @@ type(aerosol_type),       intent(inout)  :: Aerosol
         endif
         end do
       endif
+      endif
       
 
 !---------------------------------------------------------------------
 !    allocate an array to hold the aerosol amounts for each species at
 !    each grid point. 
 !----------------------------------------------------------------------
-      allocate (Aerosol%aerosol(size(p_half,1), size(p_half,2), &
-                                size(p_half,3) - 1, nfields))
+!        allocate (Aerosol%aerosol(size(Atmos_input%phalf,1),  &
+!                                  size(Atmos_input%phalf,2), &
+!                                  size(Atmos_input%phalf,3) - 1,  &
+        allocate (Aerosol%aerosol(size(p_half,1),  &
+                                  size(p_half,2), &
+                                  size(p_half,3) - 1,  &
+                                                                nfields))
       
 !----------------------------------------------------------------------
 !    determine if separate calls to interpolator  must be made for 
@@ -681,6 +749,7 @@ type(aerosol_type),       intent(inout)  :: Aerosol
 !    interpolation procedures and different treatment of undefined
 !    data.
 !----------------------------------------------------------------------
+        if (trim(aerosol_data_source) /= 'predicted') then
       make_separate_calls = .false.
       do n=2,nfields
         if (using_fixed_year_data(n) .and.   &
@@ -726,9 +795,11 @@ type(aerosol_type),       intent(inout)  :: Aerosol
             else
               Aerosol_time = model_time + Aerosol_offset(n)
             endif
-            call interpolator (Aerosol_interp, Aerosol_time, p_half, &
-                                 Aerosol%aerosol(:,:,:,n),    &
-                                 Aerosol%aerosol_names(n), is, js)
+            call interpolator (Aerosol_interp, Aerosol_time,  &
+!                               Atmos_input%pflux, &
+                               p_flux, &
+                               Aerosol%aerosol(:,:,:,n),    &
+                               Aerosol%aerosol_names(n), is, js)
 
 !--------------------------------------------------------------------
 !    if the data timeseries is not to be used for species n, define the
@@ -742,7 +813,9 @@ type(aerosol_type),       intent(inout)  :: Aerosol
 !    the current model year.
 !---------------------------------------------------------------------
             if ( .not. using_fixed_year_data(n)) then
-              call interpolator (Aerosol_interp, model_time, p_half, &
+              call interpolator (Aerosol_interp, model_time,  &
+!                                 Atmos_input%pflux, &
+                                 p_flux, &
                                  Aerosol%aerosol(:,:,:,n),    &
                                  Aerosol%aerosol_names(n), is, js)
 
@@ -755,7 +828,9 @@ type(aerosol_type),       intent(inout)  :: Aerosol
             else 
               call set_aerosol_time (model_time, Aerosol_entry(n), &
                                      Aerosol_time)
-              call interpolator (Aerosol_interp, Aerosol_time, p_half, &
+              call interpolator (Aerosol_interp, Aerosol_time,  &
+!                                 Atmos_input%pflux, &
+                                 p_flux, &
                                  Aerosol%aerosol(:,:,:,n),    &
                                  Aerosol%aerosol_names(n), is, js)
             endif  
@@ -788,20 +863,24 @@ type(aerosol_type),       intent(inout)  :: Aerosol
 !    but distributed appropriately for its pressure structure.
 !--------------------------------------------------------------------
             if (trim(aerosol_data_source) == 'calculate_column') then
+!              do j=1, size(Atmos_input%phalf,2)
+!                do i=1, size(Atmos_input%phalf,1)
               do j=1, size(p_half,2)
                 do i=1, size(p_half,1)
-                  p_half_col(1,1,:) = p_half(i,j,:)
+!                  p_half_col(1,1,:) = Atmos_input%pflux(i,j,:)
+                  p_half_col(1,1,:) = p_flux(i,j,:)
                   call interpolator (Aerosol_interp,&
                                      Aerosol_column_time,  &
                                      p_half_col, aerosol_data, &
-!                                    Aerosol%aerosol_names(1), is, js)
                                      Aerosol%aerosol_names(1), 1, 1  )
                   Aerosol%aerosol(i,j,:,:) = aerosol_data(1,1,:,:)
                 end do
               end do
             else
 
-              call interpolator (Aerosol_interp, Aerosol_time, p_half, &
+              call interpolator (Aerosol_interp, Aerosol_time, &
+!                                 Atmos_input%pflux, &
+                                 p_flux, &
                                  Aerosol%aerosol,    &
                                  Aerosol%aerosol_names(1), is, js)
             endif 
@@ -818,7 +897,9 @@ type(aerosol_type),       intent(inout)  :: Aerosol
 !    the current model year.
 !---------------------------------------------------------------------
           if (.not. using_fixed_year_data(1)) then
-            call interpolator (Aerosol_interp, model_time, p_half, &
+            call interpolator (Aerosol_interp, model_time,  &
+!                               Atmos_input%pflux, &
+                               p_flux, &
                                Aerosol%aerosol,    &
                                Aerosol%aerosol_names(1), is, js)
 
@@ -830,12 +911,41 @@ type(aerosol_type),       intent(inout)  :: Aerosol
           else
             call set_aerosol_time (model_time, Aerosol_entry(1), &
                                    Aerosol_time)
-            call interpolator (Aerosol_interp, Aerosol_time, p_half, &
+            call interpolator (Aerosol_interp, Aerosol_time, &
+!                               Atmos_input%pflux, &
+                               p_flux, &
                                Aerosol%aerosol,    &
                                Aerosol%aerosol_names(1), is, js)
           endif ! (using_fixed_year)
         endif  ! (use_aerosol_timeseries)
       endif ! (make_separate_calls   )
+               
+!-------------------------------------------------------------------- 
+!    for predicted aerosols (obtained from tracer array), assign the 
+!    tracer to "Aerosol" if that TRACER has "radiative_param" and 
+!    "online", both defined in the field_table. 
+! ***********************WARNINGS**************************************
+!    the tracers are assumed to be expressed ! in Mass Mixing Ratio, 
+!    and convert into mass column for the radiative code.
+!    there is no conversion here (e.g. OC -> OM, or SO4 -> (NH4)2SO4 ).
+!------------------------------------------------------------------ 
+        else    ! (/= 'predicted')
+          do nn=1,nfields
+            n = aerosol_tracer_index(nn)
+            do k=1,size(Aerosol%aerosol,3)
+              do j=1,size(Aerosol%aerosol,2)
+                do i=1,size(Aerosol%aerosol,1)
+                  Aerosol%aerosol(i,j,k,nn) =    &
+                          MAX (0.0, tracer(i,j,k,n))*&
+!                                   ((Atmos_input%phalf(i,j,k+1) -  &
+!                                     Atmos_input%phalf(i,j,k))/GRAV) 
+                                   ((p_half(i,j,k+1) -  &
+                                     p_half(i,j,k))/GRAV) 
+                end do
+              end do
+            end do
+          end do
+        endif    ! (/= 'predicted')
     endif  ! (do_column_aerosol)
 
 !-------------------------------------------------------------------- 
@@ -876,8 +986,10 @@ subroutine aerosol_end
 !    used in this module.
 !---------------------------------------------------------------------
       if (.not. do_column_aerosol) then
-        if (nfields > 0) then
-          call interpolator_end (Aerosol_interp)
+        if (trim(aerosol_data_source) /= 'predicted') then
+          if (nfields > 0) then
+            call interpolator_end (Aerosol_interp)
+          endif
         endif
       endif
 

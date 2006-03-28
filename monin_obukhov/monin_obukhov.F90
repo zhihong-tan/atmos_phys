@@ -57,8 +57,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 11.0 2004/09/28 19:19:58 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 13.0 2006/03/28 21:10:27 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 
 !=======================================================================
 
@@ -160,73 +160,35 @@ real, intent(in)   , dimension(:) :: pt, pt0, z, z0, zt, zq, speed
 real, intent(inout), dimension(:) :: drag_m, drag_t, drag_q, u_star, b_star
 logical, intent(in), optional, dimension(:) :: avail
 
-real   , dimension(size(pt(:))) :: rich, fm, ft, fq, zz
-logical, dimension(size(pt(:))) :: mask, mask_1, mask_2
+logical            :: lavail, avail_dummy(1)
+integer            :: n, ier
 
-real   , dimension(size(pt(:))) :: delta_b, us, bs, qs
+integer, parameter :: max_iter = 20
+real   , parameter :: error=1.e-04, zeta_min=1.e-06, small=1.e-04
+
+! #include "monin_obukhov_interfaces.h"
 
 if(.not.module_is_initialized) call monin_obukhov_init
 
+n      = size(pt)
+lavail = .false.
+if(present(avail)) lavail = .true.
 
-mask = .true.
-if(present(avail)) mask = avail
 
-where(mask) 
-   delta_b = grav*(pt0 - pt)/pt0
-   rich    = - z*delta_b/(speed*speed + small)
-   zz      = max(z,z0,zt,zq)
-else where 
-   rich = 0.0
-end where
-
-if(neutral) then
-
-  where(mask)
-    fm   = log(zz/z0)
-    ft   = log(zz/zt)
-    fq   = log(zz/zq)
-    us   = vonkarm/fm
-    bs   = vonkarm/ft
-    qs   = vonkarm/fq
-    drag_m    = us*us
-    drag_t    = us*bs
-    drag_q    = us*qs
-    u_star = us*speed
-    b_star = bs*delta_b
-  end where
-
+if(lavail) then 
+   call monin_obukhov_drag_1d(grav, vonkarm,               &
+        & error, zeta_min, max_iter, small,                         &
+        & neutral, stable_option, rich_crit, zeta_trans, drag_min,  &
+        & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
+        & drag_q, u_star, b_star, lavail, avail, ier)
 else
+   call monin_obukhov_drag_1d(grav, vonkarm,               &
+        & error, zeta_min, max_iter, small,                         &
+        & neutral, stable_option, rich_crit, zeta_trans, drag_min,  &
+        & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
+        & drag_q, u_star, b_star, lavail, avail_dummy, ier)
+endif
 
-  mask_1 = mask .and. rich <  r_crit
-  mask_2 = mask .and. rich >= r_crit
-
-  where(mask_2) 
-    drag_m   = drag_min
-    drag_t   = drag_min
-    drag_q   = drag_min
-    us       = sqrt_drag_min
-    bs       = sqrt_drag_min
-    qs       = sqrt_drag_min
-    u_star   = us*speed
-    b_star   = bs*delta_b
-  end where
-
-  call solve_zeta (rich, zz, z0, zt, zq, fm, ft, fq, mask_1)
-
-  where (mask_1)
-    us   = max(vonkarm/fm, sqrt_drag_min)
-    bs   = max(vonkarm/ft, sqrt_drag_min)
-    qs   = max(vonkarm/fq, sqrt_drag_min)
-    drag_m   = us*us
-    drag_t   = us*bs
-    drag_q   = us*qs
-    u_star   = us*speed
-    b_star   = bs*delta_b
-  end where
-
-end if
-
-return
 end subroutine mo_drag_1d
 
 
@@ -240,66 +202,30 @@ real,    intent(in) , dimension(:) :: z, z0, zt, zq, u_star, b_star, q_star
 real,    intent(out), dimension(:) :: del_m, del_t, del_q
 logical, intent(in) , optional, dimension(:) :: avail
 
-real, dimension(size(z(:))) :: zeta, zeta_0, zeta_t, zeta_q, zeta_ref, zeta_ref_t, &
-                            ln_z_z0, ln_z_zt, ln_z_zq, ln_z_zref, ln_z_zref_t,  &
-                            f_m_ref, f_m, f_t_ref, f_t, f_q_ref, f_q,           &
-                            mo_length_inv
+logical                            :: dummy_avail(1)
+integer                            :: n, ier
 
-logical, dimension(size(z(:))) :: mask
+! #include "monin_obukhov_interfaces.h"
 
 if(.not. module_is_initialized) call monin_obukhov_init
 
-mask = .true.
-if(present(avail)) mask = avail
+n = size(z)
+if(present(avail)) then
 
-del_m = 0.0  ! zero output arrays
-del_t = 0.0
-del_q = 0.0
+   call monin_obukhov_profile_1d(vonkarm, &
+        & neutral, stable_option, rich_crit, zeta_trans, &
+        & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
+        & del_m, del_t, del_q, .true., avail, ier)
 
-where(mask) 
-  ln_z_z0     = log(z/z0)
-  ln_z_zt     = log(z/zt)
-  ln_z_zq     = log(z/zq)
-  ln_z_zref   = log(z/zref)
-  ln_z_zref_t = log(z/zref_t)
-endwhere
-
-if(neutral) then
-
-  where(mask)
-    del_m = 1.0 - ln_z_zref  /ln_z_z0
-    del_t = 1.0 - ln_z_zref_t/ln_z_zt
-    del_q = 1.0 - ln_z_zref_t/ln_z_zq
-  endwhere
-  
 else
 
-  where(mask .and. u_star > 0.0) 
-    mo_length_inv = - vonkarm * b_star/(u_star*u_star)
-    zeta       = z     *mo_length_inv
-    zeta_0     = z0    *mo_length_inv
-    zeta_t     = zt    *mo_length_inv
-    zeta_q     = zq    *mo_length_inv
-    zeta_ref   = zref  *mo_length_inv
-    zeta_ref_t = zref_t*mo_length_inv
-  endwhere
-                   
-  call mo_integral_m(f_m,     zeta, zeta_0,   ln_z_z0,   mask)
-  call mo_integral_m(f_m_ref, zeta, zeta_ref, ln_z_zref, mask)
-  
-  call mo_integral_tq(f_t, f_q, zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq, mask)
-  call mo_integral_tq(f_t_ref, f_q_ref, zeta, zeta_ref_t, zeta_ref_t, &
-                      ln_z_zref_t, ln_z_zref_t,  mask)
+   call monin_obukhov_profile_1d(vonkarm, &
+        & neutral, stable_option, rich_crit, zeta_trans, &
+        & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
+        & del_m, del_t, del_q, .false., dummy_avail, ier)
 
-  where(mask)
-    del_m = 1.0 - f_m_ref/f_m
-    del_t = 1.0 - f_t_ref/f_t
-    del_q = 1.0 - f_q_ref/f_q
-  endwhere
+endif
 
-end if
-
-return
 end subroutine mo_profile_1d
 
 !=======================================================================
@@ -309,36 +235,15 @@ subroutine stable_mix_3d(rich, mix)
 real, intent(in) , dimension(:,:,:)  :: rich
 real, intent(out), dimension(:,:,:)  :: mix
 
-real, dimension(size(rich,1),size(rich,2),size(rich,3)) :: &
-      r, a, b, c, zeta, phi
+integer :: n, ier
 
-mix = 0.0
+if(.not. module_is_initialized) call monin_obukhov_init
 
-if(stable_option == 1) then
+n = size(rich,1)*size(rich,2)*size(rich,3)
+call monin_obukhov_stable_mix(stable_option, rich_crit, zeta_trans, &
+     & n, rich, mix, ier)
 
-  where(rich > 0.0 .and. rich < rich_crit)
-    r = 1.0/rich
-    a = r - b_stab
-    b = r - (1.0 + 5.0) 
-    c = - 1.0
 
-    zeta = (-b + sqrt(b*b - 4.0*a*c))/(2.0*a)
-    phi = 1.0 + b_stab*zeta + (5.0 - b_stab)*zeta/(1.0 + zeta)
-    mix = 1./(phi*phi)
-  end where
-  
-else if(stable_option == 2) then
-
-  where(rich > 0.0 .and. rich <= rich_trans)
-    mix = (1.0 - 5.0*rich)**2
-  end where
-  where(rich > rich_trans .and. rich < rich_crit)
-    mix = ((1.0 - b_stab*rich)/lambda)**2
-  end where
-  
-end if
-  
-return
 end subroutine stable_mix_3d
 
 !=======================================================================
@@ -349,34 +254,17 @@ real, intent(in),  dimension(:,:,:) :: z
 real, intent(in),  dimension(:,:)   :: u_star, b_star
 real, intent(out), dimension(:,:,:) :: k_m, k_h
 
-real , dimension(size(z,1),size(z,2)) :: phi_m, phi_h, zeta, uss
-integer :: j, k
-
-logical, dimension(size(z,1)) :: mask
+integer            :: ni, nj, nk, ier
+real, parameter    :: ustar_min = 1.e-10
 
 if(.not.module_is_initialized) call monin_obukhov_init
 
-mask = .true.
-uss = max(u_star, 1.e-10)
+ni = size(z, 1); nj = size(z, 2); nk = size(z, 3)
+call monin_obukhov_diff(vonkarm,                           &
+          & ustar_min,                                     &
+          & neutral, stable_option, rich_crit, zeta_trans, &
+          & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
 
-if(neutral) then
-  do k = 1, size(z,3)
-    k_m(:,:,k) = vonkarm *uss*z(:,:,k)
-    k_h(:,:,k) = k_m(:,:,k)
-  end do
-else
-  do k = 1, size(z,3)
-    zeta = - vonkarm * b_star*z(:,:,k)/(uss*uss)
-    do j = 1, size(z,2)
-      call mo_derivative_m(phi_m(:,j), zeta(:,j), mask)
-      call mo_derivative_t(phi_h(:,j), zeta(:,j), mask)
-    enddo
-    k_m(:,:,k) = vonkarm * uss*z(:,:,k)/phi_m
-    k_h(:,:,k) = vonkarm * uss*z(:,:,k)/phi_h
-  end do
-endif
-
-return
 end subroutine mo_diff_2d_n
 
 !=======================================================================
@@ -420,7 +308,7 @@ mask_1 = mask
 
 where(mask_1) 
   zeta = rich*ln_z_z0*ln_z_z0/ln_z_zt
-else where
+elsewhere
   zeta = 0.0
 end where
 
@@ -443,7 +331,7 @@ iter_loop: do iter = 1, max_iter
     zeta_0 = zeta/z_z0
     zeta_t = zeta/z_zt
     zeta_q = zeta/z_zq
-  else where
+  elsewhere
     zeta_0 = 0.0
     zeta_t = 0.0
     zeta_q = 0.0
@@ -959,19 +847,17 @@ subroutine mo_diff_0d_1(z, u_star, b_star, k_m, k_h)
 real, intent(in)  :: z, u_star, b_star
 real, intent(out) :: k_m, k_h
 
-real, dimension(1,1,1) :: z_n, k_m_n, k_h_n
-real, dimension(1,1)   :: u_star_n, b_star_n
+integer            :: ni, nj, nk, ier
+real, parameter    :: ustar_min = 1.e-10
 
-z_n   (1,1,1) = z
-u_star_n(1,1) = u_star
-b_star_n(1,1) = b_star
+if(.not.module_is_initialized) call monin_obukhov_init
 
-call mo_diff_2d_n(z_n, u_star_n, b_star_n, k_m_n, k_h_n)
+ni = 1; nj = 1; nk = 1
+call monin_obukhov_diff(vonkarm,                           &
+          & ustar_min,                                     &
+          & neutral, stable_option, rich_crit, zeta_trans, &
+          & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
 
-k_m = k_m_n(1,1,1)
-k_h = k_h_n(1,1,1)
-
-return
 end subroutine mo_diff_0d_1
 
 !=======================================================================
@@ -982,25 +868,17 @@ real, intent(in),  dimension(:) :: z
 real, intent(in)                :: u_star, b_star
 real, intent(out), dimension(:) :: k_m, k_h
 
-real, dimension(1,1)            :: u_star2, b_star2
-real, dimension(1,1, size(z(:))) :: z2, k_m2, k_h2
+integer            :: ni, nj, nk, ier
+real, parameter    :: ustar_min = 1.e-10
 
-integer :: n
+if(.not.module_is_initialized) call monin_obukhov_init
 
-do n = 1, size(z(:))
-  z2   (1,1,n) = z(n)
-enddo
-u_star2(1,1) = u_star
-b_star2(1,1) = b_star
+ni = 1; nj = 1; nk = size(z(:))
+call monin_obukhov_diff(vonkarm,                           &
+          & ustar_min,                                     &
+          & neutral, stable_option, rich_crit, zeta_trans, &
+          & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
 
-call mo_diff_2d_n(z2, u_star2, b_star2, k_m2, k_h2)
-
-do n = 1, size(z(:))
-  k_m(n) = k_m2(1,1,n)
-  k_h(n) = k_h2(1,1,n)
-enddo
-
-return
 end subroutine mo_diff_0d_n
 
 !=======================================================================

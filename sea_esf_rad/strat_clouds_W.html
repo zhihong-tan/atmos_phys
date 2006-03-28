@@ -121,7 +121,7 @@
 <a name="strat_clouds_amt"></a>
 <h4>strat_clouds_amt</h4>
 <pre>
-<b>call strat_clouds_amt </b>(is, ie, js, je, Rad_time, pflux, press, temp, land, Cld_spec, Lsc_microphys)</pre>
+<b>call strat_clouds_amt </b>(is, ie, js, je, Rad_time, pflux, press, temp, qv, land, Cld_spec, Lsc_microphys)</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
@@ -156,6 +156,10 @@
 </tr>
 <tr>
 <td valign="top" align="left"><tt>temp&nbsp;&nbsp;&nbsp;</tt></td><td>   temperature at model levels (1:nlev), to be used
+   in cloud calculations <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>qv&nbsp;&nbsp;&nbsp;</tt></td><td>   water vapor specific humidity at model levels (1:nlev), to be used
    in cloud calculations <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>

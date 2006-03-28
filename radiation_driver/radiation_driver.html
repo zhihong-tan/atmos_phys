@@ -70,7 +70,7 @@
 <h4>OTHER MODULES USED</h4>
 <!-- BEGIN OTHER MODULES USED -->
 <div>
-<pre>               fms_mod<br>            fms_io_mod<br>      diag_manager_mod<br>      time_manager_mod<br>    sat_vapor_pres_mod<br>         constants_mod<br>     data_override_mod<br>     rad_utilities_mod<br>  esfsw_parameters_mod<br>     diag_integral_mod<br>         astronomy_mod<br>  original_fms_rad_mod<br>       sea_esf_rad_mod<br>   rad_output_file_mod<br>  cloudrad_package_mod<br>aerosolrad_package_mod</pre>
+<pre>               fms_mod<br>            fms_io_mod<br>      diag_manager_mod<br>      time_manager_mod<br>    sat_vapor_pres_mod<br>         constants_mod<br>     data_override_mod<br>     rad_utilities_mod<br>  esfsw_parameters_mod<br>     diag_integral_mod<br>         astronomy_mod<br>  original_fms_rad_mod<br>       sea_esf_rad_mod<br>   rad_output_file_mod<br>  cloudrad_package_mod<br>aerosolrad_package_mod<br>     field_manager_mod<br>    tracer_manager_mod</pre>
 </div>
 <!-- END OTHER MODULES USED -->
 <!-- BEGIN PUBLIC INTERFACE -->
@@ -327,6 +327,9 @@
 <td valign="top" align="left"><tt>Aerosol&nbsp;&nbsp;&nbsp;</tt></td><td>   Aerosol climatological input data to radiation package <br>&nbsp;&nbsp;&nbsp;<span class="type">[aerosol_type]</span></td>
 </tr>
 <tr>
+<td valign="top" align="left"><tt>r&nbsp;&nbsp;&nbsp;</tt></td><td>   4 dimensional tracer array, last index is the number of all tracers <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
+<tr>
 <td valign="top" align="left"><tt>Cld_spec&nbsp;&nbsp;&nbsp;</tt></td><td>   Cloud microphysical and physical parameters to radiation package, 
    contains var-
    iables defining the cloud distribution, passed 
@@ -428,7 +431,7 @@
 <a name="define_atmos_input_fields"></a>
 <h4>define_atmos_input_fields</h4>
 <pre>
-<b>call define_atmos_input_fields </b>(is, ie, js, je, pfull, phalf, &amp; t, q, ts, Atmos_input, &amp; cloudtemp, cloudvapor, &amp; aerosoltemp, aerosolvapor, &amp; aerosolpress, kbot)</pre>
+<b>call define_atmos_input_fields </b>(is, ie, js, je, pfull, phalf, &amp; t, q, ts, r, gavg_rrv, Atmos_input, &amp; cloudtemp, cloudvapor, &amp; aerosoltemp, aerosolvapor, &amp; aerosolpress, kbot)</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
@@ -467,6 +470,12 @@
 </tr>
 <tr>
 <td valign="top" align="left"><tt>ts&nbsp;&nbsp;&nbsp;</tt></td><td>   surface temperature <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>r&nbsp;&nbsp;&nbsp;</tt></td><td>   tracer array <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>gavg_rrv&nbsp;&nbsp;&nbsp;</tt></td><td>   global average array of tracer volume mixxing ratio <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
 <td valign="top" align="left"><tt>cloudtemp&nbsp;&nbsp;&nbsp;</tt></td><td>   temperature to be seen by clouds (used in 
@@ -765,7 +774,7 @@
 <a name="radiation_calc"></a>
 <h4>radiation_calc</h4>
 <pre>
-<b>call radiation_calc </b>(is, ie, js, je, Rad_time, Time_diag, &amp; lat, lon, Atmos_input, Surface, Rad_gases, &amp; Aerosol_props, Aerosol, Cldrad_props, &amp; Cld_spec, Astro, Rad_output, Lw_output, &amp; Sw_output, Fsrad_output, mask, kbot)</pre>
+<b>call radiation_calc </b>(is, ie, js, je, Rad_time, Time_diag, &amp; lat, lon, Atmos_input, Surface, Rad_gases, &amp; Aerosol_props, Aerosol, r, Cldrad_props, &amp; Cld_spec, Astro, Rad_output, Lw_output, &amp; Sw_output, Fsrad_output, mask, kbot)</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
@@ -1331,6 +1340,12 @@
 <tt>overriding_aerosol</tt>
 </dt>
 <dl>   aerosol fields are overriden ? <br>
+<span class="type">[logical, dimension, units: , default: ]</span>
+</dl>
+<dt>
+<tt>use_co2_tracer_field</tt>
+</dt>
+<dl>   use co2 value from co2 tracer field? <br>
 <span class="type">[logical, dimension, units: , default: ]</span>
 </dl>
 <dt>

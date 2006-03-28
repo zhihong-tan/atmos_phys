@@ -23,7 +23,10 @@ use fms_mod,               only: open_namelist_file, fms_init, &
                                  mpp_pe, mpp_root_pe, stdlog, &
                                  file_exist, write_version_number, &
                                  check_nml_error, error_mesg, &
-                                 FATAL, NOTE, WARNING, close_file
+                                 FATAL, NOTE, WARNING, close_file, &
+                                 lowercase
+use  field_manager_mod, only : MODEL_ATMOS, parse
+
 use time_manager_mod,      only: time_type
 
 !--------------------------------------------------------------------
@@ -41,8 +44,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 12.0 2005/04/14 15:47:32 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 13.1 2006/04/25 23:20:04 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -52,7 +55,8 @@ public      &
           locate_in_table,  &
           looktab, table_alloc, &
           thickavg, thinavg,   &
-          rad_utilities_end
+          rad_utilities_end,   &
+          get_radiative_param, assignment(=)
 
 interface looktab
     module procedure  looktab_type1, looktab_type2, looktab_type3
@@ -67,6 +71,11 @@ interface thickavg
    module procedure thickavg_0d
    module procedure thickavg_1band
    module procedure thickavg_isccp
+end interface
+
+interface assignment(=)
+  module procedure lw_output_type_eq
+  module procedure sw_output_type_eq
 end interface
 
 !------------------------------------------------------------------
@@ -134,6 +143,21 @@ type aerosol_properties_type
                                           lw_asy=>NULL()
      integer, dimension(:), pointer :: sulfate_index=>NULL()
      integer, dimension(:), pointer :: optical_index=>NULL()
+     integer, dimension(:), pointer :: omphilic_index=>NULL()
+     integer, dimension(:), pointer :: bcphilic_index=>NULL()
+     integer, dimension(:), pointer :: seasalt1_index=>NULL()
+     integer, dimension(:), pointer :: seasalt2_index=>NULL()
+     integer, dimension(:), pointer :: seasalt3_index=>NULL()
+     integer, dimension(:), pointer :: seasalt4_index=>NULL()
+     integer, dimension(:), pointer :: seasalt5_index=>NULL()
+     integer                        :: sulfate_flag
+     integer                        :: omphilic_flag
+     integer                        :: bcphilic_flag
+     integer                        :: seasalt1_flag
+     integer                        :: seasalt2_flag
+     integer                        :: seasalt3_flag
+     integer                        :: seasalt4_flag
+     integer                        :: seasalt5_flag
 end type aerosol_properties_type
 
 !------------------------------------------------------------------
@@ -187,6 +211,8 @@ public atmos_input_type
 !    aerosolvapor
 !    aerosolpress
 !    aerosolrelhum
+!    tracer_co2
+!    g_rrvco2
 !    tsfc
 !    psfc
 
@@ -206,9 +232,11 @@ type atmos_input_type
                                         aerosoltemp=>NULL(), &
                                         aerosolvapor=>NULL(), &
                                         aerosolpress=>NULL(), &
-                                        aerosolrelhum=>NULL()
+                                        aerosolrelhum=>NULL(), &
+                                        tracer_co2 => NULL()
      real, dimension(:,:),   pointer :: tsfc=>NULL(),   &
                                         psfc=>NULL()              
+     real                            :: g_rrvco2
 end type atmos_input_type
 
 !-------------------------------------------------------------------
@@ -273,6 +301,7 @@ public cld_specification_type
 !    cloud_water
 !    cloud_ice
 !    cloud_area
+!    cloud_droplet
 !    reff_liq_micro
 !    reff_ice_micro
 !    camtsw
@@ -307,6 +336,7 @@ type cld_specification_type
                                          cloud_water=>NULL(), &
                                          cloud_ice=>NULL(),  &
                                          cloud_area=>NULL(), &
+					 cloud_droplet=>NULL(), &
                                          reff_liq_micro=>NULL(),   &
                                          reff_ice_micro=>NULL(),&
                                          camtsw=>NULL(),   &
@@ -815,6 +845,10 @@ type radiation_control_type
     logical  :: volcanic_sw_aerosols
     logical  :: volcanic_lw_aerosols
     logical  :: using_solar_timeseries_data
+    logical  :: do_lwaerosol_forcing
+    logical  :: do_swaerosol_forcing
+    integer  :: indx_swaf
+    integer  :: indx_lwaf
     logical  :: do_totcld_forcing_iz
     logical  :: do_aerosol_iz
     logical  :: rad_time_step_iz
@@ -838,6 +872,10 @@ type radiation_control_type
     logical  :: volcanic_sw_aerosols_iz
     logical  :: volcanic_lw_aerosols_iz
     logical  :: using_solar_timeseries_data_iz
+    logical  :: do_lwaerosol_forcing_iz
+    logical  :: do_swaerosol_forcing_iz
+    logical  :: indx_swaf_iz
+    logical  :: indx_lwaf_iz
 end type radiation_control_type
 
 !------------------------------------------------------------------
@@ -885,7 +923,8 @@ type radiative_gases_type
                                         time_varying_f113, &
                                         time_varying_f22,  &
                                         time_varying_ch4, &
-                                        time_varying_n2o
+                                        time_varying_n2o, &
+                                        use_model_supplied_co2
      type(time_type)                 :: Co2_time, Ch4_time, N2o_time
 end type radiative_gases_type
 
@@ -1111,6 +1150,8 @@ type (radiation_control_type), public   ::  &
                                          .false., 0.0, &
                                          0, .false., .false.,   &
                                          .false., .false.,&
+                                         .false., .false.,      &
+                                         0, 0, &
 ! _iz variables:
                                          .false., .false., .false., &
                                          .false., .false., .false., &
@@ -1120,7 +1161,9 @@ type (radiation_control_type), public   ::  &
                                          .false., .false., &
                                          .false., .false., &
                                          .false.,          &
-                                         .false., .false., .false.)
+                                         .false., .false., .false.,  &
+                                         .false., .false.,   &
+                                         .false., .false.)
 
 type (cloudrad_control_type), public    ::   &
  Cldrad_control = cloudrad_control_type( .false., .false., .false., &
@@ -1316,6 +1359,10 @@ subroutine check_derived_types
 !    check the components of Rad_control.
 !--------------------------------------------------------------------
       if (Rad_control%do_totcld_forcing_iz .and. &
+          Rad_control%do_lwaerosol_forcing_iz .and.  &
+          Rad_control%do_swaerosol_forcing_iz .and.  &
+          Rad_control%indx_lwaf_iz .and.   &
+          Rad_control%indx_swaf_iz .and.   &
           Rad_control%do_aerosol_iz .and.     &
           Rad_control%mx_spec_levs_iz .and.   &
           Rad_control%use_current_co2_for_tf_iz .and. &
@@ -3112,6 +3159,27 @@ real, dimension(:,:,:,:), intent(out)      :: extband, ssalbband,   &
 end subroutine thinavg 
 
 
+!#########################################################################
+subroutine get_radiative_param(text_in_scheme,text_in_param, &
+                               rad_forc_online, tr_rad_name, tr_clim_name)
+
+character(len=*), intent(in)    :: text_in_scheme, text_in_param
+logical, intent(out)            :: rad_forc_online
+character(len=*), intent(out)   :: tr_rad_name,tr_clim_name
+integer                         :: flag
+
+
+if(lowercase(trim(text_in_scheme(1:6))) == 'online') then
+       rad_forc_online = .true.
+       flag=parse(text_in_param,'name_in_rad_mod', tr_rad_name)
+       flag=parse(text_in_param,'name_in_clim_mod', tr_clim_name)
+else
+       rad_forc_online = .false.
+       tr_rad_name  = ' '
+       tr_clim_name = ' '
+endif
+
+end subroutine get_radiative_param
 
 
 !#####################################################################
@@ -3152,6 +3220,60 @@ subroutine rad_utilities_end
 
 
 end subroutine rad_utilities_end
+
+
+subroutine lw_output_type_eq(lw_output_out,lw_output_in)
+
+   type(lw_output_type), intent(inout) :: lw_output_out
+   type(lw_output_type), intent(in)    :: lw_output_in
+
+!  Need to add error trap to catch unallocated lw_output_in
+   lw_output_out%heatra        = lw_output_in%heatra
+   lw_output_out%flxnet        = lw_output_in%flxnet
+   lw_output_out%netlw_special = lw_output_in%netlw_special
+   lw_output_out%bdy_flx       = lw_output_in%bdy_flx
+   if (ASSOCIATED(lw_output_in%heatracf))then
+       lw_output_out%heatracf          = lw_output_in%heatracf
+       lw_output_out%flxnetcf          = lw_output_in%flxnetcf
+       lw_output_out%netlw_special_clr = lw_output_in%netlw_special_clr
+       lw_output_out%bdy_flx_clr       = lw_output_in%bdy_flx_clr
+   endif
+end subroutine lw_output_type_eq
+
+
+subroutine sw_output_type_eq(sw_output_out,sw_output_in)
+
+   type(sw_output_type), intent(inout) :: sw_output_out
+   type(sw_output_type), intent(in)    :: sw_output_in
+
+!  Need to add error trap to catch unallocated sw_output_in
+   sw_output_out%fsw              = sw_output_in%fsw
+   sw_output_out%dfsw             = sw_output_in%dfsw
+   sw_output_out%ufsw             = sw_output_in%ufsw
+   sw_output_out%hsw              = sw_output_in%hsw
+   sw_output_out%dfsw_dir_sfc     = sw_output_in%dfsw_dir_sfc
+   sw_output_out%dfsw_dif_sfc     = sw_output_in%dfsw_dif_sfc
+   sw_output_out%ufsw_dif_sfc     = sw_output_in%ufsw_dif_sfc
+   sw_output_out%dfsw_vis_sfc     = sw_output_in%dfsw_vis_sfc
+   sw_output_out%ufsw_vis_sfc     = sw_output_in%ufsw_vis_sfc
+   sw_output_out%dfsw_vis_sfc_dir = sw_output_in%dfsw_vis_sfc_dir
+   sw_output_out%dfsw_vis_sfc_dif = sw_output_in%dfsw_vis_sfc_dif
+   sw_output_out%ufsw_vis_sfc_dif = sw_output_in%ufsw_vis_sfc_dif
+   sw_output_out%swdn_special     = sw_output_in%swdn_special
+   sw_output_out%swup_special     = sw_output_in%swup_special
+   sw_output_out%bdy_flx          = sw_output_in%bdy_flx
+   if (ASSOCIATED(sw_output_in%fswcf))then
+       sw_output_out%fswcf            = sw_output_in%fswcf
+       sw_output_out%dfswcf           = sw_output_in%dfswcf
+       sw_output_out%ufswcf           = sw_output_in%ufswcf
+       sw_output_out%hswcf            = sw_output_in%hswcf
+       sw_output_out%dfsw_dir_sfc_clr = sw_output_in%dfsw_dir_sfc_clr
+       sw_output_out%dfsw_dif_sfc_clr = sw_output_in%dfsw_dif_sfc_clr
+       sw_output_out%swdn_special_clr = sw_output_in%swdn_special_clr
+       sw_output_out%swup_special_clr = sw_output_in%swup_special_clr
+       sw_output_out%bdy_flx_clr      = sw_output_in%bdy_flx_clr
+   endif  
+end subroutine sw_output_type_eq
 
 
 !####################################################################

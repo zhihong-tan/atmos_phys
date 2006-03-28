@@ -38,8 +38,6 @@ use rad_utilities_mod,          only: rad_utilities_init, &
                                       longwave_parameter_type,  &
                                       Lw_parameters
 
- use donner_deep_clouds_W_mod,  only: donner_deep_clouds_calc,   &
-                                      donner_deep_clouds_amt
 !--------------------------------------------------------------------
 
 implicit none
@@ -55,8 +53,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 12.0 2005/04/14 15:48:41 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: lima $'
+  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 13.0 2006/03/28 21:13:48 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 
@@ -622,7 +620,7 @@ real, dimension(:),   intent(in) :: lonb, latb
 !---------------------------------------------------------------------
 !    local variables:
 
-      integer  ::   unit, ierr, io
+      integer  ::   unit
       integer  ::   idf, jdf, kx
       integer  ::   ich, icm, ict, icb
       integer  ::   i, k, n

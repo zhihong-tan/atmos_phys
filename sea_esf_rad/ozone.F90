@@ -38,8 +38,7 @@ use interpolator_mod,    only:  interpolate_type, interpolator_init, &
 
 !-------------------------------
 
-use   tracer_manager_mod, only : get_tracer_index,  & 
-                                 get_tracer_field
+use   tracer_manager_mod, only : get_tracer_index, NO_TRACER
 use    field_manager_mod, only : MODEL_ATMOS
 
 !---------------------------------
@@ -64,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: ozone.F90,v 12.0 2005/04/14 15:47:15 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: ozone.F90,v 13.0 2006/03/28 21:12:59 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -134,6 +133,8 @@ real,dimension(2)  :: latb_col = (/-999., -999./)
                       ! data calculation
 integer, dimension(6) :: time_col = (/0,0,0,0,0,0/)
                       ! time to use for column calculation
+logical      ::  do_coupled_stratozone = .false. ! include the coupled
+                                                 ! stratospheric ozone effects?
 
 
 namelist /ozone_nml/             &
@@ -146,7 +147,8 @@ namelist /ozone_nml/             &
                        filename, &
                        gfdl_zonal_ozone_type, &
                        ozone_dataset_entry, &
-                       do_mcm_o3_clim
+                       do_mcm_o3_clim, &
+                       do_coupled_stratozone
 
 !---------------------------------------------------------------------
 !------- public data ------
@@ -279,7 +281,7 @@ real, dimension(:),   intent(in) :: latb, lonb
 !  local variables:
 
        integer           ::  unit, ierr, io
-       integer           ::  n
+       integer           ::  n, no3
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -419,6 +421,10 @@ real, dimension(:),   intent(in) :: latb, lonb
         if (mpp_pe() == mpp_root_pe() ) then
           print *, 'Using predicted ozone '
         endif
+        no3= get_tracer_index(MODEL_ATMOS,'O3')
+        if (no3 == NO_TRACER) &
+          call error_mesg ('ozone_mod', &
+            'Using predicted ozone but O3 tracer not present in field_table', FATAL)
 
       else
         call error_mesg ('ozone_mod', &
@@ -673,11 +679,11 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
 
 !---------------------------------------------------------------------
 !    if do_predicted_ozone has been activated, set ozone to the appropriate
-!    prognostic tracer field;  here defined by tracer name 'Oy'
+!    prognostic tracer field;  here defined by tracer name 'O3'
 !---------------------------------------------------------------------
         else if ( do_predicted_ozone ) then 
 
-          noy= get_tracer_index(MODEL_ATMOS,'Oy')
+          noy= get_tracer_index(MODEL_ATMOS,'O3')
 
           do k= 1,kmax
             do j= 1,je-js+1    

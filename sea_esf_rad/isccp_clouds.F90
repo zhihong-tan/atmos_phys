@@ -42,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 11.0 2004/09/28 19:21:47 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 13.0 2006/03/28 21:11:56 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -832,7 +832,7 @@ real,  dimension(:,:),    intent(out)     :: inhomogeneity_parameter, &
         ! Generate sub-cloud structures
         !
         seed(:) = (pfull(:, j, nlev) - int(pfull(:, j, nlev))) * 100 + 1
-        call scops(strat, conv, seed, overlap, frac_out)
+        call scops(strat, conv, seed, frac_out)
         
         !
         ! Take scops predictions of cloud fraction and fill in emmissivity and optical 
@@ -841,7 +841,7 @@ real,  dimension(:,:),    intent(out)     :: inhomogeneity_parameter, &
         where(nint(frac_out(:, :, :)) == 0)
           dem (:, :, :) = 0. 
           dtau(:, :, :) = 0. 
-        else where(nint(frac_out(:, :, :)) == 1)
+        elsewhere(nint(frac_out(:, :, :)) == 1)
           dem (:, :, :) = spread(dem_s (:, j, :), dim = 2, nCopies = nCol)
           dtau(:, :, :) = spread(dtau_s(:, j, :), dim = 2, nCopies = nCol) 
         end where 
@@ -858,14 +858,14 @@ real,  dimension(:,:),    intent(out)     :: inhomogeneity_parameter, &
                                            qv(:, j, :),    at(:, j, :), dem_wv)
           
           ! Call Icarus...
-          call icarus(dtau, pFull(:, j, :), top_height,      & 
+          call icarus(dtau, pFull(:, j, :),                  & 
                       dem, dem_wv,  at(:, j, :),  skt(:, j), &
                        (/ (emsfclw, j = 1, nPoints) /),      &
                       boxtau = boxtau, boxptop = boxptop)
         else 
           ! We're asking for the real cloud tops. 
           !   We don't correct very optically thin clouds either. 
-          call icarus(dtau, pFull(:, j, :), top_height, & 
+          call icarus(dtau, pFull(:, j, :),                  & 
                       boxtau = boxtau, boxptop = boxptop)
         end if 
         
@@ -1136,14 +1136,14 @@ real,  dimension(:,:),    intent(out)    :: inhomogeneity_parameter, &
                                            qv(:, j, :),    at(:, j, :), dem_wv)
           
           ! Call Icarus...
-          call icarus(dtau, pFull(:, j, :), top_height,      & 
+          call icarus(dtau, pFull(:, j, :),                  & 
                       dem, dem_wv,  at(:, j, :),  skt(:, j), &
                        (/ (emsfclw, j = 1, nPoints) /),       &
                       boxtau = boxtau, boxptop = boxptop)
         else 
           ! We're asking for the real cloud tops. 
           !   We don't correct very optically thin clouds either. 
-          call icarus(dtau, pFull(:, j, :), top_height, & 
+          call icarus(dtau, pFull(:, j, :),                 & 
                       boxtau = boxtau, boxptop = boxptop)
         end if 
         
@@ -1569,7 +1569,7 @@ end function ran0
 ! Pincus additions start here
 ! 
 !######################################################################
-  subroutine scops(cc, conv, seed, overlap, frac_out)
+  subroutine scops(cc, conv, seed, frac_out)
     real,    dimension(:, :), &  ! Dimensions nPoints, nLev
       intent( in) :: cc, &       !  Cloud cover in each model level (fraction) 
                                  !    NOTE:  This is the HORIZONTAL area of each grid box covered by clouds
@@ -1581,9 +1581,7 @@ end function ran0
                                  !  gridbox it is called on, as it is possible that the choice of the same 
                                  !  seed value every time may introduce some statistical bias in the results, 
                                  !  particularly for low values of NCOL.
-    integer, &
-      intent( in) :: overlap     !  overlap type: 1=max, 2=rand, 3=max/rand
-    
+
     real, dimension(:, :, :), &  ! Dimensions nPoints, nCol, nLev
       intent(out) :: frac_out    ! boxes gridbox divided up into
                                  ! Equivalent of BOX in original version, but indexed by column then row, 
@@ -1723,7 +1721,7 @@ end function ran0
       
   end subroutine scops
 ! -------------------------------------------------------------------
-  subroutine icarus(dtau, pfull, top_height, & ! Required 
+  subroutine icarus(dtau, pfull,                              & ! Required 
                     dem, dem_wv, at, skt, emsfc_lw, iTrop,    & ! Optional
                     boxtau, boxptop)
     !
@@ -1737,20 +1735,6 @@ end function ran0
       intent( in) :: pfull         !  pressure of full model levels (Pascals)
                                    !  pfull(npoints,1)    is    top level of model
                                    !  pfull(npoints,nlev) is bottom level of model
-    integer,                    &
-      intent( in) ::  top_height   !  1 = adjust top height using both a computed
-                                   !  infrared brightness temperature and the visible
-                                   !  optical depth to adjust cloud top pressure. Note
-                                   !  that this calculation is most appropriate to compare
-                                   !  to ISCCP data during sunlit hours.
-                                   !  2 = do not adjust top height, that is cloud top
-                                   !  pressure is the actual cloud top pressure
-                                   !  in the model
-                                   !  3 = adjust top height using only the computed
-                                   !  infrared brightness temperature. Note that this
-                                   !  calculation is most appropriate to compare to ISCCP
-                                   !  IR only algortihm (i.e. you can compare to nighttime
-                                   !  ISCCP data with this option)
     !
     ! Optional input arguments - for computing radiative cloud-top pressure 
     !   All variables except itrop are needed if top_height == 1 .or. top_height == 3
@@ -2332,7 +2316,7 @@ end function ran0
   subroutine ran0_vec(idum, ran0)
     integer, dimension(:), intent(inout) :: idum
     real,    dimension(:), intent(  out) :: ran0
-!     $Id: isccp_clouds.F90,v 11.0 2004/09/28 19:21:47 fms Exp $
+!     $Id: isccp_clouds.F90,v 13.0 2006/03/28 21:11:56 fms Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

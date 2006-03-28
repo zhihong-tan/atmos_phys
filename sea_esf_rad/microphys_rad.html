@@ -54,7 +54,7 @@
 <h4>OTHER MODULES USED</h4>
 <!-- BEGIN OTHER MODULES USED -->
 <div>
-<pre>             fms_mod<br>       constants_mod<br>   rad_utilities_mod<br> longwave_params_mod<br>esfsw_parameters_mod</pre>
+<pre>             fms_mod<br>       constants_mod<br>    time_manager_mod<br>    diag_manager_mod<br>  random_numbers_mod<br> cloud_generator_mod<br>   rad_utilities_mod<br> longwave_params_mod<br>esfsw_parameters_mod</pre>
 </div>
 <!-- END OTHER MODULES USED -->
 <!-- BEGIN PUBLIC INTERFACE -->
@@ -482,7 +482,7 @@
 <a name="comb_cldprops_calc"></a>
 <h4>comb_cldprops_calc</h4>
 <pre>
-<b>call comb_cldprops_calc </b>( deltaz, &amp; cldext, cldsct, cldasymm, abscoeff, &amp; Lsc_microphys, Cell_microphys, &amp; Meso_microphys, Lscrad_props, &amp; Cellrad_props, Mesorad_props)</pre>
+<b>call comb_cldprops_calc </b>( is, js, Rad_time, deltaz, &amp; cldext, cldsct, cldasymm, abscoeff, &amp; Lsc_microphys, Cell_microphys, &amp; Meso_microphys, Lscrad_props, &amp; Cellrad_props, Mesorad_props)</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>

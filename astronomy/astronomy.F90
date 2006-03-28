@@ -45,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: astronomy.F90,v 12.0 2005/04/14 15:38:31 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: astronomy.F90,v 13.0 2006/03/28 21:07:16 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -1259,7 +1259,7 @@ real,                 intent(in), optional :: dt
         where (abs(t) < h)
           cosz = aa + bb*cos(t)
           fracday = 1.0
-        else where
+        elsewhere
           cosz = 0.0
           fracday = 0.0
         end where

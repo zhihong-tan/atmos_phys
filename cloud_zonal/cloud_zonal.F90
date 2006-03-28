@@ -25,8 +25,8 @@ public   cloud_zonal, cloud_zonal_init, getcld
    real, dimension(37,4)   :: phigh,pmidl,ptop,pbtm
    real                    :: rad2deg
 
-   character(len=128) :: version = '$Id: cloud_zonal.F90,v 10.0 2003/10/24 22:00:24 fms Exp $'
-   character(len=128) :: tagname = '$Name: lima $'
+   character(len=128) :: version = '$Id: cloud_zonal.F90,v 13.0 2006/03/28 21:07:56 fms Exp $'
+   character(len=128) :: tagname = '$Name: memphis $'
    logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
@@ -232,7 +232,6 @@ subroutine cloud_zonal_init (season)
 
       integer, intent(in) :: season
 
-      integer :: unit
       character(len=34) :: err_string
 !-----------------------------------------------------------------------
 
@@ -311,10 +310,9 @@ real , intent(out), optional :: cldamt(:,:,:)
 
 real     dlag,rsea,dsea,than,pptop,ppmid,ppbtm,phdeg,  &
          pcnt,ppup,pplo, fyear
-integer  i,j,k,n,isea1,isea2,kmx,lat1,lat2,ltop,lbtm
+integer  i,j,k,n,isea1,isea2,kmx,lat1,ltop,lbtm
 
 !-----------------------------------------------------------------------
-      real :: rlag=14.8125, daypyr=365.25
       real  cam (37,3),phi(37),pmi(37),plu(37),plb(37)
 !-----------------------------------------------------------------------
 
@@ -486,7 +484,7 @@ integer, intent(out), dimension(:,:,:) :: ktopsw,kbtmsw,ktoplw,kbtmlw
 !-----------------------------------------------------------------------
 integer,dimension(size(ktopsw,1),size(ktopsw,2),3) :: ktopsw3,kbtmsw3
    real,dimension(size(cldamt,1),size(cldamt,2),3) :: cldamt3
-integer  k,kp1
+integer  k
 !-----------------------------------------------------------------------
 
 !!    kp1=size(ktopsw,3)

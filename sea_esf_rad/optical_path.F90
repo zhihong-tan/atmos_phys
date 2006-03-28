@@ -63,8 +63,9 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-   character(len=128)  :: version =  '$Id: optical_path.F90,v 12.0 2005/04/14 15:46:57 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: lima $'
+   character(len=128)  :: &
+   version =  '$Id: optical_path.F90,v 13.0 2006/03/28 21:12:51 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -234,7 +235,7 @@ real, dimension(2   )  :: cpf1h2o, csf1h2o
 
 real      :: d622 = RDGAS/RVGAS
 integer   :: NBTRG, NBTRGE
-integer   :: n
+!!$integer   :: n
 
 integer   :: israd, ierad, jsrad, jerad, ks, ke
 
@@ -283,10 +284,8 @@ subroutine optical_path_init(pref)
 !  local variables:
 
       real                    :: dum
-      real, dimension (NBLW)  :: dummy
       real, dimension (NBLY_RSB)  :: dummy_n
       real, dimension (Lw_parameters%NBTRGE) :: dummy_ch4n2o
-      real, dimension (NBLW)  :: ap, bp, atp, btp
       real                    :: awide_c, bwide_c, awide_n, bwide_n, &
                                  awide, bwide
       integer, dimension(5)   :: no_h2o12001400bands = &
@@ -623,7 +622,8 @@ end subroutine optical_path_init
 !
 subroutine optical_path_setup (is, ie, js, je, Atmos_input, &
                                Rad_gases, Aerosol, Aerosol_props,  &
-                               Aerosol_diags, Optical) 
+                               Aerosol_diags, Optical, &
+                               including_aerosols)  
 
 !------------------------------------------------------------------
 !
@@ -636,6 +636,7 @@ type(aerosol_type),            intent(in)    :: Aerosol
 type(aerosol_properties_type), intent(inout) :: Aerosol_props      
 type(aerosol_diagnostics_type), intent(inout) :: Aerosol_diags      
 type(optical_path_type),       intent(inout) :: Optical     
+logical,                   intent(in)            :: including_aerosols  
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
@@ -668,7 +669,7 @@ type(optical_path_type),       intent(inout) :: Optical
       real, dimension (size(Atmos_input%press,3) ) :: bsum
 
       integer      :: n_aerosol_bands
-      integer      :: k, i, j
+      integer      :: k, i, j, n
       integer      :: ix, jx, kx
 
 !--------------------------------------------------------------------
@@ -790,7 +791,7 @@ type(optical_path_type),       intent(inout) :: Optical
 !    becomes available,  aeralb, aerext and aerconc will be additional 
 !    arguments going to aertau.
 !---------------------------------------------------------------------
-      if (Lw_control%do_lwaerosol) then
+      if (including_aerosols .or. Rad_control%volcanic_lw_aerosols) then
         n_aerosol_bands = Lw_parameters%n_lwaerosol_bands
 
 !---------------------------------------------------------------------
@@ -801,64 +802,67 @@ type(optical_path_type),       intent(inout) :: Optical
         allocate (Optical%aerooptdep_KE_15 (ix, jx ) )
         Optical%totaerooptdep = 0.                              
         Optical%aerooptdep_KE_15 = 0.           
+      endif
 !-------------------------------------------------------------------
 !    for each aerosol frequency band, retrieve aerosol optical proper-
 !    ties for each aerosol category. then call optical_depth_aerosol 
 !    to compute for aerosol optical depth. 
 !-------------------------------------------------------------------
-        do n=1,n_aerosol_bands  !  loop on aerosol frequency bands
+      do n=1,n_aerosol_bands  !  loop on aerosol frequency bands
+        if (including_aerosols) then
           call optical_depth_aerosol (js, Atmos_input, n, Aerosol,   &
                                       Aerosol_props, Aerosol_diags, &
                                       Optical)
-          if (Rad_control%volcanic_lw_aerosols) then
-            if (size(Aerosol_props%lw_ext,4) /= 0) then
-              do j=1,jx
-                do i=1,ix
-                  bsum(1) = 0.0
-                  do k=2,kx+1
-                    if (n == 5) then
-                      Aerosol_diags%lw_extopdep_vlcno(i,j,k,1) =  &
-                                     Aerosol_props%lw_ext(i,j,k-1,n)*&
-                                     Atmos_input%deltaz(i,j,k-1)
-                      Aerosol_diags%lw_absopdep_vlcno(i,j,k,1) =  &
-                           Aerosol_diags%lw_extopdep_vlcno(i,j,k,1) 
+        endif   ! (including_aerosols)
+
+        if (Rad_control%volcanic_lw_aerosols) then
+          if (size(Aerosol_props%lw_ext,4) /= 0) then
+            do j=1,jx
+              do i=1,ix
+                bsum(1) = 0.0
+                do k=2,kx+1
+                  if (n == 5) then
+                    Aerosol_diags%lw_extopdep_vlcno(i,j,k,1) =  &
+                                   Aerosol_props%lw_ext(i,j,k-1,n)*&
+                                   Atmos_input%deltaz(i,j,k-1)
+                    Aerosol_diags%lw_absopdep_vlcno(i,j,k,1) =  &
+                          Aerosol_diags%lw_extopdep_vlcno(i,j,k,1) 
 !! NOT CURRENTLY AVAILABLE IN SEA LW CODE -- lw_ssa not processed
 !                     Aerosol_diags%lw_absopdep_vlcno(i,j,k,2) =  &
 !                              (1.0-Aerosol_props%lw_ssa(i,j,k-1,n))*  &
 !                                  Aerosol_props%lw_ext(i,j,k-1,n)*&
 !                                  Atmos_input%deltaz(i,j,k-1)
-                    endif
-                    if (n == 6) then
-                      Aerosol_diags%lw_extopdep_vlcno(i,j,k,2) =  &
+                  endif
+                  if (n == 6) then
+                    Aerosol_diags%lw_extopdep_vlcno(i,j,k,2) =  &
                                    Aerosol_props%lw_ext(i,j,k-1,n)*&
                                    Atmos_input%deltaz(i,j,k-1)
-                      Aerosol_diags%lw_absopdep_vlcno(i,j,k,2) =  &
+                    Aerosol_diags%lw_absopdep_vlcno(i,j,k,2) =  &
                            Aerosol_diags%lw_extopdep_vlcno(i,j,k,2) 
 !! NOT CURRENTLY AVAILABLE IN SEA LW CODE -- lw_ssa not processed
 !                     Aerosol_diags%lw_absopdep_vlcno(i,j,k,1) =  &
 !                           (1.0-Aerosol_props%lw_ssa(i,j,k-1,n))*  &
 !                                  Aerosol_props%lw_ext(i,j,k-1,n)*&
 !                                  Atmos_input%deltaz(i,j,k-1)
-                    endif
-                    bsum(k) = bsum(k-1) +    &
-                              Aerosol_props%lw_ext(i,j,k-1,n)*&
-                              Atmos_input%deltaz(i,j,k-1)
-                  end do
-                  Optical%totaerooptdep(i,j,2:kx+1,n) =    &
+                  endif
+                  bsum(k) = bsum(k-1) +    &
+                            Aerosol_props%lw_ext(i,j,k-1,n)*&
+                            Atmos_input%deltaz(i,j,k-1)
+                end do
+                Optical%totaerooptdep(i,j,2:kx+1,n) =    &
                         Optical%totaerooptdep(i,j,2:kx+1,n) +   &
                         bsum(2:kx+1)
-                  if (n == n_aerosol_bands) then
-                    Optical%aerooptdep_KE_15(i,j) = &
+                if (n == n_aerosol_bands) then
+                  Optical%aerooptdep_KE_15(i,j) = &
                                 Optical%aerooptdep_KE_15(i,j) +  &
                                 Aerosol_props%lw_ext(i,j,kx,n)* &
                                 Atmos_input%deltaz(i,j,kx)
-                  endif
-                end do
-              end do
-            endif
-          endif
-        end do
-      endif
+                endif
+              end do   
+            end do
+          endif ! (size)
+        endif  ! (volcanic_lw_aerosols)
+      end do  ! (n_aerosol_bnads)
 
 !---------------------------------------------------------------------
        
@@ -901,7 +905,7 @@ end subroutine  optical_path_setup
 !
 subroutine optical_trans_funct_from_KS (Gas_tf, to3cnt, overod,   &
                                         Optical, cnttaub1, cnttaub2, &
-                                        cnttaub3)
+                                        cnttaub3, including_aerosols)  
 
 !--------------------------------------------------------------------
 !
@@ -912,6 +916,7 @@ real, dimension (:,:,:), intent(out)   ::  to3cnt, overod, &
                                            cnttaub1, cnttaub2, cnttaub3
 type(optical_path_type), intent(inout) ::  Optical
 type(gas_tf_type),       intent(inout) ::  Gas_tf 
+logical,                   intent(in)            :: including_aerosols  
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -990,7 +995,7 @@ type(gas_tf_type),       intent(inout) ::  Gas_tf
                           Optical%totvo2(:,:,KS+1:KE+1)
       endif
 
-      if (Lw_control%do_lwaerosol) then
+      if (including_aerosols) then
         totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,6)
         tmp2(:,:,KS:KE) = tmp2(:,:,KS:KE) +    &
                           totaer_tmp   (:,:,KS+1:KE+1)
@@ -1030,7 +1035,7 @@ type(gas_tf_type),       intent(inout) ::  Gas_tf
 !--------------------------------------------------------------------
 !    add contribution from longwave aerosols (if desired).
 !--------------------------------------------------------------------
-      if (Lw_control%do_lwaerosol) then
+      if (including_aerosols) then
         totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:, 9)
         tmp1(:,:,KS:KE) = tmp1(:,:,KS:KE) +    &
                           totaer_tmp(:,:,KS+1:KE+1)
@@ -1091,7 +1096,7 @@ type(gas_tf_type),       intent(inout) ::  Gas_tf
         tmp3(:,:,KS:KE) = betacm(15)*Optical%totvo2(:,:,KS+1:KE+1)
       endif
 
-      if (Lw_control%do_lwaerosol) then
+      if (including_aerosols) then
         totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,4)
         tmp1(:,:,KS:KE) =  tmp1(:,:,KS:KE) +    &
                            totaer_tmp   (:,:,KS+1:KE+1  )
@@ -1206,7 +1211,7 @@ end subroutine optical_trans_funct_from_KS
 ! </SUBROUTINE>
 !
 subroutine optical_trans_funct_k_down (Gas_tf, k, to3cnt, overod,   &
-                                       Optical)   
+                                       Optical,including_aerosols)  
 
 !---------------------------------------------------------------------
 !
@@ -1216,6 +1221,7 @@ integer,                 intent (in)    :: k
 real, dimension (:,:,:), intent(out)    :: to3cnt, overod
 type(optical_path_type), intent(inout)  :: Optical
 type(gas_tf_type),       intent(inout)  :: Gas_tf 
+logical,                   intent(in)            :: including_aerosols  
 
 !---------------------------------------------------------------------
 !   intent(in) variable:
@@ -1288,7 +1294,7 @@ type(gas_tf_type),       intent(inout)  :: Gas_tf
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
-      if (Lw_control%do_lwaerosol) then
+      if (including_aerosols) then
         totaer_tmp(:,:,:) = Optical%totaerooptdep(:,:,:,6)
       endif
 
@@ -1312,7 +1318,7 @@ type(gas_tf_type),       intent(inout)  :: Gas_tf
           avvo2 (:,:,kp+k-1) = Optical%totvo2(:,:,kp+k) -   &
                                Optical%totvo2(:,:,k)
         endif 
-        if (Lw_control%do_lwaerosol) then
+        if (including_aerosols) then
           avaero3(:,:,kp+k-1) =  &
                        totaer_tmp   (:,:,kp+k) - totaer_tmp   (:,:,k)
          endif
@@ -1380,7 +1386,7 @@ type(gas_tf_type),       intent(inout)  :: Gas_tf
 !-------------------------------------------------------------------
 !    add contribution from longwave aerosols (if desired).
 !-------------------------------------------------------------------
-      if (Lw_control%do_lwaerosol) then
+      if (including_aerosols) then
         totaer_tmp      (:,:,:) = Optical%totaerooptdep   (:,:,:,9)
         do kp=k,KE
           tmp1(:,:,kp) = tmp1(:,:,kp) +    &
@@ -1441,7 +1447,7 @@ type(gas_tf_type),       intent(inout)  :: Gas_tf
         tmp2(:,:,k:KE) = tmp2(:,:,k:KE) + betacm(14)*   &
                          avvo2 (:,:,k:KE)
       endif
-      if (Lw_control%do_lwaerosol) then
+      if (including_aerosols) then
         tmp2(:,:,k:KE) = tmp2(:,:,k:KE) +   &
                          avaero3      (:,:,k:KE)
       endif
@@ -1487,7 +1493,8 @@ end subroutine optical_trans_funct_k_down
 !  </INOUT>
 ! </SUBROUTINE>
 !
-subroutine optical_trans_funct_KE (Gas_tf, to3cnt, Optical, overod)  
+subroutine optical_trans_funct_KE (Gas_tf, to3cnt, Optical, overod, &
+                                   including_aerosols)  
 
 !---------------------------------------------------------------------
 !
@@ -1496,6 +1503,7 @@ subroutine optical_trans_funct_KE (Gas_tf, to3cnt, Optical, overod)
 real, dimension (:,:,:), intent(out)   :: to3cnt, overod
 type(optical_path_type), intent(inout) :: Optical
 type(gas_tf_type),       intent(inout) :: Gas_tf 
+logical,                   intent(in)            :: including_aerosols  
 
 !---------------------------------------------------------------------
 !   intent(inout) variables:
@@ -1568,7 +1576,7 @@ type(gas_tf_type),       intent(inout) :: Gas_tf
 !---------------------------------------------------------------------
 !    add contribution from longwave aerosols (if desired).
 !---------------------------------------------------------------------
-      if (Lw_control%do_lwaerosol) then
+      if (including_aerosols) then
         aerooptdep_KE_15(:,:) = Optical%aerooptdep_KE_15(:,:)
         tmp1(:,:,KE) = tmp1(:,:,KE) + aerooptdep_KE_15(:,:)  
       endif
@@ -1931,7 +1939,6 @@ integer,                   intent(in)      :: n
                        size(Optical%tfac,3)) ::     &
                                                  radf, sh2o , tmpexp
 
-      real               ::  t0 = 296.0
       real               ::  fh2o0, sh2o0
       integer            ::  k, nu
 
@@ -1941,7 +1948,6 @@ integer,                   intent(in)      :: n
 !       radf
 !       sh2o
 !       tmpexp
-!       t0
 !       fh2o0
 !       sh2o0
 !       k
@@ -2053,18 +2059,13 @@ type(optical_path_type), intent(inout) :: Optical
 !--------------------------------------------------------------------
 !  local variables:
 
-      real               ::  t0 = 296.0
       integer            ::  k, nu
-      real               ::  fh2o0, sh2o0
 
 !--------------------------------------------------------------------
 !  local variables:
 !
-!      t0
 !      k
 !      nu
-!      fh2o0
-!      sh2o0
 !
 !----------------------------------------------------------------------
 
@@ -2181,7 +2182,7 @@ end subroutine get_totvo2
 ! </SUBROUTINE>
 !
 
-subroutine optical_dealloc (Optical)
+subroutine optical_dealloc (Optical, including_aerosols)  
 
 !-------------------------------------------------------------------
 !    optical_dealloc deallocates the array components of the 
@@ -2189,6 +2190,7 @@ subroutine optical_dealloc (Optical)
 !--------------------------------------------------------------------
 
 type(optical_path_type), intent(inout) :: Optical
+logical,                   intent(in)            :: including_aerosols  
 
 !--------------------------------------------------------------------
 ! intent(inout) variables:
@@ -2248,7 +2250,7 @@ type(optical_path_type), intent(inout) :: Optical
          deallocate (Optical%totf22         )
        endif
 
-       if (Lw_control%do_lwaerosol) then
+       if (including_aerosols) then
          deallocate (Optical%totaerooptdep  )
          deallocate (Optical%aerooptdep_KE_15  )
        endif
@@ -2364,8 +2366,7 @@ subroutine optical_ckd_init
       real   ::   tktab(40),  vjtab(300)
 
 !---------------------------------------------------------------------
-      integer  :: inrad, k, j, ihih2o, iloh2o, nu
-      real     :: fh2o0, sh2o0
+      integer  :: inrad, k, j, ihih2o
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -2380,10 +2381,6 @@ subroutine optical_ckd_init
 !      inrad
 !      k,j
 !      ihih2o
-!      iloh2o
-!      nu
-!      fh2o0
-!      sh2o0
 !
 !--------------------------------------------------------------------
 
@@ -2678,8 +2675,7 @@ type(optical_path_type), intent(inout)    :: Optical
                                     xch2obdinw, tmpexp, rvh2o, rhoave
 
       real                    ::  t0 = 296.0
-      integer                 ::  n, k, nu
-      real                    ::  fh2o0, sh2o0
+      integer                 ::  k, nu
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -2692,8 +2688,6 @@ type(optical_path_type), intent(inout)    :: Optical
 !      t0
 !      n,k
 !      nu
-!      fh2o0
-!      sh2o0
 !
 !--------------------------------------------------------------------
 
@@ -3463,7 +3457,9 @@ type(optical_path_type),       intent(inout) :: Optical
 
       integer, dimension (size(Aerosol%aerosol,1),  &
                           size(Aerosol%aerosol,2),  &
-                          size(Aerosol%aerosol,3))  :: irh, opt_index_v
+                          size(Aerosol%aerosol,3))  :: irh, opt_index_v1, &
+                          opt_index_v2, opt_index_v3, opt_index_v4, &
+                          opt_index_v5, opt_index_v6, opt_index_v7,opt_index_v8
 
       real, dimension (size(Aerosol%aerosol,3)+1) :: bsum
 
@@ -3512,8 +3508,22 @@ type(optical_path_type),       intent(inout) :: Optical
           do i = 1,ix           
             irh(i,j,k) = MIN(100, MAX(0,     &
                           NINT(100.*Atmos_input%aerosolrelhum(i,j,k))))
-            opt_index_v(i,j,k) =     &
+            opt_index_v1(i,j,k) =     &
                                Aerosol_props%sulfate_index( irh(i,j,k) )
+            opt_index_v2(i,j,k) =     &
+                               Aerosol_props%omphilic_index( irh(i,j,k) )
+            opt_index_v3(i,j,k) =     &
+                               Aerosol_props%bcphilic_index( irh(i,j,k) )
+            opt_index_v4(i,j,k) =     &
+                               Aerosol_props%seasalt1_index( irh(i,j,k) )
+            opt_index_v5(i,j,k) =     &
+                               Aerosol_props%seasalt2_index( irh(i,j,k) )
+            opt_index_v6(i,j,k) =     &
+                               Aerosol_props%seasalt3_index( irh(i,j,k) )
+            opt_index_v7(i,j,k) =     &
+                               Aerosol_props%seasalt4_index( irh(i,j,k) )
+            opt_index_v8(i,j,k) =     &
+                               Aerosol_props%seasalt5_index( irh(i,j,k) )
           end do
         end do
       end do
@@ -3522,13 +3532,37 @@ type(optical_path_type),       intent(inout) :: Optical
 !    using relative humidity criterion (where necessary) determine the
 !    aerosol category (as an index) appropriate for the aerosol species
 !---------------------------------------------------------------------
+  do nsc=1,nfields  ! loop on aerosol species
+      if (Aerosol_props%optical_index(nsc) > 0 ) then   
+
       do k = 1,kx         
         do j = 1,jx         
           do i = 1,ix           
-            opt_index = opt_index_v(i,j,k)
-            do nsc=1,nfields  ! loop on aerosol species
-              if (Aerosol_props%optical_index(nsc) == 0 ) then
-! ... Sulfate aerosol (RH-dependent)
+                opt_index = Aerosol_props%optical_index(nsc)
+                if (opt_index == 0 ) then
+                   call error_mesg ('optical_path_init', &
+                  'Cannot find aerosol optical properties for species = ' // &
+                   TRIM( Aerosol%aerosol_names(nsc) ),  FATAL )
+                endif
+                aerooptdepspec(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                     (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))*&
+                            Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                   aerooptdepspec_cn(i,j,k,nsc) =    &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                   (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                   Aerosol_props%aerextbandlw_cn(n,opt_index)
+                 end if
+            end do
+          end do
+        end do
+     else if (Aerosol_props%optical_index(nsc) == &   
+                          Aerosol_props%sulfate_flag  ) then
+      do k = 1,kx         
+        do j = 1,jx         
+          do i = 1,ix           
+            opt_index = opt_index_v1(i,j,k)
                 aerooptdepspec(i,j,k,nsc) =     &
                    diffac*Aerosol%aerosol(i,j,k,nsc)*&
                    (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
@@ -3538,61 +3572,145 @@ type(optical_path_type),       intent(inout) :: Optical
                      diffac*Aerosol%aerosol(i,j,k,nsc)*   &
                  (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
                         Aerosol_props%aerextbandlw_cn(n,opt_index)
-                endif
-                if (n ==  5) then
-                  Aerosol_diags%extopdep(i,j,k,nsc,4) =  &
-                      aerooptdepspec(i,j,k,nsc)
-                endif
-                if (n ==  6) then
-                  Aerosol_diags%extopdep(i,j,k,nsc,5) =  &
-                        aerooptdepspec(i,j,k,nsc)
-                 endif
               endif
             end do
           end do
         end do
-      end do
-
-!---------------------------------------------------------------------
-!    using relative humidity criterion (where necessary) determine the
-!    aerosol category (as an index) appropriate for the aerosol species
-!---------------------------------------------------------------------
+     else if (Aerosol_props%optical_index(nsc) ==  &
+                        Aerosol_props%omphilic_flag ) then
       do k = 1,kx         
         do j = 1,jx         
           do i = 1,ix           
-            do nsc=1,nfields  ! loop on aerosol species
-              if (Aerosol_props%optical_index(nsc) == 0 ) then
-              else
-! ... Other aerosols
-                opt_index = Aerosol_props%optical_index(nsc)
-                if (opt_index == 0 ) then
-                  call error_mesg ('optical_path_init', &
-           'Cannot find aerosol optical properties for species = ' // &
-                 TRIM( Aerosol%aerosol_names(nsc) ),  FATAL )
-                endif
-                aerooptdepspec(i,j,k,nsc) =    &
-                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
-                     (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))*&
-                            Aerosol_props%aerextbandlw(n,opt_index)
+            opt_index = opt_index_v2(i,j,k)
+                aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
                 if (n == 1) then
                   aerooptdepspec_cn(i,j,k,nsc) =    &
                      diffac*Aerosol%aerosol(i,j,k,nsc)*   &
                  (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
                         Aerosol_props%aerextbandlw_cn(n,opt_index)
-                endif
-                if (n ==  5) then
-                  Aerosol_diags%extopdep(i,j,k,nsc,4) =  &
-                       aerooptdepspec(i,j,k,nsc)
-                endif
-                if (n ==  6) then
-                  Aerosol_diags%extopdep(i,j,k,nsc,5) =  &
-                        aerooptdepspec(i,j,k,nsc)
-                endif
-              end if
+              endif
             end do
           end do
         end do
-      end do
+     else if (Aerosol_props%optical_index(nsc) ==  &
+                        Aerosol_props%bcphilic_flag ) then
+      do k = 1,kx         
+        do j = 1,jx         
+          do i = 1,ix           
+            opt_index = opt_index_v3(i,j,k)
+                aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+              endif
+            end do
+          end do
+        end do
+     else if (Aerosol_props%optical_index(nsc) ==  &
+                        Aerosol_props%seasalt1_flag ) then
+      do k = 1,kx         
+        do j = 1,jx         
+          do i = 1,ix           
+            opt_index = opt_index_v4(i,j,k)
+                aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+              endif
+            end do
+          end do
+        end do
+     else if (Aerosol_props%optical_index(nsc) ==  &
+                        Aerosol_props%seasalt2_flag ) then
+      do k = 1,kx         
+        do j = 1,jx         
+          do i = 1,ix           
+            opt_index = opt_index_v5(i,j,k)
+                aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+              endif
+            end do
+          end do
+        end do
+     else if (Aerosol_props%optical_index(nsc) ==  &
+                        Aerosol_props%seasalt3_flag ) then
+      do k = 1,kx         
+        do j = 1,jx         
+          do i = 1,ix           
+            opt_index = opt_index_v6(i,j,k)
+                aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+              endif
+            end do
+          end do
+        end do
+     else if (Aerosol_props%optical_index(nsc) ==  &
+                        Aerosol_props%seasalt4_flag ) then
+      do k = 1,kx         
+        do j = 1,jx         
+          do i = 1,ix           
+            opt_index = opt_index_v7(i,j,k)
+                aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+              endif
+            end do
+          end do
+        end do
+     else if (Aerosol_props%optical_index(nsc) ==  &
+                        Aerosol_props%seasalt5_flag ) then
+      do k = 1,kx         
+        do j = 1,jx         
+          do i = 1,ix           
+            opt_index = opt_index_v8(i,j,k)
+                aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+              endif
+            end do
+          end do
+        end do
+      endif
+   end do
 
 !---------------------------------------------------------------------
 !    save optical path contributions from each layer for band4 and the

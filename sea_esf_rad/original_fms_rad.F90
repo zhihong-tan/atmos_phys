@@ -97,8 +97,8 @@ public    original_fms_rad_init, original_fms_rad_end, original_fms_rad
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: original_fms_rad.F90,v 12.0 2005/04/14 15:47:06 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: original_fms_rad.F90,v 13.0 2006/03/28 21:12:55 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)
@@ -327,11 +327,11 @@ type(time_type), intent(in)                 :: Time
 !real, intent(inout) :: lat_diag, long_diag
 !integer, intent(out) :: ipgl, jpgl
 !-----------------------------------------------------------------------
-      integer :: unit, io, ierr,             vers
-      logical ::              end
-      integer ::                new_rad_time
+      integer :: unit, io, ierr
+
+
 !     character(len=4) :: chvers
-      character(len=8) :: chvers
+
       real, dimension(size (lonb,1)-1) :: idiff
       real, dimension(size (latb,1)-1) :: jdiff
       integer :: i, j, minindx
@@ -597,9 +597,9 @@ integer, dimension(:,:), intent(in), optional  :: kbot
 !    integer,dimension(size(temp_in,1),size(temp_in,2))   :: nclds
       integer, dimension(ie-is+1, je-js+1 ) ::   nclds
 
-     integer :: i, j, k, n,             ipass, npass, ip, jp,  kb
-     logical :: no_clouds, used
-     type(time_type) ::           Dt_zen
+     integer ::                   ip, jp
+     logical :: no_clouds
+
 
 
      real :: rrsun

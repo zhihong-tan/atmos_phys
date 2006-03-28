@@ -57,8 +57,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 12.0 2005/04/14 15:44:12 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 13.0 2006/03/28 21:11:13 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -80,7 +80,7 @@ private          &
 !-------- namelist  ---------
 
 integer, parameter   ::        &
-             MAX_OPTICAL_FIELDS = 100  ! maximum number of aerosol 
+             MAX_OPTICAL_FIELDS = 400  ! maximum number of aerosol 
                                        ! optical property types
 logical              ::        &
              do_lwaerosol = .false.    ! aerosol efects included in lw
@@ -92,8 +92,21 @@ character(len=48)    ::        &
              aerosol_data_set = ' '    ! source of aerosol data; if 
                                        ! aerosols not desired remains
                                        ! ' ', otherwise is set to either
-                                       ! 'shettle-fenn' or 'predicted'
-                                       ! (predicted not yet implemented)
+                                       ! 'shettle_fenn' or 
+                                       ! 'Ginoux_Reddy'
+
+!----------------------------------------------------------------------
+!    the avaialable aerosol datasets are :
+!    1) "shettle_fenn":  
+!        Ref: shettle, e.p. and r.w. fenn, models for the aerosols of 
+!            the lower atmosphere and the effects of humidity variations
+!            on their optical properties,afgl-tr-79-0214,1979,94pp.    
+!    2) "Ginoux_Reddy": 3D Aerosol fields are generated online reflecting
+!        emissions, transport and deposition:
+!        Ref: Reddy et al., 2005, Ginoux et al., 2005
+!        
+!----------------------------------------------------------------------
+
 character(len=64)    ::        &
              aerosol_optical_names(MAX_OPTICAL_FIELDS) = '  '
                                        ! names associated with the 
@@ -176,12 +189,78 @@ logical :: interpolating_volcanic_data = .true.
                                        ! volcanic datasets will be
                                        ! time interpolated rather than
                                        ! held constant for a month ?
+integer, dimension(0:100) ::  omphilic_indices = (/        &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0  /)
+integer, dimension(0:100) ::  bcphilic_indices = (/        &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0  /)
+integer, dimension(0:100) ::  seasalt1_indices = (/        &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0  /)
+integer, dimension(0:100) ::  seasalt2_indices = (/        &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0  /)
+integer, dimension(0:100) ::  seasalt3_indices = (/        &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0  /)
+integer, dimension(0:100) ::  seasalt4_indices = (/        &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0  /)
+integer, dimension(0:100) ::  seasalt5_indices = (/        &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0  /)
+integer, dimension(0:100) ::  sulfate_indices = (/      &
+                           30,30,30,30,30,30,30,30,30,30,30,30,30,30, &
+                           30,30,30,30,30,30,30,30,30,30,30,30,30,30, &
+                           30,30,30,30,30,35,35,35,35,35,40,40,40,40, &
+                           40,45,45,45,45,45,50,50,50,50,50,55,55,55, &
+                           55,55,60,60,60,60,60,65,65,65,65,65,70,70, &
+                           70,70,70,75,75,75,75,75,80,80,80,80,82,82, &
+                           84,84,86,86,88,88,90,91,92,93,94,95,96,97, &
+                           98,99,100 /)
 
 
 namelist / aerosolrad_package_nml /                          &
                                     do_lwaerosol, do_swaerosol, &
                                     aerosol_data_set, &
                                     aerosol_optical_names, &
+                                    sulfate_indices, &
+                                    omphilic_indices, &
+                                    bcphilic_indices, &
+                                    seasalt1_indices, &
+                                    seasalt2_indices, &
+                                    seasalt3_indices, &
+                                    seasalt4_indices, &
+                                    seasalt5_indices, &
                                     optical_filename   , &
                                     using_volcanic_sw_files, &
                                     using_volcanic_lw_files, &
@@ -248,6 +327,19 @@ integer     ::  num_wavenumbers = 0 ! number of wavenumber bands
 integer     :: naermodels = 0   ! number of aerosol optical properties
                                 ! types that are active
 
+!---------------------------------------------------------------------
+!    flags indicating an index value characteristic of the optical prop-
+!    erties associated with different aerosols
+!---------------------------------------------------------------------
+integer, PARAMETER ::   SULFATE_FLAG =  0
+integer, PARAMETER ::  OMPHILIC_FLAG = -1
+integer, PARAMETER ::  BCPHILIC_FLAG = -2
+integer, PARAMETER ::  SEASALT1_FLAG = -3
+integer, PARAMETER ::  SEASALT2_FLAG = -4
+integer, PARAMETER ::  SEASALT3_FLAG = -5
+integer, PARAMETER ::  SEASALT4_FLAG = -6
+integer, PARAMETER ::  SEASALT5_FLAG = -7
+
 !----------------------------------------------------------------------
 !    Aerosol_props is an aerosol_properties_type variable which retains
 !    the information needed throughout the run concerning aerosol
@@ -309,7 +401,7 @@ logical :: band_calculation_completed = .false. ! lw properties have
                                                 ! been calculated ?
 logical :: module_is_initialized      = .false. ! module has been
                                                 ! initialized ?
-logical :: doing_predicted_aerosols   = .false. ! predicted aerosol 
+!logical :: doing_predicted_aerosols   = .false. ! predicted aerosol 
                                                 ! scheme being used ?
 
 type(time_type) :: Model_init_time  ! initial calendar time for model  
@@ -505,12 +597,22 @@ real, dimension(:),              intent(in)  :: lonb,latb
 !----------------------------------------------------------------------
       Sw_control%do_swaerosol = do_swaerosol
       Lw_control%do_lwaerosol = do_lwaerosol
-      if (do_lwaerosol .or. do_swaerosol ) then   
+      if (Rad_control%do_lwaerosol_forcing_iz .and. &
+          Rad_control%do_swaerosol_forcing_iz) then
+
+      if (do_lwaerosol .or. do_swaerosol  .or.  &
+          using_volcanic_lw_files .or. using_volcanic_sw_files .or. &
+         Rad_control%do_lwaerosol_forcing .or.  &
+         Rad_control%do_swaerosol_forcing)  then
         Rad_control%do_aerosol = .true.
       else
         Rad_control%do_aerosol = .false.
       endif
-
+      else
+        call error_mesg ('aerosolrad_package_mod', &
+         ' using Rad_control%do_{l,s}waerosol_forcing  before it &
+                                             &is defined', FATAL)
+      endif
 !--------------------------------------------------------------------
 !    mark the just defined logicals as initialized.
 !--------------------------------------------------------------------
@@ -550,36 +652,6 @@ real, dimension(:),              intent(in)  :: lonb,latb
             'data_names supplied', FATAL)
       endif
 
-!---------------------------------------------------------------------
-!    if predicted aerosols are desired, exit with an error message.
-!    code to handle prognostic aerosol has not yet been produced.
-!---------------------------------------------------------------------
-      if (Rad_control%do_aerosol .and.    &
-          trim(aerosol_data_set) == 'predicted') then
-        doing_predicted_aerosols = .true.
-        call error_mesg ('aerosolrad_package_mod',  &
-               'predicted aerosols not currently implemented', FATAL)
-      endif
-
-!----------------------------------------------------------------------
-!    the only aerosol data set currently implemented is the
-!    shettle-fenn data set.
-!    references:                                            
-!    shettle, e.p. and r.w. fenn, models for the aerosols of the lower 
-!    atmosphere and the effects of humidity variations on their       
-!    optical properties,afgl-tr-79-0214,1979,94pp.                    
-!----------------------------------------------------------------------
-      if (Rad_control%do_aerosol ) then         
-        if (trim(aerosol_data_set) == 'shettle_fenn')  then
-
-!-------------------------------------------------------------------
-!  error condition -- prescribed type is not acceptable
-!-------------------------------------------------------------------
-        else
-          call error_mesg ('aerosolrad_package_mod',  &
-                       ' aerosol data set is not recognized.', FATAL)
-        endif
-      endif
 
 !----------------------------------------------------------------------
 !    if aerosol radiative effects are to be included, call 
@@ -599,10 +671,7 @@ real, dimension(:),              intent(in)  :: lonb,latb
 !    erly map the input data from the aerosol parameterization bands to 
 !    the solar parameterization bands that the model is using.
 !--------------------------------------------------------------------
-!     if (Rad_control%do_aerosol) then
-!       call read_optical_input_file
-!     endif
-      if (do_swaerosol) then
+      if (do_swaerosol .or. Rad_control%do_swaerosol_forcing) then
         call sw_aerosol_interaction                 
       endif
 
@@ -614,7 +683,7 @@ real, dimension(:),              intent(in)  :: lonb,latb
 !    they are not, indicate that this part of the code has been 
 !    executed.
 !---------------------------------------------------------------------
-      if (do_lwaerosol) then
+      if (do_lwaerosol .or. Rad_control%do_lwaerosol_forcing) then
         call lw_aerosol_interaction
       else
         Lw_parameters%n_lwaerosol_bands_iz = .true.
@@ -641,19 +710,17 @@ real, dimension(:),              intent(in)  :: lonb,latb
 !    set the volcanic control variables to .false. when the model 
 !    aerosols are not active.
 !---------------------------------------------------------------------
-      if (.not. do_swaerosol) then          
-        Rad_control%volcanic_lw_aerosols = .false.
-        Rad_control%volcanic_lw_aerosols_iz = .true.
-      endif
-      if (.not. do_swaerosol) then          
-        Rad_control%volcanic_sw_aerosols = .false.
-        Rad_control%volcanic_sw_aerosols_iz = .true.
-      endif
+      Rad_control%volcanic_lw_aerosols = using_volcanic_lw_files
+      Rad_control%volcanic_lw_aerosols_iz = .true.
+      Rad_control%volcanic_sw_aerosols = using_volcanic_sw_files
+      Rad_control%volcanic_sw_aerosols_iz = .true.
 
 !---------------------------------------------------------------------
 !    a dataset entry point must be supplied when the volcanic files are
-!    to be used.
+!    to be used; if not present, the dataset entry point is taken as
+!    the model base_time, defined in the diag_table.
 !---------------------------------------------------------------------
+      Model_init_time = get_base_time()
       if (using_volcanic_sw_files .or.  &
           using_volcanic_lw_files) then
         if (volcanic_dataset_entry(1) == 1 .and. &
@@ -662,23 +729,29 @@ real, dimension(:),              intent(in)  :: lonb,latb
             volcanic_dataset_entry(4) == 0 .and. &
             volcanic_dataset_entry(5) == 0 .and. &
             volcanic_dataset_entry(6) == 0 ) then      
-          call error_mesg ('aerosolrad_package_mod', &
-           'must set volcanic_dataset_entry when using volcanic &
-                                             &input files', FATAL)
-        endif
-      endif
+          Volcanic_entry = Model_init_time
 
 !----------------------------------------------------------------------
 !    define the offset from model base time  (defined in diag_table) 
 !    to volcanic_dataset_entry as a time_type variable.
 !----------------------------------------------------------------------
-      Model_init_time = get_base_time()
-      Volcanic_entry  = set_date (volcanic_dataset_entry(1), &
-                                  volcanic_dataset_entry(2), &
-                                  volcanic_dataset_entry(3), &
-                                  volcanic_dataset_entry(4), &
-                                  volcanic_dataset_entry(5), &
-                                  volcanic_dataset_entry(6))
+      else
+        Volcanic_entry  = set_date (volcanic_dataset_entry(1), &
+                                    volcanic_dataset_entry(2), &
+                                    volcanic_dataset_entry(3), &
+                                    volcanic_dataset_entry(4), &
+                                    volcanic_dataset_entry(5), &
+                                    volcanic_dataset_entry(6))
+       endif
+     else
+       Volcanic_entry  = set_date (volcanic_dataset_entry(1), &
+                                   volcanic_dataset_entry(2), &
+                                   volcanic_dataset_entry(3), &
+                                   volcanic_dataset_entry(4), &
+                                   volcanic_dataset_entry(5), &
+                                   volcanic_dataset_entry(6))
+
+      endif
       if (using_volcanic_sw_files .or.  &
           using_volcanic_lw_files) then
         call print_date(Volcanic_entry , str='Data from volcano &
@@ -699,14 +772,6 @@ real, dimension(:),              intent(in)  :: lonb,latb
 !--------------------------------------------------------------------
       tot_points = ( size(lonb(:))-1)*( size(latb(:)) -1)
 
-!----------------------------------------------------------------------
-!    if the volcanic sw aerosol properties are to be used, set control
-!    variables so indicating.
-!----------------------------------------------------------------------
-      if (using_volcanic_sw_files) then
-        Rad_control%volcanic_sw_aerosols = .true.
-        Rad_control%volcanic_sw_aerosols_iz = .true.
-
 !-----------------------------------------------------------------------
 !    if desired, process the sw extinction coefficient file. allocate 
 !    space for and define the names of each variable. if not interpol-
@@ -714,6 +779,7 @@ real, dimension(:),              intent(in)  :: lonb,latb
 !    call interpolator_init to initialize the interpolation module for
 !    the file.
 !-----------------------------------------------------------------------
+      if (using_volcanic_sw_files) then
         if (trim(sw_ext_root) /= ' '  ) then
           nfields_sw_ext = Solar_spect%nbands
           allocate (sw_ext_name (nfields_sw_ext))
@@ -808,22 +874,7 @@ real, dimension(:),              intent(in)  :: lonb,latb
                                   data_out_of_bounds=(/CONSTANT/), &
                                   vert_interp=(/INTERP_WEIGHTED_P/) )  
         endif
-
-!----------------------------------------------------------------------
-!    if sw volcanic files are not being used, set a flag to indicate
-!    that the control variable has the proper value.
-!----------------------------------------------------------------------
-      else
-        Rad_control%volcanic_sw_aerosols_iz = .true.
       endif
-
-!----------------------------------------------------------------------
-!    if the volcanic lw aerosol properties are to be used, set control
-!    variables so indicating.
-!----------------------------------------------------------------------
-      if (using_volcanic_lw_files) then
-        Rad_control%volcanic_lw_aerosols = .true.
-        Rad_control%volcanic_lw_aerosols_iz = .true.
 
 !-----------------------------------------------------------------------
 !    if desired, process the lw extinction coefficient file. allocate 
@@ -832,6 +883,7 @@ real, dimension(:),              intent(in)  :: lonb,latb
 !    call interpolator_init to initialize the interpolation module for
 !    the file.
 !-----------------------------------------------------------------------
+      if (using_volcanic_lw_files) then
         if (trim(lw_ext_root)    /= ' '  ) then
           nfields_lw_ext = N_AEROSOL_BANDS
           allocate (lw_ext_name (nfields_lw_ext))
@@ -915,14 +967,20 @@ real, dimension(:),              intent(in)  :: lonb,latb
                                    data_out_of_bounds=(/CONSTANT/), &
                                    vert_interp=(/INTERP_WEIGHTED_P/) )  
         endif
-
-!----------------------------------------------------------------------
-!    if lw volcanic files are not being used, set a flag to indicate
-!    that the control variable has the proper value.
-!----------------------------------------------------------------------
-     else
-       Rad_control%volcanic_lw_aerosols_iz = .true.
      endif
+
+!---------------------------------------------------------------------
+!    save the flags into the aerosol_props derived type variable so they
+!    may be used in external modules.
+!---------------------------------------------------------------------
+      Aerosol_props%sulfate_flag  = SULFATE_FLAG
+      Aerosol_props%omphilic_flag = OMPHILIC_FLAG
+      Aerosol_props%bcphilic_flag = BCPHILIC_FLAG
+      Aerosol_props%seasalt1_flag = SEASALT1_FLAG
+      Aerosol_props%seasalt2_flag = SEASALT2_FLAG
+      Aerosol_props%seasalt3_flag = SEASALT3_FLAG
+      Aerosol_props%seasalt4_flag = SEASALT4_FLAG
+      Aerosol_props%seasalt5_flag = SEASALT5_FLAG
 
 !---------------------------------------------------------------------
 !    mark the module as initialized.
@@ -1042,15 +1100,6 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
                                          size(Aerosol%aerosol,3)+1,2))
       Aerosol_diags%lw_absopdep_vlcno = 0.0
 
-!---------------------------------------------------------------------
-!    the following code applies to the non-predicted-aerosol case, 
-!    where these calculations need be done only once and the 
-!    results saved for access on succeeeding timesteps. if predicted
-!    aerosols were being used, there may be a need to do new 
-!    calculations on each timestep.
-!---------------------------------------------------------------------
-     if (.not. doing_predicted_aerosols) then
-
 !--------------------------------------------------------------------
 !    if sw aerosol properties are desired and have not yet been calc-
 !    ulated, use the thick-averaging technique to define the single-
@@ -1065,7 +1114,9 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
 ! note: a thin-averaging technique (subroutine thinavg in 
 !    rad_utilities_mod) is also available.   
 !--------------------------------------------------------------------
-        if (Sw_control%do_swaerosol .and. .not. swprops_completed) then 
+        if ((Sw_control%do_swaerosol .or.   &
+             Rad_control%do_swaerosol_forcing)  .and. &
+            .not. swprops_completed) then
           do nmodel=1,naermodels
             call thickavg (nivl1aero, nivl2aero, num_wavenumbers,   &
                            Solar_spect%nbands, aeroextivl(:,nmodel), &
@@ -1202,8 +1253,9 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
 !    units (m**2/Kg) consistent with the units in FMS models, one
 !    must multiply by 1000. this is done below.
 !---------------------------------------------------------------------
-        if (Lw_control%do_lwaerosol .and.  &
-            .not. band_calculation_completed) then
+        if ((Lw_control%do_lwaerosol .or.  &
+           Rad_control%do_lwaerosol_forcing) .and. &
+           .not. band_calculation_completed) then
           do nw=1,naermodels    
             do na=1,N_AEROSOL_BANDS  
               do ni=1,num_wavenumbers 
@@ -1322,19 +1374,6 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
 !---------------------------------------------------------------------
         Aerosol_props_out = Aerosol_props 
 
-!--------------------------------------------------------------------
-
-!---------------------------------------------------------------------
-!    code for predicted aerosols will be placed here, when available.
-!---------------------------------------------------------------------
-      else  ! ( .not. doing_predicted_aerosols)
-        call error_mesg ('aerosolrad_package_mod', &
-                    'predicted aerosols not yet implenmented', FATAL)
-      endif ! ( ,not. doing_predicted_aerosols)
-
-!----------------------------------------------------------------------
-
-
 
 end subroutine aerosol_radiative_properties
 
@@ -1372,11 +1411,11 @@ subroutine aerosolrad_package_end
 !---------------------------------------------------------------------
 !    deallocate module variables.
 !---------------------------------------------------------------------
-      if (do_swaerosol) then
+      if (do_swaerosol .or. Rad_control%do_swaerosol_forcing) then      
         deallocate (solivlaero, nivl1aero, nivl2aero, endaerwvnsf, &
                     aeroextivl, aerossalbivl, aeroasymmivl)
       endif
-      if (do_lwaerosol) then
+      if (do_lwaerosol .or. Rad_control%do_lwaerosol_forcing) then
         deallocate ( sflwwts)
         deallocate ( sflwwts_cn)
       endif
@@ -1384,33 +1423,30 @@ subroutine aerosolrad_package_end
 !---------------------------------------------------------------------
 !    deallocate elements of the aerosol_properties_type array.
 !---------------------------------------------------------------------
-      if (do_swaerosol) then
+     if (do_swaerosol .or. Rad_control%do_swaerosol_forcing) then
         deallocate ( Aerosol_props%aerextband,      &
                      Aerosol_props%aerssalbband,    &
                      Aerosol_props%aerasymmband     )
       endif
-      if (do_lwaerosol) then
+      if (do_lwaerosol .or. Rad_control%do_lwaerosol_forcing) then
         deallocate ( Aerosol_props%aerextbandlw,    &
                      Aerosol_props%aerssalbbandlw,  &
                      Aerosol_props%aerextbandlw_cn,    &
                      Aerosol_props%aerssalbbandlw_cn )
       endif
+
       if (Rad_control%do_aerosol) then
         deallocate ( Aerosol_props%sulfate_index,   &
+                     Aerosol_props%bcphilic_index,  &
+                     Aerosol_props%omphilic_index,  &
+                     Aerosol_props%seasalt1_index,  &
+                     Aerosol_props%seasalt2_index,  &
+                     Aerosol_props%seasalt3_index,  &
+                     Aerosol_props%seasalt4_index,  &
+                     Aerosol_props%seasalt5_index,  &
                      Aerosol_props%optical_index    )
       endif
 
-!     if (Rad_control%volcanic_lw_aerosols) then
-!       deallocate ( Aerosol_props%lw_ext, &
-!                    Aerosol_props%lw_ssa, &
-!                    Aerosol_props%lw_asy)  
-!     endif
-
-!     if (Rad_control%volcanic_sw_aerosols) then
-!       deallocate ( Aerosol_props%sw_ext, &
-!                    Aerosol_props%sw_ssa, &
-!                    Aerosol_props%sw_asy)  
-!     endif
       
       if (Rad_control%volcanic_lw_aerosols) then
         if (nfields_lw_ext /= 0) then
@@ -1629,13 +1665,41 @@ integer                               :: index  ! function value
       end if
 
 !---------------------------------------------------------------------
-!    determine if the desired aerosol is a sulfate or non-sulfate. if
-!    sulfate, then the optical propeties index will depend on the
-!    relative humidity.
+!    Determine if the desired aerosol is a hydrophilic or not. 
+!    If the aerosol is hydrophilic, then the optical propeties 
+!    index will depend on the relative humidity.
 !---------------------------------------------------------------------
-      if (Aerosol_props%optical_index(naerosol) == 0 ) then
+      if (Aerosol_props%optical_index(naerosol) == SULFATE_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
         index = Aerosol_props%sulfate_index( irh )
+      elseif (Aerosol_props%optical_index(naerosol) == &
+                                               OMPHILIC_FLAG ) then
+        irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
+        index = Aerosol_props%omphilic_index( irh )
+      elseif (Aerosol_props%optical_index(naerosol) ==   &
+                                               BCPHILIC_FLAG ) then
+        irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
+        index = Aerosol_props%bcphilic_index( irh )
+      elseif (Aerosol_props%optical_index(naerosol) ==    &
+                                               SEASALT1_FLAG ) then
+        irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
+        index = Aerosol_props%seasalt1_index( irh )
+      elseif (Aerosol_props%optical_index(naerosol) ==  &            
+                                               SEASALT2_FLAG ) then
+        irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
+        index = Aerosol_props%seasalt2_index( irh )
+      elseif (Aerosol_props%optical_index(naerosol) ==  &            
+                                               SEASALT3_FLAG ) then
+        irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
+        index = Aerosol_props%seasalt3_index( irh )
+      elseif (Aerosol_props%optical_index(naerosol) ==  &           
+                                               SEASALT4_FLAG ) then
+        irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
+        index = Aerosol_props%seasalt4_index( irh )
+      elseif (Aerosol_props%optical_index(naerosol) ==  &           
+                                               SEASALT5_FLAG ) then
+        irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
+        index = Aerosol_props%seasalt5_index( irh )
       else
         index = Aerosol_props%optical_index(naerosol)
       endif
@@ -1710,6 +1774,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    local variables:
 
       character(len=64) :: name_in, target_name
+      character(len=4)  :: chind
       integer           :: nfields
       integer           :: n, noptical
 
@@ -1746,53 +1811,87 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    allocate components of the aerosol_properties_type module variable
 !    which will contain the indices for the different aerosols.
 !---------------------------------------------------------------------
-       allocate (Aerosol_props%sulfate_index (0:100 ) )
+       allocate (Aerosol_props%sulfate_index (0:100 ), &  
+                     Aerosol_props%omphilic_index(0:100 ), & 
+                     Aerosol_props%bcphilic_index(0:100 ), & 
+                     Aerosol_props%seasalt1_index(0:100 ), & 
+                     Aerosol_props%seasalt2_index(0:100 ), & 
+                     Aerosol_props%seasalt3_index(0:100 ), & 
+                     Aerosol_props%seasalt4_index(0:100 ), & 
+                     Aerosol_props%seasalt5_index(0:100 ) )
        allocate (Aerosol_props%optical_index(nfields) )
+       Aerosol_props%optical_index    = 0
+       Aerosol_props%sulfate_index    = 0
+       Aerosol_props%omphilic_index    = 0
+       Aerosol_props%bcphilic_index    = 0
+       Aerosol_props%seasalt1_index    = 0
+       Aerosol_props%seasalt2_index    = 0
+       Aerosol_props%seasalt3_index    = 0
+       Aerosol_props%seasalt4_index    = 0
+       Aerosol_props%seasalt5_index    = 0
 
 !----------------------------------------------------------------------
 !    match aerosol optical property indices with aerosol indices.
 !    sulfate aerosols are handled separately (below) with RH dependence.
 !----------------------------------------------------------------------
       do n=1,nfields
-        name_in = aerosol_names(n)
-        Aerosol_props%optical_index(n) = 0
-        if (name_in /= "so4_anthro" .and.    &
-            name_in /= "so4_natural" ) then
+        name_in = trim(aerosol_names(n))
+        if (name_in == 'so4' .or. name_in == 'so4_anthro' .or. name_in == 'so4_natural') then
+          Aerosol_props%optical_index(n) = SULFATE_FLAG
+        else if (name_in == "omphilic" .or. name_in == "oc_hydrophilic") then
+            Aerosol_props%optical_index(n) = OMPHILIC_FLAG
+        else if (name_in == "bcphilic" .or. name_in == "bc_hydrophilic") then
+            Aerosol_props%optical_index(n) = BCPHILIC_FLAG
+        else if (name_in == "seasalt1") then
+            Aerosol_props%optical_index(n) = SEASALT1_FLAG
+        else if (name_in == "seasalt2") then
+            Aerosol_props%optical_index(n) = SEASALT2_FLAG
+        else if (name_in == "seasalt3") then
+            Aerosol_props%optical_index(n) = SEASALT3_FLAG
+        else if (name_in == "seasalt4") then
+            Aerosol_props%optical_index(n) = SEASALT4_FLAG
+        else if (name_in == "seasalt5") then
+            Aerosol_props%optical_index(n) = SEASALT5_FLAG
+        else 
           select case( name_in )
-            case( "anthro_dust_0.1" )
+            case( "anthro_dust_0.1", "natural_dust_0.1" )
               target_name = "dust_0.1"
-            case( "anthro_dust_0.2" )
+            case( "anthro_dust_0.2", "natural_dust_0.2" )
               target_name = "dust_0.2"
-            case( "anthro_dust_0.4" )
+            case( "anthro_dust_0.4", "natural_dust_0.4" )
               target_name = "dust_0.4"
-            case( "anthro_dust_0.8" )
+            case( "anthro_dust_0.8", "natural_dust_0.8" )
               target_name = "dust_0.8"
-            case( "anthro_dust_1.0" )
+            case( "anthro_dust_1.0", "natural_dust_1.0" )
               target_name = "dust_1.0"
-            case( "anthro_dust_2.0" )
+            case( "anthro_dust_2.0", "natural_dust_2.0" )
               target_name = "dust_2.0"
-            case( "anthro_dust_4.0" )
+            case( "anthro_dust_4.0", "natural_dust_4.0" )
               target_name = "dust_4.0"
-            case( "anthro_dust_8.0" )
-              target_name = "dust_8.0"
-            case( "natural_dust_0.1" )
-              target_name = "dust_0.1"
-            case( "natural_dust_0.2" )
-              target_name = "dust_0.2"
-            case( "natural_dust_0.4" )
-              target_name = "dust_0.4"
-            case( "natural_dust_0.8" )
-              target_name = "dust_0.8"
-            case( "natural_dust_1.0" )
-              target_name = "dust_1.0"
-            case( "natural_dust_2.0" )
-              target_name = "dust_2.0"
-            case( "natural_dust_4.0" )
-              target_name = "dust_4.0"
-            case( "natural_dust_8.0" )
+            case( "anthro_dust_8.0", "natural_dust_8.0" )
               target_name = "dust_8.0"
             case( "black_carbon" )
               target_name = "soot"
+            case( "organic_carbon" )
+              target_name = "organic_carbon"
+            case( "sea_salt" )
+              target_name = "sea_salt"
+            case( "dust1" )
+              target_name = "dust1"
+            case( "dust2" )
+              target_name = "dust2"
+            case( "dust3" )
+              target_name = "dust3"
+            case( "dust4" )
+              target_name = "dust4"
+            case( "dust5" )
+              target_name = "dust5"
+            case( "bcdry" )
+              target_name = "bcdry"
+            case( "omphobic", "oc_hydrophobic" )
+              target_name = "omphobic"
+            case( "bcphobic", "bc_hydrophobic" )
+              target_name = "bcphobic"
             case DEFAULT
               target_name = name_in
           end select  
@@ -1817,77 +1916,328 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
                 'Cannot find aerosol optical model = ' //    &
                                            TRIM( target_name ), FATAL )
           endif
-        endif
-      end do
+        endif  ! (name_in ==)
+      end do  ! (n=1,nfields)
+
+      select case(trim(aerosol_data_set))
+        case ('Ginoux_Reddy') 
 
 !----------------------------------------------------------------------
 !    set up RH-dependent sulfate aerosol optical property indices.
-!-------------------------------------------------------------------
-      do n=0,100
-
-!--------------------------------------------------------------------
 !    define the optical properties type for all possible values of 
 !    relative humidity.
-!--------------------------------------------------------------------
-        select case( n )
-          case ( 0:32 )
-            target_name = "sulfate_30%"
-          case ( 33:37 )
-            target_name = "sulfate_35%"
-          case ( 38:42 )
-            target_name = "sulfate_40%"
-          case ( 43:47 )
-            target_name = "sulfate_45%"
-          case ( 48:52 )
-            target_name = "sulfate_50%"
-          case ( 53:57 )
-            target_name = "sulfate_55%"
-          case ( 58:62 )
-            target_name = "sulfate_60%"
-          case ( 63:67 )
-            target_name = "sulfate_65%"
-          case ( 68:72 )
-            target_name = "sulfate_70%"
-          case ( 73:77 )
-            target_name = "sulfate_75%"
-          case ( 78:81 )
-            target_name = "sulfate_80%"
-          case ( 82:83 )
-            target_name = "sulfate_82%"
-          case ( 84:85 )
-            target_name = "sulfate_84%"
-          case ( 86:87 )
-            target_name = "sulfate_86%"
-          case ( 88:89 )
-            target_name = "sulfate_88%"
-          case ( 90 )
-            target_name = "sulfate_90%"
-          case ( 91 )
-            target_name = "sulfate_91%"
-          case ( 92 )
-            target_name = "sulfate_92%"
-          case ( 93 )
-            target_name = "sulfate_93%"
-          case ( 94 )
-            target_name = "sulfate_94%"
-          case ( 95 )
-            target_name = "sulfate_95%"
-          case ( 96 )
-            target_name = "sulfate_96%"
-          case ( 97 )
-            target_name = "sulfate_97%"
-          case ( 98 )
-            target_name = "sulfate_98%"
-          case ( 99 )
-            target_name = "sulfate_99%"
-          case ( 100 )
-            target_name = "sulfate_100%"
-        end select
+!-------------------------------------------------------------------
+          do n=0,100
+            if (sulfate_indices(n) < 10) then
+              write (chind, '(i1)') sulfate_indices(n)
+            else if (sulfate_indices(n) == 100) then
+              write (chind, '(i3)') sulfate_indices(n)
+            else
+              write (chind, '(i2)') sulfate_indices(n)
+            endif
+            target_name = 'sulfate_' // trim(chind)  // '%'
 
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-        Aerosol_props%sulfate_index(n) = 0
+!           Aerosol_props%sulfate_index(n) = 0
+            do noptical=1,naermodels
+              if (aerosol_optical_names(noptical) == target_name ) then
+                Aerosol_props%sulfate_index(n) = noptical
+                exit
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!    if the  aerosol_optical name_is not included in the potential
+!    set listed above, exit with an error message.
+!---------------------------------------------------------------------
+            if (Aerosol_props%sulfate_index(n) == 0 ) then
+              call error_mesg( 'aerosolrad_package_mod', &
+                 'Cannot find aerosol optical model = ' // &
+                                          TRIM( target_name), FATAL )
+            endif
+          end do
+
+!---------------------------------------------------------------------
+!    set up RH-dependent omphilic aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+          do n=0,100
+            if (omphilic_indices(n) < 10) then
+              write (chind, '(i1)') omphilic_indices(n)
+            else if (omphilic_indices(n) == 100) then
+              write (chind, '(i3)') omphilic_indices(n)
+            else
+              write (chind, '(i2)') omphilic_indices(n)
+            endif
+            target_name = 'omphilic_' // trim(chind)  // '%'
+
+!---------------------------------------------------------------------
+!    associate an index value with each possible relative humidity.
+!---------------------------------------------------------------------
+!           Aerosol_props%omphilic_index(n) = 0
+            do noptical=1,naermodels
+              if (aerosol_optical_names(noptical) == target_name ) then
+                Aerosol_props%omphilic_index(n) = noptical
+                exit
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!    if the  aerosol_optical name_is not included in the potential
+!    set listed above, exit with an error message.
+!---------------------------------------------------------------------
+            if (Aerosol_props%omphilic_index(n) == 0 ) then
+              call error_mesg( 'aerosolrad_package_mod', &
+                 'Cannot find aerosol optical model = ' // &
+                                          TRIM( target_name), FATAL )
+            endif
+          end do
+
+!---------------------------------------------------------------------
+!    set up RH-dependent seasalt1 aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+          do n=0,100
+            if (seasalt1_indices(n) < 10) then
+              write (chind, '(i1)') seasalt1_indices(n)
+            else if (seasalt1_indices(n) == 100) then
+              write (chind, '(i3)') seasalt1_indices(n)
+            else
+              write (chind, '(i2)') seasalt1_indices(n)
+            endif
+            target_name = 'seasalt1_' // trim(chind)  // '%'
+
+!---------------------------------------------------------------------
+!    associate an index value with each possible relative humidity.
+!---------------------------------------------------------------------
+!           Aerosol_props%seasalt1_index(n) = 0
+            do noptical=1,naermodels
+              if (aerosol_optical_names(noptical) == target_name ) then
+                Aerosol_props%seasalt1_index(n) = noptical
+                exit
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!    if the  aerosol_optical name_is not included in the potential
+!    set listed above, exit with an error message.
+!---------------------------------------------------------------------
+            if (Aerosol_props%seasalt1_index(n) == 0 ) then
+              call error_mesg( 'aerosolrad_package_mod', &
+                 'Cannot find aerosol optical model = ' // &
+                                          TRIM( target_name), FATAL )
+            endif
+          end do
+
+!---------------------------------------------------------------------
+!    set up RH-dependent seasalt2 aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+          do n=0,100
+            if (seasalt2_indices(n) < 10) then
+              write (chind, '(i1)') seasalt2_indices(n)
+            else if (seasalt2_indices(n) == 100) then
+              write (chind, '(i3)') seasalt2_indices(n)
+            else
+              write (chind, '(i2)') seasalt2_indices(n)
+            endif
+            target_name = 'seasalt2_' // trim(chind)  // '%'
+
+!---------------------------------------------------------------------
+!    associate an index value with each possible relative humidity.
+!---------------------------------------------------------------------
+!           Aerosol_props%seasalt2_index(n) = 0
+            do noptical=1,naermodels
+              if (aerosol_optical_names(noptical) == target_name ) then
+                Aerosol_props%seasalt2_index(n) = noptical
+                exit
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!    if the  aerosol_optical name_is not included in the potential
+!    set listed above, exit with an error message.
+!---------------------------------------------------------------------
+            if (Aerosol_props%seasalt2_index(n) == 0 ) then
+              call error_mesg( 'aerosolrad_package_mod', &
+                 'Cannot find aerosol optical model = ' // &
+                                          TRIM( target_name), FATAL )
+            endif
+          end do
+
+!---------------------------------------------------------------------
+!    set up RH-dependent seasalt3 aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+          do n=0,100
+            if (seasalt3_indices(n) < 10) then
+              write (chind, '(i1)') seasalt3_indices(n)
+            else if (seasalt3_indices(n) == 100) then
+              write (chind, '(i3)') seasalt3_indices(n)
+            else
+              write (chind, '(i2)') seasalt3_indices(n)
+            endif
+            target_name = 'seasalt3_' // trim(chind)  // '%'
+
+!---------------------------------------------------------------------
+!    associate an index value with each possible relative humidity.
+!---------------------------------------------------------------------
+!           Aerosol_props%seasalt3_index(n) = 0
+            do noptical=1,naermodels
+              if (aerosol_optical_names(noptical) == target_name ) then
+                Aerosol_props%seasalt3_index(n) = noptical
+                exit
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!    if the  aerosol_optical name_is not included in the potential
+!    set listed above, exit with an error message.
+!---------------------------------------------------------------------
+            if (Aerosol_props%seasalt3_index(n) == 0 ) then
+              call error_mesg( 'aerosolrad_package_mod', &
+                 'Cannot find aerosol optical model = ' // &
+                                          TRIM( target_name), FATAL )
+            endif
+          end do
+ 
+!---------------------------------------------------------------------
+!    set up RH-dependent seasalt4 aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+          do n=0,100
+            if (seasalt4_indices(n) < 10) then
+              write (chind, '(i1)') seasalt4_indices(n)
+            else if (seasalt4_indices(n) == 100) then
+              write (chind, '(i3)') seasalt4_indices(n)
+            else
+              write (chind, '(i2)') seasalt4_indices(n)
+            endif
+            target_name = 'seasalt4_' // trim(chind)  // '%'
+
+!---------------------------------------------------------------------
+!    associate an index value with each possible relative humidity.
+!---------------------------------------------------------------------
+!           Aerosol_props%seasalt4_index(n) = 0
+            do noptical=1,naermodels
+              if (aerosol_optical_names(noptical) == target_name ) then
+                Aerosol_props%seasalt4_index(n) = noptical
+                exit
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!    if the  aerosol_optical name_is not included in the potential
+!    set listed above, exit with an error message.
+!---------------------------------------------------------------------
+            if (Aerosol_props%seasalt4_index(n) == 0 ) then
+              call error_mesg( 'aerosolrad_package_mod', &
+                 'Cannot find aerosol optical model = ' // &
+                                          TRIM( target_name), FATAL )
+            endif
+          end do
+
+!-------------------------------------------------------------------
+!    set up RH-dependent seasalt5 aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+          do n=0,100
+            if (seasalt5_indices(n) < 10) then
+              write (chind, '(i1)') seasalt5_indices(n)
+            else if (seasalt5_indices(n) == 100) then
+              write (chind, '(i3)') seasalt5_indices(n)
+            else
+              write (chind, '(i2)') seasalt5_indices(n)
+            endif
+            target_name = 'seasalt5_' // trim(chind)  // '%'
+
+!---------------------------------------------------------------------
+!    associate an index value with each possible relative humidity.
+!---------------------------------------------------------------------
+!           Aerosol_props%seasalt5_index(n) = 0
+            do noptical=1,naermodels
+              if (aerosol_optical_names(noptical) == target_name ) then
+                Aerosol_props%seasalt5_index(n) = noptical
+                exit
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!    if the  aerosol_optical name_is not included in the potential
+!    set listed above, exit with an error message.
+!---------------------------------------------------------------------
+            if (Aerosol_props%seasalt5_index(n) == 0 ) then 
+              call error_mesg( 'aerosolrad_package_mod', &
+                 'Cannot find aerosol optical model = ' // &
+                                          TRIM( target_name), FATAL )
+            endif
+          end do
+
+!-------------------------------------------------------------------
+!    set up RH-dependent bcphilic aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+          do n=0,100
+            if (bcphilic_indices(n) < 10) then
+              write (chind, '(i1)') bcphilic_indices(n)
+            else if (bcphilic_indices(n) == 100) then
+              write (chind, '(i3)') bcphilic_indices(n)
+            else
+              write (chind, '(i2)') bcphilic_indices(n)
+            endif
+            target_name = 'bcphilic_' // trim(chind)  // '%'
+
+!---------------------------------------------------------------------
+!    associate an index value with each possible relative humidity.
+!---------------------------------------------------------------------
+!           Aerosol_props%bcphilic_index(n) = 0
+            do noptical=1,naermodels
+              if (aerosol_optical_names(noptical) == target_name ) then
+                Aerosol_props%bcphilic_index(n) = noptical
+                exit
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!    if the  aerosol_optical name_is not included in the potential
+!    set listed above, exit with an error message.
+!---------------------------------------------------------------------
+            if (Aerosol_props%bcphilic_index(n) == 0 ) then
+              call error_mesg( 'aerosolrad_package_mod', &
+                 'Cannot find aerosol optical model = ' // &
+                                          TRIM( target_name), FATAL )
+            endif
+          end do
+        case ('shettle_fenn')
+
+!----------------------------------------------------------------------
+!    set up RH-dependent sulfate aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+          do n=0,100
+            if (sulfate_indices(n) < 10) then
+              write (chind, '(i1)') sulfate_indices(n)
+            else if (sulfate_indices(n) == 100) then
+              write (chind, '(i3)') sulfate_indices(n)
+            else
+              write (chind, '(i2)') sulfate_indices(n)
+            endif
+            target_name = 'sulfate_' // trim(chind)  // '%'
+
+!---------------------------------------------------------------------
+!    associate an index value with each possible relative humidity.
+!---------------------------------------------------------------------
+!        Aerosol_props%sulfate_index(n) = 0
         do noptical=1,naermodels
           if (aerosol_optical_names(noptical) == target_name ) then
             Aerosol_props%sulfate_index(n) = noptical
@@ -1905,6 +2255,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
                                           TRIM( target_name), FATAL )
         endif
       end do
+      end select  ! (aerosol_data_set)  
 
 !---------------------------------------------------------------------
 

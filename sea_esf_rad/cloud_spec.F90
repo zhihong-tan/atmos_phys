@@ -33,7 +33,7 @@ use fms_mod,                  only: open_namelist_file, mpp_pe, &
                                     FATAL, NOTE, WARNING, close_file
 use tracer_manager_mod,       only:         &
 !                                   tracer_manager_init,  &
-                                    get_tracer_index
+                                    get_tracer_index, NO_TRACER
 use field_manager_mod,        only:       &
                                     field_manager_init, &
                                     MODEL_ATMOS
@@ -96,8 +96,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 12.0 2005/04/14 15:44:28 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 13.0 2006/03/28 21:11:30 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -163,6 +163,8 @@ real   ::  lwpath_low = 75.76714   ! assumed water path for low clouds
 
 logical :: module_is_initialized = .false.   ! module initialized ?
 
+logical :: do_liq_num = .false. ! Do liquid droplet number calculations?
+
 !---------------------------------------------------------------------
 !    time-step related constants.
 
@@ -178,6 +180,7 @@ integer :: tot_pts       !  total number of grid columns in the
 integer :: nql           ! tracer index for liquid water
 integer :: nqi           ! tracer index for ice water
 integer :: nqa           ! tracer index for cloud area
+integer :: nqn           ! tracer index for cloud droplet number
 
 !---------------------------------------------------------------------
 !     miscellaneous variables:
@@ -489,6 +492,8 @@ type(time_type),          intent(in)   ::  Time
               call error_mesg ('cloud_spec_mod',  &
             'tracers indices cannot be the same (i.e., nql=nqi=nqa).', &
                                                               FATAL)
+          nqn = get_tracer_index ( MODEL_ATMOS, 'liq_drp' )
+          if (nqn /= NO_TRACER) do_liq_num = .true.
         endif
 
 !---------------------------------------------------------------------
@@ -594,7 +599,11 @@ end subroutine cloud_spec_init
 subroutine cloud_spec (is, ie, js, je, lat, z_half, z_full, Rad_time, &
                        Atmos_input, Surface, Cld_spec, Lsc_microphys, &
                        Meso_microphys, Cell_microphys, cloud_water_in, &
-                       cloud_ice_in, cloud_area_in, r, kbot, mask)
+                       cloud_ice_in, cloud_area_in, r, kbot, mask, &
+                       cell_cld_frac, cell_liq_amt, cell_liq_size, &
+                       cell_ice_amt, cell_ice_size, &
+                       meso_cld_frac, meso_liq_amt, meso_liq_size, &
+                       meso_ice_amt, meso_ice_size,  nsum_out)
 
 !----------------------------------------------------------------------
 !    cloud_spec specifies the cloud field seen by the radiation package.
@@ -618,6 +627,13 @@ real, dimension(:,:,:),       intent(in),   optional :: cloud_water_in,&
 real, dimension(:,:,:,:),     intent(in),   optional :: r
 integer, dimension(:,:),      intent(in),   optional :: kbot
 real, dimension(:,:,:),       intent(in),   optional :: mask
+real, dimension(:,:,:),       intent(inout),optional :: &
+                           cell_cld_frac, cell_liq_amt, cell_liq_size, &
+                           cell_ice_amt, cell_ice_size, &
+                           meso_cld_frac, meso_liq_amt, meso_liq_size, &
+                           meso_ice_amt, meso_ice_size
+integer, dimension(:,:),      intent(inout), optional:: nsum_out
+
 !-------------------------------------------------------------------
  
 !---------------------------------------------------------------------
@@ -838,6 +854,9 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
               Cld_spec%cloud_water(:,:,:) = r(:,:,:,nql)
               Cld_spec%cloud_ice  (:,:,:) = r(:,:,:,nqi)
               Cld_spec%cloud_area (:,:,:) = r(:,:,:,nqa)
+              if (do_liq_num) then
+                Cld_spec%cloud_droplet (:,:,:) = r(:,:,:,nqn)
+              endif 
             endif
 
 !---------------------------------------------------------------------
@@ -904,7 +923,10 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
             call strat_clouds_amt (is, ie, js, je, Rad_time, &
                                    Atmos_input%pflux,  &
                                    Atmos_input%press,   &
-                                   Atmos_input%cloudtemp, Surface%land,&
+                                   Atmos_input%cloudtemp, &
+                                   Atmos_input%cloudvapor(:,:,:)/  &
+                                   (1.0+Atmos_input%cloudvapor(:,:,:)), &
+                                   Surface%land,&
                                    Cld_spec, Lsc_microphys)
 
 !----------------------------------------------------------------------
@@ -935,7 +957,11 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !----------------------------------------------------------------------
         if (Cldrad_control%do_donner_deep_clouds) then
           call donner_deep_clouds_amt (is, ie, js, je,  &
-                                       Cell_microphys, Meso_microphys)
+                           cell_cld_frac, cell_liq_amt, cell_liq_size, &
+                           cell_ice_amt, cell_ice_size, &
+                           meso_cld_frac, meso_liq_amt, meso_liq_size, &
+                           meso_ice_amt, meso_ice_size,  nsum_out, &
+                           Cell_microphys, Meso_microphys)
         endif
 
 !---------------------------------------------------------------------
@@ -1088,6 +1114,7 @@ integer :: ier
       deallocate (Cld_spec%cloud_water    )
       deallocate (Cld_spec%cloud_ice      )
       deallocate (Cld_spec%cloud_area     )
+      deallocate (Cld_spec%cloud_droplet  )
 
 !--------------------------------------------------------------------
 !    deallocate the elements of Lsc_microphys.
@@ -1633,6 +1660,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       allocate (Cld_spec%cloud_water    (ix,jx,kx) )
       allocate (Cld_spec%cloud_ice      (ix,jx,kx)   )
       allocate (Cld_spec%cloud_area     (ix,jx,kx)  )
+      allocate (Cld_spec%cloud_droplet  (ix,jx,kx)  )
 
       Cld_spec%hi_cloud (:,:,:)     = .false.
       Cld_spec%mid_cloud(:,:,:)     = .false.
@@ -1649,6 +1677,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       Cld_spec%cloud_water(:,:,:)   = 0.
       Cld_spec%cloud_ice(:,:,:)     = 0.
       Cld_spec%cloud_area(:,:,:)    = 0.
+      Cld_spec%cloud_droplet(:,:,:)    = 0.
       do n=1, num_slingo_bands
       Cld_spec%tau(:,:,:,n)  = 0.0
       end do

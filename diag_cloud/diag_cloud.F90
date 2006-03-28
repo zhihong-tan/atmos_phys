@@ -41,8 +41,8 @@ MODULE DIAG_CLOUD_MOD
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud.F90,v 10.0 2003/10/24 22:00:25 fms Exp $'
- character(len=128) :: tagname = '$Name: lima $'
+ character(len=128) :: version = '$Id: diag_cloud.F90,v 13.0 2006/03/28 21:08:11 fms Exp $'
+ character(len=128) :: tagname = '$Name: memphis $'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 
@@ -280,7 +280,7 @@ real, dimension(size(rhum,1),size(rhum,2)) :: qmix_kx
 real,  dimension(size(rhum,1),size(rhum,2),size(rhum,3),mxband)  :: tau
 real,  dimension(size(rhum,1),size(rhum,2),size(rhum,3))  :: &
                   tempcld,delp_true, delp
-integer idim, jdim, ie, je, kx, lk, ierr, iprnt
+integer idim, jdim, kx, lk
 logical :: rad_prop, wat_prop
 integer :: max_cld
 integer :: i,j,k,n
@@ -823,9 +823,9 @@ integer, intent(in), OPTIONAL, dimension(:,:) :: kbot
 
 !=======================================================================
 !  (Intent local)
- real , dimension(size(rhum,1),size(rhum,2),size(rhum,3)) :: theta,theta_e
+ real , dimension(size(rhum,1),size(rhum,2),size(rhum,3)) :: theta
  real , dimension(size(rhum,1),size(rhum,2),size(rhum,3)) :: rhumcnv, &
-      camtcnv,camtrh,camtw,camtsh,camtsc,camtsl,camttl,camt
+      camtcnv,camtrh,camtw,camtsh,camtsc,camt
  real, dimension (size(rhum,1),size(rhum,2)) :: camtsh_mx 
  real, dimension (size(phalf,1),size(phalf,2),size(phalf,3)) :: pnorm
  integer , dimension(size(rhum,1),size(rhum,2),size(rhum,3)) :: icld_k
@@ -1093,8 +1093,7 @@ subroutine CLOUD_CNV (rhum,cnvcntq,convprc, pfull, phalf, camtcnv, rhumcnv )
 !=======================================================================
 !  (Intent local)
 
- real, dimension (size(rhum,1),size(rhum,2),size(rhum,3)) :: &
-                  dcprc,delp
+ real, dimension (size(rhum,1),size(rhum,2),size(rhum,3)) :: delp
  real, dimension (size(rhum,1),size(rhum,2)) :: wrkcprc
 
 !      DELP       pressure thickness of model layers 
@@ -1233,7 +1232,7 @@ real, intent(in), dimension (:,:,:) :: rhum,pnorm
 !  (Intent local)
  real, dimension (size(rhum,1),size(rhum,2)) :: rhc_work
 ! real, dimension (size(rhum,1),size(rhum,2),size(rhum,3)) :: rhum2      
- integer kx, kcbtop, lk, lkxm1, npower
+ integer kx, lk, npower
 !-----------------------------------------------------------------------
 !  type loop index variable
  integer k,kk
@@ -1347,7 +1346,7 @@ subroutine CLOUD_OMGA (camtrh, omega, llowt, camtw)
 !  (Intent local)
 !-----------------------------------------------------------------------
 !  type loop limits 
-integer kx, lk, idim, jdim, kmin, kmax
+integer kx, lk, idim, jdim
 integer low_top
 !-----------------------------------------------------------------------
 !  type loop index variables
@@ -1755,7 +1754,7 @@ subroutine MERGE_STRAT_CLOUDS (camtrh,camtw,camtsc,llowt,camt,icld_k)
 
 !=======================================================================
 !  (Intent local)
- integer kx, lk, lkxm1, idim, jdim, i, j, k
+ integer kx, lk, idim, jdim, i, j, k
  integer low_top
 
 !=======================================================================
@@ -1903,7 +1902,7 @@ subroutine DEF_HI_MID_LOW (phalf,lhight,lhighb,lmidt,lmidb,llowt,camt,icld_k)
 
        
 ! loop limits and indices
- integer idim,jdim,kx, lk, lkxm1, i, j, k, kbtm, ktop, len
+ integer idim,jdim,kx, lk, i, j, k, kbtm, ktop
 !  special setting of max levels for special cases of mid & high thick clouds
  integer nmax_mh
 ! special threshold value for allowing thick middle and high clouds
@@ -2268,7 +2267,7 @@ subroutine MERGE_CNV_CLOUDS (camtcnv,camtsh,camtsh_mx,kminshl,kmaxshl, &
 !      IC_WORK    cloud marker work array 
 !                   (dimensioned IDIM x JDIM x kx)
 
- integer i,j,k,kx, lk, lkxm1, kcbtop, kbtm , ktop, idim, jdim
+ integer i,j,k,kx, lk, kcbtop, kbtm , ktop, idim, jdim
 
 !=======================================================================
 !=======================================================================
@@ -2445,7 +2444,7 @@ integer, intent(out), dimension(:,:)  :: nclds
 !                   (dimensioned IDIM x JDIM x kx)
 !      IC_WORK    cloud marker work array 
 !                   (dimensioned IDIM x JDIM x kx)
- integer k,kcbtop,i,j,idim, jdim, kx, lk, lkxm1, kp, kpmax, maxcld
+ integer k,kcbtop,i,j,idim, jdim, kx, lk, kp, kpmax, maxcld
 
 !=======================================================================
 !=======================================================================
@@ -2824,7 +2823,7 @@ subroutine ANVIL_CIRRUS (lhighb,lmidb,nclds,cldtop,cldbas,cnvcntq,lgscldelq,  &
 
  real sig_top_base
  integer lcldt, lcldb, lprcbas, lprctop
- integer i, j, idim, jdim, kx, lk, lkxm1, kcbtop
+ integer i, j, idim, jdim, kx
 !-----------------------------------------------------------------------
 !  type loop index variable
  integer k,kl 
@@ -2998,7 +2997,7 @@ real, intent(out), dimension(:,:,:) :: tempcld,delp_true
 !                   (dimensioned IDIM x JDIM x kx)
 !      CLDB       cloud base index work array 
 !                   (dimensioned IDIM x JDIM x kx)
- integer i,j,k,kk,kx,idim,jdim, lk, lkxm1, kp, kpmax,kcbtop, maxcld
+ integer i,j,k,kk,kx,idim,jdim, lk, kcbtop, maxcld
 
 !=======================================================================
 !=======================================================================
@@ -3106,7 +3105,7 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer  unit, io,idim,jdim,is,js,ie,je
+ integer  unit, io
 
 !=====================================================================
 
@@ -3407,7 +3406,7 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
       real, intent(inout), dimension(:,:) :: qmix
    integer, intent(out)                   :: ierr
 !-----------------------------------------------------------------------
-   integer ::ie, je, num, k
+   integer ::ie, je, num
 !-----------------------------------------------------------------------
 
 !  if (size(qmix,3) .ne. size(qmix_sum2,3)) call error_mesg ( &

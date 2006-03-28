@@ -64,7 +64,7 @@ use fms_mod,                 only: mpp_clock_id, mpp_clock_begin,   &
                                    mpp_clock_end, CLOCK_MODULE_DRIVER, &
                                    MPP_CLOCK_SYNC,  fms_init,  &
                                    open_namelist_file, stdlog, &
-                                   write_version_number, &
+                                   write_version_number, field_size, &
                                    file_exist, error_mesg, FATAL,   &
                                    WARNING, NOTE, check_nml_error, &
                                    open_restart_file, read_data, &
@@ -135,8 +135,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 12.0 2005/04/14 15:43:27 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 13.1 2006/04/25 23:17:02 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -248,8 +248,11 @@ public  surf_diff_type   ! defined in  vert_diff_driver_mod, republished
 ! version 5: adds radturbten when strat_cloud_mod is active, adds 
 !            lw_tendency when edt_mod or entrain_mod is active.
 !
+! version 6: adds donner cell and meso cloud variables when donner_deep
+!            is activated.
+
 !---------------------------------------------------------------------
-integer, dimension(5) :: restart_versions = (/ 1, 2, 3, 4, 5 /)
+integer, dimension(6) :: restart_versions = (/ 1, 2, 3, 4, 5, 6 /)
 
 !--------------------------------------------------------------------
 !    the following allocatable arrays are either used to hold physics 
@@ -287,6 +290,12 @@ real,    dimension(:,:,:), allocatable :: diff_cu_mo, diff_t, diff_m
 real,    dimension(:,:,:), allocatable :: radturbten, lw_tendency
 real,    dimension(:,:)  , allocatable :: pbltop     
 logical, dimension(:,:)  , allocatable :: convect
+real,    dimension(:,:,:), allocatable ::       &
+                            cell_cld_frac, cell_liq_amt, &
+                            cell_liq_size, cell_ice_amt, cell_ice_size, &
+                            meso_cld_frac, meso_liq_amt, meso_liq_size, &
+                            meso_ice_amt, meso_ice_size
+integer,    dimension(:,:)  , allocatable :: nsum_out
    
 !---------------------------------------------------------------------
 !    internal timing clock variables:
@@ -304,6 +313,10 @@ logical   :: module_is_initialized = .false.
                                       ! module has been initialized ?
 logical   :: doing_edt                ! edt_mod has been activated ?
 logical   :: doing_entrain            ! entrain_mod has been activated ?
+logical   :: doing_donner             ! donner_deep_mod has been 
+                                      ! activated ?
+logical   :: doing_liq_num = .false.  ! Prognostic cloud droplet number has 
+                                      ! been activated?
 integer   :: nt                       ! total no. of tracers
 integer   :: ntp                      ! total no. of prognostic tracers
 
@@ -489,7 +502,7 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 
 !-----------------------------------------------------------------------
         call  moist_processes_init (id, jd, kd, lonb, latb, pref(:,1),&
-                                    axes, Time)
+                                    axes, Time, doing_donner)
      
 !-----------------------------------------------------------------------
 !    initialize damping_driver_mod.
@@ -579,6 +592,32 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
       allocate ( radturbten (id, jd, kd))
       allocate ( lw_tendency(id, jd, kd))
        
+      if (doing_donner) then
+
+        allocate (cell_cld_frac (id, jd, kd) )
+        allocate (cell_liq_amt  (id, jd, kd) )
+        allocate (cell_liq_size (id, jd, kd) )
+        allocate (cell_ice_amt  (id, jd, kd) )
+        allocate (cell_ice_size (id, jd, kd) )
+        allocate (meso_cld_frac (id, jd, kd) )
+        allocate (meso_liq_amt  (id, jd, kd) )
+        allocate (meso_liq_size (id, jd, kd) )
+        allocate (meso_ice_amt  (id, jd, kd) )
+        allocate (meso_ice_size (id, jd, kd) )
+        allocate (nsum_out (id, jd) )
+        cell_cld_frac = 0.
+        cell_liq_amt  = 0.
+        cell_liq_size = 0.
+        cell_ice_amt  = 0.
+        cell_ice_size = 0.
+        meso_cld_frac = 0.
+        meso_liq_amt  = 0.
+        meso_liq_size = 0.
+        meso_ice_amt  = 0.
+        meso_ice_size = 0.
+        nsum_out = 1
+      endif
+
 !--------------------------------------------------------------------
 !    call read_restart_file to obtain initial values for the module
 !    variables.
@@ -637,7 +676,7 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !                                dtau_du,  dtau_dv,  tau_x,  tau_y,    &
 !                                udt, vdt, tdt, qdt, rdt,              &
 !                                flux_sw,  flux_lw,  coszen,  gust,    &
-!                                Surf_diff,                            &
+!                                Surf_diff, gavg_rrv,                  &
 !                                mask, kbot
 !  </TEMPLATE>
 !  <IN NAME="Time_prev" TYPE="time_type">
@@ -765,7 +804,10 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !  <INOUT NAME="Surf_diff" TYPE="surface_diffusion_type">
 !   Surface diffusion 
 !  </INOUT>
-!  <IN NAME="kbot" TYPE="integer">
+!  <IN NAME="gavg_rrv" TYPE="real">
+!   array containing global average of tracer volume mixing ratio
+!  </IN>
+!!  <IN NAME="kbot" TYPE="integer">
 !   OPTIONAL: present when running eta vertical coordinate,
 !                        index of lowest model level above ground
 !  </IN>
@@ -811,7 +853,7 @@ subroutine physics_driver_down (is, ie, js, je,                       &
                                 flux_sw_vis_dir,                      &
                                 flux_sw_vis_dif,                      &
                                 flux_lw,  coszen,  gust,              &
-                                Surf_diff,                            &
+                                Surf_diff, gavg_rrv,                  &
                                 mask, kbot, diff_cum_mom,             &
                                 moist_convect, diffm, difft  )
 
@@ -854,6 +896,7 @@ real,dimension(:,:),     intent(out)            :: flux_sw,  &
                                                    flux_sw_vis_dir, & 
                                                    flux_sw_vis_dif 
 type(surf_diff_type),    intent(inout)          :: Surf_diff
+real,dimension(:),       intent(in)             :: gavg_rrv
 real,dimension(:,:,:),   intent(in)   ,optional :: mask
 integer, dimension(:,:), intent(in)   ,optional :: kbot
 real,  dimension(:,:,:), intent(in)   ,optional :: diff_cum_mom
@@ -1075,7 +1118,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       if (need_basic) then
         call define_atmos_input_fields     &
                               (is, ie, js, je, p_full, p_half, t, q,  &
-                               t_surf_rad, Atmos_input, kbot=kbot)
+                               t_surf_rad, r, gavg_rrv, Atmos_input, kbot=kbot)
       endif
 
 !---------------------------------------------------------------------
@@ -1084,7 +1127,8 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !    an aerosol_type derived-type variable Aerosol.
 !---------------------------------------------------------------------
       if (need_aerosols) then
-        call aerosol_driver (is, js, Rad_time, Atmos_input%pflux, &
+        call aerosol_driver (is, js, Rad_time, r, &
+                             Atmos_input%phalf, Atmos_input%pflux, &
                              Aerosol)
       endif
  
@@ -1096,21 +1140,60 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !    Cell_microphys, when applicable. 
 !---------------------------------------------------------------------
       if (need_clouds) then
-        if (present(kbot) ) then
+       if (doing_donner) then
+         if (present(kbot) ) then
           call cloud_spec (is, ie, js, je, lat,              &
                            z_half, z_full, Rad_time,   &
                            Atmos_input, Surface, Cld_spec,   &
                            Lsc_microphys, Meso_microphys,    &
                            Cell_microphys, r=r(:,:,:,1:ntp), &
-                           kbot=kbot, mask=mask)
+                           kbot=kbot, mask=mask, &
+             cell_cld_frac= cell_cld_frac(is:ie,js:je,:), &
+             cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
+             cell_liq_size=cell_liq_size(is:ie,js:je,:), &
+             cell_ice_amt= cell_ice_amt(is:ie,js:je,:),   &
+             cell_ice_size= cell_ice_size(is:ie,js:je,:), &
+             meso_cld_frac= meso_cld_frac(is:ie,js:je,:),   &
+             meso_liq_amt=meso_liq_amt(is:ie,js:je,:), &
+             meso_liq_size=meso_liq_size(is:ie,js:je,:), &
+             meso_ice_amt= meso_ice_amt(is:ie,js:je,:),  &
+             meso_ice_size= meso_ice_size(is:ie,js:je,:), &
+             nsum_out=nsum_out(is:ie,js:je)  )
         else
           call cloud_spec (is, ie, js, je, lat,              &
                            z_half, z_full, Rad_time,   &
                            Atmos_input, Surface, Cld_spec,   &
                            Lsc_microphys, Meso_microphys,    &
+                           Cell_microphys, r=r(:,:,:,1:ntp), &
+             cell_cld_frac= cell_cld_frac(is:ie,js:je,:), &
+             cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
+             cell_liq_size=cell_liq_size(is:ie,js:je,:), &
+             cell_ice_amt= cell_ice_amt(is:ie,js:je,:),   &
+             cell_ice_size= cell_ice_size(is:ie,js:je,:), &
+             meso_cld_frac= meso_cld_frac(is:ie,js:je,:),   &
+             meso_liq_amt=meso_liq_amt(is:ie,js:je,:), &
+             meso_liq_size=meso_liq_size(is:ie,js:je,:), &
+             meso_ice_amt= meso_ice_amt(is:ie,js:je,:),  &
+             meso_ice_size= meso_ice_size(is:ie,js:je,:), &
+             nsum_out=nsum_out(is:ie,js:je)  )
+        endif ! (present(kbot)
+      else    ! (doing_donner)
+         if (present(kbot) ) then
+          call cloud_spec (is, ie, js, je, lat,              &
+                           z_half, z_full, Rad_time,   &
+                           Atmos_input, Surface, Cld_spec,   &
+                           Lsc_microphys, Meso_microphys,    &
+                           Cell_microphys, r=r(:,:,:,1:ntp), &
+                           kbot=kbot, mask=mask)   
+         else
+          call cloud_spec (is, ie, js, je, lat,              &
+                           z_half, z_full, Rad_time,   &
+                           Atmos_input, Surface, Cld_spec,   &
+                           Lsc_microphys, Meso_microphys,    &
                            Cell_microphys, r=r(:,:,:,1:ntp))
-        endif
-      endif
+         endif
+      endif ! (doing_donner)
+      endif ! (need_clouds)
 
 !---------------------------------------------------------------------
 !    if the radiative gases are needed, call define_radiative_gases to 
@@ -1146,7 +1229,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !    call  radiation_driver to perform the radiation calculation.
 !--------------------------------------------------------------------
       call radiation_driver (is, ie, js, je, Time, Time_next, lat,  &
-                             lon, Surface, Atmos_input, Aerosol, &
+                             lon, Surface, Atmos_input, Aerosol, r, &
                              Cld_spec, Rad_gases, Lsc_microphys, &
                              Meso_microphys, Cell_microphys,&
                              Radiation=Radiation, mask=mask, kbot=kbot)
@@ -1283,10 +1366,13 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !-----------------------------------------------------------------------
       call mpp_clock_begin ( tracer_clock )
       call atmos_tracer_driver (is, ie, js, je, Time, lon, lat,  &
-                                frac_land, p_half, p_full, r, u, v, t, &
-                                q, u_star, rdt, rm, dt, z_half,   &
-                                z_full, t_surf_rad, albedo, coszen,  &
-                                Time_next, kbot)
+                                area, z_pbl, rough_mom,         &
+                                frac_land, p_half, p_full,  &
+                                u, v, t, q, r, &
+                                rm, rdt, dt, &
+                                u_star, b_star, q_star, &
+                                z_half, z_full, t_surf_rad, albedo, &
+                                Time_next, mask, kbot)
       call mpp_clock_end ( tracer_clock )
 
 !-----------------------------------------------------------------------
@@ -1603,6 +1689,8 @@ integer,dimension(:,:), intent(in),   optional :: kbot
       real, dimension(size(u,1), size(u,2))            :: gust_cv
       integer :: sec, day
       real    :: dt
+      real, dimension(size(p_full,1), size(p_full,2), size(p_full,3)+1) :: pflux
+      integer :: i   
    
 !---------------------------------------------------------------------
 !   local variables:
@@ -1615,6 +1703,7 @@ integer,dimension(:,:), intent(in),   optional :: kbot
 !        dt               physics time step [ seconds ]
 !
 !---------------------------------------------------------------------
+      type(aerosol_type)                               :: Aerosol
 
 !---------------------------------------------------------------------
 !    verify that the module is initialized.
@@ -1636,7 +1725,7 @@ integer,dimension(:,:), intent(in),   optional :: kbot
 !------------------------------------------------------------------
       call mpp_clock_begin ( diff_up_clock )
       call vert_diff_driver_up (is, js, Time_next, dt, p_half,   &
-                                Surf_diff, tdt, qdt, mask=mask,  &
+                                Surf_diff, tdt, qdt, rdt, mask=mask,  &
                                 kbot=kbot)
       radturbten(is:ie,js:je,:) = radturbten(is:ie,js:je,:) + tdt(:,:,:)
       call mpp_clock_end ( diff_up_clock )
@@ -1648,14 +1737,49 @@ integer,dimension(:,:), intent(in),   optional :: kbot
 !-----------------------------------------------------------------------
       if (do_moist_processes) then
         call mpp_clock_begin ( moist_processes_clock )
+
+!-----------------------------------------------------------------------
+!
+!       Get aerosol mass concentrations
+        pflux(:,:,1) = 0.0E+00
+        do i=2,size(p_full,3)
+          pflux(:,:,i) = 0.5E+00*(p_full(:,:,i-1) + p_full(:,:,i))
+        end do
+	pflux(:,:,size(p_full,3)+1) = p_full(:,:,size(p_full,3)) 
+        call aerosol_driver (is, js, Time, r, &
+                             p_half, pflux, &
+                             Aerosol)
+       if (doing_donner) then
         call moist_processes (is, ie, js, je, Time_next, dt, frac_land, &
-                              p_half, p_full, z_half, z_full, omega,    &
-                              diff_t(is:ie,js:je,:),                    &
-                              radturbten(is:ie,js:je,:),                &
-                              t, q, r, u, v, tm, qm, rm, um, vm,        &
-                              tdt, qdt, rdt, udt, vdt, diff_cu_mo_loc , &
-                              convect(is:ie,js:je), lprec, fprec,       &
-                              gust_cv, area, lat, mask=mask, kbot=kbot)
+                           p_half, p_full, z_half, z_full, omega,    &
+                           diff_t(is:ie,js:je,:),                    &
+                           radturbten(is:ie,js:je,:),                &
+                           t, q, r, u, v, tm, qm, rm, um, vm,        &
+                           tdt, qdt, rdt, udt, vdt, diff_cu_mo_loc , &
+                           convect(is:ie,js:je), lprec, fprec,       &
+                           gust_cv, area, lat, Aerosol, mask=mask, kbot=kbot, &
+                           cell_cld_frac= cell_cld_frac(is:ie,js:je,:), &
+                           cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
+                           cell_liq_size=cell_liq_size(is:ie,js:je,:), &
+                           cell_ice_amt= cell_ice_amt(is:ie,js:je,:),   &
+                           cell_ice_size= cell_ice_size(is:ie,js:je,:), &
+                           meso_cld_frac= meso_cld_frac(is:ie,js:je,:), &
+                           meso_liq_amt=meso_liq_amt(is:ie,js:je,:), &
+                           meso_liq_size=meso_liq_size(is:ie,js:je,:), &
+                           meso_ice_amt= meso_ice_amt(is:ie,js:je,:),  &
+                           meso_ice_size= meso_ice_size(is:ie,js:je,:), &
+                           nsum_out=nsum_out(is:ie,js:je)  )
+                          
+       else
+        call moist_processes (is, ie, js, je, Time_next, dt, frac_land, &
+                           p_half, p_full, z_half, z_full, omega,    &
+                           diff_t(is:ie,js:je,:),                    &
+                           radturbten(is:ie,js:je,:),                &
+                           t, q, r, u, v, tm, qm, rm, um, vm,        &
+                           tdt, qdt, rdt, udt, vdt, diff_cu_mo_loc , &
+                           convect(is:ie,js:je), lprec, fprec,       &
+                           gust_cv, area, lat, Aerosol, mask=mask, kbot=kbot)
+        endif
         call mpp_clock_end ( moist_processes_clock )
         diff_cu_mo(is:ie, js:je,:) = diff_cu_mo_loc(:,:,:)
         radturbten(is:ie,js:je,:) = 0.0
@@ -1666,6 +1790,10 @@ integer,dimension(:,:), intent(in),   optional :: kbot
 !---------------------------------------------------------------------
         gust = sqrt( gust*gust + gust_cv*gust_cv)
       endif ! do_moist_processes
+
+      if(ASSOCIATED(Aerosol%aerosol))deallocate(Aerosol%aerosol)
+      if(ASSOCIATED(Aerosol%family_members))deallocate(Aerosol%family_members)
+      if(ASSOCIATED(Aerosol%aerosol_names))deallocate(Aerosol%aerosol_names)
 
 !-----------------------------------------------------------------------
 
@@ -1756,6 +1884,19 @@ type(time_type), intent(in) :: Time
          if (doing_edt .or. doing_entrain) then
             call write_data (fname, 'lw_tendency', lw_tendency)
          endif
+        if (doing_donner) then
+         call write_data (fname, 'cell_cloud_frac', cell_cld_frac)
+         call write_data (fname, 'cell_liquid_amt', cell_liq_amt )
+         call write_data (fname, 'cell_liquid_size', cell_liq_size)
+         call write_data (fname, 'cell_ice_amt', cell_ice_amt )
+         call write_data (fname, 'cell_ice_size', cell_ice_size)
+         call write_data (fname, 'meso_cloud_frac', meso_cld_frac)
+         call write_data (fname, 'meso_liquid_amt', meso_liq_amt )
+         call write_data (fname, 'meso_liquid_size', meso_liq_size)
+         call write_data (fname, 'meso_ice_amt', meso_ice_amt )
+         call write_data (fname, 'meso_ice_size', meso_ice_size)
+         call write_data (fname, 'nsum', nsum_out)                 
+        endif
       else
          if (mpp_pe() == mpp_root_pe() ) then
             call error_mesg('physics_driver_mod', 'Writing native formatted restart file.', NOTE)
@@ -1772,6 +1913,7 @@ type(time_type), intent(in) :: Time
          if (mpp_pe() == mpp_root_pe() ) then
             write (unit) restart_versions(size(restart_versions(:)))
             write (unit) doing_strat(), doing_edt, doing_entrain
+            write (unit) doing_donner                           
          endif
          
          !--------------------------------------------------------------------
@@ -1788,6 +1930,19 @@ type(time_type), intent(in) :: Time
          if (doing_edt .or. doing_entrain) then
             call write_data (unit, lw_tendency)
          endif
+        if (doing_donner) then
+         call write_data (unit ,  cell_cld_frac)
+         call write_data (unit ,  cell_liq_amt )
+         call write_data (unit ,  cell_liq_size)
+         call write_data (unit ,  cell_ice_amt )
+         call write_data (unit ,  cell_ice_size)
+         call write_data (unit ,  meso_cld_frac)
+         call write_data (unit ,  meso_liq_amt )
+         call write_data (unit ,  meso_liq_size)
+         call write_data (unit ,  meso_ice_amt )
+         call write_data (unit ,  meso_ice_size)
+         call write_data (unit , nsum_out)                 
+        endif
          
          !--------------------------------------------------------------------
          !    close the restart file unit.
@@ -1977,10 +2132,11 @@ subroutine read_restart_file
 !--------------------------------------------------------------------
 !   local variables:
 
-      integer  :: ierr, io, unit
+      integer  :: io, unit
       integer  :: vers, vers2
       character(len=8) :: chvers
       logical  :: was_doing_strat, was_doing_edt, was_doing_entrain
+      logical  :: was_doing_donner                                 
       logical  :: success = .false.
 
 !--------------------------------------------------------------------
@@ -2032,6 +2188,9 @@ subroutine read_restart_file
 !--------------------------------------------------------------------
         if (vers >= 5 ) then
           read (unit) was_doing_strat, was_doing_edt, was_doing_entrain
+        endif
+        if (vers >= 6 ) then
+          read (unit) was_doing_donner                                 
         endif
 
 !---------------------------------------------------------------------
@@ -2126,6 +2285,47 @@ subroutine read_restart_file
           success = .true.
         endif  ! (vers >=5)
 
+        if (doing_donner) then
+      if (vers >= 6) then
+        if (was_doing_donner) then
+         call read_data (unit ,  cell_cld_frac)
+         call read_data (unit ,  cell_liq_amt )
+         call read_data (unit ,  cell_liq_size)
+         call read_data (unit ,  cell_ice_amt )
+         call read_data (unit ,  cell_ice_size)
+         call read_data (unit ,  meso_cld_frac)
+         call read_data (unit ,  meso_liq_amt )
+         call read_data (unit ,  meso_liq_size)
+         call read_data (unit ,  meso_ice_amt )
+         call read_data (unit ,  meso_ice_size)
+         call read_data (unit , nsum_out)                 
+     else  ! (was_doing_donner)
+        cell_cld_frac = 0.
+        cell_liq_amt  = 0.
+        cell_liq_size = 0.
+        cell_ice_amt  = 0.
+        cell_ice_size = 0.
+        meso_cld_frac = 0.
+        meso_liq_amt  = 0.
+        meso_liq_size = 0.
+        meso_ice_amt  = 0.
+        meso_ice_size = 0.
+        nsum_out = 1
+       endif ! (was_doing_donner)
+     else  ! (vers >= 6)
+        cell_cld_frac = 0.
+        cell_liq_amt  = 0.
+        cell_liq_size = 0.
+        cell_ice_amt  = 0.
+        cell_ice_size = 0.
+        meso_cld_frac = 0.
+        meso_liq_amt  = 0.
+        meso_liq_size = 0.
+        meso_ice_amt  = 0.
+        meso_ice_size = 0.
+        nsum_out = 1
+      endif ! (vers >= 6)
+     endif  ! (doing_donner)
 !---------------------------------------------------------------------
 !    if there is no physics_driver.res, set the remaining module
 !    variables to 0.0
@@ -2136,6 +2336,19 @@ subroutine read_restart_file
         diff_cu_mo = 0.0
         pbltop     = -999.0
         convect = .false.
+        if (doing_donner) then
+        cell_cld_frac = 0.
+        cell_liq_amt  = 0.
+        cell_liq_size = 0.
+        cell_ice_amt  = 0.
+        cell_ice_size = 0.
+        meso_cld_frac = 0.
+        meso_liq_amt  = 0.
+        meso_liq_size = 0.
+        meso_ice_amt  = 0.
+        meso_ice_size = 0.
+        nsum_out = 1
+        endif ! (doing_donner)
       endif  ! present(.res)
 
 !--------------------------------------------------------------------
@@ -2256,6 +2469,7 @@ subroutine read_restart_file
         endif
       endif  ! (.not. success)
 
+
 !----------------------------------------------------------------------
 
 
@@ -2289,10 +2503,10 @@ subroutine read_restart_nc
 !--------------------------------------------------------------------
 !   local variables:
 
-      real  :: vers, vers2
-      character(len=8) :: chvers
+      real  :: vers
       real  :: was_doing_strat=0., was_doing_edt=0., was_doing_entrain=0.
-      logical  :: success = .false.
+      logical  :: field_found
+      integer, dimension(4)  :: siz
       character(len=64) :: fname = 'INPUT/physics_driver.res.nc'
       real, dimension(size(convect,1), size(convect,2)) :: r_convect
 !--------------------------------------------------------------------
@@ -2301,15 +2515,12 @@ subroutine read_restart_nc
 !      vers              restart version number if that is contained in 
 !                        file; otherwise the first word of first data 
 !                        record of file
-!      vers2             second word of first data record of file
 !      was_doing_strat   logical indicating if strat_cloud_mod was 
 !                        active in job which wrote restart file
 !      was_doing_edt     logical indicating if edt_mod was active
 !                        in job which wrote restart file
 !      was_doing_entrain logical indicating if entrain_mod was active
 !                        in job which wrote restart file
-!      success           logical indicating that restart data has been
-!                        processed
 !
 !---------------------------------------------------------------------      
                     
@@ -2320,6 +2531,7 @@ subroutine read_restart_nc
          call read_data(fname, 'doing_strat', was_doing_strat, no_domain=.true.)
          call read_data(fname, 'doing_edt', was_doing_edt, no_domain=.true.)
          call read_data(fname, 'doing_entrain', was_doing_entrain, no_domain=.true.)
+
 !---------------------------------------------------------------------
 !    read the contribution to diffusion coefficient from cumulus
 !    momentum transport.
@@ -2350,6 +2562,51 @@ subroutine read_restart_nc
             convect = .true.
          end where
          
+!---------------------------------------------------------------------
+!    donner_deep cell and meso cloud variables may be present in 
+!    versions 6 onward, if donner_deep_mod
+!    was active in the job writing the .res file.
+!---------------------------------------------------------------------
+            if (doing_donner) then
+           call field_size (fname, 'cell_cloud_frac', siz, &
+                            field_found = field_found)
+
+        if (field_found) then
+         call read_data (fname, 'cell_cloud_frac', cell_cld_frac)
+         call read_data (fname, 'cell_liquid_amt', cell_liq_amt )
+         call read_data (fname, 'cell_liquid_size', cell_liq_size)
+         call read_data (fname, 'cell_ice_amt', cell_ice_amt )
+         call read_data (fname, 'cell_ice_size', cell_ice_size)
+         call read_data (fname, 'meso_cloud_frac', meso_cld_frac)
+         call read_data (fname, 'meso_liquid_amt', meso_liq_amt )
+         call read_data (fname, 'meso_liquid_size', meso_liq_size)
+         call read_data (fname, 'meso_ice_amt', meso_ice_amt )
+         call read_data (fname, 'meso_ice_size', meso_ice_size)
+         call read_data (fname, 'nsum', nsum_out)                 
+
+!---------------------------------------------------------------------
+!    if donner_deep_mod was not active in the job which wrote the 
+!    restart file but it is active in the current job, initialize
+!    these variables and put a message in the output file.  
+!---------------------------------------------------------------------
+          else
+        cell_cld_frac = 0.
+        cell_liq_amt  = 0.
+        cell_liq_size = 0.
+        cell_ice_amt  = 0.
+        cell_ice_size = 0.
+        meso_cld_frac = 0.
+        meso_liq_amt  = 0.
+        meso_liq_size = 0.
+        meso_ice_amt  = 0.
+        meso_ice_size = 0.
+        nsum_out = 1
+              call error_mesg ('physics_driver_mod', &
+              ' initializing donner cloud  variables, since they are not present'//&
+                            ' in physics_driver.res.nc file', NOTE)
+            endif  ! (field_found)       
+     endif  ! (doing_donner)
+
 !---------------------------------------------------------------------
 !    radturbten may be present in versions 5 onward, if strat_cloud_mod
 !    was active in the job writing the .res file.

@@ -23,8 +23,8 @@ module mg_drag_mod
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 11.0 2004/09/28 19:19:38 fms Exp $'
- character(len=128) :: tagname = '$Name: lima $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 13.0 2006/03/28 21:10:10 fms Exp $'
+ character(len=128) :: tagname = '$Name: memphis $'
 
  real, parameter :: p00 = 1.e5
 
@@ -182,7 +182,7 @@ character(len=128) :: source_of_sgsmtn = 'input'
  real , dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)+1) ::  taus
  real vsamp
 integer, dimension (size(uwnd,1),size(uwnd,2)) :: ktop, kbtm
-integer id, jd, idim, jdim, kdim, kdimm1, kdimp1, ie, je
+integer idim, jdim, kdim, kdimm1, kdimp1, ie, je
 
 !              XN,YN  = PROJECTIONS OF "LOW LEVEL" WIND
 !                       IN ZONAL & MERIDIONAL DIRECTIONS
@@ -206,7 +206,7 @@ integer id, jd, idim, jdim, kdim, kdimm1, kdimp1, ie, je
 !                   (dimensioned IDIM x JDIM)
 !-----------------------------------------------------------------------
 !  type loop indicies
- integer i, j, k, kd, kb, kt, kbp1, ktm1 
+ integer i, j, k, kd
 !-----------------------------------------------------------------------
 !  Local variables needed only for code that
 !  implements supersource-like gravity wave drag.
@@ -498,7 +498,7 @@ real grav2, xli, a, small
  integer idim, jdim,kdim,ie, je
 !-----------------------------------------------------------------------
 !  type loop indicies
- integer i, j, k, kb, kt, kbp1, ktm1 
+ integer i, j, k, kb, kt
 !-----------------------------------------------------------------------
 !===================================================================
 
@@ -614,7 +614,7 @@ subroutine mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
 !=======================================================================
 !  (Intent local)
  real , dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)) ::  &
-     &       dterm, dudz  
+     &       dudz  
  real , dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)+1) ::  &
      &       umag, bnvk2, d,d2, d2i, d2udz2, extend
  real grav2, xli, small
@@ -968,8 +968,6 @@ end subroutine mgwd_tend
 !---------------------------------------------------------------------
  integer  ::  ix, iy, unit, io, ierr
  logical  ::  answer
- integer, dimension(4) :: siz
- integer :: global_num_lon, global_num_lat
 
 !=====================================================================
 

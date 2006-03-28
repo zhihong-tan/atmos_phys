@@ -16,7 +16,7 @@ module cloud_generator_mod
 !--------------------------------------------------------------------
   !
   ! Given a profile of cloud fraction, produce a set of columns indicating 
-  !   the presence or absence of cloud consistent with on of four overlap  
+  !   the presence or absence of cloud consistent with one of four overlap  
   !   assumptions: random, maximum, maximum-random, and one allowing 
   !   the rank correlation of the variable to be specified between layers.
   ! The module uses a random number generation module which can be used to wrap
@@ -37,8 +37,8 @@ module cloud_generator_mod
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_generator.F90,v 11.0 2004/09/28 19:14:22 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: cloud_generator.F90,v 13.0 2006/03/28 21:07:30 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -70,12 +70,13 @@ character(len=128)  :: tagname =  '$Name: lima $'
 
   ! Minimum values for cloud fraction, water, ice contents
   !   Taken from cloud_rad. Perhaps these should be namelist parameters? 
-  real, parameter :: qmin = 1.E-10, qamin = 1.E-2
+  real, parameter :: qcmin = 1.E-10, qamin = 1.E-2
   
   ! Pressure scale height - for converting pressure differentials to height
   real, parameter :: pressureScaleHeight = 7.3 ! km
   
-  ! Overlap parameter: 1 - Maximum, 2 - Random, 3 - Maximum/Random
+  ! Overlap parameter: 1 - Maximum, 2 - Random, 3 - Maximum/Random,
+  !                    4 - Exponential
   integer         :: defaultOverlap = 2 
   real            :: overlapLengthScale = 2.0  ! km
   ! These control the option to pull cloud condensate from a symmetric  
@@ -84,9 +85,36 @@ character(len=128)  :: tagname =  '$Name: lima $'
   !    cloud fraction and cloud condensate. 
   logical         :: do_inhomogeneous_clouds = .false. 
   integer         :: betaP = 5
+
+  !The following apply for pdf cloud scheme
+  !
+  ! qthalfwidth defines the fraction of qtbar (mean total water in the
+  ! grid box) that the maximum and minimum of the distribution differ 
+  ! from qtbar. That is, total water at the sub-grid scale may take on 
+  ! values anywhere between (1.-qthalfwidth)*qtbar and (1.+qthalfwidth)*
+  ! qtbar
+  !
+  logical         :: do_pdf_clouds = .false.
+  real            :: qthalfwidth = 0.1  
   
-  namelist /cloud_generator_nml/  defaultOverlap, overlapLengthScale, &
-                                  do_inhomogeneous_clouds, betaP 
+  ! The following apply for ppm vertical interpolation if done.
+  !
+  !      nsublevels      This is the number of sub-levels to be used
+  !                      for sub-grid scale vertical structure to
+  !                      clouds. If equal to 1, then no vertical
+  !                      sub-grid scale structure is calculated.
+  !
+  !      kmap, kord      Quantities related to the PPM vertical inter-
+  !                      polation calculation.
+  !
+  integer           :: nsublevels     = 1
+  integer           :: kmap           = 1
+  integer           :: kord           = 7
+  
+namelist /cloud_generator_nml/  defaultOverlap, overlapLengthScale, &
+                                  do_inhomogeneous_clouds, betaP,     &
+                                  do_pdf_clouds, qthalfwidth, nsublevels, &
+                                  kmap,kord
 
 !----------------------------------------------------------------------
 !----  private data -------
@@ -144,10 +172,28 @@ subroutine cloud_generator_init
         if (mpp_pe() == mpp_root_pe() ) &
                    write (stdlog(), nml=cloud_generator_nml)
                    
+!-----------------------------------------------------------------------
+!    do_inhomogeneous_clouds and do_pdf_clouds cannot be 
+!    simultaneously true
+!-----------------------------------------------------------------------
+        if (do_inhomogeneous_clouds .and. do_pdf_clouds) then
+          call error_mesg ( 'cloud_generator_mod', &
+           'do_inhomogeneous_clouds and do_pdf_clouds cannot'//&
+           'be simultaneously true', FATAL)
+        endif
+!-----------------------------------------------------------------------
+!    qthalfwidth must be greater than 0.
+!-----------------------------------------------------------------------
+        if (qthalfwidth .lt. 1.e-03) then
+          call error_mesg ( 'cloud_generator_mod', &
+           'qthalfwidth must be greater than 0.001', FATAL)
+        endif
+
 !---------------------------------------------------------------------
 !    Initialize the beta distribution module if we're going to need it. 
 !---------------------------------------------------------------------
-        if(do_inhomogeneous_clouds) call beta_dist_init
+        if(do_inhomogeneous_clouds .or. do_pdf_clouds) &
+             call beta_dist_init
 
 !---------------------------------------------------------------------
 !    mark the module as initialized.
@@ -160,8 +206,10 @@ end subroutine cloud_generator_init
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
 subroutine generate_stochastic_clouds(streams, ql, qi, qa,         &
-                                      overlap, pFull, temperature, &
-                                      cld_thickness, ql_stoch, qi_stoch, qa_stoch)
+                                      overlap, pFull, pHalf, & 
+                                      temperature, qv,&
+                                      cld_thickness, &
+                                      ql_stoch, qi_stoch, qa_stoch)
 !--------------------------------------------------------------------
 !   intent(in) variables:
 !
@@ -172,7 +220,10 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa,         &
   integer,                     optional, &
                                   intent( in) :: overlap
   real,    dimension(:, :, :), optional, &
-                                 intent( in)  :: pFull, temperature
+                                 intent( in)  :: pFull, temperature, qv
+  ! Dimension nx, ny, nz+1
+  real,    dimension(:, :, :), optional, &
+                                 intent( in)  :: pHalf                  
   ! Dimension nx, ny, nz, nCol = nBands
   integer, dimension(:, :, :, :), intent(out) :: cld_thickness 
   real,    dimension(:, :, :, :), intent(out) :: ql_stoch, &
@@ -198,19 +249,33 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa,         &
                      size(ql_stoch, 4)) :: isCloudy
 
   ! These arrays could be declared allocatable and used only when 
-  !    do_inhomogeneous_clouds is true. 
+  !    do_inhomogeneous_clouds OR do_pdf_clouds is true. 
   real,    dimension(size(ql_stoch, 1), &  ! Quantities for estimating condensate variability
                      size(ql_stoch, 2), &  !   from a beta distribution
-                     size(ql_stoch, 3)) :: aThermo, qlqcRatio, qs_norm, deltaQ 
+                     size(ql_stoch, 3)) :: aThermo, qlqcRatio, qs_norm, &
+                                           deltaQ, qs
 
   real,    dimension(size(ql_stoch, 1), &
                      size(ql_stoch, 2), &
                      size(ql_stoch, 3), &
-                     size(ql_stoch, 4)) :: qc_stoch
-                     
+                     size(ql_stoch, 4)) :: qc_stoch !stochastic condensate
+  real,    dimension(4,                 &
+                     size(ql_stoch,1),  &
+                     size(ql_stoch,2),  &
+                     size(ql_stoch,3)) :: qta4,qtqsa4 !used for ppm
+  real,    dimension(size(ql_stoch,1),  &
+                     size(ql_stoch,2),  &
+                     size(ql_stoch,3)) :: delp !used for ppm
+  real,    dimension(size(ql_stoch,1),  &
+                     size(ql_stoch,2),  &
+                     size(ql_stoch,4)) :: qctmp, qatmp !temporary summing 
+                                                       !variables
+                                   
+  real    :: pnorm   !fraction of level- used for ppm interpolation    
+  real    :: tmpr  
   integer :: nLev, nCol, lev
   integer :: overlapToUse
-  integer :: i, j, k, n
+  integer :: i, j, k, n, ns
  
   ! ---------------------------------------------------------
 
@@ -228,20 +293,22 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa,         &
   end if
   
   !
-  ! Ensure that cloud fraction, water, and ice contents are in bounds
+  ! Ensure that cloud fraction, water vapor, and water and ice contents are 
+  ! in bounds
+  !
   !   After similar code in cloud_summary3
   !
   qa_local(:,:,:) = 0.
   do k=1, nLev
        do j=1, size(qa_stoch,2)
        do i=1, size(qa_stoch,1)
-         if (qa(i,j,k) >= qamin .and. ql(i,j,k) > qmin) then
+         if (qa(i,j,k) > qamin .and. ql(i,j,k) > qcmin) then
            qa_local(i,j,k) = qa(i,j,k)
            ql_local(i,j,k) = ql(i,j,k)
          else
            ql_local(i,j,k) = 0.0           
          endif
-         if (qa(i,j,k) >= qamin .and. qi(i,j,k) >= qmin) then
+         if (qa(i,j,k) > qamin .and. qi(i,j,k) > qcmin) then
            qa_local(i,j,k) = qa(i,j,k)
            qi_local(i,j,k) = qi(i,j,k)
          else
@@ -249,7 +316,7 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa,         &
          endif
        end do
        end do
-       end do
+  end do
 
   
   !
@@ -286,7 +353,7 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa,         &
 
 
   
-  if(.not. do_inhomogeneous_clouds) then
+  if(.not. do_inhomogeneous_clouds .and. .not. do_pdf_clouds) then
     !
     ! The clouds are uniform, so every cloudy cell at a given level 
     !   gets the same ice and/or liquid concentration (subject to a minumum). 
@@ -315,7 +382,9 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa,         &
         end do
            
 
-  else
+  end if
+  
+  if (do_inhomogeneous_clouds) then
     if(.not. present(pFull) .or. .not. present(temperature)) &
       call error_mesg("cloud_generator_mod",                 &
       "Need to provide pFull and temperature when using inhomogenous clouds", FATAL)
@@ -412,6 +481,158 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa,         &
         end do
            
   end if 
+
+  if (do_pdf_clouds) then
+    if(.not. present(pFull) .or. .not. present(temperature) .or. &
+       .not. present(qv)    .or. .not. present(pHalf)) &
+
+      call error_mesg("cloud_generator_mod",                 &
+      "Need to provide pFull, pHalf, temperature and water vapor when using pdf clouds", FATAL)
+    !
+    ! Assume that total water in each grid cell follows a symmetric beta distribution with  
+    !   exponents p=q set in the namelist. In contrast to the procedure for inhomogen-
+    !   eous clouds, here the distribution is known (either from prognostic variance)
+    !   or from diagnostic variance. In this case one can directly determine
+    !   the cloud condensate from:
+    !   
+    !   qc = aThermo * (qt -qs) =
+    !      = aThermo * deltaQ * (beta_deviate(pdfRank,p,q) - qsnorm)
+    !
+    !   Note that the qlqcRatio needs to be defined in the case that there is no
+    !   cloud in the grid box from what enters this subroutine (qa_local) yet there
+    !   is condensate diagnosed in this routine. The formula that weights the
+    !   saturation vapor pressure as a function of temperature is used.
+    
+       
+    where (qa_local(:, :, :) > qamin) 
+      qlqcRatio(:, :, :) = ql_local(:, :, :) / (ql_local(:, :, :) + qi_local(:, :, :))
+    elsewhere
+      qlqcRatio(:, :, :) = min(1., max(0., 0.05*(temperature(:,:,:)-tfreeze+20.))) 
+    end where
+    call computeThermodynamics(temperature, pFull, ql, qi, aThermo, qs)
+
+    !Compute ppm interpolation - if nsublevels > 1
+    do k = 1, nLev
+         delp(:,:,k) = pHalf(:,:,k+1)-pHalf(:,:,k)
+    enddo     
+    qta4(1,:,:,:) = max(qcmin,qv+ql_local+qi_local)
+    qtqsa4(1,:,:,:) = qta4(1,:,:,:)-qs
+        
+    if (nsublevels.gt.1) then
+        do i=1, size(qa_stoch,1)
+            call ppm2m_sak(qta4(:,i,:,:),delp(i,:,:),nLev,kmap,1,&
+                       size(qa_stoch,2),0,kord)
+            call ppm2m_sak(qtqsa4(:,i,:,:),delp(i,:,:),nLev,kmap,1,&
+                       size(qa_stoch,2),0,kord)
+        enddo                
+    else
+        qta4(2,:,:,:) = qta4(1,:,:,:)
+        qta4(3,:,:,:) = qta4(1,:,:,:)
+        qta4(4,:,:,:) = 0.
+        qtqsa4(2,:,:,:) = qtqsa4(1,:,:,:)
+        qtqsa4(3,:,:,:) = qtqsa4(1,:,:,:)
+        qtqsa4(4,:,:,:) = 0.   
+    end if
+    
+    !loop over vertical levels       
+    do k=1, nLev
+         
+        !initialize summing variable
+        qctmp(:,:,:) = 0.         
+        qatmp(:,:,:) = 0.
+        
+        !Create loop over sub-levels within a grid box
+        do ns = 1, nsublevels
+             
+             !calculate normalized vertical level
+             ! 0. = top of gridbox
+             ! 1. = bottom of gridbox
+        
+             pnorm =  (real(ns) - 0.5 )/real(nsublevels)
+             
+             !First step is to calculating the 
+             !the width of the qt distribution (deltaQ)
+             deltaQ(:,:,k) = max(qcmin, &
+                          qta4(2,:,:,k)+pnorm*( (qta4(3,:,:,k)- &
+                          qta4(2,:,:,k)) +  qta4(4,:,:,j)*(1-pnorm) ) )
+             deltaQ(:,:,k) = 2.*qthalfwidth*deltaQ(:,:,k)
+             
+             !From this the variable normalized saturation specific
+             !humidity qs_norm is calculated.
+             !
+             !  qs_norm = (qs(Tl) - qtmin)/(qtmax-qtmin)
+             !
+             !          = 0.5  - (qtbar - qs(Tl))/deltaQ
+             !
+             !Note that if qs_norm > 1., the grid box is fully clear.
+             !If qs_norm < 0., the grid box is fully cloudy.
+             qs_norm(:,:,k) = qtqsa4(2,:,:,k)+  &
+                       pnorm*( (qtqsa4(3,:,:,k)-qtqsa4(2,:,:,k)) + &
+                       qtqsa4(4,:,:,k)*(1-pnorm) )
+             qs_norm(:,:,k) = 0.5 - ( qs_norm(:,:,k)/deltaQ(:,:,k) )
+             
+             do j=1, size(qa_stoch,2)
+             do i=1, size(qa_stoch,1)             
+             do n=1,nCol
+       
+                  if (qs_norm(i,j,k).lt.1.) then
+                      tmpr =           aThermo(i,j,k  ) * &
+                                        deltaQ(i,j,k  ) * &
+                               (beta_deviate(pdfRank(i,j,k,n   ), &
+                                          p = betaP, q = betaP) - &
+                                       qs_norm(i,j,k) )
+                      if (tmpr.gt.qcmin) then                 
+                          qctmp(i, j, n) = qctmp(i, j, n) + tmpr
+                          qatmp(i, j, n) = qatmp(i, j, n) + 1.
+                      end if           
+                  end if
+                  
+             enddo !for nCol
+             enddo !for i
+             enddo !for j
+             
+        enddo !for ns (nsublevels)
+         
+        !produce vertical average qc
+        do j=1, size(qa_stoch,2)
+        do i=1, size(qa_stoch,1)
+        do n=1, nCol
+            
+             qctmp(i,j,n) = qctmp(i,j,n) / real (nsublevels)
+             qa_stoch(i,j,k,n) = qatmp(i,j,n) / real (nsublevels)
+             if (qctmp(i,j,n).le.qcmin) then
+                  cld_thickness(i,j,k,n) = 0.
+                  qa_stoch(i,j,k,n) = 0.
+                  qc_stoch(i,j,k,n) = 0.
+                  ql_stoch(i,j,k,n) = 0.
+                  qi_stoch(i,j,k,n) = 0.
+             else
+                  qc_stoch(i,j,k,n) = qctmp(i,j,n)             
+                  cld_thickness(i,j,k,n) = 1.
+                  !qa_stoch(i,j,k,n) = 1.          
+       
+                  ! 
+                  ! The proportion of ice and water in each 
+                  ! sample is the same as the mean proportion.  
+                  !
+                  ql_stoch(i,j,k,n   ) = qc_stoch(i,j,k,n)* &
+                                        qlqcRatio(i,j,k)
+                  qi_stoch(i,j,k,n   ) = qc_stoch(i,j,k,n)* &
+                                     (1.-qlqcRatio(i,j,k))
+             end if !for column containing cloud
+             
+        enddo !for nCol
+        enddo !for i
+        enddo !for j 
+        
+    end do !for k (vertical loop)
+           
+  end if  ! for do_pdf_clouds
+
+
+
+
+
 end subroutine generate_stochastic_clouds
 
   ! ---------------------------------------------------------
@@ -457,10 +678,11 @@ end function compute_overlap_weighting
 !
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-  subroutine computeThermodynamics(temperature, pressure, ql, qi, aThermo)
+  subroutine computeThermodynamics(temperature, pressure, ql, qi, aThermo, qs)
     real, dimension(:, :, :), intent( in) :: temperature, pressure, ql, qi
     real, dimension(:, :, :), intent(out) :: aThermo
-    
+    real, dimension(:, :, :), optional, intent(out) :: qs
+        
     integer :: lev, nLev
     real, parameter :: d608 = (rvgas - rdgas)/rdgas, &
                        d622 = rdgas/rvgas,           &
@@ -486,9 +708,16 @@ end function compute_overlap_weighting
     call lookup_es( Tl(:, :, :),  esat(:, :, :))
     call lookup_des(Tl(:, :, :), desdT(:, :, :))
  
+    !calculate qs
+    if (present(qs)) qs(:,:,:) = d622 * esat(:,:,:)
+    
     !calculate dqsdT
     !limit denominator to esat, and thus qs to d622
     esat(:, :, :) = max(pressure(:, :, :) - d378 * esat(:, :, :), esat(:, :, :))
+    
+    !calculate qs
+    if (present(qs)) qs(:,:,:) = qs(:,:,:) / esat(:,:,:)
+   
     !this is done to avoid blow up in the upper stratosphere
     dqsdT(:, :, :) = d622 * pressure(:, :, :) * desdT(:, :, :) / esat(:, :, :)**2
  
@@ -497,6 +726,7 @@ end function compute_overlap_weighting
     L(:, :, :) = (min(1., max(0., 0.05*(temperature(:, :, :) - tfreeze + 20.)))*hlv + &
                   min(1., max(0., 0.05*(tfreeze - temperature(:, :, :)      )))*hls)
     aThermo(:, :, :) = 1./ (1. + L(:, :, :)/cp_air * dqsdT(:, :, :)) 
+    
   end subroutine computeThermodynamics
   ! ---------------------------------------------------------
   ! Random overlap - the value is chosen randomly from the distribution at 
@@ -731,7 +961,8 @@ end function compute_overlap_weighting
                'module has not been initialized', FATAL )
         endif
         
-        if(do_inhomogeneous_clouds) call beta_dist_end
+        if(do_inhomogeneous_clouds .or. do_pdf_clouds) &
+             call beta_dist_end
   !---------------------------------------------------------------------
   !    mark the module as not initialized.
   !---------------------------------------------------------------------
@@ -749,5 +980,455 @@ end function compute_overlap_weighting
     do_cloud_generator = cloud_generator_on
   end function do_cloud_generator
   !--------------------------------------------------------------------
+
+!----------------------------------------------------------------------- 
+!BOP
+! !ROUTINE:  ppm2m_sak --- Piecewise parabolic method for fields
+!
+! !INTERFACE:
+ subroutine ppm2m_sak(a4, delp, km, kmap, i1, i2, iv, kord)
+
+ implicit none
+
+! !INPUT PARAMETERS:
+ integer, intent(in):: iv      ! iv =-1: winds
+                               ! iv = 0: positive definite scalars
+                               ! iv = 1: others
+ integer, intent(in):: i1      ! Starting longitude
+ integer, intent(in):: i2      ! Finishing longitude
+ integer, intent(in):: km      ! vertical dimension
+ integer, intent(in):: kmap    ! partial remap to start
+ integer, intent(in):: kord    ! Order (or more accurately method no.):
+                               ! 
+ real, intent(in):: delp(i1:i2,km)     ! layer pressure thickness
+
+! !INPUT/OUTPUT PARAMETERS:
+ real, intent(inout):: a4(4,i1:i2,km)  ! Interpolated values
+
+! !DESCRIPTION:
+!
+!   Perform the piecewise parabolic method 
+! 
+! !REVISION HISTORY: 
+!   ??.??.??    Lin        Creation
+!   02.04.04    Sawyer     Newest release from FVGCM
+! 
+!EOP
+!-----------------------------------------------------------------------
+!BOC
+!
+! !LOCAL VARIABLES:
+! local arrays:
+      real   dc(i1:i2,km)
+      real   h2(i1:i2,km)
+      real delq(i1:i2,km)
+      real  df2(i1:i2,km)
+      real   d4(i1:i2,km)
+
+! local scalars:
+      integer i, k, km1, lmt
+      integer it
+      real fac
+      real a1, a2, c1, c2, c3, d1, d2
+      real qmax, qmin, cmax, cmin
+      real qm, dq, tmp
+      real qmp, pmp
+      real lac
+
+      km1 = km - 1
+       it = i2 - i1 + 1
+
+      do k=max(2,kmap-2),km
+         do i=i1,i2
+            delq(i,k-1) =   a4(1,i,k) - a4(1,i,k-1)
+              d4(i,k  ) = delp(i,k-1) + delp(i,k)
+         enddo
+      enddo
+ 
+      do k=max(2,kmap-2),km1
+         do i=i1,i2
+            c1  = (delp(i,k-1)+0.5*delp(i,k))/d4(i,k+1)
+            c2  = (delp(i,k+1)+0.5*delp(i,k))/d4(i,k)
+            tmp = delp(i,k)*(c1*delq(i,k) + c2*delq(i,k-1)) /      &
+                                    (d4(i,k)+delp(i,k+1))
+            qmax = max(a4(1,i,k-1),a4(1,i,k),a4(1,i,k+1)) - a4(1,i,k)
+            qmin = a4(1,i,k) - min(a4(1,i,k-1),a4(1,i,k),a4(1,i,k+1))
+             dc(i,k) = sign(min(abs(tmp),qmax,qmin), tmp)
+            df2(i,k) = tmp
+         enddo
+      enddo
+
+!-----------------------------------------------------------
+! 4th order interpolation of the provisional cell edge value
+!-----------------------------------------------------------
+
+      do k=max(3,kmap), km1
+      do i=i1,i2
+        c1 = delq(i,k-1)*delp(i,k-1) / d4(i,k)
+        a1 = d4(i,k-1) / (d4(i,k) + delp(i,k-1))
+        a2 = d4(i,k+1) / (d4(i,k) + delp(i,k))
+        a4(2,i,k) = a4(1,i,k-1) + c1 + 2./(d4(i,k-1)+d4(i,k+1)) *    &
+                  ( delp(i,k)*(c1*(a1 - a2)+a2*dc(i,k-1)) -          &
+                                delp(i,k-1)*a1*dc(i,k  ) )
+      enddo
+      enddo
+
+      if(km>8 .and. kord>3) call steepz_sak(i1, i2, km, kmap, a4, df2, dc, delq, delp, d4)
+
+! Area preserving cubic with 2nd deriv. = 0 at the boundaries
+! Top
+      if ( kmap <= 2 ) then
+      do i=i1,i2
+         d1 = delp(i,1)
+         d2 = delp(i,2)
+         qm = (d2*a4(1,i,1)+d1*a4(1,i,2)) / (d1+d2)
+         dq = 2.*(a4(1,i,2)-a4(1,i,1)) / (d1+d2)
+         c1 = 4.*(a4(2,i,3)-qm-d2*dq) / ( d2*(2.*d2*d2+d1*(d2+3.*d1)) )
+         c3 = dq - 0.5*c1*(d2*(5.*d1+d2)-3.*d1**2)
+         a4(2,i,2) = qm - 0.25*c1*d1*d2*(d2+3.*d1)
+         a4(2,i,1) = d1*(2.*c1*d1**2-c3) + a4(2,i,2)
+         dc(i,1) =  a4(1,i,1) - a4(2,i,1)
+! No over- and undershoot condition
+         cmax = max(a4(1,i,1), a4(1,i,2))
+         cmin = min(a4(1,i,1), a4(1,i,2))
+         a4(2,i,2) = max(cmin,a4(2,i,2))
+         a4(2,i,2) = min(cmax,a4(2,i,2))
+      enddo
+      endif
+
+! Bottom
+! Area preserving cubic with 2nd deriv. = 0 at the surface
+      do i=i1,i2
+         d1 = delp(i,km)
+         d2 = delp(i,km1)
+         qm = (d2*a4(1,i,km)+d1*a4(1,i,km1)) / (d1+d2)
+         dq = 2.*(a4(1,i,km1)-a4(1,i,km)) / (d1+d2)
+         c1 = (a4(2,i,km1)-qm-d2*dq) / (d2*(2.*d2*d2+d1*(d2+3.*d1)))
+         c3 = dq - 2.0*c1*(d2*(5.*d1+d2)-3.*d1**2)
+         a4(2,i,km) = qm - c1*d1*d2*(d2+3.*d1)
+         a4(3,i,km) = d1*(8.*c1*d1**2-c3) + a4(2,i,km)
+         dc(i,km) = a4(3,i,km) -  a4(1,i,km)
+! No over- and under-shoot condition
+         cmax = max(a4(1,i,km), a4(1,i,km1))
+         cmin = min(a4(1,i,km), a4(1,i,km1))
+         a4(2,i,km) = max(cmin,a4(2,i,km))
+         a4(2,i,km) = min(cmax,a4(2,i,km))
+      enddo
+
+      do k=max(1,kmap),km1
+         do i=i1,i2
+            a4(3,i,k) = a4(2,i,k+1)
+         enddo
+      enddo
+
+! Enforce monotonicity of the "slope" within the top layer
+      if ( kmap <= 2 ) then
+      do i=i1,i2
+         if ( a4(2,i,1) * a4(1,i,1) <= 0. ) then 
+              a4(2,i,1) = 0.
+                dc(i,1) = a4(1,i,1)
+         endif
+         if ( dc(i,1) * (a4(2,i,2) - a4(1,i,1)) <= 0. ) then
+! Setting DC==0 will force piecewise constant distribution after
+! calling kmppm_sak
+              dc(i,1) = 0.
+         endif
+      enddo
+      endif
+
+! Enforce constraint on the "slope" at the surface
+
+      do i=i1,i2
+         if( a4(3,i,km) * a4(1,i,km) <= 0. ) then
+!            a4(3,i,km) = 0.
+!              dc(i,km) =  -a4(1,i,km)
+               dc(i,km) = 0.
+         endif
+         if( dc(i,km) * (a4(1,i,km) - a4(2,i,km)) <= 0. ) then
+             dc(i,km) = 0.
+         endif
+      enddo
+ 
+!-----------------------------------------------------------
+! f(s) = AL + s*[(AR-AL) + A6*(1-s)]         ( 0 <= s  <= 1 )
+!-----------------------------------------------------------
+! Top 2 and bottom 2 layers always use monotonic mapping
+      if ( kmap <= 2 ) then
+      do k=1,2
+         do i=i1,i2
+            a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+         enddo
+            call kmppm_sak(dc(i1,k), a4(1,i1,k), it, 0)
+      enddo
+      endif
+
+      if(kord >= 7) then
+!-----------------------
+! Huynh's 2nd constraint
+!-----------------------
+      do k=max(2,kmap-1), km1
+         do i=i1,i2
+! Method#1
+!           h2(i,k) = delq(i,k) - delq(i,k-1)
+! Method#2
+!           h2(i,k) = 2.*(dc(i,k+1)/delp(i,k+1) - dc(i,k-1)/delp(i,k-1))
+!    &               / ( delp(i,k)+0.5*(delp(i,k-1)+delp(i,k+1)) )
+!    &               * delp(i,k)**2
+! Method#3
+            h2(i,k) = dc(i,k+1) - dc(i,k-1)
+         enddo
+      enddo
+
+      if( kord == 7 ) then
+         fac = 1.5           ! original quasi-monotone
+      else
+         fac = 0.125         ! full monotone
+      endif
+
+      do k=max(3,kmap), km-2
+        do i=i1,i2
+! Right edges
+!        qmp   = a4(1,i,k) + 2.0*delq(i,k-1)
+!        lac   = a4(1,i,k) + fac*h2(i,k-1) + 0.5*delq(i,k-1)
+!
+         pmp   = 2.*dc(i,k)
+         qmp   = a4(1,i,k) + pmp
+         lac   = a4(1,i,k) + fac*h2(i,k-1) + dc(i,k)
+         qmin  = min(a4(1,i,k), qmp, lac)
+         qmax  = max(a4(1,i,k), qmp, lac)
+         a4(3,i,k) = min(max(a4(3,i,k), qmin), qmax)
+! Left  edges
+!        qmp   = a4(1,i,k) - 2.0*delq(i,k)
+!        lac   = a4(1,i,k) + fac*h2(i,k+1) - 0.5*delq(i,k)
+!
+         qmp   = a4(1,i,k) - pmp
+         lac   = a4(1,i,k) + fac*h2(i,k+1) - dc(i,k)
+         qmin  = min(a4(1,i,k), qmp, lac)
+         qmax  = max(a4(1,i,k), qmp, lac)
+         a4(2,i,k) = min(max(a4(2,i,k), qmin), qmax)
+! Recompute A6
+         a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+        enddo
+! Additional constraint to ensure positivity when kord=7
+         if (iv == 0 .and. kord == 7) then
+             call kmppm_sak(dc(i1,k), a4(1,i1,k), it, 2)
+         endif
+      enddo
+
+      else
+ 
+         lmt = kord - 3
+         lmt = max(0, lmt)
+         if (iv == 0) lmt = min(2, lmt)
+
+      do k=max(3,kmap), km-2
+      if( kord /= 4) then
+         do i=i1,i2
+            a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+         enddo
+      endif
+         call kmppm_sak(dc(i1,k), a4(1,i1,k), it, lmt)
+      enddo
+      endif
+
+      do k=km1,km
+         do i=i1,i2
+            a4(4,i,k) = 3.*(2.*a4(1,i,k) - (a4(2,i,k)+a4(3,i,k)))
+         enddo
+         call kmppm_sak(dc(i1,k), a4(1,i1,k), it, 0)
+      enddo
+!EOC
+ end subroutine ppm2m_sak
+!-----------------------------------------------------------------------
+
+!----------------------------------------------------------------------- 
+!BOP
+! !ROUTINE:  kmppm_sak --- Perform piecewise parabolic method in vertical
+!
+! !INTERFACE:
+ subroutine kmppm_sak(dm, a4, itot, lmt)
+
+ implicit none
+
+! !INPUT PARAMETERS:
+      real, intent(in):: dm(*)     ! the linear slope
+      integer, intent(in) :: itot      ! Total Longitudes
+      integer, intent(in) :: lmt       ! 0: Standard PPM constraint
+                                       ! 1: Improved full monotonicity constraint (Lin)
+                                       ! 2: Positive definite constraint
+                                       ! 3: do nothing (return immediately)
+! !INPUT/OUTPUT PARAMETERS:
+      real, intent(inout) :: a4(4,*)   ! PPM array
+                                           ! AA <-- a4(1,i)
+                                           ! AL <-- a4(2,i)
+                                           ! AR <-- a4(3,i)
+                                           ! A6 <-- a4(4,i)
+
+! !DESCRIPTION:
+!
+! !REVISION HISTORY: 
+!    00.04.24   Lin       Last modification
+!    01.03.26   Sawyer    Added ProTeX documentation
+!    02.04.04   Sawyer    Incorporated newest FVGCM version
+!
+!EOP
+!-----------------------------------------------------------------------
+!BOC
+!
+! !LOCAL VARIABLES:
+
+      real, parameter:: r12 = 1./12.
+      real qmp
+      real da1, da2, a6da
+      real fmin
+      integer i
+
+! Developer: S.-J. Lin, NASA-GSFC
+! Last modified: Apr 24, 2000
+
+      if ( lmt == 3 ) return
+
+      if(lmt == 0) then
+! Standard PPM constraint
+      do i=1,itot
+      if(dm(i) == 0.) then
+         a4(2,i) = a4(1,i)
+         a4(3,i) = a4(1,i)
+         a4(4,i) = 0.
+      else
+         da1  = a4(3,i) - a4(2,i)
+         da2  = da1**2
+         a6da = a4(4,i)*da1
+         if(a6da < -da2) then
+            a4(4,i) = 3.*(a4(2,i)-a4(1,i))
+            a4(3,i) = a4(2,i) - a4(4,i)
+         elseif(a6da > da2) then
+            a4(4,i) = 3.*(a4(3,i)-a4(1,i))
+            a4(2,i) = a4(3,i) - a4(4,i)
+         endif
+      endif
+      enddo
+
+      elseif (lmt == 1) then
+
+! Improved full monotonicity constraint (Lin 2003)
+! Note: no need to provide first guess of A6 <-- a4(4,i)
+      do i=1, itot
+           qmp = 2.*dm(i)
+         a4(2,i) = a4(1,i)-sign(min(abs(qmp),abs(a4(2,i)-a4(1,i))), qmp)
+         a4(3,i) = a4(1,i)+sign(min(abs(qmp),abs(a4(3,i)-a4(1,i))), qmp)
+         a4(4,i) = 3.*( 2.*a4(1,i) - (a4(2,i)+a4(3,i)) )
+      enddo
+
+      elseif (lmt == 2) then
+
+! Positive definite constraint
+      do i=1,itot
+      if( abs(a4(3,i)-a4(2,i)) < -a4(4,i) ) then
+      fmin = a4(1,i)+0.25*(a4(3,i)-a4(2,i))**2/a4(4,i)+a4(4,i)*r12
+         if( fmin < 0. ) then
+         if(a4(1,i)<a4(3,i) .and. a4(1,i)<a4(2,i)) then
+            a4(3,i) = a4(1,i)
+            a4(2,i) = a4(1,i)
+            a4(4,i) = 0.
+         elseif(a4(3,i) > a4(2,i)) then
+            a4(4,i) = 3.*(a4(2,i)-a4(1,i))
+            a4(3,i) = a4(2,i) - a4(4,i)
+         else
+            a4(4,i) = 3.*(a4(3,i)-a4(1,i))
+            a4(2,i) = a4(3,i) - a4(4,i)
+         endif
+         endif
+      endif
+      enddo
+
+      endif
+
+!EOC
+ end subroutine kmppm_sak
+!-----------------------------------------------------------------------
+
+!----------------------------------------------------------------------- 
+!BOP
+! !ROUTINE:  steepz_sak --- Calculate attributes for PPM
+!
+! !INTERFACE:
+ subroutine steepz_sak(i1, i2, km, kmap, a4, df2, dm, dq, dp, d4)
+
+   implicit none
+
+! !INPUT PARAMETERS:
+      integer, intent(in) :: km                   ! Total levels
+      integer, intent(in) :: kmap                 ! 
+      integer, intent(in) :: i1                   ! Starting longitude
+      integer, intent(in) :: i2                   ! Finishing longitude
+      real, intent(in) ::  dp(i1:i2,km)       ! grid size
+      real, intent(in) ::  dq(i1:i2,km)       ! backward diff of q
+      real, intent(in) ::  d4(i1:i2,km)       ! backward sum:  dp(k)+ dp(k-1) 
+      real, intent(in) :: df2(i1:i2,km)       ! first guess mismatch
+      real, intent(in) ::  dm(i1:i2,km)       ! monotonic mismatch
+
+! !INPUT/OUTPUT PARAMETERS:
+      real, intent(inout) ::  a4(4,i1:i2,km)  ! first guess/steepened
+
+!
+! !DESCRIPTION:
+!   This is complicated stuff related to the Piecewise Parabolic Method
+!   and I need to read the Collela/Woodward paper before documenting
+!   thoroughly.
+!
+! !REVISION HISTORY: 
+!   ??.??.??    Lin?       Creation
+!   01.03.26    Sawyer     Added ProTeX documentation
+!
+!EOP
+!-----------------------------------------------------------------------
+!BOC
+!
+! !LOCAL VARIABLES:
+      integer i, k
+      real alfa(i1:i2,km)
+      real    f(i1:i2,km)
+      real  rat(i1:i2,km)
+      real  dg2
+
+! Compute ratio of dq/dp
+      do k=max(2,kmap-1),km
+         do i=i1,i2
+            rat(i,k) = dq(i,k-1) / d4(i,k)
+         enddo
+      enddo
+
+! Compute F
+      do k=max(2,kmap-1),km-1
+         do i=i1,i2
+            f(i,k) =   (rat(i,k+1) - rat(i,k))                          &
+                     / ( dp(i,k-1)+dp(i,k)+dp(i,k+1) )
+         enddo
+      enddo
+
+      do k=max(3,kmap),km-2
+         do i=i1,i2
+         if(f(i,k+1)*f(i,k-1)<0. .and. df2(i,k)/=0.) then
+            dg2 = (f(i,k+1)-f(i,k-1))*((dp(i,k+1)-dp(i,k-1))**2          &
+                   + d4(i,k)*d4(i,k+1) )
+            alfa(i,k) = max(0., min(0.5, -0.1875*dg2/df2(i,k))) 
+         else
+            alfa(i,k) = 0.
+         endif
+         enddo
+      enddo
+
+      do k=max(4,kmap+1),km-2
+         do i=i1,i2
+            a4(2,i,k) = (1.-alfa(i,k-1)-alfa(i,k)) * a4(2,i,k) +         &
+                        alfa(i,k-1)*(a4(1,i,k)-dm(i,k))    +             &
+                        alfa(i,k)*(a4(1,i,k-1)+dm(i,k-1))
+         enddo
+      enddo
+
+!EOC
+ end subroutine steepz_sak
+!----------------------------------------------------------------------- 
 
 end module cloud_generator_mod

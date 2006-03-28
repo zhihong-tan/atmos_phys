@@ -148,7 +148,7 @@
 <a name="cloud_radiative_properties"></a>
 <h4>cloud_radiative_properties</h4>
 <pre>
-<b>call cloud_radiative_properties </b>(is, ie, js, je, Time_next, &amp; Astro, Atmos_input, Cld_spec, &amp; Lsc_microphys, Meso_microphys, &amp; Cell_microphys, Cldrad_props, &amp; kbot, mask)</pre>
+<b>call cloud_radiative_properties </b>(is, ie, js, je, Rad_time, Time_next, &amp; Astro, Atmos_input, Cld_spec, &amp; Lsc_microphys, Meso_microphys, &amp; Cell_microphys, Cldrad_props, &amp; kbot, mask)</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
@@ -315,7 +315,7 @@
 <a name="combine_cloud_properties"></a>
 <h4>combine_cloud_properties</h4>
 <pre>
-<b>call combine_cloud_properties </b>(deltaz, &amp; Lsc_microphys, Meso_microphys, &amp; Cell_microphys, Lscrad_props, &amp; Mesorad_props, Cellrad_props, &amp; Cldrad_props)</pre>
+<b>call combine_cloud_properties </b>(is, js, Rad_time, deltaz, &amp; Lsc_microphys, Meso_microphys, &amp; Cell_microphys, Lscrad_props, &amp; Mesorad_props, Cellrad_props, &amp; Cldrad_props)</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>

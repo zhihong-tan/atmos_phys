@@ -762,8 +762,8 @@ private
 
 !------------ VERSION NUMBER ----------------
 
- character(len=128) :: version = '$Id: longwave.F90,v 10.0 2003/10/24 22:00:31 fms Exp $'
- character(len=128) :: tagname = '$Name: lima $'
+ character(len=128) :: version = '$Id: longwave.F90,v 13.0 2006/03/28 21:09:33 fms Exp $'
+ character(len=128) :: tagname = '$Name: memphis $'
  logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
@@ -948,8 +948,6 @@ public OSOUR, CSOUR, SS1, FLX1E1, GXCTS, FCTSG, CLDFAC, DELP2, DELP, &
 
       real, dimension(IMAX)  :: &
                     VSUM1, VSUM2, A1, A2
-      real, dimension(IMAX,LP1M)  :: &
-                    DIFT1D
 !      DIMENSION  :: PRESS(IMAX,LP1)
 
 !     DIMENSION  CO2R(IMAX,LP1,LP1),DIFT(IMAX,LP1,LP1)
@@ -1560,7 +1558,7 @@ public OSOUR, CSOUR, SS1, FLX1E1, GXCTS, FCTSG, CLDFAC, DELP2, DELP, &
 !----------------LOCAL ARRAY STORAGE------------------------------------
       integer :: i, k, n, klen, kmaxs, kk, kp, icnt, nc
       real    :: hm5
-      integer :: IXO(IMAX,LP1),ITOP(IMAX),IBOT(IMAX),INDTC(IMAX)
+      integer :: IXO(IMAX,LP1),ITOP(IMAX),IBOT(IMAX)
       real    :: VTMP1(IMAX,LP1M),VTMP2(IMAX,LP1V),VTMP3(IMAX,LP1),   &
                  C(IMAX,LLP1),ALP(IMAX,LLP1),DSORC(IMAX,LP1),         &
                  TOTPHI(IMAX,LP1),TOTO3(IMAX,LP1),TPHIO3(IMAX,LP1),   &
@@ -1571,7 +1569,7 @@ public OSOUR, CSOUR, SS1, FLX1E1, GXCTS, FCTSG, CLDFAC, DELP2, DELP, &
       real    :: TVAL(IMAX,LP1),VSUM1(IMAX,LP1),HEATEM(IMAX,LP1) 
       real    :: EMXX(IMAX,LMAX)
       real    :: CSUB(IMAX,LLP1) 
-      real    :: FLX(IMAX,LP1),SUM(IMAX,LP1) 
+      real    :: FLX(IMAX,LP1)
       real    :: OSS(IMAX,LP1),CSS(IMAX,LP1),SS2(IMAX,LP1),TC(IMAX,LP1), &
                 DTC(IMAX,LP1)
       real    :: ALPSQ1(IMAX,LP1),ALPSQ2(IMAX,LP1) 
@@ -1584,7 +1582,6 @@ public OSOUR, CSOUR, SS1, FLX1E1, GXCTS, FCTSG, CLDFAC, DELP2, DELP, &
 !1    DIMENSION OVER(IMAX,LP1,LP1)
 !     DIMENSION OVER1D(IMAX,LP1M)
 !1    DIMENSION EMISST(IMAX,LP1,LP1)
-      real    :: VTMP21(IMAX*LP1V) 
 !---DIMENSION OF VARIABLES EQUIVALENCED TO THOSE IN OTHER COMMON BLKS-- 
 !     DIMENSION TO31D(IMAX,LP1M),EMI21D(IMAX,LP1M)
 !     DIMENSION CO21D(IMAX,LP1M),EMIS1D(IMAX,LP1M)
@@ -3861,7 +3858,7 @@ real :: EM1   (28,180),EM1WDE(28,180),EM3   (28,180),  &
                  R1(28),R2(28),S2(28),T3(28),R1WD(28) 
       real ::    EXPO(180),FAC(180) 
       real ::    CNUSB(30),DNUSB(30) 
-      real ::    ALFANB(NBLW),AROTNB(NBLW),DELCM(NBLY)
+      real ::    ALFANB(NBLW),AROTNB(NBLW)
       real ::    ANB(NBLW),BNB(NBLW),CENTNB(NBLW),DELNB(NBLW),   &
                  BETANB(NBLW)
 !
@@ -3869,15 +3866,6 @@ real :: EM1   (28,180),EM1WDE(28,180),EM3   (28,180),  &
 !    EQUIVALENCED TO COMMON BLOCK BANDTA DEPEND ON THE VALUE OF THE 
 !    PARAMETER NBLW.
 ! 
-!-----------------------------------------------------------------------
-!***THE FOLLOWING DATA STATEMENTS ARE BAND PARAMETERS OBTAINED USING
-!   THE 1982 AFGL CATALOG ON THE SPECIFIED BANDS
-
-      DATA DELCM  /                                                  &
-         0.300000E+02,  0.110000E+03,  0.600000E+02,  0.400000E+02,  &
-         0.200000E+02,  0.500000E+02,  0.400000E+02,  0.500000E+02,  &
-         0.110000E+03,  0.130000E+03,  0.100000E+03,  0.900000E+02,  &
-         0.800000E+02,  0.130000E+03,  0.110000E+03/
 !-----------------------------------------------------------------------
 !***COMPUTE LOCAL QUANTITIES AND AO3,BO3,AB15
 !....FOR NARROW-BANDS...

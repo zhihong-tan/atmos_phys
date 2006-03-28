@@ -68,7 +68,8 @@ integer :: id_udt_rdamp,  id_vdt_rdamp,   &
            id_udt_cgwd,   id_taus
 
 integer :: id_tdt_diss_rdamp,  id_diss_heat_rdamp, &
-           id_tdt_diss_gwd,    id_diss_heat_gwd
+           id_tdt_diss_gwd,    id_diss_heat_gwd,   &
+           id_tdt_diss_topo,   id_diss_heat_topo
 
 integer :: id_udt_topo,   id_vdt_topo,   id_taubx,  id_tauby
 
@@ -90,8 +91,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 10.0 2003/10/24 22:00:25 fms Exp $'
- character(len=128) :: tagname = '$Name: lima $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 13.0 2006/03/28 21:08:07 fms Exp $'
+ character(len=128) :: tagname = '$Name: memphis $'
 
 !-----------------------------------------------------------------------
 
@@ -126,12 +127,8 @@ contains
  real, dimension(size(udt,1),size(udt,2),size(udt,3)) :: utnd, vtnd, &
                                                          ttnd, pmass, &
                                                          p2
+ integer :: k
  logical :: used
-
- real, dimension(size(udt,1),size(udt,2),size(udt,3)+1) :: p_pass, &
-                                                            t_pass
- integer :: k, j, i, locmax(3)
- real :: a,b
 !-----------------------------------------------------------------------
 
    if (.not.module_is_initialized) call error_mesg ('damping_driver',  &
@@ -250,29 +247,23 @@ contains
 !-----------------------------------------------------------------------
    if (do_topo_drag) then
 
-    call topo_drag ( is, js, u, v, t, pfull, phalf, zfull, zhalf,  &
-!               taubx, tauby, utnd, vtnd,taus)
-                z_pbl, taubx, tauby, utnd, vtnd,taus)
-
-     b = maxval(abs(utnd))
-     locmax = maxloc(abs(utnd))
-
+     call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf,  &
+                      utnd, vtnd, ttnd, taubx, tauby, taus, kbot )
 
      udt = udt + utnd
      vdt = vdt + vtnd
 
-
 !----- diagnostics -----
 
-    if ( id_udt_topo > 0 ) then
-       used = send_data ( id_udt_topo, utnd, Time, is, js, 1, &
-                          rmask=mask )
-    endif
+     if ( id_udt_topo > 0 ) then
+        used = send_data ( id_udt_topo, utnd, Time, is, js, 1, &
+                           rmask=mask )
+     endif
 
-    if ( id_vdt_topo > 0 ) then
-         used = send_data ( id_vdt_topo, vtnd, Time, is, js, 1, &
-                         rmask=mask )
-   endif
+     if ( id_vdt_topo > 0 ) then
+        used = send_data ( id_vdt_topo, vtnd, Time, is, js, 1, &
+                           rmask=mask )
+     endif
 
      if ( id_taubx > 0 ) then
        used = send_data ( id_taubx, taubx, Time, is, js )
@@ -280,14 +271,25 @@ contains
 
      if ( id_tauby > 0 ) then
         used = send_data ( id_tauby, tauby, Time, is, js )
-      endif
-
-     if ( id_taus > 0 ) then
-      used = send_data ( id_taus, taus, Time, is, js, 1, &
-                          rmask=mask )
      endif
 
+     if ( id_taus > 0 ) then
+        used = send_data ( id_taus, taus, Time, is, js, 1, &
+                           rmask=mask )
+     endif
 
+     if ( id_tdt_diss_topo > 0 ) then
+        used = send_data ( id_tdt_diss_topo, ttnd, Time, is, js, 1, &
+                               rmask=mask )
+     endif
+
+     if ( id_diss_heat_topo > 0 ) then
+          do k = 1,size(u,3)
+             pmass(:,:,k) = phalf(:,:,k+1)-phalf(:,:,k)
+          enddo
+          diag2 = cp_air/grav * sum(ttnd*pmass,3)
+          used = send_data ( id_diss_heat_topo, diag2, Time, is, js )
+     endif
 
  endif
 
@@ -444,7 +446,7 @@ endif
 
 
   if (do_topo_drag) then
-          call topo_drag_init (lonb, latb, ierr)
+          call topo_drag_init (lonb, latb)
           sgsmtn(:,:) = -99999.
   endif
 
@@ -477,8 +479,16 @@ endif
                   'saturation flux for topo wave drag', 'kg/m/s2', &
                      missing_value=missing_value               )
 
+   id_tdt_diss_topo = &
+   register_diag_field ( mod_name, 'tdt_diss_topo', axes(1:3), Time,    &
+                          'Dissipative heating from topo wave drag',&
+                              'deg_k/s', missing_value=missing_value   )
+       
+   id_diss_heat_topo = &
+   register_diag_field ( mod_name, 'diss_heat_topo', axes(1:2), Time,      &
+                'Integrated dissipative heating from topo wave drag',&
+                                 'W/m2' )
  endif
-
 
 
 !-----------------------------------------------------------------------
@@ -495,7 +505,7 @@ endif
 
  subroutine damping_driver_end
 
-     if (do_mg_drag) call mg_drag_end
+     if (do_mg_drag)   call mg_drag_end
      if (do_cg_drag)   call cg_drag_end
      if (do_topo_drag) call topo_drag_end
 

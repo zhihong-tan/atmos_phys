@@ -23,7 +23,16 @@ use fms_mod,               only:  fms_init, open_namelist_file, &
                                   check_nml_error, error_mesg,   &
                                   FATAL, NOTE, WARNING, close_file,  &
                                   read_data, write_data
-use constants_mod,         only:  constants_init, diffac
+use constants_mod,         only:  constants_init, diffac, radian
+use time_manager_mod,      only:  time_type
+use diag_manager_mod,      only:  register_diag_field, send_data, &
+                                  diag_manager_init
+use random_numbers_mod,    only:  randomNumberStream,   &
+                                  initializeRandomNumberStream, &
+                                  getRandomNumbers,             &
+                                  constructSeed
+use cloud_generator_mod,   only:  cloud_generator_init, &
+                                  cloud_generator_end
 
 !  shared radiation package modules:
 
@@ -49,8 +58,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: microphys_rad.F90,v 12.0 2005/04/14 15:46:48 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: microphys_rad.F90,v 13.0 2006/03/28 21:12:32 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -81,9 +90,11 @@ private         &
 character(len=16)   :: lwem_form=' '     ! longwave emissivity param-
                                          ! eterization; either 'fuliou'
                                          ! or 'ebertcurry'
+logical       ::  do_orig_donner_stoch = .true.
 
 namelist /microphys_rad_nml /     &
-                               lwem_form
+                               lwem_form, &
+                               do_orig_donner_stoch
 
 !----------------------------------------------------------------------
 !----  public data -------
@@ -332,6 +343,24 @@ real, dimension(:,:), allocatable  :: solivlicecld,   &
                                       solivlraincld , &
                                       solivlsnowcld
 
+!----------------------------------------------------------------------
+!   variables needed for random number seed:
+!----------------------------------------------------------------------
+real, dimension(:), allocatable  :: lats, lons ! lat and lon of columns
+                                               ! in this processor's
+                                               ! domain [ degrees ]
+
+!----------------------------------------------------------------------
+!    diagnostics variables
+!----------------------------------------------------------------------
+character(len=16)   :: mod_name = 'microphys_rad'
+real                :: missing_value = -999.
+
+integer :: id_stoch_cell_cf_mean, id_stoch_meso_cf_mean, &
+           id_stoch_lsc_cf_mean
+ 
+integer, dimension(:), allocatable :: id_stoch_cloud_type
+
 !-------------------------------------------------------------------
 !    logical variables:
 !-------------------------------------------------------------------
@@ -375,17 +404,28 @@ logical    :: module_is_initialized = .false. ! module is initialized ?
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine microphys_rad_init 
+subroutine microphys_rad_init (axes, Time, lonb, latb) 
 
 !------------------------------------------------------------------
 !    subroutine microphys_rad_init is the constructor for 
 !    microphys_rad_mod.
 !--------------------------------------------------------------------
 
+integer, dimension(4),   intent(in)    ::  axes
+type(time_type),         intent(in)    ::  Time
+real, dimension(:),      intent(in)    ::  lonb, latb
+
+!---------------------------------------------------------------------
+!   intent(in) variables:
+!
+!       axes      diagnostic variable axes
+!       Time      current time [time_type(days, seconds)]
+
 !----------------------------------------------------------------------
 ! local variables:                                                  
 
       real, dimension (NBLW)    ::  src1nb
+      character(len=8)          :: chvers
       real                      :: c1, centnb, sc, x, x1
       real                      :: sumsol1, sumsol2, sumsol3, sumsol4, &
                                    sumsol5
@@ -462,6 +502,7 @@ subroutine microphys_rad_init
       call constants_init
       call rad_utilities_init
       call longwave_params_init
+      call diag_manager_init
 
 !---------------------------------------------------------------------
 !    read namelist.
@@ -881,6 +922,62 @@ subroutine microphys_rad_init
         end do
       endif   ! (do_sw_micro)
 
+!--------------------------------------------------------------------
+!    if stochastic clouds is active, allocate and define arrays holding
+!    the processor's latitudes and longitudes. be sure that the 
+!    cloud_generator module has been initialized.
+!--------------------------------------------------------------------
+      if (Cldrad_control%do_stochastic_clouds_iz) then
+        if (Cldrad_control%do_stochastic_clouds) then
+          allocate (lats(size(latb(:))))
+          allocate (lons(size(lonb(:))))
+          lats(:) = latb(:)*radian
+          lons(:) = lonb(:)*radian
+          call cloud_generator_init
+ ! Diagnostics
+          id_stoch_cell_cf_mean = register_diag_field  &
+              (mod_name, 'stoch_cell_cf_mean', axes(1:3), Time, &
+               'mean cell fraction in rad calc', &
+               'fraction', missing_value=missing_value)
+          id_stoch_meso_cf_mean = register_diag_field  &
+              (mod_name, 'stoch_meso_cf_mean', axes(1:3), Time, &
+               'mean meso fraction in rad calc', &
+               'fraction', missing_value=missing_value)
+          id_stoch_lsc_cf_mean = register_diag_field  &
+              (mod_name, 'stoch_lsc_cf_mean', axes(1:3), Time, &
+               'mean lsc fraction in rad calc', &
+               'fraction', missing_value=missing_value)
+ 
+
+          allocate(id_stoch_cloud_type(Cldrad_control%nlwcldb +  &
+                                                    Solar_spect%nbands))
+          do n=1,Cldrad_control%nlwcldb+Solar_spect%nbands
+            if (n < 10) then
+              write (chvers,'(i1)') n
+            else if (n <100) then
+              write (chvers,'(i2)') n
+            else
+              call error_mesg ('microphs_rad_mod', &
+                'must modify code to allow writing of more than &
+                                       &99 columns', FATAL)
+            endif
+
+!---------------------------------------------------------------------
+!    cloud type : 0 = clear, 1 = lsc, 2 = meso, 3 = cell
+!----------------------------------------------------------------------
+            id_stoch_cloud_type(n) = register_diag_field  &
+                (mod_name, 'stoch_cloud_type_'//trim(chvers),  &
+                 axes(1:3), Time, &
+                 'cloud type (0-3) in radiation col  '//trim(chvers), &
+                 'none', missing_value=missing_value)
+          end do
+        endif
+      else
+        call error_mesg ('microphys_rad_mod', &
+        ' attempt to use Cldrad_control%do_stochastic_clouds before &
+                                               &it is defined', FATAL)
+      endif
+
 !-----------------------------------------------------------------
 !    mark module as initialized.
 !----------------------------------------------------------------
@@ -1114,12 +1211,14 @@ logical,                        intent(in),                         &
       else  ! (donner_flag)
         nnn = 1
         nbprofiles = 1
-        nbmax = 1
+        nbmax = Solar_spect%nbands
         nonly = 0
-        size_drop(:,:,:,1) = Cloud_microphysics%size_drop
-        size_ice(:,:,:,1)  = Cloud_microphysics%size_ice
-        conc_drop(:,:,:,1) = Cloud_microphysics%conc_drop
-        conc_ice(:,:,:,1)  = Cloud_microphysics%conc_ice
+        do n=1, Solar_spect%nbands
+        size_drop(:,:,:,n) = Cloud_microphysics%size_drop
+        size_ice(:,:,:,n)  = Cloud_microphysics%size_ice
+        conc_drop(:,:,:,n) = Cloud_microphysics%conc_drop
+        conc_ice(:,:,:,n)  = Cloud_microphysics%conc_ice
+        end do
 
         call cloudpar                                 &
                      (nonly, nbmax, nnn, size_drop, size_ice,   &
@@ -1843,7 +1942,7 @@ end subroutine lwemiss_calc
 !    cell-scale clouds present in a grid box.
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call comb_cldprops_calc ( deltaz,     &
+!   call comb_cldprops_calc ( is, js, Rad_time, deltaz,     &
 !                               cldext, cldsct, cldasymm, abscoeff, &
 !                               Lsc_microphys, Cell_microphys,    &
 !                               Meso_microphys, Lscrad_props,    &
@@ -1891,7 +1990,7 @@ end subroutine lwemiss_calc
 !  </IN>
 ! </SUBROUTINE>
 ! 
-subroutine comb_cldprops_calc ( deltaz,     &
+subroutine comb_cldprops_calc ( is, js, Rad_time, Time_next, deltaz,  &
                                cldext, cldsct, cldasymm, abscoeff, &
                                Lsc_microphys, Cell_microphys,    &
                                Meso_microphys, Lscrad_props,    &
@@ -1904,6 +2003,8 @@ subroutine comb_cldprops_calc ( deltaz,     &
 !    cell-scale clouds present in a grid box.
 !---------------------------------------------------------------------
 
+integer,                intent(in)  :: is, js
+type(time_type),        intent(in)  :: Rad_time, Time_next
 real, dimension(:,:,:), intent(in)  :: deltaz
 real, dimension(:,:,:,:,:),       intent(inout)       ::  cldext,     &
                                                         cldsct, &
@@ -1954,10 +2055,26 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
 !---------------------------------------------------------------------
 !  local variables:
  
-      real, dimension (size(cldext,1), size(cldext,2), &
-                       size(cldext,3)) :: cldsum
+      real, dimension (size(cldext,1), size(cldext,2),              &
+                                    size(cldext,3))    :: cldsum
       real :: cltau,cldextdu
       integer :: i, j, k, n
+     
+!-----------------------------------------------------------------------
+!    variables for folding Donner cloud properties into stochastic 
+!    cloud arrays
+!------------------------------------------------------------------
+      type(randomNumberStream),   &
+                   dimension(size(cldext,1), size(cldext,2)) :: streams
+      real, dimension(:, :, :, :), allocatable    :: randomNumbers
+      integer :: nn, nSubCols
+  
+!------------------------------------------------------------------
+!    diagnostics
+!------------------------------------------------------------------
+      integer, dimension(:, :, :, :), allocatable :: stoch_cloud_type
+      character(len=2) :: chvers
+      logical :: used
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -2012,10 +2129,9 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
 !---------------------------------------------------------------------
 !    define total cloud fraction.
 !---------------------------------------------------------------------
-!       if (.not. Cldrad_control%do_stochastic_clouds_sw) then
         if (.not. Cldrad_control%do_stochastic_clouds) then
-        cldsum = Lsc_microphys%cldamt + Cell_microphys%cldamt +   &
-                 Meso_microphys%cldamt
+          cldsum = Lsc_microphys%cldamt + Cell_microphys%cldamt +   &
+                     Meso_microphys%cldamt
 
 !---------------------------------------------------------------------
 !     define the cloud scattering, cloud extinction and cloud asymmetry
@@ -2091,7 +2207,45 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
             end do
           end do
         end do
+
+!------------------------------------------------------------
+!    define the total-cloud lw emissivity when large-scale, meso-scale
+!    and cell-scale clouds may be present.
+!---------------------------------------------------------------------
+        do n=1,Cldrad_control%nlwcldb
+          do k=1,size(cldext,3)
+            do j=1,size(cldext,2)
+              do i=1,size(cldext,1)
+                if (cldsum(i,j,k) > 0.0) then
+                  cldextdu          =                            &
+                             (Lsc_microphys%cldamt(i,j,k)*  &
+                              Lscrad_props%abscoeff(i,j,k,n) +&
+                              Cell_microphys%cldamt(i,j,k)* &
+                              Cellrad_props%abscoeff(i,j,k,n) +    &
+                              Meso_microphys%cldamt(i,j,k)*   &
+                              Mesorad_props%abscoeff(i,j,k,n)) /   &
+                              cldsum(i,j,k)
+                   cltau=(Cell_microphys%cldamt(i,j,k)/cldsum(i,j,k))* &
+                               exp(-Cellrad_props%abscoeff(i,j,k,n)*     &
+                          deltaz(i,j,k)/1000.)
+                   cltau=cltau+(Meso_microphys%cldamt(i,j,k)/  &
+                         cldsum(i,j,k))* &
+                   exp(-Mesorad_props%abscoeff(i,j,k,n)*deltaz(i,j,k)/  &
+                              1000.)
+                   cltau=cltau+(Lsc_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                    exp(-Lscrad_props%abscoeff(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                 abscoeff(i,j,k,n,1)=-1000.*alog(cltau)/deltaz(i,j,k)
+        if (abscoeff(i,j,k,n,1) .gt. cldextdu) abscoeff(i,j,k,n,1)=cldextdu
+                endif
+              end do
+            end do
+          end do
+        end do
       else
+
+        if (do_orig_donner_stoch) then
 
 !---------------------------------------------------------------------
 !     define the cloud scattering, cloud extinction and cloud asymmetry
@@ -2170,52 +2324,7 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
             end do
           end do
         end do
-     endif
 
-
-
-     if (.not. Cldrad_control%do_stochastic_clouds) then
-
-       cldsum = Lsc_microphys%cldamt + Cell_microphys%cldamt +   &
-                 Meso_microphys%cldamt
-
-!------------------------------------------------------------
-!    define the total-cloud lw emissivity when large-scale, meso-scale
-!    and cell-scale clouds may be present.
-!---------------------------------------------------------------------
-        do n=1,Cldrad_control%nlwcldb
-          do k=1,size(cldext,3)
-            do j=1,size(cldext,2)
-              do i=1,size(cldext,1)
-                if (cldsum(i,j,k) > 0.0) then
-                  cldextdu          =                            &
-                             (Lsc_microphys%cldamt(i,j,k)*  &
-                              Lscrad_props%abscoeff(i,j,k,n) +&
-                              Cell_microphys%cldamt(i,j,k)* &
-                              Cellrad_props%abscoeff(i,j,k,n) +    &
-                              Meso_microphys%cldamt(i,j,k)*   &
-                              Mesorad_props%abscoeff(i,j,k,n)) /   &
-                              cldsum(i,j,k)
-                   cltau=(Cell_microphys%cldamt(i,j,k)/cldsum(i,j,k))* &
-                               exp(-Cellrad_props%abscoeff(i,j,k,n)*     &
-                          deltaz(i,j,k)/1000.)
-                   cltau=cltau+(Meso_microphys%cldamt(i,j,k)/  &
-                         cldsum(i,j,k))* &
-                   exp(-Mesorad_props%abscoeff(i,j,k,n)*deltaz(i,j,k)/  &
-                              1000.)
-                   cltau=cltau+(Lsc_microphys%cldamt(i,j,k)/  &
-                           cldsum(i,j,k))* &
-                    exp(-Lscrad_props%abscoeff(i,j,k,n)*deltaz(i,j,k)/  &
-                           1000.)
-                 abscoeff(i,j,k,n,1)=-1000.*alog(cltau)/deltaz(i,j,k)
-        if (abscoeff(i,j,k,n,1) .gt. cldextdu) abscoeff(i,j,k,n,1)=cldextdu
-                endif
-              end do
-            end do
-          end do
-        end do
-
-      else
 !---------------------------------------------------------------------
 !    define the total-cloud lw emissivity when large-scale, meso-scale
 !    and cell-scale clouds may be present.
@@ -2253,6 +2362,180 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
            end do
          end do
        end do 
+       
+        else  ! (using new donner-stochastic connection)
+!------------------------------------------------------------------------
+!    stochastic clouds are being used. we compare the cell and meso-scale
+!    cloud amounts to a random number, and replace the large-scale clouds
+!    and clear sky in each subcolum with the properties of the cell or 
+!    meso-scale clouds when the number is less than the cloud fraction. 
+!    we use the maximum overlap assumption. we treat the random number 
+!    as the location with the PDF of total water. cells are at the top 
+!    of the PDF; then meso-scale anvils, then large-scale clouds and 
+!    clear sky. 
+!------------------------------------------------------------
+        do j=1,size(cldext,2)
+          do i=1,size(cldext,1)
+            streams(i,j) = &
+                initializeRandomNumberStream (                      &
+                    constructSeed(nint(lons(is + i - 1)),           &
+                                  nint(lats(js + j - 1)), Rad_time, &
+                                  perm = 1))
+          end do
+        end do
+      
+!----------------------------------------------------------------------
+!    get the random numbers to do both sw and lw at oncer.
+!----------------------------------------------------------------------
+        nSubCols = size(Lsc_microphys%stoch_cldamt, 4)
+        allocate(randomNumbers(size(cldext, 1), size(cldext, 2), & 
+                               size(cldext, 3), nSubCols))
+!----------------------------------------------------------------------
+!    diagnostics                             
+!----------------------------------------------------------------------
+        allocate(stoch_cloud_type(size(cldext, 1), size(cldext, 2), & 
+                                  size(cldext, 3), nSubCols))
+        do j=1,size(cldext,2) ! Lons
+          do i=1,size(cldext,1) ! Lats
+            call getRandomNumbers(streams(i,j), randomNumbers(i,j,1,:))
+          end do
+        end do
+      
+!----------------------------------------------------------------------
+!    here is maximum overlap. we use a 3D arrary for the random numbers 
+!    for flexibility.
+!----------------------------------------------------------------------
+        do k=2,size(cldext,3)
+          randomNumbers(:,:,k,:) = randomNumbers(:,:,1,:)
+        end do
+      
+!----------------------------------------------------------------------
+!    shortwave cloud properties, band by band
+!----------------------------------------------------------------------
+        do n=1,Solar_spect%nbands
+          do k=1,size(cldext,3) ! Levels
+            do j=1,size(cldext,2) ! Lons
+              do i=1,size(cldext,1) ! Lats
+                if (randomNumbers(i,j,k,n) >     &
+                            (1. - Cell_microphys%cldamt(i,j,k))) then 
+!----------------------------------------------------------------------
+!    it's a cell.
+!----------------------------------------------------------------------
+                  cldext(i,j,k,n,1) = Cellrad_props%cldext(i,j,k,n)
+                  cldsct(i,j,k,n,1) = Cellrad_props%cldsct(i,j,k,n)
+                  cldasymm(i,j,k,n, 1) = Cellrad_props%cldasymm(i,j,k,n)
+                  stoch_cloud_type(i,j,k,n) = 3    ! Diagnostics
+                else if (randomNumbers(i,j,k,n) >    &
+                           (1. - Cell_microphys%cldamt(i, j, k) - &
+                                 Meso_microphys%cldamt(i, j, k))) then
+                 
+!----------------------------------------------------------------------
+!    it's a meso-scale.
+!----------------------------------------------------------------------
+                  cldext(i,j,k,n,1) = Mesorad_props%cldext(i,j,k,n)
+                  cldsct(i,j,k,n,1) = Mesorad_props%cldsct(i,j,k,n)
+                  cldasymm(i,j,k,n,1) = Mesorad_props%cldasymm(i,j,k,n)
+                  stoch_cloud_type(i,j,k,n) = 2    ! Diagnostics
+                else if (Lsc_microphys%sw_stoch_cldamt(i,j,k,n) >   &
+                                                               0.) then
+                 
+!----------------------------------------------------------------------
+!    fill it in with the large-scale cloud values.
+!----------------------------------------------------------------------
+                  cldext(i,j,k,n,1) = Lscrad_props%cldext(i,j,k,n)
+                  cldsct(i,j,k,n,1) = Lscrad_props%cldsct(i,j,k,n)
+                  cldasymm(i,j,k,n,1) = Lscrad_props%cldasymm(i,j,k,n)
+                  stoch_cloud_type(i,j,k,n) = 1    ! Diagnostics
+                else
+                  cldext(i,j,k,n,1) = 0. 
+                  cldsct(i,j,k,n,1) = 0. 
+                  cldasymm(i,j,k,n,1) = 0. 
+                  stoch_cloud_type(i,j,k,n) = 0    ! Diagnostics
+                endif
+              end do 
+            end do 
+          end do 
+        end do 
+
+!----------------------------------------------------------------------
+!    longwave cloud properties, band by band
+!----------------------------------------------------------------------
+      do n=1,Cldrad_control%nlwcldb
+        nn = Solar_spect%nbands + n
+        do k=1,size(cldext,3) ! Levels
+          do j=1,size(cldext,2) ! Lons
+            do i=1,size(cldext,1) ! Lats
+              if (randomNumbers(i,j,k,nn) >     &
+                          (1. - Cell_microphys%cldamt(i,j,k))) then 
+                 
+!----------------------------------------------------------------------
+!    it's a cell.
+!----------------------------------------------------------------------
+                abscoeff(i,j,k,n,1) = Cellrad_props%abscoeff(i,j,k,n)
+                stoch_cloud_type(i,j,k,nn) = 3    ! Diagnostics
+              else if (randomNumbers(i, j, k, nn) >    &
+                      (1. - Cell_microphys%cldamt(i, j, k) -   &
+                            Meso_microphys%cldamt(i, j, k))) then
+                 
+!----------------------------------------------------------------------
+!    it's a meso-scale.
+!----------------------------------------------------------------------
+                abscoeff(i,j,k,n,1) = Mesorad_props%abscoeff(i,j,k,n)
+                stoch_cloud_type(i,j,k,nn) = 2    ! Diagnostics
+              else if (Lsc_microphys%lw_stoch_cldamt(i,j,k,n) > 0.) then
+                 
+!----------------------------------------------------------------------
+!    fill it in with the large-scale cloud values.
+!----------------------------------------------------------------------
+                abscoeff(i,j,k,n,1) = Lscrad_props%abscoeff(i,j,k,n)
+                stoch_cloud_type(i,j,k,nn) = 1    ! Diagnostics
+              else
+                abscoeff(i,j,k,n,1) = 0. 
+                stoch_cloud_type(i,j,k,nn) = 0    ! Diagnostics
+              endif
+            end do 
+          end do 
+        end do 
+      end do 
+      
+!----------------------------------------------------------------------
+!    diagnostics 
+!----------------------------------------------------------------------
+      if (id_stoch_cell_cf_mean > 0) &
+          used = send_data (id_stoch_cell_cf_mean, &
+               real(count(stoch_cloud_type(:,:,:,:) == 3, dim = 4)) / &
+                                                       real(nSubCols),&
+!              Rad_time, is, js, 1)
+               Time_next, is, js, 1)
+      if (id_stoch_meso_cf_mean > 0) &
+          used = send_data (id_stoch_meso_cf_mean, &
+               real(count(stoch_cloud_type(:,:,:,:) == 2, dim = 4)) / &
+                                                       real(nSubCols),&
+!              Rad_time, is, js, 1)
+               Time_next, is, js, 1)
+      if (id_stoch_lsc_cf_mean > 0) &
+          used = send_data (id_stoch_lsc_cf_mean, &
+               real(count(stoch_cloud_type(:,:,:,:) == 1, dim = 4)) / &
+                                                        real(nSubCols),&
+!              Rad_time, is, js, 1)
+               Time_next, is, js, 1)
+
+
+!----------------------------------------------------------------------
+!    cloud type in each column
+!----------------------------------------------------------------------
+      do n=1,size(stoch_cloud_type, 4)
+        if (id_stoch_cloud_type(n) > 0) then
+          used = send_data (id_stoch_cloud_type(n), &
+                            real(stoch_cloud_type(:, :, :, n)), &
+!                           Rad_time, is, js, 1)
+                            Time_next, is, js, 1)
+        endif
+      end do 
+      
+      deallocate (randomNumbers, stoch_cloud_type)
+
+      endif ! (do_orig_donner_stoch)
      endif  ! (do_stochastic)
 
 !--------------------------------------------------------------------
@@ -2412,6 +2695,10 @@ subroutine microphys_rad_end
                      solivlsnowcld  )
       endif
 
+!--------------------------------------------------------------------
+!    diagnostics
+!--------------------------------------------------------------------
+      if (allocated(id_stoch_cloud_type)) deallocate(id_stoch_cloud_type)
 !--------------------------------------------------------------------
 !    mark the module as no longer being initialized.
 !--------------------------------------------------------------------
@@ -4682,7 +4969,7 @@ real, dimension (:,:,:), intent(out)    ::   abscoeff
       k_liq(:,:,:) = 140.
       where (size_ice(:,:,:) /= 0.0) 
         k_ice(:,:,:) = 4.83591 + 1758.511/reff_ice(:,:,:)
-      else where
+      elsewhere
         k_ice(:,:,:) = 0.0                                  
       end where
 
@@ -5019,15 +5306,12 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
 !---------------------------------------------------------------------
 !  local variables:                                                   
       integer     :: n, ni
+      integer     :: i,j,k
  
-      real, dimension (size(conc_ice,1), size(conc_ice,2), &
-                       size(conc_ice,3), NBFL) ::   &
-                                        cldextivlice, cldabsivlice, &
+      real                        ::    cldextivlice, cldabsivlice, &
                                         cldssalbivlice, cldasymmivlice 
 
-      real, dimension (size(conc_ice,1), size(conc_ice,2), &
-                       size(conc_ice,3) )  ::         &
-                        sumext, sumssalb, sumasymm
+      real    ::        sumext, sumssalb, sumasymm
 
       real, dimension (NBFL)  ::   a0, a1, a2
  
@@ -5119,49 +5403,45 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
 ! 
 !----------------------------------------------------------------------
 
+     do k=1, size(conc_ice,3)
+       do j=1, size(conc_ice,2)
+         do i=1, size(conc_ice,1)
+           sumext = 0.
+           sumssalb = 0.
+           if (conc_ice(i,j,k) /= 0.0) then
+
 !-----------------------------------------------------------------------
 !    calculate extinction coefficient [km**(-1)] for each wavenumber
 !    band of the Fu-Liou parameterization (not the radiation
 !    code wavenumber bands).
 !-----------------------------------------------------------------------
       do n=1,NBFL                                                      
-        where (size_ice /= 0.0)
-          cldextivlice(:,:,:,n) = 1.0E+03*conc_ice(:,:,:)*           &
+          cldextivlice          = 1.0E+03*conc_ice(i,j,k)*           &
                                   (a0(n) +                           &
-                                   a1(n)*(1.0/size_ice(:,:,:)) +     &
-                                   a2(n)*(1.0/size_ice(:,:,:)**2))
-        elsewhere
-          cldextivlice(:,:,:,n) = 0.0
-        endwhere
-      end do
+                                   a1(n)*(1.0/size_ice(i,j,k)) +     &
+                                   a2(n)*(1.0/size_ice(i,j,k)**2))
 
 !-----------------------------------------------------------------------
 !    calculate the absorption coefficient. convert to units of 
 !    [ km**(-1) ].
 !-----------------------------------------------------------------------
-      do n=1,NBFL                                                      
-        where (size_ice /= 0.0)
-          cldabsivlice(:,:,:,n) = 1.0E+03*conc_ice(:,:,:)*      &
-                                  (1.0/size_ice(:,:,:))*        &       
+          cldabsivlice          = 1.0E+03*conc_ice(i,j,k)*      &
+                                  (1.0/size_ice(i,j,k))*        &       
                                    (b(n,0) +                    &
-                                    b(n,1)*size_ice(:,:,:) +    &
-                                    b(n,2)*size_ice(:,:,:)**2 + &
-                                    b(n,3)*size_ice(:,:,:)**3)
-        elsewhere
-          cldabsivlice(:,:,:,n) = 0.0
-        endwhere
-      end do
+                                    b(n,1)*size_ice(i,j,k) +    &
+                                    b(n,2)*size_ice(i,j,k)**2 + &
+                                    b(n,3)*size_ice(i,j,k)**3)
 
 !---------------------------------------------------------------------
 !    compute the single-scattering albedo. the asymmetry parameter is
 !    not currently used in the infrared code, so its calculation is
 !    commented out.
 !-----------------------------------------------------------------------
-      where (cldextivlice /= 0.0)
+      if    (cldextivlice /= 0.0) then
         cldssalbivlice = 1.0E+00 - cldabsivlice/cldextivlice
-      elsewhere
+      else
         cldssalbivlice = 0.0
-      endwhere
+      endif 
  
 !     do n=1,NBFL                                                      
 !       cldasymmivlice(:,:,:,n) = cpr(n,0) +                        &
@@ -5175,20 +5455,21 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
 !    to define the values of these parameters for each lw radiation
 !    band.
 !-----------------------------------------------------------------------
-        sumext(:,:,:) = 0.
-        sumssalb(:,:,:) = 0.
-!       sumasymm(:,:,:) = 0.
-        do ni=1,NBFL                                                 
-          sumext(:,:,:) = sumext(:,:,:) +         &
-                          cldextivlice(:,:,:,ni)*fulwwts(nb,ni)
-          sumssalb(:,:,:) = sumssalb(:,:,:) +     &
-                            cldssalbivlice(:,:,:,ni)*fulwwts(nb,ni)
-!         sumasymm(:,:,:) = sumasymm(:,:,:) +     &
-!                           cldasymmivlice(:,:,:,ni)*fulwwts(n,ni)
+!!      sumasymm(:,:,:) = 0.
+          sumext        = sumext +         &
+                          cldextivlice*fulwwts(nb,n)
+          sumssalb = sumssalb +     &
+                            cldssalbivlice*fulwwts(nb,n)
+!!        sumasymm(:,:,:) = sumasymm(:,:,:) +     &
+!!                          cldasymmivlice(:,:,:,ni)*fulwwts(n,ni)
         end do
-        cldextbndicelw(:,:,:) = sumext(:,:,:)
-        cldssalbbndicelw(:,:,:) = sumssalb(:,:,:)
+        endif
+        cldextbndicelw(i,j,k) = sumext
+        cldssalbbndicelw(i,j,k) = sumssalb
 !       cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
+        end do
+        end do
+        end do
 
 !---------------------------------------------------------------------
 

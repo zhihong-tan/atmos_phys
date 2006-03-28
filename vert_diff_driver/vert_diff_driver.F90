@@ -22,6 +22,10 @@ use          fms_mod, only:  file_exist, open_namelist_file, error_mesg,  &
 
 use    constants_mod, only:  CP_AIR, GRAV
 
+use   field_manager_mod, only: MODEL_ATMOS
+use  tracer_manager_mod, only: get_number_tracers, get_tracer_names, &
+                               NO_TRACER
+
 !-----------------------------------------------------------------------
 
 implicit none
@@ -47,6 +51,16 @@ namelist /vert_diff_driver_nml/ do_conserve_energy,         &
                                 do_mcm_plev, do_mcm_vert_diff_tq
 
 !-----------------------------------------------------------------------
+! tracer storage is used 
+type :: tracer_storage_type
+   integer :: id_tr_dt     = 0 ! diag id of the tracer tendency due 
+                               ! to vert diff
+   integer :: id_tr_dt_int = 0 ! diag id of the vertically-integrated 
+                               ! tracer tendency
+   real, pointer :: &
+        buffer(:,:,:) => NULL() ! buffer for tendency calculations
+end type
+type(tracer_storage_type), allocatable :: tr_store(:)
 
 real, allocatable, dimension(:,:,:) :: dt_t_save, dt_q_save
 
@@ -63,8 +77,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 12.0 2005/04/14 15:50:48 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 13.0 2006/03/28 21:14:31 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 
 logical :: module_is_initialized = .false.
 
@@ -100,7 +114,7 @@ integer, intent(in), dimension(:,:),   optional :: kbot
 
 real, dimension(size(t,1),size(t,2),size(t,3)) :: tt, dpg, q_2
 real, dimension(size(t,1),size(t,2),size(t,3)) :: dissipative_heat
-integer :: k, ntp
+integer :: k, ntp, tr
 logical :: used
 real, dimension(size(t,1),size(t,2)) :: diag2
 integer :: ie, je
@@ -151,6 +165,14 @@ integer :: ie, je
     endif
 
 
+
+    ! store values of tracer tendencies before the vertical diffusion, if 
+    ! requested -- availability of storage serves as an indicatior that 
+    ! storing is necessary
+    do tr = 1,size(tr_store(:))
+       if( associated(tr_store(tr)%buffer) ) &
+            tr_store(tr)%buffer(is:ie,js:je,:) = dt_trs(:,:,:,tr)
+    enddo
 
 !-----------------------------------------------------------------------
 !---- local temperature ----
@@ -251,7 +273,7 @@ integer :: ie, je
 !#######################################################################
 
  subroutine vert_diff_driver_up (is, js, Time, delt, p_half, &
-                                 Surf_diff, dt_t, dt_q, mask, kbot)
+                                 Surf_diff, dt_t, dt_q, dt_tr, mask, kbot)
 
  integer,           intent(in)            :: is, js
  type(time_type),   intent(in)            :: Time
@@ -259,10 +281,11 @@ integer :: ie, je
  real,    intent(in),    dimension(:,:,:) :: p_half
  type(surf_diff_type),   intent(in)       :: Surf_diff
  real,    intent(inout), dimension(:,:,:) :: dt_t, dt_q
+ real,    intent(inout), dimension(:,:,:,:) :: dt_tr
  real   , intent(in), dimension(:,:,:), optional :: mask
  integer, intent(in),    dimension(:,:), optional :: kbot
 
- integer :: k
+ integer :: k, tr
  logical :: used
  real, dimension(size(p_half,1),size(p_half,2),size(p_half,3)-1) :: dpg
  real, dimension(size(p_half,1),size(p_half,2)) :: diag2
@@ -273,7 +296,7 @@ integer :: ie, je
     je = js + size(p_half,2) -1
 !-----------------------------------------------------------------------
 
-    call gcm_vert_diff_up (is, js, delt, Surf_diff, dt_t, dt_q, kbot)
+    call gcm_vert_diff_up (is, js, delt, Surf_diff, dt_t, dt_q, dt_tr, kbot)
 
 
 !-----------------------------------------------------------------------
@@ -317,6 +340,19 @@ integer :: ie, je
           used = send_data ( id_evap_vdif, 2.*diag2, Time, is, js )
     endif
 
+!------- diagnostics of tracer tendencies ------- 
+    do tr = 1, size(tr_store(:))
+       if(tr_store(tr)%id_tr_dt > 0) then
+          used = send_data(tr_store(tr)%id_tr_dt, &
+               dt_tr(:,:,:,tr)-tr_store(tr)%buffer(is:ie,js:je,:),Time,is,js)
+       endif
+       
+       if(tr_store(tr)%id_tr_dt_int > 0) then
+          diag2 = sum((dt_tr(:,:,:,tr)-tr_store(tr)%buffer(is:ie,js:je,:))*dpg,3)
+          used = send_data(tr_store(tr)%id_tr_dt_int, diag2, Time, is, js)
+       endif
+    enddo
+
     if(do_mcm_vert_diff_tq) then
       dt_t = dt_t + dt_t_save(is:ie,js:je,:)
       dt_q = dt_q + dt_q_save(is:ie,js:je,:)
@@ -333,9 +369,12 @@ integer :: ie, je
 
  type(surf_diff_type), intent(inout) :: Surf_diff
  integer             , intent(in)    :: idim, jdim, kdim, axes(4)
- type     (time_type), intent(in)    :: Time
+ type(time_type)     , intent(in)    :: Time
 
- integer :: unit, io, ierr
+ integer :: unit, io, ierr, tr
+ integer :: ntprog ! number of prognostic tracers in the atmosphere
+ character(len=32)  :: name, units ! name of the tracer
+ character(len=128) :: longname    ! long name of the tracer
 
 !-----------------------------------------------------------------------
 !------ read namelist ------
@@ -408,6 +447,22 @@ integer :: ie, je
                         'Integrated dissipative heating from vert diff',  &
                         'W/m2' )
 
+   ! initialize diagnostics tracers
+   call get_number_tracers(MODEL_ATMOS, num_prog=ntprog)
+   allocate(tr_store(ntprog))
+   do tr = 1,ntprog
+      call get_tracer_names( MODEL_ATMOS, tr, name, longname, units )
+      tr_store(tr)%id_tr_dt = &
+        register_diag_field ( mod_name, trim(name)//'dt_vdif', axes(1:3), Time, &
+           'Tendency of '//trim(longname)//' from vert diff', trim(units)//'/s')
+      tr_store(tr)%id_tr_dt_int = &
+        register_diag_field ( mod_name, trim(name)//'dt_vint_vdif', axes(1:2), Time, &
+           'Integrated tendency of '//trim(longname)//' from vert diff',&
+           trim(units)//' kg/(m2 s)')
+
+      if(tr_store(tr)%id_tr_dt_int>0 .or.tr_store(tr)%id_tr_dt_int>0 ) &
+           allocate(tr_store(tr)%buffer(idim,jdim,kdim))
+   enddo
 
 !-----------------------------------------------------------------------
 
@@ -421,8 +476,16 @@ integer :: ie, je
 
  subroutine vert_diff_driver_end
 
+   integer :: tr ! tracer index
+
    call vert_diff_end
    if(do_mcm_vert_diff_tq) deallocate(dt_t_save, dt_q_save)
+   ! deallocate tracer diagnostics storage
+   do tr = 1,size(tr_store(:))
+      if(associated(tr_store(tr)%buffer)) &
+           deallocate(tr_store(tr)%buffer)
+   enddo
+   deallocate(tr_store)
 
 !-----------------------------------------------------------------------
 

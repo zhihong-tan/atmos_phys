@@ -47,8 +47,8 @@ public :: moist_conv, moist_conv_Init, moist_conv_end
 !-----------------------------------------------------------------------
 !---- VERSION NUMBER -----
 
- character(len=128) :: version = '$Id: moist_conv.F90,v 11.0 2004/09/28 19:19:43 fms Exp $'
- character(len=128) :: tagname = '$Name: lima $'
+ character(len=128) :: version = '$Id: moist_conv.F90,v 13.0 2006/03/28 21:10:14 fms Exp $'
+ character(len=128) :: tagname = '$Name: memphis $'
  logical            :: module_is_initialized = .false.
 
 !---------- initialize constants used by this module -------------------
@@ -83,12 +83,11 @@ CONTAINS
 
 !#######################################################################
 
- subroutine moist_conv ( Tin, Qin, Pfull, Phalf, coldT,    &
-                         Tdel, Qdel, Rain, Snow, Lbot, &
-                         do_strat, ql, qi, cf,  &
-                         qldel, qidel, cfdel,   &
-                         dtinv, Time, mask, is, js, Conv, &
-                         tracers, qtrmca )
+ subroutine moist_conv ( Tin, Qin, Pfull, Phalf, coldT,        & ! required
+                         Tdel, Qdel, Rain, Snow,               & ! required
+                         dtinv, Time, is, js, tracers, qtrmca, & ! required
+                         Lbot, mask, Conv,                     & ! optional
+                         ql, qi, cf, qldel, qidel, cfdel)        ! optional
 
 !-----------------------------------------------------------------------
 !
@@ -112,6 +111,8 @@ CONTAINS
 !
 !   INPUT:   Lbot    integer index of the lowest model level,
 !                      Lbot is always <= size(Tin,3)
+!              ql    liquid water condensate
+!              qi    ice condensate
 !              cf    stratiform cloud fraction (used only when
 !                    operating with stratiform cloud scheme) (fraction)
 !
@@ -130,17 +131,16 @@ CONTAINS
  logical, intent(IN) ,   dimension(:,:)             :: coldT
     real, intent(OUT),   dimension(:,:,:)           :: Tdel, Qdel
     real, intent(OUT),   dimension(:,:)             :: Rain, Snow
- integer, intent(IN) ,   dimension(:,:),   optional :: Lbot
- logical, intent(OUT),   dimension(:,:,:), optional :: Conv
- logical, intent(in)                                :: do_strat
     real, intent(IN)                                :: dtinv
- integer, intent(IN)                                :: is, js     
-    real, intent(INOUT), dimension(:,:,:) :: ql, qi, cf
-    real, dimension(:,:,:,:), intent(in), optional :: tracers
-    real, dimension(:,:,:,:), intent(out), optional :: qtrmca
-    real, intent(INOUT), dimension(:,:,:) :: qldel, qidel, cfdel
 type(time_type), intent(in)                         :: Time
-   real, intent(in) ,    dimension(:,:,:), optional :: mask
+integer, intent(IN)                                :: is, js
+    real, dimension(:,:,:,:), intent(in)            :: tracers
+    real, dimension(:,:,:,:), intent(out)           :: qtrmca
+ integer, intent(IN) ,   dimension(:,:),   optional :: Lbot
+    real, intent(IN) ,   dimension(:,:,:), optional :: mask
+ logical, intent(OUT),   dimension(:,:,:), optional :: Conv
+    real, intent(INOUT), dimension(:,:,:), optional :: ql, qi, cf
+    real, intent(OUT),   dimension(:,:,:), optional :: qldel, qidel, cfdel
          
 !-----------------------------------------------------------------------
 !----------------------PRIVATE (LOCAL) ARRAYS---------------------------
@@ -148,7 +148,7 @@ type(time_type), intent(in)                         :: Time
 !    real, dimension(size(Tin,1),size(Tin,2),size(Tin,3)) ::  &
 !-----------------------------------------------------------------------
 !----------------------PRIVATE (LOCAL) ARRAYS---------------------------
-integer, dimension(size(Tin,1),size(Tin,2)) :: ISMVD,ISMVF
+integer, dimension(size(Tin,1),size(Tin,2)) :: ISMVF
 integer, dimension(size(Tin,1),size(Tin,2),size(Tin,3)) :: IVF
 
 real, dimension(size(Tin,1),size(Tin,2),size(Tin,3)) ::   &
@@ -163,31 +163,25 @@ real, dimension(size(Tin,1),size(Tin,2)) :: HL
 integer :: i,j,k,kk,KX,ITER,MXLEV,MXLEV1,kstart,KTOP,KBOT,KBOTM1
 real    :: ALTOL,Sum0,Sum1,Sum2,EsDiff,EsVal,Thaf,Pdelta
 
-
-!real, dimension(SIZE(tracer,1),SIZE(tracer,2),SIZE(tracer,3)) :: cf
-!real, pointer, dimension(:,:,:) :: cfdel => NULL(), &
-!                                   qldel => NULL(), &
-!                                   qidel => NULL()
-logical :: cf_Present
+logical  :: cloud_tracers_present
 real, dimension(size(Phalf,1),size(Phalf,2),size(Phalf,3)) :: pmass
 real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
-integer  :: tr
+integer  :: tr, num_cld_tracers
 !-----------------------------------------------------------------------
 
       if (.not. module_is_initialized) call ERROR_MESG( 'MCA',  &
                                  'moist_conv_init has not been called', FATAL )
-                                 !moist_conv_init ( )
-      
-      cf_Present = .FALSE.
-      if ( do_strat ) then
-        cf_Present = .TRUE.
-!       cf=tracer(:,:,:,nqa)
-!       cfdel => tracertnd(:,:,:,nqa)
-!       qldel => tracertnd(:,:,:,nql)
-!       qidel => tracertnd(:,:,:,nqi)
-      endif  
 
-        do k=1,size(Phalf,3)
+      num_cld_tracers = count( (/present(ql),present(qi),present(cf),present(qldel),present(qidel),present(cfdel)/) )
+      if(num_cld_tracers == 0) then
+        cloud_tracers_present = .false.
+      else if(num_cld_tracers == 6) then
+        cloud_tracers_present = .true.
+      else
+        call error_mesg('moist_conv','Either all or none of the cloud tracers and their tendencies must be present',FATAL)
+      endif
+
+        do k=1,size(Tin,3)
           pmass(:,:,k) = (Phalf(:,:,k+1)-Phalf(:,:,k))/GRAV
         end do
 
@@ -467,8 +461,7 @@ integer  :: tr
 
 !---- call Convective Detrainment subroutine -----
 
-!     if (Present(cf)) then
-     if (cf_Present) then
+     if (cloud_tracers_present) then
 
           !reset quantities
           cfdel = 0.
@@ -499,8 +492,7 @@ integer  :: tr
       END WHERE
 
       !subtract off detrained condensate from surface precip
-!      if (present(cf)) then
-     if (cf_Present) then
+     if (cloud_tracers_present) then
       WHERE(coldT(:,:)) 
       Snow(:,:)=Snow(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
                                qidel(:,:,k)*grav_inv
@@ -533,23 +525,21 @@ integer  :: tr
 !------- update input values , compute and add on tendency -----------
 !-------              in the case of strat                 -----------
 
-      if (do_strat) then
-         ql    (:,:,:    )=ql    (:,:,:    )+qldel    (:,:,:    )
-         qi    (:,:,:    )=qi    (:,:,:    )+qidel    (:,:,:    )
-         cf    (:,:,:    )=cf    (:,:,:    )+cfdel    (:,:,:    )
+      if (cloud_tracers_present) then
+         ql(:,:,:)=ql(:,:,:)+qldel(:,:,:)
+         qi(:,:,:)=qi(:,:,:)+qidel(:,:,:)
+         cf(:,:,:)=cf(:,:,:)+cfdel(:,:,:)
  
-         qldel    (:,:,:)=qldel    (:,:,:)*dtinv
-         qidel    (:,:,:)=qidel    (:,:,:)*dtinv
-         cfdel    (:,:,:)=cfdel    (:,:,:)*dtinv
+         qldel(:,:,:)=qldel(:,:,:)*dtinv
+         qidel(:,:,:)=qidel(:,:,:)*dtinv
+         cfdel(:,:,:)=cfdel(:,:,:)*dtinv
       endif   
       
 !---------------------------------------------------------------------
 !   define the effect of moist convective adjustment on the tracer 
 !   fields. code to do so does not currently exist.
 !---------------------------------------------------------------------
-      if (present(qtrmca)) then
-        qtrmca = 0.
-      endif
+      qtrmca = 0.
  
 
 !------- diagnostics for dt/dt_ras -------
@@ -590,7 +580,7 @@ integer  :: tr
       end if
    
    !------- stratiform cloud tendencies from cumulus convection ------------
-   if ( do_strat ) then
+   if (cloud_tracers_present) then
 
       !------- diagnostics for dql/dt from RAS or donner -------
       if ( id_qldt_conv > 0 ) then
@@ -637,7 +627,7 @@ integer  :: tr
         used = send_data ( id_qa_conv_col, tempdiag, Time, is, js )
       end if
          
-   end if !end do strat if
+   end if ! if ( cloud_tracers_present )
 
    do tr = 1, num_mca_tracers
 !------- diagnostics for dtracer/dt from RAS -------------
@@ -943,12 +933,16 @@ subroutine moist_conv_end
 
 integer :: log_unit
 
+if(.not.module_is_initialized) then
+  return
+else
+  module_is_initialized = .FALSE.
+endif
+
 log_unit = stdlog()
 if ( mpp_pe() == mpp_root_pe() ) then
    write (log_unit,'(/,(a))') 'Exiting moist_conv.'
 endif
-
-module_is_initialized = .FALSE.
 
 end subroutine moist_conv_end
 

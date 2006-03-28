@@ -41,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: diag_integral.F90,v 11.0 2004/09/28 19:15:46 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: diag_integral.F90,v 13.0 2006/03/28 21:08:22 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -246,7 +246,7 @@ real,dimension(:), intent(in), optional :: blon, blat
       real, dimension(:), allocatable :: slat
       real    :: r2
       real    :: rsize
-      integer :: unit, io, ierr, seconds, nc, i, j
+      integer :: unit, io, ierr, nc, i, j
       integer :: field_size_local
       real    :: sum_area_local
 
@@ -1109,7 +1109,6 @@ integer                       :: index
 !---------------------------------------------------------------------
 !   local variables:
 
-      character(len=max_len_name) :: fname
       integer :: nc
       integer :: i
 

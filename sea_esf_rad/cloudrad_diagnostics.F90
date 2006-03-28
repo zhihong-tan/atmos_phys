@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 12.0 2005/04/14 15:44:36 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 13.0 2006/03/28 21:11:20 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -481,10 +481,10 @@ real, dimension(:,:,:),         intent(in), optional :: mask
       
       logical    :: used
       integer    :: kx, kCol
-      integer    :: i, j, k, n, iband, isccpSwBand, isccpLwBand, nswbands
+      integer    :: i, j, k, n,  isccpSwBand, isccpLwBand, nswbands
       integer    :: iuv, ivis, inir
-      logical, dimension(size(Atmos_input%rh2o,1),                   &
-                         size(Atmos_input%rh2o,2))  :: flagij
+
+
       integer, dimension(size(Atmos_input%rh2o,1),                   &
                          size(Atmos_input%rh2o,2))  :: count5, count6, &
                                                        count7        
@@ -2083,10 +2083,10 @@ type(time_type),              intent(in)   :: Time
                                     tau_local, em_local, cldamt_local
 
       real, dimension (size(Cld_spec%lwp,1), size(Cld_spec%lwp,2), &
-                       size(Cld_spec%lwp,3) ) ::  qv, em_lw_local, rh2o
+                       size(Cld_spec%lwp,3) ) ::  qv, em_lw_local
 
-      real, dimension (size(Cld_spec%lwp,1), size(Cld_spec%lwp,2), &
-                       size(Cld_spec%lwp,3)+1 ) ::  temp   
+
+
 
       real, dimension (size(Cld_spec%lwp,1), size(Cld_spec%lwp,2), &
                        size(Cld_spec%lwp,3), 4 ) ::  tau
@@ -2328,7 +2328,7 @@ type(time_type),             intent(in)   :: Time
       
 
       integer      :: kdim
-      integer      :: i, j, k
+
       integer, dimension(size(Lsctau,1),size(Lsctau,2)):: sunlit
       
 !---------------------------------------------------------------------

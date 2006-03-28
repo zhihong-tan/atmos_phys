@@ -19,8 +19,8 @@
       integer :: ix, jx, kx, kp, km
 !------------ VERSION NUMBER ----------------
 
-      character(len=128) :: version = '$Id: mcm_lw.F90,v 10.0 2003/10/24 22:00:31 fms Exp $'
-      character(len=128) :: tagname = '$Name: lima $'
+      character(len=128) :: version = '$Id: mcm_lw.F90,v 13.0 2006/03/28 21:09:36 fms Exp $'
+      character(len=128) :: tagname = '$Name: memphis $'
       logical :: module_is_initialized = .false.
 
       public :: MCM_LW_RAD, mcm_lw_init, mcm_lw_end
@@ -894,7 +894,7 @@ end function expx
       real :: bw(ix,0:kx,nb), bwz(ix,nb), expzs(ix,nb)
       real :: trans(ix,0:kx,0:kx), dbbdt(ix,0:kx)
 
-      real :: vcube(nb), expz1(nb), c(nb), v(nb), dv(nb)
+      real :: vcube(nb), c(nb), v(nb), dv(nb)
       real :: pdi   (ix,0:kp), pfl   (ix,0:kx), dpdi (ix,  kx)
       real :: rh2o  (ix,0:kp), ro3   (ix,0:kp), qdi  (ix,  kx)
       real :: duh2o (ix,  kx), duco2 (ix,  kx), duo3 (ix,  kx)

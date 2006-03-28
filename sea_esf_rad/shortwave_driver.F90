@@ -38,7 +38,7 @@ use rad_utilities_mod,    only:  rad_utilities_init, Rad_control,  &
                                  aerosol_type, aerosol_properties_type,&
                                  atmos_input_type, surface_type, &
                                  astronomy_type, sw_output_type, &
-                                 cld_space_properties_type
+                                 assignment(=), cld_space_properties_type
 use esfsw_parameters_mod, only:  esfsw_parameters_init
 
 !  radiation package modules:
@@ -61,8 +61,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module  -------------------------
 
-character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 12.0 2005/04/14 15:48:25 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 13.1 2006/04/25 23:20:55 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -335,8 +335,8 @@ end subroutine shortwave_driver_init
 ! </SUBROUTINE>
 subroutine shortwave_driver (is, ie, js, je, Atmos_input, Surface,  &
                              Astro, Aerosol, Aerosol_props, Rad_gases, &
-                             Cldrad_props,  Cld_spec, Sw_output,   &
-                             Cldspace_rad, Aerosol_diags) 
+                             Cldrad_props,  Cld_spec, Sw_output,      &
+                             Cldspace_rad, Aerosol_diags, r) 
 
 !---------------------------------------------------------------------
 !    shortwave_driver initializes shortwave radiation output variables, 
@@ -354,9 +354,10 @@ type(aerosol_type),              intent(in)    :: Aerosol
 type(aerosol_properties_type),   intent(inout) :: Aerosol_props
 type(cldrad_properties_type),    intent(in)    :: Cldrad_props
 type(cld_specification_type),    intent(in)    :: Cld_spec
-type(sw_output_type),            intent(inout) :: Sw_output
+type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
+real, dimension(:,:,:,:),        intent(inout) :: r
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
@@ -398,8 +399,11 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
 !----------------------------------------------------------------------
 !  local variables:
 
+      type(sw_output_type) :: Sw_output_ad, Sw_output_std
       logical  :: skipswrad
       logical  :: with_clouds
+      logical  :: calc_includes_aerosols
+      integer  :: naerosol_optical
       integer  :: i, j       
       integer  :: ix, jx, kx
 
@@ -430,7 +434,17 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
       ix = ie - is + 1
       jx = je - js + 1
       kx = size (Atmos_input%press,3) - 1
-      call shortwave_driver_alloc (ix, jx, kx, Sw_output) 
+!**************************************
+      ! This is a temporary fix! Sw_output needs to be allocated at a higher level!
+      ! Constructor and destructor for sw_output_type needs to be provided through
+      ! rad_utilities
+!**************************************
+      call shortwave_driver_alloc (ix, jx, kx, Sw_output(1)) 
+      call shortwave_driver_alloc (ix, jx, kx, Sw_output_std) 
+      if (Rad_control%do_swaerosol_forcing) then
+        call shortwave_driver_alloc (ix, jx, kx, Sw_output_ad)
+        call shortwave_driver_alloc (ix, jx, kx, Sw_output(Rad_control%indx_swaf)) 
+      endif
 
 !--------------------------------------------------------------------
 !    determine when the no-sun case exists at all points within the 
@@ -499,58 +513,108 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
 !    call swresf without including volcanic aerosol effects. save the 
 !    heating rate as Aerosol_diags%sw_heating_vlcno.
 !----------------------------------------------------------------------
+          if (Sw_control%do_swaerosol) then
+            naerosol_optical = size (Aerosol_props%aerextband,2)
+          else
+            naerosol_optical = 0  
+          endif 
           call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
                        Aerosol, Aerosol_props, Astro, Cldrad_props,  &
-                       Cld_spec, .false., &
-                       Sw_output, Aerosol_diags)
-          Aerosol_diags%sw_heating_vlcno = Sw_output%hsw
+                       Cld_spec, .false., Sw_output_std, Aerosol_diags, r, &
+!                      Sw_control%do_swaerosol)
+                       Sw_control%do_swaerosol, naerosol_optical)
+          Aerosol_diags%sw_heating_vlcno = Sw_output_std%hsw
 
 !----------------------------------------------------------------------
 !    reinitialize the sw outputs for the "real" call.
 !----------------------------------------------------------------------
-          Sw_output%fsw   (:,:,:) = 0.0
-          Sw_output%dfsw  (:,:,:) = 0.0
-          Sw_output%ufsw  (:,:,:) = 0.0
-          Sw_output%hsw   (:,:,:) = 0.0
-          Sw_output%dfsw_dir_sfc = 0.0
-          Sw_output%dfsw_dif_sfc  = 0.0
-          Sw_output%ufsw_dif_sfc = 0.0
-          Sw_output%dfsw_vis_sfc = 0.
-          Sw_output%ufsw_vis_sfc = 0.
-          Sw_output%dfsw_vis_sfc_dir = 0.
-          Sw_output%dfsw_vis_sfc_dif = 0.
-          Sw_output%ufsw_vis_sfc_dif = 0.
-          Sw_output%swdn_special  (:,:,:) = 0.0
-          Sw_output%swup_special  (:,:,:) = 0.0
-          Sw_output%fswcf (:,:,:) = 0.0
-          Sw_output%dfswcf(:,:,:) = 0.0
-          Sw_output%ufswcf(:,:,:) = 0.0
-          Sw_output%hswcf (:,:,:) = 0.0
-          Sw_output%swdn_special_clr  (:,:,:) = 0.0
-          Sw_output%swup_special_clr  (:,:,:) = 0.0
-          Sw_output%bdy_flx(:,:,:) = 0.0
-          Sw_output%bdy_flx_clr(:,:,:) = 0.0
+          Sw_output_std%fsw   (:,:,:) = 0.0
+          Sw_output_std%dfsw  (:,:,:) = 0.0
+          Sw_output_std%ufsw  (:,:,:) = 0.0
+          Sw_output_std%hsw   (:,:,:) = 0.0
+          Sw_output_std%dfsw_dir_sfc = 0.0
+          Sw_output_std%dfsw_dif_sfc  = 0.0
+          Sw_output_std%ufsw_dif_sfc = 0.0
+          Sw_output_std%dfsw_vis_sfc = 0.
+          Sw_output_std%ufsw_vis_sfc = 0.
+          Sw_output_std%dfsw_vis_sfc_dir = 0.
+          Sw_output_std%dfsw_vis_sfc_dif = 0.
+          Sw_output_std%ufsw_vis_sfc_dif = 0.
+          Sw_output_std%swdn_special  (:,:,:) = 0.0
+          Sw_output_std%swup_special  (:,:,:) = 0.0
+          Sw_output_std%fswcf (:,:,:) = 0.0
+          Sw_output_std%dfswcf(:,:,:) = 0.0
+          Sw_output_std%ufswcf(:,:,:) = 0.0
+          Sw_output_std%hswcf (:,:,:) = 0.0
+          Sw_output_std%swdn_special_clr  (:,:,:) = 0.0
+          Sw_output_std%swup_special_clr  (:,:,:) = 0.0
+          Sw_output_std%bdy_flx(:,:,:) = 0.0
+          Sw_output_std%bdy_flx_clr(:,:,:) = 0.0
+          if (Sw_control%do_swaerosol) then
+            naerosol_optical = size (Aerosol_props%aerextband,2)
+          else
+            naerosol_optical = 0  
+          endif 
           call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
                        Aerosol, Aerosol_props, Astro, Cldrad_props,  &
                        Cld_spec, Rad_control%volcanic_sw_aerosols, &
-                       Sw_output, Aerosol_diags)
+                       Sw_output_std, Aerosol_diags, r, &
+                       Sw_control%do_swaerosol, naerosol_optical)
 
 !----------------------------------------------------------------------
 !    define the difference in heating rates betweenthe case with 
 !    volcanic aerosol and the case without. save in 
 !    Aerosol_diags%sw_heating_vlcno.
 !----------------------------------------------------------------------
-          Aerosol_diags%sw_heating_vlcno = Sw_output%hsw -   &
+          Aerosol_diags%sw_heating_vlcno = Sw_output_std%hsw -   &
                                          Aerosol_diags%sw_heating_vlcno
+          Sw_output(1) = Sw_output_std
 
 !----------------------------------------------------------------------
 !    if volcanic heating calculation not desired, simply call swresf.
 !----------------------------------------------------------------------
         else
+ 
+          if (Rad_control%do_swaerosol_forcing) then
+            if (Sw_control%do_swaerosol) then
+              calc_includes_aerosols = .false.
+            else
+              calc_includes_aerosols = .true.
+            endif
+
+!-----------------------------------------------------------------------
+!    call swresf with aerosols (if model is being run without) or without
+!    aerosols (if model is being run with). save the radiation fluxes 
+!    in Sw_output_ad (which does not feed back into the model), but 
+!    which may be used to define the aerosol forcing.
+!-----------------------------------------------------------------------
+          if (calc_includes_aerosols) then
+            naerosol_optical = size (Aerosol_props%aerextband,2)
+          else
+            naerosol_optical = 0  
+          endif 
+           call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
+                        Aerosol, Aerosol_props, Astro, Cldrad_props,  &
+                        Cld_spec, Rad_control%volcanic_sw_aerosols, &
+                        Sw_output_ad, Aerosol_diags, r,   &
+                        calc_includes_aerosols, naerosol_optical)  
+            Sw_output(Rad_control%indx_swaf) = Sw_output_ad
+         endif
+ 
+!----------------------------------------------------------------------
+!    standard call, where radiation output feeds back into the model.
+!----------------------------------------------------------------------
+          if (Sw_control%do_swaerosol) then
+            naerosol_optical = size (Aerosol_props%aerextband,2)
+          else
+            naerosol_optical = 0  
+          endif 
           call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
                        Aerosol, Aerosol_props, Astro, Cldrad_props,  &
                        Cld_spec, Rad_control%volcanic_sw_aerosols, &
-                       Sw_output, Aerosol_diags)
+                       Sw_output_std, Aerosol_diags, r,  &
+                       Sw_control%do_swaerosol, naerosol_optical)
+            Sw_output(1) = Sw_output_std
         endif
 
 !---------------------------------------------------------------------
@@ -561,7 +625,8 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
         with_clouds = .true.
         call swrad (is, ie, js, je, Astro, with_clouds, Atmos_input, &
                     Surface, Rad_gases, Cldrad_props, Cld_spec,  &
-                    Sw_output, Cldspace_rad)
+                    Sw_output_std, Cldspace_rad)
+        Sw_output(1) = Sw_output_std
 
 !!  FOR NOW, total sw fluxes, which have been determined using the
 !!  direct beam albedoes, will be assigned to the _dir arrays, and 
@@ -591,10 +656,16 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
           with_clouds = .false.
           call swrad (is, ie, js, je, Astro, with_clouds, Atmos_input, &
                       Surface, Rad_gases, Cldrad_props, Cld_spec,  &
-                      Sw_output, Cldspace_rad)  
+                      Sw_output_std, Cldspace_rad)  
         endif
+        Sw_output(1) = Sw_output_std
       endif  
 
+
+      call shortwave_driver_dealloc (Sw_output_std)
+      if (Rad_control%do_swaerosol_forcing) then
+        call shortwave_driver_dealloc (Sw_output_ad)
+      endif
 !--------------------------------------------------------------------
 
 
@@ -776,6 +847,92 @@ type(sw_output_type), intent(inout)  ::  Sw_output
 !--------------------------------------------------------------------
 
 end  subroutine shortwave_driver_alloc
+
+
+!###################################################################
+! <SUBROUTINE NAME="shortwave_driver_alloc">
+!  <OVERVIEW>
+!   Code that allocates and initializes shortwave output variables
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Shortwave_driver_alloc allocates and initializes the components
+!   of the sw_output_type variable Sw_output, which is used to hold
+!   output data from shortwave_driver_mod.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call shortwave_driver_alloc (ix, jx, kx, Sw_output)
+!  </TEMPLATE>
+!  <IN NAME="ix" TYPE="integer">
+!   x dimention of the radiation grid where shortwave output is desired
+!  </IN>
+!  <IN NAME="jx" TYPE="integer">
+!   y dimention of the radiation grid where shortwave output is desired
+!  </IN>
+!  <IN NAME="kx" TYPE="integer">
+!   z dimention of the radiation grid where shortwave output is desired
+!  </IN>
+!  <INOUT NAME="Sw_output" TYPE="sw_output_type">
+!   shortwave radiation output variable
+!  </INOUT>
+! </SUBROUTINE>
+!
+subroutine shortwave_driver_dealloc (Sw_output)
+
+!--------------------------------------------------------------------
+!    shortwave_driver_dealloc deallocates the components
+!    of the sw_output_type variable Sw_output, which is used to hold
+!    output data from shortwave_driver_mod.
+!--------------------------------------------------------------------
+
+type(sw_output_type), intent(inout)  ::  Sw_output
+
+!-------------------------------------------------------------------
+!  intent(inout) variables:
+!
+!      Sw_output  sw_output_type variable containing shortwave 
+!                 radiation output data 
+!
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!    deallocate fields to contain net(up-down) sw flux 
+!    (fsw), upward sw flux (ufsw), downward sw flux(dfsw) at flux 
+!    levels and sw heating in model layers (hsw).
+!--------------------------------------------------------------------
+      deallocate (Sw_output%fsw)
+      deallocate (Sw_output%ufsw)
+      deallocate (Sw_output%dfsw)
+      deallocate (Sw_output%hsw)
+      deallocate (Sw_output%dfsw_dir_sfc)
+      deallocate (Sw_output%ufsw_dif_sfc)
+      deallocate (Sw_output%dfsw_dif_sfc)
+      deallocate (Sw_output%dfsw_vis_sfc)
+      deallocate (Sw_output%ufsw_vis_sfc)
+      deallocate (Sw_output%dfsw_vis_sfc_dir)
+      deallocate (Sw_output%dfsw_vis_sfc_dif)
+      deallocate (Sw_output%ufsw_vis_sfc_dif)
+      deallocate (Sw_output%swdn_special)
+      deallocate (Sw_output%swup_special)
+      deallocate (Sw_output%bdy_flx)
+!---------------------------------------------------------------------
+!    if the cloud-free values are desired, allocate and initialize 
+!    arrays for the fluxes and heating rate in the absence of clouds.
+!----------------------------------------------------------------------
+      if (Rad_control%do_totcld_forcing) then
+        deallocate (Sw_output%fswcf)
+        deallocate (Sw_output%dfswcf)
+        deallocate (Sw_output%ufswcf)
+        deallocate (Sw_output%hswcf)
+        deallocate (Sw_output%dfsw_dir_sfc_clr)
+        deallocate (Sw_output%dfsw_dif_sfc_clr)
+        deallocate (Sw_output%swdn_special_clr)
+        deallocate (Sw_output%swup_special_clr)
+        deallocate (Sw_output%bdy_flx_clr)
+      endif
+
+!--------------------------------------------------------------------
+
+end  subroutine shortwave_driver_dealloc
 
 
 

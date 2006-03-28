@@ -27,8 +27,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: my25_turb.F90,v 11.0 2004/09/28 19:20:03 fms Exp $'
- character(len=128) :: tagname = '$Name: lima $'
+ character(len=128) :: version = '$Id: my25_turb.F90,v 13.0 2006/03/28 21:10:38 fms Exp $'
+ character(len=128) :: tagname = '$Name: memphis $'
  logical            :: module_is_initialized = .false.
  
  logical :: init_tke
@@ -597,8 +597,6 @@ end subroutine get_tke
 !  (Intent local)
 !---------------------------------------------------------------------
  integer             :: unit, io, ierr
- real                :: actp, facm 
- real, dimension(15) :: au,   tem
 
 !=====================================================================
 

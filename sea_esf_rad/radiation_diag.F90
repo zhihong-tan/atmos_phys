@@ -52,8 +52,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: radiation_diag.F90,v 12.0 2005/04/14 15:47:41 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: radiation_diag.F90,v 13.0 2006/03/28 21:13:05 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -489,8 +489,8 @@ type(astronomy_type),            intent(in) :: Astro
 type(radiative_gases_type),      intent(in) :: Rad_gases
 type(cldrad_properties_type),    intent(in) :: Cldrad_props
 type(cld_specification_type),    intent(in) :: Cld_spec       
-type(sw_output_type),            intent(in) :: Sw_output
-type(lw_output_type),            intent(in) :: Lw_output
+type(sw_output_type), dimension(:), intent(in) :: Sw_output
+type(lw_output_type), dimension(:), intent(in) :: Lw_output
 type(lw_diagnostics_type),       intent(in) :: Lw_diagnostics
 type(cld_space_properties_type), intent(in) :: Cldspace_rad
 
@@ -698,8 +698,8 @@ type(astronomy_type),            intent(in) :: Astro
 type(radiative_gases_type),      intent(in) :: Rad_gases
 type(cldrad_properties_type),    intent(in) :: Cldrad_props
 type(cld_specification_type),    intent(in) :: Cld_spec       
-type(sw_output_type),            intent(in) :: Sw_output
-type(lw_output_type),            intent(in) :: Lw_output
+type(sw_output_type), dimension(:), intent(in) :: Sw_output
+type(lw_output_type), dimension(:), intent(in) :: Lw_output
 type(lw_diagnostics_type),       intent(in) :: Lw_diagnostics
 type(cld_space_properties_type), intent(in) :: Cldspace_rad
 
@@ -741,6 +741,9 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 
 !---------------------------------------------------------------------
 !  local variables:
+
+      type(lw_output_type)   :: Lw_output_ad
+      type(sw_output_type)   :: Sw_output_ad
 
 !---------------------------------------------------------------------
 !    these variables are dimensioned by the number of layers in the 
@@ -960,6 +963,12 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !---------------------------------------------------------------------
       integer ::   kc, nprt, ny, nx, k, nn, m, n
 
+      if (Rad_control%do_swaerosol_forcing) then
+        Sw_output_ad = Sw_output(Rad_control%indx_swaf)
+      endif
+      if (Rad_control%do_lwaerosol_forcing) then
+        Lw_output_ad = Lw_output(Rad_control%indx_lwaf)
+      endif
 
 !---------------------------------------------------------------------
 !    define the vertical grid dimension and the number of h2o bands in 
@@ -1229,12 +1238,12 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                                      Atmos_input%temp  (iloc,jloc,k),&
                                      Atmos_input%rh2o  (iloc,jloc,k), &
                                      Rad_gases%qo3     (iloc,jloc,k),&
-                                     Lw_output%heatra  (iloc,jloc,k),  &
-                                     Lw_output%flxnet  (iloc,jloc,k), &
+                                     Lw_output(1)%heatra  (iloc,jloc,k),  &
+                                     Lw_output(1)%flxnet  (iloc,jloc,k), &
                                      pflux             (k), k=ks,ke)
             write(radiag_unit,9120) press (ke+1), &
                              Atmos_input%temp  (iloc,jloc,ke+1), &
-                             Lw_output%flxnet  (iloc,jloc,ke+1), &
+                             Lw_output(1)%flxnet  (iloc,jloc,ke+1), &
                              pflux             (ke+1)
 
 !----------------------------------------------------------------------
@@ -1257,34 +1266,34 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
             endif
             write (radiag_unit,9140)
             write (radiag_unit,9150) (k, press(k),   &
-                                     Sw_output%hsw  (iloc,jloc,k), &
-                                     Sw_output%fsw  (iloc,jloc,k), &
-                                     Sw_output%dfsw (iloc,jloc,k),    &
-                                     Sw_output%ufsw (iloc,jloc,k),&
+                                     Sw_output(1)%hsw  (iloc,jloc,k), &
+                                     Sw_output(1)%fsw  (iloc,jloc,k), &
+                                     Sw_output(1)%dfsw (iloc,jloc,k),    &
+                                     Sw_output(1)%ufsw (iloc,jloc,k),&
                                      pflux          (k), k=ks,ke)
             write (radiag_unit,6556) press(ke+1),    &
-                                     Sw_output%fsw  (iloc,jloc,ke+1), &
-                                     Sw_output%dfsw (iloc,jloc,ke+1), &
-                                     Sw_output%ufsw (iloc,jloc,ke+1), &
+                                     Sw_output(1)%fsw  (iloc,jloc,ke+1), &
+                                     Sw_output(1)%dfsw (iloc,jloc,ke+1), &
+                                     Sw_output(1)%ufsw (iloc,jloc,ke+1), &
                                      pflux          (ke+1)
 
             if (Sw_control%do_esfsw) then
-              dfsw_nir = Sw_output%dfsw(iloc,jloc,ke+1) -   &
-                           Sw_output%dfsw_vis_sfc(iloc,jloc)
-              dfsw_nir_dir = Sw_output%dfsw_dir_sfc(iloc,jloc) -   &
-                             Sw_output%dfsw_vis_sfc_dir(iloc,jloc)
-              dfsw_nir_dif = Sw_output%dfsw_dif_sfc(iloc,jloc) -   &
-                             Sw_output%dfsw_vis_sfc_dif(iloc,jloc)
-              ufsw_nir = Sw_output%ufsw(iloc,jloc,ke+1) -   &
-                         Sw_output%ufsw_vis_sfc(iloc,jloc)
-              ufsw_nir_dif = Sw_output%ufsw_dif_sfc(iloc,jloc) -   &
-                            Sw_output%ufsw_vis_sfc_dif(iloc,jloc)
+              dfsw_nir = Sw_output(1)%dfsw(iloc,jloc,ke+1) -   &
+                           Sw_output(1)%dfsw_vis_sfc(iloc,jloc)
+              dfsw_nir_dir = Sw_output(1)%dfsw_dir_sfc(iloc,jloc) -   &
+                             Sw_output(1)%dfsw_vis_sfc_dir(iloc,jloc)
+              dfsw_nir_dif = Sw_output(1)%dfsw_dif_sfc(iloc,jloc) -   &
+                             Sw_output(1)%dfsw_vis_sfc_dif(iloc,jloc)
+              ufsw_nir = Sw_output(1)%ufsw(iloc,jloc,ke+1) -   &
+                         Sw_output(1)%ufsw_vis_sfc(iloc,jloc)
+              ufsw_nir_dif = Sw_output(1)%ufsw_dif_sfc(iloc,jloc) -   &
+                            Sw_output(1)%ufsw_vis_sfc_dif(iloc,jloc)
               write (radiag_unit, 99026)    &
-                           Sw_output%dfsw_vis_sfc(iloc,jloc), &
-                           Sw_output%ufsw_vis_sfc(iloc,jloc), &
-                           Sw_output%dfsw_vis_sfc_dir(iloc,jloc), &
-                           Sw_output%dfsw_vis_sfc_dif(iloc,jloc), &
-                           Sw_output%ufsw_vis_sfc_dif(iloc,jloc), &
+                           Sw_output(1)%dfsw_vis_sfc(iloc,jloc), &
+                           Sw_output(1)%ufsw_vis_sfc(iloc,jloc), &
+                           Sw_output(1)%dfsw_vis_sfc_dir(iloc,jloc), &
+                           Sw_output(1)%dfsw_vis_sfc_dif(iloc,jloc), &
+                           Sw_output(1)%ufsw_vis_sfc_dif(iloc,jloc), &
                            dfsw_nir, ufsw_nir,  &
                            dfsw_nir_dir,               &
                            dfsw_nir_dif, ufsw_nir_dif
@@ -1295,12 +1304,12 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !    (lw + sw, up-down).
 !----------------------------------------------------------------------
             do k=ks,ke+1
-              flwsw(k) = Lw_output%flxnet (iloc,jloc,k) +    &
-                         Sw_output%fsw    (iloc,jloc,k)
+              flwsw(k) = Lw_output(1)%flxnet (iloc,jloc,k) +    &
+                         Sw_output(1)%fsw    (iloc,jloc,k)
             end do
             do k=ks,ke
-              hlwsw(k) = Sw_output%hsw    (iloc,jloc,k) +    &
-                         Lw_output%heatra (iloc,jloc,k)
+              hlwsw(k) = Sw_output(1)%hsw    (iloc,jloc,k) +    &
+                         Lw_output(1)%heatra (iloc,jloc,k)
             end do
             write (radiag_unit,9160)
             write (radiag_unit,9170)
@@ -1328,12 +1337,12 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                                     Atmos_input%temp  (iloc,jloc,k), &
                                     Atmos_input%rh2o  (iloc,jloc,k), &
                                     Rad_gases%qo3     (iloc,jloc,k), &
-                                    Lw_output%heatracf(iloc,jloc,k), &
-                                    Lw_output%flxnetcf(iloc,jloc,k), &
+                                    Lw_output(1)%heatracf(iloc,jloc,k), &
+                                    Lw_output(1)%flxnetcf(iloc,jloc,k), &
                                     pflux (k), k=ks,ke)
               write (radiag_unit,9120)  press (ke+1),  &
                                     Atmos_input%temp  (iloc,jloc,ke+1),&
-                                    Lw_output%flxnetcf(iloc,jloc,ke+1),&
+                                    Lw_output(1)%flxnetcf(iloc,jloc,ke+1),&
                                     pflux(ke+1)
 
 !----------------------------------------------------------------------
@@ -1351,16 +1360,16 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
               write (radiag_unit,9410)
               write (radiag_unit,9140)
               write (radiag_unit,9150) (k, press(k),   &
-                                        Sw_output%hswcf (iloc,jloc,k), &
-                                        Sw_output%fswcf (iloc,jloc,k), &
-                                        Sw_output%dfswcf(iloc,jloc,k),&
-                                        Sw_output%ufswcf(iloc,jloc,k), &
+                                        Sw_output(1)%hswcf (iloc,jloc,k), &
+                                        Sw_output(1)%fswcf (iloc,jloc,k), &
+                                        Sw_output(1)%dfswcf(iloc,jloc,k),&
+                                        Sw_output(1)%ufswcf(iloc,jloc,k), &
                                         pflux(k), k=ks,ke)
               write (radiag_unit,6556)    &
                                     press(ke+1), &
-                                    Sw_output%fswcf(iloc,jloc,ke+1),&
-                                    Sw_output%dfswcf(iloc,jloc,ke+1),  &
-                                    Sw_output%ufswcf(iloc,jloc,ke+1), &
+                                    Sw_output(1)%fswcf(iloc,jloc,ke+1),&
+                                    Sw_output(1)%dfswcf(iloc,jloc,ke+1),  &
+                                    Sw_output(1)%ufswcf(iloc,jloc,ke+1), &
                                     pflux(ke+1)
 
 !----------------------------------------------------------------------
@@ -1368,15 +1377,174 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !    (lw + sw, up-down) for the cloud-free case
 !----------------------------------------------------------------------
               do k=ks,ke+1
-                flwswcf(k) = Lw_output%flxnetcf(iloc,jloc,k) +    &
-                             Sw_output%fswcf   (iloc,jloc,k)
+                flwswcf(k) = Lw_output(1)%flxnetcf(iloc,jloc,k) +    &
+                             Sw_output(1)%fswcf   (iloc,jloc,k)
               end do
               do k=ks,ke
-                hlwswcf(k) = Sw_output%hswcf   (iloc,jloc,k) +    &
-                             Lw_output%heatracf(iloc,jloc,k)
+                hlwswcf(k) = Sw_output(1)%hswcf   (iloc,jloc,k) +    &
+                             Lw_output(1)%heatracf(iloc,jloc,k)
               end do
 
               write (radiag_unit,9420)
+              write (radiag_unit,9170)
+              write (radiag_unit,9190) (k, press(k), hlwswcf(k),   &
+                                       flwswcf(k), pflux(k), k=ks,ke)
+              write (radiag_unit,9180) press(ke+1), flwswcf(ke+1),  &
+                                       pflux(ke+1)
+            endif
+
+            if (Rad_control%do_lwaerosol_forcing) then
+!----------------------------------------------------------------------
+!    write out atmospheric input data and longwave fluxes and heating
+!    rates for the aerosol forcing case. use the following data from 
+!    Lw_output_ad:
+!    %heatra   lw heating rate.
+!                [ degrees K / day ]
+!    %flxnet   net longwave flux at model flux levels (including the 
+!                ground and the top of the atmosphere.
+!                [ Watts / m**2 , or kg / sec**3 ]
+!    %heatracf   lw heating rate in the absence of clouds.
+!                [ degrees K / day ]
+!    %flxnetcf   net longwave flux at model flux levels (including the 
+!                ground and the top of the atmosphere) in the absence of
+!                cloud.
+!                [ Watts / m**2 , or kg / sec**3 ]
+!----------------------------------------------------------------------
+              if (Lw_control%do_lwaerosol) then
+! climate includes aerosol effects, lw aerosol forcing by exclusion
+                write (radiag_unit,9603)
+              else
+! climate includes no aerosol effects, lw aerosol forcing by inclusion
+                write (radiag_unit,9601)
+              endif
+              write (radiag_unit,9100)
+              write (radiag_unit,9110) (k, press (k),  &
+                                    Atmos_input%temp  (iloc,jloc,k), &
+                                    Atmos_input%rh2o  (iloc,jloc,k), &
+                                    Rad_gases%qo3     (iloc,jloc,k), &
+                                    Lw_output_ad%heatra(iloc,jloc,k), &
+                                    Lw_output_ad%flxnet(iloc,jloc,k), &
+                                    pflux (k), k=ks,ke)
+              write (radiag_unit,9120)  press (ke+1),  &
+                                    Atmos_input%temp  (iloc,jloc,ke+1),&
+                                    Lw_output_ad%flxnet(iloc,jloc,ke+1),&
+                                    pflux(ke+1)
+! clear-sky results
+              if (Lw_control%do_lwaerosol) then
+! climate includes aerosol effects, lw aerosol forcing by exclusion
+                write (radiag_unit,9604)
+              else
+! climate includes no aerosol effects, lw aerosol forcing by inclusion
+                write (radiag_unit,9602)
+              endif
+              write (radiag_unit,9100)
+              write (radiag_unit,9110) (k, press (k),  &
+                                    Atmos_input%temp  (iloc,jloc,k), &
+                                    Atmos_input%rh2o  (iloc,jloc,k), &
+                                    Rad_gases%qo3     (iloc,jloc,k), &
+                                    Lw_output_ad%heatracf(iloc,jloc,k), &
+                                    Lw_output_ad%flxnetcf(iloc,jloc,k), &
+                                    pflux (k), k=ks,ke)
+              write (radiag_unit,9120)  press (ke+1),  &
+                                    Atmos_input%temp  (iloc,jloc,ke+1),&
+                                    Lw_output_ad%flxnetcf(iloc,jloc,ke+1),&
+                                    pflux(ke+1)
+            endif
+
+            if (Rad_control%do_swaerosol_forcing) then
+!----------------------------------------------------------------------
+!    write out atmospheric input data and shortwave fluxes and heating
+!    rates for the aerosol forcing case. use the following data from 
+!    Sw_output_ad:
+!    %dfsw       downward short-wave radiation
+!                [ Watts / m**2 , or kg / sec**3 ]
+!    %fsw        net radiation (up-down)
+!                [ Watts / m**2 , or kg / sec**3 ]
+!    %ufsw       upward short-wave radiation
+!                [ Watts / m**2 , or kg / sec**3 ]
+!    %hsw        sw radiation heating rates
+!                [ degrees K / day ]
+!    %dfswcf     downward short-wave radiation in absence of clouds
+!                [ Watts / m**2 , or kg / sec**3 ]
+!    %fswcf      net radiation (up-down) in absence of clouds   
+!                [ Watts / m**2 , or kg / sec**3 ]
+!    %ufswcf     upward short-wave radiation in absence of clouds
+!                [ Watts / m**2 , or kg / sec**3 ]
+!    %hswcf      sw radiation heating rates in the absence of clouds.
+!                [ degrees K / day ]
+!----------------------------------------------------------------------
+              if (Sw_control%do_swaerosol) then
+! climate includes aerosol effects, sw aerosol forcing by exclusion
+                write (radiag_unit,9703)
+              else
+! climate includes no aerosol effects, sw aerosol forcing by inclusion
+                write (radiag_unit,9701)
+              endif
+              write (radiag_unit,9140)
+              write (radiag_unit,9150) (k, press(k),   &
+                                        Sw_output_ad%hsw (iloc,jloc,k), &
+                                        Sw_output_ad%fsw (iloc,jloc,k), &
+                                        Sw_output_ad%dfsw(iloc,jloc,k),&
+                                        Sw_output_ad%ufsw(iloc,jloc,k), &
+                                        pflux(k), k=ks,ke)
+              write (radiag_unit,6556)    &
+                                    press(ke+1), &
+                                    Sw_output_ad%fsw(iloc,jloc,ke+1),&
+                                    Sw_output_ad%dfsw(iloc,jloc,ke+1),  &
+                                    Sw_output_ad%ufsw(iloc,jloc,ke+1), &
+                                    pflux(ke+1)
+! clear-sky results
+              if (Sw_control%do_swaerosol) then
+! climate includes aerosol effects, sw aerosol forcing by exclusion
+                write (radiag_unit,9704)
+              else
+! climate includes no aerosol effects, sw aerosol forcing by inclusion
+                write (radiag_unit,9702)
+              endif
+              write (radiag_unit,9140)
+              write (radiag_unit,9150) (k, press(k),   &
+                                        Sw_output_ad%hswcf (iloc,jloc,k), &
+                                        Sw_output_ad%fswcf (iloc,jloc,k), &
+                                        Sw_output_ad%dfswcf(iloc,jloc,k),&
+                                        Sw_output_ad%ufswcf(iloc,jloc,k), &
+                                        pflux(k), k=ks,ke)
+              write (radiag_unit,6556)    &
+                                    press(ke+1), &
+                                    Sw_output_ad%fswcf(iloc,jloc,ke+1),&
+                                    Sw_output_ad%dfswcf(iloc,jloc,ke+1),  &
+                                    Sw_output_ad%ufswcf(iloc,jloc,ke+1), &
+                                    pflux(ke+1)
+            endif
+
+            if (Rad_control%do_lwaerosol_forcing .and.   &
+                Rad_control%do_swaerosol_forcing) then
+!----------------------------------------------------------------------
+!    compute and write out total radiative heating and total fluxes 
+!    (lw + sw, up-down) for the total-sky and cloud-free case
+!    with lw and sw aerosol forcing
+!----------------------------------------------------------------------
+              do k=ks,ke+1
+                flwsw(k) = Lw_output_ad%flxnet(iloc,jloc,k) +    &
+                             Sw_output_ad%fsw   (iloc,jloc,k)
+                flwswcf(k) = Lw_output_ad%flxnetcf(iloc,jloc,k) +    &
+                             Sw_output_ad%fswcf   (iloc,jloc,k)
+              end do
+              do k=ks,ke
+                hlwsw(k) = Sw_output_ad%hsw   (iloc,jloc,k) +    &
+                             Lw_output_ad%heatra(iloc,jloc,k)
+                hlwswcf(k) = Sw_output_ad%hswcf   (iloc,jloc,k) +    &
+                             Lw_output_ad%heatracf(iloc,jloc,k)
+              end do
+
+              write (radiag_unit,9801)
+              write (radiag_unit,9170)
+              write (radiag_unit,9190) (k, press(k),    &
+                                        hlwsw(k), flwsw(k), &
+                                        pflux(k), k=ks,ke)
+              write (radiag_unit,9180)  press(ke+1), flwsw(ke+1),   &
+                                        pflux(ke+1)
+
+              write (radiag_unit,9802)
               write (radiag_unit,9170)
               write (radiag_unit,9190) (k, press(k), hlwswcf(k),   &
                                        flwswcf(k), pflux(k), k=ks,ke)
@@ -1635,13 +1803,13 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !----------------------------------------------------------------------
             fdiff = Lw_diagnostics%gxcts(iloc,jloc) +   &
                     Lw_diagnostics%flx1e1(iloc,jloc) -    &
-                    Lw_output%flxnet(iloc,jloc,ke+1)
+                    Lw_output(1)%flxnet(iloc,jloc,ke+1)
             write (radiag_unit,9270)      &
                                 Lw_diagnostics%gxcts(iloc,jloc), &
                                 Lw_diagnostics%flx1e1(iloc,jloc), &
                                 (Lw_diagnostics%gxcts(iloc,jloc)+ &
                                     Lw_diagnostics%flx1e1(iloc,jloc)),&
-                                Lw_output%flxnet(iloc,jloc,ke+1), &
+                                Lw_output(1)%flxnet(iloc,jloc,ke+1), &
                                 fdiff
             if (nbtrge > 0) then
               do m=1,nbtrge
@@ -1907,6 +2075,16 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                /, 2x,'lyr',8x, 'liq water path', 3x,    &
                'ice water path',3x, 'eff diam water', ' eff diam ice')
 9520   format (I5,7X,F14.6,3x,F14.6,3x,F14.6,3x,F14.6)
+9601   format (/,'***** TOTAL-SKY LW HEATING RATES AND FLUXES (AEROSOLS INCLUDED) ******',/)
+9602   format (/,'***** CLEAR-SKY LW HEATING RATES AND FLUXES (AEROSOLS INCLUDED) ******',/)
+9603   format (/,'***** TOTAL-SKY LW HEATING RATES AND FLUXES (AEROSOLS EXCLUDED) ******',/)
+9604   format (/,'***** CLEAR-SKY LW HEATING RATES AND FLUXES (AEROSOLS EXCLUDED) ******',/)
+9701   format (/,'***** TOTAL-SKY SW HEATING RATES AND FLUXES (AEROSOLS INCLUDED) ******',/)
+9702   format (/,'***** CLEAR-SKY SW HEATING RATES AND FLUXES (AEROSOLS INCLUDED) ******',/)
+9703   format (/,'***** TOTAL-SKY SW HEATING RATES AND FLUXES (AEROSOLS EXCLUDED) ******',/)
+9704   format (/,'***** CLEAR-SKY SW HEATING RATES AND FLUXES (AEROSOLS EXCLUDED) ******',/)
+9801   format (/,'**** COMBINED HEATING RATES AND FLUXES -- AEROSOL FORCING ****',/)
+9802   format (/,'*** COMBINED CLEAR-SKY HEATING RATES AND FLUXES -- AEROSOL FORCING **',/)
 
 !--------------------------------------------------------------------
 

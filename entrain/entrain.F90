@@ -246,8 +246,8 @@ real, parameter :: d608 = (rvgas-rdgas)/rdgas
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: entrain.F90,v 11.0 2004/09/28 19:16:32 fms Exp $'
-character(len=128) :: Tagname = '$Name: lima $'
+character(len=128) :: Version = '$Id: entrain.F90,v 13.0 2006/03/28 21:09:17 fms Exp $'
+character(len=128) :: Tagname = '$Name: memphis $'
 logical            :: module_is_initialized = .false.      
 !-----------------------------------------------------------------------
 !
@@ -347,8 +347,8 @@ type(time_type),    intent(in) :: time
 real, dimension(:), intent(in) :: lonb, latb
 
 integer                        :: unit,io
-integer, dimension(3)          :: full = (/1,2,3/), half = (/1,2,4/)
-integer                        :: nn, i, j, iloc, jloc
+integer, dimension(3)          :: half = (/1,2,4/)
+integer                        :: nn, i, j
 real                           :: dellat, dellon
 
 !-----------------------------------------------------------------------
@@ -914,7 +914,7 @@ real,            intent(out),   dimension(:,:)   :: zsml,vspblcap
 integer,  intent(in),   dimension(:,:), optional :: kbot
 
 
-integer                                         :: i,j,k,ibot,itmp
+integer                                         :: i,j,k,ibot
 integer                                         :: nlev,nlat,nlon,ipbl
 integer                                         :: kmax,kcldtop
 logical                                         :: used
@@ -925,7 +925,7 @@ real                                            :: wentr_tmp
 real                                            :: k_entr_tmp,tmpjump
 real                                            :: tmp1, tmp2
 real                                            :: vsurf3, vshear3,vrad3
-real                                            :: dslvcptmp,ztmp
+real                                            :: ztmp
 real, dimension(size(t,1),size(t,2))            :: zsurf,parcelkick
 real, dimension(size(t,1),size(t,2))            :: zradbase,zradtop
 real, dimension(size(t,1),size(t,2))            :: vrad,radf,svpcp
@@ -941,6 +941,10 @@ real, dimension(size(t,1),size(t,2),size(t,3))  :: radfq,pblfq
 real, dimension(size(t,1),size(t,2),size(t,3)+1):: mask3,rtmp
 real, dimension(size(t,1),size(t,2),size(t,3))  :: k_m_troen,k_t_troen
 real, dimension(size(t,1),size(t,2),size(t,3))  :: k_rad
+
+! temp 1-d arrays
+real, dimension(size(t,3)+1)                    :: zhalf_ag_1
+real, dimension(size(t,3)+1)                    :: k_m_troen_1, k_t_troen_1
 
 integer                                         :: ipt,jpt
 integer, dimension(MAX_PTS) :: nsave
@@ -1256,11 +1260,20 @@ character(len=16) :: mon
  
          if (ipbl .lt. ibot) then
       
+              ! copy array slices into contigous arrays (pletzer)
+              zhalf_ag_1 ((ipbl+1):ibot) = zhalf_ag (i,j,(ipbl+1):ibot)
+              k_m_troen_1((ipbl+1):ibot) = k_m_troen(i,j,(ipbl+1):ibot)
+              k_t_troen_1((ipbl+1):ibot) = k_t_troen(i,j,(ipbl+1):ibot)
+
               call diffusivity_pbl(zsml(i,j),u_star(i,j),      &
                    b_star(i,j), slv(i,j,(ipbl+1):ibot)/cp_air, &
-                          zhalf_ag(i,j,(ipbl+1):ibot),         &
-                          k_m_troen(i,j,(ipbl+1):ibot),        &
-                          k_t_troen(i,j,(ipbl+1):ibot))
+                          zhalf_ag_1((ipbl+1):ibot),         &
+                          k_m_troen_1((ipbl+1):ibot),        &
+                          k_t_troen_1((ipbl+1):ibot))
+
+              ! copy back
+              k_m_troen(i,j,(ipbl+1):ibot) = k_m_troen_1((ipbl+1):ibot)
+              k_t_troen(i,j,(ipbl+1):ibot) = k_t_troen_1((ipbl+1):ibot)
                       
               k_t_entr(i,j,(ipbl+1):ibot) =                    & 
                    k_t_entr(i,j,(ipbl+1):ibot) +               &
@@ -1502,7 +1515,7 @@ character(len=16) :: mon
     ! in this case there should be no entrainment from the 
     ! surface.
     
-    if (zradbase(i,j) .lt. zsml(i,j) .and. convpbl(i,j) .eq. 1.&
+    if (zradbase(i,j) .lt. zsml(i,j) .and. convpbl(i,j) .eq. 1. &
         .and. ipbl .gt. kcldtop) then
          wentr_pbl(i,j)      = 0.
          pblfq(i,j,ipbl)     = 0.
@@ -1993,7 +2006,7 @@ real,   intent(out)                   :: zt, dt
 real, dimension(-2:1) :: pfp
 real, dimension( 0:1) :: php
 
-real                         :: svpar,slope,textrap
+real                         :: slope,textrap
 real                         :: a,b,c,det,pinv,ttop
 
 !-----------------------------------------

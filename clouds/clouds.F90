@@ -31,8 +31,8 @@ public   clouds, clouds_init, clouds_end
 
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: clouds.F90,v 11.0 2004/09/28 19:14:49 fms Exp $'
- character(len=128) :: tagname = '$Name: lima $'
+ character(len=128) :: version = '$Id: clouds.F90,v 13.0 2006/03/28 21:07:51 fms Exp $'
+ character(len=128) :: tagname = '$Name: memphis $'
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !   note:  the fels-schwarzkopf radiation code permits bi-spectral
@@ -607,7 +607,6 @@ end subroutine compute_isccp_clds
                                                       cirab,emcld
 !-----------------------------------------------------------------------
    integer  i,j,n,kp1
-integer,save :: jrow=0
 
    kp1=kmax+1
 
@@ -702,7 +701,7 @@ integer,save :: jrow=0
         integer, intent(in), dimension(4) :: axes
 type(time_type), intent(in)               :: Time
 !-----------------------------------------------------------------------
-      integer  unit,io,ierr,id,jd
+      integer  unit,io,ierr
 
 !-------------- read namelist --------------
 

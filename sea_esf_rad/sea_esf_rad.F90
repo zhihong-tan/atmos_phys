@@ -71,8 +71,8 @@ private
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 
-character(len=128) :: version = '$Id: sea_esf_rad.F90,v 12.0 2005/04/14 15:48:08 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: sea_esf_rad.F90,v 13.0 2006/03/28 21:13:30 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 
 
 !--------------------------------------------------------------------
@@ -325,7 +325,7 @@ end subroutine sea_esf_rad_init
 subroutine sea_esf_rad (is, ie, js, je, Rad_time, Atmos_input, Surface,&
                         Astro, Rad_gases, Aerosol, Aerosol_props,    &
                         Cldrad_props, Cld_spec, Lw_output, Sw_output, &
-                        Aerosol_diags)
+                        Aerosol_diags, r)
 
 !-----------------------------------------------------------------------
 !     sea_esf_rad calls the modules which calculate the long- and short-
@@ -343,10 +343,10 @@ type(aerosol_type),           intent(in)     :: Aerosol
 type(aerosol_properties_type),intent(inout)  :: Aerosol_props
 type(cldrad_properties_type), intent(in)     :: Cldrad_props
 type(cld_specification_type), intent(in)     :: Cld_spec       
-type(lw_output_type),         intent(inout)  :: Lw_output 
-type(sw_output_type),         intent(inout)  :: Sw_output 
+type(lw_output_type), dimension(:), intent(inout)  :: Lw_output
+type(sw_output_type), dimension(:), intent(inout)  :: Sw_output 
 type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
-
+real, dimension(:,:,:,:),     intent(inout)  :: r
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
@@ -429,7 +429,7 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
       call shortwave_driver (is, ie, js, je, Atmos_input, Surface,  &
                              Astro, Aerosol, Aerosol_props, Rad_gases, &
                              Cldrad_props, Cld_spec, Sw_output,   &
-                             Cldspace_rad, Aerosol_diags)
+                             Cldspace_rad, Aerosol_diags, r)
       call mpp_clock_end (shortwave_clock)
 
 !--------------------------------------------------------------------

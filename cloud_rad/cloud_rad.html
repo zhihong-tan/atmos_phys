@@ -329,7 +329,7 @@
 <a name="cloud_summary3"></a>
 <h4>cloud_summary3</h4>
 <pre>
-<b>call cloud_summary3 </b>(is, js, land, ql, qi, qa, pfull, phalf, &amp; tkel, nclds, cldamt, lwp, iwp, reff_liq, &amp; reff_ice, ktop, kbot, conc_drop, conc_ice, &amp; size_drop, size_ice)</pre>
+<b>call cloud_summary3 </b>(is, js, land, ql, qi, qa, qn, pfull, phalf, &amp; tkel, nclds, cldamt, lwp, iwp, reff_liq, &amp; reff_ice, ktop, kbot, conc_drop, conc_ice, &amp; size_drop, size_ice)</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
@@ -361,6 +361,9 @@
 </tr>
 <tr>
 <td valign="top" align="left"><tt>qa&nbsp;&nbsp;&nbsp;</tt></td><td>   Cloud volume fraction [ fraction ] <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>qn&nbsp;&nbsp;&nbsp;</tt></td><td>   Cloud droplet number [ #/kg air ] <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
 <td valign="top" align="left"><tt>pfull&nbsp;&nbsp;&nbsp;</tt></td><td>   Pressure at full levels [ Pascals ] <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
@@ -435,7 +438,7 @@
 <a name="max_rnd_overlap"></a>
 <h4>max_rnd_overlap</h4>
 <pre>
-<b>call max_rnd_overlap </b>(ql, qi, qa, pfull, phalf, tkel, N_drop, &amp; k_ratio, nclds, ktop, kbot, cldamt, lwp, &amp; iwp, reff_liq, reff_ice)</pre>
+<b>call max_rnd_overlap </b>(ql, qi, qa, pfull, phalf, tkel, N_drop3D, N_drop2D, &amp; k_ratio, nclds, ktop, kbot, cldamt, lwp, &amp; iwp, reff_liq, reff_ice)</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
@@ -472,7 +475,7 @@
 <td valign="top" align="left"><tt>tkel&nbsp;&nbsp;&nbsp;</tt></td><td>   Temperature [ deg Kelvin ] <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
-<td valign="top" align="left"><tt>N_drop&nbsp;&nbsp;&nbsp;</tt></td><td>   Number of cloud droplets per cubic meter <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+<td valign="top" align="left"><tt>N_drop[23]D&nbsp;&nbsp;&nbsp;</tt></td><td>   Number of cloud droplets per cubic meter (2 and 3 dimensional array) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
 <td valign="top" align="left"><tt>k_ratio&nbsp;&nbsp;&nbsp;</tt></td><td>   Ratio of effective radius to mean volume radius <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>

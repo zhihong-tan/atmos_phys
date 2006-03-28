@@ -29,6 +29,7 @@ use rad_utilities_mod,  only: rad_utilities_init, Rad_control, &
                               atmos_input_type, radiative_gases_type, &
                               aerosol_type, aerosol_properties_type,  &
                               aerosol_diagnostics_type, &
+                              Lw_control, assignment(=), &
                               lw_table_type, lw_diagnostics_type
 
 !   radiation package module:
@@ -49,8 +50,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: longwave_driver.F90,v 11.0 2004/09/28 19:22:03 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: longwave_driver.F90,v 13.1 2006/04/25 23:19:04 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -240,8 +241,8 @@ end  subroutine longwave_driver_init
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call longwave_driver (is, ie, js, je, Atmos_input, Rad_gases, &
-!                            Aerosol, Cldrad_props, Cld_spec, Lw_output,    &
-!                            Lw_diagnostics)
+!                         Aerosol, Cldrad_props, Cld_spec, Lw_output, &
+!                         Lw_diagnostics)
 !
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
@@ -312,7 +313,7 @@ type(aerosol_properties_type),intent(inout)  :: Aerosol_props
 type(aerosol_diagnostics_type),intent(inout)  :: Aerosol_diags
 type(cldrad_properties_type), intent(in)     :: Cldrad_props
 type(cld_specification_type), intent(in)     :: Cld_spec     
-type(lw_output_type),         intent(inout)  :: Lw_output   
+type(lw_output_type), dimension(:),  intent(inout)  :: Lw_output
 type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 
 !--------------------------------------------------------------------
@@ -356,6 +357,8 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 !--------------------------------------------------------------------
 !   local variables
 
+      type(lw_output_type)  :: Lw_output_std, Lw_output_ad
+      logical :: calc_includes_aerosols
       integer  :: ix, jx, kx  ! dimensions of current physics window
 
 !---------------------------------------------------------------------
@@ -373,21 +376,57 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
       ix = ie - is + 1
       jx = je - js + 1
       kx = size (Atmos_input%press,3) - 1
-      call longwave_driver_alloc (ix, jx, kx, Lw_output)
+!**************************************
+      ! This is a temporary fix! Lw_output needs to be allocated at a higher level!
+      ! Constructor and destructor for lw_output_type needs to be provided through
+      ! rad_utilities
+!**************************************
+      call longwave_driver_alloc (ix, jx, kx, Lw_output(1))
+      call longwave_driver_alloc (ix, jx, kx, Lw_output_std)
+      if (Rad_control%do_lwaerosol_forcing) then
+      ! This is a temporary fix! Lw_output needs to be allocated at a higher level!
+        call longwave_driver_alloc (ix, jx, kx, Lw_output(Rad_control%indx_lwaf))
+        call longwave_driver_alloc (ix, jx, kx, Lw_output_ad)
+      endif
 
 !--------------------------------------------------------------------
 !    calculate the longwave radiative heating rates and fluxes.
 !--------------------------------------------------------------------
       if (do_sealw99) then
 
+             
 !--------------------------------------------------------------------
 !    call sealw99 to use the simplified-exchange-approximation (sea)
 !    parameterization.
 !----------------------------------------------------------------------
+         if (Rad_control%do_lwaerosol_forcing) then
+           if (Lw_control%do_lwaerosol) then
+             calc_includes_aerosols = .false.
+           else
+             calc_includes_aerosols = .true.
+           endif
+
+!----------------------------------------------------------------------
+!    call sealw99 with aerosols (if model is being run without) and 
+!    without aerosols (if model is being run with). save the radiation
+!    fluxes to Lw_output_ad (which does not feed back into the model),
+!    but which may be used to define the aerosol forcing.
+!----------------------------------------------------------------------
+           call sealw99 (is, ie, js, je, Rad_time, Atmos_input,  &
+                     Rad_gases, Aerosol, Aerosol_props, Cldrad_props, &
+                     Cld_spec, Aerosol_diags, Lw_output_ad, &
+                     Lw_diagnostics, calc_includes_aerosols)
+           Lw_output(Rad_control%indx_lwaf) = Lw_output_ad
+         endif
+ 
+!----------------------------------------------------------------------
+!    standard call, where radiation output feeds back into the model.
+!----------------------------------------------------------------------
         call sealw99 (is, ie, js, je, Rad_time, Atmos_input,  &
                       Rad_gases, Aerosol, Aerosol_props, Cldrad_props, &
-                      Cld_spec, Aerosol_diags, Lw_output,  &
-                      Lw_diagnostics)
+                      Cld_spec, Aerosol_diags, Lw_output_std,  &
+                      Lw_diagnostics, Lw_control%do_lwaerosol)
+        Lw_output(1) = Lw_output_std
       else
 
 !--------------------------------------------------------------------
@@ -398,8 +437,12 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
          'invalid longwave radiation parameterization selected', FATAL)
       endif
 
-!---------------------------------------------------------------------
+      call longwave_driver_dealloc (Lw_output_std)
+      if (Rad_control%do_lwaerosol_forcing) then
+        call longwave_driver_dealloc (Lw_output_ad)
+      endif
 
+!---------------------------------------------------------------------
 
 end subroutine longwave_driver
 
@@ -543,6 +586,61 @@ type(lw_output_type),      intent(inout) :: Lw_output
 end subroutine longwave_driver_alloc
 
 
+!#####################################################################
+! <SUBROUTINE NAME="longwave_driver_dealloc">
+!  <OVERVIEW>
+!   Subroutine to deallocate output variables from longwave calculation
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   This subroutine allocates and initializes the components
+!    of the lw_output_type variable Lw_output which holds the longwave
+!    output needed by radiation_driver_mod.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call longwave_driver_alloc (Lw_output)
+!  </TEMPLATE>
+!  <OUT NAME="Lw_output" TYPE="lw_output_type">
+!   lw_output_type variable containing longwave 
+!                   radiation output data
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine longwave_driver_dealloc (Lw_output)
+
+!--------------------------------------------------------------------
+!    longwave_driver_alloc deallocates the components
+!    of the lw_output_type variable Lw_output.
+!--------------------------------------------------------------------
+
+type(lw_output_type),      intent(inout) :: Lw_output
+
+!--------------------------------------------------------------------
+!
+!   intent(inout) variables:
+!
+!      Lw_output    lw_output_type variable containing longwave 
+!                   radiation output data 
+!  
+!---------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+!    deallocate arrays to hold net longwave fluxes and 
+!    the longwave heating rate at each gridpoint
+!-------------------------------------------------------------------
+      deallocate (Lw_output%flxnet)
+      deallocate (Lw_output%heatra)
+      deallocate (Lw_output%netlw_special)
+      deallocate (Lw_output%bdy_flx)
+      if (Rad_control%do_totcld_forcing)  then
+        deallocate (Lw_output%flxnetcf)
+        deallocate (Lw_output%heatracf)
+        deallocate (Lw_output%netlw_special_clr)
+        deallocate (Lw_output%bdy_flx_clr)
+      endif
+    
+!--------------------------------------------------------------------
+
+end subroutine longwave_driver_dealloc
 
 !###################################################################
 

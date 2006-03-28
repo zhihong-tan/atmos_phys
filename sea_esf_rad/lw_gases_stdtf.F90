@@ -57,8 +57,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 12.0 2005/04/14 15:46:24 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 13.0 2006/03/28 21:12:20 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -214,7 +214,7 @@ real,  dimension (:,:,:), allocatable :: trns_interp_lyr_ps_nf, &
  
 real, dimension(:), allocatable  :: plm, plm8, pd, pd8
 
-integer             :: k, kp, nf, nt
+!!$integer             :: k, kp, nf, nt
 integer             :: ndimkp, ndimk, nlev
 real, parameter     :: dop_core0 = 25.0
 real                :: dop_core 
@@ -362,7 +362,7 @@ real,  dimension(:,:), intent(in) :: pref
 !  local variables:
 
       integer :: unit, ierr, io
-      integer :: kmin, kmax
+      integer :: kmin, kmax, k
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -618,7 +618,7 @@ real,              intent(in)  :: ch4_vmr
       logical                   ::  do_lyrcalc_ch4
       logical                   ::  do_lvlcalc_ch4
       logical                   ::  do_lvlctscalc_ch4
-      integer                   ::  n
+      integer                   ::  n, nf, nt
       real                      ::  ch4_std_lo, ch4_std_hi
       integer                   ::  nstd_ch4_lo, nstd_ch4_hi
       character(len=8)          ::  gas_type = 'ch4'
@@ -629,7 +629,6 @@ real,              intent(in)  :: ch4_vmr
 !     callrctrns_ch4
 !
 !---------------------------------------------------------------------
-
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
 !---------------------------------------------------------------------
@@ -862,7 +861,7 @@ real,             intent(in)     ::  co2_vmr
       logical              ::  do_lyrcalc_co2
       logical              ::  do_lvlcalc_co2
       logical              ::  do_lvlctscalc_co2
-      integer              ::  n
+      integer              ::  n, nf, nt
       real                 ::  co2_std_lo, co2_std_hi
       integer              ::  nstd_co2_lo, nstd_co2_hi
       character(len=8)     ::  gas_type = 'co2'
@@ -873,7 +872,6 @@ real,             intent(in)     ::  co2_vmr
 !     callrctrns_co2
 !
 !---------------------------------------------------------------------
-
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
 !---------------------------------------------------------------------
@@ -1146,7 +1144,7 @@ real,             intent(in)   :: n2o_vmr
       logical                   ::  do_lyrcalc_n2o
       logical                   ::  do_lvlcalc_n2o
       logical                   ::  do_lvlctscalc_n2o
-      integer                   ::  n
+      integer                   ::  n, nf, nt
       real                      ::  n2o_std_lo, n2o_std_hi
       integer                   ::  nstd_n2o_lo, nstd_n2o_hi
       character(len=8)          ::  gas_type = 'n2o'
@@ -1157,7 +1155,6 @@ real,             intent(in)   :: n2o_vmr
 !      callrctrns_n2o
 !
 !---------------------------------------------------------------------
-
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
 !---------------------------------------------------------------------
@@ -1965,7 +1962,7 @@ subroutine std_lblpressures
 !     fact15
 !
 !-------------------------------------------------------------------
-
+     integer :: k
 !---------------------------------------------------------------------
 !    calculation of pa -- the "table" of (NSTDCO2LVLS) grid pressures
 !    note-this code must not be changed by the user!!!!!!!!!
@@ -3592,7 +3589,7 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
                                             rexp, f, f1, f2, fprime, &
                                             ftest1, ftest2, xx, xxlog,&
                                             pa2
-      integer     :: k, ll, kpp
+      integer     :: k, ll
       real        :: check
 
 !-----------------------------------------------------------------
@@ -3867,7 +3864,7 @@ real, dimension (:), intent(out) :: cav, sexpv, xav, uexpv
                                             sexp_hi, uexp_hi, xa_hi
       integer, dimension(:), allocatable :: indx_press_hi, indx_press_lo
 
-      integer         :: k, kpp
+      integer         :: k, kp, kpp
 
 !-------------------------------------------------------------------
 !  local variables:
@@ -3875,7 +3872,6 @@ real, dimension (:), intent(out) :: cav, sexpv, xav, uexpv
 !      caxa
 !
 !--------------------------------------------------------------------
-
 !-------------------------------------------------------------------
 !    allocate local arrays.
 !-------------------------------------------------------------------
@@ -5190,7 +5186,7 @@ real,    dimension(:,:), intent(inout) :: trns_vmr
 !     approx_guess1
 !
 !---------------------------------------------------------------------
-
+     integer :: k, kp
 !----------------------------------------------------------------------
 !    the first part of the method is to obtain a first guess co2
 !    transmission function for the desired concentration using only the

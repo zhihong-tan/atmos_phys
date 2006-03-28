@@ -50,8 +50,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 12.0 2005/04/14 15:47:59 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: lima $'
+  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 13.0 2006/03/28 21:13:26 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 
@@ -1219,7 +1219,7 @@ logical, dimension(:,:,:),intent(in)    :: hi_cloud, mid_cloud,   &
 integer,                  intent(in)    :: i, j
 !---------------------------------------------------------------------
 
-       integer  ::  k, n, kk
+       integer  ::  k,  kk
 
       integer  :: israd, ierad, jsrad, jerad, ksrad, kerad
 

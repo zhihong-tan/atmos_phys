@@ -94,8 +94,8 @@ private
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: diffusivity.F90,v 10.0 2003/10/24 22:00:27 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: diffusivity.F90,v 13.0 2006/03/28 21:08:26 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 
 !=======================================================================
 
@@ -418,7 +418,7 @@ real, dimension(size(t,1),size(t,2))              :: h_inner, k_m_ref,&
                                                      k_t_ref, factor
 real, dimension(size(t,1),size(t,2),size(t,3)+1)  :: zm
 real                                              :: h_inner_max
-integer                                           :: i,j, k, kk, nlev
+integer                                           :: k, kk, nlev
 
 
 nlev = size(t,3)
@@ -473,7 +473,6 @@ real, intent(in)  , dimension(:,:)   :: h
 real, intent(inout) , dimension(:,:,:) :: k_m, k_t
 
 integer                                        :: k, nlev
-real, dimension(size(z_full,1),size(z_full,2)) :: elmix, htcrit
 real, dimension(size(z_full,1),size(z_full,2)) :: delta_u, delta_v, delta_z
 
 real :: htcrit_ss

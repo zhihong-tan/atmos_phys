@@ -39,7 +39,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128)  :: version =  '$Id: longwave_params.F90,v 10.0 2003/10/24 22:00:42 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !--------------------------------------------------------------------

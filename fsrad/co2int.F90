@@ -267,8 +267,8 @@ private
 
 !------------ VERSION NUMBER ----------------
 
- character(len=128) :: version = '$Id: co2int.F90,v 10.0 2003/10/24 22:00:30 fms Exp $'
- character(len=128) :: tagname = '$Name: lima $'
+ character(len=128) :: version = '$Id: co2int.F90,v 13.0 2006/03/28 21:09:25 fms Exp $'
+ character(len=128) :: tagname = '$Name: memphis $'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 
@@ -548,7 +548,7 @@ private
 
       Real(kind_type) :: padi,padim,padim2,PATHA,PATHB,P0,R,REXP,XX,  &
                       ftest1,ftest2,xxlog,F1,F2,F,FPRIME,CHECK,drat
-      Real(kind_type) :: PATH0(109),ETAP(109),XAP(109),CAP(109)
+      Real(kind_type) :: PATH0(109),ETAP(109)
       Real(kind_type) :: SINV(4)
       Real(kind_type) :: small
 

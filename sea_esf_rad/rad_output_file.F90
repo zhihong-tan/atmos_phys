@@ -59,8 +59,8 @@ private
 !----------- version number for this module ------------------------
 
 character(len=128)  :: version = &
-'$Id: rad_output_file.F90,v 12.0 2005/04/14 15:47:24 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+'$Id: rad_output_file.F90,v 13.0 2006/03/28 21:13:16 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -599,7 +599,6 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                                    N_DIAG_BANDS) )
             absopdep_col(:,:,:,:) =    &
                            SUM (Aerosol_diags%absopdep  (:,:,:,:,:), 3)
-          if (Sw_control%do_swaerosol) then
             if (Rad_control%volcanic_sw_aerosols) then
               allocate ( extopdep_vlcno_col(   &
                            size(Aerosol_diags%extopdep_vlcno  , 1), &
@@ -613,8 +612,6 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                         SUM (Aerosol_diags%absopdep_vlcno  (:,:,:,:), 3)
             endif
               
-          endif
-          if (Lw_control%do_lwaerosol) then
             if (Rad_control%volcanic_lw_aerosols) then
               allocate ( lw_extopdep_vlcno_col(   &
                          size(Aerosol_diags%lw_extopdep_vlcno  , 1), &
@@ -627,7 +624,6 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
               lw_absopdep_vlcno_col(:,:,:) =    &
                     SUM (Aerosol_diags%lw_absopdep_vlcno  (:,:,:,:), 3)
             endif
-          endif
         endif
         
 !---------------------------------------------------------------------
@@ -690,7 +686,6 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
               end do
 
               if (Aerosol%family_members(naerosol+1,n)) then
-           if (Sw_control%do_swaerosol) then
              if (Rad_control%volcanic_sw_aerosols) then
              extopdep_fam_col(:,:,n,1) = extopdep_fam_col(:,:,n,1) +  &
                                        extopdep_vlcno_col(:,:,1)
@@ -701,8 +696,6 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
              absopdep_fam_col(:,:,n,2) = absopdep_fam_col(:,:,n,2) +  &
                                        absopdep_vlcno_col(:,:,2)
            endif
-          endif
-          if (Lw_control%do_lwaerosol) then
             if (Rad_control%volcanic_lw_aerosols) then
              extopdep_fam_col(:,:,n,4) = extopdep_fam_col(:,:,n,4) +  &
                                     lw_extopdep_vlcno_col(:,:,1)
@@ -714,7 +707,6 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                                     lw_absopdep_vlcno_col(:,:,2)
             endif
            endif
-          endif
            end do
 
           do n = 1,nfamilies
@@ -727,7 +719,6 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
               used = send_data (id_aerosol_fam_column(n),     &
                                 aerosol_fam_col(:,:,n), Time_diag, is, js)
             endif
-!           if (Sw_control%do_swaerosol) then
             do nl=1,N_DIAG_BANDS
               if (id_extopdep_fam(n,nl)  > 0 ) then
                 used = send_data (id_extopdep_fam(n,nl),    &
@@ -748,16 +739,13 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                                  absopdep_fam_col(:,:,n,nl), Time_diag, is, js)
               endif
             end do  
-!           endif
         end do
           deallocate (aerosol_fam)
           deallocate (aerosol_fam_col)
-!         if (Sw_control%do_swaerosol) then
             deallocate (extopdep_fam)
             deallocate (absopdep_fam)
             deallocate (extopdep_fam_col)
             deallocate (absopdep_fam_col)
-!         endif
       endif
     endif
         

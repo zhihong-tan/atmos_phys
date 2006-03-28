@@ -93,8 +93,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-    character(len=128)  :: version =  '$Id: sealw99.F90,v 12.0 2005/04/14 15:48:16 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: lima $'
+    character(len=128)  :: version =  '$Id: sealw99.F90,v 13.0 2006/03/28 21:13:36 fms Exp $'
+    character(len=128)  :: tagname =  '$Name: memphis $'
     logical             ::  module_is_initialized = .false.
 
 !---------------------------------------------------------------------
@@ -414,7 +414,7 @@ type(lw_table_type), intent(inout) :: Lw_tables
        real, dimension(size(pref,1) ) :: plm
        real, dimension (NBCO215) :: cent, del
 
-       integer         :: unit, ierr, io, k, n, m, nn
+       integer         :: unit, ierr, io, k, n,  nn
        integer         :: ioffset
        real            :: prnlte
        integer         ::     kmax, kmin
@@ -1010,7 +1010,8 @@ end subroutine sealw99_init
 !
 subroutine sealw99 (is, ie, js, je, Rad_time, Atmos_input, Rad_gases, &
                     Aerosol, Aerosol_props, Cldrad_props, Cld_spec, &
-                    Aerosol_diags, Lw_output, Lw_diagnostics)
+                    Aerosol_diags, Lw_output, Lw_diagnostics, &
+                    including_aerosols)
 
 !---------------------------------------------------------------------
 !    sealw99 is the longwave driver subroutine.
@@ -1053,6 +1054,7 @@ type(cldrad_properties_type),  intent(in)    ::  Cldrad_props
 type(cld_specification_type),  intent(in)    ::  Cld_spec
 type(lw_output_type),          intent(inout) ::  Lw_output   
 type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
+logical,                   intent(in)            :: including_aerosols  
 
 !-----------------------------------------------------------------------
 !  intent(in) variables:
@@ -1172,12 +1174,14 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
       type(optical_path_type)    :: Optical
       type(gas_tf_type)          :: Gas_tf   
       logical                    :: calc_co2, calc_n2o, calc_ch4
-      real                       :: ch4_vmr, n2o_vmr, co2_vmr
+
       integer                    :: ix, jx, kx
-      integer                    :: n, k, kp, m, j
+      integer                    ::  k, kp, m, j
       integer                    :: kk, i, l
       integer                    :: nprofiles, nnn
       character(len=4)           :: gas_name
+      integer                    :: year, month, day, hour, minute, &
+                                    second
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -1485,14 +1489,32 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !    the calculation has been done.
 !---------------------------------------------------------------------
       else
-        if (Lw_control%do_co2 .and. do_co2_tf_calc) then
-          call co2_time_vary (Rad_gases%rrvco2)
-          do_co2_tf_calc = .false.
-          do_co2_tf_calc_init = .false.
-        else if (.not. Lw_control%do_co2) then
-          do_co2_tf_calc = .false.
-          do_co2_tf_calc_init = .false.
-        endif
+! interactive co2 mod for radiation calculation
+! here it's hardcoded to recompute co2 TF on the 1st of each month
+         if (Rad_gases%use_model_supplied_co2) then
+            call get_date (Rad_time, year, month, day, hour, minute,&
+                 second)
+            if (day == 1 .and. hour == 0 .and. minute == 0 .and. &
+                 second == 0) then
+               call co2_time_vary (Rad_gases%rrvco2)
+               Rad_gases%co2_for_last_tf_calc = Rad_gases%rrvco2
+               do_co2_tf_calc_init = .false.
+            else
+               if (do_co2_tf_calc_init) then
+                  call co2_time_vary (Rad_gases%co2_for_last_tf_calc)
+                  do_co2_tf_calc_init = .false.
+               endif
+            endif
+         else  !(Rad_gases%use_model_supplied_co2)
+            if (Lw_control%do_co2 .and. do_co2_tf_calc) then
+               call co2_time_vary (Rad_gases%rrvco2)
+               do_co2_tf_calc = .false.
+               do_co2_tf_calc_init = .false.
+            else if (.not. Lw_control%do_co2) then
+               do_co2_tf_calc = .false.
+               do_co2_tf_calc_init = .false.
+            endif
+         endif  !(Rad_gases%use_model_supplied_co2)
       endif  ! (time_varying_co2)
 
 !----------------------------------------------------------------------
@@ -1520,9 +1542,9 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !----------------------------------------------------------------------
 !
 !--------------------------------------------------------------------
-      call optical_path_setup (is, ie, js, je, Atmos_input, Rad_gases, &
+       call optical_path_setup (is, ie, js, je, Atmos_input, Rad_gases, &
                                Aerosol, Aerosol_props, Aerosol_diags, &
-                               Optical)
+                               Optical, including_aerosols)   
     
 !--------------------------------------------------------------------
 !    call co2coef to compute some co2 temperature and pressure   
@@ -1601,9 +1623,9 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !    as long as calculations are made for pressure levels increasing
 !    from KS.
 !---------------------------------------------------------------------
-      call optical_trans_funct_from_KS (Gas_tf, to3cnt, overod,  &
+       call optical_trans_funct_from_KS (Gas_tf, to3cnt, overod,  &
                                         Optical, cnttaub1, cnttaub2, &
-                                        cnttaub3)
+                                        cnttaub3, including_aerosols)   
 
 !-----------------------------------------------------------------------
 !    compute cloud transmission functions between level KS and all
@@ -1615,9 +1637,9 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !    obtain exact cool-to-space for water and co2, and approximate 
 !    cool-to-space for co2 and o3.
 !----------------------------------------------------------------------
-      call cool_to_space_exact (cldtf, Atmos_input, Optical, Gas_tf, &
-                                sorc, to3cnt, Lw_diagnostics, cts_sum, &
-                                cts_sumcf, gxctscf)
+        call cool_to_space_exact (cldtf, Atmos_input, Optical, Gas_tf, &
+                                 sorc, to3cnt, Lw_diagnostics, cts_sum, &
+                                 cts_sumcf, gxctscf, including_aerosols)
 
 !----------------------------------------------------------------------
 !    compute the emissivity fluxes for k=KS.
@@ -1638,10 +1660,10 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !    index 6 = cnttaub3
 !    index 7 = emissf
 !----------------------------------------------------------------------
-      call e1e290 (Atmos_input,  e1ctw1, e1ctw2, trans_band1,   &
-                   trans_band2,  Optical, tch4n2oe, &
-                   source_band(:,:,:,1), Lw_diagnostics, cldtf, &
-                   cld_indx, flx1e1cf,  tcfc8)
+       call e1e290 (Atmos_input,  e1ctw1, e1ctw2, trans_band1,   &
+                    trans_band2,  Optical, tch4n2oe, &
+                    source_band(:,:,:,1), Lw_diagnostics, cldtf, &
+                    cld_indx, flx1e1cf,  tcfc8, including_aerosols)  
 
      do kk = KS,KE+1
         do j = 1,size(trans_band1(:,:,:,:),2)
@@ -1786,8 +1808,8 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !     as long as calculations are made for pressure levels increasing
 !     from k.
 !---------------------------------------------------------------------
-      call optical_trans_funct_k_down (Gas_tf, k, to3cnt, overod, &
-                                       Optical)
+       call optical_trans_funct_k_down (Gas_tf, k, to3cnt, overod,  &
+                                         Optical, including_aerosols)  
 
 !-----------------------------------------------------------------------
 !     compute cloud transmission functions between level k and all
@@ -1815,8 +1837,8 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !   index 6 = contodb3
 !   index 7 = emissf
 !---------------------------------------------------------------------
-        call e290 (Atmos_input, k, trans_band2, trans_band1,   &
-                   Optical,  tch4n2oe,  tcfc8)
+       call e290 (Atmos_input, k, trans_band2, trans_band1,   &
+                  Optical,  tch4n2oe,  tcfc8, including_aerosols)     
        do kp=k,KE
       do j = 1,size(trans_band1(:,:,:,:),2)
          do i = 1,size(trans_band1(:,:,:,:),1)
@@ -1937,7 +1959,8 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !----------------------------------------------------------------------
 !     get optical path terms for KE
 !----------------------------------------------------------------------
-    call optical_trans_funct_KE (Gas_tf, to3cnt, Optical, overod)
+      call optical_trans_funct_KE (Gas_tf, to3cnt, Optical, overod, &
+                                   including_aerosols)        
 
    do j = 1,size(trans_b2d1(:,:,:),2)
       do i = 1,size(trans_b2d1(:,:,:),1)
@@ -2425,7 +2448,7 @@ type(lw_diagnostics_type),     intent(inout) ::  Lw_diagnostics
 !--------------------------------------------------------------------
 !    call optical_dealloc to deallocate component arrays of Optical.
 !--------------------------------------------------------------------
-      call optical_dealloc (Optical)
+      call optical_dealloc (Optical, including_aerosols)      
       
 !--------------------------------------------------------------------
 
@@ -3220,7 +3243,7 @@ real, dimension (:,:,:),   intent(in), optional :: trans2
 
     real, dimension(size(pflux_in,1), size(pflux_in,2), &
                     size(pflux_in,3)-1) :: pdfinv
-    integer  ::  i,j,kk,l,m,n
+    integer  ::  i,j,kk
     integer  :: index, nbands
 
 !---------------------------------------------------------------------
@@ -3358,7 +3381,8 @@ end subroutine cool_to_space_approx
 ! </SUBROUTINE>
 subroutine cool_to_space_exact (cldtf, Atmos_input, Optical, Gas_tf,  &
                                 sorc, to3cnt, Lw_diagnostics, &
-                                cts_sum, cts_sumcf, gxctscf) 
+                                cts_sum, cts_sumcf, gxctscf,  &
+                                including_aerosols)     
 
 !-----------------------------------------------------------------------
 !    cool_to_space calculates the cool-to-space cooling rate for 
@@ -3374,6 +3398,7 @@ real, dimension (:,:,:),   intent(in)     :: to3cnt
 type(lw_diagnostics_type), intent(inout)  :: Lw_diagnostics
 real, dimension(:,:,:),    intent(inout)  :: cts_sum, cts_sumcf
 real, dimension(:,:),      intent(inout)  :: gxctscf
+logical,                   intent(in)  :: including_aerosols   
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
@@ -3400,7 +3425,7 @@ real, dimension(:,:),      intent(inout)  :: gxctscf
 !-----------------------------------------------------------------------
 !  local variables
 !-----------------------------------------------------------------------
-      integer        :: i,kk,l,m
+      integer        :: i,kk
     real, dimension(size(Atmos_input%pflux,1), &
                     size(Atmos_input%pflux,2), &
                     size(Atmos_input%pflux,3)-1) :: pdfinv, pdfinv2
@@ -3812,7 +3837,7 @@ else if (n >= band_no_start(3) .and. n <= band_no_end(3)) then
                end do
             end do
           endif
-          if (Lw_control%do_lwaerosol) then
+          if (including_aerosols) then                    
             do kk = 1,size(totaer_tmp(:,:,:),3)
                do j = 1,size(totaer_tmp(:,:,:),2)
                   do i = 1,size(totaer_tmp(:,:,:),1)
@@ -3868,7 +3893,7 @@ else if (n >= band_no_start(4) .and. n <= band_no_end(4)) then
                end do
             end do
           endif
-          if (Lw_control%do_lwaerosol) then
+          if (including_aerosols) then      
             do kk = 1,size(totaer_tmp(:,:,:),3)
                do j = 1,size(totaer_tmp(:,:,:),2)
                   do i = 1,size(totaer_tmp(:,:,:),1)
@@ -3923,7 +3948,7 @@ else if (n >= band_no_start(5) .and. n <= band_no_end(5)) then
                end do
             end do
           endif
-          if (Lw_control%do_lwaerosol) then
+          if (including_aerosols) then           
             do kk = 1,size(totaer_tmp(:,:,:),3)
                do j = 1,size(totaer_tmp(:,:,:),2)
                   do i = 1,size(totaer_tmp(:,:,:),1)
@@ -3978,7 +4003,7 @@ else if (n >= band_no_start(6) .and. n <= band_no_end(6)) then
                end do
             end do
           endif
-          if (Lw_control%do_lwaerosol) then
+          if (including_aerosols) then    
             do kk = 1,size(totaer_tmp(:,:,:),3)
                do j = 1,size(totaer_tmp(:,:,:),2)
                   do i = 1,size(totaer_tmp(:,:,:),1)
@@ -4048,7 +4073,7 @@ else if (n >= band_no_start(8) .and. n <= band_no_end(8)) then
                end do
             end do
           endif
-          if (Lw_control%do_lwaerosol) then
+          if (including_aerosols) then      
             do kk = 1,size(totaer_tmp(:,:,:),3)
                do j = 1,size(totaer_tmp(:,:,:),2)
                   do i = 1,size(totaer_tmp(:,:,:),1)
@@ -4445,7 +4470,7 @@ end  subroutine cool_to_space_exact
 !
 subroutine e1e290 (Atmos_input, e1ctw1, e1ctw2, trans_band1, &
                    trans_band2, Optical, tch4n2oe, t4, Lw_diagnostics, &
-                   cldtf, cld_indx, flx1e1cf, tcfc8)
+                   cldtf, cld_indx, flx1e1cf, tcfc8, including_aerosols) 
 
 !-----------------------------------------------------------------------
 !
@@ -4505,6 +4530,7 @@ real, dimension(:,:,:,:),  intent(in)    :: cldtf
 integer, dimension(:),     intent(in)    :: cld_indx
 real, dimension(:,:),      intent(out)   :: flx1e1cf
 real, dimension (:,:,:),   intent(inout) ::  tcfc8           
+logical,                   intent(in)            :: including_aerosols  
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -4567,7 +4593,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
                        size(Atmos_input%temp,3), NBTRGE) ::   &
                          e1cts1f, e1cts2f
 
-      integer  :: i,j,k,kk,l,m,n
+      integer  :: i,j,k,kk,m
 !---------------------------------------------------------------------
 !  local variables
 !
@@ -4928,7 +4954,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
 !----------------------------------------------------------------------
 !    compute aerosol transmission function for 1200-1400 cm-1 region
 !----------------------------------------------------------------------
-     if (Lw_control%do_lwaerosol) then
+      if (including_aerosols) then
         do kk = 1,size(totaer_tmp(:,:,:),3)
            do j = 1,size(totaer_tmp(:,:,:),2)
               do i = 1,size(totaer_tmp(:,:,:),1)
@@ -5190,7 +5216,7 @@ end  subroutine e1e290
 ! </SUBROUTINE>
 !
 subroutine e290 (Atmos_input, k, trans_band2, trans_band1, Optical,  &
-                 tch4n2oe, tcfc8)
+                 tch4n2oe, tcfc8, including_aerosols)   
 
 !-----------------------------------------------------------------------
 !
@@ -5227,6 +5253,7 @@ real, dimension(:,:,:,:), intent(inout) :: trans_band1, trans_band2
 type(optical_path_type),  intent(inout) ::  Optical
 real, dimension(:,:,:,:), intent(in)    :: tch4n2oe       
 real, dimension(:,:,:),   intent(inout) :: tcfc8          
+logical,                   intent(in)            :: including_aerosols  
 !----------------------------------------------------------------------
 
 !-------------------------------------------------------------------
@@ -5248,7 +5275,7 @@ real, dimension(:,:,:),   intent(inout) :: tcfc8
 !-------------------------------------------------------------------
 !  local variables
 !-------------------------------------------------------------------
-      integer      :: i,j,kk,l,kp, m,n
+      integer      :: i,j,kk,kp, m
 
       real,    dimension (size(Atmos_input%temp,1),    &
                           size(Atmos_input%temp,2), &
@@ -5529,7 +5556,7 @@ real, dimension(:,:,:),   intent(inout) :: tcfc8
 !     taero8kp(k) contains the (k+1,k) transmissivities for all k
 !     in the 1200-1400 cm-1 frequency range.
 !---------------------------------------------------------------------
-        if (Lw_control%do_lwaerosol) then
+      if (including_aerosols) then
         do kk = 1,size(totaer_tmp(:,:,:),3)
            do j = 1,size(totaer_tmp(:,:,:),2)
               do i = 1,size(totaer_tmp(:,:,:),1)
@@ -5641,7 +5668,7 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
 !--------------------------------------------------------------------
 !   local variables
 
-      integer :: i,j,k,kk,l,m,n
+      integer :: i,j,k,kk,m
 
 
 
@@ -6145,8 +6172,8 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
 !--------------------------------------------------------------------
 !   local variables:
 
-      integer   :: i,j,kk,l,m,n
-      integer   :: k
+      integer   :: i,j,kk,m
+
       real, dimension (size(emisdg,1), &
                        size(emisdg,2), &
                        size(emisdg,3)) :: dte1, dte2
@@ -6564,7 +6591,7 @@ real, dimension(:,:,:,:),   intent(out)  ::  source_band, dsrcdp_band
                           size(Atmos_input%temp,2), &
                           size(Atmos_input%temp,3)) ::          ixoe1
 
-      integer            ::   i,j,kk,l
+      integer            ::   i,j,kk
       integer            ::   n, ioffset, m
       integer            :: nbly                    
       real               :: rrvco2
@@ -6828,7 +6855,7 @@ type(gas_tf_type),         intent(in)    :: Gas_tf
                                      cmtrx
 
       real                                   :: degen = 0.5
-      integer                                :: i,j,kk,l,m
+      integer                                :: i,j,kk
       integer                                :: n, k, inb, kp, ioffset
 
 !---------------------------------------------------------------------

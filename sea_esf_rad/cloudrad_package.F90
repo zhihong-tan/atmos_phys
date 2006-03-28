@@ -62,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 12.0 2005/04/14 15:44:44 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 13.0 2006/03/28 21:11:24 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -395,7 +395,7 @@ type(time_type),         intent(in)    ::   Time
 !---------------------------------------------------------------------
       if (Cldrad_control%do_presc_cld_microphys  .or.  &
           Cldrad_control%do_pred_cld_microphys) then
-        call microphys_rad_init
+        call microphys_rad_init (axes, Time, lonb, latb)
       endif
 
 !---------------------------------------------------------------------
@@ -438,7 +438,7 @@ end subroutine cloudrad_package_init
 !    appropriate for the radiation options that are active.
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call cloud_radiative_properties (is, ie, js, je, Time_next,  &
+!   call cloud_radiative_properties (is, ie, js, je, Rad_time, Time_next,  &
 !                                       Astro, Atmos_input, Cld_spec,  &
 !                                       Lsc_microphys, Meso_microphys, &
 !                                       Cell_microphys,  Cldrad_props, &
@@ -487,7 +487,8 @@ end subroutine cloudrad_package_init
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine cloud_radiative_properties (is, ie, js, je, Time_next,  &
+subroutine cloud_radiative_properties (is, ie, js, je, Rad_time,   &
+                                       Time_next,  &
                                        Astro, Atmos_input, Cld_spec,  &
                                        Lsc_microphys, Meso_microphys, &
                                        Cell_microphys,  Cldrad_props, &
@@ -500,7 +501,8 @@ subroutine cloud_radiative_properties (is, ie, js, je, Time_next,  &
 
 !----------------------------------------------------------------------
 integer,                      intent(in)             :: is, ie, js, je
-type(time_type),              intent(in)             :: Time_next
+type(time_type),              intent(in)             :: Rad_time, &
+                                                        Time_next
 type(astronomy_type),         intent(in)             :: Astro
 type(atmos_input_type),       intent(in)             :: Atmos_input
 type(cld_specification_type), intent(in)             :: Cld_spec    
@@ -668,7 +670,8 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
       if (.not. Cldrad_control%do_ica_calcs) then
         if (Cldrad_control%do_sw_micro  .or. &
             Cldrad_control%do_lw_micro) then  
-          call combine_cloud_properties (Atmos_input%deltaz, &
+          call combine_cloud_properties (is, js, Rad_time, Time_next, &
+                                         Atmos_input%deltaz, &
                                          Lsc_microphys, Meso_microphys,&
                                          Cell_microphys, Lscrad_props, &
                                          Mesorad_props, Cellrad_props, &
@@ -1077,7 +1080,7 @@ end subroutine initialize_cldrad_props
 !    be present (large-scale, mesoscale and cell-scale).
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call combine_cloud_properties (deltaz,    &
+!   call combine_cloud_properties (is, js, Rad_time, deltaz,    &
 !                                     Lsc_microphys, Meso_microphys,  &
 !                                     Cell_microphys, Lscrad_props,   &
 !                                     Mesorad_props,  Cellrad_props,  &
@@ -1117,7 +1120,8 @@ end subroutine initialize_cldrad_props
 !  </INOUT>
 ! </SUBROUTINE>
 !
-subroutine combine_cloud_properties (deltaz,    &
+subroutine combine_cloud_properties (is, js, Rad_time, Time_next,  &
+                                     deltaz,    &
                                      Lsc_microphys, Meso_microphys,  &
                                      Cell_microphys, Lscrad_props,   &
                                      Mesorad_props,  Cellrad_props,  &
@@ -1130,6 +1134,8 @@ subroutine combine_cloud_properties (deltaz,    &
 !    be present (large-scale, mesoscale and cell-scale).
 !----------------------------------------------------------------------
 
+integer,                        intent(in)    :: is, js
+type(time_type),                intent(in)    :: Rad_time, Time_next
 real, dimension(:,:,:),         intent(in)    :: deltaz
 type(microphysics_type),        intent(in)    :: Lsc_microphys, &
                                                  Meso_microphys, &
@@ -1182,7 +1188,8 @@ type(cldrad_properties_type), intent(inout)   :: Cldrad_props
 !    comb_cldprops_calc to combine these into a single set of cloud
 !    radiative properties to be used by the radiation package. 
 !---------------------------------------------------------------------
-        call comb_cldprops_calc (deltaz, Cldrad_props%cldext,   &
+        call comb_cldprops_calc (is, js, Rad_time, Time_next, deltaz,   &
+                                 Cldrad_props%cldext,   &
                                  Cldrad_props%cldsct,   &
                                  Cldrad_props%cldasymm,  &
                                  Cldrad_props%abscoeff,   &
@@ -1198,7 +1205,8 @@ type(cldrad_properties_type), intent(inout)   :: Cldrad_props
 !    and cell-scale properties must be combined. 
 !----------------------------------------------------------------------
       else if (Cldrad_control%do_donner_deep_clouds) then
-        call comb_cldprops_calc (deltaz, Cldrad_props%cldext,   &
+        call comb_cldprops_calc (is, js, Rad_time, Time_next, deltaz,  &
+                                 Cldrad_props%cldext,   &
                                  Cldrad_props%cldsct,   &
                                  Cldrad_props%cldasymm, &
                                  Cldrad_props%abscoeff,   &

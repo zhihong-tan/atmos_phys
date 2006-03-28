@@ -260,8 +260,8 @@ real, parameter :: tkemin  =   1.e-6  ! tke minimum (m2/s2)
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: edt.F90,v 11.0 2004/09/28 19:16:23 fms Exp $'
-character(len=128) :: Tagname = '$Name: lima $'
+character(len=128) :: Version = '$Id: edt.F90,v 13.0 2006/03/28 21:09:12 fms Exp $'
+character(len=128) :: Tagname = '$Name: memphis $'
 logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !
@@ -332,7 +332,7 @@ integer                     :: unit,io
 integer :: vers, vers2
 character(len=4) :: chvers
 integer, dimension(3)       :: full = (/1,2,3/), half = (/1,2,4/)
-integer     :: nn, i, j, iloc, jloc
+integer     :: nn, i, j
 real         :: dellat, dellon
 
 !-----------------------------------------------------------------------
@@ -852,17 +852,17 @@ integer, dimension(4,size(t,3)+1) :: gb_turbtype
 
 real                        :: gb_pblh,     gb_u_star
 real, dimension(size(t,3))  :: gb_t,        gb_u,        gb_v
-real, dimension(size(t,3))  :: gb_qa,       gb_qv
+real, dimension(size(t,3))  :: gb_qv
 real, dimension(size(t,3))  :: gb_dqsldtl,  gb_qa_new,   gb_qc_new
-real, dimension(size(t,3))  :: gb_pm,       gb_sli,      gb_qt
+real, dimension(size(t,3))  :: gb_sli,      gb_qt
 real, dimension(size(t,3))  :: gb_qc,       gb_sliv,     gb_sflh
 real, dimension(size(t,3))  :: gb_slisl,    gb_qtsl,     gb_sfuh
-real, dimension(size(t,3))  :: gb_zm,       gb_tdtlw,    gb_hleff
+real, dimension(size(t,3))  :: gb_tdtlw,    gb_hleff
 real, dimension(size(t,3))  :: gb_qsl,      gb_esl,      gb_qxtop
 real, dimension(size(t,3))  :: gb_qxbot,    gb_density,  gb_z_full
 real, dimension(size(t,3))  :: gb_p_full,   gb_isturb,   gb_qltop
-real, dimension(size(t,3)+1):: gb_cmu,      gb_zi,       gb_chu
-real, dimension(size(t,3)+1):: gb_chs,      gb_pi,       gb_cms
+real, dimension(size(t,3)+1):: gb_cmu,      gb_chu
+real, dimension(size(t,3)+1):: gb_chs,      gb_cms
 real, dimension(size(t,3)+1):: gb_k_m,      gb_k_t,      gb_tke
 real, dimension(size(t,3)+1):: gb_n2,       gb_s2,       gb_ri
 real, dimension(size(t,3)+1):: gb_leng,     gb_bprod,    gb_sprod
@@ -3318,7 +3318,6 @@ real    :: jbqt     ! Jump in qt                at base    "
 real    :: jbbu     ! Jump in buoyancy          at base    "
 real    :: jbu      ! Jump in zonal wind        at base    "
 real    :: jbv      ! Jump in merid. wind       at base    "
-real    :: sfb      ! sat frac in lower half of inv interfacial layer
 real    :: ch       ! buoy flux coefs for sl, qt in a half-layer 
 real    :: cm       ! 
 real    :: n2h      ! Moist squared buoy freq for a half-layer (s-2)
@@ -3327,15 +3326,12 @@ real    :: ckm      ! Galperin stability function for momentum
 real    :: gh       ! Normalised buoyancy production (m*m*m)/(s*s)
 real    :: lbulk    ! Depth of turbulent layer (m)
 real    :: trma     ! intermediate variables
-real    :: trmb
-real    :: trmc
 real    :: vus
 real    :: vub
 real    :: trmp
 real    :: trmq
 real    :: angle
 real    :: qq
-real    :: det
 real    :: rootp             
 real    :: evhc          ! (1+E) with E = evap. cool. efficiency [nd]
 real    :: vys           ! n2h/n2 at upper inversion [nd]

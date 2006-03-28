@@ -158,8 +158,8 @@ use       fms_mod, only:  error_mesg, FATAL, file_exist,    &
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 10.0 2003/10/24 22:00:26 fms Exp $'
- character(len=128) :: tagname = '$Name: lima $'
+ character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 13.0 2006/03/28 21:08:18 fms Exp $'
+ character(len=128) :: tagname = '$Name: memphis $'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 
@@ -2490,8 +2490,6 @@ real,     intent ( in)   ,dimension(:,:,:,:)  :: tau
 !  ------------------
 
 real, dimension(size(tau   ,1),size(tau   ,2),size(tau   ,3))   :: cwp, lwp, iwp
-integer                                                :: k, kmax
-integer                                                :: n, max_band
 
 !  Declare tau_chk to compare with tau, if code needs to be debugged.
 
@@ -2791,7 +2789,6 @@ real, dimension(size(tau,1),size(tau,2),size(tau,3))   :: qmix_kx_work
 real, dimension(size(tau,1),size(tau,2),size(tau,3))   :: lwp_new, iwp_new, cwp
 integer                                                :: k, kmax
 integer                                                :: n, max_band
-integer       :: i, j
 
 !  Declare tau_chk to compare with tau, if code needs to be debugged.
 real, dimension(size(tau,1),size(tau,2),size(tau,3),4) :: tau_chk
@@ -3127,7 +3124,6 @@ real,     intent (out)   ,dimension(:,:,:)  ::          liq_frac
 !  Internal variables
 !  ------------------
 
-real, dimension(size(tau,1),size(tau,2),size(tau,3),4) :: tau_liq, tau_ice
 real, dimension(size(tau,1),size(tau,2),size(tau,3))   :: wgt_ice, wgt_liq
 real, dimension(size(tau,1),size(tau,2),size(tau,3))   :: cwp, lwp, iwp
 

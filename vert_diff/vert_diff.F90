@@ -15,8 +15,11 @@ use         fms_mod, only:  error_mesg, FATAL, uppercase, &
                             write_version_number, stdlog, &
                             mpp_pe, mpp_root_pe 
 
-use   field_manager_mod, only: MODEL_ATMOS
-use  tracer_manager_mod, only: query_method, get_tracer_index, NO_TRACER
+use   field_manager_mod, only: MODEL_ATMOS, MODEL_LAND, MODEL_ICE
+use  tracer_manager_mod, only: query_method, get_number_tracers, &
+     get_tracer_index, get_tracer_names, NO_TRACER
+
+use mpp_mod, only: mpp_chksum, stdout
 
 implicit none
 private
@@ -42,16 +45,25 @@ type surf_diff_type
 
   real, pointer, dimension(:,:) :: dtmass  => NULL(),   &
                                    dflux_t => NULL(),   & 
-                                   dflux_q => NULL(),   & 
                                    delta_t => NULL(),   &
-                                   delta_q => NULL(),   &
                                    delta_u => NULL(),   &
                                    delta_v => NULL()
- 
+  real, pointer, dimension(:,:,:) :: dflux_tr => NULL(),& ! tracer flux tendency
+                                     delta_tr => NULL()   ! tracer tendency
 end type surf_diff_type
 
 
 real,    allocatable, dimension(:,:,:) :: e_global, f_t_global, f_q_global 
+
+! storage compartment for tracer vert. diffusion options, and for f
+! coefficient if necessary
+type :: tracer_data_type
+   real, pointer :: f(:,:,:) => NULL() ! f coefficient field
+   logical :: do_vert_diff
+   logical :: do_surf_exch
+end type tracer_data_type
+! tracer diffusion options and storage for f coefficients
+type(tracer_data_type), allocatable :: tracers(:)
 
       
 logical :: do_conserve_energy = .true.
@@ -60,8 +72,8 @@ integer :: sphum, mix_rat
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 12.0 2005/04/14 15:50:38 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 13.0 2006/03/28 21:14:37 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
@@ -81,7 +93,15 @@ subroutine vert_diff_init (Tri_surf, idim, jdim, kdim,    &
  logical, optional,    intent(in)    :: use_virtual_temp_vert_diff_in
  logical, optional,    intent(in)    :: do_mcm_plev_in
 
+ integer :: ntprog ! number of prognostic tracers in the atmosphere
+ character(len=32)  :: tr_name ! tracer name
+ character(len=128) :: scheme  ! tracer diffusion scheme
+ integer :: n
+
     call write_version_number ( version, tagname )
+
+! get the number of prognostic tracers
+    call get_number_tracers( MODEL_ATMOS, num_prog=ntprog)
 
 ! get the tracer number for specific humidity
     sphum = get_tracer_index( MODEL_ATMOS, 'sphum')
@@ -94,6 +114,8 @@ subroutine vert_diff_init (Tri_surf, idim, jdim, kdim,    &
     if (mpp_pe() == mpp_root_pe()) &
     write (stdlog(),'(a,i4)') 'Tracer number for specific humidity =',sphum
     write (stdlog(),'(a,i4)') 'Tracer number for mixing ratio      =',mix_rat
+
+    if(sphum==NO_TRACER) sphum=mix_rat
 
     if(present(use_virtual_temp_vert_diff_in)) then
       use_virtual_temp_vert_diff = use_virtual_temp_vert_diff_in
@@ -120,27 +142,58 @@ subroutine vert_diff_init (Tri_surf, idim, jdim, kdim,    &
 
  endif
 
- call alloc_surf_diff_type ( Tri_surf, idim, jdim )
+ call alloc_surf_diff_type ( Tri_surf, idim, jdim, ntprog )
  
  do_conserve_energy = do_conserve_energy_in
+
+ ! allocate data storage for tracers
+ allocate ( tracers(ntprog) )
+ do n = 1,ntprog
+    ! skip tracers diffusion if it is turned off in the field table
+    tracers(n)%do_vert_diff = .true. 
+    if (query_method('diff_vert',MODEL_ATMOS,n,scheme)) then
+       tracers(n)%do_vert_diff = (uppercase(scheme) /= 'NONE')
+    endif
+    ! do not exchange tracer with surface if it is not present in either land or
+    ! ice model
+    if (n==sphum) then
+       tracers(n)%do_vert_diff = .false.
+       tracers(n)%do_surf_exch = .false.
+    else
+       call get_tracer_names ( MODEL_ATMOS, n, tr_name )
+       tracers(n)%do_surf_exch = &
+            get_tracer_index ( MODEL_LAND, tr_name ) /= NO_TRACER .or.&
+            get_tracer_index ( MODEL_ICE,  tr_name ) /= NO_TRACER
+    endif
+    ! if tracer goes through surface flux, allocate memory to hold f
+    ! between downward and upward sweeps
+    if(tracers(n)%do_surf_exch)&
+         allocate(tracers(n)%f(idim,jdim,kdim-1))
+ enddo
+
+ write(stdlog(),*)'Tracer vertical diffusion properties:'
+ do n = 1,ntprog
+    call get_tracer_names(MODEL_ATMOS, n, tr_name)
+    write(stdlog(),100)tr_name,tracers(n)%do_vert_diff,tracers(n)%do_surf_exch
+ enddo
+100 FORMAT('Tracer :',a32,': do_tr_vert_diff=',L1,' : do_tr_surf_exch=',L1)
 
 end subroutine vert_diff_init
 
 !#######################################################################
 
-subroutine alloc_surf_diff_type ( Tri_surf, idim, jdim )
+subroutine alloc_surf_diff_type ( Tri_surf, idim, jdim, ntprog )
 
 type(surf_diff_type), intent(inout) :: Tri_surf
-integer,              intent(in)    :: idim, jdim
+integer,              intent(in)    :: idim, jdim, ntprog
 
     allocate( Tri_surf%dtmass    (idim, jdim) ) ; Tri_surf%dtmass  = 0.0
     allocate( Tri_surf%dflux_t   (idim, jdim) ) ; Tri_surf%dflux_t = 0.0
-    allocate( Tri_surf%dflux_q   (idim, jdim) ) ; Tri_surf%dflux_q = 0.0
     allocate( Tri_surf%delta_t   (idim, jdim) ) ; Tri_surf%delta_t = 0.0
-    allocate( Tri_surf%delta_q   (idim, jdim) ) ; Tri_surf%delta_q = 0.0
     allocate( Tri_surf%delta_u   (idim, jdim) ) ; Tri_surf%delta_u = 0.0
     allocate( Tri_surf%delta_v   (idim, jdim) ) ; Tri_surf%delta_v = 0.0
-
+    allocate( Tri_surf%dflux_tr  (idim, jdim, ntprog) ) ; Tri_surf%dflux_tr = 0.0
+    allocate( Tri_surf%delta_tr  (idim, jdim, ntprog) ) ; Tri_surf%delta_tr = 0.0
 
 end subroutine alloc_surf_diff_type
 
@@ -152,11 +205,11 @@ type(surf_diff_type), intent(inout) :: Tri_surf
 
       deallocate( Tri_surf%dtmass    )
       deallocate( Tri_surf%dflux_t   )
-      deallocate( Tri_surf%dflux_q   )
       deallocate( Tri_surf%delta_t   )
-      deallocate( Tri_surf%delta_q   )
       deallocate( Tri_surf%delta_u   )
       deallocate( Tri_surf%delta_v   )
+      deallocate( Tri_surf%dflux_tr  )
+      deallocate( Tri_surf%delta_tr  )
 
 end subroutine dealloc_surf_diff_type
 
@@ -164,12 +217,20 @@ end subroutine dealloc_surf_diff_type
 
 subroutine vert_diff_end
 
+  integer :: n
+
   if (module_is_initialized) then
 
     if (allocated(   e_global ))    deallocate (   e_global)
     if (allocated( f_t_global ))    deallocate ( f_t_global)
     if (allocated( f_q_global ))    deallocate ( f_q_global)
 
+    if(allocated(tracers)) then
+       do n = 1,size(tracers(:))
+          if ( associated(tracers(n)%f) ) deallocate(tracers(n)%f)
+       enddo
+       deallocate(tracers)
+    endif
   endif
   module_is_initialized = .false.
 
@@ -204,14 +265,15 @@ type(surf_diff_type), intent(inout)        :: Tri_surf
 
 integer, intent(in)   , dimension(:,:), optional :: kbot
 
-real, dimension(size(u,1),size(u,2),size(u,3)) :: tt, mu, nu
-
-real, dimension(size(u,1),size(u,2)) :: f_t_delt_n1, f_q_delt_n1, &
-            mu_delt_n, nu_n, e_n1, delta_t_n, delta_q_n,          &
+! ---- local vars
+real, dimension(size(u,1),size(u,2),size(u,3)) :: &
+     tt, mu, nu, e, a, b, c, g, f_tr
+real, dimension(size(u,1),size(u,2)) ::           &
+     f_t_delt_n1, f_q_delt_n1, f_tr_delt_n1, flux_tr, dflux_dtr, &
+     mu_delt_n, nu_n, e_n1, delta_t_n, delta_q_n, delta_tr_n, &
             delta_u_n, delta_v_n
-
 real    :: gcp
-integer :: i, j, kb, ie, je
+integer :: i, j, n, kb, ie, je, ntr, nlev
 
 !-----------------------------------------------------------------------
 
@@ -221,6 +283,8 @@ integer :: i, j, kb, ie, je
     
  ie = is + size(t,1) -1
  je = js + size(t,2) -1
+ ntr  = size(tr,4)
+ nlev = size(mu,3)
  
  gcp       = GRAV/CP_AIR
  tt  = t + z_full*gcp   ! the vertical gradient of tt determines the
@@ -230,7 +294,6 @@ integer :: i, j, kb, ie, je
  call compute_nu (diff_m, p_half, p_full, z_full, t, q, nu) 
 
 !  diffuse u-momentum and v_momentum
-
  call uv_vert_diff (delt, mu, nu, u, v, dtau_du, dtau_dv, tau_u, tau_v,  &
                     dt_u, dt_v, dt_t, delta_u_n, delta_v_n,         &
                     dissipative_heat, kbot)
@@ -238,8 +301,56 @@ integer :: i, j, kb, ie, je
 !  recompute nu for a different diffusivity
  call compute_nu   (diff_t, p_half, p_full, z_full, t, q, nu)
 
-!  diffuse tracers 
- call tr_vert_diff (delt, mu, nu, tr, dt_tr, kbot )
+ ! calculate e, the same for all tracers since their diffusivities are 
+ ! the same, and mu_delt_n, nu_n, e_n1
+ call compute_e (delt, mu, nu, e, a, b, c, g)
+ do j = 1,size(mu,2)
+ do i = 1,size(mu,1)
+    kb = nlev ; if(present(kbot)) kb=kbot(i,j)
+    mu_delt_n(i,j) = mu(i,j,kb  )*delt
+         nu_n(i,j) = nu(i,j,kb  )
+         e_n1(i,j) = e (i,j,kb-1)
+ enddo
+ enddo
+
+ do n = 1,ntr
+    ! calculate f_tr, f_tr_delt_n1, delta_tr_n for this tracer
+    if(.not.tracers(n)%do_vert_diff) cycle ! skip non-diffusive tracers
+    call explicit_tend (mu, nu, tr(:,:,:,n), dt_tr(:,:,:,n))
+    call compute_f (dt_tr(:,:,:,n), b, c, g, f_tr)
+    do j = 1,size(mu,2)
+    do i = 1,size(mu,1)
+       kb = nlev ; if(present(kbot)) kb=kbot(i,j)
+       f_tr_delt_n1(i,j) = f_tr (i,j,kb-1)*delt
+       delta_tr_n(i,j)   = dt_tr(i,j,kb,n)*delt
+    enddo
+    enddo
+
+    ! store information needed by flux_exchange module
+    Tri_surf%delta_tr(is:ie,js:je,n) = &
+         delta_tr_n(:,:) + mu_delt_n(:,:)*nu_n(:,:)*f_tr_delt_n1(:,:)
+    Tri_surf%dflux_tr(is:ie,js:je,n) = -nu_n(:,:)*(1.0 - e_n1(:,:))
+
+    if(tracers(n)%do_surf_exch) then
+       ! store f for future use on upward sweep
+       tracers(n)%f(is:ie,js:je,:) = f_tr(:,:,:)
+    else
+       ! upward sweep of tridaigonal solver for tracers that do not exchange 
+       ! with surface
+       flux_tr  (:,:) = 0.0 ! surface flux of tracer
+       dflux_dtr(:,:) = 0.0 ! d(sfc flux)/d(tr atm)
+       call diff_surface ( &
+            mu_delt_n(:,:), nu_n(:,:), e_n1(:,:), f_tr_delt_n1(:,:), &
+            dflux_dtr(:,:), flux_tr(:,:), 1.0, delta_tr_n(:,:) )
+       call vert_diff_up ( &
+            delt, e(:,:,:), f_tr(:,:,:), delta_tr_n(:,:), dt_tr(:,:,:,n), &
+            kbot )
+    endif
+ enddo
+
+! NOTE: actually e used in the tracer calculations above, and e_global
+! calculated in the vert_diff_down_2 below are the same, since they only
+! depend on mu and nu.
 
 !  downward sweep of tridiagonal solver for temperature and specific humidity
  call vert_diff_down_2                            & 
@@ -253,9 +364,11 @@ integer :: i, j, kb, ie, je
 ! store information needed by flux_exchange module
 
     Tri_surf%delta_t (is:ie,js:je) = delta_t_n + mu_delt_n*nu_n*f_t_delt_n1
-    Tri_surf%delta_q (is:ie,js:je) = delta_q_n + mu_delt_n*nu_n*f_q_delt_n1
     Tri_surf%dflux_t (is:ie,js:je) = -nu_n*(1.0 - e_n1)
-    Tri_surf%dflux_q (is:ie,js:je) = -nu_n*(1.0 - e_n1)
+    if (sphum/=NO_TRACER) then
+       Tri_surf%delta_tr (is:ie,js:je,sphum) = delta_q_n + mu_delt_n*nu_n*f_q_delt_n1
+       Tri_surf%dflux_tr (is:ie,js:je,sphum) = -nu_n*(1.0 - e_n1)
+    endif
     Tri_surf%dtmass  (is:ie,js:je) = mu_delt_n
     Tri_surf%delta_u (is:ie,js:je) = delta_u_n
     Tri_surf%delta_v (is:ie,js:je) = delta_v_n
@@ -266,19 +379,26 @@ end subroutine gcm_vert_diff_down
 
 !#######################################################################
 
-subroutine gcm_vert_diff_up (is, js, delt, Tri_surf, dt_t, dt_q, kbot)
+subroutine gcm_vert_diff_up (is, js, delt, Tri_surf, dt_t, dt_q, dt_tr, kbot)
 
 integer, intent(in)                      :: is, js
 real,    intent(in)                      :: delt
 type(surf_diff_type), intent(in)         :: Tri_surf
 real,    intent(out),   dimension(:,:,:) :: dt_t, dt_q
+real,    intent(out),   dimension(:,:,:,:) :: dt_tr
 integer, intent(in),    dimension(:,:), optional :: kbot
 
-integer :: ie, je
+ ! ---- local vars
+ integer :: ie, je, n
+ real    :: surf_delta_q(size(dt_t,1),size(dt_t,2))
 
  ie = is + size(dt_t,1) -1
  je = js + size(dt_t,2) -1
 
+
+!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'e_global',mpp_chksum(e_global(is:ie,js:je,:))
+!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'f_t_global',mpp_chksum(f_t_global(is:ie,js:je,:))
+!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'Tri_surf%deta_t',mpp_chksum(Tri_surf%delta_t(is:ie,js:je))
 
  call vert_diff_up (delt ,                              &
                     e_global          (is:ie,js:je,:) , &
@@ -286,12 +406,35 @@ integer :: ie, je
                     Tri_surf%delta_t  (is:ie,js:je) ,   &
                     dt_t, kbot )
 
+!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'dt_t',mpp_chksum(dt_t)
+
+ if(sphum/=NO_TRACER) then
+    surf_delta_q = Tri_surf%delta_tr (is:ie,js:je,sphum)
+ else
+    surf_delta_q = 0.0
+ endif
+
+!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'surf_delta_q',mpp_chksum(surf_delta_q)
+!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'f_q_global',mpp_chksum(f_q_global(is:ie,js:je,:))
+
  call vert_diff_up (delt ,                              &
                     e_global          (is:ie,js:je,:) , &
                     f_q_global        (is:ie,js:je,:) , &
-                    Tri_surf%delta_q  (is:ie,js:je) ,   &
+                    surf_delta_q ,                      &
                     dt_q, kbot )
 
+!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'dt_q',mpp_chksum(dt_q)
+
+ do n = 1,size(dt_tr,4)
+    ! skip tracers if diffusion scheme turned off
+    if (tracers(n)%do_vert_diff.and.tracers(n)%do_surf_exch) then
+       call vert_diff_up (delt ,                           &
+                    e_global           (is:ie,js:je,:) ,   &
+                    tracers(n)%f       (is:ie,js:je,:) ,   &
+                    Tri_surf%delta_tr  (is:ie,js:je,n) ,   &
+                    dt_tr(:,:,:,n), kbot )
+    endif
+ enddo
 
 end subroutine gcm_vert_diff_up
 
@@ -410,7 +553,6 @@ real, dimension(size(u,1),size(u,2)) :: mu_delt_n, nu_n, e_n1,    &
 real, dimension(size(u,1),size(u,2),size(u,3)) :: dt_u_temp, dt_v_temp
 
 real, dimension(size(u,1),size(u,2),size(u,3)-1) :: e, f_u, f_v
-integer :: i, j, kb
 
 real    :: half_delt, cp_inv
 
@@ -469,13 +611,11 @@ integer, intent(in)   , dimension(:,:), optional :: kbot
 
 real, dimension(size(t,1),size(t,2)) :: mu_delt_n, nu_n,          &
                                         e_n1, f_t_delt_n1, f_q_delt_n1, &
-                                        delta_t_n, delta_q_n,      &
-                                        flux1, dflux1_dsurf
+                                        delta_t_n, delta_q_n
 
 real, dimension(size(t,1),size(t,2),size(t,3)-1) :: e, f_t, f_q
 real, dimension(size(t,1),size(t,2),size(t,3)  ) :: tt
 
-integer :: i, j, kb
 real    :: gcp
 !-----------------------------------------------------------------------
 
@@ -520,7 +660,7 @@ real, dimension(size(tr,1),size(tr,2)) :: dflux_dtr, flux
 real, dimension(size(tr,1),size(tr,2),size(tr,3)-1) :: ftr
 real, dimension(size(tr,1),size(tr,2),size(tr,3)-1) :: etr
 real, dimension(size(tr,1),size(tr,2),size(tr,3)) :: a, b, c, g
-integer :: i, j, k, kb, n, ntr, nlev
+integer :: i, j, kb, n, ntr, nlev
 character(len=128) :: scheme
 !-----------------------------------------------------------------------
 
@@ -599,7 +739,7 @@ integer, intent(in),    dimension(:,:), optional :: kbot
 
 real, dimension(size(tr,1),size(tr,2),size(tr,3)) :: a, b, c, g
 
-integer :: i, j, k, kb, nlev
+integer :: i, j, kb, nlev
 
 !-----------------------------------------------------------------------
 
@@ -663,7 +803,7 @@ integer, intent(in),    dimension(:,:), optional :: kbot
 real, dimension(size(xi_1,1),size(xi_1,2),size(xi_1,3)) :: a, b, c, g, &
                                                       dt_xi_11, dt_xi_22
 
-integer :: i, j, k, kb, nlev
+integer :: i, j, kb, nlev
 
 !-----------------------------------------------------------------------
 
@@ -843,7 +983,7 @@ real,    intent(inout) , dimension(:,:,:) :: dt_xi
 
 real, dimension(size(xi,1),size(xi,2),size(xi,3)) :: fluxx
 
-integer :: k, nlev
+integer :: nlev
 
 !-----------------------------------------------------------------------
 

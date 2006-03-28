@@ -67,8 +67,8 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 12.0 2005/04/14 15:47:49 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+'$Id: radiative_gases.F90,v 13.0 2006/03/28 21:13:09 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -233,8 +233,9 @@ integer, dimension(6) ::       &
                       ! time in f22  data set corresponding to model
                       ! initial time  (yr, mo, dy, hr, mn, sc)
 logical              :: do_netcdf_restart= .true.
+logical              :: time_varying_restart_bug = .false.
 namelist /radiative_gases_nml/ do_netcdf_restart,                   &
-        verbose,      gas_printout_freq, &
+        verbose,      gas_printout_freq, time_varying_restart_bug, &
         co2_dataset_entry, ch4_dataset_entry, n2o_dataset_entry,  &
         f11_dataset_entry, f12_dataset_entry, f113_dataset_entry, &
         f22_dataset_entry, &
@@ -1191,7 +1192,24 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
             Rad_gases%co2_tf_offset = 0.0
           endif   ! (Rad_time > Co2_time)
         else
-          co2_for_last_tf_calc = rrvco2
+           if (trim(co2_data_source) == 'predicted') then
+              if (associated (Atmos_input%tracer_co2) ) then
+                 ! Note shape cannot be applied to unallocated array or unassociated pointer.
+                 ! And associated cannot be applied to a scalar. This code assumes that rrvco2
+                 ! is either a scalar, or allocated/associated at this point.
+                 if(size(shape(rrvco2)) == 0) then         ! if rrvco2 is a scalar 
+                    rrvco2 = Atmos_input%g_rrvco2
+                 else
+!                    rrvco2 = Atmos_input%tracer_co2        ! if rrvco2 is an array, this doesn't compile
+                 endif
+              else
+                 call error_mesg('radiative_gases_mod', &
+                      '%tracer_co2 not associated, therefore donot have predicted values of co2 to use', FATAL)
+              endif !(associated (Atmos_input%tracer_co2)
+       
+           else !trim(co2_data_source) == 'predicted')
+              co2_for_last_tf_calc = rrvco2
+           endif  !(trim(co2_data_source) == 'predicted')
         endif  ! (time_varying_co2)
       endif ! (pts_processed == 0)
 
@@ -1227,6 +1245,15 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
       if (time_varying_n2o) then
         Rad_gases%N2o_time = N2o_time_list(1)
       endif
+!RSH    define value for the new variable 
+!RSH                     Rad_gases%use_model_supplied_co2, .true. for
+!RSH   co2_data_source = 'predicted', .false. otherwise.
+      if (trim(co2_data_source) == 'predicted') then
+         Rad_gases%use_model_supplied_co2 = .true.
+      else
+         Rad_gases%use_model_supplied_co2 = .false.
+      endif
+
       Rad_gases%co2_for_last_tf_calc = co2_for_last_tf_calc
       Rad_gases%ch4_for_last_tf_calc = ch4_for_last_tf_calc
       Rad_gases%n2o_for_last_tf_calc = n2o_for_last_tf_calc
@@ -1863,9 +1890,9 @@ character(len=*), intent(in)    ::  data_source
       real       ::  rch4_icrccm   = 1.75000E-06
       real       ::  rch4_ipcc_98  = 1.82120E-06
 
-      integer    :: unit    ! unit number for i/o
-      integer    :: ierr    ! error code
-      integer    :: io      ! io status
+
+
+
       integer    :: inrad   ! unit number for i/o
 
 character(len=8)     :: gas_name ! name associated with current
@@ -2070,9 +2097,9 @@ character(len=*), intent(in)    ::  data_source
       real       ::  rn2o_icrccm   = 2.80000E-07
       real       ::  rn2o_ipcc_98  = 3.16000E-07
 
-      integer    :: unit    ! unit number for i/o
-      integer    :: ierr    ! error code
-      integer    :: io      ! io status
+
+
+
       integer    :: inrad   ! unit number for i/o
 
 character(len=8)     :: gas_name ! name associated with current
@@ -2282,9 +2309,9 @@ character(len=*), intent(in)    ::  data_source
       real       ::  rf11_ipcc_92  = 2.68000E-10
       real       ::  rf11_ipcc_98  = 2.68960E-10
 
-      integer    :: unit    ! unit number for i/o
-      integer    :: ierr    ! error code
-      integer    :: io      ! io status
+
+
+
       integer    :: inrad   ! unit number for i/o
 
 character(len=8)     :: gas_name ! name associated with current
@@ -2491,9 +2518,9 @@ character(len=*), intent(in)    ::  data_source
       real       ::  rf12_ipcc_92  = 5.03000E-10
       real       ::  rf12_ipcc_98  = 5.31510E-10
 
-      integer    :: unit    ! unit number for i/o
-      integer    :: ierr    ! error code
-      integer    :: io      ! io status
+
+
+
       integer    :: inrad   ! unit number for i/o
 
 character(len=8)     :: gas_name ! name associated with current
@@ -2703,9 +2730,9 @@ character(len=*), intent(in)    ::  data_source
       real       ::  rf113_ipcc_92 = 8.20000E-11
       real       ::  rf113_ipcc_98 = 8.58100E-11
 
-      integer    :: unit    ! unit number for i/o
-      integer    :: ierr    ! error code
-      integer    :: io      ! io status
+
+
+
       integer    :: inrad   ! unit number for i/o
 
 character(len=8)     :: gas_name ! name associated with current
@@ -2917,9 +2944,9 @@ character(len=*), intent(in)    ::  data_source
       real       ::  rf22_ipcc_92  = 1.05000E-10
       real       ::  rf22_ipcc_98  = 1.26520E-10
 
-      integer    :: unit    ! unit number for i/o
-      integer    :: ierr    ! error code
-      integer    :: io      ! io status
+
+
+
       integer    :: inrad   ! unit number for i/o
 
 character(len=8)     :: gas_name ! name associated with current
@@ -3136,9 +3163,9 @@ character(len=*), intent(in)    ::  data_source
       real       ::  rco2_330ppm   = 3.30000E-04
       real       ::  rco2_660ppm   = 6.60000E-04
 
-      integer    :: unit    ! unit number for i/o
-      integer    :: ierr    ! error code
-      integer    :: io      ! io status
+
+
+
       integer    :: inrad   ! unit number for i/o
 
 character(len=8)     :: gas_name ! name associated with current
@@ -3254,6 +3281,7 @@ character(len=8)     :: gas_name ! name associated with current
             inrad = open_namelist_file ('INPUT/id1co2')
             read (inrad, FMT = '(5e18.10)') rco2
             call close_file (inrad)
+            co2_for_last_tf_calc = rco2
           else
             call error_mesg ( 'radiative_gases_mod', &
               'neither restart nor co2 input file is present. one '//&
@@ -3688,9 +3716,9 @@ logical,            intent(inout), optional  :: &
      integer            :: days2, seconds2
      integer            :: days3, seconds3
      real               :: mean_days, calc_time
-     character(len=16)  :: chvers7, chvers8, chvers9, chvers11
+     character(len=16)  :: chvers7, chvers8, chvers9
      integer            :: alarm, minutes_from_start
-     integer            :: dum, year
+
      real               :: percent_of_period
      type(time_type)    :: Tf_offset, Tf_calc_intrvl 
      real               :: rseconds3
@@ -4125,8 +4153,8 @@ subroutine write_restart_radiative_gases
 !---------------------------------------------------------------------
 
       integer    :: unit    ! unit number for i/o
-      integer    :: ierr    ! error code
-      integer    :: io      ! io status
+
+
 
 !---------------------------------------------------------------------
 !    open unit and write radiative gas restart file.
@@ -4176,13 +4204,23 @@ subroutine write_restart_nc
          call mpp_error ('radiative_gases_mod', 'Writing NetCDF formatted restart file: RESTART/radiative_gases.res.nc', NOTE)
       endif
       call write_data(fname, 'vers', restart_versions(size(restart_versions(:))), no_domain=.true.)
-      call write_data(fname, 'rco2', rco2, no_domain=.true.)
-      call write_data(fname, 'rf11', rf11, no_domain=.true.)
-      call write_data(fname, 'rf12', rf12, no_domain=.true.)
-      call write_data(fname, 'rf113', rf113, no_domain=.true.)
-      call write_data(fname, 'rf22', rf22, no_domain=.true.)
-      call write_data(fname, 'rch4', rch4, no_domain=.true.)
-      call write_data(fname, 'rn2o', rn2o, no_domain=.true.)
+      if(.not. time_varying_restart_bug) then
+         call write_data(fname, 'rco2', rrvco2, no_domain=.true.)
+         call write_data(fname, 'rf11', rrvf11, no_domain=.true.)
+         call write_data(fname, 'rf12', rrvf12, no_domain=.true.)
+         call write_data(fname, 'rf113', rrvf113, no_domain=.true.)
+         call write_data(fname, 'rf22', rrvf22, no_domain=.true.)
+         call write_data(fname, 'rch4', rrvch4, no_domain=.true.)
+         call write_data(fname, 'rn2o', rrvn2o, no_domain=.true.)
+      else
+         call write_data(fname, 'rco2', rco2, no_domain=.true.)
+         call write_data(fname, 'rf11', rf11, no_domain=.true.)
+         call write_data(fname, 'rf12', rf12, no_domain=.true.)
+         call write_data(fname, 'rf113', rf113, no_domain=.true.)
+         call write_data(fname, 'rf22', rf22, no_domain=.true.)
+         call write_data(fname, 'rch4', rch4, no_domain=.true.)
+         call write_data(fname, 'rn2o', rn2o, no_domain=.true.)
+      endif
       call write_data(fname, 'co2_for_last_tf_calc', co2_for_last_tf_calc, no_domain=.true.)
       call write_data(fname, 'ch4_for_last_tf_calc', ch4_for_last_tf_calc, no_domain=.true.)
       call write_data(fname, 'n2o_for_last_tf_calc', n2o_for_last_tf_calc, no_domain=.true.)

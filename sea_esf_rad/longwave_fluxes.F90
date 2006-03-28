@@ -42,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 11.0 2004/09/28 19:22:09 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 13.0 2006/03/28 21:12:10 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -391,8 +391,8 @@ integer, dimension(:),        intent(in)     ::  cld_ind
 
       real, dimension (size(source,1), size(source,2)) :: flux4, flux4a
 
-      real    :: flux3a, flux_tmp, flux_tmp2
-      integer ::  kp, i, j, k, nn, ntot, israd, ierad, jsrad, jerad
+      real    ::  flux_tmp, flux_tmp2
+      integer ::  kp, p, i, j, k,   israd, ierad, jsrad, jerad
       integer :: ke
       integer :: m, nbands
 
@@ -827,7 +827,7 @@ type(lw_diagnostics_type),        intent(in)    :: Lw_diagnostics
 !--------------------------------------------------------------------
 !   local variables
 !--------------------------------------------------------------------
-    integer       ::  j, m
+    integer       ::   m
 
 !---------------------------------------------------------------------
 !  local variables:

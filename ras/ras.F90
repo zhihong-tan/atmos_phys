@@ -31,6 +31,8 @@
                                get_tracer_indices, &
                                query_method,       &
                                NO_TRACER
+ use  rad_utilities_mod,  only : aerosol_type
+ use  aer_ccn_act_mod,    only : aer_ccn_act, aer_ccn_act2
 !---------------------------------------------------------------------
  implicit none
  private
@@ -38,8 +40,8 @@
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- character(len=128) :: version = '$Id: ras.F90,v 11.0 2004/09/28 19:20:35 fms Exp $'
- character(len=128) :: tagname = '$Name: lima $'
+ character(len=128) :: version = '$Id: ras.F90,v 13.0 2006/03/28 21:10:58 fms Exp $'
+ character(len=128) :: tagname = '$Name: memphis $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -156,7 +158,7 @@
  real    :: cfrac   = 0.05
  real    :: hcevap  = 0.80    
 
- integer :: nsphum, nql, nqi, nqa   ! tracer indices for stratiform clouds
+ integer :: nqn   ! tracer indices for stratiform clouds
 
     NAMELIST / ras_nml /                          &
       fracs,   rasal0,  puplim, aratio, cufric,   &
@@ -172,9 +174,10 @@
 
 integer :: id_tdt_revap,  id_qdt_revap,    id_prec_revap,  &
            id_snow_revap, id_prec_conv_3d, id_pcldb, &
+           id_det0, &
            id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_q_conv_col, id_t_conv_col, id_mc,&
-           id_qldt_conv, id_qidt_conv, id_qadt_conv, &
+           id_qldt_conv, id_qidt_conv, id_qadt_conv, id_qndt_conv, &
            id_ql_conv_col, id_qi_conv_col, id_qa_conv_col
 integer, allocatable, dimension(:) :: id_tracer_conv, id_tracer_conv_col
 
@@ -182,8 +185,6 @@ character(len=3) :: mod_name = 'ras'
 
 real :: missing_value = -999.
 
-integer, allocatable, dimension(:) :: tr_indices
- 
 integer  :: num_ras_tracers = 0
 logical  :: do_ras_tracer = .false.
 
@@ -194,7 +195,7 @@ logical  :: do_ras_tracer = .false.
 !#####################################################################
 !#####################################################################
 
-  SUBROUTINE RAS_INIT( do_strat, axes, Time, tracers_in_ras )
+  SUBROUTINE RAS_INIT( do_strat, do_liq_num, axes, Time, tracers_in_ras )
 
 !=======================================================================
 ! ***** INITIALIZE RAS
@@ -203,7 +204,7 @@ logical  :: do_ras_tracer = .false.
 ! Arguments (Intent in)
 !---------------------------------------------------------------------
 
- logical,         intent(in) :: do_strat
+ logical,         intent(in) :: do_strat, do_liq_num
  integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
  logical, dimension(:), intent(in), optional :: tracers_in_ras
@@ -247,29 +248,11 @@ logical  :: do_ras_tracer = .false.
 ! --- Find the tracer indices 
 !---------------------------------------------------------------------
   call get_number_tracers(MODEL_ATMOS,num_prog=num_tracers)
-  if ( num_tracers .gt. 0 ) then
-    allocate(tr_indices(num_tracers)) ; tr_indices = 0
-  else
-    call error_mesg('ras_init', 'No atmospheric tracers found', FATAL)
-  endif
-  call get_tracer_indices(MODEL_ATMOS, prog_ind=tr_indices)  
-  if (do_strat) then
-    ! get tracer indices for stratiform cloud variables
-      nsphum = get_tracer_index ( MODEL_ATMOS, 'sphum' )
-      nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
-      nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
-      nqa = get_tracer_index ( MODEL_ATMOS, 'cld_amt' )
-      if (min(nql,nqi,nqa) <= 0) call error_mesg ('ras_init', &
-                                                  'stratiform cloud tracer(s) not found', FATAL)
-      if (nql == nqi .or. nqa == nqi .or. nql == nqa) call error_mesg ('ras_init',  &
-                               'tracers indices cannot be the same (i.e., nql=nqi=nqa).', FATAL)
-      if (mpp_pe() == mpp_root_pe()) &
-          write (stdlog(),'(a,3i4)') 'Stratiform cloud tracer indices: nql,nqi,nqa =',nql,nqi,nqa
-      if ( nsphum > 0 ) tr_indices(nsphum) = NO_TRACER
-      tr_indices(nql) = NO_TRACER
-      tr_indices(nqi) = NO_TRACER
-      tr_indices(nqa) = NO_TRACER
-  endif
+
+  nqn = get_tracer_index ( MODEL_ATMOS, 'liq_drp' )
+  if (do_liq_num .and. nqn == NO_TRACER) &
+    call error_mesg ('ras_init', &
+         'prognostic droplet number scheme requested but tracer not found', FATAL) 
 
 
 !---------------------------------------------------------------------
@@ -374,7 +357,10 @@ logical  :: do_ras_tracer = .false.
                         missing_value=missing_value               )
 
 
-if ( do_strat ) then
+   id_qndt_conv = register_diag_field ( mod_name, &
+     'qndt_conv', axes(1:3), Time, &
+     'Cloud droplet tendency from RAS',              '#/kg/s',  &
+                        missing_value=missing_value               )
 
    id_qldt_conv = register_diag_field ( mod_name, &
      'qldt_conv', axes(1:3), Time, &
@@ -403,8 +389,10 @@ if ( do_strat ) then
      'qa_conv_col', axes(1:2), Time, &
     'Cloud mass tendency from RAS',                 'kg/m2/s' )
       
-endif
-
+   id_det0        = register_diag_field ( mod_name, &
+     'ras_det0', axes(1:3), Time, &
+    'Detrained mass flux from RAS',                 'kg/m2/s' )
+      
 !----------------------------------------------------------------------
 !    determine how many tracers are to be transported by ras_mod.
 !----------------------------------------------------------------------
@@ -483,9 +471,12 @@ end subroutine ras_end
   SUBROUTINE RAS( is,     js,      Time,      temp0,   qvap0,     &
           uwnd0,  vwnd0,  pres0,   pres0_int, zhalf0,  coldT0,    &
                   dtime,  dtemp0,  dqvap0,    duwnd0,  dvwnd0,    &
-                  rain0,  snow0,   do_strat,  mask,    kbot,      &
-                  mc0,    ql0, qi0, qa0,  dl0, di0, da0, &
-                  ras_tracers, qtrras)
+                  rain3d, snow3d,                                 &
+                  rain0,  snow0,   ras_tracers, qtrras,           &
+                  mask,    kbot,  mc0, det0,                      & ! optional
+                  ql0, qi0, qa0,                                  & ! optional
+                  dl0, di0, da0,                                  & ! optional
+                  qn0, dn0, do_strat, Aerosol)                      ! optional
 
 !=======================================================================
 ! ***** DRIVER FOR RAS
@@ -504,9 +495,12 @@ end subroutine ras_end
 !     vwnd0     - V component of wind
 !     coldT0    - should the precipitation assume to be frozen?
 !     kbot      - OPTIONAL;lowest model level index (integer)
-!     R0        - OPTIONAL;prognostic tracers to move around
+!     mask      - OPTIONAL;used only for diagnostic output
+!     ras_tracers- prognostic tracers to move around
 !                 note that R0 is assumed to be dimensioned
 !                 (nx,ny,nz,nt), where nt is the number of tracers
+!---------------------------------------------------------------------
+! Arguments (Intent inout)
 !     ql0       - OPTIONAL;cloud liquid
 !     qi0       - OPTIONAL;cloud ice
 !     qa0       - OPTIONAL;cloud/saturated volume fraction
@@ -517,52 +511,65 @@ end subroutine ras_end
   real,            intent(in), dimension(:,:,:) :: pres0, pres0_int, zhalf0
   real,            intent(inout), dimension(:,:,:) :: temp0, qvap0, uwnd0, vwnd0
   logical,         intent(in), dimension(:,:)   :: coldT0
-  logical,         intent(in)                   :: do_strat
+  logical,         intent(in), optional         :: do_strat
+  type(aerosol_type), intent (in), optional     :: Aerosol  
   real, intent(in) , dimension(:,:,:), OPTIONAL :: mask
   integer, intent(in), OPTIONAL, dimension(:,:) :: kbot
-  real,  intent(inout), dimension(:,:,:)         :: ql0, qi0, qa0
-  real,  intent(in), dimension(:,:,:,:),optional :: ras_tracers
+  real,  intent(inout), OPTIONAL,dimension(:,:,:)   :: ql0, qi0, qa0, qn0
+  real,  intent(in), dimension(:,:,:,:)          :: ras_tracers
 !---------------------------------------------------------------------
 ! Arguments (Intent out)
 !       rain0  - surface rain
 !       snow0  - surface snow
+!       rain3d - 3D rain
+!       snow3d - 3D snow
 !       dtemp0 - Temperature change 
 !       dqvap0 - Water vapor change 
 !       duwnd0 - U wind      change 
 !       dvwnd0 - V wind      change 
 !       mc0    - OPTIONAL; cumulus mass flux
-!       Dl0    - OPTIONAL; cloud liquid change
-!       Di0    - OPTIONAL; cloud ice change
-!       Da0    - OPTIONAL; cloud fraction change
-!       DR0    - OPTIONAL; increment to prognostic tracers
+!       Dl0    - OPTIONAL; cloud liquid tendency
+!       Di0    - OPTIONAL; cloud ice tendency
+!       Da0    - OPTIONAL; cloud fraction tendency
+!       qtrras - prognostic tracers tendency
 !---------------------------------------------------------------------
-  real, intent(out), dimension(:,:,:) :: dtemp0, dqvap0, duwnd0, dvwnd0
-  real, intent(out), dimension(:,:)   :: rain0,  snow0
+  real, intent(out), dimension(:,:,:)           :: dtemp0, dqvap0, duwnd0, dvwnd0
+  real, intent(out), dimension(:,:)             :: rain0,  snow0
+  real, intent(out), dimension(:,:,:,:)         :: qtrras
+  real, intent(out), dimension(:,:,:)           :: rain3d,snow3d
   
   real, intent(out), OPTIONAL, dimension(:,:,:) :: mc0
-  real, intent(out), OPTIONAL, dimension(:,:,:) :: dl0, di0, da0
-  real,  intent(out), dimension(:,:,:,:), optional :: qtrras
+  real, intent(out), OPTIONAL, dimension(:,:,:) :: det0
+  real, intent(out), OPTIONAL, dimension(:,:,:) :: dl0, di0, da0, dn0
 
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
 
+! precipitation flux and evaporation profiles [kg/m2/sec]
+ real, dimension(SIZE(temp0,3)) :: flxprec,flxprec_evap       ! sum of all clouds
+ real, dimension(SIZE(temp0,3)) :: flxprec_ib,flxprec_ib_evap ! for each cloud
+ logical :: found
+ integer :: istop
+ character(len=32) :: tracer_units, tracer_name
+
  real, parameter :: p00 = 1000.0E2
 
  logical :: coldT,  exist    
  real    :: precip, Hl, psfc, dpcu, dtinv
- integer :: ksfc,   klcl
+ integer :: ksfc,   klcl, kk
 
  integer, dimension(SIZE(temp0,3)) :: ic
 
  real, dimension(SIZE(temp0,3)) :: &
        temp, qvap, uwnd, vwnd, pres, dtemp, dqvap, duwnd, dvwnd, &    
-       ql,   qi,   qa,   Dl,   Di,   Da,    mass,  pi,    theta, &
+       ql,   qi,   qa,   qn ,  Dl,   Di,    Da,    Dn,    mass,  pi,    theta, &
        cp_by_dp,   dqvap_sat,  qvap_sat,    alpha, beta,  gamma, &
-       dtcu, dqcu, ducu, dvcu, Dlcu, Dicu,  Dacu
+       dtcu, dqcu, ducu, dvcu, Dlcu, Dicu,  Dacu,  Dncu
 
  real, dimension(SIZE(temp0      ,3),num_ras_tracers) :: tracer, dtracer, dtracercu
  real, dimension(SIZE(temp0,3)+1) ::  pres_int, mc, pi_int, mccu, zhalf
+ real, dimension(SIZE(temp0,3)) ::  det                               
 
  logical, dimension(size(temp0,1),size(temp0,2)) :: rhtrig_mask
  integer, dimension(size(temp0,1),size(temp0,2)) :: kcbase
@@ -575,12 +582,20 @@ end subroutine ras_end
 
  real,    dimension(size(temp0,1),size(temp0,2),size(temp0,3)+1) :: mask3
 
- logical :: setras, Lkbot, Lda0, Lmc0, LR0
- integer :: i, imax, j, jmax, k, kmax, tr
+real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)+1) :: mc0_local
+
+ logical :: setras, cloud_tracers_present, do_liq_num
+ integer :: i, imax, j, jmax, k, kmax, tr, num_present
  integer :: ncmax, nc, ib
  real    :: rasal, frac, zbase
  real    :: dpfac, dtcu_pbl, dqcu_pbl, ducu_pbl, dvcu_pbl, dtracercu_pbl(num_ras_tracers)
  
+ real, dimension(size(temp0,1),size(temp0,2),size(temp0,3),3) :: totalmass1
+ real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)) :: airdens, debug1
+ real, dimension(size(temp0,3),3) :: aerosolmass
+
+ real :: thickness
+
 !--- For extra diagnostics
 
  logical :: used
@@ -601,30 +616,57 @@ end subroutine ras_end
   if( .not. module_is_initialized ) CALL ERROR_MESG( 'RAS',  &
                                  'ras_init has not been called', FATAL )
   
-! --- Check for presence of optional arguments
-  Lkbot      = PRESENT( kbot )
-  Lda0       = do_strat
-  Lmc0       = ( do_strat .or. id_mc > 0 )
-  LR0        = .TRUE. !PRESENT( R0 )
-
-  if (num_ras_tracers > 0) then
-    if (present (ras_tracers) .and. present(qtrras)) then
-    else
-      call error_mesg ('ras_mod', &
-          'num_ras_tracers > 0, but missing arguments', FATAL)
-    endif
+  num_present = count((/present(ql0), present(qi0), present(qa0), present(Dl0), present(Di0), present(Da0)/))
+  if(num_present == 0) then
+    cloud_tracers_present = .false.
+  else if(num_present == 6) then
+    cloud_tracers_present = .true.
   else
-    if (present (ras_tracers) .or. present(qtrras)) then
-      call error_mesg ('ras_mod', &
-        'num_ras_tracers = 0, but tracer argument(s) present', FATAL)
-    endif
+    call ERROR_MESG( 'RAS','Either all or none of the cloud tracers and their tendencies'// &
+                     ' must be present in the call to subroutine ras',FATAL)
   endif
+
+  if(cloud_tracers_present .and. .not.present(mc0)) then
+    call ERROR_MESG( 'RAS','mc0 must be present when cloud tracers are present',FATAL)
+  endif
+
 
 ! --- Set dimensions
   imax  = size( temp0, 1 )
   jmax  = size( temp0, 2 )
   kmax  = size( temp0, 3 )
 
+  
+  do_liq_num = PRESENT(qn0) ! Test for presence of liquid droplet number array
+
+  if ( do_liq_num ) then
+    if (.not.(PRESENT(dn0)) .or. .not.(PRESENT(Aerosol))) &
+      call ERROR_MESG( 'RAS','dn0 and Aerosol must be present when liquid droplet number are present',FATAL)
+  
+    do k = 1,kmax
+      do j = 1,jmax
+        do i = 1,imax
+          if(pres0_int(i,j,k)<1.) then
+            thickness=log(pres0_int(i,j,k+1)/1.)* &
+            8.314*temp0(i,j,k)/(9.8*0.02888)
+          else
+            thickness=log(pres0_int(i,j,k+1)/ &
+            pres0_int(i,j,k))*8.314*temp0(i,j,k)/(9.8*0.02888)
+          end if
+          totalmass1(i,j,k,1)=(Aerosol%aerosol(i,j,k,1)+Aerosol%aerosol(i,j,k,2))  &
+          /thickness*1.0e9*1.0e-12
+          totalmass1(i,j,k,2)=Aerosol%aerosol(i,j,k,5)  &
+          /thickness*1.0e9*1.0e-12
+          totalmass1(i,j,k,3)=Aerosol%aerosol(i,j,k,3)  &
+          /thickness*1.0e9*1.0e-12
+        end do
+      end do
+    end do
+  
+    airdens = pres0 / (rdgas * temp0 * (1.   - ql0 - qi0) )
+  endif   
+
+ 
 ! --- Initalize
 
    dtemp0 = 0.0                               
@@ -639,22 +681,21 @@ end subroutine ras_end
    rain_ev0 = 0.0
    snow_ev0 = 0.0
     cuprc3d = 0.0
+     rain3d = 0.0
+     snow3d = 0.0
 
-  if ( Lda0 ) then
+  if ( cloud_tracers_present ) then
       Da0 = 0.0
       Dl0 = 0.0
       Di0 = 0.0
+      if ( do_liq_num ) Dn0 = 0.0
   end if
-  if ( Lmc0 ) then
+  if (present(mc0) ) then
       mc0 = 0.0
+      det0 = 0.0
   end if
 ! Initialize the tracer tendencies
-    dl0 = 0.
-    di0 = 0.
-    da0 = 0.
-    if (present (qtrras)) then
     qtrras = 0.0
-    endif
 
   do k=1,kmax
     pmass(:,:,k) = (pres0_int(:,:,k+1)-pres0_int(:,:,k))/GRAV
@@ -677,7 +718,7 @@ end subroutine ras_end
 
 ! --- Find LCL ---> cloud base
 
-  if( Lkbot ) then
+  if (present(kbot ) ) then
      do j = 1,jmax
      do i = 1,imax
         k = kbot(i,j)
@@ -703,7 +744,7 @@ end subroutine ras_end
   rhtrig_mask(:,:) = q_parc(:,:) >= rh_trig*qs_parc(:,:) 
 
 ! --- Set surface pressure
-  if( Lkbot ) then
+  if (present(kbot ) ) then
      do j = 1,jmax
      do i = 1,imax
         k = kbot(i,j) + 1
@@ -724,12 +765,16 @@ end subroutine ras_end
      end do
   end if
 
+  mc0_local = 0.
+
 !---------------------------------------------------------------------
 
 ! LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL
   do j = 1,jmax
   do i = 1,imax
 ! TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+    flxprec(:) = 0.
+    flxprec_evap(:) = 0.
 
 ! --- Set order in which clouds are to be done                   
   CALL RAS_CLOUD_INDEX ( ic, ncmax )
@@ -751,6 +796,8 @@ end subroutine ras_end
       psfc    =      psfc0(i,j)
      coldT    =     coldT0(i,j)
       klcl    =     kcbase(i,j)
+      if ( do_liq_num ) &
+        aerosolmass(:,:) = totalmass1(i,j,:,:)
 
      dtemp(:) = 0.0                               
      dqvap(:) = 0.0                               
@@ -763,16 +810,21 @@ end subroutine ras_end
      dqvap_ev(:) = 0.0 
     precip_ev    = 0.0 
 
-  if ( Lda0 ) then
+  if ( cloud_tracers_present ) then
         qa(:) = qa0(i,j,:)
         ql(:) = ql0(i,j,:)
         qi(:) = qi0(i,j,:)
         Da(:) = 0.0
         Dl(:) = 0.0
         Di(:) = 0.0
+        if ( do_liq_num ) then
+          qn(:) = qn0(i,j,:)
+          Dn(:) = 0.0
+        endif     
   end if
-  if ( Lmc0 ) then
+  if ( present(mc0) .or. id_mc > 0 ) then
         mc(:) = 0.0
+        det(:) = 0.0
   end if
 
 ! Get the column of tracer data
@@ -787,7 +839,7 @@ end subroutine ras_end
      Hl = HLv
   end if
 
-  if( Lkbot ) then
+  if( PRESENT( kbot ) ) then
        ksfc = kbot(i,j) + 1
   else
        ksfc = kmax + 1
@@ -843,28 +895,32 @@ end subroutine ras_end
  endif
 
 ! --- Do adjustment
-  if ( Lda0 ) then
-  CALL RAS_CLOUD(                                                    &
+  if ( cloud_tracers_present .and. .not.(do_liq_num)) then
+  CALL RAS_CLOUD(temp0(i,j,:), pres0(i,j,:),airdens(i,j,:),          &
        klcl,  ib,   rasal, frac, Hl, coldT,                          &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
        alpha, beta, gamma, cp_by_dp, zbase,                          &
-       dtcu,  dqcu, ducu,  dvcu, dpcu,                               &
-       ql,    qi,   qa,    mccu, Dlcu, Dicu, Dacu, tracer= tracer,   &
-       dtracercu = dtracercu )
-  else if ( Lmc0 .and. .not.Lda0 ) then
-  CALL RAS_CLOUD(                                                    &
+       dtcu,  dqcu, ducu,  dvcu, dpcu, tracer, dtracercu,            &
+       mccu, ql, qi, qa, Dlcu, Dicu, Dacu)
+  else if ( cloud_tracers_present .and. do_liq_num) then
+  CALL RAS_CLOUD(temp0(i,j,:), pres0(i,j,:),airdens(i,j,:),          &
+       klcl,  ib,   rasal, frac, Hl, coldT,                          &
+       theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
+       alpha, beta, gamma, cp_by_dp, zbase,                          &
+       dtcu,  dqcu, ducu,  dvcu, dpcu, tracer, dtracercu,            &
+       mccu, ql, qi, qa, Dlcu, Dicu, Dacu, aerosolmass, qn, Dncu)
+  else if (present(mc0) .or. id_mc > 0) then
+  CALL RAS_CLOUD(temp0(i,j,:), pres0(i,j,:),airdens(i,j,:),          &
        klcl,  ib,   rasal, frac, Hl,  coldT,                         &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
        alpha, beta, gamma, cp_by_dp, zbase,                          &
-       dtcu,  dqcu, ducu,  dvcu, dpcu, mccu=mccu, tracer= tracer,    &
-       dtracercu = dtracercu )
+       dtcu,  dqcu, ducu,  dvcu, dpcu, tracer, dtracercu, mccu)  
   else
-  CALL RAS_CLOUD(                                                    &
+  CALL RAS_CLOUD(temp0(i,j,:), pres0(i,j,:),airdens(i,j,:),          &
        klcl,  ib,   rasal, frac, Hl,  coldT,                         &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
        alpha, beta, gamma, cp_by_dp, zbase,                          &
-       dtcu,  dqcu, ducu,  dvcu, dpcu, tracer= tracer,               &
-       dtracercu = dtracercu )
+       dtcu,  dqcu, ducu,  dvcu, dpcu, tracer, dtracercu)
   end if
 
 ! --- For optional diagnostic output
@@ -877,21 +933,21 @@ end subroutine ras_end
   dvcu(:) =  dvcu(:) * dtime
   dpcu    =  dpcu    * dtime
 
-  if ( Lda0 ) then
+  if ( cloud_tracers_present ) then
   Dacu(:) =  Dacu(:) * dtime
   Dlcu(:) =  Dlcu(:) * dtime
   Dicu(:) =  Dicu(:) * dtime
+  if ( do_liq_num ) &
+    Dncu(:) =  Dncu(:) * dtime
   end if
 
-  if ( LR0 ) then
     do tr = 1,num_ras_tracers
       dtracercu(:,tr) = dtracercu(:,tr) * dtime
     enddo
-  end if
   if( modify_pbl ) then   
 ! TTTTTTTTTTTTTTTTTTTTT      
 ! --- Adjust mass flux between cloud base and surface       
-    if ( Lmc0 ) then     
+    if ( present(mc0) .or. id_mc > 0 ) then
       do k = klcl+1,ksfc
         mccu(k) = mccu(klcl) * ( psfc - pres_int(k)    ) / &
                                ( psfc - pres_int(klcl) )
@@ -912,11 +968,9 @@ end subroutine ras_end
       dqcu(k) = dqcu_pbl
       ducu(k) = ducu_pbl
       dvcu(k) = dvcu_pbl
-      if ( LR0 ) then
         do tr = 1,num_ras_tracers
           dtracercu(k,tr) = dtracercu_pbl(tr)
         enddo
-      end if
     end do
 ! LLLLLLLLLLLLLLLLL
   endif
@@ -925,12 +979,16 @@ end subroutine ras_end
       dtevap(:) = 0.0
       dqevap(:) = 0.0
       dpevap    = 0.0
+!
+! -- initialise the precipitation and evaporation flux
+      flxprec_ib = dpcu/dtime
+      flxprec_ib_evap = 0.0
 
   if( evap_on .and. ( dpcu > 0.0 ) ) then
 
   CALL RAS_CEVAP ( ib, temp, qvap, pres, mass, qvap_sat,       &
                    dqvap_sat, psfc, Hl, dtime, ksfc, dpcu,     &
-                   dtevap, dqevap,  dpevap )
+                   dtevap, dqevap,  dpevap, flxprec_ib, flxprec_ib_evap  )
 
       dtcu(:) =  dtcu(:) + dtevap(:) / pi(:)
       dqcu(:) =  dqcu(:) + dqevap(:)
@@ -938,19 +996,22 @@ end subroutine ras_end
 
   endif
 
+!---sum up precipitation flux and evaporation from  each cloud type
+!
+flxprec      = flxprec +flxprec_ib
+flxprec_evap = flxprec_evap +flxprec_ib_evap
+
 ! --- Update prognostic tracers
 !     NOTE: negative values of tracers are not prevented
-  if ( LR0 ) then  
     do tr = 1,num_ras_tracers
-         tracer(:,tr)   = tracer(:,tr) + dtracercu(:,tr)
+         tracer(:,tr)   = amax1(0.,tracer(:,tr) + dtracercu(:,tr))
     enddo  
-  end if
 
 if ( prevent_unreasonable ) then
 ! --- Update cloud liquid, ice, and fraction
 !     NOTE: unreasonable states are prevented
 
-  if ( Lda0 ) then
+  if ( cloud_tracers_present ) then
   
     !cloud fraction---------------
     where ((qa + Dacu) .lt. 0.)
@@ -987,10 +1048,12 @@ if ( prevent_unreasonable ) then
   end if
 else
 
-  if ( Lda0 ) then
+  if ( cloud_tracers_present ) then
     ql(:) = ql(:) + Dlcu(:)
     qi(:) = qi(:) + Dicu(:)
     qa(:) = qa(:) + Dacu(:)
+    if ( do_liq_num ) &
+      qn(:) = qn(:) + Dncu(:)
   end if
 
 endif
@@ -1016,13 +1079,16 @@ endif
   dtemp_ev(:) = dtemp_ev(:) + dtevap(:)
   dqvap_ev(:) = dqvap_ev(:) + dqevap(:)
 
-  if ( Lda0 ) then
+  if ( cloud_tracers_present ) then
     Da(:) = Da(:) + Dacu(:)
     Dl(:) = Dl(:) + Dlcu(:)
     Di(:) = Di(:) + Dicu(:)
+    if ( do_liq_num ) &
+      Dn(:) = Dn(:) + Dncu(:)
   end if
-  if ( Lmc0 ) then
+  if ( present(mc0) .or. id_mc > 0 ) then
     mc(:) = mc(:) + mccu(:)
+    det(ib) = det(ib) + mccu(ib+1)
   end if
   do tr = 1,num_ras_tracers
     dtracer(:,tr) = dtracer(:,tr) + dtracercu(:,tr)
@@ -1040,7 +1106,7 @@ endif
   end if
      
 !---------------------------------------------------------------------
-  end do
+  end do ! do nc = 1,ncmax
 !---------------------------------------------------------------------
 ! Cloud top loop ends
 !---------------------------------------------------------------------
@@ -1057,13 +1123,25 @@ endif
       rain0(i,j) = precip
    end if
 
-  if ( Lda0 ) then
+!-- unpacking the precipitation flux. The 
+    do kk = 1,kmax
+      if ( coldT ) then
+       snow3d(i,j,kk+1)   = flxprec(kk)      !kg/m2/sec
+      else
+       rain3d(i,j,kk+1)   = flxprec(kk)      !kg/m2/sec
+      end if
+    enddo
+
+  if ( cloud_tracers_present ) then
         Da0(i,j,:) = Da(:) 
         Dl0(i,j,:) = Dl(:) 
         Di0(i,j,:) = Di(:)
+        if ( do_liq_num ) &
+          Dn0(i,j,:) = Dn(:)
   end if
-  if ( Lmc0 ) then
-        mc0(i,j,:) = mc(:)
+  if ( present(mc0) .or. id_mc > 0 ) then
+        mc0_local(i,j,:) = mc(:)
+        det0(i,j,:) = det(:)
   end if
   do tr = 1,num_ras_tracers
     qtrras(i,j,:,tr) = dtracer(:,tr)
@@ -1082,8 +1160,8 @@ endif
     end if
 
 ! LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL
-  end do
-  end do
+  end do ! do i = 1,imax
+  end do ! do j = 1,jmax
 ! TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 
 !------- update input values and compute tendency -----------
@@ -1104,21 +1182,25 @@ endif
 !------- update input values , compute and add on tendency -----------
 !-------              in the case of strat                 -----------
 
-      if (do_strat) then
+      if (cloud_tracers_present) then
         ql0(:,:,:) = ql0(:,:,:)+Dl0(:,:,:)
         qi0(:,:,:) = qi0(:,:,:)+Di0(:,:,:)
         qa0(:,:,:) = qa0(:,:,:)+Da0(:,:,:)
+        if ( do_liq_num ) &
+          qn0(:,:,:) = qn0(:,:,:)+Dn0(:,:,:)
 
-         Dl0(:,:,:)=Dl0(:,:,:)*dtinv
-         Di0(:,:,:)=Di0(:,:,:)*dtinv
-         Da0(:,:,:)=Da0(:,:,:)*dtinv
+        Dl0(:,:,:) = Dl0(:,:,:)*dtinv
+        Di0(:,:,:) = Di0(:,:,:)*dtinv
+        Da0(:,:,:) = Da0(:,:,:)*dtinv
+        if ( do_liq_num ) &
+          Dn0(:,:,:)=Dn0(:,:,:)*dtinv
 
       end if
-  if ( LR0 ) then
     do tr = 1,num_ras_tracers
       qtrras(:,:,:,tr) = qtrras(:,:,:,tr)*dtinv
     enddo    
-  end if
+
+    if(present(mc0)) mc0 = mc0_local
 
 !---------------------------------------------------------------------
 ! --- Extra diagnostics
@@ -1175,7 +1257,7 @@ endif
                      mask3(:,:,1:kmax) = 0.
               END WHERE
            endif
-           used = send_data ( id_mc, mc0, Time, is, js, 1, rmask=mask3 )
+           used = send_data ( id_mc, mc0_local, Time, is, js, 1, rmask=mask3 )
       endif
 !------- diagnostics for water vapor path tendency ----------
       if ( id_q_conv_col > 0 ) then
@@ -1195,7 +1277,7 @@ endif
         used = send_data ( id_t_conv_col, tempdiag, Time, is, js )
       end if
 
-   if ( do_strat ) then
+   if ( cloud_tracers_present ) then
 
       !------- diagnostics for dql/dt from RAS -----------------
       if ( id_qldt_conv > 0 ) then
@@ -1212,6 +1294,12 @@ endif
       !------- diagnostics for dqa/dt from RAS -----------------
       if ( id_qadt_conv > 0 ) then
         used = send_data ( id_qadt_conv, Da0, Time, is, js, 1, &
+                           rmask=mask )
+      endif
+
+      !------- diagnostics for dqn/dt from RAS -----------------
+      if ( id_qndt_conv > 0 .and. do_liq_num ) then
+        used = send_data ( id_qndt_conv, Dn0, Time, is, js, 1, &
                            rmask=mask )
       endif
 
@@ -1242,6 +1330,12 @@ endif
         used = send_data ( id_qa_conv_col, tempdiag, Time, is, js )
       end if
          
+      !------- diagnostics for det0 from RAS -----------------
+      if ( id_det0 > 0 ) then
+        used = send_data ( id_det0, det0, Time, is, js, 1, &
+                           rmask=mask )
+      endif
+
    end if !end do strat if
 
    do tr = 1, num_ras_tracers
@@ -1272,12 +1366,12 @@ endif
 !#######################################################################
 !#######################################################################
 
- SUBROUTINE RAS_CLOUD(                                           &
+ SUBROUTINE RAS_CLOUD(t, p, dens,                                &
             k, ic, rasal, frac, hl, coldT,                       &
             theta, qvap, uwnd, vwnd, pres_int, pi_int, pi, psfc, &
             alf, bet, gam, cp_by_dp, zbase,                      &
-            dtcu, dqcu, ducu,  dvcu, dpcu,                       &
-            ql, qi, qa, mccu, Dlcu, Dicu, Dacu, tracer, dtracercu )
+            dtcu, dqcu, ducu,  dvcu, dpcu, tracer, dtracercu,    &
+            mccu, ql, qi, qa, Dlcu, Dicu, Dacu, aerosolmass, qn, Dncu)   ! optional
 !=======================================================================
 ! RAS Cu Parameterization 
 !=======================================================================
@@ -1306,10 +1400,12 @@ endif
  real,    intent(in) :: hl,    psfc
  integer, intent(in) :: ic,    k
  logical, intent(in) :: coldT
+ real, intent(in), dimension(:) :: t,p,dens
  real, intent(in), dimension(:) :: theta, qvap, uwnd, vwnd, pres_int, pi_int
  real, intent(in), dimension(:) :: alf,   bet,  gam,  pi,   cp_by_dp
- real, intent(in), OPTIONAL, dimension(:) :: ql,qi,qa
+ real, intent(in), OPTIONAL, dimension(:) :: ql,qi,qa,qn
  real, intent(in), dimension(:,:) :: tracer
+ real, intent(in), OPTIONAL, dimension(:,:) :: aerosolmass
 !---------------------------------------------------------------------
 ! Arguments (Intent out)
 !     dpcu    : Precip for cloud type ic.
@@ -1326,7 +1422,7 @@ endif
 
  real, intent(out)  :: dpcu
  real, intent(out), dimension(:) :: dtcu, dqcu, ducu, dvcu
- real, intent(out), OPTIONAL, dimension(:) :: mccu, Dacu, Dlcu, Dicu
+ real, intent(out), OPTIONAL, dimension(:) :: mccu, Dacu, Dlcu, Dicu, Dncu
  real, intent(out), dimension(:,:) :: dtracercu
 
 !---------------------------------------------------------------------
@@ -1339,7 +1435,7 @@ endif
   real    :: wfn_crit,  ftop, rn_frac
   real    :: wfn,  akm, qs1,  uht, vht, wlq, alm 
   real    :: rasalf
-  real    :: wll,  wli
+  real    :: wll,  wli, wlN
   integer :: km1,  ic1, l,    iwk
   real    :: xx1,  xx2, xx3,  xx4
   real    :: ssl, dtemp, zzl, hccp, hcc,  dpib, dpit 
@@ -1348,7 +1444,14 @@ endif
  real, dimension(size(theta,1)) :: gmh, eta, hol, hst, qol
  real, dimension(SIZE(tracer,2)) :: wlR
 
- logical :: Ldacu, Lmccu, LRcu
+ logical :: Ldacu, Lmccu, LRcu, do_liq_num
+
+!thetac in-cloud potential temperature (K)
+!qc in-cloud vapor mixing ratio (kg water/kg air)
+!qt in-cloud qc + ql (kg water/kg air)
+ real, dimension(size(theta,1)) :: thetac, qc, qt
+ real     :: tc, te, Nc, qlc, up_conv, drop
+ real, dimension(3) :: totalmass
 
 !=====================================================================
 
@@ -1356,6 +1459,8 @@ endif
   Ldacu = PRESENT( Dacu )
   Lmccu = PRESENT( mccu ) 
   LRcu  = .TRUE.
+  do_liq_num = PRESENT(qn) 
+
 
 ! Initialize
   dtcu = 0.0
@@ -1367,6 +1472,7 @@ endif
   Dacu = 0.0
   Dlcu = 0.0
   Dicu = 0.0
+  if ( do_liq_num ) Dncu = 0.0
   end if
   if ( Lmccu ) then
   mccu = 0.0
@@ -1385,6 +1491,8 @@ endif
   alm=0.0
   wll=0.0
   wli=0.0
+  if ( do_liq_num ) &
+    wlN=0.0
   gmh=0.0
   eta=0.0
   hol=0.0
@@ -1487,15 +1595,45 @@ endif
     wfn  = 0.0
     hccp = hol(k)
 
+!=====================================================================
+!     IN-CLOUD TEMP AND WATER MIXING RATIO
+!=====================================================================
+
+    if ( do_liq_num ) then
+    thetac(k) = theta(k)
+    zzl  = ( pi_int(k+1) - pi_int(k) ) * theta(k) * Cp_Air
+    wlq =  qol(k)
+    qt(k) = qol(k)
+    endif
+
+
  if ( ic1 <= km1 ) then
  do l = km1,ic1,-1
+!hcc in-cloud moist static energy (MSE)
     hcc = hccp + ( eta(l) - eta(l+1) ) * hol(l)
     dpib = pi_int(l+1) - pi(l)
     dpit = pi(l)       - pi_int(l)
+!environment
     xx1  = ( eta(l+1) * dpib + eta(l) * dpit ) * hst(l)
+!in-cloud
     xx2  =       hccp * dpib +    hcc * dpit
     wfn  = wfn + ( xx2 - xx1 ) * gam(l)
     hccp = hcc
+
+    if ( do_liq_num ) then
+    thetac(l) = ((hcc-zzl)/eta(l)-alf(l)*Hl)/(pi_int(l+1)*Cp_Air+bet(l)*Hl)
+!    qc(l) = alf(l)+bet(l)*thetac(l)
+    qc(l) = alf(l)+bet(l)*theta(l)
+
+    ssl  = zzl + pi_int(l+1) * thetac(l) * Cp_Air
+    dtemp  = ( pi_int(l+1) - pi_int(l) ) * thetac(l)
+
+    zzl    = zzl      + dtemp * Cp_Air    
+    xx1 = eta(l) - eta(l+1)
+    wlq = wlq + xx1 *  qol(l)
+    qt(l) = wlq/eta(l)
+    endif
+
  end do
  end if
 
@@ -1503,6 +1641,9 @@ endif
     wfn = wfn + gam(ic) * ( pi_int(ic1) - pi(ic) ) * &
                ( hccp - hst(ic) * eta(ic1) )
  end if
+
+    if ( do_liq_num ) &
+      up_conv=0.5*max(wfn,0.)**0.5
 
 !=====================================================================
 !    CRITICAL CLOUD WORK FUNCTION
@@ -1618,6 +1759,8 @@ if ( LRcu ) then
 
      wll = ql(k)
      wli = qi(k)
+     if ( do_liq_num ) &
+       wlN = qn(k)
      wlR = tracer(k,:)
 
  do l = km1,ic,-1
@@ -1626,17 +1769,27 @@ if ( LRcu ) then
      wli = wli + xx1 * qi(l)
      wlR = wlR + xx1 * tracer(l,:)
  end do
+
+
+ if ( do_liq_num ) then
+   do l = km1,ic,-1
+     xx1 = eta(l) - eta(l+1)
+       wlN = wlN + xx1 * qn(l)
+   end do
+ endif
  
 !do cloud base level
      xx1     = 0.5 * cp_by_dp(k) / Cp_Air / onebg
      Dlcu(k) = ( ql(km1) - ql(k) ) * xx1
      Dicu(k) = ( qi(km1) - qi(k) ) * xx1
      Dacu(k) = ( qa(km1) - qa(k) ) * xx1
+     if ( do_liq_num ) &
+       Dncu(k) = ( qn(km1) - qn(k) ) * xx1
      mccu(k) = eta(k)
      dtracercu(k,:) = ( tracer(km1,:) - tracer(k,:) ) * xx1
 
  if ( ic1 <= km1 ) then
- do l = km1,ic1,-1
+   do l = km1,ic1,-1
      xx1     = 0.5 * cp_by_dp(l) / Cp_Air / onebg
      Dlcu(l) = ( eta(l+1) * ( ql(l  ) - ql(l+1) ) + &
                  eta(l  ) * ( ql(l-1) - ql(l  ) ) ) * xx1
@@ -1647,8 +1800,17 @@ if ( LRcu ) then
      mccu(l) = eta(l)
      dtracercu(l,:) = ( eta(l+1) * ( tracer(l  ,:) - tracer(l+1,:) ) + &
                    eta(l  ) * ( tracer(l-1,:) - tracer(l  ,:) ) ) * xx1
- end do
+   end do
+
+   if ( do_liq_num ) then
+     do l = km1,ic1,-1
+       xx1     = 0.5 * cp_by_dp(l) / Cp_Air / onebg
+       Dncu(l) = ( eta(l+1) * ( qn(l  ) - qn(l+1) ) + &
+                   eta(l  ) * ( qn(l-1) - qn(l  ) ) ) * xx1
+     enddo
+   endif
  end if
+ 
 
  !do cloud top level
      xx1      = cp_by_dp(ic) / Cp_Air / onebg
@@ -1659,6 +1821,9 @@ if ( LRcu ) then
                 ( wli       - eta(ic) * qi(ic)  ) * xx1
      Dacu(ic) = ( eta(ic1) * ( qa(ic) - qa(ic1) ) * xx2 ) + &
                 ( eta(ic)   - eta(ic) * qa(ic)  ) * xx1
+     if ( do_liq_num ) &
+       Dncu(ic) = ( eta(ic1) * ( qn(ic) - qn(ic1) ) * xx2 ) + &
+                  ( wlN       - eta(ic) * qn(ic)  ) * xx1
      dtracercu(ic,:) = ( eta(ic1) * ( tracer(ic,:) - tracer(ic1,:) ) * xx2 ) + &
                   ( wlR      - eta(ic) * tracer(ic,:)  ) * xx1
 
@@ -1720,6 +1885,45 @@ if ( LRcu ) then
          Dicu(ic) = Dicu(ic) + wdet * cp_by_dp(ic)/Cp_Air/onebg
       else
          Dlcu(ic) = Dlcu(ic) + wdet * cp_by_dp(ic)/Cp_Air/onebg
+         if ( do_liq_num ) then
+!=======================================================================
+!     yim's CONVECTIVE NUCLEATION
+!=======================================================================
+
+!Use aerosol at cloud base.
+
+!An assumption which treats ss and oc as sulfate
+!convert SO4 to AS
+!convert OC to OM
+           totalmass(1)=aerosolmass(k,1)
+           totalmass(2)=0.1*aerosolmass(k,2)
+           totalmass(3)=1.67*aerosolmass(k,3)
+ 
+           call aer_ccn_act(t(k),p(k),up_conv,totalmass,drop)
+           zzl=drop*1.0e6/dens(k)
+
+!YM choose not to do above-cloud activation for the sake of computer time
+           if ( ic1 <= km1 ) then
+             do l = km1,ic1,-1
+               totalmass(1)=aerosolmass(l,1)
+               totalmass(2)=0.1*aerosolmass(l,2)
+               totalmass(3)=1.67*aerosolmass(l,3)
+ 
+               tc=thetac(l)*pi(l)
+               te=theta(l)*pi(l)
+               Nc=zzl/eta(l+1)
+ 
+               call aer_ccn_act2(t(l),p(l),up_conv,totalmass,alm,dens(l),  &
+                                 Nc,qc(l),qt(l),qol(l),tc,te,drop)
+                                 zzl=zzl+drop*1.0e6/dens(l)*(eta(l)-eta(l+1))
+             end do
+           end if
+
+
+
+           Dncu(ic) = Dncu(ic) + zzl*(1.0-rn_frac)* &
+           cp_by_dp(ic)/Cp_Air/onebg
+         endif ! end of warm_cloud_aerosol interaction
       end if
           wdet = 0.0
 
@@ -1822,14 +2026,22 @@ if ( LRcu ) then
 !=======================================================================
 
  if ( Ldacu ) then
-      xx1 = wfn * onebg
+   xx1 = wfn * onebg
+   do l = ic,k
+     Dacu(l) = Dacu(l) * xx1
+     Dlcu(l) = Dlcu(l) * xx1
+     Dicu(l) = Dicu(l) * xx1
+     mccu(l) = mccu(l) * xx1
+   end do
+   if ( do_liq_num ) then
+     xx1 = wfn * onebg
      do l = ic,k
-          Dacu(l) = Dacu(l) * xx1
-          Dlcu(l) = Dlcu(l) * xx1
-          Dicu(l) = Dicu(l) * xx1
-          mccu(l) = mccu(l) * xx1
-     end do
+       Dncu(l) = Dncu(l) * xx1
+     enddo
+   endif           
+
  end if
+
 
  if ( LRcu ) then
       xx1 = wfn * onebg
@@ -1973,7 +2185,8 @@ if ( LRcu ) then
 
  SUBROUTINE RAS_CEVAP ( type,     temp,      qvap,   pres,   mass,  &
                         qvap_sat, dqvap_sat, psfc,   hl,     dtime, &
-                        ksfc,     dpcu,      dtevap, dqevap, dpevap )
+                        ksfc,     dpcu,      dtevap, dqevap, dpevap, &
+			flxprec_ib, flxprec_ib_evap )
 
 !=======================================================================
 ! EVAPORATION OF CONVECTIVE SCALE PRECIP         
@@ -2010,6 +2223,10 @@ if ( LRcu ) then
 !---------------------------------------------------------------------
   real, intent(out), dimension(:) :: dtevap, dqevap
   real, intent(out)               :: dpevap
+  real, intent(out), dimension(:) ::  &
+                flxprec_ib,    & ! precipation flux profile for cloud ib
+		flxprec_ib_evap  ! evaporaton of precip profile for cloud id
+		                 ! [kg/m2/s]
 
 !---------------------------------------------------------------------
 !  (Intent local)
@@ -2023,11 +2240,14 @@ if ( LRcu ) then
   real    :: prec, def, evef
   real    :: prec_mmph, pfac, emx
   integer :: itopp1, kmax, k
+  real    :: totalprecip
 
 !=======================================================================
 
   kmax   = size(temp(:))
   itopp1 = type + 1
+  flxprec_ib =0.0
+  flxprec_ib_evap =0.0
 
 ! --- Initalize
   dpevap   = 0.0
@@ -2047,6 +2267,7 @@ if ( LRcu ) then
   pfac      = SQRT( pres(k) / psfc )
   emx       = SQRT( cem * cfrac * prec_mmph * pfac )   
   evef      = 1.0 - EXP( ceta * dtime * emx ) 
+  def=0.
 
 ! --- Evaporate precip where needed
   if ( ( hcevap*qvap_sat(k) >= qvap(k) ) .and.  &
@@ -2059,10 +2280,26 @@ if ( LRcu ) then
     qvap_new(k) = qvap(k) + def
     temp_new(k) = temp(k) - (def * hl/Cp_Air)
          dpevap = dpevap + def * mass(k)
+    flxprec_ib_evap(k) = def * mass(k)/dtime
   end if
 
 !-----------------------------------------
+  end do   ! itopp1
+!
+!-------compute precipitation flux at each model layer
+! by deducting the evaporation in each layer  from 
+! cloud top to surface/lowest model layer
+!
+
+  totalprecip = dpcu         ! precipitation at cloud top
+!
+  do k = itopp1,kmax
+    flxprec_ib(k) = MAX((totalprecip - flxprec_ib_evap(k)*dtime),0.0)/dtime
+    totalprecip =   totalprecip - flxprec_ib_evap(k)*dtime
+
+!-----------------------------------------
   end do
+
 
 ! --- Changes to temperature and water vapor from evaporation
   dtevap(:) = temp_new(:) - temp(:) 
@@ -2287,7 +2524,7 @@ if ( LRcu ) then
 FUNCTION ran0(idum)
 
 
-!     $Id: ras.F90,v 11.0 2004/09/28 19:20:35 fms Exp $
+!     $Id: ras.F90,v 13.0 2006/03/28 21:10:58 fms Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

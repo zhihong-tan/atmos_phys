@@ -55,8 +55,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 12.0 2005/04/14 15:44:52 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: lima $'
+   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 13.0 2006/03/28 21:11:34 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 
@@ -126,8 +126,8 @@ subroutine diag_clouds_W_init  (num_slingo_bands_out)
 
 integer, intent(out) :: num_slingo_bands_out
 
-      integer            :: unit, ierr, io, ierr2
-      integer            :: i, j
+      integer            :: unit, ierr, io
+
 
       if (module_is_initialized) return
 !---------------------------------------------------------------------

@@ -57,7 +57,7 @@
 <h4>OTHER MODULES USED</h4>
 <!-- BEGIN OTHER MODULES USED -->
 <div>
-<pre> time_manager_mod<br>  donner_deep_mod<br>          fms_mod<br>rad_utilities_mod</pre>
+<pre> time_manager_mod<br>          fms_mod<br>rad_utilities_mod</pre>
 </div>
 <!-- END OTHER MODULES USED -->
 <!-- BEGIN PUBLIC INTERFACE -->
@@ -75,10 +75,6 @@
 <dd> 
 </dd>
 <dt>
-<a href="#donner_deep_clouds_amt2">donner_deep_clouds_amt2</a>:</dt>
-<dd> 
-</dd>
-<dt>
 <a href="#donner_deep_clouds_amt">donner_deep_clouds_amt</a>:</dt>
 <dd>   donner_deep_clouds_amt defines the distribution of cloud water and
    cloud ice concentration and particle size and total cloud fraction
@@ -89,10 +85,6 @@
    radiation package.
    <br>
 <br> 
-</dd>
-<dt>
-<a href="#donner_deep_clouds_calc">donner_deep_clouds_calc</a>:</dt>
-<dd> 
 </dd>
 </dl>
 </div>
@@ -171,77 +163,6 @@
 </dl>
 </li>
 <li>
-<a name="donner_deep_clouds_amt2"></a>
-<h4>donner_deep_clouds_amt2</h4>
-<pre>
-<b>call donner_deep_clouds_amt2 </b>( &amp; is, ie, js, je, &amp; cld_cell, &amp; Cell_microphys, &amp; cld_meso, &amp; Meso_microphys )</pre>
-<dl>
-<dt>
-<b>DESCRIPTION</b>
-</dt>
-<dd> 
-</dd>
-<br>
-<br>
-<dt>
-<b>INPUT</b>
-</dt>
-<dd>
-<table border="0">
-<tr>
-<td valign="top" align="left"><tt>is&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[integer]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>ie&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[integer]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>js&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[integer]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>je&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[integer]</span></td>
-</tr>
-</table>
-</dd>
-<br>
-<dt>
-<b>INPUT/OUTPUT</b>
-</dt>
-<dd>
-<table border="0">
-<tr>
-<td valign="top" align="left"><tt>Cell_microphys&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[microphysics_type]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>Meso_microphys&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[microphysics_type]</span></td>
-</tr>
-</table>
-</dd>
-<br>
-<dt>
-<b>OUTPUT</b>
-</dt>
-<dd>
-<table border="0">
-<tr>
-<td valign="top" align="left"><tt>cld_cell&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>cld_meso&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-</table>
-</dd>
-<br>
-</dl>
-</li>
-<li>
 <a name="donner_deep_clouds_amt"></a>
 <h4>donner_deep_clouds_amt</h4>
 <pre>
@@ -298,113 +219,6 @@
 <tr>
 <td valign="top" align="left"><tt>Meso_microphys&nbsp;&nbsp;&nbsp;</tt></td><td> 
 <br>&nbsp;&nbsp;&nbsp;<span class="type">[microphysics_type]</span></td>
-</tr>
-</table>
-</dd>
-<br>
-</dl>
-</li>
-<li>
-<a name="donner_deep_clouds_calc"></a>
-<h4>donner_deep_clouds_calc</h4>
-<pre>
-<b>call donner_deep_clouds_calc </b>( &amp; is,ie,js,je,deltaz,press,temp, &amp; cld_cell, &amp; cldext_cell, cldsct_cell, cldasymm_cell, &amp; abscoeff_cell, &amp; cld_meso, &amp; cldext_meso, cldsct_meso, cldasymm_meso, &amp; abscoeff_meso)</pre>
-<dl>
-<dt>
-<b>DESCRIPTION</b>
-</dt>
-<dd> 
-</dd>
-<br>
-<br>
-<dt>
-<b>INPUT</b>
-</dt>
-<dd>
-<table border="0">
-<tr>
-<td valign="top" align="left"><tt>is&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[integer]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>ie&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[integer]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>js&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[integer]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>je&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[integer]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>deltaz&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>press&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>temp&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-</table>
-</dd>
-<br>
-<dt>
-<b>INPUT/OUTPUT</b>
-</dt>
-<dd>
-<table border="0">
-<tr>
-<td valign="top" align="left"><tt>cld_cell&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>cld_meso&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-</table>
-</dd>
-<br>
-<dt>
-<b>OUTPUT</b>
-</dt>
-<dd>
-<table border="0">
-<tr>
-<td valign="top" align="left"><tt>cldext_cell&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>cldsct_cell&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>cldasymm_cell&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>abscoeff_cell&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>cldext_meso&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>cldsct_meso&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>cldasymm_meso&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>abscoeff_meso&nbsp;&nbsp;&nbsp;</tt></td><td> 
-<br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 </table>
 </dd>

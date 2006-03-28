@@ -42,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: gas_tf.F90,v 12.0 2005/04/14 15:45:25 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: gas_tf.F90,v 13.0 2006/03/28 21:11:52 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -927,7 +927,7 @@ type(gas_tf_type),      intent(in)  :: Gas_tf
                        size(Gas_tf%tdav,2), &
                        size(Gas_tf%tdav,3)  ) ::   &  
                                             co2r, dift,  d2cdt2, dco2dt
-      integer    ::  k, kp
+      integer    ::   kp
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -1473,8 +1473,8 @@ real, dimension (:,:,:), intent(out) :: co21diag
 !--------------------------------------------------------------------
 !  local variables:
 
-      real, dimension (size(Atmos_input%pflux,1),  &
-                       size(Atmos_input%pflux,2)) :: pdfl
+
+
 
       real, dimension (size(Atmos_input%pflux,1),  &
                        size(Atmos_input%pflux,2),  &
@@ -1657,7 +1657,7 @@ real, dimension (:,:),   intent(out) :: co21c, co21r
                        size(Atmos_input%pflux,3)) ::         &
                press, pflux, alpa, alpb, ca, cb, delpr1, delpr2, rlog
 
-      integer   :: k, km, kmp1
+      integer   ::  km, kmp1
 
 !-------------------------------------------------------------------
 !  local variables:
@@ -2339,12 +2339,12 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !---------------------------------------------------------------------
 !  local variables:
 
-      real, dimension(:), allocatable :: pd_file, plm_file, pa_file
 
-      logical               :: valid=.false.
-      integer               :: k, unit, n
-      real                  :: gas_amount_file
-      integer               :: nstdlvls_file, kbegin_file, kend_file
+
+
+      integer               ::  unit
+
+
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -2458,12 +2458,12 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !---------------------------------------------------------------------
 !  local variables:
 
-   real, dimension(:), allocatable :: pd_file, plm_file, pa_file
 
-   logical               :: valid=.false.
-   integer               :: k, unit, n
-   real                  :: gas_amount_file
-   integer               :: nstdlvls_file, kbegin_file, kend_file
+
+
+   integer               ::  unit
+
+
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -2573,12 +2573,12 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !---------------------------------------------------------------------
 !  local variables:
 
-   real, dimension(:), allocatable :: pd_file, plm_file, pa_file
 
-   logical               :: valid=.false.
-   integer               :: k, unit, n
-   real                  :: gas_amount_file
-   integer               :: nstdlvls_file, kbegin_file, kend_file
+
+
+   integer               ::  unit
+
+
 
 !---------------------------------------------------------------------
 !  local variables:

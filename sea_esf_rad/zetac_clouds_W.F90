@@ -50,8 +50,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: zetac_clouds_W.F90,v 12.0 2005/04/14 15:48:58 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: zetac_clouds_W.F90,v 13.0 2006/03/28 21:14:00 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -324,7 +324,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !    local variables
 
       integer :: idim, jdim, kdim
-      integer :: i, j, k
+      integer :: i, j
       real, dimension (size(z_full,1), size(z_full,2),   &
                        size(z_full,3)) ::    deltap, diam_ice, diam_liq
 

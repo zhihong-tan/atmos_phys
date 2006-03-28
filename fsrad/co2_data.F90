@@ -114,8 +114,8 @@ private
 !-----------------------------------------------------------------------
 !------------ VERSION NUMBER ----------------
 
- character(len=128) :: version = '$Id: co2_data.F90,v 10.0 2003/10/24 22:00:30 fms Exp $'
- character(len=128) :: tagname = '$Name: lima $'
+ character(len=128) :: version = '$Id: co2_data.F90,v 13.0 2006/03/28 21:09:22 fms Exp $'
+ character(len=128) :: tagname = '$Name: memphis $'
  logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
@@ -146,7 +146,7 @@ private
 !            mixing ratio (must lie between 0.5 and 4.0)
 !   PREF   = reference pressure levels
 !-----------------------------------------------------------------------
-      Integer    unit,io,ir,iq,npurp,nkkk,unit1,unit2,m,n,ntap
+      Integer    ir,iq,npurp,nkkk,unit1,unit2,m,n,ntap
       Real       co2mix,ccomp
       Real, Dimension(4) :: cstd = (/ 0.5, 1.0, 2.0, 4.0 /)
 !-----------------------------------------------------------------------
@@ -358,8 +358,6 @@ private
                                         CO2PO1,CO2801,CO2PO2,CO2802,  &
                                         D2CT8,D2CT10
 
-      Real, Dimension(nlev+1) :: DATOUT
-
       Integer   i,j,L,LP1,JMAX
       Real      C1,C2
 !-----------------------------------------------------------------------
@@ -505,8 +503,6 @@ private
       Real,   Dimension(nlev+1,nlev+1) :: DCDT8,DCDT10,CO2PO,CO2800,   &
                                           CO2PO1,CO2801,CO2PO2,CO2802, &
                                           D2CT8,D2CT10
-
-      Real, Dimension(nlev+1) :: DATOUT
 
       Integer  L,LP1,i,j
       Real     C1,C2

@@ -226,7 +226,7 @@
 <a name="physics_driver_down"></a>
 <h4>physics_driver_down</h4>
 <pre>
-<b>call physics_driver_down </b>(is, ie, js, je, &amp; Time_prev, Time, Time_next, &amp; lat, lon, area, &amp; p_half, p_full, z_half, z_full, &amp; u, v, t, q, r, um, vm, tm, qm, rm, &amp; frac_land, rough_mom, &amp; albedo, t_surf_rad, &amp; u_star, b_star, q_star, &amp; dtau_du, dtau_dv, tau_x, tau_y, &amp; udt, vdt, tdt, qdt, rdt, &amp; flux_sw, flux_lw, coszen, gust, &amp; Surf_diff, &amp; mask, kbot</pre>
+<b>call physics_driver_down </b>(is, ie, js, je, &amp; Time_prev, Time, Time_next, &amp; lat, lon, area, &amp; p_half, p_full, z_half, z_full, &amp; u, v, t, q, r, um, vm, tm, qm, rm, &amp; frac_land, rough_mom, &amp; albedo, t_surf_rad, &amp; u_star, b_star, q_star, &amp; dtau_du, dtau_dv, tau_x, tau_y, &amp; udt, vdt, tdt, qdt, rdt, &amp; flux_sw, flux_lw, coszen, gust, &amp; Surf_diff, gavg_rrv, &amp; mask, kbot</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
@@ -328,6 +328,9 @@
 </tr>
 <tr>
 <td valign="top" align="left"><tt>dtau_dv&nbsp;&nbsp;&nbsp;</tt></td><td>   derivative of meridional surface stress w.r.t meridional wind speed <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>gavg_rrv&nbsp;&nbsp;&nbsp;</tt></td><td>   array containing global average of tracer volume mixing ratio <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 <tr>
 <td valign="top" align="left"><tt>kbot&nbsp;&nbsp;&nbsp;</tt></td><td>   OPTIONAL: present when running eta vertical coordinate,

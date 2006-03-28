@@ -252,8 +252,8 @@ private
 !---------------------------------------------------------------------
 !------------ version number for this module -------------------------
         
-character(len=128) :: version = '$Id: cloud_rad.F90,v 11.0 2004/09/28 19:14:43 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: cloud_rad.F90,v 13.0 2006/03/28 21:07:44 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 
 
 !---------------------------------------------------------------------- 
@@ -462,6 +462,7 @@ integer ::            id_aice, id_reffice, id_aliq, id_reffliq, &
 !   logical variables:
 !--------------------------------------------------------------------
 logical   :: module_is_initialized = .false.  ! is module initialized ?
+logical   :: do_liq_num          = .false.  ! use prog. droplet number ?
 
 
 
@@ -544,7 +545,7 @@ logical   :: module_is_initialized = .false.  ! is module initialized ?
 ! </SUBROUTINE>
 !
 subroutine cloud_rad_init (axes, Time, qmin_in, N_land_in, N_ocean_in, &
-                           overlap_out)
+                           prog_droplet_in, overlap_out)
                                
 !--------------------------------------------------------------------
 !    cloud_rad_init is the constructor for cloud_rad_mod.
@@ -610,6 +611,7 @@ integer,         intent(in), optional     :: axes(4)
 type(time_type), intent(in), optional     :: Time
 REAL,     INTENT (IN),  OPTIONAL          :: qmin_in,N_land_in,&
                                              N_ocean_in
+LOGICAL,  INTENT (IN), OPTIONAL           :: prog_droplet_in
 INTEGER,  INTENT (OUT), OPTIONAL          :: overlap_out
 
 !  Internal variables
@@ -688,6 +690,9 @@ INTEGER                                  :: unit,io,ierr
         end if
         if (present(overlap_out)) then
               overlap_out = overlap
+        end if
+        if (present(prog_droplet_in)) then
+              do_liq_num = prog_droplet_in
         end if
         
        module_is_initialized = .true.
@@ -851,7 +856,7 @@ end subroutine lw_emissivity
 !
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call cloud_summary3 (is, js, land, ql, qi, qa, pfull, phalf, &
+!   call cloud_summary3 (is, js, land, ql, qi, qa, qn, pfull, phalf, &
 !                        tkel, nclds, cldamt, lwp, iwp, reff_liq,  &
 !                        reff_ice, ktop, kbot, conc_drop, conc_ice, &
 !                        size_drop, size_ice)
@@ -872,6 +877,9 @@ end subroutine lw_emissivity
 !  </IN>
 !  <IN NAME="qa" TYPE="real">
 !    Cloud volume fraction [ fraction ]
+!  </IN>
+!  <IN NAME="qn" TYPE="real">
+!    Cloud droplet number [ #/kg air ]
 !  </IN>
 !  <IN NAME="pfull" TYPE="real">
 !    Pressure at full levels [ Pascals ]
@@ -931,7 +939,7 @@ end subroutine lw_emissivity
 !  </OUT>
 ! </SUBROUTINE>
 !
-subroutine cloud_summary3 (is, js, land, ql, qi, qa, pfull, phalf, &
+subroutine cloud_summary3 (is, js, land, ql, qi, qa, qn, pfull, phalf, &
                            tkel, nclds, cldamt, lwp, iwp, reff_liq,  &
                            reff_ice, ktop, kbot, conc_drop, conc_ice, &
                            size_drop, size_ice)
@@ -943,7 +951,7 @@ subroutine cloud_summary3 (is, js, land, ql, qi, qa, pfull, phalf, &
  
 integer,                   intent(in)            :: is,js
 real, dimension(:,:),      intent(in)            :: land
-real, dimension(:,:,:),    intent(in)            :: ql, qi, qa, pfull,&
+real, dimension(:,:,:),    intent(in)            :: ql, qi, qa, qn, pfull,&
                                                     phalf, tkel
 integer, dimension(:,:),   intent(out)           :: nclds          
 real, dimension(:,:,:),    intent(out)           :: cldamt, lwp, iwp, &
@@ -961,6 +969,7 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !       ql           Cloud liquid condensate [ kg condensate/kg air ]
 !       qi           Cloud ice condensate [ kg condensate/kg air ]
 !       qa           Cloud volume fraction [ fraction ]
+!       qn           Cloud droplet number [ #/kg air]
 !       pfull        Pressure at full levels [ Pascals ]
 !       phalf        Pressure at half levels [ Pascals ]
 !                    NOTE: it is assumed that phalf(j+1) > phalf(j)
@@ -1001,10 +1010,10 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 
       real,dimension (size(ql,1),size(ql,2),   &
                                  size(ql,3)) :: qa_local, ql_local, &
-                                                qi_local
+                                                qi_local, N_drop3D
 
-      real,dimension (size(ql,1),size(ql,2)) :: N_drop, k_ratio
-      integer :: i,j,k
+      real,dimension (size(ql,1),size(ql,2)) :: N_drop2D, k_ratio
+      integer  :: ix, jx, kx, sx, i, j, k, s
 
 !--------------------------------------------------------------------
 !    local variables:
@@ -1012,7 +1021,7 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !       qa_local     local value of qa (fraction)
 !       ql_local     local value of ql (kg condensate / kg air)
 !       qi_local     local value of qi (kg condensate / kg air)
-!       N_drop       number of cloud droplets per cubic meter
+!       N_drop[23]D  number of cloud droplets per cubic meter
 !       k_ratio      ratio of effective radius to mean volume radius
 !
 !---------------------------------------------------------------------
@@ -1047,7 +1056,11 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !    define the cloud droplet concentration and the ratio of the 
 !    effective drop radius to the mean volume radius.
 !--------------------------------------------------------------------
-      N_drop(:,:)  = N_land*land(:,:) + N_ocean*(1. - land(:,:))
+!yim prognostic droplet number
+      if (do_liq_num) then
+        N_drop3D=qn
+      endif    
+      N_drop2D(:,:)  = N_land*land(:,:) + N_ocean*(1. - land(:,:))
       k_ratio(:,:) = k_land*land(:,:) + k_ocean*(1. - land(:,:))
 
 !--------------------------------------------------------------------
@@ -1081,7 +1094,7 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 
         else
           call  max_rnd_overlap (ql_local, qi_local, qa_local, pfull,  &
-                                 phalf, tkel, N_drop, k_ratio, nclds,  &
+                                 phalf, tkel, N_drop3D, N_drop2D, k_ratio, nclds,  &
                                  ktop, kbot, cldamt, lwp, iwp,   &
                                  reff_liq, reff_ice)
         endif
@@ -1109,7 +1122,7 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
         if (present (conc_drop) .and.  present (conc_ice ) .and. &
             present (size_ice ) .and.  present (size_drop)) then      
           call rnd_overlap (ql_local, qi_local, qa_local, pfull,  &
-                            phalf, tkel, N_drop, k_ratio, nclds,      &
+                            phalf, tkel, N_drop3D, N_drop2D, k_ratio, nclds,      &
                             cldamt, lwp, iwp, reff_liq, reff_ice,   &
                             conc_drop_org=conc_drop,&
                             conc_ice_org =conc_ice,&
@@ -1138,7 +1151,7 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !----------------------------------------------------------------------
         else
            call  rnd_overlap (ql_local, qi_local, qa_local, pfull,  &
-                              phalf, tkel, N_drop, k_ratio, nclds,  &
+                              phalf, tkel, N_drop3D, N_drop2D, k_ratio, nclds,  &
                               cldamt, lwp, iwp, reff_liq, reff_ice)
         endif
       endif ! (present(ktop and kbot))
@@ -1167,7 +1180,7 @@ end subroutine cloud_summary3
 !   
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
+!   call max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop3D, N_drop2D,  &
 !                         k_ratio, nclds, ktop, kbot, cldamt, lwp,  &
 !                         iwp, reff_liq, reff_ice)
 !
@@ -1191,8 +1204,8 @@ end subroutine cloud_summary3
 !  <IN NAME="tkel" TYPE="real">
 !    Temperature [ deg Kelvin ]
 !  </IN>
-!  <IN NAME="N_drop" TYPE="real">
-!    Number of cloud droplets per cubic meter
+!  <IN NAME="N_drop[23]D" TYPE="real">
+!    Number of cloud droplets per cubic meter (2 and 3 dimensional array)
 !  </IN>
 !  <IN NAME="k_ratio" TYPE="real">
 !    Ratio of effective radius to mean volume radius
@@ -1223,7 +1236,7 @@ end subroutine cloud_summary3
 !  </OUT>
 ! </SUBROUTINE>
 !
-subroutine max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
+subroutine max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop3D, N_drop2D,  &
                            k_ratio, nclds, ktop, kbot, cldamt, lwp,  &
                            iwp, reff_liq, reff_ice)
 
@@ -1233,8 +1246,8 @@ subroutine max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
 !----------------------------------------------------------------------
  
 real,    dimension(:,:,:), intent(in)             :: ql, qi, qa,  &
-                                                     pfull, phalf, tkel
-real,    dimension(:,:),   intent(in)             :: N_drop, k_ratio
+                                                     pfull, phalf, tkel, N_drop3D
+real,    dimension(:,:),   intent(in)             :: N_drop2D, k_ratio
 integer, dimension(:,:),   intent(out)            :: nclds
 integer, dimension(:,:,:), intent(out)            :: ktop, kbot
 real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
@@ -1398,14 +1411,38 @@ real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
 !                k = factor to account for difference between 
 !                    mean volume radius and effective radius
 !--------------------------------------------------------------------
-              if (ql(i,j,k) > qmin) then
-                reff_liq_local = k_ratio(i,j)*620350.49*    &
-                                 (pfull(i,j,k)*ql(i,j,k)/qa(i,j,k)/  &
-                                 RDGAS/tkel(i,j,k)/DENS_H2O/  &
-                                 N_drop(i,j))**(1./3.)
-              else
-                reff_liq_local = 0.
-              endif
+             if(.not. do_liq_num) then
+               if (ql(i,j,k) > qmin) then
+                  reff_liq_local = k_ratio(i,j)*620350.49*    &
+                                   (pfull(i,j,k)*ql(i,j,k)/qa(i,j,k)/  &
+                                   RDGAS/tkel(i,j,k)/DENS_H2O/  &
+                                   N_drop2D(i,j))**(1./3.)
+               else
+                 reff_liq_local = 0.
+               endif
+             else
+!--------------------------------------------------------------------
+! yim: a variant for prognostic droplet number
+!    reff (in microns) =  k * 1.E+06 *
+!                    (3*(ql/qa)/(4*pi*Dens_h2o*N_liq))**(1/3)
+!
+!    where airdens = density of air in kg air/m3
+!               ql = liquid condensate in kg cond/kg air
+!               qa = cloud fraction
+!               pi = 3.14159
+!         Dens_h2o = density of pure liquid water (kg liq/m3) 
+!            N_liq = mixing ratio of cloud droplets (number/kg air)
+!                k = factor to account for difference between 
+!                    mean volume radius and effective radius
+!--------------------------------------------------------------------
+               if (ql(i,j,k) > qmin .and. N_drop3D(i,j,k) > qmin) then
+                 reff_liq_local = k_ratio(i,j)*620350.49*    &
+                                  (ql(i,j,k)/DENS_H2O/  &
+                                  N_drop3D(i,j,k))**(1./3.)
+               else
+                 reff_liq_local = 0.
+               endif
+             endif   
 
 !----------------------------------------------------------------------
 !    for single layer liquid or mixed phase clouds it is assumed that
@@ -1744,7 +1781,7 @@ end subroutine max_rnd_overlap
 !  </OUT>
 ! </SUBROUTINE>
 !
-subroutine rnd_overlap    (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
+subroutine rnd_overlap    (ql, qi, qa, pfull, phalf, tkel, N_drop3D, N_drop2D,  &
                            k_ratio, nclds, cldamt, lwp, iwp, reff_liq, &
                            reff_ice, conc_drop_org, conc_ice_org,  &
                            size_drop_org, size_ice_org)
@@ -1758,8 +1795,8 @@ subroutine rnd_overlap    (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
 !----------------------------------------------------------------------
  
 real,    dimension(:,:,:), intent(in)             :: ql, qi, qa,  &
-                                                     pfull, phalf, tkel
-real,    dimension(:,:),   intent(in)             :: N_drop, k_ratio
+                                                     pfull, phalf, tkel, N_drop3D
+real,    dimension(:,:),   intent(in)             :: N_drop2D, k_ratio
 integer, dimension(:,:),   intent(out)            :: nclds
 real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
                                                      reff_liq, reff_ice
@@ -1914,10 +1951,34 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !                k = factor to account for difference between 
 !                    mean volume radius and effective radius
 !---------------------------------------------------------------------
+	if (.not. do_liq_num) then
                 reff_liq_local = k_ratio(i,j)* 620350.49 *    &
                                  (pfull(i,j,k)*ql(i,j,k)/qa(i,j,k)/   & 
                                  RDGAS/tkel(i,j,k)/DENS_H2O/    &
-                                 N_drop(i,j))**(1./3.)
+                                 N_drop2D(i,j))**(1./3.)
+ 	else
+!--------------------------------------------------------------------
+! yim: a variant for prognostic droplet number
+!    reff (in microns) =  k * 1.E+06 *
+!                    (3*ql/(4*pi*Dens_h2o*N_liq))**(1/3)
+!
+!    where airdens = density of air in kg air/m3
+!               ql = liquid condensate in kg cond/kg air
+!               qa = cloud fraction
+!               pi = 3.14159
+!         Dens_h2o = density of pure liquid water (kg liq/m3) 
+!            N_liq = mixing ratio of cloud droplets (number/kg air)
+!                k = factor to account for difference between 
+!                    mean volume radius and effective radius
+!--------------------------------------------------------------------
+              if (ql(i,j,k) > qmin .and. N_drop3D(i,j,k) > 1.e6) then
+                reff_liq_local = k_ratio(i,j)*620350.49*    &
+                                 (ql(i,j,k)/DENS_H2O/  &
+                                 N_drop3D(i,j,k))**(1./3.)
+	      else
+	        reff_liq_local = 0.0
+	      endif
+	endif
                        
 !----------------------------------------------------------------------
 !    for single layer liquid or mixed phase clouds it is assumed that

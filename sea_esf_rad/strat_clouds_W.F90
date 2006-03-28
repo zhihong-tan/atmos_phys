@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 12.0 2005/04/14 15:48:49 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 13.0 2006/03/28 21:13:54 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -224,7 +224,7 @@ end subroutine strat_clouds_W_init
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call strat_clouds_amt (is, ie, js, je, Rad_time, pflux, press, 
-!                          temp, land, Cld_spec, Lsc_microphys)
+!                          temp, qv, land, Cld_spec, Lsc_microphys)
 !  </TEMPLATE>
 !  <IN NAME="is, ie, js, je" TYPE="integer">
 !   starting/ending subdomain i,j indices of data in
@@ -245,6 +245,10 @@ end subroutine strat_clouds_W_init
 !    temperature at model levels (1:nlev), to be used
 !                   in cloud calculations
 !  </IN>
+!  <IN NAME="qv" TYPE="real">
+!    water vapor specific humidity at model levels (1:nlev), to be used
+!                   in cloud calculations
+!  </IN>
 !  <IN NAME="land" TYPE="real">
 !   fraction of grid box covered by land
 !  </IN>
@@ -263,7 +267,7 @@ end subroutine strat_clouds_W_init
 ! </SUBROUTINE>
 !
 subroutine strat_clouds_amt (is, ie, js, je, Rad_time, pflux, &
-                             press, temp,&
+                             press, temp, qv, &
                              land, Cld_spec, Lsc_microphys)
 
 !---------------------------------------------------------------------
@@ -277,7 +281,7 @@ subroutine strat_clouds_amt (is, ie, js, je, Rad_time, pflux, &
 
 integer,                      intent(in)        :: is, ie, js, je
 type(time_type),              intent(in)        :: Rad_time
-real,    dimension(:,:,:),    intent(in)        :: pflux, press, temp
+real,    dimension(:,:,:),    intent(in)        :: pflux, press, temp, qv
 real,    dimension(:,:),      intent(in)        :: land
 type(cld_specification_type), intent(inout)     :: Cld_spec      
 type(microphysics_type),      intent(inout)     :: Lsc_microphys
@@ -296,6 +300,8 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !      temp         temperature at model levels (1:nlev), to be used
 !                   in cloud calculations
 !                   [ deg K ]
+!      qv           water vapor specific humidity at model levels
+!                   (1:nlev), to be used in cloud calculations
 !      land         fraction of grid box covered by land
 !                   [ non-dimensional ]
 !
@@ -441,6 +447,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
             end where
           call cloud_summary3 (is, js, land, Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
+			       Cld_spec%cloud_droplet, &			       
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
                                cldamt, Cld_spec%lwp, Cld_spec%iwp,   &
                                Cld_spec%reff_liq, Cld_spec%reff_ice, &
@@ -484,7 +491,9 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                      Cld_spec%cloud_ice,     &
                      Cld_spec%cloud_area,    &
                      pFull = press(:, :, :kx),&
+                     pHalf = pflux, &
                      temperature = temp(:, :, :kx),        &
+                     qv= qv(:, :, :kx), &
                      cld_thickness = Cld_spec%cld_thickness_lw_band, &
                      ql_stoch = ql_stoch_lw, &
                      qi_stoch = qi_stoch_lw, &
@@ -499,6 +508,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
               call cloud_summary3 (          &
                 is, js, land, ql_stoch_lw(:,:,:,nb),&
                 qi_stoch_lw(:,:,:,nb), qa_stoch_lw(:,:,:,nb),&
+		Cld_spec%cloud_droplet, &
                 press(:,:,1:kx), pflux, temp, ncldlvls, &
                 cldamt, Cld_spec%lwp_lw_band(:,:,:,nb),&
                 Cld_spec%iwp_lw_band(:,:,:,nb),   &
@@ -508,6 +518,24 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 conc_ice = Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb), &
                 size_drop =Lsc_microphys%lw_stoch_size_drop(:,:,:,nb), &
                 size_ice = Lsc_microphys%lw_stoch_size_ice(:,:,:,nb))
+              
+              !now that the vertical cloud fraction has been used to
+              !properly calculate the in-cloud particle size, rescale
+              !the concentrations and cloud amounts to that the cloud
+              !amount is unity in any partially cloudy sub-column. 
+              !
+              !This is necessary so that the radiation code will not
+              !do cloud fraction weights of cloudy and clear sky fluxes.
+              !
+              !The rescaling of the concentrations is necessary so that the
+              !total optical depth of the layer is constant.  Note that this
+              !works because cloud extinction is linear in the concentration
+              Lsc_microphys%lw_stoch_conc_drop(:,:,:,nb) = &
+                   Lsc_microphys%lw_stoch_conc_drop(:,:,:,nb) * cldamt(:,:,:)     
+              Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb) = &
+                   Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb) * cldamt(:,:,:)
+              where (cldamt .gt. 0.) cldamt = 1.                  
+               
           if (.not. Cldrad_control%do_specified_strat_clouds) then
                 Cld_spec%nrndlw_band(:,:,nb) = ncldlvls(:,:)
                 Lsc_microphys%lw_stoch_cldamt(:,:,:,nb) = cldamt
@@ -526,7 +554,9 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                      Cld_spec%cloud_ice,     &
                      Cld_spec%cloud_area,    &
                      pFull    = press(:, :, :kx),     &
+                     pHalf    = pflux,&
                      temperature = temp(:, :, :kx),   &
+                     qv = qv(:,:, :kx),   &
                      cld_thickness = Cld_spec%cld_thickness_sw_band, &
                      ql_stoch = ql_stoch_sw, &
                      qi_stoch = qi_stoch_sw, &
@@ -541,6 +571,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
               call cloud_summary3 (                            &
                 is, js, land, ql_stoch_sw(:,:,:,nb), &
                 qi_stoch_sw(:,:,:,nb), qa_stoch_sw(:,:,:,nb),&
+                Cld_spec%cloud_droplet, &
                 press(:,:,1:kx), pflux, temp, ncldlvls, &
                 cldamt, Cld_spec%lwp_sw_band(:,:,:,nb), &
                 Cld_spec%iwp_sw_band(:,:,:,nb),   &
@@ -550,6 +581,24 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 conc_ice = Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb), &
                 size_drop =Lsc_microphys%sw_stoch_size_drop(:,:,:,nb), &
                 size_ice = Lsc_microphys%sw_stoch_size_ice(:,:,:,nb))
+              
+              !now that the vertical cloud fraction has been used to
+              !properly calculate the in-cloud particle size, rescale
+              !the concentrations and cloud amounts to that the cloud
+              !amount is unity in any partially cloudy sub-column. 
+              !
+              !This is necessary so that the radiation code will not
+              !do cloud fraction weights of cloudy and clear sky fluxes.
+              !
+              !The rescaling of the concentrations is necessary so that the
+              !total optical depth of the layer is constant.  Note that this
+              !works because cloud extinction is linear in the concentration
+              Lsc_microphys%sw_stoch_conc_drop(:,:,:,nb) = &
+                   Lsc_microphys%sw_stoch_conc_drop(:,:,:,nb) * cldamt(:,:,:)     
+              Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb) = &
+                   Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb) * cldamt(:,:,:)
+              where (cldamt .gt. 0.) cldamt = 1.                  
+               
           if (.not. Cldrad_control%do_specified_strat_clouds) then
                 Cld_spec%ncldsw_band(:,:,nb) = ncldlvls(:,:)
                 Lsc_microphys%sw_stoch_cldamt(:,:,:,nb) = cldamt
@@ -572,6 +621,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
           end where
           call cloud_summary3 (is, js, land, Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
+			       Cld_spec%cloud_droplet, &
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
                                cldamt, Cld_spec%lwp,   &
                                Cld_spec%iwp, Cld_spec%reff_liq,   &
@@ -619,6 +669,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
         else
           call cloud_summary3 (is, js, land, Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
+			       Cld_spec%cloud_droplet, &
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
                                Cld_spec%camtsw, Cld_spec%lwp,   &
                                Cld_spec%iwp, Cld_spec%reff_liq,   &

@@ -47,8 +47,8 @@ private
 !--------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 12.0 2005/04/14 15:45:40 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: lima $'
+    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 13.0 2006/03/28 21:12:00 fms Exp $'
+    character(len=128)  :: tagname =  '$Name: memphis $'
     logical             :: module_is_initialized = .false.
 
 
@@ -1444,8 +1444,8 @@ integer, dimension(:,:,:),intent(out) :: ktopswkc, kbtmswkc
 type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 !-------------------------------------------------------------------
 
-      logical :: do_donner_ice
-      integer :: i,j,k, index_kbot, index_ktop, ngp
+
+      integer :: i,j,k, index_kbot, index_ktop
       integer :: kcldsmx
       integer :: ix, jx, kx
 

@@ -48,7 +48,12 @@ use rad_utilities_mod,    only:  Rad_control, rad_utilities_init, &
                                  Cldrad_control, &
                                  atmos_input_type, surface_type, &
                                  sw_output_type, Sw_control
-
+use tracer_manager_mod,   only : get_tracer_index,   &
+                                 get_number_tracers, &
+                                 get_tracer_names,   &
+                                 get_tracer_indices, &
+                                 NO_TRACER
+use field_manager_mod,    only : MODEL_ATMOS
 !---------------------------------------------------------------------
 
 implicit none
@@ -63,8 +68,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 12.0 2005/04/14 15:45:10 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 13.0 2006/03/28 21:11:44 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -97,11 +102,19 @@ logical      ::  do_quench = .false.            ! include the quenching
                                                 ! effect of non-LTE 
                                                 ! processes on the co2 
                                                 ! optical depth ?
+logical      ::  do_ch4_sw_effects = .false.    ! the shortwave effects
+                                                ! of ch4 are included ?
+logical      ::  do_n2o_sw_effects = .false.    ! the shortwave effects
+                                                ! of n2o are included ?
+logical      ::  do_coupled_stratozone = .false. ! include the coupled
+                                                 ! stratospheric ozone effects?
   
 
 namelist / esfsw_driver_nml /    &
                                do_ica_calcs, do_rayleigh_all_bands, &
-                               do_herzberg, do_quench
+                               do_herzberg, do_quench, &
+                               do_ch4_sw_effects, do_n2o_sw_effects, &
+                               do_coupled_stratozone
 
 !---------------------------------------------------------------------
 !------- public data ------
@@ -145,6 +158,12 @@ real, dimension (:), allocatable    :: c1co2, c1co2str, c1o2, c1o2str, &
                                        c2co2, c2co2str, c2o2, c2o2str, &
                                        c3co2, c3co2str, c3o2, c3o2str, &
                                        c4co2, c4co2str, c4o2, c4o2str, &
+                                       c1ch4, c1ch4str, c2ch4,         &
+                                       c2ch4str, c3ch4, c3ch4str,      &
+                                       c4ch4, c4ch4str,                &
+                                       c1n2o, c1n2ostr, c2n2o,         &
+                                       c2n2ostr, c3n2o, c3n2ostr,      &
+                                       c4n2o, c4n2ostr,                &
                                        powph2o, p0h2o
 real                                :: c1o2strschrun, c2o2strschrun, &
                                        c3o2strschrun, c4o2strschrun
@@ -198,7 +217,9 @@ real, dimension (:), allocatable    :: betaddensitymol
 !----------------------------------------------------------------------
 real                            :: toto2strmaxschrun
 real, dimension(:), allocatable :: totco2max, totco2strmax, &
-                                   toto2max, toto2strmax
+                                   toto2max, toto2strmax, &
+                                   totch4max, totch4strmax, &
+                                   totn2omax, totn2ostrmax
 
 !----------------------------------------------------------------------
 !    variables associated with the herzberg effect. wtmo2 is the mol-
@@ -229,30 +250,12 @@ data co2_quenchfac_height /67304.,68310.,69303.,70288.,71267.,72245.,&
                            84838.,85798.,86757.,87715.,88672.,89627.,&
                            90582.,91535.,92487.,93438.,94387.,106747./
 
-!------------------------------------------------------------------
-!    variables used in subroutine deledd  
-!------------------------------------------------------------------
-integer, dimension(:,:,:), allocatable ::  cld_index
-real,    dimension(:,:),   allocatable ::  q
-real,    dimension(:  ),   allocatable ::  r, t
-real,    dimension(:),     allocatable ::  gstr2, taustr2, omegastr2, &
-                                           cosangzk2, rlayerdir2,    &
-                                           tlayerde2, tlayerdir2, &
-                                           sumr, sumt
-
-!------------------------------------------------------------------
-!    variables used in subroutine adding  
-!------------------------------------------------------------------
-real, dimension(:,:,:), allocatable ::  alpp, dm1tl, dm2tl, dm3, dm3r, &
-                                        dm3r1p, radddowndif,    &
-                                        raddupdif, raddupdir, rdm2tl, &
-                                        tadddowndir, tlevel
-
 
 
 !---------------------------------------------------------------------
 !    miscellaneous variables
 !---------------------------------------------------------------------
+integer, parameter :: NSOLWG = 1
 logical        :: module_is_initialized = .false.
 integer        :: ijk
 logical        :: do_esfsw_band_diagnostics = .false.
@@ -443,6 +446,22 @@ subroutine esfsw_driver_init
                  c4co2str(nh2obands),  &
                  c4o2    (nh2obands),  &
                  c4o2str (nh2obands),  &
+                 c1ch4   (nh2obands),  &
+                 c1ch4str(nh2obands),  &
+                 c2ch4   (nh2obands),  &
+                 c2ch4str(nh2obands),  &
+                 c3ch4   (nh2obands),  &
+                 c3ch4str(nh2obands),  &
+                 c4ch4   (nh2obands),  &
+                 c4ch4str(nh2obands),  &
+                 c1n2o   (nh2obands),  &
+                 c1n2ostr(nh2obands),  &
+                 c2n2o   (nh2obands),  &
+                 c2n2ostr(nh2obands),  &
+                 c3n2o   (nh2obands),  &
+                 c3n2ostr(nh2obands),  &
+                 c4n2o   (nh2obands),  &
+                 c4n2ostr(nh2obands),  &
                  powph2o (nh2obands),  &
                  p0h2o   (nh2obands)    )
       allocate ( nfreqpts        (nbands) )
@@ -457,7 +476,11 @@ subroutine esfsw_driver_init
       allocate ( totco2max    (nh2obands),     &
                  totco2strmax (nh2obands),     &
                  toto2max     (nh2obands),     &
-                 toto2strmax  (nh2obands) )
+                 toto2strmax  (nh2obands),   &
+                 totch4max    (nh2obands),   &
+                 totch4strmax (nh2obands),   &
+                 totn2omax    (nh2obands),   &
+                 totn2ostrmax (nh2obands)    )
 
       betaddensitymol = 0.0 ; c1co2    = 0.0 ; c1co2str = 0.0
       c1o2     = 0.0 ; c1o2str  = 0.0 ; c2co2    = 0.0
@@ -470,6 +493,14 @@ subroutine esfsw_driver_init
       wtfreq          = 0.0 ; strterm     = .FALSE. ; wtstr           = 0.0
       cosangstr       = 0.0 ; totco2max     = 0.0 ; totco2strmax  = 0.0
       toto2max      = 0.0 ; toto2strmax   = 0.0
+      c1ch4    = 0.0 ; c1ch4str = 0.0; c2ch4    = 0.0
+      c2ch4str = 0.0 ; c3ch4    = 0.0 ; c3ch4str = 0.0
+      c4ch4    = 0.0 ; c4ch4str = 0.0
+      totch4max     = 0.0 ; totch4strmax  = 0.0
+      c1n2o    = 0.0 ; c1n2ostr = 0.0; c2n2o    = 0.0
+      c2n2ostr = 0.0 ; c3n2o    = 0.0 ; c3n2ostr = 0.0
+      c4n2o    = 0.0 ; c4n2ostr = 0.0
+      totn2omax     = 0.0 ; totn2ostrmax  = 0.0
 
 !---------------------------------------------------------------------
 !    allocate local variables.
@@ -519,6 +550,18 @@ subroutine esfsw_driver_init
       read(iounit,105) ( c3o2(nband), nband=1,NH2OBANDS )
       read(iounit,105) ( c3o2str(nband), nband=1,NH2OBANDS ),  &
                          c3o2strschrun
+      read(iounit,105) ( c1ch4(nband), nband=1,NH2OBANDS )
+      read(iounit,105) ( c1ch4str(nband), nband=1,NH2OBANDS )
+      read(iounit,105) ( c2ch4(nband), nband=1,NH2OBANDS )
+      read(iounit,105) ( c2ch4str(nband), nband=1,NH2OBANDS )
+      read(iounit,105) ( c3ch4(nband), nband=1,NH2OBANDS )
+      read(iounit,105) ( c3ch4str(nband), nband=1,NH2OBANDS )
+      read(iounit,105) ( c1n2o(nband), nband=1,NH2OBANDS )
+      read(iounit,105) ( c1n2ostr(nband), nband=1,NH2OBANDS )
+      read(iounit,105) ( c2n2o(nband), nband=1,NH2OBANDS )
+      read(iounit,105) ( c2n2ostr(nband), nband=1,NH2OBANDS )
+      read(iounit,105) ( c3n2o(nband), nband=1,NH2OBANDS )
+      read(iounit,105) ( c3n2ostr(nband), nband=1,NH2OBANDS )
       do nf = 1,nfrqpts
         read(iounit,106) wtfreq(nf),kh2o(nf),ko3(nf),strterm (nf)
       end do
@@ -677,28 +720,85 @@ subroutine esfsw_driver_init
           toto2max(n) = 0.0                                            
           toto2strmax(n) = 0.0
         endif
+    if (do_ch4_sw_effects) then
+        if (c1ch4(n) /= input_flag .and.  &
+            c2ch4(n) /= input_flag .and.  &
+            c3ch4(n) /= input_flag ) then
+          c4ch4(n) = c1ch4(n) * c2ch4(n) ** c3ch4(n)
+          c4ch4str(n) = c1ch4str(n) * c2ch4str(n) ** c3ch4str(n)
+          totch4max(n) = ( (1.0/c1ch4(n) ) + c2ch4(n) ** c3ch4(n) ) ** &
+                           (1.0/c3ch4(n) ) - c2ch4(n)
+          totch4strmax(n) = ( (1.0/c1ch4str(n) ) + c2ch4str(n) ** &
+                            c3ch4str(n) ) ** (1.0/c3ch4str(n) ) - &
+                            c2ch4str(n)
+        else
+          c4ch4(n) = 0.
+          c4ch4str(n) = 0.
+          totch4max(n) = 0.
+          totch4strmax(n) = 0.     
+        endif
+     endif
+     if (do_n2o_sw_effects) then
+        if (c1n2o(n) /= input_flag .and.  &
+            c2n2o(n) /= input_flag .and.  &
+            c3n2o(n) /= input_flag ) then
+          c4n2o(n) = c1n2o(n) * c2n2o(n) ** c3n2o(n)
+          c4n2ostr(n) = c1n2ostr(n) * c2n2ostr(n) ** c3n2ostr(n)
+          totn2omax(n) = ( (1.0/c1n2o(n) ) + c2n2o(n) ** c3n2o(n) ) ** &
+                           (1.0/c3n2o(n) ) - c2n2o(n)
+          totn2ostrmax(n) = ( (1.0/c1n2ostr(n) ) + c2n2ostr(n) ** &
+                               c3n2ostr(n) ) ** (1.0/c3n2ostr(n) ) - &
+                               c2n2ostr(n)
+        else
+          c4n2o(n) = 0.
+          c4n2ostr(n) = 0.
+          totn2omax(n) = 0.
+          totn2ostrmax(n) = 0.     
+        endif
+     endif
       end do
+
       c4o2strschrun = c1o2strschrun * c2o2strschrun ** c3o2strschrun
       toto2strmaxschrun = ( (1.0/c1o2strschrun) + c2o2strschrun ** &
                              c3o2strschrun) ** (1.0/c3o2strschrun) - &
                              c2o2strschrun
 
 !     if (mpp_pe() == 0) then
+!       print *, 'c1ch4    ', c1ch4    
+!       print *, 'c2ch4    ', c2ch4    
+!       print *, 'c3ch4    ', c3ch4    
+!       print *, 'c4ch4    ', c4ch4    
+!       print *, 'totch4max', totch4max
+!       print *, 'c1ch4str ', c1ch4str    
+!       print *, 'c2ch4str ', c2ch4str    
+!       print *, 'c3ch4str ', c3ch4str    
+!       print *, 'c4ch4str ', c4ch4str    
+!       print *, 'totch4strmax', totch4strmax
 !       print *, 'c1co2    ', c1co2    
-!       print *, 'c2co2    ', c2co2    
-!       print *, 'c3co2    ', c3co2    
-!       print *, 'c4co2    ', c4co2    
-!       print *, 'totco2max', totco2max
-!       print *, 'c1co2str ', c1co2str    
-!       print *, 'c2co2str ', c2co2str    
-!       print *, 'c3co2str ', c3co2str    
-!       print *, 'c4co2str ', c4co2str    
+!       print *, 'c2ch4    ', c2co2    
+!       print *, 'c3ch4    ', c3co2    
+!       print *, 'c4ch4    ', c4co2    
+!       print *, 'totch4max', totco2max
+!       print *, 'c1ch4str ', c1co2str    
+!       print *, 'c2ch4str ', c2co2str    
+!       print *, 'c3ch4str ', c3co2str    
+!       print *, 'c4ch4str ', c4co2str    
+!       print *, 'totch4strmax', totco2strmax
+!       print *, 'c1n2o    ', c1n2o    
+!       print *, 'c2ch4    ', c2n2o    
+!       print *, 'c3ch4    ', c3n2o    
+!       print *, 'c4ch4    ', c4n2o    
+!       print *, 'totch4max', totn2omax
+!       print *, 'c1ch4str ', c1n2ostr    
+!       print *, 'c2ch4str ', c2n2ostr    
+!       print *, 'c3ch4str ', c3n2ostr    
+!       print *, 'c4ch4str ', c4n2ostr    
+!       print *, 'totch4strmax', totn2ostrmax
 !       print *, '1/c1', 1.0/c1co2str
 !       print *, '1/c3', 1.0/c3co2str
 !       print *, 'c2**c3', c2co2str**c3co2str
 !       print *, '(1 / + c2**c3)**1/c3',  &
 !                 (1.0/c1co2str + c2co2str**c3co2str)**(1./c3co2str)
-!       print *, 'totco2strmax', totco2strmax
 !       print *, 'c4o2    ', c4o2    
 !       print *, 'c4o2str    ', c4o2str    
 !       print *, 'toto2max', toto2max
@@ -858,7 +958,7 @@ end subroutine esfsw_driver_init
 subroutine swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,  &
                    Aerosol, Aerosol_props, Astro, Cldrad_props,      &
                    Cld_spec, including_volcanoes, Sw_output,   &
-                   Aerosol_diags)
+                   Aerosol_diags, r, including_aerosols, naerosol_optical) 
 
 !----------------------------------------------------------------------
 !    swresf uses the delta-eddington technique in conjunction with a    
@@ -867,18 +967,22 @@ subroutine swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,  &
 !    notes: drops are assumed if temp>273.15K, ice crystals otherwise.
 !-------------------------------------------------------------------
 
-integer,                      intent(in)    :: is, ie, js, je
-type(atmos_input_type),       intent(in)    :: Atmos_input
-type(surface_type),           intent(in)    :: Surface
-type(radiative_gases_type),   intent(in)    :: Rad_gases   
-type(aerosol_type),           intent(in)    :: Aerosol     
-type(aerosol_properties_type),intent(in)    :: Aerosol_props
-type(astronomy_type),         intent(in)    :: Astro
-type(cldrad_properties_type), intent(in)    :: Cldrad_props
-type(cld_specification_type), intent(in)    :: Cld_spec      
-logical,                      intent(in)    :: including_volcanoes
-type(sw_output_type),         intent(inout) :: Sw_output   
-type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
+integer,                       intent(in)    :: is, ie, js, je
+type(atmos_input_type),        intent(in)    :: Atmos_input
+type(surface_type),            intent(in)    :: Surface
+type(radiative_gases_type),    intent(in)    :: Rad_gases   
+type(aerosol_type),            intent(in)    :: Aerosol     
+type(aerosol_properties_type), intent(in)    :: Aerosol_props
+type(astronomy_type),          intent(in)    :: Astro
+type(cldrad_properties_type),  intent(in)    :: Cldrad_props
+type(cld_specification_type),  intent(in)    :: Cld_spec      
+logical,                       intent(in)    :: including_volcanoes
+type(sw_output_type),          intent(inout) :: Sw_output   
+type(aerosol_diagnostics_type),intent(inout) :: Aerosol_diags
+real,dimension(:,:,:,:),       intent(inout) :: r
+logical,                       intent(in)    :: including_aerosols  
+integer,                       intent(in)    :: naerosol_optical
+
 
 !-------------------------------------------------------------------
 !  intent(in) variables:
@@ -913,24 +1017,42 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
 !-----------------------------------------------------------------------
 !     local variables:
  
-      real   , dimension(:,:,:), allocatable  :: aeramt, sum_g_omega_tau
+      real, dimension (size(Atmos_input%temp,1), &
+                       size(Atmos_input%temp,2), &
+                       size(Atmos_input%temp,3)-1)  :: &
+                                   aeramt, sum_g_omega_tau
 
       integer, dimension (size (Atmos_input%press, 1), &
                           size (Atmos_input%press, 2), &
                           size (Atmos_input%press, 3)-1 ) ::   &
-                                                          opt_index_v3
+                                                          opt_index_v3, &
+                                                          opt_index_v4, &
+                                                          opt_index_v5, &
+                                                          opt_index_v6, &
+                                                          opt_index_v7, &
+                                                          opt_index_v8, &
+                                                          opt_index_v9, &
+                                                          opt_index_v10
+
       integer, dimension(size (Atmos_input%press, 1), &
                          size (Atmos_input%press, 2), &
                          size (Atmos_input%press, 3)-1) :: irh
 
-      logical, dimension(:,:,:), allocatable :: cloud
-      logical, dimension(:,:  ), allocatable :: cloud_in_column
-      logical, dimension(:,:), allocatable   :: daylight
+      logical, dimension (size(Atmos_input%temp,1), &
+                          size(Atmos_input%temp,2), &
+                          size(Atmos_input%temp,3)-1)  :: &
+                             cloud
 
-      real,    dimension(:,:,:), allocatable ::     &
+      logical, dimension (size(Atmos_input%temp,1), &
+                          size(Atmos_input%temp,2))  ::   &
+                              cloud_in_column, daylight
+
+
+      real, dimension (size(Atmos_input%temp,1), &
+                       size(Atmos_input%temp,2), &
+                       size(Atmos_input%temp,3)-1)  :: &
             aeroasymfac,     aerosctopdep,   aeroextopdep,     &
-            alphaco2,        alphaco2str,    alphao2,          &
-            alphao2str,      cloudasymfac,   cloudextopdep,    &
+            cloudasymfac,   cloudextopdep,    &
             cloudsctopdep,   delpdig,        deltap,           &
             densitymol,     extopdepclr,                       &
             extopdepovc,     fclr,           fovc,             &
@@ -938,43 +1060,86 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
             gasopdep,        gclr,           gstrclr,          &
             gstrovc,         govc,           omegastrclr,      &
             omegastrovc,     opdep,                            &
-            rayopdep,        reflectance,    rlayerdif,        &
+            rayopdep,                        rlayerdif,        &
             rlayerdifclr,    rlayerdifovc,   rlayerdir,        &
-            rlayerdirclr,    rlayerdirovc,   scale,            &
-            scalestr,        sctopdepclr,    sctopdepovc,      &
-            ssalbclr,        ssalbovc,       sumre,            &
-            sumtr,           taustrclr,      taustrovc,        &
-            sumtr_dir,       sumtr_dir_clr,                    &
+            rlayerdirclr,    rlayerdirovc,                     &
+            sctopdepclr,    sctopdepovc,      &
+            ssalbclr,        ssalbovc,                         &
+                             taustrclr,      taustrovc,        &
             tco2,            tlayerde,       tlayerdeclr,      &
+            tch4, tn2o,                                        &   
             tlayerdeovc,     tlayerdif,      tlayerdifclr,     &
             tlayerdifovc,    tlayerdir,      tlayerdirclr,     &
-            tlayerdirovc,    to2,            transmittance,    &
-            tr_dir,                                            &
+            tlayerdirovc,    to2,                              &
             wh2o,            wh2ostr,        wo3              
+           
+      real, dimension (size(Atmos_input%temp,1), &
+                       size(Atmos_input%temp,2), &
+                       size(Atmos_input%temp,3))  :: &
+            alphaco2,        alphaco2str,    alphao2,          &
+            alphao2str,                                        &
+            alphach4,        alphach4str,                      &
+            alphan2o,        alphan2ostr,         &
+            reflectance, scale, scalestr,             &
+                                             sumre,            &
+            sumtr,                                             &
+            sumtr_dir,       sumtr_dir_clr,                    &
+                                             transmittance,    &
+            tr_dir                                             
 
-      real, dimension (:,:,:), allocatable ::                  &
+
+      real, dimension (size(Atmos_input%temp,1), &
+                       size(Atmos_input%temp,2), &
+                       size(Atmos_input%temp,3))  :: &
             reflectanceclr,  transmittanceclr, tr_dirclr,      &
             sumtrclr,        sumreclr,                         &
-            dfswband, fswband, hswband, ufswband
+            dfswband, fswband,          ufswband,               &
+            dfswbandclr,     fswbandclr,    ufswbandclr
 
-      real, dimension (:,:,:,:), allocatable ::                &
-            efftauo2, efftauco2,                               & 
+      real, dimension (size(Atmos_input%temp,1), &
+                       size(Atmos_input%temp,2), &
+                       size(Atmos_input%temp,3)-1)  :: &
+                               hswband, hswbandclr
+
+
+
+
+      real, dimension (size(Atmos_input%temp,1), &
+                       size(Atmos_input%temp,2), &
+                       size(Atmos_input%temp,3)-1,  &      
+                        NSOLWG)   ::    &
+            efftauo2, efftauco2, efftauch4, efftaun2o
+
+      real, dimension (size(Atmos_input%temp,1), &
+                       size(Atmos_input%temp,2), &
+                       size(Atmos_input%temp,3),  &      
+                        NSOLWG)   ::    &
             totco2,          totco2str,      toto2,            &
-            toto2str
+            toto2str, totch4, totch4str, totn2o, totn2ostr
 
-      real, dimension (:,:,:), allocatable ::                  &
-            dfswbandclr,     fswbandclr,     hswbandclr,       &
-            ufswbandclr
-
-      real, dimension (:,:,:), allocatable ::                &
+      real, dimension (size(Atmos_input%temp,1), &
+                       size(Atmos_input%temp,2), &
+                       size(Atmos_input%temp,3)-1)  :: &
              cldext,          cldsct,         cldasymm
 
-      real, dimension (:), allocatable ::                &
+
+
+
+
+      real, dimension (naerosol_optical)   ::            &
             aerext,          aerssalb,       aerasymm
 
-      real, dimension (:,:,:), allocatable   :: pflux_mks
 
-      real, dimension(:,:), allocatable       ::               &
+
+
+
+      real, dimension (size(Atmos_input%temp,1), &
+                       size(Atmos_input%temp,2), &
+                       size(Atmos_input%temp,3))  :: &
+            pflux_mks
+
+      real, dimension (size(Atmos_input%temp,1), &
+                       size(Atmos_input%temp,2))    ::  &
             sfcalb_dir,      solarflux,      wtfac, denom,  &
             sfcalb_dif
 
@@ -985,10 +1150,10 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
       integer :: nprofile, nprofiles
       real   :: profiles_inverse
 
-      integer :: nsolwg=1
       integer :: iref, jref, nsc, month, dum
 
-      real :: rrvco2
+      real :: rrvco2 
+      real :: rrvch4, rrvn2o
       real, dimension(1) :: gausswt
       integer :: ix, jx, kx, israd, jsrad, ierad, jerad, ksrad, kerad
       integer :: op_indx
@@ -1013,7 +1178,7 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
       real, dimension (size(Atmos_input%press,1),  &
                        size(Atmos_input%press,2)   ) ::&
                                   fracday, cirrfgd_dir, cvisrfgd_dir,  &
-                                  cirrfgd_dif, cvisrfgd_dif
+                                  cirrfgd_dif, cvisrfgd_dif, day
 
       real, dimension (size(Atmos_input%press,1),   &
                        size(Atmos_input%press,2),   &
@@ -1022,6 +1187,11 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
       real :: ssolar  
       real :: aerext_i, aerssalb_i, aerasymm_i
       real :: wtquench
+
+!---------------------------------------------------------------------
+!    variables to pass extinction to chemistry
+!---------------------------------------------------------------------
+integer :: nextinct
 
 !-----------------------------------------------------------------------
 !     local variables:
@@ -1080,6 +1250,8 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
       temp  (:,:,:) = Atmos_input%temp  (:,:,:)
       qo3   (:,:,:) = Rad_gases%qo3(:,:,:)
       rrvco2 = Rad_gases%rrvco2
+      rrvch4 = Rad_gases%rrvch4
+      rrvn2o = Rad_gases%rrvn2o
 
 !---------------------------------------------------------------------
 !
@@ -1106,25 +1278,16 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
 !
 !---------------------------------------------------------------------
       naerosoltypes_used = size(Aerosol%aerosol,4)
-      if (Sw_control%do_swaerosol) then
-        naerosol_optical = size(Aerosol_props%aerextband,2)
-      else
-        naerosol_optical = 0
-      endif
+!     if (including_aerosols) then                                  
+!       naerosol_optical = size(Aerosol_props%aerextband,2)
+!     else
+!       naerosol_optical = 0
+!     endif
 
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
       if (Rad_control%do_totcld_forcing) then
-        allocate     &
-             (reflectanceclr  (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-        allocate     &
-             (sumreclr        (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-        allocate     &
-             (sumtrclr        (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-        allocate     &
-             (transmittanceclr(ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate ( sumtr_dir_clr    (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
         reflectanceclr = 0.0
         sumreclr = 0.0
         sumtrclr = 0.0
@@ -1133,112 +1296,16 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
       endif
 
 !---------------------------------------------------------------------
-!
-!---------------------------------------------------------------------
-      allocate (opdep           (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD) )
-      allocate (reflectance     (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (sfcalb_dir      (ISRAD:IERAD,JSRAD:JERAD) )
-      allocate (sfcalb_dif      (ISRAD:IERAD,JSRAD:JERAD) )
-      allocate (solarflux       (ISRAD:IERAD,JSRAD:JERAD) )
-      allocate (sumre           (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (sumtr           (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate ( sumtr_dir    (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (transmittance   (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate ( tr_dir     (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate ( tr_dirclr    (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (wh2o            (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD) )
-      allocate (wh2ostr         (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      allocate (wo3             (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD) )
-      allocate (wtfac           (ISRAD:IERAD,JSRAD:JERAD)  )
-     
-      allocate (densitymol      (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (cloud           (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (cloud_in_column (ISRAD:IERAD,JSRAD:JERAD              ))
-      allocate (daylight        (ISRAD:IERAD,JSRAD:JERAD              ))
-      allocate (deltap          (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (gocpdp          (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (denom           (ISRAD:IERAD,JSRAD:JERAD              ))
-      allocate (delpdig         (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate      &
-        (totco2    (ISRAD:IERAD,JSRAD:JERAD,KSRAD+1:KERAD+1, NSOLWG))
-      allocate      &
-        (totco2str (ISRAD:IERAD,JSRAD:JERAD,KSRAD+1:KERAD+1, NSOLWG))
-      allocate      &
-        (toto2     (ISRAD:IERAD,JSRAD:JERAD,KSRAD+1:KERAD+1, NSOLWG))
-      allocate      &
-        (toto2str  (ISRAD:IERAD,JSRAD:JERAD,KSRAD+1:KERAD+1, NSOLWG))
-      allocate (rlayerdif       (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (rlayerdifclr    (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (rlayerdifovc    (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (rlayerdir       (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (rlayerdirclr    (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (rlayerdirovc    (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (tlayerdif       (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (tlayerdifclr    (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (tlayerdifovc    (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (tlayerdir       (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (tlayerdirclr    (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (tlayerdirovc    (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (tlayerde        (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (tlayerdeovc     (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (tlayerdeclr     (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD  ))
-
-      allocate ( cldext    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-      allocate ( cldsct    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-      allocate ( cldasymm  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-      opdep = 0.0 ; reflectance = 0.0 ; sfcalb_dir = 0.0
-      sfcalb_dif     = 0.0 ; solarflux  = 0.0 ; sumre = 0.0 ; sumtr = 0.0
-      sumtr_dir = 0.0 ; transmittance = 0.0 ;  tr_dir = 0.0 ; tr_dirclr = 0.0
-      wh2o = 0.0 ; wh2ostr = 0.0 ; wo3 = 0.0 ; wtfac = 0.0 ; densitymol = 0.0
-      cloud = .FALSE. ; cloud_in_column = .FALSE. ; daylight = .FALSE. ; deltap = 0.0
-      gocpdp = 0.0 ; denom = 0.0 ; delpdig = 0.0 ; totco2 = 0.0 ;totco2str = 0.0
-      toto2 = 0.0 ;toto2str = 0.0 ; rlayerdif    = 0.0 ;rlayerdifclr = 0.0 ;
-      rlayerdifovc = 0.0 ;rlayerdir    = 0.0 ;rlayerdirclr = 0.0 ;rlayerdirovc = 0.0 ;
-      tlayerdif = 0.0 ;tlayerdifclr = 0.0 ;tlayerdifovc = 0.0 ;tlayerdir = 0.0 ;
-      tlayerdirclr = 0.0 ;tlayerdirovc = 0.0 ;tlayerde = 0.0 ;tlayerdeovc = 0.0 ;
-      tlayerdeclr = 0.0 ; cldext = 0.0 ; cldsct = 0.0 ; cldasymm = 0.0 ;
-
-      if (Sw_control%do_swaerosol) then
-        allocate ( aerext    (NAEROSOL_OPTICAL) ) ; aerext   = 0.0
-        allocate ( aerssalb  (NAEROSOL_OPTICAL) ) ; aerssalb = 0.0
-        allocate ( aerasymm  (NAEROSOL_OPTICAL) ) ; aerasymm = 0.0
-      endif
-
-      allocate (aeramt          (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      allocate (sum_g_omega_tau (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      aeramt          = 0.0
-      sum_g_omega_tau = 0.0
-
-      allocate (aeroextopdep    (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      allocate (aerosctopdep    (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      allocate (aeroasymfac     (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      allocate (cloudextopdep   (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      allocate (cloudsctopdep   (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      allocate (cloudasymfac    (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      allocate (rayopdep        (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      allocate (alphaco2        (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (alphaco2str     (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (alphao2         (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (alphao2str      (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (efftauco2 (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD,NSOLWG))
-      allocate (efftauo2  (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD,NSOLWG))
-      allocate (tco2            (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      allocate (to2             (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD))
-      allocate (pflux_mks       (ISRAD:IERAD,JSRAD:JERAD,KSRAD:KERAD+1))
-      aeroextopdep = 0.0 ; aerosctopdep  = 0.0 ;aeroasymfac    = 0.0 ;
-      cloudextopdep= 0.0 ; cloudsctopdep = 0.0 ;cloudasymfac   = 0.0 ;
-      rayopdep     = 0.0 ; alphaco2      = 0.0 ;alphaco2str    = 0.0 ;
-      alphao2      = 0.0 ; alphao2str    = 0.0 ;efftauco2      = 0.0 ;
-      efftauo2     = 0.0 ; tco2          = 0.0 ;to2            = 0.0 ;
-      pflux_mks    = 0.0
-
-!---------------------------------------------------------------------
 !    initialize local variables.                                        
 !------------------------------------------------------------------
       alphaco2   (:,:,1) = 0.0
       alphaco2str(:,:,1) = 0.0
       alphao2    (:,:,1) = 0.0
       alphao2str (:,:,1) = 0.0
+      alphach4    (:,:,1) = 0.0
+      alphach4str (:,:,1) = 0.0
+      alphan2o    (:,:,1) = 0.0
+      alphan2ostr (:,:,1) = 0.0
  
 !----------------------------------------------------------------------c
 !    define a flag indicating columns in which there is sunshine during
@@ -1285,12 +1352,11 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
         end do
       endif
 
+
 !----------------------------------------------------------------------c
 !    define pressure related quantities, pressure is in mks units. 
 !----------------------------------------------------------------------c
       pflux_mks = pflux*1.0E-1
-      allocate ( scale      (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1) )
-      allocate ( scalestr   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1) )
 
       do k = KSRAD+1,KERAD+1
         deltap(:,:,k-1) = pflux_mks(:,:,k) - pflux_mks(:,:,k-1)
@@ -1306,7 +1372,7 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
 !    kgrams/meter**2. 
 !    cm-atm needed as units because of c2co2 having those units.
 !----------------------------------------------------------------------c
-      do ng = 1,nsolwg
+      do ng = 1,NSOLWG
         denom(:,:) = 1.0/(GRAV*rhoair*cosangsolar(:,:,ng)*2.0)
         do k = KSRAD+1,KERAD+1
           totco2(:,:,k,ng) = 1.0E+02*rrvco2*scale(:,:,k)*denom(:,:)  
@@ -1316,6 +1382,16 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
                             denom(:,:)
           toto2str(:,:,k,ng) = 2.0E+02*o2mixrat * scalestr(:,:,k) *  &
                                denom(:,:)
+          if (do_ch4_sw_effects) then
+            totch4(:,:,k,ng) = 1.0E+02*rrvch4*scale(:,:,k)*denom(:,:)
+            totch4str(:,:,k,ng) = 2.0E+02 * rrvch4 * scalestr(:,:,k) * &
+                                  denom(:,:)
+          endif
+          if (do_n2o_sw_effects) then
+            totn2o(:,:,k,ng) = 1.0E+02*rrvn2o*scale(:,:,k)*denom(:,:)
+            totn2ostr(:,:,k,ng) = 2.0E+02 * rrvn2o * scalestr(:,:,k) * &
+                    denom(:,:)
+          endif
         end do
       end do
 
@@ -1332,88 +1408,16 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
       do k = KSRAD,KERAD
         densitymol(:,:,k) = refquanray * press(:,:,k) / temp(:,:,k)
       end do
-      deallocate ( scalestr     )
-      deallocate ( scale        )
  
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
       if (Rad_control%do_totcld_forcing) then
-        allocate ( dfswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
-        allocate (  fswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
-        allocate (  hswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ))
-        allocate ( ufswbandclr(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
         dfswbandclr = 0.0
          fswbandclr = 0.0
          hswbandclr = 0.0
         ufswbandclr = 0.0
       endif
-
-      allocate ( dfswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
-      allocate (  fswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
-      allocate (  hswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ))
-      allocate ( ufswband   (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
-      allocate ( sctopdepclr    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( gclr           (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( fclr           (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( extopdepovc    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( govc           (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( fovc           (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( gasopdep       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( extopdepclr    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( ssalbclr       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( sctopdepovc    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( ssalbovc       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( taustrclr      (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( omegastrclr    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( taustrovc      (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( omegastrovc    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( gstrclr        (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      allocate ( gstrovc        (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD))
-      dfswband   = 0.0; fswband    = 0.0; hswband    = 0.0
-      ufswband   = 0.0; sctopdepclr= 0.0; gclr       = 0.0
-      fclr       = 0.0; extopdepovc= 0.0; govc       = 0.0
-      fovc       = 0.0; gasopdep   = 0.0; extopdepclr= 0.0
-      ssalbclr   = 0.0; sctopdepovc= 0.0; ssalbovc   = 0.0
-      taustrclr  = 0.0; omegastrclr= 0.0; taustrovc  = 0.0
-      omegastrovc= 0.0; gstrclr    = 0.0; gstrovc    = 0.0
-
-!--------------------------------------------------------------------
-!    allocate variables for use in deledd
-!---------------------------------------------------------------------
-      allocate (cld_index  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD) )
-      allocate ( gstr2          (IJK             ))
-      allocate ( taustr2        (IJK             ))
-      allocate ( omegastr2      (IJK             ))
-      allocate ( cosangzk2      (IJK             ))
-      allocate ( rlayerdir2     (IJK             ))
-      allocate ( tlayerde2      (IJK             ))
-      allocate ( tlayerdir2     (IJK             ))
-      allocate ( sumr           (IJK             ))
-      allocate ( sumt           (IJK             ))
-      cld_index = 0.0; gstr2      = 0.0; taustr2    = 0.0
-      omegastr2 = 0.0; cosangzk2  = 0.0; rlayerdir2 = 0.0
-      tlayerde2 = 0.0; tlayerdir2 = 0.0; sumr = 0.0; sumt = 0.0
-
-!--------------------------------------------------------------------
-!    allocate variables for use in adding
-!---------------------------------------------------------------------
-      allocate( radddowndif (ISRAD:IERAD, JSRAD:JERAD,KSRAD  :KERAD  ) )
-      allocate( raddupdif   (ISRAD:IERAD, JSRAD:JERAD,KSRAD  :KERAD+1) )
-      allocate( raddupdir   (ISRAD:IERAD, JSRAD:JERAD,KSRAD  :KERAD+1) )
-      allocate( tlevel      (ISRAD:IERAD, JSRAD:JERAD,KSRAD  :KERAD+1) )
-      allocate( tadddowndir (ISRAD:IERAD, JSRAD:JERAD,KSRAD  :KERAD  ) )
-      allocate( dm1tl       (ISRAD:IERAD, JSRAD:JERAD,KSRAD+1:KERAD  ) )
-      allocate( dm2tl       (ISRAD:IERAD, JSRAD:JERAD,KSRAD  :KERAD  ) )
-      allocate( rdm2tl      (ISRAD:IERAD, JSRAD:JERAD,KSRAD  :KERAD  ) )
-      allocate( alpp        (ISRAD:IERAD, JSRAD:JERAD,KSRAD+1:KERAD+1) )
-      allocate( dm3         (ISRAD:IERAD, JSRAD:JERAD,KSRAD+1:KERAD+1) )
-      allocate( dm3r        (ISRAD:IERAD, JSRAD:JERAD,KSRAD+1:KERAD+1) )
-      allocate( dm3r1p      (ISRAD:IERAD, JSRAD:JERAD,KSRAD+1:KERAD+1) )
-      radddowndif= 0.0; raddupdif  = 0.0; raddupdir  = 0.0
-      tlevel     = 0.0; tadddowndir= 0.0; dm1tl      = 0.0
-      dm2tl      = 0.0; rdm2tl     = 0.0; alpp       = 0.0
-      dm3        = 0.0; dm3r       = 0.0; dm3r1p     = 0.0
 
 !---------------------------------------------------------------------
 !    if quenching factor effects are desired, calculate the height above
@@ -1536,7 +1540,7 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
 !----------------------------------------------------------------------c
 !    obtain aerosol properties from esfsw_scattering
 !----------------------------------------------------------------------c
-        if (Sw_control%do_swaerosol) then
+        if (including_aerosols) then                           
           aerext(:) = Aerosol_props%aerextband(nband,:)
           aerssalb(:) = Aerosol_props%aerssalbband(nband,:)
           aerasymm(:) = Aerosol_props%aerasymmband(nband,:)
@@ -1546,17 +1550,31 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
 !    cloud single scattering parameters.                               
 !    note: the unit for the aerosol extinction is kilometer**(-1).     
 !--------------------------------------------------------------------
-          do k = KSRAD,KERAD
-            do j = JSRAD,JERAD
-              do i = ISRAD,IERAD
-                if (daylight(i,j) .or.    &
-                    Sw_control%do_cmip_diagnostics) then
+          do j = JSRAD,JERAD
+            do i = ISRAD,IERAD
+              if (daylight(i,j) .or.    &
+                  Sw_control%do_cmip_diagnostics) then
+                do k = KSRAD,KERAD
                   irh(i,j,k) = MIN(100, MAX( 0,     &
                       NINT(100.*Atmos_input%aerosolrelhum(i,j,k))))
                   opt_index_v3(i,j,k) =    &
                               Aerosol_props%sulfate_index( irh(i,j,k) )
-                endif
-              end do
+                 opt_index_v4(i,j,k) =    &
+                              Aerosol_props%omphilic_index( irh(i,j,k) )
+                  opt_index_v5(i,j,k) =    &
+                              Aerosol_props%bcphilic_index( irh(i,j,k) )
+                  opt_index_v6(i,j,k) =    &
+                              Aerosol_props%seasalt1_index( irh(i,j,k) )
+                  opt_index_v7(i,j,k) =    &
+                              Aerosol_props%seasalt2_index( irh(i,j,k) )
+                  opt_index_v8(i,j,k) =    &
+                              Aerosol_props%seasalt3_index( irh(i,j,k) )
+                  opt_index_v9(i,j,k) =    &
+                              Aerosol_props%seasalt4_index( irh(i,j,k) )
+                  opt_index_v10(i,j,k) =    &
+                              Aerosol_props%seasalt5_index( irh(i,j,k) )
+                enddo
+              endif
             end do
           end do
 
@@ -1564,28 +1582,28 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
 !    calculate scattering properties for all aerosol constituents 
 !    combined.
 !---------------------------------------------------------------------
-          do k = KSRAD,KERAD
-            do  j=JSRAD,JERAD
-              do i=ISRAD,IERAD
-                if (daylight(i,j) .or.    &
-                    Sw_control%do_cmip_diagnostics) then
+          do  j=JSRAD,JERAD
+            do i=ISRAD,IERAD
+              if (daylight(i,j) .or.    &
+                  Sw_control%do_cmip_diagnostics) then
+                do k = KSRAD,KERAD
                   aeroextopdep(i,j,k) = 0.0
                   aerosctopdep(i,j,k) = 0.0
                   sum_g_omega_tau(i,j,k) = 0.0
-                endif
-              end do
+                enddo
+              endif
             end do
           end do
           do nsc = 1,NAEROSOLTYPES_USED
-            if (Aerosol_props%optical_index(nsc) /= 0) then
+            if (Aerosol_props%optical_index(nsc) > 0) then
               aerext_i = aerext(Aerosol_props%optical_index(nsc))
               aerssalb_i = aerssalb(Aerosol_props%optical_index(nsc))
               aerasymm_i = aerasymm(Aerosol_props%optical_index(nsc))
-              do k = KSRAD,KERAD
-                do j = JSRAD,JERAD
-                  do i = ISRAD,IERAD
-                    if (daylight(i,j) .or.    &
-                        Sw_control%do_cmip_diagnostics) then
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                  if (daylight(i,j) .or.    &
+                      Sw_control%do_cmip_diagnostics) then
+                    do k = KSRAD,KERAD
                       arprod(i,j,k) = aerext_i*  &
                                (1.e3*Aerosol%aerosol(i,j,k,nsc))
                       arprod2(i,j,k) = aerssalb_i*arprod(i,j,k)
@@ -1596,16 +1614,17 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
                       sum_g_omega_tau(i,j,k) = sum_g_omega_tau(i,j,k) +&
                                                aerasymm_i* &
                                               (aerssalb_i*arprod(i,j,k))
-                    endif
-                  end do
+                    enddo
+                  endif
                 end do
               end do
-            else
-              do k = KSRAD,KERAD
-                do j = JSRAD,JERAD
-                  do i = ISRAD,IERAD
-                    if (daylight(i,j) .or.    &
-                        Sw_control%do_cmip_diagnostics) then
+            else if (Aerosol_props%optical_index(nsc) == &
+                                     Aerosol_props%sulfate_flag) then
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                  if (daylight(i,j) .or.    &
+                      Sw_control%do_cmip_diagnostics) then
+                    do k = KSRAD,KERAD
                       arprod(i,j,k) = aerext(opt_index_v3(i,j,k)) *    &
                                    (1.e3 * Aerosol%aerosol(i,j,k,nsc))
                       arprod2(i,j,k) = aerssalb(opt_index_v3(i,j,k)) * &
@@ -1619,8 +1638,183 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
                                       aerasymm(opt_index_v3(i,j,k)) * &
                                      (aerssalb(opt_index_v3(i,j,k))*  &
                                                         arprod(i,j,k))
-                    endif
-                  end do
+                    enddo
+                  endif
+                end do
+              end do
+!           elseif (Aerosol_props%optical_index(nsc) == -1) then
+            else if (Aerosol_props%optical_index(nsc) == &
+                               Aerosol_props%omphilic_flag) then
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                  if (daylight(i,j) .or.    &
+                      Sw_control%do_cmip_diagnostics) then
+                    do k = KSRAD,KERAD
+                      arprod(i,j,k) = aerext(opt_index_v4(i,j,k)) *    &
+                                   (1.e3 * Aerosol%aerosol(i,j,k,nsc))
+                      arprod2(i,j,k) = aerssalb(opt_index_v4(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      aeroextopdep(i,j,k) = aeroextopdep(i,j,k) +   &
+                                            arprod(i,j,k)
+                      aerosctopdep(i,j,k) = aerosctopdep(i,j,k) + &
+                                       aerssalb(opt_index_v4(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      sum_g_omega_tau(i,j,k) = sum_g_omega_tau(i,j,k) +&
+                                      aerasymm(opt_index_v4(i,j,k)) * &
+                                     (aerssalb(opt_index_v4(i,j,k))*  &
+                                                        arprod(i,j,k))
+                    end do
+                  endif
+                end do
+              end do
+!           elseif (Aerosol_props%optical_index(nsc) == -2) then
+            else if (Aerosol_props%optical_index(nsc) == &
+                       Aerosol_props%bcphilic_flag) then
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                  if (daylight(i,j) .or.    &
+                      Sw_control%do_cmip_diagnostics) then
+                    do k = KSRAD,KERAD
+                      arprod(i,j,k) = aerext(opt_index_v5(i,j,k)) *    &
+                                   (1.e3 * Aerosol%aerosol(i,j,k,nsc))
+                      arprod2(i,j,k) = aerssalb(opt_index_v5(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      aeroextopdep(i,j,k) = aeroextopdep(i,j,k) +   &
+                                            arprod(i,j,k)
+                      aerosctopdep(i,j,k) = aerosctopdep(i,j,k) + &
+                                       aerssalb(opt_index_v5(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      sum_g_omega_tau(i,j,k) = sum_g_omega_tau(i,j,k) +&
+                                      aerasymm(opt_index_v5(i,j,k)) * &
+                                     (aerssalb(opt_index_v5(i,j,k))*  &
+                                                        arprod(i,j,k))
+                    end do
+                  endif
+                end do
+              end do
+!           elseif (Aerosol_props%optical_index(nsc) == -3) then
+            else if (Aerosol_props%optical_index(nsc) == &
+                         Aerosol_props%seasalt1_flag) then
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                  if (daylight(i,j) .or.    &
+                      Sw_control%do_cmip_diagnostics) then
+                    do k = KSRAD,KERAD
+                      arprod(i,j,k) = aerext(opt_index_v6(i,j,k)) *    &
+                                   (1.e3 * Aerosol%aerosol(i,j,k,nsc))
+                      arprod2(i,j,k) = aerssalb(opt_index_v6(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      aeroextopdep(i,j,k) = aeroextopdep(i,j,k) +   &
+                                            arprod(i,j,k)
+                      aerosctopdep(i,j,k) = aerosctopdep(i,j,k) + &
+                                       aerssalb(opt_index_v6(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      sum_g_omega_tau(i,j,k) = sum_g_omega_tau(i,j,k) +&
+                                      aerasymm(opt_index_v6(i,j,k)) * &
+                                     (aerssalb(opt_index_v6(i,j,k))*  &
+                                                        arprod(i,j,k))
+                    end do
+                  endif
+                end do
+              end do
+!           elseif (Aerosol_props%optical_index(nsc) == -4) then
+            else if (Aerosol_props%optical_index(nsc) == &
+                         Aerosol_props%seasalt2_flag) then
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                  if (daylight(i,j) .or.    &
+                        Sw_control%do_cmip_diagnostics) then
+                    do k = KSRAD,KERAD
+                      arprod(i,j,k) = aerext(opt_index_v7(i,j,k)) *    &
+                                   (1.e3 * Aerosol%aerosol(i,j,k,nsc))
+                      arprod2(i,j,k) = aerssalb(opt_index_v7(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      aeroextopdep(i,j,k) = aeroextopdep(i,j,k) +   &
+                                            arprod(i,j,k)
+                      aerosctopdep(i,j,k) = aerosctopdep(i,j,k) + &
+                                       aerssalb(opt_index_v7(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      sum_g_omega_tau(i,j,k) = sum_g_omega_tau(i,j,k) +&
+                                      aerasymm(opt_index_v7(i,j,k)) * &
+                                     (aerssalb(opt_index_v7(i,j,k))*  &
+                                                        arprod(i,j,k))
+                    end do
+                  endif
+                end do
+              end do
+!           elseif (Aerosol_props%optical_index(nsc) == -5) then
+            else if (Aerosol_props%optical_index(nsc) == &
+                         Aerosol_props%seasalt3_flag) then
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                  if (daylight(i,j) .or.    &
+                      Sw_control%do_cmip_diagnostics) then
+                    do k = KSRAD,KERAD
+                      arprod(i,j,k) = aerext(opt_index_v8(i,j,k)) *    &
+                                   (1.e3 * Aerosol%aerosol(i,j,k,nsc))
+                      arprod2(i,j,k) = aerssalb(opt_index_v8(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      aeroextopdep(i,j,k) = aeroextopdep(i,j,k) +   &
+                                            arprod(i,j,k)
+                      aerosctopdep(i,j,k) = aerosctopdep(i,j,k) + &
+                                       aerssalb(opt_index_v8(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      sum_g_omega_tau(i,j,k) = sum_g_omega_tau(i,j,k) +&
+                                      aerasymm(opt_index_v8(i,j,k)) * &
+                                     (aerssalb(opt_index_v8(i,j,k))*  &
+                                                        arprod(i,j,k))
+                    end do
+                  endif
+                end do
+              end do
+!           elseif (Aerosol_props%optical_index(nsc) == -6) then
+            else if (Aerosol_props%optical_index(nsc) == &
+                         Aerosol_props%seasalt4_flag) then
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                  if (daylight(i,j) .or.    &
+                      Sw_control%do_cmip_diagnostics) then
+                    do k = KSRAD,KERAD
+                      arprod(i,j,k) = aerext(opt_index_v9(i,j,k)) *    &
+                                   (1.e3 * Aerosol%aerosol(i,j,k,nsc))
+                      arprod2(i,j,k) = aerssalb(opt_index_v9(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      aeroextopdep(i,j,k) = aeroextopdep(i,j,k) +   &
+                                            arprod(i,j,k)
+                      aerosctopdep(i,j,k) = aerosctopdep(i,j,k) + &
+                                       aerssalb(opt_index_v9(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      sum_g_omega_tau(i,j,k) = sum_g_omega_tau(i,j,k) +&
+                                      aerasymm(opt_index_v9(i,j,k)) * &
+                                     (aerssalb(opt_index_v9(i,j,k))*  &
+                                                        arprod(i,j,k))
+                    end do
+                  endif
+                end do
+              end do
+!           elseif (Aerosol_props%optical_index(nsc) == -7) then
+            else if (Aerosol_props%optical_index(nsc) == &
+                         Aerosol_props%seasalt5_flag) then
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                  if (daylight(i,j) .or.    &
+                      Sw_control%do_cmip_diagnostics) then
+                    do k = KSRAD,KERAD
+                      arprod(i,j,k) = aerext(opt_index_v10(i,j,k)) *    &
+                                   (1.e3 * Aerosol%aerosol(i,j,k,nsc))
+                      arprod2(i,j,k) = aerssalb(opt_index_v10(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      aeroextopdep(i,j,k) = aeroextopdep(i,j,k) +   &
+                                            arprod(i,j,k)
+                      aerosctopdep(i,j,k) = aerosctopdep(i,j,k) + &
+                                       aerssalb(opt_index_v10(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      sum_g_omega_tau(i,j,k) = sum_g_omega_tau(i,j,k) +&
+                                      aerasymm(opt_index_v10(i,j,k)) * &
+                                     (aerssalb(opt_index_v10(i,j,k))*  &
+                                                        arprod(i,j,k))
+                    end do
+                  endif
                 end do
               end do
             endif
@@ -1638,12 +1832,18 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
             endif
           end do
 
+
 !----------------------------------------------------------------------
 !    add the effects of volcanic aerosols, if they are to be included.
 !    include generation of diagnostics in the visible (0.55 micron) and
 !    nir band (1.0 micron).
 !----------------------------------------------------------------------
           if (including_volcanoes) then
+            if (do_coupled_stratozone ) then
+              nextinct = get_tracer_index(MODEL_ATMOS,'Extinction')
+              if (nextinct  /= NO_TRACER) &
+                r(:,:,:,nextinct) = Aerosol_props%sw_ext(:,:,:,4)
+            endif  
             do k = KSRAD,KERAD
               do j = JSRAD,JERAD
                 do i = ISRAD,IERAD
@@ -1686,7 +1886,7 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
                 end do
               end do
             end do
-          endif
+          endif   ! (including_volcanoes)
 !
 !----------------------------------------------------------------------
           do k = KSRAD,KERAD
@@ -1712,6 +1912,7 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
             end do
           end do
         endif ! do_aerosol
+
 
 !---------------------------------------------------------------------
 !    obtain cloud properties from the Cldrad_props input variable.
@@ -1757,8 +1958,8 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
           end do
  
 !---------------------------------------------------------------------
-!    calculate the "effective" co2 and o2 gas optical depths for the 
-!    appropriate absorbing bands.                                       
+!    calculate the "effective" co2, o2, ch4 and n2o gas optical depths 
+!    for the appropriate absorbing bands.                               
 !    note: for large zenith angles, alpha can exceed 1. In this case,a
 !    the optical depths are set to the previous layer values.          
 !-------------------------------------------------------------------
@@ -1803,7 +2004,97 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
             efftauco2(:,:,:,:) = 0.0
           end if  !( c1co2(nband).ne.1.0E-99 ) 
 
-          if ( c1o2(nband).ne.1.0E-99 ) then
+          if (do_ch4_sw_effects) then
+           if ( c1ch4(nband).ne.1.0E-99 ) then
+             do ng = 1,NSOLWG
+               do k = KSRAD+1,KERAD+1
+                 do j = JSRAD,JERAD
+                   do i = ISRAD,IERAD
+                     if ( daylight(i,j) ) then
+                       if (totch4(i,j,k,ng) < totch4max(nband) .and.  &
+                           totch4str(i,j,k,ng) < totch4strmax(nband)) &
+                       then
+                        alphach4(i,j,k) = &
+                                  c1ch4(nband) * exp( c3ch4(nband) * &
+                                  alog( ( totch4(i,j,k,ng) + &
+                                  c2ch4(nband) ) ) )  - c4ch4(nband)
+                        alphach4str(i,j,k) = &
+                            c1ch4str(nband) * exp( c3ch4str(nband) *  &
+                           alog( ( totch4str(i,j,k,ng) +             &
+                           c2ch4str(nband) ) ) ) - c4ch4str(nband)
+                       tch4(i,j,k-1) = &
+                              ( 1.0 - alphach4(i,j,k) ) *  &
+                              ( 1.0 - alphach4str(i,j,k) ) / &
+                        ( ( 1.0 - alphach4(i,j,k-1) ) *  &
+                                ( 1.0 - alphach4str(i,j,k-1) ) )
+                         efftauch4(i,j,k-1,ng) = &
+                                -cosangsolar(i,j,ng) * &
+                                 alog( tch4(i,j,k-1) )
+                      else if (k > KSRAD+1) then
+                        efftauch4(i,j,k-1,ng) = efftauch4(i,j,k-2,ng)
+                       else
+                        efftauch4(i,j,k-1,ng) = 0.0
+                       end if
+                     else   ! (daylight)
+                      efftauch4(i,j,k-1,ng) = 0.0
+                     end if ! (daylight)
+                  end do
+               end do
+             end do
+          end do
+       else    !( c1ch4(nband).ne.1.0E-99 )
+            efftauch4(:,:,:,:) = 0.0
+          end if  !( c1ch4(nband).ne.1.0E-99 )
+      else    !do_ch4 = .false.
+             efftauch4(:,:,:,:) = 0.0
+     end if
+
+     if (do_n2o_sw_effects) then
+       if ( c1n2o(nband).ne.1.0E-99 ) then
+          do ng = 1,NSOLWG
+            do k = KSRAD+1,KERAD+1
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                     if ( daylight(i,j) ) then
+                       if (totn2o(i,j,k,ng) < totn2omax(nband) .and.  &
+                          totn2ostr(i,j,k,ng) < totn2ostrmax(nband)) &
+                     then
+                     alphan2o(i,j,k) = &
+                                c1n2o(nband) * exp( c3n2o(nband) * &
+                                  alog( ( totn2o(i,j,k,ng) + &
+                                c2n2o(nband) ) ) )  - c4n2o(nband)
+                       alphan2ostr(i,j,k) = &
+                           c1n2ostr(nband) * exp( c3n2ostr(nband) *  &
+                           alog( ( totn2ostr(i,j,k,ng) +             &
+                         c2n2ostr(nband) ) ) ) - c4n2ostr(nband)
+                    tn2o(i,j,k-1) = &
+                              ( 1.0 - alphan2o(i,j,k) ) *  &
+                               ( 1.0 - alphan2ostr(i,j,k) ) / &
+                                ( ( 1.0 - alphan2o(i,j,k-1) ) *  &
+                               ( 1.0 - alphan2ostr(i,j,k-1) ) )
+                      efftaun2o(i,j,k-1,ng) = &
+                                 -cosangsolar(i,j,ng) * &
+                                alog( tn2o(i,j,k-1) )
+                      else if (k > KSRAD+1) then
+                        efftaun2o(i,j,k-1,ng) = efftaun2o(i,j,k-2,ng)
+                      else
+                       efftaun2o(i,j,k-1,ng) = 0.0
+                     end if
+                    else   ! (daylight)
+                       efftaun2o(i,j,k-1,ng) = 0.0
+                     end if ! (daylight)
+                end do
+                end do
+             end do
+         end do
+        else    !( c1n2o(nband).ne.1.0E-99 )
+           efftaun2o(:,:,:,:) = 0.0
+         end if  !( c1n2o(nband).ne.1.0E-99 )
+    else  !do_n2o = .false.
+       efftaun2o(:,:,:,:) = 0.0
+end if
+
+                  if ( c1o2(nband).ne.1.0E-99 ) then
             do ng = 1,NSOLWG
               do k = KSRAD+1,KERAD+1
                 do j = JSRAD,JERAD
@@ -1967,7 +2258,8 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
 !--------------------------------------------------------------------
           do ng = 1,NSOLWG
             gasopdep(:,:,:) = opdep(:,:,:) + quenchfac(:,:,:) * &
-                              efftauco2(:,:,:,ng) + efftauo2(:,:,:,ng)
+                              efftauco2(:,:,:,ng) + efftauo2(:,:,:,ng)+&
+                              efftauch4(:,:,:,ng) + efftaun2o(:,:,:,ng)
  
 !---------------------------------------------------------------------
 !    clear sky mode                                                    
@@ -2181,7 +2473,6 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
                 end do
               end do
             end do
-
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
@@ -2453,7 +2744,6 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
            end do
          end do
        endif
-
         do j=JSRAD,JERAD
           do i=ISRAD,IERAD
             if (daylight(i,j) ) then
@@ -2485,151 +2775,6 @@ type(aerosol_diagnostics_type),intent(inout)    :: Aerosol_diags
               endif
             end do
           end do
-
-!-----------------------------------------------------------------
-!    deallocate arrays used in adding
-!-----------------------------------------------------------------
-      deallocate  (  dm3r1p     )
-      deallocate  (  dm3r       )
-      deallocate  (  dm3        )
-      deallocate  (  alpp       )
-      deallocate  (  rdm2tl     )
-      deallocate  (  dm2tl      )
-      deallocate  (  dm1tl      )
-      deallocate  (  tadddowndir)
-      deallocate  (  tlevel     )
-      deallocate  (  raddupdir  )
-      deallocate  (  raddupdif  )
-      deallocate  (  radddowndif)
-
-!-----------------------------------------------------------------
-!    deallocate arrays used in deledd
-!-----------------------------------------------------------------
-      deallocate  (  sumt      )
-      deallocate  (  sumr      )
-      deallocate  (  tlayerdir2)
-      deallocate  (  tlayerde2 )
-      deallocate  (  rlayerdir2)
-      deallocate  (  cosangzk2 )
-      deallocate  (  omegastr2 )
-      deallocate  (  taustr2   )
-      deallocate  (  gstr2     )
-      deallocate  (cld_index   )
-
-!-----------------------------------------------------------------
-!    deallocate swresf arrays 
-!-----------------------------------------------------------------
-      deallocate (gstrovc           )
-      deallocate (gstrclr           )
-      deallocate (omegastrovc       )
-      deallocate (taustrovc         )
-      deallocate (omegastrclr       )
-      deallocate (taustrclr         )
-      deallocate (ssalbovc          )
-      deallocate (sctopdepovc       )
-      deallocate (ssalbclr          )
-      deallocate (extopdepclr       )
-      deallocate (gasopdep          )
-      deallocate (fovc              )
-      deallocate (govc              )
-      deallocate (extopdepovc       )
-      deallocate (fclr              )
-      deallocate (gclr              )
-      deallocate (sctopdepclr       )
-
-      deallocate (dfswband          )
-      deallocate ( fswband          )
-      deallocate ( hswband          )
-      deallocate (ufswband          )
- 
-      if (Rad_control%do_totcld_forcing) then
-        deallocate (dfswbandclr       )
-        deallocate ( fswbandclr       )
-        deallocate ( hswbandclr       )
-        deallocate (ufswbandclr       )
-      endif
-
-      deallocate (to2               )
-      deallocate (tco2              )
-      deallocate (efftauo2          )
-      deallocate (efftauco2          )
-      deallocate (alphao2str         )
-      deallocate (alphao2            )
-      deallocate (alphaco2str         )
-      deallocate (alphaco2            )
-
-      deallocate (rayopdep          )
-      deallocate (cloudasymfac      )
-      deallocate (cloudsctopdep     )
-      deallocate (cloudextopdep     )
-      deallocate (aeroasymfac       )
-      deallocate (aerosctopdep      )
-      deallocate (aeroextopdep      )
-      deallocate (tlayerdeovc       )
-      deallocate (tlayerdeclr       )
-      deallocate (tlayerde          )
-      deallocate (tlayerdir         )
-      deallocate (tlayerdirclr      )
-      deallocate (tlayerdirovc      )
-      deallocate (tlayerdif         )
-      deallocate (tlayerdifclr      )
-      deallocate (tlayerdifovc      )
-      deallocate (rlayerdir         )
-      deallocate (rlayerdirclr      )
-      deallocate (rlayerdirovc      )
-      deallocate (rlayerdif         )
-      deallocate (rlayerdifclr      )
-      deallocate (rlayerdifovc      )
-      deallocate (totco2      )
-      deallocate (totco2str   )
-      deallocate (toto2      )
-      deallocate (toto2str   )
-      deallocate ( delpdig        )
-      deallocate ( deltap         )
-      deallocate ( gocpdp         )
-      deallocate ( denom          )
-      deallocate ( densitymol     )
-      deallocate ( cloud          )
-      deallocate ( cloud_in_column)
-      deallocate ( daylight       )
-
-      deallocate (cldext          )
-      deallocate (cldasymm        )
-      deallocate (cldsct          )
-
-      if (Sw_control%do_swaerosol) then
-        deallocate (aerext          )
-        deallocate (aerasymm        )
-        deallocate (aerssalb        )
-      endif
-
-      deallocate (  wtfac         )
-      deallocate (  wo3           )
-      deallocate (  wh2ostr       )
-      deallocate (  wh2o          )
-      deallocate (  transmittance )
-      deallocate (  tr_dir        )
-      deallocate (  sumtr         )
-      deallocate (  sumtr_dir         )
-      deallocate (  sumre         )
-      deallocate (  solarflux     )
-      deallocate (  sfcalb_dir    )
-      deallocate (  sfcalb_dif    )
-      deallocate (  reflectance   )
-      deallocate (  opdep         )
-
-      deallocate ( aeramt )
-      deallocate ( sum_g_omega_tau )
-      deallocate ( pflux_mks     )
-
-      if (Rad_control%do_totcld_forcing) then
-        deallocate (  transmittanceclr )
-        deallocate (  tr_dirclr )
-        deallocate (  sumtr_dir_clr     )
-        deallocate (  sumtrclr         )
-        deallocate (  sumreclr         )
-        deallocate (  reflectanceclr   )
-      endif
 
 !--------------------------------------------------------------------
 !    convert sw fluxes to cgs and then back to  mks units.
@@ -3085,6 +3230,15 @@ logical, dimension(:,:,:), intent(in), optional   :: cloud
       real        :: onedi3 = 1.0/3.0           
       real        :: twodi3 = 2.0/3.0             
       integer     :: k, i, ns, j, nn, ntot
+
+      integer, dimension(ix, jx, kx) :: cld_index
+
+      real,    dimension(ix)                  ::   &
+                                          gstr2, taustr2, omegastr2, &
+                                           cosangzk2, rlayerdir2,    &
+                                           tlayerde2, tlayerdir2, &
+                                           sumr, sumt
+
 
 !----------------------------------------------------------------------
 !  local variables:

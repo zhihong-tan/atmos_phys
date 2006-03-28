@@ -49,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_tables.F90,v 12.0 2005/04/14 15:46:16 fms Exp $'
-character(len=128)  :: tagname =  '$Name: lima $'
+character(len=128)  :: version =  '$Id: longwave_tables.F90,v 13.0 2006/03/28 21:12:16 fms Exp $'
+character(len=128)  :: tagname =  '$Name: memphis $'
 
 
 !---------------------------------------------------------------------
@@ -213,7 +213,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
       real, dimension (NBLY_CKD)    :: acomb_c, bcomb_c, apcm_c,  &
                                        bpcm_c, atpcm_c,   &
                                        btpcm_c, bdlocm_c,  bdhicm_c
-      integer                       :: inrad, k, m
+      integer                       :: inrad, k
       integer                       :: subb
       integer, dimension(5)         :: no_h2o12001400bands = &
                                         (/ 1, 2, 4, 10, 20 /)
@@ -260,7 +260,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !    n4
 !---------------------------------------------------------------------
       integer    :: unit, ierr, io
-      integer    :: k4, n4
+
 
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
