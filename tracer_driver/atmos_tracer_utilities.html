@@ -61,7 +61,7 @@
 <h4>OTHER MODULES USED</h4>
 <!-- BEGIN OTHER MODULES USED -->
 <div>
-<pre>           fms_mod<br>  time_manager_mod<br>  diag_manager_mod<br>tracer_manager_mod<br> field_manager_mod<br>     constants_mod<br>  horiz_interp_mod<br>  interpolator_mod</pre>
+<pre>           fms_mod<br>  time_manager_mod<br>  diag_manager_mod<br>tracer_manager_mod<br> field_manager_mod<br>  horiz_interp_mod<br> monin_obukhov_mod<br>     constants_mod<br>  interpolator_mod</pre>
 </div>
 <!-- END OTHER MODULES USED -->
 <!-- BEGIN PUBLIC INTERFACE -->
@@ -81,6 +81,9 @@
 <dt>
 <a href="#wet_deposition">wet_deposition</a>:</dt>
 <dd>   Routine to calculate the fraction of tracer removed by wet deposition </dd>
+<dt>
+<a href="#get_wetdep_param">get_wetdep_param</a>:</dt>
+<dd>   Routine to initialize the parameters for the wet deposition scheme. </dd>
 <dt>
 <a href="#interp_emiss">interp_emiss</a>:</dt>
 <dd>   A routine to interpolate emission fields of arbitrary resolution onto the 
@@ -147,18 +150,21 @@
 <a name="dry_deposition"></a>
 <h4>dry_deposition</h4>
 <pre>
-<b>call dry_deposition </b>( n, is, js, u, v, T, pwt, pfull, u_star, landmask, dsinku, tracer, Time, dry)</pre>
+<b>call dry_deposition </b>( n, is, js, u, v, T, pwt, pfull, dz, u_star, landmask, dsinku, tracer, Time, drydep_data)</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
 </dt>
-<dd>   There are two types of dry deposition coded.
+<dd>   There are three types of dry deposition coded.
    <br>
 <br>
    1) Wind driven derived dry deposition velocity.
    <br>
 <br>
    2) Fixed dry deposition velocity.
+   <br>
+<br>
+   3) Dry deposition velocities read in from input file
    <br>
 <br>
    The theory behind the wind driven dry deposition velocity calculation
@@ -181,7 +187,10 @@
 
  "dry_deposition","fixed","land=XXX, sea=YYY"
      where XXX is the dry deposition velocity (m/s) over land
-       and YYY is the dry deposition velocity (m/s) over sea.</pre> 
+       and YYY is the dry deposition velocity (m/s) over sea.
+
+ "dry_deposition","file","FILENAME.NC"
+     where FILENAME.NC is the NetCDF file name.</pre> 
 </dd>
 <br>
 <br>
@@ -226,7 +235,7 @@
 <dd>
 <table border="0">
 <tr>
-<td valign="top" align="left"><tt>dry&nbsp;&nbsp;&nbsp;</tt></td><td>   ????. <br>&nbsp;&nbsp;&nbsp;<span class="type">[interpolate_type]</span></td>
+<td valign="top" align="left"><tt>drydep_data&nbsp;&nbsp;&nbsp;</tt></td><td>   Dry deposition data interpolated from input file. <br>&nbsp;&nbsp;&nbsp;<span class="type">[interpolate_type]</span></td>
 </tr>
 </table>
 </dd>
@@ -248,7 +257,7 @@
 <a name="wet_deposition"></a>
 <h4>wet_deposition</h4>
 <pre>
-<b>call wet_deposition </b>(n, T, pfull, phalf, rain, snow, qdt, tracer, tracer_dt, Time, cloud_param, is, js)</pre>
+<b>call wet_deposition </b>( n, T, pfull, phalf, zfull, zhalf, &amp; rain, snow, qdt, cloud, rain3d, snow3d, &amp; tracer, tracer_dt, Time, cloud_param, is, js, dt )</pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
@@ -264,10 +273,13 @@
    <br>
 <br>
    2) Removal according to Henry's Law. This law states that the ratio of the concentation in 
-   cloud water and the partial pressure in the interstitial air is a constant. In this 
-   instance, the units for Henry's constant are kg/L/Pa (normally it is M/L/Pa)
+   cloud water and the partial pressure in the interstitial air is a constant. If tracer
+   is in VMR, the units for Henry's constant are mole/L/Pa (normally it is mole/L/atm).
    Parameters for a large number of species can be found at
    http://www.mpch-mainz.mpg.de/~sander/res/henry.html
+   <br>
+<br>
+   3) Aerosol removal, using specified in-cloud tracer fraction
    To utilize this section of code add one of the following lines as 
    a method for the tracer of interest in the field table. <pre> "wet_deposition","henry","henry=XXX, dependence=YYY"
      where XXX is the Henry's constant for the tracer in question
@@ -294,10 +306,16 @@
 <td valign="top" align="left"><tt>T&nbsp;&nbsp;&nbsp;</tt></td><td>   Temperature <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
 </tr>
 <tr>
-<td valign="top" align="left"><tt>pfull&nbsp;&nbsp;&nbsp;</tt></td><td>   Full level pressure field <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
+<td valign="top" align="left"><tt>pfull&nbsp;&nbsp;&nbsp;</tt></td><td>   Full level pressure field (Pa) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
 </tr>
 <tr>
-<td valign="top" align="left"><tt>phalf&nbsp;&nbsp;&nbsp;</tt></td><td>   Half level pressure field <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
+<td valign="top" align="left"><tt>phalf&nbsp;&nbsp;&nbsp;</tt></td><td>   Half level pressure field (Pa) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>zfull&nbsp;&nbsp;&nbsp;</tt></td><td>   Full level height field (m) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>zhalf&nbsp;&nbsp;&nbsp;</tt></td><td>   Half level height field (m) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
 </tr>
 <tr>
 <td valign="top" align="left"><tt>rain&nbsp;&nbsp;&nbsp;</tt></td><td>   Precipitation in the form of rain <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:)]</span></td>
@@ -306,7 +324,16 @@
 <td valign="top" align="left"><tt>snow&nbsp;&nbsp;&nbsp;</tt></td><td>   Precipitation in the form of snow <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:)]</span></td>
 </tr>
 <tr>
-<td valign="top" align="left"><tt>qdt&nbsp;&nbsp;&nbsp;</tt></td><td>   The tendency of the specific humidity due to the cloud parametrization <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
+<td valign="top" align="left"><tt>qdt&nbsp;&nbsp;&nbsp;</tt></td><td>   The tendency of the specific humidity (+ condenstate) due to the cloud parametrization (kg/kg/s) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>cloud&nbsp;&nbsp;&nbsp;</tt></td><td>   Cloud amount (liquid + ice) (kg/kg) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>rain3d&nbsp;&nbsp;&nbsp;</tt></td><td>   Precipitation in the form of rain (kg/m2/s) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>snow3d&nbsp;&nbsp;&nbsp;</tt></td><td>   Precipitation in the form of snow (kg/m2/s) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
 </tr>
 <tr>
 <td valign="top" align="left"><tt>tracer&nbsp;&nbsp;&nbsp;</tt></td><td>   The tracer field <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
@@ -317,6 +344,9 @@
 <tr>
 <td valign="top" align="left"><tt>cloud_param&nbsp;&nbsp;&nbsp;</tt></td><td>   Is this a convective (convect) or large scale (lscale) cloud parametrization? <br>&nbsp;&nbsp;&nbsp;<span class="type">[character]</span></td>
 </tr>
+<tr>
+<td valign="top" align="left"><tt>dt&nbsp;&nbsp;&nbsp;</tt></td><td>   The model timestep (in seconds) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
 </table>
 </dd>
 <br>
@@ -326,7 +356,55 @@
 <dd>
 <table border="0">
 <tr>
-<td valign="top" align="left"><tt>tracer_dt&nbsp;&nbsp;&nbsp;</tt></td><td>   The tendency of the tracer field due to wet deposition. <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
+<td valign="top" align="left"><tt>tracer_dt&nbsp;&nbsp;&nbsp;</tt></td><td>   The tendency of the tracer field due to wet deposition <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:)]</span></td>
+</tr>
+</table>
+</dd>
+<br>
+</dl>
+</li>
+<li>
+<a name="get_wetdep_param"></a>
+<h4>get_wetdep_param</h4>
+<pre>
+<b>call get_wetdep_param </b>(text_in_scheme, text_in_param, scheme,&amp; henry_constant, henry_temp, &amp; frac_in_cloud, alpha_r, alpha_s)</pre>
+<dl>
+<dt>
+<b>DESCRIPTION</b>
+</dt>
+<dd></dd>
+<br>
+<br>
+<dt>
+<b>INPUT</b>
+</dt>
+<dd>
+<table border="0">
+<tr>
+<td valign="top" align="left"><tt>text_in_scheme&nbsp;&nbsp;&nbsp;</tt></td><td>   Text read from the tracer table which provides information on which
+   wet deposition scheme to use. <br>&nbsp;&nbsp;&nbsp;<span class="type">[character]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>text_in_param&nbsp;&nbsp;&nbsp;</tt></td><td>   Parameters associated with the wet deposition scheme. These will be
+   parsed in this routine. <br>&nbsp;&nbsp;&nbsp;<span class="type">[character]</span></td>
+</tr>
+</table>
+</dd>
+<br>
+<dt>
+<b>OUTPUT</b>
+</dt>
+<dd>
+<table border="0">
+<tr>
+<td valign="top" align="left"><tt>scheme&nbsp;&nbsp;&nbsp;</tt></td><td>   Wet deposition scheme to use.
+   Choices are: None, Fraction, Henry, Henry_below, Aerosol, Aerosol_below <br>&nbsp;&nbsp;&nbsp;<span class="type">[character]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>henry_constant&nbsp;&nbsp;&nbsp;</tt></td><td>   Henry's Law constant for the tracer (see wet_deposition for explanation of Henry's Law) <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
+</tr>
+<tr>
+<td valign="top" align="left"><tt>henry_temp&nbsp;&nbsp;&nbsp;</tt></td><td>   The temperature dependence of the Henry's Law constant. <br>&nbsp;&nbsp;&nbsp;<span class="type">[real]</span></td>
 </tr>
 </table>
 </dd>
@@ -421,7 +499,16 @@
 <!-- BEGIN ERROR MESSAGES -->
 <hr>
 <h4>ERROR MESSAGES</h4>
-<div>None.<br>
+<div>
+<dl>
+<dt>
+<b>FATAL in wet_deposition</b>
+</dt>
+<dd>
+<span class="errmsg">Unsupported tracer units</span>
+</dd>
+<dd>   Tracer units must be either VMR or MMR </dd>
+</dl>
 <br>
 </div>
 <!-- END ERROR MESSAGES -->

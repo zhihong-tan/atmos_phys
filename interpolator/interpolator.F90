@@ -86,8 +86,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 12.0 2005/04/14 15:51:43 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+'$Id: interpolator.F90,v 13.0 2006/03/28 21:15:09 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -110,6 +110,7 @@ integer                  :: level_type    ! Pressure or Sigma level
 integer                  :: is,ie,js,je
 integer                  :: vertical_indices ! direction of vertical 
                                               ! data axis
+logical                  :: climatological_year ! Is data for year = 0000?
 
 !Field specific data  for nfields
 type(fieldtype),   pointer :: field_type(:) =>NULL()   ! NetCDF field type
@@ -432,8 +433,9 @@ do i = 1, ndim
           call mpp_error(FATAL,'Interpolator_init : Time units not recognised in file '//file_name)
       end select
 
+       clim_type%climatological_year = (fileyr == 0)
 
-      if (fileyr /= 0) then
+      if (.not. clim_type%climatological_year) then
 
 !----------------------------------------------------------------------
 !    if file date has a non-zero year in the base time, determine that
@@ -489,7 +491,7 @@ do i = 1, ndim
       ntime_in = 1
       if (ntime > 0) then
         allocate(time_in(ntime), clim_type%time_slice(ntime))
-        allocate(clim_type%clim_times(12,ntime/12))
+        allocate(clim_type%clim_times(12,(ntime+11)/12))
         time_in = 0.0
         clim_type%time_slice = set_time(0,0) + base_time
         clim_type%clim_times = set_time(0,0) + base_time
@@ -505,7 +507,7 @@ do i = 1, ndim
             exit
           endif
         end do
-        if (fileyr == 0) then
+        if (clim_type%climatological_year) then
           call mpp_error (NOTE, 'interpolator_mod :'  // &
           trim(file_name) // ' is a year-independent climatology file') 
         else
@@ -517,17 +519,19 @@ do i = 1, ndim
 !Assume that the times in the data file correspond to days only.
             
 
-          if (fileyr == 0) then
+          if (clim_type%climatological_year) then
 !! RSH NOTE:
 !! for this case, do not add base_time. time_slice will be sent to
 !! time_interp_list with the optional argument modtime=YEAR, so that
 !! the time that is needed in time_slice is the displacement into the
 !! year, not the displacement from a base_time.
-            clim_type%time_slice(n) = set_time(0,INT(time_in(n))) 
+            clim_type%time_slice(n) = &
+                set_time(INT( ( time_in(n) - INT(time_in(n)) ) * 86400 ),INT(time_in(n)))
           else
 
 !--------------------------------------------------------------------
-!    if fileyr /= 0, then define the times associated with each time-
+!    if fileyr /= 0 (i.e., climatological_year=F),
+!    then define the times associated with each time-
 !    slice. if calendar conversion between data file and model calendar
 !    is needed, do it so that data from the file is associated with the
 !    same calendar time in the model. here the time_slice needs to 
@@ -542,8 +546,9 @@ do i = 1, ndim
 !---------------------------------------------------------------------
 !    no calendar conversion needed.
 !---------------------------------------------------------------------
-              clim_type%time_slice(n) = set_time(0,INT(time_in(n))) + &
-                                        base_time
+              clim_type%time_slice(n) = &
+                 set_time(INT( ( time_in(n) - INT(time_in(n)) ) * 86400 ),INT(time_in(n)))  &
+                  + base_time
 
 !---------------------------------------------------------------------
 !    convert file times from noleap to julian.
@@ -1078,7 +1083,7 @@ end do
       call mpp_get_atts(clim_type%field_type(i),units=clim_units)
       clim_units = chomp(clim_units)
     endif
-    if(size(clim_type%time_slice(:)).le. 12 ) then
+    if (clim_type%climatological_year) then
        call time_interp(Time, clim_type%time_slice, tweight, taum, taup, modtime=YEAR )
     else
        call time_interp(Time, clim_type%time_slice, tweight, taum, taup )
@@ -1454,7 +1459,7 @@ do i= 1,size(clim_type%field_name(:))
       call mpp_get_atts(clim_type%field_type(i),units=clim_units)
       clim_units = chomp(clim_units)
     endif
-    if(size(clim_type%time_slice(:)).le. 12 ) then
+    if (clim_type%climatological_year) then
        call time_interp(Time, clim_type%time_slice, tweight, taum, taup, modtime=YEAR )
     else
        call time_interp(Time, clim_type%time_slice, tweight, taum, taup )
@@ -1807,7 +1812,7 @@ do i= 1,size(clim_type%field_name(:))
       call mpp_get_atts(clim_type%field_type(i),units=clim_units)
       clim_units = chomp(clim_units)
     endif
-    if(size(clim_type%time_slice(:)).le. 12 ) then
+    if (clim_type%climatological_year) then
       call time_interp(Time, clim_type%time_slice, tweight, taum, taup, modtime=YEAR )
     else
        call time_interp(Time, clim_type%time_slice, tweight, taum, taup )

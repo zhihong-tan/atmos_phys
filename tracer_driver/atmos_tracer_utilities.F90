@@ -1,4 +1,3 @@
-
 module atmos_tracer_utilities_mod
 ! <CONTACT EMAIL="William.Cooke@noaa.gov">
 !   William Cooke
@@ -29,7 +28,7 @@ use            fms_mod, only : lowercase, &
                                mpp_pe, &
                                mpp_root_pe, &
                                error_mesg, &
-                               NOTE
+                               NOTE, FATAL
 use   time_manager_mod, only : time_type
 use   diag_manager_mod, only : send_data, &
                                register_diag_field
@@ -38,9 +37,18 @@ use tracer_manager_mod, only : query_method, &
                                get_number_tracers, &
                                MAX_TRACER_FIELDS
 use  field_manager_mod, only : MODEL_ATMOS, parse
-use      constants_mod, only : grav, rdgas, PI
 use   horiz_interp_mod, only : horiz_interp
-use      constants_mod, only : PI
+! + pag 12/29/04
+use  monin_obukhov_mod, only : mo_profile
+! - pag 12/29/04
+use      constants_mod, only : GRAV, &     ! acceleration due to gravity [m/s2]
+                               RDGAS, &    ! gas constant for dry air [J/kg/deg]
+                               PI, &
+                               DENS_H2O, & ! Water density [kg/m3]
+                               WTMH2O, &   ! Water molecular weight [g/mole]
+                               WTMAIR, &   ! Air molecular weight [g/mole]
+                               AVOGNO      ! Avogadro's number
+! - pag 12/29/04
 use   interpolator_mod, only : interpolator,  &
                                interpolate_type
 
@@ -53,20 +61,29 @@ public  wet_deposition,    &
         dry_deposition,    &
         interp_emiss,      &
         atmos_tracer_utilities_end, &
-        atmos_tracer_utilities_init
-
+        atmos_tracer_utilities_init, &
+! + pag 12/29/04
+        get_rh,   &
+        get_w10m, &
+        get_cldf, &
+        sjl_fillz
 
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 12.0 2005/04/14 15:52:18 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 13.0 2006/03/28 21:15:54 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 
 character(len=7), parameter :: mod_name = 'tracers'
+integer, parameter :: max_tracers = MAX_TRACER_FIELDS
 !-----------------------------------------------------------------------
 !--- identification numbers for  diagnostic fields and axes ----
-integer, parameter :: max_tracers = MAX_TRACER_FIELDS
-integer :: id_tracer_ddep(max_tracers), id_tracer_wdep_ls(max_tracers), id_tracer_wdep_cv(max_tracers)
+integer :: id_tracer_ddep(max_tracers), &
+           id_tracer_wdep_ls(max_tracers),   id_tracer_wdep_cv(max_tracers),    &
+           id_tracer_wdep_lsin(max_tracers), id_tracer_wdep_cvin(max_tracers),&
+           id_tracer_wdep_lsbc(max_tracers), id_tracer_wdep_cvbc(max_tracers),&
+           id_tracer_reevap_ls(max_tracers), id_tracer_reevap_cv(max_tracers)
+integer :: id_w10m, id_delm
 character(len=32),  dimension(max_tracers) :: tracer_names     = ' '
 character(len=32),  dimension(max_tracers) :: tracer_units     = ' '
 character(len=128), dimension(max_tracers) :: tracer_longnames = ' '
@@ -76,11 +93,10 @@ character(len=128), dimension(max_tracers) :: tracer_wdep_longnames = ' '
 character(len=32),  dimension(max_tracers) :: tracer_ddep_names     = ' '
 character(len=32),  dimension(max_tracers) :: tracer_ddep_units     = ' '
 character(len=128), dimension(max_tracers) :: tracer_ddep_longnames = ' '
-
 real, allocatable :: blon_out(:), blat_out(:)
 !----------------parameter values for the diagnostic units--------------
-real, parameter :: mw_air = 0.0289644
-real, parameter :: Navo = 6.023e23
+real, parameter :: mw_air = WTMAIR/1000.  ! Convert from [g/mole] to [kg/mole]
+real, parameter :: mw_h2o = WTMH2O/1000.  ! Convert from [g/mole] to [kg/mole]
 
 contains
 
@@ -152,8 +168,8 @@ call get_number_tracers(MODEL_ATMOS, num_tracers= ntrace)
 call get_tracer_names(MODEL_ATMOS,n,tracer_names(n),tracer_longnames(n),tracer_units(n))
       write (name,100) n
       if (trim(tracer_names(n)) /= name) then
-          tracer_ddep_names(n) = trim(tracer_names(n)) // 'ddep'
-          tracer_wdep_names(n) = trim(tracer_names(n)) // 'wdep'
+          tracer_ddep_names(n) = trim(tracer_names(n)) //'_ddep'
+          tracer_wdep_names(n) = trim(tracer_names(n)) //'_wdep'
       endif
       write (name,102) n
       if (trim(tracer_longnames(n)) /= name) then
@@ -181,21 +197,45 @@ call get_tracer_names(MODEL_ATMOS,n,tracer_names(n),tracer_longnames(n),tracer_u
            NOTE)
       end select
 
-
      id_tracer_ddep(n) = register_diag_field ( mod_name,               &
-                     trim(tracer_ddep_names(n)), mass_axes(1:2), Time, &
-                     trim(tracer_ddep_longnames(n)),                   &
-                     trim(units), missing_value=-999.     )
+              trim(tracer_ddep_names(n)), mass_axes(1:2), Time, &
+              trim(tracer_ddep_longnames(n)),                   &
+              trim(units), missing_value=-999.     )
      id_tracer_wdep_ls(n) = register_diag_field ( mod_name,               &
-                     trim(tracer_wdep_names(n))//'_ls', mass_axes(1:2), Time, &
-                     trim(tracer_wdep_longnames(n))//' in large scale',                   &
-                     trim(units), missing_value=-999.    )
+              trim(tracer_wdep_names(n))//'_ls', mass_axes(1:2), Time, &
+              trim(tracer_wdep_longnames(n))//' in large scale',                   &
+              trim(units), missing_value=-999.    )
      id_tracer_wdep_cv(n) = register_diag_field ( mod_name,               &
-                     trim(tracer_wdep_names(n))//'_cv', mass_axes(1:2), Time, &
-                     trim(tracer_wdep_longnames(n))//' in convective scheme',                   &
-                     trim(units), missing_value=-999.    )
+              trim(tracer_wdep_names(n))//'_cv', mass_axes(1:2), Time, &
+              trim(tracer_wdep_longnames(n))//' in convective scheme',                   &
+              trim(units), missing_value=-999.    )
+     id_tracer_wdep_lsin(n) = register_diag_field ( mod_name,               &
+              trim(tracer_wdep_names(n))//'_lsin', mass_axes(1:2), Time, &
+              trim(tracer_wdep_longnames(n))//' in_cloud by lscale precip', &
+              trim(units), missing_value=-999.    )
+     id_tracer_wdep_lsbc(n) = register_diag_field ( mod_name,               &
+              trim(tracer_wdep_names(n))//'_lsbc', mass_axes(1:2), Time, &
+              trim(tracer_wdep_longnames(n))//' below_cloud by lscale precip',&
+              trim(units), missing_value=-999.  )
+     id_tracer_wdep_cvin(n) = register_diag_field ( mod_name,               &
+              trim(tracer_wdep_names(n))//'_cvin', mass_axes(1:2), Time, &
+              trim(tracer_wdep_longnames(n))//' in_cloud by conv precip', &
+              trim(units), missing_value=-999.    )
+     id_tracer_wdep_cvbc(n) = register_diag_field ( mod_name,               &
+              trim(tracer_wdep_names(n))//'_cvbc', mass_axes(1:2), Time, &
+              trim(tracer_wdep_longnames(n))//' below_cloud by conv precip', &
+              trim(units), missing_value=-999.  )
    enddo
-
+!
+   id_delm   = register_diag_field ( mod_name,                &
+               'delm', mass_axes(1:2),Time,                   &
+               'Scaling factor', 'none',                      &
+                missing_value=-999.                           )
+! Register the wind speed at 10 meters
+   id_w10m   = register_diag_field ( mod_name,                &
+               'w10m', mass_axes(1:2),Time,                   &
+               'Wind speed at 10 meters', 'm/s',              &
+                missing_value=-999.                           )
  
       call write_version_number (version, tagname)
 
@@ -234,19 +274,22 @@ subroutine write_namelist_values (unit, ntrace)
 !#######################################################################
 !
 !<SUBROUTINE NAME = "dry_deposition">
-subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, &
-                           u_star, landmask, dsinku, tracer, Time)!, dry)
+subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
+                           u_star, landmask, dsinku, tracer, Time, &
+                           drydep_data )
 !
 !<OVERVIEW>
 ! Routine to calculate the fraction of tracer to be removed by dry 
 ! deposition.
 !</OVERVIEW>
 !<DESCRIPTION>
-! There are two types of dry deposition coded.
+! There are three types of dry deposition coded.
 !
 ! 1) Wind driven derived dry deposition velocity.
 !
 ! 2) Fixed dry deposition velocity.
+! 
+! 3) Dry deposition velocities read in from input file
 ! 
 ! The theory behind the wind driven dry deposition velocity calculation
 ! assumes that the deposition can be modeled as a parallel resistance type 
@@ -272,11 +315,14 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, &
 ! "dry_deposition","fixed","land=XXX, sea=YYY"
 !     where XXX is the dry deposition velocity (m/s) over land
 !       and YYY is the dry deposition velocity (m/s) over sea.
+!
+! "dry_deposition","file","FILENAME.NC"
+!     where FILENAME.NC is the NetCDF file name.
 !</PRE>
 !</DESCRIPTION>
 !<TEMPLATE>
-! call dry_deposition( n, is, js, u, v, T, pwt, pfull, 
-!                           u_star, landmask, dsinku, tracer, Time, dry)
+! call dry_deposition( n, is, js, u, v, T, pwt, pfull, dz,
+!                      u_star, landmask, dsinku, tracer, Time, drydep_data)
 !</TEMPLATE>
 !
 !  <IN NAME="n" TYPE="integer">
@@ -306,8 +352,8 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, &
 !  <IN NAME="landmask" TYPE="logical">
 !     Land - sea mask.
 !  </IN>
-!  <INOUT NAME="dry" TYPE="interpolate_type">
-!     ????.
+!  <INOUT NAME="drydep_data" TYPE="interpolate_type">
+!     Dry deposition data interpolated from input file.
 !  </INOUT>
 !
 !  <OUT NAME="dsinku" TYPE="real" DIM="(:,:)">
@@ -315,15 +361,16 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, &
 !  </OUT>
 !
 integer, intent(in)                 :: n, is, js
-real, intent(in), dimension(:,:)    :: u, v, T, pwt, pfull, u_star, tracer
+real, intent(in), dimension(:,:)    :: u, v, T, pwt, pfull, u_star, tracer, dz
 logical, intent(in), dimension(:,:) :: landmask
 type(time_type), intent(in)         :: Time
-!type(interpolate_type), intent(inout) :: dry
+type(interpolate_type),intent(inout)  :: drydep_data
 real, intent(out), dimension(:,:)   :: dsinku
 
-real,dimension(size(u,1),size(u,2)) :: hwindv,frictv,resisa,xxfm,dz, dry_data
+real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,xxfm,drydep_vel
 integer :: i,j, flagsr
 real    :: land_dry_dep_vel, sea_dry_dep_vel, surfr
+real    :: diag_scale
 logical :: used, flag
 integer :: flag_species
 character(len=10) ::units,names
@@ -337,7 +384,7 @@ if (.not. flag) return
 
 ! delta z = dp/(rho * grav)
 ! delta z = RT/g*dp/p    pwt = dp/g
-dz(:,:) = pwt(:,:)*rdgas*T(:,:)/pfull(:,:)
+!dz(:,:) = pwt(:,:)*rdgas*T(:,:)/pfull(:,:)
 
 call get_drydep_param(name,control,scheme,land_dry_dep_vel,sea_dry_dep_vel)
 
@@ -379,8 +426,8 @@ call get_drydep_param(name,control,scheme,land_dry_dep_vel,sea_dry_dep_vel)
            call get_tracer_names(MODEL_ATMOS,n,name)
         endif
 !chemistry start
-!        call interpolator(dry,Time,dry_data, trim(name),is,js)
-        dsinku(:,:) = dry_data(:,:) / dz(:,:)
+        call interpolator( drydep_data, Time, drydep_vel, trim(name), is, js )
+        dsinku(:,:) = drydep_vel(:,:) / dz(:,:)
 !chemistry end
     case('default')
   end select
@@ -400,25 +447,17 @@ endwhere
     if (id_tracer_ddep(n) > 0 ) then
       call get_tracer_names(MODEL_ATMOS,n,names,units=units)
       select case (trim(units))
-        case ('mmr')
-          used = send_data ( id_tracer_ddep(n), dsinku*pwt, Time, &
-          is_in =is,js_in=js)
-        case ('kg/kg')
-          used = send_data ( id_tracer_ddep(n), dsinku*pwt, Time, &
-          is_in =is,js_in=js)
         case ('vmr')
-          used = send_data(id_tracer_ddep(n),dsinku*pwt/mw_air,Time,&
-          is_in=is,js_in=js)
+          diag_scale = mw_air
         case ('mol/mol')
-          used = send_data(id_tracer_ddep(n),dsinku*pwt/mw_air,Time,&
-          is_in=is,js_in=js)
+          diag_scale = mw_air
         case ('mole/mole')
-          used = send_data(id_tracer_ddep(n),dsinku*pwt/mw_air,Time,&
-          is_in=is,js_in=js)
+          diag_scale = mw_air
         case default
-          used = send_data ( id_tracer_ddep(n), dsinku*pwt, Time, &
-          is_in =is,js_in=js)
+          diag_scale = 1.
       end select
+      used = send_data ( id_tracer_ddep(n), dsinku*pwt/diag_scale, Time, &
+          is_in =is,js_in=js)
 
 
     endif
@@ -429,10 +468,14 @@ end subroutine dry_deposition
 !
 !<SUBROUTINE NAME = "wet_deposition">
 !<TEMPLATE>
-!CALL wet_deposition(n, T, pfull, phalf, rain, snow, qdt, tracer, tracer_dt, Time, cloud_param, is, js)
+!CALL wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
+!                     rain, snow, qdt, cloud, rain3d, snow3d, &
+!                     tracer, tracer_dt, Time, cloud_param, is, js, dt )
 !</TEMPLATE>
-subroutine wet_deposition(n, T, pfull, phalf, rain, snow, qdt, tracer, tracer_dt, Time, cloud_param, is, js, dt)
-!
+subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
+                           rain, snow, qdt, cloud, rain3d, snow3d, &
+                           tracer, tracer_dt, Time, cloud_param, is, js, dt )
+!      
 !<OVERVIEW>
 ! Routine to calculate the fraction of tracer removed by wet deposition
 !</OVERVIEW>
@@ -447,10 +490,16 @@ subroutine wet_deposition(n, T, pfull, phalf, rain, snow, qdt, tracer, tracer_dt
 !   Temperature
 !</IN>
 !<IN NAME="pfull" TYPE="real" DIM="(:,:,:)">
-!   Full level pressure field
+!   Full level pressure field (Pa)
 !</IN>
 !<IN NAME="phalf" TYPE="real" DIM="(:,:,:)">
-!   Half level pressure field
+!   Half level pressure field (Pa)
+!</IN>
+!<IN NAME="zfull" TYPE="real" DIM="(:,:,:)">
+!   Full level height field (m)
+!</IN>
+!<IN NAME="zhalf" TYPE="real" DIM="(:,:,:)">
+!   Half level height field (m)
 !</IN>
 !<IN NAME="rain" TYPE="real" DIM="(:,:)">
 !   Precipitation in the form of rain
@@ -459,7 +508,16 @@ subroutine wet_deposition(n, T, pfull, phalf, rain, snow, qdt, tracer, tracer_dt
 !   Precipitation in the form of snow
 !</IN>
 !<IN NAME="qdt" TYPE="real" DIM="(:,:,:)">
-!   The tendency of the specific humidity due to the cloud parametrization
+!   The tendency of the specific humidity (+ condenstate) due to the cloud parametrization (kg/kg/s)
+!</IN>
+!<IN NAME="cloud" TYPE="real" DIM="(:,:,:)">
+!   Cloud amount (liquid + ice) (kg/kg)
+!</IN>
+!<IN NAME="rain3d" TYPE="real" DIM="(:,:,:)">
+!   Precipitation in the form of rain (kg/m2/s)
+!</IN>
+!<IN NAME="snow3d" TYPE="real" DIM="(:,:,:)">
+!   Precipitation in the form of snow (kg/m2/s)
 !</IN>
 !<IN NAME="tracer" TYPE="real" DIM="(:,:,:)">
 !   The tracer field 
@@ -470,9 +528,12 @@ subroutine wet_deposition(n, T, pfull, phalf, rain, snow, qdt, tracer, tracer_dt
 !<IN NAME="cloud_param" TYPE="character">
 !   Is this a convective (convect) or large scale (lscale) cloud parametrization?
 !</IN>
-!  <OUT NAME="tracer_dt" TYPE="real" DIM="(:,:,:)">
-!  The tendency of the tracer field due to wet deposition.
-! </OUT>
+!<IN NAME="dt" TYPE="real">
+!   The model timestep (in seconds)
+!</IN>
+!<OUT NAME="tracer_dt" TYPE="real" DIM="(:,:,:)">
+!   The tendency of the tracer field due to wet deposition
+!</OUT>
 !<DESCRIPTION>
 ! Schemes allowed here are 
 !
@@ -483,10 +544,12 @@ subroutine wet_deposition(n, T, pfull, phalf, rain, snow, qdt, tracer, tracer_dt
 !    liquid water content. Removal is constant throughout the column where precipitation is occuring.
 !
 ! 2) Removal according to Henry's Law. This law states that the ratio of the concentation in 
-!    cloud water and the partial pressure in the interstitial air is a constant. In this 
-!    instance, the units for Henry's constant are kg/L/Pa (normally it is M/L/Pa)
+!    cloud water and the partial pressure in the interstitial air is a constant. If tracer
+!    is in VMR, the units for Henry's constant are mole/L/Pa (normally it is mole/L/atm).
 !    Parameters for a large number of species can be found at
 !    http://www.mpch-mainz.mpg.de/~sander/res/henry.html
+!
+! 3) Aerosol removal, using specified in-cloud tracer fraction
 
 ! To utilize this section of code add one of the following lines as 
 ! a method for the tracer of interest in the field table.
@@ -501,179 +564,428 @@ subroutine wet_deposition(n, T, pfull, phalf, rain, snow, qdt, tracer, tracer_dt
 !</PRE>
 
 !</DESCRIPTION>
-!
-integer, intent(in)                 :: n, is, js
-real, intent(in), dimension(:,:,:)  :: T, pfull,phalf, qdt, tracer
-real, intent(in), dimension(:,:)    :: rain, snow
-character(len=*),intent(in)         :: cloud_param
-type (time_type)  , intent(in)      :: Time
-real, intent(out), dimension(:,:,:) :: tracer_dt
-real, intent(in)                    :: dt
-!
-real, dimension(size(T,1),size(T,2),size(pfull,3))   :: wsinku
-real, dimension(size(T,1),size(T,2)) :: Htemp, dz, washout,scav_factor, sum_wdep
-integer, dimension(size(T,1),size(T,2)) :: ktopcd, kendcd
-integer :: i,j,k,kd, flaglw
-real    :: Henry_constant, Henry_variable, inv298p15, clwc, wash, premin, prenow, hwtop
-!real, dimension(size(rain,1),size(rain,2)) :: prenow,hwtop
-logical :: used,flag
-character(len=80) :: name,control, scheme, units
-tracer_dt = 0.0E+00
-ktopcd = 0
-kendcd = 0
-call get_tracer_names(MODEL_ATMOS,n,name, units = units)
 
-flag = query_method ('wet_deposition',MODEL_ATMOS,n,name,control)
-if(.not. flag) return
-call get_wetdep_param(name,control,scheme,Henry_constant,Henry_variable)
-if(lowercase(scheme)=='henry') then
-! if units = MMR
-! Henry_constant = [X](aq) / Px(g) 
-! where [X](aq) is the concentration of tracer X in precipitation
-!       Px(g) is the partial pressure of the tracer in the air
-! [X](aq) = Mixing ratio (MR) in cloud / qdt
-! Px(g)   = MR (non cloud) * Pfull 
+!-----------------------------------------------------------------------
+!     ... dummy arguments
+!-----------------------------------------------------------------------
+integer,          intent(in)                     :: n, is, js
+real,             intent(in),  dimension(:,:,:)  :: T, pfull,phalf, zfull, zhalf, qdt, cloud, tracer
+real,             intent(in),  dimension(:,:)    :: rain, snow
+character(len=*), intent(in)                     :: cloud_param
+type (time_type), intent(in)                     :: Time
+real,             intent(out), dimension(:,:,:)  :: tracer_dt
+real,             intent(in)                     :: dt
+real,             intent(in),  dimension(:,:,:)  :: rain3d, snow3d
+
+!-----------------------------------------------------------------------
+!     ... local variables
+!-----------------------------------------------------------------------
+real, dimension(size(T,1),size(T,2),size(pfull,3)) :: &
+      Htemp, xliq, n_air, wsinku, rho_air, pwt, zdel, precip3d
+real, dimension(size(T,1),size(T,2)) :: &
+      temp_factor, scav_factor, dz, washout, sum_wdep, &
+      w_h2o, K1, K2, pr, ps, beta, f_a, &
+      wdep_in, wdep_bc, fluxr,fluxs, tracer_flux
+real, dimension(size(T,1),size(T,2),size(pfull,3)) :: &
+      in_temp, bc_temp, dt_temp, reevap_fraction, reevap_diag
+integer, dimension(size(T,1),size(T,2)) :: &
+      ktopcd, kendcd
+integer :: &
+      i, j, k, kk, id, jd, kd, flaglw
+real, dimension(size(T,3)) :: &
+       conc
+real :: conc_rain, conc_rain_total, conc_sat
+real, parameter ::  DENS_SNOW = 500.  ! Snow density [kg/m3]
+real    :: &
+      Henry_constant, Henry_variable, &
+      clwc, wash, premin, prenow, hwtop, frac_in_cloud, &
+      diag_scale
+real, parameter :: &
+      inv298p15 = 1./298.15, &     ! 1/K
+      kboltz = 1.38E-23,         & ! J/K
+      rain_diam  = 1.89e-3,     &  ! mean diameter of rain drop (m)
+      rain_vterm = 7.48,        &  ! rain drop terminal velocity (m/s)
+      vk_air = 6.18e-6,         &  ! kinematic viscosity of air (m^2/s)
+      d_g = 1.12e-5,            &  ! diffusive coefficient (m^2/s)
+      geo_fac = 6.,             &  ! geometry factor (surface area/volume = geo_fac/diameter)
+      cm3_2_m3 = 1.e-6             ! m3/cm3
+real :: &
+      k_g,                       & ! mass transfer coefficient (m/s)
+      stay,                      & ! fraction
+      fall_time,                 & ! fall time through layer (s)
+      ph0                          ! pH
+real :: f_a0, scav_factor0, sa_drop0, fgas0
+real , parameter :: &
+      R_r = 0.001, &               ! radius of cloud-droplets for rain
+      R_s = 0.001                  ! radius of cloud-droplets for snow
+real :: alpha_r, alpha_s
+
+real :: &
+      precip_fraction
+real, parameter :: &
+      saturation_factor = 0.2
+!     saturation_factor = 1.0
+!     saturation_factor = 0.05
+real, parameter :: &
+         precip_fraction_conv = 0.10, &
+         precip_fraction_ls   = 0.20
+
+logical :: &
+      used, flag, &
+      Lgas, Laerosol
+character(len=200) :: &
+      tracer_name, control, scheme, units, &
+      text_in_scheme
+
+!-----------------------------------------------------------------------
+
+    ktopcd = 0
+    kendcd = 0
+
+    tracer_dt   = 0.
+    wdep_in     = 0.
+    wdep_bc     = 0.
+    beta        = 0.
+    reevap_fraction = 0.
+    reevap_diag = 0.
+    tracer_flux = 0.
+
+    id = size(T,1)
+    jd = size(T,2)
+    kd = size(T,3)
+
+    call get_tracer_names(MODEL_ATMOS,n,tracer_name, units = units)
+
+    flag = query_method ('wet_deposition',MODEL_ATMOS,n,text_in_scheme,control)
+    if(.not. flag) return
+    call get_wetdep_param( text_in_scheme, control, scheme, &
+                           Henry_constant, Henry_variable, &
+                    frac_in_cloud, alpha_r, alpha_s)
+    rho_air(:,:,:) = pfull(:,:,:) / ( T(:,:,:)*RDGAS ) ! kg/m3
+    do k=1,kd
+       precip3d(:,:,k) = snow3d(:,:,k+1)-snow3d(:,:,k) &
+                       + rain3d(:,:,k+1)-rain3d(:,:,k)
+!++lwh
+! Calculate fraction of precipitation reevaporated in layer
+       where( snow3d(:,:,k)+rain3d(:,:,k) > 0. .and. precip3d(:,:,k) < 0. )
+          reevap_fraction(:,:,k) = &
+             -precip3d(:,:,k) / (snow3d(:,:,k)+rain3d(:,:,k)) ! fraction
+       end where
+! Assume that the tracer reevaporation fraction is 50% of the precip
+! reevaporation fraction, except when fraction = 100%
+       where( reevap_fraction(:,:,k) < 1. )
+          reevap_fraction(:,:,k) = 0.5*reevap_fraction(:,:,k)
+       end where
+!--lwh
+       pwt(:,:,k)  = ( phalf(:,:,k+1) - phalf(:,:,k) )/GRAV ! kg/m2
+       zdel(:,:,k) = zhalf(:,:,k) - zhalf(:,:,k+1) ! m
+    end do
+!  cloud liquid water content
+!   xliq = 0.5E-3                           !default value
+!   if(trim(cloud_param) .eq. 'convect') then
+!      xliq = 1.0e-3
+!   elseif(trim(cloud_param) .eq. 'lscale') then
+!      xliq = 0.5e-3
+!   endif
+
+Lgas = lowercase(scheme)=='henry' .or. lowercase(scheme)=='henry_below'
+Laerosol = lowercase(scheme)=='aerosol' .or. lowercase(scheme)=='aerosol_below'
+if( Lgas .or. Laerosol ) then
+!++lwh
+! units = VMR
 !
-! [X](aq)/Px = MR(incloud)/qdt /(Pfull MR non cloud) = H
-! => MR(in cloud) = H * qdt * Pfull* MR(non cloud) 
-! MR (total) = MR(incloud) + MR(noncloud)
-!            = MR(noncloud) * ( 1 + H*Pfull*qdt)
-! MR(incloud) = H*Pfull*qdt * MR(total)/(1+H*Pfull*qdt)
-! Fraction removed = MR(incloud)/MR(total) =
-!  H*Pfull*qdt/(1+H*Pfull*qdt)
-!
-! if units = VMR
-! Henry_constant = [X](aq) / Px(g) 
+! Henry_constant (mole/L/Pa) = [X](aq) / Px(g) 
 ! where [X](aq) is the concentration of tracer X in precipitation (mole/L)
-!       Px(g) is the partial pressure of the tracer in the air
-! [X](aq) = Volume mixing ratio (MR) in cloud / ( qdt * dt * MW_air )
-! Px(g)   = VMR (non cloud) * Pfull 
+!       Px(g) is the partial pressure of the tracer in the air (Pa)
 !
-! [X](aq)/Px = VMR(incloud)/(qdt*dt*MW_air) /(Pfull VMR non cloud) = H
-! => VMR(in cloud) = H * Pfull* VMR(non cloud) * (qdt * dt * MW_air)
-! VMR (total) = VMR(incloud) + VMR(noncloud)
-!             = VMR(noncloud) * ( 1 + H*Pfull*qdt*dt*MW_air)
-! VMR(incloud) = H*Pfull*qdt*dt*MW_air * MR(total)/(1+H*Pfull*qdt*dt*MW_air)
-! Fraction removed/dt = VMR(incloud)/VMR(total)/dt =
-!  H*Pfull*qdt*MW_air/(1+H*Pfull*qdt*dt*MW_air)
+! VMR (total) = VMR (gas) + VMR (aq)
+!             = VMR (gas) + [X] * L
 !
- if(Henry_constant > 0 ) then
-  inv298p15 = 1/298.15
-  kd = size(T,3)
-  do k = 1, kd
-  ! Calculate the temperature dependent part of Henry's constant
-  ! exp( k *(1/T - 1/298.15))
-   Htemp(:,:) = exp(Henry_variable*(1/T(:,:,k)-inv298p15))
-   tracer_dt(:,:,k) = 0.0
-   scav_factor(:,:) = 0.0
-   where (qdt(:,:,k) < 0.0)
-   !qdt is -ve so need to multiply by -1.0
-    scav_factor(:,:) = -1.0*Henry_constant*Htemp*pfull(:,:,k)*qdt(:,:,k)*mw_air
-    tracer_dt(:,:,k) = scav_factor(:,:)/(1+scav_factor(:,:)*dt)
-   endwhere
-  enddo
- endif 
-endif
+! where L = cloud liquid amount (kg H2O/mole air)
+!
+! Using Henry's Law, [X] = H * Px = H * VMR(gas) * Pfull
+!
+! So, VMR (total) =  VMR(gas) * [ 1 + H * Pfull * L ]
+! 
+! VMR(gas) = VMR(total) / [1 + H * Pfull * L]
+!
+! [X] = H * Pfull * VMR(total) / [ 1 + H * Pfull * L]
+!
+! Following Giorgi and Chameides, JGR, 90(D5), 1985, the first-order loss
+! rate constant (s^-1) of X due to wet deposition equals:
+!
+! k = W_X / n_X
+!
+! where W_x = the loss rate (molec/cm3/s), and n_X = the number density (molec/cm3)
+! 
+! W_X = [X] * W_H2O / (55 mole/L)
+! n_x = VMR(total) * n_air (molec/cm3) = VMR(total) * P/(kT) * 1E-6 m3/cm3
+! 
+! where P = atmospheric pressure (Pa)
+!       k = Boltzmann's constant = 1.38E-23 J/K
+!       T = temperature (K)
+!       W_H2O = removal rate of water (molec/cm3/s)
+! 
+!             [X] * W_H2O / 55         
+! So, k = ------------------------------
+!         VMR(total) * P/(kT) * 1E-6
+! 
+!         W_H2O    H * VMR(total) * P / [ 1 + H * P *L ]
+!       = ----- * ---------------------------------------
+!          55          VMR(total) * P/(kT) * 1E-6
+! 
+!         W_H2O     H * kT * 1E6
+!       = ----- *  -------------    
+!          55      1 + H * P * L 
+!
+!         W_H2O     1     1     H * P * L
+!       = ----- * ----- * - * -------------
+!          55     n_air   L   1 + H * P * L
+!
+! where W_H2O = precip3d (kg/m2/s) * (AVOGNO/mw_h2o) (molec/kg) / zdel (m) * 1E-6 m3/cm3
+!
+   if( (Lgas .and. Henry_constant > 0) .or. Laerosol ) then
+      if ( trim(cloud_param) == 'convect' ) then
+         precip_fraction = precip_fraction_conv
+      else if ( trim(cloud_param) == 'lscale' ) then
+         precip_fraction = precip_fraction_ls
+      else
+         precip_fraction = 1.0
+      endif
+      in_temp(:,:,:) = 0.
+      bc_temp(:,:,:) = 0.
+      do k=1,kd
+! Calculate the temperature dependent Henry's Law constant
+         scav_factor(:,:) = 0.0
+         xliq(:,:,k)  = MAX( cloud(:,:,k) * mw_air, 0. ) ! (kg H2O)/(mole air)
+         n_air(:,:,k) = pfull(:,:,k) / (kboltz*T(:,:,k)) * cm3_2_m3 ! molec/cm3
+         if (Lgas) then
+            temp_factor(:,:) = 1/T(:,:,k)-inv298p15
+            Htemp(:,:,k) = Henry_constant * &
+                           exp( Henry_variable*temp_factor )
+            f_a(:,:) = Htemp(:,:,k) * pfull(:,:,k) * xliq(:,:,k)
+            scav_factor(:,:) = f_a(:,:) / ( 1.+f_a(:,:) )
+         else if (Laerosol) then
+            scav_factor(:,:) = frac_in_cloud
+         end if
+!        where (precip3d(:,:,k) > 0.0)
+         where (precip3d(:,:,k) > 0. .and. xliq(:,:,k) > 0.)
+            w_h2o(:,:) = precip3d(:,:,k) * (AVOGNO/mw_h2o) / zdel(:,:,k) * cm3_2_m3 ! molec/cm3/s
+            beta(:,:) = w_h2o(:,:) * mw_h2o  / (n_air(:,:,k) * xliq(:,:,k))
+            in_temp(:,:,k) = beta(:,:) * scav_factor(:,:) ! 1/s
+           endwhere
+      enddo 
+!-----------------------------------------------------------------
+! Below-cloud wet scavenging
+!-----------------------------------------------------------------
+      if( lowercase(scheme)=='henry_below' ) then
+         k_g = d_g/rain_diam * &
+               ( 2. + 0.6 * sqrt( rain_diam*rain_vterm/vk_air ) * (vk_air/d_g)**(1./3.) )
+         do i = 1,id
+         do j = 1,jd
+            conc(:) = tracer(i,j,:) * n_air(i,j,:) / cm3_2_m3 ! Convert from VMR to molec/m3
+            do kk = 1,kd      
+               stay = 1.
+               if( precip3d(i,j,kk) > 0. ) then
+                  conc_rain_total = 0.
+                  stay = zfull(i,j,kk) / (rain_vterm * dt)
+                  stay = min( stay, 1. )
+                  do k = kk,kd
+                     f_a0 = Htemp(i,j,k) * pfull(i,j,k) * xliq(i,j,kk) * n_air(i,j,kk)/n_air(i,j,k)
+                     scav_factor0 = f_a0 / ( 1.+f_a0 )
+                     conc_sat = conc(k) * scav_factor0 ! molec/m3 <== (xeqca1)
+                     sa_drop0 = geo_fac / rain_diam * xliq(i,j,kk) * n_air(i,j,kk) / &
+                                ( DENS_H2O * AVOGNO * cm3_2_m3 ) ! (m2 H2O) / (m3 air)
+                     fgas0 = conc(k) * k_g ! molec/m2/s
+                     fall_time = zdel(i,j,k) / rain_vterm ! sec
+                     conc_rain = fgas0 * sa_drop0 * fall_time ! molec/m3 <== (xca1)
+                     conc_rain_total = conc_rain_total + conc_rain ! molec/m3 <== (all1)
+                     if ( conc_rain_total < conc_sat ) then
+                        conc(k) = max( conc(k)-conc_rain, 0. )
+                     end if
+                  end do
+                  conc(kk) = conc(kk) / n_air(i,j,kk) * cm3_2_m3 ! Convert to VMR
+                  conc(kk) = tracer(i,j,kk) - conc(kk)
+                  if ( conc(kk) /= 0. .and. tracer(i,j,kk) /= 0. ) then
+                     fall_time = zdel(i,j,kk)/rain_vterm
+                     bc_temp(i,j,kk) = bc_temp(i,j,kk) + &
+                                       conc(kk) / (tracer(i,j,kk) * fall_time) * stay ! 1/s
+                  end if
+               end if         
+            end do
+         end do
+         end do
+
+      else if ( lowercase(scheme) == 'aerosol_below' ) then
+
+        do k=1,kd
+           fluxs = (snow3d(:,:,k+1)+snow3d(:,:,k))/2.0
+           fluxr = (rain3d(:,:,k+1)+rain3d(:,:,k))/2.0
+           bc_temp(:,:,k) = 3./4. * dt * &
+                       (fluxr(:,:)*alpha_r/R_r/DENS_H2O + &
+                        fluxs(:,:)*alpha_s/R_s/DENS_SNOW)
+         end do
+
+      end if
 
 
+      do k = 1,kd
+         wdep_in(:,:) = wdep_in(:,:) - &
+                        in_temp(:,:,k)*tracer(:,:,k)*pwt(:,:,k)
+         wdep_bc(:,:) = wdep_bc(:,:) - &
+                        bc_temp(:,:,k)*tracer(:,:,k)*pwt(:,:,k)
+        enddo
+!     do k = 1, kd
+!       reevap(:,:,k) = reevap(:,:,k)*wdep_in(:,:)
+!     enddo
 
-if(lowercase(scheme)=='fraction') then
-tracer_dt = 0.0
+      dt_temp(:,:,:) = 1. - exp( -(in_temp(:,:,:)+bc_temp(:,:,:))*dt ) ! fractional loss/timestep
+!                      + reevap(:,:,:)                                 ! reevaporation
+      tracer_dt(:,:,:) = dt_temp(:,:,:) / dt !+ve loss frequency (1/sec)
+!--lwh
+    endif
+
+else if(lowercase(scheme)=='fraction') then
+   tracer_dt = 0.0
 !-----------------------------------------------------------------------
 !
 !     Compute areal fractions experiencing wet deposition:
 !
 !     Set minimum precipitation rate below which no wet removal
 !     occurs to 0.01 cm/day ie 1.16e-6 mm/sec (kg/m2/s)
-         premin=1.16e-6
+   premin=1.16e-6
 !
 !     Large scale cloud liquid water content (kg/m3)
 !     and below cloud washout efficiency (cm-1):
-            flaglw =parse(control,'lslwc',clwc)
-            if (flaglw == 0 ) clwc=0.5e-3
-            wash=1.0  
+   flaglw =parse(control,'lslwc',clwc)
+   if (flaglw == 0 ) clwc=0.5e-3
+   wash=1.0  
 !
 !     When convective adjustment occurs, use convective cloud liquid water content:
 !
-            if(trim(cloud_param) .eq. 'convect') then
-              flaglw = parse(control,'convlwc',clwc)
-              if (flaglw == 0) clwc=2.0e-3
-              wash=0.3 
-            end if
+    if(trim(cloud_param) .eq. 'convect') then
+      flaglw = parse(control,'convlwc',clwc)
+      if (flaglw == 0) clwc=2.0e-3
+      wash=0.3 
+   end if
 !
-      do j=1,size(rain,2)
-        do i=1,size(rain,1)
-          tracer_dt(i,j,:)=0.0
-          washout(i,j)=0.0
-          prenow = rain(i,j) + snow(i,j)
-          if(prenow .gt. premin) then      
+   do j=1,size(rain,2)
+   do i=1,size(rain,1)
+      tracer_dt(i,j,:)=0.0
+      washout(i,j)=0.0
+      prenow = rain(i,j) + snow(i,j)
+      if(prenow .gt. premin) then      
 !
 ! Assume that the top of the cloud is where the highest model level 
 ! specific humidity is reduced. And the the bottom of the cloud is the
 ! lowest model level where specific humidity is reduced.
 !
-            ktopcd(i,j) = 0
-            do k = size(t,3),1,-1
-             if (qdt(i,j,k) < 0.0 ) ktopcd(i,j) = k
-            enddo
-            kendcd(i,j) = 0
-            do k = 1,size(t,3)
-             if (qdt(i,j,k) < 0.0 ) kendcd(i,j) = k
-            enddo
+         ktopcd(i,j) = 0
+         do k = kd,1,-1
+            if (qdt(i,j,k) < 0.0 ) ktopcd(i,j) = k
+         enddo
+         kendcd(i,j) = 0
+         do k = 1,kd
+            if (qdt(i,j,k) < 0.0 ) kendcd(i,j) = k
+         enddo
 !
 !     Thickness of precipitating cloud deck:
 !
-            if(ktopcd(i,j).gt.1) then
+         if(ktopcd(i,j).gt.1) then
             hwtop = 0.0
             do k=ktopcd(i,j),kendcd(i,j)
-             hwtop=hwtop+(phalf(i,j,k+1)-phalf(i,j,k))*rdgas*T(i,j,k)/grav/pfull(i,j,k)
+               hwtop=hwtop+(phalf(i,j,k+1)-phalf(i,j,k))*rdgas*T(i,j,k)/grav/pfull(i,j,k)
             enddo
             do k=ktopcd(i,j),kendcd(i,j)
 !     Areal fraction affected by precip clouds (max = 0.5):
-             tracer_dt(i,j,k)=prenow/(clwc*hwtop)
+               tracer_dt(i,j,k)=prenow/(clwc*hwtop)
             end do  
-            endif
+          endif
 
-            washout(i,j)=prenow*wash
-          end if
-        end do
-      end do
-endif
+         washout(i,j)=prenow*wash
+          endif
+   end do
+   end do
+          endif
 
 ! Now multiply by the tracer mixing ratio to get the actual tendency.
-tracer_dt(:,:,:) = MIN( MAX(tracer_dt(:,:,:), 0.0E+00), 0.5)
-where(tracer>0)
-tracer_dt=tracer_dt*tracer
-elsewhere
-tracer_dt=0.0
-endwhere
+tracer_dt(:,:,:) = MIN( MAX(tracer_dt(:,:,:), 0.0E+00), 0.5/dt)
+where (tracer > 0.)
+   tracer_dt = tracer_dt*tracer
+else where
+   tracer_dt = 0.
+end where
 
-sum_wdep=0.0
-do k=1,size(tracer_dt,3)
-! delta z = dp/(rho * grav)
-! delta z = RT/g*dp/p
-! tracer(kgtracer/kgair) * dz(m)* rho(kgair/m3) = kgtracer/m2
-! so rho drops out of the equation
-if(units(1:3) =='mmr') then
-  sum_wdep=sum_wdep + tracer_dt(:,:,k)*(phalf(:,:,k+1)-phalf(:,:,k))/grav
-endif
-if(units(1:3) == 'vmr') then
-  sum_wdep=sum_wdep + tracer_dt(:,:,k)*(phalf(:,:,k+1)-phalf(:,:,k))/(grav * mw_air)
-endif
-enddo
+!++lwh
+!
+! Re-evaporation
+!
+do k = 1,kd
+   where (reevap_fraction(:,:,k) > 0.) 
+      reevap_diag(:,:,k) = reevap_fraction(:,:,k) * tracer_flux(:,:)
+      tracer_dt(:,:,k) = tracer_dt(:,:,k) - reevap_diag(:,:,k) / pwt(:,:,k)
+   end where
+   tracer_flux(:,:) = tracer_flux(:,:) + tracer_dt(:,:,k)*pwt(:,:,k)
+end do
+!--lwh
 
-   if(trim(cloud_param) .eq. 'lscale') then
-         if (id_tracer_wdep_ls(n) > 0 ) then
-           used = send_data ( id_tracer_wdep_ls(n), sum_wdep, Time , &
-           is_in =is,js_in=js)
-         endif
+! Output diagnostics in kg/m2/s (if MMR) or mole/m2/s (if VMR)
+if(trim(units) .eq. 'mmr') then
+   diag_scale = 1.
+        elseif(trim(units) .eq. 'vmr') then
+   diag_scale = mw_air ! kg/mole
+else
+   write(*,*) ' Tracer number =',n,' tracer_name=',tracer_name
+   write(*,*) ' scheme=',text_in_scheme
+   write(*,*) ' control=',control
+   write(*,*) ' scheme=',scheme
+   write(*,*) 'Please check field table'
+   write(*,*) 'tracers units =',trim(units),'it should be either  mmr or vmr!'
+!  <ERROR MSG="Unsupported tracer units" STATUS="FATAL">
+!     Tracer units must be either VMR or MMR
+!  </ERROR>
+   call error_mesg('wet_deposition', 'Unsupported tracer units.', FATAL )
+          endif
+
+
+! Column integral of wet deposition
+sum_wdep = 0.
+do k=1,kd
+   sum_wdep = sum_wdep + tracer_dt(:,:,k)*pwt(:,:,k)/diag_scale
+end do
+
+
+if(trim(cloud_param) == 'lscale') then
+   if (id_tracer_reevap_ls(n) > 0 ) then
+      used = send_data ( id_tracer_reevap_ls(n), reevap_diag/diag_scale, Time ,is,js,1)
    endif
-   if(trim(cloud_param) .eq. 'convect') then
-        if(id_tracer_wdep_cv(n) > 0) then
-           used = send_data(id_tracer_wdep_cv(n), sum_wdep, Time, &
-           is_in = is, js_in = js)
-         endif
+   if (id_tracer_wdep_ls(n) > 0 ) then
+      used = send_data ( id_tracer_wdep_ls(n), sum_wdep, Time, is_in =is, js_in=js )
    endif
+   if (id_tracer_wdep_lsin(n) > 0 ) then
+       used = send_data ( id_tracer_wdep_lsin(n), wdep_in/diag_scale, Time, is_in=is, js_in=js )
+   endif
+   if (id_tracer_wdep_lsbc(n) > 0 ) then
+      used = send_data ( id_tracer_wdep_lsbc(n), wdep_bc/diag_scale, Time, is_in=is, js_in=js )
+   endif
+
+else if(trim(cloud_param) == 'convect') then
+   if (id_tracer_reevap_cv(n) > 0 ) then
+      used = send_data ( id_tracer_reevap_cv(n), reevap_diag/diag_scale, Time ,is,js,1)
+   endif
+   if(id_tracer_wdep_cv(n) > 0) then
+      used = send_data( id_tracer_wdep_cv(n), sum_wdep, Time, is_in=is, js_in=js)
+   endif
+   if (id_tracer_wdep_cvin(n) > 0 ) then
+       used = send_data ( id_tracer_wdep_cvin(n), wdep_in/diag_scale, Time, is_in=is, js_in=js)
+   endif
+   if (id_tracer_wdep_cvbc(n) > 0 ) then
+      used = send_data ( id_tracer_wdep_cvbc(n), wdep_bc/diag_scale, Time, is_in=is, js_in=js)
+   endif
+!--shm
+
+    endif
+
 end subroutine wet_deposition
 !</SUBROUTINE>
 !
@@ -730,46 +1042,84 @@ end subroutine get_drydep_param
 !
 !#######################################################################
 !
-subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,henry_constant,henry_temp)
-! 
+!<SUBROUTINE NAME="get_wetdep_param">
+!<TEMPLATE>
+!CALL get_wetdep_param(text_in_scheme, text_in_param, scheme,&
+!                      henry_constant, henry_temp, &
+!                      frac_in_cloud, alpha_r, alpha_s)
+!</TEMPLATE>
+subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
+                            henry_constant, henry_temp, &
+                            frac_in_cloud,alpha_r,alpha_s)
+!<OVERVIEW>
 ! Routine to initialize the parameters for the wet deposition scheme.
+!</OVERVIEW>
+!
+! shm has modified this subroutine to include additional parameters:
+!      frac_in_cloud, alpha_r, and alpha_s
+!
 ! INTENT IN
-!  text_in_scheme : Text read from the tracer table which provides information on which 
+!<IN NAME="text_in_scheme" TYPE="character">
+!   Text read from the tracer table which provides information on which
 !                   wet deposition scheme to use.
-!  text_in_param  : Parameters associated with the wet deposition scheme. These will be 
+!</IN>
+!<IN NAME="text_in_param" TYPE="character">
+!   Parameters associated with the wet deposition scheme. These will be
 !                   parsed in this routine.
-! INTENT OUT 
-!  scheme         : Wet deposition scheme to use. 
-!                   Choices are None, Fraction and Henry
-!  henry_constant : Henry's constant for the tracer (see wet_deposition for explanation of Henry's Law)
-!  henry_temp     : The temperature dependence of the Henry's Law constant.
-!
-!
+!</IN>
+!<OUT NAME="scheme" TYPE="character">
+!   Wet deposition scheme to use.
+!   Choices are: None, Fraction, Henry, Henry_below, Aerosol, Aerosol_below
+!</OUT>
+!<OUT NAME="henry_constant" TYPE="real">
+!   Henry's Law constant for the tracer (see wet_deposition for explanation of Henry's Law)
+!</OUT>
+!<OUT NAME="henry_temp" TYPE="real">
+!   The temperature dependence of the Henry's Law constant.
+!</OUT>
+
+
 character(len=*), intent(in)    :: text_in_scheme, text_in_param
 character(len=*), intent(out)   :: scheme
 real, intent(out)               :: henry_constant, henry_temp
+real, intent(out)               :: frac_in_cloud, alpha_r, alpha_s
 
 integer :: m,m1,n,lentext, flag
 character(len=32) :: dummy
 
 !Default
 scheme                  = 'None'
-henry_constant=0.0
-henry_temp=0.0
+henry_constant= 0.
+henry_temp    = 0.
+frac_in_cloud = 0.
+alpha_r       = 0.
+alpha_s       = 0.
 
-if(trim(lowercase(text_in_scheme(1:8))).eq.'fraction') then
-scheme                 = 'Fraction'
-henry_constant=0.0
-henry_temp=0.0
-endif
-
-if(trim(lowercase(text_in_scheme(1:5))).eq.'henry') then
-scheme                 = 'Henry'
-flag=parse(text_in_param,'henry',     henry_constant)
-flag=parse(text_in_param,'dependence',henry_temp    )
-endif
+if( trim(lowercase(text_in_scheme)) == 'fraction' ) then
+   scheme                 = 'Fraction'
+else if( trim(lowercase(text_in_scheme)) == 'henry' .or. &
+         trim(lowercase(text_in_scheme)) == 'henry_below' ) then
+   if( trim(lowercase(text_in_scheme)) == 'henry' ) then
+      scheme                 = 'henry'
+   else if ( trim(lowercase(text_in_scheme)) == 'henry_below' ) then
+      scheme                 = 'henry_below'
+   end  if
+   flag=parse(text_in_param,'henry',     henry_constant)
+   flag=parse(text_in_param,'dependence',henry_temp    )
+else if( trim(lowercase(text_in_scheme)) == 'aerosol' .or. &
+         trim(lowercase(text_in_scheme)) == 'aerosol_below' ) then
+   if( trim(lowercase(text_in_scheme)) == 'aerosol' ) then
+      scheme                 = 'aerosol'
+   else if ( trim(lowercase(text_in_scheme)) == 'aerosol_below' ) then
+      scheme                 = 'aerosol_below'
+   end if
+   flag=parse(text_in_param,'frac_incloud',frac_in_cloud)
+   flag=parse(text_in_param,'alphar',alpha_r)
+   flag=parse(text_in_param,'alphas',alpha_s)
+end if
 
 end subroutine get_wetdep_param
+!</SUBROUTINE>
 !
 !#######################################################################
 !
@@ -850,7 +1200,218 @@ real :: blat_in(size(global_source,2)+1)
 
 end subroutine interp_emiss
 !</SUBROUTINE>
+! ######################################################################
 !
+
+      subroutine GET_RH (T,Q,P,RH,mask)
+!***********************************************************************
+!  SUBROUTINE GET_RH
+!  PURPOSE
+!     VECTOR COMPUTATION OF RELATIVE HUMIDITY
+!  DESCRIPTION OF PARAMETERS
+!     T        TEMPERATURE VECTOR (DEG K)
+!     P        PRESSURE VECTOR (Pa)
+!     Q        SPECIFIC HUMIDITY (kg/kg)
+!     RH       RELATIVE HUMIDITY
+!     MASK     EARTH SURFACE BELOW GROUND (in pressure coordinates)
+!
+!***********************************************************************
+!
+
+      Real, parameter :: ONE    = 1.
+      Real, parameter :: ZP622  = 0.622
+      Real, parameter :: Z1P0S1 = 1.00001
+      Real, parameter :: Z1P622 = 1.622
+      Real, parameter :: Z138P9 = 138.90001
+      Real, parameter :: Z198P9 = 198.99999
+      Real, parameter :: Z200   = 200.0
+      Real, parameter :: Z337P9 = 337.9
+
+      real, intent(in), dimension(:,:,:) :: T !temp at curr time step [ deg k ]
+      real, intent(in), dimension(:,:,:) :: P !pressure at full levels [ Pa ]
+      real, intent(in), dimension(:,:,:) :: Q !specific humidity at current time step  [ kg / kg ]
+      real, intent(in), dimension(:,:,:), optional :: mask !
+      real, intent(out), dimension(:,:,:) :: RH !relative humidity [0-1]
+
+! Dynamic Work Space
+! ------------------
+      real :: A1622
+      real, dimension(size(q,1),size(q,2),size(q,3)) :: e1, e2, tq, qs
+      integer, dimension(size(q,1),size(q,2),size(q,3)) :: i1, i2
+      integer :: i,j,k
+
+!
+      real, dimension(67) :: EST1
+      data EST1/       0.31195E-02, 0.36135E-02, 0.41800E-02, &
+          0.48227E-02, 0.55571E-02, 0.63934E-02, 0.73433E-02, &
+          0.84286E-02, 0.96407E-02, 0.11014E-01, 0.12582E-01, &
+          0.14353E-01, 0.16341E-01, 0.18574E-01, 0.21095E-01, &
+          0.23926E-01, 0.27096E-01, 0.30652E-01, 0.34629E-01, &
+          0.39073E-01, 0.44028E-01, 0.49546E-01, 0.55691E-01, &
+          0.62508E-01, 0.70077E-01, 0.78700E-01, 0.88128E-01, &
+          0.98477E-01, 0.10983E+00, 0.12233E+00, 0.13608E+00, &
+          0.15121E+00, 0.16784E+00, 0.18615E+00, 0.20627E+00, &
+          0.22837E+00, 0.25263E+00, 0.27923E+00, 0.30838E+00, &
+          0.34030E+00, 0.37520E+00, 0.41334E+00, 0.45497E+00, &
+          0.50037E+00, 0.54984E+00, 0.60369E+00, 0.66225E+00, &
+          0.72589E+00, 0.79497E+00, 0.86991E+00, 0.95113E+00, &
+          0.10391E+01, 0.11343E+01, 0.12372E+01, 0.13484E+01, &
+          0.14684E+01, 0.15979E+01, 0.17375E+01, 0.18879E+01, &
+          0.20499E+01, 0.22241E+01, 0.24113E+01, 0.26126E+01, &
+          0.28286E+01, 0.30604E+01, 0.33091E+01, 0.35755E+01/
+!
+      real, dimension(72)  :: EST2
+      data EST2/ &
+          0.38608E+01, 0.41663E+01, 0.44930E+01, 0.48423E+01, &
+          0.52155E+01, 0.56140E+01, 0.60394E+01, 0.64930E+01, &
+          0.69767E+01, 0.74919E+01, 0.80406E+01, 0.86246E+01, &
+          0.92457E+01, 0.99061E+01, 0.10608E+02, 0.11353E+02, &
+          0.12144E+02, 0.12983E+02, 0.13873E+02, 0.14816E+02, &
+          0.15815E+02, 0.16872E+02, 0.17992E+02, 0.19176E+02, &
+          0.20428E+02, 0.21750E+02, 0.23148E+02, 0.24623E+02, &
+          0.26180E+02, 0.27822E+02, 0.29553E+02, 0.31378E+02, &
+          0.33300E+02, 0.35324E+02, 0.37454E+02, 0.39696E+02, &
+          0.42053E+02, 0.44531E+02, 0.47134E+02, 0.49869E+02, &
+          0.52741E+02, 0.55754E+02, 0.58916E+02, 0.62232E+02, &
+          0.65708E+02, 0.69351E+02, 0.73168E+02, 0.77164E+02, &
+          0.81348E+02, 0.85725E+02, 0.90305E+02, 0.95094E+02, &
+          0.10010E+03, 0.10533E+03, 0.11080E+03, 0.11650E+03, &
+          0.12246E+03, 0.12868E+03, 0.13517E+03, 0.14193E+03, &
+          0.14899E+03, 0.15634E+03, 0.16400E+03, 0.17199E+03, &
+          0.18030E+03, 0.18895E+03, 0.19796E+03, 0.20733E+03, &
+          0.21708E+03, 0.22722E+03, 0.23776E+03, 0.24871E+03/
+!
+      real, dimension(139) :: EST
+      EQUIVALENCE (EST(1)  , EST1(1)), (EST(68),EST2(1))
+!***********************************************************************
+!
+      A1622   = ONE  / Z1P622
+      TQ = T - Z198P9
+      I1(:,:,:) = 1
+      I2(:,:,:) = 1
+      where ( T < Z200 ) TQ = Z1P0S1
+      where ( T > Z337P9 ) TQ = Z138P9
+      IF (present(mask)) THEN
+        where ( mask > 0. )
+          I1 = int(TQ)
+          I2 = I1 + 1
+        end where
+      else
+        I1 = int(TQ)
+        I2 = I1 + 1
+      endif
+      do i=1,size(q,1)
+        do j=1,size(q,2)
+          do k=1,size(q,3)
+            E1(i,j,k) =  EST( I1(i,j,k) )
+            E2(i,j,k) =  EST( I2(i,j,k) )
+          enddo
+        enddo
+     enddo
+      QS(:,:,:) = TQ(:,:,:) - float(I1(:,:,:))
+      QS(:,:,:) = E1(:,:,:) + QS(:,:,:) * ( E2(:,:,:)-E1(:,:,:) )
+      E1(:,:,:) = (0.01 * P(:,:,:)) * A1622
+      where ( E1 < QS ) QS = E1
+      if (present(mask)) then
+        where ( mask > 0. )  QS = ZP622 * QS / ( P * 0.01)
+      else
+        QS(:,:,:) = ZP622 * QS(:,:,:) / ( P(:,:,:) * 0.01)
+      endif
+      RH(:,:,:) = Q(:,:,:)/QS(:,:,:)
+
+end subroutine GET_RH
+
+! ######################################################################
+!
+subroutine get_w10m(z_full, u, v, rough_mom,u_star, b_star, q_star, &
+       w10m_ocean, w10m_land, Time, is,js)
+
+real, intent(in),    dimension(:,:) :: z_full, u, v
+real, intent(in),    dimension(:,:)   :: rough_mom
+real, intent(in),    dimension(:,:)   :: u_star, b_star, q_star
+type(time_type), intent(in)           :: Time
+integer, intent(in)                   :: is,js
+
+logical :: used, flag
+
+real, intent(out),   dimension(:,:)   :: w10m_ocean, w10m_land
+real, dimension(size(u,1),size(u,2)) ::  del_m
+real, dimension(size(u,1),size(u,2)) ::  del_h
+real, dimension(size(u,1),size(u,2)) ::  del_q
+! Reference heights for momentum and heat [m]
+real, parameter :: zrefm = 10.
+real, parameter :: zrefh = 2.
+real, parameter :: scaling_factor=1.
+
+     w10m_ocean(:,:)    = 0.0
+     w10m_land (:,:)    = 0.0
+     del_m(:,:)   = 0.0
+
+      call mo_profile(zrefm, zrefh, z_full, &
+           rough_mom, rough_mom, rough_mom, &
+           u_star, b_star, q_star, &
+           del_m, del_h, del_q )
+!-----------------------------------------------------------------
+!       ... Wind speed at anemometer level (10 meters above ground)
+!-----------------------------------------------------------------
+      w10m_ocean(:,:)=sqrt(u(:,:)**2 +v(:,:)**2 )*del_m(:,:)
+      w10m_land (:,:)=sqrt(u(:,:)**2 +v(:,:)**2 )*del_m(:,:)*scaling_factor
+
+! Send the scaling factor
+      if (id_delm > 0 ) then
+        used = send_data ( id_delm, del_m, Time, is_in=is,js_in=js )
+      endif
+
+! Send the 10m wind speed data to the diag_manager for output.
+      if (id_w10m > 0 ) then
+        used = send_data ( id_w10m, w10m_land, Time, is_in=is,js_in=js )
+      endif
+
+end subroutine get_w10m
+
+! ######################################################################
+!
+subroutine get_cldf(ps, pfull, rh, cldf)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!
+!!! This subroutine estimates the cloud fraction "cldf" for
+!!! each grid box using an empirical function of the relative
+!!! humidity in that grid box, following Sundqvist et al., Mon. Weather Rev.,
+!!! v117, 164101657, 1989:
+!!!
+!!!             cldf = 1 - sqrt[ 1 - (RH - RH0)/(1 - RH0) ]
+!!!
+!!! where RH is the relative humidity and RH0 is the threshold relative
+!!! humidity for condensation specified as a function of pressure based
+!!! on Xu and Krueger, Mon. Weather Rev., v119, 342-367, 1991.
+!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      real, intent(in),  dimension(:,:)   :: ps
+      real, intent(in),  dimension(:,:,:) :: pfull
+      real, intent(in),  dimension(:,:,:) :: rh
+      real, intent(out), dimension(:,:,:) :: cldf
+      real, parameter :: zrt = 0.6
+      real, parameter :: zrs = 0.99
+      integer           :: i,j,k, id, jd, kd
+      real              :: p, r, r0, b0
+      id=size(pfull,1); jd=size(pfull,2); kd=size(pfull,3)
+
+      do k = 1, kd
+      do j = 1, jd
+      do i = 1, id
+       P = pfull(i,j,k)
+       R = RH(i,j,k)
+       R0 = ZRT + (ZRS-ZRT) * exp(1.-(PS(i,j)/P)**2.5)
+       B0 = (R-R0) / (1.-R0)
+       if (R .lt.R0) B0 = 0.
+       if (B0.gt.1.) B0 = 1.
+       CLDF(i,j,k) = 1.-sqrt(1.-B0)
+      end do
+      end do
+      end do
+
+end subroutine get_cldf
+
 !######################################################################
 !<SUBROUTINE NAME="tracer_utilities_end">
 !<OVERVIEW>
@@ -870,9 +1431,79 @@ subroutine atmos_tracer_utilities_end
 !</SUBROUTINE>
 
 ! ######################################################################
+! !IROUTINE: sjl_fillz --- Fill from neighbors below and above
 !
+! !INTERFACE:
+ subroutine sjl_fillz(im, km, nq, q, dp)
+
+ implicit none
+
+! !INPUT PARAMETERS:
+   integer,  intent(in):: im                ! No. of longitudes
+   integer,  intent(in):: km                ! No. of levels
+   integer,  intent(in):: nq                ! Total number of tracers
+
+   real, intent(in)::  dp(im,km)       ! pressure thickness
+! !INPUT/OUTPUT PARAMETERS:
+   real, intent(inout) :: q(im,km,nq)   ! tracer mixing ratio
+
+! !DESCRIPTION:
+!   Check for "bad" data and fill from east and west neighbors
+!
+! !BUGS:
+!   Currently this routine only performs the east-west fill algorithm.
+!   This is because the N-S fill is very hard to do in a reproducible
+!   fashion when the problem is decomposed by latitudes.
+!
+! !REVISION HISTORY:
+!   00.04.01   Lin        Creation
+!
+!EOP
+!-----------------------------------------------------------------------
+!BOC
+!
+! !LOCAL VARIABLES:
+   integer i, k, ic
+   real qup, qly, dup
+
+   do ic=1,nq
+! Top layer
+      do i=1,im
+         if( q(i,1,ic) < 0.) then
+             q(i,2,ic) = q(i,2,ic) + q(i,1,ic)*dp(i,1)/dp(i,2)
+             q(i,1,ic) = 0.
+          endif
+      enddo
+
+! Interior
+      do k=2,km-1
+         do i=1,im
+         if( q(i,k,ic) < 0. ) then
+! Borrow from above
+             qup =  q(i,k-1,ic)*dp(i,k-1)
+             qly = -q(i,k  ,ic)*dp(i,k  )
+             dup =  min( 0.75*qly, qup )        !borrow no more than 75% from top
+             q(i,k-1,ic) = q(i,k-1,ic) - dup/dp(i,k-1)
+! Borrow from below: q(i,k,ic) is still negative at this stage
+             q(i,k+1,ic) = q(i,k+1,ic) + (dup-qly)/dp(i,k+1)
+             q(i,k  ,ic) = 0.
+          endif
+          enddo
+      enddo
+
+! Bottom layer
+      k = km
+      do i=1,im
+         if( q(i,k,ic) < 0.) then
+! Borrow from above
+             qup =  q(i,k-1,ic)*dp(i,k-1)
+             qly = -q(i,k  ,ic)*dp(i,k  )
+             dup =  min( qly, qup )
+             q(i,k-1,ic) = q(i,k-1,ic) - dup/dp(i,k-1)
+             q(i,k,ic) = 0.
+          endif
+      enddo
+   enddo
+end subroutine sjl_fillz
 
 end module atmos_tracer_utilities_mod
-
-
-

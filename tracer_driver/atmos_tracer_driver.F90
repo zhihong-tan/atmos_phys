@@ -76,53 +76,99 @@ module atmos_tracer_driver_mod
 !     This may simply be a deallocation statement or a routine to send
 !     output to the logfile stating that the termination routine has been
 !     called.
+!
+! <NOTE>
+! This code has been modified by Paul.Ginoux@noaa.gov in 2005
+! to include the following aerosols:
+!  - SO4 with a simplified SOx chemistry
+!  - sea salt with a size distributon splitted into 5 bins
+!  - mineral dust with a size distributon splitted into 5 bins
+!  - carbonaceous aerosols with new emissions by Shekar.Reddy@noaa.gov
+! </NOTE>
+!
 ! </DESCRIPTION>
 
 
 !-----------------------------------------------------------------------
 
-use              fms_mod, only : file_exist, &
-                                 write_version_number, &
-                                 error_mesg, &
-                                 FATAL, &
-                                 mpp_pe, &
-                                 mpp_root_pe, &
-                                 stdlog
-use     time_manager_mod, only : time_type
-use   tracer_manager_mod, only : get_tracer_index,   &
-                                 get_number_tracers, &
-                                 get_tracer_names,   &
-                                 get_tracer_indices
-use    field_manager_mod, only : MODEL_ATMOS
-use atmos_tracer_utilities_mod, only : wet_deposition,     &
-                                 dry_deposition,     &
-                                 atmos_tracer_utilities_init
-use        constants_mod, only : grav
-use      atmos_radon_mod, only : atmos_radon_sourcesink,   &
-                                 atmos_radon_init,         &
-                                 atmos_radon_end
-use atmos_carbon_aerosol_mod, only : atmos_blackc_sourcesink,  &
-                                 atmos_organic_sourcesink, &
-                                 atmos_carbon_aerosol_init,&
-                                 atmos_carbon_aerosol_end
-use atmos_sulfur_hex_mod, only : atmos_sf6_sourcesink,     &
-                                 atmos_sulfur_hex_init,    &
-                                 atmos_sulfur_hex_end
-use atmos_convection_tracer_mod,only: atmos_convection_tracer_init, &
-                                      atmos_cnvct_tracer_sourcesink, &
-                                      atmos_convection_tracer_end
-!chemistry start
-!use       chem_interface, only : sourcesink, &
-!                                 driver_init, &
-!                                 dries
-!chemistry end
+use fms_mod,               only : file_exist, &
+                                  write_version_number, &
+                                  error_mesg, &
+                                  FATAL, &
+                                  mpp_pe, &
+                                  mpp_root_pe, &
+                                  stdlog
+use time_manager_mod,      only : time_type, &
+                                  get_date, get_date_julian, &
+                                  real_to_time_type
+use astronomy_mod,         only : diurnal_solar
+use tracer_manager_mod,    only : get_tracer_index,   &
+                                  get_number_tracers, &
+                                  get_tracer_names,   &
+                                  get_tracer_indices
+use field_manager_mod,     only : MODEL_ATMOS
+use atmos_tracer_utilities_mod, only :                     &
+                                  dry_deposition,     &
+                                  atmos_tracer_utilities_init, &
+                                  get_rh, get_w10m, get_cldf, &
+                                  sjl_fillz
+use constants_mod,         only : grav
+use atmos_radon_mod,       only : atmos_radon_sourcesink,   &
+                                  atmos_radon_init,         &
+                                  atmos_radon_end
+use atmos_carbon_aerosol_mod, only : &
+                                  atmos_black_carbon_driver,  &
+                                  atmos_organic_carbon_driver, &
+                                  atmos_carbon_aerosol_init,&
+                                  atmos_carbon_aerosol_end
+use atmos_convection_tracer_mod,only: &
+                                  atmos_convection_tracer_init, &
+                                  atmos_cnvct_tracer_sourcesink, &
+                                  atmos_convection_tracer_end
+use atmos_sulfur_hex_mod,  only : atmos_sf6_sourcesink,     &
+                                  atmos_sulfur_hex_init,    &
+                                  atmos_sulfur_hex_end
+use atmos_ch3i_mod,        only : atmos_ch3i, &
+                                  atmos_ch3i_init, &
+                                  atmos_ch3i_end
+use atmos_sea_salt_mod,    only : atmos_sea_salt_sourcesink,     &
+                                  atmos_sea_salt_init,    &
+                                  atmos_sea_salt_end
+use atmos_dust_mod,        only : atmos_dust_sourcesink,     &
+                                  atmos_dust_init,    &
+                                  atmos_dust_end
+use atmos_sulfate_mod,     only : atmos_SOx_init, &
+                                  atmos_SOx_end, &
+                                  atmos_DMS_emission, &
+                                  atmos_SO2_emission, &
+                                  atmos_SO4_emission, &
+                                  SOx_source_input, &
+                                  chem_sox, &
+                                  get_SO2_nerup_volc_emis
+use atmos_soa_mod,         only : atmos_SOA_init, &
+                                  atmos_SOA_end, &
+                                  SOA_source_input, &
+                                  chem_SOA
+use tropchem_driver_mod,   only : tropchem_driver, &
+                                  tropchem_driver_init
+use strat_chem_driver_mod, only : strat_chem, strat_chem_driver_init
+!use atmos_co2_mod,         only : atmos_co2_gather_data,        &
+!                                  atmos_co2_flux_init,          &
+!                                  atmos_co2_init,               &
+!                                  atmos_co2_end
+
+use interpolator_mod,      only : interpolate_type
 
 implicit none
 private
 !-----------------------------------------------------------------------
 !----- interfaces -------
 
-public  atmos_tracer_driver, atmos_tracer_driver_init, atmos_tracer_driver_end
+public  atmos_tracer_driver,            &
+        atmos_tracer_driver_init,       &
+        atmos_tracer_driver_end,        &
+        atmos_tracer_flux_init,         &
+        atmos_tracer_driver_gather_data
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
@@ -136,15 +182,45 @@ public  atmos_tracer_driver, atmos_tracer_driver_init, atmos_tracer_driver_end
 !
 !-----------------------------------------------------------------------
 
-integer :: nchem     =0  ! tracer number for chem_interface
+logical :: do_tropchem = .false.  ! Do tropospheric chemistry?
+logical :: do_coupled_stratozone = .FALSE. !Do stratospheric chemistry?
+
+integer, dimension(6) :: itime   ! JA's time (simpler than model time) 
+integer :: nsphum  ! Specific humidity parameter
+
+integer :: no3 = 0
+integer :: no3ch = 0
+integer :: nextinct = 0
+integer :: naerosol = 0
 integer :: nbcphobic =0
 integer :: nbcphilic =0
-integer :: nocphobic =0
-integer :: nocphilic =0
+integer :: nomphobic =0
+integer :: nomphilic =0
 integer :: nclay     =0
 integer :: nsilt     =0
-integer :: nseasalt  =0
+integer :: nseasalt1 =0
+integer :: nseasalt2 =0
+integer :: nseasalt3 =0
+integer :: nseasalt4 =0
+integer :: nseasalt5 =0
+integer :: ndust1    =0
+integer :: ndust2    =0
+integer :: ndust3    =0
+integer :: ndust4    =0
+integer :: ndust5    =0
 integer :: nsf6      =0
+integer :: nDMS      =0
+integer :: nSO2      =0
+integer :: nSO4      =0
+integer :: nMSA      =0
+integer :: nSOA      =0
+integer :: nH2O2     =0
+integer :: nch3i     =0
+
+real    :: ozon(11,48),cosp(14),cosphc(48),photo(128,14,11,48),   &
+           solardata(1801),chlb(90,15),ozb(144,90,12),tropc(151,9),  &
+           dfdage(90,48,8),anoy(90,48)
+
 
 integer, dimension(:), pointer :: nradon
 integer, dimension(:), pointer :: nconvect
@@ -156,6 +232,7 @@ character(len=6), parameter :: module_name = 'tracer'
 
 logical :: module_is_initialized = .FALSE.
 
+type(interpolate_type), allocatable :: drydep_data(:)
 
 integer, allocatable :: local_indices(:) 
 ! This is the array of indices for the local model. 
@@ -166,8 +243,8 @@ integer, allocatable :: local_indices(:)
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 11.0 2004/09/28 19:26:51 fms Exp $'
-character(len=128) :: tagname = '$Name: lima $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 13.0 2006/03/28 21:15:48 fms Exp $'
+character(len=128) :: tagname = '$Name: memphis $'
 !-----------------------------------------------------------------------
 
 contains
@@ -248,37 +325,73 @@ contains
 !   <IN NAME="kbot" TYPE="integer, optional" DIM="(:,:)">
 !     Integer array describing which model layer intercepts the surface.
 !   </IN>
- subroutine atmos_tracer_driver (is, ie, js, je, Time, lon, lat, land, phalf, pfull, r,  &
-                           u, v, t, q, u_star, rdt, rm,        &
-                           dt, z_half, z_full, t_surf_rad, albedo, coszen, &
-                           Time_next, &
+ subroutine atmos_tracer_driver (is, ie, js, je, Time, lon, lat,  &
+                           area, z_pbl, rough_mom, &
+                           land, phalf, pfull,     &
+                           u, v, t, q, r,          &
+                           rm, rdt, dt,     &
+                           u_star, b_star, q_star, &
+                           z_half, z_full,&
+                           t_surf_rad, albedo, &
+                           Time_next, mask, &
                            kbot)
 
 !-----------------------------------------------------------------------
 integer, intent(in)                           :: is, ie, js, je
 type(time_type), intent(in)                   :: Time
-real, intent(in),    dimension(:,:)           :: lon, lat, u_star
+real, intent(in),    dimension(:,:)           :: lon, lat
+real, intent(in),    dimension(:,:)           :: u_star, b_star, q_star
 real, intent(in),    dimension(:,:)           :: land
-real, intent(in),    dimension(:,:,:)         :: phalf, pfull, u, v, t, q
-real, intent(in),    dimension(:,:,:,:)       :: r
+real, intent(in),    dimension(:,:)           :: area, z_pbl, rough_mom
+real, intent(in),    dimension(:,:,:)         :: phalf, pfull
+real, intent(in),    dimension(:,:,:)         :: u, v, t, q
+real, intent(inout), dimension(:,:,:,:)       :: r
+real, intent(inout), dimension(:,:,:,:)       :: rm
 real, intent(inout), dimension(:,:,:,:)       :: rdt
-real, intent(inout),    dimension(:,:,:,:)       :: rm
 real, intent(in)                              :: dt !timestep(used in chem_interface)
 real, intent(in),    dimension(:,:,:)         :: z_half !height in meters at half levels
 real, intent(in),    dimension(:,:,:)         :: z_full !height in meters at full levels
 real, intent(in),    dimension(:,:)           :: t_surf_rad !surface temperature
-real, intent(in),    dimension(:,:)           :: coszen
 real, intent(in),    dimension(:,:)           :: albedo
-type(time_type), intent(in)                    :: Time_next
+type(time_type), intent(in)                   :: Time_next
 integer, intent(in), dimension(:,:), optional :: kbot
+real, intent(in), dimension(:,:,:),  optional :: mask
+
 !-----------------------------------------------------------------------
-real, dimension(size(r,1),size(r,2),size(r,3)) :: rtnd, pwt
+! Local variables
+!-----------------------------------------------------------------------
+real, dimension(size(r,1),size(r,2),size(r,3)) :: rtnd, pwt, ozone, o3_prod, &
+                                                  aerosol
+real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndso2, rtndso4
+real, dimension(size(r,1),size(r,2),size(r,3)) :: rtnddms, rtndmsa, rtndh2o2
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndphob, rtndphil
 real, dimension(size(r,1),size(r,2)) :: dsinku
-integer :: k, kd
-real, dimension(size(r,1),size(r,2),size(r,3),ntp) :: chem_tend
+real, dimension(size(r,1),size(r,2),size(r,3)) :: so2_nerup_volc_emis
+real, dimension(size(r,1),size(r,2)) ::  w10m_ocean, w10m_land
+integer :: actual_month
+integer :: year,month,day,hour,minute,second
+integer :: jday
+real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: chem_tend
+real, dimension(size(r,1),size(r,2))           :: coszen, fracday
+real :: ang,dec,rrsun
+integer, save :: month_input_SOx_files = 0
+integer, save :: month_input_SOA_files = 0
+real, dimension(size(r,1),size(r,2),size(r,3)) :: cldf ! cloud fraction
+real, dimension(size(r,1),size(r,2),size(r,3)) :: rh  ! relative humidity
+real, dimension(size(r,1),size(r,2),size(r,3)) :: lwc ! liq water content
+real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: tracer
+real, dimension(size(r,1),size(r,3)) :: dp, temp
+logical :: found
+logical :: use_tau=.false.
 
-integer :: nnn
+integer :: i, j, k, id, jd, kd, nt, kb
+integer :: nqq  ! index of specific humidity
+integer :: nql  ! index of cloud liquid specific humidity
+integer :: nqi  ! index of cloud ice water specific humidity
+integer :: nqa  ! index of cloud amount
+integer :: n, nnn
+
+
 !-----------------------------------------------------------------------
 
 !   <ERROR MSG="tracer_driver_init must be called first." STATUS="FATAL">
@@ -288,57 +401,201 @@ integer :: nnn
       call error_mesg ('Tracer_driver','tracer_driver_init must be called first.', FATAL)
 
 !-----------------------------------------------------------------------
-      kd=size(r,3)
+     id=size(r,1);jd=size(r,2);kd=size(r,3); nt=size(r,4)
 
-  
-! Flux into the layer is assumed to be kg(tracer)/m2/s
-! Tracers are transported as mixing ratio.
-! Therefore need to convert flux to a mixing ratio tendency 
-! kg(tracer)/kg(air)/s = kg(tracer)/m2/s / [dz(m) * density of air(kg(air)/m3)]
-! dz = dp/(rho*gravity)
-! so dz*density of air = dp/gravity
-! kg(tracer)/kg(air)/s = flux(tracer) / (dp/gravity)
+      nqa = get_tracer_index(MODEL_ATMOS,'cld_amt')
+      nqi = get_tracer_index(MODEL_ATMOS,'ice_wat')
+      nql = get_tracer_index(MODEL_ATMOS,'liq_wat')
+      nqq = get_tracer_index(MODEL_ATMOS,'sphum')
+
+!------------------------------------------------------------------------
+! Make local copies of all the tracers
+!------------------------------------------------------------------------
+!++lwh
+      if (use_tau) then
+        do n = 1,nt
+          tracer(:,:,:,n) = r(:,:,:,n)
+!------------------------------------------------------------------------
+! For tracers other than specific humdity, cloud amount, ice water and &
+! liquid water fill eventual negative values
+!------------------------------------------------------------------------
+          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
+            do j=1,jd
+              do k=1,kd
+                temp(:,k) = tracer(:,j,k,n)
+                dp(:,k) = phalf(:,j,k+1)-phalf(:,j,k)
+              enddo
+              call sjl_fillz(id,kd,1,temp,dp)
+              do k=1,kd
+                tracer(:,j,k,n) = temp(:,k)
+              enddo
+            enddo
+            if (n <= ntp) then
+               rdt(:,:,:,n) = rdt(:,:,:,n) + (tracer(:,:,:,n)-r(:,:,:,n))/dt
+            end if
+          endif
+        end do
+      else
+        do n = 1,nt
+          if (n <= ntp) then
+             tracer(:,:,:,n)=rm(:,:,:,n)+rdt(:,:,:,n)*dt
+          else
+             tracer(:,:,:,n)=r(:,:,:,n)
+          end if
+          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
+            do j=1,jd
+              do k=1,kd
+                temp(:,k) = tracer(:,j,k,n)
+                dp(:,k) = phalf(:,j,k+1)-phalf(:,j,k)
+              enddo
+              call sjl_fillz(id,kd,1,temp,dp)
+              do k=1,kd
+                tracer(:,j,k,n) = temp(:,k)
+              enddo
+            enddo
+            if (n <= ntp) then
+               rdt(:,:,:,n) = (tracer(:,:,:,n) - rm(:,:,:,n)) /dt
+            end if
+          end if
+        end do
+      end if
+!--lwh
+
+!------------------------------------------------------------------------
+! Rediagnose meteoroligical variables. Note these parameterizations
+! are not consistent with those used elsewhere in the GCM
+!------------------------------------------------------------------------
+
+!-----------------------------------------------------------------------
+!-----------Calculate relative humidity
+!-----------------------------------------------------------------------
+      call get_rh(t,q,pfull,rh,mask)
+!-----------------------------------------------------------------------
+!--------- Calculate wind speed at 10 meters
+!-----------------------------------------------------------------------
+      call get_w10m(z_full(:,:,kd) - z_half(:,:,kd+1), &
+                    u(:,:,kd), v(:,:,kd), &
+                    rough_mom, u_star, b_star, q_star, &
+                    w10m_ocean, w10m_land, Time, is, js)
+!-----------------------------------------------------------------------
+!------Cloud liquid water content
+!-----------------------------------------------------------------------
+      if (nqi > 0) then
+        lwc(:,:,:)=max(tracer(:,:,:,nqi),0.) 
+      else
+        lwc(:,:,:) = 0.0
+      endif
+      if (nql > 0) lwc(:,:,:) = lwc(:,:,:) + max(tracer(:,:,:,nql),0.) 
+!-----------------------------------------------------------------------
+!--------- Cloud fraction -----------------------------
+!-----------------------------------------------------------------------
+      if (nqa > 0 ) then
+!-----  cloud fraction is a prognostic variable ------------
+        cldf(:,:,:)= max(0.,min(1.,tracer(:,:,:,nqa) ))
+      else
+!-----   cloud fraction estimated from RH-------------
+        call get_cldf(phalf(:,:,kd+1),pfull,rh,cldf)
+      endif
+!-----------------------------------------------------------------------
+!--------- Get Julian data
+!-----------------------------------------------------------------------
+      call get_date_julian(Time, year, month, jday, hour, minute, second)
+!-----------------------------------------------------------------------
+!--------- Get current date
+!-----------------------------------------------------------------------
+      call get_date(Time, year, month, day, hour, minute, second)
+
+! Calculate cosine of solar zenith angle
+!
+       call diurnal_solar( lat, lon, Time, coszen, fracday, &
+                           rrsun, dt_time=real_to_time_type(dt) )
+
+!------------------------------------------------------------------------
+! Get air mass in layer (in kg/m2), equal to dP/g
+!------------------------------------------------------------------------
       do k=1,kd
          pwt(:,:,k)=(phalf(:,:,k+1)-phalf(:,:,k))/grav
       enddo
-!!WARNING pwt is dp/grav!!
-! Go do the dry deposition of the tracers
 
-  do k=1,ntp
-    call dry_deposition(k, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
-                        pwt(:,:,kd), pfull(:,:,kd), u_star, &
-                        (land > 0.5), dsinku, r(:,:,kd,k), Time)
-!chemistry start
-!                        (land > 0.5), dsinku, r(:,:,kd,k), Time, dries(k))
-!chemistry end
-    rdt(:,:,kd,k) = rdt(:,:,kd,k) - dsinku
-  enddo
+!------------------------------------------------------------------------
+! For tracers other than specific humdity, cloud amount, ice water and &
+! liquid water calculate flux at surface due to dry deposition
+!------------------------------------------------------------------------
+!++lwh
+      do n=1,ntp
+         if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
+            call dry_deposition( n, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
+                                 pwt(:,:,kd), pfull(:,:,kd), &
+                                 z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
+                                 (land > 0.5), dsinku, &
+                                 tracer(:,:,kd,n), Time, &
+                                 drydep_data(n) )
+            rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku
+         end if
+      enddo
 
-!
-!--------------- compute radon source-sink tendency --------------------
+!------------------------------------------------------------------------
+! Compute radon source-sink tendency
+!------------------------------------------------------------------------
     do nnn = 1, size(nradon(:))
      if (nradon(nnn) > 0) then
        if (nradon(nnn) > nt) call error_mesg ('Tracer_driver', &
                             'Number of tracers .lt. number for radon', FATAL)
-         call atmos_radon_sourcesink (lon,lat,land,pwt,r(:,:,:,nradon(nnn)),  &
+         call atmos_radon_sourcesink (lon,lat,land,pwt,tracer(:,:,:,nradon(nnn)),  &
                                  rtnd, Time, kbot)
        rdt(:,:,:,nradon(nnn))=rdt(:,:,:,nradon(nnn))+rtnd(:,:,:)
     endif
  
    end do
 
-!
-!--------------- compute convection tracer source-sink tendency -----
+!------------------------------------------------------------------------
+! Compute convection tracer source-sink tendency
+!------------------------------------------------------------------------
    do nnn = 1, size(nconvect(:))
      if (nconvect(nnn) > 0) then
        if (nconvect(nnn) > nt) call error_mesg ('Tracer_driver', &
            'Number of tracers .lt. number for convection tracer', FATAL)
        call atmos_cnvct_tracer_sourcesink (lon,lat,land,pwt,  &
-                                        r(:,:,:,nconvect(nnn)),  &
+                                       tracer(:,:,:,nconvect(nnn)),  &
                                        rtnd, Time, is, ie, js, je,kbot)
        rdt(:,:,:,nconvect(nnn))=rdt(:,:,:,nconvect(nnn))+rtnd(:,:,:)
      endif
    end do
+
+!------------------------------------------------------------------------
+! Stratospheric chemistry
+!------------------------------------------------------------------------
+  if(do_coupled_stratozone) then
+    itime(:) = 0
+    call get_date(time,itime(1),itime(2),itime(3),itime(4),itime(5),itime(6))
+
+    call strat_chem(lon,lat,r,rdt,pfull,t,itime,is,ie,js,je,dt,coszen,  &
+!    ozon,cosp,cosphc,photo,solardata,chlb,ozb,dfdage,tropc,anoy,        &
+    nsphum,chem_tend,ozone,o3_prod,aerosol,mpp_pe())
+!
+! The water vapour tendency is included here, partially coupling the 
+! chemistry to the radiation
+! 
+      rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:) 
+      if(nt.gt.(ntp+1))  then
+! Modify the diagnostic tracers.
+        r(:,:,:,no3)      = ozone(:,:,:) 
+        r(:,:,:,no3ch)    = o3_prod(:,:,:) 
+        r(:,:,:,naerosol) = aerosol(:,:,:) 
+      endif
+  endif
+
+!------------------------------------------------------------------------
+! Tropospheric chemistry
+!------------------------------------------------------------------------
+   if ( do_tropchem ) then
+      call tropchem_driver( lon, lat, land, pwt, &
+                            tracer(:,:,:,1:ntp),chem_tend, &
+                            Time, phalf, pfull, t, is, js, dt, &
+                            z_half, z_full, q, t_surf_rad, albedo, coszen, &
+                            Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), kbot)
+      rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
+   endif
 
 !! RSH 4/8/04
 !! note that if there are no diagnostic tracers, that argument in the
@@ -346,42 +603,31 @@ integer :: nnn
 !! below. note the switch in argument order to make this argument
 !! optional.
     if (nt == ntp) then  ! implies no diagnostic tracers
-!chemistry start
-!   if(nchem > 0 .and. nchem <= nt) then
+!   if(do_tropchem) then
 !      if(present(kbot)) then
-!!       call sourcesink(lon,lat,land,pwt,r,chem_tend,Time,phalf,pfull,t,is,js,je,dt,&
 !        call sourcesink(lon,lat,land,pwt,r+rdt*dt,chem_tend,Time,phalf,pfull,t,is,js,je,dt,&
 !                          z_half, z_full,q,t_surf_rad,albedo,coszen, Time_next,&
-!!                         rdiag,u,v,u_star,&
 !                          u,v,u_star,&
 !                          kbot)
 !      else
-!!      call sourcesink(lon,lat,land,pwt,r,chem_tend,Time,phalf,pfull,t,is,js,je,dt, &
 !       call sourcesink(lon,lat,land,pwt,r+rdt*dt,chem_tend,Time,phalf,pfull,t,is,js,je,dt, &
 !                          z_half, z_full,q, t_surf_rad, albedo, coszen, Time_next, &
-!!                         rdiag,u,v,u_star &
 !                          u,v,u_star,&
 !                          )
 !      endif
 !      rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
 !   endif        
-!chemistry end
       else   ! case of diagnostic tracers being present
-!chemistry start
-!   if(nchem > 0 .and. nchem <= nt) then
+!   if(do_tropchem) then
 !      if(present(kbot)) then
-!!       call sourcesink(lon,lat,land,pwt,r,chem_tend,Time,phalf,pfull,t,is,js,je,dt,&
 !        call sourcesink(lon,lat,land,pwt,r+rdt*dt,chem_tend,Time,phalf,pfull,t,is,js,je,dt,&
 !                          z_half, z_full,q,t_surf_rad,albedo,coszen, Time_next,&
-!!                         rdiag,u,v,u_star,&
 !                          u,v,u_star,&
 !       rdiag=rm(:,:,:,nt+1:ntp),  &  ! (the diagnostic tracers)
 !                   kbot=kbot)
 !      else
-!!      call sourcesink(lon,lat,land,pwt,r,chem_tend,Time,phalf,pfull,t,is,js,je,dt, &
 !       call sourcesink(lon,lat,land,pwt,r+rdt*dt,chem_tend,Time,phalf,pfull,t,is,js,je,dt, &
 !                          z_half, z_full,q, t_surf_rad, albedo, coszen, Time_next, &
-!!                         rdiag,u,v,u_star &
 !                          u,v,u_star,&
 !        rdiag=rm(:,:,:,nt+1:ntp),  & ! (the diagnostic tracers)
 !                          )
@@ -389,37 +635,226 @@ integer :: nnn
 !      rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
 !   endif        
    endif  ! (no diagnostic tracers)
-!chemistry end
 
+!------------------------------------------------------------------------
+!   carbonaceous aerosols
+!------------------------------------------------------------------------
    if (nbcphobic > 0 .and. nbcphilic > 0 ) then
          if (nbcphobic > ntp .or. nbcphilic > ntp) &
             call error_mesg ('Tracer_driver', &
             'Number of tracers .lt. number for black carbon', FATAL)
-         call atmos_blackc_sourcesink (lon,lat,land,pwt, &
-                                 r(:,:,:,nbcphobic), rtndphob, &
-                                 r(:,:,:,nbcphilic), rtndphil, &
+     call atmos_black_carbon_driver(lon,lat,land,pfull,phalf,T,pwt,z_half,z_pbl, &
+                                       tracer(:,:,:,nbcphobic), rtndphob, &
+                                       tracer(:,:,:,nbcphilic), rtndphil, &
                                  Time,is,ie,js,je)
       rdt(:,:,:,nbcphobic)=rdt(:,:,:,nbcphobic)+rtndphob(:,:,:)
       rdt(:,:,:,nbcphilic)=rdt(:,:,:,nbcphilic)+rtndphil(:,:,:)
    endif
 
 
-   if (nocphobic > 0) then
-         if (nocphobic > ntp ) call error_mesg ('Tracer_driver', &
-                            'Number of tracers .lt. number for organic carbon', FATAL)
-         call atmos_organic_sourcesink (lon,lat,land,pwt,r(:,:,:,nocphobic),  &
-                                  rtnd,Time,is,ie,js,je,kbot)
-      rdt(:,:,:,nocphobic)=rdt(:,:,:,nocphobic)+rtnd(:,:,:)
+   if (nomphobic > 0) then
+         if (nomphobic > ntp ) call error_mesg ('Tracer_driver', &
+                          'Number of tracers .lt. number for organic carbon', FATAL)
+     call atmos_organic_carbon_driver(lon,lat,land,pfull,phalf,T,pwt,z_half,z_pbl, &
+                                     tracer(:,:,:,nomphobic), rtndphob, &
+                                     tracer(:,:,:,nomphilic), rtndphil, &
+                                     Time,is,ie,js,je)
+      rdt(:,:,:,nomphobic)=rdt(:,:,:,nomphobic)+rtndphob(:,:,:)
+      rdt(:,:,:,nomphilic)=rdt(:,:,:,nomphilic)+rtndphil(:,:,:)
    endif
 
-   if (nocphilic > 0) then
-         if (nocphilic > ntp ) call error_mesg ('Tracer_driver', &
-                            'Number of tracers .lt. number for organic carbon', FATAL)
-         call atmos_organic_sourcesink (lon,lat,land,pwt,r(:,:,:,nocphilic),  &
-                                 rtnd, Time,is,ie,js,je, kbot)
-      rdt(:,:,:,nocphilic)=rdt(:,:,:,nocphilic)+rtnd(:,:,:)
+!------------------------------------------------------------------------
+! Mineral Dust 
+!------------------------------------------------------------------------
+   if (ndust1 > 0) then
+         if (ndust1 > ntp ) call error_mesg ('Tracer_driver', &
+                   'Number of tracers .lt. number for dust', FATAL)
+         call atmos_dust_sourcesink (&
+              1, 0.1e-6, 1.0e-6, 0.75e-6, 2500., &
+              lon,lat,land,pwt, &
+              z_half, pfull, w10m_land, t, rh, &
+              tracer(:,:,:,ndust1), rtnd, Time, &
+              is,ie,js,je, kbot)
+      rdt(:,:,:,ndust1)=rdt(:,:,:,ndust1)+rtnd(:,:,:)
    endif
 
+   if (ndust2 > 0) then
+         if (ndust2 > ntp ) call error_mesg ('Tracer_driver', &
+                            'Number of tracers .lt. number for dust', FATAL)
+         call atmos_dust_sourcesink (&
+              2, 1.e-6, 2.e-6, 1.5e-6, 2650., &
+              lon,lat,land,pwt, &
+              z_half, pfull, w10m_land, t, rh, &
+              tracer(:,:,:,ndust2), rtnd, Time, &
+              is,ie,js,je, kbot)
+      rdt(:,:,:,ndust2)=rdt(:,:,:,ndust2)+rtnd(:,:,:)
+   endif
+
+   if (ndust3 > 0) then
+         if (ndust3 > ntp ) call error_mesg ('Tracer_driver', &
+                            'Number of tracers .lt. number for dust', FATAL)
+         call atmos_dust_sourcesink (&
+              3, 2.e-6, 3.e-6, 2.5e-6, 2650., &
+              lon,lat,land,pwt, &
+              z_half, pfull, w10m_land, t, rh, &
+              tracer(:,:,:,ndust3), rtnd, Time, &
+              is,ie,js,je, kbot)
+      rdt(:,:,:,ndust3)=rdt(:,:,:,ndust3)+rtnd(:,:,:)
+   endif
+
+   if (ndust4 > 0) then
+         if (ndust4 > ntp ) call error_mesg ('Tracer_driver', &
+                            'Number of tracers .lt. number for dust', FATAL)
+         call atmos_dust_sourcesink (&
+              4, 3.e-6, 6.e-6, 4.5e-6, 2650., &
+              lon,lat,land,pwt, &
+              z_half, pfull, w10m_land, t, rh, &
+              tracer(:,:,:,ndust4), rtnd, Time, &
+              is,ie,js,je, kbot)
+      rdt(:,:,:,ndust4)=rdt(:,:,:,ndust4)+rtnd(:,:,:)
+   endif
+
+   if (ndust5 > 0) then
+         if (ndust5 > ntp ) call error_mesg ('Tracer_driver', &
+                            'Number of tracers .lt. number for dust', FATAL)
+         call atmos_dust_sourcesink (&
+              5, 6.e-6, 10.e-6, 8.e-6, 2650., &
+              lon,lat,land,pwt, &
+              z_half, pfull, w10m_land, t, rh, &
+              tracer(:,:,:,ndust5), rtnd, Time, &
+              is,ie,js,je, kbot)
+      rdt(:,:,:,ndust5)=rdt(:,:,:,ndust5)+rtnd(:,:,:)
+   endif
+
+!------------------------------------------------------------------------
+!sea salt
+!------------------------------------------------------------------------
+   if (nseasalt1 > 0) then
+         if (nseasalt1 > ntp ) call error_mesg ('Tracer_driver', &
+                            'Number of tracers .lt. number for sea salt', FATAL)
+         rtnd(:,:,:) = 0.
+         call atmos_sea_salt_sourcesink ( &
+              1, 0.1e-6,0.5e-6,0.3e-6, 2200., &
+              lon,lat,land,pwt, &
+              z_half, pfull, w10m_ocean, t, rh, &
+              tracer(:,:,:,nseasalt1), rtnd, dt, &
+              Time,is,ie,js,je, kbot)
+      rdt(:,:,:,nseasalt1)=rdt(:,:,:,nseasalt1)+rtnd(:,:,:)
+   endif
+   if (nseasalt2 > 0) then
+         if (nseasalt2 > ntp ) call error_mesg ('Tracer_driver', &
+                            'Number of tracers .lt. number for sea salt', FATAL)
+         rtnd(:,:,:) = 0.
+         call atmos_sea_salt_sourcesink ( &
+              2, 0.5e-6,1.0e-6,0.75e-6, 2200., &
+              lon,lat,land,pwt, &
+              z_half, pfull, w10m_ocean, t, rh, &
+              tracer(:,:,:,nseasalt2), rtnd, dt, &
+              Time,is,ie,js,je, kbot)
+      rdt(:,:,:,nseasalt2)=rdt(:,:,:,nseasalt2)+rtnd(:,:,:)
+   endif
+   if (nseasalt3 > 0) then
+         if (nseasalt3 > ntp ) call error_mesg ('Tracer_driver', &
+                            'Number of tracers .lt. number for sea salt', FATAL)
+         rtnd(:,:,:) = 0.
+         call atmos_sea_salt_sourcesink ( &
+              3, 1.e-6,2.5e-6,1.75e-6, 2200., &
+              lon,lat,land,pwt, &
+              z_half, pfull, w10m_ocean, t, rh, &
+              tracer(:,:,:,nseasalt3), rtnd, dt, &
+              Time,is,ie,js,je, kbot)
+      rdt(:,:,:,nseasalt3)=rdt(:,:,:,nseasalt3)+rtnd(:,:,:)
+   endif
+   if (nseasalt4 > 0) then
+         if (nseasalt4 > ntp ) call error_mesg ('Tracer_driver', &
+                            'Number of tracers .lt. number for sea salt', FATAL)
+         rtnd(:,:,:) = 0.
+         call atmos_sea_salt_sourcesink ( &
+              4, 2.5e-6,5.0e-6,3.75e-6, 2200., &
+              lon,lat,land,pwt, &
+              z_half, pfull, w10m_ocean, t, rh, &
+              tracer(:,:,:,nseasalt4), rtnd, dt, &
+              Time,is,ie,js,je, kbot)
+      rdt(:,:,:,nseasalt4)=rdt(:,:,:,nseasalt4)+rtnd(:,:,:)
+   endif
+   if (nseasalt5 > 0) then
+         if (nseasalt5 > ntp ) call error_mesg ('Tracer_driver', &
+                            'Number of tracers .lt. number for sea salt', FATAL)
+         rtnd(:,:,:) = 0.
+         call atmos_sea_salt_sourcesink ( &
+              5, 5.e-6,10.0e-6,7.5e-6, 2200., &
+              lon,lat,land,pwt, &
+              z_half, pfull, w10m_ocean, t, rh, &
+              tracer(:,:,:,nseasalt5), rtnd, dt, &
+              Time,is,ie,js,je, kbot)
+      rdt(:,:,:,nseasalt5)=rdt(:,:,:,nseasalt5)+rtnd(:,:,:)
+   endif
+
+!------------------------------------------------------------------------
+! Sulfur chemistry
+!------------------------------------------------------------------------
+   if (nDMS > 0 .and. nSO2 > 0 .and. nSO4 > 0 .and. nMSA > 0 ) then
+      if (nDMS > ntp ) call error_mesg ('Tracer_driver', &
+                     'Number of tracers .lt. number for DMS', FATAL)
+      if (nSO2 > ntp ) call error_mesg ('Tracer_driver', &
+                     'Number of tracers .lt. number for SO2', FATAL)
+      if (nSO4 > ntp ) call error_mesg ('Tracer_driver', &
+                     'Number of tracers .lt. number for SO4', FATAL)
+
+      call get_SO2_nerup_volc_emis(so2_nerup_volc_emis, &
+                                   z_half,lon,lat,Time,is,ie,js,je)
+
+      if (month /= month_input_SOx_files) then
+         call SOx_source_input( &
+           pfull, lon, lat, month, Time, is, ie, js, je, kbot)
+           month_input_SOx_files=month
+      endif   
+      call atmos_DMS_emission(lon, lat, area, land, t_surf_rad, &
+             w10m_ocean, pwt, rtnddms, Time, is,ie,js,je,kbot)
+      rdt(:,:,kd,nDMS) = rdt(:,:,kd,nDMS) + rtnddms(:,:,kd)
+      call atmos_SO2_emission(lon, lat, area, land, &
+             z_pbl, z_half, pwt, so2_nerup_volc_emis, &
+             rtndso2, Time, is,ie,js,je,kbot)
+      rdt(:,:,:,nSO2) = rdt(:,:,:,nSO2) + rtndso2(:,:,:)
+      call atmos_SO4_emission(lon, lat, area, land, &
+             z_pbl, z_half, pwt, rtndso4, Time, is,ie,js,je,kbot)
+      rdt(:,:,:,nSO4) = rdt(:,:,:,nSO4) + rtndso4(:,:,:)
+      call chem_sox( pwt, t, pfull, dt, lwc, &
+                     jday,hour,minute,second,lat,lon,    &
+                     tracer(:,:,:,nSO2), tracer(:,:,:,nSO4), tracer(:,:,:,nDMS), &
+                     tracer(:,:,:,nMSA), tracer(:,:,:,nH2O2), &
+                     rtndso2, rtndso4, rtnddms, rtndmsa, rtndh2o2, &
+                     Time,is,ie,js,je,kbot)
+      rdt(:,:,:,nSO2) = rdt(:,:,:,nSO2) + rtndso2(:,:,:)
+      rdt(:,:,:,nSO4) = rdt(:,:,:,nSO4) + rtndso4(:,:,:)
+      rdt(:,:,:,nDMS) = rdt(:,:,:,nDMS) + rtnddms(:,:,:)
+      rdt(:,:,:,nMSA) = rdt(:,:,:,nMSA) + rtndmsa(:,:,:)
+      rdt(:,:,:,nH2O2) = rdt(:,:,:,nH2O2) + rtndh2o2(:,:,:)
+   endif
+
+!------------------------------------------------------------------------
+! Secondary organic aerosols
+!------------------------------------------------------------------------
+   if (nSOA > 0 ) then
+      if (nSOA > ntp ) call error_mesg ('Tracer_driver', &
+                     'Number of tracers .lt. number for SOA', FATAL)
+
+      if (month.ne.month_input_SOA_files) then
+        call SOA_source_input( lon, lat, month, Time, is, ie, js, je, kbot)
+         month_input_SOA_files=month
+      endif
+
+      call chem_SOA(pwt,t,pfull,dt, &
+                jday,hour,minute,second,lat,lon,    &
+                tracer(:,:,:,nSOA),rtnd, Time,is,ie,js,je,kbot )
+
+      rdt(:,:,:,nSOA)=rdt(:,:,:,nSOA)+rtnd(:,:,:)
+
+   endif
+
+!------------------------------------------------------------------------
+! Sulfur hexafluoride (SF6)
+!------------------------------------------------------------------------
    if (nsf6 > 0) then
          if (nsf6 > ntp ) call error_mesg ('Tracer_driver', &
                             'Number of tracers .lt. number for sulfur hexafluoride', FATAL)
@@ -427,6 +862,24 @@ integer :: nnn
                                  rtnd, Time,is,ie,js,je, kbot)
       rdt(:,:,:,nsf6)=rdt(:,:,:,nsf6)+rtnd(:,:,:)
    endif
+
+   if (nch3i > 0) then
+         if (nch3i > ntp ) call error_mesg ('Tracer_driver', &
+                            'Number of tracers < number for ch3i', FATAL)
+         call atmos_ch3i( lon, lat, land, pwt, &
+                          r(:,:,:,nch3i)+dt*rdt(:,:,:,nch3i), rtnd,  &
+                          Time, phalf, pfull, t, is, js, dt, &
+                          z_half, z_full,q, t_surf_rad, albedo, coszen, &
+                          Time_next, kbot)
+         rdt(:,:,:,nch3i) = rdt(:,:,:,nch3i) + rtnd(:,:,:)
+   endif
+
+!------------------------------------------------------------------------
+! Save diagnostic tracer concentrations back to tracer array
+!------------------------------------------------------------------------
+   if (nt > ntp) then
+      r(:,:,:,ntp+1:nt) = tracer(:,:,:,ntp+1:nt)
+   end if
 
  end subroutine atmos_tracer_driver
 ! </SUBROUTINE>
@@ -481,6 +934,11 @@ type(time_type), intent(in)                                :: Time
            real, intent(in),    dimension(:,:,:), optional :: mask
 
 !-----------------------------------------------------------------------
+! Local variables
+!-----------------------------------------------------------------------
+      integer :: nbr_layers
+   
+!-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make changes 
 !
@@ -503,30 +961,102 @@ type(time_type), intent(in)                                :: Time
       call atmos_convection_tracer_init(r, phalf, axes, Time, &
                                         nconvect,  mask)
 
-!chemistry start
-!      nchem = get_tracer_index(MODEL_ATMOS,'CO')
-!      if (nchem > 0) then
-!        call driver_init(r, mask, axes, Time, lonb, latb, phalf)
+      call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
+                               num_prog=ntp)
+
+
+!------------------------------------------------------------------------
+! Initialize stratospheric chemistry
+!------------------------------------------------------------------------
+      nsphum   = get_tracer_index(MODEL_ATMOS,'sphum')
+      no3      = get_tracer_index(MODEL_ATMOS,'O3')
+      no3ch    = get_tracer_index(MODEL_ATMOS,'O3_chem')
+      nextinct = get_tracer_index(MODEL_ATMOS,'Extinction')
+      naerosol = get_tracer_index(MODEL_ATMOS,'Aerosol')
+!
+!  Set up photolysis rates etc.
+!
+      do_coupled_stratozone = strat_chem_driver_init()
+         
+
+!------------------------------------------------------------------------
+! Initialize tropospheric chemistry
+!------------------------------------------------------------------------
+      allocate( drydep_data(nt) )
+      do_tropchem = tropchem_driver_init(r,mask,axes,Time,lonb,latb,phalf,drydep_data)
+
+! ----------Interactive traceres--------------------
+! If any of the interactive tracers are activated, get the 
+! tracer number and initialize it.
+!      ntraceer= get_tracer_index(MODEL_ATMOS,'tracer_name')
+!      if (ntracer > 0) then
+!        call {tracer}_init(lonb, latb, r, axes, Time, mask)
 !      endif
-!chemistry end
 
+
+!    get tracer indices
       nbcphobic = get_tracer_index(MODEL_ATMOS,'bcphob')
-
       nbcphilic = get_tracer_index(MODEL_ATMOS,'bcphil')
+      nomphobic = get_tracer_index(MODEL_ATMOS,'omphob')
+      nomphilic = get_tracer_index(MODEL_ATMOS,'omphil')
+      ndust1    = get_tracer_index(MODEL_ATMOS,'dust1')
+      ndust2    = get_tracer_index(MODEL_ATMOS,'dust2')
+      ndust3    = get_tracer_index(MODEL_ATMOS,'dust3')
+      ndust4    = get_tracer_index(MODEL_ATMOS,'dust4')
+      ndust5    = get_tracer_index(MODEL_ATMOS,'dust5')
+      nseasalt1 = get_tracer_index(MODEL_ATMOS,'ssalt1')
+      nseasalt2 = get_tracer_index(MODEL_ATMOS,'ssalt2')
+      nseasalt3 = get_tracer_index(MODEL_ATMOS,'ssalt3')
+      nseasalt4 = get_tracer_index(MODEL_ATMOS,'ssalt4')
+      nseasalt5 = get_tracer_index(MODEL_ATMOS,'ssalt5')
+      nDMS      = get_tracer_index(MODEL_ATMOS,'simpleDMS')
+      nSO2      = get_tracer_index(MODEL_ATMOS,'simpleSO2')
+      nSO4      = get_tracer_index(MODEL_ATMOS,'simpleSO4')
+      nMSA      = get_tracer_index(MODEL_ATMOS,'simpleMSA')
+      nH2O2     = get_tracer_index(MODEL_ATMOS,'simpleH2O2')
+      nSOA      = get_tracer_index(MODEL_ATMOS,'SOA')
+      nsf6      = get_tracer_index(MODEL_ATMOS,'sf6')
+      nch3i     = get_tracer_index(MODEL_ATMOS,'ch3i')
 
-      nocphobic = get_tracer_index(MODEL_ATMOS,'ocphob')
+! Number of vertical layers
+      nbr_layers=size(r,3)
 
-      nocphilic = get_tracer_index(MODEL_ATMOS,'ocphil')
-
-      if (nbcphobic > 0) then
-        call atmos_carbon_aerosol_init(lonb, latb, r, axes, Time, mask)
+! initialize the tracers
+!carbonaceous aerosols
+      if (nbcphobic > 0 .or. nbcphilic >0 .or.  &
+          nomphobic > 0 .or. nomphilic >0 ) then
+        call atmos_carbon_aerosol_init(lonb, latb, axes, Time, mask)
       endif
-      
-      nsf6 = get_tracer_index(MODEL_ATMOS,'sf6')
-
+!dust aerosols
+      if (ndust1 > 0.or.ndust2 > 0.or.ndust3 > 0 &
+        .or.ndust4 > 0.or.ndust5 > 0 ) then
+        call atmos_dust_init (lonb, latb, axes, Time, mask)
+      endif
+!sea salt
+      if (nseasalt1 > 0.or.nseasalt2 > 0.or.nseasalt3 > 0 &
+        .or.nseasalt4 > 0.or.nseasalt5 > 0 ) then
+        call atmos_sea_salt_init (lonb, latb, axes, Time, mask)
+      endif
+!sulfur cycle
+      if (nDMS > 0 .or. nSO2 > 0 .or. nSO4 > 0 &
+                   .or. nMSA > 0 .or. nH2O2 > 0 ) then
+        call atmos_SOx_init ( lonb, latb, nbr_layers, axes, Time, mask)
+      endif
+!SOA
+      if ( nSOA > 0 ) then
+        call atmos_SOA_init ( lonb, latb, nbr_layers, axes, Time, mask)
+      endif
+!sf6
       if (nsf6 > 0) then
         call atmos_sulfur_hex_init (lonb, latb, r, axes, Time, mask)
       endif
+!ch3i
+      if (nch3i > 0) then
+        call atmos_ch3i_init (lonb, latb, axes, Time, mask)
+      endif
+
+!co2
+!      call atmos_co2_init
 
       call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
@@ -559,8 +1089,16 @@ type(time_type), intent(in)                                :: Time
 
       call atmos_radon_end
       call atmos_sulfur_hex_end
-      call atmos_carbon_aerosol_end
       call atmos_convection_tracer_end
+      call atmos_dust_end     
+      call atmos_sea_salt_end 
+      call atmos_SOx_end
+      call atmos_SOA_end      
+      call atmos_carbon_aerosol_end
+      if (nch3i > 0) then
+        call atmos_ch3i_end
+      endif
+!      call atmos_co2_end
 
       module_is_initialized = .FALSE.
 
@@ -569,9 +1107,55 @@ type(time_type), intent(in)                                :: Time
  end subroutine atmos_tracer_driver_end
 ! </SUBROUTINE>
 
+!#######################################################################
+! <SUBROUTINE NAME="atmos_tracer_flux_init">
+!   <OVERVIEW>
+!     Subroutine to initialize the ocean-atmosphere gas flux modules
+!   </OVERVIEW>
+!   <DESCRIPTION>
+!     Subroutine to initialize the ocean-atmosphere gas flux modules
+!   </DESCRIPTION>
+
+subroutine atmos_tracer_flux_init
+
+!call atmos_co2_flux_init
+
+return
+
+end subroutine atmos_tracer_flux_init
+! </SUBROUTINE>
+
+!######################################################################
+! <SUBROUTINE NAME="atmos_tracer_driver_gather_data">
+!   <OVERVIEW>
+!     Subroutine to terminate the tracer driver module.
+!   </OVERVIEW>
+!   <DESCRIPTION>
+!     Termination routine for tracer_driver. It should also call
+!     the destructors for the individual tracer routines.
+!   </DESCRIPTION>
+!   <TEMPLATE>
+!     call atmos_tracer_driver_gather_data
+!   </TEMPLATE>
+ subroutine atmos_tracer_driver_gather_data(gas_fields, tr_bot)
+
+use coupler_types_mod, only: coupler_2d_bc_type
+
+type(coupler_2d_bc_type), intent(inout) :: gas_fields
+real, dimension(:,:,:), intent(in)      :: tr_bot
+
+!-----------------------------------------------------------------------
+
+!  call atmos_co2_gather_data(gas_fields, tr_bot)
+
+!-----------------------------------------------------------------------
+
+ end subroutine atmos_tracer_driver_gather_data
+! </SUBROUTINE>
+
 !######################################################################
 
-end module atmos_tracer_driver_mod
 
+end module atmos_tracer_driver_mod
 
 

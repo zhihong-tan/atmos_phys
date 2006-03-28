@@ -1,7 +1,7 @@
 <html>
 <head>
 <META http-equiv="Content-Type" content="text/html; charset=EUC-JP">
-<title>Module atmos_carbon_aerosol_mod</title>
+<title>Module atmos_soa_mod</title>
 <link type="text/css" href="http://www.gfdl.noaa.gov/~fms/style/doc.css" rel="stylesheet">
 <STYLE TYPE="text/css">
           .fixed {
@@ -24,11 +24,11 @@
           <a href="#REFERENCES">REFERENCES </a>~ 
           <a href="#NOTES">NOTES</a></font>
 <hr>
-<h2>Module atmos_carbon_aerosol_mod</h2>
+<h2>Module atmos_soa_mod</h2>
 <a name="HEADER"></a>
 <!-- BEGIN HEADER -->
 <div>
-<b>Contact:&nbsp;</b><a href="mailto:Shekar.Reddy@noaa.gov">   Shekar Reddy </a>
+<b>Contact:&nbsp;</b><a href="mailto:Paul.Ginouxe@noaa.gov">   Paul Ginoux </a>
 <br>
 <b>Reviewers:&nbsp;</b>
 <br>
@@ -45,7 +45,10 @@
 <!-- END OVERVIEW -->
 <a name="DESCRIPTION"></a>
 <!-- BEGIN DESCRIPTION -->
-<div></div>
+<div>   This module is an implementation of Secondary organic aerosols (SOA)
+   from anthropogenic activities, and is based on Tie et al. (JGR, 2003).
+   The only souce of SOA is due to the oxydation of C4H10 by OH.
+   The concentrations of these 2 gas species are read as input. </div>
 <br>
 <!-- END DESCRIPTION -->
 <a name="OTHER MODULES USED"></a>
@@ -53,7 +56,7 @@
 <h4>OTHER MODULES USED</h4>
 <!-- BEGIN OTHER MODULES USED -->
 <div>
-<pre>                   fms_mod<br>          time_manager_mod<br>          diag_manager_mod<br>        tracer_manager_mod<br>         field_manager_mod<br>atmos_tracer_utilities_mod<br>             constants_mod</pre>
+<pre>                   fms_mod<br>          time_manager_mod<br>          diag_manager_mod<br>        tracer_manager_mod<br>         field_manager_mod<br>             constants_mod<br>atmos_tracer_utilities_mod</pre>
 </div>
 <!-- END OTHER MODULES USED -->
 <!-- BEGIN PUBLIC INTERFACE -->
@@ -63,11 +66,19 @@
 <div>
 <dl>
 <dt>
-<a href="#atmos_carbon_aerosol_init">atmos_carbon_aerosol_init</a>:</dt>
-<dd>   Subroutine to initialize the carbon aerosol module. </dd>
+<a href="#atmos_SOA_init">atmos_SOA_init</a>:</dt>
+<dd>   The constructor routine for the soa module. </dd>
 <dt>
-<a href="#atmos_carbon_aerosol_end">atmos_carbon_aerosol_end</a>:</dt>
-<dd>   The destructor routine for the carbon module. </dd>
+<a href="#atmos_SOA_end">atmos_SOA_end</a>:</dt>
+<dd>   The destructor routine for the soa module. </dd>
+<dt>
+<a href="#SOA_source_input">SOA_source_input</a>:</dt>
+<dd>   This subroutine read the monthly mean concentrations of OH and C4H10
+   *****WARNING:
+   To save space only the actual month is kept in memory which implies
+   that the "atmos_SOA_init" should be executed at the begining of each
+   month. In other words, the script should not run more than 1 month
+   without a restart </dd>
 </dl>
 </div>
 <br>
@@ -86,72 +97,40 @@
 <!-- BEGIN PUBLIC ROUTINES -->
 <ol type="a">
 <li>
-<a name="atmos_carbon_aerosol_init"></a>
-<h4>atmos_carbon_aerosol_init</h4>
-<pre>
-<b>call atmos_carbon_aerosol_init </b>(lonb, latb, r, axes, Time, mask)</pre>
+<a name="atmos_SOA_init"></a>
+<h4>atmos_SOA_init</h4>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
 </dt>
-<dd>   This subroutine querys the tracer manager to find the indices for the 
-   various carbonaceous aerosol tracers. It also registers the emission 
-   fields for diagnostic purposes.
-   <br>
-<br> 
-</dd>
+<dd></dd>
 <br>
-<br>
-<dt>
-<b>INPUT</b>
-</dt>
-<dd>
-<table border="0">
-<tr>
-<td valign="top" align="left"><tt>lonb&nbsp;&nbsp;&nbsp;</tt></td><td>   The longitudes for the local domain. <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:)]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>latb&nbsp;&nbsp;&nbsp;</tt></td><td>   The latitudes for the local domain. <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:)]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>mask&nbsp;&nbsp;&nbsp;</tt></td><td>   optional mask (0. or 1.) that designates which grid points
-   are above (=1.) or below (=0.) the ground dimensioned as
-   (nlon,nlat,nlev). <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, optional, dimension(:,:,:)]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>Time&nbsp;&nbsp;&nbsp;</tt></td><td>   Model time. <br>&nbsp;&nbsp;&nbsp;<span class="type">[type(time_type)]</span></td>
-</tr>
-<tr>
-<td valign="top" align="left"><tt>axes&nbsp;&nbsp;&nbsp;</tt></td><td>   The axes relating to the tracer array dimensioned as
-   (nlon, nlat, nlev, ntime) <br>&nbsp;&nbsp;&nbsp;<span class="type">[integer, dimension(4)]</span></td>
-</tr>
-</table>
-</dd>
-<br>
-<dt>
-<b>INPUT/OUTPUT</b>
-</dt>
-<dd>
-<table border="0">
-<tr>
-<td valign="top" align="left"><tt>r&nbsp;&nbsp;&nbsp;</tt></td><td>   Tracer fields dimensioned as (nlon,nlat,nlev,ntrace). <br>&nbsp;&nbsp;&nbsp;<span class="type">[real, dimension(:,:,:,:)]</span></td>
-</tr>
-</table>
-</dd>
 <br>
 </dl>
 </li>
 <li>
-<a name="atmos_carbon_aerosol_end"></a>
-<h4>atmos_carbon_aerosol_end</h4>
+<a name="atmos_SOA_end"></a>
+<h4>atmos_SOA_end</h4>
 <pre>
-<b>call atmos_carbon_aerosol_end </b>
+<b>call atmos_SOA_end </b>
 </pre>
 <dl>
 <dt>
 <b>DESCRIPTION</b>
 </dt>
 <dd>   This subroutine writes the version name to logfile and exits. </dd>
+<br>
+<br>
+</dl>
+</li>
+<li>
+<a name="SOA_source_input"></a>
+<h4>SOA_source_input</h4>
+<dl>
+<dt>
+<b>DESCRIPTION</b>
+</dt>
+<dd></dd>
 <br>
 <br>
 </dl>
