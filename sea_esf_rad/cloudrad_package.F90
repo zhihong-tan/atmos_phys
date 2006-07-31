@@ -63,7 +63,7 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 13.0 2006/03/28 21:11:24 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_07 $'
 
 
 !---------------------------------------------------------------------

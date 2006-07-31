@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cape_k.F90,v 13.0 2006/03/28 21:08:34 fms Exp $
+!  $Id: donner_cape_k.F90,v 13.0.2.1 2006/04/17 19:05:55 pjp Exp $
 
 !module donner_cape_inter_mod
 
@@ -710,6 +710,8 @@ subroutine don_c_define_moist_adiabat_k  &
 !----------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type 
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none 
 
@@ -729,7 +731,7 @@ character(len=*),             intent(out)   :: ermesg
       real     :: es_v_s, qe_v_s, rs_v_s, qs_v_s, pb, tp_s
       logical  :: capepos_s 
       integer  :: ieqv_s
-      integer  :: k, n
+      integer  :: k, n, nbad
 
       ermesg = ' '
 
@@ -756,13 +758,16 @@ character(len=*),             intent(out)   :: ermesg
 !--------------------------------------------------------------------
 !    define saturation vapor pressure for the parcel.
 !--------------------------------------------------------------------
-        call sat_vapor_pres_lookup_es_k (tp_s, es_v_s, ermesg)
+        call lookup_es_k (sat_vapor_pres_data, tp_s, es_v_s, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (nbad /= 0) then
+          ermesg = 'subroutine don_c_define_moist_adiabat_k: Temperatures out of range of esat table'
+          return
+        endif
 
 !--------------------------------------------------------------------
 !    define the environmental and parcel virtual temperature and specific
@@ -1328,6 +1333,8 @@ subroutine don_c_calculate_lcl_k    &
 !---------------------------------------------------------------------
 
 use donner_types_mod, only :  donner_param_type
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
 
@@ -1344,7 +1351,7 @@ character(len=*),            intent(out)   :: ermesg
 
       real     :: es_v_s, qs_v_s, dtdp_v_s, dt_v_s, cp_v_s, q_ve_s, tp_s
       integer  :: ieqv_s       
-      integer  :: k
+      integer  :: k, nbad
       
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
@@ -1372,13 +1379,15 @@ character(len=*),            intent(out)   :: ermesg
 !---------------------------------------------------------------------
         if (tp_s >= Param%tmin .and.      &
             press(k) >= Param%upper_limit_for_lcl) then
-          call sat_vapor_pres_lookup_es_k (tp_s, es_v_s, ermesg)
+          call lookup_es_k (sat_vapor_pres_data, tp_s, es_v_s, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (nbad /= 0) then
+            ermesg = 'subroutine don_c_calculate_lcl_k: Temperatures out of range of esat table'
+          endif
 
 !--------------------------------------------------------------------
 !  check if the parcel is now saturated.

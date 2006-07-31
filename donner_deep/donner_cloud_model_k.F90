@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cloud_model_k.F90,v 13.0 2006/03/28 21:08:37 fms Exp $
+!  $Id: donner_cloud_model_k.F90,v 13.0.2.1 2006/04/17 19:05:56 pjp Exp $
 
 !module donner_cloud_model_inter_mod
 
@@ -328,6 +328,8 @@ subroutine don_cm_gen_incloud_profs_k  &
 !----------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type, donner_column_diag_type
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none 
 
@@ -436,7 +438,7 @@ character(len=*),                   intent(out)   :: ermesg
                   entrain
       logical  :: flag
       integer  :: max_cloud_level,indx, ktr
-      integer  :: k, kcont, kc
+      integer  :: k, kcont, kc, nbad
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -539,13 +541,17 @@ character(len=*),                   intent(out)   :: ermesg
       rcl(1) = Param%cloud_base_radius
       tcc(1) = tb
       xclo(1,:) = tracers_c(1,:)
-      call sat_vapor_pres_lookup_es_k (tb, es, ermesg) 
+      call lookup_es_k (sat_vapor_pres_data, tb, es, nbad) 
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (nbad /= 0) then
+        ermesg = 'subroutine don_cm_gen_incloud_profs_k: '// &
+                 'temperatures out of range of esat table'
+        return
+      endif
 
       rsc(1) = es*Param%D622  /MAX(pb - es, es)
 
@@ -876,6 +882,8 @@ subroutine don_cm_move_parcel_k    &
 !----------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
 
@@ -898,6 +906,7 @@ character(len=*),        intent(out)   :: ermesg
 !----------------------------------------------------------------------
       real    ::  es, dtdp, drdp, dwdp, tcest, west, &
                   rest, qcwest,  qlwest, dtdp2, drdp2, dwdp2, qrwest
+      integer :: nbad
 
 !---------------------------------------------------------------------
       flag = .false.
@@ -1150,13 +1159,17 @@ character(len=*),        intent(out)   :: ermesg
 !    define the vapor mixing ratio for the new cloud temperature at
 !    level k+1.
 !--------------------------------------------------------------------
-      call sat_vapor_pres_lookup_es_k (tcctop, es, ermesg)
+      call lookup_es_k (sat_vapor_pres_data, tcctop, es, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (nbad /= 0) then
+        ermesg = 'subroutine don_cm_move_parcel_k: '// &
+                 'temperatures out of range of esat table'
+        return
+      endif
 
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
@@ -1242,6 +1255,8 @@ subroutine don_cm_lcl_k    &
 !---------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
 
@@ -1278,7 +1293,7 @@ character(len=*),        intent(out)  :: ermesg
 
       real    ::  t_parcel, p_start, p_end, gamma, es, rs, kappa_moist
       integer ::  max_levels
-      integer ::  k
+      integer ::  k, nbad
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -1365,13 +1380,17 @@ character(len=*),        intent(out)  :: ermesg
 !    determine the saturation mixing ratio for this temperature and
 !    pressure. 
 !---------------------------------------------------------------------
-        call sat_vapor_pres_lookup_es_k (t_parcel, es, ermesg)
+        call lookup_es_k (sat_vapor_pres_data, t_parcel, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (nbad /= 0) then
+          ermesg = 'subroutine don_cm_lcl_k: '// &
+                   'temperatures out of range of esat table'
+          return
+        endif
 
 !---------------------------------------------------------------------
 !   determine if the parcel is saturated. if it is, define the lcl 
@@ -1852,6 +1871,8 @@ subroutine don_cm_compute_vert_fluxes_k   &
 !---------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none 
 
@@ -1916,7 +1937,7 @@ character(len=*),                   intent(out)    :: ermesg
                                       thetf, esat, tv_env, tv_cld,  &
                                       dpdz_cb, sumemf, sumefc, sumthet
       integer                     ::  kcl, kch
-      integer                     ::  kc, kcont
+      integer                     ::  kc, kcont, nbad
 
 
 !---------------------------------------------------------------------
@@ -2009,13 +2030,17 @@ character(len=*),                   intent(out)    :: ermesg
 !    q_sat is correctly a specific humidity; mre(kc) is incorrectly a 
 !    mixing ratio.
 !---------------------------------------------------------------------
-        call sat_vapor_pres_lookup_es_k (tcc(kc), esat, ermesg)
+        call lookup_es_k (sat_vapor_pres_data, tcc(kc), esat, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (nbad /= 0) then
+          ermesg = 'subroutine don_cm_compute_vert_fluxes_k: '// &
+                   'temperatures out of range of esat table'
+          return
+        endif
         q_sat(kc) = Param%d622*esat/    &
                         MAX(cld_press(kc) + (Param%d622 - 1.)*esat, esat)
         tv_env     = te(kc)* (1. + Param%d608*(mre(kc)/(1. + mre(kc))))
@@ -2810,6 +2835,8 @@ subroutine don_cm_simult_k   &
 !--------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
 
@@ -2859,6 +2886,7 @@ character(len=*),        intent(out)   ::  ermesg
       real  ::  areap, c2, c3, c4, dadp, dw2dz, dwdz, dzdp, dz, es,  &
                 entrain_co, htv, htve, lat, rhoaw, rhoawp, &
                 rstar, sphum, tcae, teae, test, west, w2test, wtest
+      integer :: nbad
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -2922,13 +2950,17 @@ character(len=*),        intent(out)   ::  ermesg
 !    define the specific humidity at the cloud temperature (sphum) and
 !    the gas constant for moist air (rstar).
 !---------------------------------------------------------------------
-      call sat_vapor_pres_lookup_es_k (cloud_temp, es, ermesg)
+      call lookup_es_k (sat_vapor_pres_data, cloud_temp, es, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (nbad /= 0) then
+        ermesg = 'subroutine don_cm_simult_k: '// &
+                 'temperatures out of range of esat table'
+        return
+      endif
 
       sphum = Param%d622*es/MAX(cloud_p + (Param%d622   - 1.)*es, es)
       rstar = Param%rdgas*(1. + Param%d608*sphum)
@@ -3160,13 +3192,17 @@ character(len=*),        intent(out)   ::  ermesg
 !    define the virtual temperature (htv) corresponding to the updated 
 !    temperature test.
 !----------------------------------------------------------------------
-        call sat_vapor_pres_lookup_es_k (test, es, ermesg)
+        call lookup_es_k (sat_vapor_pres_data, test, es, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (nbad /= 0) then
+          ermesg = 'subroutine don_cm_simult_k: '// &
+                   'temperatures out of range of esat table'
+          return
+        endif
         sphum = Param%d622*es/MAX(cloud_p + (Param%d622   - 1.)*es, es)
         htv = test*(1. + Param%d608*sphum)
 
@@ -3209,6 +3245,8 @@ subroutine don_cm_tae_k    &
 !--------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
 
@@ -3239,7 +3277,7 @@ character(len=*),        intent(out)   :: ermesg
 !   local variables:
 
       real      ::   pr, te, es, mre
-      integer   ::   k  
+      integer   ::   k,nbad
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -3280,13 +3318,17 @@ character(len=*),        intent(out)   :: ermesg
 !    level (mre).
 !--------------------------------------------------------------------
         te = init_temp*((pr/init_pr)**Param%kappa)
-        call sat_vapor_pres_lookup_es_k (te, es, ermesg)
+        call lookup_es_k (sat_vapor_pres_data, te, es, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (nbad /= 0) then
+          ermesg = 'subroutine don_cm_tae_k: '// &
+                   'temperatures out of range of esat table'
+          return
+        endif
         mre = Param%d622*es/MAX(init_pr - es, es)
 
 !--------------------------------------------------------------------
@@ -3328,6 +3370,8 @@ subroutine don_cm_micro_k   &
 !--------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
 
@@ -3376,6 +3420,7 @@ character(len=*),         intent(out)   :: ermesg
       real :: cond, d1, d2, dcw2, dqcw3, dt_micro, dz, ent, es1, es2, &
               pav, rb, qcwa, qeb, qrwa, red, rho, rs1, rs2, tcb,   &
               teb, wav
+      integer :: nbad
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -3425,25 +3470,33 @@ character(len=*),         intent(out)   :: ermesg
 !--------------------------------------------------------------------
 !    define the saturation mixing ratio (rs1) at level p1.
 !--------------------------------------------------------------------
-      call sat_vapor_pres_lookup_es_k (tc1, es1, ermesg) 
+      call lookup_es_k (sat_vapor_pres_data, tc1, es1, nbad) 
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return 
+      if (nbad /= 0) then
+        ermesg = 'subroutine don_cm_micro_k: '// &
+                 'temperatures out of range of esat table'
+        return
+      endif
       rs1 = Param%d622  *es1/MAX(p1 - es1, es1)
 
 !--------------------------------------------------------------------
 !    define the saturation mixing ratio (rs2) at level p2.
 !--------------------------------------------------------------------
-      call sat_vapor_pres_lookup_es_k (tc2, es2, ermesg) 
+      call lookup_es_k (sat_vapor_pres_data, tc2, es2, nbad) 
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (nbad /= 0) then
+        ermesg = 'subroutine don_cm_micro_k: '// &
+                 'temperatures out of range of esat table'
+        return
+      endif
       rs2 = Param%d622  *es2/MAX(p2 - es2, es2)
 
 !--------------------------------------------------------------------

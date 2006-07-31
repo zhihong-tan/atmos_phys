@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_lscloud_k.F90,v 13.0 2006/03/28 21:08:51 fms Exp $
+!  $Id: donner_lscloud_k.F90,v 13.0.2.1 2006/04/17 19:05:56 pjp Exp $
 
 !module donner_lscloud_inter_mod
 
@@ -309,6 +309,8 @@ subroutine don_l_adjust_tiedtke_inputs_k   &
 
 use donner_types_mod, only : donner_conv_type, donner_param_type, &
                              donner_column_diag_type
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
 
@@ -358,7 +360,7 @@ character(len=*),            intent(out)    :: ermesg
      real, dimension(nlev_lsm)  :: qrf
      real                       :: acell, pzm, rfun, qsat, esat
      integer                    :: numeq
-     integer                    :: i, j, k, n
+     integer                    :: i, j, k, n, nbad
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -475,14 +477,18 @@ character(len=*),            intent(out)    :: ermesg
 !    base.
 !---------------------------------------------------------------------
               if (pfull(i,j,k) <= Don_conv%pb_v(i,j)) then
-                call sat_vapor_pres_lookup_es_k   &
-                                            (temp(i,j,k), esat, ermesg)
+                call lookup_es_k (sat_vapor_pres_data, temp(i,j,k), esat, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-                if (trim(ermesg) /= ' ') return
+                if (nbad /= 0) then
+                  ermesg = 'subroutine don_l_adjust_tiedtke_inputs_k: '// &
+                           'temperatures out of range of esat table'
+                  return
+                endif
+
                 qsat = Param%d622*esat/        &
                         MAX(pfull(i,j,k) + esat*(Param%d622 - 1.), esat)
 

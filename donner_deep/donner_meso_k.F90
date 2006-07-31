@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_meso_k.F90,v 13.0 2006/03/28 21:08:53 fms Exp $
+!  $Id: donner_meso_k.F90,v 13.0.2.1 2006/04/17 19:05:56 pjp Exp $
 
 !module donner_meso_inter_mod
 
@@ -367,6 +367,8 @@ subroutine don_m_meso_updraft_k    &
 !-------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
 
@@ -412,7 +414,7 @@ character(len=128),              intent(out) :: ermesg
       logical   :: do_donner_tracer
       integer   :: ncc, ncztm
       integer   :: kcont, kk
-      integer   :: jk, i, jj, jsave, jkm, jkp, jksave, j, k
+      integer   :: jk, i, jj, jsave, jkm, jkp, jksave, j, k, nbad
 
 !-----------------------------------------------------------------------
       ermesg = ' '
@@ -825,13 +827,17 @@ character(len=128),              intent(out) :: ermesg
 !    should be mixing ratio), reset it to the saturation value.
 !---------------------------------------------------------------------
           ta = temp_c(k) + Param%tprime_meso_updrft
-          call sat_vapor_pres_lookup_es_k (ta, es, ermesg)
+          call lookup_es_k (sat_vapor_pres_data, ta, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (nbad /= 0) then
+            ermesg = 'subroutine don_m_meso_updraft_k: '// &
+                     'temperatures out of range of esat table'
+            return
+          endif
 
           mrsat = Param%d622*es/MAX(pfull_c(k) - es, es)
           q3 = mrsat - tempq(k)
@@ -872,13 +878,17 @@ character(len=128),              intent(out) :: ermesg
 !    case the loop will be exited.
 !---------------------------------------------------------------------
         te = temp_c(k) + Param%tprime_meso_updrft
-        call sat_vapor_pres_lookup_es_k (te, es, ermesg)
+        call lookup_es_k (sat_vapor_pres_data, te, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (nbad /= 0) then
+          ermesg = 'subroutine don_m_meso_updraft_k: '// &
+                   'temperatures out of range of esat table'
+          return
+        endif
 
         mrsat = Param%d622*es/MAX(pfull_c(k) - es, es)
         jsave = k
@@ -983,13 +993,17 @@ character(len=128),              intent(out) :: ermesg
 !    !!!).
 !--------------------------------------------------------------------
         te = temp_c(k) + Param%tprime_meso_updrft
-        call sat_vapor_pres_lookup_es_k (te, es, ermesg)
+        call lookup_es_k (sat_vapor_pres_data, te, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (nbad /= 0) then
+          ermesg = 'subroutine don_m_meso_updraft_k: '// &
+                   'temperatures out of range of esat table'
+          return
+        endif
 
         tempqa(k) = Param%d622*es/MAX(pfull_c(k) - es, es)
 
@@ -1019,13 +1033,17 @@ character(len=128),              intent(out) :: ermesg
 !     in the parcel at the jkp level.
 !--------------------------------------------------------------------
           else if (k == jsave) then
-            call sat_vapor_pres_lookup_es_k (tep, es, ermesg)
+            call lookup_es_k (sat_vapor_pres_data, tep, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-            if (trim(ermesg) /= ' ') return
+            if (nbad /= 0) then
+              ermesg = 'subroutine don_m_meso_updraft_k: '// &
+                       'temperatures out of range of esat table'
+              return
+            endif
 
             tempqa(jkp) = Param%d622*es/MAX(pfull_c(jkp) - es, es)
             cmu(k) = -omv(k)*(tempqa(jkp) - tempqa(k))/  &
@@ -1041,13 +1059,17 @@ character(len=128),              intent(out) :: ermesg
 !     the jkp level.
 !--------------------------------------------------------------------
           else
-            call sat_vapor_pres_lookup_es_k (tep, es, ermesg)
+            call lookup_es_k (sat_vapor_pres_data, tep, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-            if (trim(ermesg) /= ' ') return
+            if (nbad /= 0) then
+              ermesg = 'subroutine don_m_meso_updraft_k: '// &
+                       'temperatures out of range of esat table'
+              return
+            endif
 
             tempqa(jkp) = Param%d622*es/MAX(pfull_c(jkp) - es, es)
             cmu(k) = -omv(k)*(tempqa(jkp) - tempqa(jkm))/ &
@@ -1204,13 +1226,17 @@ character(len=128),              intent(out) :: ermesg
 !    !!!).
 !--------------------------------------------------------------------
         tmu = temp_c(jk) + Param%TPRIME_MESO_UPDRFT
-        call sat_vapor_pres_lookup_es_k (tmu, es, ermesg)
+        call lookup_es_k (sat_vapor_pres_data, tmu, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (nbad /= 0) then
+          ermesg = 'subroutine don_m_meso_updraft_k: '// &
+                   'temperatures out of range of esat table'
+          return
+        endif
 
         qmu = Param%d622*es/MAX(pfull_c(jk) - es, es)
 
@@ -1351,6 +1377,8 @@ subroutine don_m_meso_downdraft_k    &
 !-------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
+use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
 
@@ -1381,7 +1409,7 @@ character(len=*),              intent(out)  :: ermesg
                   emda, targ, tprimd, tb, qten, tten, omd, mrsb, wa,   &
                   wb, tmd, rin, rintsum, rintsum2
       integer :: ncmd
-      integer :: jksave, k
+      integer :: jksave, k, nbad
 
 !----------------------------------------------------------------------
 
@@ -1453,13 +1481,17 @@ character(len=*),              intent(out)  :: ermesg
 !    see "Moist Static Energy A, 1/26/91" notes.
 !---------------------------------------------------------------------
         targ = temp_c(k)
-        call sat_vapor_pres_lookup_es_k (targ, es, ermesg)
+        call lookup_es_k (sat_vapor_pres_data, targ, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (nbad /= 0) then
+          ermesg = 'subroutine don_m_meso_downdraft_k: '// &
+                   'temperatures out of range of esat table'
+          return
+        endif
 
         mrsat = Param%d622*es/MAX(pfull_c(k) - es, es)
         c1 = Param%d622*Param%hlv*es/   &
@@ -1469,13 +1501,17 @@ character(len=*),              intent(out)  :: ermesg
         tprimd = tprimd/(Param%cp_air + Param%hlv*c1*c2)
         tempt(k) = temp_c(k) + tprimd
         targ = tempt(k)
-        call sat_vapor_pres_lookup_es_k (targ, es, ermesg)
+        call lookup_es_k (sat_vapor_pres_data, targ, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (nbad /= 0) then
+          ermesg = 'subroutine don_m_meso_downdraft_k: '// &
+                   'temperatures out of range of esat table'
+          return
+        endif
 
         tempqa(k) = c2*es*Param%d622/MAX(pfull_c(k) - es, es)
 
@@ -1554,13 +1590,17 @@ character(len=*),              intent(out)  :: ermesg
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
                       'in polat: k,p,x=', k, pb, tb
           endif
-          call sat_vapor_pres_lookup_es_k (tb, es, ermesg)
+          call lookup_es_k (sat_vapor_pres_data, tb, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (nbad /= 0) then
+            ermesg = 'subroutine don_m_meso_downdraft_k: '// &
+                     'temperatures out of range of esat table'
+            return
+          endif
 
           mrsb = Param%d622*es/MAX(pb - es, es)
           tprimd = hfmin/omd
@@ -1574,13 +1614,17 @@ character(len=*),              intent(out)  :: ermesg
           emt(k) = wa*fjkb + wb*fjk
           fjk = ampta1*omd*(tempqa(k) - mixing_ratio_C(k))
           targ = tb + tprimd
-          call sat_vapor_pres_lookup_es_k (targ, es, ermesg)
+          call lookup_es_k (sat_vapor_pres_data, targ, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (nbad /= 0) then
+            ermesg = 'subroutine don_m_meso_downdraft_k: '// &
+                     'temperatures out of range of esat table'
+            return
+          endif
 
           qbm = .7*Param%d622*es/MAX(pb - es, es)
           fjkb = ampta1*omd*(qbm - qb)
@@ -1620,13 +1664,17 @@ character(len=*),              intent(out)  :: ermesg
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
                       'in polat: k,p,x=', k, pmd, tmd
           endif
-          call sat_vapor_pres_lookup_es_k (tmd, es, ermesg)
+          call lookup_es_k (sat_vapor_pres_data, tmd, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (nbad /= 0) then
+            ermesg = 'subroutine don_m_meso_downdraft_k: '// &
+                     'temperatures out of range of esat table'
+            return
+          endif
 
           qsmd = Param%d622*es/MAX(pmd - es, es)
           c1 = Param%d622*Param%hlv*es/(pmd*Param%rvgas*(tmd**2))
@@ -1637,13 +1685,17 @@ character(len=*),              intent(out)  :: ermesg
           wb = (phalf_c(k) - pmd)/(pfull_c(k-1) - pmd)
           emt(k) = fjkmd*wa + fjkm*wb
           targ = tmd + tprimd
-          call sat_vapor_pres_lookup_es_k (targ, es, ermesg)
+          call lookup_es_k (sat_vapor_pres_data, targ, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (nbad /= 0) then
+            ermesg = 'subroutine don_m_meso_downdraft_k: '// &
+                     'temperatures out of range of esat table'
+            return
+          endif
 
           qmmd = Param%d622*es/MAX(pmd - es, es)
           fjkm = ampta1*omd*(tempqa(k-1) - mixing_ratio_c(k-1))
