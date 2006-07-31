@@ -5,7 +5,7 @@ implicit none
       public :: setrxt
 
 character(len=128), parameter :: version     = '$Id: moz.subs.F90,v 13.0 2006/03/28 21:16:37 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis $'
+character(len=128), parameter :: tagname     = '$Name: memphis_2006_07 $'
 logical                       :: module_is_initialized = .false.
 
       contains

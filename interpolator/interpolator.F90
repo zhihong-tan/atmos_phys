@@ -44,9 +44,10 @@ use fms_mod,           only : lowercase, write_version_number, &
                               fms_init, &
                               file_exist, mpp_root_pe, stdlog
 use horiz_interp_mod,  only : horiz_interp_type, &
+                              horiz_interp_new,  &
                               horiz_interp_init, &
                               horiz_interp,      &
-                              horiz_interp_end
+                              horiz_interp_del
 use time_manager_mod,  only : time_type,   &
                               set_time,    &
                               set_date,    &
@@ -86,8 +87,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 13.0 2006/03/28 21:15:09 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis $'
+'$Id: interpolator.F90,v 13.0.2.1 2006/05/20 15:19:41 pjp Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_07 $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -242,6 +243,7 @@ real, allocatable :: time_in(:)
 if (.not. module_is_initialized) then
   call fms_init
   call diag_manager_init
+  call horiz_interp_init
 endif
 
 tpi = 2.0*PI ! 4.*acos(0.)
@@ -683,7 +685,7 @@ endif
 
 !Assume that the horizontal interpolation within a file is the same for each variable.
 
- call horiz_interp_init(clim_type%interph, &
+ call horiz_interp_new(clim_type%interph, &
                         clim_type%lonb, clim_type%latb, &
                         lonb_mod, latb_mod)
 
@@ -1944,7 +1946,7 @@ deallocate(clim_type%latb)
 deallocate(clim_type%lonb)
 deallocate(clim_type%levs)
 deallocate(clim_type%halflevs) 
-call horiz_interp_end(clim_type%interph)
+call horiz_interp_del(clim_type%interph)
 deallocate(clim_type%time_slice)
 deallocate(clim_type%field_type)
 deallocate(clim_type%field_name)

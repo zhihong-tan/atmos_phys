@@ -9,8 +9,8 @@ private
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act.F90,v 13.0 2006/03/28 21:15:11 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis $'
+character(len=128) :: version = '$Id: aer_ccn_act.F90,v 13.0.2.1 2006/05/26 02:46:18 wfc Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_07 $'
 
 !---------------- private data -------------------
 
@@ -27,12 +27,12 @@ character(len=128) :: tagname = '$Name: memphis $'
   
 !NO 1 Ammonium Sulfate  NO 2 Sea Salt NO 3 Organics
   
-  real  B_term (TY) /0.7822,0.6342,1.3764/ ! 2 * 0.3492/(Bprim)**(1/3)
-  real  Mass_scal (TY) /0.15896,0.198,0.1241/ ! scaling mass (ug m-3)
+  real :: B_term (TY) =(/0.7822,0.6342,1.3764/) ! 2 * 0.3492/(Bprim)**(1/3)
+  real :: Mass_scal (TY) =(/0.15896,0.198,0.1241/) ! scaling mass (ug m-3)
 
-  real  N(MD) /340., 60./ ! Total Number Concen (cm-3)
-  real  Dm(MD) /0.01, 0.07/ ! Geometric mean diameter (micron)
-  real  LNSIGMA(MD) /0.47, 0.6931/ ! ln( Sigma (St. Dev.) )
+  real :: N(MD) =(/340., 60./) ! Total Number Concen (cm-3)
+  real :: Dm(MD) =(/0.01, 0.07/) ! Geometric mean diameter (micron)
+  real :: LNSIGMA(MD) =(/0.47, 0.6931/) ! ln( Sigma (St. Dev.) )
 
 !Parameters for look-up tables
 
