@@ -88,7 +88,7 @@ interface interp_weighted_scalar
 end interface interp_weighted_scalar
 character(len=128) :: version = &
 '$Id: interpolator.F90,v 13.0.2.1 2006/05/20 15:19:41 pjp Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_07 $'
+character(len=128) :: tagname = '$Name: memphis_2006_08 $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
