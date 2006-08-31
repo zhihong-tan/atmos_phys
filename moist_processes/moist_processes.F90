@@ -88,8 +88,8 @@ private
    integer :: nsphum, nql, nqi, nqa, nqn  ! tracer indices for stratiform clouds
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 13.0 2006/03/28 21:10:21 fms Exp $'
-   character(len=128) :: tagname = '$Name: memphis_2006_07 $'
+   version = '$Id: moist_processes.F90,v 13.0.2.1 2006/07/11 17:23:51 wfc Exp $'
+   character(len=128) :: tagname = '$Name: memphis_2006_08 $'
    logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
@@ -551,6 +551,14 @@ character(len=32) :: tracer_units, tracer_name
       rdt_init(:,:,:,:) = rdt(:,:,:,:)
       ttnd_conv(:,:,:) = 0.
       qtnd_conv(:,:,:) = 0.
+!-->cjg: addition to initialize arrays that were causing model to crash
+!        when do_cma = do_ras = do_donner_deep = .false.
+      qtnd(:,:,:) = 0.
+      qltnd(:,:,:) = 0.
+      qitnd(:,:,:) = 0.
+      conv_rain3d(:,:,:) = 0.
+      conv_snow3d(:,:,:) = 0.
+!<--cjg
 
 !----------------------------------------------------------------------
 !    compute the mean temperature in the lower atmosphere (the lowest
@@ -1693,6 +1701,7 @@ endif
         qltnd = qltnd*dtinv
         qitnd = qitnd*dtinv
         qatnd = qatnd*dtinv
+        if (do_liq_num) qntnd = qntnd*dtinv
    
 !----------------------------------------------------------------------
 !    update the total tendency terms (temperature, vapor specific 
@@ -1704,6 +1713,7 @@ endif
         rdt(:,:,:,nql) = rdt(:,:,:,nql) + qltnd                 
         rdt(:,:,:,nqi) = rdt(:,:,:,nqi) + qitnd                 
         rdt(:,:,:,nqa) = rdt(:,:,:,nqa) + qatnd                  
+        if (do_liq_num)         rdt(:,:,:,nqn) = rdt(:,:,:,nqn) + qntnd                  
         lprec = lprec + rain
         fprec = fprec + snow
       endif  ! (do_lsc)
@@ -1721,7 +1731,7 @@ endif
       end if
       do n=1,size(rdt,4)
         if ( n /= nsphum ) then
-          if ( .not. do_strat .or. (n /= nql .and. n /= nqi .and. n /= nqa) ) then
+          if ( .not. do_strat .or. (n /= nql .and. n /= nqi .and. n /= nqa .and. n /= nqn) ) then
             wetdeptnd = 0.0
             call wet_deposition( n, t, pfull, phalf, zfull, zhalf, rain, snow, &
                                  qtnd_wet, cloud_wet, &
@@ -1730,7 +1740,6 @@ endif
                                  Time, 'lscale', is, js, dt )
             rdt (:,:,:,n) = rdt(:,:,:,n) - wetdeptnd
             wet_data(:,:,:,n) = wet_data(:,:,:,n) + wetdeptnd
-
 
             if (id_wet_deposition(n) /= 0 ) then
               used = send_data( id_wet_deposition(n), wet_data(:,:,:,n), &

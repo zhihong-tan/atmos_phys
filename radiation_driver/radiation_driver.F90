@@ -211,8 +211,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 13.1 2006/04/28 14:16:31 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_07 $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 13.1.2.1 2006/05/23 20:53:55 ds Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_08 $'
 
 
 !---------------------------------------------------------------------
@@ -2219,7 +2219,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !-------------------------------------------------------------------
         if (do_sea_esf_rad) then
           call produce_radiation_diagnostics        &
-                            (is, ie, js, je, Time_next, lat, &
+                            (is, ie, js, je, Time_next, Time, lat, &
                              Atmos_input%tsfc, Surface,  &
                              flux_ratio,  Astro, Rad_output,  &
                              Rad_gases, Lw_output=Lw_output,&
@@ -2228,7 +2228,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
                              Lsc_microphys=Lsc_microphys)
         else
           call produce_radiation_diagnostics        &
-                            (is, ie, js, je, Time_next, lat, &
+                            (is, ie, js, je, Time_next, Time, lat, &
                              Atmos_input%tsfc, Surface,  &
                              flux_ratio,  Astro, Rad_output,  &
                              Rad_gases, Fsrad_output=Fsrad_output, &
@@ -6410,7 +6410,7 @@ end subroutine flux_trop_calc
 ! </SUBROUTINE>
 !
 subroutine produce_radiation_diagnostics          &
-                        (is, ie, js, je, Time_diag, lat, ts, Surface, &
+                        (is, ie, js, je, Time_diag, Time, lat, ts, Surface, &
                              flux_ratio, Astro, Rad_output, Rad_gases,&
                              Lw_output, Sw_output, Cld_spec,   &
                              Lsc_microphys, Fsrad_output, mask)
@@ -6423,6 +6423,7 @@ subroutine produce_radiation_diagnostics          &
 !--------------------------------------------------------------------
 integer,                 intent(in)             :: is, ie, js, je
 type(time_type),         intent(in)             :: Time_diag
+type(time_type),         intent(in)             :: Time
 real,dimension(:,:),     intent(in)             :: lat, ts
 type(surface_type),      intent(in)             :: Surface
 real,dimension(:,:),     intent(in)             :: flux_ratio
@@ -6706,6 +6707,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !---------------------------------------------------------------------
 !   send standard sw diagnostics to diag_manager.
 !---------------------------------------------------------------------
+      if (Time_diag > Time) then
         if (do_clear_sky_pass) then
           ipass = 2
         else
@@ -7166,6 +7168,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
           used = send_data (id_fracday, Astro%fracday, Time_diag,   &
                             is, js )
         endif
+      endif
       endif   ! (renormalize_sw_fluxes .or. do_rad .or.   
               !  all_step_diagnostics)
 
@@ -7285,6 +7288,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
       endif  ! do_sea_esf_rad
 
       if (do_rad .or. all_step_diagnostics) then
+      if (Time_diag > Time) then
 !---------------------------------------------------------------------
 !   send standard lw diagnostics to diag_manager.
 !---------------------------------------------------------------------
@@ -7444,6 +7448,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
       endif
 
         endif  ! (do_clear_sky_pass)
+        endif
       endif  ! (do_rad .or. all_step_diagnostics)
 
 !--------------------------------------------------------------------
