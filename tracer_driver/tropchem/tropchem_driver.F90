@@ -47,7 +47,7 @@ use         tracer_manager_mod, only : get_tracer_index,     &
 use          field_manager_mod, only : MODEL_ATMOS,          &
                                        parse
 use atmos_tracer_utilities_mod, only : dry_deposition
-use              constants_mod, only : grav, rdgas
+use              constants_mod, only : grav, rdgas, WTMAIR, WTMH2O, AVOGNO
 use                    mpp_mod, only : mpp_clock_id,         &
                                        mpp_clock_begin,      &
                                        mpp_clock_end
@@ -64,6 +64,8 @@ use             mo_chemini_mod, only : chemini
 use             M_TRACNAME_MOD, only : tracnam         
 use                MO_GRID_MOD, only : pcnstm1 
 use               MOZ_HOOK_MOD, only : moz_hook_init
+use   strat_chem_utilities_mod, only : strat_chem_utilities_init, &
+                                       strat_chem_dcly_dt
 
 implicit none
 
@@ -115,11 +117,9 @@ namelist /tropchem_driver_nml/    &
                                do_tropchem
 
 character(len=7), parameter :: module_name = 'tracers'
-real, parameter :: MW_air     = 28.9644,  & !molecular weightof air(g/mole)
-                   Navo       = 6.023e23, & !Avogadro's constant(molec/mole)
-                   g_to_kg    = 1.e-3,    & !conversion factor (kg/g)
+real, parameter :: g_to_kg    = 1.e-3,    & !conversion factor (kg/g)
                    m2_to_cm2  = 1.e4        !conversion factor (cm2/m2)
-real, parameter :: emis_cons = MW_air * g_to_kg * m2_to_cm2 / Navo        
+real, parameter :: emis_cons = WTMAIR * g_to_kg * m2_to_cm2 / AVOGNO
 logical, dimension(pcnstm1) :: is_emis = .false.
 type(interpolate_type),dimension(pcnstm1), save :: inter_emis
 type(interpolate_type),dimension(pcnstm1), save :: inter_aircraft_emis
@@ -129,12 +129,16 @@ logical, dimension(pcnstm1) :: is_ub = .false.
 logical, dimension(pcnstm1) :: is_airc = .false.
 character(len=64),dimension(pcnstm1) :: ub_names,airc_names
 real, parameter :: small = 1.e-50
+integer :: sphum_ndx=0, cl_ndx=0, clo_ndx=0, hcl_ndx=0, hocl_ndx=0, clono2_ndx=0, &
+           cl2o2_ndx=0, cl2_ndx=0, clno2_ndx=0, br_ndx=0, bro_ndx=0, hbr_ndx=0, &
+           hobr_ndx=0, brono2_ndx=0, brcl_ndx=0
 
 !-----------------------------------------------------------------------
 !     ... identification numbers for diagnostic fields
 !-----------------------------------------------------------------------
-integer :: id_sul, id_temp
+integer :: id_sul, id_temp, id_dclydt, id_dbrydt
 integer :: inqa, inql, inqi !index of the three speices(nqa, nql, nqi)
+integer :: age_ndx ! index of age tracer
 logical :: module_is_initialized=.false.
 
 integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, id_emiss, id_ub, id_airc
@@ -148,8 +152,8 @@ type(interpolate_type), save :: drydep_data_default
 integer :: clock_id,ndiag
 
 !---- version number -----
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 13.0 2006/03/28 21:16:41 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis_2006_08 $'
+character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 13.0.4.1 2006/11/20 20:24:10 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: memphis_2006_12 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -257,15 +261,17 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,          &
    real, intent(inout), dimension(:,:,:,:)        :: rdiag
    integer, intent(in),  dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
-   real, dimension(size(r,1),size(r,2),size(r,3)) :: sulfate_data,o3_data
+   real, dimension(size(r,1),size(r,2),size(r,3)) :: sulfate_data
    real, dimension(size(r,1),size(r,2),size(r,3)) :: ub_temp,rno
    real, dimension(size(r,1),size(r,2),size(r,3),maxinv) :: inv_data
    real, dimension(size(r,1),size(r,2)) :: emis, temp_data
+   real, dimension(size(r,1),size(r,2),size(r,3)) :: age, cly, bry, dclydt, dbrydt
    integer :: i,j,k,n,kb,id,jd,kd,ninv,ntp
 !  integer :: nno,nno2
    integer :: inv_index
    integer :: plonl
    logical :: used
+   real :: scale_factor
    real,  dimension(size(r,1),size(r,3)) :: pdel
    real, dimension(size(r,1),size(r,2),size(r,3),pcnstm1)  ::r_temp,emis_source,r_ub,airc_emis
    real, dimension(size(land,1), size(land,2)) :: oro ! 0 and 1 rep. of land
@@ -371,6 +377,13 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,          &
          r_temp(:,:,:,n) = rdiag(:,:,:,indices(n)-ntp)
       end if
    end do
+
+!-----------------------------------------------------------------------
+!     ... convert to H2O VMR
+!-----------------------------------------------------------------------
+   if (sphum_ndx > 0) then
+      r_temp(:,:,:,sphum_ndx) = r_temp(:,:,:,sphum_ndx) * WTMAIR / WTMH2O
+   end if
     
    r_temp(:,:,:,:) = MAX(r_temp(:,:,:,:),small)
   
@@ -411,7 +424,6 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,          &
 
    r_temp(:,:,:,:) = MAX( r_temp(:,:,:,:), small )
 
-   
 !-----------------------------------------------------------------------
 !     ... output diagnostics
 !-----------------------------------------------------------------------
@@ -423,20 +435,26 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,          &
          used = send_data(id_loss(n),loss(:,:,:,n),Time,is_in=is,js_in=js)
       end if
       
+      if (n == sphum_ndx) then
+         scale_factor = WTMAIR/WTMH2O
+      else
+         scale_factor = 1.
+      end if
+
       if(indices(n) <= ntp) then
 !-----------------------------------------------------------------------
 !     ... prognostic species
 !-----------------------------------------------------------------------
          if(id_chem_tend(n)>0) then
             used = send_data( id_chem_tend(n), &
-                              ( r_temp(:,:,:,n) - MAX(r(:,:,:,indices(n)),0.) )/dt,&
-                              Time, is_in=is,js_in=js)
+                        ( r_temp(:,:,:,n) - MAX(r(:,:,:,indices(n))*scale_factor,small) )/dt,&
+                        Time, is_in=is,js_in=js)
          end if
 !-----------------------------------------------------------------------
 !     ... compute tendency
 !-----------------------------------------------------------------------
          chem_dt(:,:,:,indices(n)) = airc_emis(:,:,:,n) + emis_source(:,:,:,n) + &
-                                     ( r_temp(:,:,:,n) - MAX(r(:,:,:,indices(n)),0.) ) / dt
+                         ( r_temp(:,:,:,n) - MAX(r(:,:,:,indices(n))*scale_factor,small) ) / dt
 
       else
 !-----------------------------------------------------------------------
@@ -444,8 +462,8 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,          &
 !-----------------------------------------------------------------------
          if(id_chem_tend(n)>0) then
             used = send_data( id_chem_tend(n), &
-                              ( r_temp(:,:,:,n) - MAX(rdiag(:,:,:,indices(n)-ntp),0.) )/dt,&
-                              Time, is_in=is,js_in=js)
+                        ( r_temp(:,:,:,n) - MAX(rdiag(:,:,:,indices(n)-ntp)*scale_factor,small) )/dt,&
+                        Time, is_in=is,js_in=js)
          end if
          rdiag(:,:,:,indices(n)-ntp) = r_temp(:,:,:,n)
       end if
@@ -482,6 +500,89 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,          &
 !             relaxed_dt
 !     endwhere
 !  end if
+
+!-----------------------------------------------------------------------
+!     ... stratospheric Cly and Bry source
+!         
+!-----------------------------------------------------------------------
+   if(age_ndx > 0 .and. age_ndx <= ntp) then
+      age(:,:,:) = r(:,:,:,age_ndx)
+      cly(:,:,:) = 0.
+      bry(:,:,:) = 0.
+      if (cl_ndx>0) then
+         cly(:,:,:) = cly(:,:,:) + r(:,:,:,cl_ndx)
+      end if
+      if (clo_ndx>0) then
+         cly(:,:,:) = cly(:,:,:) + r(:,:,:,clo_ndx)
+      end if
+      if (hcl_ndx>0) then
+         cly(:,:,:) = cly(:,:,:) + r(:,:,:,hcl_ndx)
+      end if
+      if (hocl_ndx>0) then
+         cly(:,:,:) = cly(:,:,:) + r(:,:,:,hocl_ndx)
+      end if
+      if (clono2_ndx>0) then
+         cly(:,:,:) = cly(:,:,:) + r(:,:,:,clono2_ndx)
+      end if
+      if (cl2o2_ndx>0) then
+         cly(:,:,:) = cly(:,:,:) + r(:,:,:,cl2o2_ndx)*2
+      end if
+      if (cl2_ndx>0) then
+         cly(:,:,:) = cly(:,:,:) + r(:,:,:,cl2_ndx)*2
+      end if
+      if (clno2_ndx>0) then
+         cly(:,:,:) = cly(:,:,:) + r(:,:,:,clno2_ndx)
+      end if
+      if (br_ndx>0) then
+         bry(:,:,:) = bry(:,:,:) + r(:,:,:,br_ndx)
+      end if
+      if (bro_ndx>0) then
+         bry(:,:,:) = bry(:,:,:) + r(:,:,:,bro_ndx)
+      end if
+      if (hbr_ndx>0) then
+         bry(:,:,:) = bry(:,:,:) + r(:,:,:,hbr_ndx)
+      end if
+      if (hobr_ndx>0) then
+         bry(:,:,:) = bry(:,:,:) + r(:,:,:,hobr_ndx)
+      end if
+      if (brono2_ndx>0) then
+         bry(:,:,:) = bry(:,:,:) + r(:,:,:,brono2_ndx)
+      end if
+      if (brcl_ndx>0) then
+         cly(:,:,:) = cly(:,:,:) + r(:,:,:,brcl_ndx)
+         bry(:,:,:) = bry(:,:,:) + r(:,:,:,brcl_ndx)
+      end if
+      call strat_chem_dcly_dt(Time, js, age, cly, bry, dclydt, dbrydt)
+      do k = 1,kd
+         where( coszen(:,:) > 0. )
+            dclydt(:,:,k) = 2*dclydt(:,:,k)
+            dbrydt(:,:,k) = 2*dbrydt(:,:,k)
+         elsewhere
+            dclydt(:,:,k) = 0.
+            dbrydt(:,:,k) = 0.
+         end where
+      end do
+   else
+      dclydt(:,:,:) = 0.
+      dbrydt(:,:,:) = 0.
+   end if
+   if (cl_ndx>0) then
+      chem_dt(:,:,:,cl_ndx) = chem_dt(:,:,:,cl_ndx) + dclydt(:,:,:)
+      used = send_data(id_dclydt, dclydt, Time, is_in=is, js_in=js)
+   end if
+   if (br_ndx>0) then
+      chem_dt(:,:,:,br_ndx) = chem_dt(:,:,:,br_ndx) + dbrydt(:,:,:)
+      used = send_data(id_dbrydt, dbrydt, Time, is_in=is, js_in=js)
+   end if
+
+!-----------------------------------------------------------------------
+!     ... convert H2O VMR tendency to specific humidity tendency
+!-----------------------------------------------------------------------
+   if (sphum_ndx > 0) then
+      n = indices(sphum_ndx)
+      chem_dt(:,:,:,n) = chem_dt(:,:,:,n) * WTMH2O / WTMAIR
+!     chem_dt(:,:,:,n) = 0.
+   end if
 
 !  call mpp_clock_end(clock_id)
    
@@ -626,6 +727,12 @@ function tropchem_driver_init( r, mask, axes, Time, &
    indices(:) = 0
    do i=1,pcnstm1
       n = get_tracer_index(MODEL_ATMOS, tracnam(i))
+      if (trim(tracnam(i)) == 'H2O') then
+         if (n <= 0) then
+            n = get_tracer_index(MODEL_ATMOS, 'sphum')
+         end if
+         sphum_ndx = i
+      end if
       if (n >0) then
          indices(i) = n
          if (indices(i) > 0 .and. mpp_pe() == mpp_root_pe()) then 
@@ -640,6 +747,21 @@ function tropchem_driver_init( r, mask, axes, Time, &
       end if
    end do
 30 format (A,' was initialized as tracer number ',i2)
+
+   cl_ndx     = get_tracer_index(MODEL_ATMOS, 'cl')
+   clo_ndx    = get_tracer_index(MODEL_ATMOS, 'clo')
+   hcl_ndx    = get_tracer_index(MODEL_ATMOS, 'hcl')
+   hocl_ndx   = get_tracer_index(MODEL_ATMOS, 'hocl')
+   clono2_ndx = get_tracer_index(MODEL_ATMOS, 'clono2')
+   cl2o2_ndx  = get_tracer_index(MODEL_ATMOS, 'cl2o2')
+   cl2_ndx    = get_tracer_index(MODEL_ATMOS, 'cl2')
+   clno2_ndx  = get_tracer_index(MODEL_ATMOS, 'clno2')
+   br_ndx     = get_tracer_index(MODEL_ATMOS, 'br')
+   bro_ndx    = get_tracer_index(MODEL_ATMOS, 'bro')
+   hbr_ndx    = get_tracer_index(MODEL_ATMOS, 'hrb')
+   hobr_ndx   = get_tracer_index(MODEL_ATMOS, 'hobr')
+   brono2_ndx = get_tracer_index(MODEL_ATMOS, 'brono2')
+   brcl_ndx   = get_tracer_index(MODEL_ATMOS, 'brcl')
 
 !-----------------------------------------------------------------------
 !     ... Setup dry deposition
@@ -826,11 +948,19 @@ function tropchem_driver_init( r, mask, axes, Time, &
    inql = get_tracer_index(MODEL_ATMOS,'liq_wat') !cloud liquid specific humidity
    inqi = get_tracer_index(MODEL_ATMOS,'ice_wat') !cloud ice water specific humidity
       
+   age_ndx = get_tracer_index(MODEL_ATMOS,'age') ! age tracer
 
 !-----------------------------------------------------------------------
 !     ... Call the chemistry hook init routine
 !-----------------------------------------------------------------------
    call moz_hook_init(lght_no_prd_factor,Time,axes)
+
+!-----------------------------------------------------------------------
+!     ... Initializations for stratospheric chemistry
+!-----------------------------------------------------------------------
+   call strat_chem_utilities_init(latb_mod)
+   id_dclydt =register_diag_field( 'tracers', 'cly_chem_dt', axes(1:3), Time, 'cly_chem_dt', 'VMR/s' )
+   id_dbrydt =register_diag_field( 'tracers', 'bry_chem_dt', axes(1:3), Time, 'bry_chem_dt', 'VMR/s' )
 
 !-----------------------------------------------------------------------
 !     ... Register diagnostic fields for species tendencies
@@ -1059,16 +1189,16 @@ subroutine tropchem_drydep_init( dry_files, dry_names, &
                            vert_interp=(/INTERP_WEIGHTED_P/))
 
    do i = 1,pcnstm1
-      if( query_method('dry_deposition',MODEL_ATMOS,i,name,control) ) then
+      if( query_method('dry_deposition',MODEL_ATMOS,indices(i),name,control) ) then
          if( trim(name) =='file' ) then
             flag_file = parse(control, 'file',filename)
             if( flag_file>0 ) then
                control = trim(filename)
             end if
             if( (trim(control)==trim(file_dry)) .or. (trim(control)=='') ) then
-               drydep_data(i) = drydep_data_default
+               drydep_data(indices(i)) = drydep_data_default
             else
-               call interpolator_init( drydep_data(i), trim(control), lonb_mod, latb_mod,&
+               call interpolator_init( drydep_data(indices(i)), trim(control), lonb_mod, latb_mod,&
                                        data_out_of_bounds=(/CONSTANT/), &
                                        vert_interp=(/INTERP_WEIGHTED_P/))
             end if

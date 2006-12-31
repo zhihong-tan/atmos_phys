@@ -1,16 +1,16 @@
-      module mo_exp_prod_loss_mod
+      module MO_EXP_PROD_LOSS_MOD
 
 implicit none
-character(len=128), parameter :: version     = '$Id: moz.mat.F90,v 13.0 2006/03/28 21:16:31 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis_2006_08 $'
+character(len=128), parameter :: version     = '$Id: moz.mat.F90,v 13.0.4.1 2006/11/20 20:24:09 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: memphis_2006_12 $'
 logical                       :: module_is_initialized = .false.
 
       contains
 
       subroutine exp_prod_loss( prod, loss, y, rxt, het_rates )
 
-      use chem_mods_mod, only : clscnt1, rxntot, hetcnt
-      use mo_grid_mod,   only : pcnstm1
+      use CHEM_MODS_MOD, only : clscnt1, rxntot, hetcnt
+      use MO_GRID_MOD,   only : pcnstm1
 
       implicit none
 
@@ -29,226 +29,407 @@ logical                       :: module_is_initialized = .false.
 !       ... Loss and production for Explicit method
 !--------------------------------------------------------------------
 
-      loss(:,1) = (rxt(:,49)* y(:,14))* y(:,13)
+      loss(:,1) = ((rxt(:,47) +rxt(:,48))* y(:,3) + rxt(:,4))* y(:,4)
       prod(:,1) = 0.
-      loss(:,2) = ( + rxt(:,94))* y(:,32)
+      loss(:,2) = (rxt(:,64)* y(:,3) +rxt(:,63)* y(:,17) +rxt(:,190)* y(:,75)) &
+                 * y(:,12)
       prod(:,2) = 0.
-      loss(:,3) = 0.
-      prod(:,3) =rxt(:,94)*y(:,32)
-      loss(:,4) = ( + rxt(:,95))* y(:,34)
+      loss(:,3) = (rxt(:,72)* y(:,17))* y(:,16)
+      prod(:,3) = 0.
+      loss(:,4) = (rxt(:,99)* y(:,17))* y(:,29)
       prod(:,4) = 0.
-      loss(:,5) = 0.
-      prod(:,5) =rxt(:,95)*y(:,34)
+      loss(:,5) = (rxt(:,143)* y(:,17))* y(:,42)
+      prod(:,5) = 0.
+      loss(:,6) = (rxt(:,73)* y(:,3) +rxt(:,82)* y(:,17))* y(:,61)
+      prod(:,6) =.050*rxt(:,64)*y(:,12)*y(:,3)
+      loss(:,7) = ( + rxt(:,176))* y(:,62)
+      prod(:,7) = 0.
+      loss(:,8) = 0.
+      prod(:,8) =rxt(:,176)*y(:,62)
+      loss(:,9) = ( + rxt(:,177))* y(:,64)
+      prod(:,9) = 0.
+      loss(:,10) = 0.
+      prod(:,10) =rxt(:,177)*y(:,64)
+      loss(:,11) = (rxt(:,46)* y(:,3) + (rxt(:,56) +rxt(:,216))* y(:,11) +rxt(:,217) &
+                 * y(:,74) +rxt(:,222)* y(:,82) + rxt(:,14))* y(:,87)
+      prod(:,11) = (rxt(:,63)*y(:,12) +rxt(:,82)*y(:,61) +rxt(:,99)*y(:,29) + &
+                 rxt(:,143)*y(:,42))*y(:,17)
 
       end subroutine exp_prod_loss
 
-      end module mo_exp_prod_loss_mod
+      end module MO_EXP_PROD_LOSS_MOD
 
-      module mo_imp_prod_loss_mod
+      module MO_IMP_PROD_LOSS_MOD
 
       contains
 
       subroutine imp_prod_loss( prod, loss, y, rxt, het_rates )
 
-      use chem_mods_mod, only : clscnt4, rxntot, hetcnt, clsze
-      use mo_grid_mod,   only : pcnstm1
+      use CHEM_MODS_MOD, only : clscnt4, rxntot, hetcnt, clsze
+      use MO_GRID_MOD,   only : pcnstm1
 
       implicit none
 
 !--------------------------------------------------------------------
 !     ... Dummy args                                                                      
 !--------------------------------------------------------------------
-      real, dimension(:,:), intent(out) :: &
+      real, dimension(:), intent(out) :: &
             prod, &
             loss
-      real, intent(in)    ::  y(:,:)
-      real, intent(in)    ::  rxt(:,:)
-      real, intent(in)    ::  het_rates(:,:)
+      real, intent(in)    ::  y(:)
+      real, intent(in)    ::  rxt(:)
+      real, intent(in)    ::  het_rates(:)
 
 
-!--------------------------------------------------------------------
-!     ... Local variables                                                                 
-!--------------------------------------------------------------------
-      integer :: k
 
 !--------------------------------------------------------------------
 !       ... Loss and production for Implicit method
 !--------------------------------------------------------------------
 
-      do k = 1,clsze
-         loss(k,28) = (rxt(k,22)* y(k,2) +rxt(k,27)* y(k,4) +rxt(k,29)* y(k,5) &
-                  +rxt(k,53)* y(k,14) +rxt(k,54)* y(k,15) +rxt(k,69)* y(k,18) &
-                  + rxt(k,2) + rxt(k,3))* y(k,1)
-         prod(k,28) =rxt(k,21)*y(k,2) +.890*rxt(k,7)*y(k,6) +.300*rxt(k,64)*y(k,20) &
-                 *y(k,15)
-         loss(k,7) = ( + rxt(k,23) + rxt(k,24) + rxt(k,25) + rxt(k,41) + rxt(k,50)) &
-                 * y(k,3)
-         prod(k,7) =rxt(k,2)*y(k,1)
-         loss(k,21) = (rxt(k,22)* y(k,1) +rxt(k,28)* y(k,5) +rxt(k,51)* y(k,14) &
-                  +rxt(k,52)* y(k,15) + rxt(k,21))* y(k,2)
-         prod(k,21) = (rxt(k,23) +rxt(k,24))*y(k,3) +rxt(k,3)*y(k,1) +rxt(k,4)*y(k,5) &
-                  +rxt(k,58)*y(k,14)*y(k,14)
-         loss(k,33) = (rxt(k,27)* y(k,1) +rxt(k,36)* y(k,6) +rxt(k,42)* y(k,10) &
-                  +rxt(k,26)* y(k,15) +rxt(k,62)* y(k,20) +rxt(k,77)* y(k,23) &
-                  +rxt(k,71)* y(k,24) +rxt(k,82)* y(k,26) +rxt(k,87)* y(k,30))* y(k,4)
-         prod(k,33) = (rxt(k,4) +rxt(k,28)*y(k,2))*y(k,5) +.110*rxt(k,7)*y(k,6)
-         loss(k,30) = (rxt(k,29)* y(k,1) +rxt(k,28)* y(k,2) +rxt(k,31)* y(k,6) &
-                  +rxt(k,34)* y(k,14) +rxt(k,37)* y(k,15) +rxt(k,63)* y(k,20) &
-                  + rxt(k,4))* y(k,5)
-         prod(k,30) = (rxt(k,26)*y(k,15) +rxt(k,27)*y(k,1) +2.000*rxt(k,36)*y(k,6) + &
-                 rxt(k,42)*y(k,10) +rxt(k,62)*y(k,20) +rxt(k,71)*y(k,24) + &
-                 rxt(k,77)*y(k,23) +rxt(k,82)*y(k,26) +rxt(k,87)*y(k,30))*y(k,4) &
-                  + (.890*rxt(k,7) +rxt(k,30)*y(k,15) +rxt(k,90)*y(k,18) + &
-                 rxt(k,98)*y(k,38))*y(k,6) + (rxt(k,8) +rxt(k,39) +rxt(k,38)*y(k,14)) &
-                 *y(k,8) + (rxt(k,5) +rxt(k,32))*y(k,9) + (.600*rxt(k,15) +rxt(k,67)) &
-                 *y(k,22) +rxt(k,6)*y(k,7)
-         loss(k,34) = (rxt(k,36)* y(k,4) +rxt(k,31)* y(k,5) +rxt(k,47)* y(k,12) &
-                  +rxt(k,30)* y(k,15) +rxt(k,90)* y(k,18) +rxt(k,61)* y(k,19) &
-                  +rxt(k,92)* y(k,31) +rxt(k,98)* y(k,38) + rxt(k,7) + rxt(k,80)) &
-                 * y(k,6)
-         prod(k,34) = (rxt(k,5) +rxt(k,32))*y(k,9) + (rxt(k,35)*y(k,7) + &
-                 rxt(k,93)*y(k,22))*y(k,14) +rxt(k,29)*y(k,5)*y(k,1) +.400*rxt(k,15) &
-                 *y(k,22)
-         loss(k,17) = (rxt(k,35)* y(k,14) + rxt(k,6))* y(k,7)
-         prod(k,17) = (rxt(k,80) +rxt(k,47)*y(k,12) +rxt(k,61)*y(k,19) + &
-                 rxt(k,92)*y(k,31))*y(k,6) + (2.000*rxt(k,33) +2.000*rxt(k,79))*y(k,9) &
-                  +rxt(k,34)*y(k,14)*y(k,5)
-         loss(k,10) = (rxt(k,38)* y(k,14) + rxt(k,8) + rxt(k,39))* y(k,8)
-         prod(k,10) =rxt(k,37)*y(k,15)*y(k,5)
-         loss(k,8) = ( + rxt(k,5) + rxt(k,32) + rxt(k,33) + rxt(k,79))* y(k,9)
-         prod(k,8) =rxt(k,31)*y(k,6)*y(k,5)
-         loss(k,32) = (rxt(k,42)* y(k,4) + 2.*(rxt(k,43) +rxt(k,44))* y(k,10) &
-                  +rxt(k,45)* y(k,15) +rxt(k,65)* y(k,20) +rxt(k,73)* y(k,24) &
-                  +rxt(k,84)* y(k,26))* y(k,10)
-         prod(k,32) = (rxt(k,62)*y(k,4) +.900*rxt(k,65)*y(k,10) + &
-                 2.000*rxt(k,68)*y(k,20))*y(k,20) + (rxt(k,40) + &
-                 .700*rxt(k,46)*y(k,11))*y(k,14) +.750*rxt(k,41)*y(k,3) +rxt(k,13) &
-                 *y(k,19) +rxt(k,14)*y(k,21) +.400*rxt(k,15)*y(k,22) +rxt(k,19) &
-                 *y(k,28)
-         loss(k,16) = (rxt(k,46)* y(k,14) + rxt(k,9))* y(k,11)
-         prod(k,16) =rxt(k,45)*y(k,15)*y(k,10)
-         loss(k,27) = (rxt(k,47)* y(k,6) +rxt(k,48)* y(k,14) + rxt(k,10) + rxt(k,11)) &
-                 * y(k,12)
-         prod(k,27) = (rxt(k,42)*y(k,4) +2.000*rxt(k,43)*y(k,10) +rxt(k,44)*y(k,10) + &
-                 rxt(k,65)*y(k,20) +.700*rxt(k,73)*y(k,24) +rxt(k,84)*y(k,26))*y(k,10) &
-                  + (.300*rxt(k,46)*y(k,11) +.500*rxt(k,66)*y(k,21) + &
-                 rxt(k,93)*y(k,22))*y(k,14) +.250*rxt(k,41)*y(k,3) +rxt(k,87)*y(k,30) &
-                 *y(k,4) +rxt(k,9)*y(k,11) +rxt(k,18)*y(k,29)
-         loss(k,29) = (rxt(k,53)* y(k,1) +rxt(k,51)* y(k,2) +rxt(k,34)* y(k,5) &
-                  +rxt(k,35)* y(k,7) +rxt(k,38)* y(k,8) +rxt(k,46)* y(k,11) +rxt(k,48) &
-                 * y(k,12) +rxt(k,49)* y(k,13) + 2.*rxt(k,58)* y(k,14) +rxt(k,57) &
-                 * y(k,15) +rxt(k,56)* y(k,16) +rxt(k,76)* y(k,18) +rxt(k,60)* y(k,19) &
-                  +rxt(k,66)* y(k,21) +rxt(k,93)* y(k,22) +rxt(k,75)* y(k,25) &
-                  +rxt(k,85)* y(k,27) +rxt(k,86)* y(k,28) +rxt(k,89)* y(k,29) &
-                  +rxt(k,91)* y(k,31) +rxt(k,96)* y(k,36) +rxt(k,97)* y(k,38) &
-                  +rxt(k,100)* y(k,39) + rxt(k,40) + rxt(k,59) + rxt(k,70) &
-                  + rxt(k,81))* y(k,14)
-         prod(k,29) = (rxt(k,26)*y(k,4) +rxt(k,30)*y(k,6) +rxt(k,52)*y(k,2) + &
-                 rxt(k,54)*y(k,1))*y(k,15) + (2.000*rxt(k,25) +.750*rxt(k,41) + &
-                 rxt(k,50))*y(k,3) + (rxt(k,9) +.300*rxt(k,46)*y(k,14))*y(k,11) &
-                  + (rxt(k,16) +.500*rxt(k,75)*y(k,14))*y(k,25) +rxt(k,6)*y(k,7) &
-                  +2.000*rxt(k,12)*y(k,16) +rxt(k,14)*y(k,21) +rxt(k,17)*y(k,27) &
-                  +rxt(k,18)*y(k,29)
-         loss(k,31) = (rxt(k,54)* y(k,1) +rxt(k,52)* y(k,2) +rxt(k,26)* y(k,4) &
-                  +rxt(k,37)* y(k,5) +rxt(k,30)* y(k,6) +rxt(k,45)* y(k,10) +rxt(k,57) &
-                 * y(k,14) + 2.*rxt(k,55)* y(k,15) +rxt(k,64)* y(k,20) +rxt(k,78) &
-                 * y(k,23) +rxt(k,72)* y(k,24) +rxt(k,83)* y(k,26) +rxt(k,88)* y(k,30) &
-                 )* y(k,15)
-         prod(k,31) = (rxt(k,59) +rxt(k,49)*y(k,13) +rxt(k,48)*y(k,12) + &
-                 rxt(k,51)*y(k,2) +rxt(k,53)*y(k,1) +rxt(k,56)*y(k,16))*y(k,14) &
-                  + (rxt(k,42)*y(k,4) +2.000*rxt(k,43)*y(k,10) + &
-                 .900*rxt(k,65)*y(k,20) +rxt(k,73)*y(k,24) +rxt(k,84)*y(k,26))*y(k,10) &
-                  + (rxt(k,71)*y(k,24) +rxt(k,77)*y(k,23) +rxt(k,82)*y(k,26))*y(k,4) &
-                  + (.400*rxt(k,41) +rxt(k,50))*y(k,3) + (rxt(k,8) +rxt(k,39))*y(k,8) &
-                  + (2.000*rxt(k,10) +rxt(k,47)*y(k,6))*y(k,12) +rxt(k,69)*y(k,18) &
-                 *y(k,1) +rxt(k,9)*y(k,11) +rxt(k,13)*y(k,19) +1.200*rxt(k,74)*y(k,24) &
-                 *y(k,24) +rxt(k,16)*y(k,25) +rxt(k,17)*y(k,27) +rxt(k,20)*y(k,31)
-         loss(k,6) = (rxt(k,56)* y(k,14) + rxt(k,12))* y(k,16)
-         prod(k,6) =rxt(k,55)*y(k,15)*y(k,15)
-         loss(k,22) = (rxt(k,69)* y(k,1) +rxt(k,90)* y(k,6) +rxt(k,76)* y(k,14)) &
-                 * y(k,18)
-         prod(k,22) = 0.
-         loss(k,26) = (rxt(k,61)* y(k,6) +rxt(k,60)* y(k,14) + rxt(k,13))* y(k,19)
-         prod(k,26) = (rxt(k,71)*y(k,4) +.800*rxt(k,73)*y(k,10) + &
-                 1.600*rxt(k,74)*y(k,24))*y(k,24) + (rxt(k,16) + &
-                 .500*rxt(k,75)*y(k,14))*y(k,25) +.270*rxt(k,82)*y(k,26)*y(k,4)
-         loss(k,35) = (rxt(k,62)* y(k,4) +rxt(k,63)* y(k,5) +rxt(k,65)* y(k,10) &
-                  +rxt(k,64)* y(k,15) + 2.*rxt(k,68)* y(k,20))* y(k,20)
-         prod(k,35) = (rxt(k,61)*y(k,19) +rxt(k,90)*y(k,18) +rxt(k,92)*y(k,31))*y(k,6) &
-                  + (rxt(k,60)*y(k,19) +.500*rxt(k,66)*y(k,21) +rxt(k,91)*y(k,31)) &
-                 *y(k,14) + (rxt(k,77)*y(k,23) +rxt(k,87)*y(k,30))*y(k,4) &
-                  + (.600*rxt(k,15) +rxt(k,67))*y(k,22) +rxt(k,69)*y(k,18)*y(k,1) &
-                  +rxt(k,19)*y(k,28) +rxt(k,18)*y(k,29) +rxt(k,20)*y(k,31)
-         loss(k,12) = (rxt(k,66)* y(k,14) + rxt(k,14))* y(k,21)
-         prod(k,12) =.700*rxt(k,64)*y(k,20)*y(k,15)
-         loss(k,19) = (rxt(k,93)* y(k,14) + rxt(k,15) + rxt(k,67))* y(k,22)
-         prod(k,19) =rxt(k,63)*y(k,20)*y(k,5)
-         loss(k,18) = (rxt(k,77)* y(k,4) +rxt(k,78)* y(k,15))* y(k,23)
-         prod(k,18) =rxt(k,76)*y(k,18)*y(k,14)
-         loss(k,23) = (rxt(k,71)* y(k,4) +rxt(k,73)* y(k,10) +rxt(k,72)* y(k,15) &
-                  + 2.*rxt(k,74)* y(k,24))* y(k,24)
-         prod(k,23) = (rxt(k,70) +.500*rxt(k,75)*y(k,25))*y(k,14)
-         loss(k,13) = (rxt(k,75)* y(k,14) + rxt(k,16))* y(k,25)
-         prod(k,13) =rxt(k,72)*y(k,24)*y(k,15)
-         loss(k,25) = (rxt(k,82)* y(k,4) +rxt(k,84)* y(k,10) +rxt(k,83)* y(k,15)) &
-                 * y(k,26)
-         prod(k,25) = (rxt(k,81) +rxt(k,85)*y(k,27))*y(k,14)
-         loss(k,14) = (rxt(k,85)* y(k,14) + rxt(k,17))* y(k,27)
-         prod(k,14) =rxt(k,83)*y(k,26)*y(k,15)
-         loss(k,20) = (rxt(k,86)* y(k,14) + rxt(k,19))* y(k,28)
-         prod(k,20) = (.820*rxt(k,82)*y(k,4) +.820*rxt(k,84)*y(k,10))*y(k,26) &
-                  +.820*rxt(k,17)*y(k,27)
-         loss(k,15) = (rxt(k,89)* y(k,14) + rxt(k,18))* y(k,29)
-         prod(k,15) =rxt(k,88)*y(k,30)*y(k,15)
-         loss(k,24) = (rxt(k,87)* y(k,4) +rxt(k,88)* y(k,15))* y(k,30)
-         prod(k,24) = (rxt(k,86)*y(k,28) +rxt(k,89)*y(k,29))*y(k,14)
-         loss(k,11) = (rxt(k,92)* y(k,6) +rxt(k,91)* y(k,14) + rxt(k,20))* y(k,31)
-         prod(k,11) = 0.
-         loss(k,5) = (rxt(k,96)* y(k,14))* y(k,36)
-         prod(k,5) = (rxt(k,97)*y(k,14) +rxt(k,98)*y(k,6))*y(k,38)
-         loss(k,1) = 0.
-         prod(k,1) =rxt(k,96)*y(k,36)*y(k,14)
-         loss(k,9) = (rxt(k,98)* y(k,6) +rxt(k,97)* y(k,14))* y(k,38)
-         prod(k,9) = 0.
-         loss(k,4) = (rxt(k,100)* y(k,14) + rxt(k,99))* y(k,39)
-         prod(k,4) = 0.
-         loss(k,2) = 0.
-         prod(k,2) = 0.
-         loss(k,3) = 0.
-         prod(k,3) =rxt(k,99)*y(k,39)
-      end do
+
+         loss(76) = (rxt(43)* y(2) +rxt(50)* y(6) +rxt(52)* y(7) +rxt(76)* y(17) &
+                  +rxt(77)* y(18) +rxt(84)* y(20) +rxt(98)* y(21) +rxt(109)* y(30) &
+                  +rxt(118)* y(34) +rxt(120)* y(35) +rxt(137)* y(41) +rxt(185)* y(75) &
+                  +rxt(199)* y(83) +rxt(183)* y(86) + rxt(2) + rxt(3))* y(1)
+         prod(76) = (.100*rxt(98)*y(21) +.200*rxt(118)*y(34) +.200*rxt(120)*y(35)) &
+                 *y(1) + (.300*rxt(93)*y(25) +.300*rxt(130)*y(38))*y(18) +rxt(42)*y(2)
+         loss(14) = ((rxt(47) +rxt(48))* y(4) +rxt(64)* y(12) +rxt(73)* y(61) +rxt(46) &
+                 * y(87) + rxt(44) + rxt(45))* y(3)
+         prod(14) =rxt(2)*y(1)
+         loss(67) = (rxt(43)* y(1) +rxt(212)* y(6) +rxt(51)* y(7) +rxt(74)* y(17) &
+                  +rxt(75)* y(18) +rxt(189)* y(74) +rxt(186)* y(76) +rxt(204)* y(80) &
+                  + rxt(42))* y(2)
+         prod(67) = (rxt(141) +rxt(142)*y(6) +rxt(213)*y(7))*y(5) + (rxt(3) + &
+                 .765*rxt(137)*y(41))*y(1) + (rxt(44) +rxt(45))*y(3) +rxt(5)*y(6) &
+                  +rxt(6)*y(7) +.890*rxt(9)*y(8) +rxt(81)*y(17)*y(17) +rxt(40)*y(84)
+         loss(13) = (rxt(142)* y(6) +rxt(213)* y(7) + rxt(141))* y(5)
+         prod(13) =rxt(5)*y(6)
+         loss(68) = (rxt(50)* y(1) +rxt(212)* y(2) +rxt(142)* y(5) +rxt(59)* y(8) &
+                  +rxt(65)* y(13) +rxt(49)* y(18) +rxt(86)* y(22) +rxt(91)* y(25) &
+                  +rxt(112)* y(33) + (rxt(121) +rxt(122))* y(36) +rxt(128)* y(38) &
+                  +rxt(100)* y(39) +rxt(144)* y(43) +rxt(106)* y(51) +rxt(149)* y(54) &
+                  +rxt(154)* y(56) +rxt(162)* y(58) +rxt(187)* y(76) +rxt(203)* y(84) &
+                  + rxt(5))* y(6)
+         prod(68) = (rxt(6) +rxt(51)*y(2) +rxt(210)*y(8))*y(7) +2.000*rxt(47)*y(4) &
+                 *y(3) +rxt(141)*y(5) +.110*rxt(9)*y(8)
+         loss(75) = (rxt(52)* y(1) +rxt(51)* y(2) +rxt(213)* y(5) +rxt(54)* y(8) &
+                  +rxt(57)* y(17) +rxt(60)* y(18) +rxt(92)* y(25) +rxt(134)* y(38) &
+                  +rxt(188)* y(76) +rxt(200)* y(84) + rxt(6))* y(7)
+         prod(75) = (rxt(49)*y(18) +rxt(50)*y(1) +2.000*rxt(59)*y(8) +rxt(65)*y(13) + &
+                 rxt(86)*y(22) +rxt(91)*y(25) +rxt(100)*y(39) +rxt(106)*y(51) + &
+                 .920*rxt(112)*y(33) +rxt(121)*y(36) +rxt(128)*y(38) +rxt(144)*y(43) + &
+                 rxt(149)*y(54) +1.206*rxt(154)*y(56) +rxt(162)*y(58) + &
+                 rxt(187)*y(76) +rxt(203)*y(84) +rxt(212)*y(2))*y(6) + (.890*rxt(9) + &
+                 rxt(53)*y(18) +rxt(113)*y(33) +rxt(123)*y(36) +rxt(129)*y(38) + &
+                 rxt(138)*y(41) +1.206*rxt(155)*y(56) +rxt(160)*y(57) + &
+                 rxt(163)*y(58) +rxt(180)*y(68) +2.000*rxt(211)*y(8))*y(8) &
+                  + (rxt(10) +rxt(62) +rxt(61)*y(17))*y(10) + (rxt(7) +rxt(55))*y(11) &
+                  + (rxt(152)*y(28) +rxt(159)*y(57))*y(17) + (.600*rxt(19) +rxt(96)) &
+                 *y(27) + (rxt(20) +rxt(135))*y(32) +rxt(8)*y(9) +.206*rxt(156)*y(56) &
+                 *y(18) +rxt(30)*y(57)
+         loss(65) = (rxt(59)* y(6) + (rxt(54) +rxt(210))* y(7) + 2.*rxt(211)* y(8) &
+                  +rxt(70)* y(15) +rxt(53)* y(18) +rxt(85)* y(20) +rxt(153)* y(21) &
+                  +rxt(90)* y(23) +rxt(113)* y(33) +rxt(123)* y(36) +rxt(129)* y(38) &
+                  +rxt(138)* y(41) +rxt(158)* y(55) +rxt(155)* y(56) +rxt(160)* y(57) &
+                  +rxt(163)* y(58) +rxt(180)* y(68) + rxt(9) + rxt(140))* y(8)
+         prod(65) = (rxt(58)*y(9) +.500*rxt(172)*y(32) +rxt(173)*y(27))*y(17) &
+                  + (rxt(7) +rxt(55))*y(11) + (rxt(34) +rxt(189)*y(2))*y(74) &
+                  +rxt(52)*y(7)*y(1) +.400*rxt(19)*y(27) +rxt(37)*y(82)
+         loss(39) = (rxt(58)* y(17) + rxt(8))* y(9)
+         prod(39) = (rxt(140) +rxt(70)*y(15) +rxt(90)*y(23) +rxt(158)*y(55))*y(8) &
+                  + (2.000*rxt(139) +2.000*rxt(56)*y(87) +2.000*rxt(216)*y(87) + &
+                 rxt(215)*y(72))*y(11) + (rxt(217)*y(87) +rxt(218)*y(72))*y(74) &
+                  +rxt(57)*y(17)*y(7) +rxt(222)*y(87)*y(82)
+         loss(19) = (rxt(61)* y(17) + rxt(10) + rxt(62))* y(10)
+         prod(19) =rxt(60)*y(18)*y(7)
+         loss(26) = (rxt(215)* y(72) + (rxt(56) +rxt(216))* y(87) + rxt(7) + rxt(55) &
+                  + rxt(139))* y(11)
+         prod(26) =rxt(54)*y(8)*y(7)
+         loss(64) = (rxt(65)* y(6) + 2.*(rxt(66) +rxt(67))* y(13) +rxt(68)* y(18) &
+                  +rxt(94)* y(25) +rxt(115)* y(33) +rxt(125)* y(36) +rxt(131)* y(38) &
+                  +rxt(102)* y(39) +rxt(146)* y(43) +rxt(165)* y(58))* y(13)
+         prod(64) = (rxt(91)*y(6) +.900*rxt(94)*y(13) +2.000*rxt(97)*y(25) + &
+                 rxt(116)*y(33) +rxt(126)*y(36) +rxt(132)*y(38) +rxt(166)*y(58))*y(25) &
+                  + (rxt(63)*y(17) +.750*rxt(64)*y(3) +rxt(190)*y(75))*y(12) &
+                  +.310*rxt(84)*y(20)*y(1) +.700*rxt(69)*y(17)*y(14) +rxt(16)*y(23) &
+                  +rxt(18)*y(26) +.400*rxt(19)*y(27) +.300*rxt(23)*y(34) +rxt(27) &
+                 *y(45)
+         loss(25) = (rxt(69)* y(17) + rxt(11))* y(14)
+         prod(25) =rxt(68)*y(18)*y(13)
+         loss(69) = (rxt(70)* y(8) +rxt(71)* y(17) +rxt(195)* y(75) +rxt(206)* y(83) &
+                  + rxt(12) + rxt(13))* y(15)
+         prod(69) = (rxt(65)*y(6) +2.000*rxt(66)*y(13) +rxt(67)*y(13) +rxt(94)*y(25) + &
+                 .700*rxt(102)*y(39) +1.200*rxt(115)*y(33) +.880*rxt(125)*y(36) + &
+                 2.000*rxt(131)*y(38) +rxt(146)*y(43) +.700*rxt(165)*y(58))*y(13) &
+                  + (.300*rxt(69)*y(14) +.500*rxt(95)*y(26) +.500*rxt(105)*y(30) + &
+                 .500*rxt(159)*y(57) +rxt(170)*y(47) +.500*rxt(172)*y(32) + &
+                 rxt(173)*y(27))*y(17) + (.540*rxt(84)*y(20) +.600*rxt(98)*y(21) + &
+                 rxt(109)*y(30) +.800*rxt(118)*y(34) +.700*rxt(120)*y(35) + &
+                 1.326*rxt(137)*y(41))*y(1) + (rxt(86)*y(22) +.510*rxt(112)*y(33) + &
+                 .250*rxt(121)*y(36) +rxt(128)*y(38) +rxt(149)*y(54) + &
+                 .072*rxt(154)*y(56))*y(6) + (.600*rxt(113)*y(33) + &
+                 .250*rxt(123)*y(36) +rxt(129)*y(38) +.072*rxt(155)*y(56))*y(8) &
+                  + (.600*rxt(116)*y(33) +.250*rxt(126)*y(36) +rxt(132)*y(38))*y(25) &
+                  +.250*rxt(64)*y(12)*y(3) +rxt(11)*y(14) +.008*rxt(156)*y(56)*y(18) &
+                  +rxt(17)*y(24) +1.340*rxt(21)*y(35) +2.000*rxt(133)*y(38)*y(38) &
+                  +rxt(26)*y(46) +rxt(33)*y(49) +rxt(32)*y(50) +2.000*rxt(108)*y(52) &
+                  +rxt(30)*y(57) +.690*rxt(31)*y(60)
+         loss(72) = (rxt(76)* y(1) +rxt(74)* y(2) +rxt(57)* y(7) +rxt(58)* y(9) &
+                  +rxt(61)* y(10) +rxt(63)* y(12) +rxt(69)* y(14) +rxt(71)* y(15) &
+                  +rxt(72)* y(16) + 2.*(rxt(81) +rxt(196))* y(17) +rxt(80)* y(18) &
+                  +rxt(79)* y(19) +rxt(83)* y(20) +rxt(110)* y(21) +rxt(89)* y(23) &
+                  +rxt(88)* y(24) +rxt(95)* y(26) +rxt(173)* y(27) +rxt(152)* y(28) &
+                  +rxt(99)* y(29) +rxt(105)* y(30) +rxt(111)* y(31) +rxt(172)* y(32) &
+                  +rxt(117)* y(34) +rxt(119)* y(35) +rxt(127)* y(37) +rxt(104)* y(40) &
+                  +rxt(136)* y(41) +rxt(143)* y(42) +rxt(147)* y(44) +rxt(148)* y(45) &
+                  +rxt(151)* y(46) +rxt(170)* y(47) +rxt(171)* y(48) +rxt(175)* y(49) &
+                  +rxt(174)* y(50) +rxt(161)* y(53) +rxt(157)* y(55) +rxt(159)* y(57) &
+                  +rxt(167)* y(59) +rxt(169)* y(60) +rxt(82)* y(61) +rxt(178)* y(66) &
+                  +rxt(179)* y(68) +rxt(182)* y(69) +rxt(191)* y(72) + (rxt(194) + &
+                 rxt(209))* y(76) +rxt(207)* y(81))* y(17)
+         prod(72) = (rxt(77)*y(18) +.330*rxt(84)*y(20) +.270*rxt(98)*y(21) + &
+                 .120*rxt(109)*y(30) +.080*rxt(118)*y(34) +.215*rxt(120)*y(35) + &
+                 1.156*rxt(137)*y(41) +rxt(183)*y(86))*y(1) + (.300*rxt(69)*y(14) + &
+                 .500*rxt(88)*y(24) +.500*rxt(104)*y(40) +.100*rxt(127)*y(37))*y(17) &
+                  + (2.000*rxt(46)*y(87) +.750*rxt(64)*y(12) +rxt(73)*y(61))*y(3) &
+                  + (rxt(49)*y(6) +rxt(53)*y(8) +rxt(75)*y(2))*y(18) + (rxt(38) + &
+                 rxt(204)*y(2))*y(80) +rxt(8)*y(9) +rxt(11)*y(14) +2.000*rxt(15)*y(19) &
+                  +rxt(17)*y(24) +rxt(18)*y(26) +.660*rxt(22)*y(35) +rxt(24)*y(40) &
+                  +rxt(25)*y(44) +rxt(26)*y(46) +rxt(29)*y(59) +rxt(35)*y(73)
+         loss(73) = (rxt(77)* y(1) +rxt(75)* y(2) +rxt(49)* y(6) +rxt(60)* y(7) &
+                  +rxt(53)* y(8) +rxt(68)* y(13) +rxt(80)* y(17) + 2.*rxt(78)* y(18) &
+                  +rxt(87)* y(22) +rxt(93)* y(25) +rxt(114)* y(33) +rxt(124)* y(36) &
+                  +rxt(130)* y(38) +rxt(101)* y(39) +rxt(145)* y(43) +rxt(150)* y(54) &
+                  +rxt(156)* y(56) +rxt(164)* y(58) +rxt(192)* y(75) +rxt(193)* y(76) &
+                  +rxt(205)* y(83) +rxt(202)* y(84))* y(18)
+         prod(73) = (rxt(72)*y(16) +rxt(82)*y(61) +rxt(71)*y(15) +rxt(76)*y(1) + &
+                 rxt(79)*y(19) +.250*rxt(105)*y(30) +.200*rxt(127)*y(37) + &
+                 rxt(159)*y(57) +rxt(170)*y(47) +rxt(171)*y(48) +.500*rxt(172)*y(32) + &
+                 rxt(174)*y(50) +.600*rxt(175)*y(49) +rxt(194)*y(76) +rxt(207)*y(81)) &
+                 *y(17) + (rxt(65)*y(6) +2.000*rxt(66)*y(13) +.900*rxt(94)*y(25) + &
+                 rxt(102)*y(39) +rxt(115)*y(33) +.730*rxt(125)*y(36) +rxt(131)*y(38) + &
+                 rxt(146)*y(43) +rxt(165)*y(58))*y(13) + (rxt(86)*y(22) + &
+                 rxt(100)*y(39) +rxt(112)*y(33) +.470*rxt(121)*y(36) +rxt(144)*y(43) + &
+                 .794*rxt(154)*y(56) +1.500*rxt(162)*y(58))*y(6) &
+                  + (.190*rxt(84)*y(20) +.060*rxt(98)*y(21) +.120*rxt(109)*y(30) + &
+                 .060*rxt(118)*y(34) +.275*rxt(120)*y(35) +.102*rxt(137)*y(41))*y(1) &
+                  + (rxt(70)*y(15) +rxt(113)*y(33) +.470*rxt(123)*y(36) + &
+                 .794*rxt(155)*y(56) +rxt(160)*y(57) +1.500*rxt(163)*y(58))*y(8) &
+                  + (rxt(12) +rxt(195)*y(75) +rxt(206)*y(83))*y(15) &
+                  + (rxt(116)*y(33) +.470*rxt(126)*y(36) +1.500*rxt(166)*y(58))*y(25) &
+                  + (.200*rxt(64)*y(12) +rxt(73)*y(61))*y(3) + (rxt(10) +rxt(62)) &
+                 *y(10) + (rxt(107) +rxt(108))*y(52) +rxt(11)*y(14) &
+                  +.794*rxt(156)*y(56)*y(18) +rxt(16)*y(23) +rxt(17)*y(24) &
+                  +1.340*rxt(21)*y(35) +1.200*rxt(103)*y(39)*y(39) +rxt(24)*y(40) &
+                  +rxt(25)*y(44) +2.000*rxt(33)*y(49) +rxt(32)*y(50) +rxt(28)*y(55) &
+                  +rxt(30)*y(57) +rxt(31)*y(60) +rxt(184)*y(86)
+         loss(10) = (rxt(79)* y(17) + rxt(15))* y(19)
+         prod(10) =rxt(196)*y(17)*y(17) +rxt(78)*y(18)*y(18)
+         loss(50) = (rxt(84)* y(1) +rxt(85)* y(8) +rxt(83)* y(17))* y(20)
+         prod(50) = (.070*rxt(98)*y(21) +.119*rxt(137)*y(41))*y(1) +.700*rxt(23)*y(34)
+         loss(43) = (rxt(98)* y(1) +rxt(153)* y(8) +rxt(110)* y(17))* y(21)
+         prod(43) = 0.
+         loss(41) = (rxt(86)* y(6) +rxt(87)* y(18))* y(22)
+         prod(41) = (rxt(83)*y(20) +.500*rxt(88)*y(24))*y(17)
+         loss(51) = (rxt(90)* y(8) +rxt(89)* y(17) + rxt(16))* y(23)
+         prod(51) = (rxt(86)*y(22) +rxt(100)*y(39) +.270*rxt(144)*y(43))*y(6) &
+                  + (.500*rxt(84)*y(20) +.040*rxt(118)*y(34))*y(1) &
+                  + (.500*rxt(104)*y(40) +rxt(171)*y(48))*y(17) &
+                  + (.800*rxt(102)*y(13) +1.600*rxt(103)*y(39))*y(39) +rxt(17)*y(24) &
+                  +rxt(24)*y(40)
+         loss(32) = (rxt(88)* y(17) + rxt(17))* y(24)
+         prod(32) =rxt(87)*y(22)*y(18)
+         loss(63) = (rxt(91)* y(6) +rxt(92)* y(7) +rxt(94)* y(13) +rxt(93)* y(18) &
+                  + 2.*rxt(97)* y(25) +rxt(116)* y(33) +rxt(126)* y(36) +rxt(166) &
+                 * y(58))* y(25)
+         prod(63) = (rxt(90)*y(23) +.530*rxt(123)*y(36) +rxt(129)*y(38) + &
+                 rxt(158)*y(55))*y(8) + (.530*rxt(121)*y(36) +rxt(128)*y(38) + &
+                 rxt(149)*y(54))*y(6) + (rxt(89)*y(23) +.500*rxt(95)*y(26) + &
+                 rxt(157)*y(55))*y(17) + (.260*rxt(125)*y(36) +rxt(131)*y(38))*y(13) &
+                  + (.600*rxt(19) +rxt(96))*y(27) +.530*rxt(126)*y(36)*y(25) &
+                  +.300*rxt(23)*y(34) +1.340*rxt(21)*y(35) +2.000*rxt(133)*y(38)*y(38) &
+                  +rxt(27)*y(45) +rxt(26)*y(46) +rxt(32)*y(50) +rxt(28)*y(55)
+         loss(31) = (rxt(95)* y(17) + rxt(18))* y(26)
+         prod(31) = (.700*rxt(93)*y(25) +.700*rxt(130)*y(38))*y(18)
+         loss(33) = (rxt(173)* y(17) + rxt(19) + rxt(96))* y(27)
+         prod(33) =rxt(92)*y(25)*y(7)
+         loss(17) = (rxt(152)* y(17))* y(28)
+         prod(17) =rxt(85)*y(20)*y(8)
+         loss(20) = (rxt(109)* y(1) +rxt(105)* y(17))* y(30)
+         prod(20) = 0.
+         loss(6) = (rxt(111)* y(17))* y(31)
+         prod(6) = 0.
+         loss(36) = (rxt(172)* y(17) + rxt(20) + rxt(135))* y(32)
+         prod(36) =rxt(134)*y(38)*y(7)
+         loss(61) = (rxt(112)* y(6) +rxt(113)* y(8) +rxt(115)* y(13) +rxt(114)* y(18) &
+                  +rxt(116)* y(25))* y(33)
+         prod(61) = (rxt(110)*y(21) +1.640*rxt(136)*y(41) +.500*rxt(169)*y(60))*y(17) &
+                  +1.700*rxt(138)*y(41)*y(8)
+         loss(58) = (rxt(118)* y(1) +rxt(117)* y(17) + rxt(23))* y(34)
+         prod(58) = (.320*rxt(112)*y(6) +.350*rxt(113)*y(8) +.260*rxt(115)*y(13) + &
+                 .350*rxt(116)*y(25))*y(33) + (.039*rxt(154)*y(6) + &
+                 .039*rxt(155)*y(8) +.039*rxt(156)*y(18))*y(56) &
+                  + (.200*rxt(98)*y(21) +.442*rxt(137)*y(41))*y(1) +.402*rxt(31)*y(60)
+         loss(56) = (rxt(120)* y(1) +rxt(119)* y(17) + rxt(21) + rxt(22))* y(35)
+         prod(56) = (.230*rxt(112)*y(6) +.250*rxt(113)*y(8) +.190*rxt(115)*y(13) + &
+                 .250*rxt(116)*y(25))*y(33) + (.167*rxt(154)*y(6) + &
+                 .167*rxt(155)*y(8) +.167*rxt(156)*y(18))*y(56) &
+                  + (.400*rxt(98)*y(21) +1.122*rxt(137)*y(41))*y(1) +.288*rxt(31) &
+                 *y(60)
+         loss(59) = ((rxt(121) +rxt(122))* y(6) +rxt(123)* y(8) +rxt(125)* y(13) &
+                  +rxt(124)* y(18) +rxt(126)* y(25))* y(36)
+         prod(59) = (rxt(117)*y(34) +.500*rxt(119)*y(35) +.200*rxt(127)*y(37))*y(17)
+         loss(21) = (rxt(127)* y(17))* y(37)
+         prod(21) =rxt(124)*y(36)*y(18)
+         loss(62) = (rxt(128)* y(6) +rxt(134)* y(7) +rxt(129)* y(8) +rxt(131)* y(13) &
+                  +rxt(130)* y(18) +rxt(132)* y(25) + 2.*rxt(133)* y(38))* y(38)
+         prod(62) = (.500*rxt(119)*y(35) +.500*rxt(127)*y(37) +.800*rxt(175)*y(49)) &
+                 *y(17) + (rxt(20) +rxt(135))*y(32) +.200*rxt(98)*y(21)*y(1) &
+                  +.660*rxt(21)*y(35)
+         loss(40) = (rxt(100)* y(6) +rxt(102)* y(13) +rxt(101)* y(18) + 2.*rxt(103) &
+                 * y(39))* y(39)
+         prod(40) = (rxt(99)*y(29) +.500*rxt(104)*y(40))*y(17)
+         loss(22) = (rxt(104)* y(17) + rxt(24))* y(40)
+         prod(22) =rxt(101)*y(39)*y(18)
+         loss(48) = (rxt(137)* y(1) +rxt(138)* y(8) +rxt(136)* y(17))* y(41)
+         prod(48) = 0.
+         loss(45) = (rxt(144)* y(6) +rxt(146)* y(13) +rxt(145)* y(18))* y(43)
+         prod(45) = (rxt(143)*y(42) +1.330*rxt(111)*y(31) +rxt(147)*y(44))*y(17)
+         loss(23) = (rxt(147)* y(17) + rxt(25))* y(44)
+         prod(23) =rxt(145)*y(43)*y(18)
+         loss(37) = (rxt(148)* y(17) + rxt(27))* y(45)
+         prod(37) = (.820*rxt(144)*y(6) +.820*rxt(146)*y(13))*y(43) &
+                  +.100*rxt(136)*y(41)*y(17) +.820*rxt(25)*y(44)
+         loss(24) = (rxt(151)* y(17) + rxt(26))* y(46)
+         prod(24) =rxt(150)*y(54)*y(18)
+         loss(34) = (rxt(170)* y(17))* y(47)
+         prod(34) = (rxt(67)*y(13) +.300*rxt(102)*y(39) +.250*rxt(115)*y(33) + &
+                 .250*rxt(125)*y(36) +.300*rxt(165)*y(58))*y(13)
+         loss(18) = (rxt(171)* y(17))* y(48)
+         prod(18) = (.200*rxt(102)*y(13) +.400*rxt(103)*y(39))*y(39)
+         loss(42) = (rxt(175)* y(17) + rxt(33))* y(49)
+         prod(42) = (.530*rxt(121)*y(6) +.530*rxt(123)*y(8) +.260*rxt(125)*y(13) + &
+                 .530*rxt(126)*y(25))*y(36) + (.250*rxt(162)*y(6) + &
+                 .250*rxt(163)*y(8) +.100*rxt(165)*y(13) +.250*rxt(166)*y(25))*y(58) &
+                  +rxt(107)*y(52)
+         loss(57) = (rxt(174)* y(17) + rxt(32))* y(50)
+         prod(57) = (.220*rxt(121)*y(6) +.220*rxt(123)*y(8) +.230*rxt(125)*y(13) + &
+                 .220*rxt(126)*y(25))*y(36) + (.250*rxt(162)*y(6) + &
+                 .250*rxt(163)*y(8) +.100*rxt(165)*y(13) +.250*rxt(166)*y(25))*y(58) &
+                  + (.500*rxt(88)*y(24) +.500*rxt(172)*y(32))*y(17)
+         loss(30) = (rxt(106)* y(6))* y(51)
+         prod(30) =.750*rxt(105)*y(30)*y(17)
+         loss(11) = ( + rxt(107) + rxt(108))* y(52)
+         prod(11) =rxt(106)*y(51)*y(6)
+         loss(29) = (rxt(161)* y(17))* y(53)
+         prod(29) = (.370*rxt(112)*y(6) +.400*rxt(113)*y(8) +.300*rxt(115)*y(13) + &
+                 .400*rxt(116)*y(25))*y(33) + (rxt(159)*y(17) +rxt(160)*y(8))*y(57)
+         loss(44) = (rxt(149)* y(6) +rxt(150)* y(18))* y(54)
+         prod(44) = (rxt(148)*y(45) +rxt(151)*y(46))*y(17)
+         loss(53) = (rxt(158)* y(8) +rxt(157)* y(17) + rxt(28))* y(55)
+         prod(53) = (.250*rxt(121)*y(6) +.250*rxt(123)*y(8) +.240*rxt(125)*y(13) + &
+                 .250*rxt(126)*y(25))*y(36) + (.250*rxt(162)*y(6) + &
+                 .250*rxt(163)*y(8) +.100*rxt(165)*y(13) +.250*rxt(166)*y(25))*y(58) &
+                  + (.950*rxt(118)*y(34) +.800*rxt(120)*y(35))*y(1) &
+                  + (rxt(152)*y(28) +rxt(174)*y(50))*y(17)
+         loss(52) = (rxt(154)* y(6) +rxt(155)* y(8) +rxt(156)* y(18))* y(56)
+         prod(52) =rxt(153)*y(21)*y(8)
+         loss(47) = (rxt(160)* y(8) +rxt(159)* y(17) + rxt(30))* y(57)
+         prod(47) = (.080*rxt(112)*y(33) +rxt(122)*y(36) +.794*rxt(154)*y(56))*y(6) &
+                  + (.794*rxt(155)*y(8) +.794*rxt(156)*y(18))*y(56)
+         loss(60) = (rxt(162)* y(6) +rxt(163)* y(8) +rxt(165)* y(13) +rxt(164)* y(18) &
+                  +rxt(166)* y(25))* y(58)
+         prod(60) = (rxt(161)*y(53) +rxt(167)*y(59) +.500*rxt(169)*y(60))*y(17)
+         loss(15) = ((rxt(167) +rxt(168))* y(17) + rxt(29))* y(59)
+         prod(15) = (rxt(156)*y(56) +rxt(164)*y(58))*y(18)
+         loss(35) = (rxt(169)* y(17) + rxt(31))* y(60)
+         prod(35) =rxt(114)*y(33)*y(18)
+         loss(8) = (rxt(178)* y(17))* y(66)
+         prod(8) = (rxt(179)*y(17) +rxt(180)*y(8))*y(68)
+         loss(1) = 0.
+         prod(1) =rxt(178)*y(66)*y(17)
+         loss(12) = (rxt(180)* y(8) +rxt(179)* y(17))* y(68)
+         prod(12) = 0.
+         loss(5) = (rxt(182)* y(17) + rxt(181))* y(69)
+         prod(5) = 0.
+         loss(2) = 0.
+         prod(2) = 0.
+         loss(3) = 0.
+         prod(3) =rxt(181)*y(69)
+         loss(70) = (rxt(215)* y(11) +rxt(191)* y(17) +rxt(214)* y(73) +rxt(218) &
+                 * y(74) +rxt(219)* y(80))* y(72)
+         prod(70) = (rxt(190)*y(12) +rxt(192)*y(18) +rxt(195)*y(15))*y(75) &
+                  +rxt(209)*y(76)*y(17)
+         loss(38) = (rxt(214)* y(72) +rxt(220)* y(81) + rxt(35))* y(73)
+         prod(38) =rxt(193)*y(76)*y(18) +rxt(217)*y(87)*y(74)
+         loss(46) = (rxt(189)* y(2) +rxt(218)* y(72) +rxt(217)* y(87) + rxt(34)) &
+                 * y(74)
+         prod(46) =rxt(188)*y(76)*y(7)
+         loss(55) = (rxt(185)* y(1) +rxt(190)* y(12) +rxt(195)* y(15) +rxt(192)* y(18) &
+                 )* y(75)
+         prod(55) = (rxt(186)*y(2) +rxt(187)*y(6) +rxt(194)*y(17) +rxt(201)*y(84)) &
+                 *y(76) +rxt(191)*y(72)*y(17) +rxt(35)*y(73) +rxt(34)*y(74) &
+                  +2.000*rxt(36)*y(77) +2.000*rxt(41)*y(78) +rxt(39)*y(85)
+         loss(66) = (rxt(186)* y(2) +rxt(187)* y(6) +rxt(188)* y(7) + (rxt(194) + &
+                 rxt(209))* y(17) +rxt(193)* y(18) + 2.*rxt(197)* y(76) + (rxt(201) + &
+                 rxt(208))* y(84))* y(76)
+         prod(66) =rxt(185)*y(75)*y(1) +rxt(189)*y(74)*y(2) +2.000*rxt(198)*y(77)
+         loss(7) = ( + rxt(36) + rxt(198))* y(77)
+         prod(7) =rxt(197)*y(76)*y(76)
+         loss(9) = ( + rxt(41))* y(78)
+         prod(9) = (rxt(214)*y(73) +rxt(218)*y(74))*y(72)
+         loss(4) = 0.
+         prod(4) =rxt(215)*y(72)*y(11)
+         loss(49) = (rxt(204)* y(2) +rxt(219)* y(72) +rxt(221)* y(81) + rxt(38)) &
+                 * y(80)
+         prod(49) =rxt(202)*y(84)*y(18) +rxt(222)*y(87)*y(82)
+         loss(71) = (rxt(207)* y(17) +rxt(220)* y(73) +rxt(221)* y(80))* y(81)
+         prod(71) = (rxt(205)*y(18) +rxt(206)*y(15))*y(83)
+         loss(16) = (rxt(222)* y(87) + rxt(37))* y(82)
+         prod(16) =rxt(200)*y(84)*y(7)
+         loss(54) = (rxt(199)* y(1) +rxt(206)* y(15) +rxt(205)* y(18))* y(83)
+         prod(54) = (rxt(40) +rxt(201)*y(76) +rxt(203)*y(6))*y(84) + (rxt(38) + &
+                 2.000*rxt(221)*y(81))*y(80) +rxt(207)*y(81)*y(17) +rxt(37)*y(82) &
+                  +rxt(39)*y(85)
+         loss(74) = (rxt(203)* y(6) +rxt(200)* y(7) +rxt(202)* y(18) + (rxt(201) + &
+                 rxt(208))* y(76) + rxt(40))* y(84)
+         prod(74) =rxt(199)*y(83)*y(1) +rxt(204)*y(80)*y(2)
+         loss(27) = ( + rxt(39))* y(85)
+         prod(27) =rxt(219)*y(80)*y(72) +rxt(220)*y(81)*y(73) +rxt(208)*y(84)*y(76)
+         loss(28) = (rxt(183)* y(1) + rxt(184))* y(86)
+         prod(28) =rxt(74)*y(17)*y(2) +.200*rxt(64)*y(12)*y(3) +rxt(12)*y(15)
 
       end subroutine imp_prod_loss
 
-      end module mo_imp_prod_loss_mod
+      end module MO_IMP_PROD_LOSS_MOD
 
-      module mo_rodas_prod_loss_mod
+      module MO_RODAS_PROD_LOSS_MOD
 
       contains
 
       subroutine rodas_prod_loss( prod, loss, y, rxt, het_rates )
 
-      use chem_mods_mod, only : clscnt5, rxntot, hetcnt, clsze
-      use mo_grid_mod,   only : pcnstm1
+      use CHEM_MODS_MOD, only : clscnt5, rxntot, hetcnt, clsze
+      use MO_GRID_MOD,   only : pcnstm1
 
       implicit none
 
 !--------------------------------------------------------------------
 !     ... Dummy args                                                                      
 !--------------------------------------------------------------------
-      real, dimension(:,:), intent(out) :: &
+      real, dimension(:), intent(out) :: &
             prod, &
             loss
-      real, intent(in)    ::  y(:,:)
-      real, intent(in)    ::  rxt(:,:)
-      real, intent(in)    ::  het_rates(:,:)
+      real, intent(in)    ::  y(:)
+      real, intent(in)    ::  rxt(:)
+      real, intent(in)    ::  het_rates(:)
 
 
       end subroutine rodas_prod_loss
 
-      end module mo_rodas_prod_loss_mod
+      end module MO_RODAS_PROD_LOSS_MOD
 
-      module mo_indprd_mod
+      module MO_INDPRD_MOD
 
       private
       public :: indprd
@@ -272,92 +453,203 @@ logical                       :: module_is_initialized = .false.
 !       ... "Independent" production for Explicit species
 !--------------------------------------------------------------------
       if( class == 1 ) then
-         prod(:,1) = (rxt(:,10) +rxt(:,11) +rxt(:,47)*y(:,6) +rxt(:,48)*y(:,14)) &
-                 *y(:,12) + (rxt(:,20) +rxt(:,91)*y(:,14) +rxt(:,92)*y(:,6))*y(:,31) &
-                  + (2.000*rxt(:,77)*y(:,4) +rxt(:,78)*y(:,15))*y(:,23) +rxt(:,13) &
-                 *y(:,19)
+         prod(:,1) =rxt(:,213)*y(:,7)*y(:,5)
                                                                                           
-         prod(:,2) = 0.
+         prod(:,2) =.080*rxt(:,84)*y(:,20)*y(:,1)
                                                                                           
-         prod(:,3) = 0.
+         prod(:,3) = (.560*rxt(:,84)*y(:,20) +.300*rxt(:,98)*y(:,21) + &
+                 .500*rxt(:,109)*y(:,30) +.050*rxt(:,118)*y(:,34) + &
+                 .200*rxt(:,120)*y(:,35) +.323*rxt(:,137)*y(:,41))*y(:,1) &
+                  + (rxt(:,12) +rxt(:,13) +rxt(:,70)*y(:,8) +rxt(:,71)*y(:,17) + &
+                 rxt(:,195)*y(:,75) +rxt(:,206)*y(:,83))*y(:,15) &
+                  + (.220*rxt(:,121)*y(:,6) +.220*rxt(:,123)*y(:,8) + &
+                 .110*rxt(:,125)*y(:,13) +.220*rxt(:,126)*y(:,25))*y(:,36) &
+                  + (rxt(:,162)*y(:,6) +rxt(:,163)*y(:,8) +.400*rxt(:,165)*y(:,13) + &
+                 rxt(:,166)*y(:,25))*y(:,58) + (rxt(:,157)*y(:,55) + &
+                 .500*rxt(:,159)*y(:,57) +.400*rxt(:,175)*y(:,49))*y(:,17) &
+                  + (rxt(:,28) +rxt(:,158)*y(:,8))*y(:,55) +rxt(:,16)*y(:,23) &
+                  +.700*rxt(:,23)*y(:,34) +1.340*rxt(:,22)*y(:,35) +rxt(:,33)*y(:,49) &
+                  +rxt(:,30)*y(:,57)
                                                                                           
          prod(:,4) = 0.
                                                                                           
          prod(:,5) = 0.
+                                                                                          
+         prod(:,6) =rxt(:,13)*y(:,15)
+                                                                                          
+         prod(:,7) = 0.
+                                                                                          
+         prod(:,8) = 0.
+                                                                                          
+         prod(:,9) = 0.
+                                                                                          
+         prod(:,10) = 0.
+                                                                                          
+         prod(:,11) = (rxt(:,58)*y(:,9) +rxt(:,61)*y(:,10) +rxt(:,69)*y(:,14) + &
+                 rxt(:,71)*y(:,15) +rxt(:,79)*y(:,19) +rxt(:,80)*y(:,18) + &
+                 rxt(:,81)*y(:,17) +rxt(:,88)*y(:,24) +rxt(:,89)*y(:,23) + &
+                 rxt(:,95)*y(:,26) +.500*rxt(:,119)*y(:,35) +rxt(:,147)*y(:,44) + &
+                 rxt(:,148)*y(:,45) +rxt(:,151)*y(:,46) +rxt(:,157)*y(:,55) + &
+                 rxt(:,167)*y(:,59) +rxt(:,168)*y(:,59) +rxt(:,182)*y(:,69) + &
+                 rxt(:,191)*y(:,72))*y(:,17) + (rxt(:,214)*y(:,73) + &
+                 rxt(:,219)*y(:,80))*y(:,72) + (rxt(:,220)*y(:,73) + &
+                 rxt(:,221)*y(:,80))*y(:,81)
                                                                                           
 !--------------------------------------------------------------------
 !       ... "Independent" production for Implicit species
 !--------------------------------------------------------------------
       else if( class == 4 ) then
-         prod(:,28) = 0.
+         prod(:,76) = 0.
                                                                                           
-         prod(:,7) = 0.
+         prod(:,14) =rxt(:,4)*y(:,4)
                                                                                           
-         prod(:,21) =2.000*rxt(:,1)
-                                                                                          
-         prod(:,33) = 0.
-                                                                                          
-         prod(:,30) = 0.
-                                                                                          
-         prod(:,34) = 0.
-                                                                                          
-         prod(:,17) = 0.
-                                                                                          
-         prod(:,10) = 0.
-                                                                                          
-         prod(:,8) = 0.
-                                                                                          
-         prod(:,32) = 0.
-                                                                                          
-         prod(:,16) = 0.
-                                                                                          
-         prod(:,27) = 0.
-                                                                                          
-         prod(:,29) = 0.
-                                                                                          
-         prod(:,31) = 0.
-                                                                                          
-         prod(:,6) = 0.
-                                                                                          
-         prod(:,22) = 0.
-                                                                                          
-         prod(:,26) = 0.
-                                                                                          
-         prod(:,35) = 0.
-                                                                                          
-         prod(:,12) = 0.
-                                                                                          
-         prod(:,19) = 0.
-                                                                                          
-         prod(:,18) = 0.
-                                                                                          
-         prod(:,23) = 0.
+         prod(:,67) =2.000*rxt(:,1)
                                                                                           
          prod(:,13) = 0.
                                                                                           
+         prod(:,68) = 0.
+                                                                                          
+         prod(:,75) = 0.
+                                                                                          
+         prod(:,65) = 0.
+                                                                                          
+         prod(:,39) = 0.
+                                                                                          
+         prod(:,19) = 0.
+                                                                                          
+         prod(:,26) = 0.
+                                                                                          
+         prod(:,64) = 0.
+                                                                                          
          prod(:,25) = 0.
                                                                                           
-         prod(:,14) = 0.
+         prod(:,69) = 0.
+                                                                                          
+         prod(:,72) =rxt(:,14)*y(:,87)
+                                                                                          
+         prod(:,73) = 0.
+                                                                                          
+         prod(:,10) = 0.
+                                                                                          
+         prod(:,50) = 0.
+                                                                                          
+         prod(:,43) = 0.
+                                                                                          
+         prod(:,41) = 0.
+                                                                                          
+         prod(:,51) = 0.
+                                                                                          
+         prod(:,32) = 0.
+                                                                                          
+         prod(:,63) = 0.
+                                                                                          
+         prod(:,31) = 0.
+                                                                                          
+         prod(:,33) = 0.
+                                                                                          
+         prod(:,17) = 0.
                                                                                           
          prod(:,20) = 0.
                                                                                           
-         prod(:,15) = 0.
+         prod(:,6) = 0.
+                                                                                          
+         prod(:,36) = 0.
+                                                                                          
+         prod(:,61) = 0.
+                                                                                          
+         prod(:,58) = 0.
+                                                                                          
+         prod(:,56) = 0.
+                                                                                          
+         prod(:,59) = 0.
+                                                                                          
+         prod(:,21) = 0.
+                                                                                          
+         prod(:,62) = 0.
+                                                                                          
+         prod(:,40) = 0.
+                                                                                          
+         prod(:,22) = 0.
+                                                                                          
+         prod(:,48) = 0.
+                                                                                          
+         prod(:,45) = 0.
+                                                                                          
+         prod(:,23) = 0.
+                                                                                          
+         prod(:,37) = 0.
                                                                                           
          prod(:,24) = 0.
                                                                                           
+         prod(:,34) = 0.
+                                                                                          
+         prod(:,18) = 0.
+                                                                                          
+         prod(:,42) = 0.
+                                                                                          
+         prod(:,57) = 0.
+                                                                                          
+         prod(:,30) = 0.
+                                                                                          
          prod(:,11) = 0.
+                                                                                          
+         prod(:,29) = 0.
+                                                                                          
+         prod(:,44) = 0.
+                                                                                          
+         prod(:,53) = 0.
+                                                                                          
+         prod(:,52) = 0.
+                                                                                          
+         prod(:,47) = 0.
+                                                                                          
+         prod(:,60) = 0.
+                                                                                          
+         prod(:,15) = 0.
+                                                                                          
+         prod(:,35) = 0.
+                                                                                          
+         prod(:,8) = 0.
+                                                                                          
+         prod(:,1) = 0.
+                                                                                          
+         prod(:,12) = 0.
                                                                                           
          prod(:,5) = 0.
                                                                                           
-         prod(:,1) = 0.
+         prod(:,2) = 0.
+                                                                                          
+         prod(:,3) = 0.
+                                                                                          
+         prod(:,70) = 0.
+                                                                                          
+         prod(:,38) = 0.
+                                                                                          
+         prod(:,46) = 0.
+                                                                                          
+         prod(:,55) = 0.
+                                                                                          
+         prod(:,66) = 0.
+                                                                                          
+         prod(:,7) = 0.
                                                                                           
          prod(:,9) = 0.
                                                                                           
          prod(:,4) = 0.
                                                                                           
-         prod(:,2) = 0.
+         prod(:,49) = 0.
                                                                                           
-         prod(:,3) = 0.
+         prod(:,71) = 0.
+                                                                                          
+         prod(:,16) = 0.
+                                                                                          
+         prod(:,54) = 0.
+                                                                                          
+         prod(:,74) = 0.
+                                                                                          
+         prod(:,27) = 0.
+                                                                                          
+         prod(:,28) =rxt(:,14)*y(:,87)
                                                                                           
       end if                                                                              
                                                                                           
@@ -367,9 +659,9 @@ logical                       :: module_is_initialized = .false.
 
       module MO_IMP_LIN_MATRIX_MOD
 
-      CONTAINS
+      contains
 
-      subroutine IMP_LINMAT01( mat, y, rxt, het_rates )
+      subroutine imp_linmat01( mat, y, rxt, het_rates )
 !----------------------------------------------
 !       ... Linear Matrix entries for Implicit species
 !----------------------------------------------
@@ -382,131 +674,247 @@ logical                       :: module_is_initialized = .false.
 !----------------------------------------------
 !       ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  y(clsze,pcnstm1)
-      real, intent(in)    ::  rxt(clsze,rxntot)
-      real, intent(in)    ::  het_rates(clsze,hetcnt)
-      real, intent(inout) ::  mat(clsze,imp_nzcnt)
-!----------------------------------------------
-!       ... Local variables
-!----------------------------------------------
-      integer :: k
+      real, intent(in)    ::  y(pcnstm1)
+      real, intent(in)    ::  rxt(rxntot)
+      real, intent(in)    ::  het_rates(hetcnt)
+      real, intent(inout) ::  mat(imp_nzcnt)
+
+         mat(826) = -( rxt(2) + rxt(3) )
+         mat(545) = rxt(42)
+
+         mat(35) = -( rxt(44) + rxt(45) + rxt(46)*y(87) + rxt(47)*y(4) + rxt(48)*y(4) &
+                      + rxt(64)*y(12) + rxt(73)*y(61) )
+         mat(793) = rxt(2)
+
+         mat(536) = -( rxt(42) )
+         mat(817) = rxt(3)
+         mat(573) = rxt(5)
+         mat(783) = rxt(6)
+         mat(501) = .890*rxt(9)
+         mat(756) = rxt(40)
+         mat(38) = rxt(44) + rxt(45)
+         mat(32) = rxt(141)
+
+         mat(31) = -( rxt(141) )
+         mat(547) = rxt(5)
+
+         mat(574) = -( rxt(5) )
+         mat(784) = rxt(6)
+         mat(502) = .110*rxt(9)
+         mat(33) = rxt(141)
+         mat(39) = 2.000*rxt(47)*y(4)
+
+         mat(791) = -( rxt(6) )
+         mat(99) = rxt(7) + rxt(55)
+         mat(172) = rxt(8)
+         mat(507) = .890*rxt(9)
+         mat(62) = rxt(10) + rxt(62)
+         mat(135) = .600*rxt(19) + rxt(96)
+         mat(155) = rxt(20) + rxt(135)
+         mat(250) = rxt(30)
+
+         mat(500) = -( rxt(9) + rxt(140) )
+         mat(97) = rxt(7) + rxt(55)
+         mat(132) = .400*rxt(19)
+         mat(236) = rxt(34)
+         mat(50) = rxt(37)
+
+         mat(169) = -( rxt(8) )
+         mat(96) = 2.000*rxt(139) + 2.000*rxt(56)*y(87) + 2.000*rxt(216)*y(87)
+         mat(482) = rxt(140)
+         mat(232) = rxt(217)*y(87)
+         mat(47) = rxt(222)*y(87)
+
+         mat(59) = -( rxt(10) + rxt(62) )
+
+         mat(95) = -( rxt(7) + rxt(55) + rxt(139) + rxt(56)*y(87) + rxt(216)*y(87) )
+
+         mat(294) = rxt(16)
+         mat(119) = rxt(18)
+         mat(131) = .400*rxt(19)
+         mat(357) = .300*rxt(23)
+         mat(159) = rxt(27)
+         mat(690) = rxt(63)*y(12)
+         mat(37) = .750*rxt(64)*y(12)
+         mat(325) = rxt(190)*y(12)
+
+         mat(89) = -( rxt(11) )
+
+         mat(592) = -( rxt(12) + rxt(13) )
+         mat(91) = rxt(11)
+         mat(126) = rxt(17)
+         mat(337) = 1.340*rxt(21)
+         mat(87) = rxt(26)
+         mat(247) = rxt(30)
+         mat(145) = .690*rxt(31)
+         mat(346) = rxt(32)
+         mat(195) = rxt(33)
+         mat(24) = 2.000*rxt(108)
+         mat(40) = .250*rxt(64)*y(12)
+
+         mat(698) = -( rxt(63)*y(12) + rxt(72)*y(16) + rxt(82)*y(61) + rxt(99)*y(29) &
+                      + rxt(143)*y(42) )
+         mat(171) = rxt(8)
+         mat(92) = rxt(11)
+         mat(20) = 2.000*rxt(15)
+         mat(127) = rxt(17)
+         mat(121) = rxt(18)
+         mat(338) = .660*rxt(22)
+         mat(77) = rxt(24)
+         mat(82) = rxt(25)
+         mat(88) = rxt(26)
+         mat(45) = rxt(29)
+         mat(168) = rxt(35)
+         mat(275) = rxt(38)
+         mat(41) = 2.000*rxt(46)*y(87) + .750*rxt(64)*y(12) + rxt(73)*y(61)
+
+         mat(61) = rxt(10) + rxt(62)
+         mat(93) = rxt(11)
+         mat(596) = rxt(12)
+         mat(297) = rxt(16)
+         mat(128) = rxt(17)
+         mat(339) = 1.340*rxt(21)
+         mat(78) = rxt(24)
+         mat(83) = rxt(25)
+         mat(316) = rxt(28)
+         mat(249) = rxt(30)
+         mat(147) = rxt(31)
+         mat(348) = rxt(32)
+         mat(197) = 2.000*rxt(33)
+         mat(25) = rxt(107) + rxt(108)
+         mat(105) = rxt(184)
+         mat(42) = .200*rxt(64)*y(12) + rxt(73)*y(61)
+         mat(699) = rxt(72)*y(16) + rxt(82)*y(61)
+
+         mat(19) = -( rxt(15) )
+
+         mat(350) = .700*rxt(23)
 
 
-      do k = 1,clsze
 
-         mat(k,146) = -( rxt(k,2) + rxt(k,3) )
-         mat(k,259) = .890*rxt(k,7)
-         mat(k,85) = rxt(k,21)
+         mat(292) = -( rxt(16) )
+         mat(124) = rxt(17)
+         mat(76) = rxt(24)
 
-         mat(k,13) = -( rxt(k,23) + rxt(k,24) + rxt(k,25) + rxt(k,41) + rxt(k,50) )
-         mat(k,142) = rxt(k,2)
+         mat(122) = -( rxt(17) )
 
-         mat(k,84) = -( rxt(k,21) )
-         mat(k,143) = rxt(k,3)
-         mat(k,189) = rxt(k,4)
-         mat(k,14) = rxt(k,23) + rxt(k,24)
+         mat(130) = .600*rxt(19) + rxt(96)
+         mat(335) = 1.340*rxt(21)
+         mat(356) = .300*rxt(23)
+         mat(86) = rxt(26)
+         mat(158) = rxt(27)
+         mat(313) = rxt(28)
+         mat(344) = rxt(32)
 
-         mat(k,196) = rxt(k,4)
-         mat(k,264) = .110*rxt(k,7)
+         mat(117) = -( rxt(18) )
 
-         mat(k,193) = -( rxt(k,4) )
-         mat(k,21) = rxt(k,5) + rxt(k,32)
-         mat(k,65) = rxt(k,6)
-         mat(k,261) = .890*rxt(k,7)
-         mat(k,30) = rxt(k,8) + rxt(k,39)
-         mat(k,75) = .600*rxt(k,15) + rxt(k,67)
-
-         mat(k,265) = -( rxt(k,7) + rxt(k,80) )
-         mat(k,22) = rxt(k,5) + rxt(k,32)
-         mat(k,77) = .400*rxt(k,15)
-
-         mat(k,63) = -( rxt(k,6) )
-         mat(k,20) = 2.000*rxt(k,33) + 2.000*rxt(k,79)
-         mat(k,255) = rxt(k,80)
-
-         mat(k,28) = -( rxt(k,8) + rxt(k,39) )
-
-         mat(k,19) = -( rxt(k,5) + rxt(k,32) + rxt(k,33) + rxt(k,79) )
-
-         mat(k,133) = rxt(k,13)
-         mat(k,41) = rxt(k,14)
-         mat(k,76) = .400*rxt(k,15)
-         mat(k,82) = rxt(k,19)
-         mat(k,181) = rxt(k,40)
-         mat(k,18) = .750*rxt(k,41)
-
-         mat(k,58) = -( rxt(k,9) )
-
-         mat(k,137) = -( rxt(k,10) + rxt(k,11) )
-         mat(k,59) = rxt(k,9)
-         mat(k,55) = rxt(k,18)
-         mat(k,15) = .250*rxt(k,41)
-
-         mat(k,178) = -( rxt(k,40) + rxt(k,59) + rxt(k,70) + rxt(k,81) + rxt(k,49)*y(k,13))
-         mat(k,64) = rxt(k,6)
-         mat(k,60) = rxt(k,9)
-         mat(k,11) = 2.000*rxt(k,12)
-         mat(k,40) = rxt(k,14)
-         mat(k,46) = rxt(k,16)
-         mat(k,51) = rxt(k,17)
-         mat(k,56) = rxt(k,18)
-         mat(k,16) = 2.000*rxt(k,25) + .750*rxt(k,41) + rxt(k,50)
-
-         mat(k,31) = rxt(k,8) + rxt(k,39)
-         mat(k,61) = rxt(k,9)
-         mat(k,140) = 2.000*rxt(k,10)
-         mat(k,132) = rxt(k,13)
-         mat(k,47) = rxt(k,16)
-         mat(k,52) = rxt(k,17)
-         mat(k,35) = rxt(k,20)
-         mat(k,17) = .400*rxt(k,41) + rxt(k,50)
-         mat(k,180) = rxt(k,59) + rxt(k,49)*y(k,13)
-
-         mat(k,10) = -( rxt(k,12) )
-
-
-         mat(k,129) = -( rxt(k,13) )
-         mat(k,45) = rxt(k,16)
-
-         mat(k,78) = .600*rxt(k,15) + rxt(k,67)
-         mat(k,57) = rxt(k,18)
-         mat(k,83) = rxt(k,19)
-         mat(k,37) = rxt(k,20)
-
-         mat(k,38) = -( rxt(k,14) )
-
-         mat(k,72) = -( rxt(k,15) + rxt(k,67) )
-
-
-         mat(k,172) = rxt(k,70)
-
-         mat(k,43) = -( rxt(k,16) )
-
-         mat(k,174) = rxt(k,81)
-
-         mat(k,48) = -( rxt(k,17) )
-
-         mat(k,79) = -( rxt(k,19) )
-         mat(k,49) = .820*rxt(k,17)
-
-         mat(k,53) = -( rxt(k,18) )
-
-
-         mat(k,32) = -( rxt(k,20) )
+         mat(129) = -( rxt(19) + rxt(96) )
 
 
 
 
-         mat(k,5) = -( rxt(k,99) )
+         mat(148) = -( rxt(20) + rxt(135) )
 
 
-         mat(k,4) = rxt(k,99)
+         mat(354) = -( rxt(23) )
+         mat(142) = .402*rxt(31)
 
-      end do
+         mat(332) = -( rxt(21) + rxt(22) )
+         mat(141) = .288*rxt(31)
 
-      end subroutine IMP_LINMAT01
 
-      subroutine IMP_LINMAT( mat, y, rxt, het_rates )
+
+         mat(150) = rxt(20) + rxt(135)
+         mat(334) = .660*rxt(21)
+
+         mat(668) = rxt(99)*y(29)
+
+         mat(74) = -( rxt(24) )
+
+
+         mat(673) = rxt(143)*y(42)
+
+         mat(79) = -( rxt(25) )
+
+         mat(156) = -( rxt(27) )
+         mat(80) = .820*rxt(25)
+
+         mat(84) = -( rxt(26) )
+
+
+
+         mat(193) = -( rxt(33) )
+         mat(23) = rxt(107)
+
+         mat(343) = -( rxt(32) )
+
+
+         mat(22) = -( rxt(107) + rxt(108) )
+
+
+
+         mat(312) = -( rxt(28) )
+
+
+         mat(244) = -( rxt(30) )
+
+
+         mat(43) = -( rxt(29) )
+
+         mat(140) = -( rxt(31) )
+
+
+
+
+         mat(6) = -( rxt(181) )
+
+
+         mat(5) = rxt(181)
+
+         mat(328) = rxt(190)*y(12)
+
+         mat(163) = -( rxt(35) )
+         mat(231) = rxt(217)*y(87)
+
+         mat(233) = -( rxt(34) + rxt(217)*y(87) )
+
+         mat(324) = -( rxt(190)*y(12) )
+         mat(235) = rxt(34)
+         mat(165) = rxt(35)
+         mat(12) = 2.000*rxt(36)
+         mat(102) = rxt(39)
+         mat(18) = 2.000*rxt(41)
+
+         mat(13) = 2.000*rxt(198)
+
+         mat(11) = -( rxt(36) + rxt(198) )
+
+         mat(17) = -( rxt(41) )
+
+
+         mat(269) = -( rxt(38) )
+         mat(48) = rxt(222)*y(87)
+
+
+         mat(46) = -( rxt(37) + rxt(222)*y(87) )
+
+         mat(49) = rxt(37)
+         mat(270) = rxt(38)
+         mat(101) = rxt(39)
+         mat(751) = rxt(40)
+
+         mat(763) = -( rxt(40) )
+
+         mat(100) = -( rxt(39) )
+
+         mat(103) = -( rxt(184) )
+         mat(583) = rxt(12)
+         mat(36) = .200*rxt(64)*y(12)
+
+
+      end subroutine imp_linmat01
+
+      subroutine imp_linmat( mat, y, rxt, het_rates )
 !----------------------------------------------
 !       ... Linear Matrix entries for Implicit species
 !----------------------------------------------
@@ -519,22 +927,22 @@ logical                       :: module_is_initialized = .false.
 !----------------------------------------------
 !       ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  y(clsze,pcnstm1)
-      real, intent(in)    ::  rxt(clsze,rxntot)
-      real, intent(in)    ::  het_rates(clsze,hetcnt)
-      real, intent(inout) ::  mat(clsze,imp_nzcnt)
+      real, intent(in)    ::  y(pcnstm1)
+      real, intent(in)    ::  rxt(rxntot)
+      real, intent(in)    ::  het_rates(hetcnt)
+      real, intent(inout) ::  mat(imp_nzcnt)
 
-      call IMP_LINMAT01( mat, y, rxt, het_rates )
+      call imp_linmat01( mat, y, rxt, het_rates )
 
-      end subroutine IMP_LINMAT
+      end subroutine imp_linmat
 
       end module MO_IMP_LIN_MATRIX_MOD
 
       module MO_ROD_LIN_MATRIX_MOD
 
-      CONTAINS
+      contains
 
-      subroutine ROD_LINMAT( mat, y, rxt, het_rates )
+      subroutine rod_linmat( mat, y, rxt, het_rates )
 !----------------------------------------------
 !       ... Linear Matrix entries for Implicit species
 !----------------------------------------------
@@ -547,290 +955,21 @@ logical                       :: module_is_initialized = .false.
 !----------------------------------------------
 !       ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  y(clsze,pcnstm1)
-      real, intent(in)    ::  rxt(clsze,rxntot)
-      real, intent(in)    ::  het_rates(clsze,hetcnt)
-      real, intent(inout) ::  mat(clsze,rod_nzcnt)
+      real, intent(in)    ::  y(pcnstm1)
+      real, intent(in)    ::  rxt(rxntot)
+      real, intent(in)    ::  het_rates(hetcnt)
+      real, intent(inout) ::  mat(rod_nzcnt)
 
 
-      end subroutine ROD_LINMAT
+      end subroutine rod_linmat
 
       end module MO_ROD_LIN_MATRIX_MOD
 
       module MO_IMP_NLN_MATRIX_MOD
 
-      CONTAINS
+      contains
 
-      subroutine IMP_NLNMAT01( mat, y, rxt )
-
-      use MO_GRID_MOD,   only : pcnstm1
-      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt, clsze
-
-      implicit none
-
-!----------------------------------------------
-!       ... Dummy args
-!----------------------------------------------
-      real, intent(in)    ::  y(clsze,pcnstm1)
-      real, intent(in)    ::  rxt(clsze,rxntot)
-      real, intent(inout) ::  mat(clsze,imp_nzcnt)
-
-
-!----------------------------------------------
-!       ... Local variables
-!----------------------------------------------
-      integer :: k
-
-!----------------------------------------------
-!       ... Complete matrix entries Implicit species
-!----------------------------------------------
-
-      do k = 1,clsze
-         mat(k,146) = -(rxt(k,22)*y(k,2) + rxt(k,27)*y(k,4) + rxt(k,29)*y(k,5) &
-                      + rxt(k,53)*y(k,14) + rxt(k,54)*y(k,15) + rxt(k,69)*y(k,18))
-         mat(k,85) = -rxt(k,22)*y(k,1)
-         mat(k,243) = -rxt(k,27)*y(k,1)
-         mat(k,191) = -rxt(k,29)*y(k,1)
-         mat(k,177) = -rxt(k,53)*y(k,1)
-         mat(k,214) = -rxt(k,54)*y(k,1)
-         mat(k,92) = -rxt(k,69)*y(k,1)
-
-         mat(k,214) = mat(k,214) + .300*rxt(k,64)*y(k,20)
-         mat(k,270) = .300*rxt(k,64)*y(k,15)
-
-
-         mat(k,84) = -(rxt(k,22)*y(k,1) + rxt(k,28)*y(k,5) + rxt(k,51)*y(k,14) &
-                      + rxt(k,52)*y(k,15))
-         mat(k,143) = -rxt(k,22)*y(k,2)
-         mat(k,189) = -rxt(k,28)*y(k,2)
-         mat(k,170) = -rxt(k,51)*y(k,2)
-         mat(k,208) = -rxt(k,52)*y(k,2)
-
-         mat(k,170) = mat(k,170) + 2.000*rxt(k,58)*y(k,14)
-
-         mat(k,248) = -(rxt(k,26)*y(k,15) + rxt(k,27)*y(k,1) + rxt(k,36)*y(k,6) &
-                      + rxt(k,42)*y(k,10) + rxt(k,62)*y(k,20) + rxt(k,71)*y(k,24) &
-                      + rxt(k,77)*y(k,23) + rxt(k,82)*y(k,26) + rxt(k,87)*y(k,30))
-         mat(k,219) = -rxt(k,26)*y(k,4)
-         mat(k,151) = -rxt(k,27)*y(k,4)
-         mat(k,264) = -rxt(k,36)*y(k,4)
-         mat(k,233) = -rxt(k,42)*y(k,4)
-         mat(k,275) = -rxt(k,62)*y(k,4)
-         mat(k,107) = -rxt(k,71)*y(k,4)
-         mat(k,70) = -rxt(k,77)*y(k,4)
-         mat(k,126) = -rxt(k,82)*y(k,4)
-         mat(k,114) = -rxt(k,87)*y(k,4)
-
-         mat(k,89) = rxt(k,28)*y(k,5)
-         mat(k,196) = rxt(k,28)*y(k,2)
-
-         mat(k,193) = -(rxt(k,28)*y(k,2) + rxt(k,29)*y(k,1) + rxt(k,31)*y(k,6) &
-                      + rxt(k,34)*y(k,14) + rxt(k,37)*y(k,15) + rxt(k,63)*y(k,20))
-         mat(k,87) = -rxt(k,28)*y(k,5)
-         mat(k,148) = -rxt(k,29)*y(k,5)
-         mat(k,261) = -rxt(k,31)*y(k,5)
-         mat(k,179) = -rxt(k,34)*y(k,5)
-         mat(k,216) = -rxt(k,37)*y(k,5)
-         mat(k,272) = -rxt(k,63)*y(k,5)
-
-         mat(k,148) = mat(k,148) + rxt(k,27)*y(k,4)
-         mat(k,245) = rxt(k,27)*y(k,1) + 2.000*rxt(k,36)*y(k,6) + rxt(k,42)*y(k,10)  &
-                      + rxt(k,26)*y(k,15) + rxt(k,62)*y(k,20) + rxt(k,77)*y(k,23)  &
-                      + rxt(k,71)*y(k,24) + rxt(k,82)*y(k,26) + rxt(k,87)*y(k,30)
-         mat(k,261) = mat(k,261) + 2.000*rxt(k,36)*y(k,4) + rxt(k,30)*y(k,15)  &
-                      + rxt(k,90)*y(k,18) + rxt(k,98)*y(k,38)
-         mat(k,30) = rxt(k,38)*y(k,14)
-         mat(k,230) = rxt(k,42)*y(k,4)
-         mat(k,179) = mat(k,179) + rxt(k,38)*y(k,8)
-         mat(k,216) = mat(k,216) + rxt(k,26)*y(k,4) + rxt(k,30)*y(k,6)
-         mat(k,94) = rxt(k,90)*y(k,6)
-         mat(k,272) = mat(k,272) + rxt(k,62)*y(k,4)
-         mat(k,68) = rxt(k,77)*y(k,4)
-         mat(k,104) = rxt(k,71)*y(k,4)
-         mat(k,123) = rxt(k,82)*y(k,4)
-         mat(k,112) = rxt(k,87)*y(k,4)
-         mat(k,26) = rxt(k,98)*y(k,6)
-
-         mat(k,265) = -(rxt(k,30)*y(k,15) + rxt(k,31)*y(k,5) + rxt(k,36)*y(k,4) &
-                      + rxt(k,47)*y(k,12) + rxt(k,61)*y(k,19) + rxt(k,90)*y(k,18) &
-                      + rxt(k,92)*y(k,31) + rxt(k,98)*y(k,38))
-         mat(k,220) = -rxt(k,30)*y(k,6)
-         mat(k,197) = -rxt(k,31)*y(k,6)
-         mat(k,249) = -rxt(k,36)*y(k,6)
-         mat(k,141) = -rxt(k,47)*y(k,6)
-         mat(k,134) = -rxt(k,61)*y(k,6)
-         mat(k,97) = -rxt(k,90)*y(k,6)
-         mat(k,36) = -rxt(k,92)*y(k,6)
-         mat(k,27) = -rxt(k,98)*y(k,6)
-
-         mat(k,152) = rxt(k,29)*y(k,5)
-         mat(k,197) = mat(k,197) + rxt(k,29)*y(k,1)
-         mat(k,66) = rxt(k,35)*y(k,14)
-         mat(k,183) = rxt(k,35)*y(k,7) + rxt(k,93)*y(k,22)
-         mat(k,77) = rxt(k,93)*y(k,14)
-
-         mat(k,63) = -(rxt(k,35)*y(k,14))
-         mat(k,166) = -rxt(k,35)*y(k,7)
-
-         mat(k,187) = rxt(k,34)*y(k,14)
-         mat(k,255) = rxt(k,47)*y(k,12) + rxt(k,61)*y(k,19) + rxt(k,92)*y(k,31)
-         mat(k,136) = rxt(k,47)*y(k,6)
-         mat(k,166) = mat(k,166) + rxt(k,34)*y(k,5)
-         mat(k,128) = rxt(k,61)*y(k,6)
-         mat(k,33) = rxt(k,92)*y(k,6)
-
-         mat(k,28) = -(rxt(k,38)*y(k,14))
-         mat(k,159) = -rxt(k,38)*y(k,8)
-
-         mat(k,186) = rxt(k,37)*y(k,15)
-         mat(k,200) = rxt(k,37)*y(k,5)
-
-
-         mat(k,185) = rxt(k,31)*y(k,6)
-         mat(k,252) = rxt(k,31)*y(k,5)
-
-         mat(k,232) = -(rxt(k,42)*y(k,4) + (4.*rxt(k,43) + 4.*rxt(k,44)) * y(k,10) &
-                      + rxt(k,45)*y(k,15) + rxt(k,65)*y(k,20) + rxt(k,73)*y(k,24) &
-                      + rxt(k,84)*y(k,26))
-         mat(k,247) = -rxt(k,42)*y(k,10)
-         mat(k,218) = -rxt(k,45)*y(k,10)
-         mat(k,274) = -rxt(k,65)*y(k,10)
-         mat(k,106) = -rxt(k,73)*y(k,10)
-         mat(k,125) = -rxt(k,84)*y(k,10)
-
-         mat(k,247) = mat(k,247) + rxt(k,62)*y(k,20)
-         mat(k,232) = mat(k,232) + .900*rxt(k,65)*y(k,20)
-         mat(k,62) = .700*rxt(k,46)*y(k,14)
-         mat(k,181) = .700*rxt(k,46)*y(k,11)
-         mat(k,274) = mat(k,274) + rxt(k,62)*y(k,4) + .900*rxt(k,65)*y(k,10)  &
-                      + 4.000*rxt(k,68)*y(k,20)
-
-         mat(k,58) = -(rxt(k,46)*y(k,14))
-         mat(k,165) = -rxt(k,46)*y(k,11)
-
-         mat(k,222) = rxt(k,45)*y(k,15)
-         mat(k,205) = rxt(k,45)*y(k,10)
-
-         mat(k,137) = -(rxt(k,47)*y(k,6) + rxt(k,48)*y(k,14))
-         mat(k,258) = -rxt(k,47)*y(k,12)
-         mat(k,176) = -rxt(k,48)*y(k,12)
-
-         mat(k,242) = rxt(k,42)*y(k,10) + rxt(k,87)*y(k,30)
-         mat(k,228) = rxt(k,42)*y(k,4) + (4.000*rxt(k,43)+2.000*rxt(k,44))*y(k,10)  &
-                      + rxt(k,65)*y(k,20) + .700*rxt(k,73)*y(k,24) + rxt(k,84)*y(k,26)
-         mat(k,59) = .300*rxt(k,46)*y(k,14)
-         mat(k,176) = mat(k,176) + .300*rxt(k,46)*y(k,11) + .500*rxt(k,66)*y(k,21)  &
-                      + rxt(k,93)*y(k,22)
-         mat(k,269) = rxt(k,65)*y(k,10)
-         mat(k,39) = .500*rxt(k,66)*y(k,14)
-         mat(k,73) = rxt(k,93)*y(k,14)
-         mat(k,102) = .700*rxt(k,73)*y(k,10)
-         mat(k,121) = rxt(k,84)*y(k,10)
-         mat(k,110) = rxt(k,87)*y(k,4)
-
-         mat(k,178) = -(rxt(k,34)*y(k,5) + rxt(k,35)*y(k,7) + rxt(k,38)*y(k,8) &
-                      + rxt(k,46)*y(k,11) + rxt(k,48)*y(k,12) + rxt(k,51)*y(k,2) &
-                      + rxt(k,53)*y(k,1) + rxt(k,56)*y(k,16) + rxt(k,57)*y(k,15) &
-                      + 4.*rxt(k,58)*y(k,14) + rxt(k,60)*y(k,19) + rxt(k,66)*y(k,21) &
-                      + rxt(k,75)*y(k,25) + rxt(k,76)*y(k,18) + rxt(k,85)*y(k,27) &
-                      + rxt(k,86)*y(k,28) + rxt(k,89)*y(k,29) + rxt(k,91)*y(k,31) &
-                      + rxt(k,93)*y(k,22) + rxt(k,96)*y(k,36) + rxt(k,97)*y(k,38) &
-                      + rxt(k,100)*y(k,39))
-         mat(k,192) = -rxt(k,34)*y(k,14)
-         mat(k,64) = -rxt(k,35)*y(k,14)
-         mat(k,29) = -rxt(k,38)*y(k,14)
-         mat(k,60) = -rxt(k,46)*y(k,14)
-         mat(k,138) = -rxt(k,48)*y(k,14)
-         mat(k,86) = -rxt(k,51)*y(k,14)
-         mat(k,147) = -rxt(k,53)*y(k,14)
-         mat(k,11) = -rxt(k,56)*y(k,14)
-         mat(k,215) = -rxt(k,57)*y(k,14)
-         mat(k,130) = -rxt(k,60)*y(k,14)
-         mat(k,40) = -rxt(k,66)*y(k,14)
-         mat(k,46) = -rxt(k,75)*y(k,14)
-         mat(k,93) = -rxt(k,76)*y(k,14)
-         mat(k,51) = -rxt(k,85)*y(k,14)
-         mat(k,81) = -rxt(k,86)*y(k,14)
-         mat(k,56) = -rxt(k,89)*y(k,14)
-         mat(k,34) = -rxt(k,91)*y(k,14)
-         mat(k,74) = -rxt(k,93)*y(k,14)
-         mat(k,9) = -rxt(k,96)*y(k,14)
-         mat(k,25) = -rxt(k,97)*y(k,14)
-         mat(k,6) = -rxt(k,100)*y(k,14)
-
-         mat(k,147) = mat(k,147) + rxt(k,54)*y(k,15)
-         mat(k,86) = mat(k,86) + rxt(k,52)*y(k,15)
-         mat(k,244) = rxt(k,26)*y(k,15)
-         mat(k,260) = rxt(k,30)*y(k,15)
-         mat(k,60) = mat(k,60) + .300*rxt(k,46)*y(k,14)
-         mat(k,178) = mat(k,178) + .300*rxt(k,46)*y(k,11) + .500*rxt(k,75)*y(k,25)
-         mat(k,215) = mat(k,215) + rxt(k,54)*y(k,1) + rxt(k,52)*y(k,2) + rxt(k,26) &
-                      *y(k,4) + rxt(k,30)*y(k,6)
-         mat(k,46) = mat(k,46) + .500*rxt(k,75)*y(k,14)
-
-         mat(k,217) = -(rxt(k,26)*y(k,4) + rxt(k,30)*y(k,6) + rxt(k,37)*y(k,5) &
-                      + rxt(k,45)*y(k,10) + rxt(k,52)*y(k,2) + rxt(k,54)*y(k,1) &
-                      + 4.*rxt(k,55)*y(k,15) + rxt(k,57)*y(k,14) + rxt(k,64)*y(k,20) &
-                      + rxt(k,72)*y(k,24) + rxt(k,78)*y(k,23) + rxt(k,83)*y(k,26) &
-                      + rxt(k,88)*y(k,30))
-         mat(k,246) = -rxt(k,26)*y(k,15)
-         mat(k,262) = -rxt(k,30)*y(k,15)
-         mat(k,194) = -rxt(k,37)*y(k,15)
-         mat(k,231) = -rxt(k,45)*y(k,15)
-         mat(k,88) = -rxt(k,52)*y(k,15)
-         mat(k,149) = -rxt(k,54)*y(k,15)
-         mat(k,180) = -rxt(k,57)*y(k,15)
-         mat(k,273) = -rxt(k,64)*y(k,15)
-         mat(k,105) = -rxt(k,72)*y(k,15)
-         mat(k,69) = -rxt(k,78)*y(k,15)
-         mat(k,124) = -rxt(k,83)*y(k,15)
-         mat(k,113) = -rxt(k,88)*y(k,15)
-
-         mat(k,149) = mat(k,149) + rxt(k,53)*y(k,14) + rxt(k,69)*y(k,18)
-         mat(k,88) = mat(k,88) + rxt(k,51)*y(k,14)
-         mat(k,246) = mat(k,246) + rxt(k,42)*y(k,10) + rxt(k,77)*y(k,23) + rxt(k,71) &
-                      *y(k,24) + rxt(k,82)*y(k,26)
-         mat(k,262) = mat(k,262) + rxt(k,47)*y(k,12)
-         mat(k,231) = mat(k,231) + rxt(k,42)*y(k,4) + 4.000*rxt(k,43)*y(k,10)  &
-                      + .900*rxt(k,65)*y(k,20) + rxt(k,73)*y(k,24) + rxt(k,84)*y(k,26)
-         mat(k,140) = rxt(k,47)*y(k,6) + rxt(k,48)*y(k,14)
-         mat(k,180) = mat(k,180) + rxt(k,53)*y(k,1) + rxt(k,51)*y(k,2) + rxt(k,48) &
-                      *y(k,12) + rxt(k,56)*y(k,16)
-         mat(k,12) = rxt(k,56)*y(k,14)
-         mat(k,95) = rxt(k,69)*y(k,1)
-         mat(k,273) = mat(k,273) + .900*rxt(k,65)*y(k,10)
-         mat(k,69) = mat(k,69) + rxt(k,77)*y(k,4)
-         mat(k,105) = mat(k,105) + rxt(k,71)*y(k,4) + rxt(k,73)*y(k,10)  &
-                      + 2.400*rxt(k,74)*y(k,24)
-         mat(k,124) = mat(k,124) + rxt(k,82)*y(k,4) + rxt(k,84)*y(k,10)
-
-         mat(k,10) = -(rxt(k,56)*y(k,14))
-         mat(k,157) = -rxt(k,56)*y(k,16)
-
-         mat(k,199) = 2.000*rxt(k,55)*y(k,15)
-
-         mat(k,91) = -(rxt(k,69)*y(k,1) + rxt(k,76)*y(k,14) + rxt(k,90)*y(k,6))
-         mat(k,144) = -rxt(k,69)*y(k,18)
-         mat(k,171) = -rxt(k,76)*y(k,18)
-         mat(k,256) = -rxt(k,90)*y(k,18)
-
-         mat(k,129) = -(rxt(k,60)*y(k,14) + rxt(k,61)*y(k,6))
-         mat(k,175) = -rxt(k,60)*y(k,19)
-         mat(k,257) = -rxt(k,61)*y(k,19)
-
-         mat(k,241) = rxt(k,71)*y(k,24) + .270*rxt(k,82)*y(k,26)
-         mat(k,227) = .800*rxt(k,73)*y(k,24)
-         mat(k,175) = mat(k,175) + .500*rxt(k,75)*y(k,25)
-         mat(k,101) = rxt(k,71)*y(k,4) + .800*rxt(k,73)*y(k,10) + 3.200*rxt(k,74) &
-                      *y(k,24)
-         mat(k,45) = .500*rxt(k,75)*y(k,14)
-         mat(k,120) = .270*rxt(k,82)*y(k,4)
-
-      end do
-
-      end subroutine IMP_NLNMAT01
-
-      subroutine IMP_NLNMAT02( mat, y, rxt )
+      subroutine imp_nlnmat01( mat, y, rxt )
 
       use MO_GRID_MOD,   only : pcnstm1
       use CHEM_MODS_MOD, only : rxntot, imp_nzcnt, clsze
@@ -840,137 +979,1049 @@ logical                       :: module_is_initialized = .false.
 !----------------------------------------------
 !       ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  y(clsze,pcnstm1)
-      real, intent(in)    ::  rxt(clsze,rxntot)
-      real, intent(inout) ::  mat(clsze,imp_nzcnt)
+      real, intent(in)    ::  y(pcnstm1)
+      real, intent(in)    ::  rxt(rxntot)
+      real, intent(inout) ::  mat(imp_nzcnt)
 
 
 !----------------------------------------------
 !       ... Local variables
 !----------------------------------------------
-      integer :: k
 
 !----------------------------------------------
 !       ... Complete matrix entries Implicit species
 !----------------------------------------------
 
-      do k = 1,clsze
-         mat(k,277) = -(rxt(k,62)*y(k,4) + rxt(k,63)*y(k,5) + rxt(k,64)*y(k,15) &
-                      + rxt(k,65)*y(k,10) + 4.*rxt(k,68)*y(k,20))
-         mat(k,250) = -rxt(k,62)*y(k,20)
-         mat(k,198) = -rxt(k,63)*y(k,20)
-         mat(k,221) = -rxt(k,64)*y(k,20)
-         mat(k,235) = -rxt(k,65)*y(k,20)
+         mat(826) = -(rxt(43)*y(2) + rxt(50)*y(6) + rxt(52)*y(7) + rxt(76)*y(17) &
+                      + rxt(77)*y(18) + rxt(84)*y(20) + rxt(98)*y(21) + rxt(109)*y(30) &
+                      + rxt(118)*y(34) + rxt(120)*y(35) + rxt(137)*y(41) + rxt(183) &
+                      *y(86) + rxt(185)*y(75) + rxt(199)*y(83))
+         mat(545) = -rxt(43)*y(1)
+         mat(582) = -rxt(50)*y(1)
+         mat(792) = -rxt(52)*y(1)
+         mat(702) = -rxt(76)*y(1)
+         mat(746) = -rxt(77)*y(1)
+         mat(290) = -rxt(84)*y(1)
+         mat(209) = -rxt(98)*y(1)
+         mat(68) = -rxt(109)*y(1)
+         mat(364) = -rxt(118)*y(1)
+         mat(341) = -rxt(120)*y(1)
+         mat(267) = -rxt(137)*y(1)
+         mat(106) = -rxt(183)*y(1)
+         mat(330) = -rxt(185)*y(1)
+         mat(323) = -rxt(199)*y(1)
 
-         mat(k,153) = rxt(k,69)*y(k,18)
-         mat(k,250) = mat(k,250) + rxt(k,77)*y(k,23) + rxt(k,87)*y(k,30)
-         mat(k,266) = rxt(k,90)*y(k,18) + rxt(k,61)*y(k,19) + rxt(k,92)*y(k,31)
-         mat(k,184) = rxt(k,60)*y(k,19) + .500*rxt(k,66)*y(k,21) + rxt(k,91)*y(k,31)
-         mat(k,98) = rxt(k,69)*y(k,1) + rxt(k,90)*y(k,6)
-         mat(k,135) = rxt(k,61)*y(k,6) + rxt(k,60)*y(k,14)
-         mat(k,42) = .500*rxt(k,66)*y(k,14)
-         mat(k,71) = rxt(k,77)*y(k,4)
-         mat(k,115) = rxt(k,87)*y(k,4)
-         mat(k,37) = rxt(k,92)*y(k,6) + rxt(k,91)*y(k,14)
-
-         mat(k,38) = -(rxt(k,66)*y(k,14))
-         mat(k,161) = -rxt(k,66)*y(k,21)
-
-         mat(k,201) = .700*rxt(k,64)*y(k,20)
-         mat(k,267) = .700*rxt(k,64)*y(k,15)
-
-         mat(k,72) = -(rxt(k,93)*y(k,14))
-         mat(k,168) = -rxt(k,93)*y(k,22)
-
-         mat(k,188) = rxt(k,63)*y(k,20)
-         mat(k,268) = rxt(k,63)*y(k,5)
-
-         mat(k,67) = -(rxt(k,77)*y(k,4) + rxt(k,78)*y(k,15))
-         mat(k,236) = -rxt(k,77)*y(k,23)
-         mat(k,206) = -rxt(k,78)*y(k,23)
-
-         mat(k,167) = rxt(k,76)*y(k,18)
-         mat(k,90) = rxt(k,76)*y(k,14)
-
-         mat(k,100) = -(rxt(k,71)*y(k,4) + rxt(k,72)*y(k,15) + rxt(k,73)*y(k,10) &
-                      + 4.*rxt(k,74)*y(k,24))
-         mat(k,238) = -rxt(k,71)*y(k,24)
-         mat(k,209) = -rxt(k,72)*y(k,24)
-         mat(k,224) = -rxt(k,73)*y(k,24)
-
-         mat(k,172) = .500*rxt(k,75)*y(k,25)
-         mat(k,44) = .500*rxt(k,75)*y(k,14)
-
-         mat(k,43) = -(rxt(k,75)*y(k,14))
-         mat(k,162) = -rxt(k,75)*y(k,25)
-
-         mat(k,202) = rxt(k,72)*y(k,24)
-         mat(k,99) = rxt(k,72)*y(k,15)
-
-         mat(k,119) = -(rxt(k,82)*y(k,4) + rxt(k,83)*y(k,15) + rxt(k,84)*y(k,10))
-         mat(k,240) = -rxt(k,82)*y(k,26)
-         mat(k,211) = -rxt(k,83)*y(k,26)
-         mat(k,226) = -rxt(k,84)*y(k,26)
-
-         mat(k,174) = rxt(k,85)*y(k,27)
-         mat(k,50) = rxt(k,85)*y(k,14)
-
-         mat(k,48) = -(rxt(k,85)*y(k,14))
-         mat(k,163) = -rxt(k,85)*y(k,27)
-
-         mat(k,203) = rxt(k,83)*y(k,26)
-         mat(k,116) = rxt(k,83)*y(k,15)
-
-         mat(k,79) = -(rxt(k,86)*y(k,14))
-         mat(k,169) = -rxt(k,86)*y(k,28)
-
-         mat(k,237) = .820*rxt(k,82)*y(k,26)
-         mat(k,223) = .820*rxt(k,84)*y(k,26)
-         mat(k,117) = .820*rxt(k,82)*y(k,4) + .820*rxt(k,84)*y(k,10)
-
-         mat(k,53) = -(rxt(k,89)*y(k,14))
-         mat(k,164) = -rxt(k,89)*y(k,29)
-
-         mat(k,204) = rxt(k,88)*y(k,30)
-         mat(k,108) = rxt(k,88)*y(k,15)
-
-         mat(k,109) = -(rxt(k,87)*y(k,4) + rxt(k,88)*y(k,15))
-         mat(k,239) = -rxt(k,87)*y(k,30)
-         mat(k,210) = -rxt(k,88)*y(k,30)
-
-         mat(k,173) = rxt(k,86)*y(k,28) + rxt(k,89)*y(k,29)
-         mat(k,80) = rxt(k,86)*y(k,14)
-         mat(k,54) = rxt(k,89)*y(k,14)
-
-         mat(k,32) = -(rxt(k,91)*y(k,14) + rxt(k,92)*y(k,6))
-         mat(k,160) = -rxt(k,91)*y(k,31)
-         mat(k,254) = -rxt(k,92)*y(k,31)
-
-         mat(k,8) = -(rxt(k,96)*y(k,14))
-         mat(k,156) = -rxt(k,96)*y(k,36)
-
-         mat(k,251) = rxt(k,98)*y(k,38)
-         mat(k,156) = mat(k,156) + rxt(k,97)*y(k,38)
-         mat(k,23) = rxt(k,98)*y(k,6) + rxt(k,97)*y(k,14)
+         mat(826) = mat(826) + .100*rxt(98)*y(21) + .200*rxt(118)*y(34)  &
+                      + .200*rxt(120)*y(35)
+         mat(746) = mat(746) + .300*rxt(93)*y(25) + .300*rxt(130)*y(38)
+         mat(209) = mat(209) + .100*rxt(98)*y(1)
+         mat(449) = .300*rxt(93)*y(18)
+         mat(364) = mat(364) + .200*rxt(118)*y(1)
+         mat(341) = mat(341) + .200*rxt(120)*y(1)
+         mat(428) = .300*rxt(130)*y(18)
 
 
-         mat(k,154) = rxt(k,96)*y(k,36)
-         mat(k,7) = rxt(k,96)*y(k,14)
+         mat(536) = -(rxt(43)*y(1) + rxt(51)*y(7) + rxt(74)*y(17) + rxt(75)*y(18) &
+                      + rxt(186)*y(76) + rxt(189)*y(74) + rxt(204)*y(80) + rxt(212) &
+                      *y(6))
+         mat(817) = -rxt(43)*y(2)
+         mat(783) = -rxt(51)*y(2)
+         mat(693) = -rxt(74)*y(2)
+         mat(737) = -rxt(75)*y(2)
+         mat(518) = -rxt(186)*y(2)
+         mat(238) = -rxt(189)*y(2)
+         mat(272) = -rxt(204)*y(2)
+         mat(573) = -rxt(212)*y(2)
 
-         mat(k,24) = -(rxt(k,97)*y(k,14) + rxt(k,98)*y(k,6))
-         mat(k,158) = -rxt(k,97)*y(k,38)
-         mat(k,253) = -rxt(k,98)*y(k,38)
+         mat(817) = mat(817) + .765*rxt(137)*y(41)
+         mat(32) = rxt(142)*y(6) + rxt(213)*y(7)
+         mat(573) = mat(573) + rxt(142)*y(5)
+         mat(783) = mat(783) + rxt(213)*y(5)
+         mat(693) = mat(693) + 2.000*rxt(81)*y(17)
+         mat(261) = .765*rxt(137)*y(1)
 
-         mat(k,5) = -(rxt(k,100)*y(k,14))
-         mat(k,155) = -rxt(k,100)*y(k,39)
+         mat(31) = -(rxt(142)*y(6) + rxt(213)*y(7))
+         mat(547) = -rxt(142)*y(5)
+         mat(766) = -rxt(213)*y(5)
+
+         mat(574) = -(rxt(49)*y(18) + rxt(50)*y(1) + rxt(59)*y(8) + rxt(65)*y(13) &
+                      + rxt(86)*y(22) + rxt(91)*y(25) + rxt(100)*y(39) + rxt(106) &
+                      *y(51) + rxt(112)*y(33) + (rxt(121) + rxt(122)) * y(36) + rxt(128) &
+                      *y(38) + rxt(142)*y(5) + rxt(144)*y(43) + rxt(149)*y(54) + rxt(154) &
+                      *y(56) + rxt(162)*y(58) + rxt(187)*y(76) + rxt(203)*y(84) &
+                      + rxt(212)*y(2))
+         mat(738) = -rxt(49)*y(6)
+         mat(818) = -rxt(50)*y(6)
+         mat(502) = -rxt(59)*y(6)
+         mat(471) = -rxt(65)*y(6)
+         mat(188) = -rxt(86)*y(6)
+         mat(444) = -rxt(91)*y(6)
+         mat(179) = -rxt(100)*y(6)
+         mat(113) = -rxt(106)*y(6)
+         mat(410) = -rxt(112)*y(6)
+         mat(377) = -(rxt(121) + rxt(122)) * y(6)
+         mat(423) = -rxt(128)*y(6)
+         mat(33) = -rxt(142)*y(6)
+         mat(225) = -rxt(144)*y(6)
+         mat(213) = -rxt(149)*y(6)
+         mat(306) = -rxt(154)*y(6)
+         mat(392) = -rxt(162)*y(6)
+         mat(519) = -rxt(187)*y(6)
+         mat(757) = -rxt(203)*y(6)
+         mat(537) = -rxt(212)*y(6)
+
+         mat(537) = mat(537) + rxt(51)*y(7)
+         mat(784) = rxt(51)*y(2) + rxt(210)*y(8)
+         mat(502) = mat(502) + rxt(210)*y(7)
+
+         mat(791) = -(rxt(51)*y(2) + rxt(52)*y(1) + rxt(54)*y(8) + rxt(57)*y(17) &
+                      + rxt(60)*y(18) + rxt(92)*y(25) + rxt(134)*y(38) + rxt(188) &
+                      *y(76) + rxt(200)*y(84) + rxt(213)*y(5))
+         mat(544) = -rxt(51)*y(7)
+         mat(825) = -rxt(52)*y(7)
+         mat(507) = -rxt(54)*y(7)
+         mat(701) = -rxt(57)*y(7)
+         mat(745) = -rxt(60)*y(7)
+         mat(448) = -rxt(92)*y(7)
+         mat(427) = -rxt(134)*y(7)
+         mat(526) = -rxt(188)*y(7)
+         mat(764) = -rxt(200)*y(7)
+         mat(34) = -rxt(213)*y(7)
+
+         mat(825) = mat(825) + rxt(50)*y(6)
+         mat(544) = mat(544) + rxt(212)*y(6)
+         mat(581) = rxt(50)*y(1) + rxt(212)*y(2) + 2.000*rxt(59)*y(8) + rxt(65)*y(13)  &
+                      + rxt(49)*y(18) + rxt(86)*y(22) + rxt(91)*y(25) + .920*rxt(112) &
+                      *y(33) + rxt(121)*y(36) + rxt(128)*y(38) + rxt(100)*y(39)  &
+                      + rxt(144)*y(43) + rxt(106)*y(51) + rxt(149)*y(54)  &
+                      + 1.206*rxt(154)*y(56) + rxt(162)*y(58) + rxt(187)*y(76)  &
+                      + rxt(203)*y(84)
+         mat(507) = mat(507) + 2.000*rxt(59)*y(6) + 4.000*rxt(211)*y(8) + rxt(53) &
+                      *y(18) + rxt(113)*y(33) + rxt(123)*y(36) + rxt(129)*y(38)  &
+                      + rxt(138)*y(41) + 1.206*rxt(155)*y(56) + rxt(160)*y(57)  &
+                      + rxt(163)*y(58) + rxt(180)*y(68)
+         mat(62) = rxt(61)*y(17)
+         mat(475) = rxt(65)*y(6)
+         mat(701) = mat(701) + rxt(61)*y(10) + rxt(152)*y(28) + rxt(159)*y(57)
+         mat(745) = mat(745) + rxt(49)*y(6) + rxt(53)*y(8) + .206*rxt(156)*y(56)
+         mat(192) = rxt(86)*y(6)
+         mat(448) = mat(448) + rxt(91)*y(6)
+         mat(54) = rxt(152)*y(17)
+         mat(414) = .920*rxt(112)*y(6) + rxt(113)*y(8)
+         mat(381) = rxt(121)*y(6) + rxt(123)*y(8)
+         mat(427) = mat(427) + rxt(128)*y(6) + rxt(129)*y(8)
+         mat(183) = rxt(100)*y(6)
+         mat(266) = rxt(138)*y(8)
+         mat(229) = rxt(144)*y(6)
+         mat(116) = rxt(106)*y(6)
+         mat(217) = rxt(149)*y(6)
+         mat(310) = 1.206*rxt(154)*y(6) + 1.206*rxt(155)*y(8) + .206*rxt(156)*y(18)
+         mat(250) = rxt(160)*y(8) + rxt(159)*y(17)
+         mat(396) = rxt(162)*y(6) + rxt(163)*y(8)
+         mat(30) = rxt(180)*y(8)
+         mat(526) = mat(526) + rxt(187)*y(6)
+         mat(764) = mat(764) + rxt(203)*y(6)
+
+         mat(500) = -(rxt(53)*y(18) + (rxt(54) + rxt(210)) * y(7) + rxt(59)*y(6) &
+                      + rxt(70)*y(15) + rxt(85)*y(20) + rxt(90)*y(23) + rxt(113)*y(33) &
+                      + rxt(123)*y(36) + rxt(129)*y(38) + rxt(138)*y(41) + rxt(153) &
+                      *y(21) + rxt(155)*y(56) + rxt(158)*y(55) + rxt(160)*y(57) &
+                      + rxt(163)*y(58) + rxt(180)*y(68) + 4.*rxt(211)*y(8))
+         mat(735) = -rxt(53)*y(8)
+         mat(781) = -(rxt(54) + rxt(210)) * y(8)
+         mat(571) = -rxt(59)*y(8)
+         mat(588) = -rxt(70)*y(8)
+         mat(284) = -rxt(85)*y(8)
+         mat(295) = -rxt(90)*y(8)
+         mat(409) = -rxt(113)*y(8)
+         mat(376) = -rxt(123)*y(8)
+         mat(422) = -rxt(129)*y(8)
+         mat(260) = -rxt(138)*y(8)
+         mat(205) = -rxt(153)*y(8)
+         mat(305) = -rxt(155)*y(8)
+         mat(314) = -rxt(158)*y(8)
+         mat(246) = -rxt(160)*y(8)
+         mat(391) = -rxt(163)*y(8)
+         mat(28) = -rxt(180)*y(8)
+
+         mat(815) = rxt(52)*y(7)
+         mat(534) = rxt(189)*y(74)
+         mat(781) = mat(781) + rxt(52)*y(1)
+         mat(170) = rxt(58)*y(17)
+         mat(691) = rxt(58)*y(9) + rxt(173)*y(27) + .500*rxt(172)*y(32)
+         mat(132) = rxt(173)*y(17)
+         mat(151) = .500*rxt(172)*y(17)
+         mat(236) = rxt(189)*y(2)
+
+         mat(169) = -(rxt(58)*y(17))
+         mat(667) = -rxt(58)*y(9)
+
+         mat(772) = rxt(57)*y(17)
+         mat(482) = rxt(70)*y(15) + rxt(90)*y(23) + rxt(158)*y(55)
+         mat(96) = rxt(215)*y(72)
+         mat(584) = rxt(70)*y(8)
+         mat(667) = mat(667) + rxt(57)*y(7)
+         mat(291) = rxt(90)*y(8)
+         mat(311) = rxt(158)*y(8)
+         mat(605) = rxt(215)*y(11) + rxt(218)*y(74)
+         mat(232) = rxt(218)*y(72)
+
+         mat(59) = -(rxt(61)*y(17))
+         mat(650) = -rxt(61)*y(10)
+
+         mat(768) = rxt(60)*y(18)
+         mat(705) = rxt(60)*y(7)
+
+         mat(95) = -(rxt(215)*y(72))
+         mat(602) = -rxt(215)*y(11)
+
+         mat(769) = rxt(54)*y(8)
+         mat(480) = rxt(54)*y(7)
+
+         mat(469) = -(rxt(65)*y(6) + (4.*rxt(66) + 4.*rxt(67)) * y(13) + rxt(68)*y(18) &
+                      + rxt(94)*y(25) + rxt(102)*y(39) + rxt(115)*y(33) + rxt(125) &
+                      *y(36) + rxt(131)*y(38) + rxt(146)*y(43) + rxt(165)*y(58))
+         mat(570) = -rxt(65)*y(13)
+         mat(734) = -rxt(68)*y(13)
+         mat(442) = -rxt(94)*y(13)
+         mat(178) = -rxt(102)*y(13)
+         mat(408) = -rxt(115)*y(13)
+         mat(375) = -rxt(125)*y(13)
+         mat(421) = -rxt(131)*y(13)
+         mat(224) = -rxt(146)*y(13)
+         mat(390) = -rxt(165)*y(13)
+
+         mat(814) = .310*rxt(84)*y(20)
+         mat(570) = mat(570) + rxt(91)*y(25)
+         mat(469) = mat(469) + .900*rxt(94)*y(25)
+         mat(90) = .700*rxt(69)*y(17)
+         mat(690) = .700*rxt(69)*y(14)
+         mat(283) = .310*rxt(84)*y(1)
+         mat(442) = mat(442) + rxt(91)*y(6) + .900*rxt(94)*y(13) + 4.000*rxt(97)*y(25)  &
+                      + rxt(116)*y(33) + rxt(126)*y(36) + rxt(132)*y(38) + rxt(166) &
+                      *y(58)
+         mat(408) = mat(408) + rxt(116)*y(25)
+         mat(375) = mat(375) + rxt(126)*y(25)
+         mat(421) = mat(421) + rxt(132)*y(25)
+         mat(390) = mat(390) + rxt(166)*y(25)
+
+         mat(89) = -(rxt(69)*y(17))
+         mat(656) = -rxt(69)*y(14)
+
+         mat(451) = rxt(68)*y(18)
+         mat(710) = rxt(68)*y(13)
+
+         mat(592) = -(rxt(70)*y(8) + rxt(71)*y(17) + rxt(195)*y(75) + rxt(206)*y(83))
+         mat(503) = -rxt(70)*y(15)
+         mat(695) = -rxt(71)*y(15)
+         mat(327) = -rxt(195)*y(15)
+         mat(319) = -rxt(206)*y(15)
+
+         mat(819) = .540*rxt(84)*y(20) + .600*rxt(98)*y(21) + rxt(109)*y(30)  &
+                      + .800*rxt(118)*y(34) + .700*rxt(120)*y(35) + 1.326*rxt(137) &
+                      *y(41)
+         mat(575) = rxt(65)*y(13) + rxt(86)*y(22) + .510*rxt(112)*y(33)  &
+                      + .250*rxt(121)*y(36) + rxt(128)*y(38) + rxt(149)*y(54)  &
+                      + .072*rxt(154)*y(56)
+         mat(503) = mat(503) + .600*rxt(113)*y(33) + .250*rxt(123)*y(36) + rxt(129) &
+                      *y(38) + .072*rxt(155)*y(56)
+         mat(472) = rxt(65)*y(6) + (4.000*rxt(66)+2.000*rxt(67))*y(13) + rxt(94)*y(25)  &
+                      + 1.200*rxt(115)*y(33) + .880*rxt(125)*y(36) + 2.000*rxt(131) &
+                      *y(38) + .700*rxt(102)*y(39) + rxt(146)*y(43) + .700*rxt(165) &
+                      *y(58)
+         mat(91) = .300*rxt(69)*y(17)
+         mat(695) = mat(695) + .300*rxt(69)*y(14) + .500*rxt(95)*y(26) + rxt(173) &
+                      *y(27) + .500*rxt(105)*y(30) + .500*rxt(172)*y(32) + rxt(170) &
+                      *y(47) + .500*rxt(159)*y(57)
+         mat(739) = .008*rxt(156)*y(56)
+         mat(286) = .540*rxt(84)*y(1)
+         mat(206) = .600*rxt(98)*y(1)
+         mat(189) = rxt(86)*y(6)
+         mat(445) = rxt(94)*y(13) + .600*rxt(116)*y(33) + .250*rxt(126)*y(36)  &
+                      + rxt(132)*y(38)
+         mat(120) = .500*rxt(95)*y(17)
+         mat(133) = rxt(173)*y(17)
+         mat(65) = rxt(109)*y(1) + .500*rxt(105)*y(17)
+         mat(152) = .500*rxt(172)*y(17)
+         mat(411) = .510*rxt(112)*y(6) + .600*rxt(113)*y(8) + 1.200*rxt(115)*y(13)  &
+                      + .600*rxt(116)*y(25)
+         mat(360) = .800*rxt(118)*y(1)
+         mat(337) = .700*rxt(120)*y(1)
+         mat(378) = .250*rxt(121)*y(6) + .250*rxt(123)*y(8) + .880*rxt(125)*y(13)  &
+                      + .250*rxt(126)*y(25)
+         mat(424) = rxt(128)*y(6) + rxt(129)*y(8) + 2.000*rxt(131)*y(13) + rxt(132) &
+                      *y(25) + 4.000*rxt(133)*y(38)
+         mat(180) = .700*rxt(102)*y(13)
+         mat(263) = 1.326*rxt(137)*y(1)
+         mat(226) = rxt(146)*y(13)
+         mat(137) = rxt(170)*y(17)
+         mat(214) = rxt(149)*y(6)
+         mat(307) = .072*rxt(154)*y(6) + .072*rxt(155)*y(8) + .008*rxt(156)*y(18)
+         mat(247) = .500*rxt(159)*y(17)
+         mat(393) = .700*rxt(165)*y(13)
+
+
+      end subroutine imp_nlnmat01
+
+      subroutine imp_nlnmat02( mat, y, rxt )
+
+      use MO_GRID_MOD,   only : pcnstm1
+      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt, clsze
+
+      implicit none
+
+!----------------------------------------------
+!       ... Dummy args
+!----------------------------------------------
+      real, intent(in)    ::  y(pcnstm1)
+      real, intent(in)    ::  rxt(rxntot)
+      real, intent(inout) ::  mat(imp_nzcnt)
+
+
+!----------------------------------------------
+!       ... Local variables
+!----------------------------------------------
+
+!----------------------------------------------
+!       ... Complete matrix entries Implicit species
+!----------------------------------------------
+
+         mat(698) = -(rxt(57)*y(7) + rxt(58)*y(9) + rxt(61)*y(10) + rxt(69)*y(14) &
+                      + rxt(71)*y(15) + rxt(74)*y(2) + rxt(76)*y(1) + rxt(79)*y(19) &
+                      + rxt(80)*y(18) + (4.*rxt(81) + 4.*rxt(196)) * y(17) + rxt(83) &
+                      *y(20) + rxt(88)*y(24) + rxt(89)*y(23) + rxt(95)*y(26) + rxt(104) &
+                      *y(40) + rxt(105)*y(30) + rxt(110)*y(21) + rxt(111)*y(31) &
+                      + rxt(117)*y(34) + rxt(119)*y(35) + rxt(127)*y(37) + rxt(136) &
+                      *y(41) + rxt(147)*y(44) + rxt(148)*y(45) + rxt(151)*y(46) &
+                      + rxt(152)*y(28) + rxt(157)*y(55) + rxt(159)*y(57) + rxt(161) &
+                      *y(53) + rxt(167)*y(59) + rxt(169)*y(60) + rxt(170)*y(47) &
+                      + rxt(171)*y(48) + rxt(172)*y(32) + rxt(173)*y(27) + rxt(174) &
+                      *y(50) + rxt(175)*y(49) + rxt(178)*y(66) + rxt(179)*y(68) &
+                      + rxt(182)*y(69) + rxt(191)*y(72) + (rxt(194) + rxt(209) &
+                      ) * y(76) + rxt(207)*y(81))
+         mat(788) = -rxt(57)*y(17)
+         mat(171) = -rxt(58)*y(17)
+         mat(60) = -rxt(61)*y(17)
+         mat(92) = -rxt(69)*y(17)
+         mat(595) = -rxt(71)*y(17)
+         mat(541) = -rxt(74)*y(17)
+         mat(822) = -rxt(76)*y(17)
+         mat(20) = -rxt(79)*y(17)
+         mat(742) = -rxt(80)*y(17)
+         mat(287) = -rxt(83)*y(17)
+         mat(127) = -rxt(88)*y(17)
+         mat(296) = -rxt(89)*y(17)
+         mat(121) = -rxt(95)*y(17)
+         mat(77) = -rxt(104)*y(17)
+         mat(66) = -rxt(105)*y(17)
+         mat(207) = -rxt(110)*y(17)
+         mat(10) = -rxt(111)*y(17)
+         mat(361) = -rxt(117)*y(17)
+         mat(338) = -rxt(119)*y(17)
+         mat(72) = -rxt(127)*y(17)
+         mat(264) = -rxt(136)*y(17)
+         mat(82) = -rxt(147)*y(17)
+         mat(160) = -rxt(148)*y(17)
+         mat(88) = -rxt(151)*y(17)
+         mat(53) = -rxt(152)*y(17)
+         mat(315) = -rxt(157)*y(17)
+         mat(248) = -rxt(159)*y(17)
+         mat(109) = -rxt(161)*y(17)
+         mat(45) = -rxt(167)*y(17)
+         mat(146) = -rxt(169)*y(17)
+         mat(138) = -rxt(170)*y(17)
+         mat(57) = -rxt(171)*y(17)
+         mat(153) = -rxt(172)*y(17)
+         mat(134) = -rxt(173)*y(17)
+         mat(347) = -rxt(174)*y(17)
+         mat(196) = -rxt(175)*y(17)
+         mat(16) = -rxt(178)*y(17)
+         mat(29) = -rxt(179)*y(17)
+         mat(7) = -rxt(182)*y(17)
+         mat(618) = -rxt(191)*y(17)
+         mat(523) = -(rxt(194) + rxt(209)) * y(17)
+         mat(636) = -rxt(207)*y(17)
+
+         mat(822) = mat(822) + rxt(77)*y(18) + .330*rxt(84)*y(20) + .270*rxt(98)*y(21)  &
+                      + .120*rxt(109)*y(30) + .080*rxt(118)*y(34) + .215*rxt(120) &
+                      *y(35) + 1.156*rxt(137)*y(41) + rxt(183)*y(86)
+         mat(541) = mat(541) + rxt(75)*y(18) + rxt(204)*y(80)
+         mat(578) = rxt(49)*y(18)
+         mat(505) = rxt(53)*y(18)
+         mat(92) = mat(92) + .300*rxt(69)*y(17)
+         mat(698) = mat(698) + .300*rxt(69)*y(14) + .500*rxt(88)*y(24) + .100*rxt(127) &
+                      *y(37) + .500*rxt(104)*y(40)
+         mat(742) = mat(742) + rxt(77)*y(1) + rxt(75)*y(2) + rxt(49)*y(6) + rxt(53) &
+                      *y(8)
+         mat(287) = mat(287) + .330*rxt(84)*y(1)
+         mat(207) = mat(207) + .270*rxt(98)*y(1)
+         mat(127) = mat(127) + .500*rxt(88)*y(17)
+         mat(66) = mat(66) + .120*rxt(109)*y(1)
+         mat(361) = mat(361) + .080*rxt(118)*y(1)
+         mat(338) = mat(338) + .215*rxt(120)*y(1)
+         mat(72) = mat(72) + .100*rxt(127)*y(17)
+         mat(77) = mat(77) + .500*rxt(104)*y(17)
+         mat(264) = mat(264) + 1.156*rxt(137)*y(1)
+         mat(275) = rxt(204)*y(2)
+         mat(104) = rxt(183)*y(1)
+
+         mat(743) = -(rxt(49)*y(6) + rxt(53)*y(8) + rxt(60)*y(7) + rxt(68)*y(13) &
+                      + rxt(75)*y(2) + rxt(77)*y(1) + 4.*rxt(78)*y(18) + rxt(80)*y(17) &
+                      + rxt(87)*y(22) + rxt(93)*y(25) + rxt(101)*y(39) + rxt(114) &
+                      *y(33) + rxt(124)*y(36) + rxt(130)*y(38) + rxt(145)*y(43) &
+                      + rxt(150)*y(54) + rxt(156)*y(56) + rxt(164)*y(58) + rxt(192) &
+                      *y(75) + rxt(193)*y(76) + rxt(202)*y(84) + rxt(205)*y(83))
+         mat(579) = -rxt(49)*y(18)
+         mat(506) = -rxt(53)*y(18)
+         mat(789) = -rxt(60)*y(18)
+         mat(474) = -rxt(68)*y(18)
+         mat(542) = -rxt(75)*y(18)
+         mat(823) = -rxt(77)*y(18)
+         mat(699) = -rxt(80)*y(18)
+         mat(191) = -rxt(87)*y(18)
+         mat(447) = -rxt(93)*y(18)
+         mat(182) = -rxt(101)*y(18)
+         mat(413) = -rxt(114)*y(18)
+         mat(380) = -rxt(124)*y(18)
+         mat(426) = -rxt(130)*y(18)
+         mat(228) = -rxt(145)*y(18)
+         mat(216) = -rxt(150)*y(18)
+         mat(309) = -rxt(156)*y(18)
+         mat(395) = -rxt(164)*y(18)
+         mat(329) = -rxt(192)*y(18)
+         mat(524) = -rxt(193)*y(18)
+         mat(762) = -rxt(202)*y(18)
+         mat(321) = -rxt(205)*y(18)
+
+         mat(823) = mat(823) + rxt(76)*y(17) + .190*rxt(84)*y(20) + .060*rxt(98)*y(21)  &
+                      + .120*rxt(109)*y(30) + .060*rxt(118)*y(34) + .275*rxt(120) &
+                      *y(35) + .102*rxt(137)*y(41)
+         mat(579) = mat(579) + rxt(65)*y(13) + rxt(86)*y(22) + rxt(112)*y(33)  &
+                      + .470*rxt(121)*y(36) + rxt(100)*y(39) + rxt(144)*y(43)  &
+                      + .794*rxt(154)*y(56) + 1.500*rxt(162)*y(58)
+         mat(506) = mat(506) + rxt(70)*y(15) + rxt(113)*y(33) + .470*rxt(123)*y(36)  &
+                      + .794*rxt(155)*y(56) + rxt(160)*y(57) + 1.500*rxt(163)*y(58)
+         mat(474) = mat(474) + rxt(65)*y(6) + 4.000*rxt(66)*y(13) + .900*rxt(94)*y(25)  &
+                      + rxt(115)*y(33) + .730*rxt(125)*y(36) + rxt(131)*y(38)  &
+                      + rxt(102)*y(39) + rxt(146)*y(43) + rxt(165)*y(58)
+         mat(596) = rxt(70)*y(8) + rxt(71)*y(17) + rxt(195)*y(75) + rxt(206)*y(83)
+         mat(699) = mat(699) + rxt(76)*y(1) + rxt(71)*y(15) + rxt(79)*y(19)  &
+                      + .250*rxt(105)*y(30) + .500*rxt(172)*y(32) + .200*rxt(127) &
+                      *y(37) + rxt(170)*y(47) + rxt(171)*y(48) + .600*rxt(175)*y(49)  &
+                      + rxt(174)*y(50) + rxt(159)*y(57) + rxt(194)*y(76) + rxt(207) &
+                      *y(81)
+         mat(743) = mat(743) + .794*rxt(156)*y(56)
+         mat(21) = rxt(79)*y(17)
+         mat(288) = .190*rxt(84)*y(1)
+         mat(208) = .060*rxt(98)*y(1)
+         mat(191) = mat(191) + rxt(86)*y(6)
+         mat(447) = mat(447) + .900*rxt(94)*y(13) + rxt(116)*y(33) + .470*rxt(126) &
+                      *y(36) + 1.500*rxt(166)*y(58)
+         mat(67) = .120*rxt(109)*y(1) + .250*rxt(105)*y(17)
+         mat(154) = .500*rxt(172)*y(17)
+         mat(413) = mat(413) + rxt(112)*y(6) + rxt(113)*y(8) + rxt(115)*y(13)  &
+                      + rxt(116)*y(25)
+         mat(362) = .060*rxt(118)*y(1)
+         mat(339) = .275*rxt(120)*y(1)
+         mat(380) = mat(380) + .470*rxt(121)*y(6) + .470*rxt(123)*y(8) + .730*rxt(125) &
+                      *y(13) + .470*rxt(126)*y(25)
+         mat(73) = .200*rxt(127)*y(17)
+         mat(426) = mat(426) + rxt(131)*y(13)
+         mat(182) = mat(182) + rxt(100)*y(6) + rxt(102)*y(13) + 2.400*rxt(103)*y(39)
+         mat(265) = .102*rxt(137)*y(1)
+         mat(228) = mat(228) + rxt(144)*y(6) + rxt(146)*y(13)
+         mat(139) = rxt(170)*y(17)
+         mat(58) = rxt(171)*y(17)
+         mat(197) = .600*rxt(175)*y(17)
+         mat(348) = rxt(174)*y(17)
+         mat(309) = mat(309) + .794*rxt(154)*y(6) + .794*rxt(155)*y(8) + .794*rxt(156) &
+                      *y(18)
+         mat(249) = rxt(160)*y(8) + rxt(159)*y(17)
+         mat(395) = mat(395) + 1.500*rxt(162)*y(6) + 1.500*rxt(163)*y(8) + rxt(165) &
+                      *y(13) + 1.500*rxt(166)*y(25)
+         mat(329) = mat(329) + rxt(195)*y(15)
+         mat(524) = mat(524) + rxt(194)*y(17)
+         mat(637) = rxt(207)*y(17)
+         mat(321) = mat(321) + rxt(206)*y(15)
+
+         mat(19) = -(rxt(79)*y(17))
+         mat(645) = -rxt(79)*y(19)
+
+         mat(645) = mat(645) + 2.000*rxt(196)*y(17)
+         mat(703) = 2.000*rxt(78)*y(18)
+
+         mat(279) = -(rxt(83)*y(17) + rxt(84)*y(1) + rxt(85)*y(8))
+         mat(676) = -rxt(83)*y(20)
+         mat(800) = -rxt(84)*y(20)
+         mat(487) = -rxt(85)*y(20)
+
+         mat(800) = mat(800) + .070*rxt(98)*y(21) + .119*rxt(137)*y(41)
+         mat(199) = .070*rxt(98)*y(1)
+         mat(254) = .119*rxt(137)*y(1)
+
+         mat(198) = -(rxt(98)*y(1) + rxt(110)*y(17) + rxt(153)*y(8))
+         mat(798) = -rxt(98)*y(21)
+         mat(671) = -rxt(110)*y(21)
+         mat(484) = -rxt(153)*y(21)
+
+         mat(185) = -(rxt(86)*y(6) + rxt(87)*y(18))
+         mat(552) = -rxt(86)*y(22)
+         mat(717) = -rxt(87)*y(22)
+
+         mat(669) = rxt(83)*y(20) + .500*rxt(88)*y(24)
+         mat(278) = rxt(83)*y(17)
+         mat(123) = .500*rxt(88)*y(17)
+
+         mat(292) = -(rxt(89)*y(17) + rxt(90)*y(8))
+         mat(677) = -rxt(89)*y(23)
+         mat(488) = -rxt(90)*y(23)
+
+         mat(801) = .500*rxt(84)*y(20) + .040*rxt(118)*y(34)
+         mat(557) = rxt(86)*y(22) + rxt(100)*y(39) + .270*rxt(144)*y(43)
+         mat(459) = .800*rxt(102)*y(39)
+         mat(677) = mat(677) + .500*rxt(104)*y(40) + rxt(171)*y(48)
+         mat(280) = .500*rxt(84)*y(1)
+         mat(186) = rxt(86)*y(6)
+         mat(351) = .040*rxt(118)*y(1)
+         mat(177) = rxt(100)*y(6) + .800*rxt(102)*y(13) + 3.200*rxt(103)*y(39)
+         mat(76) = .500*rxt(104)*y(17)
+         mat(222) = .270*rxt(144)*y(6)
+         mat(56) = rxt(171)*y(17)
+
+         mat(122) = -(rxt(88)*y(17))
+         mat(661) = -rxt(88)*y(24)
+
+         mat(712) = rxt(87)*y(22)
+         mat(184) = rxt(87)*y(18)
+
+         mat(441) = -(rxt(91)*y(6) + rxt(92)*y(7) + rxt(93)*y(18) + rxt(94)*y(13) &
+                      + 4.*rxt(97)*y(25) + rxt(116)*y(33) + rxt(126)*y(36) + rxt(166) &
+                      *y(58))
+         mat(569) = -rxt(91)*y(25)
+         mat(779) = -rxt(92)*y(25)
+         mat(733) = -rxt(93)*y(25)
+         mat(468) = -rxt(94)*y(25)
+         mat(407) = -rxt(116)*y(25)
+         mat(374) = -rxt(126)*y(25)
+         mat(389) = -rxt(166)*y(25)
+
+         mat(569) = mat(569) + .530*rxt(121)*y(36) + rxt(128)*y(38) + rxt(149)*y(54)
+         mat(498) = rxt(90)*y(23) + .530*rxt(123)*y(36) + rxt(129)*y(38) + rxt(158) &
+                      *y(55)
+         mat(468) = mat(468) + .260*rxt(125)*y(36) + rxt(131)*y(38)
+         mat(689) = rxt(89)*y(23) + .500*rxt(95)*y(26) + rxt(157)*y(55)
+         mat(293) = rxt(90)*y(8) + rxt(89)*y(17)
+         mat(441) = mat(441) + .530*rxt(126)*y(36)
+         mat(118) = .500*rxt(95)*y(17)
+         mat(374) = mat(374) + .530*rxt(121)*y(6) + .530*rxt(123)*y(8) + .260*rxt(125) &
+                      *y(13) + .530*rxt(126)*y(25)
+         mat(420) = rxt(128)*y(6) + rxt(129)*y(8) + rxt(131)*y(13) + 4.000*rxt(133) &
+                      *y(38)
+         mat(212) = rxt(149)*y(6)
+         mat(313) = rxt(158)*y(8) + rxt(157)*y(17)
+
+
+      end subroutine imp_nlnmat02
+
+      subroutine imp_nlnmat03( mat, y, rxt )
+
+      use MO_GRID_MOD,   only : pcnstm1
+      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt
+
+      implicit none
+
+!----------------------------------------------
+!       ... Dummy args
+!----------------------------------------------
+      real, intent(in)    ::  y(pcnstm1)
+      real, intent(in)    ::  rxt(rxntot)
+      real, intent(inout) ::  mat(imp_nzcnt)
+
+
+!----------------------------------------------
+!       ... Local variables
+!----------------------------------------------
+
+!----------------------------------------------
+!       ... Complete matrix entries Implicit species
+!----------------------------------------------
+
+         mat(117) = -(rxt(95)*y(17))
+         mat(660) = -rxt(95)*y(26)
+
+         mat(711) = .700*rxt(93)*y(25) + .700*rxt(130)*y(38)
+         mat(430) = .700*rxt(93)*y(18)
+         mat(416) = .700*rxt(130)*y(18)
+
+         mat(129) = -(rxt(173)*y(17))
+         mat(662) = -rxt(173)*y(27)
+
+         mat(770) = rxt(92)*y(25)
+         mat(431) = rxt(92)*y(7)
+
+         mat(51) = -(rxt(152)*y(17))
+         mat(648) = -rxt(152)*y(28)
+
+         mat(479) = rxt(85)*y(20)
+         mat(277) = rxt(85)*y(8)
+
+         mat(63) = -(rxt(105)*y(17) + rxt(109)*y(1))
+         mat(651) = -rxt(105)*y(30)
+         mat(794) = -rxt(109)*y(30)
+
+         mat(8) = -(rxt(111)*y(17))
+         mat(643) = -rxt(111)*y(31)
+
+         mat(148) = -(rxt(172)*y(17))
+         mat(665) = -rxt(172)*y(32)
+
+         mat(771) = rxt(134)*y(38)
+         mat(417) = rxt(134)*y(7)
+
+         mat(405) = -(rxt(112)*y(6) + rxt(113)*y(8) + rxt(114)*y(18) + rxt(115)*y(13) &
+                      + rxt(116)*y(25))
+         mat(567) = -rxt(112)*y(33)
+         mat(496) = -rxt(113)*y(33)
+         mat(731) = -rxt(114)*y(33)
+         mat(466) = -rxt(115)*y(33)
+         mat(439) = -rxt(116)*y(33)
+
+         mat(496) = mat(496) + 1.700*rxt(138)*y(41)
+         mat(687) = rxt(110)*y(21) + 1.640*rxt(136)*y(41) + .500*rxt(169)*y(60)
+         mat(203) = rxt(110)*y(17)
+         mat(257) = 1.700*rxt(138)*y(8) + 1.640*rxt(136)*y(17)
+         mat(144) = .500*rxt(169)*y(17)
+
+         mat(354) = -(rxt(117)*y(17) + rxt(118)*y(1))
+         mat(684) = -rxt(117)*y(34)
+         mat(808) = -rxt(118)*y(34)
+
+         mat(808) = mat(808) + .200*rxt(98)*y(21) + .442*rxt(137)*y(41)
+         mat(564) = .320*rxt(112)*y(33) + .039*rxt(154)*y(56)
+         mat(493) = .350*rxt(113)*y(33) + .039*rxt(155)*y(56)
+         mat(463) = .260*rxt(115)*y(33)
+         mat(728) = .039*rxt(156)*y(56)
+         mat(202) = .200*rxt(98)*y(1)
+         mat(436) = .350*rxt(116)*y(33)
+         mat(402) = .320*rxt(112)*y(6) + .350*rxt(113)*y(8) + .260*rxt(115)*y(13)  &
+                      + .350*rxt(116)*y(25)
+         mat(256) = .442*rxt(137)*y(1)
+         mat(303) = .039*rxt(154)*y(6) + .039*rxt(155)*y(8) + .039*rxt(156)*y(18)
+
+         mat(332) = -(rxt(119)*y(17) + rxt(120)*y(1))
+         mat(682) = -rxt(119)*y(35)
+         mat(806) = -rxt(120)*y(35)
+
+         mat(806) = mat(806) + .400*rxt(98)*y(21) + 1.122*rxt(137)*y(41)
+         mat(562) = .230*rxt(112)*y(33) + .167*rxt(154)*y(56)
+         mat(491) = .250*rxt(113)*y(33) + .167*rxt(155)*y(56)
+         mat(461) = .190*rxt(115)*y(33)
+         mat(726) = .167*rxt(156)*y(56)
+         mat(201) = .400*rxt(98)*y(1)
+         mat(434) = .250*rxt(116)*y(33)
+         mat(401) = .230*rxt(112)*y(6) + .250*rxt(113)*y(8) + .190*rxt(115)*y(13)  &
+                      + .250*rxt(116)*y(25)
+         mat(255) = 1.122*rxt(137)*y(1)
+         mat(302) = .167*rxt(154)*y(6) + .167*rxt(155)*y(8) + .167*rxt(156)*y(18)
+
+         mat(371) = -((rxt(121) + rxt(122)) * y(6) + rxt(123)*y(8) + rxt(124)*y(18) &
+                      + rxt(125)*y(13) + rxt(126)*y(25))
+         mat(565) = -(rxt(121) + rxt(122)) * y(36)
+         mat(494) = -rxt(123)*y(36)
+         mat(729) = -rxt(124)*y(36)
+         mat(464) = -rxt(125)*y(36)
+         mat(437) = -rxt(126)*y(36)
+
+         mat(685) = rxt(117)*y(34) + .500*rxt(119)*y(35) + .200*rxt(127)*y(37)
+         mat(355) = rxt(117)*y(17)
+         mat(333) = .500*rxt(119)*y(17)
+         mat(70) = .200*rxt(127)*y(17)
+
+         mat(69) = -(rxt(127)*y(17))
+         mat(652) = -rxt(127)*y(37)
+
+         mat(706) = rxt(124)*y(36)
+         mat(365) = rxt(124)*y(18)
+
+         mat(419) = -(rxt(128)*y(6) + rxt(129)*y(8) + rxt(130)*y(18) + rxt(131)*y(13) &
+                      + rxt(132)*y(25) + 4.*rxt(133)*y(38) + rxt(134)*y(7))
+         mat(568) = -rxt(128)*y(38)
+         mat(497) = -rxt(129)*y(38)
+         mat(732) = -rxt(130)*y(38)
+         mat(467) = -rxt(131)*y(38)
+         mat(440) = -rxt(132)*y(38)
+         mat(778) = -rxt(134)*y(38)
+
+         mat(812) = .200*rxt(98)*y(21)
+         mat(688) = .500*rxt(119)*y(35) + .500*rxt(127)*y(37) + .800*rxt(175)*y(49)
+         mat(204) = .200*rxt(98)*y(1)
+         mat(334) = .500*rxt(119)*y(17)
+         mat(71) = .500*rxt(127)*y(17)
+         mat(194) = .800*rxt(175)*y(17)
+
+         mat(176) = -(rxt(100)*y(6) + rxt(101)*y(18) + rxt(102)*y(13) + 4.*rxt(103) &
+                      *y(39))
+         mat(551) = -rxt(100)*y(39)
+         mat(716) = -rxt(101)*y(39)
+         mat(455) = -rxt(102)*y(39)
+
+         mat(668) = .500*rxt(104)*y(40)
+         mat(75) = .500*rxt(104)*y(17)
+
+         mat(74) = -(rxt(104)*y(17))
+         mat(653) = -rxt(104)*y(40)
+
+         mat(707) = rxt(101)*y(39)
+         mat(174) = rxt(101)*y(18)
+
+         mat(253) = -(rxt(136)*y(17) + rxt(137)*y(1) + rxt(138)*y(8))
+         mat(675) = -rxt(136)*y(41)
+         mat(799) = -rxt(137)*y(41)
+         mat(486) = -rxt(138)*y(41)
+
+         mat(221) = -(rxt(144)*y(6) + rxt(145)*y(18) + rxt(146)*y(13))
+         mat(555) = -rxt(144)*y(43)
+         mat(719) = -rxt(145)*y(43)
+         mat(458) = -rxt(146)*y(43)
+
+         mat(673) = 1.330*rxt(111)*y(31) + rxt(147)*y(44)
+         mat(9) = 1.330*rxt(111)*y(17)
+         mat(81) = rxt(147)*y(17)
+
+         mat(79) = -(rxt(147)*y(17))
+         mat(654) = -rxt(147)*y(44)
+
+         mat(708) = rxt(145)*y(43)
+         mat(218) = rxt(145)*y(18)
+
+         mat(156) = -(rxt(148)*y(17))
+         mat(666) = -rxt(148)*y(45)
+
+         mat(550) = .820*rxt(144)*y(43)
+         mat(454) = .820*rxt(146)*y(43)
+         mat(666) = mat(666) + .100*rxt(136)*y(41)
+         mat(251) = .100*rxt(136)*y(17)
+         mat(219) = .820*rxt(144)*y(6) + .820*rxt(146)*y(13)
+
+         mat(84) = -(rxt(151)*y(17))
+         mat(655) = -rxt(151)*y(46)
+
+         mat(709) = rxt(150)*y(54)
+         mat(210) = rxt(150)*y(18)
+
+         mat(136) = -(rxt(170)*y(17))
+         mat(663) = -rxt(170)*y(47)
+
+         mat(453) = 2.000*rxt(67)*y(13) + .250*rxt(115)*y(33) + .250*rxt(125)*y(36)  &
+                      + .300*rxt(102)*y(39) + .300*rxt(165)*y(58)
+         mat(398) = .250*rxt(115)*y(13)
+         mat(366) = .250*rxt(125)*y(13)
+         mat(175) = .300*rxt(102)*y(13)
+         mat(383) = .300*rxt(165)*y(13)
+
+         mat(55) = -(rxt(171)*y(17))
+         mat(649) = -rxt(171)*y(48)
+
+         mat(450) = .200*rxt(102)*y(39)
+         mat(173) = .200*rxt(102)*y(13) + .800*rxt(103)*y(39)
+
+         mat(193) = -(rxt(175)*y(17))
+         mat(670) = -rxt(175)*y(49)
+
+         mat(553) = .530*rxt(121)*y(36) + .250*rxt(162)*y(58)
+         mat(483) = .530*rxt(123)*y(36) + .250*rxt(163)*y(58)
+         mat(456) = .260*rxt(125)*y(36) + .100*rxt(165)*y(58)
+         mat(432) = .530*rxt(126)*y(36) + .250*rxt(166)*y(58)
+         mat(367) = .530*rxt(121)*y(6) + .530*rxt(123)*y(8) + .260*rxt(125)*y(13)  &
+                      + .530*rxt(126)*y(25)
+         mat(384) = .250*rxt(162)*y(6) + .250*rxt(163)*y(8) + .100*rxt(165)*y(13)  &
+                      + .250*rxt(166)*y(25)
+
+         mat(343) = -(rxt(174)*y(17))
+         mat(683) = -rxt(174)*y(50)
+
+         mat(563) = .220*rxt(121)*y(36) + .250*rxt(162)*y(58)
+         mat(492) = .220*rxt(123)*y(36) + .250*rxt(163)*y(58)
+         mat(462) = .230*rxt(125)*y(36) + .100*rxt(165)*y(58)
+         mat(683) = mat(683) + .500*rxt(88)*y(24) + .500*rxt(172)*y(32)
+         mat(125) = .500*rxt(88)*y(17)
+         mat(435) = .220*rxt(126)*y(36) + .250*rxt(166)*y(58)
+         mat(149) = .500*rxt(172)*y(17)
+         mat(370) = .220*rxt(121)*y(6) + .220*rxt(123)*y(8) + .230*rxt(125)*y(13)  &
+                      + .220*rxt(126)*y(25)
+         mat(386) = .250*rxt(162)*y(6) + .250*rxt(163)*y(8) + .100*rxt(165)*y(13)  &
+                      + .250*rxt(166)*y(25)
+
+         mat(111) = -(rxt(106)*y(6))
+         mat(549) = -rxt(106)*y(51)
+
+         mat(659) = .750*rxt(105)*y(30)
+         mat(64) = .750*rxt(105)*y(17)
+
+
+         mat(546) = rxt(106)*y(51)
+         mat(110) = rxt(106)*y(6)
+
+         mat(107) = -(rxt(161)*y(17))
+         mat(658) = -rxt(161)*y(53)
+
+         mat(548) = .370*rxt(112)*y(33)
+         mat(481) = .400*rxt(113)*y(33) + rxt(160)*y(57)
+         mat(452) = .300*rxt(115)*y(33)
+         mat(658) = mat(658) + rxt(159)*y(57)
+         mat(429) = .400*rxt(116)*y(33)
+         mat(397) = .370*rxt(112)*y(6) + .400*rxt(113)*y(8) + .300*rxt(115)*y(13)  &
+                      + .400*rxt(116)*y(25)
+         mat(243) = rxt(160)*y(8) + rxt(159)*y(17)
+
+         mat(211) = -(rxt(149)*y(6) + rxt(150)*y(18))
+         mat(554) = -rxt(149)*y(54)
+         mat(718) = -rxt(150)*y(54)
+
+         mat(672) = rxt(148)*y(45) + rxt(151)*y(46)
+         mat(157) = rxt(148)*y(17)
+         mat(85) = rxt(151)*y(17)
+
+         mat(312) = -(rxt(157)*y(17) + rxt(158)*y(8))
+         mat(679) = -rxt(157)*y(55)
+         mat(490) = -rxt(158)*y(55)
+
+         mat(803) = .950*rxt(118)*y(34) + .800*rxt(120)*y(35)
+         mat(559) = .250*rxt(121)*y(36) + .250*rxt(162)*y(58)
+         mat(490) = mat(490) + .250*rxt(123)*y(36) + .250*rxt(163)*y(58)
+         mat(460) = .240*rxt(125)*y(36) + .100*rxt(165)*y(58)
+         mat(679) = mat(679) + rxt(152)*y(28) + rxt(174)*y(50)
+         mat(433) = .250*rxt(126)*y(36) + .250*rxt(166)*y(58)
+         mat(52) = rxt(152)*y(17)
+         mat(352) = .950*rxt(118)*y(1)
+         mat(331) = .800*rxt(120)*y(1)
+         mat(369) = .250*rxt(121)*y(6) + .250*rxt(123)*y(8) + .240*rxt(125)*y(13)  &
+                      + .250*rxt(126)*y(25)
+         mat(342) = rxt(174)*y(17)
+         mat(385) = .250*rxt(162)*y(6) + .250*rxt(163)*y(8) + .100*rxt(165)*y(13)  &
+                      + .250*rxt(166)*y(25)
+
+
+      end subroutine imp_nlnmat03
+
+      subroutine imp_nlnmat04( mat, y, rxt )
+
+      use MO_GRID_MOD,   only : pcnstm1
+      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt
+
+      implicit none
+
+!----------------------------------------------
+!       ... Dummy args
+!----------------------------------------------
+      real, intent(in)    ::  y(pcnstm1)
+      real, intent(in)    ::  rxt(rxntot)
+      real, intent(inout) ::  mat(imp_nzcnt)
+
+
+!----------------------------------------------
+!       ... Local variables
+!----------------------------------------------
+
+!----------------------------------------------
+!       ... Complete matrix entries Implicit species
+!----------------------------------------------
+
+         mat(301) = -(rxt(154)*y(6) + rxt(155)*y(8) + rxt(156)*y(18))
+         mat(558) = -rxt(154)*y(56)
+         mat(489) = -rxt(155)*y(56)
+         mat(723) = -rxt(156)*y(56)
+
+         mat(489) = mat(489) + rxt(153)*y(21)
+         mat(200) = rxt(153)*y(8)
+
+         mat(244) = -(rxt(159)*y(17) + rxt(160)*y(8))
+         mat(674) = -rxt(159)*y(57)
+         mat(485) = -rxt(160)*y(57)
+
+         mat(556) = .080*rxt(112)*y(33) + rxt(122)*y(36) + .794*rxt(154)*y(56)
+         mat(485) = mat(485) + .794*rxt(155)*y(56)
+         mat(720) = .794*rxt(156)*y(56)
+         mat(400) = .080*rxt(112)*y(6)
+         mat(368) = rxt(122)*y(6)
+         mat(300) = .794*rxt(154)*y(6) + .794*rxt(155)*y(8) + .794*rxt(156)*y(18)
+
+         mat(387) = -(rxt(162)*y(6) + rxt(163)*y(8) + rxt(164)*y(18) + rxt(165)*y(13) &
+                      + rxt(166)*y(25))
+         mat(566) = -rxt(162)*y(58)
+         mat(495) = -rxt(163)*y(58)
+         mat(730) = -rxt(164)*y(58)
+         mat(465) = -rxt(165)*y(58)
+         mat(438) = -rxt(166)*y(58)
+
+         mat(686) = rxt(161)*y(53) + rxt(167)*y(59) + .500*rxt(169)*y(60)
+         mat(108) = rxt(161)*y(17)
+         mat(44) = rxt(167)*y(17)
+         mat(143) = .500*rxt(169)*y(17)
+
+         mat(43) = -((rxt(167) + rxt(168)) * y(17))
+         mat(647) = -(rxt(167) + rxt(168)) * y(59)
+
+         mat(704) = rxt(156)*y(56) + rxt(164)*y(58)
+         mat(299) = rxt(156)*y(18)
+         mat(382) = rxt(164)*y(18)
+
+         mat(140) = -(rxt(169)*y(17))
+         mat(664) = -rxt(169)*y(60)
+
+         mat(713) = rxt(114)*y(33)
+         mat(399) = rxt(114)*y(18)
+
+         mat(15) = -(rxt(178)*y(17))
+         mat(644) = -rxt(178)*y(66)
+
+         mat(477) = rxt(180)*y(68)
+         mat(644) = mat(644) + rxt(179)*y(68)
+         mat(26) = rxt(180)*y(8) + rxt(179)*y(17)
+
+
+         mat(641) = rxt(178)*y(66)
+         mat(14) = rxt(178)*y(17)
+
+         mat(27) = -(rxt(179)*y(17) + rxt(180)*y(8))
+         mat(646) = -rxt(179)*y(68)
+         mat(478) = -rxt(180)*y(68)
+
+         mat(6) = -(rxt(182)*y(17))
+         mat(642) = -rxt(182)*y(69)
 
 
 
-      end do
+         mat(616) = -(rxt(191)*y(17) + rxt(214)*y(73) + rxt(215)*y(11) + rxt(218) &
+                      *y(74) + rxt(219)*y(80))
+         mat(696) = -rxt(191)*y(72)
+         mat(166) = -rxt(214)*y(72)
+         mat(98) = -rxt(215)*y(72)
+         mat(239) = -rxt(218)*y(72)
+         mat(273) = -rxt(219)*y(72)
 
-      end subroutine IMP_NLNMAT02
+         mat(593) = rxt(195)*y(75)
+         mat(696) = mat(696) + rxt(209)*y(76)
+         mat(740) = rxt(192)*y(75)
+         mat(328) = rxt(195)*y(15) + rxt(192)*y(18)
+         mat(521) = rxt(209)*y(17)
 
-      subroutine IMP_NLNMAT_FINIT( mat, lmat, dti )
+         mat(163) = -(rxt(214)*y(72) + rxt(220)*y(81))
+         mat(604) = -rxt(214)*y(73)
+         mat(624) = -rxt(220)*y(73)
+
+         mat(715) = rxt(193)*y(76)
+         mat(511) = rxt(193)*y(18)
+
+         mat(233) = -(rxt(189)*y(2) + rxt(218)*y(72))
+         mat(529) = -rxt(189)*y(74)
+         mat(606) = -rxt(218)*y(74)
+
+         mat(773) = rxt(188)*y(76)
+         mat(512) = rxt(188)*y(7)
+
+         mat(324) = -(rxt(185)*y(1) + rxt(192)*y(18) + rxt(195)*y(15))
+         mat(805) = -rxt(185)*y(75)
+         mat(725) = -rxt(192)*y(75)
+         mat(586) = -rxt(195)*y(75)
+
+         mat(532) = rxt(186)*y(76)
+         mat(561) = rxt(187)*y(76)
+         mat(681) = rxt(191)*y(72) + rxt(194)*y(76)
+         mat(609) = rxt(191)*y(17)
+         mat(514) = rxt(186)*y(2) + rxt(187)*y(6) + rxt(194)*y(17) + rxt(201)*y(84)
+         mat(752) = rxt(201)*y(76)
+
+         mat(517) = -(rxt(186)*y(2) + rxt(187)*y(6) + rxt(188)*y(7) + rxt(193)*y(18) &
+                      + (rxt(194) + rxt(209)) * y(17) + 4.*rxt(197)*y(76) + (rxt(201) &
+                      + rxt(208)) * y(84))
+         mat(535) = -rxt(186)*y(76)
+         mat(572) = -rxt(187)*y(76)
+         mat(782) = -rxt(188)*y(76)
+         mat(736) = -rxt(193)*y(76)
+         mat(692) = -(rxt(194) + rxt(209)) * y(76)
+         mat(755) = -(rxt(201) + rxt(208)) * y(76)
+
+         mat(816) = rxt(185)*y(75)
+         mat(535) = mat(535) + rxt(189)*y(74)
+         mat(237) = rxt(189)*y(2)
+         mat(326) = rxt(185)*y(1)
+
+
+         mat(509) = 2.000*rxt(197)*y(76)
+
+
+         mat(601) = rxt(214)*y(73) + rxt(218)*y(74)
+         mat(161) = rxt(214)*y(72)
+         mat(230) = rxt(218)*y(72)
+
+
+         mat(94) = rxt(215)*y(72)
+         mat(600) = rxt(215)*y(11)
+
+         mat(269) = -(rxt(204)*y(2) + rxt(219)*y(72) + rxt(221)*y(81))
+         mat(530) = -rxt(204)*y(80)
+         mat(607) = -rxt(219)*y(80)
+         mat(625) = -rxt(221)*y(80)
+
+         mat(721) = rxt(202)*y(84)
+         mat(750) = rxt(202)*y(18)
+
+         mat(635) = -(rxt(207)*y(17) + rxt(220)*y(73) + rxt(221)*y(80))
+         mat(697) = -rxt(207)*y(81)
+         mat(167) = -rxt(220)*y(81)
+         mat(274) = -rxt(221)*y(81)
+
+         mat(594) = rxt(206)*y(83)
+         mat(741) = rxt(205)*y(83)
+         mat(320) = rxt(206)*y(15) + rxt(205)*y(18)
+
+
+         mat(767) = rxt(200)*y(84)
+         mat(747) = rxt(200)*y(7)
+
+         mat(318) = -(rxt(199)*y(1) + rxt(205)*y(18) + rxt(206)*y(15))
+         mat(804) = -rxt(199)*y(83)
+         mat(724) = -rxt(205)*y(83)
+         mat(585) = -rxt(206)*y(83)
+
+         mat(560) = rxt(203)*y(84)
+         mat(680) = rxt(207)*y(81)
+         mat(513) = rxt(201)*y(84)
+         mat(270) = 2.000*rxt(221)*y(81)
+         mat(626) = rxt(207)*y(17) + 2.000*rxt(221)*y(80)
+         mat(751) = rxt(203)*y(6) + rxt(201)*y(76)
+
+         mat(763) = -(rxt(200)*y(7) + (rxt(201) + rxt(208)) * y(76) + rxt(202)*y(18) &
+                      + rxt(203)*y(6))
+         mat(790) = -rxt(200)*y(84)
+         mat(525) = -(rxt(201) + rxt(208)) * y(84)
+         mat(744) = -rxt(202)*y(84)
+         mat(580) = -rxt(203)*y(84)
+
+         mat(824) = rxt(199)*y(83)
+         mat(543) = rxt(204)*y(80)
+         mat(276) = rxt(204)*y(2)
+         mat(322) = rxt(199)*y(1)
+
+
+         mat(603) = rxt(219)*y(80)
+         mat(162) = rxt(220)*y(81)
+         mat(510) = rxt(208)*y(84)
+         mat(268) = rxt(219)*y(72)
+         mat(623) = rxt(220)*y(73)
+         mat(748) = rxt(208)*y(76)
+
+         mat(103) = -(rxt(183)*y(1))
+         mat(795) = -rxt(183)*y(86)
+
+         mat(528) = rxt(74)*y(17)
+         mat(657) = rxt(74)*y(2)
+
+
+      end subroutine imp_nlnmat04
+
+      subroutine imp_nlnmat_finit( mat, lmat, dti )
 
       use MO_GRID_MOD,   only : pcnstm1
       use CHEM_MODS_MOD, only : rxntot, imp_nzcnt, clsze
@@ -981,158 +2032,388 @@ logical                       :: module_is_initialized = .false.
 !       ... Dummy args
 !----------------------------------------------
       real, intent(in)    ::  dti
-      real, intent(in)    ::  lmat(clsze,imp_nzcnt)
-      real, intent(inout) ::  mat(clsze,imp_nzcnt)
+      real, intent(in)    ::  lmat(imp_nzcnt)
+      real, intent(inout) ::  mat(imp_nzcnt)
 
 
 !----------------------------------------------
 !       ... Local variables
 !----------------------------------------------
-      integer :: k
 
 !----------------------------------------------
 !       ... Complete matrix entries Implicit species
 !----------------------------------------------
 
-      do k = 1,clsze
-         mat(k,  4) = lmat(k,  4)
-         mat(k,  5) = mat(k,  5) + lmat(k,  5)
-         mat(k, 10) = mat(k, 10) + lmat(k, 10)
-         mat(k, 11) = mat(k, 11) + lmat(k, 11)
-         mat(k, 13) = lmat(k, 13)
-         mat(k, 14) = lmat(k, 14)
-         mat(k, 15) = lmat(k, 15)
-         mat(k, 16) = lmat(k, 16)
-         mat(k, 17) = lmat(k, 17)
-         mat(k, 18) = lmat(k, 18)
-         mat(k, 19) = lmat(k, 19)
-         mat(k, 20) = lmat(k, 20)
-         mat(k, 21) = lmat(k, 21)
-         mat(k, 22) = lmat(k, 22)
-         mat(k, 28) = mat(k, 28) + lmat(k, 28)
-         mat(k, 30) = mat(k, 30) + lmat(k, 30)
-         mat(k, 31) = lmat(k, 31)
-         mat(k, 32) = mat(k, 32) + lmat(k, 32)
-         mat(k, 35) = lmat(k, 35)
-         mat(k, 37) = mat(k, 37) + lmat(k, 37)
-         mat(k, 38) = mat(k, 38) + lmat(k, 38)
-         mat(k, 40) = mat(k, 40) + lmat(k, 40)
-         mat(k, 41) = lmat(k, 41)
-         mat(k, 43) = mat(k, 43) + lmat(k, 43)
-         mat(k, 45) = mat(k, 45) + lmat(k, 45)
-         mat(k, 46) = mat(k, 46) + lmat(k, 46)
-         mat(k, 47) = lmat(k, 47)
-         mat(k, 48) = mat(k, 48) + lmat(k, 48)
-         mat(k, 49) = lmat(k, 49)
-         mat(k, 51) = mat(k, 51) + lmat(k, 51)
-         mat(k, 52) = lmat(k, 52)
-         mat(k, 53) = mat(k, 53) + lmat(k, 53)
-         mat(k, 55) = lmat(k, 55)
-         mat(k, 56) = mat(k, 56) + lmat(k, 56)
-         mat(k, 57) = lmat(k, 57)
-         mat(k, 58) = mat(k, 58) + lmat(k, 58)
-         mat(k, 59) = mat(k, 59) + lmat(k, 59)
-         mat(k, 60) = mat(k, 60) + lmat(k, 60)
-         mat(k, 61) = lmat(k, 61)
-         mat(k, 63) = mat(k, 63) + lmat(k, 63)
-         mat(k, 64) = mat(k, 64) + lmat(k, 64)
-         mat(k, 65) = lmat(k, 65)
-         mat(k, 72) = mat(k, 72) + lmat(k, 72)
-         mat(k, 75) = lmat(k, 75)
-         mat(k, 76) = lmat(k, 76)
-         mat(k, 77) = mat(k, 77) + lmat(k, 77)
-         mat(k, 78) = lmat(k, 78)
-         mat(k, 79) = mat(k, 79) + lmat(k, 79)
-         mat(k, 82) = lmat(k, 82)
-         mat(k, 83) = lmat(k, 83)
-         mat(k, 84) = mat(k, 84) + lmat(k, 84)
-         mat(k, 85) = mat(k, 85) + lmat(k, 85)
-         mat(k,129) = mat(k,129) + lmat(k,129)
-         mat(k,132) = lmat(k,132)
-         mat(k,133) = lmat(k,133)
-         mat(k,137) = mat(k,137) + lmat(k,137)
-         mat(k,140) = mat(k,140) + lmat(k,140)
-         mat(k,142) = lmat(k,142)
-         mat(k,143) = mat(k,143) + lmat(k,143)
-         mat(k,146) = mat(k,146) + lmat(k,146)
-         mat(k,172) = mat(k,172) + lmat(k,172)
-         mat(k,174) = mat(k,174) + lmat(k,174)
-         mat(k,178) = mat(k,178) + lmat(k,178)
-         mat(k,180) = mat(k,180) + lmat(k,180)
-         mat(k,181) = mat(k,181) + lmat(k,181)
-         mat(k,189) = mat(k,189) + lmat(k,189)
-         mat(k,193) = mat(k,193) + lmat(k,193)
-         mat(k,196) = mat(k,196) + lmat(k,196)
-         mat(k,255) = mat(k,255) + lmat(k,255)
-         mat(k,259) = lmat(k,259)
-         mat(k,261) = mat(k,261) + lmat(k,261)
-         mat(k,264) = mat(k,264) + lmat(k,264)
-         mat(k,265) = mat(k,265) + lmat(k,265)
-         mat(k,  1) = 0.
-         mat(k,  2) = 0.
-         mat(k,  3) = 0.
-         mat(k, 96) = 0.
-         mat(k,103) = 0.
-         mat(k,111) = 0.
-         mat(k,118) = 0.
-         mat(k,122) = 0.
-         mat(k,127) = 0.
-         mat(k,131) = 0.
-         mat(k,139) = 0.
-         mat(k,145) = 0.
-         mat(k,150) = 0.
-         mat(k,182) = 0.
-         mat(k,190) = 0.
-         mat(k,195) = 0.
-         mat(k,207) = 0.
-         mat(k,212) = 0.
-         mat(k,213) = 0.
-         mat(k,225) = 0.
-         mat(k,229) = 0.
-         mat(k,234) = 0.
-         mat(k,263) = 0.
-         mat(k,271) = 0.
-         mat(k,276) = 0.
-         mat(k,  1) = -dti
-         mat(k,  2) = -dti
-         mat(k,  3) = -dti
-         mat(k,  5) = mat(k,  5) - dti
-         mat(k,  8) = mat(k,  8) - dti
-         mat(k, 10) = mat(k, 10) - dti
-         mat(k, 13) = mat(k, 13) - dti
-         mat(k, 19) = mat(k, 19) - dti
-         mat(k, 24) = mat(k, 24) - dti
-         mat(k, 28) = mat(k, 28) - dti
-         mat(k, 32) = mat(k, 32) - dti
-         mat(k, 38) = mat(k, 38) - dti
-         mat(k, 43) = mat(k, 43) - dti
-         mat(k, 48) = mat(k, 48) - dti
-         mat(k, 53) = mat(k, 53) - dti
-         mat(k, 58) = mat(k, 58) - dti
-         mat(k, 63) = mat(k, 63) - dti
-         mat(k, 67) = mat(k, 67) - dti
-         mat(k, 72) = mat(k, 72) - dti
-         mat(k, 79) = mat(k, 79) - dti
-         mat(k, 84) = mat(k, 84) - dti
-         mat(k, 91) = mat(k, 91) - dti
-         mat(k,100) = mat(k,100) - dti
-         mat(k,109) = mat(k,109) - dti
-         mat(k,119) = mat(k,119) - dti
-         mat(k,129) = mat(k,129) - dti
-         mat(k,137) = mat(k,137) - dti
-         mat(k,146) = mat(k,146) - dti
-         mat(k,178) = mat(k,178) - dti
-         mat(k,193) = mat(k,193) - dti
-         mat(k,217) = mat(k,217) - dti
-         mat(k,232) = mat(k,232) - dti
-         mat(k,248) = mat(k,248) - dti
-         mat(k,265) = mat(k,265) - dti
-         mat(k,277) = mat(k,277) - dti
-      end do
+         mat(   5) = lmat(   5)
+         mat(   6) = mat(   6) + lmat(   6)
+         mat(  11) = lmat(  11)
+         mat(  12) = lmat(  12)
+         mat(  13) = lmat(  13)
+         mat(  17) = lmat(  17)
+         mat(  18) = lmat(  18)
+         mat(  19) = mat(  19) + lmat(  19)
+         mat(  20) = mat(  20) + lmat(  20)
+         mat(  22) = lmat(  22)
+         mat(  23) = lmat(  23)
+         mat(  24) = lmat(  24)
+         mat(  25) = lmat(  25)
+         mat(  31) = mat(  31) + lmat(  31)
+         mat(  32) = mat(  32) + lmat(  32)
+         mat(  33) = mat(  33) + lmat(  33)
+         mat(  35) = lmat(  35)
+         mat(  36) = lmat(  36)
+         mat(  37) = lmat(  37)
+         mat(  38) = lmat(  38)
+         mat(  39) = lmat(  39)
+         mat(  40) = lmat(  40)
+         mat(  41) = lmat(  41)
+         mat(  42) = lmat(  42)
+         mat(  43) = mat(  43) + lmat(  43)
+         mat(  45) = mat(  45) + lmat(  45)
+         mat(  46) = lmat(  46)
+         mat(  47) = lmat(  47)
+         mat(  48) = lmat(  48)
+         mat(  49) = lmat(  49)
+         mat(  50) = lmat(  50)
+         mat(  59) = mat(  59) + lmat(  59)
+         mat(  61) = lmat(  61)
+         mat(  62) = mat(  62) + lmat(  62)
+         mat(  74) = mat(  74) + lmat(  74)
+         mat(  76) = mat(  76) + lmat(  76)
+         mat(  77) = mat(  77) + lmat(  77)
+         mat(  78) = lmat(  78)
+         mat(  79) = mat(  79) + lmat(  79)
+         mat(  80) = lmat(  80)
+         mat(  82) = mat(  82) + lmat(  82)
+         mat(  83) = lmat(  83)
+         mat(  84) = mat(  84) + lmat(  84)
+         mat(  86) = lmat(  86)
+         mat(  87) = lmat(  87)
+         mat(  88) = mat(  88) + lmat(  88)
+         mat(  89) = mat(  89) + lmat(  89)
+         mat(  91) = mat(  91) + lmat(  91)
+         mat(  92) = mat(  92) + lmat(  92)
+         mat(  93) = lmat(  93)
+         mat(  95) = mat(  95) + lmat(  95)
+         mat(  96) = mat(  96) + lmat(  96)
+         mat(  97) = lmat(  97)
+         mat(  99) = lmat(  99)
+         mat( 100) = lmat( 100)
+         mat( 101) = lmat( 101)
+         mat( 102) = lmat( 102)
+         mat( 103) = mat( 103) + lmat( 103)
+         mat( 105) = lmat( 105)
+         mat( 117) = mat( 117) + lmat( 117)
+         mat( 119) = lmat( 119)
+         mat( 121) = mat( 121) + lmat( 121)
+         mat( 122) = mat( 122) + lmat( 122)
+         mat( 124) = lmat( 124)
+         mat( 126) = lmat( 126)
+         mat( 127) = mat( 127) + lmat( 127)
+         mat( 128) = lmat( 128)
+         mat( 129) = mat( 129) + lmat( 129)
+         mat( 130) = lmat( 130)
+         mat( 131) = lmat( 131)
+         mat( 132) = mat( 132) + lmat( 132)
+         mat( 135) = lmat( 135)
+         mat( 140) = mat( 140) + lmat( 140)
+         mat( 141) = lmat( 141)
+         mat( 142) = lmat( 142)
+         mat( 145) = lmat( 145)
+         mat( 147) = lmat( 147)
+         mat( 148) = mat( 148) + lmat( 148)
+         mat( 150) = lmat( 150)
+         mat( 155) = lmat( 155)
+         mat( 156) = mat( 156) + lmat( 156)
+         mat( 158) = lmat( 158)
+         mat( 159) = lmat( 159)
+         mat( 163) = mat( 163) + lmat( 163)
+         mat( 165) = lmat( 165)
+         mat( 168) = lmat( 168)
+         mat( 169) = mat( 169) + lmat( 169)
+         mat( 171) = mat( 171) + lmat( 171)
+         mat( 172) = lmat( 172)
+         mat( 193) = mat( 193) + lmat( 193)
+         mat( 195) = lmat( 195)
+         mat( 197) = mat( 197) + lmat( 197)
+         mat( 231) = lmat( 231)
+         mat( 232) = mat( 232) + lmat( 232)
+         mat( 233) = mat( 233) + lmat( 233)
+         mat( 235) = lmat( 235)
+         mat( 236) = mat( 236) + lmat( 236)
+         mat( 244) = mat( 244) + lmat( 244)
+         mat( 247) = mat( 247) + lmat( 247)
+         mat( 249) = mat( 249) + lmat( 249)
+         mat( 250) = mat( 250) + lmat( 250)
+         mat( 269) = mat( 269) + lmat( 269)
+         mat( 270) = mat( 270) + lmat( 270)
+         mat( 275) = mat( 275) + lmat( 275)
+         mat( 292) = mat( 292) + lmat( 292)
+         mat( 294) = lmat( 294)
+         mat( 297) = lmat( 297)
+         mat( 312) = mat( 312) + lmat( 312)
+         mat( 313) = mat( 313) + lmat( 313)
+         mat( 316) = lmat( 316)
+         mat( 324) = mat( 324) + lmat( 324)
+         mat( 325) = lmat( 325)
+         mat( 328) = mat( 328) + lmat( 328)
+         mat( 332) = mat( 332) + lmat( 332)
+         mat( 334) = mat( 334) + lmat( 334)
+         mat( 335) = lmat( 335)
+         mat( 337) = mat( 337) + lmat( 337)
+         mat( 338) = mat( 338) + lmat( 338)
+         mat( 339) = mat( 339) + lmat( 339)
+         mat( 343) = mat( 343) + lmat( 343)
+         mat( 344) = lmat( 344)
+         mat( 346) = lmat( 346)
+         mat( 348) = mat( 348) + lmat( 348)
+         mat( 350) = lmat( 350)
+         mat( 354) = mat( 354) + lmat( 354)
+         mat( 356) = lmat( 356)
+         mat( 357) = lmat( 357)
+         mat( 482) = mat( 482) + lmat( 482)
+         mat( 500) = mat( 500) + lmat( 500)
+         mat( 501) = lmat( 501)
+         mat( 502) = mat( 502) + lmat( 502)
+         mat( 507) = mat( 507) + lmat( 507)
+         mat( 536) = mat( 536) + lmat( 536)
+         mat( 545) = mat( 545) + lmat( 545)
+         mat( 547) = mat( 547) + lmat( 547)
+         mat( 573) = mat( 573) + lmat( 573)
+         mat( 574) = mat( 574) + lmat( 574)
+         mat( 583) = lmat( 583)
+         mat( 592) = mat( 592) + lmat( 592)
+         mat( 596) = mat( 596) + lmat( 596)
+         mat( 668) = mat( 668) + lmat( 668)
+         mat( 673) = mat( 673) + lmat( 673)
+         mat( 690) = mat( 690) + lmat( 690)
+         mat( 698) = mat( 698) + lmat( 698)
+         mat( 699) = mat( 699) + lmat( 699)
+         mat( 751) = mat( 751) + lmat( 751)
+         mat( 756) = lmat( 756)
+         mat( 763) = mat( 763) + lmat( 763)
+         mat( 783) = mat( 783) + lmat( 783)
+         mat( 784) = mat( 784) + lmat( 784)
+         mat( 791) = mat( 791) + lmat( 791)
+         mat( 793) = lmat( 793)
+         mat( 817) = mat( 817) + lmat( 817)
+         mat( 826) = mat( 826) + lmat( 826)
+         mat(   1) = 0.
+         mat(   2) = 0.
+         mat(   3) = 0.
+         mat(   4) = 0.
+         mat( 112) = 0.
+         mat( 114) = 0.
+         mat( 115) = 0.
+         mat( 164) = 0.
+         mat( 181) = 0.
+         mat( 187) = 0.
+         mat( 190) = 0.
+         mat( 215) = 0.
+         mat( 220) = 0.
+         mat( 223) = 0.
+         mat( 227) = 0.
+         mat( 234) = 0.
+         mat( 240) = 0.
+         mat( 241) = 0.
+         mat( 242) = 0.
+         mat( 245) = 0.
+         mat( 252) = 0.
+         mat( 258) = 0.
+         mat( 259) = 0.
+         mat( 262) = 0.
+         mat( 271) = 0.
+         mat( 281) = 0.
+         mat( 282) = 0.
+         mat( 285) = 0.
+         mat( 289) = 0.
+         mat( 298) = 0.
+         mat( 304) = 0.
+         mat( 308) = 0.
+         mat( 317) = 0.
+         mat( 336) = 0.
+         mat( 340) = 0.
+         mat( 345) = 0.
+         mat( 349) = 0.
+         mat( 353) = 0.
+         mat( 358) = 0.
+         mat( 359) = 0.
+         mat( 363) = 0.
+         mat( 372) = 0.
+         mat( 373) = 0.
+         mat( 379) = 0.
+         mat( 388) = 0.
+         mat( 394) = 0.
+         mat( 403) = 0.
+         mat( 404) = 0.
+         mat( 406) = 0.
+         mat( 412) = 0.
+         mat( 415) = 0.
+         mat( 418) = 0.
+         mat( 425) = 0.
+         mat( 443) = 0.
+         mat( 446) = 0.
+         mat( 457) = 0.
+         mat( 470) = 0.
+         mat( 473) = 0.
+         mat( 476) = 0.
+         mat( 499) = 0.
+         mat( 504) = 0.
+         mat( 508) = 0.
+         mat( 515) = 0.
+         mat( 516) = 0.
+         mat( 520) = 0.
+         mat( 522) = 0.
+         mat( 527) = 0.
+         mat( 531) = 0.
+         mat( 533) = 0.
+         mat( 538) = 0.
+         mat( 539) = 0.
+         mat( 540) = 0.
+         mat( 576) = 0.
+         mat( 577) = 0.
+         mat( 587) = 0.
+         mat( 589) = 0.
+         mat( 590) = 0.
+         mat( 591) = 0.
+         mat( 597) = 0.
+         mat( 598) = 0.
+         mat( 599) = 0.
+         mat( 608) = 0.
+         mat( 610) = 0.
+         mat( 611) = 0.
+         mat( 612) = 0.
+         mat( 613) = 0.
+         mat( 614) = 0.
+         mat( 615) = 0.
+         mat( 617) = 0.
+         mat( 619) = 0.
+         mat( 620) = 0.
+         mat( 621) = 0.
+         mat( 622) = 0.
+         mat( 627) = 0.
+         mat( 628) = 0.
+         mat( 629) = 0.
+         mat( 630) = 0.
+         mat( 631) = 0.
+         mat( 632) = 0.
+         mat( 633) = 0.
+         mat( 634) = 0.
+         mat( 638) = 0.
+         mat( 639) = 0.
+         mat( 640) = 0.
+         mat( 678) = 0.
+         mat( 694) = 0.
+         mat( 700) = 0.
+         mat( 714) = 0.
+         mat( 722) = 0.
+         mat( 727) = 0.
+         mat( 749) = 0.
+         mat( 753) = 0.
+         mat( 754) = 0.
+         mat( 758) = 0.
+         mat( 759) = 0.
+         mat( 760) = 0.
+         mat( 761) = 0.
+         mat( 765) = 0.
+         mat( 774) = 0.
+         mat( 775) = 0.
+         mat( 776) = 0.
+         mat( 777) = 0.
+         mat( 780) = 0.
+         mat( 785) = 0.
+         mat( 786) = 0.
+         mat( 787) = 0.
+         mat( 796) = 0.
+         mat( 797) = 0.
+         mat( 802) = 0.
+         mat( 807) = 0.
+         mat( 809) = 0.
+         mat( 810) = 0.
+         mat( 811) = 0.
+         mat( 813) = 0.
+         mat( 820) = 0.
+         mat( 821) = 0.
+         mat(   1) = -dti
+         mat(   2) = -dti
+         mat(   3) = -dti
+         mat(   4) = -dti
+         mat(   6) = mat(   6) - dti
+         mat(   8) = mat(   8) - dti
+         mat(  11) = mat(  11) - dti
+         mat(  15) = mat(  15) - dti
+         mat(  17) = mat(  17) - dti
+         mat(  19) = mat(  19) - dti
+         mat(  22) = mat(  22) - dti
+         mat(  27) = mat(  27) - dti
+         mat(  31) = mat(  31) - dti
+         mat(  35) = mat(  35) - dti
+         mat(  43) = mat(  43) - dti
+         mat(  46) = mat(  46) - dti
+         mat(  51) = mat(  51) - dti
+         mat(  55) = mat(  55) - dti
+         mat(  59) = mat(  59) - dti
+         mat(  63) = mat(  63) - dti
+         mat(  69) = mat(  69) - dti
+         mat(  74) = mat(  74) - dti
+         mat(  79) = mat(  79) - dti
+         mat(  84) = mat(  84) - dti
+         mat(  89) = mat(  89) - dti
+         mat(  95) = mat(  95) - dti
+         mat( 100) = mat( 100) - dti
+         mat( 103) = mat( 103) - dti
+         mat( 107) = mat( 107) - dti
+         mat( 111) = mat( 111) - dti
+         mat( 117) = mat( 117) - dti
+         mat( 122) = mat( 122) - dti
+         mat( 129) = mat( 129) - dti
+         mat( 136) = mat( 136) - dti
+         mat( 140) = mat( 140) - dti
+         mat( 148) = mat( 148) - dti
+         mat( 156) = mat( 156) - dti
+         mat( 163) = mat( 163) - dti
+         mat( 169) = mat( 169) - dti
+         mat( 176) = mat( 176) - dti
+         mat( 185) = mat( 185) - dti
+         mat( 193) = mat( 193) - dti
+         mat( 198) = mat( 198) - dti
+         mat( 211) = mat( 211) - dti
+         mat( 221) = mat( 221) - dti
+         mat( 233) = mat( 233) - dti
+         mat( 244) = mat( 244) - dti
+         mat( 253) = mat( 253) - dti
+         mat( 269) = mat( 269) - dti
+         mat( 279) = mat( 279) - dti
+         mat( 292) = mat( 292) - dti
+         mat( 301) = mat( 301) - dti
+         mat( 312) = mat( 312) - dti
+         mat( 318) = mat( 318) - dti
+         mat( 324) = mat( 324) - dti
+         mat( 332) = mat( 332) - dti
+         mat( 343) = mat( 343) - dti
+         mat( 354) = mat( 354) - dti
+         mat( 371) = mat( 371) - dti
+         mat( 387) = mat( 387) - dti
+         mat( 405) = mat( 405) - dti
+         mat( 419) = mat( 419) - dti
+         mat( 441) = mat( 441) - dti
+         mat( 469) = mat( 469) - dti
+         mat( 500) = mat( 500) - dti
+         mat( 517) = mat( 517) - dti
+         mat( 536) = mat( 536) - dti
+         mat( 574) = mat( 574) - dti
+         mat( 592) = mat( 592) - dti
+         mat( 616) = mat( 616) - dti
+         mat( 635) = mat( 635) - dti
+         mat( 698) = mat( 698) - dti
+         mat( 743) = mat( 743) - dti
+         mat( 763) = mat( 763) - dti
+         mat( 791) = mat( 791) - dti
+         mat( 826) = mat( 826) - dti
 
-      end subroutine IMP_NLNMAT_FINIT
+      end subroutine imp_nlnmat_finit
 
-      subroutine IMP_NLNMAT( mat, y, rxt, lmat, dti )
+      subroutine imp_nlnmat( mat, y, rxt, lmat, dti )
 
       use MO_GRID_MOD,   only : pcnstm1
       use CHEM_MODS_MOD, only : rxntot, imp_nzcnt, clsze
@@ -1143,24 +2424,26 @@ logical                       :: module_is_initialized = .false.
 !       ... Dummy args
 !----------------------------------------------
       real, intent(in)    ::  dti
-      real, intent(in)    ::  lmat(clsze,imp_nzcnt)
-      real, intent(in)    ::  y(clsze,pcnstm1)
-      real, intent(in)    ::  rxt(clsze,rxntot)
-      real, intent(inout) ::  mat(clsze,imp_nzcnt)
+      real, intent(in)    ::  lmat(imp_nzcnt)
+      real, intent(in)    ::  y(pcnstm1)
+      real, intent(in)    ::  rxt(rxntot)
+      real, intent(inout) ::  mat(imp_nzcnt)
 
-      call IMP_NLNMAT01( mat, y, rxt )
-      call IMP_NLNMAT02( mat, y, rxt )
-      call IMP_NLNMAT_FINIT( mat, lmat, dti )
+      call imp_nlnmat01( mat, y, rxt )
+      call imp_nlnmat02( mat, y, rxt )
+      call imp_nlnmat03( mat, y, rxt )
+      call imp_nlnmat04( mat, y, rxt )
+      call imp_nlnmat_finit( mat, lmat, dti )
 
-      end subroutine IMP_NLNMAT
+      end subroutine imp_nlnmat
 
       end module MO_IMP_NLN_MATRIX_MOD
 
       module MO_ROD_NLN_MATRIX_MOD
 
-      CONTAINS
+      contains
 
-      subroutine ROD_NLNMAT( mat, y, rxt, lmat, dti )
+      subroutine rod_nlnmat( mat, y, rxt, lmat, dti )
 
       use MO_GRID_MOD,   only : pcnstm1
       use CHEM_MODS_MOD, only : rxntot, rod_nzcnt, clsze
@@ -1171,185 +2454,21 @@ logical                       :: module_is_initialized = .false.
 !       ... Dummy args
 !----------------------------------------------
       real, intent(in)    ::  dti
-      real, intent(in)    ::  lmat(clsze,rod_nzcnt)
-      real, intent(in)    ::  y(clsze,pcnstm1)
-      real, intent(in)    ::  rxt(clsze,rxntot)
-      real, intent(inout) ::  mat(clsze,rod_nzcnt)
+      real, intent(in)    ::  lmat(rod_nzcnt)
+      real, intent(in)    ::  y(pcnstm1)
+      real, intent(in)    ::  rxt(rxntot)
+      real, intent(inout) ::  mat(rod_nzcnt)
 
 
-      end subroutine ROD_NLNMAT
+      end subroutine rod_nlnmat
 
       end module MO_ROD_NLN_MATRIX_MOD
 
       module MO_IMP_FACTOR_MOD
 
-      CONTAINS
+      contains
                                                                         
-      subroutine IMP_LU_FAC01( lu )
-                                                                        
-      use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
-      implicit none
-                                                                        
-!-----------------------------------------------------------------------
-!       ... Dummy args
-!-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(clsze,imp_nzcnt)
-                                                                        
-!-----------------------------------------------------------------------
-!       ... Local variables
-!-----------------------------------------------------------------------
-      integer :: k
-                                                                        
-      do k = 1,clsze
-         lu(k,1) = 1. / lu(k,1)
-                                                                        
-         lu(k,2) = 1. / lu(k,2)
-                                                                        
-         lu(k,3) = 1. / lu(k,3)
-                                                                        
-         lu(k,5) = 1. / lu(k,5)
-         lu(k,6) = lu(k,6) * lu(k,5)
-         lu(k,178) = lu(k,178) - lu(k,6) * lu(k,155)
-                                                                        
-         lu(k,8) = 1. / lu(k,8)
-         lu(k,9) = lu(k,9) * lu(k,8)
-         lu(k,25) = lu(k,25) - lu(k,9) * lu(k,23)
-         lu(k,178) = lu(k,178) - lu(k,9) * lu(k,156)
-         lu(k,260) = lu(k,260) - lu(k,9) * lu(k,251)
-                                                                        
-         lu(k,10) = 1. / lu(k,10)
-         lu(k,11) = lu(k,11) * lu(k,10)
-         lu(k,12) = lu(k,12) * lu(k,10)
-         lu(k,178) = lu(k,178) - lu(k,11) * lu(k,157)
-         lu(k,180) = lu(k,180) - lu(k,12) * lu(k,157)
-         lu(k,215) = lu(k,215) - lu(k,11) * lu(k,199)
-         lu(k,217) = lu(k,217) - lu(k,12) * lu(k,199)
-                                                                        
-         lu(k,13) = 1. / lu(k,13)
-         lu(k,14) = lu(k,14) * lu(k,13)
-         lu(k,15) = lu(k,15) * lu(k,13)
-         lu(k,16) = lu(k,16) * lu(k,13)
-         lu(k,17) = lu(k,17) * lu(k,13)
-         lu(k,18) = lu(k,18) * lu(k,13)
-         lu(k,143) = lu(k,143) - lu(k,14) * lu(k,142)
-         lu(k,145) = - lu(k,15) * lu(k,142)
-         lu(k,147) = lu(k,147) - lu(k,16) * lu(k,142)
-         lu(k,149) = lu(k,149) - lu(k,17) * lu(k,142)
-         lu(k,150) = - lu(k,18) * lu(k,142)
-                                                                        
-         lu(k,19) = 1. / lu(k,19)
-         lu(k,20) = lu(k,20) * lu(k,19)
-         lu(k,21) = lu(k,21) * lu(k,19)
-         lu(k,22) = lu(k,22) * lu(k,19)
-         lu(k,187) = lu(k,187) - lu(k,20) * lu(k,185)
-         lu(k,193) = lu(k,193) - lu(k,21) * lu(k,185)
-         lu(k,197) = lu(k,197) - lu(k,22) * lu(k,185)
-         lu(k,255) = lu(k,255) - lu(k,20) * lu(k,252)
-         lu(k,261) = lu(k,261) - lu(k,21) * lu(k,252)
-         lu(k,265) = lu(k,265) - lu(k,22) * lu(k,252)
-                                                                        
-         lu(k,24) = 1. / lu(k,24)
-         lu(k,25) = lu(k,25) * lu(k,24)
-         lu(k,26) = lu(k,26) * lu(k,24)
-         lu(k,27) = lu(k,27) * lu(k,24)
-         lu(k,178) = lu(k,178) - lu(k,25) * lu(k,158)
-         lu(k,179) = lu(k,179) - lu(k,26) * lu(k,158)
-         lu(k,183) = lu(k,183) - lu(k,27) * lu(k,158)
-         lu(k,260) = lu(k,260) - lu(k,25) * lu(k,253)
-         lu(k,261) = lu(k,261) - lu(k,26) * lu(k,253)
-         lu(k,265) = lu(k,265) - lu(k,27) * lu(k,253)
-                                                                        
-         lu(k,28) = 1. / lu(k,28)
-         lu(k,29) = lu(k,29) * lu(k,28)
-         lu(k,30) = lu(k,30) * lu(k,28)
-         lu(k,31) = lu(k,31) * lu(k,28)
-         lu(k,178) = lu(k,178) - lu(k,29) * lu(k,159)
-         lu(k,179) = lu(k,179) - lu(k,30) * lu(k,159)
-         lu(k,180) = lu(k,180) - lu(k,31) * lu(k,159)
-         lu(k,192) = lu(k,192) - lu(k,29) * lu(k,186)
-         lu(k,193) = lu(k,193) - lu(k,30) * lu(k,186)
-         lu(k,194) = lu(k,194) - lu(k,31) * lu(k,186)
-         lu(k,215) = lu(k,215) - lu(k,29) * lu(k,200)
-         lu(k,216) = lu(k,216) - lu(k,30) * lu(k,200)
-         lu(k,217) = lu(k,217) - lu(k,31) * lu(k,200)
-                                                                        
-         lu(k,32) = 1. / lu(k,32)
-         lu(k,33) = lu(k,33) * lu(k,32)
-         lu(k,34) = lu(k,34) * lu(k,32)
-         lu(k,35) = lu(k,35) * lu(k,32)
-         lu(k,36) = lu(k,36) * lu(k,32)
-         lu(k,37) = lu(k,37) * lu(k,32)
-         lu(k,166) = lu(k,166) - lu(k,33) * lu(k,160)
-         lu(k,178) = lu(k,178) - lu(k,34) * lu(k,160)
-         lu(k,180) = lu(k,180) - lu(k,35) * lu(k,160)
-         lu(k,183) = lu(k,183) - lu(k,36) * lu(k,160)
-         lu(k,184) = lu(k,184) - lu(k,37) * lu(k,160)
-         lu(k,255) = lu(k,255) - lu(k,33) * lu(k,254)
-         lu(k,260) = lu(k,260) - lu(k,34) * lu(k,254)
-         lu(k,262) = lu(k,262) - lu(k,35) * lu(k,254)
-         lu(k,265) = lu(k,265) - lu(k,36) * lu(k,254)
-         lu(k,266) = lu(k,266) - lu(k,37) * lu(k,254)
-                                                                        
-         lu(k,38) = 1. / lu(k,38)
-         lu(k,39) = lu(k,39) * lu(k,38)
-         lu(k,40) = lu(k,40) * lu(k,38)
-         lu(k,41) = lu(k,41) * lu(k,38)
-         lu(k,42) = lu(k,42) * lu(k,38)
-         lu(k,176) = lu(k,176) - lu(k,39) * lu(k,161)
-         lu(k,178) = lu(k,178) - lu(k,40) * lu(k,161)
-         lu(k,181) = lu(k,181) - lu(k,41) * lu(k,161)
-         lu(k,184) = lu(k,184) - lu(k,42) * lu(k,161)
-         lu(k,213) = - lu(k,39) * lu(k,201)
-         lu(k,215) = lu(k,215) - lu(k,40) * lu(k,201)
-         lu(k,218) = lu(k,218) - lu(k,41) * lu(k,201)
-         lu(k,221) = lu(k,221) - lu(k,42) * lu(k,201)
-         lu(k,269) = lu(k,269) - lu(k,39) * lu(k,267)
-         lu(k,271) = - lu(k,40) * lu(k,267)
-         lu(k,274) = lu(k,274) - lu(k,41) * lu(k,267)
-         lu(k,277) = lu(k,277) - lu(k,42) * lu(k,267)
-                                                                        
-         lu(k,43) = 1. / lu(k,43)
-         lu(k,44) = lu(k,44) * lu(k,43)
-         lu(k,45) = lu(k,45) * lu(k,43)
-         lu(k,46) = lu(k,46) * lu(k,43)
-         lu(k,47) = lu(k,47) * lu(k,43)
-         lu(k,100) = lu(k,100) - lu(k,44) * lu(k,99)
-         lu(k,101) = lu(k,101) - lu(k,45) * lu(k,99)
-         lu(k,103) = - lu(k,46) * lu(k,99)
-         lu(k,105) = lu(k,105) - lu(k,47) * lu(k,99)
-         lu(k,172) = lu(k,172) - lu(k,44) * lu(k,162)
-         lu(k,175) = lu(k,175) - lu(k,45) * lu(k,162)
-         lu(k,178) = lu(k,178) - lu(k,46) * lu(k,162)
-         lu(k,180) = lu(k,180) - lu(k,47) * lu(k,162)
-         lu(k,209) = lu(k,209) - lu(k,44) * lu(k,202)
-         lu(k,212) = - lu(k,45) * lu(k,202)
-         lu(k,215) = lu(k,215) - lu(k,46) * lu(k,202)
-         lu(k,217) = lu(k,217) - lu(k,47) * lu(k,202)
-                                                                        
-         lu(k,48) = 1. / lu(k,48)
-         lu(k,49) = lu(k,49) * lu(k,48)
-         lu(k,50) = lu(k,50) * lu(k,48)
-         lu(k,51) = lu(k,51) * lu(k,48)
-         lu(k,52) = lu(k,52) * lu(k,48)
-         lu(k,117) = lu(k,117) - lu(k,49) * lu(k,116)
-         lu(k,119) = lu(k,119) - lu(k,50) * lu(k,116)
-         lu(k,122) = - lu(k,51) * lu(k,116)
-         lu(k,124) = lu(k,124) - lu(k,52) * lu(k,116)
-         lu(k,169) = lu(k,169) - lu(k,49) * lu(k,163)
-         lu(k,174) = lu(k,174) - lu(k,50) * lu(k,163)
-         lu(k,178) = lu(k,178) - lu(k,51) * lu(k,163)
-         lu(k,180) = lu(k,180) - lu(k,52) * lu(k,163)
-         lu(k,207) = - lu(k,49) * lu(k,203)
-         lu(k,211) = lu(k,211) - lu(k,50) * lu(k,203)
-         lu(k,215) = lu(k,215) - lu(k,51) * lu(k,203)
-         lu(k,217) = lu(k,217) - lu(k,52) * lu(k,203)
-                                                                        
-      end do
-                                                                        
-      end subroutine IMP_LU_FAC01
-                                                                        
-      subroutine IMP_LU_FAC02( lu )
+      subroutine imp_lu_fac01( lu )
                                                                         
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
                                                                         
@@ -1358,206 +2477,131 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(clsze,imp_nzcnt)
+      real, intent(inout) ::   lu(imp_nzcnt)
                                                                         
-!-----------------------------------------------------------------------
-!       ... Local variables
-!-----------------------------------------------------------------------
-      integer :: k
+         lu(1) = 1. / lu(1)
                                                                         
-      do k = 1,clsze
-         lu(k,53) = 1. / lu(k,53)
-         lu(k,54) = lu(k,54) * lu(k,53)
-         lu(k,55) = lu(k,55) * lu(k,53)
-         lu(k,56) = lu(k,56) * lu(k,53)
-         lu(k,57) = lu(k,57) * lu(k,53)
-         lu(k,109) = lu(k,109) - lu(k,54) * lu(k,108)
-         lu(k,110) = lu(k,110) - lu(k,55) * lu(k,108)
-         lu(k,111) = - lu(k,56) * lu(k,108)
-         lu(k,115) = lu(k,115) - lu(k,57) * lu(k,108)
-         lu(k,173) = lu(k,173) - lu(k,54) * lu(k,164)
-         lu(k,176) = lu(k,176) - lu(k,55) * lu(k,164)
-         lu(k,178) = lu(k,178) - lu(k,56) * lu(k,164)
-         lu(k,184) = lu(k,184) - lu(k,57) * lu(k,164)
-         lu(k,210) = lu(k,210) - lu(k,54) * lu(k,204)
-         lu(k,213) = lu(k,213) - lu(k,55) * lu(k,204)
-         lu(k,215) = lu(k,215) - lu(k,56) * lu(k,204)
-         lu(k,221) = lu(k,221) - lu(k,57) * lu(k,204)
+         lu(2) = 1. / lu(2)
                                                                         
-         lu(k,58) = 1. / lu(k,58)
-         lu(k,59) = lu(k,59) * lu(k,58)
-         lu(k,60) = lu(k,60) * lu(k,58)
-         lu(k,61) = lu(k,61) * lu(k,58)
-         lu(k,62) = lu(k,62) * lu(k,58)
-         lu(k,176) = lu(k,176) - lu(k,59) * lu(k,165)
-         lu(k,178) = lu(k,178) - lu(k,60) * lu(k,165)
-         lu(k,180) = lu(k,180) - lu(k,61) * lu(k,165)
-         lu(k,181) = lu(k,181) - lu(k,62) * lu(k,165)
-         lu(k,213) = lu(k,213) - lu(k,59) * lu(k,205)
-         lu(k,215) = lu(k,215) - lu(k,60) * lu(k,205)
-         lu(k,217) = lu(k,217) - lu(k,61) * lu(k,205)
-         lu(k,218) = lu(k,218) - lu(k,62) * lu(k,205)
-         lu(k,228) = lu(k,228) - lu(k,59) * lu(k,222)
-         lu(k,229) = - lu(k,60) * lu(k,222)
-         lu(k,231) = lu(k,231) - lu(k,61) * lu(k,222)
-         lu(k,232) = lu(k,232) - lu(k,62) * lu(k,222)
+         lu(3) = 1. / lu(3)
                                                                         
-         lu(k,63) = 1. / lu(k,63)
-         lu(k,64) = lu(k,64) * lu(k,63)
-         lu(k,65) = lu(k,65) * lu(k,63)
-         lu(k,66) = lu(k,66) * lu(k,63)
-         lu(k,130) = lu(k,130) - lu(k,64) * lu(k,128)
-         lu(k,131) = - lu(k,65) * lu(k,128)
-         lu(k,134) = lu(k,134) - lu(k,66) * lu(k,128)
-         lu(k,138) = lu(k,138) - lu(k,64) * lu(k,136)
-         lu(k,139) = - lu(k,65) * lu(k,136)
-         lu(k,141) = lu(k,141) - lu(k,66) * lu(k,136)
-         lu(k,178) = lu(k,178) - lu(k,64) * lu(k,166)
-         lu(k,179) = lu(k,179) - lu(k,65) * lu(k,166)
-         lu(k,183) = lu(k,183) - lu(k,66) * lu(k,166)
-         lu(k,192) = lu(k,192) - lu(k,64) * lu(k,187)
-         lu(k,193) = lu(k,193) - lu(k,65) * lu(k,187)
-         lu(k,197) = lu(k,197) - lu(k,66) * lu(k,187)
-         lu(k,260) = lu(k,260) - lu(k,64) * lu(k,255)
-         lu(k,261) = lu(k,261) - lu(k,65) * lu(k,255)
-         lu(k,265) = lu(k,265) - lu(k,66) * lu(k,255)
+         lu(4) = 1. / lu(4)
                                                                         
-         lu(k,67) = 1. / lu(k,67)
-         lu(k,68) = lu(k,68) * lu(k,67)
-         lu(k,69) = lu(k,69) * lu(k,67)
-         lu(k,70) = lu(k,70) * lu(k,67)
-         lu(k,71) = lu(k,71) * lu(k,67)
-         lu(k,94) = lu(k,94) - lu(k,68) * lu(k,90)
-         lu(k,95) = lu(k,95) - lu(k,69) * lu(k,90)
-         lu(k,96) = - lu(k,70) * lu(k,90)
-         lu(k,98) = lu(k,98) - lu(k,71) * lu(k,90)
-         lu(k,179) = lu(k,179) - lu(k,68) * lu(k,167)
-         lu(k,180) = lu(k,180) - lu(k,69) * lu(k,167)
-         lu(k,182) = - lu(k,70) * lu(k,167)
-         lu(k,184) = lu(k,184) - lu(k,71) * lu(k,167)
-         lu(k,216) = lu(k,216) - lu(k,68) * lu(k,206)
-         lu(k,217) = lu(k,217) - lu(k,69) * lu(k,206)
-         lu(k,219) = lu(k,219) - lu(k,70) * lu(k,206)
-         lu(k,221) = lu(k,221) - lu(k,71) * lu(k,206)
-         lu(k,245) = lu(k,245) - lu(k,68) * lu(k,236)
-         lu(k,246) = lu(k,246) - lu(k,69) * lu(k,236)
-         lu(k,248) = lu(k,248) - lu(k,70) * lu(k,236)
-         lu(k,250) = lu(k,250) - lu(k,71) * lu(k,236)
+         lu(6) = 1. / lu(6)
+         lu(7) = lu(7) * lu(6)
+         lu(698) = lu(698) - lu(7) * lu(642)
                                                                         
-         lu(k,72) = 1. / lu(k,72)
-         lu(k,73) = lu(k,73) * lu(k,72)
-         lu(k,74) = lu(k,74) * lu(k,72)
-         lu(k,75) = lu(k,75) * lu(k,72)
-         lu(k,76) = lu(k,76) * lu(k,72)
-         lu(k,77) = lu(k,77) * lu(k,72)
-         lu(k,78) = lu(k,78) * lu(k,72)
-         lu(k,176) = lu(k,176) - lu(k,73) * lu(k,168)
-         lu(k,178) = lu(k,178) - lu(k,74) * lu(k,168)
-         lu(k,179) = lu(k,179) - lu(k,75) * lu(k,168)
-         lu(k,181) = lu(k,181) - lu(k,76) * lu(k,168)
-         lu(k,183) = lu(k,183) - lu(k,77) * lu(k,168)
-         lu(k,184) = lu(k,184) - lu(k,78) * lu(k,168)
-         lu(k,190) = - lu(k,73) * lu(k,188)
-         lu(k,192) = lu(k,192) - lu(k,74) * lu(k,188)
-         lu(k,193) = lu(k,193) - lu(k,75) * lu(k,188)
-         lu(k,195) = - lu(k,76) * lu(k,188)
-         lu(k,197) = lu(k,197) - lu(k,77) * lu(k,188)
-         lu(k,198) = lu(k,198) - lu(k,78) * lu(k,188)
-         lu(k,269) = lu(k,269) - lu(k,73) * lu(k,268)
-         lu(k,271) = lu(k,271) - lu(k,74) * lu(k,268)
-         lu(k,272) = lu(k,272) - lu(k,75) * lu(k,268)
-         lu(k,274) = lu(k,274) - lu(k,76) * lu(k,268)
-         lu(k,276) = - lu(k,77) * lu(k,268)
-         lu(k,277) = lu(k,277) - lu(k,78) * lu(k,268)
+         lu(8) = 1. / lu(8)
+         lu(9) = lu(9) * lu(8)
+         lu(10) = lu(10) * lu(8)
+         lu(673) = lu(673) - lu(9) * lu(643)
+         lu(698) = lu(698) - lu(10) * lu(643)
                                                                         
-         lu(k,79) = 1. / lu(k,79)
-         lu(k,80) = lu(k,80) * lu(k,79)
-         lu(k,81) = lu(k,81) * lu(k,79)
-         lu(k,82) = lu(k,82) * lu(k,79)
-         lu(k,83) = lu(k,83) * lu(k,79)
-         lu(k,118) = - lu(k,80) * lu(k,117)
-         lu(k,122) = lu(k,122) - lu(k,81) * lu(k,117)
-         lu(k,125) = lu(k,125) - lu(k,82) * lu(k,117)
-         lu(k,127) = - lu(k,83) * lu(k,117)
-         lu(k,173) = lu(k,173) - lu(k,80) * lu(k,169)
-         lu(k,178) = lu(k,178) - lu(k,81) * lu(k,169)
-         lu(k,181) = lu(k,181) - lu(k,82) * lu(k,169)
-         lu(k,184) = lu(k,184) - lu(k,83) * lu(k,169)
-         lu(k,210) = lu(k,210) - lu(k,80) * lu(k,207)
-         lu(k,215) = lu(k,215) - lu(k,81) * lu(k,207)
-         lu(k,218) = lu(k,218) - lu(k,82) * lu(k,207)
-         lu(k,221) = lu(k,221) - lu(k,83) * lu(k,207)
-         lu(k,225) = - lu(k,80) * lu(k,223)
-         lu(k,229) = lu(k,229) - lu(k,81) * lu(k,223)
-         lu(k,232) = lu(k,232) - lu(k,82) * lu(k,223)
-         lu(k,235) = lu(k,235) - lu(k,83) * lu(k,223)
-         lu(k,239) = lu(k,239) - lu(k,80) * lu(k,237)
-         lu(k,244) = lu(k,244) - lu(k,81) * lu(k,237)
-         lu(k,247) = lu(k,247) - lu(k,82) * lu(k,237)
-         lu(k,250) = lu(k,250) - lu(k,83) * lu(k,237)
+         lu(11) = 1. / lu(11)
+         lu(12) = lu(12) * lu(11)
+         lu(13) = lu(13) * lu(11)
+         lu(514) = lu(514) - lu(12) * lu(509)
+         lu(517) = lu(517) - lu(13) * lu(509)
                                                                         
-         lu(k,84) = 1. / lu(k,84)
-         lu(k,85) = lu(k,85) * lu(k,84)
-         lu(k,86) = lu(k,86) * lu(k,84)
-         lu(k,87) = lu(k,87) * lu(k,84)
-         lu(k,88) = lu(k,88) * lu(k,84)
-         lu(k,89) = lu(k,89) * lu(k,84)
-         lu(k,146) = lu(k,146) - lu(k,85) * lu(k,143)
-         lu(k,147) = lu(k,147) - lu(k,86) * lu(k,143)
-         lu(k,148) = lu(k,148) - lu(k,87) * lu(k,143)
-         lu(k,149) = lu(k,149) - lu(k,88) * lu(k,143)
-         lu(k,151) = lu(k,151) - lu(k,89) * lu(k,143)
-         lu(k,177) = lu(k,177) - lu(k,85) * lu(k,170)
-         lu(k,178) = lu(k,178) - lu(k,86) * lu(k,170)
-         lu(k,179) = lu(k,179) - lu(k,87) * lu(k,170)
-         lu(k,180) = lu(k,180) - lu(k,88) * lu(k,170)
-         lu(k,182) = lu(k,182) - lu(k,89) * lu(k,170)
-         lu(k,191) = lu(k,191) - lu(k,85) * lu(k,189)
-         lu(k,192) = lu(k,192) - lu(k,86) * lu(k,189)
-         lu(k,193) = lu(k,193) - lu(k,87) * lu(k,189)
-         lu(k,194) = lu(k,194) - lu(k,88) * lu(k,189)
-         lu(k,196) = lu(k,196) - lu(k,89) * lu(k,189)
-         lu(k,214) = lu(k,214) - lu(k,85) * lu(k,208)
-         lu(k,215) = lu(k,215) - lu(k,86) * lu(k,208)
-         lu(k,216) = lu(k,216) - lu(k,87) * lu(k,208)
-         lu(k,217) = lu(k,217) - lu(k,88) * lu(k,208)
-         lu(k,219) = lu(k,219) - lu(k,89) * lu(k,208)
+         lu(15) = 1. / lu(15)
+         lu(16) = lu(16) * lu(15)
+         lu(29) = lu(29) - lu(16) * lu(26)
+         lu(505) = lu(505) - lu(16) * lu(477)
+         lu(698) = lu(698) - lu(16) * lu(644)
                                                                         
-         lu(k,91) = 1. / lu(k,91)
-         lu(k,92) = lu(k,92) * lu(k,91)
-         lu(k,93) = lu(k,93) * lu(k,91)
-         lu(k,94) = lu(k,94) * lu(k,91)
-         lu(k,95) = lu(k,95) * lu(k,91)
-         lu(k,96) = lu(k,96) * lu(k,91)
-         lu(k,97) = lu(k,97) * lu(k,91)
-         lu(k,98) = lu(k,98) * lu(k,91)
-         lu(k,146) = lu(k,146) - lu(k,92) * lu(k,144)
-         lu(k,147) = lu(k,147) - lu(k,93) * lu(k,144)
-         lu(k,148) = lu(k,148) - lu(k,94) * lu(k,144)
-         lu(k,149) = lu(k,149) - lu(k,95) * lu(k,144)
-         lu(k,151) = lu(k,151) - lu(k,96) * lu(k,144)
-         lu(k,152) = lu(k,152) - lu(k,97) * lu(k,144)
-         lu(k,153) = lu(k,153) - lu(k,98) * lu(k,144)
-         lu(k,177) = lu(k,177) - lu(k,92) * lu(k,171)
-         lu(k,178) = lu(k,178) - lu(k,93) * lu(k,171)
-         lu(k,179) = lu(k,179) - lu(k,94) * lu(k,171)
-         lu(k,180) = lu(k,180) - lu(k,95) * lu(k,171)
-         lu(k,182) = lu(k,182) - lu(k,96) * lu(k,171)
-         lu(k,183) = lu(k,183) - lu(k,97) * lu(k,171)
-         lu(k,184) = lu(k,184) - lu(k,98) * lu(k,171)
-         lu(k,259) = lu(k,259) - lu(k,92) * lu(k,256)
-         lu(k,260) = lu(k,260) - lu(k,93) * lu(k,256)
-         lu(k,261) = lu(k,261) - lu(k,94) * lu(k,256)
-         lu(k,262) = lu(k,262) - lu(k,95) * lu(k,256)
-         lu(k,264) = lu(k,264) - lu(k,96) * lu(k,256)
-         lu(k,265) = lu(k,265) - lu(k,97) * lu(k,256)
-         lu(k,266) = lu(k,266) - lu(k,98) * lu(k,256)
+         lu(17) = 1. / lu(17)
+         lu(18) = lu(18) * lu(17)
+         lu(165) = lu(165) - lu(18) * lu(161)
+         lu(235) = lu(235) - lu(18) * lu(230)
+         lu(609) = lu(609) - lu(18) * lu(601)
                                                                         
-      end do
+         lu(19) = 1. / lu(19)
+         lu(20) = lu(20) * lu(19)
+         lu(21) = lu(21) * lu(19)
+         lu(698) = lu(698) - lu(20) * lu(645)
+         lu(699) = lu(699) - lu(21) * lu(645)
+         lu(742) = lu(742) - lu(20) * lu(703)
+         lu(743) = lu(743) - lu(21) * lu(703)
                                                                         
-      end subroutine IMP_LU_FAC02
+         lu(22) = 1. / lu(22)
+         lu(23) = lu(23) * lu(22)
+         lu(24) = lu(24) * lu(22)
+         lu(25) = lu(25) * lu(22)
+         lu(112) = - lu(23) * lu(110)
+         lu(114) = - lu(24) * lu(110)
+         lu(115) = - lu(25) * lu(110)
+         lu(553) = lu(553) - lu(23) * lu(546)
+         lu(575) = lu(575) - lu(24) * lu(546)
+         lu(579) = lu(579) - lu(25) * lu(546)
                                                                         
-      subroutine IMP_LU_FAC03( lu )
+         lu(27) = 1. / lu(27)
+         lu(28) = lu(28) * lu(27)
+         lu(29) = lu(29) * lu(27)
+         lu(30) = lu(30) * lu(27)
+         lu(500) = lu(500) - lu(28) * lu(478)
+         lu(505) = lu(505) - lu(29) * lu(478)
+         lu(507) = lu(507) - lu(30) * lu(478)
+         lu(691) = lu(691) - lu(28) * lu(646)
+         lu(698) = lu(698) - lu(29) * lu(646)
+         lu(701) = lu(701) - lu(30) * lu(646)
+                                                                        
+         lu(31) = 1. / lu(31)
+         lu(32) = lu(32) * lu(31)
+         lu(33) = lu(33) * lu(31)
+         lu(34) = lu(34) * lu(31)
+         lu(573) = lu(573) - lu(32) * lu(547)
+         lu(574) = lu(574) - lu(33) * lu(547)
+         lu(581) = lu(581) - lu(34) * lu(547)
+         lu(783) = lu(783) - lu(32) * lu(766)
+         lu(784) = lu(784) - lu(33) * lu(766)
+         lu(791) = lu(791) - lu(34) * lu(766)
+                                                                        
+         lu(35) = 1. / lu(35)
+         lu(36) = lu(36) * lu(35)
+         lu(37) = lu(37) * lu(35)
+         lu(38) = lu(38) * lu(35)
+         lu(39) = lu(39) * lu(35)
+         lu(40) = lu(40) * lu(35)
+         lu(41) = lu(41) * lu(35)
+         lu(42) = lu(42) * lu(35)
+         lu(795) = lu(795) - lu(36) * lu(793)
+         lu(814) = lu(814) - lu(37) * lu(793)
+         lu(817) = lu(817) - lu(38) * lu(793)
+         lu(818) = lu(818) - lu(39) * lu(793)
+         lu(819) = lu(819) - lu(40) * lu(793)
+         lu(822) = lu(822) - lu(41) * lu(793)
+         lu(823) = lu(823) - lu(42) * lu(793)
+                                                                        
+         lu(43) = 1. / lu(43)
+         lu(44) = lu(44) * lu(43)
+         lu(45) = lu(45) * lu(43)
+         lu(304) = - lu(44) * lu(299)
+         lu(308) = - lu(45) * lu(299)
+         lu(387) = lu(387) - lu(44) * lu(382)
+         lu(394) = - lu(45) * lu(382)
+         lu(686) = lu(686) - lu(44) * lu(647)
+         lu(698) = lu(698) - lu(45) * lu(647)
+         lu(730) = lu(730) - lu(44) * lu(704)
+         lu(742) = lu(742) - lu(45) * lu(704)
+                                                                        
+         lu(46) = 1. / lu(46)
+         lu(47) = lu(47) * lu(46)
+         lu(48) = lu(48) * lu(46)
+         lu(49) = lu(49) * lu(46)
+         lu(50) = lu(50) * lu(46)
+         lu(749) = - lu(47) * lu(747)
+         lu(750) = lu(750) - lu(48) * lu(747)
+         lu(751) = lu(751) - lu(49) * lu(747)
+         lu(754) = - lu(50) * lu(747)
+         lu(772) = lu(772) - lu(47) * lu(767)
+         lu(774) = - lu(48) * lu(767)
+         lu(775) = - lu(49) * lu(767)
+         lu(781) = lu(781) - lu(50) * lu(767)
+                                                                        
+                                                                        
+      end subroutine imp_lu_fac01
+                                                                        
+      subroutine imp_lu_fac02( lu )
                                                                         
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
                                                                         
@@ -1566,307 +2610,161 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(clsze,imp_nzcnt)
+      real, intent(inout) ::   lu(imp_nzcnt)
                                                                         
-!-----------------------------------------------------------------------
-!       ... Local variables
-!-----------------------------------------------------------------------
-      integer :: k
+         lu(51) = 1. / lu(51)
+         lu(52) = lu(52) * lu(51)
+         lu(53) = lu(53) * lu(51)
+         lu(54) = lu(54) * lu(51)
+         lu(281) = - lu(52) * lu(277)
+         lu(287) = lu(287) - lu(53) * lu(277)
+         lu(289) = - lu(54) * lu(277)
+         lu(490) = lu(490) - lu(52) * lu(479)
+         lu(505) = lu(505) - lu(53) * lu(479)
+         lu(507) = lu(507) - lu(54) * lu(479)
+         lu(679) = lu(679) - lu(52) * lu(648)
+         lu(698) = lu(698) - lu(53) * lu(648)
+         lu(701) = lu(701) - lu(54) * lu(648)
                                                                         
-      do k = 1,clsze
-         lu(k,100) = 1. / lu(k,100)
-         lu(k,101) = lu(k,101) * lu(k,100)
-         lu(k,102) = lu(k,102) * lu(k,100)
-         lu(k,103) = lu(k,103) * lu(k,100)
-         lu(k,104) = lu(k,104) * lu(k,100)
-         lu(k,105) = lu(k,105) * lu(k,100)
-         lu(k,106) = lu(k,106) * lu(k,100)
-         lu(k,107) = lu(k,107) * lu(k,100)
-         lu(k,175) = lu(k,175) - lu(k,101) * lu(k,172)
-         lu(k,176) = lu(k,176) - lu(k,102) * lu(k,172)
-         lu(k,178) = lu(k,178) - lu(k,103) * lu(k,172)
-         lu(k,179) = lu(k,179) - lu(k,104) * lu(k,172)
-         lu(k,180) = lu(k,180) - lu(k,105) * lu(k,172)
-         lu(k,181) = lu(k,181) - lu(k,106) * lu(k,172)
-         lu(k,182) = lu(k,182) - lu(k,107) * lu(k,172)
-         lu(k,212) = lu(k,212) - lu(k,101) * lu(k,209)
-         lu(k,213) = lu(k,213) - lu(k,102) * lu(k,209)
-         lu(k,215) = lu(k,215) - lu(k,103) * lu(k,209)
-         lu(k,216) = lu(k,216) - lu(k,104) * lu(k,209)
-         lu(k,217) = lu(k,217) - lu(k,105) * lu(k,209)
-         lu(k,218) = lu(k,218) - lu(k,106) * lu(k,209)
-         lu(k,219) = lu(k,219) - lu(k,107) * lu(k,209)
-         lu(k,227) = lu(k,227) - lu(k,101) * lu(k,224)
-         lu(k,228) = lu(k,228) - lu(k,102) * lu(k,224)
-         lu(k,229) = lu(k,229) - lu(k,103) * lu(k,224)
-         lu(k,230) = lu(k,230) - lu(k,104) * lu(k,224)
-         lu(k,231) = lu(k,231) - lu(k,105) * lu(k,224)
-         lu(k,232) = lu(k,232) - lu(k,106) * lu(k,224)
-         lu(k,233) = lu(k,233) - lu(k,107) * lu(k,224)
-         lu(k,241) = lu(k,241) - lu(k,101) * lu(k,238)
-         lu(k,242) = lu(k,242) - lu(k,102) * lu(k,238)
-         lu(k,244) = lu(k,244) - lu(k,103) * lu(k,238)
-         lu(k,245) = lu(k,245) - lu(k,104) * lu(k,238)
-         lu(k,246) = lu(k,246) - lu(k,105) * lu(k,238)
-         lu(k,247) = lu(k,247) - lu(k,106) * lu(k,238)
-         lu(k,248) = lu(k,248) - lu(k,107) * lu(k,238)
+         lu(55) = 1. / lu(55)
+         lu(56) = lu(56) * lu(55)
+         lu(57) = lu(57) * lu(55)
+         lu(58) = lu(58) * lu(55)
+         lu(177) = lu(177) - lu(56) * lu(173)
+         lu(181) = - lu(57) * lu(173)
+         lu(182) = lu(182) - lu(58) * lu(173)
+         lu(459) = lu(459) - lu(56) * lu(450)
+         lu(473) = - lu(57) * lu(450)
+         lu(474) = lu(474) - lu(58) * lu(450)
+         lu(677) = lu(677) - lu(56) * lu(649)
+         lu(698) = lu(698) - lu(57) * lu(649)
+         lu(699) = lu(699) - lu(58) * lu(649)
                                                                         
-         lu(k,109) = 1. / lu(k,109)
-         lu(k,110) = lu(k,110) * lu(k,109)
-         lu(k,111) = lu(k,111) * lu(k,109)
-         lu(k,112) = lu(k,112) * lu(k,109)
-         lu(k,113) = lu(k,113) * lu(k,109)
-         lu(k,114) = lu(k,114) * lu(k,109)
-         lu(k,115) = lu(k,115) * lu(k,109)
-         lu(k,121) = lu(k,121) - lu(k,110) * lu(k,118)
-         lu(k,122) = lu(k,122) - lu(k,111) * lu(k,118)
-         lu(k,123) = lu(k,123) - lu(k,112) * lu(k,118)
-         lu(k,124) = lu(k,124) - lu(k,113) * lu(k,118)
-         lu(k,126) = lu(k,126) - lu(k,114) * lu(k,118)
-         lu(k,127) = lu(k,127) - lu(k,115) * lu(k,118)
-         lu(k,176) = lu(k,176) - lu(k,110) * lu(k,173)
-         lu(k,178) = lu(k,178) - lu(k,111) * lu(k,173)
-         lu(k,179) = lu(k,179) - lu(k,112) * lu(k,173)
-         lu(k,180) = lu(k,180) - lu(k,113) * lu(k,173)
-         lu(k,182) = lu(k,182) - lu(k,114) * lu(k,173)
-         lu(k,184) = lu(k,184) - lu(k,115) * lu(k,173)
-         lu(k,213) = lu(k,213) - lu(k,110) * lu(k,210)
-         lu(k,215) = lu(k,215) - lu(k,111) * lu(k,210)
-         lu(k,216) = lu(k,216) - lu(k,112) * lu(k,210)
-         lu(k,217) = lu(k,217) - lu(k,113) * lu(k,210)
-         lu(k,219) = lu(k,219) - lu(k,114) * lu(k,210)
-         lu(k,221) = lu(k,221) - lu(k,115) * lu(k,210)
-         lu(k,228) = lu(k,228) - lu(k,110) * lu(k,225)
-         lu(k,229) = lu(k,229) - lu(k,111) * lu(k,225)
-         lu(k,230) = lu(k,230) - lu(k,112) * lu(k,225)
-         lu(k,231) = lu(k,231) - lu(k,113) * lu(k,225)
-         lu(k,233) = lu(k,233) - lu(k,114) * lu(k,225)
-         lu(k,235) = lu(k,235) - lu(k,115) * lu(k,225)
-         lu(k,242) = lu(k,242) - lu(k,110) * lu(k,239)
-         lu(k,244) = lu(k,244) - lu(k,111) * lu(k,239)
-         lu(k,245) = lu(k,245) - lu(k,112) * lu(k,239)
-         lu(k,246) = lu(k,246) - lu(k,113) * lu(k,239)
-         lu(k,248) = lu(k,248) - lu(k,114) * lu(k,239)
-         lu(k,250) = lu(k,250) - lu(k,115) * lu(k,239)
+         lu(59) = 1. / lu(59)
+         lu(60) = lu(60) * lu(59)
+         lu(61) = lu(61) * lu(59)
+         lu(62) = lu(62) * lu(59)
+         lu(698) = lu(698) - lu(60) * lu(650)
+         lu(699) = lu(699) - lu(61) * lu(650)
+         lu(701) = lu(701) - lu(62) * lu(650)
+         lu(742) = lu(742) - lu(60) * lu(705)
+         lu(743) = lu(743) - lu(61) * lu(705)
+         lu(745) = lu(745) - lu(62) * lu(705)
+         lu(788) = lu(788) - lu(60) * lu(768)
+         lu(789) = lu(789) - lu(61) * lu(768)
+         lu(791) = lu(791) - lu(62) * lu(768)
                                                                         
-         lu(k,119) = 1. / lu(k,119)
-         lu(k,120) = lu(k,120) * lu(k,119)
-         lu(k,121) = lu(k,121) * lu(k,119)
-         lu(k,122) = lu(k,122) * lu(k,119)
-         lu(k,123) = lu(k,123) * lu(k,119)
-         lu(k,124) = lu(k,124) * lu(k,119)
-         lu(k,125) = lu(k,125) * lu(k,119)
-         lu(k,126) = lu(k,126) * lu(k,119)
-         lu(k,127) = lu(k,127) * lu(k,119)
-         lu(k,175) = lu(k,175) - lu(k,120) * lu(k,174)
-         lu(k,176) = lu(k,176) - lu(k,121) * lu(k,174)
-         lu(k,178) = lu(k,178) - lu(k,122) * lu(k,174)
-         lu(k,179) = lu(k,179) - lu(k,123) * lu(k,174)
-         lu(k,180) = lu(k,180) - lu(k,124) * lu(k,174)
-         lu(k,181) = lu(k,181) - lu(k,125) * lu(k,174)
-         lu(k,182) = lu(k,182) - lu(k,126) * lu(k,174)
-         lu(k,184) = lu(k,184) - lu(k,127) * lu(k,174)
-         lu(k,212) = lu(k,212) - lu(k,120) * lu(k,211)
-         lu(k,213) = lu(k,213) - lu(k,121) * lu(k,211)
-         lu(k,215) = lu(k,215) - lu(k,122) * lu(k,211)
-         lu(k,216) = lu(k,216) - lu(k,123) * lu(k,211)
-         lu(k,217) = lu(k,217) - lu(k,124) * lu(k,211)
-         lu(k,218) = lu(k,218) - lu(k,125) * lu(k,211)
-         lu(k,219) = lu(k,219) - lu(k,126) * lu(k,211)
-         lu(k,221) = lu(k,221) - lu(k,127) * lu(k,211)
-         lu(k,227) = lu(k,227) - lu(k,120) * lu(k,226)
-         lu(k,228) = lu(k,228) - lu(k,121) * lu(k,226)
-         lu(k,229) = lu(k,229) - lu(k,122) * lu(k,226)
-         lu(k,230) = lu(k,230) - lu(k,123) * lu(k,226)
-         lu(k,231) = lu(k,231) - lu(k,124) * lu(k,226)
-         lu(k,232) = lu(k,232) - lu(k,125) * lu(k,226)
-         lu(k,233) = lu(k,233) - lu(k,126) * lu(k,226)
-         lu(k,235) = lu(k,235) - lu(k,127) * lu(k,226)
-         lu(k,241) = lu(k,241) - lu(k,120) * lu(k,240)
-         lu(k,242) = lu(k,242) - lu(k,121) * lu(k,240)
-         lu(k,244) = lu(k,244) - lu(k,122) * lu(k,240)
-         lu(k,245) = lu(k,245) - lu(k,123) * lu(k,240)
-         lu(k,246) = lu(k,246) - lu(k,124) * lu(k,240)
-         lu(k,247) = lu(k,247) - lu(k,125) * lu(k,240)
-         lu(k,248) = lu(k,248) - lu(k,126) * lu(k,240)
-         lu(k,250) = lu(k,250) - lu(k,127) * lu(k,240)
+         lu(63) = 1. / lu(63)
+         lu(64) = lu(64) * lu(63)
+         lu(65) = lu(65) * lu(63)
+         lu(66) = lu(66) * lu(63)
+         lu(67) = lu(67) * lu(63)
+         lu(68) = lu(68) * lu(63)
+         lu(659) = lu(659) - lu(64) * lu(651)
+         lu(695) = lu(695) - lu(65) * lu(651)
+         lu(698) = lu(698) - lu(66) * lu(651)
+         lu(699) = lu(699) - lu(67) * lu(651)
+         lu(702) = lu(702) - lu(68) * lu(651)
+         lu(796) = - lu(64) * lu(794)
+         lu(819) = lu(819) - lu(65) * lu(794)
+         lu(822) = lu(822) - lu(66) * lu(794)
+         lu(823) = lu(823) - lu(67) * lu(794)
+         lu(826) = lu(826) - lu(68) * lu(794)
                                                                         
-         lu(k,129) = 1. / lu(k,129)
-         lu(k,130) = lu(k,130) * lu(k,129)
-         lu(k,131) = lu(k,131) * lu(k,129)
-         lu(k,132) = lu(k,132) * lu(k,129)
-         lu(k,133) = lu(k,133) * lu(k,129)
-         lu(k,134) = lu(k,134) * lu(k,129)
-         lu(k,135) = lu(k,135) * lu(k,129)
-         lu(k,178) = lu(k,178) - lu(k,130) * lu(k,175)
-         lu(k,179) = lu(k,179) - lu(k,131) * lu(k,175)
-         lu(k,180) = lu(k,180) - lu(k,132) * lu(k,175)
-         lu(k,181) = lu(k,181) - lu(k,133) * lu(k,175)
-         lu(k,183) = lu(k,183) - lu(k,134) * lu(k,175)
-         lu(k,184) = lu(k,184) - lu(k,135) * lu(k,175)
-         lu(k,215) = lu(k,215) - lu(k,130) * lu(k,212)
-         lu(k,216) = lu(k,216) - lu(k,131) * lu(k,212)
-         lu(k,217) = lu(k,217) - lu(k,132) * lu(k,212)
-         lu(k,218) = lu(k,218) - lu(k,133) * lu(k,212)
-         lu(k,220) = lu(k,220) - lu(k,134) * lu(k,212)
-         lu(k,221) = lu(k,221) - lu(k,135) * lu(k,212)
-         lu(k,229) = lu(k,229) - lu(k,130) * lu(k,227)
-         lu(k,230) = lu(k,230) - lu(k,131) * lu(k,227)
-         lu(k,231) = lu(k,231) - lu(k,132) * lu(k,227)
-         lu(k,232) = lu(k,232) - lu(k,133) * lu(k,227)
-         lu(k,234) = - lu(k,134) * lu(k,227)
-         lu(k,235) = lu(k,235) - lu(k,135) * lu(k,227)
-         lu(k,244) = lu(k,244) - lu(k,130) * lu(k,241)
-         lu(k,245) = lu(k,245) - lu(k,131) * lu(k,241)
-         lu(k,246) = lu(k,246) - lu(k,132) * lu(k,241)
-         lu(k,247) = lu(k,247) - lu(k,133) * lu(k,241)
-         lu(k,249) = lu(k,249) - lu(k,134) * lu(k,241)
-         lu(k,250) = lu(k,250) - lu(k,135) * lu(k,241)
-         lu(k,260) = lu(k,260) - lu(k,130) * lu(k,257)
-         lu(k,261) = lu(k,261) - lu(k,131) * lu(k,257)
-         lu(k,262) = lu(k,262) - lu(k,132) * lu(k,257)
-         lu(k,263) = - lu(k,133) * lu(k,257)
-         lu(k,265) = lu(k,265) - lu(k,134) * lu(k,257)
-         lu(k,266) = lu(k,266) - lu(k,135) * lu(k,257)
+         lu(69) = 1. / lu(69)
+         lu(70) = lu(70) * lu(69)
+         lu(71) = lu(71) * lu(69)
+         lu(72) = lu(72) * lu(69)
+         lu(73) = lu(73) * lu(69)
+         lu(371) = lu(371) - lu(70) * lu(365)
+         lu(373) = - lu(71) * lu(365)
+         lu(379) = - lu(72) * lu(365)
+         lu(380) = lu(380) - lu(73) * lu(365)
+         lu(685) = lu(685) - lu(70) * lu(652)
+         lu(688) = lu(688) - lu(71) * lu(652)
+         lu(698) = lu(698) - lu(72) * lu(652)
+         lu(699) = lu(699) - lu(73) * lu(652)
+         lu(729) = lu(729) - lu(70) * lu(706)
+         lu(732) = lu(732) - lu(71) * lu(706)
+         lu(742) = lu(742) - lu(72) * lu(706)
+         lu(743) = lu(743) - lu(73) * lu(706)
                                                                         
-         lu(k,137) = 1. / lu(k,137)
-         lu(k,138) = lu(k,138) * lu(k,137)
-         lu(k,139) = lu(k,139) * lu(k,137)
-         lu(k,140) = lu(k,140) * lu(k,137)
-         lu(k,141) = lu(k,141) * lu(k,137)
-         lu(k,147) = lu(k,147) - lu(k,138) * lu(k,145)
-         lu(k,148) = lu(k,148) - lu(k,139) * lu(k,145)
-         lu(k,149) = lu(k,149) - lu(k,140) * lu(k,145)
-         lu(k,152) = lu(k,152) - lu(k,141) * lu(k,145)
-         lu(k,178) = lu(k,178) - lu(k,138) * lu(k,176)
-         lu(k,179) = lu(k,179) - lu(k,139) * lu(k,176)
-         lu(k,180) = lu(k,180) - lu(k,140) * lu(k,176)
-         lu(k,183) = lu(k,183) - lu(k,141) * lu(k,176)
-         lu(k,192) = lu(k,192) - lu(k,138) * lu(k,190)
-         lu(k,193) = lu(k,193) - lu(k,139) * lu(k,190)
-         lu(k,194) = lu(k,194) - lu(k,140) * lu(k,190)
-         lu(k,197) = lu(k,197) - lu(k,141) * lu(k,190)
-         lu(k,215) = lu(k,215) - lu(k,138) * lu(k,213)
-         lu(k,216) = lu(k,216) - lu(k,139) * lu(k,213)
-         lu(k,217) = lu(k,217) - lu(k,140) * lu(k,213)
-         lu(k,220) = lu(k,220) - lu(k,141) * lu(k,213)
-         lu(k,229) = lu(k,229) - lu(k,138) * lu(k,228)
-         lu(k,230) = lu(k,230) - lu(k,139) * lu(k,228)
-         lu(k,231) = lu(k,231) - lu(k,140) * lu(k,228)
-         lu(k,234) = lu(k,234) - lu(k,141) * lu(k,228)
-         lu(k,244) = lu(k,244) - lu(k,138) * lu(k,242)
-         lu(k,245) = lu(k,245) - lu(k,139) * lu(k,242)
-         lu(k,246) = lu(k,246) - lu(k,140) * lu(k,242)
-         lu(k,249) = lu(k,249) - lu(k,141) * lu(k,242)
-         lu(k,260) = lu(k,260) - lu(k,138) * lu(k,258)
-         lu(k,261) = lu(k,261) - lu(k,139) * lu(k,258)
-         lu(k,262) = lu(k,262) - lu(k,140) * lu(k,258)
-         lu(k,265) = lu(k,265) - lu(k,141) * lu(k,258)
-         lu(k,271) = lu(k,271) - lu(k,138) * lu(k,269)
-         lu(k,272) = lu(k,272) - lu(k,139) * lu(k,269)
-         lu(k,273) = lu(k,273) - lu(k,140) * lu(k,269)
-         lu(k,276) = lu(k,276) - lu(k,141) * lu(k,269)
+         lu(74) = 1. / lu(74)
+         lu(75) = lu(75) * lu(74)
+         lu(76) = lu(76) * lu(74)
+         lu(77) = lu(77) * lu(74)
+         lu(78) = lu(78) * lu(74)
+         lu(176) = lu(176) - lu(75) * lu(174)
+         lu(177) = lu(177) - lu(76) * lu(174)
+         lu(181) = lu(181) - lu(77) * lu(174)
+         lu(182) = lu(182) - lu(78) * lu(174)
+         lu(668) = lu(668) - lu(75) * lu(653)
+         lu(677) = lu(677) - lu(76) * lu(653)
+         lu(698) = lu(698) - lu(77) * lu(653)
+         lu(699) = lu(699) - lu(78) * lu(653)
+         lu(716) = lu(716) - lu(75) * lu(707)
+         lu(722) = - lu(76) * lu(707)
+         lu(742) = lu(742) - lu(77) * lu(707)
+         lu(743) = lu(743) - lu(78) * lu(707)
                                                                         
-         lu(k,146) = 1. / lu(k,146)
-         lu(k,147) = lu(k,147) * lu(k,146)
-         lu(k,148) = lu(k,148) * lu(k,146)
-         lu(k,149) = lu(k,149) * lu(k,146)
-         lu(k,150) = lu(k,150) * lu(k,146)
-         lu(k,151) = lu(k,151) * lu(k,146)
-         lu(k,152) = lu(k,152) * lu(k,146)
-         lu(k,153) = lu(k,153) * lu(k,146)
-         lu(k,178) = lu(k,178) - lu(k,147) * lu(k,177)
-         lu(k,179) = lu(k,179) - lu(k,148) * lu(k,177)
-         lu(k,180) = lu(k,180) - lu(k,149) * lu(k,177)
-         lu(k,181) = lu(k,181) - lu(k,150) * lu(k,177)
-         lu(k,182) = lu(k,182) - lu(k,151) * lu(k,177)
-         lu(k,183) = lu(k,183) - lu(k,152) * lu(k,177)
-         lu(k,184) = lu(k,184) - lu(k,153) * lu(k,177)
-         lu(k,192) = lu(k,192) - lu(k,147) * lu(k,191)
-         lu(k,193) = lu(k,193) - lu(k,148) * lu(k,191)
-         lu(k,194) = lu(k,194) - lu(k,149) * lu(k,191)
-         lu(k,195) = lu(k,195) - lu(k,150) * lu(k,191)
-         lu(k,196) = lu(k,196) - lu(k,151) * lu(k,191)
-         lu(k,197) = lu(k,197) - lu(k,152) * lu(k,191)
-         lu(k,198) = lu(k,198) - lu(k,153) * lu(k,191)
-         lu(k,215) = lu(k,215) - lu(k,147) * lu(k,214)
-         lu(k,216) = lu(k,216) - lu(k,148) * lu(k,214)
-         lu(k,217) = lu(k,217) - lu(k,149) * lu(k,214)
-         lu(k,218) = lu(k,218) - lu(k,150) * lu(k,214)
-         lu(k,219) = lu(k,219) - lu(k,151) * lu(k,214)
-         lu(k,220) = lu(k,220) - lu(k,152) * lu(k,214)
-         lu(k,221) = lu(k,221) - lu(k,153) * lu(k,214)
-         lu(k,244) = lu(k,244) - lu(k,147) * lu(k,243)
-         lu(k,245) = lu(k,245) - lu(k,148) * lu(k,243)
-         lu(k,246) = lu(k,246) - lu(k,149) * lu(k,243)
-         lu(k,247) = lu(k,247) - lu(k,150) * lu(k,243)
-         lu(k,248) = lu(k,248) - lu(k,151) * lu(k,243)
-         lu(k,249) = lu(k,249) - lu(k,152) * lu(k,243)
-         lu(k,250) = lu(k,250) - lu(k,153) * lu(k,243)
-         lu(k,260) = lu(k,260) - lu(k,147) * lu(k,259)
-         lu(k,261) = lu(k,261) - lu(k,148) * lu(k,259)
-         lu(k,262) = lu(k,262) - lu(k,149) * lu(k,259)
-         lu(k,263) = lu(k,263) - lu(k,150) * lu(k,259)
-         lu(k,264) = lu(k,264) - lu(k,151) * lu(k,259)
-         lu(k,265) = lu(k,265) - lu(k,152) * lu(k,259)
-         lu(k,266) = lu(k,266) - lu(k,153) * lu(k,259)
-         lu(k,271) = lu(k,271) - lu(k,147) * lu(k,270)
-         lu(k,272) = lu(k,272) - lu(k,148) * lu(k,270)
-         lu(k,273) = lu(k,273) - lu(k,149) * lu(k,270)
-         lu(k,274) = lu(k,274) - lu(k,150) * lu(k,270)
-         lu(k,275) = lu(k,275) - lu(k,151) * lu(k,270)
-         lu(k,276) = lu(k,276) - lu(k,152) * lu(k,270)
-         lu(k,277) = lu(k,277) - lu(k,153) * lu(k,270)
+         lu(79) = 1. / lu(79)
+         lu(80) = lu(80) * lu(79)
+         lu(81) = lu(81) * lu(79)
+         lu(82) = lu(82) * lu(79)
+         lu(83) = lu(83) * lu(79)
+         lu(219) = lu(219) - lu(80) * lu(218)
+         lu(221) = lu(221) - lu(81) * lu(218)
+         lu(227) = - lu(82) * lu(218)
+         lu(228) = lu(228) - lu(83) * lu(218)
+         lu(666) = lu(666) - lu(80) * lu(654)
+         lu(673) = lu(673) - lu(81) * lu(654)
+         lu(698) = lu(698) - lu(82) * lu(654)
+         lu(699) = lu(699) - lu(83) * lu(654)
+         lu(714) = - lu(80) * lu(708)
+         lu(719) = lu(719) - lu(81) * lu(708)
+         lu(742) = lu(742) - lu(82) * lu(708)
+         lu(743) = lu(743) - lu(83) * lu(708)
                                                                         
-         lu(k,178) = 1. / lu(k,178)
-         lu(k,179) = lu(k,179) * lu(k,178)
-         lu(k,180) = lu(k,180) * lu(k,178)
-         lu(k,181) = lu(k,181) * lu(k,178)
-         lu(k,182) = lu(k,182) * lu(k,178)
-         lu(k,183) = lu(k,183) * lu(k,178)
-         lu(k,184) = lu(k,184) * lu(k,178)
-         lu(k,193) = lu(k,193) - lu(k,179) * lu(k,192)
-         lu(k,194) = lu(k,194) - lu(k,180) * lu(k,192)
-         lu(k,195) = lu(k,195) - lu(k,181) * lu(k,192)
-         lu(k,196) = lu(k,196) - lu(k,182) * lu(k,192)
-         lu(k,197) = lu(k,197) - lu(k,183) * lu(k,192)
-         lu(k,198) = lu(k,198) - lu(k,184) * lu(k,192)
-         lu(k,216) = lu(k,216) - lu(k,179) * lu(k,215)
-         lu(k,217) = lu(k,217) - lu(k,180) * lu(k,215)
-         lu(k,218) = lu(k,218) - lu(k,181) * lu(k,215)
-         lu(k,219) = lu(k,219) - lu(k,182) * lu(k,215)
-         lu(k,220) = lu(k,220) - lu(k,183) * lu(k,215)
-         lu(k,221) = lu(k,221) - lu(k,184) * lu(k,215)
-         lu(k,230) = lu(k,230) - lu(k,179) * lu(k,229)
-         lu(k,231) = lu(k,231) - lu(k,180) * lu(k,229)
-         lu(k,232) = lu(k,232) - lu(k,181) * lu(k,229)
-         lu(k,233) = lu(k,233) - lu(k,182) * lu(k,229)
-         lu(k,234) = lu(k,234) - lu(k,183) * lu(k,229)
-         lu(k,235) = lu(k,235) - lu(k,184) * lu(k,229)
-         lu(k,245) = lu(k,245) - lu(k,179) * lu(k,244)
-         lu(k,246) = lu(k,246) - lu(k,180) * lu(k,244)
-         lu(k,247) = lu(k,247) - lu(k,181) * lu(k,244)
-         lu(k,248) = lu(k,248) - lu(k,182) * lu(k,244)
-         lu(k,249) = lu(k,249) - lu(k,183) * lu(k,244)
-         lu(k,250) = lu(k,250) - lu(k,184) * lu(k,244)
-         lu(k,261) = lu(k,261) - lu(k,179) * lu(k,260)
-         lu(k,262) = lu(k,262) - lu(k,180) * lu(k,260)
-         lu(k,263) = lu(k,263) - lu(k,181) * lu(k,260)
-         lu(k,264) = lu(k,264) - lu(k,182) * lu(k,260)
-         lu(k,265) = lu(k,265) - lu(k,183) * lu(k,260)
-         lu(k,266) = lu(k,266) - lu(k,184) * lu(k,260)
-         lu(k,272) = lu(k,272) - lu(k,179) * lu(k,271)
-         lu(k,273) = lu(k,273) - lu(k,180) * lu(k,271)
-         lu(k,274) = lu(k,274) - lu(k,181) * lu(k,271)
-         lu(k,275) = lu(k,275) - lu(k,182) * lu(k,271)
-         lu(k,276) = lu(k,276) - lu(k,183) * lu(k,271)
-         lu(k,277) = lu(k,277) - lu(k,184) * lu(k,271)
+         lu(84) = 1. / lu(84)
+         lu(85) = lu(85) * lu(84)
+         lu(86) = lu(86) * lu(84)
+         lu(87) = lu(87) * lu(84)
+         lu(88) = lu(88) * lu(84)
+         lu(211) = lu(211) - lu(85) * lu(210)
+         lu(212) = lu(212) - lu(86) * lu(210)
+         lu(214) = lu(214) - lu(87) * lu(210)
+         lu(215) = - lu(88) * lu(210)
+         lu(672) = lu(672) - lu(85) * lu(655)
+         lu(689) = lu(689) - lu(86) * lu(655)
+         lu(695) = lu(695) - lu(87) * lu(655)
+         lu(698) = lu(698) - lu(88) * lu(655)
+         lu(718) = lu(718) - lu(85) * lu(709)
+         lu(733) = lu(733) - lu(86) * lu(709)
+         lu(739) = lu(739) - lu(87) * lu(709)
+         lu(742) = lu(742) - lu(88) * lu(709)
                                                                         
-      end do
+         lu(89) = 1. / lu(89)
+         lu(90) = lu(90) * lu(89)
+         lu(91) = lu(91) * lu(89)
+         lu(92) = lu(92) * lu(89)
+         lu(93) = lu(93) * lu(89)
+         lu(469) = lu(469) - lu(90) * lu(451)
+         lu(472) = lu(472) - lu(91) * lu(451)
+         lu(473) = lu(473) - lu(92) * lu(451)
+         lu(474) = lu(474) - lu(93) * lu(451)
+         lu(690) = lu(690) - lu(90) * lu(656)
+         lu(695) = lu(695) - lu(91) * lu(656)
+         lu(698) = lu(698) - lu(92) * lu(656)
+         lu(699) = lu(699) - lu(93) * lu(656)
+         lu(734) = lu(734) - lu(90) * lu(710)
+         lu(739) = lu(739) - lu(91) * lu(710)
+         lu(742) = lu(742) - lu(92) * lu(710)
+         lu(743) = lu(743) - lu(93) * lu(710)
                                                                         
-      end subroutine IMP_LU_FAC03
                                                                         
-      subroutine IMP_LU_FAC04( lu )
+      end subroutine imp_lu_fac02
+                                                                        
+      subroutine imp_lu_fac03( lu )
                                                                         
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
                                                                         
@@ -1875,101 +2773,151 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(clsze,imp_nzcnt)
+      real, intent(inout) ::   lu(imp_nzcnt)
                                                                         
-!-----------------------------------------------------------------------
-!       ... Local variables
-!-----------------------------------------------------------------------
-      integer :: k
+         lu(95) = 1. / lu(95)
+         lu(96) = lu(96) * lu(95)
+         lu(97) = lu(97) * lu(95)
+         lu(98) = lu(98) * lu(95)
+         lu(99) = lu(99) * lu(95)
+         lu(482) = lu(482) - lu(96) * lu(480)
+         lu(500) = lu(500) - lu(97) * lu(480)
+         lu(504) = - lu(98) * lu(480)
+         lu(507) = lu(507) - lu(99) * lu(480)
+         lu(605) = lu(605) - lu(96) * lu(602)
+         lu(611) = - lu(97) * lu(602)
+         lu(616) = lu(616) - lu(98) * lu(602)
+         lu(621) = - lu(99) * lu(602)
+         lu(772) = lu(772) - lu(96) * lu(769)
+         lu(781) = lu(781) - lu(97) * lu(769)
+         lu(786) = - lu(98) * lu(769)
+         lu(791) = lu(791) - lu(99) * lu(769)
                                                                         
-      do k = 1,clsze
-         lu(k,193) = 1. / lu(k,193)
-         lu(k,194) = lu(k,194) * lu(k,193)
-         lu(k,195) = lu(k,195) * lu(k,193)
-         lu(k,196) = lu(k,196) * lu(k,193)
-         lu(k,197) = lu(k,197) * lu(k,193)
-         lu(k,198) = lu(k,198) * lu(k,193)
-         lu(k,217) = lu(k,217) - lu(k,194) * lu(k,216)
-         lu(k,218) = lu(k,218) - lu(k,195) * lu(k,216)
-         lu(k,219) = lu(k,219) - lu(k,196) * lu(k,216)
-         lu(k,220) = lu(k,220) - lu(k,197) * lu(k,216)
-         lu(k,221) = lu(k,221) - lu(k,198) * lu(k,216)
-         lu(k,231) = lu(k,231) - lu(k,194) * lu(k,230)
-         lu(k,232) = lu(k,232) - lu(k,195) * lu(k,230)
-         lu(k,233) = lu(k,233) - lu(k,196) * lu(k,230)
-         lu(k,234) = lu(k,234) - lu(k,197) * lu(k,230)
-         lu(k,235) = lu(k,235) - lu(k,198) * lu(k,230)
-         lu(k,246) = lu(k,246) - lu(k,194) * lu(k,245)
-         lu(k,247) = lu(k,247) - lu(k,195) * lu(k,245)
-         lu(k,248) = lu(k,248) - lu(k,196) * lu(k,245)
-         lu(k,249) = lu(k,249) - lu(k,197) * lu(k,245)
-         lu(k,250) = lu(k,250) - lu(k,198) * lu(k,245)
-         lu(k,262) = lu(k,262) - lu(k,194) * lu(k,261)
-         lu(k,263) = lu(k,263) - lu(k,195) * lu(k,261)
-         lu(k,264) = lu(k,264) - lu(k,196) * lu(k,261)
-         lu(k,265) = lu(k,265) - lu(k,197) * lu(k,261)
-         lu(k,266) = lu(k,266) - lu(k,198) * lu(k,261)
-         lu(k,273) = lu(k,273) - lu(k,194) * lu(k,272)
-         lu(k,274) = lu(k,274) - lu(k,195) * lu(k,272)
-         lu(k,275) = lu(k,275) - lu(k,196) * lu(k,272)
-         lu(k,276) = lu(k,276) - lu(k,197) * lu(k,272)
-         lu(k,277) = lu(k,277) - lu(k,198) * lu(k,272)
+         lu(100) = 1. / lu(100)
+         lu(101) = lu(101) * lu(100)
+         lu(102) = lu(102) * lu(100)
+         lu(164) = - lu(101) * lu(162)
+         lu(165) = lu(165) - lu(102) * lu(162)
+         lu(270) = lu(270) - lu(101) * lu(268)
+         lu(271) = - lu(102) * lu(268)
+         lu(513) = lu(513) - lu(101) * lu(510)
+         lu(514) = lu(514) - lu(102) * lu(510)
+         lu(608) = - lu(101) * lu(603)
+         lu(609) = lu(609) - lu(102) * lu(603)
+         lu(626) = lu(626) - lu(101) * lu(623)
+         lu(627) = - lu(102) * lu(623)
+         lu(751) = lu(751) - lu(101) * lu(748)
+         lu(752) = lu(752) - lu(102) * lu(748)
                                                                         
-         lu(k,217) = 1. / lu(k,217)
-         lu(k,218) = lu(k,218) * lu(k,217)
-         lu(k,219) = lu(k,219) * lu(k,217)
-         lu(k,220) = lu(k,220) * lu(k,217)
-         lu(k,221) = lu(k,221) * lu(k,217)
-         lu(k,232) = lu(k,232) - lu(k,218) * lu(k,231)
-         lu(k,233) = lu(k,233) - lu(k,219) * lu(k,231)
-         lu(k,234) = lu(k,234) - lu(k,220) * lu(k,231)
-         lu(k,235) = lu(k,235) - lu(k,221) * lu(k,231)
-         lu(k,247) = lu(k,247) - lu(k,218) * lu(k,246)
-         lu(k,248) = lu(k,248) - lu(k,219) * lu(k,246)
-         lu(k,249) = lu(k,249) - lu(k,220) * lu(k,246)
-         lu(k,250) = lu(k,250) - lu(k,221) * lu(k,246)
-         lu(k,263) = lu(k,263) - lu(k,218) * lu(k,262)
-         lu(k,264) = lu(k,264) - lu(k,219) * lu(k,262)
-         lu(k,265) = lu(k,265) - lu(k,220) * lu(k,262)
-         lu(k,266) = lu(k,266) - lu(k,221) * lu(k,262)
-         lu(k,274) = lu(k,274) - lu(k,218) * lu(k,273)
-         lu(k,275) = lu(k,275) - lu(k,219) * lu(k,273)
-         lu(k,276) = lu(k,276) - lu(k,220) * lu(k,273)
-         lu(k,277) = lu(k,277) - lu(k,221) * lu(k,273)
+         lu(103) = 1. / lu(103)
+         lu(104) = lu(104) * lu(103)
+         lu(105) = lu(105) * lu(103)
+         lu(106) = lu(106) * lu(103)
+         lu(541) = lu(541) - lu(104) * lu(528)
+         lu(542) = lu(542) - lu(105) * lu(528)
+         lu(545) = lu(545) - lu(106) * lu(528)
+         lu(595) = lu(595) - lu(104) * lu(583)
+         lu(596) = lu(596) - lu(105) * lu(583)
+         lu(599) = - lu(106) * lu(583)
+         lu(698) = lu(698) - lu(104) * lu(657)
+         lu(699) = lu(699) - lu(105) * lu(657)
+         lu(702) = lu(702) - lu(106) * lu(657)
+         lu(822) = lu(822) - lu(104) * lu(795)
+         lu(823) = lu(823) - lu(105) * lu(795)
+         lu(826) = lu(826) - lu(106) * lu(795)
                                                                         
-         lu(k,232) = 1. / lu(k,232)
-         lu(k,233) = lu(k,233) * lu(k,232)
-         lu(k,234) = lu(k,234) * lu(k,232)
-         lu(k,235) = lu(k,235) * lu(k,232)
-         lu(k,248) = lu(k,248) - lu(k,233) * lu(k,247)
-         lu(k,249) = lu(k,249) - lu(k,234) * lu(k,247)
-         lu(k,250) = lu(k,250) - lu(k,235) * lu(k,247)
-         lu(k,264) = lu(k,264) - lu(k,233) * lu(k,263)
-         lu(k,265) = lu(k,265) - lu(k,234) * lu(k,263)
-         lu(k,266) = lu(k,266) - lu(k,235) * lu(k,263)
-         lu(k,275) = lu(k,275) - lu(k,233) * lu(k,274)
-         lu(k,276) = lu(k,276) - lu(k,234) * lu(k,274)
-         lu(k,277) = lu(k,277) - lu(k,235) * lu(k,274)
+         lu(107) = 1. / lu(107)
+         lu(108) = lu(108) * lu(107)
+         lu(109) = lu(109) * lu(107)
+         lu(245) = - lu(108) * lu(243)
+         lu(248) = lu(248) - lu(109) * lu(243)
+         lu(404) = - lu(108) * lu(397)
+         lu(412) = - lu(109) * lu(397)
+         lu(438) = lu(438) - lu(108) * lu(429)
+         lu(446) = - lu(109) * lu(429)
+         lu(465) = lu(465) - lu(108) * lu(452)
+         lu(473) = lu(473) - lu(109) * lu(452)
+         lu(495) = lu(495) - lu(108) * lu(481)
+         lu(505) = lu(505) - lu(109) * lu(481)
+         lu(566) = lu(566) - lu(108) * lu(548)
+         lu(578) = lu(578) - lu(109) * lu(548)
+         lu(686) = lu(686) - lu(108) * lu(658)
+         lu(698) = lu(698) - lu(109) * lu(658)
                                                                         
-         lu(k,248) = 1. / lu(k,248)
-         lu(k,249) = lu(k,249) * lu(k,248)
-         lu(k,250) = lu(k,250) * lu(k,248)
-         lu(k,265) = lu(k,265) - lu(k,249) * lu(k,264)
-         lu(k,266) = lu(k,266) - lu(k,250) * lu(k,264)
-         lu(k,276) = lu(k,276) - lu(k,249) * lu(k,275)
-         lu(k,277) = lu(k,277) - lu(k,250) * lu(k,275)
+         lu(111) = 1. / lu(111)
+         lu(112) = lu(112) * lu(111)
+         lu(113) = lu(113) * lu(111)
+         lu(114) = lu(114) * lu(111)
+         lu(115) = lu(115) * lu(111)
+         lu(116) = lu(116) * lu(111)
+         lu(553) = lu(553) - lu(112) * lu(549)
+         lu(574) = lu(574) - lu(113) * lu(549)
+         lu(575) = lu(575) - lu(114) * lu(549)
+         lu(579) = lu(579) - lu(115) * lu(549)
+         lu(581) = lu(581) - lu(116) * lu(549)
+         lu(670) = lu(670) - lu(112) * lu(659)
+         lu(694) = - lu(113) * lu(659)
+         lu(695) = lu(695) - lu(114) * lu(659)
+         lu(699) = lu(699) - lu(115) * lu(659)
+         lu(701) = lu(701) - lu(116) * lu(659)
+         lu(797) = - lu(112) * lu(796)
+         lu(818) = lu(818) - lu(113) * lu(796)
+         lu(819) = lu(819) - lu(114) * lu(796)
+         lu(823) = lu(823) - lu(115) * lu(796)
+         lu(825) = lu(825) - lu(116) * lu(796)
                                                                         
-         lu(k,265) = 1. / lu(k,265)
-         lu(k,266) = lu(k,266) * lu(k,265)
-         lu(k,277) = lu(k,277) - lu(k,266) * lu(k,276)
+         lu(117) = 1. / lu(117)
+         lu(118) = lu(118) * lu(117)
+         lu(119) = lu(119) * lu(117)
+         lu(120) = lu(120) * lu(117)
+         lu(121) = lu(121) * lu(117)
+         lu(420) = lu(420) - lu(118) * lu(416)
+         lu(421) = lu(421) - lu(119) * lu(416)
+         lu(424) = lu(424) - lu(120) * lu(416)
+         lu(425) = - lu(121) * lu(416)
+         lu(441) = lu(441) - lu(118) * lu(430)
+         lu(442) = lu(442) - lu(119) * lu(430)
+         lu(445) = lu(445) - lu(120) * lu(430)
+         lu(446) = lu(446) - lu(121) * lu(430)
+         lu(689) = lu(689) - lu(118) * lu(660)
+         lu(690) = lu(690) - lu(119) * lu(660)
+         lu(695) = lu(695) - lu(120) * lu(660)
+         lu(698) = lu(698) - lu(121) * lu(660)
+         lu(733) = lu(733) - lu(118) * lu(711)
+         lu(734) = lu(734) - lu(119) * lu(711)
+         lu(739) = lu(739) - lu(120) * lu(711)
+         lu(742) = lu(742) - lu(121) * lu(711)
                                                                         
-         lu(k,277) = 1. / lu(k,277)
+         lu(122) = 1. / lu(122)
+         lu(123) = lu(123) * lu(122)
+         lu(124) = lu(124) * lu(122)
+         lu(125) = lu(125) * lu(122)
+         lu(126) = lu(126) * lu(122)
+         lu(127) = lu(127) * lu(122)
+         lu(128) = lu(128) * lu(122)
+         lu(185) = lu(185) - lu(123) * lu(184)
+         lu(186) = lu(186) - lu(124) * lu(184)
+         lu(187) = - lu(125) * lu(184)
+         lu(189) = lu(189) - lu(126) * lu(184)
+         lu(190) = - lu(127) * lu(184)
+         lu(191) = lu(191) - lu(128) * lu(184)
+         lu(669) = lu(669) - lu(123) * lu(661)
+         lu(677) = lu(677) - lu(124) * lu(661)
+         lu(683) = lu(683) - lu(125) * lu(661)
+         lu(695) = lu(695) - lu(126) * lu(661)
+         lu(698) = lu(698) - lu(127) * lu(661)
+         lu(699) = lu(699) - lu(128) * lu(661)
+         lu(717) = lu(717) - lu(123) * lu(712)
+         lu(722) = lu(722) - lu(124) * lu(712)
+         lu(727) = - lu(125) * lu(712)
+         lu(739) = lu(739) - lu(126) * lu(712)
+         lu(742) = lu(742) - lu(127) * lu(712)
+         lu(743) = lu(743) - lu(128) * lu(712)
                                                                         
-      end do
                                                                         
-      end subroutine IMP_LU_FAC04
+      end subroutine imp_lu_fac03
                                                                         
-      subroutine IMP_LU_FAC( lu )
+      subroutine imp_lu_fac04( lu )
                                                                         
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
                                                                         
@@ -1978,22 +2926,2469 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(clsze,imp_nzcnt)
+      real, intent(inout) ::   lu(imp_nzcnt)
                                                                         
-      call IMP_LU_FAC01( lu )
-      call IMP_LU_FAC02( lu )
-      call IMP_LU_FAC03( lu )
-      call IMP_LU_FAC04( lu )
+         lu(129) = 1. / lu(129)
+         lu(130) = lu(130) * lu(129)
+         lu(131) = lu(131) * lu(129)
+         lu(132) = lu(132) * lu(129)
+         lu(133) = lu(133) * lu(129)
+         lu(134) = lu(134) * lu(129)
+         lu(135) = lu(135) * lu(129)
+         lu(441) = lu(441) - lu(130) * lu(431)
+         lu(442) = lu(442) - lu(131) * lu(431)
+         lu(443) = - lu(132) * lu(431)
+         lu(445) = lu(445) - lu(133) * lu(431)
+         lu(446) = lu(446) - lu(134) * lu(431)
+         lu(448) = lu(448) - lu(135) * lu(431)
+         lu(689) = lu(689) - lu(130) * lu(662)
+         lu(690) = lu(690) - lu(131) * lu(662)
+         lu(691) = lu(691) - lu(132) * lu(662)
+         lu(695) = lu(695) - lu(133) * lu(662)
+         lu(698) = lu(698) - lu(134) * lu(662)
+         lu(701) = lu(701) - lu(135) * lu(662)
+         lu(779) = lu(779) - lu(130) * lu(770)
+         lu(780) = - lu(131) * lu(770)
+         lu(781) = lu(781) - lu(132) * lu(770)
+         lu(785) = - lu(133) * lu(770)
+         lu(788) = lu(788) - lu(134) * lu(770)
+         lu(791) = lu(791) - lu(135) * lu(770)
                                                                         
-      end subroutine IMP_LU_FAC
+         lu(136) = 1. / lu(136)
+         lu(137) = lu(137) * lu(136)
+         lu(138) = lu(138) * lu(136)
+         lu(139) = lu(139) * lu(136)
+         lu(180) = lu(180) - lu(137) * lu(175)
+         lu(181) = lu(181) - lu(138) * lu(175)
+         lu(182) = lu(182) - lu(139) * lu(175)
+         lu(378) = lu(378) - lu(137) * lu(366)
+         lu(379) = lu(379) - lu(138) * lu(366)
+         lu(380) = lu(380) - lu(139) * lu(366)
+         lu(393) = lu(393) - lu(137) * lu(383)
+         lu(394) = lu(394) - lu(138) * lu(383)
+         lu(395) = lu(395) - lu(139) * lu(383)
+         lu(411) = lu(411) - lu(137) * lu(398)
+         lu(412) = lu(412) - lu(138) * lu(398)
+         lu(413) = lu(413) - lu(139) * lu(398)
+         lu(472) = lu(472) - lu(137) * lu(453)
+         lu(473) = lu(473) - lu(138) * lu(453)
+         lu(474) = lu(474) - lu(139) * lu(453)
+         lu(695) = lu(695) - lu(137) * lu(663)
+         lu(698) = lu(698) - lu(138) * lu(663)
+         lu(699) = lu(699) - lu(139) * lu(663)
+                                                                        
+         lu(140) = 1. / lu(140)
+         lu(141) = lu(141) * lu(140)
+         lu(142) = lu(142) * lu(140)
+         lu(143) = lu(143) * lu(140)
+         lu(144) = lu(144) * lu(140)
+         lu(145) = lu(145) * lu(140)
+         lu(146) = lu(146) * lu(140)
+         lu(147) = lu(147) * lu(140)
+         lu(401) = lu(401) - lu(141) * lu(399)
+         lu(402) = lu(402) - lu(142) * lu(399)
+         lu(404) = lu(404) - lu(143) * lu(399)
+         lu(405) = lu(405) - lu(144) * lu(399)
+         lu(411) = lu(411) - lu(145) * lu(399)
+         lu(412) = lu(412) - lu(146) * lu(399)
+         lu(413) = lu(413) - lu(147) * lu(399)
+         lu(682) = lu(682) - lu(141) * lu(664)
+         lu(684) = lu(684) - lu(142) * lu(664)
+         lu(686) = lu(686) - lu(143) * lu(664)
+         lu(687) = lu(687) - lu(144) * lu(664)
+         lu(695) = lu(695) - lu(145) * lu(664)
+         lu(698) = lu(698) - lu(146) * lu(664)
+         lu(699) = lu(699) - lu(147) * lu(664)
+         lu(726) = lu(726) - lu(141) * lu(713)
+         lu(728) = lu(728) - lu(142) * lu(713)
+         lu(730) = lu(730) - lu(143) * lu(713)
+         lu(731) = lu(731) - lu(144) * lu(713)
+         lu(739) = lu(739) - lu(145) * lu(713)
+         lu(742) = lu(742) - lu(146) * lu(713)
+         lu(743) = lu(743) - lu(147) * lu(713)
+                                                                        
+         lu(148) = 1. / lu(148)
+         lu(149) = lu(149) * lu(148)
+         lu(150) = lu(150) * lu(148)
+         lu(151) = lu(151) * lu(148)
+         lu(152) = lu(152) * lu(148)
+         lu(153) = lu(153) * lu(148)
+         lu(154) = lu(154) * lu(148)
+         lu(155) = lu(155) * lu(148)
+         lu(418) = - lu(149) * lu(417)
+         lu(419) = lu(419) - lu(150) * lu(417)
+         lu(422) = lu(422) - lu(151) * lu(417)
+         lu(424) = lu(424) - lu(152) * lu(417)
+         lu(425) = lu(425) - lu(153) * lu(417)
+         lu(426) = lu(426) - lu(154) * lu(417)
+         lu(427) = lu(427) - lu(155) * lu(417)
+         lu(683) = lu(683) - lu(149) * lu(665)
+         lu(688) = lu(688) - lu(150) * lu(665)
+         lu(691) = lu(691) - lu(151) * lu(665)
+         lu(695) = lu(695) - lu(152) * lu(665)
+         lu(698) = lu(698) - lu(153) * lu(665)
+         lu(699) = lu(699) - lu(154) * lu(665)
+         lu(701) = lu(701) - lu(155) * lu(665)
+         lu(777) = - lu(149) * lu(771)
+         lu(778) = lu(778) - lu(150) * lu(771)
+         lu(781) = lu(781) - lu(151) * lu(771)
+         lu(785) = lu(785) - lu(152) * lu(771)
+         lu(788) = lu(788) - lu(153) * lu(771)
+         lu(789) = lu(789) - lu(154) * lu(771)
+         lu(791) = lu(791) - lu(155) * lu(771)
+                                                                        
+         lu(156) = 1. / lu(156)
+         lu(157) = lu(157) * lu(156)
+         lu(158) = lu(158) * lu(156)
+         lu(159) = lu(159) * lu(156)
+         lu(160) = lu(160) * lu(156)
+         lu(220) = - lu(157) * lu(219)
+         lu(223) = - lu(158) * lu(219)
+         lu(224) = lu(224) - lu(159) * lu(219)
+         lu(227) = lu(227) - lu(160) * lu(219)
+         lu(252) = - lu(157) * lu(251)
+         lu(258) = - lu(158) * lu(251)
+         lu(259) = - lu(159) * lu(251)
+         lu(264) = lu(264) - lu(160) * lu(251)
+         lu(457) = - lu(157) * lu(454)
+         lu(468) = lu(468) - lu(158) * lu(454)
+         lu(469) = lu(469) - lu(159) * lu(454)
+         lu(473) = lu(473) - lu(160) * lu(454)
+         lu(554) = lu(554) - lu(157) * lu(550)
+         lu(569) = lu(569) - lu(158) * lu(550)
+         lu(570) = lu(570) - lu(159) * lu(550)
+         lu(578) = lu(578) - lu(160) * lu(550)
+         lu(672) = lu(672) - lu(157) * lu(666)
+         lu(689) = lu(689) - lu(158) * lu(666)
+         lu(690) = lu(690) - lu(159) * lu(666)
+         lu(698) = lu(698) - lu(160) * lu(666)
+         lu(718) = lu(718) - lu(157) * lu(714)
+         lu(733) = lu(733) - lu(158) * lu(714)
+         lu(734) = lu(734) - lu(159) * lu(714)
+         lu(742) = lu(742) - lu(160) * lu(714)
+                                                                        
+         lu(163) = 1. / lu(163)
+         lu(164) = lu(164) * lu(163)
+         lu(165) = lu(165) * lu(163)
+         lu(166) = lu(166) * lu(163)
+         lu(167) = lu(167) * lu(163)
+         lu(168) = lu(168) * lu(163)
+         lu(234) = - lu(164) * lu(231)
+         lu(235) = lu(235) - lu(165) * lu(231)
+         lu(239) = lu(239) - lu(166) * lu(231)
+         lu(240) = - lu(167) * lu(231)
+         lu(241) = - lu(168) * lu(231)
+         lu(513) = lu(513) - lu(164) * lu(511)
+         lu(514) = lu(514) - lu(165) * lu(511)
+         lu(521) = lu(521) - lu(166) * lu(511)
+         lu(522) = - lu(167) * lu(511)
+         lu(523) = lu(523) - lu(168) * lu(511)
+         lu(608) = lu(608) - lu(164) * lu(604)
+         lu(609) = lu(609) - lu(165) * lu(604)
+         lu(616) = lu(616) - lu(166) * lu(604)
+         lu(617) = - lu(167) * lu(604)
+         lu(618) = lu(618) - lu(168) * lu(604)
+         lu(626) = lu(626) - lu(164) * lu(624)
+         lu(627) = lu(627) - lu(165) * lu(624)
+         lu(634) = - lu(166) * lu(624)
+         lu(635) = lu(635) - lu(167) * lu(624)
+         lu(636) = lu(636) - lu(168) * lu(624)
+         lu(724) = lu(724) - lu(164) * lu(715)
+         lu(725) = lu(725) - lu(165) * lu(715)
+         lu(740) = lu(740) - lu(166) * lu(715)
+         lu(741) = lu(741) - lu(167) * lu(715)
+         lu(742) = lu(742) - lu(168) * lu(715)
+                                                                        
+                                                                        
+      end subroutine imp_lu_fac04
+                                                                        
+      subroutine imp_lu_fac05( lu )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(inout) ::   lu(imp_nzcnt)
+                                                                        
+         lu(169) = 1. / lu(169)
+         lu(170) = lu(170) * lu(169)
+         lu(171) = lu(171) * lu(169)
+         lu(172) = lu(172) * lu(169)
+         lu(236) = lu(236) - lu(170) * lu(232)
+         lu(241) = lu(241) - lu(171) * lu(232)
+         lu(242) = - lu(172) * lu(232)
+         lu(295) = lu(295) - lu(170) * lu(291)
+         lu(296) = lu(296) - lu(171) * lu(291)
+         lu(298) = - lu(172) * lu(291)
+         lu(314) = lu(314) - lu(170) * lu(311)
+         lu(315) = lu(315) - lu(171) * lu(311)
+         lu(317) = - lu(172) * lu(311)
+         lu(500) = lu(500) - lu(170) * lu(482)
+         lu(505) = lu(505) - lu(171) * lu(482)
+         lu(507) = lu(507) - lu(172) * lu(482)
+         lu(588) = lu(588) - lu(170) * lu(584)
+         lu(595) = lu(595) - lu(171) * lu(584)
+         lu(598) = - lu(172) * lu(584)
+         lu(611) = lu(611) - lu(170) * lu(605)
+         lu(618) = lu(618) - lu(171) * lu(605)
+         lu(621) = lu(621) - lu(172) * lu(605)
+         lu(691) = lu(691) - lu(170) * lu(667)
+         lu(698) = lu(698) - lu(171) * lu(667)
+         lu(701) = lu(701) - lu(172) * lu(667)
+         lu(754) = lu(754) - lu(170) * lu(749)
+         lu(761) = - lu(171) * lu(749)
+         lu(764) = lu(764) - lu(172) * lu(749)
+         lu(781) = lu(781) - lu(170) * lu(772)
+         lu(788) = lu(788) - lu(171) * lu(772)
+         lu(791) = lu(791) - lu(172) * lu(772)
+                                                                        
+         lu(176) = 1. / lu(176)
+         lu(177) = lu(177) * lu(176)
+         lu(178) = lu(178) * lu(176)
+         lu(179) = lu(179) * lu(176)
+         lu(180) = lu(180) * lu(176)
+         lu(181) = lu(181) * lu(176)
+         lu(182) = lu(182) * lu(176)
+         lu(183) = lu(183) * lu(176)
+         lu(459) = lu(459) - lu(177) * lu(455)
+         lu(469) = lu(469) - lu(178) * lu(455)
+         lu(471) = lu(471) - lu(179) * lu(455)
+         lu(472) = lu(472) - lu(180) * lu(455)
+         lu(473) = lu(473) - lu(181) * lu(455)
+         lu(474) = lu(474) - lu(182) * lu(455)
+         lu(475) = lu(475) - lu(183) * lu(455)
+         lu(557) = lu(557) - lu(177) * lu(551)
+         lu(570) = lu(570) - lu(178) * lu(551)
+         lu(574) = lu(574) - lu(179) * lu(551)
+         lu(575) = lu(575) - lu(180) * lu(551)
+         lu(578) = lu(578) - lu(181) * lu(551)
+         lu(579) = lu(579) - lu(182) * lu(551)
+         lu(581) = lu(581) - lu(183) * lu(551)
+         lu(677) = lu(677) - lu(177) * lu(668)
+         lu(690) = lu(690) - lu(178) * lu(668)
+         lu(694) = lu(694) - lu(179) * lu(668)
+         lu(695) = lu(695) - lu(180) * lu(668)
+         lu(698) = lu(698) - lu(181) * lu(668)
+         lu(699) = lu(699) - lu(182) * lu(668)
+         lu(701) = lu(701) - lu(183) * lu(668)
+         lu(722) = lu(722) - lu(177) * lu(716)
+         lu(734) = lu(734) - lu(178) * lu(716)
+         lu(738) = lu(738) - lu(179) * lu(716)
+         lu(739) = lu(739) - lu(180) * lu(716)
+         lu(742) = lu(742) - lu(181) * lu(716)
+         lu(743) = lu(743) - lu(182) * lu(716)
+         lu(745) = lu(745) - lu(183) * lu(716)
+                                                                        
+         lu(185) = 1. / lu(185)
+         lu(186) = lu(186) * lu(185)
+         lu(187) = lu(187) * lu(185)
+         lu(188) = lu(188) * lu(185)
+         lu(189) = lu(189) * lu(185)
+         lu(190) = lu(190) * lu(185)
+         lu(191) = lu(191) * lu(185)
+         lu(192) = lu(192) * lu(185)
+         lu(280) = lu(280) - lu(186) * lu(278)
+         lu(282) = - lu(187) * lu(278)
+         lu(285) = - lu(188) * lu(278)
+         lu(286) = lu(286) - lu(189) * lu(278)
+         lu(287) = lu(287) - lu(190) * lu(278)
+         lu(288) = lu(288) - lu(191) * lu(278)
+         lu(289) = lu(289) - lu(192) * lu(278)
+         lu(557) = lu(557) - lu(186) * lu(552)
+         lu(563) = lu(563) - lu(187) * lu(552)
+         lu(574) = lu(574) - lu(188) * lu(552)
+         lu(575) = lu(575) - lu(189) * lu(552)
+         lu(578) = lu(578) - lu(190) * lu(552)
+         lu(579) = lu(579) - lu(191) * lu(552)
+         lu(581) = lu(581) - lu(192) * lu(552)
+         lu(677) = lu(677) - lu(186) * lu(669)
+         lu(683) = lu(683) - lu(187) * lu(669)
+         lu(694) = lu(694) - lu(188) * lu(669)
+         lu(695) = lu(695) - lu(189) * lu(669)
+         lu(698) = lu(698) - lu(190) * lu(669)
+         lu(699) = lu(699) - lu(191) * lu(669)
+         lu(701) = lu(701) - lu(192) * lu(669)
+         lu(722) = lu(722) - lu(186) * lu(717)
+         lu(727) = lu(727) - lu(187) * lu(717)
+         lu(738) = lu(738) - lu(188) * lu(717)
+         lu(739) = lu(739) - lu(189) * lu(717)
+         lu(742) = lu(742) - lu(190) * lu(717)
+         lu(743) = lu(743) - lu(191) * lu(717)
+         lu(745) = lu(745) - lu(192) * lu(717)
+                                                                        
+         lu(193) = 1. / lu(193)
+         lu(194) = lu(194) * lu(193)
+         lu(195) = lu(195) * lu(193)
+         lu(196) = lu(196) * lu(193)
+         lu(197) = lu(197) * lu(193)
+         lu(373) = lu(373) - lu(194) * lu(367)
+         lu(378) = lu(378) - lu(195) * lu(367)
+         lu(379) = lu(379) - lu(196) * lu(367)
+         lu(380) = lu(380) - lu(197) * lu(367)
+         lu(388) = - lu(194) * lu(384)
+         lu(393) = lu(393) - lu(195) * lu(384)
+         lu(394) = lu(394) - lu(196) * lu(384)
+         lu(395) = lu(395) - lu(197) * lu(384)
+         lu(440) = lu(440) - lu(194) * lu(432)
+         lu(445) = lu(445) - lu(195) * lu(432)
+         lu(446) = lu(446) - lu(196) * lu(432)
+         lu(447) = lu(447) - lu(197) * lu(432)
+         lu(467) = lu(467) - lu(194) * lu(456)
+         lu(472) = lu(472) - lu(195) * lu(456)
+         lu(473) = lu(473) - lu(196) * lu(456)
+         lu(474) = lu(474) - lu(197) * lu(456)
+         lu(497) = lu(497) - lu(194) * lu(483)
+         lu(503) = lu(503) - lu(195) * lu(483)
+         lu(505) = lu(505) - lu(196) * lu(483)
+         lu(506) = lu(506) - lu(197) * lu(483)
+         lu(568) = lu(568) - lu(194) * lu(553)
+         lu(575) = lu(575) - lu(195) * lu(553)
+         lu(578) = lu(578) - lu(196) * lu(553)
+         lu(579) = lu(579) - lu(197) * lu(553)
+         lu(688) = lu(688) - lu(194) * lu(670)
+         lu(695) = lu(695) - lu(195) * lu(670)
+         lu(698) = lu(698) - lu(196) * lu(670)
+         lu(699) = lu(699) - lu(197) * lu(670)
+         lu(812) = lu(812) - lu(194) * lu(797)
+         lu(819) = lu(819) - lu(195) * lu(797)
+         lu(822) = lu(822) - lu(196) * lu(797)
+         lu(823) = lu(823) - lu(197) * lu(797)
+                                                                        
+         lu(198) = 1. / lu(198)
+         lu(199) = lu(199) * lu(198)
+         lu(200) = lu(200) * lu(198)
+         lu(201) = lu(201) * lu(198)
+         lu(202) = lu(202) * lu(198)
+         lu(203) = lu(203) * lu(198)
+         lu(204) = lu(204) * lu(198)
+         lu(205) = lu(205) * lu(198)
+         lu(206) = lu(206) * lu(198)
+         lu(207) = lu(207) * lu(198)
+         lu(208) = lu(208) * lu(198)
+         lu(209) = lu(209) * lu(198)
+         lu(487) = lu(487) - lu(199) * lu(484)
+         lu(489) = lu(489) - lu(200) * lu(484)
+         lu(491) = lu(491) - lu(201) * lu(484)
+         lu(493) = lu(493) - lu(202) * lu(484)
+         lu(496) = lu(496) - lu(203) * lu(484)
+         lu(497) = lu(497) - lu(204) * lu(484)
+         lu(500) = lu(500) - lu(205) * lu(484)
+         lu(503) = lu(503) - lu(206) * lu(484)
+         lu(505) = lu(505) - lu(207) * lu(484)
+         lu(506) = lu(506) - lu(208) * lu(484)
+         lu(508) = - lu(209) * lu(484)
+         lu(676) = lu(676) - lu(199) * lu(671)
+         lu(678) = - lu(200) * lu(671)
+         lu(682) = lu(682) - lu(201) * lu(671)
+         lu(684) = lu(684) - lu(202) * lu(671)
+         lu(687) = lu(687) - lu(203) * lu(671)
+         lu(688) = lu(688) - lu(204) * lu(671)
+         lu(691) = lu(691) - lu(205) * lu(671)
+         lu(695) = lu(695) - lu(206) * lu(671)
+         lu(698) = lu(698) - lu(207) * lu(671)
+         lu(699) = lu(699) - lu(208) * lu(671)
+         lu(702) = lu(702) - lu(209) * lu(671)
+         lu(800) = lu(800) - lu(199) * lu(798)
+         lu(802) = - lu(200) * lu(798)
+         lu(806) = lu(806) - lu(201) * lu(798)
+         lu(808) = lu(808) - lu(202) * lu(798)
+         lu(811) = - lu(203) * lu(798)
+         lu(812) = lu(812) - lu(204) * lu(798)
+         lu(815) = lu(815) - lu(205) * lu(798)
+         lu(819) = lu(819) - lu(206) * lu(798)
+         lu(822) = lu(822) - lu(207) * lu(798)
+         lu(823) = lu(823) - lu(208) * lu(798)
+         lu(826) = lu(826) - lu(209) * lu(798)
+                                                                        
+         lu(211) = 1. / lu(211)
+         lu(212) = lu(212) * lu(211)
+         lu(213) = lu(213) * lu(211)
+         lu(214) = lu(214) * lu(211)
+         lu(215) = lu(215) * lu(211)
+         lu(216) = lu(216) * lu(211)
+         lu(217) = lu(217) * lu(211)
+         lu(223) = lu(223) - lu(212) * lu(220)
+         lu(225) = lu(225) - lu(213) * lu(220)
+         lu(226) = lu(226) - lu(214) * lu(220)
+         lu(227) = lu(227) - lu(215) * lu(220)
+         lu(228) = lu(228) - lu(216) * lu(220)
+         lu(229) = lu(229) - lu(217) * lu(220)
+         lu(258) = lu(258) - lu(212) * lu(252)
+         lu(262) = - lu(213) * lu(252)
+         lu(263) = lu(263) - lu(214) * lu(252)
+         lu(264) = lu(264) - lu(215) * lu(252)
+         lu(265) = lu(265) - lu(216) * lu(252)
+         lu(266) = lu(266) - lu(217) * lu(252)
+         lu(468) = lu(468) - lu(212) * lu(457)
+         lu(471) = lu(471) - lu(213) * lu(457)
+         lu(472) = lu(472) - lu(214) * lu(457)
+         lu(473) = lu(473) - lu(215) * lu(457)
+         lu(474) = lu(474) - lu(216) * lu(457)
+         lu(475) = lu(475) - lu(217) * lu(457)
+         lu(569) = lu(569) - lu(212) * lu(554)
+         lu(574) = lu(574) - lu(213) * lu(554)
+         lu(575) = lu(575) - lu(214) * lu(554)
+         lu(578) = lu(578) - lu(215) * lu(554)
+         lu(579) = lu(579) - lu(216) * lu(554)
+         lu(581) = lu(581) - lu(217) * lu(554)
+         lu(689) = lu(689) - lu(212) * lu(672)
+         lu(694) = lu(694) - lu(213) * lu(672)
+         lu(695) = lu(695) - lu(214) * lu(672)
+         lu(698) = lu(698) - lu(215) * lu(672)
+         lu(699) = lu(699) - lu(216) * lu(672)
+         lu(701) = lu(701) - lu(217) * lu(672)
+         lu(733) = lu(733) - lu(212) * lu(718)
+         lu(738) = lu(738) - lu(213) * lu(718)
+         lu(739) = lu(739) - lu(214) * lu(718)
+         lu(742) = lu(742) - lu(215) * lu(718)
+         lu(743) = lu(743) - lu(216) * lu(718)
+         lu(745) = lu(745) - lu(217) * lu(718)
+                                                                        
+                                                                        
+      end subroutine imp_lu_fac05
+                                                                        
+      subroutine imp_lu_fac06( lu )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(inout) ::   lu(imp_nzcnt)
+                                                                        
+         lu(221) = 1. / lu(221)
+         lu(222) = lu(222) * lu(221)
+         lu(223) = lu(223) * lu(221)
+         lu(224) = lu(224) * lu(221)
+         lu(225) = lu(225) * lu(221)
+         lu(226) = lu(226) * lu(221)
+         lu(227) = lu(227) * lu(221)
+         lu(228) = lu(228) * lu(221)
+         lu(229) = lu(229) * lu(221)
+         lu(459) = lu(459) - lu(222) * lu(458)
+         lu(468) = lu(468) - lu(223) * lu(458)
+         lu(469) = lu(469) - lu(224) * lu(458)
+         lu(471) = lu(471) - lu(225) * lu(458)
+         lu(472) = lu(472) - lu(226) * lu(458)
+         lu(473) = lu(473) - lu(227) * lu(458)
+         lu(474) = lu(474) - lu(228) * lu(458)
+         lu(475) = lu(475) - lu(229) * lu(458)
+         lu(557) = lu(557) - lu(222) * lu(555)
+         lu(569) = lu(569) - lu(223) * lu(555)
+         lu(570) = lu(570) - lu(224) * lu(555)
+         lu(574) = lu(574) - lu(225) * lu(555)
+         lu(575) = lu(575) - lu(226) * lu(555)
+         lu(578) = lu(578) - lu(227) * lu(555)
+         lu(579) = lu(579) - lu(228) * lu(555)
+         lu(581) = lu(581) - lu(229) * lu(555)
+         lu(677) = lu(677) - lu(222) * lu(673)
+         lu(689) = lu(689) - lu(223) * lu(673)
+         lu(690) = lu(690) - lu(224) * lu(673)
+         lu(694) = lu(694) - lu(225) * lu(673)
+         lu(695) = lu(695) - lu(226) * lu(673)
+         lu(698) = lu(698) - lu(227) * lu(673)
+         lu(699) = lu(699) - lu(228) * lu(673)
+         lu(701) = lu(701) - lu(229) * lu(673)
+         lu(722) = lu(722) - lu(222) * lu(719)
+         lu(733) = lu(733) - lu(223) * lu(719)
+         lu(734) = lu(734) - lu(224) * lu(719)
+         lu(738) = lu(738) - lu(225) * lu(719)
+         lu(739) = lu(739) - lu(226) * lu(719)
+         lu(742) = lu(742) - lu(227) * lu(719)
+         lu(743) = lu(743) - lu(228) * lu(719)
+         lu(745) = lu(745) - lu(229) * lu(719)
+                                                                        
+         lu(233) = 1. / lu(233)
+         lu(234) = lu(234) * lu(233)
+         lu(235) = lu(235) * lu(233)
+         lu(236) = lu(236) * lu(233)
+         lu(237) = lu(237) * lu(233)
+         lu(238) = lu(238) * lu(233)
+         lu(239) = lu(239) * lu(233)
+         lu(240) = lu(240) * lu(233)
+         lu(241) = lu(241) * lu(233)
+         lu(242) = lu(242) * lu(233)
+         lu(513) = lu(513) - lu(234) * lu(512)
+         lu(514) = lu(514) - lu(235) * lu(512)
+         lu(516) = - lu(236) * lu(512)
+         lu(517) = lu(517) - lu(237) * lu(512)
+         lu(518) = lu(518) - lu(238) * lu(512)
+         lu(521) = lu(521) - lu(239) * lu(512)
+         lu(522) = lu(522) - lu(240) * lu(512)
+         lu(523) = lu(523) - lu(241) * lu(512)
+         lu(526) = lu(526) - lu(242) * lu(512)
+         lu(531) = - lu(234) * lu(529)
+         lu(532) = lu(532) - lu(235) * lu(529)
+         lu(534) = lu(534) - lu(236) * lu(529)
+         lu(535) = lu(535) - lu(237) * lu(529)
+         lu(536) = lu(536) - lu(238) * lu(529)
+         lu(539) = - lu(239) * lu(529)
+         lu(540) = - lu(240) * lu(529)
+         lu(541) = lu(541) - lu(241) * lu(529)
+         lu(544) = lu(544) - lu(242) * lu(529)
+         lu(608) = lu(608) - lu(234) * lu(606)
+         lu(609) = lu(609) - lu(235) * lu(606)
+         lu(611) = lu(611) - lu(236) * lu(606)
+         lu(612) = - lu(237) * lu(606)
+         lu(613) = - lu(238) * lu(606)
+         lu(616) = lu(616) - lu(239) * lu(606)
+         lu(617) = lu(617) - lu(240) * lu(606)
+         lu(618) = lu(618) - lu(241) * lu(606)
+         lu(621) = lu(621) - lu(242) * lu(606)
+         lu(775) = lu(775) - lu(234) * lu(773)
+         lu(776) = - lu(235) * lu(773)
+         lu(781) = lu(781) - lu(236) * lu(773)
+         lu(782) = lu(782) - lu(237) * lu(773)
+         lu(783) = lu(783) - lu(238) * lu(773)
+         lu(786) = lu(786) - lu(239) * lu(773)
+         lu(787) = - lu(240) * lu(773)
+         lu(788) = lu(788) - lu(241) * lu(773)
+         lu(791) = lu(791) - lu(242) * lu(773)
+                                                                        
+         lu(244) = 1. / lu(244)
+         lu(245) = lu(245) * lu(244)
+         lu(246) = lu(246) * lu(244)
+         lu(247) = lu(247) * lu(244)
+         lu(248) = lu(248) * lu(244)
+         lu(249) = lu(249) * lu(244)
+         lu(250) = lu(250) * lu(244)
+         lu(304) = lu(304) - lu(245) * lu(300)
+         lu(305) = lu(305) - lu(246) * lu(300)
+         lu(307) = lu(307) - lu(247) * lu(300)
+         lu(308) = lu(308) - lu(248) * lu(300)
+         lu(309) = lu(309) - lu(249) * lu(300)
+         lu(310) = lu(310) - lu(250) * lu(300)
+         lu(372) = - lu(245) * lu(368)
+         lu(376) = lu(376) - lu(246) * lu(368)
+         lu(378) = lu(378) - lu(247) * lu(368)
+         lu(379) = lu(379) - lu(248) * lu(368)
+         lu(380) = lu(380) - lu(249) * lu(368)
+         lu(381) = lu(381) - lu(250) * lu(368)
+         lu(404) = lu(404) - lu(245) * lu(400)
+         lu(409) = lu(409) - lu(246) * lu(400)
+         lu(411) = lu(411) - lu(247) * lu(400)
+         lu(412) = lu(412) - lu(248) * lu(400)
+         lu(413) = lu(413) - lu(249) * lu(400)
+         lu(414) = lu(414) - lu(250) * lu(400)
+         lu(495) = lu(495) - lu(245) * lu(485)
+         lu(500) = lu(500) - lu(246) * lu(485)
+         lu(503) = lu(503) - lu(247) * lu(485)
+         lu(505) = lu(505) - lu(248) * lu(485)
+         lu(506) = lu(506) - lu(249) * lu(485)
+         lu(507) = lu(507) - lu(250) * lu(485)
+         lu(566) = lu(566) - lu(245) * lu(556)
+         lu(571) = lu(571) - lu(246) * lu(556)
+         lu(575) = lu(575) - lu(247) * lu(556)
+         lu(578) = lu(578) - lu(248) * lu(556)
+         lu(579) = lu(579) - lu(249) * lu(556)
+         lu(581) = lu(581) - lu(250) * lu(556)
+         lu(686) = lu(686) - lu(245) * lu(674)
+         lu(691) = lu(691) - lu(246) * lu(674)
+         lu(695) = lu(695) - lu(247) * lu(674)
+         lu(698) = lu(698) - lu(248) * lu(674)
+         lu(699) = lu(699) - lu(249) * lu(674)
+         lu(701) = lu(701) - lu(250) * lu(674)
+         lu(730) = lu(730) - lu(245) * lu(720)
+         lu(735) = lu(735) - lu(246) * lu(720)
+         lu(739) = lu(739) - lu(247) * lu(720)
+         lu(742) = lu(742) - lu(248) * lu(720)
+         lu(743) = lu(743) - lu(249) * lu(720)
+         lu(745) = lu(745) - lu(250) * lu(720)
+                                                                        
+         lu(253) = 1. / lu(253)
+         lu(254) = lu(254) * lu(253)
+         lu(255) = lu(255) * lu(253)
+         lu(256) = lu(256) * lu(253)
+         lu(257) = lu(257) * lu(253)
+         lu(258) = lu(258) * lu(253)
+         lu(259) = lu(259) * lu(253)
+         lu(260) = lu(260) * lu(253)
+         lu(261) = lu(261) * lu(253)
+         lu(262) = lu(262) * lu(253)
+         lu(263) = lu(263) * lu(253)
+         lu(264) = lu(264) * lu(253)
+         lu(265) = lu(265) * lu(253)
+         lu(266) = lu(266) * lu(253)
+         lu(267) = lu(267) * lu(253)
+         lu(487) = lu(487) - lu(254) * lu(486)
+         lu(491) = lu(491) - lu(255) * lu(486)
+         lu(493) = lu(493) - lu(256) * lu(486)
+         lu(496) = lu(496) - lu(257) * lu(486)
+         lu(498) = lu(498) - lu(258) * lu(486)
+         lu(499) = - lu(259) * lu(486)
+         lu(500) = lu(500) - lu(260) * lu(486)
+         lu(501) = lu(501) - lu(261) * lu(486)
+         lu(502) = lu(502) - lu(262) * lu(486)
+         lu(503) = lu(503) - lu(263) * lu(486)
+         lu(505) = lu(505) - lu(264) * lu(486)
+         lu(506) = lu(506) - lu(265) * lu(486)
+         lu(507) = lu(507) - lu(266) * lu(486)
+         lu(508) = lu(508) - lu(267) * lu(486)
+         lu(676) = lu(676) - lu(254) * lu(675)
+         lu(682) = lu(682) - lu(255) * lu(675)
+         lu(684) = lu(684) - lu(256) * lu(675)
+         lu(687) = lu(687) - lu(257) * lu(675)
+         lu(689) = lu(689) - lu(258) * lu(675)
+         lu(690) = lu(690) - lu(259) * lu(675)
+         lu(691) = lu(691) - lu(260) * lu(675)
+         lu(693) = lu(693) - lu(261) * lu(675)
+         lu(694) = lu(694) - lu(262) * lu(675)
+         lu(695) = lu(695) - lu(263) * lu(675)
+         lu(698) = lu(698) - lu(264) * lu(675)
+         lu(699) = lu(699) - lu(265) * lu(675)
+         lu(701) = lu(701) - lu(266) * lu(675)
+         lu(702) = lu(702) - lu(267) * lu(675)
+         lu(800) = lu(800) - lu(254) * lu(799)
+         lu(806) = lu(806) - lu(255) * lu(799)
+         lu(808) = lu(808) - lu(256) * lu(799)
+         lu(811) = lu(811) - lu(257) * lu(799)
+         lu(813) = - lu(258) * lu(799)
+         lu(814) = lu(814) - lu(259) * lu(799)
+         lu(815) = lu(815) - lu(260) * lu(799)
+         lu(817) = lu(817) - lu(261) * lu(799)
+         lu(818) = lu(818) - lu(262) * lu(799)
+         lu(819) = lu(819) - lu(263) * lu(799)
+         lu(822) = lu(822) - lu(264) * lu(799)
+         lu(823) = lu(823) - lu(265) * lu(799)
+         lu(825) = lu(825) - lu(266) * lu(799)
+         lu(826) = lu(826) - lu(267) * lu(799)
+                                                                        
+                                                                        
+      end subroutine imp_lu_fac06
+                                                                        
+      subroutine imp_lu_fac07( lu )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(inout) ::   lu(imp_nzcnt)
+                                                                        
+         lu(269) = 1. / lu(269)
+         lu(270) = lu(270) * lu(269)
+         lu(271) = lu(271) * lu(269)
+         lu(272) = lu(272) * lu(269)
+         lu(273) = lu(273) * lu(269)
+         lu(274) = lu(274) * lu(269)
+         lu(275) = lu(275) * lu(269)
+         lu(276) = lu(276) * lu(269)
+         lu(531) = lu(531) - lu(270) * lu(530)
+         lu(532) = lu(532) - lu(271) * lu(530)
+         lu(536) = lu(536) - lu(272) * lu(530)
+         lu(539) = lu(539) - lu(273) * lu(530)
+         lu(540) = lu(540) - lu(274) * lu(530)
+         lu(541) = lu(541) - lu(275) * lu(530)
+         lu(543) = lu(543) - lu(276) * lu(530)
+         lu(608) = lu(608) - lu(270) * lu(607)
+         lu(609) = lu(609) - lu(271) * lu(607)
+         lu(613) = lu(613) - lu(272) * lu(607)
+         lu(616) = lu(616) - lu(273) * lu(607)
+         lu(617) = lu(617) - lu(274) * lu(607)
+         lu(618) = lu(618) - lu(275) * lu(607)
+         lu(620) = - lu(276) * lu(607)
+         lu(626) = lu(626) - lu(270) * lu(625)
+         lu(627) = lu(627) - lu(271) * lu(625)
+         lu(631) = - lu(272) * lu(625)
+         lu(634) = lu(634) - lu(273) * lu(625)
+         lu(635) = lu(635) - lu(274) * lu(625)
+         lu(636) = lu(636) - lu(275) * lu(625)
+         lu(638) = - lu(276) * lu(625)
+         lu(724) = lu(724) - lu(270) * lu(721)
+         lu(725) = lu(725) - lu(271) * lu(721)
+         lu(737) = lu(737) - lu(272) * lu(721)
+         lu(740) = lu(740) - lu(273) * lu(721)
+         lu(741) = lu(741) - lu(274) * lu(721)
+         lu(742) = lu(742) - lu(275) * lu(721)
+         lu(744) = lu(744) - lu(276) * lu(721)
+         lu(751) = lu(751) - lu(270) * lu(750)
+         lu(752) = lu(752) - lu(271) * lu(750)
+         lu(756) = lu(756) - lu(272) * lu(750)
+         lu(759) = - lu(273) * lu(750)
+         lu(760) = - lu(274) * lu(750)
+         lu(761) = lu(761) - lu(275) * lu(750)
+         lu(763) = lu(763) - lu(276) * lu(750)
+         lu(775) = lu(775) - lu(270) * lu(774)
+         lu(776) = lu(776) - lu(271) * lu(774)
+         lu(783) = lu(783) - lu(272) * lu(774)
+         lu(786) = lu(786) - lu(273) * lu(774)
+         lu(787) = lu(787) - lu(274) * lu(774)
+         lu(788) = lu(788) - lu(275) * lu(774)
+         lu(790) = lu(790) - lu(276) * lu(774)
+                                                                        
+         lu(279) = 1. / lu(279)
+         lu(280) = lu(280) * lu(279)
+         lu(281) = lu(281) * lu(279)
+         lu(282) = lu(282) * lu(279)
+         lu(283) = lu(283) * lu(279)
+         lu(284) = lu(284) * lu(279)
+         lu(285) = lu(285) * lu(279)
+         lu(286) = lu(286) * lu(279)
+         lu(287) = lu(287) * lu(279)
+         lu(288) = lu(288) * lu(279)
+         lu(289) = lu(289) * lu(279)
+         lu(290) = lu(290) * lu(279)
+         lu(351) = lu(351) - lu(280) * lu(350)
+         lu(352) = lu(352) - lu(281) * lu(350)
+         lu(353) = - lu(282) * lu(350)
+         lu(357) = lu(357) - lu(283) * lu(350)
+         lu(358) = - lu(284) * lu(350)
+         lu(359) = - lu(285) * lu(350)
+         lu(360) = lu(360) - lu(286) * lu(350)
+         lu(361) = lu(361) - lu(287) * lu(350)
+         lu(362) = lu(362) - lu(288) * lu(350)
+         lu(363) = - lu(289) * lu(350)
+         lu(364) = lu(364) - lu(290) * lu(350)
+         lu(488) = lu(488) - lu(280) * lu(487)
+         lu(490) = lu(490) - lu(281) * lu(487)
+         lu(492) = lu(492) - lu(282) * lu(487)
+         lu(499) = lu(499) - lu(283) * lu(487)
+         lu(500) = lu(500) - lu(284) * lu(487)
+         lu(502) = lu(502) - lu(285) * lu(487)
+         lu(503) = lu(503) - lu(286) * lu(487)
+         lu(505) = lu(505) - lu(287) * lu(487)
+         lu(506) = lu(506) - lu(288) * lu(487)
+         lu(507) = lu(507) - lu(289) * lu(487)
+         lu(508) = lu(508) - lu(290) * lu(487)
+         lu(677) = lu(677) - lu(280) * lu(676)
+         lu(679) = lu(679) - lu(281) * lu(676)
+         lu(683) = lu(683) - lu(282) * lu(676)
+         lu(690) = lu(690) - lu(283) * lu(676)
+         lu(691) = lu(691) - lu(284) * lu(676)
+         lu(694) = lu(694) - lu(285) * lu(676)
+         lu(695) = lu(695) - lu(286) * lu(676)
+         lu(698) = lu(698) - lu(287) * lu(676)
+         lu(699) = lu(699) - lu(288) * lu(676)
+         lu(701) = lu(701) - lu(289) * lu(676)
+         lu(702) = lu(702) - lu(290) * lu(676)
+         lu(801) = lu(801) - lu(280) * lu(800)
+         lu(803) = lu(803) - lu(281) * lu(800)
+         lu(807) = - lu(282) * lu(800)
+         lu(814) = lu(814) - lu(283) * lu(800)
+         lu(815) = lu(815) - lu(284) * lu(800)
+         lu(818) = lu(818) - lu(285) * lu(800)
+         lu(819) = lu(819) - lu(286) * lu(800)
+         lu(822) = lu(822) - lu(287) * lu(800)
+         lu(823) = lu(823) - lu(288) * lu(800)
+         lu(825) = lu(825) - lu(289) * lu(800)
+         lu(826) = lu(826) - lu(290) * lu(800)
+                                                                        
+         lu(292) = 1. / lu(292)
+         lu(293) = lu(293) * lu(292)
+         lu(294) = lu(294) * lu(292)
+         lu(295) = lu(295) * lu(292)
+         lu(296) = lu(296) * lu(292)
+         lu(297) = lu(297) * lu(292)
+         lu(298) = lu(298) * lu(292)
+         lu(356) = lu(356) - lu(293) * lu(351)
+         lu(357) = lu(357) - lu(294) * lu(351)
+         lu(358) = lu(358) - lu(295) * lu(351)
+         lu(361) = lu(361) - lu(296) * lu(351)
+         lu(362) = lu(362) - lu(297) * lu(351)
+         lu(363) = lu(363) - lu(298) * lu(351)
+         lu(468) = lu(468) - lu(293) * lu(459)
+         lu(469) = lu(469) - lu(294) * lu(459)
+         lu(470) = - lu(295) * lu(459)
+         lu(473) = lu(473) - lu(296) * lu(459)
+         lu(474) = lu(474) - lu(297) * lu(459)
+         lu(475) = lu(475) - lu(298) * lu(459)
+         lu(498) = lu(498) - lu(293) * lu(488)
+         lu(499) = lu(499) - lu(294) * lu(488)
+         lu(500) = lu(500) - lu(295) * lu(488)
+         lu(505) = lu(505) - lu(296) * lu(488)
+         lu(506) = lu(506) - lu(297) * lu(488)
+         lu(507) = lu(507) - lu(298) * lu(488)
+         lu(569) = lu(569) - lu(293) * lu(557)
+         lu(570) = lu(570) - lu(294) * lu(557)
+         lu(571) = lu(571) - lu(295) * lu(557)
+         lu(578) = lu(578) - lu(296) * lu(557)
+         lu(579) = lu(579) - lu(297) * lu(557)
+         lu(581) = lu(581) - lu(298) * lu(557)
+         lu(689) = lu(689) - lu(293) * lu(677)
+         lu(690) = lu(690) - lu(294) * lu(677)
+         lu(691) = lu(691) - lu(295) * lu(677)
+         lu(698) = lu(698) - lu(296) * lu(677)
+         lu(699) = lu(699) - lu(297) * lu(677)
+         lu(701) = lu(701) - lu(298) * lu(677)
+         lu(733) = lu(733) - lu(293) * lu(722)
+         lu(734) = lu(734) - lu(294) * lu(722)
+         lu(735) = lu(735) - lu(295) * lu(722)
+         lu(742) = lu(742) - lu(296) * lu(722)
+         lu(743) = lu(743) - lu(297) * lu(722)
+         lu(745) = lu(745) - lu(298) * lu(722)
+         lu(813) = lu(813) - lu(293) * lu(801)
+         lu(814) = lu(814) - lu(294) * lu(801)
+         lu(815) = lu(815) - lu(295) * lu(801)
+         lu(822) = lu(822) - lu(296) * lu(801)
+         lu(823) = lu(823) - lu(297) * lu(801)
+         lu(825) = lu(825) - lu(298) * lu(801)
+                                                                        
+         lu(301) = 1. / lu(301)
+         lu(302) = lu(302) * lu(301)
+         lu(303) = lu(303) * lu(301)
+         lu(304) = lu(304) * lu(301)
+         lu(305) = lu(305) * lu(301)
+         lu(306) = lu(306) * lu(301)
+         lu(307) = lu(307) * lu(301)
+         lu(308) = lu(308) * lu(301)
+         lu(309) = lu(309) * lu(301)
+         lu(310) = lu(310) * lu(301)
+         lu(491) = lu(491) - lu(302) * lu(489)
+         lu(493) = lu(493) - lu(303) * lu(489)
+         lu(495) = lu(495) - lu(304) * lu(489)
+         lu(500) = lu(500) - lu(305) * lu(489)
+         lu(502) = lu(502) - lu(306) * lu(489)
+         lu(503) = lu(503) - lu(307) * lu(489)
+         lu(505) = lu(505) - lu(308) * lu(489)
+         lu(506) = lu(506) - lu(309) * lu(489)
+         lu(507) = lu(507) - lu(310) * lu(489)
+         lu(562) = lu(562) - lu(302) * lu(558)
+         lu(564) = lu(564) - lu(303) * lu(558)
+         lu(566) = lu(566) - lu(304) * lu(558)
+         lu(571) = lu(571) - lu(305) * lu(558)
+         lu(574) = lu(574) - lu(306) * lu(558)
+         lu(575) = lu(575) - lu(307) * lu(558)
+         lu(578) = lu(578) - lu(308) * lu(558)
+         lu(579) = lu(579) - lu(309) * lu(558)
+         lu(581) = lu(581) - lu(310) * lu(558)
+         lu(682) = lu(682) - lu(302) * lu(678)
+         lu(684) = lu(684) - lu(303) * lu(678)
+         lu(686) = lu(686) - lu(304) * lu(678)
+         lu(691) = lu(691) - lu(305) * lu(678)
+         lu(694) = lu(694) - lu(306) * lu(678)
+         lu(695) = lu(695) - lu(307) * lu(678)
+         lu(698) = lu(698) - lu(308) * lu(678)
+         lu(699) = lu(699) - lu(309) * lu(678)
+         lu(701) = lu(701) - lu(310) * lu(678)
+         lu(726) = lu(726) - lu(302) * lu(723)
+         lu(728) = lu(728) - lu(303) * lu(723)
+         lu(730) = lu(730) - lu(304) * lu(723)
+         lu(735) = lu(735) - lu(305) * lu(723)
+         lu(738) = lu(738) - lu(306) * lu(723)
+         lu(739) = lu(739) - lu(307) * lu(723)
+         lu(742) = lu(742) - lu(308) * lu(723)
+         lu(743) = lu(743) - lu(309) * lu(723)
+         lu(745) = lu(745) - lu(310) * lu(723)
+         lu(806) = lu(806) - lu(302) * lu(802)
+         lu(808) = lu(808) - lu(303) * lu(802)
+         lu(810) = - lu(304) * lu(802)
+         lu(815) = lu(815) - lu(305) * lu(802)
+         lu(818) = lu(818) - lu(306) * lu(802)
+         lu(819) = lu(819) - lu(307) * lu(802)
+         lu(822) = lu(822) - lu(308) * lu(802)
+         lu(823) = lu(823) - lu(309) * lu(802)
+         lu(825) = lu(825) - lu(310) * lu(802)
+                                                                        
+         lu(312) = 1. / lu(312)
+         lu(313) = lu(313) * lu(312)
+         lu(314) = lu(314) * lu(312)
+         lu(315) = lu(315) * lu(312)
+         lu(316) = lu(316) * lu(312)
+         lu(317) = lu(317) * lu(312)
+         lu(335) = lu(335) - lu(313) * lu(331)
+         lu(336) = - lu(314) * lu(331)
+         lu(338) = lu(338) - lu(315) * lu(331)
+         lu(339) = lu(339) - lu(316) * lu(331)
+         lu(340) = - lu(317) * lu(331)
+         lu(344) = lu(344) - lu(313) * lu(342)
+         lu(345) = - lu(314) * lu(342)
+         lu(347) = lu(347) - lu(315) * lu(342)
+         lu(348) = lu(348) - lu(316) * lu(342)
+         lu(349) = - lu(317) * lu(342)
+         lu(356) = lu(356) - lu(313) * lu(352)
+         lu(358) = lu(358) - lu(314) * lu(352)
+         lu(361) = lu(361) - lu(315) * lu(352)
+         lu(362) = lu(362) - lu(316) * lu(352)
+         lu(363) = lu(363) - lu(317) * lu(352)
+         lu(374) = lu(374) - lu(313) * lu(369)
+         lu(376) = lu(376) - lu(314) * lu(369)
+         lu(379) = lu(379) - lu(315) * lu(369)
+         lu(380) = lu(380) - lu(316) * lu(369)
+         lu(381) = lu(381) - lu(317) * lu(369)
+         lu(389) = lu(389) - lu(313) * lu(385)
+         lu(391) = lu(391) - lu(314) * lu(385)
+         lu(394) = lu(394) - lu(315) * lu(385)
+         lu(395) = lu(395) - lu(316) * lu(385)
+         lu(396) = lu(396) - lu(317) * lu(385)
+         lu(441) = lu(441) - lu(313) * lu(433)
+         lu(443) = lu(443) - lu(314) * lu(433)
+         lu(446) = lu(446) - lu(315) * lu(433)
+         lu(447) = lu(447) - lu(316) * lu(433)
+         lu(448) = lu(448) - lu(317) * lu(433)
+         lu(468) = lu(468) - lu(313) * lu(460)
+         lu(470) = lu(470) - lu(314) * lu(460)
+         lu(473) = lu(473) - lu(315) * lu(460)
+         lu(474) = lu(474) - lu(316) * lu(460)
+         lu(475) = lu(475) - lu(317) * lu(460)
+         lu(498) = lu(498) - lu(313) * lu(490)
+         lu(500) = lu(500) - lu(314) * lu(490)
+         lu(505) = lu(505) - lu(315) * lu(490)
+         lu(506) = lu(506) - lu(316) * lu(490)
+         lu(507) = lu(507) - lu(317) * lu(490)
+         lu(569) = lu(569) - lu(313) * lu(559)
+         lu(571) = lu(571) - lu(314) * lu(559)
+         lu(578) = lu(578) - lu(315) * lu(559)
+         lu(579) = lu(579) - lu(316) * lu(559)
+         lu(581) = lu(581) - lu(317) * lu(559)
+         lu(689) = lu(689) - lu(313) * lu(679)
+         lu(691) = lu(691) - lu(314) * lu(679)
+         lu(698) = lu(698) - lu(315) * lu(679)
+         lu(699) = lu(699) - lu(316) * lu(679)
+         lu(701) = lu(701) - lu(317) * lu(679)
+         lu(813) = lu(813) - lu(313) * lu(803)
+         lu(815) = lu(815) - lu(314) * lu(803)
+         lu(822) = lu(822) - lu(315) * lu(803)
+         lu(823) = lu(823) - lu(316) * lu(803)
+         lu(825) = lu(825) - lu(317) * lu(803)
+                                                                        
+                                                                        
+      end subroutine imp_lu_fac07
+                                                                        
+      subroutine imp_lu_fac08( lu )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(inout) ::   lu(imp_nzcnt)
+                                                                        
+         lu(318) = 1. / lu(318)
+         lu(319) = lu(319) * lu(318)
+         lu(320) = lu(320) * lu(318)
+         lu(321) = lu(321) * lu(318)
+         lu(322) = lu(322) * lu(318)
+         lu(323) = lu(323) * lu(318)
+         lu(520) = - lu(319) * lu(513)
+         lu(522) = lu(522) - lu(320) * lu(513)
+         lu(524) = lu(524) - lu(321) * lu(513)
+         lu(525) = lu(525) - lu(322) * lu(513)
+         lu(527) = - lu(323) * lu(513)
+         lu(538) = - lu(319) * lu(531)
+         lu(540) = lu(540) - lu(320) * lu(531)
+         lu(542) = lu(542) - lu(321) * lu(531)
+         lu(543) = lu(543) - lu(322) * lu(531)
+         lu(545) = lu(545) - lu(323) * lu(531)
+         lu(575) = lu(575) - lu(319) * lu(560)
+         lu(577) = - lu(320) * lu(560)
+         lu(579) = lu(579) - lu(321) * lu(560)
+         lu(580) = lu(580) - lu(322) * lu(560)
+         lu(582) = lu(582) - lu(323) * lu(560)
+         lu(592) = lu(592) - lu(319) * lu(585)
+         lu(594) = lu(594) - lu(320) * lu(585)
+         lu(596) = lu(596) - lu(321) * lu(585)
+         lu(597) = - lu(322) * lu(585)
+         lu(599) = lu(599) - lu(323) * lu(585)
+         lu(615) = - lu(319) * lu(608)
+         lu(617) = lu(617) - lu(320) * lu(608)
+         lu(619) = - lu(321) * lu(608)
+         lu(620) = lu(620) - lu(322) * lu(608)
+         lu(622) = - lu(323) * lu(608)
+         lu(633) = - lu(319) * lu(626)
+         lu(635) = lu(635) - lu(320) * lu(626)
+         lu(637) = lu(637) - lu(321) * lu(626)
+         lu(638) = lu(638) - lu(322) * lu(626)
+         lu(640) = - lu(323) * lu(626)
+         lu(695) = lu(695) - lu(319) * lu(680)
+         lu(697) = lu(697) - lu(320) * lu(680)
+         lu(699) = lu(699) - lu(321) * lu(680)
+         lu(700) = - lu(322) * lu(680)
+         lu(702) = lu(702) - lu(323) * lu(680)
+         lu(739) = lu(739) - lu(319) * lu(724)
+         lu(741) = lu(741) - lu(320) * lu(724)
+         lu(743) = lu(743) - lu(321) * lu(724)
+         lu(744) = lu(744) - lu(322) * lu(724)
+         lu(746) = lu(746) - lu(323) * lu(724)
+         lu(758) = - lu(319) * lu(751)
+         lu(760) = lu(760) - lu(320) * lu(751)
+         lu(762) = lu(762) - lu(321) * lu(751)
+         lu(763) = lu(763) - lu(322) * lu(751)
+         lu(765) = - lu(323) * lu(751)
+         lu(785) = lu(785) - lu(319) * lu(775)
+         lu(787) = lu(787) - lu(320) * lu(775)
+         lu(789) = lu(789) - lu(321) * lu(775)
+         lu(790) = lu(790) - lu(322) * lu(775)
+         lu(792) = lu(792) - lu(323) * lu(775)
+         lu(819) = lu(819) - lu(319) * lu(804)
+         lu(821) = - lu(320) * lu(804)
+         lu(823) = lu(823) - lu(321) * lu(804)
+         lu(824) = lu(824) - lu(322) * lu(804)
+         lu(826) = lu(826) - lu(323) * lu(804)
+                                                                        
+         lu(324) = 1. / lu(324)
+         lu(325) = lu(325) * lu(324)
+         lu(326) = lu(326) * lu(324)
+         lu(327) = lu(327) * lu(324)
+         lu(328) = lu(328) * lu(324)
+         lu(329) = lu(329) * lu(324)
+         lu(330) = lu(330) * lu(324)
+         lu(515) = - lu(325) * lu(514)
+         lu(517) = lu(517) - lu(326) * lu(514)
+         lu(520) = lu(520) - lu(327) * lu(514)
+         lu(521) = lu(521) - lu(328) * lu(514)
+         lu(524) = lu(524) - lu(329) * lu(514)
+         lu(527) = lu(527) - lu(330) * lu(514)
+         lu(533) = - lu(325) * lu(532)
+         lu(535) = lu(535) - lu(326) * lu(532)
+         lu(538) = lu(538) - lu(327) * lu(532)
+         lu(539) = lu(539) - lu(328) * lu(532)
+         lu(542) = lu(542) - lu(329) * lu(532)
+         lu(545) = lu(545) - lu(330) * lu(532)
+         lu(570) = lu(570) - lu(325) * lu(561)
+         lu(572) = lu(572) - lu(326) * lu(561)
+         lu(575) = lu(575) - lu(327) * lu(561)
+         lu(576) = - lu(328) * lu(561)
+         lu(579) = lu(579) - lu(329) * lu(561)
+         lu(582) = lu(582) - lu(330) * lu(561)
+         lu(587) = - lu(325) * lu(586)
+         lu(589) = - lu(326) * lu(586)
+         lu(592) = lu(592) - lu(327) * lu(586)
+         lu(593) = lu(593) - lu(328) * lu(586)
+         lu(596) = lu(596) - lu(329) * lu(586)
+         lu(599) = lu(599) - lu(330) * lu(586)
+         lu(610) = - lu(325) * lu(609)
+         lu(612) = lu(612) - lu(326) * lu(609)
+         lu(615) = lu(615) - lu(327) * lu(609)
+         lu(616) = lu(616) - lu(328) * lu(609)
+         lu(619) = lu(619) - lu(329) * lu(609)
+         lu(622) = lu(622) - lu(330) * lu(609)
+         lu(628) = - lu(325) * lu(627)
+         lu(630) = - lu(326) * lu(627)
+         lu(633) = lu(633) - lu(327) * lu(627)
+         lu(634) = lu(634) - lu(328) * lu(627)
+         lu(637) = lu(637) - lu(329) * lu(627)
+         lu(640) = lu(640) - lu(330) * lu(627)
+         lu(690) = lu(690) - lu(325) * lu(681)
+         lu(692) = lu(692) - lu(326) * lu(681)
+         lu(695) = lu(695) - lu(327) * lu(681)
+         lu(696) = lu(696) - lu(328) * lu(681)
+         lu(699) = lu(699) - lu(329) * lu(681)
+         lu(702) = lu(702) - lu(330) * lu(681)
+         lu(734) = lu(734) - lu(325) * lu(725)
+         lu(736) = lu(736) - lu(326) * lu(725)
+         lu(739) = lu(739) - lu(327) * lu(725)
+         lu(740) = lu(740) - lu(328) * lu(725)
+         lu(743) = lu(743) - lu(329) * lu(725)
+         lu(746) = lu(746) - lu(330) * lu(725)
+         lu(753) = - lu(325) * lu(752)
+         lu(755) = lu(755) - lu(326) * lu(752)
+         lu(758) = lu(758) - lu(327) * lu(752)
+         lu(759) = lu(759) - lu(328) * lu(752)
+         lu(762) = lu(762) - lu(329) * lu(752)
+         lu(765) = lu(765) - lu(330) * lu(752)
+         lu(780) = lu(780) - lu(325) * lu(776)
+         lu(782) = lu(782) - lu(326) * lu(776)
+         lu(785) = lu(785) - lu(327) * lu(776)
+         lu(786) = lu(786) - lu(328) * lu(776)
+         lu(789) = lu(789) - lu(329) * lu(776)
+         lu(792) = lu(792) - lu(330) * lu(776)
+         lu(814) = lu(814) - lu(325) * lu(805)
+         lu(816) = lu(816) - lu(326) * lu(805)
+         lu(819) = lu(819) - lu(327) * lu(805)
+         lu(820) = - lu(328) * lu(805)
+         lu(823) = lu(823) - lu(329) * lu(805)
+         lu(826) = lu(826) - lu(330) * lu(805)
+                                                                        
+         lu(332) = 1. / lu(332)
+         lu(333) = lu(333) * lu(332)
+         lu(334) = lu(334) * lu(332)
+         lu(335) = lu(335) * lu(332)
+         lu(336) = lu(336) * lu(332)
+         lu(337) = lu(337) * lu(332)
+         lu(338) = lu(338) * lu(332)
+         lu(339) = lu(339) * lu(332)
+         lu(340) = lu(340) * lu(332)
+         lu(341) = lu(341) * lu(332)
+         lu(403) = - lu(333) * lu(401)
+         lu(406) = - lu(334) * lu(401)
+         lu(407) = lu(407) - lu(335) * lu(401)
+         lu(409) = lu(409) - lu(336) * lu(401)
+         lu(411) = lu(411) - lu(337) * lu(401)
+         lu(412) = lu(412) - lu(338) * lu(401)
+         lu(413) = lu(413) - lu(339) * lu(401)
+         lu(414) = lu(414) - lu(340) * lu(401)
+         lu(415) = - lu(341) * lu(401)
+         lu(437) = lu(437) - lu(333) * lu(434)
+         lu(440) = lu(440) - lu(334) * lu(434)
+         lu(441) = lu(441) - lu(335) * lu(434)
+         lu(443) = lu(443) - lu(336) * lu(434)
+         lu(445) = lu(445) - lu(337) * lu(434)
+         lu(446) = lu(446) - lu(338) * lu(434)
+         lu(447) = lu(447) - lu(339) * lu(434)
+         lu(448) = lu(448) - lu(340) * lu(434)
+         lu(449) = lu(449) - lu(341) * lu(434)
+         lu(464) = lu(464) - lu(333) * lu(461)
+         lu(467) = lu(467) - lu(334) * lu(461)
+         lu(468) = lu(468) - lu(335) * lu(461)
+         lu(470) = lu(470) - lu(336) * lu(461)
+         lu(472) = lu(472) - lu(337) * lu(461)
+         lu(473) = lu(473) - lu(338) * lu(461)
+         lu(474) = lu(474) - lu(339) * lu(461)
+         lu(475) = lu(475) - lu(340) * lu(461)
+         lu(476) = - lu(341) * lu(461)
+         lu(494) = lu(494) - lu(333) * lu(491)
+         lu(497) = lu(497) - lu(334) * lu(491)
+         lu(498) = lu(498) - lu(335) * lu(491)
+         lu(500) = lu(500) - lu(336) * lu(491)
+         lu(503) = lu(503) - lu(337) * lu(491)
+         lu(505) = lu(505) - lu(338) * lu(491)
+         lu(506) = lu(506) - lu(339) * lu(491)
+         lu(507) = lu(507) - lu(340) * lu(491)
+         lu(508) = lu(508) - lu(341) * lu(491)
+         lu(565) = lu(565) - lu(333) * lu(562)
+         lu(568) = lu(568) - lu(334) * lu(562)
+         lu(569) = lu(569) - lu(335) * lu(562)
+         lu(571) = lu(571) - lu(336) * lu(562)
+         lu(575) = lu(575) - lu(337) * lu(562)
+         lu(578) = lu(578) - lu(338) * lu(562)
+         lu(579) = lu(579) - lu(339) * lu(562)
+         lu(581) = lu(581) - lu(340) * lu(562)
+         lu(582) = lu(582) - lu(341) * lu(562)
+         lu(685) = lu(685) - lu(333) * lu(682)
+         lu(688) = lu(688) - lu(334) * lu(682)
+         lu(689) = lu(689) - lu(335) * lu(682)
+         lu(691) = lu(691) - lu(336) * lu(682)
+         lu(695) = lu(695) - lu(337) * lu(682)
+         lu(698) = lu(698) - lu(338) * lu(682)
+         lu(699) = lu(699) - lu(339) * lu(682)
+         lu(701) = lu(701) - lu(340) * lu(682)
+         lu(702) = lu(702) - lu(341) * lu(682)
+         lu(729) = lu(729) - lu(333) * lu(726)
+         lu(732) = lu(732) - lu(334) * lu(726)
+         lu(733) = lu(733) - lu(335) * lu(726)
+         lu(735) = lu(735) - lu(336) * lu(726)
+         lu(739) = lu(739) - lu(337) * lu(726)
+         lu(742) = lu(742) - lu(338) * lu(726)
+         lu(743) = lu(743) - lu(339) * lu(726)
+         lu(745) = lu(745) - lu(340) * lu(726)
+         lu(746) = lu(746) - lu(341) * lu(726)
+         lu(809) = - lu(333) * lu(806)
+         lu(812) = lu(812) - lu(334) * lu(806)
+         lu(813) = lu(813) - lu(335) * lu(806)
+         lu(815) = lu(815) - lu(336) * lu(806)
+         lu(819) = lu(819) - lu(337) * lu(806)
+         lu(822) = lu(822) - lu(338) * lu(806)
+         lu(823) = lu(823) - lu(339) * lu(806)
+         lu(825) = lu(825) - lu(340) * lu(806)
+         lu(826) = lu(826) - lu(341) * lu(806)
+                                                                        
+                                                                        
+      end subroutine imp_lu_fac08
+                                                                        
+      subroutine imp_lu_fac09( lu )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(inout) ::   lu(imp_nzcnt)
+                                                                        
+         lu(343) = 1. / lu(343)
+         lu(344) = lu(344) * lu(343)
+         lu(345) = lu(345) * lu(343)
+         lu(346) = lu(346) * lu(343)
+         lu(347) = lu(347) * lu(343)
+         lu(348) = lu(348) * lu(343)
+         lu(349) = lu(349) * lu(343)
+         lu(356) = lu(356) - lu(344) * lu(353)
+         lu(358) = lu(358) - lu(345) * lu(353)
+         lu(360) = lu(360) - lu(346) * lu(353)
+         lu(361) = lu(361) - lu(347) * lu(353)
+         lu(362) = lu(362) - lu(348) * lu(353)
+         lu(363) = lu(363) - lu(349) * lu(353)
+         lu(374) = lu(374) - lu(344) * lu(370)
+         lu(376) = lu(376) - lu(345) * lu(370)
+         lu(378) = lu(378) - lu(346) * lu(370)
+         lu(379) = lu(379) - lu(347) * lu(370)
+         lu(380) = lu(380) - lu(348) * lu(370)
+         lu(381) = lu(381) - lu(349) * lu(370)
+         lu(389) = lu(389) - lu(344) * lu(386)
+         lu(391) = lu(391) - lu(345) * lu(386)
+         lu(393) = lu(393) - lu(346) * lu(386)
+         lu(394) = lu(394) - lu(347) * lu(386)
+         lu(395) = lu(395) - lu(348) * lu(386)
+         lu(396) = lu(396) - lu(349) * lu(386)
+         lu(420) = lu(420) - lu(344) * lu(418)
+         lu(422) = lu(422) - lu(345) * lu(418)
+         lu(424) = lu(424) - lu(346) * lu(418)
+         lu(425) = lu(425) - lu(347) * lu(418)
+         lu(426) = lu(426) - lu(348) * lu(418)
+         lu(427) = lu(427) - lu(349) * lu(418)
+         lu(441) = lu(441) - lu(344) * lu(435)
+         lu(443) = lu(443) - lu(345) * lu(435)
+         lu(445) = lu(445) - lu(346) * lu(435)
+         lu(446) = lu(446) - lu(347) * lu(435)
+         lu(447) = lu(447) - lu(348) * lu(435)
+         lu(448) = lu(448) - lu(349) * lu(435)
+         lu(468) = lu(468) - lu(344) * lu(462)
+         lu(470) = lu(470) - lu(345) * lu(462)
+         lu(472) = lu(472) - lu(346) * lu(462)
+         lu(473) = lu(473) - lu(347) * lu(462)
+         lu(474) = lu(474) - lu(348) * lu(462)
+         lu(475) = lu(475) - lu(349) * lu(462)
+         lu(498) = lu(498) - lu(344) * lu(492)
+         lu(500) = lu(500) - lu(345) * lu(492)
+         lu(503) = lu(503) - lu(346) * lu(492)
+         lu(505) = lu(505) - lu(347) * lu(492)
+         lu(506) = lu(506) - lu(348) * lu(492)
+         lu(507) = lu(507) - lu(349) * lu(492)
+         lu(569) = lu(569) - lu(344) * lu(563)
+         lu(571) = lu(571) - lu(345) * lu(563)
+         lu(575) = lu(575) - lu(346) * lu(563)
+         lu(578) = lu(578) - lu(347) * lu(563)
+         lu(579) = lu(579) - lu(348) * lu(563)
+         lu(581) = lu(581) - lu(349) * lu(563)
+         lu(689) = lu(689) - lu(344) * lu(683)
+         lu(691) = lu(691) - lu(345) * lu(683)
+         lu(695) = lu(695) - lu(346) * lu(683)
+         lu(698) = lu(698) - lu(347) * lu(683)
+         lu(699) = lu(699) - lu(348) * lu(683)
+         lu(701) = lu(701) - lu(349) * lu(683)
+         lu(733) = lu(733) - lu(344) * lu(727)
+         lu(735) = lu(735) - lu(345) * lu(727)
+         lu(739) = lu(739) - lu(346) * lu(727)
+         lu(742) = lu(742) - lu(347) * lu(727)
+         lu(743) = lu(743) - lu(348) * lu(727)
+         lu(745) = lu(745) - lu(349) * lu(727)
+         lu(779) = lu(779) - lu(344) * lu(777)
+         lu(781) = lu(781) - lu(345) * lu(777)
+         lu(785) = lu(785) - lu(346) * lu(777)
+         lu(788) = lu(788) - lu(347) * lu(777)
+         lu(789) = lu(789) - lu(348) * lu(777)
+         lu(791) = lu(791) - lu(349) * lu(777)
+         lu(813) = lu(813) - lu(344) * lu(807)
+         lu(815) = lu(815) - lu(345) * lu(807)
+         lu(819) = lu(819) - lu(346) * lu(807)
+         lu(822) = lu(822) - lu(347) * lu(807)
+         lu(823) = lu(823) - lu(348) * lu(807)
+         lu(825) = lu(825) - lu(349) * lu(807)
+                                                                        
+         lu(354) = 1. / lu(354)
+         lu(355) = lu(355) * lu(354)
+         lu(356) = lu(356) * lu(354)
+         lu(357) = lu(357) * lu(354)
+         lu(358) = lu(358) * lu(354)
+         lu(359) = lu(359) * lu(354)
+         lu(360) = lu(360) * lu(354)
+         lu(361) = lu(361) * lu(354)
+         lu(362) = lu(362) * lu(354)
+         lu(363) = lu(363) * lu(354)
+         lu(364) = lu(364) * lu(354)
+         lu(403) = lu(403) - lu(355) * lu(402)
+         lu(407) = lu(407) - lu(356) * lu(402)
+         lu(408) = lu(408) - lu(357) * lu(402)
+         lu(409) = lu(409) - lu(358) * lu(402)
+         lu(410) = lu(410) - lu(359) * lu(402)
+         lu(411) = lu(411) - lu(360) * lu(402)
+         lu(412) = lu(412) - lu(361) * lu(402)
+         lu(413) = lu(413) - lu(362) * lu(402)
+         lu(414) = lu(414) - lu(363) * lu(402)
+         lu(415) = lu(415) - lu(364) * lu(402)
+         lu(437) = lu(437) - lu(355) * lu(436)
+         lu(441) = lu(441) - lu(356) * lu(436)
+         lu(442) = lu(442) - lu(357) * lu(436)
+         lu(443) = lu(443) - lu(358) * lu(436)
+         lu(444) = lu(444) - lu(359) * lu(436)
+         lu(445) = lu(445) - lu(360) * lu(436)
+         lu(446) = lu(446) - lu(361) * lu(436)
+         lu(447) = lu(447) - lu(362) * lu(436)
+         lu(448) = lu(448) - lu(363) * lu(436)
+         lu(449) = lu(449) - lu(364) * lu(436)
+         lu(464) = lu(464) - lu(355) * lu(463)
+         lu(468) = lu(468) - lu(356) * lu(463)
+         lu(469) = lu(469) - lu(357) * lu(463)
+         lu(470) = lu(470) - lu(358) * lu(463)
+         lu(471) = lu(471) - lu(359) * lu(463)
+         lu(472) = lu(472) - lu(360) * lu(463)
+         lu(473) = lu(473) - lu(361) * lu(463)
+         lu(474) = lu(474) - lu(362) * lu(463)
+         lu(475) = lu(475) - lu(363) * lu(463)
+         lu(476) = lu(476) - lu(364) * lu(463)
+         lu(494) = lu(494) - lu(355) * lu(493)
+         lu(498) = lu(498) - lu(356) * lu(493)
+         lu(499) = lu(499) - lu(357) * lu(493)
+         lu(500) = lu(500) - lu(358) * lu(493)
+         lu(502) = lu(502) - lu(359) * lu(493)
+         lu(503) = lu(503) - lu(360) * lu(493)
+         lu(505) = lu(505) - lu(361) * lu(493)
+         lu(506) = lu(506) - lu(362) * lu(493)
+         lu(507) = lu(507) - lu(363) * lu(493)
+         lu(508) = lu(508) - lu(364) * lu(493)
+         lu(565) = lu(565) - lu(355) * lu(564)
+         lu(569) = lu(569) - lu(356) * lu(564)
+         lu(570) = lu(570) - lu(357) * lu(564)
+         lu(571) = lu(571) - lu(358) * lu(564)
+         lu(574) = lu(574) - lu(359) * lu(564)
+         lu(575) = lu(575) - lu(360) * lu(564)
+         lu(578) = lu(578) - lu(361) * lu(564)
+         lu(579) = lu(579) - lu(362) * lu(564)
+         lu(581) = lu(581) - lu(363) * lu(564)
+         lu(582) = lu(582) - lu(364) * lu(564)
+         lu(685) = lu(685) - lu(355) * lu(684)
+         lu(689) = lu(689) - lu(356) * lu(684)
+         lu(690) = lu(690) - lu(357) * lu(684)
+         lu(691) = lu(691) - lu(358) * lu(684)
+         lu(694) = lu(694) - lu(359) * lu(684)
+         lu(695) = lu(695) - lu(360) * lu(684)
+         lu(698) = lu(698) - lu(361) * lu(684)
+         lu(699) = lu(699) - lu(362) * lu(684)
+         lu(701) = lu(701) - lu(363) * lu(684)
+         lu(702) = lu(702) - lu(364) * lu(684)
+         lu(729) = lu(729) - lu(355) * lu(728)
+         lu(733) = lu(733) - lu(356) * lu(728)
+         lu(734) = lu(734) - lu(357) * lu(728)
+         lu(735) = lu(735) - lu(358) * lu(728)
+         lu(738) = lu(738) - lu(359) * lu(728)
+         lu(739) = lu(739) - lu(360) * lu(728)
+         lu(742) = lu(742) - lu(361) * lu(728)
+         lu(743) = lu(743) - lu(362) * lu(728)
+         lu(745) = lu(745) - lu(363) * lu(728)
+         lu(746) = lu(746) - lu(364) * lu(728)
+         lu(809) = lu(809) - lu(355) * lu(808)
+         lu(813) = lu(813) - lu(356) * lu(808)
+         lu(814) = lu(814) - lu(357) * lu(808)
+         lu(815) = lu(815) - lu(358) * lu(808)
+         lu(818) = lu(818) - lu(359) * lu(808)
+         lu(819) = lu(819) - lu(360) * lu(808)
+         lu(822) = lu(822) - lu(361) * lu(808)
+         lu(823) = lu(823) - lu(362) * lu(808)
+         lu(825) = lu(825) - lu(363) * lu(808)
+         lu(826) = lu(826) - lu(364) * lu(808)
+                                                                        
+         lu(371) = 1. / lu(371)
+         lu(372) = lu(372) * lu(371)
+         lu(373) = lu(373) * lu(371)
+         lu(374) = lu(374) * lu(371)
+         lu(375) = lu(375) * lu(371)
+         lu(376) = lu(376) * lu(371)
+         lu(377) = lu(377) * lu(371)
+         lu(378) = lu(378) * lu(371)
+         lu(379) = lu(379) * lu(371)
+         lu(380) = lu(380) * lu(371)
+         lu(381) = lu(381) * lu(371)
+         lu(404) = lu(404) - lu(372) * lu(403)
+         lu(406) = lu(406) - lu(373) * lu(403)
+         lu(407) = lu(407) - lu(374) * lu(403)
+         lu(408) = lu(408) - lu(375) * lu(403)
+         lu(409) = lu(409) - lu(376) * lu(403)
+         lu(410) = lu(410) - lu(377) * lu(403)
+         lu(411) = lu(411) - lu(378) * lu(403)
+         lu(412) = lu(412) - lu(379) * lu(403)
+         lu(413) = lu(413) - lu(380) * lu(403)
+         lu(414) = lu(414) - lu(381) * lu(403)
+         lu(438) = lu(438) - lu(372) * lu(437)
+         lu(440) = lu(440) - lu(373) * lu(437)
+         lu(441) = lu(441) - lu(374) * lu(437)
+         lu(442) = lu(442) - lu(375) * lu(437)
+         lu(443) = lu(443) - lu(376) * lu(437)
+         lu(444) = lu(444) - lu(377) * lu(437)
+         lu(445) = lu(445) - lu(378) * lu(437)
+         lu(446) = lu(446) - lu(379) * lu(437)
+         lu(447) = lu(447) - lu(380) * lu(437)
+         lu(448) = lu(448) - lu(381) * lu(437)
+         lu(465) = lu(465) - lu(372) * lu(464)
+         lu(467) = lu(467) - lu(373) * lu(464)
+         lu(468) = lu(468) - lu(374) * lu(464)
+         lu(469) = lu(469) - lu(375) * lu(464)
+         lu(470) = lu(470) - lu(376) * lu(464)
+         lu(471) = lu(471) - lu(377) * lu(464)
+         lu(472) = lu(472) - lu(378) * lu(464)
+         lu(473) = lu(473) - lu(379) * lu(464)
+         lu(474) = lu(474) - lu(380) * lu(464)
+         lu(475) = lu(475) - lu(381) * lu(464)
+         lu(495) = lu(495) - lu(372) * lu(494)
+         lu(497) = lu(497) - lu(373) * lu(494)
+         lu(498) = lu(498) - lu(374) * lu(494)
+         lu(499) = lu(499) - lu(375) * lu(494)
+         lu(500) = lu(500) - lu(376) * lu(494)
+         lu(502) = lu(502) - lu(377) * lu(494)
+         lu(503) = lu(503) - lu(378) * lu(494)
+         lu(505) = lu(505) - lu(379) * lu(494)
+         lu(506) = lu(506) - lu(380) * lu(494)
+         lu(507) = lu(507) - lu(381) * lu(494)
+         lu(566) = lu(566) - lu(372) * lu(565)
+         lu(568) = lu(568) - lu(373) * lu(565)
+         lu(569) = lu(569) - lu(374) * lu(565)
+         lu(570) = lu(570) - lu(375) * lu(565)
+         lu(571) = lu(571) - lu(376) * lu(565)
+         lu(574) = lu(574) - lu(377) * lu(565)
+         lu(575) = lu(575) - lu(378) * lu(565)
+         lu(578) = lu(578) - lu(379) * lu(565)
+         lu(579) = lu(579) - lu(380) * lu(565)
+         lu(581) = lu(581) - lu(381) * lu(565)
+         lu(686) = lu(686) - lu(372) * lu(685)
+         lu(688) = lu(688) - lu(373) * lu(685)
+         lu(689) = lu(689) - lu(374) * lu(685)
+         lu(690) = lu(690) - lu(375) * lu(685)
+         lu(691) = lu(691) - lu(376) * lu(685)
+         lu(694) = lu(694) - lu(377) * lu(685)
+         lu(695) = lu(695) - lu(378) * lu(685)
+         lu(698) = lu(698) - lu(379) * lu(685)
+         lu(699) = lu(699) - lu(380) * lu(685)
+         lu(701) = lu(701) - lu(381) * lu(685)
+         lu(730) = lu(730) - lu(372) * lu(729)
+         lu(732) = lu(732) - lu(373) * lu(729)
+         lu(733) = lu(733) - lu(374) * lu(729)
+         lu(734) = lu(734) - lu(375) * lu(729)
+         lu(735) = lu(735) - lu(376) * lu(729)
+         lu(738) = lu(738) - lu(377) * lu(729)
+         lu(739) = lu(739) - lu(378) * lu(729)
+         lu(742) = lu(742) - lu(379) * lu(729)
+         lu(743) = lu(743) - lu(380) * lu(729)
+         lu(745) = lu(745) - lu(381) * lu(729)
+         lu(810) = lu(810) - lu(372) * lu(809)
+         lu(812) = lu(812) - lu(373) * lu(809)
+         lu(813) = lu(813) - lu(374) * lu(809)
+         lu(814) = lu(814) - lu(375) * lu(809)
+         lu(815) = lu(815) - lu(376) * lu(809)
+         lu(818) = lu(818) - lu(377) * lu(809)
+         lu(819) = lu(819) - lu(378) * lu(809)
+         lu(822) = lu(822) - lu(379) * lu(809)
+         lu(823) = lu(823) - lu(380) * lu(809)
+         lu(825) = lu(825) - lu(381) * lu(809)
+                                                                        
+         lu(387) = 1. / lu(387)
+         lu(388) = lu(388) * lu(387)
+         lu(389) = lu(389) * lu(387)
+         lu(390) = lu(390) * lu(387)
+         lu(391) = lu(391) * lu(387)
+         lu(392) = lu(392) * lu(387)
+         lu(393) = lu(393) * lu(387)
+         lu(394) = lu(394) * lu(387)
+         lu(395) = lu(395) * lu(387)
+         lu(396) = lu(396) * lu(387)
+         lu(406) = lu(406) - lu(388) * lu(404)
+         lu(407) = lu(407) - lu(389) * lu(404)
+         lu(408) = lu(408) - lu(390) * lu(404)
+         lu(409) = lu(409) - lu(391) * lu(404)
+         lu(410) = lu(410) - lu(392) * lu(404)
+         lu(411) = lu(411) - lu(393) * lu(404)
+         lu(412) = lu(412) - lu(394) * lu(404)
+         lu(413) = lu(413) - lu(395) * lu(404)
+         lu(414) = lu(414) - lu(396) * lu(404)
+         lu(440) = lu(440) - lu(388) * lu(438)
+         lu(441) = lu(441) - lu(389) * lu(438)
+         lu(442) = lu(442) - lu(390) * lu(438)
+         lu(443) = lu(443) - lu(391) * lu(438)
+         lu(444) = lu(444) - lu(392) * lu(438)
+         lu(445) = lu(445) - lu(393) * lu(438)
+         lu(446) = lu(446) - lu(394) * lu(438)
+         lu(447) = lu(447) - lu(395) * lu(438)
+         lu(448) = lu(448) - lu(396) * lu(438)
+         lu(467) = lu(467) - lu(388) * lu(465)
+         lu(468) = lu(468) - lu(389) * lu(465)
+         lu(469) = lu(469) - lu(390) * lu(465)
+         lu(470) = lu(470) - lu(391) * lu(465)
+         lu(471) = lu(471) - lu(392) * lu(465)
+         lu(472) = lu(472) - lu(393) * lu(465)
+         lu(473) = lu(473) - lu(394) * lu(465)
+         lu(474) = lu(474) - lu(395) * lu(465)
+         lu(475) = lu(475) - lu(396) * lu(465)
+         lu(497) = lu(497) - lu(388) * lu(495)
+         lu(498) = lu(498) - lu(389) * lu(495)
+         lu(499) = lu(499) - lu(390) * lu(495)
+         lu(500) = lu(500) - lu(391) * lu(495)
+         lu(502) = lu(502) - lu(392) * lu(495)
+         lu(503) = lu(503) - lu(393) * lu(495)
+         lu(505) = lu(505) - lu(394) * lu(495)
+         lu(506) = lu(506) - lu(395) * lu(495)
+         lu(507) = lu(507) - lu(396) * lu(495)
+         lu(568) = lu(568) - lu(388) * lu(566)
+         lu(569) = lu(569) - lu(389) * lu(566)
+         lu(570) = lu(570) - lu(390) * lu(566)
+         lu(571) = lu(571) - lu(391) * lu(566)
+         lu(574) = lu(574) - lu(392) * lu(566)
+         lu(575) = lu(575) - lu(393) * lu(566)
+         lu(578) = lu(578) - lu(394) * lu(566)
+         lu(579) = lu(579) - lu(395) * lu(566)
+         lu(581) = lu(581) - lu(396) * lu(566)
+         lu(688) = lu(688) - lu(388) * lu(686)
+         lu(689) = lu(689) - lu(389) * lu(686)
+         lu(690) = lu(690) - lu(390) * lu(686)
+         lu(691) = lu(691) - lu(391) * lu(686)
+         lu(694) = lu(694) - lu(392) * lu(686)
+         lu(695) = lu(695) - lu(393) * lu(686)
+         lu(698) = lu(698) - lu(394) * lu(686)
+         lu(699) = lu(699) - lu(395) * lu(686)
+         lu(701) = lu(701) - lu(396) * lu(686)
+         lu(732) = lu(732) - lu(388) * lu(730)
+         lu(733) = lu(733) - lu(389) * lu(730)
+         lu(734) = lu(734) - lu(390) * lu(730)
+         lu(735) = lu(735) - lu(391) * lu(730)
+         lu(738) = lu(738) - lu(392) * lu(730)
+         lu(739) = lu(739) - lu(393) * lu(730)
+         lu(742) = lu(742) - lu(394) * lu(730)
+         lu(743) = lu(743) - lu(395) * lu(730)
+         lu(745) = lu(745) - lu(396) * lu(730)
+         lu(812) = lu(812) - lu(388) * lu(810)
+         lu(813) = lu(813) - lu(389) * lu(810)
+         lu(814) = lu(814) - lu(390) * lu(810)
+         lu(815) = lu(815) - lu(391) * lu(810)
+         lu(818) = lu(818) - lu(392) * lu(810)
+         lu(819) = lu(819) - lu(393) * lu(810)
+         lu(822) = lu(822) - lu(394) * lu(810)
+         lu(823) = lu(823) - lu(395) * lu(810)
+         lu(825) = lu(825) - lu(396) * lu(810)
+                                                                        
+         lu(405) = 1. / lu(405)
+         lu(406) = lu(406) * lu(405)
+         lu(407) = lu(407) * lu(405)
+         lu(408) = lu(408) * lu(405)
+         lu(409) = lu(409) * lu(405)
+         lu(410) = lu(410) * lu(405)
+         lu(411) = lu(411) * lu(405)
+         lu(412) = lu(412) * lu(405)
+         lu(413) = lu(413) * lu(405)
+         lu(414) = lu(414) * lu(405)
+         lu(415) = lu(415) * lu(405)
+         lu(440) = lu(440) - lu(406) * lu(439)
+         lu(441) = lu(441) - lu(407) * lu(439)
+         lu(442) = lu(442) - lu(408) * lu(439)
+         lu(443) = lu(443) - lu(409) * lu(439)
+         lu(444) = lu(444) - lu(410) * lu(439)
+         lu(445) = lu(445) - lu(411) * lu(439)
+         lu(446) = lu(446) - lu(412) * lu(439)
+         lu(447) = lu(447) - lu(413) * lu(439)
+         lu(448) = lu(448) - lu(414) * lu(439)
+         lu(449) = lu(449) - lu(415) * lu(439)
+         lu(467) = lu(467) - lu(406) * lu(466)
+         lu(468) = lu(468) - lu(407) * lu(466)
+         lu(469) = lu(469) - lu(408) * lu(466)
+         lu(470) = lu(470) - lu(409) * lu(466)
+         lu(471) = lu(471) - lu(410) * lu(466)
+         lu(472) = lu(472) - lu(411) * lu(466)
+         lu(473) = lu(473) - lu(412) * lu(466)
+         lu(474) = lu(474) - lu(413) * lu(466)
+         lu(475) = lu(475) - lu(414) * lu(466)
+         lu(476) = lu(476) - lu(415) * lu(466)
+         lu(497) = lu(497) - lu(406) * lu(496)
+         lu(498) = lu(498) - lu(407) * lu(496)
+         lu(499) = lu(499) - lu(408) * lu(496)
+         lu(500) = lu(500) - lu(409) * lu(496)
+         lu(502) = lu(502) - lu(410) * lu(496)
+         lu(503) = lu(503) - lu(411) * lu(496)
+         lu(505) = lu(505) - lu(412) * lu(496)
+         lu(506) = lu(506) - lu(413) * lu(496)
+         lu(507) = lu(507) - lu(414) * lu(496)
+         lu(508) = lu(508) - lu(415) * lu(496)
+         lu(568) = lu(568) - lu(406) * lu(567)
+         lu(569) = lu(569) - lu(407) * lu(567)
+         lu(570) = lu(570) - lu(408) * lu(567)
+         lu(571) = lu(571) - lu(409) * lu(567)
+         lu(574) = lu(574) - lu(410) * lu(567)
+         lu(575) = lu(575) - lu(411) * lu(567)
+         lu(578) = lu(578) - lu(412) * lu(567)
+         lu(579) = lu(579) - lu(413) * lu(567)
+         lu(581) = lu(581) - lu(414) * lu(567)
+         lu(582) = lu(582) - lu(415) * lu(567)
+         lu(688) = lu(688) - lu(406) * lu(687)
+         lu(689) = lu(689) - lu(407) * lu(687)
+         lu(690) = lu(690) - lu(408) * lu(687)
+         lu(691) = lu(691) - lu(409) * lu(687)
+         lu(694) = lu(694) - lu(410) * lu(687)
+         lu(695) = lu(695) - lu(411) * lu(687)
+         lu(698) = lu(698) - lu(412) * lu(687)
+         lu(699) = lu(699) - lu(413) * lu(687)
+         lu(701) = lu(701) - lu(414) * lu(687)
+         lu(702) = lu(702) - lu(415) * lu(687)
+         lu(732) = lu(732) - lu(406) * lu(731)
+         lu(733) = lu(733) - lu(407) * lu(731)
+         lu(734) = lu(734) - lu(408) * lu(731)
+         lu(735) = lu(735) - lu(409) * lu(731)
+         lu(738) = lu(738) - lu(410) * lu(731)
+         lu(739) = lu(739) - lu(411) * lu(731)
+         lu(742) = lu(742) - lu(412) * lu(731)
+         lu(743) = lu(743) - lu(413) * lu(731)
+         lu(745) = lu(745) - lu(414) * lu(731)
+         lu(746) = lu(746) - lu(415) * lu(731)
+         lu(812) = lu(812) - lu(406) * lu(811)
+         lu(813) = lu(813) - lu(407) * lu(811)
+         lu(814) = lu(814) - lu(408) * lu(811)
+         lu(815) = lu(815) - lu(409) * lu(811)
+         lu(818) = lu(818) - lu(410) * lu(811)
+         lu(819) = lu(819) - lu(411) * lu(811)
+         lu(822) = lu(822) - lu(412) * lu(811)
+         lu(823) = lu(823) - lu(413) * lu(811)
+         lu(825) = lu(825) - lu(414) * lu(811)
+         lu(826) = lu(826) - lu(415) * lu(811)
+                                                                        
+         lu(419) = 1. / lu(419)
+         lu(420) = lu(420) * lu(419)
+         lu(421) = lu(421) * lu(419)
+         lu(422) = lu(422) * lu(419)
+         lu(423) = lu(423) * lu(419)
+         lu(424) = lu(424) * lu(419)
+         lu(425) = lu(425) * lu(419)
+         lu(426) = lu(426) * lu(419)
+         lu(427) = lu(427) * lu(419)
+         lu(428) = lu(428) * lu(419)
+         lu(441) = lu(441) - lu(420) * lu(440)
+         lu(442) = lu(442) - lu(421) * lu(440)
+         lu(443) = lu(443) - lu(422) * lu(440)
+         lu(444) = lu(444) - lu(423) * lu(440)
+         lu(445) = lu(445) - lu(424) * lu(440)
+         lu(446) = lu(446) - lu(425) * lu(440)
+         lu(447) = lu(447) - lu(426) * lu(440)
+         lu(448) = lu(448) - lu(427) * lu(440)
+         lu(449) = lu(449) - lu(428) * lu(440)
+         lu(468) = lu(468) - lu(420) * lu(467)
+         lu(469) = lu(469) - lu(421) * lu(467)
+         lu(470) = lu(470) - lu(422) * lu(467)
+         lu(471) = lu(471) - lu(423) * lu(467)
+         lu(472) = lu(472) - lu(424) * lu(467)
+         lu(473) = lu(473) - lu(425) * lu(467)
+         lu(474) = lu(474) - lu(426) * lu(467)
+         lu(475) = lu(475) - lu(427) * lu(467)
+         lu(476) = lu(476) - lu(428) * lu(467)
+         lu(498) = lu(498) - lu(420) * lu(497)
+         lu(499) = lu(499) - lu(421) * lu(497)
+         lu(500) = lu(500) - lu(422) * lu(497)
+         lu(502) = lu(502) - lu(423) * lu(497)
+         lu(503) = lu(503) - lu(424) * lu(497)
+         lu(505) = lu(505) - lu(425) * lu(497)
+         lu(506) = lu(506) - lu(426) * lu(497)
+         lu(507) = lu(507) - lu(427) * lu(497)
+         lu(508) = lu(508) - lu(428) * lu(497)
+         lu(569) = lu(569) - lu(420) * lu(568)
+         lu(570) = lu(570) - lu(421) * lu(568)
+         lu(571) = lu(571) - lu(422) * lu(568)
+         lu(574) = lu(574) - lu(423) * lu(568)
+         lu(575) = lu(575) - lu(424) * lu(568)
+         lu(578) = lu(578) - lu(425) * lu(568)
+         lu(579) = lu(579) - lu(426) * lu(568)
+         lu(581) = lu(581) - lu(427) * lu(568)
+         lu(582) = lu(582) - lu(428) * lu(568)
+         lu(689) = lu(689) - lu(420) * lu(688)
+         lu(690) = lu(690) - lu(421) * lu(688)
+         lu(691) = lu(691) - lu(422) * lu(688)
+         lu(694) = lu(694) - lu(423) * lu(688)
+         lu(695) = lu(695) - lu(424) * lu(688)
+         lu(698) = lu(698) - lu(425) * lu(688)
+         lu(699) = lu(699) - lu(426) * lu(688)
+         lu(701) = lu(701) - lu(427) * lu(688)
+         lu(702) = lu(702) - lu(428) * lu(688)
+         lu(733) = lu(733) - lu(420) * lu(732)
+         lu(734) = lu(734) - lu(421) * lu(732)
+         lu(735) = lu(735) - lu(422) * lu(732)
+         lu(738) = lu(738) - lu(423) * lu(732)
+         lu(739) = lu(739) - lu(424) * lu(732)
+         lu(742) = lu(742) - lu(425) * lu(732)
+         lu(743) = lu(743) - lu(426) * lu(732)
+         lu(745) = lu(745) - lu(427) * lu(732)
+         lu(746) = lu(746) - lu(428) * lu(732)
+         lu(779) = lu(779) - lu(420) * lu(778)
+         lu(780) = lu(780) - lu(421) * lu(778)
+         lu(781) = lu(781) - lu(422) * lu(778)
+         lu(784) = lu(784) - lu(423) * lu(778)
+         lu(785) = lu(785) - lu(424) * lu(778)
+         lu(788) = lu(788) - lu(425) * lu(778)
+         lu(789) = lu(789) - lu(426) * lu(778)
+         lu(791) = lu(791) - lu(427) * lu(778)
+         lu(792) = lu(792) - lu(428) * lu(778)
+         lu(813) = lu(813) - lu(420) * lu(812)
+         lu(814) = lu(814) - lu(421) * lu(812)
+         lu(815) = lu(815) - lu(422) * lu(812)
+         lu(818) = lu(818) - lu(423) * lu(812)
+         lu(819) = lu(819) - lu(424) * lu(812)
+         lu(822) = lu(822) - lu(425) * lu(812)
+         lu(823) = lu(823) - lu(426) * lu(812)
+         lu(825) = lu(825) - lu(427) * lu(812)
+         lu(826) = lu(826) - lu(428) * lu(812)
+                                                                        
+                                                                        
+      end subroutine imp_lu_fac09
+                                                                        
+      subroutine imp_lu_fac10( lu )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(inout) ::   lu(imp_nzcnt)
+                                                                        
+         lu(441) = 1. / lu(441)
+         lu(442) = lu(442) * lu(441)
+         lu(443) = lu(443) * lu(441)
+         lu(444) = lu(444) * lu(441)
+         lu(445) = lu(445) * lu(441)
+         lu(446) = lu(446) * lu(441)
+         lu(447) = lu(447) * lu(441)
+         lu(448) = lu(448) * lu(441)
+         lu(449) = lu(449) * lu(441)
+         lu(469) = lu(469) - lu(442) * lu(468)
+         lu(470) = lu(470) - lu(443) * lu(468)
+         lu(471) = lu(471) - lu(444) * lu(468)
+         lu(472) = lu(472) - lu(445) * lu(468)
+         lu(473) = lu(473) - lu(446) * lu(468)
+         lu(474) = lu(474) - lu(447) * lu(468)
+         lu(475) = lu(475) - lu(448) * lu(468)
+         lu(476) = lu(476) - lu(449) * lu(468)
+         lu(499) = lu(499) - lu(442) * lu(498)
+         lu(500) = lu(500) - lu(443) * lu(498)
+         lu(502) = lu(502) - lu(444) * lu(498)
+         lu(503) = lu(503) - lu(445) * lu(498)
+         lu(505) = lu(505) - lu(446) * lu(498)
+         lu(506) = lu(506) - lu(447) * lu(498)
+         lu(507) = lu(507) - lu(448) * lu(498)
+         lu(508) = lu(508) - lu(449) * lu(498)
+         lu(570) = lu(570) - lu(442) * lu(569)
+         lu(571) = lu(571) - lu(443) * lu(569)
+         lu(574) = lu(574) - lu(444) * lu(569)
+         lu(575) = lu(575) - lu(445) * lu(569)
+         lu(578) = lu(578) - lu(446) * lu(569)
+         lu(579) = lu(579) - lu(447) * lu(569)
+         lu(581) = lu(581) - lu(448) * lu(569)
+         lu(582) = lu(582) - lu(449) * lu(569)
+         lu(690) = lu(690) - lu(442) * lu(689)
+         lu(691) = lu(691) - lu(443) * lu(689)
+         lu(694) = lu(694) - lu(444) * lu(689)
+         lu(695) = lu(695) - lu(445) * lu(689)
+         lu(698) = lu(698) - lu(446) * lu(689)
+         lu(699) = lu(699) - lu(447) * lu(689)
+         lu(701) = lu(701) - lu(448) * lu(689)
+         lu(702) = lu(702) - lu(449) * lu(689)
+         lu(734) = lu(734) - lu(442) * lu(733)
+         lu(735) = lu(735) - lu(443) * lu(733)
+         lu(738) = lu(738) - lu(444) * lu(733)
+         lu(739) = lu(739) - lu(445) * lu(733)
+         lu(742) = lu(742) - lu(446) * lu(733)
+         lu(743) = lu(743) - lu(447) * lu(733)
+         lu(745) = lu(745) - lu(448) * lu(733)
+         lu(746) = lu(746) - lu(449) * lu(733)
+         lu(780) = lu(780) - lu(442) * lu(779)
+         lu(781) = lu(781) - lu(443) * lu(779)
+         lu(784) = lu(784) - lu(444) * lu(779)
+         lu(785) = lu(785) - lu(445) * lu(779)
+         lu(788) = lu(788) - lu(446) * lu(779)
+         lu(789) = lu(789) - lu(447) * lu(779)
+         lu(791) = lu(791) - lu(448) * lu(779)
+         lu(792) = lu(792) - lu(449) * lu(779)
+         lu(814) = lu(814) - lu(442) * lu(813)
+         lu(815) = lu(815) - lu(443) * lu(813)
+         lu(818) = lu(818) - lu(444) * lu(813)
+         lu(819) = lu(819) - lu(445) * lu(813)
+         lu(822) = lu(822) - lu(446) * lu(813)
+         lu(823) = lu(823) - lu(447) * lu(813)
+         lu(825) = lu(825) - lu(448) * lu(813)
+         lu(826) = lu(826) - lu(449) * lu(813)
+                                                                        
+         lu(469) = 1. / lu(469)
+         lu(470) = lu(470) * lu(469)
+         lu(471) = lu(471) * lu(469)
+         lu(472) = lu(472) * lu(469)
+         lu(473) = lu(473) * lu(469)
+         lu(474) = lu(474) * lu(469)
+         lu(475) = lu(475) * lu(469)
+         lu(476) = lu(476) * lu(469)
+         lu(500) = lu(500) - lu(470) * lu(499)
+         lu(502) = lu(502) - lu(471) * lu(499)
+         lu(503) = lu(503) - lu(472) * lu(499)
+         lu(505) = lu(505) - lu(473) * lu(499)
+         lu(506) = lu(506) - lu(474) * lu(499)
+         lu(507) = lu(507) - lu(475) * lu(499)
+         lu(508) = lu(508) - lu(476) * lu(499)
+         lu(516) = lu(516) - lu(470) * lu(515)
+         lu(519) = lu(519) - lu(471) * lu(515)
+         lu(520) = lu(520) - lu(472) * lu(515)
+         lu(523) = lu(523) - lu(473) * lu(515)
+         lu(524) = lu(524) - lu(474) * lu(515)
+         lu(526) = lu(526) - lu(475) * lu(515)
+         lu(527) = lu(527) - lu(476) * lu(515)
+         lu(534) = lu(534) - lu(470) * lu(533)
+         lu(537) = lu(537) - lu(471) * lu(533)
+         lu(538) = lu(538) - lu(472) * lu(533)
+         lu(541) = lu(541) - lu(473) * lu(533)
+         lu(542) = lu(542) - lu(474) * lu(533)
+         lu(544) = lu(544) - lu(475) * lu(533)
+         lu(545) = lu(545) - lu(476) * lu(533)
+         lu(571) = lu(571) - lu(470) * lu(570)
+         lu(574) = lu(574) - lu(471) * lu(570)
+         lu(575) = lu(575) - lu(472) * lu(570)
+         lu(578) = lu(578) - lu(473) * lu(570)
+         lu(579) = lu(579) - lu(474) * lu(570)
+         lu(581) = lu(581) - lu(475) * lu(570)
+         lu(582) = lu(582) - lu(476) * lu(570)
+         lu(588) = lu(588) - lu(470) * lu(587)
+         lu(591) = - lu(471) * lu(587)
+         lu(592) = lu(592) - lu(472) * lu(587)
+         lu(595) = lu(595) - lu(473) * lu(587)
+         lu(596) = lu(596) - lu(474) * lu(587)
+         lu(598) = lu(598) - lu(475) * lu(587)
+         lu(599) = lu(599) - lu(476) * lu(587)
+         lu(611) = lu(611) - lu(470) * lu(610)
+         lu(614) = - lu(471) * lu(610)
+         lu(615) = lu(615) - lu(472) * lu(610)
+         lu(618) = lu(618) - lu(473) * lu(610)
+         lu(619) = lu(619) - lu(474) * lu(610)
+         lu(621) = lu(621) - lu(475) * lu(610)
+         lu(622) = lu(622) - lu(476) * lu(610)
+         lu(629) = - lu(470) * lu(628)
+         lu(632) = - lu(471) * lu(628)
+         lu(633) = lu(633) - lu(472) * lu(628)
+         lu(636) = lu(636) - lu(473) * lu(628)
+         lu(637) = lu(637) - lu(474) * lu(628)
+         lu(639) = - lu(475) * lu(628)
+         lu(640) = lu(640) - lu(476) * lu(628)
+         lu(691) = lu(691) - lu(470) * lu(690)
+         lu(694) = lu(694) - lu(471) * lu(690)
+         lu(695) = lu(695) - lu(472) * lu(690)
+         lu(698) = lu(698) - lu(473) * lu(690)
+         lu(699) = lu(699) - lu(474) * lu(690)
+         lu(701) = lu(701) - lu(475) * lu(690)
+         lu(702) = lu(702) - lu(476) * lu(690)
+         lu(735) = lu(735) - lu(470) * lu(734)
+         lu(738) = lu(738) - lu(471) * lu(734)
+         lu(739) = lu(739) - lu(472) * lu(734)
+         lu(742) = lu(742) - lu(473) * lu(734)
+         lu(743) = lu(743) - lu(474) * lu(734)
+         lu(745) = lu(745) - lu(475) * lu(734)
+         lu(746) = lu(746) - lu(476) * lu(734)
+         lu(754) = lu(754) - lu(470) * lu(753)
+         lu(757) = lu(757) - lu(471) * lu(753)
+         lu(758) = lu(758) - lu(472) * lu(753)
+         lu(761) = lu(761) - lu(473) * lu(753)
+         lu(762) = lu(762) - lu(474) * lu(753)
+         lu(764) = lu(764) - lu(475) * lu(753)
+         lu(765) = lu(765) - lu(476) * lu(753)
+         lu(781) = lu(781) - lu(470) * lu(780)
+         lu(784) = lu(784) - lu(471) * lu(780)
+         lu(785) = lu(785) - lu(472) * lu(780)
+         lu(788) = lu(788) - lu(473) * lu(780)
+         lu(789) = lu(789) - lu(474) * lu(780)
+         lu(791) = lu(791) - lu(475) * lu(780)
+         lu(792) = lu(792) - lu(476) * lu(780)
+         lu(815) = lu(815) - lu(470) * lu(814)
+         lu(818) = lu(818) - lu(471) * lu(814)
+         lu(819) = lu(819) - lu(472) * lu(814)
+         lu(822) = lu(822) - lu(473) * lu(814)
+         lu(823) = lu(823) - lu(474) * lu(814)
+         lu(825) = lu(825) - lu(475) * lu(814)
+         lu(826) = lu(826) - lu(476) * lu(814)
+                                                                        
+         lu(500) = 1. / lu(500)
+         lu(501) = lu(501) * lu(500)
+         lu(502) = lu(502) * lu(500)
+         lu(503) = lu(503) * lu(500)
+         lu(504) = lu(504) * lu(500)
+         lu(505) = lu(505) * lu(500)
+         lu(506) = lu(506) * lu(500)
+         lu(507) = lu(507) * lu(500)
+         lu(508) = lu(508) * lu(500)
+         lu(518) = lu(518) - lu(501) * lu(516)
+         lu(519) = lu(519) - lu(502) * lu(516)
+         lu(520) = lu(520) - lu(503) * lu(516)
+         lu(521) = lu(521) - lu(504) * lu(516)
+         lu(523) = lu(523) - lu(505) * lu(516)
+         lu(524) = lu(524) - lu(506) * lu(516)
+         lu(526) = lu(526) - lu(507) * lu(516)
+         lu(527) = lu(527) - lu(508) * lu(516)
+         lu(536) = lu(536) - lu(501) * lu(534)
+         lu(537) = lu(537) - lu(502) * lu(534)
+         lu(538) = lu(538) - lu(503) * lu(534)
+         lu(539) = lu(539) - lu(504) * lu(534)
+         lu(541) = lu(541) - lu(505) * lu(534)
+         lu(542) = lu(542) - lu(506) * lu(534)
+         lu(544) = lu(544) - lu(507) * lu(534)
+         lu(545) = lu(545) - lu(508) * lu(534)
+         lu(573) = lu(573) - lu(501) * lu(571)
+         lu(574) = lu(574) - lu(502) * lu(571)
+         lu(575) = lu(575) - lu(503) * lu(571)
+         lu(576) = lu(576) - lu(504) * lu(571)
+         lu(578) = lu(578) - lu(505) * lu(571)
+         lu(579) = lu(579) - lu(506) * lu(571)
+         lu(581) = lu(581) - lu(507) * lu(571)
+         lu(582) = lu(582) - lu(508) * lu(571)
+         lu(590) = - lu(501) * lu(588)
+         lu(591) = lu(591) - lu(502) * lu(588)
+         lu(592) = lu(592) - lu(503) * lu(588)
+         lu(593) = lu(593) - lu(504) * lu(588)
+         lu(595) = lu(595) - lu(505) * lu(588)
+         lu(596) = lu(596) - lu(506) * lu(588)
+         lu(598) = lu(598) - lu(507) * lu(588)
+         lu(599) = lu(599) - lu(508) * lu(588)
+         lu(613) = lu(613) - lu(501) * lu(611)
+         lu(614) = lu(614) - lu(502) * lu(611)
+         lu(615) = lu(615) - lu(503) * lu(611)
+         lu(616) = lu(616) - lu(504) * lu(611)
+         lu(618) = lu(618) - lu(505) * lu(611)
+         lu(619) = lu(619) - lu(506) * lu(611)
+         lu(621) = lu(621) - lu(507) * lu(611)
+         lu(622) = lu(622) - lu(508) * lu(611)
+         lu(631) = lu(631) - lu(501) * lu(629)
+         lu(632) = lu(632) - lu(502) * lu(629)
+         lu(633) = lu(633) - lu(503) * lu(629)
+         lu(634) = lu(634) - lu(504) * lu(629)
+         lu(636) = lu(636) - lu(505) * lu(629)
+         lu(637) = lu(637) - lu(506) * lu(629)
+         lu(639) = lu(639) - lu(507) * lu(629)
+         lu(640) = lu(640) - lu(508) * lu(629)
+         lu(693) = lu(693) - lu(501) * lu(691)
+         lu(694) = lu(694) - lu(502) * lu(691)
+         lu(695) = lu(695) - lu(503) * lu(691)
+         lu(696) = lu(696) - lu(504) * lu(691)
+         lu(698) = lu(698) - lu(505) * lu(691)
+         lu(699) = lu(699) - lu(506) * lu(691)
+         lu(701) = lu(701) - lu(507) * lu(691)
+         lu(702) = lu(702) - lu(508) * lu(691)
+         lu(737) = lu(737) - lu(501) * lu(735)
+         lu(738) = lu(738) - lu(502) * lu(735)
+         lu(739) = lu(739) - lu(503) * lu(735)
+         lu(740) = lu(740) - lu(504) * lu(735)
+         lu(742) = lu(742) - lu(505) * lu(735)
+         lu(743) = lu(743) - lu(506) * lu(735)
+         lu(745) = lu(745) - lu(507) * lu(735)
+         lu(746) = lu(746) - lu(508) * lu(735)
+         lu(756) = lu(756) - lu(501) * lu(754)
+         lu(757) = lu(757) - lu(502) * lu(754)
+         lu(758) = lu(758) - lu(503) * lu(754)
+         lu(759) = lu(759) - lu(504) * lu(754)
+         lu(761) = lu(761) - lu(505) * lu(754)
+         lu(762) = lu(762) - lu(506) * lu(754)
+         lu(764) = lu(764) - lu(507) * lu(754)
+         lu(765) = lu(765) - lu(508) * lu(754)
+         lu(783) = lu(783) - lu(501) * lu(781)
+         lu(784) = lu(784) - lu(502) * lu(781)
+         lu(785) = lu(785) - lu(503) * lu(781)
+         lu(786) = lu(786) - lu(504) * lu(781)
+         lu(788) = lu(788) - lu(505) * lu(781)
+         lu(789) = lu(789) - lu(506) * lu(781)
+         lu(791) = lu(791) - lu(507) * lu(781)
+         lu(792) = lu(792) - lu(508) * lu(781)
+         lu(817) = lu(817) - lu(501) * lu(815)
+         lu(818) = lu(818) - lu(502) * lu(815)
+         lu(819) = lu(819) - lu(503) * lu(815)
+         lu(820) = lu(820) - lu(504) * lu(815)
+         lu(822) = lu(822) - lu(505) * lu(815)
+         lu(823) = lu(823) - lu(506) * lu(815)
+         lu(825) = lu(825) - lu(507) * lu(815)
+         lu(826) = lu(826) - lu(508) * lu(815)
+                                                                        
+         lu(517) = 1. / lu(517)
+         lu(518) = lu(518) * lu(517)
+         lu(519) = lu(519) * lu(517)
+         lu(520) = lu(520) * lu(517)
+         lu(521) = lu(521) * lu(517)
+         lu(522) = lu(522) * lu(517)
+         lu(523) = lu(523) * lu(517)
+         lu(524) = lu(524) * lu(517)
+         lu(525) = lu(525) * lu(517)
+         lu(526) = lu(526) * lu(517)
+         lu(527) = lu(527) * lu(517)
+         lu(536) = lu(536) - lu(518) * lu(535)
+         lu(537) = lu(537) - lu(519) * lu(535)
+         lu(538) = lu(538) - lu(520) * lu(535)
+         lu(539) = lu(539) - lu(521) * lu(535)
+         lu(540) = lu(540) - lu(522) * lu(535)
+         lu(541) = lu(541) - lu(523) * lu(535)
+         lu(542) = lu(542) - lu(524) * lu(535)
+         lu(543) = lu(543) - lu(525) * lu(535)
+         lu(544) = lu(544) - lu(526) * lu(535)
+         lu(545) = lu(545) - lu(527) * lu(535)
+         lu(573) = lu(573) - lu(518) * lu(572)
+         lu(574) = lu(574) - lu(519) * lu(572)
+         lu(575) = lu(575) - lu(520) * lu(572)
+         lu(576) = lu(576) - lu(521) * lu(572)
+         lu(577) = lu(577) - lu(522) * lu(572)
+         lu(578) = lu(578) - lu(523) * lu(572)
+         lu(579) = lu(579) - lu(524) * lu(572)
+         lu(580) = lu(580) - lu(525) * lu(572)
+         lu(581) = lu(581) - lu(526) * lu(572)
+         lu(582) = lu(582) - lu(527) * lu(572)
+         lu(590) = lu(590) - lu(518) * lu(589)
+         lu(591) = lu(591) - lu(519) * lu(589)
+         lu(592) = lu(592) - lu(520) * lu(589)
+         lu(593) = lu(593) - lu(521) * lu(589)
+         lu(594) = lu(594) - lu(522) * lu(589)
+         lu(595) = lu(595) - lu(523) * lu(589)
+         lu(596) = lu(596) - lu(524) * lu(589)
+         lu(597) = lu(597) - lu(525) * lu(589)
+         lu(598) = lu(598) - lu(526) * lu(589)
+         lu(599) = lu(599) - lu(527) * lu(589)
+         lu(613) = lu(613) - lu(518) * lu(612)
+         lu(614) = lu(614) - lu(519) * lu(612)
+         lu(615) = lu(615) - lu(520) * lu(612)
+         lu(616) = lu(616) - lu(521) * lu(612)
+         lu(617) = lu(617) - lu(522) * lu(612)
+         lu(618) = lu(618) - lu(523) * lu(612)
+         lu(619) = lu(619) - lu(524) * lu(612)
+         lu(620) = lu(620) - lu(525) * lu(612)
+         lu(621) = lu(621) - lu(526) * lu(612)
+         lu(622) = lu(622) - lu(527) * lu(612)
+         lu(631) = lu(631) - lu(518) * lu(630)
+         lu(632) = lu(632) - lu(519) * lu(630)
+         lu(633) = lu(633) - lu(520) * lu(630)
+         lu(634) = lu(634) - lu(521) * lu(630)
+         lu(635) = lu(635) - lu(522) * lu(630)
+         lu(636) = lu(636) - lu(523) * lu(630)
+         lu(637) = lu(637) - lu(524) * lu(630)
+         lu(638) = lu(638) - lu(525) * lu(630)
+         lu(639) = lu(639) - lu(526) * lu(630)
+         lu(640) = lu(640) - lu(527) * lu(630)
+         lu(693) = lu(693) - lu(518) * lu(692)
+         lu(694) = lu(694) - lu(519) * lu(692)
+         lu(695) = lu(695) - lu(520) * lu(692)
+         lu(696) = lu(696) - lu(521) * lu(692)
+         lu(697) = lu(697) - lu(522) * lu(692)
+         lu(698) = lu(698) - lu(523) * lu(692)
+         lu(699) = lu(699) - lu(524) * lu(692)
+         lu(700) = lu(700) - lu(525) * lu(692)
+         lu(701) = lu(701) - lu(526) * lu(692)
+         lu(702) = lu(702) - lu(527) * lu(692)
+         lu(737) = lu(737) - lu(518) * lu(736)
+         lu(738) = lu(738) - lu(519) * lu(736)
+         lu(739) = lu(739) - lu(520) * lu(736)
+         lu(740) = lu(740) - lu(521) * lu(736)
+         lu(741) = lu(741) - lu(522) * lu(736)
+         lu(742) = lu(742) - lu(523) * lu(736)
+         lu(743) = lu(743) - lu(524) * lu(736)
+         lu(744) = lu(744) - lu(525) * lu(736)
+         lu(745) = lu(745) - lu(526) * lu(736)
+         lu(746) = lu(746) - lu(527) * lu(736)
+         lu(756) = lu(756) - lu(518) * lu(755)
+         lu(757) = lu(757) - lu(519) * lu(755)
+         lu(758) = lu(758) - lu(520) * lu(755)
+         lu(759) = lu(759) - lu(521) * lu(755)
+         lu(760) = lu(760) - lu(522) * lu(755)
+         lu(761) = lu(761) - lu(523) * lu(755)
+         lu(762) = lu(762) - lu(524) * lu(755)
+         lu(763) = lu(763) - lu(525) * lu(755)
+         lu(764) = lu(764) - lu(526) * lu(755)
+         lu(765) = lu(765) - lu(527) * lu(755)
+         lu(783) = lu(783) - lu(518) * lu(782)
+         lu(784) = lu(784) - lu(519) * lu(782)
+         lu(785) = lu(785) - lu(520) * lu(782)
+         lu(786) = lu(786) - lu(521) * lu(782)
+         lu(787) = lu(787) - lu(522) * lu(782)
+         lu(788) = lu(788) - lu(523) * lu(782)
+         lu(789) = lu(789) - lu(524) * lu(782)
+         lu(790) = lu(790) - lu(525) * lu(782)
+         lu(791) = lu(791) - lu(526) * lu(782)
+         lu(792) = lu(792) - lu(527) * lu(782)
+         lu(817) = lu(817) - lu(518) * lu(816)
+         lu(818) = lu(818) - lu(519) * lu(816)
+         lu(819) = lu(819) - lu(520) * lu(816)
+         lu(820) = lu(820) - lu(521) * lu(816)
+         lu(821) = lu(821) - lu(522) * lu(816)
+         lu(822) = lu(822) - lu(523) * lu(816)
+         lu(823) = lu(823) - lu(524) * lu(816)
+         lu(824) = lu(824) - lu(525) * lu(816)
+         lu(825) = lu(825) - lu(526) * lu(816)
+         lu(826) = lu(826) - lu(527) * lu(816)
+                                                                        
+         lu(536) = 1. / lu(536)
+         lu(537) = lu(537) * lu(536)
+         lu(538) = lu(538) * lu(536)
+         lu(539) = lu(539) * lu(536)
+         lu(540) = lu(540) * lu(536)
+         lu(541) = lu(541) * lu(536)
+         lu(542) = lu(542) * lu(536)
+         lu(543) = lu(543) * lu(536)
+         lu(544) = lu(544) * lu(536)
+         lu(545) = lu(545) * lu(536)
+         lu(574) = lu(574) - lu(537) * lu(573)
+         lu(575) = lu(575) - lu(538) * lu(573)
+         lu(576) = lu(576) - lu(539) * lu(573)
+         lu(577) = lu(577) - lu(540) * lu(573)
+         lu(578) = lu(578) - lu(541) * lu(573)
+         lu(579) = lu(579) - lu(542) * lu(573)
+         lu(580) = lu(580) - lu(543) * lu(573)
+         lu(581) = lu(581) - lu(544) * lu(573)
+         lu(582) = lu(582) - lu(545) * lu(573)
+         lu(591) = lu(591) - lu(537) * lu(590)
+         lu(592) = lu(592) - lu(538) * lu(590)
+         lu(593) = lu(593) - lu(539) * lu(590)
+         lu(594) = lu(594) - lu(540) * lu(590)
+         lu(595) = lu(595) - lu(541) * lu(590)
+         lu(596) = lu(596) - lu(542) * lu(590)
+         lu(597) = lu(597) - lu(543) * lu(590)
+         lu(598) = lu(598) - lu(544) * lu(590)
+         lu(599) = lu(599) - lu(545) * lu(590)
+         lu(614) = lu(614) - lu(537) * lu(613)
+         lu(615) = lu(615) - lu(538) * lu(613)
+         lu(616) = lu(616) - lu(539) * lu(613)
+         lu(617) = lu(617) - lu(540) * lu(613)
+         lu(618) = lu(618) - lu(541) * lu(613)
+         lu(619) = lu(619) - lu(542) * lu(613)
+         lu(620) = lu(620) - lu(543) * lu(613)
+         lu(621) = lu(621) - lu(544) * lu(613)
+         lu(622) = lu(622) - lu(545) * lu(613)
+         lu(632) = lu(632) - lu(537) * lu(631)
+         lu(633) = lu(633) - lu(538) * lu(631)
+         lu(634) = lu(634) - lu(539) * lu(631)
+         lu(635) = lu(635) - lu(540) * lu(631)
+         lu(636) = lu(636) - lu(541) * lu(631)
+         lu(637) = lu(637) - lu(542) * lu(631)
+         lu(638) = lu(638) - lu(543) * lu(631)
+         lu(639) = lu(639) - lu(544) * lu(631)
+         lu(640) = lu(640) - lu(545) * lu(631)
+         lu(694) = lu(694) - lu(537) * lu(693)
+         lu(695) = lu(695) - lu(538) * lu(693)
+         lu(696) = lu(696) - lu(539) * lu(693)
+         lu(697) = lu(697) - lu(540) * lu(693)
+         lu(698) = lu(698) - lu(541) * lu(693)
+         lu(699) = lu(699) - lu(542) * lu(693)
+         lu(700) = lu(700) - lu(543) * lu(693)
+         lu(701) = lu(701) - lu(544) * lu(693)
+         lu(702) = lu(702) - lu(545) * lu(693)
+         lu(738) = lu(738) - lu(537) * lu(737)
+         lu(739) = lu(739) - lu(538) * lu(737)
+         lu(740) = lu(740) - lu(539) * lu(737)
+         lu(741) = lu(741) - lu(540) * lu(737)
+         lu(742) = lu(742) - lu(541) * lu(737)
+         lu(743) = lu(743) - lu(542) * lu(737)
+         lu(744) = lu(744) - lu(543) * lu(737)
+         lu(745) = lu(745) - lu(544) * lu(737)
+         lu(746) = lu(746) - lu(545) * lu(737)
+         lu(757) = lu(757) - lu(537) * lu(756)
+         lu(758) = lu(758) - lu(538) * lu(756)
+         lu(759) = lu(759) - lu(539) * lu(756)
+         lu(760) = lu(760) - lu(540) * lu(756)
+         lu(761) = lu(761) - lu(541) * lu(756)
+         lu(762) = lu(762) - lu(542) * lu(756)
+         lu(763) = lu(763) - lu(543) * lu(756)
+         lu(764) = lu(764) - lu(544) * lu(756)
+         lu(765) = lu(765) - lu(545) * lu(756)
+         lu(784) = lu(784) - lu(537) * lu(783)
+         lu(785) = lu(785) - lu(538) * lu(783)
+         lu(786) = lu(786) - lu(539) * lu(783)
+         lu(787) = lu(787) - lu(540) * lu(783)
+         lu(788) = lu(788) - lu(541) * lu(783)
+         lu(789) = lu(789) - lu(542) * lu(783)
+         lu(790) = lu(790) - lu(543) * lu(783)
+         lu(791) = lu(791) - lu(544) * lu(783)
+         lu(792) = lu(792) - lu(545) * lu(783)
+         lu(818) = lu(818) - lu(537) * lu(817)
+         lu(819) = lu(819) - lu(538) * lu(817)
+         lu(820) = lu(820) - lu(539) * lu(817)
+         lu(821) = lu(821) - lu(540) * lu(817)
+         lu(822) = lu(822) - lu(541) * lu(817)
+         lu(823) = lu(823) - lu(542) * lu(817)
+         lu(824) = lu(824) - lu(543) * lu(817)
+         lu(825) = lu(825) - lu(544) * lu(817)
+         lu(826) = lu(826) - lu(545) * lu(817)
+                                                                        
+                                                                        
+      end subroutine imp_lu_fac10
+                                                                        
+      subroutine imp_lu_fac11( lu )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(inout) ::   lu(imp_nzcnt)
+                                                                        
+         lu(574) = 1. / lu(574)
+         lu(575) = lu(575) * lu(574)
+         lu(576) = lu(576) * lu(574)
+         lu(577) = lu(577) * lu(574)
+         lu(578) = lu(578) * lu(574)
+         lu(579) = lu(579) * lu(574)
+         lu(580) = lu(580) * lu(574)
+         lu(581) = lu(581) * lu(574)
+         lu(582) = lu(582) * lu(574)
+         lu(592) = lu(592) - lu(575) * lu(591)
+         lu(593) = lu(593) - lu(576) * lu(591)
+         lu(594) = lu(594) - lu(577) * lu(591)
+         lu(595) = lu(595) - lu(578) * lu(591)
+         lu(596) = lu(596) - lu(579) * lu(591)
+         lu(597) = lu(597) - lu(580) * lu(591)
+         lu(598) = lu(598) - lu(581) * lu(591)
+         lu(599) = lu(599) - lu(582) * lu(591)
+         lu(615) = lu(615) - lu(575) * lu(614)
+         lu(616) = lu(616) - lu(576) * lu(614)
+         lu(617) = lu(617) - lu(577) * lu(614)
+         lu(618) = lu(618) - lu(578) * lu(614)
+         lu(619) = lu(619) - lu(579) * lu(614)
+         lu(620) = lu(620) - lu(580) * lu(614)
+         lu(621) = lu(621) - lu(581) * lu(614)
+         lu(622) = lu(622) - lu(582) * lu(614)
+         lu(633) = lu(633) - lu(575) * lu(632)
+         lu(634) = lu(634) - lu(576) * lu(632)
+         lu(635) = lu(635) - lu(577) * lu(632)
+         lu(636) = lu(636) - lu(578) * lu(632)
+         lu(637) = lu(637) - lu(579) * lu(632)
+         lu(638) = lu(638) - lu(580) * lu(632)
+         lu(639) = lu(639) - lu(581) * lu(632)
+         lu(640) = lu(640) - lu(582) * lu(632)
+         lu(695) = lu(695) - lu(575) * lu(694)
+         lu(696) = lu(696) - lu(576) * lu(694)
+         lu(697) = lu(697) - lu(577) * lu(694)
+         lu(698) = lu(698) - lu(578) * lu(694)
+         lu(699) = lu(699) - lu(579) * lu(694)
+         lu(700) = lu(700) - lu(580) * lu(694)
+         lu(701) = lu(701) - lu(581) * lu(694)
+         lu(702) = lu(702) - lu(582) * lu(694)
+         lu(739) = lu(739) - lu(575) * lu(738)
+         lu(740) = lu(740) - lu(576) * lu(738)
+         lu(741) = lu(741) - lu(577) * lu(738)
+         lu(742) = lu(742) - lu(578) * lu(738)
+         lu(743) = lu(743) - lu(579) * lu(738)
+         lu(744) = lu(744) - lu(580) * lu(738)
+         lu(745) = lu(745) - lu(581) * lu(738)
+         lu(746) = lu(746) - lu(582) * lu(738)
+         lu(758) = lu(758) - lu(575) * lu(757)
+         lu(759) = lu(759) - lu(576) * lu(757)
+         lu(760) = lu(760) - lu(577) * lu(757)
+         lu(761) = lu(761) - lu(578) * lu(757)
+         lu(762) = lu(762) - lu(579) * lu(757)
+         lu(763) = lu(763) - lu(580) * lu(757)
+         lu(764) = lu(764) - lu(581) * lu(757)
+         lu(765) = lu(765) - lu(582) * lu(757)
+         lu(785) = lu(785) - lu(575) * lu(784)
+         lu(786) = lu(786) - lu(576) * lu(784)
+         lu(787) = lu(787) - lu(577) * lu(784)
+         lu(788) = lu(788) - lu(578) * lu(784)
+         lu(789) = lu(789) - lu(579) * lu(784)
+         lu(790) = lu(790) - lu(580) * lu(784)
+         lu(791) = lu(791) - lu(581) * lu(784)
+         lu(792) = lu(792) - lu(582) * lu(784)
+         lu(819) = lu(819) - lu(575) * lu(818)
+         lu(820) = lu(820) - lu(576) * lu(818)
+         lu(821) = lu(821) - lu(577) * lu(818)
+         lu(822) = lu(822) - lu(578) * lu(818)
+         lu(823) = lu(823) - lu(579) * lu(818)
+         lu(824) = lu(824) - lu(580) * lu(818)
+         lu(825) = lu(825) - lu(581) * lu(818)
+         lu(826) = lu(826) - lu(582) * lu(818)
+                                                                        
+         lu(592) = 1. / lu(592)
+         lu(593) = lu(593) * lu(592)
+         lu(594) = lu(594) * lu(592)
+         lu(595) = lu(595) * lu(592)
+         lu(596) = lu(596) * lu(592)
+         lu(597) = lu(597) * lu(592)
+         lu(598) = lu(598) * lu(592)
+         lu(599) = lu(599) * lu(592)
+         lu(616) = lu(616) - lu(593) * lu(615)
+         lu(617) = lu(617) - lu(594) * lu(615)
+         lu(618) = lu(618) - lu(595) * lu(615)
+         lu(619) = lu(619) - lu(596) * lu(615)
+         lu(620) = lu(620) - lu(597) * lu(615)
+         lu(621) = lu(621) - lu(598) * lu(615)
+         lu(622) = lu(622) - lu(599) * lu(615)
+         lu(634) = lu(634) - lu(593) * lu(633)
+         lu(635) = lu(635) - lu(594) * lu(633)
+         lu(636) = lu(636) - lu(595) * lu(633)
+         lu(637) = lu(637) - lu(596) * lu(633)
+         lu(638) = lu(638) - lu(597) * lu(633)
+         lu(639) = lu(639) - lu(598) * lu(633)
+         lu(640) = lu(640) - lu(599) * lu(633)
+         lu(696) = lu(696) - lu(593) * lu(695)
+         lu(697) = lu(697) - lu(594) * lu(695)
+         lu(698) = lu(698) - lu(595) * lu(695)
+         lu(699) = lu(699) - lu(596) * lu(695)
+         lu(700) = lu(700) - lu(597) * lu(695)
+         lu(701) = lu(701) - lu(598) * lu(695)
+         lu(702) = lu(702) - lu(599) * lu(695)
+         lu(740) = lu(740) - lu(593) * lu(739)
+         lu(741) = lu(741) - lu(594) * lu(739)
+         lu(742) = lu(742) - lu(595) * lu(739)
+         lu(743) = lu(743) - lu(596) * lu(739)
+         lu(744) = lu(744) - lu(597) * lu(739)
+         lu(745) = lu(745) - lu(598) * lu(739)
+         lu(746) = lu(746) - lu(599) * lu(739)
+         lu(759) = lu(759) - lu(593) * lu(758)
+         lu(760) = lu(760) - lu(594) * lu(758)
+         lu(761) = lu(761) - lu(595) * lu(758)
+         lu(762) = lu(762) - lu(596) * lu(758)
+         lu(763) = lu(763) - lu(597) * lu(758)
+         lu(764) = lu(764) - lu(598) * lu(758)
+         lu(765) = lu(765) - lu(599) * lu(758)
+         lu(786) = lu(786) - lu(593) * lu(785)
+         lu(787) = lu(787) - lu(594) * lu(785)
+         lu(788) = lu(788) - lu(595) * lu(785)
+         lu(789) = lu(789) - lu(596) * lu(785)
+         lu(790) = lu(790) - lu(597) * lu(785)
+         lu(791) = lu(791) - lu(598) * lu(785)
+         lu(792) = lu(792) - lu(599) * lu(785)
+         lu(820) = lu(820) - lu(593) * lu(819)
+         lu(821) = lu(821) - lu(594) * lu(819)
+         lu(822) = lu(822) - lu(595) * lu(819)
+         lu(823) = lu(823) - lu(596) * lu(819)
+         lu(824) = lu(824) - lu(597) * lu(819)
+         lu(825) = lu(825) - lu(598) * lu(819)
+         lu(826) = lu(826) - lu(599) * lu(819)
+                                                                        
+         lu(616) = 1. / lu(616)
+         lu(617) = lu(617) * lu(616)
+         lu(618) = lu(618) * lu(616)
+         lu(619) = lu(619) * lu(616)
+         lu(620) = lu(620) * lu(616)
+         lu(621) = lu(621) * lu(616)
+         lu(622) = lu(622) * lu(616)
+         lu(635) = lu(635) - lu(617) * lu(634)
+         lu(636) = lu(636) - lu(618) * lu(634)
+         lu(637) = lu(637) - lu(619) * lu(634)
+         lu(638) = lu(638) - lu(620) * lu(634)
+         lu(639) = lu(639) - lu(621) * lu(634)
+         lu(640) = lu(640) - lu(622) * lu(634)
+         lu(697) = lu(697) - lu(617) * lu(696)
+         lu(698) = lu(698) - lu(618) * lu(696)
+         lu(699) = lu(699) - lu(619) * lu(696)
+         lu(700) = lu(700) - lu(620) * lu(696)
+         lu(701) = lu(701) - lu(621) * lu(696)
+         lu(702) = lu(702) - lu(622) * lu(696)
+         lu(741) = lu(741) - lu(617) * lu(740)
+         lu(742) = lu(742) - lu(618) * lu(740)
+         lu(743) = lu(743) - lu(619) * lu(740)
+         lu(744) = lu(744) - lu(620) * lu(740)
+         lu(745) = lu(745) - lu(621) * lu(740)
+         lu(746) = lu(746) - lu(622) * lu(740)
+         lu(760) = lu(760) - lu(617) * lu(759)
+         lu(761) = lu(761) - lu(618) * lu(759)
+         lu(762) = lu(762) - lu(619) * lu(759)
+         lu(763) = lu(763) - lu(620) * lu(759)
+         lu(764) = lu(764) - lu(621) * lu(759)
+         lu(765) = lu(765) - lu(622) * lu(759)
+         lu(787) = lu(787) - lu(617) * lu(786)
+         lu(788) = lu(788) - lu(618) * lu(786)
+         lu(789) = lu(789) - lu(619) * lu(786)
+         lu(790) = lu(790) - lu(620) * lu(786)
+         lu(791) = lu(791) - lu(621) * lu(786)
+         lu(792) = lu(792) - lu(622) * lu(786)
+         lu(821) = lu(821) - lu(617) * lu(820)
+         lu(822) = lu(822) - lu(618) * lu(820)
+         lu(823) = lu(823) - lu(619) * lu(820)
+         lu(824) = lu(824) - lu(620) * lu(820)
+         lu(825) = lu(825) - lu(621) * lu(820)
+         lu(826) = lu(826) - lu(622) * lu(820)
+                                                                        
+         lu(635) = 1. / lu(635)
+         lu(636) = lu(636) * lu(635)
+         lu(637) = lu(637) * lu(635)
+         lu(638) = lu(638) * lu(635)
+         lu(639) = lu(639) * lu(635)
+         lu(640) = lu(640) * lu(635)
+         lu(698) = lu(698) - lu(636) * lu(697)
+         lu(699) = lu(699) - lu(637) * lu(697)
+         lu(700) = lu(700) - lu(638) * lu(697)
+         lu(701) = lu(701) - lu(639) * lu(697)
+         lu(702) = lu(702) - lu(640) * lu(697)
+         lu(742) = lu(742) - lu(636) * lu(741)
+         lu(743) = lu(743) - lu(637) * lu(741)
+         lu(744) = lu(744) - lu(638) * lu(741)
+         lu(745) = lu(745) - lu(639) * lu(741)
+         lu(746) = lu(746) - lu(640) * lu(741)
+         lu(761) = lu(761) - lu(636) * lu(760)
+         lu(762) = lu(762) - lu(637) * lu(760)
+         lu(763) = lu(763) - lu(638) * lu(760)
+         lu(764) = lu(764) - lu(639) * lu(760)
+         lu(765) = lu(765) - lu(640) * lu(760)
+         lu(788) = lu(788) - lu(636) * lu(787)
+         lu(789) = lu(789) - lu(637) * lu(787)
+         lu(790) = lu(790) - lu(638) * lu(787)
+         lu(791) = lu(791) - lu(639) * lu(787)
+         lu(792) = lu(792) - lu(640) * lu(787)
+         lu(822) = lu(822) - lu(636) * lu(821)
+         lu(823) = lu(823) - lu(637) * lu(821)
+         lu(824) = lu(824) - lu(638) * lu(821)
+         lu(825) = lu(825) - lu(639) * lu(821)
+         lu(826) = lu(826) - lu(640) * lu(821)
+                                                                        
+         lu(698) = 1. / lu(698)
+         lu(699) = lu(699) * lu(698)
+         lu(700) = lu(700) * lu(698)
+         lu(701) = lu(701) * lu(698)
+         lu(702) = lu(702) * lu(698)
+         lu(743) = lu(743) - lu(699) * lu(742)
+         lu(744) = lu(744) - lu(700) * lu(742)
+         lu(745) = lu(745) - lu(701) * lu(742)
+         lu(746) = lu(746) - lu(702) * lu(742)
+         lu(762) = lu(762) - lu(699) * lu(761)
+         lu(763) = lu(763) - lu(700) * lu(761)
+         lu(764) = lu(764) - lu(701) * lu(761)
+         lu(765) = lu(765) - lu(702) * lu(761)
+         lu(789) = lu(789) - lu(699) * lu(788)
+         lu(790) = lu(790) - lu(700) * lu(788)
+         lu(791) = lu(791) - lu(701) * lu(788)
+         lu(792) = lu(792) - lu(702) * lu(788)
+         lu(823) = lu(823) - lu(699) * lu(822)
+         lu(824) = lu(824) - lu(700) * lu(822)
+         lu(825) = lu(825) - lu(701) * lu(822)
+         lu(826) = lu(826) - lu(702) * lu(822)
+                                                                        
+         lu(743) = 1. / lu(743)
+         lu(744) = lu(744) * lu(743)
+         lu(745) = lu(745) * lu(743)
+         lu(746) = lu(746) * lu(743)
+         lu(763) = lu(763) - lu(744) * lu(762)
+         lu(764) = lu(764) - lu(745) * lu(762)
+         lu(765) = lu(765) - lu(746) * lu(762)
+         lu(790) = lu(790) - lu(744) * lu(789)
+         lu(791) = lu(791) - lu(745) * lu(789)
+         lu(792) = lu(792) - lu(746) * lu(789)
+         lu(824) = lu(824) - lu(744) * lu(823)
+         lu(825) = lu(825) - lu(745) * lu(823)
+         lu(826) = lu(826) - lu(746) * lu(823)
+                                                                        
+         lu(763) = 1. / lu(763)
+         lu(764) = lu(764) * lu(763)
+         lu(765) = lu(765) * lu(763)
+         lu(791) = lu(791) - lu(764) * lu(790)
+         lu(792) = lu(792) - lu(765) * lu(790)
+         lu(825) = lu(825) - lu(764) * lu(824)
+         lu(826) = lu(826) - lu(765) * lu(824)
+                                                                        
+         lu(791) = 1. / lu(791)
+         lu(792) = lu(792) * lu(791)
+         lu(826) = lu(826) - lu(792) * lu(825)
+                                                                        
+         lu(826) = 1. / lu(826)
+                                                                        
+                                                                        
+      end subroutine imp_lu_fac11
+                                                                        
+      subroutine imp_lu_fac( lu )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(inout) ::   lu(imp_nzcnt)
+                                                                        
+      call imp_lu_fac01( lu )
+      call imp_lu_fac02( lu )
+      call imp_lu_fac03( lu )
+      call imp_lu_fac04( lu )
+      call imp_lu_fac05( lu )
+      call imp_lu_fac06( lu )
+      call imp_lu_fac07( lu )
+      call imp_lu_fac08( lu )
+      call imp_lu_fac09( lu )
+      call imp_lu_fac10( lu )
+      call imp_lu_fac11( lu )
+                                                                        
+      end subroutine imp_lu_fac
                                                                         
       end module MO_IMP_FACTOR_MOD
 
       module MO_ROD_FACTOR_MOD
 
-      CONTAINS
+      contains
                                                                         
-      subroutine ROD_LU_FAC( lu )
+      subroutine rod_lu_fac( lu )
                                                                         
       use CHEM_MODS_MOD, only : rod_nzcnt, clsze
                                                                         
@@ -2002,208 +5397,18 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(clsze,rod_nzcnt)
+      real, intent(inout) ::   lu(rod_nzcnt)
                                                                         
                                                                         
-      end subroutine ROD_LU_FAC
+      end subroutine rod_lu_fac
                                                                         
       end module MO_ROD_FACTOR_MOD
 
       module MO_IMP_SOLVE_MOD
 
-      CONTAINS
+      contains
                                                                         
-      subroutine IMP_LU_SLV01( lu, b )
-                                                                        
-      use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
-                                                                        
-      implicit none
-                                                                        
-!-----------------------------------------------------------------------
-!       ... Dummy args
-!-----------------------------------------------------------------------
-      real, intent(in)    ::   lu(clsze,imp_nzcnt)
-      real, intent(inout) ::   b(clsze,clscnt4)
-                                                                        
-!-----------------------------------------------------------------------
-!       ... Local variables
-!-----------------------------------------------------------------------
-      integer :: k
-                                                                        
-!-----------------------------------------------------------------------
-!       ... Solve L * y = b
-!-----------------------------------------------------------------------
-      do k = 1,clsze
-                                                                        
-                                                                        
-                                                                        
-         b(k,29) = b(k,29) - lu(k,6) * b(k,4)
-                                                                        
-         b(k,29) = b(k,29) - lu(k,9) * b(k,5)
-                                                                        
-         b(k,29) = b(k,29) - lu(k,11) * b(k,6)
-         b(k,31) = b(k,31) - lu(k,12) * b(k,6)
-                                                                        
-         b(k,21) = b(k,21) - lu(k,14) * b(k,7)
-         b(k,27) = b(k,27) - lu(k,15) * b(k,7)
-         b(k,29) = b(k,29) - lu(k,16) * b(k,7)
-         b(k,31) = b(k,31) - lu(k,17) * b(k,7)
-         b(k,32) = b(k,32) - lu(k,18) * b(k,7)
-                                                                        
-         b(k,17) = b(k,17) - lu(k,20) * b(k,8)
-         b(k,30) = b(k,30) - lu(k,21) * b(k,8)
-         b(k,34) = b(k,34) - lu(k,22) * b(k,8)
-                                                                        
-         b(k,29) = b(k,29) - lu(k,25) * b(k,9)
-         b(k,30) = b(k,30) - lu(k,26) * b(k,9)
-         b(k,34) = b(k,34) - lu(k,27) * b(k,9)
-                                                                        
-         b(k,29) = b(k,29) - lu(k,29) * b(k,10)
-         b(k,30) = b(k,30) - lu(k,30) * b(k,10)
-         b(k,31) = b(k,31) - lu(k,31) * b(k,10)
-                                                                        
-         b(k,17) = b(k,17) - lu(k,33) * b(k,11)
-         b(k,29) = b(k,29) - lu(k,34) * b(k,11)
-         b(k,31) = b(k,31) - lu(k,35) * b(k,11)
-         b(k,34) = b(k,34) - lu(k,36) * b(k,11)
-         b(k,35) = b(k,35) - lu(k,37) * b(k,11)
-                                                                        
-         b(k,27) = b(k,27) - lu(k,39) * b(k,12)
-         b(k,29) = b(k,29) - lu(k,40) * b(k,12)
-         b(k,32) = b(k,32) - lu(k,41) * b(k,12)
-         b(k,35) = b(k,35) - lu(k,42) * b(k,12)
-                                                                        
-         b(k,23) = b(k,23) - lu(k,44) * b(k,13)
-         b(k,26) = b(k,26) - lu(k,45) * b(k,13)
-         b(k,29) = b(k,29) - lu(k,46) * b(k,13)
-         b(k,31) = b(k,31) - lu(k,47) * b(k,13)
-                                                                        
-         b(k,20) = b(k,20) - lu(k,49) * b(k,14)
-         b(k,25) = b(k,25) - lu(k,50) * b(k,14)
-         b(k,29) = b(k,29) - lu(k,51) * b(k,14)
-         b(k,31) = b(k,31) - lu(k,52) * b(k,14)
-                                                                        
-         b(k,24) = b(k,24) - lu(k,54) * b(k,15)
-         b(k,27) = b(k,27) - lu(k,55) * b(k,15)
-         b(k,29) = b(k,29) - lu(k,56) * b(k,15)
-         b(k,35) = b(k,35) - lu(k,57) * b(k,15)
-                                                                        
-         b(k,27) = b(k,27) - lu(k,59) * b(k,16)
-         b(k,29) = b(k,29) - lu(k,60) * b(k,16)
-         b(k,31) = b(k,31) - lu(k,61) * b(k,16)
-         b(k,32) = b(k,32) - lu(k,62) * b(k,16)
-                                                                        
-         b(k,29) = b(k,29) - lu(k,64) * b(k,17)
-         b(k,30) = b(k,30) - lu(k,65) * b(k,17)
-         b(k,34) = b(k,34) - lu(k,66) * b(k,17)
-                                                                        
-         b(k,30) = b(k,30) - lu(k,68) * b(k,18)
-         b(k,31) = b(k,31) - lu(k,69) * b(k,18)
-         b(k,33) = b(k,33) - lu(k,70) * b(k,18)
-         b(k,35) = b(k,35) - lu(k,71) * b(k,18)
-                                                                        
-         b(k,27) = b(k,27) - lu(k,73) * b(k,19)
-         b(k,29) = b(k,29) - lu(k,74) * b(k,19)
-         b(k,30) = b(k,30) - lu(k,75) * b(k,19)
-         b(k,32) = b(k,32) - lu(k,76) * b(k,19)
-         b(k,34) = b(k,34) - lu(k,77) * b(k,19)
-         b(k,35) = b(k,35) - lu(k,78) * b(k,19)
-                                                                        
-         b(k,24) = b(k,24) - lu(k,80) * b(k,20)
-         b(k,29) = b(k,29) - lu(k,81) * b(k,20)
-         b(k,32) = b(k,32) - lu(k,82) * b(k,20)
-         b(k,35) = b(k,35) - lu(k,83) * b(k,20)
-                                                                        
-         b(k,28) = b(k,28) - lu(k,85) * b(k,21)
-         b(k,29) = b(k,29) - lu(k,86) * b(k,21)
-         b(k,30) = b(k,30) - lu(k,87) * b(k,21)
-         b(k,31) = b(k,31) - lu(k,88) * b(k,21)
-         b(k,33) = b(k,33) - lu(k,89) * b(k,21)
-                                                                        
-         b(k,28) = b(k,28) - lu(k,92) * b(k,22)
-         b(k,29) = b(k,29) - lu(k,93) * b(k,22)
-         b(k,30) = b(k,30) - lu(k,94) * b(k,22)
-         b(k,31) = b(k,31) - lu(k,95) * b(k,22)
-         b(k,33) = b(k,33) - lu(k,96) * b(k,22)
-         b(k,34) = b(k,34) - lu(k,97) * b(k,22)
-         b(k,35) = b(k,35) - lu(k,98) * b(k,22)
-                                                                        
-         b(k,26) = b(k,26) - lu(k,101) * b(k,23)
-         b(k,27) = b(k,27) - lu(k,102) * b(k,23)
-         b(k,29) = b(k,29) - lu(k,103) * b(k,23)
-         b(k,30) = b(k,30) - lu(k,104) * b(k,23)
-         b(k,31) = b(k,31) - lu(k,105) * b(k,23)
-         b(k,32) = b(k,32) - lu(k,106) * b(k,23)
-         b(k,33) = b(k,33) - lu(k,107) * b(k,23)
-                                                                        
-         b(k,27) = b(k,27) - lu(k,110) * b(k,24)
-         b(k,29) = b(k,29) - lu(k,111) * b(k,24)
-         b(k,30) = b(k,30) - lu(k,112) * b(k,24)
-         b(k,31) = b(k,31) - lu(k,113) * b(k,24)
-         b(k,33) = b(k,33) - lu(k,114) * b(k,24)
-         b(k,35) = b(k,35) - lu(k,115) * b(k,24)
-                                                                        
-         b(k,26) = b(k,26) - lu(k,120) * b(k,25)
-         b(k,27) = b(k,27) - lu(k,121) * b(k,25)
-         b(k,29) = b(k,29) - lu(k,122) * b(k,25)
-         b(k,30) = b(k,30) - lu(k,123) * b(k,25)
-         b(k,31) = b(k,31) - lu(k,124) * b(k,25)
-         b(k,32) = b(k,32) - lu(k,125) * b(k,25)
-         b(k,33) = b(k,33) - lu(k,126) * b(k,25)
-         b(k,35) = b(k,35) - lu(k,127) * b(k,25)
-                                                                        
-         b(k,29) = b(k,29) - lu(k,130) * b(k,26)
-         b(k,30) = b(k,30) - lu(k,131) * b(k,26)
-         b(k,31) = b(k,31) - lu(k,132) * b(k,26)
-         b(k,32) = b(k,32) - lu(k,133) * b(k,26)
-         b(k,34) = b(k,34) - lu(k,134) * b(k,26)
-         b(k,35) = b(k,35) - lu(k,135) * b(k,26)
-                                                                        
-         b(k,29) = b(k,29) - lu(k,138) * b(k,27)
-         b(k,30) = b(k,30) - lu(k,139) * b(k,27)
-         b(k,31) = b(k,31) - lu(k,140) * b(k,27)
-         b(k,34) = b(k,34) - lu(k,141) * b(k,27)
-                                                                        
-         b(k,29) = b(k,29) - lu(k,147) * b(k,28)
-         b(k,30) = b(k,30) - lu(k,148) * b(k,28)
-         b(k,31) = b(k,31) - lu(k,149) * b(k,28)
-         b(k,32) = b(k,32) - lu(k,150) * b(k,28)
-         b(k,33) = b(k,33) - lu(k,151) * b(k,28)
-         b(k,34) = b(k,34) - lu(k,152) * b(k,28)
-         b(k,35) = b(k,35) - lu(k,153) * b(k,28)
-                                                                        
-         b(k,30) = b(k,30) - lu(k,179) * b(k,29)
-         b(k,31) = b(k,31) - lu(k,180) * b(k,29)
-         b(k,32) = b(k,32) - lu(k,181) * b(k,29)
-         b(k,33) = b(k,33) - lu(k,182) * b(k,29)
-         b(k,34) = b(k,34) - lu(k,183) * b(k,29)
-         b(k,35) = b(k,35) - lu(k,184) * b(k,29)
-                                                                        
-         b(k,31) = b(k,31) - lu(k,194) * b(k,30)
-         b(k,32) = b(k,32) - lu(k,195) * b(k,30)
-         b(k,33) = b(k,33) - lu(k,196) * b(k,30)
-         b(k,34) = b(k,34) - lu(k,197) * b(k,30)
-         b(k,35) = b(k,35) - lu(k,198) * b(k,30)
-                                                                        
-         b(k,32) = b(k,32) - lu(k,218) * b(k,31)
-         b(k,33) = b(k,33) - lu(k,219) * b(k,31)
-         b(k,34) = b(k,34) - lu(k,220) * b(k,31)
-         b(k,35) = b(k,35) - lu(k,221) * b(k,31)
-                                                                        
-         b(k,33) = b(k,33) - lu(k,233) * b(k,32)
-         b(k,34) = b(k,34) - lu(k,234) * b(k,32)
-         b(k,35) = b(k,35) - lu(k,235) * b(k,32)
-                                                                        
-         b(k,34) = b(k,34) - lu(k,249) * b(k,33)
-         b(k,35) = b(k,35) - lu(k,250) * b(k,33)
-                                                                        
-         b(k,35) = b(k,35) - lu(k,266) * b(k,34)
-                                                                        
-      end do
-                                                                        
-      end subroutine IMP_LU_SLV01
-                                                                        
-      subroutine IMP_LU_SLV02( lu, b )
+      subroutine imp_lu_slv01( lu, b )
                                                                         
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
                                                                         
@@ -2212,208 +5417,744 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(in)    ::   lu(clsze,imp_nzcnt)
-      real, intent(inout) ::   b(clsze,clscnt4)
+      real, intent(in)    ::   lu(imp_nzcnt)
+      real, intent(inout) ::   b(clscnt4)
                                                                         
 !-----------------------------------------------------------------------
 !       ... Local variables
 !-----------------------------------------------------------------------
-      integer :: k
                                                                         
 !-----------------------------------------------------------------------
 !       ... Solve L * y = b
 !-----------------------------------------------------------------------
-      do k = 1,clsze
+                                                                        
+                                                                        
+                                                                        
+                                                                        
+         b(72) = b(72) - lu(7) * b(5)
+                                                                        
+         b(45) = b(45) - lu(9) * b(6)
+         b(72) = b(72) - lu(10) * b(6)
+                                                                        
+         b(55) = b(55) - lu(12) * b(7)
+         b(66) = b(66) - lu(13) * b(7)
+                                                                        
+         b(72) = b(72) - lu(16) * b(8)
+                                                                        
+         b(55) = b(55) - lu(18) * b(9)
+                                                                        
+         b(72) = b(72) - lu(20) * b(10)
+         b(73) = b(73) - lu(21) * b(10)
+                                                                        
+         b(42) = b(42) - lu(23) * b(11)
+         b(69) = b(69) - lu(24) * b(11)
+         b(73) = b(73) - lu(25) * b(11)
+                                                                        
+         b(65) = b(65) - lu(28) * b(12)
+         b(72) = b(72) - lu(29) * b(12)
+         b(75) = b(75) - lu(30) * b(12)
+                                                                        
+         b(67) = b(67) - lu(32) * b(13)
+         b(68) = b(68) - lu(33) * b(13)
+         b(75) = b(75) - lu(34) * b(13)
+                                                                        
+         b(28) = b(28) - lu(36) * b(14)
+         b(64) = b(64) - lu(37) * b(14)
+         b(67) = b(67) - lu(38) * b(14)
+         b(68) = b(68) - lu(39) * b(14)
+         b(69) = b(69) - lu(40) * b(14)
+         b(72) = b(72) - lu(41) * b(14)
+         b(73) = b(73) - lu(42) * b(14)
+                                                                        
+         b(60) = b(60) - lu(44) * b(15)
+         b(72) = b(72) - lu(45) * b(15)
+                                                                        
+         b(39) = b(39) - lu(47) * b(16)
+         b(49) = b(49) - lu(48) * b(16)
+         b(54) = b(54) - lu(49) * b(16)
+         b(65) = b(65) - lu(50) * b(16)
+                                                                        
+         b(53) = b(53) - lu(52) * b(17)
+         b(72) = b(72) - lu(53) * b(17)
+         b(75) = b(75) - lu(54) * b(17)
+                                                                        
+         b(51) = b(51) - lu(56) * b(18)
+         b(72) = b(72) - lu(57) * b(18)
+         b(73) = b(73) - lu(58) * b(18)
+                                                                        
+         b(72) = b(72) - lu(60) * b(19)
+         b(73) = b(73) - lu(61) * b(19)
+         b(75) = b(75) - lu(62) * b(19)
+                                                                        
+         b(30) = b(30) - lu(64) * b(20)
+         b(69) = b(69) - lu(65) * b(20)
+         b(72) = b(72) - lu(66) * b(20)
+         b(73) = b(73) - lu(67) * b(20)
+         b(76) = b(76) - lu(68) * b(20)
+                                                                        
+         b(59) = b(59) - lu(70) * b(21)
+         b(62) = b(62) - lu(71) * b(21)
+         b(72) = b(72) - lu(72) * b(21)
+         b(73) = b(73) - lu(73) * b(21)
+                                                                        
+         b(40) = b(40) - lu(75) * b(22)
+         b(51) = b(51) - lu(76) * b(22)
+         b(72) = b(72) - lu(77) * b(22)
+         b(73) = b(73) - lu(78) * b(22)
+                                                                        
+         b(37) = b(37) - lu(80) * b(23)
+         b(45) = b(45) - lu(81) * b(23)
+         b(72) = b(72) - lu(82) * b(23)
+         b(73) = b(73) - lu(83) * b(23)
+                                                                        
+         b(44) = b(44) - lu(85) * b(24)
+         b(63) = b(63) - lu(86) * b(24)
+         b(69) = b(69) - lu(87) * b(24)
+         b(72) = b(72) - lu(88) * b(24)
+                                                                        
+         b(64) = b(64) - lu(90) * b(25)
+         b(69) = b(69) - lu(91) * b(25)
+         b(72) = b(72) - lu(92) * b(25)
+         b(73) = b(73) - lu(93) * b(25)
+                                                                        
+         b(39) = b(39) - lu(96) * b(26)
+         b(65) = b(65) - lu(97) * b(26)
+         b(70) = b(70) - lu(98) * b(26)
+         b(75) = b(75) - lu(99) * b(26)
+                                                                        
+         b(54) = b(54) - lu(101) * b(27)
+         b(55) = b(55) - lu(102) * b(27)
+                                                                        
+         b(72) = b(72) - lu(104) * b(28)
+         b(73) = b(73) - lu(105) * b(28)
+         b(76) = b(76) - lu(106) * b(28)
+                                                                        
+         b(60) = b(60) - lu(108) * b(29)
+         b(72) = b(72) - lu(109) * b(29)
+                                                                        
+         b(42) = b(42) - lu(112) * b(30)
+         b(68) = b(68) - lu(113) * b(30)
+         b(69) = b(69) - lu(114) * b(30)
+         b(73) = b(73) - lu(115) * b(30)
+         b(75) = b(75) - lu(116) * b(30)
+                                                                        
+         b(63) = b(63) - lu(118) * b(31)
+         b(64) = b(64) - lu(119) * b(31)
+         b(69) = b(69) - lu(120) * b(31)
+         b(72) = b(72) - lu(121) * b(31)
+                                                                        
+         b(41) = b(41) - lu(123) * b(32)
+         b(51) = b(51) - lu(124) * b(32)
+         b(57) = b(57) - lu(125) * b(32)
+         b(69) = b(69) - lu(126) * b(32)
+         b(72) = b(72) - lu(127) * b(32)
+         b(73) = b(73) - lu(128) * b(32)
+                                                                        
+         b(63) = b(63) - lu(130) * b(33)
+         b(64) = b(64) - lu(131) * b(33)
+         b(65) = b(65) - lu(132) * b(33)
+         b(69) = b(69) - lu(133) * b(33)
+         b(72) = b(72) - lu(134) * b(33)
+         b(75) = b(75) - lu(135) * b(33)
+                                                                        
+         b(69) = b(69) - lu(137) * b(34)
+         b(72) = b(72) - lu(138) * b(34)
+         b(73) = b(73) - lu(139) * b(34)
+                                                                        
+         b(56) = b(56) - lu(141) * b(35)
+         b(58) = b(58) - lu(142) * b(35)
+         b(60) = b(60) - lu(143) * b(35)
+         b(61) = b(61) - lu(144) * b(35)
+         b(69) = b(69) - lu(145) * b(35)
+         b(72) = b(72) - lu(146) * b(35)
+         b(73) = b(73) - lu(147) * b(35)
+                                                                        
+         b(57) = b(57) - lu(149) * b(36)
+         b(62) = b(62) - lu(150) * b(36)
+         b(65) = b(65) - lu(151) * b(36)
+         b(69) = b(69) - lu(152) * b(36)
+         b(72) = b(72) - lu(153) * b(36)
+         b(73) = b(73) - lu(154) * b(36)
+         b(75) = b(75) - lu(155) * b(36)
+                                                                        
+         b(44) = b(44) - lu(157) * b(37)
+         b(63) = b(63) - lu(158) * b(37)
+         b(64) = b(64) - lu(159) * b(37)
+         b(72) = b(72) - lu(160) * b(37)
+                                                                        
+         b(54) = b(54) - lu(164) * b(38)
+         b(55) = b(55) - lu(165) * b(38)
+         b(70) = b(70) - lu(166) * b(38)
+         b(71) = b(71) - lu(167) * b(38)
+         b(72) = b(72) - lu(168) * b(38)
+                                                                        
+         b(65) = b(65) - lu(170) * b(39)
+         b(72) = b(72) - lu(171) * b(39)
+         b(75) = b(75) - lu(172) * b(39)
+                                                                        
+         b(51) = b(51) - lu(177) * b(40)
+         b(64) = b(64) - lu(178) * b(40)
+         b(68) = b(68) - lu(179) * b(40)
+         b(69) = b(69) - lu(180) * b(40)
+         b(72) = b(72) - lu(181) * b(40)
+         b(73) = b(73) - lu(182) * b(40)
+         b(75) = b(75) - lu(183) * b(40)
+                                                                        
+         b(51) = b(51) - lu(186) * b(41)
+         b(57) = b(57) - lu(187) * b(41)
+         b(68) = b(68) - lu(188) * b(41)
+         b(69) = b(69) - lu(189) * b(41)
+         b(72) = b(72) - lu(190) * b(41)
+         b(73) = b(73) - lu(191) * b(41)
+         b(75) = b(75) - lu(192) * b(41)
+                                                                        
+         b(62) = b(62) - lu(194) * b(42)
+         b(69) = b(69) - lu(195) * b(42)
+         b(72) = b(72) - lu(196) * b(42)
+         b(73) = b(73) - lu(197) * b(42)
+                                                                        
+         b(50) = b(50) - lu(199) * b(43)
+         b(52) = b(52) - lu(200) * b(43)
+         b(56) = b(56) - lu(201) * b(43)
+         b(58) = b(58) - lu(202) * b(43)
+         b(61) = b(61) - lu(203) * b(43)
+         b(62) = b(62) - lu(204) * b(43)
+         b(65) = b(65) - lu(205) * b(43)
+         b(69) = b(69) - lu(206) * b(43)
+         b(72) = b(72) - lu(207) * b(43)
+         b(73) = b(73) - lu(208) * b(43)
+         b(76) = b(76) - lu(209) * b(43)
+                                                                        
+         b(63) = b(63) - lu(212) * b(44)
+         b(68) = b(68) - lu(213) * b(44)
+         b(69) = b(69) - lu(214) * b(44)
+         b(72) = b(72) - lu(215) * b(44)
+         b(73) = b(73) - lu(216) * b(44)
+         b(75) = b(75) - lu(217) * b(44)
+                                                                        
+         b(51) = b(51) - lu(222) * b(45)
+         b(63) = b(63) - lu(223) * b(45)
+         b(64) = b(64) - lu(224) * b(45)
+         b(68) = b(68) - lu(225) * b(45)
+         b(69) = b(69) - lu(226) * b(45)
+         b(72) = b(72) - lu(227) * b(45)
+         b(73) = b(73) - lu(228) * b(45)
+         b(75) = b(75) - lu(229) * b(45)
+                                                                        
+         b(54) = b(54) - lu(234) * b(46)
+         b(55) = b(55) - lu(235) * b(46)
+         b(65) = b(65) - lu(236) * b(46)
+         b(66) = b(66) - lu(237) * b(46)
+         b(67) = b(67) - lu(238) * b(46)
+         b(70) = b(70) - lu(239) * b(46)
+         b(71) = b(71) - lu(240) * b(46)
+         b(72) = b(72) - lu(241) * b(46)
+         b(75) = b(75) - lu(242) * b(46)
+                                                                        
+         b(60) = b(60) - lu(245) * b(47)
+         b(65) = b(65) - lu(246) * b(47)
+         b(69) = b(69) - lu(247) * b(47)
+         b(72) = b(72) - lu(248) * b(47)
+         b(73) = b(73) - lu(249) * b(47)
+         b(75) = b(75) - lu(250) * b(47)
+                                                                        
+         b(50) = b(50) - lu(254) * b(48)
+         b(56) = b(56) - lu(255) * b(48)
+         b(58) = b(58) - lu(256) * b(48)
+         b(61) = b(61) - lu(257) * b(48)
+         b(63) = b(63) - lu(258) * b(48)
+         b(64) = b(64) - lu(259) * b(48)
+         b(65) = b(65) - lu(260) * b(48)
+         b(67) = b(67) - lu(261) * b(48)
+         b(68) = b(68) - lu(262) * b(48)
+         b(69) = b(69) - lu(263) * b(48)
+         b(72) = b(72) - lu(264) * b(48)
+         b(73) = b(73) - lu(265) * b(48)
+         b(75) = b(75) - lu(266) * b(48)
+         b(76) = b(76) - lu(267) * b(48)
+                                                                        
+         b(54) = b(54) - lu(270) * b(49)
+         b(55) = b(55) - lu(271) * b(49)
+         b(67) = b(67) - lu(272) * b(49)
+         b(70) = b(70) - lu(273) * b(49)
+         b(71) = b(71) - lu(274) * b(49)
+         b(72) = b(72) - lu(275) * b(49)
+         b(74) = b(74) - lu(276) * b(49)
+                                                                        
+                                                                        
+      end subroutine imp_lu_slv01
+                                                                        
+      subroutine imp_lu_slv02( lu, b )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(in)    ::   lu(imp_nzcnt)
+      real, intent(inout) ::   b(clscnt4)
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Local variables
+!-----------------------------------------------------------------------
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Solve L * y = b
+!-----------------------------------------------------------------------
+         b(51) = b(51) - lu(280) * b(50)
+         b(53) = b(53) - lu(281) * b(50)
+         b(57) = b(57) - lu(282) * b(50)
+         b(64) = b(64) - lu(283) * b(50)
+         b(65) = b(65) - lu(284) * b(50)
+         b(68) = b(68) - lu(285) * b(50)
+         b(69) = b(69) - lu(286) * b(50)
+         b(72) = b(72) - lu(287) * b(50)
+         b(73) = b(73) - lu(288) * b(50)
+         b(75) = b(75) - lu(289) * b(50)
+         b(76) = b(76) - lu(290) * b(50)
+                                                                        
+         b(63) = b(63) - lu(293) * b(51)
+         b(64) = b(64) - lu(294) * b(51)
+         b(65) = b(65) - lu(295) * b(51)
+         b(72) = b(72) - lu(296) * b(51)
+         b(73) = b(73) - lu(297) * b(51)
+         b(75) = b(75) - lu(298) * b(51)
+                                                                        
+         b(56) = b(56) - lu(302) * b(52)
+         b(58) = b(58) - lu(303) * b(52)
+         b(60) = b(60) - lu(304) * b(52)
+         b(65) = b(65) - lu(305) * b(52)
+         b(68) = b(68) - lu(306) * b(52)
+         b(69) = b(69) - lu(307) * b(52)
+         b(72) = b(72) - lu(308) * b(52)
+         b(73) = b(73) - lu(309) * b(52)
+         b(75) = b(75) - lu(310) * b(52)
+                                                                        
+         b(63) = b(63) - lu(313) * b(53)
+         b(65) = b(65) - lu(314) * b(53)
+         b(72) = b(72) - lu(315) * b(53)
+         b(73) = b(73) - lu(316) * b(53)
+         b(75) = b(75) - lu(317) * b(53)
+                                                                        
+         b(69) = b(69) - lu(319) * b(54)
+         b(71) = b(71) - lu(320) * b(54)
+         b(73) = b(73) - lu(321) * b(54)
+         b(74) = b(74) - lu(322) * b(54)
+         b(76) = b(76) - lu(323) * b(54)
+                                                                        
+         b(64) = b(64) - lu(325) * b(55)
+         b(66) = b(66) - lu(326) * b(55)
+         b(69) = b(69) - lu(327) * b(55)
+         b(70) = b(70) - lu(328) * b(55)
+         b(73) = b(73) - lu(329) * b(55)
+         b(76) = b(76) - lu(330) * b(55)
+                                                                        
+         b(59) = b(59) - lu(333) * b(56)
+         b(62) = b(62) - lu(334) * b(56)
+         b(63) = b(63) - lu(335) * b(56)
+         b(65) = b(65) - lu(336) * b(56)
+         b(69) = b(69) - lu(337) * b(56)
+         b(72) = b(72) - lu(338) * b(56)
+         b(73) = b(73) - lu(339) * b(56)
+         b(75) = b(75) - lu(340) * b(56)
+         b(76) = b(76) - lu(341) * b(56)
+                                                                        
+         b(63) = b(63) - lu(344) * b(57)
+         b(65) = b(65) - lu(345) * b(57)
+         b(69) = b(69) - lu(346) * b(57)
+         b(72) = b(72) - lu(347) * b(57)
+         b(73) = b(73) - lu(348) * b(57)
+         b(75) = b(75) - lu(349) * b(57)
+                                                                        
+         b(59) = b(59) - lu(355) * b(58)
+         b(63) = b(63) - lu(356) * b(58)
+         b(64) = b(64) - lu(357) * b(58)
+         b(65) = b(65) - lu(358) * b(58)
+         b(68) = b(68) - lu(359) * b(58)
+         b(69) = b(69) - lu(360) * b(58)
+         b(72) = b(72) - lu(361) * b(58)
+         b(73) = b(73) - lu(362) * b(58)
+         b(75) = b(75) - lu(363) * b(58)
+         b(76) = b(76) - lu(364) * b(58)
+                                                                        
+         b(60) = b(60) - lu(372) * b(59)
+         b(62) = b(62) - lu(373) * b(59)
+         b(63) = b(63) - lu(374) * b(59)
+         b(64) = b(64) - lu(375) * b(59)
+         b(65) = b(65) - lu(376) * b(59)
+         b(68) = b(68) - lu(377) * b(59)
+         b(69) = b(69) - lu(378) * b(59)
+         b(72) = b(72) - lu(379) * b(59)
+         b(73) = b(73) - lu(380) * b(59)
+         b(75) = b(75) - lu(381) * b(59)
+                                                                        
+         b(62) = b(62) - lu(388) * b(60)
+         b(63) = b(63) - lu(389) * b(60)
+         b(64) = b(64) - lu(390) * b(60)
+         b(65) = b(65) - lu(391) * b(60)
+         b(68) = b(68) - lu(392) * b(60)
+         b(69) = b(69) - lu(393) * b(60)
+         b(72) = b(72) - lu(394) * b(60)
+         b(73) = b(73) - lu(395) * b(60)
+         b(75) = b(75) - lu(396) * b(60)
+                                                                        
+         b(62) = b(62) - lu(406) * b(61)
+         b(63) = b(63) - lu(407) * b(61)
+         b(64) = b(64) - lu(408) * b(61)
+         b(65) = b(65) - lu(409) * b(61)
+         b(68) = b(68) - lu(410) * b(61)
+         b(69) = b(69) - lu(411) * b(61)
+         b(72) = b(72) - lu(412) * b(61)
+         b(73) = b(73) - lu(413) * b(61)
+         b(75) = b(75) - lu(414) * b(61)
+         b(76) = b(76) - lu(415) * b(61)
+                                                                        
+         b(63) = b(63) - lu(420) * b(62)
+         b(64) = b(64) - lu(421) * b(62)
+         b(65) = b(65) - lu(422) * b(62)
+         b(68) = b(68) - lu(423) * b(62)
+         b(69) = b(69) - lu(424) * b(62)
+         b(72) = b(72) - lu(425) * b(62)
+         b(73) = b(73) - lu(426) * b(62)
+         b(75) = b(75) - lu(427) * b(62)
+         b(76) = b(76) - lu(428) * b(62)
+                                                                        
+         b(64) = b(64) - lu(442) * b(63)
+         b(65) = b(65) - lu(443) * b(63)
+         b(68) = b(68) - lu(444) * b(63)
+         b(69) = b(69) - lu(445) * b(63)
+         b(72) = b(72) - lu(446) * b(63)
+         b(73) = b(73) - lu(447) * b(63)
+         b(75) = b(75) - lu(448) * b(63)
+         b(76) = b(76) - lu(449) * b(63)
+                                                                        
+         b(65) = b(65) - lu(470) * b(64)
+         b(68) = b(68) - lu(471) * b(64)
+         b(69) = b(69) - lu(472) * b(64)
+         b(72) = b(72) - lu(473) * b(64)
+         b(73) = b(73) - lu(474) * b(64)
+         b(75) = b(75) - lu(475) * b(64)
+         b(76) = b(76) - lu(476) * b(64)
+                                                                        
+         b(67) = b(67) - lu(501) * b(65)
+         b(68) = b(68) - lu(502) * b(65)
+         b(69) = b(69) - lu(503) * b(65)
+         b(70) = b(70) - lu(504) * b(65)
+         b(72) = b(72) - lu(505) * b(65)
+         b(73) = b(73) - lu(506) * b(65)
+         b(75) = b(75) - lu(507) * b(65)
+         b(76) = b(76) - lu(508) * b(65)
+                                                                        
+         b(67) = b(67) - lu(518) * b(66)
+         b(68) = b(68) - lu(519) * b(66)
+         b(69) = b(69) - lu(520) * b(66)
+         b(70) = b(70) - lu(521) * b(66)
+         b(71) = b(71) - lu(522) * b(66)
+         b(72) = b(72) - lu(523) * b(66)
+         b(73) = b(73) - lu(524) * b(66)
+         b(74) = b(74) - lu(525) * b(66)
+         b(75) = b(75) - lu(526) * b(66)
+         b(76) = b(76) - lu(527) * b(66)
+                                                                        
+         b(68) = b(68) - lu(537) * b(67)
+         b(69) = b(69) - lu(538) * b(67)
+         b(70) = b(70) - lu(539) * b(67)
+         b(71) = b(71) - lu(540) * b(67)
+         b(72) = b(72) - lu(541) * b(67)
+         b(73) = b(73) - lu(542) * b(67)
+         b(74) = b(74) - lu(543) * b(67)
+         b(75) = b(75) - lu(544) * b(67)
+         b(76) = b(76) - lu(545) * b(67)
+                                                                        
+         b(69) = b(69) - lu(575) * b(68)
+         b(70) = b(70) - lu(576) * b(68)
+         b(71) = b(71) - lu(577) * b(68)
+         b(72) = b(72) - lu(578) * b(68)
+         b(73) = b(73) - lu(579) * b(68)
+         b(74) = b(74) - lu(580) * b(68)
+         b(75) = b(75) - lu(581) * b(68)
+         b(76) = b(76) - lu(582) * b(68)
+                                                                        
+         b(70) = b(70) - lu(593) * b(69)
+         b(71) = b(71) - lu(594) * b(69)
+         b(72) = b(72) - lu(595) * b(69)
+         b(73) = b(73) - lu(596) * b(69)
+         b(74) = b(74) - lu(597) * b(69)
+         b(75) = b(75) - lu(598) * b(69)
+         b(76) = b(76) - lu(599) * b(69)
+                                                                        
+         b(71) = b(71) - lu(617) * b(70)
+         b(72) = b(72) - lu(618) * b(70)
+         b(73) = b(73) - lu(619) * b(70)
+         b(74) = b(74) - lu(620) * b(70)
+         b(75) = b(75) - lu(621) * b(70)
+         b(76) = b(76) - lu(622) * b(70)
+                                                                        
+         b(72) = b(72) - lu(636) * b(71)
+         b(73) = b(73) - lu(637) * b(71)
+         b(74) = b(74) - lu(638) * b(71)
+         b(75) = b(75) - lu(639) * b(71)
+         b(76) = b(76) - lu(640) * b(71)
+                                                                        
+         b(73) = b(73) - lu(699) * b(72)
+         b(74) = b(74) - lu(700) * b(72)
+         b(75) = b(75) - lu(701) * b(72)
+         b(76) = b(76) - lu(702) * b(72)
+                                                                        
+         b(74) = b(74) - lu(744) * b(73)
+         b(75) = b(75) - lu(745) * b(73)
+         b(76) = b(76) - lu(746) * b(73)
+                                                                        
+         b(75) = b(75) - lu(764) * b(74)
+         b(76) = b(76) - lu(765) * b(74)
+                                                                        
+         b(76) = b(76) - lu(792) * b(75)
+                                                                        
+                                                                        
+      end subroutine imp_lu_slv02
+                                                                        
+      subroutine imp_lu_slv03( lu, b )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(in)    ::   lu(imp_nzcnt)
+      real, intent(inout) ::   b(clscnt4)
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Local variables
+!-----------------------------------------------------------------------
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Solve L * y = b
+!-----------------------------------------------------------------------
                                                                         
 !-----------------------------------------------------------------------
 !       ... Solve U * x = y
 !-----------------------------------------------------------------------
-         b(k,35) = b(k,35) * lu(k,277)
-         b(k,34) = b(k,34) - lu(k,276) * b(k,35)
-         b(k,33) = b(k,33) - lu(k,275) * b(k,35)
-         b(k,32) = b(k,32) - lu(k,274) * b(k,35)
-         b(k,31) = b(k,31) - lu(k,273) * b(k,35)
-         b(k,30) = b(k,30) - lu(k,272) * b(k,35)
-         b(k,29) = b(k,29) - lu(k,271) * b(k,35)
-         b(k,28) = b(k,28) - lu(k,270) * b(k,35)
-         b(k,27) = b(k,27) - lu(k,269) * b(k,35)
-         b(k,19) = b(k,19) - lu(k,268) * b(k,35)
-         b(k,12) = b(k,12) - lu(k,267) * b(k,35)
+         b(76) = b(76) * lu(826)
+         b(75) = b(75) - lu(825) * b(76)
+         b(74) = b(74) - lu(824) * b(76)
+         b(73) = b(73) - lu(823) * b(76)
+         b(72) = b(72) - lu(822) * b(76)
+         b(71) = b(71) - lu(821) * b(76)
+         b(70) = b(70) - lu(820) * b(76)
+         b(69) = b(69) - lu(819) * b(76)
+         b(68) = b(68) - lu(818) * b(76)
+         b(67) = b(67) - lu(817) * b(76)
+         b(66) = b(66) - lu(816) * b(76)
+         b(65) = b(65) - lu(815) * b(76)
+         b(64) = b(64) - lu(814) * b(76)
+         b(63) = b(63) - lu(813) * b(76)
+         b(62) = b(62) - lu(812) * b(76)
+         b(61) = b(61) - lu(811) * b(76)
+         b(60) = b(60) - lu(810) * b(76)
+         b(59) = b(59) - lu(809) * b(76)
+         b(58) = b(58) - lu(808) * b(76)
+         b(57) = b(57) - lu(807) * b(76)
+         b(56) = b(56) - lu(806) * b(76)
+         b(55) = b(55) - lu(805) * b(76)
+         b(54) = b(54) - lu(804) * b(76)
+         b(53) = b(53) - lu(803) * b(76)
+         b(52) = b(52) - lu(802) * b(76)
+         b(51) = b(51) - lu(801) * b(76)
+         b(50) = b(50) - lu(800) * b(76)
+         b(48) = b(48) - lu(799) * b(76)
+         b(43) = b(43) - lu(798) * b(76)
+         b(42) = b(42) - lu(797) * b(76)
+         b(30) = b(30) - lu(796) * b(76)
+         b(28) = b(28) - lu(795) * b(76)
+         b(20) = b(20) - lu(794) * b(76)
+         b(14) = b(14) - lu(793) * b(76)
                                                                         
-         b(k,34) = b(k,34) * lu(k,265)
-         b(k,33) = b(k,33) - lu(k,264) * b(k,34)
-         b(k,32) = b(k,32) - lu(k,263) * b(k,34)
-         b(k,31) = b(k,31) - lu(k,262) * b(k,34)
-         b(k,30) = b(k,30) - lu(k,261) * b(k,34)
-         b(k,29) = b(k,29) - lu(k,260) * b(k,34)
-         b(k,28) = b(k,28) - lu(k,259) * b(k,34)
-         b(k,27) = b(k,27) - lu(k,258) * b(k,34)
-         b(k,26) = b(k,26) - lu(k,257) * b(k,34)
-         b(k,22) = b(k,22) - lu(k,256) * b(k,34)
-         b(k,17) = b(k,17) - lu(k,255) * b(k,34)
-         b(k,11) = b(k,11) - lu(k,254) * b(k,34)
-         b(k,9) = b(k,9) - lu(k,253) * b(k,34)
-         b(k,8) = b(k,8) - lu(k,252) * b(k,34)
-         b(k,5) = b(k,5) - lu(k,251) * b(k,34)
+         b(75) = b(75) * lu(791)
+         b(74) = b(74) - lu(790) * b(75)
+         b(73) = b(73) - lu(789) * b(75)
+         b(72) = b(72) - lu(788) * b(75)
+         b(71) = b(71) - lu(787) * b(75)
+         b(70) = b(70) - lu(786) * b(75)
+         b(69) = b(69) - lu(785) * b(75)
+         b(68) = b(68) - lu(784) * b(75)
+         b(67) = b(67) - lu(783) * b(75)
+         b(66) = b(66) - lu(782) * b(75)
+         b(65) = b(65) - lu(781) * b(75)
+         b(64) = b(64) - lu(780) * b(75)
+         b(63) = b(63) - lu(779) * b(75)
+         b(62) = b(62) - lu(778) * b(75)
+         b(57) = b(57) - lu(777) * b(75)
+         b(55) = b(55) - lu(776) * b(75)
+         b(54) = b(54) - lu(775) * b(75)
+         b(49) = b(49) - lu(774) * b(75)
+         b(46) = b(46) - lu(773) * b(75)
+         b(39) = b(39) - lu(772) * b(75)
+         b(36) = b(36) - lu(771) * b(75)
+         b(33) = b(33) - lu(770) * b(75)
+         b(26) = b(26) - lu(769) * b(75)
+         b(19) = b(19) - lu(768) * b(75)
+         b(16) = b(16) - lu(767) * b(75)
+         b(13) = b(13) - lu(766) * b(75)
                                                                         
-         b(k,33) = b(k,33) * lu(k,248)
-         b(k,32) = b(k,32) - lu(k,247) * b(k,33)
-         b(k,31) = b(k,31) - lu(k,246) * b(k,33)
-         b(k,30) = b(k,30) - lu(k,245) * b(k,33)
-         b(k,29) = b(k,29) - lu(k,244) * b(k,33)
-         b(k,28) = b(k,28) - lu(k,243) * b(k,33)
-         b(k,27) = b(k,27) - lu(k,242) * b(k,33)
-         b(k,26) = b(k,26) - lu(k,241) * b(k,33)
-         b(k,25) = b(k,25) - lu(k,240) * b(k,33)
-         b(k,24) = b(k,24) - lu(k,239) * b(k,33)
-         b(k,23) = b(k,23) - lu(k,238) * b(k,33)
-         b(k,20) = b(k,20) - lu(k,237) * b(k,33)
-         b(k,18) = b(k,18) - lu(k,236) * b(k,33)
+         b(74) = b(74) * lu(763)
+         b(73) = b(73) - lu(762) * b(74)
+         b(72) = b(72) - lu(761) * b(74)
+         b(71) = b(71) - lu(760) * b(74)
+         b(70) = b(70) - lu(759) * b(74)
+         b(69) = b(69) - lu(758) * b(74)
+         b(68) = b(68) - lu(757) * b(74)
+         b(67) = b(67) - lu(756) * b(74)
+         b(66) = b(66) - lu(755) * b(74)
+         b(65) = b(65) - lu(754) * b(74)
+         b(64) = b(64) - lu(753) * b(74)
+         b(55) = b(55) - lu(752) * b(74)
+         b(54) = b(54) - lu(751) * b(74)
+         b(49) = b(49) - lu(750) * b(74)
+         b(39) = b(39) - lu(749) * b(74)
+         b(27) = b(27) - lu(748) * b(74)
+         b(16) = b(16) - lu(747) * b(74)
                                                                         
-         b(k,32) = b(k,32) * lu(k,232)
-         b(k,31) = b(k,31) - lu(k,231) * b(k,32)
-         b(k,30) = b(k,30) - lu(k,230) * b(k,32)
-         b(k,29) = b(k,29) - lu(k,229) * b(k,32)
-         b(k,27) = b(k,27) - lu(k,228) * b(k,32)
-         b(k,26) = b(k,26) - lu(k,227) * b(k,32)
-         b(k,25) = b(k,25) - lu(k,226) * b(k,32)
-         b(k,24) = b(k,24) - lu(k,225) * b(k,32)
-         b(k,23) = b(k,23) - lu(k,224) * b(k,32)
-         b(k,20) = b(k,20) - lu(k,223) * b(k,32)
-         b(k,16) = b(k,16) - lu(k,222) * b(k,32)
+         b(73) = b(73) * lu(743)
+         b(72) = b(72) - lu(742) * b(73)
+         b(71) = b(71) - lu(741) * b(73)
+         b(70) = b(70) - lu(740) * b(73)
+         b(69) = b(69) - lu(739) * b(73)
+         b(68) = b(68) - lu(738) * b(73)
+         b(67) = b(67) - lu(737) * b(73)
+         b(66) = b(66) - lu(736) * b(73)
+         b(65) = b(65) - lu(735) * b(73)
+         b(64) = b(64) - lu(734) * b(73)
+         b(63) = b(63) - lu(733) * b(73)
+         b(62) = b(62) - lu(732) * b(73)
+         b(61) = b(61) - lu(731) * b(73)
+         b(60) = b(60) - lu(730) * b(73)
+         b(59) = b(59) - lu(729) * b(73)
+         b(58) = b(58) - lu(728) * b(73)
+         b(57) = b(57) - lu(727) * b(73)
+         b(56) = b(56) - lu(726) * b(73)
+         b(55) = b(55) - lu(725) * b(73)
+         b(54) = b(54) - lu(724) * b(73)
+         b(52) = b(52) - lu(723) * b(73)
+         b(51) = b(51) - lu(722) * b(73)
+         b(49) = b(49) - lu(721) * b(73)
+         b(47) = b(47) - lu(720) * b(73)
+         b(45) = b(45) - lu(719) * b(73)
+         b(44) = b(44) - lu(718) * b(73)
+         b(41) = b(41) - lu(717) * b(73)
+         b(40) = b(40) - lu(716) * b(73)
+         b(38) = b(38) - lu(715) * b(73)
+         b(37) = b(37) - lu(714) * b(73)
+         b(35) = b(35) - lu(713) * b(73)
+         b(32) = b(32) - lu(712) * b(73)
+         b(31) = b(31) - lu(711) * b(73)
+         b(25) = b(25) - lu(710) * b(73)
+         b(24) = b(24) - lu(709) * b(73)
+         b(23) = b(23) - lu(708) * b(73)
+         b(22) = b(22) - lu(707) * b(73)
+         b(21) = b(21) - lu(706) * b(73)
+         b(19) = b(19) - lu(705) * b(73)
+         b(15) = b(15) - lu(704) * b(73)
+         b(10) = b(10) - lu(703) * b(73)
                                                                         
-         b(k,31) = b(k,31) * lu(k,217)
-         b(k,30) = b(k,30) - lu(k,216) * b(k,31)
-         b(k,29) = b(k,29) - lu(k,215) * b(k,31)
-         b(k,28) = b(k,28) - lu(k,214) * b(k,31)
-         b(k,27) = b(k,27) - lu(k,213) * b(k,31)
-         b(k,26) = b(k,26) - lu(k,212) * b(k,31)
-         b(k,25) = b(k,25) - lu(k,211) * b(k,31)
-         b(k,24) = b(k,24) - lu(k,210) * b(k,31)
-         b(k,23) = b(k,23) - lu(k,209) * b(k,31)
-         b(k,21) = b(k,21) - lu(k,208) * b(k,31)
-         b(k,20) = b(k,20) - lu(k,207) * b(k,31)
-         b(k,18) = b(k,18) - lu(k,206) * b(k,31)
-         b(k,16) = b(k,16) - lu(k,205) * b(k,31)
-         b(k,15) = b(k,15) - lu(k,204) * b(k,31)
-         b(k,14) = b(k,14) - lu(k,203) * b(k,31)
-         b(k,13) = b(k,13) - lu(k,202) * b(k,31)
-         b(k,12) = b(k,12) - lu(k,201) * b(k,31)
-         b(k,10) = b(k,10) - lu(k,200) * b(k,31)
-         b(k,6) = b(k,6) - lu(k,199) * b(k,31)
+         b(72) = b(72) * lu(698)
+         b(71) = b(71) - lu(697) * b(72)
+         b(70) = b(70) - lu(696) * b(72)
+         b(69) = b(69) - lu(695) * b(72)
+         b(68) = b(68) - lu(694) * b(72)
+         b(67) = b(67) - lu(693) * b(72)
+         b(66) = b(66) - lu(692) * b(72)
+         b(65) = b(65) - lu(691) * b(72)
+         b(64) = b(64) - lu(690) * b(72)
+         b(63) = b(63) - lu(689) * b(72)
+         b(62) = b(62) - lu(688) * b(72)
+         b(61) = b(61) - lu(687) * b(72)
+         b(60) = b(60) - lu(686) * b(72)
+         b(59) = b(59) - lu(685) * b(72)
+         b(58) = b(58) - lu(684) * b(72)
+         b(57) = b(57) - lu(683) * b(72)
+         b(56) = b(56) - lu(682) * b(72)
+         b(55) = b(55) - lu(681) * b(72)
+         b(54) = b(54) - lu(680) * b(72)
+         b(53) = b(53) - lu(679) * b(72)
+         b(52) = b(52) - lu(678) * b(72)
+         b(51) = b(51) - lu(677) * b(72)
+         b(50) = b(50) - lu(676) * b(72)
+         b(48) = b(48) - lu(675) * b(72)
+         b(47) = b(47) - lu(674) * b(72)
+         b(45) = b(45) - lu(673) * b(72)
+         b(44) = b(44) - lu(672) * b(72)
+         b(43) = b(43) - lu(671) * b(72)
+         b(42) = b(42) - lu(670) * b(72)
+         b(41) = b(41) - lu(669) * b(72)
+         b(40) = b(40) - lu(668) * b(72)
+         b(39) = b(39) - lu(667) * b(72)
+         b(37) = b(37) - lu(666) * b(72)
+         b(36) = b(36) - lu(665) * b(72)
+         b(35) = b(35) - lu(664) * b(72)
+         b(34) = b(34) - lu(663) * b(72)
+         b(33) = b(33) - lu(662) * b(72)
+         b(32) = b(32) - lu(661) * b(72)
+         b(31) = b(31) - lu(660) * b(72)
+         b(30) = b(30) - lu(659) * b(72)
+         b(29) = b(29) - lu(658) * b(72)
+         b(28) = b(28) - lu(657) * b(72)
+         b(25) = b(25) - lu(656) * b(72)
+         b(24) = b(24) - lu(655) * b(72)
+         b(23) = b(23) - lu(654) * b(72)
+         b(22) = b(22) - lu(653) * b(72)
+         b(21) = b(21) - lu(652) * b(72)
+         b(20) = b(20) - lu(651) * b(72)
+         b(19) = b(19) - lu(650) * b(72)
+         b(18) = b(18) - lu(649) * b(72)
+         b(17) = b(17) - lu(648) * b(72)
+         b(15) = b(15) - lu(647) * b(72)
+         b(12) = b(12) - lu(646) * b(72)
+         b(10) = b(10) - lu(645) * b(72)
+         b(8) = b(8) - lu(644) * b(72)
+         b(6) = b(6) - lu(643) * b(72)
+         b(5) = b(5) - lu(642) * b(72)
+         b(1) = b(1) - lu(641) * b(72)
                                                                         
-         b(k,30) = b(k,30) * lu(k,193)
-         b(k,29) = b(k,29) - lu(k,192) * b(k,30)
-         b(k,28) = b(k,28) - lu(k,191) * b(k,30)
-         b(k,27) = b(k,27) - lu(k,190) * b(k,30)
-         b(k,21) = b(k,21) - lu(k,189) * b(k,30)
-         b(k,19) = b(k,19) - lu(k,188) * b(k,30)
-         b(k,17) = b(k,17) - lu(k,187) * b(k,30)
-         b(k,10) = b(k,10) - lu(k,186) * b(k,30)
-         b(k,8) = b(k,8) - lu(k,185) * b(k,30)
+         b(71) = b(71) * lu(635)
+         b(70) = b(70) - lu(634) * b(71)
+         b(69) = b(69) - lu(633) * b(71)
+         b(68) = b(68) - lu(632) * b(71)
+         b(67) = b(67) - lu(631) * b(71)
+         b(66) = b(66) - lu(630) * b(71)
+         b(65) = b(65) - lu(629) * b(71)
+         b(64) = b(64) - lu(628) * b(71)
+         b(55) = b(55) - lu(627) * b(71)
+         b(54) = b(54) - lu(626) * b(71)
+         b(49) = b(49) - lu(625) * b(71)
+         b(38) = b(38) - lu(624) * b(71)
+         b(27) = b(27) - lu(623) * b(71)
                                                                         
-         b(k,29) = b(k,29) * lu(k,178)
-         b(k,28) = b(k,28) - lu(k,177) * b(k,29)
-         b(k,27) = b(k,27) - lu(k,176) * b(k,29)
-         b(k,26) = b(k,26) - lu(k,175) * b(k,29)
-         b(k,25) = b(k,25) - lu(k,174) * b(k,29)
-         b(k,24) = b(k,24) - lu(k,173) * b(k,29)
-         b(k,23) = b(k,23) - lu(k,172) * b(k,29)
-         b(k,22) = b(k,22) - lu(k,171) * b(k,29)
-         b(k,21) = b(k,21) - lu(k,170) * b(k,29)
-         b(k,20) = b(k,20) - lu(k,169) * b(k,29)
-         b(k,19) = b(k,19) - lu(k,168) * b(k,29)
-         b(k,18) = b(k,18) - lu(k,167) * b(k,29)
-         b(k,17) = b(k,17) - lu(k,166) * b(k,29)
-         b(k,16) = b(k,16) - lu(k,165) * b(k,29)
-         b(k,15) = b(k,15) - lu(k,164) * b(k,29)
-         b(k,14) = b(k,14) - lu(k,163) * b(k,29)
-         b(k,13) = b(k,13) - lu(k,162) * b(k,29)
-         b(k,12) = b(k,12) - lu(k,161) * b(k,29)
-         b(k,11) = b(k,11) - lu(k,160) * b(k,29)
-         b(k,10) = b(k,10) - lu(k,159) * b(k,29)
-         b(k,9) = b(k,9) - lu(k,158) * b(k,29)
-         b(k,6) = b(k,6) - lu(k,157) * b(k,29)
-         b(k,5) = b(k,5) - lu(k,156) * b(k,29)
-         b(k,4) = b(k,4) - lu(k,155) * b(k,29)
-         b(k,1) = b(k,1) - lu(k,154) * b(k,29)
+         b(70) = b(70) * lu(616)
+         b(69) = b(69) - lu(615) * b(70)
+         b(68) = b(68) - lu(614) * b(70)
+         b(67) = b(67) - lu(613) * b(70)
+         b(66) = b(66) - lu(612) * b(70)
+         b(65) = b(65) - lu(611) * b(70)
+         b(64) = b(64) - lu(610) * b(70)
+         b(55) = b(55) - lu(609) * b(70)
+         b(54) = b(54) - lu(608) * b(70)
+         b(49) = b(49) - lu(607) * b(70)
+         b(46) = b(46) - lu(606) * b(70)
+         b(39) = b(39) - lu(605) * b(70)
+         b(38) = b(38) - lu(604) * b(70)
+         b(27) = b(27) - lu(603) * b(70)
+         b(26) = b(26) - lu(602) * b(70)
+         b(9) = b(9) - lu(601) * b(70)
+         b(4) = b(4) - lu(600) * b(70)
                                                                         
-         b(k,28) = b(k,28) * lu(k,146)
-         b(k,27) = b(k,27) - lu(k,145) * b(k,28)
-         b(k,22) = b(k,22) - lu(k,144) * b(k,28)
-         b(k,21) = b(k,21) - lu(k,143) * b(k,28)
-         b(k,7) = b(k,7) - lu(k,142) * b(k,28)
                                                                         
-         b(k,27) = b(k,27) * lu(k,137)
-         b(k,17) = b(k,17) - lu(k,136) * b(k,27)
+      end subroutine imp_lu_slv03
                                                                         
-         b(k,26) = b(k,26) * lu(k,129)
-         b(k,17) = b(k,17) - lu(k,128) * b(k,26)
-                                                                        
-         b(k,25) = b(k,25) * lu(k,119)
-         b(k,24) = b(k,24) - lu(k,118) * b(k,25)
-         b(k,20) = b(k,20) - lu(k,117) * b(k,25)
-         b(k,14) = b(k,14) - lu(k,116) * b(k,25)
-                                                                        
-         b(k,24) = b(k,24) * lu(k,109)
-         b(k,15) = b(k,15) - lu(k,108) * b(k,24)
-                                                                        
-         b(k,23) = b(k,23) * lu(k,100)
-         b(k,13) = b(k,13) - lu(k,99) * b(k,23)
-                                                                        
-         b(k,22) = b(k,22) * lu(k,91)
-         b(k,18) = b(k,18) - lu(k,90) * b(k,22)
-                                                                        
-         b(k,21) = b(k,21) * lu(k,84)
-                                                                        
-         b(k,20) = b(k,20) * lu(k,79)
-                                                                        
-         b(k,19) = b(k,19) * lu(k,72)
-                                                                        
-         b(k,18) = b(k,18) * lu(k,67)
-                                                                        
-         b(k,17) = b(k,17) * lu(k,63)
-                                                                        
-         b(k,16) = b(k,16) * lu(k,58)
-                                                                        
-         b(k,15) = b(k,15) * lu(k,53)
-                                                                        
-         b(k,14) = b(k,14) * lu(k,48)
-                                                                        
-         b(k,13) = b(k,13) * lu(k,43)
-                                                                        
-         b(k,12) = b(k,12) * lu(k,38)
-                                                                        
-         b(k,11) = b(k,11) * lu(k,32)
-                                                                        
-         b(k,10) = b(k,10) * lu(k,28)
-                                                                        
-         b(k,9) = b(k,9) * lu(k,24)
-         b(k,5) = b(k,5) - lu(k,23) * b(k,9)
-                                                                        
-         b(k,8) = b(k,8) * lu(k,19)
-                                                                        
-         b(k,7) = b(k,7) * lu(k,13)
-                                                                        
-         b(k,6) = b(k,6) * lu(k,10)
-                                                                        
-         b(k,5) = b(k,5) * lu(k,8)
-         b(k,1) = b(k,1) - lu(k,7) * b(k,5)
-                                                                        
-         b(k,4) = b(k,4) * lu(k,5)
-         b(k,3) = b(k,3) - lu(k,4) * b(k,4)
-                                                                        
-         b(k,3) = b(k,3) * lu(k,3)
-                                                                        
-         b(k,2) = b(k,2) * lu(k,2)
-                                                                        
-         b(k,1) = b(k,1) * lu(k,1)
-                                                                        
-      end do
-                                                                        
-      end subroutine IMP_LU_SLV02
-                                                                        
-      subroutine IMP_LU_SLV( lu, b )
+      subroutine imp_lu_slv04( lu, b )
                                                                         
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
                                                                         
@@ -2422,21 +6163,369 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(in)    ::   lu(clsze,imp_nzcnt)
-      real, intent(inout) ::   b(clsze,clscnt4)
+      real, intent(in)    ::   lu(imp_nzcnt)
+      real, intent(inout) ::   b(clscnt4)
                                                                         
-      call IMP_LU_SLV01( lu, b )
-      call IMP_LU_SLV02( lu, b )
+!-----------------------------------------------------------------------
+!       ... Local variables
+!-----------------------------------------------------------------------
                                                                         
-      end subroutine IMP_LU_SLV
+!-----------------------------------------------------------------------
+!       ... Solve L * y = b
+!-----------------------------------------------------------------------
+         b(69) = b(69) * lu(592)
+         b(68) = b(68) - lu(591) * b(69)
+         b(67) = b(67) - lu(590) * b(69)
+         b(66) = b(66) - lu(589) * b(69)
+         b(65) = b(65) - lu(588) * b(69)
+         b(64) = b(64) - lu(587) * b(69)
+         b(55) = b(55) - lu(586) * b(69)
+         b(54) = b(54) - lu(585) * b(69)
+         b(39) = b(39) - lu(584) * b(69)
+         b(28) = b(28) - lu(583) * b(69)
+                                                                        
+         b(68) = b(68) * lu(574)
+         b(67) = b(67) - lu(573) * b(68)
+         b(66) = b(66) - lu(572) * b(68)
+         b(65) = b(65) - lu(571) * b(68)
+         b(64) = b(64) - lu(570) * b(68)
+         b(63) = b(63) - lu(569) * b(68)
+         b(62) = b(62) - lu(568) * b(68)
+         b(61) = b(61) - lu(567) * b(68)
+         b(60) = b(60) - lu(566) * b(68)
+         b(59) = b(59) - lu(565) * b(68)
+         b(58) = b(58) - lu(564) * b(68)
+         b(57) = b(57) - lu(563) * b(68)
+         b(56) = b(56) - lu(562) * b(68)
+         b(55) = b(55) - lu(561) * b(68)
+         b(54) = b(54) - lu(560) * b(68)
+         b(53) = b(53) - lu(559) * b(68)
+         b(52) = b(52) - lu(558) * b(68)
+         b(51) = b(51) - lu(557) * b(68)
+         b(47) = b(47) - lu(556) * b(68)
+         b(45) = b(45) - lu(555) * b(68)
+         b(44) = b(44) - lu(554) * b(68)
+         b(42) = b(42) - lu(553) * b(68)
+         b(41) = b(41) - lu(552) * b(68)
+         b(40) = b(40) - lu(551) * b(68)
+         b(37) = b(37) - lu(550) * b(68)
+         b(30) = b(30) - lu(549) * b(68)
+         b(29) = b(29) - lu(548) * b(68)
+         b(13) = b(13) - lu(547) * b(68)
+         b(11) = b(11) - lu(546) * b(68)
+                                                                        
+         b(67) = b(67) * lu(536)
+         b(66) = b(66) - lu(535) * b(67)
+         b(65) = b(65) - lu(534) * b(67)
+         b(64) = b(64) - lu(533) * b(67)
+         b(55) = b(55) - lu(532) * b(67)
+         b(54) = b(54) - lu(531) * b(67)
+         b(49) = b(49) - lu(530) * b(67)
+         b(46) = b(46) - lu(529) * b(67)
+         b(28) = b(28) - lu(528) * b(67)
+                                                                        
+         b(66) = b(66) * lu(517)
+         b(65) = b(65) - lu(516) * b(66)
+         b(64) = b(64) - lu(515) * b(66)
+         b(55) = b(55) - lu(514) * b(66)
+         b(54) = b(54) - lu(513) * b(66)
+         b(46) = b(46) - lu(512) * b(66)
+         b(38) = b(38) - lu(511) * b(66)
+         b(27) = b(27) - lu(510) * b(66)
+         b(7) = b(7) - lu(509) * b(66)
+                                                                        
+         b(65) = b(65) * lu(500)
+         b(64) = b(64) - lu(499) * b(65)
+         b(63) = b(63) - lu(498) * b(65)
+         b(62) = b(62) - lu(497) * b(65)
+         b(61) = b(61) - lu(496) * b(65)
+         b(60) = b(60) - lu(495) * b(65)
+         b(59) = b(59) - lu(494) * b(65)
+         b(58) = b(58) - lu(493) * b(65)
+         b(57) = b(57) - lu(492) * b(65)
+         b(56) = b(56) - lu(491) * b(65)
+         b(53) = b(53) - lu(490) * b(65)
+         b(52) = b(52) - lu(489) * b(65)
+         b(51) = b(51) - lu(488) * b(65)
+         b(50) = b(50) - lu(487) * b(65)
+         b(48) = b(48) - lu(486) * b(65)
+         b(47) = b(47) - lu(485) * b(65)
+         b(43) = b(43) - lu(484) * b(65)
+         b(42) = b(42) - lu(483) * b(65)
+         b(39) = b(39) - lu(482) * b(65)
+         b(29) = b(29) - lu(481) * b(65)
+         b(26) = b(26) - lu(480) * b(65)
+         b(17) = b(17) - lu(479) * b(65)
+         b(12) = b(12) - lu(478) * b(65)
+         b(8) = b(8) - lu(477) * b(65)
+                                                                        
+         b(64) = b(64) * lu(469)
+         b(63) = b(63) - lu(468) * b(64)
+         b(62) = b(62) - lu(467) * b(64)
+         b(61) = b(61) - lu(466) * b(64)
+         b(60) = b(60) - lu(465) * b(64)
+         b(59) = b(59) - lu(464) * b(64)
+         b(58) = b(58) - lu(463) * b(64)
+         b(57) = b(57) - lu(462) * b(64)
+         b(56) = b(56) - lu(461) * b(64)
+         b(53) = b(53) - lu(460) * b(64)
+         b(51) = b(51) - lu(459) * b(64)
+         b(45) = b(45) - lu(458) * b(64)
+         b(44) = b(44) - lu(457) * b(64)
+         b(42) = b(42) - lu(456) * b(64)
+         b(40) = b(40) - lu(455) * b(64)
+         b(37) = b(37) - lu(454) * b(64)
+         b(34) = b(34) - lu(453) * b(64)
+         b(29) = b(29) - lu(452) * b(64)
+         b(25) = b(25) - lu(451) * b(64)
+         b(18) = b(18) - lu(450) * b(64)
+                                                                        
+         b(63) = b(63) * lu(441)
+         b(62) = b(62) - lu(440) * b(63)
+         b(61) = b(61) - lu(439) * b(63)
+         b(60) = b(60) - lu(438) * b(63)
+         b(59) = b(59) - lu(437) * b(63)
+         b(58) = b(58) - lu(436) * b(63)
+         b(57) = b(57) - lu(435) * b(63)
+         b(56) = b(56) - lu(434) * b(63)
+         b(53) = b(53) - lu(433) * b(63)
+         b(42) = b(42) - lu(432) * b(63)
+         b(33) = b(33) - lu(431) * b(63)
+         b(31) = b(31) - lu(430) * b(63)
+         b(29) = b(29) - lu(429) * b(63)
+                                                                        
+         b(62) = b(62) * lu(419)
+         b(57) = b(57) - lu(418) * b(62)
+         b(36) = b(36) - lu(417) * b(62)
+         b(31) = b(31) - lu(416) * b(62)
+                                                                        
+         b(61) = b(61) * lu(405)
+         b(60) = b(60) - lu(404) * b(61)
+         b(59) = b(59) - lu(403) * b(61)
+         b(58) = b(58) - lu(402) * b(61)
+         b(56) = b(56) - lu(401) * b(61)
+         b(47) = b(47) - lu(400) * b(61)
+         b(35) = b(35) - lu(399) * b(61)
+         b(34) = b(34) - lu(398) * b(61)
+         b(29) = b(29) - lu(397) * b(61)
+                                                                        
+         b(60) = b(60) * lu(387)
+         b(57) = b(57) - lu(386) * b(60)
+         b(53) = b(53) - lu(385) * b(60)
+         b(42) = b(42) - lu(384) * b(60)
+         b(34) = b(34) - lu(383) * b(60)
+         b(15) = b(15) - lu(382) * b(60)
+                                                                        
+         b(59) = b(59) * lu(371)
+         b(57) = b(57) - lu(370) * b(59)
+         b(53) = b(53) - lu(369) * b(59)
+         b(47) = b(47) - lu(368) * b(59)
+         b(42) = b(42) - lu(367) * b(59)
+         b(34) = b(34) - lu(366) * b(59)
+         b(21) = b(21) - lu(365) * b(59)
+                                                                        
+         b(58) = b(58) * lu(354)
+         b(57) = b(57) - lu(353) * b(58)
+         b(53) = b(53) - lu(352) * b(58)
+         b(51) = b(51) - lu(351) * b(58)
+         b(50) = b(50) - lu(350) * b(58)
+                                                                        
+         b(57) = b(57) * lu(343)
+         b(53) = b(53) - lu(342) * b(57)
+                                                                        
+         b(56) = b(56) * lu(332)
+         b(53) = b(53) - lu(331) * b(56)
+                                                                        
+         b(55) = b(55) * lu(324)
+                                                                        
+         b(54) = b(54) * lu(318)
+                                                                        
+         b(53) = b(53) * lu(312)
+         b(39) = b(39) - lu(311) * b(53)
+                                                                        
+         b(52) = b(52) * lu(301)
+         b(47) = b(47) - lu(300) * b(52)
+         b(15) = b(15) - lu(299) * b(52)
+                                                                        
+         b(51) = b(51) * lu(292)
+         b(39) = b(39) - lu(291) * b(51)
+                                                                        
+         b(50) = b(50) * lu(279)
+         b(41) = b(41) - lu(278) * b(50)
+         b(17) = b(17) - lu(277) * b(50)
+                                                                        
+         b(49) = b(49) * lu(269)
+         b(27) = b(27) - lu(268) * b(49)
+                                                                        
+         b(48) = b(48) * lu(253)
+         b(44) = b(44) - lu(252) * b(48)
+         b(37) = b(37) - lu(251) * b(48)
+                                                                        
+         b(47) = b(47) * lu(244)
+         b(29) = b(29) - lu(243) * b(47)
+                                                                        
+         b(46) = b(46) * lu(233)
+         b(39) = b(39) - lu(232) * b(46)
+         b(38) = b(38) - lu(231) * b(46)
+         b(9) = b(9) - lu(230) * b(46)
+                                                                        
+         b(45) = b(45) * lu(221)
+         b(44) = b(44) - lu(220) * b(45)
+         b(37) = b(37) - lu(219) * b(45)
+         b(23) = b(23) - lu(218) * b(45)
+                                                                        
+         b(44) = b(44) * lu(211)
+         b(24) = b(24) - lu(210) * b(44)
+                                                                        
+         b(43) = b(43) * lu(198)
+                                                                        
+         b(42) = b(42) * lu(193)
+                                                                        
+         b(41) = b(41) * lu(185)
+         b(32) = b(32) - lu(184) * b(41)
+                                                                        
+         b(40) = b(40) * lu(176)
+         b(34) = b(34) - lu(175) * b(40)
+         b(22) = b(22) - lu(174) * b(40)
+         b(18) = b(18) - lu(173) * b(40)
+                                                                        
+         b(39) = b(39) * lu(169)
+                                                                        
+         b(38) = b(38) * lu(163)
+         b(27) = b(27) - lu(162) * b(38)
+         b(9) = b(9) - lu(161) * b(38)
+                                                                        
+         b(37) = b(37) * lu(156)
+                                                                        
+         b(36) = b(36) * lu(148)
+                                                                        
+         b(35) = b(35) * lu(140)
+                                                                        
+         b(34) = b(34) * lu(136)
+                                                                        
+         b(33) = b(33) * lu(129)
+                                                                        
+         b(32) = b(32) * lu(122)
+                                                                        
+         b(31) = b(31) * lu(117)
+                                                                        
+         b(30) = b(30) * lu(111)
+         b(11) = b(11) - lu(110) * b(30)
+                                                                        
+         b(29) = b(29) * lu(107)
+                                                                        
+         b(28) = b(28) * lu(103)
+                                                                        
+                                                                        
+      end subroutine imp_lu_slv04
+                                                                        
+      subroutine imp_lu_slv05( lu, b )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(in)    ::   lu(imp_nzcnt)
+      real, intent(inout) ::   b(clscnt4)
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Local variables
+!-----------------------------------------------------------------------
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Solve L * y = b
+!-----------------------------------------------------------------------
+         b(27) = b(27) * lu(100)
+                                                                        
+         b(26) = b(26) * lu(95)
+         b(4) = b(4) - lu(94) * b(26)
+                                                                        
+         b(25) = b(25) * lu(89)
+                                                                        
+         b(24) = b(24) * lu(84)
+                                                                        
+         b(23) = b(23) * lu(79)
+                                                                        
+         b(22) = b(22) * lu(74)
+                                                                        
+         b(21) = b(21) * lu(69)
+                                                                        
+         b(20) = b(20) * lu(63)
+                                                                        
+         b(19) = b(19) * lu(59)
+                                                                        
+         b(18) = b(18) * lu(55)
+                                                                        
+         b(17) = b(17) * lu(51)
+                                                                        
+         b(16) = b(16) * lu(46)
+                                                                        
+         b(15) = b(15) * lu(43)
+                                                                        
+         b(14) = b(14) * lu(35)
+                                                                        
+         b(13) = b(13) * lu(31)
+                                                                        
+         b(12) = b(12) * lu(27)
+         b(8) = b(8) - lu(26) * b(12)
+                                                                        
+         b(11) = b(11) * lu(22)
+                                                                        
+         b(10) = b(10) * lu(19)
+                                                                        
+         b(9) = b(9) * lu(17)
+                                                                        
+         b(8) = b(8) * lu(15)
+         b(1) = b(1) - lu(14) * b(8)
+                                                                        
+         b(7) = b(7) * lu(11)
+                                                                        
+         b(6) = b(6) * lu(8)
+                                                                        
+         b(5) = b(5) * lu(6)
+         b(3) = b(3) - lu(5) * b(5)
+                                                                        
+         b(4) = b(4) * lu(4)
+                                                                        
+         b(3) = b(3) * lu(3)
+                                                                        
+         b(2) = b(2) * lu(2)
+                                                                        
+         b(1) = b(1) * lu(1)
+                                                                        
+                                                                        
+      end subroutine imp_lu_slv05
+                                                                        
+      subroutine imp_lu_slv( lu, b )
+                                                                        
+      use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
+                                                                        
+      implicit none
+                                                                        
+!-----------------------------------------------------------------------
+!       ... Dummy args
+!-----------------------------------------------------------------------
+      real, intent(in)    ::   lu(imp_nzcnt)
+      real, intent(inout) ::   b(clscnt4)
+                                                                        
+      call imp_lu_slv01( lu, b )
+      call imp_lu_slv02( lu, b )
+      call imp_lu_slv03( lu, b )
+      call imp_lu_slv04( lu, b )
+      call imp_lu_slv05( lu, b )
+                                                                        
+      end subroutine imp_lu_slv
                                                                         
       end module MO_IMP_SOLVE_MOD
 
       module MO_ROD_SOLVE_MOD
 
-      CONTAINS
+      contains
                                                                         
-      subroutine ROD_LU_SLV( lu, b )
+      subroutine rod_lu_slv( lu, b )
                                                                         
       use CHEM_MODS_MOD, only : rod_nzcnt, clsze, clscnt5
                                                                         
@@ -2445,10 +6534,10 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(in)    ::   lu(clsze,rod_nzcnt)
-      real, intent(inout) ::   b(clsze,clscnt5)
+      real, intent(in)    ::   lu(rod_nzcnt)
+      real, intent(inout) ::   b(clscnt5)
                                                                         
                                                                         
-      end subroutine ROD_LU_SLV
+      end subroutine rod_lu_slv
                                                                         
       end module MO_ROD_SOLVE_MOD

@@ -1,8 +1,8 @@
       module MO_SETINV_MOD
 
 implicit none
-character(len=128), parameter :: version     = '$Id: mo_setinv.F90,v 13.0 2006/03/28 21:16:25 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis_2006_08 $'
+character(len=128), parameter :: version     = '$Id: mo_setinv.F90,v 13.0.4.1 2006/11/20 20:24:09 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: memphis_2006_12 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -46,9 +46,10 @@ logical                       :: module_is_initialized = .false.
          invariants(:,k,1) = 10. * pmid(:,k) / (boltz*tfld(:,k))
          invariants(:,k,2) = .79 * invariants(:,k,1)
          invariants(:,k,3) = .21 * invariants(:,k,1)
-         invariants(:,k,4) = h2ovmr(:,k) * invariants(:,k,1)
-         do j = 5, size(invariants,3)
-            invariants(:,k,j) = inv_data(:,k,j-4) * invariants(:,k,1)
+!        invariants(:,k,4) = h2ovmr(:,k) * invariants(:,k,1)
+!        do j = 5, size(invariants,3)
+         do j = 4, size(invariants,3)
+            invariants(:,k,j) = inv_data(:,k,j-3) * invariants(:,k,1)
          enddo
       end do
 

@@ -13,13 +13,16 @@ implicit none
                  usr8_ndx, usr9_ndx, usr11_ndx, usr12_ndx, usr14_ndx, usr15_ndx, &
                  usr16_ndx, usr17_ndx, usr21_ndx, usr22_ndx, &
                  usr24_ndx, usr25_ndx, &
-                 so4_ndx
+                 so4_ndx, h2o_ndx, &
+                 strat37_ndx, strat38_ndx, strat72_ndx, strat73_ndx, strat74_ndx, &
+                 strat75_ndx, strat76_ndx, strat77_ndx, strat78_ndx, strat79_ndx, &
+                 strat80_ndx
 
       real, parameter :: d622 = rdgas/rvgas
       real, parameter :: d378 = 1. - d622     
 
-character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 13.0 2006/03/28 21:16:29 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis_2006_08 $'
+character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 13.0.4.1 2006/11/20 20:24:09 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: memphis_2006_12 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -50,15 +53,30 @@ logical                       :: module_is_initialized = .false.
       usr21_ndx = get_rxt_ndx( 'usr21' )
       usr22_ndx = get_rxt_ndx( 'usr22' )
       so4_ndx = get_spc_ndx( 'SO4' )
+      h2o_ndx = get_spc_ndx( 'H2O' )
       usr24_ndx = get_rxt_ndx( 'usr24' )
       usr25_ndx = get_rxt_ndx( 'usr25' )
+      strat37_ndx = get_rxt_ndx( 'strat37' )
+      strat38_ndx = get_rxt_ndx( 'strat38' )
+      strat72_ndx = get_rxt_ndx( 'strat72' )
+      strat73_ndx = get_rxt_ndx( 'strat73' )
+      strat74_ndx = get_rxt_ndx( 'strat74' )
+      strat75_ndx = get_rxt_ndx( 'strat75' )
+      strat76_ndx = get_rxt_ndx( 'strat76' )
+      strat77_ndx = get_rxt_ndx( 'strat77' )
+      strat78_ndx = get_rxt_ndx( 'strat78' )
+      strat79_ndx = get_rxt_ndx( 'strat79' )
+      strat80_ndx = get_rxt_ndx( 'strat80' )
 
       write(*,*) ' '
       write(*,*) 'usrrxt_init: diagnostics '
       write(*,'(10i5)') usr1_ndx, usr2_ndx, usr3_ndx, usr5_ndx, usr6_ndx, usr7_ndx, &
                  usr8_ndx, usr9_ndx, usr11_ndx, usr12_ndx, usr14_ndx, usr15_ndx, &
                  usr16_ndx, usr17_ndx, usr21_ndx, usr22_ndx, &
-                 usr24_ndx, usr25_ndx
+                 usr24_ndx, usr25_ndx, &
+                 strat37_ndx, strat38_ndx, strat72_ndx, strat73_ndx, strat74_ndx, &
+                 strat75_ndx, strat76_ndx, strat77_ndx, strat78_ndx, strat79_ndx, &
+                 strat80_ndx
 
       end subroutine usrrxt_init
 
@@ -190,16 +208,19 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
          if( usr9_ndx > 0 ) then
             if( indexh2o > 0 ) then
-               call vexp( exp_fac, 600.*tinv, plonl )
-               ko(:)   = 2.3e-13 * exp_fac(:)
-               call vexp( exp_fac, 1000.*tinv, plonl )
-               kinf(:) = 1.7e-33 * m(:,k) * exp_fac(:)
                call vexp( exp_fac, 2200.*tinv, plonl )
                fc(:)   = 1. + 1.4e-21 * invariants(:,k,indexh2o) * exp_fac(:)
-               rxt(:,k,usr9_ndx) = (ko(:) + kinf(:)) * fc(:)
+            else if( h2o_ndx > 0 ) then
+               call vexp( exp_fac, 2200.*tinv, plonl )
+               fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * invariants(:,k,indexm) * exp_fac(:)
             else
-               rxt(:,k,usr9_ndx) = 0.
+               fc(:) = 1.
             end if
+            call vexp( exp_fac, 600.*tinv, plonl )
+            ko(:)   = 2.3e-13 * exp_fac(:)
+            call vexp( exp_fac, 1000.*tinv, plonl )
+            kinf(:) = 1.7e-33 * m(:,k) * exp_fac(:)
+            rxt(:,k,usr9_ndx) = (ko(:) + kinf(:)) * fc(:)
          end if
 
 !-----------------------------------------------------------------
@@ -259,6 +280,18 @@ logical                       :: module_is_initialized = .false.
             call vexp( exp_fac, -234.*tinv, plonl )
             rxt(:,k,usr24_ndx) = 0.75*ko(:) + 9.6e-12 * exp_fac
          end if
+
+!-----------------------------------------------------------------
+!        ... Cl2O2 + M -> 2*ClO + M
+!-----------------------------------------------------------------
+         if( strat38_ndx > 0 ) then
+            if( strat37_ndx > 0 ) then
+               call vexp( exp_fac, -8744.*tinv, plonl )
+               rxt(:,k,strat38_ndx) = rxt(:,k,strat37_ndx) * 7.874e26 * exp_fac(:)
+            else
+               rxt(:,k,strat38_ndx) = 0.
+            end if
+         end if
 #else
 !-----------------------------------------------------------------
 !        ... n2o5 + m --> no2 + no3 + m
@@ -299,13 +332,15 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
          if( usr9_ndx > 0 ) then
             if( indexh2o > 0 ) then
-               ko(:)   = 2.3e-13 * exp( 600.*tinv(:) )
-               kinf(:) = 1.7e-33 * m(:,k) * exp( 1000.*tinv(:) )
                fc(:)   = 1. + 1.4e-21 * invariants(:,k,indexh2o) * exp( 2200.*tinv(:) )
-               rxt(:,k,usr9_ndx) = (ko(:) + kinf(:)) * fc(:)
+            else if( h2o_ndx > 0 ) then
+               fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * invariants(:,k,indexm) * exp( 2200.*tinv(:) )
             else
-               rxt(:,k,usr9_ndx) = 0.
+               fc(:) = 1.
             end if
+            ko(:)   = 2.3e-13 * exp( 600.*tinv(:) )
+            kinf(:) = 1.7e-33 * m(:,k) * exp( 1000.*tinv(:) )
+            rxt(:,k,usr9_ndx) = (ko(:) + kinf(:)) * fc(:)
          end if
 
 !-----------------------------------------------------------------
@@ -359,6 +394,17 @@ logical                       :: module_is_initialized = .false.
             ko(:) = 1. + 5.5e-31 * exp( 7460.*tinv(:) ) * invariants(:,k,indexm) * 0.21
             ko(:) = 1.7e-42 * exp( 7810.*tinv(:) ) * invariants(:,k,indexm) * 0.21 / ko(:)
             rxt(:,k,usr24_ndx) = 0.75*ko(:) + 9.6e-12*exp( -234.*tinv(:) )
+         end if
+
+!-----------------------------------------------------------------
+!        ... Cl2O2 + M -> 2*ClO + M
+!-----------------------------------------------------------------
+         if( strat38_ndx > 0 ) then
+            if( strat37_ndx > 0 ) then
+               rxt(:,k,strat38_ndx) = rxt(:,k,strat37_ndx) * 7.874e26 * exp( -8744.*tinv(:) )
+            else
+               rxt(:,k,strat38_ndx) = 0.
+            end if
          end if
 #endif
          if( usr16_ndx > 0 .or. usr17_ndx > 0 .or. usr25_ndx > 0 ) then
@@ -418,6 +464,41 @@ logical                       :: module_is_initialized = .false.
                   1./(rm1/dg + 4./(gam4+1.e-30)/(3.75e3 * sqrt( temp(:,k))))*sur(:)
             end if
          end if
+
+         if( strat72_ndx > 0 .or. strat73_ndx > 0 .or. strat74_ndx > 0 .or. &
+             strat75_ndx > 0 .or. strat76_ndx > 0 .or. strat77_ndx > 0 .or. &
+             strat78_ndx > 0 .or. strat79_ndx > 0 .or. strat80_ndx > 0 ) then
+
+            if( strat72_ndx > 0 ) then
+               rxt(:,k,strat72_ndx) = 0.
+            end if
+            if( strat73_ndx > 0 ) then
+               rxt(:,k,strat73_ndx) = 0.
+            end if
+            if( strat74_ndx > 0 ) then
+               rxt(:,k,strat74_ndx) = 0.
+            end if
+            if( strat75_ndx > 0 ) then
+               rxt(:,k,strat75_ndx) = 0.
+            end if
+            if( strat76_ndx > 0 ) then
+               rxt(:,k,strat76_ndx) = 0.
+            end if
+            if( strat77_ndx > 0 ) then
+               rxt(:,k,strat77_ndx) = 0.
+            end if
+            if( strat78_ndx > 0 ) then
+               rxt(:,k,strat78_ndx) = 0.
+            end if
+            if( strat79_ndx > 0 ) then
+               rxt(:,k,strat79_ndx) = 0.
+            end if
+            if( strat80_ndx > 0 ) then
+               rxt(:,k,strat80_ndx) = 0.
+            end if
+
+         end if
+
       end do
 
       end subroutine usrrxt

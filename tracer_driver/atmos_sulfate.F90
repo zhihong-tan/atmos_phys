@@ -11,7 +11,7 @@ module atmos_sulfate_mod
 ! </DESCRIPTION>
 ! <WARNING>
 !  To save space only the actual month of input files are kept in memory.
-!  This implies that the "atmos_SOx_init" should be executed at the begining
+!  This implies that the "atmos_sulfate_init" should be executed at the begining
 !  of each month. In other words, the script should not run more than 1 month
 !  without a restart.
 ! </WARNING>
@@ -36,8 +36,10 @@ use           diag_manager_mod, only : send_data,               &
 use         tracer_manager_mod, only : get_tracer_index,        &
                                        set_tracer_atts
 use          field_manager_mod, only : MODEL_ATMOS
+use           interpolator_mod, only:  interpolate_type, interpolator_init, &
+                                       interpolator, interpolator_end,     &
+                                       CONSTANT, INTERP_WEIGHTED_P
 use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR
-use atmos_tracer_utilities_mod, only : interp_emiss
 
 implicit none
 
@@ -45,10 +47,8 @@ private
 !-----------------------------------------------------------------------
 !----- interfaces -------
 !
-public  atmos_SOx_init, atmos_SOx_end, &
-        atmos_DMS_emission, atmos_SO2_emission, atmos_SO4_emission, &
-        SOx_source_input, chem_sox, &
-        get_SO2_nerup_volc_emis
+public  atmos_sulfate_init, atmos_sulfate_end, &
+        atmos_DMS_emission, atmos_SOx_emission, atmos_SOx_chem
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
@@ -64,28 +64,23 @@ integer :: nSO2 = 0  ! tracer number for Sulfur dioxide        = SO2
 integer :: nMSA = 0  ! tracer number for Methane sulfonic acid = CH3SO3H
 integer :: nH2O2= 0  ! tracer number for Hydrogen peroxyde     = H2O2
 
-real , parameter :: WTM_S     = 32.06599807
-real , parameter :: WTM_SO2   = 64.06480408
-real , parameter :: WTM_SO4   = 96.06359863
-real , parameter :: WTM_DMS   = 62.13240051
-real , parameter :: WTM_MSA   = 96.06359863
+real , parameter :: WTM_S     = 32.0
+real , parameter :: WTM_O3    = 48.0
+real , parameter :: WTM_SO2   = 64.0
+real , parameter :: WTM_SO4   = 96.0
+real , parameter :: WTM_NH4_2SO4   = 132.00
+real , parameter :: WTM_DMS   = 62.0
+real , parameter :: WTM_MSA   = 96.0
 
 !--- identification numbers for  diagnostic fields and axes ----
-integer ::   id_OH_conc             = 0
-integer ::   id_HO2_conc            = 0
-integer ::   id_NO3_conc            = 0
-integer ::   id_OH_diurnal          = 0
-integer ::   id_HO2_diurnal         = 0
-integer ::   id_jH2O2_diurnal       = 0
-integer ::   id_NO3_diurnal         = 0
-integer ::   id_O3_vmr              = 0
-integer ::   id_pH                  = 0
+integer ::   id_OH                  = 0
+integer ::   id_HO2                 = 0
+integer ::   id_NO3                 = 0
 integer ::   id_jH2O2               = 0
+integer ::   id_O3                  = 0
+integer ::   id_pH                  = 0
 
-integer ::   id_pph =0
-integer ::   id_po3 =0
 integer ::   id_DMSo                = 0
-integer ::   id_sstemp              = 0
 integer ::   id_SO2_anth_l1_emis    = 0
 integer ::   id_SO2_anth_l2_emis    = 0
 integer ::   id_SO4_anth_l1_emis    = 0
@@ -102,34 +97,65 @@ integer ::   id_SO4_chem            = 0
 integer ::   id_MSA_chem            = 0
 integer ::   id_H2O2_chem           = 0
 
-!--- Arrays of SOx emission rates and gas species needed for SOx chemistry
-real, allocatable, dimension(:,:)   :: DMSo        ![nM/L]
-real, allocatable, dimension(:,:)   :: SO4_anth_l1_emis
-real, allocatable, dimension(:,:)   :: SO4_anth_l2_emis
-real, allocatable, dimension(:,:)   :: SO2_anth_l1_emis
-real, allocatable, dimension(:,:)   :: SO2_anth_l2_emis
-real, allocatable, dimension(:,:)   :: SO2_bioburn_emis
-real, allocatable, dimension(:,:,:) :: SO2_aircraft_emis
-real, allocatable, dimension(:,:,:) :: OH_conc
-real, allocatable, dimension(:,:,:) :: HO2_conc
-real, allocatable, dimension(:,:,:) :: jH2O2
-real, allocatable, dimension(:,:,:) :: NO3_conc
-real, allocatable, dimension(:,:,:) :: O3_vmr
-real, allocatable, dimension(:,:,:) :: pH
+type(interpolate_type),save         ::  gas_conc_interp
+type(interpolate_type),save         ::  aerocom_emission_interp
+type(interpolate_type),save         ::  gocart_emission_interp
+type(interpolate_type),save         ::  aircraft_emission_interp
+
+character(len=20)  :: runtype = "gocart"
+
+character(len=32)  :: gas_conc_filename = 'gas_conc_3D.nc'
+character(len=32), dimension(6) :: gas_conc_name
+data gas_conc_name/'OH','HO2','NO3','O3','jH2O2','pH'/
+
+character(len=32)  :: gocart_emission_filename = 'gocart_emission.nc'
+character(len=32), dimension(6) :: gocart_emission_name
+data gocart_emission_name/'DMSo','SO2_GEIA1','SO2_GEIA2', &
+                       'SO4_GEIA1','SO4_GEIA2','SO2_biobur'/
+
+character(len=32)  :: aerocom_emission_filename = 'aerocom_emission.nc'
+integer, parameter :: max_aerocom_emission=18
+character(len=32), dimension(max_aerocom_emission)  :: aerocom_emission_name
+data aerocom_emission_name/ &
+                   'SO2_RoadTransport',&
+                   'SO2_Off-road', &
+                   'SO2_Domestic', &
+                   'SO2_Industry', &
+                   'SO2_International_Shipping', &
+                   'SO2_Powerplants', &
+                   'SO2_cont_volc', &
+                   'alt_cont_volc_low', &
+                   'alt_cont_volc_high', &
+                   'SO2_expl_volc', &
+                   'alt_expl_volc_low', &
+                   'alt_expl_volc_high', &
+                   'GFED_SO2_l1', &
+                   'GFED_SO2_l2', &
+                   'GFED_SO2_l3', &
+                   'GFED_SO2_l4', &
+                   'GFED_SO2_l5', &
+                   'GFED_SO2_l6'/
+
+character(len=32)  :: aircraft_emission_filename = 'aircraft_emission.nc'
+character(len=32)  :: aircraft_emission_name(1)
+data aircraft_emission_name/'fuel'/
+
+namelist /simple_sulfate_nml/  &
+                runtype,                         &
+                gas_conc_filename, gas_conc_name,          &
+                aerocom_emission_filename, aerocom_emission_name,  &
+                gocart_emission_filename, gocart_emission_name,  &
+                aircraft_emission_filename, aircraft_emission_name
 
 !trim(runtype) 
 !biomass_only; fossil_fuels_only, natural_only, anthrop
-character(len=20):: runtype = "anthrop"
-
-namelist / aerosol_emissions_nml/  &
-           runtype                         
 
 logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfate.F90,v 13.0 2006/03/28 21:15:41 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_08 $'
+character(len=128) :: version = '$Id: atmos_sulfate.F90,v 13.0.2.2 2006/10/31 19:09:01 wfc Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_12 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -137,14 +163,14 @@ contains
 
 !#######################################################################
 
-!<SUBROUTINE NAME="atmos_SOx_init">
+!<SUBROUTINE NAME="atmos_sulfate_init">
 !<OVERVIEW>
 ! The constructor routine for the sulfate module.
 !</OVERVIEW>
 !<DESCRIPTION>
 ! A routine to initialize the sulfate module.
 !</DESCRIPTION>
- subroutine atmos_SOx_init ( lonb, latb, nlev, axes, Time, mask)
+ subroutine atmos_sulfate_init ( lonb, latb, nlev, axes, Time, mask)
 
 !-----------------------------------------------------------------------
 real, intent(in),    dimension(:)                   :: lonb, latb
@@ -175,7 +201,7 @@ integer :: n, m, nsulfate
 !
       integer  log_unit,unit,io,index,ntr,nt
       real :: initial_values(5)
-      character*3 :: SOx_tracer(5)
+      character*12 :: SOx_tracer(5)
 !
 !     1. DMS       = Dimethyl sulfide            = CH3SCH3
 !     2. SO2       = Sulfur dioxide              = SO2     
@@ -201,8 +227,8 @@ integer :: n, m, nsulfate
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
-        read  (unit, nml=aerosol_emissions_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'aerosol_emissions_nml')
+        read  (unit, nml=simple_sulfate_nml, iostat=io, end=10)
+        ierr = check_nml_error(io,'simple_sulfate_nml')
         end do
 10      call close_file (unit)
       endif
@@ -212,7 +238,7 @@ integer :: n, m, nsulfate
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
       if (mpp_pe() == mpp_root_pe() ) &
-                          write (stdlog(), nml=aerosol_emissions_nml)
+                          write (stdlog(), nml=simple_sulfate_nml)
 
 
 !----- set initial value of sulfate ------------
@@ -222,7 +248,7 @@ integer :: n, m, nsulfate
        n = get_tracer_index(MODEL_ATMOS,SOx_tracer(m))
        if (n>0) then
          nsulfate=n
-!        call set_tracer_atts(MODEL_ATMOS,SOx_tracer(m),SOx_tracer(m),'mmr')
+        call set_tracer_atts(MODEL_ATMOS,SOx_tracer(m),SOx_tracer(m),'vmr')
          if (nsulfate > 0 .and. mpp_pe() == mpp_root_pe()) &
                  write (stdlog(),30) SOx_tracer(m),nsulfate
        endif
@@ -230,6 +256,32 @@ integer :: n, m, nsulfate
 
 
   30   format (A,' was initialized as tracer number ',i2)
+     call interpolator_init (gas_conc_interp, trim(gas_conc_filename),  &
+                             lonb, latb,&
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = gas_conc_name, &
+                             vert_interp=(/INTERP_WEIGHTED_P/) )
+     call interpolator_init (aerocom_emission_interp, &
+                             trim(aerocom_emission_filename),  &
+                             lonb, latb,&
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = aerocom_emission_name, &
+                             vert_interp=(/INTERP_WEIGHTED_P/) )
+
+     call interpolator_init (gocart_emission_interp, &
+                             trim(gocart_emission_filename),  &
+                             lonb, latb,&
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = gocart_emission_name, &
+                             vert_interp=(/INTERP_WEIGHTED_P/) )
+
+     call interpolator_init (aircraft_emission_interp, &
+                             trim(aircraft_emission_filename),  &
+                             lonb, latb,&
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = aircraft_emission_name, &
+                             vert_interp=(/INTERP_WEIGHTED_P/) )
+
 ! Register a diagnostic field : emission of SOx species
       id_DMS_emis   = register_diag_field ( mod_name,             &
                       'simpleDMS_emis', axes(1:2),Time,                 &
@@ -243,164 +295,81 @@ integer :: n, m, nsulfate
                       'simpleSO4_emis', axes(1:3),Time,                 &
                       'simpleSO4_emis', 'kgS/m2/s',                     &
                        missing_value=-999.  )
-      if (.not.allocated(DMSo)) then
-        allocate (DMSo(size(lonb)-1,size(latb)-1)                   )
-        id_DMSo       = register_diag_field ( mod_name,             &
+      id_DMSo       = register_diag_field ( mod_name,             &
                       'DMSo',axes(1:2),Time,                      &
                       'Dimethylsulfide seawater concentration',   &
                       'nM/L')
-      endif
-
-      id_pph = register_diag_field ( mod_name,             &
-                      'pph',axes(1:3),Time,                    &
-                      'pH in chem',                  &
+      id_ph          = register_diag_field ( mod_name,             &
+                      'pH_simple_sulfate',axes(1:3),Time,                    &
+                      'pH in simple-sulfate',                  &
+                      'none')
+      id_O3           = register_diag_field ( mod_name,             &
+                      'O3_simple_sulfate',axes(1:3),Time,                    &
+                      'O3 in simple-sulfate',                  &
                       'none')
 
-      id_po3 = register_diag_field ( mod_name,             &
-                      'po3',axes(1:3),Time,                    &
-                      'o3 in chem',                  &
-                      'none')
-
-      if (.not.allocated(SO2_anth_l1_emis)) then
-        allocate (SO2_anth_l1_emis(size(lonb)-1,size(latb)-1)    )
-        id_SO2_anth_l1_emis = register_diag_field ( mod_name,     &
+      id_SO2_anth_l1_emis = register_diag_field ( mod_name,     &
                       'simpleSO2_anth_l1_emis',axes(1:2),Time,          &
                       'SO2 anthropogenic emission GEIA-85 level1',&
                       'kgS/m2/s')
-      endif
-      if (.not.allocated(SO2_anth_l2_emis)) then
-        allocate (SO2_anth_l2_emis(size(lonb)-1,size(latb)-1)    )
-        id_SO2_anth_l2_emis = register_diag_field ( mod_name,     &
+      id_SO2_anth_l2_emis = register_diag_field ( mod_name,     &
                       'simpleSO2_anth_l2_emis',axes(1:2),Time,          &
                       'SO2 anthropogenic emission GEIA-85 level2',&
                       'kgS/m2/s')
-      endif
-      if (.not.allocated(SO2_aircraft_emis)) then
-        allocate (SO2_aircraft_emis(size(lonb)-1,size(latb)-1,nlev))
-        id_SO2_aircraft_emis= register_diag_field ( mod_name,     &
+      id_SO2_aircraft_emis= register_diag_field ( mod_name,     &
                       'simpleSO2_aircraft_emis',axes(1:3),Time,         &
                       'SO2 emission by aircraft',                 &
                       'kgS/m2/s')
-      endif
-      if (.not.allocated(SO2_bioburn_emis)) then
-        allocate (SO2_bioburn_emis(size(lonb)-1,size(latb)-1)    )
-        id_SO2_bioburn_emis = register_diag_field ( mod_name,     &
+      id_SO2_bioburn_emis = register_diag_field ( mod_name,     &
                       'simpleSO2_bioburn_emis',axes(1:2),Time,          &
                       'SO2 emission from biomass burning',        &
                       'kgS/m2/s')
-      endif
       id_SO2_nerup_volc_emis = register_diag_field ( mod_name,     &
                       'simpleSO2_nerup_volc_emis',axes(1:3),Time,     &
                       'SO2 emission from non-eruptive volcanoes', &
                       'kgS/m2/s')
-      if (.not.allocated(SO4_anth_l1_emis)) then
-        allocate (SO4_anth_l1_emis(size(lonb)-1,size(latb)-1)    )
-        id_SO4_anth_l1_emis = register_diag_field ( mod_name,     &
+      id_SO4_anth_l1_emis = register_diag_field ( mod_name,     &
                       'simpleSO4_anth_l1_emis',axes(1:2),Time,          &
                       'SO4 anthropogenic emission GEIA-85 level1',&
                       'kgS/m2/s')
-      endif
-      if (.not.allocated(SO4_anth_l2_emis)) then
-        allocate (SO4_anth_l2_emis(size(lonb)-1,size(latb)-1)    )
-        id_SO4_anth_l2_emis = register_diag_field ( mod_name,     &
+      id_SO4_anth_l2_emis = register_diag_field ( mod_name,     &
                       'simpleSO4_anth_l2_emis',axes(1:2),Time,          &
                       'SO4 anthropogenic emission GEIA-85 level2',&
                       'kgS/m2/s')
-      endif
-      if (.not.allocated(NO3_conc) ) &
-        allocate (NO3_conc(size(lonb)-1,size(latb)-1,nlev) )
-      if (id_NO3_conc.eq.0) &
-        id_NO3_conc   = register_diag_field ( mod_name,           &
-                      'simpleNO3_conc',axes(1:3),Time,                       &
-                      'NO3 concentration',                        &
-                      'molec.cm-3')
-      if (id_NO3_diurnal.eq.0) &
-        id_NO3_diurnal= register_diag_field ( mod_name,           &
-                      'simpleNO3_diurnal',axes(1:3),Time,                       &
-                      'Time varying NO3 concentration',                        &
+      id_NO3        = register_diag_field ( mod_name,           &
+                      'simpleNO3_diurnal',axes(1:3),Time,       &
+                      'Time varying NO3 concentration',         &
                       'molec.cm-3')
 
-      if (.not.allocated(OH_conc) ) &
-        allocate (OH_conc(size(lonb)-1,size(latb)-1,nlev)  )
-      if (id_OH_conc.eq.0) &
-        id_OH_conc    = register_diag_field ( mod_name,           &
-                      'simpleOH_SOx_conc',axes(1:3),Time,                        &
-                      'Hydroxyl radical concentration',           &
-                      'molec.cm-3')
-      if (id_OH_diurnal.eq.0) &
-        id_OH_diurnal = register_diag_field ( mod_name,           &
-                      'simpleOH_SOx_diurnal',axes(1:3),Time,                        &
+      id_OH         = register_diag_field ( mod_name,         &
+                      'OH_simple_sulfate',axes(1:3),Time,    &
                       'Varying Hydroxyl radical concentration',           &
                       'molec.cm-3')
-
-
-      if (.not.allocated(jH2O2) ) &
-        allocate (jH2O2(size(lonb)-1,size(latb)-1,nlev)  )
-      if (id_jH2O2.eq.0) &
-        id_jH2O2   = register_diag_field ( mod_name,           &
-                     'simplejH2O2',axes(1:3),Time,              &
-                     'H2O2 photodissociation',           &
-                     's-1')
-      if (id_jH2O2_diurnal.eq.0) &
-        id_jH2O2_diurnal = register_diag_field ( mod_name,           &
-                      'simplejH2O2_diurnal',axes(1:3),Time,               &
+      id_jH2O2         = register_diag_field ( mod_name,           &
+                      'jH2O2_simple_sulfate',axes(1:3),Time,               &
                       'Varying H2O2 photodissociation',   &
                       's-1')
 
-      if (.not.allocated(HO2_conc) ) &
-        allocate (HO2_conc(size(lonb)-1,size(latb)-1,nlev)  )
-      if (id_HO2_conc.eq.0) &
-        id_HO2_conc   = register_diag_field ( mod_name,           &
-                      'simpleHO2_SOx_conc',axes(1:3),Time,              &
-                      'Hydroperoxyl radical concentration',           &
-                      'molec.cm-3')
-      if (id_HO2_diurnal.eq.0) &
-        id_HO2_diurnal = register_diag_field ( mod_name,           &
-                      'simpleHO2_SOx_diurnal',axes(1:3),Time,               &
+      id_HO2         = register_diag_field ( mod_name,           &
+                      'HO2_simple_sulfate',axes(1:3),Time,               &
                       'Varying Hydroperoxyl radical concentration',   &
                       'molec.cm-3')
-
-      if (.not.allocated(O3_vmr) ) &
-        allocate (O3_vmr(size(lonb)-1,size(latb)-1,nlev) )
-      if (id_O3_vmr.eq.0) &
-        id_O3_vmr        = register_diag_field ( mod_name,           &
-                      'simpleO3_vmr',axes(1:3),Time,                       &
-                      'Ozone volume mixing ratio',               &
-                      'vmr')
-
-      if (.not.allocated(pH) ) &
-        allocate (pH(size(lonb)-1,size(latb)-1,nlev) )
-      if (id_pH.eq.0) &
-        id_pH        = register_diag_field ( mod_name,           &
-                      'simplepH',axes(1:3),Time,                       &
-                      'pH',      &
-                      'none')
-
-      if (id_DMS_chem.eq.0) &
       id_DMS_chem   = register_diag_field ( mod_name,           &
                       'simpleDMS_chem',axes(1:3),Time,                       &
                       'DMS chemical production',      &
                       'kgS/m2/s')
-
-      if (id_SO2_chem.eq.0) &
       id_SO2_chem   = register_diag_field ( mod_name,           &
                       'simpleSO2_chem',axes(1:3),Time,                       &
                       'SO2 chemical production',      &
                       'kgS/m2/s')
-
-      if (id_SO4_chem.eq.0) &
       id_SO4_chem   = register_diag_field ( mod_name,           &
                       'simpleSO4_chem',axes(1:3),Time,                       &
                       'SO4 chemical production',      &
                       'kgS/m2/s')
-
-      if (id_MSA_chem.eq.0) &
       id_MSA_chem   = register_diag_field ( mod_name,           &
                       'simpleMSA_chem',axes(1:3),Time,                       &
                       'MSA chemical production',      &
                       'kgS/m2/s')
-
-      if (id_H2O2_chem.eq.0) &
       id_H2O2_chem   = register_diag_field ( mod_name,           &
                       'simpleH2O2_chem',axes(1:3),Time,                       &
                       'H2O2 chemical production',      &
@@ -411,12 +380,12 @@ integer :: n, m, nsulfate
       module_is_initialized = .TRUE.
 
 !-----------------------------------------------------------------------
- end subroutine atmos_SOx_init
+ end subroutine atmos_sulfate_init
 !</SUBROUTINE>
 
 !#######################################################################
 
-!<SUBROUTINE NAME="atmos_SOx_end">
+!<SUBROUTINE NAME="atmos_sulfate_end">
 !<OVERVIEW>
 !  The destructor routine for the sulfate module.
 !</OVERVIEW>
@@ -424,528 +393,18 @@ integer :: n, m, nsulfate
 ! This subroutine writes the version name to logfile and exits. 
 ! </DESCRIPTION>
 !<TEMPLATE>
-! call atmos_SOx_end
+! call atmos_sulfate_end
 !</TEMPLATE>
- subroutine atmos_SOx_end
+ subroutine atmos_sulfate_end
 
-        if (allocated(DMSo))                deallocate(DMSo)
-        if (allocated(SO4_anth_l1_emis))    deallocate(SO4_anth_l1_emis)
-        if (allocated(SO4_anth_l2_emis))    deallocate(SO4_anth_l2_emis)
-        if (allocated(SO2_anth_l1_emis))    deallocate(SO2_anth_l1_emis)
-        if (allocated(SO2_anth_l2_emis))    deallocate(SO2_anth_l2_emis)
-        if (allocated(SO2_bioburn_emis))    deallocate(SO2_bioburn_emis)
-        if (allocated(SO2_aircraft_emis))   deallocate(SO2_aircraft_emis)
-        if (allocated(OH_conc))             deallocate(OH_conc)
-        if (allocated(HO2_conc))            deallocate(HO2_conc)
-        if (allocated(jH2O2))               deallocate(jH2O2)
-        if (allocated(NO3_conc))            deallocate(NO3_conc)
-        if (allocated(O3_vmr))              deallocate(O3_vmr)
-        if (allocated(pH))                  deallocate(pH)
- 
+        call interpolator_end (gas_conc_interp) 
+        call interpolator_end (aerocom_emission_interp) 
+        call interpolator_end (gocart_emission_interp) 
+        call interpolator_end (aircraft_emission_interp) 
         module_is_initialized = .FALSE.
 
- end subroutine atmos_SOx_end
+ end subroutine atmos_sulfate_end
 !</SUBROUTINE>
-!#######################################################################
-!<SUBROUTINE NAME="SOx_source_input">
-!<OVERVIEW>
-!  This subroutine read the monthly mean concentrations of 
-!  OH, HO2, NO3, O3, and the monthly photodissociation rates jH2o2 and
-!  pH, as well as the emissions for DMS, SO2, and SO4
-!  *****WARNING:
-!  To save space only the actual month is kept in memory which implies
-!  that the "atmos_SOx_init" should be executed at the begining of each
-!  month. In other words, the script should not run more than 1 month
-!  without a restart
-!</OVERVIEW>
- subroutine SOx_source_input( pfull, lon, lat, imonth, Time, is, ie, js, je, &
-                              kbot)
-!--- Input variables
-        real, intent(in), dimension(:,:,:) :: pfull
-        real, dimension(:,:), intent(in)   :: lon, lat
-        integer, intent(in)                :: imonth
-        type(time_type),intent(in)         :: Time
-        integer, intent(in)                :: is, ie, js, je
-        integer, intent(in), dimension(:,:), optional :: kbot
-!--- Working variables
-        real                        :: dtr, lat_S, lon_W, dlon, dlat
-        real                        :: variable
-        integer                     :: i, j, k, kd, im, unit, ios
-        logical                     :: opened
-        real, dimension(144, 90)    :: data2D
-        real, dimension(144, 90,24) :: data3D
-        character (len=3)           :: month(12)
-
-!--- Input filenames
-        character (len=8 ) :: FNMDMS    = 'DMS_AM2_'
-        character (len=8 ) :: FNMNO3    = 'NO3_AM2_'
-        character (len=7 ) :: FNMOH     = 'OH_AM2_'
-        character (len=8 ) :: FNMHO2    = 'HO2_AM2_'
-        character (len=10) :: FNMJH2O2  = 'jH2O2_AM2_'
-        character (len=7 ) :: FNMO3     = 'O3_AM2_'
-        character (len=7 ) :: FNMPH     = 'PH_AM2_'
-        character (len=8 ) :: FNMLAI    = 'LAI_AM2_'
-        character (len=17) :: FNMSO2a   = 'SO2_aircraft_AM2_'
-        character (len=11) :: FNMBB     = 'biobur_AM2_'
-        character (len=14) :: FNMSO2an1 = 'SO2_GEIA1_AM2_'
-        character (len=14) :: FNMSO2an2 = 'SO2_GEIA2_AM2_'
-        character (len=14) :: FNMSO4an1 = 'SO4_GEIA1_AM2_'
-        character (len=14) :: FNMSO4an2 = 'SO4_GEIA2_AM2_'
-
-        data month/'jan','feb','mar','apr','may','jun','jul', &
-                   'aug','sep','oct','nov','dec'/
-!---
-        dtr = PI/180.
-        kd=size(pfull,3)
-!
-!------------------------------------------------------------------------
-! Read 12 monthly average DMS seawater concentrations [nM/L] from Andreae
-! on a 2x2.5 grid
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-   write(stdlog(),*) 'Reading DMS seawater concentration, month=',imonth
-!
-        data2D(:,:)=0.
-        DMSo(:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-!
-        open (unit,file='INPUT/'//FNMDMS//month(imonth)//'.txt', &
-              form='formatted', action='read')
-        do
-          read (unit, '(2i4,e12.4)',iostat=ios) i,j,variable
-          if ( ios.ne.0 ) exit
-          data2D(i,j)=variable   ![nM/L]
-        enddo
-
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading DMS seawater concentration
-!------------------------------------------------------------------------
-
-        lat_S= -90.*dtr; lon_W= -180.*dtr
-        dlon = 2.5*dtr; dlat = 2.*dtr;
-! --- Interpolate data
-        call interp_emiss ( data2D, lon_W, lat_S, dlon, dlat, DMSo )
-
-! --- Send the DMS data to the diag_manager for output.
-        if (id_DMSo > 0 ) &
-          used = send_data ( id_DMSo, DMSo, Time, is_in=is, js_in=js )
-!------------------------------------------------------------------------
-!    Read anthropogenic SO4 emission lower level (GEIA 1985).
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading GEIA anthropogenic SO4 emission level 1, month=',imonth
-!
-        SO4_anth_l1_emis(:,:) = 0.  ![kgSO4/m2/s]
-        data2D(:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-!
-        open (unit,file='INPUT/'//FNMSO4an1//month(imonth)//'.txt', &
-              form='formatted', action='read')
-        do
-          read (unit, '(2i4,e12.4)',iostat=ios) i,j,variable
-          if ( ios.ne.0 ) exit
-          data2D(i,j)=variable
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading SO4 emission lower level (GEIA 1985)
-!------------------------------------------------------------------------
-! --- Interpolate data
-        call interp_emiss ( data2D, lon_W, lat_S, dlon, dlat, SO4_anth_l1_emis )
-! --- Send the anthropogenic emission of SO2 to the diag_manager for output.
-        if (id_SO4_anth_l1_emis > 0 ) &
-          used = send_data ( id_SO4_anth_l1_emis, &
-                             SO4_anth_l1_emis*wtm_S/wtm_SO4, Time, &
-                              is_in=is, js_in=js )
-!------------------------------------------------------------------------
-!    Read anthropogenic SO4 emission upper level (GEIA 1985).
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading GEIA anthropogenic SO4 emission level 2, month=',imonth
-!
-        SO4_anth_l2_emis(:,:) = 0.  ![kgSO4/m2/s]
-        data2D(:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-!
-        open (unit,file='INPUT/'//FNMSO4an2//month(imonth)//'.txt', &
-              form='formatted', action='read')
-        do
-          read (unit, '(2i4,e12.4)',iostat=ios) i,j,variable
-          if ( ios.ne.0 ) exit
-          data2D(i,j)=variable
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading SO4 emission upper level (GEIA 1985)
-!------------------------------------------------------------------------
-! --- Interpolate data
-        call interp_emiss ( data2D, lon_W, lat_S, dlon, dlat, SO4_anth_l2_emis )
-! --- Send the anthropogenic emission of SO2 to the diag_manager for output.
-        if (id_SO4_anth_l2_emis > 0 ) &
-          used = send_data ( id_SO4_anth_l2_emis, &
-                             SO4_anth_l2_emis*wtm_S/wtm_SO4, Time, &
-                              is_in=is, js_in=js )
-!------------------------------------------------------------------------
-!    Read anthropogenic SO2 emission lower level (GEIA 1985).
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading GEIA anthropogenic SO2 emission level 1, month=',imonth
-!
-        SO2_anth_l1_emis(:,:) = 0.  ![kgSO2/grid box/s]
-        data2D(:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-!
-        open (unit,file='INPUT/'//FNMSO2an1//month(imonth)//'.txt', &
-              form='formatted', action='read')
-        do
-          read (unit, '(2i4,e12.4)',iostat=ios) i,j,variable
-          if ( ios.ne.0 ) exit
-          data2D(i,j)=variable
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading SO2 emission lower level (GEIA 1985)
-!------------------------------------------------------------------------
-! --- Interpolate data
-        call interp_emiss ( data2D, lon_W, lat_S, dlon, dlat, SO2_anth_l1_emis )
-! --- Send the anthropogenic emission of SO2 to the diag_manager for output.
-        if (id_SO2_anth_l1_emis > 0 ) &
-          used = send_data ( id_SO2_anth_l1_emis, &
-                             SO2_anth_l1_emis*wtm_S/wtm_SO2, Time, &
-                              is_in=is, js_in=js )
-!------------------------------------------------------------------------
-!    Read anthropogenic SO2 emission upper level (GEIA 1985).
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading GEIA anthropogenic SO2 emission level 2, month=',imonth
-!
-        SO2_anth_l2_emis(:,:) = 0.  ![kgSO2/m2/s]
-        data2D(:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-!
-        open (unit,file='INPUT/'//FNMSO2an2//month(imonth)//'.txt', &
-              form='formatted', action='read')
-        do
-          read (unit, '(2i4,e12.4)',iostat=ios) i,j,variable
-          data2D(i,j)=variable
-          if ( ios.ne.0 ) exit
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading SO2 emission upper level (GEIA 1985)
-!------------------------------------------------------------------------
-! --- Interpolate data
-        call interp_emiss ( data2D, lon_W, lat_S, dlon, dlat, SO2_anth_l2_emis )
-! --- Send the anthropogenic emission of SO2 to the diag_manager for output.
-        if (id_SO2_anth_l2_emis > 0 ) &
-          used = send_data ( id_SO2_anth_l2_emis, &
-                     SO2_anth_l2_emis*wtm_S/wtm_SO2, Time, &
-                              is_in=is, js_in=js )
-          
-!------------------------------------------------------------------------
-! Read 12 monthly 3D aircraft emissions
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading Aircraft emissions, month=',imonth
-!
-        SO2_aircraft_emis(:,:,:) = 0.  ![kgSO2/box/sec]
-        data3D(:,:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-
-        open (unit,file='INPUT/'//FNMSO2a//month(imonth)//'.txt', &
-              form='formatted',action='read')
-        do
-          read (unit, '(3i4,e12.4)',iostat=ios) i,j,k,variable
-          if ( ios.ne.0 ) exit
-          data3D(i,j,k)=variable
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading aircraft emission of SO2
-!------------------------------------------------------------------------
-! --- Interpolate data
-      do k=1,kd 
-        call interp_emiss ( data3D(:,:,k), lon_W, lat_S, dlon, dlat, &
-                            SO2_aircraft_emis(:,:,k))
-      enddo
-! Send the emission data to the diag_manager for output.
-         if (id_SO2_aircraft_emis > 0 ) &
-           used = send_data ( id_SO2_aircraft_emis, &
-                So2_aircraft_emis*wtm_S/wtm_SO2, Time, &
-                is_in=is, js_in=js , ks_in=1 )
-!------------------------------------------------------------------------
-! Read 12 monthly 2D biomass burning emission of SO2
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading Aircraft emissions, month=',imonth
-        SO2_bioburn_emis(:,:) = 0.  ![kgSO2/box/sec]
-        data2D(:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-        open (unit,file='INPUT/'//FNMBB//month(imonth)//'.txt', &
-              form='formatted', action='read')
-        do
-          read (unit, '(2i4,e12.4)',iostat=ios) i,j,variable
-          data2D(i,j)=variable
-          if ( ios.ne.0 ) exit
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading biomass burning emission of SO2
-!------------------------------------------------------------------------
-! --- Interpolate data
-        call interp_emiss ( data2D, lon_W, lat_S, dlon, dlat, SO2_bioburn_emis)
-! Send the emission data to the diag_manager for output.
-         if (id_SO2_bioburn_emis > 0 ) &
-           used = send_data ( id_SO2_bioburn_emis, &
-                SO2_bioburn_emis*wtm_S/wtm_SO2, Time, is_in=is, js_in=js )
-!------------------------------------------------------------------------
-! Read 12 monthly NO3 concentration
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading NO3 concentration, month=',imonth
-!
-        NO3_conc(:,:,:) = 0.  ![molec/cm3]
-        data3D(:,:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-
-        open (unit,file='INPUT/'//FNMNO3//month(imonth)//'.txt', &
-              form='formatted',action='read')
-        do
-          read (unit, '(3i4,e12.4)',iostat=ios) i,j,k,variable
-          if ( ios.ne.0 ) exit
-          data3D(i,j,k)=variable
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading NO3 concentration
-!------------------------------------------------------------------------
-! --- Interpolate data
-      do k=1,kd
-        call interp_emiss ( data3D(:,:,k), lon_W, lat_S, dlon, dlat, &
-                            NO3_conc(:,:,k))
-      enddo
-! Send the NO3 data to the diag_manager for output.
-         if (id_NO3_conc > 0 ) &
-           used = send_data ( id_NO3_conc, &
-                NO3_conc, Time, is_in=is, js_in=js , ks_in=1 )
-!------------------------------------------------------------------------
-! Read 12 monthly OH concentration
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading OH concentration, month=',imonth
-!
-        OH_conc(:,:,:) = 0.  ![molec/cm3]
-        data3D(:,:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-
-        open (unit,file='INPUT/'//FNMOH//month(imonth)//'.txt', &
-              form='formatted',action='read')
-        do
-          read (unit, '(3i4,e12.4)',iostat=ios) i,j,k,variable
-          data3D(i,j,k)=variable
-          if ( ios.ne.0 ) exit
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading OH concentration
-!------------------------------------------------------------------------
-! --- Interpolate data
-      do k=1,kd
-        call interp_emiss ( data3D(:,:,k), lon_W, lat_S, dlon, dlat, &
-                            OH_conc(:,:,k))
-      enddo
-! Send the OH data to the diag_manager for output.
-         if (id_OH_conc > 0 ) &
-           used = send_data ( id_OH_conc, &
-                OH_conc, Time, is_in=is, js_in=js , ks_in=1 )
-!------------------------------------------------------------------------
-! Read 12 monthly HO2 concentration
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading HO2 concentration, month=',imonth
-!
-        HO2_conc(:,:,:) = 0.  ![molec/cm3]
-        data3D(:,:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-
-        open (unit,file='INPUT/'//FNMHO2//month(imonth)//'.txt', &
-               form='formatted',action='read')
-        do
-          read (unit, '(3i4,e12.4)',iostat=ios) i,j,k,variable
-          if ( ios.ne.0 ) exit
-          data3D(i,j,k)=variable
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading HO2 concentration
-!------------------------------------------------------------------------
-! --- Interpolate data
-        do k=1,kd
-          call interp_emiss ( data3D(:,:,k), lon_W, lat_S, dlon, dlat, &
-                            HO2_conc(:,:,k))
-        enddo
-! Send the HO2 data to the diag_manager for output.
-        if (id_HO2_conc > 0 ) &
-           used = send_data ( id_HO2_conc, &
-                HO2_conc, Time, is_in=is, js_in=js , ks_in=1 )
-!------------------------------------------------------------------------
-! Read 12 monthly H2O2 photodissociation rates
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading jH2O2, month=',imonth
-!
-        jH2O2(:,:,:) = 0.  ![molec/cm3]
-        data3D(:,:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-
-        open (unit,file='INPUT/'//FNMJH2O2//month(imonth)//'.txt', &
-               form='formatted',action='read')
-        do
-          read (unit, '(3i4,e12.4)',iostat=ios) i,j,k,variable
-          if ( ios.ne.0 ) exit
-          data3D(i,j,k)=variable
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading jH2O2
-!------------------------------------------------------------------------
-! --- Interpolate data
-        do k=1,kd
-          call interp_emiss ( data3D(:,:,k), lon_W, lat_S, dlon, dlat, &
-                            jH2O2(:,:,k))
-        enddo
-! Send the jH2O2 data to the diag_manager for output.
-        if (id_jH2O2 > 0 ) &
-           used = send_data ( id_jH2O2, &
-                jH2O2, Time, is_in=is, js_in=js , ks_in=1 )
-!------------------------------------------------------------------------
-! Read 12 monthly O3 volume mixing ratio
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading O3, month=',imonth
-!
-        O3_vmr(:,:,:) = 0.  
-        data3D(:,:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-
-        open (unit,file='INPUT/'//FNMO3//month(imonth)//'.txt', &
-               form='formatted',action='read')
-        do
-          read (unit, '(3i4,e12.4)',iostat=ios) i,j,k,variable
-          if ( ios.ne.0 ) exit
-          data3D(i,j,k)=variable
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading O3
-!------------------------------------------------------------------------
-! --- Interpolate data
-        do k=1,kd
-          call interp_emiss ( data3D(:,:,k), lon_W, lat_S, dlon, dlat, &
-                            O3_vmr(:,:,k))
-        enddo
-! Send the O3 data to the diag_manager for output.
-        if (id_O3_vmr > 0 ) &
-           used = send_data ( id_O3_vmr, &
-                O3_vmr, Time, is_in=is, js_in=js , ks_in=1 )
-!------------------------------------------------------------------------
-! Read 12 monthly O3
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) &
-  write(stdlog(),*) 'Reading pH, month=',imonth
-!
-        pH(:,:,:) = 0.  
-        data3D(:,:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-
-        open (unit,file='INPUT/'//FNMPH//month(imonth)//'.txt', &
-               form='formatted',action='read')
-        do
-          read (unit, '(3i4,e12.4)',iostat=ios) i,j,k,variable
-          if ( ios.ne.0 ) exit
-          data3D(i,j,k)=variable
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading pH
-!------------------------------------------------------------------------
-! --- Interpolate data
-        do k=1,kd
-          call interp_emiss ( data3D(:,:,k), lon_W, lat_S, dlon, dlat, &
-                            pH(:,:,k))
-        enddo
-! Send the pH data to the diag_manager for output.
-        if (id_pH > 0 ) &
-           used = send_data ( id_pH, &
-                pH, Time, is_in=is, js_in=js , ks_in=1 )
-
-
-! select sources/emissions
-
-   if(trim(runtype) == 'fossil_fuels_only') then
-      DMSo             = 0.0        ![nM/L]
-      SO2_bioburn_emis =0.0
-   else if(trim(runtype) == 'biomass_only') then
-      DMSo = 0.0        ![nM/L]
-      SO4_anth_l1_emis =0.0
-      SO4_anth_l2_emis =0.0
-      SO2_anth_l1_emis =0.0
-      SO2_anth_l2_emis =0.0
-      SO2_aircraft_emis =0.0
-   else if(trim(runtype) == 'natural_only')then
-      SO4_anth_l1_emis =0.0
-      SO4_anth_l2_emis =0.0
-      SO2_anth_l1_emis =0.0
-      SO2_anth_l2_emis =0.0
-      SO2_aircraft_emis =0.0
-      SO2_bioburn_emis =0.0
-   else if(trim(runtype) == 'anthrop')then
-   else
-        call error_mesg ('atmos_sulfate_mod', &
-             'runtype is not recognized', FATAL)
-   endif
-!
-end subroutine SOx_source_input
 !#######################################################################
 !</SUBROUTINE>
 !<SUBROUTINE NAME="atmos_DMS_emission">
@@ -974,7 +433,7 @@ end subroutine SOx_source_input
 !      (nlon, nlat, nlev, ntime)
 !   </IN>
 subroutine atmos_DMS_emission (lon, lat, area, frac_land, t_surf_rad, w10m, &
-       pwt, dms_dt, Time, is,ie,js,je,kbot)
+       pwt, DMS_dt, Time, is,ie,js,je,kbot)
 !
       real, intent(in),    dimension(:,:)           :: lon, lat
       real, intent(in),    dimension(:,:)           :: frac_land
@@ -987,7 +446,7 @@ subroutine atmos_DMS_emission (lon, lat, area, frac_land, t_surf_rad, w10m, &
       integer, intent(in)                           :: is, ie, js, je
       integer, intent(in), dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
-      real, dimension(size(DMS_dt,1),size(DMS_dt,2)) :: DMS_emis
+      real, dimension(size(DMS_dt,1),size(DMS_dt,2)) :: DMSo, DMS_emis
       integer                                        :: i, j, id, jd, kd
       real                                           :: sst, Sc, conc, w10 
       real                                           :: ScCO2, Akw
@@ -1025,7 +484,14 @@ subroutine atmos_DMS_emission (lon, lat, area, frac_land, t_surf_rad, w10m, &
 ! *                                Sc = 428  (25oC, Erickson 93)             *
 ! ****************************************************************************
 !
-        CONC = DMSo(i+is-1,j+js-1)
+        DMSo(:,:)=0.0
+        call interpolator(gocart_emission_interp, Time, DMSo, &
+                       trim(gocart_emission_name(1)), is, js)
+! --- Send the DMS data to the diag_manager for output.
+        if (id_DMSo > 0 ) &
+          used = send_data ( id_DMSo, DMSo, Time, is_in=is, js_in=js )
+
+        CONC = DMSo(i,j)
 
         W10  = W10M(i,j)
 
@@ -1118,60 +584,265 @@ end subroutine atmos_DMS_emission
 !     The axes relating to the tracer array dimensioned as
 !      (nlon, nlat, nlev, ntime)
 !   </IN>
-subroutine atmos_SO2_emission (lon, lat, area, frac_land, &
-       z_pbl, zhalf, pwt, so2_nerup_volc_emis, SO2_dt, Time, is,ie,js,je,kbot)
+subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
+       z_pbl, zhalf, phalf, pwt, SO2_dt, SO4_dt, Time, is,ie,js,je,kbot)
+!
+! This subroutine calculates the tendencies of SO2 and SO4 due to
+! their emissions.
+! The inventories are based from AEROCOM (cf. Dentener, ACPD, 2006)
+! except the aircraft emission.
+! The emission of SO4 is assumed to be fe=2.5% of all sulfur emission
+! (cf. Dentener, ACPD, 2006). NB. Some authors consider 5%
 !
       real, intent(in),    dimension(:,:)           :: lon, lat
       real, intent(in),    dimension(:,:)           :: frac_land
       real, intent(in),    dimension(:,:)           :: area
       real, intent(in),    dimension(:,:)           :: z_pbl
-      real, intent(in),    dimension(:,:,:)         :: so2_nerup_volc_emis
-      real, intent(in),    dimension(:,:,:)         :: zhalf
+      real, intent(in),    dimension(:,:,:)         :: zhalf, phalf
       real, intent(in),    dimension(:,:,:)         :: pwt
-      real, intent(out),   dimension(:,:,:)         :: SO2_dt
+      real, intent(out),   dimension(:,:,:)         :: SO2_dt, SO4_dt
       type(time_type), intent(in)                   :: Time
       integer, intent(in)                           :: is, ie, js, je
       integer, intent(in), dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
+      integer, parameter :: nlevel_fire = 6
+      real, dimension(size(SO4_dt,1),size(SO4_dt,2),size(SO4_dt,3)) :: SO4_emis
       real, dimension(size(SO2_dt,1),size(SO2_dt,2),size(SO2_dt,3)) :: SO2_emis
-      integer  :: i, j, l, id, jd, kd
+! Input emission fields
+      real, dimension(size(SO2_dt,1),size(SO2_dt,2),size(SO2_dt,3)) :: &
+             SO2_aircraft
+      real, dimension(size(SO2_dt,1),size(SO2_dt,2)) :: &
+             SO2_GEIA1, SO2_GEIA2, SO4_GEIA1, SO4_GEIA2,&
+             SO2_biobur,                                &
+             SO2_RoadTransport,                         &
+             SO2_Off_road,                              &
+             SO2_Domestic,                              &
+             SO2_Industry,                              &
+             SO2_International_Shipping,                &
+             SO2_Powerplants,                           &
+             SO2_cont_volc,                             &
+             SO2_expl_volc,                             &
+             SO2_cont_volc_h1,                          &
+             SO2_cont_volc_h2,                          &
+             SO2_expl_volc_h1,                          &
+             SO2_expl_volc_h2
+      real, dimension(size(SO2_dt,1),size(SO2_dt,2),nlevel_fire) :: &
+             SO2_wildfire
+! Factors of vertical distribution of emissions
+      real, dimension(size(SO2_dt,3)) :: fbb, fa1, fa2, fcv, fev
+      real, dimension(size(SO2_dt,3),nlevel_fire) :: ff
+! Lower altitude of injection of SO2 from wild fires 
+! These values correspond to the AEROCOM input data (cf. Dentener, ACPD, 2006)
+      real, dimension(nlevel_fire) :: &
+             alt_fire_min=(/0.,100.,500.,1000.,2000.,3000./)
+! Upper altitude of injection of SO2 from wild fires 
+! These values correspond to the AEROCOM input data (cf. Dentener, ACPD, 2006)
+      real, dimension(nlevel_fire) :: &
+             alt_fire_max=(/100.,500.,1000.,2000.,3000.,6000./)
+! Altitude of injection of surafce anthropogenic emissions
+      real :: ze1
+! Altitude of injection of SO2 from industries and power plants.   
+      real :: ze2
+! Emission factor for SO4
+      real, parameter :: fe = 0.025
 
-      real :: fbb(size(SO2_dt,3)),fa1(size(SO2_dt,3)),fa2(size(SO2_dt,3))
-
-      real, parameter :: ze1=100.
-      real, parameter :: ze2=500.
-      real :: z1, z2, bltop, fbt
+      real :: z1, z2, bltop, fbt, del
+      integer  :: i, j, k, l, id, jd, kd, il, lf
 
       id=size(SO2_dt,1); jd=size(SO2_dt,2); kd=size(SO2_dt,3)
-
+!
+! Initialize
+!
       SO2_dt(:,:,:) = 0.0
+      SO4_dt(:,:,:) = 0.0
+! GOCART emissions
+      SO2_GEIA1(:,:)=0.0
+      SO2_GEIA2(:,:)=0.0
+      SO4_GEIA1(:,:)=0.0
+      SO4_GEIA2(:,:)=0.0
+      SO2_biobur(:,:)=0.0
+! AEROCOM emissions
+      SO2_RoadTransport(:,:)=0.0
+      SO2_Off_road(:,:)=0.0
+      SO2_Domestic(:,:)=0.0
+      SO2_Industry(:,:)=0.0
+      SO2_International_Shipping(:,:)=0.0
+      SO2_Powerplants(:,:)=0.0
+      SO2_aircraft(:,:,:)=0.0
+      SO2_cont_volc(:,:)=0.0
+      SO2_expl_volc(:,:)=0.0
+      SO2_wildfire(:,:,:)=0.0
+
+      SO2_cont_volc_h1(:,:)=0.0
+      SO2_cont_volc_h2(:,:)=0.0
+      SO2_expl_volc_h1(:,:)=0.0
+      SO2_expl_volc_h2(:,:)=0.0
+!
+      if ( runtype .eq. 'gocart') then
+        call interpolator(gocart_emission_interp, Time, SO2_GEIA1, &
+                       trim(gocart_emission_name(2)), is, js)
+        call interpolator(gocart_emission_interp, Time, SO2_GEIA2, &
+                       trim(gocart_emission_name(3)), is, js)
+        call interpolator(gocart_emission_interp, Time, SO4_GEIA1, &
+                       trim(gocart_emission_name(4)), is, js)
+        call interpolator(gocart_emission_interp, Time, SO4_GEIA2, &
+                       trim(gocart_emission_name(5)), is, js)
+        call interpolator(gocart_emission_interp, Time, SO2_biobur, &
+                       trim(gocart_emission_name(6)), is, js)
+      endif
+      if ( runtype .eq. 'aerocom') then
+        call interpolator(aerocom_emission_interp, Time, SO2_RoadTransport, &
+                       trim(aerocom_emission_name(1)), is, js)
+!
+        call interpolator(aerocom_emission_interp, Time, SO2_Off_road, &
+                       trim(aerocom_emission_name(2)), is, js)
+!
+        call interpolator(aerocom_emission_interp, Time, SO2_Domestic, &
+                       trim(aerocom_emission_name(3)), is, js)
+!
+        call interpolator(aerocom_emission_interp, Time, SO2_Industry, &
+                       trim(aerocom_emission_name(4)), is, js)
+!
+        call interpolator(aerocom_emission_interp, Time, &
+                       SO2_International_Shipping, &
+                       trim(aerocom_emission_name(5)), is, js)
+!
+        call interpolator(aerocom_emission_interp, Time, SO2_Powerplants, &
+                       trim(aerocom_emission_name(6)), is, js)
+! Wildfire emissions at 6 levels from 0 to 6 km
+! (cf. AEROCOM web site or Dentener et al., ACPD, 2006)
+        do il=1,nlevel_fire
+          call interpolator(aerocom_emission_interp, Time, SO2_wildfire(:,:,il), &
+                       trim(aerocom_emission_name(12+il)), is, js)
+        enddo
+      endif
+!
+! Aircraft emissions
+!
+      call interpolator(aircraft_emission_interp, Time, phalf, SO2_aircraft, &
+                       trim(aircraft_emission_name(1)), is, js)
+!
+! Continuous volcanoes
+!
+      call interpolator(aerocom_emission_interp, Time, SO2_cont_volc, &
+                       trim(aerocom_emission_name(7)), is, js)
+      call interpolator(aerocom_emission_interp, Time, SO2_cont_volc_h1, &
+                       trim(aerocom_emission_name(8)), is, js)
+      call interpolator(aerocom_emission_interp, Time, SO2_cont_volc_h2, &
+                       trim(aerocom_emission_name(9)), is, js)
+!
+! Explusive volcanoes
+!
+      call interpolator(aerocom_emission_interp, Time, SO2_expl_volc, &
+                       trim(aerocom_emission_name(10)), is, js)
+      call interpolator(aerocom_emission_interp, Time, SO2_expl_volc_h1, &
+                       trim(aerocom_emission_name(11)), is, js)
+      call interpolator(aerocom_emission_interp, Time, SO2_expl_volc_h2, &
+                       trim(aerocom_emission_name(12)), is, js)
 
       do j = 1, jd
       do i = 1, id
 
-        fbb(:) = 0.
-        fa1(:) = 0.
-        fa2(:) = 0.
-
 ! --- Assuming biomass burning emission within the PBL -------
-        fbt=0.
-        BLTOP = z_pbl(i,j)
-        do l = kd,2,-1
-          z1=zhalf(i,j,l+1)-zhalf(i,j,kd+1)
-          z2=zhalf(i,j,l)-zhalf(i,j,kd+1)
-          if (bltop.lt.z1) exit
-          if (bltop.ge.z2) fbb(l)=pwt(i,j,l)
-          if (bltop.gt.z1.and.bltop.lt.z2) then
-            fbb(l) = pwt(i,j,l)*(bltop-z1)/(z2-z1)
-          endif
-          fbt=fbt+fbb(l)
-        enddo
-        if (fbt .gt. 0.) fbb(:)=fbb(:)/fbt
- 
-
+        fbb(:) = 0.
+        if (runtype.eq.'gocart') then
+          ze1=100.
+          ze2=500.
+          fbt=0.
+          BLTOP = z_pbl(i,j)
+          do l = kd,2,-1
+            z1=zhalf(i,j,l+1)-zhalf(i,j,kd+1)
+            z2=zhalf(i,j,l)-zhalf(i,j,kd+1)
+            if (bltop.lt.z1) exit
+            if (bltop.ge.z2) fbb(l)=pwt(i,j,l)
+            if (bltop.gt.z1.and.bltop.lt.z2) then
+              fbb(l) = pwt(i,j,l)*(bltop-z1)/(z2-z1)
+            endif
+            fbt=fbt+fbb(l)
+          enddo
+          if (fbt .gt. 0.) fbb(:)=fbb(:)/fbt
+        endif
 ! --- Assuming anthropogenic source L1 emitted below Ze1, and L2
 !     emitted between Ze1 and Ze2.
+        ff(:,:)=0.
+        if (runtype.eq.'aerocom') then
+          ze1=100.
+          ze2=300.
+          do l = kd,2,-1
+            Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
+            Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
+            do lf=1,nlevel_fire
+              del=alt_fire_max(lf)-alt_fire_min(lf)
+              if (del.gt.0. .and. Z1.le.alt_fire_max(lf) ) then
+                if (Z2.lt.alt_fire_max(lf)) then
+                  ff(l,lf) = 0.
+                else
+                  if (Z1.lt.alt_fire_min(lf)) then
+                    ff(l,lf) = (Z2-alt_fire_min(lf))/del
+                  else
+                    if (Z2.lt.alt_fire_max(lf)) then
+                      ff(l,lf) = (z2-z1)/del
+                    else
+                      ff(l,lf)=(alt_fire_max(lf)-Z1)/del
+                    endif
+                  endif
+                endif
+              endif
+            enddo
+          enddo
+        endif
+! --- For continuous volcanoes, calculate the fraction of emission for
+! --- each vertical levels
+        fcv(:)=0.
+        do l = kd,2,-1
+          Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
+          Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
+          del=SO2_cont_volc_h2(i,j)-SO2_cont_volc_h1(i,j)
+          if (del.gt.0. .and. Z1.lt.SO2_cont_volc_h2(i,j) ) then
+            if (Z2.lt.SO2_cont_volc_h1(i,j)) then
+              fcv(l) = 0.
+            else
+              if (Z1.lt.SO2_cont_volc_h1(i,j)) then
+                fcv(l) = (Z2-SO2_cont_volc_h1(i,j))/del
+              else
+                if (Z2.lt.SO2_cont_volc_h2(i,j)) then
+                  fcv(l)=(z2-z1)/del
+                else
+                  fcv(l)=(SO2_cont_volc_h2(i,j)-Z1)/del
+                endif
+              endif
+            endif
+          endif
+        enddo
+
+! --- For explosive volcanoes, calculate the fraction of emission for
+! --- each vertical levels
+        fev(:)=0.
+        do l = kd,2,-1
+          Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
+          Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
+          del=SO2_expl_volc_h2(i,j)-SO2_expl_volc_h1(i,j)
+          if (del.gt.0. .and. Z1.lt.SO2_expl_volc_h2(i,j) ) then
+            if (Z2.lt.SO2_expl_volc_h1(i,j)) then
+              fev(l) = 0.
+            else
+              if (Z1.lt.SO2_expl_volc_h1(i,j)) then
+                fev(l) = (Z2-SO2_expl_volc_h1(i,j))/del
+              else
+                if (Z2.lt.SO2_expl_volc_h2(i,j)) then
+                  fev(l)=(z2-z1)/del
+                else
+                  fev(l)=(SO2_expl_volc_h2(i,j)-Z1)/del
+                endif
+              endif
+            endif
+          endif
+        enddo
+! --- For fosil fuel emissions, calculate the fraction of emission for
+! --- each vertical levels
+        fa1(:) = 0.
+        fa2(:) = 0.
         do l = kd,2,-1
           Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
           Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
@@ -1192,19 +863,49 @@ subroutine atmos_SO2_emission (lon, lat, area, frac_land, &
           endif
           if (Z1.gt.Ze2) exit
         enddo
+
 ! --- Total SO2 source ----
-! The emission rates are in units of kgSO2/box/sec
 ! SO2_emis: [kgSO2/m2/s]
-        SO2_emis(i,j,:) =( SO2_aircraft_emis(i+is-1,j+js-1,:)           &
-                        +  SO2_nerup_volc_emis(i,j,:)                   &
-                        +  SO2_anth_l1_emis(i+is-1,j+js-1)*fa1(:)       &
-                        +  SO2_anth_l2_emis(i+is-1,j+js-1)*fa2(:)       &
-                        +  SO2_bioburn_emis(i+is-1,j+js-1)*fbb(:) )     &
-                        /  area(i,j)
-      end do
-      end do
+        SO2_emis(i,j,:) =( &
+!              Assuming that 1g of SO2 is emitted from 1kg of fuel: 1.e-3
+               1.e-3  * SO2_aircraft(i,j,:)                   &
+             + fa1(:) * SO2_GEIA1(i,j)                        &
+             + fa2(:) * SO2_GEIA2(i,j)                        &
+             + fbb(:) * SO2_biobur(i,j)                       &
+             + fa1(:) * SO2_RoadTransport(i,j)                &
+             + fa1(:) * SO2_Off_road(i,j)                     &
+             + fa1(:) * SO2_Domestic(i,j)                     &
+             + fa1(:) * SO2_International_Shipping(i,j)       &
+             + fa2(:) * SO2_Industry(i,j)                     &
+             + fa2(:) * SO2_Powerplants(i,j)                  &
+             + fcv(:) * SO2_cont_volc(i,j)                    &
+             + fev(:) * SO2_expl_volc(i,j)                    )
+        do lf = 1, nlevel_fire
+          SO2_emis(i,j,:) = SO2_emis(i,j,:) + ff(:,lf) * SO2_wildfire(i,j,lf)
+        enddo
 !
-      SO2_dt(:,:,:)=SO2_emis(:,:,:)/pwt(:,:,:)*WTMAIR/WTM_SO2
+! Aerocom assumes a constant emission index for sulfate (2.5%)
+        if (runtype .eq. 'aerocom') then
+          SO4_emis(i,j,:) = fe * SO2_emis(i,j,:)
+          SO2_emis(i,j,:) = (1.-fe)* SO2_emis(i,j,:)
+        endif
+!
+! GOCART assumes continent based emission index for sulfate:
+!    Anthropogenic SOx emission from GEIA 1985.
+!    Assuming:   Europe:      5.0% SOx emission is SO4;
+!                US + Canada: 1.4% SOx emission is SO4;
+!                The rest:    2.5% SOx emission is SO4.
+        if (runtype .eq. 'gocart' ) then
+          SO4_emis(i,j,:) = &
+               fa1(:) * SO4_GEIA1(i,j) + fa2(:) * SO4_GEIA2(i,j)
+        endif
+
+      end do   ! end i loop
+      end do   ! end j loop
+!
+      SO2_dt(:,:,:)= SO2_emis(:,:,:)/pwt(:,:,:)*WTMAIR/WTM_SO2
+      SO4_dt(:,:,:)= SO4_emis(:,:,:)/pwt(:,:,:)*WTMAIR/WTM_SO4
+
 !------------------------------------------------------------------
 ! DIAGNOSTICS:      SO2 and SO4 emission in kg/timestep
 !--------------------------------------------------------------------
@@ -1212,134 +913,16 @@ subroutine atmos_SO2_emission (lon, lat, area, frac_land, &
         used = send_data ( id_SO2_emis, SO2_emis*WTM_S/WTM_SO2, Time, &
               is_in=is,js_in=js,ks_in=1)
       endif
-
-end subroutine atmos_SO2_emission
-!</SUBROUTINE>
-!-----------------------------------------------------------------------
-!#######################################################################
-!<SUBROUTINE NAME="atmos_SO4_emission">
-!<OVERVIEW>
-! The constructor routine for the sulfate module.
-!</OVERVIEW>
-!<DESCRIPTION>
-! A routine to calculate SO4 emission from volcanoes, biomass burning,
-! anthropogenic sources, aircraft.
-!</DESCRIPTION>
-!<TEMPLATE>
-!call atmos_SO4_emission ()
-!</TEMPLATE>
-!   <INOUT NAME="r" TYPE="real" DIM="(:,:,:,:)">
-!     Tracer fields dimensioned as (nlon,nlat,nlev,ntrace).
-!   </INOUT>
-!   <IN NAME="mask" TYPE="real, optional" DIM="(:,:,:)">
-!      optional mask (0. or 1.) that designates which grid points
-!           are above (=1.) or below (=0.) the ground dimensioned as
-!           (nlon,nlat,nlev).
-!   </IN>
-!   <IN NAME="Time" TYPE="type(time_type)">
-!     Model time.
-!   </IN>
-!   <IN NAME="axes" TYPE="integer" DIM="(4)">
-!     The axes relating to the tracer array dimensioned as
-!      (nlon, nlat, nlev, ntime)
-!   </IN>
-subroutine atmos_SO4_emission (lon, lat, area, frac_land, &
-       z_pbl, zhalf, pwt, SO4_dt, &
-       Time, is,ie,js,je,kbot)
-!
-      real, intent(in),    dimension(:,:)           :: lon, lat
-      real, intent(in),    dimension(:,:)           :: frac_land
-      real, intent(in),    dimension(:,:)           :: area
-      real, intent(in),    dimension(:,:)           :: z_pbl
-      real, intent(in),    dimension(:,:,:)         :: zhalf
-      real, intent(in),    dimension(:,:,:)         :: pwt
-      real, intent(out),   dimension(:,:,:)         :: SO4_dt
-      type(time_type), intent(in)                   :: Time
-      integer, intent(in)                           :: is, ie, js, je
-      integer, intent(in), dimension(:,:), optional :: kbot
-!-----------------------------------------------------------------------
-!-----------------------------------------------------------------------
-      real, dimension(size(SO4_dt,1),size(SO4_dt,2),size(SO4_dt,3)) :: SO4_emis
-      integer  :: i, j, l, id, jd, kd
-
-      real :: fbb(size(SO4_dt,3)),fa1(size(SO4_dt,3)),fa2(size(SO4_dt,3))
-
-      real, parameter :: ze1=100.
-      real, parameter :: ze2=500.
-      real :: z1, z2, bltop
-
-      id=size(SO4_dt,1); jd=size(SO4_dt,2); kd=size(SO4_dt,3)
-
-      SO4_dt(:,:,:) =0.0
-
-      do j = 1, jd
-      do i = 1, id
-
-        fbb(:) = 0.
-        fa1(:) = 0.
-        fa2(:) = 0.
-
-        BLTOP = z_pbl(i,j)
-        do l = kd,1,-1
-          z1=zhalf(i,j,l+1)-zhalf(i,j,kd+1)
-          z2=zhalf(i,j,l)-zhalf(i,j,kd+1)
-          if (bltop.lt.z1) exit
-          if (bltop.ge.z2) fbb(l)=(z2-z1)/z_pbl(i,j)
-          if (bltop.gt.z1.and.bltop.lt.z2) then
-            fbb(l) = (bltop-z1)/z_pbl(i,j)
-          endif
-        enddo
-! --- Assuming anthropogenic source L1 emitted below Ze1, and L2
-!     emitted between Ze1 and Ze2.
-        do l = kd,2,-1
-          Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
-          Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
-          if (Z2.lt.Ze1) then
-            fa1(l) = (Z2-Z1)/Ze1
-            fa2(l) = 0.
-          endif
-          if (Z2.ge.Ze1 .and. Z1.lt.Ze1) then
-            fa1(l) = (Ze1-Z1)/Ze1
-            if ((Ze2-Ze1).gt.0.) fa2(l) = (Z2-Ze1)/(Ze2-Ze1)
-          endif
-          if (Z1.gt.Ze1) then
-            if (Z2.lt.Ze2.and.(Ze2-Ze1).gt.0.) &
-              fa2(l) = (z2-z1)/(Ze2-Ze1)
-            if (Z2.ge.Ze2 .and. Z1.lt.Ze2) then
-              if ((Ze2-Ze1).gt.0.) fa2(l) = (Ze2-Z1)/(Ze2-Ze1)
-            endif
-          endif
-          if (Z1.gt.Ze2) exit
-        enddo
-
-! --- Total SO4 source ----
-!    Anthropogenic SOx emission from GEIA 1985.
-!    Assuming:   Europe:      5.0% SOx emission is SO4;
-!                US + Canada: 1.4% SOx emission is SO4;
-!                The rest:    2.5% SOx emission is SO4.
-!
-!
-        SO4_emis(i,j,:) =( SO4_anth_l1_emis(i+is-1,j+js-1)*fa1(:)       &
-                        +  SO4_anth_l2_emis(i+is-1,j+js-1)*fa2(:) )     &
-                        /  area(i,j) 
-      end do
-      end do
-!
-
-      SO4_dt(:,:,:)=SO4_emis(:,:,:)/pwt(:,:,:)*WTMAIR/WTM_SO4
-!------------------------------------------------------------------
-! DIAGNOSTICS:      SO4 emission in kg/timestep
-!--------------------------------------------------------------------
       if (id_SO4_emis > 0) then
         used = send_data ( id_SO4_emis, SO4_emis*WTM_S/WTM_SO4, Time, &
               is_in=is,js_in=js,ks_in=1)
       endif
 
-end subroutine atmos_SO4_emission
+end subroutine atmos_SOx_emission
 !</SUBROUTINE>
 !-----------------------------------------------------------------------
 !#######################################################################
-      subroutine chem_sox(pwt,temp,pfull, dt, lwc, &
+      subroutine atmos_SOx_chem(pwt,temp,pfull, phalf, dt, lwc, &
         jday,hour,minute,second,lat,lon, &
         SO2, SO4, DMS, MSA, H2O2, &
         SO2_dt, SO4_dt, DMS_dt, MSA_dt, H2O2_dt, &
@@ -1350,7 +933,7 @@ end subroutine atmos_SO4_emission
       real, intent(in),  dimension(:,:)  :: lat, lon  ! [radi
       real, intent(in), dimension(:,:,:) :: pwt
       real, intent(in), dimension(:,:,:) :: lwc
-      real, intent(in), dimension(:,:,:) :: temp, pfull
+      real, intent(in), dimension(:,:,:) :: temp, pfull, phalf
       real, intent(in), dimension(:,:,:) :: SO2, SO4, DMS, MSA, H2O2
       real, intent(out),dimension(:,:,:) :: SO2_dt,SO4_dt,DMS_dt,MSA_dt,H2O2_dt
 
@@ -1360,12 +943,19 @@ end subroutine atmos_SO4_emission
 ! Working vectors
       integer :: i,j,k,id,jd,kd, istop
       integer                                    :: istep, nstep
-      real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: ppH
-      real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: pO3
+!!! Input fields from interpolator
+      real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: pH
+      real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: O3_mmr
+      real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: no3_conc
+      real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: oh_conc
+      real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: jh2o2
+      real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: ho2_conc
+!!! Time varying fields
       real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: no3_diurnal
       real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: oh_diurnal
       real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) ::jh2o2_diurnal
       real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: ho2_diurnal
+
       real, dimension(size(pfull,1),size(pfull,2)) :: &
                xu, dayl, h, hl, hc, hred
       real, dimension(size(pfull,1),size(pfull,2)) :: fac_NO3, fact_NO3
@@ -1405,6 +995,31 @@ end subroutine atmos_SO4_emission
       dms_dt(:,:,:) = 0.0
       msa_dt(:,:,:) = 0.0
       h2o2_dt(:,:,:) = 0.0
+
+      OH_conc(:,:,:)=1.e5  ! molec/cm3
+      call interpolator(gas_conc_interp, Time, phalf, OH_conc, &
+                       trim(gas_conc_name(1)), is, js)
+
+      HO2_conc(:,:,:)=1.e6  ! molec/cm3
+      call interpolator(gas_conc_interp, Time, phalf, HO2_conc, &
+                       trim(gas_conc_name(2)), is, js)
+
+      NO3_conc(:,:,:)=0.0  ! molec/cm3
+      call interpolator(gas_conc_interp, Time, phalf, NO3_conc, &
+                       trim(gas_conc_name(3)), is, js)
+
+      O3_mmr(:,:,:)=0  ! Ozone mass mixing ratio
+      call interpolator(gas_conc_interp, Time, phalf, O3_mmr, &
+                       trim(gas_conc_name(4)), is, js)
+      O3_mmr(:,:,:)=O3_mmr(:,:,:)*WTM_O3/WTMAIR
+
+      jH2O2(:,:,:)=1.e-6 ! s-1
+      call interpolator(gas_conc_interp, Time, phalf, jH2O2, &
+                       trim(gas_conc_name(5)), is, js)
+
+      pH(:,:,:)=1.e-5
+      call interpolator(gas_conc_interp, Time, phalf, pH, &
+                       trim(gas_conc_name(6)), is, js)
 
       x = 2. *pi *float(jday-1)/365.
       decl = A0 - A1*cos(  X) + B1*sin(  X) - A2*cos(2.*X) + B2*sin(2.*X) &
@@ -1475,14 +1090,12 @@ end subroutine atmos_SO4_emission
        xH2O2 = H2O2_0
        xDMS  = DMS_0
        xMSA  = MSA_0
-       xph   = max(1.e-7,       pH(i+is-1,j+js-1,k))
-       xoh   = max(0.         , OH_conc(i+is-1,j+js-1,k)  *fac_OH(i,j))
-       xho2  = max(0.         , HO2_conc(i+is-1,j+js-1,k) *fac_HO2(i,j))
-       xjh2o2= max(0.         , jH2O2(i+is-1,j+js-1,k)    *fac_OH(i,j))
-       xno3  = max(0.         , NO3_conc(i+is-1,j+js-1,k) *fac_NO3(i,j))
-       xo3   = max(small_value, O3_vmr(i+is-1,j+js-1,k))
-       pph(i,j,k)=xph
-       po3(i,j,k)=xo3
+       xph   = max(1.e-7,       pH(i,j,k))
+       xoh   = max(0.         , OH_conc(i,j,k)  *fac_OH(i,j))
+       xho2  = max(0.         , HO2_conc(i,j,k) *fac_HO2(i,j))
+       xjh2o2= max(0.         , jH2O2(i,j,k)    *fac_OH(i,j))
+       xno3  = max(0.         , NO3_conc(i,j,k) *fac_NO3(i,j))
+       xo3   = max(small_value, O3_mmr(i,j,k))
        oh_diurnal(i,j,k)=xoh
        no3_diurnal(i,j,k)=xno3
        ho2_diurnal(i,j,k)=xho2
@@ -1673,30 +1286,29 @@ end subroutine atmos_SO4_emission
       end do
       end do
       end do
-      if ( id_NO3_diurnal > 0) then
-         used = send_data ( id_NO3_diurnal, NO3_diurnal, &
-           Time,is_in=is,js_in=js,ks_in=1)
+      if ( id_NO3 > 0) then
+        used = send_data ( id_NO3, NO3_diurnal, &
+                           Time,is_in=is,js_in=js,ks_in=1)
       endif
-      if ( id_OH_diurnal > 0) then
-        used = send_data ( id_OH_diurnal, OH_diurnal, &
-          Time, is_in=is, js_in=js )
+      if ( id_OH > 0) then
+        used = send_data ( id_OH, OH_diurnal, &
+                           Time, is_in=is, js_in=js,ks_in=1 )
       endif
-      if ( id_HO2_diurnal > 0) then
-        used = send_data ( id_HO2_diurnal, HO2_diurnal, &
-          Time, is_in=is, js_in=js )
+      if ( id_HO2 > 0) then
+        used = send_data ( id_HO2, HO2_diurnal, &
+                           Time, is_in=is, js_in=js,ks_in=1 )
       endif
-      if ( id_jH2O2_diurnal > 0) then
-        used = send_data ( id_jH2O2_diurnal, jH2O2_diurnal, &
-          Time, is_in=is, js_in=js )
+      if ( id_jH2O2 > 0) then
+        used = send_data ( id_jH2O2, jH2O2_diurnal, &
+                           Time, is_in=is, js_in=js,ks_in=1 )
       endif
-      if (id_pph > 0) then
-        used = send_data ( id_pph, &
-              pph, Time,is_in=is,js_in=js,ks_in=1)
+      if (id_ph > 0) then
+        used = send_data ( id_ph, ph, &
+                           Time,is_in=is,js_in=js,ks_in=1)
       endif
-
-      if (id_po3 > 0) then
-        used = send_data ( id_po3, &
-              po3, Time,is_in=is,js_in=js,ks_in=1)
+      if (id_o3 > 0) then
+        used = send_data ( id_o3, o3_mmr, &
+                           Time,is_in=is,js_in=js,ks_in=1)
       endif
 
       if (id_SO2_chem > 0) then
@@ -1723,319 +1335,6 @@ end subroutine atmos_SO4_emission
         used = send_data ( id_H2O2_chem, &
               H2O2_dt*pwt, Time,is_in=is,js_in=js,ks_in=1)
       endif
-end subroutine chem_sox
-!=============================================================================
-!<SUBROUTINE NAME="get_SO2_nerup_volc_emis">
-!<OVERVIEW>
-!  This subroutine builds the emission rates of SO2 by non-eruptive volcanoes
-!</OVERVIEW>
-subroutine get_SO2_nerup_volc_emis(so2_nerup_volc_emis, &
-        zhalf,lon,lat,Time,is,ie,js,je)
-!-----------------------------------------------------------------------
-        real, intent(out),dimension(:,:,:) :: so2_nerup_volc_emis
-        real, intent(in), dimension(:,:,:) :: zhalf
-        real, intent(in), dimension(:,:)   :: lon, lat
-        integer, intent(in)                :: is,ie,js,je
-        type(time_type), intent(in)        :: Time
-
-        integer              :: iv, k, ilon,ilat
-        integer              :: id, jd, kd
-        real                 :: latmin,latmax,lonmin,lonmax
-        type volcano
-          character (len=26) :: name  ! Volcano name
-          real               :: lat   ! Volcano latitude in degrees [-90,90]
-          real               :: lon   ! Volcano longitude in degrees [-180,180]
-          real               :: alt   ! Volcano altitude in meters
-          real               :: emis  ! Volcano emission of MgSO2/day
-        end type volcano
-        integer, parameter               :: nerup=45
-        type (volcano), dimension(nerup) :: nerup_volc
-
-        nerup_volc(:)%name=" "
-        nerup_volc(:)%lat=0.
-        nerup_volc(:)%lon=0.
-        nerup_volc(:)%emis=0.
-        
-!--------------------------------------------------------------------------
-! Input values for the nerup volcanoes continuously emtting SO2
-!--------------------------------------------------------------------------
-        nerup_volc( 1)%name = "                 STROMBOLI"
-        nerup_volc( 1)%lat  =     38.789
-        nerup_volc( 1)%lon  =     15.213
-        nerup_volc( 1)%alt  =    926.000
-        nerup_volc( 1)%emis =   0.730E+03
-        nerup_volc( 2)%name = "                   VULCANO"
-        nerup_volc( 2)%lat  =     38.404
-        nerup_volc( 2)%lon  =     14.962
-        nerup_volc( 2)%alt  =    500.000
-        nerup_volc( 2)%emis =   0.440E+02
-        nerup_volc( 3)%name = "                      ETNA"
-        nerup_volc( 3)%lat  =     37.734
-        nerup_volc( 3)%lon  =     15.004
-        nerup_volc( 3)%alt  =   3350.000
-        nerup_volc( 3)%emis =   0.400E+04
-        nerup_volc( 4)%name = "                      ERTA"
-        nerup_volc( 4)%lat  =     13.600
-        nerup_volc( 4)%lon  =     40.670
-        nerup_volc( 4)%alt  =    613.000
-        nerup_volc( 4)%emis =   0.210E+02
-        nerup_volc( 5)%name = "                   LENGAI,"
-        nerup_volc( 5)%lat  =     -2.751
-        nerup_volc( 5)%lon  =     35.902
-        nerup_volc( 5)%alt  =   2890.000
-        nerup_volc( 5)%emis =   0.160E+02
-        nerup_volc( 6)%name = "                     WHITE"
-        nerup_volc( 6)%lat  =    -37.520
-        nerup_volc( 6)%lon  =    177.180
-        nerup_volc( 6)%alt  =    321.000
-        nerup_volc( 6)%emis =   0.520E+03
-        nerup_volc( 7)%name = "                     MANAM"
-        nerup_volc( 7)%lat  =     -4.100
-        nerup_volc( 7)%lon  =    145.061
-        nerup_volc( 7)%alt  =   1807.000
-        nerup_volc( 7)%emis =   0.920E+03
-        nerup_volc( 8)%name = "                   LANGILA"
-        nerup_volc( 8)%lat  =     -5.525
-        nerup_volc( 8)%lon  =    148.420
-        nerup_volc( 8)%alt  =   1330.000
-        nerup_volc( 8)%emis =   0.690E+03
-        nerup_volc( 9)%name = "                    ULAWUN"
-        nerup_volc( 9)%lat  =     -5.050
-        nerup_volc( 9)%lon  =    151.330
-        nerup_volc( 9)%alt  =   2334.000
-        nerup_volc( 9)%emis =   0.480E+03
-        nerup_volc(10)%name = "                    BAGANA"
-        nerup_volc(10)%lat  =     -6.140
-        nerup_volc(10)%lon  =    155.195
-        nerup_volc(10)%alt  =   1750.000
-        nerup_volc(10)%emis =   0.330E+04
-        nerup_volc(11)%name = "                     YASUR"
-        nerup_volc(11)%lat  =    -19.520
-        nerup_volc(11)%lon  =    169.425
-        nerup_volc(11)%alt  =    361.000
-        nerup_volc(11)%emis =   0.900E+03
-        nerup_volc(12)%name = "           TANGKUBANPARAHU"
-        nerup_volc(12)%lat  =     -6.770
-        nerup_volc(12)%lon  =    107.600
-        nerup_volc(12)%alt  =   2084.000
-        nerup_volc(12)%emis =   0.750E+02
-        nerup_volc(13)%name = "                    SLAMET"
-        nerup_volc(13)%lat  =     -7.242
-        nerup_volc(13)%lon  =    109.208
-        nerup_volc(13)%alt  =   3432.000
-        nerup_volc(13)%emis =   0.580E+02
-        nerup_volc(14)%name = "                    MERAPI"
-        nerup_volc(14)%lat  =     -7.542
-        nerup_volc(14)%lon  =    110.442
-        nerup_volc(14)%alt  =   2911.000
-        nerup_volc(14)%emis =   0.140E+03
-        nerup_volc(15)%name = "                   TENGGER"
-        nerup_volc(15)%lat  =     -7.942
-        nerup_volc(15)%lon  =    112.950
-        nerup_volc(15)%alt  =   2329.000
-        nerup_volc(15)%emis =   0.140E+02
-        nerup_volc(16)%name = "                   BULUSAN"
-        nerup_volc(16)%lat  =     12.770
-        nerup_volc(16)%lon  =    124.050
-        nerup_volc(16)%alt  =   1565.000
-        nerup_volc(16)%emis =   0.370E+03
-        nerup_volc(17)%name = "                     MAYON"
-        nerup_volc(17)%lat  =     13.257
-        nerup_volc(17)%lon  =    123.685
-        nerup_volc(17)%alt  =   2462.000
-        nerup_volc(17)%emis =   0.530E+03
-        nerup_volc(18)%name = "                     KIKAI"
-        nerup_volc(18)%lat  =     30.780
-        nerup_volc(18)%lon  =    130.280
-        nerup_volc(18)%alt  =    717.000
-        nerup_volc(18)%emis =   0.570E+03
-        nerup_volc(19)%name = "               SAKURA-JIMA"
-        nerup_volc(19)%lat  =     31.580
-        nerup_volc(19)%lon  =    130.670
-        nerup_volc(19)%alt  =   1117.000
-        nerup_volc(19)%emis =   0.190E+04
-        nerup_volc(20)%name = "                     UNZEN"
-        nerup_volc(20)%lat  =     32.750
-        nerup_volc(20)%lon  =    130.300
-        nerup_volc(20)%alt  =   1359.000
-        nerup_volc(20)%emis =   0.130E+03
-        nerup_volc(21)%name = "                       ASO"
-        nerup_volc(21)%lat  =     32.880
-        nerup_volc(21)%lon  =    131.100
-        nerup_volc(21)%alt  =   1592.000
-        nerup_volc(21)%emis =   0.760E+02
-        nerup_volc(22)%name = "                      KUJU"
-        nerup_volc(22)%lat  =     33.080
-        nerup_volc(22)%lon  =    131.250
-        nerup_volc(22)%alt  =   1788.000
-        nerup_volc(22)%emis =   0.140E+03
-        nerup_volc(23)%name = "                     ASAMA"
-        nerup_volc(23)%lat  =     36.400
-        nerup_volc(23)%lon  =    138.530
-        nerup_volc(23)%alt  =   2560.000
-        nerup_volc(23)%emis =   0.370E+03
-        nerup_volc(24)%name = "                    OSHIMA"
-        nerup_volc(24)%lat  =     34.730
-        nerup_volc(24)%lon  =    139.380
-        nerup_volc(24)%alt  =    758.000
-        nerup_volc(24)%emis =   0.270E+03
-        nerup_volc(25)%name = "                       USU"
-        nerup_volc(25)%lat  =     42.530
-        nerup_volc(25)%lon  =    140.830
-        nerup_volc(25)%alt  =    731.000
-        nerup_volc(25)%emis =   0.560E+02
-        nerup_volc(26)%name = "                 MEDVEZHIA"
-        nerup_volc(26)%lat  =     45.380
-        nerup_volc(26)%lon  =    148.830
-        nerup_volc(26)%alt  =   1124.000
-        nerup_volc(26)%emis =   0.680E+02
-        nerup_volc(27)%name = "                    MARTIN"
-        nerup_volc(27)%lat  =     58.170
-        nerup_volc(27)%lon  =   -155.350
-        nerup_volc(27)%alt  =   1860.000
-        nerup_volc(27)%emis =   0.300E+01
-        nerup_volc(28)%name = "                 AUGUSTINE"
-        nerup_volc(28)%lat  =     59.370
-        nerup_volc(28)%lon  =   -153.420
-        nerup_volc(28)%alt  =   1252.000
-        nerup_volc(28)%emis =   0.480E+02
-        nerup_volc(29)%name = "                   ILIAMNA"
-        nerup_volc(29)%lat  =     60.030
-        nerup_volc(29)%lon  =   -153.080
-        nerup_volc(29)%alt  =   3053.000
-        nerup_volc(29)%emis =   0.220E+02
-        nerup_volc(30)%name = "                   KILAUEA"
-        nerup_volc(30)%lat  =     19.425
-        nerup_volc(30)%lon  =   -155.292
-        nerup_volc(30)%alt  =   1222.000
-        nerup_volc(30)%emis =   0.103E+04
-        nerup_volc(31)%name = "                    COLIMA"
-        nerup_volc(31)%lat  =     19.514
-        nerup_volc(31)%lon  =   -103.620
-        nerup_volc(31)%alt  =   4100.000
-        nerup_volc(31)%emis =   0.140E+03
-        nerup_volc(32)%name = "                     SANTA"
-        nerup_volc(32)%lat  =     14.756
-        nerup_volc(32)%lon  =    -91.552
-        nerup_volc(32)%alt  =   3772.000
-        nerup_volc(32)%emis =   0.230E+03
-        nerup_volc(33)%name = "                     FUEGO"
-        nerup_volc(33)%lat  =     14.473
-        nerup_volc(33)%lon  =    -90.880
-        nerup_volc(33)%alt  =   3763.000
-        nerup_volc(33)%emis =   0.640E+03
-        nerup_volc(34)%name = "                    PACAYA"
-        nerup_volc(34)%lat  =     14.381
-        nerup_volc(34)%lon  =    -90.601
-        nerup_volc(34)%alt  =   2552.000
-        nerup_volc(34)%emis =   0.510E+03
-        nerup_volc(35)%name = "                     SANTA"
-        nerup_volc(35)%lat  =     13.853
-        nerup_volc(35)%lon  =    -89.630
-        nerup_volc(35)%alt  =   2365.000
-        nerup_volc(35)%emis =   0.200E+02
-        nerup_volc(36)%name = "                    IZALCO"
-        nerup_volc(36)%lat  =     13.813
-        nerup_volc(36)%lon  =    -89.633
-        nerup_volc(36)%alt  =   1950.000
-        nerup_volc(36)%emis =   0.200E+02
-        nerup_volc(37)%name = "                       SAN"
-        nerup_volc(37)%lat  =     12.702
-        nerup_volc(37)%lon  =    -87.004
-        nerup_volc(37)%alt  =   1745.000
-        nerup_volc(37)%emis =   0.590E+03
-        nerup_volc(38)%name = "                    TELICA"
-        nerup_volc(38)%lat  =     12.603
-        nerup_volc(38)%lon  =    -86.845
-        nerup_volc(38)%alt  =   1010.000
-        nerup_volc(38)%emis =   0.157E+03
-        nerup_volc(39)%name = "                    MASAYA"
-        nerup_volc(39)%lat  =     11.984
-        nerup_volc(39)%lon  =    -86.161
-        nerup_volc(39)%alt  =    635.000
-        nerup_volc(39)%emis =   0.790E+03
-        nerup_volc(40)%name = "                    ARENAL"
-        nerup_volc(40)%lat  =     10.463
-        nerup_volc(40)%lon  =    -84.703
-        nerup_volc(40)%alt  =   1657.000
-        nerup_volc(40)%emis =   0.110E+03
-        nerup_volc(41)%name = "                      POAS"
-        nerup_volc(41)%lat  =     10.200
-        nerup_volc(41)%lon  =    -84.233
-        nerup_volc(41)%alt  =   2708.000
-        nerup_volc(41)%emis =   0.500E+03
-        nerup_volc(42)%name = "                      RUIZ"
-        nerup_volc(42)%lat  =      4.895
-        nerup_volc(42)%lon  =    -75.323
-        nerup_volc(42)%alt  =   5321.000
-        nerup_volc(42)%emis =   0.190E+04
-        nerup_volc(43)%name = "                   GALERAS"
-        nerup_volc(43)%lat  =      1.220
-        nerup_volc(43)%lon  =    -77.370
-        nerup_volc(43)%alt  =   4276.000
-        nerup_volc(43)%emis =   0.650E+03
-        nerup_volc(44)%name = "                    LASCAR"
-        nerup_volc(44)%lat  =    -23.370
-        nerup_volc(44)%lon  =    -67.730
-        nerup_volc(44)%alt  =   5592.000
-        nerup_volc(44)%emis =   0.240E+04
-        nerup_volc(45)%name = "                KVERKFJOLL"
-        nerup_volc(45)%lat  =     64.650
-        nerup_volc(45)%lon  =    -16.720
-        nerup_volc(45)%alt  =   1920.000
-        nerup_volc(45)%emis =   0.300E+01
-!--------------------------------------------------------------------------
-
-        id=size(lon,1); jd=size(lat,2); kd=size(zhalf,3)-1
-
-        SO2_nerup_volc_emis(:,:,:)=0.
-        latmin = minval(lat)*180./pi-1.0
-        latmax = maxval(lat)*180./pi+1.0
-        lonmin = minval(lon)*180./pi-1.25
-        lonmax = maxval(lon)*180./pi+1.25
-
-        do iv=1,nerup
-          if (nerup_volc(iv)%lon .lt.0.) nerup_volc(iv)%lon = &
-            360.+nerup_volc(iv)%lon
-          if (nerup_volc(iv)%lat.ge.latmin .and. &
-              nerup_volc(iv)%lat.le.latmax .and. &
-              nerup_volc(iv)%lon.ge.lonmin .and. &
-              nerup_volc(iv)%lon.le.lonmax ) then 
-            ilon=int((nerup_volc(iv)%lon-(lonmin+1.25))/2.5) + 1
-            ilon=max(1,min(id,ilon))
-            ilat=int((nerup_volc(iv)%lat-(latmin+1.0))/2.) + 1
-            ilat=max(1,min(jd,ilat))
-            do k = kd, 1, -1
-              if (zhalf(ilon,ilat,k+1).le. nerup_volc(iv)%alt .and.&
-                zhalf(ilon,ilat,k).gt. nerup_volc(iv)%alt) then
-! Convert the unit from MgSO2/box/day to kgSO2/box/sec.                    
-                SO2_nerup_volc_emis(ilon,ilat,k) =  &
-                   SO2_nerup_volc_emis(ilon,ilat,k) +&
-                   nerup_volc(iv)%emis * 1000. / (24.*3600.)
-                exit
-              endif
-            enddo
-          endif
-        enddo
-
-      if (id_SO2_nerup_volc_emis > 0) then
-        used = send_data ( id_SO2_nerup_volc_emis, &
-              SO2_nerup_volc_emis* WTM_S /WTM_SO2, &
-              Time,is_in=is,js_in=js,ks_in=1)
-      endif
-!shm
-    !if trim(runtype) is not natural or anthrop set narua_nerup_volc_emis ==0.0
-     if(trim(runtype) == 'biomass_only' .or.  &
-        trim(runtype) == 'fossil_fuels_only') then
-       SO2_nerup_volc_emis =0.0
-     else if (trim(runtype)== 'anthrop' .or.  &
-        trim(runtype)== 'natural_only')then
-     else 
-        call error_mesg ('atmos_sulfate_mod', &
-             'runtype is not recognized', FATAL)
-     endif
-
-end subroutine get_SO2_nerup_volc_emis
-!</SUBROUTINE>
+end subroutine atmos_SOx_chem
 
 end module atmos_sulfate_mod

@@ -29,7 +29,10 @@
       integer ::  jno_ndx, jpooh_ndx, jc2h5ooh_ndx, jc3h7ooh_ndx, jrooh_ndx, &
                   jch3co3h_ndx, jmpan_ndx, jmacr_a_ndx, jmacr_b_ndx, jonitr_ndx, &
                   jxooh_ndx, jisopooh_ndx, jglyald_ndx, jhyac_ndx, jch3ooh_ndx, &
-                  jh2o2_ndx, jpan_ndx, jch3cho_ndx
+                  jh2o2_ndx, jpan_ndx, jch3cho_ndx, &
+                  jn2o5_ndx, jo3p_ndx, jno2_ndx, jno3_ndx, &
+                  jclono2_ndx, jhocl_ndx, jcl2o2_ndx, jbrono2_ndx, jhobr_ndx, &
+                  jbrcl_ndx, jbro_ndx, jcl2_ndx, jh2o_ndx
       integer ::  ox_ndx, o3_ndx
       real    ::  ajl(jdim,altdim,zangdim,o3ratdim,albdim,t500dim,t200dim) = 0.
       real    ::  vo3(0:50)
@@ -50,9 +53,29 @@
       real :: t500(t500dim) = (/ 228., 248., 268. /)
       real :: t200(t200dim) = (/ 205., 225. /)
 
+      integer, parameter :: &
+         TAB_NDX_JO2     = 1, &
+         TAB_NDX_JO1D    = 2, &
+         TAB_NDX_JO3P    = 3, &
+         TAB_NDX_JN2O    = 4, &
+         TAB_NDX_JNO2    = 5, &
+         TAB_NDX_JN2O5   = 6, &
+         TAB_NDX_JHNO3   = 7, &
+         TAB_NDX_JNO3    = 8, &
+         TAB_NDX_JHO2NO2 = 9, &
+         TAB_NDX_JCH3OOH = 10, &
+         TAB_NDX_JCH2Oa  = 11, &
+         TAB_NDX_JCH2Ob  = 12, &
+         TAB_NDX_JH2O2   = 13, &
+         TAB_NDX_JCH3CHO = 14, &
+         TAB_NDX_JPAN    = 15, &
+         TAB_NDX_JMACRa  = 16, &
+         TAB_NDX_JMVK    = 17, &
+         TAB_NDX_JACET   = 18, &
+         TAB_NDX_JMGLY   = 19
 
-character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 13.0 2006/03/28 21:16:19 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis_2006_08 $'
+character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 13.0.4.2 2006/11/20 21:13:04 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: memphis_2006_12 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -86,46 +109,46 @@ logical                       :: module_is_initialized = .false.
 !----------------------------------------------------------------------
 !        ... Only masternode gets photorate table
 !----------------------------------------------------------------------
-      !if( masternode ) then
-       !  retval = ATTACH( TRIM(lpath) // TRIM( filename ), &
-        !                  TRIM( mspath ) // TRIM( filename ), &
-         !                 unit, &
-          !                .false., &                 ! non binary dataset
-           !               cosb )
-         !if( retval /= 0 ) then
-          !  write(*,*) 'PRATE_INIT: Failure opening file ',TRIM(lpath) // TRIM( filename )
-           ! write(*,*) 'Error code = ',retval
-            !call ENDRUN
-         !end if
-         !CLOSE( unit )
-      !end if
+!     if( masternode ) then
+!        retval = ATTACH( TRIM(lpath) // TRIM( filename ), &
+!                         TRIM( mspath ) // TRIM( filename ), &
+!                         unit, &
+!                         .false., &                 ! non binary dataset
+!                         cosb )
+!        if( retval /= 0 ) then
+!           write(*,*) 'PRATE_INIT: Failure opening file ',TRIM(lpath) // TRIM( filename )
+!           write(*,*) 'Error code = ',retval
+!           call ENDRUN
+!        end if
+!        CLOSE( unit )
+!     end if
 #ifdef USE_MPI
 !----------------------------------------------------------------------
 !        ... All compute nodes wait for masternode to acquire file
 !----------------------------------------------------------------------
-!      call MPI_BARRIER( mpi_comm_comp, ios )
- !     if( ios /= MPI_SUCCESS ) then
-!         write(*,*) 'PRATE_INIT: Mpi barrier failed; error = ',ios
-!         call ENDRUN
- !     end if
+!     call MPI_BARRIER( mpi_comm_comp, ios )
+!     if( ios /= MPI_SUCCESS ) then
+!        write(*,*) 'PRATE_INIT: Mpi barrier failed; error = ',ios
+!        call ENDRUN
+!     end if
 #endif
 !----------------------------------------------------------------------
 !        ... all compute nodes open file
 !----------------------------------------------------------------------
-!      OPEN( unit   = unit, &
- !           file   = TRIM(lpath) // TRIM(filename), &
-  !          status = 'old', &
-   !         form   = 'formatted', &
-    !        recl   = 4500, &
-   !        iostat = ios )
-      !if( ios /= 0 ) then
+!     OPEN( unit   = unit, &
+!           file   = TRIM(lpath) // TRIM(filename), &
+!           status = 'old', &
+!           form   = 'formatted', &
+!           recl   = 4500, &
+!          iostat = ios )
+!     if( ios /= 0 ) then
 !----------------------------------------------------------------------
 !        ... Open error exit
 !----------------------------------------------------------------------
- !        write(6,'('' PRATE_INIT : Error ('',i5,'') opening file '',a)') &
-  !          ios, TRIM(lpath) // TRIM(filename)
-   !      call ENDRUN
-   !   end if
+!        write(6,'('' PRATE_INIT : Error ('',i5,'') opening file '',a)') &
+!           ios, TRIM(lpath) // TRIM(filename)
+!        call ENDRUN
+!     end if
 
 !----------------------------------------------------------------------
 !            ... open file using mpp_open
@@ -151,7 +174,8 @@ logical                       :: module_is_initialized = .false.
                   do idob = 1,o3ratdim
                      read(unit,*,iostat=ios) ajl(:,:,izen,idob,ialb,it500,it200)
                      if( ios /= 0 ) then
-                        msg = ' PRATE_INIT: Failed to read photo table; error = '//char(ios)
+                        msg = 'PRATE_INIT: Failed to read photo table; ' // &
+                              'error = '//char(ios)
                         call ENDRUN(msg)
                      end if
                   end do
@@ -185,25 +209,25 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
 !           ... setup mapping array, indexer, from table to model
 !-----------------------------------------------------------------
-      indexer(1) = get_rxt_ndx( 'jo2' )
-      indexer(2) = get_rxt_ndx( 'jo1d' )
-      indexer(3) = get_rxt_ndx( 'jo3p' )
-      indexer(4) = get_rxt_ndx( 'jn2o' )
-      indexer(5) = get_rxt_ndx( 'jno2' )
-      indexer(6) = get_rxt_ndx( 'jn2o5' )
-      indexer(7) = get_rxt_ndx( 'jhno3' )
-      indexer(8) = get_rxt_ndx( 'jno3' )
-      indexer(9) = get_rxt_ndx( 'jho2no2' )
-      indexer(10) = get_rxt_ndx( 'jch3ooh' )
-      indexer(11) = get_rxt_ndx( 'jch2o_a' )
-      indexer(12) = get_rxt_ndx( 'jch2o_b' )
-      indexer(13) = get_rxt_ndx( 'jh2o2' )
-      indexer(14) = get_rxt_ndx( 'jch3cho' )
-      indexer(15) = get_rxt_ndx( 'jpan' )
-      indexer(16) = get_rxt_ndx( 'jmacr_a' )
-      indexer(17) = get_rxt_ndx( 'jmvk' )
-      indexer(18) = get_rxt_ndx( 'jacet' )
-      indexer(19) = get_rxt_ndx( 'jmgly' )
+      indexer(TAB_NDX_JO2)     = get_rxt_ndx( 'jo2' )
+      indexer(TAB_NDX_JO1D)    = get_rxt_ndx( 'jo1d' )
+      indexer(TAB_NDX_JO3P)    = get_rxt_ndx( 'jo3p' )
+      indexer(TAB_NDX_JN2O)    = get_rxt_ndx( 'jn2o' )
+      indexer(TAB_NDX_JNO2)    = get_rxt_ndx( 'jno2' )
+      indexer(TAB_NDX_JN2O5)   = get_rxt_ndx( 'jn2o5' )
+      indexer(TAB_NDX_JHNO3)   = get_rxt_ndx( 'jhno3' )
+      indexer(TAB_NDX_JNO3)    = get_rxt_ndx( 'jno3' )
+      indexer(TAB_NDX_JHO2NO2) = get_rxt_ndx( 'jho2no2' )
+      indexer(TAB_NDX_JCH3OOH) = get_rxt_ndx( 'jch3ooh' )
+      indexer(TAB_NDX_JCH2Oa)  = get_rxt_ndx( 'jch2o_a' )
+      indexer(TAB_NDX_JCH2Ob)  = get_rxt_ndx( 'jch2o_b' )
+      indexer(TAB_NDX_JH2O2)   = get_rxt_ndx( 'jh2o2' )
+      indexer(TAB_NDX_JCH3CHO) = get_rxt_ndx( 'jch3cho' )
+      indexer(TAB_NDX_JPAN)    = get_rxt_ndx( 'jpan' )
+      indexer(TAB_NDX_JMACRa)  = get_rxt_ndx( 'jmacr_a' )
+      indexer(TAB_NDX_JMVK)    = get_rxt_ndx( 'jmvk' )
+      indexer(TAB_NDX_JACET)   = get_rxt_ndx( 'jacet' )
+      indexer(TAB_NDX_JMGLY)   = get_rxt_ndx( 'jmgly' )
 
       jno_ndx = get_rxt_ndx( 'jno' )
       jpooh_ndx = get_rxt_ndx( 'jpooh' )
@@ -223,6 +247,19 @@ logical                       :: module_is_initialized = .false.
       jh2o2_ndx = get_rxt_ndx( 'jh2o2' )
       jpan_ndx = get_rxt_ndx( 'jpan' )
       jch3cho_ndx = get_rxt_ndx( 'jch3cho' )
+      jn2o5_ndx = get_rxt_ndx( 'jn2o5' )
+      jo3p_ndx = get_rxt_ndx( 'jo3p' )
+      jno2_ndx = get_rxt_ndx( 'jno2' )
+      jno3_ndx = get_rxt_ndx( 'jno3' )
+      jclono2_ndx = get_rxt_ndx( 'jclono2' )
+      jhocl_ndx = get_rxt_ndx( 'jhocl' )
+      jcl2o2_ndx = get_rxt_ndx( 'jcl2o2' )
+      jbrono2_ndx = get_rxt_ndx( 'jbrono2' )
+      jhobr_ndx = get_rxt_ndx( 'jhobr' )
+      jbrcl_ndx = get_rxt_ndx( 'jbrcl' )
+      jbro_ndx = get_rxt_ndx( 'jbro' )
+      jcl2_ndx = get_rxt_ndx( 'jcl2' )
+      jh2o_ndx = get_rxt_ndx( 'jh2o' )
 
       ox_ndx = get_spc_ndx( 'OX' )
       o3_ndx = get_spc_ndx( 'O3' )
@@ -283,7 +320,9 @@ logical                       :: module_is_initialized = .false.
                    tmp_jpan, &                   ! wrk array
                    tmp_jh2o2, &                  ! wrk array
                    tmp_jch3cho, &                ! wrk array
-                   tmp_jmacr_a                   ! wrk array
+                   tmp_jmacr_a, &                ! wrk array
+                   tmp_jn2o5, tmp_jo3p, tmp_jno2, tmp_jno3, &
+                   tmp_jno
       real    ::   prates(jdim,size(zmid,2))        ! photorates matrix
 
       plev = SIZE(zmid,2)
@@ -298,6 +337,11 @@ logical                       :: module_is_initialized = .false.
             tmp_jh2o2(:,k)   = 0.
             tmp_jch3cho(:,k) = 0.
             tmp_jmacr_a(:,k) = 0.
+            tmp_jn2o5(:,k)   = 0.
+            tmp_jo3p(:,k)    = 0.
+            tmp_jno2(:,k)    = 0.
+            tmp_jno3(:,k)    = 0.
+            tmp_jno(:,k)     = 0.
          end do
       end do
       zagtz(:) = coszen(:) > 0. 
@@ -323,26 +367,36 @@ logical                       :: module_is_initialized = .false.
                   photos(i,:,indexer(m)) = esfact *prates(m,:) * cld_mult(:)
                   else
                      select case( m )
-                        case( 10 )
+                        case( TAB_NDX_JCH3OOH )
                            tmp_jch3ooh(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( 13 )
+                        case( TAB_NDX_JH2O2 )
                            tmp_jh2o2(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( 14 )
+                        case( TAB_NDX_JCH3CHO )
                            tmp_jch3cho(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( 15 )
+                        case( TAB_NDX_JPAN )
                            tmp_jpan(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( 16 )
+                        case( TAB_NDX_JMACRa )
                            tmp_jmacr_a(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JN2O5 )
+                           tmp_jn2o5(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JO3P )
+                           tmp_jo3p(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JNO2 )
+                           tmp_jno2(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JNO3 )
+                           tmp_jno3(i,:) = esfact *prates(m,:) * cld_mult(:)
                      end select
                   end if
                end do
+               fac1(:) = 1.e-8  * (col_dens(i,:,2)/coszen(i))**.38
+               fac2(:) = 5.e-19 * col_dens(i,:,1) / coszen(i)
                if( jno_ndx > 0 ) then
 !-----------------------------------------------------------------
 !        ... Calculate J(no) from formula
 !-----------------------------------------------------------------
-                  fac1(:) = 1.e-8  * (col_dens(i,:,2)/coszen(i))**.38
-                  fac2(:) = 5.e-19 * col_dens(i,:,1) / coszen(i)
                   photos(i,:,jno_ndx) = 4.5e-6 * esfact * exp( -(fac1(:) + fac2(:)) ) * cld_mult(:)
+               else
+                  tmp_jno(i,:) = 4.5e-6 * esfact * exp( -(fac1(:) + fac2(:)) ) * cld_mult(:)
                end if
             end if
          end if
@@ -428,6 +482,69 @@ logical                       :: module_is_initialized = .false.
             photos(:,:,jhyac_ndx)    = photos(:,:,jch3cho_ndx)
          else
             photos(:,:,jhyac_ndx)    = tmp_jch3cho(:,:)
+         end if
+      end if
+      if( jclono2_ndx > 0 ) then
+         if( jn2o5_ndx > 0 ) then
+            photos(:,:,jclono2_ndx) = photos(:,:,jn2o5_ndx)
+         else
+            photos(:,:,jclono2_ndx) = tmp_jn2o5(:,:)
+         end if
+      end if
+      if( jhocl_ndx > 0 ) then
+         if( jo3p_ndx > 0 ) then
+            photos(:,:,jhocl_ndx) = photos(:,:,jo3p_ndx)
+         else
+            photos(:,:,jhocl_ndx) = tmp_jo3p(:,:)
+         end if
+      end if
+      if( jcl2o2_ndx > 0 ) then
+         if( jno2_ndx > 0 ) then
+            photos(:,:,jcl2o2_ndx) = photos(:,:,jno2_ndx)
+         else
+            photos(:,:,jcl2o2_ndx) = tmp_jno2(:,:)
+         end if
+      end if
+      if( jbrono2_ndx > 0 ) then
+         if( jo3p_ndx > 0 ) then
+            photos(:,:,jbrono2_ndx) = 2*photos(:,:,jo3p_ndx)
+         else
+            photos(:,:,jbrono2_ndx) = 2*tmp_jo3p(:,:)
+         end if
+      end if
+      if( jhobr_ndx > 0 ) then
+         if( jo3p_ndx > 0 ) then
+            photos(:,:,jhobr_ndx) = photos(:,:,jo3p_ndx)
+         else
+            photos(:,:,jhobr_ndx) = tmp_jo3p(:,:)
+         end if
+      end if
+      if( jbrcl_ndx > 0 ) then
+         if( jno2_ndx > 0 ) then
+            photos(:,:,jbrcl_ndx) = photos(:,:,jno2_ndx)
+         else
+            photos(:,:,jbrcl_ndx) = tmp_jno2(:,:)
+         end if
+      end if
+      if( jbro_ndx > 0 ) then
+         if( jno3_ndx > 0 ) then
+            photos(:,:,jbro_ndx) = photos(:,:,jno3_ndx)
+         else
+            photos(:,:,jbro_ndx) = tmp_jno3(:,:)
+         end if
+      end if
+      if( jcl2_ndx > 0 ) then
+         if( jno2_ndx > 0 ) then
+            photos(:,:,jcl2_ndx) = photos(:,:,jno2_ndx)
+         else
+            photos(:,:,jcl2_ndx) = tmp_jno2(:,:)
+         end if
+      end if
+      if( jh2o_ndx > 0 ) then
+         if( jno_ndx > 0 ) then
+            photos(:,:,jh2o_ndx) = 0.1*photos(:,:,jno_ndx)
+         else
+            photos(:,:,jh2o_ndx) = 0.1*tmp_jno(:,:)
          end if
       end if
 
@@ -799,7 +916,8 @@ Rate_loop : &
          spc_ndx = o3_ndx
       end if
       if( spc_ndx > 0 ) then
-         col_delta(:,0,1) = 2.687e16*10.
+!        col_delta(:,0,1) = 2.687e16*10.
+         col_delta(:,0,1) = 2.687e16*0.1
          do k = 1,plev
             col_delta(:,k,1) = xfactor * pdel(:,k) * vmr(:,k,spc_ndx) ! O3
          end do

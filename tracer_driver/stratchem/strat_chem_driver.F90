@@ -19,8 +19,8 @@ use constants_mod, only : PI, TFREEZE, GRAV, PSTD_MKS, RDGAS
 private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 13.0 2006/03/28 21:15:59 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 13.0.2.2 2006/11/27 22:46:31 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 !-------  interfaces --------
 
@@ -414,10 +414,8 @@ end function strat_chem_driver_init
         dy(il,nc) = 0.0
      endif
      enddo
-!     if(dy(il,8).lt.1.0e-9) dy(il,8) = 1.0e-9
-!     if(dy(il,15).lt.1.0e-15) dy(il,15) = 1.0e-15
-     if(dy(il,noy).lt.1.0e-9) dy(il,nnoy) = 1.0e-9
-     if(dy(il,nnoy).lt.1.0e-15) dy(il,nnoy) = 1.0e-15
+     if(dy(il,8).lt.1.0e-9) dy(il,8) = 1.0e-9
+     if(dy(il,15).lt.1.0e-15) dy(il,15) = 1.0e-15
 
 !
 ! Set water vapour values from the main model after converting to vmr or
@@ -439,7 +437,8 @@ end function strat_chem_driver_init
      if(h2o(il) > 1.0e-5.and.dagesq(il) > 0.01) h2o(il) = 1.0e-5
      ozone(il,jl,kl) = chems(il,jl,kl,no3)!26)
      o3_prod(il,jl,kl) = chems(il,jl,kl,no3ch)!27)
-     extinct = chems(il,jl,kl,nextinct)*1000.0
+     extinct = 0.0
+     if (nextinct > 0 ) extinct = chems(il,jl,kl,nextinct)*1000.0
      if(extinct.eq.0.0) then
        aerosol(il,jl,kl) = 0.0
      elseif(extinct <= 4.0e-3) then

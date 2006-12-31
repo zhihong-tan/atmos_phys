@@ -18,6 +18,8 @@ use              fms_mod, only : file_exist, &
                                  mpp_pe, &
                                  mpp_root_pE, &
                                  close_file,           &
+                                 open_namelist_file, file_exist,    &
+                                 check_nml_error, error_mesg,  &
                                  stdlog
 use     time_manager_mod, only : time_type
 use     diag_manager_mod, only : send_data,            &
@@ -26,8 +28,10 @@ use   tracer_manager_mod, only : get_tracer_index, &
                                  set_tracer_atts
 use    field_manager_mod, only : MODEL_ATMOS
 use atmos_tracer_utilities_mod, only : wet_deposition,       &
-                                 dry_deposition, &
-                                  interp_emiss
+                                 dry_deposition
+use interpolator_mod,    only:  interpolate_type, interpolator_init, &
+                                interpolator, interpolator_end, &
+                                CONSTANT, INTERP_WEIGHTED_P
 use     constants_mod, only : PI, GRAV, RDGAS, DENS_H2O, PSTD_MKS, WTMAIR
 
 
@@ -49,18 +53,26 @@ character(len=6), parameter :: module_name = 'tracer'
 integer :: ndust=0  ! tracer number for dust
 !--- identification numbers for  diagnostic fields and axes ----
 
-integer :: id_DU_emis(5), id_DU_setl(5)
-integer :: id_DU_source
+integer :: id_dust_emis(5), id_dust_setl(5)
+integer :: id_dust_source
 
 !--- Arrays to help calculate tracer sources/sinks ---
-real, allocatable, dimension(:,:) :: DU_source
+type(interpolate_type),save         ::  dust_source_interp
+
 
 logical :: module_is_initialized=.FALSE.
 logical :: used
 
+!---------------------------------------------------------------------
+!-------- namelist  ---------
+character(len=32)  :: dust_source_filename = 'dust_source_1x1.nc'
+character(len=32)  :: dust_source_name(1) = 'source'
+
+namelist /dust_nml/  dust_source_filename, dust_source_name
+
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_dust.F90,v 13.0 2006/03/28 21:15:27 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_08 $'
+character(len=128) :: version = '$Id: atmos_dust.F90,v 13.0.2.1 2006/09/12 21:11:10 wfc Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_12 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -91,7 +103,7 @@ contains
    type(time_type), intent(in) :: Time     
    integer, intent(in),  dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
- real, dimension(size(dust,1),size(dust,2)) :: DU_setl, DU_emis
+ real, dimension(size(dust,1),size(dust,2)) :: dust_setl, dust_emis
  logical :: flag
 integer  i, j, k, m, id, jd, kd, kb, ir
 integer, intent(in)                    :: is, ie, js, je
@@ -99,7 +111,6 @@ integer, intent(in)                    :: is, ie, js, je
 !     Dust parameters
 !----------------------------------------------
       real, dimension(5) ::   frac_s
-      real :: u_ts0, diam, den
 
       real, dimension(size(dust,3)) :: setl
       real, dimension(size(dust,1),size(dust,2)) :: u_ts, source, maxgw
@@ -120,43 +131,36 @@ integer, intent(in)                    :: is, ie, js, je
 !-----------------------------------
 
       data frac_s/0.1,0.225,0.225,0.225,0.225/
-      data CH/0.5e-9/
+      data CH/0.4e-9/
 
 !-----------------------------------------------------------------------
 
       id=size(dust,1); jd=size(dust,2); kd=size(dust,3)
 
-!----------- dust sources on local grid
-      do i=1,id
-        do j=1,jd
-          source(i,j)=DU_source(i+is-1,j+js-1)
-        enddo
-      enddo
-
+      
 !----------- compute dust emission ------------
-      DU_emis(:,:)   = 0.0
-      DU_setl(:,:)   = 0.0
+      dust_emis(:,:)   = 0.0
+      dust_setl(:,:)   = 0.0
       dust_dt(:,:,:) = 0.0
 
-      den=dustden*1.e-3
-      diam=2.*dustref*1.e2
-      g0=GRAV*1.e2
+!----------- dust sources on local grid
+     source(:,:)=0.0
+     call interpolator(dust_source_interp, Time, source, &
+                       trim(dust_source_name(1)), is, js)
+! Send the dust source data to the diag_manager for output.
+     if (id_dust_source > 0 ) &
+          used = send_data ( id_dust_source, source , Time )
 
-!       rho_air = pfull(i,j,kd)/t(i,j,kd)/RDGAS   ! Air density [kg/m3]
-!        rho_air=1.25
-!        u_ts=0.13*1.e-2*sqrt(den*g0*diam/(rho_air*1.e-3))* &
-!              sqrt(1.+0.006/den/g0/(diam)**2.5)/ &
-!              sqrt(1.928*(1331*(diam)**1.56+0.38)**0.092-1) 
-        where ( frac_land.gt.0.1 )
-          u_ts=0.
-          DU_emis = CH * frac_s(i_DU)*source * frac_land &
+      u_ts=4.
+      where ( frac_land.gt.0.1 .and. w10m .gt. u_ts )
+          dust_emis = CH * frac_s(i_DU)*source * frac_land &
              * w10m**2 * (w10m - u_ts)
-        endwhere
-        dust_dt(:,:,kd)=dust_dt(:,:,kd)+DU_emis(:,:)/pwt(:,:,kd)*mtv
+      endwhere
+      dust_dt(:,:,kd)=dust_dt(:,:,kd)+dust_emis(:,:)/pwt(:,:,kd)*mtv
 
 ! Send the emission data to the diag_manager for output.
-      if (id_DU_emis(i_DU) > 0 ) then
-        used = send_data ( id_DU_emis(i_DU), DU_emis, Time, &
+      if (id_dust_emis(i_DU) > 0 ) then
+        used = send_data ( id_dust_emis(i_DU), dust_emis, Time, &
               is_in=is,js_in=js )
       endif
 
@@ -195,13 +199,13 @@ integer, intent(in)                    :: is, ie, js, je
           dust_dt(i,j,1)=dust_dt(i,j,1)-setl(1)/pwt(i,j,1)*mtv
           dust_dt(i,j,2:kb)=dust_dt(i,j,2:kb) &
              + ( setl(1:kb-1) - setl(2:kb) )/pwt(i,j,2:kb)*mtv
-          DU_setl(i,j)=setl(kb)
+          dust_setl(i,j)=setl(kb)
         enddo
       enddo 
 
 ! Send the settling data to the diag_manager for output.
-      if (id_DU_setl(i_DU) > 0 ) then
-        used = send_data ( id_DU_setl(i_DU), DU_setl, Time, &
+      if (id_dust_setl(i_DU) > 0 ) then
+        used = send_data ( id_dust_setl(i_DU), dust_setl, Time, &
               is_in=is,js_in=js )
       endif
 
@@ -229,7 +233,7 @@ integer :: n, m
 !
 !-----------------------------------------------------------------------
 !
-      integer  log_unit,unit,io,index,ntr,nt
+      integer  log_unit,unit,ierr, io,index,ntr,nt
       character(len=16) ::  fld
       character*1 :: numb(5)
       data numb/'1','2','3','4','5'/
@@ -237,9 +241,19 @@ integer :: n, m
 
       if (module_is_initialized) return
 
-!---- write namelist ------------------
-
       call write_version_number (version, tagname)
+!-----------------------------------------------------------------------
+!    read namelist.
+!-----------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ( )
+        ierr=1; do while (ierr /= 0)
+        read  (unit, nml=dust_nml, iostat=io, end=10)
+        ierr = check_nml_error(io, 'dust_nml')
+        end do
+10      call close_file (unit)
+      endif
+
 
 !----- set initial value of dust ------------
     do m=1,5
@@ -257,29 +271,32 @@ integer :: n, m
 
   30        format (A,' was initialized as tracer number ',i2)
 ! Register a diagnostic field : emission of dust
-     id_DU_emis(m) = register_diag_field ( mod_name,            &
+     id_dust_emis(m) = register_diag_field ( mod_name,            &
                      'dust'//numb(m)//'_emis', axes(1:2),Time,  &
                      'dust'//numb(m)//'_emis', 'kg/m2/s',       &
                      missing_value=-999.  )
 
 ! Register a diagnostic field : settling of dust
-     id_DU_setl(m) = register_diag_field ( mod_name,            &
+     id_dust_setl(m) = register_diag_field ( mod_name,            &
                      'dust'//numb(m)//'_setl', axes(1:2),Time,  &
                      'dust'//numb(m)//'_setl', 'kg/m2/s',       &
                      missing_value=-999.  )
 enddo
 !
-     if (.not.allocated(DU_source)) allocate (DU_source(size(lonb)-1,size(latb)-1))
-     id_DU_source  = register_diag_field ( mod_name,             &
+     id_dust_source  = register_diag_field ( mod_name,             &
                       'DU_source',axes(1:2),Time,                    &
-                      'Dust_source', 'none')
+                      'DU_source', 'none')
 
-     call dust_source_input(lonb, latb, Time)
+     call interpolator_init (dust_source_interp, trim(dust_source_filename),  &
+                             lonb, latb,&
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = dust_source_name, &
+                             vert_interp=(/INTERP_WEIGHTED_P/) )
+
 
      call write_version_number (version, tagname)
 
       module_is_initialized = .TRUE.
-
 
 !-----------------------------------------------------------------------
 
@@ -293,61 +310,10 @@ enddo
 !</OVERVIEW>
  subroutine atmos_dust_end
 
-      if (allocated(DU_source)) deallocate(DU_source) 
+      call interpolator_end (dust_source_interp)
       module_is_initialized = .FALSE.
 
  end subroutine atmos_dust_end
-!</SUBROUTINE>
-!#######################################################################
-!<SUBROUTINE NAME="dust_source_input">
-!<OVERVIEW>
-!  This subroutine read the fraction of dust source at each grid cell
-!  based on Ginoux et al. (JGR, 2001). This source function is
-!  considered invariant in time (no change in topography and vegetation).
-!</OVERVIEW>
- subroutine dust_source_input(lonb, latb, Time)
-real, dimension(:),    intent(in) :: lonb, latb
-type(time_type),intent(in) :: Time
-
-integer      :: i, j, unit, io, ios
-real         :: dtr, lat_S, lon_W, dlon, dlat
-real         :: DU_source1(360,180)
-logical :: opened
-!
-!
-      dtr= PI/180.
-      lat_S= -89.5*dtr; lon_W= 0.5*dtr
-      dlon = 1.*dtr; dlat = 1.*dtr;
-
-do unit = 30,100
-INQUIRE(unit=unit, opened= opened)
-if (.NOT. opened) exit
-enddo
-         DU_source1 = 0.0
-
-         open (unit,file='INPUT/dust_source_1x1.txt', &
-               form='formatted', action='read', iostat=ios )
-         if (ios.eq.0 ) then
-           read  (unit,FMT=2000, end=11) ((DU_source1(i,j),i=1,360),j=1,180)
-         else
-           write(*,*) '***ERROR: Opening dust source file'
-         endif
-  11    call close_file (unit)
- 2000 format(10f8.5)
-! Interpolate the R30 emission field to the resolution of the model.
-        call interp_emiss ( DU_source1, lon_W, lat_S, dlon, dlat, &
-                     DU_source)
-
-
-if (mpp_pe()== mpp_root_pe() ) then
-   write(*,*) 'Reading Dust source'
-endif
-
-! Send the dust source data to the diag_manager for output.
-         if (id_DU_source > 0 ) &
-           used = send_data ( id_DU_source, DU_source , Time )
-
-end subroutine dust_source_input
 !</SUBROUTINE>
 
 end module atmos_dust_mod

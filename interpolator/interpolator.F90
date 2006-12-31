@@ -87,8 +87,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 13.0.2.1 2006/05/20 15:19:41 pjp Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_08 $'
+'$Id: interpolator.F90,v 13.0.2.1.2.1 2006/10/02 14:20:47 wfc Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_12 $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -1940,18 +1940,18 @@ if ( mpp_pe() == mpp_root_pe() ) then
    write (stdlog(),'(/,(a))') 'Exiting interpolator, have a nice day ...'
 end if
 
-deallocate(clim_type%lat)
-deallocate(clim_type%lon)
-deallocate(clim_type%latb)
-deallocate(clim_type%lonb)
-deallocate(clim_type%levs)
-deallocate(clim_type%halflevs) 
+if (associated (clim_type%lat     )) deallocate(clim_type%lat)
+if (associated (clim_type%lon     )) deallocate(clim_type%lon)
+if (associated (clim_type%latb    )) deallocate(clim_type%latb)
+if (associated (clim_type%lonb    )) deallocate(clim_type%lonb)
+if (associated (clim_type%levs    )) deallocate(clim_type%levs)
+if (associated (clim_type%halflevs)) deallocate(clim_type%halflevs) 
 call horiz_interp_del(clim_type%interph)
-deallocate(clim_type%time_slice)
-deallocate(clim_type%field_type)
-deallocate(clim_type%field_name)
-deallocate(clim_type%time_init)
-deallocate(clim_type%mr)
+if (associated (clim_type%time_slice)) deallocate(clim_type%time_slice)
+if (associated (clim_type%field_type)) deallocate(clim_type%field_type)
+if (associated (clim_type%field_name)) deallocate(clim_type%field_name)
+if (associated (clim_type%time_init )) deallocate(clim_type%time_init)
+if (associated (clim_type%mr        )) deallocate(clim_type%mr)
 if (associated (clim_type%data)) then
   deallocate(clim_type%data)
 endif

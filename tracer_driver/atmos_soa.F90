@@ -21,7 +21,9 @@ use                    fms_mod, only : file_exist,              &
                                        mpp_pe,                  &
                                        mpp_root_pE,             &
                                        close_file,              &
-                                       stdlog
+                                       stdlog,                  &
+                                       check_nml_error, error_mesg, &
+                                       open_namelist_file, FATAL
 use           time_manager_mod, only : time_type
 use           diag_manager_mod, only : send_data,               &
                                        register_diag_field,     &
@@ -30,7 +32,9 @@ use         tracer_manager_mod, only : get_tracer_index,        &
                                        set_tracer_atts
 use          field_manager_mod, only : MODEL_ATMOS
 use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR
-use atmos_tracer_utilities_mod, only : interp_emiss
+use           interpolator_mod, only:  interpolate_type, interpolator_init, &
+                                       interpolator, interpolator_end,     &
+                                       CONSTANT, INTERP_WEIGHTED_P
 
 implicit none
 
@@ -38,7 +42,7 @@ private
 !-----------------------------------------------------------------------
 !----- interfaces -------
 !
-public  atmos_SOA_init, atmos_SOA_end, SOA_source_input, chem_SOA
+public  atmos_SOA_init, atmos_SOA_end, atmos_SOA_chem
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
@@ -55,15 +59,19 @@ integer ::   id_OH_conc            = 0
 integer ::   id_C4H10_conc         = 0
 integer ::   id_SOA_chem           = 0
 
-real, allocatable, dimension(:,:,:) :: OH_conc
-real, allocatable, dimension(:,:,:) :: C4H10_conc
+type(interpolate_type),save         ::  gas_conc_interp
+character(len=32)  :: gas_conc_filename = 'gas_conc_3D.nc'
+character(len=32), dimension(2) :: gas_conc_name
+data gas_conc_name/'OH','C4H10'/
+
+namelist /secondary_organics_nml/ gas_conc_filename, gas_conc_name
 
 logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_soa.F90,v 13.0 2006/03/28 21:15:37 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_08 $'
+character(len=128) :: version = '$Id: atmos_soa.F90,v 13.0.2.1 2006/09/12 21:11:10 wfc Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_12 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -88,18 +96,30 @@ integer :: n, m
 !
 !-----------------------------------------------------------------------
 !
-      integer  log_unit,unit,io,index,ntr,nt
+      integer  unit,io,ierr
       character*3 :: SOA_tracer
 !
-!     1. C4H10     = nButane
-!                                                                      
-      data SOA_tracer/     'SOA'/
-      
+      data SOA_tracer/'SOA'/
+
+!
       if (module_is_initialized) return
+!    read namelist.
+!-----------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ( )
+        ierr=1; do while (ierr /= 0)
+        read  (unit, nml=secondary_organics_nml, iostat=io, end=10)
+        ierr = check_nml_error(io,'secondary_organics_nml')
+        end do
+10      call close_file (unit)
+      endif
 
-!---- write namelist ------------------
-
+!---------------------------------------------------------------------
+!    write version number and namelist to logfile.
+!---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      if (mpp_pe() == mpp_root_pe() ) &
+                          write (stdlog(), nml=secondary_organics_nml)
 
 !----- set initial value of soa ------------
 
@@ -114,17 +134,17 @@ integer :: n, m
 
 
   30   format (A,' was initialized as tracer number ',i2)
-      if (.not.allocated(OH_conc)) then
-        allocate (OH_conc(size(lonb)-1,size(latb)-1,nlev)  )
-      endif
+
+     call interpolator_init (gas_conc_interp, trim(gas_conc_filename),  &
+                             lonb, latb,&        
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = gas_conc_name, & 
+                             vert_interp=(/INTERP_WEIGHTED_P/) )
       if (id_OH_conc .eq. 0 ) &
         id_OH_conc    = register_diag_field ( mod_name,           &
                       'OH_SOA_conc',axes(1:3),Time,                        &
                       'Hydroxyl radical concentration',           &
                       'molec.cm-3')
-
-      if (.not.allocated(C4H10_conc)) & 
-        allocate (C4H10_conc(size(lonb)-1,size(latb)-1,nlev)  )
 
       id_C4H10_conc    = register_diag_field ( mod_name,           &
                       'C4H10_mmr',axes(1:3),Time,                        &
@@ -154,134 +174,23 @@ integer :: n, m
 ! This subroutine writes the version name to logfile and exits. 
 ! </DESCRIPTION>
 !<TEMPLATE>
-! call atmos_SOx_end
+! call atmos_SOA_end
 !</TEMPLATE>
  subroutine atmos_SOA_end
 
-      if (allocated(OH_conc)) deallocate(OH_conc)
-      if (allocated(C4H10_conc)) deallocate(C4H10_conc)
-
+      call interpolator_end (gas_conc_interp)
       module_is_initialized = .FALSE.
 
  end subroutine atmos_SOA_end
 !</SUBROUTINE>
-!#######################################################################
-!<SUBROUTINE NAME="SOA_source_input">
-!<OVERVIEW>
-!  This subroutine read the monthly mean concentrations of OH and C4H10
-!  *****WARNING:
-!  To save space only the actual month is kept in memory which implies
-!  that the "atmos_SOA_init" should be executed at the begining of each
-!  month. In other words, the script should not run more than 1 month
-!  without a restart
-!</OVERVIEW>
-
- subroutine SOA_source_input( lon, lat, imonth, Time, is, ie, js, je, kbot)
-!--- Input variables
-        integer, intent(in)              :: imonth
-        real, dimension(:,:), intent(in) :: lon, lat
-        type(time_type),intent(in)       :: Time
-        integer, intent(in), dimension(:,:), optional :: kbot
-        integer, intent(in)              :: is, ie, js, je
-!--- Working variables
-        real                        :: dtr, lat_S, lon_W, dlon, dlat
-        real                        :: variable
-        integer                     :: i, j, l, im, unit, ios
-        logical                     :: opened
-        real, dimension(144, 90)    :: data2D
-        real, dimension(144, 90,24) :: data3D
-        character (len=3)           :: month(12)
-!--- Molecular weight [g/mole]
-        real, parameter             :: wtm_C   = 12.
-        real, parameter             :: wtm_C4H10 = 64.
-
-!--- Input filenames
-        character (len=7 ) :: FNMOH     = 'OH_AM2_'
-        character (len=10) :: FNMC4H10  = 'C4H10_AM2_'
-
-        data month/'jan','feb','mar','apr','may','jun','jul', &
-                   'aug','sep','oct','nov','dec'/
-!---
-        dtr = PI/180.
-        lat_S= -90.*dtr; lon_W= -180.*dtr
-        dlon = 2.5*dtr; dlat = 2.*dtr;
-!
-!------------------------------------------------------------------------
-! Read 12 monthly C4H10 concentration
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) write(*,*) 'Reading C4H10 concentration'
-!
-        c4h10_conc(:,:,:) = 0.  ![molec/cm3]
-        data3D(:,:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-
-        open (unit,file='INPUT/'//FNMC4H10//month(imonth)//'.txt', &
-              form='formatted',action='read')
-        do
-          read (unit, '(3i4,e12.4)',iostat=ios) i,j,l,variable
-          data3D(i,j,l)=variable
-          if ( ios.ne.0 ) exit
-        enddo
-        call close_file (unit)
-      
-!------------------------------------------------------------------------
-! End reading C4H10 concentration
-!------------------------------------------------------------------------
-! --- Interpolate data
-      do l=1,24
-        call interp_emiss ( data3D(:,:,l), lon_W, lat_S, dlon, dlat, &
-                            C4H10_conc(:,:,l))
-      enddo
-! Send the C4H10 data to the diag_manager for output.
-         if (id_C4H10_conc > 0 ) &
-           used = send_data ( id_C4H10_conc, &
-                C4H10_conc, Time, is_in=is, js_in=js )
-!------------------------------------------------------------------------
-! Read 12 monthly OH concentration
-!------------------------------------------------------------------------
-if (mpp_pe()== mpp_root_pe() ) write(*,*) 'Reading OH concentration'
-!
-        OH_conc(:,:,:) = 0.  ![molec/cm3]
-        data3D(:,:,:)=0.
-        do unit = 30,100
-          INQUIRE(unit=unit, opened= opened)
-          if (.NOT. opened) exit
-        enddo
-
-        open (unit,file='INPUT/'//FNMOH//month(imonth)//'.txt', &
-              form='formatted',action='read')
-        do
-          read (unit, '(3i4,e12.4)',iostat=ios) i,j,l,variable
-          data3D(i,j,l)=variable
-          if ( ios.ne.0 ) exit
-        enddo
-        call close_file (unit)
-!------------------------------------------------------------------------
-! End reading OH concentration
-!------------------------------------------------------------------------
-! --- Interpolate data
-      do l=1,24
-        call interp_emiss ( data3D(:,:,l), lon_W, lat_S, dlon, dlat, &
-                            OH_conc(:,:,l))
-      enddo
-! Send the OH data to the diag_manager for output.
-         if (id_OH_conc > 0 ) &
-           used = send_data ( id_OH_conc, &
-                OH_conc, Time, is_in=is, js_in=js , ks_in=1 )
-
-end subroutine SOA_source_input
-!</SUBROUTINE>
 !-----------------------------------------------------------------------
-      SUBROUTINE CHEM_SOA(pwt,temp,pfull, dt, &
+      SUBROUTINE atmos_SOA_chem(pwt,temp,pfull, phalf, dt, &
                           jday,hour,minute,second,lat,lon, &
                           SOA, SOA_dt, Time,is,ie,js,je,kbot)
 
 ! ****************************************************************************
       real, intent(in),    dimension(:,:,:)          :: pwt
-      real, intent(in),    dimension(:,:,:)          :: temp,pfull
+      real, intent(in),    dimension(:,:,:)          :: temp,pfull,phalf
       real, intent(in)                               :: dt
       integer, intent(in)                            :: jday, hour,minute,second
       real, intent(in),  dimension(:,:)              :: lat, lon  ! [radian]
@@ -291,11 +200,13 @@ end subroutine SOA_source_input
       integer, intent(in),  dimension(:,:), optional :: kbot
       integer, intent(in)                            :: is,ie,js,je
 ! Working vectors
-      real, dimension(size(SOA,1),size(SOA,2),size(SOA,3)) :: SOA_chem
+      real, dimension(size(SOA,1),size(SOA,2),size(SOA,3)) :: &
+               SOA_chem, OH_conc, C4H10_conc
       real, dimension(size(SOA,1),size(SOA,2)) :: &
                xu, dayl, h, hl, hc, hred, fac_OH, fact_OH
       real                                       :: oh, c4h10
       real, parameter                            :: wtm_C = 12.
+      real, parameter                            :: wtm_C4H10 = 58.
       real, parameter                            :: yield = 0.1
       real, parameter                            :: small_value=1.e-21
       real, parameter                            :: A0 = 0.006918
@@ -310,6 +221,15 @@ end subroutine SOA_source_input
       integer                                    :: istep, nstep
 ! Local grid sizes
       id=size(SOA,1); jd=size(SOA,2); kd=size(SOA,3)
+
+      OH_conc(:,:,:)=0.  ! molec/cm3
+      call interpolator(gas_conc_interp, Time, phalf, OH_conc, &
+                       trim(gas_conc_name(1)), is, js)
+
+      C4H10_conc(:,:,:)=0.0
+      call interpolator(gas_conc_interp, Time, phalf, C4H10_conc, &
+                       trim(gas_conc_name(2)), is, js)
+      C4H10_conc(:,:,:)=C4H10_conc(:,:,:)*WTM_C4H10/WTMAIR
 
       x = 2. *pi *float(jday-1)/365.
       decl = A0 - A1*cos(  X) + B1*sin(  X) - A2*cos(2.*X) + B2*sin(2.*X) &
@@ -353,10 +273,8 @@ end subroutine SOA_source_input
       do i=1,id
         do j=1,jd
           do k=1,kd 
-            c4h10=max(small_value,C4H10_conc(i+is-1,j+js-1,k))
-            oh   =max(small_value,OH_conc(i+is-1,j+js-1,k))*fac_oh(i,j)
             SOA_dt(i,j,k) = 1.55E-11 * exp( -540./temp(i,j,k) ) *yield &
-                * c4h10 * oh
+                * C4H10_conc(i,j,k)*OH_conc(i,j,k)*fac_oh(i,j)
           enddo
         enddo
       enddo
@@ -369,7 +287,7 @@ end subroutine SOA_source_input
       endif
 
 
-end subroutine chem_soa
+end subroutine atmos_SOA_chem
 
 
-end module atmos_soa_mod
+end module atmos_SOA_mod

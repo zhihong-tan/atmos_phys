@@ -12,8 +12,8 @@ implicit none
       integer :: ox_ndx, o3_ndx, o1d_ndx, o_ndx
       logical :: do_ox
 
-character(len=128), parameter :: version     = '$Id: mo_chem_utls.F90,v 13.0 2006/03/28 21:16:07 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis_2006_08 $'
+character(len=128), parameter :: version     = '$Id: mo_chem_utls.F90,v 13.0.4.1 2006/11/20 20:24:09 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: memphis_2006_12 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -79,12 +79,12 @@ logical                       :: module_is_initialized = .false.
 !     if( ndx_ch4 > 0 ) then
          do k = 1,plev
             h2o(:,k)   = mbar(:,k) * sh(:plonl,k) * mh2o
-            if( ndx_ch4 > 0 ) then
-               t_value(:) = 6.e-6 - 2.*vmr(:,k,ndx_ch4)
-               where( t_value(:) > h2o(:,k) )
-                  h2o(:,k) = t_value(:)
-               endwhere
-            end if
+!           if( ndx_ch4 > 0 ) then
+!              t_value(:) = 6.e-6 - 2.*vmr(:,k,ndx_ch4)
+!              where( t_value(:) > h2o(:,k) )
+!                 h2o(:,k) = t_value(:)
+!              endwhere
+!           end if
          end do
 !     end if
 !--lwh

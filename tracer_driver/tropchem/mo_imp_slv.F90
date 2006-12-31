@@ -37,14 +37,14 @@
          logical  ::  do_hst(2)
       end type hst_pl
 
-      real                      ::   small
-      real                      ::   epsilon(max(1,clscnt4))
-      type(hst_pl), allocatable ::   imp_hst_prod(:)
-      type(hst_pl), allocatable ::   imp_hst_loss(:)
-      logical, allocatable      ::   factor(:)
+      real, private                      ::   small
+      real, private                      ::   epsilon(clscnt4)
+      type(hst_pl), private, allocatable ::   imp_hst_prod(:)
+      type(hst_pl), private, allocatable ::   imp_hst_loss(:)
+      logical, private, allocatable      ::   factor(:)
 
-character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 13.0 2006/03/28 21:16:13 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis_2006_08 $'
+character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 13.0.4.1 2006/11/20 20:24:09 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: memphis_2006_12 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -294,8 +294,9 @@ logical                       :: module_is_initialized = .false.
                           prod_out, loss_out, plonl, plnplv )
 !-----------------------------------------------------------------------
 !              ... imp_sol advances the volumetric mixing ratio
-!           forward one time step via the fully implicit
-!           euler scheme
+!           forward one time step via the fully implicit euler scheme.
+!           this source is meant for small l1 cache machines such as
+!           the intel pentium and itanium cpus
 !-----------------------------------------------------------------------
 
       use chem_mods_mod,         only : clscnt4, imp_nzcnt, clsze, rxntot, hetcnt, extcnt, implicit
@@ -316,7 +317,7 @@ logical                       :: module_is_initialized = .false.
       integer, intent(in) ::   nstep                     ! time step index (zero based)
       real, intent(in) ::   lat(:)                    ! latitude
       real, intent(in) ::   lon(:)                    ! longitude
-      integer, intent(in) ::   plonl                     ! longitude tile index
+      integer, intent(in) ::   plonl                     ! longitude tile dimension
       integer, intent(in) ::   plnplv                    ! plonl*plev
       real, intent(in)    ::   delt                      ! time step (seconds)
       real, intent(in)    ::   reaction_rates(plnplv,rxntot)
@@ -334,8 +335,8 @@ logical                       :: module_is_initialized = .false.
 
       integer ::   nr_iter, &
                    lev, &
-                   ofl, ofu, &
-                   i, isec, &
+                   indx, &
+                   i, &
                    j, &
                    k, l, &
                    m, &
@@ -344,22 +345,20 @@ logical                       :: module_is_initialized = .false.
                    cut_cnt, stp_con_cnt
       integer ::   timetype, hndx
       integer ::   astat
-      real :: interval_done, dt, dti
+      real :: interval_done, dt, dti, wrk
       real :: max_delta(max(1,clscnt4))
-      real, dimension(clsze,max(1,imp_nzcnt)) :: &
+      real, dimension(max(1,imp_nzcnt)) :: &
                    sys_jac, &
                    lin_jac
-      real, dimension(clsze,max(1,clscnt4)) :: &
+      real, dimension(max(1,clscnt4)) :: &
                    solution, &
                    forcing, &
                    iter_invariant, &
                    prod, &
                    loss
-      real :: lrxt(clsze,max(1,rxntot))
-      real :: lsol(clsze,max(1,pcnstm1))
-      real :: lhet(clsze,max(1,hetcnt))
-      real, dimension(clsze) :: &
-                   wrk
+      real :: lrxt(max(1,rxntot))
+      real :: lsol(max(1,pcnstm1))
+      real :: lhet(max(1,hetcnt))
       real, dimension(plnplv) :: &
                    wrk_buff
       real, dimension(plnplv,max(1,clscnt4)) :: &
@@ -367,12 +366,11 @@ logical                       :: module_is_initialized = .false.
       real    ::   timer 
       logical ::   convergence
       logical ::   dump_buff, fill_buff
-      logical ::   frc_mask(clsze), iter_conv(clsze)
+      logical ::   frc_mask, iter_conv
       logical ::   converged(max(1,clscnt4))
       character(len=32) :: fldname
       type(hst_buff), allocatable :: prod_buff(:), loss_buff(:)
-      integer :: isec_old
-      integer :: ind1, ind2, lev1, lev2
+      integer :: indx_old
 
 !-----------------------------------------------------------------------      
 !        ... allocate history prod, loss buffers
@@ -417,9 +415,9 @@ logical                       :: module_is_initialized = .false.
 !     if( implicit%indprd_cnt > 0 .or. extcnt > 0 ) then
       if( implicit%indprd_cnt > 0 ) then
 !-----------------------------------------------------------------------      
-!        ... Class independent forcing
+!        ... class independent forcing
 !-----------------------------------------------------------------------      
-         call INDPRD( 4, ind_prd, base_sol, extfrc, reaction_rates )
+         call indprd( 4, ind_prd, base_sol, extfrc, reaction_rates )
       else
          do m = 1,max(1,clscnt4)
             ind_prd(:,m) = 0.
@@ -439,27 +437,26 @@ logical                       :: module_is_initialized = .false.
          end if
       end do
 
-! Level_loop : &
+
+
+level_loop : &
+!++lwh
 !     do lev = 1,plev
-Lon_tile_loop : &
-         do isec = 1,plnplv/clsze
-            isec_old = 0
-!            ofl = (lev - 1)*plonl + (isec - 1)*clsze + 1
-            ofl = (isec - 1)*clsze + 1
-            ofu = ofl + clsze - 1
-            ind1 = MOD(ofl-1,plonl) + 1
-            ind2 = MOD(ofu-1,plonl) + 1
-            lev1 = (ofl-1)/plonl + 1
-            lev2 = (ofu-1)/plonl + 1
+      do lev = 1,plnplv/plonl
+!--lwh
+lon_tile_loop : &
+         do i = 1,plonl
+            indx = (lev - 1)*plonl + i
+            indx_old = 0
 !-----------------------------------------------------------------------      
 !        ... transfer from base to local work arrays
 !-----------------------------------------------------------------------      
             do m = 1,rxntot
-               lrxt(:,m) = reaction_rates(ofl:ofu,m) 
+               lrxt(m) = reaction_rates(indx,m) 
             end do
             if( hetcnt > 0 ) then
                do m = 1,hetcnt
-                   lhet(:,m) = het_rates(ofl:ofu,m) 
+                  lhet(m) = het_rates(indx,m) 
                 end do
             end if
 !-----------------------------------------------------------------------      
@@ -476,7 +473,7 @@ time_step_loop : &
 !        ... transfer from base to local work arrays
 !-----------------------------------------------------------------------      
                do m = 1,pcnstm1
-                  lsol(:,m) = base_sol(ofl:ofu,m) 
+                  lsol(m) = base_sol(indx,m) 
                end do
 !-----------------------------------------------------------------------      
 !        ... transfer from base to class array
@@ -484,20 +481,19 @@ time_step_loop : &
                do k = 1,clscnt4
                   j = implicit%clsmap(k)
                   m = implicit%permute(k)
-                  solution(:,m) = lsol(:,j)
+                  solution(m) = lsol(j)
                end do
 !-----------------------------------------------------------------------      
 !        ... set the iteration invariant part of the function f(y)
 !        ... if there is "independent" production put it in the forcing
 !-----------------------------------------------------------------------      
-!              if( implicit%indprd_cnt > 0 .or. extcnt > 0 ) then
-               if( implicit%indprd_cnt > 0 ) then
+               if( implicit%indprd_cnt > 0 .or. extcnt > 0 ) then
                   do m = 1,clscnt4
-                     iter_invariant(:,m) = dti * solution(:,m) + ind_prd(ofl:ofu,m)
+                     iter_invariant(m) = dti * solution(m) + ind_prd(indx,m)
                   end do
                else
                   do m = 1,clscnt4
-                     iter_invariant(:,m) = dti * solution(:,m)
+                     iter_invariant(m) = dti * solution(m)
                   end do
                end if
 !-----------------------------------------------------------------------      
@@ -508,7 +504,7 @@ time_step_loop : &
                else
                   do j = 1,clscnt4
                      m = implicit%diag_map(j)
-                     lin_jac(:,m) = -dti
+                     lin_jac(m) = -dti
                   end do
                end if
 
@@ -525,7 +521,7 @@ iter_loop : &
                         call imp_nlnmat( sys_jac, lsol, lrxt, lin_jac, dti )
                      else
                         do m = 1,imp_nzcnt
-                           sys_jac(:,m) = lin_jac(:,m)
+                           sys_jac(m) = lin_jac(m)
                         end do
                      end if
 !-----------------------------------------------------------------------      
@@ -538,14 +534,14 @@ iter_loop : &
 !-----------------------------------------------------------------------      
                   call imp_prod_loss( prod, loss, lsol, lrxt, lhet )
                   do m = 1,clscnt4
-                     forcing(:,m) = solution(:,m)*dti - (iter_invariant(:,m) + prod(:,m) - loss(:,m))
+                     forcing(m) = solution(m)*dti - (iter_invariant(m) + prod(m) - loss(m))
                   end do
 !-----------------------------------------------------------------------      
 !         ... solve for the mixing ratio at t(n+1)
 !-----------------------------------------------------------------------      
                   call imp_lu_slv( sys_jac, forcing )
                   do m = 1,clscnt4
-                     solution(:,m) = solution(:,m) + forcing(:,m)
+                     solution(m) = solution(m) + forcing(m)
                   end do
 !-----------------------------------------------------------------------      
 !            ... convergence measures
@@ -553,29 +549,26 @@ iter_loop : &
                   if( nr_iter > 1 ) then
                      do k = 1,clscnt4
                         m = implicit%permute(k)
-                        where( abs(solution(:,m)) > 1.e-40 )
-                           wrk(:) = abs( forcing(:,m)/solution(:,m) )
-                        elsewhere
-                           wrk(:) = 0.
-                        endwhere
-                        max_delta(k) = maxval( wrk(:) )
+                        if( abs(solution(m)) > 1.e-40 ) then
+                           max_delta(k) = abs( forcing(m)/solution(m) )
+                        else
+                           max_delta(k) = 0.
+                        end if
                      end do
                   end if
 !-----------------------------------------------------------------------      
 !           ... limit iterate
 !-----------------------------------------------------------------------      
-                  do m = 1,clscnt4
-                     where( solution(:,m) < 0. )
-                        solution(:,m) = 0.
+                  where( solution(:) < 0. )
+                     solution(:) = 0.
                      endwhere
-                  end do
 !-----------------------------------------------------------------------      
 !           ... transfer latest solution back to work array
 !-----------------------------------------------------------------------      
                   do k = 1,clscnt4
                      j = implicit%clsmap(k)
                      m = implicit%permute(k)
-                     lsol(:,j) = solution(:,m)
+                     lsol(j) = solution(m)
                   end do
 !-----------------------------------------------------------------------      
 !            ... check for convergence
@@ -583,15 +576,14 @@ iter_loop : &
                   if( nr_iter > 1 ) then
                      do k = 1,clscnt4
                         m = implicit%permute(k)
-                        frc_mask(:) = abs( forcing(:,m) ) > small
-                        where( frc_mask(:) )
-                           iter_conv(:) =  abs(forcing(:,m)) <= epsilon(k)*abs(solution(:,m))
-                        elsewhere
-                           iter_conv(:) =  .true.
-                        endwhere
-                        converged(k) =  all( iter_conv(:) )
+                        frc_mask = abs( forcing(m) ) > small
+                        if( frc_mask ) then
+                           converged(k) =  abs(forcing(m)) <= epsilon(k)*abs(solution(m))
+                        else
+                           converged(k) =  .true.
+                        end if
                      end do
-                     convergence = all( converged(:clscnt4) )
+                     convergence = all( converged(:) )
                      if( convergence ) then
                         exit
                      end if
@@ -614,21 +606,17 @@ iter_loop : &
                      dt = .5 * dt
                      cycle
                   else
-                     
-!                    write(*,*)'imp_sol: failed to converge @ (isec,lat,dt) = ', isec,lat*180/pi,dt
-                     if(isec_old /= isec) then
-                     write(*,*)'imp_sol: failed to converge @ (isec,dt) = ', isec,dt
-                     write(*,'(''imp_sol: ... lat,lon,lev = '',F8.2,''-'',F8.2,'','',F8.2,''-'',F8.2,'','',I2,''-'',I2)') &
-                               lat(ind1)*180./PI,lat(ind2)*180./PI, &
-                               lon(ind1)*180./PI,lon(ind2)*180./PI, &
-                               lev1,lev2
+!                    write(*,'('' imp_sol: failed to converge @ (lon,lat,lev,dt) = '',3i5,1p,e21.13)') indx,lat,lev,dt
+                     if (indx_old /= indx) then
+                     write(*,'('' imp_sol: failed to converge @ (lon,lat,lev,dt) = '',2f8.2,i5,1p,e21.13)') &
+                        lon(i)*180./PI,lat(i)*180./PI,lev,dt
                      do m = 1,clscnt4
                         if( .not. converged(m)) then
                            write(*,'(1x,a8,1x,1pe10.3)') tracnam(implicit%clsmap(m)), max_delta(m)
                         end if
                      end do
                      endif
-                     isec_old = isec
+                     indx_old = indx
                   end if
                end if
 !-----------------------------------------------------------------------      
@@ -645,7 +633,7 @@ iter_loop : &
                      stp_con_cnt = stp_con_cnt + 1
                   end if
                   do m = 1,pcnstm1
-                     base_sol(ofl:ofu,m) = lsol(:,m)
+                     base_sol(indx,m) = lsol(m)
                   end do
 !++lwh
 !-----------------------------------------------------------------------      
@@ -655,12 +643,12 @@ iter_loop : &
                      j = implicit%clsmap(k)
                      m = implicit%permute(k)
                      if( PRESENT( prod_out ) ) then
-                        prod_out(ofl:ofu,j) = prod_out(ofl:ofu,j) &
-                          + prod(:,m) * dt * dti
+                        prod_out(indx,j) = prod_out(indx,j) &
+                          + prod(m) * dt * dti
                      end if
                      if( PRESENT( loss_out ) ) then
-                        loss_out(ofl:ofu,j) = loss_out(ofl:ofu,j) &
-                        + loss(:,m) * dt * dti
+                        loss_out(indx,j) = loss_out(indx,j) &
+                        + loss(m) * dt * dti
                      end if
                   end do
 !--lwh
@@ -680,19 +668,19 @@ iter_loop : &
             do k = 1,clscnt4
                j = implicit%clsmap(k)
                m = implicit%permute(k)
-               base_sol(ofl:ofu,j) = solution(:,m)
+               base_sol(indx,j) = solution(m)
 !++lwh
 !-----------------------------------------------------------------------      
 !        ... Production/loss diagnostics
 !-----------------------------------------------------------------------      
                if( PRESENT( prod_out ) ) then
-                 prod_out(ofl:ofu,j) = prod_out(ofl:ofu,j) &
-                     + prod(:,m) * dt * dti &
-                     + ind_prd(ofl:ofu,m)
+                 prod_out(indx,j) = prod_out(indx,j) &
+                     + prod(m) * dt * dti &
+                     + ind_prd(indx,m)
                end if
                if( PRESENT( loss_out ) ) then
-                  loss_out(ofl:ofu,j) = loss_out(ofl:ofu,j) &
-                     + loss(:,m) * dt * dti
+                  loss_out(indx,j) = loss_out(indx,j) &
+                     + loss(m) * dt * dti
                end if
 !--lwh
             end do
@@ -723,11 +711,11 @@ iter_loop : &
 !                           hndx = hndx + 1
 !                           l = implicit%clsmap(cls_ndx)
 !                           if( l == ox_ndx ) then
-!                              if( do_ox_pl ) then
 !-----------------------------------------------------------------------      
-!         ... Ozone production (only valid for the troposphere!)
+!         ... ozone production (only valid for the troposphere!)
 !-----------------------------------------------------------------------      
-!                                 do k = ofl,ofu
+!			      if( do_ox_pl ) then
+!			         k = indx
 !                                   prod_buff(file)%buff(k,hndx) = &
 !                                    (reaction_rates(k,ox_p1_ndx)*base_sol(k,ho2_ndx) &
 !                                    + reaction_rates(k,ox_p2_ndx) *base_sol(k,ch3o2_ndx) &
@@ -740,11 +728,10 @@ iter_loop : &
 !                                    + reaction_rates(k,ox_p9_ndx)*base_sol(k,c3h7o2_ndx) & 
 !                                    + reaction_rates(k,ox_p10_ndx)*base_sol(k,ro2_ndx) &
 !                                    + reaction_rates(k,ox_p11_ndx)*base_sol(k,xo2_ndx)) * base_sol(k,no_ndx)
-!                                end do
 !                              end if
 !                          else
 !                              j = implicit%permute(cls_ndx)
-!                             prod_buff(file)%buff(ofl:ofu,hndx) = prod(:,j) + ind_prd(ofl:ofu,j)
+!                             prod_buff(file)%buff(indx,hndx) = prod(j) + ind_prd(indx,j)
 !                           end if
 !                        end if
 !                    end do
@@ -770,12 +757,12 @@ iter_loop : &
 !                           hndx = hndx + 1
 !                           l = implicit%clsmap(cls_ndx)
 !                           if( l == ox_ndx ) then
+!			      if( do_ox_pl ) then
 !-----------------------------------------------------------------------      
-!         ... Ozone destruction (only valid for the troposphere!)
-!             also include OX loss from NO2+OH, N2O5+aerosol, NO3+aerosol
+!         ... ozone destruction (only valid for the troposphere!)
+!             also include ox loss from no2+oh, n2o5+aerosol, no3+aerosol
 !-----------------------------------------------------------------------      
-!                              if( do_ox_pl ) then
-!                                 do k = ofl,ofu
+!	                         k = indx
 !                                   loss_buff(file)%buff(k,hndx) =  reaction_rates(k,ox_l1_ndx) &
 !                                   + reaction_rates(k,ox_l2_ndx) *base_sol(k,oh_ndx) & 
 !                                   + reaction_rates(k,ox_l3_ndx) *base_sol(k,ho2_ndx) & 
@@ -789,28 +776,23 @@ iter_loop : &
 !                                      + 3. * reaction_rates(k,usr16_ndx) * base_sol(k,n2o5_ndx) &
 !                                      + 2. * reaction_rates(k,usr17_ndx) * base_sol(k,no3_ndx)) &
 !                                     /max( base_sol(k,ox_ndx),1.e-20 )
-!++lwh
-!                                   loss_buff(file)%buff(k,hndx) = loss_buff(file)%buff(k,hndx) &
-!                                                                * base_sol(k,l)
-!--lwh
-!                                end do
 !                             end if
 !                           else
 !                              j = implicit%permute(cls_ndx)
-!                             loss_buff(file)%buff(ofl:ofu,hndx) = loss(:,j)
+!                             loss_buff(file)%buff(indx,hndx) = loss(j)
 !                           end if
 !                       end if
 !                    end do
 !                 end if
 !              end do
 !           end do hist_buff_loop
-         end do Lon_tile_loop
-!     end do level_loop
+         end do lon_tile_loop
+      end do level_loop
 
 !-----------------------------------------------------------------------      
-!            ... Check for implicit species production and loss output
-!           First check production; instantaneous then time averaged
-!           Then  check loss; instantaneous then time averaged
+!    	... check for implicit species production and loss output
+!           first check production; instantaneous then time averaged
+!           then  check loss; instantaneous then time averaged
 !-----------------------------------------------------------------------      
 !     do file = 1,moz_file_cnt
 !         do timetype = inst,avrg
@@ -862,7 +844,7 @@ iter_loop : &
 !                     end if
 !                     hndx        = hndx + 1
 !                     l           = implicit%clsmap(cls_ndx)
-!                     wrk_buff(:) = loss_buff(file)%buff(:,hndx) * hnm(:)
+!	             wrk_buff(:) = loss_buff(file)%buff(:,hndx) * hnm(:) * base_sol(:,l)
 !                     call outfld( fldname, wrk_buff, plonl, ip, lat, file )
 !                 end if
 !              end do

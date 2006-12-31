@@ -17,8 +17,8 @@
       real :: epsilon(max(1,clscnt5))
       real :: err_wghts(max(1,clscnt5))
 
-character(len=128), parameter :: version     = '$Id: mo_rodas_slv.F90,v 13.0 2006/03/28 21:16:23 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis_2006_08 $'
+character(len=128), parameter :: version     = '$Id: mo_rodas_slv.F90,v 13.0.4.1 2006/11/20 20:24:09 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: memphis_2006_12 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -140,23 +140,22 @@ logical                       :: module_is_initialized = .false.
       real, parameter    :: con3      = 8./3.
 
       integer ::   i, isec, j, k, m
-      integer ::   lev, ofl, ofu
+      integer ::   lev, indx
       integer ::   attempts, failures, tsteps, step_fail_cnt
       real    ::   con1, con2
-      real, dimension(clsze,max(1,rod_nzcnt)) :: sys_jac, lin_jac
-      real, dimension(clsze,max(1,clscnt5))   :: yn, prod, loss, &
+      real, dimension(max(1,rod_nzcnt)) :: sys_jac, lin_jac
+      real, dimension(max(1,clscnt5))   :: yn, prod, loss, &
                                                  u1, u2, u3, u4, &
                                                  ind_prd
       real, dimension(plnplv,max(1,clscnt5))  :: gl_ind_prd
-      real, dimension(clsze,max(1,rxntot))    :: lrxt
-      real, dimension(clsze,max(1,hetcnt))    :: lhet
-      real, dimension(clsze,max(1,pcnstm1))   :: lsol, y_temp
+      real, dimension(max(1,rxntot))    :: lrxt
+      real, dimension(max(1,hetcnt))    :: lhet
+      real, dimension(max(1,pcnstm1))   :: lsol, y_temp
       real, dimension(max(1,clscnt5))         :: spc_err
-      real, dimension(clsze)                  :: err, h_pred
+      real    ::   err, h_pred
       real    ::   timer 
       real    ::   hfull, hinv, interval
       real    ::   h
-      real    ::   hused(2)
       logical ::   interval_done
 
 !-----------------------------------------------------------------------      
@@ -170,32 +169,29 @@ logical                       :: module_is_initialized = .false.
             gl_ind_prd(:,m) = 0.
          end do
       end if
-!level_loop : &
+level_loop : &
+!++lwh
 !     do lev = 1,plev
+      do lev = 1,plnplv/plonl
+!--lwh
 lon_tile_loop : &
-         do isec = 1,plnplv/clsze
-!        do isec = 1,plonl/clsze
-!            ofl  = (lev - 1)*plonl + (isec - 1)*clsze + 1
-            ofl  = (isec - 1)*clsze + 1
-            ofu  = ofl + clsze - 1
+         do isec = 1,plonl
+            indx = (lev - 1)*plonl + isec
             h    = delt
             hinv = 1./h
             interval      = 0.
             step_fail_cnt = 0
-            tsteps        = 0
-            hused(1)      = 1.e36
-            hused(2)      = -1.e36
             do m = 1,rxntot
-               lrxt(:,m) = reaction_rates(ofl:ofu,m) 
+               lrxt(m) = reaction_rates(indx,m) 
             end do
             if( hetcnt > 0 ) then
-               do m = 1,max(1,hetcnt)
-                   lhet(:,m) = het_rates(ofl:ofu,m) 
+               do m = 1,hetcnt
+                  lhet(m) = het_rates(indx,m) 
                 end do
             end if
             if( rodas%indprd_cnt /= 0 .or. extcnt > 0 ) then
-               do m = 1,clscnt5
-                  ind_prd(:,m) = gl_ind_prd(ofl:ofu,m) 
+               do m = 1,max(1,clscnt5)
+                  ind_prd(m) = gl_ind_prd(indx,m) 
                end do
             end if
 !-----------------------------------------------------------------------      
@@ -205,15 +201,12 @@ full_time_step_loop : &
             do
                interval_done = .false.
                failures      = 0
-               tsteps        = tsteps + 1
-               hused(1)      = min( hused(1),h )
-               hused(2)      = max( hused(2),h )
 !-----------------------------------------------------------------------      
 !        ... transfer from base to local work arrays
 !-----------------------------------------------------------------------      
                do m = 1,pcnstm1
-                  lsol(:,m)   = base_sol(ofl:ofu,m) 
-                  y_temp(:,m) = lsol(:,m)
+                  lsol(m)   = base_sol(indx,m) 
+                  y_temp(m) = lsol(m)
                end do
 !----------------------------------------------------------------------      
 !        ... store values at t(n)
@@ -221,7 +214,7 @@ full_time_step_loop : &
                do k = 1,clscnt5
                   j       = rodas%clsmap(k)
                   m       = rodas%permute(k)
-                  yn(:,m) = lsol(:,j)
+                  yn(m) = lsol(j)
                end do
 !-----------------------------------------------------------------------      
 !        ... attemp step size
@@ -233,30 +226,13 @@ sub_step_loop : &
 !-----------------------------------------------------------------------      
 !        ... the linear component
 !-----------------------------------------------------------------------      
-                  do m = 1,rod_nzcnt
-                     lin_jac(:,m) = 0.
-                  end do
                   if( rodas%lin_rxt_cnt > 0 ) then
                      call rod_linmat( lin_jac, lsol, lrxt, lhet )
-                  else
-                     do j = 1,clscnt5
-                        m = rodas%diag_map(j)
-                        lin_jac(:,m) = -con1
-                     end do
                   end if
 !-----------------------------------------------------------------------      
 !        ... the non-linear component
 !-----------------------------------------------------------------------      
-                  do m = 1,rod_nzcnt
-                     sys_jac(:,m) = 0.
-                  end do
-                  if( rodas%nln_rxt_cnt > 0 ) then
                      call rod_nlnmat( sys_jac, lsol, lrxt, lin_jac, con1 )
-                  else
-                     do m = 1,rod_nzcnt
-                        sys_jac(:,m) = lin_jac(:,m)
-                     end do
-                  end if
 !-----------------------------------------------------------------------      
 !         ... factor the "system" matrix
 !-----------------------------------------------------------------------      
@@ -267,15 +243,15 @@ sub_step_loop : &
                   call rodas_prod_loss( prod, loss, lsol, lrxt, lhet )
                    if( rodas%indprd_cnt > 0 .or. extcnt > 0 ) then
                      do m = 1,clscnt5
-                        u1(:,m) = loss(:,m) - (prod(:,m) + ind_prd(:,m))
+                        u1(m) = loss(m) - (prod(m) + ind_prd(m))
                      end do
                   else
                      do m = 1,clscnt5
-                        u1(:,m) = loss(:,m) - prod(:,m)
+                        u1(m) = loss(m) - prod(m)
                      end do
                   end if
                   do m = 1,clscnt5
-                     u2(:,m) = u1(:,m)
+                     u2(m) = u1(m)
                   end do
 !-----------------------------------------------------------------------      
 !           ... solve for the first intermediate
@@ -285,7 +261,7 @@ sub_step_loop : &
 !           ... solve for the second intermediate
 !-----------------------------------------------------------------------      
                   do m = 1,clscnt5
-                     u2(:,m) = u2(:,m) - con2*u1(:,m)
+                     u2(m) = u2(m) - con2*u1(m)
                   end do
                   call rod_lu_slv( sys_jac, u2 )
 !-----------------------------------------------------------------------      
@@ -294,16 +270,16 @@ sub_step_loop : &
                   do k = 1,clscnt5
                      j = rodas%clsmap(k)
                      m = rodas%permute(k)
-                     lsol(:,j) = yn(:,m) + 2.*u1(:,m)
+                     lsol(j) = yn(m) + 2.*u1(m)
                   end do
                   call rodas_prod_loss( prod, loss, lsol, lrxt, lhet )
                    if( rodas%indprd_cnt > 0 .or. extcnt > 0 ) then
                      do m = 1,clscnt5
-                        u3(:,m) = loss(:,m) - (prod(:,m) + ind_prd(:,m) + hinv*(u1(:,m) - u2(:,m)))
+                        u3(m) = loss(m) - (prod(m) + ind_prd(m) + hinv*(u1(m) - u2(m)))
                      end do
                   else
                      do m = 1,clscnt5
-                        u3(:,m) = loss(:,m) - (prod(:,m) + hinv*(u1(:,m) - u2(:,m)))
+                        u3(m) = loss(m) - (prod(m) + hinv*(u1(m) - u2(m)))
                      end do
                   end if
                   call rod_lu_slv( sys_jac, u3 )
@@ -313,16 +289,16 @@ sub_step_loop : &
                   do k = 1,clscnt5
                      j = rodas%clsmap(k)
                      m = rodas%permute(k)
-                     lsol(:,j) = yn(:,m) + 2.*u1(:,m) + u3(:,m)
+                     lsol(j) = yn(m) + 2.*u1(m) + u3(m)
                   end do
                   call rodas_prod_loss( prod, loss, lsol, lrxt, lhet )
                    if( rodas%indprd_cnt > 0 .or. extcnt > 0 ) then
                      do m = 1,clscnt5
-                        u4(:,m) = loss(:,m) - (prod(:,m) + ind_prd(:,m) + hinv*(u1(:,m) - u2(:,m) - con3*u3(:,m)))
+                        u4(m) = loss(m) - (prod(m) + ind_prd(m) + hinv*(u1(m) - u2(m) - con3*u3(m)))
                      end do
                   else
                      do m = 1,clscnt5
-                        u4(:,m) = loss(:,m) - (prod(:,m) + hinv*(u1(:,m) - u2(:,m) - con3*u3(:,m)))
+                        u4(m) = loss(m) - (prod(m) + hinv*(u1(m) - u2(m) - con3*u3(m)))
                      end do
                   end if
                   call rod_lu_slv( sys_jac, u4 )
@@ -332,34 +308,29 @@ sub_step_loop : &
                   do k = 1,clscnt5
                      j = rodas%clsmap(k)
                      m = rodas%permute(k)
-                     lsol(:,j) = yn(:,m) + 2.*u1(:,m) + u3(:,m) + u4(:,m)
+                     lsol(j) = yn(m) + 2.*u1(m) + u3(m) + u4(m)
                   end do
 !-----------------------------------------------------------------------      
 !           ... form estimated trunc error
 !-----------------------------------------------------------------------      
-                  err(:) = 0.
+                  err = 0.
                   do k = 1,clscnt5
                      j = rodas%clsmap(k)
                      m = rodas%permute(k)
-                     do i = 1,clsze
-                        if( lsol(i,j) > min_val ) then
-                           spc_err(k) = err_wghts(k) * u4(i,m) / (epsilon(k)*lsol(i,j))
-                           err(i)     = err(i) + spc_err(k)*spc_err(k)
+                     if( lsol(j) > min_val ) then
+                        spc_err(k) = err_wghts(k) * u4(m) / (epsilon(k)*lsol(j))
+                        err        = err + spc_err(k)*spc_err(k)
                         end if
                      end do
-                  end do
-                  do i = 1,clsze
-                     err(i) = sqrt( err(i)/real(clscnt5) )
-                  end do
-                  if( all( err(:) < 1. ) ) then
+                  err = sqrt( err/real(clscnt5) )
+                  if( err < 1. ) then
                      if( h == delt ) then
                         interval_done = .true.
                         hfull         = h
                         exit
                      end if
                      interval  = interval + h
-                     h_pred(:) = h * min( 10.,max( .1,1./(err(:)**.33) ) )
-                     h         = minval( h_pred(:) )
+                     h        = h * min( 10.,max( .1,1./(err**.33) ) )
                      h         = max( hmin,h )
                      hfull     = h
                      if( abs( interval - delt ) > 1.e-6*delt ) then
@@ -381,8 +352,7 @@ sub_step_loop : &
                      if( failures >= 2 ) then
                         h = .1 * h
                      else
-                        h_pred(:) = h * min( 10.,max( .1,.5/(err(:)**.33) ) )
-                        h         = minval( h_pred(:) )
+                        h = h * min( 10.,max( .1,.5/(err**.33) ) )
                      end if
                      h = max( hmin,h )
                      h = min( delt-interval,h )
@@ -392,11 +362,13 @@ sub_step_loop : &
                         step_fail_cnt = step_fail_cnt + 1
                         exit
                      end if
-                     lsol(:,:) = y_temp(:,:)
+                     do m = 1,pcnstm1
+                        lsol(m) = y_temp(m)
+                     end do
                   end if
                end do sub_step_loop
                do m = 1,pcnstm1
-                  base_sol(ofl:ofu,m) = lsol(:,m)
+                  base_sol(indx,m) = lsol(m)
                end do
                if( interval_done .or. abs( interval - delt ) <= 1.e-6*delt ) then
                   h = min( hfull,delt )
@@ -404,7 +376,7 @@ sub_step_loop : &
                end if
             end do full_time_step_loop
          end do lon_tile_loop
-!     end do level_loop
+      end do level_loop
 
       end subroutine rodas_sol
 
