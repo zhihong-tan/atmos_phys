@@ -23,7 +23,7 @@
 !  shared modules:
 
 use time_manager_mod,    only: time_manager_init, time_type, set_date, &
-                               get_calendar_type, JULIAN, GREGORIAN, &
+                               get_calendar_type, GREGORIAN, &
                                operator(>=), operator(-), operator(<=),&
                                operator(>),  operator (<), get_date,  &
                                set_time, operator(+), print_date,  &
@@ -33,12 +33,10 @@ use fms_mod,             only: open_namelist_file, fms_init, &
                                mpp_pe, mpp_root_pe, stdlog, &
                                file_exist, write_version_number, &
                                check_nml_error, error_mesg, &
-                               FATAL, NOTE, WARNING, close_file, &
-                               open_restart_file, read_data, write_data, &
-                               mpp_error
+                               FATAL, NOTE, close_file, &
+                               open_restart_file, read_data, write_data
 use fms_io_mod,          only: get_restart_io_mode
 use time_interp_mod,     only: time_interp_init, time_interp
-use constants_mod,       only: SECONDS_PER_DAY
 
 !  shared radiation package modules:
 
@@ -67,8 +65,8 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 13.0 2006/03/28 21:13:09 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+'$Id: radiative_gases.F90,v 13.0.2.1 2006/10/27 16:45:36 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -1720,7 +1718,7 @@ subroutine read_restart_radiative_gases
 !    determine if  a radiative_gases.parameters.res file is present.
 !    this file is only present in restart version 1.
 !--------------------------------------------------------------------
-      if (mpp_pe() == mpp_root_pe()) call mpp_error ('radiative_gases_mod', &
+      if (mpp_pe() == mpp_root_pe()) call error_mesg ('radiative_gases_mod', &
           'Reading native formatted restart file.', NOTE)
       if (file_exist('INPUT/radiative_gases.parameters.res' ) ) then
 
@@ -1812,7 +1810,7 @@ subroutine read_restart_nc
       integer           :: vers
 
       if (file_exist( fname ) ) then
-         if (mpp_pe() == mpp_root_pe()) call mpp_error ('radiative_gases_mod', &
+         if (mpp_pe() == mpp_root_pe()) call error_mesg ('radiative_gases_mod', &
               'Reading NetCDF formatted restart file: INPUT/radiative_gases.res.nc', NOTE)
          call read_data(fname, 'rco2', rco2, no_domain=.true.)
          call read_data(fname, 'rf11', rf11, no_domain=.true.)
@@ -4160,7 +4158,7 @@ subroutine write_restart_radiative_gases
 !    open unit and write radiative gas restart file.
 !---------------------------------------------------------------------
       if (mpp_pe() == mpp_root_pe() ) then
-         call mpp_error ('radiative_gases_mod', 'Writing native formatted restart file: RESTART/radiative_gases.res', NOTE)
+         call error_mesg ('radiative_gases_mod', 'Writing native formatted restart file: RESTART/radiative_gases.res', NOTE)
         unit = open_restart_file ('RESTART/radiative_gases.res',   &
                                    action= 'write')
         write (unit) restart_versions(size(restart_versions(:)))
@@ -4201,7 +4199,7 @@ subroutine write_restart_nc
       character(len=64) :: fname = 'RESTART/radiative_gases.res.nc'
 
       if(mpp_pe() == mpp_root_pe() ) then
-         call mpp_error ('radiative_gases_mod', 'Writing NetCDF formatted restart file: RESTART/radiative_gases.res.nc', NOTE)
+         call error_mesg ('radiative_gases_mod', 'Writing NetCDF formatted restart file: RESTART/radiative_gases.res.nc', NOTE)
       endif
       call write_data(fname, 'vers', restart_versions(size(restart_versions(:))), no_domain=.true.)
       if(.not. time_varying_restart_bug) then

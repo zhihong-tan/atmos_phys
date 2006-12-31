@@ -19,12 +19,10 @@ module microphys_cloud_mod
 ! module information
 !-----------------------------------------------------------------------
 
-use time_manager_mod,       only: time_type, time_manager_init
 use fms_mod,                only: open_namelist_file, mpp_pe,          &
                                   mpp_root_pe, stdlog, fms_init,       &
                                   write_version_number, file_exist,    &
-                                  check_nml_error, error_mesg,         &
-                                  FATAL, NOTE, WARNING, close_file
+                                  check_nml_error, close_file
 
 !-----------------------------------------------------------------------
 ! public interfaces
@@ -47,8 +45,8 @@ namelist /microphys_cloud_nml/  diam_liq
 ! version control information
 !-----------------------------------------------------------------------
 
-character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 11.0 2004/09/28 19:22:35 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 11.0.4.1 2006/10/27 16:45:35 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 logical ::   module_is_initialized = .false.
 contains 
@@ -214,6 +212,9 @@ end subroutine get_diam
 subroutine microphys_cloud_init
 
 integer :: unit, ierr, io
+
+   if (module_is_initialized ) return
+   call fms_init
 
 !-----------------------------------------------------------------------
 ! read namelist       

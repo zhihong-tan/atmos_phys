@@ -21,34 +21,24 @@ use time_manager_mod,  only: time_type, time_manager_init, operator(+),&
                              set_date, operator(-), print_date, &
                              set_time, days_in_month, get_date, &
                              operator(>), operator(/=)
-use diag_manager_mod,  only: diag_manager_init, get_base_time, &
-                             send_data, register_diag_field,  &
-                             register_static_field
+use diag_manager_mod,  only: diag_manager_init, get_base_time
 use field_manager_mod, only: MODEL_ATMOS
-use tracer_manager_mod,only: get_tracer_index,   &
-                             get_tracer_names,   &
-                             get_tracer_indices, &
-                             get_number_tracers, &
-                             MAX_TRACER_FIELDS,  &
+use tracer_manager_mod,only: get_number_tracers, &
                              query_method
 use fms_mod,           only: open_namelist_file, fms_init, &
                              mpp_pe, mpp_root_pe, stdlog, &
                              file_exist, write_version_number, &
                              check_nml_error, error_mesg, &
-                             FATAL, NOTE, WARNING, close_file
+                             FATAL, NOTE, close_file
 use interpolator_mod,  only: interpolate_type, interpolator_init, &
                              interpolator, interpolator_end, &
                              CONSTANT, INTERP_WEIGHTED_P
-use mpp_io_mod,        only: mpp_open, mpp_close, MPP_RDONLY,   &
-                             MPP_ASCII, MPP_SEQUENTIAL, MPP_MULTI,  &
-                             MPP_SINGLE, mpp_io_init
 use constants_mod,     only: constants_init, RADIAN, GRAV
 
 !  shared radiation package modules:
 
 use   rad_utilities_mod, only  : aerosol_type, rad_utilities_init, &
-                                 get_radiative_param,              &
-                                 atmos_input_type     
+                                 get_radiative_param  
 
 !---------------------------------------------------------------------
 
@@ -64,8 +54,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: aerosol.F90,v 13.0 2006/03/28 21:11:06 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_08 $'
+character(len=128) :: version = '$Id: aerosol.F90,v 13.0.2.1 2006/10/27 16:45:32 wfc Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_12 $'
 
 
 !-----------------------------------------------------------------------
@@ -313,7 +303,6 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !    verify that modules used by this module that are not called later
 !    have already been initialized.
 !---------------------------------------------------------------------
-      call mpp_io_init
       call fms_init
       call diag_manager_init
       call rad_utilities_init
@@ -598,7 +587,6 @@ end subroutine aerosol_init
 !
 subroutine aerosol_driver (is, js, model_time, tracer, &
                            p_half, p_flux, Aerosol)
-!                           Atmos_input, Aerosol)
 
 !-----------------------------------------------------------------------
 !    aerosol_driver returns the names and concentrations of activated 
@@ -610,7 +598,6 @@ integer,                  intent(in)     :: is,js
 type(time_type),          intent(in)     :: model_time
 real, dimension(:,:,:,:), intent(in)     :: tracer
 real, dimension(:,:,:),   intent(in)  :: p_half, p_flux
-!type(atmos_input_type),   intent(inout)  :: Atmos_input
 type(aerosol_type),       intent(inout)  :: Aerosol
 
 !--------------------------------------------------------------------

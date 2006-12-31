@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cape_k.F90,v 13.0.2.1 2006/04/17 19:05:55 pjp Exp $
+!  $Id: donner_cape_k.F90,v 13.0.2.2 2006/07/15 14:04:58 pjp Exp $
 
 !module donner_cape_inter_mod
 
@@ -710,7 +710,6 @@ subroutine don_c_define_moist_adiabat_k  &
 !----------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type 
-use sat_vapor_pres_mod, only: sat_vapor_pres_data
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none 
@@ -758,7 +757,7 @@ character(len=*),             intent(out)   :: ermesg
 !--------------------------------------------------------------------
 !    define saturation vapor pressure for the parcel.
 !--------------------------------------------------------------------
-        call lookup_es_k (sat_vapor_pres_data, tp_s, es_v_s, nbad)
+        call lookup_es_k (tp_s, es_v_s, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1333,7 +1332,6 @@ subroutine don_c_calculate_lcl_k    &
 !---------------------------------------------------------------------
 
 use donner_types_mod, only :  donner_param_type
-use sat_vapor_pres_mod, only: sat_vapor_pres_data
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
@@ -1379,7 +1377,7 @@ character(len=*),            intent(out)   :: ermesg
 !---------------------------------------------------------------------
         if (tp_s >= Param%tmin .and.      &
             press(k) >= Param%upper_limit_for_lcl) then
-          call lookup_es_k (sat_vapor_pres_data, tp_s, es_v_s, nbad)
+          call lookup_es_k (tp_s, es_v_s, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.

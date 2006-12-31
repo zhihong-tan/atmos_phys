@@ -20,12 +20,12 @@ use time_manager_mod,   only:  time_type
 use cloud_zonal_mod,    only:  getcld
 use cloud_obs_mod,       only: cloud_obs, cloud_obs_init
 use       fms_mod,      only:  open_namelist_file, file_exist,   &
-                               check_nml_error, error_mesg,   &
-                               FATAL, NOTE, WARNING, close_file, &
+                               check_nml_error,   &
+                               close_file, &
                                mpp_pe, mpp_root_pe, &
                                write_version_number, stdlog
 use rad_utilities_mod,  only:  cldrad_properties_type, &
-                               cloudrad_control_type, Cldrad_control, &
+                               Cldrad_control, &
                                cld_specification_type
 use constants_mod,      only:  pstd_mks
 
@@ -45,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: specified_clouds_W.F90,v 12.0 2005/04/14 15:48:33 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+  character(len=128)  :: version =  '$Id: specified_clouds_W.F90,v 12.0.2.1 2006/10/27 16:45:37 wfc Exp $'
+  character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 

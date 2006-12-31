@@ -19,23 +19,17 @@
 ! </DESCRIPTION>
 !
 
-use fms_mod,                only: open_namelist_file, file_exist, &
-                                  check_nml_error, error_mesg,   &
-                                  FATAL, NOTE, WARNING,   &
-                                  close_file, mpp_pe, mpp_root_pe, &
-                                  stdlog, write_version_number
+use fms_mod,                only: fms_init, file_exist, &
+                                  open_namelist_file,  &
+                                  check_nml_error, close_file,   &
+                                  write_version_number, &
+                                  mpp_pe, mpp_root_pe, stdlog, &
+                                  error_mesg, FATAL
 
-use constants_mod,          only: pstd, radian
-use rad_utilities_mod,      only: shortwave_control_type, Sw_control, &
-                                  longwave_parameter_type, &    
-                                   microphysics_type,  &
-                                  rad_utilities_init, &
+use constants_mod,          only: radian
+use rad_utilities_mod,      only: rad_utilities_init, &
                                   cldrad_properties_type, &
-                                  cld_specification_type, &
-                                  Lw_parameters, &
-                                  longwave_control_type, Lw_control 
-use microphys_rad_mod,      only: microphys_rad_init, &
-                                  lwemiss_calc
+                                  cld_specification_type
 
 
 !--------------------------------------------------------------------
@@ -55,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 13.0 2006/03/28 21:12:25 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 13.0.2.1 2006/10/27 16:45:35 wfc Exp $'
+  character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 
@@ -218,6 +212,7 @@ real, dimension(:,:), intent(in)             :: pref
 
       if (module_is_initialized) return
 
+      call fms_init
       call rad_utilities_init
 
 !---------------------------------------------------------------------

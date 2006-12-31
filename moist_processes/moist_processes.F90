@@ -21,6 +21,8 @@ use      moist_conv_mod, only: moist_conv, moist_conv_init
 use     lscale_cond_mod, only: lscale_cond, lscale_cond_init
 use  sat_vapor_pres_mod, only: lookup_es
 
+use         uw_conv_mod, only: uw_conv, uw_conv_end, uw_conv_init
+
 use    time_manager_mod, only: time_type
 
 use    diag_manager_mod, only: register_diag_field, send_data
@@ -29,7 +31,10 @@ use             fms_mod, only: file_exist, check_nml_error,    &
                                open_namelist_file, close_file, &
                                write_version_number,           &
                                mpp_pe, mpp_root_pe, stdlog,    &
-                               error_mesg, FATAL, NOTE
+                               error_mesg, FATAL, NOTE,        &
+                               mpp_clock_id, mpp_clock_begin,  &
+                               mpp_clock_end, CLOCK_MODULE,    &
+                               MPP_CLOCK_SYNC, read_data, write_data
 
 use             ras_mod, only: ras, ras_end, ras_init
 
@@ -59,9 +64,6 @@ use  tracer_manager_mod, only: get_tracer_index,&
                                query_method, &
                                NO_TRACER
 use atmos_tracer_utilities_mod, only : wet_deposition
-use             fms_mod, only: mpp_clock_id, mpp_clock_begin, &
-                               mpp_clock_end, CLOCK_MODULE, &
-                               MPP_CLOCK_SYNC
 
 use       moz_hook_mod, only : moz_hook
 
@@ -88,15 +90,15 @@ private
    integer :: nsphum, nql, nqi, nqa, nqn  ! tracer indices for stratiform clouds
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 13.0.2.1 2006/07/11 17:23:51 wfc Exp $'
-   character(len=128) :: tagname = '$Name: memphis_2006_08 $'
+   version = '$Id: moist_processes.F90,v 13.0.2.1.4.6 2006/09/28 05:09:41 wfc Exp $'
+   character(len=128) :: tagname = '$Name: memphis_2006_12 $'
    logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
 
 
    logical :: do_mca=.true., do_lsc=.true., do_ras=.false.,  &
-              do_strat=.false., do_dryadj=.false., &
+              do_strat=.false., do_dryadj=.false., do_uw_conv=.false., &
               do_rh_clouds=.false., do_diag_clouds=.false., &
               do_donner_deep=.false., do_cmt=.false., &
               use_tau=.false., do_gust_cv = .false., &
@@ -162,7 +164,7 @@ private
 !
 !-----------------------------------------------------------------------
 
-namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_strat,  &
+namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_uw_conv, do_strat,  &
                                do_dryadj, pdepth,                 &
                                cmt_mass_flux_source, &
                                use_tau, do_rh_clouds, do_diag_clouds, &
@@ -196,7 +198,9 @@ integer, dimension(:), allocatable :: id_tracerdt_conv,  &
 character(len=5) :: mod_name = 'moist'
 
 real :: missing_value = -999.
-integer :: convection_clock, largescale_clock
+integer :: convection_clock, largescale_clock, &
+           donner_clock, mca_clock, ras_clock, cmt_clock, &
+           lscalecond_clock, stratcloud_clock, shallowcu_clock
 
 logical :: do_tracers_in_donner =.false.
 logical :: do_tracers_in_mca = .false.
@@ -211,6 +215,8 @@ integer :: num_tracers=0
 logical :: cmt_uses_donner = .false.
 logical :: cmt_uses_ras = .false.
 
+real,    dimension(:,:)  , allocatable :: cush, &! convective scale height (m) 
+                                          cbmf   ! cloud-base mass flux 
 !-----------------------------------------------------------------------
 
 
@@ -226,6 +232,7 @@ logical :: cmt_uses_ras = .false.
 subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
                             phalf, pfull, zhalf, zfull, omega, diff_t, &
                             radturbten,                                &
+                            pblht, ustar, bstar, qstar,                &
                             t, q, r, u, v, tm, qm, rm, um, vm,         &
                             tdt, qdt, rdt, udt, vdt, diff_cu_mo,       &
                             convect, lprec, fprec, gust_cv, area,      &
@@ -262,6 +269,14 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
 !         diff_t     vertical diffusion coefficient for temperature
 !                    and tracer (m*m/sec) on half levels
 !                      [real, dimension(nlon,nlat,nlev)]
+!
+!         pblht      PBL inversion height
+!
+!         ustar      Friction velocity at the surface
+!
+!         bstar      Buoyancy scale at the surface
+!
+!         qstar      Moisture scale at the surface
 !
 !         t, q       temperature (t) [deg k] and specific humidity
 !                    of water vapor (q) [kg/kg] at full model levels,
@@ -330,7 +345,7 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
 integer,         intent(in)              :: is,ie,js,je
 type(time_type), intent(in)              :: Time
    real, intent(in)                      :: dt
-   real, intent(in) , dimension(:,:)     :: land
+   real, intent(in) , dimension(:,:)     :: land, pblht, ustar, bstar, qstar
    real, intent(in) , dimension(:,:,:)   :: phalf, pfull, zhalf, zfull,&
                                             omega, diff_t,             &
                                             t, q, u, v, tm, qm, um, vm
@@ -358,15 +373,18 @@ integer, intent(inout) , dimension(:,:), optional ::  nsum_out
 
 !-----------------------------------------------------------------------
 real, dimension(size(t,1),size(t,2),size(t,3)) :: tin,qin,ttnd,qtnd, &
-                                                  cf, rlin, riin, &
-                                                  qnew, qinew, qlnew, delta_temp, &
+                                                  cf, &
+                                                  qnew, &
+                                                  delta_temp, &
                                                   delta_vapor,  &
                                                   delta_q, rin, rtnd,   &
                                                   donner_humidity_area, &
                                                   donner_humidity_ratio
 real, dimension(size(t,1),size(t,2),size(phalf,3)) :: conv_rain3d, conv_snow3d
 real, dimension(size(t,1),size(t,2),size(phalf,3)) :: lscale_rain3d, lscale_snow3d
-real, dimension(size(t,1),size(t,2),size(t,3)) :: qtnd_wet, cloud_wet
+real, dimension(size(t,1),size(t,2),size(t,3)) :: qtnd_wet, & ! specific humidity tendency (kg/kg/s)
+                                                  cloud_wet, &! cloud liquid+ice (kg/kg)
+                                                  cloud_frac  ! cloud area fraction
 real, dimension(size(t,1),size(t,3)) :: dp, temp
 real, dimension(size(t,1),size(t,2),size(t,3)) :: ttnd_conv,qtnd_conv
 real, dimension(size(t,1),size(t,2))           :: tsnow,snow
@@ -395,6 +413,9 @@ real, dimension(size(t,1),size(t,2))           :: sfc_sh_flux,  &
 real, dimension(size(t,1),size(t,2))           :: tempdiag
 real, dimension(size(t,1),size(t,2),size(t,3)) :: tempdiag1
 integer n
+
+! for uw_conv
+real, dimension(size(t,1),size(t,2),size(t,3)) :: cmf,thlflx,qtflx,precflx,cldql,cldqi,cldqa,cldqn
 
 integer :: i, j, k, ix, jx, kx, nt, ip, tr
 real    :: dtinv
@@ -466,15 +487,17 @@ character(len=32) :: tracer_units, tracer_name
 !    define the inverse of the time step.
 !--------------------------------------------------------------------
       dtinv = 1.0/dt
-
 !--------------------------------------------------------------------
 !    initialize the arrays which will be output from this subroutine.
 !--------------------------------------------------------------------
-      lprec(:,:)  = 0.0  
-      fprec(:,:)  = 0.0
-      convect(:,:)  = .false.
-      gust_cv(:,:) = 0.0
-      diff_cu_mo(:,:,:) = 0.0
+      lprec(:,:)         = 0.0  
+      fprec(:,:)         = 0.0
+      convect(:,:)       = .false.
+      gust_cv(:,:)       = 0.0
+      diff_cu_mo(:,:,:)  = 0.0
+      precip(:,:)        = 0.0 
+      conv_rain3d(:,:,:) = 0.0
+      conv_snow3d(:,:,:) = 0.0
 
 !---------------------------------------------------------------------
 !    define input fields to be used, either the tau time level fields,
@@ -627,6 +650,36 @@ character(len=32) :: tracer_units, tracer_name
 !
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
+!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+!
+!                0. UW SHALLOW CONVECTION PARAMETERIZATION
+!
+!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+      cmf=0.0;
+      if (do_uw_conv) then
+         call mpp_clock_begin (shallowcu_clock)
+         call uw_conv (is, js, Time, tin, qin, uin, vin, pfull, phalf,zfull,            & !input
+              zhalf, tracer, omega, dt, pblht, ustar, bstar, qstar, land, coldT,        & !input
+              Aerosol, cush(is:ie,js:je), do_strat,                                     & !input
+              ttnd, qtnd, qltnd, qitnd, qatnd, qntnd, utnd, vtnd, rain, snow,           & !output
+              cmf, thlflx, qtflx, precflx, cldql, cldqi, cldqa, cldqn, cbmf(is:ie,js:je)) !output
+
+         tdt=tdt+ttnd; qdt=qdt+qtnd
+         udt=udt+utnd; vdt=vdt+vtnd
+
+         if (do_strat) then
+            rdt(:,:,:,nql) = rdt(:,:,:,nql) + qltnd(:,:,:)
+            rdt(:,:,:,nqi) = rdt(:,:,:,nqi) + qitnd(:,:,:)
+            rdt(:,:,:,nqa) = rdt(:,:,:,nqa) + qatnd(:,:,:)
+            if (do_liq_num) rdt(:,:,:,nqn) = rdt(:,:,:,nqn) + qntnd(:,:,:)
+         endif
+
+         lprec=lprec+rain
+         fprec=fprec+snow
+         precip=precip+rain+snow
+         call mpp_clock_end (shallowcu_clock)
+      endif
 
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -669,7 +722,7 @@ character(len=32) :: tracer_units, tracer_name
           qlin = tracer(:,:,:,nql)
           qiin = tracer(:,:,:,nqi)
           qain = tracer(:,:,:,nqa)
-        endif
+       endif
 
 !--------------------------------------------------------------------
 !    convert vapor specific humidity to vapor mixing ratio so it may
@@ -717,6 +770,7 @@ character(len=32) :: tracer_units, tracer_name
 !    temperature, vapor mixing ratio, tracers, cloud liquid, cloud ice
 !    cloud area and precipitation fields.
 !---------------------------------------------------------------------
+        call mpp_clock_begin (donner_clock)
         if (do_strat) then
           call donner_deep (is, ie, js, je, dt, tin, rin, pfull,       &
                             phalf, omega, land, sfc_sh_flux,   &
@@ -746,6 +800,8 @@ character(len=32) :: tracer_units, tracer_name
                             donner_humidity_area,  &
                             donner_humidity_ratio, qtrtnd)
         endif
+        call mpp_clock_end (donner_clock)
+
 
 !---------------------------------------------------------------------
 !    update the current timestep tracer changes with the contributions 
@@ -788,8 +844,6 @@ character(len=32) :: tracer_units, tracer_name
 !    processes (rdt).
 !--------------------------------------------------------------------
         if (do_strat) then
-          qlnew = (rlin + delta_ql)/ (1.0 + (rin + delta_vapor))
-          qinew = (riin + delta_qi)/ (1.0 + (rin + delta_vapor))
           tracer(:,:,:,nql) = qlin(:,:,:) + delta_ql(:,:,:)
           tracer(:,:,:,nqi) = qiin(:,:,:) + delta_qi(:,:,:)
           tracer(:,:,:,nqa) = qain(:,:,:) + delta_qa(:,:,:)
@@ -882,9 +936,11 @@ character(len=32) :: tracer_units, tracer_name
 !    is allowed, consistent with this call being constrained to handle
 !    shallow convection.
 !--------------------------------------------------------------------
+        call mpp_clock_begin (mca_clock)
         call moist_conv (tin, qin, pfull, phalf, coldT, ttnd, qtnd,   &
                          rain, snow, dtinv, Time, is, js,    &
                          donner_tracers, qtrtnd, Lbot=kbot, mask=mask)           
+        call mpp_clock_end (mca_clock)
 
 !---------------------------------------------------------------------
 !    update the current tracer tendencies with the contributions 
@@ -1036,6 +1092,7 @@ character(len=32) :: tracer_units, tracer_name
 !    adjustment parameterization. currently there is no tracer tendency
 !    due to this parameterization.
 !---------------------------------------------------------------------
+        call mpp_clock_begin (mca_clock)
         if (do_strat) then
           call moist_conv (tin, qin, pfull, phalf, coldT, ttnd, qtnd,  &
                            rain, snow, dtinv, Time, is, js, mca_tracers,&
@@ -1048,6 +1105,7 @@ character(len=32) :: tracer_units, tracer_name
                            rain, snow, dtinv, Time, is, js, mca_tracers,&
                            qtrmca, Lbot=kbot, mask=mask)
         endif
+        call mpp_clock_end (mca_clock)
 
 !---------------------------------------------------------------------
 !    update the current tracer tendencies with the contributions 
@@ -1124,6 +1182,7 @@ character(len=32) :: tracer_units, tracer_name
 !    velocity, precipitation and tracer tendencies and mass flux 
 !    associated with the relaxed arakawa-schubert parameterization.
 !----------------------------------------------------------------------
+        call mpp_clock_begin (ras_clock)
         if (do_strat .and. .not.(do_liq_num)) then
           call ras (is,   js,     Time,     tin,   qin,   &
                     uin,  vin,    pfull,    phalf, zhalf, coldT, &
@@ -1154,6 +1213,7 @@ character(len=32) :: tracer_units, tracer_name
                     rain, snow,   ras_tracers, qtrras,           &
                     mask,  kbot,  mc, det0)
         endif
+        call mpp_clock_end (ras_clock)
 
 !---------------------------------------------------------------------
 !    update the current tracer tendencies with the contributions 
@@ -1228,10 +1288,12 @@ character(len=32) :: tracer_units, tracer_name
             mc_cmt = mc_cmt + m_cellup 
             det_cmt = det_cmt + m_cdet_donner 
           endif
+          call mpp_clock_begin (cmt_clock)
           call cu_mo_trans (is, js, Time, mc_cmt, tin, phalf, pfull,  &
                             zhalf, zfull, dt, uin, vin, tracer, pmass, &
                             det_cmt, utnd, vtnd, ttnd, qtrcumo, &
                             diff_cu_mo  )
+          call mpp_clock_end (cmt_clock)
 
 !---------------------------------------------------------------------
 !    update the current tracer tendencies with the contributions 
@@ -1273,19 +1335,22 @@ character(len=32) :: tracer_units, tracer_name
       qtnd_wet = qtnd
       if (do_strat) then
          qtnd_wet = qtnd_wet + qltnd + qitnd
-         cloud_wet = conv_rain3d(:,:,2:kx+1)-conv_rain3d(:,:,1:kx) &
-                     + conv_snow3d(:,:,2:kx+1)-conv_snow3d(:,:,1:kx)
-         cloud_wet = MAX(cloud_wet,1.e-20) * dt / pmass(:,:,:) ! kg/kg
+!         cloud_wet = conv_rain3d(:,:,2:kx+1)-conv_rain3d(:,:,1:kx) &
+!                     + conv_snow3d(:,:,2:kx+1)-conv_snow3d(:,:,1:kx)
+!         cloud_wet = MAX(cloud_wet,1.e-20) * dt / pmass(:,:,:) ! kg/kg
+         cloud_wet = 1.e-3
       else
-         cloud_wet = qtnd_wet * dt
+!         cloud_wet = qtnd_wet * dt
+         cloud_wet = 1.e-3
       end if
+      cloud_frac = 0.1
       do n=1,size(rdt,4)
         if ( n /= nsphum ) then
           if ( .not. do_strat .or. (n /= nql .and. n /= nqi .and. n /= nqa) ) then
             wetdeptnd = 0.0
 
                     call wet_deposition( n, t, pfull, phalf, zfull, zhalf, rain, snow, &
-                                 qtnd_wet, cloud_wet, &
+                                 qtnd_wet, cloud_wet, cloud_frac, &
                                  conv_rain3d, conv_snow3d, &
                                  tracer(:,:,:,n), wetdeptnd, &
                                  Time, 'convect', is, js, dt )
@@ -1294,8 +1359,11 @@ character(len=32) :: tracer_units, tracer_name
           endif
         endif  
       end do
-      do k=1,kx
+
+      mc_full=0.; 
+      do k=2,kx   
         mc_full(:,:,k) = 0.5*(mc(:,:,k) + mc(:,:,k+1)) +   &
+                         0.5*(cmf(:,:,k)+cmf(:,:,k-1)) +   &
                               mc_donner(:,:,k)
       end do
 !-----------------------------------------------------------------------
@@ -1583,8 +1651,10 @@ endif
 !    supersaturation.
 !-----------------------------------------------------------------------
       if (do_lsc) then
+        call mpp_clock_begin (lscalecond_clock)
         call lscale_cond (tin, qin, pfull, phalf, coldT, rain, snow,  &
                           ttnd, qtnd, mask=mask)
+        call mpp_clock_end (lscalecond_clock)
 
 !-----------------------------------------------------------------------
 !    add the temperature and specific humidity increments to the updated
@@ -1651,6 +1721,7 @@ endif
 !--------------------------------------------------------------------
 !    call strat_cloud to integrate the prognostic cloud equations. 
 !-----------------------------------------------------------------------
+        call mpp_clock_begin (stratcloud_clock)
         if (do_liq_num) then 
           call strat_cloud (Time, is, ie, js, je, dt, pfull, phalf,    & 
                          radturbten, tin, qin, tracer(:,:,:,nql), &
@@ -1670,6 +1741,7 @@ endif
                          donner_humidity_ratio, donner_humidity_area, &
                          mask=mask)
         endif
+        call mpp_clock_end (stratcloud_clock)
     
 !----------------------------------------------------------------------
 !    upon return from strat_cloud, update the cloud liquid, ice and area.
@@ -1725,21 +1797,29 @@ endif
       qtnd_wet = qtnd
       if (do_strat) then
          qtnd_wet = qtnd_wet + qltnd + qitnd
-         cloud_wet = tracer(:,:,:,nql) + tracer(:,:,:,nqi)
+! Count precipitation formed over timestep plus cloud amount at end of timestep
+         cloud_wet = lscale_rain3d(:,:,2:kx+1) - lscale_rain3d(:,:,1:kx) &
+                   + lscale_snow3d(:,:,2:kx+1) - lscale_snow3d(:,:,1:kx)
+         cloud_wet = cloud_wet * dt / pmass ! convert from kg/m2/s to kg/kg
+         cloud_wet = cloud_wet + tracer(:,:,:,nql) + tracer(:,:,:,nqi)
+         cloud_frac = max( min( tracer(:,:,:,nqa), 1. ), 0. )
       else
-         cloud_wet = qtnd_wet * dt
+!         cloud_wet = qtnd_wet * dt
+         cloud_wet = 0.5e-3
+         cloud_frac = 1.
       end if
       do n=1,size(rdt,4)
         if ( n /= nsphum ) then
           if ( .not. do_strat .or. (n /= nql .and. n /= nqi .and. n /= nqa .and. n /= nqn) ) then
             wetdeptnd = 0.0
             call wet_deposition( n, t, pfull, phalf, zfull, zhalf, rain, snow, &
-                                 qtnd_wet, cloud_wet, &
+                                 qtnd_wet, cloud_wet, cloud_frac, &
                                  lscale_rain3d, lscale_snow3d, &
                                  tracer(:,:,:,n), wetdeptnd, &
                                  Time, 'lscale', is, js, dt )
             rdt (:,:,:,n) = rdt(:,:,:,n) - wetdeptnd
             wet_data(:,:,:,n) = wet_data(:,:,:,n) + wetdeptnd
+
 
             if (id_wet_deposition(n) /= 0 ) then
               used = send_data( id_wet_deposition(n), wet_data(:,:,:,n), &
@@ -2136,6 +2216,34 @@ character(len=80)  :: scheme
 
      doing_donner = do_donner_deep
 
+   donner_clock =     &
+       mpp_clock_id( '   Moist Processes: Donner_deep', &
+           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+
+   mca_clock =     &
+       mpp_clock_id( '   Moist Processes: MCA', &
+           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+
+   ras_clock =     &
+       mpp_clock_id( '   Moist Processes: RAS', &
+           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+
+   shallowcu_clock =     &
+       mpp_clock_id( '   Moist Processes: Shallow_cu', &
+           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+
+   cmt_clock =     &
+       mpp_clock_id( '   Moist Processes: CMT', &
+           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+
+   lscalecond_clock =     &
+       mpp_clock_id( '   Moist Processes: lscale_cond', &
+           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+
+   stratcloud_clock =     &
+       mpp_clock_id( '   Moist Processes: Strat_cloud', &
+           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+
 !---------------------------------------------------------------------
 !    retrieve the number of registered tracers in order to determine 
 !    which tracers are to be convectively transported.
@@ -2233,6 +2341,10 @@ character(len=80)  :: scheme
         call ras_init (do_strat, do_liq_num, axes,Time, tracers_in_ras)
       endif
 
+      allocate ( cush       (id, jd) ); cush=-1. 
+      allocate ( cbmf       (id, jd) ); cbmf=0.0 
+      if (do_uw_conv) call uw_conv_init (do_strat, axes, Time, kd)
+
       if (do_mca .or. do_donner_deep)  then
         call  moist_conv_init (axes,Time, tracers_in_mca)
       endif
@@ -2242,8 +2354,9 @@ character(len=80)  :: scheme
  
       call diag_field_init ( axes, Time )
  
+      call read_restart_nc
 
-       module_is_initialized = .true.
+      module_is_initialized = .true.
 
 !-----------------------------------------------------------------------
 
@@ -2263,6 +2376,8 @@ subroutine moist_processes_end
       if (do_donner_deep) call donner_deep_end
       if (do_cmt        ) call cu_mo_trans_end
       if (do_ras        ) call         ras_end
+      if (do_uw_conv    ) call     uw_conv_end
+      call write_restart_nc
       module_is_initialized = .false.
       
 !-----------------------------------------------------------------------
@@ -2402,7 +2517,7 @@ subroutine diag_field_init ( axes, Time )
 
 !------------ initializes diagnostic fields in this module -------------
 
-!if ( do_donner_deep .and. do_ras ) then
+if ( do_donner_deep .and. do_ras ) then
 
    id_tdt_conv = register_diag_field ( mod_name, &
      'tdt_conv', axes(1:3), Time, &
@@ -2452,7 +2567,7 @@ subroutine diag_field_init ( axes, Time )
    
 
 
-!end if
+end if
 
 
 if (( do_donner_deep ) .and. (.not. do_ras)) then
@@ -2808,5 +2923,79 @@ end subroutine diag_field_init
 
 !#######################################################################
 
+
+subroutine read_restart_nc
+
+!-----------------------------------------------------------------------
+!    subroutine read_restart_nc reads a netcdf restart file to obtain 
+!    the variables needed upon experiment restart. 
+!-----------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!   local variables:
+
+      character(len=64)     :: fname='INPUT/moist_processes.res.nc'
+
+!---------------------------------------------------------------------
+!   local variables:
+!
+!        fname            restart file name
+!
+!----------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!    output a message indicating entrance into this routine.
+!--------------------------------------------------------------------
+      if (mpp_pe() == mpp_root_pe() ) then
+        call error_mesg ('moist_processes_mod',  'read_restart_nc:&
+             &Reading netCDF formatted restart file: &
+                                 &INPUT/moist_processes.res.nc', NOTE)
+      endif
+
+!-------------------------------------------------------------------
+!    read the values of cush and cbmf
+!-------------------------------------------------------------------
+      if (file_exist(fname)) then 
+        call read_data(fname, 'cush', cush)
+        call read_data(fname, 'cbmf', cbmf)
+      else
+        cush = -1.0
+        cbmf =  0.0  
+      endif
+  
+end subroutine read_restart_nc
+
+
+subroutine write_restart_nc 
+
+!----------------------------------------------------------------------
+!    subroutine write_restart_nc writes a netcdf restart file.
+!----------------------------------------------------------------------
+
+
+!--------------------------------------------------------------------
+!  local variables:
+
+      character(len=65)  :: fname = 'RESTART/moist_processes.res.nc'
+                                    ! name of restart file to be written
+
+!---------------------------------------------------------------------
+!    write a message indicating that a restart file is being written.
+!---------------------------------------------------------------------
+      if (mpp_pe() == mpp_root_pe() ) &
+            call error_mesg ('moist_processes_mod', 'write_restart_nc: &
+              &Writing netCDF formatted restart file as  &
+                &requested: RESTART/moist_processes.res.nc', NOTE)
+
+!----------------------------------------------------------------------
+!    write out the restart data which is always needed, regardless of
+!    when the first donner calculation step is after restart.
+!----------------------------------------------------------------------
+      call write_data (fname, 'cush', cush)
+      call write_data (fname, 'cbmf', cbmf)     
+
+!----------------------------------------------------------------------
+
+end subroutine write_restart_nc
 
                  end module moist_processes_mod

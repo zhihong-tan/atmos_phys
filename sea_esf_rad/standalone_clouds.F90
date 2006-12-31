@@ -16,27 +16,19 @@
 ! </DESCRIPTION>
 !
 
-use time_manager_mod,           only: time_type, time_manager_init
 use fms_mod,                    only: fms_init, open_namelist_file, &
                                       write_version_number, mpp_pe, &
                                       mpp_root_pe, stdlog,   &
                                       file_exist, check_nml_error,   &
-                                      error_mesg, FATAL, NOTE,   &
-                                      WARNING, close_file,  &
+                                      error_mesg, FATAL, close_file,  &
                                       read_data, write_data
 use rad_utilities_mod,          only: rad_utilities_init, &
-                                      longwave_control_type,   &
-                                      Lw_control, &
-                                      cloudrad_control_type, &
                                       Cldrad_control, &
                                       cld_specification_type, &
                                       cldrad_properties_type,  &
                                       microphysics_type,  &
                                       microrad_properties_type, &
-                                      shortwave_control_type,   &
-                                      Sw_control, &
-                                      longwave_parameter_type,  &
-                                      Lw_parameters
+                                      Sw_control
 
 !--------------------------------------------------------------------
 
@@ -53,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 13.0 2006/03/28 21:13:48 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 13.0.2.1 2006/10/27 16:45:38 wfc Exp $'
+  character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 
@@ -261,7 +253,6 @@ real, dimension(:),   intent(in)    ::  lonb, latb
 !    have already been initialized.
 !---------------------------------------------------------------------
       call fms_init
-      call time_manager_init
       call rad_utilities_init
  
 !---------------------------------------------------------------------

@@ -17,7 +17,7 @@ use fms_mod,               only: open_namelist_file, fms_init, &
                                  mpp_pe, mpp_root_pe, stdlog, &
                                  file_exist, write_version_number, &
                                  check_nml_error, error_mesg, &
-                                 FATAL, NOTE, WARNING, close_file
+                                 FATAL, close_file
 use mpp_io_mod,            only: mpp_open, mpp_close, MPP_RDONLY,   &
                                  MPP_ASCII, MPP_SEQUENTIAL, MPP_MULTI, &
                                  MPP_SINGLE, mpp_io_init
@@ -31,15 +31,13 @@ use interpolator_mod,      only: interpolate_type, interpolator_init, &
 
 ! shared radiation package modules:
                                 
-use rad_utilities_mod,     only: shortwave_control_type, Sw_control, &
-                                 longwave_control_type, Lw_control, &
-                                 radiation_control_type, Rad_control,&
+use rad_utilities_mod,     only: Sw_control, &
+                                 Lw_control, &
+                                 Rad_control,&
                                  aerosol_type, aerosol_properties_type,&
                                  aerosol_diagnostics_type, &
-                                 longwave_parameter_type,  &
                                  Lw_parameters, rad_utilities_init, &
-                                 solar_spectrum_type,  &
-                                 thickavg, thinavg
+                                 thickavg
 use esfsw_parameters_mod,  only: Solar_spect, esfsw_parameters_init 
 use longwave_params_mod,   only: NBLW, longwave_params_init
 
@@ -57,8 +55,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 13.0 2006/03/28 21:11:13 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 13.0.2.1 2006/10/27 16:45:32 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 !---------------------------------------------------------------------

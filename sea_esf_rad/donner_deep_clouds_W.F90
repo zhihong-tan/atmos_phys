@@ -20,15 +20,10 @@
 use time_manager_mod,       only: time_type
 use       fms_mod,          only: open_namelist_file, file_exist,   &
                                   check_nml_error, error_mesg,   &
-                                  close_file, FATAL, NOTE, &
-                                  WARNING, mpp_pe, mpp_root_pe, &
+                                  close_file, FATAL, &
+                                  mpp_pe, mpp_root_pe, &
                                   write_version_number, stdlog
-use rad_utilities_mod,      only: longwave_control_type, Lw_control, &
-                                  shortwave_control_type, Sw_control,&
-                                  microphysics_type,  &
-                                  microrad_properties_type, &
-                                  cld_specification_type, &
-                                  cloudrad_control_type, Cldrad_control
+use rad_utilities_mod,      only: microphysics_type
 
 !--------------------------------------------------------------------
 
@@ -45,8 +40,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 13.0 2006/03/28 21:11:38 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 13.0.2.1 2006/10/27 16:45:33 wfc Exp $'
+   character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 

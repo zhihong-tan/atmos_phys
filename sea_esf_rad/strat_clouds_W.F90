@@ -22,10 +22,7 @@ use fms_mod,                only: open_namelist_file, mpp_pe, &
                                   mpp_root_pe, stdlog,  fms_init, &
                                   write_version_number, file_exist, &
                                   check_nml_error, error_mesg,   &
-                                  mpp_clock_id, mpp_clock_begin, &
-                                  mpp_clock_end, CLOCK_ROUTINE, &
-                                  MPP_CLOCK_SYNC, &
-                                  FATAL, NOTE, WARNING, close_file
+                                  FATAL, close_file
 
 !   shared radiation package modules:
 
@@ -63,8 +60,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 13.0 2006/03/28 21:13:54 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 13.0.4.1 2006/10/27 16:45:38 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 !---------------------------------------------------------------------

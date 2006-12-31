@@ -16,20 +16,18 @@
 
 !   shared modules:
 
-use time_manager_mod,       only: time_type, time_manager_init
 use fms_mod,                only: open_namelist_file, mpp_pe, &
                                   mpp_root_pe, stdlog,  fms_init, &
                                   write_version_number, file_exist, &
                                   check_nml_error, error_mesg,   &
-                                  FATAL, NOTE, WARNING, close_file
+                                  FATAL, close_file
 use constants_mod,          only: GRAV, constants_init
 
 !   shared radiation package modules:
 
 use rad_utilities_mod,      only: rad_utilities_init, &
-                                  cldrad_properties_type,  &
                                   cld_specification_type, &
-                                  microphysics_type, Cldrad_control
+                                  microphysics_type
 
 !   cloud parameterization module:
 
@@ -50,8 +48,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: zetac_clouds_W.F90,v 13.0 2006/03/28 21:14:00 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: zetac_clouds_W.F90,v 13.0.2.1 2006/10/27 16:45:38 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 !---------------------------------------------------------------------
@@ -139,7 +137,6 @@ subroutine zetac_clouds_W_init
 !    have already been initialized.
 !---------------------------------------------------------------------
       call fms_init
-      call time_manager_init
       call rad_utilities_init
       call constants_init
       call microphys_cloud_init

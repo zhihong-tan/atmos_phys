@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_utilities_k.F90,v 13.0 2006/03/28 21:09:01 fms Exp $
+!  $Id: donner_utilities_k.F90,v 13.0.4.1 2006/10/25 20:49:35 wfc Exp $
 
 !module donner_utilities_inter_mod
 
@@ -178,77 +178,108 @@ end subroutine don_u_set_column_integral_k
 
 !#####################################################################
 
-
 subroutine don_u_map_hires_c_to_lores_c_k   &
-         (n_lo, n_hi, x_hi, p_hi, ptop, p_lo, x_lo, intgl_hi,    &
-          intgl_lo, ermesg)
+         (n_gcm, n_clo, x_clo, p_clo, ptop, p_gcm, x_gcm, intgl_clo,  &
+          intgl_gcm, ermesg)
 
 !--------------------------------------------------------------------
-!    subroutine don_u_map_hires_c_to_lores_c_k maps the 
-!    vertical profile of a variable of size n_hi (x_hi) between the base
-!    of a higher resolution vertical grid (p_hi) and a specified upper 
-!    pressure level (ptop) to a lower resolution vertical grid of size 
-!    n_lo (p_lo). the output profile is x_lo.
-!    vertical integrals on the hi-res grid (intgl_hi) and on the 
-!    lo-res grid (intgl_lo) are also returned, so that the profile 
+!    subroutine don_u_map_hires_c_to_lores_c_k maps the vertical
+!    profile between cloud base and and a specified upper pressure level
+!    (ptop) of a variable (x_clo) of size n_clo on the cloud-model 
+!    vertical grid (p_clo) to a GCM vertical grid (p_gcm) of size 
+!    n_gcm. the output profile is x_gcm.
+!    vertical integrals on the cloud grid (intgl_clo) and on the 
+!    GCM grid (intgl_gcm) are also returned, so that the profile 
 !    mapping may be shown to be conservative.
 !    any error message is returned in ermesg.
 !    "Verav notes 1/7/04" (available from Leo Donner) explain this 
 !    routine in more detail. 
+!    The routine can handle grid thicknesses of arbitrary size for
+!    both the cloud grid and GCM grid. there is no restriction as
+!    to the relative sizes of the grids.
 !--------------------------------------------------------------------
+!    GCM grid:
+!     
+!     -------------- p_gcm(n_gcm+1)
+!     -------------- x_gcm(n_gcm)
+!     -------------- p_gcm(n_gcm-1)
+!           ...
+!     -------------- p_gcm(k+1)
+!     -------------- p_gcm(k)
+!     -------------- p_gcm(k-1)
+!           ...
+!     -------------- p_gcm(2)
+!     -------------- x_gcm(1)
+!     -------------- p_gcm(1)
+!
+!     Cloud-Model grid:
+!
+!     -------------- p_clo(n_clo)=pcloha(n_clo) (cloud top)
+!     -------------- p_cloha(n_clo-1)
+!     -------------- p_clo(n_clo-1)
+!           ...   
+!     -------------- p_clo(k2)
+!     -------------- p_cloha(k2-1)
+!     -------------- p_clo(k2-1)
+!           ...
+!     -------------- p_clo(2)
+!     -------------- p_cloha(1)
+!     -------------- p_clo(1)  (cloud base)
+!--------------------------------------------------------------------   
+
 
 implicit none
 
-integer,                 intent(in)  :: n_lo, n_hi
-real, dimension(n_hi),   intent(in)  :: x_hi, p_hi
-real,                    intent(in)  :: ptop
-real, dimension(n_lo+1), intent(in)  :: p_lo
-real, dimension(n_lo),   intent(out) :: x_lo
-real,                    intent(out) :: intgl_hi, intgl_lo
-character(len=*),        intent(out) :: ermesg
+integer,                  intent(in)  :: n_gcm, n_clo
+real, dimension(n_clo),   intent(in)  :: x_clo, p_clo
+real,                     intent(in)  :: ptop
+real, dimension(n_gcm+1), intent(in)  :: p_gcm
+real, dimension(n_gcm),   intent(out) :: x_gcm
+real,                     intent(out) :: intgl_clo, intgl_gcm
+character(len=*),         intent(out) :: ermesg
 
 !--------------------------------------------------------------------
 !   intent(in) variables:
 !
-!        n_lo        size of low resolution profile
-!        n_hi        size of high resolution profile
-!        x_hi        variable profile on hi_res model vertical grid
-!        p_hi        hi-resolution model pressure profile
-!        ptop        pressure denoting top of region of interest [ Pa ]
-!        p_lo        pressure half levels in lo-res model [ Pa ]
+!        n_gcm        number of layers in GCM 
+!        n_clo        number of layers in cloud model
+!        x_clo        vertical profile of variable on cloud-model grid
+!        p_clo        cloud-model pressure profile
+!        ptop         pressure denoting top of region of interest [ Pa ]
+!        p_gcm        pressure half levels in GCM [ Pa ]
 !
 !    intent(out) variables:
 !
-!        x_lo        variable profile on lo-res model vertical grid
-!        intgl_hi    variable used to accumulate pressure-weighted
-!                    column sum of input variable on hi-res grid
-!        intgl_lo    variable used to accumulate pressure-weighted
-!                    column sum of input variable on lo-res grid
-!        ermesg      error message, if error is encountered
+!        x_gcm        vertical profile of variable on GCM vertical grid
+!        intgl_clo    vertical integral of variable on cloud-model grid
+!        intgl_gcm    vertical integral of variable on GCM grid
+!        ermesg       error message, if error is encountered
 !
 !---------------------------------------------------------------------
 
 !----------------------------------------------------------------------
 !  local variables:
 
-      real          ::  ph, pl, rint, phrh, phrl
-      integer       ::  k2start 
-      integer       ::  k, k2
+      real, dimension(n_clo)  ::  pcloha
+      real                    ::  rint, p_upper, p_lower, ptopa 
+      integer                 ::  k2start
+      integer                 ::  k, k2
 
 !----------------------------------------------------------------------
 !  local variables:
 !
-!     ph               pressure at top of current lo-res model
-!                      layer [ Pa ]
-!     pl               pressure at bottom of current lo-res model
-!                      layer [ Pa ]
-!     rint             pressure-weighted sum of input variable on hi-res
-!                      grid which is being mapped to current lo-res 
-!                      model layer
-!     phrh             pressure at top of current hi-res layer [ Pa ]
-!     phrl             pressure at bottom of current hi-res layer [ Pa ]
-!     k2start          lowest vertical index on hi-res grid which 
-!                      is within current lo-res model layer
+!     pcloha           pressures at mid-layers in cloud grid [ Pa ]
+!     rint             accumulates pressure-weighted sum of input 
+!                      variable over the cloud-model layers which over-
+!                      lap a given GCM grid layer
+!     p_upper          pressure at upper limit (farthest from ground) 
+!                      of the current sub-layer [ Pa ]
+!     p_lower          pressure at lower limit (closest to ground) of
+!                      the current sub-layer [ Pa ]
+!     ptopa            uppermost (farthest from ground) pressure value 
+!                      on cloud grid
+!     k2start          cloud-model vertical index of lowest cloud-model
+!                      layer overlapping the current or next gcm layer
 !     k, k2            do-loop indices
 !
 !----------------------------------------------------------------------
@@ -259,130 +290,111 @@ character(len=*),        intent(out) :: ermesg
       ermesg = ' '
 
 !--------------------------------------------------------------------
-!    define the lowest k index of the large-scale model for which column
-!    values are to be determined (k2start). initialize the variables
-!    which will be used to accumulate the pressure-weighted column sum 
-!    of the input field on the hi-res grid (intgl_hi) and the output
-!    field on the lo-res grid (intgl_lo). 
+!    define the lowest k index of the cloud model which overlaps the
+!    first gcm layer (k2start). initialize the integral over pressure 
+!    of the output field on the gcm grid (intgl_gcm). define the lowest
+!    pressure at which the fields will have non-zero values as the 
+!    pressure at the top of the cloud model (ptopa). define the 
+!    bottommost pressure at which cloud is present (p_lower) as the 
+!    pressure at cloud base.
 !--------------------------------------------------------------------
+
       k2start  = 1
-      intgl_hi = 0.
-      intgl_lo = 0.
-
-!---------------------------------------------------------------------
-!    march through the large-scale model layers, beginning at the sur-
-!    face. define the pressures at top (ph) and bottom (pl) of the
-!    current layer.
-!---------------------------------------------------------------------
-      do k=1,n_lo            
-        ph = p_lo(k+1)
-        pl = p_lo(k)
+      intgl_gcm = 0.
+      ptopa = MAX (p_clo(n_clo), ptop)
+      p_lower = p_clo(1) 
 
 !--------------------------------------------------------------------
-!    determine if the top of the lo-res model layer lies within the 
-!    pressure range covered by the hi-res model. if it does, and the 
-!    bottom of the lo-res model layer is not above the topmost pressure 
-!    to be included in the profile, map the desired variable from 
-!    the hi-res vertical grid to the lo-res vertical grid. when the 
-!    lo-res pressure layer is completely above the topmost pressure to 
-!    be included, calculations are complete, so exit the loop.
+!    define the interface pressures on the cloud grid. cloud base is 
+!    defined to be at the midpoint of a cloud layer.
 !--------------------------------------------------------------------
-        if (ph < p_hi(1) .and. pl > ptop) then
+      do k2=1,n_clo-1
+        pcloha(k2) = 0.5*(p_clo(k2) + p_clo(k2+1))
+      end do
+      pcloha(n_clo) = p_clo(n_clo)
 
-!-------------------------------------------------------------------
-!     initialize rint which will be used to sum the pressure-weighted
-!     values of the hi-res model input profile contained within the 
-!     current lo-res model layer. 
-!-------------------------------------------------------------------
-          rint = 0.0
+!--------------------------------------------------------------------
+!    march upward through gcm model layers until cloud base is found. 
+!    calculate the output profile on the gcm grid. 
+!--------------------------------------------------------------------
+      do k=1,n_gcm
 
-!-------------------------------------------------------------------
-!    march through the hi-res model vertical levels, beginning with the
-!    level at which the previous lo-res model layer ended (k2start).
-!-------------------------------------------------------------------
-          do k2=k2start,n_hi-1
+!--------------------------------------------------------------------
+!    check if this gcm layer has any overlap with the cloud. if it does,
+!    initialize the output field in this layer to be 0.0.
+!--------------------------------------------------------------------
+        if (p_gcm(k) > ptopa .and. p_lower > p_gcm(k+1)) then
+          rint = 0.
 
-!-------------------------------------------------------------------
-!    define the top and bottom interface pressures of the hi-res model 
-!    layer. use the relation that p_hi(k2) is the average of the
-!    upper and lower interface values.
-!-------------------------------------------------------------------
-            phrh = 0.5*(p_hi(k2) + p_hi(k2+1))
-            phrl = 2.0*p_hi(k2) - phrh         
-
-!-------------------------------------------------------------------
-!    define the pressure limits of the current hi-res model layer that
-!    is within the region of interest and also in the current lo-res 
-!    model layer.
-!-------------------------------------------------------------------
-            phrl = MIN (phrl, pl, p_hi(1))
-            phrh = MAX (phrh, ph)
-
-!-------------------------------------------------------------------
-!    add the contribution from the current hi-res model layer to the 
-!    current lo-res model layer sum.
-!-------------------------------------------------------------------
-            if (phrh <= ptop) then
-
-!-------------------------------------------------------------------
-!    if the hi-res model layer extends above the topmost pressure of
-!    interest (ptop), use the delta p only from the bottom of the layer 
-!    (phrl) to ptop in defining the hi-res model layer contribution 
-!    (rint). since this is the last hi-res model layer in the non-zero 
-!    portion of the profile, define the value of the field assigned to 
-!    the current lo-res model layer (x_lo). increment the total column 
-!    sum of the desired variable on the hi-res grid (intgl_hi) by the 
-!    contribution from this portion of the hi-res model layer, and on 
-!    the lo-res grid (intgl_lo) by the contribution from this layer. 
-!    since the top of the non-zero portion of the profile has been 
-!    reached, exit the hi-res model layer loop.
-!---------------------------------------------------------------------
-              rint = rint + x_hi(k2)*(phrl - ptop)
-              x_lo(k) = rint/(pl - ph)
-              intgl_hi = intgl_hi + x_hi(k2)*(phrl - ptop)
-              intgl_lo = intgl_lo + x_lo(k)*(pl - ph) 
-              exit
+!--------------------------------------------------------------------
+!    march through the cloud model layers which overlap this gcm
+!    layer.
+!--------------------------------------------------------------------
+          do k2=k2start,n_clo-1
 
 !---------------------------------------------------------------------
-!    if the hi-res model layer does not extend above the topmost layer
-!    of interest, add the pressure-weighted contribution of this 
-!    hi-res model layer to the lo-res model layer sum (rint), and to 
-!    the total hi-res model column sum (intgl_hi).
+!    define the topmost pressure in this gcm layer for which the 
+!    current cloud model layer value will apply (p_upper). it will be 
+!    the larger of the cloud top pressure, the pressure at the top of
+!    the gcm layer, or the pressure at the top interface of the current
+!    cloud layer.
 !---------------------------------------------------------------------
-            else
-              rint = rint + x_hi(k2)*(phrl - phrh)
-              intgl_hi = intgl_hi + x_hi(k2)*(phrl - phrh)
-            endif
+            p_upper = MAX (ptopa, p_gcm(k+1), pcloha(k2))
 
 !---------------------------------------------------------------------
-!    if the current hi-res model layer extends to or above the current 
-!    lo_res model layer top, define the output variable value for this 
-!    layer of the lo-res model (x_lo). save the current loop index 
-!    which is the level at which computation for the next lo-res model 
-!    layer will begin. exit the hi-res model layer loop.  
+!    define the contribution to the current gcm layer from this cloud 
+!    layer, weighted by the pressure depth over which it applies.     
 !---------------------------------------------------------------------
-            if (phrh <= ph) then
-              x_lo(k) = rint/(pl - ph)
-              intgl_lo =intgl_lo + x_lo(k)*(pl - ph)
+            rint = rint + x_clo(k2)*(p_lower - p_upper)
+
+!--------------------------------------------------------------------
+!    define the pressure at the bottom of the next layer to be 
+!    processed as the pressure at the top of the current layer. if 
+!    either the next gcm layer or cloud top has been reached, save the 
+!    cloud model layer index and exit this loop. otherwise, there are
+!    additional cloud model layer(s) contributing to the integral at
+!    this GCM level. Cycle through the loop, adding the remaining
+!    contributions.
+!--------------------------------------------------------------------
+            p_lower = p_upper
+            if (p_upper /= pcloha(k2)) then
               k2start = k2
               exit
             endif
-          end do !  (end of k2 loop)
+          end do
+
+!--------------------------------------------------------------------
+!    define the output variable at this gcm level and add the contrib-
+!    ution to the integral from this layer to the integrand.
+!--------------------------------------------------------------------
+          x_gcm(k) = rint/(p_gcm(k) - p_gcm(k+1))
+          intgl_gcm = intgl_gcm + rint
 
 !---------------------------------------------------------------------
-!    if the upper limit of the region of interest has been exceeded 
-!    or if the lower limit has not yet been reached, define the lo-res
-!    model variable value to be 0.0.
+!    if this gcm layer does not overlap the cloud, define its value to
+!    be 0.0.
 !---------------------------------------------------------------------
-        else  ! (ph < p_hi(1) .and. pl > ptop) 
-          x_lo(k) = 0.0
-        endif   ! (ph < p_hi(1) .and. pl > ptop) 
-      end do ! (end of k loop)
+        else
+          x_gcm(k) = 0.
+        endif   
+      end do
 
-!----------------------------------------------------------------------
+!--------------------------------------------------------------------
+!    evaluate integral over pressure at cloud-model resolution.
+!--------------------------------------------------------------------
+      p_upper = max (pcloha(1), ptopa)
+      intgl_clo = x_clo(1)*(p_clo(1) - p_upper)
+      do k2=1,n_clo 
+        p_upper = max (pcloha(k2+1), ptopa)
+        intgl_clo = intgl_clo + x_clo(k2+1)*(pcloha(k2) - p_upper)
+        if (pcloha(k2+1) <= ptopa) exit
+      end do
+
+!--------------------------------------------------------------------
 
 
 end subroutine don_u_map_hires_c_to_lores_c_k
+
 
 
 !#####################################################################

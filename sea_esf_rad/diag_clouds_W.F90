@@ -19,24 +19,18 @@
 !
 
 use time_manager_mod,       only: time_type
-use diag_cloud_mod,         only: diag_cloud_avg, diag_cloud_driver, &
-                                  diag_cloud_driver2, diag_cloud_avg2
+use diag_cloud_mod,         only: diag_cloud_avg2, diag_cloud_driver2
 use diag_cloud_rad_mod,     only: cloud_opt_prop_tg_lw,  &
                                   cloud_opt_prop_tg_sw
 use       fms_mod,          only: open_namelist_file, file_exist,   &
-                                  check_nml_error, error_mesg,   &
-                                  write_version_number, FATAL, NOTE, &
-                                  WARNING, mpp_pe, mpp_root_pe, &
+                                  check_nml_error,    &
+                                  write_version_number, &
+                                  mpp_pe, mpp_root_pe, &
                                   close_file, stdlog
-use rad_utilities_mod,      only: longwave_control_type, Lw_control, &
-                                  microphysics_type, &
+use rad_utilities_mod,      only: microphysics_type, &
                                   cld_specification_type, &
                                   cldrad_properties_type, &
-                                  shortwave_control_type, Sw_control,&
-                                  cloudrad_control_type, Cldrad_control
-use microphys_rad_mod,      only:    &
-                                  lwemiss_calc, &
-                                  microphys_rad_init
+                                  Sw_control
 
 !--------------------------------------------------------------------
 
@@ -55,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 13.0 2006/03/28 21:11:34 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 13.0.2.1 2006/10/27 16:45:33 wfc Exp $'
+   character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 

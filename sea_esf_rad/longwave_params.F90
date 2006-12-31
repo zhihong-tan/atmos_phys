@@ -22,7 +22,7 @@
                                   mpp_pe, mpp_root_pe, stdlog, &
                                   file_exist, write_version_number, &
                                  check_nml_error, error_mesg, &
-                                 FATAL, NOTE, WARNING, close_file
+                                 FATAL, close_file
 
 !--------------------------------------------------------------------
 
@@ -38,8 +38,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_params.F90,v 10.0 2003/10/24 22:00:42 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: longwave_params.F90,v 10.0.24.1 2006/10/27 16:45:34 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 !--------------------------------------------------------------------

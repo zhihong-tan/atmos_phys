@@ -19,13 +19,12 @@ use fms_mod,              only: open_namelist_file, fms_init, &
                                 mpp_pe, mpp_root_pe, stdlog, &
                                 file_exist, write_version_number, &
                                 check_nml_error, error_mesg, &
-                                FATAL, NOTE, WARNING, close_file, &
-                                open_direct_file, mpp_error
+                                FATAL, NOTE, close_file, &
+                                open_direct_file
 use fms_io_mod,           only: read_data
 !  shared radiation package modules:
 
-use rad_utilities_mod,    only: rad_utilities_init, Lw_parameters, &
-                                Lw_control, optical_path_type
+use rad_utilities_mod,    only: rad_utilities_init, optical_path_type
 
 !  radiation package modules
 
@@ -57,8 +56,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 13.0 2006/03/28 21:12:20 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 13.0.2.1 2006/10/27 16:45:35 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 !---------------------------------------------------------------------
@@ -5559,11 +5558,11 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
       filename = 'INPUT/' // trim(name_hi)
       ncname = trim(filename) // '.nc'
       if(file_exist(trim(ncname))) then
-         if (mpp_pe() == mpp_root_pe()) call mpp_error ('lw_gases_stdtf_mod', &
+         if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
               'Reading NetCDF formatted input data file: ' // ncname, NOTE)
          call read_data(ncname, 'trns_std_nf', trns_std_hi_nf(:,:,1:ntbnd(nf)), no_domain=.true.)
       else
-         if (mpp_pe() == mpp_root_pe()) call mpp_error ('lw_gases_stdtf_mod', &
+         if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
               'Reading native formatted input data file: ' // filename, NOTE)
          allocate (trns_in(NSTDCO2LVLS,NSTDCO2LVLS))
          inrad = open_direct_file (file=filename, action='read', &
@@ -5585,11 +5584,11 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
         filename = 'INPUT/' // trim(name_lo )
         ncname = trim(filename) // '.nc'
         if(file_exist(trim(ncname))) then
-           if (mpp_pe() == mpp_root_pe()) call mpp_error ('lw_gases_stdtf_mod', &
+           if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
                 'Reading NetCDF formatted input data file: ' // ncname, NOTE)
            call read_data(ncname, 'trns_std_nf', trns_std_lo_nf(:,:,1:ntbnd(nf)), no_domain=.true.)
         else
-           if (mpp_pe() == mpp_root_pe()) call mpp_error ('lw_gases_stdtf_mod', &
+           if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
                 'Reading native formatted input data file: ' // filename, NOTE)
            allocate (trns_in(NSTDCO2LVLS,NSTDCO2LVLS))
            inrad = open_direct_file (file=filename, action='read', &

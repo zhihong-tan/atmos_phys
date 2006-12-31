@@ -17,7 +17,7 @@
 !
 
 use rad_utilities_mod,     only: astronomy_type, &
-                                 shortwave_control_type, Sw_control, &
+                                 Sw_control, &
                                  atmos_input_type, &
                                  surface_type, &
                                  sw_output_type, &
@@ -26,10 +26,9 @@ use rad_utilities_mod,     only: astronomy_type, &
                                  cld_specification_type, &
                                  cldrad_properties_type
 use constants_mod,         only: GRAV, diffac, radcon, alogmin, wtmair
-use        fms_mod,        only: open_namelist_file, file_exist,     &
+use        fms_mod,        only: fms_init, open_namelist_file, file_exist, &
                                  check_nml_error, error_mesg, &  
-                                 FATAL, NOTE, &
-                                 WARNING, close_file, mpp_pe, mpp_root_pe, &
+                                 FATAL, close_file, mpp_pe, mpp_root_pe, &
                                  write_version_number, stdlog
 
 !--------------------------------------------------------------------
@@ -47,8 +46,8 @@ private
 !--------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 13.0 2006/03/28 21:12:00 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 13.0.2.1 2006/10/27 16:45:34 wfc Exp $'
+    character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
     logical             :: module_is_initialized = .false.
 
 
@@ -190,6 +189,8 @@ real, dimension(:,:), intent(in) :: pref
       integer :: k, KSL, KEL, kmin, kmax
 
       real, dimension(size(pref,1) )  :: plm
+      
+      call fms_init
 
 !---------------------------------------------------------------------
 !-----  read namelist  ------

@@ -20,8 +20,7 @@ use fms_mod,                 only: fms_init, open_namelist_file, &
                                    write_version_number, mpp_pe, &
                                    mpp_root_pe, stdlog, file_exist,  &
                                    check_nml_error, error_mesg,   &
-                                   FATAL, NOTE, WARNING, close_file,  &
-                                   read_data, write_data
+                                   FATAL, close_file
 use time_manager_mod,        only: time_type, time_manager_init
 use diag_manager_mod,        only: register_diag_field, send_data, &
                                    diag_manager_init
@@ -31,8 +30,7 @@ use diag_manager_mod,        only: register_diag_field, send_data, &
 use rad_utilities_mod,       only: rad_utilities_init, &
                                    cldrad_properties_type, &
                                    cld_specification_type, &
-                                   solar_spectrum_type, &
-                                   longwave_control_type, Lw_control, &
+                                   Lw_control, &
                                    microrad_properties_type, &
                                    microphysics_type, atmos_input_type,&
                                    Cldrad_control
@@ -63,8 +61,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 13.0 2006/03/28 21:11:20 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 13.0.4.1 2006/10/27 16:45:32 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 !---------------------------------------------------------------------

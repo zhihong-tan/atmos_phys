@@ -38,6 +38,7 @@ use field_manager_mod,        only:       &
                                     field_manager_init, &
                                     MODEL_ATMOS
 use data_override_mod,        only: data_override
+use constants_mod,            only: RDGAS  
 
 ! shared radiation package modules:
 
@@ -96,8 +97,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 13.0 2006/03/28 21:11:30 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 13.0.6.1 2006/10/28 15:50:01 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 !---------------------------------------------------------------------
@@ -700,6 +701,9 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
       integer   :: ierr
       logical   :: override
       type(time_type) :: Data_time
+      real, dimension (size (Atmos_input%deltaz,1), &
+                       size (Atmos_input%deltaz,2), &
+                       size (Atmos_input%deltaz,3)) :: rho
       real, dimension (id, jd, kmax) :: ql_proc, qi_proc, qa_proc
 
 !---------------------------------------------------------------------
@@ -708,6 +712,7 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
 !        ix      number of grid points in x direction (on processor)
 !        jx      number of grid points in y direction (on processor)
 !        kx      number of model layers
+!        rho     atmospheric density [ kg / m**3 ]
 !        ierr
 !
 !---------------------------------------------------------------------
@@ -963,6 +968,19 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
                            meso_ice_amt, meso_ice_size,  nsum_out, &
                            Cell_microphys, Meso_microphys)
         endif
+
+ 
+!---------------------------------------------------------------------
+!    convert the cloud and ice amounts from kg(h2o) / kg(air) to 
+!    g(h2o) / m**3, as required for use in the microphys_rad routines
+!    which compute cloud radiative properties.
+!---------------------------------------------------------------------
+          rho(:,:,:) = Atmos_input%press(:,:,1:kx)/  &
+                       (RDGAS*Atmos_input%temp(:,:,1:kx))
+          Cell_microphys%conc_drop = 1.0e03*rho*Cell_microphys%conc_drop
+          Cell_microphys%conc_ice  = 1.0e03*rho*Cell_microphys%conc_ice 
+          Meso_microphys%conc_drop = 1.0e03*rho*Meso_microphys%conc_drop
+          Meso_microphys%conc_ice  = 1.0e03*rho*Meso_microphys%conc_ice 
 
 !---------------------------------------------------------------------
 !    obtain the microphysical properties (sizes and concentrations) if

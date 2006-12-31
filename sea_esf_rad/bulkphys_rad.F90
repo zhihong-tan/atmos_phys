@@ -23,21 +23,14 @@ use fms_mod,                only: open_namelist_file, mpp_pe, &
                                   fms_init, mpp_root_pe, stdlog,  &
                                   write_version_number, file_exist, & 
                                   check_nml_error, error_mesg,   &
-                                  FATAL, NOTE, WARNING, close_file
-use time_manager_mod,       only: time_type, time_manager_init
+                                  FATAL, close_file
 
 !    shared radiation package modules:
 
-use rad_utilities_mod,      only:  rad_utilities_init, &
-                                  shortwave_control_type, Sw_control, &
+use rad_utilities_mod,      only: rad_utilities_init, &
                                   cldrad_properties_type, &
-                                  microrad_properties_type, &
-                                  longwave_control_type, Lw_control, &
                                   cld_specification_type, &
-                                  microphysics_type,  &         
-                                  longwave_parameter_type, &    
-                                  Lw_parameters, &
-                                  cloudrad_control_type, Cldrad_control
+                                  Cldrad_control
 
 !    individual cloud modules:
 
@@ -69,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 12.0 2005/04/14 15:44:20 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 12.0.2.1 2006/10/27 16:45:32 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 
@@ -252,7 +245,6 @@ real, dimension(:),   intent(in) :: lonb, latb
 !    have already been initialized.
 !---------------------------------------------------------------------
       call fms_init
-      call time_manager_init
       call rad_utilities_init
       if (Cldrad_control%do_diag_clouds)  call diag_clouds_W_init (idum)
       if (Cldrad_control%do_strat_clouds) call strat_clouds_W_init(latb, lonb)

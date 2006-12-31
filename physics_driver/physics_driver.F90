@@ -135,8 +135,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 13.1 2006/04/25 23:17:02 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_08 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 13.1.2.2 2006/09/25 20:59:23 wfc Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_12 $'
 
 
 !---------------------------------------------------------------------
@@ -288,7 +288,7 @@ integer, dimension(6) :: restart_versions = (/ 1, 2, 3, 4, 5, 6 /)
 !----------------------------------------------------------------------
 real,    dimension(:,:,:), allocatable :: diff_cu_mo, diff_t, diff_m
 real,    dimension(:,:,:), allocatable :: radturbten, lw_tendency
-real,    dimension(:,:)  , allocatable :: pbltop     
+real,    dimension(:,:)  , allocatable :: pbltop
 logical, dimension(:,:)  , allocatable :: convect
 real,    dimension(:,:,:), allocatable ::       &
                             cell_cld_frac, cell_liq_amt, &
@@ -1360,7 +1360,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
      call mpp_clock_end ( turb_clock )
      pbltop(is:ie,js:je) = z_pbl(:,:)
 
-     
+
 !-----------------------------------------------------------------------
 !    process any tracer fields.
 !-----------------------------------------------------------------------
@@ -1585,10 +1585,11 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
  subroutine physics_driver_up (is, ie, js, je,                    &
                                Time_prev, Time, Time_next,        &
                                lat, lon, area,                    &
-                               p_half, p_full, z_half, z_full,    & 
+                               p_half, p_full, z_half, z_full,    &
                                omega,                             &
                                u, v, t, q, r, um, vm, tm, qm, rm, &
                                frac_land,                         &
+                               u_star, b_star, q_star,            &
                                udt, vdt, tdt, qdt, rdt,           &
                                Surf_diff,                         &
                                lprec,   fprec, gust,              &
@@ -1610,6 +1611,7 @@ real,dimension(:,:,:),  intent(in)             :: p_half, p_full,   &
                                                   um, vm, tm, qm
 real,dimension(:,:,:,:),intent(in)             :: r,rm
 real,dimension(:,:),    intent(in)             :: frac_land
+real,dimension(:,:),    intent(in)             :: u_star, b_star, q_star
 real,dimension(:,:,:),  intent(inout)          :: udt,vdt,tdt,qdt
 real,dimension(:,:,:,:),intent(inout)          :: rdt
 type(surf_diff_type),   intent(inout)          :: Surf_diff
@@ -1754,6 +1756,8 @@ integer,dimension(:,:), intent(in),   optional :: kbot
                            p_half, p_full, z_half, z_full, omega,    &
                            diff_t(is:ie,js:je,:),                    &
                            radturbten(is:ie,js:je,:),                &
+                           pbltop(is:ie,js:je),                      &
+                           u_star, b_star, q_star,                   &
                            t, q, r, u, v, tm, qm, rm, um, vm,        &
                            tdt, qdt, rdt, udt, vdt, diff_cu_mo_loc , &
                            convect(is:ie,js:je), lprec, fprec,       &
@@ -1775,6 +1779,8 @@ integer,dimension(:,:), intent(in),   optional :: kbot
                            p_half, p_full, z_half, z_full, omega,    &
                            diff_t(is:ie,js:je,:),                    &
                            radturbten(is:ie,js:je,:),                &
+                           pbltop(is:ie,js:je),                      &
+                           u_star, b_star, q_star,                   &
                            t, q, r, u, v, tm, qm, rm, um, vm,        &
                            tdt, qdt, rdt, udt, vdt, diff_cu_mo_loc , &
                            convect(is:ie,js:je), lprec, fprec,       &
@@ -2286,46 +2292,46 @@ subroutine read_restart_file
         endif  ! (vers >=5)
 
         if (doing_donner) then
-      if (vers >= 6) then
-        if (was_doing_donner) then
-         call read_data (unit ,  cell_cld_frac)
-         call read_data (unit ,  cell_liq_amt )
-         call read_data (unit ,  cell_liq_size)
-         call read_data (unit ,  cell_ice_amt )
-         call read_data (unit ,  cell_ice_size)
-         call read_data (unit ,  meso_cld_frac)
-         call read_data (unit ,  meso_liq_amt )
-         call read_data (unit ,  meso_liq_size)
-         call read_data (unit ,  meso_ice_amt )
-         call read_data (unit ,  meso_ice_size)
-         call read_data (unit , nsum_out)                 
-     else  ! (was_doing_donner)
-        cell_cld_frac = 0.
-        cell_liq_amt  = 0.
-        cell_liq_size = 0.
-        cell_ice_amt  = 0.
-        cell_ice_size = 0.
-        meso_cld_frac = 0.
-        meso_liq_amt  = 0.
-        meso_liq_size = 0.
-        meso_ice_amt  = 0.
-        meso_ice_size = 0.
-        nsum_out = 1
-       endif ! (was_doing_donner)
-     else  ! (vers >= 6)
-        cell_cld_frac = 0.
-        cell_liq_amt  = 0.
-        cell_liq_size = 0.
-        cell_ice_amt  = 0.
-        cell_ice_size = 0.
-        meso_cld_frac = 0.
-        meso_liq_amt  = 0.
-        meso_liq_size = 0.
-        meso_ice_amt  = 0.
-        meso_ice_size = 0.
-        nsum_out = 1
-      endif ! (vers >= 6)
-     endif  ! (doing_donner)
+          if (vers >= 6) then
+            if (was_doing_donner) then
+              call read_data (unit ,  cell_cld_frac)
+              call read_data (unit ,  cell_liq_amt )
+              call read_data (unit ,  cell_liq_size)
+              call read_data (unit ,  cell_ice_amt )
+              call read_data (unit ,  cell_ice_size)
+              call read_data (unit ,  meso_cld_frac)
+              call read_data (unit ,  meso_liq_amt )
+              call read_data (unit ,  meso_liq_size)
+              call read_data (unit ,  meso_ice_amt )
+              call read_data (unit ,  meso_ice_size)
+              call read_data (unit , nsum_out)                 
+            else  ! (was_doing_donner)
+              cell_cld_frac = 0.
+              cell_liq_amt  = 0.
+              cell_liq_size = 0.
+              cell_ice_amt  = 0.
+              cell_ice_size = 0.
+              meso_cld_frac = 0.
+              meso_liq_amt  = 0.
+              meso_liq_size = 0.
+              meso_ice_amt  = 0.
+              meso_ice_size = 0.
+              nsum_out = 1
+            endif ! (was_doing_donner)
+          else  ! (vers >= 6)
+            cell_cld_frac = 0.
+            cell_liq_amt  = 0.
+            cell_liq_size = 0.
+            cell_ice_amt  = 0.
+            cell_ice_size = 0.
+            meso_cld_frac = 0.
+            meso_liq_amt  = 0.
+            meso_liq_size = 0.
+            meso_ice_amt  = 0.
+            meso_ice_size = 0.
+            nsum_out = 1
+          endif ! (vers >= 6)
+        endif  ! (doing_donner)
 !---------------------------------------------------------------------
 !    if there is no physics_driver.res, set the remaining module
 !    variables to 0.0

@@ -20,11 +20,11 @@
 
 use fms_mod,             only:  open_namelist_file, file_exist,    &
                                 check_nml_error, error_mesg,  &
-                                fms_init, stdlog, open_restart_file, &
+                                fms_init, stdlog, &
                                 write_version_number, FATAL, NOTE, &
                                 WARNING, mpp_pe, mpp_root_pe, close_file
 use fms_io_mod,          only:  read_data, open_restart_file
-use time_manager_mod,    only:  time_type, days_in_year, &
+use time_manager_mod,    only:  time_type,  &
                                 time_manager_init, operator(+), &
                                 set_date, operator(-), print_date, &
                                 set_time, operator(>), get_date, days_in_month
@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: ozone.F90,v 13.0 2006/03/28 21:12:59 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: ozone.F90,v 13.0.2.1 2006/10/27 16:45:36 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 !---------------------------------------------------------------------

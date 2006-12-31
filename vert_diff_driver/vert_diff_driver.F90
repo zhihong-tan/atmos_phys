@@ -77,8 +77,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 13.0 2006/03/28 21:14:31 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_08 $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 13.0.2.1 2006/10/27 16:55:03 wfc Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_12 $'
 
 logical :: module_is_initialized = .false.
 
@@ -460,7 +460,7 @@ integer :: ie, je
            'Integrated tendency of '//trim(longname)//' from vert diff',&
            trim(units)//' kg/(m2 s)')
 
-      if(tr_store(tr)%id_tr_dt_int>0 .or.tr_store(tr)%id_tr_dt_int>0 ) &
+      if(tr_store(tr)%id_tr_dt>0 .or.tr_store(tr)%id_tr_dt_int>0 ) &
            allocate(tr_store(tr)%buffer(idim,jdim,kdim))
    enddo
 

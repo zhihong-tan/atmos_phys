@@ -24,7 +24,7 @@ use fms_mod,              only: open_namelist_file, fms_init, &
                                 mpp_pe, mpp_root_pe, stdlog, &
                                 file_exist, write_version_number, &
                                 check_nml_error, error_mesg, &
-                                FATAL, NOTE, WARNING, close_file, &
+                                FATAL, close_file, &
                                 mpp_clock_id, mpp_clock_begin, &
                                 mpp_clock_end, CLOCK_ROUTINE, &
                                 CLOCK_MODULE, MPP_CLOCK_SYNC
@@ -43,7 +43,7 @@ use rad_utilities_mod,    only: rad_utilities_init, Rad_control, &
                                 lw_table_type, &
                                 aerosol_type, aerosol_properties_type,&
                                 sw_output_type, lw_output_type, &
-                                Sw_control, Lw_control, Lw_parameters
+                                Sw_control, Lw_parameters
 
 !   radiation package modules:
 
@@ -71,8 +71,8 @@ private
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 
-character(len=128) :: version = '$Id: sea_esf_rad.F90,v 13.0 2006/03/28 21:13:30 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_08 $'
+character(len=128) :: version = '$Id: sea_esf_rad.F90,v 13.0.2.1 2006/10/27 16:45:37 wfc Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_12 $'
 
 
 !--------------------------------------------------------------------

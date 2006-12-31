@@ -18,19 +18,15 @@
 ! </DESCRIPTION>
 !
 
-use fms_mod,                only: open_namelist_file, mpp_pe, &
+use fms_mod,                only: fms_init, open_namelist_file, mpp_pe, &
                                   mpp_root_pe, stdlog,  &
                                   write_version_number, file_exist, & 
                                   check_nml_error, error_mesg,   &
-                                  FATAL, NOTE, WARNING, close_file
+                                  FATAL, close_file
 use rh_clouds_mod,          only: rh_clouds_avg      
-use rad_utilities_mod,      only: shortwave_control_type, Sw_control, &
+use rad_utilities_mod,      only: rad_utilities_init, &
                                   cldrad_properties_type, &
-                                  longwave_control_type, Lw_control, &
-                                  cld_specification_type, &
-                                  microphysics_type,  &         
-                                  longwave_parameter_type, &    
-                                  Lw_parameters
+                                  cld_specification_type
 use constants_mod,           only: radian
                                  
 
@@ -50,8 +46,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 13.0 2006/03/28 21:13:26 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 13.0.2.1 2006/10/27 16:45:37 wfc Exp $'
+  character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 
@@ -230,6 +226,8 @@ subroutine rh_based_clouds_init
 
 
       if (module_is_initialized) return
+      call fms_init
+      call rad_utilities_init
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------

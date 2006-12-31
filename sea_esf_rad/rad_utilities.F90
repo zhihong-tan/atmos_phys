@@ -23,9 +23,8 @@ use fms_mod,               only: open_namelist_file, fms_init, &
                                  mpp_pe, mpp_root_pe, stdlog, &
                                  file_exist, write_version_number, &
                                  check_nml_error, error_mesg, &
-                                 FATAL, NOTE, WARNING, close_file, &
-                                 lowercase
-use  field_manager_mod, only : MODEL_ATMOS, parse
+                                 FATAL, close_file, lowercase
+use  field_manager_mod, only :   parse
 
 use time_manager_mod,      only: time_type
 
@@ -44,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 13.1 2006/04/25 23:20:04 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 13.1.4.1 2006/10/27 16:45:36 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

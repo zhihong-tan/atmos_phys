@@ -8,7 +8,11 @@ use time_manager_mod,       only: time_type, set_time, &
 use diag_manager_mod,       only: register_diag_field, send_data
 use field_manager_mod,      only: MODEL_ATMOS
 use tracer_manager_mod,     only: get_tracer_names,get_number_tracers, &
-                                  get_tracer_indices
+                                  get_tracer_indices, &
+!++lwh
+                                  query_method
+use atmos_tracer_utilities_mod, only : get_wetdep_param
+!--lwh
 use fms_mod,                only: mpp_pe, mpp_root_pe,  &
                                   file_exist,  check_nml_error,  &
                                   error_mesg, FATAL, WARNING, NOTE,  &
@@ -48,8 +52,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 13.0 2006/03/28 21:08:44 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 13.0.4.1.2.1.2.1 2006/11/30 13:45:55 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 !--------------------------------------------------------------------
@@ -686,6 +690,10 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
       integer                             :: secs, days
       logical, dimension(size(latb(:))-1) :: do_column_diagnostics
       integer                             :: k, n, nn
+!++lwh
+      logical                             :: flag
+      character(len=200)                  :: text_in_scheme, control
+!--lwh
   
 !-------------------------------------------------------------------
 !  local variables:
@@ -853,6 +861,9 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
       ntracers = count(tracers_in_donner)
       allocate ( Don_save%tracername   (ntracers) )
       allocate ( Don_save%tracer_units (ntracers) )
+!++lwh
+      allocate ( Initialized%wetdep(ntracers) )
+!--lwh
       if (ntracers > 0) then
         Initialized%do_donner_tracer = .true.
         nn = 1
@@ -861,6 +872,19 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
             call get_tracer_names (MODEL_ATMOS, n,  &
                                    name = Don_save%tracername(nn), &
                                    units = Don_save%tracer_units(nn))
+!++lwh
+            Initialized%wetdep(nn)%units = Don_save%tracer_units(nn)
+            flag = query_method( 'wet_deposition', MODEL_ATMOS, n, &
+                                 text_in_scheme, control )
+            call get_wetdep_param( text_in_scheme, control, &
+                                   Initialized%wetdep(nn)%scheme, &
+                                   Initialized%wetdep(nn)%Henry_constant, &
+                                   Initialized%wetdep(nn)%Henry_variable, &
+                                   Initialized%wetdep(nn)%frac_in_cloud, &
+                                   Initialized%wetdep(nn)%alpha_r, &
+                                   Initialized%wetdep(nn)%alpha_s )
+            Initialized%wetdep(nn)%scheme = lowercase( Initialized%wetdep(nn)%scheme )
+!-lwh
             nn = nn + 1
           endif
         end do
@@ -2349,6 +2373,7 @@ type(time_type), intent(in) :: Time
       Don_save%humidity_area     = 0.
       Don_save%humidity_ratio    = 1.
       Don_save%tprea1            = 0.
+      Don_save%parcel_disp       = 0.
 
 !----------------------------------------------------------------------
 

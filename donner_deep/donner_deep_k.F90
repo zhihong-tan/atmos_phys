@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_deep_k.F90,v 13.0 2006/03/28 21:08:48 fms Exp $
+!  $Id: donner_deep_k.F90,v 13.0.4.1.2.1.2.1 2006/11/01 09:47:25 rsh Exp $
 
 !module donner_deep_inter_mod
 
@@ -898,6 +898,7 @@ character(len=*),                intent(out)   :: ermesg
       allocate (Don_conv%qtceme        (isize, jsize, nlev_lsm, ntr) )
       allocate (Don_conv%qtmes1        (isize, jsize, nlev_lsm, ntr) )
       allocate (Don_conv%qtren1        (isize, jsize, nlev_lsm, ntr) )
+      allocate (Don_conv%temptr        (isize, jsize, nlev_lsm, ntr) )
       allocate (Don_conv%wtp1          (isize, jsize, nlev_lsm, ntr) )
 
 !---------------------------------------------------------------------
@@ -949,6 +950,7 @@ character(len=*),                intent(out)   :: ermesg
       Don_conv%qtceme               = 0.0
       Don_conv%qtmes1               = 0.0
       Don_conv%qtren1               = 0.0
+      Don_conv%temptr               = 0.0
       Don_conv%wtp1                 = 0.0
 
 !---------------------------------------------------------------------
@@ -1399,6 +1401,47 @@ logical, dimension(isize,jsize),                                &
 !----------------------------------------------------------------------
       if (trim(ermesg) /= ' ') return
 
+!----------------------------------------------------------------------
+!   Calculate wet deposition in mesoscale updraft here. Use:
+!   Don_conv%meso_precip(isize,jsize): grid average (mm/day)
+!   Don_conv%temptr(isize,jsize,nlev_lsm,ntr): tracer concentration in
+!   mesoscale updraft (kg(tracer)/kg) This quantity is meaningful
+!   only for pressure values p in the mesoscale updraft 
+!   (pzm <= p <= pztm). It is defined on the pfull pressure surfaces.
+!   pfull(isize,jsize,nlev_lsm): pressures (Pa) on full levels
+!   phalf(isize,jsize,nlev_lsm+1): pressures (Pa) on half levels
+!   Index convention for pressure levels:
+!      -----  phalf(1)  (top of GCM grid)
+!      -----  pfull(1)
+!      -----  phalf(2)
+!       ...
+!      -----  pfull(k-1)
+!      -----  phalf(k)
+!      -----  pfull(k)
+!      -----  phalf(k+1)
+!       ...
+!      -----  pfull(nlev_lsm)
+!      -----  phalf(nlev_lsm+1)  (bottom of GCM grid)
+!   Don_conv%pztm_v(isize,jsize): pressure at top of mesoscale updraft 
+!                                 (Pa)
+!   Don_conv%pzm_v(isize,jsize): pressure at base of mesoscale updraft 
+!                                (Pa)
+!   Don_conv%ampta1(isize,jsize): fractional area of mesoscale updraft
+!   Don_conv%qtmes1(isize,jsize,nlev_lsm,ntr): grid-average tracer 
+!                                              tendency
+!   due to mesoscale updraft (kg(tracer)/(kg sec))
+!   Don_conv%xice(isize,jsize,nlev_lsm): ice mass mixing ratio in
+!   mesocale updfraft  (kg(ice)/kg)
+!----------------------------------------------------------------------
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
+!    if an error message was returned from the kernel routine, return
+!    to the calling program where it will be processed.
+!----------------------------------------------------------------------
+      if (trim(ermesg) /= ' ') return
+
 !---------------------------------------------------------------------
 !    call donner_rad_driver to define the cloud ice, cloud liquid and
 !    cloud areas of the cell and mesoscale clouds associated with 
@@ -1678,7 +1721,9 @@ logical, dimension(isize,jsize),   intent(out)   :: exit_flag
 !---------------------------------------------------------------------
       call don_d_mulsub_k   &
            (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Param,   &
-            Nml, Col_diag, phalf, sfc_vapor_flux, sfc_sh_flux,   &
+!++lwh
+            Nml, Col_diag, Initialized, phalf, sfc_vapor_flux, sfc_sh_flux, &
+!--lwh
             sfc_tracer_flux, xgcm_v, Don_cape, Don_conv, exit_flag,  &
             total_precip, temperature_forcing, moisture_forcing, &
             ermesg)
@@ -2049,9 +2094,11 @@ end subroutine don_d_check_for_deep_conv_k
 
 subroutine don_d_mulsub_k   &
          (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Param, Nml, &
-          Col_diag, phalf, sfc_vapor_flux, sfc_sh_flux, sfc_tracer_flux,&
-          xgcm_v, Don_cape, Don_conv, exit_flag, total_precip,   &
-          temperature_forcing, moisture_forcing, ermesg)
+!++lwh
+          Col_diag, Initialized, phalf, sfc_vapor_flux, sfc_sh_flux, &
+!--lwh
+          sfc_tracer_flux, xgcm_v, Don_cape, Don_conv, exit_flag, &
+          total_precip, temperature_forcing, moisture_forcing, ermesg)
 
 !--------------------------------------------------------------------
 !    subroutine don_d_mulsub_k calculates the thermal and moisture
@@ -2067,7 +2114,9 @@ subroutine don_d_mulsub_k   &
 
 use donner_types_mod, only : donner_param_type, donner_conv_type, &
                              donner_nml_type, donner_column_diag_type, &
-                             donner_cape_type
+!++lwh
+                             donner_cape_type, donner_initialized_type
+!--lwh
 
 implicit none
 
@@ -2079,6 +2128,9 @@ type(donner_param_type),      intent(in)     ::  Param
 type(donner_nml_type),        intent(in)     ::  Nml  
 type(donner_column_diag_type),                           &
                               intent(in)     ::  Col_diag
+!++lwh
+type(donner_initialized_type), intent(in)    :: Initialized
+!--lwh
 real,    dimension(isize,jsize,nlev_lsm+1),                    &
                               intent(in)     ::  phalf
 real,    dimension(isize,jsize),                                &
@@ -2362,7 +2414,8 @@ character(len=*),             intent(out)    ::  ermesg
 
       real, dimension(isize, jsize, nlev_lsm) :: disa_v, dise_v
       real, dimension (nlev_hires)            :: rlsm, emsm, cld_press
-      real, dimension( nlev_lsm,ntr)          :: qtmes, qtren, wtp
+      real, dimension( nlev_lsm,ntr)          :: qtmes, qtren, wtp, &
+                                                 temptr
       real, dimension (nlev_hires,ntr)        :: etsm
       real, dimension (nlev_lsm+1)            :: phalf_c               
 
@@ -2445,7 +2498,9 @@ character(len=*),             intent(out)    ::  ermesg
 !--------------------------------------------------------------------
           call don_d_integ_cu_ensemble_k             &
                (nlev_lsm, nlev_hires, ntr, me, diag_unit, debug_ijt, &
-                Param, Col_diag, Nml, Don_cape%model_t(i,j,:),    &
+!++lwh
+                Param, Col_diag, Nml, Initialized, Don_cape%model_t(i,j,:), &
+!--lwh
                 Don_cape%model_r(i,j,:), Don_cape%model_p(i,j,:),  &
                 phalf_c, xgcm_v(i,j,:,:), sfc_sh_flux(i,j),     &
                 sfc_vapor_flux(i,j), sfc_tracer_flux(i,j,:),   &
@@ -2488,7 +2543,7 @@ character(len=*),             intent(out)    ::  ermesg
                   ensmbl_cond, ensmbl_precip, pb, Don_cape%plzb(i,j), &
                   pt_ens, ampta1, ensmbl_anvil_cond, wtp, qtmes,    &
                   anvil_precip_melt, meso_cloud_area, cmus_tot, dmeml, &
-                  emds, emes, wmms, wmps, umeml, tmes, mrmes,    &
+                  emds, emes, wmms, wmps, umeml, temptr, tmes, mrmes,  &
                   Don_conv%emdi_v(i,j), Don_conv%pmd_v(i,j),   &
                   Don_conv%pztm_v(i,j), Don_conv%pzm_v(i,j),    &
                   Don_conv%meso_precip(i,j), ermesg)
@@ -2583,8 +2638,8 @@ character(len=*),             intent(out)    ::  ermesg
                (nlev_lsm, ntr, i, j, Param, disb, disc,   &
                 temp_tend_freeze, temp_tend_melt, tmes, disd, cmus_tot, &
                 ecds, eces, emds, emes, wmms, wmps, mrmes, cutotal,   &
-                dmeml, detmfl, uceml, umeml, cuq, cuql_v, qtren, qtmes,&
-                wtp, Don_conv, ermesg)
+                dmeml, detmfl, temptr, uceml, umeml, cuq, cuql_v,  &
+                qtren, qtmes, wtp, Don_conv, ermesg)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -2691,7 +2746,10 @@ end subroutine don_d_mulsub_k
 
 subroutine don_d_integ_cu_ensemble_k             &
          (nlev_lsm, nlev_hires, ntr, me, diag_unit, debug_ijt, Param,   &
-          Col_diag, Nml, temp_c, mixing_ratio_c, pfull_c, phalf_c,   &
+!++lwh
+          Col_diag, Nml, Initialized, temp_c, &
+!--lwh
+          mixing_ratio_c, pfull_c, phalf_c,   &
           tracers_c, sfc_sh_flux_c, sfc_vapor_flux_c,   &
           sfc_tracer_flux_c, plzb_c, exit_flag_c, ensmbl_precip,    &
           ensmbl_cond, ensmbl_anvil_cond, pb, pt_ens, ampta1, amax, &
@@ -2718,7 +2776,10 @@ subroutine don_d_integ_cu_ensemble_k             &
 !    routine.
 !----------------------------------------------------------------------
 use donner_types_mod, only : donner_param_type, &
-                             donner_nml_type, donner_column_diag_type
+                             donner_nml_type, donner_column_diag_type, &
+!++lwh
+                             donner_initialized_type
+!--lwh
 
 implicit none 
 
@@ -2730,6 +2791,9 @@ logical,                           intent(in)    :: debug_ijt
 type(donner_param_type),           intent(in)    :: Param
 type(donner_column_diag_type),     intent(in)    :: Col_diag
 type(donner_nml_type),             intent(in)    :: Nml   
+!++lwh
+type(donner_initialized_type),     intent(in)    :: Initialized
+!--lwh
 real,    dimension(nlev_lsm),      intent(in)    :: temp_c,   &
                                                     mixing_ratio_c,   &
                                                     pfull_c
@@ -3338,7 +3402,9 @@ character(len=*),                  intent(out)   :: ermesg
 !--------------------------------------------------------------------
         call don_cm_cloud_model_k   &
              (nlev_lsm, nlev_hires, ntr, kou, diag_unit, debug_ijt,   &
-              Param, Col_diag, tb, pb, alpp, cld_press, temp_c,   &
+!++lwh
+              Param, Col_diag, Initialized, tb, pb, alpp, cld_press, temp_c, &
+!--lwh
               mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave,  &
               exit_flag_c, rcl, dpf, qlw, dfr, flux, ptma(kou), &
               dint, cu, cell_precip, dints, apt, cell_melt, efchr, &
@@ -3906,6 +3972,9 @@ character(len=*),                 intent(out)   :: ermesg
               write (unit, '(a, e20.12)')  &
                                 'in donner_deep: qtmes1 ',  &
                               Don_conv%qtmes1(i,j,k,kcont)             
+              write (unit, '(a, e20.12)')  &
+                                'in donner_deep: temptr',  &
+                              Don_conv%temptr(i,j,k,kcont)
               write (unit, '(a, e20.12)')  &
                                    'in donner_deep: qtceme ',   &
                                Don_conv%qtceme(i,j,k,kcont)             
@@ -6246,8 +6315,8 @@ end subroutine don_d_def_conv_forcing_k
 subroutine don_d_finalize_output_fields_k   &
          (nlev_lsm, ntr, i, j, Param, disb, disc, temp_tend_freeze, &
           temp_tend_melt, tmes, disd, cmus_tot, ecds, eces, emds, emes, &
-          wmms, wmps, mrmes, cutotal, dmeml, detmfl, uceml, umeml, cuq, &
-          cuql_v, qtren, qtmes, wtp, Don_conv, ermesg)
+          wmms, wmps, mrmes, cutotal, dmeml, detmfl, temptr, uceml, &
+          umeml, cuq, cuql_v, qtren, qtmes, wtp, Don_conv, ermesg)
 
 !----------------------------------------------------------------------
 !    subroutine finalize_output_fields stores output variables from 
@@ -6272,7 +6341,8 @@ real,    dimension(nlev_lsm),     intent(in)    :: disb, disc,   &
                                                    mrmes, cutotal, &
                                                    dmeml, detmfl, uceml,&
                                                    umeml, cuq, cuql_v
-real,    dimension(nlev_lsm,ntr), intent(in)    :: qtren, qtmes, wtp
+real,    dimension(nlev_lsm,ntr), intent(in)    :: qtren, qtmes, wtp, &
+                                                   temptr
 type(donner_conv_type),           intent(inout) :: Don_conv
 character(len=*),                 intent(out)   :: ermesg
 
@@ -6381,6 +6451,7 @@ character(len=*),                 intent(out)   :: ermesg
         Don_conv%cuql  (i,j,kinv)   = cuql_v(k)
         Don_conv%qtren1(i,j,kinv,:) = qtren(k,:)
         Don_conv%qtmes1(i,j,kinv,:) = qtmes(k,:)
+        Don_conv%temptr(i,j,kinv,:) = temptr(k,:)
         Don_conv%wtp1  (i,j,kinv,:) = wtp(k,:)
       end do
         
@@ -6770,6 +6841,8 @@ character(len=*),                 intent(out)   :: ermesg
             Don_conv%ampta1(i,j) =  Don_conv%ampta1(i,j)*Don_conv%a1(i,j)
             Don_conv%cell_precip(i,j) =              &
                              Don_conv%cell_precip (i,j)*Don_conv%a1(i,j)
+            Don_conv%meso_precip(i,j) =              &
+                             Don_conv%meso_precip (i,j)*Don_conv%a1(i,j)
             Don_conv%emdi_v(i,j) = Don_conv%emdi_v(i,j)*Don_conv%a1(i,j)
             do k=1,nlev_lsm                           
               temperature_forcing(i,j,k) =   &
@@ -7081,6 +7154,7 @@ character(len=*),               intent(out)   :: ermesg
       deallocate (Don_conv%qtren1               )
       deallocate (Don_conv%qtceme               )
       deallocate (Don_conv%qtmes1               )
+      deallocate (Don_conv%temptr               )
       deallocate (Don_conv%wtp1                 )
       deallocate (Don_conv%dgeice               )
       deallocate (Don_conv%cuqi                 )

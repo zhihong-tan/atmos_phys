@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cloud_model_k.F90,v 13.0.2.1 2006/04/17 19:05:56 pjp Exp $
+!  $Id: donner_cloud_model_k.F90,v 13.0.2.2.4.1.2.1 2006/10/28 13:05:57 rsh Exp $
 
 !module donner_cloud_model_inter_mod
 
@@ -14,8 +14,11 @@
 
 subroutine don_cm_cloud_model_k   &
          (nlev_lsm, nlev_hires, ntr, kou, diag_unit, debug_ijt, Param, &
-          Col_diag, tb, pb, alpp, cld_press, temp_c, mixing_ratio_c,  &
-          pfull_c, phalf_c, tracers_c, pcsave, exit_flag_c, rcl, dpf, &
+!++lwh
+          Col_diag, Initialized, tb, pb, alpp, cld_press, temp_c, &
+!--lwh
+          mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave, &
+          exit_flag_c, rcl, dpf, &
           qlw, dfr, flux, pt_kou, dint, cu, cell_precip, dints, apt, &
           cell_melt, efchr, emfhr, cfracice, etfhr, ncc_kou, ermesg)
 
@@ -40,7 +43,10 @@ subroutine don_cm_cloud_model_k   &
 !    nostics file (diag_unit).
 !--------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type, donner_column_diag_type
+use donner_types_mod, only : donner_param_type, donner_column_diag_type, &
+!++lwh
+                             donner_initialized_type
+!--lwh
 
 implicit none
 
@@ -51,6 +57,9 @@ integer,                            intent(in)     :: nlev_lsm,  &
 logical,                            intent(in)     :: debug_ijt
 type(donner_param_type),            intent(in)     :: Param
 type(donner_column_diag_type),      intent(in)     :: Col_diag
+!++lwh
+type(donner_initialized_type),      intent(in)     :: Initialized
+!--lwh
 real,                               intent(in)     :: tb, pb, alpp
 real,    dimension(nlev_hires),     intent(in)     :: cld_press
 real,    dimension(nlev_lsm),       intent(in)     :: temp_c,   &
@@ -172,7 +181,9 @@ character(len=*),                   intent(out)    :: ermesg
 !-------------------------------------------------------------------
       call don_cm_gen_incloud_profs_k  &
            (nlev_lsm, nlev_hires, ntr, kou, diag_unit, debug_ijt, &
-            Col_diag, Param, tb, pb, alpp, cld_press, temp_c,  &
+!++lwh
+            Col_diag, Param, Initialized, tb, pb, alpp, cld_press, temp_c,  &
+!--lwh
             mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave,&
             tcc, wv, rcl, qlw, dfr, flux, pf, te, mre, xclo, xtrae, &
             dint, accond, acpre, cldtop_indx, do_donner_tracer,  &
@@ -318,7 +329,9 @@ end subroutine don_cm_cloud_model_k
 
 subroutine don_cm_gen_incloud_profs_k  &
          (nlev_lsm, nlev_hires, ntr, kou, diag_unit, debug_ijt, &
-          Col_diag,  Param, tb, pb, alpp, cld_press, temp_c, &
+!++lwh
+          Col_diag,  Param, Initialized, tb, pb, alpp, cld_press, temp_c, &
+!--lwh
           mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave, tcc, wv, &
           rcl, qlwa, dfr, flux, pf, te, mre, xclo, xtrae, dint, accond, &
           acpre, cldtop_indx, do_donner_tracer, lfc_not_reached, ermesg)
@@ -327,8 +340,8 @@ subroutine don_cm_gen_incloud_profs_k  &
 !
 !----------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type, donner_column_diag_type
-use sat_vapor_pres_mod, only: sat_vapor_pres_data
+use donner_types_mod, only : donner_param_type, donner_column_diag_type, &
+                             donner_initialized_type
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none 
@@ -340,6 +353,9 @@ integer,                            intent(in)    :: nlev_lsm,   &
 logical,                            intent(in)    :: debug_ijt
 type(donner_column_diag_type),      intent(in)    :: Col_diag
 type(donner_param_type),            intent(in)    :: Param      
+!++lwh
+type(donner_initialized_type),      intent(in)    :: Initialized
+!--lwh
 real,                               intent(in)    :: tb, pb, alpp
 real,    dimension(nlev_hires),     intent(in)    :: cld_press
 real,    dimension(nlev_lsm),       intent(in)    :: temp_c,   &
@@ -439,6 +455,12 @@ character(len=*),                   intent(out)   :: ermesg
       logical  :: flag
       integer  :: max_cloud_level,indx, ktr
       integer  :: k, kcont, kc, nbad
+!++lwh
+      real, parameter :: g_2_kg = 1.e-3 ! kg/g
+      real :: qlw_save, t_avg
+      real, dimension( size(xclo,2) ) :: delta_xclo0, delta_xclo1
+      integer :: n, ntracer_index
+!--lwh
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -541,7 +563,7 @@ character(len=*),                   intent(out)   :: ermesg
       rcl(1) = Param%cloud_base_radius
       tcc(1) = tb
       xclo(1,:) = tracers_c(1,:)
-      call lookup_es_k (sat_vapor_pres_data, tb, es, nbad) 
+      call lookup_es_k (tb, es, nbad) 
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -685,6 +707,10 @@ character(len=*),                   intent(out)   :: ermesg
 !-----------------------------------------------------------------------
 !
 !-----------------------------------------------------------------------
+!++lwh
+        qlw_save = qlw
+!--lwh
+
         call don_cm_move_parcel_k    &
              (k, kou, diag_unit, debug_ijt, cld_press(k),  &
               cld_press(k+1), alpp, Param, pcsave, qlw, sumfrea, qrw, &
@@ -724,10 +750,45 @@ character(len=*),                   intent(out)   :: ermesg
                  'in clotr: ent= ',rmub
           endif
 
+!++lwh
+!--------------------------------------------------------------------
+!    Call tracer wet deposition
+!    
+!    Convert dqrw3 from g/m3 to kg/m3
+!    from g(h2o) per m**3 to kg(h2o) per kg(air).
+!--------------------------------------------------------------------
+          t_avg = 0.5*(tcc(k)+tcc(k+1))
+          do n = 1,size(xclo,2)
+             call wet_deposition_0D( Initialized%wetdep(n)%scheme, &
+                                     Initialized%wetdep(n)%Henry_constant, &
+                                     Initialized%wetdep(n)%Henry_variable, &
+                                     Initialized%wetdep(n)%frac_in_cloud, &
+                                     Initialized%wetdep(n)%alpha_r, &
+                                     Initialized%wetdep(n)%alpha_s, &
+                                     t_avg, cld_press(k), cld_press(k+1), &
+                                     qlw_save, dqrw3*g_2_kg, &
+                                     xclo(k,n), delta_xclo0(n) )
+          end do
+!--lwh          
           call don_cm_clotr_k    &
                (ntr, diag_unit, debug_ijt, Param, clsou(k,:),  &
                 clsou(k+1,:), xtrae(k,:), xtrae(k+1,:), xclo(k,:), &
                 entrain, dt_micro, xclo(k+1,:), ermesg)
+!++lwh
+          do n = 1,size(xclo,2)
+             call wet_deposition_0D( Initialized%wetdep(n)%scheme, &
+                                     Initialized%wetdep(n)%Henry_constant, &
+                                     Initialized%wetdep(n)%Henry_variable, &
+                                     Initialized%wetdep(n)%frac_in_cloud, &
+                                     Initialized%wetdep(n)%alpha_r, &
+                                     Initialized%wetdep(n)%alpha_s, &
+                                     t_avg, & 
+                                     cld_press(k), cld_press(k+1), &
+                                     qlw, dqrw3*g_2_kg, &
+                                     xclo(k+1,n), delta_xclo1(n) )
+             xclo(k+1,n) = xclo(k+1,n) - 0.5*(delta_xclo0(n)+delta_xclo1(n))
+          end do
+!--lwh          
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -882,7 +943,6 @@ subroutine don_cm_move_parcel_k    &
 !----------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_mod, only: sat_vapor_pres_data
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
@@ -1159,7 +1219,7 @@ character(len=*),        intent(out)   :: ermesg
 !    define the vapor mixing ratio for the new cloud temperature at
 !    level k+1.
 !--------------------------------------------------------------------
-      call lookup_es_k (sat_vapor_pres_data, tcctop, es, nbad)
+      call lookup_es_k (tcctop, es, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1255,7 +1315,6 @@ subroutine don_cm_lcl_k    &
 !---------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_mod, only: sat_vapor_pres_data
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
@@ -1380,7 +1439,7 @@ character(len=*),        intent(out)  :: ermesg
 !    determine the saturation mixing ratio for this temperature and
 !    pressure. 
 !---------------------------------------------------------------------
-        call lookup_es_k (sat_vapor_pres_data, t_parcel, es, nbad)
+        call lookup_es_k (t_parcel, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1871,7 +1930,6 @@ subroutine don_cm_compute_vert_fluxes_k   &
 !---------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_mod, only: sat_vapor_pres_data
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none 
@@ -2030,7 +2088,7 @@ character(len=*),                   intent(out)    :: ermesg
 !    q_sat is correctly a specific humidity; mre(kc) is incorrectly a 
 !    mixing ratio.
 !---------------------------------------------------------------------
-        call lookup_es_k (sat_vapor_pres_data, tcc(kc), esat, nbad)
+        call lookup_es_k (tcc(kc), esat, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -2722,7 +2780,11 @@ character(len=*),             intent(out)   :: ermesg
       if (debug_ijt) then
         write (diag_unit, '(a, e20.12)')  'summel= ',summel
       endif
-      summel = summel*cell_precip/cu
+      if (cu /= 0.0) then
+        summel = summel*cell_precip/cu
+      else
+        summel = 0.0                
+      endif
       dints  = dint + summel
 
 !--------------------------------------------------------------------
@@ -2835,7 +2897,6 @@ subroutine don_cm_simult_k   &
 !--------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_mod, only: sat_vapor_pres_data
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
@@ -2950,7 +3011,7 @@ character(len=*),        intent(out)   ::  ermesg
 !    define the specific humidity at the cloud temperature (sphum) and
 !    the gas constant for moist air (rstar).
 !---------------------------------------------------------------------
-      call lookup_es_k (sat_vapor_pres_data, cloud_temp, es, nbad)
+      call lookup_es_k (cloud_temp, es, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -3192,7 +3253,7 @@ character(len=*),        intent(out)   ::  ermesg
 !    define the virtual temperature (htv) corresponding to the updated 
 !    temperature test.
 !----------------------------------------------------------------------
-        call lookup_es_k (sat_vapor_pres_data, test, es, nbad)
+        call lookup_es_k (test, es, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -3245,7 +3306,6 @@ subroutine don_cm_tae_k    &
 !--------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_mod, only: sat_vapor_pres_data
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
@@ -3318,7 +3378,7 @@ character(len=*),        intent(out)   :: ermesg
 !    level (mre).
 !--------------------------------------------------------------------
         te = init_temp*((pr/init_pr)**Param%kappa)
-        call lookup_es_k (sat_vapor_pres_data, te, es, nbad)
+        call lookup_es_k (te, es, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -3370,7 +3430,6 @@ subroutine don_cm_micro_k   &
 !--------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_mod, only: sat_vapor_pres_data
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
@@ -3470,7 +3529,7 @@ character(len=*),         intent(out)   :: ermesg
 !--------------------------------------------------------------------
 !    define the saturation mixing ratio (rs1) at level p1.
 !--------------------------------------------------------------------
-      call lookup_es_k (sat_vapor_pres_data, tc1, es1, nbad) 
+      call lookup_es_k (tc1, es1, nbad) 
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -3486,7 +3545,7 @@ character(len=*),         intent(out)   :: ermesg
 !--------------------------------------------------------------------
 !    define the saturation mixing ratio (rs2) at level p2.
 !--------------------------------------------------------------------
-      call lookup_es_k (sat_vapor_pres_data, tc2, es2, nbad) 
+      call lookup_es_k (tc2, es2, nbad) 
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.

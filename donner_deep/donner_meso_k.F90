@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_meso_k.F90,v 13.0.2.1 2006/04/17 19:05:56 pjp Exp $
+!  $Id: donner_meso_k.F90,v 13.0.2.2.4.1 2006/11/01 09:47:25 rsh Exp $
 
 !module donner_meso_inter_mod
 
@@ -16,7 +16,8 @@ subroutine don_m_meso_effects_k    &
           tracers_c, ensembl_cond, ensmbl_precip, pb, plzb_c, pt_ens, &
           ampta1, ensembl_anvil_cond, wtp, qtmes, anvil_precip_melt, &
           meso_cloud_area, cmus_tot, dmeml, emds, emes, wmms, wmps, &
-          umeml, tmes, mrmes, emdi, pmd, pztm, pzm, meso_precip, ermesg)
+          umeml, temptr, tmes, mrmes, emdi, pmd, pztm, pzm,    &
+          meso_precip, ermesg)
 
 !-------------------------------------------------------------------
 !    subroutine don_m_meso_effects_k obtains the mesoscale effects
@@ -47,7 +48,7 @@ real,                              intent(in)  :: ensembl_cond,   &
                                                   plzb_c, pt_ens,   &
                                                   ampta1, &
                                                   ensembl_anvil_cond
-real,   dimension(nlev_lsm,ntr),   intent(out) :: wtp, qtmes
+real,   dimension(nlev_lsm,ntr),   intent(out) :: wtp, qtmes, temptr
 real,   dimension(nlev_lsm),       intent(out) :: anvil_precip_melt, &
                                                   meso_cloud_area,    &
                                                   cmus_tot, dmeml, emds,&
@@ -207,7 +208,7 @@ character(len=*),                  intent(out) :: ermesg
             p_hires, rlsm, emsm, etsm, pfull_c,  &
              temp_c, mixing_ratio_c, phalf_c, tracers_c,  &
               pb, pt_ens, ampta1, dp, pztm,  wtp, &
-                  qtmes, cmu, wmms, wmps, tmes_up, mrmes_up,   &
+                  qtmes, cmu, wmms, wmps, temptr, tmes_up, mrmes_up,   &
                   meso_cloud_area, umeml,&
                   alp, pzm, hfmin, cmui, ermesg)
  
@@ -354,8 +355,8 @@ subroutine don_m_meso_updraft_k    &
          (nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, Param,  &
           p_hires, rlsm, emsm, etsm, pfull_c, temp_c, mixing_ratio_c, &
           phalf_c, tracers_c, pb, pt_ens, ampta1, dp, pztm, wtp, &
-          qtmes, cmu, wmms, wmps, tmes_up, mrmes_up, meso_cloud_area, &
-          umeml, alp, pzm, hfmin, cmui, ermesg)
+          qtmes, cmu, wmms, wmps, temptr, tmes_up, mrmes_up,  &
+          meso_cloud_area, umeml, alp, pzm, hfmin, cmui, ermesg)
 
 !-------------------------------------------------------------------
 !    subroutine meens computes the mesoscale effects of the composited
@@ -367,7 +368,6 @@ subroutine don_m_meso_updraft_k    &
 !-------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_mod, only: sat_vapor_pres_data
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
@@ -386,7 +386,7 @@ real,   dimension(nlev_lsm+1),   intent(in)  :: phalf_c
 real,   dimension(nlev_lsm,ntr), intent(in)  :: tracers_c
 real,                            intent(in)  :: pb, pt_ens, ampta1,   &
                                                 dp, pztm
-real,   dimension(nlev_lsm,ntr), intent(out) :: wtp, qtmes
+real,   dimension(nlev_lsm,ntr), intent(out) :: wtp, qtmes, temptr
 real,   dimension(nlev_lsm),     intent(out) :: cmu, wmms, wmps, &
                                                 tmes_up, mrmes_up, &
                                                 meso_cloud_area, umeml
@@ -403,7 +403,6 @@ character(len=128),              intent(out) :: ermesg
       real, dimension (nlev_lsm)         :: omv, tempq, owm, tempqa
       real, dimension(nlev_lsm,ntr)      :: otm
       real, dimension(nlev_hires, ntr)   :: wthr
-      real, dimension(nlev_lsm, ntr)     :: temptr
       real, dimension(ntr)               :: q1t
 
 
@@ -827,7 +826,7 @@ character(len=128),              intent(out) :: ermesg
 !    should be mixing ratio), reset it to the saturation value.
 !---------------------------------------------------------------------
           ta = temp_c(k) + Param%tprime_meso_updrft
-          call lookup_es_k (sat_vapor_pres_data, ta, es, nbad)
+          call lookup_es_k (ta, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -878,7 +877,7 @@ character(len=128),              intent(out) :: ermesg
 !    case the loop will be exited.
 !---------------------------------------------------------------------
         te = temp_c(k) + Param%tprime_meso_updrft
-        call lookup_es_k (sat_vapor_pres_data, te, es, nbad)
+        call lookup_es_k (te, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -993,7 +992,7 @@ character(len=128),              intent(out) :: ermesg
 !    !!!).
 !--------------------------------------------------------------------
         te = temp_c(k) + Param%tprime_meso_updrft
-        call lookup_es_k (sat_vapor_pres_data, te, es, nbad)
+        call lookup_es_k (te, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1033,7 +1032,7 @@ character(len=128),              intent(out) :: ermesg
 !     in the parcel at the jkp level.
 !--------------------------------------------------------------------
           else if (k == jsave) then
-            call lookup_es_k (sat_vapor_pres_data, tep, es, nbad)
+            call lookup_es_k (tep, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1059,7 +1058,7 @@ character(len=128),              intent(out) :: ermesg
 !     the jkp level.
 !--------------------------------------------------------------------
           else
-            call lookup_es_k (sat_vapor_pres_data, tep, es, nbad)
+            call lookup_es_k (tep, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1226,7 +1225,7 @@ character(len=128),              intent(out) :: ermesg
 !    !!!).
 !--------------------------------------------------------------------
         tmu = temp_c(jk) + Param%TPRIME_MESO_UPDRFT
-        call lookup_es_k (sat_vapor_pres_data, tmu, es, nbad)
+        call lookup_es_k (tmu, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1377,7 +1376,6 @@ subroutine don_m_meso_downdraft_k    &
 !-------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_mod, only: sat_vapor_pres_data
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
@@ -1481,7 +1479,7 @@ character(len=*),              intent(out)  :: ermesg
 !    see "Moist Static Energy A, 1/26/91" notes.
 !---------------------------------------------------------------------
         targ = temp_c(k)
-        call lookup_es_k (sat_vapor_pres_data, targ, es, nbad)
+        call lookup_es_k (targ, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1501,7 +1499,7 @@ character(len=*),              intent(out)  :: ermesg
         tprimd = tprimd/(Param%cp_air + Param%hlv*c1*c2)
         tempt(k) = temp_c(k) + tprimd
         targ = tempt(k)
-        call lookup_es_k (sat_vapor_pres_data, targ, es, nbad)
+        call lookup_es_k (targ, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1590,7 +1588,7 @@ character(len=*),              intent(out)  :: ermesg
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
                       'in polat: k,p,x=', k, pb, tb
           endif
-          call lookup_es_k (sat_vapor_pres_data, tb, es, nbad)
+          call lookup_es_k (tb, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1614,7 +1612,7 @@ character(len=*),              intent(out)  :: ermesg
           emt(k) = wa*fjkb + wb*fjk
           fjk = ampta1*omd*(tempqa(k) - mixing_ratio_C(k))
           targ = tb + tprimd
-          call lookup_es_k (sat_vapor_pres_data, targ, es, nbad)
+          call lookup_es_k (targ, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1664,7 +1662,7 @@ character(len=*),              intent(out)  :: ermesg
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
                       'in polat: k,p,x=', k, pmd, tmd
           endif
-          call lookup_es_k (sat_vapor_pres_data, tmd, es, nbad)
+          call lookup_es_k (tmd, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1685,7 +1683,7 @@ character(len=*),              intent(out)  :: ermesg
           wb = (phalf_c(k) - pmd)/(pfull_c(k-1) - pmd)
           emt(k) = fjkmd*wa + fjkm*wb
           targ = tmd + tprimd
-          call lookup_es_k (sat_vapor_pres_data, targ, es, nbad)
+          call lookup_es_k (targ, es, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.

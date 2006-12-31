@@ -27,11 +27,11 @@ use fms_mod,           only: open_namelist_file, fms_init, &
                              mpp_pe, mpp_root_pe, stdlog, &
                              file_exist, write_version_number, &
                              check_nml_error, error_mesg, &
-                             FATAL, NOTE, WARNING, close_file
+                             FATAL, close_file
 
 !  shared radiation package modules:
 
-use rad_utilities_mod, only: rad_utilities_init, solar_spectrum_type
+use rad_utilities_mod, only: solar_spectrum_type
 
 
 !--------------------------------------------------------------------
@@ -49,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 11.0 2004/09/28 19:21:37 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 11.0.4.1 2006/10/27 16:45:33 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 !--------------------------------------------------------------------
 !----- interfaces ------

@@ -1,7 +1,19 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 13.0 2006/03/28 21:08:59 fms Exp $
+!  $Id: donner_types.h,v 13.0.4.1.2.1 2006/11/01 09:47:25 rsh Exp $
 
+
+!#######################################################################
+type donner_wetdep_type
+
+   character(len=200) :: scheme, units
+   real :: Henry_constant
+   real :: Henry_variable
+   real :: frac_in_cloud
+   real :: alpha_r
+   real :: alpha_s
+
+end type donner_wetdep_type
 
 !#######################################################################
 
@@ -39,6 +51,8 @@ integer  :: total_pts
 integer  :: pts_processed_conv
 integer  :: conv_alarm
 integer  :: physics_dt
+
+type(donner_wetdep_type), dimension(:), pointer :: wetdep
 
 end type donner_initialized_type
 
@@ -393,6 +407,7 @@ type donner_conv_type
 !   fre            normalized freezing [ K/sec ]
 !   mrmes           normalized mesoscale moisture-flux convergence
 !                  [ kg(H2O)/kg/sec ]
+!   temptr         tracer concentration in mesoscale updraft [kg/kg]
 !   tmes           normalized mesoscale entropy-flux convergence
 !                  [ K/sec ]
 !                  Entropy-flux convergence is mesoscale component
@@ -473,6 +488,7 @@ real, dimension(:,:,:,:), pointer ::          &
                  qtceme=>NULL(),                   &
                  qtmes1=>NULL(),                   &
                  qtren1=>NULL(),                   &
+                 temptr=>NULL(),                   &
                  wtp1=>NULL()
 real, dimension(:,:),   pointer  ::           &
                  a1=>NULL(),                       &

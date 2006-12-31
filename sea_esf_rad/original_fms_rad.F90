@@ -28,65 +28,26 @@ use            fsrad_mod, only: rdparm_init, fsrad, co2_data
 
 use           clouds_mod, only: clouds, clouds_init, clouds_end
 
-use     diag_manager_mod, only: register_diag_field, send_data
+use     time_manager_mod, only: time_type
 
-use     time_manager_mod, only: time_type, set_date, set_time,  &
-                                get_time,    operator(+),       &
-                                operator(-), operator(/=), get_date,&
-                                increment_time,  operator(<), &
-                                operator(>=), operator(>)
-
-
-use    diag_integral_mod, only: diag_integral_field_init, &
-                                sum_diag_integral_field
-
-use              fms_mod, only: FATAL,  WARNING, NOTE,  &
-                                close_file, read_data, write_data, &
+use              fms_mod, only: fms_init, FATAL, &
+                                close_file, &
                                 open_namelist_file,    &
                                 check_nml_error, file_exist,       &
                                 error_mesg, &
-                                mpp_pe, mpp_root_pe, mpp_npes, &
-                                write_version_number, stdlog
-
-use     optical_path_mod, only: optical_path_init
-
-use  longwave_tables_mod, only: longwave_tables_init
-
-!use longwave_aerosol_mod, only: longwave_aerosol_init
-
-use           gas_tf_mod, only: gas_tf_init, gas_tf_end
-
-use  longwave_clouds_mod, only: longwave_clouds_init
-
-use   radiation_diag_mod, only: radiation_diag_init, radiation_diag_end
-
-use  longwave_fluxes_mod, only: longwave_fluxes_init
-
-use  longwave_params_mod, only: longwave_params_init
+                                mpp_pe, mpp_root_pe, &
+                                write_version_number
 
 use    rad_utilities_mod, only: rad_utilities_init, &
-                                radiation_control_type, &
-                                Rad_control, &
-!                               define_environment, &
                                 radiative_gases_type, &
                                 cldrad_properties_type, &
                                 cld_specification_type, &
                                 astronomy_type, &
                                 atmos_input_type, &
                                 surface_type, &
-                                shortwave_control_type, Sw_control, &
-                                sw_output_type, lw_output_type, &
+                                Sw_control, &
                                 rad_output_type, &
-                                fsrad_output_type, &
-                                cloudrad_control_type, &
-                                rad_utilities_init, &
-                                Cldrad_control
-
-use esfsw_parameters_mod, only: esfsw_parameters_init
-
-use            ozone_mod, only: ozone_init
-
-use   lw_gases_stdtf_mod, only: lw_gases_stdtf_init 
+                                fsrad_output_type
 
 implicit none 
 private 
@@ -97,8 +58,8 @@ public    original_fms_rad_init, original_fms_rad_end, original_fms_rad
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: original_fms_rad.F90,v 13.0 2006/03/28 21:12:55 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_08 $'
+character(len=128) :: version = '$Id: original_fms_rad.F90,v 13.0.2.1 2006/10/27 16:45:36 wfc Exp $'
+character(len=128) :: tagname = '$Name: memphis_2006_12 $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)
@@ -339,6 +300,8 @@ type(time_type), intent(in)                 :: Time
       integer :: id, jd
 
       if(module_is_initialized) return
+      call fms_init
+      call rad_utilities_init
 
 !---------------------------------------------------------------------
 !    read namelist.

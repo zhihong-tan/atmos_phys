@@ -16,13 +16,9 @@
 
 use fms_mod,               only:  fms_init, open_namelist_file, &
                                   write_version_number, mpp_pe, &
-                                  mpp_clock_id, mpp_clock_begin, &
-                                  mpp_clock_end, CLOCK_ROUTINE, &
-                                  MPP_CLOCK_SYNC, &
                                   mpp_root_pe, stdlog, file_exist,  &
                                   check_nml_error, error_mesg,   &
-                                  FATAL, NOTE, WARNING, close_file,  &
-                                  read_data, write_data
+                                  FATAL, close_file
 use constants_mod,         only:  constants_init, diffac, radian
 use time_manager_mod,      only:  time_type
 use diag_manager_mod,      only:  register_diag_field, send_data, &
@@ -37,7 +33,7 @@ use cloud_generator_mod,   only:  cloud_generator_init, &
 !  shared radiation package modules:
 
 use rad_utilities_mod,     only:  rad_utilities_init, Lw_control, &
-                                  Cldrad_control, thickavg, thinavg,  &
+                                  Cldrad_control, thickavg,  &
                                   microrad_properties_type, &
                                   cldrad_properties_type, &
                                   microphysics_type, Lw_parameters
@@ -58,8 +54,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: microphys_rad.F90,v 13.0 2006/03/28 21:12:32 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_08 $'
+character(len=128)  :: version =  '$Id: microphys_rad.F90,v 13.0.2.1 2006/10/27 16:45:35 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 
 
 !---------------------------------------------------------------------
