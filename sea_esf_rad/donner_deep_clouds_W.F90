@@ -20,7 +20,7 @@
 use time_manager_mod,       only: time_type
 use       fms_mod,          only: open_namelist_file, file_exist,   &
                                   check_nml_error, error_mesg,   &
-                                  close_file, FATAL, &
+                                  close_file, FATAL,  &
                                   mpp_pe, mpp_root_pe, &
                                   write_version_number, stdlog
 use rad_utilities_mod,      only: microphysics_type
@@ -40,8 +40,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 13.0.2.1 2006/10/27 16:45:33 wfc Exp $'
-   character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 14.0 2007/03/15 22:05:39 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: nalanda $'
 
 
 
@@ -230,8 +230,10 @@ end subroutine donner_deep_clouds_W_end
 subroutine donner_deep_clouds_amt (is, ie, js, je,   &
                    cell_cloud_frac, cell_liquid_amt, cell_liquid_size, &
                    cell_ice_amt, cell_ice_size, &
+                   cell_droplet_number, &
                    meso_cloud_frac, meso_liquid_amt, meso_liquid_size, &
-                   meso_ice_amt, meso_ice_size,  nsum_out, &
+                   meso_ice_amt, meso_ice_size, &
+                   meso_droplet_number,  nsum_out, &
                    Cell_microphys,  Meso_microphys)
 
 !---------------------------------------------------------------------
@@ -248,8 +250,10 @@ integer,                 intent(in)    :: is,ie,js,je
 real, dimension(:,:,:), intent(inout) ::   &
                    cell_cloud_frac, cell_liquid_amt, cell_liquid_size, &
                    cell_ice_amt, cell_ice_size, &
+                   cell_droplet_number, &
                    meso_cloud_frac, meso_liquid_amt, meso_liquid_size, &
-                   meso_ice_amt, meso_ice_size
+                   meso_ice_amt, meso_ice_size, &
+                   meso_droplet_number
 integer, dimension(:,:), intent(inout) ::  nsum_out
 type(microphysics_type), intent(inout) :: Cell_microphys, Meso_microphys
 
@@ -265,11 +269,14 @@ type(microphysics_type), intent(inout) :: Cell_microphys, Meso_microphys
                       cell_liquid_size, Cell_microphys%size_drop,&
                       cell_ice_amt, Cell_microphys%conc_ice, &
                       cell_ice_size, Cell_microphys%size_ice, &
+                 cell_droplet_number, Cell_microphys%droplet_number, &
                       meso_cloud_frac, Meso_microphys%cldamt,   &
                       meso_liquid_amt, Meso_microphys%conc_drop, &
                       meso_liquid_size, Meso_microphys%size_drop,&
                       meso_ice_amt, Meso_microphys%conc_ice, &
-                      meso_ice_size, Meso_microphys%size_ice, nsum_out)
+                      meso_ice_size, Meso_microphys%size_ice,   &
+                 meso_droplet_number, Meso_microphys%droplet_number, &
+                      nsum_out)
 
 !---------------------------------------------------------------------
 
@@ -288,11 +295,14 @@ subroutine donner_deep_avg    &
                 cell_liquid_size, cell_liquid_size_out    ,&
                 cell_ice_amt, cell_ice_amt_out, &
                 cell_ice_size, cell_ice_size_out, &
+                cell_droplet_number, cell_droplet_number_out, &
                 meso_cloud_frac, meso_cloud_frac_out, &
                 meso_liquid_amt, meso_liquid_amt_out, &
                 meso_liquid_size, meso_liquid_size_out,&
                 meso_ice_amt, meso_ice_amt_out, &
-                meso_ice_size, meso_ice_size_out, nsum)
+                meso_ice_size, meso_ice_size_out,   &
+                meso_droplet_number, meso_droplet_number_out, &
+                nsum)
 
 !------------------------------------------------------------------
 !    subroutine donner_deep_avg outputs the cloud microphysical quant-
@@ -308,22 +318,26 @@ real,    dimension(:,:,:), intent(inout) :: cell_cloud_frac,        &
                                           cell_liquid_size,  &
                                           cell_ice_amt, &
                                           cell_ice_size,   &
+                                       cell_droplet_number, &
                                           meso_cloud_frac,   &
                                           meso_liquid_amt, &
                                           meso_liquid_size, &
                                           meso_ice_amt,  &
-                                          meso_ice_size
+                                          meso_ice_size, &
+                                        meso_droplet_number
 integer, dimension(:,:), intent(inout) :: nsum                        
 real,    dimension(:,:,:), intent(out) :: cell_cloud_frac_out,        &
                                           cell_liquid_amt_out,   &
                                           cell_liquid_size_out,  &
                                           cell_ice_amt_out, &
                                           cell_ice_size_out,   &
+                                        cell_droplet_number_out, &
                                           meso_cloud_frac_out,   &
                                           meso_liquid_amt_out, &
                                           meso_liquid_size_out, &
                                           meso_ice_amt_out,  &
-                                          meso_ice_size_out
+                                          meso_ice_size_out, &
+                                       meso_droplet_number_out
 
 !----------------------------------------------------------------------
 !  intent(in) variables:
@@ -402,11 +416,13 @@ real,    dimension(:,:,:), intent(out) :: cell_cloud_frac_out,        &
         cell_liquid_size_out            = cell_liquid_size
         cell_ice_amt_out                = cell_ice_amt
         cell_ice_size_out               = cell_ice_size
+        cell_droplet_number_out         = cell_droplet_number
         meso_cloud_frac_out             = meso_cloud_frac
         meso_liquid_amt_out             = meso_liquid_amt
         meso_liquid_size_out            = meso_liquid_size
         meso_ice_amt_out                = meso_ice_amt
         meso_ice_size_out               = meso_ice_size
+        meso_droplet_number_out         = meso_droplet_number
         
 !----------------------------------------------------------------------
 !    if any columns have not been given values, stop execution with an 
@@ -433,6 +449,8 @@ real,    dimension(:,:,:), intent(out) :: cell_cloud_frac_out,        &
                               cell_ice_amt(:,:,k        )*inv_nsum
           cell_ice_size_out(:,:,k) =     &
                               cell_ice_size(:,:,k        )*inv_nsum
+          cell_droplet_number_out(:,:,k) =     &
+                              cell_droplet_number(:,:,k      )*inv_nsum
           meso_cloud_frac_out(:,:,k) =   &
                               meso_cloud_frac(:,:,        k)*inv_nsum
           meso_liquid_amt_out(:,:,k) =   &
@@ -443,6 +461,8 @@ real,    dimension(:,:,:), intent(out) :: cell_cloud_frac_out,        &
                               meso_ice_amt(:,:,        k)*inv_nsum
           meso_ice_size_out(:,:,k) =     & 
                               meso_ice_size(:,:,        k)*inv_nsum
+          meso_droplet_number_out(:,:,k) =     & 
+                              meso_droplet_number(:,:,     k)*inv_nsum
         end do
      
 !---------------------------------------------------------------------
@@ -488,11 +508,13 @@ real,    dimension(:,:,:), intent(out) :: cell_cloud_frac_out,        &
       cell_liquid_size                = 0.0
       cell_ice_amt                    = 0.0
       cell_ice_size                   = 0.0
+      cell_droplet_number             = 0.0
       meso_cloud_frac                 = 0.0
       meso_liquid_amt                 = 0.0
       meso_liquid_size                = 0.0
       meso_ice_amt                    = 0.0
       meso_ice_size                   = 0.0
+      meso_droplet_number             = 0.0
       nsum                            = 0
        
 !----------------------------------------------------------------------

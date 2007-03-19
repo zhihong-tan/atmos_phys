@@ -11,8 +11,8 @@ MODULE CONV_UTILITIES_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities.F90,v 1.1.2.1 2006/09/11 16:12:27 wfc Exp $'
-  character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+  character(len=128) :: version = '$Id: conv_utilities.F90,v 14.0 2007/03/15 22:08:41 fms Exp $'
+  character(len=128) :: tagname = '$Name: nalanda $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -564,16 +564,15 @@ contains
 
 !#####################################################################
 !#####################################################################
-
   subroutine findt(z,p,hl,qt,th,qv,ql,qi,qs,thv,doice)
     implicit none
     real,     intent(in)  :: z, p, hl, qt
     logical,  intent(in)  :: doice
     real,     intent(out) :: th, qv, ql, qi, qs, thv
-    real      tc, leff, nu, qc, temps, hl1, es, dqsdt
+    real      tc, leff, nu, qc, temps, hl1, es, dqsdt, dherror
     integer   iteration, id_check
-    integer :: niteration = 10
-
+    integer,  save :: niteration = 10
+ 
     tc = (hl-grav*z)/cp_air
     if (doice) then
        nu = max(min((268.-tc)/20.,1.0),0.0);
@@ -583,7 +582,7 @@ contains
     leff = (1.-nu)*HLv + nu*HLs
     temps = tc
     call qses(temps,p,qs,es)
-    
+      id_check = 1
     if(qs.gt.qt) then
        id_check=0
     else
@@ -593,19 +592,16 @@ contains
           dqsdt=dqsdt*epsilo*p/(p-es*(1.-epsilo))**2.
           temps=temps+((tc-temps)*cp_air/leff+(qt-qs))/(cp_air/leff+dqsdt)
           call qses(temps,p,qs,es)
-
+ 
           hl1=cp_air*temps-leff*(qt-qs)+grav*z
-          if(abs(hl1-hl).lt.1.0) then
+          dherror=abs(hl1-hl)
+          if(dherror.lt.1.0) then
              id_check=0; exit
           end if
        enddo
-       if (id_check.ne.0)  print*,'ID_CHECK=111111',z,p,hl,qt,temps,qs,hl1,leff,niteration
-!       hl1=cp_air*temps-leff*(qt-qs)+grav*z
-!       if(abs(hl1-hl).lt.1000.0) then
-!          id_check=0
-!       else
-!          id_check=1; print*,'ID_CHECK=1',z,p,hl,qt,temps,qs,hl1,leff
-!       endif
+       if (id_check.ne.0 .and. dherror .gt. 1000)  then
+          print*,'ID_CHECK=111111',z,p,hl,qt,temps,qs,hl1,leff,niteration
+       end if
     endif
     qc = max(qt-qs, 0.)
     qv = qt - qc

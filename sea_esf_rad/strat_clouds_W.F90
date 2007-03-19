@@ -60,8 +60,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 13.0.4.1 2006/10/27 16:45:38 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 14.0 2007/03/15 22:08:00 fms Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda $'
 
 
 !---------------------------------------------------------------------
@@ -75,10 +75,13 @@ public          &
 !-------- namelist  ---------
 
 logical   :: do_stochastic_clouds = .false.
+integer   :: seedperm = 0
+logical   :: one_generator_call = .false.
 
 
 namelist /strat_clouds_W_nml /                      &
-                                do_stochastic_clouds
+                                do_stochastic_clouds, seedperm, &
+                                one_generator_call
 
 
 !----------------------------------------------------------------------
@@ -367,11 +370,27 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 
       real, dimension (size(pflux,1), size(pflux,2),  &
                        size(pflux,3)-1, Cldrad_control%nlwcldb) :: &
-                         ql_stoch_lw, qi_stoch_lw, qa_stoch_lw
+                         ql_stoch_lw2, qi_stoch_lw2, qa_stoch_lw2, &
+                         qn_stoch_lw2
 
       real, dimension (size(pflux,1), size(pflux,2),  &
                        size(pflux,3)-1, Solar_spect%nbands) :: &
-                         ql_stoch_sw, qi_stoch_sw, qa_stoch_sw
+                         ql_stoch_sw2, qi_stoch_sw2, qa_stoch_sw2, &
+                         qn_stoch_sw2
+      real, dimension (size(pflux,1), size(pflux,2),                 &
+                       size(pflux,3)-1,                              &
+                       Cldrad_control%nlwcldb + Solar_spect%nbands), &
+             target :: ql_stoch, qi_stoch, qa_stoch, qn_stoch
+ 
+      real, dimension(:, :, :, :), pointer :: &
+                  ql_stoch_lw, qi_stoch_lw, qa_stoch_lw,qn_stoch_lw, &
+                  ql_stoch_sw, qi_stoch_sw, qa_stoch_sw, qn_stoch_sw
+      
+      integer, dimension(size(Cld_spec%cld_thickness_lw_band, 1), &
+                         size(Cld_spec%cld_thickness_lw_band, 2), &
+                         size(Cld_spec%cld_thickness_lw_band, 3), &
+          Cldrad_control%nlwcldb + Solar_spect%nbands) ::         &
+                        cld_thickness
 
       integer, dimension (size(pflux,1), size(pflux,2), &
                           size(pflux,3)-1) ::   ktop, kbtm
@@ -444,14 +463,16 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
             end where
           call cloud_summary3 (is, js, land, Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
-			       Cld_spec%cloud_droplet, &			       
+                               Cld_spec%cloud_droplet, &       
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
                                cldamt, Cld_spec%lwp, Cld_spec%iwp,   &
                                Cld_spec%reff_liq, Cld_spec%reff_ice, &
                                conc_drop= Lsc_microphys%conc_drop, &
                                conc_ice = Lsc_microphys%conc_ice, &
                                size_drop =Lsc_microphys%size_drop,   &
-                               size_ice = Lsc_microphys%size_ice)
+                               size_ice = Lsc_microphys%size_ice, &
+                         droplet_number = Lsc_microphys%droplet_number)
+           cldamt = MIN (cldamt, 1.0)
           if (.not. Cldrad_control%do_specified_strat_clouds) then
             Cld_spec%ncldsw        = ncldlvls
             Cld_spec%nrndlw        = ncldlvls         
@@ -472,29 +493,45 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                          initializeRandomNumberStream(  &
                             constructSeed(nint(lons(is + i - 1)), &
                                           nint(lats(js + j - 1)), &
-                                                              Rad_time))
+                                                    Rad_time, seedperm))
               end do
             end do
-          endif
 
+            if (one_generator_call) then
 !---------------------------------------------------------------------
-!    if using stochastic clouds for the lw calculation, call routine to 
-!    obtain band-dependent values of ql, qi and qa. 
+!    then generate all the subcolumns at once and divide them into 
+!    those needed  for the sw and lw bands.
+!    call routine to obtain  band-dependent values of ql, qi and qa. 
 !---------------------------------------------------------------------
-          if (do_stochastic_clouds) then
-            call generate_stochastic_clouds (        &
-                     streams,                &
-                     Cld_spec%cloud_water,   &
-                     Cld_spec%cloud_ice,     &
-                     Cld_spec%cloud_area,    &
-                     pFull = press(:, :, :kx),&
-                     pHalf = pflux, &
-                     temperature = temp(:, :, :kx),        &
-                     qv= qv(:, :, :kx), &
-                     cld_thickness = Cld_spec%cld_thickness_lw_band, &
-                     ql_stoch = ql_stoch_lw, &
-                     qi_stoch = qi_stoch_lw, &
-                     qa_stoch = qa_stoch_lw)
+              call generate_stochastic_clouds (        &
+                      streams,                &
+                      Cld_spec%cloud_water,   &
+                      Cld_spec%cloud_ice,     &
+                      Cld_spec%cloud_area,    &
+                      Cld_spec%cloud_droplet, &
+                      pFull = press(:, :, :kx),&
+                      pHalf = pflux, &
+                      temperature = temp(:, :, :kx),        &
+                      qv= qv(:, :, :kx), &
+                      cld_thickness = cld_thickness, &
+                      ql_stoch = ql_stoch, &
+                      qi_stoch = qi_stoch, &
+                      qa_stoch = qa_stoch, &
+                      qn_stoch = qn_stoch )
+
+          ql_stoch_lw => ql_stoch(:, :, :, 1:Cldrad_control%nlwcldb)
+          qi_stoch_lw => qi_stoch(:, :, :, 1:Cldrad_control%nlwcldb)
+          qa_stoch_lw => qa_stoch(:, :, :, 1:Cldrad_control%nlwcldb)
+          qn_stoch_lw => qn_stoch(:, :, :, 1:Cldrad_control%nlwcldb)
+          Cld_spec%cld_thickness_lw_band = &
+                       cld_thickness(:, :, :, 1:Cldrad_control%nlwcldb)
+
+          ql_stoch_sw => ql_stoch(:, :, :, Cldrad_control%nlwcldb +1:)
+          qi_stoch_sw => qi_stoch(:, :, :, Cldrad_control%nlwcldb +1:)
+          qa_stoch_sw => qa_stoch(:, :, :, Cldrad_control%nlwcldb +1:)
+          qn_stoch_sw => qn_stoch(:, :, :, Cldrad_control%nlwcldb +1:)
+          Cld_spec%cld_thickness_sw_band = &
+                     cld_thickness(:, :, :, Cldrad_control%nlwcldb +1:)
 
 !---------------------------------------------------------------------
 !    call cloud_summary3 for each lw band, using the band-dependent
@@ -505,7 +542,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
               call cloud_summary3 (          &
                 is, js, land, ql_stoch_lw(:,:,:,nb),&
                 qi_stoch_lw(:,:,:,nb), qa_stoch_lw(:,:,:,nb),&
-		Cld_spec%cloud_droplet, &
+                qn_stoch_lw(:,:,:,nb), &
                 press(:,:,1:kx), pflux, temp, ncldlvls, &
                 cldamt, Cld_spec%lwp_lw_band(:,:,:,nb),&
                 Cld_spec%iwp_lw_band(:,:,:,nb),   &
@@ -514,7 +551,8 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 conc_drop= Lsc_microphys%lw_stoch_conc_drop(:,:,:,nb), &
                 conc_ice = Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb), &
                 size_drop =Lsc_microphys%lw_stoch_size_drop(:,:,:,nb), &
-                size_ice = Lsc_microphys%lw_stoch_size_ice(:,:,:,nb))
+                size_ice = Lsc_microphys%lw_stoch_size_ice(:,:,:,nb), &
+       droplet_number = Lsc_microphys%lw_stoch_droplet_number(:,:,:,nb))
               
               !now that the vertical cloud fraction has been used to
               !properly calculate the in-cloud particle size, rescale
@@ -533,31 +571,138 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                    Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb) * cldamt(:,:,:)
               where (cldamt .gt. 0.) cldamt = 1.                  
                
-          if (.not. Cldrad_control%do_specified_strat_clouds) then
+              if (.not. Cldrad_control%do_specified_strat_clouds) then
                 Cld_spec%nrndlw_band(:,:,nb) = ncldlvls(:,:)
                 Lsc_microphys%lw_stoch_cldamt(:,:,:,nb) = cldamt
               endif
             end do
-          endif
 
 !---------------------------------------------------------------------
-!    if using stochastic clouds for the sw calculation, call routine to 
-!    obtain band-dependent values of ql, qi and qa. 
+!    call cloud_summary3 for each sw band, using the band-dependent
+!    cloud inputs, to obtain band-dependent values of liquid and ice
+!    size and concentration.
 !---------------------------------------------------------------------
-          if (do_stochastic_clouds) then
+          do nb=1,size(Lsc_microphys%sw_stoch_conc_ice,4)
+            call cloud_summary3 (                            &
+              is, js, land, ql_stoch_sw(:,:,:,nb), &
+              qi_stoch_sw(:,:,:,nb), qa_stoch_sw(:,:,:,nb),&
+              qn_stoch_sw(:,:,:,nb), &
+              press(:,:,1:kx), pflux, temp, ncldlvls, &
+              cldamt, Cld_spec%lwp_sw_band(:,:,:,nb), &
+              Cld_spec%iwp_sw_band(:,:,:,nb),   &
+              Cld_spec%reff_liq_sw_band(:,:,:,nb), &
+              Cld_spec%reff_ice_sw_band(:,:,:,nb), &
+              conc_drop= Lsc_microphys%sw_stoch_conc_drop(:,:,:,nb), &
+              conc_ice = Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb), &
+              size_drop =Lsc_microphys%sw_stoch_size_drop(:,:,:,nb), &
+              size_ice = Lsc_microphys%sw_stoch_size_ice(:,:,:,nb), &
+       droplet_number = Lsc_microphys%sw_stoch_droplet_number(:,:,:,nb))
+
+         !now that the vertical cloud fraction has been used to
+         !properly calculate the in-cloud particle size, rescale
+         !the concentrations and cloud amounts to that the cloud
+         !amount is unity in any partially cloudy sub-column. 
+         !
+         !This is necessary so that the radiation code will not
+         !do cloud fraction weights of cloudy and clear sky fluxes.
+         !
+         !The rescaling of the concentrations is necessary so that         the
+         !total optical depth of the layer is constant.  Note that         this
+         !works because cloud extinction is linear in the concentra        tion
+            Lsc_microphys%sw_stoch_conc_drop(:,:,:,nb) = &
+             Lsc_microphys%sw_stoch_conc_drop(:,:,:,nb) * cldamt(:,:,:)
+            Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb) = &
+             Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb) * cldamt(:,:,:)
+             where (cldamt .gt. 0.) cldamt = 1.
+
+             if (.not. Cldrad_control%do_specified_strat_clouds) then
+               Cld_spec%ncldsw_band(:,:,nb) = ncldlvls(:,:)
+               Lsc_microphys%sw_stoch_cldamt(:,:,:,nb) = cldamt
+             endif
+           end do
+ 
+        else  ! (one_call)
+!---------------------------------------------------------------------
+!    call routine to obtain lw band-dependent values of ql, qi and qa. 
+!---------------------------------------------------------------------
             call generate_stochastic_clouds (        &
                      streams,                &
                      Cld_spec%cloud_water,   &
                      Cld_spec%cloud_ice,     &
                      Cld_spec%cloud_area,    &
+                     Cld_spec%cloud_droplet, &
+                     pFull    = press(:, :, :kx),     &
+                     pHalf    = pflux,&
+                     temperature = temp(:, :, :kx),   &
+                     qv = qv(:,:, :kx),   &
+                     cld_thickness = Cld_spec%cld_thickness_lw_band, &
+                     ql_stoch = ql_stoch_lw2, &
+                     qi_stoch = qi_stoch_lw2, &
+                     qa_stoch = qa_stoch_lw2, &
+                     qn_stoch = qn_stoch_lw2 )
+
+!---------------------------------------------------------------------
+!    call routine to obtain sw band-dependent values of ql, qi and qa. 
+!---------------------------------------------------------------------
+            call generate_stochastic_clouds (        &
+                     streams,                &
+                     Cld_spec%cloud_water,   &
+                     Cld_spec%cloud_ice,     &
+                     Cld_spec%cloud_area,    &
+                     Cld_spec%cloud_droplet, &
                      pFull    = press(:, :, :kx),     &
                      pHalf    = pflux,&
                      temperature = temp(:, :, :kx),   &
                      qv = qv(:,:, :kx),   &
                      cld_thickness = Cld_spec%cld_thickness_sw_band, &
-                     ql_stoch = ql_stoch_sw, &
-                     qi_stoch = qi_stoch_sw, &
-                     qa_stoch = qa_stoch_sw)
+                     ql_stoch = ql_stoch_sw2, &
+                     qi_stoch = qi_stoch_sw2, &
+                     qa_stoch = qa_stoch_sw2, &
+                     qn_stoch = qn_stoch_sw2 )
+
+!---------------------------------------------------------------------
+!    call cloud_summary3 for each lw band, using the band-dependent
+!    cloud inputs, to obtain band-dependent values of liquid and ice
+!    size and concentration.
+!---------------------------------------------------------------------
+            do nb=1,Cldrad_control%nlwcldb
+              call cloud_summary3 (          &
+                is, js, land, ql_stoch_lw2(:,:,:,nb),&
+                qi_stoch_lw2(:,:,:,nb), qa_stoch_lw2(:,:,:,nb),&
+                qn_stoch_lw2(:,:,:,nb), &
+                press(:,:,1:kx), pflux, temp, ncldlvls, &
+                cldamt, Cld_spec%lwp_lw_band(:,:,:,nb),&
+                Cld_spec%iwp_lw_band(:,:,:,nb),   &
+                Cld_spec%reff_liq_lw_band(:,:,:,nb), &
+                Cld_spec%reff_ice_lw_band(:,:,:,nb), &
+                conc_drop= Lsc_microphys%lw_stoch_conc_drop(:,:,:,nb), &
+                conc_ice = Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb), &
+                size_drop =Lsc_microphys%lw_stoch_size_drop(:,:,:,nb), &
+                size_ice = Lsc_microphys%lw_stoch_size_ice(:,:,:,nb), &
+       droplet_number = Lsc_microphys%lw_stoch_droplet_number(:,:,:,nb))
+              
+              !now that the vertical cloud fraction has been used to
+              !properly calculate the in-cloud particle size, rescale
+              !the concentrations and cloud amounts to that the cloud
+              !amount is unity in any partially cloudy sub-column. 
+              !
+              !This is necessary so that the radiation code will not
+              !do cloud fraction weights of cloudy and clear sky fluxes.
+              !
+              !The rescaling of the concentrations is necessary so that the
+              !total optical depth of the layer is constant.  Note that this
+              !works because cloud extinction is linear in the concentration
+              Lsc_microphys%lw_stoch_conc_drop(:,:,:,nb) = &
+                   Lsc_microphys%lw_stoch_conc_drop(:,:,:,nb) * cldamt(:,:,:)     
+              Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb) = &
+                   Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb) * cldamt(:,:,:)
+              where (cldamt .gt. 0.) cldamt = 1.                  
+               
+              if (.not. Cldrad_control%do_specified_strat_clouds) then
+                Cld_spec%nrndlw_band(:,:,nb) = ncldlvls(:,:)
+                Lsc_microphys%lw_stoch_cldamt(:,:,:,nb) = cldamt
+              endif
+            end do
 
 !---------------------------------------------------------------------
 !    call cloud_summary3 for each sw band, using the band-dependent
@@ -566,9 +711,9 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !---------------------------------------------------------------------
             do nb=1,size(Lsc_microphys%sw_stoch_conc_ice,4)
               call cloud_summary3 (                            &
-                is, js, land, ql_stoch_sw(:,:,:,nb), &
-                qi_stoch_sw(:,:,:,nb), qa_stoch_sw(:,:,:,nb),&
-                Cld_spec%cloud_droplet, &
+                is, js, land, ql_stoch_sw2(:,:,:,nb), &
+                qi_stoch_sw2(:,:,:,nb), qa_stoch_sw2(:,:,:,nb),&
+                qn_stoch_sw2(:,:,:,nb), &
                 press(:,:,1:kx), pflux, temp, ncldlvls, &
                 cldamt, Cld_spec%lwp_sw_band(:,:,:,nb), &
                 Cld_spec%iwp_sw_band(:,:,:,nb),   &
@@ -577,7 +722,8 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 conc_drop= Lsc_microphys%sw_stoch_conc_drop(:,:,:,nb), &
                 conc_ice = Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb), &
                 size_drop =Lsc_microphys%sw_stoch_size_drop(:,:,:,nb), &
-                size_ice = Lsc_microphys%sw_stoch_size_ice(:,:,:,nb))
+                size_ice = Lsc_microphys%sw_stoch_size_ice(:,:,:,nb), &
+       droplet_number = Lsc_microphys%sw_stoch_droplet_number(:,:,:,nb))
               
               !now that the vertical cloud fraction has been used to
               !properly calculate the in-cloud particle size, rescale
@@ -596,12 +742,13 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                    Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb) * cldamt(:,:,:)
               where (cldamt .gt. 0.) cldamt = 1.                  
                
-          if (.not. Cldrad_control%do_specified_strat_clouds) then
+              if (.not. Cldrad_control%do_specified_strat_clouds) then
                 Cld_spec%ncldsw_band(:,:,nb) = ncldlvls(:,:)
                 Lsc_microphys%sw_stoch_cldamt(:,:,:,nb) = cldamt
               endif
             end do
-          endif
+         endif ! (one_generator_call)
+       endif  ! (do_stochastic_clouds)
 
 !---------------------------------------------------------------------
 !    if microphysically-based radiative properties are not needed, call
@@ -618,11 +765,12 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
           end where
           call cloud_summary3 (is, js, land, Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
-			       Cld_spec%cloud_droplet, &
+                               Cld_spec%cloud_droplet, &
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
                                cldamt, Cld_spec%lwp,   &
                                Cld_spec%iwp, Cld_spec%reff_liq,   &
                                Cld_spec%reff_ice)
+             cldamt = MIN (cldamt, 1.0)
           if (.not. Cldrad_control%do_specified_strat_clouds) then
             Cld_spec%ncldsw        = ncldlvls
             Cld_spec%nrndlw        = ncldlvls         
@@ -666,7 +814,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
         else
           call cloud_summary3 (is, js, land, Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
-			       Cld_spec%cloud_droplet, &
+                               Cld_spec%cloud_droplet, &
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
                                Cld_spec%camtsw, Cld_spec%lwp,   &
                                Cld_spec%iwp, Cld_spec%reff_liq,   &
@@ -825,7 +973,7 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
 !    call lw_emissivity to obtain the longwave cloud emissivity.
 !---------------------------------------------------------------------
         call lw_emissivity (is, js, Cld_spec%lwp, Cld_spec%iwp,  &
-                            Cld_spec%reff_liq, Cld_spec%reff_ice,&
+                         Cld_spec%reff_liq_lim, Cld_spec%reff_ice_lim,&
                             Cld_spec%ncldsw, emcld)
 
 !---------------------------------------------------------------------
@@ -958,8 +1106,8 @@ type(cldrad_properties_type), intent(inout) ::  Cldrad_props
 !---------------------------------------------------------------------
       if (max_cld > 0) then
         call sw_optical_properties (Cld_spec%ncldsw, Cld_spec%lwp,   &
-                                    Cld_spec%iwp, Cld_spec%reff_liq, &
-                                    Cld_spec%reff_ice, cosz,   &
+                                  Cld_spec%iwp, Cld_spec%reff_liq_lim, &
+                                    Cld_spec%reff_ice_lim, cosz,   &
                                     Cldrad_props%cvisrfsw, &
                                     Cldrad_props%cirrfsw,  &
                                     Cldrad_props%cirabsw)

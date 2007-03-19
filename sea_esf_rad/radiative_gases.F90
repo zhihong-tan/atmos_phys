@@ -65,8 +65,8 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 13.0.2.1 2006/10/27 16:45:36 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+'$Id: radiative_gases.F90,v 14.0 2007/03/15 22:07:25 fms Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -1618,7 +1618,13 @@ real, dimension(:), intent(in) :: gas_value
         endif
 
 !---------------------------------------------------------------------
-!    be sure entry point into gas timeseries has been specified.
+!    define model initial time (from diag_table).
+!---------------------------------------------------------------------
+        Model_init_time = get_base_time()
+ 
+!---------------------------------------------------------------------
+!    if an entry into the gas timeseries has not been specified, use
+!    the model base time as the entry point.
 !---------------------------------------------------------------------
         if (gas_dataset_entry(1) == 1 .and. &
             gas_dataset_entry(2) == 1 .and. &
@@ -1626,25 +1632,20 @@ real, dimension(:), intent(in) :: gas_value
             gas_dataset_entry(4) == 0 .and. &
             gas_dataset_entry(5) == 0 .and. &
             gas_dataset_entry(6) == 0 ) then
-          call error_mesg ('radiative_gases_mod', &
-             'must set ' //trim(gas)//'_dataset_entry when using '&
-                       & // trim(gas)//' timeseries', FATAL)
-        endif
-
-!---------------------------------------------------------------------
-!    define model initial time (from diag_table).
-!---------------------------------------------------------------------
-        Model_init_time = get_base_time()
+          Gas_entry = Model_init_time
 
 !---------------------------------------------------------------------
 !    define time for which gas data is desired.
 !---------------------------------------------------------------------
-        Gas_entry  = set_date (gas_dataset_entry(1), &
-                               gas_dataset_entry(2), &
-                               gas_dataset_entry(3), &
-                               gas_dataset_entry(4), &
-                               gas_dataset_entry(5), &
-                               gas_dataset_entry(6))
+        else
+          Gas_entry  = set_date (gas_dataset_entry(1), &
+                                 gas_dataset_entry(2), &
+                                 gas_dataset_entry(3), &
+                                 gas_dataset_entry(4), &
+                                 gas_dataset_entry(5), &
+                                 gas_dataset_entry(6))
+        endif
+
         call error_mesg ( 'radiative_gases_mod', &
               'PROCESSING TIMESERIES FOR ' // trim(gas), NOTE)
         call print_date (Gas_entry , str='Data from timeseries &

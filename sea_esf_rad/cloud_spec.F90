@@ -25,12 +25,9 @@ use time_manager_mod,         only: time_type, time_manager_init, &
                                     set_time, operator (+)
 use fms_mod,                  only: open_namelist_file, mpp_pe, &
                                     mpp_root_pe, stdlog,  fms_init, &
-                                    mpp_clock_id, mpp_clock_begin, &
-                                   mpp_clock_end, CLOCK_ROUTINE, &
-                                   MPP_CLOCK_SYNC, &
                                     write_version_number, file_exist, & 
                                     check_nml_error, error_mesg,   &
-                                    FATAL, NOTE, WARNING, close_file
+                                    FATAL, close_file
 use tracer_manager_mod,       only:         &
 !                                   tracer_manager_init,  &
                                     get_tracer_index, NO_TRACER
@@ -38,7 +35,13 @@ use field_manager_mod,        only:       &
                                     field_manager_init, &
                                     MODEL_ATMOS
 use data_override_mod,        only: data_override
-use constants_mod,            only: RDGAS  
+use random_numbers_mod,    only:  randomNumberStream,   &
+                                  initializeRandomNumberStream, &
+                                  getRandomNumbers,             &
+                                  constructSeed
+use cloud_generator_mod,   only:  cloud_generator_init, &
+                                  cloud_generator_end
+use constants_mod,         only : radian, RDGAS
 
 ! shared radiation package modules:
 
@@ -97,8 +100,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 13.0.6.1 2006/10/28 15:50:01 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 14.0 2007/03/15 22:05:18 fms Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda $'
 
 
 !---------------------------------------------------------------------
@@ -164,8 +167,6 @@ real   ::  lwpath_low = 75.76714   ! assumed water path for low clouds
 
 logical :: module_is_initialized = .false.   ! module initialized ?
 
-logical :: do_liq_num = .false. ! Do liquid droplet number calculations?
-
 !---------------------------------------------------------------------
 !    time-step related constants.
 
@@ -182,6 +183,13 @@ integer :: nql           ! tracer index for liquid water
 integer :: nqi           ! tracer index for ice water
 integer :: nqa           ! tracer index for cloud area
 integer :: nqn           ! tracer index for cloud droplet number
+
+!----------------------------------------------------------------------
+!   variables needed for random number seed:
+!----------------------------------------------------------------------
+real, dimension(:), allocatable  :: lats, lons ! lat and lon of columns
+                                               ! in this processor's
+                                               ! domain [ degrees ]
 
 !---------------------------------------------------------------------
 !     miscellaneous variables:
@@ -494,8 +502,15 @@ type(time_type),          intent(in)   ::  Time
             'tracers indices cannot be the same (i.e., nql=nqi=nqa).', &
                                                               FATAL)
           nqn = get_tracer_index ( MODEL_ATMOS, 'liq_drp' )
-          if (nqn /= NO_TRACER) do_liq_num = .true.
+          if (nqn /= NO_TRACER)  then
+            Cldrad_control%do_liq_num = .true.
+          else
+            Cldrad_control%do_liq_num = .false.
+          endif
+        else
+          Cldrad_control%do_liq_num = .false.
         endif
+        Cldrad_control%do_liq_num_iz = .true.
 
 !---------------------------------------------------------------------
 !    define the variables indicating that the cloud parameterization
@@ -513,6 +528,25 @@ type(time_type),          intent(in)   ::  Time
       Cldrad_control%do_donner_deep_clouds_iz = .true.
       Cldrad_control%do_zetac_clouds_iz = .true.
       Cldrad_control%do_stochastic_clouds_iz = .true.
+ 
+!--------------------------------------------------------------------
+!    if stochastic clouds is active, allocate and define arrays holding
+!    the processor's latitudes and longitudes. be sure that the
+!    cloud_generator module has been initialized.
+!--------------------------------------------------------------------
+      if (Cldrad_control%do_stochastic_clouds_iz) then
+        if (Cldrad_control%do_stochastic_clouds) then
+          allocate (lats(size(latb(:))))
+          allocate (lons(size(lonb(:))))
+          lats(:) = latb(:)*radian
+          lons(:) = lonb(:)*radian
+          call cloud_generator_init
+        endif
+      else
+        call error_mesg ('microphys_rad_mod', &
+         ' attempt to use Cldrad_control%do_stochastic_clouds before &
+                                                &it is defined', FATAL)
+      endif
  
 !---------------------------------------------------------------------
 !    mark the module initialized.
@@ -603,8 +637,10 @@ subroutine cloud_spec (is, ie, js, je, lat, z_half, z_full, Rad_time, &
                        cloud_ice_in, cloud_area_in, r, kbot, mask, &
                        cell_cld_frac, cell_liq_amt, cell_liq_size, &
                        cell_ice_amt, cell_ice_size, &
+                       cell_droplet_number, &
                        meso_cld_frac, meso_liq_amt, meso_liq_size, &
-                       meso_ice_amt, meso_ice_size,  nsum_out)
+                       meso_ice_amt, meso_ice_size,  &
+                       meso_droplet_number, nsum_out)
 
 !----------------------------------------------------------------------
 !    cloud_spec specifies the cloud field seen by the radiation package.
@@ -631,8 +667,10 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 real, dimension(:,:,:),       intent(inout),optional :: &
                            cell_cld_frac, cell_liq_amt, cell_liq_size, &
                            cell_ice_amt, cell_ice_size, &
+                           cell_droplet_number, &
                            meso_cld_frac, meso_liq_amt, meso_liq_size, &
-                           meso_ice_amt, meso_ice_size
+                           meso_ice_amt, meso_ice_size, &
+                           meso_droplet_number
 integer, dimension(:,:),      intent(inout), optional:: nsum_out
 
 !-------------------------------------------------------------------
@@ -701,10 +739,10 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
       integer   :: ierr
       logical   :: override
       type(time_type) :: Data_time
+      real, dimension (id, jd, kmax) :: ql_proc, qi_proc, qa_proc
       real, dimension (size (Atmos_input%deltaz,1), &
                        size (Atmos_input%deltaz,2), &
                        size (Atmos_input%deltaz,3)) :: rho
-      real, dimension (id, jd, kmax) :: ql_proc, qi_proc, qa_proc
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -859,7 +897,7 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
               Cld_spec%cloud_water(:,:,:) = r(:,:,:,nql)
               Cld_spec%cloud_ice  (:,:,:) = r(:,:,:,nqi)
               Cld_spec%cloud_area (:,:,:) = r(:,:,:,nqa)
-              if (do_liq_num) then
+              if (Cldrad_control%do_liq_num) then
                 Cld_spec%cloud_droplet (:,:,:) = r(:,:,:,nqn)
               endif 
             endif
@@ -964,12 +1002,12 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
           call donner_deep_clouds_amt (is, ie, js, je,  &
                            cell_cld_frac, cell_liq_amt, cell_liq_size, &
                            cell_ice_amt, cell_ice_size, &
+                           cell_droplet_number, &
                            meso_cld_frac, meso_liq_amt, meso_liq_size, &
-                           meso_ice_amt, meso_ice_size,  nsum_out, &
+                           meso_ice_amt, meso_ice_size,  &
+                           meso_droplet_number,  nsum_out, &
                            Cell_microphys, Meso_microphys)
-        endif
 
- 
 !---------------------------------------------------------------------
 !    convert the cloud and ice amounts from kg(h2o) / kg(air) to 
 !    g(h2o) / m**3, as required for use in the microphys_rad routines
@@ -981,6 +1019,7 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
           Cell_microphys%conc_ice  = 1.0e03*rho*Cell_microphys%conc_ice 
           Meso_microphys%conc_drop = 1.0e03*rho*Meso_microphys%conc_drop
           Meso_microphys%conc_ice  = 1.0e03*rho*Meso_microphys%conc_ice 
+        endif
 
 !---------------------------------------------------------------------
 !    obtain the microphysical properties (sizes and concentrations) if
@@ -1005,7 +1044,8 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
               Cldrad_control%do_lw_micro) then
             if (Cldrad_control%do_strat_clouds .or.    &
                 Cldrad_control%do_donner_deep_clouds) then
-              call combine_cloud_properties (Lsc_microphys,    &
+              call combine_cloud_properties ( is, js, Rad_time, &
+                                             Lsc_microphys,    &
                                              Meso_microphys,   &
                                              Cell_microphys,   &
                                              Cld_spec)
@@ -1106,6 +1146,7 @@ integer :: ier
         deallocate (Cld_spec%iwp_sw_band            )
         deallocate (Cld_spec%reff_liq_sw_band       )
         deallocate (Cld_spec%reff_ice_sw_band       )
+        deallocate (Cld_spec%stoch_cloud_type       )
       endif
       if (Cldrad_control%do_stochastic_clouds) then
         deallocate (Cld_spec%crndlw_band    )
@@ -1121,6 +1162,8 @@ integer :: ier
       deallocate (Cld_spec%iwp            )
       deallocate (Cld_spec%reff_liq       )
       deallocate (Cld_spec%reff_ice       )
+      deallocate (Cld_spec%reff_liq_lim   )
+      deallocate (Cld_spec%reff_ice_lim   )
       deallocate (Cld_spec%reff_liq_micro )
       deallocate (Cld_spec%reff_ice_micro )
       deallocate (Cld_spec%liq_frac       )
@@ -1146,24 +1189,28 @@ integer :: ier
       deallocate (Lsc_microphys%size_rain   )
       deallocate (Lsc_microphys%size_snow   )
       deallocate (Lsc_microphys%cldamt      )
+      deallocate (Lsc_microphys%droplet_number )
       if (Cldrad_control%do_stochastic_clouds) then
         deallocate (Lsc_microphys%lw_stoch_conc_drop   , stat=ier)
         deallocate (Lsc_microphys%lw_stoch_conc_ice    , stat=ier)
         deallocate (Lsc_microphys%lw_stoch_size_drop   , stat=ier)
         deallocate (Lsc_microphys%lw_stoch_size_ice    , stat=ier)
         deallocate (Lsc_microphys%lw_stoch_cldamt      , stat=ier)
+        deallocate (Lsc_microphys%lw_stoch_droplet_number , stat=ier)
 
         deallocate (Lsc_microphys%sw_stoch_conc_drop   , stat=ier)
         deallocate (Lsc_microphys%sw_stoch_conc_ice    , stat=ier)
         deallocate (Lsc_microphys%sw_stoch_size_drop   , stat=ier)
         deallocate (Lsc_microphys%sw_stoch_size_ice    , stat=ier)
         deallocate (Lsc_microphys%sw_stoch_cldamt      , stat=ier)
+        deallocate (Lsc_microphys%sw_stoch_droplet_number , stat=ier)
 
         deallocate (Lsc_microphys%stoch_conc_drop   )
         deallocate (Lsc_microphys%stoch_conc_ice    )
         deallocate (Lsc_microphys%stoch_size_drop   )
         deallocate (Lsc_microphys%stoch_size_ice    )
         deallocate (Lsc_microphys%stoch_cldamt      )
+        deallocate (Lsc_microphys%stoch_droplet_number )
       endif
 
 !--------------------------------------------------------------------
@@ -1179,6 +1226,7 @@ integer :: ier
         deallocate (Cell_microphys%size_rain   )
         deallocate (Cell_microphys%size_snow   )
         deallocate (Cell_microphys%cldamt      )
+        deallocate (Cell_microphys%droplet_number )
 
 !--------------------------------------------------------------------
 !    deallocate the elements of Meso_microphys.
@@ -1192,6 +1240,7 @@ integer :: ier
         deallocate (Meso_microphys%size_rain   )
         deallocate (Meso_microphys%size_snow   )
         deallocate (Meso_microphys%cldamt      )
+        deallocate (Meso_microphys%droplet_number )
       endif
 
 !---------------------------------------------------------------------
@@ -1490,6 +1539,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       allocate (Lsc_microphys%size_rain  (ix, jx, kx) )
       allocate (Lsc_microphys%size_snow  (ix, jx, kx) )
       allocate (Lsc_microphys%cldamt     (ix, jx, kx) )
+      allocate (Lsc_microphys%droplet_number (ix, jx, kx) )
       Lsc_microphys%conc_drop(:,:,:) = 0.
       Lsc_microphys%conc_ice(:,:,:)  = 0.
       Lsc_microphys%conc_rain(:,:,:) = 0.
@@ -1499,6 +1549,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       Lsc_microphys%size_rain(:,:,:) = 1.0e-20        
       Lsc_microphys%size_snow(:,:,:) = 1.0e-20 
       Lsc_microphys%cldamt(:,:,:)    = 0.0
+      Lsc_microphys%droplet_number(:,:,:)    = 0.0
       if (Cldrad_control%do_stochastic_clouds) then
         allocate (Lsc_microphys%stoch_conc_drop  &
                                   (ix, jx, kx, Cldrad_control%nlwcldb + Solar_spect%nbands) )
@@ -1509,6 +1560,8 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
         allocate (Lsc_microphys%stoch_size_ice   &
                                   (ix, jx, kx, cldrad_control%nlwcldb + Solar_spect%nbands) )
         allocate (Lsc_microphys%stoch_cldamt  &
+                                  (ix, jx, kx, cldrad_control%nlwcldb + Solar_spect%nbands) )
+        allocate (Lsc_microphys%stoch_droplet_number  &
                                   (ix, jx, kx, cldrad_control%nlwcldb + Solar_spect%nbands) )
   
         Lsc_microphys%lw_stoch_conc_drop => Lsc_microphys%stoch_conc_drop(:, :, :, 1:Cldrad_control%nlwcldb)
@@ -1521,6 +1574,8 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
         Lsc_microphys%sw_stoch_size_ice  => Lsc_microphys%stoch_size_ice (:, :, :, Cldrad_control%nlwcldb+1:)
         Lsc_microphys%lw_stoch_cldamt    => Lsc_microphys%stoch_cldamt   (:, :, :, 1:Cldrad_control%nlwcldb)
         Lsc_microphys%sw_stoch_cldamt    => Lsc_microphys%stoch_cldamt   (:, :, :, Cldrad_control%nlwcldb+1:)
+        Lsc_microphys%lw_stoch_droplet_number    => Lsc_microphys%stoch_droplet_number   (:, :, :, 1:Cldrad_control%nlwcldb)
+        Lsc_microphys%sw_stoch_droplet_number    => Lsc_microphys%stoch_droplet_number   (:, :, :, Cldrad_control%nlwcldb+1:)
 
        do n=1,Cldrad_control%nlwcldb + Solar_spect%nbands
         Lsc_microphys%stoch_conc_drop(:,:,:,n) = 0.
@@ -1528,6 +1583,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
         Lsc_microphys%stoch_size_drop(:,:,:,n) = 1.0e-20
         Lsc_microphys%stoch_size_ice(:,:,:,n)  = 1.0e-20
         Lsc_microphys%stoch_cldamt(:,:,:,n)    = 0.0
+        Lsc_microphys%stoch_droplet_number(:,:,:,n)    = 0.0
        end do
       endif
 
@@ -1548,6 +1604,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       allocate (Meso_microphys%size_rain  (ix, jx, kx) )
       allocate (Meso_microphys%size_snow  (ix, jx, kx) )
       allocate (Meso_microphys%cldamt     (ix, jx, kx) )
+      allocate (Meso_microphys%droplet_number   (ix, jx, kx) )
       Meso_microphys%conc_drop = 0.
       Meso_microphys%conc_ice  = 0.
       Meso_microphys%conc_rain = 0.
@@ -1557,6 +1614,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       Meso_microphys%size_rain = 1.0e-20                            
       Meso_microphys%size_snow = 1.0e-20 
       Meso_microphys%cldamt    = 0.0                               
+      Meso_microphys%droplet_number   = 0.0                               
       endif
 
 !---------------------------------------------------------------------
@@ -1576,6 +1634,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       allocate (Cell_microphys%size_rain  (ix, jx, kx) )
       allocate (Cell_microphys%size_snow  (ix, jx, kx) )
       allocate (Cell_microphys%cldamt     (ix, jx, kx) )
+      allocate (Cell_microphys%droplet_number  (ix, jx, kx) )
       Cell_microphys%conc_drop = 0.
       Cell_microphys%conc_ice  = 0.
       Cell_microphys%conc_rain = 0.
@@ -1585,6 +1644,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       Cell_microphys%size_rain = 1.0e-20                          
       Cell_microphys%size_snow = 1.0e-20 
       Cell_microphys%cldamt     = 0.
+      Cell_microphys%droplet_number    = 0.
       endif
 
 !---------------------------------------------------------------------
@@ -1653,6 +1713,9 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
         Cld_spec%reff_liq_lw_band(:,:,:,n)      = 10.0
         Cld_spec%reff_ice_lw_band (:,:,:,n)     = 30.0
         end do
+        allocate (Cld_spec%stoch_cloud_type   &
+            (ix, jx, kx, Solar_spect%nbands + Cldrad_control%nlwcldb) )
+        Cld_spec%stoch_cloud_type = 0
       endif
 
 !--------------------------------------------------------------------
@@ -1670,6 +1733,8 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       allocate (Cld_spec%lwp            (ix, jx, kx) )
       allocate (Cld_spec%reff_liq       (ix, jx, kx) )
       allocate (Cld_spec%reff_ice       (ix, jx, kx) )
+      allocate (Cld_spec%reff_liq_lim   (ix, jx, kx) )
+      allocate (Cld_spec%reff_ice_lim   (ix, jx, kx) )
       allocate (Cld_spec%reff_liq_micro (ix, jx, kx) )
       allocate (Cld_spec%reff_ice_micro (ix, jx, kx) )
       allocate (Cld_spec%tau            (ix, jx, kx, num_slingo_bands) )
@@ -1688,6 +1753,8 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       Cld_spec%iwp(:,:,:)    = 0.0
       Cld_spec%reff_liq(:,:,:)      = 10.0
       Cld_spec%reff_ice(:,:,:)      = 30.0
+      Cld_spec%reff_liq_lim(:,:,:)      = 10.0
+      Cld_spec%reff_ice_lim(:,:,:)      = 30.0
       Cld_spec%reff_liq_micro(:,:,:) = 10.0
       Cld_spec%reff_ice_micro(:,:,:) = 30.0
       Cld_spec%liq_frac(:,:,:)      = 0.0
@@ -1743,7 +1810,8 @@ end subroutine initialize_cldamts
 !  </IN>
 ! </SUBROUTINE>
 ! 
-subroutine combine_cloud_properties (Lsc_microphys, Meso_microphys,  &
+subroutine combine_cloud_properties (is, js, Rad_time, &
+                                     Lsc_microphys, Meso_microphys,  &
                                      Cell_microphys, Cld_spec)
 
 !----------------------------------------------------------------------
@@ -1753,6 +1821,8 @@ subroutine combine_cloud_properties (Lsc_microphys, Meso_microphys,  &
 !    (large-scale, mesoscale and cell-scale).
 !----------------------------------------------------------------------
 
+integer, intent(in)  :: is, js
+type(time_type), intent(in) :: Rad_time
 type(microphysics_type),        intent(in)    :: Lsc_microphys, &
                                                  Meso_microphys, &
                                                  Cell_microphys
@@ -1784,6 +1854,17 @@ type(cld_specification_type), intent(inout)   :: Cld_spec
 !---------------------------------------------------------------------
 
       integer   :: nb
+!-----------------------------------------------------------------------
+!    variables for folding Donner cloud properties into stochastic
+!    cloud arrays
+!------------------------------------------------------------------
+      type(randomNumberStream),   &
+                    dimension(size(Lsc_microphys%cldamt,1),   &
+                              size(Lsc_microphys%cldamt,2)) :: streams
+      real, dimension(:, :, :, :), allocatable    :: randomNumbers
+      integer :: nn, nSubCols
+
+      integer :: i, j, k, n
 
 !---------------------------------------------------------------------
 !    total-cloud specification properties need be defined only when
@@ -1860,6 +1941,178 @@ type(cld_specification_type), intent(inout)   :: Cld_spec
       Cld_spec%camtsw = Cld_spec%crndlw
 
 !--------------------------------------------------------------------
+       if (Cldrad_control%do_stochastic_clouds) then
+
+!-----------------------------------------------------------------------        -
+!    stochastic clouds are being used. we compare the cell and meso-scal        e
+!    cloud amounts to a random number, and replace the large-scale cloud        s
+!    and clear sky in each subcolum with the properties of the cell or
+!    meso-scale clouds when the number is less than the cloud fraction.
+!    we use the maximum overlap assumption. we treat the random number
+!    as the location with the PDF of total water. cells are at the top
+!    of the PDF; then meso-scale anvils, then large-scale clouds and
+!    clear sky.
+!------------------------------------------------------------
+         do j=1,size(Lsc_microphys%cldamt,2)
+           do i=1,size(Lsc_microphys%cldamt,1)
+             streams(i,j) = &
+                initializeRandomNumberStream (                      &
+                    constructSeed(nint(lons(is + i - 1)),           &
+                                   nint(lats(js + j - 1)), Rad_time, &
+                                  perm = 1))
+           end do
+        end do
+ 
+!----------------------------------------------------------------------
+!    get the random numbers to do both sw and lw at oncer.
+!----------------------------------------------------------------------
+        nSubCols = size(Lsc_microphys%stoch_cldamt, 4)
+       allocate(randomNumbers(size(Lsc_microphys%cldamt, 1),  &
+                              size(Lsc_microphys%cldamt, 2), &
+                              size(Lsc_microphys%cldamt, 3), &
+                              nSubCols))
+!----------------------------------------------------------------------
+!    diagnostics
+!----------------------------------------------------------------------
+        do j=1,size(Lsc_microphys%cldamt,2) ! Lons
+          do i=1,size(Lsc_microphys%cldamt,1) ! Lats
+            call getRandomNumbers(streams(i,j), randomNumbers(i,j,1,:))
+          end do
+       end do
+ 
+!----------------------------------------------------------------------
+!    here is maximum overlap. we use a 3D arrary for the random numbers
+!    for flexibility.
+!----------------------------------------------------------------------
+       do k=2,size(Lsc_microphys%cldamt,3)
+         randomNumbers(:,:,k,:) = randomNumbers(:,:,1,:)
+       end do
+ 
+ if (Cldrad_control%do_donner_deep_clouds) then
+!----------------------------------------------------------------------
+!    shortwave cloud properties, band by band
+!----------------------------------------------------------------------
+      do n=1,Solar_spect%nbands
+        do k=1,size(Lsc_microphys%cldamt,3) ! Levels
+          do j=1,size(Lsc_microphys%cldamt,2) ! Lons
+            do i=1,size(Lsc_microphys%cldamt,1) ! Lats
+              if (randomNumbers(i,j,k,n) >     &
+                            (1. - Cell_microphys%cldamt(i,j,k))) then
+!----------------------------------------------------------------------
+!    it's a cell.
+!----------------------------------------------------------------------
+                 Cld_spec%stoch_cloud_type(i,j,k,n) = 3  
+              else if (randomNumbers(i,j,k,n) >    &
+                           (1. - Cell_microphys%cldamt(i, j, k) - &
+                                  Meso_microphys%cldamt(i, j, k))) then
+ 
+!----------------------------------------------------------------------
+!    it's a meso-scale.
+!----------------------------------------------------------------------
+                   Cld_spec%stoch_cloud_type(i,j,k,n) = 2 
+                else if (Lsc_microphys%sw_stoch_cldamt(i,j,k,n) >   &
+                                                                0.) then
+ 
+!----------------------------------------------------------------------
+!    fill it in with the large-scale cloud values.
+!----------------------------------------------------------------------
+                  Cld_spec%stoch_cloud_type(i,j,k,n) = 1
+               else
+                  Cld_spec%stoch_cloud_type(i,j,k,n) = 0   
+               endif
+             end do
+            end do
+          end do
+        end do
+ 
+!----------------------------------------------------------------------
+!    longwave cloud properties, band by band
+!----------------------------------------------------------------------
+        do n=1,Cldrad_control%nlwcldb
+         nn = Solar_spect%nbands + n
+           do k=1,size(Lsc_microphys%cldamt,3) ! Levels
+             do j=1,size(Lsc_microphys%cldamt,2) ! Lons
+               do i=1,size(Lsc_microphys%cldamt,1) ! Lats
+               if (randomNumbers(i,j,k,nn) >     &
+                           (1. - Cell_microphys%cldamt(i,j,k))) then
+ 
+!----------------------------------------------------------------------
+!    it's a cell.
+!----------------------------------------------------------------------
+                 Cld_spec%stoch_cloud_type(i,j,k,nn) = 3
+              else if (randomNumbers(i, j, k, nn) >    &
+                       (1. - Cell_microphys%cldamt(i, j, k) -   &
+                             Meso_microphys%cldamt(i, j, k))) then
+ 
+!----------------------------------------------------------------------
+!    it's a meso-scale.
+!----------------------------------------------------------------------
+                 Cld_spec%stoch_cloud_type(i,j,k,nn) = 2 
+
+            else if (Lsc_microphys%lw_stoch_cldamt(i,j,k,n) > 0.) then
+ 
+!----------------------------------------------------------------------
+!    fill it in with the large-scale cloud values.
+!----------------------------------------------------------------------
+                 Cld_spec%stoch_cloud_type(i,j,k,nn) = 1 
+               else
+                Cld_spec%stoch_cloud_type(i,j,k,nn) = 0 
+             endif
+          end do
+        end do
+       end do
+     end do
+
+ else  ! (Cldrad_control%do_donner_deep_clouds)
+!----------------------------------------------------------------------
+!    shortwave cloud properties, band by band
+!----------------------------------------------------------------------
+      do n=1,Solar_spect%nbands
+        do k=1,size(Lsc_microphys%cldamt,3) ! Levels
+          do j=1,size(Lsc_microphys%cldamt,2) ! Lons
+            do i=1,size(Lsc_microphys%cldamt,1) ! Lats
+                if (Lsc_microphys%sw_stoch_cldamt(i,j,k,n) > 0.) then
+ 
+!----------------------------------------------------------------------
+!    fill it in with the large-scale cloud values.
+!----------------------------------------------------------------------
+                  Cld_spec%stoch_cloud_type(i,j,k,n) = 1 
+               else
+                  Cld_spec%stoch_cloud_type(i,j,k,n) = 0  
+               endif
+             end do
+            end do
+          end do
+        end do
+ 
+!----------------------------------------------------------------------
+!    longwave cloud properties, band by band
+!----------------------------------------------------------------------
+        do n=1,Cldrad_control%nlwcldb
+         nn = Solar_spect%nbands + n
+           do k=1,size(Lsc_microphys%cldamt,3) ! Levels
+             do j=1,size(Lsc_microphys%cldamt,2) ! Lons
+               do i=1,size(Lsc_microphys%cldamt,1) ! Lats
+            if (Lsc_microphys%lw_stoch_cldamt(i,j,k,n) > 0.) then
+!----------------------------------------------------------------------
+!    fill it in with the large-scale cloud values.
+!----------------------------------------------------------------------
+                 Cld_spec%stoch_cloud_type(i,j,k,nn) = 1  
+               else
+                Cld_spec%stoch_cloud_type(i,j,k,nn) = 0  
+             endif
+          end do
+        end do
+       end do
+     end do
+ endif  ! (Cldrad_control%do_donner_deep_clouds)
+
+      deallocate (randomNumbers                  )
+
+   endif  ! (do_stochastic)
+
+
+!#####################################################################
 
 
 end subroutine combine_cloud_properties 

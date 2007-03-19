@@ -252,8 +252,8 @@ private
 !---------------------------------------------------------------------
 !------------ version number for this module -------------------------
         
-character(len=128) :: version = '$Id: cloud_rad.F90,v 13.0 2006/03/28 21:07:44 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+character(len=128) :: version = '$Id: cloud_rad.F90,v 14.0 2007/03/15 22:01:40 fms Exp $'
+character(len=128) :: tagname = '$Name: nalanda $'
 
 
 !---------------------------------------------------------------------- 
@@ -942,7 +942,8 @@ end subroutine lw_emissivity
 subroutine cloud_summary3 (is, js, land, ql, qi, qa, qn, pfull, phalf, &
                            tkel, nclds, cldamt, lwp, iwp, reff_liq,  &
                            reff_ice, ktop, kbot, conc_drop, conc_ice, &
-                           size_drop, size_ice)
+!                          size_drop, size_ice)
+                           size_drop, size_ice, droplet_number)
    
 !---------------------------------------------------------------------
 !    cloud_summary3 returns the specification properties of the clouds
@@ -958,7 +959,8 @@ real, dimension(:,:,:),    intent(out)           :: cldamt, lwp, iwp, &
                                                     reff_liq, reff_ice
 integer, dimension(:,:,:), intent(out), optional :: ktop, kbot 
 real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
-                                                    size_drop,size_ice
+                                                    size_drop,size_ice,&
+                                                    droplet_number
 
 !---------------------------------------------------------------------
 !    intent(in) variables:
@@ -1002,6 +1004,8 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !       size_ice     Effective diameter of ice cloud, present when 
 !                    microphysically-based cloud radiative
 !                    properties are desired
+!       droplet_number
+!                    number of cloud droplets [ # / kg(air) ]
 !
 !--------------------------------------------------------------------
  
@@ -1056,12 +1060,22 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !    define the cloud droplet concentration and the ratio of the 
 !    effective drop radius to the mean volume radius.
 !--------------------------------------------------------------------
+      N_drop2D(:,:)  = N_land*land(:,:) + N_ocean*(1. - land(:,:))
+      k_ratio(:,:) = k_land*land(:,:) + k_ocean*(1. - land(:,:))
 !yim prognostic droplet number
       if (do_liq_num) then
         N_drop3D=qn
+        droplet_number = qn
+      else 
+        do k=1, size(ql,3)
+          do j=1, size(ql,2)
+            do i=1, size(ql,1)
+              droplet_number(i,j,k) = N_drop2D(i,j)/(pfull(i,j,k)/  &
+                                      (RDGAS*tkel(i,j,k)))
+            end do
+          end do
+        end do
       endif    
-      N_drop2D(:,:)  = N_land*land(:,:) + N_ocean*(1. - land(:,:))
-      k_ratio(:,:) = k_land*land(:,:) + k_ocean*(1. - land(:,:))
 
 !--------------------------------------------------------------------
 !    execute the following when  the max-random overlap assumption 
@@ -1473,14 +1487,6 @@ real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
               end if
               end if
 
-!---------------------------------------------------------------------
-!    in this module, reff_liq is limited to be between 4.2 microns and 
-!    16.6 microns, which is the range of validity for the Slingo (1989)
-!    radiation.
-!---------------------------------------------------------------------
-              reff_liq_local = MIN(16.6,reff_liq_local)
-              reff_liq_local = MAX(4.2, reff_liq_local)
-
 !--------------------------------------------------------------------
 !    if ice crystals are present, define their effective size, which
 !    is a function of temperature. for ice clouds the effective radius
@@ -1526,13 +1532,6 @@ real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
                   reff_ice_local = 15.41627
                 end if
 
-!---------------------------------------------------------------------
-!    in this program, reff_ice is limited to be between 10 microns
-!    and 130 microns, which is the range of validity for the Ebert
-!    and Curry (1992) radiation.
-!---------------------------------------------------------------------
-                reff_ice_local = MIN(130.,reff_ice_local)
-                reff_ice_local = MAX(10.,reff_ice_local)
               else
                 reff_ice_local = 0.
               end if  
@@ -2014,13 +2013,6 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
                 end if
                 end if
 
-!---------------------------------------------------------------------
-!    in this program reff_liq is limited to be between 4.2 microns
-!    and 16.6 microns, which is the range of validity for the
-!    Slingo (1989) radiation.
-!----------------------------------------------------------------------
-                reff_liq_local = MIN(16.6,reff_liq_local)
-                reff_liq_local = MAX(4.2, reff_liq_local)
 
                 reff_liq(i,j,k) =  reff_liq_local
                 if (want_microphysics)      &
@@ -2097,13 +2089,7 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
                     reff_ice_local = 20.2             
                   endif
 
-!---------------------------------------------------------------------
-!    in this program, size_ice (i.e. Deff) is limited to be between
-!    18.6 microns and 130.2 microns, which is the range of validity 
-!    for the Fu Liou JAS 1993 radiation.
-!---------------------------------------------------------------------
-                  reff_ice_local = MIN(130.2, reff_ice_local)
-                  size_ice_org(i,j,k) = MAX(18.6, reff_ice_local)
+                  size_ice_org(i,j,k) = reff_ice_local
                 endif
 
 !---------------------------------------------------------------------
@@ -2133,13 +2119,7 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
                   reff_ice_local = 15.41627
                 endif
 
-!---------------------------------------------------------------------
-!    in this program, reff_ice is limited to be between 10 microns
-!    and 130 microns, which is the range of validity for the Ebert
-!    and Curry (1992) radiation.
-!---------------------------------------------------------------------
-                reff_ice_local = MIN(130.,reff_ice_local)
-                reff_ice(i,j,k) = MAX(10.,reff_ice_local)
+                reff_ice(i,j,k) = reff_ice_local
               end if ! (qi > qmin)                    
                           
 !---------------------------------------------------------------------
@@ -4587,7 +4567,6 @@ real, dimension(:,:,:), allocatable :: lwp, iwp, reff_liq, reff_ice
                           !
                           reff_ice_local = MIN(130.,reff_ice_local)
                           Reff_ice(i,j,nclds(i,j)) = MAX(10.,reff_ice_local)                  
-    
                        end if  !end of lhsw if
 
                        if (sea_esf) then
@@ -4622,6 +4601,7 @@ real, dimension(:,:,:), allocatable :: lwp, iwp, reff_liq, reff_ice
                           reff_ice_local = MIN(130.2,reff_ice_local)
                           size_ice_org(i,j,k) = &
                                            MAX(18.6,reff_ice_local)
+                        
 
                        end if  !end of sea_esf if
                              

@@ -18,7 +18,7 @@
 !---------------------------------------------------------------------
 
  character(len=128) :: version = '$Id: dry_adj.F90,v 10.0 2003/10/24 22:00:29 fms Exp $'
- character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+ character(len=128) :: tagname = '$Name: nalanda $'
  logical            :: module_is_initialized = .false.
 
 !---------------------------------------------------------------------

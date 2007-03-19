@@ -542,7 +542,7 @@ module strat_cloud_mod
   !
 
   Character(len=128) :: Version = '$Id: strat_cloud.F90,v 13.1 2006/03/30 17:24:03 fms Exp $'
-  Character(len=128) :: Tagname = '$Name: memphis_2006_12 $'
+  Character(len=128) :: Tagname = '$Name: nalanda $'
   logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   !        

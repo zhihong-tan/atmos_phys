@@ -90,8 +90,8 @@ private
    integer :: nsphum, nql, nqi, nqa, nqn  ! tracer indices for stratiform clouds
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 13.0.2.1.4.6 2006/09/28 05:09:41 wfc Exp $'
-   character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+   version = '$Id: moist_processes.F90,v 14.0 2007/03/15 22:04:21 fms Exp $'
+   character(len=128) :: tagname = '$Name: nalanda $'
    logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
@@ -239,8 +239,10 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
                             lat, Aerosol, mask, kbot, &
                             cell_cld_frac, cell_liq_amt, cell_liq_size, &
                             cell_ice_amt, cell_ice_size, &
+                            cell_droplet_number, &
                             meso_cld_frac, meso_liq_amt, meso_liq_size, &
-                            meso_ice_amt, meso_ice_size, nsum_out)
+                            meso_ice_amt, meso_ice_size,  &
+                            meso_droplet_number, nsum_out)
 
 !-----------------------------------------------------------------------
 !
@@ -367,8 +369,10 @@ integer, intent(in) , dimension(:,:),   optional :: kbot
    real, intent(inout) , dimension(:,:,:), optional :: &      
                           cell_cld_frac, cell_liq_amt, cell_liq_size, &
                           cell_ice_amt, cell_ice_size, &
+                          cell_droplet_number, &
                           meso_cld_frac, meso_liq_amt, meso_liq_size, &
-                          meso_ice_amt, meso_ice_size
+                          meso_ice_amt, meso_ice_size, &
+                          meso_droplet_number
 integer, intent(inout) , dimension(:,:), optional ::  nsum_out
 
 !-----------------------------------------------------------------------
@@ -701,13 +705,15 @@ character(len=32) :: tracer_units, tracer_name
            (present (cell_cld_frac) .and.   &
             present (cell_liq_amt) .and. present ( cell_liq_size) .and. &
             present (cell_ice_amt) .and. present ( cell_ice_size) .and. &
+            present (cell_droplet_number) .and. &
             present (meso_cld_frac) .and.   &
             present (meso_liq_amt) .and. present ( meso_liq_size) .and. &
             present (meso_ice_amt) .and. present ( meso_ice_size) .and. &
+            present (meso_droplet_number) .and. &
             present (nsum_out) ) then
         else
           call error_mesg ('moist_processes_mod', 'moist_processes: &
-               &not all 11 optional arguments needed for donner_deep &
+               &not all 13 optional arguments needed for donner_deep &
               &output are present', FATAL)
         endif
 
@@ -778,8 +784,10 @@ character(len=32) :: tracer_units, tracer_name
                             Time,     &
                             cell_cld_frac, cell_liq_amt, cell_liq_size, &
                             cell_ice_amt, cell_ice_size, &
+                            cell_droplet_number, &
                             meso_cld_frac, meso_liq_amt, meso_liq_size, &
-                            meso_ice_amt, meso_ice_size, nsum_out,  &
+                            meso_ice_amt, meso_ice_size,  &
+                            meso_droplet_number, nsum_out,  &
                             precip_dd, delta_temp, delta_vapor, &
                             m_cdet_donner, m_cellup, mc_donner,  &
                             donner_humidity_area,  &
@@ -793,8 +801,10 @@ character(len=32) :: tracer_units, tracer_name
                             Time,                           &
                             cell_cld_frac, cell_liq_amt, cell_liq_size, &
                             cell_ice_amt, cell_ice_size, &
+                            cell_droplet_number, &
                             meso_cld_frac, meso_liq_amt, meso_liq_size, &
-                            meso_ice_amt, meso_ice_size, nsum_out,  &
+                            meso_ice_amt, meso_ice_size,  &
+                            meso_droplet_number, nsum_out,  &
                             precip_dd, delta_temp, delta_vapor, &
                             m_cdet_donner, m_cellup, mc_donner,  &
                             donner_humidity_area,  &
@@ -1278,39 +1288,32 @@ character(len=32) :: tracer_units, tracer_name
 !    transport is desired. 
 !---------------------------------------------------------------------
         if (do_cmt) then
-          mc_cmt = 0.
-          det_cmt = 0.
           if (cmt_uses_ras) then
-            mc_cmt = mc_cmt + mc
-            det_cmt = det_cmt + det0
-          endif
-          if (cmt_uses_donner) then
-            mc_cmt = mc_cmt + m_cellup 
-            det_cmt = det_cmt + m_cdet_donner 
-          endif
-          call mpp_clock_begin (cmt_clock)
-          call cu_mo_trans (is, js, Time, mc_cmt, tin, phalf, pfull,  &
-                            zhalf, zfull, dt, uin, vin, tracer, pmass, &
-                            det_cmt, utnd, vtnd, ttnd, qtrcumo, &
-                            diff_cu_mo  )
-          call mpp_clock_end (cmt_clock)
+            mc_cmt = mc
+            det_cmt = det0
+            call mpp_clock_begin (cmt_clock)
+            call cu_mo_trans (is, js, Time, mc_cmt, tin, phalf, pfull, &
+                              zhalf, zfull, dt, uin, vin, tracer,   &
+                              pmass, det_cmt, utnd, vtnd, ttnd,  &
+                              qtrcumo, diff_cu_mo  )
+            call mpp_clock_end (cmt_clock)
 
 !---------------------------------------------------------------------
 !    update the current tracer tendencies with the contributions 
 !    just obtained from cu_mo_trans.
 !---------------------------------------------------------------------
-        do n=1, num_tracers
-          rdt(:,:,:,n) = rdt(:,:,:,n) + qtrcumo   (:,:,:,n)
-        end do
+            do n=1, num_tracers
+              rdt(:,:,:,n) = rdt(:,:,:,n) + qtrcumo   (:,:,:,n)
+            end do
 
 !----------------------------------------------------------------------
 !    add the temperature, specific humidity and momentum tendencies 
 !    from ras (ttnd, qtnd, utnd, vtnd) to the arrays accumulating 
 !    these tendencies from all physics processes (tdt, qdt, udt, vdt).
 !----------------------------------------------------------------------
-        tdt = tdt + ttnd 
-        udt = udt + utnd
-        vdt = vdt + vtnd
+            tdt = tdt + ttnd 
+            udt = udt + utnd
+            vdt = vdt + vtnd
 
 !---------------------------------------------------------------------
 !    if donner_deep_mod is also active, define the total time tendency 
@@ -1319,7 +1322,44 @@ character(len=32) :: tracer_units, tracer_name
 !    if strat_cloud_mod is activated, the cloud liquid, cloud ice and 
 !    cloud area. 
 !---------------------------------------------------------------------
-          ttnd_conv = ttnd_conv + ttnd
+            ttnd_conv = ttnd_conv + ttnd
+          endif
+          if (cmt_uses_donner) then
+            mc_cmt = m_cellup 
+            det_cmt = m_cdet_donner 
+            call mpp_clock_begin (cmt_clock)
+            call cu_mo_trans (is, js, Time, mc_cmt, tin, phalf, pfull, &
+                              zhalf, zfull, dt, uin, vin, tracer,  &
+                              pmass, det_cmt, utnd, vtnd, ttnd,   &
+                              qtrcumo, diff_cu_mo  )
+            call mpp_clock_end (cmt_clock)
+ 
+!---------------------------------------------------------------------
+!    update the current tracer tendencies with the contributions 
+!    just obtained from cu_mo_trans.
+!---------------------------------------------------------------------
+            do n=1, num_tracers
+              rdt(:,:,:,n) = rdt(:,:,:,n) + qtrcumo   (:,:,:,n)
+            end do
+
+!----------------------------------------------------------------------
+!    add the temperature, specific humidity and momentum tendencies 
+!    from ras (ttnd, qtnd, utnd, vtnd) to the arrays accumulating 
+!    these tendencies from all physics processes (tdt, qdt, udt, vdt).
+!----------------------------------------------------------------------
+            tdt = tdt + ttnd
+            udt = udt + utnd
+            vdt = vdt + vtnd
+ 
+!---------------------------------------------------------------------
+!    if donner_deep_mod is also active, define the total time tendency 
+!    due to all moist convective processes (donner (including its mca 
+!    part), and ras) of temperature, specific humidity, rain, snow and,
+!    if strat_cloud_mod is activated, the cloud liquid, cloud ice and 
+!    cloud area. 
+!---------------------------------------------------------------------
+            ttnd_conv = ttnd_conv + ttnd
+          endif
         endif  ! (do_cmt)
 
 !---------------------------------------------------------------------

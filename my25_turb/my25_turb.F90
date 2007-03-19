@@ -5,7 +5,7 @@
 !=======================================================================
 
  use       Fms_Mod,   ONLY: FILE_EXIST, OPEN_NAMELIST_FILE, ERROR_MESG, FATAL, &
-                            read_data, write_data, CLOSE_FILE,&
+                            read_data, write_data, CLOSE_FILE, NOTE,&
                             check_nml_error, mpp_pe, mpp_root_pe, &
                             write_version_number, stdlog, open_restart_file
  use Tridiagonal_Mod, ONLY: TRI_INVERT, CLOSE_TRIDIAGONAL
@@ -27,8 +27,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: my25_turb.F90,v 13.0 2006/03/28 21:10:38 fms Exp $'
- character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+ character(len=128) :: version = '$Id: my25_turb.F90,v 14.0 2007/03/15 22:04:34 fms Exp $'
+ character(len=128) :: tagname = '$Name: nalanda $'
  logical            :: module_is_initialized = .false.
  
  logical :: init_tke
@@ -679,6 +679,14 @@ end subroutine get_tke
 
       init_tke = .false.
 
+  else if (file_exist( 'INPUT/my25_turb.res.nc' )) then
+      if (mpp_pe() == mpp_root_pe() ) then
+        call error_mesg ('my25_turb_mod',  'MY25_TURB_INIT:&
+             &Reading netCDF formatted restart file: &
+                                 &INPUT/my25_turb.res.nc', NOTE)
+      endif
+      call read_data('INPUT/my25_turb.res.nc', 'TKE', TKE)
+      
   else
 
       TKE  = TKEmin
@@ -703,12 +711,32 @@ end subroutine get_tke
 !=======================================================================
  integer :: unit
 !=======================================================================
+!--------------------------------------------------------------------
+!  local variables:
+
+      character(len=65)  :: fname = 'RESTART/my25_turb.res.nc'
+                                    ! name of restart file to be written
+
+!---------------------------------------------------------------------
+!    write a message indicating that a restart file is being written.
+!---------------------------------------------------------------------
+      if (mpp_pe() == mpp_root_pe() ) &
+            call error_mesg ('my25_turb_mod', 'my25_turb_end: &
+              &Writing netCDF formatted restart file as  &
+                &requested: RESTART/my25_turb.res.nc', NOTE)
+
+!----------------------------------------------------------------------
+!    write out the restart data which is always needed, regardless of
+!    when the first donner calculation step is after restart.
+!----------------------------------------------------------------------
+      call write_data (fname, 'TKE', TKE)
 
       module_is_initialized = .false.
 !---------------------------------------------------------------------
-      unit = OPEN_RESTART_FILE ( file = 'RESTART/my25_turb.res', action = 'write' )
-      call write_data ( unit, TKE )
-      CALL CLOSE_FILE ( unit )
+!      unit = OPEN_RESTART_FILE ( file = 'RESTART/my25_turb.res', action = 'write' )
+!      call write_data ( unit, TKE )
+!      CALL CLOSE_FILE ( unit )
+
  
 !=====================================================================
 

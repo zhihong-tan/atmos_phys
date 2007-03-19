@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_deep_k.F90,v 13.0.4.1.2.1.2.1 2006/11/01 09:47:25 rsh Exp $
+!  $Id: donner_deep_k.F90,v 14.0 2007/03/15 22:02:35 fms Exp $
 
 !module donner_deep_inter_mod
 
@@ -17,8 +17,10 @@ subroutine don_d_donner_deep_k   &
           dt, Param, Nml, temp, mixing_ratio, pfull, phalf, omega, qlin,&
           qiin, qain, land, sfc_sh_flux, sfc_vapor_flux, tr_flux,  &
           tracers, cell_cld_frac, cell_liq_amt, cell_liq_size,  &
-          cell_ice_amt, cell_ice_size, meso_cld_frac, meso_liq_amt,  &
-          meso_liq_size, meso_ice_amt, meso_ice_size, nsum, & 
+          cell_ice_amt, cell_ice_size, cell_droplet_number, &
+          meso_cld_frac, meso_liq_amt,  &
+          meso_liq_size, meso_ice_amt, meso_ice_size,    &
+          meso_droplet_number, nsum, & 
           precip, delta_temp, delta_vapor, detf, uceml_inter, mtot,   &
           donner_humidity_area, donner_humidity_ratio, total_precip,  &
           temperature_forcing, moisture_forcing, parcel_rise, &
@@ -53,9 +55,12 @@ real, dimension(isize,jsize,nlev_lsm),                                  &
                                            omega, qlin, qiin, qain, &
                                            cell_cld_frac,  cell_liq_amt,&
                                            cell_liq_size, cell_ice_amt, &
-                                           cell_ice_size, meso_cld_frac,&
+                                           cell_ice_size,  &
+                                           cell_droplet_number, &
+                                           meso_cld_frac,&
                                            meso_liq_amt, meso_liq_size, &
-                                           meso_ice_amt, meso_ice_size
+                                           meso_ice_amt, meso_ice_size,&
+                                           meso_droplet_number
 real,    dimension(isize,jsize,nlev_lsm+1),                            &
                          intent(in)     :: phalf 
 real,    dimension(isize,jsize),                                      &
@@ -351,8 +356,10 @@ type(donner_save_type),  intent(inout)  :: Don_save
         call don_d_init_loc_vars_k       &
              (isize, jsize, nlev_lsm, ntr, nlev_hires, cell_cld_frac, &
               cell_liq_amt, cell_liq_size, cell_ice_amt, cell_ice_size, &
+              cell_droplet_number, &
               meso_cld_frac, meso_liq_amt, meso_liq_size, meso_ice_amt, &
-              meso_ice_size, nsum, Don_conv, Don_cape, Don_rad, ermesg) 
+              meso_ice_size, meso_droplet_number, nsum, Don_conv,   &
+              Don_cape, Don_rad, ermesg) 
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -706,7 +713,7 @@ type(donner_save_type),  intent(inout)  :: Don_save
           call don_d_column_end_of_step_k   &
                (isize, jsize, nlev_lsm, ntr, Col_diag, exit_flag,   &
                 total_precip, parcel_rise, temperature_forcing,   &
-                moisture_forcing, tracers(:,:,:,:), Don_cape,   &
+                moisture_forcing, tracers, Don_cape,   &
                 Don_conv, ermesg) 
 
 !----------------------------------------------------------------------
@@ -750,8 +757,10 @@ end subroutine don_d_donner_deep_k
 subroutine don_d_init_loc_vars_k      &
          (isize, jsize, nlev_lsm, ntr, nlev_hires, cell_cld_frac,  &
           cell_liq_amt, cell_liq_size, cell_ice_amt, cell_ice_size,   &
+          cell_droplet_number, &
           meso_cld_frac, meso_liq_amt, meso_liq_size, meso_ice_amt,   &
-          meso_ice_size, nsum, Don_conv, Don_cape, Don_rad, ermesg)     
+          meso_ice_size, meso_droplet_number, nsum, Don_conv,   &
+          Don_cape, Don_rad, ermesg)     
 
 use donner_types_mod, only : donner_rad_type, donner_conv_type, &
                              donner_cape_type
@@ -773,11 +782,13 @@ real,dimension(isize,jsize,nlev_lsm),                              &
                                                   cell_liq_size, &
                                                   cell_ice_amt,   &
                                                   cell_ice_size, &
+                                            cell_droplet_number, &
                                                   meso_cld_frac,    &
                                                   meso_liq_amt, &
                                                   meso_liq_size, &
                                                   meso_ice_amt,     &
-                                                  meso_ice_size 
+                                                  meso_ice_size,  &
+                                            meso_droplet_number 
 integer, dimension(isize,jsize), intent(in)    :: nsum
 type(donner_conv_type),          intent(inout) :: Don_conv
 type(donner_cape_type),          intent(inout) :: Don_cape
@@ -1003,11 +1014,13 @@ character(len=*),                intent(out)   :: ermesg
       allocate (Don_rad%cell_ice_size    (isize, jsize, nlev_lsm ) )
       allocate (Don_rad%cell_liquid_amt  (isize, jsize, nlev_lsm ) )
       allocate (Don_rad%cell_liquid_size (isize, jsize, nlev_lsm ) )
+      allocate (Don_rad%cell_droplet_number (isize, jsize, nlev_lsm ) )
       allocate (Don_rad%meso_cloud_frac  (isize, jsize, nlev_lsm ) )
       allocate (Don_rad%meso_ice_amt     (isize, jsize, nlev_lsm ) )
       allocate (Don_rad%meso_ice_size    (isize, jsize, nlev_lsm ) )
       allocate (Don_rad%meso_liquid_amt  (isize, jsize, nlev_lsm ) )
       allocate (Don_rad%meso_liquid_size (isize, jsize, nlev_lsm ) )
+      allocate (Don_rad%meso_droplet_number (isize, jsize, nlev_lsm ) )
       allocate (Don_rad%nsum             (isize, jsize) )
 
 !---------------------------------------------------------------------
@@ -1019,11 +1032,13 @@ character(len=*),                intent(out)   :: ermesg
       Don_rad%cell_ice_size    = cell_ice_size
       Don_rad%cell_liquid_amt  = cell_liq_amt
       Don_rad%cell_liquid_size = cell_liq_size
+      Don_rad%cell_droplet_number = cell_droplet_number
       Don_rad%meso_cloud_frac  = meso_cld_frac
       Don_rad%meso_ice_amt     = meso_ice_amt
       Don_rad%meso_ice_size    = meso_ice_size
       Don_rad%meso_liquid_amt  = meso_liq_amt
       Don_rad%meso_liquid_size = meso_liq_size
+      Don_rad%meso_droplet_number = meso_droplet_number
       Don_rad%nsum             = nsum
 
 !----------------------------------------------------------------------
@@ -7204,11 +7219,13 @@ character(len=*),               intent(out)   :: ermesg
       deallocate (Don_rad%cell_liquid_size )
       deallocate (Don_rad%cell_ice_amt     )
       deallocate (Don_rad%cell_ice_size    )
+      deallocate (Don_rad%cell_droplet_number )
       deallocate (Don_rad%meso_cloud_frac  )
       deallocate (Don_rad%meso_liquid_amt  )
       deallocate (Don_rad%meso_liquid_size )
       deallocate (Don_rad%meso_ice_amt     )
       deallocate (Don_rad%meso_ice_size    )
+      deallocate (Don_rad%meso_droplet_number )
       deallocate (Don_rad%nsum             )        
 
 !----------------------------------------------------------------------

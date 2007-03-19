@@ -77,8 +77,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 13.0.2.1 2006/10/27 16:55:03 wfc Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 14.0 2007/03/15 22:09:09 fms Exp $'
+character(len=128) :: tagname = '$Name: nalanda $'
 
 logical :: module_is_initialized = .false.
 

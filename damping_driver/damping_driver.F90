@@ -66,6 +66,7 @@ integer :: id_udt_rdamp,  id_vdt_rdamp,   &
            id_udt_gwd,    id_vdt_gwd,     &
                           id_sgsmtn,      &
            id_udt_cgwd,   id_taus
+integer    id_vdt_cgwd
 
 integer :: id_tdt_diss_rdamp,  id_diss_heat_rdamp, &
            id_tdt_diss_gwd,    id_diss_heat_gwd,   &
@@ -91,8 +92,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 13.0 2006/03/28 21:08:07 fms Exp $'
- character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 14.0 2007/03/15 22:01:59 fms Exp $'
+ character(len=128) :: tagname = '$Name: nalanda $'
 
 !-----------------------------------------------------------------------
 
@@ -129,6 +130,7 @@ contains
                                                          p2
  integer :: k
  logical :: used
+
 !-----------------------------------------------------------------------
 
    if (.not.module_is_initialized) call error_mesg ('damping_driver',  &
@@ -228,10 +230,11 @@ contains
 
    if (do_cg_drag) then
 
-     call cg_drag_calc (is, js, lat, pfull, zfull, t, u, Time,    &
-                        delt, utnd)
+     call cg_drag_calc (is, js, lat, pfull, zfull, t, u, v, Time,    &
+                        delt, utnd, vtnd)
 
      udt =  udt + utnd
+     vdt =  vdt + vtnd
 
 !----- diagnostics -----
 
@@ -239,7 +242,12 @@ contains
         used = send_data ( id_udt_cgwd, utnd, Time, is, js, 1, &
                           rmask=mask )
      endif
- 
+      if ( id_vdt_cgwd > 0 ) then
+        used = send_data ( id_vdt_cgwd, vtnd, Time, is, js, 1, &
+                          rmask=mask )
+     endif
+
+
    endif
 
 !-----------------------------------------------------------------------
@@ -438,6 +446,14 @@ endif
     register_diag_field ( mod_name, 'udt_cgwd', axes(1:3), Time,        &
                  'u wind tendency for cg gravity wave drag', 'm/s2', &
                       missing_value=missing_value               )
+
+
+    id_vdt_cgwd = &
+    register_diag_field ( mod_name, 'vdt_cgwd', axes(1:3), Time,        &
+                 'v wind tendency for cg gravity wave drag', 'm/s2', &
+                      missing_value=missing_value               )
+
+
    endif
 
 !-----------------------------------------------------------------------

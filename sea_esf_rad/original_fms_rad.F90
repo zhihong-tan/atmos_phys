@@ -58,8 +58,8 @@ public    original_fms_rad_init, original_fms_rad_end, original_fms_rad
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: original_fms_rad.F90,v 13.0.2.1 2006/10/27 16:45:36 wfc Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+character(len=128) :: version = '$Id: original_fms_rad.F90,v 14.0 2007/03/15 22:07:00 fms Exp $'
+character(len=128) :: tagname = '$Name: nalanda $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)

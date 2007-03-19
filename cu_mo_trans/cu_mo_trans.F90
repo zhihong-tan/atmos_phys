@@ -83,20 +83,26 @@ logical  ::  do_nonlocal_transport = .false.
 !--------------------- namelist variables with defaults -------------
 
 real    :: diff_norm =   1.0
+logical :: limit_mass_flux = .false.  ! when true, the mass flux 
+                                      ! out of a grid box is limited to
+                                      ! the mass in that grid box
 character(len=64) :: transport_scheme = 'diffusive'
 integer :: non_local_iter = 2  ! iteration count for non-local scheme
 logical :: conserve_te = .true.  ! conserve total energy ?
 real    ::  gki = 0.7  ! Gregory et. al. constant for p-gradient param
+real    :: amplitude = 1.0 ! Tuning parameter (1=full strength)
 
 namelist/cu_mo_trans_nml/ diff_norm, &
+                          limit_mass_flux, &
                           non_local_iter, conserve_te, gki, &
+                          amplitude,  &
                           transport_scheme
 
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: cu_mo_trans.F90,v 13.0 2006/03/28 21:08:01 fms Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+character(len=128) :: version = '$Id: cu_mo_trans.F90,v 14.0 2007/03/15 22:01:54 fms Exp $'
+character(len=128) :: tagname = '$Name: nalanda $'
 
 contains
 
@@ -530,7 +536,7 @@ end subroutine diffusive_cu_mo_trans
   integer ktop, kbot, kdet
   real rdt, ent, fac_mo, fac_t
   real,  parameter:: eps = 1.E-15       ! Cutoff value
-  real,  parameter:: amplitude = 1.0    ! Tuning parameter (1=full strength)
+! real,  parameter:: amplitude = 1.0    ! Tuning parameter (1=full strength)
   real x_frac
   real rtmp
   logical :: used
@@ -556,10 +562,14 @@ end subroutine diffusive_cu_mo_trans
         enddo
 
         do k=1,km
-!           mc1(k) = min(dm1(k),   mc(i,j,k)*fac_mo)  ! Limit mass flux by available layer mass
-!          det1(k) = min(dm1(k), det0(i,j,k)*fac_mo)  
+          if (limit_mass_flux) then
+ ! Limit mass flux by available layer mass
+            mc1(k) = min(dm1(k),   mc(i,j,k)*fac_mo) 
+           det1(k) = min(dm1(k), det0(i,j,k)*fac_mo)  
+          else
             mc1(k) =  mc(i,j,k)*fac_mo
            det1(k) =  det0(i,j,k)*fac_mo  
+          endif
         enddo
 
 !---------------------------

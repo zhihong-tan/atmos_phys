@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_meso_k.F90,v 13.0.2.2.4.1 2006/11/01 09:47:25 rsh Exp $
+!  $Id: donner_meso_k.F90,v 14.0 2007/03/15 22:02:41 fms Exp $
 
 !module donner_meso_inter_mod
 
@@ -2470,6 +2470,13 @@ character(len=*),              intent(out) :: ermesg
                                  'k,prf,trf= ',kk,pfull_c(kk),temp_c(kk)
                       write (Col_diag%unit_dc(n), '(a, i5, 2e22.12)') &
                                    'k,prf,rmuf= ',kk,pfull_c(kk),umeml_c(kk)
+                       write (Col_diag%unit_dc(n), '(a, i5, 2e22.12)') &
+                     'k, grid box mean meso_precip_s, emdi_s = ', &
+                        kk, meso_precip_s, emdi_s
+                       write (Col_diag%unit_dc(n), '(a, i5, 2e22.12)') &
+  'k,meso_precip_s, cloud area normalized xice in cloud (g / m**3) = ',&
+                   kk, meso_precip_s,     &
+        xice_c(kk)*ampta1_s*1.0e03*pfull_c(kk)/(temp_c(kk)*Param%rdgas)
                     endif
                   end do
                   exit

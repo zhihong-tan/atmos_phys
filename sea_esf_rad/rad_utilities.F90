@@ -24,7 +24,7 @@ use fms_mod,               only: open_namelist_file, fms_init, &
                                  file_exist, write_version_number, &
                                  check_nml_error, error_mesg, &
                                  FATAL, close_file, lowercase
-use  field_manager_mod, only :   parse
+use  field_manager_mod, only :  parse
 
 use time_manager_mod,      only: time_type
 
@@ -43,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 13.1.4.1 2006/10/27 16:45:36 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 14.0 2007/03/15 22:07:15 fms Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -331,6 +331,8 @@ type cld_specification_type
                                          iwp=>NULL(),  &
                                          reff_liq=>NULL(),   &
                                          reff_ice=>NULL(), &
+                                         reff_liq_lim=>NULL(),   &
+                                         reff_ice_lim=>NULL(), &
                                          liq_frac=>NULL(), &
                                          cloud_water=>NULL(), &
                                          cloud_ice=>NULL(),  &
@@ -342,6 +344,7 @@ type cld_specification_type
                                          cmxolw=>NULL(),  &
                                          crndlw=>NULL()
    integer, dimension(:,:,:), pointer :: cld_thickness=>NULL()
+   integer, dimension(:,:,:,:), pointer :: stoch_cloud_type=>NULL()
    integer, dimension(:,:,:,:), pointer :: cld_thickness_lw_band=>NULL()
    integer, dimension(:,:,:,:), pointer :: cld_thickness_sw_band=>NULL()
    integer, dimension(:,:),   pointer :: ncldsw=>NULL(),   &
@@ -380,6 +383,7 @@ type cloudrad_control_type
     logical :: do_stochastic_clouds
     logical :: do_specified_strat_clouds
     logical :: do_ica_calcs
+    logical :: do_liq_num
     integer :: nlwcldb                   !   number of frequency bands 
                                          !   for which lw cloud emissiv-
                                          !   ities are defined.
@@ -408,6 +412,7 @@ type cloudrad_control_type
     logical :: do_stochastic_clouds_iz
     logical :: do_specified_strat_clouds_iz
     logical :: do_ica_calcs_iz
+    logical :: do_liq_num_iz
 end type cloudrad_control_type
 
 !------------------------------------------------------------------
@@ -697,12 +702,14 @@ type microphysics_type
                                       conc_snow=>NULL(),     &
                                       size_rain=>NULL(),     &
                                       conc_rain=>NULL(),   &
-                                      cldamt=>NULL()
+                                      cldamt=>NULL(),      &
+                                      droplet_number=>NULL()
 real, dimension(:,:,:,:), pointer :: stoch_conc_ice=>NULL(),   &
                                      stoch_conc_drop=>NULL(),  &
                                      stoch_size_ice=>NULL(),   &
                                      stoch_size_drop=>NULL(),  &
-                                     stoch_cldamt=>NULL() 
+                                     stoch_cldamt=>NULL(),     &
+                                     stoch_droplet_number=>NULL()
 !
 ! In practice, we allocate a single set of columns for the stochastic
 !   clouds, then point to sections of the larger array with the 
@@ -714,11 +721,13 @@ real, dimension(:,:,:,:), pointer :: lw_stoch_conc_ice=>NULL(),   &
                                      lw_stoch_size_ice=>NULL(),   &
                                      lw_stoch_size_drop=>NULL(),  &
                                      lw_stoch_cldamt=>NULL(),     &
+                                     lw_stoch_droplet_number=>NULL(), &
                                      sw_stoch_conc_ice=>NULL(),   &
                                      sw_stoch_conc_drop=>NULL(),  &
                                      sw_stoch_size_ice=>NULL(),   &
                                      sw_stoch_size_drop=>NULL(),  &
-                                     sw_stoch_cldamt=>NULL()
+                                     sw_stoch_cldamt=>NULL(),     &
+                                     sw_stoch_droplet_number=>NULL()
 end type microphysics_type
 
 !-------------------------------------------------------------------
@@ -1171,7 +1180,7 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false., .false.,          &
+                                         .false., .false., .false., &
                                          0,0,0,0,0,0 , &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
@@ -1179,7 +1188,7 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false., .false.)
+                                         .false., .false., .false.)
 
 
 type (longwave_parameter_type), public  ::   &
@@ -3160,11 +3169,13 @@ end subroutine thinavg
 
 !#########################################################################
 subroutine get_radiative_param(text_in_scheme,text_in_param, &
-                               rad_forc_online, tr_rad_name, tr_clim_name)
+                               rad_forc_online, tr_rad_name,  &
+                               tr_clim_name, tr_rad_scale_factor)
 
 character(len=*), intent(in)    :: text_in_scheme, text_in_param
 logical, intent(out)            :: rad_forc_online
 character(len=*), intent(out)   :: tr_rad_name,tr_clim_name
+real,             intent(out)   :: tr_rad_scale_factor
 integer                         :: flag
 
 
@@ -3172,10 +3183,13 @@ if(lowercase(trim(text_in_scheme(1:6))) == 'online') then
        rad_forc_online = .true.
        flag=parse(text_in_param,'name_in_rad_mod', tr_rad_name)
        flag=parse(text_in_param,'name_in_clim_mod', tr_clim_name)
+       tr_rad_scale_factor = 1.
+       flag=parse(text_in_param,'scale_factor', tr_rad_scale_factor)
 else
        rad_forc_online = .false.
        tr_rad_name  = ' '
        tr_clim_name = ' '
+       tr_rad_scale_factor = 1.
 endif
 
 end subroutine get_radiative_param

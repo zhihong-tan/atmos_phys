@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 13.0.4.1.2.1 2006/11/01 09:47:25 rsh Exp $
+!  $Id: donner_types.h,v 14.0 2007/03/15 22:02:49 fms Exp $
 
 
 !#######################################################################
@@ -192,11 +192,13 @@ real,    dimension(:,:,:), pointer      :: cell_liquid_amt=>NULL()
 real,    dimension(:,:,:), pointer      :: cell_liquid_size=>NULL()
 real,    dimension(:,:,:), pointer      :: cell_ice_amt=>NULL()
 real,    dimension(:,:,:), pointer      :: cell_ice_size=>NULL()
+real,    dimension(:,:,:), pointer      :: cell_droplet_number=>NULL()
 real,    dimension(:,:,:), pointer      :: meso_cloud_frac=>NULL()
 real,    dimension(:,:,:), pointer      :: meso_liquid_amt=>NULL()
 real,    dimension(:,:,:), pointer      :: meso_liquid_size=>NULL()
 real,    dimension(:,:,:), pointer      :: meso_ice_amt=>NULL()
 real,    dimension(:,:,:), pointer      :: meso_ice_size=>NULL()
+real,    dimension(:,:,:), pointer      :: meso_droplet_number=>NULL()
 integer, dimension(:,:)  , pointer      :: nsum=>NULL()
 
 end type donner_rad_type
@@ -224,6 +226,7 @@ real                ::  cell_liquid_eff_diam_input
 real                ::  cell_ice_geneff_diam_input
 real                ::  meso_liquid_eff_diam_input
 logical             ::  do_average
+logical             ::  use_memphis_size_limits
 
 end type donner_nml_type
 

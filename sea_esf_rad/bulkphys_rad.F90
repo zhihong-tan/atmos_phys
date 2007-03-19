@@ -27,7 +27,7 @@ use fms_mod,                only: open_namelist_file, mpp_pe, &
 
 !    shared radiation package modules:
 
-use rad_utilities_mod,      only: rad_utilities_init, &
+use rad_utilities_mod,      only:  rad_utilities_init, &
                                   cldrad_properties_type, &
                                   cld_specification_type, &
                                   Cldrad_control
@@ -62,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 12.0.2.1 2006/10/27 16:45:32 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 14.0 2007/03/15 22:05:13 fms Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda $'
 
 
 
@@ -143,6 +143,9 @@ real  :: crfvis_hi, crfvis_mid, crfvis_low,    &
          crfir_hi,  crfir_mid,  crfir_low,  &
          cabir_hi,  cabir_mid,  cabir_low
 
+real  :: min_cld_drop_rad, max_cld_drop_rad, &
+         min_cld_ice_size, max_cld_ice_size
+
 !-------------------------------------------------------------------
 !    logical flag.
 !-------------------------------------------------------------------
@@ -196,7 +199,9 @@ logical  :: module_is_initialized = .false.
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine bulkphys_rad_init (pref, lonb, latb)
+subroutine bulkphys_rad_init (min_cld_drop_rad_in, max_cld_drop_rad_in,&
+                              min_cld_ice_size_in, max_cld_ice_size_in,&
+                              pref, lonb, latb)
 
 !---------------------------------------------------------------------
 !    subroutine bulkphys_rad_init is the constructor for 
@@ -204,6 +209,10 @@ subroutine bulkphys_rad_init (pref, lonb, latb)
 !---------------------------------------------------------------------
 
 !--------------------------------------------------------------------
+real,                 intent(in) :: min_cld_drop_rad_in, &
+                                    max_cld_drop_rad_in,&
+                                    min_cld_ice_size_in,  &
+                                    max_cld_ice_size_in
 real, dimension(:,:), intent(in) :: pref
 real, dimension(:),   intent(in) :: lonb, latb
 
@@ -268,6 +277,11 @@ real, dimension(:),   intent(in) :: lonb, latb
       call write_version_number (version, tagname)
       if (mpp_pe() == mpp_root_pe() )    &
                       write (stdlog(), nml=bulkphys_rad_nml)
+
+      min_cld_drop_rad = min_cld_drop_rad_in
+      max_cld_drop_rad = max_cld_drop_rad_in
+      min_cld_ice_size = min_cld_ice_size_in
+      max_cld_ice_size = max_cld_ice_size_in
 
 !--------------------------------------------------------------------
 !    when executing the gcm or the standalone gcm, define the values

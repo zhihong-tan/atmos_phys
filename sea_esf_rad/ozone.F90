@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: ozone.F90,v 13.0.2.1 2006/10/27 16:45:36 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+character(len=128)  :: version =  '$Id: ozone.F90,v 14.0 2007/03/15 22:07:05 fms Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda $'
 
 
 !---------------------------------------------------------------------
@@ -354,28 +354,32 @@ real, dimension(:),   intent(in) :: latb, lonb
 !    files are to be used.                                
 !---------------------------------------------------------------------
       else if (trim(basic_ozone_type) == 'time_varying') then
+        Model_init_time = get_base_time()
+ 
+!---------------------------------------------------------------------
+!    if a dataset entry point is not supplied, use the model base time 
+!    as the entry point.
+!---------------------------------------------------------------------
         if (ozone_dataset_entry(1) == 1 .and. &
             ozone_dataset_entry(2) == 1 .and. &
             ozone_dataset_entry(3) == 1 .and. &
             ozone_dataset_entry(4) == 0 .and. &
             ozone_dataset_entry(5) == 0 .and. &
             ozone_dataset_entry(6) == 0 ) then
-           call error_mesg ('ozone_mod', &
-            'must set ozone_dataset_entry when using  &
-                                  &time-varying ozone', FATAL)
-        endif
-
+          Ozone_entry = Model_init_time
+ 
 !----------------------------------------------------------------------
 !    define the offset from model base time (obtained from diag_table)
 !    to ozone_dataset_entry as a time_type variable.
 !----------------------------------------------------------------------
-        Model_init_time = get_base_time()
-        Ozone_entry  = set_date (ozone_dataset_entry(1), &
-                                 ozone_dataset_entry(2), &
-                                 ozone_dataset_entry(3), &
-                                 ozone_dataset_entry(4), &
-                                 ozone_dataset_entry(5), &
-                                 ozone_dataset_entry(6))
+        else
+          Ozone_entry  = set_date (ozone_dataset_entry(1), &
+                                   ozone_dataset_entry(2), &
+                                   ozone_dataset_entry(3), &
+                                   ozone_dataset_entry(4), &
+                                   ozone_dataset_entry(5), &
+                                   ozone_dataset_entry(6))
+        endif
         call print_date (Ozone_entry , str='Data from ozone timeseries &
                                            &at time:')
         call print_date (Model_init_time , str='This data is mapped to &

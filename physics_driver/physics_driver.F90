@@ -135,8 +135,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 13.1.2.2 2006/09/25 20:59:23 wfc Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 14.0 2007/03/15 22:04:42 fms Exp $'
+character(len=128) :: tagname = '$Name: nalanda $'
 
 
 !---------------------------------------------------------------------
@@ -293,8 +293,10 @@ logical, dimension(:,:)  , allocatable :: convect
 real,    dimension(:,:,:), allocatable ::       &
                             cell_cld_frac, cell_liq_amt, &
                             cell_liq_size, cell_ice_amt, cell_ice_size, &
+                            cell_droplet_number, &
                             meso_cld_frac, meso_liq_amt, meso_liq_size, &
-                            meso_ice_amt, meso_ice_size
+                            meso_ice_amt, meso_ice_size, &
+                            meso_droplet_number
 integer,    dimension(:,:)  , allocatable :: nsum_out
    
 !---------------------------------------------------------------------
@@ -599,22 +601,26 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
         allocate (cell_liq_size (id, jd, kd) )
         allocate (cell_ice_amt  (id, jd, kd) )
         allocate (cell_ice_size (id, jd, kd) )
+        allocate (cell_droplet_number (id, jd, kd) )
         allocate (meso_cld_frac (id, jd, kd) )
         allocate (meso_liq_amt  (id, jd, kd) )
         allocate (meso_liq_size (id, jd, kd) )
         allocate (meso_ice_amt  (id, jd, kd) )
         allocate (meso_ice_size (id, jd, kd) )
+        allocate (meso_droplet_number (id, jd, kd) )
         allocate (nsum_out (id, jd) )
         cell_cld_frac = 0.
         cell_liq_amt  = 0.
         cell_liq_size = 0.
         cell_ice_amt  = 0.
         cell_ice_size = 0.
+        cell_droplet_number = 0.
         meso_cld_frac = 0.
         meso_liq_amt  = 0.
         meso_liq_size = 0.
         meso_ice_amt  = 0.
         meso_ice_size = 0.
+        meso_droplet_number = 0.
         nsum_out = 1
       endif
 
@@ -1153,11 +1159,13 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
              cell_liq_size=cell_liq_size(is:ie,js:je,:), &
              cell_ice_amt= cell_ice_amt(is:ie,js:je,:),   &
              cell_ice_size= cell_ice_size(is:ie,js:je,:), &
+             cell_droplet_number= cell_droplet_number(is:ie,js:je,:), &
              meso_cld_frac= meso_cld_frac(is:ie,js:je,:),   &
              meso_liq_amt=meso_liq_amt(is:ie,js:je,:), &
              meso_liq_size=meso_liq_size(is:ie,js:je,:), &
              meso_ice_amt= meso_ice_amt(is:ie,js:je,:),  &
              meso_ice_size= meso_ice_size(is:ie,js:je,:), &
+             meso_droplet_number= meso_droplet_number(is:ie,js:je,:), &
              nsum_out=nsum_out(is:ie,js:je)  )
         else
           call cloud_spec (is, ie, js, je, lat,              &
@@ -1170,11 +1178,13 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
              cell_liq_size=cell_liq_size(is:ie,js:je,:), &
              cell_ice_amt= cell_ice_amt(is:ie,js:je,:),   &
              cell_ice_size= cell_ice_size(is:ie,js:je,:), &
+             cell_droplet_number= cell_droplet_number(is:ie,js:je,:), &
              meso_cld_frac= meso_cld_frac(is:ie,js:je,:),   &
              meso_liq_amt=meso_liq_amt(is:ie,js:je,:), &
              meso_liq_size=meso_liq_size(is:ie,js:je,:), &
              meso_ice_amt= meso_ice_amt(is:ie,js:je,:),  &
              meso_ice_size= meso_ice_size(is:ie,js:je,:), &
+             meso_droplet_number= meso_droplet_number(is:ie,js:je,:), &
              nsum_out=nsum_out(is:ie,js:je)  )
         endif ! (present(kbot)
       else    ! (doing_donner)
@@ -1767,11 +1777,13 @@ integer,dimension(:,:), intent(in),   optional :: kbot
                            cell_liq_size=cell_liq_size(is:ie,js:je,:), &
                            cell_ice_amt= cell_ice_amt(is:ie,js:je,:),   &
                            cell_ice_size= cell_ice_size(is:ie,js:je,:), &
+              cell_droplet_number= cell_droplet_number(is:ie,js:je,:), &
                            meso_cld_frac= meso_cld_frac(is:ie,js:je,:), &
                            meso_liq_amt=meso_liq_amt(is:ie,js:je,:), &
                            meso_liq_size=meso_liq_size(is:ie,js:je,:), &
                            meso_ice_amt= meso_ice_amt(is:ie,js:je,:),  &
                            meso_ice_size= meso_ice_size(is:ie,js:je,:), &
+              meso_droplet_number= meso_droplet_number(is:ie,js:je,:), &
                            nsum_out=nsum_out(is:ie,js:je)  )
                           
        else
@@ -1976,6 +1988,13 @@ type(time_type), intent(in) :: Time
 !---------------------------------------------------------------------
       deallocate (diff_cu_mo, diff_t, diff_m, pbltop, convect,   &
                   radturbten, lw_tendency)
+      if (doing_donner) then
+        deallocate (cell_cld_frac, cell_liq_amt, cell_liq_size, &
+                    cell_ice_amt, cell_ice_size, cell_droplet_number, &
+                    meso_cld_frac, meso_liq_amt, meso_liq_size, &
+                    meso_ice_amt, meso_ice_size, meso_droplet_number, &
+                    nsum_out)
+      endif
  
 !---------------------------------------------------------------------
 !    mark the module as uninitialized.

@@ -1,4 +1,4 @@
-                     module cg_drag_mod
+module cg_drag_mod
 
 use fms_mod,                only:  fms_init, mpp_pe, mpp_root_pe,  &
                                    file_exist, check_nml_error,  &
@@ -11,10 +11,13 @@ use time_manager_mod,       only:  time_manager_init, time_type
 use diag_manager_mod,       only:  diag_manager_init,   &
                                    register_diag_field, send_data
 use constants_mod,          only:  constants_init, PI, RDGAS, GRAV, CP_AIR
+
+#ifdef COL_DIAG
 use column_diagnostics_mod, only:  column_diagnostics_init, &
                                    initialize_diagnostic_columns, &
                                    column_diagnostics_header, &
                                    close_column_diagnostics_units
+#endif
 
 !-------------------------------------------------------------------
 
@@ -32,8 +35,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.f90,v 13.0 2006/03/28 21:07:22 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+character(len=128)  :: version =  '$Id: cg_drag.F90,v 14.0 2007/03/15 22:01:19 fms Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda $'
 
 
 
@@ -43,7 +46,17 @@ character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
 public    cg_drag_init, cg_drag_calc, cg_drag_end
 
 
-private   read_restart_file, gwfc
+private   read_restart_file, read_nc_restart_file, &
+          write_restart_file, write_nc_restart_file, &
+          gwfc
+
+
+!wfc++ Addition for regular use
+      integer, allocatable, dimension(:,:)     ::  source_level
+
+      real,     allocatable, dimension(:,:)     ::  source_amp
+      real,     allocatable, dimension(:,:,:)   ::  gwd_u, gwd_v
+!wfc--
 
 
 !--------------------------------------------------------------------
@@ -83,6 +96,7 @@ real        :: Bt_eq=.000         ! magnitude of momentum flux divided by densit
 
 real        :: Bt_eq_width=4.0    ! scaling for width of equtorial momentum flux  (equator) 
 
+real        :: phi0n = 30., phi0s = -30., dphin = 5., dphis = -5.
 
 logical     :: calculate_ked=.false. 
                                   ! calculate ked diagnostic ?
@@ -115,7 +129,8 @@ namelist / cg_drag_nml /         &
                           calculate_ked,    &
                           num_diag_pts_ij, num_diag_pts_latlon, &
                           i_coords_gl, j_coords_gl,   &
-                          lat_coords_gl, lon_coords_gl
+                          lat_coords_gl, lon_coords_gl, &
+                          phi0n,phi0s,dphin,dphis
 
 !--------------------------------------------------------------------
 !-------- public data  -----
@@ -127,8 +142,11 @@ namelist / cg_drag_nml /         &
 !--------------------------------------------------------------------
 !   list of restart versions readable by this module.
 !--------------------------------------------------------------------
-integer, dimension(2)  :: restart_versions = (/ 1, 2 /)
-
+integer, dimension(3)  :: restart_versions = (/ 1, 2, 3 /)
+! v1 :
+! v2 : 
+! v3 : Now use NetCDF for restart file.
+!
 !--------------------------------------------------------------------
 !   these arrays must be preserved across timesteps in case the
 !   parameterization is not called every timestep:
@@ -139,8 +157,9 @@ integer, dimension(2)  :: restart_versions = (/ 1, 2 /)
 !            gravity wave forcing [ m^2/s ]
 !
 !--------------------------------------------------------------------
-real,    dimension(:,:,:), allocatable   :: gwd, ked
-
+!wfc++ not needed if calcucate_ked is removed.
+!!!!rjw real,    dimension(:,:,:), allocatable   :: gwd, ked
+!wfc--
 !--------------------------------------------------------------------
 !   these are the arrays which define the gravity wave source spectrum:
 !
@@ -207,7 +226,8 @@ integer, dimension(:), allocatable :: diag_j, diag_i
 !---------------------------------------------------------------------
 !   variables for netcdf diagnostic fields.
 !---------------------------------------------------------------------
-integer          :: id_ked_cgwd, id_bf_cgwd, id_gwf_cgwd
+integer          :: id_kedx_cgwd, id_kedy_cgwd, id_bf_cgwd, &
+                    id_gwfx_cgwd, id_gwfy_cgwd
 real             :: missing_value = -999.
 character(len=7) :: mod_name = 'cg_drag'
 
@@ -259,9 +279,12 @@ type(time_type),       intent(in)      :: Time
 !   local variables: 
 
       integer                 :: unit, ierr, io
-      integer                 :: n, k
+      integer                 :: n, i, j, k
       integer                 :: idf, jdf, kmax
+      real                    :: pif = 3.14159265358979/180.
+!      real                    :: pif = PI/180.
 
+      real, allocatable       :: lat(:,:)
 !-------------------------------------------------------------------
 !   local variables: 
 !   
@@ -288,8 +311,9 @@ type(time_type),       intent(in)      :: Time
       call time_manager_init
       call diag_manager_init
       call constants_init
+#ifdef COL_DIAG
       call column_diagnostics_init 
-
+#endif SKIP
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
@@ -316,6 +340,10 @@ type(time_type),       intent(in)      :: Time
       jdf  = size(latb(:)) - 1
       idf  = size(lonb(:)) - 1
 
+      allocate(  source_level(idf,jdf)  )
+      allocate(  source_amp(idf,jdf)  )
+      allocate(  lat(idf,jdf)  )
+
 !--------------------------------------------------------------------
 !    define the k level which will serve as source level for the grav-
 !    ity waves. it is that model level just below the pressure specif-
@@ -327,6 +355,22 @@ type(time_type),       intent(in)      :: Time
           exit
         endif
       end do
+
+     
+
+        do j=1,jdf
+          lat(:,j)=  0.5*( latb(j+1)+latb(j) )
+          do i=1,idf
+            source_level(i,j) = (kmax + 1) - ((kmax + 1 -    &
+                                klevel_of_source)*cos(lat(i,j)) + 0.5)
+            source_amp(i,j) = Bt_0 +                         &
+                        Bt_nh*0.5*(1.+tanh((lat(i,j)/pif-phi0n)/dphin)) + &
+                        Bt_sh*0.5*(1.+tanh((lat(i,j)/pif-phi0s)/dphis))
+          end do
+        end do
+        source_level = MIN (source_level, kmax-1)
+
+       deallocate( lat )
 
 !---------------------------------------------------------------------
 !    determine if column diagnostics are desired from this module. if
@@ -341,6 +385,7 @@ type(time_type),       intent(in)      :: Time
 !    if column diagnostics are desired, check that array dimensions are
 !    sufficiently large for the number of requests. 
 !---------------------------------------------------------------------
+#ifdef COL_DIAG
       if (column_diagnostics_desired) then
         if (num_diag_pts > MAX_PTS) then
           call error_mesg ( 'cg_drag_mod', &
@@ -369,6 +414,7 @@ type(time_type),       intent(in)      :: Time
                       lon_coords_gl, lonb, latb, do_column_diagnostics, &
                       diag_lon, diag_lat, diag_i, diag_j, diag_units)
       endif
+#endif
 
 !---------------------------------------------------------------------
 !    define the number of waves in the gravity wave spectrum, and define
@@ -400,17 +446,22 @@ type(time_type),       intent(in)      :: Time
          register_diag_field (mod_name, 'bf_cgwd', axes(1:3), Time, &
               'buoyancy frequency from cg_drag', ' /s',   &
               missing_value=missing_value)
-      id_gwf_cgwd =  &
-         register_diag_field (mod_name, 'gwf_cgwd', axes(1:3), Time, &
+      id_gwfx_cgwd =  &
+         register_diag_field (mod_name, 'gwfx_cgwd', axes(1:3), Time, &
               'gravity wave forcing on mean flow', &
               'm/s^2',  missing_value=missing_value)
-      if (calculate_ked) then
-        id_ked_cgwd =  &
-         register_diag_field (mod_name, 'ked_cgwd', axes(1:3), Time, &
+      id_gwfy_cgwd =  &
+         register_diag_field (mod_name, 'gwfy_cgwd', axes(1:3), Time, &
+              'gravity wave forcing on mean flow', &
+              'm/s^2',  missing_value=missing_value)
+      id_kedx_cgwd =  &
+         register_diag_field (mod_name, 'kedx_cgwd', axes(1:3), Time, &
                'effective eddy viscosity from cg_drag', 'm^2/s',   &
                missing_value=missing_value)
-      endif
-
+      id_kedy_cgwd =  &
+         register_diag_field (mod_name, 'kedy_cgwd', axes(1:3), Time, &
+               'effective eddy viscosity from cg_drag', 'm^2/s',   &
+               missing_value=missing_value)
 !---------------------------------------------------------------------
 !    initialize counters needed when cg_drag is not calculated on every
 !    time step. 
@@ -422,11 +473,8 @@ type(time_type),       intent(in)      :: Time
 !    allocate and define module variables to hold values across 
 !    timesteps, in the event that cg_drag is not called on every step.
 !--------------------------------------------------------------------
-      allocate ( gwd(idf,jdf,kmax) )
-      if (calculate_ked) then
-        allocate ( ked(idf,jdf,kmax) )
-        ked(:,:,:) = 0.0
-      endif
+     allocate ( gwd_u(idf,jdf,kmax) )
+     allocate ( gwd_v(idf,jdf,kmax) )
 
 !--------------------------------------------------------------------
 !    if present, read the restart data file.
@@ -434,20 +482,22 @@ type(time_type),       intent(in)      :: Time
       if (file_exist('INPUT/cg_drag.res')) then
         call read_restart_file
 
+      elseif (file_exist('INPUT/cg_drag.res.nc')) then
+        call read_nc_restart_file
 !-------------------------------------------------------------------
 !    if no restart file is present, initialize the gwd field to zero.
 !    define the time remaining until the next cg_drag calculation from
 !    the namelist inputs.
 !-------------------------------------------------------------------
       else
-        gwd(:,:,:) = 0.0
+        gwd_u(:,:,:) = 0.0
+        gwd_v(:,:,:) = 0.0
         if (cg_drag_offset > 0) then
           cgdrag_alarm = cg_drag_offset
         else 
           cgdrag_alarm = cg_drag_freq  
         endif
       endif
-
 !---------------------------------------------------------------------
 !    mark the module as initialized.
 !---------------------------------------------------------------------
@@ -463,9 +513,8 @@ end subroutine cg_drag_init
 
 !####################################################################
 
-subroutine cg_drag_calc (is, js, lat, pfull, zfull, temp, uuu,   &
-                         Time, delt, gwfcng)
-
+subroutine cg_drag_calc (is, js, lat, pfull, zfull, temp, uuu, vvv,  &
+                         Time, delt, gwfcng_x, gwfcng_y)
 !--------------------------------------------------------------------  
 !    cg_drag_calc defines the arrays needed to calculate the convective
 !    gravity wave forcing, calls gwfc to calculate the forcing, returns 
@@ -477,10 +526,10 @@ subroutine cg_drag_calc (is, js, lat, pfull, zfull, temp, uuu,   &
 !---------------------------------------------------------------------
 integer,                intent(in)      :: is, js
 real, dimension(:,:),   intent(in)      :: lat
-real, dimension(:,:,:), intent(in)      :: pfull, zfull, temp, uuu
+real, dimension(:,:,:), intent(in)      :: pfull, zfull, temp, uuu, vvv
 type(time_type),        intent(in)      :: Time
 real           ,        intent(in)      :: delt
-real, dimension(:,:,:), intent(out)     :: gwfcng
+real, dimension(:,:,:), intent(out)     :: gwfcng_x, gwfcng_y
 
 !-------------------------------------------------------------------
 !    intent(in) variables:
@@ -492,12 +541,15 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
 !       zfull    height at model full levels [ m ]
 !       temp     temperature at model levels [ deg K ]
 !       uuu      zonal wind  [ m/s ]
+!       vvv      meridional wind  [ m/s ]
 !       Time     current time, needed for diagnostics [ time_type ]
 !       delt     physics time step [ s ]
 !
 !    intent(out) variables:
 !
-!       gwfcng   time tendency for u eqn due to gravity-wave forcing
+!       gwfcng_x time tendency for u eqn due to gravity-wave forcing
+!                [ m/s^2 ]
+!       gwfcng_y time tendency for v eqn due to gravity-wave forcing
 !                [ m/s^2 ]
 !
 !-------------------------------------------------------------------
@@ -506,19 +558,12 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
 !    local variables:
 
       real,    dimension (size(uuu,1), size(uuu,2), size(uuu,3))  ::  &
-                                         dtdz, ked_gwfc
+                                         dtdz, ked_gwfc_x, ked_gwfc_y
 
       real,    dimension (size(uuu,1),size(uuu,2), 0:size(uuu,3)) ::  &
-                                         zzchm, zu, zden, zbf,   &
-                                         gwd_xtnd, ked_xtnd
-
-      integer, dimension (size(uuu,1), size(uuu,2))               ::  &
-                                         source_level
-
-      real   , dimension (size(uuu,1), size(uuu,2))               ::  &
-                                         source_amp
-
-
+                                         zzchm, zu, zv, zden, zbf,    &
+                                         gwd_xtnd, ked_xtnd, &
+                                         gwd_ytnd, ked_ytnd
 
       integer           :: iz0
       logical           :: used
@@ -526,6 +571,8 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
       integer           :: ie, je
       integer           :: imax, jmax, kmax
       integer           :: i, j, k, nn
+      real              :: pif = 3.14159265358979/180.
+!      real              :: pif = PI/180.
 
 !-------------------------------------------------------------------
 !    local variables:
@@ -576,25 +623,9 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
 !    this timestep (i.e., the alarm has gone off), proceed with the
 !    calculation.
 !---------------------------------------------------------------------
+
+
       if (cgdrag_alarm <= 0) then
-
-!----------------------------------------------------------------------
-!    define the source level for gravity waves for each model column. 
-!    it will be highest at equator and lowest near the poles. prevent 
-!    it from being the lowest model level (which will occur only very 
-!    near the poles with the current formulation.)
-!----------------------------------------------------------------------
-        do j=1,jmax
-          do i=1,imax
-            source_level(i,j) = (kmax + 1) - ((kmax + 1 -    &
-                                klevel_of_source)*cos(lat(i,j)) + 0.5)
-
-            source_amp(i,j)= Bt_0 +                         &
-                             Bt_eq*exp( -Bt_eq_width*lat(i,j)*lat(i,j) )  + &
-                             (Bt_nh-Bt_sh)*(1.0+tanh(4.0*lat(i,j)))/2.0 + Bt_sh
-          end do
-        end do
-        source_level = MIN (source_level, kmax-1)
 
 !-----------------------------------------------------------------------
 !    calculate temperature lapse rate. do one-sided differences over 
@@ -649,6 +680,7 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
             end do
             do k=1,iz0   
               zu(i,j,k) = uuu(i,j,k)
+              zv(i,j,k) = vvv(i,j,k)
             end do
 
 !----------------------------------------------------------------------
@@ -661,6 +693,7 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
 !----------------------------------------------------------------------
             zzchm(i,j,0) = zzchm(i,j,1) + zzchm(i,j,1) - zzchm(i,j,2)
             zu(i,j,0)    = 2.*zu(i,j,1) - zu(i,j,2)
+            zv(i,j,0)    = 2.*zv(i,j,1) - zv(i,j,2)
             zden(i,j,0)  = zden(i,j,1)*zden(i,j,1)/zden(i,j,2)
             zbf(i,j,0)   = zbf(i,j,1)
           end do
@@ -671,30 +704,27 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
 !    culate the gravity-wave forcing and, if desired, an effective eddy 
 !    diffusion coefficient at each level above the source level. output
 !    is returned in the vertically-extended arrays gwfcng and ked_gwfc.
-!    upon return move the output fields into model-sized arrays. NOTE
-!    THE PRESENCE OF A BUG IN THIS PROCESS - THIS REMAPPING OF THE
-!    OUTPUT DATA WAS NOT DONE, EVEN IN THE ORIGINAL SKYHI 
-!    IMPLEMENTATION, MEANING THAT FORCING WAS ASSIGNED TO THE WRONG 
-!    LEVEL!!!
+!    upon return move the output fields into model-sized arrays. 
 !---------------------------------------------------------------------
-        if (calculate_ked) then
-          call gwfc (is, ie, js, je, source_level, source_amp,    &
+       call gwfc (is, ie, js, je, source_level, source_amp,    &
                      zden, zu, zbf,zzchm, gwd_xtnd, ked_xtnd)
-!!! CORRECTED LINES (BUGFIX #2):
-          gwfcng(:,:,1:kmax) = gwd_xtnd(:,:,1:kmax  )
-          ked_gwfc(:,:,1:kmax) = ked_xtnd(:,:,1:kmax  )
-!!! ORIGINAL  LINES (BUG #2):
-!         gwfcng(:,:,1:kmax) = gwd_xtnd(:,:,0:kmax-1)
-!         ked_gwfc(:,:,1:kmax) = ked_xtnd(:,:,0:kmax-1)
-        else
-          call gwfc (is, ie, js, je, source_level, source_amp,    &
-                     zden, zu, zbf, zzchm, gwd_xtnd)
-!!! CORRECTED LINE (BUGFIX #2):
-          gwfcng(:,:,1:kmax) = gwd_xtnd(:,:,1:kmax  )
-!!! ORIGINAL  LINE (BUG #2):
-!         gwfcng(:,:,1:kmax) = gwd_xtnd(:,:,0:kmax-1  )
-        endif
 
+          gwfcng_x  (:,:,1:kmax) = gwd_xtnd(:,:,1:kmax  )
+          ked_gwfc_x(:,:,1:kmax) = ked_xtnd(:,:,1:kmax  )
+
+       call gwfc (is, ie, js, je, source_level, source_amp,    &
+                     zden, zv, zbf,zzchm, gwd_ytnd, ked_ytnd)
+          gwfcng_y  (:,:,1:kmax) = gwd_ytnd(:,:,1:kmax  )
+          ked_gwfc_y(:,:,1:kmax) = ked_ytnd(:,:,1:kmax  )
+
+!--------------------------------------------------------------------
+!    store the gravity wave forcing into a processor-global array.
+!-------------------------------------------------------------------
+          gwd_u(is:ie,js:je,:) = gwfcng_x(:,:,:)
+          gwd_v(is:ie,js:je,:) = gwfcng_y(:,:,:)
+
+
+#ifdef COL_DIAG
 !--------------------------------------------------------------------
 !  if column diagnostics are desired, determine if any columns are on
 !  this processor. if so, call column_diagnostics_header to write
@@ -733,33 +763,40 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
             endif    ! (do_column_diagnostics)
           end do   ! (j loop)
         endif    ! (column_diagnostics_desired)
+#endif
 
-!--------------------------------------------------------------------
-!    store the gravity wave forcing into a processor-global array.
-!-------------------------------------------------------------------
-        gwd(is:ie,js:je,:) = gwfcng(:,:,:)
 
 !--------------------------------------------------------------------
 !    if activated, store the effective eddy diffusivity into a 
 !    processor-global array, and if desired as a netcdf diagnostic, 
 !    send the data to diag_manager_mod.
 !-------------------------------------------------------------------
-        if (calculate_ked) then
-          ked(is:ie, js:je,:) = ked_gwfc(:,:,:)
-          if (id_ked_cgwd > 0) then
-            used = send_data (id_ked_cgwd, ked_gwfc, Time, is, js, 1)
+
+          if (id_kedx_cgwd > 0) then
+            used = send_data (id_kedx_cgwd, ked_gwfc_x, Time, is, js, 1)
           endif
-        endif
+
+          if (id_kedy_cgwd > 0) then
+            used = send_data (id_kedy_cgwd, ked_gwfc_y, Time, is, js, 1)
+          endif
+
+
 
 !--------------------------------------------------------------------
 !    save any other netcdf file diagnostics that are desired.
 !--------------------------------------------------------------------
         if (id_bf_cgwd > 0) then
-          used = send_data (id_bf_cgwd,  zbf(:,:,1:), Time, is, js, 1)
+          used = send_data (id_bf_cgwd,  zbf(:,:,1:), Time, is, js )
         endif
-        if (id_gwf_cgwd > 0) then
-          used = send_data (id_gwf_cgwd, gwfcng, Time, is, js, 1)
+
+        if (id_gwfx_cgwd > 0) then
+          used = send_data (id_gwfx_cgwd, gwfcng_x, Time, is, js, 1)
         endif
+        if (id_gwfy_cgwd > 0) then
+          used = send_data (id_gwfy_cgwd, gwfcng_y, Time, is, js, 1)
+        endif
+
+
 
 !--------------------------------------------------------------------
 !    if this is not a timestep on which gravity wave forcing is to be 
@@ -767,8 +804,9 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
 !    and return to the calling subroutine.
 !--------------------------------------------------------------------
       else   ! (cgdrag_alarm <= 0)
-        gwfcng(:,:,:) = gwd(is:ie,js:je,:)
-      endif  ! (cgdrag_alarm <= 0)
+        gwfcng_x(:,:,:) = gwd_u(is:ie,js:je,:)
+        gwfcng_y(:,:,:) = gwd_v(is:ie,js:je,:)
+     endif  ! (cgdrag_alarm <= 0)
 
 !--------------------------------------------------------------------
 !    increment the number of points processed on this time step, and 
@@ -776,13 +814,14 @@ real, dimension(:,:,:), intent(out)     :: gwfcng
 !    step, reset cgdrag_alarm to indicate the time remaining before the
 !    next calculation of gravity wave forcing.
 !--------------------------------------------------------------------
-      pts_processed = pts_processed + size(gwfcng,1)*size(gwfcng,2)
+      pts_processed = pts_processed + size(gwfcng_x,1)*size(gwfcng_x,2)
       if (pts_processed == total_pts) then
         pts_processed = 0
         if (cgdrag_alarm <= 0 ) then
            cgdrag_alarm = cgdrag_alarm + cg_drag_freq
         endif
       endif
+
 
 !--------------------------------------------------------------------
 
@@ -803,7 +842,41 @@ subroutine cg_drag_end
 !--------------------------------------------------------------------
 !    local variables
 
-      integer :: unit     ! unit for writing restart file
+      if (size(restart_versions(:)) .le. 2 ) then
+        call write_restart_file
+      else
+!For version 3 and after, use NetCDF restarts.
+        call write_nc_restart_file
+      endif
+
+#ifdef COL_DIAG
+      if (column_diagnostics_desired) then
+        call close_column_diagnostics_units (diag_units)
+      endif
+#endif
+
+!---------------------------------------------------------------------
+!    mark the module as uninitialized.
+!---------------------------------------------------------------------
+      module_is_initialized = .false.
+
+!---------------------------------------------------------------------
+
+
+end subroutine cg_drag_end
+
+
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!
+!                     PRIVATE SUBROUTINES
+!
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+subroutine  write_restart_file
+
+integer :: unit     ! unit for writing restart file
 
 !-------------------------------------------------------------------
 !    open unit for restart file.
@@ -824,37 +897,15 @@ subroutine cg_drag_end
 !    each processor writes out its gravity wave forcing tendency 
 !    on the zonal flow.
 !-------------------------------------------------------------------
-      call write_data (unit, gwd)
+      call write_data (unit, gwd_u)
 
 !---------  ----------------------------------------------------------
 !    close restart file unit. if column diagnostics have been generated,
 !    close the units to which they were written.
 !---------------------------------------------------------------------
       call close_file (unit)
-      if (column_diagnostics_desired) then
-        call close_column_diagnostics_units (diag_units)
-      endif
 
-!---------------------------------------------------------------------
-!    mark the module as uninitialized.
-!---------------------------------------------------------------------
-      module_is_initialized = .false.
-
-!---------------------------------------------------------------------
-
-
-end subroutine cg_drag_end
-
-
-
-
-!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-!
-!                     PRIVATE SUBROUTINES
-!
-!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
+end subroutine write_restart_file
 
 
 !#####################################################################
@@ -937,7 +988,8 @@ subroutine read_restart_file
 !    read  restart data (gravity wave forcing tendency terms) and close 
 !    unit.
 !-------------------------------------------------------------------
-      call read_data (unit, gwd)
+      call read_data (unit, gwd_u)
+      gwd_v(:,:,:) = 0.0
       call close_file (unit)
 
 !--------------------------------------------------------------------
@@ -971,6 +1023,122 @@ subroutine read_restart_file
 end subroutine read_restart_file
 
 
+subroutine read_nc_restart_file
+!-----------------------------------------------------------------------
+!    subroutine read_restart_nc reads a netcdf restart file to obtain 
+!    the variables needed upon experiment restart. 
+!-----------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!   local variables:
+
+      character(len=64)     :: fname='INPUT/cg_drag.res.nc'
+      character(len=8)      :: chvers
+      integer               :: vers
+      integer, dimension(5) :: null
+      integer               :: old_time_step
+      real                  :: secs_per_day = 86400.
+
+!---------------------------------------------------------------------
+!   local variables:
+!
+!        fname            restart file name
+!
+!----------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!    output a message indicating entrance into this routine.
+!--------------------------------------------------------------------
+      if (mpp_pe() == mpp_root_pe() ) then
+        call error_mesg ('cg_drag_mod',  'read_restart_nc:&
+             &Reading netCDF formatted restart file:'//trim(fname), NOTE)
+      endif
+
+!-------------------------------------------------------------------
+!    read the values of gwd_u and gwd_v
+!-------------------------------------------------------------------
+
+      call read_data(fname, 'restart_version', vers, no_domain=.true. )
+      if (.not. any(vers == restart_versions) ) then
+        write (chvers, '(i4)') vers
+        call error_mesg ('cg_drag_init', &
+               'restart version '//chvers//' cannot be read &
+               &by this module version', FATAL)
+      endif
+      call read_data(fname, 'cgdrag_alarm', cgdrag_alarm, no_domain=.true. )
+      call read_data(fname, 'cg_drag_freq', old_time_step, no_domain=.true.)
+      call read_data(fname, 'gwd_u', gwd_u)
+      call read_data(fname, 'gwd_v', gwd_v)
+
+!--------------------------------------------------------------------
+!    if current cg_drag calling frequency differs from that previously 
+!    used, adjust the time remaining before the next calculation. 
+!--------------------------------------------------------------------
+      if (cg_drag_freq /= old_time_step) then
+        cgdrag_alarm = cgdrag_alarm - old_time_step + cg_drag_freq
+        if (mpp_pe() == mpp_root_pe() ) then
+          call error_mesg ('cg_drag_mod',   &
+                'cgdrag time step has changed, &
+                &next cgdrag time also changed', NOTE)
+        endif
+      endif
+
+!--------------------------------------------------------------------
+!    if cg_drag_offset is specified and is smaller than the time remain-
+!    ing until the next calculation, modify the time remaining to be 
+!    that offset time. the assumption is made that the restart was
+!    written at 00Z.
+!--------------------------------------------------------------------
+      if (cg_drag_offset /= 0) then
+        if (cgdrag_alarm > cg_drag_offset) then
+          cgdrag_alarm = cg_drag_offset
+        endif
+      endif
+
+!---------------------------------------------------------------------
+end subroutine read_nc_restart_file
+
+!####################################################################
+
+subroutine write_nc_restart_file
+!----------------------------------------------------------------------
+!    subroutine write_restart_nc writes a netcdf restart file.
+!----------------------------------------------------------------------
+
+
+!--------------------------------------------------------------------
+!  local variables:
+
+      character(len=65)  :: fname = 'RESTART/cg_drag.res.nc'
+                                    ! name of restart file to be written
+
+!---------------------------------------------------------------------
+!    write a message indicating that a restart file is being written.
+!---------------------------------------------------------------------
+      if (mpp_pe() == mpp_root_pe() ) &
+            call error_mesg ('cg_drag_mod', 'write_restart_nc: &
+              &Writing netCDF formatted restart file as &
+                &requested: '//trim(fname), NOTE)
+
+!-------------------------------------------------------------------
+!    the root pe writes out the restart version, the time remaining 
+!    before the next call to cg_drag_mod and the current cg_drag 
+!    timestep.
+!-------------------------------------------------------------------
+      call write_data (fname, 'restart_version', restart_versions(size(restart_versions(:))), no_domain=.true.)
+      call write_data (fname, 'cgdrag_alarm'   , cgdrag_alarm, no_domain=.true.)
+      call write_data (fname, 'cg_drag_freq'   , cg_drag_freq, no_domain=.true.)
+
+!-------------------------------------------------------------------
+!    each processor writes out its gravity wave forcing tendency 
+!    on the zonal and meridional flow.
+!-------------------------------------------------------------------
+      call write_data (fname, 'gwd_u', gwd_u)
+      call write_data (fname, 'gwd_v', gwd_v)
+
+!----------------------------------------------------------------------
+end subroutine write_nc_restart_file
+
 !####################################################################
 
 subroutine gwfc (is, ie, js, je, source_level, source_amp, rho, u,    &
@@ -990,7 +1158,7 @@ integer, dimension(:,:),     intent(in)             :: source_level
 real,    dimension(:,:),     intent(in)             :: source_amp
 real,    dimension(:,:,0:),  intent(in)             :: rho, u, bf, z
 real,    dimension(:,:,0:),  intent(out)            :: gwf
-real,    dimension(:,:,0:),  intent(out), optional  :: ked
+real,    dimension(:,:,0:),  intent(out)            :: ked
 
 !-------------------------------------------------------------------
 !  intent(in) variables:
@@ -1077,9 +1245,7 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
 !    defining the gravity wave spectrum.
 !-------------------------------------------------------------------
       gwf = 0.0
-      if (present(ked)) then
-        ked = 0.0
-      endif
+      ked = 0.0
 
       do j=1,size(u,2)
         do i=1,size(u,1)  
@@ -1127,7 +1293,6 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
             call error_mesg ('cg_drag_mod', &
                ' zero flux input at source level', FATAL)
           endif
-!!          eps = (Bt_0*1.5/nk)/Bsum
           eps = (ampl*1.5/nk)/Bsum
 
 !--------------------------------------------------------------------
@@ -1142,9 +1307,6 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
               fac(k) = 0.5*(rho(i,j,k)/rho(i,j,iz0))*kwv(ink)/bf(i,j,k)
             end do
 
-!!BUG #1:
-!           do k=0,iz0 -1
-!!BUGFIX #1:
             do k=0,iz0 
               dz(k) = z(i,j,k) - z(i,j,k+1)
               Hb = -(dz(k))/alog(rho(i,j,k)/rho(i,j,k+1))
@@ -1152,17 +1314,6 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
               omc(k) = sqrt((bf(i,j,k)*bf(i,j,k)*k2(ink))/    &
                             (k2(ink) + alp2))
             end do
-
-!!BUG #1 AND BUGFIX #1:
-!---------------------------------------------------------------------
-!!   to return bug, run the above loop only to iz0-1, and reactivate the
-!!   following two lines:
-!!   to return bugfix, run the above loop to iz0, and deactivate the
-!!   following two lines:
-!---------------------------------------------------------------------
-!           k = iz0  
-!           omc(k) = sqrt((bf(i,j,k)*bf(i,j,k)*k2(ink))/   &
-!                         (k2(ink) + alp2))
 
 !---------------------------------------------------------------------
 !    initialize a flag which will indicate which waves are still 
@@ -1224,9 +1375,7 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
                         msk(n) = 0
                         if (k  < iz0) then
                           fm = fm + B0(n)
-                          if (calculate_ked) then
-                            fe = fe + c0mu(k)*B0(n)
-                          endif
+                          fe = fe + c0mu(k)*B0(n)
                         endif
                       endif                      
                     endif   ! (test >= 0.0)
@@ -1243,17 +1392,13 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
                 rbh = sqrt(rho(i,j,k)*rho(i,j,k+1))
                 wv_frcng(k) = ( rho(i,j,iz0)/rbh)*fm*eps/dz(k)
                 wv_frcng(k+1) =  0.5*(wv_frcng(k+1) + wv_frcng(k))
-                if (calculate_ked) then
-                  diff_coeff(k) = (rho(i,j,iz0)/rbh)*fe*eps/(dz(k)*   &
-                            bf(i,j,k)*bf(i,j,k))
-                  diff_coeff(k+1) = 0.5*(diff_coeff(k+1) +    &
-                                         diff_coeff(k))
-                endif
+                diff_coeff(k) = (rho(i,j,iz0)/rbh)*fe*eps/(dz(k)*   &
+                                 bf(i,j,k)*bf(i,j,k))
+                diff_coeff(k+1) = 0.5*(diff_coeff(k+1) +    &
+                                       diff_coeff(k))
               else 
                 wv_frcng(iz0) = 0.0
-                if (calculate_ked) then
-                  diff_coeff(iz0) = 0.0
-                endif
+                diff_coeff(iz0) = 0.0
               endif
             end do  ! (k loop)               
 
@@ -1263,9 +1408,7 @@ real,    dimension(:,:,0:),  intent(out), optional  :: ked
 !---------------------------------------------------------------------
             do k=0,iz0      
               gwf(i,j,k) = gwf(i,j,k) + wv_frcng(k)
-              if (present(ked)) then
-                ked(i,j,k) = ked(i,j,k) + diff_coeff(k)
-              endif
+              ked(i,j,k) = ked(i,j,k) + diff_coeff(k)
             end do              
           end do   ! wavelength loop
         end do  ! i loop                      
@@ -1282,6 +1425,6 @@ end subroutine gwfc
 !####################################################################
 
 
-                    end module cg_drag_mod
+end module cg_drag_mod
 
 

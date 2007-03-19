@@ -93,7 +93,7 @@ use      constants_mod, only: grav,vonkarm,cp_air,rdgas,rvgas,hlv,hls, &
                               tfreeze, radian 
 
 use            fms_mod, only: open_file, file_exist, open_namelist_file, &
-                              error_mesg, FATAL,&
+                              error_mesg, FATAL, check_nml_error, &
                               mpp_pe, mpp_root_pe, close_file, read_data, &
                               write_data, stdlog, write_version_number
 
@@ -246,8 +246,8 @@ real, parameter :: d608 = (rvgas-rdgas)/rdgas
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: entrain.F90,v 13.0 2006/03/28 21:09:17 fms Exp $'
-character(len=128) :: Tagname = '$Name: memphis_2006_12 $'
+character(len=128) :: Version = '$Id: entrain.F90,v 14.0 2007/03/15 22:03:10 fms Exp $'
+character(len=128) :: Tagname = '$Name: nalanda $'
 logical            :: module_is_initialized = .false.      
 !-----------------------------------------------------------------------
 !
@@ -346,7 +346,7 @@ integer,            intent(in) :: idim,jdim,kdim,axes(4)
 type(time_type),    intent(in) :: time
 real, dimension(:), intent(in) :: lonb, latb
 
-integer                        :: unit,io
+integer                        :: unit,io,ierr
 integer, dimension(3)          :: half = (/1,2,4/)
 integer                        :: nn, i, j
 real                           :: dellat, dellon
@@ -357,9 +357,10 @@ real                           :: dellat, dellon
 
        If (File_Exist('input.nml')) Then
             unit = Open_namelist_File ()
-            io=1
-            Do While (io .ne. 0)
+            ierr=1
+            Do While (ierr .ne. 0)
                  Read  (unit, nml=entrain_nml, iostat=io, End=10)
+                 ierr = check_nml_error (io, 'entrain_nml')
             EndDo
   10        Call Close_File (unit)
        EndIf

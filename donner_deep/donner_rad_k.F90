@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_rad_k.F90,v 13.0 2006/03/28 21:08:55 fms Exp $
+!  $Id: donner_rad_k.F90,v 14.0 2007/03/15 22:02:44 fms Exp $
 
 !module donner_rad_inter_mod
 
@@ -52,13 +52,21 @@ character(len=*),                      intent(out)   :: ermesg
 
 !---------------------------------------------------------------------
 !    call define_cell_liquid_size to compute the cell liquid effective
-!    droplet diameter (Don_conv%cell_liquid_eff_diam).
+!    droplet diameter (Don_conv%cell_liquid_eff_diam) and the number of
+!    cell droplets (Don_rad%cell_droplet_number).
 !---------------------------------------------------------------------
       call don_r_define_cell_liquid_size_k   &
-           (isize, jsize, nlev_lsm, Param, Col_diag, pfull, temp,  &
-            Don_conv%cuql, land, exit_flag,    &
-            Don_conv%cell_liquid_eff_diam, ermesg)
+           (isize, jsize, nlev_lsm, Param, Nml, Col_diag, pfull, temp, &
+            Don_conv%cuql, Don_conv%cual, land, exit_flag,    &
+            Don_conv%cell_liquid_eff_diam, Don_rad%cell_droplet_number,&
+            ermesg)
  
+!---------------------------------------------------------------------
+!    since liquid is not allowed in anvil currently, set the droplet
+!    number there to be 0.0.
+!---------------------------------------------------------------------
+      Don_rad%meso_droplet_number = 0.0
+
 !---------------------------------------------------------------------
 !    save  variables needed by the radiation package.
 !---------------------------------------------------------------------
@@ -133,7 +141,6 @@ character(len=*),                      intent(out) :: ermesg
               call don_r_andge_k   &
                    (i, j, Param, Col_diag, pfull(i,j,k), przm(i,j),  &
                     prztm(i,j), dgeice(i,j,k), ermesg)
-              dgeice(i,j,k) = MAX (18.6, dgeice(i,j,k))
             else
               dgeice(i,j,k) = 0.
             endif
@@ -251,8 +258,9 @@ end subroutine don_r_andge_k
 !###################################################################
 
 subroutine don_r_define_cell_liquid_size_k   &
-         (isize, jsize, nlev_lsm, Param, Col_diag, pfull, temp, cuql, &
-          land, exit_flag, cell_liquid_eff_diam, ermesg)
+         (isize, jsize, nlev_lsm, Param, Nml, Col_diag, pfull, temp, &
+          cuql, cual, land, exit_flag, cell_liquid_eff_diam,  &
+          cell_droplet_number, ermesg)
 
 !--------------------------------------------------------------------
 !    subroutine define_cell_liquid_size calculates the effective radii 
@@ -260,20 +268,24 @@ subroutine don_r_define_cell_liquid_size_k   &
 !    of Bower et al (JAS, 1994).
 !---------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type, donner_column_diag_type
+use donner_types_mod, only : donner_param_type, donner_nml_type, &
+                             donner_column_diag_type
 
 implicit none
 
 !---------------------------------------------------------------------
 integer,                         intent(in)  :: isize, jsize, nlev_lsm
 type(donner_param_type),         intent(in)  :: Param
+type(donner_nml_type),           intent(in)  :: Nml
+
 type(donner_column_diag_type),   intent(in)  :: Col_diag
 real, dimension(isize,jsize,nlev_lsm),                 &
-                                 intent(in)  :: pfull, temp, cuql
+                                 intent(in)  :: pfull, temp, cuql, cual
 real, dimension(isize,jsize),    intent(in)  :: land
 logical,dimension(isize,jsize),  intent(in)  :: exit_flag
 real, dimension(isize,jsize,nlev_lsm),                  &
-                                 intent(out) :: cell_liquid_eff_diam
+                                 intent(out) :: cell_liquid_eff_diam, &
+                                                cell_droplet_number
 character(len=*),                intent(out) :: ermesg
    
 !--------------------------------------------------------------------
@@ -286,6 +298,8 @@ character(len=*),                intent(out) :: ermesg
 !     cell_liquid_eff_diam
 !                    effective diameter of liquid cloud drops 
 !                    [ microns ]
+!     cell_droplet_number
+!                    droplet number in cells [ # / kg(air) ]
 !
 !------------------------------------------------------------------
 ! local variables
@@ -295,8 +309,10 @@ character(len=*),                intent(out) :: ermesg
                                 cell_land_ref_delp, cell_ocean_ref_delp
                                        
       real, dimension (isize,jsize,nlev_lsm)          ::   &
-                                cell_delp, cell_liquid_eff_diam_land,  &
-                                cell_liquid_eff_diam_ocean
+                               cell_delp, cell_liquid_eff_diam_land,  &
+                               cell_liquid_eff_diam_ocean, &
+                               cell_droplet_number_land,   &
+                               cell_droplet_number_ocean
       integer   :: i, j, k, n
 
 !------------------------------------------------------------------
@@ -323,6 +339,8 @@ character(len=*),                intent(out) :: ermesg
 !        cell_liquid_eff_diam_ocean      droplet effective diameter when
 !                                        over an ocean surface 
 !                                        [ microns ]
+!        cell_droplet_number_land
+!        cell_droplet_number_ocean
 !        i,j,k,n                         do-loop indices
 !
 !-------------------------------------------------------------------
@@ -414,7 +432,8 @@ character(len=*),                intent(out) :: ermesg
       do k=1,nlev_lsm             
         do j=1,jsize
           do i=1,isize
-            if (cuql(i,j,k) >= 1.0e-11) then
+            if (cuql(i,j,k) >= 1.0e-11 .and. &
+                cual(i,j,k) > 0.0) then
 
 !---------------------------------------------------------------------
 !    if land is present in the box and the box is more than delz_land 
@@ -425,6 +444,12 @@ character(len=*),                intent(out) :: ermesg
                 if (cell_delp(i,j,k) >= cell_land_ref_delp(i,j)) then 
                   cell_liquid_eff_diam_land(i,j,k) =      &
                                                   2.0*Param%r_conv_land
+                  cell_droplet_number_land(i,j,k) =  3.0*cuql(i,j,k)/  &
+                                     (4.0*Param%pie*Param%dens_h2o*    &
+                                         (Param%r_conv_land*1.0e-06)**3)
+                  cell_droplet_number_land(i,j,k) =  &
+                       cell_droplet_number_land(i,j,k)*pfull(i,j,k)/&
+                          (Param%rdgas*temp(i,j,k))
 
 !---------------------------------------------------------------------
 !    if the box is less than delz_land meters from cloud base, calculate
@@ -435,9 +460,12 @@ character(len=*),                intent(out) :: ermesg
                                  (3.0*(pfull(i,j,k)/    &
                             (Param%rdgas*temp(i,j,k)))*cuql(i,j,k)/   &
                      (4*Param%pie*Param%dens_h2o*Param%n_land))**(1./3.) 
+                  cell_droplet_number_land(i,j,k) = Param%n_land/  &
+                                (pfull(i,j,k)/(Param%rdgas*temp(i,j,k)))
                 endif
               else
                 cell_liquid_eff_diam_land(i,j,k) = 0.0
+                cell_droplet_number_land(i,j,k) = 0.0
               endif
 
 !---------------------------------------------------------------------
@@ -450,14 +478,23 @@ character(len=*),                intent(out) :: ermesg
                 if (cell_delp(i,j,k) >= cell_ocean_ref_delp(i,j)) then 
                   cell_liquid_eff_diam_ocean(i,j,k) =     &
                                                  2.0*Param%r_conv_ocean
+                  cell_droplet_number_ocean(i,j,k) =  3.0*cuql(i,j,k)/ &
+                                   (4.0*Param%pie*Param%dens_h2o*    &
+                                       (Param%r_conv_ocean*1.0e-06)**3)
+                  cell_droplet_number_ocean(i,j,k) =  &
+                        cell_droplet_number_ocean(i,j,k)*pfull(i,j,k)/&
+                              (Param%rdgas*temp(i,j,k))
                 else
                   cell_liquid_eff_diam_ocean(i,j,k) = 2.0*(1.0e6)*  &
                          (3.0*(pfull(i,j,k)/     &
                                (Param%rdgas*temp(i,j,k)))*cuql(i,j,k)/  &
-                    (4*Param%pie*Param%DENS_H2O*Param%N_ocean))**(1./3.)
+                    (4*Param%pie*Param%DENS_H2O*Param%n_ocean))**(1./3.)
+                  cell_droplet_number_ocean(i,j,k) = Param%n_ocean/  &
+                               (pfull(i,j,k)/(Param%rdgas*temp(i,j,k)))
                 endif
               else
                 cell_liquid_eff_diam_ocean(i,j,k) = 0.0
+                cell_droplet_number_ocean(i,j,k) = 0.0
               endif
 
 !---------------------------------------------------------------------
@@ -467,6 +504,9 @@ character(len=*),                intent(out) :: ermesg
               cell_liquid_eff_diam(i,j,k) =                    &
                        land(i,j) *cell_liquid_eff_diam_land(i,j,k)   + &
                 (1.0 - land(i,j))*cell_liquid_eff_diam_ocean(i,j,k) 
+              cell_droplet_number (i,j,k) =                    &
+                       land(i,j) *cell_droplet_number_land(i,j,k)   + &
+                (1.0 - land(i,j))*cell_droplet_number_ocean(i,j,k) 
 
 !---------------------------------------------------------------------
 !    when there is no liquid in the box, set the effective diameter to
@@ -474,6 +514,7 @@ character(len=*),                intent(out) :: ermesg
 !---------------------------------------------------------------------
             else
               cell_liquid_eff_diam(i,j,k) = 10.0
+              cell_droplet_number(i,j,k) = 0.
             endif  ! (cuql > 1.0e-11)
           end do
         end do
@@ -484,8 +525,10 @@ character(len=*),                intent(out) :: ermesg
 !    microns, the limits for which the slingo parameterization for
 !    radiative properties of cloud drops is applicable.
 !--------------------------------------------------------------------
-      cell_liquid_eff_diam = MAX(8.401, cell_liquid_eff_diam)
-      cell_liquid_eff_diam = MIN(33.199, cell_liquid_eff_diam)
+      if (Nml%use_memphis_size_limits) then
+        cell_liquid_eff_diam = MAX(8.401, cell_liquid_eff_diam)
+        cell_liquid_eff_diam = MIN(33.199, cell_liquid_eff_diam)
+      endif
 
 !--------------------------------------------------------------------
 !    if this is a diagnostics column, output the grid box effective
@@ -499,15 +542,32 @@ character(len=*),                intent(out) :: ermesg
               if (j == Col_diag%j_dc(n) .and. i == Col_diag%i_dc(n)) then
                 do k=1,nlev_lsm            
                   if (cuql(i,j,k) > 0.0) then
+                    write (Col_diag%unit_dc(n), '(a, i5    )') &
+                         'k', k
                     write (Col_diag%unit_dc(n), '(a, e22.12)') &
-                            ' Don_conv%cell_liquid_eff_diam',  &
+                            ' cell_liquid_eff_diam',  &
                                  cell_liquid_eff_diam(i,j,k)
                     write (Col_diag%unit_dc(n), '(a, e22.12)') &
-                            ' Don_conv%cell_liquid_eff_diam_land',  &
+                            ' cell_liquid_eff_diam_land',  &
                                  cell_liquid_eff_diam_land(i,j,k)
                     write (Col_diag%unit_dc(n), '(a, e22.12)') &
-                           ' Don_conv%cell_liquid_eff_diam_ocean',  &
+                           ' cell_liquid_eff_diam_ocean',  &
                                  cell_liquid_eff_diam_ocean(i,j,k)
+                    write (Col_diag%unit_dc(n), '(a, e22.12)') &
+                            ' cell_droplet_number',  &
+                                 cell_droplet_number (i,j,k)
+                    write (Col_diag%unit_dc(n), '(a, e22.12)') &
+                            ' cell_droplet_number_land',  &
+                                 cell_droplet_number_land(i,j,k)
+                    write (Col_diag%unit_dc(n), '(a, e22.12)') &
+                           ' cell_droplet_number_ocean',  &
+                                 cell_droplet_number_ocean(i,j,k)
+                    write (Col_diag%unit_dc(n), '(a, e22.12)') &
+                           ' cuql     ',  &
+                                 cuql     (i,j,k)
+                    write (Col_diag%unit_dc(n), '(a, e22.12)') &
+                           ' cual     ',  &
+                                    cual     (i,j,k)
                   endif
                 end do
               endif

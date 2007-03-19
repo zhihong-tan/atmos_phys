@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cloud_model_k.F90,v 13.0.2.2.4.1.2.1 2006/10/28 13:05:57 rsh Exp $
+!  $Id: donner_cloud_model_k.F90,v 14.0 2007/03/15 22:02:28 fms Exp $
 
 !module donner_cloud_model_inter_mod
 
@@ -508,6 +508,7 @@ character(len=*),                   intent(out)   :: ermesg
         pf(k)=0.
       end do
 
+      rsc(:) = 0.
       sig(:) = pfull_c(:)/psfc
 
 !--------------------------------------------------------------------

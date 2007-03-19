@@ -61,8 +61,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 13.0.2.1 2006/10/27 16:45:32 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 14.0 2007/03/15 22:05:29 fms Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda $'
 
 
 !---------------------------------------------------------------------
@@ -85,8 +85,26 @@ character(len=16)  :: microphys_form =  '     ' ! level of microphysics
                                                 ! being used; either
                                                 ! 'none', 'prescribed',
                                                 ! or 'predicted'
+real               :: min_cld_drop_rad = 4.2    ! smallest allowable 
+                                                ! cloud drop radius 
+                                                ! (microns) allowed in
+                                                ! slingo scheme
+real               :: max_cld_drop_rad = 16.6   ! largest allowable 
+                                                ! cloud drop radius 
+                                                ! (microns) allowed in
+                                                ! slingo scheme
+real               :: min_cld_ice_size = 18.6   ! smallest allowable 
+                                                ! cloud ice size    
+                                                ! (microns) allowed in
+                                                ! fu-liou scheme
+real               :: max_cld_ice_size = 130.2  ! largest allowable 
+                                                ! cloud ice size    
+                                                ! (microns) allowed in
+                                                ! fu-liou scheme
 
 namelist /cloudrad_package_nml /     &
+                               min_cld_drop_rad, max_cld_drop_rad, &
+                               min_cld_ice_size, max_cld_ice_size, &
                                microphys_form
 
 !----------------------------------------------------------------------
@@ -394,14 +412,18 @@ type(time_type),         intent(in)    ::   Time
 !---------------------------------------------------------------------
       if (Cldrad_control%do_presc_cld_microphys  .or.  &
           Cldrad_control%do_pred_cld_microphys) then
-        call microphys_rad_init (axes, Time, lonb, latb)
+        call microphys_rad_init ( min_cld_drop_rad, max_cld_drop_rad, &
+                                  min_cld_ice_size, max_cld_ice_size, &
+                                  axes, Time, lonb, latb)
       endif
 
 !---------------------------------------------------------------------
 !    if a bulk physics scheme is to be used, call bulkphys_rad_init. 
 !---------------------------------------------------------------------
       if (Cldrad_control%do_bulk_microphys) then
-        call bulkphys_rad_init (pref, lonb, latb)
+        call bulkphys_rad_init (min_cld_drop_rad, max_cld_drop_rad, &
+                                min_cld_ice_size, max_cld_ice_size, &
+                                pref, lonb, latb)
       endif
 
 !-------------------------------------------------------------------
@@ -410,7 +432,10 @@ type(time_type),         intent(in)    ::   Time
 !    associated with the cloudrad package.
 !-------------------------------------------------------------------
       if (.not. Cldrad_control%do_no_clouds) then
-        call cloudrad_diagnostics_init (axes, Time)
+        call cloudrad_diagnostics_init (min_cld_drop_rad,   &
+                                        max_cld_drop_rad, &
+                                  min_cld_ice_size, max_cld_ice_size, &
+                                        axes, Time)
       endif
 
 !--------------------------------------------------------------------
@@ -504,7 +529,7 @@ type(time_type),              intent(in)             :: Rad_time, &
                                                         Time_next
 type(astronomy_type),         intent(in)             :: Astro
 type(atmos_input_type),       intent(in)             :: Atmos_input
-type(cld_specification_type), intent(in)             :: Cld_spec    
+type(cld_specification_type), intent(inout)          :: Cld_spec    
 type(microphysics_type),      intent(in)             :: Lsc_microphys, &
                                                         Meso_microphys,&
                                                         Cell_microphys
@@ -597,6 +622,19 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
                                     Mesorad_props, Cellrad_props, &
                                     Cldrad_props)
 
+!--------------------------------------------------------------------
+!    if bulkphys_rad routines are needed, limit the condensate sizes
+!    to that range acceptable for the radiative parameterizations.
+!--------------------------------------------------------------------
+      if (Cldrad_control%do_lw_micro .and. &
+        Cldrad_control%do_sw_micro ) then 
+      else
+        Cld_spec%reff_liq_lim = MAX(MIN(Cld_spec%reff_liq,  &
+                                  max_cld_drop_rad), min_cld_drop_rad)
+        Cld_spec%reff_ice_lim = MAX(MIN(Cld_spec%reff_ice,  &
+                                  max_cld_ice_size), min_cld_ice_size)
+      endif
+
 !----------------------------------------------------------------------
 !    if a cloud scheme is activated (in contrast to running without any
 !    clouds), call either the microphysically-based or bulkphysics-based
@@ -671,6 +709,7 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
             Cldrad_control%do_lw_micro) then  
           call combine_cloud_properties (is, js, Rad_time, Time_next, &
                                          Atmos_input%deltaz, &
+                                         Cld_spec, &
                                          Lsc_microphys, Meso_microphys,&
                                          Cell_microphys, Lscrad_props, &
                                          Mesorad_props, Cellrad_props, &
@@ -1120,7 +1159,7 @@ end subroutine initialize_cldrad_props
 ! </SUBROUTINE>
 !
 subroutine combine_cloud_properties (is, js, Rad_time, Time_next,  &
-                                     deltaz,    &
+                                     deltaz,  Cld_spec,   &
                                      Lsc_microphys, Meso_microphys,  &
                                      Cell_microphys, Lscrad_props,   &
                                      Mesorad_props,  Cellrad_props,  &
@@ -1136,6 +1175,7 @@ subroutine combine_cloud_properties (is, js, Rad_time, Time_next,  &
 integer,                        intent(in)    :: is, js
 type(time_type),                intent(in)    :: Rad_time, Time_next
 real, dimension(:,:,:),         intent(in)    :: deltaz
+type(cld_specification_type),   intent(inout) :: Cld_spec
 type(microphysics_type),        intent(in)    :: Lsc_microphys, &
                                                  Meso_microphys, &
                                                  Cell_microphys
@@ -1188,6 +1228,7 @@ type(cldrad_properties_type), intent(inout)   :: Cldrad_props
 !    radiative properties to be used by the radiation package. 
 !---------------------------------------------------------------------
         call comb_cldprops_calc (is, js, Rad_time, Time_next, deltaz,   &
+                                 Cld_spec%stoch_cloud_type, &
                                  Cldrad_props%cldext,   &
                                  Cldrad_props%cldsct,   &
                                  Cldrad_props%cldasymm,  &
@@ -1205,6 +1246,7 @@ type(cldrad_properties_type), intent(inout)   :: Cldrad_props
 !----------------------------------------------------------------------
       else if (Cldrad_control%do_donner_deep_clouds) then
         call comb_cldprops_calc (is, js, Rad_time, Time_next, deltaz,  &
+                                 Cld_spec%stoch_cloud_type, &
                                  Cldrad_props%cldext,   &
                                  Cldrad_props%cldsct,   &
                                  Cldrad_props%cldasymm, &

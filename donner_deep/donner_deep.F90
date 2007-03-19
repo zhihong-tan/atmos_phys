@@ -52,8 +52,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 13.0.4.1.2.1.2.1 2006/11/30 13:45:55 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 14.0 2007/03/15 22:02:31 fms Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda $'
 
 
 !--------------------------------------------------------------------
@@ -121,6 +121,14 @@ logical             :: do_average = .false.
 character(len=32)   :: entrainment_constant_source = 'gate'
                              ! source of cloud entrainment constants for
                              !  cumulus ensemble; either 'gate' or 'kep'
+logical             :: use_memphis_size_limits = .false.
+                             ! this should be set to .true. only to
+                             ! eliminate the answer changes resulting
+                             ! from the change to drop size limits
+                             ! introduced in  modset
+                             ! memphis_cloud_diagnostics_rsh. in any 
+                             ! new or ongoing production, this variable
+                             ! should be .false.
 
 !----------------------------------------------------------------------
 !   The following nml variables are not needed in any kernel subroutines
@@ -200,6 +208,7 @@ namelist / donner_deep_nml /      &
                             meso_liquid_eff_diam_input, &
                             do_average,  &
                             entrainment_constant_source, &
+                            use_memphis_size_limits, &
 
 ! not contained in donner_rad_type variable:
                             do_netcdf_restart, &
@@ -784,15 +793,6 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
       endif
 
 !---------------------------------------------------------------------
-!    make sure the defined ice size is acceptable to the radiative 
-!    properties parameterizations.
-!---------------------------------------------------------------------
-      if (CELL_ICE_GENEFF_DIAM_DEF < 18.6) then
-        call error_mesg ('donner_deep_mod', 'donner_deep_init: &
-         & cell_ice_geneff_diam_def must be >= 18.6 microns', FATAL)
-      endif
-
-!---------------------------------------------------------------------
 !    test that cell_liquid_size_type has been validly specified, and if
 !    it is specified as 'input', an appropriate input value has been
 !    supplied.
@@ -827,13 +827,6 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
                & must define a nonnegative generalized effective '//&
                 'diameter for ice when cell_ice_size_type is input', &
                                                                  FATAL)
-        endif
-        if (cell_ice_geneff_diam_input < 18.6) then
-          cell_ice_geneff_diam_input = 18.6
-          call error_mesg ('donner_deep_mod', 'donner_deep_init: &
-               & resetting cell_ice_geneff_diam_input to 18.6 microns,&
-               & the lowest acceptable value for the radiation&
-               & parameterization', NOTE)                        
         endif
       else if (trim(cell_ice_size_type) == 'default') then
         Initialized%do_input_cell_ice_size = .false.
@@ -1216,6 +1209,7 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
       Nml%cell_ice_geneff_diam_input  = cell_ice_geneff_diam_input
       Nml%meso_liquid_eff_diam_input  = meso_liquid_eff_diam_input
       Nml%do_average                  = do_average
+      Nml%use_memphis_size_limits     = use_memphis_size_limits
 
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -1243,8 +1237,10 @@ subroutine donner_deep (is, ie, js, je, dt, temp, mixing_ratio, pfull, &
                         phalf, omega, land, sfc_sh_flux, sfc_vapor_flux,&
                         tr_flux, tracers, Time, cell_cld_frac,  &
                         cell_liq_amt, cell_liq_size, cell_ice_amt,   &
-                        cell_ice_size, meso_cld_frac, meso_liq_amt, &
+                        cell_ice_size, cell_droplet_number, &
+                        meso_cld_frac, meso_liq_amt, &
                         meso_liq_size, meso_ice_amt, meso_ice_size,  &
+                        meso_droplet_number, &
                         nsum, precip, delta_temp, delta_vapor, detf, &
                         uceml_inter, mtot, donner_humidity_area,    &
                         donner_humidity_ratio, qtrtnd, &
@@ -1292,11 +1288,13 @@ real, dimension(:,:,:),       intent(inout) :: cell_cld_frac,  &
                                                cell_liq_size, &
                                                cell_ice_amt,  &
                                                cell_ice_size, &
+                                           cell_droplet_number, &
                                                meso_cld_frac,  &
                                                meso_liq_amt, &
                                                meso_liq_size, &
                                                meso_ice_amt,   &
-                                               meso_ice_size
+                                               meso_ice_size, &
+                                           meso_droplet_number
 integer, dimension(:,:),      intent(inout) :: nsum
 real, dimension(:,:),         intent(out)   :: precip      
 real, dimension(:,:,:),       intent(out)   :: delta_temp, delta_vapor,&
@@ -1544,8 +1542,10 @@ real, dimension(:,:,:),       intent(out),               &
             qlin_arg, qiin_arg, qain_arg, land, sfc_sh_flux,  &
             sfc_vapor_flux,    &
             tr_flux, tracers, cell_cld_frac, cell_liq_amt,      &
-            cell_liq_size, cell_ice_amt, cell_ice_size, meso_cld_frac,  &
+            cell_liq_size, cell_ice_amt, cell_ice_size,   &
+            cell_droplet_number, meso_cld_frac,  &
             meso_liq_amt, meso_liq_size, meso_ice_amt, meso_ice_size,  &
+            meso_droplet_number, &
             nsum, precip, delta_temp, delta_vapor, detf, uceml_inter,  &
             mtot, donner_humidity_area, donner_humidity_ratio, &
             total_precip, temperature_forcing, moisture_forcing,    &
@@ -1602,11 +1602,13 @@ real, dimension(:,:,:),       intent(out),               &
         cell_liq_size = Don_rad%cell_liquid_size
         cell_ice_amt  = Don_rad%cell_ice_amt
         cell_ice_size = Don_rad%cell_ice_size
+        cell_droplet_number = Don_rad%cell_droplet_number
         meso_cld_frac = Don_rad%meso_cloud_frac
         meso_liq_amt  = Don_rad%meso_liquid_amt
         meso_liq_size = Don_rad%meso_liquid_size
         meso_ice_amt  = Don_rad%meso_ice_amt
         meso_ice_size = Don_rad%meso_ice_size
+        meso_droplet_number = Don_rad%meso_droplet_number
         nsum          = Don_rad%nsum
 
 !--------------------------------------------------------------------

@@ -37,8 +37,8 @@ module cloud_generator_mod
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_generator.F90,v 13.0 2006/03/28 21:07:30 fms Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+character(len=128)  :: version =  '$Id: cloud_generator.F90,v 14.0 2007/03/15 22:01:27 fms Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -205,18 +205,19 @@ subroutine cloud_generator_init
 end subroutine cloud_generator_init
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
-subroutine generate_stochastic_clouds(streams, ql, qi, qa,         &
+subroutine generate_stochastic_clouds(streams, ql, qi, qa, qn,     &
                                       overlap, pFull, pHalf, & 
                                       temperature, qv,&
                                       cld_thickness, &
-                                      ql_stoch, qi_stoch, qa_stoch)
+                                      ql_stoch, qi_stoch, qa_stoch, &
+                                      qn_stoch)
 !--------------------------------------------------------------------
 !   intent(in) variables:
 !
   type(randomNumberStream), &
            dimension(:, :),     intent(inout) :: streams
   ! Dimension nx, ny, nz
-  real,    dimension(:, :, :),    intent( in) :: ql, qi, qa
+  real,    dimension(:, :, :),    intent( in) :: ql, qi, qa, qn
   integer,                     optional, &
                                   intent( in) :: overlap
   real,    dimension(:, :, :), optional, &
@@ -226,8 +227,8 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa,         &
                                  intent( in)  :: pHalf                  
   ! Dimension nx, ny, nz, nCol = nBands
   integer, dimension(:, :, :, :), intent(out) :: cld_thickness 
-  real,    dimension(:, :, :, :), intent(out) :: ql_stoch, &
-                                                 qi_stoch, qa_stoch
+  real,    dimension(:, :, :, :), intent(out) :: ql_stoch, qi_stoch, &
+                                                 qa_stoch, qn_stoch
   ! ---------------------------------------------------------
   ! Local variables
   real,    dimension(size(ql_stoch, 1), &
@@ -630,8 +631,24 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa,         &
   end if  ! for do_pdf_clouds
 
 
-
-
+  ! Create qn_stoch - the stochastic cloud droplet number
+  ! 
+  do n=1,nCol
+  do k=1,nLev
+  do j=1, size(qa_stoch,2)
+  do i=1, size(qa_stoch,1)
+    if (ql_stoch(i,j,k,n)>qcmin .and. qa_stoch(i,j,k,n)>qcmin) then
+      qn_stoch(i,j,k,n) = qa_stoch(i,j,k,n)* &
+                          max(0.,qn(i,j,k)/max(qcmin,qa(i,j,k)))
+      !note that qa is compared to qcmin to minimize the impact of the
+      !limiters on calculating the in-cloud cloud droplet number
+    else
+      qn_stoch(i,j,k,n) = 0.                           
+    endif
+  end do
+  end do
+  end do
+  end do
 
 end subroutine generate_stochastic_clouds
 

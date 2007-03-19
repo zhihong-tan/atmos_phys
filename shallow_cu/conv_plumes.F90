@@ -13,8 +13,8 @@ MODULE CONV_PLUMES_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_plumes.F90,v 1.1.2.1 2006/09/11 16:12:27 wfc Exp $'
-  character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+  character(len=128) :: version = '$Id: conv_plumes.F90,v 14.0 2007/03/15 22:08:38 fms Exp $'
+  character(len=128) :: tagname = '$Name: nalanda $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -439,6 +439,8 @@ contains
        else
           call precipitation(cp%zs(k), cp%ps(k), cp%hlu(k), cp%qctu(k), &
                cpn, qrj, qsj, hlu_new, qctu_new, qlu_new, qiu_new, temp, cpn%do_ice)
+       clu_new = 0.0 ! Need to initialize these variables to zero for now.
+       ciu_new = 0.0 ! A new version of precipitation will be included after this release.
        end if
 
        cp%qctu(k)=qctu_new
