@@ -74,8 +74,8 @@
          TAB_NDX_JACET   = 18, &
          TAB_NDX_JMGLY   = 19
 
-character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 13.0.4.2 2006/11/20 21:13:04 wfc Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis_2006_12 $'
+character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 14.0 2007/03/15 22:11:05 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: nalanda $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS

@@ -68,8 +68,8 @@ public  wet_deposition,    &
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 13.0.2.2 2006/09/26 18:52:07 wfc Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 14.0 2007/03/15 22:10:34 fms Exp $'
+character(len=128) :: tagname = '$Name: nalanda $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 integer, parameter :: max_tracers = MAX_TRACER_FIELDS

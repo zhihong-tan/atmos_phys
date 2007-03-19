@@ -71,8 +71,8 @@ character(len=32)  :: dust_source_name(1) = 'source'
 namelist /dust_nml/  dust_source_filename, dust_source_name
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_dust.F90,v 13.0.2.1 2006/09/12 21:11:10 wfc Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+character(len=128) :: version = '$Id: atmos_dust.F90,v 14.0 2007/03/15 22:10:04 fms Exp $'
+character(len=128) :: tagname = '$Name: nalanda $'
 !-----------------------------------------------------------------------
 
 contains

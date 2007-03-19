@@ -63,7 +63,7 @@
       
       integer ::  nchem, jimpl, ihet, nhet, irx, irx4
       PARAMETER (NCHEM=21,JIMPL=18,IHET=72,NHET=9)
-      PARAMETER (IRX=32,IRX4=IRX*4) 
+      PARAMETER (IRX=33,IRX4=IRX*4) 
               
 !----------------------------------------------------------------------*
 ! VARIABLES PASSED TO OR FROM HIGHER SUBROUTINES
@@ -75,10 +75,10 @@
       REAL CH_TEND(MERIDS,NCHEM),DY(MERIDS,NCHEM),H2O(MERIDS),          &
      &     OZCOL(MERIDS),PRESS(MERIDS),RHO(MERIDS),TEMP(MERIDS),        &
      &     VTEMP(MERIDS),COZEN(MERIDS),CHLB(90,15),OZB(144,90),         &
-     &     PHOTO(128,14,11,48),SOLARDATA(1801),OZON(11,48),COSP(14),    &
+     &     PHOTO(132,14,11,48),SOLARDATA(1801),OZON(11,48),COSP(14),    &
      &     COSPHC(48),ANOY(90,48),H2O_TEND(MERIDS),DAGESQ(MERIDS),      &
      &     BNAT(MERIDS),BICE(MERIDS),OZONE(MERIDS),O3_PROD(MERIDS),     &
-     &     AEROSOL(MERIDS)
+     &     AEROSOL(MERIDS),AGESQ
       INTEGER ITIME(6),IMON(12)
 !----------------------------------------------------------------------*
 ! VARIABLES FOR THIS SUBROUTINE
@@ -96,7 +96,7 @@
       REAL  CH4,AN2O,CH4TR,AN2OTR,ANAT,AICE,VTAU10,VTAU100,VTAUYR,FACT, &
      &      DELT,SUM,RATIO1,RATIO2,ANUM,ADEN,ANOX,DAX,DA1,DA2,DD1,DB1,  &
      &      DB2,DD2,DDNUM,DA3,DC2,DC3,DD3,R1,R2,DD13,VDDNUM,DAC2,DA12,  &
-     &      DD12,CLX,TAU,RAT1,BX1,AX,BX,CX,XYZ,DQT1,DQT2,DQT3,SLAT,     &
+     &      DD12,CLX,TAU,RAT1,BX1,AX,BX,CX,XYZ,DQT1,DQT2,DQT3,DQT4,SLAT, &
      &      T0,T1,BRX,DIFF,VRHO,BX2,RATIO,DT,X1,X2,SOL,FRAC,SOLARTIME,  &
      &      SOLAR27,DX1,D11,D27,F11,F27,PI,O2,H2, minusT0
       DATA  PI/3.141592653589793/
@@ -188,12 +188,12 @@
           DYY(IL,IZ) = DY(IL,IZ)*RHO(IL)                                    
        ENDDO                  
         H2O(IL) = H2O(IL)*RHO(IL)
-        DYZ(IL,1) = DYY(IL,8)                                             
-        DYZ1(IL,1) = DYY(IL,8)                                            
-        IF(PRESS(IL).LT.25.0.AND.DY(IL,8).GT.2.0E-6) THEN
-          DYZ(IL,1) = 2.0E-6*RHO(IL)
-          DYZ1(IL,1) = DYZ(IL,1)
-       ENDIF                                            
+        DYZ(IL,1) = OZONE(IL)*RHO(IL)
+        DYZ1(IL,1) = OZONE(IL)*RHO(IL)
+!        IF(PRESS(IL).LT.10.0.AND.OZONE(IL).GT.1.0E-5) THEN
+!          DYZ(IL,1) = 1.0E-5*RHO(IL)
+!          DYZ1(IL,1) = DYZ(IL,1)
+!        ENDIF                                            
         DO IZ = 2,JIMPL                                                
           DYZ(IL,IZ) = 0.                                                   
           DYZ1(IL,IZ) = 0.                                                  
@@ -205,7 +205,7 @@
 !   PASS THE PRESSURE IN PA INTO THE OTHER CHEMISTRY S/RS
 !----------------------------------------------------------------------*
       CALL REACTION_RATES (RHO,TEMP,VTEMP,PRESS,RATES,MERIDS,IHET,NHET)
-      IF(PRESS(1).GT.300.0.AND.PRESS(1).LT.30000.0) THEN
+      IF(KL.GT.10.AND.KL.LT.28) THEN
         DO IL = 1,MERIDS
 !
 !  Set H2SO4 as an analytical function of age, peaking at 0.5 ppbv
@@ -243,12 +243,12 @@
 !     ASSUME 12EQUAL MONTHS PER YEAR OF 365.25 DAYS
 !  PHOTOLYSIS RATES ARE TAKEN TO BE LINEARLY RELATED TO THE F10.7 FLUX 
 !  SOLAR MAX AND SOLAR MIN PHOTO RATES REFER TO APPROX F10.7 FLUX OF 
-!  223.9 AND 69.6
+!  208.1 AND 72.0, CORRESPONDING TO THE YEARS 1991 AND 1996.
 ! ------------------------------------------------------------------
 !
       IF(ISC.EQ.4) THEN
          FACT = 0.0
-         SOL = 146.75
+         SOL = 140.05
      ELSE
          IDAYS = (ITIME(1) - 1960)*365 + IMON(ITIME(2)) + ITIME(3)
          LEAPD = (ITIME(1) - 1960)/4
@@ -271,8 +271,8 @@
       DO 100 IL = 1,MERIDS
       D11 = FOTO(IL,IR) - FOTO(IL,IR+IRX*2)
       D27 = FOTO(IL,IR+IRX) - FOTO(IL,IR+IRX*3)
-      F11 = FOTO(IL,IR+IRX*2) + (SOL - 69.6)*D11/154.3
-      F27 = FOTO(IL,IR+IRX*3) + (SOL - 69.6)*D27/154.3
+      F11 = FOTO(IL,IR+IRX*2) + (SOL - 72.0)*D11/136.1
+      F27 = FOTO(IL,IR+IRX*3) + (SOL - 72.0)*D27/136.1
       FOTO(IL,IR) = CDX*(F11 + F27*FACT) 
       IF(FOTO(IL,IR).LT.0.0) FOTO(IL,IR) = 0.0
   100 CONTINUE    
@@ -317,14 +317,16 @@
   200 CONTINUE                                
 !----------------------------------------------------------------------*
 !---                                                                    
-!---         COMPUTE PHOTOCHEMICALEQUILIBRIUM FOR THE O1D/O3 AND       
+!---         COMPUTE PHOTOCHEMICAL EQUILIBRIUM FOR THE O1D/O3 AND       
 !---         O3P/O3 RATIOS                                              
 !----------------------------------------------------------------------*
       DO 900 IL=1,MERIDS                                                
-      RATIO2 = (FOTO(IL,2) + FOTO(IL,28)*DYY(IL,20)/DYY(IL,8))/         &
+      ANUM = (FOTO(IL,2) + FOTO(IL,28)*DYY(IL,20)/DYY(IL,8))
+      ADEN =                                                            &  
      &     (RATES(IL,3) + RATES(IL,9)*H2O(IL) +                         &
      &     RATES(IL,30)*DYY(IL,18) + RATES(IL,66)*DYY(IL,20) +          &
      &     RATES(IL,70)*DYY(IL,20))  
+      RATIO2 = ANUM/ADEN                                                
       ANUM = RATES(IL,3)*RATIO2 + FOTO(IL,3) +                           &
      &       (2.*FOTO(IL,1)*O2*RHO(IL) + DYZ(IL,5)*FOTO(IL,4) +         &
      &        DYZ(IL,4)*FOTO(IL,31) +                                   &
@@ -346,9 +348,19 @@
 !  Fix oxygen molecules in the upper mesosphere where the chemistry 
 !  breaks down
 !
-      IF(PRESS(IL).LT.25.0.AND.DYZ(IL,1).GT.2.0E-6*RHO(IL)) THEN
-         XYZ = DYZ(IL,1) - 2.0E-6*RHO(IL)
-         DYZ(IL,1) = 2.0E-6*RHO(IL)
+!      IF(PRESS(IL).LT.10.0.AND.DYZ(IL,1).GT.1.0E-5*RHO(IL)) THEN
+!         XYZ = DYZ(IL,1) - 1.0E-5*RHO(IL)
+!         DYZ(IL,1) = 1.0E-5*RHO(IL)
+!         DYZ(IL,2) = DYZ(IL,2) + XYZ
+!         RAT(IL,1) = DYZ(IL,1)/DYY(IL,8)
+!         RAT(IL,2) = DYZ(IL,2)/DYY(IL,8)
+!         RAT(IL,3) = 1.0 - RAT(IL,1) - RAT(IL,2)
+!         IF(RAT(IL,3).LT.0.0) RAT(IL,3) = 0.0
+!     ENDIF
+!      IF(PRESS(IL).LT.10.0.AND.DYZ(IL,1).LT.1.0E-15*RHO(IL)) THEN
+      IF(DYZ(IL,1).LT.1.0E-15*RHO(IL)) THEN
+         XYZ = 1.0E-15*RHO(IL) - DYZ(IL,1)
+         DYZ(IL,1) = 1.0E-15*RHO(IL)
          DYZ(IL,2) = DYZ(IL,2) + XYZ
          RAT(IL,1) = DYZ(IL,1)/DYY(IL,8)
          RAT(IL,2) = DYZ(IL,2)/DYY(IL,8)
@@ -358,7 +370,7 @@
   900 CONTINUE                                                          
 !----------------------------------------------------------------------*
 !--                                                                     
-!---         APPLY PHOTOCHEMICALEQUILIBRIUM FOR NO3 SUBJECT TO         
+!---         APPLY PHOTOCHEMICAL EQUILIBRIUM FOR NO3 SUBJECT TO         
 !---        ENOUGH NOZ BEING PRESENT                                   
 !----------------------------------------------------------------------*
       DO 910 IL = 1,MERIDS                                              
@@ -376,7 +388,7 @@
          IF(DYZ(IL,6).GT.(0.5*ANOZ(IL))) DYZ(IL,6) = 0.5*ANOZ(IL)       
      ENDIF           
 !----------------------------------------------------------------------*
-!---        APPLY PHOTOCHEMICALEQUILIBRIUM FOR N SUBJECT TO         
+!---        APPLY PHOTOCHEMICAL EQUILIBRIUM FOR N SUBJECT TO         
 !---       ENOUGH NOZ BEING PRESENT
 !---
 !----------------------------------------------------------------------*
@@ -387,7 +399,7 @@
       IF(DYZ(IL,18).GT.(0.5*ANOZ(IL))) DYZ(IL,18) = 0.5*ANOZ(IL)
 !----------------------------------------------------------------------*
 !---                                                                    
-!---    COMPUTE NO/NO2 RATIO ASSUMING PHOTOCHEMICALEQUILIBRIUM         
+!---    COMPUTE NO/NO2 RATIO ASSUMING PHOTOCHEMICAL EQUILIBRIUM         
 !---                                                                    
 ! ---   SOLVE SIMULTANEOUSEQUATIONS                                    
 ! ---      DA1*NO - DA2*NO2 = DD1                                       
@@ -435,7 +447,7 @@
   910 CONTINUE                                                          
 !----------------------------------------------------------------------*
 !---                                                                    
-!---    COMPUTE THE BR/BRO AND BR/BRCL RATIO FROM THEEQUATIONS         
+!---    COMPUTE THE BR/BRO AND BR/BRCL RATIO FROM THE EQUATIONS         
 !---                                                                    
 ! ---   SOLVE THREE WAY SIMULTANEOUSEQUATIONS                          
 ! ---      DA1*BR - DA2*BRO - DA3*BRCL = DD1                            
@@ -487,7 +499,7 @@
   930 CONTINUE                                                          
 !----------------------------------------------------------------------*
 !---                                                                    
-!---    COMPUTE CL/CLO RATIO ASSUMING PHOTOCHEMICALEQUILIBRIUM         
+!---    COMPUTE CL/CLO RATIO ASSUMING PHOTOCHEMICAL EQUILIBRIUM         
 !---                                                                    
 ! ---   SOLVE SIMULTANEOUSEQUATIONS                                    
 ! ---      DA1*CL - DA2*CLO = DD1                                       
@@ -501,7 +513,7 @@
      &      RATES(IL,29)*DYZ(IL, 7) + RATES(IL,41)*DYZ(IL,13)      
       DD1 = RATES(IL,26)*DYZ(IL, 7)*DYY(IL,4) + FOTO(IL,15)*DYY(IL,5) +  &
      &    2.*FOTO(IL,16)*DYZ(IL,14) +  FOTO(IL,12)*DYY(IL,6) +           &
-     &       FOTO(IL,24)*DYZ(IL,15)                                     
+     &       FOTO(IL,24)*DYZ(IL,15) +  FOTO(IL,33)*DYY(IL,4)
       DB1 = RATES(IL,20)*DYZ(IL, 1)                                     
       DB2 = RATES(IL,21)*DYZ(IL, 2) + RATES(IL,22)*DYZ(IL, 4)    +       &
      &      RATES(IL,23)*DYZ(IL, 5) + RATES(IL,28)*DYZ(IL, 8)    +       &
@@ -534,7 +546,7 @@
   940 CONTINUE                                                          
 !----------------------------------------------------------------------*
 !---                                                                    
-!---    COMPUTE HO2 AND OH ASSUMING PHOTOCHEMICALEQUILIBRIUM           
+!---    COMPUTE HO2 AND OH ASSUMING PHOTOCHEMICAL EQUILIBRIUM           
 !---                                                                    
 ! ---   SOLVE SIMULTANEOUSEQUATIONS                                    
 ! ---      DA1*OH - DA2*HO2 = DD1                                       
@@ -566,7 +578,8 @@
      &      2.*RATES(IL,61)*DYZ(IL,16)**2 +                             &
      &       FOTO(IL, 5)*DYY(IL, 1) +  FOTO(IL,15)*DYY(IL, 5) +          &
      &    2.*FOTO(IL,11)*DYY(IL, 3) +  FOTO(IL,18)*DYY(IL, 9) +         &
-     &      FOTO(IL,26)*DYZ(IL,17) +     & ! FOTO(IL,27) IS TAKEN AS A PROXY FOR CH3O2 + HV --> H2CO + OH      
+     &      FOTO(IL,26)*DYZ(IL,17) +     & 
+! FOTO(IL,27) IS TAKEN AS A PROXY FOR CH3O2 + HV --> H2CO + OH      
      &      FOTO(IL,27)*(DYZ(IL,16)+DYY(IL,13)) +                       &
      &      FOTO(IL,32)*H2O(IL)     
       DD2 = (RATES(IL,33)*DYZ(IL,10) +                                  &
@@ -575,11 +588,12 @@
      &      RATES(IL,62)*DYZ(IL,6)*DYY(IL,7) +                          &
      &      RATES(IL,63)*DYY(IL,10) + FOTO(IL,25)*DYY(IL,10) +          &
      &      FOTO(IL,27)*DYY(IL,13) +                                    &
-     &      FOTO(IL,32)*H2O(IL)     
+     &      FOTO(IL,32)*H2O(IL)  +  FOTO(IL,33)*DYY(IL,4) +             &
+     &      FOTO(IL,32)*DYY(IL,18)*1.53/1.83    
       DDNUM = DB2*DD1 + DA2*DD2                                         
       IF(DD1.NE.0.0.AND.DD2.NE.0.0) THEN 
          RATIO2 = (DD2*DA1 + DB1*DD1)/DDNUM                             
-         AX = 4.*(RATES(IL,16)*RATIO2 + RATES(IL,34)*RATIO2**2 +            &
+         AX = 4.*(RATES(IL,16)*RATIO2 + RATES(IL,34)*RATIO2**2 +        &
      &         RATES(IL,35) + RATES(IL,51))
          BX = BX1 + RATIO2*BX2                                             
          CX = DD1 + DD2     
@@ -601,7 +615,7 @@
   950 CONTINUE                                                          
 !----------------------------------------------------------------------*
 !---                                                                    
-!---    COMPUTE CH3O2 AND HONO ASSUMING PHOTOCHEMICALEQUILIBRIUM           
+!---    COMPUTE CH3O2 AND HONO ASSUMING PHOTOCHEMICAL EQUILIBRIUM           
 !---                                                                    
 !----------------------------------------------------------------------*
       DO 960 IL = 1,MERIDS
@@ -612,7 +626,7 @@
       BX = RATES(IL,55)*DYZ(IL,4) + RATES(IL,56)*DYZ(IL,8) +            &
      &     FOTO(IL,27)
       CX = (RATES(IL,25)*DYZ(IL,10) + RATES(IL,30)*DYZ(IL,3) +          &
-     &       RATES(IL,31)*DYZ(IL,7))*DYY(IL,18) +                       &
+     &       RATES(IL,31)*DYZ(IL,7) + FOTO(IL,32)*1.53/1.83)*DYY(IL,18) +  &   
      &       RATES(IL,57)*DYZ(IL,7)*DYY(IL,13)
       IF(CX.LT.0.) CX = 0.0
       IF(BX.LT.0.) BX = 0.0
@@ -656,10 +670,10 @@
 ! ---   
 ! ---                 Y = (Y/DT + P)/(Q + 1/DT)                         
 ! ---
-! --- (FIRST ORDEREULER BACKWARD SCHEME) IS USED.                        
+! --- (FIRST ORDER EULER BACKWARD SCHEME) IS USED.                        
 ! ---                                                                   
-! ---   DQT : TOTAL DESTRUCTION RATE (FOREACHEXPLICIT SPECIES)        
-! ---   DPT : TOTAL PRODUCTION RATE (FOREACHEXPLICIT SPECIES)         
+! ---   DQT : TOTAL DESTRUCTION RATE (FOR EACH EXPLICIT SPECIES)        
+! ---   DPT : TOTAL PRODUCTION RATE (FOR EACH EXPLICIT SPECIES)         
 ! ---                                                                   
 ! ---------------------------------------------------------------------*
       DO 990 IL = 1,MERIDS                                              
@@ -704,7 +718,7 @@
      &            RATES(IL,  IHET)*DYY(IL, 5)    +                       &
      &            RATES(IL,IHET+1)*DYY(IL, 2)    +                       &
      &            RATES(IL,IHET+4)*DYY(IL, 6)    +                       &
-     &            RATES(IL,IHET+5)*DYY(IL, 9)                           
+     &            RATES(IL,IHET+5)*DYY(IL, 9)    +  FOTO(IL,33)
 !
 !  HOCl
 !                                                                       
@@ -739,6 +753,7 @@
      &      RATES(IL,10)*DYZ(IL, 7) + RATES(IL,13)*DYZ(IL, 9) +          &
      &      RATES(IL,15)*DYZ(IL, 8) + RATES(IL,20)*DYZ(IL,10) +          &
      &      RATES(IL,39)*DYZ(IL,12))                                    
+!     &      RATES(IL,15)*DYZ(IL, 8) + RATES(IL,20)*DYZ(IL,10))
       DQT2 = RAT(IL,2)*                                                   &
      &  (2.*RATES(IL, 2)*DYZ(IL, 1) + RATES(IL, 5)*DYZ(IL, 5) +          &
      &      RATES(IL,11)*DYZ(IL, 8) + RATES(IL,12)*DYZ(IL, 7) +          &
@@ -747,7 +762,10 @@
       DQT3 = RAT(IL,3)*                                                   &
      &     (RATES(IL, 9)*H2O(IL) +                                      &
      &      RATES(IL,30)*DYY(IL,18))                               
-      DQT(IL,8) = DQT1 + DQT2 + DQT3                                
+!      DQT4 = RATES(IL,39)*OZONE(IL)*ISTEP_CHEM
+!      IF(DQT4.GT.1.0) DQT4 = 1.0 
+!      DQT(IL,8) = DQT1 + DQT2 + DQT3 + DQT4*DYZ(IL,12)/(ISTEP_CHEM*OZONE(IL))
+      DQT(IL,8) = DQT1 + DQT2 + DQT3 
 !
 !  HOBr
 !                                                                       
@@ -792,7 +810,8 @@
 !  NOY + NAT: Normal Stratospheric terms, relax towards ANOY in the 
 !  troposphere
 !
-      IF(DAGESQ(IL).LT.0.01) THEN
+     AGESQ = 1.0E-2
+     IF(DAGESQ(IL).LT.AGESQ) THEN
         DPT(IL,15) = ANOY(JLX,KL)*RHO(IL)*VTAU10
         DQT(IL,15) = VTAU10
      ELSE
@@ -815,20 +834,24 @@
 !  with a 10 day time scale
 !  DAGESQ < 0.01 is used to denote the troposphere. 
 !
-      IF(DAGESQ(IL).LT.0.01) THEN
+     IF(DAGESQ(IL).LT.AGESQ) THEN
         DPT(IL,18) = CH4*VTAU10*RHO(IL)
         DQT(IL,18) = VTAU10 
      ELSE
         DPT(IL,18) = 0.0
-        DQT(IL,18) = RATES(IL,25)*DYZ(IL,10) + RATES(IL,30)*DYZ(IL,3) +        &
-     &             RATES(IL,31)*DYZ(IL,7)
+!  
+! Mesospheric loss of CH4 by lyman alpha photolysis is taken to be the H2O 
+! photolysis rate weighted by the ratio of the cross sections
+! 
+        DQT(IL,18) = RATES(IL,25)*DYZ(IL,10) + RATES(IL,30)*DYZ(IL,3) +   &
+     &             RATES(IL,31)*DYZ(IL,7) + FOTO(IL,32)*1.53/1.83
      ENDIF
 !
 !  N2O: Production rate assumes relaxation to a uniform tropospheric value 
 !  with a 10 day time scale
 !  DAGESQ < 0.01 is used to denote the troposphere. 
 !
-      IF(DAGESQ(IL).LT.0.01) THEN
+     IF(DAGESQ(IL).LT.AGESQ) THEN
          DPT(IL,20) = AN2O*VTAU10*RHO(IL) 
          DQT(IL,20) = VTAU10 
      ELSE
@@ -841,7 +864,7 @@
 !  Results expressed in years. Relax towards zero with a 10 
 !  day timescale in the troposphere, denoted by DAGESQ less than 0.01 
 !
-      IF(DAGESQ(IL).LT.0.01) THEN
+     IF(DAGESQ(IL).LT.AGESQ) THEN
         DPT(IL,21) = 0.0
         DQT(IL,21) = VTAU10
      ELSE
@@ -855,6 +878,7 @@
      &   RATES(IL,19)*DYY(IL,1) + RATES(IL,26)*DYY(IL,4) +              &
      &   RATES(IL,31)*DYY(IL,18) + RATES(IL,32)*DYY(IL,7) +             &
      &   RATES(IL,36)*DYY(IL,3) + RATES(IL,50)*DYY(IL,10) +             &
+     &   RATES(IL,47)*DYY(IL,11) +                                      &
      &   RATES(IL,51)*DYZ(IL,7) + RATES(IL,54)*H2*RHO(IL) +             &
      &   RATES(IL,57)*DYY(IL,13) + RATES(IL,60)*DYZ(IL,17) )
       DQ1(IL) = FOTO(IL,32) + RATES(IL,9)*DYZ(IL,3) 
@@ -863,7 +887,7 @@
 !wfc--
 ! ---------------------------------------------------------------------*
 ! ---                                                                   
-! ---  INTEGRATE NCHEM SPECIESEXPLICITLY                               
+! ---  INTEGRATE NCHEM SPECIES EXPLICITLY                               
 ! ---                                                                   
 ! ---------------------------------------------------------------------*
       DO 980 NC = 1,NCHEM 
@@ -890,17 +914,27 @@
 !wfc--
       H2O1(IL) = (H2O(IL)*DVDT + DP1(IL))/(DQ1(IL)+DVDT)
 !
-! SPECIAL CODE TOENSURE THAT THE BROMINE SPECIES ARE UNDER CONTROL DURING
+! SPECIAL CODE TO ENSURE THAT THE BROMINE SPECIES ARE UNDER CONTROL DURING
 ! THE RAPIDLY VARYING PERIOD AT DAWN AND DUSK
 !
       BRX = DYY1(IL,9) + DYY1(IL,11) + DYY1(IL,12) + DYZ(IL,12) +       &
      &      DYZ(IL,13) + DYZ(IL,15)
-      DIFF = BRX - DYY1(IL,17)
-      IF(DIFF.GT.0.0) DYY1(IL,12) = DYY1(IL,12) - DIFF
-      IF(DYY1(IL,12).LT.0.0) DYY1(IL,12) = 0.0
+      IF(DYY1(IL,17).EQ.0.0) THEN
+         RATIO = 0.0
+      ELSE
+         RATIO = BRX/DYY1(IL,17)
+      ENDIF
+      IF(RATIO.GT.1.0) THEN
+        DYY1(IL,9) = DYY1(IL,9)/RATIO
+        DYY1(IL,11) = DYY1(IL,11)/RATIO
+        DYY1(IL,12) = DYY1(IL,12)/RATIO
+        DYZ(IL,12) = DYZ(IL,12)/RATIO
+        DYZ(IL,13) = DYZ(IL,13)/RATIO
+        DYZ(IL,15) = DYZ(IL,15)/RATIO
+      ENDIF
 !
-!  SPECIAL CODE TOENSURE THAT THE HETEROGENEOUS SCHEME DOES NOT PRODUCE
-! EXCESSIVE HNO3. IF HNO3EXCEEDS NOy - 2.*N2O5 SET HNO3 TO  NOy - 2.*N2O5
+!  SPECIAL CODE TO ENSURE THAT THE HETEROGENEOUS SCHEME DOES NOT PRODUCE
+! EXCESSIVE HNO3. IF HNO3 EXCEEDS NOy - 2.*N2O5 SET HNO3 TO  NOy - 2.*N2O5
 !
       DIFF = DYY1(IL,15) - 2.0*DYY1(IL,2)
       IF (DYY1(IL,1).GT.DIFF) DYY1(IL,1) = DIFF 
@@ -998,7 +1032,7 @@
 ! agefact1 and agefact2 are fudge factors, to correct for low model 
 ! atmospheric age in the computation of the halogen rates of change.
 !
-      agefact1 = 1.5
+      agefact1 = 1.25
       DX1 = IDAY/MDAY(IMON)
       IF(IMON.EQ.2.AND.4*(IANN/4).EQ.IANN) DX1 = IDAY/29.0
       DX2 = 1.0 - DX1
@@ -1112,7 +1146,7 @@
         TEMP3(IL) = TEMP(IL)/300.0                                        
      ENDDO   
 !                                                                       
-!  RATES TAKEN FROM JPL 2003 
+!  RATES TAKEN FROM JPL 2006 
 !                                                                       
       DO IL = 1,MERIDS
 !     REACTION 1 O+O2+M --> O3+M                                        
@@ -1120,12 +1154,12 @@
 !     REACTION 2 O+O3 --> O2+O2                                         
         RATES(IL,2) = 8.0E-12*EXP(-2060*VTEMP(IL))                        
 !     REACTION 3 OSD+M --> O+M N2 & O2 3RD BODY RATES ALLOWED FOR       
-        RATES(IL,3) = RHO(IL)*(6.7E-12*EXP(70*VTEMP(IL)) +              &
-     &                         1.4E-11*EXP(110*VTEMP(IL)))
+        RATES(IL,3) = RHO(IL)*(6.93E-12*EXP(70*VTEMP(IL)) +              &
+     &                         1.677E-11*EXP(110*VTEMP(IL)))
 !     REACTION 4 NO+O3 --> NO2+O2                                       
         RATES(IL,4) = 3.0E-12*EXP(-1500*VTEMP(IL))                        
 !     REACTION 5 NO2+O --> NO+O2                                        
-        RATES(IL,5) = 5.6E-12*EXP(180*VTEMP(IL))                        
+        RATES(IL,5) = 5.1E-12*EXP(210*VTEMP(IL))                        
 !     REACTION 6 NO2+O3 --> NO3+O2                                      
         RATES(IL,6) = 1.2E-13*EXP(-2450*VTEMP(IL))                        
 !     REACTION 7 NO2+NO3 + M --> N2O5 + M                               
@@ -1135,9 +1169,9 @@
         RATES(IL,7) =(R0/(1.0 + R0/R1))*                                &
      &                      (0.6**(1.0/(1.0 + (RX*RX)))) 
 !     REACTION 8 N2O5+M --> NO3+NO2+M                                   
-        RATES(IL,8) = RATES(IL,7)*3.333E26*EXP(-10990.0*VTEMP(IL))    
+        RATES(IL,8) = RATES(IL,7)/(2.7E-27*EXP(11000.0*VTEMP(IL)))
 !     REACTION 9 OSD+H2O --> OH+OH                                      
-        RATES(IL,9) = 2.2E-10*EXP(0.0*VTEMP(IL))                        
+        RATES(IL,9) = 1.63E-10*EXP(60.0*VTEMP(IL))                        
 !     REACTION 10 OH+O3 --> HO2+O2                                      
         RATES(IL,10) = 1.7E-12*EXP(-940.0*VTEMP(IL))                        
 !     REACTION 11 O+HO2 --> OH+O2                                       
@@ -1147,8 +1181,8 @@
 !     REACTION 13 H+O3 --> OH+O2                                        
         RATES(IL,13) = 1.4E-10*EXP(-470.0*VTEMP(IL))                        
 !     REACTION 14 H+O2+M --> HO2+M : MULTIPLIED BY O2 NUMBER DENSITY    
-        R0 = 5.7E-32*RHO(IL)*TEMP3(IL)**(-1.6)
-        R1 = 7.5E-11*TEMP3(IL)**0.0                                     
+        R0 = 4.4E-32*RHO(IL)*TEMP3(IL)**(-1.3)
+        R1 = 4.7E-11*TEMP3(IL)**(-0.2)                                     
         RX = ALOG10(R0/R1)                                                
         RATES(IL,14) =(R0/(1.0 + R0/R1))*                               &
      &                      (0.6**(1.0/(1.0 + (RX*RX)))) 
@@ -1157,11 +1191,17 @@
         RATES(IL,15) = 1.0E-14*EXP(-490.0*VTEMP(IL))                        
 !     REACTION 16 OH+HO2 --> H2O+O2                                     
         RATES(IL,16) = 4.8E-11*EXP(250.0*VTEMP(IL))                        
-!     REACTION 17 OH+NO2+M --> HNO3+M                                   
-        R0 = 2.0E-30*RHO(IL)*TEMP3(IL)**(-3.0)
-        R1 = 2.5E-11                                     
+!     REACTION 17 OH+NO2+M --> HONO2+M                                   
+!     INCLUDE ALSO OH+NO2+M --> HOONO + M
+        R0 = 1.8E-30*RHO(IL)*TEMP3(IL)**(-3.0)
+        R1 = 2.8E-11                                     
         RX = ALOG10(R0/R1)                                                
         RATES(IL,17) =(R0/(1.0 + R0/R1))*                               &
+     &                      (0.6**(1.0/(1.0 + (RX*RX)))) 
+        R0 = 9.1E-32*RHO(IL)*TEMP3(IL)**(-3.9)
+        R1 = 4.2E-11*TEMP3(IL)**(-0.5)                                     
+        RX = ALOG10(R0/R1)
+        RATES(IL,17) = RATES(IL,17) + (R0/(1.0 + R0/R1))*           &
      &                      (0.6**(1.0/(1.0 + (RX*RX)))) 
 !     REACTION 18 NO+HO2 --> NO2+OH                                     
         RATES(IL,18) = 3.5E-12*EXP(250.0*VTEMP(IL))                        
@@ -1173,7 +1213,7 @@
 !     REACTION 20 CL+O3 --> CLO+O2                                      
         RATES(IL,20) = 2.3E-11*EXP(-200.0*VTEMP(IL))                        
 !     REACTION 21 O+CLO --> CL+O2                                       
-        RATES(IL,21) = 3.0E-11*EXP(70.0*VTEMP(IL))                        
+        RATES(IL,21) = 2.8E-11*EXP(85.0*VTEMP(IL))                        
 !     REACTION 22 CLO+NO --> NO2+CL                                     
         RATES(IL,22) = 6.4E-12*EXP(290.0*VTEMP(IL))                        
 !     REACTION 23 CLO+NO2+M --> CLONO2+M                                
@@ -1185,7 +1225,7 @@
 !     REACTION 24 O+CLONO2--> CLO+NO3                                   
         RATES(IL,24) = 2.9E-12*EXP(-800.0*VTEMP(IL))                        
 !     REACTION 25 CL+CH4 (+O2) --> HCL+CH3O2                           
-        RATES(IL,25) = 9.6E-12*EXP(-1360.0*VTEMP(IL))                        
+        RATES(IL,25) = 7.3E-12*EXP(-1280.0*VTEMP(IL))                        
 !     REACTION 26 OH+HCL --> H2O+CL                                     
         RATES(IL,26) = 2.6E-12*EXP(-350.0*VTEMP(IL))                        
 !     REACTION 27 CL+HO2 --> HCL+O2                                     
@@ -1199,11 +1239,11 @@
 !     REACTION 31 OH+CH4 --> H2O + CH3O2                            
         RATES(IL,31) = 2.45E-12*EXP(-1775.0*VTEMP(IL))                        
 !     REACTION 32 H2CO+OH (+O2) --> H2O + HO2 + CO
-        RATES(IL,32) = 9.0E-12*EXP(0.0*VTEMP(IL))                        
+        RATES(IL,32) = 5.5E-12*EXP(125.0*VTEMP(IL))                        
 !     REACTION 33 H2CO+CL (+O2) --> HCL+ HO2 + CO        
         RATES(IL,33) = 8.1E-11*EXP(-30.0*VTEMP(IL))                        
 !     REACTION 34 HO2+HO2 --> H2O2+O2                                   
-        RATES(IL,34) = 2.3E-13*EXP(600.0*VTEMP(IL)) +                        &
+        RATES(IL,34) = 3.5E-13*EXP(430.0*VTEMP(IL)) +                        &
      &                 1.7E-33*EXP(1000.0*VTEMP(IL))*RHO(IL)                
 !     REACTION 35 OH+OH+M --> H2O2+M                                    
         R0 = 6.9E-31*RHO(IL)*TEMP3(IL)**(-1.0)
@@ -1220,7 +1260,7 @@
         RATES(IL,37) =(R0/(1.0 + R0/R1))*                               &
      &                      (0.6**(1.0/(1.0 + (RX*RX)))) 
 !     REACTION 38 CL2O2+M --> 2CLO + M                                  
-        RATES(IL,38) = RATES(IL,37)*(7.87E26*EXP(-8744.0*VTEMP(IL)))  
+        RATES(IL,38) = RATES(IL,37)/(9.3E-28*EXP(8835.0*VTEMP(IL)))  
 !     REACTION 39 BR + O3 --> BRO + O2                                  
         RATES(IL,39) = 1.7E-11*EXP(-800.0*VTEMP(IL))                        
 !     REACTION 40 BRO + NO2 + M --> BRONO2 + M                          
@@ -1232,22 +1272,22 @@
 !     REACTION 41 BRO + CLO --> BR + CL + 02                            
         RATES(IL,41) =  2.3E-12*EXP(260.0*VTEMP(IL))   
 !     REACTION 42 BRO + HO2 --> HOBR + O2                               
-        RATES(IL,42) = 3.4E-12*EXP(540.0*VTEMP(IL))                        
+        RATES(IL,42) = 4.5E-12*EXP(460.0*VTEMP(IL))                        
 !     REACTION 43 BRO + NO --> BR + NO2                                 
         RATES(IL,43) = 8.8E-12*EXP(260.0*VTEMP(IL))                        
 !     REACTION 44 HOBR + O --> BRO + OH                                 
         RATES(IL,44) = 1.2E-10*EXP(-430.0*VTEMP(IL))                        
 !     REACTION 45 BR + HO2 --> HBR + O2                                 
-        RATES(IL,45) = 1.5E-11*EXP(-600.0*VTEMP(IL))                        
+        RATES(IL,45) = 4.8E-12*EXP(-310.0*VTEMP(IL))                        
 !     REACTION 46 BR + H2CO (+O2) --> HBR + HO2 + CO
         RATES(IL,46) = 1.7E-11*EXP(-800.0*VTEMP(IL))                        
-!     REACTION 47 HBR + OH --> BR + HO2                                 
-        RATES(IL,47) = 1.1E-11*EXP(0.0*VTEMP(IL))                        
+!     REACTION 47 HBR + OH --> BR + H2O                                 
+        RATES(IL,47) = 5.5E-12*EXP(200.0*VTEMP(IL))                        
 !     REACTION 48 BRO + CLO --> BRCL + O2                               
         RATES(IL,48) = 4.1E-13*EXP(290.0*VTEMP(IL))                        
 !     REACTION 49 HO2 + NO2 + M --> HNO4 + M                            
-        R0 = 1.8E-31*RHO(IL)*TEMP3(IL)**(-3.2)
-        R1 = 4.7E-12*TEMP3(IL)**(-1.4)                                     
+        R0 = 2.0E-31*RHO(IL)*TEMP3(IL)**(-3.4)
+        R1 = 2.9E-12*TEMP3(IL)**(-1.1)                                     
         RX = ALOG10(R0/R1)                                                
         RATES(IL,49) =(R0/(1.0 + R0/R1))*                               &
      &                      (0.6**(1.0/(1.0 + (RX*RX)))) 
@@ -1257,9 +1297,18 @@
 ! REACTIONS ADDED FOR TROPOSPHERIC CHEMISTRY
 !
 !     REACTION 51 OH + OH --> H2O + O
-        RATES(IL,51) = 4.2E-12*EXP(-240.0*VTEMP(IL))  
+        RATES(IL,51) = 1.8E-12
 !     REACTION 52 CO + OH (+O2) --> HO2 +CO2
-        RATES(IL,52) = 1.5E-13*(1.0 + 0.6*PRESS(IL)/101325.0)
+        R0 = 5.9E-33*RHO(IL)*TEMP3(IL)**(-1.4)
+        R1 = 1.1E-12*TEMP3(IL)**(1.3)                                     
+        RX = ALOG10(R0/R1)                                                
+        RATES(IL,52) =    (R0/(1.0 + R0/R1))*                           &
+     &                      (0.6**(1.0/(1.0 + (RX*RX)))) 
+        R0 = 1.5E-13*TEMP3(IL)**0.6
+        R1 = 2.1E9*TEMP3(IL)**(6.1)/RHO(IL)       
+        RX = ALOG10(R0/R1)       
+        RATES(IL,52) = RATES(IL,52)+ (R0/(1.0 + R0/R1))*                 &
+     &                      (0.6**(1.0/(1.0 + (RX*RX)))) 
 !     REACTION 53 NO3 + NO --> 2NO2
         RATES(IL,53) = 1.5E-11*EXP(170.0*VTEMP(IL))
 !     REACTION 54 H2 + OH (+O2) --> HO2 + H2O
@@ -1295,8 +1344,7 @@
         RATES(IL,65) =(R0/(1.0 + R0/R1))*                               &
      &                      (0.6**(1.0/(1.0 + (RX*RX)))) 
 !     REACTION 66 N2O + OSD --> 2NO
-!     Multiply by 0.75 for age of air correction
-        RATES(IL,66) = 6.7E-11*0.75
+        RATES(IL,66) = 6.7E-11*EXP(20.0*VTEMP(IL))
 !     REACTION 67 N + NO --> N2 + O
         RATES(IL,67) = 2.1E-11*EXP(100.0*VTEMP(IL))
 !     REACTION 68 N + O2 --> NO + O
@@ -1304,8 +1352,7 @@
 !     REACTION 69 CLO+OH --> --> HCL+O2                                
         RATES(IL,69) = 6.0E-13*EXP(-230.0*VTEMP(IL))
 !     REACTION 70 N2O + OSD --> N2 + O2
-!     Multiply by 0.75 for age of air correction
-        RATES(IL,70) = 4.9E-11*0.75
+        RATES(IL,70) = 4.7E-11*EXP(20.0*VTEMP(IL))
 !     REACTION 71 N + NO2 --> N2O + O
         RATES(IL,71) = 5.8E-12*EXP(220.0*VTEMP(IL))
      ENDDO
@@ -1824,6 +1871,7 @@
 !  30.  N2O + HV --> N2 + OSD  (200K)                                 
 !  31.  NO + HV --> N + O
 !  32.  H2O + HV --> H + OH
+!  33.  HCL + HV --> H + CL
 !---------------------------------------------------------------------- 
       IMPLICIT NONE
       INTEGER MERIDS,IRX,IRX4,KL,IL,ICOX,IOX,MYPE,IR,IM
@@ -1962,14 +2010,6 @@
   270    CONTINUE
      ENDIF 
   300 CONTINUE
-!
-! Enhance O2 photolysis rates to correct for O3 discrepancy near the peak
-!
-      DO IM = 0,3
-      DO IL = 1,MERIDS
-      FOTO(IL,1+IM*IRX) = FOTO(IL,1+IM*IRX)*1.1
-     ENDDO
-     ENDDO
       RETURN                                                            
      END                                                               
 !/ ----------------------------------------------------------------     

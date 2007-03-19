@@ -154,10 +154,10 @@ use tropchem_driver_mod,   only : tropchem_driver, &
 use strat_chem_driver_mod, only : strat_chem, strat_chem_driver_init
 use atmos_age_tracer_mod,  only : atmos_age_tracer_init, atmos_age_tracer, &
                                   atmos_age_tracer_end
-!use atmos_co2_mod,         only : atmos_co2_gather_data,        &
-!                                  atmos_co2_flux_init,          &
-!                                  atmos_co2_init,               &
-!                                  atmos_co2_end
+use atmos_co2_mod,         only : atmos_co2_gather_data,        &
+                                  atmos_co2_flux_init,          &
+                                  atmos_co2_init,               &
+                                  atmos_co2_end
 
 use interpolator_mod,      only : interpolate_type
 
@@ -234,7 +234,7 @@ integer :: nH2O2     =0
 integer :: nch3i     =0
 integer :: nage      =0
 
-real    :: ozon(11,48),cosp(14),cosphc(48),photo(128,14,11,48),   &
+real    :: ozon(11,48),cosp(14),cosphc(48),photo(132,14,11,48),   &
            solardata(1801),chlb(90,15),ozb(144,90,12),tropc(151,9),  &
            dfdage(90,48,8),anoy(90,48)
 
@@ -260,8 +260,8 @@ integer, allocatable :: local_indices(:)
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 13.0.8.2 2006/11/27 22:49:48 wfc Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 14.0 2007/03/15 22:10:29 fms Exp $'
+character(len=128) :: tagname = '$Name: nalanda $'
 !-----------------------------------------------------------------------
 
 contains
@@ -389,7 +389,7 @@ real, dimension(size(r,1),size(r,2)) ::  w10m_ocean, w10m_land
 integer :: actual_month
 integer :: year,month,day,hour,minute,second
 integer :: jday
-real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: chem_tend
+real, dimension(size(rdt,1),size(rdt,2),size(rdt,3),size(rdt,4)) :: chem_tend
 real, dimension(size(r,1),size(r,2))           :: coszen, fracday
 real :: ang,dec,rrsun
 real, dimension(size(r,1),size(r,2),size(r,3)) :: cldf ! cloud fraction
@@ -583,20 +583,6 @@ integer :: n, nnn
    call mpp_clock_end (convect_clock)
 
 !------------------------------------------------------------------------
-! Compute age tracer source-sink tendency
-!------------------------------------------------------------------------
-   if (nage > 0) then
-     call mpp_clock_begin (age_tracer_clock)
-     if (nage > nt) call error_mesg ('Tracer_driver', &
-        'Number of tracers .lt. number for age tracer', FATAL)
-     call atmos_age_tracer( lon, lat, pwt,  &
-                            tracer(:,:,:,nage),  &
-                            rtnd, Time, kbot)
-       rdt(:,:,:,nage)=rdt(:,:,:,nage)+rtnd(:,:,:)
-     call mpp_clock_end (age_tracer_clock)
-   endif
-
-!------------------------------------------------------------------------
 ! Stratospheric chemistry
 !------------------------------------------------------------------------
   if(do_coupled_stratozone) then
@@ -614,9 +600,6 @@ integer :: n, nnn
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,1:ntp) 
       if(nt.gt.(ntp+1))  then
 ! Modify the diagnostic tracers.
-!        r(:,:,:,no3)      = ozone(:,:,:) 
-!        r(:,:,:,no3ch)    = o3_prod(:,:,:) 
-!        if (naerosol > 0 ) r(:,:,:,naerosol) = aerosol(:,:,:) 
         tracer(:,:,:,no3)      = ozone(:,:,:) 
         tracer(:,:,:,no3ch)    = o3_prod(:,:,:) 
         if (naerosol > 0 ) tracer(:,:,:,naerosol) = aerosol(:,:,:) 
@@ -628,6 +611,20 @@ integer :: n, nnn
 ! Tropospheric chemistry
 !------------------------------------------------------------------------
    if ( do_tropchem ) then
+!------------------------------------------------------------------------
+! Compute age tracer source-sink tendency
+!------------------------------------------------------------------------
+      if (nage > 0) then
+        call mpp_clock_begin (age_tracer_clock)
+        if (nage > nt) call error_mesg ('Tracer_driver', &
+           'Number of tracers .lt. number for age tracer', FATAL)
+        call atmos_age_tracer( lon, lat, pwt,  &
+                               tracer(:,:,:,nage),  &
+                               rtnd, Time, kbot)
+          rdt(:,:,:,nage)=rdt(:,:,:,nage)+rtnd(:,:,:)
+        call mpp_clock_end (age_tracer_clock)
+      endif
+
       call mpp_clock_begin (tropchem_clock)
       call tropchem_driver( lon, lat, land, pwt, &
                             tracer(:,:,:,1:ntp),chem_tend, &
@@ -1118,7 +1115,7 @@ type(time_type), intent(in)                                :: Time
       endif
 
 !co2
-!      call atmos_co2_init
+      call atmos_co2_init
 
       call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
@@ -1161,7 +1158,7 @@ type(time_type), intent(in)                                :: Time
         call atmos_ch3i_end
       endif
       call atmos_age_tracer_end      
-!      call atmos_co2_end
+      call atmos_co2_end
 
       module_is_initialized = .FALSE.
 
@@ -1181,7 +1178,7 @@ type(time_type), intent(in)                                :: Time
 
 subroutine atmos_tracer_flux_init
 
-!call atmos_co2_flux_init
+call atmos_co2_flux_init
 
 return
 
@@ -1209,7 +1206,7 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
 
 !-----------------------------------------------------------------------
 
-!  call atmos_co2_gather_data(gas_fields, tr_bot)
+  call atmos_co2_gather_data(gas_fields, tr_bot)
 
 !-----------------------------------------------------------------------
 

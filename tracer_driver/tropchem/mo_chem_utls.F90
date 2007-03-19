@@ -12,8 +12,8 @@ implicit none
       integer :: ox_ndx, o3_ndx, o1d_ndx, o_ndx
       logical :: do_ox
 
-character(len=128), parameter :: version     = '$Id: mo_chem_utls.F90,v 13.0.4.1 2006/11/20 20:24:09 wfc Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis_2006_12 $'
+character(len=128), parameter :: version     = '$Id: mo_chem_utls.F90,v 14.0 2007/03/15 22:10:49 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: nalanda $'
 logical                       :: module_is_initialized = .false.
 
       contains

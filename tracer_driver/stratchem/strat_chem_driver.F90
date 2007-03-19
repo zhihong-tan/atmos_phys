@@ -19,8 +19,8 @@ use constants_mod, only : PI, TFREEZE, GRAV, PSTD_MKS, RDGAS
 private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 13.0.2.2 2006/11/27 22:46:31 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: memphis_2006_12 $'
+character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 14.0 2007/03/15 22:10:42 fms Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda $'
 
 !-------  interfaces --------
 
@@ -44,7 +44,7 @@ namelist / strat_chem_nml /         &
 
 
      logical               :: run_startup = .true.
-     real  ::   ozon(11,48),cosp(14),cosphc(48),photo(128,14,11,48),    &
+     real  ::   ozon(11,48),cosp(14),cosphc(48),photo(132,14,11,48),    &
            solardata(1801),chlb(90,15),ozb(144,90,12),tropc(151,9),    &
            age(90,48,12),dfdage(90,48,8),anoy(90,48)
      integer :: mype
@@ -130,7 +130,7 @@ end function strat_chem_driver_init
 
 
 
-      real ozon(11,48),cosp(14),cosphc(48),photo(128,14,11,48),       &
+      real ozon(11,48),cosp(14),cosphc(48),photo(132,14,11,48),       &
            solardata(1801),chlb(90,15),ozb(144,90,12),tropc(151,9),   &
            age(90,48,12),dfdage(90,48,8),anoy(90,48)
       integer lev,ipz,icz,lv,nc,jl,ir
@@ -203,30 +203,30 @@ end function strat_chem_driver_init
 !
 !  read in photolysis files
 !         
-         call mpp_open( unit, 'INPUT/photols04cmax', action=MPP_RDONLY )
-         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/photols04cmax'
+         call mpp_open( unit, 'INPUT/photolsmax', action=MPP_RDONLY )
+         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/photolsmax'
          DO LEV = 1,48                                            
          DO IPZ = 1,11                                               
          DO ICZ = 1,14                                               
-         READ(unit,'(I4,E12.4,2F10.4,5(/6E12.4),/2E12.4)') &
+         READ(unit,'(I4,E12.4,2F10.4,5(/6E12.4),/3E12.4)') &
            LV,OZON(IPZ,LEV),COSP(ICZ),COSPHC(LEV), &
-           (PHOTO(IR,ICZ,IPZ,LEV),IR=1,32)
-         READ(unit,'(5(6E12.4/),2E12.4)')   &
-           (PHOTO(IR,ICZ,IPZ,LEV),IR=33,64)
+           (PHOTO(IR,ICZ,IPZ,LEV),IR=1,33)
+         READ(unit,'(5(6E12.4/),3E12.4)')   &
+           (PHOTO(IR,ICZ,IPZ,LEV),IR=34,66)
          enddo
          enddo
          enddo
          call mpp_close(unit)
-         call mpp_open( unit, 'INPUT/photols04cmin', action=MPP_RDONLY )
-         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/photols04cmin'
+         call mpp_open( unit, 'INPUT/photolsmin', action=MPP_RDONLY )
+         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/photolsmin'
          DO LEV = 1,48                                            
          DO IPZ = 1,11                                               
          DO ICZ = 1,14                                               
-         READ(unit,'(I4,E12.4,2F10.4,5(/6E12.4),/2E12.4)') &
+         READ(unit,'(I4,E12.4,2F10.4,5(/6E12.4),/3E12.4)') &
            LV,OZON(IPZ,LEV),COSP(ICZ),COSPHC(LEV), &
-           (PHOTO(IR,ICZ,IPZ,LEV),IR=65,96)
-         READ(unit,'(5(6E12.4/),2E12.4)')   &
-           (PHOTO(IR,ICZ,IPZ,LEV),IR=97,128)
+           (PHOTO(IR,ICZ,IPZ,LEV),IR=67,99)
+         READ(unit,'(5(6E12.4/),3E12.4)')   &
+           (PHOTO(IR,ICZ,IPZ,LEV),IR=100,132)
          enddo
          enddo
          enddo
@@ -238,7 +238,7 @@ end function strat_chem_driver_init
          DO LEV = 1,48                                              
          DO IPZ = 1,11                                               
          DO ICZ = 1,14                                               
-         DO IR = 1,128                                                
+         DO IR = 1,132                                                
          PHOTO(IR,ICZ,IPZ,LEV) = ALOG(PHOTO(IR,ICZ,IPZ,LEV)+1.E-30)     
          enddo
          enddo
@@ -247,8 +247,8 @@ end function strat_chem_driver_init
 !
 !  read in data for Cly and Bry computation
 !         
-         call mpp_open( unit, 'INPUT/ageair_fms_90.dat', action=MPP_RDONLY )
-         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/ageair_fms_90.dat'
+         call mpp_open( unit, 'INPUT/dfdage.dat', action=MPP_RDONLY )
+         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/dfdage.dat'
          read(unit,'(6e13.6)') age
          read(unit,'(6e13.6)') dfdage
          call mpp_close(unit)
@@ -292,7 +292,7 @@ end function strat_chem_driver_init
                                ozcol,anat,aice,alats,cly,bry,age
      real, dimension(size(pfull,1)) :: h2o,h2o_tend,dagesq
 
-!     real  ::   ozon(11,48),cosp(14),cosphc(48),photo(128,14,11,48),   &
+!     real  ::   ozon(11,48),cosp(14),cosphc(48),photo(132,14,11,48),   &
 !                solardata(1801),chlb(90,15),ozb(144,90,12)
      real  ::   cozen(ie-is+1,je-js+1),vtemp(size(pfull,1)),           &
                 rho(size(pfull,1)),dy(size(pfull,1),21),               &
@@ -342,17 +342,17 @@ end function strat_chem_driver_init
 !
 ! Calculate overhead ozone columns for photolysis
 ! N.B. Ozone is molecule 26 (22nd of the chemical tracers)
-! Allow for transport problems with a 1 ppbv minimum for ozone.
+! Allow for transport problems with a 1 e-15 minimum for ozone.
 !
      do jl = 1,je-js+1
      do il = 1,ie-is+1
      xc = chems(il,jl,1,no3)!26) 
-     if(xc.lt.1.0e-9) xc = 1.0e-9
+     if(xc.lt.1.0e-15) xc = 1.0e-15
      ozcol(il,jl,1) = xc*const*pfull(il,jl,1)
      do kl = 2,levs
 !     xc =  sqrt(chems(il,jl,kl,26)*chems(il,jl,kl-1,26)) 
      xc =  sqrt(chems(il,jl,kl,no3)*chems(il,jl,kl-1,no3)) 
-     if(xc.lt.1.0e-9) xc = 1.0e-9
+     if(xc.lt.1.0e-15) xc = 1.0e-15
      ozcol(il,jl,kl) = ozcol(il,jl,kl-1) +                    &
         const*(pfull(il,jl,kl) - pfull(il,jl,kl-1))*xc         
      enddo
@@ -362,14 +362,14 @@ end function strat_chem_driver_init
 ! Do main loop over model levels
 !
 !==========================================================================
-     if(itime(4).eq.0.and.itime(5).eq.0) then
-        if(mpp_pe().eq.mpp_root_pe()) then 
-            write(stdout(),*) ' chemical values before chemistry calculation'
-            write(stdout(),'(6e13.6)') chems(1,1,18,:)
-            write(stdout(),*) ' ozone values before chemistry calculation'
-            write(stdout(),'(6e13.6)') chems(1,1,:,no3)!26)
-        endif
-     endif
+!     if(itime(4).eq.0.and.itime(5).eq.0) then
+!        if(mpp_pe().eq.mpp_root_pe()) then 
+!            write(stdout(),*) ' chemical values before chemistry calculation'
+!            write(stdout(),'(6e13.6)') chems(1,1,18,:)
+!            write(stdout(),*) ' ozone values before chemistry calculation'
+!            write(stdout(),'(6e13.6)') chems(1,1,:,no3)!26)
+!        endif
+!     endif
      do 1000 kl = 1,levs
      do jl = 1,je-js+1    
      jlx = jl + jl_first - 1
@@ -414,9 +414,8 @@ end function strat_chem_driver_init
         dy(il,nc) = 0.0
      endif
      enddo
-     if(dy(il,8).lt.1.0e-9) dy(il,8) = 1.0e-9
+     if(dy(il,8).lt.1.0e-15) dy(il,8) = 1.0e-15
      if(dy(il,15).lt.1.0e-15) dy(il,15) = 1.0e-15
-
 !
 ! Set water vapour values from the main model after converting to vmr or
 ! use stratospheric h2o: chems(...,23), which includes sedimented terms. 
@@ -432,9 +431,10 @@ end function strat_chem_driver_init
 !     dagesq(il) = (chems(il,jl,levs,25) - chems(il,jl,kl,25))**2
      dagesq(il) = (chems(il,jl,levs,nage) - chems(il,jl,kl,nage))**2
 !
-!  No more than 10 ppmv water in the stratosphere
+!  No more than 5 ppmv water in the extra-tropical lower stratosphere
 !
-     if(h2o(il) > 1.0e-5.and.dagesq(il) > 0.01) h2o(il) = 1.0e-5
+     if(h2o(il) > 5.0e-6.and.dagesq(il) > 0.01.and.pfull(il,jl,kl) > 1.0e4) &
+         h2o(il) = 5.0e-6
      ozone(il,jl,kl) = chems(il,jl,kl,no3)!26)
      o3_prod(il,jl,kl) = chems(il,jl,kl,no3ch)!27)
      extinct = 0.0
@@ -455,13 +455,13 @@ end function strat_chem_driver_init
        ozon,cosp,cosphc,anoy,aerosol(1,jl,kl),dt,merids,ch_tend,          &
        ozone(1,jl,kl), o3_prod(1,jl,kl),h2o_tend,mype,itime)
 !
-     if(itime(4).eq.0.and.itime(5).eq.0.and.kl.eq.18) then
-        if(mpp_pe() .eq. mpp_root_pe()) then
-           write(stdout(),*) ' NAT and ICE values at 46 hPa'
-           write(stdout(),'(6e13.6)') (anat(il,jl,kl),il=1,merids)
-           write(stdout(),'(6e13.6)') (aice(il,jl,kl),il=1,merids)
-        endif
-     endif
+!     if(itime(4).eq.0.and.itime(5).eq.0.and.kl.eq.18) then
+!        if(mpp_pe() .eq. mpp_root_pe()) then
+!           write(stdout(),*) ' NAT and ICE values at 46 hPa'
+!           write(stdout(),'(6e13.6)') (anat(il,jl,kl),il=1,merids)
+!           write(stdout(),'(6e13.6)') (aice(il,jl,kl),il=1,merids)
+!        endif
+!     endif
      do il = 1,merids
 
 !     do nc = 1,21
@@ -499,15 +499,15 @@ end function strat_chem_driver_init
 !
      chem_tend(il,jl,kl,nstrath2o) = (aice(il,jl,kl) + 3.0*anat(il,jl,kl)  -   &
                  chems(il,jl,kl,nstrath2o))/21600.0 !23 <- nstrath2o
-     if(pfull(il,jl,kl) < 25.0.and.chems(il,jl,kl,noy) > 2.0e-6)    &
-         chem_tend(il,jl,kl,noy) = (2.0e-6  - chems(il,jl,kl,noy))/21600.0
+ !    if(pfull(il,jl,kl) < 10.0.and.chems(il,jl,kl,noy) > 2.0e-6)    &
+ !        chem_tend(il,jl,kl,noy) = (2.0e-6  - chems(il,jl,kl,noy))/21600.0
      enddo
      enddo
 1000 continue
 ! 
 ! compute rate of change of Cly and Bry
 !
-     fact2 = 1.25
+     fact2 = 1.00
      do jl = 1,je-js+1    
      alats(:,jl,:) = jl + jl_first - 1
      enddo
@@ -541,9 +541,9 @@ end function strat_chem_driver_init
      do jl = 1,je-js+1
      do il = 1,merids
      dagesq(il) = (chems(il,jl,levs,nage) - chems(il,jl,kl,nage))**2
-     if (dagesq(il).lt.0.01)  then
-          chem_tend(il,jl,kl,ncly) = (2.0e-13 - chems(il,jl,kl,ncly))*vtau10
-          chem_tend(il,jl,kl,nbry) = (2.0e-14 - chems(il,jl,kl,nbry))*vtau10
+     if (dagesq(il).lt.1.0e-2)  then
+          chem_tend(il,jl,kl,ncly) = (1.0e-13 - chems(il,jl,kl,ncly))*vtau10
+          chem_tend(il,jl,kl,nbry) = (1.0e-15 - chems(il,jl,kl,nbry))*vtau10
           chem_tend(il,jl,kl,nage) = - chems(il,jl,kl,nage)*vtau10
      endif
      enddo

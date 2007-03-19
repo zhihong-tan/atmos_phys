@@ -26,7 +26,7 @@ integer, parameter, public :: WEIGHTED_TENDENCY=1
 integer, parameter, public :: OUTFLOW_BOUNDARY=2
 
 character(len=128), parameter :: version = '$Id: vert_advection.F90,v 11.0 2004/09/28 19:27:01 fms Exp $'
-character(len=128), parameter :: tagname = '$Name: memphis_2006_12 $'
+character(len=128), parameter :: tagname = '$Name: nalanda $'
 
 logical :: module_is_initialized = .false.
 

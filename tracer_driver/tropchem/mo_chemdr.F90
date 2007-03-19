@@ -11,7 +11,7 @@
       real :: esfact = 1.           ! earth sun distance factor
 
 character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 13.0 2006/03/28 21:16:03 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: memphis_2006_12 $'
+character(len=128), parameter :: tagname     = '$Name: nalanda $'
 logical                       :: module_is_initialized = .false.
 
       contains

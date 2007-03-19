@@ -87,8 +87,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 13.0.2.1.2.1 2006/10/02 14:20:47 wfc Exp $'
-character(len=128) :: tagname = '$Name: memphis_2006_12 $'
+'$Id: interpolator.F90,v 14.0 2007/03/15 22:09:44 fms Exp $'
+character(len=128) :: tagname = '$Name: nalanda $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -190,7 +190,7 @@ contains
 !
 subroutine interpolator_init( clim_type, file_name, lonb_mod, latb_mod, &
                               data_names, data_out_of_bounds,           &
-                              vert_interp, clim_units )
+                              vert_interp, clim_units, single_year_file)
 type(interpolate_type), intent(inout) :: clim_type
 character(len=*), intent(in)            :: file_name
 real            , intent(in)            :: lonb_mod(:), latb_mod(:)
@@ -200,6 +200,7 @@ integer         , intent(in)            :: data_out_of_bounds(:)
 integer         , intent(in), optional  :: vert_interp(:) 
 !--lwh
 character(len=*), intent(out), optional :: clim_units(:)
+logical,          intent(out), optional :: single_year_file
 !
 ! INTENT IN
 !  file_name  :: Climatology filename
@@ -795,10 +796,11 @@ if(present(data_names)) then
    if ( size(data_out_of_bounds(:)) /= size(data_names(:)) .and. size(data_out_of_bounds(:)) /= 1 ) &
       call mpp_error(FATAL,'interpolator_init : The size of the data_out_of_bounds array must be 1&
                             & or size(data_names)')
-   if (present(vert_interp) .and. &
-       size(vert_interp(:)) /= size(data_names(:)) .and. size(vert_interp(:)) /= 1 ) &
+   if (present(vert_interp)) then
+      if( size(vert_interp(:)) /= size(data_names(:)) .and. size(vert_interp(:)) /= 1 ) &
       call mpp_error(FATAL,'interpolator_init : The size of the vert_interp array must be 1&
                             & or size(data_names)')
+   endif
 ! Only read the fields named in data_names
    do j=1,size(data_names(:))
       NAME_PRESENT = .FALSE.
@@ -892,6 +894,10 @@ if( clim_type%TIME_FLAG .eq. LINEAR  .and. read_all_on_init) then
    enddo
 
    call mpp_close (unit)
+endif
+
+if (present (single_year_file)) then
+  single_year_file = clim_type%climatological_year
 endif
 
 module_is_initialized = .true.
@@ -1778,7 +1784,7 @@ type(time_type)       , intent(in)     :: Time
 real, dimension(:,:),   intent(out)    :: interp_data
 integer               , intent(in) , optional :: is,js
 character(len=*)      , intent(out), optional :: clim_units
-real :: tweight, tweight1, tweight2
+real :: tweight, tweight1, tweight2, tweight3
 integer :: taum, taup, ilon
 real :: hinterp_data(size(interp_data,1),size(interp_data,2),size(clim_type%levs(:)))
 real :: p_fact(size(interp_data,1),size(interp_data,2))
@@ -1788,8 +1794,11 @@ logical :: result, found
 logical :: found_field=.false.
 integer :: modyear, modmonth, modday, modhour, modminute, modsecond
 integer :: climyear, climmonth, climday, climhour, climminute, climsecond
-integer :: taum1, taup1, taum2, taup2
-type(time_type) :: clim_datem, clim_datep
+integer :: year1, month1, day, hour, minute, second
+integer :: taum1, taup1, taum2, taup2, climatology, m
+type(time_type) :: clim_datem, clim_datep, mod_time, prev_clim_time, t_prev, t_next
+type(time_type), dimension(2) :: month
+integer :: indexm, indexp, yearm, yearp
 integer :: j, k, i, itaum, itaup, n
 
 if (.not. module_is_initialized .or. .not. associated(clim_type%lon)) &
@@ -1852,6 +1861,133 @@ do i= 1,size(clim_type%field_name(:))
 !      endif
 !
 !    endif
+    if(clim_type%TIME_FLAG .eq. BILINEAR ) then
+      ! Check if delta-time is greater than delta of first two climatology time-slices.
+      if ( (Time - clim_type%time_slice(taum) ) > ( clim_type%time_slice(2)- clim_type%time_slice(1) ) .or. &
+           (clim_type%time_slice(taup)  - Time) > ( clim_type%time_slice(2)- clim_type%time_slice(1) ) ) then
+      ! The difference between the model time and the last climatology time-slice previous to the model time.
+      ! We need 2 time levels.
+        itaum=0
+        itaup=0
+      ! Assume this is monthly data. So we need to get the data applicable to the model date but substitute 
+      ! the climatology year into the appropriate place.
+
+     
+      ! We need to get the previous months data for the climatology year before 
+      ! and after the model year.
+        call get_date(Time, modyear, modmonth, modday, modhour, modminute, modsecond)
+        call get_date(clim_type%time_slice(taum), climyear, climmonth, climday, climhour, climminute, climsecond)
+
+        climatology = 1
+        do m = 1, size(clim_type%clim_times(:,:),2)
+          !Assume here that a climatology is for 1 year and consists of 12 months starting in January.
+          call get_date(clim_type%clim_times(1,m), year1, month1, day, hour, minute, second)
+          if (year1 == climyear) climatology = m 
+        enddo
+        do m = 1,12
+          !Find which month we are trying to look at and set clim_date[mp] to the dates spanning that.
+          call get_date(clim_type%clim_times(m,climatology), year1, month1, day, hour, minute, second)
+          if ( month1 == modmonth ) then
+!RSHBUGFX   if ( modday <= day ) then 
+            if ( modday <  day ) then 
+              indexm = m-1 ; indexp = m
+            else
+              indexm = m ; indexp = m+1
+            endif
+          endif
+        
+        enddo
+        if ( indexm == 0 ) then 
+          indexm = 12
+          yearm = modyear - 1
+        else
+          yearm = modyear
+        endif
+        call get_date(clim_type%time_slice(indexm+(climatology-1)*12), &
+                      climyear, climmonth, climday, climhour, climminute, climsecond)
+        month(1) = set_date(yearm, indexm, climday, climhour, climminute, climsecond)
+        if ( indexp == 13 ) then
+          indexp = 1
+          yearp = modyear + 1
+        else
+          yearp = modyear
+        endif
+        call get_date(clim_type%time_slice(indexp+(climatology-1)*12), &
+                      climyear, climmonth, climday, climhour, climminute, climsecond)
+        month(2) = set_date(yearp, indexp, climday, climhour, climminute, climsecond)
+        
+        call time_interp(Time, month, tweight3, taum, taup ) ! tweight3 is the time weight between the months.
+
+        month(1) = clim_type%time_slice(indexm+(climatology-1)*12)
+        month(2) = clim_type%time_slice(indexm+climatology*12)
+        call get_date(month(1), climyear, climmonth, climday, climhour, climminute, climsecond)
+        t_prev = set_date(yearm, climmonth, climday, climhour, climminute, climsecond)
+        call time_interp(t_prev, month, tweight1, taum, taup ) ! tweight1 is the time weight between the climatology years.
+
+        month(1) = clim_type%time_slice(indexp+(climatology-1)*12)
+        month(2) = clim_type%time_slice(indexp+climatology*12)
+        call get_date(month(1), climyear, climmonth, climday, climhour, climminute, climsecond)
+        t_next = set_date(yearp, climmonth, climday, climhour, climminute, climsecond)
+        call time_interp(t_next, month, tweight2, taum, taup ) ! tweight1 is the time weight between the climatology years.
+
+
+
+        if (indexm == clim_type%indexm(i) .and.  &
+          indexp == clim_type%indexp(i) .and. &
+          climatology == clim_type%climatology(i)) then
+        else
+          clim_type%indexm(i) = indexm
+          clim_type%indexp(i) = indexp
+          clim_type%climatology(i) = climatology
+          call read_data(clim_type,clim_type%field_type(i),  &
+            clim_type%pmon_pyear(:,:,:,i),  &
+            clim_type%indexm(i)+(clim_type%climatology(i)-1)*12,i,Time)
+! Read the data for the next month in the previous climatology.
+          call read_data(clim_type,clim_type%field_type(i),  &
+            clim_type%nmon_pyear(:,:,:,i),   &
+            clim_type%indexp(i)+(clim_type%climatology(i)-1)*12,i,Time)
+          call read_data(clim_type,clim_type%field_type(i),   &
+            clim_type%pmon_nyear(:,:,:,i),  &
+            clim_type%indexm(i)+clim_type%climatology(i)*12,i,Time)
+          call read_data(clim_type,clim_type%field_type(i),  &
+            clim_type%nmon_nyear(:,:,:,i),  &
+            clim_type%indexp(i)+clim_type%climatology(i)*12,i,Time)
+        endif
+
+
+
+
+      else ! We are within a climatology data set
+        
+        if (taum /= clim_type%time_init(i,1) .or. &
+            taup /= clim_type%time_init(i,2) ) then
+ 
+          call read_data(clim_type,clim_type%field_type(i), clim_type%pmon_pyear(:,:,:,i), taum,i,Time)
+! Read the data for the next month in the previous climatology.
+          call read_data(clim_type,clim_type%field_type(i), clim_type%nmon_pyear(:,:,:,i), taup,i,Time)
+!RSHbug   clim_type%pmon_nyear = 0.0
+!RSHbug   clim_type%nmon_nyear = 0.0
+
+!         clim_type%pmon_nyear(:,:,:,i) = 0.0
+!         clim_type%nmon_nyear(:,:,:,i) = 0.0
+
+! set to zero so when next return to bilinear section will be sure to
+! have proper data (relevant when running fixed_year case for more than
+! one year in a single job)
+          clim_type%indexm(i) = 0       
+          clim_type%indexp(i) = 0        
+          clim_type%climatology(i) = 0             
+
+
+          clim_type%time_init(i,1) = taum
+          clim_type%time_init(i,2) = taup
+        endif
+!       tweight3 = 0.0 ! This makes [pn]mon_nyear irrelevant. Set them to 0 to test.
+        tweight1 = 0.0 ; tweight2 = 0.0
+        tweight3 = tweight                                          
+      endif
+
+    endif ! (BILINEAR)
 
     if(clim_type%TIME_FLAG .eq. LINEAR .and. &
         (.not. read_all_on_init) ) then
@@ -1892,10 +2028,15 @@ do i= 1,size(clim_type%field_name(:))
 select case(clim_type%TIME_FLAG)
   case (LINEAR)
     hinterp_data = (1-tweight)*clim_type%data(istart:iend,jstart:jend,:,itaum,i) &
-    + tweight*clim_type%data(istart:iend,jstart:jend,:,itaup,i)
+                     + tweight*clim_type%data(istart:iend,jstart:jend,:,itaup,i)
   case (SEASONAL)
 ! Do sine fit to data at this point
   case (BILINEAR)
+    hinterp_data = &
+    (1-tweight1)  * (1-tweight3) * clim_type%pmon_pyear(istart:iend,jstart:jend,:,i) + &
+    (1-tweight2)  *    tweight3  * clim_type%nmon_pyear(istart:iend,jstart:jend,:,i) + &
+         tweight1 * (1-tweight3) * clim_type%pmon_nyear(istart:iend,jstart:jend,:,i) + &
+         tweight2 *     tweight3 * clim_type%nmon_nyear(istart:iend,jstart:jend,:,i)
 
 end select
 
@@ -2276,6 +2417,7 @@ program test
 use mpp_mod
 use mpp_io_mod
 use mpp_domains_mod
+use fms_mod
 use time_manager_mod
 use diag_manager_mod!, only : diag_axis_init, file_exist, MPP_NPES, &
                     !  MPP_PE, REGISTER_DIAG_FIELD, SEND_DATA, SET_DATE,&
@@ -2288,7 +2430,7 @@ use constants_mod, only : grav, constants_init, PI
 use time_interp_mod, only : time_interp_init
 
 implicit none
-integer, parameter :: nsteps_per_day = 8, ndays = 430
+integer, parameter :: nsteps_per_day = 8, ndays = 16
 real, parameter :: delt = 1.0/nsteps_per_day
 ! integer, parameter :: nxd = 144, nyd = 90, ntsteps = 240, two_delt = 2*delt
 integer, parameter :: nxd = 20, nyd = 40, ntsteps = nsteps_per_day*ndays, two_delt = 2*delt
@@ -2514,6 +2656,7 @@ integer,                intent(in)            :: data_out_of_bounds(:)
 integer,                intent(in), optional  :: vert_interp(:)
 character(len=*),       intent(out),optional  :: units(:)
 
+if (.not. file_exist("INPUT/aerosol.climatology.nc") ) return
 call interpolator_init( aerosol, "aerosol.climatology.nc", lonb, latb, &
                         data_names=names, data_out_of_bounds=data_out_of_bounds, &
                         vert_interp=vert_interp, clim_units=units )
@@ -2545,6 +2688,7 @@ type(interpolate_type),intent(inout)        :: o3
 integer,               intent(in)           :: data_out_of_bounds(:)
 integer,               intent(in), optional :: vert_interp(:)
 
+if (.not. file_exist("INPUT/o3.climatology.nc") ) return
 call interpolator_init( o3, "o3.climatology.nc", lonb, latb, &
                         data_out_of_bounds=data_out_of_bounds, vert_interp=vert_interp )
 
