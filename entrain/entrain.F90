@@ -247,7 +247,7 @@ real, parameter :: d608 = (rvgas-rdgas)/rdgas
 !
 
 character(len=128) :: Version = '$Id: entrain.F90,v 14.0 2007/03/15 22:03:10 fms Exp $'
-character(len=128) :: Tagname = '$Name: nalanda $'
+character(len=128) :: Tagname = '$Name: nalanda_2007_04 $'
 logical            :: module_is_initialized = .false.      
 !-----------------------------------------------------------------------
 !

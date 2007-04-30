@@ -14,7 +14,7 @@ MODULE CONV_CLOSURES_MOD
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
   character(len=128) :: version = '$Id: conv_closures.F90,v 14.0 2007/03/15 22:08:35 fms Exp $'
-  character(len=128) :: tagname = '$Name: nalanda $'
+  character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

@@ -51,7 +51,7 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: longwave_driver.F90,v 14.0 2007/03/15 22:06:14 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

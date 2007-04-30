@@ -95,7 +95,7 @@ private
 !--------------------- version number ----------------------------------
 
 character(len=128) :: version = '$Id: diffusivity.F90,v 13.0 2006/03/28 21:08:26 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda $'
+character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
 
 !=======================================================================
 

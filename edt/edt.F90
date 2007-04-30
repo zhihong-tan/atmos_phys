@@ -261,7 +261,7 @@ real, parameter :: tkemin  =   1.e-6  ! tke minimum (m2/s2)
 !
 
 character(len=128) :: Version = '$Id: edt.F90,v 13.0 2006/03/28 21:09:12 fms Exp $'
-character(len=128) :: Tagname = '$Name: nalanda $'
+character(len=128) :: Tagname = '$Name: nalanda_2007_04 $'
 logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !
