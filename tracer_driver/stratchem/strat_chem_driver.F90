@@ -20,7 +20,7 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 14.0 2007/03/15 22:10:42 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 !-------  interfaces --------
 

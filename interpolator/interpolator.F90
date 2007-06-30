@@ -74,7 +74,8 @@ public interpolator_init, &
        interpolator_end,  &
        init_clim_diag,    &
        query_interpolator,&
-       read_data
+       read_data,         &
+       create_horiz_interp_new
 
 interface interpolator
    module procedure interpolator_4D
@@ -87,8 +88,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 14.0 2007/03/15 22:09:44 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+'$Id: interpolator.F90,v 14.0.2.2 2007/05/25 16:32:09 vb Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -193,7 +194,7 @@ subroutine interpolator_init( clim_type, file_name, lonb_mod, latb_mod, &
                               vert_interp, clim_units, single_year_file)
 type(interpolate_type), intent(inout) :: clim_type
 character(len=*), intent(in)            :: file_name
-real            , intent(in)            :: lonb_mod(:), latb_mod(:)
+real            , intent(in)            :: lonb_mod(:,:), latb_mod(:,:)
 character(len=*), intent(in) , optional :: data_names(:)
 !++lwh
 integer         , intent(in)            :: data_out_of_bounds(:) 
@@ -204,8 +205,8 @@ logical,          intent(out), optional :: single_year_file
 !
 ! INTENT IN
 !  file_name  :: Climatology filename
-!  lonb_mod   :: The boundaries of the model grid-box longitudes.
-!  latb_mod   :: The boundaries of the model grid_box latitudes.
+!  lonb_mod   :: The corners of the model grid-box longitudes.
+!  latb_mod   :: The corners of the model grid_box latitudes.
 !  data_names :: A list of the names of components within the climatology file which you wish to read.
 !  data_out_of_bounds :: A list of the flags that are to be used in determining what to do if the pressure levels in the model
 !                        go out of bounds from those of the climatology.
@@ -686,9 +687,9 @@ endif
 
 !Assume that the horizontal interpolation within a file is the same for each variable.
 
- call horiz_interp_new(clim_type%interph, &
-                        clim_type%lonb, clim_type%latb, &
-                        lonb_mod, latb_mod)
+ call create_horiz_interp_new (clim_type%interph, &
+                               clim_type%lonb, clim_type%latb, &
+                               lonb_mod, latb_mod)
 
 !--------------------------------------------------------------------
 !  allocate the variable clim_type%data . This will be the climatology 
@@ -711,10 +712,10 @@ select case(ntime)
  if (non_monthly) then
 ! We have a broken time-line. e.g. We have monthly data but only for years ending in 0. 1960,1970 etc.
 !   allocate(clim_type%data(size(lonb_mod(:))-1, size(latb_mod(:))-1, nlev, 2, num_fields))
-   allocate(clim_type%pmon_pyear(size(lonb_mod(:))-1, size(latb_mod(:))-1, nlev, num_fields))
-   allocate(clim_type%pmon_nyear(size(lonb_mod(:))-1, size(latb_mod(:))-1, nlev, num_fields))
-   allocate(clim_type%nmon_nyear(size(lonb_mod(:))-1, size(latb_mod(:))-1, nlev, num_fields))
-   allocate(clim_type%nmon_pyear(size(lonb_mod(:))-1, size(latb_mod(:))-1, nlev, num_fields))
+   allocate(clim_type%pmon_pyear(size(lonb_mod,1)-1, size(latb_mod,2)-1, nlev, num_fields))
+   allocate(clim_type%pmon_nyear(size(lonb_mod,1)-1, size(latb_mod,2)-1, nlev, num_fields))
+   allocate(clim_type%nmon_nyear(size(lonb_mod,1)-1, size(latb_mod,2)-1, nlev, num_fields))
+   allocate(clim_type%nmon_pyear(size(lonb_mod,1)-1, size(latb_mod,2)-1, nlev, num_fields))
    clim_type%pmon_pyear = 0.0
    clim_type%pmon_nyear = 0.0
    clim_type%nmon_nyear = 0.0
@@ -723,9 +724,9 @@ select case(ntime)
 else
 ! We have a continuous time-line so treat as for 5-12 timelevels as below.
    if ( .not. read_all_on_init) then
-   allocate(clim_type%data(size(lonb_mod(:))-1, size(latb_mod(:))-1, nlev, 2, num_fields))
+   allocate(clim_type%data(size(lonb_mod,1)-1, size(latb_mod,2)-1, nlev, 2, num_fields))
    else
-   allocate(clim_type%data(size(lonb_mod(:))-1, size(latb_mod(:))-1, nlev, &
+   allocate(clim_type%data(size(lonb_mod,1)-1, size(latb_mod,2)-1, nlev, &
                ntime, num_fields))
    endif
    clim_type%data = 0.0
@@ -738,9 +739,9 @@ endif
 ! Assume we have monthly or higher time resolution datasets (climatology or time series)
 ! So we only need to read 2 datasets and apply linear temporal interpolation.
    if ( .not. read_all_on_init) then
-   allocate(clim_type%data(size(lonb_mod(:))-1, size(latb_mod(:))-1, nlev, 2, num_fields))
+   allocate(clim_type%data(size(lonb_mod,1)-1, size(latb_mod,2)-1, nlev, 2, num_fields))
    else
-   allocate(clim_type%data(size(lonb_mod(:))-1, size(latb_mod(:))-1, nlev, &
+   allocate(clim_type%data(size(lonb_mod,1)-1, size(latb_mod,2)-1, nlev, &
                ntime, num_fields))
    endif
    clim_type%data = 0.0
@@ -749,7 +750,7 @@ endif
 ! Assume we have seasonal data and read in all the data.
 ! We can apply sine curves to these data.
  
-   allocate(clim_type%data(size(lonb_mod(:))-1, size(latb_mod(:))-1, nlev, ntime, num_fields))
+   allocate(clim_type%data(size(lonb_mod,1)-1, size(latb_mod,2)-1, nlev, ntime, num_fields))
    clim_type%data = 0.0
    clim_type%TIME_FLAG = SEASONAL
 ! case (default)
@@ -2406,6 +2407,176 @@ if (size(grdout(:)).ne. (size(datout(:))+1)) &
 end subroutine interp_linear
 !
 !########################################################################
+
+ subroutine create_horiz_interp_new (interph, lonb_in, latb_in, &
+                                     lonb_out, latb_out,        &
+                                     verbose, interp_method)
+ type(horiz_interp_type), intent(inout) :: interph
+ real,      intent(in), dimension(:)    :: lonb_in,  latb_in
+ real,      intent(in), dimension(:,:)  :: lonb_out, latb_out
+ integer,   intent(in),        optional :: verbose
+ character(len=*), intent(in), optional :: interp_method
+
+ real, allocatable, dimension(:,:) :: lonc_out, latc_out
+ integer :: nx, ny
+ character(len=32) :: method
+
+ if (is_latlon(lonb_out,latb_out)) then
+     ! lat/lon grid:  default (conservative) interpolation using grid box boundaries
+     call horiz_interp_new (interph, lonb_in, latb_in, &
+                            lonb_out(:,1), latb_out(1,:), &
+                            verbose=verbose, interp_method=interp_method)
+ else
+     method = "conservative"
+     if (present(interp_method)) method = trim(interp_method)
+
+     if (trim(method) == "conservative") then
+        call horiz_interp_new (interph, lonb_in, latb_in, &
+                               lonb_out, latb_out,        &
+                               verbose=verbose, interp_method="conservative")
+     else
+        ! non-lat/lon grid:  bi-linear interpolation using grid box mid-points
+        nx = size(lonb_out,1)-1
+        ny = size(latb_out,2)-1
+        allocate (lonc_out(nx,ny),latc_out(nx,ny))
+        call get_cell_center (lonb_out, latb_out, lonc_out, latc_out)
+        call horiz_interp_new (interph, lonb_in, latb_in, &
+                               lonc_out, latc_out,        &
+                               verbose=verbose, interp_method="bilinear")
+        deallocate (lonc_out, latc_out)
+     endif
+ endif
+
+ end subroutine create_horiz_interp_new
+
+!########################################################################
+
+function is_latlon ( lon, lat )
+real, intent(in) :: lon(:,:), lat(:,:)
+
+! Determines if the latitude/longitude values form a
+! regular latitude/longitude grid (or something else).
+!
+
+logical :: is_latlon
+integer :: i, j 
+
+  is_latlon = .true.
+
+  do j = 2, size(lon,2)
+  do i = 1, size(lon,1)
+     if (lon(i,j) .ne. lon(i,1)) then
+        is_latlon = .false. 
+        return  
+     endif   
+  enddo
+  enddo
+
+  do j = 1, size(lat,2)
+  do i = 2, size(lat,1)
+     if (lat(i,j) .ne. lat(1,j)) then
+        is_latlon = .false. 
+        return  
+     endif   
+  enddo
+  enddo
+
+end function is_latlon
+
+!########################################################################
+
+  subroutine get_cell_center (lonb, latb, lon, lat)
+    !------------------------------------------------------------------!
+    ! calculate cell center (lon,lat)                                  !
+    ! by averaging cell corner locations (lonb,latb) in Cartesian coor !
+    !------------------------------------------------------------------!
+    real, dimension(:,:), intent(in)  :: lonb, latb
+    real, dimension(:,:), intent(out) :: lon, lat
+    !------------------------------------------------------------------!
+    ! local variables                                                  !
+    !------------------------------------------------------------------!
+    real :: sph_coor(2), xyz_corner(3,size(lonb,1),size(latb,2)), xyz_center(3), abs_center
+    integer :: i,j, nx,ny
+
+    nx = size(lonb,1)
+    ny = size(latb,2)
+
+    do j=1,ny
+       do i=1,nx
+          sph_coor(1)=lonb(i,j)
+          sph_coor(2)=latb(i,j)
+          call latlon2xyz(sph_coor, xyz_corner(1,i,j))
+       enddo   
+    enddo   
+    do j=1,ny-1
+       do i=1,nx-1
+          xyz_center(:)=0.25*(xyz_corner(:,i  ,j  )+xyz_corner(:,i+1,j  )  &
+                             +xyz_corner(:,i  ,j+1)+xyz_corner(:,i+1,j+1))
+          abs_center=xyz_center(1)*xyz_center(1)                           &       
+                    +xyz_center(2)*xyz_center(2)                           &       
+                    +xyz_center(3)*xyz_center(3)
+          xyz_center(:)=xyz_center(:)/abs_center
+          call xyz2latlon(xyz_center, sph_coor)
+          lon(i,j)=sph_coor(1)
+          lat(i,j)=sph_coor(2)
+       enddo   
+    enddo
+
+  end subroutine get_cell_center
+
+!########################################################################
+
+  subroutine latlon2xyz(sph_coor, xyz_coor)
+    !------------------------------------------------------------------!
+    ! calculate cartesian coordinates from spherical coordinates       !
+    !                                                                  !
+    ! input:                                                           !
+    ! sph_coor [rad]   latlon coordinate                               !
+    !                                                                  !
+    ! output:                                                          !
+    ! xyz_coor [1]     normalized cartesian vector                     !
+    !------------------------------------------------------------------!
+    real, dimension(2), intent(in)    :: sph_coor
+    real, dimension(3), intent(inout) :: xyz_coor
+
+    xyz_coor(1) = cos(sph_coor(2)) * cos(sph_coor(1))
+    xyz_coor(2) = cos(sph_coor(2)) * sin(sph_coor(1))
+    xyz_coor(3) = sin(sph_coor(2))
+
+  end subroutine latlon2xyz
+  !====================================================================!
+  subroutine xyz2latlon(xyz_coor, sph_coor)
+    !------------------------------------------------------------------!
+    ! calculate spherical coordinates from cartesian coordinates       !
+    !                                                                  !
+    ! input:                                                           !
+    ! xyz_coor [1]     normalized cartesian vector                     !
+    !                                                                  !
+    ! output:                                                          !
+    ! sph_coor [rad]   latlon coordinate                               !
+    !------------------------------------------------------------------!
+
+    real, dimension(3), intent(in)    :: xyz_coor
+    real, dimension(2), intent(inout) :: sph_coor
+    !------------------------------------------------------------------!
+    ! local variables                                                  !
+    !------------------------------------------------------------------!
+    real :: coslat, radius
+    real, parameter :: epsilon=1.e-7
+    integer :: i,j
+
+
+    radius=sqrt(xyz_coor(1)*xyz_coor(1) &
+               +xyz_coor(2)*xyz_coor(2) &
+               +xyz_coor(3)*xyz_coor(3))
+
+    sph_coor(1)=atan2(xyz_coor(2),xyz_coor(1))
+    if (sph_coor(1)<0.) sph_coor(1)=sph_coor(1)+2*PI
+    sph_coor(2)=asin(xyz_coor(3)/radius)
+
+  end subroutine xyz2latlon
+
+!########################################################################
 !
 end module interpolator_mod
 !
@@ -2464,7 +2635,7 @@ type(interpolate_type) :: o3, aerosol
 
 real, dimension(:,:), allocatable :: col_data
 real, dimension(:,:,:), allocatable :: model_data, p_half, p_full
-real, dimension(:), allocatable :: latb_mod(:),lonb_mod(:),lon_mod(:),lat_mod(:)
+real, dimension(:), allocatable :: latb_mod(:,:),lonb_mod(:,:),lon_mod(:),lat_mod(:)
 real :: dx,dy
 real :: dtr,tpi
 real :: p_bot,p_top,lambda
@@ -2529,8 +2700,8 @@ call mpp_define_domains((/1,nxd,1,nyd/),domain_layout, domain,xhalo=0,yhalo=0)
 call mpp_get_data_domain(domain,isd,ied,jsd,jed)
 call mpp_get_compute_domain (domain, iscomp, iecomp, jscomp, jecomp)
 
-allocate(lonb_mod(nxd+1),lon_mod(nxd))
-allocate(latb_mod(nyd+1),lat_mod(nyd))
+allocate(lonb_mod(nxd+1,nyd+1),lon_mod(nxd))
+allocate(latb_mod(nxd+1,nyd+1),lat_mod(nyd))
 allocate(col_data(isd:ied,jsd:jed)) ; col_data = 0.0
 allocate(p_half(isd:ied,jsd:jed,level+1),p_full(isd:ied,jsd:jed,level))
 p_top = 1.0
@@ -2550,16 +2721,16 @@ allocate(model_data(isd:ied,jsd:jed,level))
 dx = 360./nxd
 dy = 180./nyd
 do i = 1,nxd+1
-  lonb_mod(i) = (i-1)*dx 
+  lonb_mod(i,:) = (i-1)*dx 
 enddo
 do i = 1,nyd+1
-  latb_mod(i) = -90. + (i-1)*dy 
+  latb_mod(:,i) = -90. + (i-1)*dy 
 enddo
 do i=1,nxd
-  lon_mod(i)=(lonb_mod(i+1)+lonb_mod(i))/2.0
+  lon_mod(i)=(lonb_mod(i+1,1)+lonb_mod(i,1))/2.0
 enddo
 do i=1,nyd
-  lat_mod(i)=(latb_mod(i+1)+latb_mod(i))/2.0
+  lat_mod(i)=(latb_mod(1,i+1)+latb_mod(1,i))/2.0
 enddo
 
 lonb_mod = lonb_mod * dtr
@@ -2581,9 +2752,11 @@ column_diagnostic_id(i) =  register_diag_field('interp',colaer,axes(1:2),model_t
 enddo
 
 
-call ozone_init(o3,lonb_mod(isd:ied+1), latb_mod(jsd:jed+1), axes, model_time, data_out_of_bounds=out_of_bounds)
+call ozone_init(o3,lonb_mod(isd:ied+1,jsd:jed+1), latb_mod(isd:ied+1,jsd:jed+1), axes, model_time, &
+                data_out_of_bounds=out_of_bounds)
 call init_clim_diag(o3, axes, model_time)
-call sulfate_init(aerosol,lonb_mod(isd:ied+1), latb_mod(jsd:jed+1), names, data_out_of_bounds=(/CONSTANT/) )
+call sulfate_init(aerosol,lonb_mod(isd:ied+1,jsd:jed+1), latb_mod(isd:ied+1,jsd:jed+1), names, &
+                data_out_of_bounds=(/CONSTANT/) )
 call init_clim_diag(aerosol, axes, model_time)
 
 do n=1,ntsteps
@@ -2650,7 +2823,7 @@ contains
 !
 subroutine sulfate_init(aerosol,lonb, latb, names, data_out_of_bounds, vert_interp, units)
 type(interpolate_type), intent(inout)         :: aerosol
-real,                   intent(in)            :: lonb(:),latb(:)
+real,                   intent(in)            :: lonb(:,:),latb(:,:)
 character(len=64),      intent(in)            :: names(:)
 integer,                intent(in)            :: data_out_of_bounds(:) 
 integer,                intent(in), optional  :: vert_interp(:)
@@ -2681,7 +2854,7 @@ end subroutine get_anthro_sulfate
 !#######################################################################
 !
 subroutine ozone_init( o3, lonb, latb, axes, model_time, data_out_of_bounds, vert_interp )
-real,                  intent(in)           :: lonb(:),latb(:)
+real,                  intent(in)           :: lonb(:,:),latb(:,:)
 integer,               intent(in)           :: axes(:)
 type(time_type),       intent(in)           :: model_time
 type(interpolate_type),intent(inout)        :: o3

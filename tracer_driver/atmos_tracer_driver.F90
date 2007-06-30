@@ -101,12 +101,11 @@ use fms_mod,               only : file_exist, &
                                   mpp_clock_id, &
                                   mpp_clock_begin, &
                                   mpp_clock_end, &
-                                  CLOCK_MODULE, &
-                                  MPP_CLOCK_SYNC
+                                  CLOCK_MODULE
 use time_manager_mod,      only : time_type, &
                                   get_date, get_date_julian, &
                                   real_to_time_type
-use astronomy_mod,         only : diurnal_solar
+use astronomy_mod,         only : astronomy_init, diurnal_solar
 use tracer_manager_mod,    only : get_tracer_index,   &
                                   get_number_tracers, &
                                   get_tracer_names,   &
@@ -260,8 +259,8 @@ integer, allocatable :: local_indices(:)
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 14.0 2007/03/15 22:10:29 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 14.0.2.2 2007/05/27 14:04:31 wfc Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -932,11 +931,11 @@ integer :: n, nnn
 !   <TEMPLATE>
 !     call atmos_tracer_driver_init (lonb,latb, r, mask, axes, Time)
 !   </TEMPLATE>
-!   <IN NAME="lonb" TYPE="real" DIM="(:)">
-!     The longitudes for the local domain.
+!   <IN NAME="lonb" TYPE="real" DIM="(:,:)">
+!     The longitude corners for the local domain.
 !   </IN>
-!   <IN NAME="latb" TYPE="real" DIM="(:)">
-!     The latitudes for the local domain.
+!   <IN NAME="latb" TYPE="real" DIM="(:,:)">
+!     The latitude corners for the local domain.
 !   </IN>
 !   <IN NAME="mask" TYPE="real, optional" DIM="(:,:,:)">
 !      optional mask (0. or 1.) that designates which grid points
@@ -956,7 +955,7 @@ integer :: n, nnn
  subroutine atmos_tracer_driver_init (lonb, latb, r, axes, Time, phalf, mask)
 
 !-----------------------------------------------------------------------
-           real, intent(in),    dimension(:)               :: lonb, latb
+           real, intent(in),    dimension(:,:)             :: lonb, latb
            real, intent(inout), dimension(:,:,:,:)         :: r
 type(time_type), intent(in)                                :: Time
         integer, intent(in)                                :: axes(4)
@@ -978,6 +977,13 @@ type(time_type), intent(in)                                :: Time
 
       call write_version_number (version, tagname)
 
+!---------------------------------------------------------------------
+!  make sure that astronomy_mod has been initialized (if radiation
+!  not being called in this run, it will not have previously been 
+!  initialized).
+!---------------------------------------------------------------------
+      call astronomy_init
+
 !If we wish to automatically register diagnostics for wet and dry 
 ! deposition, do it now.
       call atmos_tracer_utilities_init(lonb, latb, axes, Time)
@@ -986,20 +992,20 @@ type(time_type), intent(in)                                :: Time
 
       call atmos_radon_init(r, axes, Time, nradon, mask)
       radon_clock = mpp_clock_id( 'Tracer: Radon', &
-           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+           grain=CLOCK_MODULE )
 
 !----- initialize the convection tracer ------------
 
       call atmos_convection_tracer_init(r, phalf, axes, Time, &
                                         nconvect,  mask)
       convect_clock = mpp_clock_id( 'Tracer: Convection tracer', &
-           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+           grain=CLOCK_MODULE )
 
 !----- initialize the age tracer ------------
 
       call atmos_age_tracer_init(r, axes, Time, nage, mask)
       age_tracer_clock = mpp_clock_id( 'Tracer: Age tracer', &
-           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+           grain=CLOCK_MODULE )
 
       call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
@@ -1018,7 +1024,7 @@ type(time_type), intent(in)                                :: Time
 !
       do_coupled_stratozone = strat_chem_driver_init()
       stratozone_clock = mpp_clock_id( 'Tracer: Stratospheric Ozone', &
-           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+           grain=CLOCK_MODULE )
          
 
 !------------------------------------------------------------------------
@@ -1027,7 +1033,7 @@ type(time_type), intent(in)                                :: Time
       allocate( drydep_data(nt) )
       do_tropchem = tropchem_driver_init(r,mask,axes,Time,lonb,latb,phalf,drydep_data)
       tropchem_clock = mpp_clock_id( 'Tracer: Tropospheric chemistry', &
-           grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+           grain=CLOCK_MODULE )
 
 ! ----------Interactive traceres--------------------
 ! If any of the interactive tracers are activated, get the 
@@ -1071,7 +1077,7 @@ type(time_type), intent(in)                                :: Time
           nomphobic > 0 .or. nomphilic >0 ) then
         call atmos_carbon_aerosol_init(lonb, latb, axes, Time, mask)
         carbon_clock = mpp_clock_id( 'Tracer: Carbonaceous aerosol', &
-                       grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+                       grain=CLOCK_MODULE )
 
       endif
 !dust aerosols
@@ -1079,39 +1085,39 @@ type(time_type), intent(in)                                :: Time
         .or.ndust4 > 0.or.ndust5 > 0 ) then
         call atmos_dust_init (lonb, latb, axes, Time, mask)
         dust_clock = mpp_clock_id( 'Tracer: Dust aerosol', &
-                     grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+                     grain=CLOCK_MODULE )
       endif
 !sea salt
       if (nseasalt1 > 0.or.nseasalt2 > 0.or.nseasalt3 > 0 &
         .or.nseasalt4 > 0.or.nseasalt5 > 0 ) then
         call atmos_sea_salt_init (lonb, latb, axes, Time, mask)
         seasalt_clock = mpp_clock_id( 'Tracer: Seasalt aerosol', &
-                        grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+                        grain=CLOCK_MODULE )
       endif
 !sulfur cycle
       if (nDMS > 0 .or. nSO2 > 0 .or. nSO4 > 0 &
                    .or. nMSA > 0 .or. nH2O2 > 0 ) then
         call atmos_sulfate_init ( lonb, latb, nbr_layers, axes, Time, mask)
         sulfur_clock = mpp_clock_id( 'Tracer: Sulfur', &
-                       grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+                       grain=CLOCK_MODULE )
       endif
 !SOA
       if ( nSOA > 0 ) then
         call atmos_SOA_init ( lonb, latb, nbr_layers, axes, Time, mask)
         SOA_clock = mpp_clock_id( 'Tracer: SOA', &
-                    grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+                    grain=CLOCK_MODULE )
       endif
 !sf6
       if (nsf6 > 0) then
         call atmos_sulfur_hex_init (lonb, latb, r, axes, Time, mask)
         sf6_clock = mpp_clock_id( 'Tracer: SF6', &
-                    grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+                    grain=CLOCK_MODULE )
       endif
 !ch3i
       if (nch3i > 0) then
         call atmos_ch3i_init (lonb, latb, axes, Time, mask)
         ch3i_clock = mpp_clock_id( 'Tracer: CH3I', &
-                     grain=CLOCK_MODULE, flags = MPP_CLOCK_SYNC )
+                     grain=CLOCK_MODULE )
       endif
 
 !co2

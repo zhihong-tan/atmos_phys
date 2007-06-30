@@ -152,8 +152,8 @@ type(interpolate_type), save :: drydep_data_default
 integer :: clock_id,ndiag
 
 !---- version number -----
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 14.0 2007/03/15 22:11:33 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: nalanda_2007_04 $'
+character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 14.0.2.2 2007/05/25 16:32:12 vb Exp $'
+character(len=128), parameter :: tagname     = '$Name: nalanda_2007_06 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -620,11 +620,11 @@ end subroutine tropchem_driver
 !   <IN NAME="Time" TYPE="type(time_type)">
 !     Model time.
 !   </IN>
-!   <IN NAME="lonb_mod" TYPE="real" DIM="(:)">
-!     The longitudes for the local domain.
+!   <IN NAME="lonb_mod" TYPE="real" DIM="(:,:)">
+!     The longitude corners for the local domain.
 !   </IN>
-!   <IN NAME="latb_mod" TYPE="real" DIM="(:)">
-!     The latitudes for the local domain.
+!   <IN NAME="latb_mod" TYPE="real" DIM="(:,:)">
+!     The latitude corners for the local domain.
 !   </IN>
 !   <IN NAME="phalf" TYPE="real" DIM="(:,:,:)">
 !     Pressure on the model half levels (Pa)
@@ -655,8 +655,8 @@ function tropchem_driver_init( r, mask, axes, Time, &
    real, intent(in),    dimension(:,:,:), optional :: mask
    type(time_type), intent(in) :: Time
    integer        , intent(in) :: axes(4)
-   real, intent(in), dimension(:) :: lonb_mod
-   real, intent(in), dimension(:) :: latb_mod
+   real, intent(in), dimension(:,:) :: lonb_mod
+   real, intent(in), dimension(:,:) :: latb_mod
    real, intent(in),dimension(:,:,:) :: phalf
    type(interpolate_type), intent(out) :: drydep_data(:)
 
@@ -1083,7 +1083,7 @@ subroutine init_2D_emis_data( emis_type, model, method_type, index, file_name, &
    integer, intent(in) :: model,index
    character(len=*),intent(in) :: method_type
    character(len=*),intent(inout) ::file_name
-   real,intent(in),dimension(:) :: lonb_mod,latb_mod
+   real,intent(in),dimension(:,:) :: lonb_mod,latb_mod
    type(field_init_type),intent(out) :: field_type
    logical, intent(out) :: flag
     
@@ -1149,7 +1149,7 @@ subroutine tropchem_drydep_init( dry_files, dry_names, &
 
 !-----------------------------------------------------------------------
 
-   real,                   intent(in),  dimension(:) :: lonb_mod, latb_mod
+   real,                   intent(in),  dimension(:,:) :: lonb_mod, latb_mod
    character(len=64),      intent(out), dimension(:) :: dry_files, dry_names
    type(interpolate_type), intent(out)               :: drydep_data(:)
 

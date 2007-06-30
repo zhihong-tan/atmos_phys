@@ -37,7 +37,8 @@ use tracer_manager_mod, only : query_method, &
                                get_number_tracers, &
                                MAX_TRACER_FIELDS
 use  field_manager_mod, only : MODEL_ATMOS, parse
-use   horiz_interp_mod, only : horiz_interp
+use   horiz_interp_mod, only : horiz_interp_type, horiz_interp_init, &
+                               horiz_interp, horiz_interp_del
 use  monin_obukhov_mod, only : mo_profile
 use      constants_mod, only : GRAV, &     ! acceleration due to gravity [m/s2]
                                RDGAS, &    ! gas constant for dry air [J/kg/deg]
@@ -47,7 +48,8 @@ use      constants_mod, only : GRAV, &     ! acceleration due to gravity [m/s2]
                                WTMAIR, &   ! Air molecular weight [g/mole]
                                AVOGNO      ! Avogadro's number
 use   interpolator_mod, only : interpolator,  &
-                               interpolate_type
+                               interpolate_type, &
+                               create_horiz_interp_new
 
 implicit none
 private
@@ -68,8 +70,8 @@ public  wet_deposition,    &
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 14.0 2007/03/15 22:10:34 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 14.0.2.2 2007/05/25 16:32:10 vb Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 integer, parameter :: max_tracers = MAX_TRACER_FIELDS
@@ -90,7 +92,7 @@ character(len=128), dimension(max_tracers) :: tracer_wdep_longnames = ' '
 character(len=32),  dimension(max_tracers) :: tracer_ddep_names     = ' '
 character(len=32),  dimension(max_tracers) :: tracer_ddep_units     = ' '
 character(len=128), dimension(max_tracers) :: tracer_ddep_longnames = ' '
-real, allocatable :: blon_out(:), blat_out(:)
+real, allocatable :: blon_out(:,:), blat_out(:,:)
 !----------------parameter values for the diagnostic units--------------
 real, parameter :: mw_air = WTMAIR/1000.  ! Convert from [g/mole] to [kg/mole]
 real, parameter :: mw_h2o = WTMH2O/1000.  ! Convert from [g/mole] to [kg/mole]
@@ -115,11 +117,11 @@ contains
 !<TEMPLATE>
 ! call atmos_tracer_utilities_init(lonb,latb, mass_axes, Time)
 !</TEMPLATE>
-!   <IN NAME="lonb" TYPE="real" DIM="(:)">
-!     The longitudes for the local domain.
+!   <IN NAME="lonb" TYPE="real" DIM="(:,:)">
+!     The longitude corners for the local domain.
 !   </IN>
-!   <IN NAME="latb" TYPE="real" DIM="(:)">
-!     The latitudes for the local domain.
+!   <IN NAME="latb" TYPE="real" DIM="(:,:)">
+!     The latitude corners for the local domain.
 !   </IN>
 !   <IN NAME="mass_axes" TYPE="integer" DIM="(3)">
 !     The axes relating to the tracer array.
@@ -132,7 +134,7 @@ subroutine atmos_tracer_utilities_init(lonb, latb, mass_axes, Time)
 
 ! Routine to initialize the tracer identification numbers. 
 ! This registers the 2D fields for the wet and dry deposition.
-real, dimension(:),    intent(in) :: lonb, latb
+real, dimension(:,:),  intent(in) :: lonb, latb
 integer, dimension(3), intent(in) :: mass_axes
 type(time_type),       intent(in) :: Time
 
@@ -144,8 +146,8 @@ character(len=128) :: name
 
 ! Make local copies of the local domain dimensions for use 
 ! in interp_emiss.
-      allocate ( blon_out(size(lonb(:))))
-      allocate ( blat_out(size(latb(:))))
+      allocate ( blon_out(size(lonb,1),size(lonb,2)))
+      allocate ( blat_out(size(latb,1),size(latb,2)))
 !      allocate ( data_out(size(lonb(:))-1, size(latb(:))-1))
       blon_out = lonb
       blat_out = latb
@@ -1311,6 +1313,7 @@ real :: modydeg,modxdeg, tpi
 integer :: i, j, nlon_in, nlat_in
 real :: blon_in(size(global_source,1)+1)
 real :: blat_in(size(global_source,2)+1)
+type (horiz_interp_type) :: Interp
 ! Set up the global surface boundary condition longitude-latitude boundary values
 
    tpi = 2. *PI
@@ -1330,8 +1333,11 @@ real :: blat_in(size(global_source,2)+1)
       blat_in(nlat_in+1) =  0.5*PI
 
 ! Now interpolate the global data to the model resolution
-   call horiz_interp (global_source, blon_in, blat_in,    &
-                        blon_out, blat_out, data_out )
+   call horiz_interp_init
+   call create_horiz_interp_new (Interp, blon_in, blat_in, &
+                                         blon_out, blat_out)
+   call horiz_interp (Interp, global_source, data_out)
+   call horiz_interp_del ( Interp )
 
 
 end subroutine interp_emiss

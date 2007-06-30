@@ -70,8 +70,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_soa.F90,v 14.0 2007/03/15 22:10:16 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: atmos_soa.F90,v 14.0.4.1 2007/05/29 16:32:03 wfc Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -85,7 +85,7 @@ contains
 !</OVERVIEW>
  subroutine atmos_SOA_init ( lonb, latb, nlev, axes, Time, mask)
 !-----------------------------------------------------------------------
-real,             intent(in), dimension(:)          :: lonb, latb
+real,             intent(in), dimension(:,:)        :: lonb, latb
 integer,          intent(in)                        :: nlev
 type(time_type),  intent(in)                        :: Time
 integer,          intent(in)                        :: axes(4)

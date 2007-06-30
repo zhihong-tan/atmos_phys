@@ -71,7 +71,7 @@ logical :: module_is_initialized=.FALSE.
 
 !---- version number -----
 character(len=128) :: version = '$Id: atmos_convection_tracer.F90,v 11.0 2004/09/28 19:26:35 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 !-----------------------------------------------------------------------
 
 contains

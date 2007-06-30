@@ -39,7 +39,7 @@ subroutine strat_chem_utilities_init(latb)
 
    implicit none
 ! dummy arguments
-   real, intent(in) :: latb(:)
+   real, intent(in) :: latb(:,:)
    
 ! local variables
    real :: age_dummy(nlat_input,nlev_input,nspecies_age), &
@@ -67,10 +67,13 @@ subroutine strat_chem_utilities_init(latb)
    read(unit,'(6e13.6)') dfdage
    call mpp_close(unit)
 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!  THIS CODE WILL NOT WORK CORRECTLY FOR CUBED SPHERE  !!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    jstart = 0   
    do j = 1,nlat_input
       lat_input(j) = ( -90. + (180./(nlat_input-1))*(j-1) ) * DEG_TO_RAD
-      if (lat_input(j) >= latb(1) .and. lat_input(j) <= latb(2)) jstart = j
+      if (lat_input(j) >= latb(1,1) .and. lat_input(j) <= latb(1,2)) jstart = j
       if (mpp_pe() == mpp_root_pe()) &
          write(stdout(),*) 'strat_chem_utilities_init: jstart=',j,' on PE ',mpp_pe()
    end do

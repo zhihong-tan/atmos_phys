@@ -154,8 +154,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfate.F90,v 14.0 2007/03/15 22:10:21 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: atmos_sulfate.F90,v 14.0.2.1.2.1 2007/05/29 16:33:08 wfc Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -173,7 +173,7 @@ contains
  subroutine atmos_sulfate_init ( lonb, latb, nlev, axes, Time, mask)
 
 !-----------------------------------------------------------------------
-real, intent(in),    dimension(:)                   :: lonb, latb
+real, intent(in),    dimension(:,:)                 :: lonb, latb
 integer, intent(in)                                 :: nlev
 type(time_type),  intent(in)                        :: Time
 integer,          intent(in)                        :: axes(4)
@@ -245,12 +245,11 @@ integer :: n, m, nsulfate
 
      do m=1,size(SOx_tracer)
 
-       n = get_tracer_index(MODEL_ATMOS,SOx_tracer(m))
+       n = get_tracer_index(MODEL_ATMOS,trim(SOx_tracer(m)))
        if (n>0) then
          nsulfate=n
-        call set_tracer_atts(MODEL_ATMOS,SOx_tracer(m),SOx_tracer(m),'vmr')
          if (nsulfate > 0 .and. mpp_pe() == mpp_root_pe()) &
-                 write (stdlog(),30) SOx_tracer(m),nsulfate
+                 write (stdlog(),30) trim(SOx_tracer(m)),nsulfate
        endif
      enddo
 

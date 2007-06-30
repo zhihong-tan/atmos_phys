@@ -15,7 +15,7 @@ private
 public :: atmos_nudge_init, get_atmos_nudge, atmos_nudge_end, do_ps
 
 character(len=128), parameter :: version = '$Id: atmos_nudge.F90,v 13.0 2006/03/28 21:15:06 fms Exp $'
-character(len=128), parameter :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128), parameter :: tagname = '$Name: nalanda_2007_06 $'
 
 logical :: module_is_initialized = .false.
 

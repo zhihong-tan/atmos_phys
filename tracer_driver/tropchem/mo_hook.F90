@@ -22,11 +22,11 @@
 !     real, allocatable :: prod_no(:,:,:,:)
 !     real, allocatable :: prod_no_col(:,:,:)
 !     real, allocatable :: flash_freq(:,:,:)
-      integer :: id_prod_no_col
+      integer :: id_prod_no_col, id_flash_freq
       real :: lat25
       
-character(len=128), parameter :: version     = '$Id: mo_hook.F90,v 13.0 2006/03/28 21:16:11 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: nalanda_2007_04 $'
+character(len=128), parameter :: version     = '$Id: mo_hook.F90,v 13.0.8.1 2007/05/04 08:58:20 rsh Exp $'
+character(len=128), parameter :: tagname     = '$Name: nalanda_2007_06 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -71,6 +71,8 @@ logical                       :: module_is_initialized = .false.
                        7.6, 9.6,10.5,12.3,11.8,12.5, 8.1, 2.3 /)
       id_prod_no_col = register_diag_field('tracers','prod_no_col',axes(1:2),Time, &
                                            'prod_no_col','TgN/y')
+      id_flash_freq  = register_diag_field('tracers','flash_freq',axes(1:2),Time, &
+                                           'flash_freq','/s')
       module_is_initialized = .true.
       
       end subroutine MOZ_HOOK_INIT
@@ -255,6 +257,8 @@ logical                       :: module_is_initialized = .false.
          end do
          if(id_prod_no_col >0) &
             used=send_data(id_prod_no_col,glob_prod_no_col,Time,is_in=is,js_in=js)
+         if(id_flash_freq >0) &
+            used=send_data(id_flash_freq,flash_freq/60.,Time,is_in=is,js_in=js)
 !      end do
 
 !--------------------------------------------------------------------------------

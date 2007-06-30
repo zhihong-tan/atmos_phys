@@ -71,8 +71,8 @@ character(len=32)  :: dust_source_name(1) = 'source'
 namelist /dust_nml/  dust_source_filename, dust_source_name
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_dust.F90,v 14.0 2007/03/15 22:10:04 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: atmos_dust.F90,v 14.0.4.1 2007/05/29 16:30:39 wfc Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -223,7 +223,7 @@ integer, intent(in)                    :: is, ie, js, je
 !</OVERVIEW>
  subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
 !-----------------------------------------------------------------------
-real, intent(in),    dimension(:)               :: lonb, latb
+real, intent(in),    dimension(:,:)               :: lonb, latb
 type(time_type),  intent(in)                        :: Time
 integer,          intent(in)                        :: axes(4)
 real, intent(in), dimension(:,:,:), optional        :: mask

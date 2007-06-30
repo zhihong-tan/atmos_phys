@@ -74,8 +74,8 @@ subroutine atmos_ch3i_init( lonb_mod, latb_mod, axes, Time, mask )
 !          (nlon,nlat,nlev).
 !
 !-----------------------------------------------------------------------
-   real, intent(in), dimension(:) :: lonb_mod
-   real, intent(in), dimension(:) :: latb_mod
+   real, intent(in), dimension(:,:) :: lonb_mod
+   real, intent(in), dimension(:,:) :: latb_mod
    type(time_type), intent(in) :: Time
    integer        , intent(in) :: axes(4)
    real, intent(in),    dimension(:,:,:), optional :: mask

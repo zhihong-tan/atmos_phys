@@ -50,8 +50,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 13.0 2006/03/28 21:15:33 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 13.0.8.2 2007/05/25 16:32:09 vb Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -275,7 +275,7 @@ integer, intent(in)                    :: is, ie, js, je
 !</OVERVIEW>
  subroutine atmos_sea_salt_init (lonb, latb, axes, Time, mask)
 !-----------------------------------------------------------------------
-real, intent(in),    dimension(:)               :: lonb, latb
+real, intent(in),    dimension(:,:)                 :: lonb, latb
 type(time_type),  intent(in)                        :: Time
 integer,          intent(in)                        :: axes(4)
 real, intent(in), dimension(:,:,:), optional        :: mask

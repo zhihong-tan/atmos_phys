@@ -103,8 +103,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 11.0 2004/09/28 19:26:46 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 11.0.16.2 2007/05/25 16:32:10 vb Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -221,11 +221,11 @@ end subroutine atmos_sf6_sourcesink
 !<TEMPLATE>
 !call atmos_sulfur_hex_init (lonb, latb, r, axes, Time, mask)
 !</TEMPLATE>
-!   <IN NAME="lonb" TYPE="real" DIM="(:)">
-!     The longitudes for the local domain.
+!   <IN NAME="lonb" TYPE="real" DIM="(:,:)">
+!     The longitude corners for the local domain.
 !   </IN>
-!   <IN NAME="latb" TYPE="real" DIM="(:)">
-!     The latitudes for the local domain.
+!   <IN NAME="latb" TYPE="real" DIM="(:,:)">
+!     The latitude corners for the local domain.
 !   </IN>
 !   <INOUT NAME="r" TYPE="real" DIM="(:,:,:,:)">
 !     Tracer fields dimensioned as (nlon,nlat,nlev,ntrace). 
@@ -253,7 +253,7 @@ end subroutine atmos_sf6_sourcesink
 !          (nlon,nlat,nlev).
 !
 !-----------------------------------------------------------------------
-real,            intent(in),    dimension(:)               :: lonb, latb
+real,            intent(in),    dimension(:,:)             :: lonb, latb
 real,            intent(inout), dimension(:,:,:,:)         :: r
 real,            intent(in),    dimension(:,:,:), optional :: mask
 type(time_type), intent(in)                                :: Time
@@ -300,7 +300,7 @@ integer :: n
                      'sf6emiss', axes(1:2),       &
                      'sulfhexemiss', 'g/m2/s')
 
-   allocate (sf6_grid(size(lonb(:))-1,size(latb(:))-1))
+   allocate (sf6_grid(size(lonb,1)-1,size(latb,2)-1))
 
 
       call sf6_init(Time)
