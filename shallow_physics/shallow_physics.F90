@@ -23,7 +23,7 @@ end interface
 !========================================================================
 ! version information 
 character(len=128) :: version = '$Id: shallow_physics.F90,v 11.0 2004/09/28 19:24:43 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 !========================================================================
 
 real, allocatable, dimension(:,:) :: h_eq

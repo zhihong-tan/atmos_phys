@@ -73,8 +73,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: aerosol.F90,v 14.0 2007/03/15 22:05:03 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: aerosol.F90,v 14.0.2.2 2007/05/25 16:32:01 vb Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
 
 !-----------------------------------------------------------------------
@@ -261,10 +261,10 @@ real, dimension (MAX_DATA_FIELDS)    :: aerosol_tracer_scale_factor
 !   call aerosol_init(lonb, latb, aerosol_names)
 !  </TEMPLATE>
 !  <IN NAME="lonb" TYPE="real">
-!   Array of model longitudes on cell boundaries in [radians]
+!   2d array of model longitudes on cell corners in [radians]
 !  </IN>
 !  <IN NAME="latb" TYPE="real">
-!   Array of model latitudes on cell boundaries in [radians]
+!   2d array of model latitudes on cell corners in [radians]
 !  </IN>
 !  <IN NAME="aerosol_names" TYPE="character">
 !   names of the activated aerosol species
@@ -278,16 +278,16 @@ subroutine aerosol_init (lonb, latb, aerosol_names,   &
 !    aerosol_init is the constructor for aerosol_mod.
 !-----------------------------------------------------------------------
 
-real, dimension(:),              intent(in)  :: lonb,latb
+real, dimension(:,:),            intent(in)  :: lonb,latb
 character(len=64), dimension(:), pointer     :: aerosol_names
 character(len=64), dimension(:), pointer     :: aerosol_family_names
 
 !----------------------------------------------------------------------
 !  intent(in) variables:
 !
-!       lonb           array of model longitudes on cell boundaries 
+!       lonb           2d array of model longitudes on cell corners 
 !                      [ radians ]
-!       latb           array of model latitudes at cell boundaries 
+!       latb           2d array of model latitudes at cell corners 
 !                      [ radians ]
 !
 !   pointer variables:
@@ -655,8 +655,8 @@ if_timeseries: &
 !    informative messages.
 !---------------------------------------------------------------------
           call interpolator_init (Aerosol_interp, filename,  &
-                                    lonb_col/RADIAN,  &
-                                    latb_col/RADIAN,&
+                                    spread(lonb_col/RADIAN,2,2),  &
+                                    spread(latb_col/RADIAN,1,2),&
                                     data_names(:nfields),   &
                                     data_out_of_bounds=   &
                                                   data_out_of_bounds, &
@@ -1420,7 +1420,7 @@ implicit none
 !-----------------------------------------------------------------------
 integer, parameter :: NLON=20, NLAT=10,NLEV=8
 integer, parameter :: MAX_AERSOL_NAMES = 100
-real :: latb(NLAT+1),lonb(NLON+1),pi,phalf(NLON,NLAT,NLEV+1)
+real :: latb(NLON+1,NLAT+1),lonb(NLON+1,NLAT+1),pi,phalf(NLON,NLAT,NLEV+1)
 integer :: i,nspecies
 type(time_type) :: model_time
 character(len=64), dimension(MAX_AEROSOL_NAMES) :: names
@@ -1435,14 +1435,14 @@ call diag_manager_init
 call set_calendar_type(JULIAN)
 
 do i = 1,NLAT+1
-   latb(i) = -90. + 180.*REAL(i-1)/REAL(NLAT)
+   latb(:,i) = -90. + 180.*REAL(i-1)/REAL(NLAT)
 end do
 do i = 1,NLON+1
-   lonb(i) = -180. + 360.*REAL(i-1)/REAL(NLON)
+   lonb(i,:) = -180. + 360.*REAL(i-1)/REAL(NLON)
 end do
 
-latb(:) = latb(:) * pi/180.
-lonb(:) = lonb(:) * pi/180.
+latb(:,:) = latb(:,:) * pi/180.
+lonb(:,:) = lonb(:,:) * pi/180.
 
 do i = 1,NLEV+1
    phalf(:,:,i) = 101325. * REAL(i-1) / REAL(NLEV)

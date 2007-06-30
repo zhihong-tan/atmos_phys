@@ -55,8 +55,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 14.0 2007/03/15 22:05:08 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 14.0.2.2 2007/05/25 16:32:02 vb Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 !---------------------------------------------------------------------
@@ -499,9 +499,9 @@ subroutine aerosolrad_package_init (kmax, aerosol_names, lonb, latb)
 
 !---------------------------------------------------------------------
 !character(len=64), dimension(:), intent(in)  :: aerosol_names
-integer,                         intent(in)  :: kmax
+integer,                        intent(in)  :: kmax
 character(len=*), dimension(:), intent(in)  :: aerosol_names
-real, dimension(:),              intent(in)  :: lonb,latb
+real, dimension(:,:),           intent(in)  :: lonb,latb
 
 
 
@@ -513,9 +513,9 @@ real, dimension(:),              intent(in)  :: lonb,latb
 !      kmax              number of model levels
 !      aerosol_names     the names assigned to each of the activated
 !                        aerosol species
-!       lonb           array of model longitudes on cell boundaries
+!       lonb           2d array of model longitudes at cell corners
 !                      [ radians ]
-!       latb           array of model latitudes at cell boundaries
+!       latb           2d array of model latitudes at cell corners
 !                      [ radians ]
 !
 !---------------------------------------------------------------------
@@ -768,7 +768,7 @@ real, dimension(:),              intent(in)  :: lonb,latb
 !--------------------------------------------------------------------
 !    define the processor's total number of columns.
 !--------------------------------------------------------------------
-      tot_points = ( size(lonb(:))-1)*( size(latb(:)) -1)
+      tot_points = ( size(lonb,1)-1)*( size(latb,2) -1)
 
 !-----------------------------------------------------------------------
 !    if desired, process the sw extinction coefficient file. allocate 
@@ -782,7 +782,7 @@ real, dimension(:),              intent(in)  :: lonb,latb
           nfields_sw_ext = Solar_spect%nbands
           allocate (sw_ext_name (nfields_sw_ext))
           if (.not. interpolating_volcanic_data) then
-            allocate (sw_ext_save(size(lonb(:))-1, size(latb(:))-1, &
+            allocate (sw_ext_save(size(lonb,1)-1, size(latb,2)-1, &
                                   kmax, nfields_sw_ext) )
             sw_ext_save = 0.0
           endif
@@ -816,7 +816,7 @@ real, dimension(:),              intent(in)  :: lonb,latb
           nfields_sw_ssa = Solar_spect%nbands
           allocate (sw_ssa_name (nfields_sw_ssa))
           if (.not. interpolating_volcanic_data) then
-            allocate (sw_ssa_save(size(lonb(:))-1, size(latb(:))-1, &
+            allocate (sw_ssa_save(size(lonb,1)-1, size(latb,2)-1, &
                                   kmax, nfields_sw_ssa) )
             sw_ssa_save = 0.0
           endif
@@ -850,7 +850,7 @@ real, dimension(:),              intent(in)  :: lonb,latb
           nfields_sw_asy = Solar_spect%nbands
           allocate (sw_asy_name (nfields_sw_asy))
           if (.not. interpolating_volcanic_data) then
-            allocate (sw_asy_save(size(lonb(:))-1, size(latb(:))-1, &
+            allocate (sw_asy_save(size(lonb,1)-1, size(latb,2)-1, &
                                   kmax, nfields_sw_asy) )
             sw_asy_save = 0.0
           endif
@@ -886,7 +886,7 @@ real, dimension(:),              intent(in)  :: lonb,latb
           nfields_lw_ext = N_AEROSOL_BANDS
           allocate (lw_ext_name (nfields_lw_ext))
           if (.not. interpolating_volcanic_data) then
-            allocate (lw_ext_save(size(lonb(:))-1, size(latb(:))-1, &
+            allocate (lw_ext_save(size(lonb,1)-1, size(latb,2)-1, &
                                   kmax, nfields_lw_ext) )
             lw_ext_save = 0.0
           endif

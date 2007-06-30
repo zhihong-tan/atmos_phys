@@ -6,12 +6,15 @@ use time_manager_mod,       only: time_type, set_time, &
                                   operator(-), &
                                   operator(>=), operator (<)
 use diag_manager_mod,       only: register_diag_field, send_data
-use field_manager_mod,      only: MODEL_ATMOS
+use field_manager_mod,      only: MODEL_ATMOS, field_manager_init, &
+                                  fm_query_method, get_field_info, &
+                                  parse
 use tracer_manager_mod,     only: get_tracer_names,get_number_tracers, &
                                   get_tracer_indices, &
 !++lwh
                                   query_method
 use atmos_tracer_utilities_mod, only : get_wetdep_param
+use  sat_vapor_pres_mod,only : sat_vapor_pres_init
 !--lwh
 use fms_mod,                only: mpp_pe, mpp_root_pe,  &
                                   file_exist,  check_nml_error,  &
@@ -37,7 +40,19 @@ use donner_types_mod,       only: donner_initialized_type, &
                                   donner_save_type, donner_rad_type, &
                                   donner_nml_type, donner_param_type, &
                                   donner_column_diag_type, &
+                                  MAXMAG, MAXVAL, MINMAG, MINVAL, &
+                                  DET_MASS_FLUX, MASS_FLUX,  &
+                                  CELL_UPWARD_MASS_FLUX, TEMP_FORCING, &
+                                  MOIST_FORCING, PRECIP,  FREEZING, &
+                                  RADON_TEND, &
                                   donner_conv_type, donner_cape_type
+use  conv_utilities_k_mod,  only: sd_init_k, sd_end_k, ac_init_k,  &
+                                  ac_end_k, uw_params_init_k, &
+                                  exn_init_k, exn_end_k, findt_init_k, &
+                                  findt_end_k, &
+                                  adicloud, sounding, uw_params
+use  conv_plumes_k_mod,     only: cp_init_k, cp_end_k, ct_init_k,  &
+                                  ct_end_k, cplume, ctend
 
 implicit none
 private
@@ -52,8 +67,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 14.0 2007/03/15 22:02:31 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 14.0.2.1.2.1.2.1 2007/05/29 15:50:45 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 !--------------------------------------------------------------------
@@ -81,6 +96,9 @@ private   &
 !  as needed:
 !----------------------------------------------------------------------
 
+integer, parameter  :: MAX_ENSEMBLE_MEMBERS = 7
+                             ! maximum number of cumulus ensemble 
+                             ! members
 integer             :: model_levels_in_sfcbl = 2 
                              ! number of levels at which the temperature 
                              ! and vapor profiles are not allowed to 
@@ -95,6 +113,56 @@ logical             :: allow_mesoscale_circulation = .true.
                              ! a mesoscale circulation will be included 
                              ! in those columns which satisfy the 
                              ! required conditions ?
+logical             :: do_donner_cape    = .true.
+logical             :: do_donner_plume   = .true.
+logical             :: do_donner_closure = .true.
+logical             :: do_ice            = .false.
+real                :: atopevap          = 0.
+logical             :: do_donner_lscloud = .true.
+logical             :: use_llift_criteria =.true.
+real                :: auto_rate = 1.0e-3
+real                :: auto_th   = 0.5e-3
+real                :: frac      = 1.
+real                :: ttend_max = 1000.
+real                :: EVAP_IN_DOWNDRAFTS  = 0.25
+                        ! fraction of condensate available to the meso-
+                        ! scale which is evaporated in convective down-
+                        ! drafts (from Leary and Louze, 1980)
+                        ! [ dimensionless ]
+real                :: EVAP_IN_ENVIRON     = 0.13
+                        ! fraction of condensate available to the meso-
+                        ! scale which is evaporated in the cell environ-
+                        ! ment (from Leary and Louze, 1980)
+                        ! [ dimensionless ]
+real                :: ENTRAINED_INTO_MESO = 0.62
+                        ! fraction of condensate available to the meso-
+                        ! scale which is entrained into the mesoscale 
+                        ! circulation (from Leary and Louze, 1980)
+                        ! [ dimensionless ]
+real                :: ANVIL_PRECIP_EFFICIENCY = 0.5
+                        ! fraction of total condensate in anvil (trans-
+                        ! fer from cell plus in situ condensation) that 
+                        ! precipitates out (from Leary and Louze, 1980)
+                        ! [ dimensionless ]
+real                :: MESO_DOWN_EVAP_FRACTION = 0.4
+                        ! fraction of total anvil condensate assumed 
+                        ! evaporated in the mesoscale downdraft
+                        ! [ fraction ]
+real                :: MESO_UP_EVAP_FRACTION   = 0.1
+                        ! fraction of total anvil condensate assumed 
+                        ! evaporated in outflow from the mesoscale 
+                        ! updraft [ fraction ]    
+real,dimension(MAX_ENSEMBLE_MEMBERS)   :: arat
+data  arat / 1.0, 0.26, 0.35, 0.32, 0.3, 0.54, 0.66 /
+                        ! ratio at cloud base of the fractional area of 
+                        ! ensemble member i relative to ensemble member 
+                        ! 1. (taken from GATE data).
+real,dimension(MAX_ENSEMBLE_MEMBERS)  :: erat
+data  erat / 1.0, 1.30, 1.80, 2.50, 3.3, 4.50, 10.0 /
+                        ! ratio of entrainment constant between ensemble
+                        ! member 1 and ensemble member i for gate-based
+                        ! ensemble
+
 integer             :: donner_deep_freq = 1800 
                              ! frequency of calling donner_deep [ sec ]; 
                              ! must be <= 86400 
@@ -129,6 +197,11 @@ logical             :: use_memphis_size_limits = .false.
                              ! memphis_cloud_diagnostics_rsh. in any 
                              ! new or ongoing production, this variable
                              ! should be .false.
+real                :: wmin_ratio = 0. 
+                             ! ratio of current updraft velocity to 
+                             ! maximum updraft velocity of plume at 
+                             ! which time plume is assumed to stop
+                             ! rising; used in donner lite 
 
 !----------------------------------------------------------------------
 !   The following nml variables are not needed in any kernel subroutines
@@ -200,6 +273,25 @@ namelist / donner_deep_nml /      &
                             model_levels_in_sfcbl, &
                             parcel_launch_level, &
                             allow_mesoscale_circulation, &
+                            do_donner_cape,   &!miz
+                            do_donner_plume,  &!miz
+                            do_donner_closure,&!miz
+                            do_ice,           &!miz
+                            atopevap,         &!miz
+                            do_donner_lscloud,&!miz
+                            use_llift_criteria,&!miz
+                            auto_rate,        &!miz
+                            auto_th,          &!miz
+                            frac,             &!miz
+                            ttend_max,        &!miz
+                            EVAP_IN_DOWNDRAFTS,      &!miz
+                            EVAP_IN_ENVIRON,         &!miz
+                            ENTRAINED_INTO_MESO,     &!miz
+                            ANVIL_PRECIP_EFFICIENCY, &!miz
+                            MESO_DOWN_EVAP_FRACTION, &!miz
+                            MESO_UP_EVAP_FRACTION,   &!miz
+                            arat,                    &!miz
+                            erat,                    &
                             donner_deep_freq, &
                             cell_liquid_size_type,   &
                             cell_liquid_eff_diam_input, &
@@ -209,6 +301,7 @@ namelist / donner_deep_nml /      &
                             do_average,  &
                             entrainment_constant_source, &
                             use_memphis_size_limits, &
+                            wmin_ratio, &
 
 ! not contained in donner_rad_type variable:
                             do_netcdf_restart, &
@@ -270,13 +363,6 @@ real,                       &
                         ! maximum value of convective inhibition (J/kg) 
                         ! that allows convection. Value of 10 suggested 
                         ! by Table 2 in Thompson et al. (1979, JAS).
-real,                         &
-  parameter,                   &
-  dimension(KPAR)              &
-             ::  ARAT  =  (/  1.0, 0.26, 0.35, 0.32, 0.3, 0.54, 0.66/)
-                        ! ratio at cloud base of the fractional area of 
-                        ! ensemble member i relative to ensemble member 
-                        ! 1. (taken from GATE data).
 real,                       &
   parameter                 &
              ::  MAX_ENTRAINMENT_CONSTANT_GATE = 0.0915
@@ -287,14 +373,6 @@ real,                       &
              ::  MAX_ENTRAINMENT_CONSTANT_KEP  = 0.0915
                         ! entrainment constant based on kep data for most
                         ! entraining ensemble member
-real,                       &
-  parameter,                 &
-  dimension(KPAR)              &
-             ::  ENSEMBLE_ENTRAIN_FACTORS_GATE =  (/ 1.0, 1.3, 1.8, 2.5,&
-                                                     3.3, 4.5, 10. /)
-                        ! ratio of entrainment constant between ensemble
-                        ! member 1 and ensemble member i for gate-based
-                        ! ensemble
 real,                       &
   parameter,                 &
   dimension(KPAR)              &
@@ -398,27 +476,6 @@ real,                       &
                         ! completion of freezing  [ deg K ]
 real,                       &
   parameter                 &
-             ::  EVAP_IN_DOWNDRAFTS = 0.25
-                        ! fraction of condensate available to the meso-
-                        ! scale which is evaporated in convective down-
-                        ! drafts (from Leary and Louze, 1980)
-                        ! [ dimensionless ]
-real,                       &
-  parameter                 &
-             ::  EVAP_IN_ENVIRON = 0.13
-                        ! fraction of condensate available to the meso-
-                        ! scale which is evaporated in the cell environ-
-                        ! ment (from Leary and Louze, 1980)
-                        ! [ dimensionless ]
-real,                       &
-  parameter                 &
-             ::  ENTRAINED_INTO_MESO = 0.62
-                        ! fraction of condensate available to the meso-
-                        ! scale which is entrained into the mesoscale 
-                        ! circulation (from Leary and Louze, 1980)
-                        ! [ dimensionless ]
-real,                       &
-  parameter                 &
              ::  UPPER_LIMIT_FOR_LCL = 500.0E02
                         ! lowest pressure allowable for lifting condens-
                         ! ation level; deep convection will not be pres-
@@ -434,13 +491,6 @@ real,                       &
              ::  TMIN = 154.       
                         ! cape calculations are terminated when parcel 
                         ! temperature goes below TMIN [ deg K ]
-real,                       &
-  parameter                 &
-             ::  ANVIL_PRECIP_EFFICIENCY = 0.5
-                        ! fraction of total condensate in anvil (transfer
-                        ! from cell plus in situ condensation) that 
-                        ! precipitates out (from Leary and Louze, 1980)
-                        ! [ dimensionless ]
 real,                       &
   parameter                 &
              ::  MESO_LIFETIME = 64800.
@@ -466,18 +516,6 @@ real,                       &
              ::  REF_PRESS = 1.0E05
                         ! reference pressure used in calculation of exner
                         ! fumction [ Pa ]
-real,                       &
-  parameter                 &
-             ::  MESO_DOWN_EVAP_FRACTION = 0.4
-                        ! fraction of total anvil condensate assumed 
-                        ! evaporated in the mesoscale downdraft
-                        ! [ fraction ]
-real,                       &
-  parameter                 &
-             ::  MESO_UP_EVAP_FRACTION = 0.1
-                        ! fraction of total anvil condensate assumed 
-                        ! evaporated in outflow from the mesoscale 
-                        ! updraft [ fraction ]    
 real,                       &
   parameter                 &
              ::  R_CONV_LAND  = 10.0    
@@ -560,8 +598,11 @@ real,                       &
 !             write_restart that are provided as starting points, since 
 !             only netcdf restarts are currently supported.
 !
+!   version 10 contains donner_humidity_factor rather than 
+!             donner_humidity_ratio, a change necessitated by the intro-
+!             duction of the uw_conv shallow convection scheme.
 
-integer, dimension(2)  :: restart_versions = (/ 8, 9 /)
+integer, dimension(3)  :: restart_versions = (/ 8, 9, 10 /)
 
 
 !--------------------------------------------------------------------
@@ -592,9 +633,15 @@ integer    :: id_cemetf_deep, id_ceefc_deep, id_cecon_deep, &
               id_omint_deep, id_rcoa1_deep, id_detmfl_deep
 
 integer, dimension(:), allocatable :: id_qtren1, id_qtmes1, &
-                                      id_wtp1, id_qtceme
+                                      id_wtp1, id_qtceme, &
+                                      id_total_wet_dep, &
+                                      id_meso_wet_dep, id_cell_wet_dep
 integer, dimension(:), allocatable :: id_qtren1_col, id_qtmes1_col, &
-                                      id_wtp1_col, id_qtceme_col
+                                      id_wtp1_col, id_qtceme_col, &
+                                      id_total_wet_dep_col, &
+                                      id_meso_wet_dep_col,   &
+                                      id_cell_wet_dep_col
+integer, dimension(:), allocatable :: id_extremes, id_hits
 
 real              :: missing_value = -999.
 character(len=16) :: mod_name = 'donner_deep'
@@ -627,11 +674,17 @@ type(time_type)                    :: Time_col_diagnostics
 !    (see donner_types.h for documentation of their contents)
 !
 
-type(donner_param_type)       :: Param
-type(donner_column_diag_type) :: Col_diag
-type(donner_nml_type)         :: Nml
-type(donner_save_type)        :: Don_save
-type(donner_initialized_type) :: Initialized
+type(donner_param_type),       save :: Param
+type(donner_column_diag_type), save :: Col_diag
+type(donner_nml_type),         save :: Nml
+type(donner_save_type),        save :: Don_save
+type(donner_initialized_type), save :: Initialized
+ 
+type(sounding),                save :: sd
+type(uw_params),                save :: Uw_p
+type(adicloud),                save :: ac
+type(cplume),                  save :: cp
+type(ctend ),                  save :: ct
 
 
 !-----------------------------------------------------------------------
@@ -668,17 +721,18 @@ subroutine donner_deep_init (lonb, latb, pref, axes, Time,  &
 !---------------------------------------------------------------------
 
 !--------------------------------------------------------------------
-real,            dimension(:), intent(in)   :: lonb, latb, pref
-integer,         dimension(4), intent(in)   :: axes
-type(time_type),               intent(in)   :: Time
-logical,         dimension(:), intent(in)   :: tracers_in_donner
+real,            dimension(:,:), intent(in) :: lonb, latb
+real,            dimension(:),   intent(in) :: pref
+integer,         dimension(4),   intent(in) :: axes
+type(time_type),                 intent(in) :: Time
+logical,         dimension(:),   intent(in) :: tracers_in_donner
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
-!      lonb         array of model longitudes on cell boundaries  
+!      lonb         array of model longitudes on cell corners  
 !                   [ radians ]
-!      latb         array of model latitudes on cell boundaries
+!      latb         array of model latitudes on cell corners
 !                   [ radians ]
 !      pref         array of reference pressures at full levels (plus 
 !                   surface value at nlev+1), based on 1013.25 hPa pstar
@@ -697,11 +751,11 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
       integer                             :: unit, ierr, io
       integer                             :: idf, jdf, nlev, ntracers
       integer                             :: secs, days
-      logical, dimension(size(latb(:))-1) :: do_column_diagnostics
+      logical, dimension(size(latb,2)-1)  :: do_column_diagnostics
       integer                             :: k, n, nn
 !++lwh
       logical                             :: flag
-      character(len=200)                  :: text_in_scheme, control
+      character(len=200)                  :: method_name, method_control
 !--lwh
   
 !-------------------------------------------------------------------
@@ -868,8 +922,8 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
 !++lwh
             Initialized%wetdep(nn)%units = Don_save%tracer_units(nn)
             flag = query_method( 'wet_deposition', MODEL_ATMOS, n, &
-                                 text_in_scheme, control )
-            call get_wetdep_param( text_in_scheme, control, &
+                                 method_name, method_control )
+            call get_wetdep_param( method_name, method_control, &
                                    Initialized%wetdep(nn)%scheme, &
                                    Initialized%wetdep(nn)%Henry_constant, &
                                    Initialized%wetdep(nn)%Henry_variable, &
@@ -898,8 +952,8 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
 !    the domain on this processor, nlev is the number of model layers.
 !-------------------------------------------------------------------
       nlev = size(pref(:)) - 1
-      idf  = size(lonb(:)) - 1
-      jdf  = size(latb(:)) - 1
+      idf  = size(lonb,1)  - 1
+      jdf  = size(latb,2)  - 1
 
 !---------------------------------------------------------------------
 !    initialize the points processed counter. define the total number 
@@ -925,7 +979,7 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
       allocate ( Don_save%dqi_strat          (idf, jdf, nlev ) )
       allocate ( Don_save%dqa_strat          (idf, jdf, nlev ) )
       allocate ( Don_save%humidity_area      (idf, jdf, nlev ) )
-      allocate ( Don_save%humidity_ratio     (idf, jdf, nlev ) )
+      allocate ( Don_save%humidity_factor    (idf, jdf, nlev ) )
       allocate ( Don_save%tracer_tends       (idf, jdf, nlev, ntracers) )
       allocate ( Don_save%parcel_disp        (idf, jdf ) )
       allocate ( Don_save%tprea1             (idf, jdf ) )
@@ -1054,7 +1108,7 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
         call initialize_diagnostic_columns   &
                      (mod_name, num_diag_pts_latlon, num_diag_pts_ij, &
                       i_coords_gl, j_coords_gl, lat_coords_gl, &
-                      lon_coords_gl, lonb, latb, do_column_diagnostics, &
+                      lon_coords_gl, lonb(:,1), latb(1,:), do_column_diagnostics, &
                       col_diag_lon, col_diag_lat, col_diag_i,  &
                       col_diag_j, col_diag_unit)
 
@@ -1182,7 +1236,7 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
       allocate (Param%ensemble_entrain_factors_gate(kpar))
       allocate (Param%ensemble_entrain_factors_kep(kpar))
       Param%arat                          = ARAT
-      Param%ensemble_entrain_factors_gate = ENSEMBLE_ENTRAIN_FACTORS_GATE
+      Param%ensemble_entrain_factors_gate = erat
       Param%ensemble_entrain_factors_kep  = ENSEMBLE_ENTRAIN_FACTORS_KEP
 
       allocate (Param%dgeice (ANVIL_LEVELS))
@@ -1190,6 +1244,17 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
       Param%dgeice  = DGEICE               
       Param%relht   = RELHT                
 
+      call sd_init_k (nlev, ntracers, sd);
+      call uw_params_init_k (Param%hlv, Param%hls, Param%hlf, &
+          Param%cp_air, Param%grav, Param%kappa, Param%rdgas,  &
+          Param%ref_press, Param%d622,Param%d608, Param%kelvin -160., & 
+          Param%kelvin + 100. ,Uw_p)
+      call ac_init_k (nlev, ac);
+      call cp_init_k (nlev, ntracers, cp);
+      call ct_init_k (nlev, ntracers, ct)
+      call sat_vapor_pres_init
+      call exn_init_k (Uw_p)
+      call findt_init_k (Uw_p)
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
@@ -1200,6 +1265,17 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
 
       Nml%parcel_launch_level         = parcel_launch_level
       Nml%allow_mesoscale_circulation = allow_mesoscale_circulation
+      Nml%do_donner_cape              = do_donner_cape    !miz
+      Nml%do_donner_plume             = do_donner_plume   !miz
+      Nml%do_donner_closure           = do_donner_closure !miz
+      Nml%do_ice                      = do_ice            !miz
+      Nml%atopevap                    = atopevap          !miz
+      Nml%do_donner_lscloud           = do_donner_lscloud !miz
+      Nml%auto_rate                   = auto_rate         !miz
+      Nml%auto_th                     = auto_th           !miz
+      Nml%frac                        = frac              !miz
+      Nml%ttend_max                   = ttend_max         !miz
+      Nml%use_llift_criteria          = use_llift_criteria
       Nml%entrainment_constant_source = entrainment_constant_source
       Nml%donner_deep_freq            = donner_deep_freq             
       Nml%model_levels_in_sfcbl       = model_levels_in_sfcbl        
@@ -1210,14 +1286,22 @@ logical,         dimension(:), intent(in)   :: tracers_in_donner
       Nml%meso_liquid_eff_diam_input  = meso_liquid_eff_diam_input
       Nml%do_average                  = do_average
       Nml%use_memphis_size_limits     = use_memphis_size_limits
+      Nml%wmin_ratio                  = wmin_ratio
 
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
-!    9. END OF SUBROUTINE.
+!    9. SET UP CODE TO MONITOR SELECTED OUTPUT VARIABLES.
 !
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
+       call process_monitors (idf, jdf, nlev, ntracers, axes, Time)
+
+!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+!   10. END OF SUBROUTINE.
+
+!@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !--------------------------------------------------------------------
 !    set flag to indicate that donner_deep_mod has been initialized.
 !--------------------------------------------------------------------
@@ -1234,7 +1318,8 @@ end subroutine donner_deep_init
 !###################################################################
 
 subroutine donner_deep (is, ie, js, je, dt, temp, mixing_ratio, pfull, &
-                        phalf, omega, land, sfc_sh_flux, sfc_vapor_flux,&
+                        phalf, zfull, zhalf, omega, pblht, &
+                        land, sfc_sh_flux, sfc_vapor_flux,&
                         tr_flux, tracers, Time, cell_cld_frac,  &
                         cell_liq_amt, cell_liq_size, cell_ice_amt,   &
                         cell_ice_size, cell_droplet_number, &
@@ -1243,7 +1328,7 @@ subroutine donner_deep (is, ie, js, je, dt, temp, mixing_ratio, pfull, &
                         meso_droplet_number, &
                         nsum, precip, delta_temp, delta_vapor, detf, &
                         uceml_inter, mtot, donner_humidity_area,    &
-                        donner_humidity_ratio, qtrtnd, &
+                        donner_humidity_factor, qtrtnd, &
                         qlin, qiin, qain,              &      ! optional
                         delta_ql, delta_qi, delta_qa)         ! optional
                         
@@ -1276,7 +1361,8 @@ subroutine donner_deep (is, ie, js, je, dt, temp, mixing_ratio, pfull, &
 integer,                      intent(in)    :: is, ie, js, je
 real,                         intent(in)    :: dt
 real, dimension(:,:,:),       intent(in)    :: temp, mixing_ratio, &
-                                               pfull, phalf, omega
+                                               pfull, phalf, zfull, zhalf, omega
+real, dimension(:,:),         intent(in)    :: pblht
 real, dimension(:,:),         intent(in)    :: land
 real, dimension(:,:),         intent(in)    :: sfc_sh_flux, &
                                                sfc_vapor_flux
@@ -1300,7 +1386,7 @@ real, dimension(:,:),         intent(out)   :: precip
 real, dimension(:,:,:),       intent(out)   :: delta_temp, delta_vapor,&
                                                detf, uceml_inter, mtot, &
                                                donner_humidity_area,&
-                                               donner_humidity_ratio
+                                               donner_humidity_factor
 real, dimension(:,:,:,:),     intent(out)   :: qtrtnd 
 real, dimension(:,:,:),       intent(in),                &
                                    optional :: qlin, qiin, qain
@@ -1537,7 +1623,8 @@ real, dimension(:,:,:),       intent(out),               &
       call don_d_donner_deep_k   &
            (is, ie, js, je, isize, jsize, nlev_lsm, NLEV_HIRES, ntr, me,&
             cloud_tracers_present,    &
-            dt, Param, Nml, temp, mixing_ratio, pfull, phalf, omega,   &
+            dt, Param, Nml, temp, mixing_ratio, pfull,    &
+            phalf, zfull, zhalf, omega, pblht,   &
 !           qlin, qiin, qain, land, sfc_sh_flux, sfc_vapor_flux,    &
             qlin_arg, qiin_arg, qain_arg, land, sfc_sh_flux,  &
             sfc_vapor_flux,    &
@@ -1547,13 +1634,14 @@ real, dimension(:,:,:),       intent(out),               &
             meso_liq_amt, meso_liq_size, meso_ice_amt, meso_ice_size,  &
             meso_droplet_number, &
             nsum, precip, delta_temp, delta_vapor, detf, uceml_inter,  &
-            mtot, donner_humidity_area, donner_humidity_ratio, &
+            mtot, donner_humidity_area, donner_humidity_factor, &
             total_precip, temperature_forcing, moisture_forcing,    &
 !           parcel_rise, delta_ql, delta_qi, delta_qa, qtrtnd,         &
             parcel_rise, delta_ql_arg, delta_qi_arg, delta_qa_arg,   &
             qtrtnd,         &
             calc_conv_on_this_step, ermesg, Initialized, Col_diag,   &
-            Don_rad, Don_conv, Don_cape, Don_save)         
+            Don_rad, Don_conv, Don_cape, Don_save, &!miz
+            sd, Uw_p, ac, cp, ct)
 
 !----------------------------------------------------------------------
 !    if strat_cloud is active, move the output arguments into the proper
@@ -1897,10 +1985,16 @@ integer,         dimension(4), intent(in)   :: axes
         allocate (id_qtmes1 (ntracers))
         allocate (id_wtp1   (ntracers))
         allocate (id_qtceme (ntracers))
+        allocate (id_total_wet_dep (ntracers))
+        allocate (id_meso_wet_dep (ntracers))
+        allocate (id_cell_wet_dep (ntracers))
         allocate (id_qtren1_col (ntracers))
         allocate (id_qtmes1_col (ntracers))
         allocate (id_wtp1_col   (ntracers))
         allocate (id_qtceme_col (ntracers))
+        allocate (id_total_wet_dep_col (ntracers))
+        allocate (id_meso_wet_dep_col (ntracers))
+        allocate (id_cell_wet_dep_col (ntracers))
         do nn=1,ntracers
 
 !    tracer tendency due to cells:
@@ -1927,6 +2021,30 @@ integer,         dimension(4), intent(in)   :: axes
                  trim(Don_save%tracer_units(nn))//'/s', &
                  missing_value=missing_value)
 
+ !    tracer tendency due to deep convective wet deposition:
+          id_total_wet_dep(nn) = register_diag_field         &
+              (mod_name, trim(Don_save%tracername(nn)) // '_totwdep',  &
+                 axes(1:3), Time,  &
+                 trim(Don_save%tracername(nn)) //' deep conv wet depo',&
+                 trim(Don_save%tracer_units(nn))//'/s', &
+                 missing_value=missing_value)
+
+!    tracer tendency due to wet deposition in mesoscale updrafts:
+         id_meso_wet_dep(nn) = register_diag_field         &
+                 (mod_name, trim(Don_save%tracername(nn)) // '_mwdep', &
+                  axes(1:3), Time,   &
+                 trim(Don_save%tracername(nn)) //' mesoscale wet depo',&
+                 trim(Don_save%tracer_units(nn))//'/s', &
+                 missing_value=missing_value)
+
+!    tracer tendency due to wet deposition in cells:
+          id_cell_wet_dep(nn) = register_diag_field         &
+                (mod_name, trim(Don_save%tracername(nn)) // '_cwdep', &
+                 axes(1:3), Time,  &
+                 trim(Don_save%tracername(nn)) //' cell wet depo',&
+                 trim(Don_save%tracer_units(nn))//'/s', &
+                 missing_value=missing_value)
+
 !    total tracer tendency:
           id_qtceme(nn) = register_diag_field     &
                 (mod_name, trim(Don_save%tracername(nn)) // '_qtceme', &
@@ -1942,7 +2060,7 @@ integer,         dimension(4), intent(in)   :: axes
                  axes(1:2), Time,  & 
                  'column integrated ' //trim(Don_save%tracername(nn)) //&
                  ' cell tendency ', &
-                 'kg / (m**2 s) ', &
+                 trim(Don_save%tracer_units(nn)) // '* kg/(m**2 s) ', &
                  missing_value=missing_value)
 
 !    column-integrated tracer tendency due to mesoscale circulation:
@@ -1952,7 +2070,7 @@ integer,         dimension(4), intent(in)   :: axes
                  axes(1:2), Time,   &
                  'column integrated ' //trim(Don_save%tracername(nn)) //&
                  ' mesoscale tendency',&
-                 'kg / (m**2 s) ', &
+                trim(Don_save%tracer_units(nn)) // '* kg/(m**2 s) ', &
                  missing_value=missing_value)
 
 !    column-integrated tracer tendency due to mesoscale redistribution:
@@ -1962,8 +2080,40 @@ integer,         dimension(4), intent(in)   :: axes
                  axes(1:2), Time,  &
                  'column integrated '//trim(Don_save%tracername(nn)) // &
                  ' mesoscale redist',&
-                 'kg / (m**2 s) ', &
+               trim(Don_save%tracer_units(nn)) // '* kg/(m**2 s) ', &
+                missing_value=missing_value)
+
+!    column-integrated tracer tendency due to deep convective wet 
+!    deposition: 
+          id_total_wet_dep_col(nn) = register_diag_field     &
+                 (mod_name,  &
+                  trim(Don_save%tracername(nn)) // '_totwdep_col',   &
+                  axes(1:2), Time,  &
+                'column integrated '//trim(Don_save%tracername(nn)) // &
+                ' deep convective wet depo',&
+                 trim(Don_save%tracer_units(nn)) // '* kg/(m**2 s) ', &
                  missing_value=missing_value)
+
+!    column-integrated tracer tendency due to mesocscale updraft  wet 
+!    deposition: 
+          id_meso_wet_dep_col(nn) = register_diag_field     &
+                (mod_name,  &
+                  trim(Don_save%tracername(nn)) // '_mwdep_col',   &
+                  axes(1:2), Time,  &
+                'column integrated '//trim(Don_save%tracername(nn)) // &
+                 ' meso updraft wet depo',&
+                  trim(Don_save%tracer_units(nn)) // '* kg/(m**2 s) ', &
+                 missing_value=missing_value)
+
+!    column-integrated tracer tendency due to wet deposition in cells:
+          id_cell_wet_dep_col(nn) = register_diag_field     &
+                (mod_name,  &
+                 trim(Don_save%tracername(nn)) // '_cwdep_col',   &
+                  axes(1:2), Time,  &
+                'column integrated '//trim(Don_save%tracername(nn)) // &
+                  ' cell wet depo',&
+                 trim(Don_save%tracer_units(nn)) // '* kg/(m**2 s) ', &
+                  missing_value=missing_value)
 
 !    column-integrated total tracer tendency:
           id_qtceme_col(nn) = register_diag_field     &
@@ -1972,7 +2122,7 @@ integer,         dimension(4), intent(in)   :: axes
                  axes(1:2), Time,  &
                  'column integrated ' //trim(Don_save%tracername(nn)) //&
                  ' total tendency ', &
-                 'kg / (m**2 s) ', &
+                  trim(Don_save%tracer_units(nn)) // '* kg/(m**2 s) ', &
                  missing_value=missing_value)
         end do
       endif
@@ -2238,7 +2388,13 @@ type(time_type), intent(in) :: Time
 !    are read in. 
 !----------------------------------------------------------------------
       call read_data (unit, Don_save%humidity_area)
-      call read_data (unit, Don_save%humidity_ratio)
+      if (vers == 9) then
+        call error_mesg ('donner_deep_mod', &
+          'version 9 not acceptable restart -- needs to have humidity_factor&
+            & rather than humidity_ratio', FATAL)
+      else
+        call read_data (unit, Don_save%humidity_factor)
+      endif
 
 !------------------------------------------------------------------
 !    if tracers are to be transported by the donner parameterization,
@@ -2373,7 +2529,7 @@ type(time_type), intent(in) :: Time
       Don_save%dqi_strat         = 0.
       Don_save%dqa_strat         = 0.
       Don_save%humidity_area     = 0.
-      Don_save%humidity_ratio    = 1.
+      Don_save%humidity_factor   = 0.
       Don_save%tprea1            = 0.
       Don_save%parcel_disp       = 0.
 
@@ -2433,7 +2589,8 @@ integer, intent(in) :: ntracers
       integer               :: n_alltracers, iuic, n
       logical               :: is_tracer_in_restart_file
       integer, dimension(4) :: siz
-      logical               :: field_found, field_found2
+      logical               :: field_found, field_found2, field_found3,&
+                               field_found4
       integer               :: it, jn, nn
 
 !---------------------------------------------------------------------
@@ -2537,7 +2694,25 @@ integer, intent(in) :: ntracers
         call read_data (fname, 'dqa_strat', Don_save%dqa_strat)
         call read_data (fname, 'tprea1', Don_save%tprea1)       
         call read_data (fname, 'humidity_area', Don_save%humidity_area) 
-        call read_data (fname, 'humidity_ratio', Don_save%humidity_ratio)
+
+!---------------------------------------------------------------------
+!  determine if humidity_factor is in file. if it is, read the values 
+!  into Don_Save%humidity_factor. if it is not (it is an older file), 
+!  it is only required if donner_deep will not be called on the first 
+!  step of this job.
+!  if that is the case, stop with a fatal error; otherwise, continue on,
+!  since humidity_factor will be calculated before it is used.
+!---------------------------------------------------------------------
+        call field_size(fname, 'humidity_factor', siz,   &
+                                              field_found=field_found4)
+        if (field_found4) then
+          call read_data (fname, 'humidity_factor',  &
+                                              Don_save%humidity_factor)
+        else if (Initialized%conv_alarm > 0.0) then
+          call error_mesg ('donner_deep_mod', &
+             'cannot restart with this restart file unless donner_deep &
+                &calculated on first step', FATAL)
+        endif
 
 !----------------------------------------------------------------------
 !    determine if det_mass_flux is present in the file.
@@ -2711,6 +2886,295 @@ integer, intent(in) :: ntracers
 
 end subroutine read_restart_nc
 
+
+
+!#####################################################################
+
+subroutine process_monitors (idf, jdf, nlev, ntracers, axes, Time)
+
+integer,                       intent(in)  :: idf, jdf, nlev, ntracers
+integer,         dimension(4), intent(in)  :: axes
+type(time_type),               intent(in)  :: Time
+
+!-------------------------------------------------------------------
+!  local variables:
+
+      integer             :: k, n, nn, nx, nc
+      logical             :: flag, success
+      integer             :: nfields, model, num_methods
+      character(len=200)  :: method_name, field_type, method_control,&
+                             field_name, list_name
+      character(len=32)   :: path_name = '/atmos_mod/don_deep_monitor/'
+
+!---------------------------------------------------------------------
+!    determine if and how many output variables are to be monitored. 
+!    set a flag indicating if monitoring is activated.
+!---------------------------------------------------------------------
+      call field_manager_init (nfields)
+      nx = 0
+      do n=1,nfields
+        call get_field_info (n, field_type, field_name, model, &
+                             num_methods)
+        if (trim(field_type) == 'don_deep_monitor') then
+          nx = nx + 1
+        endif
+      end do
+      if (nx > 0) then
+        Initialized%monitor_output = .true.
+      else
+        Initialized%monitor_output = .false.
+      endif
+
+!---------------------------------------------------------------------
+!    allocate arrays needed for each monitored variable. 
+!---------------------------------------------------------------------
+      if (Initialized%monitor_output) then
+        allocate (Initialized%Don_monitor(nx))
+        allocate (id_extremes(nx))
+        allocate (id_hits(nx))
+
+!---------------------------------------------------------------------
+!    read the field_table to determine the nature of the monitors
+!    requested.
+!---------------------------------------------------------------------
+        nx = 1
+        do n = 1,nfields
+          call get_field_info (n, field_type, field_name, model, &
+                               num_methods)
+
+!---------------------------------------------------------------------
+!    define the list name used by field_manager_mod to point to 
+!    monitored variables.
+!---------------------------------------------------------------------
+          if (trim(field_type) == 'don_deep_monitor') then
+            list_name = trim(path_name) // trim(field_name) // '/'
+
+!--------------------------------------------------------------------
+!    place name of field in don_monitor_type variable.
+!--------------------------------------------------------------------
+            Initialized%Don_monitor(nx)%name = trim(field_name)
+
+!--------------------------------------------------------------------
+!    map the field name to the list of acceptable field names. store
+!    the index of this field name in the don_monitor_type variable.
+!    note that any tracer variables need to have 'tr_' as the first
+!    three characters in their name to allow proper processing. store
+!    the appropriate tracer index for any tracer arrays.
+!--------------------------------------------------------------------
+            if (trim(field_name(1:3)) == 'tr_') then
+              select case (trim(field_name(4:9)))
+                case ('rn_ten')
+                  Initialized%Don_monitor(nx)%index = RADON_TEND
+                  success = .false.
+                  do nc=1,ntracers
+                    if (trim(Don_save%tracername(nc)) == 'radon') then
+                      Initialized%Don_monitor(nx)%tracer_index = nc
+                      success = .true.
+                      exit
+                    endif
+                  end do
+                  if (.not. success) then
+                    call error_mesg ('donner_deep_mod', &
+                     'not able to find "radon" tracer index', FATAL)
+                  endif
+                case default
+                  call error_mesg ('donner_deep_mod', &
+                 'tracer variable name in field_table don_deep_monitor &
+                                             &type is invalid', FATAL)
+              end select
+
+!---------------------------------------------------------------------
+!    for non-tracer variables, set the tracer index to an arbitrary 
+!    value.
+!---------------------------------------------------------------------
+            else
+              Initialized%Don_monitor(nx)%tracer_index = 0
+              select case (trim(field_name(1:6)))
+                case ('det_ma')
+                  Initialized%Don_monitor(nx)%index = DET_MASS_FLUX
+                case ('mass_f')
+                  Initialized%Don_monitor(nx)%index = MASS_FLUX
+                case ('cell_u')
+                  Initialized%Don_monitor(nx)%index =   &
+                                                  CELL_UPWARD_MASS_FLUX
+                case ('temp_f')
+                  Initialized%Don_monitor(nx)%index = TEMP_FORCING
+                case ('moistu')
+                  Initialized%Don_monitor(nx)%index = MOIST_FORCING
+                case ('precip')
+                  Initialized%Don_monitor(nx)%index = PRECIP
+                case ('freeze')
+                  Initialized%Don_monitor(nx)%index = FREEZING
+                case default
+                  call error_mesg ('donner_deep_mod', &
+                      'variable name in field_table don_deep_monitor &
+                                              &type is invalid', FATAL)
+              end select
+            endif
+
+!---------------------------------------------------------------------
+!    read the units for this variable from the field_table entry.
+!    if the units method is missing, set units to be 'missing'.
+!---------------------------------------------------------------------
+            flag = fm_query_method (trim(list_name) //  'units',    &
+                                    method_name, method_control)
+            if (flag) then
+              Initialized%Don_monitor(nx)%units = trim(method_name)
+            else
+              Initialized%Don_monitor(nx)%units = 'missing'
+            endif
+
+!---------------------------------------------------------------------
+!    determine the type of limit being imposed for this variable from 
+!    the field_table entry.
+!---------------------------------------------------------------------
+            flag = fm_query_method (trim(list_name) // 'limit_type',  &
+                                    method_name, method_control)
+
+!----------------------------------------------------------------------
+!    include the limit_type for this variable in its don_monitor type
+!    variable.
+!    register diagnostics associated with the monitored output fields
+!    (extreme values and number of times threshold was exceeeded).
+!----------------------------------------------------------------------
+            if ( flag) then
+              if (trim(method_name) == 'maxmag') then
+                Initialized%Don_monitor(nx)%initial_value = 0.0
+                Initialized%Don_monitor(nx)%limit_type =   MAXMAG
+                id_extremes(nx) = register_diag_field (mod_name,   &
+                  'maxmag_'// trim(Initialized%Don_monitor(nx)%name),  &
+                   axes(1:3),  Time,  'maxmag values of ' // &
+                            trim(Initialized%Don_monitor(nx)%name),  &
+                   Initialized%Don_monitor(nx)%units,   &
+                   mask_variant = .true., missing_value=missing_value)
+                id_hits(nx) = register_diag_field (mod_name,   &
+                  'num_maxmag_'// &
+                              trim(Initialized%Don_monitor(nx)%name) , &
+                   axes(1:3),  Time,    &
+                   '# of times that magnitude of '&
+                     // trim(Initialized%Don_monitor(nx)%name) //  &
+                 ' > ' // trim(method_control(2:)) // ' ' // &
+                    trim(Initialized%Don_monitor(nx)%units) ,  &
+                   'number', mask_variant = .true., & 
+                   missing_value=missing_value)
+              else if (trim(method_name) == 'minmag') then
+                Initialized%Don_monitor(nx)%initial_value = 1.0e30
+                Initialized%Don_monitor(nx)%limit_type =   MINMAG
+                id_extremes(nx) = register_diag_field (mod_name,   &
+                  'minmag_'// trim(Initialized%Don_monitor(nx)%name),  &
+                   axes(1:3),  Time,  'minmag values of ' // &
+                            trim(Initialized%Don_monitor(nx)%name),  &
+                   Initialized%Don_monitor(nx)%units,   &
+                   mask_variant = .true., missing_value=missing_value)
+                id_hits(nx) = register_diag_field (mod_name,   &
+                  'num_minmag_'//     &
+                             trim(Initialized%Don_monitor(nx)%name) , &
+                  axes(1:3),  Time,    &
+                   '# of times that magnitude of '&
+                     // trim(Initialized%Don_monitor(nx)%name) //  &
+                ' < ' // trim(method_control(2:)) // ' ' // &
+                    trim(Initialized%Don_monitor(nx)%units) ,  &
+                  'number', mask_variant = .true., & 
+                  missing_value=missing_value)
+              else if (trim(method_name) == 'minval') then
+                Initialized%Don_monitor(nx)%initial_value = 1.0e30
+                Initialized%Don_monitor(nx)%limit_type =   MINVAL
+                id_extremes(nx) = register_diag_field (mod_name,   &
+                  'minval_'// trim(Initialized%Don_monitor(nx)%name),  &
+                   axes(1:3),  Time,  'minimum values of ' // &
+                            trim(Initialized%Don_monitor(nx)%name),  &
+                  Initialized%Don_monitor(nx)%units,   &
+                  mask_variant = .true., missing_value=missing_value)
+                id_hits(nx) = register_diag_field (mod_name,   &
+                  'num_minval_'//   &
+                             trim(Initialized%Don_monitor(nx)%name) , &
+                   axes(1:3),  Time,    &
+                   '# of times that value of '&
+                     // trim(Initialized%Don_monitor(nx)%name) //  &
+                ' < ' // trim(method_control(2:)) // ' ' // &
+                    trim(Initialized%Don_monitor(nx)%units) ,  &
+                  'number', mask_variant = .true., & 
+                  missing_value=missing_value)
+              else if (trim(method_name) == 'maxval') then
+                Initialized%Don_monitor(nx)%initial_value = -1.0e30
+                Initialized%Don_monitor(nx)%limit_type = MAXVAL 
+                id_extremes(nx) = register_diag_field (mod_name,   &
+                  'maxval_'// trim(Initialized%Don_monitor(nx)%name),  &
+                  axes(1:3),  Time,  'maximum values of ' // &
+                            trim(Initialized%Don_monitor(nx)%name),  &
+                  Initialized%Don_monitor(nx)%units,  &
+                  mask_variant = .true., missing_value=missing_value)
+                id_hits(nx) = register_diag_field (mod_name,   &
+                  'num_maxval_'//    &
+                             trim(Initialized%Don_monitor(nx)%name) , &
+                  axes(1:3),  Time,    &
+                   '# of times that value of '&
+                     // trim(Initialized%Don_monitor(nx)%name) //  &
+                    ' > ' // trim(method_control(2:)) // ' ' // &
+                    trim(Initialized%Don_monitor(nx)%units) ,  &
+                  'number', mask_variant = .true., & 
+                  missing_value=missing_value)
+              else
+                call error_mesg ('donner_deep_mod', &
+                    'invalid limit_type for monitored variable', FATAL)
+              endif
+
+!----------------------------------------------------------------------
+!    if limit_type not in field_table, set it to look for maximum
+!    magnitude.
+!----------------------------------------------------------------------
+            else
+              Initialized%Don_monitor(nx)%initial_value = 0.0
+              Initialized%Don_monitor(nx)%limit_type =   MAXMAG
+              id_extremes(nx) = register_diag_field (mod_name,   &
+                  'maxmag_'// trim(Initialized%Don_monitor(nx)%name),  &
+                   axes(1:3),  Time,  'maxmag values of ' // &
+                            trim(Initialized%Don_monitor(nx)%name),  &
+                   Initialized%Don_monitor(nx)%units,   &
+                   mask_variant = .true., missing_value=missing_value)
+              id_hits(nx) = register_diag_field (mod_name,   &
+                  'num_maxmag_'// &
+                              trim(Initialized%Don_monitor(nx)%name) , &
+                   axes(1:3),  Time,    &
+                   '# of times that magnitude of '&
+                     // trim(Initialized%Don_monitor(nx)%name) //  &
+                ' > ' // trim(method_control(2:)) // ' ' // &
+                    trim(Initialized%Don_monitor(nx)%units) ,  &
+                   'number', mask_variant = .true., & 
+                   missing_value=missing_value)
+            endif
+
+!----------------------------------------------------------------------
+!    obtain the magnitude of the limit being monitored for this 
+!    variable from the field_table. 
+!----------------------------------------------------------------------
+            flag = parse (method_control, 'value',   &
+                                Initialized%Don_monitor(nx)%threshold )
+
+!----------------------------------------------------------------------
+!    if no limit_type and / or value has been given, the
+!    field will be flagged for magnitudes  > 0.0, i.e., if deep 
+!    convection has affected the point.
+!----------------------------------------------------------------------
+            if ( .not. flag) then
+              Initialized%Don_monitor(nx)%threshold = 0.0
+            endif
+
+!-------------------------------------------------------------------
+!    allocate and initialize arrays to hold the extrema and a count of 
+!    times the threshold was exceeded at each point.
+!-------------------------------------------------------------------
+            allocate (Initialized%Don_monitor(nx)%extrema(idf,jdf,nlev))
+            Initialized%Don_monitor(nx)%extrema(:,:,:) =  &
+                         Initialized%Don_monitor(nx)%initial_value
+            allocate (Initialized%Don_monitor(nx)%hits(idf,jdf,nlev))
+            Initialized%Don_monitor(nx)%hits(:,:,:) = 0.0
+            nx = nx + 1
+          endif
+        end do
+      endif 
+
+end subroutine process_monitors
 
 
 
@@ -3003,6 +3467,18 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
         used = send_data (id_wtp1(n), Don_conv%wtp1(:,:,:,n),     &
                           Time, is, js, 1)
 
+!   tracer tendency due to deep convective wet deposition:
+     used = send_data (id_total_wet_dep(n), Don_conv%wetdept(:,:,:,n), &
+                            Time, is, js, 1)
+ 
+!   tracer tendency due to wet deposition in mesoscale updrafts:
+     used = send_data (id_meso_wet_dep(n), Don_conv%wetdepm(:,:,:,n), &
+                            Time, is, js, 1)
+ 
+!   tracer tendency due to wet deposition in cells:
+     used = send_data (id_cell_wet_dep(n), Don_conv%wetdepc(:,:,:,n), &
+                           Time, is, js, 1)
+
 !   total tracer tendency:
         used = send_data (id_qtceme(n), Don_conv%qtceme(:,:,:,n), &
                           Time, is, js, 1)
@@ -3044,6 +3520,45 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
         used = send_data (id_wtp1_col(n), tempdiag, Time, is, js)
 
 !---------------------------------------------------------------------
+!    define the column-integrated tracer change due to wet deposition in
+!    deep convection (cells and mesoscale) in units of kg (tracer) / 
+!    (m**2 sec). send it to diag_manager_mod.
+!---------------------------------------------------------------------
+        tempdiag = 0.0
+        do k=1,nlev
+          tempdiag(:,:) = tempdiag(:,:) + Don_conv%wetdept(:,:,k,n)*   &
+                          pmass(:,:,k)
+        end do
+        used = send_data (id_total_wet_dep_col(n), tempdiag, Time,  &
+                                                                 is, js)
+
+!---------------------------------------------------------------------
+!    define the column-integrated tracer change due to wet deposition in
+!    mesoscale updrafts, in units of kg (tracer) / (m**2 sec). send it 
+!    to diag_manager_mod.
+!---------------------------------------------------------------------
+       tempdiag = 0.0
+       do k=1,nlev
+         tempdiag(:,:) = tempdiag(:,:) + Don_conv%wetdepm(:,:,k,n)*   &
+                         pmass(:,:,k)
+       end do
+       used = send_data (id_meso_wet_dep_col(n), tempdiag, Time,  &
+                                                                 is, js)
+
+!---------------------------------------------------------------------
+!    define the column-integrated tracer change due to wet deposition 
+!    by convective cells, in units of kg (tracer) / (m**2 sec). send it 
+!    to diag_manager_mod.
+!---------------------------------------------------------------------
+       tempdiag = 0.0
+       do k=1,nlev
+         tempdiag(:,:) = tempdiag(:,:) + Don_conv%wetdepc(:,:,k,n)*   &
+                         pmass(:,:,k)
+       end do
+       used = send_data (id_cell_wet_dep_col(n), tempdiag, Time,  &
+                                                                 is, js)
+
+!-----------------------------------------------------------------
 !    define the column-integrated total tracer tendency, in units of 
 !    kg (tracer) / (m**2 sec). send it to diag_manager_mod.
 !---------------------------------------------------------------------
@@ -3101,6 +3616,28 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
 !   area weighted convective precipitation:
       used = send_data (id_rcoa1_deep, Don_conv%cell_precip,    &
                         Time, is, js)
+
+!----------------------------------------------------------------------
+!    send diagnostics associated with the monitored output fields.
+!----------------------------------------------------------------------
+      if (Initialized%monitor_output) then
+        do n=1,size(Initialized%Don_monitor,1)
+          if (id_extremes(n) > 0) then
+            used = send_data (id_extremes(n),   &
+                    Initialized%Don_monitor(n)%extrema(is:ie,js:je,:), &
+                    Time, is, js,1, mask =    &
+                  Initialized%Don_monitor(n)%extrema(is:ie,js:je,:) /= &
+                              Initialized%Don_monitor(n)%initial_value )
+          endif
+          if (id_hits(n) > 0) then
+            used = send_data (id_hits(n),  &
+                       Initialized%Don_monitor(n)%hits(is:ie,js:je,:), &
+                       Time, is, js,1, mask =   &
+                 Initialized%Don_monitor(n)%extrema(is:ie,js:je,:) /= &
+                              Initialized%Don_monitor(n)%initial_value )
+          endif
+        end do
+      endif
 
 !----------------------------------------------------------------------
 
@@ -3197,8 +3734,8 @@ integer, intent(in) :: ntracers
         call write_data (fname, 'tprea1',            Don_save%tprea1)   
         call write_data (fname, 'humidity_area',        &
                                                   Don_save%humidity_area)
-        call write_data (fname, 'humidity_ratio',       &
-                                                 Don_save%humidity_ratio)
+        call write_data (fname, 'humidity_factor',       &
+                                               Don_save%humidity_factor)
         if (Initialized%do_donner_tracer) then
           do n=1,ntracers
             call write_data (fname,   &
@@ -3378,7 +3915,7 @@ subroutine deallocate_variables
       deallocate ( Don_save%dqi_strat           )
       deallocate ( Don_save%dqa_strat           )
       deallocate ( Don_save%humidity_area       )
-      deallocate ( Don_save%humidity_ratio      )
+      deallocate ( Don_save%humidity_factor     )
       deallocate ( Don_save%tracer_tends        )
       deallocate ( Don_save%parcel_disp         )
       deallocate ( Don_save%tprea1              )
@@ -3411,10 +3948,28 @@ subroutine deallocate_variables
       deallocate (id_qtmes1)
       deallocate (id_wtp1  )
       deallocate (id_qtceme)
+      deallocate (id_total_wet_dep)
+      deallocate (id_meso_wet_dep)
+      deallocate (id_cell_wet_dep)
       deallocate (id_qtren1_col)
       deallocate (id_qtmes1_col)
       deallocate (id_wtp1_col  )
       deallocate (id_qtceme_col)
+      deallocate (id_total_wet_dep_col)
+      deallocate (id_meso_wet_dep_col)
+      deallocate (id_cell_wet_dep_col)
+      endif
+
+      call sd_end_k(sd);
+      call ac_end_k(ac);
+      call cp_end_k(cp);
+      call ct_end_k(ct);
+      call exn_end_k
+      call findt_end_k
+
+      if (Initialized%monitor_output) then
+        deallocate (id_extremes)
+        deallocate (id_hits)
       endif
 
 !----------------------------------------------------------------------
@@ -3430,5 +3985,4 @@ end subroutine deallocate_variables
 
 
                      end module donner_deep_mod
-
 

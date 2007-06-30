@@ -57,8 +57,8 @@ public   vert_turb_driver_init, vert_turb_driver_end, vert_turb_driver
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 11.0 2004/09/28 19:25:18 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 11.0.12.2 2007/05/25 16:32:08 vb Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
@@ -538,7 +538,7 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
                                   doing_edt, doing_entrain)
 
 !-----------------------------------------------------------------------
-   real, dimension(:), intent(in) :: lonb, latb
+   real, dimension(:,:), intent(in) :: lonb, latb
    integer,         intent(in) :: id, jd, kd, axes(4)
    type(time_type), intent(in) :: Time
    logical,         intent(out) :: doing_edt, doing_entrain

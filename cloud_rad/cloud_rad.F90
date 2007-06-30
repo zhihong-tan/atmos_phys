@@ -252,8 +252,8 @@ private
 !---------------------------------------------------------------------
 !------------ version number for this module -------------------------
         
-character(len=128) :: version = '$Id: cloud_rad.F90,v 14.0 2007/03/15 22:01:40 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: cloud_rad.F90,v 14.0.2.1 2007/05/04 08:40:18 rsh Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
 
 !---------------------------------------------------------------------- 
@@ -323,6 +323,7 @@ logical      :: adjust_top = .true.
 real         :: scale_factor = 0.85
 real         :: qamin = 1.E-2
 logical      :: do_brenguier = .true.
+real         :: N_min = 1.e6
 
 !--------------------------------------------------------------------
 !    namelist variables:
@@ -415,7 +416,7 @@ logical      :: do_brenguier = .true.
 namelist /cloud_rad_nml/                                       &
                          overlap, l2strem, taucrit,     &
                          adjust_top, scale_factor, qamin, &
-                         do_brenguier
+                         do_brenguier, N_min
 
 
 !------------------------------------------------------------------
@@ -1449,10 +1450,12 @@ real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
 !                k = factor to account for difference between 
 !                    mean volume radius and effective radius
 !--------------------------------------------------------------------
-               if (ql(i,j,k) > qmin .and. N_drop3D(i,j,k) > qmin) then
+               if (ql(i,j,k) > qmin) then
                  reff_liq_local = k_ratio(i,j)*620350.49*    &
                                   (ql(i,j,k)/DENS_H2O/  &
-                                  N_drop3D(i,j,k))**(1./3.)
+                                  max(N_drop3D(i,j,k),   &
+                                      N_min*max(qa(i,j,k),qmin)/  &
+                             (pfull(i,j,k)/RDGAS/tkel(i,j,k))))**(1./3.)
                else
                  reff_liq_local = 0.
                endif
@@ -1950,12 +1953,12 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !                k = factor to account for difference between 
 !                    mean volume radius and effective radius
 !---------------------------------------------------------------------
-	if (.not. do_liq_num) then
+        if (.not. do_liq_num) then
                 reff_liq_local = k_ratio(i,j)* 620350.49 *    &
                                  (pfull(i,j,k)*ql(i,j,k)/qa(i,j,k)/   & 
                                  RDGAS/tkel(i,j,k)/DENS_H2O/    &
                                  N_drop2D(i,j))**(1./3.)
- 	else
+        else
 !--------------------------------------------------------------------
 ! yim: a variant for prognostic droplet number
 !    reff (in microns) =  k * 1.E+06 *
@@ -1970,14 +1973,16 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !                k = factor to account for difference between 
 !                    mean volume radius and effective radius
 !--------------------------------------------------------------------
-              if (ql(i,j,k) > qmin .and. N_drop3D(i,j,k) > 1.e6) then
+              if (ql(i,j,k) > qmin) then
                 reff_liq_local = k_ratio(i,j)*620350.49*    &
                                  (ql(i,j,k)/DENS_H2O/  &
-                                 N_drop3D(i,j,k))**(1./3.)
-	      else
-	        reff_liq_local = 0.0
-	      endif
-	endif
+                                 max(N_drop3D(i,j,k),  &
+                                      N_min*max(qa(i,j,k),qmin)/  &
+                             (pfull(i,j,k)/RDGAS/tkel(i,j,k))))**(1./3.)
+              else
+                reff_liq_local = 0.0
+              endif
+           endif
                        
 !----------------------------------------------------------------------
 !    for single layer liquid or mixed phase clouds it is assumed that

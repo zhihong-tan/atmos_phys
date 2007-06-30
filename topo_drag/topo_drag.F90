@@ -14,14 +14,16 @@ use          fms_mod, only: file_exist, open_namelist_file,            &
                             check_nml_error, write_version_number
 use       fms_io_mod, only: read_data, write_data, field_size
 use    constants_mod, only: Grav, Cp_Air, Rdgas, Pi, Radian
-use horiz_interp_mod, only: horiz_interp
+use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
+                            horiz_interp, horiz_interp_del
+use interpolator_mod, only: create_horiz_interp_new
 
 implicit none
 
 private
 
-character(len=128) :: version = '$Id: topo_drag.F90,v 13.0 2006/03/28 21:14:28 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: topo_drag.F90,v 13.0.4.2 2007/05/25 16:32:08 vb Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
 logical :: module_is_initialized = .false.
 
@@ -549,7 +551,7 @@ end subroutine get_pbl
 
 subroutine topo_drag_init (lonb, latb)
 
-real, intent(in), dimension(:) :: lonb, latb
+real, intent(in), dimension(:,:) :: lonb, latb
 
 character*128 :: msg
 character*16  :: name
@@ -562,6 +564,7 @@ real, parameter :: bfscale=1.0e-2      ! buoyancy frequency scale [1/s]
 
 real, allocatable, dimension(:)   :: xdat, ydat
 real, allocatable, dimension(:,:) :: zdat, zout
+type (horiz_interp_type) :: Interp
 real :: exponent
 
 integer :: unit, ndim, nvar, natt, nt, namelen, n
@@ -571,8 +574,8 @@ integer :: siz(4)
 
   if (module_is_initialized) return
 
-  nlon = size(lonb)-1
-  nlat = size(latb)-1
+  nlon = size(lonb,1)-1
+  nlat = size(latb,2)-1
 
 ! read namelist
 
@@ -647,12 +650,19 @@ integer :: siz(4)
         ydat(j) = (-90.0 + (j-1)/resolution) / Radian
      enddo
 
+     ! initialize horizontal interpolation
+     ! Note: interp_method will be conservative for lat/lon grid
+     !       and bilinear for all other grids
+     call horiz_interp_init
+     call create_horiz_interp_new ( Interp, xdat, ydat, lonb, latb )
+
      call read_data (topography_file, 'hpos', zdat, no_domain=.true.)
 
      exponent = 2.0 - gamma
      zdat = max(0.0, zdat)**exponent
-     call horiz_interp ( zdat, xdat, ydat, lonb, latb, zout,           &
-                                         interp_method='conservative' )
+     
+     call horiz_interp ( Interp, zdat, zout )
+
      hmax = abs(zout)**(1.0/exponent) * sqrt(2.0/exponent)
      hmin = hmax*h_frac
 
@@ -671,8 +681,9 @@ integer :: siz(4)
 
      do n=1,4
         call read_data (dragtensor_file, tensornames(n), zdat, no_domain=.true.)
-        call horiz_interp ( zdat, xdat, ydat, lonb, latb, zout,        &
-                                         interp_method='conservative' )
+        call horiz_interp ( Interp, zdat, zout )
+       !call horiz_interp ( zdat, xdat, ydat, lonb, latb, zout,        &
+       !                                 interp_method='conservative' )
         if ( tensornames(n) == 't11' ) then
            t11 = zout/bfscale
         else if ( tensornames(n) == 't21' ) then
@@ -685,6 +696,7 @@ integer :: siz(4)
      enddo
 
      deallocate (zdat, zout)
+     call horiz_interp_del ( Interp )
 
   else
 

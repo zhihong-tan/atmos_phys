@@ -121,7 +121,7 @@
 
 use fms_mod,               only: fms_init, mpp_clock_id, &
                                  mpp_clock_begin, mpp_clock_end, &
-                                 CLOCK_MODULE, MPP_CLOCK_SYNC, &
+                                 CLOCK_MODULE, &
                                  mpp_pe, mpp_root_pe, &
                                  open_namelist_file, stdlog, &
                                  file_exist, FATAL, WARNING, NOTE, &
@@ -211,8 +211,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 14.0 2007/03/15 22:04:47 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 14.0.4.1.2.2 2007/05/29 16:02:54 wfc Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
 
 !---------------------------------------------------------------------
@@ -941,15 +941,15 @@ real, dimension(:,:), allocatable :: swups_acc, swdns_acc
 !  </TEMPLATE>
 !  <IN NAME="lonb" TYPE="real">
 !    lonb      Longitude in radians for all (i.e., the global size)
-!              grid box boundaries, the size of lonb should be one more
-!              than the global number of longitude points along the x-axis.
-!                 [real, dimension(:)]
+!              grid box corners, the size of lonb should be one more
+!              than the number of points along the x-axis and y-axis.
+!                 [real, dimension(:,:)]
 !  </IN>
 !  <IN NAME="latb" TYPE="real">
 !    latb      Latitude in radians for all (i.e., the global size)
-!              grid box boundaries, the size of latb should be one more
-!              than the global number of latitude points along the y-axis.
-!                 [real, dimension(:)]
+!              grid box corners, the size of latb should be one more
+!              than the number of latitude points along the x-axis and y-axis.
+!                 [real, dimension(:,:)]
 !  </IN>
 !  <IN NAME="pref" TYPE="real">
 !    pref      Two reference profiles of pressure at full model levels
@@ -995,7 +995,7 @@ subroutine radiation_driver_init (lonb, latb, pref, axes, Time, &
 !---------------------------------------------------------------------
 
 !--------------------------------------------------------------------
-real, dimension(:),              intent(in)  :: lonb, latb
+real, dimension(:,:),            intent(in)  :: lonb, latb
 real, dimension(:,:),            intent(in)  :: pref
 integer, dimension(4),           intent(in)  :: axes
 type(time_type),                 intent(in)  :: Time
@@ -1006,9 +1006,9 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 !---------------------------------------------------------------------
 !   intent(in) variables:
 !
-!       lonb           array of model longitudes on cell boundaries 
+!       lonb           2d array of model longitudes on cell corners 
 !                      [ radians ]
-!       latb           array of model latitudes at cell boundaries 
+!       latb           2d array of model latitudes at cell corners 
 !                      [ radians ]
 !       pref           array containing two reference pressure profiles 
 !                      for use in defining transmission functions
@@ -1454,7 +1454,7 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 !    define the dimensions of the local processors portion of the grid.
 !---------------------------------------------------------------------
       id    = size(lonb,1) - 1 
-      jd    = size(latb,1) - 1
+      jd    = size(latb,2) - 1
       kmax  = size(pref,1) - 1 
 
 !---------------------------------------------------------------------
@@ -1784,13 +1784,13 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 !--------------------------------------------------------------------
       misc_clock =    &
             mpp_clock_id ('   Physics_down: Radiation: misc', &
-                grain = CLOCK_MODULE, flags = MPP_CLOCK_SYNC)
+                grain = CLOCK_MODULE)
       clouds_clock =   &
             mpp_clock_id ('   Physics_down: Radiation: clds', &
-               grain = CLOCK_MODULE, flags = MPP_CLOCK_SYNC)
+               grain = CLOCK_MODULE)
       calc_clock =    &
             mpp_clock_id ('   Physics_down: Radiation: calc', &
-                grain = CLOCK_MODULE, flags = MPP_CLOCK_SYNC)
+                grain = CLOCK_MODULE)
 
 !---------------------------------------------------------------------
 !    call check_derived_types to verify that all logical elements of
@@ -1914,7 +1914,8 @@ subroutine radiation_driver (is, ie, js, je, Time, Time_next,  &
                              lat, lon, Surface, Atmos_input, &
                              Aerosol, r, Cld_spec, Rad_gases, &
                              Lsc_microphys, Meso_microphys,    &
-                             Cell_microphys, Radiation, Astronomy_inp, &
+                             Cell_microphys, Shallow_microphys, &
+                             Radiation, Astronomy_inp, &
                              mask, kbot)
 
 !---------------------------------------------------------------------
@@ -1935,7 +1936,8 @@ type(cld_specification_type), intent(inout)        :: Cld_spec
 type(radiative_gases_type),   intent(inout)        :: Rad_gases
 type(microphysics_type),      intent(inout)        :: Lsc_microphys,&
                                                       Meso_microphys,&
-                                                      Cell_microphys
+                                                      Cell_microphys, &
+                                                      Shallow_microphys
 type(rad_output_type),     intent(inout), optional :: Radiation
 type(astronomy_inp_type),  intent(inout), optional :: Astronomy_inp
 real, dimension(:,:,:),    intent(in),    optional :: mask
@@ -2166,6 +2168,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
                              is, ie, js, je, Rad_time, Time_next, Astro,  & 
                              Atmos_input, Cld_spec, Lsc_microphys,  &
                              Meso_microphys, Cell_microphys,    &
+                             Shallow_microphys, &
                              Cldrad_props, kbot=kbot, mask=mask)
           else    
 
@@ -2173,6 +2176,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
                              is, ie, js, je, Rad_time, Time_next, Astro,  & 
                              Atmos_input, Cld_spec, Lsc_microphys,   &
                              Meso_microphys, Cell_microphys,    &
+                             Shallow_microphys, &
                              Cldrad_props)
           endif
         endif

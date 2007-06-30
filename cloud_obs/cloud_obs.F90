@@ -7,7 +7,9 @@
 !
 !-----------------------------------------------------------------------
 
-use horiz_interp_mod, only: horiz_interp
+use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
+                            horiz_interp, horiz_interp_del
+use interpolator_mod, only: create_horiz_interp_new
 use          fms_mod, only: file_exist, error_mesg, FATAL, NOTE,     &
                             open_namelist_file, close_file,          &
                             check_nml_error, mpp_pe, mpp_root_pe,    &
@@ -26,8 +28,8 @@ public  cloud_obs, cloud_obs_init, cloud_obs_end
 !-----------------------------------------------------------------------
 !   ---------- private data ------------
 
-   character(len=128) :: version = '$Id: cloud_obs.F90,v 13.0 2006/03/28 21:07:38 fms Exp $'
-   character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+   character(len=128) :: version = '$Id: cloud_obs.F90,v 13.0.4.2 2007/05/25 16:31:56 vb Exp $'
+   character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
       real, allocatable, dimension(:,:,:) :: clda,cldb
       real, allocatable, dimension(:)     :: londat,latdat
@@ -45,6 +47,8 @@ public  cloud_obs, cloud_obs_init, cloud_obs_end
 !------------ input grid parameters ----------
      integer, parameter :: mobs=144, nobs=72
         real :: sb, wb, dx, dy
+
+     type (horiz_interp_type) :: Interp
 !-----------------------------------------------------------------------
 
 contains
@@ -128,9 +132,7 @@ type(time_type), intent(in)                    :: Time
          tlvl = month
          call read_data('INPUT/cloud_obs.data.nc', 'obs', obs, timelevel=tlvl, no_domain=.true.)
          do n=1,3
-            call horiz_interp (obs(:,:,n),wb,sb,dx,dy,  &
-                 londat,latdat,cldb(:,:,n),  &
-                 verbose=verbose)
+            call horiz_interp (Interp, obs(:,:,n), cldb(:,:,n), verbose=verbose)
          enddo
          goto 381
       end if
@@ -166,9 +168,7 @@ type(time_type), intent(in)                    :: Time
              endif
           enddo
           do n=1,3
-            call horiz_interp (obs(:,:,n),wb,sb,dx,dy,  &
-                               londat,latdat,clda(:,:,n),  &
-                               verbose=verbose)
+            call horiz_interp (Interp, obs(:,:,n), clda(:,:,n), verbose=verbose)
           enddo
       endif
 
@@ -204,9 +204,7 @@ type(time_type), intent(in)                    :: Time
              endif
           enddo
           do n=1,3
-            call horiz_interp (obs(:,:,n),wb,sb,dx,dy,  &
-                               londat,latdat,cldb(:,:,n),  &
-                               verbose=verbose)
+            call horiz_interp (Interp, obs(:,:,n), cldb(:,:,n), verbose=verbose)
           enddo
       endif
           goto 381
@@ -251,13 +249,14 @@ type(time_type), intent(in)                    :: Time
  subroutine cloud_obs_init (lonb,latb)
 
 !-----------------------------------------------------------------------
-!  lonb  =   longitude in radians of the grid box edges
-!  latb  =   longitude in radians of the grid box edges
+!  lonb  =   longitude in radians at the grid box corners
+!  latb  =   longitude in radians at the grid box corners
 !-----------------------------------------------------------------------
-   real, intent(in), dimension(:) :: lonb,latb
+   real, intent(in), dimension(:,:) :: lonb,latb
 !-----------------------------------------------------------------------
    real    :: hpie
-   integer :: in,jn, unit, ierr, io
+   integer :: i, j, in, jn, unit, ierr, io
+   real :: lonb_obs(mobs+1), latb_obs(nobs+1)
 
    if (module_is_initialized) return
 
@@ -284,13 +283,24 @@ type(time_type), intent(in)                    :: Time
       hpie=acos(0.0)
       sb=-hpie; wb=0.0; dx=4.0*hpie/float(mobs); dy=2.0*hpie/float(nobs)
 
+      do i = 1, mobs
+         lonb_obs(i) = wb + float(i-1)*dx
+      enddo
+         lonb_obs(mobs+1) = lonb_obs(1) + 4.0*hpie
+      do j = 2, nobs
+         latb_obs(i) = wb + float(i-1)*dx
+      enddo
+         latb_obs(1) = -hpie
+         latb_obs(nobs+1) = hpie
+
+      call horiz_interp_init
+      call create_horiz_interp_new ( Interp, lonb_obs, latb_obs, lonb, latb )
+
+
 !------- setup for data grid -------
 
-      in=size(lonb,1); jn=size(latb,1)
-      allocate (londat(in), latdat(jn))
+      in=size(lonb,1); jn=size(latb,2)
       allocate (clda(in-1,jn-1,3), cldb(in-1,jn-1,3))
-
-      latdat = latb; londat = lonb
 
       module_is_initialized = .true.
 

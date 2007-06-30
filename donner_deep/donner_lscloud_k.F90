@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_lscloud_k.F90,v 14.0 2007/03/15 22:02:38 fms Exp $
+!  $Id: donner_lscloud_k.F90,v 14.0.2.1 2007/05/04 08:45:06 rsh Exp $
 
 !module donner_lscloud_inter_mod
 
@@ -15,7 +15,7 @@ subroutine don_l_lscloud_driver_k   &
          (isize, jsize, nlev_lsm, cloud_tracers_present, Param,  &
           Col_diag, pfull, temp,   &
           mixing_ratio, qlin, qiin, qain, phalf, Don_conv, &
-          donner_humidity_ratio, donner_humidity_area, dql, dqi, dqa, &
+          donner_humidity_factor, donner_humidity_area, dql, dqi, dqa, &
           ermesg) 
 
 !---------------------------------------------------------------------
@@ -49,7 +49,7 @@ real, dimension(isize,jsize,nlev_lsm+1),        &
                             intent(in)    :: phalf 
 type(donner_conv_type),     intent(inout) :: Don_conv
 real, dimension(isize,jsize,nlev_lsm),           &
-                            intent(out)   :: donner_humidity_ratio,  &
+                            intent(out)   :: donner_humidity_factor,  &
                                              donner_humidity_area, dql, &
                                              dqi, dqa
 character(len=*),           intent(out)   :: ermesg
@@ -135,7 +135,7 @@ character(len=*),           intent(out)   :: ermesg
 !---------------------------------------------------------------------
       call don_l_adjust_tiedtke_inputs_k    &
            (isize, jsize, nlev_lsm, Param, Col_diag, pfull,temp,   &
-            mixing_ratio, phalf, Don_conv, donner_humidity_ratio, &
+            mixing_ratio, phalf, Don_conv, donner_humidity_factor, &
             donner_humidity_area, ermesg)
  
 !----------------------------------------------------------------------
@@ -296,7 +296,7 @@ end subroutine don_l_define_mass_flux_k
 
 subroutine don_l_adjust_tiedtke_inputs_k   &
          (isize, jsize, nlev_lsm, Param, Col_diag, pfull, temp, &
-          mixing_ratio, phalf, Don_conv, donner_humidity_ratio, &
+          mixing_ratio, phalf, Don_conv, donner_humidity_factor, &
           donner_humidity_area, ermesg) 
 
 !---------------------------------------------------------------------
@@ -324,7 +324,7 @@ real, dimension(isize,jsize,nlev_lsm+1),                            &
                              intent(in)     :: phalf
 type(donner_conv_type),      intent(inout)  :: Don_conv
 real, dimension(isize,jsize,nlev_lsm),                               &
-                             intent(out)    :: donner_humidity_ratio, &
+                             intent(out)    :: donner_humidity_factor, &
                                                donner_humidity_area
 character(len=*),            intent(out)    :: ermesg
 
@@ -471,71 +471,7 @@ character(len=*),            intent(out)    :: ermesg
                 rfun = 0.
               endif
 
-!---------------------------------------------------------------------
-!    calculate the saturation specific humidity at points above cloud
-!    base.
-!---------------------------------------------------------------------
-              if (pfull(i,j,k) <= Don_conv%pb_v(i,j)) then
-                call lookup_es_k (temp(i,j,k), esat, nbad)
- 
-!----------------------------------------------------------------------
-!    determine if an error message was returned from the kernel routine.
-!    if so, return to calling program where it will be processed.
-!----------------------------------------------------------------------
-                if (nbad /= 0) then
-                  ermesg = 'subroutine don_l_adjust_tiedtke_inputs_k: '// &
-                           'temperatures out of range of esat table'
-                  return
-                endif
-
-                qsat = Param%d622*esat/        &
-                        MAX(pfull(i,j,k) + esat*(Param%d622 - 1.), esat)
-
-!-------------------------------------------------------------------
-!    define the vapor specific humidity, assuring no values are 
-!    negative.
-!-------------------------------------------------------------------
-                qrf(k) = MAX(mixing_ratio(i,j,k)/   &
-                                       (1.0 + mixing_ratio(i,j,k)), 0.0)
-
-!---------------------------------------------------------------------
-!     calculate the ratio of large-scale specific humidity to the
-!     humidity in the environment of convective system.
-!---------------------------------------------------------------------
-                donner_humidity_ratio(i,j,k) = qrf(k) - acell*qsat -   &
-                            Don_conv%ampta1(i,j)*rfun*qsat
-                call don_u_numbers_are_equal_k  &
-                     (Don_conv%cual(i,j,k), 1., ermesg, numeq) 
- 
-!----------------------------------------------------------------------
-!    determine if an error message was returned from the kernel routine.
-!    if so, return to calling program where it will be processed.
-!----------------------------------------------------------------------
-                if (trim(ermesg) /= ' ') return
-
-                if ( numeq == -10.  .and. (qrf(k) /= 0.)) then
-                  if (donner_humidity_ratio(i,j,k) > 0. ) then
-                    donner_humidity_ratio(i,j,k) =    &
-                              donner_humidity_ratio(i,j,k)/(1. -   &
-                                                  Don_conv%cual(i,j,k))
-                    donner_humidity_ratio(i,j,k) =    &
-                           MAX(qrf(k)/donner_humidity_ratio(i,j,k), 1.0)
-                  else  ! (donner_humidity_ratio > 0)
-
-!----------------------------------------------------------------------
-!    donner_humidity_ratio < 0 indicates insufficient large-scale moist-
-!    ure for convective system if convective system is saturated or
-!    downdraft has relative humidity r  set donner_humidity_ratio to -10
-!    as a flag that this situation exists
-!---------------------------------------------------------------------
-                    donner_humidity_ratio(i,j,k) = -10.
-                  endif  ! (donner_humidity_ratio > 0)
-                else ! (iequ)
-                  donner_humidity_ratio(i,j,k) = 1.0
-                endif ! (iequ)
-              else
-                donner_humidity_ratio(i,j,k) = 1.0
-              endif  !(pfull <= pb)
+              donner_humidity_factor(i,j,k) = Don_conv%ampta1(i,j)*rfun
 
 !---------------------------------------------------------------------
 !    if in diagnostics column, output the profiles of cell and mesoscale
@@ -556,9 +492,8 @@ character(len=*),            intent(out)    :: ermesg
                                      'pb,prinp,trf, acell= ',  k, &
                                    Don_conv%pb_v(i,j), pfull(i,j,k),   &
                                     temp(i,j,k),acell
-                        write (Col_diag%unit_dc(n), '(a, i5, 4f20.10)') &
-                              'rfun,qsat,qrat,qrf= ', k,  rfun,qsat, &
-                                    donner_humidity_ratio(i,j,k),qrf(k)
+                        write (Col_diag%unit_dc(n), '(a, i5, f20.10)') &
+                               'rfun,= ', k,  rfun
                       endif
                     endif
                   endif
@@ -570,7 +505,7 @@ character(len=*),            intent(out)    :: ermesg
 !    donner_humidity_ratio to 1.0 and donner_humidity_area to 0.0
 !---------------------------------------------------------------------
             else
-              donner_humidity_ratio(i,j,k) = 1.0
+              donner_humidity_factor(i,j,k) = 0.0
               donner_humidity_area(i,j,k) = 0.0
             endif
           end do

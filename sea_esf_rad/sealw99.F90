@@ -93,8 +93,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-    character(len=128)  :: version =  '$Id: sealw99.F90,v 14.0 2007/03/15 22:07:40 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+    character(len=128)  :: version =  '$Id: sealw99.F90,v 14.0.2.2 2007/05/25 16:32:06 vb Exp $'
+    character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
     logical             ::  module_is_initialized = .false.
 
 !---------------------------------------------------------------------
@@ -342,10 +342,10 @@ integer    :: total_points
 !   call sealw99_init (latb, lonb, pref, Lw_tables)
 !  </TEMPLATE>
 !  <IN NAME="latb" TYPE="real">
-!   array of model latitudes at cell boundaries [radians]
+!   2d array of model latitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="lonb" TYPE="real">
-!   array of model longitudes at cell boundaries [radians]
+!   2d array of model longitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="pref" TYPE="real">
 !   array containing two reference pressure profiles [pascals]
@@ -362,16 +362,16 @@ subroutine sealw99_init (latb, lonb, pref, Lw_tables)
 !    sealw99_init is the constructor for sealw99_mod.
 !---------------------------------------------------------------------
 
-real, dimension(:), intent(in) :: latb, lonb
+real, dimension(:,:), intent(in) :: latb, lonb
 real, dimension(:,:), intent(in) :: pref
 type(lw_table_type), intent(inout) :: Lw_tables
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
 !
-!       lonb           array of model longitudes on cell boundaries
+!       lonb           2d array of model longitudes on cell corners
 !                      [ radians ]
-!       latb           array of model latitudes at cell boundaries
+!       latb           2d array of model latitudes at cell corners
 !                      [ radians ]
 !       pref           array containing two reference pressure profiles 
 !                      for use in defining transmission functions
@@ -926,7 +926,7 @@ type(lw_table_type), intent(inout) :: Lw_tables
 !    define the total number of columns on the processor. set the 
 !    number of columns processed on the current time step to 0.
 !---------------------------------------------------------------------
-      total_points = (size(latb)-1)*(size(lonb)-1)
+      total_points = (size(latb,2)-1)*(size(lonb,1)-1)
       co2_pts_processed = 0
       ch4_pts_processed = 0
       n2o_pts_processed = 0

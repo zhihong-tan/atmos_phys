@@ -60,8 +60,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 14.0 2007/03/15 22:08:00 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 14.0.2.2 2007/05/25 16:32:07 vb Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 !---------------------------------------------------------------------
@@ -93,7 +93,7 @@ namelist /strat_clouds_W_nml /                      &
 
 
 logical                               :: module_is_initialized = .false.  ! module is initialized ?
-real,    dimension(:),    allocatable :: lats, lons  ! lats and lons in this processor window (degrees)
+real,    dimension(:,:),  allocatable :: lats, lons  ! lats and lons in this processor window (degrees)
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
 
@@ -123,13 +123,12 @@ real,    dimension(:),    allocatable :: lats, lons  ! lats and lons in this pro
 ! </SUBROUTINE>
 !  
 subroutine strat_clouds_W_init(latb, lonb)
-  real, dimension(:), intent( in) :: latb, lonb
+  real, dimension(:,:), intent( in) :: latb, lonb
 !---------------------------------------------------------------------
 !    strat_clouds_W_init is the constructor for strat_clouds_W_mod.
 !---------------------------------------------------------------------
-!       lonb      array of model longitudes on cell boundaries 
-!                 [ radians ]
-!       latb      array of model latitudes at cell boundaries [radians]
+!       lonb      2d array of model longitudes on cell corners [ radians ]
+!       latb      2d array of model latitudes at cell corners [radians]
 
 
 !----------------------------------------------------------------------
@@ -154,9 +153,9 @@ subroutine strat_clouds_W_init(latb, lonb)
 !---------------------------------------------------------------------
 !    Save copies of lat and lon values for this window
 !---------------------------------------------------------------------
-      allocate(lats(size(latb)), lons(size(lonb)))
-      lats(:) = latb(:) * radian
-      lons(:) = lonb(:) * radian
+      allocate(lats(size(latb,1),size(latb,2)), lons(size(lonb,1),size(lonb,2)))
+      lats(:,:) = latb(:,:) * radian
+      lons(:,:) = lonb(:,:) * radian
 !---------------------------------------------------------------------
 !    verify that modules used by this module that are not called later
 !    have already been initialized.
@@ -491,8 +490,8 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
               do i = 1, size(Cld_spec%cloud_water, 1)
                 streams(i, j) =   &
                          initializeRandomNumberStream(  &
-                            constructSeed(nint(lons(is + i - 1)), &
-                                          nint(lats(js + j - 1)), &
+                            constructSeed(nint(lons(is + i - 1, js + j - 1)), &
+                                          nint(lats(is + i - 1, js + j - 1)), &
                                                     Rad_time, seedperm))
               end do
             end do

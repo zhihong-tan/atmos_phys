@@ -62,7 +62,7 @@ use atmos_tracer_driver_mod, only: atmos_tracer_driver_init,    &
                                    atmos_tracer_driver_end
 use fms_mod,                 only: mpp_clock_id, mpp_clock_begin,   &
                                    mpp_clock_end, CLOCK_MODULE_DRIVER, &
-                                   MPP_CLOCK_SYNC,  fms_init,  &
+                                   fms_init,  &
                                    open_namelist_file, stdlog, &
                                    write_version_number, field_size, &
                                    file_exist, error_mesg, FATAL,   &
@@ -135,8 +135,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 14.0 2007/03/15 22:04:42 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 14.0.4.3.2.1.2.1.2.1 2007/05/29 16:01:02 wfc Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
 
 !---------------------------------------------------------------------
@@ -251,8 +251,11 @@ public  surf_diff_type   ! defined in  vert_diff_driver_mod, republished
 ! version 6: adds donner cell and meso cloud variables when donner_deep
 !            is activated.
 
+! version 7: adds shallow convection cloud variables when uw_conv
+!            is activated.
+
 !---------------------------------------------------------------------
-integer, dimension(6) :: restart_versions = (/ 1, 2, 3, 4, 5, 6 /)
+integer, dimension(7) :: restart_versions = (/ 1, 2, 3, 4, 5, 6, 7 /)
 
 !--------------------------------------------------------------------
 !    the following allocatable arrays are either used to hold physics 
@@ -288,15 +291,17 @@ integer, dimension(6) :: restart_versions = (/ 1, 2, 3, 4, 5, 6 /)
 !----------------------------------------------------------------------
 real,    dimension(:,:,:), allocatable :: diff_cu_mo, diff_t, diff_m
 real,    dimension(:,:,:), allocatable :: radturbten, lw_tendency
-real,    dimension(:,:)  , allocatable :: pbltop
+real,    dimension(:,:)  , allocatable :: pbltop, cush, cbmf
 logical, dimension(:,:)  , allocatable :: convect
 real,    dimension(:,:,:), allocatable ::       &
-                            cell_cld_frac, cell_liq_amt, &
-                            cell_liq_size, cell_ice_amt, cell_ice_size, &
-                            cell_droplet_number, &
-                            meso_cld_frac, meso_liq_amt, meso_liq_size, &
-                            meso_ice_amt, meso_ice_size, &
-                            meso_droplet_number
+                           cell_cld_frac, cell_liq_amt, &
+                           cell_liq_size, cell_ice_amt, cell_ice_size, &
+                           cell_droplet_number, &
+                           meso_cld_frac, meso_liq_amt, meso_liq_size, &
+                           meso_ice_amt, meso_ice_size, &
+                           meso_droplet_number, &
+                           shallow_cloud_area, shallow_liquid, &
+                           shallow_ice, shallow_droplet_number
 integer,    dimension(:,:)  , allocatable :: nsum_out
    
 !---------------------------------------------------------------------
@@ -316,6 +321,8 @@ logical   :: module_is_initialized = .false.
 logical   :: doing_edt                ! edt_mod has been activated ?
 logical   :: doing_entrain            ! entrain_mod has been activated ?
 logical   :: doing_donner             ! donner_deep_mod has been 
+                                      ! activated ?
+logical   :: doing_uw_conv            ! uw_conv shallow cu mod has been 
                                       ! activated ?
 logical   :: doing_liq_num = .false.  ! Prognostic cloud droplet number has 
                                       ! been activated?
@@ -357,10 +364,10 @@ integer   :: ntp                      ! total no. of prognostic tracers
 !   reference prssure profiles
 !  </IN>
 !  <IN NAME="latb" TYPE="real">
-!   array of model latitudes at cell boundaries [radians]
+!   array of model latitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="lonb" TYPE="real">
-!   array of model longitudes at cell boundaries [radians]
+!   array of model longitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="axes" TYPE="integer">
 !   axis indices, (/x,y,pf,ph/)
@@ -396,7 +403,7 @@ subroutine physics_driver_init (Time, lonb, latb, axes, pref, &
 !---------------------------------------------------------------------
 
 type(time_type),         intent(in)              :: Time
-real,dimension(:),       intent(in)              :: lonb, latb
+real,dimension(:,:),     intent(in)              :: lonb, latb
 integer,dimension(4),    intent(in)              :: axes
 real,dimension(:,:),     intent(in)              :: pref
 real,dimension(:,:,:,:), intent(inout)           :: trs
@@ -410,8 +417,8 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !  intent(in) variables:
 !
 !     Time       current time (time_type)
-!     lonb       longitude of the grid box edges [ radians ]
-!     latb       latitude of the grid box edges [ radians ]
+!     lonb       longitude of the grid box corners [ radians ]
+!     latb       latitude of the grid box corners [ radians ]
 !     axes       axis indices, (/x,y,pf,ph/)
 !                (returned from diag axis manager)
 !     pref       two reference profiles of pressure at nlev+1 levels
@@ -436,7 +443,7 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !---------------------------------------------------------------------
 !  local variables:
 
-      real, dimension (size(lonb(:))-1, size(latb(:))-1) :: sgsmtn
+      real, dimension (size(lonb,1)-1, size(latb,2)-1) :: sgsmtn
       character(len=64), dimension(:), pointer :: aerosol_names => NULL()
       character(len=64), dimension(:), pointer :: aerosol_family_names => NULL()
       integer          ::  id, jd, kd
@@ -496,15 +503,16 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !---------------------------------------------------------------------
 !    define the model dimensions on the local processor.
 !---------------------------------------------------------------------
-      id = size(lonb(:))-1 
-      jd = size(latb(:))-1 
+      id = size(lonb,1)-1 
+      jd = size(latb,2)-1 
       kd = size(trs,3)
       call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
 
 !-----------------------------------------------------------------------
         call  moist_processes_init (id, jd, kd, lonb, latb, pref(:,1),&
-                                    axes, Time, doing_donner)
+                                    axes, Time, doing_donner,  &
+                                    doing_uw_conv)
      
 !-----------------------------------------------------------------------
 !    initialize damping_driver_mod.
@@ -550,6 +558,11 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !---------------------------------------------------------------------
       deallocate (aerosol_names, aerosol_family_names)
 
+     else if (do_moist_processes) then
+!-----------------------------------------------------------------------
+!    initialize aerosol_mod.     
+!-----------------------------------------------------------------------
+      call aerosol_init (lonb, latb, aerosol_names, aerosol_family_names)
       endif ! do_radiation
 
 !-----------------------------------------------------------------------
@@ -563,25 +576,25 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !---------------------------------------------------------------------
       radiation_clock       =       &
                 mpp_clock_id( '   Physics_down: Radiation',    &
-                   grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+                   grain=CLOCK_MODULE_DRIVER )
       damping_clock         =     &
                 mpp_clock_id( '   Physics_down: Damping',    &
-                  grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+                  grain=CLOCK_MODULE_DRIVER )
       turb_clock            =      &
                 mpp_clock_id( '   Physics_down: Vert. Turb.', &
-                  grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+                  grain=CLOCK_MODULE_DRIVER )
       tracer_clock          =      &
                 mpp_clock_id( '   Physics_down: Tracer',    &
-                 grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+                 grain=CLOCK_MODULE_DRIVER )
       diff_down_clock       =     &
                 mpp_clock_id( '   Physics_down: Vert. Diff.',   &
-                 grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+                 grain=CLOCK_MODULE_DRIVER )
       diff_up_clock         =     &
                 mpp_clock_id( '   Physics_up: Vert. Diff.',     &
-                grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+                grain=CLOCK_MODULE_DRIVER )
       moist_processes_clock =      &
                 mpp_clock_id( '   Physics_up: Moist Processes', &
-                grain=CLOCK_MODULE_DRIVER, flags = MPP_CLOCK_SYNC )
+                grain=CLOCK_MODULE_DRIVER )
 
 !---------------------------------------------------------------------
 !    allocate space for the module variables.
@@ -590,6 +603,8 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
       allocate ( diff_m     (id, jd, kd) )
       allocate ( diff_cu_mo (id, jd, kd) ) 
       allocate ( pbltop     (id, jd) )
+      allocate ( cush       (id, jd) ); cush=-1. !miz
+      allocate ( cbmf       (id, jd) ); cbmf=0.0 !miz
       allocate ( convect    (id, jd) )
       allocate ( radturbten (id, jd, kd))
       allocate ( lw_tendency(id, jd, kd))
@@ -623,6 +638,18 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
         meso_droplet_number = 0.
         nsum_out = 1
       endif
+
+       if (doing_uw_conv) then
+ 
+         allocate (shallow_cloud_area     (id, jd, kd) )
+         allocate (shallow_liquid         (id, jd, kd) )
+         allocate (shallow_ice            (id, jd, kd) )
+         allocate (shallow_droplet_number (id, jd, kd) )
+         shallow_cloud_area      = 0.
+         shallow_liquid          = 0.
+         shallow_ice             = 0.
+         shallow_droplet_number  = 0.
+       endif
 
 !--------------------------------------------------------------------
 !    call read_restart_file to obtain initial values for the module
@@ -1003,7 +1030,8 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       type(time_type)                                :: Rad_time
       type(microphysics_type)                        :: Lsc_microphys, &
                                                         Meso_microphys,&
-                                                        Cell_microphys
+                                                        Cell_microphys,&
+                                                    Shallow_microphys
       integer          ::    sec, day
       real             ::    dt, alpha, dt2
       logical          ::    need_aerosols, need_clouds, need_gases,   &
@@ -1043,6 +1071,10 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !      Cell_microphys  microphysics_type variable containing the micro-
 !                      physical characteristics of the cell-scale
 !                      clouds to be seen by the radiation package 
+!      Shallow_microphys  
+!                      microphysics_type variable containing the micro-
+!                      physical characteristics of the cell-scale
+!                      clouds to be seen by the radiation package
 !      sec, day        second and day components of the time_type 
 !                      variable
 !      dt              model physics time step [ seconds ]
@@ -1143,17 +1175,40 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !    cloud data and place it into a cld_specification_type derived-type 
 !    variable Cld_spec and retrieve microphysical data which is returned
 !    in microphysics_type variables Lsc_microphys, Meso_microphys and 
-!    Cell_microphys, when applicable. 
+!    Cell_microphys and Shallow_microphys, when applicable.
 !---------------------------------------------------------------------
       if (need_clouds) then
-       if (doing_donner) then
-         if (present(kbot) ) then
+       if (doing_donner .and. doing_uw_conv) then
+           call cloud_spec (is, ie, js, je, lat,              &
+                            z_half, z_full, Rad_time,   &
+                            Atmos_input, Surface, Cld_spec,   &
+                            Lsc_microphys, Meso_microphys,    &
+                            Cell_microphys, Shallow_microphys, &
+                            r=r(:,:,:,1:ntp), &
+             shallow_cloud_area = shallow_cloud_area(is:ie,js:je,:), &
+             shallow_liquid = shallow_liquid(is:ie,js:je,:), &
+             shallow_ice = shallow_ice(is:ie,js:je,:), &
+             shallow_droplet_number = shallow_droplet_number(is:ie,js:je,:), &
+             cell_cld_frac= cell_cld_frac(is:ie,js:je,:),  &
+             cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
+             cell_liq_size=cell_liq_size(is:ie,js:je,:), &
+             cell_ice_amt= cell_ice_amt(is:ie,js:je,:),   &
+             cell_ice_size= cell_ice_size(is:ie,js:je,:), &
+             cell_droplet_number= cell_droplet_number(is:ie,js:je,:), &
+             meso_cld_frac= meso_cld_frac(is:ie,js:je,:),   &
+             meso_liq_amt=meso_liq_amt(is:ie,js:je,:), &
+             meso_liq_size=meso_liq_size(is:ie,js:je,:), &
+             meso_ice_amt= meso_ice_amt(is:ie,js:je,:),  &
+             meso_ice_size= meso_ice_size(is:ie,js:je,:), &
+             meso_droplet_number= meso_droplet_number(is:ie,js:je,:), &
+             nsum_out=nsum_out(is:ie,js:je)  )
+      else  if (doing_donner) then
           call cloud_spec (is, ie, js, je, lat,              &
                            z_half, z_full, Rad_time,   &
                            Atmos_input, Surface, Cld_spec,   &
                            Lsc_microphys, Meso_microphys,    &
-                           Cell_microphys, r=r(:,:,:,1:ntp), &
-                           kbot=kbot, mask=mask, &
+                           Cell_microphys, Shallow_microphys, &
+                           r=r(:,:,:,1:ntp), &
              cell_cld_frac= cell_cld_frac(is:ie,js:je,:), &
              cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
              cell_liq_size=cell_liq_size(is:ie,js:je,:), &
@@ -1167,41 +1222,24 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
              meso_ice_size= meso_ice_size(is:ie,js:je,:), &
              meso_droplet_number= meso_droplet_number(is:ie,js:je,:), &
              nsum_out=nsum_out(is:ie,js:je)  )
-        else
+      else if (doing_uw_conv) then
           call cloud_spec (is, ie, js, je, lat,              &
                            z_half, z_full, Rad_time,   &
                            Atmos_input, Surface, Cld_spec,   &
                            Lsc_microphys, Meso_microphys,    &
-                           Cell_microphys, r=r(:,:,:,1:ntp), &
-             cell_cld_frac= cell_cld_frac(is:ie,js:je,:), &
-             cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
-             cell_liq_size=cell_liq_size(is:ie,js:je,:), &
-             cell_ice_amt= cell_ice_amt(is:ie,js:je,:),   &
-             cell_ice_size= cell_ice_size(is:ie,js:je,:), &
-             cell_droplet_number= cell_droplet_number(is:ie,js:je,:), &
-             meso_cld_frac= meso_cld_frac(is:ie,js:je,:),   &
-             meso_liq_amt=meso_liq_amt(is:ie,js:je,:), &
-             meso_liq_size=meso_liq_size(is:ie,js:je,:), &
-             meso_ice_amt= meso_ice_amt(is:ie,js:je,:),  &
-             meso_ice_size= meso_ice_size(is:ie,js:je,:), &
-             meso_droplet_number= meso_droplet_number(is:ie,js:je,:), &
-             nsum_out=nsum_out(is:ie,js:je)  )
-        endif ! (present(kbot)
-      else    ! (doing_donner)
-         if (present(kbot) ) then
+                           Cell_microphys, Shallow_microphys, &
+                           r=r(:,:,:,1:ntp), &
+             shallow_cloud_area = shallow_cloud_area(is:ie,js:je,:), &
+             shallow_liquid = shallow_liquid(is:ie,js:je,:), &
+             shallow_ice = shallow_ice(is:ie,js:je,:), &
+             shallow_droplet_number = shallow_droplet_number(is:ie,js:je,:))
+      else
           call cloud_spec (is, ie, js, je, lat,              &
                            z_half, z_full, Rad_time,   &
                            Atmos_input, Surface, Cld_spec,   &
                            Lsc_microphys, Meso_microphys,    &
-                           Cell_microphys, r=r(:,:,:,1:ntp), &
-                           kbot=kbot, mask=mask)   
-         else
-          call cloud_spec (is, ie, js, je, lat,              &
-                           z_half, z_full, Rad_time,   &
-                           Atmos_input, Surface, Cld_spec,   &
-                           Lsc_microphys, Meso_microphys,    &
-                           Cell_microphys, r=r(:,:,:,1:ntp))
-         endif
+                           Cell_microphys, Shallow_microphys, &
+                           r=r(:,:,:,1:ntp))
       endif ! (doing_donner)
       endif ! (need_clouds)
 
@@ -1242,6 +1280,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                              lon, Surface, Atmos_input, Aerosol, r, &
                              Cld_spec, Rad_gases, Lsc_microphys, &
                              Meso_microphys, Cell_microphys,&
+                             Shallow_microphys, &
                              Radiation=Radiation, mask=mask, kbot=kbot)
 
 !-------------------------------------------------------------------
@@ -1300,7 +1339,8 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       endif
       if (need_clouds) then
         call cloud_spec_dealloc (Cld_spec, Lsc_microphys,   &
-                                 Meso_microphys, Cell_microphys)
+                                 Meso_microphys, Cell_microphys, &
+                                 Shallow_microphys)
       endif
       if (need_aerosols) then
         call aerosol_dealloc (Aerosol)
@@ -1369,7 +1409,6 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                              mask=mask, kbot=kbot             )
      call mpp_clock_end ( turb_clock )
      pbltop(is:ie,js:je) = z_pbl(:,:)
-
 
 !-----------------------------------------------------------------------
 !    process any tracer fields.
@@ -1761,13 +1800,45 @@ integer,dimension(:,:), intent(in),   optional :: kbot
         call aerosol_driver (is, js, Time, r, &
                              p_half, pflux, &
                              Aerosol)
-       if (doing_donner) then
+       if (doing_donner .and. doing_uw_conv) then
+         call moist_processes (is, ie, js, je, Time_next, dt, frac_land,&
+                            p_half, p_full, z_half, z_full, omega,    &
+                            diff_t(is:ie,js:je,:),                    &
+                            radturbten(is:ie,js:je,:),                &
+                            cush           (is:ie,js:je),         &!miz
+                            cbmf           (is:ie,js:je),         &!miz
+                            pbltop(is:ie,js:je),         &!miz
+                            u_star, b_star, q_star,          &!miz
+                            t, q, r, u, v, tm, qm, rm, um, vm,        &
+                            tdt, qdt, rdt, udt, vdt, diff_cu_mo_loc , &
+                            convect(is:ie,js:je), lprec, fprec,       &
+                           gust_cv, area, lat, Aerosol, mask=mask, kbot=kbot, &
+                       shallow_cloud_area= shallow_cloud_area(is:ie,js:je,:), &
+                        shallow_liquid=shallow_liquid(is:ie,js:je,:), &
+                          shallow_ice= shallow_ice(is:ie,js:je,:),   &
+                         shallow_droplet_number= shallow_droplet_number(is:ie,js:je,:), &
+                          cell_cld_frac= cell_cld_frac(is:ie,js:je,:), &
+                         cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
+                          cell_liq_size=cell_liq_size(is:ie,js:je,:), &
+                        cell_ice_amt= cell_ice_amt(is:ie,js:je,:),     &
+                       cell_ice_size= cell_ice_size(is:ie,js:je,:),   &
+              cell_droplet_number= cell_droplet_number(is:ie,js:je,:), &
+                       meso_cld_frac= meso_cld_frac(is:ie,js:je,:),   &
+                       meso_liq_amt=meso_liq_amt(is:ie,js:je,:), &
+                       meso_liq_size=meso_liq_size(is:ie,js:je,:), &
+                      meso_ice_amt= meso_ice_amt(is:ie,js:je,:),  &
+                        meso_ice_size= meso_ice_size(is:ie,js:je,:),  &
+              meso_droplet_number= meso_droplet_number(is:ie,js:je,:), &
+                       nsum_out=nsum_out(is:ie,js:je)  )
+       else if (doing_donner) then
         call moist_processes (is, ie, js, je, Time_next, dt, frac_land, &
                            p_half, p_full, z_half, z_full, omega,    &
                            diff_t(is:ie,js:je,:),                    &
                            radturbten(is:ie,js:je,:),                &
-                           pbltop(is:ie,js:je),                      &
-                           u_star, b_star, q_star,                   &
+                           cush           (is:ie,js:je),             &
+                          cbmf           (is:ie,js:je),             &
+                            pbltop(is:ie,js:je),         &!miz
+                            u_star, b_star, q_star,          &!miz
                            t, q, r, u, v, tm, qm, rm, um, vm,        &
                            tdt, qdt, rdt, udt, vdt, diff_cu_mo_loc , &
                            convect(is:ie,js:je), lprec, fprec,       &
@@ -1786,13 +1857,32 @@ integer,dimension(:,:), intent(in),   optional :: kbot
               meso_droplet_number= meso_droplet_number(is:ie,js:je,:), &
                            nsum_out=nsum_out(is:ie,js:je)  )
                           
+       else if (doing_uw_conv) then
+        call moist_processes (is, ie, js, je, Time_next, dt, frac_land,         &
+                            p_half, p_full, z_half, z_full, omega,    &
+                            diff_t(is:ie,js:je,:),                    &
+                            radturbten(is:ie,js:je,:),                &
+                            cush           (is:ie,js:je),             &!
+                          cbmf           (is:ie,js:je),             &!
+                            pbltop(is:ie,js:je),         &!miz
+                            u_star, b_star, q_star,          &!miz
+                            t, q, r, u, v, tm, qm, rm, um, vm,        &
+                            tdt, qdt, rdt, udt, vdt, diff_cu_mo_loc , &
+                            convect(is:ie,js:je), lprec, fprec,       &
+                            gust_cv, area, lat, Aerosol, mask=mask, kbot=        kbot,  &
+                           shallow_cloud_area= shallow_cloud_area(is:ie,js:je,:), &
+                       shallow_liquid=shallow_liquid(is:ie,js:je,:),  &
+                           shallow_ice= shallow_ice(is:ie,js:je,:),   &
+                       shallow_droplet_number= shallow_droplet_number(is:ie,js:je,:))
        else
         call moist_processes (is, ie, js, je, Time_next, dt, frac_land, &
                            p_half, p_full, z_half, z_full, omega,    &
                            diff_t(is:ie,js:je,:),                    &
                            radturbten(is:ie,js:je,:),                &
-                           pbltop(is:ie,js:je),                      &
-                           u_star, b_star, q_star,                   &
+                           cush           (is:ie,js:je),          &!
+                        cbmf           (is:ie,js:je),             &!
+                            pbltop(is:ie,js:je),         &!miz
+                            u_star, b_star, q_star,          &!miz
                            t, q, r, u, v, tm, qm, rm, um, vm,        &
                            tdt, qdt, rdt, udt, vdt, diff_cu_mo_loc , &
                            convect(is:ie,js:je), lprec, fprec,       &
@@ -1889,6 +1979,8 @@ type(time_type), intent(in) :: Time
          !--------------------------------------------------------------------
          call write_data (fname, 'diff_cu_mo', diff_cu_mo)
          call write_data (fname, 'pbltop', pbltop)
+         call write_data (fname, 'cush',   cush)   !miz
+         call write_data (fname, 'cbmf',   cbmf)   !miz
          call write_data (fname, 'diff_t', diff_t)
          call write_data (fname, 'diff_m', diff_m)
          r_convect = 0.
@@ -1915,6 +2007,12 @@ type(time_type), intent(in) :: Time
          call write_data (fname, 'meso_ice_size', meso_ice_size)
          call write_data (fname, 'nsum', nsum_out)                 
         endif
+        if (doing_uw_conv) then
+          call write_data (fname, 'shallow_cloud_area', shallow_cloud_area)
+          call write_data (fname, 'shallow_liquid', shallow_liquid )
+          call write_data (fname, 'shallow_ice', shallow_ice )
+          call write_data (fname, 'shallow_droplet_number', shallow_droplet_number)
+        endif
       else
          if (mpp_pe() == mpp_root_pe() ) then
             call error_mesg('physics_driver_mod', 'Writing native formatted restart file.', NOTE)
@@ -1932,6 +2030,7 @@ type(time_type), intent(in) :: Time
             write (unit) restart_versions(size(restart_versions(:)))
             write (unit) doing_strat(), doing_edt, doing_entrain
             write (unit) doing_donner                           
+            write (unit) doing_uw_conv
          endif
          
          !--------------------------------------------------------------------
@@ -1939,6 +2038,8 @@ type(time_type), intent(in) :: Time
          !--------------------------------------------------------------------
          call write_data (unit, diff_cu_mo)
          call write_data (unit, pbltop    )
+         call write_data (unit, cush      ) !miz
+         call write_data (unit, cbmf      ) !miz
          call write_data (unit, diff_t)
          call write_data (unit, diff_m)
          call write_data (unit, convect)
@@ -1961,8 +2062,14 @@ type(time_type), intent(in) :: Time
          call write_data (unit ,  meso_ice_size)
          call write_data (unit , nsum_out)                 
         endif
+        if (doing_uw_conv) then
+          call write_data (unit ,  shallow_cloud_area)
+          call write_data (unit ,  shallow_liquid )
+          call write_data (unit ,  shallow_ice )
+          call write_data (unit ,  shallow_droplet_number)
+        endif
          
-         !--------------------------------------------------------------------
+!--------------------------------------------------------------------
          !    close the restart file unit.
          !--------------------------------------------------------------------
          call close_file (unit)
@@ -1986,7 +2093,7 @@ type(time_type), intent(in) :: Time
 !---------------------------------------------------------------------
 !    deallocate the module variables.
 !---------------------------------------------------------------------
-      deallocate (diff_cu_mo, diff_t, diff_m, pbltop, convect,   &
+      deallocate (diff_cu_mo, diff_t, diff_m, pbltop, cush, cbmf, convect,   &
                   radturbten, lw_tendency)
       if (doing_donner) then
         deallocate (cell_cld_frac, cell_liq_amt, cell_liq_size, &
@@ -1994,6 +2101,10 @@ type(time_type), intent(in) :: Time
                     meso_cld_frac, meso_liq_amt, meso_liq_size, &
                     meso_ice_amt, meso_ice_size, meso_droplet_number, &
                     nsum_out)
+      endif
+      if (doing_uw_conv) then
+        deallocate (shallow_cloud_area, shallow_liquid, shallow_ice, &
+                    shallow_droplet_number)
       endif
  
 !---------------------------------------------------------------------
@@ -2162,6 +2273,7 @@ subroutine read_restart_file
       character(len=8) :: chvers
       logical  :: was_doing_strat, was_doing_edt, was_doing_entrain
       logical  :: was_doing_donner                                 
+      logical  :: was_doing_uw_conv
       logical  :: success = .false.
 
 !--------------------------------------------------------------------
@@ -2217,6 +2329,9 @@ subroutine read_restart_file
         if (vers >= 6 ) then
           read (unit) was_doing_donner                                 
         endif
+        if (vers >= 7 ) then
+          read (unit) was_doing_uw_conv
+        endif
 
 !---------------------------------------------------------------------
 !    read the contribution to diffusion coefficient from cumulus
@@ -2230,8 +2345,21 @@ subroutine read_restart_file
 !---------------------------------------------------------------------
         if (vers >= 2) then
           call read_data (unit, pbltop)
+          
         else
           pbltop     = -999.0
+        endif
+
+!---------------------------------------------------------------------
+!    cush and cbmf are present in file versions 7 and up. if not 
+!    present, set a flag.
+!---------------------------------------------------------------------
+        if (vers >= 7) then
+          call read_data (unit, cush)  !miz
+          call read_data (unit, cbmf)  !miz
+        else
+          cush       = -1. !miz
+          cbmf       = 0.0 !miz
         endif
 
 !---------------------------------------------------------------------
@@ -2351,6 +2479,29 @@ subroutine read_restart_file
             nsum_out = 1
           endif ! (vers >= 6)
         endif  ! (doing_donner)
+
+      if (doing_uw_conv) then
+       if (vers >= 7) then
+         if (was_doing_uw_conv) then
+          call read_data (unit ,  shallow_cloud_area)
+          call read_data (unit ,  shallow_liquid )
+          call read_data (unit ,  shallow_ice )
+          call read_data (unit ,  shallow_droplet_number)
+      else  ! (was_doing_uw_conv)
+         shallow_cloud_area = 0.
+         shallow_liquid  = 0.
+         shallow_ice  = 0.
+         shallow_droplet_number = 0.
+       endif ! (was_doing_uw_conv)
+     else  ! (vers >= 7)
+       shallow_cloud_area = 0.
+       shallow_liquid  = 0.
+       shallow_ice  = 0.
+       shallow_droplet_number = 0.
+     endif ! (vers >= 7)
+  
+    endif  ! (doing_uw_conv)
+
 !---------------------------------------------------------------------
 !    if there is no physics_driver.res, set the remaining module
 !    variables to 0.0
@@ -2360,6 +2511,8 @@ subroutine read_restart_file
         diff_m = 0.0
         diff_cu_mo = 0.0
         pbltop     = -999.0
+        cush       = -1.  !miz
+        cbmf       = 0.0  !miz
         convect = .false.
         if (doing_donner) then
         cell_cld_frac = 0.
@@ -2374,6 +2527,12 @@ subroutine read_restart_file
         meso_ice_size = 0.
         nsum_out = 1
         endif ! (doing_donner)
+       if (doing_uw_conv) then
+        shallow_cloud_area = 0.
+        shallow_liquid  = 0.
+        shallow_ice  = 0.
+        shallow_droplet_number = 0.
+      endif ! (doing_uw_conv)
       endif  ! present(.res)
 
 !--------------------------------------------------------------------
@@ -2568,6 +2727,14 @@ subroutine read_restart_nc
 !    set a flag.
 !---------------------------------------------------------------------
          call read_data (fname, 'pbltop', pbltop)
+         call field_size (fname, 'cush', siz, field_found = field_found)
+         if (field_found) then
+           call read_data (fname, 'cush', cush) !miz
+           call read_data (fname, 'cbmf', cbmf) !miz
+         else
+           cush       = -1.  !miz
+           cbmf       = 0.0  !miz
+         endif
 
 !---------------------------------------------------------------------
 !    the temperature and momentum diffusion coefficients are present
@@ -2631,6 +2798,37 @@ subroutine read_restart_nc
                             ' in physics_driver.res.nc file', NOTE)
             endif  ! (field_found)       
      endif  ! (doing_donner)
+
+!---------------------------------------------------------------------
+!    uw_conv cloud variables may be present in 
+!    versions 7 onward, if uw_conv_mod
+!    was active in the job writing the .res file.
+!---------------------------------------------------------------------
+          if (doing_uw_conv) then
+            call field_size (fname, 'shallow_cloud_area', siz, &
+                             field_found = field_found)
+ 
+            if (field_found) then
+            call read_data (fname, 'shallow_cloud_area', shallow_cloud_area)
+          call read_data (fname, 'shallow_liquid', shallow_liquid )
+          call read_data (fname, 'shallow_ice', shallow_ice )
+         call read_data (fname, 'shallow_droplet_number', shallow_droplet_number)
+
+!---------------------------------------------------------------------
+!    if uw_conv_mod was not active in the job which wrote the 
+!    restart file but it is active in the current job, initialize
+!    these variables and put a message in the output file.  
+!---------------------------------------------------------------------
+        else
+         shallow_cloud_area = 0.
+         shallow_liquid  = 0.
+         shallow_ice  = 0.
+        shallow_droplet_number = 0.
+        call error_mesg ('physics_driver_mod', &
+             ' initializing uw_conv cloud  variables, since they are not present'//&
+                            ' in physics_driver.res.nc file', NOTE)
+       endif  ! (field_found)       
+     endif  ! (doing_uw_conv)
 
 !---------------------------------------------------------------------
 !    radturbten may be present in versions 5 onward, if strat_cloud_mod
@@ -3136,6 +3334,6 @@ integer                                 :: ierr
 
 !#######################################################################
  
- 
+
  
                 end module physics_driver_mod

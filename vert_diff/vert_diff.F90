@@ -72,8 +72,8 @@ integer :: sphum, mix_rat
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 13.0 2006/03/28 21:14:37 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 13.0.4.1 2007/04/17 17:10:13 fms Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
@@ -112,8 +112,8 @@ subroutine vert_diff_init (Tri_surf, idim, jdim, kdim,    &
     endif
 
     if (mpp_pe() == mpp_root_pe()) &
-    write (stdlog(),'(a,i4)') 'Tracer number for specific humidity =',sphum
-    write (stdlog(),'(a,i4)') 'Tracer number for mixing ratio      =',mix_rat
+    write (stdlog(),'(a,i12)') 'Tracer number for specific humidity =',sphum
+    write (stdlog(),'(a,i12)') 'Tracer number for mixing ratio      =',mix_rat
 
     if(sphum==NO_TRACER) sphum=mix_rat
 

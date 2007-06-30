@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: ozone.F90,v 14.0 2007/03/15 22:07:05 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: ozone.F90,v 14.0.2.2 2007/05/25 16:32:05 vb Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 !---------------------------------------------------------------------
@@ -250,10 +250,10 @@ include 'netcdf.inc'
 !   call ozone_init (latb, lonb)
 !  </TEMPLATE>
 !  <IN NAME="latb" TYPE="real">
-!   array of model latitudes at cell boundaries [radians]
+!   2d array of model latitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="lonb" TYPE="real">
-!   array of model longitudes at cell boundaries [radians]
+!   2d array of model longitudes at cell corners [radians]
 !  </IN>
 ! </SUBROUTINE>
 !
@@ -264,15 +264,15 @@ subroutine ozone_init (latb, lonb)
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
-real, dimension(:),   intent(in) :: latb, lonb
+real, dimension(:,:),   intent(in) :: latb, lonb
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
-!       latb      array of model latitudes at cell boundaries 
+!       latb      2d array of model latitudes at cell corners 
 !                 [ radians ]
-!       lonb      array of model longitudes at cell boundaries 
+!       lonb      2d array of model longitudes at cell corners 
 !                 [ radians ]
 !
 !-----------------------------------------------------------------
@@ -495,8 +495,8 @@ real, dimension(:),   intent(in) :: latb, lonb
                 'invalid time specified for time_col', FATAL)
         endif
         call interpolator_init (O3_interp, filename,  &
-                                lonb_col/RADIAN,  &
-                                latb_col/RADIAN,&
+                                spread(lonb_col/RADIAN,2,2),  &
+                                spread(latb_col/RADIAN,1,2),&
                                 data_out_of_bounds=  (/CONSTANT/), &
                                 data_names = data_name, &
                                 vert_interp=(/INTERP_WEIGHTED_P/) )
@@ -1158,8 +1158,8 @@ end subroutine obtain_gfdl_zonal_ozone_data
 !   call  obtain_clim_zonal_ozone_data (lonb, latb) 
 !  </TEMPLATE>
 !  <IN NAME="lonb, latb" TYPE="real">
-!       lonb      array of model longitudes at cell boundaries [radians]
-!       latb      array of model latitudes at cell boundaries [radians]
+!       lonb      2d array of model longitudes at cell corners [radians]
+!       latb      2d array of model latitudes at cell corners [radians]
 !  </IN> 
 ! </SUBROUTINE>
 !
@@ -1171,13 +1171,13 @@ subroutine obtain_clim_zonal_ozone_data (lonb, latb)
 !    priate clim_zonal_ozone data to be obtained later when needed.
 !---------------------------------------------------------------------
 
-real, dimension(:), intent(in) :: lonb, latb
+real, dimension(:,:), intent(in) :: lonb, latb
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
-!       lonb      array of model longitudes at cell boundaries [radians]
-!       latb      array of model latitudes at cell boundaries [radians]
+!       lonb      2d array of model longitudes at cell corners [radians]
+!       latb      2d array of model latitudes at cell corners [radians]
 !
 !-----------------------------------------------------------------
 

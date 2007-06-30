@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_utilities_k.F90,v 14.0 2007/03/15 22:02:52 fms Exp $
+!  $Id: donner_utilities_k.F90,v 14.0.2.1 2007/05/04 08:45:06 rsh Exp $
 
 !module donner_utilities_inter_mod
 
@@ -1205,4 +1205,65 @@ character(len=*),      intent(out)  :: ermesg
 
 
 end subroutine don_u_lo1d_to_hi0d_log_k
+
+!#####################################################################
+
+subroutine don_u_process_monitor_k (variable, i,j,nlev_lsm, Monitor)
+ 
+use donner_types_mod, only : donner_monitor_type, MAXVAL, MAXMAG, &
+                             MINMAG, MINVAL
+
+implicit none
+
+real, dimension(nlev_lsm),  intent(in)    :: variable
+integer,                    intent(in)    :: i, j, nlev_lsm
+type(donner_monitor_type),  intent(inout) :: Monitor
+
+ 
+      integer :: k
+
+      select case (Monitor%limit_type)
+        case (MAXMAG)              
+          do k=1,nlev_lsm 
+            if (abs(variable(k)) > Monitor%threshold) then
+              Monitor%hits(i,j,k) = Monitor%hits(i,j,k) + 1.0
+            endif 
+            if (abs(variable(k)) > Monitor%extrema(i,j,k))  then
+              Monitor%extrema(i,j,k) = abs(variable(k)) 
+            endif 
+          end do
+        case (MINMAG)              
+          do k=1,nlev_lsm 
+            if (abs(variable(k)) < Monitor%threshold) then
+              Monitor%hits(i,j,k) = Monitor%hits(i,j,k) + 1.0
+            endif 
+            if (abs(variable(k)) < Monitor%extrema(i,j,k))  then
+              Monitor%extrema(i,j,k) = abs(variable(k)) 
+            endif 
+          end do
+        case (MAXVAL)              
+          do k=1,nlev_lsm 
+            if (variable(k) > Monitor%threshold) then
+              Monitor%hits(i,j,k) = Monitor%hits(i,j,k) + 1.0
+            endif 
+            if (variable(k) > Monitor%extrema(i,j,k))  then
+              Monitor%extrema(i,j,k) = variable(k) 
+            endif 
+          end do
+        case (MINVAL)              
+          do k=1,nlev_lsm 
+            if (variable(k) < Monitor%threshold) then
+              Monitor%hits(i,j,k) = Monitor%hits(i,j,k) + 1.0
+            endif 
+            if (variable(k) < Monitor%extrema(i,j,k))  then
+              Monitor%extrema(i,j,k) = variable(k)
+            endif 
+          end do
+      end select
+
+end subroutine don_u_process_monitor_k
+
+
+!######################################################################
+
 

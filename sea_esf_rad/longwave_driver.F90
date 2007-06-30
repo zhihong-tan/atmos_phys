@@ -50,8 +50,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: longwave_driver.F90,v 14.0 2007/03/15 22:06:14 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: longwave_driver.F90,v 14.0.2.2 2007/05/25 16:32:04 vb Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -115,10 +115,10 @@ logical :: do_sealw99 = .false.               ! sealw99 parameter-
 !   call longwave_driver_init (latb, lonb, pref, Lw_tables)
 !  </TEMPLATE>
 !  <IN NAME="latb" TYPE="real">
-!   array of model latitudes at cell boundaries [radians]
+!   2d array of model latitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="lonb" TYPE="real">
-!   array of model longitudes at cell boundaries [radians]
+!   2d array of model longitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="pref" TYPE="real">
 !   array containing two reference pressure profiles [pascals]
@@ -136,16 +136,16 @@ subroutine longwave_driver_init (latb, lonb, pref, Lw_tables)
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
-real, dimension(:),     intent(in)    :: latb, lonb
+real, dimension(:,:),   intent(in)    :: latb, lonb
 real, dimension(:,:),   intent(in)    :: pref
 type(lw_table_type),    intent(inout) :: Lw_tables
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
-!       latb      array of model latitudes at cell boundaries 
+!       latb      2d array of model latitudes at cell corners 
 !                 [ radians ]
-!       lonb      array of model longitudes at cell boundaries 
+!       lonb      2d array of model longitudes at cell corners 
 !                 [ radians ]
 !       pref      array containing two reference pressure profiles 
 !                 [ Pa ]

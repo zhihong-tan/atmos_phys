@@ -92,8 +92,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 14.0 2007/03/15 22:01:59 fms Exp $'
- character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 14.0.4.2 2007/05/25 16:31:56 vb Exp $'
+ character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
 !-----------------------------------------------------------------------
 
@@ -309,13 +309,13 @@ contains
 
  subroutine damping_driver_init ( lonb, latb, pref, axes, Time, sgsmtn)
 
- real,            intent(in) :: lonb(:), latb(:), pref(:)
+ real,            intent(in) :: lonb(:,:), latb(:,:), pref(:)
  integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
  real, dimension(:,:), intent(out) :: sgsmtn
 !-----------------------------------------------------------------------
-!     lonb  = longitude in radians of the grid box edges
-!     latb  = latitude  in radians of the grid box edges
+!     lonb  = longitude in radians of the grid box corners
+!     latb  = latitude  in radians of the grid box corners
 !     axes  = axis indices, (/x,y,pf,ph/)
 !               (returned from diag axis manager)
 !     Time  = current time (time_type)

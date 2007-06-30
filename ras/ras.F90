@@ -40,8 +40,8 @@
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- character(len=128) :: version = '$Id: ras.F90,v 13.0 2006/03/28 21:10:58 fms Exp $'
- character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+ character(len=128) :: version = '$Id: ras.F90,v 13.0.4.1 2007/05/04 08:47:59 rsh Exp $'
+ character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -127,6 +127,7 @@
 !          for clouds detraining at level ph
 !---------------------------------------------------------------------
 
+ logical :: use_online_aerosol = .false.
  real    :: fracs        = 0.25
  real    :: rasal0       = 0.25
  real    :: puplim       = 20.0E2
@@ -158,6 +159,9 @@
  real    :: cfrac   = 0.05
  real    :: hcevap  = 0.80    
 
+ real    :: sea_salt_scale = 0.1
+ real    :: om_to_oc = 1.67
+
  integer :: nqn   ! tracer indices for stratiform clouds
 
     NAMELIST / ras_nml /                          &
@@ -166,7 +170,7 @@
       rn_ptop, rn_pbot, rn_frac_top, rn_frac_bot, &
       evap_on, cfrac,   hcevap, rh_trig, alm_min, &
       Tokioka_on, Tokioka_con, Tokioka_plim, modify_pbl, prevent_unreasonable, &
-      ph, a
+      ph, a, sea_salt_scale, om_to_oc, use_online_aerosol
 
 !---------------------------------------------------------------------
 ! DIAGNOSTICS FIELDS 
@@ -586,7 +590,7 @@ real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)+1) :: mc0_local
 
  logical :: setras, cloud_tracers_present, do_liq_num
  integer :: i, imax, j, jmax, k, kmax, tr, num_present
- integer :: ncmax, nc, ib
+ integer :: ncmax, nc, ib, naer, na
  real    :: rasal, frac, zbase
  real    :: dpfac, dtcu_pbl, dqcu_pbl, ducu_pbl, dvcu_pbl, dtracercu_pbl(num_ras_tracers)
  
@@ -643,26 +647,65 @@ real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)+1) :: mc0_local
     if (.not.(PRESENT(dn0)) .or. .not.(PRESENT(Aerosol))) &
       call ERROR_MESG( 'RAS','dn0 and Aerosol must be present when liquid droplet number are present',FATAL)
   
+     naer = size(Aerosol%aerosol,4)
+
+ if(use_online_aerosol) then
+ 
     do k = 1,kmax
       do j = 1,jmax
         do i = 1,imax
           if(pres0_int(i,j,k)<1.) then
-            thickness=log(pres0_int(i,j,k+1)/1.)* &
-            8.314*temp0(i,j,k)/(9.8*0.02888)
+            thickness=(pres0_int(i,j,k+1)-pres0_int(i,j,k))* &
+             8.314*temp0(i,j,k)/(9.8*0.02888*pres0_int(i,j,k))
+          else
+            thickness=log(pres0_int(i,j,k+1)/ &
+             pres0_int(i,j,k))*8.314*temp0(i,j,k)/(9.8*0.02888)
+          end if
+         do na = 1,naer
+            if(Aerosol%aerosol_names(na) == 'so4' .or. &
+                Aerosol%aerosol_names(na) == 'so4_anthro' .or. Aerosol%aerosol_names(na) == 'so4_natural') then
+                        totalmass1(i,j,k,1)=totalmass1(i,j,k,1)+Aerosol%aerosol(i,j,k,na)
+            else if(Aerosol%aerosol_names(na) == 'omphilic' .or. &
+            Aerosol%aerosol_names(na) == 'omphobic') then
+                        totalmass1(i,j,k,3)=totalmass1(i,j,k,3)+Aerosol%aerosol(i,j,k,na)
+                 else if(Aerosol%aerosol_names(na) == 'seasalt1' .or. &
+                  Aerosol%aerosol_names(na) == 'seasalt2') then
+                        totalmass1(i,j,k,2)=totalmass1(i,j,k,2)+Aerosol%aerosol(i,j,k,na)
+                 end if
+         end do
+  
+         do na = 1, 3
+              totalmass1(i,j,k,na)=totalmass1(i,j,k,na)/thickness*1.0e9*1.0e-12
+          end do
+  
+         end do
+        end do
+      end do
+  
+    else
+    
+    do k = 1,kmax
+      do j = 1,jmax
+        do i = 1,imax
+          if(pres0_int(i,j,k)<1.) then
+            thickness=(pres0_int(i,j,k+1)-pres0_int(i,j,k))* &
+            8.314*temp0(i,j,k)/(9.8*0.02888*pres0_int(i,j,k))
           else
             thickness=log(pres0_int(i,j,k+1)/ &
             pres0_int(i,j,k))*8.314*temp0(i,j,k)/(9.8*0.02888)
           end if
           totalmass1(i,j,k,1)=(Aerosol%aerosol(i,j,k,1)+Aerosol%aerosol(i,j,k,2))  &
           /thickness*1.0e9*1.0e-12
-          totalmass1(i,j,k,2)=Aerosol%aerosol(i,j,k,5)  &
+          totalmass1(i,j,k,2)=sea_salt_scale*Aerosol%aerosol(i,j,k,5)  &
           /thickness*1.0e9*1.0e-12
-          totalmass1(i,j,k,3)=Aerosol%aerosol(i,j,k,3)  &
+          totalmass1(i,j,k,3)=om_to_oc*Aerosol%aerosol(i,j,k,3)  &
           /thickness*1.0e9*1.0e-12
         end do
       end do
     end do
   
+end if
+
     airdens = pres0 / (rdgas * temp0 * (1.   - ql0 - qi0) )
   endif   
 
@@ -981,7 +1024,6 @@ real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)+1) :: mc0_local
       dpevap    = 0.0
 !
 ! -- initialise the precipitation and evaporation flux
-      flxprec_ib = dpcu/dtime
       flxprec_ib_evap = 0.0
 
   if( evap_on .and. ( dpcu > 0.0 ) ) then
@@ -994,6 +1036,9 @@ real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)+1) :: mc0_local
       dqcu(:) =  dqcu(:) + dqevap(:)
       dpcu    = MAX(dpcu - dpevap, 0.)
 
+  else
+    flxprec_ib(1:ib-1) = 0.0
+    flxprec_ib(ib:) = dpcu/dtime
   endif
 
 !---sum up precipitation flux and evaporation from  each cloud type
@@ -1643,7 +1688,7 @@ endif
  end if
 
     if ( do_liq_num ) &
-      up_conv=0.5*max(wfn,0.)**0.5
+      up_conv=0.7*max(wfn,0.)**0.5
 
 !=====================================================================
 !    CRITICAL CLOUD WORK FUNCTION
@@ -1896,8 +1941,8 @@ if ( LRcu ) then
 !convert SO4 to AS
 !convert OC to OM
            totalmass(1)=aerosolmass(k,1)
-           totalmass(2)=0.1*aerosolmass(k,2)
-           totalmass(3)=1.67*aerosolmass(k,3)
+           totalmass(2)=aerosolmass(k,2)
+           totalmass(3)=aerosolmass(k,3)
  
            call aer_ccn_act(t(k),p(k),up_conv,totalmass,drop)
            zzl=drop*1.0e6/dens(k)
@@ -1906,8 +1951,8 @@ if ( LRcu ) then
            if ( ic1 <= km1 ) then
              do l = km1,ic1,-1
                totalmass(1)=aerosolmass(l,1)
-               totalmass(2)=0.1*aerosolmass(l,2)
-               totalmass(3)=1.67*aerosolmass(l,3)
+               totalmass(2)=aerosolmass(l,2)
+               totalmass(3)=aerosolmass(l,3)
  
                tc=thetac(l)*pi(l)
                te=theta(l)*pi(l)
@@ -2293,6 +2338,7 @@ if ( LRcu ) then
 
   totalprecip = dpcu         ! precipitation at cloud top
 !
+  flxprec_ib(type) = MAX(totalprecip,0.0)/dtime
   do k = itopp1,kmax
     flxprec_ib(k) = MAX((totalprecip - flxprec_ib_evap(k)*dtime),0.0)/dtime
     totalprecip =   totalprecip - flxprec_ib_evap(k)*dtime
@@ -2524,7 +2570,7 @@ if ( LRcu ) then
 FUNCTION ran0(idum)
 
 
-!     $Id: ras.F90,v 13.0 2006/03/28 21:10:58 fms Exp $
+!     $Id: ras.F90,v 13.0.4.1 2007/05/04 08:47:59 rsh Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

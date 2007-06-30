@@ -45,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: specified_clouds_W.F90,v 14.0 2007/03/15 22:07:50 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+  character(len=128)  :: version =  '$Id: specified_clouds_W.F90,v 14.0.2.2 2007/05/25 16:32:06 vb Exp $'
+  character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 
@@ -145,7 +145,7 @@ contains
 subroutine specified_clouds_W_init (lonb, latb)
 
 
-real, dimension(:), intent(in) :: lonb, latb
+real, dimension(:,:), intent(in) :: lonb, latb
 
 
       integer          :: unit, ierr, io

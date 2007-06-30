@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cape_k.F90,v 14.0 2007/03/15 22:02:25 fms Exp $
+!  $Id: donner_cape_k.F90,v 14.0.2.1 2007/05/04 08:45:05 rsh Exp $
 
 !module donner_cape_inter_mod
 
@@ -147,7 +147,11 @@ character(len=*),              intent(out)   :: ermesg
 !    precluded in the column due to downward motion at the lowest model
 !    level at the current time (no_convection).
 !--------------------------------------------------------------------
-      no_convection(:,:) = (current_displ(:,:) >= 0.0)
+      if (Nml%use_llift_criteria) then
+        no_convection(:,:) = (current_displ(:,:) >= 0.0)
+      else
+        no_convection(:,:) = (current_displ(:,:) >  0.0)
+      end if
 
 !---------------------------------------------------------------------
 !    call don_c_cape_calculation_driver_k with the lag-time-based 

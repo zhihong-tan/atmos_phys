@@ -34,6 +34,7 @@ use cloud_generator_mod,   only:  cloud_generator_init, &
 
 use rad_utilities_mod,     only:  rad_utilities_init, Lw_control, &
                                   Cldrad_control, thickavg,  &
+                                  cld_specification_type, &
                                   microrad_properties_type, &
                                   cldrad_properties_type, &
                                   microphysics_type, Lw_parameters
@@ -54,8 +55,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: microphys_rad.F90,v 14.0 2007/03/15 22:06:50 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: microphys_rad.F90,v 14.0.2.1.2.1.2.1 2007/05/29 16:18:52 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 !---------------------------------------------------------------------
@@ -87,10 +88,14 @@ character(len=16)   :: lwem_form=' '     ! longwave emissivity param-
                                          ! eterization; either 'fuliou'
                                          ! or 'ebertcurry'
 logical       ::  do_orig_donner_stoch = .true.
+logical       ::  do_delta_adj = .false.
+logical       ::  do_const_asy = .false.
 
 namelist /microphys_rad_nml /     &
                                lwem_form, &
-                               do_orig_donner_stoch
+                               do_orig_donner_stoch, &
+                               do_delta_adj, &
+                               do_const_asy
 
 !----------------------------------------------------------------------
 !----  public data -------
@@ -345,9 +350,9 @@ real                               :: min_cld_ice_size, max_cld_ice_size
 !----------------------------------------------------------------------
 !   variables needed for random number seed:
 !----------------------------------------------------------------------
-real, dimension(:), allocatable  :: lats, lons ! lat and lon of columns
-                                               ! in this processor's
-                                               ! domain [ degrees ]
+real, dimension(:,:), allocatable  :: lats, lons ! lat and lon of columns
+                                                 ! in this processor's
+                                                 ! domain [ degrees ]
 
 !----------------------------------------------------------------------
 !    diagnostics variables
@@ -413,7 +418,7 @@ real,                    intent(in)    :: min_cld_drop_rad_in, &
                                           max_cld_ice_size_in     
 integer, dimension(4),   intent(in)    ::  axes
 type(time_type),         intent(in)    ::  Time
-real, dimension(:),      intent(in)    ::  lonb, latb
+real, dimension(:,:),    intent(in)    ::  lonb, latb
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -1058,8 +1063,14 @@ logical,                        intent(in),                         &
                     size(Cloud_microphysics%size_drop,3), &
                                       Solar_spect%nbands) :: &
                        size_drop, size_ice, conc_drop, conc_ice
+      logical, dimension &
+                   (size(Cloud_microphysics%size_drop,1), &
+                    size(Cloud_microphysics%size_drop,2), &
+                    size(Cloud_microphysics%size_drop,3), &
+                                      Solar_spect%nbands) :: &
+                                                        dge_column
 
-      logical       :: do_dge_sw
+      logical       :: do_dge_sw, isccp_call
       integer       :: nbmax
       integer       :: n, i,j,k
       integer       :: nnn, nbprofiles, nonly
@@ -1086,10 +1097,17 @@ logical,                        intent(in),                         &
 !    large-scale clouds are currently being processed.
 !---------------------------------------------------------------------
       if (present (donner_flag )) then
-        do_dge_sw = .true.
+        if (donner_flag) then
+          do_dge_sw = .true.
+        else
+          do_dge_sw = .false.
+        endif
       else
         do_dge_sw = .false.
-      endif
+     endif
+
+     dge_column = do_dge_sw
+     isccp_call = .false.
 
 !---------------------------------------------------------------------
 !    if large-scale clouds are being processed and stochastic sw
@@ -1135,6 +1153,7 @@ logical,                        intent(in),                         &
                       conc_drop, conc_ice, &
                       Cloud_microphysics%conc_rain, &
                       Cloud_microphysics%conc_snow, do_dge_sw,   &
+                      dge_column, isccp_call, &
                       Cloud_rad_props%cldext(:,:,:,:,nnn),   &
                       Cloud_rad_props%cldsct(:,:,:,:,nnn), &
                       Cloud_rad_props%cldasymm(:,:,:,:,nnn))
@@ -1148,6 +1167,7 @@ logical,                        intent(in),                         &
                       conc_drop, conc_ice, &
                       Cloud_microphysics%conc_rain, &
                       Cloud_microphysics%conc_snow, do_dge_sw,   &
+                      dge_column, isccp_call, &
                       Micro_rad_props%cldext, Micro_rad_props%cldsct, &
                       Micro_rad_props%cldasymm)
        endif
@@ -1175,6 +1195,7 @@ logical,                        intent(in),                         &
                       conc_drop, conc_ice, &
                       Cloud_microphysics%conc_rain, &
                       Cloud_microphysics%conc_snow, do_dge_sw,   &
+                      dge_column, isccp_call, &
                       Micro_rad_props%cldext, Micro_rad_props%cldsct, &
                       Micro_rad_props%cldasymm)
       endif ! (present(donner_flag))
@@ -1300,9 +1321,14 @@ logical,                        intent(in),                         &
                    size(Cloud_microphysics%size_drop,3), &
                    Cldrad_control%nlwcldb) :: &
                         size_drop, size_ice, conc_drop, conc_ice
-      logical       :: do_dge_lw
+      logical       :: do_dge_lw, isccp_call
       integer :: nbmax, nbprofiles, nnn, nonly
       integer   :: n
+      logical, dimension   &
+                  (size(Cloud_microphysics%size_drop,1), &
+                   size(Cloud_microphysics%size_drop,2), &
+                   size(Cloud_microphysics%size_drop,3), &
+                   Cldrad_control%nlwcldb) ::   dge_column
 
 !----------------------------------------------------------------------
 !  local variables:                                                  
@@ -1322,14 +1348,20 @@ logical,                        intent(in),                         &
       endif
 
 !---------------------------------------------------------------------
-!    define variable indicating whether doner_deep_mods clouds or 
+!    define variable indicating whether donner_deep_mods clouds or 
 !    large-scale clouds are currently being processed.
 !---------------------------------------------------------------------
       if (present (donner_flag )) then
-        do_dge_lw = .true.
+        if (donner_flag) then
+          do_dge_lw = .true.
+        else
+          do_dge_lw = .false.
+        endif
       else
         do_dge_lw = .false.
       endif
+       dge_column = do_dge_lw
+       isccp_call = .false.
 
 !---------------------------------------------------------------------
 !    if large-scale clouds are being processed and stochastic lw
@@ -1378,6 +1410,7 @@ logical,                        intent(in),                         &
                           conc_drop, conc_ice, &
                           Cloud_microphysics%conc_rain, &
                           Cloud_microphysics%conc_snow, do_dge_lw,   &
+                          dge_column, isccp_call, &
                           Cloud_rad_props%abscoeff(:,:,:,:,nnn))
      end do
     else  ! ((present(Cloud_rad_props))
@@ -1388,6 +1421,7 @@ logical,                        intent(in),                         &
                           conc_drop, conc_ice, &
                           Cloud_microphysics%conc_rain, &
                           Cloud_microphysics%conc_snow, do_dge_lw,   &
+                          dge_column, isccp_call, &
                           Micro_rad_props%abscoeff)
      endif   ! ((present(Cloud_rad_props))
 
@@ -1437,6 +1471,7 @@ logical,                        intent(in),                         &
                          conc_drop, conc_ice, &
                          Cloud_microphysics%conc_rain, &
                          Cloud_microphysics%conc_snow, do_dge_lw,   &
+                          dge_column, isccp_call, &
                          Micro_rad_props%abscoeff)
 
 !---------------------------------------------------------------------
@@ -1543,9 +1578,14 @@ real, intent(out), dimension(:,:,:,:)           :: cldext
                                       Solar_spect%nbands) :: &
                        size_drop, size_ice, conc_drop, conc_ice, &
                        tmpcldext,tmpcldsct,tmpcldasymm
+      logical, dimension &
+                   (size(Cloud_microphysics%size_drop,1), &
+                    size(Cloud_microphysics%size_drop,2), &
+                    size(Cloud_microphysics%size_drop,3), &
+                                      Solar_spect%nbands) :: dge_column
 
       
-      logical       :: do_dge_sw
+      logical       :: do_dge_sw, isccp_call
       integer       :: nb,nbmax
       integer       :: n, i,j,k
       integer       :: nnn, nbprofiles, nonly
@@ -1574,6 +1614,7 @@ real, intent(out), dimension(:,:,:,:)           :: cldext
 !    donner clouds will not be accessed here
 !---------------------------------------------------------------------
       do_dge_sw = .false.
+      isccp_call = .true.
 
 
 !---------------------------------------------------------------------
@@ -1595,6 +1636,20 @@ real, intent(out), dimension(:,:,:,:)           :: cldext
       size_ice(:,:,:,nonly)  = Cloud_microphysics%stoch_size_ice(:,:,:,nnn)
       conc_drop(:,:,:,nonly) = Cloud_microphysics%stoch_conc_drop(:,:,:,nnn)
       conc_ice(:,:,:,nonly)  = Cloud_microphysics%stoch_conc_ice(:,:,:,nnn)
+      do k=1, size(cldext,3)
+        do j=1, size(cldext,2)
+          do i=1, size(cldext,1)
+            if (Cloud_microphysics%stoch_cloud_type(i,j,k,nnn) == 2   &
+                        .or. &
+                Cloud_microphysics%stoch_cloud_type(i,j,k,nnn) == 3 ) &
+                         then 
+              dge_column(i,j,k,nonly) = .true.
+            else
+              dge_column(i,j,k,nonly) = .false.
+            endif
+          end do
+        end do
+      end do
            
 !---------------------------------------------------------------------
 !    call cloudpar to define microphysically-based sw cloud properties.
@@ -1605,6 +1660,7 @@ real, intent(out), dimension(:,:,:,:)           :: cldext
                       conc_drop, conc_ice, &
                       Cloud_microphysics%conc_rain, &
                       Cloud_microphysics%conc_snow, do_dge_sw,   &
+                      dge_column, isccp_call, &
                       tmpcldext, tmpcldsct,tmpcldasymm)
        
 !---------------------------------------------------------------------
@@ -1700,9 +1756,14 @@ real, intent(out), dimension(:,:,:,:)           :: abscoeff
                    Cldrad_control%nlwcldb) :: &
                         size_drop, size_ice, conc_drop, conc_ice, &
                         tmpabscoeff
-      logical       :: do_dge_lw
+      logical, dimension &
+                  (size(Cloud_microphysics%size_drop,1), &
+                   size(Cloud_microphysics%size_drop,2), &
+                   size(Cloud_microphysics%size_drop,3), &
+                   Cldrad_control%nlwcldb) :: dge_column
+      logical       :: do_dge_lw, isccp_call
       integer :: nbmax, nbprofiles, nnn, nonly
-      integer   :: n
+      integer   :: i, j, k, n
 
 !----------------------------------------------------------------------
 !  local variables:                                                  
@@ -1728,6 +1789,7 @@ real, intent(out), dimension(:,:,:,:)           :: abscoeff
 !     Donner is never on for this loop
 !---------------------------------------------------------------------
       do_dge_lw = .false.
+      isccp_call = .true.
       
 
 !---------------------------------------------------------------------
@@ -1749,6 +1811,20 @@ real, intent(out), dimension(:,:,:,:)           :: abscoeff
      conc_drop(:,:,:,nonly) = Cloud_microphysics%stoch_conc_drop(:,:,:,nnn)
      conc_ice(:,:,:,nonly)  = Cloud_microphysics%stoch_conc_ice(:,:,:,nnn)
         
+      do k=1, size(abscoeff,3)
+        do j=1, size(abscoeff,2)
+          do i=1, size(abscoeff,1)
+            if (Cloud_microphysics%stoch_cloud_type(i,j,k,nnn) == 2   &
+                        .or. &
+                Cloud_microphysics%stoch_cloud_type(i,j,k,nnn) == 3 ) &
+                         then 
+              dge_column(i,j,k,nonly) = .true.
+            else
+              dge_column(i,j,k,nonly) = .false.
+            endif
+          end do
+        end do
+      end do
 !-------------------------------------------------------------------
 !    if the fuliou lw emissivity was selected, call cloud_lwpar to 
 !    compute multi-band emissivities based on fu parameterizations for
@@ -1763,6 +1839,7 @@ real, intent(out), dimension(:,:,:,:)           :: abscoeff
                           conc_drop, conc_ice, &
                           Cloud_microphysics%conc_rain, &
                           Cloud_microphysics%conc_snow, do_dge_lw,   &
+                           dge_column, isccp_call, &
                           tmpabscoeff)
         abscoeff(:,:,:,nnn)=tmpabscoeff(:,:,:,ilwband)                  
 !---------------------------------------------------------------------
@@ -1887,15 +1964,17 @@ end subroutine lwemiss_calc
 !  <DESCRIPTION>
 !   Subroutine to define the total-cloud radiative
 !    properties to be seen by the radiation package, obtained by the 
-!    appropriate combination of the large-scale, mesoscale and 
-!    cell-scale clouds present in a grid box.
+!    appropriate combination of the large-scale, donner mesoscale and 
+!    cell-scale and uw shallow clouds present in a grid box.
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call comb_cldprops_calc ( is, js, Rad_time, deltaz,     &
 !                               cldext, cldsct, cldasymm, abscoeff, &
 !                               Lsc_microphys, Cell_microphys,    &
-!                               Meso_microphys, Lscrad_props,    &
-!                               Cellrad_props, Mesorad_props)
+!                               Meso_microphys, Shallow_microphys, &
+!                               Lscrad_props,    &
+!                               Cellrad_props, Mesorad_props,  &
+!                               Shallowrad_props)
 !  </TEMPLATE>
 !  <INOUT NAME="cldext" TYPE="real">
 !   parameterization band values of the cloud      
@@ -1925,6 +2004,10 @@ end subroutine lwemiss_calc
 !   microphysical specification for meso-scale 
 !                      clouds assciated with donner convection
 !  </IN>
+!  <IN NAME="Shallow_microphys" TYPE="microphysics_type">
+!   microphysical specification for 
+!                      clouds assciated with uw shallow convection
+!  </IN>
 !  <IN NAME="Lscrad_props" TYPE="microrad_properties_type">
 !   cloud radiative properties for the large-scale 
 !                      clouds
@@ -1937,36 +2020,44 @@ end subroutine lwemiss_calc
 !   cloud radiative properties for the meso-scale 
 !                      clouds associated with donner convection
 !  </IN>
+!  <IN NAME="Shallowrad_props" TYPE="microrad_properties_type">
+!   cloud radiative properties for the  
+!                      clouds associated with uw shallow convection
+!  </IN>
 ! </SUBROUTINE>
 ! 
 subroutine comb_cldprops_calc ( is, js, Rad_time, Time_next, deltaz,  &
                                stoch_cloud_type, &
                                cldext, cldsct, cldasymm, abscoeff, &
                                Lsc_microphys, Cell_microphys,    &
-                               Meso_microphys, Lscrad_props,    &
-                               Cellrad_props, Mesorad_props)
+                               Meso_microphys, &
+                               Shallow_microphys, &
+                               Lscrad_props, Cellrad_props,  &
+                               Mesorad_props, Shallowrad_props)
 
 !---------------------------------------------------------------------
 !    subroutine comb_cldprops_calc defines the total-cloud radiative
 !    properties to be seen by the radiation package, obtained by the 
-!    appropriate combination of the large-scale, mesoscale and 
-!    cell-scale clouds present in a grid box.
+!    appropriate combination of the large-scale, donner mesoscale and 
+!    cell-scale, and uw shallow clouds present in a grid box.
 !---------------------------------------------------------------------
 
 integer,                intent(in)  :: is, js
 type(time_type),        intent(in)  :: Rad_time, Time_next
 real, dimension(:,:,:), intent(in)  :: deltaz
-integer, dimension(:,:,:,:),       intent(in) :: stoch_cloud_type
+integer, dimension(:,:,:,:), intent(in)  :: stoch_cloud_type
 real, dimension(:,:,:,:,:),       intent(inout)       ::  cldext,     &
                                                         cldsct, &
                                                         cldasymm
 real, dimension(:,:,:,:,:),       intent(inout)       ::  abscoeff
 type(microphysics_type),        intent(in), optional :: Lsc_microphys, &
                                                         Cell_microphys,&
-                                                        Meso_microphys
+                                                        Meso_microphys,&
+                                                    Shallow_microphys
 type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
                                                         Cellrad_props, &
-                                                        Mesorad_props
+                                                        Mesorad_props, &
+                                                    Shallowrad_props
 
 !--------------------------------------------------------------------
 !   intent(inout) variables:
@@ -1991,6 +2082,10 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
 !       Cell_microphys microphysical specification for convective cell
 !                      clouds associated with donner convection
 !                      [ microphysics_type ]
+!       Shallow_microphys 
+!                      microphysical specification for 
+!                      clouds associated with uw shallow convection
+!                      [ microphysics_type ]
 !       Lscrad_props   cloud radiative properties for the large-scale 
 !                      clouds   
 !                      [ microrad_properties_type ]
@@ -1999,6 +2094,9 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
 !                      [ microrad_properties_type ]
 !       Cellrad_props  cloud radiative properties for convective cell
 !                      clouds associated with donner convection  
+!                      [ microrad_properties_type ]
+!       Shallowrad_props  cloud radiative properties for 
+!                      clouds associated with uw shallow convection  
 !                      [ microrad_properties_type ]
 !
 !---------------------------------------------------------------------
@@ -2018,7 +2116,8 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
       type(randomNumberStream),   &
                    dimension(size(cldext,1), size(cldext,2)) :: streams
       real, dimension(:, :, :, :), allocatable    :: randomNumbers
-      integer :: nn, nSubCols
+!     integer :: nn, nSubCols
+      integer :: nn
   
 !------------------------------------------------------------------
 !    diagnostics
@@ -2069,12 +2168,279 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
               'cloud arguments must be present.', FATAL)
         endif
       endif
+      if (present(Shallowrad_props) .or.   &
+          present(Shallow_microphys))  then
+       if (.not. present(Shallowrad_props) .or.   &
+           .not. present(Shallow_microphys))  then
+         call error_mesg ('microphys_rad_mod', &
+               ' both Shallowrad_props and Shallow_microphys   &
+               &must be present when one is', FATAL)
+       endif
+     endif
+
+!---------------------------------------------------------------------
+!    define appropriately-weighted total-cloud radiative properties
+!    when large-scale, donner meso-scale and cell-scale, and uw shallow
+!    clouds may be present.
+!----------------------------------------------------------------------
+      if (present(Lscrad_props) .and. present(Cellrad_props) .and. &
+          present(Shallowrad_props)) then
+
+!---------------------------------------------------------------------
+!    define total cloud fraction.
+!---------------------------------------------------------------------
+        if (.not. Cldrad_control%do_stochastic_clouds) then
+          cldsum = Lsc_microphys%cldamt + Cell_microphys%cldamt +   &
+                     Meso_microphys%cldamt + Shallow_microphys%cldamt
+
+!---------------------------------------------------------------------
+!     define the cloud scattering, cloud extinction and cloud asymmetry
+!     factor in each of the spectral bands. if cloud is not present, 
+!     values remain at the non-cloudy initialized values.
+!---------------------------------------------------------------------
+        do n=1,Solar_spect%nbands
+          do k=1,size(cldext,3)
+            do j=1,size(cldext,2)
+              do i=1,size(cldext,1)
+                if (cldsum(i,j,k) > 0.0) then
+                  cldextdu        = (Lsc_microphys%cldamt(i,j,k)*  &
+                                     Lscrad_props%cldext(i,j,k,n) + &
+                                     Cell_microphys%cldamt(i,j,k)*   &
+                                     Cellrad_props%cldext(i,j,k,n) +  &
+                                     Meso_microphys%cldamt(i,j,k)*   &
+                                     Mesorad_props%cldext(i,j,k,n) + &
+                                   Shallow_microphys%cldamt(i,j,k)* &
+                                   Shallowrad_props%cldext(i,j,k,n)) / &
+                                     cldsum(i,j,k)
+                   cltau=(Cell_microphys%cldamt(i,j,k)/cldsum(i,j,k))* &
+                               exp(-Cellrad_props%cldext(i,j,k,n)*     &
+                          deltaz(i,j,k)/1000.)
+                   cltau=cltau+(Meso_microphys%cldamt(i,j,k)/  &
+                         cldsum(i,j,k))* &
+                   exp(-Mesorad_props%cldext(i,j,k,n)*deltaz(i,j,k)/  &
+                              1000.)
+                   cltau=cltau+(Lsc_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                    exp(-Lscrad_props%cldext(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                   cltau=cltau+(Shallow_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                exp(-Shallowrad_props%cldext(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                 cldext(i,j,k,n,1)=-1000.*alog(cltau)/deltaz(i,j,k)
+                  if (cldext(i,j,k,n,1) .gt. cldextdu)   &
+                               cldext(i,j,k,n,1)=cldextdu
+
+                  cldextdu        = (Lsc_microphys%cldamt(i,j,k)*   &
+                                     Lscrad_props%cldsct(i,j,k,n) +   &
+                                     Cell_microphys%cldamt(i,j,k)*  &
+                                     Cellrad_props%cldsct(i,j,k,n) +  &
+                                     Meso_microphys%cldamt(i,j,k)*  &
+                                     Mesorad_props%cldsct(i,j,k,n) + &
+                                   Shallow_microphys%cldamt(i,j,k)*  &
+                              Shallowrad_props%cldsct(i,j,k,n)) / &
+                                     cldsum(i,j,k)
+                   cltau=(Cell_microphys%cldamt(i,j,k)/cldsum(i,j,k))* &
+                               exp(-Cellrad_props%cldsct(i,j,k,n)*     &
+                          deltaz(i,j,k)/1000.)
+                   cltau=cltau+(Meso_microphys%cldamt(i,j,k)/  &
+                         cldsum(i,j,k))* &
+                   exp(-Mesorad_props%cldsct(i,j,k,n)*deltaz(i,j,k)/  &
+                              1000.)
+                   cltau=cltau+(Lsc_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                    exp(-Lscrad_props%cldsct(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                   cltau=cltau+(Shallow_microphys%cldamt(i,j,k)/  &
+                         cldsum(i,j,k))* &
+                exp(-Shallowrad_props%cldsct(i,j,k,n)*deltaz(i,j,k)/  &
+                              1000.)
+                 cldsct(i,j,k,n,1)=-1000.*alog(cltau)/deltaz(i,j,k)
+        if (cldsct(i,j,k,n,1) .gt. cldextdu) cldsct(i,j,k,n,1)=cldextdu
+
+                  cldasymm(i,j,k,n,1) =        &
+                          (Lsc_microphys%cldamt(i,j,k)*  &
+                           Lscrad_props%cldsct(i,j,k,n)* &
+                           Lscrad_props%cldasymm(i,j,k,n) +&
+                           Cell_microphys%cldamt(i,j,k)*  &
+                           Cellrad_props%cldsct(i,j,k,n)* &
+                           Cellrad_props%cldasymm(i,j,k,n) + &
+                           Meso_microphys%cldamt(i,j,k)*   &
+                           Mesorad_props%cldsct(i,j,k,n)*  &
+                           Mesorad_props%cldasymm(i,j,k,n) + &
+                        Shallow_microphys%cldamt(i,j,k)*   &
+                        Shallowrad_props%cldsct(i,j,k,n)*  &
+                       Shallowrad_props%cldasymm(i,j,k,n) ) /&
+                          (Lsc_microphys%cldamt(i,j,k)*  &
+                           Lscrad_props%cldsct(i,j,k,n) +        &
+                           Cell_microphys%cldamt(i,j,k)*    &
+                           Cellrad_props%cldsct(i,j,k,n) +          &
+                           Meso_microphys%cldamt(i,j,k)*    &
+                           Mesorad_props%cldsct(i,j,k,n) + &
+                        Shallow_microphys%cldamt(i,j,k)*    &
+                        Shallowrad_props%cldsct(i,j,k,n) )
+                endif
+              end do
+            end do
+          end do
+        end do
+
+!------------------------------------------------------------
+!    define the total-cloud lw emissivity when large-scale, meso-scale
+!    and cell-scale clouds may be present.
+!---------------------------------------------------------------------
+        do n=1,Cldrad_control%nlwcldb
+          do k=1,size(cldext,3)
+            do j=1,size(cldext,2)
+              do i=1,size(cldext,1)
+                if (cldsum(i,j,k) > 0.0) then
+                  cldextdu          =                            &
+                             (Lsc_microphys%cldamt(i,j,k)*  &
+                              Lscrad_props%abscoeff(i,j,k,n) +&
+                              Cell_microphys%cldamt(i,j,k)* &
+                              Cellrad_props%abscoeff(i,j,k,n) +    &
+                              Meso_microphys%cldamt(i,j,k)*   &
+                              Mesorad_props%abscoeff(i,j,k,n) +  &
+                              Shallow_microphys%cldamt(i,j,k)*   &
+                              Shallowrad_props%abscoeff(i,j,k,n)) /   &
+                              cldsum(i,j,k)
+                   cltau=(Cell_microphys%cldamt(i,j,k)/cldsum(i,j,k))* &
+                               exp(-Cellrad_props%abscoeff(i,j,k,n)*     &
+                          deltaz(i,j,k)/1000.)
+                   cltau=cltau+(Meso_microphys%cldamt(i,j,k)/  &
+                         cldsum(i,j,k))* &
+                   exp(-Mesorad_props%abscoeff(i,j,k,n)*deltaz(i,j,k)/  &
+                              1000.)
+                   cltau=cltau+(Lsc_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                    exp(-Lscrad_props%abscoeff(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                   cltau=cltau+(Shallow_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                    exp(-Shallowrad_props%abscoeff(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                 abscoeff(i,j,k,n,1)=-1000.*alog(cltau)/deltaz(i,j,k)
+        if (abscoeff(i,j,k,n,1) .gt. cldextdu) abscoeff(i,j,k,n,1)=cldextdu
+                endif
+              end do
+            end do
+          end do
+        end do
+      else
+
+!------------------------------------------------------------------------
+!    stochastic clouds are being used. we compare the cell and meso-scale
+!    cloud amounts to a random number, and replace the large-scale clouds
+!    and clear sky in each subcolum with the properties of the cell or 
+!    meso-scale clouds when the number is less than the cloud fraction. 
+!    we use the maximum overlap assumption. we treat the random number 
+!    as the location with the PDF of total water. cells are at the top 
+!    of the PDF; then meso-scale anvils, then large-scale clouds and 
+!    clear sky. 
+!------------------------------------------------------------
+      
+!----------------------------------------------------------------------
+!    get the random numbers to do both sw and lw at oncer.
+!----------------------------------------------------------------------
+!       nSubCols = size(Lsc_microphys%stoch_cldamt, 4)
+      
+!----------------------------------------------------------------------
+!    shortwave cloud properties, band by band
+!----------------------------------------------------------------------
+        do n=1,Solar_spect%nbands
+          do k=1,size(cldext,3) ! Levels
+            do j=1,size(cldext,2) ! Lons
+              do i=1,size(cldext,1) ! Lats
+                if (stoch_cloud_type(i,j,k,n) == 3) then
+!----------------------------------------------------------------------
+!    it's a cell.
+!----------------------------------------------------------------------
+                  cldext(i,j,k,n,1) = Cellrad_props%cldext(i,j,k,n)
+                  cldsct(i,j,k,n,1) = Cellrad_props%cldsct(i,j,k,n)
+                  cldasymm(i,j,k,n, 1) = Cellrad_props%cldasymm(i,j,k,n)
+                else if (stoch_cloud_type(i,j,k,n) == 2) then
+                 
+!----------------------------------------------------------------------
+!    it's a meso-scale.
+!----------------------------------------------------------------------
+                  cldext(i,j,k,n,1) = Mesorad_props%cldext(i,j,k,n)
+                  cldsct(i,j,k,n,1) = Mesorad_props%cldsct(i,j,k,n)
+                  cldasymm(i,j,k,n,1) = Mesorad_props%cldasymm(i,j,k,n)
+                else if (stoch_cloud_type(i,j,k,n) == 4) then
+                 
+!----------------------------------------------------------------------
+!    it's a uw shallow cloud.
+!----------------------------------------------------------------------
+                  cldext(i,j,k,n,1) = Shallowrad_props%cldext(i,j,k,n)
+                  cldsct(i,j,k,n,1) = Shallowrad_props%cldsct(i,j,k,n)
+                  cldasymm(i,j,k,n,1) = Shallowrad_props%cldasymm(i,j,k,n)
+                else if (stoch_cloud_type(i,j,k,n) == 1) then
+                 
+!----------------------------------------------------------------------
+!    fill it in with the large-scale cloud values.
+!----------------------------------------------------------------------
+                  cldext(i,j,k,n,1) = Lscrad_props%cldext(i,j,k,n)
+                  cldsct(i,j,k,n,1) = Lscrad_props%cldsct(i,j,k,n)
+                  cldasymm(i,j,k,n,1) = Lscrad_props%cldasymm(i,j,k,n)
+                else
+                  cldext(i,j,k,n,1) = 0. 
+                  cldsct(i,j,k,n,1) = 0. 
+                  cldasymm(i,j,k,n,1) = 1. 
+                endif
+              end do 
+            end do 
+          end do 
+        end do 
+
+!----------------------------------------------------------------------
+!    longwave cloud properties, band by band
+!----------------------------------------------------------------------
+      do n=1,Cldrad_control%nlwcldb
+        nn = Solar_spect%nbands + n
+        do k=1,size(cldext,3) ! Levels
+          do j=1,size(cldext,2) ! Lons
+            do i=1,size(cldext,1) ! Lats
+              if (stoch_cloud_type(i,j,k,nn) == 3) then
+                 
+!----------------------------------------------------------------------
+!    it's a cell.
+!----------------------------------------------------------------------
+                abscoeff(i,j,k,n,1) = Cellrad_props%abscoeff(i,j,k,n)
+              else if (stoch_cloud_type(i,j,k,nn) == 2) then
+                 
+!----------------------------------------------------------------------
+!    it's a meso-scale.
+!----------------------------------------------------------------------
+                abscoeff(i,j,k,n,1) = Mesorad_props%abscoeff(i,j,k,n)
+              else if (stoch_cloud_type(i,j,k,nn) == 4) then
+                 
+!----------------------------------------------------------------------
+!    it's a uw shallow.
+!----------------------------------------------------------------------
+                abscoeff(i,j,k,n,1) = Shallowrad_props%abscoeff(i,j,k,n)
+              else if (stoch_cloud_type(i,j,k,nn) == 1) then
+                 
+!----------------------------------------------------------------------
+!    fill it in with the large-scale cloud values.
+!----------------------------------------------------------------------
+                abscoeff(i,j,k,n,1) = Lscrad_props%abscoeff(i,j,k,n)
+              else
+                abscoeff(i,j,k,n,1) = 0. 
+              endif
+            end do 
+          end do 
+        end do 
+      end do 
+      
+      
+
+     endif  ! (do_stochastic)
 
 !---------------------------------------------------------------------
 !    define appropriately-weighted total-cloud radiative properties
 !    when large-scale, meso-scale and cell-scale clouds may be present.
 !----------------------------------------------------------------------
-      if (present(Lscrad_props) .and. present(Cellrad_props)) then
+      else if (present(Lscrad_props) .and. present(Cellrad_props)) then
 
 !---------------------------------------------------------------------
 !    define total cloud fraction.
@@ -2328,8 +2694,8 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
 !----------------------------------------------------------------------
 !    get the random numbers to do both sw and lw at oncer.
 !----------------------------------------------------------------------
-        nSubCols = size(Lsc_microphys%stoch_cldamt, 4)
-      
+!       nSubCols = size(Lsc_microphys%stoch_cldamt, 4)
+
 !----------------------------------------------------------------------
 !    shortwave cloud properties, band by band
 !----------------------------------------------------------------------
@@ -2337,14 +2703,14 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
           do k=1,size(cldext,3) ! Levels
             do j=1,size(cldext,2) ! Lons
               do i=1,size(cldext,1) ! Lats
-                if (stoch_cloud_type(i,j,k,n) == 3) then
+                if ( stoch_cloud_type(i,j,k,n) == 3) then 
 !----------------------------------------------------------------------
 !    it's a cell.
 !----------------------------------------------------------------------
                   cldext(i,j,k,n,1) = Cellrad_props%cldext(i,j,k,n)
                   cldsct(i,j,k,n,1) = Cellrad_props%cldsct(i,j,k,n)
                   cldasymm(i,j,k,n, 1) = Cellrad_props%cldasymm(i,j,k,n)
-                else if (stoch_cloud_type(i,j,k,n) == 2) then
+                else if ( stoch_cloud_type(i,j,k,n) == 2) then 
                  
 !----------------------------------------------------------------------
 !    it's a meso-scale.
@@ -2352,7 +2718,7 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
                   cldext(i,j,k,n,1) = Mesorad_props%cldext(i,j,k,n)
                   cldsct(i,j,k,n,1) = Mesorad_props%cldsct(i,j,k,n)
                   cldasymm(i,j,k,n,1) = Mesorad_props%cldasymm(i,j,k,n)
-                else if (stoch_cloud_type(i,j,k,n) == 1) then
+                else if ( stoch_cloud_type(i,j,k,n) == 1) then 
                  
 !----------------------------------------------------------------------
 !    fill it in with the large-scale cloud values.
@@ -2363,7 +2729,7 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
                 else
                   cldext(i,j,k,n,1) = 0. 
                   cldsct(i,j,k,n,1) = 0. 
-                  cldasymm(i,j,k,n,1) = 0. 
+                  cldasymm(i,j,k,n,1) = 1. 
                 endif
               end do 
             end do 
@@ -2378,19 +2744,19 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
         do k=1,size(cldext,3) ! Levels
           do j=1,size(cldext,2) ! Lons
             do i=1,size(cldext,1) ! Lats
-                if (stoch_cloud_type(i,j,k,nn) == 3) then
+                if ( stoch_cloud_type(i,j,k,nn) == 3) then 
                  
 !----------------------------------------------------------------------
 !    it's a cell.
 !----------------------------------------------------------------------
                 abscoeff(i,j,k,n,1) = Cellrad_props%abscoeff(i,j,k,n)
-                else if (stoch_cloud_type(i,j,k,nn) == 2) then
+                else if ( stoch_cloud_type(i,j,k,nn) == 2) then 
                  
 !----------------------------------------------------------------------
 !    it's a meso-scale.
 !----------------------------------------------------------------------
                 abscoeff(i,j,k,n,1) = Mesorad_props%abscoeff(i,j,k,n)
-                else if (stoch_cloud_type(i,j,k,nn) == 1) then
+                else if ( stoch_cloud_type(i,j,k,nn) == 1) then 
                  
 !----------------------------------------------------------------------
 !    fill it in with the large-scale cloud values.
@@ -2404,9 +2770,313 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
         end do 
       end do 
       
+
       endif ! (do_orig_donner_stoch)
      endif  ! (do_stochastic)
 
+!---------------------------------------------------------------------
+!    define appropriately-weighted total-cloud radiative properties
+!    when large-scale, and uw shallow clouds may be present.
+!----------------------------------------------------------------------
+     else if (present(Lscrad_props) .and. present(Shallowrad_props)) then
+
+!---------------------------------------------------------------------
+!    define total cloud fraction.
+!---------------------------------------------------------------------
+        if (.not. Cldrad_control%do_stochastic_clouds) then
+          cldsum = Lsc_microphys%cldamt + Shallow_microphys%cldamt 
+
+!---------------------------------------------------------------------
+!     define the cloud scattering, cloud extinction and cloud asymmetry
+!     factor in each of the spectral bands. if cloud is not present, 
+!     values remain at the non-cloudy initialized values.
+!---------------------------------------------------------------------
+        do n=1,Solar_spect%nbands
+          do k=1,size(cldext,3)
+            do j=1,size(cldext,2)
+              do i=1,size(cldext,1)
+                if (cldsum(i,j,k) > 0.0) then
+                  cldextdu        = (Lsc_microphys%cldamt(i,j,k)*  &
+                                     Lscrad_props%cldext(i,j,k,n) + &
+                                   Shallow_microphys%cldamt(i,j,k)*   &
+                                   Shallowrad_props%cldext(i,j,k,n) )/ &
+                                     cldsum(i,j,k)
+                cltau=(Shallow_microphys%cldamt(i,j,k)/cldsum(i,j,k))* &
+                           exp(-Shallowrad_props%cldext(i,j,k,n)*     &
+                          deltaz(i,j,k)/1000.)
+                   cltau=cltau+(Lsc_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                    exp(-Lscrad_props%cldext(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                 cldext(i,j,k,n,1)=-1000.*alog(cltau)/deltaz(i,j,k)
+                  if (cldext(i,j,k,n,1) .gt. cldextdu)   &
+                               cldext(i,j,k,n,1)=cldextdu
+
+                  cldextdu        = (Lsc_microphys%cldamt(i,j,k)*   &
+                                     Lscrad_props%cldsct(i,j,k,n) +   &
+                                  Shallow_microphys%cldamt(i,j,k)*  &
+                                  Shallowrad_props%cldsct(i,j,k,n)) / &
+                                     cldsum(i,j,k)
+                cltau=(Shallow_microphys%cldamt(i,j,k)/cldsum(i,j,k))* &
+                            exp(-Shallowrad_props%cldsct(i,j,k,n)*     &
+                          deltaz(i,j,k)/1000.)
+                   cltau=cltau+(Lsc_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                    exp(-Lscrad_props%cldsct(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                 cldsct(i,j,k,n,1)=-1000.*alog(cltau)/deltaz(i,j,k)
+        if (cldsct(i,j,k,n,1) .gt. cldextdu) cldsct(i,j,k,n,1)=cldextdu
+
+                  cldasymm(i,j,k,n,1) =        &
+                          (Lsc_microphys%cldamt(i,j,k)*  &
+                           Lscrad_props%cldsct(i,j,k,n)* &
+                           Lscrad_props%cldasymm(i,j,k,n) +&
+                        Shallow_microphys%cldamt(i,j,k)*   &
+                        Shallowrad_props%cldsct(i,j,k,n)*  &
+                        Shallowrad_props%cldasymm(i,j,k,n)) /&
+                          (Lsc_microphys%cldamt(i,j,k)*  &
+                           Lscrad_props%cldsct(i,j,k,n) +        &
+                        Shallow_microphys%cldamt(i,j,k)*    &
+                        Shallowrad_props%cldsct(i,j,k,n) )
+                endif
+              end do
+            end do
+          end do
+        end do
+
+!------------------------------------------------------------
+!    define the total-cloud lw emissivity when large-scale, meso-scale
+!    and cell-scale clouds may be present.
+!---------------------------------------------------------------------
+        do n=1,Cldrad_control%nlwcldb
+          do k=1,size(cldext,3)
+            do j=1,size(cldext,2)
+              do i=1,size(cldext,1)
+                if (cldsum(i,j,k) > 0.0) then
+                  cldextdu          =                            &
+                             (Lsc_microphys%cldamt(i,j,k)*  &
+                              Lscrad_props%abscoeff(i,j,k,n) +&
+                        Shallow_microphys%cldamt(i,j,k)*   &
+                           Shallowrad_props%abscoeff(i,j,k,n)) /   &
+                              cldsum(i,j,k)
+                cltau=(Shallow_microphys%cldamt(i,j,k)/cldsum(i,j,k))* &
+                         exp(-Shallowrad_props%abscoeff(i,j,k,n)*     &
+                          deltaz(i,j,k)/1000.)
+                   cltau=cltau+(Lsc_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                    exp(-Lscrad_props%abscoeff(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                 abscoeff(i,j,k,n,1)=-1000.*alog(cltau)/deltaz(i,j,k)
+        if (abscoeff(i,j,k,n,1) .gt. cldextdu) abscoeff(i,j,k,n,1)=cldextdu
+                endif
+              end do
+            end do
+          end do
+        end do
+      else
+
+!------------------------------------------------------------------------
+!    stochastic clouds are being used. we compare the cell and meso-scale
+!    cloud amounts to a random number, and replace the large-scale clouds
+!    and clear sky in each subcolum with the properties of the cell or 
+!    meso-scale clouds when the number is less than the cloud fraction. 
+!    we use the maximum overlap assumption. we treat the random number 
+!    as the location with the PDF of total water. cells are at the top 
+!    of the PDF; then meso-scale anvils, then large-scale clouds and 
+!    clear sky. 
+!------------------------------------------------------------
+      
+!----------------------------------------------------------------------
+!    get the random numbers to do both sw and lw at oncer.
+!----------------------------------------------------------------------
+!       nSubCols = size(Lsc_microphys%stoch_cldamt, 4)
+
+!----------------------------------------------------------------------
+!    shortwave cloud properties, band by band
+!----------------------------------------------------------------------
+        do n=1,Solar_spect%nbands
+          do k=1,size(cldext,3) ! Levels
+            do j=1,size(cldext,2) ! Lons
+              do i=1,size(cldext,1) ! Lats
+                if ( stoch_cloud_type(i,j,k,n) == 4) then 
+!----------------------------------------------------------------------
+!    it's a uw shallow
+!----------------------------------------------------------------------
+                  cldext(i,j,k,n,1) = Shallowrad_props%cldext(i,j,k,n)
+                  cldsct(i,j,k,n,1) = Shallowrad_props%cldsct(i,j,k,n)
+              cldasymm(i,j,k,n, 1) = Shallowrad_props%cldasymm(i,j,k,n)
+                else if ( stoch_cloud_type(i,j,k,n) == 1) then 
+                 
+!----------------------------------------------------------------------
+!    fill it in with the large-scale cloud values.
+!----------------------------------------------------------------------
+                  cldext(i,j,k,n,1) = Lscrad_props%cldext(i,j,k,n)
+                  cldsct(i,j,k,n,1) = Lscrad_props%cldsct(i,j,k,n)
+                  cldasymm(i,j,k,n,1) = Lscrad_props%cldasymm(i,j,k,n)
+                else
+                  cldext(i,j,k,n,1) = 0. 
+                  cldsct(i,j,k,n,1) = 0. 
+                  cldasymm(i,j,k,n,1) = 1. 
+                endif
+              end do 
+            end do 
+          end do 
+        end do 
+
+!----------------------------------------------------------------------
+!    longwave cloud properties, band by band
+!----------------------------------------------------------------------
+      do n=1,Cldrad_control%nlwcldb
+        nn = Solar_spect%nbands + n
+        do k=1,size(cldext,3) ! Levels
+          do j=1,size(cldext,2) ! Lons
+            do i=1,size(cldext,1) ! Lats
+                if ( stoch_cloud_type(i,j,k,nn) == 4) then 
+                 
+!----------------------------------------------------------------------
+!    it's a uw shallow.
+!----------------------------------------------------------------------
+                abscoeff(i,j,k,n,1) = Shallowrad_props%abscoeff(i,j,k,n)
+                else if ( stoch_cloud_type(i,j,k,nn) == 1) then 
+                 
+!----------------------------------------------------------------------
+!    fill it in with the large-scale cloud values.
+!----------------------------------------------------------------------
+                abscoeff(i,j,k,n,1) = Lscrad_props%abscoeff(i,j,k,n)
+              else
+                abscoeff(i,j,k,n,1) = 0. 
+              endif
+            end do 
+          end do 
+        end do 
+      end do 
+      
+
+     endif  ! (do_stochastic)
+
+!---------------------------------------------------------------------
+!    define appropriately-weighted total-cloud radiative properties
+!    when donner deep convective clouds and uw shallow clouds
+!    may be present.
+!----------------------------------------------------------------------
+     else if (present(Cellrad_props) .and. present(Shallowrad_props)) then
+
+!---------------------------------------------------------------------
+!    define total cloud fraction.
+!---------------------------------------------------------------------
+        cldsum = Shallow_microphys%cldamt + Cell_microphys%cldamt +   &
+                     Meso_microphys%cldamt
+
+!---------------------------------------------------------------------
+!     define the cloud scattering, cloud extinction and cloud asymmetry
+!     factor in each of the spectral bands. if cloud is not present, 
+!     values remain at the non-cloudy initialized values.
+!---------------------------------------------------------------------
+        do n=1,Solar_spect%nbands
+          do k=1,size(cldext,3)
+            do j=1,size(cldext,2)
+              do i=1,size(cldext,1)
+                if (cldsum(i,j,k) > 0.0) then
+                  cldextdu        = (Shallow_microphys%cldamt(i,j,k)*  &
+                                   Shallowrad_props%cldext(i,j,k,n) + &
+                                     Cell_microphys%cldamt(i,j,k)*   &
+                                     Cellrad_props%cldext(i,j,k,n) +  &
+                                     Meso_microphys%cldamt(i,j,k)*   &
+                                     Mesorad_props%cldext(i,j,k,n)) / &
+                                     cldsum(i,j,k)
+                   cltau=(Cell_microphys%cldamt(i,j,k)/cldsum(i,j,k))* &
+                               exp(-Cellrad_props%cldext(i,j,k,n)*     &
+                          deltaz(i,j,k)/1000.)
+                   cltau=cltau+(Meso_microphys%cldamt(i,j,k)/  &
+                         cldsum(i,j,k))* &
+                   exp(-Mesorad_props%cldext(i,j,k,n)*deltaz(i,j,k)/  &
+                              1000.)
+                   cltau=cltau+(Shallow_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                 exp(-Shallowrad_props%cldext(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                 cldext(i,j,k,n,1)=-1000.*alog(cltau)/deltaz(i,j,k)
+                  if (cldext(i,j,k,n,1) .gt. cldextdu)   &
+                               cldext(i,j,k,n,1)=cldextdu
+
+               cldextdu        = (Shallow_microphys%cldamt(i,j,k)*   &
+                                  Shallowrad_props%cldsct(i,j,k,n) +   &
+                                     Cell_microphys%cldamt(i,j,k)*  &
+                                     Cellrad_props%cldsct(i,j,k,n) +  &
+                                     Meso_microphys%cldamt(i,j,k)*  &
+                                     Mesorad_props%cldsct(i,j,k,n)) / &
+                                     cldsum(i,j,k)
+                   cltau=(Cell_microphys%cldamt(i,j,k)/cldsum(i,j,k))* &
+                               exp(-Cellrad_props%cldsct(i,j,k,n)*     &
+                          deltaz(i,j,k)/1000.)
+                   cltau=cltau+(Meso_microphys%cldamt(i,j,k)/  &
+                         cldsum(i,j,k))* &
+                   exp(-Mesorad_props%cldsct(i,j,k,n)*deltaz(i,j,k)/  &
+                              1000.)
+                   cltau=cltau+(Shallow_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                    exp(-Shallowrad_props%cldsct(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                 cldsct(i,j,k,n,1)=-1000.*alog(cltau)/deltaz(i,j,k)
+        if (cldsct(i,j,k,n,1) .gt. cldextdu) cldsct(i,j,k,n,1)=cldextdu
+
+                  cldasymm(i,j,k,n,1) =        &
+                          (Shallow_microphys%cldamt(i,j,k)*  &
+                           Shallowrad_props%cldsct(i,j,k,n)* &
+                           Shallowrad_props%cldasymm(i,j,k,n) +&
+                           Cell_microphys%cldamt(i,j,k)*  &
+                           Cellrad_props%cldsct(i,j,k,n)* &
+                           Cellrad_props%cldasymm(i,j,k,n) + &
+                           Meso_microphys%cldamt(i,j,k)*   &
+                           Mesorad_props%cldsct(i,j,k,n)*  &
+                           Mesorad_props%cldasymm(i,j,k,n)) /&
+                          (Shallow_microphys%cldamt(i,j,k)*  &
+                           Shallowrad_props%cldsct(i,j,k,n) +        &
+                           Cell_microphys%cldamt(i,j,k)*    &
+                           Cellrad_props%cldsct(i,j,k,n) +          &
+                           Meso_microphys%cldamt(i,j,k)*    &
+                           Mesorad_props%cldsct(i,j,k,n) )
+                endif
+              end do
+            end do
+          end do
+        end do
+
+!------------------------------------------------------------
+!    define the total-cloud lw emissivity when large-scale, meso-scale
+!    and cell-scale clouds may be present.
+!---------------------------------------------------------------------
+        do n=1,Cldrad_control%nlwcldb
+          do k=1,size(cldext,3)
+            do j=1,size(cldext,2)
+              do i=1,size(cldext,1)
+                if (cldsum(i,j,k) > 0.0) then
+                  cldextdu          =                            &
+                             (Shallow_microphys%cldamt(i,j,k)*  &
+                              Shallowrad_props%abscoeff(i,j,k,n) +&
+                              Cell_microphys%cldamt(i,j,k)* &
+                              Cellrad_props%abscoeff(i,j,k,n) +    &
+                              Meso_microphys%cldamt(i,j,k)*   &
+                              Mesorad_props%abscoeff(i,j,k,n)) /   &
+                              cldsum(i,j,k)
+                   cltau=(Cell_microphys%cldamt(i,j,k)/cldsum(i,j,k))* &
+                               exp(-Cellrad_props%abscoeff(i,j,k,n)*     &
+                          deltaz(i,j,k)/1000.)
+                   cltau=cltau+(Meso_microphys%cldamt(i,j,k)/  &
+                         cldsum(i,j,k))* &
+                   exp(-Mesorad_props%abscoeff(i,j,k,n)*deltaz(i,j,k)/  &
+                              1000.)
+                   cltau=cltau+(Shallow_microphys%cldamt(i,j,k)/  &
+                           cldsum(i,j,k))* &
+                    exp(-Shallowrad_props%abscoeff(i,j,k,n)*deltaz(i,j,k)/  &
+                           1000.)
+                 abscoeff(i,j,k,n,1)=-1000.*alog(cltau)/deltaz(i,j,k)
+        if (abscoeff(i,j,k,n,1) .gt. cldextdu) abscoeff(i,j,k,n,1)=cldextdu
+                endif
+              end do
+            end do
+          end do
+        end do
 !--------------------------------------------------------------------
 !    define the total-cloud radiative properties when only meso-scale 
 !    and cell-scale clouds may be present.
@@ -2505,6 +3175,7 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
           end do
         end do
       endif
+
 
 !---------------------------------------------------------------------
 
@@ -2663,7 +3334,7 @@ end subroutine microphys_rad_end
 ! </SUBROUTINE>
 subroutine cloudpar (nonly, nbmax, nnn, size_drop, size_ice, size_rain, & 
                      conc_drop, conc_ice, conc_rain, conc_snow, do_dge_sw, &
-                     cldext, cldsct, cldasymm)
+                     dge_column, isccp_call, cldext, cldsct, cldasymm)
  
 !----------------------------------------------------------------------
 !    subroutine cloudpar determines the parameterization band values of
@@ -2678,7 +3349,9 @@ real, dimension (:,:,:),   intent(in)     ::  size_rain, conc_rain,   &
                                               conc_snow
 real, dimension (:,:,:,:), intent(in)     ::  size_drop, size_ice,    &
                                               conc_drop, conc_ice
+logical, dimension (:,:,:,:), intent(in)     ::  dge_column
 logical,                   intent(in)     ::  do_dge_sw
+logical,                   intent(in)     ::  isccp_call
 real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
  
 !-------------------------------------------------------------------
@@ -2742,7 +3415,12 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
 
       logical, dimension (size(conc_drop,1), size(conc_drop,2), &
                           size(conc_drop,3))  ::   maskl, anymask, &
-                                                   maskr, maski, masks
+                                                   maskr, maski, masks,&
+                                                   maskif, maskis
+      real, dimension (size(conc_drop,1), size(conc_drop,2), &
+                          size(conc_drop,3))  ::   tempext, tempext2, &
+                                     tempssa, tempssa2, &
+                                             tempasy, tempasy2
 
       integer  :: nb
       integer  :: i,j,k,n
@@ -2911,10 +3589,76 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                      cldextbandrain, cldssalbbandrain,  &
                      cldasymmbandrain)
  
+!---------------------------------------------------------------------
+!    on calls from the isccp simulator with stochastic clouds, call all 
+!    parameterizations, since some subcolumns may have cloud types 
+!    using that parameterization. calculation control is provided 
+!    within the parameterization subroutine.
+!---------------------------------------------------------------------
+         if (isccp_call) then
+
 !----------------------------------------------------------------------
 !    define the single scattering parameters for ice crystals.        
 !----------------------------------------------------------------------
-          if (do_dge_sw) then
+
+!----------------------------------------------------------------------
+!    call the ice crystal parameterization scheme of fu et al(1998) 
+!    using generalized effective size. call subroutine fu to calculate 
+!    the single scattering parameters.
+!----------------------------------------------------------------------
+            call fu (conc_ice(:,:,:,nnn), size_ice(:,:,:,nnn),   &
+                     dge_column(:,:,:,nnn), &
+                     cldextivlice, cldssalbivlice,  &
+                     cldasymmivlice, maski)
+ 
+!----------------------------------------------------------------------
+!    call thickavg to map the single-scattering properties for ice
+!    crystals that were calculated for each ice crystal spectral
+!    interval to the sw parameterization band spectral intervals.
+!----------------------------------------------------------------------
+            call thickavg (nivl1icecld, nivl2icecld, NICECLDIVLS,   &
+                           Solar_spect%nbands, cldextivlice,     &
+                           cldssalbivlice, cldasymmivlice,     &
+                           solivlicecld, Solar_spect%solflxbandref,   &
+                           maski, &
+                           cldextbandice, cldssalbbandice,   &
+                           cldasymmbandice)
+
+!----------------------------------------------------------------------
+!    call the ice crystal parameterization scheme of fu et al(1993) 
+!    using effective size. call subroutine icesolar to calculate
+!    the single scattering parameters.
+!----------------------------------------------------------------------
+
+!----------------------------------------------------------------------
+!    if the ice crystal parameterization scheme of fu et al(1993) using
+!    effective size is to be used, call subroutine icesolar to calculate
+!    the single scattering parameters.
+!----------------------------------------------------------------------
+            call icesolar (conc_ice(:,:,:,nnn), size_ice(:,:,:,nnn), &
+                           dge_column(:,:,:,nnn), &
+                           cldextivlice2, cldssalbivlice2,   &
+                           cldasymmivlice2, maski)
+
+!----------------------------------------------------------------------
+!    call thickavg to map the single-scattering properties for ice
+!    crystals that were calculated for each ice crystal spectral
+!    interval to the sw parameterization band spectral intervals.
+!----------------------------------------------------------------------
+            call thickavg (nivl1icesolcld, nivl2icesolcld,    &
+                           NICESOLARCLDIVLS, Solar_spect%nbands, &
+                           cldextivlice2, cldssalbivlice2,  &
+                           cldasymmivlice2, solivlicesolcld,  &
+                           Solar_spect%solflxbandref, maski,  &
+                           cldextbandice,  cldssalbbandice,  &
+                           cldasymmbandice)
+
+!--------------------------------------------------------------------
+!    if this is not an isccp call with activated stochastic clouds, all
+!    grid columns will use the same parameterization.
+!--------------------------------------------------------------------
+         else  !(isccp_call)
+           if (do_dge_sw) then
 
 !----------------------------------------------------------------------
 !    if the ice crystal parameterization scheme of fu et al(1998) using
@@ -2922,6 +3666,7 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
 !    to calculate the single scattering parameters.
 !----------------------------------------------------------------------
             call fu (conc_ice(:,:,:,nnn), size_ice(:,:,:,nnn),   &
+                     dge_column(:,:,:,nnn), &
                      cldextivlice, cldssalbivlice,  &
                      cldasymmivlice, maski)
  
@@ -2951,6 +3696,7 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
 !    the single scattering parameters.
 !----------------------------------------------------------------------
             call icesolar (conc_ice(:,:,:,nnn), size_ice(:,:,:,nnn), &
+                           dge_column(:,:,:,nnn), &
                            cldextivlice2, cldssalbivlice2,   &
                            cldasymmivlice2, maski)
 
@@ -2967,6 +3713,7 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                            cldextbandice,  cldssalbbandice,  &
                            cldasymmbandice)
           endif
+        endif !(isccp_call)
 
 !----------------------------------------------------------------------
 !    define the single scattering parameters for snow.                
@@ -3005,9 +3752,48 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                             starting_band = nivl1raincld(nb), &
                             ending_band = nivl1raincld(nb)) 
 
+!---------------------------------------------------------------------
+!    on calls from the isccp simulator with stochastic clouds, call all 
+!    parameterizations, since some subcolumns may have cloud types 
+!    using that parameterization. calculation control is provided 
+!    within the parameterization subroutine.
+!---------------------------------------------------------------------
+         if (isccp_call) then
+
 !----------------------------------------------------------------------
 !    define the single scattering parameters for ice crystals.        
 !----------------------------------------------------------------------
+
+!----------------------------------------------------------------------
+!    call the ice crystal parameterization scheme of fu et al(1998) 
+!    using generalized effective size is to be used, call subroutine fu 
+!    to calculate the single scattering parameters.
+!----------------------------------------------------------------------
+              call fu (conc_ice(:,:,:,nb), size_ice(:,:,:,nb),   &
+                        dge_column(:,:,:,nb), &
+                       cldextivlice, cldssalbivlice,  &
+                     cldasymmivlice,   maskif, &
+                     starting_band = nivl1icecld(nb), &
+                     ending_band = nivl2icecld(nb))
+
+!----------------------------------------------------------------------
+!    call the ice crystal parameterization scheme of fu et al(1993) 
+!    using effective size is to be used, call subroutine icesolar to 
+!    calculate the single scattering parameters.
+!----------------------------------------------------------------------
+              call icesolar (conc_ice(:,:,:,nb), size_ice(:,:,:,nb), &
+                           dge_column(:,:,:,nb), &
+                           cldextivlice2,     &
+                           cldssalbivlice2, cldasymmivlice2, &
+                           maskis, &
+                           starting_band = nivl1icesolcld(nb), &
+                           ending_band = nivl2icesolcld(nb))
+
+!--------------------------------------------------------------------
+!    if this is not an isccp call with activated stochastic clouds, all
+!    grid columns will use the same parameterization.
+!--------------------------------------------------------------------
+        else   ! (isccp_call)
             if (do_dge_sw) then
 
 !----------------------------------------------------------------------
@@ -3015,9 +3801,11 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
 !    generalized effective size is to be used, call subroutine fu 
 !    to calculate the single scattering parameters.
 !----------------------------------------------------------------------
+              maskis = .false.
               call fu (conc_ice(:,:,:,nb), size_ice(:,:,:,nb),   &
+                        dge_column(:,:,:,nb), &
                        cldextivlice, cldssalbivlice,  &
-                     cldasymmivlice,   maski, &
+                     cldasymmivlice,   maskif, &
                      starting_band = nivl1icecld(nb), &
                      ending_band = nivl2icecld(nb))
             else
@@ -3027,13 +3815,16 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
 !    effective size is to be used, call subroutine icesolar to calculate
 !    the single scattering parameters.
 !----------------------------------------------------------------------
+              maskif = .false.
               call icesolar (conc_ice(:,:,:,nb), size_ice(:,:,:,nb), &
+                           dge_column(:,:,:,nb), &
                            cldextivlice2,     &
                            cldssalbivlice2, cldasymmivlice2, &
-                           maski, &
+                           maskis, &
                            starting_band = nivl1icesolcld(nb), &
                            ending_band = nivl2icesolcld(nb))
             endif
+         endif  ! (isccp_call)
 
 !----------------------------------------------------------------------
 !    define the single scattering parameters for snow.                
@@ -3074,23 +3865,27 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                      cldssalbbandrain(:,:,:,nb), &
                      cldasymmbandrain(:,:,:,nb))
 
+!---------------------------------------------------------------------
+!    on calls from the isccp simulator with stochastic clouds, call all 
+!    parameterizations, since some subcolumns may have cloud types 
+!    using that parameterization. calculation control is provided 
+!    within the parameterization subroutine.
+!---------------------------------------------------------------------
+           if (isccp_call) then
+
 !----------------------------------------------------------------------
 !    call thickavg to map the single-scattering properties for ice
 !    crystals that were calculated for each ice crystal spectral
 !    interval to the sw parameterization band spectral intervals.
 !----------------------------------------------------------------------
-              if (do_dge_sw) then
                 call thickavg (nb, nivl1icecld(nb), nivl2icecld(nb), &
                                NICECLDIVLS, &
                            Solar_spect%nbands, cldextivlice,     &
                            cldssalbivlice, cldasymmivlice,     &
                            solivlicecld,   &
                            Solar_spect%solflxbandref(nb),  &
-                           maski, &
-                           cldextbandice(:,:,:,nb),   &
-                            cldssalbbandice(:,:,:,nb),   &
-                           cldasymmbandice(:,:,:,nb))
-              else
+                           maskif, &
+                           tempext, tempssa, tempasy)   
                 call thickavg (nb, nivl1icesolcld(nb),  &
                               nivl2icesolcld(nb),    &
                            NICESOLARCLDIVLS, Solar_spect%nbands, &
@@ -3098,11 +3893,63 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                            cldasymmivlice2,&
                            solivlicesolcld,  &
                            Solar_spect%solflxbandref(nb),&
-                           maski, &
+                           maskis, &
+                           tempext2, tempssa2, tempasy2)   
+
+              do k=1, size(cldextbandliq,3)
+                do j=1, size(cldextbandliq,2)
+                  do i=1, size(cldextbandliq,1)
+                    if (maskif(i,j,k)) then
+                      cldextbandice(i,j,k,nb) = tempext(i,j,k)
+                       cldssalbbandice(i,j,k,nb) = tempssa(i,j,k)
+                       cldasymmbandice(i,j,k,nb) = tempasy(i,j,k)
+                    else if (maskis(i,j,k)) then
+                      cldextbandice(i,j,k,nb) = tempext2(i,j,k)
+                       cldssalbbandice(i,j,k,nb) = tempssa2(i,j,k)
+                       cldasymmbandice(i,j,k,nb) = tempasy2(i,j,k)
+                    endif
+                  end do
+                  end do
+                  end do
+!--------------------------------------------------------------------
+!    if this is not an isccp call with activated stochastic clouds, all
+!    grid columns will use the same parameterization.
+!--------------------------------------------------------------------
+  else ! (isccp_call)
+
+!----------------------------------------------------------------------
+!    call thickavg to map the single-scattering properties for ice
+!    crystals that were calculated for each ice crystal spectral
+!    interval to the sw parameterization band spectral intervals.
+!----------------------------------------------------------------------
+              if (do_dge_sw) then
+                maskis = .false.
+                call thickavg (nb, nivl1icecld(nb), nivl2icecld(nb), &
+                               NICECLDIVLS, &
+                           Solar_spect%nbands, cldextivlice,     &
+                           cldssalbivlice, cldasymmivlice,     &
+                           solivlicecld,   &
+                           Solar_spect%solflxbandref(nb),  &
+                           maskif, &
+                           cldextbandice(:,:,:,nb),   &
+                            cldssalbbandice(:,:,:,nb),   &
+                           cldasymmbandice(:,:,:,nb))
+              else
+                maskif = .false.
+                call thickavg (nb, nivl1icesolcld(nb),  &
+                              nivl2icesolcld(nb),    &
+                           NICESOLARCLDIVLS, Solar_spect%nbands, &
+                           cldextivlice2, cldssalbivlice2,  &
+                           cldasymmivlice2,&
+                           solivlicesolcld,  &
+                           Solar_spect%solflxbandref(nb),&
+                           maskis, &
                            cldextbandice(:,:,:,nb),  &
                            cldssalbbandice(:,:,:,nb),  &
                            cldasymmbandice(:,:,:,nb))
               endif
+
+  endif ! (isccp_call)
 
 !----------------------------------------------------------------------
 !    call thickavg to map the single-scattering properties for snow 
@@ -3123,7 +3970,8 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                 do j=1, size(cldextbandliq,2)
                   do i=1, size(cldextbandliq,1)
                     anymask(i,j,k) = maskl(i,j,k) .or. maskr(i,j,k)  &
-                                     .or. maski(i,j,k) .or. masks(i,j,k)
+                                    .or. maskif(i,j,k) .or.  &
+                                        maskis(i,j,k) .or. masks(i,j,k)
                   end do
                 end do
               end do
@@ -3151,7 +3999,7 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                                        cldssalbbandrain(i,j,k,nb))* &
                                        cldasymmbandrain(i,j,k,nb)
                       endif
-                      if (maski(i,j,k)) then
+                      if (maskis(i,j,k) .or. maskif(i,j,k)) then
                         sum = sum + cldextbandice(i,j,k,nb)
                         sum2 = sum2 + cldextbandice(i,j,k,nb)* &
                                       cldssalbbandice(i,j,k,nb)
@@ -3204,25 +4052,70 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                      solivlraincld, Solar_spect%solflxbandref(nonly), &
                      maskr, cldextbandrain(:,:,:,nonly))
 
+!---------------------------------------------------------------------
+!    on calls from the isccp simulator with stochastic clouds, call all 
+!    parameterizations, since some subcolumns may have cloud types 
+!    using that parameterization. calculation control is provided 
+!    within the parameterization subroutine.
+!---------------------------------------------------------------------
+           if (isccp_call) then
+
+!----------------------------------------------------------------------
+!    call thickavg to map the single-scattering properties for snow 
+!    flakes that were calculated for the desired ice crystal spectral 
+!    interval to the sw parameterization band spectral intervals.
+!----------------------------------------------------------------------
+                call thickavg (nb, nivl1icecld(nb), nivl2icecld(nb),  &
+                                               cldextivlice,     &
+                          solivlicecld,   &
+                          Solar_spect%solflxbandref(nb),    &
+                           maskif, tempext                )
+                call thickavg (nb, nivl1icesolcld(nb),  &
+                               nivl2icesolcld(nb),    &
+                           cldextivlice2,   &
+                       solivlicesolcld,  &
+                            Solar_spect%solflxbandref(nb),    &
+                           maskis, tempext2               )
+              do k=1, size(cldextbandliq,3)
+                do j=1, size(cldextbandliq,2)
+                  do i=1, size(cldextbandliq,1)
+                    if (maskif(i,j,k)) then
+                      cldextbandice(i,j,k,nb) = tempext(i,j,k)
+                    else if (maskis(i,j,k)) then
+                      cldextbandice(i,j,k,nb) = tempext2(i,j,k)
+                    endif
+                  end do
+                  end do
+                  end do
+                    
+!--------------------------------------------------------------------
+!    if this is not an isccp call with activated stochastic clouds, all
+!    grid columns will use the same parameterization.
+!--------------------------------------------------------------------
+        else  ! (isccp_call)
+
 !----------------------------------------------------------------------
 !    call thickavg to map the single-scattering properties for snow 
 !    flakes that were calculated for the desired ice crystal spectral 
 !    interval to the sw parameterization band spectral intervals.
 !----------------------------------------------------------------------
               if (do_dge_sw) then
+                maskis = .false.
                 call thickavg (nb, nivl1icecld(nb), nivl2icecld(nb),  &
                                                cldextivlice,     &
                           solivlicecld,   &
                           Solar_spect%solflxbandref(nb),    &
-                           maski, cldextbandice(:,:,:,nb))
+                           maskif, cldextbandice(:,:,:,nb))
               else
+                maskif = .false.
                 call thickavg (nb, nivl1icesolcld(nb),  &
                                nivl2icesolcld(nb),    &
                            cldextivlice2,   &
                        solivlicesolcld,  &
                             Solar_spect%solflxbandref(nb),    &
-                           maski, cldextbandice(:,:,:,nb))
+                           maskis, cldextbandice(:,:,:,nb))
               endif
+  endif ! (isccp_call)
 
 !----------------------------------------------------------------------
 !    call thickavg to map the single-scattering properties for snow 
@@ -3240,7 +4133,8 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                   do i=1, size(cldextbandliq,1)
                     anymask(i,j,k) = maskl(i,j,k) .or.  &
                                      maskr(i,j,k) .or.  &
-                                      maski(i,j,k) .or. masks(i,j,k)
+                                      maskif(i,j,k) .or. &
+                                      maskis(i,j,k) .or. masks(i,j,k)
                   end do
                 end do
               end do
@@ -3256,7 +4150,7 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                       if (maskr(i,j,k)) then
                         sum = sum + cldextbandrain(i,j,k,nonly)
                       endif
-                      if (maski(i,j,k)) then
+                      if (maskif(i,j,k) .or. maskis(i,j,k)) then
                         sum = sum + cldextbandice(i,j,k,nonly)
                       endif
                       if (masks(i,j,k)) then
@@ -3768,8 +4662,9 @@ end subroutine savijarvi
 !  </OUT>
 ! </SUBROUTINE>
 !
-subroutine fu (conc_ice, size_ice, cldextivlice, cldssalbivlice,   &
-               cldasymmivlice, mask, starting_band, ending_band)
+subroutine fu (conc_ice, size_ice, dge_column, cldextivlice,  &
+               cldssalbivlice, cldasymmivlice, mask, starting_band, &
+               ending_band)
  
 !----------------------------------------------------------------------
 !    subroutine fu defines the single scattering parameters for ice
@@ -3781,6 +4676,7 @@ subroutine fu (conc_ice, size_ice, cldextivlice, cldssalbivlice,   &
 !---------------------------------------------------------------------- 
                                                                         
 real, dimension (:,:,:),   intent(in)    ::   conc_ice, size_ice
+logical, dimension (:,:,:),   intent(in)    ::   dge_column          
 real, dimension (:,:,:,:), intent(inout)   ::  cldextivlice,      &
                                                cldssalbivlice,    &
                                                cldasymmivlice
@@ -3903,6 +4799,7 @@ integer,     intent(in), optional          ::  starting_band, &
  
       integer     :: nistart, niend
       integer     :: i, j, k, ni
+      real        :: fd, f, fw
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -3960,6 +4857,7 @@ integer,     intent(in), optional          ::  starting_band, &
         do j=1,size(conc_ice,2)
           do i=1,size(conc_ice,1)
 
+           if (dge_column(i,j,k)) then
 !----------------------------------------------------------------------
 !    if no ice crystals are present in a grid box, set the scattering
 !    parameters to zero.
@@ -4003,7 +4901,33 @@ integer,     intent(in), optional          ::  starting_band, &
                           c1fu(ni)*size_i(i,j,k) +                   &
                           c2fu(ni)*size_i(i,j,k)**2 +                &
                           c3fu(ni)*size_i(i,j,k)**3
+
+!yim: 11/21/06 Delta adjustment
+                   if (do_delta_adj) then
+                        fd =                                           &
+                          1.1572963e-1 +                                           &
+                          2.5648064e-4*size_ice(i,j,k) +                           &
+                          1.9131293e-6*size_ice(i,j,k)**2                          &
+                          -1.2460341e-8*size_ice(i,j,k)**3
+                         f = 0.5/cldssalbivlice(i,j,k,ni) + fd
+                         fw = f * cldssalbivlice(i,j,k,ni)
+                        cldextivlice(i,j,k,ni) = cldextivlice(i,j,k,ni) * (1. - fw)
+                        cldssalbivlice(i,j,k,ni) = cldssalbivlice(i,j,k,ni) * (1. - f)/(1. - fw)
+                        cldasymmivlice(i,j,k,ni) = (cldasymmivlice(i,j,k,ni) - f)/(1. - f)
+                    endif
+  
+                   if (do_const_asy) then
+                         f = 0.5/cldssalbivlice(i,j,k,ni)
+                         fw = f * cldssalbivlice(i,j,k,ni)
+                         cldextivlice(i,j,k,ni) = cldextivlice(i,j,k,ni)* (1. - fw)
+                        cldssalbivlice(i,j,k,ni) = cldssalbivlice(i,j,k,ni) * (1. - f)/(1. - fw)
+                         cldasymmivlice(i,j,k,ni) = (0.8 - f)/(1. - f)
+                  endif
+!yim
                 end do
+            endif
+            else
+               mask(i,j,k) = .false.
             endif
           end do
         end do
@@ -4070,7 +4994,7 @@ end subroutine fu
 !  </OUT>
 ! </SUBROUTINE>
 !
-subroutine icesolar (conc_ice, size_ice, cldextivlice,    &
+subroutine icesolar (conc_ice, size_ice, dge_column, cldextivlice,    &
                      cldssalbivlice, cldasymmivlice, &
                      mask, &
                      starting_band, ending_band)
@@ -4083,6 +5007,7 @@ subroutine icesolar (conc_ice, size_ice, cldextivlice,    &
 !----------------------------------------------------------------------
                                                                    
 real, dimension (:,:,:),   intent(in)   ::   conc_ice, size_ice
+logical, dimension (:,:,:),   intent(in)   ::   dge_column        
 real, dimension (:,:,:,:), intent(inout)  ::   cldextivlice,           &
                                                cldssalbivlice,         &
                                                cldasymmivlice
@@ -4214,6 +5139,7 @@ integer,  intent(in), optional            ::   starting_band, &
         do j=1,size(conc_ice,2)
           do i=1,size(conc_ice,1)
 
+            if (.not. dge_column(i,j,k)) then
 !---------------------------------------------------------------------
 !    bypass calculations if no crystals are present. set scattering
 !    parameters to values comatible with the absence of cloud.
@@ -4261,6 +5187,9 @@ integer,  intent(in), optional            ::   starting_band, &
                               ((1. - fdel2)*fgam2 + 3.*fdel2)/3.
                 end do
             endif
+           else
+             mask(i,j,k) = .false.
+           endif
           end do
         end do
       end do
@@ -4505,7 +5434,8 @@ end subroutine snowsw
 ! </SUBROUTINE>
 subroutine cloud_lwpar (nonly, nbmax, nnn, size_drop, size_ice,  &
                         size_rain, conc_drop, conc_ice, conc_rain,  &
-                        conc_snow, do_dge_lw, abscoeff)
+                        conc_snow, do_dge_lw, dge_column, isccp_call, &
+                        abscoeff)
  
 !----------------------------------------------------------------------
 !    cloud_lwpar determines the absorption coefficients due to cloud 
@@ -4519,9 +5449,11 @@ subroutine cloud_lwpar (nonly, nbmax, nnn, size_drop, size_ice,  &
 integer,                   intent(in)   ::   nonly, nbmax, nnn
 real, dimension (:,:,:,:), intent(in)   ::   size_drop, size_ice,    &
                                              conc_drop, conc_ice
+logical, dimension (:,:,:,:), intent(in)   :: dge_column
 real, dimension (:,:,:),   intent(in)   ::   size_rain, conc_rain,   &
                                              conc_snow
 logical,                   intent(in)   ::   do_dge_lw
+logical,                   intent(in)   ::   isccp_call
 real, dimension (:,:,:,:), intent(out)  ::   abscoeff 
  
 !
@@ -4556,8 +5488,15 @@ real, dimension (:,:,:,:), intent(out)  ::   abscoeff
              cldextbndsnowlw, cldssalbbndsnowlw, cldasymmbndsnowlw, &
              cldextbndicelw,  cldssalbbndicelw,  cldasymmbndicelw,    &
              cldextbnddroplw
+      real, dimension (size(conc_drop,1), size(conc_drop,2), &
+                       size(conc_drop,3)             )  ::    &
+             cldext, cldssa, cldasy, cldext2, cldssa2, cldasy2
+      logical, dimension (size(conc_drop,1), size(conc_drop,2), &
+                       size(conc_drop,3)             )  ::    &
+                 maskf, maski
+      
 
-      integer  :: n
+      integer  :: i,j,k,n
 
 !----------------------------------------------------------------------
 ! local variables:                                                  
@@ -4668,16 +5607,65 @@ real, dimension (:,:,:,:), intent(out)  ::   abscoeff
 !    effectiuve radius parameterization is to be used call subroutine 
 !    el_dge; if it is not, call subroutine el.
 !----------------------------------------------------------------------
-      if (do_dge_lw) then
+      if (isccp_call) then
         do n=1,Cldrad_control%nlwcldb
           if (nbmax == 1) then
             call el_dge (n, conc_ice(:,:,:,nnn), size_ice(:,:,:,nnn),  &
+                          
+                  dge_column(:,:,:,nnn), maskf, cldext, cldssa, cldasy)
+           else
+             if (nonly.eq.0   .or. nonly.eq.n ) then            
+             call el_dge (n, conc_ice(:,:,:,n), size_ice(:,:,:,n),  &
+                   dge_column(:,:,:,n), maskf, cldext, cldssa, cldasy)
+             end if ! for nonly
+           endif ! for nbmax == 1
+          if (nbmax == 1) then
+            call el (n, conc_ice(:,:,:,nnn), size_ice(:,:,:,nnn),  &
+               dge_column(:,:,:,nnn), maski, cldext2, cldssa2, cldasy2)
+          else
+            if (nonly.eq.0   .or. nonly.eq.n ) then            
+            call el (n, conc_ice(:,:,:,n), size_ice(:,:,:,n),  &
+                 dge_column(:,:,:,n), maski, cldext2, cldssa2, cldasy2)
+            endif ! for nonly 
+          endif ! for nbmax == 1
+ 
+              do k=1, size(conc_drop,3)
+                do j=1, size(conc_drop    ,2)
+                  do i=1, size(conc_drop,1)
+                    if (maskf(i,j,k)) then
+                     cldextbndicelw(i,j,k,n) = cldext(i,j,k)
+                     cldssalbbndicelw(i,j,k,n) = cldssa(i,j,k)
+!                    cldasymmbndicelw(i,j,k,n) = cldasy(i,j,k)
+                    else if (maski(i,j,k)) then
+                     cldextbndicelw(i,j,k,n) = cldext2(i,j,k)
+                     cldssalbbndicelw(i,j,k,n) = cldssa2(i,j,k)
+!                    cldasymmbndicelw(i,j,k,n) = cldasy2(i,j,k)
+                    else
+                     cldextbndicelw(i,j,k,n) = 0.0             
+                     cldssalbbndicelw(i,j,k,n) = 0.0              
+!                    cldasymmbndicelw(i,j,k,n) = cldasy2(i,j,k)
+                    endif
+                  end do
+                  end do
+                  end do
+        end do
+
+   else    ! (isccp_call)
+      if (do_dge_lw) then
+          maski = .false.
+        do n=1,Cldrad_control%nlwcldb
+          maski = .false.
+          if (nbmax == 1) then
+            call el_dge (n, conc_ice(:,:,:,nnn), size_ice(:,:,:,nnn),  &
+                          
+                         dge_column(:,:,:,nnn), maskf, &
                          cldextbndicelw(:,:,:,n),     &
                          cldssalbbndicelw(:,:,:,n),   &
                          cldasymmbndicelw(:,:,:,n))
            else
              if (nonly.eq.0   .or. nonly.eq.n ) then            
              call el_dge (n, conc_ice(:,:,:,n), size_ice(:,:,:,n),  &
+                         dge_column(:,:,:,n), maskf, &
                           cldextbndicelw(:,:,:,n),     &
                           cldssalbbndicelw(:,:,:,n),    &
                           cldasymmbndicelw(:,:,:,n))
@@ -4685,15 +5673,18 @@ real, dimension (:,:,:,:), intent(out)  ::   abscoeff
            endif ! for nbmax == 1
          end do
       else
+          maskf = .false.
         do n=1,Cldrad_control%nlwcldb
           if (nbmax == 1) then
             call el (n, conc_ice(:,:,:,nnn), size_ice(:,:,:,nnn),  &
+                         dge_column(:,:,:,nnn), maski,  &
                      cldextbndicelw(:,:,:,n),     &
                      cldssalbbndicelw(:,:,:,n),    &
                      cldasymmbndicelw(:,:,:,n))
           else
             if (nonly.eq.0   .or. nonly.eq.n ) then            
             call el (n, conc_ice(:,:,:,n), size_ice(:,:,:,n),  &
+                         dge_column(:,:,:,n), maski,  &
                      cldextbndicelw(:,:,:,n),     &
                      cldssalbbndicelw(:,:,:,n),  &
                      cldasymmbndicelw(:,:,:,n))
@@ -4702,6 +5693,8 @@ real, dimension (:,:,:,:), intent(out)  ::   abscoeff
         end do
       endif
  
+    endif   ! (isccp_call)
+
 !----------------------------------------------------------------------
 !    compute absorption coefficient for each species as the product of 
 !    the extinction coefficient and (1 - single scattering albedo). 
@@ -4922,8 +5915,8 @@ end subroutine cloud_lwem_oneband
 !  </OUT>
 ! </SUBROUTINE>
 !
-subroutine el  (nb, conc_ice, size_ice, cldextbndicelw,     &
-                cldssalbbndicelw, cldasymmbndicelw)
+subroutine el  (nb, conc_ice, size_ice, dge_column, mask,  &
+                cldextbndicelw, cldssalbbndicelw, cldasymmbndicelw)
  
 !-----------------------------------------------------------------------
 !    subroutine el calculates total optical depth and scattering optical
@@ -4935,6 +5928,8 @@ subroutine el  (nb, conc_ice, size_ice, cldextbndicelw,     &
 
 integer,                 intent(in)    ::  nb
 real, dimension (:,:,:),   intent(in)    ::  conc_ice, size_ice
+logical, dimension (:,:,:),   intent(in )    ::  dge_column        
+logical, dimension (:,:,:),   intent(out)    ::  mask              
 real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
                                              cldssalbbndicelw,    &
                                              cldasymmbndicelw
@@ -5071,10 +6066,12 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
       do k=1, size(conc_ice,3)
         do j=1, size(conc_ice,2)
           do i=1, size(conc_ice,1)
+            if ( .not. dge_column(i,j,k)) then
             sumext = 0.
             sumssalb = 0.
             if (conc_ice(i,j,k) /= 0.0) then
 
+              mask(i,j,k) = .true.
 !-----------------------------------------------------------------------
 !    calculate extinction coefficient [ km**(-1) ] over the wavenumber
 !    bands of the Fu-Liou parameterization (not the radiation code
@@ -5110,10 +6107,21 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
                 sumssalb  = sumssalb + cldssalbivlice*fulwwts(nb,n )
 !               sumasymm  = sumasymm + cldasymmivlice*fulwwts(nb,n )
               end do
+            else 
+              mask(i,j,k) = .false.
+        cldextbndicelw(i,j,k) = 0.0        
+        cldssalbbndicelw(i,j,k) = 0.0          
+!       cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
             endif
             cldextbndicelw(i,j,k)   = sumext       
             cldssalbbndicelw(i,j,k) = sumssalb       
 !           cldasymmbndicelw(i,j,k,n) = sumasymm        
+             else
+                mask(i,j,k) = .false.
+            cldextbndicelw(i,j,k)   = 0.0          
+            cldssalbbndicelw(i,j,k) = 0.0            
+!           cldasymmbndicelw(i,j,k,n) = sumasymm        
+             endif
           end do
         end do
       end do
@@ -5167,8 +6175,8 @@ end subroutine el
 ! </SUBROUTINE>
 !  
  
-subroutine el_dge (nb, conc_ice, size_ice, cldextbndicelw,    &
-                   cldssalbbndicelw, cldasymmbndicelw)
+subroutine el_dge (nb, conc_ice, size_ice, dge_column, mask, &
+                   cldextbndicelw, cldssalbbndicelw, cldasymmbndicelw)
  
 !-----------------------------------------------------------------------
 !    subroutine el_dge calculates the total optical depth and scattering!    optical depth for infrared radiation using Fu et al (J. Clim., 11,
@@ -5181,6 +6189,8 @@ subroutine el_dge (nb, conc_ice, size_ice, cldextbndicelw,    &
 
 integer,                   intent(in)    ::  nb
 real, dimension (:,:,:),   intent(in)    ::  conc_ice, size_ice
+logical, dimension (:,:,:),   intent(in)    ::  dge_column
+logical, dimension (:,:,:),   intent(out)    ::  mask       
 real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
                                              cldssalbbndicelw,    &
                                              cldasymmbndicelw
@@ -5324,10 +6334,12 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
      do k=1, size(conc_ice,3)
        do j=1, size(conc_ice,2)
          do i=1, size(conc_ice,1)
+           if (dge_column(i,j,k)) then
            sumext = 0.
            sumssalb = 0.
            if (conc_ice(i,j,k) /= 0.0) then
 
+             mask (i,j,k)= .true.
 !-----------------------------------------------------------------------
 !    calculate extinction coefficient [km**(-1)] for each wavenumber
 !    band of the Fu-Liou parameterization (not the radiation
@@ -5381,10 +6393,21 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
 !!        sumasymm(:,:,:) = sumasymm(:,:,:) +     &
 !!                          cldasymmivlice(:,:,:,ni)*fulwwts(n,ni)
         end do
+        else 
+          mask(i,j,k) = .false.
+        cldextbndicelw(i,j,k) = 0.0        
+        cldssalbbndicelw(i,j,k) = 0.0          
+!       cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
         endif
         cldextbndicelw(i,j,k) = sumext
         cldssalbbndicelw(i,j,k) = sumssalb
 !       cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
+        else 
+          mask(i,j,k) = .false.
+        cldextbndicelw(i,j,k) = 0.0        
+        cldssalbbndicelw(i,j,k) = 0.0          
+!       cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
+        endif
         end do
         end do
         end do

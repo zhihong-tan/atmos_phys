@@ -58,8 +58,8 @@ public    original_fms_rad_init, original_fms_rad_end, original_fms_rad
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: original_fms_rad.F90,v 14.0 2007/03/15 22:07:00 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: original_fms_rad.F90,v 14.0.2.2 2007/05/25 16:32:05 vb Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)
@@ -281,7 +281,7 @@ real               ::  rh2o_lower_limit
 !-----------------------------------------------------------------------
            integer, intent(in)  :: kmax
 !   real, intent(in) :: co2std, ratio
-           real, intent(in), dimension(:)   :: lonb, latb
+           real, intent(in), dimension(:,:) :: lonb, latb
            real, intent(in), dimension(:,:) :: pref
         integer, intent(in), dimension(4)   :: axes
 type(time_type), intent(in)                 :: Time
@@ -294,7 +294,7 @@ type(time_type), intent(in)                 :: Time
 !     character(len=4) :: chvers
 
       real, dimension(size (lonb,1)-1) :: idiff
-      real, dimension(size (latb,1)-1) :: jdiff
+      real, dimension(size (latb,2)-1) :: jdiff
       integer :: i, j, minindx
       real  :: mindiff
       integer :: id, jd
@@ -324,8 +324,8 @@ type(time_type), intent(in)                 :: Time
       endif
 
 
-    jd = size(latb(:))-1
-    id = size(lonb(:))-1
+    jd = size(latb,2)-1
+    id = size(lonb,1)-1
     
 !--------------------------------------------------------------------
 !  define location of radiation diagnostics column, if present
@@ -338,14 +338,14 @@ type(time_type), intent(in)                 :: Time
        ' bad values specified for lat_diag or long_diag', FATAL) 
        endif
        
-!      jd = size(latb(:))-1
-!      id = size(lonb(:)) - 1
+!      jd = size(latb,2)-1
+!      id = size(lonb,1) - 1
        lat_diag = lat_diag*4.0*atan(1.0)/180.0
        long_diag = long_diag*4.0*atan(1.0)/180.0
-       if (  (lat_diag >= latb(1) .and. lat_diag <= latb(jd+1))   .and. &
-          (long_diag >= lonb(1) .and. long_diag <= lonb(id+1))  ) then
+       if (  (lat_diag >= latb(1,1) .and. lat_diag <= latb(1,jd+1))   .and. &
+          (long_diag >= lonb(1,1) .and. long_diag <= lonb(id+1,1))  ) then
          do j=1,jd
-           jdiff(j) = abs ( 0.5*(latb(j)+latb(j+1)) - lat_diag)  
+           jdiff(j) = abs ( 0.5*(latb(1,j)+latb(1,j+1)) - lat_diag)  
          end do
           mindiff = 10.0
           minindx = 1
@@ -357,7 +357,7 @@ type(time_type), intent(in)                 :: Time
           end do
           jpgl = minindx
          do i=1,id
-           idiff(i) = abs ( 0.5*(lonb(i)+lonb(i+1)) - long_diag)  
+           idiff(i) = abs ( 0.5*(lonb(i,1)+lonb(i+1,1)) - long_diag)  
          end do
           mindiff = 10.0
           minindx = 1

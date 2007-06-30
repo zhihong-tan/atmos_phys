@@ -1,10 +1,12 @@
 
 MODULE CONV_CLOSURES_MOD
 
-  use Sat_Vapor_Pres_Mod, ONLY: ESCOMP, DESCOMP
-  use      Constants_Mod, ONLY: tfreeze,HLv,HLf,HLs,CP_AIR,GRAV,Kappa,rdgas,rvgas
-  use  conv_utilities_mod,only: sd_copy, adi_cloud, extend_sd, adicloud, sounding
-  use  conv_plumes_mod,   only: cplume, ctend, cumulus_plume, cumulus_tend, cpnlist
+! use Sat_Vapor_Pres_Mod, ONLY: ESCOMP, DESCOMP
+! use      Constants_Mod, ONLY: tfreeze,HLv,HLf,HLs,CP_AIR,GRAV,Kappa,rdgas,rvgas
+  use  conv_utilities_k_mod,only: sd_copy_k, adi_cloud_k, extend_sd_k,&
+                                  adicloud, sounding, uw_params
+  use  conv_plumes_k_mod,   only: cumulus_plume_k, cumulus_tend_k, &
+                                  cplume, ctend, cpnlist
 
 !---------------------------------------------------------------------
   implicit none
@@ -13,8 +15,8 @@ MODULE CONV_CLOSURES_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_closures.F90,v 14.0 2007/03/15 22:08:35 fms Exp $'
-  character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+  character(len=128) :: version = '$Id: conv_closures.F90,v 14.0.2.1 2007/05/04 08:51:46 rsh Exp $'
+  character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -28,7 +30,7 @@ MODULE CONV_CLOSURES_MOD
   type cclosure
      real    :: cbmf, wrel, ufrc, scaleh, dcin, dcape, dwfn, wfn
      integer :: igauss
-     real    :: rkfre, rmaxfrac, rbuoy, tau_sh, tau_dp
+     real    :: rkfre, rmaxfrac, rbuoy, tau_sh, tau_dp, wcrit_min
   end type cclosure
  
 contains
@@ -69,7 +71,7 @@ contains
     integer :: iteration, niteration=5, id_check
     real    :: dydx, x0, y0
 
-    x0=1
+    x0=1.
     do iteration = 1,niteration
        y0   = x0 - beta * exp(-alpha * x0)
        dydx = 1. + beta * alpha * exp(-alpha * x0)
@@ -77,21 +79,26 @@ contains
        if (abs(y0) < 0.0001) then
           x=x0; id_check=0
        else
-          id_check=1; print*, 'ID_CHECK=1, in solvecbmfffffffffffff'
+          id_check=1
        end if
     end do
+    if (id_check==1) then
+      x=1.
+      print*, 'ID_CHECK=1, in solvecbmfffffffffffff'
+    endif
     
   end subroutine solvecbmf
 
 !#####################################################################
 !#####################################################################
 
-  subroutine cclosure_bretherton(tkeavg, cpn, sd, ac, cc)
+  subroutine cclosure_bretherton(tkeavg, cpn, sd, Uw_p,  ac, cc)
   
     implicit none
     real,           intent(in)    :: tkeavg
     type(cpnlist),  intent(in)    :: cpn
     type(sounding), intent(in)    :: sd
+    type(uw_params), intent(inout)    :: Uw_p
     type(adicloud), intent(in)    :: ac
     type(cclosure), intent(inout) :: cc
     
@@ -107,7 +114,9 @@ contains
     elseif(cc%igauss.eq.1)then !Use cin and gaussian distribution of w
        wcrit  = sqrt(2. * ac % cin * cc%rbuoy)
        sigmaw = sqrt(cc%rkfre * tkeavg)
+       wcrit = max(wcrit, cc%wcrit_min*sigmaw)
        cbmf   = ac % rho0lcl * sigmaw / 2.5066 * exp(-0.5*((wcrit/sigmaw)**2.))
+      cbmf   = min(cbmf, ( sd%ps(0) - ac%plcl ) * 0.25 / sd%delt / Uw_p%GRAV)
 
        !Diagnose updraft fraction sqrt(2.) = 1.4142
        erfarg=wcrit / (1.4142 * sigmaw)
@@ -142,12 +151,13 @@ contains
 !#####################################################################
 !#####################################################################
 
-  subroutine cclosure_implicit(tkeavg, cpn, sd, ac, cc, delt, rkm, &
+  subroutine cclosure_implicit(tkeavg, cpn, sd, Uw_p, ac, cc, delt, rkm, &
        do_coldT, sd1, ac1, cc1, cp1, ct1)
     implicit none
     real,           intent(in)    :: tkeavg, delt, rkm
     type(cpnlist),  intent(in)    :: cpn
     type(sounding), intent(in)    :: sd
+    type(uw_params), intent(inout)    :: Uw_p
     type(adicloud), intent(in)    :: ac
     type(cclosure), intent(inout) :: cc, cc1
     type(sounding), intent(inout) :: sd1
@@ -159,15 +169,19 @@ contains
 
     real :: cbmf0=0.001, dcin, alpha, beta, phi
 
-    call cclosure_bretherton(tkeavg, cpn, sd, ac, cc)
+    call cclosure_bretherton(tkeavg, cpn, sd, Uw_p, ac, cc)
+    if(cc%cbmf.eq.0.) then
+      cc % dcin=0.
+      return
+    end if
 
-    call cumulus_plume(cpn, sd, ac, cp1, rkm, cbmf0, cc%wrel, cc%scaleh)
+    call cumulus_plume_k(cpn, sd, ac, cp1, rkm, cbmf0, cc%wrel, cc%scaleh, Uw_p)
     if(cp1%ltop.lt.cp1%krel+2 .or. cp1%let.le.cp1%krel+1) then
        cc % dcin=0.
        return
     else
-       call cumulus_tend(cpn, sd, cp1, ct1, do_coldT)
-       call sd_copy(sd, sd1)
+       call cumulus_tend_k(cpn, sd, Uw_p, cp1, ct1, do_coldT)
+       call sd_copy_k(sd, sd1)
        sd1 % t  = sd1 % t  + ct1%tten  * delt
        sd1 % qv = sd1 % qv + ct1%qvten * delt
        sd1 % ql = sd1 % ql + ct1%qlten * delt
@@ -177,14 +191,14 @@ contains
        sd1 % u  = sd1 % u  + ct1%uten  * delt
        sd1 % v  = sd1 % v  + ct1%vten  * delt
 
-       call extend_sd(sd1, sd%pblht, doice)
+       call extend_sd_k(sd1, sd%pblht, doice, Uw_p)
 
-       call adi_cloud(sd1%zs(1), sd1%ps(1), sd1%hl(1), sd1%thc(1), sd1%qct(1), sd1, dofast, doice, ac1)
+       call adi_cloud_k(sd1%zs(1), sd1%ps(1), sd1%hl(1), sd1%thc(1), sd1%qct(1), sd1, Uw_p, dofast, doice, ac1)
 
        cc % dcin=(ac1%cin-ac%cin)/cbmf0
 
        alpha  = (2. * cc%rbuoy) / (2. * cc%rkfre * tkeavg) * cc % cbmf * cc % dcin
-       beta   = ac % rho0lcl * sqrt(cc%rkfre * tkeavg) / 2.5066
+       beta   = 1.  ! ac % rho0lcl * sqrt(cc%rkfre * tkeavg) / 2.5066
        phi    = 1.
        if (alpha .gt. 0.) then
           call solvecbmf(alpha, beta, phi)
@@ -197,12 +211,13 @@ contains
 !#####################################################################
 !#####################################################################
 
-  subroutine cclosure_relaxcbmf(tkeavg, cpn, sd, ac, cc, delt)
+  subroutine cclosure_relaxcbmf(tkeavg, cpn, sd, Uw_p, ac, cc, delt)
   
     implicit none
     real,           intent(in)    :: tkeavg, delt
     type(cpnlist),  intent(in)    :: cpn
     type(sounding), intent(in)    :: sd
+    type(uw_params), intent(in)    :: Uw_p
     type(adicloud), intent(in)    :: ac
     type(cclosure), intent(inout) :: cc
     
@@ -249,11 +264,12 @@ contains
 !#####################################################################
 !#####################################################################
 
-  subroutine cclosure_emanuel(tkeavg, cpn, sd, ac, cc, delt)
+  subroutine cclosure_emanuel(tkeavg, cpn, sd, Uw_p, ac, cc, delt)
   
     implicit none
     real,           intent(in)    :: tkeavg, delt
     type(cpnlist),  intent(in)    :: cpn
+    type(uw_params),  intent(inout)    :: Uw_p
     type(sounding), intent(in)    :: sd
     type(adicloud), intent(in)    :: ac
     type(cclosure), intent(inout) :: cc
@@ -290,11 +306,12 @@ contains
 !#####################################################################
 !#####################################################################
 
-  subroutine cclosure_relaxwfn(tkeavg, cpn, sd, ac, cc, cp, ct, delt, rkm, &
+  subroutine cclosure_relaxwfn(tkeavg, cpn, sd, Uw_p, ac, cc, cp, ct, delt, rkm, &
        do_coldT, sd1, ac1, cc1, cp1, ct1)
     implicit none
     real,           intent(in)    :: tkeavg, delt, rkm
     type(cpnlist),  intent(in)    :: cpn
+    type(uw_params),  intent(inout)    :: Uw_p
     type(sounding), intent(in)    :: sd
     type(adicloud), intent(in)    :: ac
     type(cclosure), intent(inout) :: cc, cc1
@@ -310,15 +327,15 @@ contains
     real    :: cbmf0=0.0001, delp, cbmf_old, tmp, cbmfs
 
     cbmf_old= cc%cbmf
-    call cclosure_bretherton(tkeavg, cpn, sd, ac, cc)
+    call cclosure_bretherton(tkeavg, cpn, sd, Uw_p, ac, cc)
 
-    call cumulus_plume(cpn, sd, ac, cp, rkm, cbmf0, cc%wrel, cc%scaleh)
+    call cumulus_plume_k(cpn, sd,  ac, cp, rkm, cbmf0, cc%wrel, cc%scaleh, Uw_p)
     if(cp%ltop.lt.cp%krel+2 .or. cp%let.le.cp%krel+1) then
        cc % dcin=0.
        return
     else
-       call cumulus_tend(cpn, sd, cp, ct, do_coldT)
-       call sd_copy(sd, sd1)
+       call cumulus_tend_k(cpn, sd, Uw_p, cp, ct, do_coldT)
+       call sd_copy_k(sd, sd1)
        sd1 % t  = sd1 % t  + ct%tten  * delt
        sd1 % qv = sd1 % qv + ct%qvten * delt
        sd1 % ql = sd1 % ql + ct%qlten * delt
@@ -328,13 +345,13 @@ contains
        sd1 % u  = sd1 % u  + ct%uten  * delt
        sd1 % v  = sd1 % v  + ct%vten  * delt
 
-       call extend_sd(sd1, sd%pblht, doice)
+       call extend_sd_k(sd1, sd%pblht, doice, Uw_p)
 
-       call adi_cloud(sd1%zs(1), sd1%ps(1), sd1%hl(1), sd1%thc(1), sd1%qct(1), sd1, dofast, doice, ac1)
+       call adi_cloud_k(sd1%zs(1), sd1%ps(1), sd1%hl(1), sd1%thc(1), sd1%qct(1), sd1, Uw_p, dofast, doice, ac1)
        cc % dcin=(ac1%cin-ac%cin)/cbmf0
        cc % dcape=(ac1%cape-ac%cape)/cbmf0
 
-       call cumulus_plume(cpn, sd1, ac1, cp1, rkm, cbmf0, cc%wrel, cc%scaleh)
+       call cumulus_plume_k(cpn, sd1, ac1, cp1, rkm, cbmf0, cc%wrel, cc%scaleh, Uw_p)
 
        cc%dwfn=0.; cc%wfn=0.; delp=0.;
        do k=cp1%krel, cp1%let

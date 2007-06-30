@@ -260,8 +260,8 @@ real, parameter :: tkemin  =   1.e-6  ! tke minimum (m2/s2)
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: edt.F90,v 13.0 2006/03/28 21:09:12 fms Exp $'
-character(len=128) :: Tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: Version = '$Id: edt.F90,v 13.0.4.2 2007/05/25 16:31:58 vb Exp $'
+character(len=128) :: Tagname = '$Name: nalanda_2007_06 $'
 logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !
@@ -310,7 +310,7 @@ subroutine edt_init(lonb, latb, axes,time,idim,jdim,kdim)
 ! 
 !      idim,jdim,kdim    size of the first 3 dimensions 
 !      axes, time        variables needed for netcdf diagnostics
-!      latb, lonb        latitudes and longitudes at grid box boundaries
+!      latb, lonb        latitudes and longitudes at grid box corners
 !
 !
 !      --------
@@ -326,7 +326,7 @@ subroutine edt_init(lonb, latb, axes,time,idim,jdim,kdim)
 
 integer,         intent(in) :: idim,jdim,kdim,axes(4)
 type(time_type), intent(in) :: time
-real, dimension(:),intent(in) :: lonb, latb
+real, dimension(:,:),intent(in) :: lonb, latb
 
 integer                     :: unit,io
 integer :: vers, vers2
@@ -372,7 +372,7 @@ real         :: dellat, dellon
 !    allocate and initialize a flag array which indicates the latitudes
 !    containing columns where radiation diagnostics are desired.
 !---------------------------------------------------------------------
-      allocate (do_edt_dg (size(latb(:))-1) )
+      allocate (do_edt_dg (size(latb,2)-1) )
       do_edt_dg(:) = .false.
 
 !-------------------------------------------------------------------
@@ -413,8 +413,8 @@ real         :: dellat, dellon
 !    the globe.
 !---------------------------------------------------------------------
         do nn=1,num_pts_ij
-          dellat = latb(2) - latb(1)
-          dellon = lonb(2) - lonb(1)
+          dellat = latb(1,2) - latb(1,1)
+          dellon = lonb(2,1) - lonb(1,1)
           lat_edtprt(nn + num_pts_latlon) =     &
                       (-0.5*acos(-1.0) + (j_edtprt_gl(nn) - 0.5)*  &
                                            dellat) * radian
@@ -453,19 +453,19 @@ real         :: dellat, dellon
 !    i and j processor-coordinates and the latitude and longitude of 
 !    the diagnostics column.
 !--------------------------------------------------------------------
-          do j=1,size(latb(:)) - 1
-            if (lat_edtprt(nn) .ge. latb(j)*radian .and.  &
-                lat_edtprt(nn) .lt. latb(j+1)*radian) then
-              do i=1,size(lonb(:)) - 1
-                if (lon_edtprt(nn) .ge. lonb(i)*radian   &
+          do j=1,size(latb,2) - 1
+            if (lat_edtprt(nn) .ge. latb(1,j)*radian .and.  &
+                lat_edtprt(nn) .lt. latb(1,j+1)*radian) then
+              do i=1,size(lonb,1) - 1
+                if (lon_edtprt(nn) .ge. lonb(i,1)*radian   &
                                   .and.&
-                    lon_edtprt(nn) .lt. lonb(i+1)*radian)  &
+                    lon_edtprt(nn) .lt. lonb(i+1,1)*radian)  &
                                    then
                   do_edt_dg(j) = .true.
                   j_edtprt(nn) = j
                   i_edtprt(nn) = i
-                  deglon1(nn) = 0.5*(lonb(i) + lonb(i+1))*radian
-                  deglat1(nn) = 0.5*(latb(j) + latb(j+1))*radian
+                  deglon1(nn) = 0.5*(lonb(i,1) + lonb(i+1,1))*radian
+                  deglat1(nn) = 0.5*(latb(1,j) + latb(1,j+1))*radian
                   exit
                 endif
               end do

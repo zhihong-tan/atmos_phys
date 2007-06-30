@@ -43,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 14.0 2007/03/15 22:07:15 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 14.0.2.1.2.1 2007/05/12 14:45:13 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -377,6 +377,7 @@ type cloudrad_control_type
     logical :: do_diag_clouds        
     logical :: do_specified_clouds        
     logical :: do_donner_deep_clouds
+    logical :: do_uw_clouds
     logical :: do_zetac_clouds
     logical :: do_random_overlap
     logical :: do_max_random_overlap
@@ -406,6 +407,7 @@ type cloudrad_control_type
     logical :: do_diag_clouds_iz
     logical :: do_specified_clouds_iz
     logical :: do_donner_deep_clouds_iz
+    logical :: do_uw_clouds_iz
     logical :: do_zetac_clouds_iz
     logical :: do_random_overlap_iz
     logical :: do_max_random_overlap_iz
@@ -682,6 +684,7 @@ public microphysics_type
 !    stoch_size_ice
 !    stoch_size_drop
 !    stoch_cldamt
+!    stoch_cloud_type
 !    lw_stoch_conc_ice
 !    lw_stoch_conc_drop
 !    lw_stoch_size_ice
@@ -710,6 +713,7 @@ real, dimension(:,:,:,:), pointer :: stoch_conc_ice=>NULL(),   &
                                      stoch_size_drop=>NULL(),  &
                                      stoch_cldamt=>NULL(),     &
                                      stoch_droplet_number=>NULL()
+integer, dimension(:,:,:,:), pointer ::  stoch_cloud_type=>NULL()
 !
 ! In practice, we allocate a single set of columns for the stochastic
 !   clouds, then point to sections of the larger array with the 
@@ -1181,6 +1185,7 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
+                                         .false.,                   &
                                          0,0,0,0,0,0 , &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
@@ -1188,7 +1193,8 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false., .false., .false.)
+                                         .false., .false., .false., &
+                                         .false.                   )
 
 
 type (longwave_parameter_type), public  ::   &
@@ -1413,6 +1419,7 @@ subroutine check_derived_types
           Cldrad_control%do_specified_clouds_iz .and. &
           Cldrad_control%do_specified_strat_clouds_iz .and. &
           Cldrad_control%do_donner_deep_clouds_iz .and. &
+          Cldrad_control%do_uw_clouds_iz .and. &
           Cldrad_control%do_stochastic_clouds_iz .and. &
           Cldrad_control%do_random_overlap_iz .and. &
           Cldrad_control%do_ica_calcs_iz .and. &

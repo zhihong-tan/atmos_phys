@@ -101,8 +101,8 @@ namelist/cu_mo_trans_nml/ diff_norm, &
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: cu_mo_trans.F90,v 14.0 2007/03/15 22:01:54 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: cu_mo_trans.F90,v 14.0.2.1 2007/05/04 08:42:22 rsh Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
 contains
 
@@ -128,10 +128,11 @@ contains
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine cu_mo_trans_init( axes, Time )
+subroutine cu_mo_trans_init( axes, Time, doing_diffusive )
 
  integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
+ logical,         intent(out) :: doing_diffusive
 
 integer :: unit, ierr, io
 integer, dimension(3)  :: half =  (/1,2,4/)
@@ -164,6 +165,8 @@ integer, dimension(3)  :: half =  (/1,2,4/)
         call error_mesg ('cu_mo_trans', &
          'invalid specification of transport_scheme', FATAL)
       endif
+
+      doing_diffusive = do_diffusive_transport
 
 ! --- initialize quantities for diagnostics output -------------
 

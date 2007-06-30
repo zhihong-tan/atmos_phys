@@ -61,8 +61,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module  -------------------------
 
-character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 14.0 2007/03/15 22:07:45 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 14.0.2.2 2007/05/25 16:32:06 vb Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 !---------------------------------------------------------------------
@@ -133,7 +133,7 @@ logical :: module_is_initialized = .false.  ! module initialized ?
 !   call shortwave_driver_init (latb, pref)
 !  </TEMPLATE>
 !  <IN NAME="latb" TYPE="real">
-!   An array of model latitudes at cell boundaries [radians]
+!   2d array of model latitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="pref" TYPE="real">
 !   An array containing two reference pressure profiles [pascals]
@@ -146,14 +146,14 @@ subroutine shortwave_driver_init (latb, pref)
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
-real, dimension(:),   intent(in) :: latb
+real, dimension(:,:), intent(in) :: latb
 real, dimension(:,:), intent(in) :: pref
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
-!       latb      array of model latitudes at cell boundaries 
+!       latb      2d array of model latitudes at cell corners 
 !                 [ radians ]
 !                                
 !       pref      array containing two reference pressure profiles 

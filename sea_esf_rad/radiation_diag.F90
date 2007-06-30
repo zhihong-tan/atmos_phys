@@ -52,8 +52,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: radiation_diag.F90,v 14.0 2007/03/15 22:07:20 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: radiation_diag.F90,v 14.0.2.2 2007/05/25 16:32:05 vb Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 !---------------------------------------------------------------------
@@ -173,10 +173,10 @@ logical     :: module_is_initialized = .false.
 !   call radiation_diag_init (latb, lonb, Lw_tables)
 !  </TEMPLATE>
 !  <IN NAME="latb" TYPE="real">
-!   array of model latitudes at cell boundaries [radians]
+!   2d array of model latitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="lonb" TYPE="real">
-!   array of model longitudes at cell boundaries [radians]
+!   2d array of model longitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="Lw_tables" TYPE="lw_table_type">
 !    lw_tables_type variable containing various longwave
@@ -191,15 +191,15 @@ subroutine radiation_diag_init (latb, lonb, Lw_tables)
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
-real, dimension(:),   intent(in)  ::  latb, lonb         
+real, dimension(:,:), intent(in)  ::  latb, lonb         
 type(lw_table_type),  intent(in)  ::  Lw_tables
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
-!       latb      array of model latitudes at cell boundaries [radians]
-!       lonb      array of model longitudes at cell boundaries [radians]
+!       latb      2d array of model latitudes at cell corners [radians]
+!       lonb      2d array of model longitudes at cell corners [radians]
 !       Lw_tables lw_tables_type variable containing various longwave
 !                 table specifiers needed by radiation_diag_mod.
 !
@@ -255,7 +255,7 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !    allocate and initialize a flag array which indicates the latitudes
 !    containing columns where radiation diagnostics are desired.
 !---------------------------------------------------------------------
-      allocate (do_raddg (size(latb(:))-1) )
+      allocate (do_raddg (size(latb,2)-1) )
       do_raddg(:) = .false.
 
 !-------------------------------------------------------------------
@@ -296,8 +296,8 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !    the globe.
 !---------------------------------------------------------------------
         do nn=1,num_pts_ij
-          dellat = latb(2) - latb(1)
-          dellon = lonb(2) - lonb(1)
+          dellat = latb(1,2) - latb(1,1)
+          dellon = lonb(2,1) - lonb(1,1)
           latradprt(nn + num_pts_latlon) =     &
                       (-0.5*acos(-1.0) + (jradprt_gl(nn) - 0.5)*  &
                                            dellat) * radian
@@ -336,20 +336,20 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !    i and j processor-coordinates and the latitude and longitude of 
 !    the diagnostics column.
 !--------------------------------------------------------------------
-          do j=1,size(latb(:)) - 1
-            if (latradprt(nn) .ge. latb(j)*radian .and.  &
-                latradprt(nn) .lt. latb(j+1)*radian) then
-              do i=1,size(lonb(:)) - 1
-                if (lonradprt(nn) .ge. lonb(i)*radian   &
+          do j=1,size(latb,2) - 1
+            if (latradprt(nn) .ge. latb(1,j)*radian .and.  &
+                latradprt(nn) .lt. latb(1,j+1)*radian) then
+              do i=1,size(lonb,1) - 1
+                if (lonradprt(nn) .ge. lonb(i,1)*radian   &
                                   .and.&
-                    lonradprt(nn) .lt. lonb(i+1)*radian)  &
+                    lonradprt(nn) .lt. lonb(i+1,1)*radian)  &
                                    then
                   do_raddg(j) = .true.
                   jradprt(nn) = j
                   iradprt(nn) = i
-                  deglon1(nn) = 0.5*(lonb(i) + lonb(i+1))*  &
+                  deglon1(nn) = 0.5*(lonb(i,1) + lonb(i+1,1))*  &
                                 radian
-                  deglat1(nn) = 0.5*(latb(j) + latb(j+1))*   &
+                  deglat1(nn) = 0.5*(latb(1,j) + latb(1,j+1))*   &
                                 radian
                   exit
                 endif

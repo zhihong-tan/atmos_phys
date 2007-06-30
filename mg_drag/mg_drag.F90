@@ -23,8 +23,8 @@ module mg_drag_mod
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 13.0 2006/03/28 21:10:10 fms Exp $'
- character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 13.0.4.2 2007/05/25 16:31:59 vb Exp $'
+ character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
  real, parameter :: p00 = 1.e5
 
@@ -952,10 +952,10 @@ end subroutine mgwd_tend
 
 !---------------------------------------------------------------------
 ! Arguments (Intent in)
-!     lonb  = longitude in radians of the grid box edges
-!     latb  = latitude  in radians of the grid box edges
+!     lonb  = longitude in radians of the grid box corners
+!     latb  = latitude  in radians of the grid box corners
 !---------------------------------------------------------------------
- real, intent(in), dimension(:) :: lonb, latb
+ real, intent(in), dimension(:,:) :: lonb, latb
  
 !---------------------------------------------------------------------
 ! Arguments (Intent out - optional)
@@ -1002,8 +1002,8 @@ if(module_is_initialized) return
 ! --- Allocate storage for Ghprime
 !---------------------------------------------------------------------
 
-  ix = size(lonb(:)) - 1
-  iy = size(latb(:)) - 1
+  ix = size(lonb,1) - 1
+  iy = size(latb,2) - 1
 
   allocate( Ghprime(ix,iy) ) ; Ghprime = 0.0
   
@@ -1019,8 +1019,8 @@ if(module_is_initialized) return
       call error_mesg('mg_drag_init','source_of_sgsmtn="'//trim(source_of_sgsmtn)//'"'// &
                       ', but topography data file does not exist', FATAL)
     endif
-  else if ( trim(source_of_sgsmtn) == 'input' ) then
-    if ( file_exist( 'INPUT/mg_drag.res.nc' ) ) then
+  else if ( trim(source_of_sgsmtn) == 'input' .or. trim(source_of_sgsmtn) == 'input/computed' ) then
+    if ( file_exist('INPUT/mg_drag.res.nc') .or. file_exist('INPUT/mg_drag.res.tile1.nc') ) then
        if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
             'Reading NetCDF formatted restart file: INPUT/mg_drag.res.nc', NOTE)
        call read_data ('INPUT/mg_drag.res.nc', 'ghprime', Ghprime)
@@ -1031,8 +1031,16 @@ if(module_is_initialized) return
       call read_data(unit, Ghprime)
       call close_file(unit)
     else
-      call error_mesg ('mg_drag_init','source_of_sgsmtn="'//trim(source_of_sgsmtn)//'"'// &
-                       ', but neither ./INPUT/mg_drag.res.nc  or  ./INPUT/mg_drag.res  exists', FATAL)
+       if (trim(source_of_sgsmtn) == 'input') then
+          call error_mesg ('mg_drag_init','source_of_sgsmtn="'//trim(source_of_sgsmtn)//'"'// &
+                           ', but neither ./INPUT/mg_drag.res.nc  or  ./INPUT/mg_drag.res  exists', FATAL)
+       else
+          answer = get_topog_stdev ( lonb, latb, Ghprime )
+          if ( .not.answer ) then
+            call error_mesg('mg_drag_init','source_of_sgsmtn="'//trim(source_of_sgsmtn)//'"'// &
+                            ', but topography data file does not exist', FATAL)
+          endif
+       endif
     endif
   else
     call error_mesg ('mg_drag_init','"'//trim(source_of_sgsmtn)//'"'// &

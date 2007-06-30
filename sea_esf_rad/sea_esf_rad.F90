@@ -27,7 +27,7 @@ use fms_mod,              only: open_namelist_file, fms_init, &
                                 FATAL, close_file, &
                                 mpp_clock_id, mpp_clock_begin, &
                                 mpp_clock_end, CLOCK_ROUTINE, &
-                                CLOCK_MODULE, MPP_CLOCK_SYNC
+                                CLOCK_MODULE
 use time_manager_mod,     only: time_manager_init, time_type
 
 !  shared radiation package modules:
@@ -71,8 +71,8 @@ private
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 
-character(len=128) :: version = '$Id: sea_esf_rad.F90,v 14.0 2007/03/15 22:07:35 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_04 $'
+character(len=128) :: version = '$Id: sea_esf_rad.F90,v 14.0.2.2 2007/05/29 16:20:59 wfc Exp $'
+character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
 
 
 !--------------------------------------------------------------------
@@ -139,10 +139,10 @@ integer :: longwave_clock, shortwave_clock    ! timing clocks
 !   </TEMPLATE>
 !
 !   <IN NAME="lonb" TYPE="real">
-!     Array of model longitudes on cell boundaries in [radians]
+!     2d array of model longitudes at cell corners in [radians]
 !   </IN>
 !   <IN NAME="latb" TYPE="real">
-!     Array of model latitudes on cell boundaries in [radians]
+!     2d array of model latitudes at cell corners in [radians]
 !   </IN>
 !   <IN NAME="pref_r" TYPE="real">
 !     Array containing two reference pressure profiles 
@@ -156,15 +156,15 @@ subroutine sea_esf_rad_init (lonb, latb, pref_r)
 !   sea_esf_rad_init is the constructor for sea_esf_rad_mod.
 !---------------------------------------------------------------------
 
-real, dimension(:),      intent(in)  :: lonb, latb
+real, dimension(:,:),    intent(in)  :: lonb, latb
 real, dimension(:,:),    intent(in)  :: pref_r
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
 !
-!       lonb      array of model longitudes on cell boundaries 
+!       lonb      2d array of model longitudes at cell corners 
 !                 [radians]
-!       latb      array of model latitudes at cell boundaries 
+!       latb      2d array of model latitudes at cell corners 
 !                 [radians]
 !       pref_r    array containing two reference pressure profiles 
 !                 on the radiation grid for use in defining 
@@ -235,10 +235,10 @@ real, dimension(:,:),    intent(in)  :: pref_r
 !---------------------------------------------------------------------
       longwave_clock =      &
                   mpp_clock_id ('   Physics_down: Radiation: lw', &
-                        grain=CLOCK_ROUTINE, flags = MPP_CLOCK_SYNC)
+                        grain=CLOCK_ROUTINE)
       shortwave_clock =     &
                   mpp_clock_id ('   Physics_down: Radiation: sw', &
-                        grain=CLOCK_ROUTINE, flags = MPP_CLOCK_SYNC)
+                        grain=CLOCK_ROUTINE)
 
 !-------------------------------------------------------------------
 !    mark the module as initialized.

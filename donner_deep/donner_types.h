@@ -1,7 +1,47 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 14.0 2007/03/15 22:02:49 fms Exp $
+!  $Id: donner_types.h,v 14.0.2.1.2.1 2007/05/15 12:13:40 rsh Exp $
 
+!#####################################################################
+ 
+!    the following parameters define the available limits that are to
+!    be monitored:
+
+integer, PARAMETER             :: MAXMAG = 1
+integer, PARAMETER             :: MINMAG = 2
+integer, PARAMETER             :: MAXVAL = 3
+integer, PARAMETER             :: MINVAL = 4
+
+!#####################################################################
+
+!    the following parameters define the variables that are to
+!    be monitored:
+
+integer, PARAMETER             :: DET_MASS_FLUX         = 1
+integer, PARAMETER             :: MASS_FLUX             = 2
+integer, PARAMETER             :: CELL_UPWARD_MASS_FLUX = 3
+integer, PARAMETER             :: TEMP_FORCING          = 4
+integer, PARAMETER             :: MOIST_FORCING         = 5
+integer, PARAMETER             :: PRECIP                = 6
+integer, PARAMETER             :: FREEZING              = 7
+integer, PARAMETER             :: RADON_TEND            = 8
+ 
+!#######################################################################
+type donner_monitor_type
+
+   character(len=32)                  :: name
+   character(len=32)                  :: units
+   integer                            :: index
+   integer                            :: tracer_index
+   real                               :: initial_value
+   integer                            :: limit_type
+   real                               :: threshold
+   real,    dimension(:,:,:), pointer :: extrema=>NULL()
+   real,    dimension(:,:,:), pointer :: hits=>NULL()
+
+end type donner_monitor_type
+ 
+!#######################################################################
 
 !#######################################################################
 type donner_wetdep_type
@@ -46,6 +86,7 @@ logical  :: do_bower_cell_liquid_size
 logical  :: do_input_cell_ice_size
 logical  :: do_default_cell_ice_size
 logical  :: coldstart
+logical  :: monitor_output
 
 integer  :: total_pts
 integer  :: pts_processed_conv
@@ -53,6 +94,7 @@ integer  :: conv_alarm
 integer  :: physics_dt
 
 type(donner_wetdep_type), dimension(:), pointer :: wetdep
+type(donner_monitor_type), dimension(:), pointer :: Don_monitor
 
 end type donner_initialized_type
 
@@ -140,7 +182,7 @@ real, dimension(:,:,:),          pointer  ::  dql_strat=>NULL()
 real, dimension(:,:,:),          pointer  ::  dqi_strat=>NULL()
 real, dimension(:,:,:),          pointer  ::  dqa_strat=>NULL()
 real, dimension(:,:,:),          pointer  ::  humidity_area=>NULL()
-real, dimension(:,:,:),          pointer  ::  humidity_ratio=>NULL()
+real, dimension(:,:,:),          pointer  ::  humidity_factor=>NULL()
 real, dimension(:,:,:,:),        pointer  ::  tracer_tends=>NULL()
 real, dimension(:,:),            pointer  ::  parcel_disp=>NULL()
 real, dimension(:,:),            pointer  ::  tprea1=>NULL()
@@ -218,6 +260,17 @@ type donner_nml_type
 integer             ::  model_levels_in_sfcbl
 integer             ::  parcel_launch_level  
 logical             ::  allow_mesoscale_circulation
+logical             ::  do_donner_cape
+logical             ::  do_donner_plume
+logical             ::  do_donner_closure
+logical             ::  do_ice
+real                ::  atopevap
+logical             ::  do_donner_lscloud
+logical             ::  use_llift_criteria
+real                ::  auto_rate
+real                ::  auto_th
+real                ::  frac
+real                ::  ttend_max
 integer             ::  donner_deep_freq
 character(len=32)   ::  entrainment_constant_source
 character(len=16)   ::  cell_liquid_size_type
@@ -227,6 +280,7 @@ real                ::  cell_ice_geneff_diam_input
 real                ::  meso_liquid_eff_diam_input
 logical             ::  do_average
 logical             ::  use_memphis_size_limits
+real                ::  wmin_ratio
 
 end type donner_nml_type
 
@@ -434,6 +488,12 @@ type donner_conv_type
 !                  [ kg/kg/s ]
 !   wtp1           redistribution of tracer from cellscale to mesoscale
 !                  [ kg/kg/s ]
+!   wetdepc        tracer time tendency due to cell wet deposition
+!                  [ kg/kg/s ]
+!   wetdepm        tracer time tendency due to mesoscale wet deposition
+!                  [ kg/kg/s ]
+!   wetdept        tracer time tendency due to total wet deposition
+!                  [ kg/kg/s ]
 !   a1             fractional area of index-1 cu subensemble
 !   amax           maximum value for a_1(p_b)
 !                  See "a Bounds 6/7/97" notes
@@ -492,7 +552,10 @@ real, dimension(:,:,:,:), pointer ::          &
                  qtmes1=>NULL(),                   &
                  qtren1=>NULL(),                   &
                  temptr=>NULL(),                   &
-                 wtp1=>NULL()
+                 wtp1=>NULL(),                     &
+                 wetdepc=>NULL(),                  &
+                 wetdepm=>NULL(),                  &
+                 wetdept=>NULL()
 real, dimension(:,:),   pointer  ::           &
                  a1=>NULL(),                       &
                  amax=>NULL(),                     &

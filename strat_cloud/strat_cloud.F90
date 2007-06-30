@@ -109,7 +109,8 @@ module strat_cloud_mod
   use beta_dist_mod,        only: beta_dist_init, beta_dist_end, &
                                   incomplete_beta
   use  rad_utilities_mod,  only : aerosol_type
-  use  aer_ccn_act_mod,    only : aer_ccn_act
+  use  aer_ccn_act_mod,    only : aer_ccn_act_wpdf
+  use  aer_in_act_mod,     only : Jhete_dep
 
   implicit none
 
@@ -339,6 +340,11 @@ module strat_cloud_mod
   logical           :: u00_profile    =  .false.
   real              :: rthresh        =  10.
   logical           :: use_kk_auto    =  .false.
+  logical           :: use_mc_auto    =  .false.
+  logical           :: use_online_aerosol = .false.
+  logical           :: use_sub_seasalt = .true.
+  real              :: sea_salt_scale =  0.1
+  real              :: om_to_oc       =  1.67
   real              :: N_land         =  250.E+06
   real              :: N_ocean        =  100.E+06
   real,   parameter :: rho_ice        =  100.
@@ -362,8 +368,10 @@ module strat_cloud_mod
   integer,dimension(2,max_strat_pts) :: strat_pts = 0
   integer           :: overlap        =  2
   real              :: efact          = 0.0
+  real              :: vfact          = 1.0
   logical           :: do_old_snowmelt= .false.
   logical           :: do_liq_num   = .false.
+  logical           :: do_dust_berg   = .false.
   real              :: N_min          = 1.E6
   logical           :: do_pdf_clouds  = .false.
   real              :: qthalfwidth    = 0.1
@@ -376,13 +384,15 @@ module strat_cloud_mod
   !-----------------------------------------------------------------------
   !-------------------- diagnostics fields -------------------------------
 
-  integer :: id_droplets 
+  integer :: id_droplets,  id_droplets_col, id_sulfate,  &
+             id_seasalt_sub, id_seasalt_sup, id_om
   integer :: id_aliq,         id_aice,            id_aall,       &
        id_rvolume,      id_autocv,          id_vfall 
   integer :: id_qldt_cond,    id_qldt_eros,       id_qldt_fill,  &
        id_qldt_accr,    id_qldt_evap,       id_qldt_freez, &
        id_qldt_berg,    id_qldt_destr,      id_qldt_rime,  &
-       id_qldt_auto,    id_qndt_cond,       id_qndt_evap
+       id_qldt_auto,    id_qndt_cond,       id_qndt_evap,  &
+       id_debug1, id_debug2, id_debug3, id_debug4
 
   integer :: id_rain_clr,     id_rain_cld,        id_a_rain_clr, &
        id_a_rain_cld,   id_rain_evap,       id_liq_adj
@@ -526,13 +536,13 @@ module strat_cloud_mod
 ! </NAMELIST>
 
   NAMELIST /strat_cloud_nml/ do_netcdf_restart,   &
-       U00,u00_profile,rthresh,use_kk_auto,N_land,&
+       U00,u00_profile,rthresh,use_kk_auto,use_mc_auto,use_online_aerosol,sea_salt_scale,om_to_oc,N_land,use_sub_seasalt,&
        N_ocean,U_evap,eros_scale,eros_choice,   &
        eros_scale_c,eros_scale_t,mc_thresh,     &
        diff_thresh,super_choice,tracer_advec,   &
-       qmin,Dmin,num_strat_pts,strat_pts,efact, &
+       qmin,Dmin,num_strat_pts,strat_pts,efact,vfact, &
        do_old_snowmelt, do_pdf_clouds, betaP,   &
-       qthalfwidth,nsublevels,kmap,kord, do_liq_num
+       qthalfwidth,nsublevels,kmap,kord, do_liq_num, do_dust_berg, N_min
        
   !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -541,8 +551,8 @@ module strat_cloud_mod
   !       DECLARE VERSION NUMBER OF SCHEME
   !
 
-  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 13.1 2006/03/30 17:24:03 fms Exp $'
-  Character(len=128) :: Tagname = '$Name: nalanda_2007_04 $'
+  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 13.1.4.1.2.1 2007/05/16 16:19:57 rsh Exp $'
+  Character(len=128) :: Tagname = '$Name: nalanda_2007_06 $'
   logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   !        
@@ -872,6 +882,26 @@ subroutine diag_field_init (axes,Time)
       axes(1:3), Time, 'Droplet number conentration',     &
       '/m3', missing_value=missing_value )
 
+ id_droplets_col = register_diag_field ( mod_name, 'droplets_col', &
+      axes(1:2), Time, 'Droplet number column burden',     &
+      '/m2', missing_value=missing_value )
+
+ id_sulfate = register_diag_field ( mod_name, 'sulfate', &
+      axes(1:3), Time, 'sulfate mass conentration',     &
+      'ug so4/m3', missing_value=missing_value )
+ 
+ id_seasalt_sub = register_diag_field ( mod_name, 'seasalt_sub', &
+      axes(1:3), Time, 'sub-micron sea salt mass conentration',     &
+      'ug/m3', missing_value=missing_value )
+ 
+ id_seasalt_sup = register_diag_field ( mod_name, 'seasalt_sup', &
+      axes(1:3), Time, 'super-micron sea salt mass conentration',     &
+      'ug/m3', missing_value=missing_value )
+ 
+ id_om = register_diag_field ( mod_name, 'OM', &
+      axes(1:3), Time, 'OM mass conentration',     &
+     'ug/m3', missing_value=missing_value )
+
  id_aall = register_diag_field ( mod_name, 'aall', axes(1:3),   &
       Time, 'Cloud fraction for all clouds at midtimestep',     &
       'dimensionless', missing_value=missing_value )
@@ -962,6 +992,22 @@ subroutine diag_field_init (axes,Time)
        'qndt_evap', axes(1:3), Time, &
        'Cloud droplet tendency from LS evaporation', &
        '#/kg/sec', missing_value=missing_value               )
+
+ id_debug1 = register_diag_field ( mod_name, 'debug1', &
+       axes(1:3), Time, 'Droplet number conentration',     &
+       '/m3', missing_value=missing_value )
+ 
+ id_debug2 = register_diag_field ( mod_name, 'debug2', &
+       axes(1:3), Time, 'Droplet number conentration',     &
+       '/m3', missing_value=missing_value )
+ 
+ id_debug3 = register_diag_field ( mod_name, 'debug3', &
+       axes(1:3), Time, 'Droplet number conentration',     &
+       '/m3', missing_value=missing_value )
+ 
+ id_debug4 = register_diag_field ( mod_name, 'debug4', &
+       axes(1:3), Time, 'Droplet number conentration',     &
+       '/m3', missing_value=missing_value )
 
  !rain stuff
 
@@ -1292,7 +1338,11 @@ subroutine diag_field_init (axes,Time)
       id_qldt_evap     > 0 .or. id_qldt_freez    > 0 .or. &
       id_qldt_berg     > 0 .or. id_qldt_destr    > 0 .or. &
       id_qldt_rime     > 0 .or. id_qldt_auto     > 0 .or. &
-      id_qndt_cond     > 0 .or. id_qndt_evap     > 0) then
+      id_qndt_cond     > 0 .or. id_qndt_evap     > 0 .or. &
+      id_debug1        > 0 .or. id_debug2        > 0 .or. &
+      id_droplets      > 0 .or. id_sulfate       > 0 .or. &
+      id_seasalt_sub   > 0 .or. id_seasalt_sup   > 0 .or. &
+      id_om            > 0 .or. id_droplets_col  > 0) then
     do_budget_diag = .true.
  end if
  if ( id_rain_clr      > 0 .or. id_rain_cld      > 0 .or. &
@@ -1345,7 +1395,7 @@ subroutine diag_field_init (axes,Time)
     do_budget_diag = .true.
  end if
 
- !-----------------------------------------------------------------------
+!----------------------------------------------------------------------
 
 
 
@@ -1912,7 +1962,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !ljd
         integer                                        :: itest,jtest
 !ljd
-        real                                           :: inv_dtcloud
+        real                                           :: inv_dtcloud, Si0
         real                                           :: icbp, icbp1, pnorm
         real, dimension(size(T,1),size(T,2),size(T,3)) :: airdens
         real, dimension(size(T,1),size(T,2),size(T,3)) :: qs,dqsdT
@@ -1943,12 +1993,12 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         real, dimension(size(T,1),size(T,2))   :: da_cld2clr,da_clr2cld
         real, dimension(size(T,1),size(T,2))   :: dprec_clr2cld
         real, dimension(size(T,1),size(T,2))   :: dprec_cld2clr
-        real, dimension(size(T,1),size(T,2))   :: N,rad_liq
-        real, dimension(size(T,1),size(T,2),size(T,3)) :: N3D,concen, &
-                                                concen_na, concen_an
+        real, dimension(size(T,1),size(T,2))   :: N,rad_liq, N3D_col
+        real, dimension(size(T,1),size(T,2),size(T,3)) :: N3D, concen, concen_ss_sub, concen_ss_sup,&
+                                                concen_om, concen_na, concen_an, concen_dust_sub
         real, dimension(size(T,1),size(T,2))   :: Vfall,lamda_f
         real, dimension(size(T,1),size(T,2))   :: U_clr
-        real, dimension(size(T,1),size(T,2))   :: tmp1,tmp2,tmp3,tmp5,drop1
+        real, dimension(size(T,1),size(T,2))   :: tmp1,tmp2,tmp3,tmp5,drop1,crystal,crystal2
         real, dimension(size(T,1),size(T,2))   :: qtbar,deltaQ
         real, dimension(size(T,1),size(T,2))   :: qtmin,qs_norm          
 
@@ -1961,7 +2011,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              qidt_melt,  qidt_fall, qidt_destr,  qidt_eros, ice_adj,   &
              snow_subl,  snow_melt, qadt_lsform, qadt_eros, qadt_rhred,&
              qadt_destr, qadt_fill, qadt_lsdiss, qadt_super           ,&
-             qndt_cond, qndt_evap
+             qndt_cond, qndt_evap, debug1, debug2, debug3, debug4
         real, allocatable, dimension(:,:,:) :: &
              rain_clr_diag,     rain_cld_diag,    a_rain_clr_diag, &
              a_rain_cld_diag,   snow_clr_diag,    snow_cld_diag,   &
@@ -1973,8 +2023,8 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 
         integer :: year, month, day, hour, minute, second
 
-        integer            :: k,s,ix,jx,kx,sx
-        real               :: thickness, up_strat, drop
+        integer            :: k,s,ix,jx,kx,sx,naer,na
+        real               :: thickness, up_strat, drop, wp2 ! cjg
         real, dimension(3) :: totalmass, mass_ratio
         real, dimension(size(T,1),size(T,2),size(T,3),3) :: totalmass1
 
@@ -2020,6 +2070,19 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              allocate(vfalldiag(size(T,1),size(T,2),size(T,3)))
              vfalldiag(:,:,:) = 0.0
      end if
+     if (do_liq_num) then
+       if (allocated(debug1)) deallocate (debug1)
+              allocate(debug1(size(T,1),size(T,2),size(T,3)))
+      if (allocated(debug2)) deallocate (debug2)
+              allocate(debug2(size(T,1),size(T,2),size(T,3)))
+      if (allocated(debug3)) deallocate (debug3)
+              allocate(debug3(size(T,1),size(T,2),size(T,3)))
+     endif
+
+     if (do_dust_berg) then
+      if (allocated(debug4)) deallocate (debug4)
+              allocate(debug4(size(T,1),size(T,2),size(T,3)))
+     endif
 
      if (do_budget_diag) then
 
@@ -2150,6 +2213,15 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         qcg           = 0.
         qcg_ice       = 0.
         
+        if(do_liq_num) then 
+          debug1       = 0.
+          debug2       = 0.
+          debug3       = 0.
+        endif
+        if (do_dust_berg) then
+          debug4       = 0.
+        endif
+
         if (do_budget_diag) then
              if(do_liq_num) then 
                qndt_cond       = 0.
@@ -2321,48 +2393,121 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         ix = size(ql,1)
         jx = size(ql,2)
         kx = size(ql,3)
+        naer = size(Aerosol%aerosol,4)
       
         N3D(:,:,:) = 0.
+        N3D_col(:,:) = 0.
         concen_an(:,:,:) = 0.
         concen_na(:,:,:) = 0.
         concen(:,:,:) = 0.
+        concen_dust_sub(:,:,:) = 0.
+        concen_ss_sub(:,:,:) = 0.
+        concen_ss_sup(:,:,:) = 0.
+        concen_om(:,:,:) = 0.
         totalmass1(:,:,:,:) = 0.
         qn_mean(:,:) = 0.
         qn_upd(:,:) = 0.
         
+  if (use_online_aerosol) then
+
         do k = 1,kx
           do j = 1,jx
             do i = 1,ix
-              do s = 1,2
-                concen(i,j,k)=concen(i,j,k)+ &
-                Aerosol%aerosol(i,j,k,s)
-              end do
-      
-      
+
               if(phalf(i,j,k)<1.) then
-                thickness=log(phalf(i,j,k+1)/1.)* &
-                8.314*T(i,j,k)/(9.8*0.02888)
+                thickness=(phalf(i,j,k+1)-phalf(i,j,k))/grav/airdens(i,j,k)
               else
                 thickness=log(phalf(i,j,k+1)/ &
-                phalf(i,j,k))*8.314*T(i,j,k)/(9.8*0.02888)
+                 phalf(i,j,k))*8.314*T(i,j,k)/(9.8*0.02888)
               end if
+ 
+         do na = 1,naer
+              if(Aerosol%aerosol_names(na) == 'so4' .or. &
+                Aerosol%aerosol_names(na) == 'so4_anthro' .or. Aerosol%aerosol_names(na) == 'so4_natural') then
+                        totalmass1(i,j,k,1)=totalmass1(i,j,k,1)+Aerosol%aerosol(i,j,k,na)
+               else if(Aerosol%aerosol_names(na) == 'omphilic' .or. &
+                 Aerosol%aerosol_names(na) == 'omphobic') then
+                        totalmass1(i,j,k,3)=totalmass1(i,j,k,3)+Aerosol%aerosol(i,j,k,na)
+                 else if(Aerosol%aerosol_names(na) == 'seasalt1' .or. &
+                 Aerosol%aerosol_names(na) == 'seasalt2') then
+                        concen_ss_sub(i,j,k)=concen_ss_sub(i,j,k)+Aerosol%aerosol(i,j,k,na)
+                 else if(Aerosol%aerosol_names(na) == 'seasalt3' .or. &
+                 Aerosol%aerosol_names(na) == 'seasalt4' .or. &
+                 Aerosol%aerosol_names(na) == 'seasalt5') then
+                        concen_ss_sup(i,j,k)=concen_ss_sup(i,j,k)+Aerosol%aerosol(i,j,k,na)       
+                 else if(Aerosol%aerosol_names(na) == 'dust1' .or. &
+                 Aerosol%aerosol_names(na) == 'dust2' .or. &
+                 Aerosol%aerosol_names(na) == 'dust3') then
+                        concen_dust_sub(i,j,k)=concen_dust_sub(i,j,k)+Aerosol%aerosol(i,j,k,na)
+                end if
+           end do
+          
+         if(use_sub_seasalt) then
+             totalmass1(i,j,k,2)=concen_ss_sub(i,j,k)
+         else
+              totalmass1(i,j,k,2)=concen_ss_sub(i,j,k)+concen_ss_sup(i,j,k)
+         end if
+
+               concen(i,j,k)=0.7273*totalmass1(i,j,k,1)  &
+               /thickness*1.0e9
+         
+              concen_ss_sub(i,j,k)=concen_ss_sub(i,j,k)/thickness*1.0e9
+              concen_ss_sup(i,j,k)=concen_ss_sup(i,j,k)/thickness*1.0e9
+              concen_om(i,j,k)=totalmass1(i,j,k,3)/thickness*1.0e9     
+        
+         do na = 1, 3
+              totalmass1(i,j,k,na)=totalmass1(i,j,k,na)/thickness*1.0e9*1.0e-12
+        end do
+
+! submicron dust concentration (ug/m3) (NO. 2 to NO. 4)
+              concen_dust_sub(i,j,k)=concen_dust_sub(i,j,k)/thickness*1.0e9     
+ 
+      end do
+     end do
+    end do
+else
+
+      do k = 1,kx
+        do j = 1,jx
+          do i = 1,ix
+ 
+            if(phalf(i,j,k)<1.) then
+                thickness=(phalf(i,j,k+1)-phalf(i,j,k))/grav/airdens(i,j,k)
+            else
+               thickness=log(phalf(i,j,k+1)/ &
+               phalf(i,j,k))*8.314*T(i,j,k)/(9.8*0.02888)
+           end if
+
+
+!YMice submicron dust (NO. 14 to NO. 18)
+
+        do s = 14,18
+               concen_dust_sub(i,j,k)=concen_dust_sub(i,j,k)+ &
+               Aerosol%aerosol(i,j,k,s)
+        end do
 
 ! anthro. and natural sulfate concentration (ug so4/m3)
               concen_an(i,j,k)=0.7273*Aerosol%aerosol(i,j,k,1)/thickness*1.0e9
               concen_na(i,j,k)=0.7273*Aerosol%aerosol(i,j,k,2)/thickness*1.0e9
-
+              concen(i,j,k)=concen_an(i,j,k)+concen_na(i,j,k)
+!offline
 ! NO. 1 Sulfate; NO. 2 Sea Salt; NO. 3 Organics
               totalmass1(i,j,k,1)=(Aerosol%aerosol(i,j,k,1)+Aerosol%aerosol(i,j,k,2))  &
               /thickness*1.0e9*1.0e-12
-      
-              totalmass1(i,j,k,2)=Aerosol%aerosol(i,j,k,5)  &
+ 
+              totalmass1(i,j,k,2)=sea_salt_scale*Aerosol%aerosol(i,j,k,5)  &
               /thickness*1.0e9*1.0e-12
-      
-              totalmass1(i,j,k,3)=Aerosol%aerosol(i,j,k,3)  &
+ 
+              totalmass1(i,j,k,3)=om_to_oc*Aerosol%aerosol(i,j,k,3)  &
               /thickness*1.0e9*1.0e-12
-            end do
+ 
+! submicron dust concentration (ug/m3)
+             concen_dust_sub(i,j,k)=concen_dust_sub(i,j,k)/thickness*1.0e9
+           end do
           end do
         end do
+end if
+
         endif
 
 !-----------------------------------------------------------------------
@@ -2495,10 +2640,12 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
                 ql_upd(i,k) = 0.
                 qn_upd(i,k) = 0.
                 N3D(i,k,j)    = 0.
+                debug1(i,k,j)    = 0.
               else
                 ql_upd(i,k) = ql(i,k,j)
                 qn_upd(i,k) = qn(i,k,j)
                 N3D(i,k,j) = qn(i,k,j)*airdens(i,k,j)*1.e-6
+                debug1(i,k,j)    = min(qa(i,k,j),1.)
               endif
             end do
           end do
@@ -3140,10 +3287,21 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
                         radturbten2(i,k,j)*cp_air/grav)
 
                 totalmass(1) =totalmass1(i,k,j,1)
-                totalmass(2) =0.1*totalmass1(i,k,j,2)
-                totalmass(3) =1.67*totalmass1(i,k,j,3)
+                totalmass(2) =totalmass1(i,k,j,2)
+                totalmass(3) =totalmass1(i,k,j,3)
                           
-                call aer_ccn_act(T(i,k,j),pfull(i,k,j),up_strat,totalmass,drop)
+!-->cjg: modification
+!                call aer_ccn_act(T(i,k,j),pfull(i,k,j),up_strat,totalmass,drop)
+ 
+                thickness = deltpg(i,k) / airdens(i,k,j)
+                wp2 = 2.0/(3.0*0.548**2) &
+                     * ( 0.5*( diff_t(i,k,j) + diff_t(i,k,min(j+1,KDIM))) &
+                         / thickness )**2
+                debug2(i,k,j)=wp2**0.5
+                debug3(i,k,j)=1.
+                call aer_ccn_act_wpdf(T(i,k,j),pfull(i,k,j),up_strat,wp2,totalmass,drop)
+ 
+!<--cjg: end of modification
                 drop1(i,k)=drop
               endif
             end do
@@ -3700,12 +3858,28 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         else
         
           if (do_liq_num) then 
+          if (.not. use_mc_auto ) then
 !*************************yim's version based on Khairoutdinov and Kogan (2000)
 !The second place N is used
           tmp1 = dtcloud * 1350. *  &
-                 (1.e-6*max(qn_mean,N_min)*airdens(:,:,j))**(-1.79)*  &
-                 (ql_mean)**(1.47)*max(qa_mean,qmin)**(0.32)
+        (1.e-6*max(qn_mean*airdens(:,:,j),max(qa_mean,qmin)*N_min))**(-1.79)*  &
+         (ql_mean)**(1.47)*max(qa_mean,qmin)**(0.32)
+!         tmp1 = dtcloud * 1350. *  &
+!                (1.e-6*max(qn_mean,N_min)*airdens(:,:,j))**(-1.79)*  &
+!                (ql_mean)**(1.47)*max(qa_mean,qmin)**(0.32)
 !**************************
+           else
+!yim fall back to M & C using qn
+             !compute autoconversion sink as in (34)
+             tmp1 = 32681. * dtcloud * ((max(qn_mean,qmin)*airdens(:,:,j)*dens_h2o)**(-1./3.))*       &
+                       (ql_mean**(4./3.))/max(qa_mean,qmin)
+  
+             !compute limiter as in (35)
+             tmp2 =max(3*log(max(rad_liq,qmin)/rthresh),0.)
+  
+             !limit autoconversion to the limiter
+             tmp1 = min(tmp1,tmp2)
+          endif
           else
 
              tmp1 = 0.0
@@ -3777,6 +3951,49 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !       and sublimation part of the code which is for larger particles 
 !       which have much lower densities.
         
+        if (do_dust_berg) then
+        do k = 1,jx
+                do i = 1,ix
+                if ( (T(i,k,j) .lt. tfreeze) .and. (ql_mean(i,k) .gt. qmin)      &
+                                        .and. (qa_mean(i,k) .gt. qmin))         then
+                                Si0=1+0.0125*(tfreeze-T(i,k,j))
+                                call Jhete_dep(T(i,k,j),Si0,concen_dust_sub(i,k,j),crystal(i,k))
+                                debug4(i,k,j) = 1.                                      
+                else
+                                crystal(i,k)=0.
+                endif
+                end do
+          end do
+  
+        where ( (T(:,:,j) .lt. tfreeze) .and. (ql_mean .gt. qmin)      &
+                                        .and. (qa_mean .gt. qmin))              
+                crystal2 = 1.e-3*exp((12.96*0.0125*   &
+                      (tfreeze-T(:,:,j)))-0.639)
+        elsewhere
+                crystal2 = 0.
+        end where
+
+
+       if (do_budget_diag) then
+         qndt_cond(:,:,j) = crystal
+         qndt_evap(:,:,j) = crystal2
+       end if
+ 
+
+       !do Bergeron process
+       where ( (T(:,:,j) .lt. tfreeze) .and. (ql_mean .gt. qmin)      &
+                                         .and. (qa_mean .gt. qmin))              
+             D2_dt =  dtcloud * qa_mean * ((1.e6*crystal(:,:)/airdens(:,:,j))**(2./ &
+                      3.))* 7.8* ((max(qi_mean/qa_mean,1.E-12*1.e6*   &
+                      crystal(:,:)     &
+                      /airdens(:,:,j)))**(1./3.))*0.0125*              &
+                      (tfreeze-T(:,:,j))/((700.**(1./3.))*       &
+                      A_plus_B(:,:,j)*ql_mean)
+       elsewhere
+           D2_dt = 0.0
+       end where
+
+    else
         !do Bergeron process
         where ( (T(:,:,j) .lt. tfreeze) .and. (ql_mean .gt. qmin)      &
                                         .and. (qa_mean .gt. qmin))           
@@ -3791,6 +4008,8 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              D2_dt = 0.0        
         end where
        
+      endif
+
         if (do_budget_diag) qldt_berg(:,:,j) = D2_dt
        
 !       Accretion of cloud liquid by ice ('Riming')
@@ -4137,7 +4356,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !       implicitness to the scheme.
 
         !compute Vfall
-        Vfall = 3.29*((airdens(:,:,j)*qi_mean/max(qa_mean,qmin))**0.16)
+        Vfall = vfact*3.29*((airdens(:,:,j)*qi_mean/max(qa_mean,qmin))**0.16)
 
         if (id_vfall > 0) vfalldiag(:,:,j) = Vfall(:,:)*areaice(:,:,j)
 
@@ -4790,6 +5009,26 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
                                   rmask=mask )
         end if
 
+        if (id_sulfate > 0) then
+             used = send_data ( id_sulfate, concen, Time, is, js, 1,&
+                                  rmask=mask )
+        end if
+
+        if (id_seasalt_sub > 0) then
+             used = send_data ( id_seasalt_sub, concen_ss_sub, Time, is, js, 1,&
+                                  rmask=mask )
+        end if
+   
+        if (id_seasalt_sup > 0) then
+             used = send_data ( id_seasalt_sup, concen_ss_sup, Time, is, js, 1,&
+                                  rmask=mask )
+        end if
+
+       if (id_om > 0) then
+              used = send_data ( id_om, concen_om, Time, is, js, 1,&
+                                  rmask=mask )
+        end if
+
         if (id_aall > 0) then
              used = send_data ( id_aall, areaall, Time, is, js, 1,     &
                                   rmask=mask )
@@ -4896,6 +5135,26 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         if ( id_qndt_evap > 0 ) then
              used = send_data ( id_qndt_evap, qndt_evap, &
                                Time, is, js, 1, rmask=mask )
+        endif
+
+        if ( id_debug1 > 0 ) then
+             used = send_data ( id_debug1, debug1, &
+                               Time, is, js, 1, rmask=mask )
+        endif
+
+        if ( id_debug2 > 0 ) then
+             used = send_data ( id_debug2, debug2, &
+                               Time, is, js, 1, rmask=mask )
+        endif
+
+        if ( id_debug3 > 0 ) then
+             used = send_data ( id_debug3, debug3, &
+                               Time, is, js, 1, rmask=mask )
+        endif
+
+        if ( id_debug4 > 0 ) then
+            used = send_data ( id_debug4, debug4, &
+                              Time, is, js, 1, rmask=mask )
         endif
 
         if ( id_rain_evap > 0 ) then
@@ -5044,6 +5303,22 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         
            
         !-------write out column integrated diagnostics------!
+
+!yim: in-cloud droplet column burden
+
+        if (id_droplets_col > 0) then
+          do j = 1, kdim
+            deltpg = (phalf(:,:,j+1)-phalf(:,:,j))/grav
+            if (present(MASK)) deltpg=deltpg*MASK(:,:,j)
+            where(ql(:,:,j) .gt. qmin  .and.    &
+                  qa(:,:,j) .gt. qmin  .and.    &
+                  qn(:,:,j) .gt. qmin)
+              N3D_col(:,:) = N3D_col(:,:)+qn(:,:,j)*airdens(:,:,j)* &
+                             deltpg*1.e-6/min(qa(:,:,j),1.)
+            end where
+          enddo
+          used = send_data ( id_droplets_col, N3D_col, Time, is, js)
+        end if
 
         !liquid and rain diagnostics
         if ( id_ql_cond_col > 0 ) then

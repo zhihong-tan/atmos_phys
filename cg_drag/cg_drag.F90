@@ -35,8 +35,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.F90,v 14.0 2007/03/15 22:01:19 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: cg_drag.F90,v 14.0.2.1 2007/05/25 16:31:55 vb Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 
@@ -257,16 +257,17 @@ subroutine cg_drag_init (lonb, latb, pref, Time, axes)
 !-------------------------------------------------------------------
 
 !-------------------------------------------------------------------
-real,    dimension(:), intent(in)      :: lonb, latb, pref
-integer, dimension(4), intent(in)      :: axes
-type(time_type),       intent(in)      :: Time
+real,    dimension(:,:), intent(in)      :: lonb, latb
+real,    dimension(:),   intent(in)      :: pref
+integer, dimension(4),   intent(in)      :: axes
+type(time_type),         intent(in)      :: Time
 !-------------------------------------------------------------------
 
 !-------------------------------------------------------------------
 !   intent(in) variables:
 !
-!       lonb      array of model longitudes on cell boundaries [radians]
-!       latb      array of model latitudes at cell boundaries [radians]
+!       lonb      2d array of model longitudes on cell corners [radians]
+!       latb      2d array of model latitudes at cell corners [radians]
 !       pref      array of reference pressures at full levels (plus
 !                 surface value at nlev+1), based on 1013.25hPa pstar
 !                 [ Pa ]
@@ -337,8 +338,8 @@ type(time_type),       intent(in)      :: Time
 !  domain on this processor, kmax is the number of model layers.
 !-------------------------------------------------------------------
       kmax = size(pref(:)) - 1
-      jdf  = size(latb(:)) - 1
-      idf  = size(lonb(:)) - 1
+      jdf  = size(latb,2) - 1
+      idf  = size(lonb,1) - 1
 
       allocate(  source_level(idf,jdf)  )
       allocate(  source_amp(idf,jdf)  )
@@ -359,7 +360,7 @@ type(time_type),       intent(in)      :: Time
      
 
         do j=1,jdf
-          lat(:,j)=  0.5*( latb(j+1)+latb(j) )
+          lat(:,j)=  0.5*( latb(:,j+1)+latb(:,j) )
           do i=1,idf
             source_level(i,j) = (kmax + 1) - ((kmax + 1 -    &
                                 klevel_of_source)*cos(lat(i,j)) + 0.5)
@@ -411,7 +412,7 @@ type(time_type),       intent(in)      :: Time
         call initialize_diagnostic_columns    &
                      (mod_name, num_diag_pts_latlon, num_diag_pts_ij, &
                       i_coords_gl, j_coords_gl, lat_coords_gl,   &
-                      lon_coords_gl, lonb, latb, do_column_diagnostics, &
+                      lon_coords_gl, lonb(:,1), latb(1,:), do_column_diagnostics, &
                       diag_lon, diag_lat, diag_i, diag_j, diag_units)
       endif
 #endif

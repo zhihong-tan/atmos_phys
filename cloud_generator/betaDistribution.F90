@@ -17,7 +17,7 @@ module beta_dist_mod
   !   The arrays bounds are from 0 to nSteps + 1, just in case we draw exactly 0 or 1. 
   !
   character(len=128)  :: version =  '$Id: betaDistribution.F90,v 13.0 2006/03/28 21:07:27 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+  character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
   
   logical         :: module_is_initialized = .false.
   

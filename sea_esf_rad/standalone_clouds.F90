@@ -45,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 14.0 2007/03/15 22:07:55 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 14.0.2.2 2007/05/25 16:32:06 vb Exp $'
+  character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 
@@ -186,12 +186,11 @@ real  ::       pie
 ! 
 !  </IN>
 !  <IN NAME="lonb" TYPE="real">
-!       lonb      array of model longitudes on cell boundaries
-!                 [ radians ]
+!       lonb      2d array of model longitudes at cell corners [ radians ]
 ! 
 !  </IN>
 !  <IN NAME="latb" TYPE="real">
-!       latb      array of model latitudes at cell boundaries [radians]
+!       latb      2d array of model latitudes at cell corners [radians]
 ! 
 !  </IN>
 ! </SUBROUTINE>
@@ -204,16 +203,15 @@ subroutine standalone_clouds_init (pref, lonb, latb)
 !---------------------------------------------------------------------
 
 real, dimension(:,:), intent(in)    ::  pref        
-real, dimension(:),   intent(in)    ::  lonb, latb
+real, dimension(:,:), intent(in)    ::  lonb, latb
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
 !
 !       pref      array containing two reference pressure profiles 
 !                 for use in defining transmission functions [ Pa ]
-!       lonb      array of model longitudes on cell boundaries 
-!                 [ radians ]
-!       latb      array of model latitudes at cell boundaries [radians]
+!       lonb      2d array of model longitudes at cell corners [ radians ]
+!       latb      2d array of model latitudes at cell corners [radians]
 !
 !---------------------------------------------------------------------
 
@@ -278,7 +276,7 @@ real, dimension(:),   intent(in)    ::  lonb, latb
 !    define size of processor's domain.
 !---------------------------------------------------------------------
       idf = size(lonb,1) - 1
-      jdf = size(latb,1) - 1
+      jdf = size(latb,2) - 1
       kx  = size(pref,1) - 1
       
 !---------------------------------------------------------------------
@@ -575,12 +573,11 @@ end subroutine standalone_clouds_init
 ! 
 !  </IN>
 !  <IN NAME="lonb" TYPE="real">
-!       lonb      array of model longitudes on cell boundaries
-!                 [ radians ]
+!       lonb      2d array of model longitudes at cell corners [ radians ]
 ! 
 !  </IN>
 !  <IN NAME="latb" TYPE="real">
-!       latb      array of model latitudes at cell boundaries [radians]
+!       latb      2d array of model latitudes at cell corners [radians]
 ! 
 !  </IN>
 ! </SUBROUTINE>
@@ -595,16 +592,15 @@ subroutine define_column_properties (pref, lonb, latb)
 
 !--------------------------------------------------------------------
 real, dimension(:,:), intent(in) :: pref
-real, dimension(:),   intent(in) :: lonb, latb
+real, dimension(:,:), intent(in) :: lonb, latb
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
 !
 !       pref      array containing two reference pressure profiles 
 !                 for use in defining transmission functions [ Pa ]
-!       lonb      array of model longitudes on cell boundaries 
-!                 [ radians ]
-!       latb      array of model latitudes at cell boundaries [radians]
+!       lonb      2d array of model longitudes at cell corners [ radians ]
+!       latb      2d array of model latitudes at cell corners [radians]
 !
 !----------------------------------------------------------------------
 
@@ -636,7 +632,7 @@ real, dimension(:),   intent(in) :: lonb, latb
 !---------------------------------------------------------------------
 !    define the processor's domain dimensions. 
 !---------------------------------------------------------------------
-        jdf = size(latb,1) - 1
+        jdf = size(latb,2) - 1
         idf = size(lonb,1) - 1
         kx  = size(pref,1) - 1
 

@@ -45,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: astronomy.F90,v 13.0 2006/03/28 21:07:16 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: astronomy.F90,v 13.0.4.2 2007/05/25 16:31:55 vb Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 !---------------------------------------------------------------------
@@ -210,10 +210,10 @@ integer :: total_pts                ! number of grid boxes owned by the
 !   call astronomy_init (latb, lonb)
 !  </TEMPLATE>
 !  <IN NAME="latb" TYPE="real">
-!   array of model latitudes at cell boundaries [radians]
+!   2d array of model latitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="lonb" TYPE="real">
-!   array of model longitudes at cell boundaries [radians]
+!   2d array of model longitudes at cell corners [radians]
 !  </IN>
 ! </SUBROUTINE>
 !
@@ -223,15 +223,15 @@ subroutine astronomy_init (latb, lonb)
 !    astronomy_init is the constructor for astronomy_mod.
 !-------------------------------------------------------------------
 
-real,   dimension(:), intent(in), optional   :: latb
-real,   dimension(:), intent(in), optional   :: lonb
+real,   dimension(:,:), intent(in), optional   :: latb
+real,   dimension(:,:), intent(in), optional   :: lonb
 
 !--------------------------------------------------------------------
 !   intent(in) variables:
 !
-!       latb         array of model latitudes at cell boundaries 
+!       latb         2d array of model latitudes at cell corners 
 !                    [ radians ]
-!       lonb         array of model longitudes at cell boundaries 
+!       lonb         2d array of model longitudes at cell corners 
 !                    [ radians ]
 !
 !--------------------------------------------------------------------
@@ -338,8 +338,8 @@ real,   dimension(:), intent(in), optional   :: lonb
 !    the total number of points that the processor is responsible for.
 !--------------------------------------------------------------------
       if (present(latb)) then
-        jd = size(latb(:)) - 1
-        id = size(lonb(:)) - 1
+        jd = size(latb,2) - 1
+        id = size(lonb,1) - 1
         allocate (cosz_ann(jd))
         allocate (solar_ann(jd))
         allocate (fracday_ann(jd))

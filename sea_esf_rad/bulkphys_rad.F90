@@ -62,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 14.0 2007/03/15 22:05:13 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 14.0.2.2 2007/05/25 16:32:02 vb Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 
@@ -189,12 +189,12 @@ logical  :: module_is_initialized = .false.
 ! 
 !  </IN>
 !  <IN NAME="lonb" TYPE="real">
-!       lonb      array of model longitudes on cell boundaries
+!       lonb      2d array of model longitudes on cell corners
 !                 [ radians ]
 ! 
 !  </IN>
 !  <IN NAME="latb" TYPE="real">
-!       latb      array of model latitudes at cell boundaries [radians]
+!       latb      2d array of model latitudes at cell corners [radians]
 ! 
 !  </IN>
 ! </SUBROUTINE>
@@ -214,16 +214,15 @@ real,                 intent(in) :: min_cld_drop_rad_in, &
                                     min_cld_ice_size_in,  &
                                     max_cld_ice_size_in
 real, dimension(:,:), intent(in) :: pref
-real, dimension(:),   intent(in) :: lonb, latb
+real, dimension(:,:), intent(in) :: lonb, latb
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
 !
 !       pref      array containing two reference pressure profiles 
 !                 for use in defining transmission functions [ Pa ]
-!       lonb      array of model longitudes on cell boundaries 
-!                 [ radians ]
-!       latb      array of model latitudes at cell boundaries [radians]
+!       lonb      2d array of model longitudes on cell corners [ radians ]
+!       latb      2d array of model latitudes at cell corners [radians]
 !
 !----------------------------------------------------------------------
 

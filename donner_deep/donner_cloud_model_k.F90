@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cloud_model_k.F90,v 14.0 2007/03/15 22:02:28 fms Exp $
+!  $Id: donner_cloud_model_k.F90,v 14.0.2.1 2007/05/04 08:45:05 rsh Exp $
 
 !module donner_cloud_model_inter_mod
 
@@ -19,7 +19,7 @@ subroutine don_cm_cloud_model_k   &
 !--lwh
           mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave, &
           exit_flag_c, rcl, dpf, &
-          qlw, dfr, flux, pt_kou, dint, cu, cell_precip, dints, apt, &
+          dpftr, qlw, dfr, flux, pt_kou, dint, cu, cell_precip, dints, apt, &
           cell_melt, efchr, emfhr, cfracice, etfhr, ncc_kou, ermesg)
 
 !--------------------------------------------------------------------
@@ -33,7 +33,8 @@ subroutine don_cm_cloud_model_k   &
 !    phalf_c), and tracer concentrations (tracers_c) for ensemble member
 !    kou and produces as output the in-cloud profiles of temperature 
 !    (tcc), vertical velocity (wv), cloud radius (rcl), liquid water 
-!    (qlw), condensation rate (dpf), freezing rate (dfr), mass flux 
+!    (qlw), condensation rate (dpf), wet-deposition rate (dpftr), 
+!    freezing rate (dfr), mass flux
 !    (flux), tracer concentrations (xclo), the environmental profiles of 
 !    temperature (te), mixing ratio (mre) and tracer concentrations 
 !    (xtrae), cloud top pressure (pt_kou), and column integrals of pre-
@@ -77,7 +78,7 @@ real,                               intent(out)    :: pt_kou, dint, cu,&
 real,    dimension(nlev_lsm),       intent(out)    :: cell_melt
 real,    dimension(nlev_hires),     intent(out)    :: efchr, emfhr,   &
                                                       cfracice
-real,    dimension(nlev_hires,ntr), intent(out)    :: etfhr
+real,    dimension(nlev_hires,ntr), intent(out)    :: etfhr, dpftr
 integer,                            intent(out)    :: ncc_kou
 character(len=*),                   intent(out)    :: ermesg
 
@@ -109,6 +110,11 @@ character(len=*),                   intent(out)    :: ermesg
 !     dpf            cloud-area-weighted condensation rate profile
 !                    (index 1 at physical base of cloud) 
 !                    [ (m**2) * kg(h2o) / kg(air) / sec ]
+!     dpftr          wet-deposition rate profile,
+!                    weighted by ratio of fractional area to
+!                    fractional area at base 
+!                    (index 1 at physical base of cloud)
+!                    [  [units of xclo] /(sec) ]
 !     qlw            cloud liquid water content profile (index 1 at
 !                    physical base of cloud) [ kg(h2o) / kg(air) ]
 !     dfr            cloud-area-weighted freezing rate profile in 
@@ -148,7 +154,7 @@ character(len=*),                   intent(out)    :: ermesg
 !   local variables:
 
       real, dimension (nlev_hires)         ::  pf, tcc, wv, te, mre
-      real, dimension (nlev_hires,ntr)     ::  xclo, xtrae 
+      real, dimension (nlev_hires,ntr)     ::  xclo, xtrae, pftr 
       real        :: precip, conint, summel, sumlhr, pmel, dmela
       integer     :: k, kc
       real        :: accond, acpre
@@ -185,7 +191,7 @@ character(len=*),                   intent(out)    :: ermesg
             Col_diag, Param, Initialized, tb, pb, alpp, cld_press, temp_c,  &
 !--lwh
             mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave,&
-            tcc, wv, rcl, qlw, dfr, flux, pf, te, mre, xclo, xtrae, &
+            tcc, wv, rcl, qlw, dfr, flux, pf, pftr, te, mre, xclo, xtrae, &
             dint, accond, acpre, cldtop_indx, do_donner_tracer,  &
             lfc_not_reached, ermesg)
  
@@ -214,10 +220,10 @@ character(len=*),                   intent(out)    :: ermesg
 !
 !---------------------------------------------------------------------
       call don_cm_process_condensate_k     &
-           (nlev_lsm, nlev_hires, cldtop_indx, diag_unit, debug_ijt, &
-            Param, acpre, accond, pb, pt_kou, pf, tcc, rcl, cld_press, &
+           (nlev_lsm, nlev_hires, ntr, cldtop_indx, diag_unit, debug_ijt, &
+            Param, acpre, accond, pb, pt_kou, pf, pftr, tcc, rcl, cld_press, &
             phalf_c, conint, dint, dints, pmel, precip, cu,  &
-            cell_precip, sumlhr, summel, dmela, dpf, dfr, cell_melt, &
+            cell_precip, sumlhr, summel, dmela, dpf, dpftr, dfr, cell_melt, &
             ermesg)
 
 !----------------------------------------------------------------------
@@ -333,13 +339,15 @@ subroutine don_cm_gen_incloud_profs_k  &
           Col_diag,  Param, Initialized, tb, pb, alpp, cld_press, temp_c, &
 !--lwh
           mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave, tcc, wv, &
-          rcl, qlwa, dfr, flux, pf, te, mre, xclo, xtrae, dint, accond, &
+          rcl, qlwa, dfr, flux, pf, pftr, te, mre, xclo, xtrae, dint, accond, &
           acpre, cldtop_indx, do_donner_tracer, lfc_not_reached, ermesg)
 
 !----------------------------------------------------------------------
 !
 !----------------------------------------------------------------------
 
+!  modified by Leo Donner, GFDL, 5 February 2007
+!
 use donner_types_mod, only : donner_param_type, donner_column_diag_type, &
                              donner_initialized_type
 use sat_vapor_pres_k_mod, only: lookup_es_k
@@ -367,7 +375,7 @@ real,                               intent(inout) :: pcsave
 real,    dimension(nlev_hires),     intent(out)   :: tcc, wv, rcl, qlwa,&
                                                      dfr, flux, pf
 real,    dimension(nlev_hires),     intent(out)   :: te, mre
-real,    dimension(nlev_hires,ntr), intent(out)   :: xclo, xtrae
+real,    dimension(nlev_hires,ntr), intent(out)   :: xclo, xtrae, pftr
 real,                               intent(out)   :: dint, accond, acpre
 integer,                            intent(out)   :: cldtop_indx
 logical,                            intent(out)   :: do_donner_tracer, &
@@ -405,9 +413,12 @@ character(len=*),                   intent(out)   :: ermesg
 !                    physical base of cloud)  [ m / sec ]
 !     rcl            cloud radius profile (index 1 at physical 
 !                    base of cloud)  [ m ]
-!     dpf            cloud-area-weighted condensation rate profile
+!     pf             cloud-area-weighted condensation rate profile
 !                    (index 1 at physical base of cloud) 
 !                    [ (m**2) * kg(h2o) / kg(air) / sec ]
+!     pftr           cloud-area-weighted wet-deposition profile
+!                    (index 1 at physical base of cloud)
+!                    [ (m**2) * [xlco units] /sec ]
 !     qlwa           cloud liquid water content profile (index 1 at
 !                    physical base of cloud) [ kg(h2o) / kg(air) ]
 !     dfr            cloud-area-weighted freezing rate profile in 
@@ -451,15 +462,16 @@ character(len=*),                   intent(out)   :: ermesg
       real     :: qlw, qcw, qrw, es, dtfr, dtupa, dfrac, rmu,  &
                   rhodt_inv, psfc, actot, dt_micro, sumfrea, dcw1,  &
                   dqrw3, rbar, rmub, density, densityp, d1, d2, dztr, &
-                  entrain
+                  entrain, dt_inv
       logical  :: flag
       integer  :: max_cloud_level,indx, ktr
       integer  :: k, kcont, kc, nbad
 !++lwh
       real, parameter :: g_2_kg = 1.e-3 ! kg/g
       real :: qlw_save, t_avg
-      real, dimension( size(xclo,2) ) :: delta_xclo0, delta_xclo1
-      integer :: n, ntracer_index
+      real, dimension( size(xclo,2) ) :: delta_xclo0, delta_xclo1, dwet
+!     integer :: n, ntracer_index
+      integer :: n
 !--lwh
 
 !--------------------------------------------------------------------
@@ -496,6 +508,7 @@ character(len=*),                   intent(out)   :: ermesg
       mre(:)  = 0.
       xclo(:,:)  = 0.
       xtrae(:,:) = 0.
+      pftr(:,:) = 0.
       flux(:) = 0.
       dint   = 0. 
       lfc_not_reached = .true.
@@ -728,6 +741,15 @@ character(len=*),                   intent(out)   :: ermesg
 
         if (flag) exit
 
+!---------------------------------------------------------------------
+!    define the in-cloud  density at levels k and k+1 
+!    (density, densityp).
+!---------------------------------------------------------------------
+        density  = cld_press(k)/(Param%rdgas*(tcc(k)*  &
+                               (1. + Param%D608*(rsc(k)/(1.0+rsc(k))))))
+        densityp = cld_press(k+1)/(Param%rdgas*(tcc(k+1)*  &
+                           (1. + Param%D608*(rsc(k+1)/(1.0+rsc(k+1))))))
+ 
 !--------------------------------------------------------------------
 !    calculate in-cloud tracer distribution.
 !--------------------------------------------------------------------
@@ -767,6 +789,7 @@ character(len=*),                   intent(out)   :: ermesg
                                      Initialized%wetdep(n)%alpha_r, &
                                      Initialized%wetdep(n)%alpha_s, &
                                      t_avg, cld_press(k), cld_press(k+1), &
+                                     0.5*(density+densityp), &
                                      qlw_save, dqrw3*g_2_kg, &
                                      xclo(k,n), delta_xclo0(n) )
           end do
@@ -785,9 +808,11 @@ character(len=*),                   intent(out)   :: ermesg
                                      Initialized%wetdep(n)%alpha_s, &
                                      t_avg, & 
                                      cld_press(k), cld_press(k+1), &
+                                     0.5*(density+densityp), &
                                      qlw, dqrw3*g_2_kg, &
                                      xclo(k+1,n), delta_xclo1(n) )
-             xclo(k+1,n) = xclo(k+1,n) - 0.5*(delta_xclo0(n)+delta_xclo1(n))
+             dwet(n) = - 0.5*(delta_xclo0(n)+delta_xclo1(n))
+             xclo(k+1,n) = xclo(k+1,n) + dwet(n)
           end do
 !--lwh          
  
@@ -810,13 +835,13 @@ character(len=*),                   intent(out)   :: ermesg
         pf(k)  = dcw1*(rbar**2)*rhodt_inv
 
 !---------------------------------------------------------------------
-!    define the in-cloud  density at levels k and k+1 
-!    (density, densityp).
+!     define the removal by wet deposition between levels k and k+1
 !---------------------------------------------------------------------
-        density  = cld_press(k)/(Param%rdgas*(tcc(k)*  &
-                               (1. + Param%D608*(rsc(k)/(1.0+rsc(k))))))
-        densityp = cld_press(k+1)/(Param%rdgas*(tcc(k+1)*  &
-                           (1. + Param%D608*(rsc(k+1)/(1.0+rsc(k+1))))))
+        dt_inv = -.25*(wv(k)+wv(k+1))*(density+densityp)*Param%grav  / &
+                 Param%dp_of_cloud_model
+        do n = 1,size(xclo,2)
+          pftr(k,n) = dwet(n) *(rbar**2)*dt_inv
+        end do
 
 !---------------------------------------------------------------------
 !    calculate moisture subject to freezing in units of g(h2o) per 
@@ -2574,10 +2599,10 @@ end subroutine don_cm_output_member_tends_k
 
 
 subroutine don_cm_process_condensate_k     &
-         (nlev_lsm, nlev_hires, cldtop_indx, diag_unit, debug_ijt, &
-          Param, acpre, accond, pb, pt_kou, pf, tcc, rcl, cld_press, &
+         (nlev_lsm, nlev_hires, ntr, cldtop_indx, diag_unit, debug_ijt, &
+          Param, acpre, accond, pb, pt_kou, pf, pftr, tcc, rcl, cld_press, &
           phalf_c, conint, dint, dints, pmel, precip, cu, cell_precip, &
-          sumlhr, summel, dmela, dpf, dfr, cell_melt, ermesg)
+          sumlhr, summel, dmela, dpf, dpftr, dfr, cell_melt, ermesg)
 
 !----------------------------------------------------------------------
 !
@@ -2589,11 +2614,13 @@ implicit none
 
 !----------------------------------------------------------------------
 integer,                      intent(in)    :: nlev_lsm, nlev_hires, &
+                                               ntr, &
                                                cldtop_indx, diag_unit
 logical,                      intent(in)    :: debug_ijt  
 type(donner_param_type),      intent(in)    :: Param
 real,                         intent(in)    :: acpre, accond, pb, pt_kou
 real, dimension(nlev_hires),  intent(in)    :: pf, tcc, rcl, cld_press
+real, dimension(nlev_hires,ntr), intent(in) :: pftr
 real, dimension(nlev_lsm+1),  intent(in)    :: phalf_c
 real,                         intent(inout) :: conint, dint, dints,  &
                                                pmel, precip, cu, &
@@ -2601,11 +2628,12 @@ real,                         intent(inout) :: conint, dint, dints,  &
                                                summel, dmela     
 real, dimension(nlev_hires),  intent(inout) :: dfr
 real, dimension(nlev_hires),  intent(out)   :: dpf
+real, dimension(nlev_hires,ntr),  intent(out)   :: dpftr
 real, dimension(nlev_lsm),    intent(out)   :: cell_melt
 character(len=*),             intent(out)   :: ermesg
               
 
-      integer  :: k, kc
+      integer  :: k, kc, n
  
 !---------------------------------------------------------------------
 !    initialize the character string which will contain any error mes-
@@ -2614,6 +2642,7 @@ character(len=*),             intent(out)   :: ermesg
       ermesg = ' '
 
       dpf(1:nlev_hires) = 0.
+      dpftr(:,:) = 0.
       precip = 0.
       conint = 0.
 
@@ -2626,15 +2655,25 @@ character(len=*),             intent(out)   :: ermesg
 
 !--------------------------------------------------------------------
 !    convert the layer-mean values of cloud-area-weighted condensation 
-!    (pf) to values at cloud model interfaces (dpf). 
+!    (pf) and wet deposition (pftr)
+!    to values at cloud model interfaces (dpf and dpftr).
 !--------------------------------------------------------------------
           if (k == 1) then
             dpf(1) = 0.5*pf(1)
+            do n=1,ntr
+              dpftr(1,n) = 0.5*pftr(1,n)
+            end do
           else 
             dpf(k) = 0.5*(pf(k) + pf(k-1))
+            do n=1,ntr
+              dpftr(k,n) = 0.5*(pftr(k,n) + pftr(k-1,n))
+            end do
           endif 
           if (k == cldtop_indx) then
             dpf(cldtop_indx+1) = 0.5*pf(cldtop_indx)
+            do n=1,ntr
+              dpftr(cldtop_indx+1,n) = 0.5*pftr(cldtop_indx,n)
+            end do
           endif
         end do
       endif ! (cldtop_indx /= 0)
@@ -2656,6 +2695,9 @@ character(len=*),             intent(out)   :: ermesg
 !--------------------------------------------------------------------
         dfr(k) = dfr(k)/(Param%cloud_base_radius**2)
         dpf(k) = dpf(k)/(Param%cloud_base_radius**2)
+        do n=1,ntr
+          dpftr(k,n) = dpftr(k,n)/(Param%cloud_base_radius**2)
+        end do
  
 !----------------------------------------------------------------------
 !    if in a diagnostics column, output the freezing (dfr) and conden-
@@ -2665,6 +2707,10 @@ character(len=*),             intent(out)   :: ermesg
         if (debug_ijt) then
           write (diag_unit, '(a, i4, 3e20.12)')  &
                'in mulsub: k,dfr,dpr,rcl= ', k, dfr(k), dpf(k), rcl(k)
+          do n=1,ntr
+            write (diag_unit, '(a, i4, e20.12)')  &
+                'in mulsub: k,dpftr= ', k, dpftr(k,n)
+          end do
         endif
       end do
 

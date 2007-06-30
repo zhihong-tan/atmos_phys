@@ -40,8 +40,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 14.0 2007/03/15 22:05:39 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 14.0.2.2 2007/05/25 16:32:02 vb Exp $'
+   character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 
 
@@ -116,7 +116,7 @@ contains
 subroutine donner_deep_clouds_W_init  (pref, lonb, latb, axes, Time)
 
 real, dimension(:,:), intent(in) :: pref
-real, dimension(:), intent(in) :: lonb, latb
+real, dimension(:,:), intent(in) :: lonb, latb
 integer, dimension(4), intent(in)      :: axes
 type(time_type),       intent(in)      :: Time
 

@@ -65,8 +65,8 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 14.0 2007/03/15 22:07:25 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_04 $'
+'$Id: radiative_gases.F90,v 14.0.2.2 2007/05/25 16:32:06 vb Exp $'
+character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -443,10 +443,10 @@ logical    :: n2o_tfs_needed = .true.
 !   reference prssure profiles
 !  </IN>
 !  <IN NAME="latb" TYPE="real">
-!   array of model latitudes at cell boundaries [radians]
+!   2d array of model latitudes at cell corners [radians]
 !  </IN>
 !  <IN NAME="lonb" TYPE="real">
-!   array of model longitudes at cell boundaries [radians]
+!   2d array of model longitudes at cell corners [radians]
 !  </IN>
 ! </SUBROUTINE>
 !
@@ -457,15 +457,15 @@ subroutine radiative_gases_init (pref, latb, lonb)
 !---------------------------------------------------------------------
 
 real, dimension(:,:), intent(in) :: pref
-real, dimension(:),   intent(in) :: latb, lonb
+real, dimension(:,:), intent(in) :: latb, lonb
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
 !
 !       pref      array containing two reference pressure profiles 
 !                 for use in defining transmission functions [pascals]
-!       latb      array of model latitudes at cell boundaries [radians]
-!       lonb      array of model longitudes at cell boundaries [radians]
+!       latb      2d array of model latitudes at cell corners [radians]
+!       lonb      2d array of model longitudes at cell corners [radians]
 !
 !---------------------------------------------------------------------
 
@@ -803,7 +803,7 @@ real, dimension(:),   intent(in) :: latb, lonb
 !    define the total number of columns on the processor. set the 
 !    number of columns processed on the current time step to 0.
 !---------------------------------------------------------------------
-      total_points = (size(latb(:))-1)*(size(lonb(:))-1)
+      total_points = (size(latb,2)-1)*(size(lonb,1)-1)
       pts_processed = 0
 
 !---------------------------------------------------------------------

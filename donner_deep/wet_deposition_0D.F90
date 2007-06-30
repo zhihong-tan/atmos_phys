@@ -1,12 +1,18 @@
+ 
+!VERSION NUMBER:
+!  $Id: wet_deposition_0D.F90,v 1.1.2.2.2.1.2.1.2.1 2007/05/19 08:27:34 rsh Exp $
+
 !<SUBROUTINE NAME = "wet_deposition_0D">
 !<TEMPLATE>
-!CALL wet_deposition( n, T, p1, p0, &
-!                     cloud, precip, &
-!                     tracer, delta_tracer )
+!CALL wet_deposition_0D( scheme, Henry_constant, Henry_variable, &
+!                        frac_in_cloud, alpha_r, alpha_s, &
+!                        T, p0, p1, rho_air, &
+!                        cloud, precip, &
+!                        tracer, delta_tracer )
 !</TEMPLATE>
 subroutine wet_deposition_0D( scheme, Henry_constant, Henry_variable, &
                               frac_in_cloud, alpha_r, alpha_s, &
-                              T, p0, p1, &
+                              T, p0, p1, rho_air, &
                               cloud, precip, &
                               tracer, delta_tracer )
 !      
@@ -25,6 +31,9 @@ subroutine wet_deposition_0D( scheme, Henry_constant, Henry_variable, &
 !</IN>
 !<IN NAME="p1" TYPE="real">
 !   Pressure (Pa) at layer farther from surface
+!</IN>
+!<IN NAME="rho_air" TYPE="real">
+!   Air density (kg/m3)
 !</IN>
 !<IN NAME="cloud" TYPE="real">
 !   Cloud amount (liquid+ice) (kg/kg)
@@ -53,12 +62,13 @@ subroutine wet_deposition_0D( scheme, Henry_constant, Henry_variable, &
 ! a method for the tracer of interest in the field table.
 !<PRE>
 ! "wet_deposition","henry","henry=XXX, dependence=YYY"
+! "wet_deposition","henry_below","henry=XXX, dependence=YYY"
 !     where XXX is the Henry's constant for the tracer in question
 !       and YYY is the temperature dependence of the Henry's Law constant.
 !
-! "wet_deposition","fraction","lslwc=XXX, convlwc=YYY"
-!     where XXX is the liquid water content of a standard large scale cloud
-!       and YYY is the liquid water content of a standard convective cloud.
+! "wet_deposition","aerosol","frac_incloud=XXX"
+! "wet_deposition","aerosol_below","frac_incloud=XXX"
+!     where XXX is the in-cloud fraction of the aerosol tracer
 !</PRE>
 
 !</DESCRIPTION>
@@ -69,7 +79,7 @@ subroutine wet_deposition_0D( scheme, Henry_constant, Henry_variable, &
 character(len=200), intent(in)                   :: scheme
 real,             intent(in)                     :: Henry_constant, Henry_variable, &
                                                     frac_in_cloud, alpha_r, alpha_s
-real,             intent(in)                     :: T, p0, p1
+real,             intent(in)                     :: T, p0, p1, rho_air
 real,             intent(in)                     :: cloud, precip
 real,             intent(in)                     :: tracer
 real,             intent(out)                    :: delta_tracer
@@ -78,7 +88,7 @@ real,             intent(out)                    :: delta_tracer
 !     ... local variables
 !-----------------------------------------------------------------------
 real :: &
-      Htemp, xliq, n_air, rho_air, pwt, pmid
+      Htemp, xliq, n_air, pwt, pmid
 real :: &
       temp_factor, scav_factor, &
       w_h2o, beta, f_a, in_temp
@@ -103,7 +113,7 @@ flag = scheme /= 'none'
 if(.not. flag) return
 
 pmid = 0.5 * (p0+p1)         ! Pa
-rho_air = pmid / ( T*RDGAS ) ! kg/m3
+!rho_air = pmid / ( T*RDGAS ) ! kg/m3
 pwt     = ( p0 - p1 )/GRAV   ! kg/m2
 ! zdel = z1 - z0               ! m
 
@@ -182,6 +192,7 @@ if( Lgas .or. Laerosol ) then
       if (precip > 0. .and. xliq > 0.) then
          w_h2o = precip * (AVOGNO/mw_h2o) * cm3_2_m3 ! molec/cm3
          beta = w_h2o * mw_h2o  / (n_air * xliq)   ! fraction of condensed water removed
+         beta = MAX(MIN(beta,1.),0.)
          in_temp = beta * scav_factor              ! fraction of tracer removed
       end if
 
