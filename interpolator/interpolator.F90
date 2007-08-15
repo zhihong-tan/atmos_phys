@@ -74,8 +74,7 @@ public interpolator_init, &
        interpolator_end,  &
        init_clim_diag,    &
        query_interpolator,&
-       read_data,         &
-       create_horiz_interp_new
+       read_data
 
 interface interpolator
    module procedure interpolator_4D
@@ -88,8 +87,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 14.0.2.2 2007/05/25 16:32:09 vb Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+'$Id: interpolator.F90,v 15.0 2007/08/14 03:56:36 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -687,9 +686,9 @@ endif
 
 !Assume that the horizontal interpolation within a file is the same for each variable.
 
- call create_horiz_interp_new (clim_type%interph, &
-                               clim_type%lonb, clim_type%latb, &
-                               lonb_mod, latb_mod)
+ call horiz_interp_new (clim_type%interph, &
+                        clim_type%lonb, clim_type%latb, &
+                        lonb_mod, latb_mod)
 
 !--------------------------------------------------------------------
 !  allocate the variable clim_type%data . This will be the climatology 
@@ -2408,176 +2407,6 @@ end subroutine interp_linear
 !
 !########################################################################
 
- subroutine create_horiz_interp_new (interph, lonb_in, latb_in, &
-                                     lonb_out, latb_out,        &
-                                     verbose, interp_method)
- type(horiz_interp_type), intent(inout) :: interph
- real,      intent(in), dimension(:)    :: lonb_in,  latb_in
- real,      intent(in), dimension(:,:)  :: lonb_out, latb_out
- integer,   intent(in),        optional :: verbose
- character(len=*), intent(in), optional :: interp_method
-
- real, allocatable, dimension(:,:) :: lonc_out, latc_out
- integer :: nx, ny
- character(len=32) :: method
-
- if (is_latlon(lonb_out,latb_out)) then
-     ! lat/lon grid:  default (conservative) interpolation using grid box boundaries
-     call horiz_interp_new (interph, lonb_in, latb_in, &
-                            lonb_out(:,1), latb_out(1,:), &
-                            verbose=verbose, interp_method=interp_method)
- else
-     method = "conservative"
-     if (present(interp_method)) method = trim(interp_method)
-
-     if (trim(method) == "conservative") then
-        call horiz_interp_new (interph, lonb_in, latb_in, &
-                               lonb_out, latb_out,        &
-                               verbose=verbose, interp_method="conservative")
-     else
-        ! non-lat/lon grid:  bi-linear interpolation using grid box mid-points
-        nx = size(lonb_out,1)-1
-        ny = size(latb_out,2)-1
-        allocate (lonc_out(nx,ny),latc_out(nx,ny))
-        call get_cell_center (lonb_out, latb_out, lonc_out, latc_out)
-        call horiz_interp_new (interph, lonb_in, latb_in, &
-                               lonc_out, latc_out,        &
-                               verbose=verbose, interp_method="bilinear")
-        deallocate (lonc_out, latc_out)
-     endif
- endif
-
- end subroutine create_horiz_interp_new
-
-!########################################################################
-
-function is_latlon ( lon, lat )
-real, intent(in) :: lon(:,:), lat(:,:)
-
-! Determines if the latitude/longitude values form a
-! regular latitude/longitude grid (or something else).
-!
-
-logical :: is_latlon
-integer :: i, j 
-
-  is_latlon = .true.
-
-  do j = 2, size(lon,2)
-  do i = 1, size(lon,1)
-     if (lon(i,j) .ne. lon(i,1)) then
-        is_latlon = .false. 
-        return  
-     endif   
-  enddo
-  enddo
-
-  do j = 1, size(lat,2)
-  do i = 2, size(lat,1)
-     if (lat(i,j) .ne. lat(1,j)) then
-        is_latlon = .false. 
-        return  
-     endif   
-  enddo
-  enddo
-
-end function is_latlon
-
-!########################################################################
-
-  subroutine get_cell_center (lonb, latb, lon, lat)
-    !------------------------------------------------------------------!
-    ! calculate cell center (lon,lat)                                  !
-    ! by averaging cell corner locations (lonb,latb) in Cartesian coor !
-    !------------------------------------------------------------------!
-    real, dimension(:,:), intent(in)  :: lonb, latb
-    real, dimension(:,:), intent(out) :: lon, lat
-    !------------------------------------------------------------------!
-    ! local variables                                                  !
-    !------------------------------------------------------------------!
-    real :: sph_coor(2), xyz_corner(3,size(lonb,1),size(latb,2)), xyz_center(3), abs_center
-    integer :: i,j, nx,ny
-
-    nx = size(lonb,1)
-    ny = size(latb,2)
-
-    do j=1,ny
-       do i=1,nx
-          sph_coor(1)=lonb(i,j)
-          sph_coor(2)=latb(i,j)
-          call latlon2xyz(sph_coor, xyz_corner(1,i,j))
-       enddo   
-    enddo   
-    do j=1,ny-1
-       do i=1,nx-1
-          xyz_center(:)=0.25*(xyz_corner(:,i  ,j  )+xyz_corner(:,i+1,j  )  &
-                             +xyz_corner(:,i  ,j+1)+xyz_corner(:,i+1,j+1))
-          abs_center=xyz_center(1)*xyz_center(1)                           &       
-                    +xyz_center(2)*xyz_center(2)                           &       
-                    +xyz_center(3)*xyz_center(3)
-          xyz_center(:)=xyz_center(:)/abs_center
-          call xyz2latlon(xyz_center, sph_coor)
-          lon(i,j)=sph_coor(1)
-          lat(i,j)=sph_coor(2)
-       enddo   
-    enddo
-
-  end subroutine get_cell_center
-
-!########################################################################
-
-  subroutine latlon2xyz(sph_coor, xyz_coor)
-    !------------------------------------------------------------------!
-    ! calculate cartesian coordinates from spherical coordinates       !
-    !                                                                  !
-    ! input:                                                           !
-    ! sph_coor [rad]   latlon coordinate                               !
-    !                                                                  !
-    ! output:                                                          !
-    ! xyz_coor [1]     normalized cartesian vector                     !
-    !------------------------------------------------------------------!
-    real, dimension(2), intent(in)    :: sph_coor
-    real, dimension(3), intent(inout) :: xyz_coor
-
-    xyz_coor(1) = cos(sph_coor(2)) * cos(sph_coor(1))
-    xyz_coor(2) = cos(sph_coor(2)) * sin(sph_coor(1))
-    xyz_coor(3) = sin(sph_coor(2))
-
-  end subroutine latlon2xyz
-  !====================================================================!
-  subroutine xyz2latlon(xyz_coor, sph_coor)
-    !------------------------------------------------------------------!
-    ! calculate spherical coordinates from cartesian coordinates       !
-    !                                                                  !
-    ! input:                                                           !
-    ! xyz_coor [1]     normalized cartesian vector                     !
-    !                                                                  !
-    ! output:                                                          !
-    ! sph_coor [rad]   latlon coordinate                               !
-    !------------------------------------------------------------------!
-
-    real, dimension(3), intent(in)    :: xyz_coor
-    real, dimension(2), intent(inout) :: sph_coor
-    !------------------------------------------------------------------!
-    ! local variables                                                  !
-    !------------------------------------------------------------------!
-    real :: coslat, radius
-    real, parameter :: epsilon=1.e-7
-    integer :: i,j
-
-
-    radius=sqrt(xyz_coor(1)*xyz_coor(1) &
-               +xyz_coor(2)*xyz_coor(2) &
-               +xyz_coor(3)*xyz_coor(3))
-
-    sph_coor(1)=atan2(xyz_coor(2),xyz_coor(1))
-    if (sph_coor(1)<0.) sph_coor(1)=sph_coor(1)+2*PI
-    sph_coor(2)=asin(xyz_coor(3)/radius)
-
-  end subroutine xyz2latlon
-
-!########################################################################
-!
 end module interpolator_mod
 !
 !#######################################################################

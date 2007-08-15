@@ -38,7 +38,7 @@ use tracer_manager_mod, only : query_method, &
                                MAX_TRACER_FIELDS
 use  field_manager_mod, only : MODEL_ATMOS, parse
 use   horiz_interp_mod, only : horiz_interp_type, horiz_interp_init, &
-                               horiz_interp, horiz_interp_del
+                               horiz_interp_new, horiz_interp, horiz_interp_del
 use  monin_obukhov_mod, only : mo_profile
 use      constants_mod, only : GRAV, &     ! acceleration due to gravity [m/s2]
                                RDGAS, &    ! gas constant for dry air [J/kg/deg]
@@ -48,8 +48,7 @@ use      constants_mod, only : GRAV, &     ! acceleration due to gravity [m/s2]
                                WTMAIR, &   ! Air molecular weight [g/mole]
                                AVOGNO      ! Avogadro's number
 use   interpolator_mod, only : interpolator,  &
-                               interpolate_type, &
-                               create_horiz_interp_new
+                               interpolate_type
 
 implicit none
 private
@@ -70,8 +69,8 @@ public  wet_deposition,    &
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 14.0.2.2 2007/05/25 16:32:10 vb Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 15.0 2007/08/14 03:57:09 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 integer, parameter :: max_tracers = MAX_TRACER_FIELDS
@@ -1334,8 +1333,8 @@ type (horiz_interp_type) :: Interp
 
 ! Now interpolate the global data to the model resolution
    call horiz_interp_init
-   call create_horiz_interp_new (Interp, blon_in, blat_in, &
-                                         blon_out, blat_out)
+   call horiz_interp_new (Interp, blon_in, blat_in, &
+                                  blon_out, blat_out)
    call horiz_interp (Interp, global_source, data_out)
    call horiz_interp_del ( Interp )
 

@@ -185,8 +185,8 @@ logical :: module_is_initialized = .FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 14.0.4.1 2007/05/29 16:27:46 wfc Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 15.0 2007/08/14 03:56:43 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 !-----------------------------------------------------------------------
 
 contains

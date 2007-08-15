@@ -152,8 +152,8 @@ type(interpolate_type), save :: drydep_data_default
 integer :: clock_id,ndiag
 
 !---- version number -----
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 14.0.2.2 2007/05/25 16:32:12 vb Exp $'
-character(len=128), parameter :: tagname     = '$Name: nalanda_2007_06 $'
+character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 15.0 2007/08/14 03:57:26 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: omsk $'
 !-----------------------------------------------------------------------
 
 contains

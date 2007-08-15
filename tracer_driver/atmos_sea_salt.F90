@@ -50,8 +50,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 13.0.8.2 2007/05/25 16:32:09 vb Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 15.0 2007/08/14 03:56:54 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 !-----------------------------------------------------------------------
 
 contains

@@ -259,8 +259,8 @@ integer, allocatable :: local_indices(:)
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 14.0.2.2 2007/05/27 14:04:31 wfc Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 15.0 2007/08/14 03:57:06 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 !-----------------------------------------------------------------------
 
 contains
