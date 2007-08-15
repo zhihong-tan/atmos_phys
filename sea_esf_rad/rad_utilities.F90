@@ -43,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 14.0.2.1.2.1 2007/05/12 14:45:13 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 15.0 2007/08/14 03:55:35 fms Exp $'
+character(len=128)  :: tagname =  '$Name: omsk $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -385,6 +385,7 @@ type cloudrad_control_type
     logical :: do_specified_strat_clouds
     logical :: do_ica_calcs
     logical :: do_liq_num
+    logical :: using_fu2007
     integer :: nlwcldb                   !   number of frequency bands 
                                          !   for which lw cloud emissiv-
                                          !   ities are defined.
@@ -415,6 +416,7 @@ type cloudrad_control_type
     logical :: do_specified_strat_clouds_iz
     logical :: do_ica_calcs_iz
     logical :: do_liq_num_iz
+    logical :: using_fu2007_iz
 end type cloudrad_control_type
 
 !------------------------------------------------------------------
@@ -964,6 +966,7 @@ type rad_output_type
                                         flux_sw_surf_dif=>NULL(), &
                                         flux_sw_down_vis_dir=>NULL(), &
                                         flux_sw_down_vis_dif=>NULL(), &
+                                        flux_sw_down_vis_clr=>NULL(), &
                                        flux_sw_down_total_dir=>NULL(), &
                                        flux_sw_down_total_dif=>NULL(), &
                                   flux_sw_down_total_dir_clr=>NULL(), &
@@ -1091,6 +1094,7 @@ type sw_output_type
                                        dfsw_dif_sfc_clr=>NULL(),   &
                                        ufsw_dif_sfc=>NULL()
       real, dimension(:,:), pointer :: dfsw_vis_sfc_dir=>NULL()
+      real, dimension(:,:), pointer :: dfsw_vis_sfc_clr=>NULL()
       real, dimension(:,:), pointer :: dfsw_vis_sfc_dif=>NULL(),   &
                                        ufsw_vis_sfc_dif=>NULL()
       real, dimension(:,:,:), pointer   ::                       &
@@ -1185,7 +1189,7 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false.,                   &
+                                         .false., .false.,          &
                                          0,0,0,0,0,0 , &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
@@ -1194,7 +1198,7 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false.                   )
+                                         .false., .false.            )
 
 
 type (longwave_parameter_type), public  ::   &
@@ -1423,6 +1427,7 @@ subroutine check_derived_types
           Cldrad_control%do_stochastic_clouds_iz .and. &
           Cldrad_control%do_random_overlap_iz .and. &
           Cldrad_control%do_ica_calcs_iz .and. &
+          CLdrad_control%using_fu2007_iz .and.  &
           Cldrad_control%do_max_random_overlap_iz ) then     
       else
         call error_mesg ('rad_utilities_mod', &
@@ -3278,6 +3283,7 @@ subroutine sw_output_type_eq(sw_output_out,sw_output_in)
    sw_output_out%ufsw_vis_sfc     = sw_output_in%ufsw_vis_sfc
    sw_output_out%dfsw_vis_sfc_dir = sw_output_in%dfsw_vis_sfc_dir
    sw_output_out%dfsw_vis_sfc_dif = sw_output_in%dfsw_vis_sfc_dif
+   sw_output_out%dfsw_vis_sfc_clr = sw_output_in%dfsw_vis_sfc_clr
    sw_output_out%ufsw_vis_sfc_dif = sw_output_in%ufsw_vis_sfc_dif
    sw_output_out%swdn_special     = sw_output_in%swdn_special
    sw_output_out%swup_special     = sw_output_in%swup_special

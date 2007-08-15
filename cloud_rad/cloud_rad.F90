@@ -252,8 +252,8 @@ private
 !---------------------------------------------------------------------
 !------------ version number for this module -------------------------
         
-character(len=128) :: version = '$Id: cloud_rad.F90,v 14.0.2.1 2007/05/04 08:40:18 rsh Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+character(len=128) :: version = '$Id: cloud_rad.F90,v 15.0 2007/08/14 03:52:48 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 
 
 !---------------------------------------------------------------------- 
@@ -940,7 +940,8 @@ end subroutine lw_emissivity
 !  </OUT>
 ! </SUBROUTINE>
 !
-subroutine cloud_summary3 (is, js, land, ql, qi, qa, qn, pfull, phalf, &
+subroutine cloud_summary3 (is, js, land,  use_fu2007, ql, qi, qa, qn, &
+                           pfull, phalf, &
                            tkel, nclds, cldamt, lwp, iwp, reff_liq,  &
                            reff_ice, ktop, kbot, conc_drop, conc_ice, &
 !                          size_drop, size_ice)
@@ -953,6 +954,7 @@ subroutine cloud_summary3 (is, js, land, ql, qi, qa, qn, pfull, phalf, &
  
 integer,                   intent(in)            :: is,js
 real, dimension(:,:),      intent(in)            :: land
+logical,                   intent(in)             :: use_fu2007
 real, dimension(:,:,:),    intent(in)            :: ql, qi, qa, qn, pfull,&
                                                     phalf, tkel
 integer, dimension(:,:),   intent(out)           :: nclds          
@@ -1136,8 +1138,9 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !--------------------------------------------------------------------
         if (present (conc_drop) .and.  present (conc_ice ) .and. &
             present (size_ice ) .and.  present (size_drop)) then      
-          call rnd_overlap (ql_local, qi_local, qa_local, pfull,  &
-                            phalf, tkel, N_drop3D, N_drop2D, k_ratio, nclds,      &
+          call rnd_overlap (ql_local, qi_local, qa_local,  &
+                            use_fu2007, pfull, phalf, tkel,  &
+                            N_drop3D, N_drop2D, k_ratio, nclds,      &
                             cldamt, lwp, iwp, reff_liq, reff_ice,   &
                             conc_drop_org=conc_drop,&
                             conc_ice_org =conc_ice,&
@@ -1165,8 +1168,9 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !    the cloud specification variables.
 !----------------------------------------------------------------------
         else
-           call  rnd_overlap (ql_local, qi_local, qa_local, pfull,  &
-                              phalf, tkel, N_drop3D, N_drop2D, k_ratio, nclds,  &
+           call  rnd_overlap (ql_local, qi_local, qa_local,  &
+                              use_fu2007, pfull, phalf, tkel,  &
+                              N_drop3D, N_drop2D, k_ratio, nclds,  &
                               cldamt, lwp, iwp, reff_liq, reff_ice)
         endif
       endif ! (present(ktop and kbot))
@@ -1783,7 +1787,8 @@ end subroutine max_rnd_overlap
 !  </OUT>
 ! </SUBROUTINE>
 !
-subroutine rnd_overlap    (ql, qi, qa, pfull, phalf, tkel, N_drop3D, N_drop2D,  &
+subroutine rnd_overlap    (ql, qi, qa, use_fu2007, pfull, phalf,   &
+                           tkel, N_drop3D, N_drop2D,  &
                            k_ratio, nclds, cldamt, lwp, iwp, reff_liq, &
                            reff_ice, conc_drop_org, conc_ice_org,  &
                            size_drop_org, size_ice_org)
@@ -1798,6 +1803,7 @@ subroutine rnd_overlap    (ql, qi, qa, pfull, phalf, tkel, N_drop3D, N_drop2D,  
  
 real,    dimension(:,:,:), intent(in)             :: ql, qi, qa,  &
                                                      pfull, phalf, tkel, N_drop3D
+logical,                   intent(in)             :: use_fu2007
 real,    dimension(:,:),   intent(in)             :: N_drop2D, k_ratio
 integer, dimension(:,:),   intent(out)            :: nclds
 real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
@@ -2069,6 +2075,13 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !    calculate the effective ice crystal size using the data approp-
 !    riate for the microphysics case.
 !---------------------------------------------------------------------
+            if (use_fu2007) then
+!+yim Fu's parameterization of dge
+              reff_ice_local = 47.05 +   &
+                                0.6624*(tkel(i,j,k) - TFREEZE) +&
+                               0.001741*(tkel(i,j,k)-TFREEZE)**2
+              size_ice_org(i,j,k) = reff_ice_local
+            else ! (use_fu2007)
                 if (want_microphysics) then
                   if (tkel(i,j,k) > TFREEZE - 25.) then
                     reff_ice_local = 100.6      
@@ -2096,6 +2109,7 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 
                   size_ice_org(i,j,k) = reff_ice_local
                 endif
+           endif ! (use_fu2007)
 
 !---------------------------------------------------------------------
 !    calculate reff_ice using the bulk physics data.

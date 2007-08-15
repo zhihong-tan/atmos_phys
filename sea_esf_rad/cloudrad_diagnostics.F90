@@ -64,8 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 14.0.2.1.2.1.2.1 2007/05/16 16:18:35 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 15.0 2007/08/14 03:54:32 fms Exp $'
+character(len=128)  :: tagname =  '$Name: omsk $'
 
 
 !---------------------------------------------------------------------
@@ -216,7 +216,7 @@ integer::  id_cell_area_liq, id_cell_conc_drop, id_cell_size_drop,&
 integer::  id_shallow_area_liq, id_shallow_conc_drop,   &
            id_shallow_size_drop, id_ra_shallow_size_drop, &
            id_shallow_area_ice, id_shallow_conc_ice,  &
-           id_shallow_size_ice, & id_shallow_droplet_number, &
+           id_shallow_size_ice, id_shallow_droplet_number, &
            id_gb_shallow_conc_ice, id_gb_shallow_conc_drop
 
 ! stochastic cloud diagnostics 

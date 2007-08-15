@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_deep_k.F90,v 14.0.2.1 2007/05/04 08:45:06 rsh Exp $
+!  $Id: donner_deep_k.F90,v 15.0 2007/08/14 03:53:18 fms Exp $
 
 !module donner_deep_inter_mod
 
@@ -13,9 +13,9 @@
 
 subroutine don_d_donner_deep_k   &
          (is, ie, js, je, isize, jsize, nlev_lsm, nlev_hires, ntr, me, &
-          cloud_tracers_present,  &
+          cloud_tracers_present, cbmf,  &
           dt, Param, Nml, temp, mixing_ratio, pfull, phalf,   &
-          zfull, zhalf, omega, pblht, qlin,&
+          zfull, zhalf, omega, pblht, tkemiz, qstar, coldT, qlin,&!miz
           qiin, qain, land, sfc_sh_flux, sfc_vapor_flux, tr_flux,  &
           tracers, cell_cld_frac, cell_liq_amt, cell_liq_size,  &
           cell_ice_amt, cell_ice_size, cell_droplet_number, &
@@ -50,6 +50,7 @@ implicit none
 integer,                 intent(in)     :: is, ie, js, je, isize, jsize,&
                                            nlev_lsm, nlev_hires, ntr, me
 logical,                 intent(in)     :: cloud_tracers_present
+real, dimension(isize,jsize),    intent(inout)     :: cbmf
 real,                    intent(in)     :: dt
 type(donner_param_type), intent(in)     :: Param
 type(donner_nml_type),   intent(in)     :: Nml
@@ -67,8 +68,9 @@ real, dimension(isize,jsize,nlev_lsm),                                  &
 real,    dimension(isize,jsize,nlev_lsm+1),                            &
                          intent(in)     :: phalf, zhalf
 real,    dimension(isize,jsize),                                      &
-                         intent(in)     :: pblht, land, sfc_sh_flux,       &
-                                           sfc_vapor_flux
+                         intent(in)     :: pblht, tkemiz, qstar, land, &
+                                           sfc_sh_flux, sfc_vapor_flux
+logical, dimension(isize,jsize), intent(in) :: coldT    
 real,    dimension(isize,jsize,ntr),                                 &
                          intent(in)     :: tr_flux 
 real,    dimension(isize,jsize,nlev_lsm,ntr),                         &
@@ -466,9 +468,9 @@ type(ctend),             intent(inout)  :: ct
 !--------------------------------------------------------------------- 
         call don_d_convection_driver_k   &
              (isize, jsize, nlev_lsm, nlev_hires, ntr, me, &
-              cloud_tracers_present, dt, Nml, &
+              cloud_tracers_present, cbmf, dt, Nml, &
               Initialized, Param, Col_diag, temp, mixing_ratio,  &
-              pfull, zfull, zhalf, pblht, &
+              pfull, zfull, zhalf, pblht, tkemiz, qstar, coldT,  &!miz
               qlin, qiin, qain, lag_cape_temp, lag_cape_vapor,    &
               lag_cape_press, phalf, current_displ, land, sfc_sh_flux, &
               sfc_vapor_flux, tr_flux, tracers, Don_cape, Don_conv, &
@@ -614,13 +616,13 @@ type(ctend),             intent(inout)  :: ct
         do j=1,jsize      
           do i=1,isize       
             delta_vapor(i,j,k) = Don_save%cememf(i+is-1,j+js-1,k)*dt
-            if ((mixing_ratio(i,j,k) + delta_vapor(i,j,k)) < 0.) then
-              if (mixing_ratio(i,j,k) > 0.) then
-                delta_vapor (i,j,k) = -mixing_ratio(i,j,k)
-              else 
-                delta_vapor(i,j,k) = 0.0
-              endif
-            endif
+!           if ((mixing_ratio(i,j,k) + delta_vapor(i,j,k)) < 0.) then
+!             if (mixing_ratio(i,j,k) > 0.) then
+!               delta_vapor (i,j,k) = -mixing_ratio(i,j,k)
+!             else 
+!               delta_vapor(i,j,k) = 0.0
+!             endif
+!           endif
           end do
         end do
       end do
@@ -1212,9 +1214,9 @@ end subroutine don_d_column_input_fields_k
 
 subroutine don_d_convection_driver_k    &
          (isize, jsize, nlev_lsm, nlev_hires, ntr, me,  &
-          cloud_tracers_present, dt, Nml,    &
+          cloud_tracers_present, cbmf, dt, Nml,    &
           Initialized, Param, Col_diag, temp, mixing_ratio,  &
-          pfull, zfull, zhalf, pblht,                       &
+          pfull, zfull, zhalf, pblht, tkemiz, qstar, coldT,  &!miz
           qlin, qiin, qain, lag_cape_temp, lag_cape_vapor,  &
           lag_cape_press, phalf, current_displ, land, sfc_sh_flux,  &
           sfc_vapor_flux, tr_flux, tracers, Don_cape, Don_conv, &
@@ -1244,6 +1246,7 @@ implicit none
 integer,                         intent(in) :: isize, jsize, nlev_lsm,  &
                                                nlev_hires,    ntr, me
 logical,                         intent(in) :: cloud_tracers_present
+real, dimension(isize,jsize),    intent(inout) :: cbmf
 real,                            intent(in) :: dt 
 type(donner_nml_type),           intent(in) :: Nml
 type(donner_initialized_type),   intent(in) :: Initialized
@@ -1259,9 +1262,11 @@ real,    dimension(isize,jsize,nlev_lsm),              &
 real,    dimension(isize,jsize,nlev_lsm+1),                       &
                               intent(in)    ::  phalf, zhalf                  
 real,    dimension(isize,jsize),                                     &
-                              intent(in)    :: current_displ, pblht, land, &
+                              intent(in)    :: current_displ, pblht, &
+                                               tkemiz, qstar, land, &
                                                sfc_sh_flux,   &
                                                sfc_vapor_flux
+logical, dimension(isize,jsize), intent(in) :: coldT
 real,    dimension(isize,jsize,ntr),                             &
                               intent(in)    :: tr_flux        
 real,    dimension(isize,jsize,nlev_lsm,ntr),                      &
@@ -1426,14 +1431,16 @@ type(ctend),                  intent(inout) :: ct
 !---------------------------------------------------------------------
       if (Nml%do_donner_cape) then
         call don_c_def_conv_env_k          &
-            (isize, jsize, nlev_lsm, nlev_hires, Nml, Param, Col_diag, &
+            (isize, jsize, nlev_lsm, nlev_hires, Nml, Param,  &
+             Initialized, Col_diag, &
              temp, mixing_ratio, pfull, lag_cape_temp, lag_cape_vapor,  &
-             lag_cape_press, current_displ, Don_cape, Don_conv, ermesg)
+             lag_cape_press, current_displ, cbmf, Don_cape, Don_conv, ermesg)
       else
         call don_c_def_conv_env_miz   &
-           (isize, jsize, nlev_lsm, ntr, dt, Nml, Param, Col_diag, tracers, pblht, &
+           (isize, jsize, nlev_lsm, ntr, dt, Nml, Param, Initialized, &
+            Col_diag, tracers, pblht, tkemiz, qstar, land, coldT,     &
            temp, mixing_ratio, pfull, phalf, zfull, zhalf,   &
-           lag_cape_temp, lag_cape_vapor, current_displ, Don_cape,  &
+           lag_cape_temp, lag_cape_vapor, current_displ, cbmf, Don_cape,  &
            Don_conv, sd, Uw_p, ac)
       endif
 
@@ -1449,8 +1456,9 @@ type(ctend),                  intent(inout) :: ct
 !---------------------------------------------------------------------
       call don_d_cupar_k     &
            (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Col_diag, &
-            Param, Nml, Initialized, current_displ, sfc_sh_flux,    &
-            sfc_vapor_flux, temp, mixing_ratio, pblht, pfull, phalf,   &
+            Param, Nml, Initialized, cbmf, current_displ, sfc_sh_flux, &
+            sfc_vapor_flux, temp, mixing_ratio, pblht, tkemiz, qstar, &
+            land, coldT, pfull, phalf,&
             zfull, zhalf, sd, Uw_p, ac, cp, ct, tr_flux, tracers,    &
             Don_conv, Don_cape, temperature_forcing, moisture_forcing, &
             total_precip, ermesg, exit_flag)
@@ -1591,14 +1599,14 @@ type(ctend),                  intent(inout) :: ct
       if (Nml%do_donner_lscloud) then
       call don_l_lscloud_driver_k   &
            (isize, jsize, nlev_lsm, cloud_tracers_present, Param,  &
-            Col_diag, pfull, temp,   &
+            Col_diag, pfull, temp, exit_flag,  &
             mixing_ratio, qlin, qiin, qain, phalf, Don_conv, &
             donner_humidity_factor, donner_humidity_area, dql, dqi,  &
             dqa, ermesg)
       else
        call don_l_lscloud_driver_miz   &
             (isize, jsize, nlev_lsm, cloud_tracers_present, Param,  &
-             Col_diag, pfull, temp,   &
+             Col_diag, pfull, temp, exit_flag,  &
              mixing_ratio, qlin, qiin, qain, phalf, Don_conv, &
              donner_humidity_factor, donner_humidity_area, dql, dqi,  &
              dqa,ermesg)
@@ -1651,10 +1659,11 @@ end subroutine don_d_convection_driver_k
 
 subroutine don_d_cupar_k     &
          (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Col_diag, &
-          Param, Nml, Initialized, current_displ, sfc_sh_flux,   &
+          Param, Nml, Initialized, cbmf, current_displ, sfc_sh_flux,   &
           sfc_vapor_flux,                                        &
-          temp, mixing_ratio, pblht, pfull, phalf, zfull, zhalf,  &
-         sd, Uw_p, ac,cp, ct, & !miz
+          temp, mixing_ratio, pblht, tkemiz, qstar, land, coldT, & !miz 
+          pfull, phalf, zfull, zhalf,  &
+          sd, Uw_p, ac,cp, ct, & !miz
           tr_flux, tracers, &
           Don_conv, Don_cape, temperature_forcing, moisture_forcing,  &
           total_precip, ermesg, exit_flag)
@@ -1689,8 +1698,11 @@ type(uw_params),                   intent(inout) :: Uw_p
 type(adicloud),                    intent(inout) :: ac
 type(cplume),                      intent(inout) :: cp
 type(ctend),                       intent(inout) :: ct
-real,    dimension(isize,jsize),   intent(in)    :: pblht
+real,    dimension(isize,jsize),   intent(in)    :: pblht, tkemiz, &
+                                                    qstar, land
+logical, dimension(isize,jsize),   intent(in)    :: coldT
 
+real,    dimension(isize,jsize),   intent(inout)    :: cbmf
 real,    dimension(isize,jsize),   intent(in)    :: current_displ, &
                                                     sfc_sh_flux,  &
                                                     sfc_vapor_flux
@@ -1785,6 +1797,7 @@ logical, dimension(isize,jsize),   intent(out)   :: exit_flag
       real, dimension (isize, jsize, nlev_lsm, ntr) :: xgcm_v
       real, dimension (isize, jsize, ntr)           :: sfc_tracer_flux
       integer                                       :: i, j, k, n 
+      integer                                       :: kcb
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -1825,7 +1838,8 @@ logical, dimension(isize,jsize),   intent(out)   :: exit_flag
 !----------------------------------------------------------------------
       call don_d_check_for_deep_conv_k   &
            (isize, jsize, nlev_lsm, dt, Param, Nml, Col_diag, &
-            current_displ,Don_cape, Don_conv, exit_flag, ermesg)
+             Initialized, &
+            current_displ, cbmf, Don_cape, Don_conv, exit_flag, ermesg)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -1872,7 +1886,8 @@ logical, dimension(isize,jsize),   intent(out)   :: exit_flag
 !++lwh
             Nml, Col_diag,   &
             Initialized,   &
-            temp, mixing_ratio, pblht, phalf, pfull, zhalf, zfull,  &
+            temp, mixing_ratio, pblht, tkemiz, qstar, land, coldT,  &
+            phalf, pfull, zhalf, zfull,  &
             sd, Uw_p, ac, cp, ct, &
            sfc_vapor_flux, sfc_sh_flux, &
 !--lwh
@@ -1885,6 +1900,70 @@ logical, dimension(isize,jsize),   intent(out)   :: exit_flag
 !    to the calling program where it will be processed.
 !----------------------------------------------------------------------
       if (trim(ermesg) /= ' ') return
+
+!---------------------------------------------------------------------
+!    if using cloud base mass flux calculated by uw_conv_mod in donner
+!    deep parameterization closure, modify the cloud fractional area
+!    to avoid exceeding this limit.
+!---------------------------------------------------------------------
+     if (Initialized%using_unified_closure) then
+       
+!---------------------------------------------------------------------
+!    define the cbmf associated with the donner convection.
+!---------------------------------------------------------------------
+       do j=1,jsize
+         do i=1,isize
+           if ( .not. exit_flag(i,j)) then
+!--------------------------------------------------------------------
+!    if there is no cloud base mass flux, there will be no deep 
+!    convection in this column.
+!--------------------------------------------------------------------
+!            if (cbmf(i,j) == 0.0) then
+!              exit_flag(i,j) = .true.
+!              Don_conv%a1(i,j) = 0.
+!              cycle
+!            endif
+
+!---------------------------------------------------------------------
+!    determine the cloud base level kcb.
+!---------------------------------------------------------------------
+             kcb = -6
+             do k=1, nlev_lsm
+               if (Don_conv%uceml(i,j,nlev_lsm-k+1) > 0.0) then
+                 kcb = nlev_lsm -k + 1
+                 exit
+               endif
+             end do
+             if (kcb == -6) then
+               ermesg = 'no cloud base level found'
+               return
+             endif
+
+!--------------------------------------------------------------------
+!    if the cloud base mass flux predicted by donner is more than is
+!    available, reduce the donner cloud fraction so that only the
+!    available mass flux is used by donner clouds. set the cbmf to be
+!    returned and made available for uw shallow convection to 0.0.
+!--------------------------------------------------------------------
+             if (Don_conv%uceml(i,j,kcb)*Don_conv%a1(i,j) >=    &
+                                                       cbmf(i,j)) then
+               Don_conv%a1(i,j) = cbmf(i,j)/Don_conv%uceml(i,j,kcb)
+               cbmf(i,j) = 0.0
+
+!--------------------------------------------------------------------
+!    if the cloud base mass flux predicted by donner is less than what
+!    is available, reduce the available cbmf by the amount used by the
+!    donner clouds. the remainder will be made available for uw shallow 
+!    convection.
+!--------------------------------------------------------------------
+             else
+               cbmf(i,j) = cbmf(i,j) -    &
+                               Don_conv%uceml(i,j,kcb)*Don_conv%a1(i,j)
+             endif
+           endif
+         end do
+       end do
+     endif
 
 !---------------------------------------------------------------------
 !    call remove_normalization to remove the normalization from the 
@@ -1942,7 +2021,8 @@ end subroutine don_d_cupar_k
 
 subroutine don_d_check_for_deep_conv_k   &
            (isize, jsize, nlev_lsm, dt, Param, Nml, Col_diag, &
-            current_displ, Don_cape, Don_conv, exit_flag, ermesg)
+             Initialized, &
+            current_displ, cbmf, Don_cape, Don_conv, exit_flag, ermesg)
 
 !---------------------------------------------------------------------
 !    subroutine don_d_check_for_deep_conv_k tests for the 
@@ -1955,6 +2035,7 @@ subroutine don_d_check_for_deep_conv_k   &
 !---------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type, donner_conv_type, &
+                             donner_initialized_type, &
                              donner_column_diag_type, donner_cape_type,&
                              donner_nml_type
 
@@ -1966,7 +2047,8 @@ real,                             intent(in)    :: dt
 type(donner_param_type),          intent(in)    :: Param
 type(donner_nml_type),            intent(in)    :: Nml
 type(donner_column_diag_type),    intent(in)    :: Col_diag
-real,    dimension(isize,jsize),  intent(in)    :: current_displ
+type(donner_initialized_type),    intent(in)    :: Initialized
+real,    dimension(isize,jsize),  intent(in)    :: current_displ, cbmf
 type(donner_cape_type),           intent(inout) :: Don_cape
 type(donner_conv_type),           intent(inout) :: Don_conv
 logical, dimension (isize,jsize), intent(out)   :: exit_flag 
@@ -1987,6 +2069,7 @@ character(len=*),                 intent(out)   :: ermesg
 !                    tics are desired.
 !     current_displ  low-level parcel displacement to use in cape
 !                    calculation on this step [ Pa ]
+!     cbmf
 !
 !   intent(inout) variables:
 !
@@ -2077,9 +2160,10 @@ character(len=*),                 intent(out)   :: ermesg
 !       5) convective inhibition must be less than cdeep_cv.
 !---------------------------------------------------------------------
           if ((Don_cape%xcape(i,j) <= 0.)        .or.  &
-              (Don_conv%dcape(i,j) <= 0.)        .or. & 
+              (Don_conv%dcape(i,j) <= 0. .and. Nml%do_dcape)   .or. &
               (pdeet1(i,j) < Param%pdeep_cv )    .or. &
-      ((pdeet2(i,j)<current_displ(i,j)) .and. Nml%use_llift_criteria) .or. &
+       (Initialized%using_unified_closure .and. cbmf(i,j) == 0.) .or. &
+  ((pdeet2(i,j)<current_displ(i,j)) .and. Nml%use_llift_criteria) .or. &
               (Don_cape%coin(i,j) > Param%cdeep_cv) )   then
             exit_flag(i,j) = .true.
           else
@@ -2257,7 +2341,8 @@ subroutine don_d_mulsub_k   &
          (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Param, Nml, &
 !++lwh
           Col_diag, Initialized,   &
-          temp, mixing_ratio, pblht, phalf, pfull, zhalf, zfull, sd,  &
+          temp, mixing_ratio, pblht, tkemiz, qstar, land, coldT, & !miz
+          phalf, pfull, zhalf, zfull, sd,  &
            Uw_p, ac,         cp, ct, &
           sfc_vapor_flux, sfc_sh_flux, &
 !--lwh
@@ -2307,7 +2392,9 @@ type(uw_params),               intent(inout)  ::  Uw_p
 type(adicloud),               intent(inout)  ::  ac
 type(cplume),                 intent(inout)  ::  cp
 type(ctend),                  intent(inout)  ::  ct
-real, dimension(isize,jsize), intent(in)     ::  pblht
+real, dimension(isize,jsize), intent(in)     ::  pblht, tkemiz, qstar, &
+                                                 land
+logical, dimension(isize,jsize), intent(in)  ::  coldT
 real,    dimension(isize,jsize),                                &
                               intent(in)     ::  sfc_vapor_flux,  &
                                                  sfc_sh_flux
@@ -2670,7 +2757,8 @@ character(len=*),             intent(out)    ::  ermesg
 
           if (.not. Nml%do_donner_closure .or. &
               .not. Nml%do_donner_plume)  then
-            call pack_sd_lsm_k (dt, pfull(i,j,:), phalf(i,j,:),  &
+            call pack_sd_lsm_k (Nml%do_lands, land(i,j), coldT(i,j), &
+                                dt, pfull(i,j,:), phalf(i,j,:),  &
                                 zfull(i,j,:), zhalf(i,j,:), &
                                 temp(i,j,:), mixing_ratio(i,j,:),  &
                                 xgcm_v(i,j,:,:), sd)
@@ -2705,7 +2793,8 @@ character(len=*),             intent(out)    ::  ermesg
 !++++yim
                Param, Col_diag, Nml, Initialized, Don_cape%model_t(i,j, :),    &
                 Don_cape%model_r(i,j,:), Don_cape%model_p(i,j,:),  &
-               phalf_c, sd, Uw_p, ac, cp, ct,                           &!miz
+               phalf_c, pblht, tkemiz, qstar, land, coldT, dt, sd, &
+               Uw_p, ac, cp, ct,  &
                 xgcm_v(i,j,:,:), sfc_sh_flux(i,j),                 &
                sfc_vapor_flux(i,j), sfc_tracer_flux(i,j,:),   &
                Don_cape%plzb(i,j), exit_flag(i,j),                &
@@ -2956,7 +3045,9 @@ character(len=*),             intent(out)    ::  ermesg
              call don_d_determine_cloud_area_miz  &
 !++++yim
                  (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit, debug_ijt, Param, Nml, xgcm_v(i,j,:,:), &
-                  pfull(i,j,:), zfull(i,j,:), phalf(i,j,:), zhalf(i,j,:), sd, Uw_p, ac, &!miz
+                  pfull(i,j,:), zfull(i,j,:), phalf(i,j,:),  &
+                  zhalf(i,j,:), tkemiz(i,j), qstar(i,j), land(i,j),  &
+                  coldT(i,j), sd, Uw_p, ac, &
                    max_depletion_rate, Don_conv%dcape(i,j),   &
                    Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),    &
                    Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:), &
@@ -4880,6 +4971,7 @@ character(len=*),                   intent(out)   :: ermesg
                                               ! below cloud base
       real                    ::   set_value  ! desired column integral
                                               ! value 
+      real  :: aak, dp
 
 !-----------------------------------------------------------------------
 !    initialize the error message character string.
@@ -4986,6 +5078,28 @@ character(len=*),                   intent(out)   :: ermesg
             -dpf(1:ncc_kou+1), cld_press(1:ncc_kou+1), ptt,  &
             .false., .false., .false., 0.0, 0.0, conv_fact,&
             phalf_c, diag_unit, debug_ijt, h1, ermesg)
+      if (debug_ijt) then
+          dp = cld_press(1) - cld_press(2)
+        aak = -dpf(1)*0.5*dp
+        do k=2,ncc_kou 
+          dp = cld_press(k) - cld_press(k+1)
+          aak = aak - dpf(k)*dp
+        end do
+        aak = aak/(Param%grav*1000.)
+            write (diag_unit, '(a, e20.12, i6)')  &
+                                 'in mulsub: dpf intg, ncc_kou',  &
+                                           aak, ncc_kou
+      endif
+      if (debug_ijt) then
+        aak = 0.
+        do k=1,nlev_lsm
+          dp = phalf_c(k) - phalf_c(k+1)
+          aak = aak + h1(k)*dp
+        end do
+        aak = aak/(Param%grav*1000.)
+            write (diag_unit, '(a, e20.12)')  &
+                                 'in mulsub: h1 intg', aak
+      endif
 
 !---------------------------------------------------------------------
 !    determine if an error message was returned from the kernel
@@ -5045,6 +5159,17 @@ character(len=*),                   intent(out)   :: ermesg
             emfhr(1:ncc_kou+1), cld_press(1:ncc_kou+1), ptt,   &
             .true., .true., .false., set_value, sbl, conv_fact, &
             phalf_c, diag_unit,  debug_ijt, q1, ermesg)
+      if (debug_ijt) then
+        aak = 0.
+        do k=1,nlev_lsm
+          dp = phalf_c(k) - phalf_c(k+1)
+          aak = aak + q1(k)*dp
+        end do
+        aak = aak/(Param%grav*1000.)
+            write (diag_unit, '(a, e20.12)')  &
+                                 'in mulsub: q1 intg', aak
+      endif
+        
 
 !---------------------------------------------------------------------
 !    determine if an error message was returned from the kernel
@@ -6317,6 +6442,7 @@ character(len=*),             intent(out) :: ermesg
       real    ::  esum, esuma,        esumc, sumf, summ, sumqme, sumg,&
                   sumn, sumelt, sumfre, summes, disl, disga
       real    ::  dp
+      real    :: lj1, lj2, lj3, lj4, lj5, lj6, lj7, lj8
       integer ::  k
 
 !--------------------------------------------------------------------
@@ -6529,8 +6655,24 @@ character(len=*),             intent(out) :: ermesg
         sumelt = 0.
         sumfre = 0.
         sumn = 0.
+        lj1 = 0.
+        lj2 = 0.
+        lj3 = 0.
+        lj4 = 0.
+        lj5 = 0.
+        lj6 = 0.
+        lj7 = 0.
+        lj8 = 0.
         do k=1,nlev_lsm
           dp = phalf_c(k) - phalf_c(k+1)
+          lj1 = lj1 -cmus_tot(k)*dp
+          lj2 = lj2 +ecds    (k)*dp
+          lj3 = lj3 +eces    (k)*dp
+          lj4 = lj4 +wmps    (k)*dp
+          lj5 = lj5 +emes    (k)*dp
+          lj6 = lj6 +emds    (k)*dp
+          lj7 = lj7 +mrmes   (k)*dp
+          lj8 = lj8 +disd    (k)*dp
           esum   = esum   + dise(k)*dp                     
           sumf   = sumf   + disf(k)*dp
           summ   = summ   + encmf(k)*dp
@@ -6546,6 +6688,14 @@ character(len=*),             intent(out) :: ermesg
 !---------------------------------------------------------------------
 !    convert the moisture terms to units of mm(h2o) per day.
 !---------------------------------------------------------------------
+        lj1 = lj1 /(Param%grav*1000.)
+        lj2 = lj2 /(Param%grav*1000.)
+        lj3 = lj3 /(Param%grav*1000.)
+        lj4 = lj4 /(Param%grav*1000.)
+        lj5 = lj5 /(Param%grav*1000.)
+        lj6 = lj6 /(Param%grav*1000.)
+        lj7 = lj7 /(Param%grav*1000.)
+        lj8 = lj8 /(Param%grav*1000.)
         esum   = esum/(Param%grav*1000.)
         sumf   = sumf/(Param%grav*1000.)
         summ   = summ/(Param%grav*1000.)
@@ -6566,6 +6716,22 @@ character(len=*),             intent(out) :: ermesg
 !--------------------------------------------------------------------
 !    output the various column integrals.
 !--------------------------------------------------------------------
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: cmus_tot=', lj1  , ' MM/DAY'
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: ECDS=', lj2  , ' MM/DAY'
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: ECES=', lj3  , ' MM/DAY'
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: WMPS=', lj4  , ' MM/DAY'
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: EMES=', lj5  , ' MM/DAY'
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: EMDS=', lj6  , ' MM/DAY'
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: MRMES=', lj7 , ' MM/DAY'
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: VAPOR CONV=', lj8 , ' MM/DAY'
         write (diag_unit, '(a, e20.12, a)') &
              'in mulsub: ESUM=', esum , ' MM/DAY'
         write (diag_unit, '(a, e20.12, a)') &
@@ -6936,7 +7102,7 @@ character(len=*),             intent(out)   :: ermesg
 !    fraction and so close the deep-cumulus parameterization.
 !--------------------------------------------------------------------
       call cu_clo_cumulus_closure_k   &
-           (nlev_hires, diag_unit, debug_ijt, Param, dcape, &
+           (nlev_hires, diag_unit, debug_ijt, Param, Nml, dcape, &
             cape_p, qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, &
             rl_v, parcel_r, env_t, parcel_t, a1, ermesg)     
 
@@ -7251,7 +7417,7 @@ character(len=*),                 intent(out)   :: ermesg
               Don_conv%qtceme(i,j,k,:) =   &
                      Don_conv%qtmes1(i,j,k,:) + Don_conv%qtren1(i,j,k,:)
             end do
-            if (Initialized%monitor_output) then
+        if (Initialized%monitor_output) then
               do n=1, size(Initialized%Don_monitor, 1)
                 select case (Initialized%Don_monitor(n)%index)
                   case (RADON_TEND)
@@ -7270,11 +7436,12 @@ character(len=*),                 intent(out)   :: ermesg
 !---------------------------------------------------------------------
           else
             total_precip(i,j) = 0.
-            do k=1,nlev_lsm                           
+            do k=1,nlev_lsm
               temperature_forcing(i,j,k) = 0.
               moisture_forcing(i,j,k) = 0.
             end do
           endif
+
         end do
       end do
 

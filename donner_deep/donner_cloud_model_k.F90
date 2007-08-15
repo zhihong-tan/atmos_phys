@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cloud_model_k.F90,v 14.0.2.1 2007/05/04 08:45:05 rsh Exp $
+!  $Id: donner_cloud_model_k.F90,v 15.0 2007/08/14 03:53:14 fms Exp $
 
 !module donner_cloud_model_inter_mod
 
@@ -2659,9 +2659,9 @@ character(len=*),             intent(out)   :: ermesg
 !    to values at cloud model interfaces (dpf and dpftr).
 !--------------------------------------------------------------------
           if (k == 1) then
-            dpf(1) = 0.5*pf(1)
+            dpf(1) =     pf(1)
             do n=1,ntr
-              dpftr(1,n) = 0.5*pftr(1,n)
+              dpftr(1,n) =     pftr(1,n)
             end do
           else 
             dpf(k) = 0.5*(pf(k) + pf(k-1))
@@ -2687,6 +2687,11 @@ character(len=*),             intent(out)   :: ermesg
         if (debug_ijt) then
           write (diag_unit, '(a, i4, 3e20.12)')  &
                 'in mulsub: k,dfr,dpr,rcl= ', k, dfr(k) ,dpf(k), rcl(k)
+        endif
+        if (debug_ijt) then
+          write (diag_unit, '(a, i4, 3e20.12)')  &
+                'in mulsub: k,dpf,pf,pfavg= ', k, dpf(k) ,pf(k),  &
+                                  0.5*(pf(k) + pf(k-1))
         endif
  
 !--------------------------------------------------------------------
@@ -2717,6 +2722,12 @@ character(len=*),             intent(out)   :: ermesg
       if (cldtop_indx /= 0) then
         do k=1,cldtop_indx
           conint = conint + pf(k)*Param%dp_of_cloud_model/Param%grav  
+        if (debug_ijt) then
+          write (diag_unit, '(a, i4, 2e20.12)')  &
+                          'in mulsub: kc, PF,coninT= ',k, pf(k)*  &
+                                Param%dp_of_cloud_model/Param%grav, &
+                                                            conint  
+        endif
         end do
 
 !--------------------------------------------------------------------
@@ -2785,7 +2796,8 @@ character(len=*),             intent(out)   :: ermesg
         kc = 1
         write (diag_unit, '(a, i4, 2e20.12)')  &
                                'in mulsub: kc,DPF, SUMLHR= ',kc, &
-                                                   dpf(1), sumlhr
+               (dpf(1)*((Param%dp_of_cloud_model/2.)/Param%grav)),   &
+                                                sumlhr
       endif
 
 !--------------------------------------------------------------------
@@ -2803,7 +2815,8 @@ character(len=*),             intent(out)   :: ermesg
         sumlhr = sumlhr + (dpf(kc)*(Param%dp_of_cloud_model/Param%grav))
         if (debug_ijt) then
           write (diag_unit, '(a, i4, 2e20.12)')  &
-                         'in mulsub: kc,DPF,SUMLHR= ',kc, dpf(kc), &
+                         'in mulsub: kc,DPF,SUMLHR= ',kc,   &
+               (dpf(kc)*(Param%dp_of_cloud_model/Param%grav)),   &
                                                                sumlhr
         endif
 

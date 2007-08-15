@@ -61,8 +61,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module  -------------------------
 
-character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 14.0.2.2 2007/05/25 16:32:06 vb Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 15.0 2007/08/14 03:55:45 fms Exp $'
+character(len=128)  :: tagname =  '$Name: omsk $'
 
 
 !---------------------------------------------------------------------
@@ -542,14 +542,19 @@ real, dimension(:,:,:,:),        intent(inout) :: r
           Sw_output_std%ufsw_vis_sfc_dif = 0.
           Sw_output_std%swdn_special  (:,:,:) = 0.0
           Sw_output_std%swup_special  (:,:,:) = 0.0
+          Sw_output_std%bdy_flx(:,:,:) = 0.0
+      if (Rad_control%do_totcld_forcing) then
           Sw_output_std%fswcf (:,:,:) = 0.0
           Sw_output_std%dfswcf(:,:,:) = 0.0
           Sw_output_std%ufswcf(:,:,:) = 0.0
           Sw_output_std%hswcf (:,:,:) = 0.0
+          Sw_output_std%dfsw_dir_sfc_clr = 0.             
+          Sw_output_std%dfsw_dif_sfc_clr = 0.           
+          Sw_output_std%dfsw_vis_sfc_clr = 0.
           Sw_output_std%swdn_special_clr  (:,:,:) = 0.0
           Sw_output_std%swup_special_clr  (:,:,:) = 0.0
-          Sw_output_std%bdy_flx(:,:,:) = 0.0
           Sw_output_std%bdy_flx_clr(:,:,:) = 0.0
+      endif
           if (Sw_control%do_swaerosol) then
             naerosol_optical = size (Aerosol_props%aerextband,2)
           else
@@ -826,6 +831,7 @@ type(sw_output_type), intent(inout)  ::  Sw_output
         allocate (Sw_output%hswcf  (ix, jx, kx  ) )
         allocate (Sw_output%dfsw_dir_sfc_clr (ix, jx) )
         allocate (Sw_output%dfsw_dif_sfc_clr (ix, jx) )
+        allocate (Sw_output%dfsw_vis_sfc_clr (ix, jx  ) )
         allocate (Sw_output%swdn_special_clr    &
                                  (ix, jx, Rad_control%mx_spec_levs) )
         allocate (Sw_output%swup_special_clr   &
@@ -839,6 +845,7 @@ type(sw_output_type), intent(inout)  ::  Sw_output
         Sw_output%hswcf (:,:,:) = 0.0
         Sw_output%dfsw_dir_sfc_clr = 0.0
         Sw_output%dfsw_dif_sfc_clr  = 0.0
+        Sw_output%dfsw_vis_sfc_clr = 0.
         Sw_output%swdn_special_clr  (:,:,:) = 0.0
         Sw_output%swup_special_clr  (:,:,:) = 0.0
         Sw_output%bdy_flx_clr (:,:,:) = 0.0
@@ -925,6 +932,7 @@ type(sw_output_type), intent(inout)  ::  Sw_output
         deallocate (Sw_output%hswcf)
         deallocate (Sw_output%dfsw_dir_sfc_clr)
         deallocate (Sw_output%dfsw_dif_sfc_clr)
+        deallocate (Sw_output%dfsw_vis_sfc_clr)
         deallocate (Sw_output%swdn_special_clr)
         deallocate (Sw_output%swup_special_clr)
         deallocate (Sw_output%bdy_flx_clr)

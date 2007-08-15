@@ -1,6 +1,6 @@
  
 !VERSION NUMBER:
-!  $Id: wet_deposition_0D.F90,v 1.1.2.2.2.1.2.1.2.1 2007/05/19 08:27:34 rsh Exp $
+!  $Id: wet_deposition_0D.F90,v 15.0 2007/08/14 03:53:33 fms Exp $
 
 !<SUBROUTINE NAME = "wet_deposition_0D">
 !<TEMPLATE>

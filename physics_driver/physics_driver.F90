@@ -135,8 +135,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 14.0.4.3.2.1.2.1.2.1 2007/05/29 16:01:02 wfc Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 15.0 2007/08/14 03:54:13 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 
 
 !---------------------------------------------------------------------

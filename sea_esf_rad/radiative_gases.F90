@@ -65,8 +65,8 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 14.0.2.2 2007/05/25 16:32:06 vb Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+'$Id: radiative_gases.F90,v 15.0 2007/08/14 03:55:31 fms Exp $'
+character(len=128)  :: tagname =  '$Name: omsk $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

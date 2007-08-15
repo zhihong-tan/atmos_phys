@@ -11,8 +11,8 @@ MODULE CONV_PLUMES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 1.1.2.1.2.2.4.2.2.1 2007/05/16 12:35:12 rsh Exp $'
-  character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 15.0 2007/08/14 03:56:04 fms Exp $'
+  character(len=128) :: tagname = '$Name: omsk $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -37,8 +37,9 @@ MODULE CONV_PLUMES_k_MOD
   type cpnlist
      real :: rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap,   &
-             wtwmin_ratio
-     logical :: do_ice, do_ppen, do_edplume, do_micro, do_forcedlifting
+             wtwmin_ratio, rad_crit
+     logical :: do_ice, do_ppen, do_edplume, do_micro,  &
+                do_forcedlifting, do_auto_aero
      character(len=32), dimension(:), pointer  :: tracername=>NULL()
      character(len=32), dimension(:), pointer  :: tracer_units=>NULL()
      type(cwetdep_type), dimension(:), pointer :: wetdep=>NULL()
@@ -379,6 +380,8 @@ contains
     wtw  = wrel*wrel
     wtwtop =  cpn%wtwmin_ratio * wtw
 
+    delta_qn =0.
+
     !determine release height and parcel properties (krel, prel, thv0rel, thvurel)
     if(ac % plcl .gt. sd % pinv)then
        krel    = sd % kinv
@@ -657,7 +660,7 @@ contains
     logical,        intent(in)    :: doice
 
     real    :: thj, qvj, qlj, qij, qse, thvj, thv0j, nu, exnj,  &
-               auto_th, leff
+               auto_th, leff, auto_th2
 
     !Precip at the flux level
     call findt_k (zs,ps,hlu,qctu,thj,qvj,qlj,qij,qse,thvj,doice, &
@@ -671,20 +674,63 @@ contains
     end if
     auto_th=max(auto_th,0.0)
 
+    if (cpn%do_auto_aero) then
+      auto_th2 = max (4.18667e-15*qnu*cpn%rad_crit**3., 0.0)
+    end if
+
     temp=temp+273.15
+
+    if (cpn%do_auto_aero) then
+
+      if((qlj+qij).gt.auto_th)then
+        qsj = (qlj+qij-auto_th)*qij/(qlj+qij)
+        nu = max(min((268. - temp)/20.,1.0),0.0)
+      else
+        qsj = 0.0
+        nu  = 0.0
+      endif
+ 
+      if(qlj .gt. auto_th2)then
+        qrj = qlj-auto_th2
+        nu = max(min((268. - temp)/20.,1.0),0.0)
+!++++yim in-cloud removal of dropelts
+        delta_qn = qnu
+        if (qlj .gt. 0.) then
+          qnu = qnu*auto_th2/qlj
+        else
+          qnu = 0.
+        end if
+        delta_qn = delta_qn - qnu
+      else
+        qrj = 0.0
+        nu  = 0.0
+        delta_qn = 0.
+      endif
+
+    else ! (do_auto_aero)
+
     if((qlj+qij).gt.auto_th)then
        qrj = (qlj+qij-auto_th)*qlj/(qlj+qij)
        qsj = (qlj+qij-auto_th)*qij/(qlj+qij)
        nu = max(min((268. - temp)/20.,1.0),0.0)
 !++++yim in-cloud removal of dropelts
        delta_qn = qnu
-       qnu = qnu*auto_th*(1-nu)/(qlj+qij)
+!      qnu = qnu*auto_th*(1-nu)/(qlj+qij)
+       if (qlj .gt. 0.) then
+         qnu = qnu*qrj/qlj
+       else
+         qnu = 0.
+       end if
        delta_qn = delta_qn - qnu
      else
        qrj = 0.0
        qsj = 0.0
        nu  = 0.0
+       delta_qn = 0.
     endif
+
+   endif ! (do_auto_aero)
+
     leff     = (1-nu)*Uw_p%HLv + nu*Uw_p%HLs
     qctu_new = qctu - (qrj + qsj)
     hlu_new  = hlu  + (qrj + qsj)*leff
@@ -740,7 +786,9 @@ contains
     end if
 
     cw1 = clu1 + ciu1
+
     rw1 = qlu1 + qiu1 - cw1
+    rw1 = max(rw1, 0.0)
 
     cw2 = qlj + qij - rw1
 

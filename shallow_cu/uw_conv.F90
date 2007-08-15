@@ -21,8 +21,12 @@ MODULE UW_CONV_MOD
   use  conv_utilities_k_mod,only : sd_init_k, sd_copy_k, sd_end_k,  &
                                    ac_init_k, ac_clear_k, ac_end_k, &
                                    pack_sd_k, adi_cloud_k, extend_sd_k,&
+                                   sd_save_k, ac_save_k, &
+                                   sd_retrieve_k, ac_retrieve_k, &
                                    exn_init_k, exn_end_k, findt_init_k,&
                                    findt_end_k, &
+                                   check_tracer_realizability, &
+                                   qt_parcel_k, &
                                    adicloud, sounding, uw_params
 
   use  conv_plumes_k_mod,only    : cp_init_k, cp_end_k, cp_clear_k, &
@@ -34,6 +38,7 @@ MODULE UW_CONV_MOD
   use  conv_closures_mod,only    : cclosure_bretherton,   &
                                    cclosure_relaxcbmf, &
                                    cclosure_relaxwfn,  &
+!                                  cclosure_unified, &
                                    cclosure_implicit, cclosure
 
 !---------------------------------------------------------------------
@@ -42,13 +47,13 @@ MODULE UW_CONV_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: uw_conv.F90,v 14.0.2.2 2007/05/15 12:06:40 rsh Exp $'
-  character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+  character(len=128) :: version = '$Id: uw_conv.F90,v 15.0 2007/08/14 03:56:10 fms Exp $'
+  character(len=128) :: tagname = '$Name: omsk $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
-  public  :: uw_conv, uw_conv_init, uw_conv_end
+  public  :: uw_conv, uw_conv_init, uw_conv_end, calculate_uw_closure
 
   real, parameter :: mv = -999.
   logical         :: module_is_initialized = .false.
@@ -82,12 +87,13 @@ MODULE UW_CONV_MOD
   real    :: tkemin   = 1.e-6
   real    :: wmin_ratio = 0.
   logical :: use_online_aerosol = .false.
+  logical :: do_auto_aero = .false.
 
   NAMELIST / uw_conv_nml / iclosure, rkm_dp, rkm_sh, cldhgt_max, cbmf_sh_frac, &
        do_deep, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt,       &
        do_fast, do_ice, do_ppen, do_micro, do_edplume, do_forcedlifting,       &
        atopevap, apply_tendency, prevent_unreasonable, aerol, gama, tkemin,    &
-       wmin_ratio, use_online_aerosol
+       wmin_ratio, use_online_aerosol, do_auto_aero
        
 
   !namelist parameters for UW convective plume
@@ -102,9 +108,10 @@ MODULE UW_CONV_MOD
   real    :: auto_th0 = 0.5e-3 ! threshold for precipitation
   real    :: auto_rate= 1.e-3
   real    :: tcrit    = -45.0  ! critical temperature 
+  real    :: rad_crit = 14.0   ! critical droplet radius
 
   NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc, &
-       auto_th0, auto_rate, tcrit
+       auto_th0, auto_rate, tcrit, rad_crit
  
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
@@ -135,6 +142,13 @@ MODULE UW_CONV_MOD
   integer, allocatable :: id_tracerdt_uwc(:), id_tracerdt_uwc_col(:), &
                           id_tracerdtwet_uwc(:), id_tracerdtwet_uwc_col(:)
 
+  real, dimension(:,:), allocatable :: wrel_mod, ufrc_mod, scaleh_mod, &
+                                       dcin_mod, dcape_mod, dwfn_mod, &
+                                      wfn_mod, cbmfo_mod, &
+                                      cbmfo_unmodified
+
+  logical   ::  do_unified_convective_closure
+
   type(sounding),   save  :: sd, sd1
   type(adicloud),   save  :: ac, ac1
   type(cclosure),   save  :: cc, cc1
@@ -143,16 +157,21 @@ MODULE UW_CONV_MOD
   type(cpnlist),    save  :: cpn
   type(uw_params),  save  :: Uw_p
 
+  type(sounding), dimension(:,:), allocatable :: sdij
+  type(adicloud), dimension(:,:), allocatable :: acij
+  logical, dimension(:,:), allocatable :: exit_flag
 contains
 
 !#####################################################################
 !#####################################################################
 
-  SUBROUTINE UW_CONV_INIT(do_strat, axes, Time, kd, tracers_in_uw)
+  SUBROUTINE UW_CONV_INIT( do_strat, axes, Time, kd, tracers_in_uw, &
+                           doing_unified_closure)
     logical,         intent(in) :: do_strat
     integer,         intent(in) :: axes(4), kd
     type(time_type), intent(in) :: Time
     logical,         intent(in) :: tracers_in_uw(:)
+    logical,         intent(in) :: doing_unified_closure
     
 !---------------------------------------------------------------------
 !  intent(in) variables:
@@ -180,6 +199,7 @@ contains
     call ct_init_k(kd,ntracers,ct)
     call ct_init_k(kd,ntracers,ct1)
     call uw_params_init   (Uw_p)
+
 
 !   Initialize lookup tables needed for findt and exn
 !   sat_vapor_pres needs to be initialized if not already done
@@ -214,6 +234,8 @@ contains
     WRITE( stdlog(), nml = uw_conv_nml )
     WRITE( stdlog(), nml = uw_plume_nml )
 
+    do_unified_convective_closure = doing_unified_closure
+
     !pack namelist parameters into plume and closure structure
     cpn % rle       = rle
     cpn % rpen      = rpen
@@ -234,6 +256,8 @@ contains
     cpn % do_forcedlifting= do_forcedlifting
     cpn % atopevap  = atopevap
     cpn % wtwmin_ratio = wmin_ratio*wmin_ratio
+    cpn % do_auto_aero = do_auto_aero
+    cpn % rad_crit = rad_crit
 
     nqv = get_tracer_index ( MODEL_ATMOS, 'sphum' )
     nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
@@ -407,6 +431,7 @@ contains
        tten, qvten, qlten, qiten, qaten, qnten,                      & !output
        uten, vten, rain, snow,                                       & !output
        cmf, hlflx, qtflx, pflx, cldql, cldqi, cldqa, cldqn, cbmfo,  & !output
+        cbmf_clo,  &
         tracers, trtend)
 
 !CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
@@ -454,7 +479,9 @@ contains
     real, intent(out), dimension(:,:,:)  :: hlflx ! theta_l flux
     real, intent(out), dimension(:,:,:)  :: qtflx  ! qt  flux
     real, intent(out), dimension(:,:)    :: rain, snow
+    real, intent(in), dimension(:,:)  :: cbmf_clo  ! cloud-base mass flux
     real, intent(inout), dimension(:,:)  :: cbmfo  ! cloud-base mass flux
+!   real, intent(in), dimension(:,:)  :: wrelo, ufrco  ! cloud-base mass flux
     real, intent(in),  dimension(:,:,:,:)  :: tracers         ! env. tracers
     real, intent(out), dimension(:,:,:,:)  :: trtend          ! calculated tracer tendencies
 
@@ -462,7 +489,7 @@ contains
 
     real rhos0j, thj, qvj, qlj, qij, qse, thvj
     real thvuinv, hlsrc, thcsrc, qctsrc, plcltmp, tmp
-    real zsrc, psrc, cbmftmp, cbmf_old
+    real zsrc, psrc, cbmftmp, cbmf_old, rkm_sh1
 
     real, dimension(size(tb,1),size(tb,2)) :: &
          plcl,       &     ! pressure of lifting condensation level (Pa)
@@ -471,8 +498,8 @@ contains
          cino,       &     ! cin (m2/s2)
          capeo,      &     ! cape(m2/s2)
          tkeo,       &     ! tke (m2/s2)
-         wrelo,      &     ! release level vertical velocity (m/s)
-         ufrco,      &     ! cloud-base updraft fraction
+         wrelo,      &     ! release level vertical velocity (m/s) ! cjg wrel_mod bug fix
+         ufrco,      &     ! cloud-base updraft fraction           ! cjg wrel_mod bug fix
          zinvo,      &     ! surface driven mixed-layer height
          denth,      &     
          dqtmp,      &
@@ -508,7 +535,7 @@ contains
     cldqa=0.; cldql=0.; cldqi=0.; cldqn=0.;
     hlflx=0.; qtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.;
 
-    cino=0.; capeo=0.; tkeo=0.; wrelo=0.; ufrco=0.; zinvo=0.; wuo=0.; 
+    cino=0.; capeo=0.; tkeo=0.;                     zinvo=0.; wuo=0.; 
     fero=0.; fdro=0.; fdrso=0.; cmf=0.; denth=0.;  dqtmp=0.; ocode=0;
     dcapeo=0.; dcino=0.; dwfno=0.;
     trtend=0.
@@ -517,9 +544,11 @@ contains
     naer = size(asol%aerosol,4)
 
     do j = 1, jmax
-       do i=1, imax
+      do i=1, imax
 
-          call clearit(ac, cc, cp, ct, cp1, ct1);
+        call clearit(ac, cc, cp, ct, cp1, ct1);
+
+        if (.not. do_unified_convective_closure) then
 
           !relaxation TKE back to 0 with time-scale of disscale
           !tkeavg = ustar(i,j)*bstar(i,j)*disscale 
@@ -536,36 +565,36 @@ contains
           am1(:) = 0.; am2(:) = 0.; am3(:) = 0.;
 
           do k=1,kmax
-             pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
-             tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+            pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
+            tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
             if(use_online_aerosol) then
-         do na = 1,naer
-               if(asol%aerosol_names(na) == 'so4' .or. &
+              do na = 1,naer
+                if(asol%aerosol_names(na) == 'so4' .or. &
                 asol%aerosol_names(na) == 'so4_anthro' .or. asol%aerosol_names(na) == 'so4_natural') then
                          am1(k)=am1(k)+asol%aerosol(i,j,k,na)*tmp
-               else if(asol%aerosol_names(na) == 'omphilic' .or. &
+                else if(asol%aerosol_names(na) == 'omphilic' .or. &
                  asol%aerosol_names(na) == 'omphobic') then
                        am3(k)=am3(k)+asol%aerosol(i,j,k,na)*tmp
-              else if(asol%aerosol_names(na) == 'seasalt1' .or. &
+                else if(asol%aerosol_names(na) == 'seasalt1' .or. &
                 asol%aerosol_names(na) == 'seasalt2') then
                        am2(k)=am2(k)+asol%aerosol(i,j,k,na)*tmp
-              end if
-          end do
-
-          else
-             am1(k)=(asol%aerosol(i,j,k,1)+asol%aerosol(i,j,k,2))*tmp
-             am2(k)= asol%aerosol(i,j,k,5)*tmp
-             am3(k)= asol%aerosol(i,j,k,3)*tmp
-          endif
+                end if
+              end do
+            else
+              am1(k)=(asol%aerosol(i,j,k,1)+asol%aerosol(i,j,k,2))*tmp
+              am2(k)= asol%aerosol(i,j,k,5)*tmp
+              am3(k)= asol%aerosol(i,j,k,3)*tmp
+            endif
           end do
 
 !========Pack column properties into a sounding structure====================
 
           if (do_qn) then
-             qntmp(:)=q(i,j,:,nqn)
+            qntmp(:)=q(i,j,:,nqn)
           else
-             qntmp(:)=0.
+            qntmp(:)=0.
           end if
+
           call pack_sd_k(land(i,j), coldT(i,j), delt, pmid(i,j,:), pint(i,j,:),     &
                zmid(i,j,:), zint(i,j,:), ub(i,j,:), vb(i,j,:), tb(i,j,:),   &
                q(i,j,:,nqv), q(i,j,:,nql), q(i,j,:,nqi), q(i,j,:,nqa), qntmp,       &
@@ -579,20 +608,18 @@ contains
 
 !========Find source air, and do adiabatic cloud lifting======================
 
+          zsrc  =sd%zs (1)
+          psrc  =sd%ps (1)
+          thcsrc=sd%thc(1)
+          qctsrc=sd%qct(1)
+          hlsrc =sd%hl (1)
+          rkm_sh1=rkm_sh
           if (do_lands) then
-             zsrc  =sd%zs (1)
-             psrc  =sd%ps (1)
-             thcsrc=sd%thc(1)
-             !qctsrc=sd%qct(1)+gama*abs(qstar(i,j))*sd%land
-             qctsrc=sd%qct(1)+gama*sqrt(tkeo(i,j))*sd%qct(1)*sd%land
-             qctsrc=max(sd%qct(1),min(qctsrc, sd%qs(1)*0.98))
-          else
-             zsrc  =sd%zs (1)
-             psrc  =sd%ps (1)
-             thcsrc=sd%thc(1)
-             qctsrc=sd%qct(1)
-             hlsrc =sd%hl (1)
-          end if
+            rkm_sh1 = rkm_sh   * (1. - 0.5 * sd%land)
+            rkm_sh1 = rkm_sh   * ( 500. / max(pblht(i,j), 500.))
+            qctsrc = qt_parcel_k (sd%qct(1), sd%qs(1), qstar(i,j), &
+                                  tkeo(i,j), sd%land, gama)
+          endif
           
           call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, do_fast, do_ice, ac)
           ac % usrc = sd%u(sd%ktoppbl)
@@ -602,64 +629,120 @@ contains
           plnb (i,j) = ac%plnb
           cino (i,j) = ac%cin
           capeo(i,j) = ac%cape
-
           if (do_fast) then
-             if (ac%klcl.eq.0 .or. ac%plcl.eq.sd%ps(1) .or. ac%plcl.lt.20000.) then
-                ocode(i,j)=1; goto 100 !cycle;
-             end if
-             if (ac%plfc.lt.500.) then
-                ocode(i,j)=2; goto 100 !cycle;
-             end if
+            if (ac%klcl.eq.0 .or. ac%plcl.eq.sd%ps(1) .or. ac%plcl.lt.20000.) then
+              ocode(i,j)=1; goto 100 !cycle;
+            end if
+            if (ac%plfc.lt.500.) then
+              ocode(i,j)=2; goto 100 !cycle;
+            end if
           end if
+
+        else  !(.not. do_unified_convective_closure)
+          cush(i,j) = -1.0
+          if (.not. exit_flag(i,j)) then
+            call sd_retrieve_k (sd, sdij(i,j))
+            call ac_retrieve_k (ac, acij(i,j))
+            zinvo (i,j) = sd%zinv
+            plcl (i,j) = ac%plcl
+            plfc (i,j) = ac%plfc
+            plnb (i,j) = ac%plnb
+            cino (i,j) = ac%cin
+            capeo(i,j) = ac%cape
+            rkm_sh1 = rkm_sh
+            if (do_lands) then
+              rkm_sh1 = rkm_sh   * (1. - 0.5 * sd%land)
+              rkm_sh1 = rkm_sh   * ( 500. / max(pblht(i,j), 500.))
+            endif
+          else
+            ocode(i,j) = 7
+            go to 100
+          endif
+        endif  !(.not. do_unified_convective_closure)
 
 
 !========Cumulus closure to determine cloud base mass flux===================
 
-          cbmf_old=cbmfo(i,j); cc%cbmf=cbmf_old;
+
+        cbmf_old=cbmfo(i,j) 
+
+        if (do_unified_convective_closure) then
+          if (cbmf_clo(i,j) == cbmfo_unmodified(i,j)) then
+            cbmfo(i,j) = cbmfo_mod(i,j)
+            cc%cbmf = cbmfo_mod(i,j)
+          else if (cbmf_clo(i,j) > cbmfo_mod(i,j)) then
+            cbmfo(i,j) = cbmfo_mod(i,j)
+            cc%cbmf = cbmfo_mod(i,j)
+          else
+            cbmfo(i,j) = cbmf_clo(i,j)
+            cc%cbmf = cbmf_clo(i,j)
+          endif
+
+
+          cc%wrel = wrel_mod(i,j) 
+          cc%ufrc = ufrc_mod(i,j)
+          cc%scaleh = scaleh_mod(i,j)
+          cc%dcin = dcin_mod(i,j)
+          cc%dcape = dcape_mod(i,j)
+          cc%dwfn = dwfn_mod(i,j)
+          cc%wfn = wfn_mod(i,j)
+
+!--> cjg wrel_mod bug fix
+          wrelo(i,j) = cc%wrel
+          ufrco(i,j) = cc%ufrc
+!<-- cjg
+        else
+
+          cc%cbmf=cbmf_old;
 
           if (iclosure.eq.0) then
              call cclosure_bretherton(tkeo(i,j), cpn, sd, Uw_p, ac, cc)
           elseif (iclosure.eq.1) then
-             call cclosure_implicit(tkeo(i,j), cpn, sd, Uw_p, ac, cc, delt, rkm_sh, &
+             call cclosure_implicit (tkeo(i,j), cpn, sd, Uw_p, ac, cc, &
+                                     delt, rkm_sh1, &
                   do_coldT, sd1, ac1, cc1, cp, ct) 
           elseif (iclosure.eq.2) then
              call cclosure_relaxwfn(tkeo(i,j), cpn, sd, Uw_p, ac, cc, cp, ct, delt,  &
-                  rkm_sh, do_coldT, sd1, ac1, cc1, cp1, ct1)
+                  rkm_sh1, do_coldT, sd1, ac1, cc1, cp1, ct1)
           end if
+          
 
           cbmfo(i,j) = cc%cbmf
+!--> cjg wrel_mod bug fix
           wrelo(i,j) = cc%wrel
           ufrco(i,j) = cc%ufrc
+!<-- cjg
+        endif  ! (do_unified_conv)
 
-
-          if (.not.do_fast) then
-             if (ac%klcl.eq.0 .or. ac%plcl.eq.sd%ps(1) .or. ac%plcl.lt.20000.) then
-                ocode(i,j)=1; goto 100 !cycle;
-             end if
-             if (ac%plfc.lt.500.) then
-                ocode(i,j)=2; goto 100 !cycle;
-             end if
+        if (.not.do_fast) then
+          if (ac%klcl.eq.0 .or. ac%plcl.eq.sd%ps(1) .or. ac%plcl.lt.20000.) then
+            ocode(i,j)=1; goto 100 !cycle;
           end if
-
-          if(cc%cbmf.lt.1.e-6 .or. cc%wrel.eq.0.) then
-             ocode(i,j)=3; goto 100 !cycle;
+          if (ac%plfc.lt.500.) then
+            ocode(i,j)=2; goto 100 !cycle;
           end if
+        end if
+
+        if(cc%cbmf.lt.1.e-6 .or. cc%wrel.eq.0.) then
+          ocode(i,j)=3; goto 100 !cycle;
+        end if
 
 !========Do shallow cumulus plume calculation================================
 
-          cbmftmp=cc%cbmf * cbmf_sh_frac
-          call cumulus_plume_k(cpn, sd, ac, cp, rkm_sh, cbmftmp, cc%wrel, cc%scaleh, Uw_p)
-          if(cp%ltop.lt.cp%krel+2 .or. cp%let.le.cp%krel+1) then
-             ocode(i,j)=4; goto 100 !cycle;
-          end if
-          if(cp%cldhgt.ge.cldhgt_max) then
-             ocode(i,j)=5; goto 100 !cycle;
-          end if
-          cush(i,j)=cp%cush
+        cbmftmp=cc%cbmf * cbmf_sh_frac
+        call cumulus_plume_k (cpn, sd, ac, cp, rkm_sh1, cbmftmp, &
+                              cc%wrel, cc%scaleh, Uw_p)
+        if(cp%ltop.lt.cp%krel+2 .or. cp%let.le.cp%krel+1) then
+          ocode(i,j)=4; goto 100 !cycle;
+        end if
+        if(cp%cldhgt.ge.cldhgt_max) then
+          ocode(i,j)=5; goto 100 !cycle;
+        end if
+        cush(i,j)=cp%cush
 
 !========Calculate cumulus produced tendencies===============================
 
-          call cumulus_tend_k(cpn, sd, Uw_p, cp, ct, do_coldT)
+        call cumulus_tend_k(cpn, sd, Uw_p, cp, ct, do_coldT)
 
 !========Unpack convective tendencies========================================
           do k = 1,cp%ltop
@@ -687,6 +770,20 @@ contains
              fdro  (i,j,nk) = cp%fdr(k)
              fdrso (i,j,nk) = cp%fdrsat(k)*cp%umf(k)
              
+!            do n = 1, size(trtend,4)
+!              trtend(i,j,nk,n) = ct%trten(k,n) + ct%trwet(k,n)
+!              trwet(i,j,nk,n)  = ct%trwet(k,n)
+!            enddo
+          enddo
+
+! make sure the predicted tracer tendencies do not produce negative
+! tracers due to convective tendencies. if necessary, adjust the 
+! tendencies.
+          call check_tracer_realizability (kmax, size(trtend,4), delt, &
+                                           cp%tr, ct%trten, ct%trwet) 
+
+          do k = 1,cp%ltop
+             nk = kmax+1-k
              do n = 1, size(trtend,4)
                trtend(i,j,nk,n) = ct%trten(k,n) + ct%trwet(k,n)
                trwet(i,j,nk,n)  = ct%trwet(k,n)
@@ -725,10 +822,25 @@ contains
                 fero  (i,j,nk) = fero  (i,j,nk) +  cp1%fer(k)
                 fdro  (i,j,nk) = fdro  (i,j,nk) +  cp1%fdr(k) 
                 fdrso (i,j,nk) = fdrso (i,j,nk) + cp1%fdrsat(k)*cp1%umf(k)
-                do n = 1, size(trtend,4)
-                  trtend(i,j,nk,n) = trtend(i,j,nk,n) + ct1%trten(k,n)
-                enddo
+!               do n = 1, size(trtend,4)
+!                 trtend(i,j,nk,n) = trtend(i,j,nk,n) + ct1%trten(k,n)
+!               enddo
              enddo
+
+! make sure the predicted tracer tendencies do not produce negative
+! tracers due to convective tendencies. if necessary, adjust the 
+! tendencies.
+          call check_tracer_realizability (kmax, size(trtend,4), delt, &
+                                           cp%tr, ct1%trten, ct1%trwet) 
+
+          do k = 1,cp%ltop
+             nk = kmax+1-k
+             do n = 1, size(trtend,4)
+               trtend(i,j,nk,n) = trtend(i,j,nk,n) + ct1%trten(k,n) + &
+                                                         ct1%trwet(k,n)
+               trwet(i,j,nk,n)  = trwet(i,j,nk,n) + ct1%trwet(k,n)
+             enddo
+          enddo
              snow  (i,j)  = snow  (i,j) + ct1%snow
              rain  (i,j)  = rain  (i,j) + ct1%rain
              denth (i,j)  = denth (i,j) + ct1%denth
@@ -756,11 +868,19 @@ contains
  
        where ((q(:,:,:,nql) + qlten*delt) .lt. 0.)
           tten (:,:,:) = tten(:,:,:) -(q(:,:,:,nql)/delt+qlten(:,:,:))*HLv/Cp_Air
+!-->cjg
+          qvten(:,:,:) = qvten(:,:,:)+(q(:,:,:,nql)/delt+qlten(:,:,:))
+!<--cjg
+
           qlten(:,:,:) = qlten(:,:,:)-(q(:,:,:,nql)/delt+qlten(:,:,:))
       end where
  
       where ((q(:,:,:,nqi) + qiten*delt) .lt. 0.)
           tten (:,:,:) = tten(:,:,:) -(q(:,:,:,nqi)/delt+qiten(:,:,:))*HLs/Cp_Air
+!-->cjg
+          qvten(:,:,:) = qvten(:,:,:)+(q(:,:,:,nqi)/delt+qiten(:,:,:))
+!<--cjg
+    
          qiten(:,:,:) = qiten(:,:,:)-(q(:,:,:,nqi)/delt+qiten(:,:,:))
       end where
 
@@ -770,9 +890,10 @@ contains
       end where
       endif
 
-      where ((tracers(:,:,:,:) + trtend(:,:,:,:)*delt) .lt. 0.)
-         trtend(:,:,:,:) = -tracers(:,:,:,:)/delt
-      end where
+!     where ((tracers(:,:,:,:) + trtend(:,:,:,:)*delt) .lt. 0.)
+!        trtend(:,:,:,:) = -tracers(:,:,:,:)/delt
+       
+!     end where
  
     endif
 
@@ -817,10 +938,17 @@ contains
          used = send_data( id_tke_uwc,  (tkeo),             Time, is, js )
     if ( id_cbmf_uwc > 0 ) &
          used = send_data( id_cbmf_uwc, (cbmfo),            Time, is, js )
+!-->cjg wrel_mod bug fix
+!    if ( id_wrel_uwc > 0 ) &
+!         used = send_data( id_wrel_uwc, (wrel_mod),            Time, is, js )
+!    if ( id_ufrc_uwc > 0 ) &
+!         used = send_data( id_ufrc_uwc, (ufrc_mod),            Time, is, js )
+
     if ( id_wrel_uwc > 0 ) &
          used = send_data( id_wrel_uwc, (wrelo),            Time, is, js )
     if ( id_ufrc_uwc > 0 ) &
          used = send_data( id_ufrc_uwc, (ufrco),            Time, is, js )
+!<--cjg
     if ( id_plcl_uwc > 0 ) &
          used = send_data( id_plcl_uwc, (plcl*0.01),        Time, is, js )
     if ( id_plfc_uwc > 0 ) &
@@ -894,6 +1022,29 @@ contains
        uten=0.; vten=0.; tten=0.; qvten=0.; cmf=0.; rain=0.; snow=0.;
        qlten=0.; qiten=0.; qaten=0.; qnten=0.;
     end if
+
+    if (do_unified_convective_closure) then
+      do j=1,jmax
+       do i=1,imax
+         if (associated (acij(i,j)%t)) then
+           call ac_end_k (acij(i,j))
+           call sd_end_k (sdij(i,j)) 
+         endif
+       end do
+     end do
+    deallocate (cbmfo_mod )
+    deallocate (cbmfo_unmodified)
+    deallocate (wrel_mod )
+    deallocate (ufrc_mod )
+    deallocate (scaleh_mod )
+    deallocate (dcin_mod )
+    deallocate (dcape_mod )
+    deallocate (dwfn_mod )
+    deallocate (wfn_mod )
+    deallocate (acij)
+    deallocate (sdij)
+    deallocate (exit_flag)
+    endif
    
   END SUBROUTINE UW_CONV
 
@@ -1045,6 +1196,233 @@ contains
 !#####################################################################
 !#####################################################################
 
+  SUBROUTINE calculate_uw_closure(is, js, Time, tb, qv, ub, vb, pmid, pint,zmid,  & !input
+       zint, q, omega, delt, pblht, ustar, bstar, qstar, land, coldT,& !input
+       asol, cush,                                                         & !input
+!                                                           cbmfo)   !output
+                                                            cbmfo,  & !output
+        tracers        )
 
+!CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+!
+!     SHALLOW CONVECTION SCHEME
+!     Described in Bretherton et. al (MWR, April 2004)
+!     For info contact Ming Zhao: ming.zhao@noaa.gov
+!
+!     Inputs: see below
+!
+!     Outputs: see below
+!
+!CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+    implicit none
+
+    type(time_type), intent(in)  :: Time
+    integer,         intent(in)  :: is, js
+    real,            intent(in)  :: delt 
+
+    real, intent(in), dimension(:,:,:)   :: ub,vb !wind profile (m/s)
+    real, intent(in), dimension(:,:,:)   :: zint  !height@model interfaces(m)
+    real, intent(in), dimension(:,:,:)   :: pint  !pressure@model interfaces(pa)
+    real, intent(in), dimension(:,:,:)   :: tb    !temperature profile (K)
+    real, intent(in), dimension(:,:,:)   :: qv    !specific humidity profile (kg/kg)
+    real, intent(in), dimension(:,:,:,:) :: q     !specific humidity profile (kg/kg)
+    real, intent(in), dimension(:,:,:)   :: pmid  !pressure@model mid-levels (pa)
+    real, intent(in), dimension(:,:,:)   :: zmid  !height@model mid-levels (m)
+    real, intent(in), dimension(:,:,:)   :: omega !omega (Pa/s)
+    real, intent(in), dimension(:,:)     :: land  !land fraction
+    logical,intent(in), dimension(:,:)   :: coldT    !logical flag
+
+    real, intent(in),    dimension(:,:)  :: pblht, ustar, bstar, qstar !pbl height...
+    type(aerosol_type),  intent (in)     :: asol
+    real, intent(in   ), dimension(:,:)  :: cush  ! convective scale height (m) 
+
+   
+   
+    real, intent(inout), dimension(:,:)  :: cbmfo  ! cloud-base mass flux
+    real, intent(in),  dimension(:,:,:,:)  :: tracers         ! env. tracers
+
+    integer i, j, k, kl, klm, km1, nk, ks, m, naer, na, n
+
+    real rhos0j, thj, qvj, qlj, qij, qse, thvj
+    real thvuinv, hlsrc, thcsrc, qctsrc, plcltmp, tmp
+    real zsrc, psrc, cbmftmp, cbmf_old, rkm_sh1
+
+    real, dimension(size(tb,1),size(tb,2)) :: &
+         plcl,       &     ! pressure of lifting condensation level (Pa)
+         plfc,       &     ! pressure of level of free convection (Pa)
+         plnb,       &     ! pressure of level of neutral buoyancy (Pa)
+         cino,       &     ! cin (m2/s2)
+         capeo,      &     ! cape(m2/s2)
+         tkeo,       &     ! tke (m2/s2)
+         wrelo,      &     ! release level vertical velocity (m/s)
+         ufrco,      &     ! cloud-base updraft fraction
+         zinvo,      &     ! surface driven mixed-layer height
+         denth,      &     
+         dqtmp,      &
+         dcino,      &     ! dcin (m2/s2)
+         dcapeo,     &     ! dcape(m2/s2)
+         dwfno             ! dwfn(m2/s2)
+!        ocode
+
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: wuo,fero,fdro,fdrso
+
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: pmass    ! layer mass (kg/m2)
+    real, dimension(size(tb,3)) :: am1, am2, am3, qntmp
+    real :: cbmf_unmod
+    
+
+    integer imax, jmax, kmax, ntr
+    
+    logical used
+
+    imax  = size( tb, 1 )
+    jmax  = size( tb, 2 )
+    kmax  = size( tb, 3 )
+    ntr = size (tracers, 4)
+    sd % kmax=kmax
+
+    naer = size(asol%aerosol,4)
+
+    allocate (cbmfo_mod (imax, jmax))
+    allocate (cbmfo_unmodified (imax, jmax))
+    allocate (wrel_mod (imax, jmax))
+    allocate (ufrc_mod (imax, jmax))
+    allocate (scaleh_mod (imax, jmax))
+    allocate (dcin_mod (imax, jmax))
+    allocate (dcape_mod (imax, jmax))
+    allocate (dwfn_mod (imax, jmax))
+    allocate (wfn_mod (imax, jmax))
+    allocate (acij(imax,jmax))
+    allocate (sdij(imax,jmax))
+    allocate (exit_flag(imax, jmax))
+
+    exit_flag = .false.
+    cbmfo_mod = 0.
+    cbmfo_unmodified = 0.
+    wrel_mod = 0.
+    ufrc_mod = 0.
+    scaleh_mod = 0.
+    dcin_mod = 0.
+    dcape_mod = 0.
+    dwfn_mod = 0.
+    wfn_mod = 0.
+
+
+    do j = 1, jmax
+      do i=1, imax
+
+        call clearit(ac, cc, cp, ct, cp1, ct1);
+
+          !relaxation TKE back to 0 with time-scale of disscale
+          !tkeavg = ustar(i,j)*bstar(i,j)*disscale 
+          !dissipate tke with length-scale of disscale
+          !tkeavg=(ustar(i,j)*bstar(i,j)*disscale)**(2./3.)
+          !below following Holtslag and Boville 1993
+        tkeo(i,j) = (ustar(i,j)**3.+0.6*ustar(i,j)*bstar(i,j)*pblht(i,j))**(2./3.)
+        tkeo(i,j) = max(tkemin,tkeo(i,j))
+
+        cc%scaleh = cush(i,j); 
+        if(cc%scaleh.le.0.0) cc%scaleh=1000.
+
+        am1(:) = 0.; am2(:) = 0.; am3(:) = 0.;
+
+        do k=1,kmax
+          pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
+          tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+          if(use_online_aerosol) then
+            do na = 1,naer
+              if(asol%aerosol_names(na) == 'so4' .or. &
+                asol%aerosol_names(na) == 'so4_anthro' .or. asol%aerosol_names(na) == 'so4_natural') then
+                         am1(k)=am1(k)+asol%aerosol(i,j,k,na)*tmp
+              else if(asol%aerosol_names(na) == 'omphilic' .or. &
+                 asol%aerosol_names(na) == 'omphobic') then
+                       am3(k)=am3(k)+asol%aerosol(i,j,k,na)*tmp
+              else if(asol%aerosol_names(na) == 'seasalt1' .or. &
+                asol%aerosol_names(na) == 'seasalt2') then
+                       am2(k)=am2(k)+asol%aerosol(i,j,k,na)*tmp
+              end if
+            end do
+
+          else
+            am1(k)=(asol%aerosol(i,j,k,1)+asol%aerosol(i,j,k,2))*tmp
+            am2(k)= asol%aerosol(i,j,k,5)*tmp
+            am3(k)= asol%aerosol(i,j,k,3)*tmp
+          endif
+        end do
+
+!========Pack column properties into a sounding structure====================
+
+        if (do_qn) then
+          qntmp(:)=q(i,j,:,nqn)
+        else
+          qntmp(:)=0.
+        end if
+          call pack_sd_k(land(i,j), coldT(i,j), delt, pmid(i,j,:), pint(i,j,:),     &
+               zmid(i,j,:), zint(i,j,:), ub(i,j,:), vb(i,j,:), tb(i,j,:),   &
+               q(i,j,:,nqv), q(i,j,:,nql), q(i,j,:,nqi), q(i,j,:,nqa), qntmp,       &
+               am1(:), am2(:), am3(:), tracers(i,j,:,:), sd, Uw_p)
+
+!========Finite volume intepolation==========================================
+
+          call extend_sd_k(sd,  pblht(i,j),do_ice, Uw_p)
+
+
+!========Find source air, and do adiabatic cloud lifting======================
+
+          zsrc  =sd%zs (1)
+          psrc  =sd%ps (1)
+          thcsrc=sd%thc(1)
+          qctsrc=sd%qct(1)
+          hlsrc =sd%hl (1)
+          rkm_sh1=rkm_sh
+          if (do_lands) then
+            rkm_sh1 = rkm_sh   * (1. - 0.5 * sd%land)
+            qctsrc = qt_parcel_k (sd%qct(1), sd%qs(1), qstar(i,j), &
+                                  tkeo(i,j), sd%land, gama)
+          endif
+
+          call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, do_fast, do_ice, ac)
+          ac % usrc = sd%u(sd%ktoppbl)
+          ac % vsrc = sd%v(sd%ktoppbl)
+
+          if (do_fast) then
+            if (ac%klcl.eq.0 .or. ac%plcl.eq.sd%ps(1) .or. ac%plcl.lt.20000.) then
+              exit_flag(i,j) = .true.
+              cycle    !cycle;
+            end if
+            if (ac%plfc.lt.500.) then
+              exit_flag(i,j) = .true.
+              cycle    !cycle;
+            end if
+          end if
+
+
+!========Cumulus closure to determine cloud base mass flux===================
+
+          cbmf_old=cbmfo(i,j); cc%cbmf=cbmf_old;
+
+          call cclosure_bretherton(tkeo(i,j), cpn, sd, Uw_p, ac, cc, &
+                                    cbmf_unmod=cbmf_unmod)
+
+          cbmfo_unmodified(i,j) = cbmf_unmod
+          cbmfo_mod(i,j) = cc%cbmf
+          cbmfo(i,j) = cbmf_unmod
+          wrel_mod(i,j) = cc%wrel
+          ufrc_mod(i,j) = cc%ufrc
+          scaleh_mod(i,j) = cc%scaleh
+          dcin_mod(i,j) = cc%dcin
+          dcape_mod(i,j) = cc%dcape
+          dwfn_mod(i,j) = cc%dwfn
+          wfn_mod(i,j) = cc%wfn 
+
+          call sd_save_k (sd, sdij(i,j))
+          call ac_save_k (ac, acij(i,j))
+        end do
+      end do
+
+   
+  END SUBROUTINE calculate_uw_closure
+
+!#####################################################################
 
 end MODULE UW_CONV_MOD

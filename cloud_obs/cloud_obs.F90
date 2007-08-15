@@ -8,8 +8,7 @@
 !-----------------------------------------------------------------------
 
 use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
-                            horiz_interp, horiz_interp_del
-use interpolator_mod, only: create_horiz_interp_new
+                            horiz_interp_new, horiz_interp, horiz_interp_del
 use          fms_mod, only: file_exist, error_mesg, FATAL, NOTE,     &
                             open_namelist_file, close_file,          &
                             check_nml_error, mpp_pe, mpp_root_pe,    &
@@ -28,8 +27,8 @@ public  cloud_obs, cloud_obs_init, cloud_obs_end
 !-----------------------------------------------------------------------
 !   ---------- private data ------------
 
-   character(len=128) :: version = '$Id: cloud_obs.F90,v 13.0.4.2 2007/05/25 16:31:56 vb Exp $'
-   character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+   character(len=128) :: version = '$Id: cloud_obs.F90,v 15.0 2007/08/14 03:52:43 fms Exp $'
+   character(len=128) :: tagname = '$Name: omsk $'
 
       real, allocatable, dimension(:,:,:) :: clda,cldb
       real, allocatable, dimension(:)     :: londat,latdat
@@ -294,7 +293,7 @@ type(time_type), intent(in)                    :: Time
          latb_obs(nobs+1) = hpie
 
       call horiz_interp_init
-      call create_horiz_interp_new ( Interp, lonb_obs, latb_obs, lonb, latb )
+      call horiz_interp_new ( Interp, lonb_obs, latb_obs, lonb, latb )
 
 
 !------- setup for data grid -------

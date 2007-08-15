@@ -45,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: astronomy.F90,v 13.0.4.2 2007/05/25 16:31:55 vb Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+character(len=128)  :: version =  '$Id: astronomy.F90,v 15.0 2007/08/14 03:52:34 fms Exp $'
+character(len=128)  :: tagname =  '$Name: omsk $'
 
 
 !---------------------------------------------------------------------

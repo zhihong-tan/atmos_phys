@@ -1,22 +1,25 @@
 !VERSION NUMBER:
-!   $Id: donner_lite_k.F90,v 1.1.2.1.2.1 2007/05/15 12:13:39 rsh Exp $
+!   $Id: donner_lite_k.F90,v 15.0 2007/08/14 03:53:20 fms Exp $
 
 !######################################################################
 !######################################################################
 
 
 subroutine don_c_def_conv_env_miz    &
-         (isize, jsize, nlev_lsm, ntr, dt, Nml, Param, Col_diag,  &
-          tracers, pblht, temp, mixing_ratio, pfull, phalf, zfull, &
+         (isize, jsize, nlev_lsm, ntr, dt, Nml, Param, Initialized, &
+           Col_diag,  &
+          tracers, pblht, tkemiz, qstar, land, coldT,       &!miz
+          temp, mixing_ratio, pfull, phalf, zfull, &
           zhalf, lag_cape_temp, lag_cape_vapor, current_displ,   &
-          Don_cape, Don_conv, sd, Uw_p, ac)
+          cbmf, Don_cape, Don_conv, sd, Uw_p, ac)
 
 use donner_types_mod,      only : donner_nml_type, donner_param_type, &
                                   donner_column_diag_type,   &
+                                  donner_initialized_type, &
                                   donner_cape_type, donner_conv_type
 use  conv_utilities_k_mod, only : pack_sd_lsm_k, extend_sd_k,   &
                                   adi_cloud_k, adicloud, sounding, &
-                                  uw_params
+                                  uw_params, qt_parcel_k
 
 implicit none
 
@@ -25,6 +28,7 @@ integer,                                    intent(in)    ::   &
 real,                                     intent(in)    :: dt
 type(donner_nml_type),                    intent(in)    :: Nml      
 type(donner_param_type),                  intent(in)    :: Param
+type(donner_initialized_type), intent(in)             :: Initialized
 type(donner_column_diag_type), intent(in)    :: Col_diag
 real, dimension(isize,jsize,nlev_lsm),    intent(in)    ::    &
                                              temp, mixing_ratio,  &
@@ -35,7 +39,9 @@ real, dimension(isize,jsize,nlev_lsm,ntr),intent(in)    :: tracers
 real, dimension(isize,jsize,nlev_lsm+1),  intent(in)    :: phalf,  &
                                                             zhalf
 real, dimension(isize,jsize),             intent(in)    ::   &
-                                             current_displ, pblht
+                                             current_displ, cbmf, &
+                                             pblht, tkemiz, qstar, land
+logical, dimension(isize,jsize),          intent(in)    :: coldT
 type(donner_cape_type),                   intent(inout) :: Don_cape
 type(donner_conv_type),                   intent(inout) :: Don_conv
 type(sounding),                           intent(inout) :: sd
@@ -65,9 +71,12 @@ type(uw_params),                           intent(inout) :: Uw_p
 
       do j=1,jsize
         do i=1,isize
+           if (Initialized%using_unified_closure .and.   &
+                                          cbmf(i,j) == 0.0) cycle
           if ((current_displ(i,j) .lt. 0) .or.   &
               (.not.Nml%use_llift_criteria)) then
-            call pack_sd_lsm_k (dt, pfull(i,j,:), phalf(i,j,:), &
+            call pack_sd_lsm_k (Nml%do_lands, land(i,j), coldT(i,j), &
+                                dt, pfull(i,j,:), phalf(i,j,:), &
                                 zfull(i,j,:), zhalf(i,j,:), &
                                 lag_cape_temp(i,j,:),  &
                                 lag_cape_vapor(i,j,:),   &
@@ -78,8 +87,13 @@ type(uw_params),                           intent(inout) :: Uw_p
             thcsrc=sd%thc(1)
             qctsrc=sd%qct(1)
             hlsrc =sd%hl (1)
+            if (Nml%do_lands) then
+              qctsrc = qt_parcel_k (qctsrc, sd%qs(1), qstar(i,j),  &
+                                    tkemiz(i,j), sd%land, Nml%gama)
+            end if
             call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd,  &
-                              Uw_p, .false., .false., ac)                
+                              Uw_p, .false., Nml%do_freezing_for_cape, &
+                              ac)                
             zsrc  =sd%zs (1)
             Don_cape%xcape_lag(i,j) = ac%cape
             Don_cape%qint_lag (i,j) = sd%qint
@@ -94,7 +108,8 @@ type(uw_params),                           intent(inout) :: Uw_p
               mid_cape_vapor(k) = lag_cape_vapor(i,j,k)
             end do
         
-            call pack_sd_lsm_k (dt, pfull(i,j,:), phalf(i,j,:),   &
+            call pack_sd_lsm_k (Nml%do_lands, land(i,j), coldT(i,j), &
+                                dt, pfull(i,j,:), phalf(i,j,:),   &
                                 zfull(i,j,:), zhalf(i,j,:), &
                                 mid_cape_temp(:), mid_cape_vapor(:), &
                                 xgcm_v(i,j,:,:), sd)
@@ -108,9 +123,14 @@ type(uw_params),                           intent(inout) :: Uw_p
             thcsrc=sd%thc(1)
             qctsrc=sd%qct(1)
             hlsrc =sd%hl (1)
+            if (Nml%do_lands) then
+              qctsrc = qt_parcel_k (qctsrc, sd%qs(1), qstar(i,j),  &
+                                    tkemiz(i,j), sd%land, Nml%gama)
+            end if
+
             call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, &
                               Uw_p, &
-                              .false., .false., ac)
+                              .false., Nml%do_freezing_for_cape, ac)
             Don_cape%plfc(i,j) = ac%plfc
             Don_cape%plzb(i,j) = ac%plnb
             Don_cape%plcl(i,j) = ac%plcl
@@ -143,7 +163,8 @@ end subroutine don_c_def_conv_env_miz
 subroutine don_d_integ_cu_ensemble_miz             &
         (nlev_lsm, nlev_hires, ntr, me, diag_unit, debug_ijt, Param,   &
          Col_diag, Nml, Initialized, temp_c, mixing_ratio_c, pfull_c, & 
-         phalf_c, sd, Uw_p, ac, cp, ct, tracers_c, sfc_sh_flux_c,   &
+         phalf_c, pblht, tkemiz, qstar, land, coldT, delt, &
+         sd, Uw_p, ac, cp, ct, tracers_c, sfc_sh_flux_c,   &
          sfc_vapor_flux_c, sfc_tracer_flux_c, plzb_c, exit_flag_c, &
          ensmbl_precip, ensmbl_cond, ensmbl_anvil_cond, pb, pt_ens,  &
          ampta1, amax, emsm, rlsm, cld_press, ensmbl_melt,  &
@@ -172,7 +193,7 @@ use donner_types_mod,     only : donner_initialized_type,   &
                                  donner_param_type, donner_nml_type, &
                                  donner_column_diag_type
 use  conv_utilities_k_mod,only : qsat_k, exn_k, adi_cloud_k, adicloud, &
-                                 sounding, uw_params
+                                 sounding, uw_params, qt_parcel_k
 use  conv_plumes_k_mod,   only : cumulus_plume_k, cumulus_tend_k, &
                                  cplume, ctend, cpnlist, cwetdep_type
 
@@ -191,6 +212,9 @@ real,    dimension(nlev_lsm),      intent(in)    :: temp_c,   &
                                                     mixing_ratio_c,   &
                                                     pfull_c
 real,    dimension(nlev_lsm+1),    intent(in)    :: phalf_c
+real,                              intent(in)    :: pblht, tkemiz,  &
+                                                    qstar, land, delt
+logical,                           intent(in)    :: coldT
 type(sounding),                    intent(inout) :: sd
 type(uw_params),                    intent(inout) :: Uw_p
 type(adicloud),                    intent(inout) :: ac
@@ -639,7 +663,7 @@ character(len=*),                  intent(out)   :: ermesg
                    rintsum2, intgl_in, intgl_out, alphaw, tb, alpp,   &
                    pcsave, rsc, ensmbl_cld_top_area  
 
-      real    :: qs, tp, qp, pp, chi, rhtmp !miz
+      real    :: qs, tp, qp, pp, chi, rhtmp, frac0 !miz
 
       real            :: dz, zsrc, psrc, hlsrc, thcsrc, qctsrc, tvtmp
       real            :: rkm, cbmf, wrel, scaleh
@@ -820,9 +844,16 @@ character(len=*),                  intent(out)   :: ermesg
       thcsrc=sd%thc(k)
       qctsrc=sd%qct(k)
       hlsrc =sd%hl (k)
+      frac0 = Nml%frac
+      if (Nml%do_lands) then
+        frac0 = Nml%frac * ( 1.- 0.5 * sd%land)
+        frac0 = Nml%frac * ( 500. / max(pblht, 500.))
+        qctsrc = qt_parcel_k (qctsrc, sd%qs(k), qstar, tkemiz,  &
+                              sd%land, Nml%gama)
+      endif
       call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd,   &
                         Uw_p, &
-                        .false., .false., ac)
+                        .false., Nml%do_freezing_for_cape, ac)
 
 !--------------------------------------------------------------------
 !    loop over the KPAR members of the cumulus ensemble.
@@ -906,7 +937,7 @@ character(len=*),                  intent(out)   :: ermesg
                                        size(Initialized%wetdep(:)) )
         endif
 
-        rkm = 2.*alpp*Nml%frac; scaleh = 1000.; wrel = 0.5
+        rkm = 2.*alpp*frac0; scaleh = 1000.; wrel = 0.5
         if(ac % plcl .gt. sd % pinv)then
            krel    = sd % kinv
         else
@@ -958,7 +989,11 @@ character(len=*),                  intent(out)   :: ermesg
         cell_freeze= dfr_miz
 
         if (Nml%do_donner_lscloud) then
-           evap_rate  =-dpf_miz*(1. - (cell_precip_miz/cu_miz))
+          if (cu_miz > 0.0) then
+            evap_rate  =-dpf_miz*(1. - (cell_precip_miz/cu_miz))
+          else
+            evap_rate = 0.0
+          endif
         else
            ecd        =ct%qlten/(Param%cloud_base_radius**2)
            ece        =ct%qiten/(Param%cloud_base_radius**2)
@@ -1302,7 +1337,8 @@ character(len=*),                  intent(out)   :: ermesg
 
 subroutine don_d_determine_cloud_area_miz            &
          (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit, debug_ijt,  &
-          Param, Nml, tracers, pfull, zfull, phalf, zhalf, sd, Uw_p, &
+          Param, Nml, tracers, pfull, zfull, phalf, zhalf, &
+          tkemiz, qstar, land, coldT, sd, Uw_p, &
           ac, max_depletion_rate, dcape, amax, dise_v, disa_v,  &
           pfull_c, temp_c, mixing_ratio_c, env_t, env_r, parcel_t,  &
           parcel_r, cape_p, exit_flag, amos, a1, ermesg)
@@ -1329,6 +1365,8 @@ real,                         intent(in)    :: max_depletion_rate, dcape, amax
 real, dimension(nlev_lsm),    intent(in)    :: dise_v, disa_v, pfull_c, temp_c, mixing_ratio_c 
 real, dimension(nlev_lsm),    intent(in)    :: pfull, zfull
 real, dimension(nlev_lsm+1),  intent(in)    :: phalf, zhalf !miz
+real,                         intent(in)    :: tkemiz, qstar, land !miz
+logical,                      intent(in)    :: coldT !miz
 !++++yim
 real, dimension(nlev_lsm,ntr),    intent(in)    :: tracers
 type(sounding),               intent(inout) :: sd !miz
@@ -1411,7 +1449,8 @@ integer                     :: k
 !--------------------------------------------------------------------
       call cu_clo_cumulus_closure_miz   &
            (nlev_lsm, ntr, dt, diag_unit, debug_ijt, Param, tracers, &
-            dcape, pfull, zfull, phalf, zhalf, sd, Uw_p, ac,       &!miz
+            dcape, pfull, zfull, phalf, zhalf, tkemiz, qstar, land, &
+            coldT, sd, Uw_p, ac, Nml,        &!miz
             cape_p, qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, &
             rl_v, parcel_r, env_t, parcel_t, a1, ermesg)     
 
@@ -1541,7 +1580,8 @@ integer                     :: k
 
 subroutine cu_clo_cumulus_closure_miz   &
          (nlev_lsm, ntr, dt, diag_unit, debug_ijt, Param, tracers, &
-          dcape, pfull, zfull, phalf, zhalf, sd, Uw_p, ac, cape_p, &
+          dcape, pfull, zfull, phalf, zhalf, tkemiz, qstar, land,  &
+          coldT, sd, Uw_p, ac, Nml, cape_p, &!miz
           qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, rl_v, parcel_r,   &
           env_t, parcel_t, a1, ermesg)
 
@@ -1550,10 +1590,10 @@ subroutine cu_clo_cumulus_closure_miz   &
 !    cumulus parameterization. see LJD notes, "Cu Closure D," 6/11/97
 !---------------------------------------------------------------------
  
-use donner_types_mod,     only : donner_param_type
+use donner_types_mod,     only : donner_param_type, donner_nml_type
 use conv_utilities_k_mod, only : pack_sd_lsm_k, extend_sd_k,  &
                                  adi_cloud_k, sounding, adicloud, &
-                                 uw_params
+                                 uw_params, qt_parcel_k
 
 implicit none
 
@@ -1564,7 +1604,10 @@ real,                           intent(in)  :: dt
 integer,                        intent(in)  :: diag_unit
 logical,                        intent(in)  :: debug_ijt
 type(donner_param_type),        intent(in)  :: Param
+type(donner_nml_type),          intent(in)  :: Nml
 real,                           intent(in)  :: dcape
+real,                           intent(in)  :: tkemiz, qstar, land
+logical,                        intent(in)  :: coldT
 
 real, dimension(nlev_lsm),      intent(in)    :: pfull, zfull !miz
 !++++yim
@@ -1633,6 +1676,7 @@ character(len=*),               intent(out) :: ermesg
                   sum2, rilak, rilbk, rilck, rilakm, rilbkm, rilckm, &
                   rila, rilb, rilc, ri2ak, ri2akm, ri2a, sum1, plcl, &
                   plfc, plzb, dumcoin, dumxcape
+      real     :: zsrc, psrc, hlsrc, thcsrc, qctsrc
       integer  :: k     
 
       ermesg = ' '
@@ -1713,13 +1757,22 @@ character(len=*),               intent(out) :: ermesg
 !miz
 
       call pack_sd_lsm_k      &
-               (dt, pfull, phalf, zfull, zhalf, ttt, rrr, tracers, sd)
+               (Nml%do_lands, land, coldT, dt, pfull, phalf, zfull,  &
+                zhalf, ttt, rrr, tracers, sd)
       sd%t(1) =sd%t (1)-1.0
       sd%qv(1)=sd%qv(1)-0.01*sd%qv(1)
       call extend_sd_k (sd, 1000., .false., Uw_p)
-      call adi_cloud_k   &
-               (sd%zs(1), sd%ps(1), sd%hl(1), sd%thc(1), sd%qct(1), &
-                sd, Uw_p, .false., .false., ac)
+      zsrc  =sd%zs (1)
+      psrc  =sd%ps (1)
+      thcsrc=sd%thc(1)
+      qctsrc=sd%qct(1)
+      hlsrc =sd%hl (1)
+      if (Nml%do_lands) then
+        qctsrc = qt_parcel_k (qctsrc, sd%qs(1), qstar, tkemiz,  &
+                              sd%land, Nml%gama)
+      endif
+      call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, &
+                        .false., Nml%do_freezing_for_closure, ac)
       pert_parcel_r=ac%qv(:)/(1.-ac%qv(:))
       pert_parcel_t=ac%t (:)
 !miz
@@ -1877,7 +1930,11 @@ character(len=*),               intent(out) :: ermesg
       else
         ri1 = Param%rdgas*ri1
         ri2 = Param%rdgas*ri2
-        a1  = -(ri2 + dcape)/ri1
+        if (Nml%do_dcape) then
+          a1  = -(ri2 + dcape)/ri1
+        else
+          a1  = -(ri2 + ac%cape/Nml%tau)/ri1
+        end if
       endif
 
 !--------------------------------------------------------------------
@@ -2873,7 +2930,7 @@ character(len=128),              intent(out) :: ermesg
 !    if necessary.
 !----------------------------------------------------------------------
       if (pzm == 0.) pzm = pt_ens
-      if (pzm <= pztm) pzm = pztm - dp
+      if (pzm <= pztm - dp) pzm = pztm - dp
 
 !---------------------------------------------------------------------
 !    if in diagnostics column, output the pressure at the base of the
@@ -3053,14 +3110,18 @@ character(len=128),              intent(out) :: ermesg
 
 !----------------------------------------------------------------------
 !    add the  source level value to the array accumulating the  profile
-!    of total updraft source at each level (wmps).
-!----------------------------------------------------------------------
-!! ????? SHOULD THIS BE DONE ?? , OR HAS THE REDISTRIBUTION TAKEN CARE
-!        OF THIS  ??????
+!    of total updraft source at each level (wmps). the if loop prevents
+!    the inclusion of moisture which is available but above the top of 
+!    the mesoscale updraft (the level of zero bupoyancy usually).  wmps
+!    will only be non-zero at layers within the mesoscale updraft, but 
+!    owm may be non-zero in layers above the updraft.
+!--------------------------------------------------------------------
+      if (wmps(k) /= 0.0) then
         wmps(k) = wmps(k) + owm(k)
         if (do_donner_tracer) then
           wtp(k,:) = wtp(k,:) + otm(k,:)
         endif
+      endif
       end do   ! (end of k loop)
 
 !--------------------------------------------------------------------
@@ -4568,7 +4629,7 @@ character(len=*),             intent(out) :: ermesg
 
 subroutine don_l_lscloud_driver_miz   &
          (isize, jsize, nlev_lsm, cloud_tracers_present, Param,  &
-          Col_diag, pfull, temp,   &
+          Col_diag, pfull, temp,  exit_flag,  &
           mixing_ratio, qlin, qiin, qain, phalf, Don_conv, &
           donner_humidity_factor, donner_humidity_area,  &
            dql, dqi, dqa, &
@@ -4601,6 +4662,7 @@ type(donner_column_diag_type),                    &
 real, dimension(isize,jsize,nlev_lsm),         &
                             intent(in)    :: pfull, temp, mixing_ratio, &
                                              qlin, qiin, qain
+logical, dimension(isize, jsize), intent(in) :: exit_flag
 real, dimension(isize,jsize,nlev_lsm+1),        &
                             intent(in)    :: phalf 
 type(donner_conv_type),     intent(inout) :: Don_conv
@@ -4695,7 +4757,7 @@ character(len=*),           intent(out)   :: ermesg
       call don_l_adjust_tiedtke_inputs_k    &
            (isize, jsize, nlev_lsm, Param, Col_diag, pfull,temp,   &
             mixing_ratio, phalf, Don_conv, donner_humidity_factor, &
-            donner_humidity_area, ermesg)
+            donner_humidity_area, exit_flag, ermesg)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -4978,14 +5040,13 @@ character(len=*),                 intent(out)   :: ermesg
                 end select
               end do
             endif 
-
 !---------------------------------------------------------------------
 !    if deep convection is not present in the column, define the output
 !    fields appropriately.
 !---------------------------------------------------------------------
           else
             total_precip(i,j) = 0.
-            do k=1,nlev_lsm                           
+            do k=1,nlev_lsm
               temperature_forcing(i,j,k) = 0.
               moisture_forcing(i,j,k) = 0.
             end do

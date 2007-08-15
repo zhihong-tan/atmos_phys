@@ -15,15 +15,14 @@ use          fms_mod, only: file_exist, open_namelist_file,            &
 use       fms_io_mod, only: read_data, write_data, field_size
 use    constants_mod, only: Grav, Cp_Air, Rdgas, Pi, Radian
 use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
-                            horiz_interp, horiz_interp_del
-use interpolator_mod, only: create_horiz_interp_new
+                            horiz_interp_new, horiz_interp, horiz_interp_del
 
 implicit none
 
 private
 
-character(len=128) :: version = '$Id: topo_drag.F90,v 13.0.4.2 2007/05/25 16:32:08 vb Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+character(len=128) :: version = '$Id: topo_drag.F90,v 15.0 2007/08/14 03:56:19 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 
 logical :: module_is_initialized = .false.
 
@@ -654,7 +653,7 @@ integer :: siz(4)
      ! Note: interp_method will be conservative for lat/lon grid
      !       and bilinear for all other grids
      call horiz_interp_init
-     call create_horiz_interp_new ( Interp, xdat, ydat, lonb, latb )
+     call horiz_interp_new ( Interp, xdat, ydat, lonb, latb )
 
      call read_data (topography_file, 'hpos', zdat, no_domain=.true.)
 

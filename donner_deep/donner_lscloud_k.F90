@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_lscloud_k.F90,v 14.0.2.1 2007/05/04 08:45:06 rsh Exp $
+!  $Id: donner_lscloud_k.F90,v 15.0 2007/08/14 03:53:22 fms Exp $
 
 !module donner_lscloud_inter_mod
 
@@ -13,7 +13,7 @@
 
 subroutine don_l_lscloud_driver_k   &
          (isize, jsize, nlev_lsm, cloud_tracers_present, Param,  &
-          Col_diag, pfull, temp,   &
+          Col_diag, pfull, temp, exit_flag,   &
           mixing_ratio, qlin, qiin, qain, phalf, Don_conv, &
           donner_humidity_factor, donner_humidity_area, dql, dqi, dqa, &
           ermesg) 
@@ -42,6 +42,7 @@ logical,                    intent(in)    :: cloud_tracers_present
 type(donner_param_type),    intent(in)    :: Param
 type(donner_column_diag_type),                    &
                             intent(in)    :: Col_diag
+logical, dimension(isize,jsize), intent(in) :: exit_flag
 real, dimension(isize,jsize,nlev_lsm),         &
                             intent(in)    :: pfull, temp, mixing_ratio, &
                                              qlin, qiin, qain
@@ -118,7 +119,7 @@ character(len=*),           intent(out)   :: ermesg
 !---------------------------------------------------------------------
       call don_l_define_mass_flux_k    &
            (isize, jsize, nlev_lsm, pfull, phalf, Don_conv,   &
-            dmeso_3d, mhalf_3d, ermesg)
+            dmeso_3d, mhalf_3d, exit_flag, ermesg)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -136,7 +137,7 @@ character(len=*),           intent(out)   :: ermesg
       call don_l_adjust_tiedtke_inputs_k    &
            (isize, jsize, nlev_lsm, Param, Col_diag, pfull,temp,   &
             mixing_ratio, phalf, Don_conv, donner_humidity_factor, &
-            donner_humidity_area, ermesg)
+            donner_humidity_area,exit_flag,  ermesg)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -174,7 +175,7 @@ end subroutine don_l_lscloud_driver_k
 
 subroutine don_l_define_mass_flux_k   &
          (isize, jsize, nlev_lsm, pfull, phalf, Don_conv, dmeso_3d,   &
-          mhalf_3d, ermesg)
+          mhalf_3d, exit_flag, ermesg)
 
 !---------------------------------------------------------------------
 !    subroutine define_donner_mass_flux calculates the detrainment rate
@@ -194,6 +195,7 @@ real, dimension(isize,jsize,nlev_lsm+1), intent(in)    :: phalf
 type(donner_conv_type),                  intent(inout) :: Don_conv
 real, dimension(isize,jsize,nlev_lsm),   intent(out)   :: dmeso_3d
 real, dimension(isize,jsize,nlev_lsm+1), intent(out)   :: mhalf_3d
+logical, dimension(isize, jsize), intent(in)   :: exit_flag
 character(len=*),                        intent(out)   :: ermesg
 
 !----------------------------------------------------------------------
@@ -235,7 +237,8 @@ character(len=*),                        intent(out)   :: ermesg
       do k=1,nlev_lsm
         do j=1,jsize
           do i=1,isize
-            if (Don_conv%xice(i,j,k) >= 1.0e-10) then
+            if ( .not. exit_flag(i,j) .and. &
+                 Don_conv%xice(i,j,k) >= 1.0e-10) then
               dmeso_3d(i,j,k) = Don_conv%emes(i,j,k)/ &
                                 Don_conv%xice(i,j,k)
             else
@@ -252,9 +255,10 @@ character(len=*),                        intent(out)   :: ermesg
       do k=1,nlev_lsm-1
         do j=1,jsize
           do i=1,isize
-            if ((Don_conv%uceml(i,j,k) <= 1.0e-10)  .and.   &
+            if (((Don_conv%uceml(i,j,k) <= 1.0e-10)  .and.   &
                 (Don_conv%umeml(i,j,k) <= 1.0e-10) .and. &
-                (Don_conv%dmeml(i,j,k) <= 1.0e-10) ) then
+                (Don_conv%dmeml(i,j,k) <= 1.0e-10)) .or. &
+                  exit_flag(i,j)        ) then
               mhalf_3d(i,j,k)   = 0.
               mhalf_3d(i,j,k+1) = 0.
             else
@@ -297,7 +301,7 @@ end subroutine don_l_define_mass_flux_k
 subroutine don_l_adjust_tiedtke_inputs_k   &
          (isize, jsize, nlev_lsm, Param, Col_diag, pfull, temp, &
           mixing_ratio, phalf, Don_conv, donner_humidity_factor, &
-          donner_humidity_area, ermesg) 
+          donner_humidity_area, exit_flag, ermesg) 
 
 !---------------------------------------------------------------------
 !    subroutine adjust_tiedtke_inputs calculates the adjustments to 
@@ -318,6 +322,7 @@ integer,                     intent(in)     :: isize, jsize, nlev_lsm
 type(donner_param_type),     intent(in)     :: Param
 type(donner_column_diag_type),                                      &
                              intent(in)     :: Col_diag
+logical, dimension(isize,jsize), intent(in) :: exit_flag   
 real, dimension(isize,jsize,nlev_lsm),                              &
                              intent(in)     :: pfull, temp, mixing_ratio
 real, dimension(isize,jsize,nlev_lsm+1),                            &
@@ -389,8 +394,9 @@ character(len=*),            intent(out)    :: ermesg
 !    the output fields are given non-default values only in grid boxes
 !    where donner_deep_mod has produced either cell or mesoscale cloud.
 !---------------------------------------------------------------------
-            if (Don_conv%cual(i,j,k)  > 0.0 .or. &
-                Don_conv%ampta1(i,j) > 0.0) then
+            if ( .not. exit_flag(i,j) .and. &
+                 (Don_conv%cual(i,j,k)  > 0.0 .or. &
+                  Don_conv%ampta1(i,j) > 0.0)) then
 
 !-------------------------------------------------------------------
 !    define the pressure at the base of the mesoscale updraft (pzm), 

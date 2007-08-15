@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 14.0.2.1.2.1 2007/05/15 12:13:40 rsh Exp $
+!  $Id: donner_types.h,v 15.0 2007/08/14 03:53:27 fms Exp $
 
 !#####################################################################
  
@@ -78,6 +78,8 @@ type donner_initialized_type
 !                               convection calculation
 !   conv_alarm                  time remaining until next convection 
 !                               calculation [ sec ]
+!   using_unified_closure       use cbmf from uw shallow in donner 
+!                               closure?
 
 
 logical  :: do_donner_tracer
@@ -87,6 +89,7 @@ logical  :: do_input_cell_ice_size
 logical  :: do_default_cell_ice_size
 logical  :: coldstart
 logical  :: monitor_output
+logical  :: using_unified_closure
 
 integer  :: total_pts
 integer  :: pts_processed_conv
@@ -263,6 +266,10 @@ logical             ::  allow_mesoscale_circulation
 logical             ::  do_donner_cape
 logical             ::  do_donner_plume
 logical             ::  do_donner_closure
+logical             ::  do_dcape
+logical             ::  do_lands
+real                ::  gama
+real                ::  tau
 logical             ::  do_ice
 real                ::  atopevap
 logical             ::  do_donner_lscloud
@@ -281,6 +288,14 @@ real                ::  meso_liquid_eff_diam_input
 logical             ::  do_average
 logical             ::  use_memphis_size_limits
 real                ::  wmin_ratio
+logical             :: do_freezing_for_cape
+real                :: tfre_for_cape
+real                :: dfre_for_cape
+real                :: rmuz_for_cape
+logical             :: do_freezing_for_closure
+real                :: tfre_for_closure
+real                :: dfre_for_closure
+real                :: rmuz_for_closure
 
 end type donner_nml_type
 

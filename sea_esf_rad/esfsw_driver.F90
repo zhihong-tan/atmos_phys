@@ -64,8 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 14.0 2007/03/15 22:05:44 fms Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 15.0 2007/08/14 03:54:45 fms Exp $'
+character(len=128)  :: tagname =  '$Name: omsk $'
 
 
 !---------------------------------------------------------------------
@@ -2626,6 +2626,17 @@ end if
               endif
             end do
           end do
+        if (nband > NIRBANDS) then
+          do j=JSRAD,JERAD
+            do i=ISRAD,IERAD
+              if (daylight(i,j) ) then
+                Sw_output%dfsw_vis_sfc_clr(i,j) =   &
+                                Sw_output%dfsw_vis_sfc_clr(i,j) +   &
+                              sumtrclr(i,j,KERAD+1)*solarflux(i,j)
+              endif
+            end do
+          end do
+        endif
         if (nband == Solar_spect%visible_band_indx) then
           Sw_output%bdy_flx_clr(:,:,1) = sumreclr(:,:,1) *   &
                                          solarflux(:,:)

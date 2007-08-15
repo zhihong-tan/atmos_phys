@@ -67,8 +67,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 14.0.2.1.2.1.2.1 2007/05/29 15:50:45 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 15.0 2007/08/14 03:53:16 fms Exp $'
+character(len=128)  :: tagname =  '$Name: omsk $'
 
 
 !--------------------------------------------------------------------
@@ -113,9 +113,41 @@ logical             :: allow_mesoscale_circulation = .true.
                              ! a mesoscale circulation will be included 
                              ! in those columns which satisfy the 
                              ! required conditions ?
+ real               ::  CDEEP_CV = 100.   
+                        ! maximum value of convective inhibition (J/kg) 
+                        ! that allows convection. Value of 10 suggested 
+                        ! by Table 2 in Thompson et al. (1979, JAS).
+logical             :: do_freezing_for_cape = .false.
+                        ! include freezing in cape parcel calculation
+real                :: tfre_for_cape = 258.0
+                        ! temperature at which freezing begins for   
+                        ! parcel in cape parcel calculation [ deg K ]
+real                :: dfre_for_cape =  10.
+                        ! all liquid freezes between tfre_for_cape and 
+                        ! tfre_for_cape + dfre_for_cape  in cape parcel
+                        ! calculation [ deg K ]
+real                :: rmuz_for_cape = 0.0       
+                        ! parcel entrainment factor used in cape parcel
+                        ! calculation
+logical             :: do_freezing_for_closure = .false.
+                        ! include freezing in closure calculation
+real                :: tfre_for_closure = 258.0
+                        ! temperature at which freezing begins for
+                        ! parcel in closure calculation [ deg K ]
+real                :: dfre_for_closure =  10.
+                        ! all liquid freezes tfre_for_closure and 
+                        ! tfre_for_closure + dfre_for_closure in  
+                        ! closure calculation [ deg K ]
+real                :: rmuz_for_closure = 0.0     
+                        ! parcel entrainment factor used in cape closure
+                        ! calculation
 logical             :: do_donner_cape    = .true.
 logical             :: do_donner_plume   = .true.
 logical             :: do_donner_closure = .true.
+logical             :: do_dcape          = .true.
+logical             :: do_lands          = .false.
+real                :: tau               = 28800.
+real                :: gama              = 0.0001
 logical             :: do_ice            = .false.
 real                :: atopevap          = 0.
 logical             :: do_donner_lscloud = .true.
@@ -273,9 +305,18 @@ namelist / donner_deep_nml /      &
                             model_levels_in_sfcbl, &
                             parcel_launch_level, &
                             allow_mesoscale_circulation, &
+                            cdeep_cv,         &
+                            do_freezing_for_cape, tfre_for_cape, &
+                            dfre_for_cape, rmuz_for_cape, &
+                            do_freezing_for_closure, tfre_for_closure, &
+                            dfre_for_closure, rmuz_for_closure, &
                             do_donner_cape,   &!miz
                             do_donner_plume,  &!miz
                             do_donner_closure,&!miz
+                            do_dcape,         &!miz
+                            do_lands,         &!miz
+                            tau,              &!miz
+                            gama,             &!miz
                             do_ice,           &!miz
                             atopevap,         &!miz
                             do_donner_lscloud,&!miz
@@ -357,12 +398,6 @@ real,                       &
                         ! minimum pressure difference between level of 
                         ! free convection and level of zero buoyancy 
                         ! needed for deep convection to occur [ Pa ].
-real,                       &
-  parameter                 &
-             ::  CDEEP_CV = 100.   
-                        ! maximum value of convective inhibition (J/kg) 
-                        ! that allows convection. Value of 10 suggested 
-                        ! by Table 2 in Thompson et al. (1979, JAS).
 real,                       &
   parameter                 &
              ::  MAX_ENTRAINMENT_CONSTANT_GATE = 0.0915
@@ -615,6 +650,9 @@ integer, dimension(3)  :: restart_versions = (/ 8, 9, 10 /)
 !                   to connect these diagnostics to the diag_table
 !
 
+integer  :: id_vaporint, id_condensint, id_precipint, id_diffint
+integer  :: id_condenisint, id_condenlsint
+integer  :: id_enthint, id_lprcp, id_lcondensint, id_enthdiffint
 integer    :: id_cemetf_deep, id_ceefc_deep, id_cecon_deep, &
               id_cemfc_deep, id_cememf_deep, id_cememf_mod_deep, &
               id_cual_deep, id_fre_deep, id_elt_deep, &
@@ -714,18 +752,19 @@ logical :: module_is_initialized = .false.
 !#####################################################################
 
 subroutine donner_deep_init (lonb, latb, pref, axes, Time,  &
-                             tracers_in_donner)
+                             tracers_in_donner, using_unified_closure)
 
 !---------------------------------------------------------------------
 !    donner_deep_init is the constructor for donner_deep_mod.
 !---------------------------------------------------------------------
 
 !--------------------------------------------------------------------
-real,            dimension(:,:), intent(in) :: lonb, latb
-real,            dimension(:),   intent(in) :: pref
-integer,         dimension(4),   intent(in) :: axes
-type(time_type),                 intent(in) :: Time
-logical,         dimension(:),   intent(in) :: tracers_in_donner
+real,            dimension(:,:), intent(in)   :: lonb, latb
+real,            dimension(:),   intent(in)   :: pref
+integer,         dimension(4),   intent(in)   :: axes
+type(time_type),                 intent(in)   :: Time
+logical,         dimension(:),   intent(in)   :: tracers_in_donner
+logical,                         intent(in)   :: using_unified_closure
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
@@ -751,7 +790,7 @@ logical,         dimension(:),   intent(in) :: tracers_in_donner
       integer                             :: unit, ierr, io
       integer                             :: idf, jdf, nlev, ntracers
       integer                             :: secs, days
-      logical, dimension(size(latb,2)-1)  :: do_column_diagnostics
+      logical, dimension(size(latb,2)-1) :: do_column_diagnostics
       integer                             :: k, n, nn
 !++lwh
       logical                             :: flag
@@ -890,6 +929,25 @@ logical,         dimension(:),   intent(in) :: tracers_in_donner
              & cell_ice_size_type must be input or default',  FATAL)
       endif
 
+      if (do_donner_cape .and. .not. do_dcape) then
+        call error_mesg ('donner_deep_mod', &
+         'if do_donner_cape is .true., then do_dcape must be .true.; &  
+               & do_dcape may only be .false. in donner_lite', FATAL)
+      endif
+        
+      if (do_donner_plume .and. do_lands) then
+        call error_mesg ('donner_deep_mod', & 'setting do_lands &
+              &true in donner full currently has no effect', FATAL)   
+      endif
+ 
+
+!---------------------------------------------------------------------
+!    place the logical input argument indicating whether the cloud 
+!    base mass flux calculated by uw_conv_mod is also to be used 
+!    in defining the closure for donner deep convection in the 
+!    donner_initialized_type variable Initialized.
+!---------------------------------------------------------------------
+      Initialized%using_unified_closure = using_unified_closure
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
@@ -952,8 +1010,8 @@ logical,         dimension(:),   intent(in) :: tracers_in_donner
 !    the domain on this processor, nlev is the number of model layers.
 !-------------------------------------------------------------------
       nlev = size(pref(:)) - 1
-      idf  = size(lonb,1)  - 1
-      jdf  = size(latb,2)  - 1
+      idf  = size(lonb,1) - 1
+      jdf  = size(latb,2) - 1
 
 !---------------------------------------------------------------------
 !    initialize the points processed counter. define the total number 
@@ -1268,6 +1326,10 @@ logical,         dimension(:),   intent(in) :: tracers_in_donner
       Nml%do_donner_cape              = do_donner_cape    !miz
       Nml%do_donner_plume             = do_donner_plume   !miz
       Nml%do_donner_closure           = do_donner_closure !miz
+      Nml%do_dcape                    = do_dcape          !miz
+      Nml%do_lands                    = do_lands          !miz
+      Nml%tau                         = tau               !miz
+      Nml%gama                        = gama              !miz
       Nml%do_ice                      = do_ice            !miz
       Nml%atopevap                    = atopevap          !miz
       Nml%do_donner_lscloud           = do_donner_lscloud !miz
@@ -1287,6 +1349,14 @@ logical,         dimension(:),   intent(in) :: tracers_in_donner
       Nml%do_average                  = do_average
       Nml%use_memphis_size_limits     = use_memphis_size_limits
       Nml%wmin_ratio                  = wmin_ratio
+      Nml%do_freezing_for_cape         = do_freezing_for_cape
+      Nml%tfre_for_cape               = tfre_for_cape
+      Nml%dfre_for_cape               = dfre_for_cape
+      Nml%rmuz_for_cape               = rmuz_for_cape
+      Nml%do_freezing_for_closure     = do_freezing_for_closure
+      Nml%tfre_for_closure            = tfre_for_closure
+      Nml%dfre_for_closure            = dfre_for_closure
+      Nml%rmuz_for_closure            = rmuz_for_closure
 
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -1318,9 +1388,10 @@ end subroutine donner_deep_init
 !###################################################################
 
 subroutine donner_deep (is, ie, js, je, dt, temp, mixing_ratio, pfull, &
-                        phalf, zfull, zhalf, omega, pblht, &
-                        land, sfc_sh_flux, sfc_vapor_flux,&
-                        tr_flux, tracers, Time, cell_cld_frac,  &
+                        phalf, zfull, zhalf, omega, pblht, tkemiz, &
+                        qstar, coldT, land, sfc_sh_flux,  &
+                        sfc_vapor_flux,&               !miz
+                        tr_flux, tracers, Time, cbmf, cell_cld_frac,  &
                         cell_liq_amt, cell_liq_size, cell_ice_amt,   &
                         cell_ice_size, cell_droplet_number, &
                         meso_cld_frac, meso_liq_amt, &
@@ -1362,13 +1433,15 @@ integer,                      intent(in)    :: is, ie, js, je
 real,                         intent(in)    :: dt
 real, dimension(:,:,:),       intent(in)    :: temp, mixing_ratio, &
                                                pfull, phalf, zfull, zhalf, omega
-real, dimension(:,:),         intent(in)    :: pblht
+real, dimension(:,:),         intent(in)    :: pblht, tkemiz, qstar
 real, dimension(:,:),         intent(in)    :: land
+logical, dimension(:,:),      intent(in)    :: coldT
 real, dimension(:,:),         intent(in)    :: sfc_sh_flux, &
                                                sfc_vapor_flux
 real, dimension(:,:,:),       intent(in)    :: tr_flux 
 real, dimension(:,:,:,:),     intent(in)    :: tracers 
 type(time_type),              intent(in)    :: Time
+real, dimension(:,:),         intent(inout)    :: cbmf              
 real, dimension(:,:,:),       intent(inout) :: cell_cld_frac,  &
                                                cell_liq_amt,  &
                                                cell_liq_size, &
@@ -1502,11 +1575,15 @@ real, dimension(:,:,:),       intent(out),               &
 
       real,    dimension (size(temp,1), size(temp,2), size(temp,3)) :: &
                        temperature_forcing, moisture_forcing, pmass, &
+!                      pmass2, &
                        qlin_arg, qiin_arg, qain_arg, delta_ql_arg, & 
                        delta_qi_arg, delta_qa_arg
 
       real,    dimension (size(temp,1), size(temp,2)) ::                &
-                       parcel_rise, total_precip
+                       parcel_rise, total_precip, &
+                       enthint, lcondensint, enthdiffint,  &
+                       vaporint, condensint, precipint, diffint, &
+                       condenisint, condenlsint
 
       type(donner_conv_type)            :: Don_conv
       type(donner_cape_type)            :: Don_cape
@@ -1518,6 +1595,7 @@ real, dimension(:,:,:),       intent(out),               &
       logical                           :: cloud_tracers_present
       integer                           :: num_cld_tracers
       integer                           :: k   
+      logical                           :: used
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -1622,9 +1700,9 @@ real, dimension(:,:,:),       intent(out),               &
 !-----------------------------------------------------------------------
       call don_d_donner_deep_k   &
            (is, ie, js, je, isize, jsize, nlev_lsm, NLEV_HIRES, ntr, me,&
-            cloud_tracers_present,    &
+            cloud_tracers_present,  cbmf,    &
             dt, Param, Nml, temp, mixing_ratio, pfull,    &
-            phalf, zfull, zhalf, omega, pblht,   &
+            phalf, zfull, zhalf, omega, pblht, tkemiz, qstar, coldT,&
 !           qlin, qiin, qain, land, sfc_sh_flux, sfc_vapor_flux,    &
             qlin_arg, qiin_arg, qain_arg, land, sfc_sh_flux,  &
             sfc_vapor_flux,    &
@@ -1674,6 +1752,40 @@ real, dimension(:,:,:),       intent(out),               &
         do k=1,nlev_lsm
           pmass(:,:,k) = (phalf(:,:,k+1) - phalf(:,:,k))/Param%GRAV   
         end do
+        vaporint = 0.
+        lcondensint = 0.
+        condensint = 0.
+        condenlsint = 0.
+        condenisint = 0.
+        precipint = 0.
+        diffint = 0.
+        enthint = 0.
+        enthdiffint = 0.
+        do k=1,nlev_lsm
+        vaporint(:,:) = vaporint(:,:) + pmass (:,:,k)*delta_vapor(:,:,k)
+        enthint(:,:) = enthint(:,:) + CP_AIR*pmass (:,:,k)*delta_temp(:,:,k)
+        condensint(:,:) = condensint(:,:) + pmass(:,:,k) *  &
+                          (delta_ql(:,:,k) + delta_qi(:,:,k))
+        lcondensint(:,:) = lcondensint(:,:) + pmass(:,:,k) *  &
+                          (HLV*delta_ql(:,:,k) + HLS*delta_qi(:,:,k))
+        condenlsint(:,:) = condenlsint(:,:) + pmass(:,:,k) *  &
+                          (delta_ql(:,:,k)                  )
+        condenisint(:,:) = condenisint(:,:) + pmass(:,:,k) *  &
+                          (                  delta_qi(:,:,k))
+        end do
+        diffint = vaporint + condenlsint + condenisint + total_precip*1800./86400.
+        enthdiffint = enthint - lcondensint -  HLV*total_precip*1800./86400.
+        used = send_data(id_vaporint, vaporint, Time, is, js)
+        used = send_data(id_condensint, condensint, Time, is, js)
+        used = send_data(id_condenisint, condenisint, Time, is, js)
+        used = send_data(id_condenlsint, condenlsint, Time, is, js)
+        used = send_data(id_precipint, total_precip*1800./86400., Time, is, js)
+        used = send_data(id_diffint, diffint, Time, is, js)
+        used = send_data(id_enthint, enthint, Time, is, js)
+        used = send_data(id_lcondensint, lcondensint, Time, is, js)
+        used = send_data(id_lprcp, HLV*total_precip*1800./86400., Time, is, js)
+        used = send_data(id_enthdiffint, enthdiffint, Time, is, js)
+
         call donner_deep_netcdf (is, ie, js, je, Time, Don_conv,  &
                                  Don_cape, parcel_rise, pmass, &
                                  total_precip, temperature_forcing, &
@@ -1832,6 +1944,46 @@ integer,         dimension(4), intent(in)   :: axes
 !    register the various diagnostic fields.
 !---------------------------------------------------------------------
 
+      id_enthint    = register_diag_field    &
+            (mod_name, 'enthint', axes(1:2),   &
+             Time, 'integrated enthalpy change', 'K/s',   &
+             missing_value=missing_value)
+      id_lcondensint    = register_diag_field    &
+            (mod_name, 'lcondensint', axes(1:2),   &
+             Time, 'integrated condensate change -temp', 'K/s',   &
+             missing_value=missing_value)
+      id_lprcp    = register_diag_field    &
+            (mod_name, 'lprcpint', axes(1:2),   &
+             Time, 'integrated precip -- temp   ', 'K/s',   &
+             missing_value=missing_value)
+      id_enthdiffint    = register_diag_field    &
+            (mod_name, 'enthdiffint', axes(1:2),   &
+             Time, 'enthalpy conservation imbalance      ', 'K/s',   &
+             missing_value=missing_value)
+      id_vaporint    = register_diag_field    &
+            (mod_name, 'vaporint', axes(1:2),   &
+             Time, 'integrated vapor change', 'K/s',   &
+             missing_value=missing_value)
+      id_condenlsint    = register_diag_field    &
+            (mod_name, 'condenlsint', axes(1:2),   &
+             Time, 'integrated liqcondensate change', 'K/s',   &
+             missing_value=missing_value)
+      id_condenisint    = register_diag_field    &
+            (mod_name, 'condenisint', axes(1:2),   &
+             Time, 'integrated ice condensate change', 'K/s',   &
+             missing_value=missing_value)
+      id_condensint    = register_diag_field    &
+            (mod_name, 'condensint', axes(1:2),   &
+             Time, 'integrated condensate change', 'K/s',   &
+             missing_value=missing_value)
+      id_precipint    = register_diag_field    &
+            (mod_name, 'precipint', axes(1:2),   &
+             Time, 'integrated precip           ', 'K/s',   &
+             missing_value=missing_value)
+      id_diffint    = register_diag_field    &
+            (mod_name, 'diffint', axes(1:2),   &
+             Time, 'water conservation imbalance      ', 'K/s',   &
+             missing_value=missing_value)
 !    heating rate:
       id_cemetf_deep = register_diag_field    &
             (mod_name, 'cemetf_deep', axes(1:3),   &

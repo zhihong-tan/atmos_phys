@@ -15,8 +15,8 @@ MODULE CONV_CLOSURES_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_closures.F90,v 14.0.2.1 2007/05/04 08:51:46 rsh Exp $'
-  character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+  character(len=128) :: version = '$Id: conv_closures.F90,v 15.0 2007/08/14 03:56:01 fms Exp $'
+  character(len=128) :: tagname = '$Name: omsk $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -92,7 +92,8 @@ contains
 !#####################################################################
 !#####################################################################
 
-  subroutine cclosure_bretherton(tkeavg, cpn, sd, Uw_p,  ac, cc)
+  subroutine cclosure_bretherton(tkeavg, cpn, sd, Uw_p,  ac, cc, &
+                                 cbmf_unmod)
   
     implicit none
     real,           intent(in)    :: tkeavg
@@ -101,6 +102,7 @@ contains
     type(uw_params), intent(inout)    :: Uw_p
     type(adicloud), intent(in)    :: ac
     type(cclosure), intent(inout) :: cc
+    real,   intent(out), optional :: cbmf_unmod
     
     integer :: k, kl, kmax, id_check
     real    :: sigmaw, rho0lcl, wcrit, erfarg, cbmf, wexp, ufrc, wtw
@@ -118,6 +120,10 @@ contains
        cbmf   = ac % rho0lcl * sigmaw / 2.5066 * exp(-0.5*((wcrit/sigmaw)**2.))
       cbmf   = min(cbmf, ( sd%ps(0) - ac%plcl ) * 0.25 / sd%delt / Uw_p%GRAV)
 
+      if (present (cbmf_unmod)) then
+        cbmf_unmod = MAX(0.0, cbmf)
+      endif
+  
        !Diagnose updraft fraction sqrt(2.) = 1.4142
        erfarg=wcrit / (1.4142 * sigmaw)
        if(erfarg.lt.20.)then

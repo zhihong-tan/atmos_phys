@@ -35,8 +35,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.F90,v 14.0.2.1 2007/05/25 16:31:55 vb Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+character(len=128)  :: version =  '$Id: cg_drag.F90,v 15.0 2007/08/14 03:52:37 fms Exp $'
+character(len=128)  :: tagname =  '$Name: omsk $'
 
 
 
@@ -357,7 +357,7 @@ type(time_type),         intent(in)      :: Time
         endif
       end do
 
-     
+     write(*,*) "mpp_pe(), klevel_of_source",mpp_pe(), klevel_of_source
 
         do j=1,jdf
           lat(:,j)=  0.5*( latb(:,j+1)+latb(:,j) )
@@ -636,7 +636,8 @@ real, dimension(:,:,:), intent(out)     :: gwfcng_x, gwfcng_y
 !----------------------------------------------------------------------
         do j=1,jmax
           do i=1,imax
-            iz0 = source_level(i,j)
+! The following index-offsets are needed in case a physics_window is being used.
+            iz0 = source_level(i +is-1,j+js-1)
             dtdz(i,j,1) = (temp  (i,j,1) - temp  (i,j,2))/    &
                           (zfull(i,j,1) - zfull(i,j,2))
             do k=2,iz0
@@ -1250,8 +1251,9 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
 
       do j=1,size(u,2)
         do i=1,size(u,1)  
-          iz0 = source_level(i,j)
-          ampl= source_amp(i,j)
+! The following index-offsets are needed in case a physics_window is being used.
+          iz0 = source_level(i+is-1,j+js-1)
+          ampl= source_amp(i+is-1,j+js-1)
 
 !--------------------------------------------------------------------
 !    define wave momentum flux (B0) at source level for each phase 

@@ -347,6 +347,7 @@ module strat_cloud_mod
   real              :: om_to_oc       =  1.67
   real              :: N_land         =  250.E+06
   real              :: N_ocean        =  100.E+06
+  real              :: var_limit      = 0.0
   real,   parameter :: rho_ice        =  100.
   real,   parameter :: ELI            =  0.7
   real              :: U_evap         =  1.0
@@ -369,6 +370,7 @@ module strat_cloud_mod
   integer           :: overlap        =  2
   real              :: efact          = 0.0
   real              :: vfact          = 1.0
+  real              :: cfact          = 1.0
   logical           :: do_old_snowmelt= .false.
   logical           :: do_liq_num   = .false.
   logical           :: do_dust_berg   = .false.
@@ -536,11 +538,13 @@ module strat_cloud_mod
 ! </NAMELIST>
 
   NAMELIST /strat_cloud_nml/ do_netcdf_restart,   &
-       U00,u00_profile,rthresh,use_kk_auto,use_mc_auto,use_online_aerosol,sea_salt_scale,om_to_oc,N_land,use_sub_seasalt,&
+       U00,u00_profile,rthresh,use_kk_auto,use_mc_auto,var_limit,  &
+       use_online_aerosol,sea_salt_scale,om_to_oc,N_land, &
+       use_sub_seasalt,&
        N_ocean,U_evap,eros_scale,eros_choice,   &
        eros_scale_c,eros_scale_t,mc_thresh,     &
        diff_thresh,super_choice,tracer_advec,   &
-       qmin,Dmin,num_strat_pts,strat_pts,efact,vfact, &
+       qmin,Dmin,num_strat_pts,strat_pts,efact,vfact, cfact, &
        do_old_snowmelt, do_pdf_clouds, betaP,   &
        qthalfwidth,nsublevels,kmap,kord, do_liq_num, do_dust_berg, N_min
        
@@ -551,11 +555,12 @@ module strat_cloud_mod
   !       DECLARE VERSION NUMBER OF SCHEME
   !
 
-  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 13.1.4.1.2.1 2007/05/16 16:19:57 rsh Exp $'
-  Character(len=128) :: Tagname = '$Name: nalanda_2007_06 $'
+  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 15.0 2007/08/14 03:56:14 fms Exp $'
+  Character(len=128) :: Tagname = '$Name: omsk $'
   logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   !        
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !
   !
@@ -1994,8 +1999,8 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         real, dimension(size(T,1),size(T,2))   :: dprec_clr2cld
         real, dimension(size(T,1),size(T,2))   :: dprec_cld2clr
         real, dimension(size(T,1),size(T,2))   :: N,rad_liq, N3D_col
-        real, dimension(size(T,1),size(T,2),size(T,3)) :: N3D, concen, concen_ss_sub, concen_ss_sup,&
-                                                concen_om, concen_na, concen_an, concen_dust_sub
+        real, dimension(size(T,1),size(T,2),size(T,3)) :: N3D, &
+                                                        concen_dust_sub
         real, dimension(size(T,1),size(T,2))   :: Vfall,lamda_f
         real, dimension(size(T,1),size(T,2))   :: U_clr
         real, dimension(size(T,1),size(T,2))   :: tmp1,tmp2,tmp3,tmp5,drop1,crystal,crystal2
@@ -2389,126 +2394,16 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !       Assign cloud droplet number based on land or ocean point.
         
         N = N_land*LAND + N_ocean*(1.-LAND)
-        if (do_liq_num) then
-        ix = size(ql,1)
-        jx = size(ql,2)
-        kx = size(ql,3)
-        naer = size(Aerosol%aerosol,4)
-      
-        N3D(:,:,:) = 0.
-        N3D_col(:,:) = 0.
-        concen_an(:,:,:) = 0.
-        concen_na(:,:,:) = 0.
-        concen(:,:,:) = 0.
-        concen_dust_sub(:,:,:) = 0.
-        concen_ss_sub(:,:,:) = 0.
-        concen_ss_sup(:,:,:) = 0.
-        concen_om(:,:,:) = 0.
-        totalmass1(:,:,:,:) = 0.
-        qn_mean(:,:) = 0.
-        qn_upd(:,:) = 0.
-        
-  if (use_online_aerosol) then
 
-        do k = 1,kx
-          do j = 1,jx
-            do i = 1,ix
-
-              if(phalf(i,j,k)<1.) then
-                thickness=(phalf(i,j,k+1)-phalf(i,j,k))/grav/airdens(i,j,k)
-              else
-                thickness=log(phalf(i,j,k+1)/ &
-                 phalf(i,j,k))*8.314*T(i,j,k)/(9.8*0.02888)
-              end if
- 
-         do na = 1,naer
-              if(Aerosol%aerosol_names(na) == 'so4' .or. &
-                Aerosol%aerosol_names(na) == 'so4_anthro' .or. Aerosol%aerosol_names(na) == 'so4_natural') then
-                        totalmass1(i,j,k,1)=totalmass1(i,j,k,1)+Aerosol%aerosol(i,j,k,na)
-               else if(Aerosol%aerosol_names(na) == 'omphilic' .or. &
-                 Aerosol%aerosol_names(na) == 'omphobic') then
-                        totalmass1(i,j,k,3)=totalmass1(i,j,k,3)+Aerosol%aerosol(i,j,k,na)
-                 else if(Aerosol%aerosol_names(na) == 'seasalt1' .or. &
-                 Aerosol%aerosol_names(na) == 'seasalt2') then
-                        concen_ss_sub(i,j,k)=concen_ss_sub(i,j,k)+Aerosol%aerosol(i,j,k,na)
-                 else if(Aerosol%aerosol_names(na) == 'seasalt3' .or. &
-                 Aerosol%aerosol_names(na) == 'seasalt4' .or. &
-                 Aerosol%aerosol_names(na) == 'seasalt5') then
-                        concen_ss_sup(i,j,k)=concen_ss_sup(i,j,k)+Aerosol%aerosol(i,j,k,na)       
-                 else if(Aerosol%aerosol_names(na) == 'dust1' .or. &
-                 Aerosol%aerosol_names(na) == 'dust2' .or. &
-                 Aerosol%aerosol_names(na) == 'dust3') then
-                        concen_dust_sub(i,j,k)=concen_dust_sub(i,j,k)+Aerosol%aerosol(i,j,k,na)
-                end if
-           end do
-          
-         if(use_sub_seasalt) then
-             totalmass1(i,j,k,2)=concen_ss_sub(i,j,k)
-         else
-              totalmass1(i,j,k,2)=concen_ss_sub(i,j,k)+concen_ss_sup(i,j,k)
-         end if
-
-               concen(i,j,k)=0.7273*totalmass1(i,j,k,1)  &
-               /thickness*1.0e9
-         
-              concen_ss_sub(i,j,k)=concen_ss_sub(i,j,k)/thickness*1.0e9
-              concen_ss_sup(i,j,k)=concen_ss_sup(i,j,k)/thickness*1.0e9
-              concen_om(i,j,k)=totalmass1(i,j,k,3)/thickness*1.0e9     
-        
-         do na = 1, 3
-              totalmass1(i,j,k,na)=totalmass1(i,j,k,na)/thickness*1.0e9*1.0e-12
-        end do
-
-! submicron dust concentration (ug/m3) (NO. 2 to NO. 4)
-              concen_dust_sub(i,j,k)=concen_dust_sub(i,j,k)/thickness*1.0e9     
- 
-      end do
-     end do
-    end do
-else
-
-      do k = 1,kx
-        do j = 1,jx
-          do i = 1,ix
- 
-            if(phalf(i,j,k)<1.) then
-                thickness=(phalf(i,j,k+1)-phalf(i,j,k))/grav/airdens(i,j,k)
-            else
-               thickness=log(phalf(i,j,k+1)/ &
-               phalf(i,j,k))*8.314*T(i,j,k)/(9.8*0.02888)
-           end if
-
-
-!YMice submicron dust (NO. 14 to NO. 18)
-
-        do s = 14,18
-               concen_dust_sub(i,j,k)=concen_dust_sub(i,j,k)+ &
-               Aerosol%aerosol(i,j,k,s)
-        end do
-
-! anthro. and natural sulfate concentration (ug so4/m3)
-              concen_an(i,j,k)=0.7273*Aerosol%aerosol(i,j,k,1)/thickness*1.0e9
-              concen_na(i,j,k)=0.7273*Aerosol%aerosol(i,j,k,2)/thickness*1.0e9
-              concen(i,j,k)=concen_an(i,j,k)+concen_na(i,j,k)
-!offline
-! NO. 1 Sulfate; NO. 2 Sea Salt; NO. 3 Organics
-              totalmass1(i,j,k,1)=(Aerosol%aerosol(i,j,k,1)+Aerosol%aerosol(i,j,k,2))  &
-              /thickness*1.0e9*1.0e-12
- 
-              totalmass1(i,j,k,2)=sea_salt_scale*Aerosol%aerosol(i,j,k,5)  &
-              /thickness*1.0e9*1.0e-12
- 
-              totalmass1(i,j,k,3)=om_to_oc*Aerosol%aerosol(i,j,k,3)  &
-              /thickness*1.0e9*1.0e-12
- 
-! submicron dust concentration (ug/m3)
-             concen_dust_sub(i,j,k)=concen_dust_sub(i,j,k)/thickness*1.0e9
-           end do
-          end do
-        end do
-end if
-
+!---------------------------------------------------------------------
+!   call aerosol_effects to include impact of aerosols on the cloud
+!   droplet number and the bergeron process, if these effects activated.
+!---------------------------------------------------------------------
+        if (do_liq_num .or. do_dust_berg) then
+       call aerosol_effects (is, js, Time, phalf, airdens, T, &
+                            concen_dust_sub, totalmass1, Aerosol, mask)
         endif
+
 
 !-----------------------------------------------------------------------
 !
@@ -2621,6 +2516,7 @@ end if
         end where
         
         if (.not. do_liq_num) then
+          N3D(:,:,j) = 0.
           where (ql(:,:,j) .le. qmin .or. qa(:,:,j) .le. qmin)
              SL(:,:,j)   = SL(:,:,j) - ql(:,:,j)
              SQ(:,:,j)   = SQ(:,:,j) + ql(:,:,j)
@@ -2630,9 +2526,10 @@ end if
              ql_upd = ql(:,:,j)
           end where
         else
-          do k = 1,jx
-            do i = 1,ix
-              if (ql(i,k,j) .le. qmin .or. qa(i,k,j) .le. qmin .or. qn(i,k,j) .le. qmin) then
+          do k = 1,jdim
+            do i = 1,idim
+              if (ql(i,k,j) .le. qmin .or. qa(i,k,j) .le. qmin .or.  &
+                  qn(i,k,j) .le. qmin) then
                 SL(i,k,j)   = SL(i,k,j) - ql(i,k,j)
                 SQ(i,k,j)   = SQ(i,k,j) + ql(i,k,j)
                 ST(i,k,j)   = ST(i,k,j) - hlv*ql(i,k,j)/cp_air
@@ -3276,38 +3173,37 @@ end if
              ql_mean = max(ql_upd + dcond_ls    ,qmin)
              qi_mean = max(qi_upd + dcond_ls_ice,qmin)  
         end if
-        if(do_liq_num) then 
+        if (do_liq_num) then 
 !yim's CCN activation
-          do k = 1,jx
-            do i = 1,ix
-              drop = 0.
-              drop1(i,k) = 0.                
+          do k = 1,jdim
+            do i = 1,idim
               if ( da_ls(i,k) > 0.0 ) then
-                up_strat=-1.*(((omega(i,k,j)+grav*Mc(i,k,j))/airdens(i,k,j)/grav)+&
-                        radturbten2(i,k,j)*cp_air/grav)
-
-                totalmass(1) =totalmass1(i,k,j,1)
-                totalmass(2) =totalmass1(i,k,j,2)
-                totalmass(3) =totalmass1(i,k,j,3)
+                up_strat = -1.*(((omega(i,k,j)+grav*Mc(i,k,j))/ &
+                                           airdens(i,k,j)/grav) + &
+                                  radturbten2(i,k,j)*cp_air/grav)
                           
 !-->cjg: modification
-!                call aer_ccn_act(T(i,k,j),pfull(i,k,j),up_strat,totalmass,drop)
- 
+!               call aer_ccn_act (T(i,k,j), pfull(i,k,j), up_strat, &
+!                                 totalmass1(i,k,j,:), drop1(i,k))
                 thickness = deltpg(i,k) / airdens(i,k,j)
-                wp2 = 2.0/(3.0*0.548**2) &
-                     * ( 0.5*( diff_t(i,k,j) + diff_t(i,k,min(j+1,KDIM))) &
-                         / thickness )**2
-                debug2(i,k,j)=wp2**0.5
-                debug3(i,k,j)=1.
-                call aer_ccn_act_wpdf(T(i,k,j),pfull(i,k,j),up_strat,wp2,totalmass,drop)
- 
+                wp2 = 2.0/(3.0*0.548**2)* &
+                      (0.5*(diff_t(i,k,j) + diff_t(i,k,min(j+1,KDIM)))/&
+                                                         thickness )**2
+                wp2 = MAX (wp2, var_limit**2)
+                debug2(i,k,j) = wp2**0.5
+                debug3(i,k,j) = 1.
+                call aer_ccn_act_wpdf (T(i,k,j), pfull(i,k,j), &
+                                       up_strat, wp2,    &
+                                       totalmass1(i,k,j,:), drop1(i,k))
 !<--cjg: end of modification
-                drop1(i,k)=drop
+                qn_mean(i,k) = qn_upd(i,k) + max(tmp5(i,k),0.)*  &
+                               drop1(i,k)*1.e6/airdens(i,k,j)
+              else
+                drop1(i,k) = 0.                
+                qn_mean(i,k) = qn_upd(i,k)
               endif
             end do
           end do        
-  
-          qn_mean = qn_upd + max(tmp5,0.)*drop1*1.e6/airdens(:,:,j)
         endif
 
 
@@ -3952,8 +3848,8 @@ end if
 !       which have much lower densities.
         
         if (do_dust_berg) then
-        do k = 1,jx
-                do i = 1,ix
+        do k = 1,jdim
+                do i = 1,idim
                 if ( (T(i,k,j) .lt. tfreeze) .and. (ql_mean(i,k) .gt. qmin)      &
                                         .and. (qa_mean(i,k) .gt. qmin))         then
                                 Si0=1+0.0125*(tfreeze-T(i,k,j))
@@ -3997,9 +3893,9 @@ end if
         !do Bergeron process
         where ( (T(:,:,j) .lt. tfreeze) .and. (ql_mean .gt. qmin)      &
                                         .and. (qa_mean .gt. qmin))           
-             D2_dt =  dtcloud * qa_mean * ((1000.*exp((12.96*0.0125*   &
+             D2_dt =  dtcloud * qa_mean * ((cfact*1000.*exp((12.96*0.0125*   &
                       (tfreeze-T(:,:,j)))-0.639)/airdens(:,:,j))**(2./ &
-                      3.))* 7.8* ((max(qi_mean/qa_mean,1.E-12*1000.*   &
+                      3.))* 7.8* ((max(qi_mean/qa_mean,1.E-12*cfact*1000.*   &
                       exp((12.96*0.0125*(tfreeze-T(:,:,j)))-0.639)     &
                       /airdens(:,:,j)))**(1./3.))*0.0125*              &
                       (tfreeze-T(:,:,j))/((700.**(1./3.))*             &
@@ -4235,27 +4131,46 @@ end if
 !
 
 !Calculate C_dt
-        C_dt=max(tmp5,0.)*drop1*1.e6/airdens(:,:,j)
+!       C_dt=max(tmp5,0.)*drop1*1.e6/airdens(:,:,j)
 !For replying the review, substract autoconversion
-         D_dt = D1_dt + D2_dt + D_eros 
+!        D_dt = D1_dt + D2_dt + D_eros 
 
         !do analytic integration      
-        where ( (D_dt.gt.Dmin) ) 
-             qc0   = qn_upd
-             qceq  = C_dt  / max(D_dt, Dmin)
-             qc1   = qceq - (qceq - qc0) * exp ( -1.* D_dt )
-             qcbar = qceq - ((qc1 - qc0)/ max(D_dt, Dmin))
-        elsewhere
-             qc0   = qn_upd
-             qceq  = qc0 + C_dt   
-             qc1   = qc0 + C_dt
-             qcbar = qc0 + 0.5*C_dt
-        end where
-
+!       where ( (D_dt.gt.Dmin) ) 
+!            qc0   = qn_upd
+!            qceq  = C_dt  / max(D_dt, Dmin)
+!            qc1   = qceq - (qceq - qc0) * exp ( -1.* D_dt )
+!            qcbar = qceq - ((qc1 - qc0)/ max(D_dt, Dmin))
+!       elsewhere
+!            qc0   = qn_upd
+!            qceq  = qc0 + C_dt   
+!            qc1   = qc0 + C_dt
+!            qcbar = qc0 + 0.5*C_dt
+!       end where
+          do k=1,jdim
+            do i=1,idim
+!Calculate C_dt
+              C_dt(i,k)=max(tmp5(i,k),0.)*drop1(i,k)*1.e6/airdens(i,k,j)
+!For replying the review, substract autoconversion
+              D_dt(i,k) = D1_dt(i,k) + D2_dt(i,k) + D_eros(i,k) 
+              qc0(i,k) = qn_upd(i,k)
+              if (D_dt(i,k) > Dmin) then
+                qceq(i,k) = C_dt(i,k) / D_dt(i,k)
+                qc1(i,k) = qceq(i,k) - (qceq(i,k) - qc0(i,k))*  &
+                                                    exp(-1.*D_dt(i,k))
+                qcbar(i,k) = qceq(i,k) - ((qc1(i,k) -qc0(i,k))/ &
+                                                            D_dt(i,k))
+              else
+                qceq(i,k) = qc0(i,k) + C_dt(i,k)
+                qc1 (i,k) = qc0(i,k) + C_dt(i,k)
+                qcbar(i,k) = qc0(i,k) + 0.5*C_dt(i,k)
+              endif
         !set total tendency term and update cloud
         !Note that the amount of SN calculated here is stored in tmp1.
-        SN(:,:,j)  = SN(:,:,j) + qc1 - qc0
-        qn_upd     = qc1
+              SN(i,k,j)  = SN(i,k,j) + qc1(i,k) - qc0(i,k)
+              qn_upd(i,k)     = qc1(i,k)
+            end do
+          end do
 
 
         !compute the amount each term contributes to the change 
@@ -4267,15 +4182,15 @@ end if
 !                Dterm  =  D_dt *      qcbar 
 !        end where
 
-        if (do_budget_diag) then
-          qndt_cond(:,:,j) = 0.
-          where ( C_dt .gt. 0 )
-            qndt_cond(:,:,j)  =  C_dt 
-          endwhere
+          if (do_budget_diag) then
+            qndt_cond(:,:,j) = 0.
+            where ( C_dt .gt. 0 )
+              qndt_cond(:,:,j)  =  C_dt 
+            endwhere
 
-          qndt_evap(:,:,j) = D_dt *      qcbar !Dterm
-        end if
-        endif
+            qndt_evap(:,:,j) = D_dt *      qcbar !Dterm
+          endif
+        endif  ! (do_liq_num)
 
 !****************************************************************************
 
@@ -4770,10 +4685,17 @@ end if
                    ST(:,:,j)  = ST(:,:,j) + hlv*tmp1/cp_air              
              end where
              if (do_liq_num) then 
-               where (T(:,:,j) .gt. tfreeze-40. .and. tmp1 .gt. 0.)        
-                   qn_upd = qn_upd + drop1*1.e6/airdens(:,:,j)*(1.-qa_upd)
-                   SN(:,:,j) = SN(:,:,j) + drop1*1.e6/airdens(:,:,j)*(1.-qa_upd)
-               end where
+               do k=1,jdim
+                 do i=1,idim
+                   if (T(i,k,j) > tfreeze - 40. .and. &
+                       tmp1(i,k) > 0.0) then
+                     qn_upd(i,k) = qn_upd(i,k) + drop1(i,k)*1.0e6/  &
+                                   airdens(i,k,j)*(1. - qa_upd(i,k))
+                     SN(i,k,j) = SN(i,k,j) + drop1(i,k)*1.e6/  &
+                                  airdens(i,k,j)*(1.-qa_upd(i,k))
+                   endif
+                 end do
+               end do
              endif
                 
              if (do_budget_diag) then             
@@ -4837,11 +4759,15 @@ end if
              ST(:,:,j) = ST(:,:,j) - (hlv*ql_upd + hls*qi_upd)/cp_air
              SA(:,:,j) = SA(:,:,j) - qa_upd
         end where
-        if(do_liq_num) then 
-          where ((ql_upd .le. qmin .and. qi_upd .le. qmin)               &
-               .or. (qa_upd .le. qmin))
-             SN(:,:,j) = SN(:,:,j) - qn_upd
-          end where
+        if (do_liq_num) then 
+          do k=1,jdim
+            do i=1,idim
+              if ((ql_upd(i,k) <= qmin .and. qi_upd(i,k) <= qmin) .or. &
+                  (qa_upd(i,k) <= qmin) ) then
+                SN(i,k,j) = SN(i,k,j) -qn_upd(i,k)
+              endif
+            end do
+          end do
         endif  
 
         if (do_budget_diag) then
@@ -5009,26 +4935,6 @@ end if
                                   rmask=mask )
         end if
 
-        if (id_sulfate > 0) then
-             used = send_data ( id_sulfate, concen, Time, is, js, 1,&
-                                  rmask=mask )
-        end if
-
-        if (id_seasalt_sub > 0) then
-             used = send_data ( id_seasalt_sub, concen_ss_sub, Time, is, js, 1,&
-                                  rmask=mask )
-        end if
-   
-        if (id_seasalt_sup > 0) then
-             used = send_data ( id_seasalt_sup, concen_ss_sup, Time, is, js, 1,&
-                                  rmask=mask )
-        end if
-
-       if (id_om > 0) then
-              used = send_data ( id_om, concen_om, Time, is, js, 1,&
-                                  rmask=mask )
-        end if
-
         if (id_aall > 0) then
              used = send_data ( id_aall, areaall, Time, is, js, 1,     &
                                   rmask=mask )
@@ -5152,10 +5058,12 @@ end if
                                Time, is, js, 1, rmask=mask )
         endif
 
+      if (do_dust_berg) then
         if ( id_debug4 > 0 ) then
             used = send_data ( id_debug4, debug4, &
                               Time, is, js, 1, rmask=mask )
         endif
+      endif
 
         if ( id_rain_evap > 0 ) then
              used = send_data ( id_rain_evap, rain_evap, &
@@ -5307,18 +5215,30 @@ end if
 !yim: in-cloud droplet column burden
 
         if (id_droplets_col > 0) then
-          do j = 1, kdim
-            deltpg = (phalf(:,:,j+1)-phalf(:,:,j))/grav
-            if (present(MASK)) deltpg=deltpg*MASK(:,:,j)
-            where(ql(:,:,j) .gt. qmin  .and.    &
-                  qa(:,:,j) .gt. qmin  .and.    &
-                  qn(:,:,j) .gt. qmin)
-              N3D_col(:,:) = N3D_col(:,:)+qn(:,:,j)*airdens(:,:,j)* &
-                             deltpg*1.e-6/min(qa(:,:,j),1.)
-            end where
-          enddo
-          used = send_data ( id_droplets_col, N3D_col, Time, is, js)
-        end if
+          if (present (qn)) then
+            if (do_liq_num ) then
+              N3D_col(:,:) = 0.
+              do k = 1, kdim
+                do j=1,jdim
+                  do i=1,idim
+                    deltpg(i,j) = (phalf(i,j,k+1)-phalf(i,j,k))/grav
+                    if (present(MASK)) then
+                      deltpg(i,j)=deltpg(i,j)*MASK(i,j,k)
+                    endif
+                    if (ql(i,j,k) > qmin .and. &
+                        qa(i,j,k) > qmin .and. &
+                        qn(i,j,k) > qmin ) then      
+                       N3D_col(i,j) = N3D_col(i,j) + qn(i,j,k)*  &
+                                      airdens(i,j,k)*deltpg(i,j)*  &
+                                      1.e-6/min(qa(i,j,k),1.)
+                    endif
+                  end do
+                end do
+              end do
+              used = send_data ( id_droplets_col, N3D_col, Time, is, js)
+            endif
+          endif
+        endif
 
         !liquid and rain diagnostics
         if ( id_ql_cond_col > 0 ) then
@@ -5795,6 +5715,279 @@ end if
 
 
 end subroutine strat_cloud
+
+
+
+!#####################################################################
+
+subroutine aerosol_effects (is, js, Time, phalf, airdens, T, &
+                            concen_dust_sub, totalmass1, Aerosol, mask)
+
+integer, intent (in)                   :: is,js
+type(time_type), intent (in)           :: Time
+real, dimension(:,:,:), intent(in )   :: phalf, airdens, T 
+real, dimension(:,:,:), intent(out)        :: concen_dust_sub
+real, dimension(:,:,:,:), intent(out)            :: totalmass1
+type(aerosol_type), intent (in), optional      :: Aerosol  
+real, intent (in), optional, dimension(:,:,:) :: MASK
+
+      real, dimension(size(T,1),size(T,2),size(T,3)) :: pthickness
+      real, dimension(size(T,1),size(T,2),size(T,3)) :: concen, &
+                                    concen_ss_sub, concen_ss_sup,&
+                                    concen_om, concen_na, concen_an
+      integer  :: i,j,k,  na , s
+      integer  :: idim, jdim, kdim
+      logical :: used
+
+      idim = size(T,1)
+      jdim = size(T,2)
+      kdim = size(T,3)
+
+      concen_dust_sub(:,:,:) = 0.
+      totalmass1(:,:,:,:) = 0.
+
+      if (id_sulfate > 0) then
+        concen_an(:,:,:) = 0.
+        concen_na(:,:,:) = 0.
+        concen(:,:,:) = 0.
+      endif
+
+      if (use_online_aerosol) then
+        concen_ss_sub(:,:,:) = 0.
+        concen_ss_sup(:,:,:) = 0.
+      endif
+
+      do k = 1,kdim
+        do j = 1,jdim
+          do i = 1,idim
+            if (phalf(i,j,k) < 1.0) then
+              pthickness(i,j,k) = (phalf(i,j,k+1) - phalf(i,j,k))/&
+                                               grav/airdens(i,j,k)
+            else
+              pthickness(i,j,k) = log(phalf(i,j,k+1)/ &
+                            phalf(i,j,k))*8.314*T(i,j,k)/(9.8*0.02888)
+            end if
+          end do
+        end do
+      end do
+
+     if (present (Aerosol)) then
+       if (do_liq_num) then
+         if (use_online_aerosol) then
+           do na = 1,size(Aerosol%aerosol,4)               
+             if (trim(Aerosol%aerosol_names(na)) == 'so4' .or. &
+                 trim(Aerosol%aerosol_names(na)) == 'so4_anthro' .or.&
+                 trim(Aerosol%aerosol_names(na)) == 'so4_natural')  &
+                                                                 then
+               do k = 1,kdim
+                 do j = 1,jdim
+                   do i = 1,idim
+                     totalmass1(i,j,k,1) = totalmass1(i,j,k,1) + &
+                                           Aerosol%aerosol(i,j,k,na)
+                   end do
+                 end do
+               end do
+             else if(trim(Aerosol%aerosol_names(na)) == 'omphilic' .or.&
+                     trim(Aerosol%aerosol_names(na)) == 'omphobic') &
+                                                                 then
+               do k = 1,kdim
+                 do j = 1,jdim
+                   do i = 1,idim
+                     totalmass1(i,j,k,3) = totalmass1(i,j,k,3) +  &
+                                           Aerosol%aerosol(i,j,k,na)
+                   end do
+                 end do
+               end do
+             else if(trim(Aerosol%aerosol_names(na)) == 'seasalt1' .or.&
+                     trim(Aerosol%aerosol_names(na)) == 'seasalt2') &
+                                                                   then
+               do k = 1,kdim
+                 do j = 1,jdim
+                   do i = 1,idim
+                     concen_ss_sub(i,j,k) = concen_ss_sub(i,j,k) +  &
+                                            Aerosol%aerosol(i,j,k,na)
+                   end do
+                 end do
+               end do
+             else if(trim(Aerosol%aerosol_names(na)) == 'seasalt3' .or.&
+                     trim(Aerosol%aerosol_names(na)) == 'seasalt4' .or.&
+                     trim(Aerosol%aerosol_names(na)) == 'seasalt5')  &
+                                                                  then
+               do k = 1,kdim
+                 do j = 1,jdim
+                   do i = 1,idim
+                     concen_ss_sup(i,j,k) = concen_ss_sup(i,j,k) +  &
+                                            Aerosol%aerosol(i,j,k,na)
+                   end do
+                 end do
+               end do
+             endif
+             if (do_dust_berg) then
+               if (trim(Aerosol%aerosol_names(na)) == 'dust1' .or. &
+                   trim(Aerosol%aerosol_names(na)) == 'dust2' .or. &
+                   trim( Aerosol%aerosol_names(na)) == 'dust3') then
+                 do k = 1,kdim
+                   do j = 1,jdim
+                     do i = 1,idim
+                       concen_dust_sub(i,j,k) =    &
+                                           concen_dust_sub(i,j,k) +   &
+                                              Aerosol%aerosol(i,j,k,na)
+                     end do
+                   end do
+                 end do
+               endif
+             endif
+           end do
+!        endif
+!      endif
+          
+!       if (do_liq_num) then
+!         if (use_online_aerosol) then
+           do k = 1,kdim
+             do j = 1,jdim
+               do i = 1,idim
+                 totalmass1(i,j,k,2)=concen_ss_sub(i,j,k)
+               end do
+             end do
+           end do
+           if (use_sub_seasalt) then
+           else
+             do k = 1,kdim
+               do j = 1,jdim
+                 do i = 1,idim
+                   totalmass1(i,j,k,2) = concen_ss_sub(i,j,k) +  &
+                                                  concen_ss_sup(i,j,k)
+                 end do
+               end do
+             end do
+           endif
+
+           if (id_sulfate > 0) then
+             do k = 1,kdim
+               do j = 1,jdim
+                 do i = 1,idim
+                   concen(i,j,k) = 0.7273*totalmass1(i,j,k,1)/  &
+                                       pthickness(i,j,k)*1.0e9
+                 end do
+               end do
+             end do
+           endif
+         
+           do k = 1,kdim
+             do j = 1,jdim
+               do i = 1,idim
+                 concen_ss_sub(i,j,k) = concen_ss_sub(i,j,k)/  &
+                                              pthickness(i,j,k)*1.0e9
+                 concen_ss_sup(i,j,k) = concen_ss_sup(i,j,k)/  &
+                                              pthickness(i,j,k)*1.0e9
+               end do
+             end do
+           end do
+
+         else  ! (use_online_aerosol)
+           if (do_dust_berg) then
+!     YMice submicron dust (NO. 14 to NO. 18)
+             do s = 14,18
+               do k = 1,kdim
+                 do j = 1,jdim
+                   do i = 1,idim
+                     concen_dust_sub(i,j,k) = concen_dust_sub(i,j,k)+ &
+                                              Aerosol%aerosol(i,j,k,s)
+                   end do
+                 end do
+               end do
+             end do
+           endif
+
+           if (id_sulfate > 0) then
+             do k = 1,kdim
+               do j = 1,jdim
+                 do i = 1,idim
+!     anthro. and natural sulfate concentration (ug so4/m3)
+                   concen_an(i,j,k) = 0.7273*Aerosol%aerosol(i,j,k,1)/&
+                                                pthickness(i,j,k)*1.0e9
+                   concen_na(i,j,k) = 0.7273*Aerosol%aerosol(i,j,k,2)/&
+                                                pthickness(i,j,k)*1.0e9
+                   concen(i,j,k) = concen_an(i,j,k) + concen_na(i,j,k)
+                 end do
+               end do
+             end do
+           endif
+
+           do k = 1,kdim
+             do j = 1,jdim
+               do i = 1,idim
+!offline
+! NO. 1 Sulfate; NO. 2 Sea Salt; NO. 3 Organics
+                 totalmass1(i,j,k,1) = (Aerosol%aerosol(i,j,k,1) + &
+                                        Aerosol%aerosol(i,j,k,2))
+                 totalmass1(i,j,k,2) = sea_salt_scale*  &
+                                       Aerosol%aerosol(i,j,k,5)
+                 totalmass1(i,j,k,3) = om_to_oc*  &
+                                       Aerosol%aerosol(i,j,k,3)
+               end do
+             end do
+           end do
+         endif ! (use_online_aerosol)
+
+         do na = 1, 3
+           do k = 1,kdim
+             do j = 1,jdim
+               do i = 1,idim
+                 totalmass1(i,j,k,na) = totalmass1(i,j,k,na)/  &
+                                        pthickness(i,j,k)*1.0e9*1.0e-12
+               end do
+             end do
+           end do
+         end do
+         if (do_dust_berg) then
+           do k = 1,kdim
+             do j = 1,jdim
+               do i = 1,idim
+! submicron dust concentration (ug/m3) (NO. 2 to NO. 4)
+                 concen_dust_sub(i,j,k) = concen_dust_sub(i,j,k)/ &
+                                              pthickness(i,j,k)*1.0e9 
+               end do
+             end do
+           end do
+         endif
+
+         if (id_sulfate > 0) then
+           used = send_data ( id_sulfate, concen, Time, is, js, 1,&
+                              rmask=mask )
+         end if
+
+         if (use_online_aerosol) then
+           if (id_seasalt_sub > 0) then
+             used = send_data (id_seasalt_sub, concen_ss_sub, Time, &
+                               is, js, 1, rmask=mask )
+           endif
+   
+           if (id_seasalt_sup > 0) then
+             used = send_data (id_seasalt_sup, concen_ss_sup, Time, &
+                               is, js, 1, rmask=mask )
+           endif
+         endif
+
+         if (id_om > 0) then
+           do k = 1,kdim
+             do j = 1,jdim
+               do i = 1,idim
+                 concen_om(i,j,k) = totalmass1(i,j,k,3)/  &
+                                    pthickness(i,j,k)*1.0e9*1.0e12  
+               end do
+             end do
+           end do
+           used = send_data (id_om, concen_om, Time, is, js, 1,&
+                             rmask=mask )
+         endif
+       endif  ! (do_liq_num)
+     endif ! (Present(Aerosol))
+
+!----------------------------------------------------------------------
+
+
+end subroutine aerosol_effects
 
 
 !#######################################################################

@@ -40,8 +40,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 14.0.2.2 2007/05/25 16:32:02 vb Exp $'
-   character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 15.0 2007/08/14 03:54:42 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: omsk $'
 
 
 

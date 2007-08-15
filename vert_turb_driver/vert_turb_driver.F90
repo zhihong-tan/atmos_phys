@@ -57,8 +57,8 @@ public   vert_turb_driver_init, vert_turb_driver_end, vert_turb_driver
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 11.0.12.2 2007/05/25 16:32:08 vb Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 15.0 2007/08/14 03:56:25 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------

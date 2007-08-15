@@ -71,8 +71,8 @@ private
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 
-character(len=128) :: version = '$Id: sea_esf_rad.F90,v 14.0.2.2 2007/05/29 16:20:59 wfc Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+character(len=128) :: version = '$Id: sea_esf_rad.F90,v 15.0 2007/08/14 03:55:39 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 
 
 !--------------------------------------------------------------------

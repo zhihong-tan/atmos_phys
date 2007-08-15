@@ -103,8 +103,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 14.0.2.2.2.1.2.1 2007/05/29 16:06:00 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 15.0 2007/08/14 03:54:38 fms Exp $'
+character(len=128)  :: tagname =  '$Name: omsk $'
 
 
 !---------------------------------------------------------------------
@@ -144,10 +144,11 @@ character(len=16) :: overlap_type = 'random'
                                         ! allowable values are 'random'
                                         ! or 'max-random'  
 logical :: doing_data_override=.false.
+logical :: do_fu2007 = .false.
 
 namelist /cloud_spec_nml / cloud_type_form, wtr_cld_reff,   &
                            ice_cld_reff, rain_reff, overlap_type, &
-                           doing_data_override
+                           doing_data_override, do_fu2007
 
 !----------------------------------------------------------------------
 !----  public data -------
@@ -600,6 +601,13 @@ type(time_type),          intent(in)   ::  Time
                                                 &it is defined', FATAL)
       endif
  
+!--------------------------------------------------------------------
+!    include do_fu2007 in the cloudrad_control_type variable for use
+!    in other modules.
+!--------------------------------------------------------------------
+      Cldrad_control%using_fu2007 = do_fu2007
+      Cldrad_control%using_fu2007_iz = .true.     
+
 !---------------------------------------------------------------------
 !    mark the module initialized.
 !---------------------------------------------------------------------

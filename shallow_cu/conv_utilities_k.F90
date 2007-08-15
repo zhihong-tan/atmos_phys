@@ -10,17 +10,19 @@ MODULE CONV_UTILITIES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 1.1.2.1.2.1.4.2.2.1 2007/05/30 10:37:36 rsh Exp $'
-  character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 15.0 2007/08/14 03:56:07 fms Exp $'
+  character(len=128) :: tagname = '$Name: omsk $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
   public  :: sd_init_k, sd_copy_k, sd_end_k, ac_init_k, ac_clear_k,  &
+             sd_allocate_k, ac_allocate_k, &
+             ac_save_k, ac_retrieve_k, sd_save_k, sd_retrieve_k, &
              ac_end_k, qsat_k, qses_k, exn_k, exn_init_k, exn_end_k, &
              findt_k, findt_init_k, findt_end_k, uw_params_init_k, &
              conden_k, pack_sd_k, pack_sd_lsm_k, extend_sd_k,  &
-             adi_cloud_k
+             adi_cloud_k, check_tracer_realizability, qt_parcel_k
 
 
 
@@ -129,46 +131,69 @@ contains
     integer, intent(in) :: kd, num_tracers
     type(sounding), intent(inout) :: sd
     
-    allocate ( sd%t     (1:kd)); sd%t     =0.;
-    allocate ( sd%qv    (1:kd)); sd%qv    =0.;
-    allocate ( sd%u     (1:kd)); sd%u     =0.;
-    allocate ( sd%v     (1:kd)); sd%v     =0.;
-    allocate ( sd%qs    (1:kd)); sd%qs    =0.;
-    allocate ( sd%ql    (1:kd)); sd%ql    =0.;
-    allocate ( sd%qi    (1:kd)); sd%qi    =0.;
-    allocate ( sd%qa    (1:kd)); sd%qa    =0.;
-    allocate ( sd%qn    (1:kd)); sd%qn    =0.;
-    allocate ( sd%thc   (1:kd)); sd%thc   =0.;
-    allocate ( sd%qct   (1:kd)); sd%qct   =0.;
-    allocate ( sd%thv   (1:kd)); sd%thv   =0.;
-    allocate ( sd%rh    (1:kd)); sd%rh    =0.;
-    allocate ( sd%p     (1:kd)); sd%p     =0.;
-    allocate ( sd%z     (1:kd)); sd%z     =0.;
-    allocate ( sd%dp    (1:kd)); sd%dp    =0.;
-    allocate ( sd%dz    (1:kd)); sd%dz    =0.;
-    allocate ( sd%rho   (1:kd)); sd%rho   =0.;
-    allocate ( sd%nu    (1:kd)); sd%nu    =0.;
-    allocate ( sd%leff  (1:kd)); sd%leff  =0.;
-    allocate ( sd%exner (1:kd)); sd%exner =0.;
-    allocate ( sd%ps    (0:kd)); sd%ps    =0.;
-    allocate ( sd%zs    (0:kd)); sd%zs    =0.;
-    allocate ( sd%exners(0:kd)); sd%exners=0.;
-    allocate ( sd%ssthc (1:kd)); sd%ssthc =0.;
-    allocate ( sd%ssqct (1:kd)); sd%ssqct =0.;
-    allocate ( sd%dudp  (1:kd)); sd%dudp  =0.;
-    allocate ( sd%dvdp  (1:kd)); sd%dvdp  =0.;
-    allocate ( sd%thvbot(1:kd)); sd%thvbot=0.;
-    allocate ( sd%thvtop(1:kd)); sd%thvtop=0.;
-    allocate ( sd%am1   (1:kd)); sd%am1   =0.;
-    allocate ( sd%am2   (1:kd)); sd%am2   =0.;
-    allocate ( sd%am3   (1:kd)); sd%am3   =0.;
-    allocate ( sd%hl    (1:kd)); sd%hl    =0.;
-    allocate ( sd%sshl  (1:kd)); sd%sshl  =0.;
-!++++yim
-    allocate ( sd%tr  (1:kd,1:num_tracers)); sd%tr  =0.;
-    allocate ( sd%sstr  (1:kd,1:num_tracers)); sd%sstr  =0.;
+    call sd_allocate_k (kd, num_tracers, sd)
+
+    sd%t     =0.;    sd%qv    =0.;    sd%u     =0.;      sd%v     =0.;
+    sd%qs    =0.;    sd%ql    =0.;    sd%qi    =0.;      sd%qa    =0.;
+    sd%qn    =0.;    sd%thc   =0.;    sd%qct   =0.;      sd%thv   =0.;
+    sd%rh    =0.;    sd%p     =0.;    sd%z     =0.;      sd%dp    =0.;
+    sd%dz    =0.;    sd%rho   =0.;    sd%nu    =0.;      sd%leff  =0.;
+    sd%exner =0.;    sd%ps    =0.;    sd%zs    =0.;      sd%exners=0.;
+    sd%ssthc =0.;    sd%ssqct =0.;    sd%dudp  =0.;      sd%dvdp  =0.;
+    sd%thvbot=0.;    sd%thvtop=0.;    sd%am1   =0.;      sd%am2   =0.;
+    sd%am3   =0.;    sd%hl    =0.;    sd%sshl  =0.;      sd%tr  =0.; 
+    sd%sstr  =0.;
     
   end subroutine sd_init_k
+
+!#####################################################################
+!#####################################################################
+
+  subroutine sd_allocate_k(kd, num_tracers, sd)
+    integer, intent(in) :: kd, num_tracers
+    type(sounding),                  intent(inout) :: sd
+    
+    allocate ( sd%t     (1:kd))
+    allocate ( sd%qv    (1:kd))
+    allocate ( sd%u     (1:kd))
+    allocate ( sd%v     (1:kd))
+    allocate ( sd%qs    (1:kd))
+    allocate ( sd%ql    (1:kd))
+    allocate ( sd%qi    (1:kd))
+    allocate ( sd%qa    (1:kd))
+    allocate ( sd%qn    (1:kd))
+    allocate ( sd%thc   (1:kd))
+    allocate ( sd%qct   (1:kd))
+    allocate ( sd%thv   (1:kd))
+    allocate ( sd%rh    (1:kd))
+    allocate ( sd%p     (1:kd))
+    allocate ( sd%z     (1:kd))
+    allocate ( sd%dp    (1:kd))
+    allocate ( sd%dz    (1:kd))
+    allocate ( sd%rho   (1:kd))
+    allocate ( sd%nu    (1:kd))
+    allocate ( sd%leff  (1:kd))
+    allocate ( sd%exner (1:kd))
+    allocate ( sd%ps    (0:kd))
+    allocate ( sd%zs    (0:kd))
+    allocate ( sd%exners(0:kd))
+    allocate ( sd%ssthc (1:kd))
+    allocate ( sd%ssqct (1:kd))
+    allocate ( sd%dudp  (1:kd))
+    allocate ( sd%dvdp  (1:kd))
+    allocate ( sd%thvbot(1:kd))
+    allocate ( sd%thvtop(1:kd))
+    allocate ( sd%am1   (1:kd))
+    allocate ( sd%am2   (1:kd))
+    allocate ( sd%am3   (1:kd))
+    allocate ( sd%hl    (1:kd))
+    allocate ( sd%sshl  (1:kd))
+!++++yim
+    allocate ( sd%tr  (1:kd,1:num_tracers))
+    allocate ( sd%sstr  (1:kd,1:num_tracers))
+    
+
+  end subroutine sd_allocate_k
 
 !#####################################################################
 !#####################################################################
@@ -195,6 +220,132 @@ contains
 
 !#####################################################################
 !#####################################################################
+  subroutine sd_save_k (sd, sdij)
+  type(sounding), intent(inout)  :: sd
+  type(sounding), intent(inout)  :: sdij
+
+  integer :: kmax, ntr
+
+  kmax = size(sd%t, 1)
+  ntr  = size(sd%tr, 2)
+
+  call sd_allocate_k (kmax, ntr, sdij)
+
+  sdij%coldT = sd%coldT
+  sdij%kmax  = sd%kmax 
+  sdij%kinv  = sd%kinv 
+  sdij%ktoppbl = sd%ktoppbl
+  sdij%ktopconv = sd%ktopconv
+  sdij%psfc  = sd%psfc 
+  sdij%pinv  = sd%pinv 
+  sdij%zinv  = sd%zinv 
+  sdij%thvinv  = sd%thvinv 
+  sdij%land  = sd%land 
+  sdij%pblht  = sd%pblht
+  sdij%qint  = sd%qint 
+  sdij%delt  = sd%delt 
+  sdij%t     = sd%t    
+  sdij%qv    = sd%qv   
+  sdij%u     = sd%u    
+  sdij%v     = sd%v    
+  sdij%ql    = sd%ql   
+  sdij%qi    = sd%qi   
+  sdij%qa    = sd%qa   
+  sdij%thc   = sd%thc  
+  sdij%qct   = sd%qct  
+  sdij%thv   = sd%thv  
+  sdij%rh    = sd%rh   
+  sdij%p     = sd%p    
+  sdij%z     = sd%z    
+  sdij%dp    = sd%dp   
+  sdij%dz    = sd%dz   
+  sdij%rho   = sd%rho  
+  sdij%nu    = sd%nu   
+  sdij%leff  = sd%leff 
+  sdij%exner = sd%exner
+  sdij%ps    = sd%ps   
+  sdij%exners = sd%exners
+  sdij%zs    = sd%zs   
+  sdij%ssthc = sd%ssthc
+  sdij%ssqct = sd%ssqct
+  sdij%dudp  = sd%dudp 
+  sdij%dvdp  = sd%dvdp 
+  sdij%thvbot= sd%thvbot
+  sdij%thvtop= sd%thvtop
+  sdij%qn    = sd%qn   
+  sdij%qs    = sd%qs   
+  sdij%am1   = sd%am1  
+  sdij%am2   = sd%am2  
+  sdij%am3   = sd%am3  
+  sdij%hl    = sd%hl   
+  sdij%sshl  = sd%sshl 
+  sdij%tr    = sd%tr   
+  sdij%sstr  = sd%sstr 
+
+  end subroutine sd_save_k 
+
+!#####################################################################
+!#####################################################################
+
+  subroutine sd_retrieve_k (sd, sdij)
+  type(sounding), intent(inout)  :: sd
+  type(sounding), intent(inout)  :: sdij
+
+  sd%coldT = sdij%coldT 
+  sd%kmax = sdij%kmax  
+  sd%kinv = sdij%kinv  
+  sd%ktoppbl = sdij%ktoppbl 
+  sd%ktopconv = sdij%ktopconv 
+  sd%psfc = sdij%psfc   
+  sd%pinv = sdij%pinv  
+    sd%zinv = sdij%zinv   
+  sd%thvinv = sdij%thvinv  
+  sd%land = sdij%land  
+  sd%pblht = sdij%pblht  
+  sd%qint = sdij%qint   
+  sd%delt = sdij%delt  
+  sd%t = sdij%t    
+  sd%qv = sdij%qv     
+  sd%u = sdij%u     
+  sd%v = sdij%v     
+  sd%ql = sdij%ql     
+  sd%qi = sdij%qi     
+  sd%qa = sdij%qa     
+  sd%thc = sdij%thc   
+  sd%qct = sdij%qct   
+  sd%thv = sdij%thv   
+  sd%rh = sdij%rh      
+  sd%p = sdij%p        
+  sd%z = sdij%z        
+ sd%dp =  sdij%dp      
+  sd%dz = sdij%dz     
+  sd%rho = sdij%rho   
+  sd%nu = sdij%nu      
+  sd%leff = sdij%leff   
+  sd%exner = sdij%exner 
+  sd%ps = sdij%ps     
+  sd%exners = sdij%exners 
+  sd%zs = sdij%zs    
+  sd%ssthc = sdij%ssthc 
+  sd%ssqct = sdij%ssqct 
+  sd%dudp = sdij%dudp  
+  sd%dvdp = sdij%dvdp  
+  sd%thvbot = sdij%thvbot
+  sd%thvtop = sdij%thvtop
+  sd%qn = sdij%qn    
+  sd%qs = sdij%qs    
+  sd%am1 = sdij%am1  
+  sd%am2 = sdij%am2  
+  sd%am3 = sdij%am3    
+  sd%hl = sdij%hl    
+  sd%sshl = sdij%sshl  
+  sd%tr = sdij%tr     
+  sd%sstr = sdij%sstr 
+
+  end subroutine sd_retrieve_k 
+
+!#####################################################################
+!#####################################################################
 
   subroutine sd_end_k(sd)
     type(sounding), intent(inout) :: sd
@@ -213,17 +364,35 @@ contains
     integer, intent(in) :: kd
     type(adicloud), intent(inout) :: ac
     
-    allocate ( ac%t     (1:kd)); ac%t    =0.;
-    allocate ( ac%qv    (1:kd)); ac%qv   =0.;
-    allocate ( ac%ql    (1:kd)); ac%ql   =0.;
-    allocate ( ac%qi    (1:kd)); ac%qi   =0.;
-    allocate ( ac%thc   (1:kd)); ac%thc  =0.;
-    allocate ( ac%qct   (1:kd)); ac%qct  =0.;
-    allocate ( ac%thv   (1:kd)); ac%thv  =0.;
-    allocate ( ac%nu    (1:kd)); ac%nu   =0.;
-    allocate ( ac%leff  (1:kd)); ac%leff =0.;
-    allocate ( ac%hl    (1:kd)); ac%hl   =0.;
+    call ac_allocate_k (kd, ac)
+
+    ac%t    =0.;   ac%qv   =0.;   ac%ql   =0.;   ac%qi   =0.;
+    ac%thc  =0.;   ac%qct  =0.;   ac%thv  =0.;   ac%nu   =0.;
+    ac%leff =0.;   ac%hl   =0.;
+
   end subroutine ac_init_k
+
+
+!#####################################################################
+!#####################################################################
+
+  subroutine ac_allocate_k(kd, ac)
+    integer, intent(in) :: kd
+    type(adicloud),                 intent(inout) :: ac
+    
+    allocate ( ac%t     (1:kd))
+    allocate ( ac%qv    (1:kd))
+    allocate ( ac%ql    (1:kd))
+    allocate ( ac%qi    (1:kd))
+    allocate ( ac%thc   (1:kd))
+    allocate ( ac%qct   (1:kd))
+    allocate ( ac%thv   (1:kd))
+    allocate ( ac%nu    (1:kd))
+    allocate ( ac%leff  (1:kd))
+    allocate ( ac%hl    (1:kd))
+
+  end subroutine ac_allocate_k
+
 
 !#####################################################################
 !#####################################################################
@@ -234,6 +403,87 @@ contains
     ac%qi   =0.;    ac%thc  =0.;    ac%qct  =0.;
     ac%thv  =0.;    ac%nu   =0.;    ac%leff =0.; ac%hl   =0.;
   end subroutine ac_clear_k
+
+!#####################################################################
+!#####################################################################
+
+  subroutine ac_save_k (ac, acij)
+    type(adicloud), intent(inout) :: ac
+    type(adicloud), intent(inout) :: acij
+
+    integer :: kmax
+
+    kmax = size(ac%t, 1)
+
+    call ac_allocate_k (kmax, acij)
+
+    acij%usrc = ac%usrc
+    acij%vsrc = ac%vsrc
+    acij%hlsrc = ac%hlsrc
+    acij%thcsrc = ac%thcsrc
+    acij%qctsrc = ac%qctsrc
+    acij%klcl   = ac%klcl  
+    acij%klfc   = ac%klfc  
+    acij%klnb   = ac%klnb  
+    acij%plcl   = ac%plcl  
+    acij%zlcl   = ac%zlcl  
+    acij%thvlcl = ac%thvlcl
+    acij%thv0lcl= ac%thv0lcl
+    acij%rho0lcl= ac%rho0lcl
+    acij%plfc   = ac%plfc  
+    acij%plnb   = ac%plnb  
+    acij%cape   = ac%cape  
+    acij%cin    = ac%cin     
+    acij%t      = ac%t       
+    acij%qv     = ac%qv      
+    acij%ql     = ac%ql      
+    acij%qi     = ac%qi      
+    acij%thc    = ac%thc     
+    acij%qct    = ac%qct     
+    acij%thv    = ac%thv     
+    acij%nu     = ac%nu      
+    acij%leff   = ac%leff    
+    acij%hl     = ac%hl      
+  end subroutine ac_save_k 
+
+!#####################################################################
+!#####################################################################
+
+  subroutine ac_retrieve_k (ac, acij)
+    type(adicloud), intent(inout) :: ac
+    type(adicloud), intent(inout) :: acij
+
+    ac%usrc = acij%usrc 
+    ac%vsrc = acij%vsrc
+    ac%hlsrc = acij%hlsrc 
+    ac%thcsrc = acij%thcsrc 
+    ac%qctsrc = acij%qctsrc 
+    ac%klcl = acij%klcl    
+    ac%klfc = acij%klfc    
+    ac%klnb = acij%klnb   
+    ac%plcl = acij%plcl    
+    ac%zlcl = acij%zlcl   
+    ac%thvlcl = acij%thvlcl 
+    ac%thv0lcl = acij%thv0lcl
+    ac%rho0lcl = acij%rho0lcl
+    ac%plfc = acij%plfc  
+    ac%plnb = acij%plnb   
+    ac%cape = acij%cape   
+    ac%cin = acij%cin       
+    ac%t = acij%t            
+    ac%qv = acij%qv         
+    ac%ql = acij%ql          
+    ac%qi = acij%qi     
+    ac%thc = acij%thc         
+    ac%qct = acij%qct         
+    ac%thv = acij%thv       
+    ac%nu = acij%nu     
+    ac%leff = acij%leff    
+    ac%hl = acij%hl          
+
+  end subroutine ac_retrieve_k 
+
+
 
 !#####################################################################
 !#####################################################################
@@ -852,8 +1102,12 @@ contains
 !###################################################################
 
 !++++yim
-subroutine pack_sd_lsm_k(dt, pf, ph, zf, zh, t, qv, tracers, sd)
+subroutine pack_sd_lsm_k (do_lands, land, coldT, dt, pf, ph, zf, zh, &
+                          t, qv, tracers, sd)
 
+  logical,            intent(in)    :: do_lands
+  real,               intent(in)    :: land
+  logical,            intent(in)    :: coldT
   real,               intent(in)    :: dt
   real, dimension(:), intent(in)    :: pf, ph, zf, zh, t, qv
 !++++yim
@@ -866,8 +1120,13 @@ subroutine pack_sd_lsm_k(dt, pf, ph, zf, zh, t, qv, tracers, sd)
 
   kmax=size(t)
   sd % kmax   = kmax
-  sd % land   = 0.
-  sd % coldT  = .false.
+  if (do_lands) then
+    sd % land   = land  
+    sd % coldT  = coldT    
+  else
+    sd % land   = 0.
+    sd % coldT  = .false.
+  endif 
   sd % delt   = dt   
   sd % ps(0)  = ph(kmax+1)
   sd % zs(0)  = zh(kmax+1)
@@ -1260,7 +1519,7 @@ end subroutine pack_sd_lsm_k
       nu = 0.0
     endif
     leff = (1.-nu)*Uw_p%hlv + nu*Uw_p%hls
-  
+
     qc = max(qt-qs, 0.)
     qv = qt - qc
     ql = (1.-nu)*qc
@@ -1616,6 +1875,100 @@ end subroutine pack_sd_lsm_k
       return
       end function zriddr_k
 
+!######################################################################
+
+!++lwh
+subroutine check_tracer_realizability(kmax, ntr, dt, &
+                                             tracers, trten, trwet)
+!---------------------------------------------------------------------
+!  Check for tracer realizability. If convective tendencies would
+!  produce negative tracer mixing ratios, scale down tracer tendency
+!  terms uniformly for this tracer throughout convective column. This is
+!  equivalent to limiting the cell areas.
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!  Dummy arguments
+!---------------------------------------------------------------------
+integer,                 intent(in)     :: kmax, ntr
+real,                    intent(in)     :: dt 
+real, dimension(kmax,ntr), &
+                         intent(in)     :: tracers        
+real,dimension(kmax,ntr),intent(inout)  :: trten, trwet
+
+!---------------------------------------------------------------------
+!   intent(in) variables:
+!     tracers        tracer mixing ratios
+!                    [ kg(tracer) / kg (dry air) ]
+!     kmax           number of model layers in large-scale model
+!     dt             physics time step [ sec ]
+!
+!   intent(inout) variables:
+!     trten          tracer tendency
+!     trwet          tracer wet deposition tendency
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!  Local variables
+!---------------------------------------------------------------------
+
+   integer :: n,k
+   real, dimension(kmax) :: tracer0, trtend, tracer1
+   real :: ratio
+
+!---------------------------------------------------------------------
+!   local variables:
+!
+!     tracers        tracer mixing ratios of tracers transported by the
+!                    donner deep convection parameterization
+!                    [ tracer units, e.g., kg(tracer) / kg (dry air) ]
+!     tracer0        column tracer mixing ratios before convection
+!     trtend         column tracer mixing ratio tendencies due to convection [ (tracer units) / s ]
+!     tracer1        column tracer mixing ratios after convection
+!     k, n     do-loop indices
+!     ratio          ratio by which tracer convective tendencies need to 
+!                    be reduced to permit realizability (i.e., to prevent
+!                    negative tracer mixing ratios)
+!
+!---------------------------------------------------------------------
+
+   do n = 1,ntr
+      
+      tracer0(:) = tracers(:,n)
+      trtend(:)  = trten(:,n) + trwet(:,n)
+      tracer1(:) = tracer0 + dt * trtend(:)
+      if ( ALL(tracer0(:) >= 0.) .and. ANY(tracer1(:) < 0.) ) then
+         ratio = 1.
+         do k = 1,kmax
+            if (trtend(k)<0. .and. tracer1(k)<0. ) then 
+               ratio = MIN( ratio,tracer0(k)/(-trtend(k)*dt) )
+            end if
+         end do
+         ratio = MAX(0.,MIN(1.,ratio))
+         trten(:,n) =  trten(:,n)*ratio
+         trwet(:,n) =  trwet(:,n)*ratio
+      end if
+   end do
+
+
+end subroutine check_tracer_realizability
+!--lwh
+
+!#####################################################################
+function qt_parcel_k (qt, qs, qstar, tke, land, gama)
+    real              :: qt_parcel_k
+    real, intent(in)  :: qt, qs, qstar, tke, land, gama
+ 
+    qt_parcel_k = qt + land * gama * max(qstar,0.0)
+!   qt_parcel_k = qt * (1. + land * gama * sqrt(tke)      )
+!   qt_parcel_k = qt + land * gama * sqrt(tke) * max (qstar,0.0)
+ 
+    qt_parcel_k = MAX (qt, MIN(qt_parcel_k, qs))
+end function qt_parcel_k
+
 
 end MODULE CONV_UTILITIES_k_MOD
+
+
+
 

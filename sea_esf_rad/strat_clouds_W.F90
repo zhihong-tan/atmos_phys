@@ -60,8 +60,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 14.0.2.2 2007/05/25 16:32:07 vb Exp $'
-character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 15.0 2007/08/14 03:55:54 fms Exp $'
+character(len=128)  :: tagname =  '$Name: omsk $'
 
 
 !---------------------------------------------------------------------
@@ -93,7 +93,7 @@ namelist /strat_clouds_W_nml /                      &
 
 
 logical                               :: module_is_initialized = .false.  ! module is initialized ?
-real,    dimension(:,:),  allocatable :: lats, lons  ! lats and lons in this processor window (degrees)
+real,    dimension(:,:),    allocatable :: lats, lons  ! lats and lons in this processor window (degrees)
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
 
@@ -460,7 +460,9 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
             where (Cld_spec%cloud_area(:,:,:) > 0.0) 
               Cld_spec%cld_thickness(:,:,:) = 1
             end where
-          call cloud_summary3 (is, js, land, Cld_spec%cloud_water, &
+          call cloud_summary3 (is, js, land,   &
+                               Cldrad_control%using_fu2007, &
+                               Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
                                Cld_spec%cloud_droplet, &       
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
@@ -539,7 +541,9 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !---------------------------------------------------------------------
             do nb=1,Cldrad_control%nlwcldb
               call cloud_summary3 (          &
-                is, js, land, ql_stoch_lw(:,:,:,nb),&
+                is, js, land, &
+                Cldrad_control%using_fu2007, &
+                ql_stoch_lw(:,:,:,nb),&
                 qi_stoch_lw(:,:,:,nb), qa_stoch_lw(:,:,:,nb),&
                 qn_stoch_lw(:,:,:,nb), &
                 press(:,:,1:kx), pflux, temp, ncldlvls, &
@@ -583,7 +587,9 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !---------------------------------------------------------------------
           do nb=1,size(Lsc_microphys%sw_stoch_conc_ice,4)
             call cloud_summary3 (                            &
-              is, js, land, ql_stoch_sw(:,:,:,nb), &
+              is, js, land,  &
+              Cldrad_control%using_fu2007, &
+              ql_stoch_sw(:,:,:,nb), &
               qi_stoch_sw(:,:,:,nb), qa_stoch_sw(:,:,:,nb),&
               qn_stoch_sw(:,:,:,nb), &
               press(:,:,1:kx), pflux, temp, ncldlvls, &
@@ -666,7 +672,9 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !---------------------------------------------------------------------
             do nb=1,Cldrad_control%nlwcldb
               call cloud_summary3 (          &
-                is, js, land, ql_stoch_lw2(:,:,:,nb),&
+                is, js, land,  &
+                Cldrad_control%using_fu2007, &
+                ql_stoch_lw2(:,:,:,nb),&
                 qi_stoch_lw2(:,:,:,nb), qa_stoch_lw2(:,:,:,nb),&
                 qn_stoch_lw2(:,:,:,nb), &
                 press(:,:,1:kx), pflux, temp, ncldlvls, &
@@ -710,7 +718,9 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !---------------------------------------------------------------------
             do nb=1,size(Lsc_microphys%sw_stoch_conc_ice,4)
               call cloud_summary3 (                            &
-                is, js, land, ql_stoch_sw2(:,:,:,nb), &
+                is, js, land, &
+                Cldrad_control%using_fu2007, &
+                ql_stoch_sw2(:,:,:,nb), &
                 qi_stoch_sw2(:,:,:,nb), qa_stoch_sw2(:,:,:,nb),&
                 qn_stoch_sw2(:,:,:,nb), &
                 press(:,:,1:kx), pflux, temp, ncldlvls, &
@@ -762,7 +772,9 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
           where (Cld_spec%cloud_area(:,:,:) > 0.0) 
             Cld_spec%cld_thickness(:,:,:) = 1
           end where
-          call cloud_summary3 (is, js, land, Cld_spec%cloud_water, &
+          call cloud_summary3 (is, js, land,  &
+                               Cldrad_control%using_fu2007, &      
+                               Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
                                Cld_spec%cloud_droplet, &
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
@@ -811,7 +823,9 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !    cloud_summary3 without the Lsc_microphys% optional arguments.
 !----------------------------------------------------------------------
         else
-          call cloud_summary3 (is, js, land, Cld_spec%cloud_water, &
+          call cloud_summary3 (is, js, land,  &
+                               Cldrad_control%using_fu2007, &    
+                               Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
                                Cld_spec%cloud_droplet, &
                                press(:,:,1:kx), pflux, temp, ncldlvls, &

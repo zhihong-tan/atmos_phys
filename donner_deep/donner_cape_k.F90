@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cape_k.F90,v 14.0.2.1 2007/05/04 08:45:05 rsh Exp $
+!  $Id: donner_cape_k.F90,v 15.0 2007/08/14 03:53:12 fms Exp $
 
 !module donner_cape_inter_mod
 
@@ -11,9 +11,10 @@
 !####################################################################
 
 subroutine don_c_def_conv_env_k          &
-         (isize, jsize, nlev_lsm, nlev_hires, Nml, Param, Col_diag,    &
+         (isize, jsize, nlev_lsm, nlev_hires, Nml, Param, Initialized, &
+          Col_diag,    &
           temp, mixing_ratio, pfull, lag_cape_temp, lag_cape_vapor,    &
-          lag_cape_press, current_displ, Don_cape, Don_conv, ermesg)
+          lag_cape_press, current_displ, cbmf, Don_cape, Don_conv, ermesg)
 
 !---------------------------------------------------------------------
 !   subroutine don_c_def_conv_env_k manages the 
@@ -24,6 +25,7 @@ subroutine don_c_def_conv_env_k          &
 
 use donner_types_mod, only : donner_nml_type, donner_param_type, &
                              donner_column_diag_type, donner_cape_type,&
+                             donner_initialized_type, &
                              donner_conv_type
 implicit none
 
@@ -32,6 +34,7 @@ integer,                       intent(in)    :: isize, jsize, nlev_lsm, &
                                                 nlev_hires
 type(donner_nml_type),         intent(in)    :: Nml      
 type(donner_param_type),       intent(in)    :: Param
+type(donner_initialized_type),       intent(in)    :: Initialized
 type(donner_column_diag_type), intent(in)    :: Col_diag
 real,    dimension(isize,jsize,nlev_lsm),                    &
                                intent(in)    :: temp, mixing_ratio,  &
@@ -39,7 +42,7 @@ real,    dimension(isize,jsize,nlev_lsm),                    &
                                                 lag_cape_vapor, &
                                                 lag_cape_press
 real,    dimension(isize,jsize),                             &
-                               intent(in)    :: current_displ 
+                               intent(in)    :: current_displ, cbmf 
 type(donner_cape_type),        intent(inout) :: Don_cape
 type(donner_conv_type),        intent(inout) :: Don_conv
 character(len=*),              intent(out)   :: ermesg
@@ -71,6 +74,7 @@ character(len=*),              intent(out)   :: ermesg
 !                    lag-time cape calculation  [ Pa ]
 !     current_displ  low-level parcel displacement to use in cape
 !                    calculation on this step [ Pa ]
+!     cbmf
 !
 !   intent(out) variables:
 !
@@ -152,6 +156,14 @@ character(len=*),              intent(out)   :: ermesg
       else
         no_convection(:,:) = (current_displ(:,:) >  0.0)
       end if
+      do j=1,jsize
+        do i=1,isize
+          if (Initialized%using_unified_closure .and.    &
+                                             cbmf(i,j) == 0.) then
+            no_convection(i,j) = .true.
+          endif
+        end do
+      end do
 
 !---------------------------------------------------------------------
 !    call don_c_cape_calculation_driver_k with the lag-time-based 
@@ -159,7 +171,7 @@ character(len=*),              intent(out)   :: ermesg
 !    and cape for a parcel displaced upwards from the lowest model level.
 !---------------------------------------------------------------------
       call don_c_cape_calculation_driver_k  &
-           (isize, jsize, nlev_lsm, nlev_hires, Col_diag, Param,  &
+           (isize, jsize, nlev_lsm, nlev_hires, Col_diag, Param, Nml, &
             lag_cape_temp, lag_cape_vapor, lag_cape_press,  &
             no_convection, Don_cape, ermesg)
  
@@ -232,7 +244,7 @@ character(len=*),              intent(out)   :: ermesg
 !    model level.
 !---------------------------------------------------------------------
       call don_c_cape_calculation_driver_k  &
-           (isize, jsize, nlev_lsm, nlev_hires, Col_diag, Param,  &
+           (isize, jsize, nlev_lsm, nlev_hires, Col_diag, Param, Nml, &
             mid_cape_temp, mid_cape_vapor, pfull,  &
             no_convection, Don_cape, ermesg)
  
@@ -266,7 +278,7 @@ end subroutine don_c_def_conv_env_k
 !#######################################################################
 
 subroutine don_c_cape_calculation_driver_k  &
-         (isize, jsize, nlev_lsm, nlev_hires, Col_diag, Param,  &
+         (isize, jsize, nlev_lsm, nlev_hires, Col_diag, Param, Nml, &
           temperature, mixing_ratio, pfull, no_convection, Don_cape, &
           ermesg)
 
@@ -278,7 +290,7 @@ subroutine don_c_cape_calculation_driver_k  &
 !--------------------------------------------------------------------
 
 use donner_types_mod,only : donner_column_diag_type, donner_param_type,&
-                            donner_cape_type
+                            donner_cape_type, donner_nml_type
 
 implicit none
 
@@ -288,6 +300,7 @@ integer,                               intent(in)    :: isize, jsize,  &
                                                         nlev_hires
 type(donner_column_diag_type),         intent(in)    :: Col_diag
 type(donner_param_type),               intent(in)    :: Param
+type(donner_nml_type),                 intent(in)    :: Nml  
 real, dimension(isize,jsize,nlev_lsm), intent(in)    :: temperature,  &
                                                         mixing_ratio, &
                                                         pfull
@@ -385,6 +398,8 @@ character(len=*),                      intent(out)   :: ermesg
 !--------------------------------------------------------------------
             call don_c_displace_parcel_k   &
                  (nlev_hires, diag_unit, debug_ijt, Param,    &
+                  Nml%do_freezing_for_cape, Nml%tfre_for_cape, &
+                  Nml%dfre_for_cape, Nml%rmuz_for_cape, &
                   Don_cape%env_t(i,j,:), Don_cape%env_r(i,j,:), &
                   Don_cape%cape_p(i,j,:), .true.,  &
                   Don_cape%plfc(i,j), Don_cape%plzb(i,j),  &
@@ -424,7 +439,8 @@ end subroutine don_c_cape_calculation_driver_k
 !###################################################################
 
 subroutine don_c_displace_parcel_k   &
-         (nlev_hires, diag_unit, debug_ijt, Param, env_t, env_r,  &
+         (nlev_hires, diag_unit, debug_ijt, Param, do_freezing, &
+          tfreezing, dfreezing, rmuz, env_t, env_r,  &
           cape_p, coin_present, plfc, plzb, plcl, coin, xcape,       &
           parcel_r, parcel_t, ermesg)
 
@@ -446,6 +462,8 @@ integer,                       intent(in)  :: nlev_hires
 integer,                       intent(in)  :: diag_unit
 logical,                       intent(in)  :: debug_ijt
 type(donner_param_type),       intent(in)  :: Param
+logical,                       intent(in)  :: do_freezing
+real,                          intent(in)  :: tfreezing, dfreezing, rmuz
 real,   dimension(nlev_hires), intent(in)  :: env_t, env_r, cape_p
 logical,                       intent(in)  :: coin_present
 real,                          intent(out) :: plfc, plzb, plcl
@@ -554,7 +572,8 @@ character(len=*),              intent(out) :: ermesg
 !--------------------------------------------------------------------
       call don_c_define_moist_adiabat_k  &
            (nlev_hires, klcl, Param, parcel_t(klcl), cape_p, env_r, &
-            env_t, parcel_t, parcel_r, plfc, plzb, klfc, klzb,  &
+            env_t, do_freezing, tfreezing, dfreezing, rmuz, &
+            parcel_t, parcel_r, plfc, plzb, klfc, klzb,  &
             parcel_tv, env_tv, dtdp, rc, fact1, fact2, fact3, cape_exit,&
             ermesg)
  
@@ -705,7 +724,8 @@ end subroutine don_c_displace_parcel_k
 
 subroutine don_c_define_moist_adiabat_k  &
          (nlev_hires, klcl, Param, starting_temp, press, env_r,  &
-          env_t, parcel_t, parcel_r, plfc, plzb, klfc, &
+          env_t, do_freezing, tfreezing, dfreezing, rmuz, &
+          parcel_t, parcel_r, plfc, plzb, klfc, &
           klzb, parcel_tv, env_tv, dtdp, rc, fact1, fact2, fact3, &
           cape_exit, ermesg)
 
@@ -723,6 +743,9 @@ integer,                      intent(in)    :: nlev_hires, klcl
 type(donner_param_type),      intent(in)    :: Param
 real,                         intent(in)    :: starting_temp
 real, dimension(nlev_hires),  intent(in)    :: press, env_r, env_t
+logical,                      intent(in)    :: do_freezing
+real,                         intent(in)    :: tfreezing, dfreezing, &
+                                               rmuz
 real, dimension(nlev_hires),  intent(inout) :: parcel_t, parcel_r     
 real,                         intent(out)   :: plfc, plzb 
 integer,                      intent(out)   :: klfc, klzb
@@ -732,6 +755,7 @@ logical,                      intent(out)   :: cape_exit
 character(len=*),             intent(out)   :: ermesg
 
       real     :: es_v_s, qe_v_s, rs_v_s, qs_v_s, pb, tp_s
+      real     :: hlvls
       logical  :: capepos_s 
       integer  :: ieqv_s
       integer  :: k, n, nbad
@@ -828,12 +852,27 @@ character(len=*),             intent(out)   :: ermesg
 !-------------------------------------------------------------------
         else   !  (cape is pos, parcel warmer than env)
           klzb    = 0
+          if (do_freezing) then
+            if (tp_s .gt. tfreezing) then
+              hlvls = Param%hlv
+            else if (tp_s .le. (tfreezing - dfreezing)) then
+              hlvls = Param%hls
+            else
+              hlvls = (tfreezing - tp_s)*Param%hls + &
+                      (tp_s - (tfreezing -dfreezing))*Param%hlv
+              hlvls = hlvls/dfreezing 
+            endif
+          else
+            hlvls = Param%hlv
+          endif
           rc(k) = (1. - qs_v_s)*Param%rdgas + qs_v_s*Param%rvgas
           pb = 0.5*(press(k) + press(k+1))
           fact1(k) = Param%rdgas/Param%cp_air
-          fact2(k) = parcel_tv(k) + (Param%hlv*rs_v_s/rc(k))
-          fact1(k) = fact1(k)*fact2(k)
-          fact3(k) = Param%d622*(Param%hlv**2)*es_v_s/    &
+          fact2(k) = parcel_tv(k) + (hlvls*rs_v_s/rc(k))
+          fact1(k) = fact1(k)*fact2(k) +                  &
+                     Param%rdgas*env_tv(k)*rmuz*(tp_s-env_t(k)   &
+                    + (hlvls*(rs_v_s-env_r(k))/Param%cp_air))/Param%grav
+          fact3(k) = Param%d622*(hlvls**2)*es_v_s/    &
                      (Param%cp_air*pb*Param%rvgas*(parcel_tv(k)**2))
           fact3(k) = 1. + fact3(k)
           dtdp(k) = fact1(k)/fact3(k)

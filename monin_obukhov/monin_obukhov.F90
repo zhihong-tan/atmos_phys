@@ -57,8 +57,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 13.0 2006/03/28 21:10:27 fms Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 15.0 2007/08/14 03:54:07 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 
 !=======================================================================
 
@@ -176,6 +176,7 @@ if(present(avail)) lavail = .true.
 
 
 if(lavail) then 
+   if (count(avail) .eq. 0) return
    call monin_obukhov_drag_1d(grav, vonkarm,               &
         & error, zeta_min, max_iter, small,                         &
         & neutral, stable_option, rich_crit, zeta_trans, drag_min,  &
@@ -211,6 +212,8 @@ if(.not. module_is_initialized) call monin_obukhov_init
 
 n = size(z)
 if(present(avail)) then
+
+   if (count(avail) .eq. 0) return
 
    call monin_obukhov_profile_1d(vonkarm, &
         & neutral, stable_option, rich_crit, zeta_trans, &

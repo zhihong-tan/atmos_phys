@@ -121,7 +121,7 @@
 
 use fms_mod,               only: fms_init, mpp_clock_id, &
                                  mpp_clock_begin, mpp_clock_end, &
-                                 CLOCK_MODULE, &
+                                 CLOCK_MODULE,  &
                                  mpp_pe, mpp_root_pe, &
                                  open_namelist_file, stdlog, &
                                  file_exist, FATAL, WARNING, NOTE, &
@@ -211,8 +211,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 14.0.4.1.2.2 2007/05/29 16:02:54 wfc Exp $'
-character(len=128) :: tagname = '$Name: nalanda_2007_06 $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 15.0 2007/08/14 03:54:16 fms Exp $'
+character(len=128) :: tagname = '$Name: omsk $'
 
 
 !---------------------------------------------------------------------
@@ -651,9 +651,11 @@ logical ::  do_sea_esf_rad                  ! using sea_esf_rad package?
 !                 replaced by version 8.)
 !     version 10: adds 2 clr sky sw down diffuse and direct sfc flux
 !                 diagnostic variables (10/18/04)
+!     version 11: adds flux_sw_down_vis_clr diagnostic variable for use
+!                 in assessing polar ice maintainability (6/19/07)
 !---------------------------------------------------------------------
-integer, dimension(9) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
-                                                   7, 8, 9, 10 /)
+integer, dimension(10) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
+                                                   7, 8, 9, 10, 11 /)
 
 !-----------------------------------------------------------------------
 !    these arrays must be preserved across timesteps:
@@ -668,10 +670,12 @@ integer, dimension(9) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
 !          flux_sw_down_vis_dif  downward visible sw flux at surface
 !          flux_sw_down_total_dir  downward total sw flux at surface
 !          flux_sw_down_total_dif  downward total sw flux at surface
-!          flux_sw_down_total_dir_clr  downward total sw flux at surface
-!                                      (clear sky)
-!          flux_sw_down_total_dif_clr  downward total sw flux at surface
-!                                      (clear sky)
+!          flux_sw_down_total_dir_clr  downward total direct sw flux at 
+!                                      surface  (clear sky)
+!          flux_sw_down_total_dif_clr  downward total diffuse sw flux 
+!                                      at surface   (clear sky)
+!          flux_sw_down_vis_clr  downward visible sw flux at surface
+!                                       (clear sky)
 !          flux_sw_vis    net visible sw flux at surface
 !          flux_sw_vis_dir    net visible sw flux at surface
 !          flux_sw_vis_dif net visible sw flux at surface
@@ -692,7 +696,7 @@ integer, dimension(9) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
 !    sw_heating_clr, tot_heating_clr_save, sw_heating_save, 
 !    tot_heating_save, flux_sw_surf_save, flux_sw_surf_dir_save,
 !    flux_sw_surf_dif_save, flux_sw_down_vis_dir_save, 
-!    flux_sw_down_vis_dif_save
+!    flux_sw_down_vis_dif_save, flux_sw_down_vis_clr_save,
 !    flux_sw_down_total_dir_clr_save, flux_sw_down_total_dif_clr_save,
 !    flux_sw_down_total_dir_save, flux_sw_down_total_dif_save and 
 !    flux_sw_vis_save, flux_sw_vis_dir_save, flux_sw_vis_dif_save are 
@@ -722,6 +726,7 @@ real, allocatable, dimension(:,:)   ::  solar_save, flux_sw_surf_save, &
                                         flux_sw_down_total_dif_save, &
                                     flux_sw_down_total_dir_clr_save, &
                                     flux_sw_down_total_dif_clr_save, &
+                                        flux_sw_down_vis_clr_save, &
                                         flux_sw_vis_save, &
                                         flux_sw_vis_dir_save, &
                                         flux_sw_vis_dif_save
@@ -787,6 +792,7 @@ integer                      :: id_flux_sw_dir, id_flux_sw_dif, &
                                 id_flux_sw_down_total_dif, &
                                 id_flux_sw_down_total_dir_clr, &
                                 id_flux_sw_down_total_dif_clr, &
+                                id_flux_sw_down_vis_clr, &
                                 id_flux_sw_vis, &
                                 id_flux_sw_vis_dir, &
                                 id_flux_sw_vis_dif, &
@@ -1561,6 +1567,7 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
           allocate ( hswcf_save          (id,jd,kmax))
           allocate (flux_sw_down_total_dir_clr_save  (id,jd))
           allocate (flux_sw_down_total_dif_clr_save  (id,jd))
+          allocate (flux_sw_down_vis_clr_save (id,jd)) 
           allocate (swdn_special_clr_save(id,jd, MX_SPEC_LEVS))
           allocate (swup_special_clr_save(id,jd, MX_SPEC_LEVS))
           if (do_swaerosol_forcing) then
@@ -1617,6 +1624,7 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
         allocate (Rad_output%flux_sw_down_total_dif(id,jd))
         allocate (Rad_output%flux_sw_down_total_dir_clr(id,jd))
         allocate (Rad_output%flux_sw_down_total_dif_clr(id,jd))
+        allocate (Rad_output%flux_sw_down_vis_clr(id,jd))
         allocate (Rad_output%flux_sw_vis(id,jd))
         allocate (Rad_output%flux_sw_vis_dir(id,jd))
         allocate (Rad_output%flux_sw_vis_dif(id,jd))
@@ -1676,6 +1684,7 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
           Rad_output%flux_sw_down_total_dif  = 0.0
           Rad_output%flux_sw_down_total_dir_clr  = 0.0
           Rad_output%flux_sw_down_total_dif_clr  = 0.0
+          Rad_output%flux_sw_down_vis_clr  = 0.0
           Rad_output%flux_sw_vis  = 0.0
           Rad_output%flux_sw_vis_dir  = 0.0
           Rad_output%flux_sw_vis_dif  = 0.0
@@ -3681,6 +3690,7 @@ subroutine radiation_driver_end
                       swdn_special_clr_save, swup_special_clr_save,   &
                      flux_sw_down_total_dir_clr_save, &
                      flux_sw_down_total_dif_clr_save, &
+                      flux_sw_down_vis_clr_save,   &
                       hswcf_save)
           if (do_swaerosol_forcing) then
             deallocate (dfswcf_ad_save, ufswcf_ad_save)
@@ -3723,6 +3733,7 @@ subroutine radiation_driver_end
                     Rad_output%flux_sw_down_total_dif,  &
                    Rad_output%flux_sw_down_total_dir_clr,  &
                    Rad_output%flux_sw_down_total_dif_clr,  &
+                    Rad_output%flux_sw_down_vis_clr,  &
                     Rad_output%flux_sw_vis,  &
                     Rad_output%flux_sw_vis_dir,  &
                     Rad_output%flux_sw_vis_dif,  &
@@ -3838,6 +3849,7 @@ subroutine write_restart_file
             call write_data (unit, hswcf_save)
             call write_data (unit, flux_sw_down_total_dir_clr_save)
             call write_data (unit, flux_sw_down_total_dif_clr_save)
+            call write_data (unit, flux_sw_down_vis_clr_save)
             call write_data (unit, swdn_special_clr_save)
             call write_data (unit, swup_special_clr_save)
           endif
@@ -3927,6 +3939,7 @@ subroutine write_restart_nc
             call write_data (fname, 'hswcf_save', hswcf_save)
             call write_data (fname, 'flux_sw_down_total_dir_clr_save', flux_sw_down_total_dir_clr_save)
             call write_data (fname, 'flux_sw_down_total_dif_clr_save', flux_sw_down_total_dif_clr_save)
+            call write_data (fname, 'flux_sw_down_vis_clr_save', flux_sw_down_vis_clr_save)
             call write_data (fname, 'swdn_special_clr_save', swdn_special_clr_save)
             call write_data (fname, 'swup_special_clr_save', swup_special_clr_save)
           endif
@@ -4296,7 +4309,12 @@ subroutine read_restart_file
                   flux_sw_down_total_dir_clr_save =0.0
                   flux_sw_down_total_dif_clr_save =0.0
                 endif
-
+                if (vers >= 11) then
+                  call read_data (unit, flux_sw_down_vis_clr_save)
+                else
+                  flux_sw_down_vis_clr_save =0.0
+                endif
+                
 !---------------------------------------------------------------------
 !    if this is a pre-version 9 restart (other than version 6), then 
 !    radiation must be called on the first step in order to define the 
@@ -4498,6 +4516,11 @@ subroutine read_restart_nc
             else
               flux_sw_down_total_dir_clr_save = 0.0
               flux_sw_down_total_dif_clr_save = 0.0
+            endif
+            if (vers >= 11) then
+              call read_data (fname, 'flux_sw_down_vis_clr_save', flux_sw_down_vis_clr_save)
+            else
+              flux_sw_down_vis_clr_save = 0.0
             endif
             call read_data (fname, 'swdn_special_clr_save', swdn_special_clr_save)
             call read_data (fname, 'swup_special_clr_save', swup_special_clr_save)
@@ -4934,6 +4957,11 @@ integer        , intent(in) :: axes(4)
                'flux_sw_down_total_dif_clr', axes(1:2), Time, &
                'downward clearsky diffuse total sfc sw flux',  &
                'watts/m2', missing_value=missing_value)
+
+      id_flux_sw_down_vis_clr = register_diag_field (mod_name,    &
+                'flux_sw_down_vis_clr', axes(1:2), Time, &
+                'downward visible sfc sw flux clear sky', 'watts/m2', &
+                 missing_value=missing_value)
 
     endif 
 
@@ -5681,6 +5709,8 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
                                         Sw_output(1)%dfsw_dir_sfc_clr(:,:)
             Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je) =   &
                                         Sw_output(1)%dfsw_dif_sfc_clr(:,:)
+           Rad_output%flux_sw_down_vis_clr(is:ie,js:je) =   &
+                                         Sw_output(1)%dfsw_vis_sfc_clr(:,:)
             if (present(mask)) then
               Rad_output%tdt_rad_clr(is:ie,js:je,:) =    &
                          (Rad_output%tdtsw_clr(is:ie,js:je,:) +  &
@@ -5950,6 +5980,8 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
                    Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je)
             flux_sw_down_total_dif_clr_save(is:ie,js:je) =    &
                     Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je)
+            flux_sw_down_vis_clr_save(is:ie,js:je) =    &
+                    Rad_output%flux_sw_down_vis_clr(is:ie,js:je)
             swdn_special_clr_save(is:ie,js:je,:) =  &
                                 Sw_output(1)%swdn_special_clr(:,:,:)
             swup_special_clr_save(is:ie,js:je,:) =  &
@@ -6041,6 +6073,8 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
           Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je) =   &
                                flux_ratio(:,:) * &
                             flux_sw_down_total_dif_clr_save(is:ie,js:je)
+          Rad_output%flux_sw_down_vis_clr(is:ie,js:je) =   &
+                  flux_ratio(:,:)*flux_sw_down_vis_clr_save(is:ie,js:je)
           do k=1, size(Rad_output%tdt_rad,3)
             Rad_output%tdtsw_clr(is:ie,js:je,k) =   &
                            sw_heating_clr_save (is:ie,js:je,k)*   &
@@ -6113,6 +6147,8 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
                      Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je)
             flux_sw_down_total_dif_clr_save(is:ie,js:je) =    &
                       Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je)
+            flux_sw_down_vis_clr_save(is:ie,js:je) =    &
+                            Rad_output%flux_sw_down_vis_clr(is:ie,js:je)
             swdn_special_clr_save(is:ie,js:je,:) =   &
                                    Sw_output(1)%swdn_special_clr(:,:,:)
             swup_special_clr_save(is:ie,js:je,:) =   &
@@ -7145,6 +7181,11 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
           used = send_data ( id_flux_sw_down_total_dif_clr,  &
                   Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je),  &
                   Time_diag, is, js )
+        endif
+        if ( id_flux_sw_down_vis_clr > 0 ) then
+          used = send_data ( id_flux_sw_down_vis_clr, &
+                     Rad_output%flux_sw_down_vis_clr(is:ie, js:je), &
+                     Time_diag, is, js )
         endif
       endif
  

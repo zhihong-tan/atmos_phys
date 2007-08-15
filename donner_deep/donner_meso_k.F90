@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_meso_k.F90,v 14.0 2007/03/15 22:02:41 fms Exp $
+!  $Id: donner_meso_k.F90,v 15.0 2007/08/14 03:53:24 fms Exp $
 
 !module donner_meso_inter_mod
 
@@ -582,7 +582,7 @@ character(len=128),              intent(out) :: ermesg
 !    if necessary.
 !----------------------------------------------------------------------
       if (pzm == 0.) pzm = pt_ens
-      if (pzm <= pztm) pzm = pztm - dp
+      if (pzm <= pztm - dp) pzm = pztm - dp
 
 !---------------------------------------------------------------------
 !    if in diagnostics column, output the pressure at the base of the
@@ -760,13 +760,17 @@ character(len=128),              intent(out) :: ermesg
 
 !----------------------------------------------------------------------
 !    add the  source level value to the array accumulating the  profile
-!    of total updraft source at each level (wmps).
-!----------------------------------------------------------------------
-!! ????? SHOULD THIS BE DONE ?? , OR HAS THE REDISTRIBUTION TAKEN CARE
-!        OF THIS  ??????
-        wmps(k) = wmps(k) + owm(k)
-        if (do_donner_tracer) then
-          wtp(k,:) = wtp(k,:) + otm(k,:)
+!    of total updraft source at each level (wmps). the if loop prevents
+!    the inclusion of moisture which is available but above the top of 
+!    the mesoscale updraft (the level of zero bupoyancy usually).  wmps
+!    will only be non-zero at layers within the mesoscale updraft, 
+!    but owm may be non-zero in layers above the updraft.
+!--------------------------------------------------------------------
+        if (wmps(k) /= 0.0) then
+          wmps(k) = wmps(k) + owm(k)
+          if (do_donner_tracer) then
+            wtp(k,:) = wtp(k,:) + otm(k,:)
+          endif
         endif
       end do   ! (end of k loop)
 

@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: cumulus_closure_k.F90,v 13.0 2006/03/28 21:08:32 fms Exp $
+!  $Id: cumulus_closure_k.F90,v 15.0 2007/08/14 03:53:10 fms Exp $
 
 
 !module cumulus_closure_inter_mod
@@ -12,7 +12,7 @@
 !######################################################################
 
 subroutine cu_clo_cumulus_closure_k   &
-         (nlev_hires, diag_unit, debug_ijt, Param, dcape, cape_p, &
+         (nlev_hires, diag_unit, debug_ijt, Param, Nml, dcape, cape_p, &
           qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, rl_v, parcel_r,   &
           env_t, parcel_t, a1, ermesg)
 
@@ -21,7 +21,7 @@ subroutine cu_clo_cumulus_closure_k   &
 !    cumulus parameterization. see LJD notes, "Cu Closure D," 6/11/97
 !---------------------------------------------------------------------
  
-use donner_types_mod, only : donner_param_type
+use donner_types_mod, only : donner_param_type, donner_nml_type
 
 implicit none
 
@@ -30,6 +30,7 @@ integer,                        intent(in)  :: nlev_hires
 integer,                        intent(in)  :: diag_unit
 logical,                        intent(in)  :: debug_ijt
 type(donner_param_type),        intent(in)  :: Param
+type(donner_nml_type),          intent(in)  :: Nml    
 real,                           intent(in)  :: dcape
 real,    dimension(nlev_hires), intent(in)  :: cape_p, qli0_v, qli1_v, &
                                                qr_v, qt_v, env_r, ri_v, &
@@ -82,7 +83,8 @@ character(len=*),               intent(out) :: ermesg
 
       real, dimension (nlev_hires)  :: rt, ta, ra, tden, tdena,  &
                                        dtpdta, pert_env_t, pert_env_r, &
-                                       pert_parcel_t, pert_parcel_r
+                                       pert_parcel_t, pert_parcel_r, &
+                                       parcel_r_clo, parcel_t_clo
 
       real     :: tdens, tdensa, ri1, ri2, rild, rile, rilf, ri2b,  &
                   sum2, rilak, rilbk, rilck, rilakm, rilbkm, rilckm, &
@@ -191,13 +193,31 @@ character(len=*),               intent(out) :: ermesg
         end do
       endif
 
+      if (Nml%do_freezing_for_cape /= Nml%do_freezing_for_closure .or. &
+          Nml%tfre_for_cape /= Nml%tfre_for_closure .or. &
+          Nml%dfre_for_cape /= Nml%dfre_for_closure .or. &
+          Nml%rmuz_for_cape /= Nml%rmuz_for_closure) then
+           call don_c_displace_parcel_k   &
+               (nlev_hires, diag_unit, debug_ijt, Param,  &
+                Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
+                Nml%dfre_for_closure, Nml%rmuz_for_closure, env_t,  &
+                env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
+                dumxcape, parcel_r_clo,  parcel_t_clo, ermesg)
+      else
+        parcel_r_clo = parcel_r
+        parcel_t_clo = parcel_t
+      endif
+
 !--------------------------------------------------------------------
 !    call subroutine displace_parcel to determine the movement of a 
 !    parcel from the lcl through the environment defined by (pert_env_t, 
 !    pert_env_r).
 !--------------------------------------------------------------------
       call don_c_displace_parcel_k   &
-           (nlev_hires, diag_unit, debug_ijt, Param, pert_env_t, &
+           (nlev_hires, diag_unit, debug_ijt, Param,   &
+            Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
+            Nml%dfre_for_closure, Nml%rmuz_for_closure, &
+            pert_env_t, &
             pert_env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
             dumxcape, pert_parcel_r,  pert_parcel_t, ermesg)
 
@@ -233,7 +253,7 @@ character(len=*),               intent(out) :: ermesg
 !    this definition of density temperature.
 !----------------------------------------------------------------------
       do k=1,nlev_hires
-        tden(k)  = parcel_t(k)*(1. + (parcel_r(k)/Param%d622)) 
+        tden(k)  = parcel_t_clo(k)*(1. + (parcel_r_clo(k)/Param%d622)) 
         tdena(k) = pert_parcel_t(k)*(1. + (pert_parcel_r(k)/Param%d622))
       end do
 
@@ -282,8 +302,12 @@ character(len=*),               intent(out) :: ermesg
       ri2b = env_t(1)*(Param%d622 + env_r(1))/   &
              (Param%d622*((1. + rt(1))**2))
       ri2b = ri2b*qli1_v(1)
-      sum2 = rild + rile + rilf
-      sum2 = 0.
+      if (Nml%do_freezing_for_closure .or. &
+          NMl%rmuz_for_closure /= 0.0) then
+        sum2 = rild + rile + rilf
+      else
+        sum2 = 0.
+      endif
 
 
       ri1 = 0.

@@ -46,8 +46,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: uw_clouds_W.F90,v 1.1.2.1.2.1.2.1 2007/05/29 16:23:08 wfc Exp $'
-   character(len=128)  :: tagname =  '$Name: nalanda_2007_06 $'
+   character(len=128)  :: version =  '$Id: uw_clouds_W.F90,v 15.0 2007/08/14 03:55:56 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: omsk $'
 
 
 
@@ -126,10 +126,10 @@ contains
 !
 subroutine uw_clouds_W_init  (pref, lonb, latb, axes, Time)
 
-real, dimension(:,:), intent(in) :: pref
-real, dimension(:,:), intent(in) :: lonb, latb
-integer, dimension(4), intent(in)      :: axes
-type(time_type),       intent(in)      :: Time
+real, dimension(:,:),  intent(in) :: pref
+real, dimension(:,:),  intent(in) :: lonb, latb
+integer, dimension(4), intent(in) :: axes
+type(time_type),       intent(in) :: Time
 
       integer            :: unit, ierr, io
 
@@ -370,6 +370,12 @@ type(microphysics_type), intent(inout) :: Shallow_microphys
       do k=1,kx
         do j=1,jx
           do i=1,ix
+      if (Cldrad_control%using_fu2007) then
+!+yim Fu's parameterization of dge
+        Shallow_microphys%size_ice(i,j,k) =   &
+                            47.05 + 0.6624*(tkel(i,j,k) - TFREEZE) +  &
+                            0.001741*(tkel(i,j,k)-TFREEZE)**2 
+      else ! (using_fu2007)
             if (ice_local(i,j,k) > QMIN) then
               if (tkel(i,j,k) > TFREEZE - 25. ) then
                 Shallow_microphys%size_ice(i,j,k) = 100.6    
@@ -397,6 +403,7 @@ type(microphysics_type), intent(inout) :: Shallow_microphys
             else
               Shallow_microphys%size_ice(i,j,k) = 0.0
             endif
+      endif  ! (using_fu2007)
           end do
         end do
       end do
