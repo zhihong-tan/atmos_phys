@@ -6,7 +6,7 @@ implicit none
       public :: chemini
 
 character(len=128), parameter :: version     = '$Id: mo_chemini.F90,v 13.0 2006/03/28 21:16:05 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk $'
+character(len=128), parameter :: tagname     = '$Name: omsk_2007_10 $'
 logical                       :: module_is_initialized = .false.
 
       contains
