@@ -31,8 +31,7 @@ MODULE UW_CONV_MOD
 
   use  conv_plumes_k_mod,only    : cp_init_k, cp_end_k, cp_clear_k, &
                                    ct_init_k, ct_end_k, ct_clear_k, &
-                                   cumulus_tend_k, cumulus_downdraft_k,&
-                                   cumulus_plume_k, &
+                                   cumulus_tend_k, cumulus_plume_k, &
                                    cplume, ctend, cpnlist
 
   use  conv_closures_mod,only    : cclosure_bretherton,   &
@@ -47,8 +46,8 @@ MODULE UW_CONV_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: uw_conv.F90,v 15.0 2007/08/14 03:56:10 fms Exp $'
-  character(len=128) :: tagname = '$Name: omsk $'
+  character(len=128) :: version = '$Id: uw_conv.F90,v 15.0.2.1 2007/09/29 13:15:32 rsh Exp $'
+  character(len=128) :: tagname = '$Name: omsk_2007_10 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -88,12 +87,16 @@ MODULE UW_CONV_MOD
   real    :: wmin_ratio = 0.
   logical :: use_online_aerosol = .false.
   logical :: do_auto_aero = .false.
+  real    :: pblht0 = 500.
+  real    :: tke0 = 1.
+  real    :: lofactor0 = 1.
+  integer :: lochoice  = 0
 
   NAMELIST / uw_conv_nml / iclosure, rkm_dp, rkm_sh, cldhgt_max, cbmf_sh_frac, &
        do_deep, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt,       &
        do_fast, do_ice, do_ppen, do_micro, do_edplume, do_forcedlifting,       &
        atopevap, apply_tendency, prevent_unreasonable, aerol, gama, tkemin,    &
-       wmin_ratio, use_online_aerosol, do_auto_aero
+       wmin_ratio, use_online_aerosol, do_auto_aero, pblht0, tke0, lofactor0, lochoice
        
 
   !namelist parameters for UW convective plume
@@ -103,15 +106,16 @@ MODULE UW_CONV_MOD
   real    :: wmin     = 0.0    ! maximum allowable updraft fraction
   real    :: rbuoy    = 1.0    ! for nonhydrostatic pressure effects on updraft
   real    :: rdrag    = 1.0 
-  real    :: frac_drs = 1.0    ! 
+  real    :: frac_drs = 0.0    ! 
   real    :: bigc     = 0.7    ! for momentum transfer
   real    :: auto_th0 = 0.5e-3 ! threshold for precipitation
   real    :: auto_rate= 1.e-3
   real    :: tcrit    = -45.0  ! critical temperature 
   real    :: rad_crit = 14.0   ! critical droplet radius
+  real    :: emfrac_max = 1.0
 
   NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc, &
-       auto_th0, auto_rate, tcrit, rad_crit
+       auto_th0, auto_rate, tcrit, rad_crit, emfrac_max
  
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
@@ -246,6 +250,7 @@ contains
     cpn % frac_drs  = frac_drs
     cpn % bigc      = bigc    
     cpn % auto_th0  = auto_th0
+    cpn % emfrac_max= emfrac_max
     cpn % auto_rate = auto_rate
     cpn % tcrit     = tcrit  
     cpn % cldhgt_max= cldhgt_max
@@ -488,7 +493,7 @@ contains
     integer i, j, k, kl, klm, km1, nk, ks, m, naer, na, n
 
     real rhos0j, thj, qvj, qlj, qij, qse, thvj
-    real thvuinv, hlsrc, thcsrc, qctsrc, plcltmp, tmp
+    real thvuinv, hlsrc, thcsrc, qctsrc, plcltmp, tmp, lofactor
     real zsrc, psrc, cbmftmp, cbmf_old, rkm_sh1
 
     real, dimension(size(tb,1),size(tb,2)) :: &
@@ -615,10 +620,12 @@ contains
           hlsrc =sd%hl (1)
           rkm_sh1=rkm_sh
           if (do_lands) then
-            rkm_sh1 = rkm_sh   * (1. - 0.5 * sd%land)
-            rkm_sh1 = rkm_sh   * ( 500. / max(pblht(i,j), 500.))
-            qctsrc = qt_parcel_k (sd%qct(1), sd%qs(1), qstar(i,j), &
-                                  tkeo(i,j), sd%land, gama)
+            !rkm_sh1 = rkm_sh   * (1. - 0.5 * sd%land)
+            !rkm_sh1 = rkm_sh   * ( pblht0 / max(pblht(i,j), pblht0))
+            !wstar   = (ustar(i,j)*bstar(i,j)*pblht(i,j))**(1./3.)
+             call qt_parcel_k (sd%qs(1), qstar(i,j), pblht(i,j), tkeo(i,j), sd%land, gama, &
+                  pblht0, tke0, lofactor0, lochoice, qctsrc, lofactor)
+             rkm_sh1 = rkm_sh   * lofactor
           endif
           
           call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, do_fast, do_ice, ac)
@@ -1244,7 +1251,7 @@ contains
     integer i, j, k, kl, klm, km1, nk, ks, m, naer, na, n
 
     real rhos0j, thj, qvj, qlj, qij, qse, thvj
-    real thvuinv, hlsrc, thcsrc, qctsrc, plcltmp, tmp
+    real thvuinv, hlsrc, thcsrc, qctsrc, plcltmp, tmp, lofactor
     real zsrc, psrc, cbmftmp, cbmf_old, rkm_sh1
 
     real, dimension(size(tb,1),size(tb,2)) :: &
@@ -1376,9 +1383,9 @@ contains
           hlsrc =sd%hl (1)
           rkm_sh1=rkm_sh
           if (do_lands) then
-            rkm_sh1 = rkm_sh   * (1. - 0.5 * sd%land)
-            qctsrc = qt_parcel_k (sd%qct(1), sd%qs(1), qstar(i,j), &
-                                  tkeo(i,j), sd%land, gama)
+             call qt_parcel_k (sd%qs(1), qstar(i,j), pblht(i,j), tkeo(i,j), sd%land, gama, &
+                  pblht0, tke0, lofactor0, lochoice, qctsrc, lofactor)
+             rkm_sh1 = rkm_sh   * lofactor
           endif
 
           call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, do_fast, do_ice, ac)

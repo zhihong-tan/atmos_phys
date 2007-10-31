@@ -67,8 +67,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 15.0 2007/08/14 03:53:16 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 15.0.2.1.2.1 2007/09/29 13:12:38 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
 
 
 !--------------------------------------------------------------------
@@ -147,6 +147,16 @@ logical             :: do_donner_closure = .true.
 logical             :: do_dcape          = .true.
 logical             :: do_lands          = .false.
 real                :: tau               = 28800.
+real                :: cape0             = 0.
+real                :: rhavg0            = 1.
+real                :: plev0             = 50000.
+logical             :: do_rh_trig        = .false.
+logical             :: do_capetau_land   = .false.
+real                :: pblht0            = 500.
+real                :: tke0              = 1.
+real                :: lofactor0         = 1.
+integer             :: lochoice          = 0
+integer             :: deep_closure      = 0
 real                :: gama              = 0.0001
 logical             :: do_ice            = .false.
 real                :: atopevap          = 0.
@@ -316,6 +326,16 @@ namelist / donner_deep_nml /      &
                             do_dcape,         &!miz
                             do_lands,         &!miz
                             tau,              &!miz
+                            cape0,            &!miz
+                            rhavg0,           &!miz
+                            plev0,            &!miz
+                            do_rh_trig,       &!miz
+                            do_capetau_land,  &!miz
+                            pblht0,           &!miz
+                            tke0,             &!miz
+                            lofactor0,        &!miz
+                            lochoice,         &!miz
+                            deep_closure,     &!miz
                             gama,             &!miz
                             do_ice,           &!miz
                             atopevap,         &!miz
@@ -936,7 +956,7 @@ logical,                         intent(in)   :: using_unified_closure
       endif
         
       if (do_donner_plume .and. do_lands) then
-        call error_mesg ('donner_deep_mod', & 'setting do_lands &
+        call error_mesg ('donner_deep_mod', 'setting do_lands &
               &true in donner full currently has no effect', FATAL)   
       endif
  
@@ -1329,6 +1349,16 @@ logical,                         intent(in)   :: using_unified_closure
       Nml%do_dcape                    = do_dcape          !miz
       Nml%do_lands                    = do_lands          !miz
       Nml%tau                         = tau               !miz
+      Nml%cape0                       = cape0             !miz
+      Nml%rhavg0                      = rhavg0            !miz
+      Nml%plev0                       = plev0             !miz
+      Nml%do_rh_trig                  = do_rh_trig        !miz
+      Nml%do_capetau_land             = do_capetau_land   !miz
+      Nml%pblht0                      = pblht0            !miz
+      Nml%tke0                        = tke0              !miz
+      Nml%lofactor0                   = lofactor0         !miz
+      Nml%lochoice                    = lochoice          !miz
+      Nml%deep_closure                = deep_closure      !miz
       Nml%gama                        = gama              !miz
       Nml%do_ice                      = do_ice            !miz
       Nml%atopevap                    = atopevap          !miz

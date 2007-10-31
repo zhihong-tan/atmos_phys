@@ -64,8 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 15.0 2007/08/14 03:54:32 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 15.0.2.1 2007/09/29 13:17:12 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
 
 
 !---------------------------------------------------------------------
@@ -112,9 +112,15 @@ private          &
 logical :: do_isccp = .false.
 logical :: isccp_actual_radprops = .true.
 real    :: isccp_scale_factor = 0.85
+logical :: cloud_screen = .false.
+real    :: cloud_cover_limit = 0.8
+real    :: cod_limit = 2.
+real    :: water_ice_ratio =1.
 
 namelist /cloudrad_diagnostics_nml /  do_isccp, isccp_actual_radprops,&
-                                      isccp_scale_factor
+                                      isccp_scale_factor, cloud_screen,&
+                                      cloud_cover_limit, cod_limit, &
+                                      water_ice_ratio
 
 
 !----------------------------------------------------------------------
@@ -151,7 +157,7 @@ character(len=8)    :: mod_name = 'cloudrad'
 real                :: missing_value = -999.
 
 integer :: id_tot_cld_amt, id_cld_amt
-integer :: id_reff_modis, id_reff_modis2
+integer :: id_reff_modis, id_reff_modis2, id_reff_modis3
 
 ! radiative property diagnostics
 integer :: id_em_cld_lw, id_em_cld_10u, & 
@@ -671,11 +677,12 @@ real, dimension(:,:,:),         intent(in), optional :: mask
 
       real, dimension(size(Atmos_input%rh2o,1),                  &
                       size(Atmos_input%rh2o,2)) :: reff_modis,   &
-                                                   reff_modis2
+                                                   reff_modis2,  &
+                                                   reff_modis3      
                                                   
       type(microphysics_type) :: Model_microphys
       
-      real       :: reff_n, coun_n, Tau_m, reff_m, coun_m
+      real       :: reff_n, coun_n, pres_n, Tau_m, reff_m, coun_m
       logical    :: used
       integer    :: ix, jx, kx
       integer    :: i, j, k, n,  isccpSwBand, isccpLwBand, nswbands
@@ -968,6 +975,7 @@ real, dimension(:,:,:),         intent(in), optional :: mask
       if (do_isccp) then
         reff_modis(:,:) = 0.
         reff_modis2(:,:) = 0.
+        reff_modis3(:,:) = 0.
 
         if (Cldrad_control%do_strat_clouds) then
 !
@@ -1035,6 +1043,7 @@ real, dimension(:,:,:),         intent(in), optional :: mask
              do i=1,ix
              reff_n = 0.
              coun_n = 0.
+             pres_n = 0.
              do n=1,ncol
 !do downward scanning for each sub-column
               Tau_m = 0.
@@ -1043,11 +1052,17 @@ real, dimension(:,:,:),         intent(in), optional :: mask
               k = 1
 !If tau is greater than 2, then stop
 !             do
-              do while ( k <= kx .and. Tau_m <= 2.)
+              do while ( k <= kx .and. Tau_m <= cod_limit)
                 Tau_m = Tau_m + Tau_stoch(i,j,k,n)
-                 if (Model_microphys%stoch_size_drop(i,j,k,n) > 1. &
-                  .and. Model_microphys%stoch_conc_drop(i,j,k,n) > 1.e-10) then
-                  reff_m = reff_m + Model_microphys%stoch_size_drop(i,j,k,n)
+                if (Model_microphys%stoch_size_drop(i,j,k,n) >  &
+                                                            1.  .and. &
+                    Model_microphys%stoch_conc_drop(i,j,k,n) > &
+                                                       1.e-10   .and. &
+                    Model_microphys%stoch_conc_drop(i,j,k,n) > &
+                                                 water_ice_ratio*     &
+                        Model_microphys%stoch_conc_ice(i,j,k,n)) then
+                  reff_m = reff_m +    &
+                               Model_microphys%stoch_size_drop(i,j,k,n)
                   coun_m = coun_m + 1.
                 end if
                  k = k + 1
@@ -1056,16 +1071,27 @@ real, dimension(:,:,:),         intent(in), optional :: mask
                if (coun_m >= 1.) then
                  reff_n = reff_n + reff_m/coun_m
                  coun_n = coun_n + 1.
+                 pres_n = pres_n + Atmos_input%press(i,j,k)
                end if
               end do
             if (coun_n >= 1.) then
-              reff_modis(i,j) = 0.5*reff_n
-              reff_modis2(i,j) = coun_n
+              if (cloud_screen) then
+                if (coun_n/real(ncol) .gt. cloud_cover_limit) then
+                  reff_modis(i,j) = 0.5*reff_n
+                  reff_modis2(i,j) = coun_n
+                  reff_modis3(i,j) = pres_n
+                end if  
+              else
+                reff_modis(i,j) = 0.5*reff_n
+                reff_modis2(i,j) = coun_n
+                reff_modis3(i,j) = pres_n
+              end if
            end if
          end do
         end do
       used = send_data (id_reff_modis, reff_modis, Time_diag, is, js)
       used = send_data (id_reff_modis2, reff_modis2, Time_diag, is, js)
+      used = send_data (id_reff_modis3, reff_modis3, Time_diag, is, js)
       end if
 
 !--------------------------------------------------------------------
@@ -3202,6 +3228,10 @@ integer        , intent(in) :: axes(4)
       id_reff_modis2 = register_diag_field    &
                        (mod_name, 'reff_modis2', axes(1:2), Time, &
                        'MODIS effective radii frequency', 'fraction')
+
+      id_reff_modis3 = register_diag_field    &
+                       (mod_name, 'reff_modis3', axes(1:2), Time, &
+                       'MODIS scan pressure level', 'mbar')
 
 !---------------------------------------------------------------------
 !    register the total-cloud diagnostic fields in this module.

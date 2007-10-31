@@ -10,8 +10,8 @@ MODULE CONV_UTILITIES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 15.0 2007/08/14 03:56:07 fms Exp $'
-  character(len=128) :: tagname = '$Name: omsk $'
+  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 15.0.2.1 2007/09/29 13:15:32 rsh Exp $'
+  character(len=128) :: tagname = '$Name: omsk_2007_10 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -715,11 +715,14 @@ contains
     ac%plcl=psrc*(rhtmp**chi); !Emanuel's calculation, results nearly identical to RAS
 
     klcl=0;  !klcl is the layer containing the LCL, i.e., ps0(klcl)<=plcl(i,j)
-    do k=1,sd % kmax
+    do k=1,sd % ktopconv-1
        if(sd%ps(k).le.ac%plcl) then
           klcl=k; 
           ac%zlcl=sd%zs(k)-(ac%plcl-sd%ps(k))/sd%dp(k)*sd%dz(k);
           exit
+       else
+          klcl   =sd % ktopconv
+          ac%zlcl=sd % zs(klcl)
        end if
     end do
     if (sd%ps(1).le.ac%plcl) then
@@ -1139,7 +1142,7 @@ subroutine pack_sd_lsm_k (do_lands, land, coldT, dt, pf, ph, zf, zh, &
      sd % ps(k) = ph(nk)
      sd % zs(k) = zh(nk)
      sd % t (k) = t (nk)
-     sd % qv(k) = max(qv(nk), 4.e-10) 
+     sd % qv(k) = max(qv(nk)/(1.+qv(nk)), 4.e-10)
      sd % ql(k) = 0.
      sd % qi(k) = 0.
      sd % qa(k) = 0.
@@ -1955,16 +1958,31 @@ end subroutine check_tracer_realizability
 !--lwh
 
 !#####################################################################
-function qt_parcel_k (qt, qs, qstar, tke, land, gama)
-    real              :: qt_parcel_k
-    real, intent(in)  :: qt, qs, qstar, tke, land, gama
+subroutine qt_parcel_k (qs, qstar, pblht, tke, land, gama, pblht0, tke0, lofactor0, &
+     lochoice, qt, lofactor)
+    real,    intent(in)    :: qs, qstar, pblht, tke, land, gama, pblht0, tke0, lofactor0
+    integer, intent(in)    :: lochoice
+    real,    intent(inout) :: qt, lofactor
+
+    real :: qttmp
+
+    if (lochoice .eq. 0) then
+       lofactor = 1. - land * (1. - lofactor0)
+    elseif (lochoice .eq. 1) then
+       lofactor = pblht0 / max(pblht,  pblht0)
+    elseif (lochoice .eq. 2) then
+       lofactor = tke0   / max(tke, tke0  )
+    elseif (lochoice .eq. 3) then
+       lofactor = tke0   / max(tke, tke0  )
+       lofactor = sqrt(lofactor)
+    else
+       lofactor = 1.
+    end if
+
+    qttmp = qt*(1. + gama * land)
+    qt    = max(qt, min(qttmp, qs))
  
-    qt_parcel_k = qt + land * gama * max(qstar,0.0)
-!   qt_parcel_k = qt * (1. + land * gama * sqrt(tke)      )
-!   qt_parcel_k = qt + land * gama * sqrt(tke) * max (qstar,0.0)
- 
-    qt_parcel_k = MAX (qt, MIN(qt_parcel_k, qs))
-end function qt_parcel_k
+  end subroutine qt_parcel_k
 
 
 end MODULE CONV_UTILITIES_k_MOD

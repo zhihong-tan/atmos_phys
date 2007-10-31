@@ -1,5 +1,5 @@
 !VERSION NUMBER:
-!   $Id: donner_lite_k.F90,v 15.0 2007/08/14 03:53:20 fms Exp $
+!   $Id: donner_lite_k.F90,v 15.0.2.1 2007/09/29 13:09:51 rsh Exp $
 
 !######################################################################
 !######################################################################
@@ -50,7 +50,7 @@ type(uw_params),                           intent(inout) :: Uw_p
 
       real, dimension (nlev_lsm) :: mid_cape_temp, mid_cape_vapor
       real, dimension (isize,jsize,nlev_lsm, ntr) :: xgcm_v
-      real         :: dz, zsrc, psrc, hlsrc, thcsrc, qctsrc, tvtmp
+      real         :: dz, zsrc, psrc, hlsrc, thcsrc, qctsrc, tvtmp, lofactor
       integer      :: i, j, k, n, kmax
 
       do k=1,nlev_lsm
@@ -88,8 +88,8 @@ type(uw_params),                           intent(inout) :: Uw_p
             qctsrc=sd%qct(1)
             hlsrc =sd%hl (1)
             if (Nml%do_lands) then
-              qctsrc = qt_parcel_k (qctsrc, sd%qs(1), qstar(i,j),  &
-                                    tkemiz(i,j), sd%land, Nml%gama)
+               call qt_parcel_k (sd%qs(1), qstar(i,j), pblht(i,j), tkemiz(i,j), sd%land, &
+                    Nml%gama,Nml%pblht0,Nml%tke0,Nml%lofactor0,Nml%lochoice,qctsrc,lofactor)
             end if
             call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd,  &
                               Uw_p, .false., Nml%do_freezing_for_cape, &
@@ -124,8 +124,8 @@ type(uw_params),                           intent(inout) :: Uw_p
             qctsrc=sd%qct(1)
             hlsrc =sd%hl (1)
             if (Nml%do_lands) then
-              qctsrc = qt_parcel_k (qctsrc, sd%qs(1), qstar(i,j),  &
-                                    tkemiz(i,j), sd%land, Nml%gama)
+               call qt_parcel_k (sd%qs(1), qstar(i,j), pblht(i,j), tkemiz(i,j), sd%land, &
+                    Nml%gama, Nml%pblht0, Nml%tke0, Nml%lofactor0, Nml%lochoice, qctsrc, lofactor)
             end if
 
             call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, &
@@ -663,7 +663,7 @@ character(len=*),                  intent(out)   :: ermesg
                    rintsum2, intgl_in, intgl_out, alphaw, tb, alpp,   &
                    pcsave, rsc, ensmbl_cld_top_area  
 
-      real    :: qs, tp, qp, pp, chi, rhtmp, frac0 !miz
+      real    :: qs, tp, qp, pp, chi, rhtmp, frac0, lofactor !miz
 
       real            :: dz, zsrc, psrc, hlsrc, thcsrc, qctsrc, tvtmp
       real            :: rkm, cbmf, wrel, scaleh
@@ -846,10 +846,12 @@ character(len=*),                  intent(out)   :: ermesg
       hlsrc =sd%hl (k)
       frac0 = Nml%frac
       if (Nml%do_lands) then
-        frac0 = Nml%frac * ( 1.- 0.5 * sd%land)
-        frac0 = Nml%frac * ( 500. / max(pblht, 500.))
-        qctsrc = qt_parcel_k (qctsrc, sd%qs(k), qstar, tkemiz,  &
-                              sd%land, Nml%gama)
+         !frac0 = Nml%frac * ( 1.- 0.5 * sd%land)
+         !frac0 = Nml%frac * ( Nml%pblht0 / max(pblht,  Nml%pblht0))
+         !frac0 = Nml%frac * ( Nml%tke0   / max(tkemiz, Nml%tke0  ))
+         call qt_parcel_k (sd%qs(k), qstar, pblht, tkemiz, sd%land, &
+              Nml%gama, Nml%pblht0, Nml%tke0, Nml%lofactor0, Nml%lochoice, qctsrc, lofactor)
+         frac0 = Nml%frac * lofactor
       endif
       call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd,   &
                         Uw_p, &
@@ -1338,7 +1340,7 @@ character(len=*),                  intent(out)   :: ermesg
 subroutine don_d_determine_cloud_area_miz            &
          (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit, debug_ijt,  &
           Param, Nml, tracers, pfull, zfull, phalf, zhalf, &
-          tkemiz, qstar, land, coldT, sd, Uw_p, &
+          pblht, tkemiz, qstar, land, coldT, sd, Uw_p, &
           ac, max_depletion_rate, dcape, amax, dise_v, disa_v,  &
           pfull_c, temp_c, mixing_ratio_c, env_t, env_r, parcel_t,  &
           parcel_r, cape_p, exit_flag, amos, a1, ermesg)
@@ -1365,7 +1367,7 @@ real,                         intent(in)    :: max_depletion_rate, dcape, amax
 real, dimension(nlev_lsm),    intent(in)    :: dise_v, disa_v, pfull_c, temp_c, mixing_ratio_c 
 real, dimension(nlev_lsm),    intent(in)    :: pfull, zfull
 real, dimension(nlev_lsm+1),  intent(in)    :: phalf, zhalf !miz
-real,                         intent(in)    :: tkemiz, qstar, land !miz
+real,                         intent(in)    :: pblht, tkemiz, qstar, land !miz
 logical,                      intent(in)    :: coldT !miz
 !++++yim
 real, dimension(nlev_lsm,ntr),    intent(in)    :: tracers
@@ -1447,12 +1449,19 @@ integer                     :: k
 !    call subroutine cumulus_closure to determine cloud base cloud
 !    fraction and so close the deep-cumulus parameterization.
 !--------------------------------------------------------------------
+    if (Nml%deep_closure .eq. 0) then
       call cu_clo_cumulus_closure_miz   &
            (nlev_lsm, ntr, dt, diag_unit, debug_ijt, Param, tracers, &
-            dcape, pfull, zfull, phalf, zhalf, tkemiz, qstar, land, &
+            dcape, pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, land, &
             coldT, sd, Uw_p, ac, Nml,        &!miz
             cape_p, qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, &
             rl_v, parcel_r, env_t, parcel_t, a1, ermesg)     
+    else
+       call  cu_clo_miz   &
+            (nlev_lsm, ntr, dt, Param, tracers, &
+            pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, land,  &
+            coldT, sd, Uw_p, ac, Nml, env_r, env_t, a1, ermesg)
+    endif
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1477,8 +1486,11 @@ integer                     :: k
 !    cumulus_closure to be no larger than the cloud base area that 
 !    results in total grid box coverage at some higher level (amax). 
 !--------------------------------------------------------------------
+   if (Nml%deep_closure .eq. 0) then
       a1 = MIN (amax, a1)
-
+   else
+      a1 = MIN (0.25, a1)
+   end if
 !---------------------------------------------------------------------
 !    set the cloud-base area fraction to be 0.0 if there is no net
 !    column integral of moisture forcing in the column. this is 
@@ -1580,7 +1592,7 @@ integer                     :: k
 
 subroutine cu_clo_cumulus_closure_miz   &
          (nlev_lsm, ntr, dt, diag_unit, debug_ijt, Param, tracers, &
-          dcape, pfull, zfull, phalf, zhalf, tkemiz, qstar, land,  &
+          dcape, pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, land,  &
           coldT, sd, Uw_p, ac, Nml, cape_p, &!miz
           qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, rl_v, parcel_r,   &
           env_t, parcel_t, a1, ermesg)
@@ -1606,7 +1618,7 @@ logical,                        intent(in)  :: debug_ijt
 type(donner_param_type),        intent(in)  :: Param
 type(donner_nml_type),          intent(in)  :: Nml
 real,                           intent(in)  :: dcape
-real,                           intent(in)  :: tkemiz, qstar, land
+real,                           intent(in)  :: pblht, tkemiz, qstar, land
 logical,                        intent(in)  :: coldT
 
 real, dimension(nlev_lsm),      intent(in)    :: pfull, zfull !miz
@@ -1676,9 +1688,9 @@ character(len=*),               intent(out) :: ermesg
                   sum2, rilak, rilbk, rilck, rilakm, rilbkm, rilckm, &
                   rila, rilb, rilc, ri2ak, ri2akm, ri2a, sum1, plcl, &
                   plfc, plzb, dumcoin, dumxcape
-      real     :: zsrc, psrc, hlsrc, thcsrc, qctsrc
+      real     :: zsrc, psrc, hlsrc, thcsrc, qctsrc, cape_c, lofactor, tau, rhavg, dpsum
       integer  :: k     
-
+      logical  :: ctrig
       ermesg = ' '
 
 !--------------------------------------------------------------------
@@ -1692,7 +1704,7 @@ character(len=*),               intent(out) :: ermesg
         pert_env_r(k)    = env_r(k)
         pert_env_t(k)    = env_t(k)
         ttt (k)          = env_t(nlev_lsm-k+1)
-        rrr (k)          = env_r(nlev_lsm-k+1)
+        rrr (k)          = env_r(nlev_lsm-k+1)/(1.-env_r(nlev_lsm-k+1))
       end do
 
 !--------------------------------------------------------------------
@@ -1761,16 +1773,37 @@ character(len=*),               intent(out) :: ermesg
                 zhalf, ttt, rrr, tracers, sd)
       sd%t(1) =sd%t (1)-1.0
       sd%qv(1)=sd%qv(1)-0.01*sd%qv(1)
-      call extend_sd_k (sd, 1000., .false., Uw_p)
+      call extend_sd_k (sd, pblht, .false., Uw_p)
       zsrc  =sd%zs (1)
       psrc  =sd%ps (1)
       thcsrc=sd%thc(1)
       qctsrc=sd%qct(1)
       hlsrc =sd%hl (1)
+      cape_c = Nml%cape0
+      tau    = Nml%tau
       if (Nml%do_lands) then
-        qctsrc = qt_parcel_k (qctsrc, sd%qs(1), qstar, tkemiz,  &
-                              sd%land, Nml%gama)
+        call qt_parcel_k (sd%qs(1), qstar, pblht, tkemiz, sd%land, &
+             Nml%gama, Nml%pblht0, Nml%tke0, Nml%lofactor0, Nml%lochoice, qctsrc, lofactor)
+        if (Nml%do_capetau_land) then
+           !cape_c = Nml%cape0 * (1. - sd%land * (1. - Nml%lofactor0))
+           cape_c = Nml%cape0 * lofactor
+           tau    = Nml%tau   * lofactor
+        end if
       endif
+      if (Nml%do_rh_trig) then
+         rhavg=0.; dpsum=0.
+         do k = 1,sd%kmax
+            if (sd%p(k) .gt. Nml%plev0) then
+               rhavg  = rhavg + sd%rh(k)*sd%dp(k)
+               dpsum = dpsum + sd%dp(k)
+            end if
+         end do
+         rhavg = rhavg/dpsum
+         ctrig= rhavg .gt. Nml%rhavg0
+      else
+         ctrig=.true.
+      end if
+
       call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, &
                         .false., Nml%do_freezing_for_closure, ac)
       pert_parcel_r=ac%qv(:)/(1.-ac%qv(:))
@@ -1930,10 +1963,14 @@ character(len=*),               intent(out) :: ermesg
       else
         ri1 = Param%rdgas*ri1
         ri2 = Param%rdgas*ri2
-        if (Nml%do_dcape) then
+        if (Nml%do_dcape .and. ctrig) then
           a1  = -(ri2 + dcape)/ri1
         else
-          a1  = -(ri2 + ac%cape/Nml%tau)/ri1
+           if (ac%cape .gt. cape_c .and. ctrig) then
+              a1  = -(ri2 + (ac%cape-cape_c)/tau)/ri1
+           else
+              a1  = 0.
+           end if
         end if
       endif
 
@@ -5086,4 +5123,94 @@ character(len=*),                 intent(out)   :: ermesg
    end subroutine don_d_copy_wetdep_miz
 
 !####################################################################
+!######################################################################
+
+
+subroutine cu_clo_miz   &
+         (nlev_lsm, ntr, dt, Param, tracers, &
+          pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, land,  &
+          coldT, sd, Uw_p, ac, Nml, env_r, env_t, a1, ermesg)
+
+use donner_types_mod,     only : donner_param_type, donner_nml_type
+use conv_utilities_k_mod, only : pack_sd_lsm_k, extend_sd_k,  &
+                                 adi_cloud_k, sounding, adicloud, &
+                                 uw_params, qt_parcel_k
+
+implicit none
+
+integer,                        intent(in)  :: nlev_lsm, ntr
+real,                           intent(in)  :: dt
+type(donner_param_type),        intent(in)  :: Param
+type(donner_nml_type),          intent(in)  :: Nml
+real,                           intent(in)  :: pblht, tkemiz, qstar, land
+logical,                        intent(in)  :: coldT
+real, dimension(nlev_lsm),      intent(in)    :: pfull, zfull 
+real, dimension(nlev_lsm,ntr),  intent(in)    :: tracers
+real, dimension(nlev_lsm+1),    intent(in)    :: phalf, zhalf 
+type(sounding),                 intent(inout) :: sd           
+type(uw_params),                intent(inout) :: Uw_p         
+type(adicloud),                 intent(inout) :: ac
+
+real,    dimension(nlev_lsm),   intent(in)  :: env_r, env_t
+real,                           intent(out) :: a1
+character(len=*),               intent(out) :: ermesg
+
+real, dimension (nlev_lsm)  :: ttt, rrr
+real    :: zsrc, psrc, hlsrc, thcsrc, qctsrc, cape_c, lofactor, tau
+integer :: k, kl, kmax
+real    :: sigmaw, wcrit, erfarg, cbmf, ufrc, rbuoy, rkfre, wcrit_min, rmaxfrac
+
+   ermesg = ' '
+
+   do k=1,nlev_lsm
+      ttt (k) = env_t(nlev_lsm-k+1)
+      rrr (k) = env_r(nlev_lsm-k+1)/(1.-env_r(nlev_lsm-k+1))
+   end do
+
+   call pack_sd_lsm_k      &
+        (Nml%do_lands, land, coldT, dt, pfull, phalf, zfull,  &
+        zhalf, ttt, rrr, tracers, sd)
+   call extend_sd_k (sd, pblht, .false., Uw_p)
+   zsrc  =sd%zs (1)
+   psrc  =sd%ps (1)
+   thcsrc=sd%thc(1)
+   qctsrc=sd%qct(1)
+   hlsrc =sd%hl (1)
+   cape_c=Nml%cape0
+   if (Nml%do_lands) then
+      call qt_parcel_k (sd%qs(1), qstar, pblht, tkemiz, sd%land, &
+           Nml%gama, Nml%pblht0, Nml%tke0, Nml%lofactor0, Nml%lochoice, qctsrc, lofactor)
+      cape_c = Nml%cape0 * (1. - sd%land * (1. - Nml%lofactor0))
+   endif
+   call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, &
+                        .false., Nml%do_freezing_for_closure, ac)
+
+   rbuoy     = 1.0
+   rkfre     = 0.05
+   wcrit_min = 0.5
+   rmaxfrac  = 0.05
+
+   wcrit  = sqrt(2. * ac % cin * rbuoy)
+   sigmaw = sqrt(rkfre * tkemiz)
+   wcrit  = max(wcrit, wcrit_min*sigmaw)
+   cbmf   = ac % rho0lcl * sigmaw / 2.5066 * exp(-0.5*((wcrit/sigmaw)**2.))
+   cbmf   = min(cbmf, ( sd%ps(0) - ac%plcl ) * 0.25 / sd%delt / Uw_p%GRAV)
+
+   if (ac%cape > cape_c) then
+      a1=cbmf/0.5
+   else
+      a1=0
+   end if
+
+!   erfarg=wcrit / (1.4142 * sigmaw)
+!   if(erfarg.lt.20.)then
+!      ufrc = min(rmaxfrac, 0.5*erfccc(erfarg))
+!   else
+!      ufrc = 0.
+!   endif
+
+ end subroutine cu_clo_miz
+
+
+!######################################################################
 !######################################################################

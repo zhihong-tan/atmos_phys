@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 15.0 2007/08/14 03:53:27 fms Exp $
+!  $Id: donner_types.h,v 15.0.2.1 2007/09/29 13:09:51 rsh Exp $
 
 !#####################################################################
  
@@ -270,6 +270,16 @@ logical             ::  do_dcape
 logical             ::  do_lands
 real                ::  gama
 real                ::  tau
+real                ::  cape0
+real                ::  rhavg0
+real                ::  plev0
+logical             ::  do_rh_trig
+logical             ::  do_capetau_land
+real                ::  pblht0
+real                ::  tke0
+real                ::  lofactor0
+integer             ::  deep_closure
+integer             ::  lochoice
 logical             ::  do_ice
 real                ::  atopevap
 logical             ::  do_donner_lscloud

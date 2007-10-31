@@ -50,7 +50,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 14.0 2007/03/15 22:05:49 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
 
 !--------------------------------------------------------------------
 !----- interfaces ------

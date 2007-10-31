@@ -555,8 +555,8 @@ module strat_cloud_mod
   !       DECLARE VERSION NUMBER OF SCHEME
   !
 
-  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 15.0 2007/08/14 03:56:14 fms Exp $'
-  Character(len=128) :: Tagname = '$Name: omsk $'
+  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 15.0.2.1 2007/08/23 15:22:12 wfc Exp $'
+  Character(len=128) :: Tagname = '$Name: omsk_2007_10 $'
   logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   !        
@@ -4704,10 +4704,12 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
                elsewhere
                     liq_adj(:,:,j) = tmp1*inv_dtcloud
                endwhere
-               where (T(:,:,j) .gt. tfreeze-40. .and. tmp1 .gt. 0.)
+               if (do_liq_num) then    ! cjg: bug fix
+                 where (T(:,:,j) .gt. tfreeze-40. .and. tmp1 .gt. 0.)
                     qndt_cond(:,:,j) = qndt_cond(:,:,j) + drop1*1.e6 / &
                                        airdens(:,:,j)*(1.-qa_upd)*inv_dtcloud
-               endwhere                       
+                 endwhere
+               endif !do_liq_num
              end if
 
         else

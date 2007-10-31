@@ -103,8 +103,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 15.0 2007/08/14 03:54:38 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 15.0.4.1 2007/10/04 14:28:38 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
 
 
 !---------------------------------------------------------------------
@@ -192,7 +192,7 @@ integer :: nqn           ! tracer index for cloud droplet number
 !----------------------------------------------------------------------
 !   variables needed for random number seed:
 !----------------------------------------------------------------------
-real, dimension(:), allocatable  :: lats, lons ! lat and lon of columns
+real, dimension(:,:), allocatable  :: lats, lons ! lat and lon of columns
                                                ! in this processor's
                                                ! domain [ degrees ]
 
@@ -589,10 +589,10 @@ type(time_type),          intent(in)   ::  Time
 !--------------------------------------------------------------------
       if (Cldrad_control%do_stochastic_clouds_iz) then
         if (Cldrad_control%do_stochastic_clouds) then
-          allocate (lats(size(latb,2)))
-          allocate (lons(size(lonb,1)))
-          lats(:) = latb(1,:)*radian
-          lons(:) = lonb(:,1)*radian
+          allocate (lats(size(latb,1),size(latb,2)))
+          allocate (lons(size(lonb,1), size(lonb,2)))
+          lats(:,:) = latb(:,:)*radian
+          lons(:,:) = lonb(:,:)*radian
           call cloud_generator_init
         endif
       else
@@ -2151,8 +2151,8 @@ type(cld_specification_type), intent(inout)   :: Cld_spec
             do i=1,size(Lsc_microphys%cldamt,1)
               streams(i,j) = &
                 initializeRandomNumberStream (                      &
-                    constructSeed(nint(lons(is + i - 1)),           &
-                                   nint(lats(js + j - 1)), Rad_time, &
+                    constructSeed(nint(lons(is+i-1,js+j-1)),           &
+                                  nint(lats(is+i-1,js+j-1)), Rad_time, &
                                   perm = 1))
             end do
           end do
@@ -2218,8 +2218,8 @@ type(cld_specification_type), intent(inout)   :: Cld_spec
             do i=1,size(Lsc_microphys%cldamt,1)
               streams(i,j) = &
                 initializeRandomNumberStream (                      &
-                    constructSeed(nint(lons(is + i - 1)),           &
-                                   nint(lats(js + j - 1)), Rad_time, &
+                    constructSeed(nint(lons(is+i-1,js+j-1)),           &
+                                  nint(lats(is+i-1,js+j-1)), Rad_time, &
                                   perm = 2))
             end do
           end do

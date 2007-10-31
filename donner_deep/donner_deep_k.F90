@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_deep_k.F90,v 15.0 2007/08/14 03:53:18 fms Exp $
+!  $Id: donner_deep_k.F90,v 15.0.2.1 2007/09/29 13:09:51 rsh Exp $
 
 !module donner_deep_inter_mod
 
@@ -2793,7 +2793,7 @@ character(len=*),             intent(out)    ::  ermesg
 !++++yim
                Param, Col_diag, Nml, Initialized, Don_cape%model_t(i,j, :),    &
                 Don_cape%model_r(i,j,:), Don_cape%model_p(i,j,:),  &
-               phalf_c, pblht, tkemiz, qstar, land, coldT, dt, sd, &
+                phalf_c, pblht(i,j), tkemiz(i,j), qstar(i,j), land(i,j),coldT(i,j), dt, sd, &
                Uw_p, ac, cp, ct,  &
                 xgcm_v(i,j,:,:), sfc_sh_flux(i,j),                 &
                sfc_vapor_flux(i,j), sfc_tracer_flux(i,j,:),   &
@@ -3046,7 +3046,7 @@ character(len=*),             intent(out)    ::  ermesg
 !++++yim
                  (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit, debug_ijt, Param, Nml, xgcm_v(i,j,:,:), &
                   pfull(i,j,:), zfull(i,j,:), phalf(i,j,:),  &
-                  zhalf(i,j,:), tkemiz(i,j), qstar(i,j), land(i,j),  &
+                  zhalf(i,j,:), pblht(i,j), tkemiz(i,j), qstar(i,j), land(i,j),  &
                   coldT(i,j), sd, Uw_p, ac, &
                    max_depletion_rate, Don_conv%dcape(i,j),   &
                    Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),    &

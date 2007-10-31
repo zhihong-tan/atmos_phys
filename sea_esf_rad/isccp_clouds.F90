@@ -42,7 +42,7 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 14.0 2007/03/15 22:05:59 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
 
 
 !---------------------------------------------------------------------
