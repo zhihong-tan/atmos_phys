@@ -64,8 +64,8 @@ private
 !----------- version number for this module -------------------
 
    character(len=128)  :: &
-   version =  '$Id: optical_path.F90,v 14.0 2007/03/15 22:06:55 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
+   version =  '$Id: optical_path.F90,v 14.0.8.1 2007/11/19 13:03:13 rsh Exp $'
+   character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
 
 
 !---------------------------------------------------------------------
@@ -3454,7 +3454,7 @@ type(optical_path_type),       intent(inout) :: Optical
       real, dimension (size(Aerosol%aerosol,1),  &
                        size(Aerosol%aerosol,2),  &
                        size(Aerosol%aerosol,3))  :: aerooptdep
-
+!yim
       integer, dimension (size(Aerosol%aerosol,1),  &
                           size(Aerosol%aerosol,2),  &
                           size(Aerosol%aerosol,3))  :: irh, opt_index_v1, &
@@ -3470,7 +3470,6 @@ type(optical_path_type),       intent(inout) :: Optical
       integer   :: ix, jx, kx
       integer   :: na, nw, ni
       integer   :: nsc, opt_index
-
 !--------------------------------------------------------------------
 !  local variables:
 !
@@ -3509,7 +3508,8 @@ type(optical_path_type),       intent(inout) :: Optical
             irh(i,j,k) = MIN(100, MAX(0,     &
                           NINT(100.*Atmos_input%aerosolrelhum(i,j,k))))
             opt_index_v1(i,j,k) =     &
-                               Aerosol_props%sulfate_index( irh(i,j,k) )
+                        Aerosol_props%sulfate_index (irh(i,j,k), &
+                                             Aerosol_props%ivol(i,j,k) )
             opt_index_v2(i,j,k) =     &
                                Aerosol_props%omphilic_index( irh(i,j,k) )
             opt_index_v3(i,j,k) =     &
@@ -3576,6 +3576,26 @@ type(optical_path_type),       intent(inout) :: Optical
             end do
           end do
         end do
+!yim
+     else if (Aerosol_props%optical_index(nsc) == &   
+                          Aerosol_props%bc_flag  ) then
+      do k = 1,kx         
+        do j = 1,jx         
+          do i = 1,ix           
+            opt_index = opt_index_v1(i,j,k)
+                aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+              endif
+            end do
+          end do
+        end do
      else if (Aerosol_props%optical_index(nsc) ==  &
                         Aerosol_props%omphilic_flag ) then
       do k = 1,kx         
@@ -3595,8 +3615,28 @@ type(optical_path_type),       intent(inout) :: Optical
             end do
           end do
         end do
+!yim
      else if (Aerosol_props%optical_index(nsc) ==  &
                         Aerosol_props%bcphilic_flag ) then
+      if (Rad_control%using_im_bcsul) then
+      do k = 1,kx         
+        do j = 1,jx         
+          do i = 1,ix           
+            opt_index = opt_index_v1(i,j,k)
+                aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+              endif
+            end do
+          end do
+        end do
+      else ! (using_im_bcsul)
       do k = 1,kx         
         do j = 1,jx         
           do i = 1,ix           
@@ -3614,6 +3654,7 @@ type(optical_path_type),       intent(inout) :: Optical
             end do
           end do
         end do
+      endif  ! (using_im_bcsul)
      else if (Aerosol_props%optical_index(nsc) ==  &
                         Aerosol_props%seasalt1_flag ) then
       do k = 1,kx         

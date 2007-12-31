@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 15.0.2.1 2007/09/29 13:09:51 rsh Exp $
+!  $Id: donner_types.h,v 15.0.2.1.2.1.2.1 2007/11/13 11:30:03 rsh Exp $
 
 !#####################################################################
  
@@ -90,6 +90,7 @@ logical  :: do_default_cell_ice_size
 logical  :: coldstart
 logical  :: monitor_output
 logical  :: using_unified_closure
+logical  :: do_conservation_checks
 
 integer  :: total_pts
 integer  :: pts_processed_conv
@@ -252,6 +253,29 @@ end type donner_rad_type
 !#######################################################################
 
 
+type donner_budgets_type
+
+
+
+integer              :: n_water_budget
+integer              :: n_enthalpy_budget
+integer              :: n_precip_paths 
+integer              :: n_precip_types
+
+real,    dimension(:,:,:,:), pointer      :: water_budget=>NULL()
+real,    dimension(:,:,:,:), pointer      :: enthalpy_budget=>NULL()
+real,    dimension(:,:,:,:,:), pointer      :: precip_budget=>NULL()
+real,    dimension(:,:), pointer      :: lheat_precip=>NULL()
+real,    dimension(:,:), pointer      :: vert_motion=>NULL()
+real,    dimension(:,:,:), pointer      :: liq_prcp   =>NULL()
+real,    dimension(:,:,:), pointer      :: frz_prcp   =>NULL()
+
+end type donner_budgets_type
+
+
+!#######################################################################
+
+
 type donner_nml_type
 
 !************************************************************************
@@ -278,12 +302,14 @@ logical             ::  do_capetau_land
 real                ::  pblht0
 real                ::  tke0
 real                ::  lofactor0
+real                ::  deephgt0
 integer             ::  deep_closure
 integer             ::  lochoice
 logical             ::  do_ice
 real                ::  atopevap
 logical             ::  do_donner_lscloud
 logical             ::  use_llift_criteria
+logical             ::  use_pdeep_cv
 real                ::  auto_rate
 real                ::  auto_th
 real                ::  frac
@@ -306,6 +332,8 @@ logical             :: do_freezing_for_closure
 real                :: tfre_for_closure
 real                :: dfre_for_closure
 real                :: rmuz_for_closure
+logical             :: do_budget_analysis
+logical             :: force_internal_enthalpy_conservation
 
 end type donner_nml_type
 

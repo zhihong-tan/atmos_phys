@@ -58,7 +58,7 @@ public   vert_turb_driver_init, vert_turb_driver_end, vert_turb_driver
 !--------------------- version number ----------------------------------
 
 character(len=128) :: version = '$Id: vert_turb_driver.F90,v 15.0 2007/08/14 03:56:25 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_10 $'
+character(len=128) :: tagname = '$Name: omsk_2007_12 $'
 logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------

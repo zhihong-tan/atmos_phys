@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_meso_k.F90,v 15.0 2007/08/14 03:53:24 fms Exp $
+!  $Id: donner_meso_k.F90,v 15.0.4.1 2007/10/30 17:41:34 rsh Exp $
 
 !module donner_meso_inter_mod
 
@@ -11,13 +11,15 @@
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 subroutine don_m_meso_effects_k    &
-         (nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, Param, &
+         (nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, Param, Nml,&
           pfull_c, temp_c, mixing_ratio_c, phalf_c, rlsm, emsm, etsm, &
           tracers_c, ensembl_cond, ensmbl_precip, pb, plzb_c, pt_ens, &
-          ampta1, ensembl_anvil_cond, wtp, qtmes, anvil_precip_melt, &
-          meso_cloud_area, cmus_tot, dmeml, emds, emes, wmms, wmps, &
-          umeml, temptr, tmes, mrmes, emdi, pmd, pztm, pzm,    &
-          meso_precip, ermesg)
+          ampta1, ensembl_anvil_cond_liq, ensembl_anvil_cond_liq_frz, &
+          ensembl_anvil_cond_ice,  wtp, qtmes, meso_frz_intg_sum,  &
+          anvil_precip_melt, meso_cloud_area, cmus_tot, dmeml,  &
+          emds_liq, emds_ice, emes_liq, emes_ice,  wmms, wmps, &
+          umeml, temptr, tmes, tmes_up, tmes_dn, mrmes, mrmes_up, &
+          mrmes_dn, emdi, pmd, pztm, pzm, meso_precip, ermesg)
 
 !-------------------------------------------------------------------
 !    subroutine don_m_meso_effects_k obtains the mesoscale effects
@@ -28,7 +30,7 @@ subroutine don_m_meso_effects_k    &
 !    on notation, see "Cu Closure A notes," 2/97.
 !-------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type
+use donner_types_mod, only : donner_param_type, donner_nml_type
 
 implicit none
 
@@ -37,24 +39,33 @@ integer,                           intent(in)  :: nlev_lsm, nlev_hires, &
                                                   ntr, diag_unit
 logical,                           intent(in)  :: debug_ijt        
 type(donner_param_type),           intent(in)  :: Param
+type(donner_nml_type),             intent(in)  :: Nml  
 real,   dimension(nlev_lsm),       intent(in)  :: pfull_c, temp_c, &
                                                   mixing_ratio_c
 real,   dimension(nlev_lsm+1),     intent(in)  :: phalf_c
 real,   dimension(nlev_hires),     intent(in)  :: rlsm, emsm
 real,   dimension(nlev_hires,ntr), intent(in)  :: etsm
 real,   dimension(nlev_lsm,ntr),   intent(in)  :: tracers_c
+logical,                           intent(in)  :: meso_frz_intg_sum
 real,                              intent(in)  :: ensembl_cond,   &
                                                   ensmbl_precip, pb, &
                                                   plzb_c, pt_ens,   &
                                                   ampta1, &
-                                                  ensembl_anvil_cond
+                                              ensembl_anvil_cond_liq, &
+                                       ensembl_anvil_cond_liq_frz, &
+                                                  ensembl_anvil_cond_ice
 real,   dimension(nlev_lsm,ntr),   intent(out) :: wtp, qtmes, temptr
 real,   dimension(nlev_lsm),       intent(out) :: anvil_precip_melt, &
                                                   meso_cloud_area,    &
-                                                  cmus_tot, dmeml, emds,&
-                                                  emes, wmms, wmps,   &
-                                                  umeml, tmes, mrmes
-real,                              intent(out) :: emdi, pmd, pztm, pzm, &
+                                                  cmus_tot, dmeml, &
+                                                  emds_liq, emds_ice, &
+                                                        wmms, wmps,   &
+                                                  emes_liq, emes_ice, &
+                                                  umeml, tmes, mrmes, &
+                                                  mrmes_up, mrmes_dn, &
+                                                  tmes_up, tmes_dn
+real,                              intent(out) :: emdi,           &
+                                                  pmd, pztm, pzm, &
                                                   meso_precip
 character(len=*),                  intent(out) :: ermesg
 
@@ -141,13 +152,17 @@ character(len=*),                  intent(out) :: ermesg
 !---------------------------------------------------------------------
 !   local variables:
 
-      real, dimension (nlev_lsm)     ::  tmes_up, tmes_dn,  &
-                                         mrmes_up, mrmes_dn, &
-                                         cmu
+      real, dimension (nlev_lsm)     ::  cmu
+      real, dimension (nlev_lsm)     ::  out
       real, dimension (nlev_hires)   ::  p_hires
       real                           ::  alp, hfmin, cmui, qtmesum, dp,&
-                                         available_condensate
+                                         available_condensate, &
+                                         available_condensate_liq, &
+                                         available_condensate_ice
+      real                           ::  emdi_liq, emdi_ice
       integer                        ::  k, kcont
+      real  :: intgl_lo, intgl_hi
+      real          :: p2
 
 !----------------------------------------------------------------------
 !
@@ -155,6 +170,18 @@ character(len=*),                  intent(out) :: ermesg
       ermesg = ' '
 
       dp = Param%dp_of_cloud_model
+
+!--------------------------------------------------------------------
+!    define the pressure at the melting level (p2).
+!--------------------------------------------------------------------
+      p2 = -10.
+      do k=1,nlev_lsm-1
+        if ((temp_c(k) >= Param%kelvin) .and.   &
+             (temp_c(k+1) <= Param%kelvin))  then
+          p2 = phalf_c(k+1)
+          exit
+        end if
+      end do
 
 !---------------------------------------------------------------------
 !    if in diagnostics column, output message indicating that sub-
@@ -218,14 +245,50 @@ character(len=*),                  intent(out) :: ermesg
 !----------------------------------------------------------------------
       if (trim(ermesg) /= ' ') return
 
+      if (Nml%force_internal_enthalpy_conservation) then
+!-----------------------------------------------------------------------
+!    call don_u_set_column_integral_k to adjust the tmes_up
+!    profile below cloud base so that the desired integral value is
+!    obtained.
+!-----------------------------------------------------------------------
+         call don_u_set_column_integral_k    &
+              (nlev_lsm, tmes_up   , pb, &
+               phalf_c(1), 0.0, phalf_c , intgl_hi,     &
+               intgl_lo, out, ermesg)
+
+!---------------------------------------------------------------------
+!    if column diagnostics are desired, output the integrals and 
+!    profiles, both before and after the adjustment to the desired value        .
+!---------------------------------------------------------------------
+        if (debug_ijt) then
+           write (diag_unit, '(a, e20.12)')  &
+                   'in set_col_integral: tmes_up column(in)= ',intgl_hi
+           write (diag_unit, '(a, e20.12)')  &
+                   'in set_col_integral: tmes_up column(out)= ',intgl_lo
+           do k=1,nlev_lsm
+            if (tmes_up(k)       /= out(k)) then
+               write (diag_unit, '(a, i4, 2e20.12)') &
+               'in set_col_integral: k,tmesup(in), tmesup(out)= ', k,  &
+                     tmes_up(k)      , out(k)
+            endif
+          end do
+        endif
+ 
+!---------------------------------------------------------------------
+!    define the adjusted output profile by removing conservation_factor.
+!---------------------------------------------------------------------
+       tmes_up(:) = out(:)       
+    endif
+
 !---------------------------------------------------------------------
 !    call subroutine meso_downdraft to define the needed output fields 
 !    associated with the mesoscale downdraft.
 !---------------------------------------------------------------------
       call don_m_meso_downdraft_k  &
-           (nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param, p_hires,&
-            pfull_c, temp_c, mixing_ratio_c, phalf_c, pb, ampta1, dp,  &
-            pztm, pzm, alp, hfmin, pmd, tmes_dn, mrmes_dn, dmeml, ermesg)
+           (nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param, Nml,  &
+            p_hires, pfull_c, temp_c, mixing_ratio_c, phalf_c, pb, &
+            ampta1, dp, pztm, pzm, alp, hfmin, pmd, tmes_dn,  &
+            mrmes_dn, dmeml, ermesg)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -233,13 +296,52 @@ character(len=*),                  intent(out) :: ermesg
 !----------------------------------------------------------------------
       if (trim(ermesg) /= ' ')  return
 
+      if (Nml%force_internal_enthalpy_conservation) then
+!-----------------------------------------------------------------------
+!    call don_u_set_column_integral_k to adjust the tmes_dn
+!    profile below cloud base so that the desired integral value is
+!    obtained.
+!-----------------------------------------------------------------------
+         call don_u_set_column_integral_k    &
+              (nlev_lsm, tmes_dn   , pb, &
+               phalf_c(1), 0.0, phalf_c , intgl_hi,     &
+               intgl_lo, out, ermesg)
+
+!---------------------------------------------------------------------
+!    if column diagnostics are desired, output the integrals and 
+!    profiles, both before and after the adjustment to the desired value        .
+!---------------------------------------------------------------------
+        if (debug_ijt) then
+           write (diag_unit, '(a, e20.12)')  &
+                    'in set_col_integral: tmes_dn column(in)= ',intgl_hi
+           write (diag_unit, '(a, e20.12)')  &
+                  'in set_col_integral: tmes_dn column(out)= ',intgl_lo
+           do k=1,nlev_lsm
+            if (tmes_dn(k) /= out(k)) then
+               write (diag_unit, '(a, i4, 2e20.12)') &
+               'in set_col_integral: k,tmesdn(in), tmesdn(out)= ', k,  &
+                     tmes_dn(k)      , out(k)
+            endif
+          end do
+        endif
+ 
+!---------------------------------------------------------------------
+!    define the adjusted output profile by removing conservation_factor.
+!---------------------------------------------------------------------
+       tmes_dn(:) = out(:)       
+     endif
+
 !---------------------------------------------------------------------
 !    combine the heating and moistening effects from the updraft and
 !    downdraft to obtain the total mesoscale effect on the large-scale
 !    model temperature and water vapor mixing ratio(?) equations.
 !---------------------------------------------------------------------
       tmes = (tmes_up + tmes_dn)*86400.
+      tmes_up = tmes_up*86400.
+      tmes_dn = tmes_dn*86400.
       mrmes = (mrmes_up + mrmes_dn)*8.64e07
+      mrmes_up = mrmes_up*8.64e07
+      mrmes_dn = mrmes_dn*8.64e07
 
 !---------------------------------------------------------------------
 !    if in a diagnostics column, output the entropy (tmes) and
@@ -249,9 +351,14 @@ character(len=*),                  intent(out) :: ermesg
       do k=1,nlev_lsm              
         if (debug_ijt) then
           if (tmes(k) /= 0.0) then
-            write (diag_unit, '(a, i4, f19.10, f20.14, e20.12)')   &
-                    'in meens: jk,pr,tmes,qmes= ', k, pfull_c(k),  &
-                     tmes(k)/86400., mrmes(k)/8.64e07
+            write (diag_unit, '(a, i4, f19.10, f20.14, 2e20.12)')   &
+                    'in meens: jk,pr,tmes,tmes_u, tmes_d,= ', &
+                     k, pfull_c(k), tmes(k)/86400., tmes_up(k)/86400., &
+                     tmes_dn(k)/86400.
+            write (diag_unit, '(a, i4, f19.10, f20.14, 3e20.12)')   &
+                    'in meens: jk,pr,mrmes,mrmes_u, mrmes_d= ', &
+                     k, pfull_c(k), mrmes(k)/8.64e07,  &
+                      mrmes_up(k)/8.64e07, mrmes_dn(k)/8.64e07
           endif
         endif
       end do
@@ -262,7 +369,32 @@ character(len=*),                  intent(out) :: ermesg
 !    made up of the deposition in the updraft (cmui) and the condensate
 !    transferred from the cells to the anvil (ensembl_anvil_cond). 
 !---------------------------------------------------------------------
-      available_condensate = cmui + ensembl_anvil_cond
+      available_condensate = cmui + ensembl_anvil_cond_liq + &
+                                ensembl_anvil_cond_liq_frz + &
+                             ensembl_anvil_cond_ice
+! precip from _liq takes hlv with it; precip from _ice takes hls
+! with it
+      if ( p2 == -10. .or. p2 > pb .or. p2 < pt_ens) then
+        if ( .not. meso_frz_intg_sum ) then
+!   this implies no melting of precip; cmui and _liq don't freeze.
+         available_condensate_liq =  cmui + ensembl_anvil_cond_liq 
+         available_condensate_ice =         &
+                                ensembl_anvil_cond_liq_frz + &
+                             ensembl_anvil_cond_ice
+        else
+         available_condensate_liq =  0.0                           
+         available_condensate_ice =    cmui + ensembl_anvil_cond_liq + & 
+                                ensembl_anvil_cond_liq_frz + &
+                             ensembl_anvil_cond_ice
+        endif
+      else
+!    all condensate will melt before leaving
+      available_condensate_ice = 0.0                               
+      available_condensate_liq = cmui + ensembl_anvil_cond_liq + &
+                                ensembl_anvil_cond_liq_frz + &
+                             ensembl_anvil_cond_ice
+      endif
+
       meso_precip = Param%anvil_precip_efficiency*available_condensate
 
 !---------------------------------------------------------------------
@@ -272,8 +404,10 @@ character(len=*),                  intent(out) :: ermesg
 !    (meso_precip) and the cell-scale precipitation (ensmbl_precip).
 !---------------------------------------------------------------------
       if (debug_ijt) then
-        write (diag_unit, '(a, 2e20.12)')  &
-                          'in meens: cmui,ca=', cmui, ensembl_anvil_cond
+        write (diag_unit, '(a, 4e20.12)')  &
+                     'in meens: cmui,ca (liq,frxliq,ice)=', cmui, &
+                 ensembl_anvil_cond_liq, ensembl_anvil_cond_liq_frz,  &
+                             ensembl_anvil_cond_ice
         write (diag_unit, '(a, e20.12, a, e20.12)')  &
                      'in meens: rm= ',meso_precip,  'rc= ',ensmbl_precip
       endif
@@ -284,10 +418,13 @@ character(len=*),                  intent(out) :: ermesg
 !    downdraft (emds).
 !----------------------------------------------------------------------
       call don_m_meso_evap_k  &
-           (nlev_lsm, diag_unit, debug_ijt, Param,    &
-            available_condensate, pzm, pztm, phalf_c, emdi, emds, &
-            emes, ermesg)
+           (nlev_lsm, diag_unit, debug_ijt, Param,  &
+            available_condensate, available_condensate_liq,  &
+            available_condensate_ice, pzm, pztm, phalf_c, emdi_liq, &
+            emdi_ice, emds_liq, emds_ice, emes_liq, emes_ice, ermesg)
  
+      emdi = emdi_liq + emdi_ice
+
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
@@ -1366,9 +1503,10 @@ end subroutine don_m_meso_updraft_k
 !#####################################################################
 
 subroutine don_m_meso_downdraft_k    &
-         (nlev_lsm, nlev_hires, diag_unit, debug_ijt,  Param, p_hires, &
-          pfull_c, temp_c, mixing_ratio_c, phalf_c, pb, ampta1, dp,  &
-          pztm, pzm, alp, hfmin, pmd, tmes_dn, mrmes_dn, dmeml, ermesg)
+         (nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param, Nml, &
+          p_hires, pfull_c, temp_c, mixing_ratio_c, phalf_c, pb, &
+          ampta1, dp, pztm, pzm, alp, hfmin, pmd, tmes_dn, mrmes_dn, &
+          dmeml, ermesg)
 
 !-------------------------------------------------------------------
 !    subroutine meens computes the mesoscale effects of the composited
@@ -1379,7 +1517,7 @@ subroutine don_m_meso_downdraft_k    &
 !    "Cu Closure A notes," 2/97.
 !-------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type
+use donner_types_mod, only : donner_param_type, donner_nml_type
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
 implicit none
@@ -1389,6 +1527,7 @@ integer,                       intent(in)   :: nlev_lsm, nlev_hires, &
                                                diag_unit
 logical,                       intent(in)   :: debug_ijt        
 type(donner_param_type),       intent(in)   :: Param
+type(donner_nml_type),         intent(in)   :: Nml  
 real,   dimension(nlev_hires), intent(in)   :: p_hires
 real,   dimension(nlev_lsm),   intent(in)   :: pfull_c, temp_c,  &
                                                mixing_ratio_c
@@ -1407,8 +1546,8 @@ character(len=*),              intent(out)  :: ermesg
       real, dimension(nlev_lsm+1)     :: emt, emq
 
       real    ::  es, mrsat, c2, c3, c1, fjk, fjkm, qb, fjkb, qbm, qmd, &
-                  qsmd, fjkmd, qmmd, pi, psa, owms, a, b, p1, emea,   &
-                  emda, targ, tprimd, tb, qten, tten, omd, mrsb, wa,   &
+                  qsmd, fjkmd, qmmd, pi, psa, owms, a, b, p1,         &
+                        targ, tprimd, tb, qten, tten, omd, mrsb, wa,   &
                   wb, tmd, rin, rintsum, rintsum2
       integer :: ncmd
       integer :: jksave, k, nbad
@@ -1718,8 +1857,9 @@ character(len=*),              intent(out)  :: ermesg
 !---------------------------------------------------------------------
 !    convert the potential temperature flux to a temperature flux.
 !---------------------------------------------------------------------
-        emt(k) = ((Param%ref_press/pfull_c(k))**     &
-                                     (Param%rdgas/Param%cp_air))*emt(k)
+! RSH : unneeded, causes error
+!       emt(k) = ((Param%ref_press/pfull_c(k))**     &
+!                                    (Param%rdgas/Param%cp_air))*emt(k)
       end do  ! (end of k loop)
 
 !---------------------------------------------------------------------
@@ -1742,7 +1882,10 @@ character(len=*),              intent(out)  :: ermesg
           rin = 1.
         endif
         if (rin == 1.) then
-          tmes_dn(k) = tmes_dn(k) + (tten/pi)
+          
+          if (.not. Nml%force_internal_enthalpy_conservation) then
+            tmes_dn(k) = tmes_dn(k) + (tten/pi)
+          endif
           mrmes_dn(k) = mrmes_dn(k) + qten
         endif
         if ((rin == 0.) .and. (emt(k+1) /= 0.) .and.   &
@@ -1878,7 +2021,9 @@ end subroutine don_m_meso_downdraft_k
 
 subroutine don_m_meso_evap_k    &
          (nlev_lsm, diag_unit, debug_ijt, Param, available_condensate,&
-          pzm, pztm, phalf_c, emdi, emds, emes, ermesg)
+          available_condensate_liq, available_condensate_ice, &
+          pzm, pztm, phalf_c, emdi_liq, emdi_ice,      &
+          emds_liq, emds_ice, emes_liq, emes_ice, ermesg)
 
 !---------------------------------------------------------------------
 !    subroutine meso_evap calculates the sublimation associated with
@@ -1896,10 +2041,13 @@ integer ,                    intent(in)  :: diag_unit
 logical ,                    intent(in)  :: debug_ijt 
 type(donner_param_type),     intent(in)  :: Param
 real,                        intent(in)  :: available_condensate,  &
+                                            available_condensate_liq,  &
+                                            available_condensate_ice,  &
                                             pzm, pztm
 real, dimension(nlev_lsm+1), intent(in)  :: phalf_c
-real,                        intent(out) :: emdi
-real, dimension(nlev_lsm),   intent(out) :: emds, emes
+real,                        intent(out) ::       emdi_liq, emdi_ice
+real, dimension(nlev_lsm),   intent(out) :: emds_liq, emds_ice
+real, dimension(nlev_lsm),   intent(out) :: emes_liq, emes_ice
 character(len=128),          intent(out) :: ermesg
 
 !--------------------------------------------------------------------
@@ -1939,17 +2087,22 @@ character(len=128),          intent(out) :: ermesg
 
 
 
-     real    :: emei, emea, emda, pm, pp, pbot_meso_sub
+     real    ::                   pm, pp, pbot_meso_sub
+     real  :: emei_liq, emei_ice, emea_liq, emea_ice
+     real  :: emda_liq, emda_ice
      integer :: k
 
 
       ermesg = ' '
+      emes_liq = 0.
+      emes_ice = 0.
 
 !---------------------------------------------------------------------
 !    define the rate of total water sublimation in the mesoscale updraft
 !    (emei) using the Leary and Houze coefficient.
 !---------------------------------------------------------------------
-      emei = Param%meso_up_evap_fraction*available_condensate
+      emei_liq = Param%meso_up_evap_fraction*available_condensate_liq
+      emei_ice = Param%meso_up_evap_fraction*available_condensate_ice
 
 !----------------------------------------------------------------------
 !    convert the integral of mesoscale updraft evaporation from mm (h20)
@@ -1957,7 +2110,8 @@ character(len=128),          intent(out) :: ermesg
 !    assumed to occur between base of mesoscale updraft (pzm) and the 
 !    top of mesoscale updraft (pztm) at a uniform rate. 
 !---------------------------------------------------------------------- 
-      emea = emei*Param%grav*1000./(pzm - pztm)
+      emea_liq = emei_liq*Param%grav*1000./(pzm - pztm)
+      emea_ice = emei_ice*Param%grav*1000./(pzm - pztm)
 
 !--------------------------------------------------------------------
 !    if in diagnostics column, output the column integral mesoscale
@@ -1967,7 +2121,12 @@ character(len=128),          intent(out) :: ermesg
 !--------------------------------------------------------------------
       if (debug_ijt) then
         write (diag_unit, '(a, 2e20.12)')  &
-                         'in meens: emea,emei= ',emea, emei
+                         'in meens: emea,emei= ',emea_liq + emea_ice, &
+                                                  emei_liq + emei_ice
+        write (diag_unit, '(a, 2e20.12)')  &
+                         'in meens: LIQemea,emei= ',emea_liq, emei_liq
+        write (diag_unit, '(a, 2e20.12)')  &
+                         'in meens: ICEemea,emei= ',emea_ice, emei_ice
         write (diag_unit, '(a, 2f19.10)')  &
                          'in meens: pzm, pztm= ',pzm, pztm
       endif
@@ -1979,7 +2138,9 @@ character(len=128),          intent(out) :: ermesg
 !    are defined by interface pressure array phalf_c.
 !---------------------------------------------------------------------
       call don_u_map_hires_i_to_lores_c_k &
-           (nlev_lsm, emea, pzm, pztm, phalf_c, emes, ermesg)
+           (nlev_lsm, emea_liq, pzm, pztm, phalf_c, emes_liq, ermesg)
+      call don_u_map_hires_i_to_lores_c_k &
+           (nlev_lsm, emea_ice, pzm, pztm, phalf_c, emes_ice, ermesg)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1993,9 +2154,10 @@ character(len=128),          intent(out) :: ermesg
 !----------------------------------------------------------------------
       if (debug_ijt) then
         do k=1,nlev_lsm           
-          if (emes(k) /= 0.0) then
+          if ((emes_liq(k) + emes_ice(k)) /= 0.0) then
             write (diag_unit, '(a, i4, e20.12)') &
-                             'in cm_intgl_to_gcm_col: k,x= ',k,emes(k)
+                   'in cm_intgl_to_gcm_col: k,x= ',k,emes_liq(k) + &
+                                                       emes_ice(k)
           endif
         end do
       endif
@@ -2004,7 +2166,8 @@ character(len=128),          intent(out) :: ermesg
 !    define the rate of total water sublimation in the mesoscale down-
 !    draft (emdi) using the Leary and Houze coefficient.
 !---------------------------------------------------------------------
-      emdi = Param%meso_down_evap_fraction*available_condensate
+      emdi_liq = Param%meso_down_evap_fraction*available_condensate_liq
+      emdi_ice = Param%meso_down_evap_fraction*available_condensate_ice
 
 !----------------------------------------------------------------------
 !    convert the integral of mesoscale downdraft sublimation from mm 
@@ -2013,13 +2176,15 @@ character(len=128),          intent(out) :: ermesg
 !    and pressure pbot_meso_sub at a uniform rate.
 !---------------------------------------------------------------------- 
       pbot_meso_sub = phalf_c(1)
-      emda = emdi*Param%grav*1000./(pbot_meso_sub - pzm)
+      emda_liq = emdi_liq*Param%grav*1000./(pbot_meso_sub - pzm)
+      emda_ice = emdi_ice*Param%grav*1000./(pbot_meso_sub - pzm)
 
 !----------------------------------------------------------------------
 !    distribute the integrated downdraft sublimation over the approp-
 !    riate large-scale model layers.
 !----------------------------------------------------------------------
-      emds = 0.
+      emds_liq = 0.
+      emds_ice = 0.
       do k=1,nlev_lsm            
 
 !---------------------------------------------------------------------
@@ -2036,7 +2201,8 @@ character(len=128),          intent(out) :: ermesg
           pm = phalf_c(1) 
         endif
         if ((phalf_c(k) >= pzm) .and. (phalf_c(k+1) <= pzm))  pp = pzm
-        emds(k) = emda*(pm - pp)*(pm + pp - 2.*pbot_meso_sub)
+        emds_liq(k) = emda_liq*(pm - pp)*(pm + pp - 2.*pbot_meso_sub)
+        emds_ice(k) = emda_ice*(pm - pp)*(pm + pp - 2.*pbot_meso_sub)
 
 !--------------------------------------------------------------------
 !    if in diagnostics column, output the column integral mesoscale
@@ -2045,17 +2211,25 @@ character(len=128),          intent(out) :: ermesg
 !--------------------------------------------------------------------
         if (debug_ijt) then
           write (diag_unit, '(a, i4, 2e20.12)')  &
-                           'in meens: jk,emda,emd= ', k, emda, emds(k)
+               'in meens: jk,emda,emd= ', k, emda_liq + emda_ice,  &
+                                          emds_liq(k) + emds_ice(k)
+          write (diag_unit, '(a, i4, 2e20.12)')  &
+                  'in meens: jk,LIQemda,emd= ', k, emda_liq, emds_liq(k)
+          write (diag_unit, '(a, i4, 2e20.12)')  &
+                 'in meens: jk,ICEemda,emd= ', k, emda_ice, emds_ice(k)
         endif
 
 !---------------------------------------------------------------------
 !    
 !---------------------------------------------------------------------
-        emds(k) = emds(k)/((phalf_c(k) - phalf_c(k+1))*    &
+        emds_liq(k) = emds_liq(k)/((phalf_c(k) - phalf_c(k+1))*    &
+                  (pzm - pbot_meso_sub))
+        emds_ice(k) = emds_ice(k)/((phalf_c(k) - phalf_c(k+1))*    &
                   (pzm - pbot_meso_sub))
         if (debug_ijt) then
           write (diag_unit, '(a, i4, 2e20.12)')  &
-                      'in meens: FINALjk,emda,emd= ', k, emda, emds(k)
+            'in meens: FINALjk,emda,emd= ', k, emda_liq + emda_ice,   &
+                                             emds_liq(k) + emds_ice(k)
         endif
       end do
 
@@ -2066,7 +2240,11 @@ character(len=128),          intent(out) :: ermesg
 !--------------------------------------------------------------------
       if (debug_ijt) then
         write (diag_unit, '(a, e20.12, f19.10)')  &
-                            'in meens: emdi,ps= ', emdi, pbot_meso_sub
+              'in meens: emdi,ps= ', emdi_liq + emdi_ice, pbot_meso_sub
+        write (diag_unit, '(a, e20.12, f19.10)')  &
+                    'in meens: LIQemdi,ps= ', emdi_liq, pbot_meso_sub
+        write (diag_unit, '(a, e20.12, f19.10)')  &
+                    'in meens: ICEemdi,ps= ', emdi_ice, pbot_meso_sub
       endif
 
 !---------------------------------------------------------------------
@@ -2136,7 +2314,7 @@ character(len=*),            intent(out) :: ermesg
 !    convert the melting rate in mm / day (rm) to g(h2o) / kg(air) /day
 !    (rma).
 !---------------------------------------------------------------------
-      rma = rma*Param%grav*1000./(pb - p2)
+      rma = -rma*Param%grav*1000./(pb - p2)
 
 !--------------------------------------------------------------------
 !    if there is a melting level, map the melting rate uniformly across
@@ -2146,7 +2324,7 @@ character(len=*),            intent(out) :: ermesg
       if (pb > p2) then
         if (debug_ijt) then
           write (diag_unit, '(a, e20.12, 2f19.10)')  &
-                     'in cm_intgl_to_gcm_col: xav,p1,p2= ',rma, pb, p2
+                     'in cm_intgl_to_gcm_col: xav,p1,p2= ',-rma, pb, p2
         endif
         call don_u_map_hires_i_to_lores_c_k  &
              (nlev_lsm, rma, pb, p2, phalf_c, anvil_precip_melt, ermesg)
@@ -2161,7 +2339,7 @@ character(len=*),            intent(out) :: ermesg
           do k=1,nlev_lsm               
             if (anvil_precip_melt(k) /= 0.0) then
               write (diag_unit, '(a, i4, e20.12)') &
-                   'in cm_intgl_to_gcm_col: k,x= ',k,anvil_precip_melt(k)
+                'in cm_intgl_to_gcm_col: k,x= ',k,-anvil_precip_melt(k)
             endif
           end do
         endif

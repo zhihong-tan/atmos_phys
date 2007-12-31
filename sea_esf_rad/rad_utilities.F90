@@ -43,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 15.0 2007/08/14 03:55:35 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 15.0.4.1 2007/11/19 13:03:12 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -75,6 +75,7 @@ end interface
 interface assignment(=)
   module procedure lw_output_type_eq
   module procedure sw_output_type_eq
+  module procedure aerosol_props_type_eq
 end interface
 
 !------------------------------------------------------------------
@@ -127,6 +128,7 @@ public   aerosol_properties_type
 !    optical_index
 
 type aerosol_properties_type
+     integer, dimension(:,:,:), pointer  :: ivol=>NULL()
      real, dimension(:,:), pointer  :: aerextband=>NULL(),   &
                                        aerssalbband=>NULL(), &
                                        aerasymmband=>NULL(), &
@@ -140,7 +142,8 @@ type aerosol_properties_type
                                           lw_ext=>NULL(), &
                                           lw_ssa=>NULL(), &
                                           lw_asy=>NULL()
-     integer, dimension(:), pointer :: sulfate_index=>NULL()
+!yim
+     integer, dimension(:,:), pointer :: sulfate_index=>NULL()
      integer, dimension(:), pointer :: optical_index=>NULL()
      integer, dimension(:), pointer :: omphilic_index=>NULL()
      integer, dimension(:), pointer :: bcphilic_index=>NULL()
@@ -157,6 +160,8 @@ type aerosol_properties_type
      integer                        :: seasalt3_flag
      integer                        :: seasalt4_flag
      integer                        :: seasalt5_flag
+!yim
+     integer                        :: bc_flag
 end type aerosol_properties_type
 
 !------------------------------------------------------------------
@@ -863,6 +868,7 @@ type radiation_control_type
     logical  :: do_swaerosol_forcing
     integer  :: indx_swaf
     integer  :: indx_lwaf
+    logical  :: using_im_bcsul
     logical  :: do_totcld_forcing_iz
     logical  :: do_aerosol_iz
     logical  :: rad_time_step_iz
@@ -890,6 +896,7 @@ type radiation_control_type
     logical  :: do_swaerosol_forcing_iz
     logical  :: indx_swaf_iz
     logical  :: indx_lwaf_iz
+    logical  :: using_im_bcsul_iz
 end type radiation_control_type
 
 !------------------------------------------------------------------
@@ -1167,7 +1174,7 @@ type (radiation_control_type), public   ::  &
                                          0, .false., .false.,   &
                                          .false., .false.,&
                                          .false., .false.,      &
-                                         0, 0, &
+                                         0, 0, .false., &
 ! _iz variables:
                                          .false., .false., .false., &
                                          .false., .false., .false., &
@@ -1179,7 +1186,7 @@ type (radiation_control_type), public   ::  &
                                          .false.,          &
                                          .false., .false., .false.,  &
                                          .false., .false.,   &
-                                         .false., .false.)
+                                         .false., .false., .false.)
 
 type (cloudrad_control_type), public    ::   &
  Cldrad_control = cloudrad_control_type( .false., .false., .false., &
@@ -1381,6 +1388,7 @@ subroutine check_derived_types
           Rad_control%do_swaerosol_forcing_iz .and.  &
           Rad_control%indx_lwaf_iz .and.   &
           Rad_control%indx_swaf_iz .and.   &
+          Rad_control%using_im_bcsul_iz .and. &
           Rad_control%do_aerosol_iz .and.     &
           Rad_control%mx_spec_levs_iz .and.   &
           Rad_control%use_current_co2_for_tf_iz .and. &
@@ -3245,6 +3253,79 @@ subroutine rad_utilities_end
 
 
 end subroutine rad_utilities_end
+
+
+subroutine aerosol_props_type_eq(aerosol_props_out,aerosol_props_in)
+
+   type(aerosol_properties_type), intent(inout) :: aerosol_props_out
+   type(aerosol_properties_type), intent(in)    :: aerosol_props_in
+
+!  Need to add error trap to catch unallocated aerosol_props_in
+   if (ASSOCIATED(aerosol_props_in%aerextband)) then
+     aerosol_props_out%aerextband    = aerosol_props_in%aerextband
+     aerosol_props_out%aerssalbband    = aerosol_props_in%aerssalbband
+     aerosol_props_out%aerasymmband    = aerosol_props_in%aerasymmband
+    else
+      call error_mesg ('=', 'extband', FATAL)
+   endif
+   if (ASSOCIATED(aerosol_props_in%aerextbandlw)) then
+     aerosol_props_out%aerextbandlw    = aerosol_props_in%aerextbandlw
+     aerosol_props_out%aerssalbbandlw  = aerosol_props_in%aerssalbbandlw
+     aerosol_props_out%aerextbandlw_cn =    &
+                                       aerosol_props_in%aerextbandlw_cn
+     aerosol_props_out%aerssalbbandlw_cn  =    &
+                                     aerosol_props_in%aerssalbbandlw_cn
+    else
+      call error_mesg ('=', 'extbandlw', FATAL)
+   endif
+   if (ASSOCIATED(aerosol_props_in%sw_ext)) then
+     aerosol_props_out%sw_ext        = aerosol_props_in%sw_ext     
+     aerosol_props_out%sw_ssa          = aerosol_props_in%sw_ssa       
+     aerosol_props_out%sw_asy          = aerosol_props_in%sw_asy
+    else
+      call error_mesg ('=', 'sw volc', FATAL)
+   endif
+   if (ASSOCIATED(aerosol_props_in%lw_ext)) then
+     aerosol_props_out%lw_ext        = aerosol_props_in%lw_ext     
+     aerosol_props_out%lw_ssa          = aerosol_props_in%lw_ssa       
+     aerosol_props_out%lw_asy          = aerosol_props_in%lw_asy
+    else
+      call error_mesg ('=', 'lw volc', FATAL)
+   endif
+   if (ASSOCIATED(aerosol_props_in%sulfate_index)) then
+     aerosol_props_out%sulfate_index = aerosol_props_in%sulfate_index
+     aerosol_props_out%optical_index = aerosol_props_in%optical_index
+     aerosol_props_out%omphilic_index = aerosol_props_in%omphilic_index
+     aerosol_props_out%bcphilic_index = aerosol_props_in%bcphilic_index
+     aerosol_props_out%seasalt1_index = aerosol_props_in%seasalt1_index
+     aerosol_props_out%seasalt2_index = aerosol_props_in%seasalt2_index
+     aerosol_props_out%seasalt3_index = aerosol_props_in%seasalt3_index
+     aerosol_props_out%seasalt4_index = aerosol_props_in%seasalt4_index
+     aerosol_props_out%seasalt5_index = aerosol_props_in%seasalt5_index
+    else
+      call error_mesg ('=', 'index  ', FATAL)
+   endif
+
+   if (ASSOCIATED(aerosol_props_in%ivol)) then
+     aerosol_props_out%ivol = aerosol_props_in%ivol
+    else
+      call error_mesg ('=', 'ivol   ', FATAL)
+   endif
+   
+     aerosol_props_out%sulfate_flag = aerosol_props_in%sulfate_flag
+     aerosol_props_out%omphilic_flag = aerosol_props_in%omphilic_flag
+     aerosol_props_out%bcphilic_flag = aerosol_props_in%bcphilic_flag
+     aerosol_props_out%seasalt1_flag = aerosol_props_in%seasalt1_flag
+     aerosol_props_out%seasalt2_flag = aerosol_props_in%seasalt2_flag
+     aerosol_props_out%seasalt3_flag = aerosol_props_in%seasalt3_flag
+     aerosol_props_out%seasalt4_flag = aerosol_props_in%seasalt4_flag
+     aerosol_props_out%seasalt5_flag = aerosol_props_in%seasalt5_flag
+     aerosol_props_out%bc_flag = aerosol_props_in%bc_flag
+
+
+
+end subroutine aerosol_props_type_eq
+
 
 
 subroutine lw_output_type_eq(lw_output_out,lw_output_in)

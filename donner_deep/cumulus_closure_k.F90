@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: cumulus_closure_k.F90,v 15.0 2007/08/14 03:53:10 fms Exp $
+!  $Id: cumulus_closure_k.F90,v 15.0.4.1 2007/10/24 13:14:02 rsh Exp $
 
 
 !module cumulus_closure_inter_mod
@@ -12,7 +12,8 @@
 !######################################################################
 
 subroutine cu_clo_cumulus_closure_k   &
-         (nlev_hires, diag_unit, debug_ijt, Param, Nml, dcape, cape_p, &
+         (nlev_hires, diag_unit, debug_ijt, Param, Nml, lofactor, &
+          dcape, cape_p, &
           qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, rl_v, parcel_r,   &
           env_t, parcel_t, a1, ermesg)
 
@@ -31,7 +32,7 @@ integer,                        intent(in)  :: diag_unit
 logical,                        intent(in)  :: debug_ijt
 type(donner_param_type),        intent(in)  :: Param
 type(donner_nml_type),          intent(in)  :: Nml    
-real,                           intent(in)  :: dcape
+real,                           intent(in)  :: lofactor, dcape
 real,    dimension(nlev_hires), intent(in)  :: cape_p, qli0_v, qli1_v, &
                                                qr_v, qt_v, env_r, ri_v, &
                                                rl_v, parcel_r, env_t,   &
@@ -86,6 +87,9 @@ character(len=*),               intent(out) :: ermesg
                                        pert_parcel_t, pert_parcel_r, &
                                        parcel_r_clo, parcel_t_clo
 
+      real     :: tau, cape_c
+      real     :: rhavg, dpsum
+      logical  :: ctrig
       real     :: tdens, tdensa, ri1, ri2, rild, rile, rilf, ri2b,  &
                   sum2, rilak, rilbk, rilck, rilakm, rilbkm, rilckm, &
                   rila, rilb, rilc, ri2ak, ri2akm, ri2a, sum1, plcl, &
@@ -213,6 +217,12 @@ character(len=*),               intent(out) :: ermesg
 !    parcel from the lcl through the environment defined by (pert_env_t, 
 !    pert_env_r).
 !--------------------------------------------------------------------
+      if (Nml%do_dcape) then
+
+!--------------------------------------------------------------------
+!    don't need to calculate cape when using Zhang closure 
+!    (do_dcape is .true). 
+!--------------------------------------------------------------------
       call don_c_displace_parcel_k   &
            (nlev_hires, diag_unit, debug_ijt, Param,   &
             Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
@@ -220,12 +230,55 @@ character(len=*),               intent(out) :: ermesg
             pert_env_t, &
             pert_env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
             dumxcape, pert_parcel_r,  pert_parcel_t, ermesg)
+      else
+
+!--------------------------------------------------------------------
+!    if using cape relaxation closure then need to return cape value.
+!--------------------------------------------------------------------
+      call don_c_displace_parcel_k   &
+           (nlev_hires, diag_unit, debug_ijt, Param,   &
+            Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
+            Nml%dfre_for_closure, Nml%rmuz_for_closure, &
+            pert_env_t, &
+            pert_env_r, cape_p, .true., plfc, plzb, plcl, dumcoin,  &
+            dumxcape, pert_parcel_r,  pert_parcel_t, ermesg)
+     endif
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
       if (trim(ermesg) /= ' ') return
+
+
+!---------------------------------------------------------------------
+!    define quantities needed for cape relaxation closure option.
+!---------------------------------------------------------------------
+      if ( .not. Nml%do_dcape) then
+        cape_c = Nml%cape0
+        tau    = Nml%tau
+        if (Nml%do_lands) then
+          cape_c = Nml%cape0 * lofactor
+          tau    = Nml%tau   * lofactor
+        endif
+      endif
+      if (Nml%do_rh_trig) then
+!  currently do_rh_trig forced to be .false.
+!  no rh array available at current tiome in donner full.
+!       rhavg=0.; dpsum=0.
+!       do k = 1,sd%kmax
+!         if (sd%p(k) .gt. Nml%plev0) then
+!           rhavg  = rhavg + sd%rh(k)*sd%dp(k)
+!           dpsum = dpsum + sd%dp(k)
+!         end if
+!       end do
+!       rhavg = rhavg/dpsum
+!       ctrig = rhavg > Nml%rhavg0
+!! FOR NOW:
+        ctrig= .true.
+      else
+        ctrig= .true.
+      endif
 
 !---------------------------------------------------------------------
 !    if in a diagnostics column, output the path of the parcel (T, p
@@ -378,7 +431,17 @@ character(len=*),               intent(out) :: ermesg
       else
         ri1 = Param%rdgas*ri1
         ri2 = Param%rdgas*ri2
-        a1  = -(ri2 + dcape)/ri1
+        if (Nml%do_dcape .and. ctrig) then
+!   Zhang closure:
+          a1  = -(ri2 + dcape)/ri1
+        else
+          if (dumxcape > cape_c .and. ctrig) then
+!   cape relaxation closure:
+            a1 = -(ri2 + (dumxcape - cape_c)/tau)/ri1
+          else
+            a1 = 0.
+          endif
+        endif
       endif
 
 !--------------------------------------------------------------------

@@ -65,7 +65,7 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 15.0.2.1 2007/09/29 13:17:12 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
 
 
 !---------------------------------------------------------------------

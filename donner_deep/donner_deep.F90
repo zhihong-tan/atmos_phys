@@ -39,6 +39,7 @@ use column_diagnostics_mod, only: initialize_diagnostic_columns, &
 use donner_types_mod,       only: donner_initialized_type, &
                                   donner_save_type, donner_rad_type, &
                                   donner_nml_type, donner_param_type, &
+                                  donner_budgets_type, &
                                   donner_column_diag_type, &
                                   MAXMAG, MAXVAL, MINMAG, MINVAL, &
                                   DET_MASS_FLUX, MASS_FLUX,  &
@@ -67,8 +68,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 15.0.2.1.2.1 2007/09/29 13:12:38 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 15.0.2.1.2.1.2.1.2.1.2.1 2007/11/13 11:30:02 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
 
 
 !--------------------------------------------------------------------
@@ -155,6 +156,7 @@ logical             :: do_capetau_land   = .false.
 real                :: pblht0            = 500.
 real                :: tke0              = 1.
 real                :: lofactor0         = 1.
+real                :: deephgt0          = 4000.
 integer             :: lochoice          = 0
 integer             :: deep_closure      = 0
 real                :: gama              = 0.0001
@@ -162,6 +164,7 @@ logical             :: do_ice            = .false.
 real                :: atopevap          = 0.
 logical             :: do_donner_lscloud = .true.
 logical             :: use_llift_criteria =.true.
+logical             :: use_pdeep_cv       =.true.
 real                :: auto_rate = 1.0e-3
 real                :: auto_th   = 0.5e-3
 real                :: frac      = 1.
@@ -244,6 +247,17 @@ real                :: wmin_ratio = 0.
                              ! maximum updraft velocity of plume at 
                              ! which time plume is assumed to stop
                              ! rising; used in donner lite 
+
+logical             :: do_budget_analysis = .false.
+                             ! save arrays containing terms involved in
+                             ! enthalpy and water budgets for netcdf
+                             ! output ?
+
+logical             :: force_internal_enthalpy_conservation = .false.
+                             ! modify the temperature tendency so that
+                             ! enthalpy is conserved by the cell and
+                             ! mesoscale motions, rather than forcing
+                             ! entropy conservation
 
 !----------------------------------------------------------------------
 !   The following nml variables are not needed in any kernel subroutines
@@ -334,6 +348,7 @@ namelist / donner_deep_nml /      &
                             pblht0,           &!miz
                             tke0,             &!miz
                             lofactor0,        &!miz
+                            deephgt0,         &!miz
                             lochoice,         &!miz
                             deep_closure,     &!miz
                             gama,             &!miz
@@ -341,6 +356,7 @@ namelist / donner_deep_nml /      &
                             atopevap,         &!miz
                             do_donner_lscloud,&!miz
                             use_llift_criteria,&!miz
+                            use_pdeep_cv,     &!miz
                             auto_rate,        &!miz
                             auto_th,          &!miz
                             frac,             &!miz
@@ -363,8 +379,10 @@ namelist / donner_deep_nml /      &
                             entrainment_constant_source, &
                             use_memphis_size_limits, &
                             wmin_ratio, &
+                            do_budget_analysis, &
+                            force_internal_enthalpy_conservation, &
 
-! not contained in donner_rad_type variable:
+! not contained in donner_nml_type variable:
                             do_netcdf_restart, &
                             write_reduced_restart_file, &
                             diagnostics_pressure_cutoff, &
@@ -631,6 +649,33 @@ real,                       &
                         ! between 9.9 and 13.2 km. index 1 at anvil 
                         ! bottom
 
+integer,                      &
+  parameter                   &
+             ::  N_WATER_BUDGET = 9
+                        ! number of terms in vapor budget
+
+integer,                      &
+  parameter                   &
+             ::  N_ENTHALPY_BUDGET =  19 
+                        ! number of terms in enthalpy budget
+
+integer,               &
+  parameter            &
+             ::  N_PRECIP_PATHS = 5
+                        ! number of paths precip may take from 
+                        ! condensing until it reaches the ground
+                        ! (liquid; liquid which freezes; liquid which
+                        ! freezes and then remelts; ice; ice which 
+                        ! melts)
+
+integer,               &
+  parameter            &
+             ::  N_PRECIP_TYPES = 3
+                        ! number of precip types (cell, cell condensate
+                        ! tranmsferred to mesoscale circulation,
+                        ! mesoscale condensation and deposition)
+
+
 
 !--------------------------------------------------------------------
 !   list of native mode restart versions usable by this module:
@@ -670,9 +715,7 @@ integer, dimension(3)  :: restart_versions = (/ 8, 9, 10 /)
 !                   to connect these diagnostics to the diag_table
 !
 
-integer  :: id_vaporint, id_condensint, id_precipint, id_diffint
-integer  :: id_condenisint, id_condenlsint
-integer  :: id_enthint, id_lprcp, id_lcondensint, id_enthdiffint
+integer    :: id_leff
 integer    :: id_cemetf_deep, id_ceefc_deep, id_cecon_deep, &
               id_cemfc_deep, id_cememf_deep, id_cememf_mod_deep, &
               id_cual_deep, id_fre_deep, id_elt_deep, &
@@ -700,10 +743,19 @@ integer, dimension(:), allocatable :: id_qtren1_col, id_qtmes1_col, &
                                       id_meso_wet_dep_col,   &
                                       id_cell_wet_dep_col
 integer, dimension(:), allocatable :: id_extremes, id_hits
+integer, dimension(N_WATER_BUDGET)    :: id_water_budget, &
+                                         id_ci_water_budget        
+integer, dimension(N_ENTHALPY_BUDGET) :: id_enthalpy_budget,   &
+                                         id_ci_enthalpy_budget
+integer, dimension (N_PRECIP_PATHS, N_PRECIP_TYPES) ::            &
+                                         id_precip_budget, &
+                                         id_ci_precip_budget
+integer   :: id_ci_prcp_heat_liq_cell, id_ci_prcp_heat_frz_cell, &
+             id_ci_prcp_heat_liq_meso, id_ci_prcp_heat_frz_meso, &
+             id_ci_prcp_heat_total, id_ci_prcp_total
 
 real              :: missing_value = -999.
 character(len=16) :: mod_name = 'donner_deep'
-
 
 !--------------------------------------------------------------------
 !   variables for column diagnostics option
@@ -772,7 +824,8 @@ logical :: module_is_initialized = .false.
 !#####################################################################
 
 subroutine donner_deep_init (lonb, latb, pref, axes, Time,  &
-                             tracers_in_donner, using_unified_closure)
+                             tracers_in_donner, do_conservation_checks,&
+                             using_unified_closure)
 
 !---------------------------------------------------------------------
 !    donner_deep_init is the constructor for donner_deep_mod.
@@ -784,14 +837,15 @@ real,            dimension(:),   intent(in)   :: pref
 integer,         dimension(4),   intent(in)   :: axes
 type(time_type),                 intent(in)   :: Time
 logical,         dimension(:),   intent(in)   :: tracers_in_donner
+logical,                         intent(in)   :: do_conservation_checks
 logical,                         intent(in)   :: using_unified_closure
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
-!      lonb         array of model longitudes on cell corners  
+!      lonb         array of model longitudes on cell corners     
 !                   [ radians ]
-!      latb         array of model latitudes on cell corners
+!      latb         array of model latitudes on cell corners   
 !                   [ radians ]
 !      pref         array of reference pressures at full levels (plus 
 !                   surface value at nlev+1), based on 1013.25 hPa pstar
@@ -872,6 +926,22 @@ logical,                         intent(in)   :: using_unified_closure
 !
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
+       if (do_donner_cape .and. gama /= 0.0) then
+         call error_mesg ('donner_deep_mod;', 'donner_deep_init: &
+            & gama must be 0.0 if do_donner_cape is .true.; code for &
+            & gama /=  0.0 not yet implemented', FATAL)
+       endif
+       if (deep_closure /= 0 ) then
+         call error_mesg ('donner_deep_mod;', 'donner_deep_init: &
+              & deep_closure must be 0; code for &
+              & deep_closure /=  0 not yet implemented', FATAL)
+       endif
+       if (do_rh_trig .and. do_donner_closure) then
+         call error_mesg ('donner_deep_mod;', 'donner_deep_init: &
+             & do_rh_trig must be .false. for donner full  &
+               &parameterization; its use not yet implemented', FATAL)
+        endif
+
 !---------------------------------------------------------------------
 !    check for a valid value of donner_deep_freq. 
 !---------------------------------------------------------------------
@@ -949,25 +1019,16 @@ logical,                         intent(in)   :: using_unified_closure
              & cell_ice_size_type must be input or default',  FATAL)
       endif
 
-      if (do_donner_cape .and. .not. do_dcape) then
-        call error_mesg ('donner_deep_mod', &
-         'if do_donner_cape is .true., then do_dcape must be .true.; &  
-               & do_dcape may only be .false. in donner_lite', FATAL)
-      endif
-        
-      if (do_donner_plume .and. do_lands) then
-        call error_mesg ('donner_deep_mod', 'setting do_lands &
-              &true in donner full currently has no effect', FATAL)   
-      endif
- 
 
 !---------------------------------------------------------------------
 !    place the logical input argument indicating whether the cloud 
 !    base mass flux calculated by uw_conv_mod is also to be used 
 !    in defining the closure for donner deep convection in the 
 !    donner_initialized_type variable Initialized.
+!    place the conservation check flag in the Initialized variable.
 !---------------------------------------------------------------------
       Initialized%using_unified_closure = using_unified_closure
+      Initialized%do_conservation_checks = do_conservation_checks
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
@@ -1061,7 +1122,6 @@ logical,                         intent(in)   :: using_unified_closure
       allocate ( Don_save%tracer_tends       (idf, jdf, nlev, ntracers) )
       allocate ( Don_save%parcel_disp        (idf, jdf ) )
       allocate ( Don_save%tprea1             (idf, jdf ) )
-
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
@@ -1186,7 +1246,8 @@ logical,                         intent(in)   :: using_unified_closure
         call initialize_diagnostic_columns   &
                      (mod_name, num_diag_pts_latlon, num_diag_pts_ij, &
                       i_coords_gl, j_coords_gl, lat_coords_gl, &
-                      lon_coords_gl, lonb(:,1), latb(1,:), do_column_diagnostics, &
+                      lon_coords_gl, lonb(:,1), latb(1,:),  &
+                      do_column_diagnostics, &
                       col_diag_lon, col_diag_lat, col_diag_i,  &
                       col_diag_j, col_diag_unit)
 
@@ -1357,6 +1418,7 @@ logical,                         intent(in)   :: using_unified_closure
       Nml%pblht0                      = pblht0            !miz
       Nml%tke0                        = tke0              !miz
       Nml%lofactor0                   = lofactor0         !miz
+      Nml%deephgt0                    = deephgt0          !miz
       Nml%lochoice                    = lochoice          !miz
       Nml%deep_closure                = deep_closure      !miz
       Nml%gama                        = gama              !miz
@@ -1368,6 +1430,7 @@ logical,                         intent(in)   :: using_unified_closure
       Nml%frac                        = frac              !miz
       Nml%ttend_max                   = ttend_max         !miz
       Nml%use_llift_criteria          = use_llift_criteria
+      Nml%use_pdeep_cv                = use_pdeep_cv
       Nml%entrainment_constant_source = entrainment_constant_source
       Nml%donner_deep_freq            = donner_deep_freq             
       Nml%model_levels_in_sfcbl       = model_levels_in_sfcbl        
@@ -1387,6 +1450,9 @@ logical,                         intent(in)   :: using_unified_closure
       Nml%tfre_for_closure            = tfre_for_closure
       Nml%dfre_for_closure            = dfre_for_closure
       Nml%rmuz_for_closure            = rmuz_for_closure
+      Nml%do_budget_analysis          = do_budget_analysis
+      Nml%force_internal_enthalpy_conservation =  &
+                                 force_internal_enthalpy_conservation
 
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -1419,7 +1485,7 @@ end subroutine donner_deep_init
 
 subroutine donner_deep (is, ie, js, je, dt, temp, mixing_ratio, pfull, &
                         phalf, zfull, zhalf, omega, pblht, tkemiz, &
-                        qstar, coldT, land, sfc_sh_flux,  &
+                        qstar, cush, coldT, land, sfc_sh_flux,  &
                         sfc_vapor_flux,&               !miz
                         tr_flux, tracers, Time, cbmf, cell_cld_frac,  &
                         cell_liq_amt, cell_liq_size, cell_ice_amt,   &
@@ -1430,6 +1496,8 @@ subroutine donner_deep (is, ie, js, je, dt, temp, mixing_ratio, pfull, &
                         nsum, precip, delta_temp, delta_vapor, detf, &
                         uceml_inter, mtot, donner_humidity_area,    &
                         donner_humidity_factor, qtrtnd, &
+                        lheat_precip, vert_motion,        &
+                        total_precip, liquid_precip, frozen_precip, &
                         qlin, qiin, qain,              &      ! optional
                         delta_ql, delta_qi, delta_qa)         ! optional
                         
@@ -1463,7 +1531,7 @@ integer,                      intent(in)    :: is, ie, js, je
 real,                         intent(in)    :: dt
 real, dimension(:,:,:),       intent(in)    :: temp, mixing_ratio, &
                                                pfull, phalf, zfull, zhalf, omega
-real, dimension(:,:),         intent(in)    :: pblht, tkemiz, qstar
+real, dimension(:,:),         intent(in)    :: pblht, tkemiz, qstar,cush
 real, dimension(:,:),         intent(in)    :: land
 logical, dimension(:,:),      intent(in)    :: coldT
 real, dimension(:,:),         intent(in)    :: sfc_sh_flux, &
@@ -1485,11 +1553,16 @@ real, dimension(:,:,:),       intent(inout) :: cell_cld_frac,  &
                                                meso_ice_size, &
                                            meso_droplet_number
 integer, dimension(:,:),      intent(inout) :: nsum
-real, dimension(:,:),         intent(out)   :: precip      
+real, dimension(:,:),         intent(out)   :: precip, &
+                                               lheat_precip, &
+                                               vert_motion, &
+                                               total_precip
 real, dimension(:,:,:),       intent(out)   :: delta_temp, delta_vapor,&
                                                detf, uceml_inter, mtot, &
                                                donner_humidity_area,&
-                                               donner_humidity_factor
+                                               donner_humidity_factor, &
+                                               liquid_precip, &
+                                               frozen_precip
 real, dimension(:,:,:,:),     intent(out)   :: qtrtnd 
 real, dimension(:,:,:),       intent(in),                &
                                    optional :: qlin, qiin, qain
@@ -1605,17 +1678,13 @@ real, dimension(:,:,:),       intent(out),               &
 
       real,    dimension (size(temp,1), size(temp,2), size(temp,3)) :: &
                        temperature_forcing, moisture_forcing, pmass, &
-!                      pmass2, &
                        qlin_arg, qiin_arg, qain_arg, delta_ql_arg, & 
                        delta_qi_arg, delta_qa_arg
 
-      real,    dimension (size(temp,1), size(temp,2)) ::                &
-                       parcel_rise, total_precip, &
-                       enthint, lcondensint, enthdiffint,  &
-                       vaporint, condensint, precipint, diffint, &
-                       condenisint, condenlsint
+      real,    dimension (size(temp,1), size(temp,2)) ::   parcel_rise
 
       type(donner_conv_type)            :: Don_conv
+      type(donner_budgets_type)         :: Don_budgets
       type(donner_cape_type)            :: Don_cape
       type(donner_rad_type)             :: Don_rad
       character(len=128)                :: ermesg
@@ -1624,7 +1693,7 @@ real, dimension(:,:,:),       intent(out),               &
       logical                           :: calc_conv_on_this_step 
       logical                           :: cloud_tracers_present
       integer                           :: num_cld_tracers
-      integer                           :: k   
+      integer                           :: i, j, k, n   
       logical                           :: used
 
 !--------------------------------------------------------------------
@@ -1722,6 +1791,10 @@ real, dimension(:,:,:),       intent(out),               &
       nlev_lsm  = size(temp,3)
       ntr       = size(tracers,4) 
       me        = mpp_pe()
+      Don_budgets%n_water_budget      = N_WATER_BUDGET
+      Don_budgets%n_enthalpy_budget   = N_ENTHALPY_BUDGET
+      Don_budgets%n_precip_paths      = N_PRECIP_PATHS     
+      Don_budgets%n_precip_types      = N_PRECIP_TYPES     
 
 !-----------------------------------------------------------------------
 !    call the kernel subroutine don_d_donner_deep_k to obtain the
@@ -1732,7 +1805,7 @@ real, dimension(:,:,:),       intent(out),               &
            (is, ie, js, je, isize, jsize, nlev_lsm, NLEV_HIRES, ntr, me,&
             cloud_tracers_present,  cbmf,    &
             dt, Param, Nml, temp, mixing_ratio, pfull,    &
-            phalf, zfull, zhalf, omega, pblht, tkemiz, qstar, coldT,&
+            phalf, zfull, zhalf, omega, pblht, tkemiz, qstar, cush, coldT,&
 !           qlin, qiin, qain, land, sfc_sh_flux, sfc_vapor_flux,    &
             qlin_arg, qiin_arg, qain_arg, land, sfc_sh_flux,  &
             sfc_vapor_flux,    &
@@ -1749,7 +1822,7 @@ real, dimension(:,:,:),       intent(out),               &
             qtrtnd,         &
             calc_conv_on_this_step, ermesg, Initialized, Col_diag,   &
             Don_rad, Don_conv, Don_cape, Don_save, &!miz
-            sd, Uw_p, ac, cp, ct)
+            sd, Uw_p, ac, cp, ct,  Don_budgets)
 
 !----------------------------------------------------------------------
 !    if strat_cloud is active, move the output arguments into the proper
@@ -1760,6 +1833,17 @@ real, dimension(:,:,:),       intent(out),               &
         delta_qi = delta_qi_arg
         delta_qa = delta_qa_arg
       endif
+
+      if (Initialized%do_conservation_checks .or.   &
+                                          Nml%do_budget_analysis) then
+        lheat_precip = Don_budgets%lheat_precip
+        vert_motion = Don_budgets%vert_motion
+      else
+        lheat_precip = 0.
+        vert_motion = 0.
+      endif
+      liquid_precip = Don_budgets%liq_prcp
+      frozen_precip = Don_budgets%frz_prcp
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1782,43 +1866,11 @@ real, dimension(:,:,:),       intent(out),               &
         do k=1,nlev_lsm
           pmass(:,:,k) = (phalf(:,:,k+1) - phalf(:,:,k))/Param%GRAV   
         end do
-        vaporint = 0.
-        lcondensint = 0.
-        condensint = 0.
-        condenlsint = 0.
-        condenisint = 0.
-        precipint = 0.
-        diffint = 0.
-        enthint = 0.
-        enthdiffint = 0.
-        do k=1,nlev_lsm
-        vaporint(:,:) = vaporint(:,:) + pmass (:,:,k)*delta_vapor(:,:,k)
-        enthint(:,:) = enthint(:,:) + CP_AIR*pmass (:,:,k)*delta_temp(:,:,k)
-        condensint(:,:) = condensint(:,:) + pmass(:,:,k) *  &
-                          (delta_ql(:,:,k) + delta_qi(:,:,k))
-        lcondensint(:,:) = lcondensint(:,:) + pmass(:,:,k) *  &
-                          (HLV*delta_ql(:,:,k) + HLS*delta_qi(:,:,k))
-        condenlsint(:,:) = condenlsint(:,:) + pmass(:,:,k) *  &
-                          (delta_ql(:,:,k)                  )
-        condenisint(:,:) = condenisint(:,:) + pmass(:,:,k) *  &
-                          (                  delta_qi(:,:,k))
-        end do
-        diffint = vaporint + condenlsint + condenisint + total_precip*1800./86400.
-        enthdiffint = enthint - lcondensint -  HLV*total_precip*1800./86400.
-        used = send_data(id_vaporint, vaporint, Time, is, js)
-        used = send_data(id_condensint, condensint, Time, is, js)
-        used = send_data(id_condenisint, condenisint, Time, is, js)
-        used = send_data(id_condenlsint, condenlsint, Time, is, js)
-        used = send_data(id_precipint, total_precip*1800./86400., Time, is, js)
-        used = send_data(id_diffint, diffint, Time, is, js)
-        used = send_data(id_enthint, enthint, Time, is, js)
-        used = send_data(id_lcondensint, lcondensint, Time, is, js)
-        used = send_data(id_lprcp, HLV*total_precip*1800./86400., Time, is, js)
-        used = send_data(id_enthdiffint, enthdiffint, Time, is, js)
 
-        call donner_deep_netcdf (is, ie, js, je, Time, Don_conv,  &
+        call donner_deep_netcdf (is, ie, js, je, Nml, Time, Don_conv,  &
                                  Don_cape, parcel_rise, pmass, &
-                                 total_precip, temperature_forcing, &
+                                 total_precip,  Don_budgets, &
+                                 temperature_forcing, &
                                  moisture_forcing)
 
 !----------------------------------------------------------------------
@@ -1846,7 +1898,8 @@ real, dimension(:,:,:),       intent(out),               &
 !    local derived-type variables.
 !--------------------------------------------------------------------
         call don_d_dealloc_loc_vars_k   &
-               (Don_conv, Don_cape, Don_rad, ermesg)
+               (Don_conv, Don_cape, Don_rad, Don_budgets, Nml, &
+                                               Initialized, ermesg)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1974,46 +2027,572 @@ integer,         dimension(4), intent(in)   :: axes
 !    register the various diagnostic fields.
 !---------------------------------------------------------------------
 
-      id_enthint    = register_diag_field    &
-            (mod_name, 'enthint', axes(1:2),   &
-             Time, 'integrated enthalpy change', 'K/s',   &
+    if (do_budget_analysis) then
+      id_water_budget(1)    = register_diag_field    &
+            (mod_name, 'vapor_net_tend', axes(1:3),   &
+             Time, 'net water vapor tendency', &
+             'g(h2o) / kg(air) / day',    &
              missing_value=missing_value)
-      id_lcondensint    = register_diag_field    &
-            (mod_name, 'lcondensint', axes(1:2),   &
-             Time, 'integrated condensate change -temp', 'K/s',   &
+      
+      id_water_budget(2)    = register_diag_field    &
+            (mod_name, 'vapor_cell_dynam', axes(1:3),   &
+             Time, 'vapor tendency due to cell dynamics', &
+             ' g(h2o) / kg(air) / day', &
              missing_value=missing_value)
-      id_lprcp    = register_diag_field    &
-            (mod_name, 'lprcpint', axes(1:2),   &
-             Time, 'integrated precip -- temp   ', 'K/s',   &
+      
+      id_water_budget(3)    = register_diag_field    &
+            (mod_name, 'vapor_meso_depo', axes(1:3),   &
+             Time, 'vapor tendency from mesoscale deposition', &
+             ' g(h2o) / kg(air) / day', &
              missing_value=missing_value)
-      id_enthdiffint    = register_diag_field    &
-            (mod_name, 'enthdiffint', axes(1:2),   &
-             Time, 'enthalpy conservation imbalance      ', 'K/s',   &
+      
+      id_water_budget(4)    = register_diag_field    &
+            (mod_name, 'vapor_meso_cd', axes(1:3),   &
+             Time, 'vapor tendency from mesoscale condensation',  &
+             ' g(h2o) / kg(air) / day', &
              missing_value=missing_value)
-      id_vaporint    = register_diag_field    &
-            (mod_name, 'vaporint', axes(1:2),   &
-             Time, 'integrated vapor change', 'K/s',   &
+      
+      id_water_budget(5)    = register_diag_field    &
+            (mod_name, 'vapor_cell_evap', axes(1:3),   &
+             Time, 'vapor tendency from cell evaporation',  &
+             ' g(h2o) / kg(air) / day', &
              missing_value=missing_value)
-      id_condenlsint    = register_diag_field    &
-            (mod_name, 'condenlsint', axes(1:2),   &
-             Time, 'integrated liqcondensate change', 'K/s',   &
+      
+      id_water_budget(6)    = register_diag_field    &
+            (mod_name, 'vapor_cell_meso_trans', axes(1:3),   &
+             Time, 'vapor tendency from cell to mesoscale transfer',  &
+             ' g(h2o) / kg(air) / day', &
              missing_value=missing_value)
-      id_condenisint    = register_diag_field    &
-            (mod_name, 'condenisint', axes(1:2),   &
-             Time, 'integrated ice condensate change', 'K/s',   &
+      
+      id_water_budget(7)    = register_diag_field    &
+            (mod_name, 'vapor_meso_evap', axes(1:3),   &
+             Time, 'vapor tendency from mesoscale evaporation', &
+             ' g(h2o) / kg(air) / day', &
              missing_value=missing_value)
-      id_condensint    = register_diag_field    &
-            (mod_name, 'condensint', axes(1:2),   &
-             Time, 'integrated condensate change', 'K/s',   &
+      
+      id_water_budget(8)    = register_diag_field    &
+            (mod_name, 'vapor_meso_dynam_up', axes(1:3),   &
+             Time, 'vapor tendency from mesoscale updrafts',  &
+             ' g(h2o) / kg(air) / day', &
              missing_value=missing_value)
-      id_precipint    = register_diag_field    &
-            (mod_name, 'precipint', axes(1:2),   &
-             Time, 'integrated precip           ', 'K/s',   &
+      
+      id_water_budget(9)    = register_diag_field    &
+            (mod_name, 'vapor_meso_dynam_dn',  axes(1:3),   &
+             Time, 'vapor tendency from mesoscale downdrafts',  &
+             ' g(h2o) / kg(air) / day', &
              missing_value=missing_value)
-      id_diffint    = register_diag_field    &
-            (mod_name, 'diffint', axes(1:2),   &
-             Time, 'water conservation imbalance      ', 'K/s',   &
+      
+      id_enthalpy_budget(1)    = register_diag_field    &
+            (mod_name, 'enth_net_tend', axes(1:3),   &
+             Time, 'net temp tendency', 'deg K  /day',    &
              missing_value=missing_value)
+
+      id_enthalpy_budget(2)    = register_diag_field    &
+            (mod_name, 'enth_cell_dynam', axes(1:3),   &
+             Time, 'temp tendency due to cell dynamics', &
+             'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(3)    = register_diag_field    &
+            (mod_name, 'enth_meso_depo_liq', axes(1:3), Time, &
+             'temp tendency from mesoscale deposition on liquid&
+                    & condensate',  'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(4)    = register_diag_field    &
+            (mod_name, 'enth_meso_cd_liq', axes(1:3), Time, &
+             ' temp tendency from mesoscale liquid condensation', &
+             'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(5)    = register_diag_field    &
+            (mod_name, 'enth_cell_evap_liq', axes(1:3),   &
+             Time, 'temp tendency from evap of liquid condensate', &
+             'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(6)    = register_diag_field    &
+            (mod_name, 'enth_meso_evap_liq_up', axes(1:3),   &
+             Time, 'temp tendency from evaporation of liquid &
+              &condensate in mesoscale updrafts',  &
+             'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(7)    = register_diag_field    &
+            (mod_name, 'enth_meso_evap_liq_dn', axes(1:3),   &
+             Time, 'temp tendency from evaporation of liquid &
+              &condensate in mesoscale downdrafts',  &
+             'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(8)    = register_diag_field    &
+            (mod_name, 'enth_meso_depo_ice', axes(1:3),   &
+             Time, ' temp tendency from mesoscale deposition on &
+              &ice condensate',  'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(9)    = register_diag_field    &
+            (mod_name, 'enth_meso_cd_ice', axes(1:3),   &
+             Time, 'temp tendency from mesoscale ice condensation', &
+             'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(10)    = register_diag_field    &
+            (mod_name, 'enth_cell_evap_ice', axes(1:3),   &
+             Time, 'temp tendency from evap of ice condensate', &
+             'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(11)    = register_diag_field    &
+            (mod_name, 'enth_meso_evap_ice_up', axes(1:3),   &
+             Time, 'temp tendency from evaporation of ice condensate &
+              &in mesoscale updrafts',  'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(12)    = register_diag_field    &
+            (mod_name, 'enth_meso_evap_ice_dn', axes(1:3),   &
+             Time, 'temp tendency from evaporation of ice &
+               &condensate in mesoscale downdrafts',  'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(13)    = register_diag_field    &
+            (mod_name, 'enth_meso_freeze', axes(1:3),   &
+             Time, 'temp tendency from the freezing of liquid &
+              &condensate when it enters the mesoscale circulation',  &
+             'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(14)    = register_diag_field    &
+            (mod_name, 'enth_cell_freeze', axes(1:3),   &
+             Time, 'temp tendency from the freezing of liquid &
+                &cell condensate',  'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(15)    = register_diag_field    &
+            (mod_name, 'enth_cell_precip_melt', axes(1:3),   &
+             Time, 'temp tendency from the melting of cell frozen &
+             liquid and ice that is precipitating out', 'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(16)    = register_diag_field    &
+            (mod_name, 'enth_meso_melt', axes(1:3), Time, &
+             'temp tendency from melting bogus frozen condensate',  &
+             'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(17)    = register_diag_field    &
+            (mod_name, 'enth_meso_precip_melt', axes(1:3),   &
+             Time, 'temp tendency from the melting of frozen &
+               &mesoscale precipitation',  'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(18)    = register_diag_field    &
+            (mod_name, 'enth_meso_dynam_up', axes(1:3),   &
+             Time, 'temp tendency from mesoscale updraft', &
+             'deg K / day', &
+             missing_value=missing_value)
+
+      id_enthalpy_budget(19)    = register_diag_field    &
+            (mod_name, 'enth_meso_dynam_dn', axes(1:3),   &
+             Time, 'temp tendency from mesoscale downdraft', &
+             'deg K / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(1,1)    = register_diag_field    &
+            (mod_name, 'precip_cell_liq', axes(1:3),   &
+             Time, 'precip from cell liquid condensate', &
+              'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(2,1)    = register_diag_field    &
+            (mod_name, 'precip_cell_liq_frz', axes(1:3),   &
+             Time, 'precip from cell liquid condensate which froze', &
+              'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(3,1)    = register_diag_field    &
+            (mod_name, 'precip_cell_liq_frz_melt', axes(1:3), Time, &
+              'precip from cell liquid condensate which froze &
+               &and remelted', 'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(4,1)    = register_diag_field    &
+            (mod_name, 'precip_cell_ice', axes(1:3),   &
+             Time, 'precip from cell ice condensate', &
+              'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(5,1)    = register_diag_field    &
+            (mod_name, 'precip_cell_ice_melt', axes(1:3),   &
+             Time, 'precip from cell ice condensate which melted', &
+              'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(1,2)    = register_diag_field    &
+            (mod_name, 'precip_trans_liq', axes(1:3),   &
+             Time, 'precip from cell liquid transferred to meso', &
+              'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(2,2)    = register_diag_field    &
+            (mod_name, 'precip_trans_liq_frz', axes(1:3),   &
+             Time, 'precip from cell liquid transferred to meso &
+              which froze', 'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(3,2)    = register_diag_field    &
+            (mod_name, 'precip_trans_liq_frz_melt', axes(1:3), Time, &
+             'precip from cell liquid transferred to meso which &
+              &froze and remelted', 'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(4,2)    = register_diag_field    &
+            (mod_name, 'precip_trans_ice', axes(1:3),   &
+             Time, 'precip from cell ice transferred to meso', &
+              'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(5,2)    = register_diag_field    &
+            (mod_name, 'precip_trans_ice_melt', axes(1:3),   &
+             Time, 'precip from cell ice transferred to meso &
+              &which melted', 'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(1,3)    = register_diag_field    &
+            (mod_name, 'precip_meso_liq', axes(1:3),   &
+             Time, 'precip from meso liq condensate', &
+              'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(2,3)    = register_diag_field    &
+            (mod_name, 'precip_meso_liq_frz', axes(1:3),   &
+             Time, 'precip from meso liq  condensate which froze', &
+              'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(3,3)    = register_diag_field    &
+            (mod_name, 'precip_meso_liq_frz_melt', axes(1:3), Time, &
+            'precip from meso condensate liq which froze and &
+             &remelted', 'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(4,3)    = register_diag_field    &
+            (mod_name, 'precip_meso_ice', axes(1:3),   &
+             Time, 'precip from meso ice condensate', &
+              'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_precip_budget(5,3)    = register_diag_field    &
+            (mod_name, 'precip_meso_ice_melt', axes(1:3),   &
+             Time, 'precip from meso ice condensate which melted', &
+              'kg(h2o) / kg(air) / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(1,1)    = register_diag_field    &
+            (mod_name, 'ci_precip_cell_liq', axes(1:2),   &
+             Time, 'col intg precip from cell liquid condensate', &
+             'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(2,1)    = register_diag_field    &
+            (mod_name, 'ci_precip_cell_liq_frz', axes(1:2),   &
+             Time, 'col intg precip from cell liquid condensate &
+             which froze',  'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(3,1)    = register_diag_field    &
+            (mod_name, 'ci_precip_cell_liq_frz_melt', axes(1:2), Time, &
+             'col intg precip from cell liquid condensate which &
+              &froze and remelted',  'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(4,1)    = register_diag_field    &
+            (mod_name, 'ci_precip_cell_ice', axes(1:2),   &
+             Time, 'col intg precip from cell ice condensate', &
+             'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(5,1)    = register_diag_field    &
+            (mod_name, 'ci_precip_cell_ice_melt', axes(1:2),   &
+             Time, 'col intg precip from cell ice condensate &
+             &which melted',  'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(1,2)    = register_diag_field    &
+            (mod_name, 'ci_precip_trans_liq', axes(1:2),   &
+             Time, 'col intg precip from cell liquid transferred &
+             &to meso',  'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(2,2)    = register_diag_field    &
+            (mod_name, 'ci_precip_trans_liq_frz', axes(1:2),   &
+             Time, 'col intg precip from cell liquid transferred &
+              to meso  which froze', 'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(3,2)    = register_diag_field    &
+            (mod_name, 'ci_precip_trans_liq_frz_melt', axes(1:2), &
+             Time, 'col intg precip from cell liquid transferred &
+             &to meso which froze and remelted', 'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(4,2)    = register_diag_field    &
+            (mod_name, 'ci_precip_trans_ice', axes(1:2),   &
+             Time, 'col intg precip from cell ice transferred &
+              &to meso', 'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(5,2)    = register_diag_field    &
+            (mod_name, 'ci_precip_trans_ice_melt', axes(1:2),   &
+             Time, 'col intg precip from cell ice transferred to &
+             &meso which melted', 'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(1,3)    = register_diag_field    &
+            (mod_name, 'ci_precip_meso_liq', axes(1:2),   &
+             Time, 'col intg precip from meso liq condensate', &
+             'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(2,3)    = register_diag_field    &
+            (mod_name, 'ci_precip_meso_liq_frz', axes(1:2),   &
+             Time, 'col intg precip from meso liq  condensate &
+             &which froze',  'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(3,3)    = register_diag_field    &
+            (mod_name, 'ci_precip_meso_liq_frz_melt', axes(1:2), Time, &
+             'col intg precip from meso condensate liq which froze &
+               &and remelted', 'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(4,3)    = register_diag_field    &
+            (mod_name, 'ci_precip_meso_ice', axes(1:2),   &
+             Time, 'col intg precip from meso ice condensate', &
+             'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_precip_budget(5,3)    = register_diag_field    &
+            (mod_name, 'ci_precip_meso_ice_melt', axes(1:2),   &
+             Time, 'col intg precip from meso ice condensate &
+              &which melted', 'mm / day', &
+             missing_value=missing_value)
+
+      id_ci_water_budget(1)    = register_diag_field    &
+            (mod_name, 'ci_vapor_net_tend', axes(1:2),   &
+             Time, 'col intg net water vapor tendency', 'mm / day',    &
+             missing_value=missing_value)
+      
+      id_ci_water_budget(2)    = register_diag_field    &
+            (mod_name, 'ci_vapor_cell_dynam', axes(1:2),   &
+             Time, 'col intg vapor tendency due to cell dynamics', &
+              'mm / day',    &
+             missing_value=missing_value)
+      
+      id_ci_water_budget(3)    = register_diag_field    &
+            (mod_name, 'ci_vapor_meso_depo', axes(1:2),   &
+             Time, 'col intg vapor tendency from mesoscale deposition',&
+              'mm / day',    &
+             missing_value=missing_value)
+      
+      id_ci_water_budget(4)    = register_diag_field    &
+            (mod_name, 'ci_vapor_meso_cd', axes(1:2),   &
+             Time, 'col intg vapor tendency from mesoscale &
+              &condensation',  'mm / day',    &
+             missing_value=missing_value)
+      
+      id_ci_water_budget(5)    = register_diag_field    &
+            (mod_name, 'ci_vapor_cell_evap', axes(1:2),   &
+             Time, 'col intg vapor tendency from cell evaporation', &
+              'mm / day', missing_value=missing_value)
+      
+      id_ci_water_budget(6)    = register_diag_field    &
+            (mod_name, 'ci_vapor_cell_meso_trans', axes(1:2),   &
+             Time, 'col intg vapor tendency from cell to mesoscale &
+              &transfer',  'mm / day',    &
+             missing_value=missing_value)
+      
+      id_ci_water_budget(7)    = register_diag_field    &
+            (mod_name, 'ci_vapor_meso_evap', axes(1:2),   &
+             Time, 'col intg vapor tendency from mesoscale &
+              &evaporation', 'mm / day',    &
+             missing_value=missing_value)
+      
+      id_ci_water_budget(8)    = register_diag_field    &
+            (mod_name, 'ci_vapor_meso_dynam_up', axes(1:2),   &
+             Time, 'col intg vapor tendency from mesoscale updrafts',  &
+              'mm / day',    &
+             missing_value=missing_value)
+      
+      id_ci_water_budget(9)    = register_diag_field    &
+            (mod_name, 'ci_vapor_meso_dynam_dn',  axes(1:2),   &
+             Time, 'col intg vapor tendency from mesoscale downdrafts',&
+              'mm / day',    &
+             missing_value=missing_value)
+      
+      id_ci_enthalpy_budget(1)    = register_diag_field    &
+            (mod_name, 'ci_enth_net_tend', axes(1:2),   &
+             Time, 'col intg net enthalpy tendency', 'J/m**2 / day',   &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(2)    = register_diag_field    &
+            (mod_name, 'ci_enth_cell_dynam', axes(1:2),   &
+             Time, 'col intg enthalpy tendency due to cell dynamics', &
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(3)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_depo_liq', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from mesoscale &
+             deposition on liquid condensate',  'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(4)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_cd_liq', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from mesoscale &
+             liquid condensation', 'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(5)    = register_diag_field    &
+            (mod_name, 'ci_enth_cell_evap_liq', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from evap of liquid &
+             &condensate',  'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(6)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_evap_liq_up', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from evaporation of &
+             &liquid condensate in mesoscale updrafts',  &
+             'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(7)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_evap_liq_dn', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from evaporation &
+             &of liquid condensate in mesoscale downdrafts',  &
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(8)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_depo_ice', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from mesoscale &
+              &deposition on ice condensate',  &
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(9)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_cd_ice', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from mesoscale ice &
+             condensation', 'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(10)    = register_diag_field    &
+            (mod_name, 'ci_enth_cell_evap_ice', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from evap of ice &
+              &condensate', 'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(11)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_evap_ice_up', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from evaporation of &
+             &ice condensate in mesoscale updrafts',  'J/m**2 / day',  &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(12)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_evap_ice_dn', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from evaporation of &
+             &ice condensate in mesoscale downdrafts',  &
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(13)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_freeze', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from the freezing of &
+             &liquid condensate when it enters the mesoscale &
+             &circulation',  'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(14)    = register_diag_field    &
+            (mod_name, 'ci_enth_cell_freeze', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from the freezing of &
+             liquid cell condensate', 'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(15)    = register_diag_field    &
+            (mod_name, 'ci_enth_cell_precip_melt', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from the melting of &
+             &cell frozen liquid and ice that is precipitating out',  &
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(16)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_melt', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from melting bogus &
+              &frozen condensate',  'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(17)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_precip_melt', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from the melting of &
+              frozen mesoscale precipitation',  &
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(18)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_dynam_up', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from mesoscale updraft',&
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_enthalpy_budget(19)    = register_diag_field    &
+            (mod_name, 'ci_enth_meso_dynam_dn', axes(1:2),   &
+             Time, 'col intg enthalpy tendency from mesoscale &
+             &downdraft',  'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_prcp_heat_frz_cell =  register_diag_field & 
+            (mod_name, 'ci_prcp_heat_frz_cell', axes(1:2),   &
+             Time, 'col intg heat removed by frozen cell precip', &
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_prcp_heat_liq_cell =  register_diag_field & 
+            (mod_name, 'ci_prcp_heat_liq_cell', axes(1:2),   &
+             Time, 'col intg heat removed by liquid cell precip', &
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_prcp_heat_frz_meso =  register_diag_field & 
+            (mod_name, 'ci_prcp_heat_frz_meso', axes(1:2),   &
+             Time, 'col intg heat removed by frozen meso precip', &
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_prcp_heat_liq_meso =  register_diag_field & 
+            (mod_name, 'ci_prcp_heat_liq_meso', axes(1:2),   &
+             Time, 'col intg heat removed by liquid meso precip', &
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_prcp_heat_total =  register_diag_field & 
+            (mod_name, 'ci_prcp_heat_total', axes(1:2),   &
+             Time, 'col intg total heat removed by precip', &
+              'J/m**2 / day',    &
+             missing_value=missing_value)
+
+      id_ci_prcp_total =  register_diag_field & 
+            (mod_name, 'ci_prcp_total', axes(1:2),   &
+             Time, 'col intg total precip', &
+              'mm / day',    &
+             missing_value=missing_value)
+
+    endif
+
+      id_leff          = register_diag_field    &
+            (mod_name, 'leff_don', axes(1:2),   &
+             Time, 'effective latent heat with donner precip ',  &
+             'J/kg(h2o)',  missing_value=missing_value)
+
 !    heating rate:
       id_cemetf_deep = register_diag_field    &
             (mod_name, 'cemetf_deep', axes(1:3),   &
@@ -3331,7 +3910,7 @@ type(time_type),               intent(in)  :: Time
 !    variable from the field_table. 
 !----------------------------------------------------------------------
             flag = parse (method_control, 'value',   &
-                                Initialized%Don_monitor(nx)%threshold )
+                            Initialized%Don_monitor(nx)%threshold ) > 0
 
 !----------------------------------------------------------------------
 !    if no limit_type and / or value has been given, the
@@ -3462,8 +4041,9 @@ end subroutine donner_column_control
 
 !######################################################################
 
-subroutine donner_deep_netcdf (is, ie, js, je, Time, Don_conv, Don_cape,&
+subroutine donner_deep_netcdf (is, ie, js, je, Nml, Time, Don_conv, Don_cape,&
                                parcel_rise, pmass, total_precip, &
+                               Don_budgets, &
                                temperature_forcing, moisture_forcing)  
 
 !---------------------------------------------------------------------
@@ -3474,7 +4054,9 @@ subroutine donner_deep_netcdf (is, ie, js, je, Time, Don_conv, Don_cape,&
 
 integer,                intent(in) :: is, ie, js, je
 type(time_type),        intent(in) :: Time
+type(donner_nml_type), intent(in) :: Nml   
 type(donner_conv_type), intent(in) :: Don_conv
+type(donner_budgets_type), intent(in) :: Don_budgets
 type(donner_cape_type), intent(in) :: Don_cape
 real, dimension(:,:,:), intent(in) :: pmass, temperature_forcing,&
                                       moisture_forcing
@@ -3513,7 +4095,7 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
 !---------------------------------------------------------------------
 !   local variables:
 
-      real, dimension (ie-is+1, je-js+1)  :: tempdiag  
+      real, dimension (ie-is+1, je-js+1)  :: tempdiag, tempdiag2, tempdiag3  
                            ! array used to hold various data fields being
                            ! sent to diag_manager_mod
       logical :: used      ! logical indicating data has been received 
@@ -3521,7 +4103,7 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
       integer :: nlev      ! number of large-scale model layers
       integer :: ntr       ! number of tracers transported by the
                            ! donner deep convection parameterization
-      integer :: k, n      ! do-loop indices
+      integer :: k, n, nn  ! do-loop indices
 
 !----------------------------------------------------------------------
 !    define the number of model layers (nlev) and number of transported
@@ -3632,38 +4214,191 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
       used = send_data (id_dgeliq_deep, Don_conv%cell_liquid_eff_diam, &
                         Time, is, js, 1)
 
+     if (Nml%do_budget_analysis) then
+       do n=1,Don_budgets%N_WATER_BUDGET
+         if (id_water_budget(n) > 0) then
+            used = send_data (id_water_budget(n), &
+                              Don_budgets%water_budget(:,:,:,n), &
+                              Time, is, js, 1)
+         endif
+       end do
+       do n=1,Don_budgets%N_PRECIP_TYPES
+         do nn=1,Don_budgets%N_PRECIP_PATHS
+           if (id_precip_budget(nn,n) > 0) then
+             used = send_data (id_precip_budget(nn,n), &
+                               Don_budgets%precip_budget(:,:,:,nn,n), &
+                               Time, is, js, 1)
+           endif
+         end do
+       end do
+       do n=1,Don_budgets%N_ENTHALPY_BUDGET
+         if (id_enthalpy_budget(n) > 0) then
+           used = send_data (id_enthalpy_budget(n),   &
+                             Don_budgets%enthalpy_budget(:,:,:,n), &
+                             Time, is, js, 1)
+         endif
+       end do
+       do n=1,Don_budgets%N_WATER_BUDGET
+         tempdiag(:,:) = 0.
+         do k=1,nlev
+           tempdiag(:,:) = tempdiag(:,:) + &
+                           Don_budgets%water_budget(:,:,k,n)* &
+                                                     pmass(:,:,k)/1000.
+         end do
+         if (id_ci_water_budget(n) > 0) then
+           used = send_data (id_ci_water_budget(n), tempdiag, &
+                             Time, is, js)
+         endif
+       end do
+       tempdiag3(:,:) = 0.
+       do n=1,Don_budgets%N_PRECIP_TYPES
+         do nn=1,Don_budgets%N_PRECIP_PATHS
+           tempdiag(:,:) = 0.
+           do k=1,nlev
+             tempdiag(:,:) = tempdiag(:,:) + &
+                             Don_budgets%precip_budget(:,:,k,nn,n)* &
+                                                           pmass(:,:,k)
+           end do
+           if (id_ci_precip_budget(nn,n) > 0) then
+             used = send_data (id_ci_precip_budget(nn,n), tempdiag, &
+                               Time, is, js)
+           endif
+           tempdiag3(:,:) = tempdiag3(:,:) + tempdiag(:,:)
+         end do
+       end do
+       do n=1,Don_budgets%N_ENTHALPY_BUDGET
+         tempdiag(:,:) = 0.
+         do k=1,nlev
+           tempdiag(:,:) = tempdiag(:,:) +  &
+                           Don_budgets%enthalpy_budget(:,:,k,n)* &
+                                                    pmass(:,:,k)*CP_AIR
+         end do
+         if (id_ci_enthalpy_budget(n) > 0) then
+           used = send_data (id_ci_enthalpy_budget(n), tempdiag, &
+                             Time, is, js)
+         endif
+       end do
+           
+        
+       tempdiag2(:,:) = 0.
+       tempdiag(:,:) = 0.
+       do k=1,nlev
+         tempdiag(:,:) = tempdiag(:,:) +  &
+                         (Don_budgets%precip_budget(:,:,k,2,1) +  &
+                          Don_budgets%precip_budget(:,:,k,4,1))* &
+                                                 Param%hls*pmass(:,:,k)
+       end do
+       if (id_ci_prcp_heat_frz_cell > 0) then
+         used = send_data (id_ci_prcp_heat_frz_cell, tempdiag, &
+                           Time, is, js)
+       endif
+       tempdiag2 = tempdiag2 + tempdiag
+           
+       tempdiag(:,:) = 0.
+       do k=1,nlev
+         tempdiag(:,:) = tempdiag(:,:) +  &
+                         (Don_budgets%precip_budget(:,:,k,1,1) +   &
+                          Don_budgets%precip_budget(:,:,k,3,1) + &
+                          Don_budgets%precip_budget(:,:,k,5,1))* &
+                                                 Param%hlv*pmass(:,:,k)
+       end do
+       if (id_ci_prcp_heat_liq_cell > 0) then
+         used = send_data (id_ci_prcp_heat_liq_cell, tempdiag, &
+                           Time, is, js)
+       endif
+       tempdiag2 = tempdiag2 + tempdiag
+           
+       tempdiag(:,:) = 0.
+       do k=1,nlev
+         tempdiag(:,:) = tempdiag(:,:) +  &
+                         (Don_budgets%precip_budget(:,:,k,2,2) + &
+                          Don_budgets%precip_budget(:,:,k,4,2) + &
+                          Don_budgets%precip_budget(:,:,k,2,3) + &
+                          Don_budgets%precip_budget(:,:,k,4,3))* &
+                                                 Param%hls*pmass(:,:,k)
+       end do
+       if (id_ci_prcp_heat_frz_meso > 0) then
+         used = send_data (id_ci_prcp_heat_frz_meso, tempdiag, &
+                           Time, is, js)
+       endif
+       tempdiag2 = tempdiag2 + tempdiag
+           
+       tempdiag(:,:) = 0.
+       do k=1,nlev
+         tempdiag(:,:) = tempdiag(:,:) +  &
+                         (Don_budgets%precip_budget(:,:,k,1,2) +   &
+                          Don_budgets%precip_budget(:,:,k,3,2) +  &
+                          Don_budgets%precip_budget(:,:,k,5,2) + &
+                          Don_budgets%precip_budget(:,:,k,1,3) +   &
+                          Don_budgets%precip_budget(:,:,k,3,3) +  &
+                          Don_budgets%precip_budget(:,:,k,5,3))* &
+                                                  Param%hlv*pmass(:,:,k)
+       end do
+       if (id_ci_prcp_heat_liq_meso > 0) then
+         used = send_data (id_ci_prcp_heat_liq_meso, tempdiag, &
+                           Time, is, js)
+       endif
+       tempdiag2 = tempdiag2 + tempdiag
+       if ( id_ci_prcp_heat_total > 0) then
+         used = send_data (id_ci_prcp_heat_total, tempdiag2, &
+                           Time, is, js)
+       endif
+       if (id_ci_prcp_total > 0) then
+         used = send_data (id_ci_prcp_total, tempdiag3, &
+                           Time, is, js)
+       endif
+       if ( id_leff > 0) then
+         used = send_data(id_leff, tempdiag2/(tempdiag3+1.0e-40), &
+                           Time, is, js)
+       endif
+           
+     endif
+
 !--------------------------------------------------------------------
 !    send the tracer-related arrays to diag_manager_mod.
 !--------------------------------------------------------------------
       do n=1,ntr    
 
 !   tracer tendency due to cells:
+        if (id_qtren1(n) > 0) then
         used = send_data (id_qtren1(n), Don_conv%qtren1(:,:,:,n), &
                           Time, is, js, 1)
+        endif
 
 !   tracer tendency due to mesoscale:
+         if (id_qtmes1(n) > 0) then
         used = send_data (id_qtmes1(n), Don_conv%qtmes1(:,:,:,n),   &
                           Time, is, js, 1)
+        endif
 
 !   tracer tendency due to mesoscale redistribution:
+        if (id_wtp1(n) > 0) then
         used = send_data (id_wtp1(n), Don_conv%wtp1(:,:,:,n),     &
                           Time, is, js, 1)
+        endif
 
 !   tracer tendency due to deep convective wet deposition:
+       if (id_total_wet_dep(n) > 0) then
      used = send_data (id_total_wet_dep(n), Don_conv%wetdept(:,:,:,n), &
                             Time, is, js, 1)
- 
+        endif
 !   tracer tendency due to wet deposition in mesoscale updrafts:
+       if ( id_meso_wet_dep(n) > 0) then
      used = send_data (id_meso_wet_dep(n), Don_conv%wetdepm(:,:,:,n), &
                             Time, is, js, 1)
+      endif
  
 !   tracer tendency due to wet deposition in cells:
+      if (id_cell_wet_dep(n) > 0) then
      used = send_data (id_cell_wet_dep(n), Don_conv%wetdepc(:,:,:,n), &
                            Time, is, js, 1)
+      endif
 
 !   total tracer tendency:
+      if (id_qtceme(n) > 0) then
         used = send_data (id_qtceme(n), Don_conv%qtceme(:,:,:,n), &
                           Time, is, js, 1)
+      endif
 
 !---------------------------------------------------------------------
 !    define the column-integrated tracer tendency due to convective
@@ -3675,7 +4410,9 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
           tempdiag(:,:) = tempdiag(:,:) + Don_conv%qtren1(:,:,k,n)* &
                           pmass(:,:,k)
         end do
+        if (id_qtren1_col(n) > 0) then
         used = send_data (id_qtren1_col(n), tempdiag, Time, is, js)
+        endif
 
 !---------------------------------------------------------------------
 !    define the column-integrated tracer tendency due to mesoscale circ-
@@ -3687,7 +4424,9 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
           tempdiag(:,:) = tempdiag(:,:) + Don_conv%qtmes1(:,:,k,n)* &
                           pmass(:,:,k)
         end do
+        if (id_qtmes1_col(n) > 0) then
         used = send_data (id_qtmes1_col(n), tempdiag, Time, is, js)
+        endif
 
 !---------------------------------------------------------------------
 !    define the column-integrated tracer redistribution due to meso-
@@ -3699,7 +4438,9 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
           tempdiag(:,:) = tempdiag(:,:) + Don_conv%wtp1(:,:,k,n)*   &
                           pmass(:,:,k)
         end do
+        if (id_wtp1_col(n) > 0) then
         used = send_data (id_wtp1_col(n), tempdiag, Time, is, js)
+        endif
 
 !---------------------------------------------------------------------
 !    define the column-integrated tracer change due to wet deposition in
@@ -3711,8 +4452,10 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
           tempdiag(:,:) = tempdiag(:,:) + Don_conv%wetdept(:,:,k,n)*   &
                           pmass(:,:,k)
         end do
+        if (id_total_wet_dep_col(n) > 0) then
         used = send_data (id_total_wet_dep_col(n), tempdiag, Time,  &
                                                                  is, js)
+        endif
 
 !---------------------------------------------------------------------
 !    define the column-integrated tracer change due to wet deposition in
@@ -3724,8 +4467,10 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
          tempdiag(:,:) = tempdiag(:,:) + Don_conv%wetdepm(:,:,k,n)*   &
                          pmass(:,:,k)
        end do
+       if (id_meso_wet_dep_col(n) > 0) then
        used = send_data (id_meso_wet_dep_col(n), tempdiag, Time,  &
                                                                  is, js)
+       endif
 
 !---------------------------------------------------------------------
 !    define the column-integrated tracer change due to wet deposition 
@@ -3737,8 +4482,10 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
          tempdiag(:,:) = tempdiag(:,:) + Don_conv%wetdepc(:,:,k,n)*   &
                          pmass(:,:,k)
        end do
+        if (id_cell_wet_dep_col(n) > 0) then
        used = send_data (id_cell_wet_dep_col(n), tempdiag, Time,  &
                                                                  is, js)
+        endif
 
 !-----------------------------------------------------------------
 !    define the column-integrated total tracer tendency, in units of 
@@ -3749,7 +4496,9 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
           tempdiag(:,:) = tempdiag(:,:) + Don_conv%qtceme(:,:,k,n)* &
                           pmass(:,:,k)
         end do
+         if (id_qtceme_col(n) > 0) then
         used = send_data (id_qtceme_col(n), tempdiag, Time, is, js)
+        endif
       end do
 
 !---------------------------------------------------------------------
@@ -3757,47 +4506,75 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
 !---------------------------------------------------------------------
 
 !   pressure at lifting condensation level:
+       if (id_plcl_deep > 0) then
       used = send_data (id_plcl_deep, Don_cape%plcl, Time, is, js)
+       endif
 
 !   pressure at level of free convection:
+       if (id_plfc_deep > 0) then
       used = send_data (id_plfc_deep, Don_cape%plfc, Time, is, js)
+       endif
 
 !   pressure at level of zero buoyancy:
+       if (id_plzb_deep > 0) then
       used = send_data (id_plzb_deep, Don_cape%plzb, Time, is, js)
+       endif
 
 !   convective available potential energy:
+      if (id_xcape_deep > 0) then
       used = send_data (id_xcape_deep, Don_cape%xcape_lag, Time, is, js)
+       endif
 
 !   convective inhibition:
+      if (id_coin_deep > 0) then
       used = send_data (id_coin_deep, Don_cape%coin, Time, is, js)
+       endif
 
 !   time tendency of cape:
+      if (id_dcape_deep > 0) then
       used = send_data (id_dcape_deep, Don_conv%dcape, Time, is, js)
+       endif
 
 !   column integrated water vapor:
+      if (id_qint_deep > 0) then
       used = send_data (id_qint_deep, Don_cape%qint_lag, Time, is, js)
+       endif
 
 !   fractional area of cumulus ensemble members:
+      if (id_a1_deep > 0) then
       used = send_data (id_a1_deep, Don_conv%a1, Time, is, js)
+       endif
 
 !   fractional area of largest cumulus ensemble member:
+      if (id_amax_deep > 0) then
       used = send_data (id_amax_deep, Don_conv%amax, Time, is, js)
+       endif
 
 !   upper limit of fractional area based on moisture constraint:
+      if (id_amos_deep > 0) then
       used = send_data (id_amos_deep, Don_conv%amos, Time, is, js)
+       endif
 
 !   area-weighted total precipitation:
+      if (id_tprea1_deep > 0) then
       used = send_data (id_tprea1_deep, total_precip, Time, is, js)
+       endif
 
 !   mesoscale cloud fraction:
+       if (id_ampta1_deep > 0) then
       used = send_data (id_ampta1_deep, Don_conv%ampta1, Time, is, js)
+       endif
 
 !   accumulated low-level parcel displacement:
+       if (id_omint_deep > 0) then
          used = send_data (id_omint_deep, parcel_rise, Time, is, js)
+       endif
 
 !   area weighted convective precipitation:
+       if (id_rcoa1_deep > 0) then
       used = send_data (id_rcoa1_deep, Don_conv%cell_precip,    &
                         Time, is, js)
+       endif
 
 !----------------------------------------------------------------------
 !    send diagnostics associated with the monitored output fields.

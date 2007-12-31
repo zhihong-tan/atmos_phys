@@ -55,7 +55,8 @@ use time_manager_mod,        only: time_type, get_time, operator (-), &
                                    time_manager_init
 use field_manager_mod,       only: field_manager_init, MODEL_ATMOS
 use tracer_manager_mod,      only: tracer_manager_init, &
-                                   get_number_tracers
+                                   get_number_tracers, &
+                                   get_tracer_names
 
 use atmos_tracer_driver_mod, only: atmos_tracer_driver_init,    &
                                    atmos_tracer_driver,  &
@@ -71,6 +72,8 @@ use fms_mod,                 only: mpp_clock_id, mpp_clock_begin,   &
                                    close_file, mpp_pe, mpp_root_pe, &
                                    write_data, mpp_error, mpp_chksum
 use fms_io_mod,              only: get_restart_io_mode
+
+use diag_manager_mod,        only: register_diag_field, send_data
 
 !    shared radiation package modules:
 
@@ -135,8 +138,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 15.0 2007/08/14 03:54:13 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_10 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 15.0.4.1 2007/10/31 10:43:27 rsh Exp $'
+character(len=128) :: tagname = '$Name: omsk_2007_12 $'
 
 
 !---------------------------------------------------------------------
@@ -333,6 +336,21 @@ integer   :: ntp                      ! total no. of prognostic tracers
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
 
+character(len=4)     :: mod_name = 'phys'
+character(len=32)    :: tracer_units, tracer_name
+  character(len=128) :: diaglname
+real                 :: missing_value = -999.
+integer              :: n, used
+
+integer                            :: id_tdt_phys_vdif_dn, &
+                                      id_tdt_phys_vdif_up, &
+                                      id_tdt_phys_turb,    &
+                                      id_tdt_phys_moist
+
+integer, dimension(:), allocatable :: id_tracer_phys_vdif_dn, &
+                                      id_tracer_phys_vdif_up, &
+                                      id_tracer_phys_turb,    &
+                                      id_tracer_phys_moist
 
 
                             contains
@@ -670,6 +688,78 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
       if (present(diffm)) then
         diffm = diff_m
       endif
+
+!---------------------------------------------------------------------
+!    initialize module diagnostics
+!---------------------------------------------------------------------
+
+      id_tdt_phys_vdif_dn = register_diag_field ( mod_name,    &
+         'tdt_phys_vdif_dn', axes(1:3), Time,                  &
+         'temperature tendency from physics driver vdif down', &
+         'K/s', missing_value=missing_value)
+
+      id_tdt_phys_vdif_up = register_diag_field ( mod_name,    &
+         'tdt_phys_vdif_up', axes(1:3), Time,                  &
+         'temperature tendency from physics driver vdif up',   &
+         'K/s', missing_value=missing_value)
+
+      id_tdt_phys_turb = register_diag_field ( mod_name,       &
+         'tdt_phys_turb', axes(1:3), Time,                     &
+         'temperature tendency from physics driver vdif turb', &
+         'K/s', missing_value=missing_value)
+
+      id_tdt_phys_moist = register_diag_field ( mod_name,            &
+         'tdt_phys_moist', axes(1:3), Time,                          &
+         'temperature tendency from physics driver moist processes', &
+         'K/s', missing_value=missing_value)
+
+      allocate (id_tracer_phys_vdif_dn(nt))
+      allocate (id_tracer_phys_vdif_up(nt))
+      allocate (id_tracer_phys_turb(nt))
+      allocate (id_tracer_phys_moist(nt))
+
+      do n = 1,nt
+
+        call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
+                               units = tracer_units)
+        
+        diaglname = trim(tracer_name)//  &
+                    ' tendency from physics driver vdif down'
+        id_tracer_phys_vdif_dn(n) =    &
+                         register_diag_field ( mod_name, &
+                         TRIM(tracer_name)//'_phys_vdif_dn',  &
+                         axes(1:3), Time, trim(diaglname), &
+                         TRIM(tracer_units)//'/s',  &
+                         missing_value=missing_value)
+
+        diaglname = trim(tracer_name)//  &
+                    ' tendency from physics driver vdif up'
+        id_tracer_phys_vdif_up(n) =    &
+                         register_diag_field ( mod_name, &
+                         TRIM(tracer_name)//'_phys_vdif_up',  &
+                         axes(1:3), Time, trim(diaglname), &
+                         TRIM(tracer_units)//'/s',  &
+                         missing_value=missing_value)
+
+        diaglname = trim(tracer_name)//  &
+                    ' tendency from physics driver vert turb'
+        id_tracer_phys_turb(n) =    &
+                         register_diag_field ( mod_name, &
+                         TRIM(tracer_name)//'_phys_turb',  &
+                         axes(1:3), Time, trim(diaglname), &
+                         TRIM(tracer_units)//'/s',  &
+                         missing_value=missing_value)
+
+        diaglname = trim(tracer_name)//  &
+                    ' tendency from physics driver moist processes'
+        id_tracer_phys_moist(n) =    &
+                         register_diag_field ( mod_name, &
+                         TRIM(tracer_name)//'_phys_moist',  &
+                         axes(1:3), Time, trim(diaglname), &
+                         TRIM(tracer_units)//'/s',  &
+                         missing_value=missing_value)
+
+      end do
 
 !---------------------------------------------------------------------
 !    mark the module as initialized.
@@ -1396,6 +1486,19 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !    call vert_turb_driver to calculate diffusion coefficients. save
 !    the planetary boundary layer height on return.
 !---------------------------------------------------------------------
+
+      if (id_tdt_phys_turb > 0) then
+        used = send_data ( id_tdt_phys_turb, -2.0*tdt(:,:,:), &
+                           Time_next, is, js, 1, rmask=mask )
+      endif
+
+      do n=1,nt
+        if (id_tracer_phys_turb(n) > 0) then
+          used = send_data ( id_tracer_phys_turb(n), -2.0*rdt(:,:,:,n), &
+                             Time_next, is, js, 1, rmask=mask )
+        endif
+      end do
+
       call mpp_clock_begin ( turb_clock )
       call vert_turb_driver (is, js, Time, Time_next, dt,            &
                              lw_tendency(is:ie,js:je,:), frac_land,  &
@@ -1409,6 +1512,18 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                              mask=mask, kbot=kbot             )
      call mpp_clock_end ( turb_clock )
      pbltop(is:ie,js:je) = z_pbl(:,:)
+
+      if (id_tdt_phys_turb > 0) then
+        used = send_data ( id_tdt_phys_turb, +2.0*tdt(:,:,:), &
+                           Time_next, is, js, 1, rmask=mask )
+      endif
+
+      do n=1,nt
+        if (id_tracer_phys_turb(n) > 0) then
+          used = send_data ( id_tracer_phys_turb(n), +2.0*rdt(:,:,:,n), &
+                             Time_next, is, js, 1, rmask=mask )
+        endif
+      end do
 
 !-----------------------------------------------------------------------
 !    process any tracer fields.
@@ -1480,6 +1595,19 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !    call vert_diff_driver_down to calculate the first pass atmos-
 !    pheric vertical diffusion.
 !-----------------------------------------------------------------------
+
+      if (id_tdt_phys_vdif_dn > 0) then
+        used = send_data ( id_tdt_phys_vdif_dn, -2.0*tdt(:,:,:), &
+                           Time_next, is, js, 1, rmask=mask )
+      endif
+
+      do n=1,nt
+        if (id_tracer_phys_vdif_dn(n) > 0) then
+          used = send_data ( id_tracer_phys_vdif_dn(n), -2.0*rdt(:,:,:,n), &
+                             Time_next, is, js, 1, rmask=mask )
+        endif
+      end do
+
       call mpp_clock_begin ( diff_down_clock )
       radturbten(is:ie,js:je,:) = radturbten(is:ie,js:je,:) - tdt(:,:,:)
       call vert_diff_driver_down (is, js, Time_next, dt, p_half,   &
@@ -1491,6 +1619,18 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                                   udt, vdt, tdt, qdt, rdt,       &
                                   Surf_diff,                     &
                                   mask=mask, kbot=kbot           )
+
+      if (id_tdt_phys_vdif_dn > 0) then
+        used = send_data ( id_tdt_phys_vdif_dn, +2.0*tdt(:,:,:), &
+                           Time_next, is, js, 1, rmask=mask )
+      endif
+
+      do n=1,nt
+        if (id_tracer_phys_vdif_dn(n) > 0) then
+          used = send_data ( id_tracer_phys_vdif_dn(n), +2.0*rdt(:,:,:,n), &
+                             Time_next, is, js, 1, rmask=mask )
+        endif
+      end do
 
 !---------------------------------------------------------------------
 !    if desired, return diff_m and diff_t to calling routine.
@@ -1774,6 +1914,19 @@ integer,dimension(:,:), intent(in),   optional :: kbot
 !    call vert_diff_driver_up to complete the vertical diffusion
 !    calculation.
 !------------------------------------------------------------------
+
+      if (id_tdt_phys_vdif_up > 0) then
+        used = send_data ( id_tdt_phys_vdif_up, -2.0*tdt(:,:,:), &
+                           Time_next, is, js, 1, rmask=mask )
+      endif
+
+      do n=1,nt
+        if (id_tracer_phys_vdif_up(n) > 0) then
+          used = send_data ( id_tracer_phys_vdif_up(n), -2.0*rdt(:,:,:,n), &
+                             Time_next, is, js, 1, rmask=mask )
+        endif
+      end do
+
       call mpp_clock_begin ( diff_up_clock )
       call vert_diff_driver_up (is, js, Time_next, dt, p_half,   &
                                 Surf_diff, tdt, qdt, rdt, mask=mask,  &
@@ -1781,12 +1934,37 @@ integer,dimension(:,:), intent(in),   optional :: kbot
       radturbten(is:ie,js:je,:) = radturbten(is:ie,js:je,:) + tdt(:,:,:)
       call mpp_clock_end ( diff_up_clock )
 
+      if (id_tdt_phys_vdif_up > 0) then
+        used = send_data ( id_tdt_phys_vdif_up, +2.0*tdt(:,:,:), &
+                           Time_next, is, js, 1, rmask=mask )
+      endif
+
+      do n=1,nt
+        if (id_tracer_phys_vdif_up(n) > 0) then
+          used = send_data ( id_tracer_phys_vdif_up(n), +2.0*rdt(:,:,:,n), &
+                             Time_next, is, js, 1, rmask=mask )
+        endif
+      end do
+
 !-----------------------------------------------------------------------
 !    if the fms integration path is being followed, call moist processes
 !    to compute moist physics, including convection and processes 
 !    involving condenstion.
 !-----------------------------------------------------------------------
       if (do_moist_processes) then
+
+        if (id_tdt_phys_moist > 0) then
+          used = send_data ( id_tdt_phys_moist, -2.0*tdt(:,:,:), &
+                             Time_next, is, js, 1, rmask=mask )
+        endif
+
+        do n=1,nt
+          if (id_tracer_phys_moist(n) > 0) then
+            used = send_data ( id_tracer_phys_moist(n), -2.0*rdt(:,:,:,n), &
+                               Time_next, is, js, 1, rmask=mask )
+          endif
+        end do
+
         call mpp_clock_begin ( moist_processes_clock )
 
 !-----------------------------------------------------------------------
@@ -1897,6 +2075,19 @@ integer,dimension(:,:), intent(in),   optional :: kbot
 !    from non-convective parameterizations.
 !---------------------------------------------------------------------
         gust = sqrt( gust*gust + gust_cv*gust_cv)
+
+        if (id_tdt_phys_moist > 0) then
+          used = send_data ( id_tdt_phys_moist, +2.0*tdt(:,:,:), &
+                             Time_next, is, js, 1, rmask=mask )
+        endif
+
+        do n=1,nt
+          if (id_tracer_phys_moist(n) > 0) then
+            used = send_data ( id_tracer_phys_moist(n), +2.0*rdt(:,:,:,n), &
+                               Time_next, is, js, 1, rmask=mask )
+          endif
+        end do
+
       endif ! do_moist_processes
 
       if(ASSOCIATED(Aerosol%aerosol))deallocate(Aerosol%aerosol)
@@ -2107,6 +2298,11 @@ type(time_type), intent(in) :: Time
                     shallow_droplet_number)
       endif
  
+      deallocate (id_tracer_phys_vdif_dn)
+      deallocate (id_tracer_phys_vdif_up)
+      deallocate (id_tracer_phys_turb)
+      deallocate (id_tracer_phys_moist)
+
 !---------------------------------------------------------------------
 !    mark the module as uninitialized.
 !---------------------------------------------------------------------

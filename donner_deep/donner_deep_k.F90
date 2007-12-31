@@ -1,6 +1,5 @@
-
 !VERSION NUMBER:
-!  $Id: donner_deep_k.F90,v 15.0.2.1 2007/09/29 13:09:51 rsh Exp $
+!  $Id: donner_deep_k.F90,v 15.0.2.1.2.1.2.3.2.1.2.1.2.1.2.1 2007/11/25 14:45:28 rsh Exp $
 
 !module donner_deep_inter_mod
 
@@ -15,7 +14,7 @@ subroutine don_d_donner_deep_k   &
          (is, ie, js, je, isize, jsize, nlev_lsm, nlev_hires, ntr, me, &
           cloud_tracers_present, cbmf,  &
           dt, Param, Nml, temp, mixing_ratio, pfull, phalf,   &
-          zfull, zhalf, omega, pblht, tkemiz, qstar, coldT, qlin,&!miz
+          zfull, zhalf, omega, pblht, tkemiz, qstar, cush, coldT, qlin,&!miz
           qiin, qain, land, sfc_sh_flux, sfc_vapor_flux, tr_flux,  &
           tracers, cell_cld_frac, cell_liq_amt, cell_liq_size,  &
           cell_ice_amt, cell_ice_size, cell_droplet_number, &
@@ -27,7 +26,7 @@ subroutine don_d_donner_deep_k   &
           temperature_forcing, moisture_forcing, parcel_rise, &
           delta_ql, delta_qi, delta_qa, qtrtnd, calc_conv_on_this_step, &
           ermesg, Initialized, Col_diag, Don_rad, Don_conv, Don_cape, &
-          Don_save, sd, Uw_p, ac, cp, ct)      
+          Don_save, sd, Uw_p, ac, cp, ct, Don_budgets)
                         
 !-------------------------------------------------------------------
 !    subroutine don_d_donner_deep_k is the primary kernel sub-
@@ -40,6 +39,7 @@ subroutine don_d_donner_deep_k   &
 use donner_types_mod, only : donner_initialized_type, donner_save_type,&
                              donner_rad_type, donner_nml_type, &
                              donner_param_type, donner_conv_type, &
+                             donner_budgets_type, &
                              donner_column_diag_type, donner_cape_type
 use  conv_utilities_k_mod,only : adicloud, sounding, uw_params
 use  conv_plumes_k_mod,   only : cplume, ctend
@@ -68,7 +68,7 @@ real, dimension(isize,jsize,nlev_lsm),                                  &
 real,    dimension(isize,jsize,nlev_lsm+1),                            &
                          intent(in)     :: phalf, zhalf
 real,    dimension(isize,jsize),                                      &
-                         intent(in)     :: pblht, tkemiz, qstar, land, &
+                         intent(in)     :: pblht, tkemiz, qstar, cush, land, &
                                            sfc_sh_flux, sfc_vapor_flux
 logical, dimension(isize,jsize), intent(in) :: coldT    
 real,    dimension(isize,jsize,ntr),                                 &
@@ -77,7 +77,7 @@ real,    dimension(isize,jsize,nlev_lsm,ntr),                         &
                          intent(in)     :: tracers 
 integer, dimension(isize,jsize),                                     &
                          intent(in)     :: nsum      
-real,    dimension(isize,jsize),                                       & 
+real,    dimension(isize,jsize),                                     & 
                          intent(out)    :: precip      
 real, dimension(isize,jsize,nlev_lsm),                                 &
                          intent(out)    :: delta_temp, delta_vapor,&
@@ -102,6 +102,7 @@ type(donner_column_diag_type),                               &
                          intent(inout)  :: Col_diag
 type(donner_rad_type),   intent(inout)  :: Don_rad
 type(donner_conv_type),  intent(inout)  :: Don_conv
+type(donner_budgets_type),  intent(inout)  :: Don_budgets
 type(donner_cape_type),  intent(inout)  :: Don_cape
 type(donner_save_type),  intent(inout)  :: Don_save
 
@@ -110,6 +111,7 @@ type(uw_params),          intent(inout)  :: Uw_p
 type(adicloud),          intent(inout)  :: ac
 type(cplume),            intent(inout)  :: cp
 type(ctend),             intent(inout)  :: ct
+
 !--------------------------------------------------------------------
 
 !--------------------------------------------------------------------
@@ -369,7 +371,7 @@ type(ctend),             intent(inout)  :: ct
               cell_droplet_number, &
               meso_cld_frac, meso_liq_amt, meso_liq_size, meso_ice_amt, &
               meso_ice_size, meso_droplet_number, nsum, Don_conv,   &
-              Don_cape, Don_rad, Nml, ermesg) 
+              Don_cape, Don_rad, Don_budgets, Nml, Initialized, ermesg) 
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -377,6 +379,33 @@ type(ctend),             intent(inout)  :: ct
 !----------------------------------------------------------------------
         if (trim(ermesg) /= ' ') return
       endif !(calc_conv_on_this_step)
+
+!---------------------------------------------------------------------
+!    allocate and initialize the components of the donner_budgets_type 
+!    variable Don_budgets. definitions of these arrays are found in 
+!    donner_types.h.
+!---------------------------------------------------------------------
+      allocate ( Don_budgets%liq_prcp     (isize, jsize, nlev_lsm) )
+      allocate ( Don_budgets%frz_prcp     (isize, jsize, nlev_lsm) )
+      Don_budgets%liq_prcp     = 0.
+      Don_budgets%frz_prcp     = 0.
+   if (Initialized%do_conservation_checks .or.   &
+                                          Nml%do_budget_analysis) then
+      allocate ( Don_budgets%lheat_precip (isize, jsize) )
+      allocate ( Don_budgets%vert_motion  (isize, jsize) )
+      Don_budgets%lheat_precip = 0.
+      Don_budgets%vert_motion  = 0.
+      allocate ( Don_budgets%water_budget (isize, jsize, nlev_lsm, &
+                                        Don_budgets%n_water_budget) )
+      allocate ( Don_budgets%enthalpy_budget (isize, jsize, nlev_lsm, &
+                                     Don_budgets%n_enthalpy_budget) )
+      allocate ( Don_budgets%precip_budget (isize, jsize, nlev_lsm, &
+                                       Don_budgets%n_precip_paths, &
+                                       Don_budgets%n_precip_types)  )
+      Don_budgets%water_budget = 0.
+      Don_budgets%enthalpy_budget = 0.
+      Don_budgets%precip_budget = 0.
+   endif
 
 !---------------------------------------------------------------------
 !    add the vertical displacement resulting from the current omega
@@ -470,13 +499,14 @@ type(ctend),             intent(inout)  :: ct
              (isize, jsize, nlev_lsm, nlev_hires, ntr, me, &
               cloud_tracers_present, cbmf, dt, Nml, &
               Initialized, Param, Col_diag, temp, mixing_ratio,  &
-              pfull, zfull, zhalf, pblht, tkemiz, qstar, coldT,  &!miz
+              pfull, zfull, zhalf, pblht, tkemiz, qstar, cush, coldT,  &!miz
               qlin, qiin, qain, lag_cape_temp, lag_cape_vapor,    &
               lag_cape_press, phalf, current_displ, land, sfc_sh_flux, &
               sfc_vapor_flux, tr_flux, tracers, Don_cape, Don_conv, &
               Don_rad, temperature_forcing, moisture_forcing,  &
               total_precip, donner_humidity_factor, donner_humidity_area,&
-              dql, dqi, dqa, exit_flag, ermesg, sd, Uw_p, ac, cp, ct) 
+              dql, dqi, dqa, exit_flag, ermesg, sd, Uw_p, ac, cp, ct, &
+              Don_budgets)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -582,6 +612,8 @@ type(ctend),             intent(inout)  :: ct
           Don_save%tracer_tends(is:ie,js:je,:,:) =      &
                    Don_conv%qtceme(:,:,:,:) + Don_conv%wetdept(:,:,:,:)
         endif
+      else  ! (calc_conv_on_this_step)
+        total_precip(:,:) = 0.0
 
 !---------------------------------------------------------------------
 !    end of if loop for code executed only on steps for which the donner
@@ -771,9 +803,11 @@ subroutine don_d_init_loc_vars_k      &
           cell_droplet_number, &
           meso_cld_frac, meso_liq_amt, meso_liq_size, meso_ice_amt,   &
           meso_ice_size, meso_droplet_number, nsum, Don_conv,   &
-          Don_cape, Don_rad, Nml, ermesg)     
+          Don_cape, Don_rad, Don_budgets, Nml, Initialized, ermesg)     
 
 use donner_types_mod, only : donner_rad_type, donner_conv_type, &
+                             donner_budgets_type, &
+                             donner_initialized_type, &
                              donner_cape_type, donner_nml_type
 implicit none
 
@@ -804,7 +838,9 @@ integer, dimension(isize,jsize), intent(in)    :: nsum
 type(donner_conv_type),          intent(inout) :: Don_conv
 type(donner_cape_type),          intent(inout) :: Don_cape
 type(donner_rad_type),           intent(inout) :: Don_rad
+type(donner_budgets_type),           intent(inout) :: Don_budgets
 type(donner_nml_type),           intent(in)    :: Nml
+type(donner_initialized_type),   intent(in)    :: Initialized
 character(len=*),                intent(out)   :: ermesg
 
 !---------------------------------------------------------------------
@@ -1067,6 +1103,7 @@ character(len=*),                intent(out)   :: ermesg
       Don_rad%meso_droplet_number = meso_droplet_number
       Don_rad%nsum             = nsum
 
+
 !----------------------------------------------------------------------
 
 
@@ -1216,17 +1253,17 @@ subroutine don_d_convection_driver_k    &
          (isize, jsize, nlev_lsm, nlev_hires, ntr, me,  &
           cloud_tracers_present, cbmf, dt, Nml,    &
           Initialized, Param, Col_diag, temp, mixing_ratio,  &
-          pfull, zfull, zhalf, pblht, tkemiz, qstar, coldT,  &!miz
+          pfull, zfull, zhalf, pblht, tkemiz, qstar, cush, coldT,  &!miz
           qlin, qiin, qain, lag_cape_temp, lag_cape_vapor,  &
           lag_cape_press, phalf, current_displ, land, sfc_sh_flux,  &
           sfc_vapor_flux, tr_flux, tracers, Don_cape, Don_conv, &
           Don_rad, temperature_forcing, moisture_forcing, total_precip, &
           donner_humidity_factor, donner_humidity_area, dql, dqi, dqa, &
-          exit_flag, ermesg, sd, Uw_p, ac, cp, ct)
+          exit_flag, ermesg, sd, Uw_p, ac, cp, ct, Don_budgets)
 
 use donner_types_mod, only : donner_initialized_type, donner_rad_type, &
                              donner_param_type, donner_conv_type, &
-                             donner_nml_type, &
+                             donner_nml_type, donner_budgets_type, &
                              donner_column_diag_type, donner_cape_type
 
 use  conv_utilities_k_mod,only : adicloud, sounding, uw_params !miz
@@ -1263,7 +1300,7 @@ real,    dimension(isize,jsize,nlev_lsm+1),                       &
                               intent(in)    ::  phalf, zhalf                  
 real,    dimension(isize,jsize),                                     &
                               intent(in)    :: current_displ, pblht, &
-                                               tkemiz, qstar, land, &
+                                               tkemiz, qstar, cush, land, &
                                                sfc_sh_flux,   &
                                                sfc_vapor_flux
 logical, dimension(isize,jsize), intent(in) :: coldT
@@ -1273,6 +1310,7 @@ real,    dimension(isize,jsize,nlev_lsm,ntr),                      &
                               intent(in)    :: tracers        
 type(donner_cape_type),       intent(inout) :: Don_cape
 type(donner_conv_type),       intent(inout) :: Don_conv
+type(donner_budgets_type),       intent(inout) :: Don_budgets
 type(donner_rad_type),        intent(inout) :: Don_rad
 real,    dimension(isize,jsize,nlev_lsm),                           &
                               intent(out)   :: temperature_forcing,&
@@ -1402,6 +1440,7 @@ type(ctend),                  intent(inout) :: ct
 !   local variables:
  
      integer :: i, j, k, n
+!    real, dimension(isize, jsize, nlev_lsm) :: alpha
      real    :: press0, press1, qlw_wd, qrw_wd, qrw_col_wd, delta_tracer, air_density_wd, tv_wd
  
 !---------------------------------------------------------------------
@@ -1438,7 +1477,7 @@ type(ctend),                  intent(inout) :: ct
       else
         call don_c_def_conv_env_miz   &
            (isize, jsize, nlev_lsm, ntr, dt, Nml, Param, Initialized, &
-            Col_diag, tracers, pblht, tkemiz, qstar, land, coldT,     &
+            Col_diag, tracers, pblht, tkemiz, qstar, cush, land, coldT,     &
            temp, mixing_ratio, pfull, phalf, zfull, zhalf,   &
            lag_cape_temp, lag_cape_vapor, current_displ, cbmf, Don_cape,  &
            Don_conv, sd, Uw_p, ac)
@@ -1458,10 +1497,10 @@ type(ctend),                  intent(inout) :: ct
            (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Col_diag, &
             Param, Nml, Initialized, cbmf, current_displ, sfc_sh_flux, &
             sfc_vapor_flux, temp, mixing_ratio, pblht, tkemiz, qstar, &
-            land, coldT, pfull, phalf,&
+            cush, land, coldT, pfull, phalf,&
             zfull, zhalf, sd, Uw_p, ac, cp, ct, tr_flux, tracers,    &
             Don_conv, Don_cape, temperature_forcing, moisture_forcing, &
-            total_precip, ermesg, exit_flag)
+            total_precip, Don_budgets, ermesg, exit_flag)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -1643,13 +1682,14 @@ type(ctend),                  intent(inout) :: ct
       Don_conv%conv_moist_forcing(:,:,:) = moisture_forcing(:,:,:)
 
       if (cloud_tracers_present) then
+        
         moisture_forcing(:,:,:) = moisture_forcing(:,:,:) - &
-                                            dql(:,:,:) - dqi(:,:,:)
-        temperature_forcing(:,:,:) = temperature_forcing(:,:,:) + &
-                               dql(:,:,:)*Param%HLV   /(Param%cp_air) + &
-                               dqi(:,:,:)*(Param%HLS  )/(Param%cp_air)
+                       dql(:,:,:) - dqi(:,:,:)
+        temperature_forcing(:,:,:) = temperature_forcing(:,:,:) +   &
+                      (dql(:,:,:)*Param%hlv + dqi(:,:,:)*Param%hls)/  &
+                                                          (Param%cp_air)
       endif
-
+       
 !---------------------------------------------------------------------
 
 
@@ -1661,12 +1701,13 @@ subroutine don_d_cupar_k     &
          (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Col_diag, &
           Param, Nml, Initialized, cbmf, current_displ, sfc_sh_flux,   &
           sfc_vapor_flux,                                        &
-          temp, mixing_ratio, pblht, tkemiz, qstar, land, coldT, & !miz 
+          temp, mixing_ratio, pblht, tkemiz, qstar, cush, land, coldT, & !miz 
           pfull, phalf, zfull, zhalf,  &
           sd, Uw_p, ac,cp, ct, & !miz
           tr_flux, tracers, &
           Don_conv, Don_cape, temperature_forcing, moisture_forcing,  &
-          total_precip, ermesg, exit_flag)
+          total_precip, Don_budgets, &
+          ermesg,  exit_flag)
 
 !----------------------------------------------------------------------
 !    subroutine cupar drives the parameterization for deep cumulus 
@@ -1678,6 +1719,7 @@ subroutine don_d_cupar_k     &
 
 use donner_types_mod, only : donner_initialized_type, donner_nml_type, &
                              donner_param_type, donner_conv_type, &
+                             donner_budgets_type, &
                              donner_column_diag_type, donner_cape_type
 use conv_utilities_k_mod, only : sounding, adicloud, uw_params
 use  conv_plumes_k_mod,   only    : cplume, ctend
@@ -1699,7 +1741,7 @@ type(adicloud),                    intent(inout) :: ac
 type(cplume),                      intent(inout) :: cp
 type(ctend),                       intent(inout) :: ct
 real,    dimension(isize,jsize),   intent(in)    :: pblht, tkemiz, &
-                                                    qstar, land
+                                                    qstar, cush, land
 logical, dimension(isize,jsize),   intent(in)    :: coldT
 
 real,    dimension(isize,jsize),   intent(inout)    :: cbmf
@@ -1716,6 +1758,7 @@ real,    dimension(isize,jsize,ntr),                           &
 real,    dimension(isize,jsize,nlev_lsm,ntr),               &
                                    intent(in)    :: tracers
 type(donner_conv_type),            intent(inout) :: Don_conv
+type(donner_budgets_type),            intent(inout) :: Don_budgets
 type(donner_cape_type),            intent(inout) :: Don_cape
 real,    dimension(isize,jsize,nlev_lsm),                      &
                                    intent(out)   :: temperature_forcing,&
@@ -1886,14 +1929,14 @@ logical, dimension(isize,jsize),   intent(out)   :: exit_flag
 !++lwh
             Nml, Col_diag,   &
             Initialized,   &
-            temp, mixing_ratio, pblht, tkemiz, qstar, land, coldT,  &
+            temp, mixing_ratio, pblht, tkemiz, qstar, cush, cbmf, land, coldT,  &
             phalf, pfull, zhalf, zfull,  &
             sd, Uw_p, ac, cp, ct, &
            sfc_vapor_flux, sfc_sh_flux, &
 !--lwh
             sfc_tracer_flux, xgcm_v, Don_cape, Don_conv, exit_flag,  &
             total_precip, temperature_forcing, moisture_forcing, &
-            ermesg)
+            Don_budgets, ermesg)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -1985,6 +2028,19 @@ logical, dimension(isize,jsize),   intent(out)   :: exit_flag
                Initialized, &
                temperature_forcing, moisture_forcing, ermesg)
       end if
+
+          do k=1,nlev_lsm
+              Don_budgets%liq_prcp(:,:,k) =    &
+                          Don_budgets%liq_prcp(:,:,k)*Don_conv%a1(:,:)
+              Don_budgets%frz_prcp(:,:,k) =    &
+                          Don_budgets%frz_prcp(:,:,k)*Don_conv%a1(:,:)
+           end do
+            if (Initialized%do_conservation_checks) then
+              Don_budgets%vert_motion(:,:) =    &
+                           Don_budgets%vert_motion(:,:)*Don_conv%a1(:,:)
+              Don_budgets%lheat_precip(:,:) =   &
+                          Don_budgets%lheat_precip(:,:)*Don_conv%a1(:,:)
+            endif
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -2161,7 +2217,7 @@ character(len=*),                 intent(out)   :: ermesg
 !---------------------------------------------------------------------
           if ((Don_cape%xcape(i,j) <= 0.)        .or.  &
               (Don_conv%dcape(i,j) <= 0. .and. Nml%do_dcape)   .or. &
-              (pdeet1(i,j) < Param%pdeep_cv )    .or. &
+              (pdeet1(i,j) < Param%pdeep_cv.and. Nml%use_pdeep_cv) .or.&
        (Initialized%using_unified_closure .and. cbmf(i,j) == 0.) .or. &
   ((pdeet2(i,j)<current_displ(i,j)) .and. Nml%use_llift_criteria) .or. &
               (Don_cape%coin(i,j) > Param%cdeep_cv) )   then
@@ -2341,13 +2397,14 @@ subroutine don_d_mulsub_k   &
          (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Param, Nml, &
 !++lwh
           Col_diag, Initialized,   &
-          temp, mixing_ratio, pblht, tkemiz, qstar, land, coldT, & !miz
+          temp, mixing_ratio, pblht, tkemiz, qstar, cush, cbmf, land, coldT, & !miz
           phalf, pfull, zhalf, zfull, sd,  &
            Uw_p, ac,         cp, ct, &
           sfc_vapor_flux, sfc_sh_flux, &
 !--lwh
           sfc_tracer_flux, xgcm_v, Don_cape, Don_conv, exit_flag, &
-          total_precip, temperature_forcing, moisture_forcing, ermesg)
+          total_precip, temperature_forcing, moisture_forcing,  &
+          Don_budgets, ermesg)
 
 !--------------------------------------------------------------------
 !    subroutine don_d_mulsub_k calculates the thermal and moisture
@@ -2363,6 +2420,7 @@ subroutine don_d_mulsub_k   &
 
 use donner_types_mod, only : donner_param_type, donner_conv_type, &
                              donner_nml_type, donner_column_diag_type, &
+                             donner_budgets_type, &
 !++lwh
                              donner_cape_type, donner_initialized_type
 !--lwh
@@ -2393,7 +2451,7 @@ type(adicloud),               intent(inout)  ::  ac
 type(cplume),                 intent(inout)  ::  cp
 type(ctend),                  intent(inout)  ::  ct
 real, dimension(isize,jsize), intent(in)     ::  pblht, tkemiz, qstar, &
-                                                 land
+                                                 cush, cbmf, land
 logical, dimension(isize,jsize), intent(in)  ::  coldT
 real,    dimension(isize,jsize),                                &
                               intent(in)     ::  sfc_vapor_flux,  &
@@ -2404,6 +2462,7 @@ real,    dimension(isize,jsize,nlev_lsm,ntr),               &
                               intent(in)     ::  xgcm_v
 type(donner_cape_type),       intent(inout)  ::  Don_cape
 type(donner_conv_type),       intent(inout)  ::  Don_conv
+type(donner_budgets_type),       intent(inout)  ::  Don_budgets
 logical, dimension(isize,jsize),                            &
                               intent(inout)  ::  exit_flag
 real,    dimension(isize,jsize),                          &
@@ -2666,16 +2725,31 @@ character(len=*),             intent(out)    ::  ermesg
 !----------------------------------------------------------------------
 !   local variables:
 
+      real, dimension(nlev_lsm,Don_budgets%n_water_budget) ::  wat_budg
+      real, dimension(nlev_lsm,Don_budgets%n_enthalpy_budget) :: &
+                                                               ent_budg
+      real, dimension(nlev_lsm,Don_budgets%n_precip_paths,   &
+                               Don_budgets%n_precip_types)  :: &
+                                                               prc_budg
       real, dimension(nlev_lsm)               ::        &
               ensmbl_cloud_area, cutotal, cmus_tot, cuq, cuql_v, disa, &
-              disb, disc, disd, dise, dmeml, uceml, umeml, ecds, eces,  &
-              emds, emes, mrmes, tmes, wmms, wmps, detmfl,    &
-              meso_cloud_area, disf, disg, disg_2, disn, enctf, encmf, &
-              enev, ensmbl_melt, anvil_precip_melt, ensmbl_freeze,&
-              temp_tend_freeze, temp_tend_melt, sfcq, sfch
+              disb, disd, disv, dise, dmeml, uceml, umeml, &
+              ecds_liq, ecds_ice, eces_liq, eces_ice,  &
+              disc_liq, disc_ice, dism_liq, dism_liq_frz, &
+              dism_liq_remelt, dism_ice, dism_ice_melted, &
+              disp_liq, disp_ice, disz, disz_remelt, disp_melted, &
+              disze1, disze2, disze3,                               &
+              emds_liq, emds_ice, emes_liq, emes_ice, &
+              mrmes, mrmes_up, mrmes_dn, tmes, tmes_up, tmes_dn, &
+              wmms, wmps, detmfl, meso_cloud_area, disf,            &
+              disn, enctf, encmf, disg_liq, disg_ice, &
+              enev, ensmbl_melt, ensmbl_melt_meso, anvil_precip_melt, &
+              ensmbl_freeze, ensmbl_freeze_meso, temp_tend_melt,  &
+              liq_prcp, frz_prcp, sfcq, sfch
 
       real, dimension(isize, jsize, nlev_lsm) :: disa_v, dise_v
-      real, dimension (nlev_lsm)              :: rlsm_miz, emsm_miz, cld_press_miz
+      real, dimension (nlev_lsm)              :: rlsm_miz, emsm_miz, &
+                                                 cld_press_miz
       real, dimension (nlev_hires)            :: rlsm, emsm, cld_press
       real, dimension( nlev_lsm,ntr)          :: ensmbl_wetc
       real, dimension( nlev_lsm,ntr)          :: qtmes, qtren, wtp, &
@@ -2683,15 +2757,17 @@ character(len=*),             intent(out)    ::  ermesg
       real, dimension (nlev_hires,ntr)        :: etsm
       real, dimension (nlev_lsm+1)            :: phalf_c               
 
+      real         ::  lofactor
       real         ::  al, ampta1, ensmbl_cond, pb, ensmbl_precip,  &
-                       pt_ens, &
-                       ensmbl_anvil_cond, max_depletion_rate, dqls_v,  &
-                       qlsd_v
-      logical      ::  lmeso, debug_ijt
-      integer      :: diag_unit
-      integer      :: kinv
-      integer      :: kcont
-      integer      :: i, j, k, n
+                       pt_ens, max_depletion_rate, dqls_v,  &
+                       ensmbl_anvil_cond_liq, ensmbl_anvil_cond_ice, &
+                       ensmbl_anvil_cond_liq_frz, &
+                       qlsd_v, frz_frac, lprcp, vrt_mot
+      logical      ::  meso_frz_intg_sum, melting_in_cloud, lmeso, &
+                                      debug_ijt
+      integer      ::  diag_unit
+      integer      ::  kinv,  kcont
+      integer      ::  i, j, k, n, kk
 
 
 !---------------------------------------------------------------------
@@ -2766,45 +2842,81 @@ character(len=*),             intent(out)    ::  ermesg
           endif
 
 !--------------------------------------------------------------------
+!    define factor to modify entrainment coefficients if option is
+!    activated.
+!--------------------------------------------------------------------
+   if (Nml%do_donner_closure .or. Nml%do_donner_plume) then
+     if (Nml%lochoice == 0) then
+       lofactor = 1. - land(i,j) *(1.0 - Nml%lofactor0)
+     else if (Nml%lochoice == 1) then
+       lofactor = Nml%pblht0/max (pblht(i,j), Nml%pblht0)
+     else if (Nml%lochoice == 2) then
+       lofactor = Nml%tke0/max (tkemiz(i,j), Nml%tke0)
+     else if (Nml%lochoice == 3) then
+       lofactor = Nml%tke0/max (tkemiz(i,j), Nml%tke0)
+       lofactor = sqrt (lofactor)
+     else
+       lofactor = 1.0
+     endif
+   else
+     lofactor = 1.0
+   endif
+
+!--------------------------------------------------------------------
 !    call don_d_integ_cu_ensemble_k to determine the 
 !    characteristics of the clouds in the cumulus ensemble defined in 
 !    the current column.
 !--------------------------------------------------------------------
-       if (Nml%do_donner_plume) then
-          call don_d_integ_cu_ensemble_k             &
-               (nlev_lsm, nlev_hires, ntr, me, diag_unit, debug_ijt, &
-!++lwh
-                Param, Col_diag, Nml, Initialized, Don_cape%model_t(i,j,:), &
-!--lwh
-                Don_cape%model_r(i,j,:), Don_cape%model_p(i,j,:),  &
-                phalf_c, xgcm_v(i,j,:,:), sfc_sh_flux(i,j),     &
-                sfc_vapor_flux(i,j), sfc_tracer_flux(i,j,:),   &
-                Don_cape%plzb(i,j), exit_flag(i,j),                &
-                ensmbl_precip, ensmbl_cond, ensmbl_anvil_cond, pb,  &
-                pt_ens, ampta1, Don_conv%amax(i,j), emsm, rlsm,  &
-                cld_press, ensmbl_melt, ensmbl_freeze, ensmbl_wetc, &
-                disb, disc, disd,&
-                disg, enctf, encmf, enev, ecds, eces, ensmbl_cloud_area,&
-                cuq, cuql_v, detmfl, uceml, qtren, etsm, lmeso, ermesg)
-        else
-!++++yim should put Initialized somewhere
-          call don_d_integ_cu_ensemble_miz             &
-               (nlev_lsm, nlev_hires, ntr, me, diag_unit, debug_ijt, &
-!++++yim
-               Param, Col_diag, Nml, Initialized, Don_cape%model_t(i,j, :),    &
-                Don_cape%model_r(i,j,:), Don_cape%model_p(i,j,:),  &
-                phalf_c, pblht(i,j), tkemiz(i,j), qstar(i,j), land(i,j),coldT(i,j), dt, sd, &
-               Uw_p, ac, cp, ct,  &
-                xgcm_v(i,j,:,:), sfc_sh_flux(i,j),                 &
-               sfc_vapor_flux(i,j), sfc_tracer_flux(i,j,:),   &
-               Don_cape%plzb(i,j), exit_flag(i,j),                &
-                ensmbl_precip, ensmbl_cond, ensmbl_anvil_cond, pb,  &
-                pt_ens, ampta1, Don_conv%amax(i,j), emsm_miz, rlsm_miz,  & !miz
-              cld_press_miz, ensmbl_melt, ensmbl_freeze, ensmbl_wetc,&
-               disb, disc, disd,&
-              disg, enctf, encmf, enev, ecds, eces, ensmbl_cloud_area,  &
-                 cuq, cuql_v, detmfl, uceml, qtren, etsm, lmeso, ermesg)
-        end if
+          if (Nml%do_donner_plume) then
+            call don_d_integ_cu_ensemble_k             &
+                (nlev_lsm, nlev_hires, ntr, me, diag_unit, debug_ijt, &
+                 lofactor, Param, Col_diag, Nml, Initialized,  &
+                 Don_cape%model_t(i,j,:), Don_cape%model_r(i,j,:), &
+                 Don_cape%model_p(i,j,:), phalf_c, xgcm_v(i,j,:,:), &
+                 sfc_sh_flux(i,j), sfc_vapor_flux(i,j), &
+                 sfc_tracer_flux(i,j,:), Don_cape%plzb(i,j), &
+                 exit_flag(i,j),  ensmbl_precip, ensmbl_cond,       &
+                 ensmbl_anvil_cond_liq, ensmbl_anvil_cond_liq_frz, &
+                 ensmbl_anvil_cond_ice, pb,  &
+                 pt_ens, ampta1, Don_conv%amax(i,j), emsm, rlsm,  &
+                 cld_press, ensmbl_melt, ensmbl_melt_meso, &
+                 ensmbl_freeze, ensmbl_freeze_meso, ensmbl_wetc, &
+                 disb, disc_liq, disc_ice, dism_liq, dism_liq_frz, &
+                 dism_liq_remelt, dism_ice, dism_ice_melted, &
+                 disp_liq, disp_ice, disz, disz_remelt, disp_melted, &
+                 disze1, disze2, disze3,                           &
+                 disd, disv, disg_liq, disg_ice, enctf, encmf, enev,  &
+                 ecds_liq, ecds_ice, eces_liq, eces_ice, &
+                 ensmbl_cloud_area, cuq, cuql_v, detmfl, uceml, &
+                 qtren, etsm, lmeso,                frz_frac,&
+                 meso_frz_intg_sum, ermesg, melting_in_cloud)
+          else
+            call don_d_integ_cu_ensemble_miz             &
+                (nlev_lsm, nlev_hires, ntr, me, diag_unit, debug_ijt, &
+                 Param, Col_diag, Nml, Initialized, &
+                 Don_cape%model_t(i,j, :), Don_cape%model_r(i,j,:), &
+                 Don_cape%model_p(i,j,:), phalf_c, pblht(i,j),  &
+                 tkemiz(i,j), qstar(i,j), cush(i,j), land(i,j), coldT(i,j), &
+                 dt, sd, Uw_p, ac, cp, ct,  &
+                 xgcm_v(i,j,:,:), sfc_sh_flux(i,j),                 &
+                 sfc_vapor_flux(i,j), sfc_tracer_flux(i,j,:),   &
+                 Don_cape%plzb(i,j), exit_flag(i,j),                &
+                 ensmbl_precip, ensmbl_cond,                      &
+                 ensmbl_anvil_cond_liq, ensmbl_anvil_cond_liq_frz, &
+                 ensmbl_anvil_cond_ice, pb,  &
+                 pt_ens, ampta1, Don_conv%amax(i,j), emsm_miz, &
+                 rlsm_miz, cld_press_miz, ensmbl_melt,  &
+                 ensmbl_melt_meso, ensmbl_freeze, ensmbl_freeze_meso, &
+                 ensmbl_wetc, disb, disc_liq, disc_ice, dism_liq, &
+                 dism_liq_frz, dism_liq_remelt, dism_ice, &
+                 dism_ice_melted, disp_liq, disp_ice, disz, &
+                 disz_remelt, disp_melted, disze1, disze2, disze3, &
+                 disd, disv, disg_liq, disg_ice, &
+                 enctf, encmf, enev, ecds_liq, ecds_ice,   &
+                 eces_liq, eces_ice, ensmbl_cloud_area,  &
+                 cuq, cuql_v, detmfl, uceml, qtren, etsm, lmeso, &
+                 frz_frac, meso_frz_intg_sum, ermesg, melting_in_cloud)
+          endif
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -2833,31 +2945,41 @@ character(len=*),             intent(out)    ::  ermesg
             if (Nml%do_donner_plume) then
               call don_m_meso_effects_k  &
                  (nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, &
-                  Param, Don_cape%model_p(i,j,:),   &
-                   Don_cape%model_t(i,j,:), Don_cape%model_r(i,j,:),  &
-                   phalf_c, rlsm, emsm, etsm, xgcm_v(i,j,:,:),   &
+                  Param, Nml, Don_cape%model_p(i,j,:),   &
+                  Don_cape%model_t(i,j,:), Don_cape%model_r(i,j,:),  &
+                  phalf_c, rlsm, emsm, etsm, xgcm_v(i,j,:,:),   &
                   ensmbl_cond, ensmbl_precip, pb, Don_cape%plzb(i,j), &
-                  pt_ens, ampta1, ensmbl_anvil_cond, wtp, qtmes,    &
+                  pt_ens, ampta1,                     &
+                  ensmbl_anvil_cond_liq, ensmbl_anvil_cond_liq_frz, &
+                  ensmbl_anvil_cond_ice,  &
+                  wtp, qtmes,  meso_frz_intg_sum,   &
                   anvil_precip_melt, meso_cloud_area, cmus_tot, dmeml, &
-!++++yim
-                  emds, emes, wmms, wmps, umeml, temptr, tmes, mrmes,   &
+                  emds_liq, emds_ice, emes_liq, emes_ice, &
+                  wmms, wmps, umeml, temptr, tmes,tmes_up,  &
+                  tmes_dn,  mrmes, mrmes_up, mrmes_dn,  &
                   Don_conv%emdi_v(i,j), Don_conv%pmd_v(i,j),   &
                   Don_conv%pztm_v(i,j), Don_conv%pzm_v(i,j),    &
-                 Don_conv%meso_precip(i,j), ermesg)
-           else
-            call don_m_meso_effects_miz  &
-                (nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, &
-                 Param, Don_cape%model_p(i,j,:),   &
+                  Don_conv%meso_precip(i,j), ermesg)
+            else
+              call don_m_meso_effects_miz  &
+                 (nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, &
+                  Param, Nml, Don_cape%model_p(i,j,:),   &
                   Don_cape%model_t(i,j,:), Don_cape%model_r(i,j,:),  &
-                  phalf_c, rlsm_miz, emsm_miz, etsm, xgcm_v(i,j,:,:),   &
+                  phalf_c, rlsm_miz, emsm_miz, etsm, xgcm_v(i,j,:,:),  &
                   ensmbl_cond, ensmbl_precip, pb, Don_cape%plzb(i,j), &
-                  pt_ens, ampta1, ensmbl_anvil_cond, wtp, qtmes,    &
-                 anvil_precip_melt, meso_cloud_area, cmus_tot, dmeml, &
-                  emds, emes, wmms, wmps, umeml, temptr, tmes, mrmes,   &
-                Don_conv%emdi_v(i,j), Don_conv%pmd_v(i,j),   &
-                 Don_conv%pztm_v(i,j), Don_conv%pzm_v(i,j),    &
-                 Don_conv%meso_precip(i,j), ermesg)
-            end if
+                  pt_ens, ampta1,                     &
+                  ensmbl_anvil_cond_liq, ensmbl_anvil_cond_liq_frz, &
+                  ensmbl_anvil_cond_ice,  &
+                  wtp, qtmes, meso_frz_intg_sum,    &
+                  anvil_precip_melt, meso_cloud_area, cmus_tot, dmeml, &
+                  emds_liq, emds_ice, emes_liq, emes_ice, &
+                  wmms, wmps, umeml, temptr, tmes, tmes_up, tmes_dn, &
+                  mrmes, mrmes_up, mrmes_dn, Don_conv%emdi_v(i,j),    &
+                  Don_conv%pmd_v(i,j), Don_conv%pztm_v(i,j), &
+                  Don_conv%pzm_v(i,j), Don_conv%meso_precip(i,j), &
+                  ermesg)
+            endif
+
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -2878,13 +3000,20 @@ character(len=*),             intent(out)    ::  ermesg
             dmeml = 0.
             cmus_tot = 0.
             tmes = 0.
+            tmes_up = 0.
+            tmes_dn = 0.
             wmms = 0.
             wmps = 0.
             mrmes = 0.
-            emds = 0.
-            emes = 0.
+            mrmes_up = 0.
+            mrmes_dn = 0.
+            emds_liq = 0.
+            emds_ice = 0.
+            emes_liq = 0.
+            emes_ice = 0.
             anvil_precip_melt = 0.
             meso_cloud_area = 0.
+            meso_frz_intg_sum = .false.
           endif
 
 !---------------------------------------------------------------------
@@ -2910,7 +3039,9 @@ character(len=*),             intent(out)    ::  ermesg
 !--------------------------------------------------------------------
           if (debug_ijt) then
             write (diag_unit, '(a,e20.12, a, e20.12)')  &
-              'in mulsub: CATOT= ',ensmbl_anvil_cond,' contot=',  &
+              'in mulsub: CATOT= ',ensmbl_anvil_cond_liq + &
+               ensmbl_anvil_cond_liq_frz + ensmbl_anvil_cond_ice,   &
+                               ' contot=',  &
                        ensmbl_precip/(ensmbl_precip +    &
                                               Don_conv%meso_precip(i,j))
           endif
@@ -2923,29 +3054,45 @@ character(len=*),             intent(out)    ::  ermesg
 !    output fields from the donner_deep parameterization in those 
 !    columns for which diagnostics have been requested.
 !----------------------------------------------------------------------
-      if (Nml%do_donner_lscloud) then
-           call don_d_def_conv_forcing_k   &
-               (nlev_lsm, diag_unit, debug_ijt, lmeso, Param, &
-                ensmbl_precip, Don_conv%meso_precip(i,j), &
-                meso_cloud_area, anvil_precip_melt, phalf_c, enev,  &
-               encmf, ensmbl_freeze, enctf, disg, ecds, eces, emds,   &
-               emes, mrmes, tmes, wmps, ensmbl_cloud_area, ensmbl_melt, &
-                Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:),  &
-                cmus_tot, wmms, disc, disb, disd, total_precip(i,j), &
-               disf, disg_2, disn, dise, disa, cutotal, temp_tend_melt, &
-               temp_tend_freeze, ermesg)
-       else
-         call don_d_def_conv_forcing_miz   &
-               (nlev_lsm, diag_unit, debug_ijt, lmeso, Param, Nml, &
-                ensmbl_precip, Don_conv%meso_precip(i,j), &
-                meso_cloud_area, anvil_precip_melt, phalf_c, enev,  &
-               encmf, ensmbl_freeze, enctf, disg, ecds, eces, emds,   &
-                emes, mrmes, tmes, wmps, ensmbl_cloud_area, ensmbl_melt,&
-                Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:),  &
-              cmus_tot, wmms, disc, disb, disd, total_precip(i,j), &
-              disf, disg_2, disn, dise, disa, cutotal, temp_tend_melt,        &
-               temp_tend_freeze, ermesg)
-        end if
+          call don_d_def_conv_forcing_k   &
+              (nlev_lsm, diag_unit, debug_ijt, lmeso, Initialized,  &
+               pb, Param, Nml, ensmbl_precip, &
+               Don_conv%meso_precip(i,j), meso_cloud_area, &
+               anvil_precip_melt, phalf_c, enev,  encmf, ensmbl_freeze,&
+               ensmbl_freeze_meso, enctf, disg_liq, disg_ice, &
+               ecds_liq, ecds_ice, eces_liq, eces_ice,  &
+               emds_liq, emds_ice, emes_liq, emes_ice, mrmes, mrmes_up,&
+               mrmes_dn, tmes, tmes_up, tmes_dn, wmps, &
+               ensmbl_cloud_area, ensmbl_melt, ensmbl_melt_meso,&
+               Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:),  &
+               cmus_tot, wmms, disc_liq, disc_ice, dism_liq, &
+               dism_liq_frz, dism_liq_remelt, dism_ice, &
+               dism_ice_melted, meso_frz_intg_sum, &
+               disp_liq, disp_ice, disb, disd, disv, total_precip(i,j),&
+               disz, disz_remelt, disp_melted, disze1,disze2, disze3,&
+                                         disf, disn, dise, disa, &
+               cutotal, temp_tend_melt, lprcp, liq_prcp, frz_prcp, &
+               vrt_mot, wat_budg, &
+               Don_budgets%n_water_budget, ent_budg,   &
+               Don_budgets%n_enthalpy_budget, prc_budg, &
+               Don_budgets%n_precip_paths, Don_budgets%n_precip_types, &
+               ermesg, melting_in_cloud)
+
+          do k=1, nlev_lsm
+            kk = nlev_lsm - k + 1
+            Don_budgets%liq_prcp(i,j,k) = liq_prcp(kk)
+            Don_budgets%frz_prcp(i,j,k) = frz_prcp(kk)
+          end do
+          if (Initialized%do_conservation_checks) then
+            Don_budgets%lheat_precip(i,j) = lprcp
+            Don_budgets%vert_motion(i,j)  = vrt_mot
+          
+          endif
+          if (Nml%do_budget_analysis) then
+            Don_budgets%water_budget(i,j,:,:) = wat_budg
+            Don_budgets%enthalpy_budget(i,j,:,:) = ent_budg
+            Don_budgets%precip_budget(i,j,:,:,:) = prc_budg
+          endif
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -2959,11 +3106,14 @@ character(len=*),             intent(out)    ::  ermesg
 !    derived-type variable Don_conv.
 !----------------------------------------------------------------------
           call don_d_finalize_output_fields_k  &
-               (nlev_lsm, ntr, i, j, Param, disb, disc,   &
-                temp_tend_freeze, temp_tend_melt, tmes, disd, cmus_tot, &
-                ecds, eces, emds, emes, wmms, wmps, mrmes, cutotal,   &
-                dmeml, detmfl, temptr, uceml, umeml, cuq, cuql_v,  &
-                qtren, qtmes, wtp, ensmbl_wetc, Don_conv, ermesg)
+               (nlev_lsm, ntr, i, j, Param, disb, disc_liq, disc_ice, &
+                ensmbl_freeze, ensmbl_freeze_meso, &
+                temp_tend_melt,  tmes, disd, cmus_tot, &
+                ecds_liq, ecds_ice, eces_liq, eces_ice, emds_liq, &
+                emds_ice, emes_liq, emes_ice, wmms, wmps, mrmes, &
+                cutotal, dmeml, detmfl, temptr, uceml, umeml, cuq, &
+                cuql_v, qtren, qtmes, wtp, ensmbl_wetc, Don_conv, &
+                ermesg)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -2983,9 +3133,10 @@ character(len=*),             intent(out)    ::  ermesg
 
           do k=1,nlev_lsm
             kinv = nlev_lsm + 1 - k
-            temperature_forcing(i,j,kinv) = disa(k)/Param%SECONDS_PER_DAY
-            moisture_forcing(i,j,kinv)    = dise(k)/    &
-                                           (1.0e03*Param%SECONDS_PER_DAY)
+            temperature_forcing(i,j,kinv) = disa(k)/ &
+                                                Param%SECONDS_PER_DAY
+            moisture_forcing(i,j,kinv) = dise(k)/    &
+                                          (1.0e03*Param%SECONDS_PER_DAY)
           end do
 
 !--------------------------------------------------------------------
@@ -3030,33 +3181,44 @@ character(len=*),             intent(out)    ::  ermesg
 !    if (exit_flag) loop must be closed after this call.
 !---------------------------------------------------------------------
           if (.not. exit_flag(i,j)) then
-             if (Nml%do_donner_closure) then
-               call don_d_determine_cloud_area_k  &
-                (me, nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param,  &
-                 Nml, max_depletion_rate, Don_conv%dcape(i,j),   &
-                 Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),      &
-                   Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:), &
-                   Don_cape%model_r(i,j,:), Don_cape%env_t(i,j,:), &
-                  Don_cape%env_r(i,j,:), Don_cape%parcel_t(i,j,:), &
+            if (Nml%do_donner_closure) then
+              call don_d_determine_cloud_area_k  &
+                (me, nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param,&
+                 Nml, lofactor, max_depletion_rate, Don_conv%dcape(i,j),   &
+                 Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),    &
+                 Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:), &
+                 Don_cape%model_r(i,j,:), Don_cape%env_t(i,j,:), &
+                 Don_cape%env_r(i,j,:), Don_cape%parcel_t(i,j,:), &
                  Don_cape%parcel_r(i,j,:), Don_cape%cape_p(i,j,:), &
-                   exit_flag(i,j), Don_conv%amos(i,j), Don_conv%a1(i,j),&
-                  ermesg)
-          else
-             call don_d_determine_cloud_area_miz  &
-!++++yim
-                 (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit, debug_ijt, Param, Nml, xgcm_v(i,j,:,:), &
-                  pfull(i,j,:), zfull(i,j,:), phalf(i,j,:),  &
-                  zhalf(i,j,:), pblht(i,j), tkemiz(i,j), qstar(i,j), land(i,j),  &
-                  coldT(i,j), sd, Uw_p, ac, &
-                   max_depletion_rate, Don_conv%dcape(i,j),   &
-                   Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),    &
-                   Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:), &
-                   Don_cape%model_r(i,j,:), Don_cape%env_t(i,j,:), &
-                   Don_cape%env_r(i,j,:), Don_cape%parcel_t(i,j,:), &
+                 exit_flag(i,j), Don_conv%amos(i,j), Don_conv%a1(i,j),&
+                 ermesg)
+            else
+              call don_d_determine_cloud_area_miz  &
+                (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit,&
+                 debug_ijt, Param, Nml, xgcm_v(i,j,:,:), &
+                 pfull(i,j,:), zfull(i,j,:), phalf(i,j,:),  &
+                 zhalf(i,j,:), pblht(i,j), tkemiz(i,j), qstar(i,j), &
+                 cush(i,j), cbmf(i,j), land(i,j),  coldT(i,j), sd, Uw_p, ac, &
+                 max_depletion_rate, Don_conv%dcape(i,j),   &
+                 Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),    &
+                 Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:), &
+                 Don_cape%model_r(i,j,:), Don_cape%env_t(i,j,:), &
+                 Don_cape%env_r(i,j,:), Don_cape%parcel_t(i,j,:), &
                  Don_cape%parcel_r(i,j,:), Don_cape%cape_p(i,j,:), &
-                   exit_flag(i,j), Don_conv%amos(i,j), Don_conv%a1(i,j),&
-                   ermesg)
-          end if
+                 exit_flag(i,j), Don_conv%amos(i,j), Don_conv%a1(i,j),&
+                 ermesg)
+            endif
+
+!             Don_budgets%liq_prcp(i,j,:) =    &
+!                         Don_budgets%liq_prcp(i,j,:)*Don_conv%a1(i,j)
+!             Don_budgets%frz_prcp(i,j,:) =    &
+!                         Don_budgets%frz_prcp(i,j,:)*Don_conv%a1(i,j)
+!           if (Initialized%do_conservation_checks) then
+!             Don_budgets%vert_motion(i,j) =    &
+!                          Don_budgets%vert_motion(i,j)*Don_conv%a1(i,j)
+!             Don_budgets%lheat_precip(i,j) =   &
+!                         Don_budgets%lheat_precip(i,j)*Don_conv%a1(i,j)
+!           endif
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -3066,12 +3228,14 @@ character(len=*),             intent(out)    ::  ermesg
           endif
 
           if (.not.Nml%do_donner_lscloud) then 
-             Don_conv%ecds(i,j,:)=Don_conv%ecds(i,j,:)*(1.0E03*Param%seconds_per_day)
-             Don_conv%eces(i,j,:)=Don_conv%eces(i,j,:)*(1.0E03*Param%seconds_per_day)
+             Don_conv%ecds(i,j,:) = Don_conv%ecds(i,j,:)*  &
+                                        (1.0E03*Param%seconds_per_day)
+             Don_conv%eces(i,j,:) = Don_conv%eces(i,j,:)*  &
+                                        (1.0E03*Param%seconds_per_day)
             do k=1,nlev_lsm
               Don_conv%fre(i,j,nlev_lsm+1-k)=enev(k)
             end do
-          end if
+          endif
 
 !--------------------------------------------------------------------
 !    if the exit_flag was set within determine_cloud_area (due to
@@ -3094,18 +3258,24 @@ end subroutine don_d_mulsub_k
 !######################################################################
 
 subroutine don_d_integ_cu_ensemble_k             &
-         (nlev_lsm, nlev_hires, ntr, me, diag_unit, debug_ijt, Param,   &
-!++lwh
-          Col_diag, Nml, Initialized, temp_c, &
-!--lwh
+         (nlev_lsm, nlev_hires, ntr, me, diag_unit, debug_ijt, &
+          lofactor, Param, Col_diag, Nml, Initialized, temp_c, &
           mixing_ratio_c, pfull_c, phalf_c,   &
           tracers_c, sfc_sh_flux_c, sfc_vapor_flux_c,   &
           sfc_tracer_flux_c, plzb_c, exit_flag_c, ensmbl_precip,    &
-          ensmbl_cond, ensmbl_anvil_cond, pb, pt_ens, ampta1, amax, &
-          emsm, rlsm, cld_press, ensmbl_melt, ensmbl_freeze, ensmbl_wetc, &
-          disb, disc,&
-          disd, disg, enctf, encmf, enev, ecds, eces, ensmbl_cloud_area,&
-          cuq, cuql_v, detmfl, uceml, qtren, etsm, lmeso, ermesg)
+          ensmbl_cond, ensmbl_anvil_cond_liq,  &
+          ensmbl_anvil_cond_liq_frz, &
+          ensmbl_anvil_cond_ice, pb, pt_ens, ampta1, amax, &
+          emsm, rlsm, cld_press, ensmbl_melt, ensmbl_melt_meso, &
+          ensmbl_freeze, ensmbl_freeze_meso, ensmbl_wetc, &
+          disb, disc_liq, disc_ice, dism_liq, dism_liq_frz, &
+          dism_liq_remelt, dism_ice, dism_ice_melted, &
+          disp_liq, disp_ice, disz, disz_remelt, disp_melted,        &
+          disze1, disze2,disze3,                                      &
+          disd, disv, disg_liq, disg_ice, enctf, encmf, enev,  &
+          ecds_liq, ecds_ice, eces_liq, eces_ice, ensmbl_cloud_area,&
+          cuq, cuql_v, detmfl, uceml, qtren, etsm, lmeso, &
+          frz_frac, meso_frz_intg_sum,  ermesg, melting_in_cloud)
 
 !----------------------------------------------------------------------
 !    subroutine integrate_cumulus_ensemble works on a single model 
@@ -3127,9 +3297,7 @@ subroutine don_d_integ_cu_ensemble_k             &
 !----------------------------------------------------------------------
 use donner_types_mod, only : donner_param_type, &
                              donner_nml_type, donner_column_diag_type, &
-!++lwh
                              donner_initialized_type
-!--lwh
 
 implicit none 
 
@@ -3141,9 +3309,7 @@ logical,                           intent(in)    :: debug_ijt
 type(donner_param_type),           intent(in)    :: Param
 type(donner_column_diag_type),     intent(in)    :: Col_diag
 type(donner_nml_type),             intent(in)    :: Nml   
-!++lwh
 type(donner_initialized_type),     intent(in)    :: Initialized
-!--lwh
 real,    dimension(nlev_lsm),      intent(in)    :: temp_c,   &
                                                     mixing_ratio_c,   &
                                                     pfull_c
@@ -3153,25 +3319,45 @@ real,                              intent(in)    :: sfc_sh_flux_c,   &
                                                     sfc_vapor_flux_c 
 real,    dimension(ntr),           intent(in)    :: sfc_tracer_flux_c 
 real,                              intent(in)    :: plzb_c
+real,                              intent(in)    :: lofactor
 logical,                           intent(inout) :: exit_flag_c  
-real,                              intent(out)   :: ensmbl_precip,   &
-                                                    ensmbl_cond,&
-                                                    ensmbl_anvil_cond, &
-                                                    pb, pt_ens, ampta1, &
-                                                    amax
-real,    dimension(nlev_hires),    intent(out)   :: emsm, rlsm, cld_press
+real,                              intent(out)   ::    &
+                     ensmbl_precip, ensmbl_cond,                    &
+                     ensmbl_anvil_cond_liq, ensmbl_anvil_cond_liq_frz, &
+                     ensmbl_anvil_cond_ice, pb, pt_ens, ampta1, amax
+real,    dimension(nlev_hires),    intent(out)   :: emsm, rlsm,  &
+                                                    cld_press
 real,    dimension(nlev_lsm),      intent(out)   :: ensmbl_melt,   &
+                                                    ensmbl_melt_meso,&
                                                     ensmbl_freeze,&
-                                                    disb, disc, disd, &
-                                                    disg, enctf, encmf, &
-                                                    enev, ecds, eces, &
+                                                    ensmbl_freeze_meso,&
+                                                    disb,       disd, &
+                                                    disv, &
+                                                    disc_liq, disc_ice,&
+                                                    dism_liq, dism_ice,&
+                                                    dism_ice_melted, &
+                                                    dism_liq_frz, &
+                                                    dism_liq_remelt, &
+                                                    disp_liq, disp_ice,&
+                                                    disp_melted, &
+                                                    disz_remelt, &
+                                                    disz, disze1,  &
+                                                    disze2, disze3,&
+                                                    enctf, encmf, &
+                                                    disg_liq, disg_ice,&
+                                                    enev,             &
+                                                    ecds_liq, ecds_ice,&
+                                                    eces_liq, eces_ice,&
                                                     ensmbl_cloud_area, &
                                                     cuq, cuql_v, &
                                                     detmfl, uceml
 real,    dimension(nlev_lsm,ntr),  intent(out)   :: qtren, ensmbl_wetc
 real,    dimension(nlev_hires,ntr),intent(out)   :: etsm
 logical,                           intent(out)   :: lmeso       
+real   ,                           intent(out)   :: frz_frac
+logical,                           intent(out)   :: meso_frz_intg_sum 
 character(len=*),                  intent(out)   :: ermesg
+logical ,                          intent(out)   :: melting_in_cloud
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -3552,13 +3738,14 @@ character(len=*),                  intent(out)   :: ermesg
 !   local variables:
 
       real,    dimension (nlev_hires)     ::                &
-              efchr, emfhr, te, mre, rcl, dpf, qlw, dfr, cfracice, alp, &
-              cld_evap, flux, ucemh, cuql, cuqli, detmfh
+              efchr, emfhr, te, mre, rcl, dpf, qlw, dfr, cfracice, &
+              alp, cld_evap, flux, ucemh, cuql, cuqli, detmfh, tcc
 
       real,    dimension (nlev_lsm)       ::           &
-              h1, q1, pi, em, rlh, cmf, cell_freeze, cell_melt, disf,  &
-              meso_melt, meso_freeze, h1_2, disg_2, out, evap_rate, ecd,&
-              ece, disl, thlr, qlr, sfcq, sfch
+                  q1, pi, em,      cmf, cell_freeze, cell_melt, disf,  &
+              h1_liq, h1_ice, meso_melt, meso_freeze, h1_2, out, &
+              evap_rate, ecd, ecd_liq, ecd_ice, &
+              ece, ece_liq, ece_ice, disl, thlr, qlr, sfcq, sfch
       real, dimension (nlev_lsm,ntr)  :: wetdepl
 
       real,    dimension (nlev_hires,ntr) :: xclo, xtrae, etfhr, dpftr
@@ -3570,16 +3757,23 @@ character(len=*),                  intent(out)   :: ermesg
       integer ::   ncc_kou, ncc_ens
       integer ::   k,    kou
       integer ::   kc, kcl, kch
-      real    ::   al, dints, disga, dp, mrb, pmel, p, sumehf, sumhlr, &
+      integer ::   kk
+      logical ::   meso_frz_intg                 
+      real    ::   al,        disga, dp, mrb, pmel, p, sumehf, sumhlr, &
                    summel, pl, dpp, ph, esh, esl, rh, rl, pkc, tveh,   &
                    tvch, dpdzh, ehfh, tvel, tvcl, dpdzl, ehfl, ptt,   &
                    ehf, tve, tvc, dpdz, exf, emfh, emfl, thetf, emff, &
-                   sbl, p1, dmela, psmx, esumc, sumf, summ, sumqme,   &
+                   sbl, p1,        psmx, esumc, sumf, summ, sumqme,   &
                    sumg, sumn, sumelt, sumfre, summes, esum, sumev,   &
-                   esuma, sumlhr, es, etfh, etfl, dint, cu, cell_precip,&
-                   precip, conint, ca, apt, qtrsum, qtmesum, rintsum, &
+                   esuma,    es, etfh, etfl, dint, cu, cell_precip,&
+                   precip, conint,     ca_liq, ca_ice, apt, qtrsum, &
+                   qtmesum, rintsum, &
                    rintsum2, intgl_in, intgl_out, alphaw, tb, alpp,   &
                    pcsave, rsc, ensmbl_cld_top_area  
+      real     ::  meso_frac, precip_frac, frz_frac_non_precip,  &
+                   bak, meso_frz_frac, pmelt_lsm, precip_melt_frac, &
+                   ecei_liq,  ci_liq_cond, ci_ice_cond
+     
 
 !----------------------------------------------------------------------
 !   local variables:
@@ -3605,7 +3799,8 @@ character(len=*),                  intent(out)   :: ermesg
       if (debug_ijt) then
         do k=1,nlev_lsm-Col_diag%kstart+1
           write (diag_unit, '(a, i4, f20.14, e20.12, f19.10)')&
-                'in mulsub: k,T,Q,P= ',k, temp_c(k), mixing_ratio_c(k), pfull_c(k)
+                'in mulsub: k,T,Q,P= ',k, temp_c(k),  &
+                                      mixing_ratio_c(k), pfull_c(k)
         end do
       endif
 
@@ -3662,7 +3857,9 @@ character(len=*),                  intent(out)   :: ermesg
 !---------------------------------------------------------------------
       ensmbl_precip       = 0.
       ensmbl_cond         = 0.
-      ensmbl_anvil_cond   = 0.
+      ensmbl_anvil_cond_liq   = 0.
+      ensmbl_anvil_cond_liq_frz   = 0.
+      ensmbl_anvil_cond_ice   = 0.
       ensmbl_cld_top_area = 0.
 
 !---------------------------------------------------------------------
@@ -3688,15 +3885,35 @@ character(len=*),                  intent(out)   :: ermesg
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         ensmbl_freeze(k)    = 0.
+        ensmbl_freeze_meso(k)    = 0.
         ensmbl_melt(k)    = 0.
+        ensmbl_melt_meso(k)    = 0.
         disb(k)    = 0.
-        disc(k)    = 0.
+        disc_liq(k) = 0.
+        disc_ice(k) = 0.
+        dism_liq(k) = 0.
+        dism_liq_frz(k) = 0.
+        dism_liq_remelt(k) = 0.
+        dism_ice(k) = 0.
+        dism_ice_melted(k) = 0.
+        disp_liq(k) = 0.
+        disp_ice(k) = 0.
+        disp_melted(k) = 0.
         disd(k)    = 0.
-        ecds(k)    = 0.
-        eces(k)    = 0.
+        disv(k)    = 0.
+        disz(k) = 0.
+        disz_remelt(k) = 0.
+        disze1(k) = 0.
+        disze2(k) = 0.
+        disze3(k) = 0.
+        ecds_liq(k)    = 0.
+        ecds_ice(k)    = 0.
+        eces_liq(k)    = 0.
+        eces_ice(k)    = 0.
         enctf(k)   = 0.
         encmf(k)   = 0.
-        disg(k)    = 0.
+        disg_liq(k)    = 0.
+        disg_ice(k)    = 0.
         enev(k)    = 0.
         qtren(k,:) = 0.
         ensmbl_wetc(k,:)  = 0.
@@ -3737,6 +3954,7 @@ character(len=*),                  intent(out)   :: ermesg
 !--------------------------------------------------------------------
 !    loop over the KPAR members of the cumulus ensemble.
 !--------------------------------------------------------------------
+      meso_frz_intg_sum = .false.
       do kou=1,Param%kpar
 
 !-------------------------------------------------------------------
@@ -3755,6 +3973,33 @@ character(len=*),                  intent(out)   :: ermesg
           return
         endif
 
+        if (Nml%do_lands) then
+          alpp = alpp*lofactor     
+        endif
+
+        if (debug_ijt) then
+          write (diag_unit, '(a)')    &
+                     'in mulsub: phalf, temp= :'
+          do k=1,nlev_lsm 
+          write (diag_unit, '(i4, 2f19.10)')    &
+                      k, phalf_c(k), temp_c(k)
+          end do
+        endif
+
+       pmelt_lsm = 2.0e05
+       do k=1,nlev_lsm-1
+        if ((temp_c(k) >= Param%KELVIN) .and.    &
+           (temp_c(k+1) <= Param%KELVIN)) then
+          pmelt_lsm = phalf_c(k+1)
+          exit
+        endif
+       end do
+
+       if (debug_ijt) then
+         write (diag_unit, '(a, 2f19.10)')    &
+         'before cm_cloud_model call pb,  pmelt_lsm    = ', &
+                                    pb, pmelt_lsm
+       endif
 !--------------------------------------------------------------------
 !    call cloud_model to obtain the in-cloud and environmental profiles
 !    and fluxes and column integrals associated with this ensemble 
@@ -3762,13 +4007,12 @@ character(len=*),                  intent(out)   :: ermesg
 !--------------------------------------------------------------------
         call don_cm_cloud_model_k   &
              (nlev_lsm, nlev_hires, ntr, kou, diag_unit, debug_ijt,   &
-!++lwh
-              Param, Col_diag, Initialized, tb, pb, alpp, cld_press, temp_c, &
-!--lwh
-              mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave,  &
-              exit_flag_c, rcl, dpf, dpftr, qlw, dfr, flux, ptma(kou), &
-              dint, cu, cell_precip, dints, apt, cell_melt, efchr, &
-              emfhr, cfracice, etfhr, ncc_kou, ermesg)
+              Param, Col_diag, Initialized, tb, pb, alpp, cld_press, &
+              temp_c, mixing_ratio_c, pfull_c, phalf_c, tracers_c, &
+              pcsave,  exit_flag_c, rcl, dpf, dpftr, qlw, dfr, flux, &
+              ptma(kou), dint, cu, cell_precip, apt, cell_melt, &
+              pmelt_lsm, summel, efchr, emfhr, cfracice, etfhr, &
+              ncc_kou, tcc, ermesg)
 
 !---------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -3776,20 +4020,26 @@ character(len=*),                  intent(out)   :: ermesg
 !---------------------------------------------------------------------
         if (trim(ermesg) /= ' ') return
 
+
 !--------------------------------------------------------------------
 !    if the cloud thickness is less than pdeep_mc, it will not
 !    support a mesoscale circulation. set a logical flag to indicate
 !    the absence of a mesoscale component for this column's cloud
 !    ensemble.
 !--------------------------------------------------------------------
-        if ((pb - ptma(kou)) < Param%pdeep_mc)  then
-          lmeso = .false.
-        else
-          cell_melt(:) = 0.0
+        if (lmeso) then
+          if ((pb - ptma(kou)) < Param%pdeep_mc)  then
+            lmeso = .false.
+          endif
         endif
 
 
-        if (exit_flag_c) return
+        if (exit_flag_c) then
+          if (lmeso) then
+            cell_melt(:) = 0.0
+          endif
+           return
+        endif
 
 !--------------------------------------------------------------------
 !    if calculations are continuing, 
@@ -3801,8 +4051,8 @@ character(len=*),                  intent(out)   :: ermesg
 !    (lmeso).
 !----------------------------------------------------------------------
         if (debug_ijt) then
-          write (diag_unit, '(a, 2f19.10,l4)')    &
-                     'in mulsub: PB,PT, lmeso= ', pb, ptma(kou), lmeso
+          write (diag_unit, '(a, 2f19.10,1l4)')    &
+         'in mulsub: PB,PT, lmeso= ', pb, ptma(kou), lmeso
         endif
 
 !---------------------------------------------------------------------
@@ -3823,11 +4073,18 @@ character(len=*),                  intent(out)   :: ermesg
 !    this ensemble member.
 !----------------------------------------------------------------------
         call don_d_def_lores_model_profs_k        &
-             (nlev_lsm, nlev_hires, ntr, ncc_kou, diag_unit, debug_ijt, &
-              Param, pb, ptt, sfc_vapor_flux_c, sfc_sh_flux_c,  &
-              sfc_tracer_flux_c, pfull_c, phalf_c, cld_press, dpf, dpftr, dfr, &
-              cld_evap, qlw, emfhr, efchr, etfhr, cell_freeze,     &
-              evap_rate, h1, h1_2, q1, qtr, wetdepl, ermesg)
+             (nlev_lsm, nlev_hires, ntr, ncc_kou, diag_unit, debug_ijt,&
+              Nml, Param, pb, ptt, sfc_vapor_flux_c, sfc_sh_flux_c,  &
+              sfc_tracer_flux_c, pfull_c, phalf_c, cld_press, tcc, dpf,&
+              dpftr, dfr, cld_evap, qlw, emfhr, efchr, etfhr, &
+              cell_freeze, evap_rate,     h1_liq, h1_ice, ci_liq_cond, &
+              ci_ice_cond, h1_2, q1, qtr, wetdepl, ermesg)
+
+        if (cu /= 0.0) then
+          precip_frac = cell_precip/cu
+        else 
+          precip_frac = 0.
+        endif
 
 !---------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -3843,22 +4100,51 @@ character(len=*),                  intent(out)   :: ermesg
         if (lmeso) then
           call don_cm_mesub_k     &
                (nlev_lsm, me, diag_unit, debug_ijt, Param, cu,   &
-                cell_precip, dints, plzb_c, pb, ptma(kou), temp_c,  &
-                phalf_c, ca, ecd, ece, meso_freeze, meso_melt, ermesg)
+                ci_liq_cond, ci_ice_cond, pmelt_lsm, cell_precip, &
+                dint, plzb_c, pb, ptma(kou), temp_c, phalf_c,     &
+                ca_liq, ca_ice,  ecd, ecd_liq, ecd_ice, ecei_liq, &
+                ece, ece_liq, ece_ice, meso_freeze, meso_melt, ermesg)
+        else
+          ca_liq = 0.
+          ca_ice = 0.
+          meso_freeze = 0.
+          meso_melt   = 0.
         endif
+
+       if (pmelt_lsm < pb) then
+         melting_in_cloud = .true.
+       else
+         melting_in_cloud = .false.
+       endif
+
+         if (ci_ice_cond /= 0.0) then
+           if (melting_in_cloud) then
+             precip_melt_frac = summel/ci_ice_cond
+           else
+             precip_melt_frac = 0.
+           endif  
+         else
+           precip_melt_frac = 0.
+         endif
+
+       if (debug_ijt) then
+         write (diag_unit, '(a, 3e20.12)')  &
+            'in mulsub: h1_ice intg, summel, precip_melt_frac', &
+                       ci_ice_cond, summel, precip_melt_frac
+       endif
 
 !---------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
 !    to the calling program where it will be processed.
 !---------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+       if (trim(ermesg) /= ' ') return
 
 !---------------------------------------------------------------------
 !    call don_d_add_to_ensmbl_sum_hires_k to add this member's 
 !    contribution to those fields on the cloud model grid that are being
 !    summed over all ensemble members.
 !---------------------------------------------------------------------
-        call don_d_add_to_ensmbl_sum_hires_k    &
+       call don_d_add_to_ensmbl_sum_hires_k    &
              (nlev_hires, ntr, ncc_kou, diag_unit, debug_ijt, &
               Param%arat(kou), cfracice, rcl, flux, emfhr, dpf, &
               qlw, etfhr, cuql, cuqli, ucemh, alp, rlsm, emsm, detmfh, &
@@ -3870,15 +4156,124 @@ character(len=*),                  intent(out)   :: ermesg
 !---------------------------------------------------------------------
         if (trim(ermesg) /= ' ') return
 
+!----------------------------------------------------------------------
+!    define the fraction of total condensate which is transferred to
+!    the mesoscale circulation.
+!----------------------------------------------------------------------
+        if (cu /= 0.0) then
+          meso_frac = (ca_liq + ca_ice)/cu
+        else
+          meso_frac = 0.
+        endif
+
+!----------------------------------------------------------------------
+!    if there is a mesoscale circulation, define the fraction of total 
+!    liquid condensate transferred to the mesoscale circulation that was
+!    frozen (meso_frz_frac). define a logical indicating whether any 
+!    such condensate exists (meso_frz_intg). 
+!----------------------------------------------------------------------
+        if (lmeso) then
+          bak = 0.
+          do kk=1,nlev_lsm
+            dp = phalf_c(kk) - phalf_c(kk+1)
+            bak = bak + meso_freeze(kk)*dp
+          end do
+          bak = bak/(Param%grav)
+          bak = bak/(Param%seconds_per_day*1.0e3)
+          if (debug_ijt) then
+            write (diag_unit, '(a, 3e20.12)')  &
+                  'in mulsub: column meso_freeze', bak
+          endif
+          if (bak > 0.0) then
+             meso_frz_intg = .true.
+          else
+             meso_frz_intg = .false.
+          endif
+          if (ci_liq_cond /= 0.0) then
+            meso_frz_frac = bak/ci_liq_cond
+          else
+            meso_frz_frac = 0.
+          endif
+        else
+          meso_frz_intg = .false.
+          meso_frz_frac = 0.        
+        endif
+
+!---------------------------------------------------------------------
+!    if there has been liquid condensate, define the fraction of liquid
+!    condensate which froze (frz_frac). define the fraction of
+!    liquid condensate which froze but did not precipitate out and so
+!    is available for evaporation and transfer to the mesoscale 
+!    circulation (frz_frac_non_precip). 
+!---------------------------------------------------------------------
+        if (ci_liq_cond /= 0.0) then
+          frz_frac = dint/ci_liq_cond    
+          frz_frac_non_precip = frz_frac*(1.-precip_frac)   
+
+!---------------------------------------------------------------------
+!    deal with the case when the liquid condensate defined to be frozen
+!    is more than the liquid condensate remaining after the appropriate
+!    cell precipitation. in this case, limit the amount frozen to that 
+!    which is still present in the atmosphere, and modify the 
+!    cell_freeze profile and dint integral, and the frz_frac and 
+!    frz_frac_non_precip ratios.
+!--------------------------------------------------------------------- 
+          if (.not. melting_in_cloud) then
+            if (meso_frz_frac == 0. .and.  meso_frac > 0.) then
+              if (meso_frac < frz_frac_non_precip) then
+                do k=1,nlev_lsm
+                  cell_freeze(k) = cell_freeze(k)*meso_frac/  &
+                                    frz_frac_non_precip
+                end do  
+                dint = dint *meso_frac/frz_frac_non_precip
+                frz_frac = meso_frac/(1.-precip_frac)
+                frz_frac_non_precip = meso_frac
+              endif
+            endif
+          endif
+        else
+
+!---------------------------------------------------------------------
+!    if there is no liquid condensate in the column, then there is no
+!    frozen liquid condensate in the column.
+!---------------------------------------------------------------------
+          frz_frac_non_precip = 0.
+          frz_frac = 0.
+        endif
+
+        if (debug_ijt) then
+          write (diag_unit, '(a, 3e20.12)')  &
+                   'in mulsub pre anvil_cond_frz: h1_liq intg, dint,&
+                       & frz_frac_non_precip           ', &
+                   ci_liq_cond, dint, frz_frac_non_precip
+          write (diag_unit, '(a, 1e20.12)')  &
+                                 'in mulsub : frz_frac', &
+                                    frz_frac
+
+!----------------------------------------------------------------------
+!    if there is a mesoscale circulation, define the fraction of total 
+!    liquid condensate transferred to the mesoscale circulation which 
+!    is frozen (meso_frz_frac). define a logical indicating whether any 
+!    such condensate exists (meso_frz_intg). 
+!----------------------------------------------------------------------
+              write (diag_unit, '(a, i4, 2e20.12)')  &
+           'in mulsub : kou,  meso_frz_frac, precip_melt_frac', &
+                                 kou,  meso_frz_frac, precip_melt_frac
+          endif
+
 !---------------------------------------------------------------------
 !    call don_d_add_to_ensmbl_sum_intgl_k to add this member's 
 !    contribution to those integrals that are being summed over all 
 !    ensemble members.
 !---------------------------------------------------------------------
         call don_d_add_to_ensmbl_sum_intgl_k    &
-             (diag_unit, debug_ijt, lmeso, Param%arat(kou), ca,  &
+             (diag_unit, debug_ijt, lmeso,                   &
+                      Param%arat(kou),      &
+              ca_liq, ca_ice, frz_frac_non_precip, meso_frac,  &
               cell_precip, cu, apt, ensmbl_precip, ensmbl_cond,   &
-              ensmbl_anvil_cond, ensmbl_cld_top_area, ermesg)
+                                 ensmbl_anvil_cond_liq, &
+              ensmbl_anvil_cond_liq_frz, meso_frz_intg, meso_frz_frac,&
+              ensmbl_anvil_cond_ice, ensmbl_cld_top_area, ermesg)
 
 !---------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -3886,19 +4281,42 @@ character(len=*),                  intent(out)   :: ermesg
 !---------------------------------------------------------------------
         if (trim(ermesg) /= ' ') return
 
+        if (debug_ijt) then
+          write (diag_unit, '(a, i4, 3f19.10)')    &
+                     'in mulsub: meso_frac, precip_frac,frz_frac_non_precip:', &  
+                     kou, meso_frac, precip_frac, frz_frac_non_precip
+          write (diag_unit, '(a, i4, 4f19.10)')    &
+                     'in mulsub: cu, ca, cell_precip, dint   :', &  
+                         kou, cu, ca_liq + ca_ice, cell_precip,   &
+                         dint*Param%seconds_per_day
+          write (diag_unit, '(a, 3f19.10)')    &
+                     'in mulsub: pmelt_lsm, pb, summel   :', &  
+                         pmelt_lsm, pb,  summel          
+        endif
+
 !---------------------------------------------------------------------
 !    call don_d_add_to_ensmbl_sum_lores_k to add this member's 
 !    contribution to those fields on the lrge-scale model grid that are 
 !    being summed over all ensemble members.
 !---------------------------------------------------------------------
+
         call don_d_add_to_ensmbl_sum_lores_k    &
-             (nlev_lsm, ntr, diag_unit, debug_ijt, lmeso, Param,   &
-              Param%arat(kou), dint, cell_freeze, cell_melt, wetdepl, temp_c,   &
-              h1_2, ecd, ece, evap_rate, q1, h1, pfull_c, meso_melt, &
-              meso_freeze, phalf_c, qtr, ensmbl_melt, ensmbl_freeze, &
-              ensmbl_wetc,  &
-              enctf, encmf, enev, disg, disb, disc, ecds, eces, disd, &
-              qtren, ermesg)
+             (nlev_lsm, ntr, diag_unit, debug_ijt, lmeso, &
+                             frz_frac, Param, Nml,  &
+              Param%arat(kou), dint, cell_freeze,         cell_melt, &
+              wetdepl, temp_c,   &
+              h1_2, ecd, ecd_liq, ecd_ice, ece, ece_liq, ece_ice, &
+              evap_rate, q1,     h1_liq, h1_ice, pfull_c, meso_melt, &
+              meso_freeze, phalf_c, qtr, ensmbl_melt, ensmbl_melt_meso,&
+              ensmbl_freeze, ensmbl_freeze_meso, ensmbl_wetc, &
+              meso_frac, precip_frac, frz_frac_non_precip, &
+              disz, disz_remelt, disp_melted, disze1, disze2, disze3,  &
+              disp_liq, disp_ice, enctf, encmf, enev, disg_liq,  &
+              disg_ice, disb, disc_liq, disc_ice, dism_liq,  &
+              dism_liq_frz, dism_liq_remelt, dism_ice, dism_ice_melted,&
+              ecds_liq, ecds_ice, eces_liq, eces_ice, disd, disv, &
+              qtren, ermesg, meso_frz_intg, melting_in_cloud, &
+              precip_melt_frac, meso_frz_frac)
 
 !---------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -3911,6 +4329,7 @@ character(len=*),                  intent(out)   :: ermesg
 !    total precpitation (preto) and cloud top index (ncca) from this !
 !    ensemble member.
 !--------------------------------------------------------------------
+         if (meso_frz_intg) meso_frz_intg_sum = .true.
         cuto(kou)  = cu
         preto(kou) = cell_precip
         ncca(kou)  = ncc_kou
@@ -3989,10 +4408,16 @@ character(len=*),                  intent(out)   :: ermesg
         write (diag_unit, '(a, e20.12, a, e20.12)')  &
                       'in mulsub: CUTOT=', ensmbl_cond, ' PRETOT=', &
                                       ensmbl_precip
-        write (diag_unit, '(a, e20.12)') 'in mulsub: CATOT=', &
-                                     ensmbl_anvil_cond
-        write (diag_unit, '(a, 3f19.10, l4)')  &
-              'in mulsub: ps,pb,pt,lmeso= ', phalf_c(1), pb, pt_ens, lmeso
+        write (diag_unit, '(a, 4e20.12)') &
+               'in mulsub: CATOT, (sum, liq, frzliq,ice)=', &
+              ensmbl_anvil_cond_liq  + ensmbl_anvil_cond_liq_frz  +  &
+                                   ensmbl_anvil_cond_ice, &
+                                     ensmbl_anvil_cond_liq, &
+                                     ensmbl_anvil_cond_liq_frz, &
+                                     ensmbl_anvil_cond_ice
+        write (diag_unit, '(a, 3f19.10, 1l4)')  &
+              'in mulsub: ps,pb,pt,lmeso= ',   &
+                     phalf_c(1), pb, pt_ens, lmeso
         write (diag_unit, '(a, e20.12)')  &
                                  'in mulsub: ampt= ',ampta1     
       endif
@@ -4043,7 +4468,7 @@ character(len=*),                  intent(out)   :: ermesg
 !    call don_u_map_hires_i_to_lores_c_k to distribute
 !    this heating over the boundary layer.
 !---------------------------------------------------------------------
-        sbl = Param%grav*sfc_sh_flux_c/((phalf_c(1) - psmx)*Param%cp_air)
+       sbl = Param%grav*sfc_sh_flux_c/((phalf_c(1) - psmx)*Param%cp_air)
         write (diag_unit, '(a, e20.12, 2f19.10)')  &
              'in cm_intgl_to_gcm_col: xav,p1,p2= ',sbl, phalf_c(1), psmx 
         call don_u_map_hires_i_to_lores_c_k   &
@@ -4818,10 +5243,11 @@ end subroutine don_d_def_ensemble_profs_k
 
 subroutine don_d_def_lores_model_profs_k               &
          (nlev_lsm, nlev_hires, ntr, ncc_kou, diag_unit, debug_ijt,  &
-          Param, pb, ptt, sfc_vapor_flux_c, sfc_sh_flux_c,   &
-          sfc_tracer_flux_c, pfull_c, phalf_c, cld_press, dpf, dpftr, dfr,  &
-          cld_evap, qlw, emfhr, efchr, etfhr, cell_freeze, evap_rate, &
-          h1, h1_2, q1, qtr, wetdepl, ermesg)
+          Nml, Param, pb, ptt, sfc_vapor_flux_c, sfc_sh_flux_c,   &
+          sfc_tracer_flux_c, pfull_c, phalf_c, cld_press, tcc, dpf,  &
+          dpftr, dfr, cld_evap, qlw, emfhr, efchr, etfhr, cell_freeze, &
+          evap_rate, h1_liq, h1_ice,  ci_liq_cond, ci_ice_cond, h1_2, &
+          q1, qtr, wetdepl, ermesg)
  
 !---------------------------------------------------------------------
 !    subroutine don_d_def_lores_model_profs_k maps vertical
@@ -4835,7 +5261,7 @@ subroutine don_d_def_lores_model_profs_k               &
 !    of the ensemble member.
 !---------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type
+use donner_types_mod, only : donner_param_type, donner_nml_type
 
 implicit none
 
@@ -4846,19 +5272,24 @@ integer,                            intent(in)    :: nlev_lsm,   &
                                                      diag_unit
 logical,                            intent(in)    :: debug_ijt
 type(donner_param_type),            intent(in)    :: Param
+type(donner_nml_type),              intent(in)    :: Nml
 real,                               intent(in)    :: pb, ptt,  &
                                                      sfc_vapor_flux_c, &
                                                      sfc_sh_flux_c
 real,    dimension(ntr),            intent(in)    :: sfc_tracer_flux_c
 real,    dimension(nlev_lsm),       intent(in)    :: pfull_c
 real,    dimension(nlev_lsm+1),     intent(in)    :: phalf_c
-real,    dimension(nlev_hires),     intent(in)    :: cld_press, dpf, &
+real,    dimension(nlev_hires),     intent(in)    :: cld_press, tcc,  &
+                                                     dpf, &
                                                      dfr, cld_evap, qlw,&
                                                      emfhr, efchr
 real,    dimension(nlev_hires,ntr), intent(in)    :: etfhr, dpftr
 real,    dimension(nlev_lsm),       intent(out)   :: cell_freeze, &
-                                                     evap_rate, h1,  &
+                                                     evap_rate,      &
+                                                     h1_liq, h1_ice, &
                                                      h1_2, q1
+real,                               intent(out)   :: ci_liq_cond, &
+                                                     ci_ice_cond
 real,    dimension(nlev_lsm,ntr),   intent(out)   :: qtr, wetdepl
 character(len=*),                   intent(out)   :: ermesg
 
@@ -4964,6 +5395,7 @@ character(len=*),                   intent(out)   :: ermesg
       real, dimension (nlev_lsm)  ::   condensate ! liquid water profile on 
       real, dimension (nlev_lsm)  ::   conv_fact  
       real, dimension (nlev_hires) ::  dpftra
+      real, dimension (nlev_hires) ::  dpf_warm, dpf_cold
       real, dimension (nlev_lsm)  ::   wetdepa
       integer                 ::   kcont, k,n ! do-loop indices
       real                    ::   sbl        ! value to be used for
@@ -4979,6 +5411,8 @@ character(len=*),                   intent(out)   :: ermesg
       ermesg = ' '
 
       conv_fact = 0.0
+      dpf_cold = 0.
+      dpf_warm = 0.
 
 !--------------------------------------------------------------------
 !    call don_d_convert_profile_k to map the tracer tendency due
@@ -5068,37 +5502,81 @@ character(len=*),                   intent(out)   :: ermesg
         end do
       endif
       
+      do k=1, nlev_hires
+        if (tcc(k) > Param%tfre) then
+          dpf_warm(k) = dpf(k)
+        else
+          dpf_cold(k) = dpf(k)
+        endif
+      end do
+
 !----------------------------------------------------------------------
 !    map the condensation rate from the cloud model (-dpf) to the 
 !    large-scale model (h1). h1 is a term appropriate for use in the
 !    water vapor equation; i.e., condensation is a loss term.
 !----------------------------------------------------------------------
       call don_d_convert_profile_k                 &
-           ('RLHR', 'h1', nlev_lsm, nlev_hires, ncc_kou,    &
-            -dpf(1:ncc_kou+1), cld_press(1:ncc_kou+1), ptt,  &
+           ('RLHR_warm', 'h1_liq', nlev_lsm, nlev_hires, ncc_kou,    &
+            -dpf_warm(1:ncc_kou+1), cld_press(1:ncc_kou+1), ptt,  &
             .false., .false., .false., 0.0, 0.0, conv_fact,&
-            phalf_c, diag_unit, debug_ijt, h1, ermesg)
+            phalf_c, diag_unit, debug_ijt, h1_liq, ermesg)
+
       if (debug_ijt) then
           dp = cld_press(1) - cld_press(2)
-        aak = -dpf(1)*0.5*dp
+        aak = -dpf_warm(1)*0.5*dp
         do k=2,ncc_kou 
           dp = cld_press(k) - cld_press(k+1)
-          aak = aak - dpf(k)*dp
+          aak = aak - dpf_warm(k)*dp
         end do
         aak = aak/(Param%grav*1000.)
             write (diag_unit, '(a, e20.12, i6)')  &
-                                 'in mulsub: dpf intg, ncc_kou',  &
+                                 'in mulsub: dpf_warm intg, ncc_kou',  &
                                            aak, ncc_kou
       endif
-      if (debug_ijt) then
-        aak = 0.
+
+        ci_liq_cond = 0.
         do k=1,nlev_lsm
           dp = phalf_c(k) - phalf_c(k+1)
-          aak = aak + h1(k)*dp
+          ci_liq_cond = ci_liq_cond + h1_liq(k)*dp
+        end do
+        ci_liq_cond = ci_liq_cond/(Param%grav      )
+      if (debug_ijt) then
+            write (diag_unit, '(a, e20.12)')  &
+                                 'in mulsub: h1_liq intg', ci_liq_cond
+      endif
+
+!----------------------------------------------------------------------
+!    map the condensation rate from the cloud model (-dpf) to the 
+!    large-scale model (h1). h1 is a term appropriate for use in the
+!    water vapor equation; i.e., condensation is a loss term.
+!----------------------------------------------------------------------
+      call don_d_convert_profile_k                 &
+           ('RLHR_cold', 'h1_ice', nlev_lsm, nlev_hires, ncc_kou,    &
+            -dpf_cold(1:ncc_kou+1), cld_press(1:ncc_kou+1), ptt,  &
+            .false., .false., .false., 0.0, 0.0, conv_fact,&
+            phalf_c, diag_unit, debug_ijt, h1_ice, ermesg)
+
+      if (debug_ijt) then
+          dp = cld_press(1) - cld_press(2)
+        aak = -dpf_cold(1)*0.5*dp
+        do k=2,ncc_kou 
+          dp = cld_press(k) - cld_press(k+1)
+          aak = aak - dpf_cold(k)*dp
         end do
         aak = aak/(Param%grav*1000.)
+            write (diag_unit, '(a, e20.12, i6)')  &
+                                 'in mulsub: dpf_cold intg, ncc_kou',  &
+                                           aak, ncc_kou
+      endif
+        ci_ice_cond = 0.
+        do k=1,nlev_lsm
+          dp = phalf_c(k) - phalf_c(k+1)
+          ci_ice_cond = ci_ice_cond + h1_ice(k)*dp
+        end do
+        ci_ice_cond = ci_ice_cond/(Param%grav      )
+      if (debug_ijt) then
             write (diag_unit, '(a, e20.12)')  &
-                                 'in mulsub: h1 intg', aak
+                                 'in mulsub: h1_ice intg', ci_ice_cond
       endif
 
 !---------------------------------------------------------------------
@@ -5191,16 +5669,33 @@ character(len=*),                   intent(out)   :: ermesg
       end do
 
 !----------------------------------------------------------------------
-!    map the vertical entropy flux convergence from the cloud model 
-!    (efchr) to the large-scale model grid (h1_2). force the column 
-!    integral of the flux convergence times inverse exner function (i.e.,
-!    theta) to be 0.0; then add the imposed sub-cloud convergence.
+!    map the temperature change due to vertical entropy flux convergence
+!    from the cloud model (efchr) to the large-scale model grid (h1_2). 
+!    force the column integral of the temperature change to be 0.0, thus
+!    conserving enthalpy; then add any imposed sub-cloud convergence.
 !----------------------------------------------------------------------
+   if (Nml%force_internal_enthalpy_conservation) then
+      call don_d_convert_profile_k       &
+           ('EFCHR', 'h1_2', nlev_lsm, nlev_hires, ncc_kou,   &
+            efchr(1:ncc_kou+1), cld_press(1:ncc_kou+1), ptt, &
+            .true., .true., .false., set_value, sbl, conv_fact, &
+            phalf_c, diag_unit,  debug_ijt, h1_2, ermesg)
+   else
+
+!----------------------------------------------------------------------
+!    map the temperature change due to vertical entropy flux convergence
+!    from the cloud model (efchr) to the large-scale model grid (h1_2). 
+!    force the column integral of the flux convergence times inverse 
+!    exner function (i.e., theta) to be 0.0, thus conserving entropy;
+!    then add any imposed sub-cloud convergence.
+!----------------------------------------------------------------------
+
       call don_d_convert_profile_k       &
            ('EFCHR', 'h1_2', nlev_lsm, nlev_hires, ncc_kou,   &
             efchr(1:ncc_kou+1), cld_press(1:ncc_kou+1), ptt, &
             .true., .true., .true., set_value, sbl, pi, &
             phalf_c, diag_unit,  debug_ijt, h1_2, ermesg)
+   endif
 
 !---------------------------------------------------------------------
 !    determine if an error message was returned from the kernel
@@ -5427,18 +5922,30 @@ character(len=*),                intent(  out)  :: ermesg
 !---------------------------------------------------------------------
 
 
-end subroutine don_d_add_to_ensmbl_sum_hires_k 
+end subroutine don_d_add_to_ensmbl_sum_hires_k   
+ 
 
 
 
 !#####################################################################
 
 subroutine don_d_add_to_ensmbl_sum_lores_k      &
-         (nlev_lsm, ntr, diag_unit, debug_ijt, lmeso, Param,   &
-          area_ratio, dint, cell_freeze, cell_melt, wetdepl, temp_c, h1_2, ecd, &
-          ece, evap_rate, q1, h1, pfull_c, meso_melt, meso_freeze, &
-          phalf_c, qtr, ensmbl_melt, ensmbl_freeze,ensmbl_wetc,  enctf, encmf, enev,&
-          disg, disb, disc, ecds, eces, disd, qtren, ermesg)
+         (nlev_lsm, ntr, diag_unit, debug_ijt, lmeso, &
+                          frz_frac, Param, Nml,   &
+          area_ratio, dint, cell_freeze,         cell_melt, wetdepl, &
+          temp_c, h1_2, ecd, ecd_liq, ecd_ice, &
+          ece, ece_liq, ece_ice, evap_rate, q1,     h1_liq, h1_ice, &
+          pfull_c, meso_melt, meso_freeze, &
+          phalf_c, qtr, ensmbl_melt, ensmbl_melt_meso, ensmbl_freeze,&
+          ensmbl_freeze_meso, ensmbl_wetc,  &
+          meso_frac, precip_frac, frz_frac_non_precip, disz, &
+          disz_remelt, disp_melted, disze1, disze2, disze3,  &
+          disp_liq, disp_ice, enctf, encmf, enev, disg_liq, disg_ice, &
+          disb, disc_liq, disc_ice, dism_liq, dism_liq_frz, &
+          dism_liq_remelt, dism_ice, dism_ice_melted, &
+          ecds_liq, ecds_ice, eces_liq, eces_ice, disd, &
+          disv, qtren, ermesg, meso_frz_intg, melting_in_cloud, &
+          precip_melt_frac, meso_frz_frac)
 
 !-----------------------------------------------------------------------
 !    subroutine don_d_add_to_ensmbl_sum_lores_k adds the contrib-
@@ -5446,30 +5953,57 @@ subroutine don_d_add_to_ensmbl_sum_lores_k      &
 !    grid that are being summed over the ensemble.
 !-----------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type
+use donner_types_mod, only : donner_param_type, donner_nml_type
 
 implicit none
 
 !-----------------------------------------------------------------------
 integer,                       intent(in   ) :: nlev_lsm, ntr, diag_unit
 logical,                       intent(in   ) :: debug_ijt, lmeso
+real,                          intent(in)   :: frz_frac
 type(donner_param_type),       intent(in)    :: Param
-!real,                      intent(in   ) :: seconds_per_day, hls, hlv, &
-real,                          intent(in   ) :: area_ratio, dint     
+type(donner_nml_type),       intent(in)    :: Nml  
+real,                          intent(in   ) :: area_ratio, dint
 real, dimension(nlev_lsm),     intent(in   ) :: cell_freeze, cell_melt, &
                                                 temp_c, h1_2, ecd, ece, &
-                                                evap_rate, q1, h1, &
+                                            ecd_liq, ecd_ice, ece_liq,&
+                                              ece_ice, &
+                                                evap_rate, q1,     &
+                                                h1_liq, h1_ice, &
                                                 pfull_c, meso_melt,   &
                                                 meso_freeze
 real, dimension(nlev_lsm+1),   intent(in   ) :: phalf_c  
 real, dimension(nlev_lsm,ntr), intent(in   ) :: qtr, wetdepl
+real,                          intent(in)    :: meso_frac, precip_frac
+real,        intent(inout) ::                    frz_frac_non_precip
 real, dimension(nlev_lsm),     intent(inout) :: ensmbl_melt,   &
+                                                ensmbl_melt_meso, &
                                                 ensmbl_freeze, enctf, &
-                                                encmf, enev, disg, &
-                                                disb, disc, ecds, eces, &
-                                                disd
+                                                ensmbl_freeze_meso, &
+                                                encmf, enev,       &
+                                                disz_remelt, &
+                                                disz,               &
+                                                 disze1, disze2, &
+                                                disze3,   &
+                                                disg_liq, disg_ice, &
+                                               disb,                   &
+                                                ecds_liq, ecds_ice, &
+                                                eces_liq, eces_ice, &
+                                                disc_liq, disc_ice, &
+                                                dism_liq, dism_ice, &
+                                                dism_ice_melted, &
+                                                dism_liq_frz, &
+                                                dism_liq_remelt, &
+                                                disp_liq, disp_ice, &
+                                                disp_melted, &
+                                                disd, disv
 real, dimension(nlev_lsm,ntr), intent(inout) :: qtren, ensmbl_wetc
 character(len=*),              intent(  out) :: ermesg
+logical,                       intent( in)   :: meso_frz_intg   
+real,                          intent( in)   ::                &
+                                                 meso_frz_frac
+logical, intent(in) :: melting_in_cloud
+real   , intent(in) ::            precip_melt_frac          
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -5686,7 +6220,8 @@ character(len=*),              intent(  out) :: ermesg
                            !  nostic; sum should be 0.0, if no boundary 
                            !  source term.
                            !  [ kg(tracer) / ( kg(dry air) sec ) ]
-     integer  :: k, kcont  !  do-loop indices
+     integer  :: k, kcont, kk  !  do-loop indices
+     real   ::      dp
 
 !-----------------------------------------------------------------------
 !    initialize the error message character string.
@@ -5707,23 +6242,116 @@ character(len=*),              intent(  out) :: ermesg
 !    1.0e3 g(h2o) /kg(h2o) times SECONDS_PER_DAY. add this member's 
 !    contribution to the sum over the ensemble (encmf). 
 !----------------------------------------------------------------------
-        cmf(k) = (-h1(k) + q1(k))*(Param%SECONDS_PER_DAY*1.0e03)
+        cmf(k) = (-(h1_liq(k) + h1_ice(k)) + q1(k))*  &
+                                     (Param%SECONDS_PER_DAY*1.0e03)
         encmf(k) = encmf(k) + area_ratio*cmf(k)
 
 !----------------------------------------------------------------------
-!    define the condensation term in the temperature equation on the 
-!    large-scale grid (rlh), using the latent heat of vaporization when 
-!    the ambient temperature is above freezing, and the latent heat of 
-!    sublimation when ice may be present. add this member's contribution
-!    to the sum over the ensemble (disc).
+!   define the cell precipitation forms.
+!   disz : frozen liquid condensate
+!   disz_remelt: frozen liquid condensate which then melts
+!   disp_liq: liquid condensate
+!   disp_ice: frozen condensate
+!   disp_melted: frozen condensate which melts
 !----------------------------------------------------------------------
-        if (temp_c(k) >= Param%tfre) then
-          convrat = Param%HLV/Param%CP_AIR
-        else
-          convrat = Param%HLS/Param%CP_AIR
+        if (.not. melting_in_cloud) then
+          disz(k) = disz(k) + area_ratio*h1_liq(k)* &
+                    Param%seconds_per_day*     frz_frac*precip_frac
+        else  ! (not melting in cloud)
+          disz_remelt(k) = disz_remelt(k) + area_ratio*h1_liq(k)*  &
+                           Param%seconds_per_day*frz_frac*precip_frac
+        endif  ! (not melting in cloud)
+
+        disp_liq(k) = disp_liq(k) + area_ratio*h1_liq(k)*   &
+                      Param%seconds_per_day*(1.0-frz_frac)* &
+                      precip_frac              
+        disp_ice(k) = disp_ice(k) + area_ratio*h1_ice(k)*  &
+                      Param%seconds_per_day*           &
+                      (1.0-precip_melt_frac)*precip_frac
+        disp_melted(k) = disp_melted(k) + area_ratio*h1_ice(k)*  &
+                         Param%seconds_per_day*           &
+                         (precip_melt_frac)*precip_frac
+
+!---------------------------------------------------------------------
+!    define the heating rate due to liquid and ice condensation.
+!---------------------------------------------------------------------
+        disc_liq(k) = disc_liq(k) + area_ratio*h1_liq(k)* &
+                      Param%seconds_per_day*Param%hlv/Param%cp_air
+        disc_ice(k) = disc_ice(k) + area_ratio*h1_ice(k)* &
+                      Param%seconds_per_day*Param%hls/Param%cp_air
+
+!---------------------------------------------------------------------
+!    define the  heating rates associated with the evaporation of
+!    non-precipitating condensate. these terms are used when a meso-
+!    scale circulation is not present; the _chgd variables are used
+!    when the mesoscale circulation is present for the initial ensemble
+!    member, but is not sustainable by one of the remaining members.
+!---------------------------------------------------------------------
+        disze1(k) = disze1(k) + area_ratio*h1_liq(k)*  &
+                    Param%seconds_per_day*Param%hls*  &
+                    frz_frac           *(1.-precip_frac)/Param%cp_air
+        disze2(k) = disze2(k) + area_ratio*h1_liq(k)*  &
+                    Param%seconds_per_day*Param%hlv*  &
+                 (1.0-frz_frac           )*(1.-precip_frac)/Param%cp_air
+        disze3(k) = disze3(k) - area_ratio*h1_ice(k)* &
+                    Param%seconds_per_day*Param%hls*   &
+                    (1.-precip_frac)/Param%cp_air
+
+!----------------------------------------------------------------------
+!    define the components of precipitation from the cell condensate 
+!    that was transferred to the mesoscale circulation.
+!    dism_liq: precip from liquid condensate that does not freeze
+!              occurs when no melting and no freezing in cloud OR 
+!              is the liquid condensate which does not freeze when 
+!              there is melting in the cloud
+!    dism_liq_frz: precip from liquid condensate that freezes
+!              occurs when there is no melting but is freezing
+!    dism_ice:  precip from frozen condensate
+!               occurs when there is no melting
+!    dism_ice_melted: precip from frozen condensate that melts
+!               occurs when there is melting
+!    dism_liq_remelt: precip from liquid condensate that freezes and 
+!                     then melts
+!               occurs when there is both melting and freezing 
+!----------------------------------------------------------------------
+        if (.not. melting_in_cloud) then
+          if (.not. (meso_frz_intg) .and. frz_frac_non_precip == 0.) then
+            dism_liq(k) = dism_liq(k) + area_ratio*h1_liq(k)*  &
+                          meso_frac*Param%seconds_per_day                          
+          else
+            dism_liq_frz(k) = dism_liq_frz(k) + area_ratio*h1_liq(k)* &
+                          meso_frac*Param%seconds_per_day
+          endif
+          dism_ice(k) = dism_ice(k) + area_ratio*h1_ice(k)*  &
+                        meso_frac*Param%seconds_per_day
+        else   ! (not melting in cloud)
+          dism_liq(k) = dism_liq(k) + area_ratio*h1_liq(k)* &
+                meso_frac*(1.-frz_frac_non_precip)*Param%seconds_per_day
+          dism_ice_melted(k) = dism_ice_melted(k) +  &
+                                    area_ratio*h1_ice(k)*  &
+                        meso_frac*Param%seconds_per_day
+          dism_liq_remelt(k) = dism_liq_remelt(k) +      &
+                               area_ratio*h1_liq(k)*  &
+                 meso_frac*frz_frac_non_precip*Param%seconds_per_day
         endif
-        rlh(k) = h1(k)*Param%SECONDS_PER_DAY*convrat 
-        disc(k) = disc(k) + area_ratio*rlh(k)
+
+        if (debug_ijt) then
+          write (diag_unit, '(a, i4, 3e20.12)')  &
+                              'in mulsub: precip profiles', &
+                               k, disp_liq(k)*Param%hlv/Param%cp_air, &
+                             Param%hls/Param%cp_air*disp_ice(k), &
+                             Param%hls/Param%cp_air*disz(k)
+          write (diag_unit, '(a, i4, 2e20.12)')  &
+                           'in mulsub: remelt, melt precip profiles', &
+                           k, Param%hlv/Param%cp_air*disz_remelt(k), &
+                                  Param%hlv/Param%cp_air*disp_melted(k)
+          write (diag_unit, '(a, i4, 3e20.12)')  &
+                              'in mulsub: evap   profiles', &
+                               k, disze1(k), disze2(k),  -disze3(k)     
+          write (diag_unit, '(a, i4, 2e20.12)')  &
+                              'in mulsub: cd     profiles', &
+                               k, disc_liq(k), disc_ice(k)
+        endif
 
 !--------------------------------------------------------------------
 !    add this member's weighted contribution to the ensemble's temper-
@@ -5733,9 +6361,16 @@ character(len=*),              intent(  out) :: ermesg
 !    kg(h2o) per kg(air) to g(h2o) per kg(air).
 !--------------------------------------------------------------------
         disb(k) = disb(k) + area_ratio*(h1_2(k)*Param%SECONDS_PER_DAY)
-        disd(k) = disd(k) + area_ratio*(q1(k)*(Param%SECONDS_PER_DAY*1.0e3))
+        disd(k) = disd(k) + area_ratio*(q1(k)*  &
+                             (Param%SECONDS_PER_DAY*1.0e3))
+        disv(k) = disv(k) + area_ratio*((h1_liq(k) + h1_ice(k))* &
+                             (Param%SECONDS_PER_DAY*1.0e3))
+!   change enctf to reflect need for both ice and liq cd in layer of
+!   tfre
         enctf(k) = enctf(k) + area_ratio*    &
-                                     (h1_2(k)*Param%SECONDS_PER_DAY + rlh(k))
+                       (h1_2(k)*Param%SECONDS_PER_DAY + &
+                       (h1_liq(k)*Param%hlv + h1_ice(k)*Param%hls)*  &
+                           Param%seconds_per_day/ Param%cp_air )
 
 !--------------------------------------------------------------------
 !    if a mesoscale circulation exists, add this member's contribution
@@ -5750,18 +6385,43 @@ character(len=*),              intent(  out) :: ermesg
 !    sublimation.
 !--------------------------------------------------------------------
         if (lmeso) then
-          ecds(k) = ecds(k) + area_ratio*ecd(k)
-          eces(k) = eces(k) + area_ratio*ece(k)
-          if (dint == 0.) then
-            disg(k) = disg(k) - area_ratio*((ecd(k) + ece(k))*  &
-                                Param%hlv/(Param%CP_AIR*1000.))
+          ecds_liq(k) = ecds_liq(k) + area_ratio*ecd_liq(k)
+          ecds_ice(k) = ecds_ice(k) + area_ratio*ecd_ice(k)
+          eces_liq(k) = eces_liq(k) + area_ratio*ece_liq(k)
+          eces_ice(k) = eces_ice(k) + area_ratio*ece_ice(k)
+
+!---------------------------------------------------------------------
+!    evaporation of the frozen condensate removes hls.
+!---------------------------------------------------------------------
+          disg_ice(k) = disg_ice(k) - area_ratio* &
+                          ((ecd_ice(k) + ece_ice(k))*  &
+                                Param%hls/(Param%CP_AIR*1000.))
+
+!---------------------------------------------------------------------
+!    if there has been cell freezing and either melting or meso 
+!    freezing, then the liquid condensate evaporated in the environment 
+!    would have previously frozen and so removes hls. the liquid con-
+!    densate evaporated in the downdraft would not have been frozen and
+!    so removes hlv.
+!---------------------------------------------------------------------
+          if (dint /= 0. .and. &       
+                (melting_in_cloud .or. meso_frz_intg)) then
+            disg_liq(k) = disg_liq(k) - area_ratio*  &
+                    ((ecd_liq(k)*Param%HLV + ece_liq(k)*Param%hls)/   &
+                                           (Param%CP_AIR*1000.))
+
           else
-            disg(k) = disg(k) - area_ratio*(ece(k)*Param%HLS/  &
-                      (Param%CP_AIR*1000.))
-            disg(k) = disg(k) - area_ratio*(ecd(k)*Param%HLV/  &
-                      (Param%CP_AIR*1000.))
+
+!---------------------------------------------------------------------
+!    if there has been no freezing in the cells or freezing in the 
+!    cells only and no melting, then the evaporation of liquid conden-
+!    sate in both environment and downdraft removes hlv.
+!---------------------------------------------------------------------
+            disg_liq(k) = disg_liq(k) - area_ratio*  &
+                          ((ecd_liq(k) + ece_liq(k))*  &
+                                Param%hlv/(Param%CP_AIR*1000.))
           endif
-        endif
+        endif    ! (lmeso)
 
 !---------------------------------------------------------------------
 !    add this member's cloud water evaporation rate to the sum over 
@@ -5777,13 +6437,15 @@ character(len=*),              intent(  out) :: ermesg
 !    (ensmbl_freeze) freezing profiles.
 !--------------------------------------------------------------------
         if (lmeso) then
-          ensmbl_melt(k) = ensmbl_melt(k) + area_ratio*meso_melt(k)
-          ensmbl_freeze(k) = ensmbl_freeze(k) + area_ratio*meso_freeze(k)
+          ensmbl_melt_meso(k) = ensmbl_melt_meso(k) - area_ratio*  &
+                           meso_melt(k)
+          ensmbl_freeze_meso(k) = ensmbl_freeze_meso(k) + area_ratio* &
+                                  meso_freeze(k)
           if (debug_ijt) then
             if (meso_freeze(k) /= 0.0) then
               write (diag_unit, '(a, i4, 2e20.12)')  &
                               'in mulsub: jk,fres,fre= ',   &
-                               k, ensmbl_freeze(k), meso_freeze(k)
+                               k, ensmbl_freeze_meso(k), meso_freeze(k)
             endif
           endif
         endif
@@ -5797,7 +6459,7 @@ character(len=*),              intent(  out) :: ermesg
 !    freezing profiles.
 !--------------------------------------------------------------------
         ensmbl_freeze(k) = ensmbl_freeze(k) + area_ratio*cell_freeze(k)
-        ensmbl_melt(k) = ensmbl_melt(k) + area_ratio*cell_melt(k)
+        ensmbl_melt(k) = ensmbl_melt(k) - area_ratio*cell_melt(k)
         if (debug_ijt) then
           if (cell_freeze(k) /= 0.0) then
             write (diag_unit, '(a, i4, 2e20.12)')  &
@@ -5847,7 +6509,17 @@ character(len=*),              intent(  out) :: ermesg
 !----------------------------------------------------------------------
       if (debug_ijt) then
         do k=1,nlev_lsm        
-          if (rlh(k) /= 0.0 .or. h1_2(k) /= 0.0) then
+          if (h1_liq(k) /= 0.0  .or. h1_ice(k) /= 0.0 .or.  &
+              h1_2(k) /= 0.0) then
+            if (temp_c(k) >= Param%tfre) then
+              convrat = Param%HLV/Param%CP_AIR
+              rlh(k) = (h1_liq(k) + h1_ice(k))*Param%SECONDS_PER_DAY* &
+                                                                convrat
+            else
+              convrat = Param%HLS/Param%CP_AIR
+              rlh(k) = (h1_liq(k) + h1_ice(k))*Param%SECONDS_PER_DAY*  &
+                                                                convrat
+            endif
             write (diag_unit, '(a, i4, f19.10, e20.12)')  &
                       'in mulsub: k, p & ctf', k, pfull_c(    k),  &
                                                h1_2(k)*86400. + rlh(k)
@@ -5872,8 +6544,11 @@ end subroutine don_d_add_to_ensmbl_sum_lores_k
 !#####################################################################
 
 subroutine don_d_add_to_ensmbl_sum_intgl_k        &
-         (diag_unit, debug_ijt, lmeso, area_ratio, ca, cell_precip, cu, &
-          apt, ensmbl_precip, ensmbl_cond, ensmbl_anvil_cond,  &  
+         (diag_unit, debug_ijt, lmeso,  area_ratio,  ca_liq, ca_ice,&
+          frz_frac_non_precip, meso_frac, cell_precip, cu, &
+          apt, ensmbl_precip, ensmbl_cond,                     &  
+          ensmbl_anvil_cond_liq, ensmbl_anvil_cond_liq_frz, &
+          meso_frz_intg, meso_frz_frac, ensmbl_anvil_cond_ice, &
           ensmbl_cld_top_area, ermesg)
 
 !----------------------------------------------------------------------
@@ -5886,9 +6561,16 @@ implicit none
 !----------------------------------------------------------------------
 integer,          intent(in   ) :: diag_unit
 logical,          intent(in   ) :: debug_ijt, lmeso
-real,             intent(in   ) :: area_ratio, ca, cell_precip, cu, apt
+real,             intent(in   ) :: area_ratio,     ca_liq, ca_ice, &
+                                   frz_frac_non_precip, meso_frac, &
+                                   cell_precip, cu, apt
 real,             intent(inout) :: ensmbl_precip, ensmbl_cond, &
-                                   ensmbl_anvil_cond, ensmbl_cld_top_area
+                                   ensmbl_cld_top_area, &
+                                   ensmbl_anvil_cond_liq,  &
+                                   ensmbl_anvil_cond_liq_frz,  &
+                                   ensmbl_anvil_cond_ice
+real, intent(in) ::                meso_frz_frac
+logical, intent(in) :: meso_frz_intg               
 character(len=*), intent(  out) :: ermesg
  
 !----------------------------------------------------------------------
@@ -5940,6 +6622,8 @@ character(len=*), intent(  out) :: ermesg
 !
 !---------------------------------------------------------------------
 
+      real :: local_frz_frac
+
 !-----------------------------------------------------------------------
 !    initialize the error message character string.
 !-----------------------------------------------------------------------
@@ -5952,7 +6636,13 @@ character(len=*), intent(  out) :: ermesg
 !    (ensmbl_cld_top_area) to the arrays accumulating the ensemble sums.
 !--------------------------------------------------------------------
       if (lmeso) then
-        ensmbl_anvil_cond   = ensmbl_anvil_cond   + area_ratio*ca
+        local_frz_frac = (frz_frac_non_precip + meso_frz_frac)/meso_frac
+        ensmbl_anvil_cond_liq   = ensmbl_anvil_cond_liq   +   &
+                                  area_ratio*ca_liq*(1.-local_frz_frac)
+        ensmbl_anvil_cond_liq_frz   = ensmbl_anvil_cond_liq_frz   +   &
+                                        area_ratio*ca_liq*local_frz_frac
+        ensmbl_anvil_cond_ice   = ensmbl_anvil_cond_ice   +  &
+                                                   area_ratio*ca_ice
         ensmbl_cld_top_area = ensmbl_cld_top_area + area_ratio*apt
       endif
 
@@ -5975,9 +6665,12 @@ end subroutine don_d_add_to_ensmbl_sum_intgl_k
 !######################################################################
 
 subroutine don_d_output_diag_profs_k    &
-         (nlev_lsm, diag_unit, pfull_c, disc, disb, disd, disn, encmf,&
-          temp_tend_freeze, temp_tend_melt, cmus_tot, emds, emes, wmms, &
-          wmps, tmes, mrmes, eces, ecds, disa, dise, disg_2, disf, &
+         (nlev_lsm, diag_unit, pfull_c, disc_liq, disc_ice, disb,  &
+          disd, disn, encmf, temp_tend_freeze, temp_tend_freeze_meso, &
+          temp_tend_melt, cmus_tot, emds_liq, &
+          emds_ice,  emes_liq, emes_ice, wmms, &
+          wmps, tmes, mrmes, eces_liq, eces_ice, ecds_liq, ecds_ice, &
+          disa, dise, disg_2liq, disg_2ice, disf, &
           ermesg)
 
 !---------------------------------------------------------------------
@@ -5990,13 +6683,20 @@ implicit none
 
 !---------------------------------------------------------------------
 integer,                      intent(in)   :: nlev_lsm, diag_unit
-real,    dimension(nlev_lsm), intent(in)   :: pfull_c, disc, disb, disd,&
+real,    dimension(nlev_lsm), intent(in)   :: pfull_c, disc_liq, &
+                                              disc_ice, disb, disd,&
                                               disn, encmf,  &
                                               temp_tend_freeze,    &
-                                              temp_tend_melt, cmus_tot, &
-                                              emds, emes, wmms, wmps, &
-                                              tmes, mrmes, eces, ecds, &
-                                              disa, dise, disg_2, disf 
+                                              temp_tend_freeze_meso,  &
+                                              temp_tend_melt, cmus_tot,&
+                                                          wmms, wmps, &
+                                              emds_liq, emds_ice, &
+                                              emes_liq, emes_ice, &
+                                              tmes, mrmes,             &
+                                              ecds_liq, ecds_ice, &
+                                              eces_liq, eces_ice, &
+                                              disa, dise, disg_2liq,  &
+                                              disg_2ice, disf 
 character(len=*),              intent(out) :: ermesg
 
 !----------------------------------------------------------------------
@@ -6073,9 +6773,10 @@ character(len=*),              intent(out) :: ermesg
 !  disc: cloud ensemble cell condensation heating rate [ deg K / day ]
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
-        if (disc(k) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
-              'in mulsub: k, P & LHR =',  k, pfull_c(k),disc(k)
+        if ( (disc_liq(k)+ disc_ice(k))  /= 0.00 ) then
+          write (diag_unit, '(a, i4, f19.10, 2e20.12)')  &
+              'in mulsub: k, P & liq/ice =',  k, pfull_c(k),disc_liq(k), &
+                                                        disc_ice(k)
         endif
       end do
 
@@ -6130,10 +6831,11 @@ character(len=*),              intent(out) :: ermesg
 !                      freezing [ deg K / sec ]
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
-        if (temp_tend_freeze(k) /= 0.00 ) then
+        if ((temp_tend_freeze(k) +   &
+                          temp_tend_freeze_meso(k))/= 0.00 ) then
           write (diag_unit, '(a, i4, f19.10, e20.12)') &
                       'in mulsub: k, P & meso up freeze        =',    &
-                        k, pfull_c(k),temp_tend_freeze(k)
+           k, pfull_c(k),temp_tend_freeze(k) + temp_tend_freeze_meso(k)
         endif
       end do
 
@@ -6142,10 +6844,10 @@ character(len=*),              intent(out) :: ermesg
 !                    tendency due to melting [ deg K / sec ]
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
-        if (temp_tend_melt(k) /= 0.00 ) then
+        if (temp_tend_melt(k)  /= 0.00 ) then
           write (diag_unit, '(a, i4, f19.10, e20.12)')  &
                      'in mulsub: k, P & meso down melt        =',    &
-                       k, pfull_c(k),temp_tend_melt(k)
+                       k, pfull_c(k),temp_tend_melt(k) 
         endif
       end do
 
@@ -6166,10 +6868,10 @@ character(len=*),              intent(out) :: ermesg
 !         [ g(h2o) / (kg(air) day) ]
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
-        if (emds(k) /= 0.00 ) then
+        if ((emds_liq(k) + emds_ice(k)) /= 0.00 ) then
           write (diag_unit, '(a, i4, f19.10, e20.12)')  &
                      'in mulsub: k, P & meso down evap        =',    &
-                       k, pfull_c(k), emds(k)
+                       k, pfull_c(k), emds_liq(k) + emds_ice(k)
         endif
       end do
 
@@ -6178,10 +6880,10 @@ character(len=*),              intent(out) :: ermesg
 !         [ g(h2o) / (kg(air) day) ]
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
-        if (emes(k) /= 0.00 ) then
+        if ((emes_liq(k) + emes_ice(k)) /= 0.00 ) then
           write (diag_unit, '(a, i4, f19.10, e20.12)')  &
                         'in mulsub: k, P & meso up evap        =',    &
-                          k, pfull_c(k),emes(k)
+                          k, pfull_c(k),emes_liq(k) + emes_ice(k)
         endif
       end do
 
@@ -6239,10 +6941,10 @@ character(len=*),              intent(out) :: ermesg
 !           [ kg(h2o) / (kg(air) day) ]
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
-        if (eces(k) /= 0.00 ) then
+        if ((eces_liq(k) + eces_ice(k)) /= 0.00 ) then
           write (diag_unit, '(a, i4, f19.10, e20.12)')  &
                       'in mulsub: k, P & up con evap         =',    &
-                          k, pfull_c(k), eces(k)
+                          k, pfull_c(k), eces_liq(k) + eces_ice(k)
         endif
       end do
 
@@ -6251,10 +6953,10 @@ character(len=*),              intent(out) :: ermesg
 !           [ kg(h2o) / (kg(air) day) ]
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
-        if (ecds(k) /= 0.00 ) then
+        if ((ecds_liq(k) + ecds_ice(k)) /= 0.00 ) then
            write (diag_unit, '(a, i4, f19.10, e20.12)')  &
                       'in mulsub: k, P & down con evap         =',    &
-                       k, pfull_c(k), ecds(k)
+                       k, pfull_c(k), ecds_liq(k) + ecds_ice(k)
         endif
       end do
 
@@ -6287,10 +6989,14 @@ character(len=*),              intent(out) :: ermesg
 !            [ g(h2o) / (kg(air) day) ]
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
-        if (disg_2(k) /= 0.0) then
+        if ((disg_2liq(k) + disg_2ice(k)) /= 0.0) then
           write (diag_unit, '(a, i4, f19.10, e20.12)')  &
                          'in mulsub: k, p & thermal modifications', &
-                          k, pfull_c(k), disg_2(k)
+                          k, pfull_c(k), disg_2liq(k) + disg_2ice(k)+ &
+                         temp_tend_freeze(k) + temp_tend_melt(k)
+          write (diag_unit, '(a, i4, f19.10, 2e20.12)')  &
+            'in mulsub: k, p & thermal modifications -- liq, ice', &
+                          k, pfull_c(k), disg_2liq(k),  disg_2ice(k)
         endif
       end do
 
@@ -6316,13 +7022,23 @@ end subroutine don_d_output_diag_profs_k
 !#####################################################################
 
 subroutine don_d_def_conv_forcing_k  &
-         (nlev_lsm, diag_unit, debug_ijt, lmeso, Param, ensmbl_precip,  &
-          meso_precip, meso_cloud_area, anvil_precip_melt, phalf_c,  &
-          enev, encmf, ensmbl_freeze, enctf, disg, ecds, eces, emds, &
-          emes, mrmes, tmes, wmps, ensmbl_cloud_area, ensmbl_melt,   &
-          pfull_c, temp_c, cmus_tot, wmms, disc, disb, disd,  &
-          total_precip_c, disf, disg_2, disn, dise, disa, cutotal,   &
-          temp_tend_melt, temp_tend_freeze, ermesg)
+         (nlev_lsm, diag_unit, debug_ijt, lmeso, Initialized,   &
+          pb, Param, Nml, ensmbl_precip, meso_precip, meso_cloud_area, &
+          anvil_precip_melt, phalf_c, enev, encmf, ensmbl_freeze, &
+          ensmbl_freeze_meso, enctf, disg_liq, disg_ice, ecds_liq, &
+          ecds_ice, eces_liq, eces_ice, emds_liq, emds_ice, emes_liq,&
+          emes_ice, mrmes, mrmes_up, mrmes_dn, tmes, tmes_up, tmes_dn, &
+          wmps, ensmbl_cloud_area, ensmbl_melt, ensmbl_melt_meso, &
+          pfull_c, temp_c, cmus_tot, wmms, disc_liq, disc_ice, &
+          dism_liq, dism_liq_frz, dism_liq_remelt, dism_ice, &
+          dism_ice_melted, meso_frz_intg_sum, disp_liq, disp_ice, &
+          disb, disd, disv, total_precip_c, disz, disz_remelt, &
+          disp_melted, disze1, disze2, disze3,              &
+          disf, disn, dise, disa, cutotal, temp_tend_melt,&
+          lprcp, liq_prcp, frz_prcp, vrt_mot, water_budget,  &
+          n_water_budget, &
+          enthalpy_budget, n_enthalpy_budget, precip_budget, &
+          n_precip_paths, n_precip_types, ermesg, melting_in_cloud)
 
 !---------------------------------------------------------------------
 !    subroutine define_convective_forcing produces the effects of
@@ -6331,7 +7047,9 @@ subroutine don_d_def_conv_forcing_k  &
 !    parameterization.
 !---------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type
+use donner_types_mod, only : donner_param_type, donner_nml_type, &
+                             donner_budgets_type,  &
+                             donner_initialized_type
 
 implicit none
 
@@ -6339,22 +7057,58 @@ implicit none
 integer,                      intent(in)  :: nlev_lsm, diag_unit
 logical,                      intent(in)  :: debug_ijt, lmeso 
 type(donner_param_type),      intent(in)  :: Param
+type(donner_initialized_type), intent(in)  :: Initialized
+type(donner_nml_type),        intent(in)  :: Nml    
 real,                         intent(in)  :: ensmbl_precip, meso_precip
+real,                         intent(in)  :: pb                        
+logical,                      intent(in)  :: meso_frz_intg_sum         
+real,    dimension(nlev_lsm), intent(inout)  :: ensmbl_melt,      &
+                                                ensmbl_melt_meso, &
+                                                anvil_precip_melt, &
+                                                ensmbl_freeze, &
+                                                ensmbl_freeze_meso
+real,    dimension(nlev_lsm + 1), intent(in)  :: phalf_c
 real,    dimension(nlev_lsm), intent(in)  :: meso_cloud_area,  &
-                                             anvil_precip_melt, phalf_c,&
-                                             enev, encmf, ensmbl_freeze,&
-                                             enctf, disg, ecds, eces, &
-                                             emds, emes, mrmes, tmes,  &
+                                             enev, encmf, &
+                                             disz_remelt, disz,       &
+                                             disze1, disze2, disze3, &
+                                             enctf, ecds_liq, ecds_ice,&
+                                             eces_liq, eces_ice, &
+                                             disg_liq, disg_ice, &
+                                             mrmes,  &
+                                             emds_liq, emds_ice, &
+                                             emes_liq, emes_ice, &
+                                             mrmes_up, mrmes_dn, tmes, &
+                                             tmes_up, tmes_dn, &
                                              wmps, ensmbl_cloud_area,  &
-                                             ensmbl_melt, pfull_c,   &
+                                             pfull_c,   &
                                              temp_c, cmus_tot, wmms,   &
-                                             disc, disb, disd
+                                             disb, disd, disv, &
+                                             disc_liq, disc_ice, &
+                                             dism_liq, dism_ice, &
+                                             dism_ice_melted, &
+                                             dism_liq_frz, &
+                                             dism_liq_remelt, &
+                                             disp_liq, disp_ice, &
+                                             disp_melted
 real,                         intent(out) :: total_precip_c
-real,    dimension(nlev_lsm), intent(out) :: disf, disg_2, disn, dise,  &
+real,    dimension(nlev_lsm), intent(out) :: disf,         &
+                                             disn, dise,  &
                                              disa, cutotal,   &
-                                             temp_tend_melt,  &
-                                             temp_tend_freeze
+                                             temp_tend_melt, &
+                                             liq_prcp, frz_prcp
+real,                         intent(out) :: lprcp, vrt_mot
+integer, intent(in) :: n_water_budget, n_enthalpy_budget, &
+                       n_precip_paths, n_precip_types
+real, dimension(nlev_lsm,n_water_budget), intent(out) :: &
+                                                           water_budget
+real, dimension(nlev_lsm,n_enthalpy_budget), intent(out) ::&
+                                                       enthalpy_budget
+real, dimension(nlev_lsm,n_precip_paths, n_precip_types),  &
+                                              intent(out) ::&
+                                                       precip_budget
 character(len=*),             intent(out) :: ermesg
+logical,                      intent( in) :: melting_in_cloud
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -6439,10 +7193,31 @@ character(len=*),             intent(out) :: ermesg
 !--------------------------------------------------------------------
 !   local variables:
 
-      real    ::  esum, esuma,        esumc, sumf, summ, sumqme, sumg,&
-                  sumn, sumelt, sumfre, summes, disl, disga
-      real    ::  dp
-      real    :: lj1, lj2, lj3, lj4, lj5, lj6, lj7, lj8
+      real,    dimension(nlev_lsm) :: disl, disga, disl_liq, &
+                                      disl_ice, disl_ice_melted, &
+                                      disl_liq_depo, disl_liq_cd, &
+                                      disl_ice_depo, disl_ice_cd, &
+                                      disga_liq_up, disga_liq_dn, &
+                                      disga_ice_up, disga_ice_dn, &
+                                      disg_2liq, disg_2ice, &
+                                      cell_evap, meso_cd, meso_depo, &
+                                      meso_evap
+      real    ::   vsuma, vsumb, vsumc, vsumd, vsumd1, vsumd2, vsume, &
+                   vsumf, vsumg, vsumg1, vsumg2, vsumh, vsumi, vsumi1,&
+                   vsumi2
+      real    ::   tsuma, tsumb, tsumiup, tsumidn 
+      real    ::   tsumj, tsumj1, tsumk1, tsumk2, tsumk3
+      real    ::   tsummliq, tsummice, tsummfliq
+      real    ::   tsumaliq, tsumcliq, tsumdliq, tsumeliq,   &
+                   tsumfliq, tsumg1liq, tsumg2liq
+      real    ::   tsumaice, tsumcice, tsumdice, tsumeice,  &
+                   tsumfice, tsumg1ice, tsumg2ice
+      real    ::   liq_ice
+      real    ::   esumc, sumf, summ, sumn, summes
+      real    ::   dp
+      real    ::                   x7, x8
+      real    ::       x8a, x5a, x5b, x5c, x5d, x6a, x6b, x6c, x6d
+      real    ::      v5,     v6
       integer ::  k
 
 !--------------------------------------------------------------------
@@ -6470,6 +7245,9 @@ character(len=*),             intent(out) :: ermesg
 !    initialize the error message character string.
 !-----------------------------------------------------------------------
       ermesg = '  '
+      lprcp = 0.
+      vrt_mot = 0.
+      liq_ice = 0.
 
 !--------------------------------------------------------------------
 !    define the total precipitation (total_precip_c) from the parameter-
@@ -6499,14 +7277,14 @@ character(len=*),             intent(out) :: ermesg
       if (debug_ijt) then
         do k=1,nlev_lsm
           write (diag_unit, '(a, i4, f19.10, 3e20.12)') &
-                 'in mulsub: jk, pr,cual,cuml, cutot= ', k, pfull_c(k), &
+                 'in mulsub: jk, pr,cual,cuml, cutot= ', k, pfull_c(k),&
                   ensmbl_cloud_area (k), meso_cloud_area(k), cutotal(k)
           write (diag_unit, '(a, i4, 3e20.12)')  &
                      'in mulsub: jk,cmu,emd,eme= ', k, cmus_tot(k), &
-                      emds(k), emes(k)
+                   emds_liq(k) + emds_ice(k), emes_liq(k) + emes_ice(k)
           write (diag_unit, '(a, i4, 2e20.12)') &
                      'in mulsub: jk,wmm,wmp,elt= ', k,           &
-                      wmps(k),  anvil_precip_melt(k)
+                      wmps(k),  -anvil_precip_melt(k)
           write (diag_unit, '(a, i4, f20.14, e20.12)')  &
                       'in mulsub: jk,tmes,qmes= ', k, tmes(k), mrmes(k)
         end do
@@ -6521,16 +7299,22 @@ character(len=*),             intent(out) :: ermesg
 !    combine several of the moisture tendency terms associated with the
 !    donner_deep parameterization (disf). if a mesoscale circulation is
 !    present, the following terms are included : 1) transfer of vapor 
-!    from mesoscale to large-scale flow (cmus_tot), 2) evaporation in 
-!    cumulus downdrafts (ecds), 3) evaporation from cumulus updrafts 
+!    from mesoscale to large-scale flow ( the sum of the water mass 
+!    condensed in the mesoscale updraft plus the vapor transferred from
+!    cell to mesoscale and then condensed -- cmus_tot), 2) evaporation 
+!    in cumulus downdrafts (ecds), 3) evaporation from cumulus updrafts 
 !    (eces), 4)  vapor transferred from cells to mesoscale (wmps), 5) 
 !    evaporation from mesoscale updrafts (emes), 6) evaporation from 
 !    mesoscale downdrafts (emds), and 7) mesoscale moisture-flux 
 !    convergence (mrmes). 
 !----------------------------------------------------------------------
         if (lmeso) then
-          disf(k) = -cmus_tot(k) + ecds(k) + eces(k) + wmps(k) +  &
-                    emes(k) + emds(k) + mrmes(k)
+          cell_evap(k) = (ecds_liq(k) + ecds_ice(k)) +  &
+                         (eces_liq(k) + eces_ice(k))
+          meso_cd(k) =  wmms(k)
+          meso_depo(k) = -cmus_tot(k) - wmms(k)
+          meso_evap(k) = emes_liq(k) + emds_liq(k) + &
+                         emes_ice(k) + emds_ice(k)
 
 !----------------------------------------------------------------------
 !    if a mesoscale circulation is not present, disf is simply the 
@@ -6539,15 +7323,25 @@ character(len=*),             intent(out) :: ermesg
 !    of g(h2o) per kg(air) per day.
 !----------------------------------------------------------------------
         else
-          disf(k) = enev(k)*(1.0E03*Param%seconds_per_day)
+          cell_evap(k) = enev(k)*(1.0E03*Param%seconds_per_day)
+          meso_cd(k) = 0.
+          meso_depo(k) = 0.
+          meso_evap(k) = 0.
         endif
+
+        disf(k) = meso_depo(k) + meso_cd(k) + cell_evap(k) +    &
+                  wmps(k) + meso_evap(k)  + mrmes_up(k) + mrmes_dn(k)
 
 !---------------------------------------------------------------------
 !    define the sum of disf and the term containing the tendency due 
 !    to cell-scale vertical moisture-flux convergence and associated
 !    condensation (encmf), and store in array dise.
 !---------------------------------------------------------------------
-        dise(k) = encmf(k) + disf(k)
+        if (Nml%do_donner_lscloud) then
+          dise(k) = encmf(k) + disf(k)
+        else
+          dise(k) = encmf(k)
+        endif
 
 !----------------------------------------------------------------------
 !    define the temperature tendencies associated with the freezing
@@ -6563,13 +7357,83 @@ character(len=*),             intent(out) :: ermesg
 !    latent heat release associated with sublimation occurring in the 
 !    mesoscale updraft and downdraft (disga).
 !----------------------------------------------------------------------
-        temp_tend_freeze (k) = ensmbl_freeze(k)*Param%hlf/     &
+        ensmbl_freeze (k) = ensmbl_freeze(k)*Param%hlf/     &
                                (Param%cp_air*1000.)
-        temp_tend_melt(k) = -(ensmbl_melt(k) + anvil_precip_melt(k))*  &
+        ensmbl_freeze_meso (k) = ensmbl_freeze_meso(k)*Param%hlf/  &
+                               (Param%cp_air*1000.)
+        anvil_precip_melt(k) =  (anvil_precip_melt(k))*  &
                                           Param%hlf/(Param%cp_air*1000.)
-        disn(k) = enctf(k) + disg(k) + temp_tend_freeze(k) + &
-                  temp_tend_melt(k)
-        disga = (emes(k) + emds(k))*Param%hls/(Param%cp_air*1000.)
+        ensmbl_melt(k) =  ensmbl_melt(k)*  &
+                                          Param%hlf/(Param%cp_air*1000.)
+        ensmbl_melt_meso(k) =  ensmbl_melt_meso(k)* &
+                                          Param%hlf/(Param%cp_air*1000.)
+        if (lmeso) then
+          disga_ice_up(k) =  -(emes_ice(k) )*  &
+                                    Param%hls/(Param%cp_air*1000.)
+          disga_ice_dn(k) =  -( emds_ice(k))*  &
+                                    Param%hls/(Param%cp_air*1000.)
+          if (melting_in_cloud) then
+            disl_ice_depo(k) =     &
+                           -meso_depo(k)*Param%hls/(Param%cp_air*1000.)
+            disl_ice_cd(k) =       &
+                          -( meso_cd(k))*Param%hls/(Param%cp_air*1000.)
+            disl_liq_depo(k) = 0.
+            disl_liq_cd(k) = 0.
+            disga_liq_up(k) =  -(emes_liq(k) )*  &
+                                    Param%hls/(Param%cp_air*1000.)
+            disga_liq_dn(k) =  -(emds_liq(k))*  &
+                                    Param%hls/(Param%cp_air*1000.)
+          else
+            disga_liq_up(k) =  -emes_liq(k) * &
+                                    Param%hlv/(Param%cp_air*1000.)
+            disga_liq_dn(k) =  -emds_liq(k) * &
+                                     Param%hlv/(Param%cp_air*1000.)
+            if (.not. meso_frz_intg_sum      ) then
+              disl_liq_depo(k) = -(meso_depo(k))*    &
+                                     Param%hlv/(Param%cp_air*1000.)
+              disl_liq_cd(k) = -( meso_cd(k))*    &
+                                     Param%hlv/(Param%cp_air*1000.)
+              disl_ice_depo(k) = 0.
+              disl_ice_cd(k) = 0.
+            else
+! if no melting but freezing, then hls carried out
+              disl_ice_depo(k) = -meso_depo(k)*  &
+                                      Param%hls/(Param%cp_air*1000.)
+              disl_ice_cd(k) = -( meso_cd(k))*     &
+                                      Param%hls/(Param%cp_air*1000.)
+              disl_liq_depo(k) = 0.
+              disl_liq_cd(k) = 0.
+            endif
+          endif
+        else ! (lmeso)
+          disl_liq_depo(k) = 0.
+          disl_liq_cd(k) = 0.
+          disl_ice_depo(k) = 0.
+          disl_ice_cd(k) = 0.
+          disga_liq_up(k) = 0.
+          disga_liq_dn(k) = 0.
+          disga_ice_up(k) = 0.
+          disga_ice_dn(k) = 0.
+        endif
+
+!--------------------------------------------------------------------
+!    if in a diagnostics column, output the profile of temperature 
+!    change associated with evaporation in the mesoscale circulation 
+!    (disga).
+!--------------------------------------------------------------------
+        if (debug_ijt) then
+          if ( (disga_liq_up(k) + disga_liq_dn(k) +   &
+                disga_ice_up(k) + disga_ice_dn(k)) /= 0.0) then
+            write (diag_unit, '(a, i4, f19.10,  e20.12)')  &
+                    'in mulsub: jk,pr,disga= ', k, pfull_c(k),  &
+                      -(disga_liq_up(k) + disga_liq_dn(k) +   &
+                      disga_ice_up(k) + disga_ice_dn(k))
+            write (diag_unit, '(a, i4, f19.10,  2e20.12)')  &
+                    'in mulsub: jk,pr,disgal, disgai= ', k,   &
+            pfull_c(k), -(disga_liq_up(k) + disga_liq_dn(k)),  &
+                    -(disga_ice_up(k) + disga_ice_dn(k))
+          endif
+        endif
 
 !--------------------------------------------------------------------
 !    if a mesoscale circulation is present, define the heating terms
@@ -6582,55 +7446,520 @@ character(len=*),             intent(out) :: ermesg
 !    temperature flux convergence (tmes).
 !--------------------------------------------------------------------
         if (lmeso) then
-          disl = cmus_tot(k)*Param%hls/(Param%cp_air*1000.)
-          disg_2(k) = disl + disg(k) + temp_tend_freeze (k) +  &
-                      temp_tend_melt(k) - disga + tmes(k)
-
-!----------------------------------------------------------------------
-!    if a mesoscale circulation is not present, disg_2 is simply the 
-!    temperature tendency associated with the evaporation of the 
-!    condensed cloud water that did not precipitate out (disf). the
-!    latent heat constant is chosen appropriately for the in situ
-!    temperature.
-!----------------------------------------------------------------------
-        else
-          if (temp_c(k) .gt. Param%tfre) then
-            disg_2(k) = -disf(k)*Param%hlv/(Param%cp_air*1000.)
-          else
-            disg_2(k) = -disf(k)*Param%hls/(Param%cp_air*1000.)
-          endif
-        endif
+          disg_2liq(k) = disl_liq_depo(k)  + disl_liq_cd(k) +    &
+                         disg_liq(k) + disga_liq_up(k) + disga_liq_dn(k)
+          disg_2ice(k) = disl_ice_depo(k) + disl_ice_cd(k) +   &
+                         disg_ice(k) + disga_ice_up(k) +disga_ice_dn(k)
 
 !---------------------------------------------------------------------
 !    define the sum of disg_2 and the term containing the tendency due 
 !    to cell-scale vertical temperature-flux convergence and associated
 !    condensation (enctf), and store in array disa.
 !---------------------------------------------------------------------
-        disa(k) = enctf(k) + disg_2(k)
-
-!--------------------------------------------------------------------
-!    if in a diagnostics column, output the profile of temperature 
-!    change associated with evaporation in the mesoscale circulation 
-!    (disga).
-!--------------------------------------------------------------------
-        if (debug_ijt) then
-          if (disga /= 0.0) then
-            write (diag_unit, '(a, i4, f19.10,  e20.12)')  &
-                    'in mulsub: jk,pr,emds,disga= ', k, pfull_c(k), disga
+          disn(k) = enctf(k) + disg_liq(k) + disg_ice(k) +  &
+                     ensmbl_freeze_meso(k) + &
+                    ensmbl_freeze(k) + ensmbl_melt(k)  + &
+                    ensmbl_melt_meso(k)                         
+          if (Nml%do_donner_lscloud) then
+            disa(k) = enctf(k) + (disl_liq_depo(k)  + disl_liq_cd(k) + &
+                    disl_ice_depo(k) + disl_ice_cd(k)) +   &
+                    disg_liq(k) + disga_liq_up(k) + disga_liq_dn(k) + &
+                    disg_ice(k) + disga_ice_up(k) +disga_ice_dn(k) + &
+                    ensmbl_freeze_meso(k) + &
+                    ensmbl_freeze(k) + ensmbl_melt(k) +  &
+                    ensmbl_melt_meso(k) + &
+                    anvil_precip_melt(k) + tmes_up(k) + tmes_dn(k)
+          else
+            disa(k) = enctf(k)
           endif
+        else ! (lmeso)
+          disg_2liq(k) = -disze2(k)         
+          disg_2ice(k) = -disze1(k)
+
+!---------------------------------------------------------------------
+!    define the sum of disg_2 and the term containing the tendency due 
+!    to cell-scale vertical temperature-flux convergence and associated
+!    condensation (enctf), and store in array disa.
+!---------------------------------------------------------------------
+          if (Nml%do_donner_lscloud) then
+            disa(k) = enctf(k) + disg_2liq(k) + disg_2ice(k) + &
+                     disze3(k) + ensmbl_freeze(k) + ensmbl_melt(k) 
+          else
+            disa(k) = enctf(k)
+          endif
+
+          disn(k) = disa(k)
         endif
-      end do
+
+        temp_tend_melt(k) = ensmbl_melt(k) +   &
+                              ensmbl_melt_meso(k) + &
+                                               anvil_precip_melt(k)
 
 !--------------------------------------------------------------------
-!    if in a diagnostics column, compute the column integrals of the 
-!    various tendency terms for the vapor and temperature equations. 
-!    esum  : total vapor tendency from donner_deep parameterization
+!    define precip types.
+!--------------------------------------------------------------------
+        if (lmeso) then
+          if (melting_in_cloud) then 
+            disl_ice_melted(k) = -(meso_depo(k) + meso_cd(k))/(1000.)
+            disl_liq(k) = 0.
+            disl_ice(k) = 0.
+          else
+            if (.not. meso_frz_intg_sum      ) then
+              disl_liq(k) = -(meso_depo(k) + meso_cd(k))/(1000.)
+              disl_ice(k) = 0.
+              disl_ice_melted(k) = 0.
+            else
+! if no melting but freezing, then hls carried out
+              disl_ice    (k) = -(meso_depo(k) + meso_cd(k))/(1000.)
+              disl_ice_melted(k) = 0.
+              disl_liq(k) = 0.
+            endif
+          endif
+        else ! (lmeso)
+          disl_liq(k) = 0.
+          disl_ice(k) = 0.
+          disl_ice_melted(k) = 0.
+        endif
+        if (lmeso) then
+            liq_prcp(k) = Param%anvil_precip_efficiency*(dism_liq(k) + &
+                          disl_liq(k) +    &
+                          dism_liq_remelt(k) + dism_ice_melted(k) + &
+                          disl_ice_melted(k)) + disp_liq(k) + &
+                          disp_melted(k) + disz_remelt(k)
+            frz_prcp(k) = Param%anvil_precip_efficiency*  &
+                          (dism_liq_frz(k) + dism_ice(k) +   &
+                          disl_ice(k)) + disp_ice(k) + disz(k)
+          else
+            liq_prcp(k) = disp_liq(k) + disp_melted(k) + disz_remelt(k)
+            frz_prcp(k) = disp_ice(k) + disz(k)
+          endif
+     end do
+
+      if (Nml%do_budget_analysis .or.    &
+                             Initialized%do_conservation_checks) then
+        tsumb = 0.
+        tsumiup = 0.
+        tsumidn = 0.
+        do k=1,nlev_lsm
+          dp = Param%cp_air*(phalf_c(k) - phalf_c(k+1))/Param%grav
+          tsumb = tsumb + disb(k)*dp
+          tsumiup  = tsumiup  + tmes_up(k)*dp
+          tsumidn  = tsumidn  + tmes_dn(k)*dp
+        end do
+
+        if (lmeso) then
+          vrt_mot = tsumiup + tsumidn + tsumb
+        else
+          vrt_mot = tsumb
+        endif
+
+        x5a = 0.
+        x5b = 0.
+        x5c = 0.
+        x5d = 0.
+        x6a = 0.
+        x6b = 0.
+        x6c = 0.
+        x6d = 0.
+        x7 = 0.
+        x8 = 0.
+        x8a = 0.
+        v5 = 0.
+        v6 = 0.
+
+        do k=1,nlev_lsm
+          dp = (phalf_c(k) - phalf_c(k+1))/Param%grav
+          v5 = v5 + disz (k)*dp
+          v6 = v6 + disz_remelt (k)*dp
+          if (lmeso) then
+          x5a = x5a + (dism_liq(k)                     )*dp
+          x5b = x5b + (disl_liq(k) )*dp
+          x5c = x5c + (dism_liq_frz(k) )*dp
+          x5d = x5d + (dism_liq_remelt(k) )*dp
+          x6a = x6a + (dism_ice(k)                     )*dp
+          x6b = x6b + (disl_ice(k))*dp
+          x6c = x6c + (dism_ice_melted(k) )*dp
+          x6d = x6d + (disl_ice_melted(k))*dp
+          endif
+          x7 = x7 + disp_liq(k)*dp
+          x8 = x8 + disp_ice(k)*dp
+          x8a = x8a + disp_melted(k)*dp
+        end do
+        x5a = x5a*Param%anvil_precip_efficiency
+        x5b = x5b*Param%anvil_precip_efficiency
+        x5c = x5c*Param%anvil_precip_efficiency
+        x5d = x5d*Param%anvil_precip_efficiency
+        x6a = x6a*Param%anvil_precip_efficiency
+        x6b = x6b*Param%anvil_precip_efficiency
+        x6c = x6c*Param%anvil_precip_efficiency
+        x6d = x6d*Param%anvil_precip_efficiency
+
+      if (debug_ijt) then
+         
+      do k=1, nlev_lsm 
+         write (diag_unit, '(1(a, i4, 2e20.12))') &
+          
+             'total precip-- k, liq, frz', k, liq_prcp(k), frz_prcp(k) 
+      end do
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a))')   '***************************'
+         write (diag_unit, '(1(a))')  &
+            'PRECIPITATION SOURCES  --  UNITS OF  mm / day'
+         write (diag_unit, '(1(a))')   '***************************'
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a, e20.12))')  &
+           'TOTAL PRECIPITATION: ', x5a + x5b + x5c + x5d + x6a + &
+                                     x6b + x6c + x6d + x7 +  &
+                                     x8 + v5 + x8a + v6
+         write (diag_unit, '(1(a, e20.12))')  &
+           'MESO  PRECIPITATION: ', x5a + x5b + x5c + x5d + x6a + &
+                                     x6b + x6c + x6d 
+         write (diag_unit, '(1(a, e20.12))')  &
+           'CELL  PRECIPITATION: ', x7 + x8 + x8a + v5 + v6
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a, e20.12))')  &
+           'cell liquid condensate precipitated out as liquid', x7 
+         write (diag_unit, '(1(a, e20.12))')  &
+          'cell liquid condensate precipitated out as frozen liquid', v5
+         write (diag_unit, '(1(a, e20.12))')  &
+           'cell liquid condensate which froze, remelted and  &
+               &precipitated out as liquid', v6 
+         write (diag_unit, '(1(a, e20.12))')  &
+           'cell liquid condensate transferred to the mesoscale &
+                &circulation and precipitated out as liquid', x5a
+         write (diag_unit, '(1(a, e20.12))')  &
+           'cell liquid condensate transferred to the mesoscale &
+                  &circulation, then frozen and precipitated out &
+                  &as frozen liquid', x5c
+         write (diag_unit, '(1(a, e20.12))')  &
+           'cell liquid condensate transferred to the mesoscale &
+              &circulation, frozen, remelted and precipitated &
+                                       &out as liquid', x5d
+         write (diag_unit, '(1(a, e20.12))')  &
+           'mesoscale liquid condensate precipitated out as liquid', x5b
+         write (diag_unit, '(1(a, e20.12))')  &
+           'cell ice    condensate precipitated out as ice   ', x8 
+         write (diag_unit, '(1(a, e20.12))')  &
+           'cell ice    condensate which melted and  precipitated &
+                             &out as liquid', x8a
+         write (diag_unit, '(1(a, e20.12))')  &
+           'cell ice transferred to mesoscale and precipitated &
+                        &out as ice   ', x6a
+         write (diag_unit, '(1(a, e20.12))')  &
+           'cell ice transferred to mesoscale which melted and &
+                      & precipitated out as liquid', x6c
+         write (diag_unit, '(1(a, e20.12))')  &
+           'mesoscale ice condensate  precipitated out as ice   ', x6b
+         write (diag_unit, '(1(a, e20.12))')  &
+           'mesoscale ice condensate which melted and  &
+                    &precipitated out as liquid', x6d
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a))')  
+       
+   endif
+
+        v5 = v5*Param%hls   
+        v6 = v6*Param%hlv    
+        x5a = x5a*Param%hlv
+        x5b = x5b*Param%hlv
+        x5c = x5c*Param%hls
+        x5d = x5d*Param%hlv
+        x6a = x6a*Param%hls
+        x6b = x6b*Param%hls
+        x6c = x6c*Param%hlv
+        x6d = x6d*Param%hlv
+        x7 = x7*Param%hlv   
+        x8 = x8*Param%hls   
+        x8a = x8a*Param%hlv      
+        lprcp = x5a + x5b + x5c + x5d + x6a + x6b + x6c + x6d + x7 +  &
+                x8 + v5 + x8a + v6
+
+      if (debug_ijt) then
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a))')   '***************************'
+         write (diag_unit, '(1(a))')  &
+            'LATENT HEAT REMOVED BY THE PRECIPITATION SOURCES  --&
+                           &  UNITS OF  J / (m**2 day)'
+         write (diag_unit, '(1(a))')   '***************************'
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a, e20.12))')  &
+           'TOTAL PRECIPITATION: ', x5a + x5b + x5c + x5d + x6a + &
+                                     x6b + x6c + x6d + x7 +  &
+                                     x8 + v5 + x8a + v6
+         write (diag_unit, '(1(a, e20.12))')  &
+           'MESO  PRECIPITATION: ', x5a + x5b + x5c + x5d + x6a + &
+                                     x6b + x6c + x6d 
+         write (diag_unit, '(1(a, e20.12))')  &
+           'CELL  PRECIPITATION: ', x7 + x8 + x8a + v5 + v6
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by cell liquid condensate precipitated &
+                             &out as liquid', x7 
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by cell liquid condensate precipitated &
+                             &out as frozen liquid', v5 
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by cell liquid condensate which froze, &
+                       &remelted and precipitated out as liquid', v6 
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by cell liquid condensate transferred to &
+                &the mesoscale circulation and precipitated out&
+                & as liquid', x5a
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by cell liquid condensate transferred to &
+             &the mesoscale circulation, then frozen and precipitated &
+               &out as frozen liquid', x5c
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by cell liquid condensate transferred &
+               &to the mesoscale circulation, frozen, remelted &
+                 &and precipitated out as liquid', x5d
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by mesoscale liquid condensate &
+                          &precipitated out as liquid', x5b
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by cell ice condensate precipitated &
+                     &out as ice   ', x8 
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by cell ice    condensate which melted &
+                  &and  precipitated out as liquid', x8a
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by cell ice transferred to mesoscale and &
+                      &precipitated out as ice   ', x6a
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by cell ice transferred to mesoscale &
+                &which melted and  precipitated out as liquid', x6c
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by mesoscale ice condensate  precipitated &
+                       &out as ice   ', x6b
+         write (diag_unit, '(1(a, e20.12))')  &
+           'heat removed by mesoscale ice condensate which melted &
+                        &and  precipitated out as liquid', x6d
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a))')  
+       
+   endif
+      endif
+
+      if (Nml%do_budget_analysis) then
+! units of water budget: g(h20) / kg(air) / day
+        do k=1,nlev_lsm
+          water_budget(k,1) = dise(nlev_lsm-k+1)
+          water_budget(k,2) = encmf(nlev_lsm-k+1)
+          water_budget(k,3) = meso_depo(nlev_lsm-k+1)
+          water_budget(k,4) = meso_cd(nlev_lsm-k+1)
+          water_budget(k,5) = cell_evap(nlev_lsm-k+1)
+          water_budget(k,6) = wmps (nlev_lsm-k+1)
+          water_budget(k,7) = meso_evap(nlev_lsm-k+1)
+          water_budget(k,8) = mrmes_up(nlev_lsm-k+1)
+          water_budget(k,9) = mrmes_dn(nlev_lsm-k+1)
+
+!  enthalpy_budget terms are in units of deg K / day.
+          if (lmeso) then
+            enthalpy_budget(k,1) = disa(nlev_lsm-k+1)
+            enthalpy_budget(k,2) = enctf(nlev_lsm-k+1)
+            enthalpy_budget(k,3) = disl_liq_depo(nlev_lsm-k+1)
+            enthalpy_budget(k,4) = disl_liq_cd(nlev_lsm-k+1)
+            enthalpy_budget(k,5) = disg_liq(nlev_lsm-k+1)
+            enthalpy_budget(k,6) = disga_liq_up(nlev_lsm-k+1)
+            enthalpy_budget(k,7) = disga_liq_dn(nlev_lsm-k+1)
+            enthalpy_budget(k,8) = disl_ice_depo(nlev_lsm-k+1)
+            enthalpy_budget(k,9) = disl_ice_cd  (nlev_lsm-k+1)
+            enthalpy_budget(k,10) = disg_ice(nlev_lsm-k+1)
+            enthalpy_budget(k,11) = disga_ice_up(nlev_lsm-k+1)
+            enthalpy_budget(k,12) = disga_ice_dn(nlev_lsm-k+1)
+            enthalpy_budget(k,13) = ensmbl_freeze_meso(nlev_lsm-k+1)
+            enthalpy_budget(k,14) = ensmbl_freeze(nlev_lsm-k+1)
+            enthalpy_budget(k,15) = ensmbl_melt(nlev_lsm-k+1)
+            enthalpy_budget(k,16) = ensmbl_melt_meso(nlev_lsm-k+1)
+            enthalpy_budget(k,17) = anvil_precip_melt(nlev_lsm-k+1)
+            enthalpy_budget(k,18) = tmes_up(nlev_lsm-k+1)
+            enthalpy_budget(k,19) = tmes_dn(nlev_lsm-k+1)
+          else
+            enthalpy_budget(k,1) = disa(nlev_lsm-k+1)
+            enthalpy_budget(k,2) = enctf(nlev_lsm-k+1)
+            enthalpy_budget(k,5) = disg_2liq(nlev_lsm-k+1) +  &
+                                               disg_2ice(nlev_lsm-k+1)
+            enthalpy_budget(k,10) = disze3   (nlev_lsm-k+1)
+            enthalpy_budget(k,14) = ensmbl_freeze(nlev_lsm-k+1)
+            enthalpy_budget(k,15) = ensmbl_melt(nlev_lsm-k+1)
+          endif
+        end do
+
+!--------------------------------------------------------------------
+!    compute the column integrals of the various tendency terms for 
+!    the vapor equation. 
+!   vsuma  : total vapor tendency from donner_deep parameterization
 !    sumf  : total vapor tendency less the vertical flux convergence and
 !            condensation      
 !    summ  : vapor tendency due to vertical flux convergence and
 !            condensation 
 !    sumqme: mesoscale moisture flux convergence
-!    esuma : total temperature tendency from donner_deep parameter-
+!--------------------------------------------------------------------
+
+        sumf   = 0.
+        summ   = 0.
+        vsuma  = 0.
+        vsumb  = 0.
+        vsumc  = 0.
+        vsumd  = 0.
+        vsumd1 = 0.
+        vsumd2 = 0.
+        vsume  = 0.
+        vsumf  = 0.
+        vsumg  = 0.
+        vsumg1 = 0.
+        vsumg2 = 0.
+        vsumh  = 0.
+        vsumi  = 0.
+        vsumi1 = 0.
+        vsumi2 = 0.
+         
+        do k=1,nlev_lsm
+          dp = (phalf_c(k) - phalf_c(k+1))/Param%grav
+          sumf   = sumf   + disf(k)*dp
+          summ   = summ   + encmf(k)*dp
+          vsuma = vsuma + dise(k)*dp
+          vsumb = vsumb + disd(k)*dp
+          vsumc = vsumc - disv(k)*dp
+          vsumd = vsumd + cell_evap(k)*dp
+          vsumd1 = vsumd1 + (ecds_liq(k) + ecds_ice(k))*dp
+          vsumd2 = vsumd2 + (eces_liq(k) + eces_ice(k))*dp
+          vsume  = vsume + meso_cd(k)*dp
+          vsumf = vsumf + meso_depo(k)*dp
+          vsumg = vsumg + meso_evap(k)*dp
+          vsumg1 = vsumg1 + (emes_liq(k) + emes_ice(k))*dp
+          vsumg2 = vsumg2 + (emds_liq(k) + emds_ice(k))*dp
+          vsumh = vsumh + wmps(k)*dp
+          vsumi1 = vsumi1 + mrmes_up(k)*dp
+          vsumi2 = vsumi2 + mrmes_dn(k)*dp
+        end do
+!---------------------------------------------------------------------
+!    convert the moisture terms to units of mm(h2o) per day.
+!---------------------------------------------------------------------
+        sumf   = sumf/(1000.)
+        summ   = summ/(1000.)
+        vsuma   = vsuma/(1000.)
+        vsumb   = vsumb/(1000.)
+        vsumc   = vsumc/(1000.)
+        vsumd   = vsumd/(1000.)
+        vsumd1  = vsumd1/(1000.)
+        vsumd2  = vsumd2/(1000.)
+        vsume   = vsume/(1000.)
+        vsumf   = vsumf/(1000.)
+        vsumg   = vsumg/(1000.)
+        vsumg1  = vsumg1/(1000.)
+        vsumg2  = vsumg2/(1000.)
+        vsumh   = vsumh/(1000.)
+        vsumi1  = vsumi1/(1000.)
+        vsumi2  = vsumi2/(1000.)
+        vsumi = vsumi1 + vsumi2
+
+
+! units for precip_budget: (kg(h2o) / kg (air) / day
+       do k=1,nlev_lsm
+         precip_budget(k,1,1) = disp_liq(nlev_lsm-k+1)
+         precip_budget(k,2,1) = disz(nlev_lsm-k+1)
+         precip_budget(k,3,1) = disz_remelt(nlev_lsm-k+1)
+         precip_budget(k,4,1) = disp_ice(nlev_lsm-k+1)           
+         precip_budget(k,5,1) = disp_melted(nlev_lsm-k+1)            
+
+         precip_budget(k,1,2) = dism_liq(nlev_lsm-k+1)
+         precip_budget(k,2,2) = dism_liq_frz(nlev_lsm-k+1)
+         precip_budget(k,3,2) = dism_liq_remelt(nlev_lsm-k+1)
+         precip_budget(k,4,2) = dism_ice(nlev_lsm-k+1)
+         precip_budget(k,5,2) = dism_ice_melted(nlev_lsm-k+1)
+
+         precip_budget(k,1,3) = disl_liq(nlev_lsm-k+1+1)
+         precip_budget(k,2,3) = 0.0  
+         precip_budget(k,3,3) = 0.0
+         precip_budget(k,4,3) = disl_ice(nlev_lsm-k+1)
+         precip_budget(k,5,3) = disl_ice_melted(nlev_lsm-k+1)
+       end do
+         precip_budget(:,:,2) = precip_budget(:,:,2)*   &
+                                Param%anvil_precip_efficiency
+         precip_budget(:,:,3) = precip_budget(:,:,3)*   &
+                                Param%anvil_precip_efficiency
+!--------------------------------------------------------------------
+!    output the various column integrals.
+!--------------------------------------------------------------------
+       if (debug_ijt) then
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(a, e20.12, a)') &
+              'in mulsub: CELL MOISTURE FORCING= ', summ, ' MM/DAY'
+         write (diag_unit, '(a, e20.12, a)') &
+          'in mulsub: TOTAL TENDENCY LESS CELL MOISTURE FORCING= ', &
+                                                       sumf, ' MM/DAY'
+         write (diag_unit, '(a, e20.12, a)') &
+          'in mulsub: TOTAL CELL MOISTURE TENDENCY= ', &
+                             summ + vsumd, ' MM/DAY'
+         if (lmeso) then
+           write (diag_unit, '(a, e20.12, a)') &
+            'in mulsub: TOTAL MESO MOISTURE TENDENCY= ', &
+                             vsuma - summ - vsumd, ' MM/DAY'
+         endif
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a))')   '***************************'
+         write (diag_unit, '(1(a))')  &
+            'COLUMN INTEGRAL VAPOR BUDGET TERMS --  &
+                                           &UNITS OF  mm / day'
+         write (diag_unit, '(1(a))')   '***************************'
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(a, e20.12)') &
+             'TOTAL VAPOR TENDENCY=', vsuma 
+         write (diag_unit, '(a, e20.12)') &
+              '    DYNAMICAL TENDENCY=', vsumb + vsumh + vsumi
+         write (diag_unit, '(a, e20.12)') &
+             '         VAPOR CONVERGENCE IN CELLS=', vsumb 
+         if (lmeso) then
+           write (diag_unit, '(a, e20.12)') &
+             '         TRANSFER FROM CELL UPDRAFTS TO MESO=', vsumh 
+           write (diag_unit, '(a, e20.12)') &
+             '         TRANSFER BY MESOSCALE EDDY FLUXES= ', vsumi
+           write (diag_unit, '(a, e20.12)') &
+             '              TRANSFER BY UPWARD EDDIES= ', vsumi1
+           write (diag_unit, '(a, e20.12)') &
+             '              TRANSFER BY DOWNWARD EDDIES= ', vsumi2
+         endif
+         write (diag_unit, '(a, e20.12)') &
+             '    CONDENSATION IN CELLS=', vsumc 
+         write (diag_unit, '(a, e20.12)') &
+             '    EVAPORATION IN CELLS= ', vsumd
+
+         if (lmeso) then
+           write (diag_unit, '(a, e20.12)') &
+             '         CELL DOWNDRAFT EVAP=', vsumd1  
+           write (diag_unit, '(a, e20.12)') &
+             '         CELL UPDRAFT EVAP=', vsumd2  
+           write (diag_unit, '(a, e20.12)') &
+             '    MESOSCALE CONDENSATION  =', vsume
+           write (diag_unit, '(a, e20.12)') &
+             '    MESOSCALE DEPOSITION=', vsumf 
+           write (diag_unit, '(a, e20.12)') &
+             '    MESOSCALE EVAPORATION=', vsumg  
+           write (diag_unit, '(a, e20.12)') &
+             '         MESO EVAPORATION IN UPDRAFTS =', vsumg1
+           write (diag_unit, '(a, e20.12)') &
+             '         MESO EVAPORATION IN DOWNDRAFTS=', vsumg2  
+         endif
+
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a))')  
+         write (diag_unit, '(1(a,3l4         ))')  &
+                  'in mulsub:  lmeso, anvil melts?, meso freezes?', &
+                  lmeso, melting_in_cloud, meso_frz_intg_sum  
+
+
+       endif ! (debug_ijt)
+
+!--------------------------------------------------------------------
+!    compute the column integrals of the various tendency terms for 
+!    the temperature equation. 
+!    tsuma : total temperature tendency from donner_deep parameter-
 !            ization
 !    sumg  : total temperature tendency less the vertical flux conver-
 !            gence and condensation
@@ -6643,117 +7972,197 @@ character(len=*),             intent(out) :: ermesg
 !    sumn  : temperature tendency associated with the cell component of
 !            the donner_deep parameterization
 !--------------------------------------------------------------------
-      if (debug_ijt) then
-        esum  = 0.
-        sumf   = 0.
-        summ   = 0.
-        sumqme = 0.
-        esuma = 0.
-        sumg = 0.
-        esumc  = 0.
-        summes = 0.
-        sumelt = 0.
-        sumfre = 0.
-        sumn = 0.
-        lj1 = 0.
-        lj2 = 0.
-        lj3 = 0.
-        lj4 = 0.
-        lj5 = 0.
-        lj6 = 0.
-        lj7 = 0.
-        lj8 = 0.
-        do k=1,nlev_lsm
-          dp = phalf_c(k) - phalf_c(k+1)
-          lj1 = lj1 -cmus_tot(k)*dp
-          lj2 = lj2 +ecds    (k)*dp
-          lj3 = lj3 +eces    (k)*dp
-          lj4 = lj4 +wmps    (k)*dp
-          lj5 = lj5 +emes    (k)*dp
-          lj6 = lj6 +emds    (k)*dp
-          lj7 = lj7 +mrmes   (k)*dp
-          lj8 = lj8 +disd    (k)*dp
-          esum   = esum   + dise(k)*dp                     
-          sumf   = sumf   + disf(k)*dp
-          summ   = summ   + encmf(k)*dp
-          sumqme = sumqme + mrmes(k)*dp
-          esuma  = esuma  + disa(k)*dp
-          sumg   = sumg   + disg_2(k)*dp
-          esumc  = esumc  + enctf(k)*dp
-          summes = summes + tmes(k)*dp
-          sumelt = sumelt + (ensmbl_melt(k) + anvil_precip_melt(k))*dp
-          sumfre = sumfre + ensmbl_freeze(k)*dp
-          sumn   = sumn   + disn(k)*dp
-        end do
-!---------------------------------------------------------------------
-!    convert the moisture terms to units of mm(h2o) per day.
-!---------------------------------------------------------------------
-        lj1 = lj1 /(Param%grav*1000.)
-        lj2 = lj2 /(Param%grav*1000.)
-        lj3 = lj3 /(Param%grav*1000.)
-        lj4 = lj4 /(Param%grav*1000.)
-        lj5 = lj5 /(Param%grav*1000.)
-        lj6 = lj6 /(Param%grav*1000.)
-        lj7 = lj7 /(Param%grav*1000.)
-        lj8 = lj8 /(Param%grav*1000.)
-        esum   = esum/(Param%grav*1000.)
-        sumf   = sumf/(Param%grav*1000.)
-        summ   = summ/(Param%grav*1000.)
-        sumqme = sumqme/(Param%grav*1000.)
 
-!---------------------------------------------------------------------
-!    convert the temperature terms to units of 
-!    (kg(air)/ kg(h2o)) * mm(h2o) per day.
-!---------------------------------------------------------------------
-        esuma  = (esuma*Param%cp_air)/(Param%grav*Param%hlv)
-        sumg   = sumg*Param%cp_air/(Param%grav*Param%hlv)
-        esumc  = (esumc*Param%cp_air)/(Param%grav*Param%hlv)
-        summes = summes*Param%cp_air/(Param%grav*Param%hlv)
-        sumelt = sumelt/(Param%grav*1000.)
-        sumfre = sumfre/(Param%grav*1000.)
-        sumn   = sumn*Param%cp_air/(Param%grav*Param%hlv)
+       esumc  = 0.
+       sumn = 0.
+       tsumj = 0.
+       tsumj1 = 0.
+       tsumk1 = 0.
+       tsumk2 = 0.
+       tsumk3 = 0.
+       tsumcliq = 0.
+       tsumdliq = 0.
+       tsumeliq = 0.
+       tsumfliq = 0.
+       tsumg1liq = 0.
+       tsumg2liq = 0.
+       tsumcice = 0.
+       tsumdice = 0.
+       tsumeice = 0.
+       tsumfice = 0.
+       tsumg1ice = 0.
+       tsumg2ice = 0.
+       tsummliq = 0.
+       tsummfliq = 0.
+       tsummice = 0.
 
-!--------------------------------------------------------------------
-!    output the various column integrals.
-!--------------------------------------------------------------------
-        write (diag_unit, '(a, e20.12, a)') &
-             'in mulsub: cmus_tot=', lj1  , ' MM/DAY'
-        write (diag_unit, '(a, e20.12, a)') &
-             'in mulsub: ECDS=', lj2  , ' MM/DAY'
-        write (diag_unit, '(a, e20.12, a)') &
-             'in mulsub: ECES=', lj3  , ' MM/DAY'
-        write (diag_unit, '(a, e20.12, a)') &
-             'in mulsub: WMPS=', lj4  , ' MM/DAY'
-        write (diag_unit, '(a, e20.12, a)') &
-             'in mulsub: EMES=', lj5  , ' MM/DAY'
-        write (diag_unit, '(a, e20.12, a)') &
-             'in mulsub: EMDS=', lj6  , ' MM/DAY'
-        write (diag_unit, '(a, e20.12, a)') &
-             'in mulsub: MRMES=', lj7 , ' MM/DAY'
-        write (diag_unit, '(a, e20.12, a)') &
-             'in mulsub: VAPOR CONV=', lj8 , ' MM/DAY'
-        write (diag_unit, '(a, e20.12, a)') &
-             'in mulsub: ESUM=', esum , ' MM/DAY'
-        write (diag_unit, '(a, e20.12, a)') &
-              'in mulsub: SUMF= ', sumf, ' MM/DAY'
-        write (diag_unit, '(a, e20.12, a)') &
-             'in mulsub: SUMM= ', summ, ' MM/DAY'
-        write (diag_unit, '(a, e20.12, a)') &
-              'in mulsub: sumqme= ', sumqme, ' mm/day'
+       do k=1,nlev_lsm
+         dp = Param%cp_air*(phalf_c(k) - phalf_c(k+1))/Param%grav
+         esumc  = esumc  + enctf(k)*dp        
+         sumn   = sumn   + disn(k)*dp
 
+         tsumcliq = tsumcliq + disc_liq(k)*dp
+         tsumdliq = tsumdliq + disg_liq(k)*dp
+         tsumeliq = tsumeliq + disl_liq_cd(k)*dp
+         tsumfliq = tsumfliq + disl_liq_depo(k)*dp
+         tsumg1liq = tsumg1liq + disga_liq_up(k)*dp
+         tsumg2liq = tsumg2liq + disga_liq_dn(k)*dp
+         tsumcice = tsumcice + disc_ice(k)*dp
+         tsumdice = tsumdice + disg_ice(k)*dp
+         tsumeice = tsumeice + disl_ice_cd(k)*dp
+         tsumfice = tsumfice + disl_ice_depo(k)*dp
+         tsumg1ice = tsumg1ice + disga_ice_up(k)*dp
+         tsumg2ice = tsumg2ice + disga_ice_dn(k)*dp
+         if (.not. lmeso) then
+           tsummliq = tsummliq + disg_2liq(k)*dp
+           tsummfliq = tsummfliq + disg_2ice(k)*dp
+           tsummice = tsummice +  disze3(k)*dp
+         endif
+          
+         tsumj    = tsumj    + ensmbl_freeze(k)*dp
+         tsumj1   = tsumj1   + ensmbl_freeze_meso(k)*dp
+         tsumk1   = tsumk1   + ensmbl_melt(k)*dp
+         tsumk3   = tsumk3   + ensmbl_melt_meso(k)*dp
+         tsumk2   = tsumk2 +  anvil_precip_melt(k) *dp
+       end do
+
+       if (lmeso) then
+         tsumaliq = tsumcliq + tsumdliq + tsumeliq + tsumfliq +  &
+                    tsumg1liq + tsumg2liq               
+         tsumaice = tsumcice + tsumeice + tsumfice + tsumdice +  &
+                    tsumg1ice + tsumg2ice
+         liq_ice = tsumj + tsumj1 + tsumk1 + tsumk2 + tsumk3
+       else
+         tsumaliq = tsumcliq + tsummliq 
+         tsumaice = tsumcice + tsummice  + tsummfliq
+         liq_ice = tsumj + tsumk1
+       endif
+
+       tsuma = tsumaliq + tsumaice + vrt_mot + liq_ice     
+
+
+       if (debug_ijt) then
+        write (diag_unit, '(1(a))')  
+        write (diag_unit, '(1(a))')  
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: CELL TEMPERATURE FORCING= ', esumc,   &
+                                               ' Joules / (m**2 * DAY)'
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: CELL TENDENCY LESS FORCING ', sumn - esumc,   &
+                                               ' Joules / (m**2 * DAY)'
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: TOTAL CELL TEMPERATURE TENDENCY ', sumn,   &
+                                               ' Joules / (m**2 * DAY)'
+        if (lmeso) then
+        write (diag_unit, '(a, e20.12, a)') &
+             'in mulsub: TOTAL MESO TEMPERATURE TENDENCY ', &
+                                         tsuma - sumn,  &
+                                               ' Joules / (m**2 * DAY)'
+        endif
+        write (diag_unit, '(1(a))')  
+        write (diag_unit, '(1(a))')   '***************************'
+        write (diag_unit, '(1(a))')  &
+            'COLUMN INTEGRAL TEMPERATURE BUDGET TERMS --  &
+                                &UNITS OF (Joules / (m**2 * day)'
+        write (diag_unit, '(1(a))')   '***************************'
+        write (diag_unit, '(1(a))')  
         write (diag_unit, '(1(a,e20.12))')  &
-                  'in mulsub:  ESUMA=',ESUMA
-        write (diag_unit, '(a, e20.12,a)')  &
-                                'in mulsub: SUMG=',SUMG,' MM/DAY'
-        write (diag_unit, '(a, e20.12)') 'in mulsub: ESUMC=',ESUMC
-        write (diag_unit, '(a,e20.12,a)')   &
-                                'in mulsub: summes=',summes,' mm/day'
-        write (diag_unit, '(a, 2e20.12,a)')  &
-                     'in mulsub: sumelt,sumfre= ',sumelt,sumfre,  &
-                                                ' mm/day'
-        write (diag_unit, '(a,e20.12,a)')  &
-                                'in mulsub: SUMN= ',SUMN,' MM/DAY'
-      endif
+            'TOTAL TEMPERATURE TENDENCY=',tsuma
+
+        if (lmeso) then
+        write (diag_unit, '(1(a,e20.12))')  &
+            '    DYNAMICAL TENDENCY=', vrt_mot
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       CELL ENTROPY CONVERGENCE=', tsumb 
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       MESO ENTROPY CONVERGENCE=', tsumiup + tsumidn
+        write (diag_unit, '(1(a,e20.12))')  &
+            '             MESO UP ENTROPY CONVERGENCE=', tsumiup
+        write (diag_unit, '(1(a,e20.12))')  &
+            '             MESO DOWN ENTROPY CONVERGENCE=', tsumidn
+        write (diag_unit, '(1(a,e20.12))')  &
+            '    LATENT HEATING: VAPOR/LIQUID=', tsumaliq
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       CONDENSATION IN CELLS=', tsumcliq
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       EVAPORATION IN CELLS=', tsumdliq
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       MESOSCALE CONDENSATION=', tsumeliq
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       MESOSCALE DEPOSITION=', tsumfliq
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       MESO EVAPORATION=', tsumg1liq + tsumg2liq
+        write (diag_unit, '(1(a,e20.12))')  &
+            '             MESO EVAPORATION UPDRAFT=', tsumg1liq
+        write (diag_unit, '(1(a,e20.12))')  &
+            '             MESO EVAPORATION DOWNDRAFT=', tsumg2liq
+        write (diag_unit, '(1(a,e20.12))')  &
+            '    LATENT HEATING: VAPOR/ICE=',tsumaice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       CELL CONDENSATION=', tsumcice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       CELL UPDRAFT   EVAPORATION=', tsumdice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       MESOSCALE CONDENSATION=', tsumeice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       MESOSCALE DEPOSITION=', tsumfice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       MESOSCALE EVAPORATION=', tsumg1ice + tsumg2ice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '             MESO EVAPORATION IN UPDRAFTS=', tsumg1ice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '             MESO EVAPORATION IN DOWNDRAFTS=', tsumg2ice
+        write (diag_unit, '(1(a,e20.12,a))')  &
+            '    LATENT HEATING: LIQUID/ICE=', liq_ice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       CELL FREEZING',   tsumj      
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       MESO FREEZING',   tsumj1      
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       TOTAL MELTING',   tsumk1 + tsumk2 + tsumk3      
+        write (diag_unit, '(1(a,e20.12))')  &
+            '             CELL MELTING',   tsumk1     
+        write (diag_unit, '(1(a,e20.12))')  &
+            '             MESO MELTING (FOR CONSRV OF ICE)',   tsumk3 
+        write (diag_unit, '(1(a,e20.12))')  &
+            '             ANVIL PRECIP MELTING',   tsumk2      
+        write (diag_unit, '(1(a))')  
+        write (diag_unit, '(1(a))')  
+
+
+
+        else ! (lmeso)
+        write (diag_unit, '(1(a,e20.12))')  &
+            '    DYNAMICAL TENDENCY=', vrt_mot
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       CONVERGENCE FROM CELL-SCALE MOTIONS=', tsumb 
+        write (diag_unit, '(1(a,e20.12))')  &
+            '    LATENT HEATING: VAPOR/LIQUID=', tsumaliq
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       LIQUID CONDENSATION IN CELLS=', tsumcliq
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       LIQUID EVAPORATION IN CELLS=', tsummliq
+        write (diag_unit, '(1(a,e20.12))')  &
+            '    LATENT HEATING: VAPOR/ICE=',tsumaice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       ICE CONDENSATION IN CELLS=', tsumcice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       ICE EVAPORATION IN CELLS=', tsummice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       FROZEN LIQUID EVAPORATION IN CELLS=', tsummfliq
+        write (diag_unit, '(1(a,e20.12,a))')  &
+            '    LATENT HEATING: LIQUID/ICE=', liq_ice
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       FREEZING IN CELLS',   tsumj      
+        write (diag_unit, '(1(a,e20.12))')  &
+            '       MELTING IN CELLS',   tsumk1     
+        write (diag_unit, '(1(a))')  
+        write (diag_unit, '(1(a))')  
+        endif   ! (lmeso)
+
+      endif ! (debug_ijt)
+
+   endif ! (do_budget_analysis)
 
 !---------------------------------------------------------------------
 !    call subroutine output_diagnostic_profiles to print various 
@@ -6762,10 +8171,14 @@ character(len=*),             intent(out) :: ermesg
 !---------------------------------------------------------------------
       if (debug_ijt) then
          call don_d_output_diag_profs_k    &
-              (nlev_lsm, diag_unit, pfull_c,  disc, disb, disd, disn,  &
-               encmf, temp_tend_freeze, temp_tend_melt, cmus_tot, emds, &
-               emes, wmms, wmps, tmes, mrmes, eces, ecds, disa, &
-               dise, disg_2, disf, ermesg)
+              (nlev_lsm, diag_unit, pfull_c,  disc_liq, disc_ice,  &
+               disb, disd, disn,  &
+              encmf, ensmbl_freeze, ensmbl_freeze_meso, &
+              temp_tend_melt,  cmus_tot,  &
+               emds_liq, emds_ice, &
+               emes_liq, emes_ice, wmms, wmps, tmes, mrmes,  &
+               eces_liq, eces_ice, ecds_liq, ecds_ice, disa, &
+               dise, disg_2liq, disg_2ice, disf, ermesg)
       endif
 
 !----------------------------------------------------------------------
@@ -6784,10 +8197,13 @@ end subroutine don_d_def_conv_forcing_k
 !#####################################################################
 
 subroutine don_d_finalize_output_fields_k   &
-         (nlev_lsm, ntr, i, j, Param, disb, disc, temp_tend_freeze, &
-          temp_tend_melt, tmes, disd, cmus_tot, ecds, eces, emds, emes, &
+         (nlev_lsm, ntr, i, j, Param, disb, disc_liq, disc_ice,  &
+          ensmbl_freeze, ensmbl_freeze_meso, &
+        temp_tend_melt,  tmes, disd, cmus_tot, ecds_liq, ecds_ice, &
+         eces_liq, eces_ice, emds_liq, emds_ice, emes_liq, emes_ice, &
           wmms, wmps, mrmes, cutotal, dmeml, detmfl, temptr, uceml, &
-          umeml, cuq, cuql_v, qtren, qtmes, wtp, ensmbl_wetc, Don_conv, ermesg)
+          umeml, cuq, cuql_v, qtren, qtmes, wtp, ensmbl_wetc,   &
+          Don_conv, ermesg)
 
 !----------------------------------------------------------------------
 !    subroutine finalize_output_fields stores output variables from 
@@ -6803,12 +8219,16 @@ implicit none
 integer,                          intent(in)    :: nlev_lsm, ntr
 integer,                          intent(in)    :: i, j
 type(donner_param_type),          intent(in)    :: Param
-real,    dimension(nlev_lsm),     intent(in)    :: disb, disc,   &
-                                                   temp_tend_freeze, &
+real,    dimension(nlev_lsm),     intent(in)    :: disb, disc_liq, disc_ice,   &
+                                                   ensmbl_freeze, &
+                                                   ensmbl_freeze_meso, &
                                                    temp_tend_melt,  &
                                                    tmes, disd, cmus_tot,&
-                                                   ecds, eces, emds,   &
-                                                   emes, wmms, wmps,  &
+                                                   emds_liq, emds_ice, &
+                                                   ecds_liq, ecds_ice, &
+                                                   eces_liq, eces_ice, &
+                                                         wmms, wmps,  &
+                                                   emes_liq, emes_ice, &
                                                    mrmes, cutotal, &
                                                    dmeml, detmfl, uceml,&
                                                    umeml, cuq, cuql_v
@@ -6885,21 +8305,22 @@ character(len=*),                 intent(out)   :: ermesg
       do k=1,nlev_lsm            
         kinv = nlev_lsm + 1 - k
         Don_conv%ceefc (i,j,kinv)   = disb(k)/Param%seconds_per_day
-        Don_conv%cecon (i,j,kinv)   = disc(k)/Param%seconds_per_day
+        Don_conv%cecon (i,j,kinv)   = (disc_liq(k) + disc_ice(k))/Param%seconds_per_day
         Don_conv%tmes  (i,j,kinv)   = tmes(k)/Param%seconds_per_day
-        Don_conv%fre   (i,j,kinv)   = temp_tend_freeze(k)/  &
+        Don_conv%fre   (i,j,kinv)   = (ensmbl_freeze(k) +  &
+                                        ensmbl_freeze_meso(k))/  &
                                                  Param%seconds_per_day
-        Don_conv%elt   (i,j,kinv)   = temp_tend_melt(k)/     &
+        Don_conv%elt   (i,j,kinv)   = temp_tend_melt(k) / &
                                                    Param%seconds_per_day
         Don_conv%cmus  (i,j,kinv)   = cmus_tot(k)/       &
                                            (1.0E03*Param%seconds_per_day)
-        Don_conv%ecds  (i,j,kinv)   = ecds(k)/           &
+        Don_conv%ecds  (i,j,kinv)   = (ecds_liq(k) + ecds_ice(k))/    &
                                            (1.0E03*Param%seconds_per_day)
-        Don_conv%eces  (i,j,kinv)   = eces(k)/            &
+        Don_conv%eces  (i,j,kinv)   = (eces_liq(k) + eces_ice(k))/    &
                                            (1.0E03*Param%seconds_per_day)
-        Don_conv%emds  (i,j,kinv)   = emds(k)/            &
+        Don_conv%emds  (i,j,kinv)   = (emds_liq(k) + emds_ice(k))/    &
                                            (1.0E03*Param%seconds_per_day)
-        Don_conv%emes  (i,j,kinv)   = emes(k)/            &
+        Don_conv%emes  (i,j,kinv)   = (emes_liq(k) + emes_ice(k))/    &
                                            (1.0E03*Param%seconds_per_day)
         Don_conv%mrmes  (i,j,kinv)   = mrmes(k)/          &
                                            (1.0E03*Param%seconds_per_day)
@@ -6940,7 +8361,8 @@ end subroutine don_d_finalize_output_fields_k
 !#####################################################################
 
 subroutine don_d_determine_cloud_area_k            &
-         (me, nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param, Nml,  & 
+         (me, nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param, Nml,  &
+          lofactor, &
           max_depletion_rate, dcape, amax, dise_v, disa_v, pfull_c,  &
           temp_c, mixing_ratio_c, env_t, env_r, parcel_t, parcel_r, &
           cape_p, exit_flag, amos, a1, ermesg)
@@ -6963,6 +8385,7 @@ logical,                      intent(in)    :: debug_ijt
 type(donner_param_type),      intent(in)    :: Param
 type(donner_nml_type),        intent(in)    :: Nml      
 real,                         intent(in)    :: max_depletion_rate,   &
+                                               lofactor, &
                                                dcape, amax
 real, dimension(nlev_lsm),    intent(in)    :: dise_v, disa_v, &
                                                pfull_c, temp_c,  &
@@ -7102,7 +8525,8 @@ character(len=*),             intent(out)   :: ermesg
 !    fraction and so close the deep-cumulus parameterization.
 !--------------------------------------------------------------------
       call cu_clo_cumulus_closure_k   &
-           (nlev_hires, diag_unit, debug_ijt, Param, Nml, dcape, &
+           (nlev_hires, diag_unit, debug_ijt, Param, Nml, lofactor, &
+            dcape, &
             cape_p, qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, &
             rl_v, parcel_r, env_t, parcel_t, a1, ermesg)     
 
@@ -7612,7 +9036,8 @@ end subroutine don_d_output_cupar_diags_k
 !####################################################################
 
 subroutine don_d_dealloc_loc_vars_k   &
-         (Don_conv, Don_cape, Don_rad, ermesg)
+         (Don_conv, Don_cape, Don_rad, Don_budgets, Nml,   &
+          Initialized, ermesg)
 
 !----------------------------------------------------------------------
 !    subroutine don_d_dealloc_loc_vars_k deallocates the
@@ -7622,7 +9047,8 @@ subroutine don_d_dealloc_loc_vars_k   &
 !----------------------------------------------------------------------
 
 use donner_types_mod, only : donner_conv_type, donner_cape_type, &
-                             donner_rad_type
+                             donner_rad_type, donner_budgets_type, &
+                             donner_nml_type, donner_initialized_type
 
 implicit none
 
@@ -7630,6 +9056,9 @@ implicit none
 type(donner_conv_type),         intent(inout) :: Don_conv
 type(donner_cape_type),         intent(inout) :: Don_cape
 type(donner_rad_type),          intent(inout) :: Don_rad 
+type(donner_budgets_type),          intent(inout) :: Don_budgets
+type(donner_nml_type),          intent(inout) :: Nml         
+type(donner_initialized_type),  intent(inout) :: Initialized 
 character(len=*),               intent(out)   :: ermesg
 
 !----------------------------------------------------------------------
@@ -7753,6 +9182,20 @@ character(len=*),               intent(out)   :: ermesg
       deallocate (Don_rad%nsum             )        
 
 !----------------------------------------------------------------------
+!    deallocate the components of the donner_budgets_type variable.
+!----------------------------------------------------------------------
+      deallocate (Don_budgets%liq_prcp    )
+      deallocate (Don_budgets%frz_prcp    )
+   if (Initialized%do_conservation_checks .or.    &
+                                           Nml%do_budget_analysis) then
+      deallocate (Don_budgets%lheat_precip)
+      deallocate (Don_budgets%vert_motion )
+      deallocate (Don_budgets%water_budget)
+      deallocate (Don_budgets%enthalpy_budget)
+      deallocate (Don_budgets%precip_budget)
+   endif
+
+!----------------------------------------------------------------------
 
 
 end subroutine don_d_dealloc_loc_vars_k 
@@ -7803,8 +9246,9 @@ type(donner_conv_type),  intent(inout)  :: Don_conv
 
    integer :: i,j,n,k
    logical :: flag
-   real, dimension(nlev_lsm) :: tracer0, trtend, tracer1
-   real :: ratio
+   real, dimension(nlev_lsm) :: tracer0, trtend, trtendw, tracer1,  &
+                                tracer1w
+   real :: ratio, tracer_max, tracer_min
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -7813,8 +9257,10 @@ type(donner_conv_type),  intent(inout)  :: Don_conv
 !                    donner deep convection parameterization
 !                    [ tracer units, e.g., kg(tracer) / kg (dry air) ]
 !     tracer0        column tracer mixing ratios before convection
-!     trtend         column tracer mixing ratio tendencies due to convection [ (tracer units) / s ]
-!     tracer1        column tracer mixing ratios after convection
+!     trtend         column tracer mixing ratio tendencies due to convective transport [ (tracer units) / s ]
+!     trtendw        column tracer mixing ratio tendencies due to convective transport + wetdep [ (tracer units) / s ]
+!     tracer1        column tracer mixing ratios after convective transport only
+!     tracer1w       column tracer mixing ratios after convective transport + wet deposition
 !     i, j, k, n     do-loop indices
 !     ratio          ratio by which tracer convective tendencies need to 
 !                    be reduced to permit realizability (i.e., to prevent
@@ -7826,17 +9272,36 @@ type(donner_conv_type),  intent(inout)  :: Don_conv
    do i = 1,isize
    do j = 1,jsize
       
-      tracer0(:) = tracers(i,j,:,n)
-      trtend(:)  = Don_conv%qtceme(i,j,:,n) + Don_conv%wetdept(i,j,:,n)
-      tracer1(:) = tracer0 + dt * trtend(:)
-      if ( ALL(tracer0(:) >= 0.) .and. ANY(tracer1(:) < 0.) ) then
-         ratio = 1.
-         do k = 1,nlev_lsm
-            if (trtend(k)<0. .and. tracer1(k)<0. ) then 
-               ratio = MIN( ratio,tracer0(k)/(-trtend(k)*dt) )
-            end if
-         end do
-         ratio = MAX(0.,MIN(1.,ratio))
+      tracer0(:)  = tracers(i,j,:,n)
+      trtend(:)   = Don_conv%qtceme(i,j,:,n)
+      trtendw(:)  = trtend(:) + Don_conv%wetdept(i,j,:,n)
+      tracer1(:)  = tracer0 + dt * trtend(:)
+      tracer1w(:) = tracer0 + dt * trtendw(:)
+ 
+      tracer_min = 1.e20
+      tracer_max = -1.e20
+
+      do k = 1,nlev_lsm
+         if (trtend(k) /= 0.) then
+            tracer_max = max(tracer0(k),tracer_max)
+            tracer_min = min(tracer0(k),tracer_min)
+         end if
+      end do
+       
+      ratio = 1.
+      do k = 1,nlev_lsm
+         if (tracer0(k) > 0. .and. tracer1w(k)<0. ) then
+            ratio = MIN( ratio,tracer0(k)/(-trtendw(k)*dt) )
+         end if
+         if (tracer1(k)<tracer_min ) then
+           ratio = MIN( ratio,(tracer0(k)-tracer_min)/(-trtend(k)*dt) )
+         end if
+         if (tracer1(k)>tracer_max ) then
+            ratio = MIN( ratio,(tracer_max-tracer0(k))/(trtend(k)*dt) )
+         end if
+      end do
+      ratio = MAX(0.,MIN(1.,ratio))
+      if (ratio /= 1.) then
          Don_conv%qtceme(i,j,:,n)  = Don_conv%qtceme(i,j,:,n)  * ratio
          Don_conv%qtren1(i,j,:,n)  = Don_conv%qtren1(i,j,:,n)  * ratio
          Don_conv%qtmes1(i,j,:,n)  = Don_conv%qtmes1(i,j,:,n)  * ratio
@@ -7845,9 +9310,6 @@ type(donner_conv_type),  intent(inout)  :: Don_conv
          Don_conv%wetdepm(i,j,:,n) = Don_conv%wetdepm(i,j,:,n) * ratio
          Don_conv%wetdept(i,j,:,n) = Don_conv%wetdept(i,j,:,n) * ratio
       end if
-!     if (ANY(Don_conv%wetdept(i,j,:,n) > 0.)) then
-!        write(*,*) 'don_d_check_tracer_realizability: WARNING! wetdep > 0.'
-!     end if
    end do
    end do
    end do

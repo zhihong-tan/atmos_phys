@@ -41,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 14.0 2007/03/15 22:05:59 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
+character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 14.0.8.1 2007/11/09 23:04:44 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
 
 
 !---------------------------------------------------------------------
@@ -2038,9 +2038,9 @@ end function ran0
     real, dimension(size(tau, 1))         :: inhomog_number
     
     ! Local variables
-    real,   dimension(size(tau, 1))               :: logAve, linearAve
+    real,   dimension(size(tau, 1))               :: logAve, linearAve, tmp
     logical, dimension(size(tau, 1), size(tau, 2)) :: isCloudy
-    
+    integer :: i,j
     !
     ! compute linear and logarithmic averages
     
@@ -2049,15 +2049,35 @@ end function ran0
     !
     ! compute inhomogeneity parameter
     
-    where(count(isCloudy(:, :), dim = 2) > minColsInhomo)
-      logAve(:)    = sum(log(tau(:, :)), dim = 2, mask = isCloudy(:, :)) / &
-                     count(isCloudy(:, :), dim = 2)
-      linearAve(:) = sum(tau(:, :),      dim = 2, mask = isCloudy(:, :)) / &
-                     count(isCloudy(:, :), dim = 2)
-      inhomog_number(:) = 1. - ( exp(logAve(:))/linearAve(:) )        
-    elsewhere
-      inhomog_number(:) = -1.
-    endwhere
+!    where(count(isCloudy(:, :), dim = 2) > minColsInhomo)
+!      logAve(:)    = sum(log(tau(:, :)), dim = 2, mask = isCloudy(:, :)) / &
+!                     count(isCloudy(:, :), dim = 2)
+!      linearAve(:) = sum(tau(:, :),      dim = 2, mask = isCloudy(:, :)) / &
+!                     count(isCloudy(:, :), dim = 2)
+!      inhomog_number(:) = 1. - ( exp(logAve(:))/linearAve(:) )        
+!    elsewhere
+!      inhomog_number(:) = -1.
+!    endwhere
+    tmp = count(isCloudy(:, :), dim = 2)
+    inhomog_number(:) = -1.
+    do i= 1,size(logave,1)
+      if ( tmp(i) > minColsInhomo) then
+      logAve(i)    = 0.0
+      linearAve(i) = 0.0
+        do j = 1, size(tau,2)
+          if (isCloudy(i,j) ) then
+            logAve(i)    = logAve(i) + log(tau(i,j))
+            linearAve(i) = linearAve(i) +  tau(i,j)
+          endif
+        enddo
+      logAve(i)    = logAve(i)   /tmp(i)
+      linearAve(i) = linearAve(i)/tmp(i)
+      endif
+    enddo  
+    do i= 1,size(logave,1)
+      if ( tmp(i) > minColsInhomo) &
+        inhomog_number(i) = 1. - ( exp(logAve(i))/linearAve(i) )
+    enddo  
     
   end function computeInhomogeneityParameter
   ! ------------------------------------------------------   
@@ -2315,7 +2335,7 @@ end function ran0
   subroutine ran0_vec(idum, ran0)
     integer, dimension(:), intent(inout) :: idum
     real,    dimension(:), intent(  out) :: ran0
-!     $Id: isccp_clouds.F90,v 14.0 2007/03/15 22:05:59 fms Exp $
+!     $Id: isccp_clouds.F90,v 14.0.8.1 2007/11/09 23:04:44 wfc Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

@@ -21,8 +21,8 @@ implicit none
 
 private
 
-character(len=128) :: version = '$Id: topo_drag.F90,v 15.0 2007/08/14 03:56:19 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_10 $'
+character(len=128) :: version = '$Id: topo_drag.F90,v 15.0.4.1 2007/10/17 12:34:24 bw Exp $'
+character(len=128) :: tagname = '$Name: omsk_2007_12 $'
 
 logical :: module_is_initialized = .false.
 
@@ -555,6 +555,7 @@ real, intent(in), dimension(:,:) :: lonb, latb
 character*128 :: msg
 character*16  :: name
 character*64  :: restart_file='INPUT/topo_drag.res.nc'
+character*64  :: restart_file1='INPUT/topo_drag.res.tile1.nc'
 character*64  :: topography_file='INPUT/postopog_2min_hp150km.nc'
 character*64  :: dragtensor_file='INPUT/dragelements_2min_hp150km.nc'
 character*3   :: tensornames(4) = (/ 't11', 't21', 't12', 't22' /)
@@ -605,7 +606,7 @@ integer :: siz(4)
 
 ! read restart file
 
-  if ( file_exist(restart_file) ) then
+  if ( file_exist(restart_file) .or. file_exist(restart_file1) ) then
 
      if (mpp_pe() == mpp_root_pe()) then
         write ( msg, '("Reading restart file: ",a40)' ) restart_file

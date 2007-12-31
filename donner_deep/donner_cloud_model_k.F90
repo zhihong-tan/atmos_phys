@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cloud_model_k.F90,v 15.0 2007/08/14 03:53:14 fms Exp $
+!  $Id: donner_cloud_model_k.F90,v 15.0.4.1 2007/10/30 17:41:33 rsh Exp $
 
 !module donner_cloud_model_inter_mod
 
@@ -18,9 +18,9 @@ subroutine don_cm_cloud_model_k   &
           Col_diag, Initialized, tb, pb, alpp, cld_press, temp_c, &
 !--lwh
           mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave, &
-          exit_flag_c, rcl, dpf, &
-          dpftr, qlw, dfr, flux, pt_kou, dint, cu, cell_precip, dints, apt, &
-          cell_melt, efchr, emfhr, cfracice, etfhr, ncc_kou, ermesg)
+          exit_flag_c, rcl, dpf, dpftr, qlw, dfr, flux, pt_kou,  &
+          dint, cu, cell_precip, apt, cell_melt, pmelt_lsm, summel, &
+          efchr, emfhr, cfracice, etfhr, ncc_kou, tcc, ermesg)
 
 !--------------------------------------------------------------------
 !
@@ -71,15 +71,17 @@ real,    dimension(nlev_lsm,ntr),   intent(in)     :: tracers_c
 real,                               intent(inout)  :: pcsave
 logical,                            intent(inout)  :: exit_flag_c     
 real,    dimension(nlev_hires),     intent(out)    :: rcl, dpf, qlw, &
-                                                      dfr, flux    
+                                                      dfr, flux, tcc 
 real,                               intent(out)    :: pt_kou, dint, cu,&
                                                       cell_precip,  &
-                                                      dints, apt
+                                                             apt
 real,    dimension(nlev_lsm),       intent(out)    :: cell_melt
 real,    dimension(nlev_hires),     intent(out)    :: efchr, emfhr,   &
                                                       cfracice
 real,    dimension(nlev_hires,ntr), intent(out)    :: etfhr, dpftr
 integer,                            intent(out)    :: ncc_kou
+real,                               intent( in)    :: pmelt_lsm
+real,                               intent(out)    :: summel
 character(len=*),                   intent(out)    :: ermesg
 
 !---------------------------------------------------------------------
@@ -153,11 +155,12 @@ character(len=*),                   intent(out)    :: ermesg
 !--------------------------------------------------------------------
 !   local variables:
 
-      real, dimension (nlev_hires)         ::  pf, tcc, wv, te, mre
+      real, dimension (nlev_hires)         ::  pf,      wv, te, mre
       real, dimension (nlev_hires,ntr)     ::  xclo, xtrae, pftr 
-      real        :: precip, conint, summel, sumlhr, pmel, dmela
+      real        :: precip, conint,                 pmel
       integer     :: k, kc
       real        :: accond, acpre
+      real        :: sumfrea, sumlhr
       logical     :: lfc_not_reached, do_donner_tracer
       integer     ::  cldtop_indx
 
@@ -187,13 +190,11 @@ character(len=*),                   intent(out)    :: ermesg
 !-------------------------------------------------------------------
       call don_cm_gen_incloud_profs_k  &
            (nlev_lsm, nlev_hires, ntr, kou, diag_unit, debug_ijt, &
-!++lwh
-            Col_diag, Param, Initialized, tb, pb, alpp, cld_press, temp_c,  &
-!--lwh
-            mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave,&
-            tcc, wv, rcl, qlw, dfr, flux, pf, pftr, te, mre, xclo, xtrae, &
-            dint, accond, acpre, cldtop_indx, do_donner_tracer,  &
-            lfc_not_reached, ermesg)
+            Col_diag, Param, Initialized, tb, pb, alpp, cld_press,  &
+            temp_c, mixing_ratio_c, pfull_c, phalf_c, tracers_c,  &
+            pcsave,tcc, wv, rcl, qlw, dfr, flux, pf, pftr, te, mre, &
+            xclo, xtrae, dint, accond, acpre, sumfrea, cldtop_indx, &
+            do_donner_tracer, lfc_not_reached, ermesg)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -220,11 +221,11 @@ character(len=*),                   intent(out)    :: ermesg
 !
 !---------------------------------------------------------------------
       call don_cm_process_condensate_k     &
-           (nlev_lsm, nlev_hires, ntr, cldtop_indx, diag_unit, debug_ijt, &
-            Param, acpre, accond, pb, pt_kou, pf, pftr, tcc, rcl, cld_press, &
-            phalf_c, conint, dint, dints, pmel, precip, cu,  &
-            cell_precip, sumlhr, summel, dmela, dpf, dpftr, dfr, cell_melt, &
-            ermesg)
+         (nlev_lsm, nlev_hires, ntr, cldtop_indx, diag_unit, debug_ijt,&
+          Param, acpre, accond, pb, pt_kou, pf, pftr, tcc, rcl,  &
+          cld_press, phalf_c, conint, dint, pmel, pmelt_lsm, precip, &
+          cu, cell_precip, sumlhr, summel, dpf, dpftr, dfr, cell_melt, &
+          ermesg)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -335,12 +336,11 @@ end subroutine don_cm_cloud_model_k
 
 subroutine don_cm_gen_incloud_profs_k  &
          (nlev_lsm, nlev_hires, ntr, kou, diag_unit, debug_ijt, &
-!++lwh
-          Col_diag,  Param, Initialized, tb, pb, alpp, cld_press, temp_c, &
-!--lwh
-          mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave, tcc, wv, &
-          rcl, qlwa, dfr, flux, pf, pftr, te, mre, xclo, xtrae, dint, accond, &
-          acpre, cldtop_indx, do_donner_tracer, lfc_not_reached, ermesg)
+          Col_diag,  Param, Initialized, tb, pb, alpp, cld_press, &
+          temp_c, mixing_ratio_c, pfull_c, phalf_c, tracers_c, pcsave, &
+          tcc, wv, rcl, qlwa, dfr, flux, pf, pftr, te, mre, xclo, &
+          xtrae, dint, accond, acpre, sumfrea, cldtop_indx,  &
+          do_donner_tracer, lfc_not_reached, ermesg)
 
 !----------------------------------------------------------------------
 !
@@ -348,7 +348,8 @@ subroutine don_cm_gen_incloud_profs_k  &
 
 !  modified by Leo Donner, GFDL, 5 February 2007
 !
-use donner_types_mod, only : donner_param_type, donner_column_diag_type, &
+use donner_types_mod, only : donner_param_type, &
+                             donner_column_diag_type, &
                              donner_initialized_type
 use sat_vapor_pres_k_mod, only: lookup_es_k
 
@@ -377,6 +378,7 @@ real,    dimension(nlev_hires),     intent(out)   :: tcc, wv, rcl, qlwa,&
 real,    dimension(nlev_hires),     intent(out)   :: te, mre
 real,    dimension(nlev_hires,ntr), intent(out)   :: xclo, xtrae, pftr
 real,                               intent(out)   :: dint, accond, acpre
+real,                               intent(out)  :: sumfrea
 integer,                            intent(out)   :: cldtop_indx
 logical,                            intent(out)   :: do_donner_tracer, &
                                                      lfc_not_reached
@@ -460,7 +462,7 @@ character(len=*),                   intent(out)   :: ermesg
       real,   dimension(nlev_hires)       :: dis, rsc
       real,   dimension (nlev_hires,ntr)  ::   clsou
       real     :: qlw, qcw, qrw, es, dtfr, dtupa, dfrac, rmu,  &
-                  rhodt_inv, psfc, actot, dt_micro, sumfrea, dcw1,  &
+                  rhodt_inv, psfc, actot, dt_micro,          dcw1,  &
                   dqrw3, rbar, rmub, density, densityp, d1, d2, dztr, &
                   entrain, dt_inv
       logical  :: flag
@@ -470,7 +472,6 @@ character(len=*),                   intent(out)   :: ermesg
       real, parameter :: g_2_kg = 1.e-3 ! kg/g
       real :: qlw_save, t_avg
       real, dimension( size(xclo,2) ) :: delta_xclo0, delta_xclo1, dwet
-!     integer :: n, ntracer_index
       integer :: n
 !--lwh
 
@@ -760,8 +761,8 @@ character(len=*),                   intent(out)   :: ermesg
                (Param%grav*cld_press(k)*(Param%virt_mass_co*te(k) +  &
                                                                 tcc(k)))
           d2 = Param%rdgas*(1.+Param%virt_mass_co)*tcc(k+1)*te(k+1)/ &
-               (Param%grav*cld_press(k+1)*(Param%virt_mass_co*te(k+1) + &
-                                                               tcc(k+1)))
+               (Param%grav*cld_press(k+1)*      &
+                                (Param%virt_mass_co*te(k+1) + tcc(k+1)))
           dztr = ((d1 + d2)*(cld_press(k) - cld_press(k+1))/2.)
           rmub = 2.*alpp/rbar
           entrain = dztr*rmub
@@ -782,16 +783,17 @@ character(len=*),                   intent(out)   :: ermesg
 !--------------------------------------------------------------------
           t_avg = 0.5*(tcc(k)+tcc(k+1))
           do n = 1,size(xclo,2)
-             call wet_deposition_0D( Initialized%wetdep(n)%scheme, &
-                                     Initialized%wetdep(n)%Henry_constant, &
-                                     Initialized%wetdep(n)%Henry_variable, &
-                                     Initialized%wetdep(n)%frac_in_cloud, &
-                                     Initialized%wetdep(n)%alpha_r, &
-                                     Initialized%wetdep(n)%alpha_s, &
-                                     t_avg, cld_press(k), cld_press(k+1), &
-                                     0.5*(density+densityp), &
-                                     qlw_save, dqrw3*g_2_kg, &
-                                     xclo(k,n), delta_xclo0(n) )
+             call wet_deposition_0D    &
+                              (Initialized%wetdep(n)%scheme, &
+                               Initialized%wetdep(n)%Henry_constant, &
+                               Initialized%wetdep(n)%Henry_variable, &
+                               Initialized%wetdep(n)%frac_in_cloud, &
+                               Initialized%wetdep(n)%alpha_r, &
+                               Initialized%wetdep(n)%alpha_s, &
+                               t_avg, cld_press(k), cld_press(k+1), &
+                               0.5*(density+densityp), &
+                               qlw_save, dqrw3*g_2_kg, &
+                               xclo(k,n), delta_xclo0(n) )
           end do
 !--lwh          
           call don_cm_clotr_k    &
@@ -800,17 +802,17 @@ character(len=*),                   intent(out)   :: ermesg
                 entrain, dt_micro, xclo(k+1,:), ermesg)
 !++lwh
           do n = 1,size(xclo,2)
-             call wet_deposition_0D( Initialized%wetdep(n)%scheme, &
-                                     Initialized%wetdep(n)%Henry_constant, &
-                                     Initialized%wetdep(n)%Henry_variable, &
-                                     Initialized%wetdep(n)%frac_in_cloud, &
-                                     Initialized%wetdep(n)%alpha_r, &
-                                     Initialized%wetdep(n)%alpha_s, &
-                                     t_avg, & 
-                                     cld_press(k), cld_press(k+1), &
-                                     0.5*(density+densityp), &
-                                     qlw, dqrw3*g_2_kg, &
-                                     xclo(k+1,n), delta_xclo1(n) )
+             call wet_deposition_0D   &
+                           (Initialized%wetdep(n)%scheme, &
+                            Initialized%wetdep(n)%Henry_constant, &
+                            Initialized%wetdep(n)%Henry_variable, &
+                            Initialized%wetdep(n)%frac_in_cloud, &
+                            Initialized%wetdep(n)%alpha_r, &
+                            Initialized%wetdep(n)%alpha_s, &
+                            t_avg, cld_press(k), cld_press(k+1), &
+                            0.5*(density+densityp), &
+                            qlw, dqrw3*g_2_kg, &
+                            xclo(k+1,n), delta_xclo1(n) )
              dwet(n) = - 0.5*(delta_xclo0(n)+delta_xclo1(n))
              xclo(k+1,n) = xclo(k+1,n) + dwet(n)
           end do
@@ -980,8 +982,9 @@ real,                    intent(in)    :: pbot, ptop, alpp
 type(donner_param_type), intent(in)    :: Param
 real,                    intent(inout) :: pcsave, qlw, sumfrea, qrw, &
                                           qcw, dcw1, dqrw3, wvbot,  &
-                                          tccbot, rclbot, tebot, mrebot,&
-                                          rcltop, wvtop, tcctop, rsctop,&
+                                          tccbot, rclbot, tebot, &
+                                          mrebot, rcltop, wvtop, &
+                                          tcctop, rsctop,&
                                           tetop, mretop, qlwatop,  &
                                           dfrtop, rmu, rbar, dfrac,  &
                                           dtfr, dtupa
@@ -1027,7 +1030,7 @@ character(len=*),        intent(out)   :: ermesg
 !    model level k (pressure pp) to pressure level pp + delta p.
 !--------------------------------------------------------------------
       call don_cm_simult_k   &
-           (diag_unit, debug_ijt, lfc_not_reached, Param, pcsave, rmu,  &
+           (diag_unit, debug_ijt, lfc_not_reached, Param, pcsave, rmu, &
             tccbot, rclbot, wvbot, pbot, qlw, tebot, mrebot,   &
             dtdp, drdp, dwdp, ermesg)
  
@@ -1139,7 +1142,7 @@ character(len=*),        intent(out)   :: ermesg
 !    values at p + delta p, including the microphysical contributions.
 !----------------------------------------------------------------------
       call don_cm_simult_k   &
-           (diag_unit, debug_ijt, lfc_not_reached, Param, pcsave, rmu,  &
+           (diag_unit, debug_ijt, lfc_not_reached, Param, pcsave, rmu, &
             tcest, rest, west, ptop, qlwest, tetop, mretop, dtdp2,  &
             drdp2, dwdp2, ermesg)
  
@@ -1508,9 +1511,11 @@ character(len=*),        intent(out)  :: ermesg
 
 
 subroutine don_cm_mesub_k     &
-         (nlev_lsm, me, diag_unit, debug_ijt, Param, cu, cell_precip, &
-          dints, plzb_c, pb, pt_kou, temp_c, phalf_c,   &
-          ca, ecd, ece, meso_freeze, meso_melt, ermesg)
+         (nlev_lsm, me, diag_unit, debug_ijt, Param, cu,           &
+          ci_liq_cond, ci_ice_cond, pmelt_lsm, cell_precip, &
+          dint, plzb_c, pb, pt_kou, temp_c, phalf_c,   &
+          ca_liq, ca_ice, ecd, ecd_liq, ecd_ice, ecei_liq,   &
+          ece, ece_liq, ece_ice, meso_freeze, meso_melt, ermesg)
 
 !----------------------------------------------------------------------
 !    subroutine mesub calculates mesoscale heat and moisture sources,
@@ -1533,13 +1538,18 @@ implicit none
 integer,                       intent(in)    :: nlev_lsm, me, diag_unit
 logical,                       intent(in)    :: debug_ijt
 type(donner_param_type),       intent(in)    :: Param
-real,                          intent(in)    :: cu, cell_precip, dints, &
+real,                          intent(in)    :: cu, cell_precip, dint, &
                                                 plzb_c, pb, pt_kou
 real,   dimension(nlev_lsm),   intent(in)    :: temp_c
 real,   dimension(nlev_lsm+1), intent(in)    :: phalf_c
-real,                          intent(out)   :: ca
-real,   dimension(nlev_lsm),   intent(out)   :: ecd, ece, meso_freeze,  &
-                                                meso_melt
+real,                          intent(out)   :: ca_liq, ca_ice
+real,                          intent(in)    :: pmelt_lsm, &
+                                                ci_liq_cond, ci_ice_cond
+real,   dimension(nlev_lsm),   intent(out)   :: ecd, ece, meso_freeze, &
+                                                meso_melt, &
+                                                ecd_liq, ecd_ice, &
+                                                ece_liq, ece_ice
+real,                          intent(out)   :: ecei_liq
 character(len=*),              intent(out)   :: ermesg
 
 !---------------------------------------------------------------------
@@ -1549,7 +1559,7 @@ character(len=*),              intent(out)   :: ermesg
 !                    [ mm / day ]
 !       cell_precip  column integrated precipitation integral
 !                    [ mm / day ]
-!       dints        water mass frozen in convective updraft
+!       dint???      water mass frozen in convective updraft
 !            ??????  plus ice deposited convective updraft
 !                    [ kg(h2o) /( (m**2) sec) ]
 !                    weighted as cu,cell_precip
@@ -1586,8 +1596,6 @@ character(len=*),              intent(out)   :: ermesg
 !   local variables:
  
       integer ::     k
-      real    ::  pmelt_lsm         ! pressure at bottom of layer in 
-                                    ! which melting begins   [ Pa ]
       real    ::  avail_meso_cd     ! fraction of column integrated
                                     ! condensation available to meso-
                                     ! scale circulation (1. - gnu)
@@ -1602,13 +1610,17 @@ character(len=*),              intent(out)   :: ermesg
       real    ::  ecda              ! amount of condensate evaporated 
                                     ! in cumulus downdrafts
                                     ! [ g(h2o) / kg(air) / day ]
+      real :: ecda_liq, ecda_ice
       real    ::  ecdi              ! amount of condensate evaporated 
                                     ! in cumulus downdrafts [ mm / day ]
+      real :: ecdi_liq, ecdi_ice
       real    ::  ecea              ! amount of condensate evaporated 
                                     ! in cumulus updrafts 
                                     ! [ g(h2o) / kg(air) / day ]
+      real :: ecea_liq, ecea_ice
       real    ::  ecei              ! amount of condensate evaporated 
                                     ! in cumulus updrafts [ mm / day ]
+      real ::           ecei_ice
       real    ::  elta              ! amount of condensate which must
                                     ! be melted in the mesoscale down-
                                     ! draft to conserve ice mass
@@ -1634,19 +1646,6 @@ character(len=*),              intent(out)   :: ermesg
 !
 !      
       ermesg = '  '
-
-!----------------------------------------------------------------------
-!    define the large-scale model pressure half-level at which melting
-!    begins (pmelt_lsm).
-!---------------------------------------------------------------------
-      pmelt_lsm = 0.
-      do k=1,nlev_lsm-1 
-        if ((temp_c(k) >= Param%KELVIN) .and.    &
-            (temp_c(k+1) <= Param%KELVIN)) then
-          pmelt_lsm = phalf_c(k+1)
-          exit
-        endif
-      end do
 
 !---------------------------------------------------------------------
 !    define pressure one cloud-model level above cloud top (ptt). 
@@ -1702,8 +1701,25 @@ character(len=*),              intent(out)   :: ermesg
       gnu = cell_precip/cu
       avail_meso_cd = 1. - gnu
       ecdi  = (Param%evap_in_downdrafts*avail_meso_cd)*cu
+      ecdi_liq  = (Param%evap_in_downdrafts*avail_meso_cd)* &
+                         (Param%seconds_per_day*ci_liq_cond)
+      ecdi_ice  = (Param%evap_in_downdrafts*avail_meso_cd)*     &
+                         (Param%seconds_per_day*ci_ice_cond)
       ecei  = (Param%evap_in_environ*avail_meso_cd)*cu
-      ca    = (Param%entrained_into_meso*avail_meso_cd)*cu
+      ecei_liq  = (Param%evap_in_environ*avail_meso_cd)*    &
+                         (Param%seconds_per_day*ci_liq_cond)
+      ecei_ice  = (Param%evap_in_environ*avail_meso_cd)*     &
+                         (Param%seconds_per_day*ci_ice_cond)
+      ca_liq    = (Param%entrained_into_meso*avail_meso_cd)*   &
+                         (Param%seconds_per_day*ci_liq_cond)
+      ca_ice    = (Param%entrained_into_meso*avail_meso_cd)*   &
+                         (Param%seconds_per_day*ci_ice_cond)
+      if (debug_ijt) then
+        write (diag_unit, '(a, 3e20.12)')  &
+               'in mesub: cu, h1_liqintg, h1_iceintg= ',  &
+            cu, ci_liq_cond*Param%seconds_per_day      ,  &
+                 ci_ice_cond*Param%seconds_per_day      
+      endif
 
 !---------------------------------------------------------------------
 !    if in a diagnostics column, output the ratio of convective rain 
@@ -1712,7 +1728,10 @@ character(len=*),              intent(out)   :: ermesg
 !---------------------------------------------------------------------
       if (debug_ijt) then
         write (diag_unit, '(a, e20.12)')  'in mesub: gnu= ',gnu
-        write (diag_unit, '(a, e20.12)') 'in mesub: ca= ',ca
+        write (diag_unit, '(a, e20.12)') 'in mesub: ca= ',  &
+                                                       ca_liq + ca_ice
+        write (diag_unit, '(a, 2e20.12)') 'in mesub: ca_liq,ca_ice= ', &
+                                                ca_liq, ca_ice
       endif
 
 !--------------------------------------------------------------------
@@ -1725,11 +1744,14 @@ character(len=*),              intent(out)   :: ermesg
 !    the updraft (ecei), less that which has already frozen (dints). 
 !    dints and caa are expressed in units of g(h2o) per kg(air) per day.
 !--------------------------------------------------------------------
-      dint2 = dints*8.64e07*Param%grav/(pzm - pztm)
+!9/15/07, 1037AM:
+      dint2 = avail_meso_cd*(dint                               )*  &
+               8.64e07*Param%grav/(pzm - pztm)
+
       if (dint2 /= 0.)  then 
-        caa = ((ca + ecei)*Param%grav*1000./(pzm - pztm)) - dint2
+       caa = ((ca_liq + ecei_liq)*Param%grav*1000./(pzm - pztm)) - dint2
       else
-        caa = ca*Param%grav*1000./(pzm - pztm)
+        caa = ca_liq*Param%grav*1000./(pzm - pztm)
       endif
 
 !---------------------------------------------------------------------
@@ -1738,8 +1760,11 @@ character(len=*),              intent(out)   :: ermesg
 !    range over which the freezing will occur (pzm, pztm). if 
 !---------------------------------------------------------------------
       if (debug_ijt) then
+        write (diag_unit, '(a,  e20.12)')  &
+                         'in mesub:     dint           =',    dint 
         write (diag_unit, '(a, 2e20.12)')  &
-                                'in mesub:     dint=',    dint2
+                         'in mesub:     dint2, ecei_liq=',    dint2, &
+                                                          ecei_liq
         write (diag_unit, '(a, 3e20.12)')  &
                            'in mesub: caa,pzm,pztm= ',caa,pzm,pztm
       endif
@@ -1786,6 +1811,8 @@ character(len=*),              intent(out)   :: ermesg
 !    g(h20) / kg(air) per day.
 !---------------------------------------------------------------------
       ecda = ecdi*Param%grav*1000./(phalf_c(1) - ptt)
+      ecda_liq = ecdi_liq*Param%grav*1000./(phalf_c(1) - ptt)
+      ecda_ice = ecdi_ice*Param%grav*1000./(phalf_c(1) - ptt)
 
 !---------------------------------------------------------------------
 !    if in a diagnostics column, output the convective downdraft evap-
@@ -1795,6 +1822,9 @@ character(len=*),              intent(out)   :: ermesg
       if (debug_ijt) then
         write (diag_unit, '(a, 3e20.12)')  &
                          'in mesub: ecda,p1,pz0= ',ecda,phalf_c(1),ptt
+        write (diag_unit, '(a, 2e20.12)')  &
+                         'in mesub: ecda_liq, ecda_ice= ',  &
+                                ecda_liq, ecda_ice
       endif
 
 !---------------------------------------------------------------------
@@ -1810,6 +1840,10 @@ character(len=*),              intent(out)   :: ermesg
       endif
       call don_u_map_hires_i_to_lores_c_k   &
            (nlev_lsm, ecda, phalf_c(1), ptt, phalf_c, ecd, ermesg)
+      call don_u_map_hires_i_to_lores_c_k   &
+         (nlev_lsm, ecda_liq, phalf_c(1), ptt, phalf_c, ecd_liq, ermesg)
+      call don_u_map_hires_i_to_lores_c_k   &
+         (nlev_lsm, ecda_ice, phalf_c(1), ptt, phalf_c, ecd_ice, ermesg)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1820,7 +1854,10 @@ character(len=*),              intent(out)   :: ermesg
         do k=1,nlev_lsm       
           if (ecd(k) /= 0.0) then
             write (diag_unit, '(a, i4, e20.12)') &
-                           'in cm_intgl_to_gcm_col: k,x= ',k, ecd   (k)
+                'in cm_intgl_to_gcm_col: k,ecd= ',k, ecd   (k)
+            write (diag_unit, '(a, i4, 2e20.12)') &
+              'in cm_intgl_to_gcm_col: k,ecdliq,ecdice= ',k, &
+                       ecd_liq(k), ecd_ice(k)
           endif
         end do
       endif
@@ -1831,8 +1868,14 @@ character(len=*),              intent(out)   :: ermesg
 !    cloud base (pb). if not, no melting will occur; set p2 to be 0.0.
 !---------------------------------------------------------------------
       elta = 0.
-      if (pmelt_lsm  < pztm .or. pmelt_lsm > pb)  then
-        p2 = 0.
+      if (pmelt_lsm  < pztm                    )  then
+        meso_melt = 0.
+      if (debug_ijt) then
+        write (diag_unit, '(a, 2f19.10)') &
+                 ' NO MELTING DONE: melting level above top of &
+                    &mesoscale circulation : pmelt_lsm,pztm',     &
+                                                pmelt_lsm, pztm      
+      endif
 
 !---------------------------------------------------------------------
 !    if pmelt_lsm is within the region of the cloud and mesoscale circ-
@@ -1842,13 +1885,18 @@ character(len=*),              intent(out)   :: ermesg
 !    the excess must be melted, and is done so in the mesoscale down-
 !    draft between the melting level and cloud base.
 !---------------------------------------------------------------------
-      else
+      else if (pmelt_lsm >= pztm .and. pmelt_lsm <= pb) then
         p2 = pmelt_lsm
+        p1 = pb
         if (caa <= 0.) then 
           caa = -caa*(pzm - pztm)/(pb - p2)
           elta = caa
         endif
-      endif ! (pmelt<pztm or pmelt > pb)
+      if (debug_ijt) then
+        write (diag_unit, '(a, 3f19.10)') &
+                   'MELTING DONE: pmelt_lsm,pb,caa  ',pmelt_lsm, pb, &
+                                                            caa  
+      endif
 
 !---------------------------------------------------------------------
 !    if in diagnostics column, output the melting (elta) and the 
@@ -1856,7 +1904,7 @@ character(len=*),              intent(out)   :: ermesg
 !---------------------------------------------------------------------
       if (debug_ijt) then
         write (diag_unit, '(a, e20.12, 2f19.10)') &
-                           'in mesub: elta,pb,p2= ',elta,pb,p2
+                           'in mesub: elta,p1,p2= ',elta,p1,p2
       endif
 
 !---------------------------------------------------------------------
@@ -1864,13 +1912,8 @@ character(len=*),              intent(out)   :: ermesg
 !    resulting from excessive freezing over the layer between cloud base
 !    and the melting level. output field is meso_melt.
 !---------------------------------------------------------------------
-      if (debug_ijt) then
-        write (diag_unit, '(a, e20.12, 2f19.10)')  &
-                      'in cm_intgl_to_gcm_col: xav,p1,p2= ',elta, pb, &
-                                                  p2
-      endif
       call don_u_map_hires_i_to_lores_c_k   &
-           (nlev_lsm, elta, pb, p2, phalf_c, meso_melt, ermesg)
+           (nlev_lsm, elta, p1, p2, phalf_c, meso_melt, ermesg)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1881,10 +1924,27 @@ character(len=*),              intent(out)   :: ermesg
         do k=1,nlev_lsm       
           if (meso_melt(k) /= 0.0) then
             write (diag_unit, '(a, i4, e20.12)') &
-                       'in cm_intgl_to_gcm_col: k,x= ',k, meso_melt(k)
+                 'in cm_intgl_to_gcm_col: k,meso_melt= ',k, meso_melt(k)
           endif
         end do
       endif
+
+      else if (pmelt_lsm > pb) then
+        meso_melt = 0.
+        if (pmelt_lsm == phalf_c(1)) then
+          if (debug_ijt) then
+             write (diag_unit, '(a)') &
+                   'NO MELTING LEVEL PRESENT IN COLUMN'
+          endif
+        else
+! melt below cloud base 
+      if (debug_ijt) then
+        write (diag_unit, '(a, 2f19.10)') &
+            ' NO MELTING DONE: melting level below PB: pmelt_lsm,pb', &
+                                                      pmelt_lsm, pb
+      endif
+      endif
+      endif ! (pmelt<pztm or pmelt > pb)
 
 !---------------------------------------------------------------------
 !    calculate the evaporation which occurs in the convective 
@@ -1895,6 +1955,8 @@ character(len=*),              intent(out)   :: ermesg
       p1 = pt_kou + 50.0e02
       p2 = ptt
       ecea = ecei*Param%grav*1000./(p1-p2)
+      ecea_liq = ecei_liq*Param%grav*1000./(p1-p2)
+      ecea_ice = ecei_ice*Param%grav*1000./(p1-p2)
 
 !---------------------------------------------------------------------
 !    if in diagnostics column, output the convective updraft evaporation
@@ -1904,6 +1966,10 @@ character(len=*),              intent(out)   :: ermesg
       if (debug_ijt) then
         write (diag_unit, '(a, 2e20.12)')  &
                          'in mesub: ecea,ecei= ',ecea, ecei
+        write (diag_unit, '(a, 2e20.12)')  &
+                         'in mesub: LIQecea,ecei= ',ecea_liq, ecei_liq
+        write (diag_unit, '(a, 2e20.12)')  &
+                         'in mesub: ICEecea,ecei= ',ecea_ice, ecei_ice
         write (diag_unit, '(a, e20.12, 2f19.10)')  &
                          'in mesub: ecea,p1,p2= ',ecea, p1, p2
       endif
@@ -1920,6 +1986,10 @@ character(len=*),              intent(out)   :: ermesg
       endif
       call don_u_map_hires_i_to_lores_c_k   &
            (nlev_lsm, ecea, p1, p2, phalf_c, ece, ermesg)
+      call don_u_map_hires_i_to_lores_c_k   &
+           (nlev_lsm, ecea_liq, p1, p2, phalf_c, ece_liq, ermesg)
+      call don_u_map_hires_i_to_lores_c_k   &
+           (nlev_lsm, ecea_ice, p1, p2, phalf_c, ece_ice, ermesg)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -2599,10 +2669,10 @@ end subroutine don_cm_output_member_tends_k
 
 
 subroutine don_cm_process_condensate_k     &
-         (nlev_lsm, nlev_hires, ntr, cldtop_indx, diag_unit, debug_ijt, &
-          Param, acpre, accond, pb, pt_kou, pf, pftr, tcc, rcl, cld_press, &
-          phalf_c, conint, dint, dints, pmel, precip, cu, cell_precip, &
-          sumlhr, summel, dmela, dpf, dpftr, dfr, cell_melt, ermesg)
+       (nlev_lsm, nlev_hires, ntr, cldtop_indx, diag_unit, debug_ijt, &
+        Param, acpre, accond, pb, pt_kou, pf, pftr, tcc, rcl, &
+        cld_press, phalf_c, conint, dint, pmel, pmelt_lsm, precip, cu,&
+        cell_precip, sumlhr, summel, dpf, dpftr, dfr, cell_melt, ermesg)
 
 !----------------------------------------------------------------------
 !
@@ -2622,10 +2692,11 @@ real,                         intent(in)    :: acpre, accond, pb, pt_kou
 real, dimension(nlev_hires),  intent(in)    :: pf, tcc, rcl, cld_press
 real, dimension(nlev_hires,ntr), intent(in) :: pftr
 real, dimension(nlev_lsm+1),  intent(in)    :: phalf_c
-real,                         intent(inout) :: conint, dint, dints,  &
+real,                         intent(inout) :: conint, dint,         &
                                                pmel, precip, cu, &
                                                cell_precip, sumlhr, &
-                                               summel, dmela     
+                                               summel
+real,                          intent(in) :: pmelt_lsm
 real, dimension(nlev_hires),  intent(inout) :: dfr
 real, dimension(nlev_hires),  intent(out)   :: dpf
 real, dimension(nlev_hires,ntr),  intent(out)   :: dpftr
@@ -2633,6 +2704,7 @@ real, dimension(nlev_lsm),    intent(out)   :: cell_melt
 character(len=*),             intent(out)   :: ermesg
               
 
+      real    :: dmela
       integer  :: k, kc, n
  
 !---------------------------------------------------------------------
@@ -2691,6 +2763,7 @@ character(len=*),             intent(out)   :: ermesg
         if (debug_ijt) then
           write (diag_unit, '(a, i4, 3e20.12)')  &
                 'in mulsub: k,dpf,pf,pfavg= ', k, dpf(k) ,pf(k),  &
+! note pf(k-1) when k=1 is garbage !
                                   0.5*(pf(k) + pf(k-1))
         endif
  
@@ -2840,12 +2913,6 @@ character(len=*),             intent(out)   :: ermesg
       if (debug_ijt) then
         write (diag_unit, '(a, e20.12)')  'summel= ',summel
       endif
-      if (cu /= 0.0) then
-        summel = summel*cell_precip/cu
-      else
-        summel = 0.0                
-      endif
-      dints  = dint + summel
 
 !--------------------------------------------------------------------
 !    define the cloud model pressure at the level where melting occurs 
@@ -2857,11 +2924,16 @@ character(len=*),             intent(out)   :: ermesg
             (tcc(kc+1) <= Param%kelvin))  pmel = cld_press(kc)
       end do
       if (tcc(cldtop_indx+1) == Param%kelvin) pmel = pt_kou 
+          if (debug_ijt) then
+            write (diag_unit, '(a, 3e20.12 )')  &
+             'pmelt_lsm, pmel from hi-res, pb   = ', pmelt_lsm, pmel, pb
+          endif
 
 !---------------------------------------------------------------------
 !    if there has been no freezing in the column, then there will be
 !    no melting.
 !---------------------------------------------------------------------
+      dmela = 0.
       if (dint == 0.) then
         cell_melt(1:nlev_lsm) = 0.
       else
@@ -2871,13 +2943,17 @@ character(len=*),             intent(out)   :: ermesg
 !    ice melt from the cloud model within the appropriate large-scale 
 !    model layers.
 !--------------------------------------------------------------------
-        if (pb > pmel) then
+        if (pb > pmelt_lsm) then
 
 !--------------------------------------------------------------------
 !    define the rate of ice melt (dmela) in units of g(h2o) per 
 !    kg(air) per day. 
 !--------------------------------------------------------------------
-          dmela = -((summel + dint)*Param%grav/(pmel - pb))*8.64E07
+          if (cu /= 0.0) then
+! melt ice precip plus frozen liq precip
+            dmela = -((summel*cell_precip/cu + dint*cell_precip/cu)*  &
+                                  Param%grav/(pmelt_lsm - pb))*8.64E07
+         endif
 
 !--------------------------------------------------------------------
 !    call map_hi_res_intgl_to_lo_res_col to distribute this integrated 
@@ -2887,10 +2963,11 @@ character(len=*),             intent(out)   :: ermesg
 !--------------------------------------------------------------------
           if (debug_ijt) then
             write (diag_unit, '(a, e20.12, 2f19.10)')  &
-                  'in cm_intgl_to_gcm_col: xav,p1,p2= ',dmela, pb, pmel
+              'in cm_intgl_to_gcm_col: dmela,pb,pmelt_lsm= ',  &
+                                                 dmela, pb, pmelt_lsm
           endif
           call don_u_map_hires_i_to_lores_c_k  &
-               (nlev_lsm, dmela, pb, pmel, phalf_c, cell_melt, ermesg)
+            (nlev_lsm, dmela, pb, pmelt_lsm, phalf_c, cell_melt, ermesg)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -2905,7 +2982,7 @@ character(len=*),             intent(out)   :: ermesg
             do k=1,nlev_lsm              
               if (cell_melt(k) /= 0.0) then
                 write (diag_unit, '(a, i4, e20.12)') &
-                         'in cm_intgl_to_gcm_col: k,x= ',k,cell_melt(k)
+                 'in cm_intgl_to_gcm_col: k,cell_melt= ',k,cell_melt(k)
               endif
             end do
           endif
@@ -2919,16 +2996,18 @@ character(len=*),             intent(out)   :: ermesg
         endif  ! ( pb > pmel)
       endif  !  (dint == 0.0)
 
+
 !---------------------------------------------------------------------
 !    change the sign of the integral and convert to units of kg(h2o)
 !    per square meter per day (or mm per day). if in diagnostics col-
 !    umn, output the column integrated melting (summel), precipitation 
 !    (cell_precip) and condensation rates (cu) in units of mm per day.
 !---------------------------------------------------------------------
-      summel = -summel*Param%seconds_per_day
       if (debug_ijt) then
         write (diag_unit, '(a, 3e20.12,a)')   &
-             'in mulsub: summel,rc,cu= ',summel,cell_precip,cu,' mm/day'
+             'in mulsub: summel,rc,cu= ',    &
+        -(summel*cell_precip/cu)*Param%seconds_per_day,cell_precip,cu,'&
+                                            mm/day'
       endif
 
 !---------------------------------------------------------------------
@@ -2943,7 +3022,7 @@ end subroutine don_cm_process_condensate_k
 
 subroutine don_cm_simult_k   &
          (diag_unit, debug_ijt, lfc_not_reached, Param, pcsave, rmu,  &
-          cloud_temp, cloud_radius, w_vel, cloud_p, liq_wat, env_temp,  &
+          cloud_temp, cloud_radius, w_vel, cloud_p, liq_wat, env_temp, &
           env_mixing_ratio, dtdp,  drdp, dwdp, ermesg)
 
 !--------------------------------------------------------------------
@@ -2966,8 +3045,8 @@ integer,                 intent(in)    ::  diag_unit
 logical,                 intent(in)    ::  debug_ijt, lfc_not_reached
 type(donner_param_type), intent(in)    ::  Param
 real,                    intent(in)    ::  pcsave, rmu, cloud_temp,  &
-                                           cloud_radius, w_vel, cloud_p,&
-                                           liq_wat, env_temp,   &
+                                           cloud_radius, w_vel,   &
+                                           cloud_p, liq_wat, env_temp, &
                                            env_mixing_ratio
 real,                    intent(out)   ::  dtdp, drdp, dwdp
 character(len=*),        intent(out)   ::  ermesg

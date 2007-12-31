@@ -46,8 +46,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: uw_clouds_W.F90,v 15.0 2007/08/14 03:55:56 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
+   character(len=128)  :: version =  '$Id: uw_clouds_W.F90,v 15.0.4.1 2007/11/02 18:55:09 wfc Exp $'
+   character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
 
 
 
@@ -320,10 +320,10 @@ type(microphysics_type), intent(inout) :: Shallow_microphys
             else
               Shallow_microphys%size_drop(i,j,k)  =  0.0 
             endif
-            Shallow_microphys%droplet_number = shallow_droplet_number
           end do
         end do
       end do
+      Shallow_microphys%droplet_number = shallow_droplet_number
       else
 !----------------------------------------------------------------------
 !  case of non-prognostic droplet number

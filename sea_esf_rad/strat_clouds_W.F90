@@ -60,8 +60,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 15.0 2007/08/14 03:55:54 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 15.0.4.1 2007/11/09 23:05:20 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
 
 
 !---------------------------------------------------------------------
@@ -385,9 +385,10 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                   ql_stoch_lw, qi_stoch_lw, qa_stoch_lw,qn_stoch_lw, &
                   ql_stoch_sw, qi_stoch_sw, qa_stoch_sw, qn_stoch_sw
       
-      integer, dimension(size(Cld_spec%cld_thickness_lw_band, 1), &
-                         size(Cld_spec%cld_thickness_lw_band, 2), &
-                         size(Cld_spec%cld_thickness_lw_band, 3), &
+!      integer, dimension(size(Cld_spec%cld_thickness_lw_band, 1), &
+!                         size(Cld_spec%cld_thickness_lw_band, 2), &
+!                         size(Cld_spec%cld_thickness_lw_band, 3), &
+      integer, dimension(size(temp, 1), size(temp, 2), size(temp, 3), &
           Cldrad_control%nlwcldb + Solar_spect%nbands) ::         &
                         cld_thickness
 

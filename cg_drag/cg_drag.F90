@@ -36,7 +36,7 @@ private
 
 
 character(len=128)  :: version =  '$Id: cg_drag.F90,v 15.0 2007/08/14 03:52:37 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
 
 
 

@@ -57,7 +57,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 14.0 2007/03/15 22:06:35 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
 
 
 !---------------------------------------------------------------------

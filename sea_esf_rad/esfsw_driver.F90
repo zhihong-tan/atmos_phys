@@ -64,8 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 15.0 2007/08/14 03:54:45 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_10 $'
+character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 15.0.4.1 2007/11/19 13:03:13 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
 
 
 !---------------------------------------------------------------------
@@ -1145,7 +1145,6 @@ integer,                       intent(in)    :: naerosol_optical
 
       integer :: nprofile, nprofiles
       real   :: profiles_inverse
-
       integer :: iref, jref, nsc, month, dum
 
       real :: rrvco2 
@@ -1554,7 +1553,8 @@ integer :: nextinct
                   irh(i,j,k) = MIN(100, MAX( 0,     &
                       NINT(100.*Atmos_input%aerosolrelhum(i,j,k))))
                   opt_index_v3(i,j,k) =    &
-                              Aerosol_props%sulfate_index( irh(i,j,k) )
+                           Aerosol_props%sulfate_index (irh(i,j,k), &
+                                              Aerosol_props%ivol(i,j,k))
                  opt_index_v4(i,j,k) =    &
                               Aerosol_props%omphilic_index( irh(i,j,k) )
                   opt_index_v5(i,j,k) =    &
@@ -1638,6 +1638,31 @@ integer :: nextinct
                   endif
                 end do
               end do
+!yim
+            else if (Aerosol_props%optical_index(nsc) == &
+                                     Aerosol_props%bc_flag) then
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                  if (daylight(i,j) .or.    &
+                      Sw_control%do_cmip_diagnostics) then
+                    do k = KSRAD,KERAD
+                      arprod(i,j,k) = aerext(opt_index_v3(i,j,k)) *    &
+                                   (1.e3 * Aerosol%aerosol(i,j,k,nsc))
+                      arprod2(i,j,k) = aerssalb(opt_index_v3(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      aeroextopdep(i,j,k) = aeroextopdep(i,j,k) +   &
+                                            arprod(i,j,k)
+                      aerosctopdep(i,j,k) = aerosctopdep(i,j,k) + &
+                                       aerssalb(opt_index_v3(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      sum_g_omega_tau(i,j,k) = sum_g_omega_tau(i,j,k) +&
+                                      aerasymm(opt_index_v3(i,j,k)) * &
+                                     (aerssalb(opt_index_v3(i,j,k))*  &
+                                                        arprod(i,j,k))
+                    enddo
+                  endif
+                end do
+              end do
 !           elseif (Aerosol_props%optical_index(nsc) == -1) then
             else if (Aerosol_props%optical_index(nsc) == &
                                Aerosol_props%omphilic_flag) then
@@ -1666,6 +1691,31 @@ integer :: nextinct
 !           elseif (Aerosol_props%optical_index(nsc) == -2) then
             else if (Aerosol_props%optical_index(nsc) == &
                        Aerosol_props%bcphilic_flag) then
+             if (Rad_control%using_im_bcsul) then
+              do j = JSRAD,JERAD
+                do i = ISRAD,IERAD
+                  if (daylight(i,j) .or.    &
+                      Sw_control%do_cmip_diagnostics) then
+                    do k = KSRAD,KERAD
+!yim
+                      arprod(i,j,k) = aerext(opt_index_v3(i,j,k)) *    &
+                                   (1.e3 * Aerosol%aerosol(i,j,k,nsc))
+                      arprod2(i,j,k) = aerssalb(opt_index_v3(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      aeroextopdep(i,j,k) = aeroextopdep(i,j,k) +   &
+                                            arprod(i,j,k)
+                      aerosctopdep(i,j,k) = aerosctopdep(i,j,k) + &
+                                       aerssalb(opt_index_v3(i,j,k)) * &
+                                                        arprod(i,j,k)
+                      sum_g_omega_tau(i,j,k) = sum_g_omega_tau(i,j,k) +&
+                                      aerasymm(opt_index_v3(i,j,k)) * &
+                                     (aerssalb(opt_index_v3(i,j,k))*  &
+                                                        arprod(i,j,k))
+                    end do
+                  endif
+                end do
+              end do
+             else  ! (using_im_bcsul)
               do j = JSRAD,JERAD
                 do i = ISRAD,IERAD
                   if (daylight(i,j) .or.    &
@@ -1688,6 +1738,7 @@ integer :: nextinct
                   endif
                 end do
               end do
+             endif  !(using_im_bcsul)
 !           elseif (Aerosol_props%optical_index(nsc) == -3) then
             else if (Aerosol_props%optical_index(nsc) == &
                          Aerosol_props%seasalt1_flag) then
