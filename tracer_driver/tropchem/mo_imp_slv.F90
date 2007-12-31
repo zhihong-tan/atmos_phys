@@ -44,7 +44,7 @@
       logical, private, allocatable      ::   factor(:)
 
 character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 14.0 2007/03/15 22:11:00 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2007_10 $'
+character(len=128), parameter :: tagname     = '$Name: omsk_2007_12 $'
 logical                       :: module_is_initialized = .false.
 
       contains

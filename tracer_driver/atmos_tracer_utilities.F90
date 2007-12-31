@@ -69,8 +69,8 @@ public  wet_deposition,    &
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 15.0 2007/08/14 03:57:09 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_10 $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 15.0.4.1 2007/11/09 23:05:47 wfc Exp $'
+character(len=128) :: tagname = '$Name: omsk_2007_12 $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 integer, parameter :: max_tracers = MAX_TRACER_FIELDS
@@ -156,8 +156,8 @@ character(len=128) :: name
          write ( tracer_longnames(n), 102 ) n
          tracer_units(n) = 'none'
       enddo
-  100 format ('tr',i2.2)
-  102 format ('tracer ',i2.2)
+  100 format ('tr',i3.3)
+  102 format ('tracer ',i3.3)
 
 call get_number_tracers(MODEL_ATMOS, num_tracers= ntrace)
    do n = 1, ntrace

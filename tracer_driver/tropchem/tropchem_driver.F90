@@ -153,7 +153,7 @@ integer :: clock_id,ndiag
 
 !---- version number -----
 character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 15.0 2007/08/14 03:57:26 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2007_10 $'
+character(len=128), parameter :: tagname     = '$Name: omsk_2007_12 $'
 !-----------------------------------------------------------------------
 
 contains

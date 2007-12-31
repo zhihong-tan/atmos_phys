@@ -44,85 +44,108 @@ integer :: nomphobic=0
 integer :: nomphilic=0
 
 !--- identification numbers for  diagnostic fields and axes ----
-integer :: id_bcphob_sink, id_bcphil_sink
-integer :: id_omphob_sink, id_omphil_sink
-!
-integer :: id_bcemisff_l, id_bcemisbb_l
-integer :: id_omemisff_l, id_omemisbb_l
-integer :: id_bcemisff_h, id_bcemisbb_h
-integer :: id_omemisff_h, id_omemisbb_h
-integer :: id_omemisnat
+integer :: id_bcphob_emis, id_bcphil_emis, id_omphob_emis, id_omphil_emis
+integer :: id_bcphob_sink, id_omphob_sink
+integer :: id_bcemisbf, id_bcemisbb, id_bcemissh, id_bcemisff, id_bcemisav
+integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg
 !----------------------------------------------------------------------
 !--- Interpolate_type variable containing all the information needed to
 ! interpolate the emission provided in the netcdf input file.
 type(interpolate_type),save  ::bcff_aerosol_interp
 type(interpolate_type),save  ::bcbb_aerosol_interp
-type(interpolate_type),save  ::bcob_aerosol_interp
+type(interpolate_type),save  ::bcbf_aerosol_interp
+type(interpolate_type),save  ::bcsh_aerosol_interp
+type(interpolate_type),save  ::bcav_aerosol_interp
 type(interpolate_type),save  ::omff_aerosol_interp
 type(interpolate_type),save  ::ombb_aerosol_interp
-type(interpolate_type),save  ::omob_aerosol_interp
+type(interpolate_type),save  ::ombf_aerosol_interp
+type(interpolate_type),save  ::omsh_aerosol_interp
 type(interpolate_type),save  ::omna_aerosol_interp
 ! Initial calendar time for model
 type(time_type) :: model_init_time
 
-! Difference between model initial time and dust source timeseries applied
+! Difference between model initial time and source timeseries applied
 ! at model initial time
 type(time_type), save :: bcff_offset
 type(time_type), save :: bcbb_offset
-type(time_type), save :: bcob_offset
+type(time_type), save :: bcbf_offset
+type(time_type), save :: bcsh_offset
+type(time_type), save :: bcav_offset
 type(time_type), save :: omff_offset
 type(time_type), save :: ombb_offset
-type(time_type), save :: omob_offset
+type(time_type), save :: ombf_offset
+type(time_type), save :: omsh_offset
 type(time_type), save :: omna_offset
 
-! Timein dust source timeseries which is mapped to model initial time
+! timeseries which is mapped to model initial time
 type(time_type), save :: bcff_entry
 type(time_type), save :: bcbb_entry
-type(time_type), save :: bcob_entry
+type(time_type), save :: bcbf_entry
+type(time_type), save :: bcsh_entry
+type(time_type), save :: bcav_entry
 type(time_type), save :: omff_entry
 type(time_type), save :: ombb_entry
-type(time_type), save :: omob_entry
+type(time_type), save :: ombf_entry
+type(time_type), save :: omsh_entry
 type(time_type), save :: omna_entry
 
-! The model initial time is later than the dust_dataset_entry time  ?
+! The model initial time is later than the XXX_dataset_entry time  ?
 logical, save    :: bcff_negative_offset
 logical, save    :: bcbb_negative_offset
-logical, save    :: bcob_negative_offset
+logical, save    :: bcbf_negative_offset
+logical, save    :: bcsh_negative_offset
+logical, save    :: bcav_negative_offset
 logical, save    :: omff_negative_offset
 logical, save    :: ombb_negative_offset
-logical, save    :: omob_negative_offset
+logical, save    :: ombf_negative_offset
+logical, save    :: omsh_negative_offset
 logical, save    :: omna_negative_offset
 
 integer, save    :: bcff_time_serie_type
 integer, save    :: bcbb_time_serie_type
-integer, save    :: bcob_time_serie_type
+integer, save    :: bcbf_time_serie_type
+integer, save    :: bcsh_time_serie_type
+integer, save    :: bcav_time_serie_type
 integer, save    :: omff_time_serie_type
 integer, save    :: ombb_time_serie_type
-integer, save    :: omob_time_serie_type
+integer, save    :: ombf_time_serie_type
+integer, save    :: omsh_time_serie_type
 integer, save    :: omna_time_serie_type
 !----------------------------------------------------------------------
 !-------- namelist  ---------
-character(len=26)  :: bcff_filename = 'carbon_aerosol_emission.nc'
-character(len=26)  :: bcbb_filename = 'carbon_aerosol_emission.nc'
-character(len=26)  :: bcob_filename = 'carbon_aerosol_emission.nc'
-character(len=26)  :: omff_filename = 'carbon_aerosol_emission.nc'
-character(len=26)  :: ombb_filename = 'carbon_aerosol_emission.nc'
-character(len=26)  :: omob_filename = 'carbon_aerosol_emission.nc'
-character(len=26)  :: omna_filename = 'carbon_aerosol_emission.nc'
+character(len=80) :: bcff_filename = 'carbon_aerosol_emission.nc'
+character(len=80) :: bcbb_filename = 'carbon_aerosol_emission.nc'
+character(len=80) :: bcbf_filename = 'carbon_aerosol_emission.nc'
+character(len=80) :: bcsh_filename = 'carbon_aerosol_emission.nc'
+character(len=80) :: bcav_filename = 'carbon_aerosol_emission.nc'
+character(len=80) :: omff_filename = 'carbon_aerosol_emission.nc'
+character(len=80) :: ombb_filename = 'carbon_aerosol_emission.nc'
+character(len=80) :: ombf_filename = 'carbon_aerosol_emission.nc'
+character(len=80) :: omsh_filename = 'carbon_aerosol_emission.nc'
+character(len=80) :: omna_filename = 'carbon_aerosol_emission.nc'
 
-character(len=12), dimension(3)  :: bcff_emission_name
-data bcff_emission_name/'bcff_cw96','bcff_cooke99','bcff_bond'/
-character(len=12), dimension(4)  :: bcbb_emission_name
-data bcbb_emission_name/'bcbb_cw96','bcbf_bond','bc_geia1','bc_geia2'/
-character(len=12), dimension(1)  :: bcob_emission_name
-data bcob_emission_name/'bcob_bond'/
-character(len=12), dimension(4)  :: omff_emission_name
-data omff_emission_name/'omff_cooke99','omff_bond','om_geia1','om_geia2'/
-character(len=12), dimension(4)  :: ombb_emission_name
-data ombb_emission_name/'bcbb_cw96','ombf_bond','om_geia1','om_geia2'/
-character(len=12), dimension(1)  :: omob_emission_name
-data omob_emission_name/'omob_bond'/
-character(len=12), dimension(1)  :: omna_emission_name
+integer :: i
+character(len=80), save, dimension(1) :: bcff_emission_name = (/' '/)
+character(len=80), save, dimension(6) :: bcbb_emission_name = (/(' ',i=1,6)/)
+character(len=80), save, dimension(1) :: bcbf_emission_name = (/' '/)
+character(len=80), save, dimension(1) :: bcsh_emission_name = (/' '/)
+character(len=80), save, dimension(1) :: bcav_emission_name = (/' '/)
+character(len=80), save, dimension(1) :: omff_emission_name = (/' '/)
+character(len=80), save, dimension(6) :: ombb_emission_name = (/(' ',i=1,6)/)
+character(len=80), save, dimension(1) :: ombf_emission_name = (/' '/)
+character(len=80), save, dimension(1) :: omsh_emission_name = (/' '/)
+character(len=80), save, dimension(1) :: omna_emission_name = (/' '/)
+
+character(len=80), dimension(1) :: bcff_input_name = (/' '/)
+character(len=80), dimension(6) :: bcbb_input_name = (/(' ',i=1,6)/)
+character(len=80), dimension(1) :: bcbf_input_name = (/' '/)
+character(len=80), dimension(1) :: bcsh_input_name = (/' '/)
+character(len=80), dimension(1) :: bcav_input_name = (/' '/)
+character(len=80), dimension(1) :: omff_input_name = (/' '/)
+character(len=80), dimension(6) :: ombb_input_name = (/(' ',i=1,6)/)
+character(len=80), dimension(1) :: ombf_input_name = (/' '/)
+character(len=80), dimension(1) :: omsh_input_name = (/' '/)
+character(len=80), dimension(1) :: omna_input_name = (/' '/)
 data omna_emission_name/'omemisnat'/
 ! Default values for carbon_aerosol_nml
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -130,54 +153,89 @@ data omna_emission_name/'omemisnat'/
 ! for black carbon: 'cooke_and_wilson_1996' 
 !                   'cooke_1999' 
 !                   'bond_2004'
-character(len=9)      :: bcff_source = 'bond_2004'
-character(len=24)     :: bcff_time_dependency_type
+character(len=80)     :: bcff_source = ' '
+character(len=80)     :: bcff_time_dependency_type = 'constant'
 integer, dimension(6) :: bcff_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! fossil fuel emission 
 ! for organic matter: 'cooke_1999' 
 !                     'bond_2004'
-character(len=20)     :: omff_source = 'bond_2004'
-character(len=24)     :: omff_time_dependency_type
+character(len=80)     :: omff_source = ' '
+character(len=80)     :: omff_time_dependency_type = 'constant'
 integer, dimension(6) :: omff_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! BIOMASS BURNING emissions can be either
 ! for black carbon: 'cooke_and_wilson_1996' 
 !                   'bond_2004' 
-!                   'reddy_and_boucher_2004'
-character(len=20)     :: bcbb_source = 'bond_2004'
-character(len=24)     :: bcbb_time_dependency_type
+!                   'GEIA level 1 and 2'
+!                   'AEROCOM level 1 to 6'
+character(len=80)     :: bcbb_source = ' '
+character(len=80)     :: bcbb_time_dependency_type = 'constant'
 integer, dimension(6) :: bcbb_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
-! biomass burning emission
+! open biomass burning emission
 ! for organic matter: 'cooke_and_wilson_1996' 
 !                     'bond_2004' 
-!                     'reddy_and_boucher_2004'
-character(len=20)     :: ombb_source = 'bond_2004'
-character(len=24)     :: ombb_time_dependency_type
+!                     'GEIA level 1 and 2'
+!                     'AEROCOM level 1 to 6'
+character(len=80)     :: ombb_source = ' '
+character(len=80)     :: ombb_time_dependency_type = 'constant'
 integer, dimension(6) :: ombb_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! open burning emission
+! biofuel emission        
 ! for black carbon     'bond_2004' 
-character(len=20)     :: bcob_source = 'bond_2004'
-character(len=24)     :: bcob_time_dependency_type
-integer, dimension(6) :: bcob_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
-! for organic matter:  'bond_2004' 
-character(len=20)     :: omob_source = 'bond_2004'
-character(len=24)     :: omob_time_dependency_type
-integer, dimension(6) :: omob_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+character(len=80)     :: bcbf_source = ' '
+character(len=80)     :: bcbf_time_dependency_type = 'constant'
+integer, dimension(6) :: bcbf_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! ship emissions based on V. Eyrig
+character(len=80)     :: bcsh_source = ' '
+character(len=80)     :: bcsh_time_dependency_type
+integer, dimension(6) :: bcsh_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! aircraft emissions based on Steven L. Baughcum
+character(len=80)     :: bcav_source = ' '
+character(len=80)     :: bcav_time_dependency_type = 'constant'
+integer, dimension(6) :: bcav_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+! Emission index from Henricks et al., Simulating the global atmospheric
+! black carbon cycle: a revisit to the contribution of aircraft emissions,
+! Atmos. Chem. Phys., 4, 252102541, 2004.
+real :: bc_aircraft_EI = 4.e-5   ! kg BC /kg fuel
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! biofuel emission for organic matter:  'bond_2004' 
+character(len=80)     :: ombf_source = ' '
+character(len=80)     :: ombf_time_dependency_type = 'constant'
+integer, dimension(6) :: ombf_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! ship emissions based on V. Eyrig
+character(len=80)     :: omsh_source = ' '
+character(len=80)     :: omsh_time_dependency_type = 'constant'
+integer, dimension(6) :: omsh_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! for natural emssion: Gunther et al., 1996 inventory
-character(len=20)     :: omna_source = 'gunther'
-character(len=24)     :: omna_time_dependency_type
+character(len=80)     :: omna_source = ' '
+character(len=80)     :: omna_time_dependency_type = 'constant'
 integer, dimension(6) :: omna_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 namelist /carbon_aerosol_nml/ &
- bcff_source,bcff_emission_name,bcff_time_dependency_type, bcff_dataset_entry, &
- bcbb_source,bcbb_emission_name,bcbb_time_dependency_type, bcbb_dataset_entry, &
- bcob_source,bcob_emission_name,bcob_time_dependency_type, bcob_dataset_entry, &
- omff_source,omff_emission_name,omff_time_dependency_type, omff_dataset_entry, &
- ombb_source,ombb_emission_name,ombb_time_dependency_type, ombb_dataset_entry, &
- omob_source,omob_emission_name,omob_time_dependency_type, omob_dataset_entry, &
- omna_source,omna_emission_name,omna_time_dependency_type, omna_dataset_entry
+ bcff_source, bcff_input_name, bcff_filename, &
+  bcff_time_dependency_type, bcff_dataset_entry, &
+ bcbb_source, bcbb_input_name, bcbb_filename, &
+  bcbb_time_dependency_type, bcbb_dataset_entry, &
+ bcbf_source, bcbf_input_name, bcbf_filename, &
+  bcbf_time_dependency_type, bcbf_dataset_entry, &
+ bcsh_source, bcsh_input_name, bcsh_filename, &
+  bcsh_time_dependency_type, bcsh_dataset_entry, &
+ bcav_source, bcav_input_name, bcav_filename, &
+  bcav_time_dependency_type, bcav_dataset_entry, bc_aircraft_EI, &
+ omff_source, omff_input_name, omff_filename, &
+  omff_time_dependency_type, omff_dataset_entry, &
+ ombb_source, ombb_input_name, ombb_filename, &
+  ombb_time_dependency_type, ombb_dataset_entry, &
+ ombf_source, ombf_input_name, ombf_filename, &
+  ombf_time_dependency_type, ombf_dataset_entry, &
+ omsh_source, omsh_input_name, omsh_filename, &
+  omsh_time_dependency_type, omsh_dataset_entry, &
+ omna_source, omna_input_name, omna_filename, &
+  omna_time_dependency_type, omna_dataset_entry
 
 character(len=6), parameter :: module_name = 'tracer'
 
@@ -185,8 +243,8 @@ logical :: module_is_initialized = .FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 15.0 2007/08/14 03:56:43 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_10 $'
+character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 15.0.4.1 2007/11/28 16:21:52 rsh Exp $'
+character(len=128) :: tagname = '$Name: omsk_2007_12 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -195,8 +253,8 @@ contains
 
 subroutine atmos_carbon_aerosol_driver(lon, lat, land, pfull,phalf,z_half, z_pbl, &
                                T, pwt, &
-                               black_cphob, black_cphob_dt,  &
-                               black_cphil, black_cphil_dt,  &
+                               bcphob, bcphob_dt,  &
+                               bcphil, bcphil_dt,  &
                                omphob, omphob_dt, &
                                omphil, omphil_dt, &
                                model_time, is, ie, js, je )
@@ -207,25 +265,45 @@ subroutine atmos_carbon_aerosol_driver(lon, lat, land, pfull,phalf,z_half, z_pbl
    real, intent(in),  dimension(:,:)   :: z_pbl
    real, intent(in),  dimension(:,:,:) :: z_half
    real, intent(in),  dimension(:,:,:) :: pwt,pfull,phalf,T
-   real, intent(in),  dimension(:,:,:) :: black_cphob,black_cphil
+   real, intent(in),  dimension(:,:,:) :: bcphob,bcphil
    real, intent(in),  dimension(:,:,:) :: omphob,omphil
-   real, intent(out), dimension(:,:,:) :: black_cphob_dt,black_cphil_dt
+   real, intent(out), dimension(:,:,:) :: bcphob_dt,bcphil_dt
    real, intent(out), dimension(:,:,:) :: omphob_dt,omphil_dt
 type(time_type), intent(in)            :: model_time
 integer, intent(in)                    :: is, ie, js, je
 !-----------------------------------------------------------------------
 type(time_type)                        :: bcff_time
 type(time_type)                        :: bcbb_time
-type(time_type)                        :: bcob_time
+type(time_type)                        :: bcbf_time
+type(time_type)                        :: bcsh_time
+type(time_type)                        :: bcav_time
 type(time_type)                        :: omff_time
 type(time_type)                        :: ombb_time
-type(time_type)                        :: omob_time
+type(time_type)                        :: ombf_time
+type(time_type)                        :: omsh_time
 type(time_type)                        :: omna_time
-real, dimension(size(black_cphob,1),size(black_cphob,2),size(black_cphob,3)) ::&
-   bc_sourcephob, bc_sourcephil, om_sourcephob, om_sourcephil, sinkphob
-   real  dtr,bltop,z1,z2
-real, dimension(size(black_cphob,3)) :: fbb, fff
-integer        :: i,j,l, kb,id,jd,kd,lat1,k
+real  dtr,bltop,z1,z2,del
+real, dimension(size(bcphob,3)) :: fa1, fa2
+real, dimension(size(bcphob,3),6) :: fbb
+integer :: lf, nlevel_fire
+real, dimension(6) :: alt_fire_min, alt_fire_max
+! Lower altitude of injection from wild fires 
+! These values correspond to the AEROCOM input data (cf. Dentener, ACP, 2006)
+integer, parameter :: nlevel_fire_AEROCOM = 6
+! Modified GEIA dataset proposed by Reddy and Boucher, J. Geophys. Res., 2004
+integer, parameter :: nlevel_fire_GEIA    = 2
+real, dimension(nlevel_fire_AEROCOM) :: &
+      alt_fire_min_AEROCOM=(/0.,100.,500.,1000.,2000.,3000./)
+real, dimension(nlevel_fire_GEIA) :: &
+      alt_fire_min_GEIA=(/0.,300./)
+! Upper altitude of injection from wild fires 
+real, dimension(nlevel_fire_AEROCOM) :: &
+      alt_fire_max_AEROCOM=(/100.,500.,1000.,2000.,3000.,6000./)
+real, dimension(nlevel_fire_GEIA) :: &
+      alt_fire_max_GEIA=(/300.,1500./)
+real :: ze1 = 100.
+real :: ze2 = 300.
+integer        :: j,l, kb,id,jd,kd,lat1,k
 integer        :: yr, mo, dy, hr, mn, sc, dum, mo_yr, dayspmn
 REAL,PARAMETER :: frac_bc_phobic = 0.8
 REAL,PARAMETER :: frac_bc_philic = 0.2
@@ -234,40 +312,58 @@ REAL,PARAMETER :: frac_om_philic = 0.5
 
 !
 !-------------------------------------------------------------------------
-   real, dimension(size(black_cphob,1),size(black_cphob,2)) ::          &
-     bcemisff_l, bcemisff_h, bcemisbb_l, bcemisbb_h, bcemisob, &
-     omemisff_l, omemisff_h, omemisbb_l, omemisbb_h, omemisob, omemisnat
+real, dimension(size(bcphob,1),size(bcphob,2)) :: bcemisff_l1, bcemisff_l2
+real, dimension(size(omphob,1),size(omphob,2)) :: omemisff_l1, omemisff_l2
+real, dimension(size(bcphob,1),size(bcphob,2),6) :: bcemisbb
+real, dimension(size(omphob,1),size(omphob,2),6) :: omemisbb
+
+real,dimension(size(bcphob,1),size(bcphob,2),size(bcphob,3)) ::&
+   bcphob_emis, bcphil_emis, bcphob_sink, bcemisob, bcemisff, bcemisav
+real,dimension(size(omphob,1),size(omphob,2),size(omphob,3)) ::&
+   omphob_emis, omphil_emis, omphob_sink, omemisob, omemisff
+real, dimension(size(bcphob,1),size(bcphob,2)) ::          &
+   bcemisbf, bcemissh
+real, dimension(size(omphob,1),size(omphob,2)) ::          &
+   omemisbf, omemissh, omemisbg
 !
 !-----------------------------------------------------------------------
 !
-      id=size(black_cphob,1); jd=size(black_cphob,2); kd=size(black_cphob,3)
+      id=size(bcphob,1); jd=size(bcphob,2); kd=size(bcphob,3)
 
       dtr= PI/180.
 
 !----------- compute black carbon source ------------
 
-    bc_sourcephob = 0.0
-    bc_sourcephil = 0.0
-    black_cphob_dt = 0.0
-    black_cphil_dt = 0.0
-    om_sourcephob = 0.0
-    om_sourcephil = 0.0
+    bcphob_dt = 0.0
+    bcphil_dt = 0.0
     omphob_dt = 0.0
     omphil_dt = 0.0
 ! emission rates (kg/m2/s)
-    bcemisff_l(:,:) = 0.0
-    bcemisff_h(:,:) = 0.0
-    bcemisbb_l(:,:) = 0.0
-    bcemisbb_h(:,:) = 0.0
-    bcemisob(:,:)  = 0.0
+    bcemisff_l1(:,:) = 0.0
+    bcemisff_l2(:,:) = 0.0
+    bcemisff(:,:,:)  = 0.0
+    bcemisbb(:,:,:)  = 0.0
+    bcemisob(:,:,:)  = 0.0
+    bcemisbf(:,:)    = 0.0
+    bcemissh(:,:)    = 0.0
+    bcemisav(:,:,:)  = 0.0
 
-    omemisff_l(:,:) = 0.0
-    omemisff_h(:,:) = 0.0
-    omemisbb_l(:,:) = 0.0
-    omemisbb_h(:,:) = 0.0
-    omemisob(:,:)  = 0.0
-    omemisnat(:,:)  = 0.0
+    bcphob_emis(:,:,:) = 0.0
+    bcphil_emis(:,:,:) = 0.0
+    bcphob_sink(:,:,:) = 0.0
+    omphob_emis(:,:,:) = 0.0
+    omphil_emis(:,:,:) = 0.0
+    omphob_sink(:,:,:) = 0.0
 
+    omemisff_l1(:,:) = 0.0
+    omemisff_l2(:,:) = 0.0
+    omemisff(:,:,:)  = 0.0
+    omemisbb(:,:,:)  = 0.0
+    omemisob(:,:,:)  = 0.0
+    omemisbf(:,:)    = 0.0
+    omemissh(:,:)    = 0.0
+    omemisbg(:,:)    = 0.0
+    if ( trim(bcff_source) .ne. ' ') then
 !--------------------------------------------------------------------
 !    define the time in the bcff data set from which data is to be 
 !    taken. if bcff is not time-varying, it is simply model_time.
@@ -296,17 +392,10 @@ REAL,PARAMETER :: frac_om_philic = 0.5
          bcff_time = model_time
        endif
      endif
-    select case (trim(bcff_source))
-      case ('cooke_and_wilson_1996')
-             call interpolator(bcff_aerosol_interp, bcff_time, bcemisff_l, &
-                  trim(bcff_emission_name(1)), is, js)
-      case ('cooke_1999')
-             call interpolator(bcff_aerosol_interp, bcff_time, bcemisff_l, &
-                  trim(bcff_emission_name(2)), is, js)
-      case ('bond_2004') 
-             call interpolator(bcff_aerosol_interp, bcff_time, bcemisff_l, &
-                  trim(bcff_emission_name(3)), is, js)
-    end select
+     call interpolator(bcff_aerosol_interp, bcff_time, bcemisff_l1, &
+          trim(bcff_emission_name(1)), is, js)
+   endif
+   if ( trim(bcbb_source).ne.' ') then
 
 !--------------------------------------------------------------------
 !    define the time in the bcbb data set from which data is to be 
@@ -336,52 +425,141 @@ REAL,PARAMETER :: frac_om_philic = 0.5
          bcbb_time = model_time
        endif
      endif
+    nlevel_fire = 1
+    alt_fire_min(:) = 0.0
+    alt_fire_max(:) = 0.0
     select case (trim(bcbb_source))
       case ('cooke_and_wilson_1996')
-        call interpolator(bcbb_aerosol_interp, bcbb_time, bcemisbb_l, &
+        call interpolator(bcbb_aerosol_interp, bcbb_time, bcemisbb(:,:,1), &
                          trim(bcbb_emission_name(1)), is, js)
       case ('bond_2004') 
-        call interpolator(bcbb_aerosol_interp, bcbb_time, bcemisbb_l, &
-                         trim(bcbb_emission_name(2)), is, js)
-      case ('reddy_and_boucher_2004') 
-        call interpolator(bcbb_aerosol_interp, bcbb_time, bcemisbb_l, &
-                         trim(bcbb_emission_name(3)), is, js)
-        call interpolator(bcbb_aerosol_interp, bcbb_time, bcemisbb_h, &
-                         trim(bcbb_emission_name(4)), is, js)
+        call interpolator(bcbb_aerosol_interp, bcbb_time, bcemisbb(:,:,1), &
+                         trim(bcbb_emission_name(1)), is, js)
+      case ('gocart_2007') 
+        call interpolator(bcbb_aerosol_interp, bcbb_time, bcemisbb(:,:,1), &
+                         trim(bcbb_emission_name(1)), is, js)
+      case ('RETRO') 
+        call interpolator(bcbb_aerosol_interp, bcbb_time, bcemisbb(:,:,1), &
+                         trim(bcbb_emission_name(1)), is, js)
+      case ('GEIA')
+        nlevel_fire = nlevel_fire_GEIA
+        alt_fire_min(1:nlevel_fire_GEIA) = alt_fire_min_GEIA(1:nlevel_fire_GEIA)
+        alt_fire_max(1:nlevel_fire_GEIA) = alt_fire_max_GEIA(1:nlevel_fire_GEIA)
+        do lf=1, nlevel_fire 
+          call interpolator(bcbb_aerosol_interp, bcbb_time, bcemisbb(:,:,lf), &
+                         trim(bcbb_emission_name(lf)), is, js)
+        enddo
+      case ('AEROCOM') 
+! Wildfire emissions at 6 levels from 0 to 6 km
+! (cf. AEROCOM web site or Dentener et al., ACPD, 2006)
+        nlevel_fire = nlevel_fire_AEROCOM
+        alt_fire_min(1:nlevel_fire_AEROCOM) = &
+                 alt_fire_min_AEROCOM(1:nlevel_fire_AEROCOM)
+        alt_fire_max(1:nlevel_fire_AEROCOM) = &
+                 alt_fire_max_AEROCOM(1:nlevel_fire_AEROCOM)
+        do lf=1, nlevel_fire 
+          call interpolator(bcbb_aerosol_interp, bcbb_time, bcemisbb(:,:,lf), &
+                        trim(bcbb_emission_name(lf)), is, js)
+        enddo
     end select
+   endif
+   if ( trim(bcbf_source).ne. ' ') then
 !--------------------------------------------------------------------
-!    define the time in the bcob data set from which data is to be 
-!    taken. if bcob is not time-varying, it is simply model_time.
+!    define the time in the bcbf data set from which data is to be 
+!    taken. if bcbf is not time-varying, it is simply model_time.
 !---------------------------------------------------------------------
-     if(bcob_time_serie_type .eq. 3) then
-       if (bcob_negative_offset) then
-         bcob_time = model_time - bcob_offset
+     if(bcbf_time_serie_type .eq. 3) then
+       if (bcbf_negative_offset) then
+         bcbf_time = model_time - bcbf_offset
        else
-         bcob_time = model_time + bcob_offset
+         bcbf_time = model_time + bcbf_offset
        endif
      else 
-       if(bcob_time_serie_type .eq. 2 ) then
-         call get_date (bcob_entry, yr, dum,dum,dum,dum,dum)
+       if(bcbf_time_serie_type .eq. 2 ) then
+         call get_date (bcbf_entry, yr, dum,dum,dum,dum,dum)
          call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
          if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(bcob_entry)
+           dayspmn = days_in_month(bcbf_entry)
            if (dayspmn /= 29) then
-             bcob_time = set_date (yr, mo, dy-1, hr, mn, sc)
+             bcbf_time = set_date (yr, mo, dy-1, hr, mn, sc)
            else
-             bcob_time = set_date (yr, mo, dy, hr, mn, sc)
+             bcbf_time = set_date (yr, mo, dy, hr, mn, sc)
            endif
          else
-           bcob_time = set_date (yr, mo, dy, hr, mn, sc)
+           bcbf_time = set_date (yr, mo, dy, hr, mn, sc)
          endif
        else
-         bcob_time = model_time
+         bcbf_time = model_time
        endif
      endif
-    select case (trim(bcob_source))
-      case ('bond_2004') 
-        call interpolator(bcob_aerosol_interp, bcob_time, bcemisob, &
-                       trim(bcob_emission_name(1)), is, js)
-    end select
+     call interpolator(bcbf_aerosol_interp, bcbf_time, bcemisbf, &
+                       trim(bcbf_emission_name(1)), is, js)
+   endif
+   if ( trim(bcsh_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the bcsh data set from which data is to be 
+!    taken. if bcsh is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(bcsh_time_serie_type .eq. 3) then
+       if (bcsh_negative_offset) then
+         bcsh_time = model_time - bcsh_offset
+       else
+         bcsh_time = model_time + bcsh_offset
+       endif
+     else 
+       if(bcsh_time_serie_type .eq. 2 ) then
+         call get_date (bcsh_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(bcsh_entry)
+           if (dayspmn /= 29) then
+             bcsh_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             bcsh_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           bcsh_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         bcsh_time = model_time
+       endif
+     endif
+     call interpolator(bcsh_aerosol_interp, bcsh_time, bcemissh, &
+                  trim(bcsh_emission_name(1)), is, js)
+   endif
+   if ( trim(bcav_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the bcav data set from which data is to be 
+!    taken. if bcav is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(bcav_time_serie_type .eq. 3) then
+       if (bcav_negative_offset) then
+         bcav_time = model_time - bcav_offset
+       else
+         bcav_time = model_time + bcav_offset
+       endif
+     else 
+       if(bcav_time_serie_type .eq. 2 ) then
+         call get_date (bcav_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(bcav_entry)
+           if (dayspmn /= 29) then
+             bcav_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             bcav_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           bcav_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         bcav_time = model_time
+       endif
+     endif
+     call interpolator(bcav_aerosol_interp, bcav_time, phalf, bcemisav, &
+                         trim(bcav_emission_name(1)), is, js)
+   endif
+   if ( trim(omff_source).ne. ' ') then
 !--------------------------------------------------------------------
 !    define the time in the omff data set from which data is to be 
 !    taken. if omff is not time-varying, it is simply model_time.
@@ -410,16 +588,10 @@ REAL,PARAMETER :: frac_om_philic = 0.5
          omff_time = model_time
        endif
      endif
-    select case (trim(omff_source))
-      case ('cooke_1999')
-          call interpolator(omff_aerosol_interp, omff_time, omemisff_l, &
+     call interpolator(omff_aerosol_interp, omff_time, omemisff_l1, &
                       trim(omff_emission_name(1)), is, js)
-      case ('bond_2004') 
-          call interpolator(omff_aerosol_interp, omff_time, omemisff_l, &
-                      trim(omff_emission_name(2)), is, js)
-    end select
-
-
+   endif
+   if ( trim(ombb_source).ne. ' ') then
 !--------------------------------------------------------------------
 !    define the time in the ombb data set from which data is to be 
 !    taken. if ombb is not time-varying, it is simply model_time.
@@ -448,54 +620,113 @@ REAL,PARAMETER :: frac_om_philic = 0.5
          ombb_time = model_time
        endif
      endif
+    omemisbb(:,:,:) = 0.0
+    nlevel_fire = 1
+    alt_fire_min(:) = 0.0
+    alt_fire_max(:) = 0.0
     select case (trim(ombb_source))
       case ('cooke_and_wilson_1996')
-        call interpolator(ombb_aerosol_interp, ombb_time, omemisbb_l, &
+        call interpolator(ombb_aerosol_interp, ombb_time, omemisbb(:,:,1), &
                            trim(ombb_emission_name(1)), is, js)
-        omemisbb_l(:,:) = omemisbb_l(:,:)*7.0
-        omemisbb_h(:,:) = 0.0
+        omemisbb(:,:,1) = omemisbb(:,:,1)*7.0
       case ('bond_2004') 
-        call interpolator(ombb_aerosol_interp, ombb_time, omemisbb_l, &
-                       trim(ombb_emission_name(2)), is, js)
-      case ('reddy_and_boucher_2004') 
-          call interpolator(ombb_aerosol_interp, ombb_time, omemisbb_l, &
-                       trim(ombb_emission_name(3)), is, js)
-          call interpolator(ombb_aerosol_interp, ombb_time, omemisbb_h, &
-                       trim(ombb_emission_name(4)), is, js)
+        call interpolator(ombb_aerosol_interp, ombb_time, omemisbb(:,:,1), &
+                       trim(ombb_emission_name(1)), is, js)
+      case ('gocart_2007')
+        call interpolator(ombb_aerosol_interp, ombb_time, omemisbb(:,:,1), &
+                       trim(ombb_emission_name(1)), is, js)
+      case ('RETRO')
+        call interpolator(ombb_aerosol_interp, ombb_time, omemisbb(:,:,1), &
+                       trim(ombb_emission_name(1)), is, js)
+      case ('GEIA')
+        nlevel_fire = nlevel_fire_GEIA
+        alt_fire_min(1:nlevel_fire_GEIA) = alt_fire_min_GEIA(1:nlevel_fire_GEIA)
+        alt_fire_max(1:nlevel_fire_GEIA) = alt_fire_max_GEIA(1:nlevel_fire_GEIA)
+! GEIA emission inventory scaled by ATSR fire counts (Reddy and Boucher, 2004)
+! There are 2 levels of emission
+        do lf=1, nlevel_fire
+          call interpolator(ombb_aerosol_interp, ombb_time, omemisbb(:,:,lf), &
+                       trim(ombb_emission_name(lf)), is, js)
+        enddo
+      case ('AEROCOM')
+        nlevel_fire = nlevel_fire_AEROCOM
+        alt_fire_min(1:nlevel_fire_AEROCOM) = &
+              alt_fire_min_AEROCOM(1:nlevel_fire_AEROCOM)
+        alt_fire_max(1:nlevel_fire_AEROCOM) = &
+              alt_fire_max_AEROCOM(1:nlevel_fire_AEROCOM)
+! Wildfire emissions at 6 levels from 0 to 6 km
+! (cf. AEROCOM web site or Dentener et al., ACPD, 2006)
+        do lf=1, nlevel_fire
+          call interpolator(ombb_aerosol_interp, ombb_time, omemisbb(:,:,lf), &
+                        trim(ombb_emission_name(lf)), is, js)
+        enddo
     end select
+   endif
+   if ( trim(ombf_source).ne. ' ') then
 !--------------------------------------------------------------------
-!    define the time in the omob data set from which data is to be 
-!    taken. if omob is not time-varying, it is simply model_time.
+!    define the time in the ombf data set from which data is to be 
+!    taken. if ombf is not time-varying, it is simply model_time.
 !---------------------------------------------------------------------
-     if(omob_time_serie_type .eq. 3) then
-       if (omob_negative_offset) then
-         omob_time = model_time - omob_offset
+     if(ombf_time_serie_type .eq. 3) then
+       if (ombf_negative_offset) then
+         ombf_time = model_time - ombf_offset
        else
-         omob_time = model_time + omob_offset
+         ombf_time = model_time + ombf_offset
        endif
      else 
-       if(omob_time_serie_type .eq. 2 ) then
-         call get_date (omob_entry, yr, dum,dum,dum,dum,dum)
+       if(ombf_time_serie_type .eq. 2 ) then
+         call get_date (ombf_entry, yr, dum,dum,dum,dum,dum)
          call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
          if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(omob_entry)
+           dayspmn = days_in_month(ombf_entry)
            if (dayspmn /= 29) then
-             omob_time = set_date (yr, mo, dy-1, hr, mn, sc)
+             ombf_time = set_date (yr, mo, dy-1, hr, mn, sc)
            else
-             omob_time = set_date (yr, mo, dy, hr, mn, sc)
+             ombf_time = set_date (yr, mo, dy, hr, mn, sc)
            endif
          else
-           omob_time = set_date (yr, mo, dy, hr, mn, sc)
+           ombf_time = set_date (yr, mo, dy, hr, mn, sc)
          endif
        else
-         omob_time = model_time
+         ombf_time = model_time
        endif
      endif
-    select case (trim(omob_source))
-      case ('bond_2004') 
-        call interpolator(omob_aerosol_interp, omob_time, omemisob, &
-                       trim(omob_emission_name(1)), is, js)
-    end select
+     call interpolator(ombf_aerosol_interp, ombf_time, omemisbf, &
+                       trim(ombf_emission_name(1)), is, js)
+   endif
+   if ( trim(omsh_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the omsh data set from which data is to be 
+!    taken. if omsh is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(omsh_time_serie_type .eq. 3) then
+       if (omsh_negative_offset) then
+         omsh_time = model_time - omsh_offset
+       else
+         omsh_time = model_time + omsh_offset
+       endif
+     else 
+       if(omsh_time_serie_type .eq. 2 ) then
+         call get_date (omsh_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(omsh_entry)
+           if (dayspmn /= 29) then
+             omsh_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             omsh_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           omsh_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         omsh_time = model_time
+       endif
+     endif
+     call interpolator(omsh_aerosol_interp, omsh_time, omemissh, &
+                  trim(omsh_emission_name(1)), is, js)
+   endif
+   if ( trim(omna_source).ne. ' ') then
 !--------------------------------------------------------------------
 !    define the time in the omna data set from which data is to be 
 !    taken. if omna is not time-varying, it is simply model_time.
@@ -524,56 +755,121 @@ REAL,PARAMETER :: frac_om_philic = 0.5
          omna_time = model_time
        endif
      endif
-    select case (trim(omna_source))
-      case ('gunther')
-        call interpolator(omna_aerosol_interp, model_time, omemisnat, &
+     call interpolator(omna_aerosol_interp, model_time, omemisbg, &
                        trim(omna_emission_name(1)), is, js)
-    end select
+    endif
 !
     do j = 1, jd
       do i = 1, id
 
-        fbb(:) = 0.
-        fbb(kd)= 1.
-        fff(:) = 0.
-        fff(kd-1)= 1.
-!
-! --- Assuming biomass burning emission within the PBL -------
-!
-        bltop = z_pbl(i,j)
-        do l = kd,1,-1
-          z1=z_half(i,j,l+1)-z_half(i,j,kd+1)
-          z2=z_half(i,j,l)-z_half(i,j,kd+1)
-          if (bltop.lt.z1) exit
-          if (bltop.ge.z2) fbb(l)=(z2-z1)/z_pbl(i,j)
-          if (bltop.gt.z1.and.bltop.lt.z2) then
-            fbb(l) = (bltop-z1)/z_pbl(i,j)
+! --- For fosil fuel emissions, calculate the fraction of emission for
+! --- each vertical levels
+        fa1(:) = 0.
+        fa2(:) = 0.
+        do l = kd,2,-1
+          Z1 = z_half(i,j,l+1)-z_half(i,j,kd+1)
+          Z2 = z_half(i,j,l)-z_half(i,j,kd+1)
+          if (Z2.ge.0.and.Z1.lt.ze1) then
+            if (Z1.gt.0) then
+              if (Z2.lt.ze1) then
+                fa1(l)=(Z2-Z1)/ze1
+              else
+                fa1(l)=(ze1-Z1)/ze1
+              endif
+            else
+              if (Z2.le.ze1) then
+                fa1(l)=Z2/ze1
+              else
+                fa1(l)=1.
+              endif
+            endif
           endif
+          
+          if (Z2.ge.ze1.and.z1.lt.ze2) then
+            if (Z1.gt.Ze1) then
+              if (Z2.lt.ze2) then
+                fa2(l)=(z2-z1)/(ze2-ze1)
+              else
+                fa2(l)=(ze2-z1)/(ze2-ze1)
+              endif
+            else
+              if (Z2.le.ze2) then
+                fa2(l)=(z2-ze1)/(ze2-ze1)
+              else
+                fa2(l)=1.
+              endif
+            endif
+          endif
+          if (Z1.gt.Ze2) exit
         enddo
 !
-        bc_sourcephob(i,j,kd) =  frac_bc_phobic  &
-          *(bcemisff_l(i,j)+ bcemisbb_l(i,j) + bcemisob(i,j) )/pwt(i,j,kd)
-
-        bc_sourcephil(i,j,kd) =  frac_bc_philic  &
-          *(bcemisff_l(i,j)+ bcemisbb_l(i,j) + bcemisob(i,j) )/pwt(i,j,kd)
-
-        bc_sourcephob(i,j,:) =  bc_sourcephob(i,j,:) + frac_bc_phobic &
-          *(fff(:)*bcemisff_h(i,j)+fbb(:)*bcemisbb_h(i,j)) /pwt(i,j,:)
-        bc_sourcephil(i,j,:) =  bc_sourcephil(i,j,:) + frac_bc_philic &
-          *(fff(:)*bcemisff_h(i,j)+fbb(:)*bcemisbb_h(i,j)) /pwt(i,j,:)
+! Calculate fraction of emission at every levels for open fires
 !
-        om_sourcephob(i,j,kd) =  frac_om_phobic  &
-          *(omemisff_l(i,j)+ omemisbb_l(i,j) + omemisob(i,j) &
-            +omemisnat(i,j))/pwt(i,j,kd)
+        fbb(:,:)=0.
+!
+! In case of multiple levels, which are fixed
+!
+        if (nlevel_fire .gt. 1) then
+          do l = kd,2,-1
+            Z1 = z_half(i,j,l+1)-z_half(i,j,kd+1)
+            Z2 = z_half(i,j,l)-z_half(i,j,kd+1)
+            do lf=1,nlevel_fire
+              del=alt_fire_max(lf)-alt_fire_min(lf)
+              if (del.gt.0. .and. &
+                  Z1.lt.alt_fire_max(lf).and.Z2.gt.alt_fire_min(lf) ) then
+                if (Z1.ge.alt_fire_min(lf)) then
+                  if (Z2 .lt. alt_fire_max(lf)) then
+                    fbb(l,lf)=(Z2-Z1)/del
+                  else
+                    fbb(l,lf)=(alt_fire_max(lf)-z1)/del
+                  endif
+                else
+                  if (Z2.le.alt_fire_max(lf)) then
+                    fbb(l,lf) = (Z2-alt_fire_min(lf))/del
+                  else
+                    fbb(l,lf)=1.
+                  endif
+                endif
+              endif
+            enddo
+          enddo
+        else
+!
+! --- Inject equally through the boundary layer -------
+!
+          bltop = z_pbl(i,j)
+          do l = kd,1,-1
+            z1=z_half(i,j,l+1)-z_half(i,j,kd+1)
+            z2=z_half(i,j,l)-z_half(i,j,kd+1)
+            if (bltop.lt.z1) exit
+            if (bltop.ge.z2) fbb(l,1)=(z2-z1)/bltop
+            if (bltop.gt.z1.and.bltop.lt.z2) fbb(l,1) = (bltop-z1)/bltop
+          enddo
+        endif
+! Fossil fuel emission
+        bcemisff(i,j,:)=fa1(:) * bcemisff_l1(i,j) + fa2(:) * bcemisff_l2(i,j)
+        omemisff(i,j,:)=fa1(:) * omemisff_l1(i,j) + fa2(:) * omemisff_l2(i,j)
+! Open biomass burning fires emission
+        do lf =1, nlevel_fire
+          bcemisob(i,j,:)= bcemisob(i,j,:) + fbb(:,lf)*bcemisbb(i,j,lf)
+          omemisob(i,j,:)= omemisob(i,j,:) + fbb(:,lf)*omemisbb(i,j,lf)
+        enddo
+! Biogenic
+! Bio-fuel (if not included in fossil fuel inevntory)
+! International shipping
+        bcphob_emis(i,j,kd) =  bcemisbf(i,j) + bcemissh(i,j)
+        omphob_emis(i,j,kd) =  omemisbf(i,j) + omemissh(i,j) + omemisbg(i,j)
+        bcphob_emis(i,j,:)= bcphob_emis(i,j,:) + &
+           bc_aircraft_EI * bcemisav(i,j,:)    + &
+           bcemisff(i,j,:) + bcemisob(i,j,:)
+        omphob_emis(i,j,:)= omphob_emis(i,j,:) + omemisff(i,j,:) + &
+           omemisob(i,j,:)
 
-        om_sourcephil(i,j,kd) =  frac_om_philic  &
-          *(omemisff_l(i,j)+ omemisbb_l(i,j) + omemisob(i,j) &
-            +omemisnat(i,j))/pwt(i,j,kd)
-
-        om_sourcephob(i,j,:) =  om_sourcephob(i,j,:) + frac_om_phobic &
-          *(fff(:)*omemisff_h(i,j)+fbb(:)*omemisbb_h(i,j))/pwt(i,j,:)
-        om_sourcephil(i,j,:) =  om_sourcephil(i,j,:) + frac_om_philic &
-          *(fff(:)*omemisff_h(i,j)+fbb(:)*omemisbb_h(i,j))/pwt(i,j,:)
+        bcphil_emis(i,j,:) = bcphob_emis(i,j,:) * frac_bc_philic/pwt(i,j,:)
+        omphil_emis(i,j,:) = omphob_emis(i,j,:) * frac_om_philic/pwt(i,j,:)
+        bcphob_emis(i,j,:) = bcphob_emis(i,j,:) * frac_bc_phobic/pwt(i,j,:)
+        omphob_emis(i,j,:) = omphob_emis(i,j,:) * frac_om_phobic/pwt(i,j,:)
+!
       enddo
     enddo
 
@@ -584,18 +880,18 @@ REAL,PARAMETER :: frac_om_philic = 0.5
 !
 !  sink = 1./(86400.*1.44) = 8.023e-6
 
-    sinkphob(:,:,:) = 0.0
-    where (black_cphob > 0.0)
-        sinkphob = 8.038e-6*black_cphob
+    bcphob_sink(:,:,:) = 0.0
+    where (bcphob > 0.0)
+        bcphob_sink = 8.038e-6*bcphob
     elsewhere
-        sinkphob = 0.0
+        bcphob_sink = 0.0
     endwhere
 !
 
 !------- tendency ------------------
 
-    black_cphob_dt = bc_sourcephob - sinkphob
-    black_cphil_dt = bc_sourcephil + sinkphob
+    bcphob_dt = bcphob_emis - bcphob_sink
+    bcphil_dt = bcphil_emis + bcphob_sink
 !
 !------- compute organic carbon sink --------------
 !
@@ -604,17 +900,84 @@ REAL,PARAMETER :: frac_om_philic = 0.5
 !
 !  sink = 1./(86400.*1.44) = 8.023e-6
 !
-    sinkphob(:,:,:) = 0.0
+    omphob_sink(:,:,:) = 0.0
     where (omphob >= 0.0)
-       sinkphob = 8.023e-6*omphob
+       omphob_sink = 8.023e-6*omphob
     elsewhere
-       sinkphob = 0.0
+       omphob_sink = 0.0
     endwhere
 
 !------- tendency ------------------
 
-      omphob_dt = om_sourcephob - sinkphob
-      omphil_dt = om_sourcephil + sinkphob
+      omphob_dt = omphob_emis - omphob_sink
+      omphil_dt = omphil_emis + omphob_sink
+!
+! Send registered results to diag manager
+!
+      if (id_bcphob_emis > 0) then
+        used = send_data ( id_bcphob_emis, bcphob_emis, model_time, &
+              is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_bcphil_emis > 0) then
+        used = send_data ( id_bcphil_emis, bcphil_emis, model_time, &
+              is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_omphob_emis > 0) then
+        used = send_data ( id_omphob_emis, omphob_emis, model_time, &
+              is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_omphil_emis > 0) then
+        used = send_data ( id_omphil_emis, omphil_emis, model_time, &
+              is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_bcphob_sink > 0) then
+        used = send_data ( id_bcphob_sink, bcphob_sink, model_time, &
+              is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_omphob_sink > 0) then
+        used = send_data ( id_omphob_sink, omphob_sink, model_time, &
+              is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_bcemisbf > 0) then
+        used = send_data ( id_bcemisbf, bcemisbf, model_time, &
+              is_in=is,js_in=js)
+      endif
+      if (id_bcemisbb > 0) then
+        used = send_data ( id_bcemisbb, bcemisob, model_time, &
+              is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_bcemissh > 0) then
+        used = send_data ( id_bcemissh, bcemissh, model_time, &
+              is_in=is,js_in=js)
+      endif
+      if (id_bcemisff > 0) then
+        used = send_data ( id_bcemisff, bcemisff, model_time, &
+              is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_bcemisav > 0) then
+        used = send_data ( id_bcemisav, bcemisav*bc_aircraft_EI, model_time, &
+              is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_omemisbf > 0) then
+        used = send_data ( id_omemisbf, omemisbf, model_time, &
+              is_in=is,js_in=js)
+      endif
+      if (id_omemisbb > 0) then
+        used = send_data ( id_omemisbb, omemisob, model_time, &
+              is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_omemissh > 0) then
+        used = send_data ( id_omemissh, omemissh, model_time, &
+              is_in=is,js_in=js)
+      endif
+      if (id_omemisff > 0) then
+        used = send_data ( id_omemisff, bcemisff, model_time, &
+              is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_omemisbg > 0) then
+        used = send_data ( id_omemisbg, omemisbg, model_time, &
+              is_in=is,js_in=js)
+      endif
 !
  end subroutine atmos_carbon_aerosol_driver
 
@@ -633,10 +996,10 @@ REAL,PARAMETER :: frac_om_philic = 0.5
 !<TEMPLATE>
 !call atmos_carbon_aerosol_init (lonb, latb, r, axes, Time, mask)
 !</TEMPLATE>
-!   <IN NAME="lonb" TYPE="real" DIM="(:)">
+!   <IN NAME="lonb" TYPE="real" DIM="(:,:)">
 !     The longitudes for the local domain.
 !   </IN>
-!   <IN NAME="latb" TYPE="real" DIM="(:)">
+!   <IN NAME="latb" TYPE="real" DIM="(:,:)">
 !     The latitudes for the local domain.
 !   </IN>
 !   <INOUT NAME="r" TYPE="real" DIM="(:,:,:,:)">
@@ -731,97 +1094,124 @@ integer ::  unit, ierr, io
    endif
 
 30        format (A,' was initialized as tracer number ',i2)
+!
 !   Register Emissions as static fields (monthly)
 !
-       id_bcemisff_l= register_diag_field ( mod_name,     &
-                    'bcemisff_l', axes(1:2), Time,                &
-                    'BC emissions from FF', 'kg/m2/sec', -999. )
+     id_bcphob_emis = register_diag_field ( mod_name,           &
+                    'bcphob_emis', axes(1:3),Time,          &
+                    'BC phobic emission rate', 'kg/m2/sec' )
 
-       id_bcemisbb_l= register_diag_field ( mod_name,     &
-                    'bcemisbb_l', axes(1:2), Time,                &
-                    'BC emissions from BB', 'kg/m2/sec')
+     id_bcphil_emis = register_diag_field ( mod_name,           &
+                    'bcphil_emis', axes(1:3),Time,          &
+                    'BC phylic emission rate', 'kg/m2/sec' )
 
-       id_omemisff_l= register_diag_field ( mod_name,     &
-                    'omemisff_l', axes(1:2), Time,                &
-                    'OM emissions from FF', 'kg/m2/sec')
+     id_omphob_emis = register_diag_field ( mod_name,           &
+                    'omphob_emis', axes(1:3),Time,          &
+                    'OM phobic emission rate', 'kg/m2/sec' )
 
-       id_omemisbb_l= register_diag_field ( mod_name,     &
-                    'omemisbb_l', axes(1:2), Time,                &
-                    'OM emissions from BB', 'kg/m2/sec')
-       id_bcemisff_h= register_diag_field ( mod_name,     &
-                    'bcemisff_h', axes(1:2), Time,                &
-                    'BC emissions from FF', 'kg/m2/sec')
+     id_omphil_emis = register_diag_field ( mod_name,           &
+                    'omphil_emis', axes(1:3),Time,          &
+                    'OM phylic emission rate', 'kg/m2/sec' )
 
-       id_bcemisbb_h= register_diag_field ( mod_name,     &
-                    'bcemisbb_h', axes(1:2), Time,                &
-                    'BC emissions from BB', 'kg/m2/sec')
-
-       id_omemisff_h= register_diag_field ( mod_name,     &
-                    'omemisff_h', axes(1:2), Time,                &
-                    'OM emissions from FF', 'kg/m2/sec')
-
-       id_omemisbb_h= register_diag_field ( mod_name,     &
-                    'omemisbb_h', axes(1:2), Time,                &
-                    'OM emissions from BB', 'kg/m2/sec')
-
-       id_omemisnat= register_diag_field ( mod_name,     &
-                    'omemisnat', axes(1:2), Time,                &
-                    'OM emissions from BVOCs', 'kg/m2/sec')
-!
      id_bcphob_sink = register_diag_field ( mod_name,           &
-                    'bcphob_sink', axes(1:3),Time,              &
-                    'BC phobic loss rate', 'kg/m2/sec' )
-
-     id_bcphil_sink = register_diag_field ( mod_name,           &
-                    'bcphil_sink', axes(1:3),Time,              &
-                    'BC phylic loss rate', 'kg/m2/sec' )
+                    'bcphob_sink', axes(1:3),Time,          &
+                    'BC phobic sink rate', 'kg/m2/sec' )
 
      id_omphob_sink = register_diag_field ( mod_name,           &
-                    'omphob_sink', axes(1:3),Time,              &
-                    'OM phobic loss rate', 'kg/m2/sec' )
+                    'omphob_sink', axes(1:3),Time,          &
+                    'OM phobic sink rate', 'kg/m2/sec' )
 
-     id_omphil_sink = register_diag_field ( mod_name,           &
-                    'omphil_sink', axes(1:3),Time,              &
-                    'OM phylic loss rate', 'kg/m2/sec' )
+     id_bcemisbf    = register_diag_field ( mod_name,           &
+                    'bcemisbf', axes(1:2),Time,                 &
+                    'BC biofuel emission', 'kg/m2/sec' )
+
+     id_bcemisbb    = register_diag_field ( mod_name,           &
+                    'bcemisbb', axes(1:3),Time,                 &
+                    'BC open biomass burning emission', 'kg/m2/sec' )
+
+     id_bcemissh    = register_diag_field ( mod_name,           &
+                    'bcemissh', axes(1:2),Time,                 &
+                    'BC shipping emission', 'kg/m2/sec' )
+
+     id_bcemisff    = register_diag_field ( mod_name,           &
+                    'bcemisff', axes(1:3),Time,                 &
+                    'BC fossil fuel emission', 'kg/m2/sec' )
+
+     id_bcemisav    = register_diag_field ( mod_name,           &
+                    'bcemisav', axes(1:3),Time,                 &
+                    'BC aircraft emission', 'kg/m2/sec' )
+
+     id_omemisbf    = register_diag_field ( mod_name,           &
+                    'omemisbf', axes(1:2),Time,                 &
+                    'OM biofuel emission', 'kg/m2/sec' )
+
+     id_omemisbb    = register_diag_field ( mod_name,           &
+                    'omemisbb', axes(1:3),Time,                 &
+                    'OM open biomass burning emission', 'kg/m2/sec' )
+
+     id_omemissh    = register_diag_field ( mod_name,           &
+                    'omemissh', axes(1:2),Time,                 &
+                    'OM shipping emission', 'kg/m2/sec' )
+
+     id_omemisff    = register_diag_field ( mod_name,           &
+                    'omemisff', axes(1:3),Time,                 &
+                    'OM fossil fuel emission', 'kg/m2/sec' )
+
+     id_omemisbg    = register_diag_field ( mod_name,           &
+                    'omemisbg', axes(1:2),Time,                 &
+                    'OM biogenic emission', 'kg/m2/sec' )
 
 !----------------------------------------------------------------------
 !    initialize namelist entries
 !----------------------------------------------------------------------
         bcff_offset = set_time (0,0)
         bcbb_offset = set_time (0,0)
-        bcob_offset = set_time (0,0)
+        bcbf_offset = set_time (0,0)
+        bcsh_offset = set_time (0,0)
+        bcav_offset = set_time (0,0)
         omff_offset = set_time (0,0)
         ombb_offset = set_time (0,0)
-        omob_offset = set_time (0,0)
+        ombf_offset = set_time (0,0)
+        omsh_offset = set_time (0,0)
         omna_offset = set_time (0,0)
 
         bcff_entry = set_time (0,0)
         bcbb_entry = set_time (0,0)
-        bcob_entry = set_time (0,0)
+        bcbf_entry = set_time (0,0)
+        bcsh_entry = set_time (0,0)
+        bcav_entry = set_time (0,0)
         omff_entry = set_time (0,0)
         ombb_entry = set_time (0,0)
-        omob_entry = set_time (0,0)
+        ombf_entry = set_time (0,0)
+        omsh_entry = set_time (0,0)
         omna_entry = set_time (0,0)
 
         bcff_negative_offset = .false.
         bcbb_negative_offset = .false.
-        bcob_negative_offset = .false.
+        bcbf_negative_offset = .false.
+        bcsh_negative_offset = .false.
+        bcav_negative_offset = .false.
         omff_negative_offset = .false.
         ombb_negative_offset = .false.
-        omob_negative_offset = .false.
+        ombf_negative_offset = .false.
+        omsh_negative_offset = .false.
         omna_negative_offset = .false.
 
         bcff_time_serie_type = 1
         bcbb_time_serie_type = 1
-        bcob_time_serie_type = 1
+        bcbf_time_serie_type = 1
+        bcsh_time_serie_type = 1
+        bcav_time_serie_type = 1
         omff_time_serie_type = 1
         ombb_time_serie_type = 1
-        omob_time_serie_type = 1
+        ombf_time_serie_type = 1
+        omsh_time_serie_type = 1
         omna_time_serie_type = 1
 !----------------------------------------------------------------------
 !    define the model base time  (defined in diag_table)
 !----------------------------------------------------------------------
         model_init_time = get_base_time()
+   if ( trim(bcff_source) .ne. ' ') then
 !---------------------------------------------------------------------
 !    Set time for input file base on selected time dependency.
 !---------------------------------------------------------------------
@@ -829,7 +1219,7 @@ integer ::  unit, ierr, io
         bcff_time_serie_type = 1
         bcff_offset = set_time(0, 0)
         if (mpp_pe() == mpp_root_pe() ) then
-          print *, 'bcff are constant in sulfate module'
+          print *, 'bcff are constant in atmos_carbon_aerosol module'
         endif
 !---------------------------------------------------------------------
 !    a dataset entry point must be supplied when the time dependency
@@ -892,12 +1282,46 @@ integer ::  unit, ierr, io
                     bcff_dataset_entry(1)
         endif
      endif
+     select case (trim(bcff_source))
+       case ('cooke_and_wilson_1996')
+         if (trim(bcff_input_name(1)) .eq. ' ') then
+           bcff_emission_name(1)='bcff_cw96'
+         else
+           bcff_emission_name(1)=trim(bcff_input_name(1))
+         endif
+      case ('cooke_1999')
+         if (trim(bcff_input_name(1)) .eq. ' ') then
+           bcff_emission_name(1)='bcff_cooke99'
+         else
+           bcff_emission_name(1)=trim(bcff_input_name(1))
+         endif
+      case ('bond_2004') 
+         if (trim(bcff_input_name(1)) .eq. ' ') then
+           bcff_emission_name(1)='bcff_bond'
+         else
+           bcff_emission_name(1)=trim(bcff_input_name(1))
+         endif
+      case ('gocart_2007') 
+         if (trim(bcff_input_name(1)) .eq. ' ') then
+           bcff_emission_name(1)='bc_anthro'
+         else
+           bcff_emission_name(1)=trim(bcff_input_name(1))
+         endif
+      case ('AEROCOM') 
+         if (trim(bcff_input_name(1)) .eq. ' ') then
+           bcff_emission_name(1)='BC1ff'
+         else
+           bcff_emission_name(1)=trim(bcff_input_name(1))
+         endif
+     end select
      call interpolator_init (bcff_aerosol_interp,             &
                              trim(bcff_filename),           &
                              lonb, latb,                        &
                              data_out_of_bounds=  (/CONSTANT/), &
                              data_names = bcff_emission_name,        &
                              vert_interp=(/INTERP_WEIGHTED_P/)  )
+   endif
+   if ( trim(bcbb_source) .ne. ' ') then
 !---------------------------------------------------------------------
 !    Set time for input file base on selected time dependency.
 !---------------------------------------------------------------------
@@ -905,7 +1329,7 @@ integer ::  unit, ierr, io
         bcbb_time_serie_type = 1
         bcbb_offset = set_time(0, 0)
         if (mpp_pe() == mpp_root_pe() ) then
-          print *, 'bcbb are constant in sulfate module'
+          print *, 'bcbb are constant in atmos_carbon_aerosol module'
         endif
 !---------------------------------------------------------------------
 !    a dataset entry point must be supplied when the time dependency
@@ -963,92 +1387,316 @@ integer ::  unit, ierr, io
            'bcbb is defined from a single annual cycle &
                 &- no interannual variation', NOTE)
         if (mpp_pe() == mpp_root_pe() ) then
-          print *, 'bcff correspond to year :', &
+          print *, 'bcbb correspond to year :', &
                     bcbb_dataset_entry(1)
         endif
      endif
-     call interpolator_init (bcbb_aerosol_interp,             &
-                             trim(bcbb_filename),           &
-                             lonb, latb,                        &
-                             data_out_of_bounds=  (/CONSTANT/), &
-                             data_names = bcbb_emission_name,        &
-                             vert_interp=(/INTERP_WEIGHTED_P/)  )
+     select case (trim(bcbb_source))
+       case ('cooke_and_wilson_1996')
+         if (trim(bcbb_input_name(1)) .eq. ' ') then
+           bcbb_emission_name(1)='bcbb_cw96'
+         else
+           bcbb_emission_name(1)=trim(bcbb_input_name(1))
+         endif
+         call interpolator_init (bcbb_aerosol_interp,           &
+           trim(bcbb_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+           data_names=bcbb_emission_name(1:1), vert_interp=(/INTERP_WEIGHTED_P/))
+      case ('bond_2004') 
+         if (trim(bcbb_input_name(1)) .eq. ' ') then
+           bcbb_emission_name(1)='bcob_bond'
+         else
+           bcbb_emission_name(1)=trim(bcbb_input_name(1))
+         endif
+         call interpolator_init (bcbb_aerosol_interp,           &
+           trim(bcbb_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+           data_names=bcbb_emission_name(1:1), vert_interp=(/INTERP_WEIGHTED_P/))
+      case ('gocart_2007') 
+         if (trim(bcbb_input_name(1)) .eq. ' ') then
+           bcbb_emission_name(1)='bc_biobur'
+         else
+           bcbb_emission_name(1)=trim(bcbb_input_name(1))
+         endif
+         call interpolator_init (bcbb_aerosol_interp,           &
+           trim(bcbb_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+           data_names=bcbb_emission_name(1:1), vert_interp=(/INTERP_WEIGHTED_P/))
+       case ('GEIA')
+         if (trim(bcbb_input_name(1)) .eq. ' ') then
+           bcbb_emission_name(1)='bc_geia1'
+           bcbb_emission_name(2)='bc_geia2'
+         else
+           bcbb_emission_name(1)=trim(bcbb_input_name(1))
+           bcbb_emission_name(2)=trim(bcbb_input_name(2))
+         endif
+         call interpolator_init (bcbb_aerosol_interp,           &
+           trim(bcbb_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+           data_names=bcbb_emission_name(1:2),vert_interp=(/INTERP_WEIGHTED_P/))
+       case ('AEROCOM')
+         if (trim(bcbb_input_name(1)) .eq. ' ') then
+           bcbb_emission_name(1)='GFED_BC_l1'
+           bcbb_emission_name(2)='GFED_BC_l2'
+           bcbb_emission_name(3)='GFED_BC_l3'
+           bcbb_emission_name(4)='GFED_BC_l4'
+           bcbb_emission_name(5)='GFED_BC_l5'
+           bcbb_emission_name(6)='GFED_BC_l6'
+         else
+           bcbb_emission_name(1)(:)=trim(bcbb_input_name(1)(:))
+           bcbb_emission_name(2)(:)=trim(bcbb_input_name(2)(:))
+           bcbb_emission_name(3)(:)=trim(bcbb_input_name(3)(:))
+           bcbb_emission_name(4)(:)=trim(bcbb_input_name(4)(:))
+           bcbb_emission_name(5)(:)=trim(bcbb_input_name(5)(:))
+           bcbb_emission_name(6)(:)=trim(bcbb_input_name(6)(:))
+         endif
+         call interpolator_init (bcbb_aerosol_interp,           &
+           trim(bcbb_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+           data_names=bcbb_emission_name(1:6),vert_interp=(/INTERP_WEIGHTED_P/))
+     end select
+   endif
+   if ( trim(bcsh_source) .ne. ' ') then
 !---------------------------------------------------------------------
 !    Set time for input file base on selected time dependency.
 !---------------------------------------------------------------------
-      if (trim(bcob_time_dependency_type) == 'constant' ) then
-        bcob_time_serie_type = 1
-        bcob_offset = set_time(0, 0)
+      if (trim(bcsh_time_dependency_type) == 'constant' ) then
+        bcsh_time_serie_type = 1
+        bcsh_offset = set_time(0, 0)
         if (mpp_pe() == mpp_root_pe() ) then
-          print *, 'bcob are constant in sulfate module'
+          print *, 'bcsh are constant in atmos_carbon_aerosol module'
         endif
 !---------------------------------------------------------------------
 !    a dataset entry point must be supplied when the time dependency
-!    for bcob is selected.
+!    for bcsh is selected.
 !---------------------------------------------------------------------
-      else if (trim(bcob_time_dependency_type) == 'time_varying') then
-        bcob_time_serie_type = 3
-        if (bcob_dataset_entry(1) == 1 .and. &
-            bcob_dataset_entry(2) == 1 .and. &
-            bcob_dataset_entry(3) == 1 .and. &
-            bcob_dataset_entry(4) == 0 .and. &
-            bcob_dataset_entry(5) == 0 .and. &
-            bcob_dataset_entry(6) == 0 ) then
-          bcob_entry = model_init_time
+      else if (trim(bcsh_time_dependency_type) == 'time_varying') then
+        bcsh_time_serie_type = 3
+        if (bcsh_dataset_entry(1) == 1 .and. &
+            bcsh_dataset_entry(2) == 1 .and. &
+            bcsh_dataset_entry(3) == 1 .and. &
+            bcsh_dataset_entry(4) == 0 .and. &
+            bcsh_dataset_entry(5) == 0 .and. &
+            bcsh_dataset_entry(6) == 0 ) then
+          bcsh_entry = model_init_time
         else
 !----------------------------------------------------------------------
 !    define the offset from model base time (obtained from diag_table)
-!    to bcob_dataset_entry as a time_type variable.
+!    to bcsh_dataset_entry as a time_type variable.
 !----------------------------------------------------------------------
-          bcob_entry  = set_date (bcob_dataset_entry(1), &
-                                  bcob_dataset_entry(2), &
-                                  bcob_dataset_entry(3), &
-                                  bcob_dataset_entry(4), &
-                                  bcob_dataset_entry(5), &
-                                  bcob_dataset_entry(6))
+          bcsh_entry  = set_date (bcsh_dataset_entry(1), &
+                                  bcsh_dataset_entry(2), &
+                                  bcsh_dataset_entry(3), &
+                                  bcsh_dataset_entry(4), &
+                                  bcsh_dataset_entry(5), &
+                                  bcsh_dataset_entry(6))
         endif
-        call print_date (bcob_entry , str= &
-          'Data from bcob timeseries at time:')
+        call print_date (bcsh_entry , str= &
+          'Data from bcsh timeseries at time:')
         call print_date (model_init_time , str= &
           'This data is mapped to model time:')
-        bcob_offset = bcob_entry - model_init_time
-        if (model_init_time > bcob_entry) then
-          bcob_negative_offset = .true.
+        bcsh_offset = bcsh_entry - model_init_time
+        if (model_init_time > bcsh_entry) then
+          bcsh_negative_offset = .true.
         else
-          bcob_negative_offset = .false.
+          bcsh_negative_offset = .false.
         endif
-      else if (trim(bcob_time_dependency_type) == 'fixed_year') then
-        bcob_time_serie_type = 2
-        if (bcob_dataset_entry(1) == 1 .and. &
-            bcob_dataset_entry(2) == 1 .and. &
-            bcob_dataset_entry(3) == 1 .and. &
-            bcob_dataset_entry(4) == 0 .and. &
-            bcob_dataset_entry(5) == 0 .and. &
-            bcob_dataset_entry(6) == 0 ) then
+      else if (trim(bcsh_time_dependency_type) == 'fixed_year') then
+        bcsh_time_serie_type = 2
+        if (bcsh_dataset_entry(1) == 1 .and. &
+            bcsh_dataset_entry(2) == 1 .and. &
+            bcsh_dataset_entry(3) == 1 .and. &
+            bcsh_dataset_entry(4) == 0 .and. &
+            bcsh_dataset_entry(5) == 0 .and. &
+            bcsh_dataset_entry(6) == 0 ) then
            call error_mesg ('atmos_carbon_aerosol_mod', &
-            'must set bcob_dataset_entry when using fixed_year source', FATAL)
+            'must set bcsh_dataset_entry when using fixed_year source', FATAL)
+        endif
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to bcsh_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        bcsh_entry  = set_date (bcsh_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_carbon_aerosol_mod', &
+           'bcsh is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'bcsh correspond to year :', &
+                    bcsh_dataset_entry(1)
+        endif
+     endif
+     if (trim(bcsh_input_name(1)) .eq. ' ') then
+       bcsh_emission_name(1)='bc_ship'
+     else
+       bcsh_emission_name(1)=trim(bcsh_input_name(1))
+     endif
+
+     call interpolator_init (bcsh_aerosol_interp,             &
+                             trim(bcsh_filename),           &
+                             lonb, latb,                        &
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = bcsh_emission_name,        &
+                             vert_interp=(/INTERP_WEIGHTED_P/)  )
+   endif
+   if ( trim(bcav_source) .ne. ' ') then
+!---------------------------------------------------------------------
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(bcav_time_dependency_type) == 'constant' ) then
+        bcav_time_serie_type = 1
+        bcav_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'bcav are constant in atmos_carbon_aerosol module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for bcav is selected.
+!---------------------------------------------------------------------
+      else if (trim(bcav_time_dependency_type) == 'time_varying') then
+        bcav_time_serie_type = 3
+        if (bcav_dataset_entry(1) == 1 .and. &
+            bcav_dataset_entry(2) == 1 .and. &
+            bcav_dataset_entry(3) == 1 .and. &
+            bcav_dataset_entry(4) == 0 .and. &
+            bcav_dataset_entry(5) == 0 .and. &
+            bcav_dataset_entry(6) == 0 ) then
+          bcav_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to bcav_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          bcav_entry  = set_date (bcav_dataset_entry(1), &
+                                  bcav_dataset_entry(2), &
+                                  bcav_dataset_entry(3), &
+                                  bcav_dataset_entry(4), &
+                                  bcav_dataset_entry(5), &
+                                  bcav_dataset_entry(6))
+        endif
+        call print_date (bcav_entry , str= &
+          'Data from bcav timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        bcav_offset = bcav_entry - model_init_time
+        if (model_init_time > bcav_entry) then
+          bcav_negative_offset = .true.
+        else
+          bcav_negative_offset = .false.
+        endif
+      else if (trim(bcav_time_dependency_type) == 'fixed_year') then
+        bcav_time_serie_type = 2
+        if (bcav_dataset_entry(1) == 1 .and. &
+            bcav_dataset_entry(2) == 1 .and. &
+            bcav_dataset_entry(3) == 1 .and. &
+            bcav_dataset_entry(4) == 0 .and. &
+            bcav_dataset_entry(5) == 0 .and. &
+            bcav_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_carbon_aerosol_mod', &
+            'must set bcav_dataset_entry when using fixed_year source', FATAL)
+        endif
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to bcav_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        bcav_entry  = set_date (bcav_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_carbon_aerosol_mod', &
+           'bcav is defined from a single annual cycle - no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'bcav correspond to year :', bcav_dataset_entry(1)
+        endif
+     endif
+     if (trim(bcav_input_name(1)) .eq. ' ') then
+       bcav_emission_name(1)='bc_aircraft'
+     else
+       bcav_emission_name(1)=trim(bcav_input_name(1))
+     endif
+     call interpolator_init (bcav_aerosol_interp,             &
+                             trim(bcav_filename),           &
+                             lonb, latb,                        &
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = bcav_emission_name,        &
+                             vert_interp=(/INTERP_WEIGHTED_P/)  )
+   endif
+   if ( trim(bcbf_source) .ne. ' ') then
+!---------------------------------------------------------------------
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(bcbf_time_dependency_type) == 'constant' ) then
+        bcbf_time_serie_type = 1
+        bcbf_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'bcbf are constant in atmos_carbon_aerosol module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for bcbf is selected.
+!---------------------------------------------------------------------
+      else if (trim(bcbf_time_dependency_type) == 'time_varying') then
+        bcbf_time_serie_type = 3
+        if (bcbf_dataset_entry(1) == 1 .and. &
+            bcbf_dataset_entry(2) == 1 .and. &
+            bcbf_dataset_entry(3) == 1 .and. &
+            bcbf_dataset_entry(4) == 0 .and. &
+            bcbf_dataset_entry(5) == 0 .and. &
+            bcbf_dataset_entry(6) == 0 ) then
+          bcbf_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to bcbf_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          bcbf_entry  = set_date (bcbf_dataset_entry(1), &
+                                  bcbf_dataset_entry(2), &
+                                  bcbf_dataset_entry(3), &
+                                  bcbf_dataset_entry(4), &
+                                  bcbf_dataset_entry(5), &
+                                  bcbf_dataset_entry(6))
+        endif
+        call print_date (bcbf_entry , str= &
+          'Data from bcbf timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        bcbf_offset = bcbf_entry - model_init_time
+        if (model_init_time > bcbf_entry) then
+          bcbf_negative_offset = .true.
+        else
+          bcbf_negative_offset = .false.
+        endif
+      else if (trim(bcbf_time_dependency_type) == 'fixed_year') then
+        bcbf_time_serie_type = 2
+        if (bcbf_dataset_entry(1) == 1 .and. &
+            bcbf_dataset_entry(2) == 1 .and. &
+            bcbf_dataset_entry(3) == 1 .and. &
+            bcbf_dataset_entry(4) == 0 .and. &
+            bcbf_dataset_entry(5) == 0 .and. &
+            bcbf_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_carbon_aerosol_mod', &
+            'must set bcbf_dataset_entry when using fixed_year source', FATAL)
         endif
 
 !----------------------------------------------------------------------
 !    define the offset from model base time (obtained from diag_table)
-!    to bcob_dataset_entry as a time_type variable.
+!    to bcbf_dataset_entry as a time_type variable.
 !----------------------------------------------------------------------
-        bcob_entry  = set_date (bcob_dataset_entry(1), &
+        bcbf_entry  = set_date (bcbf_dataset_entry(1), &
                                   2,1,0,0,0)
         call error_mesg ('atmos_carbon_aerosol_mod', &
-           'bcob is defined from a single annual cycle &
-                &- no interannual variation', NOTE)
+           'bcbf is defined from a single annual cycle - no interannual variation', NOTE)
         if (mpp_pe() == mpp_root_pe() ) then
-          print *, 'bcob correspond to year :', &
-                    bcob_dataset_entry(1)
+          print *, 'bcbf correspond to year :', &
+                    bcbf_dataset_entry(1)
         endif
      endif
-     call interpolator_init (bcob_aerosol_interp,             &
-                             trim(bcob_filename),           &
+     if (trim(bcbf_input_name(1)) .eq. ' ') then
+       bcbf_emission_name(1)='bcbf_bond'
+     else
+       bcbf_emission_name(1)=trim(bcbf_input_name(1))
+     endif
+     call interpolator_init (bcbf_aerosol_interp,             &
+                             trim(bcbf_filename),           &
                              lonb, latb,                        &
                              data_out_of_bounds=  (/CONSTANT/), &
-                             data_names = bcob_emission_name,        &
+                             data_names = bcbf_emission_name,        &
                              vert_interp=(/INTERP_WEIGHTED_P/)  )
+   endif
+   if ( trim(omff_source) .ne. ' ') then
 !---------------------------------------------------------------------
 !    Set time for input file base on selected time dependency.
 !---------------------------------------------------------------------
@@ -1056,7 +1704,7 @@ integer ::  unit, ierr, io
         omff_time_serie_type = 1
         omff_offset = set_time(0, 0)
         if (mpp_pe() == mpp_root_pe() ) then
-          print *, 'omff are constant in sulfate module'
+          print *, 'omff are constant in atmos_carbon_aerosol module'
         endif
 !---------------------------------------------------------------------
 !    a dataset entry point must be supplied when the time dependency
@@ -1119,20 +1767,45 @@ integer ::  unit, ierr, io
                     omff_dataset_entry(1)
         endif
      endif
-     call interpolator_init (omff_aerosol_interp,             &
-                             trim(omff_filename),           &
-                             lonb, latb,                        &
-                             data_out_of_bounds=  (/CONSTANT/), &
-                             data_names = omff_emission_name,        &
-                             vert_interp=(/INTERP_WEIGHTED_P/)  )
+     select case (trim(omff_source))
+      case ('cooke_1999')
+         if (trim(omff_input_name(1)) .eq. ' ') then
+           omff_emission_name(1)='omff_cooke99'
+         else
+           omff_emission_name(1)=trim(omff_input_name(1))
+         endif
+      case ('bond_2004') 
+         if (trim(omff_input_name(1)) .eq. ' ') then
+           omff_emission_name(1)='omff_bond'
+         else
+           omff_emission_name(1)=trim(omff_input_name(1))
+         endif
+      case ('gocart_2007') 
+         if (trim(omff_input_name(1)) .eq. ' ') then
+           omff_emission_name(1)='om_anthro'
+         else
+           omff_emission_name(1)=trim(omff_input_name(1))
+         endif
+      case ('AEROCOM') 
+         if (trim(omff_input_name(1)) .eq. ' ') then
+           omff_emission_name(1)='POMff'
+         else
+           omff_emission_name(1)=trim(omff_input_name(1))
+         endif
+     end select
+     call interpolator_init (omff_aerosol_interp,           &
+       trim(omff_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+       data_names=omff_emission_name(1:1),vert_interp=(/INTERP_WEIGHTED_P/))
+   endif
+   if ( trim(ombb_source) .ne. ' ') then
 !---------------------------------------------------------------------
 !    Set time for input file base on selected time dependency.
 !---------------------------------------------------------------------
-      if (trim(bcob_time_dependency_type) == 'constant' ) then
+      if (trim(ombb_time_dependency_type) == 'constant' ) then
         ombb_time_serie_type = 1
         ombb_offset = set_time(0, 0)
         if (mpp_pe() == mpp_root_pe() ) then
-          print *, 'ombb are constant in sulfate module'
+          print *, 'ombb are constant in atmos_carbon_aerosol module'
         endif
 !---------------------------------------------------------------------
 !    a dataset entry point must be supplied when the time dependency
@@ -1195,88 +1868,226 @@ integer ::  unit, ierr, io
                     ombb_dataset_entry(1)
         endif
      endif
-     call interpolator_init (ombb_aerosol_interp,             &
-                             trim(ombb_filename),           &
-                             lonb, latb,                        &
-                             data_out_of_bounds=  (/CONSTANT/), &
-                             data_names = ombb_emission_name,        &
-                             vert_interp=(/INTERP_WEIGHTED_P/)  )
+     select case (trim(ombb_source))
+       case ('cooke_and_wilson_1996')
+         if (trim(ombb_input_name(1)) .eq. ' ') then
+           ombb_emission_name(1)='ombb_cw96'
+         else
+           ombb_emission_name(1)=trim(ombb_input_name(1))
+         endif
+         call interpolator_init (ombb_aerosol_interp,           &
+           trim(ombb_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+           data_names=ombb_emission_name(1:1),vert_interp=(/INTERP_WEIGHTED_P/))
+      case ('bond_2004') 
+         if (trim(ombb_input_name(1)) .eq. ' ') then
+           ombb_emission_name(1)='omob_bond'
+         else
+           ombb_emission_name(1)=trim(ombb_input_name(1))
+         endif
+         call interpolator_init (ombb_aerosol_interp,           &
+           trim(ombb_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+           data_names=ombb_emission_name(1:1),vert_interp=(/INTERP_WEIGHTED_P/))
+      case ('gocart_2007') 
+         if (trim(ombb_input_name(1)) .eq. ' ') then
+           ombb_emission_name(1)='om_biobur'
+         else
+           ombb_emission_name(1)=trim(ombb_input_name(1))
+         endif
+         call interpolator_init (ombb_aerosol_interp,           &
+           trim(ombb_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+           data_names=ombb_emission_name(1:1),vert_interp=(/INTERP_WEIGHTED_P/))
+       case ('GEIA')
+         if (trim(ombb_input_name(1)) .eq. ' ') then
+           ombb_emission_name(1)='om_geia1'
+           ombb_emission_name(2)='om_geia2'
+         else
+           ombb_emission_name(1)=trim(ombb_input_name(1))
+           ombb_emission_name(2)=trim(ombb_input_name(2))
+         endif
+         call interpolator_init (ombb_aerosol_interp,           &
+           trim(ombb_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+           data_names=ombb_emission_name(1:2),vert_interp=(/INTERP_WEIGHTED_P/))
+       case ('AEROCOM')
+         if (trim(ombb_input_name(1)) .eq. ' ') then
+           ombb_emission_name(1)='GFED_OM_l1'
+           ombb_emission_name(2)='GFED_OM_l2'
+           ombb_emission_name(3)='GFED_OM_l3'
+           ombb_emission_name(4)='GFED_OM_l4'
+           ombb_emission_name(5)='GFED_OM_l5'
+           ombb_emission_name(6)='GFED_OM_l6'
+         else
+           ombb_emission_name(1)=trim(ombb_input_name(1))
+           ombb_emission_name(2)=trim(ombb_input_name(2))
+           ombb_emission_name(3)=trim(ombb_input_name(3))
+           ombb_emission_name(4)=trim(ombb_input_name(4))
+           ombb_emission_name(5)=trim(ombb_input_name(5))
+           ombb_emission_name(6)=trim(ombb_input_name(6))
+         endif
+         call interpolator_init (ombb_aerosol_interp,           &
+           trim(ombb_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+           data_names=ombb_emission_name(1:6),vert_interp=(/INTERP_WEIGHTED_P/))
+     end select
+   endif
+   if ( trim(ombf_source) .ne. ' ') then
 !---------------------------------------------------------------------
 !    Set time for input file base on selected time dependency.
 !---------------------------------------------------------------------
-      if (trim(omob_time_dependency_type) == 'constant' ) then
-        omob_time_serie_type = 1
-        omob_offset = set_time(0, 0)
+      if (trim(ombf_time_dependency_type) == 'constant' ) then
+        ombf_time_serie_type = 1
+        ombf_offset = set_time(0, 0)
         if (mpp_pe() == mpp_root_pe() ) then
-          print *, 'omob are constant in sulfate module'
+          print *, 'ombf are constant in atmos_carbon_aerosol module'
         endif
 !---------------------------------------------------------------------
 !    a dataset entry point must be supplied when the time dependency
-!    for omob is selected.
+!    for ombf is selected.
 !---------------------------------------------------------------------
-      else if (trim(omob_time_dependency_type) == 'time_varying') then
-        omob_time_serie_type = 3
-        if (omob_dataset_entry(1) == 1 .and. &
-            omob_dataset_entry(2) == 1 .and. &
-            omob_dataset_entry(3) == 1 .and. &
-            omob_dataset_entry(4) == 0 .and. &
-            omob_dataset_entry(5) == 0 .and. &
-            omob_dataset_entry(6) == 0 ) then
-          omob_entry = model_init_time
+      else if (trim(ombf_time_dependency_type) == 'time_varying') then
+        ombf_time_serie_type = 3
+        if (ombf_dataset_entry(1) == 1 .and. &
+            ombf_dataset_entry(2) == 1 .and. &
+            ombf_dataset_entry(3) == 1 .and. &
+            ombf_dataset_entry(4) == 0 .and. &
+            ombf_dataset_entry(5) == 0 .and. &
+            ombf_dataset_entry(6) == 0 ) then
+          ombf_entry = model_init_time
         else
 !----------------------------------------------------------------------
 !    define the offset from model base time (obtained from diag_table)
-!    to omob_dataset_entry as a time_type variable.
+!    to ombf_dataset_entry as a time_type variable.
 !----------------------------------------------------------------------
-          omob_entry  = set_date (omob_dataset_entry(1), &
-                                  omob_dataset_entry(2), &
-                                  omob_dataset_entry(3), &
-                                  omob_dataset_entry(4), &
-                                  omob_dataset_entry(5), &
-                                  omob_dataset_entry(6))
+          ombf_entry  = set_date (ombf_dataset_entry(1), &
+                                  ombf_dataset_entry(2), &
+                                  ombf_dataset_entry(3), &
+                                  ombf_dataset_entry(4), &
+                                  ombf_dataset_entry(5), &
+                                  ombf_dataset_entry(6))
         endif
-        call print_date (omob_entry , str= &
-          'Data from omob timeseries at time:')
+        call print_date (ombf_entry , str= &
+          'Data from ombf timeseries at time:')
         call print_date (model_init_time , str= &
           'This data is mapped to model time:')
-        omob_offset = omob_entry - model_init_time
-        if (model_init_time > omob_entry) then
-          omob_negative_offset = .true.
+        ombf_offset = ombf_entry - model_init_time
+        if (model_init_time > ombf_entry) then
+          ombf_negative_offset = .true.
         else
-          omob_negative_offset = .false.
+          ombf_negative_offset = .false.
         endif
-      else if (trim(omob_time_dependency_type) == 'fixed_year') then
-        omob_time_serie_type = 2
-        if (omob_dataset_entry(1) == 1 .and. &
-            omob_dataset_entry(2) == 1 .and. &
-            omob_dataset_entry(3) == 1 .and. &
-            omob_dataset_entry(4) == 0 .and. &
-            omob_dataset_entry(5) == 0 .and. &
-            omob_dataset_entry(6) == 0 ) then
+      else if (trim(ombf_time_dependency_type) == 'fixed_year') then
+        ombf_time_serie_type = 2
+        if (ombf_dataset_entry(1) == 1 .and. &
+            ombf_dataset_entry(2) == 1 .and. &
+            ombf_dataset_entry(3) == 1 .and. &
+            ombf_dataset_entry(4) == 0 .and. &
+            ombf_dataset_entry(5) == 0 .and. &
+            ombf_dataset_entry(6) == 0 ) then
            call error_mesg ('atmos_carbon_aerosol_mod', &
-            'must set omob_dataset_entry when using fixed_year source', FATAL)
+            'must set ombf_dataset_entry when using fixed_year source', FATAL)
         endif
 
 !----------------------------------------------------------------------
 !    define the offset from model base time (obtained from diag_table)
-!    to omob_dataset_entry as a time_type variable.
+!    to ombf_dataset_entry as a time_type variable.
 !----------------------------------------------------------------------
-        omob_entry  = set_date (omob_dataset_entry(1), &
+        ombf_entry  = set_date (ombf_dataset_entry(1), &
                                   2,1,0,0,0)
         call error_mesg ('atmos_carbon_aerosol_mod', &
-           'omob is defined from a single annual cycle &
+           'ombf is defined from a single annual cycle &
                 &- no interannual variation', NOTE)
         if (mpp_pe() == mpp_root_pe() ) then
-          print *, 'omob correspond to year :', &
-                    omob_dataset_entry(1)
+          print *, 'ombf correspond to year :', &
+                    ombf_dataset_entry(1)
         endif
      endif
-     call interpolator_init (omob_aerosol_interp,             &
-                             trim(omob_filename),           &
-                             lonb, latb,                        &
-                             data_out_of_bounds=  (/CONSTANT/), &
-                             data_names = omob_emission_name,        &
-                             vert_interp=(/INTERP_WEIGHTED_P/)  )
+     if (trim(ombf_input_name(1)) .eq. ' ') then
+       ombf_emission_name(1)='ombf_bond'
+     else
+       ombf_emission_name(1)=trim(ombf_input_name(1))
+     endif
+     call interpolator_init (ombf_aerosol_interp,           &
+       trim(ombf_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+       data_names=ombf_emission_name(1:1),vert_interp=(/INTERP_WEIGHTED_P/))
+   endif
+   if ( trim(omsh_source) .ne. ' ') then
+!---------------------------------------------------------------------
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(omsh_time_dependency_type) == 'constant' ) then
+        omsh_time_serie_type = 1
+        omsh_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'omsh are constant in atmos_carbon_aerosol module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for omsh is selected.
+!---------------------------------------------------------------------
+      else if (trim(omsh_time_dependency_type) == 'time_varying') then
+        omsh_time_serie_type = 3
+        if (omsh_dataset_entry(1) == 1 .and. &
+            omsh_dataset_entry(2) == 1 .and. &
+            omsh_dataset_entry(3) == 1 .and. &
+            omsh_dataset_entry(4) == 0 .and. &
+            omsh_dataset_entry(5) == 0 .and. &
+            omsh_dataset_entry(6) == 0 ) then
+          omsh_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to omsh_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          omsh_entry  = set_date (omsh_dataset_entry(1), &
+                                  omsh_dataset_entry(2), &
+                                  omsh_dataset_entry(3), &
+                                  omsh_dataset_entry(4), &
+                                  omsh_dataset_entry(5), &
+                                  omsh_dataset_entry(6))
+        endif
+        call print_date (omsh_entry , str= &
+          'Data from omsh timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        omsh_offset = omsh_entry - model_init_time
+        if (model_init_time > omsh_entry) then
+          omsh_negative_offset = .true.
+        else
+          omsh_negative_offset = .false.
+        endif
+      else if (trim(omsh_time_dependency_type) == 'fixed_year') then
+        omsh_time_serie_type = 2
+        if (omsh_dataset_entry(1) == 1 .and. &
+            omsh_dataset_entry(2) == 1 .and. &
+            omsh_dataset_entry(3) == 1 .and. &
+            omsh_dataset_entry(4) == 0 .and. &
+            omsh_dataset_entry(5) == 0 .and. &
+            omsh_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_carbon_aerosol_mod', &
+            'must set omsh_dataset_entry when using fixed_year source', FATAL)
+        endif
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to omsh_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        omsh_entry  = set_date (omsh_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_carbon_aerosol_mod', &
+           'omsh is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'omsh correspond to year :', &
+                    omsh_dataset_entry(1)
+        endif
+     endif
+     if (trim(omsh_input_name(1)) .eq. ' ') then
+       omsh_emission_name(1)='om_ship'
+     else
+       omsh_emission_name(1)=trim(omsh_input_name(1))
+     endif
+     call interpolator_init (omsh_aerosol_interp,           &
+       trim(omsh_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+       data_names=omsh_emission_name(1:1),vert_interp=(/INTERP_WEIGHTED_P/))
+   endif
+   if ( trim(omna_source) .ne. ' ') then
 !---------------------------------------------------------------------
 !    Set time for input file base on selected time dependency.
 !---------------------------------------------------------------------
@@ -1284,7 +2095,7 @@ integer ::  unit, ierr, io
         omna_time_serie_type = 1
         omna_offset = set_time(0, 0)
         if (mpp_pe() == mpp_root_pe() ) then
-          print *, 'omna are constant in sulfate module'
+          print *, 'omna are constant in atmos_carbon_aerosol module'
         endif
 !---------------------------------------------------------------------
 !    a dataset entry point must be supplied when the time dependency
@@ -1347,12 +2158,15 @@ integer ::  unit, ierr, io
                     omna_dataset_entry(1)
         endif
      endif
-     call interpolator_init (omna_aerosol_interp,             &
-                             trim(omna_filename),           &
-                             lonb, latb,                        &
-                             data_out_of_bounds=  (/CONSTANT/), &
-                             data_names = omna_emission_name,        &
-                             vert_interp=(/INTERP_WEIGHTED_P/)  )
+     if (trim(omna_input_name(1)) .eq. ' ') then
+       omna_emission_name(1)='omemisnat'
+     else
+       omna_emission_name(1)=trim(omna_input_name(1))
+     endif
+     call interpolator_init (omna_aerosol_interp,           &
+       trim(omna_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+       data_names=omna_emission_name(1:1),vert_interp=(/INTERP_WEIGHTED_P/))
+   endif
 
 
    call write_version_number (version, tagname)
@@ -1378,10 +2192,13 @@ end subroutine atmos_carbon_aerosol_init
  subroutine atmos_carbon_aerosol_end
       call interpolator_end ( bcff_aerosol_interp)
       call interpolator_end ( bcbb_aerosol_interp)
-      call interpolator_end ( bcob_aerosol_interp)
+      call interpolator_end ( bcbf_aerosol_interp)
+      call interpolator_end ( bcsh_aerosol_interp)
+      call interpolator_end ( bcav_aerosol_interp)
       call interpolator_end ( omff_aerosol_interp)
       call interpolator_end ( ombb_aerosol_interp)
-      call interpolator_end ( omob_aerosol_interp)
+      call interpolator_end ( ombf_aerosol_interp)
+      call interpolator_end ( omsh_aerosol_interp)
       call interpolator_end ( omna_aerosol_interp)
       module_is_initialized = .FALSE.
 

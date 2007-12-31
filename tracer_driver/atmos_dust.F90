@@ -63,16 +63,21 @@ type(interpolate_type),save         ::  dust_source_interp
 logical :: module_is_initialized=.FALSE.
 logical :: used
 
+real, save :: u_ts
+real, save :: ch
+
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 character(len=32)  :: dust_source_filename = 'dust_source_1x1.nc'
 character(len=32)  :: dust_source_name(1) = 'source'
+real :: uthresh=-999.
+real :: coef_emis =-999.
 
-namelist /dust_nml/  dust_source_filename, dust_source_name
+namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_dust.F90,v 15.0 2007/08/14 03:56:50 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_10 $'
+character(len=128) :: version = '$Id: atmos_dust.F90,v 15.0.4.1 2007/11/28 16:21:52 rsh Exp $'
+character(len=128) :: tagname = '$Name: omsk_2007_12 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -113,9 +118,7 @@ integer, intent(in)                    :: is, ie, js, je
       real, dimension(5) ::   frac_s
 
       real, dimension(size(dust,3)) :: setl
-      real, dimension(size(dust,1),size(dust,2)) :: u_ts, source, maxgw
-
-      real       ::  CH           ! THE tuning factor for dust emission
+      real, dimension(size(dust,1),size(dust,2)) :: u_ts_2d, source, maxgw
 
       real, parameter :: small_value = 1.e-20
       real, parameter :: mtcm = 100.            ! meter to cm
@@ -131,13 +134,12 @@ integer, intent(in)                    :: is, ie, js, je
 !-----------------------------------
 
       data frac_s/0.1,0.225,0.225,0.225,0.225/
-      data CH/0.4e-9/
 
 !-----------------------------------------------------------------------
 
       id=size(dust,1); jd=size(dust,2); kd=size(dust,3)
 
-      
+     u_ts_2d(:,:) = u_ts 
 !----------- compute dust emission ------------
       dust_emis(:,:)   = 0.0
       dust_setl(:,:)   = 0.0
@@ -151,10 +153,9 @@ integer, intent(in)                    :: is, ie, js, je
      if (id_dust_source > 0 ) &
           used = send_data ( id_dust_source, source , Time )
 
-      u_ts=4.
-      where ( frac_land.gt.0.1 .and. w10m .gt. u_ts )
+      where ( frac_land.gt.0.1 .and. w10m .gt. u_ts_2d )
           dust_emis = CH * frac_s(i_DU)*source * frac_land &
-             * w10m**2 * (w10m - u_ts)
+             * w10m**2 * (w10m - u_ts_2d)
       endwhere
       dust_dt(:,:,kd)=dust_dt(:,:,kd)+dust_emis(:,:)/pwt(:,:,kd)*mtv
 
@@ -254,7 +255,16 @@ integer :: n, m
 10      call close_file (unit)
       endif
 
-
+      if (uthresh .le. -990) then
+        u_ts = 0.
+      else
+        u_ts=uthresh
+      endif
+      if (coef_emis .le. -990) then
+        ch = 1.0e-10
+      else
+        ch = coef_emis
+      endif
 !----- set initial value of dust ------------
     do m=1,5
 

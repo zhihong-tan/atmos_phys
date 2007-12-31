@@ -27,12 +27,19 @@ use                    fms_mod, only : file_exist,              &
                                        close_file,              &
                                        stdlog,                  &
                                        check_nml_error, error_mesg, &
-                                       open_namelist_file, FATAL
+                                       open_namelist_file, FATAL, NOTE, WARNING
 
-use           time_manager_mod, only : time_type, get_date_julian
+use           time_manager_mod, only : time_type, &
+                                       days_in_month, days_in_year, &
+                                       set_date, set_time, get_date_julian, &
+                                       print_date, get_date, &
+                                       operator(>), operator(+), operator(-)
+use time_interp_mod,            only:  fraction_of_year, &
+                                       time_interp_init
 use           diag_manager_mod, only : send_data,               &
                                        register_diag_field,     &
-                                       register_static_field
+                                       register_static_field,   &
+                                       diag_manager_init, get_base_time
 use         tracer_manager_mod, only : get_tracer_index,        &
                                        set_tracer_atts
 use          field_manager_mod, only : MODEL_ATMOS
@@ -81,13 +88,6 @@ integer ::   id_O3                  = 0
 integer ::   id_pH                  = 0
 
 integer ::   id_DMSo                = 0
-integer ::   id_SO2_anth_l1_emis    = 0
-integer ::   id_SO2_anth_l2_emis    = 0
-integer ::   id_SO4_anth_l1_emis    = 0
-integer ::   id_SO4_anth_l2_emis    = 0
-integer ::   id_SO2_aircraft_emis   = 0
-integer ::   id_SO2_bioburn_emis    = 0
-integer ::   id_SO2_nerup_volc_emis = 0
 integer ::   id_DMS_emis            = 0
 integer ::   id_SO2_emis            = 0
 integer ::   id_SO4_emis            = 0
@@ -96,26 +96,71 @@ integer ::   id_SO2_chem            = 0
 integer ::   id_SO4_chem            = 0
 integer ::   id_MSA_chem            = 0
 integer ::   id_H2O2_chem           = 0
+integer ::   id_so2_aircraft        = 0
+integer ::   id_so2_cont_volc       = 0
+integer ::   id_so2_expl_volc       = 0
+integer ::   id_so2_biobur          = 0
+integer ::   id_so2_ship            = 0
+integer ::   id_so2_road            = 0
+integer ::   id_so2_domestic        = 0
+integer ::   id_so2_industry        = 0
+integer ::   id_so2_power           = 0
+integer ::   id_so2_off_road        = 0
+integer ::   id_so2_ff              = 0
 
 type(interpolate_type),save         ::  gas_conc_interp
 type(interpolate_type),save         ::  aerocom_emission_interp
 type(interpolate_type),save         ::  gocart_emission_interp
+type(interpolate_type),save         ::  anthro_emission_interp
+type(interpolate_type),save         ::  biobur_emission_interp
+type(interpolate_type),save         ::  ship_emission_interp
 type(interpolate_type),save         ::  aircraft_emission_interp
+type(interpolate_type),save         ::  cont_volc_emission_interp
+type(interpolate_type),save         ::  expl_volc_emission_interp
+! Initial calendar time for model
+type(time_type) :: model_init_time
+type(time_type), save :: gas_conc_offset
+type(time_type), save :: anthro_offset
+type(time_type), save :: biobur_offset
+type(time_type), save :: ship_offset
+type(time_type), save :: aircraft_offset
+type(time_type), save :: cont_volc_offset
+type(time_type), save :: expl_volc_offset
 
-character(len=20)  :: runtype = "gocart"
+type(time_type), save :: gas_conc_entry
+type(time_type), save :: anthro_entry
+type(time_type), save :: biobur_entry
+type(time_type), save :: ship_entry
+type(time_type), save :: aircraft_entry
+type(time_type), save :: cont_volc_entry
+type(time_type), save :: expl_volc_entry
 
-character(len=32)  :: gas_conc_filename = 'gas_conc_3D.nc'
-character(len=32), dimension(6) :: gas_conc_name
-data gas_conc_name/'OH','HO2','NO3','O3','jH2O2','pH'/
+logical, save    :: gas_conc_negative_offset
+logical, save    :: anthro_negative_offset
+logical, save    :: biobur_negative_offset
+logical, save    :: ship_negative_offset
+logical, save    :: aircraft_negative_offset
+logical, save    :: cont_volc_negative_offset
+logical, save    :: expl_volc_negative_offset
 
-character(len=32)  :: gocart_emission_filename = 'gocart_emission.nc'
-character(len=32), dimension(6) :: gocart_emission_name
+integer, save    :: gas_conc_time_serie_type
+integer, save    :: anthro_time_serie_type
+integer, save    :: biobur_time_serie_type
+integer, save    :: ship_time_serie_type
+integer, save    :: aircraft_time_serie_type
+integer, save    :: cont_volc_time_serie_type
+integer, save    :: expl_volc_time_serie_type
+
+character(len=80)  :: runtype = 'default'
+
+character(len=80)  :: gocart_emission_filename = 'gocart_emission.nc'
+character(len=80), dimension(6) :: gocart_emission_name
 data gocart_emission_name/'DMSo','SO2_GEIA1','SO2_GEIA2', &
                        'SO4_GEIA1','SO4_GEIA2','SO2_biobur'/
 
-character(len=32)  :: aerocom_emission_filename = 'aerocom_emission.nc'
+character(len=80)  :: aerocom_emission_filename = 'aerocom_emission.nc'
 integer, parameter :: max_aerocom_emission=18
-character(len=32), dimension(max_aerocom_emission)  :: aerocom_emission_name
+character(len=80), dimension(max_aerocom_emission)  :: aerocom_emission_name
 data aerocom_emission_name/ &
                    'SO2_RoadTransport',&
                    'SO2_Off-road', &
@@ -136,16 +181,74 @@ data aerocom_emission_name/ &
                    'GFED_SO2_l5', &
                    'GFED_SO2_l6'/
 
-character(len=32)  :: aircraft_emission_filename = 'aircraft_emission.nc'
-character(len=32)  :: aircraft_emission_name(1)
+character(len=80)  :: gas_conc_source   = ' '
+character(len=80)  :: gas_conc_filename = 'gas_conc_3D.nc'
+character(len=80), dimension(6) :: gas_conc_name
+data gas_conc_name/'OH','HO2','NO3','O3','jH2O2','pH'/
+character(len=80)     :: gas_conc_time_dependency_type
+integer, dimension(6) :: gas_conc_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+
+character(len=80)  :: anthro_source   = ' '
+character(len=80)  :: anthro_filename = 'aero_anthro_emission_1979_2006.nc'
+character(len=80), dimension(2) :: anthro_emission_name
+data anthro_emission_name/'so2_anthro','so4_anthro'/
+character(len=80)     :: anthro_time_dependency_type
+integer, dimension(6) :: anthro_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+
+character(len=80)  :: biobur_source   = ' '
+character(len=80)  :: biobur_filename = 'aero_biobur_emission_1979_2006.nc'
+character(len=80), dimension(2) :: biobur_emission_name
+data biobur_emission_name/'so2_biobur','so4_biobur'/
+character(len=80)     :: biobur_time_dependency_type
+integer, dimension(6) :: biobur_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+
+character(len=80)  :: ship_source   = ' '
+character(len=80)  :: ship_filename = 'aero_ship_emission_1979_2006.nc'
+character(len=80), dimension(2) :: ship_emission_name
+data ship_emission_name/'so2_ship','so4_ship'/
+character(len=80)     :: ship_time_dependency_type
+integer, dimension(6) :: ship_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+
+character(len=80)  :: aircraft_source = ' '
+character(len=80)  :: aircraft_filename = 'aircraft_emission.nc'
+character(len=80)  :: aircraft_emission_name(1)
 data aircraft_emission_name/'fuel'/
+character(len=80)     :: aircraft_time_dependency_type
+integer, dimension(6) :: aircraft_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+real :: so2_aircraft_EI = 1.e-3  ! kg of SO2/kg of fuel
+
+character(len=80)  :: cont_volc_source = ' '
+character(len=80)  :: cont_volc_filename = 'so2_volcanoes_emission.nc'
+character(len=80)  :: cont_volc_emission_name(3)
+data cont_volc_emission_name/'SO2_cont_volc','alt_cont_volc_low', 'alt_cont_volc_high'/
+character(len=80)     :: cont_volc_time_dependency_type
+integer, dimension(6) :: cont_volc_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+
+character(len=80)  :: expl_volc_source = ' '
+character(len=80)  :: expl_volc_filename = 'so2_volcanoes_emission.nc'
+character(len=80)  :: expl_volc_emission_name(3)
+data expl_volc_emission_name/'SO2_expl_volc','alt_expl_volc_low','alt_expl_volc_high'/
+character(len=80)     :: expl_volc_time_dependency_type
+integer, dimension(6) :: expl_volc_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 
 namelist /simple_sulfate_nml/  &
-                runtype,                         &
-                gas_conc_filename, gas_conc_name,          &
-                aerocom_emission_filename, aerocom_emission_name,  &
-                gocart_emission_filename, gocart_emission_name,  &
-                aircraft_emission_filename, aircraft_emission_name
+      runtype,                         &
+      aerocom_emission_filename, aerocom_emission_name,  &
+      gocart_emission_filename, gocart_emission_name,  &
+      gas_conc_source, gas_conc_name, gas_conc_filename,        &
+        gas_conc_time_dependency_type, gas_conc_dataset_entry, &
+      anthro_source, anthro_emission_name, anthro_filename,        &
+        anthro_time_dependency_type, anthro_dataset_entry, &
+      biobur_source, biobur_emission_name, biobur_filename,        &
+        biobur_time_dependency_type, biobur_dataset_entry, &
+      ship_source, ship_emission_name, ship_filename,        &
+        ship_time_dependency_type, ship_dataset_entry, &
+      aircraft_source, aircraft_emission_name, aircraft_filename, &
+        aircraft_time_dependency_type, aircraft_dataset_entry, so2_aircraft_EI,&
+      cont_volc_source, cont_volc_emission_name, cont_volc_filename, &
+        cont_volc_time_dependency_type, cont_volc_dataset_entry, &
+      expl_volc_source, expl_volc_emission_name, expl_volc_filename, &
+        expl_volc_time_dependency_type, expl_volc_dataset_entry
 
 !trim(runtype) 
 !biomass_only; fossil_fuels_only, natural_only, anthrop
@@ -154,8 +257,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfate.F90,v 15.0 2007/08/14 03:57:00 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_10 $'
+character(len=128) :: version = '$Id: atmos_sulfate.F90,v 15.0.4.1 2007/11/28 16:21:52 rsh Exp $'
+character(len=128) :: tagname = '$Name: omsk_2007_12 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -199,7 +302,7 @@ integer :: n, m, nsulfate
 
 !-----------------------------------------------------------------------
 !
-      integer  log_unit,unit,io,index,ntr,nt
+      integer  unit,io
       real :: initial_values(5)
       character*12 :: SOx_tracer(5)
 !
@@ -245,138 +348,721 @@ integer :: n, m, nsulfate
 
      do m=1,size(SOx_tracer)
 
-       n = get_tracer_index(MODEL_ATMOS,trim(SOx_tracer(m)))
+       n = get_tracer_index(MODEL_ATMOS,SOx_tracer(m))
        if (n>0) then
          nsulfate=n
+        call set_tracer_atts(MODEL_ATMOS,SOx_tracer(m),SOx_tracer(m),'vmr')
          if (nsulfate > 0 .and. mpp_pe() == mpp_root_pe()) &
-                 write (stdlog(),30) trim(SOx_tracer(m)),nsulfate
+                 write (stdlog(),30) SOx_tracer(m),nsulfate
        endif
      enddo
 
 
   30   format (A,' was initialized as tracer number ',i2)
-     call interpolator_init (gas_conc_interp, trim(gas_conc_filename),  &
-                             lonb, latb,&
-                             data_out_of_bounds=  (/CONSTANT/), &
-                             data_names = gas_conc_name, &
-                             vert_interp=(/INTERP_WEIGHTED_P/) )
-     call interpolator_init (aerocom_emission_interp, &
+
+!----------------------------------------------------------------------
+!    initialize namelist entries
+!----------------------------------------------------------------------
+        gas_conc_offset = set_time (0,0)
+        anthro_offset   = set_time (0,0)
+        biobur_offset   = set_time (0,0)
+        ship_offset     = set_time (0,0)
+        aircraft_offset = set_time (0,0)
+
+        gas_conc_entry  = set_time (0,0)
+        anthro_entry    = set_time (0,0)
+        biobur_entry    = set_time (0,0)
+        ship_entry      = set_time (0,0)
+        aircraft_entry  = set_time (0,0)
+
+        gas_conc_negative_offset = .false.
+        anthro_negative_offset   = .false.
+        biobur_negative_offset   = .false.
+        ship_negative_offset     = .false.
+        aircraft_negative_offset = .false.
+
+        gas_conc_time_serie_type = 1
+        anthro_time_serie_type   = 1
+        biobur_time_serie_type   = 1
+        ship_time_serie_type     = 1
+        aircraft_time_serie_type = 1
+!----------------------------------------------------------------------
+!    define the model base time  (defined in diag_table)
+!----------------------------------------------------------------------
+        model_init_time = get_base_time()
+       call interpolator_init (aerocom_emission_interp, &
                              trim(aerocom_emission_filename),  &
                              lonb, latb,&
                              data_out_of_bounds=  (/CONSTANT/), &
                              data_names = aerocom_emission_name, &
                              vert_interp=(/INTERP_WEIGHTED_P/) )
-
-     call interpolator_init (gocart_emission_interp, &
+       call interpolator_init (gocart_emission_interp, &
                              trim(gocart_emission_filename),  &
                              lonb, latb,&
                              data_out_of_bounds=  (/CONSTANT/), &
                              data_names = gocart_emission_name, &
                              vert_interp=(/INTERP_WEIGHTED_P/) )
+!---------------------------------------------------------------------
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(gas_conc_time_dependency_type) == 'constant' ) then
+        gas_conc_time_serie_type = 1
+        gas_conc_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'gas_conc are constant in sulfate module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for gas_conc is selected.
+!---------------------------------------------------------------------
+      else if (trim(gas_conc_time_dependency_type) == 'time_varying') then
+        gas_conc_time_serie_type = 3
+        if (gas_conc_dataset_entry(1) == 1 .and. &
+            gas_conc_dataset_entry(2) == 1 .and. &
+            gas_conc_dataset_entry(3) == 1 .and. &
+            gas_conc_dataset_entry(4) == 0 .and. &
+            gas_conc_dataset_entry(5) == 0 .and. &
+            gas_conc_dataset_entry(6) == 0 ) then
+          gas_conc_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to gas_conc_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          gas_conc_entry  = set_date (gas_conc_dataset_entry(1), &
+                                  gas_conc_dataset_entry(2), &
+                                  gas_conc_dataset_entry(3), &
+                                  gas_conc_dataset_entry(4), &
+                                  gas_conc_dataset_entry(5), &
+                                  gas_conc_dataset_entry(6))
+        endif
+        call print_date (gas_conc_entry , str= &
+          'Data from gas_conc timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        gas_conc_offset = gas_conc_entry - model_init_time
+        if (model_init_time > gas_conc_entry) then
+          gas_conc_negative_offset = .true.
+        else
+          gas_conc_negative_offset = .false.
+        endif
+      else if (trim(gas_conc_time_dependency_type) == 'fixed_year') then
+        gas_conc_time_serie_type = 2
+        if (gas_conc_dataset_entry(1) == 1 .and. &
+            gas_conc_dataset_entry(2) == 1 .and. &
+            gas_conc_dataset_entry(3) == 1 .and. &
+            gas_conc_dataset_entry(4) == 0 .and. &
+            gas_conc_dataset_entry(5) == 0 .and. &
+            gas_conc_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_sulfate_mod', &
+            'must set gas_conc_dataset_entry when using fixed_year source', FATAL)
+        endif
+
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to gas_conc_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        gas_conc_entry  = set_date (gas_conc_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_sulfate_mod', &
+           'gas_conc is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'gas_conc correspond to year :', &
+                    gas_conc_dataset_entry(1)
+        endif
+     endif
+     call interpolator_init (gas_conc_interp, trim(gas_conc_filename),  &
+                             lonb, latb,&
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = gas_conc_name, &
+                             vert_interp=(/INTERP_WEIGHTED_P/) )
+      if (trim(anthro_source) .eq. 'do_anthro') then
+!---------------------------------------------------------------------
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(anthro_time_dependency_type) == 'constant' ) then
+        anthro_time_serie_type = 1
+        anthro_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'anthro are constant in sulfate module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for anthro is selected.
+!---------------------------------------------------------------------
+      else if (trim(anthro_time_dependency_type) == 'time_varying') then
+        anthro_time_serie_type = 3
+        if (anthro_dataset_entry(1) == 1 .and. &
+            anthro_dataset_entry(2) == 1 .and. &
+            anthro_dataset_entry(3) == 1 .and. &
+            anthro_dataset_entry(4) == 0 .and. &
+            anthro_dataset_entry(5) == 0 .and. &
+            anthro_dataset_entry(6) == 0 ) then
+          anthro_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to anthro_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          anthro_entry  = set_date (anthro_dataset_entry(1), &
+                                  anthro_dataset_entry(2), &
+                                  anthro_dataset_entry(3), &
+                                  anthro_dataset_entry(4), &
+                                  anthro_dataset_entry(5), &
+                                  anthro_dataset_entry(6))
+        endif
+        call print_date (anthro_entry , str= &
+          'Data from anthro timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        anthro_offset = anthro_entry - model_init_time
+        if (model_init_time > anthro_entry) then
+          anthro_negative_offset = .true.
+        else
+          anthro_negative_offset = .false.
+        endif
+      else if (trim(anthro_time_dependency_type) == 'fixed_year') then
+        anthro_time_serie_type = 2
+        if (anthro_dataset_entry(1) == 1 .and. &
+            anthro_dataset_entry(2) == 1 .and. &
+            anthro_dataset_entry(3) == 1 .and. &
+            anthro_dataset_entry(4) == 0 .and. &
+            anthro_dataset_entry(5) == 0 .and. &
+            anthro_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_sulfate_mod', &
+            'must set anthro_dataset_entry when using fixed_year source', FATAL)
+        endif
+
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to anthro_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        anthro_entry  = set_date (anthro_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_sulfate_mod', &
+           'anthro is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'anthro correspond to year :', &
+                    anthro_dataset_entry(1)
+        endif
+     endif
+     call interpolator_init (anthro_emission_interp,             &
+                             trim(anthro_filename),           &
+                             lonb, latb,                        &
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = anthro_emission_name,        &
+                             vert_interp=(/INTERP_WEIGHTED_P/)  )
+     endif ! end do_anthro
+
+    if (trim(biobur_source) .eq. 'do_biobur') then
+!---------------------------------------------------------------------
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(biobur_time_dependency_type) == 'constant' ) then
+        biobur_time_serie_type = 1
+        biobur_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'biobur are constant in sulfate module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for biobur is selected.
+!---------------------------------------------------------------------
+      else if (trim(biobur_time_dependency_type) == 'time_varying') then
+        biobur_time_serie_type = 3
+        if (biobur_dataset_entry(1) == 1 .and. &
+            biobur_dataset_entry(2) == 1 .and. &
+            biobur_dataset_entry(3) == 1 .and. &
+            biobur_dataset_entry(4) == 0 .and. &
+            biobur_dataset_entry(5) == 0 .and. &
+            biobur_dataset_entry(6) == 0 ) then
+          biobur_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to biobur_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          biobur_entry  = set_date (biobur_dataset_entry(1), &
+                                  biobur_dataset_entry(2), &
+                                  biobur_dataset_entry(3), &
+                                  biobur_dataset_entry(4), &
+                                  biobur_dataset_entry(5), &
+                                  biobur_dataset_entry(6))
+        endif
+        call print_date (biobur_entry , str= &
+          'Data from biobur timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        biobur_offset = biobur_entry - model_init_time
+        if (model_init_time > biobur_entry) then
+          biobur_negative_offset = .true.
+        else
+          biobur_negative_offset = .false.
+        endif
+      else if (trim(biobur_time_dependency_type) == 'fixed_year') then
+        biobur_time_serie_type = 2
+        if (biobur_dataset_entry(1) == 1 .and. &
+            biobur_dataset_entry(2) == 1 .and. &
+            biobur_dataset_entry(3) == 1 .and. &
+            biobur_dataset_entry(4) == 0 .and. &
+            biobur_dataset_entry(5) == 0 .and. &
+            biobur_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_sulfate_mod', &
+            'must set biobur_dataset_entry when using fixed_year source', FATAL)
+        endif
+
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to biobur_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        biobur_entry  = set_date (biobur_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_sulfate_mod', &
+           'biobur is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'biobur correspond to year :', &
+                    biobur_dataset_entry(1)
+        endif
+     endif
+     call interpolator_init (biobur_emission_interp,             &
+                             trim(biobur_filename),           &
+                             lonb, latb,                        &
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = biobur_emission_name,        &
+                             vert_interp=(/INTERP_WEIGHTED_P/)  )
+     endif
+
+     if (trim(ship_source) .eq. 'do_ship') then
+!---------------------------------------------------------------------
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(ship_time_dependency_type) == 'constant' ) then
+        ship_time_serie_type = 1
+        ship_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'ship are constant in sulfate module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for ship is selected.
+!---------------------------------------------------------------------
+      else if (trim(ship_time_dependency_type) == 'time_varying') then
+        ship_time_serie_type = 3
+        if (ship_dataset_entry(1) == 1 .and. &
+            ship_dataset_entry(2) == 1 .and. &
+            ship_dataset_entry(3) == 1 .and. &
+            ship_dataset_entry(4) == 0 .and. &
+            ship_dataset_entry(5) == 0 .and. &
+            ship_dataset_entry(6) == 0 ) then
+          ship_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to ship_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          ship_entry  = set_date (ship_dataset_entry(1), &
+                                  ship_dataset_entry(2), &
+                                  ship_dataset_entry(3), &
+                                  ship_dataset_entry(4), &
+                                  ship_dataset_entry(5), &
+                                  ship_dataset_entry(6))
+        endif
+        call print_date (ship_entry , str= &
+          'Data from ship timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        ship_offset = ship_entry - model_init_time
+        if (model_init_time > ship_entry) then
+          ship_negative_offset = .true.
+        else
+          ship_negative_offset = .false.
+        endif
+      else if (trim(ship_time_dependency_type) == 'fixed_year') then
+        ship_time_serie_type = 2
+        if (ship_dataset_entry(1) == 1 .and. &
+            ship_dataset_entry(2) == 1 .and. &
+            ship_dataset_entry(3) == 1 .and. &
+            ship_dataset_entry(4) == 0 .and. &
+            ship_dataset_entry(5) == 0 .and. &
+            ship_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_sulfate_mod', &
+            'must set ship_dataset_entry when using fixed_year source', FATAL)
+        endif
+
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to ship_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        ship_entry  = set_date (ship_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_sulfate_mod', &
+           'ship is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'ship correspond to year :', &
+                    ship_dataset_entry(1)
+        endif
+     endif
+     call interpolator_init (ship_emission_interp,             &
+                             trim(ship_filename),           &
+                             lonb, latb,                        &
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = ship_emission_name,        &
+                             vert_interp=(/INTERP_WEIGHTED_P/)  )
+    endif
+
+    if (trim(aircraft_source) .eq. 'do_aircraft') then
+!---------------------------------------------------------------------
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(aircraft_time_dependency_type) == 'constant' ) then
+        aircraft_time_serie_type = 1
+        aircraft_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'aircraft are constant in sulfate module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for aircraft is selected.
+!---------------------------------------------------------------------
+      else if (trim(aircraft_time_dependency_type) == 'time_varying') then
+        aircraft_time_serie_type = 3
+        if (aircraft_dataset_entry(1) == 1 .and. &
+            aircraft_dataset_entry(2) == 1 .and. &
+            aircraft_dataset_entry(3) == 1 .and. &
+            aircraft_dataset_entry(4) == 0 .and. &
+            aircraft_dataset_entry(5) == 0 .and. &
+            aircraft_dataset_entry(6) == 0 ) then
+          aircraft_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to aircraft_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          aircraft_entry  = set_date (aircraft_dataset_entry(1), &
+                                  aircraft_dataset_entry(2), &
+                                  aircraft_dataset_entry(3), &
+                                  aircraft_dataset_entry(4), &
+                                  aircraft_dataset_entry(5), &
+                                  aircraft_dataset_entry(6))
+        endif
+        call print_date (aircraft_entry , str= &
+          'Data from aircraft timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        aircraft_offset = aircraft_entry - model_init_time
+        if (model_init_time > aircraft_entry) then
+          aircraft_negative_offset = .true.
+        else
+          aircraft_negative_offset = .false.
+        endif
+      else if (trim(aircraft_time_dependency_type) == 'fixed_year') then
+        aircraft_time_serie_type = 2
+        if (aircraft_dataset_entry(1) == 1 .and. &
+            aircraft_dataset_entry(2) == 1 .and. &
+            aircraft_dataset_entry(3) == 1 .and. &
+            aircraft_dataset_entry(4) == 0 .and. &
+            aircraft_dataset_entry(5) == 0 .and. &
+            aircraft_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_sulfate_mod', &
+            'must set aircraft_dataset_entry when using fixed_year source', FATAL)
+        endif
+
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to aircraft_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        aircraft_entry  = set_date (aircraft_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_sulfate_mod', &
+           'aircraft is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'aircraft correspond to year :', &
+                    aircraft_dataset_entry(1)
+        endif
+     endif
 
      call interpolator_init (aircraft_emission_interp, &
-                             trim(aircraft_emission_filename),  &
+                             trim(aircraft_filename),  &
                              lonb, latb,&
                              data_out_of_bounds=  (/CONSTANT/), &
                              data_names = aircraft_emission_name, &
                              vert_interp=(/INTERP_WEIGHTED_P/) )
+   endif
 
-! Register a diagnostic field : emission of SOx species
-      id_DMS_emis   = register_diag_field ( mod_name,             &
-                      'simpleDMS_emis', axes(1:2),Time,                 &
-                      'simpleDMS_emis', 'kgS/m2/s',                     &
-                       missing_value=-999.  )
-      id_SO2_emis   = register_diag_field ( mod_name,             &
-                      'simpleSO2_emis', axes(1:3),Time,                 &
-                      'simpleSO2_emis', 'kgS/m2/s',                     &
-                       missing_value=-999.  )
-      id_SO4_emis   = register_diag_field ( mod_name,             &
-                      'simpleSO4_emis', axes(1:3),Time,                 &
-                      'simpleSO4_emis', 'kgS/m2/s',                     &
-                       missing_value=-999.  )
-      id_DMSo       = register_diag_field ( mod_name,             &
-                      'DMSo',axes(1:2),Time,                      &
-                      'Dimethylsulfide seawater concentration',   &
-                      'nM/L')
-      id_ph          = register_diag_field ( mod_name,             &
-                      'pH_simple_sulfate',axes(1:3),Time,                    &
-                      'pH in simple-sulfate',                  &
-                      'none')
-      id_O3           = register_diag_field ( mod_name,             &
-                      'O3_simple_sulfate',axes(1:3),Time,                    &
-                      'O3 in simple-sulfate',                  &
-                      'none')
+    if (trim(cont_volc_source) .eq. 'do_cont_volc') then
+!---------------------------------------------------------------------
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(cont_volc_time_dependency_type) == 'constant' ) then
+        cont_volc_time_serie_type = 1
+        cont_volc_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'cont_volc are constant in sulfate module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for cont_volc is selected.
+!---------------------------------------------------------------------
+      else if (trim(cont_volc_time_dependency_type) == 'time_varying') then
+        cont_volc_time_serie_type = 3
+        if (cont_volc_dataset_entry(1) == 1 .and. &
+            cont_volc_dataset_entry(2) == 1 .and. &
+            cont_volc_dataset_entry(3) == 1 .and. &
+            cont_volc_dataset_entry(4) == 0 .and. &
+            cont_volc_dataset_entry(5) == 0 .and. &
+            cont_volc_dataset_entry(6) == 0 ) then
+          cont_volc_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to cont_volc_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          cont_volc_entry  = set_date (cont_volc_dataset_entry(1), &
+                                  cont_volc_dataset_entry(2), &
+                                  cont_volc_dataset_entry(3), &
+                                  cont_volc_dataset_entry(4), &
+                                  cont_volc_dataset_entry(5), &
+                                  cont_volc_dataset_entry(6))
+        endif
+        call print_date (cont_volc_entry , str= &
+          'Data from cont_volc timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        cont_volc_offset = cont_volc_entry - model_init_time
+        if (model_init_time > cont_volc_entry) then
+          cont_volc_negative_offset = .true.
+        else
+          cont_volc_negative_offset = .false.
+        endif
+      else if (trim(cont_volc_time_dependency_type) == 'fixed_year') then
+        cont_volc_time_serie_type = 2
+        if (cont_volc_dataset_entry(1) == 1 .and. &
+            cont_volc_dataset_entry(2) == 1 .and. &
+            cont_volc_dataset_entry(3) == 1 .and. &
+            cont_volc_dataset_entry(4) == 0 .and. &
+            cont_volc_dataset_entry(5) == 0 .and. &
+            cont_volc_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_sulfate_mod', &
+            'must set cont_volc_dataset_entry when using fixed_year source', FATAL)
+        endif
 
-      id_SO2_anth_l1_emis = register_diag_field ( mod_name,     &
-                      'simpleSO2_anth_l1_emis',axes(1:2),Time,          &
-                      'SO2 anthropogenic emission GEIA-85 level1',&
-                      'kgS/m2/s')
-      id_SO2_anth_l2_emis = register_diag_field ( mod_name,     &
-                      'simpleSO2_anth_l2_emis',axes(1:2),Time,          &
-                      'SO2 anthropogenic emission GEIA-85 level2',&
-                      'kgS/m2/s')
-      id_SO2_aircraft_emis= register_diag_field ( mod_name,     &
-                      'simpleSO2_aircraft_emis',axes(1:3),Time,         &
-                      'SO2 emission by aircraft',                 &
-                      'kgS/m2/s')
-      id_SO2_bioburn_emis = register_diag_field ( mod_name,     &
-                      'simpleSO2_bioburn_emis',axes(1:2),Time,          &
-                      'SO2 emission from biomass burning',        &
-                      'kgS/m2/s')
-      id_SO2_nerup_volc_emis = register_diag_field ( mod_name,     &
-                      'simpleSO2_nerup_volc_emis',axes(1:3),Time,     &
-                      'SO2 emission from non-eruptive volcanoes', &
-                      'kgS/m2/s')
-      id_SO4_anth_l1_emis = register_diag_field ( mod_name,     &
-                      'simpleSO4_anth_l1_emis',axes(1:2),Time,          &
-                      'SO4 anthropogenic emission GEIA-85 level1',&
-                      'kgS/m2/s')
-      id_SO4_anth_l2_emis = register_diag_field ( mod_name,     &
-                      'simpleSO4_anth_l2_emis',axes(1:2),Time,          &
-                      'SO4 anthropogenic emission GEIA-85 level2',&
-                      'kgS/m2/s')
-      id_NO3        = register_diag_field ( mod_name,           &
-                      'simpleNO3_diurnal',axes(1:3),Time,       &
-                      'Time varying NO3 concentration',         &
-                      'molec.cm-3')
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to cont_volc_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        cont_volc_entry  = set_date (cont_volc_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_sulfate_mod', &
+           'cont_volc is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'cont_volc correspond to year :', &
+                    cont_volc_dataset_entry(1)
+        endif
+     endif
 
-      id_OH         = register_diag_field ( mod_name,         &
-                      'OH_simple_sulfate',axes(1:3),Time,    &
-                      'Varying Hydroxyl radical concentration',           &
-                      'molec.cm-3')
-      id_jH2O2         = register_diag_field ( mod_name,           &
-                      'jH2O2_simple_sulfate',axes(1:3),Time,               &
-                      'Varying H2O2 photodissociation',   &
-                      's-1')
+     call interpolator_init (cont_volc_emission_interp, &
+                             trim(cont_volc_filename),  &
+                             lonb, latb,&
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = cont_volc_emission_name, &
+                             vert_interp=(/INTERP_WEIGHTED_P/) )
+   endif
 
-      id_HO2         = register_diag_field ( mod_name,           &
-                      'HO2_simple_sulfate',axes(1:3),Time,               &
-                      'Varying Hydroperoxyl radical concentration',   &
-                      'molec.cm-3')
-      id_DMS_chem   = register_diag_field ( mod_name,           &
-                      'simpleDMS_chem',axes(1:3),Time,                       &
-                      'DMS chemical production',      &
-                      'kgS/m2/s')
-      id_SO2_chem   = register_diag_field ( mod_name,           &
-                      'simpleSO2_chem',axes(1:3),Time,                       &
-                      'SO2 chemical production',      &
-                      'kgS/m2/s')
-      id_SO4_chem   = register_diag_field ( mod_name,           &
-                      'simpleSO4_chem',axes(1:3),Time,                       &
-                      'SO4 chemical production',      &
-                      'kgS/m2/s')
-      id_MSA_chem   = register_diag_field ( mod_name,           &
-                      'simpleMSA_chem',axes(1:3),Time,                       &
-                      'MSA chemical production',      &
-                      'kgS/m2/s')
-      id_H2O2_chem   = register_diag_field ( mod_name,           &
-                      'simpleH2O2_chem',axes(1:3),Time,                       &
-                      'H2O2 chemical production',      &
-                      'kgH2O2/m2/s')
+    if (trim(expl_volc_source) .eq. 'do_expl_volc') then
+!---------------------------------------------------------------------
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(expl_volc_time_dependency_type) == 'constant' ) then
+        expl_volc_time_serie_type = 1
+        expl_volc_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'expl_volc are constant in sulfate module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for expl_volc is selected.
+!---------------------------------------------------------------------
+      else if (trim(expl_volc_time_dependency_type) == 'time_varying') then
+        expl_volc_time_serie_type = 3
+        if (expl_volc_dataset_entry(1) == 1 .and. &
+            expl_volc_dataset_entry(2) == 1 .and. &
+            expl_volc_dataset_entry(3) == 1 .and. &
+            expl_volc_dataset_entry(4) == 0 .and. &
+            expl_volc_dataset_entry(5) == 0 .and. &
+            expl_volc_dataset_entry(6) == 0 ) then
+          expl_volc_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to expl_volc_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          expl_volc_entry  = set_date (expl_volc_dataset_entry(1), &
+                                  expl_volc_dataset_entry(2), &
+                                  expl_volc_dataset_entry(3), &
+                                  expl_volc_dataset_entry(4), &
+                                  expl_volc_dataset_entry(5), &
+                                  expl_volc_dataset_entry(6))
+        endif
+        call print_date (expl_volc_entry , str= &
+          'Data from expl_volc timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        expl_volc_offset = expl_volc_entry - model_init_time
+        if (model_init_time > expl_volc_entry) then
+          expl_volc_negative_offset = .true.
+        else
+          expl_volc_negative_offset = .false.
+        endif
+      else if (trim(expl_volc_time_dependency_type) == 'fixed_year') then
+        expl_volc_time_serie_type = 2
+        if (expl_volc_dataset_entry(1) == 1 .and. &
+            expl_volc_dataset_entry(2) == 1 .and. &
+            expl_volc_dataset_entry(3) == 1 .and. &
+            expl_volc_dataset_entry(4) == 0 .and. &
+            expl_volc_dataset_entry(5) == 0 .and. &
+            expl_volc_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_sulfate_mod', &
+            'must set expl_volc_dataset_entry when using fixed_year source', FATAL)
+        endif
 
-      call write_version_number (version, tagname)
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to expl_volc_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        expl_volc_entry  = set_date (expl_volc_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_sulfate_mod', &
+           'expl_volc is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'expl_volc correspond to year :', &
+                    expl_volc_dataset_entry(1)
+        endif
+     endif
 
-      module_is_initialized = .TRUE.
+     call interpolator_init (expl_volc_emission_interp, &
+                             trim(expl_volc_filename),  &
+                             lonb, latb,&
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = expl_volc_emission_name, &
+                             vert_interp=(/INTERP_WEIGHTED_P/) )
+   endif
+
+! Register diagnostic fields
+   id_DMS_emis   = register_diag_field ( mod_name,                           &
+                   'simpleDMS_emis', axes(1:2),Time,                         &
+                   'simpleDMS_emis', 'kgS/m2/s',                             &
+                    missing_value=-999.  )
+   id_SO2_emis   = register_diag_field ( mod_name,                           &
+                   'simpleSO2_emis', axes(1:3),Time,                         &
+                   'simpleSO2_emis', 'kgS/m2/s',                             &
+                    missing_value=-999.  )
+   id_SO4_emis   = register_diag_field ( mod_name,                           &
+                   'simpleSO4_emis', axes(1:3),Time,                         &
+                   'simpleSO4_emis', 'kgS/m2/s',                             &
+                    missing_value=-999.  )
+   id_DMSo       = register_diag_field ( mod_name,                           &
+                   'DMSo',axes(1:2),Time,                                    &
+                   'Dimethylsulfide seawater concentration',                 &
+                   'nM/L')
+   id_ph          = register_diag_field ( mod_name,                          &
+                   'pH_simple_sulfate',axes(1:3),Time,                       &
+                   'pH in simple-sulfate',                                   &
+                   'none')
+   id_O3           = register_diag_field ( mod_name,                         &
+                   'O3_simple_sulfate',axes(1:3),Time,                       &
+                   'O3 in simple-sulfate',                                   &
+                   'none')
+   id_SO2_aircraft = register_diag_field ( mod_name,                         &
+                   'simpleSO2_aircraft_emis',axes(1:3),Time,                 &
+                   'simpleSO2 emission by aircraft',                         &
+                   'kgS/m2/s')
+   id_SO2_biobur  = register_diag_field ( mod_name,                          &
+                   'simpleSO2_biobur_emis',axes(1:3),Time,                   &
+                   'simpleSO2 emission from biomass burning',                &
+                   'kgS/m2/s')
+   id_SO2_cont_volc = register_diag_field ( mod_name,                        &
+                   'simpleSO2_cont_volc_emis',axes(1:3),Time,                &
+                   'simpleSO2 emission from non-eruptive volcanoes',         &
+                   'kgS/m2/s')
+   id_SO2_expl_volc = register_diag_field ( mod_name,                        &
+                   'simpleSO2_expl_volc_emis',axes(1:3),Time,                &
+                   'simpleSO2 emission from eruptive volcanoes',             &
+                   'kgS/m2/s')
+   id_SO2_ship      = register_diag_field ( mod_name,                        &
+                   'simpleSO2_ship_emis',axes(1:3),Time,                     &
+                   'simpleSO2 emission from international shipping',         &
+                   'kgS/m2/s')
+   id_SO2_road      = register_diag_field ( mod_name,                        &
+                   'simpleSO2_road_emis',axes(1:3),Time,                     &
+                   'simpleSO2 emission from road transport',                 &
+                   'kgS/m2/s')
+   id_SO2_domestic = register_diag_field ( mod_name,                         &
+                   'simpleSO2_domestic_emis',axes(1:3),Time,                 &
+                   'simpleSO2 emission from domestic fossil fuel burning',   &
+                   'kgS/m2/s')
+   id_SO2_industry = register_diag_field ( mod_name,                         &
+                   'simpleSO2_industry_emis',axes(1:3),Time,                 &
+                   'simpleSO2 emission from industrial fossil fuel burning', &
+                   'kgS/m2/s')
+   id_SO2_power   = register_diag_field ( mod_name,                          &
+                   'simpleSO2_power_emis',axes(1:3),Time,                    &
+                   'simpleSO2 emission from power plants',                   &
+                   'kgS/m2/s')
+   id_SO2_off_road = register_diag_field ( mod_name,                         &
+                   'simpleSO2_off_road_emis',axes(1:3),Time,                 &
+                   'simpleSO2 emission from off-road transport',             &
+                   'kgS/m2/s')
+   id_SO2_ff      = register_diag_field ( mod_name,                          &
+                   'simpleSO2_ff_emis',axes(1:3),Time,                       &
+                   'simpleSO2 emission from fossil fuel burning',            &
+                   'kgS/m2/s')
+   id_NO3        = register_diag_field ( mod_name,                           &
+                   'simpleNO3_diurnal',axes(1:3),Time,                       &
+                   'Time varying NO3 concentration',                         &
+                   'molec.cm-3')
+   id_OH         = register_diag_field ( mod_name,                           &
+                   'OH_simple_sulfate',axes(1:3),Time,                       &
+                   'Varying Hydroxyl radical concentration',                 &
+                   'molec.cm-3')
+   id_jH2O2         = register_diag_field ( mod_name,                        &
+                   'jH2O2_simple_sulfate',axes(1:3),Time,                    &
+                   'Varying H2O2 photodissociation',                         &
+                   's-1')
+   id_HO2         = register_diag_field ( mod_name,                          &
+                   'HO2_simple_sulfate',axes(1:3),Time,                      &
+                   'Varying Hydroperoxyl radical concentration',             &
+                   'molec.cm-3')
+   id_DMS_chem   = register_diag_field ( mod_name,                           &
+                   'simpleDMS_chem',axes(1:3),Time,                          &
+                   'simpleDMS chemical production',                          &
+                   'kgS/m2/s')
+   id_SO2_chem   = register_diag_field ( mod_name,                           &
+                   'simpleSO2_chem',axes(1:3),Time,                          &
+                   'simpleSO2 chemical production',                          &
+                   'kgS/m2/s')
+   id_SO4_chem   = register_diag_field ( mod_name,                           &
+                   'simpleSO4_chem',axes(1:3),Time,                          &
+                   'simpleSO4 chemical production',                          &
+                   'kgS/m2/s')
+   id_MSA_chem   = register_diag_field ( mod_name,                           &
+                   'simpleMSA_chem',axes(1:3),Time,                          &
+                   'simpleMSA chemical production',                          &
+                   'kgS/m2/s')
+   id_H2O2_chem   = register_diag_field ( mod_name,                          &
+                   'simpleH2O2_chem',axes(1:3),Time,                         &
+                   'simpleH2O2 chemical production',                         &
+                   'kgH2O2/m2/s')
+
+   call write_version_number (version, tagname)
+
+   module_is_initialized = .TRUE.
 
 !-----------------------------------------------------------------------
  end subroutine atmos_sulfate_init
@@ -396,9 +1082,12 @@ integer :: n, m, nsulfate
 !</TEMPLATE>
  subroutine atmos_sulfate_end
 
-        call interpolator_end (gas_conc_interp) 
         call interpolator_end (aerocom_emission_interp) 
         call interpolator_end (gocart_emission_interp) 
+        call interpolator_end (gas_conc_interp) 
+        call interpolator_end (anthro_emission_interp) 
+        call interpolator_end (biobur_emission_interp) 
+        call interpolator_end (ship_emission_interp) 
         call interpolator_end (aircraft_emission_interp) 
         module_is_initialized = .FALSE.
 
@@ -584,7 +1273,7 @@ end subroutine atmos_DMS_emission
 !      (nlon, nlat, nlev, ntime)
 !   </IN>
 subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
-       z_pbl, zhalf, phalf, pwt, SO2_dt, SO4_dt, Time, is,ie,js,je,kbot)
+       z_pbl, zhalf, phalf, pwt, SO2_dt, SO4_dt, model_time, is,ie,js,je,kbot)
 !
 ! This subroutine calculates the tendencies of SO2 and SO4 due to
 ! their emissions.
@@ -600,7 +1289,7 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
       real, intent(in),    dimension(:,:,:)         :: zhalf, phalf
       real, intent(in),    dimension(:,:,:)         :: pwt
       real, intent(out),   dimension(:,:,:)         :: SO2_dt, SO4_dt
-      type(time_type), intent(in)                   :: Time
+      type(time_type), intent(in)                   :: model_time
       integer, intent(in)                           :: is, ie, js, je
       integer, intent(in), dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
@@ -608,17 +1297,18 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
       integer, parameter :: nlevel_fire = 6
       real, dimension(size(SO4_dt,1),size(SO4_dt,2),size(SO4_dt,3)) :: SO4_emis
       real, dimension(size(SO2_dt,1),size(SO2_dt,2),size(SO2_dt,3)) :: SO2_emis
-! Input emission fields
       real, dimension(size(SO2_dt,1),size(SO2_dt,2),size(SO2_dt,3)) :: &
-             SO2_aircraft
+        so2_aircraft,so2_emis_cont_volc, so2_emis_expl_volc, so2_emis_biobur, &
+        so2_emis_ship, so2_emis_road, so2_emis_domestic, so2_emis_industry, &
+        so2_emis_power, so2_emis_off_road, so2_emis_ff
+! Input emission fields
       real, dimension(size(SO2_dt,1),size(SO2_dt,2)) :: &
-             SO2_GEIA1, SO2_GEIA2, SO4_GEIA1, SO4_GEIA2,&
-             SO2_biobur,                                &
+             SO2_ff1, SO2_ff2, SO4_ff1, SO4_ff2,&
              SO2_RoadTransport,                         &
              SO2_Off_road,                              &
              SO2_Domestic,                              &
              SO2_Industry,                              &
-             SO2_International_Shipping,                &
+             SO2_Ship, SO4_ship,                        &
              SO2_Powerplants,                           &
              SO2_cont_volc,                             &
              SO2_expl_volc,                             &
@@ -627,7 +1317,7 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
              SO2_expl_volc_h1,                          &
              SO2_expl_volc_h2
       real, dimension(size(SO2_dt,1),size(SO2_dt,2),nlevel_fire) :: &
-             SO2_wildfire
+             SO2_biobur
 ! Factors of vertical distribution of emissions
       real, dimension(size(SO2_dt,3)) :: fbb, fa1, fa2, fcv, fev
       real, dimension(size(SO2_dt,3),nlevel_fire) :: ff
@@ -648,6 +1338,8 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
 
       real :: z1, z2, bltop, fbt, del
       integer  :: i, j, k, l, id, jd, kd, il, lf
+      type(time_type) :: anthro_time, biobur_time, ship_time, aircraft_time
+      integer        :: yr, mo, dy, hr, mn, sc, dum, mo_yr, dayspmn
 
       id=size(SO2_dt,1); jd=size(SO2_dt,2); kd=size(SO2_dt,3)
 !
@@ -655,136 +1347,268 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
 !
       SO2_dt(:,:,:) = 0.0
       SO4_dt(:,:,:) = 0.0
+      SO2_emis(:,:,:) = 0.0
+      SO4_emis(:,:,:) = 0.0
 ! GOCART emissions
-      SO2_GEIA1(:,:)=0.0
-      SO2_GEIA2(:,:)=0.0
-      SO4_GEIA1(:,:)=0.0
-      SO4_GEIA2(:,:)=0.0
-      SO2_biobur(:,:)=0.0
+      SO2_ff1(:,:)=0.0
+      SO2_ff2(:,:)=0.0
+      SO4_ff1(:,:)=0.0
+      SO4_ff2(:,:)=0.0
 ! AEROCOM emissions
       SO2_RoadTransport(:,:)=0.0
       SO2_Off_road(:,:)=0.0
       SO2_Domestic(:,:)=0.0
       SO2_Industry(:,:)=0.0
-      SO2_International_Shipping(:,:)=0.0
+      SO2_Ship(:,:)=0.0
+      SO4_Ship(:,:)=0.0
       SO2_Powerplants(:,:)=0.0
       SO2_aircraft(:,:,:)=0.0
-      SO2_cont_volc(:,:)=0.0
-      SO2_expl_volc(:,:)=0.0
-      SO2_wildfire(:,:,:)=0.0
+      SO2_biobur(:,:,:)=0.0
 
+      SO2_cont_volc(:,:)=0.0
       SO2_cont_volc_h1(:,:)=0.0
       SO2_cont_volc_h2(:,:)=0.0
+      SO2_expl_volc(:,:)=0.0
       SO2_expl_volc_h1(:,:)=0.0
       SO2_expl_volc_h2(:,:)=0.0
+! Arrays for output diagnostics
+      so2_aircraft(:,:,:)=0.0
+      so2_emis_cont_volc(:,:,:)=0.0
+      so2_emis_expl_volc(:,:,:)=0.0
+      so2_emis_biobur(:,:,:)=0.0
+      so2_emis_ship(:,:,:)=0.0
+      so2_emis_road(:,:,:)=0.0
+      so2_emis_domestic(:,:,:)=0.0
+      so2_emis_industry(:,:,:)=0.0
+      so2_emis_power(:,:,:)=0.0
+      so2_emis_off_road(:,:,:)=0.0
+      so2_emis_ff(:,:,:)=0.0
 !
-      if ( runtype .eq. 'gocart') then
-        call interpolator(gocart_emission_interp, Time, SO2_GEIA1, &
+      select case ( trim(runtype))
+        case ('gocart')
+          call interpolator(gocart_emission_interp, model_time, SO2_ff1, &
                        trim(gocart_emission_name(2)), is, js)
-        call interpolator(gocart_emission_interp, Time, SO2_GEIA2, &
+          call interpolator(gocart_emission_interp, model_time, SO2_ff2, &
                        trim(gocart_emission_name(3)), is, js)
-        call interpolator(gocart_emission_interp, Time, SO4_GEIA1, &
+          call interpolator(gocart_emission_interp, model_time, SO4_ff1, &
                        trim(gocart_emission_name(4)), is, js)
-        call interpolator(gocart_emission_interp, Time, SO4_GEIA2, &
+          call interpolator(gocart_emission_interp, model_time, SO4_ff2, &
                        trim(gocart_emission_name(5)), is, js)
-        call interpolator(gocart_emission_interp, Time, SO2_biobur, &
-                       trim(gocart_emission_name(6)), is, js)
-      endif
-      if ( runtype .eq. 'aerocom') then
-        call interpolator(aerocom_emission_interp, Time, SO2_RoadTransport, &
-                       trim(aerocom_emission_name(1)), is, js)
-!
-        call interpolator(aerocom_emission_interp, Time, SO2_Off_road, &
+          call interpolator(gocart_emission_interp, model_time, &
+                       SO2_biobur(:,:,1),trim(gocart_emission_name(6)), is, js)
+        case ('aerocom')
+          call interpolator(aerocom_emission_interp, model_time, &
+                       SO2_RoadTransport,trim(aerocom_emission_name(1)),is, js)
+          call interpolator(aerocom_emission_interp, model_time, SO2_Off_road, &
                        trim(aerocom_emission_name(2)), is, js)
-!
-        call interpolator(aerocom_emission_interp, Time, SO2_Domestic, &
+          call interpolator(aerocom_emission_interp, model_time, SO2_Domestic, &
                        trim(aerocom_emission_name(3)), is, js)
-!
-        call interpolator(aerocom_emission_interp, Time, SO2_Industry, &
+          call interpolator(aerocom_emission_interp, model_time, SO2_Industry, &
                        trim(aerocom_emission_name(4)), is, js)
-!
-        call interpolator(aerocom_emission_interp, Time, &
-                       SO2_International_Shipping, &
+          call interpolator(aerocom_emission_interp, model_time, SO2_ship, &
                        trim(aerocom_emission_name(5)), is, js)
-!
-        call interpolator(aerocom_emission_interp, Time, SO2_Powerplants, &
-                       trim(aerocom_emission_name(6)), is, js)
+          call interpolator(aerocom_emission_interp, model_time, &
+                       SO2_Powerplants, trim(aerocom_emission_name(6)), is, js)
 ! Wildfire emissions at 6 levels from 0 to 6 km
 ! (cf. AEROCOM web site or Dentener et al., ACPD, 2006)
-        do il=1,nlevel_fire
-          call interpolator(aerocom_emission_interp, Time, SO2_wildfire(:,:,il), &
+          do il=1,nlevel_fire
+            call interpolator(aerocom_emission_interp, model_time, &
+                       SO2_biobur(:,:,il), &
                        trim(aerocom_emission_name(12+il)), is, js)
-        enddo
-      endif
+          enddo
+        case default
+          !--------------------------------------------------------------------
+          !    define the time in the anthro data set from which data is to be 
+          !    taken. if anthro is not time-varying, it is simply model_time.
+          !---------------------------------------------------------------------
+          if(anthro_time_serie_type .eq. 3) then
+            if (anthro_negative_offset) then
+              anthro_time = model_time - anthro_offset
+            else
+              anthro_time = model_time + anthro_offset
+            endif
+          else
+            if(anthro_time_serie_type .eq. 2 ) then
+              call get_date (anthro_entry, yr, dum,dum,dum,dum,dum)
+              call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+              if (mo ==2 .and. dy == 29) then
+                dayspmn = days_in_month(anthro_entry)
+                if (dayspmn /= 29) then
+                  anthro_time = set_date (yr, mo, dy-1, hr, mn, sc)
+                else
+                  anthro_time = set_date (yr, mo, dy, hr, mn, sc)
+                endif
+              else
+                anthro_time = set_date (yr, mo, dy, hr, mn, sc)
+              endif
+            else
+              anthro_time = model_time
+            endif
+          endif
+          call interpolator(anthro_emission_interp, anthro_time, SO2_ff1(:,:), &
+                   trim(anthro_emission_name(1)), is, js)
+          call interpolator(anthro_emission_interp, anthro_time, SO4_ff1(:,:), &
+                   trim(anthro_emission_name(2)), is, js)
+
+          !--------------------------------------------------------------------
+          !    define the time in the biobur data set from which data is to be 
+          !    taken. if biobur is not time-varying, it is simply model_time.
+          !---------------------------------------------------------------------
+          if(biobur_time_serie_type .eq. 3) then
+            if (biobur_negative_offset) then
+              biobur_time = model_time - biobur_offset
+            else
+              biobur_time = model_time + biobur_offset
+            endif
+          else
+            if(biobur_time_serie_type .eq. 2 ) then
+              call get_date (biobur_entry, yr, dum,dum,dum,dum,dum)
+              call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+              if (mo ==2 .and. dy == 29) then
+                dayspmn = days_in_month(biobur_entry)
+                if (dayspmn /= 29) then
+                  biobur_time = set_date (yr, mo, dy-1, hr, mn, sc)
+                else
+                  biobur_time = set_date (yr, mo, dy, hr, mn, sc)
+                endif
+              else
+                biobur_time = set_date (yr, mo, dy, hr, mn, sc)
+              endif
+            else
+              biobur_time = model_time
+            endif
+          endif
+          call interpolator(biobur_emission_interp, biobur_time, SO2_biobur(:,:,1), &
+                   trim(biobur_emission_name(1)), is, js)
+
+          !--------------------------------------------------------------------
+          !    define the time in the ship data set from which data is to be 
+          !    taken. if ship is not time-varying, it is simply model_time.
+          !---------------------------------------------------------------------
+          if(ship_time_serie_type .eq. 3) then
+            if (ship_negative_offset) then
+              ship_time = model_time - ship_offset
+            else
+              ship_time = model_time + ship_offset
+            endif
+          else
+            if(ship_time_serie_type .eq. 2 ) then
+              call get_date (ship_entry, yr, dum,dum,dum,dum,dum)
+              call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+              if (mo ==2 .and. dy == 29) then
+                dayspmn = days_in_month(ship_entry)
+                if (dayspmn /= 29) then
+                  ship_time = set_date (yr, mo, dy-1, hr, mn, sc)
+                else
+                  ship_time = set_date (yr, mo, dy, hr, mn, sc)
+                endif
+              else
+                ship_time = set_date (yr, mo, dy, hr, mn, sc)
+              endif
+            else
+              ship_time = model_time
+            endif
+          endif
+          call interpolator(ship_emission_interp, ship_time, SO2_ship(:,:), &
+                   trim(ship_emission_name(1)), is, js)
+          call interpolator(ship_emission_interp, ship_time, SO4_ship(:,:), &
+                   trim(ship_emission_name(2)), is, js)
+
+      end select
 !
 ! Aircraft emissions
+      if (trim(aircraft_source) .eq. 'do_aircraft') then
+        if(aircraft_time_serie_type .eq. 3) then
+          if (aircraft_negative_offset) then
+            aircraft_time = model_time - aircraft_offset
+          else
+            aircraft_time = model_time + aircraft_offset
+          endif
+        else
+          if(aircraft_time_serie_type .eq. 2 ) then
+            call get_date (aircraft_entry, yr, dum,dum,dum,dum,dum)
+            call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+            if (mo ==2 .and. dy == 29) then
+              dayspmn = days_in_month(aircraft_entry)
+              if (dayspmn /= 29) then
+                aircraft_time = set_date (yr, mo, dy-1, hr, mn, sc)
+              else
+                aircraft_time = set_date (yr, mo, dy, hr, mn, sc)
+              endif
+            else
+              aircraft_time = set_date (yr, mo, dy, hr, mn, sc)
+            endif
+          else
+            aircraft_time = model_time
+          endif
+        endif
+
 !
-      call interpolator(aircraft_emission_interp, Time, phalf, SO2_aircraft, &
-                       trim(aircraft_emission_name(1)), is, js)
+        call interpolator(aircraft_emission_interp, aircraft_time, &
+                     phalf, SO2_aircraft, &
+                     trim(aircraft_emission_name(1)), is, js)
+      endif
 !
 ! Continuous volcanoes
 !
-      call interpolator(aerocom_emission_interp, Time, SO2_cont_volc, &
+      if (trim(cont_volc_source) .eq. 'do_cont_volc') then
+        call interpolator(aerocom_emission_interp, model_time, SO2_cont_volc, &
                        trim(aerocom_emission_name(7)), is, js)
-      call interpolator(aerocom_emission_interp, Time, SO2_cont_volc_h1, &
+        call interpolator(aerocom_emission_interp,model_time,SO2_cont_volc_h1, &
                        trim(aerocom_emission_name(8)), is, js)
-      call interpolator(aerocom_emission_interp, Time, SO2_cont_volc_h2, &
+        call interpolator(aerocom_emission_interp,model_time,SO2_cont_volc_h2, &
                        trim(aerocom_emission_name(9)), is, js)
+      endif
 !
 ! Explusive volcanoes
 !
-      call interpolator(aerocom_emission_interp, Time, SO2_expl_volc, &
+      if (trim(expl_volc_source) .eq. 'do_expl_volc') then
+        call interpolator(aerocom_emission_interp, model_time, SO2_expl_volc, &
                        trim(aerocom_emission_name(10)), is, js)
-      call interpolator(aerocom_emission_interp, Time, SO2_expl_volc_h1, &
+        call interpolator(aerocom_emission_interp,model_time,SO2_expl_volc_h1, &
                        trim(aerocom_emission_name(11)), is, js)
-      call interpolator(aerocom_emission_interp, Time, SO2_expl_volc_h2, &
+        call interpolator(aerocom_emission_interp,model_time,SO2_expl_volc_h2, &
                        trim(aerocom_emission_name(12)), is, js)
+      endif
 
       do j = 1, jd
       do i = 1, id
 
 ! --- Assuming biomass burning emission within the PBL -------
         fbb(:) = 0.
-        if (runtype.eq.'gocart') then
-          ze1=100.
-          ze2=500.
-          fbt=0.
-          BLTOP = z_pbl(i,j)
-          do l = kd,2,-1
-            z1=zhalf(i,j,l+1)-zhalf(i,j,kd+1)
-            z2=zhalf(i,j,l)-zhalf(i,j,kd+1)
-            if (bltop.lt.z1) exit
-            if (bltop.ge.z2) fbb(l)=pwt(i,j,l)
-            if (bltop.gt.z1.and.bltop.lt.z2) then
-              fbb(l) = pwt(i,j,l)*(bltop-z1)/(z2-z1)
-            endif
-            fbt=fbt+fbb(l)
-          enddo
-          if (fbt .gt. 0.) fbb(:)=fbb(:)/fbt
-        endif
+        ze1=100.
+        ze2=500.
+        fbt=0.
+        bltop = z_pbl(i,j)
+        do l = kd,1,-1
+          z1=zhalf(i,j,l+1)-zhalf(i,j,kd+1)
+          z2=zhalf(i,j,l)-zhalf(i,j,kd+1)
+          if (bltop.lt.z1) exit
+          if (bltop.ge.z2) fbb(l)=(z2-z1)/bltop
+          if (bltop.gt.z1.and.bltop.lt.z2) fbb(l) = (bltop-z1)/bltop
+        enddo
 ! --- Assuming anthropogenic source L1 emitted below Ze1, and L2
 !     emitted between Ze1 and Ze2.
         ff(:,:)=0.
         if (runtype.eq.'aerocom') then
-          ze1=100.
-          ze2=300.
           do l = kd,2,-1
             Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
             Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
             do lf=1,nlevel_fire
               del=alt_fire_max(lf)-alt_fire_min(lf)
-              if (del.gt.0. .and. Z1.le.alt_fire_max(lf) ) then
-                if (Z2.lt.alt_fire_max(lf)) then
-                  ff(l,lf) = 0.
+              if (del.gt.0. .and. &
+                  Z1.lt.alt_fire_max(lf).and.Z2.gt.alt_fire_min(lf) ) then
+                if (Z1.ge.alt_fire_min(lf)) then
+                  if (Z2 .lt. alt_fire_max(lf)) then
+                    ff(l,lf)=(Z2-Z1)/del
+                  else
+                    ff(l,lf)=(alt_fire_max(lf)-z1)/del
+                  endif
                 else
-                  if (Z1.lt.alt_fire_min(lf)) then
+                  if (Z2.le.alt_fire_max(lf)) then
                     ff(l,lf) = (Z2-alt_fire_min(lf))/del
                   else
-                    if (Z2.lt.alt_fire_max(lf)) then
-                      ff(l,lf) = (z2-z1)/del
-                    else
-                      ff(l,lf)=(alt_fire_max(lf)-Z1)/del
-                    endif
+                    ff(l,lf)=1.
                   endif
                 endif
               endif
@@ -793,51 +1617,56 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
         endif
 ! --- For continuous volcanoes, calculate the fraction of emission for
 ! --- each vertical levels
-        fcv(:)=0.
+      fcv(:)=0.
+      if (trim(cont_volc_source) .eq. 'do_cont_volc') then
         do l = kd,2,-1
           Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
           Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
           del=SO2_cont_volc_h2(i,j)-SO2_cont_volc_h1(i,j)
-          if (del.gt.0. .and. Z1.lt.SO2_cont_volc_h2(i,j) ) then
-            if (Z2.lt.SO2_cont_volc_h1(i,j)) then
-              fcv(l) = 0.
-            else
-              if (Z1.lt.SO2_cont_volc_h1(i,j)) then
-                fcv(l) = (Z2-SO2_cont_volc_h1(i,j))/del
+          if (del.gt.0. .and. &
+              Z1.lt.SO2_cont_volc_h2(i,j).and.Z2.gt.SO2_cont_volc_h1(i,j) ) then
+            if (Z1.ge.SO2_cont_volc_h1(i,j)) then
+              if (Z2.lt.SO2_cont_volc_h2(i,j)) then
+                fcv(l)=(Z2-Z1)/del
               else
-                if (Z2.lt.SO2_cont_volc_h2(i,j)) then
-                  fcv(l)=(z2-z1)/del
-                else
-                  fcv(l)=(SO2_cont_volc_h2(i,j)-Z1)/del
-                endif
+                fcv(l)=(SO2_cont_volc_h2(i,j)-Z1)/del
+              endif
+            else
+              if (Z2.le.SO2_cont_volc_h2(i,j)) then
+                fcv(l)=(Z2-SO2_cont_volc_h1(i,j))/del
+              else
+                fcv(l)=1.
               endif
             endif
           endif
         enddo
-
+      endif
 ! --- For explosive volcanoes, calculate the fraction of emission for
 ! --- each vertical levels
-        fev(:)=0.
+      fev(:)=0.
+      if (trim(expl_volc_source) .eq. 'do_expl_volc') then 
         do l = kd,2,-1
           Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
           Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
           del=SO2_expl_volc_h2(i,j)-SO2_expl_volc_h1(i,j)
-          if (del.gt.0. .and. Z1.lt.SO2_expl_volc_h2(i,j) ) then
-            if (Z2.lt.SO2_expl_volc_h1(i,j)) then
-              fev(l) = 0.
-            else
-              if (Z1.lt.SO2_expl_volc_h1(i,j)) then
-                fev(l) = (Z2-SO2_expl_volc_h1(i,j))/del
+          if (del.gt.0. .and. &
+              Z1.lt.SO2_expl_volc_h2(i,j).and.Z2.gt.SO2_expl_volc_h1(i,j) ) then
+            if (Z1.ge.SO2_expl_volc_h1(i,j)) then
+              if (Z2.lt.SO2_expl_volc_h2(i,j)) then
+                fev(l)=(Z2-Z1)/del
               else
-                if (Z2.lt.SO2_expl_volc_h2(i,j)) then
-                  fev(l)=(z2-z1)/del
-                else
-                  fev(l)=(SO2_expl_volc_h2(i,j)-Z1)/del
-                endif
+                fev(l)=(SO2_expl_volc_h2(i,j)-Z1)/del
+              endif
+            else
+              if (Z2.le.SO2_expl_volc_h2(i,j)) then
+                fev(l)=(Z2-SO2_expl_volc_h1(i,j))/del
+              else
+                fev(l)=1.
               endif
             endif
           endif
         enddo
+      endif
 ! --- For fosil fuel emissions, calculate the fraction of emission for
 ! --- each vertical levels
         fa1(:) = 0.
@@ -845,59 +1674,92 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
         do l = kd,2,-1
           Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
           Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
-          if (Z2.lt.Ze1) then
-            fa1(l) = (Z2-Z1)/Ze1
-            fa2(l) = 0.
+          if (Z2.ge.0.and.Z1.lt.ze1) then
+            if (Z1.gt.0) then
+              if (Z2.lt.ze1) then
+                fa1(l)=(Z2-Z1)/ze1
+              else
+                fa1(l)=(ze1-Z1)/ze1
+              endif
+            else
+              if (Z2.le.ze1) then
+                fa1(l)=Z2/ze1
+              else
+                fa1(l)=1.
+              endif
+            endif
           endif
-          if (Z2.ge.Ze1 .and. Z1.lt.Ze1) then
-            fa1(l) = (Ze1-Z1)/Ze1
-            if ((Ze2-Ze1).gt.0.) fa2(l) = (Z2-Ze1)/(Ze2-Ze1)
-          endif
-          if (Z1.gt.Ze1) then
-            if (Z2.lt.Ze2.and.(Ze2-Ze1).gt.0.) &
-              fa2(l) = (z2-z1)/(Ze2-Ze1)
-            if (Z2.ge.Ze2 .and. Z1.lt.Ze2) then
-              if ((Ze2-Ze1).gt.0.) fa2(l) = (Ze2-Z1)/(Ze2-Ze1)
+
+          if (Z2.ge.ze1.and.z1.lt.ze2) then
+            if (Z1.gt.Ze1) then
+              if (Z2.lt.ze2) then
+                fa2(l)=(z2-z1)/(ze2-ze1)
+              else
+                fa2(l)=(ze2-z1)/(ze2-ze1)
+              endif
+            else
+              if (Z2.le.ze2) then
+                fa2(l)=(z2-ze1)/(ze2-ze1)
+              else
+                fa2(l)=1.
+              endif
             endif
           endif
           if (Z1.gt.Ze2) exit
         enddo
-
-! --- Total SO2 source ----
+! --- Volcanic SO2 source ----
+       so2_emis_cont_volc(i,j,:) = fcv(:) * SO2_cont_volc(i,j)
+       so2_emis_expl_volc(i,j,:) = fev(:) * SO2_expl_volc(i,j)
 ! SO2_emis: [kgSO2/m2/s]
-        SO2_emis(i,j,:) =( &
-!              Assuming that 1g of SO2 is emitted from 1kg of fuel: 1.e-3
-               1.e-3  * SO2_aircraft(i,j,:)                   &
-             + fa1(:) * SO2_GEIA1(i,j)                        &
-             + fa2(:) * SO2_GEIA2(i,j)                        &
-             + fbb(:) * SO2_biobur(i,j)                       &
-             + fa1(:) * SO2_RoadTransport(i,j)                &
-             + fa1(:) * SO2_Off_road(i,j)                     &
-             + fa1(:) * SO2_Domestic(i,j)                     &
-             + fa1(:) * SO2_International_Shipping(i,j)       &
-             + fa2(:) * SO2_Industry(i,j)                     &
-             + fa2(:) * SO2_Powerplants(i,j)                  &
-             + fcv(:) * SO2_cont_volc(i,j)                    &
-             + fev(:) * SO2_expl_volc(i,j)                    )
-        do lf = 1, nlevel_fire
-          SO2_emis(i,j,:) = SO2_emis(i,j,:) + ff(:,lf) * SO2_wildfire(i,j,lf)
-        enddo
+!       Assuming that 1g of SO2 is emitted from 1kg of fuel: 1.e-3
+        SO2_emis(i,j,:) = so2_aircraft_EI * SO2_aircraft(i,j,:) &
+             + so2_emis_cont_volc(i,j,:) + so2_emis_expl_volc(i,j,:)
 !
-! Aerocom assumes a constant emission index for sulfate (2.5%)
-        if (runtype .eq. 'aerocom') then
-          SO4_emis(i,j,:) = fe * SO2_emis(i,j,:)
-          SO2_emis(i,j,:) = (1.-fe)* SO2_emis(i,j,:)
-        endif
+        select case (trim(runtype))
+          case ('aerocom')
+            do lf = 1, nlevel_fire
+              so2_emis_biobur(i,j,:) = so2_emis_biobur(i,j,:) + &
+                                       ff(:,lf)*SO2_biobur(i,j,lf)
+            enddo
+            so2_emis_road(i,j,:)     = fa1(:) * SO2_RoadTransport(i,j)
+            so2_emis_off_road(i,j,:) = fa1(:) * SO2_off_Road(i,j)
+            so2_emis_domestic(i,j,:) = fa1(:) * SO2_domestic(i,j)
+            so2_emis_ship(i,j,:)     = fa1(:) * SO2_ship(i,j)
+            so2_emis_industry(i,j,:) = fa2(:) * SO2_industry(i,j)
+            so2_emis_power(i,j,:)    = fa2(:) * SO2_Powerplants(i,j)
+
+            SO2_emis(i,j,:) = SO2_emis(i,j,:) + so2_emis_biobur(i,j,:)
+
+            so2_emis_ff(i,j,:) =                                  &
+                 + so2_emis_road(i,j,:)                           &
+                 + so2_emis_off_road(i,j,:)                       &
+                 + so2_emis_domestic(i,j,:)                       &
+                 + so2_emis_ship(i,j,:)                           &
+                 + so2_emis_industry(i,j,:)                       &
+                 + so2_emis_power(i,j,:)
+             SO2_emis(i,j,:) = SO2_emis(i,j,:) + so2_emis_ff(i,j,:)
+          case ('gocart')
 !
 ! GOCART assumes continent based emission index for sulfate:
 !    Anthropogenic SOx emission from GEIA 1985.
 !    Assuming:   Europe:      5.0% SOx emission is SO4;
 !                US + Canada: 1.4% SOx emission is SO4;
 !                The rest:    2.5% SOx emission is SO4.
-        if (runtype .eq. 'gocart' ) then
-          SO4_emis(i,j,:) = &
-               fa1(:) * SO4_GEIA1(i,j) + fa2(:) * SO4_GEIA2(i,j)
-        endif
+            so2_emis_ff(i,j,:)=fa1(:) * SO2_ff1(i,j) + fa2(:) * SO2_ff2(i,j)
+            so2_emis_biobur(i,j,:) = fbb(:) * SO2_biobur(i,j,1)
+            SO2_emis(i,j,:) = SO2_emis(i,j,:) &
+               + so2_emis_biobur(i,j,:)       &
+               + so2_emis_ff(i,j,:)
+            SO4_emis(i,j,:) = &
+               fa1(:) * SO4_ff1(i,j) + fa2(:) * SO4_ff2(i,j)
+          case default
+            so2_emis_ff(i,j,:)=fa1(:) * SO2_ff1(i,j) + fa2(:) * SO2_ff2(i,j)
+            so2_emis_biobur(i,j,:) = fbb(:) * SO2_biobur(i,j,1)
+            SO2_emis(i,j,:) = SO2_emis(i,j,:) &
+               + so2_emis_biobur(i,j,:)       &
+               + so2_emis_ff(i,j,:)
+            SO4_emis(i,j,:) = fa1(:)*(SO4_ff1(i,j)+SO4_ship(i,j))
+        end select
 
       end do   ! end i loop
       end do   ! end j loop
@@ -908,12 +1770,57 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
 !------------------------------------------------------------------
 ! DIAGNOSTICS:      SO2 and SO4 emission in kg/timestep
 !--------------------------------------------------------------------
-      if (id_SO2_emis > 0) then
-        used = send_data ( id_SO2_emis, SO2_emis*WTM_S/WTM_SO2, Time, &
-              is_in=is,js_in=js,ks_in=1)
+      if (id_so2_emis > 0) then
+        used = send_data ( id_so2_emis, so2_emis*WTM_S/WTM_so2, &
+              model_time, is_in=is,js_in=js,ks_in=1)
       endif
-      if (id_SO4_emis > 0) then
-        used = send_data ( id_SO4_emis, SO4_emis*WTM_S/WTM_SO4, Time, &
+      if (id_so2_aircraft > 0) then
+        used = send_data ( id_so2_aircraft, &
+              so2_aircraft*so2_aircraft_EI*WTM_S/WTM_so2, &
+              model_time, is_in=is,js_in=js, ks_in=1)
+      endif
+      if (id_so2_cont_volc > 0) then
+        used = send_data ( id_so2_cont_volc, so2_emis_cont_volc*WTM_S/WTM_so2, &
+              model_time, is_in=is,js_in=js, ks_in=1)
+      endif
+      if (id_so2_expl_volc > 0) then
+        used = send_data ( id_so2_expl_volc, so2_emis_expl_volc*WTM_S/WTM_so2, &
+              model_time, is_in=is,js_in=js, ks_in=1)
+      endif
+      if (id_so2_biobur > 0) then
+        used = send_data ( id_so2_biobur, so2_emis_biobur*WTM_S/WTM_so2, &
+              model_time, is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_so2_ship > 0) then
+        used = send_data ( id_so2_ship, so2_emis_ship*WTM_S/WTM_so2, &
+              model_time, is_in=is,js_in=js, ks_in=1)
+      endif
+      if (id_so2_road > 0) then
+        used = send_data ( id_so2_road, so2_emis_road*WTM_S/WTM_so2,  &
+               model_time, is_in=is,js_in=js, ks_in=1)
+      endif
+      if (id_so2_domestic > 0) then
+        used = send_data ( id_so2_domestic, so2_emis_domestic*WTM_S/WTM_so2, &
+              model_time, is_in=is,js_in=js, ks_in=1)
+      endif
+      if (id_so2_industry > 0) then
+        used = send_data ( id_so2_industry, so2_emis_industry*WTM_S/WTM_so2, &
+              model_time, is_in=is,js_in=js, ks_in=1)
+      endif
+      if (id_so2_power > 0) then
+        used = send_data ( id_so2_power, so2_emis_power*WTM_S/WTM_so2, &
+              model_time, is_in=is,js_in=js, ks_in=1)
+      endif
+      if (id_so2_off_road > 0) then
+        used = send_data ( id_so2_Off_road, so2_emis_off_road*WTM_S/WTM_so2, &
+               model_time, is_in=is,js_in=js, ks_in=1)
+      endif
+      if (id_so2_ff > 0) then
+        used = send_data ( id_so2_ff, so2_emis_ff*WTM_S/WTM_so2, &
+               model_time, is_in=is,js_in=js, ks_in=1)
+      endif
+      if (id_so4_emis > 0) then
+        used = send_data ( id_so4_emis, so4_emis*WTM_S/WTM_so4, model_time, &
               is_in=is,js_in=js,ks_in=1)
       endif
 
@@ -925,7 +1832,7 @@ end subroutine atmos_SOx_emission
         jday,hour,minute,second,lat,lon, &
         SO2, SO4, DMS, MSA, H2O2, &
         SO2_dt, SO4_dt, DMS_dt, MSA_dt, H2O2_dt, &
-        Time,is,ie,js,je,kbot)
+        model_time,is,ie,js,je,kbot)
 !
       real, intent(in)                   :: dt
       integer, intent(in)                :: jday, hour,minute,second
@@ -936,7 +1843,7 @@ end subroutine atmos_SOx_emission
       real, intent(in), dimension(:,:,:) :: SO2, SO4, DMS, MSA, H2O2
       real, intent(out),dimension(:,:,:) :: SO2_dt,SO4_dt,DMS_dt,MSA_dt,H2O2_dt
 
-      type(time_type), intent(in)                    :: Time
+      type(time_type), intent(in)                    :: model_time
       integer, intent(in),  dimension(:,:), optional :: kbot
       integer, intent(in)                            :: is,ie,js,je
 ! Working vectors
@@ -971,7 +1878,7 @@ end subroutine atmos_SOx_emission
       real :: f, f1, tk, rho_air
       real :: SO2_0,SO4_0,MSA_0,DMS_0,H2O2_0    ! initial concentrations
       real :: xSO2,xSO4,xMSA,xDMS,xH2O2,xno3,xo3,xoh,xho2,xjh2o2 ! update conc.
-      real :: rk0, rk1, rk2, rk3, rk, rkt  ! kinetic rates
+      real :: rk0, rk1, rk2, rk3  ! kinetic rates
       real :: cfact, work1, xk, xe, x2, xph
       real :: heh2o2, h2o2g, rah2o2, px, heso2, so2g, heo3, o3g, rao3
       real :: pso4a, pso4b
@@ -984,6 +1891,8 @@ end subroutine atmos_SOx_emission
       real, parameter        :: Ra = 8314./101325.
       real, parameter        :: xkw = 1.e-14 ! water acidity
       real, parameter        :: const0 = 1.e3/6.022e23
+      type(time_type)        :: gas_conc_time
+      integer        :: yr, mo, dy, hr, mn, sc, dum, mo_yr, dayspmn
 
 
 ! Local grid sizes
@@ -995,29 +1904,58 @@ end subroutine atmos_SOx_emission
       msa_dt(:,:,:) = 0.0
       h2o2_dt(:,:,:) = 0.0
 
+!--------------------------------------------------------------------
+!    define the time in the gas_conc data set from which data is to be 
+!    taken. if gas_conc is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(gas_conc_time_serie_type .eq. 3) then
+       if (gas_conc_negative_offset) then
+         gas_conc_time = model_time - gas_conc_offset
+       else
+         gas_conc_time = model_time + gas_conc_offset
+       endif
+     else
+       if(gas_conc_time_serie_type .eq. 2 ) then
+         call get_date (gas_conc_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(gas_conc_entry)
+           if (dayspmn /= 29) then
+             gas_conc_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             gas_conc_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           gas_conc_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         gas_conc_time = model_time
+       endif
+     endif
+
       OH_conc(:,:,:)=1.e5  ! molec/cm3
-      call interpolator(gas_conc_interp, Time, phalf, OH_conc, &
+      call interpolator(gas_conc_interp, gas_conc_time, phalf, OH_conc, &
                        trim(gas_conc_name(1)), is, js)
 
       HO2_conc(:,:,:)=1.e6  ! molec/cm3
-      call interpolator(gas_conc_interp, Time, phalf, HO2_conc, &
+      call interpolator(gas_conc_interp, gas_conc_time, phalf, HO2_conc, &
                        trim(gas_conc_name(2)), is, js)
 
       NO3_conc(:,:,:)=0.0  ! molec/cm3
-      call interpolator(gas_conc_interp, Time, phalf, NO3_conc, &
+      call interpolator(gas_conc_interp, gas_conc_time, phalf, NO3_conc, &
                        trim(gas_conc_name(3)), is, js)
 
       O3_mmr(:,:,:)=0  ! Ozone mass mixing ratio
-      call interpolator(gas_conc_interp, Time, phalf, O3_mmr, &
+      call interpolator(gas_conc_interp, gas_conc_time, phalf, O3_mmr, &
                        trim(gas_conc_name(4)), is, js)
       O3_mmr(:,:,:)=O3_mmr(:,:,:)*WTM_O3/WTMAIR
 
       jH2O2(:,:,:)=1.e-6 ! s-1
-      call interpolator(gas_conc_interp, Time, phalf, jH2O2, &
+      call interpolator(gas_conc_interp, gas_conc_time, phalf, jH2O2, &
                        trim(gas_conc_name(5)), is, js)
 
       pH(:,:,:)=1.e-5
-      call interpolator(gas_conc_interp, Time, phalf, pH, &
+      call interpolator(gas_conc_interp, gas_conc_time, phalf, pH, &
                        trim(gas_conc_name(6)), is, js)
 
       x = 2. *pi *float(jday-1)/365.
@@ -1287,52 +2225,52 @@ end subroutine atmos_SOx_emission
       end do
       if ( id_NO3 > 0) then
         used = send_data ( id_NO3, NO3_diurnal, &
-                           Time,is_in=is,js_in=js,ks_in=1)
+                           model_time,is_in=is,js_in=js,ks_in=1)
       endif
       if ( id_OH > 0) then
         used = send_data ( id_OH, OH_diurnal, &
-                           Time, is_in=is, js_in=js,ks_in=1 )
+                           model_time, is_in=is, js_in=js,ks_in=1 )
       endif
       if ( id_HO2 > 0) then
         used = send_data ( id_HO2, HO2_diurnal, &
-                           Time, is_in=is, js_in=js,ks_in=1 )
+                           model_time, is_in=is, js_in=js,ks_in=1 )
       endif
       if ( id_jH2O2 > 0) then
         used = send_data ( id_jH2O2, jH2O2_diurnal, &
-                           Time, is_in=is, js_in=js,ks_in=1 )
+                           model_time, is_in=is, js_in=js,ks_in=1 )
       endif
       if (id_ph > 0) then
         used = send_data ( id_ph, ph, &
-                           Time,is_in=is,js_in=js,ks_in=1)
+                           model_time,is_in=is,js_in=js,ks_in=1)
       endif
       if (id_o3 > 0) then
         used = send_data ( id_o3, o3_mmr, &
-                           Time,is_in=is,js_in=js,ks_in=1)
+                           model_time,is_in=is,js_in=js,ks_in=1)
       endif
 
       if (id_SO2_chem > 0) then
         used = send_data ( id_SO2_chem, &
-              SO2_dt*pwt*WTM_S/WTMAIR, Time,is_in=is,js_in=js,ks_in=1)
+              SO2_dt*pwt*WTM_S/WTMAIR, model_time,is_in=is,js_in=js,ks_in=1)
       endif
 
       if (id_SO4_chem > 0) then
         used = send_data ( id_SO4_chem, &
-              SO4_dt*pwt*WTM_S/WTMAIR, Time,is_in=is,js_in=js,ks_in=1)
+              SO4_dt*pwt*WTM_S/WTMAIR, model_time,is_in=is,js_in=js,ks_in=1)
       endif
 
       if (id_DMS_chem > 0) then
         used = send_data ( id_DMS_chem, &
-              DMS_dt*pwt*WTM_S/WTMAIR, Time,is_in=is,js_in=js,ks_in=1)
+              DMS_dt*pwt*WTM_S/WTMAIR, model_time,is_in=is,js_in=js,ks_in=1)
       endif
 
       if (id_MSA_chem > 0) then
         used = send_data ( id_MSA_chem, &
-              MSA_dt*pwt*WTM_S/WTMAIR, Time,is_in=is,js_in=js,ks_in=1)
+              MSA_dt*pwt*WTM_S/WTMAIR, model_time,is_in=is,js_in=js,ks_in=1)
       endif
 
       if (id_H2O2_chem > 0) then
         used = send_data ( id_H2O2_chem, &
-              H2O2_dt*pwt, Time,is_in=is,js_in=js,ks_in=1)
+              H2O2_dt*pwt, model_time,is_in=is,js_in=js,ks_in=1)
       endif
 end subroutine atmos_SOx_chem
 
