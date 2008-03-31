@@ -91,8 +91,8 @@ private
    integer :: nsphum, nql, nqi, nqa, nqn  ! tracer indices for stratiform clouds
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 15.0.4.1.2.1.2.1.2.1 2007/12/12 21:19:54 wfc Exp $'
-   character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+   version = '$Id: moist_processes.F90,v 15.0.4.1.2.1.2.1.2.1.2.1 2008/02/02 14:16:55 rsh Exp $'
+   character(len=128) :: tagname = '$Name: omsk_2008_03 $'
    logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
@@ -518,7 +518,7 @@ real, dimension(size(t,1),size(t,2),size(t,3)) :: tempdiag1
 integer n
 
 real, dimension(size(t,1),size(t,2))           ::   &
-                                      qtin, dqt, scale_donner, scale_uw
+                                      qvin, dqv, scale_donner, scale_uw
 ! for uw_conv
 real, dimension(size(t,1),size(t,2),size(t,3)) :: cmf,thlflx,qtflx,precflx
 
@@ -1006,88 +1006,6 @@ real,    dimension (size(t,1), size(t,2)) ::            &
           endif
         end do
 
-!---------------------------------------------------------------------
-!    scale Donner tendencies to prevent the formation of negative
-!    total water specific humidities
-!---------------------------------------------------------------------
-
-        if (do_strat .and. do_limit_donner) then
-
-!         Tendencies coming out of Donner deep are adjusted to prevent
-!         the formation of negative water vapor, liquid or ice.
-
-!         (1) Prevent negative liquid and ice tendencies
-
-          where ((qlin(:,:,:)+delta_ql(:,:,:)) .lt. 0.)
-            delta_temp(:,:,:)  = delta_temp (:,:,:) - (qlin(:,:,:)+delta_ql(:,:,:))*HLV/CP_AIR
-            delta_vapor(:,:,:) = delta_vapor(:,:,:) + (qlin(:,:,:)+delta_ql(:,:,:))
-            delta_ql(:,:,:)    = delta_ql   (:,:,:) - (qlin(:,:,:)+delta_ql(:,:,:))
-          end where
-
-          where ((qiin(:,:,:)+delta_qi(:,:,:)) .lt. 0.)
-            delta_temp(:,:,:)  = delta_temp (:,:,:) - (qiin(:,:,:)+delta_qi(:,:,:))*HLS/CP_AIR
-            delta_vapor(:,:,:) = delta_vapor(:,:,:) + (qiin(:,:,:)+delta_qi(:,:,:))
-            delta_qi(:,:,:)    = delta_qi   (:,:,:) - (qiin(:,:,:)+delta_qi(:,:,:))
-          end where
-
-          where (delta_ql(:,:,:) + delta_qi(:,:,:) .lt. 1.e-10 )
-            delta_qa(:,:,:) = 0.0
-          end where
-
-!         (2) Compute limit on Donner tendencies to prevent water vapor
-!         from going below 1.e-10. The value of 1.e-10 is consistent with qmin
-!         in strat_cloud.F90
-
-!         scaling factor for each grid point
-
-          tempdiag1 = 1.0
-          do k=1,kx
-            qtin = qin(:,:,k)
-            dqt  = delta_vapor(:,:,k)
-            where ( dqt.lt.0 .and. qtin+dqt.lt.1.e-10 )
-              tempdiag1(:,:,k) = max( 0.0, -(qtin-1.e-10)/dqt )
-            end where
-          end do
-
-!         scaling factor for each column is the minimum value within that column
-
-          scale_donner = minval( tempdiag1, dim=3 )
-
-!         scale tendencies
-
-          do k=1,kx
-            delta_temp(:,:,k)  = scale_donner(:,:) * delta_temp(:,:,k)
-            delta_vapor(:,:,k) = scale_donner(:,:) * delta_vapor(:,:,k)
-            delta_qa(:,:,k)    = scale_donner(:,:) * delta_qa(:,:,k)
-            delta_ql(:,:,k)    = scale_donner(:,:) * delta_ql(:,:,k)
-            delta_qi(:,:,k)    = scale_donner(:,:) * delta_qi(:,:,k)
-          end do
-
-          nn = 1
-          do n=1, num_tracers
-            if (tracers_in_donner(n)) then
-              do k=1,kx
-                qtrtnd(:,:,k,nn) = scale_donner(:,:) * qtrtnd(:,:,k,nn)
-              end do
-              nn = nn + 1
-            endif
-          end do
-
-          precip_returned(:,:) = scale_donner(:,:)*precip_returned(:,:)
-
-          total_precip(:,:) = scale_donner(:,:)*total_precip(:,:) 
-          lheat_precip(:,:) = scale_donner(:,:)*lheat_precip(:,:)
-          do k=1, kx
-          liquid_precip(:,:,k) = scale_donner(:,:)*liquid_precip(:,:,k)
-          frozen_precip(:,:,k) = scale_donner(:,:)*frozen_precip(:,:,k)
-          end do
-
-        else
-
-          scale_donner = 1.0
-
-        end if ! (do_limit_donner)
-
       if (do_donner_conservation_checks) then
         vaporint = 0.
         lcondensint = 0.
@@ -1165,13 +1083,6 @@ real,    dimension (size(t,1), size(t,2)) ::            &
         endif
       endif
 
-!---------------------------------------------------------------------
-!    recalculate the precip using the delta specific humidity tenden-
-!    cies. define precip_adjustment as the change in precipitation 
-!    resulting from the recalculation.
-!---------------------------------------------------------------------
-    if (force_donner_moist_conserv) then
-
 !--------------------------------------------------------------------
 !    obtain updated vapor specific humidity (qnew) resulting from deep 
 !    convection. define the vapor specific humidity change due to deep 
@@ -1182,7 +1093,7 @@ real,    dimension (size(t,1), size(t,2)) ::            &
         do i=1,size(t,1)
           if (delta_vapor(i,j,k) /= 0.0) then
              qnew(i,j,k) = (rin(i,j,k) + delta_vapor(i,j,k))/   &
-                              (1.0 + (rin(i,j,k) + delta_vapor(i,j,k)))
+                               (1.0 + (rin(i,j,k) + delta_vapor(i,j,k)))
              delta_q(i,j,k) = qnew(i,j,k) - qin(i,j,k)
           else
              qnew(i,j,k)  = qin(i,j,k)
@@ -1191,6 +1102,97 @@ real,    dimension (size(t,1), size(t,2)) ::            &
         end do
         end do
         end do
+
+!---------------------------------------------------------------------
+!    scale Donner tendencies to prevent the formation of negative
+!    total water specific humidities
+!---------------------------------------------------------------------
+
+        if (do_strat .and. do_limit_donner) then
+
+!         Tendencies coming out of Donner deep are adjusted to prevent
+!         the formation of negative water vapor, liquid or ice.
+
+!         (1) Prevent negative liquid and ice specific humidities after
+!             tendencies are applied
+
+          where ((qlin(:,:,:)+delta_ql(:,:,:)) .lt. 0.)
+            delta_temp(:,:,:)  = delta_temp (:,:,:) - (qlin(:,:,:)+delta_ql(:,:,:))*HLV/CP_AIR
+            delta_q    (:,:,:) = delta_q    (:,:,:) + (qlin(:,:,:)+delta_ql(:,:,:))
+            delta_ql(:,:,:)    = delta_ql   (:,:,:) - (qlin(:,:,:)+delta_ql(:,:,:))
+          end where
+
+          where ((qiin(:,:,:)+delta_qi(:,:,:)) .lt. 0.)
+            delta_temp(:,:,:)  = delta_temp (:,:,:) - (qiin(:,:,:)+delta_qi(:,:,:))*HLS/CP_AIR
+            delta_q    (:,:,:) = delta_q    (:,:,:) + (qiin(:,:,:)+delta_qi(:,:,:))
+            delta_qi(:,:,:)    = delta_qi   (:,:,:) - (qiin(:,:,:)+delta_qi(:,:,:))
+          end where
+
+          where (abs(delta_ql(:,:,:) + delta_qi(:,:,:)) .lt. 1.e-10 )
+            delta_qa(:,:,:) = 0.0
+          end where
+
+!         (2) Compute limit on Donner tendencies to prevent water vapor
+!         from going below 1.e-10. The value of 1.e-10 is consistent with qmin
+!         in strat_cloud.F90
+
+!         scaling factor for each grid point
+
+          tempdiag1 = 1.0
+          do k=1,kx
+            qvin = qin(:,:,k)
+            dqv  = delta_q    (:,:,k)
+            where ( dqv.lt.0 .and. qvin+dqv.lt.1.e-10 )
+              tempdiag1(:,:,k) = max( 0.0, -(qvin-1.e-10)/dqv )
+            end where
+          end do
+
+!         scaling factor for each column is the minimum value within that column
+
+          scale_donner = minval( tempdiag1, dim=3 )
+
+!         scale tendencies
+
+          do k=1,kx
+            delta_temp(:,:,k)  = scale_donner(:,:) * delta_temp(:,:,k)
+            delta_q    (:,:,k) = scale_donner(:,:) * delta_q    (:,:,k)
+            delta_qa(:,:,k)    = scale_donner(:,:) * delta_qa(:,:,k)
+            delta_ql(:,:,k)    = scale_donner(:,:) * delta_ql(:,:,k)
+            delta_qi(:,:,k)    = scale_donner(:,:) * delta_qi(:,:,k)
+          end do
+
+          nn = 1
+          do n=1, num_tracers
+            if (tracers_in_donner(n)) then
+              do k=1,kx
+                qtrtnd(:,:,k,nn) = scale_donner(:,:) * qtrtnd(:,:,k,nn)
+              end do
+              nn = nn + 1
+            endif
+          end do
+
+          precip_returned(:,:) = scale_donner(:,:)*precip_returned(:,:)
+
+          total_precip(:,:) = scale_donner(:,:)*total_precip(:,:) 
+          lheat_precip(:,:) = scale_donner(:,:)*lheat_precip(:,:)
+          do k=1, kx
+          liquid_precip(:,:,k) = scale_donner(:,:)*liquid_precip(:,:,k)
+          frozen_precip(:,:,k) = scale_donner(:,:)*frozen_precip(:,:,k)
+          end do
+
+        else
+
+          scale_donner = 1.0
+
+        end if ! (do_limit_donner)
+
+
+!---------------------------------------------------------------------
+!    recalculate the precip using the delta specific humidity tenden-
+!    cies. define precip_adjustment as the change in precipitation 
+!    resulting from the recalculation.
+!---------------------------------------------------------------------
+    if (force_donner_moist_conserv) then
 
 !---------------------------------------------------------------------
 !    calculate the precipitation needed to balance the change in water
@@ -1240,8 +1242,6 @@ real,    dimension (size(t,1), size(t,2)) ::            &
     end do
     end do
   else ! (force_donner_moist_conserv)
-        qnew = (rin + delta_vapor)/ (1.0 + (rin + delta_vapor))
-        delta_q = qnew - qin
         precip_adjustment(:,:) = 0.0
        adjust_frac      (:,:) = 0.0
        ttnd_adjustment(:,:,:) = 0.
@@ -2093,17 +2093,41 @@ endif
 
        if (do_limit_uw) then
 
-!       compute limit on UW tendencies to prevent total water specific
-!       humidity from going below 1.e-10
+!       Tendencies coming out of UW shallow are adjusted to prevent
+!       the formation of negative water vapor, liquid or ice.
+ 
+!       (1) Prevent negative liquid and ice specific humidities after tendencies are applied
+
+        tempdiag1 = tracer(:,:,:,nql)/dt + qltnd_uw
+        where (tempdiag1 .lt. 0.)
+          ttnd_uw (:,:,:) = ttnd_uw (:,:,:) - tempdiag1*HLV/CP_AIR
+          qtnd_uw (:,:,:) = qtnd_uw (:,:,:) + tempdiag1
+          qltnd_uw(:,:,:) = qltnd_uw(:,:,:) - tempdiag1
+        end where
+
+        tempdiag1 = tracer(:,:,:,nqi)/dt + qitnd_uw
+        where (tempdiag1 .lt. 0.)
+          ttnd_uw (:,:,:) = ttnd_uw (:,:,:) - tempdiag1*HLS/CP_AIR
+          qtnd_uw (:,:,:) = qtnd_uw (:,:,:) + tempdiag1
+          qitnd_uw(:,:,:) = qitnd_uw(:,:,:) - tempdiag1
+        end where
+
+        where (abs(qltnd_uw(:,:,:)+qitnd_uw(:,:,:))*dt .lt. 1.e-10 )
+          qatnd_uw(:,:,:) = 0.0
+        end where
+
+!       (2) Compute limit on UW tendencies to prevent water vapor
+!       from going below 1.e-10. The value of 1.e-10 is consistent with qmin
+!       in strat_cloud.F90
 
 !       scaling factor for each grid point
 
         tempdiag1 = 1.0
         do k=1,kx
-          qtin = qin(:,:,k) + tracer(:,:,k,nql) + tracer(:,:,k,nqi)
-          dqt  = ( qtnd_uw(:,:,k) + qltnd_uw(:,:,k) + qitnd_uw(:,:,k) )*dt
-          where ( dqt.lt.0 .and. qtin+dqt.lt.1.e-10 )
-            tempdiag1(:,:,k) = max( 0.0, -(qtin-1.e-10)/dqt )
+          qvin = qin(:,:,k) + tracer(:,:,k,nql) + tracer(:,:,k,nqi)
+          dqv  = ( qtnd_uw(:,:,k) + qltnd_uw(:,:,k) + qitnd_uw(:,:,k) )*dt
+          where ( dqv.lt.0 .and. qvin+dqv.lt.1.e-10 )
+            tempdiag1(:,:,k) = max( 0.0, -(qvin-1.e-10)/dqv )
           end where
         end do
 
@@ -2506,7 +2530,6 @@ endif
         endif
       endif
          
-!-->cjg
 !---------------------------------------------------------------------
 !    column integrated enthalpy and total water tendencies due to 
 !    convection parameterization:
@@ -2536,7 +2559,6 @@ endif
         end do
         used = send_data (id_wat_conv_col, tempdiag, Time, is, js)
       endif
-!<--cjg
 
 !---------------------------------------------------------------------
 !    tracer tendencies due to convection:
@@ -3013,7 +3035,6 @@ endif
           used = send_data (id_qi_ls_col, tempdiag, Time, is, js)
         endif        
       
-!-->cjg
 !---------------------------------------------------------------------
 !    column integrated enthalpy and total water tendencies due to 
 !    strat_cloud  parameterization:
@@ -3039,7 +3060,6 @@ endif
          end do
           used = send_data (id_wat_ls_col, tempdiag, Time, is, js)
          endif
-!<--cjg
 
 !---------------------------------------------------------------------
 !    stratiform cloud volume tendency due to strat_cloud 
@@ -3892,7 +3912,6 @@ subroutine diag_field_init ( axes, Time )
      't_conv_col', axes(1:2), Time, &
     'Column static energy tendency from convection ','W/m2' )
    
-!-->cjg
    id_enth_conv_col = register_diag_field ( mod_name, &
      'enth_conv_col', axes(1:2), Time, &
      'Column enthalpy tendency from convection','W/m2' )
@@ -4195,7 +4214,6 @@ if ( do_strat ) then
      'qa_ls_col', axes(1:2), Time, &
     'Cloud mass tendency from strat cloud',          'kg/m2/s' )
       
-!-->cjg
    id_enth_ls_col = register_diag_field ( mod_name, &
      'enth_ls_col', axes(1:2), Time, &
      'Column enthalpy tendency from strat cloud','W/m2' )
@@ -4203,7 +4221,6 @@ if ( do_strat ) then
    id_wat_ls_col = register_diag_field ( mod_name, &
      'wat_ls_col', axes(1:2), Time, &
      'Column total water tendency from strat cloud','kg/m2/s' )
-!<--cjg
 
 endif
 

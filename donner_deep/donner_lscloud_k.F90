@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_lscloud_k.F90,v 15.0 2007/08/14 03:53:22 fms Exp $
+!  $Id: donner_lscloud_k.F90,v 15.0.4.1 2008/01/29 21:42:53 wfc Exp $
 
 !module donner_lscloud_inter_mod
 
@@ -16,7 +16,7 @@ subroutine don_l_lscloud_driver_k   &
           Col_diag, pfull, temp, exit_flag,   &
           mixing_ratio, qlin, qiin, qain, phalf, Don_conv, &
           donner_humidity_factor, donner_humidity_area, dql, dqi, dqa, &
-          ermesg) 
+          ermesg, error) 
 
 !---------------------------------------------------------------------
 !    subroutine don_l_lscloud_driver obtains variables needed by 
@@ -54,6 +54,7 @@ real, dimension(isize,jsize,nlev_lsm),           &
                                              donner_humidity_area, dql, &
                                              dqi, dqa
 character(len=*),           intent(out)   :: ermesg
+integer,                    intent(out)   :: error
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -110,7 +111,7 @@ character(len=*),           intent(out)   :: ermesg
 !                    [ kg / (m**2 sec) ]
 !---------------------------------------------------------------------
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !---------------------------------------------------------------------
 !    call define_donner_mass_flux to define the convective system 
@@ -119,13 +120,13 @@ character(len=*),           intent(out)   :: ermesg
 !---------------------------------------------------------------------
       call don_l_define_mass_flux_k    &
            (isize, jsize, nlev_lsm, pfull, phalf, Don_conv,   &
-            dmeso_3d, mhalf_3d, exit_flag, ermesg)
+            dmeso_3d, mhalf_3d, exit_flag, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
  
 !---------------------------------------------------------------------
@@ -137,13 +138,13 @@ character(len=*),           intent(out)   :: ermesg
       call don_l_adjust_tiedtke_inputs_k    &
            (isize, jsize, nlev_lsm, Param, Col_diag, pfull,temp,   &
             mixing_ratio, phalf, Don_conv, donner_humidity_factor, &
-            donner_humidity_area,exit_flag,  ermesg)
+            donner_humidity_area,exit_flag,  ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
  
 !---------------------------------------------------------------------
 !    when strat_cloud is active, call strat_cloud_donner_tend to
@@ -155,13 +156,13 @@ character(len=*),           intent(out)   :: ermesg
         call don_l_strat_cloud_donner_tend_k   &
              (isize, jsize, nlev_lsm, Param, Col_diag, dmeso_3d,   &
               Don_conv%xliq, Don_conv%xice, qlin, qiin, qain, mhalf_3d, &
-              phalf, dql, dqi, dqa, ermesg)
+              phalf, dql, dqi, dqa, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (error /= 0 ) return
       endif
 
 !---------------------------------------------------------------------
@@ -175,7 +176,7 @@ end subroutine don_l_lscloud_driver_k
 
 subroutine don_l_define_mass_flux_k   &
          (isize, jsize, nlev_lsm, pfull, phalf, Don_conv, dmeso_3d,   &
-          mhalf_3d, exit_flag, ermesg)
+          mhalf_3d, exit_flag, ermesg, error)
 
 !---------------------------------------------------------------------
 !    subroutine define_donner_mass_flux calculates the detrainment rate
@@ -195,9 +196,9 @@ real, dimension(isize,jsize,nlev_lsm+1), intent(in)    :: phalf
 type(donner_conv_type),                  intent(inout) :: Don_conv
 real, dimension(isize,jsize,nlev_lsm),   intent(out)   :: dmeso_3d
 real, dimension(isize,jsize,nlev_lsm+1), intent(out)   :: mhalf_3d
-logical, dimension(isize, jsize), intent(in)   :: exit_flag
+logical, dimension(isize, jsize),        intent(in)    :: exit_flag
 character(len=*),                        intent(out)   :: ermesg
-
+integer,                                 intent(out)   :: error
 !----------------------------------------------------------------------
 !   intent(in) variables:
 !
@@ -227,7 +228,7 @@ character(len=*),                        intent(out)   :: ermesg
 !----------------------------------------------------------------------
 !
 !----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !----------------------------------------------------------------------
 !    calculate the detrainment rate from the convective system 
@@ -301,7 +302,7 @@ end subroutine don_l_define_mass_flux_k
 subroutine don_l_adjust_tiedtke_inputs_k   &
          (isize, jsize, nlev_lsm, Param, Col_diag, pfull, temp, &
           mixing_ratio, phalf, Don_conv, donner_humidity_factor, &
-          donner_humidity_area, exit_flag, ermesg) 
+          donner_humidity_area, exit_flag, ermesg, error) 
 
 !---------------------------------------------------------------------
 !    subroutine adjust_tiedtke_inputs calculates the adjustments to 
@@ -332,6 +333,7 @@ real, dimension(isize,jsize,nlev_lsm),                               &
                              intent(out)    :: donner_humidity_factor, &
                                                donner_humidity_area
 character(len=*),            intent(out)    :: ermesg
+integer,                     intent(out)    :: error
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -384,7 +386,7 @@ character(len=*),            intent(out)    :: ermesg
 !     i,j,k,n       do-loop indices
 !---------------------------------------------------------------------
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
       do k=1,nlev_lsm           
         do j=1,jsize
@@ -530,7 +532,7 @@ end subroutine don_l_adjust_tiedtke_inputs_k
  subroutine don_l_strat_cloud_donner_tend_k    &
           (isize, jsize, nlev_lsm, Param, Col_diag, dmeso_3d, qlmeso, &
            qimeso, qlin, qiin, qain, mhalf_3d, phalf, dql, dqi, dqa,  &
-           ermesg)
+           ermesg, error)
 
 !--------------------------------------------------------------------
 !    subroutine strat_cloud_donner is part of the linkage between
@@ -555,7 +557,7 @@ real, dimension(isize,jsize,nlev_lsm+1),         &
 real, dimension(isize,jsize,nlev_lsm),           &
                                intent(out)  :: dql, dqi, dqa
 character(len=*),              intent(out)  :: ermesg
-
+integer,                       intent(out)  :: error
 !---------------------------------------------------------------------
 !   intent(in) variables:
 !
@@ -603,7 +605,7 @@ character(len=*),              intent(out)  :: ermesg
 !
 !---------------------------------------------------------------------
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !---------------------------------------------------------------------
 !    define the number of model layers (kdim) and the mass per unit area

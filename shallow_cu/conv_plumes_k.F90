@@ -12,8 +12,8 @@ MODULE CONV_PLUMES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 15.0.2.1.2.1.2.1 2007/11/13 11:22:03 rsh Exp $'
-  character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 15.0.2.1.2.1.2.1.2.1.2.1 2008/02/02 10:25:31 rsh Exp $'
+  character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -38,9 +38,9 @@ MODULE CONV_PLUMES_k_MOD
      integer :: mixing_assumption
      real :: rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit,  &
-             wtwmin_ratio, deltaqc0, emfrac_max
+             wtwmin_ratio, deltaqc0, emfrac_max, wrel_min
      logical :: do_ice, do_ppen, do_micro, do_forcedlifting, do_pevap, do_pdfpcp
-     logical :: do_auto_aero, do_pmadjt, do_emmax
+     logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv
      character(len=32), dimension(:), pointer  :: tracername=>NULL()
      character(len=32), dimension(:), pointer  :: tracer_units=>NULL()
      type(cwetdep_type), dimension(:), pointer :: wetdep=>NULL()
@@ -398,7 +398,7 @@ contains
     real    :: qctu_new, hlu_new, qlu_new, qiu_new, clu_new, ciu_new
     real    :: auto_th, scaleh1
     real    :: t_mid, tv_mid, air_density, total_condensate,   &
-               total_precip, delta_tracer, delta_qn, cons_up
+               total_precip, delta_tracer, delta_qn, cons_up, wrel2
     integer :: n
     logical :: kbelowlet
 
@@ -451,9 +451,10 @@ contains
     !     yim's CONVECTIVE NUCLEATION
     !==================================================
     totalmass(1)=     sd%am1(krel-1); !totalmass(1)=aerol;
-    totalmass(2)=0.1 *sd%am2(krel-1); !totalmass(2)=0.;
-    totalmass(3)=1.67*sd%am3(krel-1); !totalmass(3)=0.;
-    call aer_ccn_act(thj*exn_k(prel,Uw_p), prel, wrel, totalmass, drop)
+    totalmass(2)=     sd%am2(krel-1); !totalmass(2)=0.;
+    totalmass(3)=     sd%am3(krel-1); !totalmass(3)=0.;
+    wrel2 = max (wrel, cpn%wrel_min)
+    call aer_ccn_act(thj*exn_k(prel,Uw_p), prel, wrel2, totalmass, drop)
     cp%qnu(krel-1) = drop * 1.0e6 / (prel /    &
                      (Uw_p%rdgas*cp%thvu(krel-1)*exn_k(prel,Uw_p)))
 
@@ -1026,10 +1027,11 @@ contains
     type(ctend),    intent(inout) :: ct
     logical,        intent(in)    :: do_coldT
 
-    integer :: k, krel, ltop, kp1, km1, ktop
+    integer :: k, krel, ltop, kp1, km1, ktop, i
     real    :: dpsum, qtdef, hldef, umftmp, qlutmp, qiutmp, qnutmp, fdrtmp
     real, dimension(size(cp%tr,2)) :: trdef
     real    :: dpevap, x1, x2, x3, xx1, xx2, xx3, q1, q2, emftmp
+    real    :: dqt
 
     call ct_clear_k (ct);
 
@@ -1242,6 +1244,23 @@ contains
              ct%rain  = ct%rain - dpevap
           end if
        end if
+    end if
+
+    if(cpn%do_pnqv) then
+       do k = sd%kmax,3,-1
+          dqt  =  ct%qvten(k) * sd%delt
+          if (dqt.lt.0 .and. sd%qv(k)+dqt.lt.1.e-10) then
+             fdrtmp = -(sd%qv(k)-1.e-10)/sd%delt - ct%qvten(k)
+             ct%qvten(k) = ct%qvten(k) + fdrtmp
+             dpsum = 0.0
+             do i = k-1,1,-1
+                dpsum = dpsum + sd%dp(i)
+             enddo
+             do i = k-1,1,-1
+                ct%qvten(i) = ct%qvten(i) - fdrtmp*sd%dp(k)/dpsum
+             enddo
+          end if
+       end do
     end if
 
     ct%denth=0.; ct%dqtmp=0.; ct%uav=0.;ct%vav=0.; dpsum=0.;

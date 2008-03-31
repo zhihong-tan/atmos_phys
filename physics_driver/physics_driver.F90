@@ -138,8 +138,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 15.0.4.1 2007/10/31 10:43:27 rsh Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 15.0.4.1.4.1 2008/01/03 20:15:14 z1l Exp $'
+character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 
 
 !---------------------------------------------------------------------
@@ -340,7 +340,8 @@ character(len=4)     :: mod_name = 'phys'
 character(len=32)    :: tracer_units, tracer_name
   character(len=128) :: diaglname
 real                 :: missing_value = -999.
-integer              :: n, used
+integer              :: n
+logical              :: used
 
 integer                            :: id_tdt_phys_vdif_dn, &
                                       id_tdt_phys_vdif_up, &

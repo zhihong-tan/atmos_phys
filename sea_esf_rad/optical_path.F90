@@ -65,7 +65,7 @@ private
 
    character(len=128)  :: &
    version =  '$Id: optical_path.F90,v 14.0.8.1 2007/11/19 13:03:13 rsh Exp $'
-   character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
+   character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
 
 
 !---------------------------------------------------------------------

@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 15.0.2.1.2.1.2.1 2007/11/13 11:30:03 rsh Exp $
+!  $Id: donner_types.h,v 15.0.2.1.2.1.2.1.2.1 2008/01/19 16:59:32 rsh Exp $
 
 !#####################################################################
  
@@ -334,6 +334,7 @@ real                :: dfre_for_closure
 real                :: rmuz_for_closure
 logical             :: do_budget_analysis
 logical             :: force_internal_enthalpy_conservation
+logical             :: do_ensemble_diagnostics
 
 end type donner_nml_type
 
@@ -699,5 +700,105 @@ real, dimension (:,:,:), pointer ::       &
 
 end type donner_cape_type
 
+
+!######################################################################
+
+type donner_cem_type
+
+!***********************************************************************
+!    variables for Donner cumulus ensemble member output data
+!***********************************************************************
+
+!  GCM model fields (same for all cumulus ensemble members):
+!
+!    --- lo-res multi-level ---
+!
+!    pfull            pressure field at large-scale model full levels
+!                     [ Pa ]
+!    phalf            pressure field at large-scale model half-levels
+!                     [ Pa ]
+!    zfull            height field at large-scale model full levels
+!                     [ m ]
+!    zhalf            height field at large-scale model half-levels
+!                     [ m ]
+!    temp             temperature field at model full levels [ deg K ]
+!    mixing_ratio     vapor mixing ratio at model full levels
+!                     [ kg(h2o) / kg(dry air) ]
+
+!  cumulus ensemble member fields (a function of ensemble member):
+!
+!    --- single level ---
+!
+!    cell_precip      area weighted convective precipitation rate
+!                     [ mm/day ]
+!    pb               pressure at cloud base for ensemble (currently,
+!                     all ensemble members have same base) [ Pa ]
+!    ptma             pressure at cloud top for ensemble [ Pa ]
+!
+!    --- lo-res multi-level ---
+! 
+!    h1               condensation rate profile on lo-res grid
+!                     for the current ensemble member
+!                     [ ( kg(h2o) ) / ( kg( dry air) sec ) ] 
+!
+!    --- lo- or hi-res multi-level ---
+!
+!    qlw              profile of cloud water for the current ensemble
+!                     member [ kg(h2o) / kg(air) ]
+!    cfracice         fraction of condensate that is ice [ fraction ]
+!    wv               vertical velocity profile for each ensemble
+!                     member  [ m / s ]
+!    rcl              cloud radius profile for each ensemble member
+!                      [ m ]
+
+!  sums over all cumulus ensemble member fields:
+!
+!    --- single level ---
+!
+!    a1               fractional area of all cu ensembles (is this correct?)
+!    meso_precip      precip associated with mesoscale circulation
+!                     [ mm/day ]
+!
+!  --- lo-res multi-level ---
+!
+!    cual             cloud fraction, cells+meso, normalized by a(1,p_b)
+!    temperature_forcing
+!                     time tendency of temperature due to deep 
+!                     convection [ deg K / sec ]
+
+
+real, dimension(:,:,:), pointer  ::            &
+                 pfull=>NULL(),                   &
+                 zfull=>NULL(),                   &
+                 temp=>NULL(),                    &
+                 mixing_ratio=>NULL()
+
+real, dimension(:,:,:), pointer  ::            &
+                 phalf=>NULL(),                   &
+                 zhalf=>NULL()
+
+real, dimension(:,:,:), pointer  ::            &
+                 cell_precip=>NULL(),             &
+                 pb=>NULL(),                      &
+                 ptma=>NULL()
+
+real, dimension(:,:,:,:), pointer  ::          &
+                 h1=>NULL()
+
+real, dimension(:,:,:,:), pointer  ::          &
+                 qlw=>NULL(),                     &
+                 cfracice=>NULL(),                &
+                 wv=>NULL(),                      &
+                 rcl=>NULL()
+
+real, dimension(:,:), pointer  ::              &
+                 a1=>NULL(),                   &
+                 meso_precip=>NULL()
+
+real, dimension(:,:,:), pointer  ::            &
+                 cual=>NULL(),                    &
+                 temperature_forcing=>NULL()
+
+end type donner_cem_type
 
 !######################################################################

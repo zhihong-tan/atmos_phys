@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_utilities_k.F90,v 15.0 2007/08/14 03:53:29 fms Exp $
+!  $Id: donner_utilities_k.F90,v 15.0.4.1 2008/01/29 21:42:53 wfc Exp $
 
 !module donner_utilities_inter_mod
 
@@ -21,7 +21,7 @@
 
 subroutine don_u_set_column_integral_k   &
          (nk, x_in, ptop, pbot, int_value, p_in, intgl_in, intgl_out, &
-          x_out, ermesg)
+          x_out, ermesg, error)
 
 !--------------------------------------------------------------------
 !    subroutine don_u_set_column_integral_k modifies the input
@@ -51,6 +51,7 @@ real, dimension(nk+1), intent(in)    ::  p_in
 real,                  intent(out)   ::  intgl_in, intgl_out
 real, dimension(nk),   intent(out)   ::  x_out
 character(len=*),      intent(out)   ::  ermesg
+integer,               intent(out)   ::  error
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
@@ -94,7 +95,7 @@ character(len=*),      intent(out)   ::  ermesg
 !----------------------------------------------------------------------
 !    initialize the error message character string.
 !----------------------------------------------------------------------
-      ermesg = '  '
+      ermesg = '  ' ; error = 0
 
 !----------------------------------------------------------------------
 !    obtain the total column integrand (column) and the partial integ-
@@ -180,7 +181,7 @@ end subroutine don_u_set_column_integral_k
 
 subroutine don_u_map_hires_c_to_lores_c_k   &
          (n_gcm, n_clo, x_clo, p_clo, ptop, p_gcm, x_gcm, intgl_clo,  &
-          intgl_gcm, ermesg)
+          intgl_gcm, ermesg, error)
 
 !--------------------------------------------------------------------
 !    subroutine don_u_map_hires_c_to_lores_c_k maps the vertical
@@ -237,6 +238,7 @@ real, dimension(n_gcm+1), intent(in)  :: p_gcm
 real, dimension(n_gcm),   intent(out) :: x_gcm
 real,                     intent(out) :: intgl_clo, intgl_gcm
 character(len=*),         intent(out) :: ermesg
+integer,                  intent(out) :: error
 
 !--------------------------------------------------------------------
 !   intent(in) variables:
@@ -287,7 +289,7 @@ character(len=*),         intent(out) :: ermesg
 !----------------------------------------------------------------------
 !    initialize the error message character string.
 !----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !--------------------------------------------------------------------
 !    define the lowest k index of the cloud model which overlaps the
@@ -400,7 +402,7 @@ end subroutine don_u_map_hires_c_to_lores_c_k
 !#####################################################################
 
 subroutine don_u_compare_integrals_k    &
-         (hi_res_intgl, lo_res_intgl, diag_unit, ermesg)
+         (hi_res_intgl, lo_res_intgl, diag_unit, ermesg, error)
 
 !---------------------------------------------------------------------
 !    subroutine don_u_compare_integrals_k determines if two 
@@ -415,6 +417,7 @@ implicit none
 real,               intent(in)  :: hi_res_intgl, lo_res_intgl
 integer,            intent(in)  :: diag_unit 
 character(len=*),   intent(out) :: ermesg
+integer,            intent(out) :: error
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -440,7 +443,7 @@ character(len=*),   intent(out) :: ermesg
 !----------------------------------------------------------------------
 !    initialize the error message character string.
 !----------------------------------------------------------------------
-      ermesg = '  '
+      ermesg = '  ' ; error = 0
 
 !---------------------------------------------------------------------
 !    call don_u_integrals_are_equal_k to determine the 
@@ -453,13 +456,13 @@ character(len=*),   intent(out) :: ermesg
 !    nature of the integral.
 !---------------------------------------------------------------------
       call don_u_integrals_are_equal_k    &
-                      (hi_res_intgl, lo_res_intgl, ermesg, inteq)
+                      (hi_res_intgl, lo_res_intgl, ermesg, error, inteq)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
 !-----------------------------------------------------------------------
 !    output a warning message to the column diagnostics output file if
@@ -480,7 +483,7 @@ end subroutine don_u_compare_integrals_k
 !######################################################################
 
 subroutine don_u_apply_integral_source_k      &
-         (nk, x_in, ptop, pbot, src, p_in, i_in, i_out, x_out, ermesg)
+         (nk, x_in, ptop, pbot, src, p_in, i_in, i_out, x_out, ermesg, error)
 
 !----------------------------------------------------------------------
 !    subroutine don_u_apply_integral_source_k adds a specified
@@ -502,6 +505,7 @@ real, dimension(nk+1), intent(in)    :: p_in
 real,                  intent(out)   :: i_in, i_out
 real, dimension(nk),   intent(out)   :: x_out
 character(len=*),      intent(out)   :: ermesg
+integer,               intent(out)   :: error
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -534,7 +538,7 @@ character(len=*),      intent(out)   :: ermesg
 !----------------------------------------------------------------------
 !    initialize the error message character string.
 !----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !---------------------------------------------------------------------
 !    compute the column integral (i_in) of the input field x_in.
@@ -583,7 +587,7 @@ end subroutine don_u_apply_integral_source_k
 !#####################################################################
 
 subroutine don_u_integrals_are_equal_k    &
-         (x, y, ermesg, inteq)
+         (x, y, ermesg, error, inteq)
 
 !--------------------------------------------------------------------
 !    subroutine don_u_integrals_are_equal_k determines if two 
@@ -598,7 +602,7 @@ implicit none
 
 real,               intent(in)   :: x, y
 character(len=*),   intent(out)  :: ermesg
-integer,            intent(out)  :: inteq
+integer,            intent(out)  :: error, inteq
 
 !---------------------------------------------------------------------
 !   intent (in) variables:
@@ -626,7 +630,7 @@ real, PARAMETER  :: eps_i = 1.0e-12 ! roundoff tolerance for equality of
 !----------------------------------------------------------------------
 !    initialize the error message character string.
 !----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !--------------------------------------------------------------------
 !    if the integral values are "large", then compare the ratio of
@@ -685,7 +689,7 @@ end subroutine don_u_integrals_are_equal_k
 !######################################################################
 
 subroutine don_u_map_hires_i_to_lores_c_k    &
-         (n_lo, intgl_hi, pbot, ptop, p_lo, x_lo, ermesg)
+         (n_lo, intgl_hi, pbot, ptop, p_lo, x_lo, ermesg, error)
 
 !------------------------------------------------------------------
 !    subroutine don_u_map_hires_i_to_lores_c_k assigns
@@ -697,11 +701,12 @@ subroutine don_u_map_hires_i_to_lores_c_k    &
 
 implicit none
 
-integer,                intent(in)     :: n_lo
-real,                   intent(in)     :: intgl_hi, pbot, ptop
+integer,                  intent(in)     :: n_lo
+real,                     intent(in)     :: intgl_hi, pbot, ptop
 real, dimension(n_lo+1),  intent(in)     :: p_lo
-real, dimension(n_lo),  intent(out)    :: x_lo
-character(len=*),       intent(out)    :: ermesg
+real, dimension(n_lo),    intent(out)    :: x_lo
+character(len=*),         intent(out)    :: ermesg
+integer,                  intent(out)    :: error
 
 !------------------------------------------------------------------
 !   intent(in) variables:
@@ -730,7 +735,7 @@ character(len=*),       intent(out)    :: ermesg
 !----------------------------------------------------------------------
 !    initialize the error message character string.
 !----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !---------------------------------------------------------------------
 !    verify that the specified pressure limits are reasonable. if not,
@@ -738,6 +743,7 @@ character(len=*),       intent(out)    :: ermesg
 !---------------------------------------------------------------------
       if ( pbot < ptop ) then
         ermesg = ' input pressure pbot is less than input pressure ptop'
+        error = 1
         return
       endif
 
@@ -830,7 +836,7 @@ end subroutine don_u_map_hires_i_to_lores_c_k
 
 
 subroutine don_u_numbers_are_equal_k                    &
-         (x, y, ermesg, numeq)
+         (x, y, ermesg, error, numeq)
 
 !--------------------------------------------------------------------
 !    subroutine don_u_numbers_are_equal_k determines if two 
@@ -845,7 +851,7 @@ implicit none
 
 real,               intent(in)  :: x, y
 character(len=*),   intent(out) :: ermesg
-integer,            intent(out) :: numeq
+integer,            intent(out) :: error, numeq
 
 !---------------------------------------------------------------------
 !   intent (in) variables:
@@ -873,7 +879,7 @@ real, PARAMETER  :: eps_n = 1.0e-13 ! roundoff tolerance for equality
 !----------------------------------------------------------------------
 !    initialize the error message character string.
 !----------------------------------------------------------------------
-      ermesg = '  '
+      ermesg = '  ' ; error = 0
 
 !--------------------------------------------------------------------
 !    define numbers_are_equal based on the relationship between 
@@ -907,7 +913,7 @@ end subroutine don_u_numbers_are_equal_k
 !end interface donner_utilities_map_lo_res_col_to_hi_res_col_k
 
 subroutine don_u_lo1d_to_hi1d_k     &
-         (n_lo, n_hi, x_lo, p_lo, p_hi, x_hi, ermesg)                
+         (n_lo, n_hi, x_lo, p_lo, p_hi, x_hi, ermesg, error)                
 
 !------------------------------------------------------------------
 !    subroutine don_u_lo1d_to_hi1d_k interpolates the input 
@@ -926,6 +932,7 @@ real, dimension(n_lo+1),  intent(in)    :: p_lo
 real, dimension(n_hi),    intent(in)    :: p_hi
 real, dimension(n_hi),    intent(out)   :: x_hi
 character(len=*),         intent(out)   :: ermesg
+integer,                  intent(out)   :: error
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -955,7 +962,7 @@ character(len=*),         intent(out)   :: ermesg
 !----------------------------------------------------------------------
 !    initialize the error message character string.
 !----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !--------------------------------------------------------------------
 !    define the k index in the low resolution grid (index 1 nearest
@@ -1024,7 +1031,7 @@ end subroutine don_u_lo1d_to_hi1d_k
 !#####################################################################
 
 subroutine don_u_lo1d_to_hi0d_linear_k  &
-         (n_lo, x_lo, p_lo, p_hi, x_hi, ermesg)
+         (n_lo, x_lo, p_lo, p_hi, x_hi, ermesg, error)
 
 
 !--------------------------------------------------------------------
@@ -1041,6 +1048,7 @@ real, dimension(n_lo+1), intent(in)    ::  p_lo
 real,                    intent(in)    :: p_hi
 real,                    intent(out)   :: x_hi
 character(len=*),        intent(out)   :: ermesg
+integer,                 intent(out)   :: error
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -1077,7 +1085,7 @@ character(len=*),        intent(out)   :: ermesg
 !
 !---------------------------------------------------------------------
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !----------------------------------------------------------------------
 !    define the dimensions of input and output arrays. 
@@ -1095,12 +1103,12 @@ character(len=*),        intent(out)   :: ermesg
 !    value.
 !--------------------------------------------------------------------
       call don_u_lo1d_to_hi1d_k     & 
-           (n_lo, n_hi, x_lo, p_lo, p_hi_1d, x_hi_1d, ermesg)
+           (n_lo, n_hi, x_lo, p_lo, p_hi_1d, x_hi_1d, ermesg, error)
 
 !---------------------------------------------------------------------
 !    check to be sure no errors were encountered in the kernel routine. 
 !---------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
 !--------------------------------------------------------------------
 !    move the returned value from the output array to the scalar output 
@@ -1117,7 +1125,7 @@ end subroutine don_u_lo1d_to_hi0d_linear_k
 !#####################################################################
 
 subroutine don_u_lo1d_to_hi0d_log_k     &
-         (n_lo, x_lo, sig_lo, ps, p_hi, x_hi, ermesg)
+         (n_lo, x_lo, sig_lo, ps, p_hi, x_hi, ermesg, error)
 
 !--------------------------------------------------------------------
 !    subroutine don_u_lo1d_to_hi0d_log_k uses logarithmic 
@@ -1137,6 +1145,7 @@ real,                  intent(in)   :: ps
 real,                  intent(in)   :: p_hi
 real,                  intent(out)  :: x_hi     
 character(len=*),      intent(out)  :: ermesg
+integer,               intent(out)  :: error
 
 !--------------------------------------------------------------------
 !   intent(in) variables:
@@ -1167,7 +1176,7 @@ character(len=*),      intent(out)  :: ermesg
 !----------------------------------------------------------------------
 !    initialize the error message character string.
 !----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !--------------------------------------------------------------------
 !    define an initial value for indx which can be checked to verify
@@ -1198,6 +1207,7 @@ character(len=*),      intent(out)  :: ermesg
       if (indx == 0) then
         ermesg = 'unable to bracket the input pressure within the input &
                                            &pressure profile'
+        error = 1
         return
       endif
 

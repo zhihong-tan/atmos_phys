@@ -10,8 +10,8 @@ MODULE CONV_UTILITIES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 15.0.2.1.2.1.2.1 2007/11/25 14:46:18 rsh Exp $'
-  character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 15.0.2.1.2.1.2.1.2.1 2007/12/22 11:00:30 rsh Exp $'
+  character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -1708,10 +1708,10 @@ real,dimension(kmax,ntr),intent(inout)  :: trten, trwet
          if (tracer0(k)>0. .and. tracer1w(k)<0. ) then
             ratio = MIN( ratio,tracer0(k)/(-trtendw(k)*dt) )
          end if
-         if (tracer1(k)<tracer_min ) then
+         if (tracer1(k)<tracer_min .and. trtend(k) /= 0.0 ) then
             ratio = MIN( ratio,(tracer0(k)-tracer_min)/(-trtend(k)*dt) )
          end if
-         if (tracer1(k)>tracer_max ) then
+         if (tracer1(k)>tracer_max  .and. trtend(k) /= 0.0 ) then
             ratio = MIN( ratio,(tracer_max-tracer0(k))/(trtend(k)*dt) )
          end if
       end do

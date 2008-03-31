@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_rad_k.F90,v 14.0 2007/03/15 22:02:44 fms Exp $
+!  $Id: donner_rad_k.F90,v 14.0.10.1 2008/01/29 21:42:53 wfc Exp $
 
 !module donner_rad_inter_mod
 
@@ -13,7 +13,7 @@
 
 subroutine don_r_donner_rad_driver_k   &
          (isize, jsize, nlev_lsm, Param, Col_diag, Initialized,   &
-          pfull, temp, land, exit_flag, Don_conv, Don_rad, Nml, ermesg)
+          pfull, temp, land, exit_flag, Don_conv, Don_rad, Nml, ermesg, error)
 
 !---------------------------------------------------------------------
 !
@@ -38,8 +38,9 @@ type(donner_conv_type),                intent(inout) :: Don_conv
 type(donner_rad_type),                 intent(inout) :: Don_rad
 type(donner_nml_type),                 intent(inout) :: Nml       
 character(len=*),                      intent(out)   :: ermesg
+integer,                               intent(out)   :: error
 
-      ermesg= ' '
+      ermesg= ' ' ; error = 0
 
 !---------------------------------------------------------------------
 !    call define_ice_size to define the ice particle size distribution 
@@ -48,7 +49,7 @@ character(len=*),                      intent(out)   :: ermesg
       call don_r_define_ice_size_k    &
            (isize, jsize, nlev_lsm, Param, Col_diag, pfull, &
             Don_conv%xice, Don_conv%przm, Don_conv%prztm,    &
-            Don_conv%dgeice, ermesg)
+            Don_conv%dgeice, ermesg, error)
 
 !---------------------------------------------------------------------
 !    call define_cell_liquid_size to compute the cell liquid effective
@@ -59,7 +60,7 @@ character(len=*),                      intent(out)   :: ermesg
            (isize, jsize, nlev_lsm, Param, Nml, Col_diag, pfull, temp, &
             Don_conv%cuql, Don_conv%cual, land, exit_flag,    &
             Don_conv%cell_liquid_eff_diam, Don_rad%cell_droplet_number,&
-            ermesg)
+            ermesg, error)
  
 !---------------------------------------------------------------------
 !    since liquid is not allowed in anvil currently, set the droplet
@@ -75,7 +76,7 @@ character(len=*),                      intent(out)   :: ermesg
             Don_conv%xliq, Don_conv%xice, Don_conv%cual,  &
             Don_conv%ampta1, Don_conv%cuql, Don_conv%cuqi, &
             Don_conv%dgeice, Don_conv%cell_liquid_eff_diam, &
-            Don_rad, ermesg)
+            Don_rad, ermesg, error)
 
 !--------------------------------------------------------------------
 
@@ -86,7 +87,7 @@ end subroutine don_r_donner_rad_driver_k
 
 subroutine don_r_define_ice_size_k    &
          (isize, jsize, nlev_lsm, Param, Col_diag, pfull, xice, przm, &
-          prztm, dgeice, ermesg)
+          prztm, dgeice, ermesg, error)
   
 !----------------------------------------------------------------------
 !    subroutine define_ice_size obtains the effective ice crystal size 
@@ -106,6 +107,7 @@ real, dimension(isize,jsize,nlev_lsm), intent(in)  :: pfull, xice
 real, dimension(isize,jsize),          intent(in)  :: przm, prztm
 real, dimension(isize,jsize,nlev_lsm), intent(out) :: dgeice
 character(len=*),                      intent(out) :: ermesg
+integer,                               intent(out) :: error
             
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -126,7 +128,7 @@ character(len=*),                      intent(out) :: ermesg
   
       integer :: i, j, k        ! do-loop indices
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !---------------------------------------------------------------------
 !    call subroutine andge to assign effective sizes (dgeice) to the 
@@ -140,7 +142,7 @@ character(len=*),                      intent(out) :: ermesg
             if (xice(i,j,k) > 0.0) then
               call don_r_andge_k   &
                    (i, j, Param, Col_diag, pfull(i,j,k), przm(i,j),  &
-                    prztm(i,j), dgeice(i,j,k), ermesg)
+                    prztm(i,j), dgeice(i,j,k), ermesg, error)
             else
               dgeice(i,j,k) = 0.
             endif
@@ -157,7 +159,7 @@ end subroutine don_r_define_ice_size_k
 !######################################################################
 
 subroutine don_r_andge_k   &
-         (i, j, Param, Col_diag, press, pzm, pztm, dgeicer, ermesg)
+         (i, j, Param, Col_diag, press, pzm, pztm, dgeicer, ermesg, error)
   
 !---------------------------------------------------------------------
 !    subroutine andge defines the generalized effective ice crystal size
@@ -175,6 +177,7 @@ type(donner_column_diag_type), intent(in)  :: Col_diag
 real,                          intent(in)  :: press, pzm, pztm       
 real,                          intent(out) :: dgeicer    
 character(len=*),              intent(out) :: ermesg
+integer,                       intent(out) :: error
  
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -198,13 +201,14 @@ character(len=*),              intent(out) :: ermesg
                           ! [ dimensionless ]
       integer  :: k, n    ! do-loop indices
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !-------------------------------------------------------------------
 !    be sure that anvil base has higher pressure than anvil top. 
 !-------------------------------------------------------------------
       if (pzm < pztm) then
         ermesg = ' andge: pzm is < pztm'
+        error = 1
         return
       endif
 
@@ -260,7 +264,7 @@ end subroutine don_r_andge_k
 subroutine don_r_define_cell_liquid_size_k   &
          (isize, jsize, nlev_lsm, Param, Nml, Col_diag, pfull, temp, &
           cuql, cual, land, exit_flag, cell_liquid_eff_diam,  &
-          cell_droplet_number, ermesg)
+          cell_droplet_number, ermesg, error)
 
 !--------------------------------------------------------------------
 !    subroutine define_cell_liquid_size calculates the effective radii 
@@ -287,6 +291,7 @@ real, dimension(isize,jsize,nlev_lsm),                  &
                                  intent(out) :: cell_liquid_eff_diam, &
                                                 cell_droplet_number
 character(len=*),                intent(out) :: ermesg
+integer,                         intent(out) :: error
    
 !--------------------------------------------------------------------
 !   intent(in) variables:
@@ -345,7 +350,7 @@ character(len=*),                intent(out) :: ermesg
 !
 !-------------------------------------------------------------------
 
-      ermesg= ' '
+      ermesg= ' ' ; error = 0
 
 !--------------------------------------------------------------------
 !    define the pressure (cell_pbase) and temperature (temp_cell_pbase)
@@ -587,7 +592,7 @@ end subroutine don_r_define_cell_liquid_size_k
 subroutine don_r_donner_deep_sum_k  &
          (isize, jsize, nlev_lsm, Param, Nml, Initialized, xliq, &
           xice, cual, ampta1, cuql, cuqi, dgeice,   &
-          cell_liquid_eff_diam, Don_rad, ermesg)
+          cell_liquid_eff_diam, Don_rad, ermesg, error)
 
 !------------------------------------------------------------------
 !    subroutine donner_deep_sum stores the cloud amount and particle 
@@ -613,6 +618,7 @@ real, dimension(isize,jsize,nlev_lsm),              &
 real, dimension(isize,jsize), intent(in)    :: ampta1
 type(donner_rad_type),        intent(inout) :: Don_rad
 character(len=*),             intent(out)   :: ermesg
+integer,                      intent(out)   :: error
                                                             
 !------------------------------------------------------------------
 !   intent(in) variables:
@@ -649,7 +655,7 @@ character(len=*),             intent(out)   :: ermesg
 !
 !--------------------------------------------------------------------
 
-       ermesg= ' '
+       ermesg= ' ' ; error = 0
 
 !--------------------------------------------------------------------
 !    if the cloud data from donner_deep_mod that is to be passed to
@@ -677,6 +683,7 @@ character(len=*),             intent(out)   :: ermesg
             if (xliq(i,j,k) /= 0.0) then
               ermesg = ' liquid water present in anvil -- not&
                                            & currently allowed'
+              error = 1
               return
             endif
           end do

@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: ozone.F90,v 15.0 2007/08/14 03:55:25 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
+character(len=128)  :: version =  '$Id: ozone.F90,v 15.0.4.1 2007/12/08 13:49:35 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
 
 
 !---------------------------------------------------------------------
@@ -692,7 +692,8 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
           do k= 1,kmax
             do j= 1,je-js+1    
               do i= 1,ie-is+1    
-                 Rad_gases%qo3(i,j,k) =  r(i,j,k,noy) * 48./29.0 
+!                Rad_gases%qo3(i,j,k) =  r(i,j,k,noy) * 48./29.0 
+                 Rad_gases%qo3(i,j,k) =  MAX(r(i,j,k,noy),1.e-20) * 48./29.
              end do
             end do
           end do

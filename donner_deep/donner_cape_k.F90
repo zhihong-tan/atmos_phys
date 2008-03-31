@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cape_k.F90,v 15.0 2007/08/14 03:53:12 fms Exp $
+!  $Id: donner_cape_k.F90,v 15.0.4.1 2008/01/29 21:42:52 wfc Exp $
 
 !module donner_cape_inter_mod
 
@@ -14,7 +14,7 @@ subroutine don_c_def_conv_env_k          &
          (isize, jsize, nlev_lsm, nlev_hires, Nml, Param, Initialized, &
           Col_diag,    &
           temp, mixing_ratio, pfull, lag_cape_temp, lag_cape_vapor,    &
-          lag_cape_press, current_displ, cbmf, Don_cape, Don_conv, ermesg)
+          lag_cape_press, current_displ, cbmf, Don_cape, Don_conv, ermesg, error)
 
 !---------------------------------------------------------------------
 !   subroutine don_c_def_conv_env_k manages the 
@@ -46,6 +46,7 @@ real,    dimension(isize,jsize),                             &
 type(donner_cape_type),        intent(inout) :: Don_cape
 type(donner_conv_type),        intent(inout) :: Don_conv
 character(len=*),              intent(out)   :: ermesg
+integer,                       intent(out)   :: error
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -127,7 +128,7 @@ character(len=*),              intent(out)   :: ermesg
 !    initialize the character string which will contain any error mes-
 !    sages returned through this subroutine.
 !---------------------------------------------------------------------
-       ermesg = ' '
+       ermesg = ' ' ; error = 0
 
 !---------------------------------------------------------------------
 !    define the vertical index of the highest level within the surface
@@ -173,13 +174,13 @@ character(len=*),              intent(out)   :: ermesg
       call don_c_cape_calculation_driver_k  &
            (isize, jsize, nlev_lsm, nlev_hires, Col_diag, Param, Nml, &
             lag_cape_temp, lag_cape_vapor, lag_cape_press,  &
-            no_convection, Don_cape, ermesg)
+            no_convection, Don_cape, ermesg, error)
  
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
 !    to the calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
 !---------------------------------------------------------------------
 !    call don_c_cape_diagnostics_k to output the cape calculation 
@@ -187,13 +188,13 @@ character(len=*),              intent(out)   :: ermesg
 !---------------------------------------------------------------------
       call don_c_cape_diagnostics_k   &
            (isize, jsize, nlev_lsm, nlev_hires, Col_diag,  &
-            Don_cape, no_convection, ermesg)
+            Don_cape, no_convection, ermesg, error)
  
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
 !    to the calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
   
 !--------------------------------------------------------------------
 !    save the values of cape and column integrated water vapor returned
@@ -246,13 +247,13 @@ character(len=*),              intent(out)   :: ermesg
       call don_c_cape_calculation_driver_k  &
            (isize, jsize, nlev_lsm, nlev_hires, Col_diag, Param, Nml, &
             mid_cape_temp, mid_cape_vapor, pfull,  &
-            no_convection, Don_cape, ermesg)
+            no_convection, Don_cape, ermesg, error)
  
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
 !    to the calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
 !---------------------------------------------------------------------
 !    call don_c_cape_diagnostics_k to output the cape calculation 
@@ -260,13 +261,13 @@ character(len=*),              intent(out)   :: ermesg
 !---------------------------------------------------------------------
       call don_c_cape_diagnostics_k   &
            (isize, jsize, nlev_lsm, nlev_hires, Col_diag,  &
-            Don_cape, no_convection, ermesg)
+            Don_cape, no_convection, ermesg, error)
  
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
 !    to the calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
 !---------------------------------------------------------------------
 
@@ -280,7 +281,7 @@ end subroutine don_c_def_conv_env_k
 subroutine don_c_cape_calculation_driver_k  &
          (isize, jsize, nlev_lsm, nlev_hires, Col_diag, Param, Nml, &
           temperature, mixing_ratio, pfull, no_convection, Don_cape, &
-          ermesg)
+          ermesg, error)
 
 !--------------------------------------------------------------------
 !    subroutine cape_calculation_driver defines high-resolution atmos-
@@ -307,6 +308,7 @@ real, dimension(isize,jsize,nlev_lsm), intent(in)    :: temperature,  &
 logical, dimension(isize,jsize),       intent(in)    :: no_convection
 type(donner_cape_type),                intent(inout) ::  Don_cape
 character(len=*),                      intent(out)   :: ermesg
+integer,                               intent(out)   :: error
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -341,7 +343,7 @@ character(len=*),                      intent(out)   :: ermesg
                                 ! current column
        integer  :: i, j, n      ! do-loop indices
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !---------------------------------------------------------------------
 !    loop over columns in physics window.
@@ -383,13 +385,13 @@ character(len=*),                      intent(out)   :: ermesg
                   mixing_ratio(i,j,:), pfull(i,j,:),   &
                   Don_cape%model_t(i,j,:), Don_cape%model_r(i,j,:), &
                   Don_cape%model_p(i,j,:), Don_cape%cape_p(i,j,:), &
-                  Don_cape%env_t(i,j,:), Don_cape%env_r(i,j,:), ermesg)
+                  Don_cape%env_t(i,j,:), Don_cape%env_r(i,j,:), ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-            if (trim(ermesg) /= ' ') return
+            if (error /= 0 ) return
 
 !--------------------------------------------------------------------
 !    call displace_parcel to calculate the behavior of a parcel moving
@@ -405,26 +407,26 @@ character(len=*),                      intent(out)   :: ermesg
                   Don_cape%plfc(i,j), Don_cape%plzb(i,j),  &
                   Don_cape%plcl(i,j), Don_Cape%coin(i,j),   &
                   Don_cape%xcape(i,j), Don_cape%parcel_r(i,j,:), &
-                  Don_cape%parcel_t(i,j,:), ermesg)
+                  Don_cape%parcel_t(i,j,:), ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-            if (trim(ermesg) /= ' ') return
+            if (error /= 0 ) return
 
 !---------------------------------------------------------------------
 !   call integrate_vapor to produce the column integral of water vapor.
 !--------------------------------------------------------------------
             call don_c_integrate_vapor_k  &
                  (nlev_hires, Param, Don_cape%env_r(i,j,:),  &
-                  Don_cape%cape_p(i,j,:), Don_cape%qint(i,j), ermesg)
+                  Don_cape%cape_p(i,j,:), Don_cape%qint(i,j), ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-            if (trim(ermesg) /= ' ') return
+            if (error /= 0 ) return
           endif
         end do
       end do
@@ -442,7 +444,7 @@ subroutine don_c_displace_parcel_k   &
          (nlev_hires, diag_unit, debug_ijt, Param, do_freezing, &
           tfreezing, dfreezing, rmuz, env_t, env_r,  &
           cape_p, coin_present, plfc, plzb, plcl, coin, xcape,       &
-          parcel_r, parcel_t, ermesg)
+          parcel_r, parcel_t, ermesg, error)
 
 !----------------------------------------------------------------------
 !    displace_parcel moves a parcel upwards from the lowest model level
@@ -470,6 +472,7 @@ real,                          intent(out) :: plfc, plzb, plcl
 real,                          intent(out) :: coin, xcape
 real,   dimension(nlev_hires), intent(out) :: parcel_r, parcel_t   
 character(len=*),              intent(out) :: ermesg
+integer,                       intent(out) :: error
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
@@ -519,7 +522,7 @@ character(len=*),              intent(out) :: ermesg
       logical ::  cape_exit
       integer  :: n, k
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 
 !--------------------------------------------------------------------
@@ -533,13 +536,13 @@ character(len=*),              intent(out) :: ermesg
            (nlev_hires, Param,             &
              parcel_t(Param%istart),   cape_p,   &
                           env_r, env_t, parcel_r, parcel_t, plcl,  &
-                          tlcl, rlcl, klcl, cape_exit, ermesg)
+                          tlcl, rlcl, klcl, cape_exit, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
       if (.not. cape_exit) then
 
@@ -575,13 +578,13 @@ character(len=*),              intent(out) :: ermesg
             env_t, do_freezing, tfreezing, dfreezing, rmuz, &
             parcel_t, parcel_r, plfc, plzb, klfc, klzb,  &
             parcel_tv, env_tv, dtdp, rc, fact1, fact2, fact3, cape_exit,&
-            ermesg)
+            ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
 
       if (debug_ijt) then
@@ -639,13 +642,13 @@ character(len=*),              intent(out) :: ermesg
         call don_c_calculate_cin_k   &
              (nlev_hires, diag_unit, debug_ijt, Param,  cape_p,  &
               parcel_r, env_r, parcel_t, env_t, plfc, cape_exit,   &
-              coin, env_tv, parcel_tv, ermesg)
+              coin, env_tv, parcel_tv, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (error /= 0 ) return
 
         if (.not. cape_exit) then
           if (debug_ijt) then
@@ -672,13 +675,13 @@ character(len=*),              intent(out) :: ermesg
 
         call don_c_calculate_cape_k   &
              (nlev_hires, klfc, Param, plzb, cape_p, parcel_r, env_r,   &
-              parcel_t, env_t, xcape, delt, sum_xcape, ermesg)
+              parcel_t, env_t, xcape, delt, sum_xcape, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (error /= 0 ) return
 
 !---------------------------------------------------------------------
 !   print out cape and cape contribution from this level.
@@ -711,7 +714,8 @@ character(len=*),              intent(out) :: ermesg
 !  check for error in cape calculation. stop execution if present.
 !--------------------------------------------------------------------
         if (xcape        .lt. 0.) then            
-          ermesg =  ' xcape error -- value < 0.0 '         
+          ermesg =  ' xcape error -- value < 0.0 '
+          error  = 1
         endif
       endif  ! (present(coin))
 
@@ -727,7 +731,7 @@ subroutine don_c_define_moist_adiabat_k  &
           env_t, do_freezing, tfreezing, dfreezing, rmuz, &
           parcel_t, parcel_r, plfc, plzb, klfc, &
           klzb, parcel_tv, env_tv, dtdp, rc, fact1, fact2, fact3, &
-          cape_exit, ermesg)
+          cape_exit, ermesg, error)
 
 !----------------------------------------------------------------------
 !
@@ -753,6 +757,7 @@ real, dimension(nlev_hires),  intent(out)   :: parcel_tv, env_tv, dtdp, &
                                                rc, fact1, fact2, fact3
 logical,                      intent(out)   :: cape_exit
 character(len=*),             intent(out)   :: ermesg
+integer,                      intent(out)   :: error
 
       real     :: es_v_s, qe_v_s, rs_v_s, qs_v_s, pb, tp_s
       real     :: hlvls
@@ -760,7 +765,7 @@ character(len=*),             intent(out)   :: ermesg
       integer  :: ieqv_s
       integer  :: k, n, nbad
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
       plfc = 0.0     
       plzb = 0.0  
@@ -793,6 +798,7 @@ character(len=*),             intent(out)   :: ermesg
 !----------------------------------------------------------------------
         if (nbad /= 0) then
           ermesg = 'subroutine don_c_define_moist_adiabat_k: Temperatures out of range of esat table'
+          error  = 1
           return
         endif
 
@@ -811,13 +817,13 @@ character(len=*),             intent(out)   :: ermesg
 !    the environment.
 !--------------------------------------------------------------------
         call don_u_numbers_are_equal_k  &
-             (parcel_tv(k), env_tv(k), ermesg, ieqv_s)
+             (parcel_tv(k), env_tv(k), ermesg, error, ieqv_s)
    
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (error /= 0 ) return
 
 !---------------------------------------------------------------------
 !    integrate parcel upward, finding level of free convection and 
@@ -903,7 +909,7 @@ end subroutine don_c_define_moist_adiabat_k
 subroutine don_c_calculate_cin_k    &
          (nlev_hires, diag_unit, debug_ijt, Param, press, parcel_r,   &
           env_r, parcel_t, env_t, plfc, cape_exit, coin,   &
-          env_tv, parcel_tv, ermesg)
+          env_tv, parcel_tv, ermesg, error)
 
 !----------------------------------------------------------------------
 !
@@ -925,13 +931,14 @@ logical,                     intent(out) :: cape_exit
 real,                        intent(out) :: coin
 real,dimension(nlev_hires),  intent(out) :: env_tv, parcel_tv
 character(len=*),            intent(out) :: ermesg
+integer,                     intent(out) :: error
 
       real      ::   rbc, rbe, qc, qe, tvc_v_s, tve_v_s, delt
       integer   ::   ieqv_s
       integer   ::   k, n
 
 !----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
       coin = 0.
       cape_exit = .false.
 
@@ -975,13 +982,13 @@ character(len=*),            intent(out) :: ermesg
 !   the environment.
 !--------------------------------------------------------------------
         call don_u_numbers_are_equal_k   &
-             (tvc_v_s, tve_v_s, ermesg, ieqv_s )
+             (tvc_v_s, tve_v_s, ermesg, error, ieqv_s )
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (error /= 0 ) return
 
 !---------------------------------------------------------------------
 !   add the contribution to cin from this pressure layer.
@@ -1015,7 +1022,7 @@ end subroutine don_c_calculate_cin_k
 
 subroutine don_c_calculate_cape_k  &
          (nlev_hires, klfc, Param,plzb, press, parcel_r, env_r, &
-          parcel_t, env_t, xcape, delt, sum_xcape, ermesg)
+          parcel_t, env_t, xcape, delt, sum_xcape, ermesg, error)
 
 !----------------------------------------------------------------------
 !
@@ -1034,12 +1041,13 @@ real, dimension(nlev_hires), intent(in)  :: press, parcel_r, env_r,   &
 real,                        intent(out) :: xcape
 real, dimension(nlev_hires), intent(out) :: delt, sum_xcape      
 character(len=*),            intent(out) :: ermesg
+integer,                     intent(out) :: error
 
       real    :: rbc, rbe, qc, qe, tvc_v_s, tve_v_s
       integer :: ieqv_s
       integer :: k, n
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
       xcape = 0.
       delt(1:klfc) = 0.0
@@ -1073,13 +1081,14 @@ character(len=*),            intent(out) :: ermesg
 !   the environment.
 !--------------------------------------------------------------------
           call don_u_numbers_are_equal_k   &
-               (tvc_v_s, tve_v_s, ermesg, ieqv_s)
+               (tvc_v_s, tve_v_s, ermesg, error, ieqv_s)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (error /= 0 ) return
+
 
 !---------------------------------------------------------------------
 !   add the contribution to column cape from this pressure layer.
@@ -1112,7 +1121,7 @@ end subroutine don_c_calculate_cape_k
 
 subroutine don_c_generate_cape_sounding_k   &
          (nlev_lsm, nlev_hires, temp, mixing_ratio, pfull, model_t, &
-          model_r, model_p, cape_p, env_t, env_r, ermesg)  
+          model_r, model_p, cape_p, env_t, env_r, ermesg, error)  
 
 implicit none
 
@@ -1134,6 +1143,7 @@ real, dimension(nlev_lsm),   intent(in)  :: temp, mixing_ratio, pfull
 real, dimension(nlev_lsm),   intent(out) :: model_t, model_r, model_p
 real, dimension(nlev_hires), intent(out) :: cape_p, env_t, env_r
 character(len=*),            intent(out) :: ermesg
+integer,                     intent(out) :: error
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -1175,7 +1185,7 @@ character(len=*),            intent(out) :: ermesg
       integer  :: n, k   ! do-loop indices
 
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !--------------------------------------------------------------------
 !    create arrays of moisture, temperature and pressure having vertical
@@ -1207,23 +1217,23 @@ character(len=*),            intent(out) :: ermesg
 !--------------------------------------------------------------------
       call don_u_lo1d_to_hi1d_k    &
            (nlev_lsm, nlev_hires, model_t, model_p, cape_p,   &
-            env_t, ermesg)
+            env_t, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
       call don_u_lo1d_to_hi1d_k    &
            (nlev_lsm, nlev_hires, model_r, model_p, cape_p,    &
-            env_r, ermesg)
+            env_r, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
       do k=1,nlev_hires
          env_r(k) = MAX(env_r(k), 0.0)
@@ -1237,7 +1247,7 @@ end subroutine don_c_generate_cape_sounding_k
 !#####################################################################
 
 subroutine don_c_integrate_vapor_k   &
-           (nlev_hires, Param, env_r, cape_p, qint, ermesg)
+           (nlev_hires, Param, env_r, cape_p, qint, ermesg, error)
 
 !----------------------------------------------------------------------
 !
@@ -1252,11 +1262,12 @@ type(donner_param_type),      intent(in)  :: Param
 real, dimension(nlev_hires),  intent(in)  :: env_r, cape_p
 real,                         intent(out) :: qint            
 character(len=*),             intent(out) :: ermesg
+integer,                      intent(out) :: error
 
       integer  ::  k
       real     ::  sum
 
-      ermesg= ' '
+      ermesg= ' ' ; error = 0
 
       sum  = env_r(1)*(cape_p(1) - cape_p(2))
       do k=2,nlev_hires-1
@@ -1278,7 +1289,7 @@ end subroutine don_c_integrate_vapor_k
 
 subroutine don_c_cape_diagnostics_k   &
          (isize, jsize, nlev_lsm, nlev_hires, Col_diag, Don_cape,  &
-          exit_flag, ermesg)
+          exit_flag, ermesg, error)
 
 !----------------------------------------------------------------------
 !
@@ -1295,12 +1306,13 @@ type(donner_column_diag_type),   intent(in)    :: Col_diag
 type(donner_cape_type),          intent(inout) :: Don_cape
 logical, dimension(isize,jsize), intent(in)    :: exit_flag
 character(len=*),                intent(out)   :: ermesg
+integer,                         intent(out)   :: error
 
 
       integer  :: idiag, jdiag, unitdiag
       integer  :: n, k
 
-      ermesg= ' '
+      ermesg= ' ' ; error = 0
 
       
 !---------------------------------------------------------------------
@@ -1368,7 +1380,7 @@ end subroutine don_c_cape_diagnostics_k
 
 subroutine don_c_calculate_lcl_k    &
          (nlev_hires, Param, starting_temp, press, env_r, env_t, &
-          parcel_r, parcel_t, plcl, tlcl, rlcl, klcl, cape_exit, ermesg)
+          parcel_r, parcel_t, plcl, tlcl, rlcl, klcl, cape_exit, ermesg, error)
 
 !---------------------------------------------------------------------
 !
@@ -1389,6 +1401,7 @@ real,                        intent(out)   :: plcl, tlcl, rlcl
 integer,                     intent(out)   :: klcl
 logical,                     intent(out)   :: cape_exit
 character(len=*),            intent(out)   :: ermesg
+integer,                     intent(out)   :: error
 
       real     :: es_v_s, qs_v_s, dtdp_v_s, dt_v_s, cp_v_s, q_ve_s, tp_s
       integer  :: ieqv_s       
@@ -1396,7 +1409,7 @@ character(len=*),            intent(out)   :: ermesg
       
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
@@ -1428,6 +1441,7 @@ character(len=*),            intent(out)   :: ermesg
 !----------------------------------------------------------------------
           if (nbad /= 0) then
             ermesg = 'subroutine don_c_calculate_lcl_k: Temperatures out of range of esat table'
+            error  = 1
           endif
 
 !--------------------------------------------------------------------
@@ -1436,13 +1450,13 @@ character(len=*),            intent(out)   :: ermesg
           qs_v_s  = Param%d622*es_v_s /MAX(press(k) +    &
                                        (Param%d622 - 1.)*es_v_s, es_v_s)
           call don_u_numbers_are_equal_k  &
-               (qs_v_s, q_ve_s, ermesg, ieqv_s)
+               (qs_v_s, q_ve_s, ermesg, error, ieqv_s)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (error /= 0 ) return
 
 !--------------------------------------------------------------------
 !   if saturation is exact or if parcel is super-saturated at its 

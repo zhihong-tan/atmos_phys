@@ -47,7 +47,7 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
     character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 14.0 2007/03/15 22:06:04 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
+    character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
     logical             :: module_is_initialized = .false.
 
 

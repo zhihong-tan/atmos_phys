@@ -1,5 +1,5 @@
 !VERSION NUMBER:
-!   $Id: donner_lite_k.F90,v 15.0.2.1.2.1.2.1.2.1 2007/11/25 12:46:31 rsh Exp $
+!   $Id: donner_lite_k.F90,v 15.0.2.1.2.1.2.1.2.1.2.1.2.1 2008/01/29 21:42:53 wfc Exp $
 
 !######################################################################
 !######################################################################
@@ -182,7 +182,8 @@ subroutine don_d_integ_cu_ensemble_miz             &
          enctf, encmf, enev, ecds_liq, ecds_ice, eces_liq, &
          eces_ice, ensmbl_cloud_area, cuq, cuql_v, &
          detmfl, uceml, qtren, etsm, lmeso, frz_frac, &
-         meso_frz_intg_sum, ermesg, melting_in_cloud)
+         meso_frz_intg_sum, ermesg, error, melting_in_cloud, &
+         i, j, Don_cem)
 
 !----------------------------------------------------------------------
 !    subroutine integrate_cumulus_ensemble works on a single model 
@@ -203,7 +204,7 @@ subroutine don_d_integ_cu_ensemble_miz             &
 !----------------------------------------------------------------------
 use donner_types_mod,     only : donner_initialized_type,   &
                                  donner_param_type, donner_nml_type, &
-                                 donner_column_diag_type
+                                 donner_column_diag_type, donner_cem_type
 use  conv_utilities_k_mod,only : qsat_k, exn_k, adi_cloud_k, adicloud, &
                                  sounding, uw_params, qt_parcel_k
 use  conv_plumes_k_mod,   only : cumulus_plume_k, cumulus_tend_k, &
@@ -265,11 +266,14 @@ real,    dimension(nlev_lsm),      intent(out)   ::   &
 real,    dimension(nlev_lsm,ntr),  intent(out)   :: qtren, ensmbl_wetc
 real,    dimension(nlev_lsm,ntr),intent(out)     :: etsm 
 logical,                           intent(out)   :: lmeso       
+integer,                           intent(in)    :: i, j
+type(donner_cem_type),             intent(inout) :: Don_cem
 real   ,                           intent(out)   :: frz_frac
 logical,                           intent(out)   :: meso_frz_intg_sum
 logical ,                          intent(out)    :: melting_in_cloud
 
 character(len=*),                  intent(out)   :: ermesg
+integer,                           intent(out)   :: error
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -318,6 +322,32 @@ character(len=*),                  intent(out)   :: ermesg
 !     exit_flag_c    logical indicating whether donner convection
 !                    is not active (.true.) or is active (.false.) in
 !                    current model column 
+!
+!     cumulus ensemble member fields (see also donner_types.h):
+!
+!     --- single level ---
+!
+!     Don_cem_cell_precip 
+!                    area weighted convective precipitation rate
+!                    [ mm/day ]
+!     Don_cem_pb     pressure at cloud base for ensemble (currently,
+!                    all ensemble members have same base) [ Pa ]
+!     Don_cem_ptma   pressure at cloud top for ensemble [ Pa ]
+!
+!     --- lo-res multi-level ---
+! 
+!     Don_cem_h1     condensation rate profile on lo-res grid
+!                    for the current ensemble member
+!                    [ ( kg(h2o) ) / ( kg( dry air) sec ) ] 
+!
+!     --- lo-res multi-level ---
+!
+!     Don_cem_qlw    profile of cloud water for the current ensemble
+!                    member [ kg(h2o) / kg(air) ]
+!     Don_cem_cfracice
+!                    fraction of condensate that is ice [ fraction ]
+!     Don_cem_wv     vertical velocity profile [ m / s ]
+!     Don_cem_rcl    cloud radius profile [ m ]
 !
 !   intent(out) variables:
 !    
@@ -716,7 +746,7 @@ character(len=*),                  intent(out)   :: ermesg
 !
 !----------------------------------------------------------------------
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 !---------------------------------------------------------------------
 !    if in diagnostics column, output the large-scale model temperature,
 !    vapor mixing ratio and full-level pressure profiles (index 1 near-
@@ -931,6 +961,7 @@ character(len=*),                  intent(out)   :: ermesg
                            Param%ensemble_entrain_factors_kep(kou)
         else
           ermesg = 'invalid entrainment_constant_source'
+          error = 1
           return
         endif
 
@@ -1101,7 +1132,7 @@ character(len=*),                  intent(out)   :: ermesg
           endif
             
         call don_u_map_hires_i_to_lores_c_k   &
-           (nlev_lsm, dmela, pb, pmelt_lsm, phalf_c, cell_melt, ermesg)
+           (nlev_lsm, dmela, pb, pmelt_lsm, phalf_c, cell_melt, ermesg, error)
 
           if (debug_ijt) then
             do k=1,nlev_lsm
@@ -1148,6 +1179,24 @@ character(len=*),                  intent(out)   :: ermesg
         qtr        = 0.
 
 !end: testing unified plume
+
+    if (Nml%do_ensemble_diagnostics) then
+!----------------------------------------------------------------------
+!    save "Don_cem" diagnostics for this ensemble member.
+!----------------------------------------------------------------------
+       Don_cem%cell_precip(i,j,kou) = cell_precip_miz
+       Don_cem%pb(i,j,kou) = pb
+       Don_cem%ptma(i,j,kou) = ptma_miz(kou)
+!  reverse index order
+       do k=1,nlev_lsm
+         Don_cem%h1(i,j,k,kou) = h1_liq(nlev_lsm-k + 1) +  &
+                             h1_ice(nlev_lsm-k + 1)
+         Don_cem%qlw(i,j,k,kou) = qlw_miz(nlev_lsm-k+1)
+         Don_cem%cfracice(i,j,k,kou) = cfracice_miz(nlev_lsm-k+1)
+         Don_cem%wv(i,j,k,kou) = cp%wu(nlev_lsm-k+1)
+         Don_cem%rcl(i,j,k,kou) = rcl_miz(nlev_lsm-k+1)
+       end do
+    endif
 
 !!!  BUGFIX: applies only when allow_mesoscale_circulation is set to
 !!!         .false.; in such cases, bug turned off cell melting.
@@ -1218,8 +1267,8 @@ character(len=*),                  intent(out)   :: ermesg
                 cell_precip_miz, dint_miz, plzb_c, pb, ptma_miz(kou), &
                 temp_c, phalf_c,     ca_liq, ca_ice, ecd, ecd_liq, &
                 ecd_ice, ecei_liq, ece, ece_liq, ece_ice, meso_freeze, &
-                meso_melt, ermesg)
-          if (trim(ermesg) /= ' ') return
+                meso_melt, ermesg, error)
+          if (error /= 0 ) return
         else
           ca_liq = 0.
           ca_ice = 0.
@@ -1767,7 +1816,7 @@ subroutine don_d_determine_cloud_area_miz            &
           pblht, tkemiz, qstar, cush, cbmf, land, coldT, sd, Uw_p, &
           ac, max_depletion_rate, dcape, amax, dise_v, disa_v,  &
           pfull_c, temp_c, mixing_ratio_c, env_t, env_r, parcel_t,  &
-          parcel_r, cape_p, exit_flag, amos, a1, ermesg)
+          parcel_r, cape_p, exit_flag, amos, a1, ermesg, error)
 
 !---------------------------------------------------------------------
 !    subroutine determine_cloud_area defines the convective cloud area
@@ -1803,6 +1852,7 @@ real, dimension(nlev_lsm),    intent(in)    :: env_t, env_r, parcel_t, parcel_r,
 logical,                      intent(inout) :: exit_flag
 real,                         intent(out)   :: amos, a1
 character(len=*),             intent(out)   :: ermesg
+integer,                      intent(out)   :: error
  
 real, dimension (nlev_lsm)  :: a1_vk              
 real, dimension(nlev_lsm)   :: qli0_v, qli1_v, qt_v, qr_v, rl_v, ri_v
@@ -1832,7 +1882,7 @@ integer                     :: k
 !-----------------------------------------------------------------------
 !    initialize the error message character string.
 !-----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
       qt_v=disa_v!miz
       qr_v=dise_v!miz
@@ -1881,19 +1931,19 @@ integer                     :: k
             cush, land, &
             coldT, sd, Uw_p, ac, Nml,        &!miz
             cape_p, qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, &
-            rl_v, parcel_r, env_t, parcel_t, a1, ermesg)     
+            rl_v, parcel_r, env_t, parcel_t, a1, ermesg, error)     
      else
         call  cu_clo_miz   &
              (nlev_lsm, ntr, dt, Param, tracers, &
               pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, cush, cbmf, land,  &
-              coldT, sd, Uw_p, ac, Nml, env_r, env_t, a1, ermesg)
+              coldT, sd, Uw_p, ac, Nml, env_r, env_t, a1, ermesg, error)
      endif
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
 !--------------------------------------------------------------------
 !    calculate the vertical integral of normalized moisture forcing 
@@ -2022,7 +2072,7 @@ subroutine cu_clo_cumulus_closure_miz   &
           dcape, pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, cush, land,  &
           coldT, sd, Uw_p, ac, Nml, cape_p, &!miz
           qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, rl_v, parcel_r,   &
-          env_t, parcel_t, a1, ermesg)
+          env_t, parcel_t, a1, ermesg, error)
 
 !---------------------------------------------------------------------
 !    subroutine cumulus_closure calculates a_1(p_b) for closing the 
@@ -2063,6 +2113,7 @@ real,    dimension(nlev_lsm), intent(in)  :: cape_p, qli0_v, qli1_v, &
                                                parcel_t
 real,                           intent(out) :: a1
 character(len=*),               intent(out) :: ermesg
+integer,                        intent(out) :: error
 !---------------------------------------------------------------------
 
 !----------------------------------------------------------------------
@@ -2120,7 +2171,7 @@ character(len=*),               intent(out) :: ermesg
       integer  :: k     
       logical  :: ctrig
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !--------------------------------------------------------------------
 !    initialize the perturbed parcel profiles (pert_parcel_t,    
@@ -2243,7 +2294,7 @@ character(len=*),               intent(out) :: ermesg
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
 !---------------------------------------------------------------------
 !    if in a diagnostics column, output the path of the parcel (T, p
@@ -2422,7 +2473,7 @@ subroutine don_cm_mesub_miz     &
           ci_liq_cond, ci_ice_cond, pmelt_lsm, cell_precip, &
           dint, plzb_c, pb, pt_kou, temp_c, phalf_c,   &
           ca_liq, ca_ice, ecd, ecd_liq, ecd_ice, ecei_liq, &
-          ece, ece_liq, ece_ice, meso_freeze, meso_melt, ermesg)
+          ece, ece_liq, ece_ice, meso_freeze, meso_melt, ermesg, error)
 
 !----------------------------------------------------------------------
 !    subroutine mesub calculates mesoscale heat and moisture sources,
@@ -2449,17 +2500,17 @@ real,                          intent(in)    :: cu, cell_precip, dint, &
                                                 plzb_c, pb, pt_kou
 real,   dimension(nlev_lsm),   intent(in)    :: temp_c
 real,   dimension(nlev_lsm+1), intent(in)    :: phalf_c
-real,                          intent(out)   ::     ca_liq, ca_ice
-real,                          intent(in)    ::        pmelt_lsm
+real,                          intent(out)   :: ca_liq, ca_ice
+real,                          intent(in)    :: pmelt_lsm
 real,                          intent(in)    :: ci_liq_cond, &
                                                 ci_ice_cond
 real,   dimension(nlev_lsm),   intent(out)   :: ecd, ece, meso_freeze, &
                                                 meso_melt, &
                                                 ecd_liq, ecd_ice, &
-                                               ece_liq, ece_ice
-real,                          intent(out)  :: ecei_liq
+                                                ece_liq, ece_ice
+real,                          intent(out)   :: ecei_liq
 character(len=*),              intent(out)   :: ermesg
-
+integer,                       intent(out)   :: error
 !---------------------------------------------------------------------
 !   intent(in) variables:
 !
@@ -2555,7 +2606,7 @@ character(len=*),              intent(out)   :: ermesg
 !   local variables:
 !
 !      
-      ermesg = '  '
+      ermesg = '  ' ; error = 0
 
 !---------------------------------------------------------------------
 !    define pressure one cloud-model level above cloud top (ptt). 
@@ -2692,13 +2743,13 @@ character(len=*),              intent(out)   :: ermesg
                                                     pztm
         endif
         call don_u_map_hires_i_to_lores_c_k   &
-             (nlev_lsm, caa, pzm, pztm, phalf_c, meso_freeze, ermesg)
+             (nlev_lsm, caa, pzm, pztm, phalf_c, meso_freeze, ermesg, error)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (error /= 0 ) return
         if (debug_ijt) then
           do k=1,nlev_lsm
             if (meso_freeze(k) /= 0.0) then
@@ -2747,17 +2798,17 @@ character(len=*),              intent(out)   :: ermesg
                                                    ptt
       endif
       call don_u_map_hires_i_to_lores_c_k   &
-           (nlev_lsm, ecda, phalf_c(1), ptt, phalf_c, ecd, ermesg)
+           (nlev_lsm, ecda, phalf_c(1), ptt, phalf_c, ecd, ermesg, error)
       call don_u_map_hires_i_to_lores_c_k   &
-         (nlev_lsm, ecda_liq, phalf_c(1), ptt, phalf_c, ecd_liq, ermesg)
+         (nlev_lsm, ecda_liq, phalf_c(1), ptt, phalf_c, ecd_liq, ermesg, error)
       call don_u_map_hires_i_to_lores_c_k   &
-         (nlev_lsm, ecda_ice, phalf_c(1), ptt, phalf_c, ecd_ice, ermesg)
+         (nlev_lsm, ecda_ice, phalf_c(1), ptt, phalf_c, ecd_ice, ermesg, error)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
       if (debug_ijt) then
         do k=1,nlev_lsm
           if (ecd(k) /= 0.0) then
@@ -2820,13 +2871,13 @@ character(len=*),              intent(out)   :: ermesg
 !    and the melting level. output field is meso_melt.
 !---------------------------------------------------------------------
       call don_u_map_hires_i_to_lores_c_k   &
-           (nlev_lsm, elta, p1, p2, phalf_c, meso_melt, ermesg)
+           (nlev_lsm, elta, p1, p2, phalf_c, meso_melt, ermesg, error)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
       if (debug_ijt) then
         do k=1,nlev_lsm       
           if (meso_melt(k) /= 0.0) then
@@ -2893,17 +2944,17 @@ character(len=*),              intent(out)   :: ermesg
                                                   p2
       endif
       call don_u_map_hires_i_to_lores_c_k   &
-           (nlev_lsm, ecea, p1, p2, phalf_c, ece, ermesg)
+           (nlev_lsm, ecea, p1, p2, phalf_c, ece, ermesg, error)
       call don_u_map_hires_i_to_lores_c_k   &
-           (nlev_lsm, ecea_liq, p1, p2, phalf_c, ece_liq, ermesg)
+           (nlev_lsm, ecea_liq, p1, p2, phalf_c, ece_liq, ermesg, error)
      call don_u_map_hires_i_to_lores_c_k   &
-           (nlev_lsm, ecea_ice, p1, p2, phalf_c, ece_ice, ermesg)
+           (nlev_lsm, ecea_ice, p1, p2, phalf_c, ece_ice, ermesg, error)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
       if (debug_ijt) then
         do k=1,nlev_lsm
           if (ece(k) /= 0.0) then
@@ -2931,7 +2982,7 @@ subroutine don_m_meso_effects_miz    &
           meso_cloud_area, cmus_tot, dmeml, emds_liq, emds_ice, &
           emes_liq, emes_ice, wmms, wmps, &
           umeml, temptr, tmes, tmes_up, tmes_dn, mrmes, mrmes_up, &
-          mrmes_dn, emdi, pmd, pztm, pzm, meso_precip, ermesg)
+          mrmes_dn, emdi, pmd, pztm, pzm, meso_precip, ermesg, error)
 
 !-------------------------------------------------------------------
 !    subroutine don_m_meso_effects_k obtains the mesoscale effects
@@ -2978,7 +3029,7 @@ real,   dimension(nlev_lsm),       intent(out) :: anvil_precip_melt, &
 real,                              intent(out) ::  emdi,pmd, pztm, pzm,&
                                                   meso_precip
 character(len=*),                  intent(out) :: ermesg
-
+integer,                           intent(out) :: error
 !----------------------------------------------------------------------
 !   intent(in) variables:
 !
@@ -3077,7 +3128,7 @@ character(len=*),                  intent(out) :: ermesg
 !----------------------------------------------------------------------
 !
 !----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
       emes_liq = 0.
       emes_ice = 0.
@@ -3151,13 +3202,13 @@ character(len=*),                  intent(out) :: ermesg
               pb, pt_ens, ampta1, dp, pztm,  wtp, &
                   qtmes, cmu, wmms, wmps, temptr, tmes_up, mrmes_up,   &
                   meso_cloud_area, umeml,&
-                  alp, pzm, hfmin, cmui, ermesg)
+                  alp, pzm, hfmin, cmui, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
       if (Nml%force_internal_enthalpy_conservation) then
 !-----------------------------------------------------------------------
@@ -3169,7 +3220,7 @@ character(len=*),                  intent(out) :: ermesg
          call don_u_set_column_integral_k    &
               (nlev_lsm, tmes_up   , pb, &
                phalf_c(1), 0.0, phalf_c , intgl_hi,     &
-               intgl_lo, out, ermesg)
+               intgl_lo, out, ermesg, error)
 
 !---------------------------------------------------------------------
 !    if column diagnostics are desired, output the integrals and 
@@ -3202,13 +3253,13 @@ character(len=*),                  intent(out) :: ermesg
       call don_m_meso_downdraft_miz  &
           (nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param, pfull_c,&
            pfull_c, temp_c, mixing_ratio_c, phalf_c, pb, ampta1, dp,  &
-           pztm, pzm, alp, hfmin, pmd, tmes_dn, mrmes_dn, dmeml, ermesg)
+           pztm, pzm, alp, hfmin, pmd, tmes_dn, mrmes_dn, dmeml, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ')  return
+      if (error /= 0 ) return
 
       if (Nml%force_internal_enthalpy_conservation) then
 !-----------------------------------------------------------------------
@@ -3219,7 +3270,7 @@ character(len=*),                  intent(out) :: ermesg
          call don_u_set_column_integral_k    &
               (nlev_lsm, tmes_dn   , pb, &
                phalf_c(1), 0.0, phalf_c , intgl_hi,     &
-               intgl_lo, out, ermesg)
+               intgl_lo, out, ermesg, error)
 
 !---------------------------------------------------------------------
 !    if column diagnostics are desired, output the integrals and 
@@ -3340,7 +3391,7 @@ character(len=*),                  intent(out) :: ermesg
             available_condensate_ice, pzm, pztm, phalf_c,       &
             emdi_liq, emdi_ice,       &
             emds_liq, emds_ice, &
-                  emes_liq, emes_ice, ermesg)
+                  emes_liq, emes_ice, ermesg, error)
 
        emdi = emdi_liq + emdi_ice
 
@@ -3349,7 +3400,7 @@ character(len=*),                  intent(out) :: ermesg
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
 !---------------------------------------------------------------------
 !    call subroutine meso_melt to distribute the melting of precipitat-
@@ -3357,13 +3408,13 @@ character(len=*),                  intent(out) :: ermesg
 !---------------------------------------------------------------------
       call don_m_meso_melt_k   &
            (nlev_lsm, diag_unit, debug_ijt, Param, temp_c, phalf_c, &
-            pztm, meso_precip, pb, anvil_precip_melt, ermesg)
+            pztm, meso_precip, pb, anvil_precip_melt, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
 !--------------------------------------------------------------------
 !    define cmus_tot   as the profile of total condensate source to the
@@ -3417,7 +3468,7 @@ subroutine don_m_meso_updraft_miz    &
           p_hires, rlsm, emsm, etsm, pfull_c, temp_c, mixing_ratio_c, &
           phalf_c, tracers_c, pb, pt_ens, ampta1, dp, pztm, wtp, &
           qtmes, cmu, wmms, wmps, temptr, tmes_up, mrmes_up,   &
-          meso_cloud_area, umeml, alp, pzm, hfmin, cmui, ermesg)
+          meso_cloud_area, umeml, alp, pzm, hfmin, cmui, ermesg, error)
 
 !-------------------------------------------------------------------
 !    subroutine meens computes the mesoscale effects of the composited
@@ -3452,7 +3503,7 @@ real,   dimension(nlev_lsm),     intent(out) :: cmu, wmms, wmps, &
                                                 meso_cloud_area, umeml
 real,                            intent(out) :: alp, pzm, hfmin, cmui
 character(len=128),              intent(out) :: ermesg
-
+integer,                         intent(out) :: error
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -3476,7 +3527,7 @@ character(len=128),              intent(out) :: ermesg
       integer   :: jk, i, jj, jsave, jkm, jkp, jksave, j, k, nbad
 
 !-----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
       if (ntr > 0) then
         do_donner_tracer = .true.
@@ -3870,6 +3921,7 @@ character(len=128),              intent(out) :: ermesg
           if (nbad /= 0) then
             ermesg = 'subroutine don_m_meso_updraft_k: '// &
                      'temperatures out of range of esat table'
+            error = 1
             return
           endif
 
@@ -3921,6 +3973,7 @@ character(len=128),              intent(out) :: ermesg
         if (nbad /= 0) then
           ermesg = 'subroutine don_m_meso_updraft_k: '// &
                    'temperatures out of range of esat table'
+          error = 1 
           return
         endif
 
@@ -4036,6 +4089,7 @@ character(len=128),              intent(out) :: ermesg
         if (nbad /= 0) then
           ermesg = 'subroutine don_m_meso_updraft_k: '// &
                    'temperatures out of range of esat table'
+          error = 1
           return
         endif
 
@@ -4076,6 +4130,7 @@ character(len=128),              intent(out) :: ermesg
             if (nbad /= 0) then
               ermesg = 'subroutine don_m_meso_updraft_k: '// &
                        'temperatures out of range of esat table'
+              error = 1
               return
             endif
 
@@ -4102,6 +4157,7 @@ character(len=128),              intent(out) :: ermesg
             if (nbad /= 0) then
               ermesg = 'subroutine don_m_meso_updraft_k: '// &
                        'temperatures out of range of esat table'
+              error = 1
               return
             endif
 
@@ -4269,6 +4325,7 @@ character(len=128),              intent(out) :: ermesg
         if (nbad /= 0) then
           ermesg = 'subroutine don_m_meso_updraft_k: '// &
                    'temperatures out of range of esat table'
+          error = 1
           return
         endif
 
@@ -4380,7 +4437,7 @@ character(len=128),              intent(out) :: ermesg
 subroutine don_m_meso_downdraft_miz    &
          (nlev_lsm, nlev_hires, diag_unit, debug_ijt,  Param, p_hires, &
           pfull_c, temp_c, mixing_ratio_c, phalf_c, pb, ampta1, dp,  &
-          pztm, pzm, alp, hfmin, pmd, tmes_dn, mrmes_dn, dmeml, ermesg)
+          pztm, pzm, alp, hfmin, pmd, tmes_dn, mrmes_dn, dmeml, ermesg, error)
 
 !-------------------------------------------------------------------
 !    subroutine meens computes the mesoscale effects of the composited
@@ -4410,6 +4467,7 @@ real,                          intent(in)   :: pb, ampta1, dp, pztm, &
 real,                          intent(out)  :: pmd
 real,   dimension(nlev_lsm),   intent(out)  :: tmes_dn, mrmes_dn, dmeml
 character(len=*),              intent(out)  :: ermesg
+integer,                       intent(out)  :: error
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -4427,7 +4485,7 @@ character(len=*),              intent(out)  :: ermesg
 
 !----------------------------------------------------------------------
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
       tmes_dn = 0.
       mrmes_dn = 0.
@@ -4505,6 +4563,7 @@ character(len=*),              intent(out)  :: ermesg
         if (nbad /= 0) then
           ermesg = 'subroutine don_m_meso_downdraft_k: '// &
                    'temperatures out of range of esat table'
+          error = 1
           return
         endif
 
@@ -4525,6 +4584,7 @@ character(len=*),              intent(out)  :: ermesg
         if (nbad /= 0) then
           ermesg = 'subroutine don_m_meso_downdraft_k: '// &
                    'temperatures out of range of esat table'
+          error = 1
           return
         endif
 
@@ -4580,26 +4640,26 @@ character(len=*),              intent(out)  :: ermesg
           fjk = ampta1*omd*((Param%ref_press/pfull_c(k))**   &
                  (Param%rdgas/Param%cp_air))*(tempt(k) - temp_c(k))
           call don_u_lo1d_to_hi0d_linear_k  &
-               (nlev_lsm, mixing_ratio_c, pfull_c, pb, qb, ermesg)
+               (nlev_lsm, mixing_ratio_c, pfull_c, pb, qb, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (error /= 0 ) return
 
           if (debug_ijt   ) then
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
                             'in polat: k,p,x=', k, pb, qb
           endif
           call don_u_lo1d_to_hi0d_linear_k  &
-               (nlev_lsm, temp_c, pfull_c, pb, tb, ermesg)
+               (nlev_lsm, temp_c, pfull_c, pb, tb, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (error /= 0 ) return
 
           if (debug_ijt   ) then
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
@@ -4614,6 +4674,7 @@ character(len=*),              intent(out)  :: ermesg
           if (nbad /= 0) then
             ermesg = 'subroutine don_m_meso_downdraft_k: '// &
                      'temperatures out of range of esat table'
+            error = 1
             return
           endif
 
@@ -4638,6 +4699,7 @@ character(len=*),              intent(out)  :: ermesg
           if (nbad /= 0) then
             ermesg = 'subroutine don_m_meso_downdraft_k: '// &
                      'temperatures out of range of esat table'
+            error = 1
             return
           endif
 
@@ -4654,26 +4716,26 @@ character(len=*),              intent(out)  :: ermesg
           fjkm = ampta1*omd*((Param%ref_press/pfull_c(k-1))**    &
                  (Param%rdgas/Param%cp_air))*(tempt(k-1) - temp_c(k-1))
           call don_u_lo1d_to_hi0d_linear_k  &
-               (nlev_lsm, mixing_ratio_c, pfull_c, pmd, qmd, ermesg)
+               (nlev_lsm, mixing_ratio_c, pfull_c, pmd, qmd, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (error /= 0 ) return
 
           if (debug_ijt) then
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
                        'in polat: k,p,x=', k, pmd, qmd
           endif
           call don_u_lo1d_to_hi0d_linear_k  &
-               (nlev_lsm, temp_c, pfull_c, pmd, tmd, ermesg)
+               (nlev_lsm, temp_c, pfull_c, pmd, tmd, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-          if (trim(ermesg) /= ' ') return
+          if (error /= 0 ) return
 
           if (debug_ijt   ) then
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
@@ -4688,6 +4750,7 @@ character(len=*),              intent(out)  :: ermesg
           if (nbad /= 0) then
             ermesg = 'subroutine don_m_meso_downdraft_k: '// &
                      'temperatures out of range of esat table'
+            error = 1
             return
           endif
 
@@ -4709,6 +4772,7 @@ character(len=*),              intent(out)  :: ermesg
           if (nbad /= 0) then
             ermesg = 'subroutine don_m_meso_downdraft_k: '// &
                      'temperatures out of range of esat table'
+            error = 1
             return
           endif
 
@@ -4877,7 +4941,7 @@ subroutine don_l_lscloud_driver_miz   &
           mixing_ratio, qlin, qiin, qain, phalf, Don_conv, &
           donner_humidity_factor, donner_humidity_area,  &
            dql, dqi, dqa, &
-          ermesg) 
+          ermesg, error) 
 
 !---------------------------------------------------------------------
 !    subroutine don_l_lscloud_driver obtains variables needed by 
@@ -4915,6 +4979,7 @@ real, dimension(isize,jsize,nlev_lsm),           &
                                              donner_humidity_area, dql, &
                                              dqi, dqa
 character(len=*),           intent(out)   :: ermesg
+integer,                    intent(out)   :: error
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -4974,7 +5039,7 @@ character(len=*),           intent(out)   :: ermesg
 !                    [ kg / (m**2 sec) ]
 !---------------------------------------------------------------------
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !---------------------------------------------------------------------
 !    call define_donner_mass_flux to define the convective system 
@@ -4983,13 +5048,13 @@ character(len=*),           intent(out)   :: ermesg
 !---------------------------------------------------------------------
       call don_l_define_mass_flux_k    &
            (isize, jsize, nlev_lsm, pfull, phalf, Don_conv,   &
-            dmeso_3d, mhalf_3d, ermesg)
+            dmeso_3d, mhalf_3d, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
  
 !---------------------------------------------------------------------
@@ -5001,13 +5066,13 @@ character(len=*),           intent(out)   :: ermesg
       call don_l_adjust_tiedtke_inputs_k    &
            (isize, jsize, nlev_lsm, Param, Col_diag, pfull,temp,   &
             mixing_ratio, phalf, Don_conv, donner_humidity_factor, &
-            donner_humidity_area, exit_flag, ermesg)
+            donner_humidity_area, exit_flag, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
  
 !---------------------------------------------------------------------
 !    when strat_cloud is active, call strat_cloud_donner_tend to
@@ -5065,7 +5130,7 @@ character(len=*),           intent(out)   :: ermesg
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') return
+        if (error /= 0 ) return
       endif
 
 !---------------------------------------------------------------------
@@ -5079,7 +5144,7 @@ character(len=*),           intent(out)   :: ermesg
 subroutine don_d_remove_normalization_miz   &
       (isize, jsize, nlev_lsm, ntr, exit_flag, Nml, Don_conv,  &
        total_precip, Initialized, temperature_forcing,  &
-       moisture_forcing, ermesg)
+       moisture_forcing, ermesg, error)
 
 !---------------------------------------------------------------------
 !    subroutine remove_normalization removes the normalization by the
@@ -5108,7 +5173,7 @@ real   , dimension(isize,jsize,nlev_lsm),                 &
                                   intent(inout) :: temperature_forcing, &
                                                    moisture_forcing
 character(len=*),                 intent(out)   :: ermesg
-
+integer,                          intent(out)   :: error
 !----------------------------------------------------------------------
 !   intent(in) variables:
 !
@@ -5142,7 +5207,7 @@ character(len=*),                 intent(out)   :: ermesg
 !-----------------------------------------------------------------------
 !    initialize the error message character string.
 !-----------------------------------------------------------------------
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !---------------------------------------------------------------------
 !    remove normalization from the cumulus diagnostics and forcing terms
@@ -5338,7 +5403,7 @@ character(len=*),                 intent(out)   :: ermesg
 subroutine cu_clo_miz   &
          (nlev_lsm, ntr, dt, Param, tracers, &
           pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, cush, cbmf, land,  &
-          coldT, sd, Uw_p, ac, Nml, env_r, env_t, a1, ermesg)
+          coldT, sd, Uw_p, ac, Nml, env_r, env_t, a1, ermesg, error)
 
 use donner_types_mod,     only : donner_param_type, donner_nml_type
 use conv_utilities_k_mod, only : pack_sd_lsm_k, extend_sd_k,  &
@@ -5363,13 +5428,14 @@ type(adicloud),                 intent(inout) :: ac
 real,    dimension(nlev_lsm),   intent(in)  :: env_r, env_t
 real,                           intent(out) :: a1
 character(len=*),               intent(out) :: ermesg
+integer,                        intent(out) :: error
 
 real, dimension (nlev_lsm)  :: ttt, rrr
 real    :: zsrc, psrc, hlsrc, thcsrc, qctsrc, cape_c, lofactor, tau
 integer :: k, kl, kmax
 real    :: sigmaw, wcrit, erfarg, cbmf1, ufrc, rbuoy, rkfre, wcrit_min, rmaxfrac
 
-   ermesg = ' '
+   ermesg = ' '; error = 0
 
    do k=1,nlev_lsm
       ttt (k) = env_t(nlev_lsm-k+1)

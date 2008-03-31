@@ -43,8 +43,8 @@ MODULE UW_CONV_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: uw_conv.F90,v 15.0.2.1.2.1.2.1 2007/11/13 11:22:04 rsh Exp $'
-  character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+  character(len=128) :: version = '$Id: uw_conv.F90,v 15.0.2.1.2.1.2.1.2.1.2.1 2008/02/02 10:25:31 rsh Exp $'
+  character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -91,13 +91,16 @@ MODULE UW_CONV_MOD
   real    :: tke0 = 1.
   real    :: lofactor0 = 1.
   integer :: lochoice  = 0
+  real    :: wrel_min = 0.
+  real    :: om_to_oc = 1.67
+  real    :: sea_salt_scale = 0.1
 
   NAMELIST / uw_conv_nml / iclosure, rkm_sh, cldhgt_max, cbmf_dp_frac, &
        do_deep, idpchoice, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt,       &
        do_fast, do_ice, do_ppen, do_pevap, do_micro, mixing_assumption, do_forcedlifting, &
        atopevap, apply_tendency, prevent_unreasonable, aerol, gama, tkemin,    &
        wmin_ratio, use_online_aerosol, landfact_m, pblht0, tke0, lofactor0, lochoice, &
-       do_auto_aero, do_rescale
+       do_auto_aero, do_rescale, wrel_min, om_to_oc, sea_salt_scale
        
 
   !namelist parameters for UW convective plume
@@ -116,11 +119,12 @@ MODULE UW_CONV_MOD
   logical :: do_pdfpcp= .false.
   logical :: do_pmadjt= .false.
   logical :: do_emmax = .false.
+  logical :: do_pnqv = .false.
   real    :: rad_crit = 14.0   ! critical droplet radius
   real    :: emfrac_max = 1.0
 
   NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc, &
-       auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, rad_crit, emfrac_max
+       auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, rad_crit, emfrac_max
  
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
@@ -255,6 +259,7 @@ contains
     cpn % do_pdfpcp = do_pdfpcp
     cpn % do_pmadjt = do_pmadjt
     cpn % do_emmax  = do_emmax
+    cpn % do_pnqv   = do_pnqv 
     cpn % emfrac_max= emfrac_max
     cpn % auto_rate = auto_rate
     cpn % tcrit     = tcrit  
@@ -269,6 +274,7 @@ contains
     cpn % wtwmin_ratio = wmin_ratio*wmin_ratio
     cpn % do_auto_aero = do_auto_aero
     cpn % rad_crit = rad_crit
+    cpn % wrel_min = wrel_min
 
     nqv = get_tracer_index ( MODEL_ATMOS, 'sphum' )
     nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
@@ -619,8 +625,8 @@ contains
               end do
             else
               am1(k)=(asol%aerosol(i,j,k,1)+asol%aerosol(i,j,k,2))*tmp
-              am2(k)= asol%aerosol(i,j,k,5)*tmp
-              am3(k)= asol%aerosol(i,j,k,3)*tmp
+              am2(k)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp
+              am3(k)= om_to_oc*asol%aerosol(i,j,k,3)*tmp
             endif
           end do
 

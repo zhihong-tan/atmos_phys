@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: cumulus_closure_k.F90,v 15.0.4.1 2007/10/24 13:14:02 rsh Exp $
+!  $Id: cumulus_closure_k.F90,v 15.0.4.1.2.1 2008/01/29 21:42:52 wfc Exp $
 
 
 !module cumulus_closure_inter_mod
@@ -15,7 +15,7 @@ subroutine cu_clo_cumulus_closure_k   &
          (nlev_hires, diag_unit, debug_ijt, Param, Nml, lofactor, &
           dcape, cape_p, &
           qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, rl_v, parcel_r,   &
-          env_t, parcel_t, a1, ermesg)
+          env_t, parcel_t, a1, ermesg, error)
 
 !---------------------------------------------------------------------
 !    subroutine cumulus_closure calculates a_1(p_b) for closing the 
@@ -39,6 +39,8 @@ real,    dimension(nlev_hires), intent(in)  :: cape_p, qli0_v, qli1_v, &
                                                parcel_t
 real,                           intent(out) :: a1
 character(len=*),               intent(out) :: ermesg
+integer,                        intent(out) :: error
+
 !---------------------------------------------------------------------
 
 !----------------------------------------------------------------------
@@ -134,7 +136,7 @@ character(len=*),               intent(out) :: ermesg
 !
 !--------------------------------------------------------------------
 
-      ermesg = ' '
+      ermesg = ' ' ; error = 0
 
 !--------------------------------------------------------------------
 !    initialize the perturbed parcel profiles (pert_parcel_t,    
@@ -206,7 +208,7 @@ character(len=*),               intent(out) :: ermesg
                 Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
                 Nml%dfre_for_closure, Nml%rmuz_for_closure, env_t,  &
                 env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
-                dumxcape, parcel_r_clo,  parcel_t_clo, ermesg)
+                dumxcape, parcel_r_clo,  parcel_t_clo, ermesg, error)
       else
         parcel_r_clo = parcel_r
         parcel_t_clo = parcel_t
@@ -229,7 +231,7 @@ character(len=*),               intent(out) :: ermesg
             Nml%dfre_for_closure, Nml%rmuz_for_closure, &
             pert_env_t, &
             pert_env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
-            dumxcape, pert_parcel_r,  pert_parcel_t, ermesg)
+            dumxcape, pert_parcel_r,  pert_parcel_t, ermesg, error)
       else
 
 !--------------------------------------------------------------------
@@ -241,14 +243,14 @@ character(len=*),               intent(out) :: ermesg
             Nml%dfre_for_closure, Nml%rmuz_for_closure, &
             pert_env_t, &
             pert_env_r, cape_p, .true., plfc, plzb, plcl, dumcoin,  &
-            dumxcape, pert_parcel_r,  pert_parcel_t, ermesg)
+            dumxcape, pert_parcel_r,  pert_parcel_t, ermesg, error)
      endif
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') return
+      if (error /= 0 ) return
 
 
 !---------------------------------------------------------------------

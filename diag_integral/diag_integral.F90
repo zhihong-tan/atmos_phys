@@ -41,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: diag_integral.F90,v 13.0 2006/03/28 21:08:22 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+character(len=128) :: version = '$Id: diag_integral.F90,v 13.0.10.1 2008/01/15 08:41:34 rsh Exp $'
+character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 
 
 !---------------------------------------------------------------------
@@ -221,14 +221,14 @@ logical :: module_is_initialized = .false.
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine diag_integral_init (Time_init, Time, blon, blat)
+subroutine diag_integral_init (Time_init, Time, blon, blat, area_in)
 
 !--------------------------------------------------------------------
 !    diag_integral_init is the constructor for diag_integral_mod.
 !--------------------------------------------------------------------
 
 type (time_type),  intent(in), optional :: Time_init, Time
-real,dimension(:), intent(in), optional :: blon, blat
+real,dimension(:,:), intent(in), optional :: blon, blat, area_in
       
 !--------------------------------------------------------------------
 !  intent(in),optional variables:
@@ -243,7 +243,6 @@ real,dimension(:), intent(in), optional :: blon, blat
 !---------------------------------------------------------------------
 !  local variables:
 
-      real, dimension(:), allocatable :: slat
       real    :: r2
       real    :: rsize
       integer :: unit, io, ierr, nc, i, j
@@ -253,7 +252,6 @@ real,dimension(:), intent(in), optional :: blon, blat
 !---------------------------------------------------------------------
 !  local variables:
 !
-!       slat
 !       r2
 !       rsize
 !       unit
@@ -316,8 +314,8 @@ real,dimension(:), intent(in), optional :: blon, blat
 !    the processor. sum over all processors and store the global
 !    number of columns in field_size.
 !---------------------------------------------------------------------
-      idim = size(blon(:)) - 1
-      jdim = size(blat(:)) - 1
+      idim = size(blon,1) - 1
+      jdim = size(blon,2) - 1
       field_size_local = idim*jdim
       rsize = real(field_size_local)
       call mpp_sum (rsize)
@@ -330,14 +328,9 @@ real,dimension(:), intent(in), optional :: blon, blat
 !    global surface area in sum_area.
 !---------------------------------------------------------------------
       allocate (area(idim,jdim))
-      r2 = radius*radius
-      allocate (slat(size(blat(:))))
-      slat = sin(blat)
-      do j=1,jdim
-        do i=1,idim
-         area(i,j) = r2*(blon(i+1) - blon(i))*(slat(j+1) - slat(j))
-        end do
-      end do
+
+      area = area_in
+
       sum_area_local = sum(area)
       sum_area = sum_area_local
       call mpp_sum (sum_area)
@@ -370,7 +363,6 @@ real,dimension(:), intent(in), optional :: blon, blat
 !--------------------------------------------------------------------
 !    deallocate the local array and mark the module as initialized.
 !--------------------------------------------------------------------
-      deallocate (slat)
       module_is_initialized = .true.
    endif  ! (present optional arguments)
 

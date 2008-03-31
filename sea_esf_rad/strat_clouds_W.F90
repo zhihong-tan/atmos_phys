@@ -61,7 +61,7 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 15.0.4.1 2007/11/09 23:05:20 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
+character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
 
 
 !---------------------------------------------------------------------

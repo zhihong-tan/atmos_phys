@@ -5,7 +5,8 @@ use time_manager_mod,       only: time_type, set_time, &
                                   get_calendar_type, &
                                   operator(-), &
                                   operator(>=), operator (<)
-use diag_manager_mod,       only: register_diag_field, send_data
+use diag_manager_mod,       only: register_diag_field, send_data, &
+                                  diag_axis_init
 use field_manager_mod,      only: MODEL_ATMOS, field_manager_init, &
                                   fm_query_method, get_field_info, &
                                   parse
@@ -46,7 +47,8 @@ use donner_types_mod,       only: donner_initialized_type, &
                                   CELL_UPWARD_MASS_FLUX, TEMP_FORCING, &
                                   MOIST_FORCING, PRECIP,  FREEZING, &
                                   RADON_TEND, &
-                                  donner_conv_type, donner_cape_type
+                                  donner_conv_type, donner_cape_type, &
+                                  donner_cem_type
 use  conv_utilities_k_mod,  only: sd_init_k, sd_end_k, ac_init_k,  &
                                   ac_end_k, uw_params_init_k, &
                                   exn_init_k, exn_end_k, findt_init_k, &
@@ -68,8 +70,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 15.0.2.1.2.1.2.1.2.1.2.1 2007/11/13 11:30:02 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 15.0.2.1.2.1.2.1.2.1.2.1.2.2.2.1.2.1.2.1 2008/01/29 21:42:53 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
 
 
 !--------------------------------------------------------------------
@@ -259,6 +261,10 @@ logical             :: force_internal_enthalpy_conservation = .false.
                              ! mesoscale motions, rather than forcing
                              ! entropy conservation
 
+logical             :: do_ensemble_diagnostics = .false.
+                             ! include netcdf diagnostics for selected
+                             ! variables for each ensemble member ?
+
 !----------------------------------------------------------------------
 !   The following nml variables are not needed in any kernel subroutines
 !   and so are not included in the donner_nml_type variable:
@@ -381,6 +387,7 @@ namelist / donner_deep_nml /      &
                             wmin_ratio, &
                             do_budget_analysis, &
                             force_internal_enthalpy_conservation, &
+                            do_ensemble_diagnostics, &
 
 ! not contained in donner_nml_type variable:
                             do_netcdf_restart, &
@@ -732,6 +739,14 @@ integer    :: id_cemetf_deep, id_ceefc_deep, id_cecon_deep, &
               id_amax_deep, id_amos_deep, &
               id_tprea1_deep, id_ampta1_deep, &
               id_omint_deep, id_rcoa1_deep, id_detmfl_deep
+integer                  :: id_pfull_cem, id_phalf_cem, &
+                            id_zfull_cem, id_zhalf_cem, &
+                            id_temp_cem, id_mixing_ratio_cem
+integer, dimension(KPAR) :: id_cpre_cem, id_pb_cem, id_ptma_cem, &
+                            id_h1_cem, id_qlw_cem, id_cfi_cem, &
+                            id_wv_cem, id_rcl_cem
+integer                  :: id_a1_cem, id_cual_cem, id_tfrc_cem, &
+                            id_mpre_cem
 
 integer, dimension(:), allocatable :: id_qtren1, id_qtmes1, &
                                       id_wtp1, id_qtceme, &
@@ -756,6 +771,7 @@ integer   :: id_ci_prcp_heat_liq_cell, id_ci_prcp_heat_frz_cell, &
 
 real              :: missing_value = -999.
 character(len=16) :: mod_name = 'donner_deep'
+integer           :: donner_axes(5)
 
 !--------------------------------------------------------------------
 !   variables for column diagnostics option
@@ -864,7 +880,8 @@ logical,                         intent(in)   :: using_unified_closure
       integer                             :: unit, ierr, io
       integer                             :: idf, jdf, nlev, ntracers
       integer                             :: secs, days
-      logical, dimension(size(latb,2)-1) :: do_column_diagnostics
+      logical, dimension(size(latb,1)-1, size(latb,2)-1) ::  &
+                                             do_column_diagnostics
       integer                             :: k, n, nn
 !++lwh
       logical                             :: flag
@@ -1006,17 +1023,15 @@ logical,                         intent(in)   :: using_unified_closure
         Initialized%do_input_cell_ice_size = .true.
         Initialized%do_default_cell_ice_size = .false.
         if (cell_ice_geneff_diam_input <= 0.0) then
-          call error_mesg ('donner_deep_mod', 'donner_deep_init: &
-               & must define a nonnegative generalized effective '//&
-                'diameter for ice when cell_ice_size_type is input', &
-                                                                 FATAL)
+          call error_mesg ('donner_deep_mod', 'donner_deep_init: must define a nonnegative generalized effective'// &
+                'diameter for ice when cell_ice_size_type is input', FATAL )
         endif
       else if (trim(cell_ice_size_type) == 'default') then
         Initialized%do_input_cell_ice_size = .false.
         Initialized%do_default_cell_ice_size = .true.
       else
-        call error_mesg ( 'donner_deep_init', 'donner_deep_init: &
-             & cell_ice_size_type must be input or default',  FATAL)
+        call error_mesg ( 'donner_deep_init', & 
+        'donner_deep_init: cell_ice_size_type must be input or default',  FATAL)
       endif
 
 
@@ -1246,7 +1261,7 @@ logical,                         intent(in)   :: using_unified_closure
         call initialize_diagnostic_columns   &
                      (mod_name, num_diag_pts_latlon, num_diag_pts_ij, &
                       i_coords_gl, j_coords_gl, lat_coords_gl, &
-                      lon_coords_gl, lonb(:,1), latb(1,:),  &
+                      lon_coords_gl, lonb(:,:), latb(:,:),  &
                       do_column_diagnostics, &
                       col_diag_lon, col_diag_lat, col_diag_i,  &
                       col_diag_j, col_diag_unit)
@@ -1453,6 +1468,7 @@ logical,                         intent(in)   :: using_unified_closure
       Nml%do_budget_analysis          = do_budget_analysis
       Nml%force_internal_enthalpy_conservation =  &
                                  force_internal_enthalpy_conservation
+      Nml%do_ensemble_diagnostics     = do_ensemble_diagnostics
 
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -1687,7 +1703,9 @@ real, dimension(:,:,:),       intent(out),               &
       type(donner_budgets_type)         :: Don_budgets
       type(donner_cape_type)            :: Don_cape
       type(donner_rad_type)             :: Don_rad
+      type(donner_cem_type)             :: Don_cem
       character(len=128)                :: ermesg
+      integer                           :: error
       integer                           :: isize, jsize, nlev_lsm
       integer                           :: ntr, me
       logical                           :: calc_conv_on_this_step 
@@ -1724,6 +1742,9 @@ real, dimension(:,:,:),       intent(out),               &
 !                          to hold those fields needed to connect the
 !                          donner deep convection parameterization and
 !                          the model radiation package
+!     Don_cem              donner_cem_type derived type variable 
+!                          containing Donner cumulus ensemble member 
+!                          diagnostics
 !     ermesg               character string containing any error message
 !                          that is returned from a kernel subroutine
 !     isize                x-direction size of the current physics window
@@ -1820,8 +1841,8 @@ real, dimension(:,:,:),       intent(out),               &
 !           parcel_rise, delta_ql, delta_qi, delta_qa, qtrtnd,         &
             parcel_rise, delta_ql_arg, delta_qi_arg, delta_qa_arg,   &
             qtrtnd,         &
-            calc_conv_on_this_step, ermesg, Initialized, Col_diag,   &
-            Don_rad, Don_conv, Don_cape, Don_save, &!miz
+            calc_conv_on_this_step, ermesg, error, Initialized, Col_diag,   &
+            Don_rad, Don_conv, Don_cape, Don_cem, Don_save, &!miz
             sd, Uw_p, ac, cp, ct,  Don_budgets)
 
 !----------------------------------------------------------------------
@@ -1851,7 +1872,7 @@ real, dimension(:,:,:),       intent(out),               &
 !!!  HOW TO DISTINGUISH FATAL, WARNING, NOTE ??
 !    FOR NOW, ALL messages considered FATAL.
 !----------------------------------------------------------------------
-      if (trim(ermesg) /= ' ') then
+      if (error /= 0) then
         print *, 'ermesg', ermesg, me
         call error_mesg ('donner_deep_mod', ermesg, FATAL)
       endif
@@ -1868,7 +1889,7 @@ real, dimension(:,:,:),       intent(out),               &
         end do
 
         call donner_deep_netcdf (is, ie, js, je, Nml, Time, Don_conv,  &
-                                 Don_cape, parcel_rise, pmass, &
+                                 Don_cape, Don_cem,parcel_rise, pmass, &
                                  total_precip,  Don_budgets, &
                                  temperature_forcing, &
                                  moisture_forcing)
@@ -1898,14 +1919,14 @@ real, dimension(:,:,:),       intent(out),               &
 !    local derived-type variables.
 !--------------------------------------------------------------------
         call don_d_dealloc_loc_vars_k   &
-               (Don_conv, Don_cape, Don_rad, Don_budgets, Nml, &
-                                               Initialized, ermesg)
+               (Don_conv, Don_cape, Don_rad, Don_cem,Don_budgets, Nml, &
+                                               Initialized, ermesg, error)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, process the error message.
 !----------------------------------------------------------------------
-        if (trim(ermesg) /= ' ') then
+        if (error /= 0) then
           call error_mesg ('donner_deep_mod', ermesg, FATAL)
         endif
       endif  ! (calc_conv_on_this_step)
@@ -2016,6 +2037,36 @@ integer,         dimension(4), intent(in)   :: axes
       integer  :: ntracers     ! number of tracers transported by the
                                ! donner deep convection parameterization
       integer :: nn            ! do-loop index
+      integer :: ncem = KPAR   ! number of cumulus ensemble members in
+                               ! the donner deep convection parameter-
+                               ! ization
+      character(len=2) :: chvers ! character representation of cumulus 
+                                 ! ensemble  member number
+
+!  define a variable for telling "register_fields" to put output on
+!  "half-levels" (Reference:  Chris Golaz's subroutine "diag_field_init"
+!  in /home/cjg/FMS/nalanda/nnew3/m45_am2p14_nnew3/src/atmos_param/
+!                                 moist_processes/moist_processes.F90)
+ 
+      integer, dimension(3) :: half = (/1,2,4/)
+      integer, dimension(3) :: cldindices = (/1,2,5/)
+      integer               :: id_cldmodel
+      real                  :: cldvindx(NLEV_HIRES)
+      integer               :: k
+
+!---------------------------------------------------------------------  
+!    define the axes for the donner cloud model.
+!---------------------------------------------------------------------
+      donner_axes(1:4) = axes(1:4)     
+      if (do_donner_plume) then
+        do k=1, NLEV_HIRES
+          cldvindx(k) = real(k)
+        end do
+        id_cldmodel = diag_axis_init('cldvindx', cldvindx, 'level#', &
+                                     'z', 'cld model vertical index', &
+                                     set_name=mod_name )
+        donner_axes(5) = id_cldmodel
+      endif
 
 !----------------------------------------------------------------------
 !    define the number of tracers that are to be transported by the 
@@ -2171,7 +2222,7 @@ integer,         dimension(4), intent(in)   :: axes
       id_enthalpy_budget(15)    = register_diag_field    &
             (mod_name, 'enth_cell_precip_melt', axes(1:3),   &
              Time, 'temp tendency from the melting of cell frozen &
-             liquid and ice that is precipitating out', 'deg K / day', &
+             &liquid and ice that is precipitating out', 'deg K / day', &
              missing_value=missing_value)
 
       id_enthalpy_budget(16)    = register_diag_field    &
@@ -2237,7 +2288,7 @@ integer,         dimension(4), intent(in)   :: axes
       id_precip_budget(2,2)    = register_diag_field    &
             (mod_name, 'precip_trans_liq_frz', axes(1:3),   &
              Time, 'precip from cell liquid transferred to meso &
-              which froze', 'kg(h2o) / kg(air) / day', &
+              &which froze', 'kg(h2o) / kg(air) / day', &
              missing_value=missing_value)
 
       id_precip_budget(3,2)    = register_diag_field    &
@@ -2297,7 +2348,7 @@ integer,         dimension(4), intent(in)   :: axes
       id_ci_precip_budget(2,1)    = register_diag_field    &
             (mod_name, 'ci_precip_cell_liq_frz', axes(1:2),   &
              Time, 'col intg precip from cell liquid condensate &
-             which froze',  'mm / day', &
+             &which froze',  'mm / day', &
              missing_value=missing_value)
 
       id_ci_precip_budget(3,1)    = register_diag_field    &
@@ -2327,7 +2378,7 @@ integer,         dimension(4), intent(in)   :: axes
       id_ci_precip_budget(2,2)    = register_diag_field    &
             (mod_name, 'ci_precip_trans_liq_frz', axes(1:2),   &
              Time, 'col intg precip from cell liquid transferred &
-              to meso  which froze', 'mm / day', &
+              &to meso  which froze', 'mm / day', &
              missing_value=missing_value)
 
       id_ci_precip_budget(3,2)    = register_diag_field    &
@@ -2444,13 +2495,13 @@ integer,         dimension(4), intent(in)   :: axes
       id_ci_enthalpy_budget(3)    = register_diag_field    &
             (mod_name, 'ci_enth_meso_depo_liq', axes(1:2),   &
              Time, 'col intg enthalpy tendency from mesoscale &
-             deposition on liquid condensate',  'J/m**2 / day',    &
+             &deposition on liquid condensate',  'J/m**2 / day',    &
              missing_value=missing_value)
 
       id_ci_enthalpy_budget(4)    = register_diag_field    &
             (mod_name, 'ci_enth_meso_cd_liq', axes(1:2),   &
              Time, 'col intg enthalpy tendency from mesoscale &
-             liquid condensation', 'J/m**2 / day',    &
+             &liquid condensation', 'J/m**2 / day',    &
              missing_value=missing_value)
 
       id_ci_enthalpy_budget(5)    = register_diag_field    &
@@ -2483,7 +2534,7 @@ integer,         dimension(4), intent(in)   :: axes
       id_ci_enthalpy_budget(9)    = register_diag_field    &
             (mod_name, 'ci_enth_meso_cd_ice', axes(1:2),   &
              Time, 'col intg enthalpy tendency from mesoscale ice &
-             condensation', 'J/m**2 / day',    &
+             &condensation', 'J/m**2 / day',    &
              missing_value=missing_value)
 
       id_ci_enthalpy_budget(10)    = register_diag_field    &
@@ -2515,7 +2566,7 @@ integer,         dimension(4), intent(in)   :: axes
       id_ci_enthalpy_budget(14)    = register_diag_field    &
             (mod_name, 'ci_enth_cell_freeze', axes(1:2),   &
              Time, 'col intg enthalpy tendency from the freezing of &
-             liquid cell condensate', 'J/m**2 / day',    &
+             &liquid cell condensate', 'J/m**2 / day',    &
              missing_value=missing_value)
 
       id_ci_enthalpy_budget(15)    = register_diag_field    &
@@ -2534,7 +2585,7 @@ integer,         dimension(4), intent(in)   :: axes
       id_ci_enthalpy_budget(17)    = register_diag_field    &
             (mod_name, 'ci_enth_meso_precip_melt', axes(1:2),   &
              Time, 'col intg enthalpy tendency from the melting of &
-              frozen mesoscale precipitation',  &
+              &frozen mesoscale precipitation',  &
               'J/m**2 / day',    &
              missing_value=missing_value)
 
@@ -2998,6 +3049,177 @@ integer,         dimension(4), intent(in)   :: axes
 
 !----------------------------------------------------------------------
 
+    if (do_ensemble_diagnostics) then
+!
+!  Donner cumulus ensemble member diagnostics
+!
+!    GCM model pressure field on full levels:
+      id_pfull_cem = register_diag_field  &
+            (mod_name, 'p_full', axes(1:3), &
+             Time, 'GCM model pressure on full levels (lo-res)', 'Pa', &
+             missing_value=missing_value)
+
+!    GCM model pressure field on half levels:
+      id_phalf_cem = register_diag_field  &
+            (mod_name, 'p_half', axes(half), &
+             Time, 'GCM model pressure on half levels (lo-res)', 'Pa', &
+             missing_value=missing_value)
+
+!    GCM model height field on full levels:
+      id_zfull_cem = register_diag_field  &
+            (mod_name, 'z_full', axes(1:3), &
+             Time, 'GCM model height on full levels (lo-res)', 'm', &
+             missing_value=missing_value)
+
+!    GCM model height field on half levels:
+      id_zhalf_cem = register_diag_field  &
+            (mod_name, 'z_half', axes(half), &
+             Time, 'GCM model height on half levels (lo-res)', 'm', &
+             missing_value=missing_value)
+
+!    GCM model temperature field on full levels:
+      id_temp_cem = register_diag_field  &
+            (mod_name, 'temp', axes(1:3), &
+             Time, 'GCM model temperature on full levels (lo-res)', 'K', &
+             missing_value=missing_value)
+
+!    GCM model mixing ratio field on full levels:
+      id_mixing_ratio_cem = register_diag_field  &
+            (mod_name, 'mixing_ratio', axes(1:3), &
+             Time, 'GCM model mixing ratio on full levels (lo-res)', &
+             'kg(h2o)/kg(dry air)', &
+             missing_value=missing_value)
+
+      do nn=1,ncem
+
+        if( nn <= 9 )then
+          write( chvers, '(i1)' ) nn
+        else if( nn <= 99 )then
+          write( chvers, '(i2)' ) nn
+        else
+          print *, 'Error in subroutine register_fields:'
+          print *, '  number of specified cumulus ensemble members = ',ncem
+          print *, '  is more than current limit of 99.'
+          stop
+        endif
+
+!    area-weighted convective precipitation rate:
+        id_cpre_cem(nn) = register_diag_field  &
+            (mod_name, 'cpre_cem'//TRIM(chvers), axes(1:2), &
+             Time, 'area wtd cnvctv precip rate - member '//TRIM(chvers), &
+             'mm/day', &
+             missing_value=missing_value)
+
+!    pressure at cloud base:
+        id_pb_cem(nn) = register_diag_field  &
+            (mod_name, 'pb_cem'//TRIM(chvers), axes(1:2), &
+             Time, 'pressure at cloud base - member '//TRIM(chvers), &
+             'Pa', &
+             missing_value=missing_value)
+
+!    pressure at cloud top:
+        id_ptma_cem(nn) = register_diag_field  &
+            (mod_name, 'ptma_cem'//TRIM(chvers), axes(1:2), &
+             Time, 'pressure at cloud top - member '//TRIM(chvers), &
+             'Pa', &
+             missing_value=missing_value)
+
+!    condensation rate profile on lo-res grid:
+        id_h1_cem(nn) = register_diag_field  &
+            (mod_name, 'h1_cem'//TRIM(chvers), axes(1:3), &
+             Time, 'condensation rate profile - member '//TRIM(chvers), &
+             'kg(h2o)/(kg(dry air) sec)', &
+             missing_value=missing_value)
+        
+! IF LOOP HERE:
+       if (.not. do_donner_plume) then
+!    cloud water profile on lo-res grid:
+        id_qlw_cem(nn) = register_diag_field  &
+            (mod_name, 'qlw_cem'//TRIM(chvers), axes(1:3), &
+             Time, 'cloud water profile - member '//TRIM(chvers), &
+            'kg(h2o)/kg(air)', &
+             missing_value=missing_value)
+
+!    fraction of condensate that is ice on lo-res grid:
+        id_cfi_cem(nn) = register_diag_field  &
+            (mod_name, 'cfi_cem'//TRIM(chvers), axes(1:3), &
+             Time, 'condensate ice fraction - member '//TRIM(chvers), &
+             'fraction', &
+             missing_value=missing_value)
+
+!    vertical velocity profile in plume on lo-res grid:
+        id_wv_cem(nn) = register_diag_field  &
+            (mod_name, 'wv_cem'//TRIM(chvers), axes(1:3), &
+             Time, 'plume vertical velocity - member '//TRIM(chvers), &
+             'm / s', &
+             missing_value=missing_value)
+
+!    cloud radius profile in plume on lo-res grid:
+        id_rcl_cem(nn) = register_diag_field  &
+            (mod_name, 'rcl_cem'//TRIM(chvers), axes(1:3), &
+             Time, 'plume cloud radius - member '//TRIM(chvers), &
+             'm', &
+             missing_value=missing_value)
+
+        else
+!    cloud water profile on hi-res grid:
+        id_qlw_cem(nn) = register_diag_field  &
+            (mod_name, 'qlw_cem'//TRIM(chvers), donner_axes(cldindices), &
+             Time, 'cloud water profile - member '//TRIM(chvers), &
+            'kg(h2o)/kg(air)', &
+             missing_value=missing_value)
+
+!    fraction of condensate that is ice on hi-res grid:
+        id_cfi_cem(nn) = register_diag_field  &
+            (mod_name, 'cfi_cem'//TRIM(chvers), donner_axes(cldindices), &
+             Time, 'condensate ice fraction - member '//TRIM(chvers), &
+             'fraction', &
+             missing_value=missing_value)
+
+!    vertical velocity profile in plume on hi-res grid:
+        id_wv_cem(nn) = register_diag_field  &
+            (mod_name, 'wv_cem'//TRIM(chvers), donner_axes(cldindices), &
+             Time, 'plume vertical velocity - member '//TRIM(chvers), &
+             'm / s', &
+             missing_value=missing_value)
+
+!    cloud radius profile in plume on hi-res grid:
+        id_rcl_cem(nn) = register_diag_field  &
+            (mod_name, 'rcl_cem'//TRIM(chvers), donner_axes(cldindices), &
+             Time, 'plume cloud radius - member '//TRIM(chvers), &
+             'm', &
+             missing_value=missing_value)
+
+        endif
+      enddo
+
+!    area-weighted mesoscale precipitation rate:
+        id_mpre_cem = register_diag_field  &
+            (mod_name, 'mpre_cem', axes(1:2), &
+             Time, 'area wtd mesoscale precip rate ', &
+             'mm/day', &
+             missing_value=missing_value)
+
+!    fractional area sum:
+      id_a1_cem = register_diag_field  &
+            (mod_name, 'a1_cem', axes(1:2), &
+             Time, 'fractional area sum', 'fraction', &
+             missing_value=missing_value)
+
+!    cloud fraction, cells+meso, normalized by a(1,p_b) on lo-res grid:
+      id_cual_cem = register_diag_field  &
+            (mod_name, 'cual_cem', axes(1:3), &
+             Time, 'cloud fraction, cells+meso, normalized by a(1,p_b)', &
+             'fraction', &
+             missing_value=missing_value)
+
+!    time tendency of temperature due to deep convection on lo-res grid:
+      id_tfrc_cem = register_diag_field  &
+            (mod_name, 'tfrc_cem', axes(1:3), &
+             Time, 'temperature tendency due to deep convection (lo-res)', &
+             'K/sec', missing_value=missing_value)
+
+    endif ! (do_ensemble_diagnostics)
 
 end subroutine register_fields 
 
@@ -4042,7 +4264,7 @@ end subroutine donner_column_control
 !######################################################################
 
 subroutine donner_deep_netcdf (is, ie, js, je, Nml, Time, Don_conv, Don_cape,&
-                               parcel_rise, pmass, total_precip, &
+                               Don_cem,parcel_rise, pmass, total_precip, &
                                Don_budgets, &
                                temperature_forcing, moisture_forcing)  
 
@@ -4058,6 +4280,7 @@ type(donner_nml_type), intent(in) :: Nml
 type(donner_conv_type), intent(in) :: Don_conv
 type(donner_budgets_type), intent(in) :: Don_budgets
 type(donner_cape_type), intent(in) :: Don_cape
+type(donner_cem_type),  intent(in) :: Don_cem
 real, dimension(:,:,:), intent(in) :: pmass, temperature_forcing,&
                                       moisture_forcing
 real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
@@ -4076,6 +4299,8 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
 !     Don_cape       donner_cape type derived type variable containing
 !                    diagnostics related to the cape calculation assoc-
 !                    iated with the donner convection parameterization
+!     Don_cem        donner_cem_type derived type variable containing
+!                    Donner cumulus ensemble member diagnostics
 !     temperature_forcing  
 !                    temperature tendency due to donner convection
 !                    [ deg K / sec ]
@@ -4104,6 +4329,8 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
       integer :: ntr       ! number of tracers transported by the
                            ! donner deep convection parameterization
       integer :: k, n, nn  ! do-loop indices
+      integer :: ncem      ! number of cumulus ensemble members in the
+                           ! donner deep convection parameterization
 
 !----------------------------------------------------------------------
 !    define the number of model layers (nlev) and number of transported
@@ -4111,6 +4338,12 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
 !----------------------------------------------------------------------
       nlev = size (pmass,3)
       ntr  = size (Don_conv%qtren1,4)
+
+!----------------------------------------------------------------------
+!    define the number of cumulus ensemble members in the
+!    donner deep convection parameterization.
+!----------------------------------------------------------------------
+      ncem = size (Don_cem%cell_precip,3)
 
 !---------------------------------------------------------------------
 !    send the 3D convective output variables to diag_manager_mod.
@@ -4575,6 +4808,88 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
       used = send_data (id_rcoa1_deep, Don_conv%cell_precip,    &
                         Time, is, js)
        endif
+
+   if (Nml%do_ensemble_diagnostics) then
+
+!---------------------------------------------------------------------
+!  Donner cumulus ensemble member diagnostics
+!---------------------------------------------------------------------
+
+!    GCM model pressure field on full levels:
+      used = send_data (id_pfull_cem, Don_cem%pfull, &
+                        Time, is, js, 1)
+
+!    GCM model pressure field on half levels:
+      used = send_data (id_phalf_cem, Don_cem%phalf, &
+                        Time, is, js, 1)
+
+!    GCM model height field on full levels:
+      used = send_data (id_zfull_cem, Don_cem%zfull, &
+                        Time, is, js, 1)
+
+!    GCM model height field on half levels:
+      used = send_data (id_zhalf_cem, Don_cem%zhalf, &
+                        Time, is, js, 1)
+
+!    GCM model temperature field on full levels:
+      used = send_data (id_temp_cem, Don_cem%temp, &
+                        Time, is, js, 1)
+
+!    GCM model mixing ratio field on full levels:
+      used = send_data (id_mixing_ratio_cem, Don_cem%mixing_ratio, &
+                        Time, is, js, 1)
+
+      do n=1,ncem     ! ensemble member number
+
+!    area-weighted convective precipitation rate:
+        used = send_data (id_cpre_cem(n), Don_cem%cell_precip(:,:,n), &
+                          Time, is, js)
+
+!    pressure at cloud base:
+        used = send_data (id_pb_cem(n), Don_cem%pb(:,:,n), &
+                          Time, is, js)
+
+!    pressure at cloud top:
+        used = send_data (id_ptma_cem(n), Don_cem%ptma(:,:,n), &
+                          Time, is, js)
+
+!    condensation rate profile on lo-res grid:
+        used = send_data (id_h1_cem(n), Don_cem%h1(:,:,:,n), &
+                          Time, is, js, 1)
+
+!    cloud water profile on lo- or hi-res grid:
+        used = send_data (id_qlw_cem(n), Don_cem%qlw(:,:,:,n), &
+                          Time, is, js, 1)
+
+!    fraction of condensate that is ice on lo- or hi-res grid:
+        used = send_data (id_cfi_cem(n), Don_cem%cfracice(:,:,:,n), &
+                          Time, is, js, 1)
+
+!    plume vertical velocity profile on lo- or hi-res grid:
+        used = send_data (id_wv_cem(n), Don_cem%wv(:,:,:,n), &
+                          Time, is, js, 1)
+
+!    plume cloud radius profile on lo- or hi-res grid:
+        used = send_data (id_rcl_cem(n), Don_cem%rcl(:,:,:,n), &
+                          Time, is, js, 1)
+      enddo
+
+!    fractional area sum:
+      used = send_data (id_a1_cem, Don_cem%a1, &
+                        Time, is, js)
+
+!    area-weighted mesoscale precipitation rate:
+        used = send_data (id_mpre_cem, Don_cem%meso_precip, &
+                          Time, is, js)
+
+!    cloud fraction, cells+meso, normalized by a(1,p_b) on lo-res grid:
+      used = send_data (id_cual_cem, Don_cem%cual, &
+                        Time, is, js, 1)
+
+!    time tendency of temperature due to deep convection on lo-res grid:
+      used = send_data (id_tfrc_cem, Don_cem%temperature_forcing, &
+                        Time, is, js, 1)
+   endif  ! (do_ensemble_diagnostics)
 
 !----------------------------------------------------------------------
 !    send diagnostics associated with the monitored output fields.

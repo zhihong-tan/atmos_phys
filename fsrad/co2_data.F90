@@ -115,7 +115,7 @@ private
 !------------ VERSION NUMBER ----------------
 
  character(len=128) :: version = '$Id: co2_data.F90,v 13.0 2006/03/28 21:09:22 fms Exp $'
- character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+ character(len=128) :: tagname = '$Name: omsk_2008_03 $'
  logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------

@@ -64,8 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 15.0.2.1 2007/09/29 13:17:12 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2007_12 $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 15.0.2.1.4.1 2008/02/06 03:05:55 rab Exp $'
+character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
 
 
 !---------------------------------------------------------------------
@@ -1010,9 +1010,10 @@ real, dimension(:,:,:),         intent(in), optional :: mask
 !---------------------------------------------------------------------
 !    and to get optical thickness...
 !---------------------------------------------------------------------
-            Tau_stoch(:,:,:,:) = (Tau_stoch(:, :, :, :) *         &
-                     spread(Atmos_input%deltaz(:,:,:)/1000.,   &
-                      dim = 4, nCopies = ncol) / isccp_scale_factor)
+           do n=1,ncol
+            Tau_stoch(:,:,:,n) = (Tau_stoch(:,:,:,n) *         &
+                   Atmos_input%deltaz(:,:,:)/1000. / isccp_scale_factor)
+            enddo
  
 !---------------------------------------------------------------------
 !    at first the LwEm array holds the absorption coefficient...
@@ -1023,10 +1024,12 @@ real, dimension(:,:,:),         intent(in), optional :: mask
 !---------------------------------------------------------------------
 !    and then the emissivity 
 !---------------------------------------------------------------------
-            LwEm_stoch(:, :, :, :) = 1. - exp( -1. * diffac *        &
-                                    (LwEm_stoch(:, :, :, :) *        &
-                  spread(Atmos_input%deltaz(:,:,:)/1000.,    &
-                         dim = 4, nCopies = ncol)) / isccp_scale_factor) 
+           do n=1,ncol
+            LwEm_stoch(:, :, :,n) = 1. - exp( -1. * diffac *        &
+                                    (LwEm_stoch(:, :, :,n) *        &
+                                      Atmos_input%deltaz(:,:,:)/1000.    &
+                                     ) / isccp_scale_factor) 
+            enddo
                         
 !----------------------------------------------------------------------
 !    call isccp_diag_stochastic to map the stochastic clouds and cloud
@@ -1147,9 +1150,11 @@ real, dimension(:,:,:),         intent(in), optional :: mask
 !    bands.
 !---------------------------------------------------------------------
         if (id_high_cld_amt > 0)  then            
-          tmplmask4(:,:,:,:) =    &
-                        SPREAD (Atmos_input%pflux(:,:,:) <= high_btm, &
-                                               dim = 4, ncopies = ncol) 
+          do n=1,ncol
+          tmplmask4(:,:,:,n) =    &
+                         (Atmos_input%pflux(:,:,:) <= high_btm)
+          enddo
+
           cloud2n(:,:,:) =    &
                COUNT (Model_microphys%stoch_cldamt(:,:,:,:) > 0 .and. &
                                         tmplmask4(:,:,:,:), dim = 3)
@@ -1168,10 +1173,12 @@ real, dimension(:,:,:),         intent(in), optional :: mask
 !    bands.
 !---------------------------------------------------------------------
         if (id_mid_cld_amt > 0) then    
-          tmplmask4(:,:,:,:) =     &
-                    SPREAD ((Atmos_input%pflux(:,:,:) <= mid_btm .and. &
-                             Atmos_input%pflux(:,:,:) >  high_btm), &
-                                               dim = 4, ncopies = ncol) 
+          do n=1,ncol
+          tmplmask4(:,:,:,n) =     &
+                     (Atmos_input%pflux(:,:,:) <= mid_btm .and. &
+                             Atmos_input%pflux(:,:,:) >  high_btm) 
+          enddo
+                                                
           cloud2n(:,:,:) =    &
                COUNT (Model_microphys%stoch_cldamt(:,:,:,:) > 0 .and. &
                                         tmplmask4(:,:,:,:), dim = 3)
@@ -1190,9 +1197,11 @@ real, dimension(:,:,:),         intent(in), optional :: mask
 !    bands.
 !---------------------------------------------------------------------
         if (id_low_cld_amt > 0)  then            
-          tmplmask4(:,:,:,:) =      &
-                    SPREAD (Atmos_input%pflux(:,:,: ) >  mid_btm, &
-                                               dim = 4, ncopies = ncol) 
+          do n=1,ncol
+          tmplmask4(:,:,:,n) =      &
+                    (Atmos_input%pflux(:,:,: ) >  mid_btm)
+          enddo
+
           cloud2n(:,:,:) =    &
                COUNT (Model_microphys%stoch_cldamt(:,:,:,:) > 0 .and. &
                                        tmplmask4(:,:,:,:), dim = 3)
@@ -1578,10 +1587,9 @@ real, dimension(:,:,:),         intent(in), optional :: mask
             id_strat_size_ice > 0) then
           tmplmask = Lsc_microphys%conc_ice > 0.0
           if (id_strat_area_ice > 0) then
+            cloud   = 0.
             where (tmplmask)                     
               cloud   = Lsc_microphys%cldamt
-            elsewhere
-              cloud   = 0.
             endwhere      
             used = send_data (id_strat_area_ice, cloud, Time_diag,  &
                               is, js, 1, rmask=mask)
@@ -1633,10 +1641,9 @@ real, dimension(:,:,:),         intent(in), optional :: mask
           tmplmask = Lsc_microphys%conc_drop > 0.0
 
           if (id_strat_area_liq > 0) then
+            cloud   = 0.
             where (tmplmask)                      
               cloud   = Lsc_microphys%cldamt
-            elsewhere
-              cloud   = 0.
             endwhere      
             used = send_data (id_strat_area_liq, cloud, Time_diag,  &
                               is, js, 1, rmask=mask)
@@ -1663,17 +1670,15 @@ real, dimension(:,:,:),         intent(in), optional :: mask
 
           if (id_strat_droplet_number > 0) then
             if (Cldrad_control%do_liq_num) then
+              cloud = 0.0
               where (Lsc_microphys%cldamt > 0.0)
                 cloud = Lsc_microphys%droplet_number/   &
                                                    Lsc_microphys%cldamt
-              elsewhere
-                cloud = 0.0
               end where
             else
+              cloud = 0.0
               where (Lsc_microphys%cldamt > 0.0)
                 cloud = Lsc_microphys%droplet_number
-              elsewhere
-                cloud = 0.0
               end where
             endif
             used = send_data (id_strat_droplet_number, cloud, &
@@ -1728,10 +1733,9 @@ real, dimension(:,:,:),         intent(in), optional :: mask
           tmplmask = Meso_microphys%conc_ice > 0.0
 
           if (id_meso_area_ice > 0) then
+            cloud = 0.
             where (tmplmask)                    
               cloud = Meso_microphys%cldamt
-            elsewhere
-              cloud = 0.
             endwhere      
             used = send_data (id_meso_area_ice, cloud, Time_diag,  &
                               is, js, 1, rmask=mask)
@@ -1783,10 +1787,9 @@ real, dimension(:,:,:),         intent(in), optional :: mask
           tmplmask = Meso_microphys%conc_drop > 0.0
 
           if (id_meso_area_liq > 0) then
+            cloud = 0.
             where (tmplmask)                      
               cloud = Meso_microphys%cldamt
-            elsewhere
-              cloud = 0.
             endwhere      
             used = send_data (id_Meso_area_liq, cloud, Time_diag,  &
                               is, js, 1, rmask=mask)
@@ -1856,10 +1859,9 @@ real, dimension(:,:,:),         intent(in), optional :: mask
           tmplmask = Cell_microphys%conc_ice > 0.0
 
           if (id_cell_area_ice > 0) then
+            cloud = 0.
             where (tmplmask)                           
               cloud = Cell_microphys%cldamt
-            elsewhere
-              cloud = 0.
             endwhere      
             used = send_data (id_cell_area_ice, cloud, Time_diag,  &
                               is, js, 1, rmask=mask)
@@ -1911,10 +1913,9 @@ real, dimension(:,:,:),         intent(in), optional :: mask
           tmplmask = Cell_microphys%conc_drop > 0.0
 
           if (id_cell_area_liq > 0) then
+            cloud = 0.
             where (tmplmask)                       
               cloud = Cell_microphys%cldamt
-            elsewhere
-              cloud = 0.
             endwhere      
             used = send_data (id_cell_area_liq, cloud, Time_diag,  &
                               is, js, 1, rmask=mask)
@@ -1988,10 +1989,9 @@ real, dimension(:,:,:),         intent(in), optional :: mask
           tmplmask = Shallow_microphys%conc_ice > 0.0
 
           if (id_shallow_area_ice > 0) then
+            cloud = 0.
             where (tmplmask)                           
               cloud = 100.*Shallow_microphys%cldamt
-            elsewhere
-              cloud = 0.
             endwhere      
             used = send_data (id_shallow_area_ice, cloud, Time_diag,  &
                               is, js, 1, rmask=mask)
@@ -2043,10 +2043,9 @@ real, dimension(:,:,:),         intent(in), optional :: mask
           tmplmask = Shallow_microphys%conc_drop > 0.0
 
           if (id_shallow_area_liq > 0) then
+            cloud = 0.
             where (tmplmask)                       
               cloud = 100.*Shallow_microphys%cldamt
-            elsewhere
-              cloud = 0.
             endwhere      
             used = send_data (id_shallow_area_liq, cloud, Time_diag,  &
                               is, js, 1, rmask=mask)
@@ -2447,13 +2446,12 @@ real, dimension(:,:,:),         intent(in), optional :: mask
                           Lsc_microphys%stoch_conc_ice(:,:,:,:) > 0.0 
           cloud2(:,:,:) = COUNT (tmplmask4(:,:,:,:), dim = 4)
           tmplmask = cloud2 > 0.0
+          cloud(:,:,:) = 0.0
           where (tmplmask)
             cloud(:,:,:) =    &
                     SUM (Lsc_microphys%stoch_conc_ice(:,:,:,:),   &
                          mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + &
                                                               1.0E-40)
-          elsewhere
-            cloud(:,:,:) = 0.0
           end where
 
           if (id_ic_lsc_ice_conc_ave > 0 ) then      
@@ -2468,23 +2466,21 @@ real, dimension(:,:,:),         intent(in), optional :: mask
                               is, js, mask=tmplmask2)
           endif
 
+          cloud(:,:,:) = 0.0
           where (cloud2 > 0)
             cloud(:,:,:) =    &
                     SUM (Lsc_microphys%stoch_conc_ice(:,:,:,:),   &
                          mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + &
                                                               1.0E-40)
-          elsewhere
-            cloud(:,:,:) = 0.0
           end where
 
         if (id_lsc_ice_size_ave > 0) then
+          cloud(:,:,:) = 0.0
           where (cloud2 > 0)
             cloud(:,:,:) =    &
                     SUM (Lsc_microphys%stoch_size_ice(:,:,:,:),   &
                          mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + &
                                                               1.0E-40)
-          elsewhere
-            cloud(:,:,:) = 0.0
           end where
 
           used = send_data (id_lsc_ice_size_ave, cloud, Time_diag, &
@@ -2534,13 +2530,12 @@ real, dimension(:,:,:),         intent(in), optional :: mask
                           Lsc_microphys%stoch_conc_drop(:,:,:,:) > 0.0 
           cloud2(:,:,:) = COUNT (tmplmask4(:,:,:,:), dim = 4)
           tmplmask = cloud2 > 0.0
+          cloud(:,:,:) = 0.0
           where (tmplmask)   
             cloud(:,:,:) =    &
                     SUM (Lsc_microphys%stoch_conc_drop(:,:,:,:),   &
                          mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + &
                                                               1.0E-40)
-          elsewhere
-            cloud(:,:,:) = 0.0
           end where
 
           if (id_ic_lsc_drop_conc_ave > 0 ) then  
@@ -2556,40 +2551,37 @@ real, dimension(:,:,:),         intent(in), optional :: mask
           endif
 
           if (id_lsc_drop_size_ave > 0) then
+            cloud(:,:,:) = 0.0
             where (tmplmask)   
               cloud(:,:,:) =    &
                     SUM (Lsc_microphys%stoch_size_drop(:,:,:,:),   &
                          mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + &
                                                               1.0E-40)
-            elsewhere
-              cloud(:,:,:) = 0.0
             end where
             used = send_data (id_lsc_drop_size_ave, cloud, Time_diag, &
                               is, js, 1, mask=tmplmask)
           endif
 
           if (id_ra_lsc_drop_size_ave > 0) then
+            cloud(:,:,:) = 0.0
             where (tmplmask)   
               cloud(:,:,:) =  &
                 SUM (MIN(MAX(Lsc_microphys%stoch_size_drop(:,:,:,:),   &
                                       mn_drp_diam), mx_drp_diam),    &
                                         mask = tmplmask4, dim = 4)/ &
                                               (cloud2(:,:,:) + 1.0E-40)
-            elsewhere
-              cloud(:,:,:) = 0.0
             end where
             used = send_data (id_ra_lsc_drop_size_ave, cloud,   &
                               Time_diag, is, js, 1, mask=tmplmask)
           endif
 
           if (id_lsc_droplet_number_ave > 0) then
+            cloud(:,:,:) = 0.0
             where (tmplmask)   
               cloud(:,:,:) =    &
                   SUM (Lsc_microphys%stoch_droplet_number(:,:,:,:),   &
                          mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + &
                                                               1.0E-40)
-            elsewhere
-              cloud(:,:,:) = 0.0
             end where
             used = send_data (id_lsc_droplet_number_ave, cloud,   &
                               Time_diag, is, js, 1, mask=tmplmask)
@@ -2649,13 +2641,12 @@ real, dimension(:,:,:),         intent(in), optional :: mask
                    Model_microphys%stoch_conc_ice(:,:,:,:) > 0.0 
           cloud2(:,:,:) = COUNT (tmplmask4(:,:,:,:), dim = 4)
           tmplmask = cloud2 > 0.0
+          cloud(:,:,:) = 0.
           where (tmplmask) 
             cloud(:,:,:) =   &
                    SUM (Model_microphys%stoch_conc_ice(:,:,:,:), &
                         mask =tmplmask4, dim = 4)/(cloud2(:,:,:) + &
                                                          1.0E-40)
-          elsewhere
-            cloud(:,:,:) = 0.
           end where
 
           if (id_ic_ice_conc_ave > 0 ) then
@@ -2671,13 +2662,12 @@ real, dimension(:,:,:),         intent(in), optional :: mask
           endif
 
           if (id_ice_size_ave > 0) then
+            cloud(:,:,:) = 0.
             where (tmplmask) 
               cloud(:,:,:) =   &    
                    SUM (Model_microphys%stoch_size_ice(:,:,:,:), &
                         mask =tmplmask4, dim = 4)/(cloud2(:,:,:) + &
                                                          1.0E-40)
-            elsewhere
-              cloud(:,:,:) = 0.
             end where
             used = send_data (id_ice_size_ave, cloud, Time_diag, &
                               is, js, 1, mask=tmplmask)
@@ -2726,13 +2716,12 @@ real, dimension(:,:,:),         intent(in), optional :: mask
                         Model_microphys%stoch_conc_drop(:,:,:,:) > 0.0 
           cloud2(:,:,:) = COUNT (tmplmask4(:,:,:,:), dim = 4)
           tmplmask = cloud2 > 0.0
+          cloud(:,:,:) = 0.0
           where (tmplmask)   
             cloud(:,:,:) =    &
                     SUM (Model_microphys%stoch_conc_drop(:,:,:,:),   &
                          mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + &
                                                               1.0E-40)
-          elsewhere
-            cloud(:,:,:) = 0.0
           end where
           
           if (id_ic_drop_conc_ave > 0 ) then   
@@ -2748,40 +2737,37 @@ real, dimension(:,:,:),         intent(in), optional :: mask
           endif
 
           if (id_drop_size_ave > 0) then
+            cloud(:,:,:) = 0.0
             where (tmplmask)   
               cloud(:,:,:) =    &
                     SUM (Model_microphys%stoch_size_drop(:,:,:,:),   &
                          mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + &
                                                               1.0E-40)
-            elsewhere
-              cloud(:,:,:) = 0.0
             end where
             used = send_data (id_drop_size_ave, cloud, Time_diag, &
                               is, js, 1, mask=tmplmask)
           endif
 
           if (id_ra_drop_size_ave > 0) then
+            cloud(:,:,:) = 0.0
             where (tmplmask)   
               cloud(:,:,:) =  &
               SUM (MIN(MAX(Model_microphys%stoch_size_drop(:,:,:,:),   &
                                       mn_drp_diam), mx_drp_diam),     &
                                           mask = tmplmask4, dim = 4)/ &
                                               (cloud2(:,:,:) + 1.0E-40)
-            elsewhere
-              cloud(:,:,:) = 0.0
             end where
             used = send_data (id_ra_drop_size_ave, cloud, Time_diag, &
                               is, js, 1, mask=tmplmask)
           endif
 
           if (id_droplet_number_ave > 0) then
+            cloud(:,:,:) = 0.0
             where (tmplmask)   
               cloud(:,:,:) =    &
                 SUM (Model_microphys%stoch_droplet_number(:,:,:,:),   &
                          mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + &
                                                               1.0E-40)
-            elsewhere
-              cloud(:,:,:) = 0.0
             end where
             used = send_data (id_droplet_number_ave, cloud, Time_diag,&
                               is, js, 1, mask=tmplmask)
@@ -5191,15 +5177,9 @@ real, dimension(:,:,:),       intent(out)  :: em_lw
 
 !          tau = tau_liq + tau_ice
 !
+!    and place a minimum value on tau - taumin
 !---------------------------------------------------------------------
-      tau(:,:,:,:) = tau_liq(:,:,:,:) + tau_ice(:,:,:,:)
-        
-!----------------------------------------------------------------------
-!    place a minimum value on tau.
-!----------------------------------------------------------------------
-      where (tau(:,:,:,:) .lt. taumin)
-        tau(:,:,:,:) = taumin
-      end where   
+      tau(:,:,:,:) = max(tau_liq(:,:,:,:) + tau_ice(:,:,:,:),taumin)
         
 !----------------------------------------------------------------------
 !    define the  mass absorption coefficient for longwave radiation 
