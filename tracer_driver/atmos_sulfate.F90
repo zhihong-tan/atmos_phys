@@ -257,8 +257,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfate.F90,v 15.0.4.1 2007/11/28 16:21:52 rsh Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+character(len=128) :: version = '$Id: atmos_sulfate.F90,v 15.0.4.1.2.1 2008/02/07 22:34:37 wfc Exp $'
+character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -1144,6 +1144,13 @@ subroutine atmos_DMS_emission (lon, lat, area, frac_land, t_surf_rad, w10m, &
 
       dms_dt(:,:,:) =0.0
 
+      DMSo(:,:)=0.0
+      call interpolator(gocart_emission_interp, Time, DMSo, &
+                       trim(gocart_emission_name(1)), is, js)
+! --- Send the DMS data to the diag_manager for output.
+      if (id_DMSo > 0 ) &
+          used = send_data ( id_DMSo, DMSo, Time, is_in=is, js_in=js )
+
 ! ****************************************************************************
 ! *  If frac_land < 0.5: DMS_emis = seawaterDMS * transfer velocity.         *
 ! *  Otherwise,  DMS_emis = 0.                                               *
@@ -1172,12 +1179,6 @@ subroutine atmos_DMS_emission (lon, lat, area, frac_land, t_surf_rad, w10m, &
 ! *                                Sc = 428  (25oC, Erickson 93)             *
 ! ****************************************************************************
 !
-        DMSo(:,:)=0.0
-        call interpolator(gocart_emission_interp, Time, DMSo, &
-                       trim(gocart_emission_name(1)), is, js)
-! --- Send the DMS data to the diag_manager for output.
-        if (id_DMSo > 0 ) &
-          used = send_data ( id_DMSo, DMSo, Time, is_in=is, js_in=js )
 
         CONC = DMSo(i,j)
 

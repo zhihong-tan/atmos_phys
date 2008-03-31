@@ -15,8 +15,8 @@
 
       save
 
-      integer, parameter :: jdim     = 19
-      integer, parameter :: altdim   = 18
+      integer, parameter :: jdim     = 40
+      integer, parameter :: altdim   = 26
       integer, parameter :: zangdim  = 8
       integer, parameter :: o3ratdim = 7
       integer, parameter :: albdim   = 4
@@ -32,11 +32,12 @@
                   jh2o2_ndx, jpan_ndx, jch3cho_ndx, &
                   jn2o5_ndx, jo3p_ndx, jno2_ndx, jno3_ndx, &
                   jclono2_ndx, jhocl_ndx, jcl2o2_ndx, jbrono2_ndx, jhobr_ndx, &
-                  jbrcl_ndx, jbro_ndx, jcl2_ndx, jh2o_ndx
+                  jbrcl_ndx, jbro_ndx, jcl2_ndx, jh2o_ndx, jn2o_ndx, jhno3_ndx
       integer ::  ox_ndx, o3_ndx
-      real    ::  ajl(jdim,altdim,zangdim,o3ratdim,albdim,t500dim,t200dim) = 0.
-      real    ::  vo3(0:50)
-      real    ::  delvo3(0:49)
+      real    ::  ajl(jdim,altdim,zangdim,o3ratdim,albdim,t500dim,t200dim) = 0., &
+                  ajl_solarmin(jdim,altdim,zangdim,o3ratdim,albdim,t500dim,t200dim) = 0.
+      real    ::  vo3(0:80), vo3_solarmin(0:80)
+      real    ::  delvo3(0:79)
       real    ::  delz(altdim-1)
       real    ::  delang(zangdim-1)
       real    ::  delv(o3ratdim-1)
@@ -46,7 +47,8 @@
 
       real :: zz(altdim) = &
              (/ 0., 1., 2., 3., 5., 7., 9., 12., 15., 18., 21., 24., &
-                27., 30., 35., 40., 45., 50. /)
+                27., 30., 33., 36., 39., 42., 46., 50., 55., 60., 65., &
+                70., 75., 80. /)               
       real :: vsec(zangdim) = (/ 1., 1.3, 1.6, 2., 3., 6., 12., 50. /)
       real :: xv3(o3ratdim) = (/ .5, .75, 1., 1.25, 1.5, 2., 5. /)
       real :: albev(albdim) = (/ .05, .2, .5, 1. /)
@@ -54,33 +56,92 @@
       real :: t200(t200dim) = (/ 205., 225. /)
 
       integer, parameter :: &
-         TAB_NDX_JO2     = 1, &
-         TAB_NDX_JO1D    = 2, &
-         TAB_NDX_JO3P    = 3, &
-         TAB_NDX_JN2O    = 4, &
-         TAB_NDX_JNO2    = 5, &
-         TAB_NDX_JN2O5   = 6, &
-         TAB_NDX_JHNO3   = 7, &
-         TAB_NDX_JNO3    = 8, &
-         TAB_NDX_JHO2NO2 = 9, &
-         TAB_NDX_JCH3OOH = 10, &
-         TAB_NDX_JCH2Oa  = 11, &
-         TAB_NDX_JCH2Ob  = 12, &
-         TAB_NDX_JH2O2   = 13, &
-         TAB_NDX_JCH3CHO = 14, &
-         TAB_NDX_JPAN    = 15, &
-         TAB_NDX_JMACRa  = 16, &
-         TAB_NDX_JMVK    = 17, &
-         TAB_NDX_JACET   = 18, &
-         TAB_NDX_JMGLY   = 19
+         TAB_NDX_JO2        = 1, &
+         TAB_NDX_JO1D       = 2, &
+         TAB_NDX_JO3P       = 3, &
+         TAB_NDX_JNO2       = 4, &
+         TAB_NDX_JNO3       = 5, &
+         TAB_NDX_JN2O5      = 6, &
+         TAB_NDX_JN2O5_225  = 7, &
+         TAB_NDX_JN2O5_250  = 8, &
+         TAB_NDX_JN2O5_300  = 9, &
+         TAB_NDX_JN2O       = 10, &
+         TAB_NDX_JN2O_200   = 11, &
+         TAB_NDX_JN2O_250   = 12, &
+         TAB_NDX_JN2O_300   = 13, &
+         TAB_NDX_JH2O2      = 14, &
+         TAB_NDX_JHNO3      = 15, &
+         TAB_NDX_JHNO3_200  = 16, &
+         TAB_NDX_JHNO3_250  = 17, &
+         TAB_NDX_JHNO3_300  = 18, &
+         TAB_NDX_JHO2NO2    = 19, &
+         TAB_NDX_JCH2Oa     = 20, &
+         TAB_NDX_JCH2Ob     = 21, &
+         TAB_NDX_JCH3CHO    = 22, &
+         TAB_NDX_JMGLY      = 23, &
+         TAB_NDX_JACET      = 24, &
+         TAB_NDX_JCH3OOH    = 25, &
+         TAB_NDX_JPAN       = 26, &
+         TAB_NDX_JCLONO2    = 27, &
+         TAB_NDX_JCLONO2_200= 28, &
+         TAB_NDX_JCLONO2_250= 29, &
+         TAB_NDX_JCLONO2_300= 30, &
+         TAB_NDX_JBRONO2    = 31, &
+         TAB_NDX_JCL2       = 32, &
+         TAB_NDX_JMVK       = 33, &
+         TAB_NDX_JMACRa     = 34, &
+         TAB_NDX_JCL2O2     = 35, &
+         TAB_NDX_JHYAC      = 36, &
+         TAB_NDX_JHOBR      = 37, &
+         TAB_NDX_JBR2       = 38, &
+         TAB_NDX_JHOCL      = 39, &
+         TAB_NDX_JBRCL      = 40
 
-character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 14.0 2007/03/15 22:11:05 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2007_12 $'
+      logical :: use_tdep_jvals, use_solar_cycle
+      real    :: o3_column_top, jno_scale_factor
+
+character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 14.0.8.1.2.1 2008/02/07 22:36:54 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: omsk_2008_03 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
       
-      subroutine PRATE_INIT( filename, lpath, mspath )
+! <SUBROUTINE NAME="prate_init">
+!   <OVERVIEW>
+!     Initialize photolysis rate lookup table calculation
+!   </OVERVIEW>
+!   <DESCRIPTION>
+!     This subroutine initializes the calculation of photolysis rates
+!     from the TUV lookup table
+!   </DESCRIPTION>
+!   <TEMPLATE>
+!     call prate_init( filename, filename_solarmin, lpath, mspath, use_tdep_jvals_in )
+!   </TEMPLATE>
+!   <IN NAME="filename" TYPE="character(len=*)">
+!     Filename for ASCII lookup table file (if solar cycle used, this is the filename
+!     for solar maximum conditions).
+!   </IN>
+!   <IN NAME="filename_solarmin" TYPE="character(len=*)">
+!     Filename for ASCII lookup table file for solar minimum conditions
+!     (if solar cycle used)
+!   </IN>
+!   <IN NAME="lpath" TYPE="character(len=*)">
+!     Local directory path for input files
+!   </IN>
+!   <IN NAME="mspath" TYPE="character(len=*)">
+!     Remote directory path for input files (not used)
+!   </IN>
+!   <IN NAME="use_tdep_jvals_in" TYPE="logical">
+!     Does the j-value lookup table contain temperature-dependent photolysis rates?
+!   </IN>
+!   <IN NAME="o3_column_top_in" TYPE="real">
+!     Ozone column above model top (DU)
+!   </IN>
+!   <IN NAME="jno_scale_factor_in" TYPE="real">
+!     Scale factor for NO photolysis rate (jNO)
+!   </IN>
+      subroutine prate_init( filename, filename_solarmin, lpath, mspath, &
+                             use_tdep_jvals_in, o3_column_top_in, jno_scale_factor_in )
 !----------------------------------------------------------------------
 !     ... Read in the photorate tables and arrays
 !         Results are "returned" via the common block photo_tables
@@ -93,7 +154,10 @@ logical                       :: module_is_initialized = .false.
 !----------------------------------------------------------------------
 !        ... Dummy args
 !----------------------------------------------------------------------
-      character(len=*), intent(in) :: filename, lpath, mspath
+      character(len=*), intent(in) :: filename, filename_solarmin, lpath, mspath
+      logical,          intent(in) :: use_tdep_jvals_in
+      real,             intent(in) :: o3_column_top_in, &
+                                      jno_scale_factor_in
 
 !----------------------------------------------------------------------
 !        ... Local variables
@@ -154,9 +218,9 @@ logical                       :: module_is_initialized = .false.
 !            ... open file using mpp_open
 !----------------------------------------------------------------------
 
-      call mpp_open( unit, trim(filename), MPP_RDONLY, MPP_ASCII, &
+      call mpp_open( unit, trim(lpath)//trim(filename), MPP_RDONLY, MPP_ASCII, &
                      threading = MPP_MULTI, fileset = MPP_SINGLE, &
-                 recl = 4500)
+                     recl = 4500)
 
 !----------------------------------------------------------------------
 !        ... Readin the reference o3 column and photorate table
@@ -174,8 +238,7 @@ logical                       :: module_is_initialized = .false.
                   do idob = 1,o3ratdim
                      read(unit,*,iostat=ios) ajl(:,:,izen,idob,ialb,it500,it200)
                      if( ios /= 0 ) then
-                        msg = 'PRATE_INIT: Failed to read photo table; ' // &
-                              'error = '//char(ios)
+                        msg = ' PRATE_INIT: Failed to read photo table; error = '//char(ios)
                         call ENDRUN(msg)
                      end if
                   end do
@@ -188,7 +251,7 @@ logical                       :: module_is_initialized = .false.
 !        ... Set module variables
 !----------------------------------------------------------------------
       delz(:altdim-1) = 1. / (zz(2:altdim) - zz(:altdim-1))
-      delvo3(0:49) = vo3(1:50) - vo3(0:49)
+      delvo3(0:79) = vo3(1:80) - vo3(0:79)
       delang(:zangdim-1)  = 1. / (vsec(2:zangdim) - vsec(:zangdim-1))
       delv(:o3ratdim-1)   = 1. / (xv3(2:o3ratdim) - xv3(:o3ratdim-1))
       delalb(:albdim-1)   = 1. / (albev(2:albdim) - albev(:albdim-1))
@@ -207,75 +270,196 @@ logical                       :: module_is_initialized = .false.
       call mpp_close( unit )
 
 !-----------------------------------------------------------------
+!           ... check whether using solar cycle
+!-----------------------------------------------------------------
+      if (filename_solarmin == '' .or. filename_solarmin == filename) then
+         use_solar_cycle = .false.
+      else
+         use_solar_cycle = .true.
+
+!----------------------------------------------------------------------
+!            ... open file using mpp_open
+!----------------------------------------------------------------------
+         call mpp_open( unit, trim(lpath)//trim(filename_solarmin), MPP_RDONLY, MPP_ASCII, &
+                        threading = MPP_MULTI, fileset = MPP_SINGLE, &
+                        recl = 4500)
+
+!----------------------------------------------------------------------
+!        ... Readin the reference o3 column and photorate table 
+!            for solar minimum
+!----------------------------------------------------------------------
+         read(unit,*,iostat=ios) vo3_solarmin
+         if( ios /= 0 ) then
+            msg = ' PRATE_INIT: Failed to read solarmin o3 column'
+            call ENDRUN(msg)
+         end if
+
+         do it500 = 1,t500dim
+         do it200 = 1,t200dim
+         do izen = 1,zangdim
+         do ialb = 1,albdim
+         do idob = 1,o3ratdim
+            read(unit,*,iostat=ios) ajl_solarmin(:,:,izen,idob,ialb,it500,it200)
+            if( ios /= 0 ) then
+               msg = ' PRATE_INIT: Failed to read solarmin photo table; error = '//char(ios)
+               call ENDRUN(msg)
+            end if
+         end do
+         end do
+         end do
+         end do
+         end do
+         call mpp_close( unit )
+      end if
+
+!-----------------------------------------------------------------
 !           ... setup mapping array, indexer, from table to model
 !-----------------------------------------------------------------
-      indexer(TAB_NDX_JO2)     = get_rxt_ndx( 'jo2' )
-      indexer(TAB_NDX_JO1D)    = get_rxt_ndx( 'jo1d' )
-      indexer(TAB_NDX_JO3P)    = get_rxt_ndx( 'jo3p' )
-      indexer(TAB_NDX_JN2O)    = get_rxt_ndx( 'jn2o' )
-      indexer(TAB_NDX_JNO2)    = get_rxt_ndx( 'jno2' )
-      indexer(TAB_NDX_JN2O5)   = get_rxt_ndx( 'jn2o5' )
-      indexer(TAB_NDX_JHNO3)   = get_rxt_ndx( 'jhno3' )
-      indexer(TAB_NDX_JNO3)    = get_rxt_ndx( 'jno3' )
-      indexer(TAB_NDX_JHO2NO2) = get_rxt_ndx( 'jho2no2' )
-      indexer(TAB_NDX_JCH3OOH) = get_rxt_ndx( 'jch3ooh' )
-      indexer(TAB_NDX_JCH2Oa)  = get_rxt_ndx( 'jch2o_a' )
-      indexer(TAB_NDX_JCH2Ob)  = get_rxt_ndx( 'jch2o_b' )
-      indexer(TAB_NDX_JH2O2)   = get_rxt_ndx( 'jh2o2' )
-      indexer(TAB_NDX_JCH3CHO) = get_rxt_ndx( 'jch3cho' )
-      indexer(TAB_NDX_JPAN)    = get_rxt_ndx( 'jpan' )
-      indexer(TAB_NDX_JMACRa)  = get_rxt_ndx( 'jmacr_a' )
-      indexer(TAB_NDX_JMVK)    = get_rxt_ndx( 'jmvk' )
-      indexer(TAB_NDX_JACET)   = get_rxt_ndx( 'jacet' )
-      indexer(TAB_NDX_JMGLY)   = get_rxt_ndx( 'jmgly' )
+      indexer(TAB_NDX_JO2)      = get_rxt_ndx( 'jo2' )
+      indexer(TAB_NDX_JO1D)     = get_rxt_ndx( 'jo1d' )
+      indexer(TAB_NDX_JO3P)     = get_rxt_ndx( 'jo3p' )
+      indexer(TAB_NDX_JNO2)     = get_rxt_ndx( 'jno2' )
+      indexer(TAB_NDX_JNO3)     = get_rxt_ndx( 'jno3' )
+      indexer(TAB_NDX_JN2O5)    = get_rxt_ndx( 'jn2o5' )
+      indexer(TAB_NDX_JN2O5_225)= 0
+      indexer(TAB_NDX_JN2O5_250)= 0
+      indexer(TAB_NDX_JN2O5_300)= 0
+      indexer(TAB_NDX_JN2O)     = get_rxt_ndx( 'jn2o' )
+      indexer(TAB_NDX_JN2O_200) = 0
+      indexer(TAB_NDX_JN2O_250) = 0
+      indexer(TAB_NDX_JN2O_300) = 0
+      indexer(TAB_NDX_JH2O2)    = get_rxt_ndx( 'jh2o2' )
+      indexer(TAB_NDX_JHNO3)    = get_rxt_ndx( 'jhno3' )
+      indexer(TAB_NDX_JHNO3_200)= 0
+      indexer(TAB_NDX_JHNO3_250)= 0
+      indexer(TAB_NDX_JHNO3_300)= 0
+      indexer(TAB_NDX_JHO2NO2)  = get_rxt_ndx( 'jho2no2' )
+      indexer(TAB_NDX_JCH2Oa)   = get_rxt_ndx( 'jch2o_a' )
+      indexer(TAB_NDX_JCH2Ob)   = get_rxt_ndx( 'jch2o_b' )
+      indexer(TAB_NDX_JCH3CHO)  = get_rxt_ndx( 'jch3cho' )
+      indexer(TAB_NDX_JMGLY)    = get_rxt_ndx( 'jmgly' )
+      indexer(TAB_NDX_JACET)    = get_rxt_ndx( 'jacet' )
+      indexer(TAB_NDX_JCH3OOH)  = get_rxt_ndx( 'jch3ooh' )
+      indexer(TAB_NDX_JPAN)     = get_rxt_ndx( 'jpan' )
+      indexer(TAB_NDX_JCLONO2)  = get_rxt_ndx( 'jclono2' )
+      indexer(TAB_NDX_JCLONO2_200)=0
+      indexer(TAB_NDX_JCLONO2_250)=0
+      indexer(TAB_NDX_JCLONO2_300)=0
+      indexer(TAB_NDX_JBRONO2)  = get_rxt_ndx( 'jbrono2' )
+      indexer(TAB_NDX_JCL2)     = get_rxt_ndx( 'jcl2' )
+      indexer(TAB_NDX_JMVK)     = get_rxt_ndx( 'jmvk' )
+      indexer(TAB_NDX_JMACRa)   = get_rxt_ndx( 'jmacr_a' )
+      indexer(TAB_NDX_JCL2O2)   = get_rxt_ndx( 'jcl2o2' )
+      indexer(TAB_NDX_JHYAC)    = get_rxt_ndx( 'jhyac' )
+      indexer(TAB_NDX_JHOBR)    = get_rxt_ndx( 'jhobr' )
+      indexer(TAB_NDX_JBR2)     = get_rxt_ndx( 'jbr2' )
+      indexer(TAB_NDX_JHOCL)    = get_rxt_ndx( 'jhocl' )
+      indexer(TAB_NDX_JBRCL)    = get_rxt_ndx( 'jbrcl' )
 
-      jno_ndx = get_rxt_ndx( 'jno' )
-      jpooh_ndx = get_rxt_ndx( 'jpooh' )
+      jno_ndx      = get_rxt_ndx( 'jno' )
+      jpooh_ndx    = get_rxt_ndx( 'jpooh' )
       jc2h5ooh_ndx = get_rxt_ndx( 'jc2h5ooh' )
       jc3h7ooh_ndx = get_rxt_ndx( 'jc3h7ooh' )
-      jrooh_ndx = get_rxt_ndx( 'jrooh' )
+      jrooh_ndx    = get_rxt_ndx( 'jrooh' )
       jch3co3h_ndx = get_rxt_ndx( 'jch3co3h' )
-      jmpan_ndx = get_rxt_ndx( 'jmpan' )
-      jmacr_a_ndx = get_rxt_ndx( 'jmacr_a' )
-      jmacr_b_ndx = get_rxt_ndx( 'jmacr_b' )
-      jonitr_ndx = get_rxt_ndx( 'jonitr' )
-      jxooh_ndx = get_rxt_ndx( 'jxooh' )
+      jmpan_ndx    = get_rxt_ndx( 'jmpan' )
+      jmacr_a_ndx  = get_rxt_ndx( 'jmacr_a' )
+      jmacr_b_ndx  = get_rxt_ndx( 'jmacr_b' )
+      jonitr_ndx   = get_rxt_ndx( 'jonitr' )
+      jxooh_ndx    = get_rxt_ndx( 'jxooh' )
       jisopooh_ndx = get_rxt_ndx( 'jisopooh' )
-      jglyald_ndx = get_rxt_ndx( 'jglyald' )
-      jhyac_ndx = get_rxt_ndx( 'jhyac' )
-      jch3ooh_ndx = get_rxt_ndx( 'jch3ooh' )
-      jh2o2_ndx = get_rxt_ndx( 'jh2o2' )
-      jpan_ndx = get_rxt_ndx( 'jpan' )
-      jch3cho_ndx = get_rxt_ndx( 'jch3cho' )
-      jn2o5_ndx = get_rxt_ndx( 'jn2o5' )
-      jo3p_ndx = get_rxt_ndx( 'jo3p' )
-      jno2_ndx = get_rxt_ndx( 'jno2' )
-      jno3_ndx = get_rxt_ndx( 'jno3' )
-      jclono2_ndx = get_rxt_ndx( 'jclono2' )
-      jhocl_ndx = get_rxt_ndx( 'jhocl' )
-      jcl2o2_ndx = get_rxt_ndx( 'jcl2o2' )
-      jbrono2_ndx = get_rxt_ndx( 'jbrono2' )
-      jhobr_ndx = get_rxt_ndx( 'jhobr' )
-      jbrcl_ndx = get_rxt_ndx( 'jbrcl' )
-      jbro_ndx = get_rxt_ndx( 'jbro' )
-      jcl2_ndx = get_rxt_ndx( 'jcl2' )
-      jh2o_ndx = get_rxt_ndx( 'jh2o' )
+      jglyald_ndx  = get_rxt_ndx( 'jglyald' )
+      jhyac_ndx    = get_rxt_ndx( 'jhyac' )
+      jch3ooh_ndx  = get_rxt_ndx( 'jch3ooh' )
+      jh2o2_ndx    = get_rxt_ndx( 'jh2o2' )
+      jpan_ndx     = get_rxt_ndx( 'jpan' )
+      jch3cho_ndx  = get_rxt_ndx( 'jch3cho' )
+      jn2o5_ndx    = get_rxt_ndx( 'jn2o5' )
+      jo3p_ndx     = get_rxt_ndx( 'jo3p' )
+      jno2_ndx     = get_rxt_ndx( 'jno2' )
+      jno3_ndx     = get_rxt_ndx( 'jno3' )
+      jclono2_ndx  = get_rxt_ndx( 'jclono2' )
+      jhocl_ndx    = get_rxt_ndx( 'jhocl' )
+      jcl2o2_ndx   = get_rxt_ndx( 'jcl2o2' )
+      jbrono2_ndx  = get_rxt_ndx( 'jbrono2' )
+      jhobr_ndx    = get_rxt_ndx( 'jhobr' )
+      jbrcl_ndx    = get_rxt_ndx( 'jbrcl' )
+      jbro_ndx     = get_rxt_ndx( 'jbro' )
+      jcl2_ndx     = get_rxt_ndx( 'jcl2' )
+      jh2o_ndx     = get_rxt_ndx( 'jh2o' )
+      jn2o_ndx     = get_rxt_ndx( 'jn2o' )
+      jhno3_ndx    = get_rxt_ndx( 'jhno3' )
 
       ox_ndx = get_spc_ndx( 'OX' )
       o3_ndx = get_spc_ndx( 'O3' )
 
-      end subroutine PRATE_INIT
+      use_tdep_jvals   = use_tdep_jvals_in
+      o3_column_top    = o3_column_top_in
+      jno_scale_factor = jno_scale_factor_in
 
+      end subroutine prate_init
+! </SUBROUTINE>
+
+
+! <SUBROUTINE NAME="PHOTO">
+!   <OVERVIEW>
+!     Calculate photolysis rates
+!   </OVERVIEW>
+!   <DESCRIPTION>
+!     Calculate photolysis rates from the TUV lookup table
+!   </DESCRIPTION>
+!   <TEMPLATE>
+!     call PHOTO( photos, pmid, pdel, temper, zmid, col_dens, coszen,  & 
+!                 srf_alb, lwc, clouds, esfact, solar_phase, plonl )
+!   </TEMPLATE>
+!   <IN NAME="photos" TYPE="real" DIM="(:,:,:)">
+!     Photodissociation rates (s^-1)
+!   </IN>
+!   <IN NAME="pmid" TYPE="real" DIM="(:,:)">
+!     Full level pressures (Pa)
+!   </IN>
+!   <IN NAME="pdel" TYPE="real" DIM="(:,:)">
+!     Half level (interface) pressures (Pa)
+!   </IN>
+!   <IN NAME="temper" TYPE="real" DIM="(:,:)">
+!     Full level temperatures (K)
+!   </IN>
+!   <IN NAME="zmid" TYPE="real" DIM="(:,:)">
+!     Full level absolute geopotential altitudes (km)
+!   </IN>
+!   <IN NAME="col_dens" TYPE="real" DIM="(:,:,:)">
+!     Column densities
+!   </IN>
+!   <IN NAME="coszen" TYPE="real" DIM="(:)">
+!     Cosine of solar zenith angle
+!   </IN>
+!   <IN NAME="srf_alb" TYPE="real" DIM="(:)">
+!     Surface albedo
+!   </IN>
+!   <IN NAME="lwc" TYPE="real" DIM="(:,:)">
+!     Cloud liquid water content (kg/kg)
+!   </IN>
+!   <IN NAME="clouds" TYPE="real" DIM="(:,:)">
+!     Cloud fraction
+!   </IN>
+!   <IN NAME="esfact" TYPE="real">
+!     Earth-sun distance factor
+!   </IN>
+!   <IN NAME="solar_phase" TYPE="real">
+!     Solar cycle phase (1=max, 0=min)
+!   </IN>
+!   <IN NAME="plonl" TYPE="integer">
+!     Size of longitude dimension
+!   </IN>
       subroutine PHOTO( photos, pmid, pdel, temper, zmid, &
                         col_dens, &
                         coszen,  & 
-                         srf_alb, lwc, clouds, &
-                        esfact, &
-                        plonl &
-                        )
+                        srf_alb, lwc, clouds, &
+                        esfact, solar_phase, &
+                        plonl )
 
       use CHEM_MODS_MOD, only : ncol_abs, phtcnt
-!      use M_RXT_ID_MOD
+!     use M_RXT_ID_MOD
 
       implicit none
 
@@ -283,26 +467,27 @@ logical                       :: module_is_initialized = .false.
 !           ... Dummy arguments
 !-----------------------------------------------------------------
       integer, intent(in) :: plonl
-      real, intent(in) ::   esfact                           ! earth sun distance factor
-      real, intent(in) ::   col_dens(:,:,:), & ! column densities
+      real, intent(in) ::   esfact, &                 ! earth sun distance factor
+                            solar_phase               ! solar cycle phase (1=max, 0=min)
+      real, intent(in) ::   col_dens(:,:,:), &        ! column densities
                             coszen(:), &              ! solar zenith angle
-                            srf_alb(:), &                ! surface albedo
+                            srf_alb(:), &             ! surface albedo
                             lwc(:,:), &               ! liquid water content (mass mr)
                             clouds(:,:), &            ! cloud fraction
                             pmid(:,:), &              ! midpoint pressure in pascals
                             pdel(:,:), &              ! del pressure about midpoint in pascals
                             zmid(:,:), &              ! midpoint height
                             temper(:,:)               ! midpoint temperature
-      real, intent(out) ::  photos(:,:,:)        ! photodissociation rates
+      real, intent(out) ::  photos(:,:,:)             ! photodissociation rates
 
 !-----------------------------------------------------------------
 !            ... Local variables
 !-----------------------------------------------------------------
       integer  ::  i, k, m                 ! indicies
       integer  ::  plev
-      logical  ::  zagtz(size(coszen))             ! zenith angle > 0 flag array
-      real    ::   secant
-      real    ::   t500, t200             ! 500 & 200 mb temperatures
+      logical  ::  zagtz(size(coszen))     ! zenith angle > 0 flag array
+      real     ::  secant
+      real     ::  t500, t200              ! 500 & 200 mb temperatures
       real, dimension(size(zmid,2)) :: &
                    fac1, &                ! work space for J(no) calc
                    fac2, &                ! work space for J(no) calc
@@ -321,7 +506,19 @@ logical                       :: module_is_initialized = .false.
                    tmp_jh2o2, &                  ! wrk array
                    tmp_jch3cho, &                ! wrk array
                    tmp_jmacr_a, &                ! wrk array
-                   tmp_jn2o5, tmp_jo3p, tmp_jno2, tmp_jno3, &
+                   tmp_jn2o_200, &               ! wrk array
+                   tmp_jn2o_250, &               ! wrk array
+                   tmp_jn2o_300, &               ! wrk array
+                   tmp_jn2o5_225, &              ! wrk array
+                   tmp_jn2o5_250, &              ! wrk array
+                   tmp_jn2o5_300, &              ! wrk array
+                   tmp_jhno3_200, &              ! wrk array
+                   tmp_jhno3_250, &              ! wrk array
+                   tmp_jhno3_300, &              ! wrk array
+                   tmp_jclono2_200, &            ! wrk array
+                   tmp_jclono2_250, &            ! wrk array
+                   tmp_jclono2_300, &            ! wrk array
+                   wgt200, wgt225, wgt250, wgt300, &     ! wrk array
                    tmp_jno
       real    ::   prates(jdim,size(zmid,2))        ! photorates matrix
 
@@ -332,17 +529,27 @@ logical                       :: module_is_initialized = .false.
       do m = 1,max(1,phtcnt)
          do k = 1,plev
             photos(:,k,m) = 0.
-            tmp_jch3ooh(:,k) = 0.
-            tmp_jpan(:,k)    = 0.
-            tmp_jh2o2(:,k)   = 0.
-            tmp_jch3cho(:,k) = 0.
-            tmp_jmacr_a(:,k) = 0.
-            tmp_jn2o5(:,k)   = 0.
-            tmp_jo3p(:,k)    = 0.
-            tmp_jno2(:,k)    = 0.
-            tmp_jno3(:,k)    = 0.
-            tmp_jno(:,k)     = 0.
          end do
+      end do
+      do k = 1,plev
+         tmp_jch3ooh(:,k)     = 0.
+         tmp_jpan(:,k)        = 0.
+         tmp_jh2o2(:,k)       = 0.
+         tmp_jch3cho(:,k)     = 0.
+         tmp_jmacr_a(:,k)     = 0.
+         tmp_jno(:,k)         = 0.
+         tmp_jn2o_200(:,k)    = 0.
+         tmp_jn2o_250(:,k)    = 0.
+         tmp_jn2o_300(:,k)    = 0.
+         tmp_jn2o5_225(:,k)   = 0.
+         tmp_jn2o5_250(:,k)   = 0.
+         tmp_jn2o5_300(:,k)   = 0.
+         tmp_jhno3_200(:,k)   = 0.
+         tmp_jhno3_250(:,k)   = 0.
+         tmp_jhno3_300(:,k)   = 0.
+         tmp_jclono2_200(:,k) = 0.
+         tmp_jclono2_250(:,k) = 0.
+         tmp_jclono2_300(:,k) = 0.
       end do
       zagtz(:) = coszen(:) > 0. 
 
@@ -361,7 +568,7 @@ logical                       :: module_is_initialized = .false.
                                eff_alb, cld_mult )
                call T_INT( pline, tline, t500, t200 )
                call PHOTO_INTERP( zarg, secant, colo3, eff_alb, t500, &
-                                  t200, prates )
+                                  t200, solar_phase, prates )
                do m = 1,jdim
                   if( indexer(m) > 0 ) then
                   photos(i,:,indexer(m)) = esfact *prates(m,:) * cld_mult(:)
@@ -377,14 +584,30 @@ logical                       :: module_is_initialized = .false.
                            tmp_jpan(i,:) = esfact *prates(m,:) * cld_mult(:)
                         case( TAB_NDX_JMACRa )
                            tmp_jmacr_a(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JN2O5 )
-                           tmp_jn2o5(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JO3P )
-                           tmp_jo3p(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JNO2 )
-                           tmp_jno2(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JNO3 )
-                           tmp_jno3(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JN2O_200 )
+                           tmp_jn2o_200(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JN2O_250 )
+                           tmp_jn2o_250(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JN2O_300 )
+                           tmp_jn2o_300(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JN2O5_225 )
+                           tmp_jn2o5_225(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JN2O5_250 )
+                           tmp_jn2o5_250(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JN2O5_300 )
+                           tmp_jn2o5_300(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JHNO3_200 )
+                           tmp_jhno3_200(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JHNO3_250 )
+                           tmp_jhno3_250(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JHNO3_300 )
+                           tmp_jhno3_300(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JCLONO2_200 )
+                           tmp_jclono2_200(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JCLONO2_250 )
+                           tmp_jclono2_250(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JCLONO2_300 )
+                           tmp_jclono2_300(i,:) = esfact *prates(m,:) * cld_mult(:)
                      end select
                   end if
                end do
@@ -394,9 +617,11 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
 !        ... Calculate J(no) from formula
 !-----------------------------------------------------------------
-                  photos(i,:,jno_ndx) = 4.5e-6 * esfact * exp( -(fac1(:) + fac2(:)) ) * cld_mult(:)
+                  photos(i,:,jno_ndx) = 4.5e-6 * esfact * exp( -(fac1(:) + fac2(:)) ) &
+                                               * cld_mult(:) * jno_scale_factor
                else
-                  tmp_jno(i,:) = 4.5e-6 * esfact * exp( -(fac1(:) + fac2(:)) ) * cld_mult(:)
+                  tmp_jno(i,:) = 4.5e-6 * esfact * exp( -(fac1(:) + fac2(:)) ) &
+                                        * cld_mult(:) * jno_scale_factor
                end if
             end if
          end if
@@ -477,69 +702,6 @@ logical                       :: module_is_initialized = .false.
             photos(:,:,jglyald_ndx)   = 3. *tmp_jch3cho(:,:)
          end if
       end if
-      if( jhyac_ndx > 0 ) then
-         if( jch3cho_ndx > 0 ) then
-            photos(:,:,jhyac_ndx)    = photos(:,:,jch3cho_ndx)
-         else
-            photos(:,:,jhyac_ndx)    = tmp_jch3cho(:,:)
-         end if
-      end if
-      if( jclono2_ndx > 0 ) then
-         if( jn2o5_ndx > 0 ) then
-            photos(:,:,jclono2_ndx) = photos(:,:,jn2o5_ndx)
-         else
-            photos(:,:,jclono2_ndx) = tmp_jn2o5(:,:)
-         end if
-      end if
-      if( jhocl_ndx > 0 ) then
-         if( jo3p_ndx > 0 ) then
-            photos(:,:,jhocl_ndx) = photos(:,:,jo3p_ndx)
-         else
-            photos(:,:,jhocl_ndx) = tmp_jo3p(:,:)
-         end if
-      end if
-      if( jcl2o2_ndx > 0 ) then
-         if( jno2_ndx > 0 ) then
-            photos(:,:,jcl2o2_ndx) = photos(:,:,jno2_ndx)
-         else
-            photos(:,:,jcl2o2_ndx) = tmp_jno2(:,:)
-         end if
-      end if
-      if( jbrono2_ndx > 0 ) then
-         if( jo3p_ndx > 0 ) then
-            photos(:,:,jbrono2_ndx) = 2*photos(:,:,jo3p_ndx)
-         else
-            photos(:,:,jbrono2_ndx) = 2*tmp_jo3p(:,:)
-         end if
-      end if
-      if( jhobr_ndx > 0 ) then
-         if( jo3p_ndx > 0 ) then
-            photos(:,:,jhobr_ndx) = photos(:,:,jo3p_ndx)
-         else
-            photos(:,:,jhobr_ndx) = tmp_jo3p(:,:)
-         end if
-      end if
-      if( jbrcl_ndx > 0 ) then
-         if( jno2_ndx > 0 ) then
-            photos(:,:,jbrcl_ndx) = photos(:,:,jno2_ndx)
-         else
-            photos(:,:,jbrcl_ndx) = tmp_jno2(:,:)
-         end if
-      end if
-      if( jbro_ndx > 0 ) then
-         if( jno3_ndx > 0 ) then
-            photos(:,:,jbro_ndx) = photos(:,:,jno3_ndx)
-         else
-            photos(:,:,jbro_ndx) = tmp_jno3(:,:)
-         end if
-      end if
-      if( jcl2_ndx > 0 ) then
-         if( jno2_ndx > 0 ) then
-            photos(:,:,jcl2_ndx) = photos(:,:,jno2_ndx)
-         else
-            photos(:,:,jcl2_ndx) = tmp_jno2(:,:)
-         end if
-      end if
       if( jh2o_ndx > 0 ) then
          if( jno_ndx > 0 ) then
             photos(:,:,jh2o_ndx) = 0.1*photos(:,:,jno_ndx)
@@ -547,8 +709,41 @@ logical                       :: module_is_initialized = .false.
             photos(:,:,jh2o_ndx) = 0.1*tmp_jno(:,:)
          end if
       end if
+      if( jn2o_ndx > 0 .and. use_tdep_jvals ) then
+         wgt200(:,:)  = MIN( 1.,MAX( 0.,(250.-temper(:,:))/50. ) )
+         wgt300(:,:)  = MIN( 1.,MAX( 0.,(temper(:,:)-250.)/50. ) )
+         wgt250(:,:)  = 1. - wgt200(:,:) - wgt300(:,:)
+         photos(:,:,jn2o_ndx)    = wgt200(:,:)*tmp_jn2o_200(:,:) + &
+                                   wgt250(:,:)*tmp_jn2o_250(:,:) + &
+                                   wgt300(:,:)*tmp_jn2o_300(:,:)
+      end if
+      if( jn2o5_ndx > 0 .and. use_tdep_jvals ) then
+         wgt225(:,:)  = MIN( 1.,MAX( 0.,(250.-temper(:,:))/25. ) )
+         wgt300(:,:)  = MIN( 1.,MAX( 0.,(temper(:,:)-250.)/50. ) )
+         wgt250(:,:)  = 1. - wgt225(:,:) - wgt300(:,:)
+         photos(:,:,jn2o5_ndx)   = wgt225(:,:)*tmp_jn2o5_225(:,:) + &
+                                   wgt250(:,:)*tmp_jn2o5_250(:,:) + &
+                                   wgt300(:,:)*tmp_jn2o5_300(:,:)
+      end if
+      if( jhno3_ndx > 0 .and. use_tdep_jvals ) then
+         wgt200(:,:)  = MIN( 1.,MAX( 0.,(250.-temper(:,:))/50. ) )
+         wgt300(:,:)  = MIN( 1.,MAX( 0.,(temper(:,:)-250.)/50. ) )
+         wgt250(:,:)  = 1. - wgt200(:,:) - wgt300(:,:)
+         photos(:,:,jhno3_ndx)   = wgt200(:,:)*tmp_jhno3_200(:,:) + &
+                                   wgt250(:,:)*tmp_jhno3_250(:,:) + &
+                                   wgt300(:,:)*tmp_jhno3_300(:,:)
+      end if
+      if( jclono2_ndx > 0 .and. use_tdep_jvals ) then
+         wgt200(:,:)  = MIN( 1.,MAX( 0.,(250.-temper(:,:))/50. ) )
+         wgt300(:,:)  = MIN( 1.,MAX( 0.,(temper(:,:)-250.)/50. ) )
+         wgt250(:,:)  = 1. - wgt200(:,:) - wgt300(:,:)
+         photos(:,:,jclono2_ndx) = wgt200(:,:)*tmp_jclono2_200(:,:) + &
+                                   wgt250(:,:)*tmp_jclono2_250(:,:) + &
+                                   wgt300(:,:)*tmp_jclono2_300(:,:)
+      end if
 
       end subroutine PHOTO
+! </SUBROUTINE>
 
       subroutine cloud_mod( coszen, clouds, lwc, delp, srf_alb, &
                             eff_alb, cld_mult )
@@ -738,7 +933,7 @@ logical                       :: module_is_initialized = .false.
       end subroutine T_INT
 
       subroutine PHOTO_INTERP( zin, sin, vin, albin, t500in, &
-                               t200in, ajout )
+                               t200in, solar_phase, ajout )
 !----------------------------------------------------------------------
 !           ... Loglinear interpolation for the photodissociation rates
 !            Note: this subroutine computes photorates for a vertical
@@ -761,7 +956,8 @@ logical                       :: module_is_initialized = .false.
                              vin(:), &              ! o3 column density
                              albin(:), &            ! surface albedo
                              t500in, &              ! temp on 500mb surface
-                             t200in                 ! temp on 200mb surface
+                             t200in, &              ! temp on 200mb surface
+                             solar_phase            ! phase of solar cycle (1=max, 0=min)
       real, intent(out) ::   ajout(:,:)             ! photodissociation rates
 
 !----------------------------------------------------------------------
@@ -778,6 +974,7 @@ logical                       :: module_is_initialized = .false.
       real     ::  v3std
       real     ::  dels(6)
       real, dimension(SIZE(zin)) :: v3rat
+      real     :: ajout_tmp
       
       plev = SIZE(zin)
 
@@ -834,7 +1031,7 @@ logical                       :: module_is_initialized = .false.
 !----------------------------------------------------------------------
 !        ... Find "o3 ratio" indicies
 !----------------------------------------------------------------------
-         i        = MAX( MIN( 49,INT( zin(k) ) ),0 )
+         i        = MAX( MIN( 79,INT( zin(k) ) ),0 )
          v3std    = vo3(i) + (zin(k) - REAL(i)) * delvo3(i)
          v3rat(k) = vin(k) / v3std
          do iv = 1,o3ratdim
@@ -869,11 +1066,24 @@ Rate_loop : &
                                + dels(5) * ajl(nn,iz,is,iv,ial,it500p1,it200) &
                                + dels(6) * ajl(nn,iz,is,iv,ial,it500,it200p1) )
          end do Rate_loop
+         if (use_solar_cycle .and. solar_phase /= 1.) then
+            do nn = 1,jdim
+               ajout_tmp = EXP( wght0     * ajl_solarmin(nn,iz,is,iv,ial,it500,it200) &
+                                + dels(1) * ajl_solarmin(nn,izp1,is,iv,ial,it500,it200) &
+                                + dels(2) * ajl_solarmin(nn,iz,isp1,iv,ial,it500,it200) &
+                                + dels(3) * ajl_solarmin(nn,iz,is,ivp1,ial,it500,it200) &
+                                + dels(4) * ajl_solarmin(nn,iz,is,iv,ialp1,it500,it200) &
+                                + dels(5) * ajl_solarmin(nn,iz,is,iv,ial,it500p1,it200) &
+                                + dels(6) * ajl_solarmin(nn,iz,is,iv,ial,it500,it200p1) )
+               ajout(nn,k) = ajout(nn,k) + (ajout_tmp-ajout(nn,k)) * (1.-solar_phase)
+               ajout(nn,k) = MAX(ajout(nn,k),0.)
+            end do
+         end if
       end do Vert_loop
 
       end subroutine PHOTO_INTERP
 
-      subroutine set_ub_col( col_delta, vmr, invariants, pdel, plonl )
+      subroutine set_ub_col( col_delta, vmr, invariants, pdel, ptop, plonl )
 !---------------------------------------------------------------
 !        ... Set the column densities at the upper boundary
 !---------------------------------------------------------------
@@ -889,7 +1099,8 @@ Rate_loop : &
       real, intent(out)   ::  col_delta(:,0:,:)  ! /cm**2
       real, intent(in)    ::  vmr(:,:,:), &               ! xported species vmr
                               invariants(:,:,:), &        ! invariant species
-                              pdel(:,:)
+                              pdel(:,:), &                ! pressure thickness of model layers (Pa)
+                              ptop(:)                     ! model top pressure (Pa)
 
 !---------------------------------------------------------------
 !        NOTE: xfactor = 10.*R/(K*g) in cgs units.
@@ -909,20 +1120,20 @@ Rate_loop : &
 !---------------------------------------------------------------
 !        ... Assign column density at the upper boundary
 !            The first column is O3 and the second is O2.
-!            Add 10 DU O3 column above top of model.
+!            Add O3 column above top of model.
 !---------------------------------------------------------------
       spc_ndx = ox_ndx
       if( spc_ndx < 1 ) then
          spc_ndx = o3_ndx
       end if
       if( spc_ndx > 0 ) then
-!        col_delta(:,0,1) = 2.687e16*10.
-         col_delta(:,0,1) = 2.687e16*0.1
+         col_delta(:,0,1) = 2.687e16*o3_column_top
          do k = 1,plev
             col_delta(:,k,1) = xfactor * pdel(:,k) * vmr(:,k,spc_ndx) ! O3
          end do
       end if
-      col_delta(:,0,2) = 2.8e22
+!     col_delta(:,0,2) = 2.8e22
+      col_delta(:,0,2) = xfactor * ptop(:) * invariants(:,plev,3)/invariants(:,plev,1)
       do k = 1,plev
          col_delta(:,k,2) = xfactor * pdel(:,k) * invariants(:,k,3)/invariants(:,k,1) ! O2
       end do
@@ -987,97 +1198,6 @@ Rate_loop : &
 
       end subroutine SETCOL
 
-!     subroutine diurnal_geom( ip, lat, time_of_year, polar_night, polar_day, &
-!                              sunon, sunoff, loc_angle, zen_angle, plonl )
-!------------------------------------------------------------------
-!            ... Diurnal geometry factors
-!------------------------------------------------------------------
-
-
-!     implicit none
-
-!------------------------------------------------------------------
-!            ... Dummy arguments
-!------------------------------------------------------------------
-!     integer, intent(in)  ::     ip                 ! longitude index
-!     integer, intent(in)  ::     lat                ! latitude index
-!     integer, intent(in)  ::     plonl
-!     real, intent(in)     ::     time_of_year       ! time of year
-!     real, intent(out)    ::     sunon           ! sunrise angle in radians
-!     real, intent(out)    ::     sunoff          ! sunset angle in radians
-!     real, intent(out)    ::     zen_angle(plonl) ! solar zenith angle
-!     real, intent(out)    ::     loc_angle(plonl) ! "local" time angle
-!     logical, intent(out) ::     polar_day       ! continuous daylight flag
-!     logical, intent(out) ::     polar_night     ! continuous night flag
-
-!------------------------------------------------------------------
-!        ... Local variables
-!------------------------------------------------------------------
-!     integer ::  i
-!     real    ::  dec_max
-!     real    ::  declination
-!     real    ::  latitude
-!     real    ::  doy_loc            ! day of year
-!     real    ::  tod                ! time of day
-!     real    ::  sin_dec, cos_dec   ! sin, cos declination
-!     real    ::  cosphi             ! cos latitude
-!     real    ::  sinphi             ! sin latitude
-
-!     dec_max     = 23.45 * d2r
-!     latitude    = phi(base_lat + lat)
-!     sinphi      = sin( latitude )
-!     cosphi      = cos( latitude )
-!     polar_day   = .false.
-!     polar_night = .false.
-!------------------------------------------------------------------
-!        Note: this formula assumes a 365 day year !
-!------------------------------------------------------------------
-!     doy_loc     = aint( time_of_year )
-!     declination = dec_max * cos((doy_loc - 172.)*twopi/dayspy)
-!------------------------------------------------------------------
-!        Determine if in polar day or night
-!        If NOT in polar day or night then
-!        calculate terminator longitudes
-!------------------------------------------------------------------
-!     if( abs(latitude) >= (pid2 - abs(declination)) ) then
-!         if( sign(1.,declination) == sign(1.,latitude) ) then
-!            polar_day = .true.
-!            sunoff    = 2.*twopi
-!            sunon     = -twopi
-!        else
-!            polar_night  = .true.
-!           zen_angle(:) = -1.0
-!            return
-!        end if
-!     else
-!        sunoff = acos( -tan(declination)*tan(latitude) )
-!        sunon  = twopi - sunoff
-!     end if
-
-!     sin_dec = sin( declination )
-!     cos_dec = cos( declination )
-!------------------------------------------------------------------
-!        ... Compute base for zenith angle
-!------------------------------------------------------------------
-!     tod = (time_of_year - doy_loc) + .5
-!-------------------------------------------------------------------
-!        Note: Longitude 0 (Greenwich) at 0:00 hrs
-!              maps to local angle = pi
-!-------------------------------------------------------------------
-!     loc_angle(:) = (/ ((tod + real(i+(ip-1)*plonl-1)/real(plong))*twopi,i = 1,plonl) /)
-!     loc_angle(:) = mod( loc_angle(:),twopi )
-
-!     if( polar_day ) then
-!         zen_angle(:) = acos( sinphi*sin_dec + cosphi*cos_dec*cos(loc_angle(:)) )
-!     else
-!         where( loc_angle(:) <= sunoff .or. loc_angle(:) >= sunon )
-!            zen_angle(:) = acos( sinphi*sin_dec + cosphi*cos_dec*cos(loc_angle(:)) )
-!         elsewhere
-!           zen_angle(:) = -1.
-!         endwhere
-!     end if
-
-!     end subroutine diurnal_geom
 
       real function SUNDIS( Time )
 !-----------------------------------------------------------------------------
@@ -1172,6 +1292,7 @@ Rate_loop : &
       SUNDIS  = 1.000110 + .034221*costh  +  .001280*sinth + .000719*cos2th +  .000077*sin2th
 
       end function SUNDIS
+
 
       subroutine endrun(msg)
 

@@ -1,8 +1,8 @@
       module MO_SETSOX_MOD
 
 implicit none
-character(len=128), parameter :: version     = '$Id: mo_setsox.F90,v 13.0 2006/03/28 21:16:27 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2007_12 $'
+character(len=128), parameter :: version     = '$Id: mo_setsox.F90,v 13.0.12.1 2007/12/08 13:39:44 rsh Exp $'
+character(len=128), parameter :: tagname     = '$Name: omsk_2008_03 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -278,7 +278,11 @@ logical                       :: module_is_initialized = .false.
                         *const0/xl
                   xph(i,k) =  MIN( 1.e-2,MAX( 1.e-7,xph(i,k) + 2.*Eso4 ) )
                   if( iter > 1 ) then
-                     delta = ABS( (xph(i,k) - delta)/delta )
+                     if ( ABS(delta) > 1.e-40 ) then
+                        delta = ABS( (xph(i,k) - delta)/delta )
+                     else
+                        delta = 0.
+                     end if
                      converged = delta < .01
                      if( converged ) then
                         exit

@@ -70,7 +70,7 @@ public  wet_deposition,    &
 logical :: module_is_initialized = .FALSE.
 
 character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 15.0.4.1 2007/11/09 23:05:47 wfc Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 integer, parameter :: max_tracers = MAX_TRACER_FIELDS

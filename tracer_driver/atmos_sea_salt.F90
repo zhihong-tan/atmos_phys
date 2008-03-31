@@ -17,8 +17,11 @@ module atmos_sea_salt_mod
 !-----------------------------------------------------------------------
 use              fms_mod, only : file_exist, &
                                  write_version_number, &
+                                 close_file,              &
                                  mpp_pe, &
                                  mpp_root_pe, &
+                                 open_namelist_file, file_exist,    &
+                                 check_nml_error, error_mesg,  &
                                  stdlog
 use     time_manager_mod, only : time_type
 use     diag_manager_mod, only : send_data,            &
@@ -35,6 +38,18 @@ public  atmos_sea_salt_sourcesink, atmos_sea_salt_init, atmos_sea_salt_end
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
+character(len=80) :: scheme = " "
+real, save :: coef1
+real, save :: coef2
+!---------------------------------------------------------------------
+real :: coef_emis1=-999.
+real :: coef_emis2=-999.
+real :: critical_land_fraction = 1.0  ! sea-salt aerosol production  
+                                      ! occurs in grid cells with
+                                      ! land fraction .lt. this value
+
+namelist /ssalt_nml/  scheme, coef_emis1, coef_emis2, &
+                      critical_land_fraction
 !-----------------------------------------------------------------------
 
 !--- Arrays to help calculate tracer sources/sinks ---
@@ -50,8 +65,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 15.0 2007/08/14 03:56:54 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 15.0.4.1.2.1 2008/02/07 22:33:38 wfc Exp $'
+character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -102,8 +117,9 @@ integer, intent(in)                    :: is, ie, js, je
       real :: step
       real :: rhb, betha
       real :: rho_wet_salt, viscosity, free_path, C_c
-      real :: rho_air
+      real :: rho_air, Bcoef
       real :: r0, r1, r, dr, rmid, rwet, seasalt_flux
+      real :: a1, a2
       real, dimension(size(pfull,3))  :: vdep
       real, dimension(nrh) :: rh_table, rho_table, growth_table
 !! Sea salt hygroscopic growth factor from 35 to 99% RH
@@ -136,6 +152,14 @@ integer, intent(in)                    :: is, ie, js, je
       SS_emis(:,:)      = 0.0
       SS_setl(:,:)      = 0.0
       seasalt_dt(:,:,:) = 0.0
+      seasalt_flux = 0.
+      if (scheme .ne. "Smith") then 
+! Smith et al. (1993) derived an expression for the sea-salt flux
+! by assuming that particle size spectra measured at a height of 10 m
+! on the ocast of the Outer Hevrides islands with prevailing winds from
+! the ocean present a balance between production and loss. They approximate
+! the flux by the sum of two lognormal distributions.
+! 
 ! seasalt_flux is the flux of dry particles by bubble bursting .
 ! Monahan et al. (1986) established a formula for the flux of wet
 ! particles by bubble bursting. The radius needs to be converted
@@ -149,42 +173,100 @@ integer, intent(in)                    :: is, ie, js, je
 ! there is 1/betha3 remaining multiply by betha from the integrand, such
 ! that finally 1/betha^2 remained. 
 !
-      r = ra* 1.e6
-      dr= (rb - ra)/float(nr)* 1.e6
-      seasalt_flux=0.
-      do ir=1,nr
-        rmid=r+dr*0.5   ! Dry radius
-        r=r+dr
-        seasalt_flux = seasalt_flux + &
-           1.373*4./3.*pi*ssaltden/betha**2*1.e-18* &
-           (1.+0.057*(betha*rmid)**1.05)*dr*      &
-           10**(1.19*exp(-((0.38-alog10(betha*rmid))/0.65)**2))
-      enddo
+        r = ra* 1.e6
+        dr= (rb - ra)/float(nr)* 1.e6
+        seasalt_flux=0.
+        do ir=1,nr
+          rmid=r+dr*0.5   ! Dry radius
+          r=r+dr
+          Bcoef=(coef1-alog10(betha*rmid))/coef2
+          seasalt_flux = seasalt_flux + &
+             1.373*4./3.*pi*ssaltden/betha**2*1.e-18* &
+             (1.+0.057*(betha*rmid)**1.05)*dr*      &
+             10**(1.19*exp(-(Bcoef**2)))
+        enddo
+      endif
 
       if (present(kbot)) then
    
-        do j=1,jd
-          do i=1,id
-             kb=kbot(i,j)
-             if (frac_land(i,j).lt.0.5) then
+        if (scheme .eq. "Smith") then
+          if (mpp_pe() == mpp_root_pe()) write (stdlog(),*) "Smith parameterization for sea-salt production"
+          do j=1,jd
+            do i=1,id
+              kb=kbot(i,j)
+!              if (frac_land(i,j).lt.1.) then
+              if (frac_land(i,j).lt.critical_land_fraction) then
 !------------------------------------------------------------------
 !    Surface emission of sea salt
 !------------------------------------------------------------------
-
-               SS_emis(i,j) = seasalt_flux*(1.-frac_land(i,j))*w10m(i,j)**3.41
-               seasalt_dt(i,j,kb)=amax1(0.,SS_emis(i,j)/pwt(i,j,kb)*mtv)
-             endif
+! Smith et al. (1993)
+                seasalt_flux = 0.0
+                a1=exp(0.155*w10m(i,j)+5.595)
+                a2=exp(2.2082*sqrt(w10m(i,j))-3.3986)
+                r = ra* 1.e6
+                dr= (rb - ra)/float(nr)* 1.e6
+                do ir=1,nr
+                  rmid=r+dr*0.5   ! Dry radius
+                  r=r+dr
+                  seasalt_flux = seasalt_flux + &
+                     4.188e-18*rmid**3*ssaltden*betha*( &
+                    + coef1*a1*exp(-3.1*(alog(betha*rmid/2.1))**2) &
+                    + coef2*a2*exp(-3.3*(alog(betha*rmid/9.2))**2) )
+                enddo
+                SS_emis(i,j) = seasalt_flux*(1.-frac_land(i,j))
+                seasalt_dt(i,j,kb)=amax1(0.,SS_emis(i,j)/pwt(i,j,kb)*mtv)
+              endif
+            enddo
           enddo
-        enddo
+        else  
+          do j=1,jd
+            do i=1,id
+              if (frac_land(i,j).lt.critical_land_fraction) then
+! Monahan et . (1986)
+                SS_emis(i,j) = seasalt_flux*(1.-frac_land(i,j))*w10m(i,j)**3.41
+                seasalt_dt(i,j,kb)=amax1(0.,SS_emis(i,j)/pwt(i,j,kb)*mtv)
+              endif 
+            enddo
+          enddo
+        endif
       else
-        where (frac_land(:,:).lt.0.5 )
 
 !------------------------------------------------------------------
 !    Surface emission of sea salt
 !------------------------------------------------------------------
-          SS_emis(:,:)=(1.-frac_land(:,:))*seasalt_flux * w10m(:,:)**3.41
-          seasalt_dt(:,:,kd)=SS_emis(:,:)/pwt(:,:,kd)*mtv
-        endwhere
+        if (scheme .eq. "Smith") then
+          if (mpp_pe() == mpp_root_pe()) write (stdlog(),*) "Smith parameterization for sea-salt production"
+! Smith et al. (1993)
+          do j=1,jd
+            do i=1,id
+!              if (frac_land(i,j).lt.1.) then
+              if (frac_land(i,j).lt.critical_land_fraction) then
+                seasalt_flux = 0.0
+                a1=exp(0.155*w10m(i,j)+5.595)
+                a2=exp(2.2082*sqrt(w10m(i,j))-3.3986)
+                r = ra* 1.e6
+                dr= (rb - ra)/float(nr)* 1.e6
+                do ir=1,nr
+                  rmid=r+dr*0.5   ! Dry radius
+                  r=r+dr
+                  seasalt_flux = seasalt_flux + &
+                     4.188e-18*rmid**3*ssaltden*betha*( &
+                         + coef1*a1*exp(-3.1*(alog(betha*rmid/2.1))**2) &
+                         + coef2*a2*exp(-3.3*(alog(betha*rmid/9.2))**2) )
+                enddo
+                SS_emis(i,j) = seasalt_flux*(1.-frac_land(i,j))
+                seasalt_dt(i,j,kd)=SS_emis(i,j)/pwt(i,j,kd)*mtv
+              endif
+            enddo
+          enddo
+        else
+! Monahan et . (1986)
+!         where (frac_land(:,:).lt.1.0 )
+          where (frac_land(:,:).lt.critical_land_fraction )
+            SS_emis(:,:) = seasalt_flux*(1.-frac_land(:,:))*w10m(:,:)**3.41
+            seasalt_dt(:,:,kd)=SS_emis(:,:)/pwt(:,:,kd)*mtv
+          endwhere
+        endif
       endif
 
 ! Send the emission data to the diag_manager for output.
@@ -284,16 +366,52 @@ integer :: n, m
 !
 !-----------------------------------------------------------------------
 !
-      integer  log_unit,unit,io,index,ntr,nt
+      integer  log_unit,unit,ierr,io,index,ntr,nt
       character(len=16) ::  fld
       character*1 :: numb(5)
       data numb/'1','2','3','4','5'/
 
       if (module_is_initialized) return
 
-!---- write namelist ------------------
+!-----------------------------------------------------------------------
+!    read namelist.
+!-----------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ( )
+        ierr=1; do while (ierr /= 0)
+        read  (unit, nml=ssalt_nml, iostat=io, end=10)
+        ierr = check_nml_error(io, 'ssalt_nml')
+        end do
+10      call close_file (unit)
+      endif
+!--------- write version and namelist to standard log ------------
+      call write_version_number ( version, tagname )
+      if ( mpp_pe() == mpp_root_pe() ) &
+      write ( stdlog(), nml=ssalt_nml )
+      if (scheme .eq. "Smith") then
+        if (coef_emis1 .le. -990) then
+          coef1 = 1.0
+        else
+          coef1 = coef_emis1
+        endif
+        if (coef_emis2 .le. -990) then
+          coef2 = 1.0
+        else
+          coef2 = coef_emis2
+        endif
+      else
+        if (coef_emis1 .le. -990) then
+          coef1 = 0.38
+        else
+          coef1 = coef_emis1
+        endif
+        if (coef_emis2 .le. -990) then
+          coef2 = 0.65
+        else
+          coef2 = coef_emis2
+        endif
+      endif
 
-      call write_version_number (version, tagname)
 
 !----- set initial value of sea_salt ------------
        do m=1,5
@@ -319,7 +437,7 @@ integer :: n, m
       enddo
 
       module_is_initialized = .TRUE.
-
+ 
   30        format (A,' was initialized as tracer number ',i2)
 
 !-----------------------------------------------------------------------

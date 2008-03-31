@@ -8,22 +8,119 @@
 
 !     save
 
-      real :: esfact = 1.           ! earth sun distance factor
-
-character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 13.0 2006/03/28 21:16:03 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2007_12 $'
+character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 13.0.12.1.2.1 2008/02/29 00:23:27 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: omsk_2008_03 $'
 logical                       :: module_is_initialized = .false.
 
       contains
 
+! <SUBROUTINE NAME="chemdr">
+!   <OVERVIEW>
+!     Tropospheric chemistry driver
+!   </OVERVIEW>
+!   <DESCRIPTION>
+!     This subroutine calculates chemical production and loss of trace species,
+!     using the MOZART chemical mechanism and solver.
+!     Species and reactions can be modified using MOZART chemical pre-processor.
+!   </DESCRIPTION>
+!   <TEMPLATE>
+!     call chemdr( vmr, Time, lat, lon, delt, ps, ptop, pmid, pdel, &
+!                  zma, zi, cldfr, cwat, tfld, inv_data, sh, &
+!                  albedo, coszen, esfact, &
+!                  prod_out, loss_out, sulfate, psc, &
+!                  do_interactive_h2o, solar_phase, imp_slv_nonconv, plonl )
+!   </TEMPLATE>
+!   <IN NAME="Time" TYPE="time_type">
+!     Model time
+!   </INOUT>
+!   <IN NAME="lat" TYPE="real" DIM="(:)">
+!     The latitudes for the local domain.
+!   </IN>
+!   <IN NAME="lon" TYPE="real" DIM="(:)">
+!     The longitudes for the local domain.
+!   </IN>
+!   <IN NAME="delt" TYPE="real">
+!     Model timestep (s)
+!   </IN>
+!   <IN NAME="pmid" TYPE="real" DIM="(:,:)">
+!     Pressure on the model full levels (Pa)
+!   </IN>
+!   <IN NAME="pdel" TYPE="real" DIM="(:,:)">
+!     Pressure thickness of model layers (Pa)
+!   </IN>
+!   <IN NAME="ps" TYPE="real" DIM="(:)">
+!     Model surface pressure (Pa)
+!   </IN>
+!   <IN NAME="ptop" TYPE="real" DIM="(:)">
+!     Pressure at model top (Pa)
+!   </IN>
+!   <IN NAME="zma" TYPE="real" DIM="(:,:)">
+!     Model full level absolute geopotential heights (m)
+!   </IN>
+!   <IN NAME="zi" TYPE="real" DIM="(:,:)">
+!     Model half level absolute geopotential heights (m)
+!   </IN>
+!   <IN NAME="coszen" TYPE="real" DIM="(:)">
+!     Cosine of solar zenith angle
+!   </IN>
+!   <IN NAME="albedo" TYPE="real" DIM="(:)">
+!     Surface albedo
+!   </IN>
+!   <IN NAME="cldfr" TYPE="real" DIM="(:,:)">
+!     Cloud fraction
+!   </IN>
+!   <IN NAME="cwat" TYPE="real" DIM="(:,:)">
+!     Cloud liquid+ice water (kg/kg)
+!   </IN>
+!   <IN NAME="cwat" TYPE="real" DIM="(:,:)">
+!     Cloud liquid+ice water (kg/kg)
+!   </IN>
+!   <IN NAME="tfld" TYPE="real" DIM="(:,:)">
+!     Model temperature (K)
+!   </IN>
+!   <IN NAME="sh" TYPE="real" DIM="(:,:)">
+!     Model specific humidity (kg/kg)
+!   </IN>
+!   <IN NAME="sulfate" TYPE="real" DIM="(:,:)">
+!     Off-line sulfate aerosol volume mixing ratio (mol/mol)
+!   </IN>
+!   <IN NAME="psc" TYPE="psc_type">
+!     Polar stratospheric cloud amounts
+!   </IN>
+!   <IN NAME="solar_phase" TYPE="real">
+!     Solar cycle phase (1=max, 0=min)
+!   </IN>
+!   <IN NAME="esfact" TYPE="real">
+!     Earth-sun distance factor (r_avg/r)^2
+!   </IN>
+!   <IN NAME="inv_data" TYPE="real" DIM="(:,:,:)">
+!     Volume mixing ratios of "invariant" species (mol/mol)
+!   </IN>
+!   <IN NAME="do_interactive_h2o" TYPE="logical">
+!     Include water vapor sources/sinks?
+!   </IN>
+!   <INOUT NAME="vmr" TYPE="real" DIM="(:,:,:)">
+!     Trace species volume mixing ratio (mol/mol)
+!   </INOUT>
+!   <OUT NAME="prod_out" TYPE="real" DIM="(:,:,:)">
+!     Trace species photochemical production rates (mol/mol/s)
+!   </OUT>
+!   <OUT NAME="loss_out" TYPE="real" DIM="(:,:,:)">
+!     Trace species photochemical loss rates (mol/mol/s)
+!   </OUT>
+!   <OUT NAME="imp_slv_nonconv" TYPE="real" DIM="(:,:)">
+!     Flag for implicit solver non-convergence (fraction)
+!   </OUT>
       subroutine chemdr( vmr, &
                          Time, &
                          lat, lon, &
                          delt, &
-                         ps, pmid, pdel, &
+                         ps, ptop, pmid, pdel, &
                          zma, zi, &
                          cldfr, cwat, tfld, inv_data, sh, &
-                         albedo, coszen, prod_out, loss_out, sulfate, &
+                         albedo, coszen, esfact, &
+                         prod_out, loss_out, sulfate, psc, &
+                         do_interactive_h2o, solar_phase, imp_slv_nonconv, &
                          plonl )
 !-----------------------------------------------------------------------
 !     ... Chem_solver advances the volumetric mixing ratio
@@ -47,13 +144,13 @@ logical                       :: module_is_initialized = .false.
       use mo_chem_utls_mod, only : inti_mr_xform, adjh2o, negtrc, mmr2vmr, vmr2mmr, &
                                    get_spc_ndx, get_grp_mem_ndx
       use time_manager_mod, only : time_type
+      use strat_chem_utilities_mod, only : psc_type
 
       implicit none
 
 !-----------------------------------------------------------------------
 !        ... Dummy arguments
 !-----------------------------------------------------------------------
-!     integer, intent(in) ::  nstep                   ! time index
       type(time_type), intent(in) :: Time             ! time
       real,    intent(in) ::  lat(:), lon(:)          ! latitude, longitude
       integer, intent(in) ::  plonl
@@ -61,6 +158,7 @@ logical                       :: module_is_initialized = .false.
       real, intent(inout) ::  vmr(:,:,:)              ! transported species ( vmr )
       real, dimension(:), intent(in) :: &
                               ps, &                   ! surface press ( pascals )
+                              ptop, &                 ! model top pressure (pascals)
 !                             oro, &                  ! surface orography flag
                               albedo, &               ! surface albedo
                               coszen                  ! cosine of solar zenith angle
@@ -79,6 +177,10 @@ logical                       :: module_is_initialized = .false.
                               tfld, &                 ! midpoint temperature
                               sh, &                   ! specific humidity ( kg/kg )
                               sulfate                 ! sulfate aerosol
+      type(psc_type), intent(in) :: &
+                              psc                     ! polar stratospheric clouds (PSCs)
+      real, intent(in) ::     solar_phase, &          ! solar cycle phase (1=max, 0=min)
+                              esfact                  ! earth-sun distance factor (r_avg/r)^2
       real, dimension(:,:), intent(in) :: &
                               zi                      ! abs geopot height at interfaces ( m )
       real, dimension(:,:,:), intent(out) :: &
@@ -86,6 +188,9 @@ logical                       :: module_is_initialized = .false.
                               loss_out                ! chemical loss rate
       real, dimension(:,:,:), intent(in) :: &
                               inv_data                ! invariant species
+      real, dimension(:,:), intent(out) :: &
+                              imp_slv_nonconv         ! flag for implicit solver non-convergence (fraction)
+      logical, intent(in) ::  do_interactive_h2o      ! include h2o sources/sinks
 
 !-----------------------------------------------------------------------
 !             ... Local variables
@@ -93,11 +198,8 @@ logical                       :: module_is_initialized = .false.
       integer, parameter :: inst = 1, avrg = 2
       integer  :: idate
       integer  ::  i, k, m, n, hndx, file
-      integer  ::  ox_ndx, o3_ndx
+!     integer  ::  ox_ndx, o3_ndx
       integer  ::  so2_ndx, so4_ndx
-!     real     ::  sunon, &
-!                  sunoff, &
-!                  caldayn               ! day of year at end of time step
       real     ::  invariants(plonl,SIZE(vmr,2),max(1,nfs))
       real     ::  group_ratios(plonl,SIZE(vmr,2),max(1,grpcnt))
       real     ::  group_vmr(plonl,SIZE(vmr,2),max(1,grpcnt))
@@ -105,23 +207,18 @@ logical                       :: module_is_initialized = .false.
       real     ::  col_delta(plonl,0:SIZE(vmr,2),max(1,ncol_abs))               ! layer column densities (molecules/cm^2)
       real     ::  het_rates(plonl,SIZE(vmr,2),max(1,hetcnt))
       real     ::  extfrc(plonl,SIZE(vmr,2),max(1,extcnt))
-!     real     ::  vmr(plonl,SIZE(vmr,2),pcnstm1)                               ! xported species ( vmr )
       real     ::  reaction_rates(plonl,SIZE(vmr,2),rxntot)
       real     ::  nas(plonl,SIZE(vmr,2),max(1,grpcnt))                         ! non-advected species( mmr )
       real, dimension(plonl,SIZE(vmr,2)) :: &
                    h2ovmr, &             ! water vapor volume mixing ratio
                    mbar, &               ! mean wet atmospheric mass ( amu )
                    zmid                  ! midpoint geopotential in km
-!                  sulfate               ! sulfate aerosols
       real, dimension(plonl,SIZE(zi,2)) :: &
                    zint                  ! interface geopotential in km
       real, dimension(plonl)  :: &
                    zen_angle, &
                    loc_angle, &
                    albs
-      logical  ::  polar_night, &
-                   polar_day
-!     logical  ::  group_write(moz_file_cnt)
       character(len=32) :: fldname
       integer :: plev, plevp, plnplv, num_invar
       integer :: nstep
@@ -133,14 +230,6 @@ logical                       :: module_is_initialized = .false.
       nstep = 0
       
       
-!     caldayn = caldayr( ncdate, ncsec )
-      if( phtcnt /= 0 ) then
-!-----------------------------------------------------------------------      
-!        ... Calculate parameters for diurnal geometry
-!-----------------------------------------------------------------------      
-!        call diurnal_geom( ip, lat, caldayn, polar_night, polar_day, &
-!                           sunon, sunoff, loc_angle,  zen_angle, plonl )
-      end if
 !-----------------------------------------------------------------------      
 !        ... Initialize xform between mass and volume mixing ratios
 !-----------------------------------------------------------------------      
@@ -152,7 +241,7 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------      
 !        ... Xform water vapor from mmr to vmr and adjust in stratosphere
 !-----------------------------------------------------------------------      
-      call adjh2o( h2ovmr, sh, mbar, vmr, plonl )
+      call adjh2o( h2ovmr, sh, mbar, vmr, do_interactive_h2o, plonl )
 !-----------------------------------------------------------------------      
 !        ... Xform geopotential height from m to km 
 !            and pressure from hPa to mb
@@ -167,23 +256,24 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------      
 !        ... Set the "invariants"
 !-----------------------------------------------------------------------      
-         call setinv( invariants, tfld, h2ovmr, pmid, inv_data, plonl )
+         call setinv( invariants, tfld, h2ovmr, pmid, inv_data, &
+                      do_interactive_h2o, plonl )
       end if
       if( ncol_abs > 0 .and. phtcnt > 0 ) then
 !-----------------------------------------------------------------------      
 !        ... Xform family ox assuming that all ox is o3
 !-----------------------------------------------------------------------      
-         ox_ndx = get_spc_ndx( 'OX' )
-         if( ox_ndx > 0 ) then
-            o3_ndx = get_grp_mem_ndx( 'O3' )
-            if( o3_ndx > 0 ) then
+!        ox_ndx = get_spc_ndx( 'OX' )
+!        if( ox_ndx > 0 ) then
+!           o3_ndx = get_grp_mem_ndx( 'O3' )
+!           if( o3_ndx > 0 ) then
 !              vmr(:,:,ox_ndx) = mbar(:,:) * mmr(:,:,ox_ndx) / nadv_mass(o3_ndx)
-            end if
-         end if
+!           end if
+!        end if
 !-----------------------------------------------------------------------      
 !        ... Set the column densities at the upper boundary
 !-----------------------------------------------------------------------      
-         call set_ub_col( col_delta, vmr, invariants, pdel, plonl )
+         call set_ub_col( col_delta, vmr, invariants, pdel, ptop, plonl )
       end if
       if( gascnt > 0 ) then
 !-----------------------------------------------------------------------      
@@ -191,8 +281,8 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------      
          call setrxt( reaction_rates, tfld, invariants(:,:,indexm), plonl, plev, plnplv )
 !        call sulf_interp( lat, ip, pmid, caldayn, sulfate, plonl )
-         call usrrxt( reaction_rates, tfld, invariants, h2ovmr, &
-                      pmid, invariants(:,:,indexm), sulfate, vmr, sh, plonl )
+         call usrrxt( reaction_rates, tfld, invariants, h2ovmr, pmid, &
+                      invariants(:,:,indexm), sulfate, psc, vmr, sh, delt, plonl )
 !-----------------------------------------------------------------------      
 !       ...  History output for instantaneous reaction rates
 !-----------------------------------------------------------------------      
@@ -219,33 +309,28 @@ logical                       :: module_is_initialized = .false.
       
       if( phtcnt > 0 ) then
 !-----------------------------------------------------------------------
-!        ... Compute the photolysis rates at time = t(n+1)
+!        ... Compute the photolysis rates
 !-----------------------------------------------------------------------      
-!        if( polar_night ) then
-!           reaction_rates(:,:,1:phtcnt) = 0.
-!        else
-            esfact = sundis( Time )
-            if( ncol_abs > 0 ) then
+         if( ncol_abs > 0 ) then
 !-----------------------------------------------------------------------      
 !             ... Set the column densities
 !-----------------------------------------------------------------------      
-               call setcol( col_delta, col_dens, pdel, plonl )
-            end if
+            call setcol( col_delta, col_dens, pdel, plonl )
+         end if
 !-----------------------------------------------------------------------      
 !             ... Calculate the surface albedo
 !-----------------------------------------------------------------------      
-!            call srfalb( lat, ip, albs, caldayn, tsurf, plonl )
+!        call srfalb( lat, ip, albs, caldayn, tsurf, plonl )
 !-----------------------------------------------------------------------      
 !             ... Calculate the photodissociation rates
 !-----------------------------------------------------------------------      
-            call photo( reaction_rates(:,:,:phtcnt), pmid, pdel, tfld, zmid, &
-                        col_dens, &
-!                       zen_angle, albs, &
-                        coszen, albedo, &
-                        cwat, cldfr, &
-!                       sunon, sunoff, &
-                        esfact, plonl )
-!        end if
+         call photo( reaction_rates(:,:,:phtcnt), pmid, pdel, tfld, zmid, &
+                     col_dens, &
+!                    zen_angle, albs, &
+                     coszen, albedo, &
+                     cwat, cldfr, &
+!                    sunon, sunoff, &
+                     esfact, solar_phase, plonl )
 !-----------------------------------------------------------------------      
 !       ...  History output for instantaneous photo rates
 !-----------------------------------------------------------------------      
@@ -368,6 +453,7 @@ logical                       :: module_is_initialized = .false.
 !                      invariants(1,1,indexm), &
                        lat, lon, &
                        prod_out, loss_out, &
+                       imp_slv_nonconv, &
                        plonl, plnplv )
       end if
       if( clscnt5 > 0 .and. rxntot > 0 ) then
@@ -395,11 +481,6 @@ logical                       :: module_is_initialized = .false.
 !         ... Check for negative values and reset to zero
 !-----------------------------------------------------------------------      
 !     call negtrc( lat, 'After chemistry ', vmr, plonl )
-!-----------------------------------------------------------------------      
-!         ... Set values near upper boundary
-!-----------------------------------------------------------------------      
-!     call set_ub_vals( lat, ip, vmr, pmid, zmid, &
-!                        tfld, caldayn, plonl )
 !-----------------------------------------------------------------------      
 !         ... Output instantaneous "wet" advected volume mixing
 !-----------------------------------------------------------------------      
@@ -452,5 +533,6 @@ logical                       :: module_is_initialized = .false.
 !     call vmr2mmr( vmr, mmr, nas, group_ratios, mbar, plonl )
 
       end subroutine chemdr
+!</SUBROUTINE>
 
       end module mo_chemdr_mod

@@ -15,8 +15,8 @@ private
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act.F90,v 15.0 2007/08/14 03:56:38 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+character(len=128) :: version = '$Id: aer_ccn_act.F90,v 15.0.4.1 2008/01/17 11:52:21 rsh Exp $'
+character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 
 !---------------- private data -------------------
 
@@ -34,8 +34,28 @@ character(len=128) :: tagname = '$Name: omsk_2007_12 $'
 !-------------------- namelist -----------------------------------------
 
 logical  :: nooc = .false.   ! include organic aerosols as ccns ?
+ !Parameters for look-up tables
+ 
+real ::  lowup=0.3 !m/s
+real ::  highup=10.
 
-namelist /aer_ccn_act_nml/ nooc
+! earlier values: lowup2 = 0.001, highmass2 = 1000., highmass3 = 1000.
+!real ::  lowup2=0.0001 !m/s
+real ::  lowup2=0.05   !m/s
+real ::  highup2=0.3
+real ::  lowmass2=0.01 !ug m-3
+!real ::  highmass2=1000.
+real ::  highmass2=100.
+real ::  lowmass3=0.01 !ug m-3
+!real ::  highmass3=1000.
+real ::  highmass3=100.
+real :: lowT2=243.15 !K
+real :: highT2=308.15
+
+namelist /aer_ccn_act_nml/ nooc, &
+                           lowup, highup, lowup2, highup2, lowmass2, &
+                           highmass2, lowmass3, highmass3,  &
+                           lowT2, highT2
 
 
 logical :: module_is_initialized  = .false.
@@ -55,7 +75,11 @@ real, intent(inout) :: Drop
   tym = size (totalmass,1)
 
   call aer_ccn_act_k (T1, P1, Updraft1, TotalMass, tym, droplets,  &
-                      droplets2, res, res2, nooc, Drop, ier, ermesg)
+                      droplets2, res, res2, nooc,  &
+                       lowup, highup, lowup2, highup2, lowmass2, &
+                       highmass2, lowmass3, highmass3,  &
+                      lowT2, highT2, &
+                      Drop, ier, ermesg)
   if (ier /= 0) call error_mesg ('aer_ccn_act', ermesg, FATAL)
 
   
@@ -113,7 +137,11 @@ real :: drop
   tym = size (totalmass,1)
 
    call aer_ccn_act_wpdf_k(T, p, wm, wp2, totalmass, tym, droplets, &
-            droplets2, res, res2, nooc, drop, ier, ermesg)
+            droplets2, res, res2, nooc,   &
+            lowup, highup, lowup2, highup2, lowmass2, &
+            highmass2, lowmass3, highmass3,  &
+            lowT2, highT2, &
+            drop, ier, ermesg)
   if (ier /= 0) call error_mesg ('aer_ccn_act_wpdf', ermesg, FATAL)
 
 end subroutine aer_ccn_act_wpdf
@@ -170,7 +198,7 @@ integer i, j, k, l
   end do
   close(11)
 
-  open(11, FILE='INPUT/droplets2.dat')
+    open(11, FILE='INPUT/droplets2.dat')
   do k=1,res2
     do i=1,res2
       do j=1, res2

@@ -20,18 +20,29 @@ module atmos_age_tracer_mod
 
 !-----------------------------------------------------------------------
 
-use              fms_mod, only : file_exist, &
+use              fms_mod, only : file_exist,           &
+                                 field_exist,          &
                                  write_version_number, &
-                                 mpp_pe, &
-                                 mpp_root_pe, &
-                                 error_mesg, &
-                                 FATAL,WARNING, NOTE, &
+                                 mpp_pe,               &
+                                 mpp_root_pe,          &
+                                 lowercase,   &
+                                 error_mesg,           &
+                                 FATAL,WARNING, NOTE,  &
                                  stdlog
 use     time_manager_mod, only : time_type
 use     diag_manager_mod, only : send_data,            &
                                  register_static_field
-use   tracer_manager_mod, only : get_tracer_index
-use    field_manager_mod, only : MODEL_ATMOS
+use   tracer_manager_mod, only : get_tracer_index,     &
+                                 query_method
+use    field_manager_mod, only : MODEL_ATMOS,          &
+                                 parse
+use     interpolator_mod, only : interpolate_type,     &
+                                 interpolator_init,    &
+                                 interpolator_end,     &
+                                 interpolator,         &
+                                 CONSTANT,             &
+                                 INTERP_WEIGHTED_P  
+
 
 
 implicit none
@@ -168,7 +179,7 @@ contains
 ! A routine to initialize the age tracer module.
 !</DESCRIPTION>
 !<TEMPLATE>
-!call atmos_age_tracer_init (r, mask, axes, Time)
+!call atmos_age_tracer_init (r, axes, Time, nage, lonb_mod, latb_mod, phalf, mask)
 !</TEMPLATE>
 !   <INOUT NAME="r" TYPE="real" DIM="(:,:,:,:)">
 !     Tracer fields dimensioned as (nlon,nlat,nlev,ntrace). 
@@ -185,7 +196,17 @@ contains
 !     The axes relating to the tracer array dimensioned as
 !      (nlon, nlat, nlev, ntime)
 !   </IN>
- subroutine atmos_age_tracer_init (r, axes, Time, nage, mask)
+!   <IN NAME="lonb_mod" TYPE="real" DIM="(:,:)">
+!     The longitude corners for the local domain.
+!   </IN>
+!   <IN NAME="latb_mod" TYPE="real" DIM="(:,:)">
+!     The latitude corners for the local domain.
+!   </IN>
+!   <IN NAME="phalf" TYPE="real" DIM="(:,:,:)">
+!     Pressure on the model half levels (Pa)
+!   </IN>
+ subroutine atmos_age_tracer_init( r, axes, Time, nage, &
+                                   lonb_mod, latb_mod, phalf, mask)
 
 !-----------------------------------------------------------------------
 !
@@ -198,6 +219,9 @@ contains
 real,             intent(inout), dimension(:,:,:,:) :: r
 type(time_type),  intent(in)                        :: Time
 integer,          intent(in)                        :: axes(4)
+real,             intent(in),    dimension(:,:)     :: lonb_mod
+real,             intent(in),    dimension(:,:)     :: latb_mod
+real,             intent(in),    dimension(:,:,:)   :: phalf
 integer,          intent(out)                       :: nage
 real, intent(in), dimension(:,:,:), optional        :: mask
 
@@ -205,6 +229,10 @@ real, intent(in), dimension(:,:,:), optional        :: mask
 !-----------------------------------------------------------------------
 !
       integer :: n
+      integer :: flag_file, flag_spec
+      character(len=64) :: control='', name='', filename='', specname=''
+      type(interpolate_type) :: init_conc
+      logical :: tracer_initialized
 
       if (module_is_initialized) return
 
@@ -216,7 +244,44 @@ real, intent(in), dimension(:,:,:), optional        :: mask
  
       nage = -1
       n = get_tracer_index(MODEL_ATMOS,'AGE' )
-      if (n>0) nage = n
+!     if (n>0) nage = n
+      if (n>0) then
+        nage = n
+
+!-----------------------------------------------------------------------
+!     ... Initial conditions
+!-----------------------------------------------------------------------
+      tracer_initialized = .false.
+      if ( field_exist('INPUT/atmos_tracers.res.nc', 'age') .or. &
+           field_exist('INPUT/fv_tracers.res.nc', 'age') .or. &
+           field_exist('INPUT/fv_tracer.res.tile1.nc', 'age') .or. &
+           field_exist('INPUT/tracer_age.res', 'age') ) then
+         tracer_initialized = .true.
+      end if
+      if(.not. tracer_initialized) then
+!     if((.not. tracer_initialized) .and. (nage /= -1)) then
+         if( query_method('init_conc',MODEL_ATMOS,n,name,control) ) then
+            if( trim(name) == 'file' ) then
+               flag_file = parse(control, 'file',filename)
+               flag_spec = parse(control, 'name',specname)
+
+               if( flag_file>0 ) then
+                  call interpolator_init( init_conc,trim(filename),lonb_mod,latb_mod,&
+                                          data_out_of_bounds=(/CONSTANT/), &
+                                          vert_interp=(/INTERP_WEIGHTED_P/) )
+                  if( flag_spec > 0 ) then
+                     specname = lowercase(specname)
+                  else
+                     specname = 'age'
+                  end if
+                  call interpolator(init_conc, Time, phalf,r(:,:,:,n),trim(specname))                  
+               end if
+            end if
+         end if
+      end if
+    endif
+
+
 
       module_is_initialized = .TRUE.
 

@@ -14,9 +14,9 @@
       integer, parameter ::  inst = 1, avrg = 2
       real, parameter    ::  rel_err      = 1.e-3
       real, parameter    ::  high_rel_err = 1.e-4
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !               newton-raphson iteration limits
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
       integer, parameter :: cut_limit    = 5
 
       integer :: ox_ndx
@@ -31,6 +31,8 @@
                  ox_l6_ndx, ox_l7_ndx, ox_l8_ndx, ox_l9_ndx, usr4_ndx, &
                  usr16_ndx, usr17_ndx
       logical :: do_ox_pl = .true.
+      integer :: verbose
+      real    :: r2d
 
       type hst_pl
          integer  ::  cnt(2)
@@ -43,16 +45,16 @@
       type(hst_pl), private, allocatable ::   imp_hst_loss(:)
       logical, private, allocatable      ::   factor(:)
 
-character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 14.0 2007/03/15 22:11:00 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2007_12 $'
+character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 14.0.8.1 2007/12/08 13:39:44 rsh Exp $'
+character(len=128), parameter :: tagname     = '$Name: omsk_2008_03 $'
 logical                       :: module_is_initialized = .false.
 
       contains
 
-      subroutine imp_slv_init
-!-----------------------------------------------------------------------      
+      subroutine imp_slv_init( verbose_in )
+!-----------------------------------------------------------------------
 !        ... initialize the implict solver
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 
       use chem_mods_mod,  only : clscnt4, endrun, implicit
       use mo_grid_mod,    only : pcnstm1
@@ -60,9 +62,14 @@ logical                       :: module_is_initialized = .false.
 
       implicit none
 
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
+! 	... Dummy arguments
+!-----------------------------------------------------------------------
+      integer,          intent(in) :: verbose_in
+
+!-----------------------------------------------------------------------
 !        ... local variables
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
       integer :: m, astat, file, timetype
       integer :: il, iu
       integer :: wrk(21)
@@ -217,9 +224,9 @@ logical                       :: module_is_initialized = .false.
 !            imp_hst_loss(file)%do_hst(:) = .false.
 !            imp_hst_loss(file)%cnt(:)    = 0
 !         end do
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... scan for class production to history file(s)
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        do file = 1,moz_file_cnt
 !            do timetype = inst,avrg
 !              if( hfile(file)%histout_cnt(14,timetype) > 0 ) then
@@ -249,9 +256,9 @@ logical                       :: module_is_initialized = .false.
 !              end if
 !           end do
 !        end do
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... scan for class loss to history file(s)
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        do file = 1,moz_file_cnt
 !            do timetype = inst,avrg
 !              if( hfile(file)%histout_cnt(15,timetype) > 0 ) then
@@ -284,6 +291,9 @@ logical                       :: module_is_initialized = .false.
 !     end if
 
       small = 1.e6 * tiny( small )
+      r2d = 180./PI
+
+      verbose = verbose_in
 
       end subroutine imp_slv_init
 
@@ -291,7 +301,8 @@ logical                       :: module_is_initialized = .false.
                           het_rates, extfrc, &
                           nstep, delt, &
                           lat, lon, &
-                          prod_out, loss_out, plonl, plnplv )
+                          prod_out, loss_out, non_convergence, &
+                          plonl, plnplv )
 !-----------------------------------------------------------------------
 !              ... imp_sol advances the volumetric mixing ratio
 !           forward one time step via the fully implicit euler scheme.
@@ -314,17 +325,18 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !             ... dummy args
 !-----------------------------------------------------------------------
-      integer, intent(in) ::   nstep                     ! time step index (zero based)
-      real, intent(in) ::   lat(:)                    ! latitude
-      real, intent(in) ::   lon(:)                    ! longitude
-      integer, intent(in) ::   plonl                     ! longitude tile dimension
-      integer, intent(in) ::   plnplv                    ! plonl*plev
-      real, intent(in)    ::   delt                      ! time step (seconds)
-      real, intent(in)    ::   reaction_rates(plnplv,rxntot)
-      real, intent(in)    ::   het_rates(plnplv,max(1,hetcnt)), &
-                               extfrc(plnplv,max(1,extcnt))
-      real, intent(inout) ::   base_sol(plnplv,pcnstm1)
-      real,intent(inout), optional :: prod_out(plnplv,pcnstm1),loss_out(plnplv,pcnstm1)
+      integer, intent(in)    :: nstep                     ! time step index (zero based)
+      real,    intent(in)    :: lat(:)                    ! latitude
+      real,    intent(in)    :: lon(:)                    ! longitude
+      integer, intent(in)    :: plonl                     ! longitude tile dimension
+      integer, intent(in)    :: plnplv                    ! plonl*plev
+      real,    intent(in)    :: delt                      ! time step (seconds)
+      real,    intent(in)    :: reaction_rates(plnplv,rxntot)
+      real,    intent(in)    :: het_rates(plnplv,max(1,hetcnt)), &
+                                extfrc(plnplv,max(1,extcnt))
+      real,    intent(out)   :: non_convergence(plnplv)   ! flag for implicit solver non-convergence (fraction)
+      real,    intent(inout) :: base_sol(plnplv,pcnstm1)
+      real,    intent(inout) :: prod_out(plnplv,pcnstm1),loss_out(plnplv,pcnstm1)
 
 !-----------------------------------------------------------------------
 !             ... local variables
@@ -363,7 +375,7 @@ logical                       :: module_is_initialized = .false.
                    wrk_buff
       real, dimension(plnplv,max(1,clscnt4)) :: &
                    ind_prd
-      real    ::   timer 
+      real    ::   timer
       logical ::   convergence
       logical ::   dump_buff, fill_buff
       logical ::   frc_mask, iter_conv
@@ -372,9 +384,9 @@ logical                       :: module_is_initialized = .false.
       type(hst_buff), allocatable :: prod_buff(:), loss_buff(:)
       integer :: indx_old
 
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... allocate history prod, loss buffers
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !     if( moz_file_cnt > 0 ) then
 !        allocate( prod_buff(moz_file_cnt), stat=astat )
 !         if( astat /= 0 ) then
@@ -414,29 +426,26 @@ logical                       :: module_is_initialized = .false.
 
 !     if( implicit%indprd_cnt > 0 .or. extcnt > 0 ) then
       if( implicit%indprd_cnt > 0 ) then
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... class independent forcing
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
          call indprd( 4, ind_prd, base_sol, extfrc, reaction_rates )
       else
          do m = 1,max(1,clscnt4)
             ind_prd(:,m) = 0.
          end do
       end if
-      
-!-----------------------------------------------------------------------      
+
+!-----------------------------------------------------------------------
 !        ... Initialize production/loss diagnostics
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
       do k = 1,clscnt4
          j = implicit%clsmap(k)
-         if( PRESENT( prod_out ) ) then
-            prod_out(:,j) = 0.
-         end if
-         if( PRESENT( loss_out ) ) then
-            loss_out(:,j) = 0.
-         end if
+         prod_out(:,j) = 0.
+         loss_out(:,j) = 0.
       end do
 
+      non_convergence(:) = 0.
 
 
 level_loop : &
@@ -448,20 +457,20 @@ lon_tile_loop : &
          do i = 1,plonl
             indx = (lev - 1)*plonl + i
             indx_old = 0
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... transfer from base to local work arrays
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
             do m = 1,rxntot
-               lrxt(m) = reaction_rates(indx,m) 
+               lrxt(m) = reaction_rates(indx,m)
             end do
             if( hetcnt > 0 ) then
                do m = 1,hetcnt
-                  lhet(m) = het_rates(indx,m) 
+                  lhet(m) = het_rates(indx,m)
                 end do
             end if
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... time step loop
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
             dt            = delt
             cut_cnt       = 0
             stp_con_cnt   = 0
@@ -469,24 +478,24 @@ lon_tile_loop : &
 time_step_loop : &
             do
                dti = 1. / dt
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... transfer from base to local work arrays
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                do m = 1,pcnstm1
-                  lsol(m) = base_sol(indx,m) 
+                  lsol(m) = base_sol(indx,m)
                end do
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... transfer from base to class array
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                do k = 1,clscnt4
                   j = implicit%clsmap(k)
                   m = implicit%permute(k)
                   solution(m) = lsol(j)
                end do
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... set the iteration invariant part of the function f(y)
 !        ... if there is "independent" production put it in the forcing
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                if( implicit%indprd_cnt > 0 .or. extcnt > 0 ) then
                   do m = 1,clscnt4
                      iter_invariant(m) = dti * solution(m) + ind_prd(indx,m)
@@ -496,9 +505,9 @@ time_step_loop : &
                      iter_invariant(m) = dti * solution(m)
                   end do
                end if
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... the linear component
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                if( implicit%lin_rxt_cnt > 0 ) then
                   call imp_linmat( lin_jac, lsol, lrxt, lhet )
                else
@@ -513,9 +522,9 @@ time_step_loop : &
 !=======================================================================
 iter_loop : &
                do nr_iter = 1,implicit%iter_max
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... the non-linear component
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                   if( factor(nr_iter) ) then
                      if( implicit%nln_rxt_cnt > 0 ) then
                         call imp_nlnmat( sys_jac, lsol, lrxt, lin_jac, dti )
@@ -524,28 +533,28 @@ iter_loop : &
                            sys_jac(m) = lin_jac(m)
                         end do
                      end if
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !         ... factor the "system" matrix
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                      call imp_lu_fac( sys_jac )
-                  end if      
-!-----------------------------------------------------------------------      
+                  end if
+!-----------------------------------------------------------------------
 !           ... form f(y)
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                   call imp_prod_loss( prod, loss, lsol, lrxt, lhet )
                   do m = 1,clscnt4
                      forcing(m) = solution(m)*dti - (iter_invariant(m) + prod(m) - loss(m))
                   end do
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !         ... solve for the mixing ratio at t(n+1)
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                   call imp_lu_slv( sys_jac, forcing )
                   do m = 1,clscnt4
                      solution(m) = solution(m) + forcing(m)
                   end do
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !            ... convergence measures
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                   if( nr_iter > 1 ) then
                      do k = 1,clscnt4
                         m = implicit%permute(k)
@@ -556,23 +565,23 @@ iter_loop : &
                         end if
                      end do
                   end if
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !           ... limit iterate
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                   where( solution(:) < 0. )
                      solution(:) = 0.
                      endwhere
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !           ... transfer latest solution back to work array
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                   do k = 1,clscnt4
                      j = implicit%clsmap(k)
                      m = implicit%permute(k)
                      lsol(j) = solution(m)
                   end do
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !            ... check for convergence
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                   if( nr_iter > 1 ) then
                      do k = 1,clscnt4
                         m = implicit%permute(k)
@@ -590,13 +599,13 @@ iter_loop : &
                   end if
                end do iter_loop
 
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !            ... check for newton-raphson convergence
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                if( .not. convergence ) then
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !           ... non-convergence
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !                  if( pdiags%imp_slv ) then
 !                     write(*,'('' imp_sol: Time step '',1p,e21.13,'' Failed to converge'')') dt
 !                  end if
@@ -607,28 +616,38 @@ iter_loop : &
                      cycle
                   else
 !                    write(*,'('' imp_sol: failed to converge @ (lon,lat,lev,dt) = '',3i5,1p,e21.13)') indx,lat,lev,dt
+                     non_convergence(indx) = non_convergence(indx) + dt/delt
                      if (indx_old /= indx) then
-                     write(*,'('' imp_sol: failed to converge @ (lon,lat,lev,dt) = '',2f8.2,i5,1p,e21.13)') &
-                        lon(i)*180./PI,lat(i)*180./PI,lev,dt
-                     do m = 1,clscnt4
-                        if( .not. converged(m)) then
-                           write(*,'(1x,a8,1x,1pe10.3)') tracnam(implicit%clsmap(m)), max_delta(m)
+                        if (verbose >= 3) then
+                        write(*,105) lon(i)*r2d,lat(i)*r2d,lev,dt
+ 105                    format('imp_sol: failed to converge @ (lon,lat,lev,dt) = ', 2f8.2,i5,1p,f12.4)
                         end if
-                     end do
-                     endif
+                        if (verbose >= 4) then
+                           do m = 1,clscnt4
+                              if( .not. converged(m)) then
+                                 write(*,'(1x,a8,1x,1pe10.3)') &
+                                    tracnam(implicit%clsmap(m)), max_delta(m)
+                              end if
+                           end do
+                        end if
+                     else
+                        if (verbose >= 4) then
+                        write(*,105) lon(i)*r2d,lat(i)*r2d,lev,dt
+                        end if
+                     end if
                      indx_old = indx
                   end if
                end if
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !           ... check for interval done
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                interval_done = interval_done + dt
                if( abs( delt - interval_done ) <= .0001 ) then
                   exit
                else
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !           ... transfer latest solution back to base array
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                   if( convergence ) then
                      stp_con_cnt = stp_con_cnt + 1
                   end if
@@ -636,25 +655,20 @@ iter_loop : &
                      base_sol(indx,m) = lsol(m)
                   end do
 !++lwh
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... Production/loss diagnostics
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
                   do k = 1,clscnt4
                      j = implicit%clsmap(k)
                      m = implicit%permute(k)
-                     if( PRESENT( prod_out ) ) then
-                        prod_out(indx,j) = prod_out(indx,j) &
-                          + prod(m) * dt * dti
-                     end if
-                     if( PRESENT( loss_out ) ) then
-                        loss_out(indx,j) = loss_out(indx,j) &
-                        + loss(m) * dt * dti
-                     end if
+                     prod_out(indx,j) = prod_out(indx,j) + prod(m) * dt/delt
+                     loss_out(indx,j) = loss_out(indx,j) + loss(m) * dt/delt
                   end do
 !--lwh
                   if( stp_con_cnt >= 2 ) then
                      dt = 2.*dt
                      stp_con_cnt = 0
+                     cut_cnt = max( 0,cut_cnt-1 )
                   end if
                   dt = min( dt,delt-interval_done )
 !                  if( pdiags%imp_slv ) then
@@ -662,31 +676,25 @@ iter_loop : &
 !                  end if
                end if
             end do time_step_loop
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !           ... transfer latest solution back to base array
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
             do k = 1,clscnt4
                j = implicit%clsmap(k)
                m = implicit%permute(k)
                base_sol(indx,j) = solution(m)
 !++lwh
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !        ... Production/loss diagnostics
-!-----------------------------------------------------------------------      
-               if( PRESENT( prod_out ) ) then
-                 prod_out(indx,j) = prod_out(indx,j) &
-                     + prod(m) * dt * dti &
-                     + ind_prd(indx,m)
-               end if
-               if( PRESENT( loss_out ) ) then
-                  loss_out(indx,j) = loss_out(indx,j) &
-                     + loss(m) * dt * dti
-               end if
+!-----------------------------------------------------------------------
+               prod_out(indx,j) = prod_out(indx,j) + prod(m) * dt/delt &
+                                                   + ind_prd(indx,m)
+               loss_out(indx,j) = loss_out(indx,j) + loss(m) * dt/delt
 !--lwh
             end do
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !           ... check for history prod, loss
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 ! hist_buff_loop : &
 !            do file = 1,moz_file_cnt
 !               do timetype = inst,avrg
@@ -711,9 +719,9 @@ iter_loop : &
 !                           hndx = hndx + 1
 !                           l = implicit%clsmap(cls_ndx)
 !                           if( l == ox_ndx ) then
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !         ... ozone production (only valid for the troposphere!)
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !			      if( do_ox_pl ) then
 !			         k = indx
 !                                   prod_buff(file)%buff(k,hndx) = &
@@ -724,8 +732,8 @@ iter_loop : &
 !                                    + reaction_rates(k,ox_p5_ndx) *base_sol(k,c2h5o2_ndx) &
 !                                    + .88*reaction_rates(k,ox_p6_ndx)*base_sol(k,isopo2_ndx) &
 !                                    + .985*reaction_rates(k,ox_p7_ndx)*base_sol(k,macro2_ndx) &
-!                                    + reaction_rates(k,ox_p8_ndx)*base_sol(k,mco3_ndx) & 
-!                                    + reaction_rates(k,ox_p9_ndx)*base_sol(k,c3h7o2_ndx) & 
+!                                    + reaction_rates(k,ox_p8_ndx)*base_sol(k,mco3_ndx) &
+!                                    + reaction_rates(k,ox_p9_ndx)*base_sol(k,c3h7o2_ndx) &
 !                                    + reaction_rates(k,ox_p10_ndx)*base_sol(k,ro2_ndx) &
 !                                    + reaction_rates(k,ox_p11_ndx)*base_sol(k,xo2_ndx)) * base_sol(k,no_ndx)
 !                              end if
@@ -758,14 +766,14 @@ iter_loop : &
 !                           l = implicit%clsmap(cls_ndx)
 !                           if( l == ox_ndx ) then
 !			      if( do_ox_pl ) then
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !         ... ozone destruction (only valid for the troposphere!)
 !             also include ox loss from no2+oh, n2o5+aerosol, no3+aerosol
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !	                         k = indx
 !                                   loss_buff(file)%buff(k,hndx) =  reaction_rates(k,ox_l1_ndx) &
-!                                   + reaction_rates(k,ox_l2_ndx) *base_sol(k,oh_ndx) & 
-!                                   + reaction_rates(k,ox_l3_ndx) *base_sol(k,ho2_ndx) & 
+!                                   + reaction_rates(k,ox_l2_ndx) *base_sol(k,oh_ndx) &
+!                                   + reaction_rates(k,ox_l3_ndx) *base_sol(k,ho2_ndx) &
 !                                   + reaction_rates(k,ox_l6_ndx) *base_sol(k,c2h4_ndx) &
 !                                   + reaction_rates(k,ox_l4_ndx) *base_sol(k,c3h6_ndx) &
 !                                   + .9*reaction_rates(k,ox_l5_ndx) *base_sol(k,isop_ndx) &
@@ -789,11 +797,11 @@ iter_loop : &
          end do lon_tile_loop
       end do level_loop
 
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !    	... check for implicit species production and loss output
 !           first check production; instantaneous then time averaged
 !           then  check loss; instantaneous then time averaged
-!-----------------------------------------------------------------------      
+!-----------------------------------------------------------------------
 !     do file = 1,moz_file_cnt
 !         do timetype = inst,avrg
 !           dump_buff = imp_hst_prod(file)%do_hst(timetype)

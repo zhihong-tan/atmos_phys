@@ -5,24 +5,25 @@ implicit none
       private
       public :: chemini
 
-character(len=128), parameter :: version     = '$Id: mo_chemini.F90,v 13.0 2006/03/28 21:16:05 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2007_12 $'
+character(len=128), parameter :: version     = '$Id: mo_chemini.F90,v 13.0.12.1.2.1 2008/02/07 22:36:54 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: omsk_2008_03 $'
 logical                       :: module_is_initialized = .false.
 
       contains
 
-      subroutine chemini( calday )
+      subroutine chemini( file_jval_lut, file_jval_lut_min, use_tdep_jvals, &
+                          o3_column_top, jno_scale_factor, verbose )
 !-----------------------------------------------------------------------
 ! 	... Chemistry module intialization
 !-----------------------------------------------------------------------
 
-      use MO_PHOTO_MOD,      only : PRATE_INIT
+      use MO_PHOTO_MOD,      only : prate_init
       use mo_chem_utls_mod,  only : chem_utls_init
       use mo_usrrxt_mod,     only : usrrxt_init
-      use CHEM_MODS_mod,     only : grpcnt, clscnt1, clscnt4, clscnt5, CHEM_MODS_INIT
-      use MO_EXP_SOL_mod,    only : EXP_SLV_INIT
-      use MO_IMP_SOL_mod,    only : IMP_SLV_INIT
-      use MO_RODAS_SOL_mod,  only : RODAS_SLV_INIT
+      use CHEM_MODS_mod,     only : grpcnt, clscnt1, clscnt4, clscnt5, chem_mods_init
+      use MO_EXP_SOL_mod,    only : exp_slv_init
+      use MO_IMP_SOL_mod,    only : imp_slv_init
+      use MO_RODAS_SOL_mod,  only : rodas_slv_init
 
       use MO_READ_SIM_CHM_mod, only : read_sim_chm
 
@@ -31,14 +32,19 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 ! 	... Dummy arguments
 !-----------------------------------------------------------------------
-      real, intent(in)    ::  calday
+      character(len=*), intent(in) :: file_jval_lut, &
+                                      file_jval_lut_min
+      logical,          intent(in) :: use_tdep_jvals
+      real,             intent(in) :: o3_column_top, &
+                                      jno_scale_factor
+      integer,          intent(in) :: verbose
 
 !-----------------------------------------------------------------------
 ! 	... Local variables
 !-----------------------------------------------------------------------
       character(len=80) ::   lpath
       character(len=80) ::   mspath
-      character(len=32) ::   filename
+      character(len=32) ::   filename, filename_solarmin
       character(len=30) ::   emires, surfres
       
       character(len=128) ::  sim
@@ -66,10 +72,11 @@ logical                       :: module_is_initialized = .false.
 !     filename = photo_flsp%nl_filename
 !     lpath    = photo_flsp%local_path
 !     mspath   = photo_flsp%remote_path
-      filename = 'INPUT/jvals.v5'
-      lpath = ''
-      mspath = ''
-      call prate_init( filename, lpath, mspath )
+      lpath = 'INPUT/'
+      filename = TRIM(file_jval_lut)
+      filename_solarmin = TRIM(file_jval_lut_min)
+      call prate_init( filename, filename_solarmin, lpath, mspath, &
+                       use_tdep_jvals, o3_column_top, jno_scale_factor )
 
 !-----------------------------------------------------------------------
 ! 	... Read time-independent airplane emissions
@@ -106,7 +113,7 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 ! 	... Intialize the rxt rate constant module
 !-----------------------------------------------------------------------
-      call usrrxt_init
+      call usrrxt_init( verbose )
 
 !-----------------------------------------------------------------------
 ! 	... Intialize the grp ratios module
@@ -152,7 +159,7 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !	... Initialize the implicit solver
 !-----------------------------------------------------------------------
-         call imp_slv_init
+         call imp_slv_init( verbose )
       end if
       if( clscnt5 > 0 ) then
 !-----------------------------------------------------------------------

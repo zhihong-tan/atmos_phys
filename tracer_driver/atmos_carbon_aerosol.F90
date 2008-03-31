@@ -47,7 +47,7 @@ integer :: nomphilic=0
 integer :: id_bcphob_emis, id_bcphil_emis, id_omphob_emis, id_omphil_emis
 integer :: id_bcphob_sink, id_omphob_sink
 integer :: id_bcemisbf, id_bcemisbb, id_bcemissh, id_bcemisff, id_bcemisav
-integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg
+integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg, id_omemisocean
 !----------------------------------------------------------------------
 !--- Interpolate_type variable containing all the information needed to
 ! interpolate the emission provided in the netcdf input file.
@@ -61,6 +61,7 @@ type(interpolate_type),save  ::ombb_aerosol_interp
 type(interpolate_type),save  ::ombf_aerosol_interp
 type(interpolate_type),save  ::omsh_aerosol_interp
 type(interpolate_type),save  ::omna_aerosol_interp
+type(interpolate_type),save  ::omss_aerosol_interp
 ! Initial calendar time for model
 type(time_type) :: model_init_time
 
@@ -76,6 +77,7 @@ type(time_type), save :: ombb_offset
 type(time_type), save :: ombf_offset
 type(time_type), save :: omsh_offset
 type(time_type), save :: omna_offset
+type(time_type), save :: omss_offset
 
 ! timeseries which is mapped to model initial time
 type(time_type), save :: bcff_entry
@@ -88,6 +90,7 @@ type(time_type), save :: ombb_entry
 type(time_type), save :: ombf_entry
 type(time_type), save :: omsh_entry
 type(time_type), save :: omna_entry
+type(time_type), save :: omss_entry
 
 ! The model initial time is later than the XXX_dataset_entry time  ?
 logical, save    :: bcff_negative_offset
@@ -100,6 +103,7 @@ logical, save    :: ombb_negative_offset
 logical, save    :: ombf_negative_offset
 logical, save    :: omsh_negative_offset
 logical, save    :: omna_negative_offset
+logical, save    :: omss_negative_offset
 
 integer, save    :: bcff_time_serie_type
 integer, save    :: bcbb_time_serie_type
@@ -111,6 +115,7 @@ integer, save    :: ombb_time_serie_type
 integer, save    :: ombf_time_serie_type
 integer, save    :: omsh_time_serie_type
 integer, save    :: omna_time_serie_type
+integer, save    :: omss_time_serie_type
 !----------------------------------------------------------------------
 !-------- namelist  ---------
 character(len=80) :: bcff_filename = 'carbon_aerosol_emission.nc'
@@ -123,6 +128,7 @@ character(len=80) :: ombb_filename = 'carbon_aerosol_emission.nc'
 character(len=80) :: ombf_filename = 'carbon_aerosol_emission.nc'
 character(len=80) :: omsh_filename = 'carbon_aerosol_emission.nc'
 character(len=80) :: omna_filename = 'carbon_aerosol_emission.nc'
+character(len=80) :: omss_filename = 'gocart_emission.nc'
 
 integer :: i
 character(len=80), save, dimension(1) :: bcff_emission_name = (/' '/)
@@ -135,6 +141,7 @@ character(len=80), save, dimension(6) :: ombb_emission_name = (/(' ',i=1,6)/)
 character(len=80), save, dimension(1) :: ombf_emission_name = (/' '/)
 character(len=80), save, dimension(1) :: omsh_emission_name = (/' '/)
 character(len=80), save, dimension(1) :: omna_emission_name = (/' '/)
+character(len=80), save, dimension(1) :: omss_emission_name = (/' '/)
 
 character(len=80), dimension(1) :: bcff_input_name = (/' '/)
 character(len=80), dimension(6) :: bcbb_input_name = (/(' ',i=1,6)/)
@@ -146,7 +153,7 @@ character(len=80), dimension(6) :: ombb_input_name = (/(' ',i=1,6)/)
 character(len=80), dimension(1) :: ombf_input_name = (/' '/)
 character(len=80), dimension(1) :: omsh_input_name = (/' '/)
 character(len=80), dimension(1) :: omna_input_name = (/' '/)
-data omna_emission_name/'omemisnat'/
+character(len=80), dimension(1) :: omss_input_name = (/' '/)
 ! Default values for carbon_aerosol_nml
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! FOSSIL FUEL source can be either:
@@ -215,6 +222,14 @@ integer, dimension(6) :: omsh_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 character(len=80)     :: omna_source = ' '
 character(len=80)     :: omna_time_dependency_type = 'constant'
 integer, dimension(6) :: omna_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! for sea spray emssion: based on ODowd et al., A combined organic-inorganic sea-spray source function, Geophys. Res. Lett., v35, L01801, doi:10.1029/2007GL030331, 2008
+character(len=80)     :: omss_source = ' '
+character(len=80)     :: omss_time_dependency_type = 'constant'
+integer, dimension(6) :: omss_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+real, save :: coef_omss_emis
+real :: omss_coef=-999.
+!!!!!!!!!!!!!!!!!!!!!!!!!!
 namelist /carbon_aerosol_nml/ &
  bcff_source, bcff_input_name, bcff_filename, &
   bcff_time_dependency_type, bcff_dataset_entry, &
@@ -235,7 +250,9 @@ namelist /carbon_aerosol_nml/ &
  omsh_source, omsh_input_name, omsh_filename, &
   omsh_time_dependency_type, omsh_dataset_entry, &
  omna_source, omna_input_name, omna_filename, &
-  omna_time_dependency_type, omna_dataset_entry
+  omna_time_dependency_type, omna_dataset_entry, &
+ omss_source, omss_input_name, omss_filename, &
+  omss_time_dependency_type, omss_dataset_entry, omss_coef
 
 character(len=6), parameter :: module_name = 'tracer'
 
@@ -243,15 +260,17 @@ logical :: module_is_initialized = .FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 15.0.4.1 2007/11/28 16:21:52 rsh Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 15.0.4.1.2.1 2008/02/07 22:31:40 wfc Exp $'
+character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 !-----------------------------------------------------------------------
 
 contains
 
 !#######################################################################
 
-subroutine atmos_carbon_aerosol_driver(lon, lat, land, pfull,phalf,z_half, z_pbl, &
+subroutine atmos_carbon_aerosol_driver(lon, lat, land, pfull,phalf, &
+                               z_half, z_pbl, &
+                               t_surf, w10m, &
                                T, pwt, &
                                bcphob, bcphob_dt,  &
                                bcphil, bcphil_dt,  &
@@ -282,6 +301,7 @@ type(time_type)                        :: ombb_time
 type(time_type)                        :: ombf_time
 type(time_type)                        :: omsh_time
 type(time_type)                        :: omna_time
+type(time_type)                        :: omss_time
 real  dtr,bltop,z1,z2,del
 real, dimension(size(bcphob,3)) :: fa1, fa2
 real, dimension(size(bcphob,3),6) :: fbb
@@ -309,6 +329,7 @@ REAL,PARAMETER :: frac_bc_phobic = 0.8
 REAL,PARAMETER :: frac_bc_philic = 0.2
 REAL,PARAMETER :: frac_om_phobic = 0.5
 REAL,PARAMETER :: frac_om_philic = 0.5
+real  :: sst, Schm, SchmCO2, AKw
 
 !
 !-------------------------------------------------------------------------
@@ -324,7 +345,9 @@ real,dimension(size(omphob,1),size(omphob,2),size(omphob,3)) ::&
 real, dimension(size(bcphob,1),size(bcphob,2)) ::          &
    bcemisbf, bcemissh
 real, dimension(size(omphob,1),size(omphob,2)) ::          &
-   omemisbf, omemissh, omemisbg
+   omemisbf, omemissh, omemisbg, dmso, omemisocean
+real, dimension(size(omphob,1),size(omphob,2)) ::          &
+   w10m, t_surf  ! ocean sea surface temperature and 10 meter wind speed
 !
 !-----------------------------------------------------------------------
 !
@@ -363,6 +386,8 @@ real, dimension(size(omphob,1),size(omphob,2)) ::          &
     omemisbf(:,:)    = 0.0
     omemissh(:,:)    = 0.0
     omemisbg(:,:)    = 0.0
+    dmso(:,:)        = 0.0
+    omemisocean(:,:) = 0.0
     if ( trim(bcff_source) .ne. ' ') then
 !--------------------------------------------------------------------
 !    define the time in the bcff data set from which data is to be 
@@ -757,7 +782,67 @@ real, dimension(size(omphob,1),size(omphob,2)) ::          &
      endif
      call interpolator(omna_aerosol_interp, model_time, omemisbg, &
                        trim(omna_emission_name(1)), is, js)
-    endif
+   endif
+   if ( trim(omss_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the omss data set from which data is to be 
+!    taken. if omss is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(omss_time_serie_type .eq. 3) then
+       if (omss_negative_offset) then
+         omss_time = model_time - omss_offset
+       else
+         omss_time = model_time + omss_offset
+       endif
+     else 
+       if(omss_time_serie_type .eq. 2 ) then
+         call get_date (omss_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(omss_entry)
+           if (dayspmn /= 29) then
+             omss_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             omss_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           omss_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         omss_time = model_time
+       endif
+     endif
+     call interpolator(omss_aerosol_interp, model_time, dmso, &
+                       trim(omss_emission_name(1)), is, js)
+     do j = 1, jd
+     do i = 1, id
+       SST = t_surf(i,j)-273.15     ! Sea surface temperature [Celsius]
+       if (land(i,j).lt.1) then
+!  < Schmidt number (Saltzman et al., 1993) >
+         Schm = 2674.0 - 147.12*SST + 3.726*(SST**2) - 0.038*(SST**3)
+         Schm = max(1., Schm)
+! ---  Liss and Merlivat (1986) -----------
+         SchmCO2 = 600.
+         if (w10m(i,j) .le. 3.6) then
+           AKw = 0.17 * w10m(i,j)
+         else if (w10m(i,j) .le. 13.) then
+           AKw = 2.85 * w10m(i,j) - 9.65
+              else
+           AKw = 5.90 * w10m(i,j) - 49.3
+         end if
+         if (w10m(i,j) .le. 3.6) then
+           AKw = AKw * ((SchmCO2/Schm) ** 0.667)
+         else
+           AKw = AKw * sqrt(SchmCO2/Schm)
+         end if
+         omemisocean(i,j) = coef_omss_emis*AKw/100./3600. * 1.e-6*(1.-land(i,j))
+       end if
+
+     enddo
+     enddo
+
+
+   endif
 !
     do j = 1, jd
       do i = 1, id
@@ -858,7 +943,8 @@ real, dimension(size(omphob,1),size(omphob,2)) ::          &
 ! Bio-fuel (if not included in fossil fuel inevntory)
 ! International shipping
         bcphob_emis(i,j,kd) =  bcemisbf(i,j) + bcemissh(i,j)
-        omphob_emis(i,j,kd) =  omemisbf(i,j) + omemissh(i,j) + omemisbg(i,j)
+        omphob_emis(i,j,kd) =  omemisbf(i,j) + omemissh(i,j) + &
+           omemisbg(i,j) + omemisocean(i,j)
         bcphob_emis(i,j,:)= bcphob_emis(i,j,:) + &
            bc_aircraft_EI * bcemisav(i,j,:)    + &
            bcemisff(i,j,:) + bcemisob(i,j,:)
@@ -1174,6 +1260,7 @@ integer ::  unit, ierr, io
         ombf_offset = set_time (0,0)
         omsh_offset = set_time (0,0)
         omna_offset = set_time (0,0)
+        omss_offset = set_time (0,0)
 
         bcff_entry = set_time (0,0)
         bcbb_entry = set_time (0,0)
@@ -1185,6 +1272,7 @@ integer ::  unit, ierr, io
         ombf_entry = set_time (0,0)
         omsh_entry = set_time (0,0)
         omna_entry = set_time (0,0)
+        omss_entry = set_time (0,0)
 
         bcff_negative_offset = .false.
         bcbb_negative_offset = .false.
@@ -1196,6 +1284,7 @@ integer ::  unit, ierr, io
         ombf_negative_offset = .false.
         omsh_negative_offset = .false.
         omna_negative_offset = .false.
+        omss_negative_offset = .false.
 
         bcff_time_serie_type = 1
         bcbb_time_serie_type = 1
@@ -1207,6 +1296,7 @@ integer ::  unit, ierr, io
         ombf_time_serie_type = 1
         omsh_time_serie_type = 1
         omna_time_serie_type = 1
+        omss_time_serie_type = 1
 !----------------------------------------------------------------------
 !    define the model base time  (defined in diag_table)
 !----------------------------------------------------------------------
@@ -2167,6 +2257,91 @@ integer ::  unit, ierr, io
        trim(omna_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
        data_names=omna_emission_name(1:1),vert_interp=(/INTERP_WEIGHTED_P/))
    endif
+   if ( trim(omss_source) .ne. ' ') then
+!---------------------------------------------------------------------
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(omss_time_dependency_type) == 'constant' ) then
+        omss_time_serie_type = 1
+        omss_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'omss are constant in atmos_carbon_aerosol module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for omss is selected.
+!---------------------------------------------------------------------
+      else if (trim(omss_time_dependency_type) == 'time_varying') then
+        omss_time_serie_type = 3
+        if (omss_dataset_entry(1) == 1 .and. &
+            omss_dataset_entry(2) == 1 .and. &
+            omss_dataset_entry(3) == 1 .and. &
+            omss_dataset_entry(4) == 0 .and. &
+            omss_dataset_entry(5) == 0 .and. &
+            omss_dataset_entry(6) == 0 ) then
+          omss_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to omss_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          omss_entry  = set_date (omss_dataset_entry(1), &
+                                  omss_dataset_entry(2), &
+                                  omss_dataset_entry(3), &
+                                  omss_dataset_entry(4), &
+                                  omss_dataset_entry(5), &
+                                  omss_dataset_entry(6))
+        endif
+        call print_date (omss_entry , str= &
+          'Data from omss timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        omss_offset = omss_entry - model_init_time
+        if (model_init_time > omss_entry) then
+          omss_negative_offset = .true.
+        else
+          omss_negative_offset = .false.
+        endif
+      else if (trim(omss_time_dependency_type) == 'fixed_year') then
+        omss_time_serie_type = 2
+        if (omss_dataset_entry(1) == 1 .and. &
+            omss_dataset_entry(2) == 1 .and. &
+            omss_dataset_entry(3) == 1 .and. &
+            omss_dataset_entry(4) == 0 .and. &
+            omss_dataset_entry(5) == 0 .and. &
+            omss_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_carbon_aerosol_mod', &
+            'must set omss_dataset_entry when using fixed_year source', FATAL)
+        endif
+
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to omss_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        omss_entry  = set_date (omss_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_carbon_aerosol_mod', &
+           'omss is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'omss correspond to year :', &
+                    omss_dataset_entry(1)
+        endif
+     endif
+     if (trim(omss_input_name(1)) .eq. ' ') then
+       omss_emission_name(1)='DMSo'
+     else
+       omss_emission_name(1)=trim(omss_input_name(1))
+     endif
+     call interpolator_init (omss_aerosol_interp,           &
+       trim(omss_filename), lonb, latb, data_out_of_bounds=(/CONSTANT/), &
+       data_names=omss_emission_name(1:1),vert_interp=(/INTERP_WEIGHTED_P/))
+     if (omss_coef .le. -990) then
+       coef_omss_emis = 1.
+     else
+       coef_omss_emis = omss_coef
+     endif
+   endif
 
 
    call write_version_number (version, tagname)
@@ -2200,6 +2375,7 @@ end subroutine atmos_carbon_aerosol_init
       call interpolator_end ( ombf_aerosol_interp)
       call interpolator_end ( omsh_aerosol_interp)
       call interpolator_end ( omna_aerosol_interp)
+      call interpolator_end ( omss_aerosol_interp)
       module_is_initialized = .FALSE.
 
  end subroutine atmos_carbon_aerosol_end

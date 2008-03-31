@@ -12,8 +12,8 @@ implicit none
       integer :: ox_ndx, o3_ndx, o1d_ndx, o_ndx
       logical :: do_ox
 
-character(len=128), parameter :: version     = '$Id: mo_chem_utls.F90,v 14.0 2007/03/15 22:10:49 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2007_12 $'
+character(len=128), parameter :: version     = '$Id: mo_chem_utls.F90,v 14.0.8.1 2007/12/08 13:39:44 rsh Exp $'
+character(len=128), parameter :: tagname     = '$Name: omsk_2008_03 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -40,7 +40,7 @@ logical                       :: module_is_initialized = .false.
 
       end subroutine chem_utls_init
 
-      subroutine adjh2o( h2o, sh, mbar, vmr, plonl )
+      subroutine adjh2o( h2o, sh, mbar, vmr, do_interactive_h2o, plonl )
 !-----------------------------------------------------------------------
 !     ... transform water vapor from mass to volumetric mixing ratio
 !-----------------------------------------------------------------------
@@ -52,14 +52,11 @@ logical                       :: module_is_initialized = .false.
 !	... dummy arguments
 !-----------------------------------------------------------------------
       integer, intent(in) :: plonl
-      real, dimension(:,:,:), intent(in) :: &
-                                vmr                    ! xported species vmr
-      real, dimension(:,:), intent(in) :: &
-                                sh                     ! specific humidity ( mmr )
-      real, dimension(:,:), intent(in)  :: &
-                                mbar                   ! atmos mean mass
-      real, dimension(:,:), intent(out) :: &
-                                 h2o                   ! water vapor vmr
+      real, dimension(:,:,:), intent(in)  :: vmr         ! xported species vmr
+      real, dimension(:,:),   intent(in)  :: sh          ! specific humidity ( mmr )
+      real, dimension(:,:),   intent(in)  :: mbar        ! atmos mean mass
+      logical,                intent(in)  :: do_interactive_h2o ! include h2o sources/sinks?
+      real, dimension(:,:),   intent(out) :: h2o         ! water vapor vmr
 
 !-----------------------------------------------------------------------
 !	... local variables
@@ -72,21 +69,21 @@ logical                       :: module_is_initialized = .false.
 
       plev = SIZE(vmr,2)
 !-----------------------------------------------------------------------
-!	... limit dyn files water vapor
+!	... if not using interactive water vapor, adjust model
+!           water vapor in stratosphere for source from CH4 oxidation
 !-----------------------------------------------------------------------
       ndx_ch4 = get_spc_ndx( 'CH4' )
 !++lwh
-!     if( ndx_ch4 > 0 ) then
          do k = 1,plev
             h2o(:,k)   = mbar(:,k) * sh(:plonl,k) * mh2o
-!           if( ndx_ch4 > 0 ) then
-!              t_value(:) = 6.e-6 - 2.*vmr(:,k,ndx_ch4)
+            if( .not. do_interactive_h2o .and. ndx_ch4 > 0 ) then
+               t_value(:) = 6.e-6 - 2.*vmr(:,k,ndx_ch4)
 !              where( t_value(:) > h2o(:,k) )
 !                 h2o(:,k) = t_value(:)
-!              endwhere
-!           end if
+!              end where
+               h2o(:,k) = MAX(h2o(:,k),t_value(:))
+            end if
          end do
-!     end if
 !--lwh
 
       end subroutine adjh2o      

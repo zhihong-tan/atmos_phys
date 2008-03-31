@@ -25,26 +25,26 @@
       integer :: id_prod_no_col, id_flash_freq
       real :: lat25
       
-character(len=128), parameter :: version     = '$Id: mo_hook.F90,v 15.0 2007/08/14 03:57:15 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2007_12 $'
+character(len=128), parameter :: version     = '$Id: mo_hook.F90,v 15.0.4.1 2007/12/08 13:39:44 rsh Exp $'
+character(len=128), parameter :: tagname     = '$Name: omsk_2008_03 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
 
-      subroutine moz_hook_init( lght_no_prd_factor, Time, axes )
+      subroutine moz_hook_init( lght_no_prd_factor, Time, axes, verbose )
 !----------------------------------------------------------------------
 !       ... Initialize the chemistry "hook" routine
 !----------------------------------------------------------------------
-
 
       implicit none
 
 !----------------------------------------------------------------------
 !        ... Dummy args
 !----------------------------------------------------------------------
-      type(time_type),intent(in) :: Time
-      integer, intent(in) :: axes(4)
-      real, intent(in) :: lght_no_prd_factor        ! lightning no production factor
+      type(time_type), intent(in) :: Time
+      integer,         intent(in) :: axes(4)
+      real,            intent(in) :: lght_no_prd_factor        ! lightning no production factor
+      integer,         intent(in) :: verbose
 
 !----------------------------------------------------------------------
 !        ... local variables
@@ -54,7 +54,9 @@ logical                       :: module_is_initialized = .false.
       if (module_is_initialized) return
 
       factor = lght_no_prd_factor
-      write(*,*) 'MOZ_HOOK_INIT: Lightning NO production scaling factor = ',factor
+      if (verbose >= 2) then
+         write(*,*) 'MOZ_HOOK_INIT: Lightning NO production scaling factor = ',factor
+      end if
 
 !     csrf = twopi*rearth*rearth/REAL(plong)    ! rearth in m
       lat25 = 25. * PI/180.

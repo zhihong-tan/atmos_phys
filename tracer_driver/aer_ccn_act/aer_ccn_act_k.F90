@@ -8,8 +8,8 @@ private
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 15.0 2007/08/14 03:56:39 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 15.0.4.1 2008/01/17 11:52:22 rsh Exp $'
+character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 
 !---------------- private data -------------------
 
@@ -35,17 +35,20 @@ character(len=128) :: tagname = '$Name: omsk_2007_12 $'
 
 !Parameters for look-up tables
 
-  real ::  lowup=0.3 !m/s
-  real ::  highup=10.
+! real ::  lowup=0.3 !m/s
+! real ::  highup=10.
 
-  real ::  lowup2=0.0001 !m/s
-  real ::  highup2=0.3
-  real ::  lowmass2=0.01 !ug m-3
-  real ::  highmass2=1000.
-  real ::  lowmass3=0.01 !ug m-3
-  real ::  highmass3=1000.
-  real :: lowT2=243.15 !K
-  real :: highT2=308.15
+! real ::  lowup2=0.0001 !m/s
+! real ::  lowup2=0.05   !m/s
+! real ::  highup2=0.3
+! real ::  lowmass2=0.01 !ug m-3
+! real ::  highmass2=1000.
+! real ::  highmass2=100.
+! real ::  lowmass3=0.01 !ug m-3
+! real ::  highmass3=1000.
+! real ::  highmass3=100.
+! real :: lowT2=243.15 !K
+! real :: highT2=308.15
 
 
 !-----------------------------------------------------------------------
@@ -56,13 +59,19 @@ logical :: module_is_initialized  = .false.
 contains
 
 subroutine aer_ccn_act_k (T1, P1, Updraft1, TotalMass, tym, droplets, &
-                          droplets2, res, res2, nooc, Drop, ier, ermesg)
+                          droplets2, res, res2, nooc,  &
+                          lowup, highup, lowup2, highup2, lowmass2, &
+                          highmass2, lowmass3, highmass3,  &
+                          lowT2, highT2,  &
+                          Drop, ier, ermesg)
 integer, intent(in) :: tym, res, res2
 real, dimension(tym), intent(inout) :: TotalMass
 real, intent(in) :: T1, P1, Updraft1
 real, dimension(res,res,res,res), intent(in) :: droplets
 real, dimension(res2,res2,res2,res2), intent(in) :: droplets2
 logical, intent(in) :: nooc
+real, intent(in) :: lowup, highup, lowup2, highup2, lowmass2, &
+                    highmass2, lowmass3, highmass3,  lowT2, highT2
 real, intent(inout) :: Drop
 integer, intent(out) :: ier
 character(len=*), intent(out) :: ermesg
@@ -220,7 +229,11 @@ end subroutine aer_ccn_act2_k
 ! over an assumed subgrid-scale PDF of w
 
 subroutine aer_ccn_act_wpdf_k(T, p, wm, wp2, totalmass, tym, droplets, &
-                              droplets2, res, res2, nooc, drop,  &
+                              droplets2, res, res2, nooc,  &
+                             lowup, highup, lowup2, highup2, lowmass2, &
+                             highmass2, lowmass3, highmass3,  &
+                             lowT2, highT2,  &
+                              drop,  &
                               ier, ermesg)
 
 ! Compute CCN activation assuming a normal distribution of w
@@ -231,6 +244,8 @@ real :: T, p, wm, wp2, totalmass(tym)
 real, dimension(res, res, res, res), intent(in) :: droplets
 real, dimension(res2, res2, res2, res2), intent(in) :: droplets2
 logical, intent(in) :: nooc
+real, intent(in) :: lowup, highup, lowup2, highup2, lowmass2, &
+                    highmass2, lowmass3, highmass3,  lowT2, highT2
 real :: drop
 integer, intent(out) :: ier
 character(len=*), intent(out) :: ermesg
@@ -314,7 +329,11 @@ if (lintegrate) then
   do i=ia,ib
     wtmp = tmp * x(i) + wm
     call aer_ccn_act_k( T, p, wtmp, totalmass, TYm, droplets,   &
-                       droplets2, res, res2, nooc, drop, ier, ermesg )
+                       droplets2, res, res2, nooc,  &
+                       lowup, highup, lowup2, highup2, lowmass2, &
+                       highmass2, lowmass3, highmass3,  &
+                       lowT2, highT2,  &
+                       drop, ier, ermesg )
     if (ier /= 0) return
     sum1 = sum1 + w(i)*drop
     sum2 = sum2 + w(i)
@@ -329,7 +348,11 @@ else
   ! No integration, use single point evaluation
 
   call aer_ccn_act_k( T, p, wm, totalmass, TYm, droplets,   &
-                       droplets2, res, res2, nooc, drop, ier, ermesg )
+                       droplets2, res, res2, nooc,   &
+                       lowup, highup, lowup2, highup2, lowmass2, &
+                       highmass2, lowmass3, highmass3,  &
+                       lowT2, highT2,  &
+                       drop, ier, ermesg )
   if (ier /= 0) return
 
 endif

@@ -2,6 +2,8 @@
 
       use sat_vapor_pres_mod, only : escomp
       use constants_mod, only : rdgas, rvgas
+      use strat_chem_utilities_mod, only : psc_type, strat_chem_get_gamma, &
+                                           strat_chem_get_hetrates
       
 implicit none
       private
@@ -13,7 +15,7 @@ implicit none
                  usr8_ndx, usr9_ndx, usr11_ndx, usr12_ndx, usr14_ndx, usr15_ndx, &
                  usr16_ndx, usr17_ndx, usr21_ndx, usr22_ndx, &
                  usr24_ndx, usr25_ndx, &
-                 so4_ndx, h2o_ndx, &
+                 so4_ndx, h2o_ndx, hcl_ndx, clono2_ndx, hbr_ndx, &
                  strat37_ndx, strat38_ndx, strat72_ndx, strat73_ndx, strat74_ndx, &
                  strat75_ndx, strat76_ndx, strat77_ndx, strat78_ndx, strat79_ndx, &
                  strat80_ndx
@@ -21,13 +23,13 @@ implicit none
       real, parameter :: d622 = rdgas/rvgas
       real, parameter :: d378 = 1. - d622     
 
-character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 14.0 2007/03/15 22:11:18 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2007_12 $'
+character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 14.0.8.1.2.1 2008/02/29 00:23:28 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: omsk_2008_03 $'
 logical                       :: module_is_initialized = .false.
 
       contains
 
-      subroutine usrrxt_init
+      subroutine usrrxt_init( verbose )
 !-----------------------------------------------------------------
 !        ... Intialize the user reaction constants module
 !-----------------------------------------------------------------
@@ -35,6 +37,11 @@ logical                       :: module_is_initialized = .false.
       use mo_chem_utls_mod, only : get_rxt_ndx, get_spc_ndx
 
       implicit none
+
+!-----------------------------------------------------------------------
+! 	... Dummy arguments
+!-----------------------------------------------------------------------
+      integer,          intent(in) :: verbose
 
       usr1_ndx = get_rxt_ndx( 'usr1' )
       usr2_ndx = get_rxt_ndx( 'usr2' )
@@ -52,8 +59,6 @@ logical                       :: module_is_initialized = .false.
       usr17_ndx = get_rxt_ndx( 'usr17' )
       usr21_ndx = get_rxt_ndx( 'usr21' )
       usr22_ndx = get_rxt_ndx( 'usr22' )
-      so4_ndx = get_spc_ndx( 'SO4' )
-      h2o_ndx = get_spc_ndx( 'H2O' )
       usr24_ndx = get_rxt_ndx( 'usr24' )
       usr25_ndx = get_rxt_ndx( 'usr25' )
       strat37_ndx = get_rxt_ndx( 'strat37' )
@@ -68,7 +73,13 @@ logical                       :: module_is_initialized = .false.
       strat79_ndx = get_rxt_ndx( 'strat79' )
       strat80_ndx = get_rxt_ndx( 'strat80' )
 
-      write(*,*) ' '
+      so4_ndx = get_spc_ndx( 'SO4' )
+      h2o_ndx = get_spc_ndx( 'H2O' )
+      hcl_ndx = get_spc_ndx( 'HCl' )
+      clono2_ndx = get_spc_ndx( 'ClONO2' )
+      hbr_ndx = get_spc_ndx( 'HBr' )
+
+      if (verbose >= 2) then
       write(*,*) 'usrrxt_init: diagnostics '
       write(*,'(10i5)') usr1_ndx, usr2_ndx, usr3_ndx, usr5_ndx, usr6_ndx, usr7_ndx, &
                  usr8_ndx, usr9_ndx, usr11_ndx, usr12_ndx, usr14_ndx, usr15_ndx, &
@@ -77,18 +88,17 @@ logical                       :: module_is_initialized = .false.
                  strat37_ndx, strat38_ndx, strat72_ndx, strat73_ndx, strat74_ndx, &
                  strat75_ndx, strat76_ndx, strat77_ndx, strat78_ndx, strat79_ndx, &
                  strat80_ndx
+      end if
 
       end subroutine usrrxt_init
 
-      subroutine usrrxt( rxt, temp, invariants, h2ovmr,  &
-                         pmid, m, sulfate, qin, &
-                         sh, &
-                         plonl )
+      subroutine usrrxt( rxt, temp, invariants, h2ovmr, pmid, m, &
+                         sulfate, psc, qin, sh, delt, plonl )
 !-----------------------------------------------------------------
 !        ... set the user specified reaction rates
 !-----------------------------------------------------------------
 
-      use chem_mods_mod, only : nfs, rxntot, indexh2o, indexm
+      use chem_mods_mod, only : nfs, rxntot, indexh2o
       use constants_mod, only : PI
       use m_rxt_id_mod
 
@@ -98,15 +108,18 @@ logical                       :: module_is_initialized = .false.
 !        ... dummy arguments
 !-----------------------------------------------------------------
       integer, intent(in) :: plonl
-      real, intent(in) ::   qin(:,:,:)           ! transported species ( vmr )
-      real, intent(in) ::   temp(:,:), &         ! temperature
-                            m(:,:), &            ! total atm density
-                            sulfate(:,:), &      ! sulfate aerosol vmr
-                            h2ovmr(:,:), &       ! water vapor vmr
-                            pmid(:,:), &         ! midpoint pressure in pa
-                            sh(:,:), &           ! specific humidity
-                            invariants(:,:,:)    ! invariants density
-      real, intent(inout) ::  rxt(:,:,:)         ! gas phase rates
+      real,    intent(in) :: qin(:,:,:)            ! transported species ( vmr )
+      real,    intent(in) :: temp(:,:), &          ! temperature
+                             m(:,:), &             ! total atm density
+                             sulfate(:,:), &       ! sulfate aerosol vmr
+                             h2ovmr(:,:), &        ! water vapor vmr
+                             pmid(:,:), &          ! midpoint pressure in pa
+                             sh(:,:), &            ! specific humidity
+                             invariants(:,:,:)     ! invariants density
+      type(psc_type), intent(in) :: &
+                             psc                   ! polar stratospheric clouds (PSCs)
+      real,    intent(in) :: delt                  ! timestep (sec)
+      real, intent(inout) :: rxt(:,:,:)            ! gas phase rates
       
 !-----------------------------------------------------------------
 !        ... local variables
@@ -145,8 +158,15 @@ logical                       :: module_is_initialized = .false.
                    satv, &                  ! saturation vapor pressure
                    xr, &                    ! factor to increase particle radii depending on rel hum
                    sur, &                   ! sulfate particle surface area (cm^2/cm^3)
-                   exp_fac                  ! vector exponential
-      integer :: plev
+                   exp_fac, &               ! vector exponential
+                   tmp_hcl, &               ! temporary array for HCl VMR
+                   tmp_clono2, &            ! temporary array for ClONO2 VMR
+                   tmp_hbr                  ! temporary array for HBr VMR
+      integer, parameter :: nhet_strat = 9
+      real, dimension(SIZE(temp,1), nhet_strat) :: &
+                   gamma_strat, &           ! reaction probabilities for strat. het. rxns
+                   hetrates_strat           ! effective second-order reaction rates for strat. het. rxns
+      integer ::   plev
       real, dimension(SIZE(temp,1),SIZE(temp,2)) :: &
                    relhum                   ! relative humidity
 
@@ -169,8 +189,8 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
          if( usr3_ndx > 0 ) then
             if( usr2_ndx > 0 ) then
-               call vexp( exp_fac, -10991.*tinv, plonl )
-               rxt(:,k,usr3_ndx) = rxt(:,k,usr2_ndx) * 3.333e26 * exp_fac(:)
+               call vexp( exp_fac, -11000.*tinv, plonl )
+               rxt(:,k,usr3_ndx) = rxt(:,k,usr2_ndx) * 3.704e26 * exp_fac(:)
             else
                rxt(:,k,usr3_ndx) = 0.
             end if
@@ -198,9 +218,9 @@ logical                       :: module_is_initialized = .false.
                rxt(:,k,usr7_ndx) = 0.
             end if
          end if
-         if( usr8_ndx > 0 ) then
-            rxt(:,k,usr8_ndx) = 1.5e-13 * (1. + 6.e-7*boltz*m(:,k)*temp(:,k))
-         end if
+!        if( usr8_ndx > 0 ) then
+!           rxt(:,k,usr8_ndx) = 1.5e-13 * (1. + 6.e-7*boltz*m(:,k)*temp(:,k))
+!        end if
 
 !-----------------------------------------------------------------
 !        ... ho2 + ho2 --> h2o2
@@ -212,12 +232,12 @@ logical                       :: module_is_initialized = .false.
                fc(:)   = 1. + 1.4e-21 * invariants(:,k,indexh2o) * exp_fac(:)
             else if( h2o_ndx > 0 ) then
                call vexp( exp_fac, 2200.*tinv, plonl )
-               fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * invariants(:,k,indexm) * exp_fac(:)
+               fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * m(:,k) * exp_fac(:)
             else
                fc(:) = 1.
             end if
-            call vexp( exp_fac, 600.*tinv, plonl )
-            ko(:)   = 2.3e-13 * exp_fac(:)
+            call vexp( exp_fac, 430.*tinv, plonl )
+            ko(:)   = 3.5e-13 * exp_fac(:)
             call vexp( exp_fac, 1000.*tinv, plonl )
             kinf(:) = 1.7e-33 * m(:,k) * exp_fac(:)
             rxt(:,k,usr9_ndx) = (ko(:) + kinf(:)) * fc(:)
@@ -227,7 +247,7 @@ logical                       :: module_is_initialized = .false.
 !            ... mco3 + no2 -> mpan
 !-----------------------------------------------------------------
          if( usr14_ndx > 0 ) then
-            rxt(:,k,usr14_ndx) = 1.1e-11 * tp(:) / m(:,k)
+            rxt(:,k,usr14_ndx) = 9.3e-12 * tp(:) / m(:,k)
          end if
 
 !-----------------------------------------------------------------
@@ -265,20 +285,17 @@ logical                       :: module_is_initialized = .false.
 !       ... ch3coch3 + oh -> ro2 + h2o
 !-----------------------------------------------------------------
          if( usr22_ndx > 0 ) then
-            call vexp( exp_fac, -1320.*tinv, plonl )
-            call vexp( xr, 423.*tinv, plonl )
-            rxt(:,k,usr22_ndx) = 8.8e-12 * exp_fac(:) + 1.7e-14 * xr(:)
+            call vexp( exp_fac, -2000.*tinv, plonl )
+            rxt(:,k,usr22_ndx) = 3.82e-11 * exp_fac(:) + 1.33e-13
          end if
 !-----------------------------------------------------------------
 !       ... DMS + OH -> .75 * SO2
 !-----------------------------------------------------------------
          if( usr24_ndx > 0 ) then
-            call vexp( exp_fac, 7810.*tinv, plonl )
-            call vexp( xr, 7460.*tinv, plonl )
-            ko(:) = 1. + 5.5e-31 * xr * invariants(:,k,indexm) * 0.21
-            ko(:) = 1.7e-42 * exp_fac * invariants(:,k,indexm) * 0.21 / ko(:)
-            call vexp( exp_fac, -234.*tinv, plonl )
-            rxt(:,k,usr24_ndx) = 0.75*ko(:) + 9.6e-12 * exp_fac
+            call vexp( exp_fac, 5820.*tinv, plonl )
+            call vexp( xr, 6280.*tinv, plonl )
+            ko(:) = 1. + 5.0e-30 * xr * m(:,k) * 0.21
+            rxt(:,k,usr24_ndx) = 1.0e-39 * exp_fac * m(:,k) * 0.21 / ko(:)
          end if
 
 !-----------------------------------------------------------------
@@ -286,8 +303,8 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
          if( strat38_ndx > 0 ) then
             if( strat37_ndx > 0 ) then
-               call vexp( exp_fac, -8744.*tinv, plonl )
-               rxt(:,k,strat38_ndx) = rxt(:,k,strat37_ndx) * 7.874e26 * exp_fac(:)
+               call vexp( exp_fac, -8835.*tinv, plonl )
+               rxt(:,k,strat38_ndx) = rxt(:,k,strat37_ndx) * 1.075e27 * exp_fac(:)
             else
                rxt(:,k,strat38_ndx) = 0.
             end if
@@ -298,7 +315,7 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
          if( usr3_ndx > 0 ) then
             if( usr2_ndx > 0 ) then
-               rxt(:,k,usr3_ndx) = rxt(:,k,usr2_ndx) * 3.333e26 * exp( -10991.*tinv(:) )
+               rxt(:,k,usr3_ndx) = rxt(:,k,usr2_ndx) * 3.704e26 * exp( -11000.*tinv(:) )
             else
                rxt(:,k,usr3_ndx) = 0.
             end if
@@ -322,9 +339,9 @@ logical                       :: module_is_initialized = .false.
                rxt(:,k,usr7_ndx) = 0.
             end if
          end if
-         if( usr8_ndx > 0 ) then
-            rxt(:,k,usr8_ndx) = 1.5e-13 * (1. + 6.e-7*boltz*m(:,k)*temp(:,k))
-         end if
+!        if( usr8_ndx > 0 ) then
+!           rxt(:,k,usr8_ndx) = 1.5e-13 * (1. + 6.e-7*boltz*m(:,k)*temp(:,k))
+!        end if
 
 !-----------------------------------------------------------------
 !        ... ho2 + ho2 --> h2o2
@@ -334,11 +351,11 @@ logical                       :: module_is_initialized = .false.
             if( indexh2o > 0 ) then
                fc(:)   = 1. + 1.4e-21 * invariants(:,k,indexh2o) * exp( 2200.*tinv(:) )
             else if( h2o_ndx > 0 ) then
-               fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * invariants(:,k,indexm) * exp( 2200.*tinv(:) )
+               fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * m(:,k) * exp( 2200.*tinv(:) )
             else
                fc(:) = 1.
             end if
-            ko(:)   = 2.3e-13 * exp( 600.*tinv(:) )
+            ko(:)   = 3.5e-13 * exp( 430.*tinv(:) )
             kinf(:) = 1.7e-33 * m(:,k) * exp( 1000.*tinv(:) )
             rxt(:,k,usr9_ndx) = (ko(:) + kinf(:)) * fc(:)
          end if
@@ -347,7 +364,7 @@ logical                       :: module_is_initialized = .false.
 !            ... mco3 + no2 -> mpan
 !-----------------------------------------------------------------
          if( usr14_ndx > 0 ) then
-            rxt(:,k,usr14_ndx) = 1.1e-11 * tp(:) / m(:,k)
+            rxt(:,k,usr14_ndx) = 9.3e-12 * tp(:) / m(:,k)
          end if
 
 !-----------------------------------------------------------------
@@ -384,16 +401,16 @@ logical                       :: module_is_initialized = .false.
 !       ... ch3coch3 + oh -> ro2 + h2o
 !-----------------------------------------------------------------
          if( usr22_ndx > 0 ) then
-            rxt(:,k,usr22_ndx) = 8.8e-12 * exp( -1320.*tinv(:) ) &
-                                 + 1.7e-14 * exp( 423.*tinv(:) )
+            rxt(:,k,usr22_ndx) = 3.82e-11 * exp( -2000.*tinv(:) ) &
+                                 + 1.33e-13
          end if
 !-----------------------------------------------------------------
 !       ... DMS + OH -> .75 * SO2
 !-----------------------------------------------------------------
          if( usr24_ndx > 0 ) then
-            ko(:) = 1. + 5.5e-31 * exp( 7460.*tinv(:) ) * invariants(:,k,indexm) * 0.21
-            ko(:) = 1.7e-42 * exp( 7810.*tinv(:) ) * invariants(:,k,indexm) * 0.21 / ko(:)
-            rxt(:,k,usr24_ndx) = 0.75*ko(:) + 9.6e-12*exp( -234.*tinv(:) )
+            ko(:) = 1. + 5.0e-30 * exp( 6280.*tinv(:) ) * m(:,k) * 0.21
+            rxt(:,k,usr24_ndx) = 1.0e-39 * exp( 5820.*tinv(:) ) &
+                                 * m(:,k) * 0.21 / ko(:)
          end if
 
 !-----------------------------------------------------------------
@@ -401,7 +418,7 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
          if( strat38_ndx > 0 ) then
             if( strat37_ndx > 0 ) then
-               rxt(:,k,strat38_ndx) = rxt(:,k,strat37_ndx) * 7.874e26 * exp( -8744.*tinv(:) )
+               rxt(:,k,strat38_ndx) = rxt(:,k,strat37_ndx) * 1.075e27 * exp( -8835.*tinv(:) )
             else
                rxt(:,k,strat38_ndx) = 0.
             end if
@@ -469,32 +486,53 @@ logical                       :: module_is_initialized = .false.
              strat75_ndx > 0 .or. strat76_ndx > 0 .or. strat77_ndx > 0 .or. &
              strat78_ndx > 0 .or. strat79_ndx > 0 .or. strat80_ndx > 0 ) then
 
+            if (hcl_ndx>0) then
+               tmp_hcl(:) = qin(:,k,hcl_ndx)
+            else
+               tmp_hcl(:) = 0.
+            end if
+            if (clono2_ndx>0) then
+               tmp_clono2(:) = qin(:,k,clono2_ndx)
+            else
+               tmp_clono2(:) = 0.
+            end if
+            if (hbr_ndx>0) then
+               tmp_hbr(:) = qin(:,k,hbr_ndx)
+            else
+               tmp_hbr(:) = 0.
+            end if
+            call strat_chem_get_gamma( temp(:,k), pmid(:,k), m(:,k), &
+                                       tmp_hcl, tmp_clono2, &
+                                       psc, k, gamma_strat )
+            call strat_chem_get_hetrates( temp(:,k), tmp_hcl, tmp_hbr, h2ovmr(:,k), &
+                                          m(:,k), psc, gamma_strat, k, delt, hetrates_strat )
+            
             if( strat72_ndx > 0 ) then
-               rxt(:,k,strat72_ndx) = 0.
+               rxt(:,k,strat72_ndx) = hetrates_strat(:,1)
             end if
             if( strat73_ndx > 0 ) then
-               rxt(:,k,strat73_ndx) = 0.
+               rxt(:,k,strat73_ndx) = hetrates_strat(:,2)
             end if
             if( strat74_ndx > 0 ) then
-               rxt(:,k,strat74_ndx) = 0.
+               rxt(:,k,strat74_ndx) = hetrates_strat(:,3)
             end if
             if( strat75_ndx > 0 ) then
-               rxt(:,k,strat75_ndx) = 0.
+               rxt(:,k,strat75_ndx) = hetrates_strat(:,4)
             end if
             if( strat76_ndx > 0 ) then
-               rxt(:,k,strat76_ndx) = 0.
+               rxt(:,k,strat76_ndx) = hetrates_strat(:,5)
             end if
             if( strat77_ndx > 0 ) then
-               rxt(:,k,strat77_ndx) = 0.
+               rxt(:,k,strat77_ndx) = hetrates_strat(:,6)
             end if
             if( strat78_ndx > 0 ) then
-               rxt(:,k,strat78_ndx) = 0.
+               rxt(:,k,strat78_ndx) = hetrates_strat(:,7)
             end if
             if( strat79_ndx > 0 ) then
-               rxt(:,k,strat79_ndx) = 0.
+               rxt(:,k,strat79_ndx) = hetrates_strat(:,8)
             end if
             if( strat80_ndx > 0 ) then
-               rxt(:,k,strat80_ndx) = 0.
+               rxt(:,k,strat80_ndx) = hetrates_strat(:,9)
             end if
 
          end if

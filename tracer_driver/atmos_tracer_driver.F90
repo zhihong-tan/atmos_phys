@@ -259,8 +259,8 @@ integer, allocatable :: local_indices(:)
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 15.0 2007/08/14 03:57:06 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 15.0.4.1.2.1 2008/02/07 22:35:44 wfc Exp $'
+character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -628,7 +628,7 @@ integer :: n, nnn
       call tropchem_driver( lon, lat, land, pwt, &
                             tracer(:,:,:,1:ntp),chem_tend, &
                             Time, phalf, pfull, t, is, js, dt, &
-                            z_half, z_full, q, t_surf_rad, albedo, coszen, &
+                            z_half, z_full, q, t_surf_rad, albedo, coszen, rrsun, &
                             Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), kbot)
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
@@ -683,6 +683,7 @@ integer :: n, nnn
             'Number of tracers .lt. number for black carbon', FATAL)
      call mpp_clock_begin (carbon_clock)
      call atmos_carbon_aerosol_driver(lon,lat,land,pfull,phalf,z_half,z_pbl, &
+                                      t_surf_rad, w10m_ocean, &
                                       T, pwt, &
                                       tracer(:,:,:,nbcphobic), rtndbcphob, &
                                       tracer(:,:,:,nbcphilic), rtndbcphil, &
@@ -1003,9 +1004,8 @@ type(time_type), intent(in)                                :: Time
 
 !----- initialize the age tracer ------------
 
-      call atmos_age_tracer_init(r, axes, Time, nage, mask)
-      age_tracer_clock = mpp_clock_id( 'Tracer: Age tracer', &
-           grain=CLOCK_MODULE )
+      call atmos_age_tracer_init( r, axes, Time, nage, lonb, latb, phalf, mask)
+      age_tracer_clock = mpp_clock_id( 'Tracer: Age tracer', grain=CLOCK_MODULE )
 
       call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)

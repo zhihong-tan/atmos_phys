@@ -87,8 +87,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 15.0 2007/08/14 03:56:36 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2007_12 $'
+'$Id: interpolator.F90,v 15.0.4.1 2007/12/08 13:47:42 rsh Exp $'
+character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -733,7 +733,9 @@ else
 endif
 
 
- case (5:12)
+!++lwh
+ case (1:12)
+!--lwh
 ! We have more than 4 timelevels 
 ! Assume we have monthly or higher time resolution datasets (climatology or time series)
 ! So we only need to read 2 datasets and apply linear temporal interpolation.
@@ -745,13 +747,15 @@ endif
    endif
    clim_type%data = 0.0
    clim_type%TIME_FLAG = LINEAR
- case (1:4) 
+!++lwh
+!case (1:4) 
 ! Assume we have seasonal data and read in all the data.
 ! We can apply sine curves to these data.
  
-   allocate(clim_type%data(size(lonb_mod,1)-1, size(latb_mod,2)-1, nlev, ntime, num_fields))
-   clim_type%data = 0.0
-   clim_type%TIME_FLAG = SEASONAL
+!  allocate(clim_type%data(size(lonb_mod,1)-1, size(latb_mod,2)-1, nlev, ntime, num_fields))
+!  clim_type%data = 0.0
+!  clim_type%TIME_FLAG = SEASONAL
+!--lwh
 ! case (default)
    
 end select
@@ -1092,7 +1096,15 @@ end do
       clim_units = chomp(clim_units)
     endif
     if (clim_type%climatological_year) then
-       call time_interp(Time, clim_type%time_slice, tweight, taum, taup, modtime=YEAR )
+!++lwh
+       if (size(clim_type%time_slice) > 1) then
+          call time_interp(Time, clim_type%time_slice, tweight, taum, taup, modtime=YEAR )
+       else
+          taum = 1
+          taup = 1
+          tweight = 0.
+       end if
+!--lwh
     else
        call time_interp(Time, clim_type%time_slice, tweight, taum, taup )
     endif
@@ -1278,7 +1290,7 @@ select case(clim_type%TIME_FLAG)
                                  tweight*   &
                 clim_type%data(istart:iend,jstart:jend,:,itaup,n)
     end do
-!  case (SEASONAL)
+! case (SEASONAL)
 ! Do sine fit to data at this point
   case (BILINEAR)
     do n=1, size(clim_type%field_name(:))
@@ -1468,7 +1480,15 @@ do i= 1,size(clim_type%field_name(:))
       clim_units = chomp(clim_units)
     endif
     if (clim_type%climatological_year) then
-       call time_interp(Time, clim_type%time_slice, tweight, taum, taup, modtime=YEAR )
+!++lwh
+       if (size(clim_type%time_slice) > 1) then
+          call time_interp(Time, clim_type%time_slice, tweight, taum, taup, modtime=YEAR )
+       else
+          taum = 1
+          taup = 1
+          tweight = 0.
+       end if
+!--lwh
     else
        call time_interp(Time, clim_type%time_slice, tweight, taum, taup )
     endif
@@ -1650,7 +1670,7 @@ select case(clim_type%TIME_FLAG)
   case (LINEAR)
     hinterp_data = (1-tweight) * clim_type%data(istart:iend,jstart:jend,:,itaum,i) + &
                        tweight * clim_type%data(istart:iend,jstart:jend,:,itaup,i)
-!  case (SEASONAL)
+! case (SEASONAL)
 ! Do sine fit to data at this point
   case (BILINEAR)
     hinterp_data = &
@@ -1824,7 +1844,15 @@ do i= 1,size(clim_type%field_name(:))
       clim_units = chomp(clim_units)
     endif
     if (clim_type%climatological_year) then
-      call time_interp(Time, clim_type%time_slice, tweight, taum, taup, modtime=YEAR )
+!++lwh
+       if (size(clim_type%time_slice) > 1) then
+          call time_interp(Time, clim_type%time_slice, tweight, taum, taup, modtime=YEAR )
+       else
+          taum = 1
+          taup = 1
+          tweight = 0.
+       end if
+!--lwh
     else
        call time_interp(Time, clim_type%time_slice, tweight, taum, taup )
     endif
@@ -2029,7 +2057,7 @@ select case(clim_type%TIME_FLAG)
   case (LINEAR)
     hinterp_data = (1-tweight)*clim_type%data(istart:iend,jstart:jend,:,itaum,i) &
                      + tweight*clim_type%data(istart:iend,jstart:jend,:,itaup,i)
-  case (SEASONAL)
+! case (SEASONAL)
 ! Do sine fit to data at this point
   case (BILINEAR)
     hinterp_data = &
