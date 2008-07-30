@@ -58,8 +58,8 @@ private
 !----------- version number for this module ------------------------
 
 character(len=128)  :: version = &
-'$Id: rad_output_file.F90,v 14.0 2007/03/15 22:07:10 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+'$Id: rad_output_file.F90,v 16.0 2008/07/30 22:08:52 fms Exp $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 
 !---------------------------------------------------------------------
@@ -446,7 +446,12 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                        size(Atmos_input%press,2), &
                        size(Atmos_input%press,3)-1 ) ::  &
                        temp, rh2o, qo3, cmxolw, crndlw, radp, radswp, &
+                       v_heat, &
                        radpcf, radswpcf, pressm, dphalf, dpflux, deltaz
+
+      real, dimension (size(Atmos_input%press,1),    &
+                       size(Atmos_input%press,2), 4)  :: &
+                                bdy_flx_mean, bdy_flx_clr_mean
 
       real, dimension(:,:,:),   allocatable :: aerosol_col
       real, dimension(:,:,:,:),   allocatable :: extopdep_col
@@ -467,6 +472,7 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
       integer   :: n, k, na, nfamilies, nl
       integer   :: nv, vis_indx, nir_indx
       integer   :: co_indx, bnd_indx
+      integer   :: nzens, nz
 
 !----------------------------------------------------------------------
 !  local variables:
@@ -521,6 +527,12 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
       if (write_data_file) then
 
 !--------------------------------------------------------------------
+!    define the number of zenith angles that the sw was calculated 
+!    for on this step.
+!--------------------------------------------------------------------
+        nzens = Rad_control%nzens
+
+!--------------------------------------------------------------------
 !    if the file is to be written, define the number of model layers.
 !--------------------------------------------------------------------
         kerad = ubound(Atmos_input%temp,3) - 1
@@ -535,16 +547,32 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
         pfluxm(:,:,:)   = Atmos_input%pflux(:,:,:)
         temp(:,:,:)     = Atmos_input%temp(:,:,1:kerad)
         rh2o(:,:,:)     = Atmos_input%rh2o(:,:,:)
-        radp(:,:,:)     = Rad_output%tdt_rad(is:ie,js:je,:)
-        radswp(:,:,:)   = Rad_output%tdtsw  (is:ie,js:je,:)
+        radp = 0.
+        radswp = 0.
+        fsw = 0.
+        ufsw = 0.
+        bdy_flx_mean = 0.
+        do nz = 1, nzens
+          radp(:,:,:)     = radp(:,:,:) +    &
+                                 Rad_output%tdt_rad(is:ie,js:je,:,nz)
+          radswp(:,:,:)   = radswp(:,:,:) +    &
+                                 Rad_output%tdtsw  (is:ie,js:je,:,nz)
+          fsw(:,:,:)    = fsw(:,:,:) + Sw_output% fsw(:,:,:,nz)
+          ufsw(:,:,:)   = ufsw(:,:,:) + Sw_output%ufsw(:,:,:,nz)
+          bdy_flx_mean(:,:,:) = bdy_flx_mean(:,:,:) +  &
+                                  Sw_output%bdy_flx(:,:,:,nz) 
+        end do
+        radp = radp/float(nzens)
+        radswp = radswp/float(nzens)
+        fsw = fsw/float(nzens)
+        ufsw = ufsw/float(nzens)
+        bdy_flx_mean = bdy_flx_mean/float(nzens)
 !       cirrfgd(:,:)    = Surface%asfc(:,:)
 !       cvisrfgd(:,:)   = Surface%asfc(:,:)
         cirrfgd_dir(:,:)    = Surface%asfc_nir_dir(:,:)
         cvisrfgd_dir(:,:)   = Surface%asfc_vis_dir(:,:)
         cirrfgd_dif(:,:)    = Surface%asfc_nir_dif(:,:)
         cvisrfgd_dif(:,:)   = Surface%asfc_vis_dif(:,:)
-        fsw(:,:,:)      = Sw_output% fsw(:,:,:)
-        ufsw(:,:,:)     = Sw_output%ufsw(:,:,:)
         flxnet(:,:,:)   = Lw_output%flxnet(:,:,:)
         qo3(:,:,:)      = Rad_gases%qo3(:,:,:)
         cmxolw(:,:,:)   = 100.0*Cld_spec%cmxolw(:,:,:)
@@ -558,11 +586,27 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
           ptop(:,:) = 0.01*Atmos_input%phalf(:,:,1)
 
         if (Rad_control%do_totcld_forcing) then 
-          fswcf(:,:,:)    = Sw_output%fswcf(:,:,:)
-          ufswcf(:,:,:)   = Sw_output%ufswcf(:,:,:)
+          fswcf = 0.
+          ufswcf = 0.
+          radpcf = 0.
+          radswpcf = 0.
+          bdy_flx_clr_mean = 0.
+          do nz=1,nzens
+            fswcf(:,:,:)    = fswcf(:,:,:) + Sw_output%fswcf(:,:,:,nz)
+            ufswcf(:,:,:)   = ufswcf(:,:,:) + Sw_output%ufswcf(:,:,:,nz)
+            radpcf(:,:,:)   = radpcf(:,:,:) +    &
+                                Rad_output%tdt_rad_clr(is:ie,js:je,:,nz)
+            radswpcf(:,:,:) = radswpcf(:,:,:) +    &
+                                Rad_output%tdtsw_clr  (is:ie,js:je,:,nz)
+            bdy_flx_clr_mean(:,:,:) = bdy_flx_clr_mean(:,:,:) +  &
+                                  Sw_output%bdy_flx_clr(:,:,:,nz) 
+          end do
+          fswcf = fswcf/float(nzens)
+          ufswcf = ufswcf/float(nzens)
+          radpcf = radpcf/float(nzens)
+          radswpcf = radswpcf/float(nzens)
+          bdy_flx_clr_mean = bdy_flx_clr_mean/float(nzens)
           flxnetcf(:,:,:) = Lw_output%flxnetcf(:,:,:)
-          radpcf(:,:,:)   = Rad_output%tdt_rad_clr(is:ie,js:je,:)
-          radswpcf(:,:,:) = Rad_output%tdtsw_clr  (is:ie,js:je,:)
         endif
 
 !---------------------------------------------------------------------
@@ -932,8 +976,17 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                                 Time_diag, is, js,1)
             endif
             if (id_swheat_vlcno  > 0 ) then
+
+              v_heat = 0.0
+              do nz = 1,nzens
+                v_heat(:,:,:) = v_heat(:,:,:)  +  &
+                              Aerosol_diags%sw_heating_vlcno(:,:,:,nz)
+              end do
+              v_heat = v_heat/float(nzens)
+
               used = send_data (id_swheat_vlcno ,    &
-                                Aerosol_diags%sw_heating_vlcno(:,:,:), &
+!                               Aerosol_diags%sw_heating_vlcno(:,:,:), &
+                                v_heat(:,:,:), &
                                 Time_diag, is, js, 1)
             endif
             nir_indx = Solar_spect%one_micron_indx
@@ -1029,7 +1082,7 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                             Time_diag, is,js)
         endif
         if (id_sw_bdyflx(n) > 0 ) then
-          used = send_data (id_sw_bdyflx(n) , Sw_output%bdy_flx(:,:,n),&
+          used = send_data (id_sw_bdyflx(n) , bdy_flx_mean(:,:,n),&
                             Time_diag, is,js)
         endif
      end do
@@ -1043,7 +1096,7 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
         endif
         if (id_sw_bdyflx_clr(n) > 0 ) then
           used = send_data (id_sw_bdyflx_clr(n) ,   &
-                            Sw_output%bdy_flx_clr(:,:,n),&
+                            bdy_flx_clr_mean(:,:,n),&
                             Time_diag, is,js)
         endif
      end do

@@ -123,6 +123,14 @@ use damping_driver_mod,      only: damping_driver,      &
                                    damping_driver_init, &
                                    damping_driver_end
 
+#ifdef SCM
+! Option to add SCM radiative tendencies from forcing to lw_tendency
+! and radturbten
+
+use scm_forc_mod,            only: use_scm_rad, add_scm_tdtlw, add_scm_tdtsw
+
+#endif
+
 !-----------------------------------------------------------------
 
 implicit none
@@ -138,8 +146,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 15.0.4.1.4.1 2008/01/03 20:15:14 z1l Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 16.0 2008/07/30 22:07:46 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 
 
 !---------------------------------------------------------------------
@@ -1349,17 +1357,17 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !    be used to return the output from radiation_driver_mod that is
 !    needed by other modules.
 !---------------------------------------------------------------------
-      allocate (Radiation%tdt_rad               (size(q,1), size(q,2),size(q,3)))
-      allocate (Radiation%flux_sw_surf          (size(q,1), size(q,2)          ))
-      allocate (Radiation%flux_sw_surf_dir      (size(q,1), size(q,2)          ))
-      allocate (Radiation%flux_sw_surf_dif      (size(q,1), size(q,2)          ))
-      allocate (Radiation%flux_sw_down_vis_dir  (size(q,1), size(q,2)          ))
-      allocate (Radiation%flux_sw_down_vis_dif  (size(q,1), size(q,2)          ))
-      allocate (Radiation%flux_sw_down_total_dir(size(q,1), size(q,2)          ))
-      allocate (Radiation%flux_sw_down_total_dif(size(q,1), size(q,2)          ))
-      allocate (Radiation%flux_sw_vis           (size(q,1), size(q,2)          ))
-      allocate (Radiation%flux_sw_vis_dir       (size(q,1), size(q,2)          ))
-      allocate (Radiation%flux_sw_vis_dif       (size(q,1), size(q,2)          ))
+      allocate (Radiation%tdt_rad               (size(q,1), size(q,2),size(q,3),1))
+      allocate (Radiation%flux_sw_surf          (size(q,1), size(q,2),1          ))
+      allocate (Radiation%flux_sw_surf_dir      (size(q,1), size(q,2),1          ))
+      allocate (Radiation%flux_sw_surf_dif      (size(q,1), size(q,2),1          ))
+      allocate (Radiation%flux_sw_down_vis_dir  (size(q,1), size(q,2),1          ))
+      allocate (Radiation%flux_sw_down_vis_dif  (size(q,1), size(q,2),1          ))
+      allocate (Radiation%flux_sw_down_total_dir(size(q,1), size(q,2),1          ))
+      allocate (Radiation%flux_sw_down_total_dif(size(q,1), size(q,2),1          ))
+      allocate (Radiation%flux_sw_vis           (size(q,1), size(q,2),1          ))
+      allocate (Radiation%flux_sw_vis_dir       (size(q,1), size(q,2),1          ))
+      allocate (Radiation%flux_sw_vis_dif       (size(q,1), size(q,2),1          ))
       allocate (Radiation%flux_lw_surf          (size(q,1), size(q,2)          ))
       allocate (Radiation%coszen_angle          (size(q,1), size(q,2)          ))
       allocate (Radiation%tdtlw                 (size(q,1), size(q,2),size(q,3)))
@@ -1385,22 +1393,22 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !    accumulating the radiative and turbulent heating rates, and which
 !    is needed by strat_cloud_mod.
 !-------------------------------------------------------------------
-      tdt     = tdt + Radiation%tdt_rad(:,:,:)
-      flux_sw = Radiation%flux_sw_surf
-      flux_sw_dir            = Radiation%flux_sw_surf_dir
-      flux_sw_dif            = Radiation%flux_sw_surf_dif
-      flux_sw_down_vis_dir   = Radiation%flux_sw_down_vis_dir
-      flux_sw_down_vis_dif   = Radiation%flux_sw_down_vis_dif
-      flux_sw_down_total_dir = Radiation%flux_sw_down_total_dir
-      flux_sw_down_total_dif = Radiation%flux_sw_down_total_dif
-      flux_sw_vis            = Radiation%flux_sw_vis
-      flux_sw_vis_dir        = Radiation%flux_sw_vis_dir
-      flux_sw_vis_dif        = Radiation%flux_sw_vis_dif
+      tdt     = tdt + Radiation%tdt_rad(:,:,:,1)
+      flux_sw = Radiation%flux_sw_surf(:,:,1)
+      flux_sw_dir            = Radiation%flux_sw_surf_dir(:,:,1)
+      flux_sw_dif            = Radiation%flux_sw_surf_dif(:,:,1)
+      flux_sw_down_vis_dir   = Radiation%flux_sw_down_vis_dir(:,:,1)
+      flux_sw_down_vis_dif   = Radiation%flux_sw_down_vis_dif(:,:,1)
+      flux_sw_down_total_dir = Radiation%flux_sw_down_total_dir(:,:,1)
+      flux_sw_down_total_dif = Radiation%flux_sw_down_total_dif(:,:,1)
+      flux_sw_vis            = Radiation%flux_sw_vis(:,:,1)
+      flux_sw_vis_dir        = Radiation%flux_sw_vis_dir(:,:,1)
+      flux_sw_vis_dif        = Radiation%flux_sw_vis_dif(:,:,1)
       flux_lw = Radiation%flux_lw_surf
       coszen  = Radiation%coszen_angle
       lw_tendency(is:ie,js:je,:) = Radiation%tdtlw(:,:,:)
       radturbten (is:ie,js:je,:) = radturbten(is:ie,js:je,:) + &
-                                   Radiation%tdt_rad(:,:,:)
+                                   Radiation%tdt_rad(:,:,:,1)
 
 !--------------------------------------------------------------------
 !    deallocate the arrays used to return the radiation_driver_mod 
@@ -1456,6 +1464,18 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
         coszen  = 0.0
         lw_tendency(is:ie,js:je,:) = 0.0
       endif ! do_radiation
+
+#ifdef SCM
+! Option to add SCM radiative tendencies from forcing to lw_tendency
+! and radturbten
+
+      if (use_scm_rad) then
+        call add_scm_tdtlw( lw_tendency(is:ie,js:je,:) )
+        call add_scm_tdtlw( radturbten (is:ie,js:je,:) )
+        call add_scm_tdtsw( radturbten (is:ie,js:je,:) )
+      endif
+
+#endif
 
 !----------------------------------------------------------------------
 !    call damping_driver to calculate the various model dampings that

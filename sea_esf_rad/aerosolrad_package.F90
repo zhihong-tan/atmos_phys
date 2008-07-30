@@ -17,7 +17,7 @@ use fms_mod,               only: open_namelist_file, fms_init, &
                                  mpp_pe, mpp_root_pe, stdlog, &
                                  file_exist, write_version_number, &
                                  check_nml_error, error_mesg, &
-                                 FATAL, close_file
+                                 FATAL, NOTE, close_file
 use mpp_io_mod,            only: mpp_open, mpp_close, MPP_RDONLY,   &
                                  MPP_ASCII, MPP_SEQUENTIAL, MPP_MULTI, &
                                  MPP_SINGLE, mpp_io_init
@@ -55,8 +55,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 15.0.4.1 2007/11/19 13:03:12 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 16.0 2008/07/30 22:07:56 fms Exp $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 
 !---------------------------------------------------------------------
@@ -187,6 +187,13 @@ logical :: interpolating_volcanic_data = .true.
                                        ! volcanic datasets will be
                                        ! time interpolated rather than
                                        ! held constant for a month ?
+logical :: repeat_volcano_year = .false. 
+                                      ! the same single year's data from
+                                      ! the input data set should be 
+                                      ! used for each model year ?
+integer :: volcano_year_used = 0      ! year of volcanic data to repeat
+                                      ! when repeat_volcano_year is
+                                      ! .true.
 logical :: using_im_bcsul = .false.   ! bc and sulfate aerosols are 
                                       ! treated as an internal mixture ?
 integer, dimension(0:100) ::  omphilic_indices = (/        &
@@ -275,6 +282,8 @@ namelist / aerosolrad_package_nml /                          &
                                     using_volcanic_lw_files, &
                                     volcanic_dataset_entry, &
                                     interpolating_volcanic_data, &
+                                    repeat_volcano_year, &
+                                    volcano_year_used, &
                                     using_im_bcsul, &
                                     sw_ext_filename, sw_ssa_filename, &
                                     sw_asy_filename, lw_ext_filename, &
@@ -543,6 +552,7 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
       integer        :: unit, ierr, io
       integer        :: n, m
       character(len=16) :: chvers
+      character(len=4)  :: chyr  
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -776,10 +786,23 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
       endif
       if (using_volcanic_sw_files .or.  &
           using_volcanic_lw_files) then
+        if (repeat_volcano_year) then
+          if (volcano_year_used == 0) then
+            call error_mesg ('aerosolrad_package_init', &
+              'valid year must be supplied when &
+                       &repeat_volcano_year is .true.', FATAL)
+          endif
+        endif
         call print_date(Volcanic_entry , str='Data from volcano &
                                            &timeseries at time:')
         call print_date(Model_init_time , str='This data is mapped to &
                                                   &model time:')
+        if (repeat_volcano_year) then
+          write (chyr, '(i4)') volcano_year_used
+          call error_mesg ('aerosolrad_package_init', &
+           'volcanic data from dataset year '  // chyr // ' will be &
+                                    &used for all model years.', NOTE)
+        endif
       endif
       Volcanic_offset = Volcanic_entry - Model_init_time
 
@@ -1124,7 +1147,8 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
       allocate (Aerosol_diags%sw_heating_vlcno  &
                                         (size(Aerosol%aerosol,1), &
                                          size(Aerosol%aerosol,2), &
-                                         size(Aerosol%aerosol,3)))
+                                         size(Aerosol%aerosol,3), &
+                                         Rad_control%nzens))
       Aerosol_diags%sw_heating_vlcno = 0.0
       allocate (Aerosol_diags%lw_extopdep_vlcno    &
                                         (size(Aerosol%aerosol,1), &
@@ -1180,6 +1204,10 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
              Volcano_time = Time - Volcanic_offset
           else 
              Volcano_time = Time + Volcanic_offset
+          endif
+          if (repeat_volcano_year) then
+            call get_date (Volcano_time, yr, mo, dy, hr, mn, sc)
+            Volcano_time = set_date (volcano_year_used, mo,dy,hr,mn,sc)
           endif
 
 !--------------------------------------------------------------------

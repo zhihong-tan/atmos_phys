@@ -103,8 +103,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 15.0.4.1 2007/10/04 14:28:38 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 16.0 2008/07/30 22:08:04 fms Exp $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 
 !---------------------------------------------------------------------
@@ -964,8 +964,7 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
 !    of data which is to be used. allocate storage for the cloud data.
 !---------------------------------------------------------------------
           if (doing_data_override) then
-            Data_time = Rad_time +    &
-                          set_time (Rad_control%rad_time_step, 0)
+            Data_time = Rad_time 
  
 !---------------------------------------------------------------------
 !    call data_override to retrieve the processor subdomain's cloud

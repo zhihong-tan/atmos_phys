@@ -61,8 +61,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module  -------------------------
 
-character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 15.0 2007/08/14 03:55:45 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 16.0 2008/07/30 22:09:05 fms Exp $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 
 !---------------------------------------------------------------------
@@ -523,15 +523,15 @@ real, dimension(:,:,:,:),        intent(inout) :: r
                        Cld_spec, .false., Sw_output_std, Aerosol_diags, r, &
 !                      Sw_control%do_swaerosol)
                        Sw_control%do_swaerosol, naerosol_optical)
-          Aerosol_diags%sw_heating_vlcno = Sw_output_std%hsw
+          Aerosol_diags%sw_heating_vlcno = Sw_output_std%hsw 
 
 !----------------------------------------------------------------------
 !    reinitialize the sw outputs for the "real" call.
 !----------------------------------------------------------------------
-          Sw_output_std%fsw   (:,:,:) = 0.0
-          Sw_output_std%dfsw  (:,:,:) = 0.0
-          Sw_output_std%ufsw  (:,:,:) = 0.0
-          Sw_output_std%hsw   (:,:,:) = 0.0
+          Sw_output_std%fsw   (:,:,:,:) = 0.0
+          Sw_output_std%dfsw  (:,:,:,:) = 0.0
+          Sw_output_std%ufsw  (:,:,:,:) = 0.0
+          Sw_output_std%hsw   (:,:,:,:) = 0.0
           Sw_output_std%dfsw_dir_sfc = 0.0
           Sw_output_std%dfsw_dif_sfc  = 0.0
           Sw_output_std%ufsw_dif_sfc = 0.0
@@ -540,20 +540,20 @@ real, dimension(:,:,:,:),        intent(inout) :: r
           Sw_output_std%dfsw_vis_sfc_dir = 0.
           Sw_output_std%dfsw_vis_sfc_dif = 0.
           Sw_output_std%ufsw_vis_sfc_dif = 0.
-          Sw_output_std%swdn_special  (:,:,:) = 0.0
-          Sw_output_std%swup_special  (:,:,:) = 0.0
-          Sw_output_std%bdy_flx(:,:,:) = 0.0
+          Sw_output_std%swdn_special  (:,:,:,:) = 0.0
+          Sw_output_std%swup_special  (:,:,:,:) = 0.0
+          Sw_output_std%bdy_flx(:,:,:,:) = 0.0
       if (Rad_control%do_totcld_forcing) then
-          Sw_output_std%fswcf (:,:,:) = 0.0
-          Sw_output_std%dfswcf(:,:,:) = 0.0
-          Sw_output_std%ufswcf(:,:,:) = 0.0
-          Sw_output_std%hswcf (:,:,:) = 0.0
+          Sw_output_std%fswcf (:,:,:,:) = 0.0
+          Sw_output_std%dfswcf(:,:,:,:) = 0.0
+          Sw_output_std%ufswcf(:,:,:,:) = 0.0
+          Sw_output_std%hswcf (:,:,:,:) = 0.0
           Sw_output_std%dfsw_dir_sfc_clr = 0.             
           Sw_output_std%dfsw_dif_sfc_clr = 0.           
           Sw_output_std%dfsw_vis_sfc_clr = 0.
-          Sw_output_std%swdn_special_clr  (:,:,:) = 0.0
-          Sw_output_std%swup_special_clr  (:,:,:) = 0.0
-          Sw_output_std%bdy_flx_clr(:,:,:) = 0.0
+          Sw_output_std%swdn_special_clr  (:,:,:,:) = 0.0
+          Sw_output_std%swup_special_clr  (:,:,:,:) = 0.0
+          Sw_output_std%bdy_flx_clr(:,:,:,:) = 0.0
       endif
           if (Sw_control%do_swaerosol) then
             naerosol_optical = size (Aerosol_props%aerextband,2)
@@ -571,7 +571,7 @@ real, dimension(:,:,:,:),        intent(inout) :: r
 !    volcanic aerosol and the case without. save in 
 !    Aerosol_diags%sw_heating_vlcno.
 !----------------------------------------------------------------------
-          Aerosol_diags%sw_heating_vlcno = Sw_output_std%hsw -   &
+          Aerosol_diags%sw_heating_vlcno = Sw_output_std%hsw  -   &
                                          Aerosol_diags%sw_heating_vlcno
           Sw_output(1) = Sw_output_std
 
@@ -780,34 +780,38 @@ type(sw_output_type), intent(inout)  ::  Sw_output
 !
 !--------------------------------------------------------------------
 
+      integer :: nzens
+
+      nzens = Rad_control%nzens
+
 !--------------------------------------------------------------------
 !    allocate and initialize fields to contain net(up-down) sw flux 
 !    (fsw), upward sw flux (ufsw), downward sw flux(dfsw) at flux 
 !    levels and sw heating in model layers (hsw).
 !--------------------------------------------------------------------
-      allocate (Sw_output%fsw  (ix, jx, kx+1) )
-      allocate (Sw_output%ufsw (ix, jx, kx+1) )
-      allocate (Sw_output%dfsw (ix, jx, kx+1) )
-      allocate (Sw_output%hsw  (ix, jx, kx  ) )
-      allocate (Sw_output%dfsw_dir_sfc (ix, jx) )
-      allocate (Sw_output%ufsw_dif_sfc (ix, jx) )
-      allocate (Sw_output%dfsw_dif_sfc (ix, jx) )
-      allocate (Sw_output%dfsw_vis_sfc (ix, jx  ) )
-      allocate (Sw_output%ufsw_vis_sfc (ix, jx  ) )
-      allocate (Sw_output%dfsw_vis_sfc_dir (ix, jx  ) )
-      allocate (Sw_output%dfsw_vis_sfc_dif (ix, jx  ) )
-      allocate (Sw_output%ufsw_vis_sfc_dif (ix, jx  ) )
+      allocate (Sw_output%fsw  (ix, jx, kx+1, nzens) )
+      allocate (Sw_output%ufsw (ix, jx, kx+1, nzens) )
+      allocate (Sw_output%dfsw (ix, jx, kx+1, nzens) )
+      allocate (Sw_output%hsw  (ix, jx, kx  , nzens) )
+      allocate (Sw_output%dfsw_dir_sfc (ix, jx, nzens) )
+      allocate (Sw_output%ufsw_dif_sfc (ix, jx, nzens) )
+      allocate (Sw_output%dfsw_dif_sfc (ix, jx, nzens) )
+      allocate (Sw_output%dfsw_vis_sfc (ix, jx, nzens  ) )
+      allocate (Sw_output%ufsw_vis_sfc (ix, jx, nzens  ) )
+      allocate (Sw_output%dfsw_vis_sfc_dir (ix, jx, nzens  ) )
+      allocate (Sw_output%dfsw_vis_sfc_dif (ix, jx, nzens  ) )
+      allocate (Sw_output%ufsw_vis_sfc_dif (ix, jx, nzens  ) )
       allocate (Sw_output%swdn_special   &
-                                 (ix, jx, Rad_control%mx_spec_levs) )
+                            (ix, jx, Rad_control%mx_spec_levs,nzens) )
       allocate (Sw_output%swup_special   &
-                                 (ix, jx, Rad_control%mx_spec_levs) )
+                            (ix, jx, Rad_control%mx_spec_levs,nzens) )
       allocate (Sw_output%bdy_flx        &
-                                 (ix, jx, 4) )
+                                 (ix, jx, 4, nzens) )
 
-      Sw_output%fsw   (:,:,:) = 0.0
-      Sw_output%dfsw  (:,:,:) = 0.0
-      Sw_output%ufsw  (:,:,:) = 0.0
-      Sw_output%hsw   (:,:,:) = 0.0
+      Sw_output%fsw   (:,:,:,:) = 0.0
+      Sw_output%dfsw  (:,:,:,:) = 0.0
+      Sw_output%ufsw  (:,:,:,:) = 0.0
+      Sw_output%hsw   (:,:,:,:) = 0.0
       Sw_output%dfsw_dir_sfc = 0.0
       Sw_output%dfsw_dif_sfc  = 0.0
       Sw_output%ufsw_dif_sfc = 0.0
@@ -816,39 +820,39 @@ type(sw_output_type), intent(inout)  ::  Sw_output
       Sw_output%dfsw_vis_sfc_dir = 0.
       Sw_output%dfsw_vis_sfc_dif = 0.
       Sw_output%ufsw_vis_sfc_dif = 0.
-      Sw_output%swdn_special  (:,:,:) = 0.0
-      Sw_output%swup_special  (:,:,:) = 0.0
-      Sw_output%bdy_flx(:,:,:) = 0.0       
+      Sw_output%swdn_special  (:,:,:,:) = 0.0
+      Sw_output%swup_special  (:,:,:,:) = 0.0
+      Sw_output%bdy_flx(:,:,:,:) = 0.0       
 
 !---------------------------------------------------------------------
 !    if the cloud-free values are desired, allocate and initialize 
 !    arrays for the fluxes and heating rate in the absence of clouds.
 !----------------------------------------------------------------------
       if (Rad_control%do_totcld_forcing) then
-        allocate (Sw_output%fswcf  (ix, jx, kx+1) )
-        allocate (Sw_output%dfswcf (ix, jx, kx+1) )
-        allocate (Sw_output%ufswcf (ix, jx, kx+1) )
-        allocate (Sw_output%hswcf  (ix, jx, kx  ) )
-        allocate (Sw_output%dfsw_dir_sfc_clr (ix, jx) )
-        allocate (Sw_output%dfsw_dif_sfc_clr (ix, jx) )
-        allocate (Sw_output%dfsw_vis_sfc_clr (ix, jx  ) )
+        allocate (Sw_output%fswcf  (ix, jx, kx+1,nzens) )
+        allocate (Sw_output%dfswcf (ix, jx, kx+1,nzens) )
+        allocate (Sw_output%ufswcf (ix, jx, kx+1,nzens) )
+        allocate (Sw_output%hswcf  (ix, jx, kx,nzens  ) )
+        allocate (Sw_output%dfsw_dir_sfc_clr (ix, jx,nzens) )
+        allocate (Sw_output%dfsw_dif_sfc_clr (ix, jx,nzens) )
+        allocate (Sw_output%dfsw_vis_sfc_clr (ix, jx,nzens  ) )
         allocate (Sw_output%swdn_special_clr    &
-                                 (ix, jx, Rad_control%mx_spec_levs) )
+                            (ix, jx, Rad_control%mx_spec_levs,nzens) )
         allocate (Sw_output%swup_special_clr   &
-                                 (ix, jx, Rad_control%mx_spec_levs) )
+                            (ix, jx, Rad_control%mx_spec_levs,nzens) )
         allocate (Sw_output%bdy_flx_clr        &
-                                 (ix, jx, 4) )
+                                 (ix, jx, 4,nzens) )
 
-        Sw_output%fswcf (:,:,:) = 0.0
-        Sw_output%dfswcf(:,:,:) = 0.0
-        Sw_output%ufswcf(:,:,:) = 0.0
-        Sw_output%hswcf (:,:,:) = 0.0
+        Sw_output%fswcf (:,:,:,:) = 0.0
+        Sw_output%dfswcf(:,:,:,:) = 0.0
+        Sw_output%ufswcf(:,:,:,:) = 0.0
+        Sw_output%hswcf (:,:,:,:) = 0.0
         Sw_output%dfsw_dir_sfc_clr = 0.0
         Sw_output%dfsw_dif_sfc_clr  = 0.0
         Sw_output%dfsw_vis_sfc_clr = 0.
-        Sw_output%swdn_special_clr  (:,:,:) = 0.0
-        Sw_output%swup_special_clr  (:,:,:) = 0.0
-        Sw_output%bdy_flx_clr (:,:,:) = 0.0
+        Sw_output%swdn_special_clr  (:,:,:,:) = 0.0
+        Sw_output%swup_special_clr  (:,:,:,:) = 0.0
+        Sw_output%bdy_flx_clr (:,:,:,:) = 0.0
       endif
 
 !--------------------------------------------------------------------

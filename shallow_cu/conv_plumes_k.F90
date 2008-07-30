@@ -12,8 +12,8 @@ MODULE CONV_PLUMES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 15.0.2.1.2.1.2.1.2.1.2.1 2008/02/02 10:25:31 rsh Exp $'
-  character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 16.0 2008/07/30 22:09:19 fms Exp $'
+  character(len=128) :: tagname = '$Name: perth $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -386,7 +386,7 @@ contains
     real, dimension(1:size(sd%p)) :: p0, dp
     real, dimension(0:size(sd%p)) :: ps0
 
-    real, dimension(3)            :: totalmass
+    real, dimension(4)            :: totalmass
     real                          :: thickness, drop=0
    
     integer :: k, klm, km1, krel, let, ltop, id_check
@@ -453,7 +453,8 @@ contains
     totalmass(1)=     sd%am1(krel-1); !totalmass(1)=aerol;
     totalmass(2)=     sd%am2(krel-1); !totalmass(2)=0.;
     totalmass(3)=     sd%am3(krel-1); !totalmass(3)=0.;
-    wrel2 = max (wrel, cpn%wrel_min)
+    totalmass(4)=     sd%am4(krel-1); !totalmass(4)=0.;
+    wrel2 = wrel*cpn%wrel_min
     call aer_ccn_act(thj*exn_k(prel,Uw_p), prel, wrel2, totalmass, drop)
     cp%qnu(krel-1) = drop * 1.0e6 / (prel /    &
                      (Uw_p%rdgas*cp%thvu(krel-1)*exn_k(prel,Uw_p)))

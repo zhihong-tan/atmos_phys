@@ -41,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 14.0.8.1 2007/11/09 23:04:44 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 16.0 2008/07/30 22:08:14 fms Exp $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 
 !---------------------------------------------------------------------
@@ -2335,7 +2335,7 @@ end function ran0
   subroutine ran0_vec(idum, ran0)
     integer, dimension(:), intent(inout) :: idum
     real,    dimension(:), intent(  out) :: ran0
-!     $Id: isccp_clouds.F90,v 14.0.8.1 2007/11/09 23:04:44 wfc Exp $
+!     $Id: isccp_clouds.F90,v 16.0 2008/07/30 22:08:14 fms Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

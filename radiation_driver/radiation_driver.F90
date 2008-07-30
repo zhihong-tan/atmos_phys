@@ -121,7 +121,7 @@
 
 use fms_mod,               only: fms_init, mpp_clock_id, &
                                  mpp_clock_begin, mpp_clock_end, &
-                                 CLOCK_MODULE,  &
+                                 CLOCK_MODULE,  field_exist, &
                                  mpp_pe, mpp_root_pe, &
                                  open_namelist_file, stdlog, &
                                  file_exist, FATAL, WARNING, NOTE, &
@@ -135,6 +135,7 @@ use diag_manager_mod,      only: register_diag_field, send_data, &
 use time_manager_mod,      only: time_type, set_date, set_time,  &
                                  get_time,    operator(+),       &
                                  print_date, time_manager_init, &
+                                 assignment(=), &
                                  operator(-), operator(/=), get_date,&
                                  operator(<), operator(>=), operator(>)
 use sat_vapor_pres_mod,    only: sat_vapor_pres_init, lookup_es
@@ -211,8 +212,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 15.0.4.1 2007/11/19 13:00:14 rsh Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 16.0 2008/07/30 22:07:49 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 
 
 !---------------------------------------------------------------------
@@ -264,6 +265,27 @@ private  &
 !-----------------------------------------------------------------------
 !------- namelist ---------
 integer ::  rad_time_step = 0         !  radiative time step in seconds
+
+
+integer ::  sw_rad_time_step = 0      !  radiative time step in seconds
+logical :: use_single_lw_sw_ts = .true. ! lw and sw are integrated
+                                        ! using rad_time_step ? if 
+                                       ! false, then lw uses 
+                                       ! rad_time_step, sw uses 
+                                       ! sw_rad_time_step
+logical ::  use_hires_coszen = .false. ! calculate for multiple zen angs
+                                       ! within sw calc?
+integer :: nzens_per_sw_rad_timestep = 1  !  number of cloudy
+                                          ! sw calcs done on a sw rad 
+                                          ! timestep
+logical :: allow_nonrepro_across_restarts = .false.
+                                      !  when set true, allows the 
+                                      !  use_hires_coszen case to
+                                      !  restart on non-radiation steps,
+                                      ! with solution dependent on 
+                                      ! restart interval
+                                      ! (temporary until needed vari-
+                                      ! ables added to restart file)
 logical ::  do_clear_sky_pass= .false.!  are the clear-sky radiation
                                       !  diagnostics to be calculated ?
 character(len=24) ::    &
@@ -577,6 +599,11 @@ integer, dimension(6) :: solar_dataset_entry = (/ 1, 1, 1, 0, 0, 0 /)
 !
 namelist /radiation_driver_nml/ do_netcdf_restart, &
                                 rad_time_step, do_clear_sky_pass, &
+                                sw_rad_time_step,  &
+                                use_single_lw_sw_ts, &
+                                use_hires_coszen, &
+                                allow_nonrepro_across_restarts, &
+                                nzens_per_sw_rad_timestep, &
                                 zenith_spec, rad_package,    &
                                 calc_hemi_integrals,     &
                                 all_step_diagnostics, &
@@ -614,6 +641,7 @@ namelist /radiation_driver_nml/ do_netcdf_restart, &
 
 logical ::  module_is_initialized = .false. ! module initialized?
 logical ::  do_rad                          ! is this a radiation step ?
+logical ::  do_lw_rad, do_sw_rad            ! is this a radiation step ?
 logical ::  use_rad_date                    ! specify time of radiation
                                             ! independent of model time?
 logical ::  do_sea_esf_rad                  ! using sea_esf_rad package?
@@ -686,6 +714,7 @@ integer, dimension(10) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
 !                         cloud
 !          tdtsw          shortwave heating rate
 !          tdtsw_clr      shortwave heating rate in he absence of cloud
+!          tdtlw_clr       longwave heating rate in he absence of cloud
 !          tdtlw          longwave heating rate
 
 !    solar_save is used when renormalize_sw_fluxes is active, to save
@@ -716,40 +745,43 @@ integer, dimension(10) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
 !-----------------------------------------------------------------------
 
 type(rad_output_type),save          ::  Rad_output
-real, allocatable, dimension(:,:)   ::  solar_save, flux_sw_surf_save, &
-                                        dum_idjd, &
+real, allocatable, dimension(:,:)   ::  solar_save, &
+                                        dum_idjd
+real, allocatable, dimension(:,:,:)   ::  &
+                                    flux_sw_down_total_dir_clr_save, &
+                                    flux_sw_down_total_dif_clr_save, &
+                                        flux_sw_down_vis_clr_save
+real, allocatable, dimension(:,:,:)   ::   flux_sw_surf_save, &
                                         flux_sw_surf_dir_save, &
                                         flux_sw_surf_dif_save, &
                                         flux_sw_down_vis_dir_save, &
                                         flux_sw_down_vis_dif_save, &
                                         flux_sw_down_total_dir_save, &
                                         flux_sw_down_total_dif_save, &
-                                    flux_sw_down_total_dir_clr_save, &
-                                    flux_sw_down_total_dif_clr_save, &
-                                        flux_sw_down_vis_clr_save, &
                                         flux_sw_vis_save, &
                                         flux_sw_vis_dir_save, &
                                         flux_sw_vis_dif_save
-real, allocatable, dimension(:,:,:) ::  sw_heating_save,    &
-                                        tot_heating_save,  &
-                                        sw_heating_clr_save, &
-                                        tot_heating_clr_save, &
+real, allocatable, dimension(:,:,:,:) ::  sw_heating_save,    &
+                                        tot_heating_save, &
                                         dfsw_save, ufsw_save, fsw_save,&
-                                        hsw_save, dfswcf_save,   &
+                                        hsw_save
+real, allocatable, dimension(:,:,:,:) ::  sw_heating_clr_save, &
+                                        tot_heating_clr_save, &
+                                        dfswcf_save,   &
                                         ufswcf_save, fswcf_save, &
                                         hswcf_save
 real, allocatable, dimension(:,:,:) ::  tdtlw_save, tdtlw_clr_save
 real, allocatable, dimension(:,:)   ::  olr_save, lwups_save, &
                                         lwdns_save, olr_clr_save, &
                                         lwups_clr_save, lwdns_clr_save
-real, allocatable, dimension(:,:,:) ::  swdn_special_save, &
+real, allocatable, dimension(:,:,:,:) ::  swdn_special_save, &
                                         swdn_special_clr_save, &  
                                         swup_special_save,&
-                                        swup_special_clr_save, &
-                                        netlw_special_save, &
+                                        swup_special_clr_save
+real, allocatable, dimension(:,:,:) ::  netlw_special_save, &
                                         netlw_special_clr_save
-real, allocatable, dimension(:,:,:) ::  dfsw_ad_save, ufsw_ad_save, &
-                                        dfswcf_ad_save, ufswcf_ad_save
+real, allocatable, dimension(:,:,:,:) ::  dfsw_ad_save, ufsw_ad_save
+real, allocatable, dimension(:,:,:,:) ::  dfswcf_ad_save, ufswcf_ad_save
 real, allocatable, dimension(:,:)   ::  olr_ad_save, lwups_ad_save, &
                                         lwdns_ad_save, olr_ad_clr_save, &
                                     lwups_ad_clr_save, lwdns_ad_clr_save
@@ -757,8 +789,14 @@ real, allocatable, dimension(:,:)   ::  olr_ad_save, lwups_ad_save, &
 !-----------------------------------------------------------------------
 !    time-step-related constants
  
-integer    :: rad_alarm      !  time interval until the next radiation 
+integer    :: lwrad_alarm    !  time interval until the next radiation 
                              !  calculation (seconds)
+integer    :: swrad_alarm    !  time interval until the next radiation 
+                             !  calculation (seconds)
+integer    :: current_sw_zenith_step = 1  
+                             !  current zenith angle index being used  
+                             !  for cloudy sw calculations when 
+                             !  use_hires_coszen is .true.
 integer    :: num_pts=0      !  counter for current number of grid 
                              !  columns processed (when num_pts=0 or 
                              !  num_pts=total_pts certain things happen)
@@ -771,7 +809,7 @@ type(time_type) :: Rad_time  !  time at which the climatologically-
                              !  [ time_type (days, seconds)]
 integer    :: dt             !  physics time step (frequency of calling 
                              !  radiation_driver)  [ seconds ]
-
+integer   :: lw_rad_time_step
 
 !-----------------------------------------------------------------------
 !    diagnostics variables
@@ -1037,6 +1075,7 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
       integer           ::   nyr, nv, nband
       integer           ::   yr, month, year, dum
       integer           ::   ico2
+      integer           ::   nzens
 
 !---------------------------------------------------------------------
 !   local variables
@@ -1395,6 +1434,16 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
       Sw_control%do_daily_mean_iz = .true.
 
 !---------------------------------------------------------------------
+!    be sure that sw renormalization and hi-res zenith angle are not
+!    both selected as options. they are mutually exclusive.
+!---------------------------------------------------------------------
+      if (renormalize_sw_fluxes .and. use_hires_coszen) then
+        call error_mesg ('radiation_driver_init', &
+         ' cannot select both hi-res zenith angle and sw &
+              &renormalization at same time -- choose only one', FATAL)
+      endif
+
+!---------------------------------------------------------------------
 !    verify that radiation has been requested at all model levels and in
 !    all model columns when the original fms radiation is activated.    
 !    verify that renormalize_sw_fluxes has not been requested along
@@ -1439,13 +1488,40 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
             ' radiation timestep must be set to a positive integer', &
               FATAL)
       endif
+      if (.not. use_single_lw_sw_ts) then
+        if (sw_rad_time_step <= 0) then
+          call error_mesg ('radiation_driver_mod', &
+           ' sw radiation timestep must be set to a positive integer', &
+              FATAL)
+        endif
+      endif
 
+      if (use_single_lw_sw_ts .and. (sw_rad_time_step /= 0.0 .and. &
+          sw_rad_time_step /= rad_time_step) ) then
+        call error_mesg ('radiation_driver', &
+         'to avoid confusion, sw_rad_time_step must either remain at &
+                  &default value of 0.0, or be same as rad_time_step &
+                        &when use_single_lw_sw_ts is .true.', FATAL)
+      endif
+      if (use_single_lw_sw_ts) then
+        sw_rad_time_step = rad_time_step
+      endif
+      lw_rad_time_step = rad_time_step
       Rad_control%rad_time_step = rad_time_step
       Rad_control%rad_time_step_iz  = .true.         
+      Rad_control%lw_rad_time_step = lw_rad_time_step
+      Rad_control%lw_rad_time_step_iz  = .true.         
+      Rad_control%sw_rad_time_step = sw_rad_time_step
+      Rad_control%sw_rad_time_step_iz  = .true.         
 
-      if (MOD(INT(SECONDS_PER_DAY), rad_time_step) /= 0) then
+      if (MOD(INT(SECONDS_PER_DAY), lw_rad_time_step) /= 0) then
         call error_mesg ('radiation_driver_mod', &
-             'radiation timestep currently restricted to be an &
+             'lw radiation timestep currently restricted to be an &
+                       &integral factor of seconds in a day', FATAL)
+      endif
+      if (MOD(INT(SECONDS_PER_DAY), sw_rad_time_step) /= 0) then
+        call error_mesg ('radiation_driver_mod', &
+             'sw radiation timestep currently restricted to be an &
                        &integral factor of seconds in a day', FATAL)
       endif
 
@@ -1455,6 +1531,30 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 !----------------------------------------------------------------------
       Rad_control%rad_time_step = rad_time_step
       Rad_control%rad_time_step_iz = .true.
+
+!----------------------------------------------------------------------
+!    store the controls for hires cloudy coszen calculations.
+!----------------------------------------------------------------------
+      if (use_hires_coszen) then
+        Rad_control%hires_coszen = .true.
+      else
+        Rad_control%hires_coszen = .false.
+      endif
+      Rad_control%hires_coszen_iz = .true.
+      
+      if (nzens_per_sw_rad_timestep > 1 .and. &
+          .not. (use_hires_coszen) ) then
+        call error_mesg ('radiation_driver_init', &
+           'uncertainty in what is desired wrt nzens; if &
+           &nzens_per_sw_rad_timestep is not default, &
+           &use_hires_coszen must be set to .true.' , FATAL)
+      endif
+      if (use_hires_coszen)  then
+        Rad_control%nzens = nzens_per_sw_rad_timestep
+      else
+        Rad_control%nzens = 1
+      endif
+      Rad_control%nzens_iz = .true.
 
 !---------------------------------------------------------------------
 !    define the dimensions of the local processors portion of the grid.
@@ -1533,46 +1633,47 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 !    are renormalized or diagnostics are desired to be output on every
 !    physics step.
 !---------------------------------------------------------------------
+        nzens = Rad_control%nzens
       if (renormalize_sw_fluxes .or. all_step_diagnostics) then
         allocate (solar_save             (id,jd))
         allocate (dum_idjd               (id,jd))
-        allocate (flux_sw_surf_save      (id,jd))
-        allocate (flux_sw_surf_dir_save      (id,jd))
-        allocate (flux_sw_surf_dif_save      (id,jd))
-        allocate (flux_sw_down_vis_dir_save      (id,jd))
-        allocate (flux_sw_down_vis_dif_save      (id,jd))
-        allocate (flux_sw_down_total_dir_save      (id,jd))
-        allocate (flux_sw_down_total_dif_save      (id,jd))
-        allocate (flux_sw_vis_save      (id,jd))
-        allocate (flux_sw_vis_dir_save      (id,jd))
-        allocate (flux_sw_vis_dif_save      (id,jd))
-        allocate (sw_heating_save        (id,jd,kmax))
-        allocate (tot_heating_save       (id,jd,kmax))
-        allocate (dfsw_save              (id,jd,kmax+1))
-        allocate (ufsw_save              (id,jd,kmax+1))
-        allocate ( fsw_save              (id,jd,kmax+1))
-        allocate ( hsw_save              (id,jd,kmax))
-        allocate (swdn_special_save      (id,jd,MX_SPEC_LEVS))
-        allocate (swup_special_save      (id,jd,MX_SPEC_LEVS))
+        allocate (flux_sw_surf_save      (id,jd,nzens))
+        allocate (flux_sw_surf_dir_save      (id,jd,nzens))
+        allocate (flux_sw_surf_dif_save      (id,jd,nzens))
+        allocate (flux_sw_down_vis_dir_save      (id,jd,nzens))
+        allocate (flux_sw_down_vis_dif_save      (id,jd,nzens))
+        allocate (flux_sw_down_total_dir_save      (id,jd,nzens))
+        allocate (flux_sw_down_total_dif_save      (id,jd,nzens))
+        allocate (flux_sw_vis_save      (id,jd,nzens))
+        allocate (flux_sw_vis_dir_save      (id,jd,nzens))
+        allocate (flux_sw_vis_dif_save      (id,jd,nzens))
+        allocate (sw_heating_save        (id,jd,kmax,nzens))
+        allocate (tot_heating_save       (id,jd,kmax,nzens))
+        allocate (dfsw_save              (id,jd,kmax+1,nzens))
+        allocate (ufsw_save              (id,jd,kmax+1,nzens))
+        allocate ( fsw_save              (id,jd,kmax+1,nzens))
+        allocate ( hsw_save              (id,jd,kmax,nzens))
+        allocate (swdn_special_save      (id,jd,MX_SPEC_LEVS,nzens))
+        allocate (swup_special_save      (id,jd,MX_SPEC_LEVS,nzens))
         if (do_swaerosol_forcing) then
-          allocate (dfsw_ad_save              (id,jd,kmax+1))
-          allocate (ufsw_ad_save              (id,jd,kmax+1))
+          allocate (dfsw_ad_save              (id,jd,kmax+1,nzens))
+          allocate (ufsw_ad_save              (id,jd,kmax+1,nzens))
         endif
         if (do_clear_sky_pass) then 
-          allocate (sw_heating_clr_save  (id,jd,kmax))
-          allocate (tot_heating_clr_save (id,jd,kmax))
-          allocate (dfswcf_save          (id,jd,kmax+1))
-          allocate (ufswcf_save          (id,jd,kmax+1))
-          allocate ( fswcf_save          (id,jd,kmax+1))
-          allocate ( hswcf_save          (id,jd,kmax))
-          allocate (flux_sw_down_total_dir_clr_save  (id,jd))
-          allocate (flux_sw_down_total_dif_clr_save  (id,jd))
-          allocate (flux_sw_down_vis_clr_save (id,jd)) 
-          allocate (swdn_special_clr_save(id,jd, MX_SPEC_LEVS))
-          allocate (swup_special_clr_save(id,jd, MX_SPEC_LEVS))
+          allocate (sw_heating_clr_save  (id,jd,kmax,nzens))
+          allocate (tot_heating_clr_save (id,jd,kmax,nzens))
+          allocate (dfswcf_save          (id,jd,kmax+1,nzens))
+          allocate (ufswcf_save          (id,jd,kmax+1,nzens))
+          allocate ( fswcf_save          (id,jd,kmax+1,nzens))
+          allocate ( hswcf_save          (id,jd,kmax,nzens))
+          allocate (flux_sw_down_total_dir_clr_save  (id,jd,nzens))
+          allocate (flux_sw_down_total_dif_clr_save  (id,jd,nzens))
+          allocate (flux_sw_down_vis_clr_save (id,jd,nzens)) 
+          allocate (swdn_special_clr_save(id,jd, MX_SPEC_LEVS,nzens))
+          allocate (swup_special_clr_save(id,jd, MX_SPEC_LEVS,nzens))
           if (do_swaerosol_forcing) then
-            allocate (dfswcf_ad_save          (id,jd,kmax+1))
-            allocate (ufswcf_ad_save          (id,jd,kmax+1))
+            allocate (dfswcf_ad_save          (id,jd,kmax+1,nzens))
+            allocate (ufswcf_ad_save          (id,jd,kmax+1,nzens))
           endif
         endif
       endif
@@ -1611,29 +1712,31 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 !    be saved between timesteps (these are used on every timestep,
 !    but only calculated on radiation steps).
 !---------------------------------------------------------------------
-        allocate (Rad_output%tdt_rad     (id,jd,kmax))
-        allocate (Rad_output%tdt_rad_clr (id,jd,kmax))
-        allocate (Rad_output%tdtsw       (id,jd,kmax))
-        allocate (Rad_output%tdtsw_clr   (id,jd,kmax))
+        allocate (Rad_output%tdt_rad     (id,jd,kmax,nzens))
+        allocate (Rad_output%tdt_rad_clr (id,jd,kmax,nzens))
+        allocate (Rad_output%tdtsw       (id,jd,kmax,nzens))
+        allocate (Rad_output%tdtsw_clr   (id,jd,kmax,nzens))
         allocate (Rad_output%tdtlw       (id,jd,kmax))
-        allocate (Rad_output%flux_sw_surf_dir(id,jd))
-        allocate (Rad_output%flux_sw_surf_dif(id,jd))
-        allocate (Rad_output%flux_sw_down_vis_dir(id,jd))
-        allocate (Rad_output%flux_sw_down_vis_dif(id,jd))
-        allocate (Rad_output%flux_sw_down_total_dir(id,jd))
-        allocate (Rad_output%flux_sw_down_total_dif(id,jd))
-        allocate (Rad_output%flux_sw_down_total_dir_clr(id,jd))
-        allocate (Rad_output%flux_sw_down_total_dif_clr(id,jd))
-        allocate (Rad_output%flux_sw_down_vis_clr(id,jd))
-        allocate (Rad_output%flux_sw_vis(id,jd))
-        allocate (Rad_output%flux_sw_vis_dir(id,jd))
-        allocate (Rad_output%flux_sw_vis_dif(id,jd))
-        allocate (Rad_output%flux_sw_surf(id,jd))
+        allocate (Rad_output%tdtlw_clr   (id,jd,kmax))
+        allocate (Rad_output%flux_sw_surf_dir(id,jd,nzens))
+        allocate (Rad_output%flux_sw_surf_dif(id,jd,nzens))
+        allocate (Rad_output%flux_sw_down_vis_dir(id,jd,nzens))
+        allocate (Rad_output%flux_sw_down_vis_dif(id,jd,nzens))
+        allocate (Rad_output%flux_sw_down_total_dir(id,jd,nzens))
+        allocate (Rad_output%flux_sw_down_total_dif(id,jd,nzens))
+        allocate (Rad_output%flux_sw_down_total_dir_clr(id,jd,nzens))
+        allocate (Rad_output%flux_sw_down_total_dif_clr(id,jd,nzens))
+        allocate (Rad_output%flux_sw_down_vis_clr(id,jd,nzens))
+        allocate (Rad_output%flux_sw_vis(id,jd,nzens))
+        allocate (Rad_output%flux_sw_vis_dir(id,jd,nzens))
+        allocate (Rad_output%flux_sw_vis_dif(id,jd,nzens))
+        allocate (Rad_output%flux_sw_surf(id,jd,nzens))
         allocate (Rad_output%flux_lw_surf(id,jd))
         allocate (Rad_output%coszen_angle(id,jd))
         Rad_output%tdtsw     = 0.0
         Rad_output%tdtsw_clr = 0.0
         Rad_output%tdtlw     = 0.0
+        Rad_output%tdtlw_clr = 0.0
 
 !-----------------------------------------------------------------------
 !    if two radiation restart files exist, exit.
@@ -1664,7 +1767,8 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 !    the job.
 !-----------------------------------------------------------------------
         else
-          rad_alarm                = 1
+          lwrad_alarm                = 1
+          swrad_alarm                = 1
           if (mpp_pe() == mpp_root_pe() ) then
           call error_mesg ('radiation_driver_mod', &
            'radiation to be calculated on first step: no restart file&
@@ -2048,6 +2152,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 
       real, dimension (ie-is+1, je-js+1) :: flux_ratio, &
                                             lat_uniform, lon_uniform
+      integer :: nz
  
 !-------------------------------------------------------------------
 !   local variables:
@@ -2086,7 +2191,8 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !    obtain_astronomy_variables to do so.
 !---------------------------------------------------------------------
       call mpp_clock_begin (misc_clock)
-      if (do_rad .or. renormalize_sw_fluxes) then 
+      if (do_rad .or. renormalize_sw_fluxes .or.   &
+          present(Astronomy_inp)) then 
         if (use_uniform_solar_input) then
           if (present (Astronomy_inp)) then
             call error_mesg ('radiation_driver_mod', &
@@ -2174,19 +2280,18 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
         if (do_sea_esf_rad) then
           if (present(kbot) ) then
             call cloud_radiative_properties (     &
-                             is, ie, js, je, Rad_time, Time_next, Astro,  & 
-                             Atmos_input, Cld_spec, Lsc_microphys,  &
-                             Meso_microphys, Cell_microphys,    &
-                             Shallow_microphys, &
-                             Cldrad_props, kbot=kbot, mask=mask)
+                         is, ie, js, je, Rad_time, Time_next, Astro,  & 
+                         Atmos_input, Cld_spec, Lsc_microphys,  &
+                         Meso_microphys, Cell_microphys,    &
+                         Shallow_microphys, &
+                         Cldrad_props, kbot=kbot, mask=mask)
           else    
 
             call cloud_radiative_properties (      &
-                             is, ie, js, je, Rad_time, Time_next, Astro,  & 
-                             Atmos_input, Cld_spec, Lsc_microphys,   &
-                             Meso_microphys, Cell_microphys,    &
-                             Shallow_microphys, &
-                             Cldrad_props)
+                         is, ie, js, je, Rad_time, Time_next, Astro,  & 
+                         Atmos_input, Cld_spec, Lsc_microphys,   &
+                         Meso_microphys, Cell_microphys,    &
+                         Shallow_microphys, Cldrad_props)
           endif
         endif
       endif
@@ -2255,7 +2360,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !    will not be seen in the variables of the data file written by
 !    write_rad_output_file.
 !---------------------------------------------------------------------
-        if (do_rad .and. do_sea_esf_rad) then
+        if (do_lw_rad .and. do_sw_rad .and. do_sea_esf_rad) then
           if (Rad_control%do_aerosol) then
             call write_rad_output_file (is, ie, js, je,  &
                                         Atmos_input, Surface,   &
@@ -2298,12 +2403,23 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
         num_pts = num_pts + size(lat,1) * size(lat,2)
         if (num_pts == total_pts) then
           num_pts = 0
-          if (do_rad) then
-            rad_alarm = rad_alarm + rad_time_step
-            do_rad = .false.
+          if (do_lw_rad) then
+            lwrad_alarm = lwrad_alarm + lw_rad_time_step
+            do_lw_rad = .false.
+          endif
+          if (do_sw_rad) then
+            swrad_alarm = swrad_alarm + sw_rad_time_step
+            do_sw_rad = .false.
+          endif
+          if (.not. do_lw_rad .and. .not. do_sw_rad)  then
+             do_rad = .false.
+          else
+             do_rad = .true.
           endif
         endif
       endif  ! (always_calculate)
+      Rad_control%do_lw_rad = do_lw_rad
+      Rad_control%do_sw_rad = do_sw_rad
 
 !--------------------------------------------------------------------
  
@@ -2314,30 +2430,31 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !    not present for other applications.
 !--------------------------------------------------------------------
       if (present (Radiation)) then 
+        nz = current_sw_zenith_step
         Radiation%coszen_angle(:,:) =      &
                                   Rad_output%coszen_angle(is:ie,js:je)
-        Radiation%tdt_rad(:,:,:) =   &
-                                  Rad_output%tdt_rad(is:ie,js:je,:)
-        Radiation%flux_sw_surf(:,:) =    &
-                                  Rad_output%flux_sw_surf(is:ie,js:je)
-        Radiation%flux_sw_surf_dir(:,:) =   &
-                              Rad_output%flux_sw_surf_dir(is:ie,js:je)
-        Radiation%flux_sw_surf_dif(:,:) =   &
-                              Rad_output%flux_sw_surf_dif(is:ie,js:je)
-        Radiation%flux_sw_down_vis_dir(:,:) =   &
-                         Rad_output%flux_sw_down_vis_dir(is:ie,js:je)
-        Radiation%flux_sw_down_vis_dif(:,:) =   &
-                         Rad_output%flux_sw_down_vis_dif(is:ie,js:je)
-        Radiation%flux_sw_down_total_dir(:,:) =   &
-                         Rad_output%flux_sw_down_total_dir(is:ie,js:je)
-        Radiation%flux_sw_down_total_dif(:,:) =   &
-                         Rad_output%flux_sw_down_total_dif(is:ie,js:je)
-        Radiation%flux_sw_vis (:,:) =   &
-                               Rad_output%flux_sw_vis (is:ie,js:je)
-        Radiation%flux_sw_vis_dir (:,:) =   &
-                           Rad_output%flux_sw_vis_dir (is:ie,js:je)
-        Radiation%flux_sw_vis_dif (:,:) =   &
-                          Rad_output%flux_sw_vis_dif (is:ie,js:je)
+        Radiation%tdt_rad(:,:,:,1) =   &
+                                  Rad_output%tdt_rad(is:ie,js:je,:,nz)
+        Radiation%flux_sw_surf(:,:,1) =    &
+                                Rad_output%flux_sw_surf(is:ie,js:je,nz)
+        Radiation%flux_sw_surf_dir(:,:,1) =   &
+                            Rad_output%flux_sw_surf_dir(is:ie,js:je,nz)
+        Radiation%flux_sw_surf_dif(:,:,1) =   &
+                            Rad_output%flux_sw_surf_dif(is:ie,js:je,nz)
+        Radiation%flux_sw_down_vis_dir(:,:,1) =   &
+                         Rad_output%flux_sw_down_vis_dir(is:ie,js:je,nz)
+        Radiation%flux_sw_down_vis_dif(:,:,1) =   &
+                         Rad_output%flux_sw_down_vis_dif(is:ie,js:je,nz)
+        Radiation%flux_sw_down_total_dir(:,:,1) =   &
+                       Rad_output%flux_sw_down_total_dir(is:ie,js:je,nz)
+        Radiation%flux_sw_down_total_dif(:,:,1) =   &
+                      Rad_output%flux_sw_down_total_dif(is:ie,js:je,nz)
+        Radiation%flux_sw_vis (:,:,1) =   &
+                               Rad_output%flux_sw_vis (is:ie,js:je,nz)
+        Radiation%flux_sw_vis_dir (:,:,1) =   &
+                           Rad_output%flux_sw_vis_dir (is:ie,js:je,nz)
+        Radiation%flux_sw_vis_dif (:,:,1) =   &
+                          Rad_output%flux_sw_vis_dif (is:ie,js:je,nz)
         Radiation%flux_lw_surf(:,:)    =   &
                                   Rad_output%flux_lw_surf(is:ie,js:je)
         Radiation%tdtlw(:,:,:)         =     &
@@ -2480,10 +2597,21 @@ logical,         intent(out)    ::  need_aerosols, need_clouds,   &
 !    verify that the radiation timestep is an even multiple of the 
 !    physics timestep.
 !---------------------------------------------------------------------
-      if (MOD(rad_time_step, dt) /= 0) then
+      if (MOD(lw_rad_time_step, dt) /= 0) then
         call error_mesg ('radiation_driver_mod',  &
-       ' radiation timestep is not integral multiple of physics step', &
+    ' lw radiation timestep is not integral multiple of physics step', &
                                                            FATAL)
+      endif
+      if (MOD(sw_rad_time_step, dt) /= 0) then
+        call error_mesg ('radiation_driver_mod',  &
+       ' sw radiation timestep is not integral multiple of physics step', &
+                                                           FATAL)
+      endif
+
+      if (MOD(sw_rad_time_step/nzens_per_sw_rad_timestep, dt) /= 0) then
+        call error_mesg ( 'radiation_driver_mod', &
+         'requested nzens per sw timestep incompatible with physics &
+                                                    &timestep', FATAL)
       endif
 
 !-------------------------------------------------------------------
@@ -2493,7 +2621,12 @@ logical,         intent(out)    ::  need_aerosols, need_clouds,   &
 !-------------------------------------------------------------------
       if (always_calculate) then
         do_rad = .true.
+        do_sw_rad = .true.
+        do_lw_rad = .true.
         Rad_time = Time
+        current_sw_zenith_step = 1
+        Rad_control%do_lw_rad = do_lw_rad
+        Rad_control%do_sw_rad = do_sw_rad
 
 !--------------------------------------------------------------------
 !    if running a gcm aplication, if this is the first call by this
@@ -2505,13 +2638,30 @@ logical,         intent(out)    ::  need_aerosols, need_clouds,   &
 !--------------------------------------------------------------------
       else
         if (num_pts == 0)  then
-          rad_alarm = rad_alarm -  dt
+          lwrad_alarm = lwrad_alarm -  dt
+          swrad_alarm = swrad_alarm -  dt
         endif
-        if (rad_alarm <= 0) then
-          do_rad = .true.
+        if (lwrad_alarm <= 0) then
+          do_lw_rad = .true.
+        else
+          do_lw_rad = .false.
+        endif
+        if (swrad_alarm <= 0) then
+          do_sw_rad = .true.
+          current_sw_zenith_step = 1
+        else
+          do_sw_rad = .false.
+          if (use_hires_coszen) then
+            current_sw_zenith_step = current_sw_zenith_step + 1
+          endif
+        endif
+        if (do_sw_rad .or. do_lw_rad) then
+           do_rad = .true.
         else
           do_rad = .false.
         endif
+      Rad_control%do_lw_rad = do_lw_rad
+      Rad_control%do_sw_rad = do_sw_rad
 
 !-------------------------------------------------------------------
 !    define the time to be used in defining the time-varying input 
@@ -2896,7 +3046,7 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
 !    cases.
 !---------------------------------------------------------------------
       if (doing_data_override) then
-        Data_time = Rad_time + set_time (rad_time_step, 0) 
+        Data_time = Rad_time                                  
         if (overriding_temps .or. overriding_aerosol .or. &
             overriding_clouds) then
 
@@ -3362,7 +3512,8 @@ type(surface_type),      intent(inout)           :: Surface
 !    the data is to be retrieved.
 !---------------------------------------------------------------------
           if (overriding_albedo) then
-            Data_time = Rad_time + set_time (rad_time_step, 0) 
+            Data_time = Rad_time 
+
 
 !---------------------------------------------------------------------
 !    call data_override to retrieve the processor subdomain's surface
@@ -3666,7 +3817,9 @@ subroutine radiation_driver_end
 !---------------------------------------------------------------------
 !    release space for renormalization arrays, if that option is active.
 !---------------------------------------------------------------------
-      if (renormalize_sw_fluxes .or. all_step_diagnostics)  then
+!     if (renormalize_sw_fluxes .or. use_hires_coszen .or. &
+      if (renormalize_sw_fluxes .or.                       &
+          all_step_diagnostics)  then
         deallocate (solar_save, flux_sw_surf_save, sw_heating_save, &
                     dum_idjd,   &
                     flux_sw_surf_dir_save,   &
@@ -3724,6 +3877,7 @@ subroutine radiation_driver_end
 !---------------------------------------------------------------------
         deallocate (Rad_output%tdt_rad, Rad_output%tdt_rad_clr,  & 
                     Rad_output%tdtsw, Rad_output%tdtsw_clr, &
+                    Rad_output%tdtlw_clr, &
                     Rad_output%tdtlw, Rad_output%flux_sw_surf,  &
                     Rad_output%flux_sw_surf_dir,  &
                     Rad_output%flux_sw_surf_dif,  &
@@ -3788,7 +3942,8 @@ subroutine write_restart_file
 !---------------------------------------------------------------------
         if (mpp_pe() == mpp_root_pe() ) then
           write (unit) restart_versions(size(restart_versions(:)))
-          write (unit) rad_alarm, rad_time_step
+!         write (unit) rad_alarm, rad_time_step
+          write (unit) lwrad_alarm, rad_time_step
         endif
 
 !---------------------------------------------------------------------
@@ -3832,14 +3987,14 @@ subroutine write_restart_file
           call write_data (unit, flux_sw_vis_save)
           call write_data (unit, flux_sw_vis_dir_save)
           call write_data (unit, flux_sw_vis_dif_save)
-          call write_data (unit, sw_heating_save)
-          call write_data (unit, tot_heating_save)
-          call write_data (unit, dfsw_save) 
-          call write_data (unit, ufsw_save) 
-          call write_data (unit, fsw_save)  
-          call write_data (unit, hsw_save)
-          call write_data (unit, swdn_special_save)
-          call write_data (unit, swup_special_save)
+          call write_data (unit, sw_heating_save(:,:,:,1))
+          call write_data (unit, tot_heating_save(:,:,:,1))
+          call write_data (unit, dfsw_save(:,:,:,1)) 
+          call write_data (unit, ufsw_save(:,:,:,1)) 
+          call write_data (unit, fsw_save(:,:,:,1))  
+          call write_data (unit, hsw_save(:,:,:,1))
+          call write_data (unit, swdn_special_save(:,:,:,1))
+          call write_data (unit, swup_special_save(:,:,:,1))
           if (do_clear_sky_pass) then
             call write_data (unit, sw_heating_clr_save)
             call write_data (unit, tot_heating_clr_save)
@@ -3850,8 +4005,8 @@ subroutine write_restart_file
             call write_data (unit, flux_sw_down_total_dir_clr_save)
             call write_data (unit, flux_sw_down_total_dif_clr_save)
             call write_data (unit, flux_sw_down_vis_clr_save)
-            call write_data (unit, swdn_special_clr_save)
-            call write_data (unit, swup_special_clr_save)
+            call write_data (unit, swdn_special_clr_save(:,:,:,1))
+            call write_data (unit, swup_special_clr_save(:,:,:,1))
           endif
         endif    ! (renormalize)
 
@@ -3877,13 +4032,15 @@ subroutine write_restart_nc
          call error_mesg('radiation_driver_mod', 'Writing netCDF formatted restart file: RESTART/radiation_driver.res.nc', NOTE)
         endif
         call write_data(fname, 'vers', restart_versions(size(restart_versions(:))), no_domain=.true.)
-        call write_data(fname, 'rad_alarm', rad_alarm, no_domain=.true.)
-        call write_data(fname, 'rad_time_step', rad_time_step, no_domain=.true.)
+        call write_data(fname, 'lwrad_alarm', lwrad_alarm, no_domain=.true.)
+        call write_data(fname, 'swrad_alarm', swrad_alarm, no_domain=.true.)
+        call write_data(fname, 'lw_rad_time_step', lw_rad_time_step, no_domain=.true.)
+        call write_data(fname, 'sw_rad_time_step', sw_rad_time_step, no_domain=.true.)
 
 !---------------------------------------------------------------------
 !    write out the restart data.
 !---------------------------------------------------------------------
-        call write_data (fname, 'tdt_rad',                Rad_output%tdt_rad)
+        call write_data (fname, 'tdt_rad',                Rad_output%tdt_rad(:,:,:,1))
         call write_data (fname, 'tdtlw',                  Rad_output%tdtlw)
         call write_data (fname, 'flux_sw_surf',           Rad_output%flux_sw_surf)
         call write_data (fname, 'flux_sw_surf_dir',       Rad_output%flux_sw_surf_dir)
@@ -3902,7 +4059,22 @@ subroutine write_restart_nc
 !    write out the optional time average restart data. note that 
 !    do_average and renormalize_sw_fluxes may not both be true.
 !---------------------------------------------------------------------
-        if(renormalize_sw_fluxes) flag1 = 1.0
+        if(renormalize_sw_fluxes) then
+          flag1 = 1.0
+        else if (use_hires_coszen) then
+          if (current_sw_zenith_step == nzens_per_sw_rad_timestep) then
+            flag1 = 2.0
+          else
+            flag1 = -2.0
+            call error_mesg ('radiation_driver/write_restart_nc', &
+             ' you are writing restart file on a non-radiation &
+               &timestep. As a consequence, model results will be &
+               &different if the model is run with different restart &
+               & intervals. To correct, make sure rad_time_step &
+               & is an integral factor of the requested run length.', &
+                                                                  NOTE)
+          endif
+        endif
         if(do_clear_sky_pass) flag2 = 1.0
         call write_data(fname, 'renormalize_sw_fluxes', flag1, no_domain=.true.)
         call write_data(fname, 'do_clear_sky_pass', flag2, no_domain=.true.)
@@ -3922,26 +4094,26 @@ subroutine write_restart_nc
           call write_data (fname, 'flux_sw_vis_save', flux_sw_vis_save)
           call write_data (fname, 'flux_sw_vis_dir_save', flux_sw_vis_dir_save)
           call write_data (fname, 'flux_sw_vis_dif_save', flux_sw_vis_dif_save)
-          call write_data (fname, 'sw_heating_save', sw_heating_save)
-          call write_data (fname, 'tot_heating_save', tot_heating_save)
-          call write_data (fname, 'dfsw_save', dfsw_save) 
-          call write_data (fname, 'ufsw_save', ufsw_save) 
-          call write_data (fname, 'fsw_save', fsw_save)  
-          call write_data (fname, 'hsw_save', hsw_save)
-          call write_data (fname, 'swdn_special_save', swdn_special_save)
-          call write_data (fname, 'swup_special_save', swup_special_save)
+          call write_data (fname, 'sw_heating_save', sw_heating_save(:,:,:,1))
+          call write_data (fname, 'tot_heating_save', tot_heating_save(:,:,:,1))
+          call write_data (fname, 'dfsw_save', dfsw_save(:,:,:,1)) 
+          call write_data (fname, 'ufsw_save', ufsw_save(:,:,:,1)) 
+          call write_data (fname, 'fsw_save', fsw_save(:,:,:,1) ) 
+          call write_data (fname, 'hsw_save', hsw_save(:,:,:,1))
+          call write_data (fname, 'swdn_special_save', swdn_special_save(:,:,:,1))
+          call write_data (fname, 'swup_special_save', swup_special_save(:,:,:,1))
           if (do_clear_sky_pass) then
-            call write_data (fname, 'sw_heating_clr_save', sw_heating_clr_save)
-            call write_data (fname, 'tot_heating_clr_save', tot_heating_clr_save)
-            call write_data (fname, 'dfswcf_save', dfswcf_save) 
-            call write_data (fname, 'ufswcf_save', ufswcf_save) 
-            call write_data (fname, 'fswcf_save', fswcf_save)  
-            call write_data (fname, 'hswcf_save', hswcf_save)
-            call write_data (fname, 'flux_sw_down_total_dir_clr_save', flux_sw_down_total_dir_clr_save)
-            call write_data (fname, 'flux_sw_down_total_dif_clr_save', flux_sw_down_total_dif_clr_save)
-            call write_data (fname, 'flux_sw_down_vis_clr_save', flux_sw_down_vis_clr_save)
-            call write_data (fname, 'swdn_special_clr_save', swdn_special_clr_save)
-            call write_data (fname, 'swup_special_clr_save', swup_special_clr_save)
+            call write_data (fname, 'sw_heating_clr_save', sw_heating_clr_save(:,:,:,1))
+            call write_data (fname, 'tot_heating_clr_save', tot_heating_clr_save(:,:,:,1))
+            call write_data (fname, 'dfswcf_save', dfswcf_save(:,:,:,1)) 
+            call write_data (fname, 'ufswcf_save', ufswcf_save(:,:,:,1)) 
+            call write_data (fname, 'fswcf_save', fswcf_save(:,:,:,1))  
+            call write_data (fname, 'hswcf_save', hswcf_save(:,:,:,1))
+            call write_data (fname, 'flux_sw_down_total_dir_clr_save', flux_sw_down_total_dir_clr_save(:,:,1))
+            call write_data (fname, 'flux_sw_down_total_dif_clr_save', flux_sw_down_total_dif_clr_save(:,:,1))
+            call write_data (fname, 'flux_sw_down_vis_clr_save', flux_sw_down_vis_clr_save(:,:,1))
+            call write_data (fname, 'swdn_special_clr_save', swdn_special_clr_save(:,:,:,1))
+            call write_data (fname, 'swup_special_clr_save', swup_special_clr_save(:,:,:,1))
           endif
         endif    ! (renormalize)
 
@@ -3985,7 +4157,9 @@ subroutine read_restart_file
       integer, dimension(5) :: null
       integer               :: vers
       integer               :: kmax
-      integer               :: new_rad_time, old_time_step
+      integer               :: new_rad_time, lw_old_time_step, &
+                               sw_old_time_step, old_time_step
+      integer               :: rad_alarm, rad_time_step
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -4278,8 +4452,8 @@ subroutine read_restart_file
 !    troopause fluxes.
 !---------------------------------------------------------------------
             if ( (vers >= 9) .or. (vers == 6) ) then
-              call read_data (unit, swdn_special_save(:,:,:))
-              call read_data (unit, swup_special_save(:,:,:))
+              call read_data (unit, swdn_special_save(:,:,:,1))
+              call read_data (unit, swup_special_save(:,:,:,1))
             else
               rad_alarm = 1
               if (mpp_pe() == mpp_root_pe() ) then
@@ -4321,8 +4495,8 @@ subroutine read_restart_file
 !    troopause fluxes.
 !---------------------------------------------------------------------
                 if ( (vers >= 9) .or. (vers == 6) ) then
-                  call read_data (unit, swdn_special_clr_save(:,:,:))
-                  call read_data (unit, swup_special_clr_save(:,:,:))
+                  call read_data (unit, swdn_special_clr_save(:,:,:,1))
+                  call read_data (unit, swup_special_clr_save(:,:,:,1))
                 else
                   rad_alarm = 1
                   if (mpp_pe() == mpp_root_pe() ) then
@@ -4415,6 +4589,8 @@ subroutine read_restart_file
           endif
         endif  
       endif   ! (rad_alarm == 1)
+      lwrad_alarm = rad_alarm
+      swrad_alarm = rad_alarm
 
 !--------------------------------------------------------------------
 
@@ -4443,6 +4619,9 @@ subroutine read_restart_nc
   integer           :: vers
   logical           :: renorm_present, cldfree_present
   integer           :: new_rad_time, old_time_step
+  integer           :: lw_old_time_step, sw_old_time_step
+  logical           :: field_found
+  integer, dimension(4)  :: siz
 !----------------------------------------------------------------------
 !    when running in gcm, read a restart file. this is not done in the
 !    standalone case.
@@ -4451,32 +4630,78 @@ subroutine read_restart_nc
     call error_mesg('radiation_driver_mod', 'Reading netCDF formatted restart file: INPUT/radiation_driver.res.nc', NOTE)
   endif
   call read_data(fname, 'vers', vers, no_domain=.true.)
-  call read_data(fname, 'rad_alarm', rad_alarm, no_domain=.true.)
-  call read_data(fname, 'rad_time_step', old_time_step, no_domain=.true.)
+
+!--------------------------------------------------------------------
+  if (field_exist (fname, 'rad_alarm')) then
+    call read_data(fname, 'rad_alarm', lwrad_alarm, no_domain=.true.)
+    call read_data(fname, 'rad_alarm', swrad_alarm, no_domain=.true.)
+  else
+    call read_data(fname, 'lwrad_alarm', lwrad_alarm, no_domain=.true.)
+    call read_data(fname, 'swrad_alarm', swrad_alarm, no_domain=.true.)
+  endif
+
+!--------------------------------------------------------------------
+  if (field_exist (fname, 'rad_time_step')) then
+    call read_data(fname, 'rad_time_step', lw_old_time_step, no_domain=.true.)
+    call read_data(fname, 'rad_time_step', sw_old_time_step, no_domain=.true.)
+  else
+  call read_data(fname, 'sw_rad_time_step', sw_old_time_step, no_domain=.true.)
+  call read_data(fname, 'lw_rad_time_step', lw_old_time_step, no_domain=.true.)
+  endif
+
+
   call read_data(fname, 'renormalize_sw_fluxes', flag1, no_domain=.true.)
   call read_data(fname, 'do_clear_sky_pass', flag2, no_domain=.true.)
   renorm_present = .false.
   cldfree_present = .false.
-  if(flag1 .EQ. 1.0) renorm_present = .true.
+  if (flag1 ==   1.0)  then
+    renorm_present = .true.
+  else if (flag1 == 2.0) then
+  else if (flag1 == -2.0) then
+    if (.not. allow_nonrepro_across_restarts) then
+      call error_mesg ( 'radiation_driver/read_restart_nc', &
+       'the restart was written on a non-radiation step, so model&
+        & solution will NOT be independent of restart interval. If &
+        & you dont care about this, set nml variable &
+        &allow_nonrepro_across_restarts to .true. and resubmit; &
+        &if you do, contact developer so additional code may be &
+        &added to allow seamless restart, OR rerun last job segment &
+        & so that it is an integral number of rad_time_steps  &
+                                                       &long.', FATAL)
+    else
+      call error_mesg ( 'radiation_driver/read_restart_nc', &
+       'the restart was written on a non-radiation step, so model&
+        & solution will NOT be independent of restart interval. You &
+        & have chosen to proceed anyway by setting nml variable &
+        &allow_nonrepro_across_restarts to .true.', NOTE )
+      swrad_alarm = 1
+      lwrad_alarm = 1
+    endif
+
+  endif
+    
   if(flag2 .EQ. 1.0) cldfree_present = .true.
 
 !---------------------------------------------------------------------
 !    read the restart data.
+!    currently this need not be done when hires_coszen = .true.
 !---------------------------------------------------------------------
-        call read_data (fname, 'tdt_rad',                Rad_output%tdt_rad)
+      if (flag1 == 0.0 .or. flag1 == 1.0) then
+        call read_data (fname, 'tdt_rad',                Rad_output%tdt_rad(:,:,:,1))
         call read_data (fname, 'tdtlw',                  Rad_output%tdtlw)
-        call read_data (fname, 'flux_sw_surf',           Rad_output%flux_sw_surf)
-        call read_data (fname, 'flux_sw_surf_dir',       Rad_output%flux_sw_surf_dir)
-        call read_data (fname, 'flux_sw_surf_dif',       Rad_output%flux_sw_surf_dif)
-        call read_data (fname, 'flux_sw_down_vis_dir',   Rad_output%flux_sw_down_vis_dir)
-        call read_data (fname, 'flux_sw_down_vis_dif',   Rad_output%flux_sw_down_vis_dif)
-        call read_data (fname, 'flux_sw_down_total_dir', Rad_output%flux_sw_down_total_dir)
-        call read_data (fname, 'flux_sw_down_total_dif', Rad_output%flux_sw_down_total_dif)
-        call read_data (fname, 'flux_sw_vis',            Rad_output%flux_sw_vis)
-        call read_data (fname, 'flux_sw_vis_dir',        Rad_output%flux_sw_vis_dir)
-        call read_data (fname, 'flux_sw_vis_dif',        Rad_output%flux_sw_vis_dif)
+        call read_data (fname, 'flux_sw_surf',           Rad_output%flux_sw_surf(:,:,1))
+        call read_data (fname, 'flux_sw_surf_dir',       Rad_output%flux_sw_surf_dir(:,:,1))
+        call read_data (fname, 'flux_sw_surf_dif',       Rad_output%flux_sw_surf_dif(:,:,1))
+        call read_data (fname, 'flux_sw_down_vis_dir',   Rad_output%flux_sw_down_vis_dir(:,:,1))
+        call read_data (fname, 'flux_sw_down_vis_dif',   Rad_output%flux_sw_down_vis_dif(:,:,1))
+        call read_data (fname, 'flux_sw_down_total_dir', Rad_output%flux_sw_down_total_dir(:,:,1))
+        call read_data (fname, 'flux_sw_down_total_dif', Rad_output%flux_sw_down_total_dif(:,:,1))
+        call read_data (fname, 'flux_sw_vis',            Rad_output%flux_sw_vis(:,:,1))
+        call read_data (fname, 'flux_sw_vis_dir',        Rad_output%flux_sw_vis_dir(:,:,1))
+        call read_data (fname, 'flux_sw_vis_dif',        Rad_output%flux_sw_vis_dif(:,:,1))
         call read_data (fname, 'flux_lw_surf',           Rad_output%flux_lw_surf)
         call read_data (fname, 'coszen_angle',           Rad_output%coszen_angle)
+   endif
 
 !---------------------------------------------------------------------
 !    read the optional shortwave renormalization data. 
@@ -4484,57 +4709,66 @@ subroutine read_restart_nc
         if (renormalize_sw_fluxes ) then   
          if(renorm_present) then
           call read_data (fname, 'solar_save', solar_save)
-          call read_data (fname, 'flux_sw_surf_save', flux_sw_surf_save)
-          call read_data (fname, 'flux_sw_surf_dir_save', flux_sw_surf_dir_save)
-          call read_data (fname, 'flux_sw_surf_dif_save', flux_sw_surf_dif_save)
-          call read_data (fname, 'flux_sw_down_vis_dir_save', flux_sw_down_vis_dir_save)
-          call read_data (fname, 'flux_sw_down_vis_dif_save', flux_sw_down_vis_dif_save)
-          call read_data (fname, 'flux_sw_down_total_dir_save', flux_sw_down_total_dir_save)
-          call read_data (fname, 'flux_sw_down_total_dif_save', flux_sw_down_total_dif_save)
-          call read_data (fname, 'flux_sw_vis_save', flux_sw_vis_save)
-          call read_data (fname, 'flux_sw_vis_dir_save', flux_sw_vis_dir_save)
-          call read_data (fname, 'flux_sw_vis_dif_save', flux_sw_vis_dif_save)
-          call read_data (fname, 'sw_heating_save', sw_heating_save)
-          call read_data (fname, 'tot_heating_save', tot_heating_save)
-          call read_data (fname, 'dfsw_save', dfsw_save) 
-          call read_data (fname, 'ufsw_save', ufsw_save) 
-          call read_data (fname, 'fsw_save', fsw_save)  
-          call read_data (fname, 'hsw_save', hsw_save)
-          call read_data (fname, 'swdn_special_save', swdn_special_save)
-          call read_data (fname, 'swup_special_save', swup_special_save)
+          call read_data (fname, 'flux_sw_surf_save', flux_sw_surf_save(:,:,1))
+          call read_data (fname, 'flux_sw_surf_dir_save', flux_sw_surf_dir_save(:,:,1))
+          call read_data (fname, 'flux_sw_surf_dif_save', flux_sw_surf_dif_save(:,:,1))
+          call read_data (fname, 'flux_sw_down_vis_dir_save', flux_sw_down_vis_dir_save(:,:,1))
+          call read_data (fname, 'flux_sw_down_vis_dif_save', flux_sw_down_vis_dif_save(:,:,1))
+          call read_data (fname, 'flux_sw_down_total_dir_save', flux_sw_down_total_dir_save(:,:,1))
+          call read_data (fname, 'flux_sw_down_total_dif_save', flux_sw_down_total_dif_save(:,:,1))
+          call read_data (fname, 'flux_sw_vis_save', flux_sw_vis_save(:,:,1))
+          call read_data (fname, 'flux_sw_vis_dir_save', flux_sw_vis_dir_save(:,:,1))
+          call read_data (fname, 'flux_sw_vis_dif_save', flux_sw_vis_dif_save(:,:,1))
+          call read_data (fname, 'sw_heating_save', sw_heating_save(:,:,:,1))
+          call read_data (fname, 'tot_heating_save', tot_heating_save(:,:,:,1))
+          call read_data (fname, 'dfsw_save', dfsw_save(:,:,:,1)) 
+          call read_data (fname, 'ufsw_save', ufsw_save(:,:,:,1)) 
+          call read_data (fname, 'fsw_save', fsw_save(:,:,:,1))  
+          call read_data (fname, 'hsw_save', hsw_save(:,:,:,1))
+          call read_data (fname, 'swdn_special_save', swdn_special_save(:,:,:,1))
+          call read_data (fname, 'swup_special_save', swup_special_save(:,:,:,1))
           if (do_clear_sky_pass) then
            if(cldfree_present) then
-            call read_data (fname, 'sw_heating_clr_save', sw_heating_clr_save)
-            call read_data (fname, 'tot_heating_clr_save', tot_heating_clr_save)
-            call read_data (fname, 'dfswcf_save', dfswcf_save) 
-            call read_data (fname, 'ufswcf_save', ufswcf_save) 
-            call read_data (fname, 'fswcf_save', fswcf_save)  
-            call read_data (fname, 'hswcf_save', hswcf_save)
+            call read_data (fname, 'sw_heating_clr_save', sw_heating_clr_save(:,:,:,1))
+            call read_data (fname, 'tot_heating_clr_save', tot_heating_clr_save(:,:,:,1))
+            call read_data (fname, 'dfswcf_save', dfswcf_save(:,:,:,1)) 
+            call read_data (fname, 'ufswcf_save', ufswcf_save(:,:,:,1)) 
+            call read_data (fname, 'fswcf_save', fswcf_save(:,:,:,1))  
+            call read_data (fname, 'hswcf_save', hswcf_save(:,:,:,1))
             if (vers >= 10) then
-              call read_data (fname, 'flux_sw_down_total_dir_clr_save', flux_sw_down_total_dir_clr_save)
-              call read_data (fname, 'flux_sw_down_total_dif_clr_save', flux_sw_down_total_dif_clr_save)
+              call read_data (fname, 'flux_sw_down_total_dir_clr_save', flux_sw_down_total_dir_clr_save(:,:,1))
+              call read_data (fname, 'flux_sw_down_total_dif_clr_save', flux_sw_down_total_dif_clr_save(:,:,1))
             else
               flux_sw_down_total_dir_clr_save = 0.0
               flux_sw_down_total_dif_clr_save = 0.0
             endif
             if (vers >= 11) then
-              call read_data (fname, 'flux_sw_down_vis_clr_save', flux_sw_down_vis_clr_save)
+              call read_data (fname, 'flux_sw_down_vis_clr_save', flux_sw_down_vis_clr_save(:,:,1))
             else
               flux_sw_down_vis_clr_save = 0.0
             endif
-            call read_data (fname, 'swdn_special_clr_save', swdn_special_clr_save)
-            call read_data (fname, 'swup_special_clr_save', swup_special_clr_save)
+            call read_data (fname, 'swdn_special_clr_save', swdn_special_clr_save(:,:,:,1))
+            call read_data (fname, 'swup_special_clr_save', swup_special_clr_save(:,:,:,1))
             endif
          endif
       endif  ! (do_clear_sky_pass)
-   endif  ! (renormalize_sw_fluxes)
+     endif  ! (renormalize_sw_fluxes)
 !----------------------------------------------------------------------
 !    if all_step_diagnostics is active and rad_alarm is not 1, abort 
 !    job with error message. all_step_diagnostics may only be activated
 !    when radiation is to be calculated on the first step of a job, 
 !    unless additional arrays are added to the radiation restart file.
 !----------------------------------------------------------------------
-   if (rad_alarm /= 1 .and. all_step_diagnostics) then
+   if (lwrad_alarm /= 1 .and. all_step_diagnostics) then
+     if (mpp_pe() == mpp_root_pe() ) then
+        call error_mesg ('radiation_driver_mod', &
+       'cannot set all_step_diagnostics to be .true. unless &
+         & starting job on step just prior to radiation call; &
+         &doing so will lead to non-reproducibility of restarts', &
+                                                                 FATAL)
+     endif
+  endif
+   if (swrad_alarm /= 1 .and. all_step_diagnostics) then
      if (mpp_pe() == mpp_root_pe() ) then
         call error_mesg ('radiation_driver_mod', &
        'cannot set all_step_diagnostics to be .true. unless &
@@ -4544,7 +4778,18 @@ subroutine read_restart_nc
      endif
   endif
 
-   if (rad_alarm /= 1 .and.    &
+   if (lwrad_alarm /= 1 .and.    &
+                (do_lwaerosol_forcing  .or. do_swaerosol_forcing)) then
+     if (mpp_pe() == mpp_root_pe() ) then
+        call error_mesg ('radiation_driver_mod', &
+       'aerosol forcing diagnostics will only be strictly valid &
+      &when restarting a job on the step just prior to radiation&
+      &call; not doing so will lead to invalid diagnostics between time&
+      & of restart and next radiation calculation, since these fields &
+      &are not saved in the restart file', FATAL)
+     endif
+  endif
+   if (swrad_alarm /= 1 .and.    &
                 (do_lwaerosol_forcing  .or. do_swaerosol_forcing)) then
      if (mpp_pe() == mpp_root_pe() ) then
         call error_mesg ('radiation_driver_mod', &
@@ -4560,32 +4805,58 @@ subroutine read_restart_nc
   !    adjust radiation alarm if radiation step has changed from restart 
   !    file value, if it has not already been set to the first step.
   !----------------------------------------------------------------------
-  if (rad_alarm /= 1) then
+  if (lwrad_alarm /= 1) then
      !     if (rad_alarm == 1) then
      !       if (mpp_pe() == mpp_root_pe() ) then
      !         call error_mesg ('radiation_driver_mod',          &
      !              'radiation will be called on first step of run', NOTE)
      !       endif
      !     else
-     if (rad_time_step /= old_time_step ) then
-        new_rad_time = rad_alarm - old_time_step + rad_time_step
+     if (rad_time_step /= lw_old_time_step ) then
+        new_rad_time = lwrad_alarm - lw_old_time_step + lw_rad_time_step
         if ( new_rad_time > 0 ) then
            if (mpp_pe() == mpp_root_pe() ) then
               print *, 'radiation time step has changed, therefore '//&
-                   'next time to next do radiation also changed;  &
-                   &new rad_alarm is', new_rad_time
+                   'next time to next do lw radiation also changed;  &
+                   &new lwrad_alarm is', new_rad_time
            endif
-           rad_alarm = new_rad_time
+           lwrad_alarm = new_rad_time
         else
-           rad_alarm = 1
+           lwrad_alarm = 1
            if (mpp_pe() == mpp_root_pe() ) then
               call error_mesg ('radiation_driver_mod', &
-                   ' radiation to be calculated on first step: radiation &
+                   ' radiation to be calculated on first step: lw radiation &
                    &timestep has gotten shorter and is past due', NOTE)
            endif
         endif
      endif
-  endif   ! (rad_alarm == 1)
+  endif   ! (lwrad_alarm == 1)
+  if (swrad_alarm /= 1) then
+     !     if (rad_alarm == 1) then
+     !       if (mpp_pe() == mpp_root_pe() ) then
+     !         call error_mesg ('radiation_driver_mod',          &
+     !              'radiation will be called on first step of run', NOTE)
+     !       endif
+     !     else
+     if (sw_rad_time_step /= sw_old_time_step ) then
+        new_rad_time = swrad_alarm - sw_old_time_step + sw_rad_time_step
+        if ( new_rad_time > 0 ) then
+           if (mpp_pe() == mpp_root_pe() ) then
+              print *, 'radiation time step has changed, therefore '//&
+                   'next time to next do sw radiation also changed;  &
+                   &new swrad_alarm is', new_rad_time
+           endif
+           swrad_alarm = new_rad_time
+        else
+           swrad_alarm = 1
+           if (mpp_pe() == mpp_root_pe() ) then
+              call error_mesg ('radiation_driver_mod', &
+                   ' radiation to be calculated on first step: sw radiation &
+                   &timestep has gotten shorter and is past due', NOTE)
+           endif
+        endif
+     endif
+  endif   ! (swrad_alarm == 1)
 
 end subroutine read_restart_nc
 
@@ -4617,6 +4888,8 @@ subroutine initialize_diagnostic_integrals
 !----------------------------------------------------------------------
       call diag_integral_field_init ('olr',    std_digits)
       call diag_integral_field_init ('abs_sw', std_digits)
+!     call diag_integral_field_init ('olr_clr',    std_digits)
+!     call diag_integral_field_init ('abs_sw_clr', std_digits)
 
 !----------------------------------------------------------------------
 !    if hemispheric integrals and global integrals with extended signif-
@@ -5191,11 +5464,13 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
 !  local variables:
 
       type(time_type)                   :: Dt_zen, Dt_zen2
+      type(time_type)                   :: Rad1    
       real, dimension(ie-is+1, je-js+1) ::                            &
                                            cosz_r, solar_r, fracday_r, &
                                            cosz_p, solar_p, fracday_p, &
                                            cosz_a, solar_a, fracday_a
       real                              :: rrsun_r, rrsun_p, rrsun_a
+      integer                           :: nz
       
 
 !--------------------------------------------------------------------
@@ -5262,6 +5537,12 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
       allocate ( Astro%cosz   (size(lat,1), size(lat,2) ) )
       allocate ( Astro%fracday(size(lat,1), size(lat,2) ) )
       allocate ( Astro%solar  (size(lat,1), size(lat,2) ) )
+      allocate ( Astro%cosz_p   (size(lat,1), size(lat,2),   &
+                                                 Rad_control%nzens)  )
+      allocate ( Astro%fracday_p(size(lat,1), size(lat,2),   &
+                                                 Rad_control%nzens)  )
+      allocate ( Astro%solar_p  (size(lat,1), size(lat,2),   &
+                                                 Rad_control%nzens)  )
 
 !---------------------------------------------------------------------
 !    case 0: input parameters.
@@ -5274,6 +5555,11 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
         Astro%solar(:,:) = Astro%cosz(:,:)*Astro%fracday(:,:)* &
                            Astro%rrsun
         Rad_output%coszen_angle(is:ie,js:je) = Astro%cosz(:,:)
+        do nz = 1, Rad_control%nzens
+          Astro%fracday_p(:,:,nz) = Astro%fracday(:,:)
+          Astro%cosz_p(:,:,nz) = Astro%cosz(:,:)
+          Astro%solar_p(:,:,nz) = Astro%solar(:,:)
+        end do
 
 !---------------------------------------------------------------------
 !    case 1: diurnally-varying shortwave radiation.
@@ -5284,7 +5570,7 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
 !    convert the radiation timestep and the model physics timestep
 !    to time_type variables.
 !-------------------------------------------------------------------
-        Dt_zen  = set_time (rad_time_step, 0)
+        Dt_zen  = set_time (sw_rad_time_step, 0)
         Dt_zen2 = set_time (dt, 0)
         
 !---------------------------------------------------------------------
@@ -5292,7 +5578,21 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
 !    step between Rad_time and Rad_time + Dt_zen. these values are 
 !    needed on radiation steps. output is stored in Astro_rad.
 !---------------------------------------------------------------------
-        if (do_rad) then
+        if (do_sw_rad) then
+          if (Rad_control%hires_coszen) then
+            Rad1 = Rad_time
+            do nz=1,Rad_control%nzens
+              call diurnal_solar (lat, lon, Rad1, cosz_r,  &
+                                   fracday_r, rrsun_r, dt_time=Dt_zen2)
+              fracday_r = MIN (fracday_r, 1.00)
+              solar_r = cosz_r*fracday_r*rrsun_r
+              Astro%cosz_p(:,:,nz)    = cosz_r
+              Astro%fracday_p(:,:,nz) = fracday_r
+              Astro%solar_p(:,:,nz)   = solar_r
+              Rad1 = Rad1 + Dt_zen2
+            end do
+          endif
+!  calculation for full radiation step:
           call diurnal_solar (lat, lon, Rad_time, cosz_r, fracday_r, &
                               rrsun_r, dt_time=Dt_zen)
           fracday_r = MIN (fracday_r, 1.00)
@@ -5322,7 +5622,7 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
 !    values are needed. 
 !---------------------------------------------------------------------
         if (renormalize_sw_fluxes) then
-          if (.not. do_rad) then
+          if (.not. do_sw_rad) then
             Astro%cosz    = cosz_p
             Astro%fracday = fracday_p
             Astro%solar   = solar_p
@@ -5332,9 +5632,9 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
             Astro%fracday = fracday_r
             Astro%solar   = solar_r
             Astro%rrsun   = rrsun_r
-          allocate ( Astro2%fracday(size(lat,1), size(lat,2) ) )
-          allocate ( Astro2%cosz   (size(lat,1), size(lat,2) ) )
-          allocate ( Astro2%solar  (size(lat,1), size(lat,2) ) )
+            allocate ( Astro2%fracday(size(lat,1), size(lat,2) ) )
+            allocate ( Astro2%cosz   (size(lat,1), size(lat,2) ) )
+            allocate ( Astro2%solar  (size(lat,1), size(lat,2) ) )
             Astro2%cosz    = cosz_p
             Astro2%fracday = fracday_p
             Astro2%solar   = solar_p
@@ -5359,11 +5659,11 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
 !    defined and provided as input to the radiation package on the next
 !    timestep.
 !----------------------------------------------------------------------
-        if (do_rad) then
+        if (do_sw_rad) then
           call diurnal_solar (lat, lon, Rad_time+Dt_zen, cosz_a,   &
                               fracday_a, rrsun_a, dt_time=Dt_zen)
           Rad_output%coszen_angle(is:ie,js:je) = cosz_a(:,:)
-        endif  ! (do_rad)
+        endif  ! (do_sw_rad)
 
 !---------------------------------------------------------------------
 !    case 2: annual-mean shortwave radiation.
@@ -5619,7 +5919,8 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
 !
 !----------------------------------------------------------------------
 
-      integer :: kmax
+      real, dimension (size(r,1), size(r,2), size(r,3)) :: tmp1
+      integer :: kmax, nz
 
 !---------------------------------------------------------------------
 !    all_column_radiation and all_level_radiation are included as 
@@ -5642,8 +5943,10 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
 !--------------------------------------------------------------------
 !    define tropopause fluxes for diagnostic use later.
 !--------------------------------------------------------------------
+        if (do_lw_rad .or. do_sw_rad) then
           call flux_trop_calc (is, ie, js, je, lat,  &
                                Atmos_input, Lw_output(1), Sw_output(1) )
+        endif
 
         else  
           call original_fms_rad (is, ie, js, je, Atmos_input%phalf,  &
@@ -5682,101 +5985,117 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
 !    necessary.
 !---------------------------------------------------------------------
         if (do_sea_esf_rad) then
-          Rad_output%tdtsw(is:ie,js:je,:) = Sw_output(1)%hsw(:,:,:)/  &
-                                            SECONDS_PER_DAY
+          if (do_sw_rad) then
+            Rad_output%tdtsw(is:ie,js:je,:,:) =    &
+                              Sw_output(1)%hsw(:,:,:,:)/SECONDS_PER_DAY
+          endif
           if (present(mask)) then
-            Rad_output%tdtlw(is:ie,js:je,:) =   &
-                           (Lw_output(1)%heatra(:,:,:)/SECONDS_PER_DAY)*  &
-                            mask(:,:,:)
-
-            Rad_output%tdt_rad (is:ie,js:je,:) =   &
-                           (Rad_output%tdtsw(is:ie,js:je,:) + &
-                            Lw_output(1)%heatra(:,:,:)/SECONDS_PER_DAY)*  &
-                            mask(:,:,:)
+            if (do_lw_rad) then
+              Rad_output%tdtlw(is:ie,js:je,:) =   &
+                        (Lw_output(1)%heatra(:,:,:)/SECONDS_PER_DAY)*  &
+                                                            mask(:,:,:)
+            endif
+            do nz = 1, Rad_control%nzens
+              Rad_output%tdt_rad (is:ie,js:je,:,nz) =   &
+                         (Rad_output%tdtsw(is:ie,js:je,:,nz) + &
+                            Rad_output%tdtlw(is:ie,js:je,:))*mask(:,:,:)
+            end do
           else
-            Rad_output%tdtlw(is:ie,js:je,:) =   &
+            if (do_lw_rad) then
+               Rad_output%tdtlw(is:ie,js:je,:) =   &
                              Lw_output(1)%heatra(:,:,:)/SECONDS_PER_DAY
-            Rad_output%tdt_rad (is:ie,js:je,:) =  &
-                                  (Rad_output%tdtsw(is:ie,js:je,:) +   &
-                                   Lw_output(1)%heatra(:,:,:)/  &
-                                   SECONDS_PER_DAY)
+            endif
+            do nz = 1, Rad_control%nzens
+              Rad_output%tdt_rad (is:ie,js:je,:,nz) =  &
+                             (Rad_output%tdtsw(is:ie,js:je,:,nz) +   &
+                                       Rad_output%tdtlw(is:ie,js:je,:))
+            end do
           endif
           if (do_clear_sky_pass) then
-            Rad_output%tdtsw_clr(is:ie,js:je,:) =   &
-                                          Sw_output(1)%hswcf(:,:,:)/  &
-                                          SECONDS_PER_DAY
-            Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je) =   &
-                                        Sw_output(1)%dfsw_dir_sfc_clr(:,:)
-            Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je) =   &
-                                        Sw_output(1)%dfsw_dif_sfc_clr(:,:)
-           Rad_output%flux_sw_down_vis_clr(is:ie,js:je) =   &
-                                         Sw_output(1)%dfsw_vis_sfc_clr(:,:)
-            if (present(mask)) then
-              Rad_output%tdt_rad_clr(is:ie,js:je,:) =    &
-                         (Rad_output%tdtsw_clr(is:ie,js:je,:) +  &
-                          Lw_output(1)%heatracf(:,:,:)/SECONDS_PER_DAY)* &
-                          mask(:,:,:)
-            else
-              Rad_output%tdt_rad_clr(is:ie,js:je,:) =    &
-                           (Rad_output%tdtsw_clr(is:ie,js:je,:) +    &
-                            Lw_output(1)%heatracf(:,:,:)/  &
-                            SECONDS_PER_DAY)
-            endif
+            do nz = 1, Rad_control%nzens
+              if (do_sw_rad) then
+                Rad_output%tdtsw_clr(is:ie,js:je,:,nz) =   &
+                           Sw_output(1)%hswcf(:,:,:,nz)/SECONDS_PER_DAY
+                Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je,nz) =&
+                               Sw_output(1)%dfsw_dir_sfc_clr(:,:,nz)
+                Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je,nz) =&
+                                Sw_output(1)%dfsw_dif_sfc_clr(:,:,nz)
+                Rad_output%flux_sw_down_vis_clr(is:ie,js:je,nz) =   &
+                                 Sw_output(1)%dfsw_vis_sfc_clr(:,:,nz)
+              endif
+              if (do_lw_rad) then
+                Rad_output%tdtlw_clr(is:ie,js:je,:) =   &
+                        Lw_output(1)%heatracf(:,:,:)/SECONDS_PER_DAY
+              endif
+              if (present(mask)) then
+                Rad_output%tdt_rad_clr(is:ie,js:je,:,nz) =    &
+                    (Rad_output%tdtsw_clr(is:ie,js:je,:,nz) +  &
+                       Rad_output%tdtlw_clr(is:ie,js:je,:))*mask(:,:,:)
+              else
+                Rad_output%tdt_rad_clr(is:ie,js:je,:,nz) =    &
+                           (Rad_output%tdtsw_clr(is:ie,js:je,:,nz) +  &
+                                  Rad_output%tdtlw_clr(is:ie,js:je,:))
+              endif
+            end do
           endif
 
           kmax = size (Rad_output%tdtsw,3)
-          Rad_output%flux_sw_surf(is:ie,js:je) =   &
-                                         Sw_output(1)%dfsw(:,:,kmax+1) - &
-                                         Sw_output(1)%ufsw(:,:,kmax+1)
-           Rad_output%flux_sw_surf_dir(is:ie,js:je) =   &
-                                         Sw_output(1)%dfsw_dir_sfc(:,:)
-           Rad_output%flux_sw_surf_dif(is:ie,js:je) =   &
-                                         Sw_output(1)%dfsw_dif_sfc(:,:) - &
-                                         Sw_output(1)%ufsw_dif_sfc(:,:)
-           Rad_output%flux_sw_down_vis_dir(is:ie,js:je) =   &
-                                         Sw_output(1)%dfsw_vis_sfc_dir(:,:)
-           Rad_output%flux_sw_down_vis_dif(is:ie,js:je) =   &
-                                         Sw_output(1)%dfsw_vis_sfc_dif(:,:)
-           Rad_output%flux_sw_down_total_dir(is:ie,js:je) =   &
-                                         Sw_output(1)%dfsw_dir_sfc(:,:)
-           Rad_output%flux_sw_down_total_dif(is:ie,js:je) =   &
-                                         Sw_output(1)%dfsw_dif_sfc(:,:)
-           Rad_output%flux_sw_vis (is:ie,js:je) =   &
-                                         Sw_output(1)%dfsw_vis_sfc(:,:) - &
-                                         Sw_output(1)%ufsw_vis_sfc(:,:)
-           Rad_output%flux_sw_vis_dir (is:ie,js:je) =   &
-                                         Sw_output(1)%dfsw_vis_sfc_dir(:,:)
-           Rad_output%flux_sw_vis_dif (is:ie,js:je) =   &
-                                     Sw_output(1)%dfsw_vis_sfc_dif(:,:) - &
-                                     Sw_output(1)%ufsw_vis_sfc_dif(:,:)
-          Rad_output%flux_lw_surf(is:ie,js:je) =    &
-                       STEFAN*Atmos_input%temp(:,:,kmax+1)**4 -   &
-                       Lw_output(1)%flxnet(:,:,kmax+1)
+          if (do_sw_rad) then
+            Rad_output%flux_sw_surf(is:ie,js:je,:) =   &
+                            Sw_output(1)%dfsw(:,:,kmax+1,:) - &
+                                        Sw_output(1)%ufsw(:,:,kmax+1,:)
+            Rad_output%flux_sw_surf_dir(is:ie,js:je,:) =   &
+                                    Sw_output(1)%dfsw_dir_sfc(:,:,:)
+            Rad_output%flux_sw_surf_dif(is:ie,js:je,:) =   &
+                                 Sw_output(1)%dfsw_dif_sfc(:,:,:) - &
+                                      Sw_output(1)%ufsw_dif_sfc(:,:,:)
+            Rad_output%flux_sw_down_vis_dir(is:ie,js:je,:) =   &
+                                   Sw_output(1)%dfsw_vis_sfc_dir(:,:,:)
+            Rad_output%flux_sw_down_vis_dif(is:ie,js:je,:) =   &
+                                   Sw_output(1)%dfsw_vis_sfc_dif(:,:,:)
+            Rad_output%flux_sw_down_total_dir(is:ie,js:je,:) =   &
+                                       Sw_output(1)%dfsw_dir_sfc(:,:,:)
+            Rad_output%flux_sw_down_total_dif(is:ie,js:je,:) =   &
+                                      Sw_output(1)%dfsw_dif_sfc(:,:,:)
+            Rad_output%flux_sw_vis (is:ie,js:je,:) =   &
+                               Sw_output(1)%dfsw_vis_sfc(:,:,:) - &
+                                        Sw_output(1)%ufsw_vis_sfc(:,:,:)
+            Rad_output%flux_sw_vis_dir (is:ie,js:je,:) =   &
+                                   Sw_output(1)%dfsw_vis_sfc_dir(:,:,:)
+            Rad_output%flux_sw_vis_dif (is:ie,js:je,:) =   &
+                            Sw_output(1)%dfsw_vis_sfc_dif(:,:,:) - &
+                                   Sw_output(1)%ufsw_vis_sfc_dif(:,:,:)
+          endif
+          if (do_lw_rad) then
+            Rad_output%flux_lw_surf(is:ie,js:je) =    &
+                         STEFAN*Atmos_input%temp(:,:,kmax+1)**4 -   &
+                                       Lw_output(1)%flxnet(:,:,kmax+1)
+          endif
         else
-          Rad_output%tdtsw(is:ie,js:je,:) = Fsrad_output%tdtsw(:,:,:)
+          Rad_output%tdtsw(is:ie,js:je,:,1) = Fsrad_output%tdtsw(:,:,:)
           if (present(mask)) then
-            Rad_output%tdt_rad (is:ie,js:je,:) =   &
-                               (Rad_output%tdtsw(is:ie,js:je,:) + &
+            Rad_output%tdt_rad (is:ie,js:je,:,1) =   &
+                               (Rad_output%tdtsw(is:ie,js:je,:,1) + &
                                 Fsrad_output%tdtlw (:,:,:))*mask(:,:,:)
           else
-            Rad_output%tdt_rad (is:ie,js:je,:) =   &
-                               (Rad_output%tdtsw(is:ie,js:je,:) +   &
+            Rad_output%tdt_rad (is:ie,js:je,:,1) =   &
+                               (Rad_output%tdtsw(is:ie,js:je,:,1) +   &
                                 Fsrad_output%tdtlw (:,:,:))
           endif
           if (do_clear_sky_pass) then
-            Rad_output%tdtsw_clr(is:ie,js:je,:) =    &
+            Rad_output%tdtsw_clr(is:ie,js:je,:,1) =    &
                                           Fsrad_output%tdtsw_clr(:,:,:)
             if (present(mask)) then
-              Rad_output%tdt_rad_clr(is:ie,js:je,:) =    &
-                         (Rad_output%tdtsw_clr(is:ie,js:je,:) +  &
+              Rad_output%tdt_rad_clr(is:ie,js:je,:,1) =    &
+                         (Rad_output%tdtsw_clr(is:ie,js:je,:,1) +  &
                           Fsrad_output%tdtlw_clr(:,:,:))*mask(:,:,:)
             else
-              Rad_output%tdt_rad_clr(is:ie,js:je,:) =    &
-                         (Rad_output%tdtsw_clr(is:ie,js:je,:) +    &
+              Rad_output%tdt_rad_clr(is:ie,js:je,:,1) =    &
+                         (Rad_output%tdtsw_clr(is:ie,js:je,:,1) +    &
                           Fsrad_output%tdtlw_clr(:,:,:))
             endif
           endif
-          Rad_output%flux_sw_surf(is:ie,js:je) =    &
+          Rad_output%flux_sw_surf(is:ie,js:je,1) =    &
                                              Fsrad_output%swdns(:,:) - &
                                              Fsrad_output%swups(:,:)
           Rad_output%flux_lw_surf(is:ie,js:je) = Fsrad_output%lwdns(:,:)
@@ -5900,8 +6219,9 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
 !  local variables:
 !
       real, dimension (is:ie, js:je,                                  &
-                       size(Rad_output%tdt_rad,3))  ::  tdtlw, tdtlw_clr
-      integer   ::   i, j, k
+                      size(Rad_output%tdt_rad,3))  ::  tdtlw, tdtlw_clr
+      integer   :: i, j, k
+      integer   :: nz
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -5921,71 +6241,71 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
 !    if sw fluxes are to be renormalized, save the heating rates, fluxes
 !    and solar factor calculated on radiation steps.
 !---------------------------------------------------------------------
-        if (do_rad) then
+        if (do_sw_rad) then
           solar_save(is:ie,js:je)  = Astro%solar(:,:)
-          dfsw_save(is:ie,js:je,:) = Sw_output(1)%dfsw(:, :,:)
-          ufsw_save(is:ie,js:je,:) = Sw_output(1)%ufsw(:, :,:)
+          dfsw_save(is:ie,js:je,:,:) = Sw_output(1)%dfsw(:, :,:,:)
+          ufsw_save(is:ie,js:je,:,:) = Sw_output(1)%ufsw(:, :,:,:)
           if (do_swaerosol_forcing) then
-            dfsw_ad_save(is:ie,js:je,:) =   &
-                                       Sw_output(indx_swaf)%dfsw(:, :,:)
-            ufsw_ad_save(is:ie,js:je,:) =    &
-                                       Sw_output(indx_swaf)%ufsw(:, :,:)
+            dfsw_ad_save(is:ie,js:je,:,:) =   &
+                                    Sw_output(indx_swaf)%dfsw(:, :,:,:)
+            ufsw_ad_save(is:ie,js:je,:,:) =    &
+                                    Sw_output(indx_swaf)%ufsw(:, :,:,:)
           endif
-          fsw_save(is:ie,js:je,:)  = Sw_output(1)%fsw(:, :,:)
-          hsw_save(is:ie,js:je,:)  = Sw_output(1)%hsw(:, :,:)
-          flux_sw_surf_save(is:ie,js:je) =    &
-                                    Rad_output%flux_sw_surf(is:ie,js:je)
-          flux_sw_surf_dir_save(is:ie,js:je) =    &
-                                Rad_output%flux_sw_surf_dir(is:ie,js:je)
-          flux_sw_surf_dif_save(is:ie,js:je) =    &
-                                Rad_output%flux_sw_surf_dif(is:ie,js:je)
-          flux_sw_down_vis_dir_save(is:ie,js:je) =    &
-                            Rad_output%flux_sw_down_vis_dir(is:ie,js:je)
-          flux_sw_down_vis_dif_save(is:ie,js:je) =    &
-                            Rad_output%flux_sw_down_vis_dif(is:ie,js:je)
-          flux_sw_down_total_dir_save(is:ie,js:je) =    &
-                      Rad_output%flux_sw_down_total_dir(is:ie,js:je)
-          flux_sw_down_total_dif_save(is:ie,js:je) =    &
-                         Rad_output%flux_sw_down_total_dif(is:ie,js:je)
-          flux_sw_vis_save(is:ie,js:je) =    &
-                              Rad_output%flux_sw_vis(is:ie,js:je)
-          flux_sw_vis_dir_save(is:ie,js:je) =    &
-                   Rad_output%flux_sw_vis_dir(is:ie,js:je)
-          flux_sw_vis_dif_save(is:ie,js:je) =    &
-                               Rad_output%flux_sw_vis_dif(is:ie,js:je)
-          sw_heating_save(is:ie,js:je,:) =    &
-                              Rad_output%tdtsw(is:ie,js:je,:)
-          tot_heating_save(is:ie,js:je,:) =    &
-                              Rad_output%tdt_rad(is:ie,js:je,:)
-          swdn_special_save(is:ie,js:je,:) =   &
-                                     Sw_output(1)%swdn_special(:,:,:)
-          swup_special_save(is:ie,js:je,:) =   &
-                                     Sw_output(1)%swup_special(:,:,:)
+          fsw_save(is:ie,js:je,:,:)  = Sw_output(1)%fsw(:, :,:,:)
+          hsw_save(is:ie,js:je,:,:)  = Sw_output(1)%hsw(:, :,:,:)
+          flux_sw_surf_save(is:ie,js:je,:) =    &
+                                 Rad_output%flux_sw_surf(is:ie,js:je,:)
+          flux_sw_surf_dir_save(is:ie,js:je,:) =    &
+                             Rad_output%flux_sw_surf_dir(is:ie,js:je,:)
+          flux_sw_surf_dif_save(is:ie,js:je,:) =    &
+                             Rad_output%flux_sw_surf_dif(is:ie,js:je,:)
+          flux_sw_down_vis_dir_save(is:ie,js:je,:) =    &
+                         Rad_output%flux_sw_down_vis_dir(is:ie,js:je,:)
+          flux_sw_down_vis_dif_save(is:ie,js:je,:) =    &
+                         Rad_output%flux_sw_down_vis_dif(is:ie,js:je,:)
+          flux_sw_down_total_dir_save(is:ie,js:je,:) =    &
+                      Rad_output%flux_sw_down_total_dir(is:ie,js:je,:)
+          flux_sw_down_total_dif_save(is:ie,js:je,:) =    &
+                      Rad_output%flux_sw_down_total_dif(is:ie,js:je,:)
+          flux_sw_vis_save(is:ie,js:je,:) =    &
+                              Rad_output%flux_sw_vis(is:ie,js:je,:)
+          flux_sw_vis_dir_save(is:ie,js:je,:) =    &
+                   Rad_output%flux_sw_vis_dir(is:ie,js:je,:)
+          flux_sw_vis_dif_save(is:ie,js:je,:) =    &
+                               Rad_output%flux_sw_vis_dif(is:ie,js:je,:)
+          sw_heating_save(is:ie,js:je,:,:) =    &
+                              Rad_output%tdtsw(is:ie,js:je,:,:)
+          tot_heating_save(is:ie,js:je,:,:) =    &
+                              Rad_output%tdt_rad(is:ie,js:je,:,:)
+          swdn_special_save(is:ie,js:je,:,:) =   &
+                                     Sw_output(1)%swdn_special(:,:,:,:)
+          swup_special_save(is:ie,js:je,:,:) =   &
+                                     Sw_output(1)%swup_special(:,:,:,:)
           if (do_clear_sky_pass) then
-            sw_heating_clr_save(is:ie,js:je,:) =    &
-                              Rad_output%tdtsw_clr(is:ie,js:je,:)
-            tot_heating_clr_save(is:ie,js:je,:) =    &
-                              Rad_output%tdt_rad_clr(is:ie,js:je,:)
-            dfswcf_save(is:ie,js:je,:) = Sw_output(1)%dfswcf(:, :,:)
-            ufswcf_save(is:ie,js:je,:) = Sw_output(1)%ufswcf(:, :,:)
+            sw_heating_clr_save(is:ie,js:je,:,:) =    &
+                              Rad_output%tdtsw_clr(is:ie,js:je,:,:)
+            tot_heating_clr_save(is:ie,js:je,:,:) =    &
+                              Rad_output%tdt_rad_clr(is:ie,js:je,:,:)
+            dfswcf_save(is:ie,js:je,:,:) = Sw_output(1)%dfswcf(:, :,:,:)
+            ufswcf_save(is:ie,js:je,:,:) = Sw_output(1)%ufswcf(:, :,:,:)
             if (do_swaerosol_forcing) then
-              dfswcf_ad_save(is:ie,js:je,:) =    &
-                                     Sw_output(indx_swaf)%dfswcf(:, :,:)
-              ufswcf_ad_save(is:ie,js:je,:) =   &
-                                      Sw_output(indx_swaf)%ufswcf(:, :,:)
+              dfswcf_ad_save(is:ie,js:je,:,:) =    &
+                                  Sw_output(indx_swaf)%dfswcf(:, :,:,:)
+              ufswcf_ad_save(is:ie,js:je,:,:) =   &
+                                  Sw_output(indx_swaf)%ufswcf(:, :,:,:)
             endif
-            fswcf_save(is:ie,js:je,:)  = Sw_output(1)%fswcf(:, :,:)
-            hswcf_save(is:ie,js:je,:)  = Sw_output(1)%hswcf(:, :,:)
-            flux_sw_down_total_dir_clr_save(is:ie,js:je) =    &
-                   Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je)
-            flux_sw_down_total_dif_clr_save(is:ie,js:je) =    &
-                    Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je)
-            flux_sw_down_vis_clr_save(is:ie,js:je) =    &
-                    Rad_output%flux_sw_down_vis_clr(is:ie,js:je)
-            swdn_special_clr_save(is:ie,js:je,:) =  &
-                                Sw_output(1)%swdn_special_clr(:,:,:)
-            swup_special_clr_save(is:ie,js:je,:) =  &
-                                Sw_output(1)%swup_special_clr(:,:,:)
+            fswcf_save(is:ie,js:je,:,:)  = Sw_output(1)%fswcf(:, :,:,:)
+            hswcf_save(is:ie,js:je,:,:)  = Sw_output(1)%hswcf(:, :,:,:)
+            flux_sw_down_total_dir_clr_save(is:ie,js:je,:) =    &
+                   Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je,:)
+            flux_sw_down_total_dif_clr_save(is:ie,js:je,:) =    &
+                    Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je,:)
+            flux_sw_down_vis_clr_save(is:ie,js:je,:) =    &
+                    Rad_output%flux_sw_down_vis_clr(is:ie,js:je,:)
+            swdn_special_clr_save(is:ie,js:je,:,:) =  &
+                                Sw_output(1)%swdn_special_clr(:,:,:,:)
+            swup_special_clr_save(is:ie,js:je,:,:) =  &
+                                Sw_output(1)%swup_special_clr(:,:,:,:)
           endif 
 
 !---------------------------------------------------------------------
@@ -6008,8 +6328,11 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
 !---------------------------------------------------------------------
               Astro%cosz(i,j) = Astro2%cosz(i,j)
               Astro%fracday(i,j) = Astro2%fracday(i,j)
+              Astro%solar(i,j) = Astro2%solar(i,j)
+              Astro%rrsun = Astro2%rrsun
             end do
           end do
+
 !----------------------------------------------------------------------
 !    on non-radiation steps define the ratio of the current solar factor
 !    valid for this physics step to that valid for the last radiation 
@@ -6026,7 +6349,7 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
               endif
             end do
           end do
-        endif  ! (do_rad)
+        endif  ! (do_sw_rad)
 
 !---------------------------------------------------------------------
 !    redefine the total and shortwave heating rates, along with surface
@@ -6034,54 +6357,53 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
 !    relative earth-sun motion) between the current physics and current
 !    radiation timesteps.
 !---------------------------------------------------------------------
-        tdtlw(:,:,:) = tot_heating_save(is:ie,js:je,:) -    &
-                       sw_heating_save(is:ie,js:je,:)
+        nz = current_sw_zenith_step
+        tdtlw(:,:,:) = tot_heating_save(is:ie,js:je,:,nz) -    &
+                       sw_heating_save(is:ie,js:je,:,nz)
         do k=1, size(Rad_output%tdt_rad,3)
-          Rad_output%tdtsw(is:ie,js:je,k) =    &
-                       sw_heating_save(is:ie,js:je,k)*flux_ratio(:,:)
+          Rad_output%tdtsw(is:ie,js:je,k,nz) =    &
+                       sw_heating_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
         end do
-        Rad_output%tdt_rad(is:ie,js:je,:) = tdtlw(:,:,:) +    &
-                                       Rad_output%tdtsw(is:ie,js:je,:)
-        Rad_output%flux_sw_surf(is:ie,js:je) = flux_ratio(:,:)*    &
-                                          flux_sw_surf_save(is:ie,js:je)
-        Rad_output%flux_sw_surf_dir(is:ie,js:je) = flux_ratio(:,:)*    &
-                                    flux_sw_surf_dir_save(is:ie,js:je)
-        Rad_output%flux_sw_surf_dif(is:ie,js:je) = flux_ratio(:,:)*    &
-                           flux_sw_surf_dif_save(is:ie,js:je)
-        Rad_output%flux_sw_down_vis_dir(is:ie,js:je) = flux_ratio(:,:)*&
-                         flux_sw_down_vis_dir_save(is:ie,js:je)
-       Rad_output%flux_sw_down_vis_dif(is:ie,js:je) = flux_ratio(:,:)* &
-                                flux_sw_down_vis_dif_save(is:ie,js:je)
-        Rad_output%flux_sw_down_total_dir(is:ie,js:je) =   &
-                                             flux_ratio(:,:)*&
-                                flux_sw_down_total_dir_save(is:ie,js:je)
-        Rad_output%flux_sw_down_total_dif(is:ie,js:je) =   &
-                              flux_ratio(:,:) * &
-                           flux_sw_down_total_dif_save(is:ie,js:je)
-         Rad_output%flux_sw_vis(is:ie,js:je) = flux_ratio(:,:)*    &
-                                           flux_sw_vis_save(is:ie,js:je)
-         Rad_output%flux_sw_vis_dir(is:ie,js:je) = flux_ratio(:,:)*    &
-                                       flux_sw_vis_dir_save(is:ie,js:je)
-         Rad_output%flux_sw_vis_dif(is:ie,js:je) = flux_ratio(:,:)*    &
-                                       flux_sw_vis_dif_save(is:ie,js:je)
+        Rad_output%tdt_rad(is:ie,js:je,:,nz) = tdtlw(:,:,:) +    &
+                                     Rad_output%tdtsw(is:ie,js:je,:,nz)
+        Rad_output%flux_sw_surf(is:ie,js:je,nz) = flux_ratio(:,:)*    &
+                                      flux_sw_surf_save(is:ie,js:je,nz)
+        Rad_output%flux_sw_surf_dir(is:ie,js:je,nz) = flux_ratio(:,:)* &
+                                  flux_sw_surf_dir_save(is:ie,js:je,nz)
+        Rad_output%flux_sw_surf_dif(is:ie,js:je,nz) = flux_ratio(:,:)* &
+                           flux_sw_surf_dif_save(is:ie,js:je,nz)
+        Rad_output%flux_sw_down_vis_dir(is:ie,js:je,nz) =    &
+               flux_ratio(:,:)*flux_sw_down_vis_dir_save(is:ie,js:je,nz)
+        Rad_output%flux_sw_down_vis_dif(is:ie,js:je,nz) =  &
+              flux_ratio(:,:)*flux_sw_down_vis_dif_save(is:ie,js:je,nz)
+        Rad_output%flux_sw_down_total_dir(is:ie,js:je,nz) =   &
+             flux_ratio(:,:)*flux_sw_down_total_dir_save(is:ie,js:je,nz)
+        Rad_output%flux_sw_down_total_dif(is:ie,js:je,nz) =   &
+             flux_ratio(:,:)*flux_sw_down_total_dif_save(is:ie,js:je,nz)
+        Rad_output%flux_sw_vis(is:ie,js:je,nz) = flux_ratio(:,:)*    &
+                                    flux_sw_vis_save(is:ie,js:je,nz)
+        Rad_output%flux_sw_vis_dir(is:ie,js:je,nz) = flux_ratio(:,:)*  &
+                                   flux_sw_vis_dir_save(is:ie,js:je,nz)
+        Rad_output%flux_sw_vis_dif(is:ie,js:je,nz) = flux_ratio(:,:)* &
+                                   flux_sw_vis_dif_save(is:ie,js:je,nz)
         if (do_clear_sky_pass) then
-          tdtlw_clr(:,:,:) = tot_heating_clr_save  (is:ie,js:je,:) -&
-                             sw_heating_clr_save (is:ie,js:je,:)
-          Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je) =   &
-                                              flux_ratio(:,:)*&
-                           flux_sw_down_total_dir_clr_save(is:ie,js:je)
-          Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je) =   &
-                               flux_ratio(:,:) * &
-                            flux_sw_down_total_dif_clr_save(is:ie,js:je)
-          Rad_output%flux_sw_down_vis_clr(is:ie,js:je) =   &
-                  flux_ratio(:,:)*flux_sw_down_vis_clr_save(is:ie,js:je)
+          tdtlw_clr(:,:,:) = tot_heating_clr_save(is:ie,js:je,:,nz) -  &
+                             sw_heating_clr_save (is:ie,js:je,:,nz)
+          Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je,nz) =   &
+                  flux_ratio(:,:)*     &
+                        flux_sw_down_total_dir_clr_save(is:ie,js:je,nz)
+          Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je,nz) =   &
+                  flux_ratio(:,:) * &
+                        flux_sw_down_total_dif_clr_save(is:ie,js:je,nz)
+          Rad_output%flux_sw_down_vis_clr(is:ie,js:je,nz) =   &
+               flux_ratio(:,:)*flux_sw_down_vis_clr_save(is:ie,js:je,nz)
           do k=1, size(Rad_output%tdt_rad,3)
-            Rad_output%tdtsw_clr(is:ie,js:je,k) =   &
-                           sw_heating_clr_save (is:ie,js:je,k)*   &
-                           flux_ratio(:,:)
+            Rad_output%tdtsw_clr(is:ie,js:je,k,nz) =   &
+                        sw_heating_clr_save (is:ie,js:je,k,nz)*   &
+                                                        flux_ratio(:,:)
           end do
-          Rad_output%tdt_rad_clr(is:ie,js:je,:) = tdtlw_clr(:,:,:) +   &
-                               Rad_output%tdtsw_clr(is:ie,js:je,:)
+          Rad_output%tdt_rad_clr(is:ie,js:je,:,nz) = tdtlw_clr(:,:,:) +&
+                           Rad_output%tdtsw_clr(is:ie,js:je,:,nz)
         endif
       else if (all_step_diagnostics) then
 
@@ -6089,70 +6411,70 @@ real,  dimension(:,:),   intent(out)   ::  flux_ratio
 !    if sw fluxes are to be output on every physics step, save the 
 !    heating rates and fluxes calculated on radiation steps.
 !---------------------------------------------------------------------
-        if (do_rad) then
+        if (do_sw_rad) then
           if (do_swaerosol_forcing) then
-            dfsw_ad_save(is:ie,js:je,:) =    &
-                                      Sw_output(indx_swaf)%dfsw(:, :,:)
-            ufsw_ad_save(is:ie,js:je,:) =    &
-                                      Sw_output(indx_swaf)%ufsw(:, :,:)
+            dfsw_ad_save(is:ie,js:je,:,:) =    &
+                                   Sw_output(indx_swaf)%dfsw(:, :,:,:)
+            ufsw_ad_save(is:ie,js:je,:,:) =    &
+                                   Sw_output(indx_swaf)%ufsw(:, :,:,:)
           endif
-          dfsw_save(is:ie,js:je,:) = Sw_output(1)%dfsw(:, :,:)
-          ufsw_save(is:ie,js:je,:) = Sw_output(1)%ufsw(:, :,:)
-          fsw_save(is:ie,js:je,:)  = Sw_output(1)%fsw(:, :,:)
-          hsw_save(is:ie,js:je,:)  = Sw_output(1)%hsw(:, :,:)
-          flux_sw_surf_save(is:ie,js:je) =    &
-                              Rad_output%flux_sw_surf(is:ie,js:je)
-          flux_sw_surf_dir_save(is:ie,js:je) =    &
-                              Rad_output%flux_sw_surf_dir(is:ie,js:je)
-          flux_sw_surf_dif_save(is:ie,js:je) =    &
-                              Rad_output%flux_sw_surf_dif(is:ie,js:je)
-          flux_sw_down_vis_dir_save(is:ie,js:je) =    &
-                          Rad_output%flux_sw_down_vis_dir(is:ie,js:je)
-          flux_sw_down_vis_dif_save(is:ie,js:je) =    &
-                            Rad_output%flux_sw_down_vis_dif(is:ie,js:je)
-          flux_sw_down_total_dir_save(is:ie,js:je) =    &
-                          Rad_output%flux_sw_down_total_dir(is:ie,js:je)
-          flux_sw_down_total_dif_save(is:ie,js:je) =    &
-                          Rad_output%flux_sw_down_total_dif(is:ie,js:je)
-          flux_sw_vis_save(is:ie,js:je) =    &
-                               Rad_output%flux_sw_vis(is:ie,js:je)
-          flux_sw_vis_dir_save(is:ie,js:je) =    &
-                            Rad_output%flux_sw_vis_dir(is:ie,js:je)
-          flux_sw_vis_dif_save(is:ie,js:je) =    &
-                               Rad_output%flux_sw_vis_dif(is:ie,js:je)
-          sw_heating_save(is:ie,js:je,:) =    &
-                             Rad_output%tdtsw(is:ie,js:je,:)
-          tot_heating_save(is:ie,js:je,:) =    &
-                               Rad_output%tdt_rad(is:ie,js:je,:)
-          swdn_special_save(is:ie,js:je,:) =   &
-                                 Sw_output(1)%swdn_special(:,:,:)
-          swup_special_save(is:ie,js:je,:) =   &
-                                 Sw_output(1)%swup_special(:,:,:)
+          dfsw_save(is:ie,js:je,:,:) = Sw_output(1)%dfsw(:, :,:,:)
+          ufsw_save(is:ie,js:je,:,:) = Sw_output(1)%ufsw(:, :,:,:)
+          fsw_save(is:ie,js:je,:,:)  = Sw_output(1)%fsw(:, :,:,:)
+          hsw_save(is:ie,js:je,:,:)  = Sw_output(1)%hsw(:, :,:,:)
+          flux_sw_surf_save(is:ie,js:je,:) =    &
+                              Rad_output%flux_sw_surf(is:ie,js:je,:)
+          flux_sw_surf_dir_save(is:ie,js:je,:) =    &
+                              Rad_output%flux_sw_surf_dir(is:ie,js:je,:)
+          flux_sw_surf_dif_save(is:ie,js:je,:) =    &
+                              Rad_output%flux_sw_surf_dif(is:ie,js:je,:)
+          flux_sw_down_vis_dir_save(is:ie,js:je,:) =    &
+                          Rad_output%flux_sw_down_vis_dir(is:ie,js:je,:)
+          flux_sw_down_vis_dif_save(is:ie,js:je,:) =    &
+                         Rad_output%flux_sw_down_vis_dif(is:ie,js:je,:)
+          flux_sw_down_total_dir_save(is:ie,js:je,:) =    &
+                       Rad_output%flux_sw_down_total_dir(is:ie,js:je,:)
+          flux_sw_down_total_dif_save(is:ie,js:je,:) =    &
+                       Rad_output%flux_sw_down_total_dif(is:ie,js:je,:)
+          flux_sw_vis_save(is:ie,js:je,:) =    &
+                               Rad_output%flux_sw_vis(is:ie,js:je,:)
+          flux_sw_vis_dir_save(is:ie,js:je,:) =    &
+                            Rad_output%flux_sw_vis_dir(is:ie,js:je,:)
+          flux_sw_vis_dif_save(is:ie,js:je,:) =    &
+                               Rad_output%flux_sw_vis_dif(is:ie,js:je,:)
+          sw_heating_save(is:ie,js:je,:,:) =    &
+                             Rad_output%tdtsw(is:ie,js:je,:,:)
+          tot_heating_save(is:ie,js:je,:,:) =    &
+                               Rad_output%tdt_rad(is:ie,js:je,:,:)
+          swdn_special_save(is:ie,js:je,:,:) =   &
+                                 Sw_output(1)%swdn_special(:,:,:,:)
+          swup_special_save(is:ie,js:je,:,:) =   &
+                                 Sw_output(1)%swup_special(:,:,:,:)
           if (do_clear_sky_pass) then
-            sw_heating_clr_save(is:ie,js:je,:) =    &
-                        Rad_output%tdtsw_clr(is:ie,js:je,:)
-            tot_heating_clr_save(is:ie,js:je,:) =    &
-                          Rad_output%tdt_rad_clr(is:ie,js:je,:)
-            dfswcf_save(is:ie,js:je,:) = Sw_output(1)%dfswcf(:, :,:)
-            ufswcf_save(is:ie,js:je,:) = Sw_output(1)%ufswcf(:, :,:)
+            sw_heating_clr_save(is:ie,js:je,:,:) =    &
+                        Rad_output%tdtsw_clr(is:ie,js:je,:,:)
+            tot_heating_clr_save(is:ie,js:je,:,:) =    &
+                          Rad_output%tdt_rad_clr(is:ie,js:je,:,:)
+            dfswcf_save(is:ie,js:je,:,:) = Sw_output(1)%dfswcf(:, :,:,:)
+            ufswcf_save(is:ie,js:je,:,:) = Sw_output(1)%ufswcf(:, :,:,:)
             if (do_swaerosol_forcing) then
-              dfswcf_ad_save(is:ie,js:je,:) =  &
-                                    Sw_output(indx_swaf)%dfswcf(:, :,:)
-              ufswcf_ad_save(is:ie,js:je,:) =   &
-                                    Sw_output(indx_swaf)%ufswcf(:, :,:)
+              dfswcf_ad_save(is:ie,js:je,:,:) =  &
+                                 Sw_output(indx_swaf)%dfswcf(:, :,:,:)
+              ufswcf_ad_save(is:ie,js:je,:,:) =   &
+                                 Sw_output(indx_swaf)%ufswcf(:, :,:,:)
             endif
-            fswcf_save(is:ie,js:je,:)  = Sw_output(1)%fswcf(:, :,:)
-            hswcf_save(is:ie,js:je,:)  = Sw_output(1)%hswcf(:, :,:)
-            flux_sw_down_total_dir_clr_save(is:ie,js:je) =    &
-                     Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je)
-            flux_sw_down_total_dif_clr_save(is:ie,js:je) =    &
-                      Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je)
-            flux_sw_down_vis_clr_save(is:ie,js:je) =    &
-                            Rad_output%flux_sw_down_vis_clr(is:ie,js:je)
-            swdn_special_clr_save(is:ie,js:je,:) =   &
-                                   Sw_output(1)%swdn_special_clr(:,:,:)
-            swup_special_clr_save(is:ie,js:je,:) =   &
-                                   Sw_output(1)%swup_special_clr(:,:,:)
+            fswcf_save(is:ie,js:je,:,:)  = Sw_output(1)%fswcf(:, :,:,:)
+            hswcf_save(is:ie,js:je,:,:)  = Sw_output(1)%hswcf(:, :,:,:)
+            flux_sw_down_total_dir_clr_save(is:ie,js:je,:) =    &
+                  Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je,:)
+            flux_sw_down_total_dif_clr_save(is:ie,js:je,:) =    &
+                   Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je,:)
+            flux_sw_down_vis_clr_save(is:ie,js:je,:) =    &
+                         Rad_output%flux_sw_down_vis_clr(is:ie,js:je,:)
+            swdn_special_clr_save(is:ie,js:je,:,:) =   &
+                                Sw_output(1)%swdn_special_clr(:,:,:,:)
+            swup_special_clr_save(is:ie,js:je,:,:) =   &
+                                Sw_output(1)%swup_special_clr(:,:,:,:)
           endif
         endif
       else
@@ -6239,7 +6561,7 @@ type(sw_output_type),    intent(inout)          :: Sw_output
                                                 netlw_trop_clr, &
                                                 swdn_trop_clr,  &
                                                 swup_trop_clr
-      integer           :: j, k
+      integer           :: j, k, nz
       integer           :: ki, i
       integer           :: kmax
       real              :: wtlo, wthi
@@ -6261,25 +6583,35 @@ type(sw_output_type),    intent(inout)          :: Sw_output
             wtlo = (tropo_ht(i,j) - Atmos_input%pflux(i,j,ki-1))/ &
               (Atmos_input%pflux(i,j,ki) - Atmos_input%pflux(i,j,ki-1))
             wthi = 1.0 - wtlo
-            netlw_trop(i,j) = wtlo*Lw_output%flxnet(i,j,ki) + &
+            if (Rad_control%do_lw_rad) then
+              netlw_trop(i,j) = wtlo*Lw_output%flxnet(i,j,ki) + &
                               wthi*Lw_output%flxnet(i,j,ki-1)
-            swdn_trop(i,j) = wtlo*Sw_output%dfsw(i,j,ki) + &
-                             wthi*Sw_output%dfsw(i,j,ki-1)
-            swup_trop(i,j) = wtlo*Sw_output%ufsw(i,j,ki) + &
-                             wthi*Sw_output%ufsw(i,j,ki-1)
-            Lw_output%netlw_special(i,j,1) = netlw_trop(i,j)
-            Sw_output%swdn_special(i,j,1) = swdn_trop(i,j)
-            Sw_output%swup_special(i,j,1) = swup_trop(i,j)
-            if (do_clear_sky_pass) then
-              netlw_trop_clr(i,j) = wtlo*Lw_output%flxnetcf(i,j,ki) + &
+              Lw_output%netlw_special(i,j,1) = netlw_trop(i,j)
+              if (do_clear_sky_pass) then
+               netlw_trop_clr(i,j) = wtlo*Lw_output%flxnetcf(i,j,ki) + &
                                     wthi*Lw_output%flxnetcf(i,j,ki-1)
-              swdn_trop_clr(i,j) = wtlo*Sw_output%dfswcf(i,j,ki) + &
-                                   wthi*Sw_output%dfswcf(i,j,ki-1)
-              swup_trop_clr(i,j) = wtlo*Sw_output%ufswcf(i,j,ki) + &
-                                   wthi*Sw_output%ufswcf(i,j,ki-1)
-              Lw_output%netlw_special_clr(i,j,1) = netlw_trop_clr(i,j)
-              Sw_output%swdn_special_clr(i,j,1) = swdn_trop_clr(i,j)
-              Sw_output%swup_special_clr(i,j,1) = swup_trop_clr(i,j)
+               Lw_output%netlw_special_clr(i,j,1) = netlw_trop_clr(i,j)
+              endif
+            endif
+            if (Rad_control%do_sw_rad) then
+              do nz = 1,Rad_control%nzens
+              swdn_trop(i,j) = wtlo*Sw_output%dfsw(i,j,ki,nz) + &
+                               wthi*Sw_output%dfsw(i,j,ki-1,nz)
+              swup_trop(i,j) = wtlo*Sw_output%ufsw(i,j,ki,nz) + &
+                               wthi*Sw_output%ufsw(i,j,ki-1,nz)
+              Sw_output%swdn_special(i,j,1,nz) = swdn_trop(i,j)
+              Sw_output%swup_special(i,j,1,nz) = swup_trop(i,j)
+              if (do_clear_sky_pass) then
+                swdn_trop_clr(i,j) = wtlo*Sw_output%dfswcf(i,j,ki,nz) +&
+                                     wthi*Sw_output%dfswcf(i,j,ki-1,nz)
+                swup_trop_clr(i,j) = wtlo*Sw_output%ufswcf(i,j,ki,nz) +&
+                                     wthi*Sw_output%ufswcf(i,j,ki-1,nz)
+                Sw_output%swdn_special_clr(i,j,1,nz) =   &
+                                               swdn_trop_clr(i,j)
+                Sw_output%swup_special_clr(i,j,1,nz) =    &
+                                               swup_trop_clr(i,j)
+              endif
+              end do
             endif
             exit
           endif
@@ -6304,25 +6636,33 @@ type(sw_output_type),    intent(inout)          :: Sw_output
             wtlo = (tropo_ht(i,j) - Atmos_input%pflux(i,j,ki-1))/ &
               (Atmos_input%pflux(i,j,ki) - Atmos_input%pflux(i,j,ki-1))
             wthi = 1.0 - wtlo
+            if (Rad_control%do_lw_rad) then
             netlw_trop(i,j) = wtlo*Lw_output%flxnet(i,j,ki) + &
                               wthi*Lw_output%flxnet(i,j,ki-1)
-            swdn_trop(i,j) = wtlo*Sw_output%dfsw(i,j,ki) + &
-                             wthi*Sw_output%dfsw(i,j,ki-1)
-            swup_trop(i,j) = wtlo*Sw_output%ufsw(i,j,ki) + &
-                             wthi*Sw_output%ufsw(i,j,ki-1)
             Lw_output%netlw_special(i,j,2) = netlw_trop(i,j)
-            Sw_output%swdn_special(i,j,2) = swdn_trop(i,j)
-            Sw_output%swup_special(i,j,2) = swup_trop(i,j)
             if (do_clear_sky_pass) then
               netlw_trop_clr(i,j) = wtlo*Lw_output%flxnetcf(i,j,ki) + &
                                     wthi*Lw_output%flxnetcf(i,j,ki-1)
-              swdn_trop_clr(i,j) = wtlo*Sw_output%dfswcf(i,j,ki) + &
-                                   wthi*Sw_output%dfswcf(i,j,ki-1)
-              swup_trop_clr(i,j) = wtlo*Sw_output%ufswcf(i,j,ki) + &
-                                   wthi*Sw_output%ufswcf(i,j,ki-1)
               Lw_output%netlw_special_clr(i,j,2) = netlw_trop_clr(i,j)
-              Sw_output%swdn_special_clr(i,j,2) = swdn_trop_clr(i,j)
-              Sw_output%swup_special_clr(i,j,2) = swup_trop_clr(i,j)
+            endif
+            endif
+            if (Rad_control%do_sw_rad) then
+              do nz = 1,Rad_control%nzens
+            swdn_trop(i,j) = wtlo*Sw_output%dfsw(i,j,ki,nz) + &
+                             wthi*Sw_output%dfsw(i,j,ki-1,nz)
+            swup_trop(i,j) = wtlo*Sw_output%ufsw(i,j,ki,nz) + &
+                             wthi*Sw_output%ufsw(i,j,ki-1,nz)
+            Sw_output%swdn_special(i,j,2,nz) = swdn_trop(i,j)
+            Sw_output%swup_special(i,j,2,nz) = swup_trop(i,j)
+            if (do_clear_sky_pass) then
+              swdn_trop_clr(i,j) = wtlo*Sw_output%dfswcf(i,j,ki,nz) + &
+                                   wthi*Sw_output%dfswcf(i,j,ki-1,nz)
+              swup_trop_clr(i,j) = wtlo*Sw_output%ufswcf(i,j,ki,nz) + &
+                                   wthi*Sw_output%ufswcf(i,j,ki-1,nz)
+              Sw_output%swdn_special_clr(i,j,2,nz) = swdn_trop_clr(i,j)
+              Sw_output%swup_special_clr(i,j,2,nz) = swup_trop_clr(i,j)
+            endif
+            end do
             endif
             exit
           endif
@@ -6346,25 +6686,33 @@ type(sw_output_type),    intent(inout)          :: Sw_output
             wtlo = (tropo_ht(i,j) - Atmos_input%pflux(i,j,ki-1))/ &
               (Atmos_input%pflux(i,j,ki) - Atmos_input%pflux(i,j,ki-1))
             wthi = 1.0 - wtlo
+            if (Rad_control%do_lw_rad) then
             netlw_trop(i,j) = wtlo*Lw_output%flxnet(i,j,ki) + &
                               wthi*Lw_output%flxnet(i,j,ki-1)
-            swdn_trop(i,j) = wtlo*Sw_output%dfsw(i,j,ki) + &
-                             wthi*Sw_output%dfsw(i,j,ki-1)
-            swup_trop(i,j) = wtlo*Sw_output%ufsw(i,j,ki) + &
-                             wthi*Sw_output%ufsw(i,j,ki-1)
             Lw_output%netlw_special(i,j,3) = netlw_trop(i,j)
-            Sw_output%swdn_special(i,j,3) = swdn_trop(i,j)
-            Sw_output%swup_special(i,j,3) = swup_trop(i,j)
             if (do_clear_sky_pass) then
               netlw_trop_clr(i,j) = wtlo*Lw_output%flxnetcf(i,j,ki) + &
                                     wthi*Lw_output%flxnetcf(i,j,ki-1)
-              swdn_trop_clr(i,j) = wtlo*Sw_output%dfswcf(i,j,ki) + &
-                                   wthi*Sw_output%dfswcf(i,j,ki-1)
-              swup_trop_clr(i,j) = wtlo*Sw_output%ufswcf(i,j,ki) + &
-                                   wthi*Sw_output%ufswcf(i,j,ki-1)
               Lw_output%netlw_special_clr(i,j,3) = netlw_trop_clr(i,j)
-              Sw_output%swdn_special_clr(i,j,3) = swdn_trop_clr(i,j)
-              Sw_output%swup_special_clr(i,j,3) = swup_trop_clr(i,j)
+             endif
+             endif
+            if (Rad_control%do_sw_rad) then
+              do nz = 1,Rad_control%nzens
+            swdn_trop(i,j) = wtlo*Sw_output%dfsw(i,j,ki,nz) + &
+                             wthi*Sw_output%dfsw(i,j,ki-1,nz)
+            swup_trop(i,j) = wtlo*Sw_output%ufsw(i,j,ki,nz) + &
+                             wthi*Sw_output%ufsw(i,j,ki-1,nz)
+            Sw_output%swdn_special(i,j,3,nz) = swdn_trop(i,j)
+            Sw_output%swup_special(i,j,3,nz) = swup_trop(i,j)
+            if (do_clear_sky_pass) then
+              swdn_trop_clr(i,j) = wtlo*Sw_output%dfswcf(i,j,ki,nz) + &
+                                   wthi*Sw_output%dfswcf(i,j,ki-1,nz)
+              swup_trop_clr(i,j) = wtlo*Sw_output%ufswcf(i,j,ki,nz) + &
+                                   wthi*Sw_output%ufswcf(i,j,ki-1,nz)
+              Sw_output%swdn_special_clr(i,j,3,nz) = swdn_trop_clr(i,j)
+              Sw_output%swup_special_clr(i,j,3,nz) = swup_trop_clr(i,j)
+            endif
+            end do
             endif
             exit
           endif
@@ -6450,10 +6798,10 @@ end subroutine flux_trop_calc
 ! </SUBROUTINE>
 !
 subroutine produce_radiation_diagnostics          &
-                        (is, ie, js, je, Time_diag, Time, lat, ts, Surface, &
-                             flux_ratio, Astro, Rad_output, Rad_gases,&
-                             Lw_output, Sw_output, Cld_spec,   &
-                             Lsc_microphys, Fsrad_output, mask)
+                 (is, ie, js, je, Time_diag, Time, lat, ts, Surface, &
+                  flux_ratio, Astro, Rad_output, Rad_gases,&
+                  Lw_output, Sw_output, Cld_spec,   &
+                  Lsc_microphys, Fsrad_output, mask)
 
 !--------------------------------------------------------------------
 !    produce_radiation_diagnostics produces netcdf output and global 
@@ -6534,7 +6882,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
                                                 lwdns, swin_clr,   &
                                                 swout_clr, olr_clr, &
                                                 swups_clr, swdns_clr,&
-                                                lwups_clr, lwdns_clr
+                                                lwups_clr, lwdns_clr   
 
       real, dimension (ie-is+1,je-js+1, MX_SPEC_LEVS) ::           & 
                                                 swdn_trop,  &
@@ -6566,6 +6914,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
       logical           :: used
       integer           :: iind, jind
       integer           :: kmax
+      integer           :: nz
 
 !      asfc         surface albedo  [ dimensionless ]
 !      asfc_vis_dir surface visible albedo  [ dimensionless ]
@@ -6579,47 +6928,52 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !    the difference in solar factor between the current model step and
 !    the current radiation step.
 !----------------------------------------------------------------------
+      nz = current_sw_zenith_step
       kmax = size (Rad_output%tdtsw,3)
       if (renormalize_sw_fluxes) then
         do k=1, kmax         
-          hsw(:,:,k) = hsw_save(is:ie,js:je,k)*flux_ratio(:,:)
+          hsw(:,:,k) = hsw_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
         end do
         do k=1, kmax+1             
           if (do_swaerosol_forcing) then
-            dfsw_ad(:,:,k) = dfsw_ad_save(is:ie,js:je,k)*flux_ratio(:,:)
-            ufsw_ad(:,:,k) = ufsw_ad_save(is:ie,js:je,k)*flux_ratio(:,:)
+            dfsw_ad(:,:,k) =   &
+                        dfsw_ad_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
+            ufsw_ad(:,:,k) =   &
+                        ufsw_ad_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
           endif
-          dfsw(:,:,k) = dfsw_save(is:ie,js:je,k)*flux_ratio(:,:)
-          ufsw(:,:,k) = ufsw_save(is:ie,js:je,k)*flux_ratio(:,:)
-          fsw(:,:,k) = fsw_save(is:ie,js:je,k)*flux_ratio(:,:)
+          dfsw(:,:,k) = dfsw_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
+          ufsw(:,:,k) = ufsw_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
+          fsw(:,:,k) = fsw_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
         end do
         do k=1,Rad_control%mx_spec_levs
-        swdn_trop(:,:,k) = swdn_special_save(is:ie,js:je,k)*  &
-                           flux_ratio(:,:)
-        swup_trop(:,:,k) = swup_special_save(is:ie,js:je,k)*   &
-                           flux_ratio(:,:)
+          swdn_trop(:,:,k) = swdn_special_save(is:ie,js:je,k,nz)*  &
+                             flux_ratio(:,:)
+          swup_trop(:,:,k) = swup_special_save(is:ie,js:je,k,nz)*   &
+                             flux_ratio(:,:)
         end do
         if (do_clear_sky_pass) then
           do k=1, kmax            
-            hswcf(:,:,k) = hswcf_save(is:ie,js:je,k)*flux_ratio(:,:)
+            hswcf(:,:,k) = hswcf_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
           end do
           do k=1, kmax+1            
             if (do_swaerosol_forcing) then
-              dfswcf_ad(:,:,k) = dfswcf_ad_save(is:ie,js:je,k)*  &
+              dfswcf_ad(:,:,k) = dfswcf_ad_save(is:ie,js:je,k,nz)*  &
                                  flux_ratio(:,:)
-              ufswcf_ad(:,:,k) = ufswcf_ad_save(is:ie,js:je,k)*  &
+              ufswcf_ad(:,:,k) = ufswcf_ad_save(is:ie,js:je,k,nz)*  &
                                  flux_ratio(:,:)
             endif
-            dfswcf(:,:,k) = dfswcf_save(is:ie,js:je,k)*flux_ratio(:,:)
-            ufswcf(:,:,k) = ufswcf_save(is:ie,js:je,k)*flux_ratio(:,:)
-            fswcf(:,:,k) = fswcf_save(is:ie,js:je,k)*flux_ratio(:,:)
+            dfswcf(:,:,k) =    &
+                          dfswcf_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
+            ufswcf(:,:,k) =    &
+                          ufswcf_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
+            fswcf(:,:,k) = fswcf_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
           end do
-        do k=1,Rad_control%mx_spec_levs
-          swdn_trop_clr(:,:,k) = swdn_special_clr_save(is:ie,js:je,k)* &
-                                 flux_ratio(:,:)
-          swup_trop_clr(:,:,k) = swup_special_clr_save(is:ie,js:je,k)* &
-                                 flux_ratio(:,:)
-        end do
+          do k=1,Rad_control%mx_spec_levs
+            swdn_trop_clr(:,:,k) =    &
+                  swdn_special_clr_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
+            swup_trop_clr(:,:,k) =    &
+                  swup_special_clr_save(is:ie,js:je,k,nz)*flux_ratio(:,:)
+          end do
         endif
 
 !----------------------------------------------------------------------
@@ -6627,36 +6981,36 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !    (i.e., diagnostics desired), define the variables to be output as
 !    the values present in Sw_output.
 !---------------------------------------------------------------------
-      else if (do_rad .and. do_sea_esf_rad) then
+      else if (do_sw_rad .and. do_sea_esf_rad) then
         do k=1, kmax            
-          hsw(:,:,k) = Sw_output(1)%hsw(:,:,k)
+          hsw(:,:,k) = Sw_output(1)%hsw(:,:,k,nz)
         end do
         do k=1, kmax+1             
           if (do_swaerosol_forcing) then
-            dfsw_ad(:,:,k) = Sw_output(indx_swaf)%dfsw(:,:,k)
-            ufsw_ad(:,:,k) = Sw_output(indx_swaf)%ufsw(:,:,k)
+            dfsw_ad(:,:,k) = Sw_output(indx_swaf)%dfsw(:,:,k,nz)
+            ufsw_ad(:,:,k) = Sw_output(indx_swaf)%ufsw(:,:,k,nz)
           endif
-          dfsw(:,:,k) = Sw_output(1)%dfsw(:,:,k)
-          ufsw(:,:,k) = Sw_output(1)%ufsw(:,:,k)
-          fsw(:,:,k) = Sw_output(1)%fsw(:,:,k)
+          dfsw(:,:,k) = Sw_output(1)%dfsw(:,:,k,nz)
+          ufsw(:,:,k) = Sw_output(1)%ufsw(:,:,k,nz)
+          fsw(:,:,k) = Sw_output(1)%fsw(:,:,k,nz)
         end do
-        swdn_trop(:,:,:) = Sw_output(1)%swdn_special(:,:,:)
-        swup_trop(:,:,:) = Sw_output(1)%swup_special(:,:,:)
+        swdn_trop(:,:,:) = Sw_output(1)%swdn_special(:,:,:,nz)
+        swup_trop(:,:,:) = Sw_output(1)%swup_special(:,:,:,nz)
         if (do_clear_sky_pass) then
           do k=1, kmax             
-            hswcf(:,:,k) = Sw_output(1)%hswcf(:,:,k)
+            hswcf(:,:,k) = Sw_output(1)%hswcf(:,:,k,nz)
           end do
           do k=1, kmax+1            
             if (do_swaerosol_forcing) then
-              dfswcf_ad(:,:,k) = Sw_output(indx_swaf)%dfswcf(:,:,k)
-              ufswcf_ad(:,:,k) = Sw_output(indx_swaf)%ufswcf(:,:,k)  
+              dfswcf_ad(:,:,k) = Sw_output(indx_swaf)%dfswcf(:,:,k,nz)
+              ufswcf_ad(:,:,k) = Sw_output(indx_swaf)%ufswcf(:,:,k,nz)  
             endif
-            dfswcf(:,:,k) = Sw_output(1)%dfswcf(:,:,k)
-            ufswcf(:,:,k) = Sw_output(1)%ufswcf(:,:,k)
-            fswcf(:,:,k) = Sw_output(1)%fswcf(:,:,k)
+            dfswcf(:,:,k) = Sw_output(1)%dfswcf(:,:,k,nz)
+            ufswcf(:,:,k) = Sw_output(1)%ufswcf(:,:,k,nz)
+            fswcf(:,:,k) = Sw_output(1)%fswcf(:,:,k,nz)
           end do
-          swdn_trop_clr(:,:,:) = Sw_output(1)%swdn_special_clr(:,:,:)
-          swup_trop_clr(:,:,:) = Sw_output(1)%swup_special_clr(:,:,:)
+          swdn_trop_clr(:,:,:) = Sw_output(1)%swdn_special_clr(:,:,:,nz)
+          swup_trop_clr(:,:,:) = Sw_output(1)%swup_special_clr(:,:,:,nz)
         endif
 
 !----------------------------------------------------------------------
@@ -6667,42 +7021,42 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !---------------------------------------------------------------------
       else if (do_sea_esf_rad .and. all_step_diagnostics) then
         do k=1, kmax
-          hsw(:,:,k) = hsw_save(is:ie,js:je,k)
+          hsw(:,:,k) = hsw_save(is:ie,js:je,k,nz)
         end do
         do k=1, kmax+1
           if (do_swaerosol_forcing) then
-            dfsw_ad(:,:,k) = dfsw_ad_save(is:ie,js:je,k)
-            ufsw_ad(:,:,k) = ufsw_ad_save(is:ie,js:je,k)
+            dfsw_ad(:,:,k) = dfsw_ad_save(is:ie,js:je,k,nz)
+            ufsw_ad(:,:,k) = ufsw_ad_save(is:ie,js:je,k,nz)
           endif
-          dfsw(:,:,k) = dfsw_save(is:ie,js:je,k)
-          ufsw(:,:,k) = ufsw_save(is:ie,js:je,k)
-          fsw(:,:,k) = fsw_save(is:ie,js:je,k)
+          dfsw(:,:,k) = dfsw_save(is:ie,js:je,k,nz)
+          ufsw(:,:,k) = ufsw_save(is:ie,js:je,k,nz)
+          fsw(:,:,k) = fsw_save(is:ie,js:je,k,nz)
         end do
-        swdn_trop(:,:,:) = swdn_special_save(is:ie,js:je,:)
-        swup_trop(:,:,:) = swup_special_save(is:ie,js:je,:)
+        swdn_trop(:,:,:) = swdn_special_save(is:ie,js:je,:,nz)
+        swup_trop(:,:,:) = swup_special_save(is:ie,js:je,:,nz)
         if (do_clear_sky_pass) then
           do k=1, kmax
-            hswcf(:,:,k) = hswcf_save(is:ie,js:je,k)
+            hswcf(:,:,k) = hswcf_save(is:ie,js:je,k,nz)
           end do
           do k=1, kmax+1
             if (do_swaerosol_forcing) then
-              dfswcf_ad(:,:,k) = dfswcf_ad_save(is:ie,js:je,k)
-              ufswcf_ad(:,:,k) = ufswcf_ad_save(is:ie,js:je,k)
+              dfswcf_ad(:,:,k) = dfswcf_ad_save(is:ie,js:je,k,nz)
+              ufswcf_ad(:,:,k) = ufswcf_ad_save(is:ie,js:je,k,nz)
             endif
-            dfswcf(:,:,k) = dfswcf_save(is:ie,js:je,k)
-            ufswcf(:,:,k) = ufswcf_save(is:ie,js:je,k)
-            fswcf(:,:,k) = fswcf_save(is:ie,js:je,k)
+            dfswcf(:,:,k) = dfswcf_save(is:ie,js:je,k,nz)
+            ufswcf(:,:,k) = ufswcf_save(is:ie,js:je,k,nz)
+            fswcf(:,:,k) = fswcf_save(is:ie,js:je,k,nz)
           end do
-          swdn_trop_clr(:,:,:) = swdn_special_clr_save(is:ie,js:je,:)
-          swup_trop_clr(:,:,:) = swup_special_clr_save(is:ie,js:je,:)
+          swdn_trop_clr(:,:,:) = swdn_special_clr_save(is:ie,js:je,:,nz)
+          swup_trop_clr(:,:,:) = swup_special_clr_save(is:ie,js:je,:,nz)
         endif
       endif
 
 !---------------------------------------------------------------------
 !    define the sw diagnostic arrays.
 !---------------------------------------------------------------------
-      if (renormalize_sw_fluxes .or. do_rad .or.    &
-                                            all_step_diagnostics) then
+      if (renormalize_sw_fluxes .or. do_sw_rad .or.    &
+           use_hires_coszen .or.   all_step_diagnostics) then
         if (do_sea_esf_rad) then
           if (do_swaerosol_forcing) then
             swin_ad (:,:) = dfsw_ad(:,:,1)
@@ -6757,7 +7111,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !------- sw tendency -----------
         if (id_tdt_sw(ipass) > 0 ) then
           used = send_data (id_tdt_sw(ipass),    &
-                            Rad_output%tdtsw(is:ie,js:je,:),   &
+                            Rad_output%tdtsw(is:ie,js:je,:,nz),   &
                             Time_diag, is, js, 1, rmask=mask )
         endif
 
@@ -6879,7 +7233,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !------- sw tendency -----------
           if (id_tdt_sw(ipass) > 0 ) then
             used = send_data (id_tdt_sw(ipass),   &
-                              Rad_output%tdtsw_clr(is:ie,js:je,:),  &
+                              Rad_output%tdtsw_clr(is:ie,js:je,:,nz),  &
                               Time_diag, is, js, 1, rmask=mask )
           endif
 
@@ -7138,34 +7492,36 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !------- surface net sw flux, direct and diffuse  --------------------
         if ( id_flux_sw_dir > 0 ) then
          used = send_data ( id_flux_sw_dir, &
-          Rad_output%flux_sw_surf_dir( is:ie,js:je), Time_diag, is, js )
+          Rad_output%flux_sw_surf_dir( is:ie,js:je,nz), Time_diag,  &
+                                                              is, js )
         endif
         if ( id_flux_sw_dif > 0 ) then
           used = send_data ( id_flux_sw_dif, &
-           Rad_output%flux_sw_surf_dif(is:ie,js:je), Time_diag, is, js )
+           Rad_output%flux_sw_surf_dif(is:ie,js:je,nz), Time_diag, &
+                                                              is, js )
         endif
 
 !------- surface downward visible sw flux, direct and diffuse ----------
         if ( id_flux_sw_down_vis_dir > 0 ) then
           used = send_data ( id_flux_sw_down_vis_dir, &
-                     Rad_output%flux_sw_down_vis_dir(is:ie,js:je), &
+                     Rad_output%flux_sw_down_vis_dir(is:ie,js:je,nz), &
                      Time_diag, is, js )
         endif
         if ( id_flux_sw_down_vis_dif > 0 ) then
           used = send_data ( id_flux_sw_down_vis_dif, &
-                     Rad_output%flux_sw_down_vis_dif(is:ie, js:je), &
+                     Rad_output%flux_sw_down_vis_dif(is:ie, js:je,nz), &
                      Time_diag, is, js )
         endif
  
 !------- surface downward total sw flux, direct and diffuse  ----------
         if ( id_flux_sw_down_total_dir > 0 ) then
           used = send_data ( id_flux_sw_down_total_dir,  &
-                     Rad_output%flux_sw_down_total_dir(is:ie,js:je),  &
+                     Rad_output%flux_sw_down_total_dir(is:ie,js:je,nz),  &
                      Time_diag, is, js )
         endif
         if ( id_flux_sw_down_total_dif > 0 ) then
          used = send_data ( id_flux_sw_down_total_dif,  &
-                    Rad_output%flux_sw_down_total_dif(is:ie,js:je),  &
+                    Rad_output%flux_sw_down_total_dif(is:ie,js:je,nz),  &
                     Time_diag, is, js )
         endif
 
@@ -7174,17 +7530,17 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !------- surface downward total sw flux, direct and diffuse  ----------
         if ( id_flux_sw_down_total_dir_clr > 0 ) then
           used = send_data ( id_flux_sw_down_total_dir_clr,  &
-                 Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je),  &
+                 Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je,nz),&
                  Time_diag, is, js )
         endif
         if ( id_flux_sw_down_total_dif_clr > 0 ) then
           used = send_data ( id_flux_sw_down_total_dif_clr,  &
-                  Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je),  &
+                  Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je,nz),  &
                   Time_diag, is, js )
         endif
         if ( id_flux_sw_down_vis_clr > 0 ) then
           used = send_data ( id_flux_sw_down_vis_clr, &
-                     Rad_output%flux_sw_down_vis_clr(is:ie, js:je), &
+                     Rad_output%flux_sw_down_vis_clr(is:ie, js:je,nz), &
                      Time_diag, is, js )
         endif
       endif
@@ -7192,15 +7548,15 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !------- surface net visible sw flux, total, direct and diffuse -------
         if ( id_flux_sw_vis > 0 ) then
           used = send_data ( id_flux_sw_vis,   &
-                Rad_output%flux_sw_vis(is:ie,js:je), Time_diag, is, js )
+                Rad_output%flux_sw_vis(is:ie,js:je,nz), Time_diag, is, js )
         endif
         if ( id_flux_sw_vis_dir > 0 ) then
           used = send_data ( id_flux_sw_vis_dir,   &
-            Rad_output%flux_sw_vis_dir(is:ie,js:je), Time_diag, is, js )
+            Rad_output%flux_sw_vis_dir(is:ie,js:je,nz), Time_diag, is, js )
         endif
         if ( id_flux_sw_vis_dif > 0 ) then
           used = send_data ( id_flux_sw_vis_dif,  &
-            Rad_output%flux_sw_vis_dif(is:ie,js:je), Time_diag, is, js )
+            Rad_output%flux_sw_vis_dif(is:ie,js:je,nz), Time_diag, is, js )
         endif
 
 !------- cosine of zenith angle ----------------
@@ -7212,7 +7568,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
         if ( id_fracday > 0 ) then
           used = send_data (id_fracday, Astro%fracday, Time_diag,   &
                             is, js )
-        endif
+        end if
       endif
       endif   ! (renormalize_sw_fluxes .or. do_rad .or.   
               !  all_step_diagnostics)
@@ -7222,7 +7578,8 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !    package.  convert to mks units.
 !---------------------------------------------------------------------
       if (do_sea_esf_rad) then
-        if (do_rad) then
+!       if (do_rad) then
+        if (do_lw_rad) then
           olr  (:,:)   = Lw_output(1)%flxnet(:,:,1)
           lwups(:,:)   =   STEFAN*ts(:,:  )**4
           lwdns(:,:)   = lwups(:,:) - Lw_output(1)%flxnet(:,:,kmax+1)
@@ -7285,7 +7642,8 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !    if this is not a radiation step, but diagnostics are desired,
 !    define the fields from the xxx_save variables.
 !---------------------------------------------------------------------
-         else if (all_step_diagnostics) then  ! (do_rad)
+!        else if (all_step_diagnostics) then  ! (do_rad)
+         else if (all_step_diagnostics) then  ! (do_lw_rad)
            if (do_lwaerosol_forcing) then 
              olr_ad(:,:)     = olr_ad_save  (is:ie,js:je)
              lwups_ad(:,:)   = lwups_ad_save(is:ie,js:je)
@@ -7317,7 +7675,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !    original_fms_rad package.        
 !---------------------------------------------------------------------
       else   ! original fms rad
-        if (do_rad) then
+        if (do_lw_rad) then
           olr  (:,:)   = Fsrad_output%olr(:,:)
           lwups(:,:)   = Fsrad_output%lwups(:,:)
           lwdns(:,:)   = Fsrad_output%lwdns(:,:)
@@ -7332,7 +7690,7 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
         endif
       endif  ! do_sea_esf_rad
 
-      if (do_rad .or. all_step_diagnostics) then
+      if (do_lw_rad .or. all_step_diagnostics) then
       if (Time_diag > Time) then
 !---------------------------------------------------------------------
 !   send standard lw diagnostics to diag_manager.
@@ -7494,18 +7852,20 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 
         endif  ! (do_clear_sky_pass)
         endif
-      endif  ! (do_rad .or. all_step_diagnostics)
+      endif  ! (do_lw_rad .or. all_step_diagnostics)
 
 !--------------------------------------------------------------------
 !    now define various diagnostic integrals.
 !--------------------------------------------------------------------
-      if (do_rad) then
 
 !--------------------------------------------------------------------
 !    accumulate global integral quantities 
 !--------------------------------------------------------------------
         call sum_diag_integral_field ('olr',    olr,        is, js)
-        call sum_diag_integral_field ('abs_sw', swin-swout, is, js)
+        call sum_diag_integral_field ('abs_sw', (swin-swout), is, js)
+!       call sum_diag_integral_field ('olr_clr',    olr_clr, is, js)
+!       call sum_diag_integral_field ('abs_sw_clr',    &
+!                                           swin_clr-swout_clr, is, js)
 
 !--------------------------------------------------------------------
 !    accumulate hemispheric integral quantities, if desired. 
@@ -7593,7 +7953,6 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
                                         is, js)
           endif
         endif   ! (calc_hemi_integrals)
-      endif  ! (do_rad)
 
 !---------------------------------------------------------------------
 
@@ -7686,7 +8045,10 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
         deallocate (Astro%solar)
         deallocate (Astro%cosz )
         deallocate (Astro%fracday)
-          if ( do_rad .and. renormalize_sw_fluxes   &
+        deallocate (Astro%solar_p)
+        deallocate (Astro%cosz_p )
+        deallocate (Astro%fracday_p)
+          if ( do_sw_rad .and. renormalize_sw_fluxes   &
               .and. Sw_control%do_diurnal ) then 
             deallocate (Astro2%solar)
             deallocate (Astro2%cosz )
@@ -7698,7 +8060,7 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
 !    deallocate the variables in Lw_output.
 !--------------------------------------------------------------------
       if (do_sea_esf_rad) then
-        if (do_rad) then
+        if (do_lw_rad) then
          do n=1,size_of_lwoutput
           deallocate (Lw_output(n)%heatra    )
           deallocate (Lw_output(n)%flxnet    )
@@ -7711,10 +8073,12 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
             deallocate (Lw_output(n)%bdy_flx_clr)
           endif
         end do
+      endif
 
 !--------------------------------------------------------------------
 !    deallocate the variables in Sw_output.
 !--------------------------------------------------------------------
+        if (do_sw_rad) then
         do n=1,size_of_swoutput
           deallocate (Sw_output(n)%dfsw     )
           deallocate (Sw_output(n)%ufsw     )
@@ -7738,6 +8102,7 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
             deallocate (Sw_output(n)%hswcf   )
             deallocate (Sw_output(n)%dfsw_dir_sfc_clr)
             deallocate (Sw_output(n)%dfsw_dif_sfc_clr)
+            deallocate (Sw_output(n)%dfsw_vis_sfc_clr)
             deallocate (Sw_output(n)%swdn_special_clr)
             deallocate (Sw_output(n)%swup_special_clr)
             deallocate (Sw_output(n)%bdy_flx_clr)

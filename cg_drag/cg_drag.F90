@@ -35,8 +35,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.F90,v 15.0 2007/08/14 03:52:37 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+character(len=128)  :: version =  '$Id: cg_drag.F90,v 16.0 2008/07/30 22:06:15 fms Exp $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 
 
@@ -357,21 +357,19 @@ type(time_type),         intent(in)      :: Time
         endif
       end do
 
-     write(*,*) "mpp_pe(), klevel_of_source",mpp_pe(), klevel_of_source
-
-        do j=1,jdf
-          lat(:,j)=  0.5*( latb(:,j+1)+latb(:,j) )
-          do i=1,idf
-            source_level(i,j) = (kmax + 1) - ((kmax + 1 -    &
-                                klevel_of_source)*cos(lat(i,j)) + 0.5)
-            source_amp(i,j) = Bt_0 +                         &
-                        Bt_nh*0.5*(1.+tanh((lat(i,j)/pif-phi0n)/dphin)) + &
-                        Bt_sh*0.5*(1.+tanh((lat(i,j)/pif-phi0s)/dphis))
-          end do
+      do j=1,jdf
+        lat(:,j)=  0.5*( latb(:,j+1)+latb(:,j) )
+        do i=1,idf
+          source_level(i,j) = (kmax + 1) - ((kmax + 1 -    &
+                              klevel_of_source)*cos(lat(i,j)) + 0.5)
+          source_amp(i,j) = Bt_0 +                         &
+                      Bt_nh*0.5*(1.+tanh((lat(i,j)/pif-phi0n)/dphin)) + &
+                      Bt_sh*0.5*(1.+tanh((lat(i,j)/pif-phi0s)/dphis))
         end do
-        source_level = MIN (source_level, kmax-1)
+      end do
+      source_level = MIN (source_level, kmax-1)
 
-       deallocate( lat )
+      deallocate( lat )
 
 !---------------------------------------------------------------------
 !    determine if column diagnostics are desired from this module. if

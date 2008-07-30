@@ -52,8 +52,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: radiation_diag.F90,v 15.0 2007/08/14 03:55:28 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+character(len=128)  :: version =  '$Id: radiation_diag.F90,v 16.0 2008/07/30 22:08:46 fms Exp $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 
 !---------------------------------------------------------------------
@@ -962,6 +962,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !  miscellaneous indices
 !---------------------------------------------------------------------
       integer ::   kc, nprt, ny, nx, k, nn, m, n
+      integer :: nz
 
       if (Rad_control%do_swaerosol_forcing) then
         Sw_output_ad = Sw_output(Rad_control%indx_swaf)
@@ -1206,6 +1207,16 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                                Sw_control%solar_constant*Astro%rrsun, &
                                Astro%cosz(iloc,jloc), &
                                Astro%fracday(iloc,jloc)
+            if (Rad_control%hires_coszen) then
+              write (radiag_unit, 9081)
+              do nz = 1,Rad_control%nzens
+                write (radiag_unit, 9082) nz
+            write (radiag_unit,9080)    &
+                               Sw_control%solar_constant*Astro%rrsun, &
+                               Astro%cosz_p(iloc,jloc,nz), &
+                               Astro%fracday_p(iloc,jloc,nz)
+              end do
+             endif
         
 !----------------------------------------------------------------------
 !    write out atmospheric input data and longwave fluxes and heating
@@ -1264,36 +1275,38 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
             else if (Sw_control%do_lhsw) then
               write (radiag_unit, 99018)
             endif
+          do nz=1,Rad_control%nzens
+                write (radiag_unit, 9082) nz
             write (radiag_unit,9140)
             write (radiag_unit,9150) (k, press(k),   &
-                                     Sw_output(1)%hsw  (iloc,jloc,k), &
-                                     Sw_output(1)%fsw  (iloc,jloc,k), &
-                                     Sw_output(1)%dfsw (iloc,jloc,k),    &
-                                     Sw_output(1)%ufsw (iloc,jloc,k),&
+                                     Sw_output(1)%hsw  (iloc,jloc,k,nz), &
+                                     Sw_output(1)%fsw  (iloc,jloc,k,nz), &
+                                     Sw_output(1)%dfsw (iloc,jloc,k,nz),    &
+                                     Sw_output(1)%ufsw (iloc,jloc,k,nz),&
                                      pflux          (k), k=ks,ke)
             write (radiag_unit,6556) press(ke+1),    &
-                                     Sw_output(1)%fsw  (iloc,jloc,ke+1), &
-                                     Sw_output(1)%dfsw (iloc,jloc,ke+1), &
-                                     Sw_output(1)%ufsw (iloc,jloc,ke+1), &
+                                     Sw_output(1)%fsw  (iloc,jloc,ke+1,nz), &
+                                     Sw_output(1)%dfsw (iloc,jloc,ke+1,nz), &
+                                     Sw_output(1)%ufsw (iloc,jloc,ke+1,nz), &
                                      pflux          (ke+1)
 
             if (Sw_control%do_esfsw) then
-              dfsw_nir = Sw_output(1)%dfsw(iloc,jloc,ke+1) -   &
-                           Sw_output(1)%dfsw_vis_sfc(iloc,jloc)
-              dfsw_nir_dir = Sw_output(1)%dfsw_dir_sfc(iloc,jloc) -   &
-                             Sw_output(1)%dfsw_vis_sfc_dir(iloc,jloc)
-              dfsw_nir_dif = Sw_output(1)%dfsw_dif_sfc(iloc,jloc) -   &
-                             Sw_output(1)%dfsw_vis_sfc_dif(iloc,jloc)
-              ufsw_nir = Sw_output(1)%ufsw(iloc,jloc,ke+1) -   &
-                         Sw_output(1)%ufsw_vis_sfc(iloc,jloc)
-              ufsw_nir_dif = Sw_output(1)%ufsw_dif_sfc(iloc,jloc) -   &
-                            Sw_output(1)%ufsw_vis_sfc_dif(iloc,jloc)
+              dfsw_nir = Sw_output(1)%dfsw(iloc,jloc,ke+1,nz) -   &
+                           Sw_output(1)%dfsw_vis_sfc(iloc,jloc,nz)
+              dfsw_nir_dir = Sw_output(1)%dfsw_dir_sfc(iloc,jloc,nz) -   &
+                             Sw_output(1)%dfsw_vis_sfc_dir(iloc,jloc,nz)
+              dfsw_nir_dif = Sw_output(1)%dfsw_dif_sfc(iloc,jloc,nz) -   &
+                             Sw_output(1)%dfsw_vis_sfc_dif(iloc,jloc,nz)
+              ufsw_nir = Sw_output(1)%ufsw(iloc,jloc,ke+1,nz) -   &
+                         Sw_output(1)%ufsw_vis_sfc(iloc,jloc,nz)
+              ufsw_nir_dif = Sw_output(1)%ufsw_dif_sfc(iloc,jloc,nz) -   &
+                            Sw_output(1)%ufsw_vis_sfc_dif(iloc,jloc,nz)
               write (radiag_unit, 99026)    &
-                           Sw_output(1)%dfsw_vis_sfc(iloc,jloc), &
-                           Sw_output(1)%ufsw_vis_sfc(iloc,jloc), &
-                           Sw_output(1)%dfsw_vis_sfc_dir(iloc,jloc), &
-                           Sw_output(1)%dfsw_vis_sfc_dif(iloc,jloc), &
-                           Sw_output(1)%ufsw_vis_sfc_dif(iloc,jloc), &
+                           Sw_output(1)%dfsw_vis_sfc(iloc,jloc,nz), &
+                           Sw_output(1)%ufsw_vis_sfc(iloc,jloc,nz), &
+                           Sw_output(1)%dfsw_vis_sfc_dir(iloc,jloc,nz), &
+                           Sw_output(1)%dfsw_vis_sfc_dif(iloc,jloc,nz), &
+                           Sw_output(1)%ufsw_vis_sfc_dif(iloc,jloc,nz), &
                            dfsw_nir, ufsw_nir,  &
                            dfsw_nir_dir,               &
                            dfsw_nir_dif, ufsw_nir_dif
@@ -1305,10 +1318,10 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !----------------------------------------------------------------------
             do k=ks,ke+1
               flwsw(k) = Lw_output(1)%flxnet (iloc,jloc,k) +    &
-                         Sw_output(1)%fsw    (iloc,jloc,k)
+                         Sw_output(1)%fsw    (iloc,jloc,k,nz)
             end do
             do k=ks,ke
-              hlwsw(k) = Sw_output(1)%hsw    (iloc,jloc,k) +    &
+              hlwsw(k) = Sw_output(1)%hsw    (iloc,jloc,k,nz) +    &
                          Lw_output(1)%heatra (iloc,jloc,k)
             end do
             write (radiag_unit,9160)
@@ -1318,6 +1331,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                                       pflux(k), k=ks,ke)
             write (radiag_unit,9180)  press(ke+1), flwsw(ke+1),   &
                                       pflux(ke+1)
+      end do
 
             if (Rad_control%do_totcld_forcing) then
 !----------------------------------------------------------------------
@@ -1358,18 +1372,20 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !                [ degrees K / day ]
 !----------------------------------------------------------------------
               write (radiag_unit,9410)
-              write (radiag_unit,9140)
+       do nz=1,Rad_control%nzens
+                write (radiag_unit, 9082) nz
+            write (radiag_unit,9140)
               write (radiag_unit,9150) (k, press(k),   &
-                                        Sw_output(1)%hswcf (iloc,jloc,k), &
-                                        Sw_output(1)%fswcf (iloc,jloc,k), &
-                                        Sw_output(1)%dfswcf(iloc,jloc,k),&
-                                        Sw_output(1)%ufswcf(iloc,jloc,k), &
+                                        Sw_output(1)%hswcf (iloc,jloc,k,nz), &
+                                        Sw_output(1)%fswcf (iloc,jloc,k,nz), &
+                                        Sw_output(1)%dfswcf(iloc,jloc,k,nz),&
+                                        Sw_output(1)%ufswcf(iloc,jloc,k,nz), &
                                         pflux(k), k=ks,ke)
               write (radiag_unit,6556)    &
                                     press(ke+1), &
-                                    Sw_output(1)%fswcf(iloc,jloc,ke+1),&
-                                    Sw_output(1)%dfswcf(iloc,jloc,ke+1),  &
-                                    Sw_output(1)%ufswcf(iloc,jloc,ke+1), &
+                                    Sw_output(1)%fswcf(iloc,jloc,ke+1,nz),&
+                                    Sw_output(1)%dfswcf(iloc,jloc,ke+1,nz),  &
+                                    Sw_output(1)%ufswcf(iloc,jloc,ke+1,nz), &
                                     pflux(ke+1)
 
 !----------------------------------------------------------------------
@@ -1378,10 +1394,10 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !----------------------------------------------------------------------
               do k=ks,ke+1
                 flwswcf(k) = Lw_output(1)%flxnetcf(iloc,jloc,k) +    &
-                             Sw_output(1)%fswcf   (iloc,jloc,k)
+                             Sw_output(1)%fswcf   (iloc,jloc,k,nz)
               end do
               do k=ks,ke
-                hlwswcf(k) = Sw_output(1)%hswcf   (iloc,jloc,k) +    &
+                hlwswcf(k) = Sw_output(1)%hswcf   (iloc,jloc,k,nz) +    &
                              Lw_output(1)%heatracf(iloc,jloc,k)
               end do
 
@@ -1391,6 +1407,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                                        flwswcf(k), pflux(k), k=ks,ke)
               write (radiag_unit,9180) press(ke+1), flwswcf(ke+1),  &
                                        pflux(ke+1)
+      end do
             endif
 
             if (Rad_control%do_lwaerosol_forcing) then
@@ -1481,17 +1498,18 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                 write (radiag_unit,9701)
               endif
               write (radiag_unit,9140)
+    do nz = 1, Rad_control%nzens
               write (radiag_unit,9150) (k, press(k),   &
-                                        Sw_output_ad%hsw (iloc,jloc,k), &
-                                        Sw_output_ad%fsw (iloc,jloc,k), &
-                                        Sw_output_ad%dfsw(iloc,jloc,k),&
-                                        Sw_output_ad%ufsw(iloc,jloc,k), &
+                                        Sw_output_ad%hsw (iloc,jloc,k,nz), &
+                                        Sw_output_ad%fsw (iloc,jloc,k,nz), &
+                                        Sw_output_ad%dfsw(iloc,jloc,k,nz),&
+                                        Sw_output_ad%ufsw(iloc,jloc,k,nz), &
                                         pflux(k), k=ks,ke)
               write (radiag_unit,6556)    &
                                     press(ke+1), &
-                                    Sw_output_ad%fsw(iloc,jloc,ke+1),&
-                                    Sw_output_ad%dfsw(iloc,jloc,ke+1),  &
-                                    Sw_output_ad%ufsw(iloc,jloc,ke+1), &
+                                    Sw_output_ad%fsw(iloc,jloc,ke+1,nz),&
+                                    Sw_output_ad%dfsw(iloc,jloc,ke+1,nz),  &
+                                    Sw_output_ad%ufsw(iloc,jloc,ke+1,nz), &
                                     pflux(ke+1)
 ! clear-sky results
               if (Sw_control%do_swaerosol) then
@@ -1503,21 +1521,23 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
               endif
               write (radiag_unit,9140)
               write (radiag_unit,9150) (k, press(k),   &
-                                        Sw_output_ad%hswcf (iloc,jloc,k), &
-                                        Sw_output_ad%fswcf (iloc,jloc,k), &
-                                        Sw_output_ad%dfswcf(iloc,jloc,k),&
-                                        Sw_output_ad%ufswcf(iloc,jloc,k), &
+                                        Sw_output_ad%hswcf (iloc,jloc,k,nz), &
+                                        Sw_output_ad%fswcf (iloc,jloc,k,nz), &
+                                        Sw_output_ad%dfswcf(iloc,jloc,k,nz),&
+                                        Sw_output_ad%ufswcf(iloc,jloc,k,nz), &
                                         pflux(k), k=ks,ke)
               write (radiag_unit,6556)    &
                                     press(ke+1), &
-                                    Sw_output_ad%fswcf(iloc,jloc,ke+1),&
-                                    Sw_output_ad%dfswcf(iloc,jloc,ke+1),  &
-                                    Sw_output_ad%ufswcf(iloc,jloc,ke+1), &
+                                    Sw_output_ad%fswcf(iloc,jloc,ke+1,nz),&
+                                    Sw_output_ad%dfswcf(iloc,jloc,ke+1,nz),  &
+                                    Sw_output_ad%ufswcf(iloc,jloc,ke+1,nz), &
                                     pflux(ke+1)
+        end do
             endif
 
             if (Rad_control%do_lwaerosol_forcing .and.   &
                 Rad_control%do_swaerosol_forcing) then
+       do nz=1,Rad_control%nzens
 !----------------------------------------------------------------------
 !    compute and write out total radiative heating and total fluxes 
 !    (lw + sw, up-down) for the total-sky and cloud-free case
@@ -1525,14 +1545,14 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 !----------------------------------------------------------------------
               do k=ks,ke+1
                 flwsw(k) = Lw_output_ad%flxnet(iloc,jloc,k) +    &
-                             Sw_output_ad%fsw   (iloc,jloc,k)
+                             Sw_output_ad%fsw   (iloc,jloc,k,nz)
                 flwswcf(k) = Lw_output_ad%flxnetcf(iloc,jloc,k) +    &
-                             Sw_output_ad%fswcf   (iloc,jloc,k)
+                             Sw_output_ad%fswcf   (iloc,jloc,k,nz)
               end do
               do k=ks,ke
-                hlwsw(k) = Sw_output_ad%hsw   (iloc,jloc,k) +    &
+                hlwsw(k) = Sw_output_ad%hsw   (iloc,jloc,k,nz) +    &
                              Lw_output_ad%heatra(iloc,jloc,k)
-                hlwswcf(k) = Sw_output_ad%hswcf   (iloc,jloc,k) +    &
+                hlwswcf(k) = Sw_output_ad%hswcf   (iloc,jloc,k,nz) +    &
                              Lw_output_ad%heatracf(iloc,jloc,k)
               end do
 
@@ -1550,6 +1570,7 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
                                        flwswcf(k), pflux(k), k=ks,ke)
               write (radiag_unit,9180) press(ke+1), flwswcf(ke+1),  &
                                        pflux(ke+1)
+     end do
             endif
 
 !----------------------------------------------------------------------
@@ -1968,6 +1989,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
 9079   format (//, ' *********** ASTRONOMICAL DATA ****************')
 9080   format (/,' INCOMING SOLAR FLUX =',F12.6,' W/M**2',/,  &
                ' COS(AZIMUTH)=',F12.6,10X,' FRACTION SUNUP=',F12.6)
+9081   format (//, 'FOR THE HIRES ZENITH ANGLES OF THIS STEP:')
+9082   format (/, ' ZENITH ANGLE NUMBER :', I4)
 9090   format (//,'********* LW HEATING RATES AND FLUXES ***********',/)
 9100   format ('  LVL',' PRESSURE   ',4X,' TEMP.     ','H2O MMR',5X,&
                'O3 MMR',7X,'HEAT RATE',2X,'NET FLUX',3X,'FLUX PRESS.')

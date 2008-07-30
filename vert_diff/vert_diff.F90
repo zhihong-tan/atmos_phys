@@ -73,7 +73,7 @@ integer :: sphum, mix_rat
 !--------------------- version number ---------------------------------
 
 character(len=128) :: version = '$Id: vert_diff.F90,v 15.0 2007/08/14 03:56:22 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: tagname = '$Name: perth $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS

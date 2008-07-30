@@ -71,8 +71,8 @@ private
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 
-character(len=128) :: version = '$Id: sea_esf_rad.F90,v 15.0 2007/08/14 03:55:39 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: version = '$Id: sea_esf_rad.F90,v 16.0 2008/07/30 22:08:59 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 
 
 !--------------------------------------------------------------------
@@ -415,31 +415,37 @@ real, dimension(:,:,:,:),     intent(inout)  :: r
 !----------------------------------------------------------------------
 !    compute longwave radiation.
 !----------------------------------------------------------------------
+    if (Rad_control%do_lw_rad) then
       call mpp_clock_begin (longwave_clock)
       call longwave_driver (is, ie, js, je, Rad_time, Atmos_input,  &
                             Rad_gases, Aerosol, Aerosol_props,   &
                             Cldrad_props, Cld_spec, Aerosol_diags, &
                             Lw_output, Lw_diagnostics)
       call mpp_clock_end (longwave_clock)
+    endif
 
 !----------------------------------------------------------------------
 !    compute shortwave radiation.
 !----------------------------------------------------------------------
+    if (Rad_control%do_sw_rad) then
       call mpp_clock_begin (shortwave_clock)
       call shortwave_driver (is, ie, js, je, Atmos_input, Surface,  &
                              Astro, Aerosol, Aerosol_props, Rad_gases, &
                              Cldrad_props, Cld_spec, Sw_output,   &
                              Cldspace_rad, Aerosol_diags, r)
       call mpp_clock_end (shortwave_clock)
+    endif
 
 !--------------------------------------------------------------------
 !    call radiation_diag_driver to compute radiation diagnostics at 
 !    desired points.
 !--------------------------------------------------------------------
+    if (Rad_control%do_sw_rad .and. Rad_control%do_lw_rad) then
       call radiation_diag_driver (is, ie, js, je, Atmos_input, Surface,&
                                   Astro, Rad_gases, Cldrad_props,   &
                                   Cld_spec, Sw_output, Lw_output, &
                                   Lw_diagnostics, Cldspace_rad)
+    endif
 
 !---------------------------------------------------------------------
 !    call deallocate_arrays to deallocate the array components of the 
@@ -566,6 +572,7 @@ type(cld_space_properties_type), intent(inout)   :: Cldspace_rad
 !--------------------------------------------------------------------
 !    deallocate the components of Lw_diagnostics.
 !--------------------------------------------------------------------
+    if (Rad_control%do_lw_rad) then
       deallocate (Lw_diagnostics%flx1e1)
       deallocate (Lw_diagnostics%fluxn )
       deallocate (Lw_diagnostics%cts_out)
@@ -580,6 +587,7 @@ type(cld_space_properties_type), intent(inout)   :: Cldspace_rad
       if (Rad_control%do_totcld_forcing) then
         deallocate (Lw_diagnostics%fluxncf)
       endif
+   endif
 
 !--------------------------------------------------------------------
 !    deallocate the components of Cldspace_rad. these arrays are only
@@ -587,6 +595,7 @@ type(cld_space_properties_type), intent(inout)   :: Cldspace_rad
 !    therefore one must test for pointer association before deallo-
 !    cating the memory.
 !--------------------------------------------------------------------
+   if (Rad_control%do_sw_rad) then
       if (Sw_control%do_lhsw) then
         if (associated ( Cldspace_rad%camtswkc) ) then
           deallocate (Cldspace_rad%camtswkc )
@@ -597,6 +606,7 @@ type(cld_space_properties_type), intent(inout)   :: Cldspace_rad
           deallocate (Cldspace_rad%kbtmswkc )
         endif
       endif
+    endif
 
 !--------------------------------------------------------------------
 

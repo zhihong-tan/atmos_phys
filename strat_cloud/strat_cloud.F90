@@ -576,8 +576,8 @@ module strat_cloud_mod
   !       DECLARE VERSION NUMBER OF SCHEME
   !
 
-  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 15.0.2.1.2.1.2.1.4.4.2.1 2008/02/07 22:27:59 wfc Exp $'
-  Character(len=128) :: Tagname = '$Name: omsk_2008_03 $'
+  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 16.0 2008/07/30 22:09:30 fms Exp $'
+  Character(len=128) :: Tagname = '$Name: perth $'
   logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   !        
@@ -2100,7 +2100,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         integer            :: k,s,ix,jx,kx,sx,naer,na
         real               :: thickness, up_strat, drop, wp2 ! cjg
         real, dimension(3) :: totalmass, mass_ratio
-        real, dimension(size(T,1),size(T,2),size(T,3),3) :: totalmass1
+        real, dimension(size(T,1),size(T,2),size(T,3),4) :: totalmass1
 !rab - variables necessary to clean up strat_cloud....
         real               :: freeze_pt, mult, tmp1s, tmp2s, tmp3s, snow_fact
         real               :: qc0s, qc1s, qceqs, qcbars, C_dts, D_dts
@@ -2179,23 +2179,23 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
      if (allocated(qndt_fill))         deallocate (qndt_fill)
      if (allocated(qndt_destr))        deallocate (qndt_destr)
      if (allocated(qndt_super))        deallocate (qndt_super)
-     if     (id_qndt_cond > 0) then
+     if     (id_qndt_cond + id_qn_cond_col > 0) then
        allocate(qndt_cond(size(T,1),size(T,2),size(T,3)))
                 qndt_cond       = 0.
      endif
-     if     (id_qndt_evap > 0) then
+     if     (id_qndt_evap  + id_qn_evap_col > 0) then
        allocate(qndt_evap(size(T,1),size(T,2),size(T,3)))
                 qndt_evap       = 0.
      endif
-     if     (id_qndt_fill > 0) then
+     if     (id_qndt_fill  + id_qn_fill_col + id_qldt_fill > 0) then
        allocate(qndt_fill(size(T,1),size(T,2),size(T,3)))
                 qndt_fill       = 0.
      endif
-     if     (id_qndt_destr> 0) then
+     if     (id_qndt_destr + id_qn_destr_col > 0) then
        allocate(qndt_destr(size(T,1),size(T,2),size(T,3)))
                 qndt_destr      = 0.
      endif
-     if     (id_qndt_super> 0) then
+     if     (id_qndt_super + id_qn_super_col > 0) then
        allocate(qndt_super(size(T,1),size(T,2),size(T,3)))
                 qndt_super      = 0.
      endif
@@ -2239,126 +2239,127 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
      if (allocated(a_snow_clr_diag))   deallocate (a_snow_clr_diag)
      if (allocated(a_precip_cld_diag)) deallocate (a_precip_cld_diag)
      if (allocated(a_precip_clr_diag)) deallocate (a_precip_clr_diag)
-     if     (id_qldt_cond > 0) then
+     if     (id_qldt_cond  + id_ql_cond_col > 0) then
        allocate(qldt_cond(size(T,1),size(T,2),size(T,3)))
                 qldt_cond         = 0.
      endif
-     if     (id_qldt_evap > 0) then
+     if     (id_qldt_evap  + id_ql_evap_col > 0) then
        allocate(qldt_evap(size(T,1),size(T,2),size(T,3)))
                 qldt_evap         = 0.
      endif
-     if     (id_qldt_eros > 0) then
+     if     (id_qldt_eros  + id_ql_eros_col > 0) then
        allocate(qldt_eros(size(T,1),size(T,2),size(T,3)))
                 qldt_eros         = 0.
      endif
-     if     (id_qldt_berg > 0) then
+     if     (id_qldt_berg  + id_ql_berg_col > 0) then
        allocate(qldt_berg(size(T,1),size(T,2),size(T,3)))
                 qldt_berg         = 0.
      endif
-     if     (id_qldt_freez> 0) then
+     if     (id_qldt_freez + id_ql_freez_col > 0) then
        allocate(qldt_freez(size(T,1),size(T,2),size(T,3)))
                 qldt_freez        = 0.
      endif
-     if     (id_qldt_rime > 0) then
+     if     (id_qldt_rime  + id_ql_rime_col > 0) then
        allocate(qldt_rime(size(T,1),size(T,2),size(T,3)))
                 qldt_rime         = 0.
      endif
-     if     (id_qldt_accr > 0) then
+     if     (id_qldt_accr  + id_ql_accr_col > 0) then
        allocate(qldt_accr(size(T,1),size(T,2),size(T,3)))
                 qldt_accr         = 0.
      endif
-     if     (id_qldt_auto > 0) then
+     if     (id_qldt_auto  + id_ql_auto_col > 0) then
        allocate(qldt_auto(size(T,1),size(T,2),size(T,3)))
                 qldt_auto         = 0.
      endif
-     if     (id_qldt_fill > 0) then
+     if     (id_qldt_fill  + id_ql_fill_col > 0) then
        allocate(qldt_fill(size(T,1),size(T,2),size(T,3)))
                 qldt_fill         = 0.
      endif
-     if     (id_qldt_destr> 0) then
+     if     (id_qldt_destr + id_ql_destr_col > 0) then
        allocate(qldt_destr(size(T,1),size(T,2),size(T,3)))
                 qldt_destr        = 0.
      endif
 
-     if     (id_rain_evap > 0) then
+     if     (id_rain_evap + id_rain_evap_col > 0) then
        allocate(rain_evap(size(T,1),size(T,2),size(T,3)))
                 rain_evap         = 0.
      endif
-     if     (id_liq_adj   > 0) then
+     if     (id_liq_adj  + id_liq_adj_col +   &
+                           id_ice_adj + id_ice_adj_col  > 0) then
        allocate(liq_adj(size(T,1),size(T,2),size(T,3)))
                 liq_adj           = 0.
      endif
-     if     (id_snow_melt > 0) then
+     if     (id_snow_melt  + id_snow_melt_col > 0) then
        allocate(snow_melt(size(T,1),size(T,2),size(T,3)))
                 snow_melt         = 0.
      endif
-     if     (id_ice_adj   > 0) then
+     if     (id_ice_adj  + id_ice_adj_col > 0) then
        allocate(ice_adj(size(T,1),size(T,2),size(T,3)))
                 ice_adj           = 0.
      endif
-     if     (id_snow_subl > 0) then
+     if     (id_snow_subl + id_snow_subl_col > 0) then
        allocate(snow_subl(size(T,1),size(T,2),size(T,3)))
                 snow_subl         = 0.
      endif
 
-     if     (id_qidt_dep  > 0) then
+     if     (id_qidt_dep + id_qi_dep_col > 0) then
        allocate(qidt_dep(size(T,1),size(T,2),size(T,3)))
                 qidt_dep          = 0.
      endif
-     if     (id_qidt_eros > 0) then
+     if     (id_qidt_eros + id_qi_eros_col > 0) then
        allocate(qidt_eros(size(T,1),size(T,2),size(T,3)))
                 qidt_eros         = 0.
      endif
-     if     (id_qidt_fall > 0) then
+     if     (id_qidt_fall + id_qi_fall_col > 0) then
        allocate(qidt_fall(size(T,1),size(T,2),size(T,3)))
                 qidt_fall         = 0.
      endif
-     if     (id_qidt_fill > 0) then
+     if     (id_qidt_fill + id_qi_fill_col > 0) then
        allocate(qidt_fill(size(T,1),size(T,2),size(T,3)))
                 qidt_fill         = 0.
      endif
-     if     (id_qidt_subl > 0) then
+     if     (id_qidt_subl + id_qi_subl_col > 0) then
        allocate(qidt_subl(size(T,1),size(T,2),size(T,3)))
                 qidt_subl         = 0.
      endif
-     if     (id_qidt_melt > 0) then
+     if     (id_qidt_melt + id_qi_melt_col > 0) then
        allocate(qidt_melt(size(T,1),size(T,2),size(T,3)))
                 qidt_melt         = 0.
      endif
-     if     (id_qidt_destr> 0) then
+     if     (id_qidt_destr + id_qi_destr_col > 0) then
        allocate(qidt_destr(size(T,1),size(T,2),size(T,3)))
                 qidt_destr        = 0.
      endif
-     if     (id_qadt_lsform> 0) then
+     if     (id_qadt_lsform + id_qa_lsform_col > 0) then
        allocate(qadt_lsform(size(T,1),size(T,2),size(T,3)))
                 qadt_lsform       = 0.
      endif
-     if     (id_qadt_lsdiss> 0) then
+     if     (id_qadt_lsdiss + id_qa_lsdiss_col > 0) then
        allocate(qadt_lsdiss(size(T,1),size(T,2),size(T,3)))
                 qadt_lsdiss       = 0.
      endif
-     if     (id_qadt_eros  > 0) then
+     if     (id_qadt_eros  + id_qa_eros_col > 0) then
        allocate(qadt_eros(size(T,1),size(T,2),size(T,3)))
                 qadt_eros         = 0.
      endif
-     if     (id_qadt_rhred > 0) then
+     if     (id_qadt_rhred + id_qa_rhred_col > 0) then
        allocate(qadt_rhred(size(T,1),size(T,2),size(T,3)))
                 qadt_rhred        = 0.
      endif
-     if     (id_qadt_destr > 0) then
+     if     (id_qadt_destr + id_qa_destr_col > 0) then
        allocate(qadt_destr(size(T,1),size(T,2),size(T,3)))
                 qadt_destr        = 0.
      endif
-     if     (id_qadt_fill  > 0) then
+     if     (id_qadt_fill + id_qa_fill_col  > 0) then
        allocate(qadt_fill(size(T,1),size(T,2),size(T,3)))
                 qadt_fill         = 0.
      endif
-     if     (id_qadt_super > 0) then
+     if     (id_qadt_super + id_qa_super_col > 0) then
        allocate(qadt_super(size(T,1),size(T,2),size(T,3)))
                 qadt_super        = 0.
      endif
 
-     if     (id_rain_cld    > 0) then
+     if     (id_rain_cld   > 0) then
        allocate(rain_cld_diag(size(T,1),size(T,2),size(T,3)+1))
                 rain_cld_diag     = 0.
      endif
@@ -2602,13 +2603,13 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !
      if (.not. do_pdf_clouds) then
 
-      if (id_qadt_fill > 0) then
+      if (id_qadt_fill  + id_qa_fill_col > 0) then
         where (qa .le. qmin) 
           qadt_fill = -qa * inv_dtcloud
         endwhere
       endif
 
-      if (id_qidt_fill > 0) then
+      if (id_qidt_fill + id_qi_fill_col > 0) then
         where (qi.le.qmin .or. qa.le.qmin) 
           qidt_fill = -qi * inv_dtcloud
         endwhere
@@ -2616,7 +2617,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 
         if (.not. do_liq_num) then
           N3D = 0.
-          if (id_qldt_fill > 0) then
+          if (id_qldt_fill + id_ql_fill_col > 0) then
             where (ql .le. qmin .or. qa .le. qmin) 
               qldt_fill = -ql * inv_dtcloud
             endwhere
@@ -2629,8 +2630,8 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
             do i=1,idim
              if (ql(i,k,j).le.qmin .or. qa(i,k,j).le.qmin .or. qn(i,k,j).le.qmin) then
               N3D(i,k,j) = 0.
-              if (id_qldt_fill > 0) qldt_fill(i,k,j) = -ql(i,k,j) * inv_dtcloud
-              if (id_qndt_fill > 0) qndt_fill(i,k,j) = -qn(i,k,j) * inv_dtcloud
+              if (id_qldt_fill + id_ql_fill_col > 0) qldt_fill(i,k,j) = -ql(i,k,j) * inv_dtcloud
+              if (id_qndt_fill + id_qn_fill_col > 0) qndt_fill(i,k,j) = -qn(i,k,j) * inv_dtcloud
               if (id_debug1 > 0) debug1(i,k,j) = 0.
              endif
             enddo
@@ -2640,7 +2641,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 
      else
 
-      if (id_qidt_fill > 0) then 
+      if (id_qidt_fill + id_qi_fill_col > 0) then 
         where (qi .le. qmin) 
           qidt_fill = -qi * inv_dtcloud
         endwhere
@@ -2648,7 +2649,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 
         if (.not. do_liq_num) then
           N3D = 0.
-          if (id_qldt_fill > 0) then
+          if (id_qldt_fill + id_ql_fill_col > 0) then
             where (ql .le. qmin) 
               qldt_fill = -ql * inv_dtcloud
             endwhere
@@ -2661,8 +2662,11 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
             do i=1,idim
              if (ql(i,k,j).le.qmin .or. qn(i,k,j).le.qmin) then
               N3D(i,k,j) = 0.
-              if (id_qldt_fill > 0) qldt_fill(i,k,j) = -ql(i,k,j) * inv_dtcloud
-              if (id_qldt_fill > 0) qndt_fill(i,k,j) = -qn(i,k,j) * inv_dtcloud
+              if (id_qldt_fill + id_ql_fill_col > 0) qldt_fill(i,k,j) = -ql(i,k,j) * inv_dtcloud
+! Should this just be id_qndt_fill  + id_qn_fill_col ?
+!ORIGINAL:    if (id_qldt_fill  > 0) &
+              if (id_qldt_fill + id_qndt_fill  + id_qndt_fill > 0) &
+                            qndt_fill(i,k,j) = -qn(i,k,j) * inv_dtcloud
               if (id_debug1    > 0) debug1(i,k,j) = 0.
              endif
             enddo
@@ -2738,7 +2742,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !       assumption that the cloudy air is saturated and the temperature 
 !       inside and outside of the cloud are about the same.
           if (qa_upd(i,k) .gt. U(i,k)) then
-             if (id_qadt_rhred > 0 ) qadt_rhred(i,k,j) = (qa_upd(i,k)-U(i,k)) * inv_dtcloud
+             if (id_qadt_rhred  + id_qa_rhred_col > 0 ) qadt_rhred(i,k,j) = (qa_upd(i,k)-U(i,k)) * inv_dtcloud
              SA(i,k,j)   = SA(i,k,j) + U(i,k) - qa_upd(i,k)
              qa_upd(i,k) = U(i,k)      
           end if
@@ -3093,8 +3097,8 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         SA(i,k,j)  = SA(i,k,j) + qc1s - qc0s
         qa_upd(i,k)     = qc1s
         
-        if (id_qadt_lsform > 0) qadt_lsform(i,k,j) =  C_dts * (1.-qcbars) * inv_dtcloud 
-        if (id_qadt_eros   > 0) qadt_eros  (i,k,j) =  D_dts *     qcbars  * inv_dtcloud
+        if (id_qadt_lsform + id_qa_lsform_col > 0) qadt_lsform(i,k,j) =  C_dts * (1.-qcbars) * inv_dtcloud 
+        if (id_qadt_eros  + id_qa_eros_col  > 0) qadt_eros  (i,k,j) =  D_dts *     qcbars  * inv_dtcloud
         tmp5(i,k) = C_dts * (1.-qcbars)
 
 !       The next step is to calculate the change in condensate
@@ -3287,8 +3291,8 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         SA(:,:,j)  = SA(:,:,j) + qag - qa(:,:,j)
         qa_upd     = qag
 
-        if (id_qadt_lsform > 0) qadt_lsform(:,:,j) =  max(qag-qa(:,:,j),0.) * inv_dtcloud 
-        if (id_qadt_lsdiss > 0) qadt_lsdiss(:,:,j) =  max(qa(:,:,j)-qag,0.) * inv_dtcloud
+        if (id_qadt_lsform + id_qa_lsform_col > 0) qadt_lsform(:,:,j) =  max(qag-qa(:,:,j),0.) * inv_dtcloud 
+        if (id_qadt_lsdiss  + id_qa_lsdiss_col > 0) qadt_lsdiss(:,:,j) =  max(qa(:,:,j)-qag,0.) * inv_dtcloud
 
         !define da_ls and tmp5 needed when do_liq_num = .true. (cjg)
         da_ls = max(qag-qa(:,:,j),0.)
@@ -3422,10 +3426,12 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
     
         !compute diagnostics for cloud fraction
         if (id_aall > 0) areaall(:,:,j) = qa_mean
-        if (id_aliq > 0 .or. id_rvolume > 0) then
+!       if (id_aliq > 0 .or. id_rvolume > 0) then
+        if (id_aliq  +  id_rvolume > 0) then
               where (ql_mean .gt. qmin) arealiq(:,:,j) = qa_mean
         end if
-        if (id_aice > 0 .or. id_vfall > 0) then
+!       if (id_aice > 0 .or. id_vfall > 0) then
+        if (id_aice + id_vfall > 0) then
               where (qi_mean .gt. qmin) areaice(:,:,j) = qa_mean
         end if              
 
@@ -3570,7 +3576,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              snow_clr(i,k) = snow_clr(i,k) - tmp2s          
         endif
 
-        if (id_snow_melt > 0) snow_melt(i,k,j) = tmp2s/deltpg(i,k)             
+        if (id_snow_melt + id_snow_melt_col > 0) snow_melt(i,k,j) = tmp2s/deltpg(i,k)             
              
 !-----------------------------------------------------------------------
 !
@@ -3620,7 +3626,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              snow_cld(i,k) = snow_cld(i,k) - tmp2s          
         endif
 
-        if (id_snow_melt > 0) snow_melt(i,k,j) =  snow_melt(i,k,j) + &
+        if (id_snow_melt + id_snow_melt_col > 0) snow_melt(i,k,j) =  snow_melt(i,k,j) + &
                                                 tmp2s/deltpg(i,k)
 
         end if  !for snowmelt bugfix
@@ -3670,7 +3676,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         !snow falling into cloud reduces the amount that
         !falls out of cloud: a loss of cloud ice from settling
         !is defined to be positive
-        if (id_qidt_fall > 0) qidt_fall(:,:,j)= -1.*snow_cld/deltpg
+        if (id_qidt_fall + id_qi_fall_col > 0) qidt_fall(:,:,j)= -1.*snow_cld/deltpg
          
         !compute lamda_f
         lamda_f = 1.6 * 10**(3.+0.023*(tfreeze-T(:,:,j)))
@@ -3785,7 +3791,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
                  ( rad_liq*rad_liq / (rad_liq*rad_liq+20.5) ) *        &
                  ((rain_cld/max(a_rain_cld,qmin)/dens_h2o)**(7./9.))
             
-        if (id_qldt_accr > 0) qldt_accr(:,:,j) = D1_dt
+        if (id_qldt_accr + id_ql_accr_col  > 0) qldt_accr(:,:,j) = D1_dt
     
 !       Autoconversion
 !
@@ -3931,7 +3937,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         !auto conversion will change a_rain_cld upto area of cloud
         where (tmp1 .gt. Dmin) a_rain_cld = qa_mean
 
-        if (id_qldt_auto > 0) qldt_auto(:,:,j) = tmp1        
+        if (id_qldt_auto + id_ql_auto_col > 0) qldt_auto(:,:,j) = tmp1        
 
         if ( id_autocv > 0 ) then
              where ( rad_liq .gt. rthresh ) areaautocv(:,:,j) = qa_mean       
@@ -3996,8 +4002,8 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
                 end do
           end do
 
-         if (id_qndt_cond > 0) qndt_cond(:,:,j) = crystal
-         if (id_qndt_evap > 0) then
+         if (id_qndt_cond + id_qn_cond_col> 0) qndt_cond(:,:,j) = crystal
+         if (id_qndt_evap + id_qn_evap_col > 0) then
            qndt_evap(:,:,j) = 0.
            where (T(:,:,j).lt.tfreeze .and. ql_mean.gt.qmin .and. qa_mean.gt.qmin)              
             qndt_evap(:,:,j) = 1.e-3*exp((12.96*0.0125*(tfreeze-T(:,:,j)))-0.639)
@@ -4030,7 +4036,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 
       endif
 
-        if (id_qldt_berg > 0) qldt_berg(:,:,j) = D2_dt
+        if (id_qldt_berg + id_ql_berg_col > 0) qldt_berg(:,:,j) = D2_dt
        
 !       Accretion of cloud liquid by ice ('Riming')
 !       
@@ -4066,7 +4072,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         
         D2_dt = D2_dt + tmp1
 
-        if (id_qldt_rime > 0) qldt_rime(:,:,j) = tmp1
+        if (id_qldt_rime + id_ql_rime_col > 0) qldt_rime(:,:,j) = tmp1
 
 !       Freezing of cloud liquid to cloud ice occurs when
 !       the temperature is less than -40C. At these very cold temper-
@@ -4086,14 +4092,15 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              D2_dt = log ( ql_mean / qmin )
         end where
         
-        if (id_qldt_freez + id_qldt_rime + id_qldt_berg > 0) then
+        if (id_qldt_freez + id_qldt_rime + id_qldt_berg  + &
+            id_ql_freez_col + id_ql_rime_col + id_ql_berg_col > 0) then
           do k=1,jdim
            do i=1,idim
              if (T(i,k,j).lt.(tfreeze-40.).and.(ql_mean(i,k).gt.qmin)    &
                .and.(qa_mean(i,k).gt.qmin)) then
-               if (id_qldt_freez > 0) qldt_freez(i,k,j) = D2_dt(i,k)
-               if (id_qldt_rime  > 0) qldt_rime (i,k,j) = 0.
-               if (id_qldt_berg  > 0) qldt_berg (i,k,j) = 0.     
+               if (id_qldt_freez  + id_ql_freez_col > 0) qldt_freez(i,k,j) = D2_dt(i,k)
+               if (id_qldt_rime  + id_ql_rime_col > 0) qldt_rime (i,k,j) = 0.
+               if (id_qldt_berg  + id_ql_berg_col > 0) qldt_berg (i,k,j) = 0.     
              endif
            enddo
           enddo
@@ -4279,7 +4286,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !            qcbar = qc0 + 0.5*C_dt
 !       end where
 
-         if (id_qndt_cond > 0) qndt_cond(:,:,j) = 0.
+         if (id_qndt_cond + id_qn_cond_col > 0) qndt_cond(:,:,j) = 0.
 
           do k=1,jdim
             do i=1,idim
@@ -4311,11 +4318,11 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !                Dterm  =  D_dt *      qcbar 
 !        end where
 
-         if (id_qndt_cond > 0) then
+         if (id_qndt_cond + id_qn_cond_col > 0) then
           if ( C_dts.gt. 0 ) qndt_cond(i,k,j)  =  C_dts
          endif
 
-         if (id_qndt_evap > 0) qndt_evap(i,k,j) = D_dts * qcbars !Dterm
+         if (id_qndt_evap + id_qn_evap_col > 0) qndt_evap(i,k,j) = D_dts * qcbars !Dterm
             end do
           end do
 
@@ -4328,17 +4335,17 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !       diagnostics for cloud liquid tendencies
 !       
 
-        if (id_qldt_cond > 0) qldt_cond(:,:,j)  = max(dcond_ls,0.) *inv_dtcloud
-        if (id_qldt_evap > 0) qldt_evap(:,:,j)  = (max(0.,-1.*dcond_ls )/max(ql_mean,   &
+        if (id_qldt_cond + id_ql_cond_col > 0) qldt_cond(:,:,j)  = max(dcond_ls,0.) *inv_dtcloud
+        if (id_qldt_evap + id_ql_evap_col > 0) qldt_evap(:,:,j)  = (max(0.,-1.*dcond_ls )/max(ql_mean,   &
                                  qmin))           *tmp2*inv_dtcloud
-        if (id_qldt_accr > 0) qldt_accr(:,:,j)  = qldt_accr (:,:,j)*tmp2*inv_dtcloud
-        if (id_qldt_auto > 0) qldt_auto(:,:,j)  = qldt_auto (:,:,j)*tmp2*inv_dtcloud
-        if (id_qldt_eros > 0) qldt_eros(:,:,j)  = D_eros           *tmp2*inv_dtcloud 
-        if (id_qldt_berg > 0) qldt_berg(:,:,j)  = qldt_berg (:,:,j)*tmp2*inv_dtcloud
-        if (id_qldt_rime > 0) qldt_rime(:,:,j)  = qldt_rime (:,:,j)*tmp2*inv_dtcloud
-        if (id_qldt_freez> 0) qldt_freez(:,:,j) = qldt_freez(:,:,j)*tmp2*inv_dtcloud
-        if (id_qndt_cond > 0) qndt_cond(:,:,j)  = qndt_cond(:,:,j)*inv_dtcloud 
-        if (id_qndt_evap > 0) qndt_evap(:,:,j)  = qndt_evap(:,:,j)*inv_dtcloud 
+        if (id_qldt_accr + id_ql_accr_col > 0) qldt_accr(:,:,j)  = qldt_accr (:,:,j)*tmp2*inv_dtcloud
+        if (id_qldt_auto + id_ql_auto_col > 0) qldt_auto(:,:,j)  = qldt_auto (:,:,j)*tmp2*inv_dtcloud
+        if (id_qldt_eros + id_ql_eros_col > 0) qldt_eros(:,:,j)  = D_eros           *tmp2*inv_dtcloud 
+        if (id_qldt_berg + id_ql_berg_col > 0) qldt_berg(:,:,j)  = qldt_berg (:,:,j)*tmp2*inv_dtcloud
+        if (id_qldt_rime + id_ql_rime_col > 0) qldt_rime(:,:,j)  = qldt_rime (:,:,j)*tmp2*inv_dtcloud
+        if (id_qldt_freez + id_ql_freez_col > 0) qldt_freez(:,:,j) = qldt_freez(:,:,j)*tmp2*inv_dtcloud
+        if (id_qndt_cond + id_qn_cond_col > 0) qndt_cond(:,:,j)  = qndt_cond(:,:,j)*inv_dtcloud 
+        if (id_qndt_evap + id_qn_evap_col > 0) qndt_evap(:,:,j)  = qndt_evap(:,:,j)*inv_dtcloud 
         
 
 
@@ -4557,11 +4564,11 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !       diagnostics for cloud ice tendencies
 !       
         
-        if (id_qidt_dep  > 0) qidt_dep (i,k,j) = max(dcond_ls_ice(i,k),0.)*inv_dtcloud
-        if (id_qidt_subl > 0) qidt_subl(i,k,j) = (max(0.,-1.*dcond_ls_ice(i,k))/max(qi_mean(i,k), &
+        if (id_qidt_dep + id_qi_dep_col > 0) qidt_dep (i,k,j) = max(dcond_ls_ice(i,k),0.)*inv_dtcloud
+        if (id_qidt_subl + id_qi_subl_col > 0) qidt_subl(i,k,j) = (max(0.,-1.*dcond_ls_ice(i,k))/max(qi_mean(i,k), &
                         qmin))*tmp2s*inv_dtcloud
-        if (id_qidt_melt > 0) qidt_melt(i,k,j) = D2_dt(i,k) *tmp2s*inv_dtcloud
-        if (id_qidt_eros > 0) qidt_eros(i,k,j) = D_eros(i,k)*tmp2s*inv_dtcloud       
+        if (id_qidt_melt + id_qi_melt_col > 0) qidt_melt(i,k,j) = D2_dt(i,k) *tmp2s*inv_dtcloud
+        if (id_qidt_eros + id_qi_eros_col > 0) qidt_eros(i,k,j) = D_eros(i,k)*tmp2s*inv_dtcloud       
        enddo
       enddo
 
@@ -4682,7 +4689,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              rain_clr(i,k) = rain_clr(i,k) - tmp2s   
         endif
         
-        if (id_rain_evap > 0) rain_evap(i,k,j) = tmp2s/deltpg(i,k)
+        if (id_rain_evap + id_rain_evap_col > 0) rain_evap(i,k,j) = tmp2s/deltpg(i,k)
 !rab       enddo 
 !rab      enddo 
 
@@ -4753,7 +4760,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              snow_clr(i,k) = snow_clr(i,k) - tmp2s     
         endif
          
-        if (id_snow_subl > 0) snow_subl(i,k,j) = tmp2s/deltpg(i,k)
+        if (id_snow_subl + id_snow_subl_col > 0) snow_subl(i,k,j) = tmp2s/deltpg(i,k)
        enddo 
       enddo 
 
@@ -4764,10 +4771,10 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !       is not adjusted. This is left for the remainder of the
 !       desctruction code. (cjg)
 
-        if (id_qadt_destr > 0) qadt_destr(:,:,j) = qadt_destr(:,:,j) + SA(:,:,j)*inv_dtcloud
-        if (id_qldt_destr > 0) qldt_destr(:,:,j) = qldt_destr(:,:,j) + SL(:,:,j)*inv_dtcloud
-        if (id_qidt_destr > 0) qidt_destr(:,:,j) = qidt_destr(:,:,j) + SI(:,:,j)*inv_dtcloud
-        if (id_qndt_destr > 0) qndt_destr(:,:,j) = qndt_destr(:,:,j) + SN(:,:,j)*inv_dtcloud
+        if (id_qadt_destr + id_qa_destr_col > 0) qadt_destr(:,:,j) = qadt_destr(:,:,j) + SA(:,:,j)*inv_dtcloud
+        if (id_qldt_destr + id_ql_destr_col > 0) qldt_destr(:,:,j) = qldt_destr(:,:,j) + SL(:,:,j)*inv_dtcloud
+        if (id_qidt_destr + id_qi_destr_col > 0) qidt_destr(:,:,j) = qidt_destr(:,:,j) + SI(:,:,j)*inv_dtcloud
+        if (id_qndt_destr + id_qn_destr_col > 0) qndt_destr(:,:,j) = qndt_destr(:,:,j) + SN(:,:,j)*inv_dtcloud
 
         do k=1,jdim
          do i=1,idim
@@ -4833,10 +4840,10 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
           enddo
         endif  
 
-        if (id_qadt_destr > 0) qadt_destr(:,:,j) = qadt_destr(:,:,j) - SA(:,:,j)*inv_dtcloud
-        if (id_qldt_destr > 0) qldt_destr(:,:,j) = qldt_destr(:,:,j) - SL(:,:,j)*inv_dtcloud
-        if (id_qidt_destr > 0) qidt_destr(:,:,j) = qidt_destr(:,:,j) - SI(:,:,j)*inv_dtcloud
-        if (id_qndt_destr > 0) qndt_destr(:,:,j) = qndt_destr(:,:,j) - SN(:,:,j)*inv_dtcloud
+        if (id_qadt_destr + id_qa_destr_col > 0) qadt_destr(:,:,j) = qadt_destr(:,:,j) - SA(:,:,j)*inv_dtcloud
+        if (id_qldt_destr + id_ql_destr_col > 0) qldt_destr(:,:,j) = qldt_destr(:,:,j) - SL(:,:,j)*inv_dtcloud
+        if (id_qidt_destr + id_qi_destr_col > 0) qidt_destr(:,:,j) = qidt_destr(:,:,j) - SI(:,:,j)*inv_dtcloud
+        if (id_qndt_destr + id_qn_destr_col > 0) qndt_destr(:,:,j) = qndt_destr(:,:,j) - SN(:,:,j)*inv_dtcloud
 
 !-----------------------------------------------------------------------
 !
@@ -4904,7 +4911,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              ! Put supersaturation into cloud
 
              !cloud fraction source diagnostic
-             if (id_qadt_super > 0) then
+             if (id_qadt_super +id_qa_super_col > 0) then
                where (tmp1 .gt. 0.)
                  qadt_super(:,:,j)  = (1.-qa_upd) * inv_dtcloud
                endwhere
@@ -4920,7 +4927,11 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
                                     airdens(i,k,j)*(1. - qa_upd(i,k))
                      SN(i,k,j) = SN(i,k,j) + drop1(i,k)*1.e6/  &
                                    airdens(i,k,j)*(1.-qa_upd(i,k))
-                    endif
+                     if (id_qndt_super + id_qn_super_col > 0)  &
+                        qndt_super(i,k,j) = qndt_super(i,k,j) +   &
+                                                drop1(i,k)*1.e6 / &
+                            airdens(i,k,j)*(1.-qa_upd(i,k))*inv_dtcloud
+                     endif
                   end do
                end do
              endif
@@ -4942,9 +4953,6 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
                    SA(i,k,j) = SA(i,k,j) + (1.-qa_upd(i,k))
                    ST(i,k,j) = ST(i,k,j) + hlv*tmp1(i,k)/cp_air              
                    qa_upd(i,k)   = 1.
-                   if (id_qndt_super > 0)  &
-                      qndt_super(i,k,j) = qndt_super(i,k,j) + drop1(i,k)*1.e6 / &
-                              airdens(i,k,j)*(1.-qa_upd(i,k))*inv_dtcloud
                 endif
                endif
               enddo
@@ -4986,10 +4994,10 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !       Final clean up to remove numerical noise
 !
 
-        if (id_qadt_destr > 0) qadt_destr(:,:,j) = qadt_destr(:,:,j) + SA(:,:,j)*inv_dtcloud
-        if (id_qldt_destr > 0) qldt_destr(:,:,j) = qldt_destr(:,:,j) + SL(:,:,j)*inv_dtcloud
-        if (id_qidt_destr > 0) qidt_destr(:,:,j) = qidt_destr(:,:,j) + SI(:,:,j)*inv_dtcloud
-        if (id_qndt_destr > 0) qndt_destr(:,:,j) = qndt_destr(:,:,j) + SN(:,:,j)*inv_dtcloud
+        if (id_qadt_destr + id_qa_destr_col > 0) qadt_destr(:,:,j) = qadt_destr(:,:,j) + SA(:,:,j)*inv_dtcloud
+        if (id_qldt_destr + id_ql_destr_col > 0) qldt_destr(:,:,j) = qldt_destr(:,:,j) + SL(:,:,j)*inv_dtcloud
+        if (id_qidt_destr + id_qi_destr_col > 0) qidt_destr(:,:,j) = qidt_destr(:,:,j) + SI(:,:,j)*inv_dtcloud
+        if (id_qndt_destr + id_qn_destr_col > 0) qndt_destr(:,:,j) = qndt_destr(:,:,j) + SN(:,:,j)*inv_dtcloud
 
         do k=1,jdim
          do i=1,idim
@@ -5019,10 +5027,10 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
          enddo
         enddo
 
-        if (id_qadt_destr > 0) qadt_destr(:,:,j) = qadt_destr(:,:,j) - SA(:,:,j)*inv_dtcloud
-        if (id_qldt_destr > 0) qldt_destr(:,:,j) = qldt_destr(:,:,j) - SL(:,:,j)*inv_dtcloud
-        if (id_qidt_destr > 0) qidt_destr(:,:,j) = qidt_destr(:,:,j) - SI(:,:,j)*inv_dtcloud
-        if (id_qndt_destr > 0) qndt_destr(:,:,j) = qndt_destr(:,:,j) - SN(:,:,j)*inv_dtcloud
+        if (id_qadt_destr + id_qa_destr_col > 0) qadt_destr(:,:,j) = qadt_destr(:,:,j) - SA(:,:,j)*inv_dtcloud
+        if (id_qldt_destr + id_ql_destr_col > 0) qldt_destr(:,:,j) = qldt_destr(:,:,j) - SL(:,:,j)*inv_dtcloud
+        if (id_qidt_destr + id_qi_destr_col > 0) qidt_destr(:,:,j) = qidt_destr(:,:,j) - SI(:,:,j)*inv_dtcloud
+        if (id_qndt_destr + id_qn_destr_col > 0) qndt_destr(:,:,j) = qndt_destr(:,:,j) - SN(:,:,j)*inv_dtcloud
 
 !-----------------------------------------------------------------------
 !
@@ -5035,7 +5043,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !
 !       add the ice falling out from cloud to qidt_fall
         
-        if (id_qidt_fall > 0) qidt_fall(:,:,j) = qidt_fall(:,:,j) +    & 
+        if (id_qidt_fall + id_qi_fall_col > 0) qidt_fall(:,:,j) = qidt_fall(:,:,j) +    & 
                                          (snow_cld/deltpg)
         
 !-----------------------------------------------------------------------
@@ -6072,6 +6080,7 @@ real, intent (in), optional, dimension(:,:,:) :: MASK
 
       real, dimension(size(T,1),size(T,2),size(T,3)) :: pthickness
       real, dimension(size(T,1),size(T,2),size(T,3)) :: concen, &
+                                    concen_all_sub, &
                                     concen_ss_sub, concen_ss_sup,&
                                     concen_om, concen_na, concen_an
       integer  :: i,j,k,  na , s
@@ -6094,6 +6103,7 @@ real, intent (in), optional, dimension(:,:,:) :: MASK
       if (use_online_aerosol) then
         concen_ss_sub(:,:,:) = 0.
         concen_ss_sup(:,:,:) = 0.
+        concen_all_sub(:,:,:) = 0.
       endif
 
       do k = 1,kdim
@@ -6132,7 +6142,7 @@ real, intent (in), optional, dimension(:,:,:) :: MASK
                do k = 1,kdim
                  do j = 1,jdim
                    do i = 1,idim
-                     totalmass1(i,j,k,3) = totalmass1(i,j,k,3) +  &
+                     totalmass1(i,j,k,4) = totalmass1(i,j,k,4) +  &
                                            Aerosol%aerosol(i,j,k,na)
                    end do
                  end do
@@ -6157,6 +6167,20 @@ real, intent (in), optional, dimension(:,:,:) :: MASK
                    do i = 1,idim
                      concen_ss_sup(i,j,k) = concen_ss_sup(i,j,k) +  &
                                             Aerosol%aerosol(i,j,k,na)
+                   end do
+                 end do
+               end do
+             else if(trim(Aerosol%aerosol_names(na)) == 'bcphilic' .or.&
+                     trim(Aerosol%aerosol_names(na)) == 'bcphobic' .or.&
+                     trim(Aerosol%aerosol_names(na)) == 'dust1' .or.&
+                     trim(Aerosol%aerosol_names(na)) == 'dust2' .or.&
+                     trim(Aerosol%aerosol_names(na)) == 'dust3')  &
+                                                                  then
+               do k = 1,kdim
+                 do j = 1,jdim
+                   do i = 1,idim
+                     concen_all_sub(i,j,k) = concen_all_sub(i,j,k) +  &
+                                             Aerosol%aerosol(i,j,k,na)
                    end do
                  end do
                end do
@@ -6185,7 +6209,10 @@ real, intent (in), optional, dimension(:,:,:) :: MASK
            do k = 1,kdim
              do j = 1,jdim
                do i = 1,idim
-                 totalmass1(i,j,k,2)=concen_ss_sub(i,j,k)
+                 totalmass1(i,j,k,3) = concen_ss_sub(i,j,k)
+                 totalmass1(i,j,k,2) = concen_all_sub(i,j,k) + &
+                                       totalmass1(i,j,k,4) + &
+                                       concen_ss_sub(i,j,k)
                end do
              end do
            end do
@@ -6194,7 +6221,7 @@ real, intent (in), optional, dimension(:,:,:) :: MASK
              do k = 1,kdim
                do j = 1,jdim
                  do i = 1,idim
-                   totalmass1(i,j,k,2) = concen_ss_sub(i,j,k) +  &
+                   totalmass1(i,j,k,3) = concen_ss_sub(i,j,k) +  &
                                                   concen_ss_sup(i,j,k)
                  end do
                end do
@@ -6257,19 +6284,19 @@ real, intent (in), optional, dimension(:,:,:) :: MASK
              do j = 1,jdim
                do i = 1,idim
 !offline
-! NO. 1 Sulfate; NO. 2 Sea Salt; NO. 3 Organics
-                 totalmass1(i,j,k,1) = (Aerosol%aerosol(i,j,k,1) + &
-                                        Aerosol%aerosol(i,j,k,2))
-                 totalmass1(i,j,k,2) = sea_salt_scale*  &
+! NO. 1 natural Sulfate; NO. 2 anthro. sulfate; NO. 3 Sea Salt; NO. 4 Or        ganics
+                 totalmass1(i,j,k,1) = Aerosol%aerosol(i,j,k,2)
+                 totalmass1(i,j,k,2) = Aerosol%aerosol(i,j,k,1)
+                 totalmass1(i,j,k,3) = sea_salt_scale*  &
                                        Aerosol%aerosol(i,j,k,5)
-                 totalmass1(i,j,k,3) = om_to_oc*  &
+                 totalmass1(i,j,k,4) = om_to_oc*  &
                                        Aerosol%aerosol(i,j,k,3)
                end do
              end do
            end do
          endif ! (use_online_aerosol)
 
-         do na = 1, 3
+         do na = 1, 4
            do k = 1,kdim
              do j = 1,jdim
                do i = 1,idim
@@ -6312,8 +6339,7 @@ real, intent (in), optional, dimension(:,:,:) :: MASK
            do k = 1,kdim
              do j = 1,jdim
                do i = 1,idim
-                 concen_om(i,j,k) = totalmass1(i,j,k,3)/  &
-                                    pthickness(i,j,k)*1.0e9*1.0e12  
+                 concen_om(i,j,k) = totalmass1(i,j,k,2)*1.0e12
                end do
              end do
            end do

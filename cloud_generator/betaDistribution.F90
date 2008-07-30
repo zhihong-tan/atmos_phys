@@ -1,6 +1,7 @@
 module beta_dist_mod
   use fms_mod,only: stdlog, write_version_number, &
                     error_mesg, FATAL
+  use mpp_mod,only: get_unit                  
   implicit none
   private 
   
@@ -16,8 +17,8 @@ module beta_dist_mod
   !   x, p, q. The range of P and Q are specified when the tables are built. 
   !   The arrays bounds are from 0 to nSteps + 1, just in case we draw exactly 0 or 1. 
   !
-  character(len=128)  :: version =  '$Id: betaDistribution.F90,v 13.0 2006/03/28 21:07:27 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+  character(len=128)  :: version =  '$Id: betaDistribution.F90,v 16.0 2008/07/30 22:06:18 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: perth $'
   
   logical         :: module_is_initialized = .false.
   
@@ -398,8 +399,10 @@ contains
     logical                         :: readFromFile
 
     ! Local variables
-    integer, parameter :: unit = 909
+!    integer, parameter :: unit = 909
+    integer :: unit
     
+    unit = get_unit()
     open(unit = unit, file = trim(fileName), status = 'old')
     read(unit, '(3(i5, 1x))') Pmax, Qmax, numXSteps
     allocate(   betaDeviateTable(0:numXSteps + 1, Pmax, Qmax), &

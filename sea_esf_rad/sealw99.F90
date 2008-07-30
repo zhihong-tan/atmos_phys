@@ -93,8 +93,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-    character(len=128)  :: version =  '$Id: sealw99.F90,v 15.0 2007/08/14 03:55:42 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+    character(len=128)  :: version =  '$Id: sealw99.F90,v 16.0 2008/07/30 22:09:02 fms Exp $'
+    character(len=128)  :: tagname =  '$Name: perth $'
     logical             ::  module_is_initialized = .false.
 
 !---------------------------------------------------------------------
@@ -502,10 +502,10 @@ type(lw_table_type), intent(inout) :: Lw_tables
 !    be sure that the radiation time step has been defined before using
 !    it.
 !---------------------------------------------------------------------
-      if (Rad_control%rad_time_step_iz) then
+      if (Rad_control%lw_rad_time_step_iz ) then  
       else
         call error_mesg ('sealw99_mod', &
-               'must define rad_time_step before using it', FATAL)
+               'must define lw_rad_time_step before using it', FATAL)
       endif
 
 !---------------------------------------------------------------------
@@ -2578,7 +2578,7 @@ logical,          intent(in) :: calc_gas_tfs_on_first_step,  &
       if (.not. calc_gas_tfs_on_first_step .and. &
           .not. calc_gas_tfs_monthly) then
         if (INT(3600.0*gas_tf_calc_intrvl) <   &
-            Rad_control%rad_time_step) then
+            Rad_control%lw_rad_time_step) then
           call error_mesg ('sealw99_mod', &
              trim(gas)// ' tf calculation interval must be greater&
                     & than or equal to the radiation time step', FATAL)
@@ -2589,7 +2589,7 @@ logical,          intent(in) :: calc_gas_tfs_on_first_step,  &
 !    of the radiation timestep.
 !---------------------------------------------------------------------
         if (mod(INT(3600.0*gas_tf_calc_intrvl),   &
-                Rad_control%rad_time_step) /= 0) then
+                Rad_control%lw_rad_time_step) /= 0) then
           call  error_mesg ('sealw99_mod',  &
            trim(gas)//' transmission function calculation interval &
            &must be integral multiple of radiation time step', FATAL)

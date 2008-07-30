@@ -10,8 +10,8 @@ MODULE CONV_UTILITIES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 15.0.2.1.2.1.2.1.2.1 2007/12/22 11:00:30 rsh Exp $'
-  character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 16.0 2008/07/30 22:09:22 fms Exp $'
+  character(len=128) :: tagname = '$Name: perth $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -42,6 +42,7 @@ MODULE CONV_UTILITIES_k_MOD
     real, pointer :: dudp  (:)=>NULL(), dvdp (:)=>NULL(), thvbot(:)=>NULL()
     real, pointer :: thvtop(:)=>NULL(), qn   (:)=>NULL(), qs    (:)=>NULL()
     real, pointer :: am1   (:)=>NULL(), am2  (:)=>NULL(), am3   (:)=>NULL()
+    real, pointer :: am4   (:)=>NULL()
     real, pointer :: hl    (:)=>NULL(), sshl (:)=>NULL()
 !++++yim     
     real, pointer :: tr    (:,:)=>NULL(), sstr(:,:)=>NULL()
@@ -162,6 +163,7 @@ contains
     allocate ( sd%am1   (1:kd)); sd%am1   =0.;
     allocate ( sd%am2   (1:kd)); sd%am2   =0.;
     allocate ( sd%am3   (1:kd)); sd%am3   =0.;
+    allocate ( sd%am4   (1:kd)); sd%am4   =0.;
     allocate ( sd%hl    (1:kd)); sd%hl    =0.;
     allocate ( sd%sshl  (1:kd)); sd%sshl  =0.;
 !++++yim
@@ -187,7 +189,8 @@ contains
     sd1%u     = sd%u;    sd1%v     =sd%v;
     sd1%ql    = sd%ql;   sd1%qi    =sd%qi;
     sd1%qa    = sd%qa;   sd1%qn    =sd%qn;    
-    sd1%am1   = sd%am1;  sd1%am2   =sd%am2;  sd1%am3   =sd%am3;
+    sd1%am1   = sd%am1;  sd1%am2   =sd%am2; 
+    sd1%am3   = sd%am3;  sd1%am4   =sd%am4;
     sd1%hl    = sd%hl;   sd1%sshl  =sd%sshl;
 !++++yim
     sd1%tr  =sd%tr
@@ -201,7 +204,8 @@ contains
     deallocate ( sd%t, sd%qv, sd%u, sd%v, sd%ql, sd%qi, sd%qa, sd%thc, sd%qct,&
          sd%thv, sd%rh, sd%p, sd%z, sd%dp, sd%dz, sd%rho, sd%nu, sd%leff,     &
          sd%exner, sd%ps, sd%exners, sd%zs, sd%ssthc, sd%ssqct, sd%dudp,      &
-         sd%dvdp, sd%thvbot, sd%thvtop, sd%qn, sd%am1, sd%am2, sd%am3, sd%qs, &
+         sd%dvdp, sd%thvbot, sd%thvtop, sd%qn, sd%am1, sd%am2, sd%am3, &
+         sd%am4, sd%qs, &
 !++++yim
          sd%hl, sd%sshl, sd%tr, sd%sstr)
   end subroutine sd_end_k
@@ -248,7 +252,7 @@ contains
 !#####################################################################
 
   subroutine pack_sd_k (land, coldT, delt, pmid, pint, zmid, zint, &
-                        u, v, t, qv, ql, qi, qa, qn, am1, am2, am3, &
+                      u, v, t, qv, ql, qi, qa, qn, am1, am2, am3, am4,&
                         tracers, sd, Uw_p)
 
     real,    intent(in)              :: land
@@ -259,7 +263,7 @@ contains
     real, intent(in), dimension(:)   :: u, v       !wind profile (m/s)
     real, intent(in), dimension(:)   :: t, qv      !temperature and specific humidity
     real, intent(in), dimension(:)   :: ql, qi, qa, qn !cloud tracers
-    real, intent(in), dimension(:)   :: am1, am2, am3  ! aerosal species
+    real, intent(in), dimension(:)   :: am1, am2, am3, am4  ! aerosal species
     real, intent(in), dimension(:,:) :: tracers        !env. tracers    
     type(sounding), intent(inout)    :: sd
     type(uw_params), intent(inout)    :: Uw_p
@@ -296,6 +300,7 @@ contains
        sd % am1  (k) = am1(nk)
        sd % am2  (k) = am2(nk)
        sd % am3  (k) = am3(nk)
+       sd % am4  (k) = am4(nk)
 !++++yim
        do m=1, size(tracers,2)
           sd % tr (k,m) = tracers (nk,m)

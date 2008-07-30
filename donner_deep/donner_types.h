@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 15.0.2.1.2.1.2.1.2.1 2008/01/19 16:59:32 rsh Exp $
+!  $Id: donner_types.h,v 16.0 2008/07/30 22:07:03 fms Exp $
 
 !#####################################################################
  
@@ -335,6 +335,15 @@ real                :: rmuz_for_closure
 logical             :: do_budget_analysis
 logical             :: force_internal_enthalpy_conservation
 logical             :: do_ensemble_diagnostics
+real             :: evap_in_downdrafts
+real             :: evap_in_environ
+real             :: entrained_into_meso
+real             :: anvil_precip_efficiency
+real             :: meso_down_evap_fraction
+real             :: meso_up_evap_fraction
+real             :: cdeep_cv
+real, dimension(:), pointer :: arat=>NULL()
+real, dimension(:), pointer :: ensemble_entrain_factors_gate=>NULL()
 
 end type donner_nml_type
 

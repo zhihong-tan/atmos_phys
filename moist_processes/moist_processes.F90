@@ -23,7 +23,7 @@ use  sat_vapor_pres_mod, only: lookup_es
 
 use         uw_conv_mod, only: uw_conv, uw_conv_end, uw_conv_init
 
-use    time_manager_mod, only: time_type
+use    time_manager_mod, only: time_type, get_time
 
 use    diag_manager_mod, only: register_diag_field, send_data
 
@@ -91,8 +91,8 @@ private
    integer :: nsphum, nql, nqi, nqa, nqn  ! tracer indices for stratiform clouds
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 15.0.4.1.2.1.2.1.2.1.2.1 2008/02/02 14:16:55 rsh Exp $'
-   character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+   version = '$Id: moist_processes.F90,v 16.0 2008/07/30 22:07:38 fms Exp $'
+   character(len=128) :: tagname = '$Name: perth $'
    logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !-------------------- namelist data (private) --------------------------
@@ -112,6 +112,7 @@ private
    logical :: do_limit_uw = .false.     ! .false. produces previous
                                         ! behavior (cjg )
    logical :: do_donner_conservation_checks = .false.
+   logical :: using_fms = .true.
 
    character(len=64)  :: cmt_mass_flux_source = 'ras'
    real :: pdepth = 150.e2
@@ -198,7 +199,7 @@ namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_uw_conv, do_strat,  &
                                force_donner_moist_conserv, &
                                do_donner_conservation_checks, &
                                do_donner_mca, do_limit_uw, &
-                               do_limit_donner
+                               do_limit_donner, using_fms
 
 !-----------------------------------------------------------------------
 !-------------------- diagnostics fields -------------------------------
@@ -206,7 +207,7 @@ namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_uw_conv, do_strat,  &
 integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_tdt_ls  , id_qdt_ls  , id_prec_ls  , id_snow_ls  , &
            id_precip  , id_WVP, id_LWP, id_IWP, id_AWP, id_gust_conv, &
-           id_tdt_dadj, id_rh,  id_mc, id_mc_donner, id_mc_full, &
+           id_tdt_dadj, id_rh,  id_qs, id_mc, id_mc_donner, id_mc_full, &
            id_tdt_deep_donner, id_qdt_deep_donner, &
            id_qadt_deep_donner, id_qldt_deep_donner, &
            id_qidt_deep_donner, &
@@ -577,6 +578,7 @@ real, dimension(size(t,1),size(t,2)          ) ::  adjust_frac
 real, dimension(size(t,1),size(t,2),size(t,3)) ::  ttnd_adjustment
 
 character(len=32) :: tracer_units, tracer_name
+integer           :: secs, days
 
 real,    dimension (size(t,1), size(t,2)) ::            &
                               enthint, lcondensint, enthdiffint,  &
@@ -937,9 +939,12 @@ real,    dimension (size(t,1), size(t,2)) ::            &
             nn = nn + 1
           endif
         end do
-
-        tkemiz(:,:) = (ustar(:,:)**3 + 0.6*ustar(:,:)*bstar(:,:)* &
-                      pblht(:,:))**(2./3.)
+        tkemiz(:,:)=pblht(:,:)
+        tkemiz(:,:)=min(max(tkemiz(:,:), 0.0),5000.);
+        tkemiz(:,:)=ustar(:,:)**3.+0.6*ustar(:,:)*bstar(:,:)*tkemiz(:,:)
+        where (tkemiz(:,:) .gt. 0.)
+           tkemiz(:,:) = tkemiz(:,:)**(2./3.)
+        end where
         tkemiz(:,:) = MAX (1.e-6, tkemiz(:,:))
 
 !---------------------------------------------------------------------
@@ -948,6 +953,7 @@ real,    dimension (size(t,1), size(t,2)) ::            &
 !    cloud area and precipitation fields.
 !---------------------------------------------------------------------
         call mpp_clock_begin (donner_clock)
+        call get_time (Time, secs, days)
         if (do_strat) then
           call donner_deep (is, ie, js, je, dt, tin, rin, pfull,       &
                             phalf, zfull, zhalf, omega, pblht, tkemiz, &
@@ -955,7 +961,7 @@ real,    dimension (size(t,1), size(t,2)) ::            &
                             sfc_vapor_flux, tr_flux, donner_tracers, &
 !!5 miz replaces cbmf_clo with cbmf
 !                           Time, cbmf_clo,    &
-                            Time, cbmf,    &
+                            secs, days, cbmf,    &
                             cell_cld_frac, cell_liq_amt, cell_liq_size, &
                             cell_ice_amt, cell_ice_size, &
                             cell_droplet_number, &
@@ -977,7 +983,7 @@ real,    dimension (size(t,1), size(t,2)) ::            &
                             sfc_vapor_flux, tr_flux, donner_tracers, &
 !!5 miz replaces cbmf_clo with cbmf
 !                           Time,  cbmf_clo,                &
-                            Time,  cbmf,                &
+                            secs, days,  cbmf,                &
                             cell_cld_frac, cell_liq_amt, cell_liq_size, &
                             cell_ice_amt, cell_ice_size, &
                             cell_droplet_number, &
@@ -3218,6 +3224,14 @@ endif
       endif
 
 !---------------------------------------------------------------------
+!    saturation specific humidity:         
+!---------------------------------------------------------------------
+      if (id_qs > 0) then
+        call qs_calc (pfull, tin, rh, mask)
+        used = send_data (id_qs, rh, Time, is, js, 1, rmask=mask)
+      endif
+
+!---------------------------------------------------------------------
 !    output the global integral of precipitation in units of mm/day.
 !---------------------------------------------------------------------
       call sum_diag_integral_field ('prec', precip*SECONDS_PER_DAY,  &
@@ -3259,6 +3273,7 @@ logical,              intent(out) :: doing_donner, doing_uw_conv
 integer :: unit,io,ierr, n, nt, ntprog
 character(len=32) :: tracer_units, tracer_name
 character(len=80)  :: scheme
+integer            :: secs, days
 !-----------------------------------------------------------------------
 
        if ( module_is_initialized ) return
@@ -3660,10 +3675,11 @@ character(len=80)  :: scheme
 !    initialize the convection scheme modules.
 !--------------------------------------------------------------------
       if (do_donner_deep) then
-        call donner_deep_init (lonb, latb, pref, axes, Time,  &
+        call get_time (Time, secs, days)
+        call donner_deep_init (lonb, latb, pref, axes, secs, days,  &
                                tracers_in_donner,  &
                                do_donner_conservation_checks, &
-                               do_unified_convective_closure)
+                               do_unified_convective_closure, using_fms)
         if (do_donner_conservation_checks) then
           allocate (max_enthalpy_imbal_don (id, jd))
           allocate (max_water_imbal_don (id, jd))
@@ -3841,6 +3857,52 @@ end function doing_strat
 
 END SUBROUTINE rh_calc
 
+!#######################################################################
+
+      subroutine qs_calc(pfull,T,qs,mask)
+
+        implicit none
+
+        real, intent (in),    dimension(:,:,:) :: pfull,T
+        real, intent (out),   dimension(:,:,:) :: qs
+        real, intent (in), optional, dimension(:,:,:) :: mask
+
+        real, dimension(size(t,1),size(t,2),size(t,3)) :: esat
+        
+!-----------------------------------------------------------------------
+!       Calculate saturation specific humidity.
+!       This is calculated according to the formula:
+!
+!       qs   = epsilon*esat / [pfull - (1.-epsilon)*esat])
+!
+!       Where epsilon = RDGAS/RVGAS = d622
+!
+!       and where 1- epsilon = d378
+!
+!       Note that qs does not have its proper value
+!       until all of the following code has been executed.  That
+!       is, qs is used to store intermediary results
+!       in forming the full solution.
+
+        !calculate water saturated vapor pressure from table
+        !and store temporarily in the variable esat
+        call lookup_es(T,esat)
+        
+        !calculate denominator in qs formula
+        qs(:,:,:) = pfull(:,:,:) - d378*esat(:,:,:)
+     
+        !limit denominator to esat, and thus qs to epsilon
+        !this is done to avoid blow up in the upper stratosphere
+        !where pfull ~ esat
+        qs(:,:,:) = max(qs(:,:,:),esat(:,:,:)) 
+        
+        !calculate qs
+        qs(:,:,:) = d622*esat(:,:,:) / qs(:,:,:)
+      
+        !if mask is present set qs to zero
+        if (present(mask)) qs(:,:,:) = mask(:,:,:)*qs(:,:,:)
+
+end subroutine qs_calc
 
 
 !#######################################################################
@@ -4258,6 +4320,10 @@ endif
          'relative humidity',                            'percent',  & 
                         missing_value=missing_value               )
 
+   id_qs = register_diag_field ( mod_name, &
+     'qs', axes(1:3), Time, &
+         'saturation specific humidity',                 'kg/kg',    & 
+                        missing_value=missing_value               )
    
 if (do_donner_deep) then
 

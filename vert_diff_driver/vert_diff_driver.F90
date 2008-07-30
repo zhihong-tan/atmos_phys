@@ -77,8 +77,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 14.0 2007/03/15 22:09:09 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 16.0 2008/07/30 22:09:36 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 
 logical :: module_is_initialized = .false.
 
@@ -165,6 +165,17 @@ integer :: ie, je
     endif
 
 
+!------- diagnostics for dt/dt_diff -------
+    if ( id_tdt_vdif > 0 ) then
+       used = send_data ( id_tdt_vdif, -3.*dt_t, Time, is, js, 1, &
+                           rmask=mask )
+    endif
+    
+!------- diagnostics for dq/dt_diff -------
+    if ( id_qdt_vdif > 0 ) then
+       used = send_data ( id_qdt_vdif, -2.*dt_q, Time, is, js, 1, &
+                          rmask=mask )
+    endif
 
     ! store values of tracer tendencies before the vertical diffusion, if 
     ! requested -- availability of storage serves as an indicatior that 
@@ -213,17 +224,6 @@ integer :: ie, je
             if (present(mask)) dpg = dpg*mask
     endif
     
-!------- diagnostics for dt/dt_diff -------
-    if ( id_tdt_vdif > 0 ) then
-       used = send_data ( id_tdt_vdif, -2.*dt_t, Time, is, js, 1, &
-                           rmask=mask )
-    endif
-    
-!------- diagnostics for dq/dt_diff -------
-    if ( id_qdt_vdif > 0 ) then
-       used = send_data ( id_qdt_vdif, -2.*dt_q, Time, is, js, 1, &
-                          rmask=mask )
-    endif
 
 !------- diagnostics for sens_diff -------
     if ( id_sens_vdif > 0 ) then
@@ -258,6 +258,12 @@ integer :: ie, je
        used = send_data ( id_tdt_diss_vdif, dissipative_heat, Time, &
                           is, js, 1, &
                           rmask=mask)
+    endif
+
+!------- diagnostics for dt/dt_diff -------
+    if ( id_tdt_vdif > 0 ) then
+       used = send_data ( id_tdt_vdif, -3.*dissipative_heat, Time, is, js, 1, &
+                           rmask=mask )
     endif
 
 !------- diagnostics for vertically integrated dissipative heating -------
@@ -308,7 +314,7 @@ integer :: ie, je
 !------- diagnostics for dt/dt_diff -------
 
     if ( id_tdt_vdif > 0 ) then
-       used = send_data ( id_tdt_vdif, 2.*dt_t, Time, is, js, 1, &
+       used = send_data ( id_tdt_vdif, 3.*dt_t, Time, is, js, 1, &
                           rmask=mask )
     endif
 

@@ -65,8 +65,8 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 15.0 2007/08/14 03:55:31 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+'$Id: radiative_gases.F90,v 16.0 2008/07/30 22:08:49 fms Exp $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -1272,7 +1272,9 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
 !---------------------------------------------------------------------
       if (pts_processed == 0 .and. (mpp_pe() == mpp_root_pe()) .and. &
           verbose >= 3) then
-        print_alarm = print_alarm - Rad_control%rad_time_step
+        if (Rad_control%do_lw_rad) then
+          print_alarm = print_alarm - Rad_control%lw_rad_time_step
+        endif
         if (print_alarm <= 0) then
           call get_date (Rad_time, yr, mo, dy, hr, mn, sc)
           write (*, FMT ='(a, i5, i3, i3, i3, i3, i3,   &

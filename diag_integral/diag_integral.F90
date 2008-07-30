@@ -41,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: diag_integral.F90,v 13.0.10.1 2008/01/15 08:41:34 rsh Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: version = '$Id: diag_integral.F90,v 16.0 2008/07/30 22:06:36 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 
 
 !---------------------------------------------------------------------

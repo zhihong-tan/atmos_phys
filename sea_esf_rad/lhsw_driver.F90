@@ -46,8 +46,8 @@ private
 !--------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 14.0 2007/03/15 22:06:04 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 16.0 2008/07/30 22:08:17 fms Exp $'
+    character(len=128)  :: tagname =  '$Name: perth $'
     logical             :: module_is_initialized = .false.
 
 
@@ -1250,11 +1250,11 @@ do kc=1,ncldsw(i,j)
           ufswg(:,:,KS:KE+1) = ufswg(:,:,KS:KE+1) + ufn(:,:,KS:KE+1)
         else
            if (with_clouds) then
-          Sw_output%dfsw (:,:,KS:KE+1) = Sw_output%dfsw (:,:,KS:KE+1) + dfn(:,:,KS:KE+1)
-          Sw_output%ufsw (:,:,KS:KE+1) = Sw_output%ufsw (:,:,KS:KE+1) + ufn(:,:,KS:KE+1)
+          Sw_output%dfsw (:,:,KS:KE+1,1) = Sw_output%dfsw (:,:,KS:KE+1,1) + dfn(:,:,KS:KE+1)
+          Sw_output%ufsw (:,:,KS:KE+1,1) = Sw_output%ufsw (:,:,KS:KE+1,1) + ufn(:,:,KS:KE+1)
   else
-          Sw_output%dfswcf (:,:,KS:KE+1) = Sw_output%dfswcf (:,:,KS:KE+1) + dfn(:,:,KS:KE+1)
-          Sw_output%ufswcf (:,:,KS:KE+1) = Sw_output%ufswcf (:,:,KS:KE+1) + ufn(:,:,KS:KE+1)
+          Sw_output%dfswcf (:,:,KS:KE+1,1) = Sw_output%dfswcf (:,:,KS:KE+1,1) + dfn(:,:,KS:KE+1)
+          Sw_output%ufswcf (:,:,KS:KE+1,1) = Sw_output%ufswcf (:,:,KS:KE+1,1) + ufn(:,:,KS:KE+1)
   endif
         endif
       end do
@@ -1268,17 +1268,17 @@ do kc=1,ncldsw(i,j)
       fswg(:,:,KS:KE))/dp(:,:,KS:KE)
       else
 if (with_clouds) then
-        Sw_output%fsw (:,:,KS:KE+1) = Sw_output%ufsw (:,:,KS:KE+1) - &
-                  Sw_output%dfsw (:,:,KS:KE+1)
-        Sw_output%hsw (:,:,KS:KE  ) = radcon*   &
-         (Sw_output%fsw (:,:,KS+1:KE+1) -    &
-      Sw_output%fsw (:,:,KS:KE))/dp(:,:,KS:KE)
+        Sw_output%fsw (:,:,KS:KE+1,1) = Sw_output%ufsw (:,:,KS:KE+1,1) - &
+                  Sw_output%dfsw (:,:,KS:KE+1,1)
+        Sw_output%hsw (:,:,KS:KE,1  ) = radcon*   &
+         (Sw_output%fsw (:,:,KS+1:KE+1,1) -    &
+      Sw_output%fsw (:,:,KS:KE,1))/dp(:,:,KS:KE)
 else
-        Sw_output%fswcf (:,:,KS:KE+1) = Sw_output%ufswcf (:,:,KS:KE+1) -   &
-              Sw_output%dfswcf (:,:,KS:KE+1)
-        Sw_output%hswcf (:,:,KS:KE  ) = radcon*  &
- (Sw_output%fswcf (:,:,KS+1:KE+1) -    &
-     Sw_output% fswcf (:,:,KS:KE))/dp(:,:,KS:KE)
+        Sw_output%fswcf (:,:,KS:KE+1,1) = Sw_output%ufswcf (:,:,KS:KE+1,1) -   &
+              Sw_output%dfswcf (:,:,KS:KE+1,1)
+        Sw_output%hswcf (:,:,KS:KE,1  ) = radcon*  &
+ (Sw_output%fswcf (:,:,KS+1:KE+1,1) -    &
+     Sw_output% fswcf (:,:,KS:KE,1))/dp(:,:,KS:KE)
       endif
 
       endif
@@ -1356,13 +1356,13 @@ else
 !   convert sw fluxes to mks units.
 !---------------------------------------------------------------------
       if (with_clouds) then
-      Sw_output%fsw(:,:,:) = 1.0E-03*Sw_output%fsw(:,:,:)
-      Sw_output%dfsw(:,:,:) = 1.0E-03*Sw_output%dfsw(:,:,:)
-      Sw_output%ufsw(:,:,:) = 1.0E-03*Sw_output%ufsw(:,:,:)
+      Sw_output%fsw(:,:,:,:) = 1.0E-03*Sw_output%fsw(:,:,:,:)
+      Sw_output%dfsw(:,:,:,:) = 1.0E-03*Sw_output%dfsw(:,:,:,:)
+      Sw_output%ufsw(:,:,:,:) = 1.0E-03*Sw_output%ufsw(:,:,:,:)
       else
-        Sw_output%fswcf(:,:,:) = 1.0E-03*Sw_output%fswcf(:,:,:)
-       Sw_output%dfswcf(:,:,:) = 1.0E-03*Sw_output%dfswcf(:,:,:)
-      Sw_output%ufswcf(:,:,:) = 1.0E-03*Sw_output%ufswcf(:,:,:)
+        Sw_output%fswcf(:,:,:,:) = 1.0E-03*Sw_output%fswcf(:,:,:,:)
+       Sw_output%dfswcf(:,:,:,:) = 1.0E-03*Sw_output%dfswcf(:,:,:,:)
+      Sw_output%ufswcf(:,:,:,:) = 1.0E-03*Sw_output%ufswcf(:,:,:,:)
      endif
 !-------------------------------------------------------------------
 

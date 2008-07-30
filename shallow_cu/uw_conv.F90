@@ -43,8 +43,8 @@ MODULE UW_CONV_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: uw_conv.F90,v 15.0.2.1.2.1.2.1.2.1.2.1 2008/02/02 10:25:31 rsh Exp $'
-  character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+  character(len=128) :: version = '$Id: uw_conv.F90,v 16.0 2008/07/30 22:09:26 fms Exp $'
+  character(len=128) :: tagname = '$Name: perth $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -85,13 +85,14 @@ MODULE UW_CONV_MOD
   real    :: tkemin   = 1.e-6
   real    :: wmin_ratio = 0.
   logical :: use_online_aerosol = .false.
+  logical :: use_sub_seasalt = .true.
   logical :: do_auto_aero = .false.
   logical :: do_rescale   = .false.
   real    :: pblht0 = 500.
   real    :: tke0 = 1.
   real    :: lofactor0 = 1.
   integer :: lochoice  = 0
-  real    :: wrel_min = 0.
+  real    :: wrel_min = 1.
   real    :: om_to_oc = 1.67
   real    :: sea_salt_scale = 0.1
 
@@ -99,7 +100,7 @@ MODULE UW_CONV_MOD
        do_deep, idpchoice, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt,       &
        do_fast, do_ice, do_ppen, do_pevap, do_micro, mixing_assumption, do_forcedlifting, &
        atopevap, apply_tendency, prevent_unreasonable, aerol, gama, tkemin,    &
-       wmin_ratio, use_online_aerosol, landfact_m, pblht0, tke0, lofactor0, lochoice, &
+       wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, tke0, lofactor0, lochoice, &
        do_auto_aero, do_rescale, wrel_min, om_to_oc, sea_salt_scale
        
 
@@ -193,6 +194,7 @@ contains
     integer   :: ntracers, n, nn, ierr
     logical   :: flag
     character(len=200) :: text_in_scheme, control
+     real :: frac_junk
  
     ntracers = count(tracers_in_uw)
 
@@ -298,9 +300,11 @@ contains
                                     cpn%wetdep(nn)%scheme, &
                                     cpn%wetdep(nn)%Henry_constant, &
                                     cpn%wetdep(nn)%Henry_variable, &
-                                    cpn%wetdep(nn)%frac_in_cloud, &
+                                    frac_junk, &
                                     cpn%wetdep(nn)%alpha_r, &
-                                    cpn%wetdep(nn)%alpha_s )
+                                    cpn%wetdep(nn)%alpha_s, &
+                                    frac_in_cloud_uw=  &
+                                          cpn%wetdep(nn)%frac_in_cloud )
              cpn%wetdep(nn)%scheme = lowercase( cpn%wetdep(nn)%scheme )
              nn = nn + 1
           endif
@@ -553,7 +557,7 @@ contains
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: tempdiag1
     real, dimension(size(tb,1),size(tb,2))            :: qtin, dqt, scale_uw
 
-    real, dimension(size(tb,3)) :: am1, am2, am3, qntmp
+    real, dimension(size(tb,3)) :: am1, am2, am3, am4, am5, qntmp
     
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: pmass    ! layer mass (kg/m2)
     real, dimension(size(tb,1),size(tb,2))            :: tempdiag ! temporary diagnostic variable
@@ -576,7 +580,7 @@ contains
     tten=0.; qvten=0.; qlten=0.; qiten=0.; qaten=0.; qnten=0.;
     uten=0.; vten =0.; rain =0.; snow =0.; plcl =0.; plfc=0.; plnb=0.;  
     cldqa=0.; cldql=0.; cldqi=0.; cldqn=0.;
-    hlflx=0.; qtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.;
+    hlflx=0.; qtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.; am4=0.;
     tten_pevap=0.; qvten_pevap=0.;
 
     cino=0.; capeo=0.; tkeo=0.; wrelo=0.; ufrco=0.; zinvo=0.; wuo=0.; 
@@ -587,25 +591,29 @@ contains
 
     naer = size(asol%aerosol,4)
 
+    !relaxation TKE back to 0 with time-scale of disscale
+    !tkeavg = ustar(i,j)*bstar(i,j)*disscale 
+    !dissipate tke with length-scale of disscale
+    !tkeavg=(ustar(i,j)*bstar(i,j)*disscale)**(2./3.)
+    !below following Holtslag and Boville 1993
+    tkeo(:,:)=pblht(:,:)
+    tkeo(:,:)=min(max(tkeo(:,:), 0.0),5000.);
+    tkeo(:,:)=ustar(:,:)**3.+0.6*ustar(:,:)*bstar(:,:)*tkeo(:,:)
+    where (tkeo(:,:) .gt. 0.)
+       tkeo(:,:) = tkeo(:,:)**(2./3.)
+    end where
+    tkeo(:,:) = max(tkemin,tkeo(:,:))
+
     do j = 1, jmax
       do i=1, imax
 
         call clearit(ac, cc, cp, ct, cp1, ct1);
 
-
-          !relaxation TKE back to 0 with time-scale of disscale
-          !tkeavg = ustar(i,j)*bstar(i,j)*disscale 
-          !dissipate tke with length-scale of disscale
-          !tkeavg=(ustar(i,j)*bstar(i,j)*disscale)**(2./3.)
-          !below following Holtslag and Boville 1993
-          tkeo(i,j) = (ustar(i,j)**3.+0.6*ustar(i,j)*bstar(i,j)*pblht(i,j))**(2./3.)
-          tkeo(i,j) = max(tkemin,tkeo(i,j))
-
           cc%scaleh = cush(i,j); 
           cush(i,j) = -1.;
           if(cc%scaleh.le.0.0) cc%scaleh=1000.
 
-          am1(:) = 0.; am2(:) = 0.; am3(:) = 0.;
+          am1(:) = 0.; am2(:) = 0.; am3(:) = 0.; am4(:) = 0.; am5(:) = 0.;
 
           do k=1,kmax
             pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
@@ -613,20 +621,34 @@ contains
             if(use_online_aerosol) then
               do na = 1,naer
                 if(asol%aerosol_names(na) == 'so4' .or. &
-                asol%aerosol_names(na) == 'so4_anthro' .or. asol%aerosol_names(na) == 'so4_natural') then
-                         am1(k)=am1(k)+asol%aerosol(i,j,k,na)*tmp
+                   asol%aerosol_names(na) == 'so4_anthro' .or. &
+                   asol%aerosol_names(na) == 'so4_natural') then
+                           am1(k)=am1(k)+asol%aerosol(i,j,k,na)*tmp
                 else if(asol%aerosol_names(na) == 'omphilic' .or. &
-                 asol%aerosol_names(na) == 'omphobic') then
-                       am3(k)=am3(k)+asol%aerosol(i,j,k,na)*tmp
+                        asol%aerosol_names(na) == 'omphobic') then
+                           am4(k)=am4(k)+asol%aerosol(i,j,k,na)*tmp
+                else if(asol%aerosol_names(na) == 'bcphilic' .or. &
+                        asol%aerosol_names(na) == 'bcphobic' .or. &
+                        asol%aerosol_names(na) == 'dust1' .or. &
+                        asol%aerosol_names(na) == 'dust2' .or. &
+                        asol%aerosol_names(na) == 'dust3' ) then
+                           am2(k)=am2(k)+asol%aerosol(i,j,k,na)*tmp
                 else if(asol%aerosol_names(na) == 'seasalt1' .or. &
-                asol%aerosol_names(na) == 'seasalt2') then
-                       am2(k)=am2(k)+asol%aerosol(i,j,k,na)*tmp
+                        asol%aerosol_names(na) == 'seasalt2') then
+                           am3(k)=am3(k)+asol%aerosol(i,j,k,na)*tmp
+                else if(asol%aerosol_names(na) == 'seasalt3' .or. &
+                        asol%aerosol_names(na) == 'seasalt4' .or. &
+                        asol%aerosol_names(na) == 'seasalt5' ) then
+                           am5(k)=am5(k)+asol%aerosol(i,j,k,na)*tmp
                 end if
               end do
+              am2(k)=am2(k)+am3(k)+am4(k)
+              if(.not. use_sub_seasalt) am3(k)=am3(k)+am5(k)
             else
-              am1(k)=(asol%aerosol(i,j,k,1)+asol%aerosol(i,j,k,2))*tmp
-              am2(k)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp
-              am3(k)= om_to_oc*asol%aerosol(i,j,k,3)*tmp
+              am1(k)= asol%aerosol(i,j,k,2)*tmp
+              am2(k)= asol%aerosol(i,j,k,1)*tmp
+              am3(k)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp
+              am4(k)= om_to_oc*asol%aerosol(i,j,k,3)*tmp
             endif
           end do
 
@@ -641,7 +663,7 @@ contains
           call pack_sd_k(land(i,j), coldT(i,j), delt, pmid(i,j,:), pint(i,j,:),     &
                zmid(i,j,:), zint(i,j,:), ub(i,j,:), vb(i,j,:), tb(i,j,:),   &
                q(i,j,:,nqv), q(i,j,:,nql), q(i,j,:,nqi), q(i,j,:,nqa), qntmp,       &
-               am1(:), am2(:), am3(:), tracers(i,j,:,:), sd, Uw_p)
+               am1(:), am2(:), am3(:), am4(:), tracers(i,j,:,:), sd, Uw_p)
 
 !========Finite volume intepolation==========================================
 

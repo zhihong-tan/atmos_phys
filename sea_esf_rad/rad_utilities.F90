@@ -43,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 15.0.4.1 2007/11/19 13:03:12 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 16.0 2008/07/30 22:08:55 fms Exp $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -105,7 +105,8 @@ public   aerosol_diagnostics_type
 !    sw_heating_vlcno
  
 type aerosol_diagnostics_type
-     real, dimension(:,:,:),   pointer  :: sw_heating_vlcno=>NULL()
+!    real, dimension(:,:,:),   pointer  :: sw_heating_vlcno=>NULL()
+     real, dimension(:,:,:,:),   pointer  :: sw_heating_vlcno=>NULL()
      real, dimension(:,:,:,:,:), pointer  :: extopdep=>NULL(), &
                                              absopdep=>NULL()
      real, dimension(:,:,:,:), pointer  :: extopdep_vlcno=>NULL(), &
@@ -177,6 +178,9 @@ type astronomy_type
      real, dimension(:,:), pointer  :: solar=>NULL(),   &
                                        cosz=>NULL(),  &
                                        fracday=>NULL()
+     real, dimension(:,:,:), pointer  :: solar_p=>NULL(),   &
+                                       cosz_p=>NULL(),  &
+                                       fracday_p=>NULL()
      real    :: rrsun
 end type astronomy_type
 
@@ -844,6 +848,12 @@ type radiation_control_type
     logical  :: do_totcld_forcing
     logical  :: do_aerosol
     integer  :: rad_time_step
+    integer  :: lw_rad_time_step
+    integer  :: sw_rad_time_step
+    logical  :: do_sw_rad
+    logical  :: do_lw_rad
+    logical  :: hires_coszen
+    integer  :: nzens
     real     :: co2_tf_calc_intrvl
     logical  :: use_current_co2_for_tf
     logical  :: calc_co2_tfs_on_first_step
@@ -872,6 +882,12 @@ type radiation_control_type
     logical  :: do_totcld_forcing_iz
     logical  :: do_aerosol_iz
     logical  :: rad_time_step_iz
+    logical  :: lw_rad_time_step_iz
+    logical  :: sw_rad_time_step_iz
+    logical  :: do_sw_rad_iz
+    logical  :: do_lw_rad_iz
+    logical  :: hires_coszen_iz
+    logical  :: nzens_iz  
     logical  :: co2_tf_calc_intrvl_iz
     logical  :: use_current_co2_for_tf_iz
     logical  :: calc_co2_tfs_on_first_step_iz
@@ -963,25 +979,27 @@ public rad_output_type
 !    coszen_angle
 
 type rad_output_type
-     real, dimension(:,:,:), pointer :: tdt_rad=>NULL(),  &
-                                        tdt_rad_clr=>NULL(), &
-                                        tdtsw=>NULL(),   &
-                                        tdtsw_clr=>NULL(),  &
-                                        tdtlw=>NULL()
-     real, dimension(:,:),   pointer :: flux_sw_surf=>NULL(), &
+     real, dimension(:,:,:,:), pointer :: tdt_rad=>NULL(),  &
+                                        tdtsw=>NULL()
+     real, dimension(:,:,:,:), pointer :: tdt_rad_clr=>NULL(), &
+                                        tdtsw_clr=>NULL()
+                                        
+     real, dimension(:,:,:), pointer :: tdtlw=>NULL()
+     real, dimension(:,:,:), pointer :: tdtlw_clr=>NULL()
+     real, dimension(:,:,:),   pointer :: flux_sw_surf=>NULL(), &
                                         flux_sw_surf_dir=>NULL(), &
                                         flux_sw_surf_dif=>NULL(), &
                                         flux_sw_down_vis_dir=>NULL(), &
                                         flux_sw_down_vis_dif=>NULL(), &
-                                        flux_sw_down_vis_clr=>NULL(), &
                                        flux_sw_down_total_dir=>NULL(), &
                                        flux_sw_down_total_dif=>NULL(), &
-                                  flux_sw_down_total_dir_clr=>NULL(), &
-                                  flux_sw_down_total_dif_clr=>NULL(), &
                                         flux_sw_vis=>NULL(), &
                                         flux_sw_vis_dir=>NULL(), &
-                                        flux_sw_vis_dif=>NULL(), &
-                                        flux_lw_surf=>NULL(), &
+                                        flux_sw_vis_dif=>NULL()
+     real, dimension(:,:,:),   pointer :: flux_sw_down_vis_clr=>NULL(), &
+                                  flux_sw_down_total_dir_clr=>NULL(), &
+                                  flux_sw_down_total_dif_clr=>NULL()
+     real, dimension(:,:),   pointer :: flux_lw_surf=>NULL(), &
                                         coszen_angle=>NULL()
 end type rad_output_type
 
@@ -1085,31 +1103,31 @@ public sw_output_type
 !    swup_special_clr
 
 type sw_output_type
-     real, dimension(:,:,:), pointer :: dfsw=>NULL(),   &
+     real, dimension(:,:,:,:), pointer :: dfsw=>NULL(),   &
                                         ufsw=>NULL(),  &
                                         fsw=>NULL(),   &
-                                        hsw=>NULL(), &
-                                        dfswcf=>NULL(),   &
+                                        hsw=>NULL()   
+     real, dimension(:,:,:,:), pointer :: dfswcf=>NULL(),   &
                                         ufswcf=>NULL(),&
                                         fswcf=>NULL(),  &
                                         hswcf=>NULL()
-      real, dimension(:,:), pointer :: dfsw_vis_sfc=>NULL(),   &
+      real, dimension(:,:,:), pointer :: dfsw_vis_sfc=>NULL(),   &
                                        ufsw_vis_sfc=>NULL()
-      real, dimension(:,:), pointer :: dfsw_dir_sfc=>NULL()
-      real, dimension(:,:), pointer :: dfsw_dir_sfc_clr=>NULL()
-      real, dimension(:,:), pointer :: dfsw_dif_sfc=>NULL(),   &
-                                       dfsw_dif_sfc_clr=>NULL(),   &
+      real, dimension(:,:,:), pointer :: dfsw_dir_sfc=>NULL()
+      real, dimension(:,:,:), pointer :: dfsw_dir_sfc_clr=>NULL()
+      real, dimension(:,:,:), pointer :: dfsw_dif_sfc=>NULL(),   &
                                        ufsw_dif_sfc=>NULL()
-      real, dimension(:,:), pointer :: dfsw_vis_sfc_dir=>NULL()
-      real, dimension(:,:), pointer :: dfsw_vis_sfc_clr=>NULL()
-      real, dimension(:,:), pointer :: dfsw_vis_sfc_dif=>NULL(),   &
+      real, dimension(:,:,:), pointer :: dfsw_dif_sfc_clr=>NULL()
+      real, dimension(:,:,:), pointer :: dfsw_vis_sfc_dir=>NULL()
+      real, dimension(:,:,:), pointer :: dfsw_vis_sfc_clr=>NULL()
+      real, dimension(:,:,:), pointer :: dfsw_vis_sfc_dif=>NULL(),   &
                                        ufsw_vis_sfc_dif=>NULL()
-      real, dimension(:,:,:), pointer   ::                       &
-                                        bdy_flx=>NULL(), &
-                                        bdy_flx_clr=>NULL(), &
+      real, dimension(:,:,:,:), pointer   ::  bdy_flx=>NULL()
+      real, dimension(:,:,:,:), pointer   ::  bdy_flx_clr=>NULL()
+      real, dimension(:,:,:,:), pointer   ::                       &
                                         swup_special=>NULL(), &
                                         swup_special_clr=>NULL()
-     real, dimension(:,:,:), pointer   :: swdn_special=>NULL(), &
+     real, dimension(:,:,:,:), pointer   :: swdn_special=>NULL(), &
                                           swdn_special_clr=>NULL()
 end type sw_output_type
 
@@ -1164,7 +1182,9 @@ type (shortwave_control_type), public   ::  &
                                          .false., .false., .false.)
 
 type (radiation_control_type), public   ::  &
-   Rad_control = radiation_control_type( .false., .false., 0,    &
+   Rad_control = radiation_control_type( .false., .false., 0, 0, 0, &
+                                         .false., .false., &
+                                         .false., 1, &
                                          0.0,  .true.,  .false.,&
                                          .false.,  0.0, &
                                          0.0, .true., .false.,  &
@@ -1177,15 +1197,19 @@ type (radiation_control_type), public   ::  &
                                          0, 0, .false., &
 ! _iz variables:
                                          .false., .false., .false., &
+                                         .false., .false., .true., &
+                                         .true.,  &
+                                         .false., .false., &
+                                         .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false., .false., .false., &
-                                         .false., .false., .false., &
+                                         .false., .false., &
                                          .false., .false., &
                                          .false., .false., &
                                          .false.,          &
                                          .false., .false., .false.,  &
                                          .false., .false.,   &
+                                         .false., .false., &
                                          .false., .false., .false.)
 
 type (cloudrad_control_type), public    ::   &
@@ -1406,6 +1430,12 @@ subroutine check_derived_types
           Rad_control%calc_n2o_tfs_on_first_step_iz .and. &
           Rad_control%calc_n2o_tfs_monthly_iz .and. &
           Rad_control%n2o_tf_time_displacement_iz .and. &
+          Rad_control%do_lw_rad_iz .and. &
+          Rad_control%do_sw_rad_iz .and. &
+          Rad_control%nzens_iz .and. &
+          Rad_control%hires_coszen_iz .and. &
+          Rad_control%lw_rad_time_step_iz .and.  &
+          Rad_control%sw_rad_time_step_iz .and.  &
           Rad_control%rad_time_step_iz ) then
       else
         call error_mesg ('rad_utilities_mod', &

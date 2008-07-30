@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_rad_k.F90,v 14.0.10.1 2008/01/29 21:42:53 wfc Exp $
+!  $Id: donner_rad_k.F90,v 16.0 2008/07/30 22:07:00 fms Exp $
 
 !module donner_rad_inter_mod
 

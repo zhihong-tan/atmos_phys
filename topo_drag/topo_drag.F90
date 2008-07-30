@@ -21,8 +21,8 @@ implicit none
 
 private
 
-character(len=128) :: version = '$Id: topo_drag.F90,v 15.0.4.1 2007/10/17 12:34:24 bw Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: version = '$Id: topo_drag.F90,v 16.0 2008/07/30 22:09:34 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 
 logical :: module_is_initialized = .false.
 

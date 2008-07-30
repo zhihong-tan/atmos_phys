@@ -56,8 +56,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 14.0 2007/03/15 22:06:35 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 16.0 2008/07/30 22:08:26 fms Exp $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 
 !---------------------------------------------------------------------
@@ -175,10 +175,10 @@ data ntbnd_n2o /  3, 3, 3/
 !----------------------------------------------------------------------
 !    co2 data
 !----------------------------------------------------------------------
-integer, parameter                        ::  number_std_co2_vmrs = 10
+integer, parameter                        ::  number_std_co2_vmrs = 11
 real,    dimension(number_std_co2_vmrs)   ::  co2_std_vmr
 data co2_std_vmr / 0., 165.0, 300.0, 330.0, 348.0, 356.0, 360.0,  &
-                   600.0, 660.0, 1320.0/
+                   600.0, 660.0, 1320.0, 1600.0/
 
 integer, parameter                        ::  nfreq_bands_sea_co2 = 5
 logical, dimension(nfreq_bands_sea_co2)   ::  do_lyrcalc_co2_nf, &
@@ -5455,7 +5455,7 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
 !--------------------------------------------------------------------
 !  local variables:
 
-      character(len=24) input_lblco2name(nfreq_bands_sea_co2,10)
+      character(len=24) input_lblco2name(nfreq_bands_sea_co2,11)
       character(len=24) input_lblch4name(nfreq_bands_sea_ch4,8)
       character(len=24) input_lbln2oname(nfreq_bands_sea_n2o,7)
       character(len=24) name_lo
@@ -5496,6 +5496,9 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
       data (input_lblco2name(n,10),n=1,nfreq_bands_sea_co2)/           &
         'cns_1320_490850  ', 'cns_1320_490630  ', 'cns_1320_630700  ', &
         'cns_1320_700850  ', 'cns_1320_43um    '/
+      data (input_lblco2name(n,11),n=1,nfreq_bands_sea_co2)/           &
+        'cns_1600_490850  ', 'cns_1600_490630  ', 'cns_1600_630700  ', &
+        'cns_1600_700850  ', 'cns_1600_43um    '/
  
       data (input_lblch4name(n,1),n=1,nfreq_bands_sea_ch4)/          &
         'cns_0_12001400'/

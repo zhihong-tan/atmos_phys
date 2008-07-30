@@ -49,7 +49,7 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: zetac_clouds_W.F90,v 14.0 2007/03/15 22:08:05 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 
 !---------------------------------------------------------------------
