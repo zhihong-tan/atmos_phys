@@ -47,6 +47,7 @@ use              fms_mod, only : file_exist,           &
                                  stdlog,               &
                                  close_file,           &
                                  write_version_number
+use              mpp_mod, only : get_unit
 use     time_manager_mod, only : time_type,            &
                                  set_date,             &
                                  operator( > ),        &
@@ -103,8 +104,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 15.0 2007/08/14 03:57:03 fms Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 16.0 2008/07/30 22:10:33 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 !-----------------------------------------------------------------------
 
 contains
@@ -350,16 +351,13 @@ type(time_type), intent(in) :: Time
 !       90s -   | - - - | - - - | - - - |
 !              180w   179.5w  179w    178.5w
 
-do unit = 30,100
-INQUIRE(unit=unit, opened= opened)
-if (.NOT. opened) exit
-enddo
+      unit = get_unit()
       open(unit,file='distribution.grid', form='formatted',action='read')
       do j = 1, 360 !rearrange input array so begins at 0 E
         read(unit,'(5e16.8)') (GEIA(I,J), I=361,720)
         read(unit,'(5e16.8)') (GEIA(I,J), I=  1,360)
       end do
-      call close_file(unit) 
+      close(unit) 
 
       gxdeg=360./size(GEIA,1)*dtr
       gydeg=180./size(GEIA,2)*dtr
@@ -390,10 +388,7 @@ enddo
 ! Note time is in integer YYMMDD format, which must be converted to Time_type
 ! for storage in the sf6_rate array.
 !
-do unit = 30,100
-INQUIRE(unit=unit, opened= opened)
-if (.NOT. opened) exit
-enddo
+      unit = get_unit()
       open(unit,file='monthly.emissions', form='formatted',action='read')
       do j = 1, size(sf6_rate(:))
         read(unit,'(i6,2x,f7.5)') t, sf6_rate(j)%rate
@@ -406,7 +401,7 @@ enddo
 ! now convert to time_type format and store:
         sf6_rate(j)%Time=set_date(y, m, d)
       end do
-      call close_file(unit) 
+      close(unit) 
 
          if (id_emiss > 0 ) &
          used = send_data ( id_emiss, sf6_grid, Time )

@@ -100,8 +100,8 @@
       logical :: use_tdep_jvals, use_solar_cycle
       real    :: o3_column_top, jno_scale_factor
 
-character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 14.0.8.1.2.1 2008/02/07 22:36:54 wfc Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2008_03 $'
+character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 16.0 2008/07/30 22:10:58 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: perth $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS

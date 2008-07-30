@@ -1,8 +1,8 @@
       module MO_EXP_PROD_LOSS_MOD
 
 implicit none
-character(len=128), parameter :: version     = '$Id: moz.mat.F90,v 14.0.8.1.2.1 2008/02/07 22:36:54 wfc Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2008_03 $'
+character(len=128), parameter :: version     = '$Id: moz.mat.F90,v 16.0 2008/07/30 22:11:07 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: perth $'
 logical                       :: module_is_initialized = .false.
 
       contains

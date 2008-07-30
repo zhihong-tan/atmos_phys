@@ -4,8 +4,8 @@ implicit none
       private
       public :: setrxt
 
-character(len=128), parameter :: version     = '$Id: moz.subs.F90,v 14.0.8.1 2007/12/08 13:39:45 rsh Exp $'
-character(len=128), parameter :: tagname     = '$Name: omsk_2008_03 $'
+character(len=128), parameter :: version     = '$Id: moz.subs.F90,v 16.0 2008/07/30 22:11:12 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: perth $'
 logical                       :: module_is_initialized = .false.
 
       contains

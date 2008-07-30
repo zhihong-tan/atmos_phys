@@ -8,8 +8,8 @@ private
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 15.0.4.1 2008/01/17 11:52:22 rsh Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 16.0 2008/07/30 22:10:11 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 
 !---------------- private data -------------------
 
@@ -22,6 +22,8 @@ character(len=128) :: tagname = '$Name: omsk_2008_03 $'
   real, parameter :: ZERO = 273.15 !  Zero degree C (K)
   real, parameter :: ATM = 1.01325e5 !  Standard atmosphere pressure (Pa)
   real, parameter :: PI = 3.1415926
+  real, parameter :: eps = 1.e-5  ! epsilon used to prevent index
+                                     ! calculation errors
 
   
 !NO 1 Ammonium Sulfate  NO 2 Sea Salt NO 3 Organics
@@ -60,84 +62,120 @@ contains
 
 subroutine aer_ccn_act_k (T1, P1, Updraft1, TotalMass, tym, droplets, &
                           droplets2, res, res2, nooc,  &
+                          sul_concen, low_concen, high_concen, &
                           lowup, highup, lowup2, highup2, lowmass2, &
                           highmass2, lowmass3, highmass3,  &
+                          lowmass4, highmass4, lowmass5, highmass5, &
                           lowT2, highT2,  &
                           Drop, ier, ermesg)
 integer, intent(in) :: tym, res, res2
 real, dimension(tym), intent(inout) :: TotalMass
 real, intent(in) :: T1, P1, Updraft1
-real, dimension(res,res,res,res), intent(in) :: droplets
-real, dimension(res2,res2,res2,res2), intent(in) :: droplets2
+real, dimension(res,res,res,res,res), intent(in) :: droplets
+real, dimension(res2,res2,res2,res2,res2), intent(in) :: droplets2
 logical, intent(in) :: nooc
+real, intent(in)    :: sul_concen, low_concen, high_concen
 real, intent(in) :: lowup, highup, lowup2, highup2, lowmass2, &
-                    highmass2, lowmass3, highmass3,  lowT2, highT2
+                    highmass2, lowmass3, highmass3,  &
+                    lowmass4, highmass4, lowmass5, highmass5, &
+                    lowT2, highT2
 real, intent(inout) :: Drop
 integer, intent(out) :: ier
 character(len=*), intent(out) :: ermesg
     
-real number, tmass, tmass2, updr, temp, sum
-integer nomass, nomass2, noup, noT, i
+real number, tmass, tmass2, tmass3, tmass4, updr, temp, sum
+integer nomass, nomass2, nomass3, nomass4, noup, noT, i
 real, dimension(3) :: Drop1
         
   ier = 0
   ermesg = '  '
-  if (tym /= TY) then
+  if (tym /=  4) then
     ier = 1
     ermesg = 'aer_ccn_act_k:dimension of TotalMass is incorrect'
     return
   endif
   
-  if (nooc) TotalMass(3) = 0.
+  if (nooc) TotalMass(4) = 0.
 
-  tmass=(TotalMass(1)+TotalMass(2)+TotalMass(3))*1.e12
+  tmass=(TotalMass(1)+TotalMass(3)+TotalMass(4))*1.e12
     
   if (Updraft1>lowup2 .and. tmass>lowmass2) then
 
-    tmass=(TotalMass(1)+TotalMass(2))*1.e12
-    tmass2=TotalMass(3)*1.e12
+    tmass3=TotalMass(2)*1.e12
+    if(TotalMass(1)*1.e12<sul_concen) then
+      if (tmass3<low_concen) then
+        tmass=TotalMass(1)*1.e12
+        tmass2=0.
+      else if (tmass3>high_concen) then
+        tmass2=TotalMass(1)*1.e12
+        tmass=0.
+      else
+        tmass=TotalMass(1)*1.e12* &
+                      (high_concen-tmass3)/(high_concen-low_concen)
+        tmass2=TotalMass(1)*1.e12* &
+                      (tmass3-low_concen)/(high_concen-low_concen)
+      end if
+    else
+      tmass2=TotalMass(1)*1.e12
+      tmass=0.
+    end if
+   
+    tmass3=TotalMass(3)*1.e12
+    tmass4=TotalMass(4)*1.e12
     
     if (Updraft1>highup2) then
     
-!      updr=max(min(Updraft1,highup),lowup)
-!      temp=max(min(T1,highT2),lowT2)
-      updr=max(min(Updraft1,highup-1.e-5),lowup)
-      temp=max(min(T1,highT2-1.e-5),lowT2)
+      updr=max(min(Updraft1,highup-eps),lowup)
+      temp=max(min(T1,highT2-eps),lowT2)
     
       noup= log(updr/lowup)/log(highup/lowup)*(res2-1.)
       noT= (temp-lowT2)*(res2-1)/(highT2-lowT2)
 
-!      tmass=max(min(tmass,highmass2),lowmass2)
-      tmass=max(min(tmass,highmass2-1.e-5),lowmass2)
+      tmass=max(min(tmass,highmass2-eps),lowmass2)
       nomass= log(tmass/lowmass2)/log(highmass2/lowmass2)*(res2-1.)
 
-!      tmass2=max(min(tmass2,highmass3),lowmass3)
-      tmass2=max(min(tmass2,highmass3-1.e-5),lowmass3)
+      tmass2=max(min(tmass2,highmass3-eps),lowmass3)
       nomass2= log(tmass2/lowmass3)/log(highmass3/lowmass3)*(res2-1.)
     
-      Drop = 0.2*(droplets2(nomass+1,nomass2+1,noup+1,noT+1)+&
-                  droplets2(nomass+2,nomass2+1,noup+1,noT+1)+ &
-                  droplets2(nomass+1,nomass2+2,noup+1,noT+1)+ &
-                  droplets2(nomass+1,nomass2+1,noup+2,noT+1)+ &
-                  droplets2(nomass+1,nomass2+1,noup+1,noT+2))
+      tmass3=max(min(tmass3,highmass4-eps),lowmass4)
+      nomass3= log(tmass3/lowmass4)/log(highmass4/lowmass4)*(res2-1.)
+ 
+      tmass4=max(min(tmass4,highmass5-eps),lowmass5)
+      nomass4= log(tmass4/lowmass5)/log(highmass5/lowmass5)*(res2-1.)
+
+      Drop = 0.166667*(droplets2(nomass+1,nomass2+1,nomass3+1,nomass4+1,noup+1)+&
+                  droplets2(nomass+2,nomass2+1,nomass3+1,nomass4+1,noT+1)+ &
+                  droplets2(nomass+1,nomass2+2,nomass3+1,nomass4+1,noT+1)+ &
+                  droplets2(nomass+1,nomass2+1,nomass3+2,nomass4+1,noT+1)+ &
+                  droplets2(nomass+1,nomass2+1,nomass3+1,nomass4+2,noT+1)+ &
+                  droplets2(nomass+1,nomass2+1,nomass3+1,nomass4+1,noT+2))
   
     else
 
-      updr=max(min(Updraft1,highup2),lowup2)
-      temp=max(min(T1,highT2),lowT2)
+      updr=max(min(Updraft1,highup2-eps),lowup2)
+      temp=max(min(T1,highT2-eps),lowT2)
     
-      noup= log(updr/lowup2)/log(highup2/lowup2)*(res2-1.)
-      noT= (temp-lowT2)*(res2-1)/(highT2-lowT2)
+      noup= log(updr/lowup2)/log(highup2/lowup2)*(res-1.)
+      noT= (temp-lowT2)*(res-1)/(highT2-lowT2)
 
-      tmass=max(min(tmass,highmass2),lowmass2)
-      nomass= log(tmass/lowmass2)/log(highmass2/lowmass2)*(res2-1.)
+      tmass=max(min(tmass,highmass2-eps),lowmass2)
+      nomass= log(tmass/lowmass2)/log(highmass2/lowmass2)*(res-1.)
 
-      tmass2=max(min(tmass2,highmass3),lowmass3)
-      nomass2= log(tmass2/lowmass3)/log(highmass3/lowmass3)*(res2-1.)
+      tmass2=max(min(tmass2,highmass3-eps),lowmass3)
+      nomass2= log(tmass2/lowmass3)/log(highmass3/lowmass3)*(res-1.)
     
-      Drop = 0.2*(droplets(nomass+1,nomass2+1,noup+1,noT+1)+droplets(nomass+2,nomass2+1,noup+1,noT+1)+ &
-                  droplets(nomass+1,nomass2+2,noup+1,noT+1)+droplets(nomass+1,nomass2+1,noup+2,noT+1)+ &
-                  droplets(nomass+1,nomass2+1,noup+1,noT+2))
+      tmass3=max(min(tmass3,highmass4-eps),lowmass4)
+      nomass3= log(tmass3/lowmass4)/log(highmass4/lowmass4)*(res-1.)
+
+      tmass4=max(min(tmass4,highmass5-eps),lowmass5)
+      nomass4= log(tmass4/lowmass5)/log(highmass5/lowmass5)*(res-1.)
+
+      Drop = 0.166667*(droplets(nomass+1,nomass2+1,nomass3+1,nomass4+1,noup+1)+&
+                  droplets(nomass+2,nomass2+1,nomass3+1,nomass4+1,noT+1)+ &
+                  droplets(nomass+1,nomass2+2,nomass3+1,nomass4+1,noT+1)+ &
+                  droplets(nomass+1,nomass2+1,nomass3+2,nomass4+1,noT+1)+ &
+                  droplets(nomass+1,nomass2+1,nomass3+1,nomass4+2,noT+1)+ &
+                  droplets(nomass+1,nomass2+1,nomass3+1,nomass4+1,noT+2))
   
     endif
   
@@ -180,7 +218,7 @@ integer :: i, j
         
   ier = 0
   ermesg = '  '
-  if (tym /= ty) then
+  if (tym /= 4) then
     ier = 1
     ermesg = ' aer_ccn_act2_k:dimension of TotalMass is incorrect'
     return
@@ -230,8 +268,10 @@ end subroutine aer_ccn_act2_k
 
 subroutine aer_ccn_act_wpdf_k(T, p, wm, wp2, totalmass, tym, droplets, &
                               droplets2, res, res2, nooc,  &
+                              sul_concen, low_concen, high_concen, &
                              lowup, highup, lowup2, highup2, lowmass2, &
                              highmass2, lowmass3, highmass3,  &
+                             lowmass4, highmass4, lowmass5, highmass5, &
                              lowT2, highT2,  &
                               drop,  &
                               ier, ermesg)
@@ -241,11 +281,14 @@ subroutine aer_ccn_act_wpdf_k(T, p, wm, wp2, totalmass, tym, droplets, &
 
 integer, intent(in) :: tym, res, res2
 real :: T, p, wm, wp2, totalmass(tym)
-real, dimension(res, res, res, res), intent(in) :: droplets
-real, dimension(res2, res2, res2, res2), intent(in) :: droplets2
+real, dimension(res, res, res, res,res), intent(in) :: droplets
+real, dimension(res2, res2, res2, res2,res2), intent(in) :: droplets2
 logical, intent(in) :: nooc
+real, intent(in) :: sul_concen, low_concen, high_concen
 real, intent(in) :: lowup, highup, lowup2, highup2, lowmass2, &
-                    highmass2, lowmass3, highmass3,  lowT2, highT2
+                    highmass2, lowmass3, highmass3, &
+                    lowmass4, highmass4, lowmass5, highmass5,  &
+                    lowT2, highT2
 real :: drop
 integer, intent(out) :: ier
 character(len=*), intent(out) :: ermesg
@@ -274,7 +317,7 @@ data init/0/
 
   ier = 0
   ermesg = '  '
-  if (tym /= ty) then
+  if (tym /=  4) then
     ier = 1
     ermesg = 'aer_ccn_act_wpdf_k:dimension of TotalMass is incorrect'
     return
@@ -330,8 +373,10 @@ if (lintegrate) then
     wtmp = tmp * x(i) + wm
     call aer_ccn_act_k( T, p, wtmp, totalmass, TYm, droplets,   &
                        droplets2, res, res2, nooc,  &
+                       sul_concen, low_concen, high_concen, &
                        lowup, highup, lowup2, highup2, lowmass2, &
                        highmass2, lowmass3, highmass3,  &
+                    lowmass4, highmass4, lowmass5, highmass5,  &
                        lowT2, highT2,  &
                        drop, ier, ermesg )
     if (ier /= 0) return
@@ -349,8 +394,10 @@ else
 
   call aer_ccn_act_k( T, p, wm, totalmass, TYm, droplets,   &
                        droplets2, res, res2, nooc,   &
+                       sul_concen, low_concen, high_concen, &
                        lowup, highup, lowup2, highup2, lowmass2, &
                        highmass2, lowmass3, highmass3,  &
+                    lowmass4, highmass4, lowmass5, highmass5,  &
                        lowT2, highT2,  &
                        drop, ier, ermesg )
   if (ier /= 0) return

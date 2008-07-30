@@ -69,8 +69,8 @@ public  wet_deposition,    &
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 15.0.4.1 2007/11/09 23:05:47 wfc Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 16.0 2008/07/30 22:10:39 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 integer, parameter :: max_tracers = MAX_TRACER_FIELDS
@@ -1180,7 +1180,8 @@ end subroutine get_drydep_param
 !</TEMPLATE>
 subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
                             henry_constant, henry_temp, &
-                            frac_in_cloud,alpha_r,alpha_s)
+                            frac_in_cloud,alpha_r,alpha_s, &
+                            frac_in_cloud_uw, frac_in_cloud_donner)
 !<OVERVIEW>
 ! Routine to initialize the parameters for the wet deposition scheme.
 !</OVERVIEW>
@@ -1214,6 +1215,8 @@ character(len=*), intent(in)    :: text_in_scheme, text_in_param
 character(len=*), intent(out)   :: scheme
 real, intent(out)               :: henry_constant, henry_temp
 real, intent(out)               :: frac_in_cloud, alpha_r, alpha_s
+real, intent(out), optional     :: frac_in_cloud_uw,  &
+                                                   frac_in_cloud_donner
 
 integer :: m,m1,n,lentext, flag
 character(len=32) :: dummy
@@ -1225,6 +1228,8 @@ henry_temp    = 0.
 frac_in_cloud = 0.
 alpha_r       = 0.
 alpha_s       = 0.
+if (present(frac_in_cloud_uw))     frac_in_cloud_uw = 0.
+if (present(frac_in_cloud_donner)) frac_in_cloud_donner = 0.
 
 if( trim(lowercase(text_in_scheme)) == 'fraction' ) then
    scheme                 = 'Fraction'
@@ -1245,6 +1250,19 @@ else if( trim(lowercase(text_in_scheme)) == 'aerosol' .or. &
       scheme                 = 'aerosol_below'
    end if
    flag=parse(text_in_param,'frac_incloud',frac_in_cloud)
+   if (present(frac_in_cloud_uw)) then
+      flag=parse(text_in_param,'frac_incloud_uw',frac_in_cloud_uw)
+      if (flag == 0) then
+         frac_in_cloud_uw = frac_in_cloud
+      end if
+   end if
+   if (present(frac_in_cloud_donner)) then
+      flag=parse(text_in_param,'frac_incloud_donner',   &
+                                                frac_in_cloud_donner)
+      if (flag == 0) then
+         frac_in_cloud_donner = frac_in_cloud
+      end if
+   end if
    flag=parse(text_in_param,'alphar',alpha_r)
    flag=parse(text_in_param,'alphas',alpha_s)
 end if

@@ -87,8 +87,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 15.0.4.1 2007/12/08 13:47:42 rsh Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+'$Id: interpolator.F90,v 16.0 2008/07/30 22:10:07 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 

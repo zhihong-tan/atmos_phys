@@ -47,8 +47,8 @@ end type psc_type
 !++lwh
 type(interpolate_type), save  :: dfdage_interp
 character(len=32), save  :: dfdage_filename = "dfdage3.dat.nc"
-character(len=32), dimension(nspecies_age), save :: dfdage_name = \
-      (/ "dfdage_cfc11", "dfdage_cfc12", "dfdage_cfc113", "dfdage_ccl4", \
+character(len=32), dimension(nspecies_age), save :: dfdage_name = &
+      (/ "dfdage_cfc11", "dfdage_cfc12", "dfdage_cfc113", "dfdage_ccl4", &
          "dfdage_ch3cl", "dfdage_ch3ccl3", "dfdage_hcfc22", "dfdage_bry" /)
 !--lwh
 

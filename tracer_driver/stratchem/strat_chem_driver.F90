@@ -14,13 +14,15 @@ use    field_manager_mod, only : MODEL_ATMOS
 
 use                mpp_mod, only: mpp_pe, mpp_root_pe, stdout
 use constants_mod, only : PI, TFREEZE, GRAV, PSTD_MKS, RDGAS
+
+use STRAT_CHEM_MOD, only : chemistry, zen2, dcly_dt, sediment
      implicit none
 
 private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 14.0 2007/03/15 22:10:42 fms Exp $'
-character(len=128)  :: tagname =  '$Name: omsk_2008_03 $'
+character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 16.0 2008/07/30 22:10:42 fms Exp $'
+character(len=128)  :: tagname =  '$Name: perth $'
 
 !-------  interfaces --------
 
@@ -46,7 +48,7 @@ namelist / strat_chem_nml /         &
      logical               :: run_startup = .true.
      real  ::   ozon(11,48),cosp(14),cosphc(48),photo(132,14,11,48),    &
            solardata(1801),chlb(90,15),ozb(144,90,12),tropc(151,9),    &
-           age(90,48,12),dfdage(90,48,8),anoy(90,48)
+           dfdage(90,48,8),anoy(90,48)
      integer :: mype
 
 !  When initializing additional tracers, the user needs to make the
@@ -57,6 +59,7 @@ namelist / strat_chem_nml /         &
 !
 !-----------------------------------------------------------------------
 
+integer :: nsphum = 0
 integer :: nliq_wat = 0
 integer :: nice_wat = 0
 integer :: ncld_amt = 0
@@ -116,13 +119,11 @@ function strat_chem_driver_init()
       if (.not. do_coupled_stratozone) return
 !---------------------------------------------------------------------
 
-      call chem_startup(ozon,cosp,cosphc,photo,solardata,chlb,ozb,  &
-            tropc,dfdage,anoy)
+      call chem_startup
 
 end function strat_chem_driver_init
 
-     subroutine chem_startup(ozon,cosp,cosphc,photo,solardata,chlb,ozb,  &
-            tropc,dfdage,anoy)
+     subroutine chem_startup()
 !
 ! Obtains chemical lower boundary condition and arrays for photolysis 
 ! rate calculation
@@ -130,20 +131,18 @@ end function strat_chem_driver_init
 
 
 
-      real ozon(11,48),cosp(14),cosphc(48),photo(132,14,11,48),       &
-           solardata(1801),chlb(90,15),ozb(144,90,12),tropc(151,9),   &
-           age(90,48,12),dfdage(90,48,8),anoy(90,48)
+      real age(90,48,12)
       integer lev,ipz,icz,lv,nc,jl,ir
 !
 !   local variables: 
 
-      integer                 :: unit, ierr, io
+      integer                 :: unit
 
       if(run_startup) then
          run_startup = .false.
 
 
-!      nsphum    = get_tracer_index(MODEL_ATMOS,'sphum')    !Tracer #1
+      nsphum    = get_tracer_index(MODEL_ATMOS,'sphum')    !Tracer #1
       nliq_wat  = get_tracer_index(MODEL_ATMOS,'liq_wat')   !Tracer #2
       nice_wat  = get_tracer_index(MODEL_ATMOS,'ice_wat')   !Tracer #3
       ncld_amt  = get_tracer_index(MODEL_ATMOS,'cld_amt')   !Tracer #4
@@ -268,32 +267,24 @@ end function strat_chem_driver_init
 
      subroutine strat_chem(alon,alat,chems,dchems,pfull,temp,itime,    &
        is,ie,js,je,dt,coszen,&
-!       ozon,cosp,cosphc,photo,solardata,         &
-!       chlb,ozb,dfdage,tropc,anoy,
        nsphum,chem_tend,ozone,o3_prod,aerosol,mype)
      real, intent(in), dimension(:,:,:,:)  :: chems
      real, intent(in), dimension(:,:,:,:)  :: dchems
      real, intent(in), dimension(:,:,:)    :: pfull, temp 
-!     real, intent(in), dimension(:,:,:)    :: dfdage
      real, intent(in), dimension(:,:)      :: alon,alat,coszen
-!     real, intent(in), dimension(:,:)      :: tropc
-!     real, intent(in), dimension(:,:)      :: anoy
      real, intent(in)                      :: dt
      real, intent(out), dimension(:,:,:,:) :: chem_tend
      real, intent(out), dimension(:,:,:)   :: ozone, o3_prod, aerosol
      integer, intent(in)                   :: is,ie,js,je,nsphum,mype
      integer, intent(inout), dimension(6)  :: itime
 !
-     integer :: nc,il,jl,kl,merids,meridsg,lats,latsg,levs,   &
-                il_first,jl_first,jlx     
-     integer :: ic,ipts           
+     integer :: nc,il,jl,kl,merids,lats,levs
+     integer :: ipts           
 !
      real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) ::     &
                                ozcol,anat,aice,alats,cly,bry,age
      real, dimension(size(pfull,1)) :: h2o,h2o_tend,dagesq
 
-!     real  ::   ozon(11,48),cosp(14),cosphc(48),photo(132,14,11,48),   &
-!                solardata(1801),chlb(90,15),ozb(144,90,12)
      real  ::   cozen(ie-is+1,je-js+1),vtemp(size(pfull,1)),           &
                 rho(size(pfull,1)),dy(size(pfull,1),21),               &
                 ch_tend(size(pfull,1),21),                             &
@@ -308,6 +299,7 @@ end function strat_chem_driver_init
      const =  287.056*273.16/(1.01325*9.81)                 
      const2 = 2.693e19 *273.16/101325.
 
+     chem_tend(:,:,:,:) = 0.0
 !wfc Comment out for now
 !     drad = PI/180.        
 !     const =  RDGAS*TFREEZE/(PSTD_MKS*1.e-5*GRAV)                 
@@ -317,16 +309,8 @@ end function strat_chem_driver_init
 !  change model time to fit in with chemical time
       
     if( fixed_chem_year > 0 )  itime(1) = fixed_chem_year
-    if(mpp_pe()==mpp_root_pe()) print *,' time', itime
+!    if(mpp_pe()==mpp_root_pe()) print *,' time', itime
 
-
-! il_first and jl_first are hardwired for model resolution
-! 90 pts N-S (latsg) and 144 pts W-E (meridsg)
-!                             
-     latsg = 90
-     meridsg = 144   
-     jl_first = nint(0.5*(latsg +1) + alat(1,1)*(latsg-1)/(drad*180))
-     il_first = nint(0.5 + alon(1,1)*meridsg/(drad*360))
 !
 ! Compute cosine of solar zenith angle
 !
@@ -341,16 +325,14 @@ end function strat_chem_driver_init
      enddo
 !
 ! Calculate overhead ozone columns for photolysis
-! N.B. Ozone is molecule 26 (22nd of the chemical tracers)
 ! Allow for transport problems with a 1 e-15 minimum for ozone.
 !
      do jl = 1,je-js+1
      do il = 1,ie-is+1
-     xc = chems(il,jl,1,no3)!26) 
+     xc = chems(il,jl,1,no3) 
      if(xc.lt.1.0e-15) xc = 1.0e-15
      ozcol(il,jl,1) = xc*const*pfull(il,jl,1)
      do kl = 2,levs
-!     xc =  sqrt(chems(il,jl,kl,26)*chems(il,jl,kl-1,26)) 
      xc =  sqrt(chems(il,jl,kl,no3)*chems(il,jl,kl-1,no3)) 
      if(xc.lt.1.0e-15) xc = 1.0e-15
      ozcol(il,jl,kl) = ozcol(il,jl,kl-1) +                    &
@@ -362,17 +344,9 @@ end function strat_chem_driver_init
 ! Do main loop over model levels
 !
 !==========================================================================
-!     if(itime(4).eq.0.and.itime(5).eq.0) then
-!        if(mpp_pe().eq.mpp_root_pe()) then 
-!            write(stdout(),*) ' chemical values before chemistry calculation'
-!            write(stdout(),'(6e13.6)') chems(1,1,18,:)
-!            write(stdout(),*) ' ozone values before chemistry calculation'
-!            write(stdout(),'(6e13.6)') chems(1,1,:,no3)!26)
-!        endif
-!     endif
+
      do 1000 kl = 1,levs
-     do jl = 1,je-js+1    
-     jlx = jl + jl_first - 1
+     do jl = js,je    
 !
 !  Set up inverse temperature and density for use in the chemical model
 !  CHEMISTRY computes the chemical change for one model timestep, one latitude
@@ -381,7 +355,7 @@ end function strat_chem_driver_init
 !  scheme, so the values are set to zero within the chemistry scheme
 !  and the concentration is relaxed to zero with a 1-day timescale 
 !
-     do il = 1,merids
+     do il = is,ie
      vtemp(il) = 1.0/temp(il,jl,kl)
      rho(il) = const2*pfull(il,jl,kl)*vtemp(il)
      dy(il,1 ) = chems(il,jl,kl,nhno3    ) + dchems(il,jl,kl,nhno3    )*dt
@@ -407,7 +381,6 @@ end function strat_chem_driver_init
      dy(il,21) = chems(il,jl,kl,nage     ) + dchems(il,jl,kl,nage     )*dt
      h2o_tend(il) = 0.0
      do nc = 1,21
-!     dy(il,nc) = chems(il,jl,kl,nc+4) + dchems(il,jl,kl,nc+4)*dt
      ch_tend(il,nc) = 0.0
      if(dy(il,nc).lt.0.0) then
         ch_tend(il,nc) = -dy(il,nc)/86400.0
@@ -449,19 +422,12 @@ end function strat_chem_driver_init
        aerosol(il,jl,kl) = 2.0e-5*extinct 
      endif
      enddo
-     call chemistry (il_first,jlx,kl,dy,h2o,dagesq,ozcol(1,jl,kl),        &
-       pfull(1,jl,kl),rho,temp(1,jl,kl),vtemp,cozen(1,jl),cdx,chlb,       &
-       ozb(1,1,itime(2)),anat(1,jl,kl),aice(1,jl,kl),photo,solardata,     &
-       ozon,cosp,cosphc,anoy,aerosol(1,jl,kl),dt,merids,ch_tend,          &
-       ozone(1,jl,kl), o3_prod(1,jl,kl),h2o_tend,mype,itime)
-!
-!     if(itime(4).eq.0.and.itime(5).eq.0.and.kl.eq.18) then
-!        if(mpp_pe() .eq. mpp_root_pe()) then
-!           write(stdout(),*) ' NAT and ICE values at 46 hPa'
-!           write(stdout(),'(6e13.6)') (anat(il,jl,kl),il=1,merids)
-!           write(stdout(),'(6e13.6)') (aice(il,jl,kl),il=1,merids)
-!        endif
-!     endif
+     call chemistry (alon(:,jl),alat(:,jl),jl,kl,dy,h2o,dagesq,ozcol(:,jl,kl),  &
+       pfull(:,jl,kl),rho,temp(:,jl,kl),vtemp,cozen(:,jl),cdx,chlb,       &
+       ozb(:,:,itime(2)),anat(:,jl,kl),aice(:,jl,kl),photo,solardata,     &
+       ozon,cosp,cosphc,anoy,aerosol(:,jl,kl),dt,merids,ch_tend,   &
+       ozone(:,jl,kl), o3_prod(:,jl,kl),h2o_tend,mype,itime)
+
      do il = 1,merids
 
 !     do nc = 1,21
@@ -497,7 +463,7 @@ end function strat_chem_driver_init
 !  Relax tracer 23 to the total vmr of PSC
 !  Relax Oy to 2e-6 if it exceeds this value in the upper mesosphere
 !
-     chem_tend(il,jl,kl,nstrath2o) = (aice(il,jl,kl) + 3.0*anat(il,jl,kl)  -   &
+     chem_tend(il,jl,kl,nstrath2o) = (aice(il,jl,kl) + 3.0*anat(il,jl,kl)  -  &
                  chems(il,jl,kl,nstrath2o))/21600.0 !23 <- nstrath2o
  !    if(pfull(il,jl,kl) < 10.0.and.chems(il,jl,kl,noy) > 2.0e-6)    &
  !        chem_tend(il,jl,kl,noy) = (2.0e-6  - chems(il,jl,kl,noy))/21600.0
@@ -508,15 +474,14 @@ end function strat_chem_driver_init
 ! compute rate of change of Cly and Bry
 !
      fact2 = 1.00
-     do jl = 1,je-js+1    
-     alats(:,jl,:) = jl + jl_first - 1
+     do kl = 1,levs
+     alats(:,:,kl) = 1.0 + (90.0 - alat(:,:))*89.0/180.0
      enddo
      age(:,:,:) = chems(:,:,:,nage)!25)
      cly(:,:,:) = chems(:,:,:,ncly)!20)
      bry(:,:,:) = chems(:,:,:,nbry)!21)
-     CALL DCLY_DT(age,dfdage,tropc,alats,cly,bry,                 &
-       chem_tend(1,1,1,ncly),chem_tend(1,1,1,nbry),fact2,merids,lats,levs,itime)
-!       chem_tend(1,1,1,20),chem_tend(1,1,1,21),fact2,merids,lats,levs,itime)
+     CALL DCLY_DT(age,dfdage,tropc,alats,cly,bry,chem_tend(:,:,:,ncly),  &
+        chem_tend(:,:,:,nbry),fact2,merids,lats,levs,itime)
 !
 !  set rates of change of Cly and Bry to zero at night, and double during
 !  the daytime
@@ -553,8 +518,8 @@ end function strat_chem_driver_init
 ! sediment nat and ice
 !
      ipts = merids*lats
-     CALL SEDIMENT(anat,aice,chem_tend(1,1,1,nnoy),chem_tend(1,1,1,nstrath2o),   &
-         chem_tend(1,1,1,nhno3),ipts,levs,pfull,dt,mype)
+     CALL SEDIMENT(anat,aice,chem_tend(:,:,:,nnoy),chem_tend(:,:,:,nstrath2o),   &
+         chem_tend(:,:,:,nhno3),ipts,levs,pfull,dt,mype)
      return
      end subroutine strat_chem
 

@@ -76,8 +76,8 @@ real :: coef_emis =-999.
 namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_dust.F90,v 15.0.4.1 2007/11/28 16:21:52 rsh Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: version = '$Id: atmos_dust.F90,v 16.0 2008/07/30 22:10:22 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 !-----------------------------------------------------------------------
 
 contains
@@ -133,7 +133,9 @@ integer, intent(in)                    :: is, ie, js, je
 !    SET-Up  DATA
 !-----------------------------------
 
-      data frac_s/0.1,0.225,0.225,0.225,0.225/
+!yim: per pag 2/1/08
+!     data frac_s/0.1,0.225,0.225,0.225,0.225/
+      data frac_s/0.05,0.1125,0.225,0.225,0.225/
 
 !-----------------------------------------------------------------------
 

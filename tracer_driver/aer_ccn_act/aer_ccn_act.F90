@@ -4,6 +4,7 @@ use fms_mod,             only: error_mesg, FATAL, open_namelist_file, &
                                mpp_pe, mpp_root_pe, stdlog, &
                                file_exist, write_version_number, &
                                check_nml_error, close_file
+use mpp_mod,             only: get_unit
 use aer_ccn_act_k_mod,   only: aer_ccn_act_k, aer_ccn_act2_k, &
                                aer_ccn_act_wpdf_k
 
@@ -15,8 +16,8 @@ private
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act.F90,v 15.0.4.1 2008/01/17 11:52:21 rsh Exp $'
-character(len=128) :: tagname = '$Name: omsk_2008_03 $'
+character(len=128) :: version = '$Id: aer_ccn_act.F90,v 16.0 2008/07/30 22:10:09 fms Exp $'
+character(len=128) :: tagname = '$Name: perth $'
 
 !---------------- private data -------------------
 
@@ -24,16 +25,19 @@ character(len=128) :: tagname = '$Name: omsk_2008_03 $'
 !Parameters for look-up tables
 
   integer, parameter :: res = 20 !
-  real, dimension(res,res,res,res) :: droplets
+  real, dimension(res,res,res,res,res) :: droplets
 
   integer, parameter :: res2 = 20 !
-  real, dimension(res2,res2,res2,res2) :: droplets2
+  real, dimension(res2,res2,res2,res2,res2) :: droplets2
 
 
 !-----------------------------------------------------------------------
 !-------------------- namelist -----------------------------------------
 
 logical  :: nooc = .false.   ! include organic aerosols as ccns ?
+real     :: sul_concen = 0.1
+real     :: low_concen = 0.1
+real     :: high_concen = 1.
  !Parameters for look-up tables
  
 real ::  lowup=0.3 !m/s
@@ -41,7 +45,7 @@ real ::  highup=10.
 
 ! earlier values: lowup2 = 0.001, highmass2 = 1000., highmass3 = 1000.
 !real ::  lowup2=0.0001 !m/s
-real ::  lowup2=0.05   !m/s
+real ::  lowup2=0.01   !m/s
 real ::  highup2=0.3
 real ::  lowmass2=0.01 !ug m-3
 !real ::  highmass2=1000.
@@ -49,12 +53,17 @@ real ::  highmass2=100.
 real ::  lowmass3=0.01 !ug m-3
 !real ::  highmass3=1000.
 real ::  highmass3=100.
+real ::  lowmass4=0.01 !ug m-3
+real ::  highmass4=100.
+real ::  lowmass5=0.01 !ug m-3
+real ::  highmass5=100.
 real :: lowT2=243.15 !K
 real :: highT2=308.15
 
-namelist /aer_ccn_act_nml/ nooc, &
+namelist /aer_ccn_act_nml/ nooc, sul_concen, low_concen, high_concen, &
                            lowup, highup, lowup2, highup2, lowmass2, &
                            highmass2, lowmass3, highmass3,  &
+                           lowmass4, highmass4, lowmass5, highmass5, &
                            lowT2, highT2
 
 
@@ -76,8 +85,10 @@ real, intent(inout) :: Drop
 
   call aer_ccn_act_k (T1, P1, Updraft1, TotalMass, tym, droplets,  &
                       droplets2, res, res2, nooc,  &
+                       sul_concen, low_concen, high_concen, &
                        lowup, highup, lowup2, highup2, lowmass2, &
                        highmass2, lowmass3, highmass3,  &
+                       lowmass4, highmass4, lowmass5, highmass5, &
                       lowT2, highT2, &
                       Drop, ier, ermesg)
   if (ier /= 0) call error_mesg ('aer_ccn_act', ermesg, FATAL)
@@ -127,7 +138,7 @@ subroutine aer_ccn_act_wpdf(T, p, wm, wp2, totalmass, drop)
 ! Compute CCN activation assuming a normal distribution of w
 ! given by its mean (wm) and second moment (wp2)
 
-real :: T, p, wm, wp2, totalmass(3)
+real :: T, p, wm, wp2, totalmass(4)
 real :: drop
 
   integer :: tym, ier
@@ -138,8 +149,10 @@ real :: drop
 
    call aer_ccn_act_wpdf_k(T, p, wm, wp2, totalmass, tym, droplets, &
             droplets2, res, res2, nooc,   &
+            sul_concen, low_concen, high_concen, &
             lowup, highup, lowup2, highup2, lowmass2, &
             highmass2, lowmass3, highmass3,  &
+            lowmass4, highmass4, lowmass5, highmass5, &
             lowT2, highT2, &
             drop, ier, ermesg)
   if (ier /= 0) call error_mesg ('aer_ccn_act_wpdf', ermesg, FATAL)
@@ -183,33 +196,39 @@ end subroutine aer_ccn_act_init
 subroutine Loading()
 
 real xx
-integer i, j, k, l
+integer i, j, k, l, m, unit
 
-  open(11, FILE='INPUT/droplets.dat')
+  unit = get_unit()
+  open(unit, FILE='INPUT/droplets.dat')
   do k=1,res
     do i=1,res
       do j=1, res
         do l=1, res
-          read(11,*) xx
-          droplets(k,i,j,l)=xx
+        do m=1, res
+          read(unit,*) xx
+          droplets(k,i,j,l,m)=xx
+        end do
         end do
       end do
     end do
   end do
-  close(11)
+  close(unit)
 
-    open(11, FILE='INPUT/droplets2.dat')
+  unit = get_unit()
+  open(unit, FILE='INPUT/droplets2.dat')
   do k=1,res2
     do i=1,res2
       do j=1, res2
         do l=1, res2
-          read(11,*) xx
-          droplets2(k,i,j,l)=xx
+        do m=1, res2
+          read(unit,*) xx
+          droplets2(k,i,j,l,m)=xx
+        end do
         end do
       end do
     end do
   end do
-  close(11)
+  close(unit)
 
 end subroutine Loading
 
