@@ -4,7 +4,7 @@
 ! --- SHALLOW CONVECTION MODULE - GFDL SPECTRAL MODEL VERSION
 !=======================================================================
 
- use  Sat_Vapor_Pres_Mod, ONLY: ESCOMP, DESCOMP
+ use  Sat_Vapor_Pres_Mod, ONLY: compute_qs, lookup_es_des
  use       Fms_Mod,       ONLY: FILE_EXIST, ERROR_MESG, FATAL,   &
                                 CHECK_NML_ERROR, OPEN_NAMELIST_FILE,      &
                                 CLOSE_FILE, mpp_pe, mpp_root_pe, &
@@ -22,8 +22,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: shallow_conv.F90,v 10.0 2003/10/24 22:00:49 fms Exp $'
- character(len=128) :: tagname = '$Name: perth $'
+ character(len=128) :: version = '$Id: shallow_conv.F90,v 10.0.12.1 2008/09/09 13:53:38 rsh Exp $'
+ character(len=128) :: tagname = '$Name: perth_2008_10 $'
 
  logical :: module_is_initialized = .false.
 
@@ -190,7 +190,7 @@
            ksiglcl
 
   real,    dimension(SIZE(Temp,1),SIZE(Temp,2),SIZE(Temp,3)) ::   &
-           qmix,  dphalf, qsat, rhum, theta, thetav, buoy, xyz1 
+           qmix,  dphalf, qsat,  qsat2, rhum, theta, thetav, buoy, xyz1 
 
   integer, dimension(SIZE(Temp,1),SIZE(Temp,2),SIZE(Temp,3)) ::   &
            kbuoy 
@@ -216,12 +216,11 @@
   qmix = MIN( qmix, 0.2    )
 
 ! --- saturation mixing ratio 
-  CALL ESCOMP( Temp, qsat )
-  xyz1 = pfull - d378 * qsat
-  qsat = d622 * qsat / xyz1
+  call compute_qs (Temp, pfull, qsat)
 
 ! --- relative humidity
-  rhum = qmix / qsat
+  call compute_qs (Temp, pfull, qsat2, q=qmix)
+  rhum = qmix / qsat2
 
 !=======================================================================
 ! --- POTENTIAL TEMPERATURE
@@ -459,7 +458,7 @@
 ! Arguments (Intent in)
 !       tlparc   Initial parcel temperature
 !       qlparc   Initial parcel mixing ratio
-!       plparc   Initial parcel pressure
+!      plparc   Initial parcel pressure
 !       phalf    Pressure at half levels
 ! Arguments (Intent out)
 !       plcl     Pressure at LCL
@@ -506,8 +505,7 @@
 ! $$$$$$$$$$$$$$$$$$$$
 
 ! --- Compute saturation vapor pressure and derivative
-  CALL  ESCOMP ( tlclo,  esato )
-  CALL DESCOMP ( tlclo, desato )
+  call lookup_es_des (tlclo, esato, desato)
 
 ! --- Compute new guess for temperature at LCL
   where (non_cnvg)

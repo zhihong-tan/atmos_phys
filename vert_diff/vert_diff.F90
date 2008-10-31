@@ -44,10 +44,11 @@ public :: vert_diff_init,          &
 type surf_diff_type
 
   real, pointer, dimension(:,:) :: dtmass  => NULL(),   &
-                                   dflux_t => NULL(),   & 
+                                   dflux_t => NULL(),   &
                                    delta_t => NULL(),   &
                                    delta_u => NULL(),   &
-                                   delta_v => NULL()
+                                   delta_v => NULL(), &
+                                   sst_miz => NULL()
   real, pointer, dimension(:,:,:) :: dflux_tr => NULL(),& ! tracer flux tendency
                                      delta_tr => NULL()   ! tracer tendency
 end type surf_diff_type
@@ -72,8 +73,8 @@ integer :: sphum, mix_rat
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 15.0 2007/08/14 03:56:22 fms Exp $'
-character(len=128) :: tagname = '$Name: perth $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 15.0.4.1 2008/09/15 23:17:46 wfc Exp $'
+character(len=128) :: tagname = '$Name: perth_2008_10 $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
@@ -192,6 +193,7 @@ integer,              intent(in)    :: idim, jdim, ntprog
     allocate( Tri_surf%delta_t   (idim, jdim) ) ; Tri_surf%delta_t = 0.0
     allocate( Tri_surf%delta_u   (idim, jdim) ) ; Tri_surf%delta_u = 0.0
     allocate( Tri_surf%delta_v   (idim, jdim) ) ; Tri_surf%delta_v = 0.0
+    allocate( Tri_surf%sst_miz   (idim, jdim) ) ; Tri_surf%sst_miz = 280.0 !miz
     allocate( Tri_surf%dflux_tr  (idim, jdim, ntprog) ) ; Tri_surf%dflux_tr = 0.0
     allocate( Tri_surf%delta_tr  (idim, jdim, ntprog) ) ; Tri_surf%delta_tr = 0.0
 
@@ -208,6 +210,7 @@ type(surf_diff_type), intent(inout) :: Tri_surf
       deallocate( Tri_surf%delta_t   )
       deallocate( Tri_surf%delta_u   )
       deallocate( Tri_surf%delta_v   )
+      deallocate( Tri_surf%sst_miz   )!miz
       deallocate( Tri_surf%dflux_tr  )
       deallocate( Tri_surf%delta_tr  )
 

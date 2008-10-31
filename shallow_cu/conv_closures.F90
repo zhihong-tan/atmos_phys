@@ -15,8 +15,8 @@ MODULE CONV_CLOSURES_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_closures.F90,v 15.0 2007/08/14 03:56:01 fms Exp $'
-  character(len=128) :: tagname = '$Name: perth $'
+  character(len=128) :: version = '$Id: conv_closures.F90,v 15.0.6.1.2.1 2008/09/15 23:14:25 wfc Exp $'
+  character(len=128) :: tagname = '$Name: perth_2008_10 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -31,6 +31,7 @@ MODULE CONV_CLOSURES_MOD
      real    :: cbmf, wrel, ufrc, scaleh, dcin, dcape, dwfn, wfn
      integer :: igauss
      real    :: rkfre, rmaxfrac, rbuoy, tau_sh, tau_dp, wcrit_min
+     real    :: maxcldfrac
   end type cclosure
  
 contains
@@ -118,7 +119,6 @@ contains
        sigmaw = sqrt(cc%rkfre * tkeavg)
        wcrit = max(wcrit, cc%wcrit_min*sigmaw)
        cbmf   = ac % rho0lcl * sigmaw / 2.5066 * exp(-0.5*((wcrit/sigmaw)**2.))
-      cbmf   = min(cbmf, ( sd%ps(0) - ac%plcl ) * 0.25 / sd%delt / Uw_p%GRAV)
 
       if (present (cbmf_unmod)) then
         cbmf_unmod = MAX(0.0, cbmf)
@@ -127,28 +127,35 @@ contains
        !Diagnose updraft fraction sqrt(2.) = 1.4142
        erfarg=wcrit / (1.4142 * sigmaw)
        if(erfarg.lt.20.)then
-          ufrc = min(cc%rmaxfrac, 0.5*erfccc(erfarg))
+          ufrc = min(cc%maxcldfrac, cc%rmaxfrac, 0.5*erfccc(erfarg))
        else
           ufrc = 0.
        endif
 
-       if(ufrc.gt.0.001)then !Diagnose expected value of cloud base vertical velocity
-          wexp = cbmf / ac % rho0lcl / ufrc
+       if(ufrc.gt.0) then !Diagnose expected value of cloud base vertical velocity
+           wexp = cbmf / ac % rho0lcl / ufrc
        else
           wexp = 0.
           cbmf = 0.
        endif
     endif
 
-    wexp=min(wexp, 50.)
-    wtw = wexp * wexp - 2 * ac % cin * cc%rbuoy
+    wtw = wexp * wexp - 2 * ac % cin * cc%rbuoy !used for the runs of xx-hv1_amip and tropical storm 
     if(wtw.le.0.) then
        cc%wrel=0.; 
     else
        cc%wrel=sqrt(wtw)
     end if
-    cc%cbmf=max(cbmf,0.)
+    cc%cbmf=cbmf
     cc%ufrc=ufrc
+
+    cbmf = (sd%ps(0) - ac%plcl ) * 0.25 / sd%delt / Uw_p%GRAV
+    if (cc%cbmf .gt. cbmf .and. cc%wrel .gt. 0) then
+       cc%cbmf = cbmf
+       cc%ufrc = cc%cbmf / wexp /ac % rho0lcl
+    end if
+    cc%wrel=min(cc%wrel, 50.)
+    cc%ufrc=min(cc%rmaxfrac, cc%ufrc)
 
     return
 
@@ -243,7 +250,7 @@ contains
     !Diagnose updraft fraction
     erfarg=wcrit / (1.4142 * sigmaw)
     if(erfarg.lt.20.)then
-       cc%ufrc = min(cc%rmaxfrac, 0.5*erfccc(erfarg))
+       cc%ufrc = min(cc%maxcldfrac, cc%rmaxfrac, 0.5*erfccc(erfarg))
     else
        cc%ufrc = 0.
     endif

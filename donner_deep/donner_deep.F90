@@ -61,15 +61,15 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 16.0 2008/07/30 22:06:47 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 16.0.4.1.2.1.2.1 2008/09/16 02:33:54 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
 
 
 !--------------------------------------------------------------------
 !---interfaces------
 
 public   &
-        donner_deep_init, donner_deep, donner_deep_end
+        donner_deep_init, donner_deep, donner_deep_end, donner_deep_restart
 
 private   & 
         deallocate_variables
@@ -442,6 +442,7 @@ logical,                         intent(in), optional :: &
       integer                             :: idf, jdf, nlev, ntracers
       character(len=200)                  :: ermesg
       integer                             :: erflag
+      integer                             :: me, root_pe
   
 !-------------------------------------------------------------------
 !  local variables:
@@ -496,6 +497,18 @@ logical,                         intent(in), optional :: &
 !    2. DO CONSISTENCY / VALIDITY TESTS ON NML AND PARAMETER VARIABLES.
 !
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+      if (Nml%do_donner_plume) then
+        Nml%do_hires_cape_for_closure = .true.
+      endif
+ 
+      if (Nml%do_donner_cape .and.     &
+           .not. Nml%do_hires_cape_for_closure) then
+        erflag = 1
+        ermesg =  'donner_deep_init: &
+            & do_hires_cape_for_closure must be .true. when &
+            & do_donner_cape is true'
+      endif
 
       if (Nml%do_donner_cape .and. Nml%gama /= 0.0) then
         erflag = 1
@@ -882,11 +895,23 @@ logical,                         intent(in), optional :: &
         call nonfms_sat_vapor_pres
       endif
 
+      if (running_in_fms) then
+        call fms_get_pe_number(me, root_pe)
+      else
+
+!---------------------------------------------------------------------
+!    subroutine nonfms_get_pe_number should be set up to return the
+!    current pe's number, if column daignostics are activated in the
+!    nonFMS model. By default, the subroutine returns 0 for all pes.
+!---------------------------------------------------------------------
+        call nonfms_get_pe_number(me, root_pe)
+      endif
+
       call sd_init_k (nlev, ntracers, sd);
       call uw_params_init_k (Param%hlv, Param%hls, Param%hlf, &
           Param%cp_air, Param%grav, Param%kappa, Param%rdgas,  &
           Param%ref_press, Param%d622,Param%d608, Param%kelvin -160., & 
-          Param%kelvin + 100. ,Uw_p)
+          Param%kelvin + 100. , me, root_pe, Uw_p)
       call ac_init_k (nlev, ac);
       call cp_init_k (nlev, ntracers, cp);
       call ct_init_k (nlev, ntracers, ct)
@@ -1144,7 +1169,7 @@ real, dimension(:,:,:),       intent(out),               &
       character(len=128)                :: ermesg
       integer                           :: error
       integer                           :: isize, jsize, nlev_lsm
-      integer                           :: ntr, me
+      integer                           :: ntr, me, root_pe
       logical                           :: calc_conv_on_this_step 
       logical                           :: cloud_tracers_present
       integer                           :: num_cld_tracers
@@ -1287,7 +1312,7 @@ real, dimension(:,:,:),       intent(out),               &
       ntr       = size(tracers,4) 
 
       if (running_in_fms) then
-        call fms_get_pe_number(me)
+        call fms_get_pe_number(me, root_pe)
       else
 
 !---------------------------------------------------------------------
@@ -1295,7 +1320,7 @@ real, dimension(:,:,:),       intent(out),               &
 !    current pe's number, if column daignostics are activated in the
 !    nonFMS model. By default, the subroutine returns 0 for all pes.
 !---------------------------------------------------------------------
-        call nonfms_get_pe_number(me)
+        call nonfms_get_pe_number(me, root_pe)
       endif
 
       Don_budgets%n_water_budget      = N_WATER_BUDGET
@@ -1450,6 +1475,42 @@ real, dimension(:,:,:),       intent(out),               &
 end subroutine donner_deep
 
 
+!#######################################################################
+! <SUBROUTINE NAME="donner_deep_restart">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine donner_deep_restart(timestamp)
+  character(len=*), intent(in), optional :: timestamp
+  integer                                :: ntracers
+
+  if (running_in_fms) then
+     call fms_donner_write_restart (timestamp)
+  else 
+
+     !---------------------------------------------------------------------
+     !    subroutine nonfms_donner_write_restart should be configured to
+     !    write a netcdf restart file in the nonFMS framework (see subroutine
+     !    fms_donner_write_restart for the variables which must be included).
+     !    by default, the subroutine does nothing.
+     !---------------------------------------------------------------------
+     if(present(timestamp)) then
+        call fms_error_mesg('donner_deep_mod: when running_in_fms is false, '// &
+             'timestamp should not passed in donner_deep_restart')
+     endif
+     ntracers = size(Don_save%tracername(:))
+     call nonfms_donner_write_restart (ntracers, Don_save, &
+          Initialized, Nml)
+  endif
+
+end subroutine donner_deep_restart
+! </SUBROUTINE> NAME="donner_deep_restart"
 
 
 !####################################################################
@@ -1476,26 +1537,6 @@ subroutine donner_deep_end
 !    donner deep convection parameterization.
 !-------------------------------------------------------------------
       ntracers = size(Don_save%tracername(:))
-
-!-------------------------------------------------------------------
-!    call subroutine to write restart file. NOTE: only the netcdf 
-!    restart file is currently supported.
-!-------------------------------------------------------------------
-      if (running_in_fms) then
-        call fms_donner_write_restart (ntracers, Don_save, &
-                                       Initialized, Nml)
-      else 
-
-!---------------------------------------------------------------------
-!    subroutine nonfms_donner_write_restart should be configured to
-!    write a netcdf restart file in the nonFMS framework (see subroutine
-!    fms_donner_write_restart for the variables which must be included).
-!    by default, the subroutine does nothing.
-!---------------------------------------------------------------------
-        call nonfms_donner_write_restart (ntracers, Don_save, &
-                                       Initialized, Nml)
-      endif 
-
 
 !-------------------------------------------------------------------
 !    close any column diagnostics units which are open.

@@ -5,9 +5,11 @@
 !=======================================================================
 
  use       Fms_Mod,   ONLY: FILE_EXIST, OPEN_NAMELIST_FILE, ERROR_MESG, FATAL, &
-                            read_data, write_data, CLOSE_FILE, NOTE,&
+                            CLOSE_FILE, NOTE, READ_DATA,          &
                             check_nml_error, mpp_pe, mpp_root_pe, &
                             write_version_number, stdlog, open_restart_file
+ use     fms_io_mod,  only: register_restart_field, restart_file_type
+ use     fms_io_mod,  only: save_restart, restore_state
  use Tridiagonal_Mod, ONLY: TRI_INVERT, CLOSE_TRIDIAGONAL
  use constants_mod,   only: grav, vonkarm
  use monin_obukhov_mod, only : mo_diff
@@ -18,6 +20,7 @@
 !---------------------------------------------------------------------
 
  public :: MY25_TURB, MY25_TURB_INIT, MY25_TURB_END, TKE_SURF, get_tke
+ public :: my25_turb_restart
 
 !---------------------------------------------------------------------
 ! --- GLOBAL STORAGE
@@ -27,12 +30,15 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: my25_turb.F90,v 14.0 2007/03/15 22:04:34 fms Exp $'
- character(len=128) :: tagname = '$Name: perth $'
+ character(len=128) :: version = '$Id: my25_turb.F90,v 14.0.8.1 2008/09/03 18:40:27 z1l Exp $'
+ character(len=128) :: tagname = '$Name: perth_2008_10 $'
  logical            :: module_is_initialized = .false.
  
  logical :: init_tke
  integer :: num_total_pts, pts_done
+
+! for netcdf restart file.
+ type(restart_file_type), save :: Tur_restart
 
 !---------------------------------------------------------------------
 ! --- CONSTANTS
@@ -597,6 +603,7 @@ end subroutine get_tke
 !  (Intent local)
 !---------------------------------------------------------------------
  integer             :: unit, io, ierr
+ integer             :: id_restart
 
 !=====================================================================
 
@@ -671,6 +678,7 @@ end subroutine get_tke
 ! --- Input TKE
 !---------------------------------------------------------------------
 
+  id_restart = register_restart_field(Tur_restart, 'my25_turb.res', 'TKE', TKE)
   if( FILE_EXIST( 'INPUT/my25_turb.res' ) ) then
 
       unit = OPEN_restart_FILE ( file = 'INPUT/my25_turb.res', action = 'read' )
@@ -685,7 +693,7 @@ end subroutine get_tke
              &Reading netCDF formatted restart file: &
                                  &INPUT/my25_turb.res.nc', NOTE)
       endif
-      call read_data('INPUT/my25_turb.res.nc', 'TKE', TKE)
+      call restore_state(Tur_restart)
       
   else
 
@@ -714,23 +722,6 @@ end subroutine get_tke
 !--------------------------------------------------------------------
 !  local variables:
 
-      character(len=65)  :: fname = 'RESTART/my25_turb.res.nc'
-                                    ! name of restart file to be written
-
-!---------------------------------------------------------------------
-!    write a message indicating that a restart file is being written.
-!---------------------------------------------------------------------
-      if (mpp_pe() == mpp_root_pe() ) &
-            call error_mesg ('my25_turb_mod', 'my25_turb_end: &
-              &Writing netCDF formatted restart file as  &
-                &requested: RESTART/my25_turb.res.nc', NOTE)
-
-!----------------------------------------------------------------------
-!    write out the restart data which is always needed, regardless of
-!    when the first donner calculation step is after restart.
-!----------------------------------------------------------------------
-      call write_data (fname, 'TKE', TKE)
-
       module_is_initialized = .false.
 !---------------------------------------------------------------------
 !      unit = OPEN_RESTART_FILE ( file = 'RESTART/my25_turb.res', action = 'write' )
@@ -741,6 +732,36 @@ end subroutine get_tke
 !=====================================================================
 
   end SUBROUTINE MY25_TURB_END
+
+!#######################################################################
+! <SUBROUTINE NAME="my25_turb_restart">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine my25_turb_restart(timestamp)
+  character(len=*), intent(in), optional :: timestamp
+
+  if(.not. present(timestamp)) then
+      if (mpp_pe() == mpp_root_pe() ) &
+            call error_mesg ('my25_turb_mod', 'my25_turb_end: &
+              &Writing netCDF formatted restart file as  &
+                &requested: RESTART/my25_turb.res.nc', NOTE)
+  endif     
+
+!----------------------------------------------------------------------
+!    write out the restart data which is always needed, regardless of
+!    when the first donner calculation step is after restart.
+!----------------------------------------------------------------------
+  call save_restart(Tur_restart, timestamp)
+
+end subroutine my25_turb_restart
+! </SUBROUTINE> NAME="my25_turb_restart"
 
 !#######################################################################
 

@@ -5,7 +5,7 @@ module lscale_cond_mod
 use            fms_mod, only:  file_exist, error_mesg, open_namelist_file,  &
                                check_nml_error, mpp_pe, mpp_root_pe, FATAL,  &
                                close_file, write_version_number, stdlog
-use sat_vapor_pres_mod, only:  escomp, descomp
+use sat_vapor_pres_mod, only:  compute_qs
 use      constants_mod, only:  HLv,HLs,Cp_Air,Grav,rdgas,rvgas
 
 implicit none
@@ -18,8 +18,8 @@ private
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
- character(len=128) :: version = '$Id: lscale_cond.F90,v 10.0 2003/10/24 22:00:34 fms Exp $'
- character(len=128) :: tagname = '$Name: perth $'
+ character(len=128) :: version = '$Id: lscale_cond.F90,v 10.0.14.1.2.1 2008/09/16 02:52:36 wfc Exp $'
+ character(len=128) :: tagname = '$Name: perth_2008_10 $'
  logical            :: module_is_initialized=.false.
 
 !-----------------------------------------------------------------------
@@ -34,8 +34,10 @@ private
 
 real    :: hc=1.00
 logical :: do_evap=.false.
+logical :: do_simple =.false.
 
-namelist /lscale_cond_nml/  hc, do_evap
+namelist /lscale_cond_nml/  hc, do_evap, do_simple
+
 
 !-----------------------------------------------------------------------
 !           description of namelist variables
@@ -107,29 +109,19 @@ integer  k, kx
       kx=size(tin,3)
 
 !----- compute proper latent heat --------------------------------------
-      WHERE (coldT)
-           hlcp = HLs/Cp_Air
-      ELSEWHERE
-           hlcp = HLv/Cp_Air
-      END WHERE
+      if(do_simple) then
+             hlcp = HLv/Cp_Air
+      else
+        WHERE (coldT)
+             hlcp = HLs/Cp_Air
+        ELSEWHERE
+             hlcp = HLv/Cp_Air
+        END WHERE
+      endif
 
-!----- saturation vapor pressure (esat) & specific humidity (qsat) -----
+!--- saturation specific humidity (qsat) and deriv wrt temp (dqsat) ---
 
-      call  escomp (tin,esat)
-      call descomp (tin,desat)
-
-      esat(:,:,:)=esat(:,:,:)*hc
-
-   where (pfull(:,:,:) > d378*esat(:,:,:))
-      pmes(:,:,:)=1.0/(pfull(:,:,:)-d378*esat(:,:,:))
-      qsat(:,:,:)=d622*esat(:,:,:)*pmes(:,:,:)
-      qsat(:,:,:)=max(0.0,qsat(:,:,:))
-     dqsat(:,:,:)=d622*pfull(:,:,:)*desat(:,:,:)*pmes(:,:,:)*pmes(:,:,:)
-   elsewhere
-      pmes(:,:,:)=0.0
-      qsat(:,:,:)=0.0
-     dqsat(:,:,:)=0.0
-   endwhere
+     call compute_qs (tin, pfull,qsat, hc = hc, dqsdT=dqsat) 
 
 !--------- do adjustment where greater than saturated value ------------
 
@@ -181,13 +173,18 @@ integer  k, kx
       precip(:,:)=max(precip(:,:),0.0)
 
    !assign precip to snow or rain
-   WHERE (coldT)
-      snow = precip
-      rain = 0.
-   ELSEWHERE
-      rain = precip
-      snow = 0.
-   END WHERE
+   if(do_simple) then !no snow!
+        rain = precip
+        snow = 0.
+   else
+     WHERE (coldT)
+        snow = precip
+        rain = 0.
+     ELSEWHERE
+        rain = precip
+        snow = 0.
+     END WHERE
+   endif
 
 !-----------------------------------------------------------------------
 

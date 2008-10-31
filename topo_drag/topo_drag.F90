@@ -12,7 +12,9 @@ use          fms_mod, only: file_exist, open_namelist_file,            &
                             close_file, error_mesg, FATAL, NOTE,       &
                             mpp_pe, mpp_root_pe, stdout, stdlog,       &
                             check_nml_error, write_version_number
-use       fms_io_mod, only: read_data, write_data, field_size
+use       fms_io_mod, only: read_data, field_size
+use       fms_io_mod, only: register_restart_field, restart_file_type
+use       fms_io_mod, only: save_restart, restore_state
 use    constants_mod, only: Grav, Cp_Air, Rdgas, Pi, Radian
 use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
                             horiz_interp_new, horiz_interp, horiz_interp_del
@@ -21,8 +23,8 @@ implicit none
 
 private
 
-character(len=128) :: version = '$Id: topo_drag.F90,v 16.0 2008/07/30 22:09:34 fms Exp $'
-character(len=128) :: tagname = '$Name: perth $'
+character(len=128) :: version = '$Id: topo_drag.F90,v 16.0.2.1 2008/09/03 18:40:39 z1l Exp $'
+character(len=128) :: tagname = '$Name: perth_2008_10 $'
 
 logical :: module_is_initialized = .false.
 
@@ -48,6 +50,9 @@ real, parameter :: resolution=30.0 ! # of points per degree in topo datasets
 integer, parameter :: ipts=360*resolution
 integer, parameter :: jpts=180*resolution
 
+!--- for netcdf restart
+type(restart_file_type), save :: Top_restart
+
 ! parameters in namelist (topo_drag_nml):
 
 real :: &
@@ -71,6 +76,7 @@ NAMELIST /topo_drag_nml/                                               &
   do_conserve_energy, keep_residual_flux
 
 public topo_drag, topo_drag_init, topo_drag_end
+public topo_drag_restart
 
 contains
 
@@ -554,8 +560,7 @@ real, intent(in), dimension(:,:) :: lonb, latb
 
 character*128 :: msg
 character*16  :: name
-character*64  :: restart_file='INPUT/topo_drag.res.nc'
-character*64  :: restart_file1='INPUT/topo_drag.res.tile1.nc'
+character*64  :: restart_file='topo_drag.res.nc'
 character*64  :: topography_file='INPUT/postopog_2min_hp150km.nc'
 character*64  :: dragtensor_file='INPUT/dragelements_2min_hp150km.nc'
 character*3   :: tensornames(4) = (/ 't11', 't21', 't12', 't22' /)
@@ -571,6 +576,7 @@ integer :: unit, ndim, nvar, natt, nt, namelen, n
 integer :: io, ierr, unit_nml
 integer :: i, j
 integer :: siz(4)
+integer :: id_restart
 
   if (module_is_initialized) return
 
@@ -606,19 +612,20 @@ integer :: siz(4)
 
 ! read restart file
 
-  if ( file_exist(restart_file) .or. file_exist(restart_file1) ) then
+  id_restart = register_restart_field(Top_restart, restart_file, 't11', t11)
+  id_restart = register_restart_field(Top_restart, restart_file, 't21', t21)
+  id_restart = register_restart_field(Top_restart, restart_file, 't12', t12)
+  id_restart = register_restart_field(Top_restart, restart_file, 't22', t22)
+  id_restart = register_restart_field(Top_restart, restart_file, 'hmin', hmin)
+  id_restart = register_restart_field(Top_restart, restart_file, 'hmax', hmax)
+  restart_file = 'INPUT/'//trim(restart_file)
+  if ( file_exist(restart_file) ) then
 
      if (mpp_pe() == mpp_root_pe()) then
         write ( msg, '("Reading restart file: ",a40)' ) restart_file
         call error_mesg('topo_drag_mod', msg, NOTE)
      endif
-
-     call read_data (restart_file, 't11', t11)
-     call read_data (restart_file, 't21', t21)
-     call read_data (restart_file, 't12', t12)
-     call read_data (restart_file, 't22', t22)
-     call read_data (restart_file, 'hmin', hmin)
-     call read_data (restart_file, 'hmax', hmax)
+     call restore_state(Top_restart)
 
   else if (file_exist(topography_file) .and.                           &
            file_exist(dragtensor_file)) then
@@ -720,16 +727,29 @@ character(len=64) :: restart_file='RESTART/topo_drag.res.nc'
   if (mpp_pe() == mpp_root_pe() ) then
      call error_mesg('topo_drag_mod', 'Writing netCDF formatted restart file: RESTART/topo_drag.res.nc', NOTE)
   endif
-  call write_data (restart_file, 't11', t11)
-  call write_data (restart_file, 't21', t21)
-  call write_data (restart_file, 't12', t12)
-  call write_data (restart_file, 't22', t22)
-  call write_data (restart_file, 'hmin', hmin)
-  call write_data (restart_file, 'hmax', hmax)
 
   module_is_initialized = .false.
 
 end subroutine topo_drag_end
+
+!#######################################################################
+! <SUBROUTINE NAME="topo_drag_restart">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine topo_drag_restart(timestamp)
+   character(len=*), intent(in), optional :: timestamp
+
+   call save_restart(Top_restart, timestamp)
+
+end subroutine topo_drag_restart
+! </SUBROUTINE>
 
 !#######################################################################
 

@@ -28,8 +28,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: nonfms_donner.F90,v 16.0 2008/07/30 22:07:07 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth $'
+character(len=128)  :: version =  '$Id: nonfms_donner.F90,v 16.0.4.1.2.1.2.1.2.1 2008/09/17 13:43:48 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
 
 
 !--------------------------------------------------------------------
@@ -135,6 +135,7 @@ integer,               intent(in)       :: kpar
 !--------------------------------------------------------------------
       do_freezing_for_cape = .true.
       do_freezing_for_closure = .true.
+      do_hires_cape_for_closure = .false.
       do_donner_cape    = .false.
       do_donner_plume   = .false.
       do_donner_closure = .false.
@@ -149,6 +150,7 @@ integer,               intent(in)       :: kpar
       atopevap          = 0.1
       frac      = 1.65
       ttend_max = 0.005
+      mesofactor = 5.
       EVAP_IN_DOWNDRAFTS  = 0.
       EVAP_IN_ENVIRON     = 0.
       ENTRAINED_INTO_MESO = 1.00
@@ -185,6 +187,7 @@ integer,               intent(in)       :: kpar
 
       Nml%parcel_launch_level         = parcel_launch_level
       Nml%allow_mesoscale_circulation = allow_mesoscale_circulation
+      Nml%do_hires_cape_for_closure   = do_hires_cape_for_closure
       Nml%do_donner_cape              = do_donner_cape    !miz
       Nml%do_donner_plume             = do_donner_plume   !miz
       Nml%do_donner_closure           = do_donner_closure !miz
@@ -210,6 +213,7 @@ integer,               intent(in)       :: kpar
       Nml%auto_th                     = auto_th           !miz
       Nml%frac                        = frac              !miz
       Nml%ttend_max                   = ttend_max         !miz
+      Nml%mesofactor                  = mesofactor        !miz
       Nml%use_llift_criteria          = use_llift_criteria
       Nml%use_pdeep_cv                = use_pdeep_cv
       Nml%entrainment_constant_source = entrainment_constant_source
@@ -387,17 +391,19 @@ end subroutine nonfms_donner_write_restart
 
 !#####################################################################
 
-subroutine nonfms_get_pe_number (me)
+subroutine nonfms_get_pe_number (me, root_pe)
  
 !--------------------------------------------------------------------
-!    define pe number (needed for column diagnostics). For now, column
-!    diagnostcis are unavailable outside of FMS, so the value is set 
+!    define pe number (needed for column diagnostics and as dummy arg-
+!    ument for donner_lite diagnostics). For now, column
+!    diagnostics are unavailable outside of FMS, so the value is set 
 !    to 0 for all pes. 
 !--------------------------------------------------------------------
 
-integer, intent(out) :: me
+integer, intent(out) :: me, root_pe
    
       me = 0
+      root_pe = 0
 
 end subroutine nonfms_get_pe_number
 
@@ -459,15 +465,20 @@ subroutine nonfms_sat_vapor_pres
 integer, parameter :: TCMIN = -160
 integer, parameter :: TCMAX = 100
 integer, parameter :: ESRES = 10
+real,    parameter :: HLV = 2.500e6   
+real,    parameter :: ES0 = 1.0 
+real,    parameter :: RVGAS = 461.50 
 integer, parameter :: NSIZE = (TCMAX-TCMIN)*esres + 1
 integer, parameter :: NLIM = NSIZE - 1
 real, parameter :: TFREEZE = 273.16
 
       real  :: teps, tmin, dtinv
       character(len=128) :: err_msg
+      logical :: dum = .false.
 
       call sat_vapor_pres_init_k (NSIZE, REAL(TCMIN), REAL(TCMAX), &
-                                  TFREEZE, err_msg, teps, tmin, dtinv)
+                             TFREEZE, HLV, RVGAS, ES0, err_msg, dum, dum, &
+                             teps, tmin, dtinv)
  
 
 end subroutine nonfms_sat_vapor_pres

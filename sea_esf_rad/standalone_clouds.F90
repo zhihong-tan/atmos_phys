@@ -20,8 +20,7 @@ use fms_mod,                    only: fms_init, open_namelist_file, &
                                       write_version_number, mpp_pe, &
                                       mpp_root_pe, stdlog,   &
                                       file_exist, check_nml_error,   &
-                                      error_mesg, FATAL, close_file,  &
-                                      read_data, write_data
+                                      error_mesg, FATAL, close_file
 use rad_utilities_mod,          only: rad_utilities_init, &
                                       Cldrad_control, &
                                       cld_specification_type, &
@@ -45,8 +44,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 15.0 2007/08/14 03:55:51 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: perth $'
+  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 15.0.6.1 2008/09/03 18:40:33 z1l Exp $'
+  character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
 
 
 

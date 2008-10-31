@@ -103,8 +103,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 16.0 2008/07/30 22:08:04 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 16.0.2.2.2.1 2008/09/15 23:11:08 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
 
 
 !---------------------------------------------------------------------
@@ -145,10 +145,14 @@ character(len=16) :: overlap_type = 'random'
                                         ! or 'max-random'  
 logical :: doing_data_override=.false.
 logical :: do_fu2007 = .false.
+logical :: do_rain   = .false. !sjl
+logical :: do_snow   = .false. !miz
+logical :: do_graupel  = .false. !sjl
 
 namelist /cloud_spec_nml / cloud_type_form, wtr_cld_reff,   &
                            ice_cld_reff, rain_reff, overlap_type, &
-                           doing_data_override, do_fu2007
+                           doing_data_override, do_fu2007,    &
+                           do_rain, do_snow, do_graupel
 
 !----------------------------------------------------------------------
 !----  public data -------
@@ -188,6 +192,7 @@ integer :: nql           ! tracer index for liquid water
 integer :: nqi           ! tracer index for ice water
 integer :: nqa           ! tracer index for cloud area
 integer :: nqn           ! tracer index for cloud droplet number
+integer :: nqr, nqs, nqg ! tracer index for rainwat, snowwat and graupel           
 
 !----------------------------------------------------------------------
 !   variables needed for random number seed:
@@ -543,6 +548,23 @@ type(time_type),          intent(in)   ::  Time
           nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
           nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
           nqa = get_tracer_index ( MODEL_ATMOS, 'cld_amt' )
+
+          if (do_rain) then !sjl
+             nqr = get_tracer_index ( MODEL_ATMOS, 'rainwat' )
+             if (nqr < 0 ) call error_mesg ('cloud_spec_mod', &
+                'rainwat tracer not found, but do_rain is true', FATAL)
+          end if
+          if (do_snow) then !miz
+             nqs = get_tracer_index ( MODEL_ATMOS, 'snowwat' )
+             if (nqs < 0 ) call error_mesg ('cloud_spec_mod', &
+                'snowwat tracer not found, but do_snow is true', FATAL)
+          end if
+          if (do_graupel) then !sjl
+             nqg = get_tracer_index ( MODEL_ATMOS, 'graupel' )
+             if (nqg < 0 ) call error_mesg ('cloud_spec_mod', &
+                'graupel tracer not found, but do_graupel is true', FATAL)
+          end if
+
           if (mpp_pe() == mpp_root_pe()) &
             write (stdlog(),'(a,3i4)') 'Stratiform cloud tracer ind&
                 &ices: nql,nqi,nqa =',nql,nqi,nqa
@@ -635,8 +657,8 @@ end subroutine cloud_spec_init
 !   call cloud_spec (is, ie, js, je, lat, z_half, z_full, Rad_time,
 !                       Atmos_input, &
 !                       Surface, Cld_spec, Lsc_microphys,  &
-!                       Meso_microphys, Cell_microphys, cloud_water_in, &
-!                       cloud_ice_in, cloud_area_in, r)
+!                       Meso_microphys, Cell_microphys, lsc_area_in, &
+!                       lsc_liquid_in, lsc_ice_in, lsc_droplet_number_in        , r)
 !  </TEMPLATE>
 !  <IN NAME="is,ie,js,je" TYPE="integer">
 !   starting/ending subdomain i,j indices of data in
@@ -670,15 +692,15 @@ end subroutine cloud_spec_init
 !  <INOUT NAME="Surface" TYPE="Surface">
 !   Surface boundary condition to radiation package
 !  </INOUT>
-!  <IN NAME="cloud_water_in" TYPE="real">
-!   OPTIONAL: cloud water mixing ratio  present when running 
+!  <IN NAME="lsc_liquid_in" TYPE="real">
+!   OPTIONAL: lsc cloud water mixing ratio  present when running 
 !    standalone columns or sa_gcm
 !  </IN>
-!  <IN NAME="cloud_ice_in" TYPE="real">
+!  <IN NAME="lsc_ice_in" TYPE="real">
 !   OPTIONAL: cloud ice mixing ratio  present when running 
 !    standalone columns or sa_gcm
 !  </IN>
-!  <IN NAME="cloud_area_in" TYPE="real">
+!  <IN NAME="lsc_area_in" TYPE="real">
 !   OPTIONAL: fractional cloud area, present when running 
 !                        standalone columns or sa_gcm
 !  </IN>
@@ -690,8 +712,8 @@ end subroutine cloud_spec_init
 subroutine cloud_spec (is, ie, js, je, lat, z_half, z_full, Rad_time, &
                        Atmos_input, Surface, Cld_spec, Lsc_microphys, &
                        Meso_microphys, Cell_microphys,  &
-                       Shallow_microphys, cloud_water_in, &
-                       cloud_ice_in, cloud_area_in, r,             &
+                       Shallow_microphys, lsc_area_in, lsc_liquid_in, &
+                       lsc_ice_in, lsc_droplet_number_in, r,          &
                        shallow_cloud_area, shallow_liquid, shallow_ice,&
                        shallow_droplet_number, &
                        cell_cld_frac, cell_liq_amt, cell_liq_size, &
@@ -718,9 +740,9 @@ type(microphysics_type),      intent(inout)          :: Lsc_microphys, &
                                                         Meso_microphys,&
                                                         Cell_microphys,&
                                                      Shallow_microphys
-real, dimension(:,:,:),       intent(in),   optional :: cloud_water_in,&
-                                                        cloud_ice_in, &
-                                                        cloud_area_in
+real, dimension(:,:,:),       intent(in), optional ::  &
+                                           lsc_liquid_in, lsc_ice_in, &
+                                      lsc_droplet_number_in, lsc_area_in
 real, dimension(:,:,:,:),     intent(in),   optional :: r
 real, dimension(:,:,:),       intent(inout),optional :: &
                       shallow_cloud_area, shallow_liquid, shallow_ice,&
@@ -773,15 +795,15 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
 !
 !   intent(in), optional variables:
 !
-!      cloud_water_in    cloud water mixing ratio (or specific humidity 
+!      lsc_liquid_in     cloud water mixing ratio (or specific humidity 
 !                        ????), present when running standalone columns
 !                        or sa_gcm
 !                        [ non-dimensional ]
-!      cloud_ice_in      cloud ice mixing ratio (or specific humidity 
+!      lsc_ice_in        cloud ice mixing ratio (or specific humidity 
 !                         ????), present when running standalone columns
 !                        or sa_gcm
 !                        [ non-dimensional ]
-!      cloud_area_in     fractional cloud area, present when running 
+!      lsc_area_in       fractional cloud area, present when running 
 !                        standalone columns or sa_gcm
 !                        [ non-dimensional ]
 !      r                 model tracer fields on the current time step
@@ -815,17 +837,24 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
 !    check for the presence of optional input arguments.
 !---------------------------------------------------------------------
       ierr = 1
-      if (present(cloud_water_in) .and.   &
-          present(cloud_ice_in) .and. &
-          present(cloud_area_in)) then
+      if (present(lsc_liquid_in) .and.   &
+          present(lsc_ice_in) .and. &
+          present(lsc_area_in)) then
         ierr = 0
+        if (Cldrad_control%do_liq_num) then
+          if (.not. present(lsc_droplet_number_in) ) then
+            call error_mesg ('cloud_spec_mod', &
+               'must input lsc_droplet_number_in when  &
+                                   &using do_liq_num', FATAL)
+          endif
+        endif
       else
         if (present (r)) then
           ierr = 0
         else
           call error_mesg ('cloud_spec_mod', &
-              'must input either r or cloud_water_in and  &
-              &cloud_ice_in when using predicted cloud microphysics', &
+              'must input either r or lsc_liquid_in and  &
+              &lsc_ice_in when using predicted cloud microphysics', &
                                                                FATAL)
         endif
       endif
@@ -850,13 +879,18 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
 !    define the cloud_water, cloud_ice and cloud_area components of 
 !    Cld_spec.
 !---------------------------------------------------------------------
-      if (present (cloud_ice_in) .and. &
-          present (cloud_water_in) ) then
-        Cld_spec%cloud_ice   = cloud_ice_in
-        Cld_spec%cloud_water = cloud_water_in
+      if (present (lsc_ice_in) .and. &
+          present (lsc_liquid_in) ) then
+        Cld_spec%cloud_ice   = lsc_ice_in
+        Cld_spec%cloud_water = lsc_liquid_in
+        if (Cldrad_control%do_liq_num) then
+          if (present(lsc_droplet_number_in)) then
+             Cld_spec%cloud_droplet (:,:,:) = lsc_droplet_number_in
+          endif
+        endif
       endif
-      if (present (cloud_area_in)  )then
-        Cld_spec%cloud_area = cloud_area_in
+      if (present (lsc_area_in)  )then
+        Cld_spec%cloud_area = lsc_area_in
       endif
 
 !----------------------------------------------------------------------
@@ -950,21 +984,56 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
 !    cloud area have been input as optional arguments to this sub-
 !    routine.
 !---------------------------------------------------------------------
+          if(present(lsc_liquid_in)) then
+            if (Cld_spec%cloud_area(1,1,1) == -99.) then
+              if (present (r)) then
+                Cld_spec%cloud_water(:,:,:) = r(:,:,:,nql)
+                Cld_spec%cloud_ice  (:,:,:) = r(:,:,:,nqi)
+                Cld_spec%cloud_area (:,:,:) = r(:,:,:,nqa)
+                if (Cldrad_control%do_liq_num) then
+                  Cld_spec%cloud_droplet (:,:,:) = r(:,:,:,nqn)
+                endif
+              else
+                call error_mesg ('cloud_spec_mod', &
+                   'lsc_area_in, etc not present in restart file (flag &
+                    &has been set), and r array is not passed to &
+                                 &cloud_spec; cannot proceed', FATAL)
+              endif
+            endif
+          else  ! (present (lsc_liquid_in))
             if (present (r)) then
               Cld_spec%cloud_water(:,:,:) = r(:,:,:,nql)
               Cld_spec%cloud_ice  (:,:,:) = r(:,:,:,nqi)
               Cld_spec%cloud_area (:,:,:) = r(:,:,:,nqa)
               if (Cldrad_control%do_liq_num) then
                 Cld_spec%cloud_droplet (:,:,:) = r(:,:,:,nqn)
-              endif 
+              endif
+            else
+              call error_mesg ('cloud_spec_mod', &
+                  'neither lsc_area_in, etc nor r array &
+                 &has been passed to cloud_spec; cannot proceed', FATAL)
             endif
+          endif ! (present(lsc_liquid_in))
+
+          if (present(r)) then
+            if (do_rain) then !sjl
+              Cld_spec%cloud_water(:,:,:) = Cld_spec%cloud_water(:,:,:)+r(:,:,:,nqr)
+            end if
+            if (do_snow) then !miz
+              Cld_spec%cloud_ice(:,:,:) = Cld_spec%cloud_ice(:,:,:)+r(:,:,:,nqs)
+            end if
+            if (do_graupel) then !SJL
+              Cld_spec%cloud_ice(:,:,:) = Cld_spec%cloud_ice(:,:,:)+r(:,:,:,nqg)
+            end if
+          endif  
 
 !---------------------------------------------------------------------
 !    if the cloud input data is to be overriden, define the time slice
 !    of data which is to be used. allocate storage for the cloud data.
 !---------------------------------------------------------------------
           if (doing_data_override) then
-            Data_time = Rad_time 
+            Data_time = Rad_time +    &
+                          set_time (Rad_control%rad_time_step, 0)
  
 !---------------------------------------------------------------------
 !    call data_override to retrieve the processor subdomain's cloud

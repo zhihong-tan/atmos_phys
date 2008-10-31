@@ -1,4 +1,4 @@
-!  $Id: donner_nml.h,v 16.0 2008/07/30 22:06:58 fms Exp $
+!  $Id: donner_nml.h,v 16.0.4.1.2.1 2008/08/06 09:18:02 rsh Exp $
 
 !---------------------------------------------------------------------
 !---namelist----
@@ -54,6 +54,7 @@ real                :: dfre_for_closure =  10.
 real                :: rmuz_for_closure = 0.0     
                         ! parcel entrainment factor used in cape closure
                         ! calculation
+logical             :: do_hires_cape_for_closure = .false.
 logical             :: do_donner_cape    = .true.
 logical             :: do_donner_plume   = .true.
 logical             :: do_donner_closure = .true.
@@ -81,6 +82,9 @@ real                :: auto_rate = 1.0e-3
 real                :: auto_th   = 0.5e-3
 real                :: frac      = 1.
 real                :: ttend_max = 1000.
+real                :: mesofactor = 5.  
+                        ! assumed ratio of mesoscale cloud area to 
+                        ! ensemble cell cloud area
 real                :: EVAP_IN_DOWNDRAFTS  = 0.25
                         ! fraction of condensate available to the meso-
                         ! scale which is evaporated in convective down-
@@ -250,6 +254,7 @@ namelist / donner_deep_nml /      &
                             dfre_for_cape, rmuz_for_cape, &
                             do_freezing_for_closure, tfre_for_closure, &
                             dfre_for_closure, rmuz_for_closure, &
+                            do_hires_cape_for_closure, &
                             do_donner_cape,   &!miz
                             do_donner_plume,  &!miz
                             do_donner_closure,&!miz
@@ -277,6 +282,7 @@ namelist / donner_deep_nml /      &
                             auto_th,          &!miz
                             frac,             &!miz
                             ttend_max,        &!miz
+                            mesofactor,       &!miz
                             EVAP_IN_DOWNDRAFTS,      &!miz
                             EVAP_IN_ENVIRON,         &!miz
                             ENTRAINED_INTO_MESO,     &!miz

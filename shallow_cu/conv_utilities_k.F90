@@ -1,7 +1,8 @@
+#include <fms_platform.h>
 
 MODULE CONV_UTILITIES_k_MOD
   
-  use Sat_Vapor_Pres_k_Mod, ONLY: lookup_es_k, lookup_des_k
+  use Sat_Vapor_Pres_k_Mod, ONLY: compute_qs_k
 
 !---------------------------------------------------------------------
   implicit none
@@ -10,8 +11,8 @@ MODULE CONV_UTILITIES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 16.0 2008/07/30 22:09:22 fms Exp $'
-  character(len=128) :: tagname = '$Name: perth $'
+  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 16.0.2.1.2.1.2.1.2.1 2008/09/15 23:16:23 wfc Exp $'
+  character(len=128) :: tagname = '$Name: perth_2008_10 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -30,22 +31,23 @@ MODULE CONV_UTILITIES_k_MOD
  type sounding
     logical  :: coldT
     integer  :: kmax, kinv, ktoppbl, ktopconv
-    real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt
-    real, pointer :: t     (:)=>NULL(), qv   (:)=>NULL(), u     (:)=>NULL()
-    real, pointer :: v     (:)=>NULL(), ql   (:)=>NULL(), qi    (:)=>NULL()
-    real, pointer :: qa    (:)=>NULL(), thc  (:)=>NULL(), qct   (:)=>NULL()
-    real, pointer :: thv   (:)=>NULL(), rh   (:)=>NULL(), p     (:)=>NULL()
-    real, pointer :: z     (:)=>NULL(), dp   (:)=>NULL(), dz    (:)=>NULL()
-    real, pointer :: rho   (:)=>NULL(), nu   (:)=>NULL(), leff  (:)=>NULL()
-    real, pointer :: exner (:)=>NULL(), ps   (:)=>NULL(), exners(:)=>NULL()
-    real, pointer :: zs    (:)=>NULL(), ssthc(:)=>NULL(), ssqct (:)=>NULL()
-    real, pointer :: dudp  (:)=>NULL(), dvdp (:)=>NULL(), thvbot(:)=>NULL()
-    real, pointer :: thvtop(:)=>NULL(), qn   (:)=>NULL(), qs    (:)=>NULL()
-    real, pointer :: am1   (:)=>NULL(), am2  (:)=>NULL(), am3   (:)=>NULL()
-    real, pointer :: am4   (:)=>NULL()
-    real, pointer :: hl    (:)=>NULL(), sshl (:)=>NULL()
+    real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt, rhav, tke
+    real, _ALLOCATABLE :: t     (:)_NULL, qv   (:)_NULL, u     (:)_NULL
+    real, _ALLOCATABLE :: v     (:)_NULL, ql   (:)_NULL, qi    (:)_NULL
+    real, _ALLOCATABLE :: qa    (:)_NULL, thc  (:)_NULL, qct   (:)_NULL
+    real, _ALLOCATABLE :: thv   (:)_NULL, rh   (:)_NULL, p     (:)_NULL
+    real, _ALLOCATABLE :: z     (:)_NULL, dp   (:)_NULL, dz    (:)_NULL
+    real, _ALLOCATABLE :: rho   (:)_NULL, nu   (:)_NULL, leff  (:)_NULL
+    real, _ALLOCATABLE :: exner (:)_NULL, ps   (:)_NULL, exners(:)_NULL
+    real, _ALLOCATABLE :: zs    (:)_NULL, ssthc(:)_NULL, ssqct (:)_NULL
+    real, _ALLOCATABLE :: dudp  (:)_NULL, dvdp (:)_NULL, thvbot(:)_NULL
+    real, _ALLOCATABLE :: thvtop(:)_NULL, qn   (:)_NULL, qs    (:)_NULL
+    real, _ALLOCATABLE :: am1   (:)_NULL, am2  (:)_NULL, am3   (:)_NULL
+    real, _ALLOCATABLE :: am4   (:)_NULL
+    real, _ALLOCATABLE :: hl    (:)_NULL, sshl (:)_NULL, hm    (:)_NULL
+    real, _ALLOCATABLE :: hms   (:)_NULL
 !++++yim     
-    real, pointer :: tr    (:,:)=>NULL(), sstr(:,:)=>NULL()
+    real, _ALLOCATABLE :: tr    (:,:)_NULL, sstr(:,:)_NULL
  end type sounding
 
  public adicloud
@@ -54,16 +56,18 @@ MODULE CONV_UTILITIES_k_MOD
     integer  :: klcl, klfc, klnb
     real     :: plcl, zlcl, thvlcl, thv0lcl, rho0lcl
     real     :: plfc, plnb, cape, cin
-    real, pointer :: t  (:)=>NULL(), qv  (:)=>NULL(), ql  (:)=>NULL()
-    real, pointer :: qi (:)=>NULL(), thc (:)=>NULL(), qct (:)=>NULL()
-    real, pointer :: thv(:)=>NULL(), nu  (:)=>NULL(), leff(:)=>NULL()
-    real, pointer :: hl (:)=>NULL()
+    real, _ALLOCATABLE :: t  (:)_NULL, qv  (:)_NULL, ql  (:)_NULL
+    real, _ALLOCATABLE :: qi (:)_NULL, thc (:)_NULL, qct (:)_NULL
+    real, _ALLOCATABLE :: thv(:)_NULL, nu  (:)_NULL, leff(:)_NULL
+    real, _ALLOCATABLE :: hl (:)_NULL, buo (:)_NULL
  end type adicloud
 
  public uw_params
  type uw_params
    real  :: hlv, hls, hlf, cp_air, grav, kappa, rdgas, p00, epsilo,  &
             zvir, tkmin, tkmax
+   integer :: me
+   logical :: master
  end type uw_params
 
 ! Lookup table dimension and ranges for findt_k
@@ -103,9 +107,10 @@ contains
 
   subroutine uw_params_init_k (hlv, hls, hlf, cp_air, grav, kappa,  &
                                rdgas, p00, epsilo, zvir, tkmin,  &
-                               tkmax, Uw_p)
+                               tkmax, me, root_pe, Uw_p)
     real, intent(in) :: hlv, hls, hlf, cp_air, grav, kappa, rdgas,  &
                         p00, epsilo, zvir, tkmin, tkmax
+    integer, intent(in) :: me, root_pe
     type(uw_params), intent(inout) :: Uw_p
 
     Uw_p%hlv = hlv
@@ -120,6 +125,8 @@ contains
     Uw_p%zvir   = zvir  
     Uw_p%tkmin  = tkmin
     Uw_p%tkmax  = tkmax 
+    Uw_p%me     = me
+    Uw_p%master = (me == root_pe)
 
   end subroutine uw_params_init_k
 
@@ -165,6 +172,8 @@ contains
     allocate ( sd%am3   (1:kd)); sd%am3   =0.;
     allocate ( sd%am4   (1:kd)); sd%am4   =0.;
     allocate ( sd%hl    (1:kd)); sd%hl    =0.;
+    allocate ( sd%hm    (1:kd)); sd%hm    =0.;
+    allocate ( sd%hms   (1:kd)); sd%hms   =0.;
     allocate ( sd%sshl  (1:kd)); sd%sshl  =0.;
 !++++yim
     allocate ( sd%tr  (1:kd,1:num_tracers)); sd%tr  =0.;
@@ -192,6 +201,7 @@ contains
     sd1%am1   = sd%am1;  sd1%am2   =sd%am2; 
     sd1%am3   = sd%am3;  sd1%am4   =sd%am4;
     sd1%hl    = sd%hl;   sd1%sshl  =sd%sshl;
+    sd1%hm    = sd%hm;   sd1%hms   =sd%hms;
 !++++yim
     sd1%tr  =sd%tr
   end subroutine sd_copy_k
@@ -204,10 +214,8 @@ contains
     deallocate ( sd%t, sd%qv, sd%u, sd%v, sd%ql, sd%qi, sd%qa, sd%thc, sd%qct,&
          sd%thv, sd%rh, sd%p, sd%z, sd%dp, sd%dz, sd%rho, sd%nu, sd%leff,     &
          sd%exner, sd%ps, sd%exners, sd%zs, sd%ssthc, sd%ssqct, sd%dudp,      &
-         sd%dvdp, sd%thvbot, sd%thvtop, sd%qn, sd%am1, sd%am2, sd%am3, &
-         sd%am4, sd%qs, &
-!++++yim
-         sd%hl, sd%sshl, sd%tr, sd%sstr)
+         sd%dvdp, sd%thvbot, sd%thvtop, sd%qn, sd%am1, sd%am2, sd%am3, sd%am4,&
+         sd%qs, sd%hl, sd%hm, sd%hms, sd%sshl, sd%tr, sd%sstr)
   end subroutine sd_end_k
 
 !#####################################################################
@@ -227,6 +235,7 @@ contains
     allocate ( ac%nu    (1:kd)); ac%nu   =0.;
     allocate ( ac%leff  (1:kd)); ac%leff =0.;
     allocate ( ac%hl    (1:kd)); ac%hl   =0.;
+    allocate ( ac%buo   (1:kd)); ac%buo  =0.;
   end subroutine ac_init_k
 
 !#####################################################################
@@ -237,6 +246,7 @@ contains
     ac%t    =0.;    ac%qv   =0.;    ac%ql   =0.;
     ac%qi   =0.;    ac%thc  =0.;    ac%qct  =0.;
     ac%thv  =0.;    ac%nu   =0.;    ac%leff =0.; ac%hl   =0.;
+    ac%buo  =0.;
   end subroutine ac_clear_k
 
 !#####################################################################
@@ -245,7 +255,7 @@ contains
   subroutine ac_end_k(ac)
     type(adicloud), intent(inout) :: ac
     deallocate (ac%t, ac%qv, ac%ql, ac%qi, ac%thc, ac%qct,  &
-                ac%thv, ac%nu, ac%leff, ac%hl )
+                ac%thv, ac%nu, ac%leff, ac%hl, ac%buo )
   end subroutine ac_end_k
 
 !#####################################################################
@@ -321,7 +331,7 @@ contains
     integer :: k, kl, ktoppbl, id_check
     real    :: sshl0a, sshl0b, ssthc0a, ssthc0b, ssqct0a, ssqct0b
     real    :: hl0bot, thc0bot, qct0bot, hl0top, thc0top, qct0top
-    real    :: thj, qvj, qlj, qij, qse, thvj
+    real    :: thj, qvj, qlj, qij, qse, thvj, dpsum
     real, dimension(size(sd%tr,2)) :: sstr0a, sstr0b
 
     sd % exners(0) = exn_k(sd%ps(0),Uw_p);
@@ -335,21 +345,29 @@ contains
     sd % hl  (:) = Uw_p%cp_air*sd%t(:)+Uw_p%grav*sd%z(:)-  &
                    sd%leff(:)*(sd%ql(:)+sd%qi(:))
     sd % qint = 0.
+    sd % rhav = 0.; dpsum=0.
     do k=1, sd%ktopconv !sd%kmax
        sd % dp    (k) = sd%ps(k-1)-sd%ps(k)
        sd % dz    (k) = sd%zs(k)  -sd%zs(k-1)
        sd % exner (k) = exn_k(sd%p (k), Uw_p)
        sd % exners(k) = exn_k(sd%ps(k),Uw_p)
        sd % thc   (k) = sd%t(k) / sd%exner(k) 
-       sd % qs    (k) = qsat_k(sd%t(k), sd%p(k),Uw_p)
+       sd % qs    (k) = qsat_k(sd%t(k), sd%p(k),Uw_p, qv=sd%qv(k))
        sd % rh    (k) = min(sd%qv(k)/sd%qs(k),1.)
        sd % thv   (k) = sd%t(k)/sd%exner(k) *   &
                         (1.+Uw_p%zvir*sd%qv(k)-sd%ql(k)-sd%qi(k))
        sd % rho   (k) = sd % p(k)/     &
                         (Uw_p%rdgas * sd % thv(k) * sd % exner(k))
        sd % qint      =sd % qint + sd%qct(k)*sd%dp(k)
+       if (sd%p(k) .gt. 40000) then
+          sd % rhav = sd % rhav+ sd%rh (k)*sd%dp(k)
+          dpsum      = dpsum + sd%dp(k)
+       end if
     end do
     sd % qint = sd % qint / Uw_p%grav
+    sd % rhav = sd % rhav / dpsum
+    sd % hm  (:) = Uw_p%cp_air*sd%t(:)+Uw_p%grav*sd%z(:)+sd%leff(:)*sd%qv(:)
+    sd % hms (:) = Uw_p%cp_air*sd%t(:)+Uw_p%grav*sd%z(:)+sd%leff(:)*sd%qs(:)
 
    !Finite-Volume intepolation
     kl=sd%ktopconv !sd%kmax-1
@@ -392,6 +410,7 @@ contains
        sd%dudp(k) = (sd%u(k+1)-sd%u(k-1))/(sd%p(k+1)-sd%p(k-1))
        sd%dvdp(k) = (sd%v(k+1)-sd%v(k-1))/(sd%p(k+1)-sd%p(k-1))
     end do
+    sd%sshl (kl)=sd%sshl (kl-1)
     sd%ssthc(kl)=sd%ssthc(kl-1)
     sd%ssqct(kl)=sd%ssqct(kl-1)
     sd%sstr(kl,:)=sd%sstr(kl-1,:)
@@ -411,7 +430,7 @@ contains
 
     ktoppbl=1;
     do k = 2, kl-1
-       if ((pblht+1.-sd%zs(k))*(pblht+1.-sd%zs(k+1)).lt.0.) then 
+       if ((pblht+sd%zs(0)+1.-sd%zs(k))*(pblht+sd%zs(0)+1.-sd%zs(k+1)).lt.0.) then
           ktoppbl=k; exit;
        endif
     end do
@@ -430,13 +449,14 @@ contains
 !#####################################################################
 
   subroutine adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd,   &
-                          Uw_p, dofast, doice, ac)
+                          Uw_p, dofast, doice, ac, rmuz)
   
     real, intent(inout) :: zsrc, psrc, hlsrc, thcsrc, qctsrc
     type(sounding), intent(in)    :: sd 
     type(uw_params), intent(inout)    :: Uw_p
     logical,        intent(in)    :: dofast, doice
     type(adicloud), intent(inout) :: ac
+    real, intent(in), optional :: rmuz
     
     integer :: k, kl, klcl, klfc, klnb, id_check
     real    :: esrc,qs,tdsrc,temsrc,zlcl,tlcl
@@ -444,6 +464,7 @@ contains
     real    :: cin, cinlcl, plfc, thvubot, thvutop
     real    :: thj, qvj, qlj, qij, qse, thvj
     real    :: cape, plnb, chi, tmp, rhtmp
+    real    :: alpha
 
     call ac_clear_k(ac);
     ac%klcl=0; ac%klfc=0; ac%klnb=0; 
@@ -485,7 +506,7 @@ contains
     end if
     ac % klcl=klcl; 
 
-    if (dofast.and.(ac%klcl.eq.0 .or. ac%plcl.eq.sd%ps(1) .or. ac%plcl.lt.20000.)) return;
+    if (dofast.and.(ac%klcl.eq.0 .or. ac%plcl.gt.sd%ps(1) .or. ac%plcl.lt.20000.)) return;
 
     call findt_k(ac%zlcl, ac%plcl, hlsrc, qctsrc, thj,   &
                  qvj, qlj, qij, qse, ac%thvlcl, doice, Uw_p)
@@ -505,11 +526,31 @@ contains
 
     kl=sd % ktopconv-1
 
+    if (present(rmuz)) then
+      if (rmuz /= 0.0) then
+        do k=1,kl
+         call findt_k(sd%zs(k),sd%ps(k), hlsrc, qctsrc, thj, ac%qv(k), &
+                      ac%ql(k), ac%qi(k), qs, ac%thv(k), doice, Uw_p)
+         ac%t(k) = thj*exn_k(sd%ps(k),Uw_p)
+         alpha = MIN(1.0, rmuz*(sd%zs(k+1) - sd%zs(k)))
+         hlsrc = (1.0-alpha)*hlsrc + alpha*sd%hl(k+1)
+         qctsrc =(1.0-alpha)*qctsrc + alpha*sd%qct(k+1)
+       end do
+    else
+      do k=1,kl
+        call findt_k(sd%zs(k),sd%ps(k), hlsrc, qctsrc, thj, ac%qv(k), &
+                     ac%ql(k), ac%qi(k), qs, ac%thv(k), doice, Uw_p)
+        ac%t(k) = thj*exn_k(sd%ps(k),Uw_p)
+      end do
+    endif
+  else
     do k=1,kl
        call findt_k(sd%zs(k),sd%ps(k), hlsrc, qctsrc, thj, ac%qv(k), &
                     ac%ql(k), ac%qi(k), qs, ac%thv(k), doice, Uw_p)
        ac%t(k) = thj*exn_k(sd%ps(k),Uw_p)
+       ac%buo(k) = ac%thv(k) - sd%thvtop(k)
     end do
+  endif
 
 
     !Determine the convective inhibition (CIN)
@@ -568,15 +609,20 @@ contains
 !#####################################################################
 !#####################################################################
 
- function qsat_k(temp, p,Uw_p                    )
+ function qsat_k(temp, p,Uw_p, qv)
    real, intent(in)    :: temp, p
    type(uw_params), intent(inout) :: Uw_p
+   real, intent(in), optional :: qv
    real :: qsat_k, es, t
    integer :: ier
  
    t = min(max(temp,Uw_p%tkmin),Uw_p%tkmax)
-   call lookup_es_k (t,es,ier)
-   qsat_k = Uw_p%epsilo * es / ( p - (1.0-Uw_p%epsilo)*es )
+   if (present(qv)) then
+     call compute_qs_k (t, p, Uw_p%epsilo, Uw_p%zvir, qsat_k, ier, &
+                                                               q = qv)
+   else
+     call compute_qs_k (t, p, Uw_p%epsilo, Uw_p%zvir, qsat_k, ier)
+   endif
  
    return
    end function qsat_k
@@ -593,8 +639,7 @@ contains
    integer :: ier
 
    t = min(max(temp,Uw_p%tkmin),Uw_p%tkmax)
-   call lookup_es_k(t,es,ier)
-   qs = Uw_p%epsilo * es / ( p - (1.0-Uw_p%epsilo)*es )
+   call compute_qs_k (t, p, Uw_p%epsilo, Uw_p%zvir, qs, ier)
   
    return
    end subroutine qses_k
@@ -859,7 +904,6 @@ contains
 !###################################################################
 !###################################################################
 
-!++++yim
 subroutine pack_sd_lsm_k (do_lands, land, coldT, dt, pf, ph, zf, zh, &
                           t, qv, tracers, sd)
 
@@ -897,7 +941,7 @@ subroutine pack_sd_lsm_k (do_lands, land, coldT, dt, pf, ph, zf, zh, &
      sd % ps(k) = ph(nk)
      sd % zs(k) = zh(nk)
      sd % t (k) = t (nk)
-     sd % qv(k) = max(qv(nk)/(1.+qv(nk)), 4.e-10)
+     sd % qv(k) = max(qv(nk)/(1.+qv(nk)), 4.e-10) !for donner_deep where mixing-ratio passed in
      sd % ql(k) = 0.
      sd % qi(k) = 0.
      sd % qa(k) = 0.
@@ -957,7 +1001,6 @@ end subroutine pack_sd_lsm_k
       temp_unsat = temp
 
 !     Possibly saturated case
-
 !     Absolute bounds on the temperature
 
       hh = hl - Uw_p%grav*z
@@ -982,8 +1025,6 @@ end subroutine pack_sd_lsm_k
           temp1 = tempmin
           temp2 = tempmax
         else
-!BUGFIX: temp2, temp1 not defined
-!         dtemp=temp2-temp1
           dtemp = tempmax - tempmin
         endif
       endif
@@ -994,11 +1035,9 @@ end subroutine pack_sd_lsm_k
       temp1 = tempmin
       temp2 = tempmax
       f1 = saturated_k(temp1,hh,qt,p,hflag,Uw_p)
-!RSH  nmax = int( (temp2-temp1)/dtemp )
       nmax = int( (temp2-temp1)/dtemp ) + 1
       temp = temp1
       do n=1,nmax
-!RSH    temp = temp + dtemp
         temp = MIN(temp + dtemp, tempmax)
         f = saturated_k(temp,hh,qt,p,hflag,Uw_p)
         if (f1*f.le.0) then
@@ -1064,6 +1103,7 @@ end subroutine pack_sd_lsm_k
       endif
 
       end subroutine findt_new_k
+!     end subroutine findt_k
 
 !     -----------------------------------------------------------------
 !     To diagnose temp from hl and qt, we need to find the zero
@@ -1398,7 +1438,9 @@ end subroutine pack_sd_lsm_k
 
       else
 
+        if (Uw_p%me == 0) then
         write(*,'(a,4e20.12)') 'WARNING solve_hl_k: not bracketed',z,p,hl,qt
+        endif
         temp = temp_unsat
         
       endif
@@ -1509,8 +1551,8 @@ end subroutine pack_sd_lsm_k
 
 !     In-line qses computation here for better performance
       t = min(max(temp,Uw_p%tkmin),Uw_p%tkmax)
-      call lookup_es_k(t,es,ier)
-      qs = Uw_p%epsilo * es / ( p - (1.0-Uw_p%epsilo)*es )
+!   INLINING ????
+      call compute_qs_k (t, p, Uw_p%epsilo, Uw_p%zvir, qs, ier)
 
       select case (hflag)
         case (0)
@@ -1543,8 +1585,8 @@ end subroutine pack_sd_lsm_k
 
 !     In-line qses computation here for better performance
       t = min(max(temp,Uw_p%tkmin),Uw_p%tkmax)
-      call lookup_es_k(t,es,ier)
-      qs = Uw_p%epsilo * es / ( p - (1.0-Uw_p%epsilo)*es )
+!   INLINING ????
+      call compute_qs_k (t, p, Uw_p%epsilo, Uw_p%zvir, qs, ier)
 
       select case (hflag)
         case (0)
@@ -1760,4 +1802,3 @@ subroutine qt_parcel_k (qs, qstar, pblht, tke, land, gama, pblht0, tke0, lofacto
 
 
 end MODULE CONV_UTILITIES_k_MOD
-

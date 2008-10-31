@@ -65,7 +65,7 @@ use   time_manager_mod, only: time_type, get_date, month_name
  
 use  monin_obukhov_mod, only: mo_diff
 
-use sat_vapor_pres_mod, only: lookup_es, lookup_des
+use sat_vapor_pres_mod, only: compute_qs
 
 implicit none
 private
@@ -260,8 +260,8 @@ real, parameter :: tkemin  =   1.e-6  ! tke minimum (m2/s2)
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: edt.F90,v 15.0 2007/08/14 03:53:37 fms Exp $'
-character(len=128) :: Tagname = '$Name: perth $'
+character(len=128) :: Version = '$Id: edt.F90,v 15.0.4.1 2008/09/09 13:44:27 rsh Exp $'
+character(len=128) :: Tagname = '$Name: perth_2008_10 $'
 logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !
@@ -990,33 +990,14 @@ logical :: used, topfound
 !      at Tfreeze, es = esl, with linear interpolation in between.
 !
 !
-!      Note that qsl, esl, and dqsldtl do not have their proper values
-!      until all of the following code has been executed.  That
-!      is qs and dqsldtl are used to store intermediary results
-!      in forming the full solution.
 
        !calculate effective latent heat
        hleff = (min(1.,max(0.,0.05*(t       -tfreeze+20.)))*hlv + &
                 min(1.,max(0.,0.05*(tfreeze -t          )))*hls)
      
-       !calculate water saturated vapor pressure from table
-       !and store temporarily in the variable esl
-       call lookup_es(t-(hleff*(ql+qi)/cp_air),esl)
-        
-       !calculate denominator in qsat formula
-       !note that the denominator can be no smaller than esl, and 
-       !thus qs can be no greater than d622. this is done to avoid 
-       !blow up in the upper stratosphere where p_full ~ esl
-       qsl = max(p_full-d378*esl,esl)
-     
-       !compute temperature derivative of esat 
-       call lookup_des(t-(hleff*(ql+qi)/cp_air),dqsldtl)
-        
-       !calculate dqsldtl
-       dqsldtl = d622*p_full*dqsldtl/qsl/qsl
-       
-       !calculate qs
-       qsl=d622*esl/qsl      
+       !calculate qsl and dqsldtl. return es for diagnostic use.
+       call compute_qs (t-(hleff*(ql+qi)/cp_air), p_full, qsl, &
+                                             esat = esl, dqsdT=dqsldtl)
 
 !-----------------------------------------------------------------------
 !

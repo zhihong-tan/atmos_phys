@@ -3,6 +3,7 @@ MODULE CONV_UTILITIES_MOD
   
 use      Constants_Mod, ONLY:   tfreeze, HLv, HLf, HLs, CP_AIR, GRAV, &
                                 Kappa,rdgas,rvgas
+use fms_mod,            only:   mpp_pe, mpp_root_pe
 use conv_utilities_k_mod, only: uw_params_init_k, uw_params
 ! use conv_utilities_k_mod, only: sd_init_k, sd_copy_k, sd_end_k, &
 !                                 ac_init_k, ac_clear_k, ac_end_k, &
@@ -19,8 +20,8 @@ use conv_utilities_k_mod, only: uw_params_init_k, uw_params
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities.F90,v 15.0 2007/08/14 03:56:06 fms Exp $'
-  character(len=128) :: tagname = '$Name: perth $'
+  character(len=128) :: version = '$Id: conv_utilities.F90,v 15.0.6.1 2008/08/04 11:17:45 rsh Exp $'
+  character(len=128) :: tagname = '$Name: perth_2008_10 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -47,9 +48,14 @@ contains
   subroutine uw_params_init (Uw_p)
 
   type(uw_params), intent(inout) :: Uw_p
+  
+    integer :: me, root_pe
     
+    me = mpp_pe()
+    root_pe = mpp_root_pe()
     call uw_params_init_k (hlv, hls, hlf, cp_air, grav, kappa, rdgas, &
-                           p00, epsilo, zvir, tkmin, tkmax, Uw_p)
+                           p00, epsilo, zvir, tkmin, tkmax, me,  &
+                                                           root_pe,Uw_p)
     
   end subroutine uw_params_init
 

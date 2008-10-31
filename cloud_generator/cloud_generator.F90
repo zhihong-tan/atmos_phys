@@ -1,7 +1,7 @@
 module cloud_generator_mod
 
 !   shared modules:
-  use sat_vapor_pres_mod, only: lookup_es, lookup_des
+  use sat_vapor_pres_mod, only: compute_qs
   use constants_mod,      only: hlv, hls, cp_air, tfreeze, &
                                 rvgas, rdgas
   use fms_mod,            only: open_namelist_file, mpp_pe,       &
@@ -37,8 +37,8 @@ module cloud_generator_mod
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_generator.F90,v 14.0 2007/03/15 22:01:27 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth $'
+character(len=128)  :: version =  '$Id: cloud_generator.F90,v 14.0.8.1 2008/09/09 13:39:02 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -712,7 +712,8 @@ end function compute_overlap_weighting
     ! Local variables
     real, dimension(size(temperature, 1), &
                     size(temperature, 2), &
-                    size(temperature, 3)) :: Tl, L, esat, desdT, dqsdT
+                    size(temperature, 3)) :: Tl, L, esat, desdT, dqsdT,&
+                                             qsloc
     
     !
     ! Ice water temperature - ql and qi are grid cell means
@@ -721,22 +722,11 @@ end function compute_overlap_weighting
                    (hlv/cp_air) * ql(:, :, :) - &
                    (hls/cp_air) * qi(:, :, :)
   
-    !calculate water saturated vapor pressure and its derivative from table
-    call lookup_es( Tl(:, :, :),  esat(:, :, :))
-    call lookup_des(Tl(:, :, :), desdT(:, :, :))
- 
-    !calculate qs
-    if (present(qs)) qs(:,:,:) = d622 * esat(:,:,:)
-    
-    !calculate dqsdT
-    !limit denominator to esat, and thus qs to d622
-    esat(:, :, :) = max(pressure(:, :, :) - d378 * esat(:, :, :), esat(:, :, :))
-    
-    !calculate qs
-    if (present(qs)) qs(:,:,:) = qs(:,:,:) / esat(:,:,:)
-   
-    !this is done to avoid blow up in the upper stratosphere
-    dqsdT(:, :, :) = d622 * pressure(:, :, :) * desdT(:, :, :) / esat(:, :, :)**2
+    !calculate qs and dqsdT
+    call compute_qs (Tl, pressure,  qsloc, dqsdT = dqsdT)
+    if (present(qs)) then
+       qs = qsloc
+    endif
  
     ! Latent heat of phase change, varying from that of water to ice with temperature.
     ! 

@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_lscloud_k.F90,v 16.0 2008/07/30 22:06:55 fms Exp $
+!  $Id: donner_lscloud_k.F90,v 16.0.2.2 2008/09/05 09:26:05 rsh Exp $
 
 !module donner_lscloud_inter_mod
 
@@ -425,28 +425,25 @@ integer,                     intent(out)    :: error
 !    define the fractional area of the grid box where the humidity
 !    is affected by the deep convection in the mesoscale updraft region 
 !    (donner_humidity_area). it is assumed to be the sum of the cell and
-!    meso cloud areas.
+!    meso cloud areas. previously, below cloud base and above the top 
+!    of the mesoscale updraft, there was no moisture-enhanced area due 
+!    to deep convection.      
+!      this is no longer the case after mods during AM2p9 -- in current
+!      formulation there may be cell cloud above top of mesoscale
+!      updraft (when cloud top exceeds plzb), and in grid box containing
+!      cloud base level.
 !--------------------------------------------------------------------
-              if ( (pfull(i,j,k) >= Don_conv%pztm_v(i,j)) .and. &
-                   (pfull(i,j,k) <= Don_conv%pzm_v(i,j))) then   
-                donner_humidity_area(i,j,k) = Don_conv%cual(i,j,k)
+              donner_humidity_area(i,j,k) = Don_conv%cual(i,j,k)
 
 !----------------------------------------------------------------------
 !     between cloud base and the base of the mesoscale updraft, the
 !     humidity in an area the size of the sum of the cell and meso 
 !     cloud areas is assumed to be affected by the deep convection.
 !----------------------------------------------------------------------
-              else if ((pfull(i,j,k) >= Don_conv%pzm_v(i,j)) .and.  &
-                       (pfull(i,j,k) <= Don_conv%pb_v(i,j)) ) then
+              if ((pfull(i,j,k) >  Don_conv%pzm_v(i,j)) .and.  &
+                  (pfull(i,j,k) <= Don_conv%pb_v(i,j)) ) then
                 donner_humidity_area(i,j,k) = Don_conv%cual(i,j,k) +   &
                                               Don_conv%ampta1(i,j)
-
-!--------------------------------------------------------------------
-!      below cloud base and above the top of the mesoscale updraft, 
-!      there is no moisture-enhanced area due to deep convection.      
-!--------------------------------------------------------------------
-              else
-                donner_humidity_area(i,j,k) = 0.
               endif
 
 !---------------------------------------------------------------------

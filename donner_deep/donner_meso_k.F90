@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_meso_k.F90,v 16.0 2008/07/30 22:06:57 fms Exp $
+!  $Id: donner_meso_k.F90,v 16.0.2.1 2008/09/09 13:43:15 rsh Exp $
 
 !module donner_meso_inter_mod
 
@@ -506,7 +506,7 @@ subroutine don_m_meso_updraft_k    &
 !-------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_mrs_k
 
 implicit none
 
@@ -968,7 +968,8 @@ integer,                         intent(out) :: error
 !    should be mixing ratio), reset it to the saturation value.
 !---------------------------------------------------------------------
           ta = temp_c(k) + Param%tprime_meso_updrft
-          call lookup_es_k (ta, es, nbad)
+          call compute_mrs_k (ta, pfull_c(k), Param%d622 , Param%d608 ,&
+                              mrsat, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -981,7 +982,6 @@ integer,                         intent(out) :: error
             return
           endif
 
-          mrsat = Param%d622*es/MAX(pfull_c(k) - es, es)
           q3 = mrsat - tempq(k)
           if (q3 <= 0.) then
             if (phalf_c(k+1) <= pctm)  then
@@ -1020,7 +1020,8 @@ integer,                         intent(out) :: error
 !    case the loop will be exited.
 !---------------------------------------------------------------------
         te = temp_c(k) + Param%tprime_meso_updrft
-        call lookup_es_k (te, es, nbad)
+        call compute_mrs_k (te, pfull_c(k), Param%d622 , Param%d608 , &
+                            mrsat, nbad, mr = qref)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1033,7 +1034,6 @@ integer,                         intent(out) :: error
           return
         endif
 
-        mrsat = Param%d622*es/MAX(pfull_c(k) - es, es)
         jsave = k
 
 !---------------------------------------------------------------------
@@ -1136,7 +1136,8 @@ integer,                         intent(out) :: error
 !    !!!).
 !--------------------------------------------------------------------
         te = temp_c(k) + Param%tprime_meso_updrft
-        call lookup_es_k (te, es, nbad)
+        call compute_mrs_k (te, pfull_c(k), Param%d622 , Param%d608 ,&
+                              tempqa(k), nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1148,8 +1149,6 @@ integer,                         intent(out) :: error
           error = 1
           return
         endif
-
-        tempqa(k) = Param%d622*es/MAX(pfull_c(k) - es, es)
 
 !--------------------------------------------------------------------
 !    if an excess of vapor is present and deposition should occur, 
@@ -1177,7 +1176,8 @@ integer,                         intent(out) :: error
 !     in the parcel at the jkp level.
 !--------------------------------------------------------------------
           else if (k == jsave) then
-            call lookup_es_k (tep, es, nbad)
+            call compute_mrs_k (tep, pfull_c(jkp), Param%d622 , &
+                                Param%d608 , tempqa(jkp), nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1190,7 +1190,6 @@ integer,                         intent(out) :: error
               return
             endif
 
-            tempqa(jkp) = Param%d622*es/MAX(pfull_c(jkp) - es, es)
             cmu(k) = -omv(k)*(tempqa(jkp) - tempqa(k))/  &
                      (pfull_c(jkp) - pfull_c(k))
             qref = tempqa(jkp)
@@ -1204,7 +1203,8 @@ integer,                         intent(out) :: error
 !     the jkp level.
 !--------------------------------------------------------------------
           else
-            call lookup_es_k (tep, es, nbad)
+            call compute_mrs_k (tep, pfull_c(jkp), Param%d622 , &
+                                Param%d608 , tempqa(jkp), nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1217,7 +1217,6 @@ integer,                         intent(out) :: error
               return
             endif
 
-            tempqa(jkp) = Param%d622*es/MAX(pfull_c(jkp) - es, es)
             cmu(k) = -omv(k)*(tempqa(jkp) - tempqa(jkm))/ &
                      (pfull_c(jkp) - pfull_c(jkm))
             qref = tempqa(jkp)
@@ -1372,7 +1371,8 @@ integer,                         intent(out) :: error
 !    !!!).
 !--------------------------------------------------------------------
         tmu = temp_c(jk) + Param%TPRIME_MESO_UPDRFT
-        call lookup_es_k (tmu, es, nbad)
+        call compute_mrs_k (tmu, pfull_c(jk), Param%d622 , &
+                                Param%d608 , qmu, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1384,8 +1384,6 @@ integer,                         intent(out) :: error
           error = 1
           return
         endif
-
-        qmu = Param%d622*es/MAX(pfull_c(jk) - es, es)
 
 !---------------------------------------------------------------------
 !    define the eddy flux of moist static energy in the mesoscale 
@@ -1525,7 +1523,7 @@ subroutine don_m_meso_downdraft_k    &
 !-------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type, donner_nml_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_mrs_k
 
 implicit none
 
@@ -1553,6 +1551,7 @@ integer,                       intent(out)  :: error
       real, dimension(nlev_lsm)       :: tempt, tempqa
       real, dimension(nlev_lsm+1)     :: emt, emq
 
+!     real :: qlo
       real    ::  es, mrsat, c2, c3, c1, fjk, fjkm, qb, fjkb, qbm, qmd, &
                   qsmd, fjkmd, qmmd, pi, psa, owms, a, b, p1,         &
                         targ, tprimd, tb, qten, tten, omd, mrsb, wa,   &
@@ -1630,7 +1629,8 @@ integer,                       intent(out)  :: error
 !    see "Moist Static Energy A, 1/26/91" notes.
 !---------------------------------------------------------------------
         targ = temp_c(k)
-        call lookup_es_k (targ, es, nbad)
+        call compute_mrs_k (targ, pfull_c(k), Param%d622 , &
+                                Param%d608 , mrsat, nbad, esat=es)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1643,7 +1643,6 @@ integer,                       intent(out)  :: error
           return
         endif
 
-        mrsat = Param%d622*es/MAX(pfull_c(k) - es, es)
         c1 = Param%d622*Param%hlv*es/   &
                                  (pfull_c(k)*Param%rvgas*(temp_c(k)**2))
         tprimd = c3*hfmin/omd
@@ -1651,7 +1650,8 @@ integer,                       intent(out)  :: error
         tprimd = tprimd/(Param%cp_air + Param%hlv*c1*c2)
         tempt(k) = temp_c(k) + tprimd
         targ = tempt(k)
-        call lookup_es_k (targ, es, nbad)
+        call compute_mrs_k (targ, pfull_c(k), Param%d622 , &
+                                Param%d608 , tempqa(k), nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1664,7 +1664,7 @@ integer,                       intent(out)  :: error
           return
         endif
 
-        tempqa(k) = c2*es*Param%d622/MAX(pfull_c(k) - es, es)
+        tempqa(k) = c2*tempqa(k)
 
 !---------------------------------------------------------------------
 !    if in diagnostics column, output 
@@ -1741,7 +1741,8 @@ integer,                       intent(out)  :: error
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
                       'in polat: k,p,x=', k, pb, tb
           endif
-          call lookup_es_k (tb, es, nbad)
+        call compute_mrs_k (tb, pb, Param%d622 , &
+                                Param%d608 , mrsb, nbad, esat=es)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1754,7 +1755,6 @@ integer,                       intent(out)  :: error
             return
           endif
 
-          mrsb = Param%d622*es/MAX(pb - es, es)
           tprimd = hfmin/omd
           tprimd = tprimd - Param%hlv*(.7*mrsb - qb)
           c1 = Param%D622  *Param%hlv*es/(pb*Param%rvgas*(tb**2))
@@ -1766,7 +1766,8 @@ integer,                       intent(out)  :: error
           emt(k) = wa*fjkb + wb*fjk
           fjk = ampta1*omd*(tempqa(k) - mixing_ratio_C(k))
           targ = tb + tprimd
-          call lookup_es_k (targ, es, nbad)
+          call compute_mrs_k (targ, pb, Param%d622 , &
+                                Param%d608 , qbm, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1779,7 +1780,7 @@ integer,                       intent(out)  :: error
             return
           endif
 
-          qbm = .7*Param%d622*es/MAX(pb - es, es)
+          qbm = .7*qbm   
           fjkb = ampta1*omd*(qbm - qb)
           emq(k) = wa*fjkb + wb*fjk
         endif
@@ -1817,7 +1818,8 @@ integer,                       intent(out)  :: error
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
                       'in polat: k,p,x=', k, pmd, tmd
           endif
-          call lookup_es_k (tmd, es, nbad)
+          call compute_mrs_k (tmd, pmd, Param%d622 , &
+                                Param%d608 , qsmd, nbad, esat=es)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1830,7 +1832,6 @@ integer,                       intent(out)  :: error
             return
           endif
 
-          qsmd = Param%d622*es/MAX(pmd - es, es)
           c1 = Param%d622*Param%hlv*es/(pmd*Param%rvgas*(tmd**2))
           tprimd = -Param%hlv*(qsmd - qmd)/(Param%cp_air + Param%hlv*c1)
           fjkmd = ampta1*omd*((Param%ref_press/pmd)**   &
@@ -1839,7 +1840,8 @@ integer,                       intent(out)  :: error
           wb = (phalf_c(k) - pmd)/(pfull_c(k-1) - pmd)
           emt(k) = fjkmd*wa + fjkm*wb
           targ = tmd + tprimd
-          call lookup_es_k (targ, es, nbad)
+          call compute_mrs_k (targ, pmd, Param%d622 , &
+                                Param%d608 , qmmd, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1852,7 +1854,6 @@ integer,                       intent(out)  :: error
             return
           endif
 
-          qmmd = Param%d622*es/MAX(pmd - es, es)
           fjkm = ampta1*omd*(tempqa(k-1) - mixing_ratio_c(k-1))
           fjkmd = ampta1*omd*(qmmd - qmd)
           emq(k) = fjkmd*wa + fjkm*wb

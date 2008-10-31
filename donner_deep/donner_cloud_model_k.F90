@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cloud_model_k.F90,v 16.0 2008/07/30 22:06:45 fms Exp $
+!  $Id: donner_cloud_model_k.F90,v 16.0.2.1 2008/09/09 13:43:15 rsh Exp $
 
 !module donner_cloud_model_inter_mod
 
@@ -356,7 +356,7 @@ subroutine don_cm_gen_incloud_profs_k  &
 use donner_types_mod, only : donner_param_type, &
                              donner_column_diag_type, &
                              donner_initialized_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_mrs_k
 
 implicit none 
 
@@ -584,7 +584,7 @@ integer,                            intent(out)   :: error
       rcl(1) = Param%cloud_base_radius
       tcc(1) = tb
       xclo(1,:) = tracers_c(1,:)
-      call lookup_es_k (tb, es, nbad) 
+      call compute_mrs_k (tb, pb, Param%D622, Param%D608, rsc(1), nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -596,8 +596,6 @@ integer,                            intent(out)   :: error
         error = 1
         return
       endif
-
-      rsc(1) = es*Param%D622  /MAX(pb - es, es)
 
 !--------------------------------------------------------------------
 !    call gcm_to_cm to obtain the large-scale model moisture, temper-
@@ -978,7 +976,7 @@ subroutine don_cm_move_parcel_k    &
 !----------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_mrs_k
 
 implicit none
 
@@ -1256,7 +1254,8 @@ integer,                 intent(out)   :: error
 !    define the vapor mixing ratio for the new cloud temperature at
 !    level k+1.
 !--------------------------------------------------------------------
-      call lookup_es_k (tcctop, es, nbad)
+      call compute_mrs_k (tcctop, ptop, Param%D622, Param%D608,  &
+                          rsctop, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1268,10 +1267,6 @@ integer,                 intent(out)   :: error
         error = 1
         return
       endif
-
-!----------------------------------------------------------------------
-!----------------------------------------------------------------------
-      rsctop = Param%D622*es/MAX(ptop - es, es)
 
 !--------------------------------------------------------------------
 !    if in diagnostics column, output the values of environmental 
@@ -1353,7 +1348,7 @@ subroutine don_cm_lcl_k    &
 !---------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_mrs_k
 
 implicit none
 
@@ -1478,7 +1473,9 @@ integer,                 intent(out)  :: error
 !    determine the saturation mixing ratio for this temperature and
 !    pressure. 
 !---------------------------------------------------------------------
-        call lookup_es_k (t_parcel, es, nbad)
+        call compute_mrs_k (t_parcel, p_end,                  &
+                            Param%d622 , Param%d608 , rs, nbad, &
+                            mr = mr_init)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1496,7 +1493,6 @@ integer,                 intent(out)  :: error
 !   values of temperature (t_lcl), mixing ratio (mr_lcl) and pressure 
 !   (p_lcl), and return to the calling routine.
 !---------------------------------------------------------------------
-        rs = .622*es/(p_end - es)
         if (rs <= mr_init) then
           p_lcl = p_end
           t_lcl = t_parcel
@@ -2038,7 +2034,7 @@ subroutine don_cm_compute_vert_fluxes_k   &
 !---------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_qs_k
 
 implicit none 
 
@@ -2197,7 +2193,8 @@ integer,                            intent(out)    :: error
 !    q_sat is correctly a specific humidity; mre(kc) is incorrectly a 
 !    mixing ratio.
 !---------------------------------------------------------------------
-        call lookup_es_k (tcc(kc), esat, nbad)
+        call compute_qs_k (tcc(kc), cld_press(kc), Param%D622,  &
+                           Param%D608, q_sat(kc), nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -2209,8 +2206,6 @@ integer,                            intent(out)    :: error
           error = 1
           return
         endif
-        q_sat(kc) = Param%d622*esat/    &
-                        MAX(cld_press(kc) + (Param%d622 - 1.)*esat, esat)
         tv_env     = te(kc)* (1. + Param%d608*(mre(kc)/(1. + mre(kc))))
         tv_cld     = tcc(kc)*(1. + Param%d608*q_sat(kc))
 
@@ -3052,7 +3047,7 @@ subroutine don_cm_simult_k   &
 !--------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_qs_k
 
 implicit none
 
@@ -3167,7 +3162,8 @@ integer,                 intent(out)   ::  error
 !    define the specific humidity at the cloud temperature (sphum) and
 !    the gas constant for moist air (rstar).
 !---------------------------------------------------------------------
-      call lookup_es_k (cloud_temp, es, nbad)
+      call compute_qs_k (cloud_temp, cloud_p, Param%D622,  &
+                           Param%D608, sphum, nbad, esat = es)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -3180,7 +3176,6 @@ integer,                 intent(out)   ::  error
         return
       endif
 
-      sphum = Param%d622*es/MAX(cloud_p + (Param%d622   - 1.)*es, es)
       rstar = Param%rdgas*(1. + Param%d608*sphum)
 
 !---------------------------------------------------------------------
@@ -3410,7 +3405,8 @@ integer,                 intent(out)   ::  error
 !    define the virtual temperature (htv) corresponding to the updated 
 !    temperature test.
 !----------------------------------------------------------------------
-        call lookup_es_k (test, es, nbad)
+        call compute_qs_k (test, cloud_p, Param%D622,  &
+                           Param%D608, sphum, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -3422,7 +3418,6 @@ integer,                 intent(out)   ::  error
           error = 1
           return
         endif
-        sphum = Param%d622*es/MAX(cloud_p + (Param%d622   - 1.)*es, es)
         htv = test*(1. + Param%d608*sphum)
 
 !----------------------------------------------------------------------
@@ -3464,7 +3459,7 @@ subroutine don_cm_tae_k    &
 !--------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_mrs_k
 
 implicit none
 
@@ -3537,7 +3532,9 @@ integer,                 intent(out)   :: error
 !    level (mre).
 !--------------------------------------------------------------------
         te = init_temp*((pr/init_pr)**Param%kappa)
-        call lookup_es_k (te, es, nbad)
+        call compute_mrs_k (te, init_pr,                               &
+                            Param%d622 , Param%d608 , mre, nbad, &
+                            mr = parcel_mixing_ratio)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -3549,7 +3546,6 @@ integer,                 intent(out)   :: error
           error = 1
           return
         endif
-        mre = Param%d622*es/MAX(init_pr - es, es)
 
 !--------------------------------------------------------------------
 !    determine if saturation at the initial pressure level would occur
@@ -3590,7 +3586,7 @@ subroutine don_cm_micro_k   &
 !--------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_mrs_k
 
 implicit none
 
@@ -3690,7 +3686,7 @@ integer,                  intent(out)   :: error
 !--------------------------------------------------------------------
 !    define the saturation mixing ratio (rs1) at level p1.
 !--------------------------------------------------------------------
-      call lookup_es_k (tc1, es1, nbad) 
+      call compute_mrs_k (tc1, p1, Param%d622 , Param%d608 , rs1, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -3702,12 +3698,11 @@ integer,                  intent(out)   :: error
         error = 1
         return
       endif
-      rs1 = Param%d622  *es1/MAX(p1 - es1, es1)
 
 !--------------------------------------------------------------------
 !    define the saturation mixing ratio (rs2) at level p2.
 !--------------------------------------------------------------------
-      call lookup_es_k (tc2, es2, nbad) 
+      call compute_mrs_k (tc2, p2, Param%d622 , Param%d608 , rs2, nbad)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -3719,7 +3714,6 @@ integer,                  intent(out)   :: error
         error = 1
         return
       endif
-      rs2 = Param%d622  *es2/MAX(p2 - es2, es2)
 
 !--------------------------------------------------------------------
 !    if in diagnostic column, output the relevant atmospheric fields 
@@ -3732,7 +3726,8 @@ integer,                  intent(out)   :: error
         write (diag_unit, '(a, 2e20.12, 2f19.10)') &
                          'in micro: rs1,rs2,p1,p2= ',rs1,rs2,p1,p2
         write (diag_unit, '(a, 2e20.12, 2f20.14)')  &
-                         'in micro: es1,es2,tc1,tc2= ',es1,es2,tc1,tc2
+!                        'in micro: es1,es2,tc1,tc2= ',es1,es2,tc1,tc2
+                         'in micro: tc1,tc2= ',tc1,tc2
         write (diag_unit, '(a, 2f20.14)')  &
                           'in micro: te1,te2= ',te1,te2
       endif

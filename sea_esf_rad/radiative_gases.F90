@@ -34,8 +34,10 @@ use fms_mod,             only: open_namelist_file, fms_init, &
                                file_exist, write_version_number, &
                                check_nml_error, error_mesg, &
                                FATAL, NOTE, close_file, &
-                               open_restart_file, read_data, write_data
-use fms_io_mod,          only: get_restart_io_mode
+                               open_restart_file, read_data
+use fms_io_mod,          only: get_restart_io_mode, &
+                               register_restart_field, restart_file_type, &
+                               save_restart, restore_state, query_initialized
 use time_interp_mod,     only: time_interp_init, time_interp
 
 !  shared radiation package modules:
@@ -65,15 +67,16 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 16.0 2008/07/30 22:08:49 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth $'
+'$Id: radiative_gases.F90,v 16.0.6.4 2008/09/22 19:37:23 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
 public     &
          radiative_gases_init, define_radiative_gases,  &
-         radiative_gases_end, radiative_gases_dealloc
+         radiative_gases_end, radiative_gases_dealloc,  &
+         radiative_gases_restart
 
 private    &
 ! called from radiative_gases_init:
@@ -87,8 +90,7 @@ private    &
          define_gas_amount,     &
 
 ! called from radiative_gases_end:
-         write_restart_radiative_gases, &
-         write_restart_nc, read_restart_nc
+         write_restart_radiative_gases
 
 
 !---------------------------------------------------------------------
@@ -285,7 +287,9 @@ namelist /radiative_gases_nml/ do_netcdf_restart,                   &
 !---------------------------------------------------------------------
 !------- private data ------
 
-
+!--- for netcdf restart
+type(restart_file_type), save :: Rad_restart
+integer                       ::  vers   ! version number of restart file 
 !---------------------------------------------------------------------
 !    list of restart versions of radiation_driver.res readable by this 
 !    module.
@@ -478,6 +482,8 @@ real, dimension(:,:), intent(in) :: latb, lonb
       integer              :: calendar ! calendar type used in model
       character(len=8)     :: gas_name ! name associated with current
                                        ! gas being processed
+      character(len=32)    :: restart_file
+      integer              :: id_restart
 
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
@@ -601,12 +607,45 @@ real, dimension(:,:), intent(in) :: latb, lonb
 !    if present, read the radiative gases restart file. set a flag 
 !    indicating the presence of the file.
 !---------------------------------------------------------------------
+     restart_file = 'radiative_gases.res.nc'
+      if(do_netcdf_restart) then
+         id_restart = register_restart_field(Rad_restart, restart_file, 'vers', vers)
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rco2', rco2)          
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rf11', rf11)
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rf12', rf12) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rf113', rf113) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rf22', rf22) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rch4', rch4) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rn2o', rn2o) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'co2_for_last_tf_calc', &
+                                             co2_for_last_tf_calc, mandatory=.false.) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'ch4_for_last_tf_calc', &
+                                             ch4_for_last_tf_calc, mandatory=.false.) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'n2o_for_last_tf_calc', &
+                                             n2o_for_last_tf_calc, mandatory=.false.)     
+      endif
+
       restart_present = .false.
       if (file_exist('INPUT/radiative_gases.res.nc')) then
-         call read_restart_nc
+         if (mpp_pe() == mpp_root_pe()) call error_mesg ('radiative_gases_mod', &
+              'Reading NetCDF formatted restart file: INPUT/radiative_gases.res.nc', NOTE)
+         if(.not. do_netcdf_restart) call error_mesg ('radiative_gases_mod', &
+              'netcdf format restart file INPUT/radiative_gases.res.nc exist, but do_netcdf_restart is false.', FATAL)
+         call restore_state(Rad_restart)
          restart_present = .true.
+         if(vers >= 3) then
+            if(.NOT. query_initialized(Rad_restart, id_restart) ) call error_mesg('radiative_gases_mod', &
+                'vers >=3 and INPUT/radiative_gases.res.nc exist, but field n2o_for_last_tf_calc does not in that file', FATAL)
+         else
+            define_co2_for_last_tf_calc = .true.
+            define_ch4_for_last_tf_calc = .true.
+            define_n2o_for_last_tf_calc = .true.
+         endif       
+         vers = restart_versions(size(restart_versions(:)))     
       else
          if (file_exist ('INPUT/radiative_gases.res')) then
+            if (mpp_pe() == mpp_root_pe()) call error_mesg ('radiative_gases_mod', &
+                 'Reading native formatted restart file.', NOTE)
             call read_restart_radiative_gases
             restart_present = .true.
          endif
@@ -1338,15 +1377,6 @@ subroutine radiative_gases_end
                'module has not been initialized', FATAL )
       endif
 
-!---------------------------------------------------------------------
-!    write out the radiative_gases restart file.
-!---------------------------------------------------------------------
-        if( do_netcdf_restart) then
-            call write_restart_nc
-         else
-            call write_restart_radiative_gases
-         endif
-
 !--------------------------------------------------------------------
 !    deallocate the timeseries arrays.
 !--------------------------------------------------------------------
@@ -1367,6 +1397,37 @@ subroutine radiative_gases_end
 
 end subroutine radiative_gases_end
 
+!#######################################################################
+! <SUBROUTINE NAME="radiative_gases_restart">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine radiative_gases_restart(timestamp)
+   character(len=*), intent(in), optional :: timestamp
+
+! Make sure that the restart_versions variable is up to date.
+   vers = restart_versions(size(restart_versions(:)))     
+   if( do_netcdf_restart) then
+      if(mpp_pe() == mpp_root_pe() ) then
+         call error_mesg ('radiative_gases_mod', 'Writing NetCDF formatted restart file: RESTART/radiative_gases.res.nc', NOTE)
+      endif
+      call save_restart(Rad_restart, timestamp)
+   else
+      if (mpp_pe() == mpp_root_pe() ) &
+           call error_mesg ('radiative_gases_mod', 'Writing native formatted restart file: RESTART/radiative_gases.res', NOTE)
+      if(present(timestamp)) call error_mesg ('radiative_gases_mod', 'when do_netcdf_restart is false, '// &
+           'timestamp should not passed in radiative_gases_restart', FATAL)
+      call write_restart_radiative_gases
+   endif
+
+end subroutine radiative_gases_restart
+! </SUBROUTINE>
 
 !####################################################################
 ! <SUBROUTINE NAME="radiative_gases_dealloc">
@@ -1714,15 +1775,12 @@ subroutine read_restart_radiative_gases
 !    read_restart_radiative_gases reads the radiative_gases.res file.
 !---------------------------------------------------------------------
 
-      integer  ::  vers   ! version number of restart file 
       integer  ::  unit   ! unit number fused for i/o
 
 !--------------------------------------------------------------------
 !    determine if  a radiative_gases.parameters.res file is present.
 !    this file is only present in restart version 1.
 !--------------------------------------------------------------------
-      if (mpp_pe() == mpp_root_pe()) call error_mesg ('radiative_gases_mod', &
-          'Reading native formatted restart file.', NOTE)
       if (file_exist('INPUT/radiative_gases.parameters.res' ) ) then
 
 !---------------------------------------------------------------------
@@ -1790,54 +1848,6 @@ subroutine read_restart_radiative_gases
 
 end subroutine read_restart_radiative_gases
 
-!####################################################################
-! <SUBROUTINE NAME="read_restart_nc">
-!  <OVERVIEW>
-!   Subroutine to read the radiative_gases.res.nc file
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   Subroutine to read the radiative_gases.res.nc file
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call read_restart_nc
-!  </TEMPLATE>
-! </SUBROUTINE>
-!
-subroutine read_restart_nc
-
-!---------------------------------------------------------------------
-!    read_restart_radiative_gases reads the radiative_gases.res file.
-!---------------------------------------------------------------------
-
-      character(len=64) :: fname = 'INPUT/radiative_gases.res.nc'
-      integer           :: vers
-
-      if (file_exist( fname ) ) then
-         if (mpp_pe() == mpp_root_pe()) call error_mesg ('radiative_gases_mod', &
-              'Reading NetCDF formatted restart file: INPUT/radiative_gases.res.nc', NOTE)
-         call read_data(fname, 'rco2', rco2, no_domain=.true.)
-         call read_data(fname, 'rf11', rf11, no_domain=.true.)
-         call read_data(fname, 'rf12', rf12, no_domain=.true.)
-         call read_data(fname, 'rf113', rf113, no_domain=.true.)
-         call read_data(fname, 'rf22', rf22, no_domain=.true.)
-         call read_data(fname, 'rch4', rch4, no_domain=.true.)
-         call read_data(fname, 'rn2o', rn2o, no_domain=.true.)
-         call read_data(fname, 'vers', vers, no_domain=.true.)
-         if(vers >= 3) then
-            call read_data(fname, 'co2_for_last_tf_calc', co2_for_last_tf_calc, no_domain=.true.)
-            call read_data(fname, 'ch4_for_last_tf_calc', ch4_for_last_tf_calc, no_domain=.true.)
-            call read_data(fname, 'n2o_for_last_tf_calc', n2o_for_last_tf_calc, no_domain=.true.)
-         else
-            define_co2_for_last_tf_calc = .true.
-            define_ch4_for_last_tf_calc = .true.
-            define_n2o_for_last_tf_calc = .true.
-         endif
-      endif
-
-!--------------------------------------------------------------------
-
-
-end subroutine read_restart_nc
 
 !###################################################################
 ! <SUBROUTINE NAME="define_ch4">
@@ -3163,6 +3173,7 @@ character(len=*), intent(in)    ::  data_source
       real       ::  rco2_ipcc_98  = 3.69400E-04
       real       ::  rco2_330ppm   = 3.30000E-04
       real       ::  rco2_660ppm   = 6.60000E-04
+      real       ::  rco2_720ppm   = 7.20000E-04
 
 
 
@@ -3214,6 +3225,9 @@ character(len=8)     :: gas_name ! name associated with current
 
       else if (trim(data_source) == '660ppm') then
         rco2   = rco2_660ppm
+
+      else if (trim(data_source) == '720ppm') then
+        rco2   = rco2_720ppm
 
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
@@ -4179,57 +4193,6 @@ subroutine write_restart_radiative_gases
 
 
 end subroutine write_restart_radiative_gases
-
-!####################################################################
-! <SUBROUTINE NAME="write_restart_nc">
-!  <OVERVIEW>
-!   Subroutine to write the radiative restart files in netcdf format
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   Subroutine to write the radiative restart files in netcdf format
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call write_restart_nc
-!  </TEMPLATE>
-! </SUBROUTINE>
-!
-subroutine write_restart_nc
-
-!---------------------------------------------------------------------
-!    write_restart_radiative_gases writes the radiative_gases.res file.
-!---------------------------------------------------------------------
-
-      character(len=64) :: fname = 'RESTART/radiative_gases.res.nc'
-
-      if(mpp_pe() == mpp_root_pe() ) then
-         call error_mesg ('radiative_gases_mod', 'Writing NetCDF formatted restart file: RESTART/radiative_gases.res.nc', NOTE)
-      endif
-      call write_data(fname, 'vers', restart_versions(size(restart_versions(:))), no_domain=.true.)
-      if(.not. time_varying_restart_bug) then
-         call write_data(fname, 'rco2', rrvco2, no_domain=.true.)
-         call write_data(fname, 'rf11', rrvf11, no_domain=.true.)
-         call write_data(fname, 'rf12', rrvf12, no_domain=.true.)
-         call write_data(fname, 'rf113', rrvf113, no_domain=.true.)
-         call write_data(fname, 'rf22', rrvf22, no_domain=.true.)
-         call write_data(fname, 'rch4', rrvch4, no_domain=.true.)
-         call write_data(fname, 'rn2o', rrvn2o, no_domain=.true.)
-      else
-         call write_data(fname, 'rco2', rco2, no_domain=.true.)
-         call write_data(fname, 'rf11', rf11, no_domain=.true.)
-         call write_data(fname, 'rf12', rf12, no_domain=.true.)
-         call write_data(fname, 'rf113', rf113, no_domain=.true.)
-         call write_data(fname, 'rf22', rf22, no_domain=.true.)
-         call write_data(fname, 'rch4', rch4, no_domain=.true.)
-         call write_data(fname, 'rn2o', rn2o, no_domain=.true.)
-      endif
-      call write_data(fname, 'co2_for_last_tf_calc', co2_for_last_tf_calc, no_domain=.true.)
-      call write_data(fname, 'ch4_for_last_tf_calc', ch4_for_last_tf_calc, no_domain=.true.)
-      call write_data(fname, 'n2o_for_last_tf_calc', n2o_for_last_tf_calc, no_domain=.true.)
-      
-
-!----------------------------------------------------------------------
-
-end subroutine write_restart_nc
 
 !####################################################################
 

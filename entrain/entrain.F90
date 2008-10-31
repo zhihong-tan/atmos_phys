@@ -94,8 +94,8 @@ use      constants_mod, only: grav,vonkarm,cp_air,rdgas,rvgas,hlv,hls, &
 
 use            fms_mod, only: open_file, file_exist, open_namelist_file, &
                               error_mesg, FATAL, check_nml_error, &
-                              mpp_pe, mpp_root_pe, close_file, read_data, &
-                              write_data, stdlog, write_version_number
+                              mpp_pe, mpp_root_pe, close_file,           &
+                              stdlog, write_version_number
 
 use   diag_manager_mod, only: register_diag_field, send_data
         
@@ -246,8 +246,8 @@ real, parameter :: d608 = (rvgas-rdgas)/rdgas
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: entrain.F90,v 15.0 2007/08/14 03:53:41 fms Exp $'
-character(len=128) :: Tagname = '$Name: perth $'
+character(len=128) :: Version = '$Id: entrain.F90,v 15.0.4.1 2008/09/03 18:40:21 z1l Exp $'
+character(len=128) :: Tagname = '$Name: perth_2008_10 $'
 logical            :: module_is_initialized = .false.      
 !-----------------------------------------------------------------------
 !
@@ -2360,7 +2360,7 @@ subroutine entrain_end()
 !
 !-----------------------------------------------------------------------
 
-integer :: unit
+!integer :: unit
 
 !-----------------------------------------------------------------------
 !

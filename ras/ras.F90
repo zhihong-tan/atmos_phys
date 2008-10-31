@@ -17,7 +17,7 @@
  use           mpp_mod, only : mpp_pe,             &
                                mpp_root_pe,        &
                                stdlog
- use Sat_Vapor_Pres_Mod, ONLY: ESCOMP, DESCOMP
+ use Sat_Vapor_Pres_Mod, ONLY: compute_qs
  use      Constants_Mod, ONLY:  HLv, HLs, Cp_Air, Grav, Kappa, rdgas, rvgas
  use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
  use   Time_Manager_Mod, ONLY: time_type
@@ -40,8 +40,8 @@
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- character(len=128) :: version = '$Id: ras.F90,v 15.0 2007/08/14 03:54:19 fms Exp $'
- character(len=128) :: tagname = '$Name: perth $'
+ character(len=128) :: version = '$Id: ras.F90,v 15.0.6.1.2.2 2008/09/23 18:37:47 wfc Exp $'
+ character(len=128) :: tagname = '$Name: perth_2008_10 $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -182,7 +182,8 @@ integer :: id_tdt_revap,  id_qdt_revap,    id_prec_revap,  &
            id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_q_conv_col, id_t_conv_col, id_mc,&
            id_qldt_conv, id_qidt_conv, id_qadt_conv, id_qndt_conv, &
-           id_ql_conv_col, id_qi_conv_col, id_qa_conv_col
+           id_ql_conv_col, id_qi_conv_col, id_qa_conv_col,         &
+           id_mfcb, id_mfct, id_alm, id_cfq_ras
 integer, allocatable, dimension(:) :: id_tracer_conv, id_tracer_conv_col
 
 character(len=3) :: mod_name = 'ras'
@@ -360,6 +361,25 @@ logical  :: do_ras_tracer = .false.
          'Cumulus Mass Flux from RAS',                   'kg/m2/s', &
                         missing_value=missing_value               )
 
+   id_mfcb = register_diag_field ( mod_name, &
+     'mfcb', axes(1:3), Time, &
+       'Cumulus cloud-base mass flux from RAS', 'kg/m2/s', &
+                        missing_value=missing_value) 
+
+   id_mfct = register_diag_field ( mod_name, &
+     'mfct', axes(1:3), Time, &
+     'Cumulus cloud-top mass flux from RAS', 'kg/m2/s', &
+                       missing_value=missing_value) 
+       
+   id_alm  = register_diag_field ( mod_name, &
+     'alm', axes(1:3), Time, &
+     'Cumulus entrainment rate from RAS', '1/m', &
+                       missing_value=missing_value) 
+
+   id_cfq_ras = register_diag_field ( mod_name,&
+     'cfq_ras', axes(1:3), Time, &
+     'Cumulus frequency from RAS', 'none', &
+                       missing_value=missing_value) 
 
    id_qndt_conv = register_diag_field ( mod_name, &
      'qndt_conv', axes(1:3), Time, &
@@ -586,6 +606,10 @@ end subroutine ras_end
 
  real,    dimension(size(temp0,1),size(temp0,2),size(temp0,3)+1) :: mask3
 
+ real,    dimension(size(temp0,1),size(temp0,2),size(temp0,3)) :: mfcb0, mfct0, alm0, cfq_ras !miz
+ real,    dimension(SIZE(temp0,3)) ::  mfcb, mfct, alm !miz
+ real  :: almx
+
 real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)+1) :: mc0_local
 
  logical :: setras, cloud_tracers_present, do_liq_num
@@ -726,6 +750,10 @@ end if
     cuprc3d = 0.0
      rain3d = 0.0
      snow3d = 0.0
+      mfcb0 = 0.0 
+      mfct0 = 0.0 
+      alm0  = 0.0
+    cfq_ras = 0.0
 
   if ( cloud_tracers_present ) then
       Da0 = 0.0
@@ -749,14 +777,7 @@ end if
        
 ! --- Compute saturation value of water vapor & its derivative
 
-  CALL  ESCOMP( temp0,  qvap_sat0 )
-  CALL DESCOMP( temp0, dqvap_sat0 )
-
-  dqvap_sat0(:,:,:) = d622 * dqvap_sat0(:,:,:) * pres0(:,:,:) /        &
-           ( MAX( qvap_sat0(:,:,:), pres0(:,:,:)-d378*qvap_sat0(:,:,:) ) **2 )
-
-   qvap_sat0(:,:,:) = d622 * qvap_sat0(:,:,:) /                       &
-             MAX( qvap_sat0(:,:,:), pres0(:,:,:)-d378*qvap_sat0(:,:,:) )
+    call compute_qs (temp0, pres0, qvap_sat0, dqsdT=dqvap_sat0)
 
 
 ! --- Find LCL ---> cloud base
@@ -852,6 +873,10 @@ end if
      dtemp_ev(:) = 0.0 
      dqvap_ev(:) = 0.0 
     precip_ev    = 0.0 
+         mfcb(:) = 0.0
+         mfct(:) = 0.0
+         alm (:) = 0.0
+         almx    = 0.0
 
   if ( cloud_tracers_present ) then
         qa(:) = qa0(i,j,:)
@@ -942,27 +967,27 @@ end if
   CALL RAS_CLOUD(temp0(i,j,:), pres0(i,j,:),airdens(i,j,:),          &
        klcl,  ib,   rasal, frac, Hl, coldT,                          &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
-       alpha, beta, gamma, cp_by_dp, zbase,                          &
+       alpha, beta, gamma, cp_by_dp, zbase, almx,                    &
        dtcu,  dqcu, ducu,  dvcu, dpcu, tracer, dtracercu,            &
        mccu, ql, qi, qa, Dlcu, Dicu, Dacu)
   else if ( cloud_tracers_present .and. do_liq_num) then
   CALL RAS_CLOUD(temp0(i,j,:), pres0(i,j,:),airdens(i,j,:),          &
        klcl,  ib,   rasal, frac, Hl, coldT,                          &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
-       alpha, beta, gamma, cp_by_dp, zbase,                          &
+       alpha, beta, gamma, cp_by_dp, zbase, almx,                    &
        dtcu,  dqcu, ducu,  dvcu, dpcu, tracer, dtracercu,            &
        mccu, ql, qi, qa, Dlcu, Dicu, Dacu, aerosolmass, qn, Dncu)
   else if (present(mc0) .or. id_mc > 0) then
   CALL RAS_CLOUD(temp0(i,j,:), pres0(i,j,:),airdens(i,j,:),          &
        klcl,  ib,   rasal, frac, Hl,  coldT,                         &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
-       alpha, beta, gamma, cp_by_dp, zbase,                          &
+       alpha, beta, gamma, cp_by_dp, zbase, almx,                    &
        dtcu,  dqcu, ducu,  dvcu, dpcu, tracer, dtracercu, mccu)  
   else
   CALL RAS_CLOUD(temp0(i,j,:), pres0(i,j,:),airdens(i,j,:),          &
        klcl,  ib,   rasal, frac, Hl,  coldT,                         &
        theta, qvap, uwnd,  vwnd, pres_int, pi_int, pi, psfc,         &
-       alpha, beta, gamma, cp_by_dp, zbase,                          &
+       alpha, beta, gamma, cp_by_dp, zbase, almx,                    &
        dtcu,  dqcu, ducu,  dvcu, dpcu, tracer, dtracercu)
   end if
 
@@ -1131,6 +1156,10 @@ endif
     if ( do_liq_num ) &
       Dn(:) = Dn(:) + Dncu(:)
   end if
+  mfcb(ib)=mccu(klcl) 
+  mfct(ib)=mccu(ib+1) 
+  alm (ib)=almx 
+
   if ( present(mc0) .or. id_mc > 0 ) then
     mc(:) = mc(:) + mccu(:)
     det(ib) = det(ib) + mccu(ib+1)
@@ -1143,11 +1172,7 @@ endif
 
  if ( setras ) then
 ! --- Re-Compute saturation value of water vapor & its derivative
-  CALL  ESCOMP( temp,  qvap_sat )
-  CALL DESCOMP( temp, dqvap_sat )
-         alpha(:) = MAX( qvap_sat(:), pres(:) - d378*qvap_sat(:) )
-     dqvap_sat(:) = d622 * dqvap_sat(:) * pres(:) / ( alpha(:) * alpha(:) )
-      qvap_sat(:) = d622 *  qvap_sat(:) / alpha(:)
+   call compute_qs (temp, pres, qvap_sat, dqsdT=dqvap_sat)
   end if
      
 !---------------------------------------------------------------------
@@ -1161,6 +1186,9 @@ endif
       dqvap0(i,j,:) = dqvap(:) 
       duwnd0(i,j,:) = duwnd(:)
       dvwnd0(i,j,:) = dvwnd(:)
+      mfcb0 (i,j,:) = mfcb(:)
+      mfct0 (i,j,:) = mfct(:)
+      alm0  (i,j,:) = alm (:)
 
    if ( coldT ) then
       snow0(i,j) = precip
@@ -1212,13 +1240,13 @@ endif
 !------- update input values and compute tendency -----------
    dtinv = 1.0/dtime
 
-      temp0=temp0+dtemp0;    qvap0=qvap0+dqvap0
-      uwnd0=uwnd0+duwnd0;    vwnd0=vwnd0+dvwnd0
+   temp0=temp0+dtemp0;    qvap0=qvap0+dqvap0
+   uwnd0=uwnd0+duwnd0;    vwnd0=vwnd0+dvwnd0
 
-      duwnd0=duwnd0*dtinv; dvwnd0=dvwnd0*dtinv
+   duwnd0=duwnd0*dtinv; dvwnd0=dvwnd0*dtinv
 
-      dtemp0=dtemp0*dtinv; dqvap0=dqvap0*dtinv
-      rain0=rain0*dtinv; snow0=snow0*dtinv
+   dtemp0=dtemp0*dtinv; dqvap0=dqvap0*dtinv
+   rain0=rain0*dtinv; snow0=snow0*dtinv
 
 !!------- add on tendency ----------
 !      tdt=tdt+ttnd; qdt=qdt+qtnd
@@ -1227,25 +1255,25 @@ endif
 !------- update input values , compute and add on tendency -----------
 !-------              in the case of strat                 -----------
 
-      if (cloud_tracers_present) then
-        ql0(:,:,:) = ql0(:,:,:)+Dl0(:,:,:)
-        qi0(:,:,:) = qi0(:,:,:)+Di0(:,:,:)
-        qa0(:,:,:) = qa0(:,:,:)+Da0(:,:,:)
-        if ( do_liq_num ) &
-          qn0(:,:,:) = qn0(:,:,:)+Dn0(:,:,:)
+   if (cloud_tracers_present) then
+     ql0(:,:,:) = ql0(:,:,:)+Dl0(:,:,:)
+     qi0(:,:,:) = qi0(:,:,:)+Di0(:,:,:)
+     qa0(:,:,:) = qa0(:,:,:)+Da0(:,:,:)
+     if ( do_liq_num ) &
+       qn0(:,:,:) = qn0(:,:,:)+Dn0(:,:,:)
 
-        Dl0(:,:,:) = Dl0(:,:,:)*dtinv
-        Di0(:,:,:) = Di0(:,:,:)*dtinv
-        Da0(:,:,:) = Da0(:,:,:)*dtinv
-        if ( do_liq_num ) &
-          Dn0(:,:,:)=Dn0(:,:,:)*dtinv
+     Dl0(:,:,:) = Dl0(:,:,:)*dtinv
+     Di0(:,:,:) = Di0(:,:,:)*dtinv
+     Da0(:,:,:) = Da0(:,:,:)*dtinv
+     if ( do_liq_num ) &
+       Dn0(:,:,:)=Dn0(:,:,:)*dtinv
 
-      end if
-    do tr = 1,num_ras_tracers
-      qtrras(:,:,:,tr) = qtrras(:,:,:,tr)*dtinv
-    enddo    
+   end if
+   do tr = 1,num_ras_tracers
+     qtrras(:,:,:,tr) = qtrras(:,:,:,tr)*dtinv
+   enddo    
 
-    if(present(mc0)) mc0 = mc0_local
+   if(present(mc0)) mc0 = mc0_local
 
 !---------------------------------------------------------------------
 ! --- Extra diagnostics
@@ -1253,100 +1281,84 @@ endif
  
    dtemp_ev0(:,:,:) = dtemp_ev0(:,:,:) * dtinv
    dqvap_ev0(:,:,:) = dqvap_ev0(:,:,:) * dtinv
-    snow_ev0(:,:)   =  snow_ev0(:,:)   * dtinv
-    rain_ev0(:,:)   =  rain_ev0(:,:)   * dtinv
+   snow_ev0(:,:)   =  snow_ev0(:,:)   * dtinv
+   rain_ev0(:,:)   =  rain_ev0(:,:)   * dtinv
 
-     if ( id_tdt_revap > 0 ) then
-        used = send_data ( id_tdt_revap, dtemp_ev0, Time, is, js, 1 )
-     endif
-     if ( id_qdt_revap > 0 ) then
-        used = send_data ( id_qdt_revap, dqvap_ev0, Time, is, js, 1 )
-     endif
-     if ( id_prec_revap > 0 ) then
-        used = send_data ( id_prec_revap, rain_ev0+snow_ev0, Time, is, js )
-     endif
-     if ( id_snow_revap > 0 ) then
-        used = send_data ( id_snow_revap, snow_ev0, Time, is, js )
-     endif
-     if ( id_prec_conv_3d > 0 ) then
-        used = send_data ( id_prec_conv_3d, cuprc3d, Time, is, js, 1 )
-     endif
-     if ( id_pcldb > 0 ) then
-        used = send_data ( id_pcldb, pcldb0, Time, is, js )
-     endif
+   used = send_data ( id_tdt_revap, dtemp_ev0, Time, is, js, 1 )
+   used = send_data ( id_qdt_revap, dqvap_ev0, Time, is, js, 1 )
+   used = send_data ( id_prec_revap, rain_ev0+snow_ev0, Time, is, js )
+   used = send_data ( id_snow_revap, snow_ev0, Time, is, js )
+   used = send_data ( id_prec_conv_3d, cuprc3d, Time, is, js, 1 )
+   used = send_data ( id_pcldb, pcldb0, Time, is, js )
 
 !------- diagnostics for dt/dt_ras -------
-      if ( id_tdt_conv > 0 ) then
-        used = send_data ( id_tdt_conv, dtemp0, Time, is, js, 1, &
-                           rmask=mask )
-      endif
+   used = send_data ( id_tdt_conv, dtemp0, Time, is, js, 1, &
+                      rmask=mask )
 !------- diagnostics for dq/dt_ras -------
-      if ( id_qdt_conv > 0 ) then
-        used = send_data ( id_qdt_conv, dqvap0, Time, is, js, 1, &
-                           rmask=mask )
-      endif
+   used = send_data ( id_qdt_conv, dqvap0, Time, is, js, 1, &
+                      rmask=mask )
 !------- diagnostics for precip_ras -------
-      if ( id_prec_conv > 0 ) then
-        used = send_data ( id_prec_conv, (rain0+snow0), Time, is, js )
-      endif
+   used = send_data ( id_prec_conv, (rain0+snow0), Time, is, js )
 !------- diagnostics for snow_ras -------
-      if ( id_snow_conv > 0 ) then
-        used = send_data ( id_snow_conv, snow0, Time, is, js )
-      endif
+   used = send_data ( id_snow_conv, snow0, Time, is, js )
 !------- diagnostics for cumulus mass flux from ras -------
-      if ( id_mc > 0 ) then
-           !------- set up mask --------
-           mask3(:,:,1:(kmax+1)) = 1.
-           if (present(mask)) then
-              WHERE (mask(:,:,1:kmax) <= 0.5)
-                     mask3(:,:,1:kmax) = 0.
-              END WHERE
-           endif
-           used = send_data ( id_mc, mc0_local, Time, is, js, 1, rmask=mask3 )
-      endif
+   if ( id_mc > 0 ) then
+        !------- set up mask --------
+        mask3(:,:,1:(kmax+1)) = 1.
+        if (present(mask)) then
+          WHERE (mask(:,:,1:kmax) <= 0.5)
+                  mask3(:,:,1:kmax) = 0.
+          END WHERE
+        endif
+        used = send_data ( id_mc, mc0_local, Time, is, js, 1, rmask=mask3 )
+   endif
+   used = send_data ( id_mfcb, mfcb0(:,:,1:kmax), Time, is, js, 1, rmask=mask )
+   used = send_data ( id_mfct, mfct0(:,:,1:kmax), Time, is, js, 1, rmask=mask )
+   used = send_data ( id_alm,  alm0 (:,:,1:kmax), Time, is, js, 1, rmask=mask )
+   if ( id_cfq_ras > 0 ) then
+     where (mfcb0(:,:,:) .gt. 0.)
+       cfq_ras(:,:,:) = 1
+     end where
+     used = send_data ( id_cfq_ras,  cfq_ras (:,:,1:kmax), Time, is, js, 1, rmask=mask )
+   endif
+    
+
 !------- diagnostics for water vapor path tendency ----------
-      if ( id_q_conv_col > 0 ) then
-        tempdiag(:,:)=0.
-        do k=1,kmax
-          tempdiag(:,:) = tempdiag(:,:) + dqvap0(:,:,k)*pmass(:,:,k)*dtinv
-        end do
-        used = send_data ( id_q_conv_col, tempdiag, Time, is, js )
-      end if
-   
+   if ( id_q_conv_col > 0 ) then
+     tempdiag(:,:)=0.
+     do k=1,kmax
+       tempdiag(:,:) = tempdiag(:,:) + dqvap0(:,:,k)*pmass(:,:,k)*dtinv
+     end do
+     used = send_data ( id_q_conv_col, tempdiag, Time, is, js )
+   end if
+
 !------- diagnostics for dry static energy tendency ---------
-      if ( id_t_conv_col > 0 ) then
-        tempdiag(:,:)=0.
-        do k=1,kmax
-          tempdiag(:,:) = tempdiag(:,:) + dtemp0(:,:,k)*Cp_Air*pmass(:,:,k)
-        end do
-        used = send_data ( id_t_conv_col, tempdiag, Time, is, js )
-      end if
+   if ( id_t_conv_col > 0 ) then
+     tempdiag(:,:)=0.
+     do k=1,kmax
+       tempdiag(:,:) = tempdiag(:,:) + dtemp0(:,:,k)*Cp_Air*pmass(:,:,k)
+     end do
+     used = send_data ( id_t_conv_col, tempdiag, Time, is, js )
+   end if
 
    if ( cloud_tracers_present ) then
 
       !------- diagnostics for dql/dt from RAS -----------------
-      if ( id_qldt_conv > 0 ) then
-        used = send_data ( id_qldt_conv, Dl0, Time, is, js, 1, &
-                           rmask=mask )
-      endif
+      used = send_data ( id_qldt_conv, Dl0, Time, is, js, 1, &
+                         rmask=mask )
       
       !------- diagnostics for dqi/dt from RAS -----------------
-      if ( id_qidt_conv > 0 ) then
-        used = send_data ( id_qidt_conv, Di0, Time, is, js, 1, &
-                           rmask=mask )
-      endif
+      used = send_data ( id_qidt_conv, Di0, Time, is, js, 1, &
+                         rmask=mask )
       
       !------- diagnostics for dqa/dt from RAS -----------------
-      if ( id_qadt_conv > 0 ) then
-        used = send_data ( id_qadt_conv, Da0, Time, is, js, 1, &
-                           rmask=mask )
-      endif
+      used = send_data ( id_qadt_conv, Da0, Time, is, js, 1, &
+                         rmask=mask )
 
       !------- diagnostics for dqn/dt from RAS -----------------
-      if ( id_qndt_conv > 0 .and. do_liq_num ) then
+      if (do_liq_num .and. id_qndt_conv > 0 ) &
         used = send_data ( id_qndt_conv, Dn0, Time, is, js, 1, &
-                           rmask=mask )
-      endif
+                         rmask=mask )
 
       !------- diagnostics for liquid water path tendency ------
       if ( id_ql_conv_col > 0 ) then
@@ -1376,19 +1388,15 @@ endif
       end if
          
       !------- diagnostics for det0 from RAS -----------------
-      if ( id_det0 > 0 ) then
-        used = send_data ( id_det0, det0, Time, is, js, 1, &
-                           rmask=mask )
-      endif
+      used = send_data ( id_det0, det0, Time, is, js, 1, &
+                         rmask=mask )
 
    end if !end do strat if
 
    do tr = 1, num_ras_tracers
       !------- diagnostics for dtracer/dt from RAS -------------
-      if ( id_tracer_conv(tr) > 0 ) then
-        used = send_data ( id_tracer_conv(tr), qtrras(:,:,:,tr), Time, is, js, 1, &
-                           rmask=mask )
-      endif
+      used = send_data ( id_tracer_conv(tr), qtrras(:,:,:,tr), Time, is, js, 1, &
+                         rmask=mask )
 
       !------- diagnostics for column tracer path tendency -----
       if ( id_tracer_conv_col(tr) > 0 ) then
@@ -1414,7 +1422,7 @@ endif
  SUBROUTINE RAS_CLOUD(t, p, dens,                                &
             k, ic, rasal, frac, hl, coldT,                       &
             theta, qvap, uwnd, vwnd, pres_int, pi_int, pi, psfc, &
-            alf, bet, gam, cp_by_dp, zbase,                      &
+            alf, bet, gam, cp_by_dp, zbase, almx,                &
             dtcu, dqcu, ducu,  dvcu, dpcu, tracer, dtracercu,    &
             mccu, ql, qi, qa, Dlcu, Dicu, Dacu, aerosolmass, qn, Dncu)   ! optional
 !=======================================================================
@@ -1441,6 +1449,7 @@ endif
 !     qa       : OPTIONAL, cloud fraction or saturated volume fraction
 !---------------------------------------------------------------------
 
+ real,    intent(inout):: almx    !miz
  real,    intent(in) :: rasal, frac, zbase
  real,    intent(in) :: hl,    psfc
  integer, intent(in) :: ic,    k
@@ -1534,6 +1543,7 @@ endif
   vht=0.0
   wlq=0.0
   alm=0.0
+  almx=0.0
   wll=0.0
   wli=0.0
   if ( do_liq_num ) &
@@ -1621,7 +1631,10 @@ endif
      xx1  = 0.5 * ( pres_int(ic) + pres_int(ic1) )
      if(  xx1 <= Tokioka_plim ) xx2 = Tokioka_con / zbase
   endif
-  if( alm < xx2 ) RETURN
+  if( alm < xx2 ) then
+    almx = 0.0
+    RETURN
+  endif
 !$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
 !=====================================================================
@@ -1726,9 +1739,12 @@ endif
  lcase2 = lcase2 .and. ( wfn > 0.0 ) .and. ( ftop > 0.0 )
 
 !$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-  if ( .not.lcase1 .and. .not.lcase2 )  RETURN
+  if ( .not.lcase1 .and. .not.lcase2 )  then
+    almx = 0.0
+    RETURN
+  endif
 !$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-
+  almx = alm
 !=====================================================================
 
   if ( lcase1 ) then
@@ -2194,8 +2210,7 @@ if ( LRcu ) then
   kmax = size( pres, 3 )
 
 ! --- Compute relative humidity
-  CALL  ESCOMP ( t_parc, esat )
-  qsat(:,:) = d622 * esat(:,:) / p_parc(:,:) 
+  call compute_qs (t_parc, p_parc, qsat, q = q_parc)
   rhum(:,:) = q_parc(:,:) / qsat(:,:)
   rhum(:,:) = MIN( rhum(:,:), 1.0 )
 
@@ -2570,7 +2585,7 @@ if ( LRcu ) then
 FUNCTION ran0(idum)
 
 
-!     $Id: ras.F90,v 15.0 2007/08/14 03:54:19 fms Exp $
+!     $Id: ras.F90,v 15.0.6.1.2.2 2008/09/23 18:37:47 wfc Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

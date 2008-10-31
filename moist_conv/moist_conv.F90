@@ -8,7 +8,7 @@ module moist_conv_mod
                                stdlog
 use   time_manager_mod, only : time_type
  use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
-use  sat_vapor_pres_mod, ONLY: EsComp, DEsComp
+use  sat_vapor_pres_mod, ONLY: lookup_es_des, compute_qs, descomp
 use             fms_mod, ONLY:  error_mesg, file_exist, open_namelist_file,  &
                                 check_nml_error, close_file,        &
                                 FATAL, WARNING, NOTE, mpp_pe, mpp_root_pe, &
@@ -38,17 +38,18 @@ public :: moist_conv, moist_conv_Init, moist_conv_end
  real :: beta = 0.0
  real :: TOLmin=.02, TOLmax=.10
  integer :: ITSMOD=30
+ logical :: do_simple =.false.
 
 !----- note beta is the fraction of convective condensation that is
 !----- detrained into a stratiform cloud
 
- namelist /moist_conv_nml/  HC, beta, TOLmin, TOLmax, ITSMOD
+ namelist /moist_conv_nml/  HC, beta, TOLmin, TOLmax, ITSMOD, do_simple
 
 !-----------------------------------------------------------------------
 !---- VERSION NUMBER -----
 
- character(len=128) :: version = '$Id: moist_conv.F90,v 14.0 2007/03/15 22:04:14 fms Exp $'
- character(len=128) :: tagname = '$Name: perth $'
+ character(len=128) :: version = '$Id: moist_conv.F90,v 14.0.8.1.2.2 2008/09/17 13:46:42 wfc Exp $'
+ character(len=128) :: tagname = '$Name: perth_2008_10 $'
  logical            :: module_is_initialized = .false.
 
 !---------- initialize constants used by this module -------------------
@@ -150,7 +151,8 @@ integer, dimension(size(Tin,1),size(Tin,2)) :: ISMVF
 integer, dimension(size(Tin,1),size(Tin,2),size(Tin,3)) :: IVF
 
 real, dimension(size(Tin,1),size(Tin,2),size(Tin,3)) ::   &
-  Qdif,Temp,Qmix,Esat,Qsat,Test1,Test2
+  Qdif,Temp,Qmix,Esat,Qsat,Test1,Test2, &
+   Esdiff_v
 
 real, dimension(size(Tin,1),size(Tin,2),size(Tin,3)-1) ::   &
   Thalf,DelPoP,Esm,Esd,ALRM
@@ -186,11 +188,15 @@ integer  :: tr, num_cld_tracers
       KX=size(Tin,3)
 
 !------ compute Proper HL
-      WHERE (coldT)
-            HL = HLs
-      ELSEWHERE
+      if(do_simple) then
             HL = HLv
-      END WHERE
+      else
+        WHERE (coldT)
+              HL = HLs
+        ELSEWHERE
+              HL = HLv
+        END WHERE
+      endif
 
 !------ convert spec hum to mixing ratio ------
       Temp(:,:,:)=Tin(:,:,:)
@@ -201,12 +207,10 @@ integer  :: tr, num_cld_tracers
       enddo
 
 !-------------SATURATION VAPOR PRESSURE FROM ETABL----------------------
+!  compute qs; also return dqsdT
 
-      call EsComp (Temp,Esat)
-
-      Esat(:,:,:)=Esat(:,:,:)*HC
-      Qsat(:,:,:)=Pfull(:,:,:)-d378*Esat(:,:,:)
-      Qsat(:,:,:)=Max(0.0,d622*Esat(:,:,:)/Qsat(:,:,:))
+      call compute_qs (Temp, Pfull, Qsat, dqsdT=Esdiff_v, hc = hc, &
+                                                            esat=Esat)
       Qdif(:,:,:)=Max(0.0,Qmix(:,:,:)-Qsat(:,:,:))
 
 !-----------------------------------------------------------------------
@@ -221,8 +225,7 @@ integer  :: tr, num_cld_tracers
          Thalf(:,:,k)=0.50*(Temp(:,:,k)+Temp(:,:,k+1))
       enddo
 
-      call  EsComp (Thalf,Esm)
-      call DEsComp (Thalf,Esd)
+      call lookup_es_des (Thalf, Esm, Esd)
 
       do k=1,KX-1
          ALRM(:,:,k)=rocp*DelPoP(:,:,k)*Thalf(:,:,k)  &
@@ -318,16 +321,17 @@ integer  :: tr, num_cld_tracers
 !-----------------------------------------------------------------------
                       do 1630 k=KTOP,KBOT
 !-----------------------------------------------------------------------
-         C(k)=Pfull(i,j,k)-d378*Esat(i,j,k)
-      if (C(k) <= 0.0) then
-         C(k)=0.0
+      if(do_simple) then
+        call DEsComp (Temp(i,j,k),EsDiff)
+        C(k)=d622*HC*EsDiff/Pfull(i,j,k)
       else
-!DIR$ INLINE
-         call DEsComp (Temp(i,j,k),EsDiff)
-!DIR$ NOINLINE
-         C(k)=d622*Pfull(i,j,k)*HC*EsDiff/  &
-                        ((Pfull(i,j,k)-d378*Esat(i,j,k))**2)
-      endif
+        C(k)=Pfull(i,j,k)-d378*Esat(i,j,k)
+        if (C(k) <= 0.0) then
+          C(k)=0.0
+        else
+          C(k) = esdiff_v(i,j,k)
+        endif
+      endif  
 
       Sum0=0.0
       if (k == KBOT) GO TO 1625
@@ -364,20 +368,15 @@ integer  :: tr, num_cld_tracers
         Qa(k)=Qsat(i,j,k)+C(k)*(Ta(k)-Temp(i,j,k))
         Temp(i,j,k)=Ta(k)
         Qmix(i,j,k)=Qa(k)
-!DIR$ INLINE
-        call EsComp (Temp(i,j,k),EsVal)
-!DIR$ NOINLINE
-        Esat(i,j,k)=HC*EsVal
-        Qsat(i,j,k)=Pfull(i,j,k)-d378*Esat(i,j,k)
-        Qsat(i,j,k)=Max(0.0,d622*Esat(i,j,k)/Qsat(i,j,k))
+        call compute_qs ( Temp(i,j,k), Pfull(i,j,k), Qsat(i,j,k), &
+                     dqsdT = Esdiff_v(i,j,k), hc =hc, esat= Esat(i,j,k))
         Qdif(i,j,k)=Max(0.0,Qmix(i,j,k)-Qsat(i,j,k))
       enddo
 
       do k=KTOP,KBOTM1
         Thaf=0.50*(Temp(i,j,k)+Temp(i,j,k+1))
 !DIR$ INLINE
-        call  EsComp (Thaf,EsVal)
-        call DEsComp (Thaf,EsDiff)
+        call lookup_es_des (Thaf, EsVal, Esdiff)
 !DIR$ NOINLINE
         Esm (i,j,k)=HC*EsVal
         Esd (i,j,k)=HC*EsDiff
@@ -396,8 +395,7 @@ integer  :: tr, num_cld_tracers
       do k=1,MXLEV1
         Thaf=0.50*(Temp(i,j,k)+Temp(i,j,k+1))
 !DIR$ INLINE
-        call  EsComp (Thaf,EsVal)
-        call DEsComp (Thaf,EsDiff)
+        call lookup_es_des (Thaf, EsVal, EsDiff)
 !DIR$ NOINLINE
         Esm (i,j,k)=HC*EsVal
         Esd (i,j,k)=HC*EsDiff
@@ -481,24 +479,33 @@ integer  :: tr, num_cld_tracers
       Snow(:,:)=0.0
    do k =1,KX
 
-      WHERE(coldT(:,:)) 
-      Snow(:,:)=Snow(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
+     if(do_simple) then
+       Rain(:,:)=Rain(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
                                Qdel(:,:,k)*grav_inv
-      ELSEWHERE
-      Rain(:,:)=Rain(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
+       if (cloud_tracers_present) then
+          Rain(:,:)=Rain(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
+                                qldel(:,:,k)*grav_inv
+       endif
+     else
+       WHERE(coldT(:,:)) 
+         Snow(:,:)=Snow(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
                                Qdel(:,:,k)*grav_inv
-      END WHERE
+       ELSEWHERE
+         Rain(:,:)=Rain(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
+                               Qdel(:,:,k)*grav_inv
+       END WHERE
 
       !subtract off detrained condensate from surface precip
-     if (cloud_tracers_present) then
-      WHERE(coldT(:,:)) 
-      Snow(:,:)=Snow(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
-                               qidel(:,:,k)*grav_inv
-      ELSEWHERE
-      Rain(:,:)=Rain(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
-                               qldel(:,:,k)*grav_inv
-      END WHERE      
-      end if
+       if (cloud_tracers_present) then
+         WHERE(coldT(:,:)) 
+           Snow(:,:)=Snow(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
+                                qidel(:,:,k)*grav_inv
+         ELSEWHERE
+           Rain(:,:)=Rain(:,:)+(Phalf(:,:,k)-Phalf(:,:,k+1))*  &
+                                qldel(:,:,k)*grav_inv
+         END WHERE      
+       end if
+     endif
 
    enddo
       Rain(:,:)=Max(Rain(:,:),0.0)

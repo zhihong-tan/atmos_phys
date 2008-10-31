@@ -4,7 +4,7 @@
 !=======================================================================
  use           fms_Mod, ONLY: FILE_EXIST, OPEN_NAMELIST_FILE,          &
                               ERROR_MESG, FATAL, mpp_pe, mpp_root_pe,  &
-                              read_data, write_data, CLOSE_FILE,       &
+                              CLOSE_FILE,                              &
                               check_nml_error, write_version_number,   &
                               stdlog
  use  Diag_Manager_Mod, ONLY: register_diag_field, send_data
@@ -19,8 +19,8 @@
 
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  character(len=128) :: version = '$Id: stable_bl_turb.F90,v 13.0 2006/03/28 21:14:11 fms Exp $'
-  character(len=128) :: tagname = '$Name: perth $'
+  character(len=128) :: version = '$Id: stable_bl_turb.F90,v 13.0.8.1 2008/09/03 18:40:35 z1l Exp $'
+  character(len=128) :: tagname = '$Name: perth_2008_10 $'
   logical            :: module_is_initialized = .false.
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

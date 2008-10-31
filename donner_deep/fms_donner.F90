@@ -25,6 +25,8 @@ use fms_mod,                only: mpp_pe, mpp_root_pe,  &
                                   field_size, &
                                   read_data, write_data, lowercase,    &
                                   open_restart_file
+use fms_io_mod,             only: register_restart_field, restart_file_type, &
+                                  save_restart, get_mosaic_tile_file
 use mpp_io_mod,             only: mpp_open, mpp_close, fieldtype,  &
                                   mpp_read_meta, mpp_get_info, &
                                   mpp_get_fields, mpp_read, &
@@ -63,8 +65,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: fms_donner.F90,v 16.0 2008/07/30 22:07:06 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth $'
+character(len=128)  :: version =  '$Id: fms_donner.F90,v 16.0.4.1.2.1.2.1 2008/09/16 02:42:40 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
 
 
 !--------------------------------------------------------------------
@@ -89,7 +91,7 @@ private   &
 !  module subroutines called by donner_deep:
         donner_deep_netcdf, donner_column_control,     &
 !  module subroutines called from donner_deep_end:
-        write_restart, write_restart_nc
+        write_restart
 
 
 !---------------------------------------------------------------------
@@ -106,8 +108,10 @@ private   &
 !--------------------------------------------------------------------
 !----private data-----------
 
-
-
+!--- for restart file
+type(restart_file_type), pointer, save :: Don_restart => NULL()
+type(restart_file_type), pointer, save :: Til_restart => NULL()
+logical                                :: in_different_file = .false.
 !---------------------------------------------------------------------
 !  parameters stored in the donner_param derived type variable to facili-
 !  tate passage to kernel subroutines:
@@ -313,6 +317,7 @@ integer,               intent(in)       :: kpar
 
       Nml%parcel_launch_level         = parcel_launch_level
       Nml%allow_mesoscale_circulation = allow_mesoscale_circulation
+      Nml%do_hires_cape_for_closure =   do_hires_cape_for_closure
       Nml%do_donner_cape              = do_donner_cape    !miz
       Nml%do_donner_plume             = do_donner_plume   !miz
       Nml%do_donner_closure           = do_donner_closure !miz
@@ -338,6 +343,7 @@ integer,               intent(in)       :: kpar
       Nml%auto_th                     = auto_th           !miz
       Nml%frac                        = frac              !miz
       Nml%ttend_max                   = ttend_max         !miz
+      Nml%mesofactor                  = mesofactor        !miz
       Nml%use_llift_criteria          = use_llift_criteria
       Nml%use_pdeep_cv                = use_pdeep_cv
       Nml%entrainment_constant_source = entrainment_constant_source
@@ -510,6 +516,8 @@ integer, intent(in) :: secs, days, ntracers
         call process_coldstart (Time, Initialized, Nml, Don_save)
       endif
 
+      !--- register restart field to be ready to be written out.
+      call fms_donner_register_restart('donner_deep.res.nc', Initialized, ntracers, Don_save, Nml)
 
 end subroutine fms_donner_read_restart 
 
@@ -660,37 +668,44 @@ end subroutine fms_donner_col_diag
 
 
 !#####################################################################
-
-subroutine fms_donner_write_restart (ntracers, Don_save, Initialized, &
-                                     Nml)
-
-integer, intent(in) :: ntracers
-type(donner_initialized_type), intent(inout) :: Initialized
-type(donner_save_type), intent(inout) :: Don_save
-type(donner_nml_type), intent(inout) :: Nml     
+! <SUBROUTINE NAME="fms_donner_write_restart">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine fms_donner_write_restart (timestamp)
+  character(len=*), intent(in), optional :: timestamp
 
 !-------------------------------------------------------------------
 !    call subroutine to write restart file. NOTE: only the netcdf 
 !    restart file is currently supported.
 !-------------------------------------------------------------------
-      if (do_netcdf_restart) then
-        call write_restart_nc (ntracers, Don_save, Initialized, Nml)
-      else
-        call write_restart (ntracers, Don_save, Initialized, Nml)
+      if (.NOT. do_netcdf_restart) then
+          call error_mesg ('fms_donner_mod', 'fms_donner_write_restart: &
+          &writing a netcdf restart despite request for native &
+           &format (not currently supported); if you must have native &
+           &mode, then you must update the source code and remove &
+                                               &this if loop.', NOTE)
       endif
-
-
+      call save_restart(Don_restart, timestamp)
+      if(in_different_file) call save_restart(Til_restart, timestamp)
 
 end subroutine fms_donner_write_restart 
 
 
 !#####################################################################
 
-subroutine fms_get_pe_number (me)
+subroutine fms_get_pe_number (me, root_pe)
 
-integer, intent(out) :: me
+integer, intent(out) :: me, root_pe
 
     me = mpp_pe()
+    root_pe = mpp_root_pe()
 
 end subroutine fms_get_pe_number
 
@@ -2514,6 +2529,56 @@ type(donner_nml_type), intent(inout) :: Nml
 
 end subroutine process_coldstart
 
+!#####################################################################
+! register restart field to be written to restart file.
+subroutine fms_donner_register_restart(fname, Initialized, ntracers, Don_save, Nml)
+  character(len=*),                 intent(in) :: fname
+  type(donner_initialized_type), intent(inout) :: Initialized
+  integer,                          intent(in) :: ntracers
+  type(donner_save_type),        intent(inout) :: Don_save
+  type(donner_nml_type),         intent(inout) :: Nml
+  character(len=64)                            :: fname2
+  integer :: id_restart, n
+
+   call get_mosaic_tile_file(fname, fname2, .false. ) 
+   allocate(Don_restart)
+   if(trim(fname2) == trim(fname)) then
+      Til_restart => Don_restart
+      in_different_file = .false.
+   else
+      in_different_file = .true.
+      allocate(Til_restart)
+   endif
+
+   id_restart = register_restart_field(Don_restart, fname, 'conv_alarm', Initialized%conv_alarm)
+   id_restart = register_restart_field(Don_restart, fname, 'donner_deep_freq', Nml%donner_deep_freq)
+
+   if (.not. (write_reduced_restart_file) .or. &
+        Initialized%conv_alarm >= Initialized%physics_dt)  then
+      id_restart = register_restart_field(Til_restart, fname, 'cemetf', Don_save%cemetf)
+      id_restart = register_restart_field(Til_restart, fname, 'cememf', Don_save%cememf)
+      id_restart = register_restart_field(Til_restart, fname, 'mass_flux', Don_save%mass_flux)
+      id_restart = register_restart_field(Til_restart, fname, 'cell_up_mass_flux', Don_save%cell_up_mass_flux)
+      id_restart = register_restart_field(Til_restart, fname, 'det_mass_flux', Don_save%det_mass_flux)
+      id_restart = register_restart_field(Til_restart, fname, 'dql_strat', Don_save%dql_strat)
+      id_restart = register_restart_field(Til_restart, fname, 'dqi_strat', Don_save%dqi_strat)
+      id_restart = register_restart_field(Til_restart, fname, 'dqa_strat', Don_save%dqa_strat)
+      id_restart = register_restart_field(Til_restart, fname, 'tprea1', Don_save%tprea1)
+      id_restart = register_restart_field(Til_restart, fname, 'humidity_area', Don_save%humidity_area)
+      id_restart = register_restart_field(Til_restart, fname, 'humidity_factor', Don_save%humidity_factor)
+      if (Initialized%do_donner_tracer) then
+         do n=1,ntracers
+            id_restart = register_restart_field(Til_restart, fname, 'tracer_tends_'// trim(Don_save%tracername(n)), &
+                 Don_save%tracer_tends(:,:,:,n))
+         end do
+      endif
+   endif
+   id_restart = register_restart_field(Til_restart, fname, 'parcel_disp', Don_save%parcel_disp)
+   id_restart = register_restart_field(Til_restart, fname, 'lag_temp', Don_save%lag_temp)
+   id_restart = register_restart_field(Til_restart, fname, 'lag_vapor', Don_save%lag_vapor)
+   id_restart = register_restart_field(Til_restart, fname, 'lag_press', Don_save%lag_press)
+
+end subroutine fms_donner_register_restart
 
 
 !#####################################################################
@@ -3925,124 +3990,6 @@ end subroutine donner_deep_netcdf
 !######################################################################
 
 
-!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-!
-!      3. ROUTINES CALLED BY DONNER_DEEP_END
-!
-!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-!#####################################################################
-
-subroutine write_restart_nc (ntracers, Don_save, Initialized, Nml) 
-
-!----------------------------------------------------------------------
-!    subroutine write_restart_nc writes a netcdf restart file, either
-!    a full file needed when the first step after restart will not be
-!    a calculation step, or a reduced file when it is known (expected)
-!    that it will be.
-!----------------------------------------------------------------------
-
-integer, intent(in) :: ntracers
-type(donner_initialized_type), intent(inout) :: Initialized
-type(donner_save_type), intent(inout) :: Don_save
-type(donner_nml_type), intent(inout) :: Nml     
-
-!----------------------------------------------------------------------
-!   intent(in) variables:
-!
-!     ntracers               number of tracers to be transported by
-!                            the donner deep convection parameterization
-!
-!----------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!  local variables:
-
-      character(len=65)  :: fname = 'RESTART/donner_deep.res.nc'
-                                    ! name of restart file to be written
-      integer            ::  n      ! do-loop index
-
-!---------------------------------------------------------------------
-!    write a message indicating the type of restart to be written and
-!    the reason for it.
-!---------------------------------------------------------------------
-      if (mpp_pe() == mpp_root_pe() ) then
-        if (.not. (write_reduced_restart_file) ) then
-          call error_mesg ('donner_deep_mod', 'wrote_restart_nc: &
-            &Writing FULL netCDF formatted restart file as requested: &
-                 &RESTART/donner_deep.res.nc', NOTE)
-        else
-          if (Initialized%conv_alarm >= Initialized%physics_dt)  then
-            call error_mesg ('donner_deep_mod', 'write_restart_nc: &
-            &Writing FULL netCDF formatted restart file; it is needed &
-             &to allow seamless restart because next step is not a &
-             &donner calculation step: RESTART/donner_deep.res.nc', NOTE)
-          else
-            call error_mesg ('donner_deep_mod', 'write_restart_nc: &
-              &Writing REDUCED netCDF formatted restart file as  &
-                &requested: RESTART/donner_deep.res.nc', NOTE)
-          endif 
-        endif 
-      endif
-
-!---------------------------------------------------------------------
-!    write out the alarm information -- the time remaining before the
-!    next calculation and the current donner calculation frequency.
-!---------------------------------------------------------------------
-      call write_data(fname, 'conv_alarm', Initialized%conv_alarm, &
-                                                       no_domain=.true.)
-      call write_data(fname, 'donner_deep_freq', Nml%donner_deep_freq, &
-                                                       no_domain=.true.)
-
-!---------------------------------------------------------------------
-!    write out the restart data that is present in a full restart, but
-!    which is not needed if donner_deep is calculated on the first
-!    step of the restarted job.
-!---------------------------------------------------------------------
-      if (.not. (write_reduced_restart_file) .or. &
-          Initialized%conv_alarm >= Initialized%physics_dt)  then
-        call write_data (fname, 'cemetf',            Don_save%cemetf)
-        call write_data (fname, 'cememf',            Don_save%cememf)   
-        call write_data (fname, 'mass_flux',         Don_save%mass_flux)
-        call write_data (fname, 'cell_up_mass_flux',    &
-                                              Don_save%cell_up_mass_flux)
-        call write_data (fname, 'det_mass_flux',        &
-                                                  Don_save%det_mass_flux)
-        call write_data (fname, 'dql_strat',         Don_save%dql_strat)
-        call write_data (fname, 'dqi_strat',         Don_save%dqi_strat)
-        call write_data (fname, 'dqa_strat',         Don_save%dqa_strat)
-        call write_data (fname, 'tprea1',            Don_save%tprea1)   
-        call write_data (fname, 'humidity_area',        &
-                                                  Don_save%humidity_area)
-        call write_data (fname, 'humidity_factor',       &
-                                               Don_save%humidity_factor)
-        if (Initialized%do_donner_tracer) then
-          do n=1,ntracers
-            call write_data (fname,   &
-                  'tracer_tends_'// trim(Don_save%tracername(n)),  &
-                                          Don_save%tracer_tends(:,:,:,n))
-          end do
-        endif
-      endif
-
-!----------------------------------------------------------------------
-!    write out the restart data which is always needed, regardless of
-!    when the first donner calculation step is after restart.
-!----------------------------------------------------------------------
-      call write_data (fname, 'parcel_disp', Don_save%parcel_disp)
-      call write_data (fname, 'lag_temp',    Don_save%lag_temp)     
-      call write_data (fname, 'lag_vapor',   Don_save%lag_vapor)     
-      call write_data (fname, 'lag_press',   Don_save%lag_press)     
-
-!----------------------------------------------------------------------
-
-
-
-end subroutine write_restart_nc
-
-
-
-
 !#####################################################################
 
 subroutine write_restart (ntracers, Don_save, Initialized, Nml)          
@@ -4090,7 +4037,7 @@ type(donner_nml_type), intent(inout) :: Nml
            &format (not currently supported); if you must have native &
            &mode, then you must update the source code and remove &
                                                &this if loop.', NOTE)
-      call write_restart_nc (ntracers, Don_save, Initialized, Nml) 
+!      call write_restart_nc (ntracers, Don_save, Initialized, Nml) 
 
 !-------------------------------------------------------------------
 !    open unit for restart file.

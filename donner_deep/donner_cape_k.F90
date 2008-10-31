@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cape_k.F90,v 16.0 2008/07/30 22:06:43 fms Exp $
+!  $Id: donner_cape_k.F90,v 16.0.2.1 2008/09/09 13:43:14 rsh Exp $
 
 !module donner_cape_inter_mod
 
@@ -738,7 +738,7 @@ subroutine don_c_define_moist_adiabat_k  &
 !----------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type 
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_mrs_k
 
 implicit none 
 
@@ -790,7 +790,8 @@ integer,                      intent(out)   :: error
 !--------------------------------------------------------------------
 !    define saturation vapor pressure for the parcel.
 !--------------------------------------------------------------------
-        call lookup_es_k (tp_s, es_v_s, nbad)
+        call compute_mrs_k (tp_s, press(k), Param%D622, Param%D608, &
+                            rs_v_s, nbad,  esat = es_v_s)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -808,7 +809,6 @@ integer,                      intent(out)   :: error
 !--------------------------------------------------------------------
         qe_v_s = env_r(k)/(1. + env_r(k))
         env_tv(k) = env_t(k)*(1.+ Param%D608*qe_v_s   )
-        rs_v_s = Param%d622*es_v_s/MAX(press(k) - es_v_s, es_v_s)
         qs_v_s = rs_v_s/(1. + rs_v_s)
         parcel_tv(k) = tp_s*(1. + Param%D608*qs_v_s   )
 
@@ -1387,7 +1387,7 @@ subroutine don_c_calculate_lcl_k    &
 !---------------------------------------------------------------------
 
 use donner_types_mod, only :  donner_param_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_qs_k
 
 implicit none
 
@@ -1433,7 +1433,8 @@ integer,                     intent(out)   :: error
 !---------------------------------------------------------------------
         if (tp_s >= Param%tmin .and.      &
             press(k) >= Param%upper_limit_for_lcl) then
-          call lookup_es_k (tp_s, es_v_s, nbad)
+          call compute_qs_k (tp_s, press(k), Param%d622, Param%d608, &
+                             qs_v_s, nbad, q = q_ve_s)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1447,8 +1448,6 @@ integer,                     intent(out)   :: error
 !--------------------------------------------------------------------
 !  check if the parcel is now saturated.
 !---------------------------------------------------------------------
-          qs_v_s  = Param%d622*es_v_s /MAX(press(k) +    &
-                                       (Param%d622 - 1.)*es_v_s, es_v_s)
           call don_u_numbers_are_equal_k  &
                (qs_v_s, q_ve_s, ermesg, error, ieqv_s)
  

@@ -15,6 +15,8 @@ module mg_drag_mod
                             mpp_pe, mpp_root_pe, error_mesg, FATAL, NOTE, read_data, write_data,  &
                             open_namelist_file, close_file, check_nml_error, open_restart_file, mpp_error
  use      fms_io_mod, only: get_restart_io_mode
+ use      fms_io_mod, only: register_restart_field, restart_file_type
+ use      fms_io_mod, only: save_restart, restore_state
  use   constants_mod, only: Grav, Kappa, RDgas, cp_air
 
 !-----------------------------------------------------------------------
@@ -23,8 +25,8 @@ module mg_drag_mod
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 15.0 2007/08/14 03:54:00 fms Exp $'
- character(len=128) :: tagname = '$Name: perth $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 15.0.6.1 2008/09/03 18:40:23 z1l Exp $'
+ character(len=128) :: tagname = '$Name: perth_2008_10 $'
 
  real, parameter :: p00 = 1.e5
 
@@ -41,6 +43,9 @@ module mg_drag_mod
 !-----------------------------------------------------------------------
 
  logical :: module_is_initialized = .false.
+
+!--- for netcdf restart
+type(restart_file_type), save :: Mg_restart
 
 !---------------------------------------------------------------------
 ! --- NAMELIST (mg_drag_nml)
@@ -76,7 +81,7 @@ character(len=128) :: source_of_sgsmtn = 'input'
                              do_conserve_energy, do_mcm_mg_drag,     &
                              source_of_sgsmtn, flux_cut_level 
 
- public mg_drag, mg_drag_init, mg_drag_end
+ public mg_drag, mg_drag_init, mg_drag_end, mg_drag_restart
 
  contains
 
@@ -968,6 +973,7 @@ end subroutine mgwd_tend
 !---------------------------------------------------------------------
  integer  ::  ix, iy, unit, io, ierr
  logical  ::  answer
+ integer  :: id_restart
 
 !=====================================================================
 
@@ -1013,6 +1019,9 @@ if(module_is_initialized) return
 ! --- Input hprime
 !---------------------------------------------------------------------
 
+  if(do_netcdf_restart) then
+     id_restart = register_restart_field(Mg_restart, 'mg_drag.res.nc', 'ghprime', Ghprime)
+  end if
   if ( trim(source_of_sgsmtn) == 'computed' ) then
     answer = get_topog_stdev ( lonb, latb, Ghprime )
     if ( .not.answer ) then
@@ -1021,6 +1030,8 @@ if(module_is_initialized) return
     endif
   else if ( trim(source_of_sgsmtn) == 'input' .or. trim(source_of_sgsmtn) == 'input/computed' ) then
     if ( file_exist('INPUT/mg_drag.res.nc') .or. file_exist('INPUT/mg_drag.res.tile1.nc') ) then
+       if(.not. do_netcdf_restart) call mpp_error ('mg_drag_mod', &
+         'netcdf format restart file INPUT/mg_drag.res.nc exist, but do_netcdf_restart is false.', FATAL)
        if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
             'Reading NetCDF formatted restart file: INPUT/mg_drag.res.nc', NOTE)
        call read_data ('INPUT/mg_drag.res.nc', 'ghprime', Ghprime)
@@ -1059,21 +1070,46 @@ if(module_is_initialized) return
   integer :: unit
 
   if(.not.module_is_initialized) return
+
+  deallocate(ghprime)
+  module_is_initialized = .false.
+
+  end subroutine mg_drag_end
+
+
+!#######################################################################
+! <SUBROUTINE NAME="mg_drag_restart">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine mg_drag_restart(timestamp)
+  character(len=*), intent(in), optional :: timestamp
+
+  integer :: unit
+
   if(do_netcdf_restart) then
      if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
           'Writing NetCDF formatted restart file: RESTART/mg_drag.res.nc', NOTE)
-     call write_data('RESTART/mg_drag.res.nc', 'ghprime', ghprime)
-  else
+     call save_restart(Mg_restart, timestamp)
+  else   
+     if(present(timestamp)) then
+        call mpp_error ('mg_drag_mod', 'when do_netcdf_restart is false, '// &
+                        'timestamp should not passed in mg_drag_restart', FATAL)
+     end if
      if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
           'Writing native formatted restart file.', NOTE)
      unit = open_restart_file('RESTART/mg_drag.res','write')
      call write_data(unit, Ghprime)
      call close_file(unit)
   endif
-  deallocate(ghprime)
-  module_is_initialized = .false.
-
-  end subroutine mg_drag_end
+end subroutine mg_drag_restart
+! </SUBROUTINE> NAME="mg_drag_restart"
 
 !#######################################################################
 

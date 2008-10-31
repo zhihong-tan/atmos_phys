@@ -7,10 +7,13 @@ use fms_mod,                only:  fms_init, mpp_pe, mpp_root_pe,  &
                                    stdlog, write_version_number, &
                                    read_data, write_data,   &
                                    open_restart_file
+use fms_io_mod,             only:  register_restart_field, restart_file_type
+use fms_io_mod,             only:  save_restart, restore_state, get_mosaic_tile_file
 use time_manager_mod,       only:  time_manager_init, time_type
 use diag_manager_mod,       only:  diag_manager_init,   &
                                    register_diag_field, send_data
-use constants_mod,          only:  constants_init, PI, RDGAS, GRAV, CP_AIR
+use constants_mod,          only:  constants_init, PI, RDGAS, GRAV, CP_AIR, &
+                                   SECONDS_PER_DAY
 
 #ifdef COL_DIAG
 use column_diagnostics_mod, only:  column_diagnostics_init, &
@@ -35,21 +38,25 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.F90,v 16.0 2008/07/30 22:06:15 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth $'
+character(len=128)  :: version =  '$Id: cg_drag.F90,v 16.0.2.1.2.2 2008/10/17 21:12:31 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
 
 
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
-public    cg_drag_init, cg_drag_calc, cg_drag_end
+public    cg_drag_init, cg_drag_calc, cg_drag_end, cg_drag_restart
 
 
 private   read_restart_file, read_nc_restart_file, &
-          write_restart_file, write_nc_restart_file, &
-          gwfc
+          write_restart_file, gwfc
 
+!--- for netcdf restart
+type(restart_file_type), pointer, save :: Cg_restart => NULL()
+type(restart_file_type), pointer, save :: Til_restart => NULL()
+logical                                :: in_different_file = .false.
+integer                                :: vers, old_time_step
 
 !wfc++ Addition for regular use
       integer, allocatable, dimension(:,:)     ::  source_level
@@ -478,11 +485,15 @@ type(time_type),         intent(in)      :: Time
 !--------------------------------------------------------------------
 !    if present, read the restart data file.
 !---------------------------------------------------------------------
-      if (file_exist('INPUT/cg_drag.res')) then
-        call read_restart_file
+      if (size(restart_versions(:)) .gt. 2 ) then
+        call cg_drag_register_restart
+      endif
 
-      elseif (file_exist('INPUT/cg_drag.res.nc')) then
+      if (file_exist('INPUT/cg_drag.res.nc')) then
         call read_nc_restart_file
+
+      elseif (file_exist('INPUT/cg_drag.res')) then
+        call read_restart_file
 !-------------------------------------------------------------------
 !    if no restart file is present, initialize the gwd field to zero.
 !    define the time remaining until the next cg_drag calculation from
@@ -494,9 +505,11 @@ type(time_type),         intent(in)      :: Time
         if (cg_drag_offset > 0) then
           cgdrag_alarm = cg_drag_offset
         else 
-          cgdrag_alarm = cg_drag_freq  
+          cgdrag_alarm = cg_drag_freq
         endif
       endif
+      vers = restart_versions(size(restart_versions(:)))
+      old_time_step = cgdrag_alarm 
 !---------------------------------------------------------------------
 !    mark the module as initialized.
 !---------------------------------------------------------------------
@@ -709,7 +722,7 @@ real, dimension(:,:,:), intent(out)     :: gwfcng_x, gwfcng_y
        call gwfc (is, ie, js, je, source_level, source_amp,    &
                      zden, zu, zbf,zzchm, gwd_xtnd, ked_xtnd)
 
-          gwfcng_x  (:,:,1:kmax) = gwd_xtnd(:,:,1:kmax  )
+         gwfcng_x  (:,:,1:kmax) = gwd_xtnd(:,:,1:kmax  )
           ked_gwfc_x(:,:,1:kmax) = ked_xtnd(:,:,1:kmax  )
 
        call gwfc (is, ie, js, je, source_level, source_amp,    &
@@ -842,12 +855,6 @@ subroutine cg_drag_end
 !--------------------------------------------------------------------
 !    local variables
 
-      if (size(restart_versions(:)) .le. 2 ) then
-        call write_restart_file
-      else
-!For version 3 and after, use NetCDF restarts.
-        call write_nc_restart_file
-      endif
 
 #ifdef COL_DIAG
       if (column_diagnostics_desired) then
@@ -921,10 +928,8 @@ subroutine read_restart_file
 
       integer                 :: unit
       character(len=8)        :: chvers
-      integer                 :: vers
       integer, dimension(5)   :: null
-      integer                 :: old_time_step
-      real                    :: secs_per_day = 86400.
+      real                    :: secs_per_day = SECONDS_PER_DAY
 
 !-------------------------------------------------------------------
 !   local variables: 
@@ -1034,10 +1039,8 @@ subroutine read_nc_restart_file
 
       character(len=64)     :: fname='INPUT/cg_drag.res.nc'
       character(len=8)      :: chvers
-      integer               :: vers
       integer, dimension(5) :: null
-      integer               :: old_time_step
-      real                  :: secs_per_day = 86400.
+      real                  :: secs_per_day = SECONDS_PER_DAY
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -1057,18 +1060,19 @@ subroutine read_nc_restart_file
 !-------------------------------------------------------------------
 !    read the values of gwd_u and gwd_v
 !-------------------------------------------------------------------
-
-      call read_data(fname, 'restart_version', vers, no_domain=.true. )
+      if (size(restart_versions(:)) .le. 2 ) then
+         call error_mesg ('cg_drag_mod',  'read_restart_nc: restart file format is netcdf, ' // &
+              'restart_versions is not netcdf file version', FATAL)
+      endif
+      call restore_state(Cg_restart)
+      if(in_different_file) call restore_state(Til_restart)
       if (.not. any(vers == restart_versions) ) then
         write (chvers, '(i4)') vers
         call error_mesg ('cg_drag_init', &
                'restart version '//chvers//' cannot be read &
                &by this module version', FATAL)
       endif
-      call read_data(fname, 'cgdrag_alarm', cgdrag_alarm, no_domain=.true. )
-      call read_data(fname, 'cg_drag_freq', old_time_step, no_domain=.true.)
-      call read_data(fname, 'gwd_u', gwd_u)
-      call read_data(fname, 'gwd_v', gwd_v)
+      vers = restart_versions(size(restart_versions(:)))
 
 !--------------------------------------------------------------------
 !    if current cg_drag calling frequency differs from that previously 
@@ -1081,6 +1085,7 @@ subroutine read_nc_restart_file
                 'cgdrag time step has changed, &
                 &next cgdrag time also changed', NOTE)
         endif
+        old_time_step = cg_drag_freq
       endif
 
 !--------------------------------------------------------------------
@@ -1099,45 +1104,65 @@ subroutine read_nc_restart_file
 end subroutine read_nc_restart_file
 
 !####################################################################
+! register restart field to be read and written through save_restart and restore_state.
+subroutine cg_drag_register_restart
 
-subroutine write_nc_restart_file
-!----------------------------------------------------------------------
-!    subroutine write_restart_nc writes a netcdf restart file.
-!----------------------------------------------------------------------
+  character(len=64) :: fname = 'cg_drag.res.nc'    ! name of restart file
+  character(len=64) :: fname2 
+  integer           :: id_restart
 
+  call get_mosaic_tile_file(fname, fname2, .false. ) 
+  allocate(Cg_restart)
+  if(trim(fname2) == trim(fname)) then
+     Til_restart => Cg_restart
+     in_different_file = .false.
+  else
+     in_different_file = .true.
+     allocate(Til_restart)
+  endif
 
-!--------------------------------------------------------------------
-!  local variables:
+  id_restart = register_restart_field(Cg_restart, fname, 'restart_version', vers)
+  id_restart = register_restart_field(Cg_restart, fname, 'cgdrag_alarm', cgdrag_alarm)
+  id_restart = register_restart_field(Cg_restart, fname, 'cg_drag_freq', old_time_step)
+  id_restart = register_restart_field(Til_restart, fname, 'gwd_u', gwd_u)
+  id_restart = register_restart_field(Til_restart, fname, 'gwd_v', gwd_v)
 
-      character(len=65)  :: fname = 'RESTART/cg_drag.res.nc'
-                                    ! name of restart file to be written
+  return
 
-!---------------------------------------------------------------------
-!    write a message indicating that a restart file is being written.
-!---------------------------------------------------------------------
+end subroutine cg_drag_register_restart
+
+!####################################################################
+! <SUBROUTINE NAME="cg_drag_restart">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine cg_drag_restart(timestamp)
+  character(len=*), intent(in), optional :: timestamp
+  character(len=65)  :: fname = 'RESTART/cg_drag.res.nc'
+
+      if (size(restart_versions(:)) .le. 2 ) then
+        if(present(timestamp)) call error_mesg('cg_drag_mod', 'cg_drag_restart'//&
+                'timestamp should not passed in cg_drag_restart', FATAL)
+        call write_restart_file
+      else
+!For version 3 and after, use NetCDF restarts.
       if (mpp_pe() == mpp_root_pe() ) &
             call error_mesg ('cg_drag_mod', 'write_restart_nc: &
               &Writing netCDF formatted restart file as &
                 &requested: '//trim(fname), NOTE)
+        call save_restart(Cg_restart, timestamp)
+        if(in_different_file) call save_restart(Til_restart, timestamp)
+      endif
 
-!-------------------------------------------------------------------
-!    the root pe writes out the restart version, the time remaining 
-!    before the next call to cg_drag_mod and the current cg_drag 
-!    timestep.
-!-------------------------------------------------------------------
-      call write_data (fname, 'restart_version', restart_versions(size(restart_versions(:))), no_domain=.true.)
-      call write_data (fname, 'cgdrag_alarm'   , cgdrag_alarm, no_domain=.true.)
-      call write_data (fname, 'cg_drag_freq'   , cg_drag_freq, no_domain=.true.)
+end subroutine cg_drag_restart
+! </SUBROUTINE> NAME=cg_drag_restart"
 
-!-------------------------------------------------------------------
-!    each processor writes out its gravity wave forcing tendency 
-!    on the zonal and meridional flow.
-!-------------------------------------------------------------------
-      call write_data (fname, 'gwd_u', gwd_u)
-      call write_data (fname, 'gwd_v', gwd_v)
-
-!----------------------------------------------------------------------
-end subroutine write_nc_restart_file
 
 !####################################################################
 

@@ -16,11 +16,13 @@ MODULE DIAG_CLOUD_MOD
 !  omega and stability 
 !-------------------------------------------------------------------
 
- use       fms_mod, only: error_mesg, FATAL, file_exist,    &
+ use       fms_mod, only: error_mesg, FATAL, NOTE, file_exist,    &
                           check_nml_error, open_namelist_file,       &
                           mpp_pe, mpp_root_pe,  close_file, &
                           read_data, write_data, &
                           write_version_number, stdlog, open_restart_file
+ use     fms_io_mod, only: register_restart_field, restart_file_type, &
+                           save_restart, restore_state
  use  Constants_Mod, only: Cp_Air, rdgas, rvgas, Kappa, HLv
  use time_manager_mod, only:  TIME_TYPE
  use  cloud_zonal_mod, only:  CLOUD_ZONAL_INIT, GETCLD
@@ -30,7 +32,7 @@ MODULE DIAG_CLOUD_MOD
                                  cloud_opt_prop_tg_sw, &
                                  cloud_optical_depths, &
                                  cloud_optical_depths2
- use  sat_vapor_pres_mod, ONLY: ESCOMP
+ use  sat_vapor_pres_mod, ONLY: compute_qs
  use  shallow_conv_mod, ONLY: SHALLOW_CONV_INIT,MYLCL
 
 !-----------------------------------------------------------------------
@@ -41,8 +43,8 @@ MODULE DIAG_CLOUD_MOD
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud.F90,v 13.0 2006/03/28 21:08:11 fms Exp $'
- character(len=128) :: tagname = '$Name: perth $'
+ character(len=128) :: version = '$Id: diag_cloud.F90,v 13.0.10.1.2.1 2008/09/16 01:56:26 wfc Exp $'
+ character(len=128) :: tagname = '$Name: perth_2008_10 $'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 
@@ -86,6 +88,8 @@ MODULE DIAG_CLOUD_MOD
     integer, allocatable, dimension (:,:)   :: nsum, nsum2
 
 !-----------------------------------------------------------------------
+! for netcdf restart
+type(restart_file_type), save :: Dia_restart
 
 
 !---------------------------------------------------------------------
@@ -167,18 +171,20 @@ MODULE DIAG_CLOUD_MOD
       lomega = .true.,lcnvcld = .true.,l_theqv = .true., & 
       linvers = .false.,lslingo = .true., lregrsc = .true., &
       lthick_high = .true.,lthick_mid = .true.,lthick_low = .true.
+ logical :: do_netcdf_restart = .true.
 
     NAMELIST / diag_cloud_nml /                         &
        rhc,pbounds,do_average,lquadra,lrhcnv,lomega,lcnvcld,l_theqv, & 
        linvers,lslingo,lregrsc,lthick_high,lthick_mid,lthick_low, & 
        high_lev_cloud_index, nofog, low_lev_cloud_index, nband, &
-       pshallow, wcut0, wcut1, t_cold
+       pshallow, wcut0, wcut1, t_cold, do_netcdf_restart
 
 integer :: num_pts, tot_pts
 
  public diag_cloud_driver, diag_cloud_init, diag_cloud_end
  public diag_cloud_driver2
  public diag_cloud_sum, diag_cloud_avg, diag_cloud_avg2, do_diag_cloud
+ public diag_cloud_restart
 
  contains
 
@@ -1541,9 +1547,7 @@ subroutine CLOUD_SHALLOW_CONV (theta,omega,pfull,phalf,temp,qmix,camtrh, &
 ! calculate lcl 
 
 ! --- saturation mixing ratio 
-     CALL ESCOMP( Temp, qsat )
-     qsat(:,:,:) = 0.622 * qsat(:,:,:) / &
-                   (pfull(:,:,:) - (1. - .622) * qsat(:,:,:) )
+     call compute_qs (Temp, pfull, qsat)
 
 !  calculate equivalent potential temperature 
      
@@ -3106,6 +3110,8 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 !  (Intent local)
 !---------------------------------------------------------------------
  integer  unit, io
+ integer  id_restart
+ character(len=32) :: fname
 
 !=====================================================================
 
@@ -3154,7 +3160,27 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 !---------- initialize for cloud averaging -------------------------
 !---------------------------------------------------------------------
 
-  if( FILE_EXIST( 'INPUT/diag_cloud.res' ) ) then
+  fname = 'diag_cloud.res.nc'
+  if(do_netcdf_restart) then  
+     id_restart = register_restart_field(Dia_restart, fname, 'nsum', nsum, no_domain=.true.)
+     id_restart = register_restart_field(Dia_restart, fname, 'temp_sum', temp_sum, no_domain=.true.)
+     id_restart = register_restart_field(Dia_restart, fname, 'qmix_sum', qmix_sum, no_domain=.true.)
+     id_restart = register_restart_field(Dia_restart, fname, 'rhum_sum', rhum_sum, no_domain=.true.)
+     id_restart = register_restart_field(Dia_restart, fname, 'omega_sum', omega_sum, no_domain=.true.)
+     id_restart = register_restart_field(Dia_restart, fname, 'lgscldelq_sum', lgscldelq_sum, no_domain=.true.)
+     id_restart = register_restart_field(Dia_restart, fname, 'cnvcntq_sum', cnvcntq_sum, no_domain=.true.)
+     id_restart = register_restart_field(Dia_restart, fname, 'convprc_sum', convprc_sum, no_domain=.true.)
+  endif
+
+  if( FILE_EXIST( 'INPUT/diag_cloud.res.nc' ) ) then
+     if(mpp_pe() == mpp_root_pe() ) call error_mesg ('diag_cloud_mod', &
+          'Reading netCDF formatted restart file: INPUT/diag_cloud.res.nc', NOTE)
+     call restore_state(Dia_restart)
+     nsum2 = nsum
+     qmix_sum2(:,:) = qmix_sum(:,:,size(qmix_sum,3))
+     ierr = 0
+     num_pts = tot_pts
+  else if( FILE_EXIST( 'INPUT/diag_cloud.res' ) ) then
            unit = open_restart_file ('INPUT/diag_cloud.res', action='read')
 
       call read_data (unit,nsum)
@@ -3226,22 +3252,55 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
   integer :: unit
 !=======================================================================
 
-    unit = open_restart_file ('RESTART/diag_cloud.res', action='write')
-
-      call write_data (unit, nsum)
-      call write_data (unit, temp_sum)
-      call write_data (unit, qmix_sum)
-      call write_data (unit, rhum_sum)
-      call write_data (unit, omega_sum)
-      call write_data (unit, lgscldelq_sum)
-      call write_data (unit, cnvcntq_sum)
-      call write_data (unit, convprc_sum)
-
-      call close_file (unit)
       module_is_initialized = .false.
  
 !=====================================================================
   end SUBROUTINE DIAG_CLOUD_END
+
+!#######################################################################
+! <SUBROUTINE NAME="diag_cloud_restart">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine diag_cloud_restart(timestamp)
+  character(len=*), intent(in), optional :: timestamp
+  integer                                :: unit
+
+  if( do_netcdf_restart) then
+     if (mpp_pe() == mpp_root_pe()) then
+        call error_mesg ('diag_cloud_mod', 'Writing netCDF formatted restart file: RESTART/diag_cloud.res.nc', NOTE)
+     endif
+     call save_restart(Dia_restart, timestamp)
+  else
+     if(present(timestamp)) then
+        call error_mesg ('diag_cloud_mod', 'when do_netcdf_restart is false, '// &
+                        'timestamp should not passed in diag_cloud_restart', FATAL)
+     end if
+     if (mpp_pe() == mpp_root_pe()) then
+        call error_mesg ('diag_cloud_mod', 'Writing native formatted restart file.', NOTE)
+     endif
+     unit = open_restart_file ('RESTART/diag_cloud.res', action='write')
+
+     call write_data (unit, nsum)
+     call write_data (unit, temp_sum)
+     call write_data (unit, qmix_sum)
+     call write_data (unit, rhum_sum)
+     call write_data (unit, omega_sum)
+     call write_data (unit, lgscldelq_sum)
+     call write_data (unit, cnvcntq_sum)
+     call write_data (unit, convprc_sum)
+
+     call close_file (unit)
+  endif
+
+end subroutine diag_cloud_restart
+! </SUBROUTINE> NAME="diag_cloud_restart"
 
 !#######################################################################
 

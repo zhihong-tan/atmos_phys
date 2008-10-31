@@ -55,8 +55,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: microphys_rad.F90,v 15.0 2007/08/14 03:55:02 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth $'
+character(len=128)  :: version =  '$Id: microphys_rad.F90,v 15.0.4.1 2008/08/04 11:20:04 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
 
 
 !---------------------------------------------------------------------
@@ -91,12 +91,17 @@ logical       ::  do_orig_donner_stoch = .true.
 logical       ::  do_delta_adj = .false.
 logical       ::  do_const_asy = .false.
 real          ::  val_const_asy = 0.75
+real          ::  alpha = 0.1
+                  ! frequency-independent parameter for absorption due 
+                  ! to cloud drops in the infrared. this value is given 
+                  ! in held et al, JAS, 1993. [ m**2 / g ]
 
 namelist /microphys_rad_nml /     &
                                lwem_form, &
                                do_orig_donner_stoch, &
                                do_delta_adj, &
-                               do_const_asy, val_const_asy
+                               do_const_asy, val_const_asy, &
+                               alpha
 
 !----------------------------------------------------------------------
 !----  public data -------
@@ -6686,15 +6691,12 @@ real, dimension (:,:,:), intent(out)  ::  cldextbnddroplw
 !---------------------------------------------------------------------
 !  local variables:                                                   
 
-      real        ::   alpha = 0.1           
+!     real        ::   alpha = 0.1   (now is module variable set in nml)
       integer     ::   n
 
 !---------------------------------------------------------------------
 !  local variables:                                                   
 !
-!     alpha       frequency-independent parameter for absorption due 
-!                 to cloud drops in the infrared. this value is given 
-!                 in held et al, JAS, 1993. [ m**2 / g ]
 !     n           do-loop index
 !
 !--------------------------------------------------------------------

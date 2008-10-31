@@ -1,5 +1,5 @@
 !VERSION NUMBER:
-!  $Id: donner_deep_k.F90,v 16.0 2008/07/30 22:06:49 fms Exp $
+!  $Id: donner_deep_k.F90,v 16.0.2.1 2008/08/06 09:18:01 rsh Exp $
 
 !module donner_deep_inter_mod
 
@@ -2874,6 +2874,9 @@ integer,                      intent(out)    ::  error
       real, dimension (nlev_hires,ntr)        :: etsm
       real, dimension (nlev_lsm+1)            :: phalf_c               
 
+      real, dimension (nlev_lsm)       :: model_tx, model_rx, model_px
+      real, dimension (nlev_hires)     :: env_r, env_t, cape_p, &
+                                          parcel_r, parcel_t
       real         ::  lofactor
       real         ::  al, ampta1, ensmbl_cond, pb, ensmbl_precip,  &
                        pt_ens, max_depletion_rate, dqls_v,  &
@@ -3305,6 +3308,7 @@ integer,                      intent(out)    ::  error
 !---------------------------------------------------------------------
           if (.not. exit_flag(i,j)) then
             if (Nml%do_donner_closure) then
+! this path used by donner_full parameterization:
               call don_d_determine_cloud_area_k  &
                 (me, nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param,&
                  Nml, lofactor, max_depletion_rate, Don_conv%dcape(i,j),   &
@@ -3315,8 +3319,13 @@ integer,                      intent(out)    ::  error
                  Don_cape%parcel_r(i,j,:), Don_cape%cape_p(i,j,:), &
                  exit_flag(i,j), Don_conv%amos(i,j), Don_conv%a1(i,j),&
                  ermesg, error)
-            else
-              call don_d_determine_cloud_area_miz  &
+            else  ! (do_donner_closure)
+! these paths used by donner_lite parameterization:
+
+              if (Nml%do_donner_cape) then
+! if not do_donner_closure but do_donner_cape, then previous parcel cape
+!  calculation will have used hires vertical grid.
+                 call don_d_determine_cloud_area_miz  &
                 (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit,&
                  debug_ijt, Param, Nml, xgcm_v(i,j,:,:), &
                  pfull(i,j,:), zfull(i,j,:), phalf(i,j,:),  &
@@ -3330,6 +3339,57 @@ integer,                      intent(out)    ::  error
                  Don_cape%parcel_r(i,j,:), Don_cape%cape_p(i,j,:), &
                  exit_flag(i,j), Don_conv%amos(i,j), Don_conv%a1(i,j),&
                  ermesg, error)
+              else ! (do_donner_cape)
+                if (Nml%do_hires_cape_for_closure) then
+!  if not do_donner_cape (lo res cape calc for convection), but desire 
+!  to use hires cape calc for closure:
+
+!--------------------------------------------------------------------
+!    call generate_cape_sounding to produce a high-resolution atmos-
+!    pheric sounding to be used to evaluate cape.
+!--------------------------------------------------------------------
+                   call don_c_generate_cape_sounding_k &
+                        (nlev_lsm, nlev_hires, temp(i,j,:),   &
+                         mixing_ratio(i,j,:), pfull(i,j,:),   &
+                         model_tx, model_rx, model_px, cape_p, &
+                         env_t, env_r, ermesg,  error)
+
+                   call don_d_determine_cloud_area_miz  &
+                (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit,&
+                 debug_ijt, Param, Nml, xgcm_v(i,j,:,:), &
+                 pfull(i,j,:), zfull(i,j,:), phalf(i,j,:),  &
+                 zhalf(i,j,:), pblht(i,j), tkemiz(i,j), qstar(i,j), &
+                 cush(i,j), cbmf(i,j), land(i,j),  coldT(i,j), sd, Uw_p, ac, &
+                 max_depletion_rate, Don_conv%dcape(i,j),   &
+                 Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),    &
+                 Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:), &
+                 Don_cape%model_r(i,j,:), &
+
+                 env_t, env_r, parcel_t, parcel_r, cape_p, & 
+
+                 exit_flag(i,j), Don_conv%amos(i,j), Don_conv%a1(i,j),&
+                 ermesg, error)
+
+              else  ! (do_hires_cape)
+!  lo res calc for cape in convection and in closure; standard 
+!  donner_lite configuration
+                 call don_d_determine_cloud_area_miz  &
+!               (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit,&
+                (me, nlev_lsm, ntr, dt, nlev_lsm  , diag_unit,&
+                 debug_ijt, Param, Nml, xgcm_v(i,j,:,:), &
+                 pfull(i,j,:), zfull(i,j,:), phalf(i,j,:),  &
+                 zhalf(i,j,:), pblht(i,j), tkemiz(i,j), qstar(i,j), &
+                 cush(i,j), cbmf(i,j), land(i,j),  coldT(i,j), sd, Uw_p, ac, &
+                 max_depletion_rate, Don_conv%dcape(i,j),   &
+                 Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),    &
+                 Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:), &
+                 Don_cape%model_r(i,j,:), Don_cape%env_t(i,j,:), &
+                 Don_cape%env_r(i,j,:), Don_cape%parcel_t(i,j,:), &
+                 Don_cape%parcel_r(i,j,:), Don_cape%cape_p(i,j,:), &
+                 exit_flag(i,j), Don_conv%amos(i,j), Don_conv%a1(i,j),&
+                 ermesg, error)
+              endif
+            endif
             endif
 
 !             Don_budgets%liq_prcp(i,j,:) =    &

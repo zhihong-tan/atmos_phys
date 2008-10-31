@@ -1,5 +1,5 @@
 !VERSION NUMBER:
-!   $Id: donner_lite_k.F90,v 16.0 2008/07/30 22:06:53 fms Exp $
+!   $Id: donner_lite_k.F90,v 16.0.4.1.2.1.2.1.2.1.4.1 2008/09/15 23:08:34 wfc Exp $
 
 !######################################################################
 !######################################################################
@@ -139,15 +139,18 @@ type(uw_params),                           intent(inout) :: Uw_p
             Don_cape%plfc(i,j) = ac%plfc
             Don_cape%plzb(i,j) = ac%plnb
             Don_cape%plcl(i,j) = ac%plcl
-            Don_cape%parcel_r(i,j,:) = ac%qv(:)
+!           Don_cape%parcel_r(i,j,:) = ac%qv(:)
+            Don_cape%parcel_r(i,j,:) = ac%qv(:)/(1. - ac%qv(:))
             Don_cape%parcel_t(i,j,:) = ac%t (:)
             Don_cape%coin (i,j) = ac%cin
             Don_cape%xcape(i,j) = ac%cape
             Don_cape%qint (i,j) = sd%qint
-            Don_cape%model_r(i,j,:) = sd%qv(:)
+!           Don_cape%model_r(i,j,:) = sd%qv(:)
+            Don_cape%model_r(i,j,:) = sd%qv(:)/(1. - sd%qv(:))
             Don_cape%model_t(i,j,:) = sd%t (:)
             Don_cape%model_p(i,j,:) = sd%p (:)
-            Don_cape%env_r  (i,j,:) = sd%qv(:)
+!           Don_cape%env_r  (i,j,:) = sd%qv(:)
+            Don_cape%env_r  (i,j,:) = sd%qv(:)/ (1. - sd%qv(:))
             Don_cape%env_t  (i,j,:) = sd%t (:)
             Don_cape%cape_p (i,j,:) = sd%p (:)
 !  additional column diagnostics should be added here
@@ -1049,10 +1052,13 @@ integer,                           intent(out)   :: error
         cpn % mixing_assumption = 1
 !       cpn % do_edplume = .false.
 !       cpn % do_edplume= .false.
-        cpn % do_micro  = .true.
+!       cpn % do_micro  = .true.
+        cpn % mp_choice = 0
         cpn % do_forcedlifting  = .true.
         cpn % wtwmin_ratio = Nml%wmin_ratio*Nml%wmin_ratio
  
+        cp%maxcldfrac =  cpn%rmaxfrac
+
         if (ntr>0) then
            allocate(cpn%wetdep(ntr))
            call don_d_copy_wetdep_miz (Initialized%wetdep(:), &
@@ -1110,7 +1116,10 @@ integer,                           intent(out)   :: error
                                (Param%cloud_base_radius**2)*86400.
         apt_miz        = rcl_miz(cp%ltop-1)/rcl_miz(krel)
 
-
+        if (cu_miz == 0.0 .or. cell_precip_miz == 0.0) then
+          exit_flag_c = .true.
+          return
+        end if
 
        summel = 0.
         do k=1,nlev_lsm
@@ -1723,11 +1732,11 @@ integer,                           intent(out)   :: error
       end do
 
 !---------------------------------------------------------------------
-!    define the cloudtop anvil area (ampta1), assumed to be five times 
-!    larger than the sum of the cloud top areas of the ensemble members,
-!    as in Leary and Houze (1980), 
+!    define the cloudtop anvil area (ampta1), assumed to be mesofactor
+!    (default = 5) times larger than the sum of the cloud top areas of 
+!    the ensemble members, as in Leary and Houze (1980), 
 !---------------------------------------------------------------------
-      ampta1 = 5.*ensmbl_cld_top_area
+      ampta1 = Nml%mesofactor*ensmbl_cld_top_area
 
 !---------------------------------------------------------------------
 !    if there is no precipitation production in this column, set the 
@@ -1811,7 +1820,7 @@ integer,                           intent(out)   :: error
 
 
 subroutine don_d_determine_cloud_area_miz            &
-         (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit, debug_ijt,  &
+        (me, nlev_model, ntr, dt, nlev_parcel, diag_unit, debug_ijt,  &
           Param, Nml, tracers, pfull, zfull, phalf, zhalf, &
           pblht, tkemiz, qstar, cush, cbmf, land, coldT, sd, Uw_p, &
           ac, max_depletion_rate, dcape, amax, dise_v, disa_v,  &
@@ -1831,31 +1840,31 @@ implicit none
 
 !-----------------------------------------------------------------------
 !++++yim
-integer,                      intent(in)    :: me, nlev_lsm, ntr, nlev_hires, diag_unit
+integer,                      intent(in)    :: me, nlev_model,nlev_parcel, ntr, diag_unit
 real,                         intent(in)    :: dt
 logical,                      intent(in)    :: debug_ijt
 type(donner_param_type),      intent(in)    :: Param
 type(donner_nml_type),        intent(in)    :: Nml      
 real,                         intent(in)    :: max_depletion_rate, dcape, amax
-real, dimension(nlev_lsm),    intent(in)    :: dise_v, disa_v, pfull_c, temp_c, mixing_ratio_c 
-real, dimension(nlev_lsm),    intent(in)    :: pfull, zfull
-real, dimension(nlev_lsm+1),  intent(in)    :: phalf, zhalf !miz
+real, dimension(nlev_model),    intent(in)    :: dise_v, disa_v, pfull_c, temp_c, mixing_ratio_c 
+real, dimension(nlev_model),  intent(in)    :: pfull, zfull
+real, dimension(nlev_model+1),  intent(in)    :: phalf, zhalf !miz
 real,                         intent(in)    :: pblht, tkemiz,  &
                                                qstar, cush, cbmf, land !miz
 logical,                      intent(in)    :: coldT !miz
 !++++yim
-real, dimension(nlev_lsm,ntr),    intent(in)    :: tracers
+real, dimension(nlev_model,ntr),    intent(in)    :: tracers
 type(sounding),               intent(inout) :: sd !miz
 type(uw_params),               intent(inout) :: Uw_p !miz
 type(adicloud),               intent(inout) :: ac !miz
-real, dimension(nlev_lsm),    intent(in)    :: env_t, env_r, parcel_t, parcel_r, cape_p
+real, dimension(nlev_parcel),    intent(in)    :: env_t, env_r, parcel_t, parcel_r, cape_p
 logical,                      intent(inout) :: exit_flag
 real,                         intent(out)   :: amos, a1
 character(len=*),             intent(out)   :: ermesg
 integer,                      intent(out)   :: error
  
-real, dimension (nlev_lsm)  :: a1_vk              
-real, dimension(nlev_lsm)   :: qli0_v, qli1_v, qt_v, qr_v, rl_v, ri_v
+real, dimension (nlev_model)  :: a1_vk              
+real, dimension(nlev_parcel)   :: qli0_v, qli1_v, qt_v, qr_v, rl_v, ri_v
 real                        :: qtest, tfint, disbar
 integer                     :: k
 !----------------------------------------------------------------------
@@ -1884,8 +1893,37 @@ integer                     :: k
 !-----------------------------------------------------------------------
       ermesg = ' ' ; error = 0
 
+       if (Nml%do_hires_cape_for_closure) then
+ 
+!---------------------------------------------------------------------
+!    call map_lo_res_col_to_hi_res_col to interpolate moisture and
+!    temperature forcings from large-scale model grid (dise_v, disa_v)
+!    to the vertical grid used in the cape calculation (qr_v, qt_v). 
+!--------------------------------------------------------------------
+        call don_u_lo1d_to_hi1d_k   &
+            (nlev_model, nlev_parcel, disa_v, pfull_c, cape_p, qt_v,  &
+             ermesg, error)
+
+!----------------------------------------------------------------------
+!    determine if an error message was returned from the kernel routine.
+!    if so, return to calling program where it will be processed.
+!----------------------------------------------------------------------
+       if (error /= 0 ) return
+
+       call don_u_lo1d_to_hi1d_k   &
+         (nlev_model, nlev_parcel, dise_v, pfull_c, cape_p, qr_v, &
+           ermesg, error)
+ 
+!----------------------------------------------------------------------
+!    determine if an error message was returned from the kernel routine.
+!    if so, return to calling program where it will be processed.
+!----------------------------------------------------------------------
+       if (error /= 0 ) return
+
+    else ! (do_hires_cape_for_closure)
       qt_v=disa_v!miz
       qr_v=dise_v!miz
+    endif ! (do_hires_cape_for_closure)
 
 !--------------------------------------------------------------------
 !    if in a diagnostic column, output the temperature and moisture 
@@ -1893,13 +1931,13 @@ integer                     :: k
 !    model grid (disa_v, dise_v).
 !--------------------------------------------------------------------
       if (debug_ijt) then
-        do k=1,nlev_lsm  
+        do k=1,nlev_parcel
           if (qr_v(k) /= 0.0 .or. qt_v(k) /= 0.0) then
             write (diag_unit, '(a, i4, e20.12, f20.14)')  &
                       'in cupar: k,qr,qt= ',k, qr_v(k), qt_v(k)
           endif
         end do
-        do k=1,nlev_lsm
+        do k=1,nlev_model
           if (dise_v(k) /= 0.0 .or. disa_v(k) /= 0.0) then
             write (diag_unit, '(a, i4, 2e20.12)')  &
                      'in cupar: k,dise,disa= ',k, dise_v(k), disa_v(k)
@@ -1913,7 +1951,7 @@ integer                     :: k
 !   cumulus closure scheme implemented in subroutine cumulus_closure, 
 !   so they are given values of 0.0.
 !--------------------------------------------------------------------
-      do k=1,nlev_lsm !miz nlev_hires
+      do k=1,nlev_parcel !miz nlev_hires
         qli0_v(k) = 0.
         qli1_v(k) = 0.
         rl_v(k)   = 0.
@@ -1926,7 +1964,7 @@ integer                     :: k
 !--------------------------------------------------------------------
     if (Nml%deep_closure .eq. 0) then
       call cu_clo_cumulus_closure_miz   &
-           (nlev_lsm, ntr, dt, diag_unit, debug_ijt, Param, tracers, &
+           (nlev_model, nlev_parcel, ntr, dt, diag_unit, debug_ijt, Param, tracers, &
             dcape, pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, &
             cush, land, &
             coldT, sd, Uw_p, ac, Nml,        &!miz
@@ -1934,7 +1972,7 @@ integer                     :: k
             rl_v, parcel_r, env_t, parcel_t, a1, ermesg, error)     
      else
         call  cu_clo_miz   &
-             (nlev_lsm, ntr, dt, Param, tracers, &
+             (nlev_model, ntr, dt, Param, tracers, &
               pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, cush, cbmf, land,  &
               coldT, sd, Uw_p, ac, Nml, env_r, env_t, a1, ermesg, error)
      endif
@@ -1951,7 +1989,7 @@ integer                     :: k
 !    mm (h2o) per second.
 !-------------------------------------------------------------------
       tfint = 0.0
-      do k=2,nlev_lsm
+      do k=2,nlev_model
         disbar = 0.5*(dise_v(k-1) + dise_v(k))
         tfint = tfint - disbar*(pfull_c(k-1) - pfull_c(k))
       end do
@@ -2034,7 +2072,7 @@ integer                     :: k
 !    is negative at any level for this value of a1, reset the value 
 !    of a1, so that no negative mixing ratios will be produced.
 !--------------------------------------------------------------------
-      do k=1,nlev_lsm
+      do k=1,nlev_model
         qtest = mixing_ratio_c(k) + a1*Nml%donner_deep_freq*dise_v(k)
         if (qtest < 0.) then
           a1_vk(k) = -mixing_ratio_c(k)/(dise_v(k)*Nml%donner_deep_freq)
@@ -2068,7 +2106,7 @@ integer                     :: k
 
 
 subroutine cu_clo_cumulus_closure_miz   &
-         (nlev_lsm, ntr, dt, diag_unit, debug_ijt, Param, tracers, &
+         (nlev_model, nlev_parcel, ntr, dt, diag_unit, debug_ijt, Param, tracers, &
           dcape, pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, cush, land,  &
           coldT, sd, Uw_p, ac, Nml, cape_p, &!miz
           qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, rl_v, parcel_r,   &
@@ -2088,7 +2126,7 @@ implicit none
 
 !---------------------------------------------------------------------
 !++++yim
-integer,                        intent(in)  :: nlev_lsm, ntr
+integer,                        intent(in)  :: nlev_model,nlev_parcel,  ntr
 real,                           intent(in)  :: dt
 integer,                        intent(in)  :: diag_unit
 logical,                        intent(in)  :: debug_ijt
@@ -2098,16 +2136,16 @@ real,                           intent(in)  :: dcape
 real,                           intent(in)  :: pblht, tkemiz, qstar,  cush, land
 logical,                        intent(in)  :: coldT
 
-real, dimension(nlev_lsm),      intent(in)    :: pfull, zfull !miz
+real, dimension(nlev_model),      intent(in)    :: pfull, zfull !miz
 !++++yim
-real, dimension(nlev_lsm,ntr),      intent(in)    :: tracers
+real, dimension(nlev_model,ntr),      intent(in)    :: tracers
 
-real, dimension(nlev_lsm+1),    intent(in)    :: phalf, zhalf !miz
+real, dimension(nlev_model+1),    intent(in)    :: phalf, zhalf !miz
 type(sounding),                 intent(inout) :: sd           !miz
 type(uw_params),                 intent(inout) :: Uw_p         !miz
 type(adicloud),                 intent(inout) :: ac
 
-real,    dimension(nlev_lsm), intent(in)  :: cape_p, qli0_v, qli1_v, &
+real,    dimension(nlev_parcel), intent(in)  :: cape_p, qli0_v, qli1_v, &
                                                qr_v, qt_v, env_r, ri_v, &
                                                rl_v, parcel_r, env_t,   &
                                                parcel_t
@@ -2157,9 +2195,10 @@ integer,                        intent(out) :: error
 !----------------------------------------------------------------------
 !   local variables:
 
-      real, dimension (nlev_lsm)  :: rt, ta, ra, tden, tdena,  &
+      real, dimension (nlev_parcel)  :: rt, ta, ra, tden, tdena,  &
                                      dtpdta, pert_env_t, pert_env_r, &
                                      pert_parcel_t, pert_parcel_r,  &
+                                     parcel_r_clo, parcel_t_clo, &
                                      ttt, rrr !miz
 
       real     :: tdens, tdensa, ri1, ri2, rild, rile, rilf, ri2b,  &
@@ -2169,7 +2208,7 @@ integer,                        intent(out) :: error
        real     :: zsrc, psrc, hlsrc, thcsrc, qctsrc, cape_c, lofactor,&
                    tau, rhavg, dpsum
       integer  :: k     
-      logical  :: ctrig
+      logical  :: ctrig, return_cape
 
       ermesg = ' ' ; error = 0
 
@@ -2178,13 +2217,15 @@ integer,                        intent(out) :: error
 !    pert_parcel_r) and  the perturbed parcel environmental profiles to 
 !    the actual parcel profiles.
 !--------------------------------------------------------------------
-      do k=1,nlev_lsm
+      do k=1,nlev_parcel
         pert_parcel_t(k) = env_t(k)
         pert_parcel_r(k) = env_r(k)
         pert_env_r(k)    = env_r(k)
         pert_env_t(k)    = env_t(k)
-        ttt (k)          = env_t(nlev_lsm-k+1)
-        rrr (k)          = env_r(nlev_lsm-k+1)/(1.-env_r(nlev_lsm-k+1))
+!       ttt (k)          = env_t(nlev_model-k+1)
+!       rrr (k)          = env_r(nlev_model-k+1)/(1.-env_r(nlev_model-k+1))
+        ttt (k)          = env_t(nlev_parcel-k+1)
+        rrr (k)          = env_r(nlev_parcel-k+1)
       end do
 
 !--------------------------------------------------------------------
@@ -2209,24 +2250,24 @@ integer,                        intent(out) :: error
 !    (qli0 and qli1), ice condensate (ri_v) and liquid condensate (rl_v).
 !---------------------------------------------------------------------
      if (debug_ijt) then
-       do k=1,nlev_lsm
+       do k=1,nlev_parcel
          write (diag_unit, '(a, i4, f19.10, f20.14, e20.12)')   &
                      'press, temp, vapor in cape: k, p,t,r = ',  &
                            k, cape_p(k), pert_env_t(k), pert_env_r(k)
        end do
-       do k=1,nlev_lsm   
+       do k=1,nlev_parcel
          if (qr_v(k) /= 0.0 .or. qt_v(k) /= 0.0) then
              write (diag_unit, '(a, i4, f19.10, 3e20.12, f20.14)') &
                    'in cuclo: k,p,qr,qt,r,t  =', k,  &
                      cape_p(k), qr_v(k), qt_v(k), env_r(k), env_t(k)
          endif
        end do
-       do k=1,nlev_lsm
+       do k=1,nlev_parcel
          write (diag_unit, '(a, i4, f19.10, f20.14, e20.12)') &
                      'in cuclo: k,p,tpc, rpc   =', k,   &
                           cape_p(k), parcel_t(k), parcel_r(k)
        end do
-       do k=1,nlev_lsm
+       do k=1,nlev_parcel
          if (qli0_v(k) /= 0.0 .or. qli1_v(k) /= 0.0 .or. &
                 ri_v(k) /= 0.0 .or. rl_v(k) /= 0.0) then
            write (diag_unit, '(a, i4, f19.10, 4e20.12)')   &
@@ -2236,23 +2277,115 @@ integer,                        intent(out) :: error
        end do
      endif
 
+     if (Nml%do_hires_cape_for_closure) then
+ 
+      if (Nml%do_donner_cape) then
+!  there is an existing parcel profiles; it should be same if these 
+!  conditions all met so it need not be recalculated.
+      if (Nml%do_freezing_for_cape /= Nml%do_freezing_for_closure .or. &
+          Nml%tfre_for_cape /= Nml%tfre_for_closure .or. &
+          Nml%dfre_for_cape /= Nml%dfre_for_closure .or. &
+          Nml%rmuz_for_cape /= Nml%rmuz_for_closure) then
+           call don_c_displace_parcel_k   &
+               (nlev_parcel, diag_unit, debug_ijt, Param,  &
+                Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
+                Nml%dfre_for_closure, Nml%rmuz_for_closure, env_t,  &
+                env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
+                dumxcape, parcel_r_clo,  parcel_t_clo, ermesg, error)
+     else
+      parcel_r_clo = parcel_r
+       parcel_t_clo = parcel_t
+     endif
+
+  else  ! (do_donner_cape)
+!   no existing parcel profiles
+!    want to use hires cape calc for closure, but used lores cape calc 
+!    for convection
+          call don_c_displace_parcel_k   &
+                (nlev_parcel, diag_unit, debug_ijt, Param,  &
+                 Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
+                 Nml%dfre_for_closure, Nml%rmuz_for_closure, env_t,  &
+                 env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
+                 dumxcape, parcel_r_clo,  parcel_t_clo, ermesg, error)
+  endif  ! (do_donner_cape)
+
 !--------------------------------------------------------------------
 !    call subroutine displace_parcel to determine the movement of a 
-!    parcel from the lcl through the environment defined by (pert_env_t, 
-!    pert_env_r).
+!    parcel from the lcl through the environment defined by 
+!    (pert_env_t, pert_env_r). set return_cape to indicate if cape
+!    value is to be returned.
+!    don't need to calculate cape when using Zhang closure 
+!    (do_dcape is .true). 
+!    if using cape relaxation closure then need to return cape value.
 !--------------------------------------------------------------------
-!!$      call don_c_displace_parcel_k   &
-!!$           (nlev_lsm, diag_unit, debug_ijt, Param, pert_env_t, &
-!!$            pert_env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
-!!$            dumxcape, pert_parcel_r,  pert_parcel_t, ermesg)
+      return_cape = .not. (Nml%do_dcape)
+      call don_c_displace_parcel_k   &
+             (nlev_parcel, diag_unit, debug_ijt, Param,   &
+             Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
+             Nml%dfre_for_closure, Nml%rmuz_for_closure, &
+             pert_env_t, pert_env_r, cape_p, return_cape, &
+             plfc, plzb, plcl, dumcoin,  &
+             dumxcape, pert_parcel_r,  pert_parcel_t, ermesg, error)
+      if (return_cape) ac%cape = dumxcape
+  
+!----------------------------------------------------------------------
+!    determine if an error message was returned from the kernel routine.
+!    if so, return to calling program where it will be processed.
+!----------------------------------------------------------------------
+     if (error /= 0 ) return
 
-!miz
 
-      call pack_sd_lsm_k      &
+!---------------------------------------------------------------------
+!    define quantities needed for cape relaxation closure option.
+!---------------------------------------------------------------------
+     if ( .not. Nml%do_dcape) then
+       cape_c = Nml%cape0
+       tau    = Nml%tau
+       if (Nml%do_lands) then
+         
+        if (Nml%do_capetau_land) then
+         !cape_c = Nml%cape0 * (1. - sd%land * (1. - Nml%lofactor0))
+         if (Nml%lochoice > 3) then
+           lofactor = 1.
+         else
+           error = 1
+           ermesg = 'unsupported value of lofactor for do_hires_cape'
+           return
+         endif
+         cape_c = Nml%cape0 * lofactor
+         tau    = Nml%tau   * lofactor
+       endif
+     endif
+     if (Nml%do_rh_trig) then
+         error = 2
+         ermesg = 'do_rh_trig not currently supported for do_hires_cape'
+         return
+!       rhavg=0.; dpsum=0.
+!       do k = 1,sd%kmax
+!         if (sd%p(k) .gt. Nml%plev0) then
+!           rhavg  = rhavg + sd%rh(k)*sd%dp(k)
+!           dpsum = dpsum + sd%dp(k)
+!         end if
+!       end do
+!       rhavg = rhavg/dpsum
+!       ctrig = rhavg > Nml%rhavg0
+     else
+       ctrig= .true.
+     endif
+     endif
+
+   else  ! (do_hires_cape)
+ 
+!  no hires cape calculation for closure; standard donner_lite path
+ 
+!--------------------------------------------------------------------
+!    call subroutine displace_parcel to determine the movement of a 
+!    parcel from the lcl through the environment defined by 
+!    (pert_env_t, pert_env_r).
+!--------------------------------------------------------------------
+     call pack_sd_lsm_k      &
                (Nml%do_lands, land, coldT, dt, pfull, phalf, zfull,  &
                 zhalf, ttt, rrr, tracers, sd)
-      sd%t(1) =sd%t (1)-1.0
-      sd%qv(1)=sd%qv(1)-0.01*sd%qv(1)
       call extend_sd_k (sd, pblht, .false., Uw_p)
       zsrc  =sd%zs (1)
       psrc  =sd%ps (1)
@@ -2285,10 +2418,23 @@ integer,                        intent(out) :: error
       end if
 
       call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, &
-                        .false., Nml%do_freezing_for_closure, ac)
+                       .false., Nml%do_freezing_for_closure, ac, &
+                       rmuz = Nml%rmuz_for_closure)
+     parcel_r_clo=ac%qv(:)/(1.-ac%qv(:))
+     parcel_t_clo=ac%t (:)
+
+     sd%t(1) =sd%t (1)-1.0
+     sd%qv(1)=0.99*(sd%qv(1)/(1. - sd%qv(1)))
+
+     call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, &
+                       .false., Nml%do_freezing_for_closure, ac, &
+                       rmuz = Nml%rmuz_for_closure)
       pert_parcel_r=ac%qv(:)/(1.-ac%qv(:))
       pert_parcel_t=ac%t (:)
 !miz
+
+  endif ! (hires cape)
+ 
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -2301,7 +2447,7 @@ integer,                        intent(out) :: error
 !    coordinates).
 !---------------------------------------------------------------------
       if (debug_ijt) then
-        do k=1,nlev_lsm
+        do k=1,nlev_parcel
           write (diag_unit, '(a, i4, f20.14, e20.12)')  &
                       'in cuclo: k,tpca,rpca= ', k,    &
                                  pert_parcel_t(k), pert_parcel_r(k)
@@ -2312,7 +2458,7 @@ integer,                        intent(out) :: error
 !    calculate the large-scale model profile of total-water mixing 
 !    ratio. 
 !---------------------------------------------------------------------
-      do k=1,nlev_lsm
+        do k=1,nlev_parcel
         rt(k) = env_r(k) + ri_v(k) + rl_v(k)
       end do
 
@@ -2321,8 +2467,8 @@ integer,                        intent(out) :: error
 !    and in the perturbed parcel (tdena). condensate is not included in
 !    this definition of density temperature.
 !----------------------------------------------------------------------
-      do k=1,nlev_lsm
-        tden(k)  = parcel_t(k)*(1. + (parcel_r(k)/Param%d622)) 
+      do k=1,nlev_parcel
+        tden(k)  = parcel_t_clo(k)*(1. + (parcel_r_clo(k)/Param%d622)) 
         tdena(k) = pert_parcel_t(k)*(1. + (pert_parcel_r(k)/Param%d622))
       end do
 
@@ -2338,7 +2484,7 @@ integer,                        intent(out) :: error
 !    evaluate derivative of parcel density temperature w.r.t. cloud-base
 !    level environmental density temperature.
 !----------------------------------------------------------------------
-      do k=1,nlev_lsm
+      do k=1,nlev_parcel
         dtpdta(k) = (tdena(k) - tden(k))/(tdensa - tdens)
       end do
 
@@ -2349,7 +2495,7 @@ integer,                        intent(out) :: error
 !    ature w.r.t. cloud-base large-scale density temperature (dtpdta).
 !------------------------------------------------------------------
       if (debug_ijt) then
-        do k=1,nlev_lsm
+        do k=1,nlev_parcel
           write (diag_unit, '(a, i4, 2f20.14, e20.12)')  &
                     'in cuclo: k,tden(k),tdena(k),dtpdta(k)= ',   &
                           k,tden(k), tdena(k),dtpdta(k)
@@ -2371,13 +2517,17 @@ integer,                        intent(out) :: error
       ri2b = env_t(1)*(Param%d622 + env_r(1))/   &
              (Param%d622*((1. + rt(1))**2))
       ri2b = ri2b*qli1_v(1)
-      sum2 = rild + rile + rilf
-      sum2 = 0.
+
+      if (Nml%model_levels_in_sfcbl == 0) then
+        sum2 = rild + rile + rilf
+      else
+        sum2 = 0.
+      endif
 
 
       ri1 = 0.
       ri2 = 0.
-      do k=2,nlev_lsm
+      do k=2,nlev_parcel
         if (cape_p(k) == 0.) exit       
         rilak = -qt_v(k)*(Param%d622 + env_r(k))/   &
                                      (Param%d622*(1. + rt(k)))
@@ -3480,7 +3630,7 @@ subroutine don_m_meso_updraft_miz    &
 !-------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_mrs_k
 
 implicit none
 
@@ -3912,7 +4062,8 @@ integer,                         intent(out) :: error
 !    should be mixing ratio), reset it to the saturation value.
 !---------------------------------------------------------------------
           ta = temp_c(k) + Param%tprime_meso_updrft
-          call lookup_es_k (ta, es, nbad)
+          call compute_mrs_k (ta, pfull_c(k), Param%d622 , Param%d608 ,&
+                             mrsat, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -3925,7 +4076,6 @@ integer,                         intent(out) :: error
             return
           endif
 
-          mrsat = Param%d622*es/MAX(pfull_c(k) - es, es)
           q3 = mrsat - tempq(k)
           if (q3 <= 0.) then
             if (phalf_c(k+1) <= pctm)  then
@@ -3964,7 +4114,8 @@ integer,                         intent(out) :: error
 !    case the loop will be exited.
 !---------------------------------------------------------------------
         te = temp_c(k) + Param%tprime_meso_updrft
-        call lookup_es_k (te, es, nbad)
+         call compute_mrs_k (te, pfull_c(k), Param%d622 , Param%d608 ,&
+                             mrsat, nbad , mr = qref)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -3977,7 +4128,6 @@ integer,                         intent(out) :: error
           return
         endif
 
-        mrsat = Param%d622*es/MAX(pfull_c(k) - es, es)
         jsave = k
 
 !---------------------------------------------------------------------
@@ -4080,7 +4230,8 @@ integer,                         intent(out) :: error
 !    !!!).
 !--------------------------------------------------------------------
         te = temp_c(k) + Param%tprime_meso_updrft
-        call lookup_es_k (te, es, nbad)
+        call compute_mrs_k (te, pfull_c(k), Param%d622 , Param%d608 ,&
+                             tempqa(k), nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -4093,7 +4244,6 @@ integer,                         intent(out) :: error
           return
         endif
 
-        tempqa(k) = Param%d622*es/MAX(pfull_c(k) - es, es)
 
 !--------------------------------------------------------------------
 !    if an excess of vapor is present and deposition should occur, 
@@ -4121,7 +4271,8 @@ integer,                         intent(out) :: error
 !     in the parcel at the jkp level.
 !--------------------------------------------------------------------
           else if (k == jsave) then
-            call lookup_es_k (tep, es, nbad)
+            call compute_mrs_k (tep, pfull_c(jkp), Param%d622 ,  &
+                                Param%d608 , tempqa(jkp), nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -4134,7 +4285,6 @@ integer,                         intent(out) :: error
               return
             endif
 
-            tempqa(jkp) = Param%d622*es/MAX(pfull_c(jkp) - es, es)
             cmu(k) = -omv(k)*(tempqa(jkp) - tempqa(k))/  &
                      (pfull_c(jkp) - pfull_c(k))
             qref = tempqa(jkp)
@@ -4148,7 +4298,8 @@ integer,                         intent(out) :: error
 !     the jkp level.
 !--------------------------------------------------------------------
           else
-            call lookup_es_k (tep, es, nbad)
+            call compute_mrs_k (tep, pfull_c(jkp), Param%d622 ,  &
+                                Param%d608 , tempqa(jkp), nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -4161,7 +4312,6 @@ integer,                         intent(out) :: error
               return
             endif
 
-            tempqa(jkp) = Param%d622*es/MAX(pfull_c(jkp) - es, es)
             cmu(k) = -omv(k)*(tempqa(jkp) - tempqa(jkm))/ &
                      (pfull_c(jkp) - pfull_c(jkm))
             qref = tempqa(jkp)
@@ -4316,7 +4466,8 @@ integer,                         intent(out) :: error
 !    !!!).
 !--------------------------------------------------------------------
         tmu = temp_c(jk) + Param%TPRIME_MESO_UPDRFT
-        call lookup_es_k (tmu, es, nbad)
+        call compute_mrs_k (tmu, pfull_c(jk), Param%d622 ,  &
+                                Param%d608 , qmu, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -4328,8 +4479,6 @@ integer,                         intent(out) :: error
           error = 1
           return
         endif
-
-        qmu = Param%d622*es/MAX(pfull_c(jk) - es, es)
 
 !---------------------------------------------------------------------
 !    define the eddy flux of moist static energy in the mesoscale 
@@ -4449,7 +4598,7 @@ subroutine don_m_meso_downdraft_miz    &
 !-------------------------------------------------------------------
 
 use donner_types_mod, only : donner_param_type
-use sat_vapor_pres_k_mod, only: lookup_es_k
+use sat_vapor_pres_k_mod, only: compute_mrs_k
 
 implicit none
 
@@ -4554,7 +4703,8 @@ integer,                       intent(out)  :: error
 !    see "Moist Static Energy A, 1/26/91" notes.
 !---------------------------------------------------------------------
         targ = temp_c(k)
-        call lookup_es_k (targ, es, nbad)
+        call compute_mrs_k (targ, pfull_c(k), Param%d622 ,  &
+                                Param%d608 , mrsat, nbad, esat=es)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -4567,7 +4717,6 @@ integer,                       intent(out)  :: error
           return
         endif
 
-        mrsat = Param%d622*es/MAX(pfull_c(k) - es, es)
         c1 = Param%d622*Param%hlv*es/   &
                                  (pfull_c(k)*Param%rvgas*(temp_c(k)**2))
         tprimd = c3*hfmin/omd
@@ -4575,7 +4724,8 @@ integer,                       intent(out)  :: error
         tprimd = tprimd/(Param%cp_air + Param%hlv*c1*c2)
         tempt(k) = temp_c(k) + tprimd
         targ = tempt(k)
-        call lookup_es_k (targ, es, nbad)
+        call compute_mrs_k (targ, pfull_c(k), Param%d622 ,  &
+                                Param%d608 , tempqa(k), nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -4588,7 +4738,7 @@ integer,                       intent(out)  :: error
           return
         endif
 
-        tempqa(k) = c2*es*Param%d622/MAX(pfull_c(k) - es, es)
+        tempqa(k) = c2*tempqa(k)                                
 
 !---------------------------------------------------------------------
 !    if in diagnostics column, output 
@@ -4665,7 +4815,8 @@ integer,                       intent(out)  :: error
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
                     'in polat: k,p,x=', k, pb, tb
           endif
-          call lookup_es_k (tb, es, nbad)
+        call compute_mrs_k (tb, pb, Param%d622 ,  &
+                                Param%d608 , mrsb, nbad, esat=es)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -4678,7 +4829,6 @@ integer,                       intent(out)  :: error
             return
           endif
 
-          mrsb = Param%d622*es/MAX(pb - es, es)
           tprimd = hfmin/omd
           tprimd = tprimd - Param%hlv*(.7*mrsb - qb)
           c1 = Param%D622  *Param%hlv*es/(pb*Param%rvgas*(tb**2))
@@ -4690,7 +4840,8 @@ integer,                       intent(out)  :: error
           emt(k) = wa*fjkb + wb*fjk
           fjk = ampta1*omd*(tempqa(k) - mixing_ratio_C(k))
           targ = tb + tprimd
-          call lookup_es_k (targ, es, nbad)
+          call compute_mrs_k (targ, pb, Param%d622 ,  &
+                                Param%d608 , qbm, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -4703,7 +4854,7 @@ integer,                       intent(out)  :: error
             return
           endif
 
-          qbm = .7*Param%d622*es/MAX(pb - es, es)
+          qbm = .7*qbm                            
           fjkb = ampta1*omd*(qbm - qb)
           emq(k) = wa*fjkb + wb*fjk
         endif
@@ -4741,7 +4892,8 @@ integer,                       intent(out)  :: error
             write (diag_unit, '(a, i4, f19.10, f20.14)')  &
                       'in polat: k,p,x=', k, pmd, tmd
           endif
-          call lookup_es_k (tmd, es, nbad)
+          call compute_mrs_k (tmd, pmd, Param%d622 ,  &
+                                Param%d608 , qsmd, nbad, esat=es)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -4754,7 +4906,6 @@ integer,                       intent(out)  :: error
             return
           endif
 
-          qsmd = Param%d622*es/MAX(pmd - es, es)
           c1 = Param%d622*Param%hlv*es/(pmd*Param%rvgas*(tmd**2))
           tprimd = -Param%hlv*(qsmd - qmd)/(Param%cp_air + Param%hlv*c1)
           fjkmd = ampta1*omd*((Param%ref_press/pmd)**   &
@@ -4763,7 +4914,8 @@ integer,                       intent(out)  :: error
           wb = (phalf_c(k) - pmd)/(pfull_c(k-1) - pmd)
           emt(k) = fjkmd*wa + fjkm*wb
           targ = tmd + tprimd
-          call lookup_es_k (targ, es, nbad)
+          call compute_mrs_k (targ, pmd, Param%d622 ,  &
+                                Param%d608 , qmmd, nbad)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -4776,7 +4928,6 @@ integer,                       intent(out)  :: error
             return
           endif
 
-          qmmd = Param%d622*es/MAX(pmd - es, es)
           fjkm = ampta1*omd*(tempqa(k-1) - mixing_ratio_c(k-1))
           fjkmd = ampta1*omd*(qmmd - qmd)
           emq(k) = fjkmd*wa + fjkm*wb

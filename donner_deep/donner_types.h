@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 16.0 2008/07/30 22:07:03 fms Exp $
+!  $Id: donner_types.h,v 16.0.4.1.2.1 2008/08/06 09:18:02 rsh Exp $
 
 !#####################################################################
  
@@ -287,6 +287,7 @@ type donner_nml_type
 integer             ::  model_levels_in_sfcbl
 integer             ::  parcel_launch_level  
 logical             ::  allow_mesoscale_circulation
+logical             ::  do_hires_cape_for_closure
 logical             ::  do_donner_cape
 logical             ::  do_donner_plume
 logical             ::  do_donner_closure
@@ -314,6 +315,7 @@ real                ::  auto_rate
 real                ::  auto_th
 real                ::  frac
 real                ::  ttend_max
+real                ::  mesofactor
 integer             ::  donner_deep_freq
 character(len=32)   ::  entrainment_constant_source
 character(len=16)   ::  cell_liquid_size_type

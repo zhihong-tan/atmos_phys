@@ -16,9 +16,12 @@ module damping_driver_mod
 !
 !-----------------------------------------------------------------------
 
- use      mg_drag_mod, only:  mg_drag, mg_drag_init, mg_drag_end
- use      cg_drag_mod, only:  cg_drag_init, cg_drag_calc, cg_drag_end
- use    topo_drag_mod, only:  topo_drag_init, topo_drag, topo_drag_end
+ use      mg_drag_mod, only:  mg_drag, mg_drag_init, mg_drag_end, &
+                              mg_drag_restart
+ use      cg_drag_mod, only:  cg_drag_init, cg_drag_calc, cg_drag_end, &
+                              cg_drag_restart
+ use    topo_drag_mod, only:  topo_drag_init, topo_drag, topo_drag_end, &
+                              topo_drag_restart
  use          fms_mod, only:  file_exist, mpp_pe, mpp_root_pe, stdlog, &
                               write_version_number, &
                               open_namelist_file, error_mesg, &
@@ -33,6 +36,7 @@ module damping_driver_mod
  private
 
  public   damping_driver, damping_driver_init, damping_driver_end
+ public   damping_driver_restart
 
 !-----------------------------------------------------------------------
 !---------------------- namelist ---------------------------------------
@@ -92,8 +96,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 15.0 2007/08/14 03:53:01 fms Exp $'
- character(len=128) :: tagname = '$Name: perth $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 15.0.4.1 2008/09/03 18:40:12 z1l Exp $'
+ character(len=128) :: tagname = '$Name: perth_2008_10 $'
 
 !-----------------------------------------------------------------------
 
@@ -529,6 +533,27 @@ endif
 
 
  end subroutine damping_driver_end
+
+!#######################################################################
+! <SUBROUTINE NAME="damping_driver_restart">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine damping_driver_restart(timestamp)
+  character(len=*), intent(in), optional :: timestamp
+
+     if (do_mg_drag)   call mg_drag_restart(timestamp)
+     if (do_cg_drag)   call cg_drag_restart(timestamp)
+     if (do_topo_drag) call topo_drag_restart(timestamp)
+
+end subroutine damping_driver_restart
+! </SUBROUTINE> NAME="damping_driver_restart" 
 
 !#######################################################################
 

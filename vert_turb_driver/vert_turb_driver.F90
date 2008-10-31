@@ -16,7 +16,8 @@ module vert_turb_driver_mod
 
 
 use      my25_turb_mod, only: my25_turb_init, my25_turb_end,  &
-                              my25_turb, tke_surf, get_tke
+                              my25_turb, tke_surf, get_tke,   &
+                              my25_turb_restart
 
 use    diffusivity_mod, only: diffusivity, molecular_diff
 
@@ -52,13 +53,14 @@ private
 !---------------- interfaces ---------------------
 
 public   vert_turb_driver_init, vert_turb_driver_end, vert_turb_driver
+public   vert_turb_driver_restart
 
 
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 15.0 2007/08/14 03:56:25 fms Exp $'
-character(len=128) :: tagname = '$Name: perth $'
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 15.0.4.1.2.1 2008/09/16 05:07:41 wfc Exp $'
+character(len=128) :: tagname = '$Name: perth_2008_10 $'
 logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
@@ -85,7 +87,8 @@ logical            :: module_is_initialized = .false.
  logical :: do_stable_bl     = .false.
  logical :: use_tau          = .true.
  logical :: do_entrain    = .false.
- 
+ logical :: do_simple = .false. 
+
  character(len=24) :: gust_scheme  = 'constant' ! valid schemes are:
                                                 !   => 'constant'
                                                 !   => 'beljaars'
@@ -96,7 +99,7 @@ logical            :: module_is_initialized = .false.
                                  gust_scheme, constant_gust, use_tau, &
                                  do_molecular_diffusion, do_stable_bl, &
                                  do_diffusivity, do_edt, do_entrain, &
- gust_factor
+                                 gust_factor, do_simple
 
 !-------------------- diagnostics fields -------------------------------
 
@@ -227,7 +230,11 @@ if (do_mellor_yamada) then
 
 !    ----- virtual temp ----------
      ape(:,:,:)=(p_full(:,:,:)*p00inv)**(-kappa)
-     thv(:,:,:)=tt(:,:,:)*(qq(:,:,:)*d608+1.0)*ape(:,:,:)
+     if(do_simple) then 
+       thv(:,:,:)=tt(:,:,:)*ape(:,:,:)
+     else
+       thv(:,:,:)=tt(:,:,:)*(qq(:,:,:)*d608+1.0)*ape(:,:,:)
+     endif  
      if (present(mask)) where (mask < 0.5) thv = 200.
 
  endif
@@ -737,6 +744,23 @@ subroutine vert_turb_driver_end
 end subroutine vert_turb_driver_end
 
 !#######################################################################
+! <SUBROUTINE NAME="vert_turb_driver_restart">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine vert_turb_driver_restart(timestamp)
+  character(len=*), intent(in), optional :: timestamp
+
+   if (do_mellor_yamada) call my25_turb_restart(timestamp)
+end subroutine vert_turb_driver_restart
+! </SUBROUTINE> NAME="vert_turb_driver_restart"
+
 
 end module vert_turb_driver_mod
 

@@ -94,8 +94,8 @@ private
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: diffusivity.F90,v 13.0 2006/03/28 21:08:26 fms Exp $'
-character(len=128) :: tagname = '$Name: perth $'
+character(len=128) :: version = '$Id: diffusivity.F90,v 13.0.8.1 2008/09/16 05:20:42 wfc Exp $'
+character(len=128) :: tagname = '$Name: perth_2008_10 $'
 
 !=======================================================================
 
@@ -121,12 +121,15 @@ logical :: ampns               = .false. ! include delta z factor in
 real    :: ampns_max           = 1.0E20  ! limit to reduction factor
                                          ! applied to ri due to delta z
                                          ! factor
+logical :: do_entrain          =.true.
+logical :: do_simple           =.false.
 
 namelist /diffusivity_nml/ fixed_depth, depth_0, frac_inner,& 
                            rich_crit_pbl, entr_ratio, parcel_buoy,&
                            znom, free_atm_diff, free_atm_skyhi_diff,&
                            pbl_mcm, rich_crit_diff, mix_len, rich_prandtl,&
-                           background_m, background_t, ampns, ampns_max
+                           background_m, background_t, ampns, ampns_max, &
+                           do_entrain, do_simple
                           
 !=======================================================================
 
@@ -266,7 +269,12 @@ end if
 do k = 1, nlev
   z_full_ag(:,:,k) = z_full(:,:,k) - z_surf(:,:)
   z_half_ag(:,:,k) = z_half(:,:,k) - z_surf(:,:)
-  svcp(:,:,k)  =   t(:,:,k)*(1. + d608*q(:,:,k)) + gcp*(z_full_ag(:,:,k))
+  
+  if(do_simple) then
+    svcp(:,:,k)  =   t(:,:,k) + gcp*(z_full_ag(:,:,k))
+  else
+    svcp(:,:,k)  =   t(:,:,k)*(1. + d608*q(:,:,k)) + gcp*(z_full_ag(:,:,k))
+  endif
 end do
 z_half_ag(:,:,nlev+1) = z_half(:,:,nlev+1) - z_surf(:,:)
 
@@ -293,7 +301,7 @@ k_t = k_t + k_t_save
 
 !NOTE THAT THIS LINE MUST FOLLOW DIFFUSIVITY_FREE SO THAT ENTRAINMENT
 !K's DO NOT GET OVERWRITTEN IN DIFFUSIVITY_FREE SUBROUTINE
-if(entr_ratio .gt. 0. .and. .not. fixed_depth) &
+if(entr_ratio .gt. 0. .and. .not. fixed_depth .and. do_entrain) &
     call diffusivity_entr(svcp,z_full_ag,h,u_star,b_star,k_m,k_t)
 
 !set background diffusivities
@@ -360,7 +368,7 @@ do j = 1, nlat
  do i = 1, nlon
 
         !do neutral or stable case 
-        if (b_star(i,j).le.0.) then    
+        if (b_star(i,j).le.0. .or. do_simple) then    
               
               h1     = z(i,j,ibot(i,j))
               h(i,j) = h1
@@ -418,7 +426,7 @@ real, dimension(size(t,1),size(t,2))              :: h_inner, k_m_ref,&
                                                      k_t_ref, factor
 real, dimension(size(t,1),size(t,2),size(t,3)+1)  :: zm
 real                                              :: h_inner_max
-integer                                           :: k, kk, nlev
+integer                                           :: i,j, k, kk, nlev
 
 
 nlev = size(t,3)
@@ -473,6 +481,7 @@ real, intent(in)  , dimension(:,:)   :: h
 real, intent(inout) , dimension(:,:,:) :: k_m, k_t
 
 integer                                        :: k, nlev
+real, dimension(size(z_full,1),size(z_full,2)) :: elmix, htcrit
 real, dimension(size(z_full,1),size(z_full,2)) :: delta_u, delta_v, delta_z
 
 real :: htcrit_ss

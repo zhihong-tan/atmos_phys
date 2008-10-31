@@ -129,7 +129,9 @@ use fms_mod,               only: fms_init, mpp_clock_id, &
                                  write_version_number, check_nml_error,&
                                  error_mesg, open_restart_file, &
                                  read_data, mpp_error
-use fms_io_mod,            only: get_restart_io_mode
+use fms_io_mod,            only: get_restart_io_mode, &
+                                 register_restart_field, restart_file_type, &
+                                 save_restart, get_mosaic_tile_file
 use diag_manager_mod,      only: register_diag_field, send_data, &
                                  diag_manager_init, get_base_time
 use time_manager_mod,      only: time_type, set_date, set_time,  &
@@ -138,7 +140,7 @@ use time_manager_mod,      only: time_type, set_date, set_time,  &
                                  assignment(=), &
                                  operator(-), operator(/=), get_date,&
                                  operator(<), operator(>=), operator(>)
-use sat_vapor_pres_mod,    only: sat_vapor_pres_init, lookup_es
+use sat_vapor_pres_mod,    only: sat_vapor_pres_init, compute_qs
 use constants_mod,         only: constants_init, RDGAS, RVGAS,   &
                                  STEFAN, GRAV, SECONDS_PER_DAY,  &
                                  RADIAN
@@ -212,8 +214,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 16.0 2008/07/30 22:07:49 fms Exp $'
-character(len=128) :: tagname = '$Name: perth $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 16.0.4.1.2.2 2008/09/22 19:38:46 wfc Exp $'
+character(len=128) :: tagname = '$Name: perth_2008_10 $'
 
 
 !---------------------------------------------------------------------
@@ -241,7 +243,7 @@ character(len=128) :: tagname = '$Name: perth $'
 public    radiation_driver_init, radiation_driver,   &
           define_rad_times, define_atmos_input_fields,  &
           define_surface, surface_dealloc, atmos_input_dealloc, &
-          radiation_driver_end
+          radiation_driver_end, radiation_driver_restart
 
 private  & 
 
@@ -634,6 +636,12 @@ namelist /radiation_driver_nml/ do_netcdf_restart, &
 
 !---------------------------------------------------------------------
 !---- private data ----
+!-- for netcdf restart
+type(restart_file_type), pointer, save :: Rad_restart => NULL()
+type(restart_file_type), pointer, save :: Til_restart => NULL()
+logical                                :: in_different_file = .false.
+integer                                :: int_renormalize_sw_fluxes
+integer                                :: int_do_clear_sky_pass
 
 
 !---------------------------------------------------------------------
@@ -684,6 +692,7 @@ logical ::  do_sea_esf_rad                  ! using sea_esf_rad package?
 !---------------------------------------------------------------------
 integer, dimension(10) :: restart_versions     = (/ 2, 3, 4, 5, 6,  &
                                                    7, 8, 9, 10, 11 /)
+integer                :: vers ! version number of the restart file being read
 
 !-----------------------------------------------------------------------
 !    these arrays must be preserved across timesteps:
@@ -1747,6 +1756,10 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
          ' both sea_esf_rad.res and radiation_driver.res files are'//&
                ' present in INPUT directory. which one to use ?', FATAL)
         endif
+
+!----------------------------------------------------------------------
+!    Register fields to be written out to restart file.
+     if(do_netcdf_restart) call radiation_driver_register_restart('radiation_driver.res.nc')
 
 !-----------------------------------------------------------------------
 !    if a valid restart file exists, call read_restart_file to read it.
@@ -3790,11 +3803,6 @@ subroutine radiation_driver_end
       if (.not. module_is_initialized)   &
           call error_mesg ('radiation_driver_mod',  &
                'module has not been initialized', FATAL)
-         if ( do_netcdf_restart ) then
-            call write_restart_nc
-         else
-            call write_restart_file
-         endif
 
 !---------------------------------------------------------------------
 !    wrap up modules initialized by this module.
@@ -3916,6 +3924,33 @@ subroutine radiation_driver_end
 
 end subroutine radiation_driver_end
 
+
+!#######################################################################
+!#######################################################################
+! <SUBROUTINE NAME="radiation_driver_restart">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine radiation_driver_restart(timestamp)
+  character(len=*), intent(in), optional :: timestamp
+
+! Make sure that the restart_versions variable is up to date.
+  vers = restart_versions(size(restart_versions(:)))
+  if ( do_netcdf_restart ) then
+     call write_restart_nc(timestamp)
+  else
+     call write_restart_file
+  endif
+
+end subroutine radiation_driver_restart
+! </SUBROUTINE> NAME="radiation_driver_restart"
+
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !
 !                    PRIVATE SUBROUTINES
@@ -4019,7 +4054,9 @@ end subroutine write_restart_file
 
 !---------------------------------------------------------------------
 
-subroutine write_restart_nc
+subroutine write_restart_nc(timestamp)
+  character(len=*), intent(in), optional :: timestamp
+
 
   character(len=65)        :: fname='RESTART/radiation_driver.res.nc'
   real                     :: flag1=0., flag2=0.
@@ -4031,41 +4068,20 @@ subroutine write_restart_nc
         if (mpp_pe() == mpp_root_pe() ) then
          call error_mesg('radiation_driver_mod', 'Writing netCDF formatted restart file: RESTART/radiation_driver.res.nc', NOTE)
         endif
-        call write_data(fname, 'vers', restart_versions(size(restart_versions(:))), no_domain=.true.)
-        call write_data(fname, 'lwrad_alarm', lwrad_alarm, no_domain=.true.)
-        call write_data(fname, 'swrad_alarm', swrad_alarm, no_domain=.true.)
-        call write_data(fname, 'lw_rad_time_step', lw_rad_time_step, no_domain=.true.)
-        call write_data(fname, 'sw_rad_time_step', sw_rad_time_step, no_domain=.true.)
-
-!---------------------------------------------------------------------
-!    write out the restart data.
-!---------------------------------------------------------------------
-        call write_data (fname, 'tdt_rad',                Rad_output%tdt_rad(:,:,:,1))
-        call write_data (fname, 'tdtlw',                  Rad_output%tdtlw)
-        call write_data (fname, 'flux_sw_surf',           Rad_output%flux_sw_surf)
-        call write_data (fname, 'flux_sw_surf_dir',       Rad_output%flux_sw_surf_dir)
-        call write_data (fname, 'flux_sw_surf_dif',       Rad_output%flux_sw_surf_dif)
-        call write_data (fname, 'flux_sw_down_vis_dir',   Rad_output%flux_sw_down_vis_dir)
-        call write_data (fname, 'flux_sw_down_vis_dif',   Rad_output%flux_sw_down_vis_dif)
-        call write_data (fname, 'flux_sw_down_total_dir', Rad_output%flux_sw_down_total_dir)
-        call write_data (fname, 'flux_sw_down_total_dif', Rad_output%flux_sw_down_total_dif)
-        call write_data (fname, 'flux_sw_vis',            Rad_output%flux_sw_vis)
-        call write_data (fname, 'flux_sw_vis_dir',        Rad_output%flux_sw_vis_dir)
-        call write_data (fname, 'flux_sw_vis_dif',        Rad_output%flux_sw_vis_dif)
-        call write_data (fname, 'flux_lw_surf',           Rad_output%flux_lw_surf)
-        call write_data (fname, 'coszen_angle',           Rad_output%coszen_angle)
 
 !---------------------------------------------------------------------
 !    write out the optional time average restart data. note that 
 !    do_average and renormalize_sw_fluxes may not both be true.
 !---------------------------------------------------------------------
+        int_renormalize_sw_fluxes = 0
+        int_do_clear_sky_pass = 0
         if(renormalize_sw_fluxes) then
-          flag1 = 1.0
+          int_renormalize_sw_fluxes = 1
         else if (use_hires_coszen) then
           if (current_sw_zenith_step == nzens_per_sw_rad_timestep) then
-            flag1 = 2.0
+            int_renormalize_sw_fluxes = 2
           else
-            flag1 = -2.0
+            int_renormalize_sw_fluxes = -2
             call error_mesg ('radiation_driver/write_restart_nc', &
              ' you are writing restart file on a non-radiation &
                &timestep. As a consequence, model results will be &
@@ -4075,48 +4091,12 @@ subroutine write_restart_nc
                                                                   NOTE)
           endif
         endif
-        if(do_clear_sky_pass) flag2 = 1.0
-        call write_data(fname, 'renormalize_sw_fluxes', flag1, no_domain=.true.)
-        call write_data(fname, 'do_clear_sky_pass', flag2, no_domain=.true.)
+        if(do_clear_sky_pass) int_do_clear_sky_pass = 1
 
-!---------------------------------------------------------------------
-!    write out the optional shortwave renormalization data. 
-!---------------------------------------------------------------------
-        if (renormalize_sw_fluxes ) then   
-          call write_data (fname, 'solar_save', solar_save)
-          call write_data (fname, 'flux_sw_surf_save', flux_sw_surf_save)
-          call write_data (fname, 'flux_sw_surf_dir_save', flux_sw_surf_dir_save)
-          call write_data (fname, 'flux_sw_surf_dif_save', flux_sw_surf_dif_save)
-          call write_data (fname, 'flux_sw_down_vis_dir_save', flux_sw_down_vis_dir_save)
-          call write_data (fname, 'flux_sw_down_vis_dif_save', flux_sw_down_vis_dif_save)
-          call write_data (fname, 'flux_sw_down_total_dir_save', flux_sw_down_total_dir_save)
-          call write_data (fname, 'flux_sw_down_total_dif_save', flux_sw_down_total_dif_save)
-          call write_data (fname, 'flux_sw_vis_save', flux_sw_vis_save)
-          call write_data (fname, 'flux_sw_vis_dir_save', flux_sw_vis_dir_save)
-          call write_data (fname, 'flux_sw_vis_dif_save', flux_sw_vis_dif_save)
-          call write_data (fname, 'sw_heating_save', sw_heating_save(:,:,:,1))
-          call write_data (fname, 'tot_heating_save', tot_heating_save(:,:,:,1))
-          call write_data (fname, 'dfsw_save', dfsw_save(:,:,:,1)) 
-          call write_data (fname, 'ufsw_save', ufsw_save(:,:,:,1)) 
-          call write_data (fname, 'fsw_save', fsw_save(:,:,:,1) ) 
-          call write_data (fname, 'hsw_save', hsw_save(:,:,:,1))
-          call write_data (fname, 'swdn_special_save', swdn_special_save(:,:,:,1))
-          call write_data (fname, 'swup_special_save', swup_special_save(:,:,:,1))
-          if (do_clear_sky_pass) then
-            call write_data (fname, 'sw_heating_clr_save', sw_heating_clr_save(:,:,:,1))
-            call write_data (fname, 'tot_heating_clr_save', tot_heating_clr_save(:,:,:,1))
-            call write_data (fname, 'dfswcf_save', dfswcf_save(:,:,:,1)) 
-            call write_data (fname, 'ufswcf_save', ufswcf_save(:,:,:,1)) 
-            call write_data (fname, 'fswcf_save', fswcf_save(:,:,:,1))  
-            call write_data (fname, 'hswcf_save', hswcf_save(:,:,:,1))
-            call write_data (fname, 'flux_sw_down_total_dir_clr_save', flux_sw_down_total_dir_clr_save(:,:,1))
-            call write_data (fname, 'flux_sw_down_total_dif_clr_save', flux_sw_down_total_dif_clr_save(:,:,1))
-            call write_data (fname, 'flux_sw_down_vis_clr_save', flux_sw_down_vis_clr_save(:,:,1))
-            call write_data (fname, 'swdn_special_clr_save', swdn_special_clr_save(:,:,:,1))
-            call write_data (fname, 'swup_special_clr_save', swup_special_clr_save(:,:,:,1))
-          endif
-        endif    ! (renormalize)
-
+! Make sure that the restart_versions variable is up to date.
+        vers = restart_versions(size(restart_versions(:)))
+        call save_restart(Rad_restart, timestamp)
+        if(in_different_file) call save_restart(Til_restart, timestamp)
 
 end subroutine write_restart_nc
 
@@ -4155,7 +4135,6 @@ subroutine read_restart_file
       character(len=4)      :: chvers
       logical               :: avg_gases, avg_clouds
       integer, dimension(5) :: null
-      integer               :: vers
       integer               :: kmax
       integer               :: new_rad_time, lw_old_time_step, &
                                sw_old_time_step, old_time_step
@@ -4182,7 +4161,6 @@ subroutine read_restart_file
 !                         present in restart file
 !       null              dummy array used as location to read older
 !                         restart version data into           
-!       vers              version number of the restart file being read
 !       kmax              number of model layers
 !       new_rad_time      time remaining until next radiation calcul-
 !                         ation; replaces the rad_alarm value read from
@@ -4598,6 +4576,84 @@ subroutine read_restart_file
 end subroutine read_restart_file
 
 !#####################################################################
+subroutine radiation_driver_register_restart(fname)
+  character(len=*), intent(in) :: fname
+  character(len=64)            :: fname2
+  integer                      :: id_restart
+
+   call get_mosaic_tile_file(fname, fname2, .false. ) 
+   allocate(Rad_restart)
+   if(trim(fname2) == trim(fname)) then
+      Til_restart => Rad_restart
+      in_different_file = .false.
+   else
+      in_different_file = .true.
+      allocate(Til_restart)
+   endif
+
+  id_restart = register_restart_field(Rad_restart, fname, 'vers', vers)
+  id_restart = register_restart_field(Rad_restart, fname, 'lwrad_alarm', lwrad_alarm, mandatory=.false.)
+  id_restart = register_restart_field(Rad_restart, fname, 'swrad_alarm', swrad_alarm, mandatory=.false.)
+  id_restart = register_restart_field(Rad_restart, fname, 'lw_rad_time_step', lw_rad_time_step, mandatory=.false.)
+  id_restart = register_restart_field(Rad_restart, fname, 'sw_rad_time_step', sw_rad_time_step, mandatory=.false.)
+  id_restart = register_restart_field(Til_restart, fname, 'tdt_rad', Rad_output%tdt_rad(:,:,:,1) )
+  id_restart = register_restart_field(Til_restart, fname, 'tdtlw', Rad_output%tdtlw)
+  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf', Rad_output%flux_sw_surf)
+  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf_dir', Rad_output%flux_sw_surf_dir)
+  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf_dif', Rad_output%flux_sw_surf_dif)
+  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_vis_dir', Rad_output%flux_sw_down_vis_dir)
+  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_vis_dif', Rad_output%flux_sw_down_vis_dif)
+  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_total_dir', Rad_output%flux_sw_down_total_dir)
+  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_total_dif', Rad_output%flux_sw_down_total_dif)
+  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis', Rad_output%flux_sw_vis)
+  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis_dir', Rad_output%flux_sw_vis_dir)
+  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis_dif', Rad_output%flux_sw_vis_dif)
+  id_restart = register_restart_field(Til_restart, fname, 'flux_lw_surf', Rad_output%flux_lw_surf)
+  id_restart = register_restart_field(Til_restart, fname, 'coszen_angle', Rad_output%coszen_angle)
+  id_restart = register_restart_field(Rad_restart, fname, 'renormalize_sw_fluxes', int_renormalize_sw_fluxes)
+  id_restart = register_restart_field(Rad_restart, fname, 'do_clear_sky_pass', int_do_clear_sky_pass)
+  if (renormalize_sw_fluxes ) then   
+     id_restart = register_restart_field(Til_restart, fname, 'solar_save', solar_save)
+     id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf_save', flux_sw_surf_save)
+     id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf_dir_save', flux_sw_surf_dir_save)
+     id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf_dif_save', flux_sw_surf_dif_save)
+     id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_vis_dir_save', flux_sw_down_vis_dir_save)
+     id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_vis_dif_save', flux_sw_down_vis_dif_save)
+     id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_total_dir_save', flux_sw_down_total_dir_save)
+     id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_total_dif_save', flux_sw_down_total_dif_save)
+     id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis_save', flux_sw_vis_save)
+     id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis_dir_save', flux_sw_vis_dir_save)
+     id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis_dif_save', flux_sw_vis_dif_save)
+     id_restart = register_restart_field(Til_restart, fname, 'sw_heating_save', sw_heating_save(:,:,:,1))
+     id_restart = register_restart_field(Til_restart, fname, 'tot_heating_save', tot_heating_save(:,:,:,1))
+     id_restart = register_restart_field(Til_restart, fname, 'dfsw_save', dfsw_save(:,:,:,1))
+     id_restart = register_restart_field(Til_restart, fname, 'ufsw_save', ufsw_save(:,:,:,1))
+     id_restart = register_restart_field(Til_restart, fname, 'fsw_save', fsw_save(:,:,:,1))
+     id_restart = register_restart_field(Til_restart, fname, 'hsw_save', hsw_save(:,:,:,1))
+     id_restart = register_restart_field(Til_restart, fname, 'swdn_special_save', swdn_special_save(:,:,:,1))
+     id_restart = register_restart_field(Til_restart, fname, 'swup_special_save', swup_special_save(:,:,:,1))
+     if (do_clear_sky_pass) then
+        id_restart = register_restart_field(Til_restart, fname, 'sw_heating_clr_save', sw_heating_clr_save(:,:,:,1))
+        id_restart = register_restart_field(Til_restart, fname, 'tot_heating_clr_save', tot_heating_clr_save(:,:,:,1))
+        id_restart = register_restart_field(Til_restart, fname, 'dfswcf_save', dfswcf_save(:,:,:,1))
+        id_restart = register_restart_field(Til_restart, fname, 'ufswcf_save', ufswcf_save(:,:,:,1))
+        id_restart = register_restart_field(Til_restart, fname, 'fswcf_save', fswcf_save(:,:,:,1))
+        id_restart = register_restart_field(Til_restart, fname, 'hswcf_save', hswcf_save(:,:,:,1))
+        id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_total_dir_clr_save', &
+             flux_sw_down_total_dir_clr_save(:,:,1))
+        id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_total_dif_clr_save', &
+             flux_sw_down_total_dif_clr_save(:,:,1))
+        id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_vis_clr_save', &
+             flux_sw_down_vis_clr_save(:,:,1))
+        id_restart = register_restart_field(Til_restart, fname, 'swdn_special_clr_save', swdn_special_clr_save(:,:,:,1))
+        id_restart = register_restart_field(Til_restart, fname, 'swup_special_clr_save', swup_special_clr_save(:,:,:,1))
+     endif
+  endif
+
+end subroutine radiation_driver_register_restart
+
+
+!#####################################################################
 ! <SUBROUTINE NAME="read_restart_nc">
 !  <OVERVIEW>
 !    read_restart_nc reads a netcdf restart file containing radiation
@@ -4616,7 +4672,6 @@ subroutine read_restart_nc
 
   character(len=64) :: fname='INPUT/radiation_driver.res.nc'
   real              :: flag1, flag2
-  integer           :: vers
   logical           :: renorm_present, cldfree_present
   integer           :: new_rad_time, old_time_step
   integer           :: lw_old_time_step, sw_old_time_step
@@ -4857,6 +4912,8 @@ subroutine read_restart_nc
         endif
      endif
   endif   ! (swrad_alarm == 1)
+
+  vers = restart_versions(size(restart_versions(:)))
 
 end subroutine read_restart_nc
 
@@ -8216,7 +8273,7 @@ type(atmos_input_type), intent(inout)  :: Atmos_input
       real, dimension (size(Atmos_input%temp, 1), &
                        size(Atmos_input%temp, 2), &
                        size(Atmos_input%temp, 3) - 1) :: &
-                                                     esat, psat, qv, tv
+                                                     esat, qsat, qv, tv
       integer   ::  k
       integer   ::  kmax
 
@@ -8267,14 +8324,13 @@ type(atmos_input_type), intent(inout)  :: Atmos_input
 !    define the relative humidity.
 !------------------------------------------------------------------
       kmax = size(Atmos_input%temp,3) - 1
-      call lookup_es (Atmos_input%temp(:,:,1:kmax), esat)
+      qv(:,:,1:kmax) = Atmos_input%rh2o(:,:,1:kmax) /    &
+                                   (1.0 + Atmos_input%rh2o(:,:,1:kmax))
+      call compute_qs (Atmos_input%temp(:,:,1:kmax),  &
+                       Atmos_input%press(:,:,1:kmax),  &
+                       qsat(:,:,1:kmax), q = qv(:,:,1:kmax))
       do k=1,kmax
-        qv(:,:,k) = Atmos_input%rh2o(:,:,k) /    &
-                                       (1.0 + Atmos_input%rh2o(:,:,k))
-        psat(:,:,k) = Atmos_input%press(:,:,k) - D378*esat(:,:,k)
-        psat(:,:,k) = MAX (psat(:,:,k), esat(:,:,k))
-        Atmos_input%rel_hum(:,:,k) = qv(:,:,k) / (D622*esat(:,:,k) / &
-                                                  psat(:,:,k))
+        Atmos_input%rel_hum(:,:,k) = qv(:,:,k) / qsat(:,:,k)
         Atmos_input%rel_hum(:,:,k) =    &
                                   MIN (Atmos_input%rel_hum(:,:,k), 1.0)
       end do
@@ -8282,14 +8338,13 @@ type(atmos_input_type), intent(inout)  :: Atmos_input
 !------------------------------------------------------------------
 !    define the relative humidity seen by the aerosol code.
 !------------------------------------------------------------------
-      call lookup_es (Atmos_input%aerosoltemp(:,:,1:kmax), esat)
+        qv(:,:,1:kmax) = Atmos_input%aerosolvapor(:,:,1:kmax) /    &
+                         (1.0 + Atmos_input%aerosolvapor(:,:,1:kmax))
+        call compute_qs (Atmos_input%aerosoltemp(:,:,1:kmax), &
+                         Atmos_input%aerosolpress(:,:,1:kmax),  &
+                         qsat(:,:,1:kmax), q = qv(:,:,1:kmax))
       do k=1,kmax
-        qv(:,:,k) = Atmos_input%aerosolvapor(:,:,k) /    &
-                                (1.0 + Atmos_input%aerosolvapor(:,:,k))
-        psat(:,:,k) = Atmos_input%aerosolpress(:,:,k) - D378*esat(:,:,k)
-        psat(:,:,k) = MAX (psat(:,:,k), esat(:,:,k))
-        Atmos_input%aerosolrelhum(:,:,k) = qv(:,:,k) /   &
-                                        (D622*esat(:,:,k) / psat(:,:,k))
+         Atmos_input%aerosolrelhum(:,:,k) = qv(:,:,k) / qsat(:,:,k)
          Atmos_input%aerosolrelhum(:,:,k) =    &
                             MIN (Atmos_input%aerosolrelhum(:,:,k), 1.0)
       end do
