@@ -18,7 +18,7 @@
       real :: err_wghts(max(1,clscnt5))
 
 character(len=128), parameter :: version     = '$Id: mo_rodas_slv.F90,v 14.0 2007/03/15 22:11:10 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: perth $'
+character(len=128), parameter :: tagname     = '$Name: perth_2008_10 $'
 logical                       :: module_is_initialized = .false.
 
       contains

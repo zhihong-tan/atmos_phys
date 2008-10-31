@@ -4,8 +4,8 @@ implicit none
       private
       public :: setrxt
 
-character(len=128), parameter :: version     = '$Id: moz.subs.F90,v 16.0 2008/07/30 22:11:12 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: perth $'
+character(len=128), parameter :: version     = '$Id: moz.subs.F90,v 16.0.2.1 2008/09/19 20:43:17 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: perth_2008_10 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -214,11 +214,11 @@ logical                       :: module_is_initialized = .false.
       call jpl( rate(1,1,60), m, .6, ko, kinf, plnplv )
 
       ko(:,:) = 5.9e-33 * itemp(:,:)**1.4
-      kinf(:,:) = 1.1e-12 * itemp(:,:)**-1.3
+      kinf(:,:) = 1.1e-12 * itemp(:,:)**(-1.3)
       call jpl( rate(1,1,72), m, .6, ko, kinf, plnplv )
 
-      ko(:,:) = 1.5e-13 * itemp(:,:)**-0.6
-      kinf(:,:) = 2.1e9 * itemp(:,:)**-6.1
+      ko(:,:) = 1.5e-13 * itemp(:,:)**(-0.6)
+      kinf(:,:) = 2.1e9 * itemp(:,:)**(-6.1)
       call jpl( rate(1,1,73), m, .6, ko, kinf, plnplv )
 
       ko(:,:) = 8.e-27 * itemp(:,:)**3.5

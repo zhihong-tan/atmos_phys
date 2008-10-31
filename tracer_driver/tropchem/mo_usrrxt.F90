@@ -1,6 +1,6 @@
       module mo_usrrxt_mod
 
-      use sat_vapor_pres_mod, only : escomp
+      use sat_vapor_pres_mod, only : compute_qs
       use constants_mod, only : rdgas, rvgas
       use strat_chem_utilities_mod, only : psc_type, strat_chem_get_gamma, &
                                            strat_chem_get_hetrates
@@ -23,8 +23,8 @@ implicit none
       real, parameter :: d622 = rdgas/rvgas
       real, parameter :: d378 = 1. - d622     
 
-character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 16.0 2008/07/30 22:11:05 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: perth $'
+character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 16.0.2.1 2008/09/09 13:36:15 rsh Exp $'
+character(len=128), parameter :: tagname     = '$Name: perth_2008_10 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -566,26 +566,14 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
         
 !-----------------------------------------------------------------------
-!calculate water saturated vapor pressure
+!calculate water saturated specific humidity
 !-----------------------------------------------------------------------
-        call escomp(temp, esat)
-        
-!-----------------------------------------------------------------------
-!calulate denominator in qsat formula
-!-----------------------------------------------------------------------
-        rh(:) = pmid(:) - d378 * esat(:)
-        
-!-----------------------------------------------------------------------
-!limit denominator to esat, and thus qs to epsilon
-!this is done to avoid blow up in the upper stratosphere
-!where pfull ~ esat
-!-----------------------------------------------------------------------
-        rh(:) = MAX(RH(:),esat(:))
+        call compute_qs (temp, pmid, rh, q = sh)
         
 !-----------------------------------------------------------------------
 !calculate rh
 !-----------------------------------------------------------------------
-        rh(:) = sh(:) / (d622 * esat(:) / rh(:))
+        rh(:)= sh(:) / rh(:)
         
       end subroutine rh_calc
         

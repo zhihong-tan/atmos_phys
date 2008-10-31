@@ -153,7 +153,8 @@ use tropchem_driver_mod,   only : tropchem_driver, &
 use strat_chem_driver_mod, only : strat_chem, strat_chem_driver_init
 use atmos_age_tracer_mod,  only : atmos_age_tracer_init, atmos_age_tracer, &
                                   atmos_age_tracer_end
-use atmos_co2_mod,         only : atmos_co2_gather_data,        &
+use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
+                                  atmos_co2_gather_data,        &
                                   atmos_co2_flux_init,          &
                                   atmos_co2_init,               &
                                   atmos_co2_end
@@ -196,6 +197,7 @@ integer :: sulfur_clock = 0
 integer :: SOA_clock = 0
 integer :: sf6_clock = 0
 integer :: ch3i_clock = 0
+integer :: co2_clock = 0
 
 logical :: do_tropchem = .false.  ! Do tropospheric chemistry?
 logical :: do_coupled_stratozone = .FALSE. !Do stratospheric chemistry?
@@ -232,6 +234,7 @@ integer :: nSOA      =0
 integer :: nH2O2     =0
 integer :: nch3i     =0
 integer :: nage      =0
+integer :: nco2      =0
 
 real    :: ozon(11,48),cosp(14),cosphc(48),photo(132,14,11,48),   &
            solardata(1801),chlb(90,15),ozb(144,90,12),tropc(151,9),  &
@@ -259,8 +262,8 @@ integer, allocatable :: local_indices(:)
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 16.0 2008/07/30 22:10:36 fms Exp $'
-character(len=128) :: tagname = '$Name: perth $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 16.0.2.4 2008/09/05 19:16:46 jgj Exp $'
+character(len=128) :: tagname = '$Name: perth_2008_10 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -905,6 +908,20 @@ integer :: n, nnn
    endif
 
 !------------------------------------------------------------------------
+! Compute CO2 source-sink tendency:  tracer(:,:,:,nco2) is in moist mmr
+!  atmos_co2_sourcesink will convert to dry vmr and return rtnd as moist mmr
+!------------------------------------------------------------------------
+   if (nco2 > 0 ) then
+         if (nco2 > ntp ) call error_mesg ('Tracer_driver', &
+                            'Number of tracers < number for co2', FATAL)
+         call mpp_clock_begin (co2_clock)
+         call atmos_co2_sourcesink (Time, dt, pwt, tracer(:,:,:,nco2),     &
+                                    tracer(:,:,:,nsphum), rtnd)
+         rdt(:,:,:,nco2)=rdt(:,:,:,nco2)+rtnd(:,:,:)
+         call mpp_clock_end (co2_clock)
+   endif
+
+!------------------------------------------------------------------------
 ! Save diagnostic tracer concentrations back to tracer array
 !------------------------------------------------------------------------
    if (nt > ntp) then
@@ -1067,6 +1084,7 @@ type(time_type), intent(in)                                :: Time
       nSOA      = get_tracer_index(MODEL_ATMOS,'SOA')
       nsf6      = get_tracer_index(MODEL_ATMOS,'sf6')
       nch3i     = get_tracer_index(MODEL_ATMOS,'ch3i')
+      nco2      = get_tracer_index(MODEL_ATMOS,'co2')
 
 ! Number of vertical layers
       nbr_layers=size(r,3)
@@ -1121,7 +1139,11 @@ type(time_type), intent(in)                                :: Time
       endif
 
 !co2
-      call atmos_co2_init
+      if (nco2 > 0) then
+      call atmos_co2_init ( Time, axes(1:3))
+        co2_clock = mpp_clock_id( 'Tracer: CO2', &
+                    grain=CLOCK_MODULE )
+      endif
 
       call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)

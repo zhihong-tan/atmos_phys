@@ -69,7 +69,7 @@ logical :: module_is_initialized=.FALSE.
 
 !---- version number -----
 character(len=128) :: version = '$Id: atmos_radon.F90,v 11.0 2004/09/28 19:26:41 fms Exp $'
-character(len=128) :: tagname = '$Name: perth $'
+character(len=128) :: tagname = '$Name: perth_2008_10 $'
 !-----------------------------------------------------------------------
 
 contains

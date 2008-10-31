@@ -16,9 +16,17 @@ module atmos_co2_mod
 ! </DESCRIPTION>
 
 
-use              fms_mod, only : stdlog, stdout, write_version_number
+use              fms_mod, only : file_exist, write_version_number,    &
+                                 mpp_pe, mpp_root_pe,                 &
+                                 close_file, stdlog, stdout,          &
+                                 check_nml_error, error_mesg,         &
+                                 open_namelist_file, FATAL, NOTE, WARNING
+
 use   tracer_manager_mod, only : get_tracer_index, tracer_manager_init
 use    field_manager_mod, only : MODEL_ATMOS
+use     diag_manager_mod, only : register_diag_field, send_data
+use     time_manager_mod, only : time_type
+use        constants_mod, only : WTMCO2, WTMAIR
 
 implicit none
 
@@ -33,13 +41,28 @@ public  atmos_co2_flux_init
 public  atmos_co2_init
 public  atmos_co2_end
 
-integer, save   :: ind_co2_flux = 0
-integer, save   :: ind_co2  = 0
+!-----------------------------------------------------------------------
+!----------- namelist -------------------
+!-----------------------------------------------------------------------
 
 character(len=48), parameter    :: mod_name = 'atmos_co2_mod'
 
-!-----------------------------------------------------------------------
-!----------- namelist -------------------
+integer, save   :: ind_co2_flux = 0
+integer, save   :: ind_co2  = 0
+integer, save   :: ind_sphum = 0
+integer         :: id_co2dt
+
+!---------------------------------------------------------------------
+!-------- namelist  ---------
+
+real     :: restore_co2_dvmr = -1
+real     :: restore_tscale   = -1
+integer  :: restore_klimit   = -1
+logical  :: do_co2_restore   = .false.
+
+namelist /atmos_co2_nml/  &
+          do_co2_restore, restore_co2_dvmr, restore_tscale, restore_klimit
+
 !-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make the
@@ -70,13 +93,49 @@ contains
 !<SUBROUTINE NAME ="atmos_co2_sourcesink">
 !<OVERVIEW>
 !  A subroutine to calculate the internal sources and sinks of carbon dioxide.
+!
+! do_co2_restore   = logical to turn co2_restore on/off: default = .false.
+! restore_co2_dvmr = partial pressure of co2 to which to restore  (mol/mol)
+! restore_klimit   = atmospheric level to which to restore starting from top
+! restore_tscale   = timescale in seconds with which to restore
+!
 !</OVERVIEW>
+!<DESCRIPTION>
+! A routine to calculate the sources and sinks of carbon dixoide.
+!</DESCRIPTION>
+!<TEMPLATE>
+!call atmos_co2_sourcesink (Time, dt, pwt, co2, sphum, co2_dt)
+!
+!</TEMPLATE>
+!   <IN NAME="Time" TYPE="type(time_type)">
+!     Model time.
+!   </IN>
+!   <IN NAME="dt" TYPE="real">
+!     Model timestep.
+!   </IN>
+!   <IN NAME="pwt" TYPE="real" DIM="(:,:,:)">
+!     The pressure weighting array. = dP/grav (kg/m2)
+!   </IN>
+!   <IN NAME="co2" TYPE="real" DIM="(:,:,:)">
+!     The array of the carbon dioxide mixing ratio (kg co2/kg moist air)
+!   </IN>
+!   <IN NAME="sphum" TYPE="real" DIM="(:,:,:)">
+!     The array of the specific humidity mixing ratio (kg/kg)
+!   </IN>
+
+!   <OUT NAME="co2_dt" TYPE="real" DIM="(:,:,:)">
+!     The array of the tendency of the carbon dioxide mixing ratio.
+!   </OUT>
 !
 
-subroutine atmos_co2_sourcesink()
-
-implicit none
-
+subroutine atmos_co2_sourcesink(Time, dt, pwt, co2, sphum, co2_dt)
+   type (time_type),      intent(in)   :: Time
+   real, intent(in)                    :: dt
+   real, intent(in),  dimension(:,:,:) :: co2          ! moist mmr
+   real, intent(in),  dimension(:,:,:) :: sphum        
+   real, intent(in),  dimension(:,:,:) :: pwt          ! kg/m2
+   real, intent(out), dimension(:,:,:) :: co2_dt
+   logical                             :: sent
 !
 !-----------------------------------------------------------------------
 !     local parameters
@@ -90,6 +149,41 @@ character(len=256), parameter   :: warn_header =                                
      '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 character(len=256), parameter   :: note_header =                                &
      '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+
+integer ::  i,j,k,id,jd,kd
+
+
+!-----------------------------------------------------------------------
+
+id=size(co2,1); jd=size(co2,2); kd=min(size(co2,3),restore_klimit)
+
+co2_dt(:,:,:)=0.0
+
+if (ind_co2 > 0 .and. do_co2_restore) then
+
+  if (restore_tscale .gt. 0 .and. restore_co2_dvmr .ge. 0.0) then
+
+! co2mmr = (wco2/wair) * co2vmr;  wet_mmr = dry_mmr * (1-Q)
+    do k=1,kd
+      do j=1,jd
+        do i=1,id
+! convert restore_co2_dvmr to wet mmr and get tendency
+          co2_dt(i,j,k) = (restore_co2_dvmr * (WTMCO2/WTMAIR) * (1.0 - &
+                          sphum(i,j,k)) - co2(i,j,k))/restore_tscale
+        enddo
+      enddo
+    enddo
+
+! restoring diagnostic in moles co2/m2/sec
+    if (id_co2dt > 0) sent = send_data (id_co2dt, co2_dt / (1.0 - sphum) * &
+                                         pwt / (WTMCO2*1.e-3), Time)
+
+  endif
+
+else
+  if (mpp_pe() == mpp_root_pe() ) &
+      write (stdlog(),*) trim(note_header), ' CO2 restoring not active ', ind_co2,do_co2_restore
+endif
 
 return
 
@@ -133,8 +227,15 @@ character(len=256), parameter   :: note_header =                                
 
 !-----------------------------------------------------------------------
 
+! 2008/06/17 JPD/jgj: OCMIP calculation expects pco2 in dry vmr (mol/mol) units 
+! atm co2 is in moist mass mixing ratio (kg co2/kg moist air)
+! tr_bot: co2 bottom layer moist mass mixing ratio
+! convert to dry_mmr and then to dry_vmr for ocean model.
+! dry_mmr = wet_mmr / (1-Q); co2vmr = (wair/wco2) * co2mmr
+
 if (ind_co2_flux .gt. 0) then
-  gas_fields%bc(ind_co2_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,ind_co2)
+  gas_fields%bc(ind_co2_flux)%field(ind_pcair)%values(:,:) = (tr_bot(:,:,ind_co2) /	&
+       (1.0 - tr_bot(:,:,ind_sphum))) * (WTMAIR/gas_fields%bc(ind_co2_flux)%mol_wt)
 endif
 
 end subroutine atmos_co2_gather_data
@@ -207,7 +308,8 @@ endif
 if (ind_co2 > 0) then
   ind_co2_flux = aof_set_coupler_flux('co2_flux',                       &
        flux_type = 'air_sea_gas_flux', implementation = 'ocmip2',       &
-       atm_tr_index = ind_co2, param = (/ 9.36e-07, 9.7561e-06 /),      &
+       atm_tr_index = ind_co2,						&
+       mol_wt = WTMCO2, param = (/ 9.36e-07, 9.7561e-06 /),      	&
        caller = trim(mod_name) // '(' // trim(sub_name) // ')')
 endif
 
@@ -224,7 +326,7 @@ end subroutine atmos_co2_flux_init
 ! Subroutine to initialize the carbon dioxide module.
 !</OVERVIEW>
 
- subroutine atmos_co2_init
+ subroutine atmos_co2_init (Time, axes)
 
 !
 !-----------------------------------------------------------------------
@@ -232,14 +334,21 @@ end subroutine atmos_co2_flux_init
 !-----------------------------------------------------------------------
 !
 
+type (time_type),      intent(in)  :: Time
+integer, dimension(3), intent(in)  :: axes
+
 !
 !-----------------------------------------------------------------------
 !     local variables
+!         unit       io unit number used to read namelist file
+!         ierr       error code
+!         io         error status returned from io operation
 !-----------------------------------------------------------------------
 !
-
+integer :: ierr, unit, io
 integer :: n
-
+real    :: missing_value = -1.e10
+character(len=64) :: desc
 !
 !-----------------------------------------------------------------------
 !     local parameters
@@ -255,16 +364,51 @@ character(len=256), parameter   :: note_header =                                
      '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 
 
-if (module_is_initialized) return
+     if (module_is_initialized) return
+
+     call write_version_number (version, tagname)
+
+!-----------------------------------------------------------------------
+!    read namelist.
+!-----------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ( )
+        ierr=1; do while (ierr /= 0)
+        read  (unit, nml=atmos_co2_nml, iostat=io, end=10)
+        ierr = check_nml_error(io,'atmos_co2_nml')
+        end do
+10      call close_file (unit)
+      endif
+
+!---------------------------------------------------------------------
+!    write namelist to logfile.
+!---------------------------------------------------------------------
+      if (mpp_pe() == mpp_root_pe() ) &
+                          write (stdlog(), nml=atmos_co2_nml)
 
 !----- set initial value of carbon ------------
 
 n = get_tracer_index(MODEL_ATMOS,'co2')
 if (n > 0) then
   ind_co2 = n
-  if (ind_co2 > 0) then
     write (stdout(),*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
     write (stdlog(),*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
+
+ ! initialize diagnostics
+
+   desc = ' restoring tendency'
+
+   id_co2dt    = register_diag_field ('atmos_co2_restoring', 'co2_dt', axes, Time, &
+                   'CO2'//trim(desc), 'moles co2/m2/s',missing_value=missing_value)
+
+
+!
+!	get the index for sphum
+!
+
+  ind_sphum = get_tracer_index(MODEL_ATMOS,'sphum')
+  if (ind_sphum .le. 0) then
+    call error_mesg (trim(error_header), ' Could not find index for sphum', FATAL)
   endif
 
 endif

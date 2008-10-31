@@ -71,7 +71,7 @@ logical :: used
 
 !---- version number -----
 character(len=128) :: version = '$Id: atmos_soa.F90,v 15.0 2007/08/14 03:56:57 fms Exp $'
-character(len=128) :: tagname = '$Name: perth $'
+character(len=128) :: tagname = '$Name: perth_2008_10 $'
 !-----------------------------------------------------------------------
 
 contains

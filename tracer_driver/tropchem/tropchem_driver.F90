@@ -122,7 +122,7 @@ real               :: strat_chem_age_factor = 1.        ! scale factor for age o
 real               :: strat_chem_dclydt_factor = 1.     ! scale factor for dcly/dt
 logical            :: do_tropchem = .false.             ! Do tropospheric chemistry?
 logical            :: use_tdep_jvals = .false.          ! Use explicit temperature dependence for photolysis rates
-real               :: o3_column_top = 10.               ! O3 column above model top (DU)\
+real               :: o3_column_top = 10.               ! O3 column above model top (DU)
 real               :: jno_scale_factor = 1.             ! scale factor for NO photolysis rate (jNO)
 integer            :: verbose = 3                       ! level of diagnostic output
  
@@ -200,8 +200,8 @@ type(interpolate_type), save :: drydep_data_default
 integer :: clock_id,ndiag
 
 !---- version number ---------------------------------------------------
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 16.0 2008/07/30 22:11:17 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: perth $'
+character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 16.0.2.1 2008/09/19 20:43:17 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: perth_2008_10 $'
 !-----------------------------------------------------------------------
 
 contains
