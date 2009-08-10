@@ -49,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 14.0 2007/03/15 22:05:34 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 17.0 2009/07/21 02:56:17 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 
@@ -120,7 +120,7 @@ subroutine diag_clouds_W_init  (num_slingo_bands_out)
 
 integer, intent(out) :: num_slingo_bands_out
 
-      integer            :: unit, ierr, io
+      integer            :: unit, ierr, io, logunit
 
 
       if (module_is_initialized) return
@@ -138,7 +138,8 @@ integer, intent(out) :: num_slingo_bands_out
 
       if ( mpp_pe() == mpp_root_pe() ) then
            call write_version_number(version, tagname)
-           write (stdlog(),nml=diag_clouds_W_nml)
+           logunit = stdlog()
+           write (logunit,nml=diag_clouds_W_nml)
       endif
 
       num_slingo_bands_out = num_slingo_bands

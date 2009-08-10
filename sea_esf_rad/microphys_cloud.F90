@@ -45,8 +45,8 @@ namelist /microphys_cloud_nml/  diam_liq
 ! version control information
 !-----------------------------------------------------------------------
 
-character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 14.0 2007/03/15 22:06:45 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 17.0 2009/07/21 02:56:59 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 logical ::   module_is_initialized = .false.
 contains 
@@ -211,7 +211,7 @@ end subroutine get_diam
 !
 subroutine microphys_cloud_init
 
-integer :: unit, ierr, io
+integer :: unit, ierr, io, logunit
 
    if (module_is_initialized ) return
    call fms_init
@@ -234,8 +234,9 @@ integer :: unit, ierr, io
 !------------------------------------------------------------------------
 
   call write_version_number (version, tagname)
+  logunit = stdlog()
   if (mpp_pe() == mpp_root_pe() )                                       &
-                                write (stdlog(), nml=microphys_cloud_nml)
+                                write (logunit, nml=microphys_cloud_nml)
 
    module_is_initialized = .true.
 

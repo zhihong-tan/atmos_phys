@@ -56,8 +56,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 16.0 2008/07/30 22:08:26 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 17.0 2009/07/21 02:56:53 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -360,7 +360,7 @@ real,  dimension(:,:), intent(in) :: pref
 !---------------------------------------------------------------------
 !  local variables:
 
-      integer :: unit, ierr, io
+      integer :: unit, ierr, io, logunit
       integer :: kmin, kmax, k
 
 !---------------------------------------------------------------------
@@ -399,8 +399,9 @@ real,  dimension(:,:), intent(in) :: pref
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                        write (stdlog(), nml=lw_gases_stdtf_nml)
+                        write (logunit, nml=lw_gases_stdtf_nml)
 
 !---------------------------------------------------------------------
 !

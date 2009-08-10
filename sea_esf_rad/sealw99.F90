@@ -93,8 +93,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-    character(len=128)  :: version =  '$Id: sealw99.F90,v 16.0 2008/07/30 22:09:02 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+    character(len=128)  :: version =  '$Id: sealw99.F90,v 17.0 2009/07/21 02:57:35 fms Exp $'
+    character(len=128)  :: tagname =  '$Name: quebec $'
     logical             ::  module_is_initialized = .false.
 
 !---------------------------------------------------------------------
@@ -414,7 +414,7 @@ type(lw_table_type), intent(inout) :: Lw_tables
        real, dimension(size(pref,1) ) :: plm
        real, dimension (NBCO215) :: cent, del
 
-       integer         :: unit, ierr, io, k, n,  nn
+       integer         :: unit, ierr, io, k, n,  nn, logunit
        integer         :: ioffset
        real            :: prnlte
        integer         ::     kmax, kmin
@@ -488,8 +488,9 @@ type(lw_table_type), intent(inout) :: Lw_tables
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                          write (stdlog(), nml=sealw99_nml)
+                          write (logunit, nml=sealw99_nml)
 
 !---------------------------------------------------------------------
 !

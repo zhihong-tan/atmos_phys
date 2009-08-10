@@ -52,8 +52,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: radiation_diag.F90,v 16.0 2008/07/30 22:08:46 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: radiation_diag.F90,v 17.0 2009/07/21 02:57:17 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -208,7 +208,7 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !--------------------------------------------------------------------
 !  local variables
 
-      integer     :: unit, ierr, io
+      integer     :: unit, ierr, io, logunit
       integer     :: nn, j, i, nblw
       real        :: dellat, dellon
 
@@ -248,8 +248,9 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                         write (stdlog(), nml=radiation_diag_nml)
+                         write (logunit, nml=radiation_diag_nml)
 
 !---------------------------------------------------------------------
 !    allocate and initialize a flag array which indicates the latitudes
@@ -1828,8 +1829,8 @@ type(cld_space_properties_type), intent(in) :: Cldspace_rad
             write (radiag_unit,9270)      &
                                 Lw_diagnostics%gxcts(iloc,jloc), &
                                 Lw_diagnostics%flx1e1(iloc,jloc), &
-                                (Lw_diagnostics%gxcts(iloc,jloc)+ &
-                                    Lw_diagnostics%flx1e1(iloc,jloc)),&
+                                Lw_diagnostics%gxcts(iloc,jloc)+ &
+                                    Lw_diagnostics%flx1e1(iloc,jloc),&
                                 Lw_output(1)%flxnet(iloc,jloc,ke+1), &
                                 fdiff
             if (nbtrge > 0) then

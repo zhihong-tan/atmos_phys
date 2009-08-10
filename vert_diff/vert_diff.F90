@@ -73,8 +73,8 @@ integer :: sphum, mix_rat
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 15.0.4.1 2008/09/15 23:17:46 wfc Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 17.0 2009/07/21 02:58:28 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
@@ -97,7 +97,7 @@ subroutine vert_diff_init (Tri_surf, idim, jdim, kdim,    &
  integer :: ntprog ! number of prognostic tracers in the atmosphere
  character(len=32)  :: tr_name ! tracer name
  character(len=128) :: scheme  ! tracer diffusion scheme
- integer :: n
+ integer :: n, logunit
 
     call write_version_number ( version, tagname )
 
@@ -112,9 +112,11 @@ subroutine vert_diff_init (Tri_surf, idim, jdim, kdim,    &
                       'be present in the field_table at the same time', FATAL)
     endif
 
-    if (mpp_pe() == mpp_root_pe()) &
-    write (stdlog(),'(a,i12)') 'Tracer number for specific humidity =',sphum
-    write (stdlog(),'(a,i12)') 'Tracer number for mixing ratio      =',mix_rat
+    logunit = stdlog()
+    if (mpp_pe() == mpp_root_pe()) then
+      write (logunit,'(a,i12)') 'Tracer number for specific humidity =',sphum
+      write (logunit,'(a,i12)') 'Tracer number for mixing ratio      =',mix_rat
+    endif
 
     if(sphum==NO_TRACER) sphum=mix_rat
 
@@ -172,10 +174,10 @@ subroutine vert_diff_init (Tri_surf, idim, jdim, kdim,    &
          allocate(tracers(n)%f(idim,jdim,kdim-1))
  enddo
 
- write(stdlog(),*)'Tracer vertical diffusion properties:'
+ write(logunit,*)'Tracer vertical diffusion properties:'
  do n = 1,ntprog
     call get_tracer_names(MODEL_ATMOS, n, tr_name)
-    write(stdlog(),100)tr_name,tracers(n)%do_vert_diff,tracers(n)%do_surf_exch
+    write(logunit,100)tr_name,tracers(n)%do_vert_diff,tracers(n)%do_surf_exch
  enddo
 100 FORMAT('Tracer :',a32,': do_tr_vert_diff=',L1,' : do_tr_surf_exch=',L1)
 
@@ -392,16 +394,16 @@ real,    intent(out),   dimension(:,:,:,:) :: dt_tr
 integer, intent(in),    dimension(:,:), optional :: kbot
 
  ! ---- local vars
- integer :: ie, je, n
+ integer :: ie, je, n, outunit
  real    :: surf_delta_q(size(dt_t,1),size(dt_t,2))
 
  ie = is + size(dt_t,1) -1
  je = js + size(dt_t,2) -1
 
-
-!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'e_global',mpp_chksum(e_global(is:ie,js:je,:))
-!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'f_t_global',mpp_chksum(f_t_global(is:ie,js:je,:))
-!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'Tri_surf%deta_t',mpp_chksum(Tri_surf%delta_t(is:ie,js:je))
+! outunit = stdout()
+!checksums! write(outunit,'("CHECKSUM::",A32," = ",Z20)')'e_global',mpp_chksum(e_global(is:ie,js:je,:))
+!checksums! write(outunit,'("CHECKSUM::",A32," = ",Z20)')'f_t_global',mpp_chksum(f_t_global(is:ie,js:je,:))
+!checksums! write(outunit,'("CHECKSUM::",A32," = ",Z20)')'Tri_surf%deta_t',mpp_chksum(Tri_surf%delta_t(is:ie,js:je))
 
  call vert_diff_up (delt ,                              &
                     e_global          (is:ie,js:je,:) , &
@@ -409,7 +411,7 @@ integer, intent(in),    dimension(:,:), optional :: kbot
                     Tri_surf%delta_t  (is:ie,js:je) ,   &
                     dt_t, kbot )
 
-!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'dt_t',mpp_chksum(dt_t)
+!checksums! write(outunit,'("CHECKSUM::",A32," = ",Z20)')'dt_t',mpp_chksum(dt_t)
 
  if(sphum/=NO_TRACER) then
     surf_delta_q = Tri_surf%delta_tr (is:ie,js:je,sphum)
@@ -417,8 +419,8 @@ integer, intent(in),    dimension(:,:), optional :: kbot
     surf_delta_q = 0.0
  endif
 
-!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'surf_delta_q',mpp_chksum(surf_delta_q)
-!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'f_q_global',mpp_chksum(f_q_global(is:ie,js:je,:))
+!checksums! write(outunit,'("CHECKSUM::",A32," = ",Z20)')'surf_delta_q',mpp_chksum(surf_delta_q)
+!checksums! write(outunit,'("CHECKSUM::",A32," = ",Z20)')'f_q_global',mpp_chksum(f_q_global(is:ie,js:je,:))
 
  call vert_diff_up (delt ,                              &
                     e_global          (is:ie,js:je,:) , &
@@ -426,7 +428,7 @@ integer, intent(in),    dimension(:,:), optional :: kbot
                     surf_delta_q ,                      &
                     dt_q, kbot )
 
-!checksums! write(stdout(),'("CHECKSUM::",A32," = ",Z20)')'dt_q',mpp_chksum(dt_q)
+!checksums! write(outunit,'("CHECKSUM::",A32," = ",Z20)')'dt_q',mpp_chksum(dt_q)
 
  do n = 1,size(dt_tr,4)
     ! skip tracers if diffusion scheme turned off

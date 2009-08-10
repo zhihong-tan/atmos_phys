@@ -46,8 +46,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 14.0 2007/03/15 22:07:30 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 17.0 2009/07/21 02:57:29 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 
@@ -222,7 +222,7 @@ subroutine rh_based_clouds_init
 
 
 !--------------------------------------------------------------------
-     integer                           :: unit, ierr, io
+     integer                           :: unit, ierr, io, logunit
 
 
       if (module_is_initialized) return
@@ -245,8 +245,9 @@ subroutine rh_based_clouds_init
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-           write (stdlog(), nml=rh_based_clouds_nml)
+           write (logunit, nml=rh_based_clouds_nml)
 
 !--------------------------------------------------------------------
 ! define the "blackness" of the cirrus clouds. cirrus clouds are either 

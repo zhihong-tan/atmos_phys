@@ -151,7 +151,6 @@ module strat_cloud_mod
   real, parameter :: d608 = (rvgas-rdgas) / rdgas
   real, parameter :: d622 = rdgas / rvgas
   real, parameter :: d378 = 1. - d622
-  logical         :: do_netcdf_restart = .true.
   !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !
@@ -439,6 +438,7 @@ module strat_cloud_mod
   type(restart_file_type), pointer, save :: Str_restart => NULL()
   type(restart_file_type), pointer, save :: Til_restart => NULL()
   logical                                :: in_different_file = .false.
+  logical                                :: do_netcdf_restart = .true.
 
   character(len=5) :: mod_name = 'strat'
   real :: missing_value = -999.
@@ -451,9 +451,6 @@ module strat_cloud_mod
   !
 
 ! <NAMELIST NAME="strat_cloud_nml">
-!  <DATA NAME="do_netcdf_restart" UNITS="fraction" TYPE="logical" DIM="" DEFAULT="">
-!   netcdf/native restart format
-!  </DATA>
 !  <DATA NAME="U00" UNITS="" TYPE="real" DIM="" DEFAULT="">
 !     Threshold relative humidity for cloud formation by large-scale condensation. (default = 0.80) 
 !  </DATA>
@@ -565,7 +562,7 @@ module strat_cloud_mod
 !  </DATA>
 ! </NAMELIST>
 
-  NAMELIST /strat_cloud_nml/ do_netcdf_restart,   &
+  NAMELIST /strat_cloud_nml/   &
        U00,u00_profile,rthresh,use_kk_auto, var_limit,  &
        use_online_aerosol,sea_salt_scale,om_to_oc,N_land, &
        use_sub_seasalt,&
@@ -585,8 +582,8 @@ module strat_cloud_mod
   !       DECLARE VERSION NUMBER OF SCHEME
   !
 
-  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 16.0.6.6 2008/09/22 16:32:16 rab Exp $'
-  Character(len=128) :: Tagname = '$Name: perth_2008_10 $'
+  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 17.0 2009/07/21 02:58:18 fms Exp $'
+  Character(len=128) :: Tagname = '$Name: quebec $'
   logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   integer               :: vers
@@ -733,7 +730,7 @@ CONTAINS
     !
 
     integer                                :: id_restart
-    integer                                :: unit,io,ierr
+    integer                                :: unit,io,ierr, logunit
     integer                                :: vers2
     character(len=4)                       :: chvers
     character(len=5)                       :: chio
@@ -766,7 +763,8 @@ CONTAINS
  !write namelist variables to logfile
  if ( mpp_pe() == mpp_root_pe() ) then
     call write_version_number(Version, Tagname)
-    write (stdlog(),nml=strat_cloud_nml)
+    logunit = stdlog()
+    write (logunit,nml=strat_cloud_nml)
  endif
 
 !-----------------------------------------------------------------------
@@ -6227,6 +6225,7 @@ end subroutine aerosol_effects
 !
 subroutine strat_cloud_end()
 
+  integer                                :: unit
 
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -6234,16 +6233,32 @@ subroutine strat_cloud_end()
 !       This subroutine writes out radturbten to a restart file.
 !        
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-       if(.not.module_is_initialized) then
-          return
-        else
-          module_is_initialized = .false.
-        endif
+
+  if(.not. module_is_initialized) return
+       
+  if( do_netcdf_restart) then
+    call strat_cloud_restart
+
+  else
+    if (mpp_pe() == mpp_root_pe()) then
+       call mpp_error ('strat_cloud_mod', 'Writing native formatted restart file.', NOTE)
+    endif
+    unit = open_restart_file ('RESTART/strat_cloud.res', ACTION='write')
+    if (mpp_pe() == mpp_root_pe()) then
+       write (unit) restart_versions(size(restart_versions(:)))
+    endif
+    call write_data (unit, nsum)
+    call write_data (unit, qlsum)
+    call write_data (unit, qisum)
+    call write_data (unit, cfsum)
+    call close_file (unit)
+  endif
 !
     !-------------------------------------------
     ! end beta distribution module if used
 
-    if (do_pdf_clouds) call beta_dist_end
+  if (do_pdf_clouds) call beta_dist_end
+  module_is_initialized = .false.
 
 end subroutine strat_cloud_end
 
@@ -6262,7 +6277,6 @@ end subroutine strat_cloud_end
 !
 subroutine strat_cloud_restart(timestamp)
   character(len=*), intent(in), optional :: timestamp
-  integer                                :: unit
 
   if( do_netcdf_restart) then
      if (mpp_pe() == mpp_root_pe()) then
@@ -6270,26 +6284,9 @@ subroutine strat_cloud_restart(timestamp)
      endif
      call save_restart(Str_restart, timestamp)
      if(in_different_file) call  save_restart(Til_restart, timestamp)
-
-
-
   else
-     if(present(timestamp)) then
-        call mpp_error ('strat_cloud_mod', 'when do_netcdf_restart is false, '// &
-                        'timestamp should not passed in strat_cloud_restart', FATAL)
-     end if
-     if (mpp_pe() == mpp_root_pe()) then
-        call mpp_error ('strat_cloud_mod', 'Writing native formatted restart file.', NOTE)
-     endif
-     unit = open_restart_file ('RESTART/strat_cloud.res', ACTION='write')
-     if (mpp_pe() == mpp_root_pe()) then
-        write (unit) restart_versions(size(restart_versions(:)))
-     endif
-     call write_data (unit, nsum)
-     call write_data (unit, qlsum)
-     call write_data (unit, qisum)
-     call write_data (unit, cfsum)
-     call close_file (unit)
+    call error_mesg ('strat_cloud_mod', &
+         'Native intermediate restart files are not supported.', FATAL)
   endif
 
 end subroutine strat_cloud_restart

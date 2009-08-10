@@ -64,8 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 16.0.2.1.2.1 2008/09/15 23:13:14 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 17.0 2009/07/21 02:56:08 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -361,7 +361,7 @@ type(time_type),         intent(in)    ::   Time
 !---------------------------------------------------------------------
 !   local variables:
 
-      integer         :: unit, io, ierr
+      integer         :: unit, io, ierr, logunit
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -403,8 +403,9 @@ type(time_type),         intent(in)    ::   Time
 !    write namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() )    &
-                       write (stdlog(), nml=cloudrad_diagnostics_nml)
+                       write (logunit, nml=cloudrad_diagnostics_nml)
  
 !---------------------------------------------------------------------
 !    define module variables to retain the smallest and largest 
@@ -2552,7 +2553,8 @@ real, dimension(:,:,:),         intent(in),  &
 !    total projected cloud fraction. note that this has been previously
 !    calculated as tca2 and output via id_tot_cld_amt.
 !------------------------------------------------------------------
-        used = send_data (id_cldfrac_tot, 0.01*tca2,   &
+        if (id_cldfrac_tot > 0 ) &
+          used = send_data (id_cldfrac_tot, 0.01*tca2,   &
                           Time_diag, is, js)
 
 !--------------------------------------------------------------------
@@ -3115,18 +3117,18 @@ real, dimension(:,:,:),         intent(in),  &
 !    deallocate the components of the microphysics_type derived type
 !    variable.
 !--------------------------------------------------------------------
-        deallocate (Model_microphys%lw_stoch_conc_ice, stat=ier)
-        deallocate (Model_microphys%lw_stoch_conc_drop, stat=ier)
-        deallocate (Model_microphys%lw_stoch_size_ice, stat=ier)
-        deallocate (Model_microphys%lw_stoch_size_drop, stat=ier)
-        deallocate (Model_microphys%lw_stoch_cldamt, stat=ier)  
-        deallocate (Model_microphys%lw_stoch_droplet_number, stat=ier)
-        deallocate (Model_microphys%sw_stoch_conc_ice, stat=ier)
-        deallocate (Model_microphys%sw_stoch_conc_drop, stat=ier)
-        deallocate (Model_microphys%sw_stoch_size_ice, stat=ier)
-        deallocate (Model_microphys%sw_stoch_size_drop, stat=ier)
-        deallocate (Model_microphys%sw_stoch_cldamt, stat=ier)  
-        deallocate (Model_microphys%sw_stoch_droplet_number, stat=ier)
+        nullify (Model_microphys%lw_stoch_conc_ice)
+        nullify (Model_microphys%lw_stoch_conc_drop)
+        nullify (Model_microphys%lw_stoch_size_ice)
+        nullify (Model_microphys%lw_stoch_size_drop)
+        nullify (Model_microphys%lw_stoch_cldamt) 
+        nullify (Model_microphys%lw_stoch_droplet_number)
+        nullify (Model_microphys%sw_stoch_conc_ice)
+        nullify (Model_microphys%sw_stoch_conc_drop)
+        nullify (Model_microphys%sw_stoch_size_ice)
+        nullify (Model_microphys%sw_stoch_size_drop)
+        nullify (Model_microphys%sw_stoch_cldamt)
+        nullify (Model_microphys%sw_stoch_droplet_number)
         deallocate (Model_microphys%stoch_conc_ice)
         deallocate (Model_microphys%stoch_conc_drop)
         deallocate (Model_microphys%stoch_size_ice)

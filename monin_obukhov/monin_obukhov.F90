@@ -57,8 +57,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 15.0 2007/08/14 03:54:07 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 17.0 2009/07/21 02:55:38 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 !=======================================================================
 
@@ -89,7 +89,7 @@ contains
 
 subroutine monin_obukhov_init
 
-integer :: unit, ierr, io
+integer :: unit, ierr, io, logunit
 
 !------------------- read namelist input -------------------------------
 
@@ -106,7 +106,8 @@ integer :: unit, ierr, io
 
       if ( mpp_pe() == mpp_root_pe() ) then
            call write_version_number(version, tagname)
-           write (stdlog(), nml=monin_obukhov_nml)
+           logunit = stdlog()
+           write (logunit, nml=monin_obukhov_nml)
       endif
       
 !----------------------------------------------------------------------

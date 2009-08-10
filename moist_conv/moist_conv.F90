@@ -48,8 +48,8 @@ public :: moist_conv, moist_conv_Init, moist_conv_end
 !-----------------------------------------------------------------------
 !---- VERSION NUMBER -----
 
- character(len=128) :: version = '$Id: moist_conv.F90,v 14.0.8.1.2.2 2008/09/17 13:46:42 wfc Exp $'
- character(len=128) :: tagname = '$Name: perth_2008_10 $'
+ character(len=128) :: version = '$Id: moist_conv.F90,v 17.0 2009/07/21 02:55:30 fms Exp $'
+ character(len=128) :: tagname = '$Name: quebec $'
  logical            :: module_is_initialized = .false.
 
 !---------- initialize constants used by this module -------------------
@@ -805,7 +805,7 @@ subroutine moist_conv_init (axes, Time, tracers_in_mca)
 
 !-----------------------------------------------------------------------
       
- integer :: unit, io, ierr
+ integer :: unit, io, ierr, logunit
  integer :: nn, tr
  character(len=128) :: diagname, diaglname, tendunits, name, units
 
@@ -825,7 +825,8 @@ subroutine moist_conv_init (axes, Time, tracers_in_mca)
 
       if ( mpp_pe() == mpp_root_pe() ) then
            call write_version_number (version, tagname)
-           write (stdlog(),nml=moist_conv_nml)
+           logunit = stdlog()
+           write (logunit,nml=moist_conv_nml)
       endif
 
    id_tdt_conv = register_diag_field ( mod_name, &

@@ -23,8 +23,8 @@ implicit none
 
 private
 
-character(len=128) :: version = '$Id: topo_drag.F90,v 16.0.2.1 2008/09/03 18:40:39 z1l Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: topo_drag.F90,v 17.0 2009/07/21 02:58:23 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 logical :: module_is_initialized = .false.
 
@@ -558,12 +558,12 @@ subroutine topo_drag_init (lonb, latb)
 
 real, intent(in), dimension(:,:) :: lonb, latb
 
-character*128 :: msg
-character*16  :: name
-character*64  :: restart_file='topo_drag.res.nc'
-character*64  :: topography_file='INPUT/postopog_2min_hp150km.nc'
-character*64  :: dragtensor_file='INPUT/dragelements_2min_hp150km.nc'
-character*3   :: tensornames(4) = (/ 't11', 't21', 't12', 't22' /)
+character(len=128) :: msg
+character(len=16)  :: name
+character(len=64)  :: restart_file='topo_drag.res.nc'
+character(len=64)  :: topography_file='INPUT/postopog_2min_hp150km.nc'
+character(len=64)  :: dragtensor_file='INPUT/dragelements_2min_hp150km.nc'
+character(len=3)   :: tensornames(4) = (/ 't11', 't21', 't12', 't22' /)
 
 real, parameter :: bfscale=1.0e-2      ! buoyancy frequency scale [1/s]
 
@@ -573,7 +573,7 @@ type (horiz_interp_type) :: Interp
 real :: exponent
 
 integer :: unit, ndim, nvar, natt, nt, namelen, n
-integer :: io, ierr, unit_nml
+integer :: io, ierr, unit_nml, logunit
 integer :: i, j
 integer :: siz(4)
 integer :: id_restart
@@ -598,8 +598,9 @@ integer :: id_restart
 ! write version number and namelist to logfile
 
   call write_version_number (version, tagname)
+  logunit = stdlog()
   if (mpp_pe() == mpp_root_pe())                                       &
-                                    write (stdlog(), nml=topo_drag_nml)
+                                    write (logunit, nml=topo_drag_nml)
 
   allocate (t11(nlon,nlat))
   allocate (t21(nlon,nlat))
@@ -727,6 +728,8 @@ character(len=64) :: restart_file='RESTART/topo_drag.res.nc'
   if (mpp_pe() == mpp_root_pe() ) then
      call error_mesg('topo_drag_mod', 'Writing netCDF formatted restart file: RESTART/topo_drag.res.nc', NOTE)
   endif
+
+  call topo_drag_restart
 
   module_is_initialized = .false.
 

@@ -49,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 14.0 2007/03/15 22:06:40 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 17.0 2009/07/21 02:56:56 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 
@@ -201,7 +201,7 @@ real, dimension(:), intent(in)             ::  latb
 real, dimension(:,:), intent(in)             :: pref          
 !--------------------------------------------------------------------
 
-      integer            :: unit, ierr, io
+      integer            :: unit, ierr, io, logunit
       integer            :: j, k,                 li
       integer            :: jdf
       integer, dimension ( LATOBS, NOFCLDS_SP)  :: kkbh, kkth
@@ -228,8 +228,9 @@ real, dimension(:,:), intent(in)             :: pref
       endif
 
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() )   &
-         write (stdlog (), nml = mgrp_prscr_clds_nml)
+         write (logunit, nml = mgrp_prscr_clds_nml)
 
 !--------------------------------------------------------------------
 !  retrieve module variables that come from other modules

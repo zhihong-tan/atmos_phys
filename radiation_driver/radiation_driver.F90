@@ -191,6 +191,7 @@ use cloudrad_package_mod,  only: cloudrad_package_init, &
                                  cldrad_props_dealloc, &
                                  cloudrad_package_end
 use aerosolrad_package_mod, only: aerosolrad_package_init,    &
+                                  aerosolrad_package_alloc, &
                                   aerosol_radiative_properties, &
                                   aerosolrad_package_end
 use field_manager_mod,     only: MODEL_ATMOS
@@ -214,8 +215,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 16.0.4.1.2.2 2008/09/22 19:38:46 wfc Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 17.0 2009/07/21 02:55:50 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -392,7 +393,6 @@ logical :: thermo_tropo   = .false.   !  generate tropopause fluxes when
 logical :: time_varying_solar_constant = .false. 
                                       !  solar_constant is to vary with
                                       !  time ?
-logical :: do_netcdf_restart = .true. !  netcdf/native restart
 logical :: use_uniform_solar_input = .false.
                                       !  the (lat,lon) values used to
                                       !  calculate zenith angle are
@@ -418,9 +418,6 @@ integer, dimension(6) :: solar_dataset_entry = (/ 1, 1, 1, 0, 0, 0 /)
                                       ! onding to model initial time
                                       ! (yr, mo, dy, hr, mn, sc)
 ! <NAMELIST NAME="radiation_driver_nml">
-!  <DATA NAME="do_netcdf_restart" UNITS="" TYPE="logical" DIM="" DEFAULT=".TRUE.">
-! netcdf/native restart file format
-!  </DATA>
 !  <DATA NAME="rad_time_step" UNITS="" TYPE="integer" DIM="" DEFAULT="14400">
 !The radiative time step in seconds.
 !  </DATA>
@@ -599,8 +596,7 @@ integer, dimension(6) :: solar_dataset_entry = (/ 1, 1, 1, 0, 0, 0 /)
 !  </DATA>
 ! </NAMELIST>
 !
-namelist /radiation_driver_nml/ do_netcdf_restart, &
-                                rad_time_step, do_clear_sky_pass, &
+namelist /radiation_driver_nml/ rad_time_step, do_clear_sky_pass, &
                                 sw_rad_time_step,  &
                                 use_single_lw_sw_ts, &
                                 use_hires_coszen, &
@@ -639,6 +635,7 @@ namelist /radiation_driver_nml/ do_netcdf_restart, &
 !-- for netcdf restart
 type(restart_file_type), pointer, save :: Rad_restart => NULL()
 type(restart_file_type), pointer, save :: Til_restart => NULL()
+logical :: do_netcdf_restart = .true. !  netcdf/native restart
 logical                                :: in_different_file = .false.
 integer                                :: int_renormalize_sw_fluxes
 integer                                :: int_do_clear_sky_pass
@@ -1079,7 +1076,7 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 !---------------------------------------------------------------------
 !   local variables
 
-      integer           ::   unit, io, ierr
+      integer           ::   unit, io, ierr, logunit
       integer           ::   kmax 
       integer           ::   nyr, nv, nband
       integer           ::   yr, month, year, dum
@@ -1150,8 +1147,9 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-           write (stdlog(), nml=radiation_driver_nml)
+           write (logunit, nml=radiation_driver_nml)
 
 !---------------------------------------------------------------------
 !    set logical variable defining the radiation scheme desired from the
@@ -1759,7 +1757,7 @@ character(len=*), dimension(:), intent(in)   :: aerosol_family_names
 
 !----------------------------------------------------------------------
 !    Register fields to be written out to restart file.
-     if(do_netcdf_restart) call radiation_driver_register_restart('radiation_driver.res.nc')
+     if(do_netcdf_restart) call rad_driver_register_restart('radiation_driver.res.nc')
 
 !-----------------------------------------------------------------------
 !    if a valid restart file exists, call read_restart_file to read it.
@@ -2234,6 +2232,8 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
 !     print *, 'before aerosol  ', mpp_pe()
       if (do_rad) then
         if (Rad_control%do_aerosol) then
+          call aerosolrad_package_alloc (ie-is+1, je-js+1,  &
+                              size(Aerosol%aerosol,3), Aerosol_props)
           call aerosol_radiative_properties (is, ie, js, je, &
                                              Rad_time,   &
                                              Atmos_input%pflux, &
@@ -3804,6 +3804,13 @@ subroutine radiation_driver_end
           call error_mesg ('radiation_driver_mod',  &
                'module has not been initialized', FATAL)
 
+! Make sure that the restart_versions variable is up to date.
+      vers = restart_versions(size(restart_versions(:)))
+      if ( do_netcdf_restart ) then
+        call radiation_driver_restart
+      else
+        call write_restart_file
+      endif
 !---------------------------------------------------------------------
 !    wrap up modules initialized by this module.
 !---------------------------------------------------------------------
@@ -3943,10 +3950,11 @@ subroutine radiation_driver_restart(timestamp)
 ! Make sure that the restart_versions variable is up to date.
   vers = restart_versions(size(restart_versions(:)))
   if ( do_netcdf_restart ) then
-     call write_restart_nc(timestamp)
+    call write_restart_nc(timestamp)
   else
-     call write_restart_file
-  endif
+    call error_mesg ('radiation_driver_restart', &
+         'Native intermediate restart files are not supported.', FATAL)
+  endif  
 
 end subroutine radiation_driver_restart
 ! </SUBROUTINE> NAME="radiation_driver_restart"
@@ -4134,7 +4142,7 @@ subroutine read_restart_file
                                cldfree_present
       character(len=4)      :: chvers
       logical               :: avg_gases, avg_clouds
-      integer, dimension(5) :: null
+      integer, dimension(5) :: dummy
       integer               :: kmax
       integer               :: new_rad_time, lw_old_time_step, &
                                sw_old_time_step, old_time_step
@@ -4159,7 +4167,7 @@ subroutine read_restart_file
 !                         gases is present in restart file
 !       avg_clouds        if true, then time-average data for clouds is
 !                         present in restart file
-!       null              dummy array used as location to read older
+!       dummy             dummy array used as location to read older
 !                         restart version data into           
 !       kmax              number of model layers
 !       new_rad_time      time remaining until next radiation calcul-
@@ -4218,8 +4226,8 @@ subroutine read_restart_file
 !    that was present when the restart was written.
 !-----------------------------------------------------------------------
       if (vers == 1) then
-        read (unit) null 
-        old_time_step = SECONDS_PER_DAY*null(4) + null(3)
+        read (unit) dummy 
+        old_time_step = SECONDS_PER_DAY*dummy(4) + dummy(3)
         rad_alarm = 1        
         if (mpp_pe() == mpp_root_pe() ) then
         call error_mesg ('radiation_driver_mod', &
@@ -4576,7 +4584,7 @@ subroutine read_restart_file
 end subroutine read_restart_file
 
 !#####################################################################
-subroutine radiation_driver_register_restart(fname)
+subroutine rad_driver_register_restart(fname)
   character(len=*), intent(in) :: fname
   character(len=64)            :: fname2
   integer                      :: id_restart
@@ -4650,7 +4658,7 @@ subroutine radiation_driver_register_restart(fname)
      endif
   endif
 
-end subroutine radiation_driver_register_restart
+end subroutine rad_driver_register_restart
 
 
 !#####################################################################
@@ -8093,6 +8101,22 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
           deallocate (Aerosol_props%lw_asy)
         endif
         deallocate (Aerosol_props%ivol)
+        deallocate (Aerosol_props%aerextband)
+        deallocate (Aerosol_props%aerssalbband)
+        deallocate (Aerosol_props%aerasymmband)
+        deallocate (Aerosol_props%aerextbandlw)
+        deallocate (Aerosol_props%aerssalbbandlw)
+        deallocate (Aerosol_props%aerextbandlw_cn)
+        deallocate (Aerosol_props%aerssalbbandlw_cn)
+        deallocate (Aerosol_props%sulfate_index)
+        deallocate (Aerosol_props%optical_index)
+        deallocate (Aerosol_props%omphilic_index)
+        deallocate (Aerosol_props%bcphilic_index)
+        deallocate (Aerosol_props%seasalt1_index)
+        deallocate (Aerosol_props%seasalt2_index)
+        deallocate (Aerosol_props%seasalt3_index)
+        deallocate (Aerosol_props%seasalt4_index)
+        deallocate (Aerosol_props%seasalt5_index)
       endif
 
 !--------------------------------------------------------------------

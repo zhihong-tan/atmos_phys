@@ -1,28 +1,27 @@
  
 !VERSION NUMBER:
-!  $Id: wet_deposition_0D.F90,v 15.0 2007/08/14 03:53:33 fms Exp $
+!  $Id: wet_deposition_0D.F90,v 17.0 2009/07/21 02:54:54 fms Exp $
 
 !<SUBROUTINE NAME = "wet_deposition_0D">
 !<TEMPLATE>
-!CALL wet_deposition_0D( scheme, Henry_constant, Henry_variable, &
+!CALL wet_deposition_0D( Henry_constant, Henry_variable, &
 !                        frac_in_cloud, alpha_r, alpha_s, &
 !                        T, p0, p1, rho_air, &
 !                        cloud, precip, &
-!                        tracer, delta_tracer )
+!                        tracer, Lgas, Laerosol, Lice, &
+!                        delta_tracer )
 !</TEMPLATE>
-subroutine wet_deposition_0D( scheme, Henry_constant, Henry_variable, &
+subroutine wet_deposition_0D( Henry_constant, Henry_variable, &
                               frac_in_cloud, alpha_r, alpha_s, &
                               T, p0, p1, rho_air, &
-                              cloud, precip, &
-                              tracer, delta_tracer )
+                              cloud, rain, snow, &
+                              tracer, Lgas, Laerosol, Lice, &
+                              delta_tracer )
 !      
 !<OVERVIEW>
 ! Routine to calculate the fraction of tracer removed by wet deposition
 !</OVERVIEW>
 !
-!<IN NAME="n" TYPE="integer">
-!   Tracer number
-!</IN>
 !<IN NAME="T" TYPE="real">
 !   Temperature (K)
 !</IN>
@@ -38,11 +37,23 @@ subroutine wet_deposition_0D( scheme, Henry_constant, Henry_variable, &
 !<IN NAME="cloud" TYPE="real">
 !   Cloud amount (liquid+ice) (kg/kg)
 !</IN>
-!<IN NAME="precip" TYPE="real">
-!   Precipitation increment (rain+snow) (kg/m3)
+!<IN NAME="rain" TYPE="real">
+!   Precipitation increment (rain) (kg/m3)
+!</IN>
+!<IN NAME="snow" TYPE="real">
+!   Precipitation increment (snow) (kg/m3)
 !</IN>
 !<IN NAME="tracer" TYPE="real">
 !   The tracer field (tracer units)
+!</IN>
+!<IN NAME="Lgas" TYPE="logical">
+!   Is tracer a gas?
+!</IN>
+!<IN NAME="Laerosol" TYPE="logical">
+!   Is tracer an aerosol?
+!</IN>
+!<IN NAME="Lice" TYPE="logical">
+!   Is tracer removed by snow (or only by rain)?
 !</IN>
 !<OUT NAME="delta_tracer" TYPE="real">
 !   The change (increment) of the tracer field due to wet deposition (tracer units)
@@ -76,19 +87,19 @@ subroutine wet_deposition_0D( scheme, Henry_constant, Henry_variable, &
 !-----------------------------------------------------------------------
 !     ... dummy arguments
 !-----------------------------------------------------------------------
-character(len=200), intent(in)                   :: scheme
 real,             intent(in)                     :: Henry_constant, Henry_variable, &
                                                     frac_in_cloud, alpha_r, alpha_s
 real,             intent(in)                     :: T, p0, p1, rho_air
-real,             intent(in)                     :: cloud, precip
+real,             intent(in)                     :: cloud, rain, snow
 real,             intent(in)                     :: tracer
+logical,          intent(in)                     :: Lgas, Laerosol, Lice
 real,             intent(out)                    :: delta_tracer
 
 !-----------------------------------------------------------------------
 !     ... local variables
 !-----------------------------------------------------------------------
 real :: &
-      Htemp, xliq, n_air, pwt, pmid
+      Htemp, xliq, n_air, pwt, pmid, precip
 real :: &
       temp_factor, scav_factor, &
       w_h2o, beta, f_a, in_temp
@@ -102,23 +113,15 @@ real, parameter :: mw_air = 28.96440E-03 ! molar mass of air (kg/mole)
 real, parameter :: mw_h2o = 18.0E-03  ! molar mass of H2O (kg/mole)
 
 logical :: &
-      used, flag, &
-      Lgas, Laerosol
+      used, flag
 
 !-----------------------------------------------------------------------
 
 delta_tracer = 0.
 
-flag = scheme /= 'none'
-if(.not. flag) return
-
 pmid = 0.5 * (p0+p1)         ! Pa
-!rho_air = pmid / ( T*RDGAS ) ! kg/m3
 pwt     = ( p0 - p1 )/GRAV   ! kg/m2
-! zdel = z1 - z0               ! m
 
-Lgas = scheme=='henry' .or. scheme=='henry_below'
-Laerosol = scheme=='aerosol' .or. scheme=='aerosol_below'
 if( Lgas .or. Laerosol ) then
 !++lwh
 ! units = VMR
@@ -173,12 +176,16 @@ if( Lgas .or. Laerosol ) then
 !
 ! where W_H2O = precip (kg/m3) * (AVOGNO/mw_h2o) (molec/kg) * 1E-6 m3/cm3
 !
-   if( (Lgas .and. Henry_constant > 0) .or. Laerosol ) then
+   if( (Lgas .and. Henry_constant > 0.) .or. Laerosol ) then
+      if (Lice) then
+         precip = rain+snow
+      else
+         precip = rain
+      end if
       in_temp = 0.
 
       scav_factor = 0.0
       xliq = MAX( cloud * mw_air, 0. ) ! (kg H2O)/(mole air)
-!     n_air = pmid / (kboltz*T) * cm3_2_m3 ! molec/cm3
       n_air = rho_air * (AVOGNO/mw_air) * cm3_2_m3 ! molec/cm3
       if (Lgas) then
 ! Calculate the temperature dependent Henry's Law constant

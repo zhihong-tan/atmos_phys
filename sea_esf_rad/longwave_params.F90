@@ -38,8 +38,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_params.F90,v 14.0 2007/03/15 22:06:24 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: longwave_params.F90,v 17.0 2009/07/21 02:56:47 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !--------------------------------------------------------------------
@@ -124,7 +124,7 @@ subroutine longwave_params_init
 !------------------------------------------------------------------
 !  local variables:
 
-      integer    ::  unit, ierr, io
+      integer    ::  unit, ierr, io, logunit
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -162,11 +162,12 @@ subroutine longwave_params_init
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
-      if (mpp_pe() == mpp_root_pe() ) &
-                          write (stdlog(), nml=longwave_params_nml)
-      if (mpp_pe() == mpp_root_pe() ) &
-           write (stdlog(),9000) NBCO215, NBLY_RSB, NBLY_CKD,   &
-                                 NBLW, NBLX 
+      logunit = stdlog()
+      if (mpp_pe() == mpp_root_pe() ) then
+        write (logunit, nml=longwave_params_nml)
+        write (logunit,9000) NBCO215, NBLY_RSB, NBLY_CKD,   &
+                              NBLW, NBLX 
+      endif
 
 !----------------------------------------------------------------------
 !    mark the module as initialized.

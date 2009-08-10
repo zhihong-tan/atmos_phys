@@ -42,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: gas_tf.F90,v 14.0 2007/03/15 22:05:54 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: gas_tf.F90,v 17.0 2009/07/21 02:56:29 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -389,7 +389,7 @@ real, dimension(:,:), intent(in) :: pref
       real     ::  prkminh2o = 28.0
       integer  ::  kmin, kmax
       integer  ::  ks = 1
-      integer  ::  unit, ierr, io
+      integer  ::  unit, ierr, io, logunit
       integer  ::  k
 
 !--------------------------------------------------------------------
@@ -439,8 +439,9 @@ real, dimension(:,:), intent(in) :: pref
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                       write (stdlog(), nml=gas_tf_nml)
+                       write (logunit, nml=gas_tf_nml)
 
 !---------------------------------------------------------------------
 !

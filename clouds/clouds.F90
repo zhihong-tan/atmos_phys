@@ -31,8 +31,8 @@ public   clouds, clouds_init, clouds_end
 
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: clouds.F90,v 15.0 2007/08/14 03:52:51 fms Exp $'
- character(len=128) :: tagname = '$Name: perth_2008_10 $'
+ character(len=128) :: version = '$Id: clouds.F90,v 17.0 2009/07/21 02:53:56 fms Exp $'
+ character(len=128) :: tagname = '$Name: quebec $'
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !   note:  the fels-schwarzkopf radiation code permits bi-spectral
@@ -701,7 +701,7 @@ end subroutine compute_isccp_clds
         integer, intent(in), dimension(4) :: axes
 type(time_type), intent(in)               :: Time
 !-----------------------------------------------------------------------
-      integer  unit,io,ierr
+      integer  unit,io,ierr, logunit
 
 !-------------- read namelist --------------
 
@@ -718,7 +718,8 @@ type(time_type), intent(in)               :: Time
 
       if ( mpp_pe() == mpp_root_pe() ) then
            call write_version_number(version, tagname)
-           write (stdlog(), nml=clouds_nml)
+           logunit = stdlog()
+           write (logunit, nml=clouds_nml)
       endif
 
 

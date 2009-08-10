@@ -41,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 16.0 2008/07/30 22:08:14 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 17.0 2009/07/21 02:56:32 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -264,7 +264,7 @@ type(time_type),         intent(in)              :: Time
 !---------------------------------------------------------------------
 !   local variables:
 
-      integer         :: unit, io, ierr
+      integer         :: unit, io, ierr, logunit
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -304,8 +304,9 @@ type(time_type),         intent(in)              :: Time
 !    write namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() )    &
-                       write (stdlog(), nml=isccp_clouds_nml)
+                       write (logunit, nml=isccp_clouds_nml)
  
 
 !-------------------------------------------------------------------
@@ -2335,7 +2336,7 @@ end function ran0
   subroutine ran0_vec(idum, ran0)
     integer, dimension(:), intent(inout) :: idum
     real,    dimension(:), intent(  out) :: ran0
-!     $Id: isccp_clouds.F90,v 16.0 2008/07/30 22:08:14 fms Exp $
+!     $Id: isccp_clouds.F90,v 17.0 2009/07/21 02:56:32 fms Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

@@ -73,8 +73,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: aerosol.F90,v 15.0 2007/08/14 03:54:23 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: aerosol.F90,v 17.0 2009/07/21 02:55:59 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 
 !-----------------------------------------------------------------------
@@ -307,7 +307,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
       character(len=80)       ::tr_rad_name, tr_clim_name
       character(len=80)       :: name,control
       real                    ::tr_rad_scale_factor
-      integer   ::   unit, ierr, io       
+      integer   ::   unit, ierr, io, logunit
       integer   ::   ntrace
       integer   ::   n
 
@@ -355,8 +355,9 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                        write (stdlog(), nml=aerosol_nml)
+                        write (logunit, nml=aerosol_nml)
 
 !---------------------------------------------------------------------
 !    case of single input aerosol field. when running standalone code
@@ -528,7 +529,7 @@ if_timeseries: &
             if (using_fixed_year_data(n)) then
               call error_mesg ('aerosol_mod', &
                  'This annual cycle will be used every model year &
-               &-- no interannual variation for '  &
+               & -- no interannual variation for '  &
                                      // trim(aerosol_names(n)), NOTE)
             else
               call error_mesg ('aerosol_mod', &
@@ -1312,7 +1313,7 @@ subroutine obtain_input_file_data
       integer   :: iounit    ! unit to read file on
       integer   :: kmax_file ! number of levels of data in file
       integer   :: k         ! do-loop index
-      character*31, dimension(200) :: dimnam
+      character(len=31), dimension(200) :: dimnam
       integer(kind=4), dimension(200) :: dimsiz
       integer(kind=4)                 :: ncid, rcode, nvars, ndims, &
                                          ngatts, recdim
@@ -1321,7 +1322,7 @@ subroutine obtain_input_file_data
       integer(kind=4), dimension(MAXDIMS) :: start, count, vdims
       integer(kind=4)                     :: ivarid, ntp, nvdim, nvs, &
                                              ndsize
-      character*31   dummy
+      character(len=31)   dummy
       
 
 

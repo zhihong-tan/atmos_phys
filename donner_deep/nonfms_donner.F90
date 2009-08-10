@@ -28,8 +28,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: nonfms_donner.F90,v 16.0.4.1.2.1.2.1.2.1 2008/09/17 13:43:48 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: nonfms_donner.F90,v 17.0 2009/07/21 02:54:49 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !--------------------------------------------------------------------
@@ -38,11 +38,11 @@ character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
 public   &
         nonfms_donner_process_nml,  nonfms_donner_process_tracers, &
         nonfms_donner_process_monitors, &
-        nonfms_donner_activate_diagnostics, nonfms_donner_read_restart,&
+        nonfms_donner_activate_diag, nonfms_donner_read_restart,&
         nonfms_donner_col_diag, nonfms_donner_write_restart, &
         nonfms_donner_column_control, nonfms_donner_deep_netcdf,    &
         nonfms_sat_vapor_pres, nonfms_get_pe_number, nonfms_error_mesg,&
-        nonfms_close_column_diagnostics_units, &
+        nonfms_close_col_diag_units, &
         nonfms_deallocate_variables, nonfms_constants
 
 private   &
@@ -115,7 +115,7 @@ integer,               intent(in)       :: kpar
 !-------------------------------------------------------------------
 !  local variables:
 
-      real, dimension(:), allocatable :: erat, arat
+     real, dimension(:), allocatable :: erat_loc, arat_loc
   
 !-------------------------------------------------------------------
 !  local variables:
@@ -131,52 +131,78 @@ integer,               intent(in)       :: kpar
 
 !--------------------------------------------------------------------
 !    here non-default values are reset (as desired) within the Fortran 
-!    source.
+!    source. note that changes to arat / erat are handled at the end of
+!    this subroutine.
 !--------------------------------------------------------------------
-      do_freezing_for_cape = .true.
-      do_freezing_for_closure = .true.
-      do_hires_cape_for_closure = .false.
-      do_donner_cape    = .false.
-      do_donner_plume   = .false.
-      do_donner_closure = .false.
+!  THESE SETTINGS MAY BE USED FOR DONNER_LITE:
+!    SETTINGS USED IN DATABASE EXPT C48L24_AM3p5-gamma-B6:
+       parcel_launch_level = 2
+       model_levels_in_sfcbl = 0
+       donner_deep_freq = 1800
+       allow_mesoscale_circulation = .true.
+       do_donner_cape    = .false.
+       do_donner_plume   = .false.
+       do_donner_closure = .false.
+       do_donner_lscloud = .true.
+       do_dcape          = .false.
+       do_lands          = .false.
+       do_freezing_for_cape = .true.
+       do_freezing_for_closure = .true.
+       gama              = 0.0
+       tau               = 28800.
+       tke0              = 0.5
+       cape0             = 1000.
+       lochoice          = 10
+       do_capetau_land   = .false.
+       use_llift_criteria= .false.
+       do_ice            = .true.
+       atopevap  = 0.1
+       auto_rate = 1.e-3
+       auto_th   = 0.5e-3
+       frac      = 1.65
+       ttend_max = 0.005
 
-      do_lands          = .true.
-      cape0             = 1500.
-      do_capetau_land   = .true.
-      tke0              = 0.5
-      lochoice          = 2
-      gama              = 0.000
-      do_ice            = .true.
-      atopevap          = 0.1
-      frac      = 1.65
-      ttend_max = 0.005
-      mesofactor = 5.
-      EVAP_IN_DOWNDRAFTS  = 0.
-      EVAP_IN_ENVIRON     = 0.
-      ENTRAINED_INTO_MESO = 1.00
-      ANVIL_PRECIP_EFFICIENCY = 0.8
-      MESO_DOWN_EVAP_FRACTION = 0.1
-   
-      allocate (arat(kpar))
-      allocate (erat                         (kpar)) 
-     
-      arat(1) = 1.0
-      arat(2) = 0.26
-      arat(3) = 0.35
-      arat(4) = 0.32
-      arat(5) = 0.3
-      arat(6) = 0.54
-      arat(7) = 0.3
-      erat(1) = 1.0
-      erat(2) = 1.30
-      erat(3) = 1.80
-      erat(4) =  2.50
-      erat(5) = 3.3 
-      erat(6) =  4.50
-      erat(7) =  6.5 
+       EVAP_IN_DOWNDRAFTS  = 0.00
+       EVAP_IN_ENVIRON     = 0.00
+       ENTRAINED_INTO_MESO = 1.00
 
-      wmin_ratio = 0.05 
-      force_internal_enthalpy_conservation = .true.
+       ANVIL_PRECIP_EFFICIENCY = 0.85
+       MESO_DOWN_EVAP_FRACTION = 0.1
+       MESO_UP_EVAP_FRACTION   = 0.05
+
+       wmin_ratio      = 0.05
+       arat(1:7) =  (/ 1.0, 0.26, 0.35, 0.32, 0.3, 0.54, 0.66 /)
+       erat(1:7) =  (/ 1.0, 1.30, 1.80, 2.50, 3.3, 4.50, 10.0 /)
+       frc_internal_enthalpy_conserv = .true.
+       limit_pztm_to_tropo = .true.
+ 
+!  THESE SETTINGS MAY BE USED FOR DONNER_FULL:
+!      parcel_launch_level = 2
+!      donner_deep_freq = 1800
+!      allow_mesoscale_circulation = .true.
+!      do_donner_cape    = .true.
+!      do_donner_plume   = .true.
+!      do_donner_closure = .true.
+!      do_donner_lscloud = .true.
+!      do_dcape          = .true.
+!      do_freezing_for_cape = .false.
+!      do_freezing_for_closure = .false.
+!      gama              = 0.0
+!      lochoice          = 10
+!      use_llift_criteria= .true.
+!      EVAP_IN_DOWNDRAFTS  = 0.25
+!      EVAP_IN_ENVIRON     = 0.13
+!      ENTRAINED_INTO_MESO = 0.62
+
+!      ANVIL_PRECIP_EFFICIENCY = 0.5
+!      MESO_DOWN_EVAP_FRACTION = 0.4
+!      MESO_UP_EVAP_FRACTION   = 0.1 
+
+!      wmin_ratio      = 0.05
+!      arat(1:7) =  (/ 1.0, 0.26, 0.35, 0.32, 0.3, 0.54, 0.3 /)
+!      erat(1:7) =  (/ 1.0, 1.30, 1.80, 2.50, 3.3, 4.50, 6.5 /)
+!      frc_internal_enthalpy_conserv = .true.
+!      limit_pztm_to_tropo = .true.
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
@@ -236,9 +262,15 @@ integer,               intent(in)       :: kpar
       Nml%dfre_for_closure            = dfre_for_closure
       Nml%rmuz_for_closure            = rmuz_for_closure
       Nml%do_budget_analysis          = do_budget_analysis
-      Nml%force_internal_enthalpy_conservation =  &
-                                 force_internal_enthalpy_conservation
+      Nml%frc_internal_enthalpy_conserv =  &
+                                 frc_internal_enthalpy_conserv
       Nml%do_ensemble_diagnostics     = do_ensemble_diagnostics
+      Nml%limit_pztm_to_tropo = limit_pztm_to_tropo
+      Nml%entrainment_scheme_for_closure =   &
+                                        entrainment_scheme_for_closure
+      Nml%modify_closure_plume_condensate =   &
+                                       modify_closure_plume_condensate
+      Nml%closure_plume_condensate = closure_plume_condensate
 
       Nml%evap_in_downdrafts = evap_in_downdrafts
       Nml%evap_in_environ  = evap_in_environ
@@ -248,12 +280,34 @@ integer,               intent(in)       :: kpar
       Nml%meso_up_evap_fraction = meso_up_evap_fraction
       Nml%cdeep_cv = cdeep_cv
 
+!---------------------------------------------------------------------
+!  if mods are desired for arat / erat when these values are being
+!  specified (option = 0), make them to arat_loc / erat_loc. these
+!  will be transferred to arat / erat later. if arat / erat come from
+!  optional formulae, they will be calculated here used nml-supplied
+!  input values.
+!---------------------------------------------------------------------
+      allocate (arat_loc(kpar))
+      allocate (erat_loc(kpar))
+ 
+      if (arat_erat_option == 0) then
+        arat_loc = arat
+        erat_loc = erat
+      else
+        call define_arat_erat (arat_erat_option, kpar, eratb, erat0, &
+                               erat_min, erat_max,erat_loc,arat_loc)
+        print *,'donner_deep_nml: redefined arat and erat using &
+                          &arat_erat_option == ', arat_erat_option
+        print *,'donner_deep_nml: arat = ',arat_loc
+        print *,'donner_deep_nml: erat = ',erat_loc
+      endif
       allocate (Nml%arat(kpar))
       allocate (Nml%ensemble_entrain_factors_gate(kpar)) 
-      Nml%arat = arat
-      Nml%ensemble_entrain_factors_gate = erat
 
-      deallocate (arat, erat)
+      Nml%arat = arat_loc
+      Nml%ensemble_entrain_factors_gate = erat_loc
+
+      deallocate (arat_loc, erat_loc)
 
 end subroutine nonfms_donner_process_nml
 
@@ -286,7 +340,7 @@ end subroutine nonfms_donner_process_monitors
 
 !#####################################################################
 
-subroutine nonfms_donner_activate_diagnostics (secs, days, axes, &
+subroutine nonfms_donner_activate_diag (secs, days, axes, &
                      Don_save, Nml, n_water_budget, n_enthalpy_budget, &
                    n_precip_paths, n_precip_types, nlev_hires, kpar)
 
@@ -310,7 +364,7 @@ type(donner_nml_type), intent(inout) :: Nml
 !     call register_fields (secs, days, axes, Don_save, Nml)
 
 
-end subroutine nonfms_donner_activate_diagnostics 
+end subroutine nonfms_donner_activate_diag 
 
 
 !#####################################################################
@@ -433,11 +487,11 @@ end subroutine nonfms_error_mesg
 
 !#####################################################################
 
-subroutine nonfms_close_column_diagnostics_units 
+subroutine nonfms_close_col_diag_units 
 
       return
 
-end subroutine nonfms_close_column_diagnostics_units 
+end subroutine nonfms_close_col_diag_units 
 
 
 
@@ -471,13 +525,16 @@ real,    parameter :: RVGAS = 461.50
 integer, parameter :: NSIZE = (TCMAX-TCMIN)*esres + 1
 integer, parameter :: NLIM = NSIZE - 1
 real, parameter :: TFREEZE = 273.16
+logical, parameter :: use_exact_qs_input = .true.
+logical, parameter :: do_simple = .false.
 
       real  :: teps, tmin, dtinv
       character(len=128) :: err_msg
-      logical :: dum = .false.
+!     logical :: dum = .false.
 
       call sat_vapor_pres_init_k (NSIZE, REAL(TCMIN), REAL(TCMAX), &
-                             TFREEZE, HLV, RVGAS, ES0, err_msg, dum, dum, &
+                             TFREEZE, HLV, RVGAS, ES0, err_msg,  &
+                             use_exact_qs_input, do_simple,  &
                              teps, tmin, dtinv)
  
 

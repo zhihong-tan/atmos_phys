@@ -1,5 +1,5 @@
 !VERSION NUMBER:
-!   $Id: donner_lite_k.F90,v 16.0.4.1.2.1.2.1.2.1.4.1 2008/09/15 23:08:34 wfc Exp $
+!   $Id: donner_lite_k.F90,v 17.0 2009/07/21 02:54:34 fms Exp $
 
 !######################################################################
 !######################################################################
@@ -103,8 +103,9 @@ type(uw_params),                           intent(inout) :: Uw_p
 !  additional column diagnostics should be added here
           
             mid_cape_temp (:) = temp(i,j,:)
-            mid_cape_vapor(:) = mixing_ratio(i,j,:)/  &
-                                                (1.+mixing_ratio(i,j,:))
+            mid_cape_vapor(:) = mixing_ratio(i,j,:)
+!            mid_cape_vapor(:) = mixing_ratio(i,j,:)/  &
+!                                                (1.+mixing_ratio(i,j,:))
         
             do k=nlev_lsm - Nml%model_levels_in_sfcbl + 1, nlev_lsm
               mid_cape_temp (k) = lag_cape_temp(i,j,k)
@@ -1056,7 +1057,23 @@ integer,                           intent(out)   :: error
         cpn % mp_choice = 0
         cpn % do_forcedlifting  = .true.
         cpn % wtwmin_ratio = Nml%wmin_ratio*Nml%wmin_ratio
- 
+! Values for cpn for the following variables are not actually used in the donner_lite routine but 
+! they should be initialized in order to pass debug tests where NaNs are trapped.
+        cpn % rad_crit        = 14
+        cpn % deltaqc0        = 0.0005
+        cpn % emfrac_max      = 1
+        cpn % wrel_min        = 1
+        cpn % Nl_land         = 300000000
+        cpn % Nl_ocean        = 100000000
+        cpn % r_thresh        = 1.2e-05
+        cpn % qi_thresh       = 0.0001
+        cpn % peff            = 1
+        cpn % rh0             = 0.8
+        cpn % cfrac           = 0.05
+        cpn % hcevap          = 0.8
+        cpn % weffect         = 0.5
+        cpn % t00             = 295
+
         cp%maxcldfrac =  cpn%rmaxfrac
 
         if (ntr>0) then
@@ -1074,7 +1091,7 @@ integer,                           intent(out)   :: error
         endif
         cbmf  =sd%rho(krel-1)*(Param%cloud_base_radius**2)*wrel
         call cumulus_plume_k     &
-               (cpn, sd, ac, cp, rkm, cbmf, wrel, scaleh, Uw_p)
+               (cpn, sd, ac, cp, rkm, cbmf, wrel, scaleh, Uw_p, error, ermesg)
         call cumulus_tend_k   &
                 (cpn, sd, Uw_p, cp, ct, .true.)
 
@@ -1114,7 +1131,7 @@ integer,                           intent(out)   :: error
                                (Param%cloud_base_radius**2)*86400.
         cell_precip_miz=(ct%rain+ct%snow)/  &
                                (Param%cloud_base_radius**2)*86400.
-        apt_miz        = rcl_miz(cp%ltop-1)/rcl_miz(krel)
+        apt_miz        = rcl_miz(cp%ltop-1)/rcl_miz(krel-1)
 
         if (cu_miz == 0.0 .or. cell_precip_miz == 0.0) then
           exit_flag_c = .true.
@@ -1271,7 +1288,7 @@ integer,                           intent(out)   :: error
 !---------------------------------------------------------------------
         if (lmeso) then
           call don_cm_mesub_miz     &
-               (nlev_lsm, me, diag_unit, debug_ijt, Param, cu_miz,   &
+               (Nml, pfull_c,nlev_lsm, me, diag_unit, debug_ijt, Param, cu_miz,   &
                 ci_liq_cond, ci_ice_cond, pmelt_lsm, &
                 cell_precip_miz, dint_miz, plzb_c, pb, ptma_miz(kou), &
                 temp_c, phalf_c,     ca_liq, ca_ice, ecd, ecd_liq, &
@@ -1383,7 +1400,7 @@ integer,                           intent(out)   :: error
 !    is the cloud area at level k for ensemble member kou, relative to
 !    the cloud area at cloud base (k=1) for ensemble member #1.
 !-----------------------------------------------------------------------
-        wt_factor = Param%arat(kou)*(rcl_miz(k)/rcl_miz(krel))**2
+        wt_factor = Param%arat(kou)*(rcl_miz(k)/rcl_miz(krel-1))**2
         
 !----------------------------------------------------------------------
 !    add this ensemble member's appropriately weighted contribution to
@@ -1404,11 +1421,11 @@ integer,                           intent(out)   :: error
         cuqli_miz(k) = cuqli_miz(k) + wt_factor*  &
                              ((1.0 - cfracice_miz(k))*qlw_miz(k))
         ucemh_miz(k) = ucemh_miz(k) + Param%arat(kou)*flux_miz(k)/ &
-                                                    (rcl_miz(krel)**2)
+                                                    (rcl_miz(krel-1)**2)
         if (k < ncc_kou_miz) then
           if (flux_miz(k+1) < flux_miz(k)) then
             detmfh_miz(k) = detmfh_miz(k) + Param%arat(kou)*   &
-                        ((flux_miz(k)-flux_miz(k+1))/(rcl_miz(krel)**2))
+                        ((flux_miz(k)-flux_miz(k+1))/(rcl_miz(krel-1)**2))
           endif
         endif
         rlsm_miz(k)   = rlsm_miz(k)   - Param%arat(kou)*dpf_miz (k) 
@@ -1429,7 +1446,12 @@ integer,                           intent(out)   :: error
 !    (ensmbl_cld_top_area) to the arrays accumulating the ensemble sums.
 !--------------------------------------------------------------------
       if (lmeso) then
-        local_frz_frac = (frz_frac_non_precip + meso_frz_frac)/meso_frac
+        if (meso_frac /= 0.0) then
+          local_frz_frac = (frz_frac_non_precip + meso_frz_frac)/  &
+                                                              meso_frac
+        else
+          local_frz_frac = 0.0
+        endif
         ensmbl_anvil_cond_liq   = ensmbl_anvil_cond_liq   +   &
                           Param%arat(kou)*ca_liq*(1.-local_frz_frac)
         ensmbl_anvil_cond_liq_frz   = ensmbl_anvil_cond_liq_frz   +   &
@@ -1821,9 +1843,9 @@ integer,                           intent(out)   :: error
 
 subroutine don_d_determine_cloud_area_miz            &
         (me, nlev_model, ntr, dt, nlev_parcel, diag_unit, debug_ijt,  &
-          Param, Nml, tracers, pfull, zfull, phalf, zhalf, &
+          Param, Initialized,Nml, tracers, pfull, zfull, phalf, zhalf, &
           pblht, tkemiz, qstar, cush, cbmf, land, coldT, sd, Uw_p, &
-          ac, max_depletion_rate, dcape, amax, dise_v, disa_v,  &
+          ac, max_depletion_rate, cape, dcape, amax, dise_v, disa_v,  &
           pfull_c, temp_c, mixing_ratio_c, env_t, env_r, parcel_t,  &
           parcel_r, cape_p, exit_flag, amos, a1, ermesg, error)
 
@@ -1833,7 +1855,8 @@ subroutine don_d_determine_cloud_area_miz            &
 !    Don_conv%a1 and Don_conv%amos are output by this routine.
 !---------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type, donner_nml_type 
+use donner_types_mod, only : donner_param_type, donner_nml_type, &
+                             donner_initialized_type
 use conv_utilities_k_mod, only : sounding, adicloud, uw_params !miz
 
 implicit none
@@ -1844,8 +1867,10 @@ integer,                      intent(in)    :: me, nlev_model,nlev_parcel, ntr, 
 real,                         intent(in)    :: dt
 logical,                      intent(in)    :: debug_ijt
 type(donner_param_type),      intent(in)    :: Param
+type(donner_initialized_type),intent(in)    :: Initialized
 type(donner_nml_type),        intent(in)    :: Nml      
-real,                         intent(in)    :: max_depletion_rate, dcape, amax
+real,                         intent(in)    :: max_depletion_rate,  &
+                                               cape, dcape, amax
 real, dimension(nlev_model),    intent(in)    :: dise_v, disa_v, pfull_c, temp_c, mixing_ratio_c 
 real, dimension(nlev_model),  intent(in)    :: pfull, zfull
 real, dimension(nlev_model+1),  intent(in)    :: phalf, zhalf !miz
@@ -1964,15 +1989,23 @@ integer                     :: k
 !--------------------------------------------------------------------
     if (Nml%deep_closure .eq. 0) then
       call cu_clo_cumulus_closure_miz   &
-           (nlev_model, nlev_parcel, ntr, dt, diag_unit, debug_ijt, Param, tracers, &
+           (nlev_model, nlev_parcel, ntr, dt, diag_unit, debug_ijt, &
+            Initialized, Param, tracers, &
             dcape, pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, &
             cush, land, &
             coldT, sd, Uw_p, ac, Nml,        &!miz
             cape_p, qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, &
             rl_v, parcel_r, env_t, parcel_t, a1, ermesg, error)     
+     else if (Nml%deep_closure .eq. 1) then
+       call cu_clo_cjg    &
+            (me, nlev_model, nlev_parcel, ntr, dt, diag_unit, &
+             debug_ijt, Initialized, Param, Nml, amax, cape, dcape, cape_p, env_t, &
+             env_r, qt_v, qr_v, pfull, zfull, phalf, zhalf, tracers, &
+             land, pblht, tkemiz, qstar, coldT, sd, Uw_p, ac, &
+             a1, ermesg, error )
      else
         call  cu_clo_miz   &
-             (nlev_model, ntr, dt, Param, tracers, &
+             (nlev_model, ntr, dt, Initialized, Param, tracers, &
               pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, cush, cbmf, land,  &
               coldT, sd, Uw_p, ac, Nml, env_r, env_t, a1, ermesg, error)
      endif
@@ -2000,7 +2033,7 @@ integer                     :: k
 !    cumulus_closure to be no larger than the cloud base area that 
 !    results in total grid box coverage at some higher level (amax). 
 !--------------------------------------------------------------------
-    if (Nml%deep_closure .eq. 0) then
+    if (Nml%deep_closure .eq. 0 .or. Nml%deep_closure .eq. 1) then
       a1 = MIN (amax, a1)
      else
       a1 = MIN (0.25, a1)
@@ -2106,7 +2139,8 @@ integer                     :: k
 
 
 subroutine cu_clo_cumulus_closure_miz   &
-         (nlev_model, nlev_parcel, ntr, dt, diag_unit, debug_ijt, Param, tracers, &
+         (nlev_model, nlev_parcel, ntr, dt, diag_unit, debug_ijt, &
+          Initialized, Param, tracers, &
           dcape, pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, cush, land,  &
           coldT, sd, Uw_p, ac, Nml, cape_p, &!miz
           qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, rl_v, parcel_r,   &
@@ -2117,7 +2151,8 @@ subroutine cu_clo_cumulus_closure_miz   &
 !    cumulus parameterization. see LJD notes, "Cu Closure D," 6/11/97
 !---------------------------------------------------------------------
  
-use donner_types_mod,     only : donner_param_type, donner_nml_type
+use donner_types_mod,     only : donner_param_type, donner_nml_type, &
+                                 donner_initialized_type
 use conv_utilities_k_mod, only : pack_sd_lsm_k, extend_sd_k,  &
                                  adi_cloud_k, sounding, adicloud, &
                                  uw_params, qt_parcel_k
@@ -2131,6 +2166,7 @@ real,                           intent(in)  :: dt
 integer,                        intent(in)  :: diag_unit
 logical,                        intent(in)  :: debug_ijt
 type(donner_param_type),        intent(in)  :: Param
+type(donner_initialized_type),  intent(in)  :: Initialized
 type(donner_nml_type),          intent(in)  :: Nml
 real,                           intent(in)  :: dcape
 real,                           intent(in)  :: pblht, tkemiz, qstar,  cush, land
@@ -2282,14 +2318,19 @@ integer,                        intent(out) :: error
       if (Nml%do_donner_cape) then
 !  there is an existing parcel profiles; it should be same if these 
 !  conditions all met so it need not be recalculated.
-      if (Nml%do_freezing_for_cape /= Nml%do_freezing_for_closure .or. &
+      if (Nml%do_freezing_for_cape .NEQV. Nml%do_freezing_for_closure .or. &
           Nml%tfre_for_cape /= Nml%tfre_for_closure .or. &
           Nml%dfre_for_cape /= Nml%dfre_for_closure .or. &
+          .not. (Initialized%use_constant_rmuz_for_closure) .or.  &
           Nml%rmuz_for_cape /= Nml%rmuz_for_closure) then
            call don_c_displace_parcel_k   &
                (nlev_parcel, diag_unit, debug_ijt, Param,  &
                 Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
-                Nml%dfre_for_closure, Nml%rmuz_for_closure, env_t,  &
+                Nml%dfre_for_closure, Nml%rmuz_for_closure,  &
+                Initialized%use_constant_rmuz_for_closure,  &
+                Nml%modify_closure_plume_condensate, &
+                Nml%closure_plume_condensate, &
+                env_t,  &
                 env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
                 dumxcape, parcel_r_clo,  parcel_t_clo, ermesg, error)
      else
@@ -2304,7 +2345,11 @@ integer,                        intent(out) :: error
           call don_c_displace_parcel_k   &
                 (nlev_parcel, diag_unit, debug_ijt, Param,  &
                  Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
-                 Nml%dfre_for_closure, Nml%rmuz_for_closure, env_t,  &
+                 Nml%dfre_for_closure, Nml%rmuz_for_closure,   &
+                 Initialized%use_constant_rmuz_for_closure,  &
+                 Nml%modify_closure_plume_condensate, &
+                 Nml%closure_plume_condensate, &
+                 env_t,  &
                  env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
                  dumxcape, parcel_r_clo,  parcel_t_clo, ermesg, error)
   endif  ! (do_donner_cape)
@@ -2323,6 +2368,9 @@ integer,                        intent(out) :: error
              (nlev_parcel, diag_unit, debug_ijt, Param,   &
              Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
              Nml%dfre_for_closure, Nml%rmuz_for_closure, &
+             Initialized%use_constant_rmuz_for_closure,   &
+             Nml%modify_closure_plume_condensate, &
+             Nml%closure_plume_condensate, &
              pert_env_t, pert_env_r, cape_p, return_cape, &
              plfc, plzb, plcl, dumcoin,  &
              dumxcape, pert_parcel_r,  pert_parcel_t, ermesg, error)
@@ -2418,8 +2466,7 @@ integer,                        intent(out) :: error
       end if
 
       call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, &
-                       .false., Nml%do_freezing_for_closure, ac, &
-                       rmuz = Nml%rmuz_for_closure)
+                       .false., Nml%do_freezing_for_closure, ac)
      parcel_r_clo=ac%qv(:)/(1.-ac%qv(:))
      parcel_t_clo=ac%t (:)
 
@@ -2427,8 +2474,7 @@ integer,                        intent(out) :: error
      sd%qv(1)=0.99*(sd%qv(1)/(1. - sd%qv(1)))
 
      call adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, &
-                       .false., Nml%do_freezing_for_closure, ac, &
-                       rmuz = Nml%rmuz_for_closure)
+                       .false., Nml%do_freezing_for_closure, ac) 
       pert_parcel_r=ac%qv(:)/(1.-ac%qv(:))
       pert_parcel_t=ac%t (:)
 !miz
@@ -2619,7 +2665,7 @@ integer,                        intent(out) :: error
 
 
 subroutine don_cm_mesub_miz     &
-         (nlev_lsm, me, diag_unit, debug_ijt, Param, cu,         &
+         (Nml, pfull_c, nlev_lsm, me, diag_unit, debug_ijt, Param, cu, &
           ci_liq_cond, ci_ice_cond, pmelt_lsm, cell_precip, &
           dint, plzb_c, pb, pt_kou, temp_c, phalf_c,   &
           ca_liq, ca_ice, ecd, ecd_liq, ecd_ice, ecei_liq, &
@@ -2638,17 +2684,18 @@ subroutine don_cm_mesub_miz     &
 !    "Cu Closure A notes," 2/97.
 !----------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type
+use donner_types_mod, only : donner_param_type, donner_nml_type
 
 implicit none
 
 !----------------------------------------------------------------------
+type(donner_nml_type),         intent(in)    :: Nml
 integer,                       intent(in)    :: nlev_lsm, me, diag_unit
 logical,                       intent(in)    :: debug_ijt
 type(donner_param_type),       intent(in)    :: Param
 real,                          intent(in)    :: cu, cell_precip, dint, &
                                                 plzb_c, pb, pt_kou
-real,   dimension(nlev_lsm),   intent(in)    :: temp_c
+real,   dimension(nlev_lsm),   intent(in)    :: temp_c, pfull_c
 real,   dimension(nlev_lsm+1), intent(in)    :: phalf_c
 real,                          intent(out)   :: ca_liq, ca_ice
 real,                          intent(in)    :: pmelt_lsm
@@ -2750,7 +2797,9 @@ integer,                       intent(out)   :: error
       real    ::  p2                ! upper pressure limit for the layer
                                     ! in which one of the physical
                                     ! processes is occurring [ Pa ]
-       real  :: dp
+      real  :: dp
+      integer  :: itrop
+      real :: ptrop
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -2776,6 +2825,11 @@ integer,                       intent(out)   :: error
 !---------------------------------------------------------------------
       if (pztm < plzb_c) pztm = plzb_c
       if (ptt < plzb_c)  pztm = plzb_c + Param%dp_of_cloud_model
+
+      if (Nml%limit_pztm_to_tropo) then
+        call find_tropopause (nlev_lsm, temp_c, pfull_c, ptrop, itrop)
+        pztm = MAX (pztm, ptrop)
+      endif
 
 !---------------------------------------------------------------------
 !    define the base of the mesoscale updraft (pzm), as the layer imm-
@@ -3123,7 +3177,7 @@ end subroutine don_cm_mesub_miz
 !#######################################################################
 
 subroutine don_m_meso_effects_miz    &
-         (nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, Param, Nml,&
+         (me, nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, Param, Nml,&
           pfull_c, temp_c, mixing_ratio_c, phalf_c, rlsm, emsm, etsm, &
           tracers_c, ensembl_cond, ensmbl_precip, pb, plzb_c, pt_ens, &
           ampta1, ensembl_anvil_cond_liq, ensembl_anvil_cond_liq_frz, &
@@ -3148,7 +3202,7 @@ use donner_types_mod, only : donner_param_type, donner_nml_type
 implicit none
 
 !-------------------------------------------------------------------
-integer,                           intent(in)  :: nlev_lsm, nlev_hires, &
+integer,                           intent(in)  :: me, nlev_lsm, nlev_hires, &
                                                   ntr, diag_unit
 logical,                           intent(in)  :: debug_ijt        
 type(donner_param_type),           intent(in)  :: Param
@@ -3272,8 +3326,8 @@ integer,                           intent(out) :: error
                                          available_condensate_ice
       real  :: emdi_liq, emdi_ice
       real  :: intgl_lo, intgl_hi
-      integer                        ::  k, kcont
-      real          :: p2
+      integer                        ::  k, kcont, itrop
+      real          :: p2, ptrop
 
 !----------------------------------------------------------------------
 !
@@ -3322,6 +3376,10 @@ integer,                           intent(out) :: error
         pztm = plzb_c + dp
       endif
 
+      if (Nml%limit_pztm_to_tropo) then
+        call find_tropopause (nlev_lsm, temp_c, pfull_c, ptrop, itrop)
+        pztm = MAX (pztm, ptrop)
+      endif
 !---------------------------------------------------------------------
 !    if in diagnostics column, output the pressure at top of meso-
 !    scale circulation (pztm) and the precipitation efficiency 
@@ -3360,7 +3418,7 @@ integer,                           intent(out) :: error
 !----------------------------------------------------------------------
       if (error /= 0 ) return
 
-      if (Nml%force_internal_enthalpy_conservation) then
+      if (Nml%frc_internal_enthalpy_conserv) then
 !-----------------------------------------------------------------------
 !    call don_u_set_column_integral_k to adjust the tmes_up
 !    profile below cloud base so that the desired integral value is
@@ -3411,7 +3469,7 @@ integer,                           intent(out) :: error
 !----------------------------------------------------------------------
       if (error /= 0 ) return
 
-      if (Nml%force_internal_enthalpy_conservation) then
+      if (Nml%frc_internal_enthalpy_conserv) then
 !-----------------------------------------------------------------------
 !    call don_u_set_column_integral_k to adjust the tmes_dn
 !    profile below cloud base so that the desired integral value is
@@ -5541,6 +5599,10 @@ integer,                          intent(out)   :: error
       wetdep_plume(n)%frac_in_cloud = wetdep_donner(n)%frac_in_cloud
       wetdep_plume(n)%alpha_r = wetdep_donner(n)%alpha_r
       wetdep_plume(n)%alpha_s = wetdep_donner(n)%alpha_s
+      wetdep_plume(n)%Lwetdep = wetdep_donner(n)%Lwetdep
+      wetdep_plume(n)%Lgas = wetdep_donner(n)%Lgas
+      wetdep_plume(n)%Laerosol = wetdep_donner(n)%Laerosol
+      wetdep_plume(n)%Lice = wetdep_donner(n)%Lice
    end do
 
    end subroutine don_d_copy_wetdep_miz
@@ -5552,11 +5614,12 @@ integer,                          intent(out)   :: error
 
 
 subroutine cu_clo_miz   &
-         (nlev_lsm, ntr, dt, Param, tracers, &
+         (nlev_lsm, ntr, dt, Initialized, Param, tracers, &
           pfull, zfull, phalf, zhalf, pblht, tkemiz, qstar, cush, cbmf, land,  &
           coldT, sd, Uw_p, ac, Nml, env_r, env_t, a1, ermesg, error)
 
-use donner_types_mod,     only : donner_param_type, donner_nml_type
+use donner_types_mod,     only : donner_param_type, donner_nml_type, &
+                                 donner_initialized_type
 use conv_utilities_k_mod, only : pack_sd_lsm_k, extend_sd_k,  &
                                  adi_cloud_k, sounding, adicloud, &
                                  uw_params, qt_parcel_k
@@ -5566,6 +5629,7 @@ implicit none
 integer,                        intent(in)  :: nlev_lsm, ntr
 real,                           intent(in)  :: dt
 type(donner_param_type),        intent(in)  :: Param
+type(donner_initialized_type),  intent(in)  :: Initialized
 type(donner_nml_type),          intent(in)  :: Nml
 real,                           intent(in)  :: pblht, tkemiz, qstar, cush, cbmf, land
 logical,                        intent(in)  :: coldT
@@ -5638,5 +5702,484 @@ real    :: sigmaw, wcrit, erfarg, cbmf1, ufrc, rbuoy, rkfre, wcrit_min, rmaxfrac
  end subroutine cu_clo_miz
 
 
+
 !######################################################################
 !######################################################################
+!
+! Alternative closure for Donner lite convection. This subroutine
+! closes convective cloud base area using numerical approximations.
+! It attempts to find the cloud base area (a1) that will produce
+! the desired change in CAPE after the convective tendencies are
+! applied.
+!
+! This subroutine works for both CAPE relaxation (do_dcape = .false.)
+! and instanteneous CAPE adjustment (do_dcape = .true.) closures,
+! as well as all available options for CAPE calculations routines
+! controlled using namelist parameters do_donner_cape and
+! do_hires_cape_for_closure
+!
+! do_donner_cape  do_hires_cape_for_closure  CAPE algorithm
+! .false.         .false.                    UW
+! .true.          .true.                     High-res Donner routine 
+!                                             for trigger and closure
+! .false.         .true.                     High-res Donner routine 
+!                                             for closure only
+! 
+! The numerical algorithm for determining a1 can be best described
+! as a "guided" bissection search. It is a bissection search except
+! for the first three "guided" steps:
+!
+! Step 1:  If needed, compute environmental CAPE.
+! Step 2:  Compute CAPE for an arbitrary small cloud base area 0.001.
+!          Compute approximate cloud base area using linear approximation
+!          and CAPE values from steps 1 and 2.
+! Step 3:  Compute CAPE for linearly interpolated approximate cloud area.
+!          Identify two values of cloud base areas that bracket the target
+!          CAPE value.
+! Step 4+: Continue using standard bissection algorithm.
+!
+! The algorithm will often converge during step 3, thus requiring
+! only two CAPE computations.
+!
+! Parameters for evaluating convergence are described below.
+!
+
+subroutine cu_clo_cjg   &
+           (me, nlev_model, nlev_parcel, ntr, dt, diag_unit, debug_ijt, &
+            Initialized, &
+            Param, Nml, amax, cape, dcape, cape_p, env_t, env_r, qt_v, qr_v, &
+            pfull, zfull, phalf, zhalf, tracers, &
+            land, pblht, tkemiz, qstar, coldT, sd, Uw_p, ac, &
+            a1, ermesg, error )
+
+use donner_types_mod,     only : donner_param_type, donner_nml_type, &
+                                 donner_initialized_type
+use conv_utilities_k_mod, only : pack_sd_lsm_k, extend_sd_k,  &
+                                 adi_cloud_k, qt_parcel_k, sounding, & 
+                                 adicloud, uw_params
+
+implicit none
+
+!----------------------------------------------------------------------
+!   calling arguments
+
+! Input
+
+integer,                          intent(in) :: me            ! pe number
+integer,                          intent(in) :: nlev_model    ! # model levels
+integer,                          intent(in) :: nlev_parcel   ! # levels for CAPE
+integer,                          intent(in) :: ntr           ! number of tracers
+real,                             intent(in) :: dt            ! time step
+integer,                          intent(in) :: diag_unit     ! column diagnostics
+logical,                          intent(in) :: debug_ijt
+
+type(donner_initialized_type),    intent(in) :: Initialized   ! Donner parameters
+type(donner_param_type),          intent(in) :: Param         ! Donner parameters
+type(donner_nml_type),            intent(in) :: Nml           ! Donner namelist
+real,                             intent(in) :: amax          ! Max allowable cloud base
+real,                             intent(in) :: cape          ! Environment CAPE
+real,                             intent(in) :: dcape         ! CAPE change for dcape closure
+real,  dimension(nlev_parcel),    intent(in) :: cape_p        ! p levels of CAPE profiles
+real,  dimension(nlev_parcel),    intent(in) :: env_t, env_r  ! T, r CAPE profiles
+real,  dimension(nlev_parcel),    intent(in) :: qt_v,  qr_v   ! Normalized cu tendencies
+
+real, dimension(nlev_model),      intent(in) :: pfull, zfull  ! Full model levels (p and z)
+real, dimension(nlev_model+1),    intent(in) :: phalf, zhalf  ! Half model levels (p and z)
+real, dimension(nlev_model,ntr),  intent(in) :: tracers       ! Tracer array
+
+! Variables needed for computing CAPE using UW formulation
+real,                             intent(in) :: land, pblht, tkemiz, qstar
+logical,                          intent(in) :: coldT
+type(sounding),                intent(inout) :: sd
+type(uw_params),               intent(inout) :: Uw_p
+type(adicloud),                intent(inout) :: ac
+
+! Output
+
+real,                            intent(out) :: a1             ! Output cloud base area
+character(len=*),                intent(out) :: ermesg         ! Output error status
+integer,                         intent(out) :: error
+
+!----------------------------------------------------------------------
+! Parameters controlling iterations
+!
+! - nitermax is the maximum number of iterations allowed (i.e. the 
+!   maximum number of CAPE calculations to be performed)
+! - accuracy on a1 is controlled by a1_abs_acc. The bissection
+!   algorithm will stop once the bracket interval becomes smaller
+!   than a1_abs_acc
+! - accuracy of the final CAPE value is controlled by cape_rel_acc,
+!   which is the relative accuracy desired.
+!
+
+integer, parameter           :: nitermax = 10          ! max number of iterations
+real, parameter              :: a1_abs_acc = 0.0001    ! absolute a1 accuracy
+real, parameter              :: cape_rel_acc = 0.01    ! relative CAPE accuracy 
+
+!----------------------------------------------------------------------
+!   local variables
+
+real, dimension(nitermax+1)  :: xa1, xcape
+
+real                         :: x1, x2, xnew
+real                         :: f1, f2, fnew
+real                         :: tmp
+
+real                         :: cape_target
+real                         :: cape_target_acc
+
+integer                      :: k, n, niter, nfirst, exit_flag
+real                         :: plfc, plzb, plcl, coin
+real, dimension(nlev_parcel) :: parcel_t, parcel_r
+
+real, dimension(nlev_model)  :: tmp_t, tmp_r
+real, dimension(nlev_parcel) :: updated_t, updated_r
+
+real                         :: lofactor
+
+!--> For debugging only
+integer                      :: debug_unit
+! <--
+
+    ermesg = ' '; error = 0
+
+! ------------------------------------------------------------------------------
+! Initialization
+
+    exit_flag = 0
+    xa1   = -999.0
+    xcape = -999.0
+
+!   The first iteration has zero cloud base area and corresponds to 
+!   the environmental CAPE.
+
+    xa1(1) = 0.0
+
+!   Input calling argument 'cape' contains CAPE value of the environment.
+!   We don't need to recompute it except when
+!    the conditions in the if statement apply
+!   because in that case, CAPE of the environment has been computed using
+!   a different algorithm.
+
+
+    if ( (Nml%do_donner_cape == .false.  &
+         .and. Nml%do_hires_cape_for_closure == .true. ) .or.  &
+    Nml%do_freezing_for_cape /= Nml%do_freezing_for_closure .or. &
+           Nml%tfre_for_cape /= Nml%tfre_for_closure .or. &
+           Nml%dfre_for_cape /= Nml%dfre_for_closure .or. &
+           .not. (Initialized%use_constant_rmuz_for_closure) .or.  &
+          Nml%rmuz_for_cape /= Nml%rmuz_for_closure) then
+      nfirst = 1
+
+    else
+
+!     Environmental CAPE is known
+      nfirst = 2
+      xcape(1) = cape
+
+!     Target CAPE value and accuracy for closure
+      if (Nml%do_dcape) then
+        cape_target = xcape(1) - dcape * dt
+      else
+        cape_target = xcape(1) - (xcape(1)-Nml%cape0)/Nml%tau * dt
+      end if
+      cape_target_acc = cape_rel_acc * cape_target
+
+!     Next iteration
+      xa1(2) = 0.001
+
+    end if
+
+    do n=nfirst,nitermax
+      
+      xnew = xa1(n)
+
+!     Update profile and compute its CAPE
+
+      updated_t = env_t + xnew * qt_v * dt
+      updated_r = env_r + xnew * qr_v * dt
+
+      if ( Nml%do_donner_cape .or. Nml%do_hires_cape_for_closure ) then
+
+!       Using Donner subroutine
+
+        call don_c_displace_parcel_k  &
+             ( nlev_parcel, diag_unit, debug_ijt, Param, &
+               Nml%do_freezing_for_closure, Nml%tfre_for_closure, Nml%dfre_for_closure, &
+               Nml%rmuz_for_closure, &
+               Initialized%use_constant_rmuz_for_closure, &
+               Nml%modify_closure_plume_condensate, &
+               Nml%closure_plume_condensate, &
+               updated_t, updated_r, &
+               cape_p, .true., plfc, plzb, plcl, coin, fnew, &
+               parcel_r, parcel_t, ermesg, error )
+  
+        if (error /= 0 ) return
+
+      else
+
+!       Using UW code
+
+        do k=1,nlev_model
+          tmp_t(k) = updated_t(nlev_model-k+1)
+          tmp_r(k) = updated_r(nlev_model-k+1)
+        end do
+        call pack_sd_lsm_k &
+             ( Nml%do_lands, land, coldT, dt, pfull, phalf, zfull, zhalf, &
+               tmp_t, tmp_r, tracers, sd )
+        call extend_sd_k (sd, pblht, .false., Uw_p) 
+        if (Nml%do_lands) then
+           call qt_parcel_k (sd%qs(1), qstar, pblht, &
+                             tkemiz, sd%land, &
+                             Nml%gama, Nml%pblht0, Nml%tke0, Nml%lofactor0, &
+                             Nml%lochoice, sd%qct(1), lofactor)
+        end if
+        call adi_cloud_k (sd%zs(1), sd%ps(1), sd%hl(1), sd%thc(1), sd%qct(1), sd, &
+                          Uw_p, .false., Nml%do_freezing_for_cape, ac)
+        fnew=ac%cape
+
+      end if
+
+!     Check for convergence and/or select value for next iteration
+
+      xcape(n) = fnew
+
+      if ( n == 1 ) then       ! First iteration
+
+!       Target CAPE value and accuracy for closure
+        if (Nml%do_dcape) then
+          cape_target = xcape(1) - dcape * dt
+        else
+          cape_target = xcape(1) - (xcape(1)-Nml%cape0)/Nml%tau * dt
+        end if
+        cape_target_acc = cape_rel_acc * cape_target
+
+!       Environmental CAPE already below target
+        if ( xcape(1) <= cape_target ) then
+          exit_flag = 1
+          exit
+        end if
+
+!       Next iteration
+        xa1(2) = 0.001
+
+      else if ( n == 2 ) then  ! Second iteration
+
+!       Re-order 1 and 2 to ensure xcape(1) >= xcape(2)
+        if ( xcape(1) < xcape(2) ) then
+
+          tmp = xa1(2)
+          xa1(2) = xa1(1)
+          xa1(1) = tmp
+
+          tmp = xcape(2)
+          xcape(2) = xcape(1)
+          xcape(1) = tmp
+
+        end if
+
+!       Linear approximation for next iteration
+        xa1(3)  &
+        = max( 0.0,  &
+               min( xa1(1) + (cape_target-xcape(1))/(xcape(2)-xcape(1))*(xa1(2)-xa1(1)) &
+                  , amax ) &
+             )
+
+      else if ( n == 3 ) then  ! Third iteration
+
+!       Exit iteration if convergence criteria for CAPE is met
+        if ( abs(fnew-cape_target) .lt. cape_target_acc ) then
+          exit_flag = 2
+          exit
+        end if
+
+!       Exit iteration if desired CAPE value cannot be reached without
+!       exceeding maximum cloud base area
+        if ( xnew >= amax .and. fnew >= cape_target ) then
+          exit_flag = 3
+          exit
+        end if
+
+!       Re-order 2 and 3 so that xcape(1) >= xcape(2) >= xcape(3)
+        if ( xcape(2) < xcape(3) ) then
+
+          tmp = xa1(3)
+          xa1(3) = xa1(2)
+          xa1(2) = tmp
+
+          tmp = xcape(3)
+          xcape(3) = xcape(2)
+          xcape(2) = tmp
+
+        end if
+
+!       Find where cape_target falls and decide what to do
+        if ( cape_target >= xcape(2) ) then
+           x1 = xa1(1)
+           x2 = xa1(2)
+           f1 = xcape(1)
+           f2 = xcape(2)
+        else if ( cape_target >= xcape(3) ) then
+           x1 = xa1(2)
+           x2 = xa1(3)
+           f1 = xcape(2)
+           f2 = xcape(3)
+        else
+           x1 = xa1(3)
+           x2 = 2*amax - x1
+           f1 = xcape(3)
+           f2 = 0.0
+        end if
+        
+        xa1(n+1) = 0.5*(x1+x2)
+
+      else    ! Beyond third iteration, continue using bissection algorithm
+
+!       Exit iteration if convergence criteria for CAPE is met
+        if ( abs(fnew-cape_target) < cape_target_acc ) then
+          exit_flag = 4
+          exit
+        end if
+
+!       Exit iteration if desired CAPE value cannot be reached without
+!       exceeding maximum cloud base area
+        if ( xnew >= amax .and. fnew >= cape_target ) then
+          exit_flag = 5
+          exit
+        end if
+
+!       Select bracket for next iteration
+        if ( fnew < cape_target ) then
+          x2 = xnew
+          f2 = fnew
+        else
+          x1 = xnew
+          f1 = fnew
+        end if
+
+!       If bracket (x1,x2) is smaller than target, choose best point
+!       between x1 and x2 and exit
+        if ( abs(x1-x2) < a1_abs_acc ) then
+          exit_flag = 6
+          exit
+        end if
+
+!       Continue to next iteration
+        xa1(n+1) = 0.5*(x1+x2)
+
+      end if
+
+    end do
+    niter = min( n, nitermax )
+
+!   If iteration exited because bracket became smaller than 
+!   threshold or because maximum number of iterations was reached,
+!   select the best solution between f1 and f2
+    if ( exit_flag == 0 .or. exit_flag == 6 ) then
+
+      if ( abs(f1-cape_target) < abs(f2-cape_target) ) then
+        xnew = x1
+        fnew = f1
+      else
+        xnew = x2
+        fnew = f2
+      end if
+
+    end if
+
+!   Copy result into output variable
+    a1 = xnew
+
+! ------------------------------------------------------------------------------
+! Output debugging information
+
+    if (debug_ijt) then
+
+      write (diag_unit, '(a)' ) &
+        ' --- begin cu_clo_cjg debug info ---------------------------------------'
+!     write (diag_unit, '(a)')  & 
+!       '                      cu_clo_cjg input profile'
+!     write (diag_unit, '(a)')  &
+!       '   k   press      temp           mixing ratio '
+!     write (diag_unit, '(a)')  &
+!       '        hPa       deg K    g(h2o) / kg (dry air)  '
+!     do k=1,nlev_parcel
+!       write (diag_unit, '(i4, 2f10.4, 7x, 1pe13.5)')  &
+!            k, 1.0E-02*cape_p(k), env_t(k), 1.0e03*env_r(k)
+!     end do
+
+!     write (diag_unit, '(a)')  &
+!       '    k, tmp_t(k), 1.0e3*tmp_r(k)'
+!     do k=1,nlev_model
+!       write (diag_unit, '(i4, 2f10.4)')  &
+!            k, tmp_t(k), 1.0e3*tmp_r(k)
+!     end do
+
+!     write (diag_unit, '(a)') '  '
+!     write (diag_unit, '(a, f20.12)') &
+!       'cjg: xcape0a = ',xcape0a
+!     write (diag_unit, '(a, f20.12)') &
+!       'cjg: xcape0b = ',xcape0b
+
+!     write (diag_unit, '(a)') '  '
+!     write (diag_unit, '(a)')  & 
+!       '                      cu_clo_cjg updated profile'
+!     write (diag_unit, '(a)')  &
+!       '   k   press      temp           mixing ratio '
+!     write (diag_unit, '(a)')  &
+!       '        hPa       deg K    g(h2o) / kg (dry air)  '
+!     do k=1,nlev_parcel
+!       write (diag_unit, '(i4, 2f10.4, 7x, 1pe13.5)')  &
+!            k, 1.0E-02*cape_p(k), updated_t(k), 1.0e03*updated_r(k)
+!     end do
+
+!     write (diag_unit, '(a)') '  '
+!     write (diag_unit, '(a, f20.12)') &
+!       'cjg: xcape1a = ',xcape1a
+!     write (diag_unit, '(a, f20.12)') &
+!       'cjg: xcape1b = ',xcape1b
+
+      write (diag_unit, '(a)') '  '
+      write (diag_unit, '(a, f10.4)') &
+        'cjg: amax = ',amax
+      write (diag_unit, '(a, f10.4)') &
+        'cjg: cape = ',cape
+      write (diag_unit, '(a, f10.4)') &
+        'cjg: cape_target = ',cape_target
+      do n=1,nitermax
+        write (diag_unit, '(a, i4, 2f10.4)')  &
+             'cjg: ', n, xa1(n), xcape(n)
+      end do
+      write (diag_unit, '(a)' ) &
+        ' --- end cu_clo_cjg debug info -----------------------------------------'
+
+    end if
+
+!RSH   debug_unit = 1000+mpp_pe()
+!   debug_unit = 1000+me
+!   write (debug_unit, '(a)') '  '
+!   write (debug_unit, '(a, f10.4)') &
+!     'cjg: amax = ',amax
+!   write (debug_unit, '(a, f10.4)') &
+!     'cjg: cape = ',cape
+!   write (debug_unit, '(a, f10.4)') &
+!     'cjg: cape_target = ',cape_target
+!   do n=1,nitermax
+!     write (debug_unit, '(a, i4, 2f10.4)')  &
+!          'cjg: ', n, xa1(n), xcape(n)
+!   end do
+!   write (debug_unit, '(a, 2f10.4)') &
+!     'cjg: final a1, cape = ',xnew,fnew
+!   write (debug_unit, '(a, i4)') 'cjg: iterations = ',niter
+!   write (debug_unit, '(a, i4)') 'cjg: exit_flag = ',exit_flag
+!   do n=nfirst,niter
+!     write (debug_unit, '(a)') 'cjg: niter'
+!   end do
+
+end subroutine cu_clo_cjg
+
+!######################################################################
+!######################################################################
+
+
+

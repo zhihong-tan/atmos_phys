@@ -260,8 +260,8 @@ real, parameter :: tkemin  =   1.e-6  ! tke minimum (m2/s2)
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: edt.F90,v 15.0.4.1 2008/09/09 13:44:27 rsh Exp $'
-character(len=128) :: Tagname = '$Name: perth_2008_10 $'
+character(len=128) :: Version = '$Id: edt.F90,v 17.0 2009/07/21 02:55:00 fms Exp $'
+character(len=128) :: Tagname = '$Name: quebec $'
 logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !
@@ -328,7 +328,7 @@ integer,         intent(in) :: idim,jdim,kdim,axes(4)
 type(time_type), intent(in) :: time
 real, dimension(:,:),intent(in) :: lonb, latb
 
-integer                     :: unit,io
+integer                     :: unit,io, logunit
 integer :: vers, vers2
 character(len=4) :: chvers
 integer, dimension(3)       :: full = (/1,2,3/), half = (/1,2,4/)
@@ -352,7 +352,8 @@ real         :: dellat, dellon
 
       if ( mpp_pe() == mpp_root_pe() ) then
            call write_version_number(version, tagname)
-           write (stdlog(), nml=edt_nml)
+           logunit = stdlog()
+           write (logunit, nml=edt_nml)
        endif
 
 

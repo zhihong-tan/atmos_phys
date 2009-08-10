@@ -22,8 +22,8 @@ interface shallow_physics_init
 end interface
 !========================================================================
 ! version information 
-character(len=128) :: version = '$Id: shallow_physics.F90,v 11.0 2004/09/28 19:24:43 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: shallow_physics.F90,v 17.0 2009/07/21 02:58:12 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 !========================================================================
 
 real, allocatable, dimension(:,:) :: h_eq
@@ -60,7 +60,7 @@ integer, intent(in) :: axes(4)
 type(time_type), intent(in) :: Time
 real, intent(in) :: lon(:,:), lat(:,:)  ! longitude and latitude in radians
 
-integer :: i, j, unit, ierr, io
+integer :: i, j, unit, ierr, io, logunit
 real    :: xm, ym, dm, di
 real    :: lon_m, lat_m, width_m, width_i, deg2rad
 
@@ -85,7 +85,8 @@ real    :: lon_m, lat_m, width_m, width_i, deg2rad
 ! write version info and namelist to logfile
 
   call write_version_number (version, tagname)
-  write(stdlog(),nml=shallow_physics_nml)
+  logunit = stdlog()
+  write(logunit,nml=shallow_physics_nml)
 
 ! damping times < 0 are in days (convert to seconds)
 

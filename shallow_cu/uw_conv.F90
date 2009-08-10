@@ -17,6 +17,7 @@ MODULE UW_CONV_MOD
 
   use  rad_utilities_mod, only : aerosol_type
   
+  use  aer_ccn_act_mod, only :   aer_ccn_act_init
   use  conv_utilities_mod,only :   uw_params_init
   use  conv_utilities_k_mod,only : sd_init_k, sd_copy_k, sd_end_k,  &
                                    ac_init_k, ac_clear_k, ac_end_k, &
@@ -45,8 +46,8 @@ MODULE UW_CONV_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: uw_conv.F90,v 16.0.2.1.2.1.2.1.2.1 2008/09/15 23:17:10 wfc Exp $'
-  character(len=128) :: tagname = '$Name: perth_2008_10 $'
+  character(len=128) :: version = '$Id: uw_conv.F90,v 17.0 2009/07/21 02:58:10 fms Exp $'
+  character(len=128) :: tagname = '$Name: quebec $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -63,7 +64,7 @@ MODULE UW_CONV_MOD
   integer :: iclosure = 0      ! 0: Bretherton UWShCu orginal / -CIN/TKE based
                                ! 1: Emanuel-Rayment: quasiequilibrium PBL
   real    :: rkm_sh   = 16.0   ! fractional lateral mixing rate for shallow
-  real    :: cldhgt_max   = 50.e3
+  real    :: cldhgt_max   = 4.e3
   real    :: cbmf_dp_frac = 0.0
   real    :: landfact_m   = 0.0
   integer :: idpchoice = 0  
@@ -81,7 +82,7 @@ MODULE UW_CONV_MOD
   logical :: apply_tendency = .true.
   logical :: prevent_unreasonable = .true.
   real    :: aerol = 1.e-12
-  real    :: gama     = 0.0    ! 
+  real    :: gama     = 1.0    ! 
   real    :: tkemin   = 1.e-6
   real    :: wmin_ratio = 0.
   logical :: use_online_aerosol = .false.
@@ -126,7 +127,7 @@ MODULE UW_CONV_MOD
   real    :: bigc     = 0.7    ! for momentum transfer
   real    :: auto_th0 = 0.5e-3 ! threshold for precipitation
   real    :: auto_rate= 1.e-3
-  real    :: tcrit    = -50.0  ! critical temperature 
+  real    :: tcrit    = -45.0  ! critical temperature 
   real    :: deltaqc0 = 0.5e-3 
   logical :: do_pdfpcp= .false.
   logical :: do_pmadjt= .false.
@@ -268,6 +269,7 @@ contains
     call sat_vapor_pres_init     
     call exn_init_k (Uw_p)
     call findt_init_k (Uw_p)
+    call aer_ccn_act_init
 
     if( FILE_EXIST( 'input.nml' ) ) then
        unit = OPEN_NAMELIST_FILE ()
@@ -389,9 +391,14 @@ contains
                                     cpn%wetdep(nn)%scheme, &
                                     cpn%wetdep(nn)%Henry_constant, &
                                     cpn%wetdep(nn)%Henry_variable, &
-                                    cpn%wetdep(nn)%frac_in_cloud, &
+                                    frac_junk, &
                                     cpn%wetdep(nn)%alpha_r, &
-                                    cpn%wetdep(nn)%alpha_s )
+                                    cpn%wetdep(nn)%alpha_s, &
+                                    cpn%wetdep(nn)%Lwetdep, &
+                                    cpn%wetdep(nn)%Lgas, &
+                                    cpn%wetdep(nn)%Laerosol, &
+                                    cpn%wetdep(nn)%Lice, &
+                                    frac_in_cloud_uw=cpn%wetdep(nn)%frac_in_cloud )
              cpn%wetdep(nn)%scheme = lowercase( cpn%wetdep(nn)%scheme )
              nn = nn + 1
           endif
@@ -410,14 +417,14 @@ contains
          'xqtsrc', 'kg/kg' )
 
     id_tdt_pevap_uwc = register_diag_field ( mod_name, 'tdt_pevap_uwc', axes(1:3), Time, &
-         'Temperature tendency due to pevap from uw_conv', 'K/day', missing_value=mv )
+         'Temperature tendency due to pevap from uw_conv', 'K/s', missing_value=mv )
     id_qdt_pevap_uwc = register_diag_field ( mod_name, 'qdt_pevap_uwc', axes(1:3), Time, &
-         'Spec. humidity tendency due to pevap from uw_conv', 'kg/kg/day', missing_value=mv)
+         'Spec. humidity tendency due to pevap from uw_conv', 'kg/kg/s', missing_value=mv)
 
     id_tdt_uwc = register_diag_field ( mod_name, 'tdt_uwc', axes(1:3), Time, &
-         'Temperature tendency from uw_conv', 'K/day', missing_value=mv )
+         'Temperature tendency from uw_conv', 'K/s', missing_value=mv )
     id_qdt_uwc = register_diag_field ( mod_name, 'qdt_uwc', axes(1:3), Time, &
-         'Spec. humidity tendency from uw_conv', 'kg/kg/day', missing_value=mv)
+         'Spec. humidity tendency from uw_conv', 'kg/kg/s', missing_value=mv)
     id_cmf_uwc = register_diag_field ( mod_name, 'cmf_uwc', axes(1:3), Time, &
          'Cloud vert. mass flux from uw_conv', 'kg/m2/s', missing_value=mv)
     id_cfq_uwc = register_diag_field ( mod_name, 'cfq_uwc', axes(1:3), Time,   &
@@ -451,10 +458,10 @@ contains
     id_qtflx_uwc = register_diag_field (mod_name,'qtflx_uwc',axes(1:3),Time, &
          'Total water flux from uw_conv', 'W/m2', missing_value=mv)
     id_prec_uwc = register_diag_field (mod_name,'prec_uwc', axes(1:2), Time, &
-         'Precipitation rate from uw_conv', 'mm/day',                        &
+         'Precipitation rate from uw_conv', 'kg/m2/sec',                     &
          interp_method = "conserve_order1" )
     id_snow_uwc = register_diag_field (mod_name,'snow_uwc', axes(1:2), Time, &
-         'Frozen precip. rate from uw_conv', 'mm/day',                       &
+         'Frozen precip. rate from uw_conv', 'kg/m2/sec',                       &
          interp_method = "conserve_order1" )
     id_cin_uwc = register_diag_field ( mod_name, 'cin_uwc', axes(1:2), Time, &
          'CIN from uw_conv', 'm2/s2' )
@@ -502,36 +509,36 @@ contains
          'Deep convective frequency', 'none', missing_value=mv)
     if ( do_strat ) then
        id_qldt_uwc= register_diag_field (mod_name,'qldt_uwc',axes(1:3),Time, &
-            'Liquid water tendency from uw_conv', 'kg/kg/day', missing_value=mv)
+            'Liquid water tendency from uw_conv', 'kg/kg/s', missing_value=mv)
        id_qidt_uwc= register_diag_field (mod_name,'qidt_uwc',axes(1:3),Time, &
-            'Ice water tendency from uw_conv', 'kg/kg/day', missing_value=mv)
+            'Ice water tendency from uw_conv', 'kg/kg/s', missing_value=mv)
        id_qadt_uwc= register_diag_field (mod_name,'qadt_uwc',axes(1:3),Time, &
-            'CLD fraction tendency from uw_conv', '1/day', missing_value=mv )
+            'CLD fraction tendency from uw_conv', '1/s', missing_value=mv )
        id_qndt_uwc= register_diag_field (mod_name,'qndt_uwc',axes(1:3),Time, &
-            'Cloud droplet number fraction tendency from uw_conv', '#/kg/day', missing_value=mv )
+            'Cloud droplet number fraction tendency from uw_conv', '#/kg/s', missing_value=mv )
        id_qldet_uwc = register_diag_field (mod_name,'qldet_uwc',axes(1:3),Time, &
-            'ql detrainment', 'kg/kg/day', missing_value=mv)
+            'ql detrainment', 'kg/kg/s', missing_value=mv)
        id_qidet_uwc = register_diag_field (mod_name,'qidet_uwc',axes(1:3),Time, &
-            'qi detrainment', 'kg/kg/day', missing_value=mv)
+            'qi detrainment', 'kg/kg/s', missing_value=mv)
        id_qadet_uwc = register_diag_field (mod_name,'qadet_uwc',axes(1:3),Time, &
-            'qa detrainment', '1/day', missing_value=mv)
+            'qa detrainment', '1/s', missing_value=mv)
        id_qtdt_uwc= register_diag_field (mod_name,'qtdt_uwc',axes(1:3),Time, &
-            'Total water tendency from uw_conv', 'kg/kg/day', missing_value=mv)
+            'Total water tendency from uw_conv', 'kg/kg/s', missing_value=mv)
     end if
 
 !========Option for deep convection=======================================
     if (do_deep) then
        id_tdt_pevap_uwd = register_diag_field ( mod_name, 'tdt_pevap_uwd', axes(1:3), Time, &
-            'Temperature tendency due to pevap from deep_conv', 'K/day', missing_value=mv )
+            'Temperature tendency due to pevap from deep_conv', 'K/s', missing_value=mv )
        id_qdt_pevap_uwd = register_diag_field ( mod_name, 'qdt_pevap_uwd', axes(1:3), Time, &
-            'Spec. humidity tendency due to pevap from deep_conv', 'kg/kg/day', missing_value=mv)
+            'Spec. humidity tendency due to pevap from deep_conv', 'kg/kg/s', missing_value=mv)
 
        id_tdt_uwd = register_diag_field ( mod_name, 'tdt_uwd', axes(1:3), Time, &
-            'Temperature tendency from deep_conv', 'K/day', missing_value=mv )
+            'Temperature tendency from deep_conv', 'K/s', missing_value=mv )
        id_qdt_uwd = register_diag_field ( mod_name, 'qdt_uwd', axes(1:3), Time, &
-            'Spec. humidity tendency from deep_conv', 'kg/kg/day', missing_value=mv)
+            'Spec. humidity tendency from deep_conv', 'kg/kg/s', missing_value=mv)
        id_qtdt_uwd= register_diag_field ( mod_name, 'qtdt_uwd', axes(1:3), Time, &
-            'Total water spec. humidity tendency from deep_conv', 'kg/kg/day', missing_value=mv)
+            'Total water spec. humidity tendency from deep_conv', 'kg/kg/s', missing_value=mv)
        id_cmf_uwd = register_diag_field ( mod_name, 'cmf_uwd', axes(1:3), Time, &
             'Cloud vert. mass flux from deep_conv', 'kg/m2/s', missing_value=mv)
        id_wu_uwd = register_diag_field ( mod_name, 'wu_uwd', axes(1:3), Time,   &
@@ -555,9 +562,9 @@ contains
        id_qtflx_uwd = register_diag_field (mod_name,'qtflx_uwd',axes(1:3),Time, &
             'Total water flux from deep_conv', 'W/m2', missing_value=mv)
        id_prec_uwd = register_diag_field (mod_name,'prec_uwd', axes(1:2), Time, &
-            'Precipitation rate from deep_conv', 'mm/day' )
+            'Precipitation rate from deep_conv', 'kg/m2/sec' )
        id_snow_uwd = register_diag_field (mod_name,'snow_uwd', axes(1:2), Time, &
-            'Frozen precip. rate from deep_conv', 'mm/day' )
+            'Frozen precip. rate from deep_conv', 'kg/m2/sec' )
        id_cbmf_uwd = register_diag_field (mod_name,'cbmf_uwd', axes(1:2), Time, &
             'Cloud-base mass flux from deep_conv', 'kg/m2/s' )
        id_dcape_uwd= register_diag_field (mod_name, 'dcape_uwd', axes(1:2), Time, &
@@ -570,11 +577,11 @@ contains
             'Out code from deep_conv', 'none' )
        if ( do_strat ) then
           id_qldt_uwd= register_diag_field (mod_name,'qldt_uwd',axes(1:3),Time, &
-               'Liquid water tendency from deep_conv', 'kg/kg/day', missing_value=mv)
+               'Liquid water tendency from deep_conv', 'kg/kg/s', missing_value=mv)
           id_qidt_uwd= register_diag_field (mod_name,'qidt_uwd',axes(1:3),Time, &
-               'Ice water tendency from deep_conv', 'kg/kg/day', missing_value=mv)
+               'Ice water tendency from deep_conv', 'kg/kg/s', missing_value=mv)
           id_qadt_uwd= register_diag_field (mod_name,'qadt_uwd',axes(1:3),Time, &
-               'CLD fraction tendency from deep_conv', '1/day', missing_value=mv )
+               'CLD fraction tendency from deep_conv', '1/s', missing_value=mv )
        end if
     end if
 !========Option for deep convection=======================================
@@ -585,7 +592,7 @@ contains
        allocate(id_tracerdtwet_uwc(ntracers), id_tracerdtwet_uwc_col(ntracers))
       do nn = 1,ntracers
          id_tracerdt_uwc(nn) = &
-            register_diag_field (mod_name, trim(cpn%tracername(nn))//'d t_uwc', &
+            register_diag_field (mod_name, trim(cpn%tracername(nn))//'dt_uwc', &
                                     axes(1:3), Time, &
                                   trim(cpn%tracername(nn)) //' tendency from uw_conv', &
                                   trim(cpn%tracer_units(nn))//'/s', missing_value=mv)
@@ -742,6 +749,8 @@ contains
     integer imax, jmax, kmax
     
     logical used
+    integer ::  ier
+    character(len=256) :: ermesg
 
     imax  = size( tb, 1 )
     jmax  = size( tb, 2 )
@@ -784,6 +793,9 @@ contains
     do j = 1, jmax
        do i=1, imax
 
+         do k=1,kmax
+           pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
+         enddo
     !relaxation TKE back to 0 with time-scale of disscale
     !tkeavg = ustar(i,j)*bstar(i,j)*disscale 
     !dissipate tke with length-scale of disscale
@@ -798,8 +810,8 @@ contains
            temp_1=pblht(i,j)
          endif
          temp_1=ustar(i,j)**3.+0.6*ustar(i,j)*bstar(i,j)*temp_1
-         if (temp_1 .gt. 0.) temp_1 = temp_1**(2./3.)
-         tkeo(i,j) = MAX (1.e-6, temp_1)
+         if (temp_1 .gt. 0.) temp_1 = 0.5*temp_1**(2./3.)
+         tkeo(i,j) = MAX (tkemin, temp_1)
 
          if (skip_calculation(i,j)) then
            ocode(i,j) = 6
@@ -819,7 +831,6 @@ contains
           am1(:) = 0.; am2(:) = 0.; am3(:) = 0.; am4(:) = 0.; am5(:) = 0.;
 
           do k=1,kmax
-            pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
             tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
             if(use_online_aerosol) then
               do na = 1,naer
@@ -939,7 +950,8 @@ contains
           end do
 
           if (do_fast) then
-             if (ac%klcl.eq.0 .or. ac%plcl.gt.sd%ps(1) .or. ac%plcl.lt.20000.) then
+!             if (ac%klcl.eq.0 .or. ac%plcl.gt.sd%ps(1) .or. ac%plcl.lt.20000.) then
+             if (ac%klcl.eq.0 .or. ac%plcl.eq.sd%ps(1) .or. ac%plcl.lt.20000.) then
                 ocode(i,j)=1; goto 100 !cycle;
              end if
              if (ac%plfc.lt.500.) then
@@ -955,10 +967,16 @@ contains
              call cclosure_bretherton(sd%tke, cpn, sd, Uw_p, ac, cc)
           else if (iclosure.eq.1) then
              call cclosure_implicit(sd%tke, cpn, sd, Uw_p, ac, cc, delt, rkm_sh1, &
-                  do_coldT, sd1, ac1, cc1, cp, ct) 
+                  do_coldT, sd1, ac1, cc1, cp, ct, ier, ermesg) 
+             if (ier /= 0) then
+               call error_mesg ('subroutine uw_conv iclosure=1 ', ermesg, FATAL)
+             endif
           else if (iclosure.eq.2) then
              call cclosure_relaxwfn(sd%tke, cpn, sd, Uw_p, ac, cc, cp, ct, delt,  &
-                  rkm_sh1, do_coldT, sd1, ac1, cc1, cp1, ct1)
+                  rkm_sh1, do_coldT, sd1, ac1, cc1, cp1, ct1, ier, ermesg)
+             if (ier /= 0) then
+               call error_mesg ('subroutine uw_conv iclosure=2 ', ermesg, FATAL)
+             endif
           end if
 
           cbmfo(i,j) = cc%cbmf
@@ -967,8 +985,8 @@ contains
 
 
           if (.not.do_fast) then
-             !if (ac%klcl.eq.0 .or. ac%plcl.eq.sd%ps(1) .or. ac%plcl.lt.20000.) then
-             if (ac%klcl.eq.0 .or. ac%plcl.lt.20000.) then
+             if (ac%klcl.eq.0 .or. ac%plcl.eq.sd%ps(1) .or. ac%plcl.lt.20000.) then
+!             if (ac%klcl.eq.0 .or. ac%plcl.lt.20000.) then
                 ocode(i,j)=1; goto 100 !cycle;
              end if
              if (ac%plfc.lt.500.) then
@@ -989,7 +1007,10 @@ contains
 
           cpn%do_ppen=do_ppen
           cpn%rpen   =rpen
-          call cumulus_plume_k(cpn, sd, ac, cp, rkm_sh1, cbmf_shallow, cc%wrel, cc%scaleh, Uw_p)
+          call cumulus_plume_k(cpn, sd, ac, cp, rkm_sh1, cbmf_shallow, cc%wrel, cc%scaleh, Uw_p, ier, ermesg)
+          if (ier /= 0) then
+            call error_mesg ('subroutine uw_conv', ermesg, FATAL)
+          endif
           if(cp%ltop.lt.cp%krel+2 .or. cp%let.le.cp%krel+1) then
              ocode(i,j)=4; goto 100 !cycle;
           end if
@@ -1013,7 +1034,10 @@ contains
 
                 lofactor = 1. - sd%land * (1. - lofactor0)
                 rkm_sh1=rkm_sh1*lofactor
-                call cumulus_plume_k(cpn, sd, ac, cp, rkm_sh1, cbmf_shallow, cc%wrel, cc%scaleh, Uw_p)
+                call cumulus_plume_k(cpn, sd, ac, cp, rkm_sh1, cbmf_shallow, cc%wrel, cc%scaleh, Uw_p, ier, ermesg)
+                if (ier /= 0) then
+                  call error_mesg ('subroutine uw_conv cush_choice=6', ermesg, FATAL)
+                endif
 
                 if(cp%ltop.lt.cp%krel+2 .or. cp%let.le.cp%krel+1) then
                    ocode(i,j)=4; goto 100 !cycle;
@@ -1030,7 +1054,10 @@ contains
                 rkm_sh1    =rkm_dp(1)
                 lofactor = 1. - sd%land * (1. - lofactor0)
                 rkm_sh1=rkm_sh1*lofactor
-                call cumulus_plume_k(cpn, sd, ac, cp, rkm_sh1, cbmf_shallow, cc%wrel, cc%scaleh, Uw_p)
+                call cumulus_plume_k(cpn, sd, ac, cp, rkm_sh1, cbmf_shallow, cc%wrel, cc%scaleh, Uw_p, ier, ermesg)
+                if (ier /= 0) then
+                  call error_mesg ('subroutine uw_conv cush_choice=2', ermesg, FATAL)
+                endif
 
                 if(cp%ltop.lt.cp%krel+2 .or. cp%let.le.cp%krel+1) then
                    ocode(i,j)=4; goto 100 !cycle;
@@ -1041,7 +1068,7 @@ contains
              end if
           end if
 
-          if (cpn%isdeep==.true.) then 
+          if (cpn%isdeep .EQV. .true.) then 
              fdp(i,j) = 1
           else
              fdp(i,j) = 0
@@ -1087,7 +1114,7 @@ contains
              cldql (i,j,nk) = cp%qlu(k)
              cldqi (i,j,nk) = cp%qiu(k)
              cldqn (i,j,nk) = cp%qnu(k)
-             cmf   (i,j,nk) = cp%umf(k) + cp%emf(k)
+             cmf   (i,j,nk) = cp%umf(k)
              wuo   (i,j,nk) = cp%wu (k)
              peo   (i,j,nk) = cp%peff(k)
              fero  (i,j,nk) = cp%fer(k)
@@ -1125,17 +1152,20 @@ contains
                 end do
                 omeg_avg = omeg_avg/dpsum * 864.
                 call  dpconv0(dpc, cpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, &
-                     do_ice, omeg_avg, rkm_sh1, cp1, ct1, cbmf_deep, ocode(i,j))
+                     do_ice, omeg_avg, rkm_sh1, cp1, ct1, cbmf_deep, ocode(i,j), ier, ermesg)
              else if (idpchoice.eq.1) then
                 call  dpconv1(dpc, cpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, &
-                     do_ice, sd1, ac1, cc1, cp1, ct1, ocode(i,j))
+                     do_ice, sd1, ac1, cc1, cp1, ct1, ocode(i,j), ier, ermesg)
              else if (idpchoice.eq.2) then
                 call  dpconv2(dpc, cpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, &
-                     do_ice, sd1, ac1, cc1, cp1, ct1, cbmf_deep, ocode(i,j))
+                     do_ice, sd1, ac1, cc1, cp1, ct1, cbmf_deep, ocode(i,j), ier, ermesg)
              else if (idpchoice.eq.3) then
                 call  dpconv3(dpc, cpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, &
-                     do_ice, omeg_avg, rkm_sh1, sd1, ac1, cp1, ct1, cbmf_deep, ocode(i,j))
+                     do_ice, omeg_avg, rkm_sh1, sd1, ac1, cp1, ct1, cbmf_deep, ocode(i,j), ier, ermesg)
              end if
+             if (ier /= 0) then
+               call error_mesg ('uw_conv calling dpconv', ermesg, FATAL)
+             endif
              if(ocode(i,j).eq.6) cycle;
              do k = 1,kmax !cp1%ltop
                 nk = kmax+1-k
@@ -1209,83 +1239,89 @@ contains
     end if
 
     if ( prevent_unreasonable ) then
-    scale_uw=HUGE(1.0)
-    do k=1,kmax
-     do j=1,jmax
-      do i=1,imax
-       if ((q(i,j,k,nqa) + qaten(i,j,k)*delt) .lt. 0. .and. (qaten(i,j,k).ne.0.)) then
-          qaten(i,j,k) = -1.*q(i,j,k,nqa)/delt
-       end if
-       if ((q(i,j,k,nqa) + qaten(i,j,k)*delt) .gt. 1. .and. (qaten(i,j,k).ne.0.)) then
-          qaten(i,j,k)= (1. - q(i,j,k,nqa))/delt
-       end if
+      scale_uw=HUGE(1.0)
+      do k=1,kmax
+        do j=1,jmax
+          do i=1,imax
+            if ((q(i,j,k,nqa) + qaten(i,j,k)*delt) .lt. 0. .and. (qaten(i,j,k).ne.0.)) then
+              qaten(i,j,k) = -1.*q(i,j,k,nqa)/delt
+            end if
+            if ((q(i,j,k,nqa) + qaten(i,j,k)*delt) .gt. 1. .and. (qaten(i,j,k).ne.0.)) then
+              qaten(i,j,k)= (1. - q(i,j,k,nqa))/delt
+            end if
  
-       if ((q(i,j,k,nql) + qlten(i,j,k)*delt) .lt. 0. .and. (qlten(i,j,k).ne.0.)) then
-          tten (i,j,k) = tten(i,j,k) -(q(i,j,k,nql)/delt+qlten(i,j,k))*HLv/Cp_Air
-          qvten(i,j,k) = qvten(i,j,k)+(q(i,j,k,nql)/delt+qlten(i,j,k))
-          qlten(i,j,k) = qlten(i,j,k)-(q(i,j,k,nql)/delt+qlten(i,j,k))
-       end if
+            if ((q(i,j,k,nql) + qlten(i,j,k)*delt) .lt. 0. .and. (qlten(i,j,k).ne.0.)) then
+              tten (i,j,k) = tten(i,j,k) -(q(i,j,k,nql)/delt+qlten(i,j,k))*HLv/Cp_Air
+              qvten(i,j,k) = qvten(i,j,k)+(q(i,j,k,nql)/delt+qlten(i,j,k))
+              qlten(i,j,k) = qlten(i,j,k)-(q(i,j,k,nql)/delt+qlten(i,j,k))
+            end if
  
-       if ((q(i,j,k,nqi) + qiten(i,j,k)*delt) .lt. 0. .and. (qiten(i,j,k).ne.0.)) then
-          tten (i,j,k) = tten(i,j,k) -(q(i,j,k,nqi)/delt+qiten(i,j,k))*HLs/Cp_Air
-          qvten(i,j,k) = qvten(i,j,k)+(q(i,j,k,nqi)/delt+qiten(i,j,k))
+            if ((q(i,j,k,nqi) + qiten(i,j,k)*delt) .lt. 0. .and. (qiten(i,j,k).ne.0.)) then
+              tten (i,j,k) = tten(i,j,k) -(q(i,j,k,nqi)/delt+qiten(i,j,k))*HLs/Cp_Air
+              qvten(i,j,k) = qvten(i,j,k)+(q(i,j,k,nqi)/delt+qiten(i,j,k))
     
-         qiten(i,j,k) = qiten(i,j,k)-(q(i,j,k,nqi)/delt+qiten(i,j,k))
-       end if
+              qiten(i,j,k) = qiten(i,j,k)-(q(i,j,k,nqi)/delt+qiten(i,j,k))
+            end if
 
-       if (do_qn) then
-        if ((q(i,j,k,nqn) + qnten(i,j,k)*delt) .lt. 0. .and. (qnten(i,j,k).ne.0.)) then
-          qnten(i,j,k) = qnten(i,j,k)-(q(i,j,k,nqn)/delt+qnten(i,j,k))
-        end if
-       endif
+            if (do_qn) then
+              if ((q(i,j,k,nqn) + qnten(i,j,k)*delt) .lt. 0. .and. (qnten(i,j,k).ne.0.)) then
+                qnten(i,j,k) = qnten(i,j,k)-(q(i,j,k,nqn)/delt+qnten(i,j,k))
+              end if
+            endif
     !rescaling to prevent negative specific humidity for each grid point
-       if (do_rescale) then
-         qtin =  q(i,j,k,nqv)
-         dqt  =  qvten(i,j,k) * delt
-         if ( dqt.lt.0 .and. qtin+dqt.lt.1.e-10 ) then
-           temp_1 = max( 0.0, -(qtin-1.e-10)/dqt )
-         else
-           temp_1 = 1.0
-         endif
+            if (do_rescale) then
+              qtin =  q(i,j,k,nqv)
+              dqt  =  qvten(i,j,k) * delt
+              if ( dqt.lt.0 .and. qtin+dqt.lt.1.e-10 ) then
+                temp_1 = max( 0.0, -(qtin-1.e-10)/dqt )
+              else
+                temp_1 = 1.0
+              endif
     !scaling factor for each column is the minimum value within that column
-         scale_uw(i,j) = min( temp_1, scale_uw(i,j))
-       endif
+              scale_uw(i,j) = min( temp_1, scale_uw(i,j))
+            endif
+          enddo
+        enddo
       enddo
-     enddo
-    enddo
 
 !     where ((tracers(:,:,:,:) + trtend(:,:,:,:)*delt) .lt. 0.)
 !        trtend(:,:,:,:) = -tracers(:,:,:,:)/delt
 !     end where
 
-   if (do_rescale) then
+      if (do_rescale) then
       !scale tendencies
-      do k=1,kmax
-       do j=1,jmax
-        do i=1,imax
-         uten (i,j,k)  = scale_uw(i,j) * uten (i,j,k)
-         vten (i,j,k)  = scale_uw(i,j) * vten (i,j,k)
-         tten (i,j,k)  = scale_uw(i,j) * tten (i,j,k)
-         qvten(i,j,k)  = scale_uw(i,j) * qvten(i,j,k)
-         qlten(i,j,k)  = scale_uw(i,j) * qlten(i,j,k)
-         qiten(i,j,k)  = scale_uw(i,j) * qiten(i,j,k)
-         qaten(i,j,k)  = scale_uw(i,j) * qaten(i,j,k)
-         if (do_qn) qnten(i,j,k) = scale_uw(i,j) * qnten(i,j,k)
-         if (k.eq.kmax) then
-          rain(i,j) = scale_uw(i,j) * rain(i,j)
-          snow(i,j) = scale_uw(i,j) * snow(i,j)
-         endif
+        do k=1,kmax
+          do j=1,jmax
+            do i=1,imax
+              uten (i,j,k)  = scale_uw(i,j) * uten (i,j,k)
+              vten (i,j,k)  = scale_uw(i,j) * vten (i,j,k)
+              tten (i,j,k)  = scale_uw(i,j) * tten (i,j,k)
+              qvten(i,j,k)  = scale_uw(i,j) * qvten(i,j,k)
+              qlten(i,j,k)  = scale_uw(i,j) * qlten(i,j,k)
+              qiten(i,j,k)  = scale_uw(i,j) * qiten(i,j,k)
+              qaten(i,j,k)  = scale_uw(i,j) * qaten(i,j,k)
+              if (do_qn) qnten(i,j,k) = scale_uw(i,j) * qnten(i,j,k)
+              if (k.eq.kmax) then
+                rain(i,j) = scale_uw(i,j) * rain(i,j)
+                snow(i,j) = scale_uw(i,j) * snow(i,j)
+              endif
+            end do
+          end do
         end do
-       end do
-      end do
-   end if
-
+      end if
     endif
 
-    cfq(:,:,:) = 0
-    where (wuo(:,:,:) .gt. 0.)
-       cfq(:,:,:) = 1
-    end where
+
+    do k=1,kmax
+      do j=1,jmax
+        do i=1,imax
+          cfq(i,j,k) = 0
+          if (wuo(i,j,k) .gt. 0.) then
+            cfq(i,j,k) = 1
+          endif
+        enddo
+      enddo
+    enddo
 
     !diagnostic output
     used = send_data( id_xhlsrc_uwc,       xhlsrc,             Time, is, js)
@@ -1443,7 +1479,7 @@ contains
 
   end subroutine clearit
 
-!#####################################################################
+
 !#####################################################################
 
 end MODULE UW_CONV_MOD

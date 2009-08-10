@@ -45,8 +45,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: specified_clouds_W.F90,v 15.0 2007/08/14 03:55:48 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+  character(len=128)  :: version =  '$Id: specified_clouds_W.F90,v 17.0 2009/07/21 02:57:41 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 
@@ -148,7 +148,7 @@ subroutine specified_clouds_W_init (lonb, latb)
 real, dimension(:,:), intent(in) :: lonb, latb
 
 
-      integer          :: unit, ierr, io
+      integer          :: unit, ierr, io, logunit
 
 !---------------------------------------------------------------------
 !-----  read namelist  ------
@@ -165,8 +165,9 @@ real, dimension(:,:), intent(in) :: lonb, latb
 !------- write version number and namelist ---------
 
       if ( mpp_pe() == mpp_root_pe() ) then
-           call write_version_number(version, tagname)
-        write (stdlog(),nml=specified_clouds_W_nml)
+        call write_version_number(version, tagname)
+        logunit = stdlog()
+        write (logunit,nml=specified_clouds_W_nml)
       endif
 
 !---------------------------------------------------------------------

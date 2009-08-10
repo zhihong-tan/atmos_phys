@@ -46,8 +46,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: uw_clouds_W.F90,v 16.0 2008/07/30 22:09:13 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+   character(len=128)  :: version =  '$Id: uw_clouds_W.F90,v 17.0 2009/07/21 02:57:50 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 
@@ -131,7 +131,7 @@ real, dimension(:,:),  intent(in) :: lonb, latb
 integer, dimension(4), intent(in) :: axes
 type(time_type),       intent(in) :: Time
 
-      integer            :: unit, ierr, io
+      integer            :: unit, ierr, io, logunit
 
      if (module_is_initialized) return
 !---------------------------------------------------------------------
@@ -148,7 +148,8 @@ type(time_type),       intent(in) :: Time
 
       if ( mpp_pe() == mpp_root_pe() ) then
          call write_version_number(version, tagname)
-         write (stdlog(),nml=uw_clouds_W_nml)
+         logunit = stdlog()
+         write (logunit,nml=uw_clouds_W_nml)
       endif
 
 !---------------------------------------------------------------------

@@ -50,8 +50,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: longwave_driver.F90,v 15.0 2007/08/14 03:54:53 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: longwave_driver.F90,v 17.0 2009/07/21 02:56:41 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -160,7 +160,7 @@ type(lw_table_type),    intent(inout) :: Lw_tables
 !--------------------------------------------------------------------
 !  local variables
 
-      integer     :: unit, ierr, io
+      integer     :: unit, ierr, io, logunit
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -199,8 +199,9 @@ type(lw_table_type),    intent(inout) :: Lw_tables
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                          write (stdlog(), nml=longwave_driver_nml)
+                          write (logunit, nml=longwave_driver_nml)
 
 !--------------------------------------------------------------------
 !    determine if valid specification of lw radiation has been made.

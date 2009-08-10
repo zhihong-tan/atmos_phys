@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_utilities_k.F90,v 16.0 2008/07/30 22:07:05 fms Exp $
+!  $Id: donner_utilities_k.F90,v 17.0 2009/07/21 02:54:45 fms Exp $
 
 !module donner_utilities_inter_mod
 
@@ -1276,4 +1276,90 @@ end subroutine don_u_process_monitor_k
 
 !######################################################################
 
+subroutine find_tropopause (nlev, temp, pfull, ptrop, itrop)
 
+integer,                intent(in) :: nlev
+real, dimension (nlev), intent(in) :: temp, pfull
+real,                   intent(out) :: ptrop
+integer,                intent(out) :: itrop
+
+!---------------------------------------------------------------------
+!    find lowest temperature in the column between 50 and 400 hPa. the 
+!    corresponding pressure is returned as the tropopause pressure.
+!    temp and pfull have index 1 closest to the ground.
+!---------------------------------------------------------------------
+
+     real      :: ttrop
+     integer   :: k
+
+
+     ttrop = 400.0
+     itrop = 1
+     ptrop = 1.0
+
+     do k=nlev,1,-1  
+       if (pfull(k) < 400.e+02) then
+         if (pfull(k) > 50.e+02 .and. temp(k) < ttrop) then 
+           ttrop = temp(k)
+           itrop = k
+           ptrop = pfull(k)
+         endif
+       else
+         exit
+       endif
+     end do
+
+!---------------------------------------------------------------------
+     
+end subroutine find_tropopause 
+
+
+!######################################################################
+
+subroutine define_arat_erat (option, kpar, eratb, erat0, erat_min, &
+                             erat_max, erat, arat)
+
+integer, intent(in) :: option, kpar
+real, dimension(kpar), intent(in) :: eratb
+real, intent(in) :: erat0, erat_min, erat_max
+real, dimension(kpar), intent(out) :: erat, arat
+
+     integer :: i
+     real, dimension(kpar) :: eratb_loc
+
+     if (option == 1) then
+ 
+       do i=1,kpar
+! eq (5):
+         arat(i) = (exp(-eratb(i)/erat0) - exp(-eratb(i+1)/erat0))  /  &
+                   (exp(-eratb(1)/erat0) - exp(-eratb(kpar+1)/erat0)) 
+! eq (6):
+         erat(i) = 0.5*(eratb(i+1) + eratb(i))   
+       end do
+
+     else if (option == 2) then
+ 
+       eratb_loc(1) = erat_min
+       do i=2,kpar+1
+! eq (7):
+         x = exp(-eratb_loc(i-1)/erat0) -     &
+              (exp(-erat_min/erat0) - exp(-erat_max/erat0))/kpar
+         eratb_loc(i) = -erat0*log(x)    
+       end do
+       do i=1,kpar
+! eq (5):
+         arat(i) =    &
+            (exp(-eratb_loc(i)/erat0) - exp(-eratb_loc(i+1)/erat0))/ &
+            (exp(-eratb_loc(1)/erat0) - exp(-eratb_loc(kpar+1)/erat0)) 
+! eq (6):
+         erat(i) = 0.5*(eratb_loc(i+1) + eratb_loc(i)) 
+       end do
+ 
+     end if
+
+
+
+end subroutine define_arat_erat 
+
+
+!######################################################################

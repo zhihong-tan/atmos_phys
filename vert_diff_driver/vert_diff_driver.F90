@@ -77,8 +77,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 16.0 2008/07/30 22:09:36 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 17.0 2009/07/21 02:58:25 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 logical :: module_is_initialized = .false.
 
@@ -377,7 +377,7 @@ integer :: ie, je
  integer             , intent(in)    :: idim, jdim, kdim, axes(4)
  type(time_type)     , intent(in)    :: Time
 
- integer :: unit, io, ierr, tr
+ integer :: unit, io, ierr, tr, logunit
  integer :: ntprog ! number of prognostic tracers in the atmosphere
  character(len=32)  :: name, units ! name of the tracer
  character(len=128) :: longname    ! long name of the tracer
@@ -397,7 +397,8 @@ integer :: ie, je
 !--------- write version number and namelist ------------------
 
    call write_version_number ( version, tagname )
-   if(mpp_pe() == mpp_root_pe() ) write(stdlog(),nml=vert_diff_driver_nml)
+   logunit = stdlog()
+   if(mpp_pe() == mpp_root_pe() ) write(logunit,nml=vert_diff_driver_nml)
 
 !-------- initialize gcm vertical diffusion ------
 

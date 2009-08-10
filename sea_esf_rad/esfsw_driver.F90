@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 16.0 2008/07/30 22:08:09 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 17.0 2009/07/21 02:56:23 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -323,7 +323,7 @@ subroutine esfsw_driver_init
                    twopiesq, densmolrefsqt3, wavelength,  &
                    freqsq, ristdm1, ri
       integer   :: iounit, nband, nf, ni, nw, nw1, nw2, nintsolar
-      integer   :: unit, io, ierr
+      integer   :: unit, io, ierr, logunit
       integer   :: i
       integer   :: n
       real      :: input_flag = 1.0e-99
@@ -407,8 +407,9 @@ subroutine esfsw_driver_init
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
        call write_version_number (version, tagname)
+       logunit = stdlog()
        if (mpp_pe() == mpp_root_pe() ) &
-                          write (stdlog(), nml=esfsw_driver_nml)
+                          write (logunit, nml=esfsw_driver_nml)
 
 !---------------------------------------------------------------------
 !    define flag indicating if ICA calculations being done.

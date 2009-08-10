@@ -20,8 +20,8 @@ private
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
- character(len=128) :: version = '$Id: bm_omp.F90,v 1.1.2.2.2.1 2008/09/16 05:14:48 wfc Exp $'
- character(len=128) :: tagname = '$Name: perth_2008_10 $'
+ character(len=128) :: version = '$Id: bm_omp.F90,v 17.0 2009/07/21 02:53:40 fms Exp $'
+ character(len=128) :: tagname = '$Name: quebec $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----
@@ -1469,7 +1469,7 @@ if (k .eq. nlev) go to 11
 !
 !-----------------------------------------------------------------------
 
-  integer  unit,io,ierr
+  integer  unit,io,ierr, logunit
 
 !----------- read namelist ---------------------------------------------
 
@@ -1486,7 +1486,8 @@ if (k .eq. nlev) go to 11
 
       call write_version_number( version, tagname )
       if ( mpp_pe() == mpp_root_pe() ) then
-           write (stdlog(),nml=bm_omp_nml)
+           logunit = stdlog()
+           write (logunit,nml=bm_omp_nml)
       endif
       call close_file (unit)
 

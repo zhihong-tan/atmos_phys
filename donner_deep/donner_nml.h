@@ -1,4 +1,4 @@
-!  $Id: donner_nml.h,v 16.0.4.1.2.1 2008/08/06 09:18:02 rsh Exp $
+!  $Id: donner_nml.h,v 17.0 2009/07/21 02:54:40 fms Exp $
 
 !---------------------------------------------------------------------
 !---namelist----
@@ -124,6 +124,34 @@ data  erat / 1.0, 1.30, 1.80, 2.50, 3.3, 4.50, 10.0 /
                         ! member 1 and ensemble member i for gate-based
                         ! ensemble
 
+! Alternate options for specifying arat and erat suggested by Isaac Held
+                              
+integer             :: arat_erat_option = 0
+                        ! 0: default behavior, arat and erat
+                        !     directly specified in namelist 
+                        ! 1: arat and erat computed using eqs (5)
+                        !     and (6) from erat0 and 
+                        !     eratb(1:MAX_ENSEMBLE_MEMBERS+1)  
+                        ! 2: arat and erat computed using eqs (5)
+                        !     and (7) from erat0, erat_min, erat_max
+
+real                :: erat0 = 2.0
+ 
+real,dimension(MAX_ENSEMBLE_MEMBERS+1)  :: eratb
+data  eratb / 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 5.0, 15.0 /
+ 
+real                :: erat_min = 1.0
+real                :: erat_max = 15.0
+
+logical             :: modify_closure_plume_condensate = .false.
+                             ! is the amount of condensate that is 
+                             ! carried in the closure plumes to be
+                             ! user-specified ?
+real                :: closure_plume_condensate = -999.
+                             ! amount of condensate that is carried in
+                             ! closure plumes (thus subject to
+                             ! freezing) [ kg(h2o) / kg(air) ]
+
 integer             :: donner_deep_freq = 1800 
                              ! frequency of calling donner_deep [ sec ]; 
                              ! must be <= 86400 
@@ -169,7 +197,7 @@ logical             :: do_budget_analysis = .false.
                              ! enthalpy and water budgets for netcdf
                              ! output ?
 
-logical             :: force_internal_enthalpy_conservation = .false.
+logical             :: frc_internal_enthalpy_conserv = .false.
                              ! modify the temperature tendency so that
                              ! enthalpy is conserved by the cell and
                              ! mesoscale motions, rather than forcing
@@ -178,6 +206,16 @@ logical             :: force_internal_enthalpy_conservation = .false.
 logical             :: do_ensemble_diagnostics = .false.
                              ! include netcdf diagnostics for selected
                              ! variables for each ensemble member ?
+
+logical             :: limit_pztm_to_tropo = .false.
+                             ! limit the mesoscale circulation to the 
+                             ! troposphere ?
+
+ character(len=16)  :: entrainment_scheme_for_closure = 'none'
+                             !  method used to define entrainment coeff-
+                             !  icient used in closure calculation;
+                             !  either 'none', 'constant' or 
+                             !  'ht-dependent'
 
 !----------------------------------------------------------------------
 !   The following nml variables are not needed in any kernel subroutines
@@ -246,71 +284,26 @@ real,                            &
 namelist / donner_deep_nml /      &
 
 ! contained in donner_rad_type variable:
-                            model_levels_in_sfcbl, &
-                            parcel_launch_level, &
-                            allow_mesoscale_circulation, &
-                            cdeep_cv,         &
-                            do_freezing_for_cape, tfre_for_cape, &
-                            dfre_for_cape, rmuz_for_cape, &
-                            do_freezing_for_closure, tfre_for_closure, &
-                            dfre_for_closure, rmuz_for_closure, &
-                            do_hires_cape_for_closure, &
-                            do_donner_cape,   &!miz
-                            do_donner_plume,  &!miz
-                            do_donner_closure,&!miz
-                            do_dcape,         &!miz
-                            do_lands,         &!miz
-                            tau,              &!miz
-                            cape0,            &!miz
-                            rhavg0,           &!miz
-                            plev0,            &!miz
-                            do_rh_trig,       &!miz
-                            do_capetau_land,  &!miz
-                            pblht0,           &!miz
-                            tke0,             &!miz
-                            lofactor0,        &!miz
-                            deephgt0,         &!miz
-                            lochoice,         &!miz
-                            deep_closure,     &!miz
-                            gama,             &!miz
-                            do_ice,           &!miz
-                            atopevap,         &!miz
-                            do_donner_lscloud,&!miz
-                            use_llift_criteria,&!miz
-                            use_pdeep_cv,     &!miz
-                            auto_rate,        &!miz
-                            auto_th,          &!miz
-                            frac,             &!miz
-                            ttend_max,        &!miz
-                            mesofactor,       &!miz
-                            EVAP_IN_DOWNDRAFTS,      &!miz
-                            EVAP_IN_ENVIRON,         &!miz
-                            ENTRAINED_INTO_MESO,     &!miz
-                            ANVIL_PRECIP_EFFICIENCY, &!miz
-                            MESO_DOWN_EVAP_FRACTION, &!miz
-                            MESO_UP_EVAP_FRACTION,   &!miz
-                            arat,                    &!miz
-                            erat,                    &
-                            donner_deep_freq, &
-                            cell_liquid_size_type,   &
-                            cell_liquid_eff_diam_input, &
-                            cell_ice_size_type, &
-                            cell_ice_geneff_diam_input, &
-                            meso_liquid_eff_diam_input, &
-                            do_average,  &
-                            entrainment_constant_source, &
-                            use_memphis_size_limits, &
-                            wmin_ratio, &
-                            do_budget_analysis, &
-                            force_internal_enthalpy_conservation, &
-                            do_ensemble_diagnostics, &
 
+  allow_mesoscale_circulation, ANVIL_PRECIP_EFFICIENCY, arat, arat_erat_option,&
+  atopevap, auto_rate, auto_th, cape0, cdeep_cv, cell_ice_geneff_diam_input,   &
+  cell_ice_size_type, cell_liquid_eff_diam_input, cell_liquid_size_type,       &
+  closure_plume_condensate, deep_closure, deephgt0, dfre_for_cape,             &
+  dfre_for_closure, do_average, do_budget_analysis, do_capetau_land, do_dcape, &
+  do_donner_cape, do_donner_closure, do_donner_lscloud, do_donner_plume,       &
+  do_ensemble_diagnostics, do_freezing_for_cape, do_freezing_for_closure,      &
+  do_hires_cape_for_closure, do_ice, do_lands, donner_deep_freq, do_rh_trig,   &
+  ENTRAINED_INTO_MESO, entrainment_constant_source, entrainment_scheme_for_closure,&
+  erat, erat0, eratb, erat_max, erat_min, EVAP_IN_DOWNDRAFTS, EVAP_IN_ENVIRON, &
+  frac, frc_internal_enthalpy_conserv, gama, limit_pztm_to_tropo, lochoice,    &
+  lofactor0, MESO_DOWN_EVAP_FRACTION, mesofactor, meso_liquid_eff_diam_input,  &
+  MESO_UP_EVAP_FRACTION, model_levels_in_sfcbl, modify_closure_plume_condensate,&
+  parcel_launch_level, pblht0, plev0, rhavg0, rmuz_for_cape, rmuz_for_closure, &
+  tau, tfre_for_cape, tfre_for_closure, tke0, ttend_max, use_llift_criteria,   &
+  use_memphis_size_limits, use_pdeep_cv, wmin_ratio,                           &
 ! not contained in donner_nml_type variable:
-                            do_netcdf_restart, &
-                            write_reduced_restart_file, &
-                            diagnostics_pressure_cutoff, &
-                            diagnostics_start_time, &
-                            num_diag_pts_ij, num_diag_pts_latlon, &
-                            i_coords_gl, j_coords_gl, &
-                            lat_coords_gl, lon_coords_gl
+
+  diagnostics_pressure_cutoff, diagnostics_start_time, do_netcdf_restart, &
+  i_coords_gl, j_coords_gl, lat_coords_gl, lon_coords_gl, num_diag_pts_ij, &
+  num_diag_pts_latlon, write_reduced_restart_file
 

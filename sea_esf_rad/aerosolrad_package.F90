@@ -36,6 +36,7 @@ use rad_utilities_mod,     only: Sw_control, &
                                  Rad_control,&
                                  aerosol_type, aerosol_properties_type,&
                                  aerosol_diagnostics_type, &
+                                 assignment(=), &
                                  Lw_parameters, rad_utilities_init, &
                                  thickavg
 use esfsw_parameters_mod,  only: Solar_spect, esfsw_parameters_init 
@@ -55,8 +56,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 16.0 2008/07/30 22:07:56 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 17.0 2009/07/21 02:56:02 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -64,6 +65,7 @@ character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
 
 public           &
        aerosolrad_package_init, aerosol_radiative_properties, &
+       aerosolrad_package_alloc, &
        aerosolrad_package_end,  get_aerosol_optical_info, &
        get_aerosol_optical_index
      
@@ -480,6 +482,7 @@ integer :: pts_processed = 0
 logical :: mo_save_set = .false.
 integer :: mo_save = 0
 
+integer :: nfields_save
 integer :: num_sul, num_bc
 integer, dimension(:), allocatable :: sul_ind, bc_ind
 
@@ -549,7 +552,7 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
 !---------------------------------------------------------------------
 !  local variables:
 
-      integer        :: unit, ierr, io
+      integer        :: unit, ierr, io, logunit
       integer        :: n, m
       character(len=16) :: chvers
       character(len=4)  :: chyr  
@@ -581,6 +584,8 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
       call esfsw_parameters_init
       call longwave_params_init
 
+       nfields_save = size(aerosol_names(:))
+
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
@@ -597,8 +602,9 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                          write (stdlog(), nml=aerosolrad_package_nml)
+                          write (logunit, nml=aerosolrad_package_nml)
 
 !---------------------------------------------------------------------
 !   exit if aerosols are desired with the lacis-hansen parameterization.
@@ -1049,6 +1055,59 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
 end subroutine aerosolrad_package_init
 
 
+!######################################################################
+
+subroutine aerosolrad_package_alloc (ix, jx, kx, Aerosol_props)
+
+integer,                       intent(in) :: ix, jx, kx
+type(aerosol_properties_type), intent(inout) :: Aerosol_props
+
+
+        if (Rad_control%volcanic_sw_aerosols) then
+          allocate (Aerosol_props%sw_ext (ix,jx,kx, nfields_sw_ext))
+          allocate (Aerosol_props%sw_ssa (ix,jx,kx,nfields_sw_ssa))
+          allocate (Aerosol_props%sw_asy (ix,jx,kx,nfields_sw_asy))
+        endif
+        if (Rad_control%volcanic_lw_aerosols) then
+          allocate (Aerosol_props%lw_ext (ix,jx,kx, nfields_lw_ext))
+          allocate (Aerosol_props%lw_ssa (ix,jx,kx,nfields_lw_ssa))
+          allocate (Aerosol_props%lw_asy (ix,jx,kx,nfields_lw_asy))
+        endif
+        allocate (Aerosol_props%ivol(ix,jx,kx))
+        allocate (Aerosol_props%aerextband   &
+                                      (Solar_spect%nbands, naermodels))
+        allocate (Aerosol_props%aerssalbband &
+                                      (Solar_spect%nbands, naermodels))
+        allocate (Aerosol_props%aerasymmband &
+                                      (Solar_spect%nbands, naermodels))
+        allocate (Aerosol_props%aerextbandlw  &
+                                      (N_AEROSOL_BANDS, naermodels))
+        allocate (Aerosol_props%aerssalbbandlw  &
+                                      (N_AEROSOL_BANDS, naermodels))
+        allocate (Aerosol_props%aerextbandlw_cn &
+                                      (N_AEROSOL_BANDS_CN, naermodels))
+        allocate (Aerosol_props%aerssalbbandlw_cn  &
+                                      (N_AEROSOL_BANDS_CN, naermodels))
+        if (Rad_control%using_im_bcsul) then
+          allocate (Aerosol_props%sulfate_index (0:100, 0:100))
+        else
+          allocate (Aerosol_props%sulfate_index (0:100, 0:0))
+        endif
+        allocate (Aerosol_props%optical_index (nfields_save))
+        allocate (Aerosol_props%omphilic_index(0:100))
+        allocate (Aerosol_props%bcphilic_index(0:100))
+        allocate (Aerosol_props%seasalt1_index(0:100))
+        allocate (Aerosol_props%seasalt2_index(0:100))
+        allocate (Aerosol_props%seasalt3_index(0:100))
+        allocate (Aerosol_props%seasalt4_index(0:100))
+        allocate (Aerosol_props%seasalt5_index(0:100))
+
+!--------------------------------------------------------------------
+
+
+end subroutine aerosolrad_package_alloc
+
+
 
 
 !####################################################################
@@ -1248,14 +1307,17 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
 !    allocate space to hold the volcanic properties.
 !--------------------------------------------------------------------
         if (using_volcanic_sw_files) then
+          if (.not. associated(Aerosol_props%sw_ext)) &
           allocate (Aerosol_props%sw_ext(size(p_half,1),  &
                                          size(p_half,2), &
                                          size(p_half,3)-1, &
                                          nfields_sw_ext) )
+          if (.not. associated(Aerosol_props%sw_ssa)) &
           allocate (Aerosol_props%sw_ssa(size(p_half,1), &
                                          size(p_half,2), &
                                          size(p_half,3)-1, &
                                          nfields_sw_ssa) )
+          if (.not. associated(Aerosol_props%sw_asy)) &
           allocate (Aerosol_props%sw_asy(size(p_half,1), &
                                          size(p_half,2), &
                                          size(p_half,3)-1, &
@@ -1355,18 +1417,21 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
 !    allocate space to hold the volcanic properties.
 !--------------------------------------------------------------------
         if (using_volcanic_lw_files) then
-          allocate (Aerosol_props%lw_ssa(size(p_half,1), &
-                                         size(p_half,2), &
-                                         size(p_half,3)-1, &
-                                         nfields_lw_ssa) )
-          allocate (Aerosol_props%lw_asy(size(p_half,1), &
-                                         size(p_half,2), &
-                                         size(p_half,3)-1, &
-                                         nfields_lw_asy) )
-          allocate (Aerosol_props%lw_ext(size(p_half,1), &
-                                         size(p_half,2), &
-                                         size(p_half,3)-1, &
-                                         nfields_lw_ext) )
+          if (.not. associated(Aerosol_props%lw_ssa)) &
+            allocate (Aerosol_props%lw_ssa(size(p_half,1), &
+                                           size(p_half,2), &
+                                           size(p_half,3)-1, &
+                                           nfields_lw_ssa) )
+          if (.not. associated(Aerosol_props%lw_asy)) &
+            allocate (Aerosol_props%lw_asy(size(p_half,1), &
+                                           size(p_half,2), &
+                                           size(p_half,3)-1, &
+                                           nfields_lw_asy) )
+          if (.not. associated(Aerosol_props%lw_ext)) &
+            allocate (Aerosol_props%lw_ext(size(p_half,1), &
+                                           size(p_half,2), &
+                                           size(p_half,3)-1, &
+                                           nfields_lw_ext) )
 
 !---------------------------------------------------------------------
 !    if new lw extinction data is needed, call interpolator to obtain 
@@ -1435,7 +1500,8 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
 !    code for treating sulfate and black carbon as an internal aerosol
 !    mixture.
 !---------------------------------------------------------------------
-        allocate (Aerosol_props%ivol (  &
+        if (.not. associated( Aerosol_props%ivol)) &
+          allocate (Aerosol_props%ivol (  &
                       size(p_half,1), size(p_half,2), size(p_half,3)-1))
         if (Rad_control%using_im_bcsul) then
           if (num_sul > 0) then
@@ -1936,35 +2002,28 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    allocate components of the aerosol_properties_type module variable
 !    which will contain the indices for the different aerosols.
 !---------------------------------------------------------------------
-    if (Rad_control%using_im_bcsul) then
-       allocate (Aerosol_props%sulfate_index (0:100,0:100 ), &  
-                     Aerosol_props%omphilic_index(0:100 ), & 
-                     Aerosol_props%bcphilic_index(0:100 ), & 
-                     Aerosol_props%seasalt1_index(0:100 ), & 
-                     Aerosol_props%seasalt2_index(0:100 ), & 
-                     Aerosol_props%seasalt3_index(0:100 ), & 
-                     Aerosol_props%seasalt4_index(0:100 ), & 
-                     Aerosol_props%seasalt5_index(0:100 ) )
-     else
-       allocate (Aerosol_props%sulfate_index (0:100,0:0     ), &  
-                     Aerosol_props%omphilic_index(0:100 ), & 
-                     Aerosol_props%bcphilic_index(0:100 ), & 
-                     Aerosol_props%seasalt1_index(0:100 ), & 
-                     Aerosol_props%seasalt2_index(0:100 ), & 
-                     Aerosol_props%seasalt3_index(0:100 ), & 
-                     Aerosol_props%seasalt4_index(0:100 ), & 
-                     Aerosol_props%seasalt5_index(0:100 ) )
-     endif
-       allocate (Aerosol_props%optical_index(nfields) )
-       Aerosol_props%optical_index    = 0
-       Aerosol_props%sulfate_index    = 0
-       Aerosol_props%omphilic_index    = 0
-       Aerosol_props%bcphilic_index    = 0
-       Aerosol_props%seasalt1_index    = 0
-       Aerosol_props%seasalt2_index    = 0
-       Aerosol_props%seasalt3_index    = 0
-       Aerosol_props%seasalt4_index    = 0
-       Aerosol_props%seasalt5_index    = 0
+      if (Rad_control%using_im_bcsul) then
+        allocate (Aerosol_props%sulfate_index (0:100,0:100))
+      else
+        allocate (Aerosol_props%sulfate_index (0:100,0:0  ))
+      endif
+      allocate (Aerosol_props%omphilic_index(0:100 ), &
+                Aerosol_props%bcphilic_index(0:100 ), &
+                Aerosol_props%seasalt1_index(0:100 ), &
+                Aerosol_props%seasalt2_index(0:100 ), &
+                Aerosol_props%seasalt3_index(0:100 ), &
+                Aerosol_props%seasalt4_index(0:100 ), &
+                Aerosol_props%seasalt5_index(0:100 ) )
+      allocate (Aerosol_props%optical_index(nfields) )
+      Aerosol_props%optical_index    = 0
+      Aerosol_props%sulfate_index    = 0
+      Aerosol_props%omphilic_index    = 0
+      Aerosol_props%bcphilic_index    = 0
+      Aerosol_props%seasalt1_index    = 0
+      Aerosol_props%seasalt2_index    = 0
+      Aerosol_props%seasalt3_index    = 0
+      Aerosol_props%seasalt4_index    = 0
+      Aerosol_props%seasalt5_index    = 0
 
 !----------------------------------------------------------------------
 !    match aerosol optical property indices with aerosol indices.

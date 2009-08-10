@@ -60,8 +60,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 16.0 2008/07/30 22:09:10 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 17.0 2009/07/21 02:57:47 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -134,7 +134,7 @@ subroutine strat_clouds_W_init(latb, lonb)
 !----------------------------------------------------------------------
 !   local variables:
 
-      integer   ::   unit, ierr, io
+      integer   ::   unit, ierr, io, logunit
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -182,8 +182,9 @@ subroutine strat_clouds_W_init(latb, lonb)
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                 write (stdlog(), nml=strat_clouds_W_nml)
+                 write (logunit, nml=strat_clouds_W_nml)
 
 !--------------------------------------------------------------------
 !    save the flags indicating whether stochastic clouds are to be

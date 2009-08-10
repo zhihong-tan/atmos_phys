@@ -15,8 +15,8 @@ MODULE CONV_CLOSURES_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_closures.F90,v 15.0.6.1.2.1 2008/09/15 23:14:25 wfc Exp $'
-  character(len=128) :: tagname = '$Name: perth_2008_10 $'
+  character(len=128) :: version = '$Id: conv_closures.F90,v 17.0 2009/07/21 02:57:58 fms Exp $'
+  character(len=128) :: tagname = '$Name: quebec $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -132,7 +132,7 @@ contains
           ufrc = 0.
        endif
 
-       if(ufrc.gt.0) then !Diagnose expected value of cloud base vertical velocity
+       if(ufrc.gt.0.0) then !Diagnose expected value of cloud base vertical velocity
            wexp = cbmf / ac % rho0lcl / ufrc
        else
           wexp = 0.
@@ -146,16 +146,31 @@ contains
     else
        cc%wrel=sqrt(wtw)
     end if
-    cc%cbmf=cbmf
-    cc%ufrc=ufrc
 
+    cc%cbmf=cbmf
+    cc%wrel=min(cc%wrel, 50.)!cc%ufrc=min(cc%rmaxfrac, cc%ufrc)
     cbmf = (sd%ps(0) - ac%plcl ) * 0.25 / sd%delt / Uw_p%GRAV
-    if (cc%cbmf .gt. cbmf .and. cc%wrel .gt. 0) then
-       cc%cbmf = cbmf
-       cc%ufrc = cc%cbmf / wexp /ac % rho0lcl
+    if (cc%cbmf .gt. cbmf) cc%cbmf = cbmf
+    if (cc%wrel .gt. 0.) then
+      cc%ufrc=cc%cbmf / cc%wrel /ac % rho0lcl
+    else
+      cc%ufrc=0.
     end if
-    cc%wrel=min(cc%wrel, 50.)
-    cc%ufrc=min(cc%rmaxfrac, cc%ufrc)
+    if (cc%ufrc > cc%maxcldfrac) then
+       cc%ufrc = cc%maxcldfrac
+       cc%cbmf = cc%wrel*ac%rho0lcl*cc%ufrc
+    end if   
+
+!    cc%cbmf=cbmf
+!    cc%ufrc=ufrc
+!
+!    cbmf = (sd%ps(0) - ac%plcl ) * 0.25 / sd%delt / Uw_p%GRAV
+!    if (cc%cbmf .gt. cbmf .and. cc%wrel .gt. 0) then
+!       cc%cbmf = cbmf
+!       cc%ufrc = cc%cbmf / wexp /ac % rho0lcl
+!    end if
+!    cc%wrel=min(cc%wrel, 50.)
+!    cc%ufrc=min(cc%rmaxfrac, cc%ufrc)
 
     return
 
@@ -165,7 +180,7 @@ contains
 !#####################################################################
 
   subroutine cclosure_implicit(tkeavg, cpn, sd, Uw_p, ac, cc, delt, rkm, &
-       do_coldT, sd1, ac1, cc1, cp1, ct1)
+       do_coldT, sd1, ac1, cc1, cp1, ct1, ier, ermesg)
     implicit none
     real,           intent(in)    :: tkeavg, delt, rkm
     type(cpnlist),  intent(in)    :: cpn
@@ -178,6 +193,9 @@ contains
     type(cplume),   intent(inout) :: cp1
     type(ctend),    intent(inout) :: ct1
     logical,        intent(in)    :: do_coldT
+    integer,        intent(out)     :: ier
+    character(len=256), intent(out) :: ermesg
+
     logical :: dofast=.false., doice=.true.
 
     real :: cbmf0=0.001, dcin, alpha, beta, phi
@@ -188,7 +206,11 @@ contains
       return
     end if
 
-    call cumulus_plume_k(cpn, sd, ac, cp1, rkm, cbmf0, cc%wrel, cc%scaleh, Uw_p)
+    call cumulus_plume_k(cpn, sd, ac, cp1, rkm, cbmf0, cc%wrel, cc%scaleh, Uw_p, ier, ermesg)
+    if (ier /= 0) then
+      ermesg = 'Called from cclosure_implicit : '// trim(ermesg)
+      return
+    endif
     if(cp1%ltop.lt.cp1%krel+2 .or. cp1%let.le.cp1%krel+1) then
        cc % dcin=0.
        return
@@ -320,7 +342,7 @@ contains
 !#####################################################################
 
   subroutine cclosure_relaxwfn(tkeavg, cpn, sd, Uw_p, ac, cc, cp, ct, delt, rkm, &
-       do_coldT, sd1, ac1, cc1, cp1, ct1)
+       do_coldT, sd1, ac1, cc1, cp1, ct1, ier, ermesg)
     implicit none
     real,           intent(in)    :: tkeavg, delt, rkm
     type(cpnlist),  intent(in)    :: cpn
@@ -333,6 +355,8 @@ contains
     type(cplume),   intent(inout) :: cp, cp1
     type(ctend),    intent(inout) :: ct, ct1
     logical,        intent(in)    :: do_coldT
+    integer,        intent(out)   :: ier
+    character(len=256), intent(out) :: ermesg
     logical :: dofast=.false., doice=.true.
 
 
@@ -342,7 +366,11 @@ contains
     cbmf_old= cc%cbmf
     call cclosure_bretherton(tkeavg, cpn, sd, Uw_p, ac, cc)
 
-    call cumulus_plume_k(cpn, sd,  ac, cp, rkm, cbmf0, cc%wrel, cc%scaleh, Uw_p)
+    call cumulus_plume_k(cpn, sd,  ac, cp, rkm, cbmf0, cc%wrel, cc%scaleh, Uw_p, ier, ermesg)
+    if (ier /= 0) then
+      ermesg = 'Called from cclosure_relaxwfn : '//trim(ermesg)
+      return
+    endif
     if(cp%ltop.lt.cp%krel+2 .or. cp%let.le.cp%krel+1) then
        cc % dcin=0.
        return
@@ -364,7 +392,10 @@ contains
        cc % dcin=(ac1%cin-ac%cin)/cbmf0
        cc % dcape=(ac1%cape-ac%cape)/cbmf0
 
-       call cumulus_plume_k(cpn, sd1, ac1, cp1, rkm, cbmf0, cc%wrel, cc%scaleh, Uw_p)
+       call cumulus_plume_k(cpn, sd1, ac1, cp1, rkm, cbmf0, cc%wrel, cc%scaleh, Uw_p, ier, ermesg)
+       if (ier /= 0) then
+         ermesg = 'Called from cclosure_relaxwfn 2nd call : '//trim(ermesg)
+       endif
 
        cc%dwfn=0.; cc%wfn=0.; delp=0.;
        do k=cp1%krel, cp1%let

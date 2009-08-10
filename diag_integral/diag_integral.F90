@@ -41,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: diag_integral.F90,v 16.0 2008/07/30 22:06:36 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: diag_integral.F90,v 17.0 2009/07/21 02:54:16 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -245,7 +245,7 @@ real,dimension(:,:), intent(in), optional :: blon, blat, area_in
 
       real    :: r2
       real    :: rsize
-      integer :: unit, io, ierr, nc, i, j
+      integer :: unit, io, ierr, nc, i, j, logunit
       integer :: field_size_local
       real    :: sum_area_local
 
@@ -300,8 +300,9 @@ real,dimension(:,:), intent(in), optional :: blon, blat, area_in
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                       write (stdlog(), nml=diag_integral_nml)
+                       write (logunit, nml=diag_integral_nml)
 
 !--------------------------------------------------------------------
 !    save the initial time to time-stamp the integrals which will be

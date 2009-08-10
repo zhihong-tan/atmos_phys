@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cape_k.F90,v 16.0.2.1 2008/09/09 13:43:14 rsh Exp $
+!  $Id: donner_cape_k.F90,v 17.0 2009/07/21 02:54:25 fms Exp $
 
 !module donner_cape_inter_mod
 
@@ -402,6 +402,20 @@ integer,                               intent(out)   :: error
                  (nlev_hires, diag_unit, debug_ijt, Param,    &
                   Nml%do_freezing_for_cape, Nml%tfre_for_cape, &
                   Nml%dfre_for_cape, Nml%rmuz_for_cape, &
+!      the following value of .true. corresponds to the dummy argument 
+!      use_constant_rmuz. it currently must be .true. for this call to  
+!      displace_parcel; it may be false when displace_parcel is called
+!      for a closure calculation.
+                  .true., &  ! (use_constant_rmuz)
+!      the following value corresponds to dummy argument 
+!      carry_condensate.  it currently must be set to .false. for cape
+!      calculations used to determine the presence of convection; it 
+!      may be set true in calls to displace_parcel used for closure
+!      calculations.
+                   .false., &  ! (carry_condensate)
+                 Nml%closure_plume_condensate, & ! (is not used when 
+                                                 ! carry_condensate
+                                                 ! is .false.)
                   Don_cape%env_t(i,j,:), Don_cape%env_r(i,j,:), &
                   Don_cape%cape_p(i,j,:), .true.,  &
                   Don_cape%plfc(i,j), Don_cape%plzb(i,j),  &
@@ -442,7 +456,8 @@ end subroutine don_c_cape_calculation_driver_k
 
 subroutine don_c_displace_parcel_k   &
          (nlev_hires, diag_unit, debug_ijt, Param, do_freezing, &
-          tfreezing, dfreezing, rmuz, env_t, env_r,  &
+          tfreezing, dfreezing, rmuz, use_constant_rmuz, &
+          carry_condensate, condensate_carried, env_t, env_r,  &
           cape_p, coin_present, plfc, plzb, plcl, coin, xcape,       &
           parcel_r, parcel_t, ermesg, error)
 
@@ -464,8 +479,11 @@ integer,                       intent(in)  :: nlev_hires
 integer,                       intent(in)  :: diag_unit
 logical,                       intent(in)  :: debug_ijt
 type(donner_param_type),       intent(in)  :: Param
-logical,                       intent(in)  :: do_freezing
-real,                          intent(in)  :: tfreezing, dfreezing, rmuz
+logical,                       intent(in)  :: do_freezing, &
+                                              use_constant_rmuz, &
+                                              carry_condensate
+real,                          intent(in)  :: tfreezing, dfreezing, &
+                                              rmuz, condensate_carried
 real,   dimension(nlev_hires), intent(in)  :: env_t, env_r, cape_p
 logical,                       intent(in)  :: coin_present
 real,                          intent(out) :: plfc, plzb, plcl
@@ -575,7 +593,8 @@ integer,                       intent(out) :: error
 !--------------------------------------------------------------------
       call don_c_define_moist_adiabat_k  &
            (nlev_hires, klcl, Param, parcel_t(klcl), cape_p, env_r, &
-            env_t, do_freezing, tfreezing, dfreezing, rmuz, &
+            env_t, do_freezing, tfreezing, dfreezing, rmuz,  &
+            use_constant_rmuz, carry_condensate, condensate_carried, &
             parcel_t, parcel_r, plfc, plzb, klfc, klzb,  &
             parcel_tv, env_tv, dtdp, rc, fact1, fact2, fact3, cape_exit,&
             ermesg, error)
@@ -728,7 +747,8 @@ end subroutine don_c_displace_parcel_k
 
 subroutine don_c_define_moist_adiabat_k  &
          (nlev_hires, klcl, Param, starting_temp, press, env_r,  &
-          env_t, do_freezing, tfreezing, dfreezing, rmuz, &
+          env_t, do_freezing, tfreezing, dfreezing, rmuz_constant, &
+          use_constant_rmuz, carry_condensate, condensate_carried, &
           parcel_t, parcel_r, plfc, plzb, klfc, &
           klzb, parcel_tv, env_tv, dtdp, rc, fact1, fact2, fact3, &
           cape_exit, ermesg, error)
@@ -747,9 +767,12 @@ integer,                      intent(in)    :: nlev_hires, klcl
 type(donner_param_type),      intent(in)    :: Param
 real,                         intent(in)    :: starting_temp
 real, dimension(nlev_hires),  intent(in)    :: press, env_r, env_t
-logical,                      intent(in)    :: do_freezing
+logical,                      intent(in)    :: do_freezing,  &
+                                               use_constant_rmuz, &
+                                               carry_condensate
 real,                         intent(in)    :: tfreezing, dfreezing, &
-                                               rmuz
+                                               rmuz_constant, &
+                                               condensate_carried
 real, dimension(nlev_hires),  intent(inout) :: parcel_t, parcel_r     
 real,                         intent(out)   :: plfc, plzb 
 integer,                      intent(out)   :: klfc, klzb
@@ -760,10 +783,16 @@ character(len=*),             intent(out)   :: ermesg
 integer,                      intent(out)   :: error
 
       real     :: es_v_s, qe_v_s, rs_v_s, qs_v_s, pb, tp_s
+      real,dimension(nlev_hires)     :: rmuz, z, fact7
+      real     :: dz
       real     :: hlvls
       logical  :: capepos_s 
       integer  :: ieqv_s
       integer  :: k, n, nbad
+      logical  :: not_all_frozen    
+      real     :: cumulative_freezing, prev_cufr
+      real     :: available_cd, r_at_cb, condensate_to_freeze
+      logical  :: first_freezing_level
 
       ermesg = ' ' ; error = 0
 
@@ -774,7 +803,27 @@ integer,                      intent(out)   :: error
       capepos_s = .false.
       cape_exit = .false.
       tp_s = starting_temp
+      z = 0.
 
+      first_freezing_level = .true.
+      fact7 = 0.
+      not_all_frozen = .true.
+      prev_cufr = 0.
+      if (carry_condensate .and. do_freezing) then
+        do k=klcl,nlev_hires-1
+          if (env_t(k) < tfreezing .and. not_all_frozen) then
+            cumulative_freezing = (tfreezing-env_t(k))/dfreezing
+            if (cumulative_freezing >= 1.0) then
+              cumulative_freezing = 1.0         
+              not_all_frozen = .false.
+            endif
+            fact7(k) = cumulative_freezing - prev_cufr  
+            prev_cufr = cumulative_freezing
+            if (.not. not_all_frozen) exit
+          endif
+        end do
+      endif
+          
 !-------------------------------------------------------------------
 !    calculate temperature along saturated adiabat, starting at p(klcl)
 !    and a temperature tp to find the level of free convection and
@@ -792,6 +841,17 @@ integer,                      intent(out)   :: error
 !--------------------------------------------------------------------
         call compute_mrs_k (tp_s, press(k), Param%D622, Param%D608, &
                             rs_v_s, nbad,  esat = es_v_s)
+
+!---------------------------------------------------------------------
+!    save the cloud base r so that the condensate available when 
+!    reaching the level where freezing begins may be determined. 
+!---------------------------------------------------------------------
+        if (k == klcl) then
+          r_at_cb = rs_v_s
+        endif
+        if ( first_freezing_level) then
+          available_cd = r_at_cb - rs_v_s
+        endif
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -873,15 +933,51 @@ integer,                      intent(out)   :: error
           endif
           rc(k) = (1. - qs_v_s)*Param%rdgas + qs_v_s*Param%rvgas
           pb = 0.5*(press(k) + press(k+1))
+
+!---------------------------------------------------------------------
+!     define the entrainment coefficient (rmuz) [ m (-1) ] .
+!     z is the height above cloud base [ m ] .
+!     dz is the height increment for the current layer.
+!---------------------------------------------------------------------
+          if (use_constant_rmuz) then
+            rmuz(k) = rmuz_constant
+          else
+            if (k == klcl)  then
+              rmuz(klcl) = rmuz_constant
+              z(klcl) = 0.  
+            else
+              dz = - alog((press(k)/press(k-1)))*Param%rdgas*  &
+                    parcel_tv(k)/Param%grav
+              z(k) = z(k-1) + dz
+              rmuz(k) = rmuz_constant/( 1.0 + rmuz_constant*z(k))
+            endif
+          endif
+
           fact1(k) = Param%rdgas/Param%cp_air
           fact2(k) = parcel_tv(k) + (hlvls*rs_v_s/rc(k))
           fact1(k) = fact1(k)*fact2(k) +                  &
-                     Param%rdgas*env_tv(k)*rmuz*(tp_s-env_t(k)   &
+                     Param%rdgas*env_tv(k)*rmuz(k)*(tp_s-env_t(k)   &
                     + (hlvls*(rs_v_s-env_r(k))/Param%cp_air))/Param%grav
           fact3(k) = Param%d622*(hlvls**2)*es_v_s/    &
                      (Param%cp_air*pb*Param%rvgas*(parcel_tv(k)**2))
           fact3(k) = 1. + fact3(k)
-          dtdp(k) = fact1(k)/fact3(k)
+
+!---------------------------------------------------------------------
+!    calculate the term associated with the freezing of condensate 
+!    carried along in the plume (fact7).  condensate_to_freeze is the
+!    amount of condensate present at the level where freezing begins.
+!    it is proportionately frozen over the specified range of freezing. 
+!    term may be optionally included when cape is 
+!    computed for cumulus closure determination.
+!---------------------------------------------------------------------
+          if (fact7(k) /= 0.0 .and. first_freezing_level) then
+            condensate_to_freeze =    &
+                                 MIN(available_cd, condensate_carried)
+            first_freezing_level = .false.
+          endif
+          fact7(k) = Param%hlf*fact7(k)*condensate_to_freeze/  &
+                    (Param%cp_air*alog(press(k+1)/press(k)))
+          dtdp(k) = (fact1(k) + fact7(k))/fact3(k)
           tp_s    = tp_s + dtdp(k)*alog(press(k+1)/press(k))
           if (tp_s < Param%tmin)  then
             cape_exit = .true.
@@ -896,6 +992,7 @@ integer,                      intent(out)   :: error
           endif
         endif   !  (ieq < 0, capepos)
       end do   ! k loop
+
 
 !-------------------------------------------------------------------
 

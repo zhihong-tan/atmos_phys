@@ -49,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 14.0 2007/03/15 22:05:49 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 17.0 2009/07/21 02:56:26 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 !--------------------------------------------------------------------
 !----- interfaces ------
@@ -133,7 +133,7 @@ subroutine esfsw_parameters_init
 !------------------------------------------------------------------
 !  local variables:
 
-      integer    ::  unit, ierr, io
+      integer    ::  unit, ierr, io, logunit
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -203,12 +203,13 @@ subroutine esfsw_parameters_init
 !    some key parameters obtained from an input data file.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
-      if (mpp_pe() == mpp_root_pe() ) &
-                        write (stdlog(),9000)     &
-                            Solar_spect%NBANDS, Solar_spect%NFRQPTS,  &
-                            Solar_spect%NSTREAMS, Solar_spect%NH2OBANDS 
-      if (mpp_pe() == mpp_root_pe() ) &
-                        write (stdlog(), nml=esfsw_parameters_nml)
+      logunit = stdlog()
+      if (mpp_pe() == mpp_root_pe() ) then
+        write (logunit,9000)     &
+            Solar_spect%NBANDS, Solar_spect%NFRQPTS,  &
+            Solar_spect%NSTREAMS, Solar_spect%NH2OBANDS 
+        write (logunit, nml=esfsw_parameters_nml)
+      endif  
 
 !-------------------------------------------------------------------
 !    indicate that visible_band_indx has not yet been defined.

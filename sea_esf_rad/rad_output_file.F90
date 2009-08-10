@@ -58,8 +58,8 @@ private
 !----------- version number for this module ------------------------
 
 character(len=128)  :: version = &
-'$Id: rad_output_file.F90,v 16.0 2008/07/30 22:08:52 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+'$Id: rad_output_file.F90,v 17.0 2009/07/21 02:57:23 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -226,7 +226,7 @@ character(len=*), dimension(:), intent(in)    :: family_names
 !---------------------------------------------------------------------
 !   local variables:
 
-      integer   :: unit, io, ierr
+      integer   :: unit, io, ierr, logunit
       integer   :: nfields
 
 !---------------------------------------------------------------------
@@ -271,8 +271,9 @@ character(len=*), dimension(:), intent(in)    :: family_names
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                         write (stdlog(), nml=rad_output_file_nml)
+                         write (logunit, nml=rad_output_file_nml)
 
 !--------------------------------------------------------------------
 !    if running gcm, continue on if data file is to be written. 

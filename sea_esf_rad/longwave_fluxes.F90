@@ -42,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 14.0 2007/03/15 22:06:19 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 17.0 2009/07/21 02:56:44 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -101,7 +101,7 @@ subroutine longwave_fluxes_init
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
-     integer    ::  unit, ierr, io
+     integer    ::  unit, ierr, io, logunit
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -140,8 +140,9 @@ subroutine longwave_fluxes_init
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                          write (stdlog(), nml=longwave_fluxes_nml)
+                          write (logunit, nml=longwave_fluxes_nml)
 
 !---------------------------------------------------------------------
 !    mark the module as initialized.

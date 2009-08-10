@@ -96,8 +96,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 15.0.4.1 2008/09/03 18:40:12 z1l Exp $'
- character(len=128) :: tagname = '$Name: perth_2008_10 $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 17.0 2009/07/21 02:54:04 fms Exp $'
+ character(len=128) :: tagname = '$Name: quebec $'
 
 !-----------------------------------------------------------------------
 
@@ -325,7 +325,7 @@ contains
 !     Time  = current time (time_type)
 !     sgsmtn = subgrid scale topography variance
 !-----------------------------------------------------------------------
- integer :: unit, ierr, io
+ integer :: unit, ierr, io, logunit
  logical :: used
 
 !-----------------------------------------------------------------------
@@ -341,8 +341,9 @@ contains
    endif
 
    call write_version_number(version, tagname)
+   logunit = stdlog()
    if(mpp_pe() == mpp_root_pe() ) then
-        write (stdlog(),nml=damping_driver_nml)
+        write (logunit,nml=damping_driver_nml)
    endif
 
 !-----------------------------------------------------------------------

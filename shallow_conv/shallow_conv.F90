@@ -22,8 +22,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: shallow_conv.F90,v 10.0.12.1 2008/09/09 13:53:38 rsh Exp $'
- character(len=128) :: tagname = '$Name: perth_2008_10 $'
+ character(len=128) :: version = '$Id: shallow_conv.F90,v 17.0 2009/07/21 02:57:55 fms Exp $'
+ character(len=128) :: tagname = '$Name: quebec $'
 
  logical :: module_is_initialized = .false.
 
@@ -76,7 +76,7 @@
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer :: unit, io, ierr
+ integer :: unit, io, ierr, logunit
  
 !=====================================================================
 
@@ -103,7 +103,8 @@
 
   if ( mpp_pe() == mpp_root_pe() ) then
        call write_version_number(version, tagname)
-       WRITE( stdlog(), nml = shallow_conv_nml ) 
+       logunit = stdlog()
+       WRITE( logunit, nml = shallow_conv_nml ) 
   endif
 
 !---------------------------------------------------------------------

@@ -64,8 +64,8 @@ private
 !----------- version number for this module -------------------
 
    character(len=128)  :: &
-   version =  '$Id: optical_path.F90,v 16.0 2008/07/30 22:08:39 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+   version =  '$Id: optical_path.F90,v 17.0 2009/07/21 02:57:10 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -294,7 +294,7 @@ subroutine optical_path_init(pref)
                                  ap_12001400, bp_12001400,          &
                                  atp_12001400, btp_12001400,        &
                                  fbdlo_12001400, fbdhi_12001400
-      integer                 ::  unit, ierr, io
+      integer                 ::  unit, ierr, io, logunit
       integer                 :: inrad, k, m
       integer                 :: subb
 
@@ -367,8 +367,9 @@ subroutine optical_path_init(pref)
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                        write (stdlog(), nml=optical_path_nml)
+                        write (logunit, nml=optical_path_nml)
 
 !--------------------------------------------------------------------
 !    verify that Lw_parameters%NBTRG and NBTRGE have been initialized.
@@ -3457,14 +3458,14 @@ type(optical_path_type),       intent(inout) :: Optical
 !yim
       integer, dimension (size(Aerosol%aerosol,1),  &
                           size(Aerosol%aerosol,2),  &
-                          size(Aerosol%aerosol,3))  :: irh, opt_index_v1, &
+                          size(Aerosol%aerosol,3))  :: opt_index_v1, &
                           opt_index_v2, opt_index_v3, opt_index_v4, &
                           opt_index_v5, opt_index_v6, opt_index_v7,opt_index_v8
 
       real, dimension (size(Aerosol%aerosol,3)+1) :: bsum
 
       real      :: asum
-      integer   :: nfields
+      integer   :: nfields, irh
       integer   ::  N_AEROSOL_BANDS 
       integer   :: i,j,k
       integer   :: ix, jx, kx
@@ -3505,25 +3506,25 @@ type(optical_path_type),       intent(inout) :: Optical
       do k = 1,kx         
         do j = 1,jx         
           do i = 1,ix           
-            irh(i,j,k) = MIN(100, MAX(0,     &
-                          NINT(100.*Atmos_input%aerosolrelhum(i,j,k))))
+            irh = MIN(100, MAX(0,     &
+                      NINT(100.*Atmos_input%aerosolrelhum(i,j,k))))
             opt_index_v1(i,j,k) =     &
-                        Aerosol_props%sulfate_index (irh(i,j,k), &
+                        Aerosol_props%sulfate_index (irh, &
                                              Aerosol_props%ivol(i,j,k) )
             opt_index_v2(i,j,k) =     &
-                               Aerosol_props%omphilic_index( irh(i,j,k) )
+                               Aerosol_props%omphilic_index( irh )
             opt_index_v3(i,j,k) =     &
-                               Aerosol_props%bcphilic_index( irh(i,j,k) )
+                               Aerosol_props%bcphilic_index( irh )
             opt_index_v4(i,j,k) =     &
-                               Aerosol_props%seasalt1_index( irh(i,j,k) )
+                               Aerosol_props%seasalt1_index( irh )
             opt_index_v5(i,j,k) =     &
-                               Aerosol_props%seasalt2_index( irh(i,j,k) )
+                               Aerosol_props%seasalt2_index( irh )
             opt_index_v6(i,j,k) =     &
-                               Aerosol_props%seasalt3_index( irh(i,j,k) )
+                               Aerosol_props%seasalt3_index( irh )
             opt_index_v7(i,j,k) =     &
-                               Aerosol_props%seasalt4_index( irh(i,j,k) )
+                               Aerosol_props%seasalt4_index( irh )
             opt_index_v8(i,j,k) =     &
-                               Aerosol_props%seasalt5_index( irh(i,j,k) )
+                               Aerosol_props%seasalt5_index( irh )
           end do
         end do
       end do

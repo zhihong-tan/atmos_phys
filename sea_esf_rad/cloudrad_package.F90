@@ -61,8 +61,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 15.0 2007/08/14 03:54:35 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 17.0 2009/07/21 02:56:11 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -187,7 +187,7 @@ type(time_type),         intent(in)    ::   Time
 !---------------------------------------------------------------------
 !   local variables:
 
-      integer         :: unit, io, ierr
+      integer         :: unit, io, ierr, logunit
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -227,8 +227,9 @@ type(time_type),         intent(in)    ::   Time
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() )    &
-                       write (stdlog(), nml=cloudrad_package_nml)
+                       write (logunit, nml=cloudrad_package_nml)
  
 !-------------------------------------------------------------------
 !    verify that Lw_control%do_lwcldemiss has been defined.

@@ -1,6 +1,7 @@
 #include <fms_platform.h>
 MODULE CONV_PLUMES_k_MOD
 
+  use  aer_ccn_act_k_mod,   only: aer_ccn_act_k
   use  conv_utilities_k_mod,only: findt_k, exn_k, qsat_k, adicloud, sounding, uw_params
   use Sat_Vapor_Pres_k_Mod, ONLY: compute_qs_k
 
@@ -11,8 +12,8 @@ MODULE CONV_PLUMES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 16.0.2.1.2.1.2.1.2.2 2008/09/17 13:38:08 wfc Exp $'
-  character(len=128) :: tagname = '$Name: perth_2008_10 $'
+  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 17.0 2009/07/21 02:58:01 fms Exp $'
+  character(len=128) :: tagname = '$Name: quebec $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -30,6 +31,7 @@ MODULE CONV_PLUMES_k_MOD
    real :: frac_in_cloud
    real :: alpha_r
    real :: alpha_s
+   logical :: Lwetdep, Lgas, Laerosol, Lice
   end type cwetdep_type
 
   public cpnlist
@@ -51,20 +53,20 @@ MODULE CONV_PLUMES_k_MOD
      integer :: ltop, let, krel
      real    :: cush, cldhgt, prel, zrel
      real    :: maxcldfrac
-     real, _ALLOCATABLE :: thcu  (:)_NULL, qctu  (:)_NULL, uu    (:) _NULL
-     real, _ALLOCATABLE :: vu    (:)_NULL, qlu   (:)_NULL, qiu   (:) _NULL
-     real, _ALLOCATABLE :: pptr  (:)_NULL, ppti  (:)_NULL, wu    (:) _NULL
-     real, _ALLOCATABLE :: umf   (:)_NULL, emf   (:)_NULL, thvu  (:) _NULL
-     real, _ALLOCATABLE :: rei   (:)_NULL, fer   (:)_NULL, fdr   (:) _NULL
-     real, _ALLOCATABLE :: dp    (:)_NULL, thc   (:)_NULL, qct   (:) _NULL
-     real, _ALLOCATABLE :: ql    (:)_NULL, qi    (:)_NULL, qa    (:) _NULL
-     real, _ALLOCATABLE :: u     (:)_NULL, v     (:)_NULL, p     (:) _NULL
-     real, _ALLOCATABLE :: ps    (:)_NULL, ufrc  (:)_NULL, thvtop(:) _NULL
-     real, _ALLOCATABLE :: thvbot(:)_NULL, fdrsat(:)_NULL, z     (:) _NULL
-     real, _ALLOCATABLE :: qn    (:)_NULL, qnu   (:)_NULL, zs    (:) _NULL
-     real, _ALLOCATABLE :: hlu   (:)_NULL, hl    (:)_NULL, clu   (:) _NULL
-     real, _ALLOCATABLE :: ciu   (:)_NULL, buo   (:)_NULL, t     (:) _NULL
-     real, _ALLOCATABLE :: crate (:)_NULL, prate (:)_NULL, peff  (:) _NULL
+     real, _ALLOCATABLE :: thcu  (:) _NULL, qctu  (:) _NULL, uu    (:) _NULL
+     real, _ALLOCATABLE :: vu    (:) _NULL, qlu   (:) _NULL, qiu   (:) _NULL
+     real, _ALLOCATABLE :: pptr  (:) _NULL, ppti  (:) _NULL, wu    (:) _NULL
+     real, _ALLOCATABLE :: umf   (:) _NULL, emf   (:) _NULL, thvu  (:) _NULL
+     real, _ALLOCATABLE :: rei   (:) _NULL, fer   (:) _NULL, fdr   (:) _NULL
+     real, _ALLOCATABLE :: dp    (:) _NULL, thc   (:) _NULL, qct   (:) _NULL
+     real, _ALLOCATABLE :: ql    (:) _NULL, qi    (:) _NULL, qa    (:) _NULL
+     real, _ALLOCATABLE :: u     (:) _NULL, v     (:) _NULL, p     (:) _NULL
+     real, _ALLOCATABLE :: ps    (:) _NULL, ufrc  (:) _NULL, thvtop(:) _NULL
+     real, _ALLOCATABLE :: thvbot(:) _NULL, fdrsat(:) _NULL, z     (:) _NULL
+     real, _ALLOCATABLE :: qn    (:) _NULL, qnu   (:) _NULL, zs    (:) _NULL
+     real, _ALLOCATABLE :: hlu   (:) _NULL, hl    (:) _NULL, clu   (:) _NULL
+     real, _ALLOCATABLE :: ciu   (:) _NULL, buo   (:) _NULL, t     (:) _NULL
+     real, _ALLOCATABLE :: crate (:) _NULL, prate (:) _NULL, peff  (:) _NULL
 !++++yim
      real, _ALLOCATABLE :: tr  (:,:) _NULL, tru (:,:) _NULL, tru_dwet(:,:) _NULL
      real, _ALLOCATABLE :: pptn  (:) _NULL
@@ -75,20 +77,20 @@ MODULE CONV_PLUMES_k_MOD
      integer :: botlev, toplev
      real    :: rain, snow, denth, uav, vav, conint, freint,  &
                 dtint, dqint, dqtmp, dting
-     real, _ALLOCATABLE :: uten  (:)_NULL, vten  (:)_NULL, tten  (:)_NULL
-     real, _ALLOCATABLE :: qvten (:)_NULL, qlten (:)_NULL, qiten (:)_NULL
-     real, _ALLOCATABLE :: qaten (:)_NULL, thcten(:)_NULL, qctten(:)_NULL
-     real, _ALLOCATABLE :: qvdiv (:)_NULL, qldiv (:)_NULL, qidiv (:)_NULL
-     real, _ALLOCATABLE :: thcflx(:)_NULL, qctflx(:)_NULL
-     real, _ALLOCATABLE :: umflx (:)_NULL, vmflx (:)_NULL, qvflx (:)_NULL
-     real, _ALLOCATABLE :: qlflx (:)_NULL, qiflx (:)_NULL, qaflx (:)_NULL
-     real, _ALLOCATABLE :: qnflx (:)_NULL, qnten (:)_NULL, pflx  (:)_NULL
-     real, _ALLOCATABLE :: hlflx (:)_NULL, hlten (:)_NULL
-     real, _ALLOCATABLE :: tevap (:)_NULL, qevap (:)_NULL
-     real, _ALLOCATABLE :: qldet (:)_NULL, qidet (:)_NULL, qadet (:)_NULL
-     real, _ALLOCATABLE :: qndet (:)_NULL
+     real, _ALLOCATABLE :: uten  (:) _NULL, vten  (:) _NULL, tten  (:) _NULL
+     real, _ALLOCATABLE :: qvten (:) _NULL, qlten (:) _NULL, qiten (:) _NULL
+     real, _ALLOCATABLE :: qaten (:) _NULL, thcten(:) _NULL, qctten(:) _NULL
+     real, _ALLOCATABLE :: qvdiv (:) _NULL, qldiv (:) _NULL, qidiv (:) _NULL
+     real, _ALLOCATABLE :: thcflx(:) _NULL, qctflx(:) _NULL
+     real, _ALLOCATABLE :: umflx (:) _NULL, vmflx (:) _NULL, qvflx (:) _NULL
+     real, _ALLOCATABLE :: qlflx (:) _NULL, qiflx (:) _NULL, qaflx (:) _NULL
+     real, _ALLOCATABLE :: qnflx (:) _NULL, qnten (:) _NULL, pflx  (:) _NULL
+     real, _ALLOCATABLE :: hlflx (:) _NULL, hlten (:) _NULL
+     real, _ALLOCATABLE :: tevap (:) _NULL, qevap (:) _NULL
+     real, _ALLOCATABLE :: qldet (:) _NULL, qidet (:) _NULL, qadet (:) _NULL
+     real, _ALLOCATABLE :: qndet (:) _NULL
 !++++yim
-     real, _ALLOCATABLE :: trflx(:,:)_NULL,trten (:,:)_NULL, trwet(:,:)_NULL
+     real, _ALLOCATABLE :: trflx(:,:) _NULL,trten (:,:) _NULL, trwet(:,:) _NULL
   end type ctend
 
 contains
@@ -375,21 +377,24 @@ contains
 !#####################################################################
 
   subroutine cumulus_plume_k (cpn, sd, ac, cp, rkm, cbmf, wrel, scaleh,&
-                              Uw_p)       
+                              Uw_p, ier, ermesg)       
   
 
-    type(cpnlist),  intent(in)    :: cpn
-    type(uw_params),  intent(inout)    :: Uw_p
-    type(sounding), intent(in)    :: sd
-    type(adicloud), intent(in)    :: ac
-    real,           intent(in)    :: rkm, cbmf, wrel, scaleh
-    type(cplume),   intent(inout) :: cp
+    type(cpnlist),      intent(in)    :: cpn
+    type(uw_params),    intent(inout) :: Uw_p
+    type(sounding),     intent(in)    :: sd
+    type(adicloud),     intent(in)    :: ac
+    real,               intent(in)    :: rkm, cbmf, wrel, scaleh
+    type(cplume),       intent(inout) :: cp
+    integer,            intent(out)   :: ier
+    character(len=*),   intent(out)   :: ermesg
 
 
     real, dimension(1:size(sd%p)) :: p0, dp
     real, dimension(0:size(sd%p)) :: ps0
 
     real, dimension(4)            :: totalmass
+    integer                       :: tym
     real                          :: thickness, drop=0
    
     integer :: k, klm, km1, krel, let, ltop, id_check
@@ -402,11 +407,14 @@ contains
     real    :: auto_th, scaleh1
     real    :: qct_env_k, hl_env_k
     real    :: t_mid, tv_mid, air_density, total_condensate,   &
-               total_precip, delta_tracer, delta_qn, cons_up, wrel2, gamma
+               total_rain, total_snow, delta_tracer, delta_qn, cons_up, wrel2, gamma
     real    :: cflim
     integer :: n
     logical :: kbelowlet
 
+    ier = 0
+    ermesg = ' '
+    tym = size(totalmass,1)
     call cp_clear_k (cp)
     cp%p=sd%p; cp%ps=sd%ps; cp%dp=sd%dp; cp%u=sd%u; cp%v=sd%v;
     cp%hl=sd%hl; cp%thc=sd%thc; cp%qct=sd%qct; 
@@ -447,10 +455,9 @@ contains
     cp%qctu (krel-1) = ac % qctsrc
     cp%uu   (krel-1) = ac % usrc
     cp%vu   (krel-1) = ac % vsrc
-    cp%umf  (krel-1) = cbmf
+    cp%umf  (krel-1) = cbmf*sd%rho(krel-1)/ac%rho0lcl
     cp%wu   (krel-1) = wrel
     cp%ufrc (krel-1) = cp%umf(krel-1)/(sd%rho(krel-1)*cp%wu(krel-1))
-! BUGFIX:
     cp%tru  (krel-1,:) = cp%tr(1,:)
     !==================================================
     !     yim's CONVECTIVE NUCLEATION
@@ -459,9 +466,19 @@ contains
     totalmass(2)=     sd%am2(krel-1); !totalmass(2)=0.;
     totalmass(3)=     sd%am3(krel-1); !totalmass(3)=0.;
     totalmass(4)=     sd%am4(krel-1); !totalmass(4)=0.;
-    wrel2 = wrel*cpn%wrel_min
-    cp%qnu(krel-1) = drop * 1.0e6 / (prel /    &
-                     (Uw_p%rdgas*cp%thvu(krel-1)*exn_k(prel,Uw_p)))
+    if (SUM(totalmass(:)) /= 0.0) then
+      wrel2 = wrel*cpn%wrel_min
+      call aer_ccn_act_k(thj*exn_k(prel,Uw_p), prel, wrel2, totalmass, &
+                         tym, drop, ier, ermesg)
+      if (ier /= 0) then
+        return
+      endif
+      cp%qnu(krel-1) = drop * 1.0e6 / (prel /    &
+                      (Uw_p%rdgas*cp%thvu(krel-1)*exn_k(prel,Uw_p)))
+    else
+      drop = 0.
+      cp%qnu(krel-1) = 0.0
+    endif
 
 
     !(krel) represents the first partial updraft layer
@@ -667,21 +684,25 @@ contains
 ! air density (kg/m3)
        air_density = 0.5*(cp%ps(km1)+cp%ps(k)) / (Uw_p%rdgas*tv_mid)
        total_condensate = cp%qlu(k) + cp%qiu(k) + qrj + qsj ! kg/kg
-       total_precip = (qrj+qsj) * air_density ! kg/m3
-       if (total_precip > 0.) then
+       total_rain = qrj * air_density ! kg/m3
+       total_snow = qsj * air_density ! kg/m3
+       if (total_rain+total_snow > 0.) then
           do n=1,size(cp%tru,2)
-             call wet_deposition_0D( cpn%wetdep(n)%scheme, &
-                                     cpn%wetdep(n)%Henry_constant, &
-                                     cpn%wetdep(n)%Henry_variable, &
-                                     cpn%wetdep(n)%frac_in_cloud, &
-                                     cpn%wetdep(n)%alpha_r, &
-                                     cpn%wetdep(n)%alpha_s, &
-                                     t_mid, cp%ps(km1), cp%ps(k), &
-                                     air_density, &
-                                     total_condensate, total_precip, &
-                                     cp%tru(k,n), delta_tracer )
-             cp%tru_dwet(k,n) = -delta_tracer ! tracer source from wet deposition (negative=sink)
-             cp%tru(k,n) = cp%tru(k,n) - delta_tracer ! adjust in-cloud concentration for wet dep
+             if (cpn%wetdep(n)%Lwetdep) then
+                call wet_deposition_0D( cpn%wetdep(n)%Henry_constant, &
+                                        cpn%wetdep(n)%Henry_variable, &
+                                        cpn%wetdep(n)%frac_in_cloud, &
+                                        cpn%wetdep(n)%alpha_r, &
+                                        cpn%wetdep(n)%alpha_s, &
+                                        t_mid, cp%ps(km1), cp%ps(k), &
+                                        air_density, &
+                                        total_condensate, total_rain, total_snow, &
+                                        cp%tru(k,n), &
+                                        cpn%wetdep(n)%Lgas, cpn%wetdep(n)%Laerosol, cpn%wetdep(n)%Lice, &
+                                        delta_tracer )
+                cp%tru_dwet(k,n) = -delta_tracer ! tracer source from wet deposition (negative=sink)
+                cp%tru(k,n) = cp%tru(k,n) - delta_tracer ! adjust in-cloud concentration for wet dep
+             end if
        end do
        end if
        

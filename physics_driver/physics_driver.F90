@@ -90,8 +90,8 @@ use rad_utilities_mod,       only: aerosol_type, radiative_gases_type, &
 use  moist_processes_mod,    only: moist_processes,    &
                                    moist_processes_init,  &
                                    moist_processes_end,  &
-                                   doing_strat,          &
-                                   moist_processes_restart
+                                   doing_strat!,          &
+!                                   moist_processes_restart
 
 use vert_turb_driver_mod,    only: vert_turb_driver,  &
                                    vert_turb_driver_init,  &
@@ -156,8 +156,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 16.0.6.3 2008/09/17 13:49:24 wfc Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 17.0 2009/07/21 02:55:47 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -202,7 +202,6 @@ real    :: diff_min = 1.e-3    ! minimum value of a diffusion
 logical :: diffusion_smooth = .true.
                                ! diffusion coefficients should be 
                                ! smoothed in time?
-logical :: do_netcdf_restart = .true.              
 logical :: use_cloud_tracers_in_radiation = .true.
                                ! if true, use lsc cloud tracer fields
                                ! in radiation (these transported on
@@ -214,9 +213,6 @@ logical :: use_cloud_tracers_in_radiation = .true.
                                ! clouds are active (AM3)
 
 ! <NAMELIST NAME="physics_driver_nml">
-!  <DATA NAME="do_netcdf_restart" UNITS="" TYPE="logical" DIM="" DEFAULT=".true.">
-! netcdf/native format restart file
-!  </DATA>
 !  <DATA NAME="do_radiation" UNITS="" TYPE="logical" DIM="" DEFAULT=".true.">
 !calculating radiative fluxes and
 ! heating rates?
@@ -239,7 +235,7 @@ logical :: use_cloud_tracers_in_radiation = .true.
 !  </DATA>
 ! </NAMELIST>
 !
-namelist / physics_driver_nml / do_netcdf_restart, do_radiation, &
+namelist / physics_driver_nml / do_radiation, &
                                 do_moist_processes, tau_diff,      &
                                 diff_min, diffusion_smooth, &
                                 use_cloud_tracers_in_radiation, do_grey_radiation 
@@ -348,6 +344,7 @@ integer,    dimension(:,:)  , allocatable :: nsum_out
 type(restart_file_type), pointer, save :: Phy_restart => NULL()
 type(restart_file_type), pointer, save :: Til_restart => NULL()
 logical                                :: in_different_file = .false.
+logical                                :: do_netcdf_restart = .true.              
 integer                                :: vers
 integer                                :: now_doing_strat  
 integer                                :: now_doing_entrain
@@ -513,8 +510,14 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
       character(len=64), dimension(:), pointer :: aerosol_names => NULL()
       character(len=64), dimension(:), pointer :: aerosol_family_names => NULL()
       integer          ::  id, jd, kd
-      integer          ::  ierr, io, unit
+      integer          ::  ierr, io, unit, logunit
       integer          ::  ndum
+
+      integer          ::  moist_processes_init_clock, damping_init_clock, &
+                           turb_init_clock, diff_init_clock, &
+                           cloud_spec_init_clock, aerosol_init_clock, &
+                           grey_radiation_init_clock , radiative_gases_init_clock, &
+                           radiation_init_clock, tracer_init_clock          
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -567,8 +570,9 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !    write version number and namelist to log file.
 !--------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-               write(stdlog(), nml=physics_driver_nml)
+               write(logunit, nml=physics_driver_nml)
  
 !---------------------------------------------------------------------
 !    define the model dimensions on the local processor.
@@ -579,72 +583,6 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
       call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
 
-!-----------------------------------------------------------------------
-        call  moist_processes_init (id, jd, kd, lonb, latb, pref(:,1),&
-                                    axes, Time, doing_donner,  &
-                                    doing_uw_conv)
-     
-!-----------------------------------------------------------------------
-!    initialize damping_driver_mod.
-!-----------------------------------------------------------------------
-      call damping_driver_init (lonb, latb, pref(:,1), axes, Time, &
-                                sgsmtn)
-
-!-----------------------------------------------------------------------
-!    initialize vert_turb_driver_mod.
-!-----------------------------------------------------------------------
-      call vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
-                                  doing_edt, doing_entrain)
-
-!-----------------------------------------------------------------------
-!    initialize vert_diff_driver_mod.
-!-----------------------------------------------------------------------
-      call vert_diff_driver_init (Surf_diff, id, jd, kd, axes, Time )
-
-     if (do_radiation) then
-!-----------------------------------------------------------------------
-!    initialize cloud_spec_mod.
-!-----------------------------------------------------------------------
-      call cloud_spec_init (pref, lonb, latb, axes, Time)
- 
-!-----------------------------------------------------------------------
-!    initialize aerosol_mod.     
-!-----------------------------------------------------------------------
-      call aerosol_init (lonb, latb, aerosol_names, aerosol_family_names)
- 
-      if(do_grey_radiation) call grey_radiation_init(axes, Time) 
-
-!-----------------------------------------------------------------------
-!    initialize radiative_gases_mod.
-!-----------------------------------------------------------------------
-      call radiative_gases_init (pref, latb, lonb)
- 
-!-----------------------------------------------------------------------
-!    initialize radiation_driver_mod.
-!-----------------------------------------------------------------------
-      call radiation_driver_init (lonb, latb, pref, axes, time,  &
-                                  aerosol_names, aerosol_family_names)
-
-!---------------------------------------------------------------------
-!    deallocate space for local pointers.
-!---------------------------------------------------------------------
-      deallocate (aerosol_names, aerosol_family_names)
-
-     else if (do_moist_processes) then
-!-----------------------------------------------------------------------
-!    initialize aerosol_mod.     
-!-----------------------------------------------------------------------
-      call aerosol_init (lonb, latb, aerosol_names, aerosol_family_names)
-      endif ! do_radiation
-
-!-----------------------------------------------------------------------
-!    initialize atmos_tracer_driver_mod.
-!-----------------------------------------------------------------------
-      call atmos_tracer_driver_init (lonb, latb, trs, axes, time,  &
-                                     phalf, mask)
-
-!---------------------------------------------------------------------
-!    initialize  various clocks used to time the physics components.
 !---------------------------------------------------------------------
       radiation_clock       =       &
                 mpp_clock_id( '   Physics_down: Radiation',    &
@@ -668,6 +606,125 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
                 mpp_clock_id( '   Physics_up: Moist Processes', &
                 grain=CLOCK_MODULE_DRIVER )
 
+      moist_processes_init_clock =      &
+        mpp_clock_id( '   Physics_driver_init: Moist Processes: Initialization', &
+                grain=CLOCK_MODULE_DRIVER )
+      damping_init_clock         =     &
+        mpp_clock_id( '   Physics_driver_init: Damping: Initialization',    &
+                  grain=CLOCK_MODULE_DRIVER )
+      turb_init_clock            =      &
+        mpp_clock_id( '   Physics_driver_init: Vert. Turb.: Initialization', &
+                  grain=CLOCK_MODULE_DRIVER )
+      diff_init_clock       =     &
+        mpp_clock_id( '   Physics_driver_init: Vert. Diff.: Initialization',   &
+                 grain=CLOCK_MODULE_DRIVER )
+      cloud_spec_init_clock       =       &
+        mpp_clock_id( '   Physics_driver_init: Cloud spec: Initialization', &
+                       grain=CLOCK_MODULE_DRIVER )
+      aerosol_init_clock       =       &
+        mpp_clock_id( '   Physics_driver_init: Aerosol: Initialization', &
+                       grain=CLOCK_MODULE_DRIVER )
+      grey_radiation_init_clock       =       &
+        mpp_clock_id( '   Physics_driver_init: Grey Radiation: Initialization', &
+                       grain=CLOCK_MODULE_DRIVER )
+      radiative_gases_init_clock       =       &
+        mpp_clock_id( '   Physics_driver_init: Radiative gases: Initialization', &
+                       grain=CLOCK_MODULE_DRIVER )
+      radiation_init_clock       =       &
+        mpp_clock_id( '   Physics_driver_init: Radiation: Initialization', &
+                       grain=CLOCK_MODULE_DRIVER )
+      tracer_init_clock          =      &
+        mpp_clock_id( '   Physics_driver_init: Tracer: Initialization',    &
+                 grain=CLOCK_MODULE_DRIVER )
+
+!-----------------------------------------------------------------------
+      call mpp_clock_begin ( moist_processes_init_clock )
+      call  moist_processes_init (id, jd, kd, lonb, latb, pref(:,1),&
+                                  axes, Time, doing_donner,  &
+                                  doing_uw_conv)
+      call mpp_clock_end ( moist_processes_init_clock )
+     
+!-----------------------------------------------------------------------
+!    initialize damping_driver_mod.
+!-----------------------------------------------------------------------
+      call mpp_clock_begin ( damping_init_clock )
+      call damping_driver_init (lonb, latb, pref(:,1), axes, Time, &
+                                sgsmtn)
+      call mpp_clock_end ( damping_init_clock )
+
+!-----------------------------------------------------------------------
+!    initialize vert_turb_driver_mod.
+!-----------------------------------------------------------------------
+      call mpp_clock_begin ( turb_init_clock )
+      call vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
+                                  doing_edt, doing_entrain)
+      call mpp_clock_end ( turb_init_clock )
+
+!-----------------------------------------------------------------------
+!    initialize vert_diff_driver_mod.
+!-----------------------------------------------------------------------
+      call mpp_clock_begin ( diff_init_clock )
+      call vert_diff_driver_init (Surf_diff, id, jd, kd, axes, Time )
+      call mpp_clock_end ( diff_init_clock )
+
+      if (do_radiation) then
+!-----------------------------------------------------------------------
+!    initialize cloud_spec_mod.
+!-----------------------------------------------------------------------
+        call mpp_clock_begin ( cloud_spec_init_clock )
+        call cloud_spec_init (pref, lonb, latb, axes, Time)
+        call mpp_clock_end ( cloud_spec_init_clock )
+ 
+!-----------------------------------------------------------------------
+!    initialize aerosol_mod.     
+!-----------------------------------------------------------------------
+        call mpp_clock_begin ( aerosol_init_clock )
+        call aerosol_init (lonb, latb, aerosol_names, aerosol_family_names)
+        call mpp_clock_end ( aerosol_init_clock )
+ 
+        call mpp_clock_begin ( grey_radiation_init_clock )
+        if(do_grey_radiation) call grey_radiation_init(axes, Time) 
+        call mpp_clock_end ( grey_radiation_init_clock )
+
+!-----------------------------------------------------------------------
+!    initialize radiative_gases_mod.
+!-----------------------------------------------------------------------
+        call mpp_clock_begin ( radiative_gases_init_clock )
+        call radiative_gases_init (pref, latb, lonb)
+        call mpp_clock_end ( radiative_gases_init_clock )
+ 
+!-----------------------------------------------------------------------
+!    initialize radiation_driver_mod.
+!-----------------------------------------------------------------------
+        call mpp_clock_begin ( radiation_init_clock )
+        call radiation_driver_init (lonb, latb, pref, axes, time,  &
+                                    aerosol_names, aerosol_family_names)
+        call mpp_clock_end ( radiation_init_clock )
+
+!---------------------------------------------------------------------
+!    deallocate space for local pointers.
+!---------------------------------------------------------------------
+        deallocate (aerosol_names, aerosol_family_names)
+
+      else if (do_moist_processes) then
+!-----------------------------------------------------------------------
+!    initialize aerosol_mod.     
+!-----------------------------------------------------------------------
+        call mpp_clock_begin ( aerosol_init_clock )
+        call aerosol_init (lonb, latb, aerosol_names, aerosol_family_names)
+        call mpp_clock_end ( aerosol_init_clock )
+      endif ! do_radiation
+
+!-----------------------------------------------------------------------
+!    initialize atmos_tracer_driver_mod.
+!-----------------------------------------------------------------------
+      call mpp_clock_begin ( tracer_init_clock )
+      call atmos_tracer_driver_init (lonb, latb, trs, axes, time,  &
+                                     phalf, mask)
+      call mpp_clock_end ( tracer_init_clock )
+
+!---------------------------------------------------------------------
+!    initialize  various clocks used to time the physics components.
 !---------------------------------------------------------------------
 !    allocate space for the module variables.
 !---------------------------------------------------------------------
@@ -1717,7 +1774,9 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                                 rm, rdt, dt, &
                                 u_star, b_star, q_star, &
                                 z_half, z_full, t_surf_rad, albedo, &
-                                Time_next, mask, kbot)
+                                Time_next, &
+                                flux_sw_down_vis_dir, flux_sw_down_vis_dif, &  
+                                mask, kbot)
       call mpp_clock_end ( tracer_clock )
 
 !-----------------------------------------------------------------------
@@ -2331,7 +2390,41 @@ type(time_type), intent(in) :: Time
 !      Time      current time [ time_type(days, seconds) ]
 !
 !--------------------------------------------------------------------
+integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
+           diff_term_clock, cloud_spec_term_clock, aerosol_term_clock, &
+           grey_radiation_term_clock, radiative_gases_term_clock, &
+           radiation_term_clock, tracer_term_clock          
 
+      moist_processes_term_clock =      &
+        mpp_clock_id( '   Phys_driver_term: MP: Termination', &
+                grain=CLOCK_MODULE_DRIVER )
+      damping_term_clock         =     &
+        mpp_clock_id( '   Phys_driver_term: Damping: Termination',    &
+                  grain=CLOCK_MODULE_DRIVER )
+      turb_term_clock            =      &
+        mpp_clock_id( '   Phys_driver_term: Vert. Turb.: Termination', &
+                  grain=CLOCK_MODULE_DRIVER )
+      diff_term_clock       =     &
+        mpp_clock_id( '   Phys_driver_term: Vert. Diff.: Termination',   &
+                 grain=CLOCK_MODULE_DRIVER )
+      cloud_spec_term_clock       =       &
+        mpp_clock_id( '   Phys_driver_term: Cloud spec: Termination', &
+                       grain=CLOCK_MODULE_DRIVER )
+      aerosol_term_clock       =       &
+        mpp_clock_id( '   Phys_driver_term: Aerosol: Termination', &
+                       grain=CLOCK_MODULE_DRIVER )
+      grey_radiation_term_clock       =       &
+        mpp_clock_id( '   Phys_driver_term: Grey Radiation: Termination', &
+                       grain=CLOCK_MODULE_DRIVER )
+      radiative_gases_term_clock       =       &
+        mpp_clock_id( '   Phys_driver_term: Radiative gases: Termination', &
+                       grain=CLOCK_MODULE_DRIVER )
+      radiation_term_clock       =       &
+        mpp_clock_id( '   Phys_driver_term: Radiation: Termination', &
+                       grain=CLOCK_MODULE_DRIVER )
+      tracer_term_clock          =      &
+        mpp_clock_id( '   Phys_driver_term: Tracer: Termination',    &
+                 grain=CLOCK_MODULE_DRIVER )
 !---------------------------------------------------------------------
 !    verify that the module is initialized.
 !---------------------------------------------------------------------
@@ -2340,24 +2433,44 @@ type(time_type), intent(in) :: Time
               'module has not been initialized', FATAL)
       endif
 
-      call physics_driver_restart
+      call physics_driver_netcdf
 
 !--------------------------------------------------------------------
 !    call the destructor routines for those modules who were initial-
 !    ized from this module.
 !--------------------------------------------------------------------
+      call mpp_clock_begin ( turb_term_clock )
       call vert_turb_driver_end
+      call mpp_clock_end ( turb_term_clock )
+      call mpp_clock_begin ( diff_term_clock )
       call vert_diff_driver_end
+      call mpp_clock_end ( diff_term_clock )
       if (do_radiation) then
+        call mpp_clock_begin ( radiation_term_clock )
         call radiation_driver_end
+        call mpp_clock_end ( radiation_term_clock )
+        call mpp_clock_begin ( radiative_gases_term_clock )
         call radiative_gases_end
+        call mpp_clock_end ( radiative_gases_term_clock )
+        call mpp_clock_begin ( cloud_spec_term_clock )
         call cloud_spec_end
+        call mpp_clock_end ( cloud_spec_term_clock )
+        call mpp_clock_begin ( aerosol_term_clock )
         call aerosol_end
+        call mpp_clock_end ( aerosol_term_clock )
       endif
+      call mpp_clock_begin ( grey_radiation_term_clock )
       if(do_grey_radiation) call grey_radiation_end 
+      call mpp_clock_end ( grey_radiation_term_clock )
+      call mpp_clock_begin ( moist_processes_term_clock )
       call moist_processes_end
+      call mpp_clock_end ( moist_processes_term_clock )
+      call mpp_clock_begin ( tracer_term_clock )
       call atmos_tracer_driver_end
+      call mpp_clock_end ( tracer_term_clock )
+      call mpp_clock_begin ( damping_term_clock )
       call damping_driver_end
+      call mpp_clock_end ( damping_term_clock )
 
 !---------------------------------------------------------------------
 !    deallocate the module variables.
@@ -2409,95 +2522,53 @@ subroutine physics_driver_restart(timestamp)
 
 
   if(do_netcdf_restart) then
-     if (mpp_pe() == mpp_root_pe() ) then
-        call error_mesg('physics_driver_mod', 'Writing netCDF formatted restart file: RESTART/physics_driver.res.nc', NOTE)
-     endif
-     r_convect = 0.
-     where(convect)
-        r_convect = 1.0
-     end where
-     call save_restart(Phy_restart, timestamp)
-     if(in_different_file) call save_restart(Til_restart, timestamp)
-  else
-     if(present(timestamp)) then
-        call mpp_error ('physics_driver_mod', 'when do_netcdf_restart is false, '// &
-                        'timestamp should not passed in physics_driver_restart', FATAL)
-     end if     
-         if (mpp_pe() == mpp_root_pe() ) then
-            call error_mesg('physics_driver_mod', 'Writing native formatted restart file.', NOTE)
-         endif
-         !---------------------------------------------------------------------
-         !    open a unit for the restart file.
-         !---------------------------------------------------------------------
-         unit = open_restart_file ('RESTART/physics_driver.res', 'write')
-         
-         !---------------------------------------------------------------------
-         !    write the header records, indicating restart version number and
-         !    which variables fields are present.
-         !---------------------------------------------------------------------
-         if (mpp_pe() == mpp_root_pe() ) then
-            write (unit) restart_versions(size(restart_versions(:)))
-            write (unit) doing_strat(), doing_edt, doing_entrain
-            write (unit) doing_donner                           
-            write (unit) doing_uw_conv
-         endif
-         
-         !--------------------------------------------------------------------
-         !    write out the data fields that are relevant for this experiment.
-         !--------------------------------------------------------------------
-         call write_data (unit, diff_cu_mo)
-         call write_data (unit, pbltop    )
-         call write_data (unit, cush      ) !miz
-         call write_data (unit, cbmf      ) !miz
-         call write_data (unit, diff_t)
-         call write_data (unit, diff_m)
-         call write_data (unit, convect)
-         if (doing_strat()) then
-            call write_data (unit, radturbten)
-         endif
-         if (doing_edt .or. doing_entrain) then
-            call write_data (unit, lw_tendency)
-         endif
-        if (doing_donner) then
-         call write_data (unit ,  cell_cld_frac)
-         call write_data (unit ,  cell_liq_amt )
-         call write_data (unit ,  cell_liq_size)
-         call write_data (unit ,  cell_ice_amt )
-         call write_data (unit ,  cell_ice_size)
-         call write_data (unit ,  meso_cld_frac)
-         call write_data (unit ,  meso_liq_amt )
-         call write_data (unit ,  meso_liq_size)
-         call write_data (unit ,  meso_ice_amt )
-         call write_data (unit ,  meso_ice_size)
-         call write_data (unit , nsum_out)                 
-        endif
-        if (doing_uw_conv) then
-          call write_data (unit ,  shallow_cloud_area)
-          call write_data (unit ,  shallow_liquid )
-          call write_data (unit ,  shallow_ice )
-          call write_data (unit ,  shallow_droplet_number)
-        endif
-         
-!--------------------------------------------------------------------
-!    close the restart file unit.
-!--------------------------------------------------------------------
-         call close_file (unit)
-      endif
-  call vert_turb_driver_restart(timestamp)
-  if (do_radiation) then
-     call radiation_driver_restart(timestamp)
-     call radiative_gases_restart(timestamp)
-  endif
+    if (mpp_pe() == mpp_root_pe() ) then
+       call error_mesg('physics_driver_mod', 'Writing netCDF formatted restart file: RESTART/physics_driver.res.nc', NOTE)
+    endif
+    call physics_driver_netcdf(timestamp)
+    call vert_turb_driver_restart(timestamp)
+    if (do_radiation) then
+      call radiation_driver_restart(timestamp)
+      call radiative_gases_restart(timestamp)
+    endif
 
-  call moist_processes_restart(timestamp)
-  call damping_driver_restart(timestamp)
+!    call moist_processes_restart(timestamp)
+    call damping_driver_restart(timestamp)
+  else
+     call error_mesg('physics_driver_mod', &
+         'Native intermediate restart files are not supported.', FATAL)
+  endif
 
 
 
 end subroutine physics_driver_restart
 ! </SUBROUTINE> NAME="physics_driver_restart"
 
+! <SUBROUTINE NAME="physics_driver_netcdf">
+!
+! <DESCRIPTION>
+! Write out restart file for physics driver.
+! This routine is needed so that physics_driver_restart and physics_driver_end
+! can call a routine which will not result in multiple copies of restart files 
+! being written by the destructor routines.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine physics_driver_netcdf(timestamp)
+  character(len=*), intent(in), optional :: timestamp
 
+    r_convect = 0.
+    where(convect)
+       r_convect = 1.0
+    end where
+    call save_restart(Phy_restart, timestamp)
+    if(in_different_file) call save_restart(Til_restart, timestamp)
+
+end subroutine physics_driver_netcdf
+! </SUBROUTINE> NAME="physics_driver_netcdf"
 
 !#######################################################################
 ! <FUNCTION NAME="do_moist_in_phys_up">
@@ -2697,7 +2768,11 @@ subroutine physics_driver_register_restart
      id_restart = register_restart_field(Til_restart, fname, 'shallow_ice', shallow_ice)
      id_restart = register_restart_field(Til_restart, fname, 'shallow_droplet_number', shallow_droplet_number)
   endif
-
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_cloud_area', lsc_cloud_area)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_liquid', lsc_liquid )
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_ice', lsc_ice )
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_droplet_number',   &
+                                                                          lsc_droplet_number)
 
 end subroutine physics_driver_register_restart
 ! </SUBROUTINE>    

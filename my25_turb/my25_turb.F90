@@ -30,8 +30,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: my25_turb.F90,v 14.0.8.1 2008/09/03 18:40:27 z1l Exp $'
- character(len=128) :: tagname = '$Name: perth_2008_10 $'
+ character(len=128) :: version = '$Id: my25_turb.F90,v 17.0 2009/07/21 02:55:42 fms Exp $'
+ character(len=128) :: tagname = '$Name: quebec $'
  logical            :: module_is_initialized = .false.
  
  logical :: init_tke
@@ -602,7 +602,7 @@ end subroutine get_tke
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer             :: unit, io, ierr
+ integer             :: unit, io, ierr, logunit
  integer             :: id_restart
 
 !=====================================================================
@@ -630,7 +630,8 @@ end subroutine get_tke
 
   if ( mpp_pe() == mpp_root_pe() ) then
        call write_version_number(version, tagname)
-       WRITE( stdlog(), nml = my25_turb_nml ) 
+       logunit = stdlog()
+       WRITE( logunit, nml = my25_turb_nml ) 
   endif
 
 !---------------------------------------------------------------------
@@ -722,6 +723,7 @@ end subroutine get_tke
 !--------------------------------------------------------------------
 !  local variables:
 
+      call my25_turb_restart
       module_is_initialized = .false.
 !---------------------------------------------------------------------
 !      unit = OPEN_RESTART_FILE ( file = 'RESTART/my25_turb.res', action = 'write' )

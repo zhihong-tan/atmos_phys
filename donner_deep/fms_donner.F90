@@ -65,8 +65,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: fms_donner.F90,v 16.0.4.1.2.1.2.1 2008/09/16 02:42:40 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: fms_donner.F90,v 17.0 2009/07/21 02:54:47 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !--------------------------------------------------------------------
@@ -80,7 +80,7 @@ public   &
         fms_donner_column_control, &
         fms_sat_vapor_pres, &
         fms_get_pe_number,  fms_error_mesg,  fms_constants, & 
-        fms_close_column_diagnostics_units, &
+        fms_close_col_diag_units, &
         fms_deallocate_variables, &
         fms_donner_deep_netcdf, fms_donner_process_monitors
 
@@ -272,7 +272,7 @@ integer,               intent(in)       :: kpar
 !-------------------------------------------------------------------
 !  local variables:
 
-      integer                             :: unit, ierr, io
+      integer                             :: unit, ierr, io, logunit
   
 !-------------------------------------------------------------------
 !  local variables:
@@ -305,8 +305,9 @@ integer,               intent(in)       :: kpar
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() )    &
-                                 write (stdlog(), nml=donner_deep_nml)
+                                 write (logunit, nml=donner_deep_nml)
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
@@ -366,9 +367,15 @@ integer,               intent(in)       :: kpar
       Nml%dfre_for_closure            = dfre_for_closure
       Nml%rmuz_for_closure            = rmuz_for_closure
       Nml%do_budget_analysis          = do_budget_analysis
-      Nml%force_internal_enthalpy_conservation =  &
-                                 force_internal_enthalpy_conservation
+      Nml%frc_internal_enthalpy_conserv =  &
+                                 frc_internal_enthalpy_conserv
       Nml%do_ensemble_diagnostics     = do_ensemble_diagnostics
+      Nml%limit_pztm_to_tropo = limit_pztm_to_tropo
+      Nml%entrainment_scheme_for_closure =    &
+                                       entrainment_scheme_for_closure
+      Nml%modify_closure_plume_condensate =   &
+                                       modify_closure_plume_condensate
+      Nml%closure_plume_condensate = closure_plume_condensate
 
      Nml%evap_in_downdrafts = evap_in_downdrafts
      Nml%evap_in_environ  = evap_in_environ
@@ -380,6 +387,19 @@ integer,               intent(in)       :: kpar
 
      allocate (Nml%arat(kpar))
      allocate (Nml%ensemble_entrain_factors_gate(kpar)) 
+
+     if ( arat_erat_option /= 0 ) then
+ 
+       call define_arat_erat (arat_erat_option, kpar, eratb, erat0, &
+                              erat_min, erat_max, erat, arat)
+       if (mpp_pe() == mpp_root_pe() ) then
+         print *,'donner_deep_nml: redefined arat and erat using &
+                        &arat_erat_option == ', arat_erat_option
+         print *,'donner_deep_nml: arat = ',arat
+         print *,'donner_deep_nml: erat = ',erat
+       end if
+     endif
+
      Nml%arat = arat
      Nml%ensemble_entrain_factors_gate = erat
 
@@ -417,13 +437,14 @@ type(donner_save_type), intent(inout)      :: Don_save
                                    Initialized%wetdep(nn)%scheme, &
                                    Initialized%wetdep(nn)%Henry_constant, &
                                    Initialized%wetdep(nn)%Henry_variable, &
-!                                  Initialized%wetdep(nn)%frac_in_cloud, &
                                    frac_junk, &
                                    Initialized%wetdep(nn)%alpha_r, &
-!                                  Initialized%wetdep(nn)%alpha_s )
                                    Initialized%wetdep(nn)%alpha_s , &
-                                   frac_in_cloud_donner=  &
-                                   Initialized%wetdep(nn)%frac_in_cloud)
+                                   Initialized%wetdep(nn)%Lwetdep, &
+                                   Initialized%wetdep(nn)%Lgas, &
+                                   Initialized%wetdep(nn)%Laerosol, &
+                                   Initialized%wetdep(nn)%Lice, &
+                                   frac_in_cloud_donner=Initialized%wetdep(nn)%frac_in_cloud)
             Initialized%wetdep(nn)%scheme = lowercase( Initialized%wetdep(nn)%scheme )
 !-lwh
             nn = nn + 1
@@ -713,13 +734,13 @@ end subroutine fms_get_pe_number
 
 !#####################################################################
 
-subroutine fms_close_column_diagnostics_units
+subroutine fms_close_col_diag_units
 
 
       call close_column_diagnostics_units (col_diag_unit)
 
 
-end subroutine fms_close_column_diagnostics_units 
+end subroutine fms_close_col_diag_units 
 
 
 !#####################################################################

@@ -32,10 +32,10 @@ private
 ! version information 
 
 character(len=128), parameter :: version = &
-'$Id: grey_radiation.F90,v 1.1.2.2.2.1 2008/09/16 16:36:31 wfc Exp $'
+'$Id: grey_radiation.F90,v 17.0 2009/07/21 02:55:20 fms Exp $'
 
 character(len=128), parameter :: tagname = &
-'$Name: perth_2008_10 $'
+'$Name: quebec $'
 
 !==================================================================================
 
@@ -118,7 +118,7 @@ integer, intent(in), dimension(4) :: axes
 type(time_type), intent(in)       :: Time
 !-------------------------------------------------------------------------------------
 integer, dimension(3) :: half = (/1,2,4/)
-integer :: ierr, io, unit
+integer :: ierr, io, unit, logunit
 !-----------------------------------------------------------------------------------------
 ! read namelist and copy to logfile
 
@@ -132,7 +132,8 @@ enddo
 
 call write_version_number ( version, tagname )
 if ( mpp_pe() == mpp_root_pe() ) then
-  write (stdlog(), nml=grey_radiation_nml)
+  logunit = stdlog()
+  write (logunit, nml=grey_radiation_nml)
 endif
 call close_file (unit)
 

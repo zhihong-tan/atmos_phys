@@ -38,8 +38,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.F90,v 16.0.2.1.2.2 2008/10/17 21:12:31 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: cg_drag.F90,v 17.0 2009/07/21 02:53:42 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 
@@ -286,7 +286,7 @@ type(time_type),         intent(in)      :: Time
 !-------------------------------------------------------------------
 !   local variables: 
 
-      integer                 :: unit, ierr, io
+      integer                 :: unit, ierr, io, logunit
       integer                 :: n, i, j, k
       integer                 :: idf, jdf, kmax
       real                    :: pif = 3.14159265358979/180.
@@ -338,7 +338,8 @@ type(time_type),         intent(in)      :: Time
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
-      if (mpp_pe() == mpp_root_pe()) write (stdlog(), nml=cg_drag_nml)
+      logunit = stdlog()
+      if (mpp_pe() == mpp_root_pe()) write (logunit, nml=cg_drag_nml)
 
 !-------------------------------------------------------------------
 !  define the grid dimensions. idf and jdf are the (i,j) dimensions of 
@@ -855,6 +856,13 @@ subroutine cg_drag_end
 !--------------------------------------------------------------------
 !    local variables
 
+!For version 3 and after, use NetCDF restarts.
+      if (mpp_pe() == mpp_root_pe() ) &
+            call error_mesg ('cg_drag_mod', 'write_restart_nc: &
+              &Writing netCDF formatted restart file as &
+                &requested. ', NOTE)
+      call cg_drag_restart
+
 
 #ifdef COL_DIAG
       if (column_diagnostics_desired) then
@@ -928,7 +936,7 @@ subroutine read_restart_file
 
       integer                 :: unit
       character(len=8)        :: chvers
-      integer, dimension(5)   :: null
+      integer, dimension(5)   :: dummy
       real                    :: secs_per_day = SECONDS_PER_DAY
 
 !-------------------------------------------------------------------
@@ -937,7 +945,7 @@ subroutine read_restart_file
 !       unit           unit number for nml file 
 !       chvers         character representation of restart version 
 !       vers           restart version 
-!       null           array to hold restart version 1 control variables
+!       dummy          array to hold restart version 1 control variables
 !       old_time_step  cg_drag timestep used in previous model run [ s ]
 !       secs_per_day   seconds in a day [ s ]
 !
@@ -966,15 +974,15 @@ subroutine read_restart_file
       if (vers == 1) then
 
 !--------------------------------------------------------------------
-!    if reading restart version 1, use the contents of array null to
+!    if reading restart version 1, use the contents of array dummy to
 !    define the cg_drag timestep that was used in the run which wrote 
 !    the restart. define the time remaining before the next cg_drag 
 !    calculation to either be the previous timestep or the current
 !    offset, if that is specified. this assumes that the restart was
 !    written at 00Z.
 !--------------------------------------------------------------------
-        read (unit) null           
-        old_time_step = secs_per_day*null(4) + null(3)
+        read (unit) dummy           
+        old_time_step = secs_per_day*dummy(4) + dummy(3)
         if (cg_drag_offset == 0) then
           cgdrag_alarm =  old_time_step
         else
@@ -1039,7 +1047,7 @@ subroutine read_nc_restart_file
 
       character(len=64)     :: fname='INPUT/cg_drag.res.nc'
       character(len=8)      :: chvers
-      integer, dimension(5) :: null
+      integer, dimension(5) :: dummy
       real                  :: secs_per_day = SECONDS_PER_DAY
 
 !---------------------------------------------------------------------
@@ -1144,21 +1152,9 @@ end subroutine cg_drag_register_restart
 !
 subroutine cg_drag_restart(timestamp)
   character(len=*), intent(in), optional :: timestamp
-  character(len=65)  :: fname = 'RESTART/cg_drag.res.nc'
 
-      if (size(restart_versions(:)) .le. 2 ) then
-        if(present(timestamp)) call error_mesg('cg_drag_mod', 'cg_drag_restart'//&
-                'timestamp should not passed in cg_drag_restart', FATAL)
-        call write_restart_file
-      else
-!For version 3 and after, use NetCDF restarts.
-      if (mpp_pe() == mpp_root_pe() ) &
-            call error_mesg ('cg_drag_mod', 'write_restart_nc: &
-              &Writing netCDF formatted restart file as &
-                &requested: '//trim(fname), NOTE)
-        call save_restart(Cg_restart, timestamp)
-        if(in_different_file) call save_restart(Til_restart, timestamp)
-      endif
+  call save_restart(Cg_restart, timestamp)
+  if(in_different_file) call save_restart(Til_restart, timestamp)
 
 end subroutine cg_drag_restart
 ! </SUBROUTINE> NAME=cg_drag_restart"

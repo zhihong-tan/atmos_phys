@@ -43,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 16.0 2008/07/30 22:08:55 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 17.0 2009/07/21 02:57:26 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -1288,7 +1288,7 @@ subroutine rad_utilities_init
 !------------------------------------------------------------------
 !  local variables:
 
-      integer    ::  unit, ierr, io
+      integer    ::  unit, ierr, io, logunit
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -1326,8 +1326,9 @@ subroutine rad_utilities_init
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                        write (stdlog(), nml=rad_utilities_nml)
+                        write (logunit, nml=rad_utilities_nml)
 
 !-------------------------------------------------------------------
 !    mark the module as initialized.
@@ -3308,6 +3309,7 @@ subroutine aerosol_props_type_eq(aerosol_props_out,aerosol_props_in)
     else
       call error_mesg ('=', 'extbandlw', FATAL)
    endif
+  if (Rad_control%volcanic_sw_aerosols) then
    if (ASSOCIATED(aerosol_props_in%sw_ext)) then
      aerosol_props_out%sw_ext        = aerosol_props_in%sw_ext     
      aerosol_props_out%sw_ssa          = aerosol_props_in%sw_ssa       
@@ -3315,6 +3317,8 @@ subroutine aerosol_props_type_eq(aerosol_props_out,aerosol_props_in)
     else
       call error_mesg ('=', 'sw volc', FATAL)
    endif
+  endif
+  if (Rad_control%volcanic_lw_aerosols) then
    if (ASSOCIATED(aerosol_props_in%lw_ext)) then
      aerosol_props_out%lw_ext        = aerosol_props_in%lw_ext     
      aerosol_props_out%lw_ssa          = aerosol_props_in%lw_ssa       
@@ -3322,6 +3326,7 @@ subroutine aerosol_props_type_eq(aerosol_props_out,aerosol_props_in)
     else
       call error_mesg ('=', 'lw volc', FATAL)
    endif
+  endif
    if (ASSOCIATED(aerosol_props_in%sulfate_index)) then
      aerosol_props_out%sulfate_index = aerosol_props_in%sulfate_index
      aerosol_props_out%optical_index = aerosol_props_in%optical_index

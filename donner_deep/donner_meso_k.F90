@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_meso_k.F90,v 16.0.2.1 2008/09/09 13:43:15 rsh Exp $
+!  $Id: donner_meso_k.F90,v 17.0 2009/07/21 02:54:38 fms Exp $
 
 !module donner_meso_inter_mod
 
@@ -11,7 +11,7 @@
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 subroutine don_m_meso_effects_k    &
-         (nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, Param, Nml,&
+         (me, nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, Param, Nml,&
           pfull_c, temp_c, mixing_ratio_c, phalf_c, rlsm, emsm, etsm, &
           tracers_c, ensembl_cond, ensmbl_precip, pb, plzb_c, pt_ens, &
           ampta1, ensembl_anvil_cond_liq, ensembl_anvil_cond_liq_frz, &
@@ -35,7 +35,7 @@ use donner_types_mod, only : donner_param_type, donner_nml_type
 implicit none
 
 !-------------------------------------------------------------------
-integer,                           intent(in)  :: nlev_lsm, nlev_hires, &
+integer,                           intent(in)  :: me, nlev_lsm, nlev_hires, &
                                                   ntr, diag_unit
 logical,                           intent(in)  :: debug_ijt        
 type(donner_param_type),           intent(in)  :: Param
@@ -161,9 +161,9 @@ integer,                           intent(out) :: error
                                          available_condensate_liq, &
                                          available_condensate_ice
       real                           ::  emdi_liq, emdi_ice
-      integer                        ::  k, kcont
+      integer                        ::  k, kcont, itrop
       real  :: intgl_lo, intgl_hi
-      real          :: p2
+      real          :: p2, ptrop
 
 !----------------------------------------------------------------------
 !
@@ -208,6 +208,11 @@ integer,                           intent(out) :: error
         pztm = plzb_c + dp
       endif
 
+      if (Nml%limit_pztm_to_tropo) then
+        call find_tropopause (nlev_lsm, temp_c, pfull_c, ptrop, itrop)
+        pztm = MAX (pztm, ptrop)
+      endif
+
 !---------------------------------------------------------------------
 !    if in diagnostics column, output the pressure at top of meso-
 !    scale circulation (pztm) and the precipitation efficiency 
@@ -246,7 +251,7 @@ integer,                           intent(out) :: error
 !----------------------------------------------------------------------
       if (error /= 0 ) return
 
-      if (Nml%force_internal_enthalpy_conservation) then
+      if (Nml%frc_internal_enthalpy_conserv) then
 !-----------------------------------------------------------------------
 !    call don_u_set_column_integral_k to adjust the tmes_up
 !    profile below cloud base so that the desired integral value is
@@ -297,7 +302,7 @@ integer,                           intent(out) :: error
 !----------------------------------------------------------------------
       if (error /= 0 ) return
 
-      if (Nml%force_internal_enthalpy_conservation) then
+      if (Nml%frc_internal_enthalpy_conserv) then
 !-----------------------------------------------------------------------
 !    call don_u_set_column_integral_k to adjust the tmes_dn
 !    profile below cloud base so that the desired integral value is
@@ -1898,7 +1903,7 @@ integer,                       intent(out)  :: error
         endif
         if (rin == 1.) then
           
-          if (.not. Nml%force_internal_enthalpy_conservation) then
+          if (.not. Nml%frc_internal_enthalpy_conserv) then
             tmes_dn(k) = tmes_dn(k) + (tten/pi)
           endif
           mrmes_dn(k) = mrmes_dn(k) + qten

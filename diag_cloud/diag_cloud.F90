@@ -22,7 +22,7 @@ MODULE DIAG_CLOUD_MOD
                           read_data, write_data, &
                           write_version_number, stdlog, open_restart_file
  use     fms_io_mod, only: register_restart_field, restart_file_type, &
-                           save_restart, restore_state
+                           save_restart, restore_state, get_restart_io_mode
  use  Constants_Mod, only: Cp_Air, rdgas, rvgas, Kappa, HLv
  use time_manager_mod, only:  TIME_TYPE
  use  cloud_zonal_mod, only:  CLOUD_ZONAL_INIT, GETCLD
@@ -43,8 +43,8 @@ MODULE DIAG_CLOUD_MOD
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud.F90,v 13.0.10.1.2.1 2008/09/16 01:56:26 wfc Exp $'
- character(len=128) :: tagname = '$Name: perth_2008_10 $'
+ character(len=128) :: version = '$Id: diag_cloud.F90,v 17.0 2009/07/21 02:54:07 fms Exp $'
+ character(len=128) :: tagname = '$Name: quebec $'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 
@@ -171,15 +171,15 @@ type(restart_file_type), save :: Dia_restart
       lomega = .true.,lcnvcld = .true.,l_theqv = .true., & 
       linvers = .false.,lslingo = .true., lregrsc = .true., &
       lthick_high = .true.,lthick_mid = .true.,lthick_low = .true.
- logical :: do_netcdf_restart = .true.
 
     NAMELIST / diag_cloud_nml /                         &
        rhc,pbounds,do_average,lquadra,lrhcnv,lomega,lcnvcld,l_theqv, & 
        linvers,lslingo,lregrsc,lthick_high,lthick_mid,lthick_low, & 
        high_lev_cloud_index, nofog, low_lev_cloud_index, nband, &
-       pshallow, wcut0, wcut1, t_cold, do_netcdf_restart
+       pshallow, wcut0, wcut1, t_cold
 
 integer :: num_pts, tot_pts
+ logical :: do_netcdf_restart
 
  public diag_cloud_driver, diag_cloud_init, diag_cloud_end
  public diag_cloud_driver2
@@ -3109,7 +3109,7 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer  unit, io
+ integer  unit, io, ierrnml, logunit
  integer  id_restart
  character(len=32) :: fname
 
@@ -3122,12 +3122,13 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
-         unit = open_namelist_file ('input.nml')
+    unit = open_namelist_file ('input.nml')
         
-   io = 1
-   do while( io .ne. 0 )
-   READ ( unit,  nml = diag_cloud_nml, iostat = io, end = 10 ) 
-   end do
+    ierrnml = 1
+    do while( ierrnml .ne. 0 )
+      READ ( unit,  nml = diag_cloud_nml, iostat = io, end = 10 ) 
+      ierrnml = check_nml_error(io,'diag_cloud _nml')
+    end do
 10  call close_file (unit)
 ! -------------------------------------
   end if
@@ -3136,20 +3137,23 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 ! --- Output namelist
 !---------------------------------------------------------------------
 
-      if ( mpp_pe() == mpp_root_pe() ) then
-           call write_version_number(version, tagname)
-           write (stdlog(), nml=diag_cloud_nml)
-      endif     
+  logunit = stdlog()
+  if ( mpp_pe() == mpp_root_pe() ) then
+    call write_version_number(version, tagname)
+    write (logunit, nml=diag_cloud_nml)
+  endif     
+  do_netcdf_restart = .true.
+  call get_restart_io_mode(do_netcdf_restart)
 
 !---------------------------------------------------------------------
 ! --- Allocate storage for global cloud quantities
 !---------------------------------------------------------------------
 
 
-    allocate( temp_sum(ix,iy,kx),qmix_sum(ix,iy,kx),rhum_sum(ix,iy,kx) )
-    allocate( qmix_sum2(ix,iy) )
-    allocate( omega_sum(ix,iy,kx),lgscldelq_sum(ix,iy,kx),cnvcntq_sum(ix,iy,kx) )
-    allocate( convprc_sum(ix,iy),nsum(ix,iy), nsum2(ix,iy) )
+  allocate( temp_sum(ix,iy,kx),qmix_sum(ix,iy,kx),rhum_sum(ix,iy,kx) )
+  allocate( qmix_sum2(ix,iy) )
+  allocate( omega_sum(ix,iy,kx),lgscldelq_sum(ix,iy,kx),cnvcntq_sum(ix,iy,kx) )
+  allocate( convprc_sum(ix,iy),nsum(ix,iy), nsum2(ix,iy) )
 
 ! need to set up to account for first radiation step without having
 ! diag cloud info available (radiation called before diag_cloud, and
@@ -3200,7 +3204,7 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
   else
 
       ierr = 1
-      if (mpp_pe() == mpp_root_pe() ) write (stdlog(),12)
+      if (mpp_pe() == mpp_root_pe() ) write (logunit,12)
   12  format ('*** WARNING *** No cloud_tg restart file found ***  ' )
 
       nsum = 0
@@ -3252,7 +3256,30 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
   integer :: unit
 !=======================================================================
 
-      module_is_initialized = .false.
+  if( do_netcdf_restart) then
+     if (mpp_pe() == mpp_root_pe()) then
+        call error_mesg ('diag_cloud_mod', 'Writing netCDF formatted restart file: RESTART/diag_cloud.res.nc', NOTE)
+     endif
+     call diag_cloud_restart
+  else
+     if (mpp_pe() == mpp_root_pe()) then
+        call error_mesg ('diag_cloud_mod', 'Writing native formatted restart file.', NOTE)
+     endif
+     unit = open_restart_file ('RESTART/diag_cloud.res', action='write')
+
+     call write_data (unit, nsum)
+     call write_data (unit, temp_sum)
+     call write_data (unit, qmix_sum)
+     call write_data (unit, rhum_sum)
+     call write_data (unit, omega_sum)
+     call write_data (unit, lgscldelq_sum)
+     call write_data (unit, cnvcntq_sum)
+     call write_data (unit, convprc_sum)
+
+     call close_file (unit)
+  endif
+
+  module_is_initialized = .false.
  
 !=====================================================================
   end SUBROUTINE DIAG_CLOUD_END
@@ -3270,34 +3297,13 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 !
 subroutine diag_cloud_restart(timestamp)
   character(len=*), intent(in), optional :: timestamp
-  integer                                :: unit
 
   if( do_netcdf_restart) then
-     if (mpp_pe() == mpp_root_pe()) then
-        call error_mesg ('diag_cloud_mod', 'Writing netCDF formatted restart file: RESTART/diag_cloud.res.nc', NOTE)
-     endif
-     call save_restart(Dia_restart, timestamp)
+    call save_restart(Dia_restart, timestamp)
   else
-     if(present(timestamp)) then
-        call error_mesg ('diag_cloud_mod', 'when do_netcdf_restart is false, '// &
-                        'timestamp should not passed in diag_cloud_restart', FATAL)
-     end if
-     if (mpp_pe() == mpp_root_pe()) then
-        call error_mesg ('diag_cloud_mod', 'Writing native formatted restart file.', NOTE)
-     endif
-     unit = open_restart_file ('RESTART/diag_cloud.res', action='write')
-
-     call write_data (unit, nsum)
-     call write_data (unit, temp_sum)
-     call write_data (unit, qmix_sum)
-     call write_data (unit, rhum_sum)
-     call write_data (unit, omega_sum)
-     call write_data (unit, lgscldelq_sum)
-     call write_data (unit, cnvcntq_sum)
-     call write_data (unit, convprc_sum)
-
-     call close_file (unit)
-  endif
+    call error_mesg ('diag_cloud_mod', &
+         'Native intermediate restart files are not supported.', FATAL)
+  endif  
 
 end subroutine diag_cloud_restart
 ! </SUBROUTINE> NAME="diag_cloud_restart"

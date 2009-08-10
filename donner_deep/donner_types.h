@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 16.0.4.1.2.1 2008/08/06 09:18:02 rsh Exp $
+!  $Id: donner_types.h,v 17.0 2009/07/21 02:54:43 fms Exp $
 
 !#####################################################################
  
@@ -52,6 +52,7 @@ type donner_wetdep_type
    real :: frac_in_cloud
    real :: alpha_r
    real :: alpha_s
+   logical :: Lwetdep, Lgas, Laerosol, Lice
 
 end type donner_wetdep_type
 
@@ -80,6 +81,10 @@ type donner_initialized_type
 !                               calculation [ sec ]
 !   using_unified_closure       use cbmf from uw shallow in donner 
 !                               closure?
+!   use_constant_rmuz_for_closure 
+!                               if .false., then a value for rmuz will
+!                               be calculated; if .true., the value
+!                               specified via nml will be used
 
 
 logical  :: do_donner_tracer
@@ -91,6 +96,7 @@ logical  :: coldstart
 logical  :: monitor_output
 logical  :: using_unified_closure
 logical  :: do_conservation_checks
+logical  :: use_constant_rmuz_for_closure
 
 integer  :: total_pts
 integer  :: pts_processed_conv
@@ -335,8 +341,12 @@ real                :: tfre_for_closure
 real                :: dfre_for_closure
 real                :: rmuz_for_closure
 logical             :: do_budget_analysis
-logical             :: force_internal_enthalpy_conservation
+logical             :: frc_internal_enthalpy_conserv
 logical             :: do_ensemble_diagnostics
+logical             :: limit_pztm_to_tropo
+character(len=16)   :: entrainment_scheme_for_closure
+logical             :: modify_closure_plume_condensate
+real                :: closure_plume_condensate
 real             :: evap_in_downdrafts
 real             :: evap_in_environ
 real             :: entrained_into_meso

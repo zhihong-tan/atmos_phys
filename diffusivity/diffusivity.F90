@@ -94,8 +94,8 @@ private
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: diffusivity.F90,v 13.0.8.1 2008/09/16 05:20:42 wfc Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: diffusivity.F90,v 17.0 2009/07/21 02:54:19 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 !=======================================================================
 
@@ -151,7 +151,7 @@ contains
 
 subroutine diffusivity_init
 
-integer :: unit, ierr, io
+integer :: unit, ierr, io, logunit
 
 !------------------- read namelist input -------------------------------
 
@@ -209,7 +209,8 @@ integer :: unit, ierr, io
 
       if ( mpp_pe() == mpp_root_pe() ) then
            call write_version_number(version, tagname)
-           write (stdlog(), nml=diffusivity_nml)
+           logunit = stdlog()
+           write (logunit, nml=diffusivity_nml)
       endif
 
       module_is_initialized = .true.

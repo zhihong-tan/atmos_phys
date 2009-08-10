@@ -83,8 +83,8 @@ end interface
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: rh_clouds.F90,v 11.0 2004/09/28 19:20:44 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: rh_clouds.F90,v 17.0 2009/07/21 02:55:56 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 !=======================================================================
 
@@ -151,7 +151,7 @@ subroutine rh_clouds_init (nlon, nlat, nlev)
 
 integer, intent(in) :: nlon, nlat, nlev
 
-integer :: unit, ierr, io
+integer :: unit, ierr, io, logunit
 
       if (module_is_initialized) return
 
@@ -170,7 +170,8 @@ integer :: unit, ierr, io
 
       if ( mpp_pe() == mpp_root_pe() ) then
            call write_version_number(version, tagname)
-           write (stdlog(), nml=rh_clouds_nml)
+           logunit = stdlog()
+           write (logunit, nml=rh_clouds_nml)
       endif
 
 !---------- initialize for rh cloud averaging -------------------------

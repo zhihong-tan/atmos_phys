@@ -11,8 +11,8 @@ MODULE CONV_UTILITIES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 16.0.2.1.2.1.2.1.2.1 2008/09/15 23:16:23 wfc Exp $'
-  character(len=128) :: tagname = '$Name: perth_2008_10 $'
+  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 17.0 2009/07/21 02:58:05 fms Exp $'
+  character(len=128) :: tagname = '$Name: quebec $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

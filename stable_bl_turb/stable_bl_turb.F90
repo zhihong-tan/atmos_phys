@@ -19,8 +19,8 @@
 
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  character(len=128) :: version = '$Id: stable_bl_turb.F90,v 13.0.8.1 2008/09/03 18:40:35 z1l Exp $'
-  character(len=128) :: tagname = '$Name: perth_2008_10 $'
+  character(len=128) :: version = '$Id: stable_bl_turb.F90,v 17.0 2009/07/21 02:58:15 fms Exp $'
+  character(len=128) :: tagname = '$Name: quebec $'
   logical            :: module_is_initialized = .false.
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

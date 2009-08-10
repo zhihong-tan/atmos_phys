@@ -103,8 +103,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 16.0.2.2.2.1 2008/09/15 23:11:08 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 17.0 2009/07/21 02:56:14 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -279,7 +279,7 @@ type(time_type),          intent(in)   ::  Time
 !----------------------------------------------------------------------
 !   local variables:
  
-      integer   ::   unit, ierr, io
+      integer   ::   unit, ierr, io, logunit
       integer   ::   ndum
 
 !--------------------------------------------------------------------
@@ -325,8 +325,9 @@ type(time_type),          intent(in)   ::  Time
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-           write (stdlog(), nml=cloud_spec_nml)
+           write (logunit, nml=cloud_spec_nml)
 
       id = size(lonb,1) - 1
       jd = size(latb,2) - 1
@@ -566,7 +567,7 @@ type(time_type),          intent(in)   ::  Time
           end if
 
           if (mpp_pe() == mpp_root_pe()) &
-            write (stdlog(),'(a,3i4)') 'Stratiform cloud tracer ind&
+            write (logunit,'(a,3i4)') 'Stratiform cloud tracer ind&
                 &ices: nql,nqi,nqa =',nql,nqi,nqa
           if (min(nql,nqi,nqa) <= 0)   &
              call error_mesg ('cloud_spec_mod', &
@@ -1341,19 +1342,19 @@ integer :: ier
       deallocate (Lsc_microphys%cldamt      )
       deallocate (Lsc_microphys%droplet_number )
       if (Cldrad_control%do_stochastic_clouds) then
-        deallocate (Lsc_microphys%lw_stoch_conc_drop   , stat=ier)
-        deallocate (Lsc_microphys%lw_stoch_conc_ice    , stat=ier)
-        deallocate (Lsc_microphys%lw_stoch_size_drop   , stat=ier)
-        deallocate (Lsc_microphys%lw_stoch_size_ice    , stat=ier)
-        deallocate (Lsc_microphys%lw_stoch_cldamt      , stat=ier)
-        deallocate (Lsc_microphys%lw_stoch_droplet_number , stat=ier)
+        nullify (Lsc_microphys%lw_stoch_conc_drop   )
+        nullify (Lsc_microphys%lw_stoch_conc_ice    )
+        nullify (Lsc_microphys%lw_stoch_size_drop   )
+        nullify (Lsc_microphys%lw_stoch_size_ice    )
+        nullify (Lsc_microphys%lw_stoch_cldamt      )
+        nullify (Lsc_microphys%lw_stoch_droplet_number)
 
-        deallocate (Lsc_microphys%sw_stoch_conc_drop   , stat=ier)
-        deallocate (Lsc_microphys%sw_stoch_conc_ice    , stat=ier)
-        deallocate (Lsc_microphys%sw_stoch_size_drop   , stat=ier)
-        deallocate (Lsc_microphys%sw_stoch_size_ice    , stat=ier)
-        deallocate (Lsc_microphys%sw_stoch_cldamt      , stat=ier)
-        deallocate (Lsc_microphys%sw_stoch_droplet_number , stat=ier)
+        nullify (Lsc_microphys%sw_stoch_conc_drop   )
+        nullify (Lsc_microphys%sw_stoch_conc_ice    )
+        nullify (Lsc_microphys%sw_stoch_size_drop   )
+        nullify (Lsc_microphys%sw_stoch_size_ice    )
+        nullify (Lsc_microphys%sw_stoch_cldamt      )
+        nullify (Lsc_microphys%sw_stoch_droplet_number)
 
         deallocate (Lsc_microphys%stoch_conc_drop   )
         deallocate (Lsc_microphys%stoch_conc_ice    )

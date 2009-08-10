@@ -101,8 +101,8 @@ namelist/cu_mo_trans_nml/ diff_norm, &
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: cu_mo_trans.F90,v 15.0 2007/08/14 03:52:58 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: cu_mo_trans.F90,v 17.0 2009/07/21 02:54:01 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 contains
 
@@ -134,7 +134,7 @@ subroutine cu_mo_trans_init( axes, Time, doing_diffusive )
  type(time_type), intent(in) :: Time
  logical,         intent(out) :: doing_diffusive
 
-integer :: unit, ierr, io
+integer :: unit, ierr, io, logunit
 integer, dimension(3)  :: half =  (/1,2,4/)
 
 !------ read namelist ------
@@ -151,8 +151,9 @@ integer, dimension(3)  :: half =  (/1,2,4/)
 !--------- write version number and namelist ------------------
 
       call write_version_number ( version, tagname )
+      logunit = stdlog()
       if ( mpp_pe() == mpp_root_pe() ) &
-      write ( stdlog(), nml=cu_mo_trans_nml )
+        write ( logunit, nml=cu_mo_trans_nml )
 
 !----------------------------------------------------------------------
 !    define logicals indicating momentum transport scheme to use.

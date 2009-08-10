@@ -59,8 +59,8 @@ public   vert_turb_driver_restart
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 15.0.4.1.2.1 2008/09/16 05:07:41 wfc Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 17.0 2009/07/21 02:58:31 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
@@ -551,7 +551,7 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
    logical,         intent(out) :: doing_edt, doing_entrain
 !-----------------------------------------------------------------------
    integer, dimension(3) :: full = (/1,2,3/), half = (/1,2,4/)
-   integer :: ierr, unit, io
+   integer :: ierr, unit, io, logunit
 
       if (module_is_initialized)  &
           call error_mesg  &
@@ -572,9 +572,10 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
 
 !---------- output namelist --------------------------------------------
 
+      logunit = stdlog()
       if ( mpp_pe() == mpp_root_pe() ) then
            call write_version_number(version, tagname)
-           write (stdlog(),nml=vert_turb_driver_nml)
+           write (logunit,nml=vert_turb_driver_nml)
       endif
 
 !     --- check namelist option ---
@@ -599,7 +600,7 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
           nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
           nqa = get_tracer_index ( MODEL_ATMOS, 'cld_amt' )
           if (mpp_pe() == mpp_root_pe()) &
-                 write (stdlog(),'(a,3i4)') 'Stratiform cloud tracer indices: nql,nqi,nqa =',nql,nqi,nqa
+                 write (logunit,'(a,3i4)') 'Stratiform cloud tracer indices: nql,nqi,nqa =',nql,nqi,nqa
           if (min(nql,nqi,nqa) <= 0) call error_mesg ('moist_processes', &
                          'stratiform cloud tracer(s) not found', FATAL)
           if (nql == nqi .or. nqa == nqi .or. nql == nqa) call error_mesg ('moist_processes',  &

@@ -25,8 +25,8 @@ module mg_drag_mod
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 15.0.6.1 2008/09/03 18:40:23 z1l Exp $'
- character(len=128) :: tagname = '$Name: perth_2008_10 $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 17.0 2009/07/21 02:55:27 fms Exp $'
+ character(len=128) :: tagname = '$Name: quebec $'
 
  real, parameter :: p00 = 1.e5
 
@@ -70,14 +70,14 @@ type(restart_file_type), save :: Mg_restart
       ,low_lev_frac = .23
 
 real  ::  flux_cut_level= 0.0
+logical :: do_netcdf_restart
 
-logical :: do_netcdf_restart = .true.
+
 logical :: do_conserve_energy = .false.
 logical :: do_mcm_mg_drag = .false.
 character(len=128) :: source_of_sgsmtn = 'input'
 
-    namelist / mg_drag_nml / do_netcdf_restart,  &
-                             xl_mtn, gmax, acoef, rho, low_lev_frac, &
+    namelist / mg_drag_nml / xl_mtn, gmax, acoef, rho, low_lev_frac, &
                              do_conserve_energy, do_mcm_mg_drag,     &
                              source_of_sgsmtn, flux_cut_level 
 
@@ -971,7 +971,7 @@ end subroutine mgwd_tend
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer  ::  ix, iy, unit, io, ierr
+ integer  ::  ix, iy, unit, io, ierr, logunit
  logical  ::  answer
  integer  :: id_restart
 
@@ -1002,7 +1002,8 @@ if(module_is_initialized) return
 !---------------------------------------------------------------------
 
   call write_version_number(version, tagname)
-  if(mpp_pe() == mpp_root_pe()) write (stdlog(), nml=mg_drag_nml)
+  logunit = stdlog()
+  if(mpp_pe() == mpp_root_pe()) write (logunit, nml=mg_drag_nml)
 
 !---------------------------------------------------------------------
 ! --- Allocate storage for Ghprime
@@ -1029,7 +1030,7 @@ if(module_is_initialized) return
                       ', but topography data file does not exist', FATAL)
     endif
   else if ( trim(source_of_sgsmtn) == 'input' .or. trim(source_of_sgsmtn) == 'input/computed' ) then
-    if ( file_exist('INPUT/mg_drag.res.nc') .or. file_exist('INPUT/mg_drag.res.tile1.nc') ) then
+    if ( file_exist('INPUT/mg_drag.res.nc') ) then
        if(.not. do_netcdf_restart) call mpp_error ('mg_drag_mod', &
          'netcdf format restart file INPUT/mg_drag.res.nc exist, but do_netcdf_restart is false.', FATAL)
        if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
@@ -1071,6 +1072,17 @@ if(module_is_initialized) return
 
   if(.not.module_is_initialized) return
 
+  if(do_netcdf_restart) then
+     if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
+          'Writing NetCDF formatted restart file: RESTART/mg_drag.res.nc', NOTE)
+     call mg_drag_restart
+  else   
+     if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
+          'Writing native formatted restart file.', NOTE)
+     unit = open_restart_file('RESTART/mg_drag.res','write')
+     call write_data(unit, Ghprime)
+     call close_file(unit)
+  endif
   deallocate(ghprime)
   module_is_initialized = .false.
 
@@ -1091,23 +1103,13 @@ if(module_is_initialized) return
 subroutine mg_drag_restart(timestamp)
   character(len=*), intent(in), optional :: timestamp
 
-  integer :: unit
+  if (do_netcdf_restart) then
+    call save_restart(Mg_restart, timestamp)
+  else
+    call error_mesg ('mg_drag_restart', &
+         'Native intermediate restart files are not supported.', FATAL)
+  endif  
 
-  if(do_netcdf_restart) then
-     if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
-          'Writing NetCDF formatted restart file: RESTART/mg_drag.res.nc', NOTE)
-     call save_restart(Mg_restart, timestamp)
-  else   
-     if(present(timestamp)) then
-        call mpp_error ('mg_drag_mod', 'when do_netcdf_restart is false, '// &
-                        'timestamp should not passed in mg_drag_restart', FATAL)
-     end if
-     if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
-          'Writing native formatted restart file.', NOTE)
-     unit = open_restart_file('RESTART/mg_drag.res','write')
-     call write_data(unit, Ghprime)
-     call close_file(unit)
-  endif
 end subroutine mg_drag_restart
 ! </SUBROUTINE> NAME="mg_drag_restart"
 

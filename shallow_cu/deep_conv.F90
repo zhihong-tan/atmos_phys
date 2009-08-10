@@ -89,7 +89,7 @@ contains
 !#####################################################################
 
   subroutine dpconv0(dpc, cpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, do_ice, &
-       omeg_avg, rkm_sh, cp1, ct1, cbmf_deep, ocode)
+       omeg_avg, rkm_sh, cp1, ct1, cbmf_deep, ocode, ier, ermesg)
     implicit none
 
     type(deepc),     intent(inout)  :: dpc
@@ -103,6 +103,8 @@ contains
     type(cplume),    intent(inout)  :: cp, cp1
     type(ctend),     intent(inout)  :: ct, ct1
     real,            intent(inout)  :: cbmf_deep, ocode, rkm_sh, omeg_avg
+    integer,            intent(out)   :: ier
+    character(len=256), intent(out)   :: ermesg
 
 
     type(cpnlist) :: dpn
@@ -120,7 +122,7 @@ contains
 
     call cp_clear_k(cp1);
     call ct_clear_k(ct1);
-    call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf_deep, cc%wrel, zcldtop, Uw_p)
+    call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf_deep, cc%wrel, zcldtop, Uw_p, ier, ermesg)
     if(cp1%ltop.lt.cp1%krel+2 .or. cp1%let.le.cp1%krel+1) then
        ocode=6; return
     else
@@ -134,7 +136,7 @@ contains
 !#####################################################################
 
   subroutine dpconv1(dpc, cpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, do_ice, sd1, ac1, &
-       cc1, cp1, ct1, ocode)
+       cc1, cp1, ct1, ocode, ier, ermesg)
     implicit none
 
     type(deepc),     intent(inout)  :: dpc
@@ -150,6 +152,8 @@ contains
     type(cplume),    intent(inout)  :: cp,cp1
     type(ctend),     intent(inout)  :: ct,ct1
     real,            intent(inout)  :: ocode
+    integer,            intent(out)   :: ier
+    character(len=256), intent(out)   :: ermesg
 
     integer :: k, i, ksrc
     real    :: cbmf0, cbmfs, cbmf_max, dcape, scaleh, wrel, tmp, cbmf, rkm
@@ -202,7 +206,7 @@ contains
        call ct_clear_k(ct)
        call cp_clear_k(cp)
        rkm = dpc%rkm_dp(i)
-       call cumulus_plume_k(dpn, sd, ac, cp, rkm, cbmf, wrel, scaleh, Uw_p)
+       call cumulus_plume_k(dpn, sd, ac, cp, rkm, cbmf, wrel, scaleh, Uw_p, ier, ermesg)
        if(cp%ltop.lt.cp%krel+2 .or. cp%let.le.cp%krel+1) then
           dpc%cbmf_d=0.; ocode=6; return
        end if
@@ -316,7 +320,7 @@ contains
 
 
   subroutine dpconv2(dpc, cpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, do_ice, sd1, ac1, &
-       cc1, cp1, ct1, cbmf_deep, ocode)
+       cc1, cp1, ct1, cbmf_deep, ocode, ier, ermesg)
     implicit none
 
     type(deepc),     intent(inout)  :: dpc
@@ -332,6 +336,8 @@ contains
     type(cplume),    intent(inout)  :: cp,cp1
     type(ctend),     intent(inout)  :: ct,ct1
     real,            intent(inout)  :: ocode, cbmf_deep
+    integer,            intent(out)   :: ier
+    character(len=256), intent(out)   :: ermesg
 
     integer :: k, i, ksrc, n
     real    :: cbmf0, cbmfs, cbmf_max, dcape, scaleh, wrel, tmp, cbmf, rkm, rkm0
@@ -378,7 +384,7 @@ contains
           sd1 % thvbot(:) = sd % thvbot(:)
        end if
 
-       call cumulus_plume_k(dpn, sd1, ac, cp, rkm, cbmf0, wrel, scaleh, Uw_p)
+       call cumulus_plume_k(dpn, sd1, ac, cp, rkm, cbmf0, wrel, scaleh, Uw_p, ier, ermesg)
        if(cp%ltop.lt.cp%krel+2 .or. cp%let.le.cp%krel+1) then
           dpc%cbmf_d=0.; ocode=6; return
        end if
@@ -476,7 +482,7 @@ contains
           end if
           cbmfs = (ac%cape - dpc%cape_th) / dcape / (dpc%tau_dp/sd%delt)
        else if (dpc%ideep_closure.eq.2) then
-          call cumulus_plume_k(dpn, sd1, ac1, cp, rkm, cbmf0, wrel, scaleh, Uw_p)
+          call cumulus_plume_k(dpn, sd1, ac1, cp, rkm, cbmf0, wrel, scaleh, Uw_p, ier, ermesg)
           tmp    = maxval(cp%wu(:))
           cwfn_d = tmp*tmp
           dcwfn=(dpc%cwfn_d - cwfn_d)  /cbmf0
@@ -518,7 +524,7 @@ contains
 !#####################################################################
 
   subroutine dpconv3(dpc, cpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, do_ice, &
-       omeg_avg, rkm_sh, sd1, ac1, cp1, ct1, cbmf_deep, ocode)
+       omeg_avg, rkm_sh, sd1, ac1, cp1, ct1, cbmf_deep, ocode, ier, ermesg)
     implicit none
 
     type(deepc),     intent(inout)  :: dpc
@@ -535,6 +541,8 @@ contains
     type(cplume),    intent(inout)  :: cp, cp1
     type(ctend),     intent(inout)  :: ct, ct1
     real,            intent(inout)  :: cbmf_deep, ocode
+    integer,            intent(out)   :: ier
+    character(len=256), intent(out)   :: ermesg
 
     type(cpnlist) :: dpn
     real          :: rkm_dp, zcldtop, cbmf0, dcapedm, cbmf_max, tmp
@@ -553,7 +561,7 @@ contains
     cbmf0 = 0.0001
     call cp_clear_k(cp1);
     call ct_clear_k(ct1);
-    call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf0, cc%wrel, zcldtop, Uw_p)
+    call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf0, cc%wrel, zcldtop, Uw_p, ier, ermesg)
     if(cp1%ltop.lt.cp1%krel+2 .or. cp1%let.le.cp1%krel+1) then
        ocode=6; return
     else
@@ -591,7 +599,7 @@ contains
        cbmf_deep=0.; ocode=6; return
     end if
 
-    call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf_deep, cc%wrel, zcldtop, Uw_p)
+    call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf_deep, cc%wrel, zcldtop, Uw_p, ier, ermesg)
     if(cp1%ltop.lt.cp1%krel+2 .or. cp1%let.le.cp1%krel+1) then
        ocode=6; return
     else

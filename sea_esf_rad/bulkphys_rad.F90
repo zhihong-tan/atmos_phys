@@ -62,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 15.0 2007/08/14 03:54:29 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 17.0 2009/07/21 02:56:05 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 
@@ -229,7 +229,7 @@ real, dimension(:,:), intent(in) :: lonb, latb
 !---------------------------------------------------------------------
 !    local variables:
 
-      integer  ::   unit, ierr, io
+      integer  ::   unit, ierr, io, logunit
       integer  ::   idum
 
 !---------------------------------------------------------------------
@@ -274,8 +274,9 @@ real, dimension(:,:), intent(in) :: lonb, latb
 !    write namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() )    &
-                      write (stdlog(), nml=bulkphys_rad_nml)
+                      write (logunit, nml=bulkphys_rad_nml)
 
       min_cld_drop_rad = min_cld_drop_rad_in
       max_cld_drop_rad = max_cld_drop_rad_in

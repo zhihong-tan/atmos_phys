@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: ozone.F90,v 16.0 2008/07/30 22:08:43 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: ozone.F90,v 17.0 2009/07/21 02:57:14 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -280,7 +280,7 @@ real, dimension(:,:),   intent(in) :: latb, lonb
 !-----------------------------------------------------------------
 !  local variables:
 
-       integer           ::  unit, ierr, io
+       integer           ::  unit, ierr, io, logunit
        integer           ::  n, no3
 
 !---------------------------------------------------------------------
@@ -325,8 +325,9 @@ real, dimension(:,:),   intent(in) :: latb, lonb
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                        write (stdlog(), nml=ozone_nml)
+                        write (logunit, nml=ozone_nml)
 
 !---------------------------------------------------------------------
 !    check for a valid value of clim_base_year.
@@ -792,7 +793,7 @@ subroutine obtain_input_file_data
       integer   :: iounit    ! unit to read file on
       integer   :: kmax_file ! number of levels of data in file
       integer   :: k         ! do-loop index
-      character*31, dimension(200) :: dimnam
+      character(len=31), dimension(200) :: dimnam
       integer(kind=4), dimension(200) :: dimsiz
       integer(kind=4)                 :: ncid, rcode, nvars, ndims, &
                                          ngatts, recdim
@@ -801,7 +802,7 @@ subroutine obtain_input_file_data
       integer(kind=4), dimension(MAXDIMS) :: start, count, vdims
       integer(kind=4)                     :: ivarid, ntp, nvdim, nvs, &
                                              ndsize
-      character*31   dummy
+      character(len=31) ::  dummy
 
 
 !-------------------------------------------------------------------

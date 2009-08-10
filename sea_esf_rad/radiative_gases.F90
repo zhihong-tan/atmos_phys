@@ -67,8 +67,8 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 16.0.6.4 2008/09/22 19:37:23 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+'$Id: radiative_gases.F90,v 17.0 2009/07/21 02:57:20 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -232,10 +232,9 @@ integer, dimension(6) ::       &
                          f22_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
                       ! time in f22  data set corresponding to model
                       ! initial time  (yr, mo, dy, hr, mn, sc)
-logical              :: do_netcdf_restart= .true.
 logical              :: time_varying_restart_bug = .false.
-namelist /radiative_gases_nml/ do_netcdf_restart,                   &
-        verbose,      gas_printout_freq, time_varying_restart_bug, &
+namelist /radiative_gases_nml/ verbose, &
+        gas_printout_freq, time_varying_restart_bug, &
         co2_dataset_entry, ch4_dataset_entry, n2o_dataset_entry,  &
         f11_dataset_entry, f12_dataset_entry, f113_dataset_entry, &
         f22_dataset_entry, &
@@ -289,6 +288,7 @@ namelist /radiative_gases_nml/ do_netcdf_restart,                   &
 
 !--- for netcdf restart
 type(restart_file_type), save :: Rad_restart
+logical                       :: do_netcdf_restart= .true.
 integer                       ::  vers   ! version number of restart file 
 !---------------------------------------------------------------------
 !    list of restart versions of radiation_driver.res readable by this 
@@ -484,6 +484,7 @@ real, dimension(:,:), intent(in) :: latb, lonb
                                        ! gas being processed
       character(len=32)    :: restart_file
       integer              :: id_restart
+      integer              :: logunit  ! unit number for writing to logfile.
 
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
@@ -518,8 +519,9 @@ real, dimension(:,:), intent(in) :: latb, lonb
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                       write (stdlog(), nml=radiative_gases_nml)
+                       write (logunit, nml=radiative_gases_nml)
 
 !---------------------------------------------------------------------
 !    force xxx_data_source to be 'input' when gas is time-varying and
@@ -1377,6 +1379,8 @@ subroutine radiative_gases_end
                'module has not been initialized', FATAL )
       endif
 
+      call radiative_gases_restart
+
 !--------------------------------------------------------------------
 !    deallocate the timeseries arrays.
 !--------------------------------------------------------------------
@@ -1413,17 +1417,14 @@ subroutine radiative_gases_restart(timestamp)
 
 ! Make sure that the restart_versions variable is up to date.
    vers = restart_versions(size(restart_versions(:)))     
-   if( do_netcdf_restart) then
+   if( do_netcdf_restart ) then
       if(mpp_pe() == mpp_root_pe() ) then
          call error_mesg ('radiative_gases_mod', 'Writing NetCDF formatted restart file: RESTART/radiative_gases.res.nc', NOTE)
       endif
       call save_restart(Rad_restart, timestamp)
    else
-      if (mpp_pe() == mpp_root_pe() ) &
-           call error_mesg ('radiative_gases_mod', 'Writing native formatted restart file: RESTART/radiative_gases.res', NOTE)
-      if(present(timestamp)) call error_mesg ('radiative_gases_mod', 'when do_netcdf_restart is false, '// &
-           'timestamp should not passed in radiative_gases_restart', FATAL)
-      call write_restart_radiative_gases
+      call error_mesg ('radiative_gases_mod', &
+         'Native intermediate restart files are not supported.', FATAL)
    endif
 
 end subroutine radiative_gases_restart

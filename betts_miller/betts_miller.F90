@@ -24,8 +24,8 @@ private
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
- character(len=128) :: version = '$Id: betts_miller.F90,v 1.1.2.2.2.1 2008/09/16 05:14:48 wfc Exp $'
- character(len=128) :: tagname = '$Name: perth_2008_10 $'
+ character(len=128) :: version = '$Id: betts_miller.F90,v 17.0 2009/07/21 02:53:38 fms Exp $'
+ character(len=128) :: tagname = '$Name: quebec $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----
@@ -854,7 +854,7 @@ integer  i, j, k, ix, jx, kx, klzb, ktop, klzb2
 !
 !-----------------------------------------------------------------------
 
-  integer  unit,io,ierr
+  integer  unit,io,ierr, logunit
 
 !----------- read namelist ---------------------------------------------
 
@@ -870,8 +870,9 @@ integer  i, j, k, ix, jx, kx, klzb, ktop, klzb2
 !---------- output namelist --------------------------------------------
 
       call write_version_number ( version, tagname )
+      logunit = stdlog()
       if ( mpp_pe() == mpp_root_pe() ) then
-           write (stdlog(),nml=betts_miller_nml)
+           write (logunit,nml=betts_miller_nml)
       endif
 
       do_init=.false.

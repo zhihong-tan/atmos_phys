@@ -30,12 +30,12 @@ use fms_donner_mod,         only: fms_donner_process_nml,   &
                                   fms_get_pe_number, &
                                   fms_sat_vapor_pres, &
                                   fms_error_mesg, fms_constants, &
-                                  fms_close_column_diagnostics_units, &
+                                  fms_close_col_diag_units, &
                                   fms_deallocate_variables, &
                                   fms_donner_process_monitors
 use nonfms_donner_mod,      only: nonfms_donner_process_nml,   &
                                   nonfms_donner_process_tracers, &
-                                  nonfms_donner_activate_diagnostics, &
+                                  nonfms_donner_activate_diag, &
                                   nonfms_donner_col_diag, &
                                   nonfms_donner_column_control, &
                                   nonfms_donner_read_restart, &
@@ -46,7 +46,7 @@ use nonfms_donner_mod,      only: nonfms_donner_process_nml,   &
                                   nonfms_error_mesg, nonfms_constants,&
                                   nonfms_deallocate_variables, &
                                   nonfms_donner_process_monitors, &
-                                  nonfms_close_column_diagnostics_units
+                                  nonfms_close_col_diag_units
 
 implicit none
 private
@@ -61,8 +61,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 16.0.4.1.2.1.2.1 2008/09/16 02:33:54 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 17.0 2009/07/21 02:54:29 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !--------------------------------------------------------------------
@@ -502,6 +502,14 @@ logical,                         intent(in), optional :: &
         Nml%do_hires_cape_for_closure = .true.
       endif
  
+      if (.not. Nml%do_donner_cape .and. &
+           Nml%rmuz_for_cape /= 0.0) then
+        erflag = 1
+        ermesg =  'donner_deep_init: &
+            &  a non-zero rmuz_for_cape is allowed only when &
+            & do_donner_cape is true'
+      endif
+
       if (Nml%do_donner_cape .and.     &
            .not. Nml%do_hires_cape_for_closure) then
         erflag = 1
@@ -510,17 +518,51 @@ logical,                         intent(in), optional :: &
             & do_donner_cape is true'
       endif
 
+      if (.not. (Nml%do_donner_cape) .and.  &
+           .not. (Nml%do_hires_cape_for_closure)) then
+
+        if (Nml%rmuz_for_closure /= 0.0) then
+          erflag = 1
+          ermesg =  'donner_deep_init: &
+          &  a non-zero rmuz_for_closure is currently implemented &
+          & only for the hi-res cape closure calculation'
+        endif
+ 
+        if (trim(Nml%entrainment_scheme_for_closure) /= 'none') then
+          erflag = 1
+          ermesg =  'donner_deep_init: &
+          &  entrainment in the closure calculation is currently &
+           & implemented only for the hi-res cape closure calculation'
+        endif
+              
+        if (Nml%modify_closure_plume_condensate ) then
+          erflag = 1
+          ermesg =  'donner_deep_init: &
+          &  condensate modification in the closure calculation is &
+          & currently implemented only for the hi-res cape closure &
+          & calculation'
+        endif
+              
+        if (Nml%closure_plume_condensate /= -999. ) then
+          erflag = 1
+          ermesg =  'donner_deep_init: &
+          &  condensate modification in the closure calculation is &
+          & currently implemented only for the hi-res cape closure &
+          & calculation'
+        endif
+      endif
+              
       if (Nml%do_donner_cape .and. Nml%gama /= 0.0) then
         erflag = 1
         ermesg =  'donner_deep_init: &
             & gama must be 0.0 if do_donner_cape is .true.; code for &
             & gama /=  0.0 not yet implemented'
       endif
-      if (Nml%deep_closure /= 0 ) then
+      if (Nml%deep_closure /= 0 .and. Nml%deep_closure /= 1 ) then
         erflag = 1
         ermesg =  'donner_deep_init: &
-              & deep_closure must be 0; code for &
-              & deep_closure /=  0 not yet implemented'
+              & deep_closure must be 0 or 1; code for &
+              & cu_clo_miz not yet implemented'
       endif
       if (Nml%do_rh_trig .and. Nml%do_donner_closure) then
         erflag = 1
@@ -608,6 +650,42 @@ logical,                         intent(in), optional :: &
                   'be input or default'
       endif
 
+!---------------------------------------------------------------------
+!    check for consistency between entrainment used in closure 
+!    calculation. define logical indicating whether entrainment
+!    coefficient is to be constant or ht-dependent.
+!---------------------------------------------------------------------
+      if (trim(Nml%entrainment_scheme_for_closure) == 'none' .and. &
+                               Nml%rmuz_for_closure /= 0.0) then 
+        erflag = 1
+        ermesg = 'donner_deep_init: do not specify a non-zero ' // &
+                  'rmuz_for_closure when no entrainment is desired'
+      endif
+      if (trim(Nml%entrainment_scheme_for_closure) ==    &
+                                                 'ht-dependent' .and. &
+                               Nml%rmuz_for_closure == 0.0) then 
+        erflag = 1
+        ermesg = 'donner_deep_init: must specify rmuz_for_closure ' // &
+                  'when ht-dependent entrainment is desired'
+      endif
+      if (trim(Nml%entrainment_scheme_for_closure) ==    &
+                                                 'ht-dependent' ) then
+        Initialized%use_constant_rmuz_for_closure = .false.
+      else
+        Initialized%use_constant_rmuz_for_closure = .true.
+      endif
+
+!---------------------------------------------------------------------
+!    check that if the closure plume condensate is to be modified that
+!    a value is given.
+!---------------------------------------------------------------------
+      if (Nml%modify_closure_plume_condensate .and. &
+          Nml%closure_plume_condensate == -999.) then
+        erflag = 1
+        ermesg = 'donner_deep_init: must specify ' // &
+              'closure_plume_condensate when modification is requested'
+      endif
+        
 !---------------------------------------------------------------------
 !    if any errors were encountered, process them.
 !---------------------------------------------------------------------
@@ -738,7 +816,7 @@ logical,                         intent(in), optional :: &
 !    to initialize the procedure needed to output netcdf variable
 !    fields in the nonFMS model. by default, it currently does nothing.
 !---------------------------------------------------------------------
-        call nonfms_donner_activate_diagnostics (secs, days, axes, &
+        call nonfms_donner_activate_diag (secs, days, axes, &
                   Don_save, Nml, n_water_budget, n_enthalpy_budget, &
                   n_precip_paths, n_precip_types, nlev_hires, kpar)
       endif
@@ -1501,7 +1579,7 @@ subroutine donner_deep_restart(timestamp)
      !    by default, the subroutine does nothing.
      !---------------------------------------------------------------------
      if(present(timestamp)) then
-        call fms_error_mesg('donner_deep_mod: when running_in_fms is false, '// &
+        call nonfms_error_mesg('donner_deep_mod: when running_in_fms is false, '// &
              'timestamp should not passed in donner_deep_restart')
      endif
      ntracers = size(Don_save%tracername(:))
@@ -1539,11 +1617,30 @@ subroutine donner_deep_end
       ntracers = size(Don_save%tracername(:))
 
 !-------------------------------------------------------------------
+!    call subroutine to write restart file. NOTE: only the netcdf 
+!    restart file is currently supported.
+!-------------------------------------------------------------------
+      if (running_in_fms) then
+        call donner_deep_restart
+      else 
+
+!---------------------------------------------------------------------
+!    subroutine nonfms_donner_write_restart should be configured to
+!    write a netcdf restart file in the nonFMS framework (see subroutine
+!    fms_donner_write_restart for the variables which must be included).
+!    by default, the subroutine does nothing.
+!---------------------------------------------------------------------
+        call nonfms_donner_write_restart (ntracers, Don_save, &
+                                       Initialized, Nml)
+      endif 
+
+
+!-------------------------------------------------------------------
 !    close any column diagnostics units which are open.
 !------------------------------------------------------------------
       if (Col_diag%num_diag_pts > 0) then
         if (running_in_fms) then
-          call fms_close_column_diagnostics_units 
+          call fms_close_col_diag_units 
         else
 
 !--------------------------------------------------------------------
@@ -1552,7 +1649,7 @@ subroutine donner_deep_end
 !    by default, column diagnostics are not available in the nonFMS
 !    model, and this subroutine does nothing.
 !--------------------------------------------------------------------
-          call nonfms_close_column_diagnostics_units 
+          call nonfms_close_col_diag_units 
         endif
       endif
 

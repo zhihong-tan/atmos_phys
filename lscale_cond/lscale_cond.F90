@@ -18,8 +18,8 @@ private
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
- character(len=128) :: version = '$Id: lscale_cond.F90,v 10.0.14.1.2.1 2008/09/16 02:52:36 wfc Exp $'
- character(len=128) :: tagname = '$Name: perth_2008_10 $'
+ character(len=128) :: version = '$Id: lscale_cond.F90,v 17.0 2009/07/21 02:55:24 fms Exp $'
+ character(len=128) :: tagname = '$Name: quebec $'
  logical            :: module_is_initialized=.false.
 
 !-----------------------------------------------------------------------
@@ -243,7 +243,7 @@ subroutine precip_evap (pmass, tin, qin, qsat, dqsat, hlcp, &
 !
 !-----------------------------------------------------------------------
 
-  integer  unit,io,ierr
+  integer  unit,io,ierr, logunit
 
 !----------- read namelist ---------------------------------------------
 
@@ -260,7 +260,8 @@ subroutine precip_evap (pmass, tin, qin, qsat, dqsat, hlcp, &
 
       if ( mpp_pe() == mpp_root_pe() ) then
            call write_version_number(version, tagname)
-           write (stdlog(),nml=lscale_cond_nml)
+           logunit = stdlog()
+           write (logunit,nml=lscale_cond_nml)
       endif
 
       module_is_initialized=.true.

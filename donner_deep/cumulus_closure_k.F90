@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: cumulus_closure_k.F90,v 16.0 2008/07/30 22:06:41 fms Exp $
+!  $Id: cumulus_closure_k.F90,v 17.0 2009/07/21 02:54:23 fms Exp $
 
 
 !module cumulus_closure_inter_mod
@@ -12,8 +12,8 @@
 !######################################################################
 
 subroutine cu_clo_cumulus_closure_k   &
-         (nlev_hires, diag_unit, debug_ijt, Param, Nml, lofactor, &
-          dcape, cape_p, &
+         (nlev_hires, diag_unit, debug_ijt, Param, Initialized, &
+          Nml, lofactor, dcape, cape_p, &
           qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, rl_v, parcel_r,   &
           env_t, parcel_t, a1, ermesg, error)
 
@@ -22,7 +22,8 @@ subroutine cu_clo_cumulus_closure_k   &
 !    cumulus parameterization. see LJD notes, "Cu Closure D," 6/11/97
 !---------------------------------------------------------------------
  
-use donner_types_mod, only : donner_param_type, donner_nml_type
+use donner_types_mod, only : donner_param_type, donner_nml_type, &
+                             donner_initialized_type
 
 implicit none
 
@@ -31,6 +32,7 @@ integer,                        intent(in)  :: nlev_hires
 integer,                        intent(in)  :: diag_unit
 logical,                        intent(in)  :: debug_ijt
 type(donner_param_type),        intent(in)  :: Param
+type(donner_initialized_type),  intent(in)  :: Initialized
 type(donner_nml_type),          intent(in)  :: Nml    
 real,                           intent(in)  :: lofactor, dcape
 real,    dimension(nlev_hires), intent(in)  :: cape_p, qli0_v, qli1_v, &
@@ -202,11 +204,16 @@ integer,                        intent(out) :: error
       if (Nml%do_freezing_for_cape /= Nml%do_freezing_for_closure .or. &
           Nml%tfre_for_cape /= Nml%tfre_for_closure .or. &
           Nml%dfre_for_cape /= Nml%dfre_for_closure .or. &
+          .not. (Initialized%use_constant_rmuz_for_closure) .or. &
           Nml%rmuz_for_cape /= Nml%rmuz_for_closure) then
            call don_c_displace_parcel_k   &
                (nlev_hires, diag_unit, debug_ijt, Param,  &
                 Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
-                Nml%dfre_for_closure, Nml%rmuz_for_closure, env_t,  &
+                Nml%dfre_for_closure, Nml%rmuz_for_closure, &
+                Initialized%use_constant_rmuz_for_closure,  &
+                Nml%modify_closure_plume_condensate, &
+                Nml%closure_plume_condensate, &
+                env_t,  &
                 env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
                 dumxcape, parcel_r_clo,  parcel_t_clo, ermesg, error)
       else
@@ -229,6 +236,9 @@ integer,                        intent(out) :: error
            (nlev_hires, diag_unit, debug_ijt, Param,   &
             Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
             Nml%dfre_for_closure, Nml%rmuz_for_closure, &
+            Initialized%use_constant_rmuz_for_closure, &
+                Nml%modify_closure_plume_condensate, &
+                Nml%closure_plume_condensate, &
             pert_env_t, &
             pert_env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
             dumxcape, pert_parcel_r,  pert_parcel_t, ermesg, error)
@@ -241,6 +251,9 @@ integer,                        intent(out) :: error
            (nlev_hires, diag_unit, debug_ijt, Param,   &
             Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
             Nml%dfre_for_closure, Nml%rmuz_for_closure, &
+            Initialized%use_constant_rmuz_for_closure, &
+                Nml%modify_closure_plume_condensate, &
+                Nml%closure_plume_condensate, &
             pert_env_t, &
             pert_env_r, cape_p, .true., plfc, plzb, plcl, dumcoin,  &
             dumxcape, pert_parcel_r,  pert_parcel_t, ermesg, error)

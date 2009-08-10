@@ -1,5 +1,5 @@
 !VERSION NUMBER:
-!  $Id: donner_deep_k.F90,v 16.0.2.1 2008/08/06 09:18:01 rsh Exp $
+!  $Id: donner_deep_k.F90,v 17.0 2009/07/21 02:54:31 fms Exp $
 
 !module donner_deep_inter_mod
 
@@ -1659,39 +1659,39 @@ type(ctend),                  intent(inout) :: ct
 ! convert precip from kg/kg/timestep to kg/m3/timestep
                tv_wd = temp(i,j,k) &
                        * ( 1 + Param%D608*mixing_ratio(i,j,k)/(1+mixing_ratio(i,j,k)) )
-                 air_density_wd = 0.5*(press0+press1)/(Param%rdgas*tv_wd)
-                 qrw_wd = qrw_col_wd * air_density_wd
-                 do n = 1,size(Don_conv%temptr,4)
-                    call wet_deposition_0D( Initialized%wetdep(n)%scheme, &
-                                            Initialized%wetdep(n)%Henry_constant, &
-                                            Initialized%wetdep(n)%Henry_variable, &
-                                            Initialized%wetdep(n)%frac_in_cloud, &
-                                            Initialized%wetdep(n)%alpha_r, &
-                                            Initialized%wetdep(n)%alpha_s, &
-                                            temp(i,j,k), &
-                                            press0, press1, air_density_wd, &
-                                            qlw_wd, qrw_wd, &
-                                            Don_conv%temptr(i,j,k,n), delta_tracer )
-!++lwh Bug fix 12/11/2006
-!      delta_tracer should be subtracted from qtmes1, not added
-                    Don_conv%wetdepm(i,j,k,n) = -Don_conv%ampta1(i,j)* delta_tracer/dt
-                    Don_conv%wetdept(i,j,k,n) = Don_conv%wetdept(i,j,k,n) &
-                                              + Don_conv%wetdepm(i,j,k,n)
-!                   Don_conv%qtmes1(i,j,k,n) = Don_conv%qtmes1(i,j,k,n) &
-!                                            - Don_conv%ampta1(i,j) * delta_tracer/dt
-!--lwh
-                  end do
-               end if
-             end do
-          end if
-       end do
-       end do
+               air_density_wd = 0.5*(press0+press1)/(Param%rdgas*tv_wd)
+               qrw_wd = qrw_col_wd * air_density_wd
+               do n = 1,size(Don_conv%temptr,4)
+                  if (Initialized%wetdep(n)%Lwetdep) then
+                     call wet_deposition_0D( Initialized%wetdep(n)%Henry_constant, &
+                                             Initialized%wetdep(n)%Henry_variable, &
+                                             Initialized%wetdep(n)%frac_in_cloud, &
+                                             Initialized%wetdep(n)%alpha_r, &
+                                             Initialized%wetdep(n)%alpha_s, &
+                                             temp(i,j,k), &
+                                             press0, press1, air_density_wd, &
+                                             qlw_wd, 0., qrw_wd, &
+                                             Don_conv%temptr(i,j,k,n), &
+                                             Initialized%wetdep(n)%Lgas, &
+                                             Initialized%wetdep(n)%Laerosol, &
+                                             Initialized%wetdep(n)%Lice, &
+                                             delta_tracer )
+                     Don_conv%wetdepm(i,j,k,n) = -Don_conv%ampta1(i,j)* delta_tracer/dt
+                     Don_conv%wetdept(i,j,k,n) = Don_conv%wetdept(i,j,k,n) &
+                                               + Don_conv%wetdepm(i,j,k,n)
+                  end if
+               end do
+             end if
+           end do
+        end if
+      end do
+      end do
 
 !---------------------------------------------------------------------
 !    check for tracer realizability, and limit convective tendencies
 !    if necessary.
 !---------------------------------------------------------------------
-      call don_d_check_tracer_realizability( isize, jsize, nlev_lsm, ntr, dt, &
+      call don_d_check_trc_rlzbility( isize, jsize, nlev_lsm, ntr, dt, &
                                               tracers, Don_conv )
 
 !----------------------------------------------------------------------
@@ -3066,7 +3066,7 @@ integer,                      intent(out)    ::  error
           if (lmeso) then
             if (Nml%do_donner_plume) then
               call don_m_meso_effects_k  &
-                 (nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, &
+                 (me, nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, &
                   Param, Nml, Don_cape%model_p(i,j,:),   &
                   Don_cape%model_t(i,j,:), Don_cape%model_r(i,j,:),  &
                   phalf_c, rlsm, emsm, etsm, xgcm_v(i,j,:,:),   &
@@ -3084,7 +3084,7 @@ integer,                      intent(out)    ::  error
                   Don_conv%meso_precip(i,j), ermesg, error)
             else
               call don_m_meso_effects_miz  &
-                 (nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, &
+                 (me, nlev_lsm, nlev_hires, ntr, diag_unit, debug_ijt, &
                   Param, Nml, Don_cape%model_p(i,j,:),   &
                   Don_cape%model_t(i,j,:), Don_cape%model_r(i,j,:),  &
                   phalf_c, rlsm_miz, emsm_miz, etsm, xgcm_v(i,j,:,:),  &
@@ -3311,6 +3311,7 @@ integer,                      intent(out)    ::  error
 ! this path used by donner_full parameterization:
               call don_d_determine_cloud_area_k  &
                 (me, nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param,&
+                 Initialized, &
                  Nml, lofactor, max_depletion_rate, Don_conv%dcape(i,j),   &
                  Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),    &
                  Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:), &
@@ -3327,11 +3328,12 @@ integer,                      intent(out)    ::  error
 !  calculation will have used hires vertical grid.
                  call don_d_determine_cloud_area_miz  &
                 (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit,&
-                 debug_ijt, Param, Nml, xgcm_v(i,j,:,:), &
+                 debug_ijt, Param, Initialized, Nml, xgcm_v(i,j,:,:), &
                  pfull(i,j,:), zfull(i,j,:), phalf(i,j,:),  &
                  zhalf(i,j,:), pblht(i,j), tkemiz(i,j), qstar(i,j), &
                  cush(i,j), cbmf(i,j), land(i,j),  coldT(i,j), sd, Uw_p, ac, &
-                 max_depletion_rate, Don_conv%dcape(i,j),   &
+                 max_depletion_rate, Don_cape%xcape(i,j), &
+                 Don_conv%dcape(i,j),   &
                  Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),    &
                  Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:), &
                  Don_cape%model_r(i,j,:), Don_cape%env_t(i,j,:), &
@@ -3356,11 +3358,12 @@ integer,                      intent(out)    ::  error
 
                    call don_d_determine_cloud_area_miz  &
                 (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit,&
-                 debug_ijt, Param, Nml, xgcm_v(i,j,:,:), &
+                 debug_ijt, Param, Initialized, Nml, xgcm_v(i,j,:,:), &
                  pfull(i,j,:), zfull(i,j,:), phalf(i,j,:),  &
                  zhalf(i,j,:), pblht(i,j), tkemiz(i,j), qstar(i,j), &
                  cush(i,j), cbmf(i,j), land(i,j),  coldT(i,j), sd, Uw_p, ac, &
-                 max_depletion_rate, Don_conv%dcape(i,j),   &
+                 max_depletion_rate, Don_cape%xcape(i,j), &
+                 Don_conv%dcape(i,j),   &
                  Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),    &
                  Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:), &
                  Don_cape%model_r(i,j,:), &
@@ -3376,11 +3379,12 @@ integer,                      intent(out)    ::  error
                  call don_d_determine_cloud_area_miz  &
 !               (me, nlev_lsm, ntr, dt, nlev_hires, diag_unit,&
                 (me, nlev_lsm, ntr, dt, nlev_lsm  , diag_unit,&
-                 debug_ijt, Param, Nml, xgcm_v(i,j,:,:), &
+                 debug_ijt, Param, Initialized, Nml, xgcm_v(i,j,:,:), &
                  pfull(i,j,:), zfull(i,j,:), phalf(i,j,:),  &
                  zhalf(i,j,:), pblht(i,j), tkemiz(i,j), qstar(i,j), &
                  cush(i,j), cbmf(i,j), land(i,j),  coldT(i,j), sd, Uw_p, ac, &
-                 max_depletion_rate, Don_conv%dcape(i,j),   &
+                 max_depletion_rate, Don_cape%xcape(i,j), &
+                 Don_conv%dcape(i,j),   &
                  Don_conv%amax(i,j), dise_v(i,j,:), disa_v(i,j,:),    &
                  Don_cape%model_p(i,j,:), Don_cape%model_t(i,j,:), &
                  Don_cape%model_r(i,j,:), Don_cape%env_t(i,j,:), &
@@ -4333,7 +4337,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 !---------------------------------------------------------------------
         if (lmeso) then
           call don_cm_mesub_k     &
-               (nlev_lsm, me, diag_unit, debug_ijt, Param, cu,   &
+               (Nml, pfull_c, nlev_lsm, me, diag_unit, debug_ijt, Param, cu,   &
                 ci_liq_cond, ci_ice_cond, pmelt_lsm, cell_precip, &
                 dint, plzb_c, pb, ptma(kou), temp_c, phalf_c,     &
                 ca_liq, ca_ice,  ecd, ecd_liq, ecd_ice, ecei_liq, &
@@ -5912,7 +5916,7 @@ integer,                            intent(out)   :: error
 !    force the column integral of the temperature change to be 0.0, thus
 !    conserving enthalpy; then add any imposed sub-cloud convergence.
 !----------------------------------------------------------------------
-   if (Nml%force_internal_enthalpy_conservation) then
+   if (Nml%frc_internal_enthalpy_conserv) then
       call don_d_convert_profile_k       &
            ('EFCHR', 'h1_2', nlev_lsm, nlev_hires, ncc_kou,   &
             efchr(1:ncc_kou+1), cld_press(1:ncc_kou+1), ptt, &
@@ -6875,7 +6879,12 @@ integer,          intent(  out) :: error
 !    (ensmbl_cld_top_area) to the arrays accumulating the ensemble sums.
 !--------------------------------------------------------------------
       if (lmeso) then
-        local_frz_frac = (frz_frac_non_precip + meso_frz_frac)/meso_frac
+        if (meso_frac /= 0.0) then
+          local_frz_frac = (frz_frac_non_precip + meso_frz_frac)/  &
+                                                              meso_frac
+        else
+          local_frz_frac = 0.0
+        endif
         ensmbl_anvil_cond_liq   = ensmbl_anvil_cond_liq   +   &
                                   area_ratio*ca_liq*(1.-local_frz_frac)
         ensmbl_anvil_cond_liq_frz   = ensmbl_anvil_cond_liq_frz   +   &
@@ -8602,8 +8611,8 @@ end subroutine don_d_finalize_output_fields_k
 !#####################################################################
 
 subroutine don_d_determine_cloud_area_k            &
-         (me, nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param, Nml,  &
-          lofactor, &
+         (me, nlev_lsm, nlev_hires, diag_unit, debug_ijt, Param,  &
+          Initialized, Nml, lofactor, &
           max_depletion_rate, dcape, amax, dise_v, disa_v, pfull_c,  &
           temp_c, mixing_ratio_c, env_t, env_r, parcel_t, parcel_r, &
           cape_p, exit_flag, amos, a1, ermesg, error)
@@ -8614,7 +8623,8 @@ subroutine don_d_determine_cloud_area_k            &
 !    Don_conv%a1 and Don_conv%amos are output by this routine.
 !---------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type, donner_nml_type 
+use donner_types_mod, only : donner_param_type, donner_nml_type, &
+                             donner_initialized_type
 use conv_utilities_k_mod, only : sounding, adicloud 
 
 implicit none
@@ -8624,6 +8634,7 @@ integer,                      intent(in)    :: me, nlev_lsm,     &
                                                nlev_hires, diag_unit
 logical,                      intent(in)    :: debug_ijt
 type(donner_param_type),      intent(in)    :: Param
+type(donner_initialized_type),intent(in)    :: Initialized
 type(donner_nml_type),        intent(in)    :: Nml      
 real,                         intent(in)    :: max_depletion_rate,   &
                                                lofactor, &
@@ -8767,8 +8778,8 @@ integer,                      intent(out)   :: error
 !    fraction and so close the deep-cumulus parameterization.
 !--------------------------------------------------------------------
       call cu_clo_cumulus_closure_k   &
-           (nlev_hires, diag_unit, debug_ijt, Param, Nml, lofactor, &
-            dcape, &
+           (nlev_hires, diag_unit, debug_ijt, Param, Initialized, &
+            Nml, lofactor, dcape, &
             cape_p, qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, &
             rl_v, parcel_r, env_t, parcel_t, a1, ermesg, error)     
 
@@ -9477,7 +9488,7 @@ end subroutine don_d_dealloc_loc_vars_k
 !######################################################################
 
 !++lwh
-subroutine don_d_check_tracer_realizability( isize, jsize, nlev_lsm, ntr, dt, &
+subroutine don_d_check_trc_rlzbility( isize, jsize, nlev_lsm, ntr, dt, &
                                              tracers, Don_conv )
 !---------------------------------------------------------------------
 !  Check for tracer realizability. If convective tendencies would
@@ -9588,6 +9599,6 @@ type(donner_conv_type),  intent(inout)  :: Don_conv
    end do
 
 
-end subroutine don_d_check_tracer_realizability
+end subroutine don_d_check_trc_rlzbility
 !--lwh
 

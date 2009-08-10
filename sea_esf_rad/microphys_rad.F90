@@ -55,8 +55,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: microphys_rad.F90,v 15.0.4.1 2008/08/04 11:20:04 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: microphys_rad.F90,v 17.0 2009/07/21 02:57:02 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -449,7 +449,7 @@ real, dimension(:,:),    intent(in)    ::  lonb, latb
                                    sumsol5
       real                      :: sumplanck 
       real                      :: xtemv = 233.15
-      integer                   :: unit, ierr, io
+      integer                   :: unit, ierr, io, logunit
       integer                   :: nivl, nband
       integer                   :: nivl1, nivl2, nivl3, nivl4, nivl5
       integer                   :: i, j, k, n, ib, nw, ni
@@ -538,8 +538,9 @@ real, dimension(:,:),    intent(in)    ::  lonb, latb
 !    write namelist and version number to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() )    &
-                      write (stdlog(), nml=microphys_rad_nml)
+                      write (logunit, nml=microphys_rad_nml)
 
       min_cld_drop_rad  = min_cld_drop_rad_in
       max_cld_drop_rad  = max_cld_drop_rad_in

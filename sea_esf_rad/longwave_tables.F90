@@ -49,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_tables.F90,v 14.0 2007/03/15 22:06:29 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: longwave_tables.F90,v 17.0 2009/07/21 02:56:50 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 !---------------------------------------------------------------------
@@ -259,7 +259,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !    k4
 !    n4
 !---------------------------------------------------------------------
-      integer    :: unit, ierr, io
+      integer    :: unit, ierr, io, logunit
 
 
 !---------------------------------------------------------------------
@@ -291,8 +291,9 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                          write (stdlog(), nml=longwave_tables_nml)
+                          write (logunit, nml=longwave_tables_nml)
 
 !---------------------------------------------------------------------
 !

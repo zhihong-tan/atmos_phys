@@ -44,8 +44,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 15.0.6.1 2008/09/03 18:40:33 z1l Exp $'
-  character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+  character(len=128)  :: version =  '$Id: standalone_clouds.F90,v 17.0 2009/07/21 02:57:44 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: quebec $'
 
 
 
@@ -218,7 +218,7 @@ real, dimension(:,:), intent(in)    ::  lonb, latb
 !   local variables:
 
       real               :: max_cld_calc
-      integer            :: unit, ierr, io
+      integer            :: unit, ierr, io, logunit
       integer            :: ktop, kbot
       integer            :: idf, jdf, kx
       integer            :: i, k, kk
@@ -268,8 +268,9 @@ real, dimension(:,:), intent(in)    ::  lonb, latb
 !    write namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() )    &
-                       write (stdlog(), nml=standalone_clouds_nml)
+                       write (logunit, nml=standalone_clouds_nml)
 
 !---------------------------------------------------------------------
 !    define size of processor's domain.

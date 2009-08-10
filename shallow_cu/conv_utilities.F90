@@ -20,8 +20,8 @@ use conv_utilities_k_mod, only: uw_params_init_k, uw_params
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities.F90,v 15.0.6.1 2008/08/04 11:17:45 rsh Exp $'
-  character(len=128) :: tagname = '$Name: perth_2008_10 $'
+  character(len=128) :: version = '$Id: conv_utilities.F90,v 17.0 2009/07/21 02:58:03 fms Exp $'
+  character(len=128) :: tagname = '$Name: quebec $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

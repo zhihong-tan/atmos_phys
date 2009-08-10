@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cloud_model_k.F90,v 16.0.2.1 2008/09/09 13:43:15 rsh Exp $
+!  $Id: donner_cloud_model_k.F90,v 17.0 2009/07/21 02:54:27 fms Exp $
 
 !module donner_cloud_model_inter_mod
 
@@ -788,17 +788,22 @@ integer,                            intent(out)   :: error
 !--------------------------------------------------------------------
           t_avg = 0.5*(tcc(k)+tcc(k+1))
           do n = 1,size(xclo,2)
-             call wet_deposition_0D    &
-                              (Initialized%wetdep(n)%scheme, &
-                               Initialized%wetdep(n)%Henry_constant, &
-                               Initialized%wetdep(n)%Henry_variable, &
-                               Initialized%wetdep(n)%frac_in_cloud, &
-                               Initialized%wetdep(n)%alpha_r, &
-                               Initialized%wetdep(n)%alpha_s, &
-                               t_avg, cld_press(k), cld_press(k+1), &
-                               0.5*(density+densityp), &
-                               qlw_save, dqrw3*g_2_kg, &
-                               xclo(k,n), delta_xclo0(n) )
+             if (Initialized%wetdep(n)%Lwetdep) then
+                call wet_deposition_0D    &
+                           (Initialized%wetdep(n)%Henry_constant, &
+                            Initialized%wetdep(n)%Henry_variable, &
+                            Initialized%wetdep(n)%frac_in_cloud, &
+                            Initialized%wetdep(n)%alpha_r, &
+                            Initialized%wetdep(n)%alpha_s, &
+                            t_avg, cld_press(k), cld_press(k+1), &
+                            0.5*(density+densityp), &
+                            qlw_save, dqrw3*g_2_kg, 0., &
+                            xclo(k,n), &
+                            Initialized%wetdep(n)%Lgas, &
+                            Initialized%wetdep(n)%Laerosol, &
+                            Initialized%wetdep(n)%Lice, &
+                            delta_xclo0(n) )
+             end if
           end do
 !--lwh          
           call don_cm_clotr_k    &
@@ -807,7 +812,8 @@ integer,                            intent(out)   :: error
                 entrain, dt_micro, xclo(k+1,:), ermesg, error)
 !++lwh
           do n = 1,size(xclo,2)
-             call wet_deposition_0D   &
+             if (Initialized%wetdep(n)%Lwetdep) then
+                call wet_deposition_0D   &
                            (Initialized%wetdep(n)%scheme, &
                             Initialized%wetdep(n)%Henry_constant, &
                             Initialized%wetdep(n)%Henry_variable, &
@@ -816,10 +822,17 @@ integer,                            intent(out)   :: error
                             Initialized%wetdep(n)%alpha_s, &
                             t_avg, cld_press(k), cld_press(k+1), &
                             0.5*(density+densityp), &
-                            qlw, dqrw3*g_2_kg, &
-                            xclo(k+1,n), delta_xclo1(n) )
-             dwet(n) = - 0.5*(delta_xclo0(n)+delta_xclo1(n))
-             xclo(k+1,n) = xclo(k+1,n) + dwet(n)
+                            qlw, dqrw3*g_2_kg, 0., &
+                            xclo(k+1,n), &
+                            Initialized%wetdep(n)%Lgas, &
+                            Initialized%wetdep(n)%Laerosol, &
+                            Initialized%wetdep(n)%Lice, &
+                            delta_xclo1(n) )
+                dwet(n) = - 0.5*(delta_xclo0(n)+delta_xclo1(n))
+                xclo(k+1,n) = xclo(k+1,n) + dwet(n)
+             else
+                dwet(n) = 0.
+             end if
           end do
 !--lwh          
  
@@ -1518,7 +1531,7 @@ integer,                 intent(out)  :: error
 
 
 subroutine don_cm_mesub_k     &
-         (nlev_lsm, me, diag_unit, debug_ijt, Param, cu,           &
+         (Nml, pfull_c, nlev_lsm, me, diag_unit, debug_ijt, Param, cu,           &
           ci_liq_cond, ci_ice_cond, pmelt_lsm, cell_precip, &
           dint, plzb_c, pb, pt_kou, temp_c, phalf_c,   &
           ca_liq, ca_ice, ecd, ecd_liq, ecd_ice, ecei_liq,   &
@@ -1537,17 +1550,18 @@ subroutine don_cm_mesub_k     &
 !    "Cu Closure A notes," 2/97.
 !----------------------------------------------------------------------
 
-use donner_types_mod, only : donner_param_type
+use donner_types_mod, only : donner_param_type, donner_nml_type
 
 implicit none
 
 !----------------------------------------------------------------------
+type(donner_nml_type),         intent(in)    :: Nml
 integer,                       intent(in)    :: nlev_lsm, me, diag_unit
 logical,                       intent(in)    :: debug_ijt
 type(donner_param_type),       intent(in)    :: Param
 real,                          intent(in)    :: cu, cell_precip, dint, &
                                                 plzb_c, pb, pt_kou
-real,   dimension(nlev_lsm),   intent(in)    :: temp_c
+real,   dimension(nlev_lsm),   intent(in)    :: temp_c, pfull_c
 real,   dimension(nlev_lsm+1), intent(in)    :: phalf_c
 real,                          intent(out)   :: ca_liq, ca_ice
 real,                          intent(in)    :: pmelt_lsm, &
@@ -1648,6 +1662,8 @@ integer,                       intent(out)   :: error
       real    ::  p2                ! upper pressure limit for the layer
                                     ! in which one of the physical
                                     ! processes is occurring [ Pa ]
+      integer :: itrop
+      real    :: ptrop
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -1673,6 +1689,11 @@ integer,                       intent(out)   :: error
 !---------------------------------------------------------------------
       if (pztm < plzb_c) pztm = plzb_c
       if (ptt < plzb_c)  pztm = plzb_c + Param%dp_of_cloud_model
+
+      if (Nml%limit_pztm_to_tropo) then
+        call find_tropopause (nlev_lsm, temp_c, pfull_c, ptrop, itrop)
+        pztm = MAX (pztm, ptrop)
+      endif
 
 !---------------------------------------------------------------------
 !    define the base of the mesoscale updraft (pzm), as the layer imm-
@@ -2880,7 +2901,7 @@ integer,                      intent(out)   :: error
         kc = 1
         write (diag_unit, '(a, i4, 2e20.12)')  &
                                'in mulsub: kc,DPF, SUMLHR= ',kc, &
-               (dpf(1)*((Param%dp_of_cloud_model/2.)/Param%grav)),   &
+               dpf(1)*((Param%dp_of_cloud_model/2.)/Param%grav),   &
                                                 sumlhr
       endif
 
@@ -2900,7 +2921,7 @@ integer,                      intent(out)   :: error
         if (debug_ijt) then
           write (diag_unit, '(a, i4, 2e20.12)')  &
                          'in mulsub: kc,DPF,SUMLHR= ',kc,   &
-               (dpf(kc)*(Param%dp_of_cloud_model/Param%grav)),   &
+               dpf(kc)*(Param%dp_of_cloud_model/Param%grav),   &
                                                                sumlhr
         endif
 

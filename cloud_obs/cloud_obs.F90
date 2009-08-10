@@ -27,8 +27,8 @@ public  cloud_obs, cloud_obs_init, cloud_obs_end
 !-----------------------------------------------------------------------
 !   ---------- private data ------------
 
-   character(len=128) :: version = '$Id: cloud_obs.F90,v 15.0 2007/08/14 03:52:43 fms Exp $'
-   character(len=128) :: tagname = '$Name: perth_2008_10 $'
+   character(len=128) :: version = '$Id: cloud_obs.F90,v 17.0 2009/07/21 02:53:50 fms Exp $'
+   character(len=128) :: tagname = '$Name: quebec $'
 
       real, allocatable, dimension(:,:,:) :: clda,cldb
       real, allocatable, dimension(:)     :: londat,latdat
@@ -254,7 +254,7 @@ type(time_type), intent(in)                    :: Time
    real, intent(in), dimension(:,:) :: lonb,latb
 !-----------------------------------------------------------------------
    real    :: hpie
-   integer :: i, j, in, jn, unit, ierr, io
+   integer :: i, j, in, jn, unit, ierr, io, logunit
    real :: lonb_obs(mobs+1), latb_obs(nobs+1)
 
    if (module_is_initialized) return
@@ -274,7 +274,8 @@ type(time_type), intent(in)                    :: Time
 
       if ( mpp_pe() == mpp_root_pe() ) then
            call write_version_number(version, tagname)
-           write (stdlog(), nml=cloud_obs_nml)
+           logunit = stdlog()
+           write (logunit, nml=cloud_obs_nml)
       endif
 
 !------- setup for observed grid -------
