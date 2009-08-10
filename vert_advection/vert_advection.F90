@@ -25,8 +25,8 @@ integer, parameter, public :: FLUX_FORM = 201, ADVECTIVE_FORM = 202
 integer, parameter, public :: WEIGHTED_TENDENCY=1
 integer, parameter, public :: OUTFLOW_BOUNDARY=2
 
-character(len=128), parameter :: version = '$Id: vert_advection.F90,v 11.0 2004/09/28 19:27:01 fms Exp $'
-character(len=128), parameter :: tagname = '$Name: perth_2008_10 $'
+character(len=128), parameter :: version = '$Id: vert_advection.F90,v 17.0 2009/07/21 03:00:04 fms Exp $'
+character(len=128), parameter :: tagname = '$Name: quebec $'
 
 logical :: module_is_initialized = .false.
 
@@ -461,6 +461,7 @@ contains
 
  subroutine vert_advection_end
 
+  integer :: outunit
   ! deallocate storage
     if (allocated(zwts)) deallocate(zwts)
     if (allocated(dzs))  deallocate(dzs)
@@ -470,7 +471,8 @@ contains
     call mpp_max (cflmaxx)
     call mpp_sum (cflerr) ! integer sum
     if (cflmaxc > 0.) then
-        write (stdout(),10) cflmaxc, cflmaxx, cflerr
+        outunit = stdout()
+        write (outunit,10) cflmaxc, cflmaxx, cflerr
     endif
  10 format (/,' Vertical advection (atmosphere):',    &
             /,'     maximum CFL =',f10.6,'; ',f10.6,  &

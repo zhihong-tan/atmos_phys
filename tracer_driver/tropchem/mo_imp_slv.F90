@@ -17,7 +17,8 @@
 !-----------------------------------------------------------------------
 !               newton-raphson iteration limits
 !-----------------------------------------------------------------------
-      integer, parameter :: cut_limit    = 5
+!     integer, parameter :: cut_limit    = 5
+      integer, parameter :: cut_limit    = 8
 
       integer :: ox_ndx
       integer :: oh_ndx, ho2_ndx, ch3o2_ndx, po2_ndx, ch3co3_ndx, &
@@ -45,8 +46,8 @@
       type(hst_pl), private, allocatable ::   imp_hst_loss(:)
       logical, private, allocatable      ::   factor(:)
 
-character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 16.0 2008/07/30 22:10:55 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: perth_2008_10 $'
+character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 17.0 2009/07/21 02:59:43 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: quebec $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -92,6 +93,10 @@ logical                       :: module_is_initialized = .false.
             eps(m) = high_rel_err
          end if
       end if
+      m = get_spc_ndx( 'N' )
+      if( m > 0 ) then
+         eps(m) = high_rel_err
+      end if
       m = get_spc_ndx( 'NO' )
       if( m > 0 ) then
          eps(m) = high_rel_err
@@ -116,11 +121,35 @@ logical                       :: module_is_initialized = .false.
       if( m > 0 ) then
          eps(m) = high_rel_err
       end if
+      m = get_spc_ndx( 'ClONO2' )
+      if( m > 0 ) then
+         eps(m) = high_rel_err
+      end if
+      m = get_spc_ndx( 'BrONO2' )
+      if( m > 0 ) then
+         eps(m) = high_rel_err
+      end if
       m = get_spc_ndx( 'OH' )
       if( m > 0 ) then
          eps(m) = high_rel_err
       end if
       m = get_spc_ndx( 'HO2' )
+      if( m > 0 ) then
+         eps(m) = high_rel_err
+      end if
+      m = get_spc_ndx( 'Cl' )
+      if( m > 0 ) then
+         eps(m) = high_rel_err
+      end if
+      m = get_spc_ndx( 'ClO' )
+      if( m > 0 ) then
+         eps(m) = high_rel_err
+      end if
+      m = get_spc_ndx( 'Br' )
+      if( m > 0 ) then
+         eps(m) = high_rel_err
+      end if
+      m = get_spc_ndx( 'BrO' )
       if( m > 0 ) then
          eps(m) = high_rel_err
       end if

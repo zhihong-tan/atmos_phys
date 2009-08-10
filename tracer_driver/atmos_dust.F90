@@ -76,8 +76,8 @@ real :: coef_emis =-999.
 namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_dust.F90,v 16.0 2008/07/30 22:10:22 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: atmos_dust.F90,v 17.0 2009/07/21 02:59:12 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 !-----------------------------------------------------------------------
 
 contains
@@ -232,13 +232,13 @@ integer,          intent(in)                        :: axes(4)
 real, intent(in), dimension(:,:,:), optional        :: mask
 character(len=7), parameter :: mod_name = 'tracers'
 logical :: flag
-integer :: n, m
+integer :: n, m, logunit
 !
 !-----------------------------------------------------------------------
 !
       integer  log_unit,unit,ierr, io,index,ntr,nt
       character(len=16) ::  fld
-      character*1 :: numb(5)
+      character(len=1)  :: numb(5)
       data numb/'1','2','3','4','5'/
 
 
@@ -268,16 +268,17 @@ integer :: n, m
         ch = coef_emis
       endif
 !----- set initial value of dust ------------
+    logunit=stdlog()
     do m=1,5
 
        n = get_tracer_index(MODEL_ATMOS,'dust'//numb(m))
        if (n>0) then
          ndust=n
-       call set_tracer_atts(MODEL_ATMOS,'dust'//numb(m),'dust'//numb(m),'mmr')
-         if (ndust > 0 .and. mpp_pe() == mpp_root_pe()) &
+         call set_tracer_atts(MODEL_ATMOS,'dust'//numb(m),'dust'//numb(m),'mmr')
+         if (ndust > 0 .and. mpp_pe() == mpp_root_pe()) then
                 write (*,30) 'dust'//numb(m),ndust
-         if (ndust > 0 .and. mpp_pe() == mpp_root_pe()) &
-                write (stdlog(),30) 'dust '//numb(m),ndust
+                write (logunit,30) 'dust '//numb(m),ndust
+         endif       
        endif
 
 

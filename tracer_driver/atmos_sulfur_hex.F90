@@ -44,7 +44,7 @@ use              fms_mod, only : file_exist,           &
 !                                 open_file,            &
                                  mpp_pe,               &
                                  mpp_root_pe,          &
-                                 stdlog,               &
+                                 stdlog, stdout,       &
                                  close_file,           &
                                  write_version_number
 use              mpp_mod, only : get_unit
@@ -104,8 +104,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 16.0 2008/07/30 22:10:33 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 17.0 2009/07/21 02:59:27 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 !-----------------------------------------------------------------------
 
 contains
@@ -278,7 +278,7 @@ integer :: n
 !  non-zero.
 !
 !-----------------------------------------------------------------------
-      integer  log_unit,unit,io,index,ntr,nt
+      integer  log_unit,unit,io,index,ntr,nt, logunit, outunit
 
       if (module_is_initialized) return
 
@@ -289,8 +289,10 @@ integer :: n
       n = get_tracer_index(MODEL_ATMOS,'sf6')
       if (n>0) then
         nsf6=n
-        if (nsf6 > 0 .and. mpp_pe() == mpp_root_pe()) write (*,30) 'SF6',nsf6
-        if (nsf6 > 0 .and. mpp_pe() == mpp_root_pe()) write (stdlog(),30) 'SF6',nsf6
+        logunit=stdlog()
+        outunit=stdout()
+        if (nsf6 > 0 .and. mpp_pe() == mpp_root_pe()) write (outunit,30) 'SF6',nsf6
+        if (nsf6 > 0 .and. mpp_pe() == mpp_root_pe()) write (logunit,30) 'SF6',nsf6
       endif
 
   30        format (A,' was initialized as tracer number ',i2)
@@ -332,7 +334,8 @@ type(time_type), intent(in) :: Time
       logical :: used, opened
 
       dtr=PI/180.
-      deg_90= -90.*dtr; deg_180= -180.*dtr ! -90 and -180 degrees are the southwest boundaries of the emission field you are reading in.
+      deg_90= -90.*dtr; deg_180= -180.*dtr ! -90 and -180 degrees are the southwest boundaries 
+                                           ! of the emission field you are reading in.
 
 ! Read in GEIA SF6 emission distribution grid and determine sizes:
 !

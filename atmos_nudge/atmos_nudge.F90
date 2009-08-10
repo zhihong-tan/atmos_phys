@@ -14,8 +14,8 @@ private
 
 public :: atmos_nudge_init, get_atmos_nudge, atmos_nudge_end, do_ps
 
-character(len=128), parameter :: version = '$Id: atmos_nudge.F90,v 13.0 2006/03/28 21:15:06 fms Exp $'
-character(len=128), parameter :: tagname = '$Name: perth_2008_10 $'
+character(len=128), parameter :: version = '$Id: atmos_nudge.F90,v 17.0 2009/07/21 02:58:50 fms Exp $'
+character(len=128), parameter :: tagname = '$Name: quebec $'
 
 logical :: module_is_initialized = .false.
 
@@ -290,7 +290,7 @@ subroutine atmos_nudge_init ( Time, axes, flag )
 type (time_type),      intent(in)  :: Time
 integer, dimension(3), intent(in)  :: axes
 logical, optional,     intent(out) :: flag
-integer :: ierr, io, unit
+integer :: ierr, io, unit, logunit
 real :: eps
 real :: missval = -1.e30
 character(len=64) :: desc
@@ -305,7 +305,8 @@ real :: missing_value = -1.e10
    enddo   
 10 call close_file (unit)
    call write_version_number (version, tagname)
-   if (mpp_pe() == mpp_root_pe()) write (stdlog(), nml=atmos_nudge_nml)
+   logunit=stdlog()
+   if (mpp_pe() == mpp_root_pe()) write (logunit, nml=atmos_nudge_nml)
 
  ! initialize flags
    eps = 1.e-10

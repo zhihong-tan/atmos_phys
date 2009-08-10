@@ -6,29 +6,20 @@ use fms_mod,             only: error_mesg, FATAL, open_namelist_file, &
                                check_nml_error, close_file
 use mpp_mod,             only: get_unit
 use aer_ccn_act_k_mod,   only: aer_ccn_act_k, aer_ccn_act2_k, &
-                               aer_ccn_act_wpdf_k
+                               aer_ccn_act_wpdf_k, aer_ccn_act_init_k
 
 implicit none
 private
-    private Loading, aer_ccn_act_init
+    private Loading
       
-    public aer_ccn_act, aer_ccn_act2, aer_ccn_act_wpdf ! cjg
+    public aer_ccn_act, aer_ccn_act2, aer_ccn_act_wpdf, aer_ccn_act_init
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act.F90,v 16.0 2008/07/30 22:10:09 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: aer_ccn_act.F90,v 17.0 2009/07/21 02:58:54 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 !---------------- private data -------------------
-
-
-!Parameters for look-up tables
-
-  integer, parameter :: res = 20 !
-  real, dimension(res,res,res,res,res) :: droplets
-
-  integer, parameter :: res2 = 20 !
-  real, dimension(res2,res2,res2,res2,res2) :: droplets2
 
 
 !-----------------------------------------------------------------------
@@ -83,14 +74,8 @@ real, intent(inout) :: Drop
 
   tym = size (totalmass,1)
 
-  call aer_ccn_act_k (T1, P1, Updraft1, TotalMass, tym, droplets,  &
-                      droplets2, res, res2, nooc,  &
-                       sul_concen, low_concen, high_concen, &
-                       lowup, highup, lowup2, highup2, lowmass2, &
-                       highmass2, lowmass3, highmass3,  &
-                       lowmass4, highmass4, lowmass5, highmass5, &
-                      lowT2, highT2, &
-                      Drop, ier, ermesg)
+  call aer_ccn_act_k (T1, P1, Updraft1, TotalMass, tym, Drop, ier,  &
+                      ermesg)
   if (ier /= 0) call error_mesg ('aer_ccn_act', ermesg, FATAL)
 
   
@@ -147,14 +132,8 @@ real :: drop
   if(.not. module_is_initialized) call aer_ccn_act_init()
   tym = size (totalmass,1)
 
-   call aer_ccn_act_wpdf_k(T, p, wm, wp2, totalmass, tym, droplets, &
-            droplets2, res, res2, nooc,   &
-            sul_concen, low_concen, high_concen, &
-            lowup, highup, lowup2, highup2, lowmass2, &
-            highmass2, lowmass3, highmass3,  &
-            lowmass4, highmass4, lowmass5, highmass5, &
-            lowT2, highT2, &
-            drop, ier, ermesg)
+   call aer_ccn_act_wpdf_k (T, p, wm, wp2, totalmass, tym,           &
+                            drop, ier, ermesg)
   if (ier /= 0) call error_mesg ('aer_ccn_act_wpdf', ermesg, FATAL)
 
 end subroutine aer_ccn_act_wpdf
@@ -165,8 +144,16 @@ subroutine aer_ccn_act_init ()
 !--------------------------------------------------------------------  
 !  local variables:
       
-      integer   ::   unit, ierr, io       
+      integer   ::   unit, ierr, io, logunit
       integer   ::   n
+      integer, parameter :: res = 20 !
+      real, dimension(res,res,res,res,res) :: droplets
+
+      integer, parameter :: res2 = 20 !
+      real, dimension(res2,res2,res2,res2,res2) :: droplets2
+
+      if (module_is_initialized) return
+
 !--------------------------------------------------------------------- 
 !    read namelist.
 !--------------------------------------------------------------------
@@ -183,21 +170,33 @@ subroutine aer_ccn_act_init ()
 !    write version number and namelist to logfile.
 !--------------------------------------------------------------------
        call write_version_number (version, tagname)
+       logunit=stdlog()
        if (mpp_pe() == mpp_root_pe() ) &
-                        write (stdlog(), nml=aer_ccn_act_nml)
+                        write (logunit, nml=aer_ccn_act_nml)
 
-       call Loading()
+       call Loading( droplets, droplets2)
 
+       call aer_ccn_act_init_k (droplets,   &
+                      droplets2, res, res2, nooc,  &
+                       sul_concen, low_concen, high_concen, &
+                       lowup, highup, lowup2, highup2, lowmass2, &
+                       highmass2, lowmass3, highmass3,  &
+                       lowmass4, highmass4, lowmass5, highmass5, &
+                      lowT2, highT2  )
        module_is_initialized  = .true.
 
 end subroutine aer_ccn_act_init
 
 
-subroutine Loading()
+subroutine Loading(droplets, droplets2)
 
+real, dimension(:,:,:,:,:), intent(out) :: droplets, droplets2
 real xx
 integer i, j, k, l, m, unit
+integer res, res2
 
+  res = size(droplets,1)
+  res2 = size(droplets2,1)
   unit = get_unit()
   open(unit, FILE='INPUT/droplets.dat')
   do k=1,res
@@ -206,7 +205,7 @@ integer i, j, k, l, m, unit
         do l=1, res
         do m=1, res
           read(unit,*) xx
-          droplets(k,i,j,l,m)=xx
+          droplets(m,l,j,i,k)=xx
         end do
         end do
       end do
@@ -222,7 +221,7 @@ integer i, j, k, l, m, unit
         do l=1, res2
         do m=1, res2
           read(unit,*) xx
-          droplets2(k,i,j,l,m)=xx
+          droplets2(m,l,j,i,k)=xx
         end do
         end do
       end do

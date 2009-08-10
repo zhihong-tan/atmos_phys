@@ -4,8 +4,8 @@ implicit none
       private
       public :: setrxt
 
-character(len=128), parameter :: version     = '$Id: moz.subs.F90,v 16.0.2.1 2008/09/19 20:43:17 wfc Exp $'
-character(len=128), parameter :: tagname     = '$Name: perth_2008_10 $'
+character(len=128), parameter :: version     = '$Id: moz.subs.F90,v 17.0 2009/07/21 02:59:56 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: quebec $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -51,11 +51,12 @@ logical                       :: module_is_initialized = .false.
       rate(:,:,130) = 5.e-12
       rate(:,:,153) = 6.8e-13
       rate(:,:,156) = 2.4e-12
-      rate(:,:,160) = 1.5e-11
-      rate(:,:,164) = 2.4e-12
-      rate(:,:,174) = 4.e-14
-      rate(:,:,175) = 3.e-12
-      rate(:,:,176) = 1.e-11
+      rate(:,:,160) = 4.5e-11
+      rate(:,:,161) = 1.3e-16
+      rate(:,:,165) = 2.4e-12
+      rate(:,:,175) = 4.e-14
+      rate(:,:,176) = 3.e-12
+      rate(:,:,177) = 1.e-11
       itemp(:,:) = 1. / temp(:,:)
       rate(:,:,43) = 8e-12 * exp( -2060. * itemp(:,:) )
       rate(:,:,44) = 2.15e-11 * exp( 110. * itemp(:,:) )
@@ -71,10 +72,10 @@ logical                       :: module_is_initialized = .false.
       rate(:,:,51) = 5.1e-12 * exp( 210. * itemp(:,:) )
       exp_fac(:,:) = exp( -2450. * itemp(:,:) )
       rate(:,:,52) = 1.2e-13 * exp_fac(:,:)
-      rate(:,:,211) = 8.5e-13 * exp_fac(:,:)
+      rate(:,:,212) = 8.5e-13 * exp_fac(:,:)
       exp_fac(:,:) = exp( 170. * itemp(:,:) )
       rate(:,:,59) = 1.5e-11 * exp_fac(:,:)
-      rate(:,:,192) = 1.8e-11 * exp_fac(:,:)
+      rate(:,:,193) = 1.8e-11 * exp_fac(:,:)
       rate(:,:,61) = 1.3e-12 * exp( 380. * itemp(:,:) )
       rate(:,:,63) = 2.45e-12 * exp( -1775. * itemp(:,:) )
       exp_fac(:,:) = exp( 300. * itemp(:,:) )
@@ -91,8 +92,8 @@ logical                       :: module_is_initialized = .false.
       rate(:,:,128) = 2.3e-11 * exp_fac(:,:)
       rate(:,:,148) = 3.8e-12 * exp_fac(:,:)
       rate(:,:,152) = 3.8e-12 * exp_fac(:,:)
-      rate(:,:,170) = 3.8e-12 * exp_fac(:,:)
-      rate(:,:,207) = 5.5e-12 * exp_fac(:,:)
+      rate(:,:,171) = 3.8e-12 * exp_fac(:,:)
+      rate(:,:,208) = 5.5e-12 * exp_fac(:,:)
       exp_fac(:,:) = exp( -1900. * itemp(:,:) )
       rate(:,:,70) = 3.4e-13 * exp_fac(:,:)
       rate(:,:,85) = 6.5e-15 * exp_fac(:,:)
@@ -116,18 +117,18 @@ logical                       :: module_is_initialized = .false.
       rate(:,:,146) = 7.5e-13 * exp_fac(:,:)
       rate(:,:,151) = 8.6e-13 * exp_fac(:,:)
       rate(:,:,157) = 8.e-13 * exp_fac(:,:)
-      rate(:,:,165) = 8.e-13 * exp_fac(:,:)
+      rate(:,:,166) = 8.e-13 * exp_fac(:,:)
       exp_fac(:,:) = exp( 270. * itemp(:,:) )
       rate(:,:,90) = 5.6e-12 * exp_fac(:,:)
       rate(:,:,92) = 8.1e-12 * exp_fac(:,:)
-      rate(:,:,194) = 7.4e-12 * exp_fac(:,:)
+      rate(:,:,195) = 7.4e-12 * exp_fac(:,:)
       exp_fac(:,:) = exp( 1040. * itemp(:,:) )
       rate(:,:,94) = 4.3e-13 * exp_fac(:,:)
       rate(:,:,131) = 4.30e-13 * exp_fac(:,:)
       exp_fac(:,:) = exp( 500. * itemp(:,:) )
       rate(:,:,95) = 2.0e-12 * exp_fac(:,:)
       rate(:,:,98) = 2.9e-12 * exp_fac(:,:)
-      rate(:,:,180) = 1.87e-13 * exp_fac(:,:)
+      rate(:,:,181) = 1.87e-13 * exp_fac(:,:)
       rate(:,:,99) = 1.05e-14 * exp( -2000. * itemp(:,:) )
       rate(:,:,100) = 8.7e-12 * exp( -1070. * itemp(:,:) )
       rate(:,:,101) = 2.6e-12 * exp( 365. * itemp(:,:) )
@@ -138,22 +139,22 @@ logical                       :: module_is_initialized = .false.
       exp_fac(:,:) = exp( 400. * itemp(:,:) )
       rate(:,:,116) = 5.e-13 * exp_fac(:,:)
       rate(:,:,126) = 5.e-13 * exp_fac(:,:)
-      rate(:,:,166) = 5.e-13 * exp_fac(:,:)
+      rate(:,:,167) = 5.e-13 * exp_fac(:,:)
       rate(:,:,118) = 4.13e-12 * exp( 452. * itemp(:,:) )
       rate(:,:,119) = 7.52e-16 * exp( -1521. * itemp(:,:) )
       exp_fac(:,:) = exp( 175. * itemp(:,:) )
       rate(:,:,120) = 1.86e-11 * exp_fac(:,:)
-      rate(:,:,162) = 1.86e-11 * exp_fac(:,:)
+      rate(:,:,163) = 1.86e-11 * exp_fac(:,:)
       rate(:,:,121) = 4.4e-15 * exp( -2500. * itemp(:,:) )
       exp_fac(:,:) = exp( 360. * itemp(:,:) )
       rate(:,:,122) = 2.7e-12 * exp_fac(:,:)
       rate(:,:,123) = 1.3e-13 * exp_fac(:,:)
       rate(:,:,129) = 5.3e-12 * exp_fac(:,:)
       rate(:,:,155) = 2.7e-12 * exp_fac(:,:)
-      rate(:,:,163) = 2.7e-12 * exp_fac(:,:)
+      rate(:,:,164) = 2.7e-12 * exp_fac(:,:)
       exp_fac(:,:) = exp( 640. * itemp(:,:) )
       rate(:,:,132) = 1.3e-12 * exp_fac(:,:)
-      rate(:,:,167) = 1.3e-12 * exp_fac(:,:)
+      rate(:,:,168) = 1.3e-12 * exp_fac(:,:)
       exp_fac(:,:) = exp( 530. * itemp(:,:) )
       rate(:,:,133) = 4.6e-12 * exp_fac(:,:)
       rate(:,:,134) = 2.3e-12 * exp_fac(:,:)
@@ -168,36 +169,36 @@ logical                       :: module_is_initialized = .false.
       rate(:,:,158) = 8.4e-13 * exp( 830. * itemp(:,:) )
       exp_fac(:,:) = exp( -1860. * itemp(:,:) )
       rate(:,:,159) = 1.4e-12 * exp_fac(:,:)
-      rate(:,:,161) = 1.4e-12 * exp_fac(:,:)
-      rate(:,:,168) = 1.90e-12 * exp( 190. * itemp(:,:) )
-      rate(:,:,171) = 2.9e-12 * exp( -345. * itemp(:,:) )
-      rate(:,:,172) = 6.9e-12 * exp( -230. * itemp(:,:) )
-      rate(:,:,178) = 1.1e-11 * exp( -240. * itemp(:,:) )
-      rate(:,:,182) = 1.7e-12 * exp( -710. * itemp(:,:) )
-      rate(:,:,183) = 1.4e-10 * exp( -470. * itemp(:,:) )
-      rate(:,:,185) = 2.3e-11 * exp( -200. * itemp(:,:) )
-      rate(:,:,186) = 2.8e-11 * exp( 85. * itemp(:,:) )
+      rate(:,:,162) = 1.4e-12 * exp_fac(:,:)
+      rate(:,:,169) = 1.90e-12 * exp( 190. * itemp(:,:) )
+      rate(:,:,172) = 2.9e-12 * exp( -345. * itemp(:,:) )
+      rate(:,:,173) = 6.9e-12 * exp( -230. * itemp(:,:) )
+      rate(:,:,179) = 1.1e-11 * exp( -240. * itemp(:,:) )
+      rate(:,:,183) = 1.7e-12 * exp( -710. * itemp(:,:) )
+      rate(:,:,184) = 1.4e-10 * exp( -470. * itemp(:,:) )
+      rate(:,:,186) = 2.3e-11 * exp( -200. * itemp(:,:) )
+      rate(:,:,187) = 2.8e-11 * exp( 85. * itemp(:,:) )
       exp_fac(:,:) = exp( 290. * itemp(:,:) )
-      rate(:,:,187) = 6.4e-12 * exp_fac(:,:)
-      rate(:,:,208) = 4.1e-13 * exp_fac(:,:)
+      rate(:,:,188) = 6.4e-12 * exp_fac(:,:)
+      rate(:,:,209) = 4.1e-13 * exp_fac(:,:)
       exp_fac(:,:) = exp( -800. * itemp(:,:) )
-      rate(:,:,189) = 2.9e-12 * exp_fac(:,:)
-      rate(:,:,199) = 1.7e-11 * exp_fac(:,:)
-      rate(:,:,206) = 1.7e-11 * exp_fac(:,:)
-      rate(:,:,190) = 7.3e-12 * exp( -1280. * itemp(:,:) )
-      rate(:,:,191) = 2.6e-12 * exp( -350. * itemp(:,:) )
+      rate(:,:,190) = 2.9e-12 * exp_fac(:,:)
+      rate(:,:,200) = 1.7e-11 * exp_fac(:,:)
+      rate(:,:,207) = 1.7e-11 * exp_fac(:,:)
+      rate(:,:,191) = 7.3e-12 * exp( -1280. * itemp(:,:) )
+      rate(:,:,192) = 2.6e-12 * exp( -350. * itemp(:,:) )
       exp_fac(:,:) = exp( 220. * itemp(:,:) )
-      rate(:,:,193) = 2.7e-12 * exp_fac(:,:)
-      rate(:,:,213) = 5.8e-12 * exp_fac(:,:)
-      rate(:,:,195) = 8.1e-11 * exp( -30. * itemp(:,:) )
+      rate(:,:,194) = 2.7e-12 * exp_fac(:,:)
+      rate(:,:,214) = 5.8e-12 * exp_fac(:,:)
+      rate(:,:,196) = 8.1e-11 * exp( -30. * itemp(:,:) )
       exp_fac(:,:) = exp( 260. * itemp(:,:) )
-      rate(:,:,201) = 2.3e-12 * exp_fac(:,:)
-      rate(:,:,203) = 8.8e-12 * exp_fac(:,:)
-      rate(:,:,202) = 4.5e-12 * exp( 460. * itemp(:,:) )
-      rate(:,:,204) = 1.2e-10 * exp( -430. * itemp(:,:) )
-      rate(:,:,205) = 4.8e-12 * exp( -310. * itemp(:,:) )
-      rate(:,:,209) = 6.0e-13 * exp( 230. * itemp(:,:) )
-      rate(:,:,210) = 4.5e-14 * exp( -1260. * itemp(:,:) )
+      rate(:,:,202) = 2.3e-12 * exp_fac(:,:)
+      rate(:,:,204) = 8.8e-12 * exp_fac(:,:)
+      rate(:,:,203) = 4.5e-12 * exp( 460. * itemp(:,:) )
+      rate(:,:,205) = 1.2e-10 * exp( -430. * itemp(:,:) )
+      rate(:,:,206) = 4.8e-12 * exp( -310. * itemp(:,:) )
+      rate(:,:,210) = 6.0e-13 * exp( 230. * itemp(:,:) )
+      rate(:,:,211) = 4.5e-14 * exp( -1260. * itemp(:,:) )
 
       itemp(:,:) = 300. * itemp(:,:)
 
@@ -235,35 +236,35 @@ logical                       :: module_is_initialized = .false.
 
       ko(:,:) = 8.e-27 * itemp(:,:)**3.5
       kinf(:,:) = 3.e-11
-      call jpl( rate(1,1,173), m, .5, ko, kinf, plnplv )
+      call jpl( rate(1,1,174), m, .5, ko, kinf, plnplv )
 
       ko(:,:) = 3.3e-31 * itemp(:,:)**4.3
       kinf(:,:) = 1.6e-12
-      call jpl( rate(1,1,177), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,178), m, 0.6, ko, kinf, plnplv )
 
       ko(:,:) = 4.4e-32 * itemp(:,:)**1.3
       kinf(:,:) = 4.7e-11 * itemp(:,:)**0.2
-      call jpl( rate(1,1,184), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,185), m, 0.6, ko, kinf, plnplv )
 
       ko(:,:) = 1.8e-31 * itemp(:,:)**3.4
       kinf(:,:) = 1.5e-11 * itemp(:,:)**1.9
-      call jpl( rate(1,1,188), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,189), m, 0.6, ko, kinf, plnplv )
 
       ko(:,:) = 6.9e-31 * itemp(:,:)**1.0
       kinf(:,:) = 2.6e-11
-      call jpl( rate(1,1,196), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,197), m, 0.6, ko, kinf, plnplv )
 
       ko(:,:) = 1.6e-32 * itemp(:,:)**4.5
       kinf(:,:) = 2.0e-12 * itemp(:,:)**2.4
-      call jpl( rate(1,1,197), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,198), m, 0.6, ko, kinf, plnplv )
 
       ko(:,:) = 5.2e-31 * itemp(:,:)**3.2
       kinf(:,:) = 6.9e-12 * itemp(:,:)**2.9
-      call jpl( rate(1,1,200), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,201), m, 0.6, ko, kinf, plnplv )
 
       ko(:,:) = 9.0e-32 * itemp(:,:)**1.5
       kinf(:,:) = 3.0e-11
-      call jpl( rate(1,1,212), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,213), m, 0.6, ko, kinf, plnplv )
 
       end subroutine setrxt
 
@@ -311,15 +312,15 @@ logical                       :: module_is_initialized = .false.
       rate(:,135) = rate(:,135) * inv(:, 1)
       rate(:,136) = rate(:,136) * inv(:, 1)
       rate(:,142) = rate(:,142) * inv(:, 3)
-      rate(:,177) = rate(:,177) * inv(:, 1)
-      rate(:,188) = rate(:,188) * inv(:, 1)
-      rate(:,196) = rate(:,196) * inv(:, 1)
+      rate(:,178) = rate(:,178) * inv(:, 1)
+      rate(:,189) = rate(:,189) * inv(:, 1)
       rate(:,197) = rate(:,197) * inv(:, 1)
       rate(:,198) = rate(:,198) * inv(:, 1)
-      rate(:,200) = rate(:,200) * inv(:, 1)
-      rate(:,212) = rate(:,212) * inv(:, 1)
+      rate(:,199) = rate(:,199) * inv(:, 1)
+      rate(:,201) = rate(:,201) * inv(:, 1)
+      rate(:,213) = rate(:,213) * inv(:, 1)
       rate(:, 42) = rate(:, 42) * inv(:, 3) * inv(:, 1)
-      rate(:,184) = rate(:,184) * inv(:, 3) * inv(:, 1)
+      rate(:,185) = rate(:,185) * inv(:, 3) * inv(:, 1)
       rate(:, 43) = rate(:, 43) * m(:)
       rate(:, 46) = rate(:, 46) * m(:)
       rate(:, 47) = rate(:, 47) * m(:)
@@ -447,9 +448,9 @@ logical                       :: module_is_initialized = .false.
       rate(:,178) = rate(:,178) * m(:)
       rate(:,179) = rate(:,179) * m(:)
       rate(:,180) = rate(:,180) * m(:)
-      rate(:,182) = rate(:,182) * m(:)
+      rate(:,181) = rate(:,181) * m(:)
       rate(:,183) = rate(:,183) * m(:)
-      rate(:,185) = rate(:,185) * m(:)
+      rate(:,184) = rate(:,184) * m(:)
       rate(:,186) = rate(:,186) * m(:)
       rate(:,187) = rate(:,187) * m(:)
       rate(:,188) = rate(:,188) * m(:)
@@ -462,7 +463,7 @@ logical                       :: module_is_initialized = .false.
       rate(:,195) = rate(:,195) * m(:)
       rate(:,196) = rate(:,196) * m(:)
       rate(:,197) = rate(:,197) * m(:)
-      rate(:,199) = rate(:,199) * m(:)
+      rate(:,198) = rate(:,198) * m(:)
       rate(:,200) = rate(:,200) * m(:)
       rate(:,201) = rate(:,201) * m(:)
       rate(:,202) = rate(:,202) * m(:)
@@ -486,6 +487,7 @@ logical                       :: module_is_initialized = .false.
       rate(:,220) = rate(:,220) * m(:)
       rate(:,221) = rate(:,221) * m(:)
       rate(:,222) = rate(:,222) * m(:)
+      rate(:,223) = rate(:,223) * m(:)
 
       end subroutine adjrxt
 

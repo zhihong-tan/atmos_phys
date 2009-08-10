@@ -2,15 +2,19 @@ module strat_chem_utilities_mod
 
 use       mpp_io_mod, only : mpp_open, mpp_close, MPP_RDONLY
 use          mpp_mod, only : mpp_pe, mpp_root_pe, stdout
-use    constants_mod, only : PI, DEG_TO_RAD, AVOGNO, PSTD_MKS
-use time_manager_mod, only : time_type, get_date, days_in_month, &
-                             set_date, increment_time, &
-                             operator(>), operator(<)
+use          fms_mod, only : file_exist, open_namelist_file, close_file, &
+                             error_mesg, FATAL
+use    constants_mod, only : PI, DEG_TO_RAD, AVOGNO, PSTD_MKS, SECONDS_PER_DAY
+use time_manager_mod, only : time_type, get_date, days_in_month, days_in_year, &
+                             set_date, increment_time, set_time, &
+                             operator(>), operator(<), operator(-), operator(+)
 !++lwh
 use interpolator_mod, only : interpolate_type, interpolator_init, &
                              interpolator, interpolator_end, &
                              CONSTANT, INTERP_WEIGHTED_P
-use time_interp_mod, only :  time_interp_init, time_interp
+use time_interp_mod, only  : time_interp_init, time_interp
+use diag_manager_mod, only : get_base_time
+
 !--lwh
 
 implicit none
@@ -25,11 +29,13 @@ real, parameter :: clweight(7) = (/ 3., 2., 3., 4., 1., 3., 1. /)
 
 real :: tropc(ntime_tropc,nspecies_tropc)
 !++lwh
-type(time_type) :: tropc_Time(ntime_tropc)
+type(time_type) :: tropc_Time(ntime_tropc), cfc_entry, cfc_offset
+logical :: time_varying_cfc_lbc, negative_offset_cfc
 
 ! real :: dfdage(nlat_input,nlev_input,nspecies_age)
 ! real :: lat_input(nlat_input)
-real, parameter :: tfact = 1./(365.25*86400.)
+real, parameter :: days_per_year = 365.25, &
+                   tfact = 1./(days_per_year*SECONDS_PER_DAY)
 ! integer :: jstart
 real :: age_factor, dclydt_factor
 !--lwh
@@ -52,12 +58,20 @@ character(len=32), dimension(nspecies_age), save :: dfdage_name = &
          "dfdage_ch3cl", "dfdage_ch3ccl3", "dfdage_hcfc22", "dfdage_bry" /)
 !--lwh
 
+! For extra H2O calculation
+real, dimension(:), allocatable :: ch4_value
+type(time_type), dimension(:), allocatable :: ch4_time
+logical :: fixed_ch4_lbc_time = .false.
+type(time_type) :: ch4_entry
+
 !-----------------------------------------------------------------------
 !     ... interfaces
 !-----------------------------------------------------------------------
 public strat_chem_utilities_init, strat_chem_dcly_dt, strat_chem_get_aerosol, &
        strat_chem_get_h2so4, strat_chem_get_psc, strat_chem_destroy_psc, &
-       strat_chem_get_gamma, strat_chem_get_hetrates, psc_type
+       strat_chem_get_gamma, strat_chem_get_hetrates, strat_chem_psc_sediment, &
+       strat_chem_get_extra_h2o, &
+       psc_type
 
 
 !---- version number -----
@@ -68,18 +82,30 @@ logical :: module_is_initialized=.false.
 
 CONTAINS
 
-subroutine strat_chem_utilities_init(lonb, latb, age_factor_in, dclydt_factor_in)
+subroutine strat_chem_utilities_init( lonb, latb, age_factor_in, dclydt_factor_in, &
+                                      set_min_h2o_strat, ch4_filename, ch4_scale_factor, &
+                                      fixed_ch4_lbc_time_in, ch4_entry_in, &
+                                      cfc_lbc_filename, time_varying_cfc_lbc_in, cfc_lbc_dataset_entry )
 
    implicit none
 ! dummy arguments
-   real, intent(in), dimension(:,:) :: lonb,latb
-   real, intent(in) :: age_factor_in, dclydt_factor_in
+   real,             intent(in), dimension(:,:) :: lonb,latb
+   real,             intent(in)                 :: age_factor_in, dclydt_factor_in
+   logical,          intent(in)                 :: set_min_h2o_strat
+   character(len=*), intent(in)                 :: ch4_filename
+   real,             intent(in)                 :: ch4_scale_factor
+   logical,          intent(in)                 :: fixed_ch4_lbc_time_in
+   type(time_type),  intent(in)                 :: ch4_entry_in
+   character(len=*), intent(in)                 :: cfc_lbc_filename
+   logical,          intent(in)                 :: time_varying_cfc_lbc_in
+   integer,          intent(in), dimension(:)   :: cfc_lbc_dataset_entry
    
 ! local variables
    real :: age_dummy(nlat_input,nlev_input,12), &
            chlb_dummy(nlat_input,nspecies_lbc), &
            ozb_dummy(nlon_input, nlat_input, 12)
    integer :: unit, nc, j, n, year
+   type(time_type) :: Model_init_time
    
    if (module_is_initialized) return
 
@@ -97,8 +123,8 @@ subroutine strat_chem_utilities_init(lonb, latb, age_factor_in, dclydt_factor_in
 !-----------------------------------------------------------------------
 !     ... read in chemical lower boundary 
 !-----------------------------------------------------------------------
-   call mpp_open( unit, 'INPUT/chemlbf',action=MPP_RDONLY )
-   if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/chemlbf'
+   call mpp_open( unit, 'INPUT/' // TRIM(cfc_lbc_filename),action=MPP_RDONLY )
+   if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'reading INPUT/' // TRIM(cfc_lbc_filename)
    do nc = 1,15                                           
      read(unit,'(6E13.6)') chlb_dummy(:,nc)
    end do
@@ -110,7 +136,33 @@ subroutine strat_chem_utilities_init(lonb, latb, age_factor_in, dclydt_factor_in
 !---------------------------------------------------------------------
 !    convert the time stamps of the tropc series to time_type variables.     
 !---------------------------------------------------------------------
-   do n=1,ntime_tropc
+   time_varying_cfc_lbc = time_varying_cfc_lbc_in
+   Model_init_time = get_base_time()
+   if ( cfc_lbc_dataset_entry(1) == 1 .and. &
+        cfc_lbc_dataset_entry(2) == 1 .and. &
+        cfc_lbc_dataset_entry(3) == 1 .and. &
+        cfc_lbc_dataset_entry(4) == 0 .and. &
+        cfc_lbc_dataset_entry(5) == 0 .and. &
+        cfc_lbc_dataset_entry(6) == 0 ) then
+      cfc_entry = Model_init_time
+   else
+      cfc_entry = set_date( cfc_lbc_dataset_entry(1), &
+                            cfc_lbc_dataset_entry(2), &
+                            cfc_lbc_dataset_entry(3), &
+                            cfc_lbc_dataset_entry(4), &
+                            cfc_lbc_dataset_entry(5), &
+                            cfc_lbc_dataset_entry(6) )
+   end if         
+   if (time_varying_cfc_lbc) then
+      cfc_offset = cfc_entry - Model_init_time
+      if (Model_init_time > cfc_entry) then
+         negative_offset_cfc = .true.
+      else
+         negative_offset_cfc = .false.
+      end if
+   end if
+
+   do n = 1,ntime_tropc
       year = year_start_tropc + (n-1)
       tropc_Time(n) = set_date(year,1,1,0,0,0)
    end do
@@ -145,6 +197,11 @@ subroutine strat_chem_utilities_init(lonb, latb, age_factor_in, dclydt_factor_in
                            data_out_of_bounds=(/CONSTANT/), &
                            vert_interp=(/INTERP_WEIGHTED_P/) )  
 
+   if (set_min_h2o_strat) then
+      call strat_chem_extra_h2o_init( ch4_filename, ch4_scale_factor, &
+                                      fixed_ch4_lbc_time_in, ch4_entry_in )
+   end if
+
    module_is_initialized = .true.
 
 
@@ -175,7 +232,7 @@ real :: clytot, brytot
 !++lwh
 ! real, dimension(size(age,1),size(age,2),nspecies_age) :: dfdtau
 real, dimension(size(age,1),size(age,2),size(age,3),nspecies_age) :: dfdage
-type(time_type) :: cfc_Time
+type(time_type) :: cfc_Time, cfc_base_Time
 !--lwh
 real, dimension(size(age,1),size(age,2),nspecies_tropc) :: cfc
 
@@ -212,6 +269,16 @@ kl = size(age,3)
 call interpolator (dfdage_interp, Time, phalf, dfdage, dfdage_name(1), is, js)
 !--lwh
 
+if (time_varying_cfc_lbc) then
+   if (negative_offset_cfc) then
+      cfc_base_Time = Time - cfc_offset
+   else
+      cfc_base_Time = Time + cfc_offset
+   end  if
+else
+   cfc_base_Time = cfc_entry
+end if
+
 level_loop: &
 do k = 1,kl
 
@@ -241,7 +308,8 @@ do k = 1,kl
 !     cfc(i,j,:) = tropc(it1,:)*(1-dt1) + tropc(it2,:)*dt1
 
       extra_seconds = age(i,j,k)*age_factor / tfact
-      cfc_Time = increment_time( Time, -NINT(extra_seconds), 0)
+      
+      cfc_Time = increment_time( cfc_base_Time, -NINT(extra_seconds), 0)
       if (cfc_Time < tropc_Time(1)) then
          cfc_Time = tropc_Time(1)
       else if (cfc_Time > tropc_Time(ntime_tropc)) then
@@ -991,6 +1059,288 @@ real, parameter :: &
    END DO
 
 end subroutine DENSITY
+
+
+subroutine strat_chem_psc_sediment( psc, pfull, dt, dpsc )      
+
+implicit none
+!------------------------------------------------------------------------
+!
+!  This subroutine calculates sedimentation rates of Type I and Type II
+!  particles and vertically advects model NAT and ice
+!
+!------------------------------------------------------------------------
+
+
+! dummy arguments
+!
+!  CALCULATES SEDIMENTATION RATES OF TYPE I AND TYPE 2 PARTICLES               
+!  AND VERTICALLY ADVECTS MODEL NAT AND ICE                                    
+!
+REAL, dimension(:,:,:),   intent(in)  :: pfull
+REAL, dimension(:,:,:,:), intent(in)  :: psc
+REAL,                     intent(in)  :: dt
+REAL, dimension(:,:,:,:), intent(out) :: dpsc
+
+! local variables
+
+real, dimension(SIZE(pfull,3)) :: ANAT, AICE, SNATS, SICES, F1, F2, ANAT2, AICE2
+real :: PNAT,PICE,PNAT2,PICE2
+real :: ANATMAX,AICEMAX
+integer :: i, j, k, il, jl, kl
+real :: temp, pfrac, dz, const, d1, d2, FIXNAT, FIXICE
+!                                                                              
+!  V1 = SEDIMENTATION VELOCITY (M/S) OF ICE PARTICLES
+!  V2 = SEDIMENTATION VELOCITY OF NAT PARTICLES
+!  R1, R2 = ASSUMED RADII
+!  AM1, AM2 = MOLECULAR WEIGHTS
+!  RHO1, RHO2 = DENSITIES OF THE PSCs (G/CM3)
+!                                                                              
+real, parameter :: V1=1.27E-2, V2=1.39E-4
+real, parameter :: R1=7.0E-6, R2=0.5E-6
+real, parameter :: AM1=18.0, AM2=117.0
+real, parameter :: RHO1=0.928, RHO2=1.35
+real, parameter :: RATIO = AM1*RHO2/(AM2*RHO1)*(R2/R1)**3
+
+il = SIZE(pfull,1)
+jl = SIZE(pfull,2)
+kl = SIZE(pfull,3)
+
+!                                                                              
+!  CALCULATE FRACTION OF NAT PARTICLES USED AS TYPE 2 CORES (F1)               
+!  AND FRACTION OF NAT PARTICLES THAT REMAIN AS TYPE 1 CORES (F2)              
+!  DETERMINE MAXIMUM NAT AND ICE TO APPLY LIMITERS TO ADVECTED AMOUNTS
+!                                                                              
+Lat_loop : &
+   DO j = 1,jl 
+Lon_loop : &
+   DO i = 1,il 
+      ANAT(:) = psc(i,j,:,2)
+      AICE(:) = psc(i,j,:,3)
+      where(AICE(:) < 1.0E-18)
+         AICE(:) = 0.
+      end where
+      where(ANAT(:) < 1.0E-18)
+         ANAT(:) = 0.
+         F1(:) = 0.
+         F2(:) = 0.
+      elsewhere
+         F1(:) = AICE(:)*RATIO/ANAT(:)
+         F1(:) = MIN(1.,F1(:))
+         F2(:) = 1.0 - F1(:)
+      end where
+      ANATMAX = maxval(ANAT(:))
+      AICEMAX = maxval(AICE(:))
+!
+! VERTICALLY ADVECT NAT AND ICE. NOTE THAT PART OF NAT IS ADVECTED
+! AT TYPE 2 RATE AND THE REMAINDER AT TYPE 1 RATE. CALCULATE DESCENT IN
+!  1 TIMESTEP; USE APPROXIMATE VERTICAL DISPLACEMENT BETWEEN LAYERS
+!
+      TEMP = 195.
+      PNAT = 0.
+      PICE = 0.
+      DO k = 2,kl
+         PFRAC = pfull(i,j,k)/pfull(i,j,k-1)
+         DZ = 29.26*TEMP*LOG(PFRAC)
+         CONST = dt/DZ                                              
+         D1 = ANAT(k) - ANAT(k-1)
+         D2 = AICE(k) - AICE(k-1)         
+         SNATS(k) = -CONST*D1*(V1*F1(k) + V2*F2(k))
+         SICES(k) = -CONST*D2*V1
+         PNAT = PNAT + pfull(i,j,k)*ANAT(k)
+         PICE = PICE + pfull(i,j,k)*AICE(k)
+      END DO
+!
+!  set sedimented nat and ice to zero at top and bottom
+!
+      SNATS(1) = 0.0
+      SICES(1) = 0.0 
+      SNATS(kl) = 0.0
+      SICES(kl) = 0.0
+      ANAT2(:) = ANAT(:) + SNATS(:)
+      AICE2(:) = AICE(:) + SICES(:)
+!
+!  APPLY LIMITERS TO NEW NAT AND ICE
+!
+      ANAT2(:) = MAX( MIN(ANAT2(:),ANATMAX), 0. )
+      AICE2(:) = MAX( MIN(AICE2(:),AICEMAX), 0. )
+!
+! APPLY MASS FIXER
+!
+      PNAT2 = 0.0
+      PICE2 = 0.0
+      DO k = 1,kl
+         PNAT2 = PNAT2 + pfull(i,j,k)*ANAT2(k)
+         PICE2 = PICE2 + pfull(i,j,k)*AICE2(k)
+      END DO
+      IF(PNAT2 == 0.) THEN 
+         FIXNAT = 1.0
+      ELSE 
+         FIXNAT = PNAT/PNAT2
+      ENDIF
+      IF(PICE2 == 0.) THEN
+         FIXICE = 1.0
+      ELSE
+         FIXICE = PICE/PICE2
+      ENDIF
+      ANAT2(:) = ANAT2(:)*FIXNAT 
+      AICE2(:) = AICE2(:)*FIXICE 
+!
+!  ADJUST NOY AND H2O TENDENCY FIELDS
+!
+!     ANOY(j,:) = ANOY(j,:) + (ANAT2(:) - ANAT(:))/dt 
+!     AHNO3(j,:) = AHNO3(j,:) + (ANAT2(:) - ANAT(:))/dt 
+!     AH2O(j,:) = AH2O(j,:) + (AICE2(:) - AICE(:))/dt 
+
+!  ADJUST PSC FIELDS
+      dpsc(i,j,:,1) = 0.
+      dpsc(i,j,:,2) = ANAT2(:) - ANAT(:)
+      dpsc(i,j,:,3) = AICE2(:) - AICE(:)
+
+
+   end do Lon_loop
+   end do Lat_loop
+
+end subroutine strat_chem_psc_sediment
+
+
+! <SUBROUTINE NAME="strat_chem_get_extra_h2o">
+!   <OVERVIEW>
+!     Set minimum allowed stratospheric water
+!   </OVERVIEW>
+!   <DESCRIPTION>
+!     Constrain stratospheric H2O to be greater than or equal to 2*CH4
+!   </DESCRIPTION>
+!   <TEMPLATE>
+!     call strat_chem_get_extra_h2o( h2o, age, ch4, Time, extra_h2o )
+!   </TEMPLATE>
+!   <IN NAME="h2o" TYPE="real" DIM="(:,:)">
+!     Total H2O volume mixing ratio (mol/mol)
+!   </IN>
+!   <IN NAME="age" TYPE="real" DIM="(:,:)">
+!     Age-of-air tracer (yrs)
+!   </IN>
+!   <IN NAME="ch4" TYPE="real" DIM="(:,:)">
+!     Methane volume mixing ratio (mol/mol)
+!   </IN>
+!   <IN NAME="age" TYPE="time_type">
+!     Current model time
+!   </IN>
+!   <OUT NAME="extra_h2o" TYPE="real" DIM="(:,:)">
+!     Additional stratospheric H2O VMR (mol/mol)
+!   </OUT>
+subroutine strat_chem_get_extra_h2o( h2o, age, ch4, Time, extra_h2o )
+
+implicit none
+
+! Dummy arguments
+
+real, dimension(:,:), intent(in)  :: h2o, age, ch4
+type(time_type),      intent(in)  :: Time
+real, dimension(:,:), intent(out) :: extra_h2o
+
+! Local variables
+
+integer :: i, k, il, kl, index1, index2
+real :: frac, ch4_trop, min_h2o
+type(time_type) :: time_trop
+
+
+il = size(h2o,1)
+kl = size(h2o,2)
+
+do k = 1,kl
+do i=1,il
+
+   if (fixed_ch4_lbc_time) then
+      time_trop = ch4_entry
+   else
+      time_trop = increment_time( Time, -NINT(age(i,k)/tfact), 0)
+   end if
+   call time_interp( time_trop, ch4_time(:), frac, index1, index2 )
+   ch4_trop = ch4_value(index1) + frac*(ch4_value(index2)-ch4_value(index1))
+   min_h2o = 2. * MAX( 0., ch4_trop - ch4(i,k) )
+   if (age(i,k) > 0.1) then
+      extra_h2o(i,k) = MAX( 0., min_h2o - h2o(i,k) )
+   else
+      extra_h2o(i,k) = 0.
+   end if
+
+end do
+end do
+
+end subroutine strat_chem_get_extra_h2o
+
+
+
+! <SUBROUTINE NAME="strat_chem_extra_h2o_init">
+!   <OVERVIEW>
+!     Initialize minimum stratospheric water calculation
+!   </OVERVIEW>
+!   <DESCRIPTION>
+!     Initialize constraint of stratospheric H2O to be greater than or equal to 2*CH4
+!   </DESCRIPTION>
+!   <TEMPLATE>
+!     call strat_chem_extra_h2o_init()
+!   </TEMPLATE>
+!   <IN NAME="ch4_filename" TYPE="character">
+!     Methane timeseries filename
+!   </IN>
+!   <IN NAME="ch4_scale_factor" TYPE="real">
+!     Methane timeseries scale factor to convert to VMR (mol/mol)
+!   </IN>
+subroutine strat_chem_extra_h2o_init( ch4_filename, ch4_scale_factor, &
+                                      fixed_ch4_lbc_time_in, ch4_entry_in )
+
+implicit none
+
+! Dummy arguments
+
+character(len=*), intent(in) :: ch4_filename
+real, intent(in)             :: ch4_scale_factor
+logical, intent(in)          :: fixed_ch4_lbc_time_in
+type(time_type), intent(in)  :: ch4_entry_in
+
+! Local variables
+character(len=64) :: filename
+integer :: flb, series_length, n, year, diy
+real :: extra_seconds
+real, dimension(:), allocatable :: input_time
+type(time_type) :: Year_t
+
+fixed_ch4_lbc_time = fixed_ch4_lbc_time_in
+ch4_entry = ch4_entry_in
+
+
+filename = 'INPUT/' // trim(ch4_filename)
+if( file_exist(filename) ) then
+   flb = open_namelist_file( filename )
+   read(flb, FMT='(i12)') series_length
+   allocate( ch4_value(series_length), &
+             input_time(series_length), &
+             ch4_time(series_length) )
+   do n = 1,series_length
+      read (flb, FMT = '(2f12.4)') input_time(n), ch4_value(n)
+   end do
+   ch4_value(:) = ch4_value(:) * ch4_scale_factor
+   call close_file( flb )
+!---------------------------------------------------------------------
+!    convert the time stamps of the series to time_type variables.     
+!---------------------------------------------------------------------
+   do n=1,series_length
+      year = INT(input_time(n))
+      Year_t = set_date(year,1,1,0,0,0)
+      diy = days_in_year(Year_t)
+      extra_seconds = (input_time(n) - year)*diy*SECONDS_PER_DAY 
+      ch4_time(n) = Year_t + set_time(NINT(extra_seconds), 0)
+   end do
+   deallocate(input_time)
+else
+   call error_mesg ('strat_chem_extra_h2o_init', &
+                    'Failed to find input file '//trim(filename), FATAL)
+end if
+
+end subroutine strat_chem_extra_h2o_init
 
 
 end module strat_chem_utilities_mod

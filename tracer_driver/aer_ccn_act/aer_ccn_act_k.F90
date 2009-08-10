@@ -4,12 +4,13 @@ implicit none
 private
     private    CalcG,  erff, CalcAlphaGamma, CalcBeta
       
-    public aer_ccn_act_k, aer_ccn_act2_k, aer_ccn_act_wpdf_k ! cjg
+    public aer_ccn_act_k, aer_ccn_act2_k, aer_ccn_act_wpdf_k,  &
+           aer_ccn_act_init_k
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 16.0 2008/07/30 22:10:11 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 17.0 2009/07/21 02:58:56 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 !---------------- private data -------------------
 
@@ -28,14 +29,23 @@ character(len=128) :: tagname = '$Name: perth_2008_10 $'
   
 !NO 1 Ammonium Sulfate  NO 2 Sea Salt NO 3 Organics
   
-  real  B_term (TY) /0.7822,0.6342,1.3764/ ! 2 * 0.3492/(Bprim)**(1/3)
-  real  Mass_scal (TY) /0.15896,0.198,0.1241/ ! scaling mass (ug m-3)
+  real, dimension(TY) :: B_term = (/0.7822,0.6342,1.3764/) ! 2 * 0.3492/(Bprim)**(1/3)
+  real, dimension(TY) :: Mass_scal = (/0.15896,0.198,0.1241/) ! scaling mass (ug m-3)
 
-  real  N(MD) /340., 60./ ! Total Number Concen (cm-3)
-  real  Dm(MD) /0.01, 0.07/ ! Geometric mean diameter (micron)
-  real  LNSIGMA(MD) /0.47, 0.6931/ ! ln( Sigma (St. Dev.) )
+  real, dimension(MD) :: N = (/340., 60./) ! Total Number Concen (cm-3)
+  real, dimension(MD) :: Dm = (/0.01, 0.07/) ! Geometric mean diameter (micron)
+  real, dimension(MD) :: LNSIGMA = (/0.47, 0.6931/) ! ln( Sigma (St. Dev.) )
+
+  logical :: nooc
 
 !Parameters for look-up tables
+
+  integer :: res, res2
+  real    :: sul_concen, low_concen, high_concen
+  real    :: lowup, highup, lowup2, highup2, lowmass2, &
+             highmass2, lowmass3, highmass3,  &
+             lowmass4, highmass4, lowmass5, highmass5, &
+             lowT2, highT2
 
 ! real ::  lowup=0.3 !m/s
 ! real ::  highup=10.
@@ -52,6 +62,7 @@ character(len=128) :: tagname = '$Name: perth_2008_10 $'
 ! real :: lowT2=243.15 !K
 ! real :: highT2=308.15
 
+real, dimension(:,:,:,:,:), allocatable  :: droplets, droplets2
 
 !-----------------------------------------------------------------------
 !-------------------- namelist -----------------------------------------
@@ -60,25 +71,65 @@ logical :: module_is_initialized  = .false.
  
 contains
 
-subroutine aer_ccn_act_k (T1, P1, Updraft1, TotalMass, tym, droplets, &
-                          droplets2, res, res2, nooc,  &
-                          sul_concen, low_concen, high_concen, &
-                          lowup, highup, lowup2, highup2, lowmass2, &
-                          highmass2, lowmass3, highmass3,  &
-                          lowmass4, highmass4, lowmass5, highmass5, &
-                          lowT2, highT2,  &
+subroutine aer_ccn_act_init_k      &
+             (droplets_in, droplets2_in, res_in, res2_in, nooc_in,  &
+              sul_concen_in, low_concen_in, high_concen_in, &
+              lowup_in, highup_in, lowup2_in, highup2_in, lowmass2_in, &
+              highmass2_in, lowmass3_in, highmass3_in,  &
+              lowmass4_in, highmass4_in, lowmass5_in, highmass5_in, &
+              lowT2_in, highT2_in)     
+
+real, dimension(:,:,:,:,:), intent(in) :: droplets_in
+real, dimension(:,:,:,:,:), intent(in) :: droplets2_in
+integer, intent(in) :: res_in, res2_in
+logical, intent(in) :: nooc_in
+real, intent(in)    :: sul_concen_in, low_concen_in, high_concen_in
+real, intent(in)    :: lowup_in, highup_in, lowup2_in, highup2_in,  &
+                       lowmass2_in, highmass2_in, lowmass3_in,  &
+                       highmass3_in, lowmass4_in, highmass4_in,  &
+                       lowmass5_in, highmass5_in, lowT2_in, highT2_in
+
+    if (module_is_initialized) return
+
+    res = res_in
+    res2 = res2_in
+
+    allocate (droplets (res, res,res,res,res))
+    allocate (droplets2 (res2, res2,res2,res2,res2))
+
+    droplets = droplets_in
+    droplets2 = droplets2_in
+    nooc = nooc_in
+    sul_concen = sul_concen_in
+    low_concen = low_concen_in
+    high_concen = high_concen_in
+    lowup = lowup_in
+    highup = highup_in
+    lowup2 = lowup2_in
+    highup2 = highup2_in
+    lowmass3 = lowmass3_in
+    highmass3 = highmass3_in
+    lowmass4 = lowmass4_in
+    highmass4 = highmass4_in
+    lowmass5 = lowmass5_in
+    highmass5 = highmass5_in
+    lowmass2 = lowmass2_in
+    highmass2 = highmass2_in
+    lowT2 = lowT2_in
+    highT2 = highT2_in
+
+    module_is_initialized = .true.
+
+
+end subroutine aer_ccn_act_init_k
+
+
+
+subroutine aer_ccn_act_k (T1, P1, Updraft1, TotalMass, tym,      &      
                           Drop, ier, ermesg)
-integer, intent(in) :: tym, res, res2
+integer, intent(in) :: tym
 real, dimension(tym), intent(inout) :: TotalMass
 real, intent(in) :: T1, P1, Updraft1
-real, dimension(res,res,res,res,res), intent(in) :: droplets
-real, dimension(res2,res2,res2,res2,res2), intent(in) :: droplets2
-logical, intent(in) :: nooc
-real, intent(in)    :: sul_concen, low_concen, high_concen
-real, intent(in) :: lowup, highup, lowup2, highup2, lowmass2, &
-                    highmass2, lowmass3, highmass3,  &
-                    lowmass4, highmass4, lowmass5, highmass5, &
-                    lowT2, highT2
 real, intent(inout) :: Drop
 integer, intent(out) :: ier
 character(len=*), intent(out) :: ermesg
@@ -89,8 +140,15 @@ real, dimension(3) :: Drop1
         
   ier = 0
   ermesg = '  '
-  if (tym /=  4) then
+
+  if ( .not. module_is_initialized) then
     ier = 1
+    ermesg = 'aer_ccn_act_k: module has not been initialized before &
+                                &first call'
+    return
+  endif
+  if (tym /=  4) then
+    ier = 2
     ermesg = 'aer_ccn_act_k:dimension of TotalMass is incorrect'
     return
   endif
@@ -126,10 +184,8 @@ real, dimension(3) :: Drop1
     if (Updraft1>highup2) then
     
       updr=max(min(Updraft1,highup-eps),lowup)
-      temp=max(min(T1,highT2-eps),lowT2)
     
       noup= log(updr/lowup)/log(highup/lowup)*(res2-1.)
-      noT= (temp-lowT2)*(res2-1)/(highT2-lowT2)
 
       tmass=max(min(tmass,highmass2-eps),lowmass2)
       nomass= log(tmass/lowmass2)/log(highmass2/lowmass2)*(res2-1.)
@@ -143,20 +199,18 @@ real, dimension(3) :: Drop1
       tmass4=max(min(tmass4,highmass5-eps),lowmass5)
       nomass4= log(tmass4/lowmass5)/log(highmass5/lowmass5)*(res2-1.)
 
-      Drop = 0.166667*(droplets2(nomass+1,nomass2+1,nomass3+1,nomass4+1,noup+1)+&
-                  droplets2(nomass+2,nomass2+1,nomass3+1,nomass4+1,noT+1)+ &
-                  droplets2(nomass+1,nomass2+2,nomass3+1,nomass4+1,noT+1)+ &
-                  droplets2(nomass+1,nomass2+1,nomass3+2,nomass4+1,noT+1)+ &
-                  droplets2(nomass+1,nomass2+1,nomass3+1,nomass4+2,noT+1)+ &
-                  droplets2(nomass+1,nomass2+1,nomass3+1,nomass4+1,noT+2))
+      Drop = 0.166667*(droplets2(noup+1,nomass4+1,nomass3+1,nomass2+1,nomass+1)+&
+                       droplets2(noup+1,nomass4+1,nomass3+1,nomass2+1,nomass+2)+ &
+                       droplets2(noup+1,nomass4+1,nomass3+1,nomass2+2,nomass+1)+ &
+                       droplets2(noup+1,nomass4+1,nomass3+2,nomass2+1,nomass+1)+ &
+                       droplets2(noup+1,nomass4+2,nomass3+1,nomass2+1,nomass+1)+ &
+                       droplets2(noup+2,nomass4+1,nomass3+1,nomass2+1,nomass+1))
   
     else
 
       updr=max(min(Updraft1,highup2-eps),lowup2)
-      temp=max(min(T1,highT2-eps),lowT2)
     
       noup= log(updr/lowup2)/log(highup2/lowup2)*(res-1.)
-      noT= (temp-lowT2)*(res-1)/(highT2-lowT2)
 
       tmass=max(min(tmass,highmass2-eps),lowmass2)
       nomass= log(tmass/lowmass2)/log(highmass2/lowmass2)*(res-1.)
@@ -170,12 +224,12 @@ real, dimension(3) :: Drop1
       tmass4=max(min(tmass4,highmass5-eps),lowmass5)
       nomass4= log(tmass4/lowmass5)/log(highmass5/lowmass5)*(res-1.)
 
-      Drop = 0.166667*(droplets(nomass+1,nomass2+1,nomass3+1,nomass4+1,noup+1)+&
-                  droplets(nomass+2,nomass2+1,nomass3+1,nomass4+1,noT+1)+ &
-                  droplets(nomass+1,nomass2+2,nomass3+1,nomass4+1,noT+1)+ &
-                  droplets(nomass+1,nomass2+1,nomass3+2,nomass4+1,noT+1)+ &
-                  droplets(nomass+1,nomass2+1,nomass3+1,nomass4+2,noT+1)+ &
-                  droplets(nomass+1,nomass2+1,nomass3+1,nomass4+1,noT+2))
+      Drop = 0.166667*(droplets(noup+1,nomass4+1,nomass3+1,nomass2+1,nomass+1)+&
+                       droplets(noup+1,nomass4+1,nomass3+1,nomass2+1,nomass+2)+ &
+                       droplets(noup+1,nomass4+1,nomass3+1,nomass2+2,nomass+1)+ &
+                       droplets(noup+1,nomass4+1,nomass3+2,nomass2+1,nomass+1)+ &
+                       droplets(noup+1,nomass4+2,nomass3+1,nomass2+1,nomass+1)+ &
+                       droplets(noup+2,nomass4+1,nomass3+1,nomass2+1,nomass+1))
   
     endif
   
@@ -218,8 +272,14 @@ integer :: i, j
         
   ier = 0
   ermesg = '  '
-  if (tym /= 4) then
+  if ( .not. module_is_initialized) then
     ier = 1
+    ermesg = 'aer_ccn_act2_k: module has not been initialized before &
+                                &first call'
+    return
+  endif
+  if (tym /= 4) then
+    ier = 2
     ermesg = ' aer_ccn_act2_k:dimension of TotalMass is incorrect'
     return
   endif
@@ -266,34 +326,19 @@ end subroutine aer_ccn_act2_k
 ! Additional subroutines to compute CCN activation by integrating
 ! over an assumed subgrid-scale PDF of w
 
-subroutine aer_ccn_act_wpdf_k(T, p, wm, wp2, totalmass, tym, droplets, &
-                              droplets2, res, res2, nooc,  &
-                              sul_concen, low_concen, high_concen, &
-                             lowup, highup, lowup2, highup2, lowmass2, &
-                             highmass2, lowmass3, highmass3,  &
-                             lowmass4, highmass4, lowmass5, highmass5, &
-                             lowT2, highT2,  &
-                              drop,  &
-                              ier, ermesg)
+subroutine aer_ccn_act_wpdf_k (T, p, wm, wp2, totalmass, tym, drop,  &
+                               ier, ermesg)
 
 ! Compute CCN activation assuming a normal distribution of w
 ! given by its mean (wm) and second moment (wp2)
 
-integer, intent(in) :: tym, res, res2
+integer, intent(in) :: tym
 real :: T, p, wm, wp2, totalmass(tym)
-real, dimension(res, res, res, res,res), intent(in) :: droplets
-real, dimension(res2, res2, res2, res2,res2), intent(in) :: droplets2
-logical, intent(in) :: nooc
-real, intent(in) :: sul_concen, low_concen, high_concen
-real, intent(in) :: lowup, highup, lowup2, highup2, lowmass2, &
-                    highmass2, lowmass3, highmass3, &
-                    lowmass4, highmass4, lowmass5, highmass5,  &
-                    lowT2, highT2
 real :: drop
 integer, intent(out) :: ier
 character(len=*), intent(out) :: ermesg
 
-!  Paraneters
+!  Paranmeters
 
 real, parameter    :: wp2_eps = 0.0001 ! w variance threshold
 integer, parameter :: npoints = 64     ! # for Gauss-Hermite quadrature
@@ -317,8 +362,14 @@ data init/0/
 
   ier = 0
   ermesg = '  '
-  if (tym /=  4) then
+  if ( .not. module_is_initialized) then
     ier = 1
+    ermesg = 'aer_ccn_act_wpdf _k: module has not been initialized &
+                                             &before first call'
+    return
+  endif
+  if (tym /=  4) then
+    ier = 2
     ermesg = 'aer_ccn_act_wpdf_k:dimension of TotalMass is incorrect'
     return
   endif
@@ -371,14 +422,7 @@ if (lintegrate) then
   tmp = sqrt(2.0 * wp2 )
   do i=ia,ib
     wtmp = tmp * x(i) + wm
-    call aer_ccn_act_k( T, p, wtmp, totalmass, TYm, droplets,   &
-                       droplets2, res, res2, nooc,  &
-                       sul_concen, low_concen, high_concen, &
-                       lowup, highup, lowup2, highup2, lowmass2, &
-                       highmass2, lowmass3, highmass3,  &
-                    lowmass4, highmass4, lowmass5, highmass5,  &
-                       lowT2, highT2,  &
-                       drop, ier, ermesg )
+    call aer_ccn_act_k( T, p, wtmp, totalmass, TYm, drop, ier, ermesg )
     if (ier /= 0) return
     sum1 = sum1 + w(i)*drop
     sum2 = sum2 + w(i)
@@ -392,14 +436,7 @@ else
 
   ! No integration, use single point evaluation
 
-  call aer_ccn_act_k( T, p, wm, totalmass, TYm, droplets,   &
-                       droplets2, res, res2, nooc,   &
-                       sul_concen, low_concen, high_concen, &
-                       lowup, highup, lowup2, highup2, lowmass2, &
-                       highmass2, lowmass3, highmass3,  &
-                    lowmass4, highmass4, lowmass5, highmass5,  &
-                       lowT2, highT2,  &
-                       drop, ier, ermesg )
+  call aer_ccn_act_k( T, p, wm, totalmass, TYm, drop, ier, ermesg )
   if (ier /= 0) return
 
 endif

@@ -49,6 +49,7 @@ use      constants_mod, only : GRAV, &     ! acceleration due to gravity [m/s2]
                                AVOGNO      ! Avogadro's number
 use   interpolator_mod, only : interpolator,  &
                                interpolate_type
+use      astronomy_mod, only : universal_time
 
 implicit none
 private
@@ -69,14 +70,14 @@ public  wet_deposition,    &
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 16.0 2008/07/30 22:10:39 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 17.0 2009/07/21 02:59:33 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 integer, parameter :: max_tracers = MAX_TRACER_FIELDS
 !-----------------------------------------------------------------------
 !--- identification numbers for  diagnostic fields and axes ----
-integer :: id_tracer_ddep(max_tracers), &
+integer :: id_tracer_ddep(max_tracers), id_tracer_dvel(max_tracers), &
            id_tracer_wdep_ls(max_tracers),   id_tracer_wdep_cv(max_tracers),  &
            id_tracer_wdep_lsin(max_tracers), id_tracer_wdep_cvin(max_tracers),&
            id_tracer_wdep_lsbc(max_tracers), id_tracer_wdep_cvbc(max_tracers),&
@@ -89,13 +90,16 @@ character(len=32),  dimension(max_tracers) :: tracer_wdep_names     = ' '
 character(len=32),  dimension(max_tracers) :: tracer_wdep_units     = ' '
 character(len=128), dimension(max_tracers) :: tracer_wdep_longnames = ' '
 character(len=32),  dimension(max_tracers) :: tracer_ddep_names     = ' '
+character(len=32),  dimension(max_tracers) :: tracer_dvel_names     = ' '
 character(len=32),  dimension(max_tracers) :: tracer_ddep_units     = ' '
+character(len=32),  dimension(max_tracers) :: tracer_dvel_units     = ' '
 character(len=128), dimension(max_tracers) :: tracer_ddep_longnames = ' '
+character(len=128), dimension(max_tracers) :: tracer_dvel_longnames = ' '
 real, allocatable :: blon_out(:,:), blat_out(:,:)
 !----------------parameter values for the diagnostic units--------------
 real, parameter :: mw_air = WTMAIR/1000.  ! Convert from [g/mole] to [kg/mole]
 real, parameter :: mw_h2o = WTMH2O/1000.  ! Convert from [g/mole] to [kg/mole]
-
+real, parameter :: twopi = 2*PI
 contains
 
 !
@@ -140,7 +144,7 @@ type(time_type),       intent(in) :: Time
 integer :: ntrace
 character(len=20) :: units =''
 !
-integer :: n, unit
+integer :: n, unit, logunit
 character(len=128) :: name
 
 ! Make local copies of the local domain dimensions for use 
@@ -167,6 +171,7 @@ call get_tracer_names(MODEL_ATMOS,n,tracer_names(n),tracer_longnames(n),tracer_u
       write (name,100) n
       if (trim(tracer_names(n)) /= name) then
           tracer_ddep_names(n) = trim(tracer_names(n)) //'_ddep'
+          tracer_dvel_names(n) = trim(tracer_names(n)) //'_dvel'
           tracer_wdep_names(n) = trim(tracer_names(n)) //'_wdep'
       endif
       write (name,102) n
@@ -175,6 +180,8 @@ call get_tracer_names(MODEL_ATMOS,n,tracer_names(n),tracer_longnames(n),tracer_u
                   trim(tracer_longnames(n)) // ' wet deposition for tracers'
           tracer_ddep_longnames(n) = &
                   trim(tracer_longnames(n)) // ' dry deposition for tracers'
+          tracer_dvel_longnames(n) = &
+                  trim(tracer_longnames(n)) // ' dry deposition velocity for tracers'
       endif
 
       select case (trim(tracer_units(n)))
@@ -200,6 +207,11 @@ call get_tracer_names(MODEL_ATMOS,n,tracer_names(n),tracer_longnames(n),tracer_u
             trim(tracer_ddep_names(n)), mass_axes(1:2), Time,               &
             trim(tracer_ddep_longnames(n)),                                 &
             trim(units), missing_value=-999.     )
+! Register the dry deposition of the n tracers
+     id_tracer_dvel(n) = register_diag_field ( mod_name,                    &
+            trim(tracer_dvel_names(n)), mass_axes(1:2), Time,               &
+            trim(tracer_dvel_longnames(n)),                                 &
+            'm/s', missing_value=-999.     )
 ! Register the wet deposition of the n tracers by large scale clouds
      id_tracer_wdep_ls(n) = register_diag_field ( mod_name,                 &
             trim(tracer_wdep_names(n))//'_ls', mass_axes(1:2), Time,        &
@@ -257,7 +269,8 @@ call get_tracer_names(MODEL_ATMOS,n,tracer_names(n),tracer_longnames(n),tracer_u
       call write_version_number (version, tagname)
 
     if ( mpp_pe() == mpp_root_pe() ) then
-         call write_namelist_values (stdlog(),ntrace)
+         logunit=stdlog()
+         call write_namelist_values (logunit,ntrace)
     endif
 
       module_is_initialized = .TRUE.
@@ -279,6 +292,9 @@ subroutine write_namelist_values (unit, ntrace)
        write (unit,11) trim(tracer_ddep_names(n)),     &
                        trim(tracer_ddep_longnames(n)), &
                        trim(tracer_ddep_units(n))
+       write (unit,11) trim(tracer_dvel_names(n)),     &
+                       trim(tracer_dvel_longnames(n)), &
+                       'm/s'
     enddo
 
  10 format (' &TRACER_DIAGNOSTICS_NML', &
@@ -293,6 +309,7 @@ subroutine write_namelist_values (unit, ntrace)
 !<SUBROUTINE NAME = "dry_deposition">
 subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
                            u_star, landmask, dsinku, tracer, Time, &
+                           lon, half_day, &
                            drydep_data )
 !
 !<OVERVIEW>
@@ -366,6 +383,9 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 !  <IN NAME="u_star" TYPE="real" DIM="(:,:)">
 !     Friction velocity.
 !  </IN>
+!  <IN NAME="lon" TYPE="real" DIM="(:,:)">
+!     Longitude.
+!  </IN>
 !  <IN NAME="landmask" TYPE="logical">
 !     Land - sea mask.
 !  </IN>
@@ -379,19 +399,21 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 !
 integer, intent(in)                 :: n, is, js
 real, intent(in), dimension(:,:)    :: u, v, T, pwt, pfull, u_star, tracer, dz
+real, intent(in), dimension(:,:)    :: lon, half_day
 logical, intent(in), dimension(:,:) :: landmask
 type(time_type), intent(in)         :: Time
 type(interpolate_type),intent(inout)  :: drydep_data
 real, intent(out), dimension(:,:)   :: dsinku
 
 real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,xxfm,drydep_vel
-integer :: i,j, flagsr
+integer :: i,j, flagsr, id, jd
 real    :: land_dry_dep_vel, sea_dry_dep_vel, surfr
 real    :: diag_scale
-logical :: used, flag
-integer :: flag_species
+real    :: factor_tmp, gmt, dv_on, dv_off, dayfrac, vd_night, vd_day, loc_angle
+logical :: used, flag, diurnal
+integer :: flag_species, flag_diurnal
 character(len=10) ::units,names
-character(len=80) :: name,control,scheme, speciesname
+character(len=80) :: name,control,scheme, speciesname,dummy
 
 ! Default zero
 dsinku = 0.0
@@ -402,6 +424,7 @@ if (.not. flag) return
 ! delta z = dp/(rho * grav)
 ! delta z = RT/g*dp/p    pwt = dp/g
 !dz(:,:) = pwt(:,:)*rdgas*T(:,:)/pfull(:,:)
+id=size(pfull,1); jd=size(pfull,2)
 
 call get_drydep_param(name,control,scheme,land_dry_dep_vel,sea_dry_dep_vel)
 
@@ -421,6 +444,7 @@ call get_drydep_param(name,control,scheme,land_dry_dep_vel,sea_dry_dep_vel)
         resisa=hwindv/(u_star*u_star)
         where (frictv .lt. 0.1) frictv=0.1
         dsinku = (1./(surfr/frictv + resisa))/dz
+        drydep_vel(:,:) = 0.
 
     case('fixed')
 ! For the moment let's try to calculate the delta-z of the bottom 
@@ -428,12 +452,13 @@ call get_drydep_param(name,control,scheme,land_dry_dep_vel,sea_dry_dep_vel)
 ! timestep, idt, calculate the fraction of the lowest layer which 
 ! deposits.
        where (landmask(:,:))
-! dry dep value over the land surface divided by the height of the box.
-         dsinku(:,:) = land_dry_dep_vel / dz(:,:)
+! dry dep value over the land surface
+         drydep_vel(:,:) = land_dry_dep_vel
       elsewhere
-! dry dep value over the sea surface divided by the height of the box.
-         dsinku(:,:) = sea_dry_dep_vel  / dz(:,:)
+! dry dep value over the sea surface
+         drydep_vel(:,:) = sea_dry_dep_vel
       endwhere
+      dsinku(:,:) = drydep_vel(:,:) / dz(:,:)
 
     case('file')
         flag_species = parse(control,'name',speciesname)
@@ -442,11 +467,40 @@ call get_drydep_param(name,control,scheme,land_dry_dep_vel,sea_dry_dep_vel)
         else
            call get_tracer_names(MODEL_ATMOS,n,name)
         endif
-!chemistry start
+        flag_diurnal = parse(control,'diurnal',dummy)
+        diurnal = (flag_diurnal > 0)
         call interpolator( drydep_data, Time, drydep_vel, trim(name), is, js )
+
+        if (diurnal) then
+           do j = 1,jd
+           do i = 1,id
+! half_day is between 0 and pi, so dv_off btwn 0 to pi, dv_on btwn -pi and 0
+              dv_off = MIN( 1.2*half_day(i,j), PI )
+              dv_on = -dv_off
+              dayfrac = dv_off/PI
+! apply the mean dep vel during polar day or polar night (or nearby)
+              if (dv_off > 0 .and. dv_off < PI  ) then
+                 vd_night = MIN(0.001, 0.5*drydep_vel(i,j))
+                 vd_day = ( drydep_vel(i,j)-vd_night*(1.-dayfrac) ) / dayfrac
+                 gmt = universal_time(Time)
+                 loc_angle = gmt + lon(i,j) - PI
+                 if (loc_angle >= PI) loc_angle = loc_angle - twopi
+                 if (loc_angle < -PI) loc_angle = loc_angle + twopi
+                 if( loc_angle >= dv_off .or. loc_angle <= dv_on ) then
+                    drydep_vel(i,j) = vd_night
+                 else
+                    factor_tmp = loc_angle - dv_on
+                    factor_tmp = factor_tmp / MAX(2*dv_off,1.e-6)
+                    drydep_vel(i,j) = 0.5*PI*sin(factor_tmp*PI)*(vd_day-vd_night) + vd_night
+                 end if
+              end if
+           end do
+           end do
+        end if !(diurnal)
+
         dsinku(:,:) = drydep_vel(:,:) / dz(:,:)
-!chemistry end
     case('default')
+        drydep_vel(:,:) = 0.
   end select
 
 dsinku(:,:) = MAX(dsinku(:,:), 0.0E+00)
@@ -475,9 +529,11 @@ endwhere
       end select
       used = send_data ( id_tracer_ddep(n), dsinku*pwt/diag_scale, Time, &
           is_in =is,js_in=js)
-
-
     endif
+    if (id_tracer_dvel(n) > 0 ) then
+      used = send_data ( id_tracer_dvel(n), drydep_vel, Time, &
+          is_in =is,js_in=js)
+    end if
 end subroutine dry_deposition
 !</SUBROUTINE>
 !
@@ -613,6 +669,7 @@ real, dimension(size(T,1),size(T,2),size(pfull,3)) :: &
       in_temp, bc_temp, dt_temp, reevap_fraction, reevap_diag
 integer, dimension(size(T,1),size(T,2)) :: &
       ktopcd, kendcd
+real, dimension(size(rain3d,1),size(rain3d,2),size(rain3d,3)) :: rainsnow3d
 
 integer :: i, j, k, kk, id, jd, kd, flaglw
 
@@ -656,7 +713,7 @@ real :: alpha_r, alpha_s
 
 logical :: &
       used, flag, &
-      Lgas, Laerosol
+      Lwetdep, Lgas, Laerosol, Lice
 character(len=200) :: &
       tracer_name, control, scheme, units, &
       text_in_scheme
@@ -686,11 +743,18 @@ character(len=200) :: &
     if(.not. flag) return
     call get_wetdep_param( text_in_scheme, control, scheme, &
                            Henry_constant, Henry_variable, &
-                    frac_in_cloud, alpha_r, alpha_s)
+                           frac_in_cloud, alpha_r, alpha_s, &
+                           Lwetdep, Lgas, Laerosol, Lice )
     rho_air(:,:,:) = pfull(:,:,:) / ( T(:,:,:)*RDGAS ) ! kg/m3
+!   Lice = .not. (scheme=='henry_noice' .or. scheme=='henry_below_noice' .or. &
+!                 scheme=='aerosol_noice' .or. scheme=='aerosol_below_noice' )
+    if (Lice) then
+       rainsnow3d(:,:,:) = rain3d(:,:,:) + snow3d(:,:,:)
+    else
+       rainsnow3d(:,:,:) = rain3d(:,:,:)
+    end if
     do k=1,kd
-       precip3d(:,:,k) = snow3d(:,:,k+1)-snow3d(:,:,k) &
-                       + rain3d(:,:,k+1)-rain3d(:,:,k)
+       precip3d(:,:,k) = rainsnow3d(:,:,k+1)-rainsnow3d(:,:,k)
        pwt(:,:,k)  = ( phalf(:,:,k+1) - phalf(:,:,k) )/GRAV ! kg/m2
        zdel(:,:,k) = zhalf(:,:,k) - zhalf(:,:,k+1) ! m
     end do
@@ -755,14 +819,14 @@ if(lowercase(scheme)=='wdep_gas' .or. lowercase(scheme)=='wdep_aerosol') then
 !    reevaporated to the atmosphere:
 
               beta(i,j)=precip3d(i,j,k)
-              if (beta(i,j) .lt. 0.) then
-                beta(i,j) = beta(i,j)/(snow3d(i,j,k)+rain3d(i,j,k))
+              if (beta(i,j) < 0.) then
+                beta(i,j) = beta(i,j)/rainsnow3d(i,j,k)
               endif
-              if ((rain3d(i,j,k+1)+snow3d(i,j,k+1)) .EQ.0.0 ) then 
+              if (rainsnow3d(i,j,k+1) == 0. ) then 
 !--reevaporation total
-                beta(i,j)=MIN(MAX(0.0,-1.0*beta(i,j)),1.0)
+                beta(i,j)=MIN(MAX(0.,-beta(i,j)),1.)
               else
-                beta(i,j)=MIN(MAX(0.0,-1.0*beta(i,j))*frac_int,1.0)
+                beta(i,j)=MIN(MAX(0.,-beta(i,j))*frac_int,1.)
               endif
 ! reevporating to atmosphere
               reevap_diag(i,j,k)=beta(i,j)*wdep_in(i,j)
@@ -797,9 +861,9 @@ if(lowercase(scheme)=='wdep_gas' .or. lowercase(scheme)=='wdep_aerosol') then
 
 ! Calculate fraction of precipitation reevaporated in layer
      do k=1,kd
-       where( snow3d(:,:,k)+rain3d(:,:,k) > 0. .and. precip3d(:,:,k) < 0. )
+       where( rainsnow3d(:,:,k) > 0. .and. precip3d(:,:,k) < 0. )
           reevap_fraction(:,:,k) = &
-             -precip3d(:,:,k) / (snow3d(:,:,k)+rain3d(:,:,k)) ! fraction
+             -precip3d(:,:,k) / (rainsnow3d(:,:,k)) ! fraction
        end where
 ! Assume that the tracer reevaporation fraction is 50% of the precip
 ! reevaporation fraction, except when fraction = 100%
@@ -815,9 +879,10 @@ if(lowercase(scheme)=='wdep_gas' .or. lowercase(scheme)=='wdep_aerosol') then
 !      xliq = 0.5e-3
 !   endif
 
-Lgas = lowercase(scheme)=='henry' .or. lowercase(scheme)=='henry_below'
-Laerosol = lowercase(scheme)=='aerosol' .or. lowercase(scheme)=='aerosol_below'
-
+! Lgas = lowercase(scheme)=='henry' .or. lowercase(scheme)=='henry_below' .or. &
+!        lowercase(scheme)=='henry_noice' .or. lowercase(scheme)=='henry_below_noice'
+! Laerosol = lowercase(scheme)=='aerosol' .or. lowercase(scheme)=='aerosol_below' .or. &
+!            lowercase(scheme)=='aerosol_noice' .or. lowercase(scheme)=='aerosol_below_noice'
 ! Assume that the aerosol reevaporation fraction is 50% of the precip
 ! reevaporation fraction, except when fraction = 100%
 if( Lgas ) then
@@ -908,7 +973,7 @@ if( Lgas .or. Laerosol ) then
 !-----------------------------------------------------------------
 ! Below-cloud wet scavenging
 !-----------------------------------------------------------------
-      if( lowercase(scheme)=='henry_below' ) then
+      if( lowercase(scheme)=='henry_below' .or. lowercase(scheme)=='henry_below_noice') then
          k_g = d_g/rain_diam * &
                ( 2. + 0.6 * sqrt( rain_diam*rain_vterm/vk_air ) * (vk_air/d_g)**(1./3.) )
          do i = 1,id
@@ -946,7 +1011,7 @@ if( Lgas .or. Laerosol ) then
          end do
          end do
 
-      else if ( lowercase(scheme) == 'aerosol_below' ) then
+      else if ( lowercase(scheme) == 'aerosol_below' .or. lowercase(scheme) == 'aerosol_below_noice') then
 
         do k=1,kd
            fluxs = (snow3d(:,:,k+1)+snow3d(:,:,k))/2.0
@@ -1181,6 +1246,7 @@ end subroutine get_drydep_param
 subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
                             henry_constant, henry_temp, &
                             frac_in_cloud,alpha_r,alpha_s, &
+                            Lwetdep, Lgas, Laerosol, Lice, &
                             frac_in_cloud_uw, frac_in_cloud_donner)
 !<OVERVIEW>
 ! Routine to initialize the parameters for the wet deposition scheme.
@@ -1209,14 +1275,35 @@ subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
 !<OUT NAME="henry_temp" TYPE="real">
 !   The temperature dependence of the Henry's Law constant.
 !</OUT>
+!<OUT NAME="frac_in_cloud" TYPE="real">
+!   In-cloud fraction for aerosols
+!</OUT>
+!<OUT NAME="alpha_r" TYPE="real">
+!   Controls below-cloud aerosol scavenging by rain
+!</OUT>
+!<OUT NAME="alpha_s" TYPE="real">
+!   Controls below-cloud aerosol scavenging by snow
+!</OUT>
+!<OUT NAME="Lwetdep" TYPE="logical">
+!   Does tracer have wet removal?
+!</OUT>
+!<OUT NAME="Lgas" TYPE="logical">
+!   Is tracer a gas?
+!</OUT>
+!<OUT NAME="Laerosol" TYPE="logical">
+!   Is tracer an aerosol?
+!</OUT>
+!<OUT NAME="Lice" TYPE="logical">
+!   Is tracer removed by snow (or just rain)?
+!</OUT>
 
 
 character(len=*), intent(in)    :: text_in_scheme, text_in_param
 character(len=*), intent(out)   :: scheme
 real, intent(out)               :: henry_constant, henry_temp
 real, intent(out)               :: frac_in_cloud, alpha_r, alpha_s
-real, intent(out), optional     :: frac_in_cloud_uw,  &
-                                                   frac_in_cloud_donner
+logical, intent(out)            :: Lwetdep, Lgas, Laerosol, Lice
+real, intent(out), optional     :: frac_in_cloud_uw, frac_in_cloud_donner
 
 integer :: m,m1,n,lentext, flag
 character(len=32) :: dummy
@@ -1228,26 +1315,43 @@ henry_temp    = 0.
 frac_in_cloud = 0.
 alpha_r       = 0.
 alpha_s       = 0.
+Lwetdep = .false.
+Lgas = .false.
+Laerosol = .false.
+
 if (present(frac_in_cloud_uw))     frac_in_cloud_uw = 0.
 if (present(frac_in_cloud_donner)) frac_in_cloud_donner = 0.
 
 if( trim(lowercase(text_in_scheme)) == 'fraction' ) then
    scheme                 = 'Fraction'
 else if( trim(lowercase(text_in_scheme)) == 'henry' .or. &
-         trim(lowercase(text_in_scheme)) == 'henry_below' ) then
+         trim(lowercase(text_in_scheme)) == 'henry_below' .or. &
+         trim(lowercase(text_in_scheme)) == 'henry_noice' .or. &
+         trim(lowercase(text_in_scheme)) == 'henry_below_noice' ) then
    if( trim(lowercase(text_in_scheme)) == 'henry' ) then
       scheme                 = 'henry'
    else if ( trim(lowercase(text_in_scheme)) == 'henry_below' ) then
       scheme                 = 'henry_below'
+   else if ( trim(lowercase(text_in_scheme)) == 'henry_noice' ) then
+      scheme                 = 'henry_noice'
+   else if ( trim(lowercase(text_in_scheme)) == 'henry_below_noice' ) then
+      scheme                 = 'henry_below_noice'
    end  if
    flag=parse(text_in_param,'henry',     henry_constant)
    flag=parse(text_in_param,'dependence',henry_temp    )
+   Lgas = .true.
 else if( trim(lowercase(text_in_scheme)) == 'aerosol' .or. &
-         trim(lowercase(text_in_scheme)) == 'aerosol_below' ) then
+         trim(lowercase(text_in_scheme)) == 'aerosol_below' .or. &
+         trim(lowercase(text_in_scheme)) == 'aerosol_noice' .or. &
+         trim(lowercase(text_in_scheme)) == 'aerosol_below_noice' ) then
    if( trim(lowercase(text_in_scheme)) == 'aerosol' ) then
       scheme                 = 'aerosol'
    else if ( trim(lowercase(text_in_scheme)) == 'aerosol_below' ) then
       scheme                 = 'aerosol_below'
+   else if ( trim(lowercase(text_in_scheme)) == 'aerosol_noice' ) then
+      scheme                 = 'aerosol_noice'
+   else if ( trim(lowercase(text_in_scheme)) == 'aerosol_below_noice' ) then
+      scheme                 = 'aerosol_below_noice'
    end if
    flag=parse(text_in_param,'frac_incloud',frac_in_cloud)
    if (present(frac_in_cloud_uw)) then
@@ -1265,6 +1369,7 @@ else if( trim(lowercase(text_in_scheme)) == 'aerosol' .or. &
    end if
    flag=parse(text_in_param,'alphar',alpha_r)
    flag=parse(text_in_param,'alphas',alpha_s)
+   Laerosol = .true.
 end if
 if( trim(lowercase(text_in_scheme)) == 'wdep_aerosol') scheme= 'wdep_aerosol'
 if ( trim(lowercase(text_in_scheme)) == 'wdep_gas' ) scheme= 'wdep_gas'
@@ -1273,6 +1378,11 @@ if (scheme .eq. 'wdep_aerosol' .or. scheme .eq. 'wdep_gas') then
    flag=parse(text_in_param,'alphar',alpha_r)
    flag=parse(text_in_param,'alphas',alpha_s)
 end if
+
+Lice = .not. ( scheme=='henry_noice' .or. scheme=='henry_below_noice' .or. &
+               scheme=='aerosol_noice' .or. scheme=='aerosol_below_noice' )
+Lwetdep = scheme /= 'None'
+
 end subroutine get_wetdep_param
 !</SUBROUTINE>
 !
@@ -1326,22 +1436,21 @@ real, intent(in)  :: global_source(:,:)
 real, intent(in)  :: start_lon,start_lat,lon_resol,lat_resol
 real, intent(out) :: data_out(:,:)
 
-real :: modydeg,modxdeg, tpi
+real :: modydeg,modxdeg
 integer :: i, j, nlon_in, nlat_in
 real :: blon_in(size(global_source,1)+1)
 real :: blat_in(size(global_source,2)+1)
 type (horiz_interp_type) :: Interp
 ! Set up the global surface boundary condition longitude-latitude boundary values
 
-   tpi = 2. *PI
    nlon_in = size(global_source,1)
    nlat_in = size(global_source,2)
 ! For some reason the input longitude needs to be incremented by 180 degrees.
    do i = 1, nlon_in+1
       blon_in(i) = start_lon + float(i-1)*lon_resol + PI
    enddo
-      if (abs(blon_in(nlon_in+1)-blon_in(1)-tpi) < epsilon(blon_in)) &
-              blon_in(nlon_in+1)=blon_in(1)+tpi
+      if (abs(blon_in(nlon_in+1)-blon_in(1)-twopi) < epsilon(blon_in)) &
+              blon_in(nlon_in+1)=blon_in(1)+twopi
 
    do j = 2, nlat_in
       blat_in(j) = start_lat + float(j-1)*lat_resol

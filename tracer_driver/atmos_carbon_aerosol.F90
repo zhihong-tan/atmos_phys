@@ -260,8 +260,8 @@ logical :: module_is_initialized = .FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 16.0 2008/07/30 22:10:16 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 17.0 2009/07/21 02:59:01 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 !-----------------------------------------------------------------------
 
 contains
@@ -1113,7 +1113,7 @@ type(time_type), intent(in)                        :: Time
 real,            intent(in),    dimension(:,:,:), optional :: mask
 character(len=7), parameter :: mod_name = 'tracers'
 integer :: n
-integer ::  unit, ierr, io
+integer ::  unit, ierr, io, logunit
 
 
    if (module_is_initialized) return
@@ -1131,8 +1131,9 @@ integer ::  unit, ierr, io
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit=stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                          write (stdlog(), nml=carbon_aerosol_nml)
+                          write (logunit, nml=carbon_aerosol_nml)
 
 !--------------------------------------------------------
 !------namelist
@@ -1146,7 +1147,7 @@ integer ::  unit, ierr, io
       if (nbcphobic > 0 .and. mpp_pe() == mpp_root_pe()) &
           write (*,30) 'Hydrophobic BC',nbcphobic
       if (nbcphobic > 0 .and. mpp_pe() == mpp_root_pe()) &
-          write (stdlog(),30) 'Hydrophobic BC',nbcphobic
+          write (logunit,30) 'Hydrophobic BC',nbcphobic
    endif
 
    n = get_tracer_index(MODEL_ATMOS,'bcphil')
@@ -1156,7 +1157,7 @@ integer ::  unit, ierr, io
       if (nbcphilic > 0 .and. mpp_pe() == mpp_root_pe()) &
           write (*,30) 'Hydrophilic BC',nbcphilic
       if (nbcphilic > 0 .and. mpp_pe() == mpp_root_pe()) &
-          write (stdlog(),30) 'Hydrophilic BC',nbcphilic
+          write (logunit,30) 'Hydrophilic BC',nbcphilic
    endif
 
    n = get_tracer_index(MODEL_ATMOS,'omphob')
@@ -1166,7 +1167,7 @@ integer ::  unit, ierr, io
       if (nomphobic > 0 .and. mpp_pe() == mpp_root_pe()) &
           write (*,30) 'Hydrophobic OC',nomphobic
       if (nomphobic > 0 .and. mpp_pe() == mpp_root_pe()) &
-          write (stdlog(),30) 'Hydrophobic OC',nomphobic
+          write (logunit,30) 'Hydrophobic OC',nomphobic
    endif
 
    n = get_tracer_index(MODEL_ATMOS,'omphil')
@@ -1176,7 +1177,7 @@ integer ::  unit, ierr, io
       if (nomphilic > 0 .and. mpp_pe() == mpp_root_pe()) &
           write (*,30) 'Hydrophilic OC',nomphilic
       if (nomphilic > 0 .and. mpp_pe() == mpp_root_pe()) &
-          write (stdlog(),30) 'Hydrophilic OC',nomphilic
+          write (logunit,30) 'Hydrophilic OC',nomphilic
    endif
 
 30        format (A,' was initialized as tracer number ',i2)

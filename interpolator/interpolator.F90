@@ -87,8 +87,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 16.0 2008/07/30 22:10:07 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+'$Id: interpolator.F90,v 17.0 2009/07/21 02:58:52 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -925,15 +925,11 @@ integer :: check_climo_units
 
 check_climo_units = NO_CONV
 select case(chomp(units))
-  case('kg/m2')
-     check_climo_units = KG_M2
-  case('kg/m^2')
-     check_climo_units = KG_M2
-  case('kg/m**2')
-     check_climo_units = KG_M2
-  case('kg m^-2')
-     check_climo_units = KG_M2
-  case('kg m**-2')
+  case('kg/m2', 'kg/m^2', 'kg/m**2', 'kg m^-2', 'kg m**-2')
+     check_climo_units = KG_M2  
+  case('molecules/cm2/s', 'molecule/cm2/s', 'molec/cm2/s')
+     check_climo_units = KG_M2  
+  case('kg/m2/s')
      check_climo_units = KG_M2  
 end select
 
@@ -2103,10 +2099,11 @@ subroutine interpolator_end(clim_type)
 !  clim_type : allocate type whose components will be deallocated.
 !
 type(interpolate_type), intent(inout) :: clim_type
-integer :: log_unit
+integer :: logunit
 
+logunit=stdlog()
 if ( mpp_pe() == mpp_root_pe() ) then
-   write (stdlog(),'(/,(a))') 'Exiting interpolator, have a nice day ...'
+   write (logunit,'(/,(a))') 'Exiting interpolator, have a nice day ...'
 end if
 
 if (associated (clim_type%lat     )) deallocate(clim_type%lat)

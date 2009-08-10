@@ -16,8 +16,8 @@
       save
 
       integer, parameter :: jdim     = 40
-      integer, parameter :: altdim   = 26
-      integer, parameter :: zangdim  = 8
+      integer, parameter :: altdim   = 46
+      integer, parameter :: zangdim  = 11
       integer, parameter :: o3ratdim = 7
       integer, parameter :: albdim   = 4
       integer, parameter :: t500dim  = 3
@@ -29,13 +29,14 @@
       integer ::  jno_ndx, jpooh_ndx, jc2h5ooh_ndx, jc3h7ooh_ndx, jrooh_ndx, &
                   jch3co3h_ndx, jmpan_ndx, jmacr_a_ndx, jmacr_b_ndx, jonitr_ndx, &
                   jxooh_ndx, jisopooh_ndx, jglyald_ndx, jhyac_ndx, jch3ooh_ndx, &
-                  jh2o2_ndx, jpan_ndx, jch3cho_ndx, &
+                  jh2o2_ndx, jpan_ndx, jch3cho_ndx, jho2no2_ndx, &
                   jn2o5_ndx, jo3p_ndx, jno2_ndx, jno3_ndx, &
                   jclono2_ndx, jhocl_ndx, jcl2o2_ndx, jbrono2_ndx, jhobr_ndx, &
                   jbrcl_ndx, jbro_ndx, jcl2_ndx, jh2o_ndx, jn2o_ndx, jhno3_ndx
       integer ::  ox_ndx, o3_ndx
       real    ::  ajl(jdim,altdim,zangdim,o3ratdim,albdim,t500dim,t200dim) = 0., &
                   ajl_solarmin(jdim,altdim,zangdim,o3ratdim,albdim,t500dim,t200dim) = 0.
+      real    ::  ajl2(2,2,2,2,2,2)
       real    ::  vo3(0:80), vo3_solarmin(0:80)
       real    ::  delvo3(0:79)
       real    ::  delz(altdim-1)
@@ -45,63 +46,47 @@
       real    ::  delt500(t500dim-1)
       real    ::  delt200(t200dim-1)
 
-      real :: zz(altdim) = &
-             (/ 0., 1., 2., 3., 5., 7., 9., 12., 15., 18., 21., 24., &
-                27., 30., 33., 36., 39., 42., 46., 50., 55., 60., 65., &
-                70., 75., 80. /)               
-      real :: vsec(zangdim) = (/ 1., 1.3, 1.6, 2., 3., 6., 12., 50. /)
-      real :: xv3(o3ratdim) = (/ .5, .75, 1., 1.25, 1.5, 2., 5. /)
-      real :: albev(albdim) = (/ .05, .2, .5, 1. /)
-      real :: t500(t500dim) = (/ 228., 248., 268. /)
-      real :: t200(t200dim) = (/ 205., 225. /)
+      real, parameter :: zz(altdim) = &
+        (/  0.,  1.,  2.,  3.,  4.,  5.,  6.,  8., 10., 12., 14., 16., 18., 20., 22., &
+           24., 26., 28., 30., 32., 34., 36., 38., 40., 42., 44., 46., 48., 50., 52., &
+           54., 56., 58., 60., 62., 64., 66., 68., 70., 72., 74., 76., 78., 80., 82., &
+           85. /)
+      real, parameter :: vcos(zangdim) = &
+        (/ -0.07, -0.05, -0.01, 0.01, 0.05, 0.1, 0.2,   0.4,   0.6,  0.8,  1.0 /)
+      real, parameter :: xv3(o3ratdim) = (/ .5, .75, 1., 1.25, 1.5, 2., 5. /)
+      real, parameter :: albev(albdim) = (/ .05, .2, .5, 1. /)
+      real, parameter :: t500(t500dim) = (/ 228., 248., 268. /)
+      real, parameter :: t200(t200dim) = (/ 205., 225. /)
+      real, parameter :: coszen_min = vcos(1)
+
 
       integer, parameter :: &
-         TAB_NDX_JO2        = 1, &
-         TAB_NDX_JO1D       = 2, &
-         TAB_NDX_JO3P       = 3, &
-         TAB_NDX_JNO2       = 4, &
-         TAB_NDX_JNO3       = 5, &
-         TAB_NDX_JN2O5      = 6, &
-         TAB_NDX_JN2O5_225  = 7, &
-         TAB_NDX_JN2O5_250  = 8, &
-         TAB_NDX_JN2O5_300  = 9, &
-         TAB_NDX_JN2O       = 10, &
-         TAB_NDX_JN2O_200   = 11, &
-         TAB_NDX_JN2O_250   = 12, &
-         TAB_NDX_JN2O_300   = 13, &
-         TAB_NDX_JH2O2      = 14, &
-         TAB_NDX_JHNO3      = 15, &
-         TAB_NDX_JHNO3_200  = 16, &
-         TAB_NDX_JHNO3_250  = 17, &
-         TAB_NDX_JHNO3_300  = 18, &
-         TAB_NDX_JHO2NO2    = 19, &
-         TAB_NDX_JCH2Oa     = 20, &
-         TAB_NDX_JCH2Ob     = 21, &
-         TAB_NDX_JCH3CHO    = 22, &
-         TAB_NDX_JMGLY      = 23, &
-         TAB_NDX_JACET      = 24, &
-         TAB_NDX_JCH3OOH    = 25, &
-         TAB_NDX_JPAN       = 26, &
-         TAB_NDX_JCLONO2    = 27, &
-         TAB_NDX_JCLONO2_200= 28, &
-         TAB_NDX_JCLONO2_250= 29, &
-         TAB_NDX_JCLONO2_300= 30, &
-         TAB_NDX_JBRONO2    = 31, &
-         TAB_NDX_JCL2       = 32, &
-         TAB_NDX_JMVK       = 33, &
-         TAB_NDX_JMACRa     = 34, &
-         TAB_NDX_JCL2O2     = 35, &
-         TAB_NDX_JHYAC      = 36, &
-         TAB_NDX_JHOBR      = 37, &
-         TAB_NDX_JBR2       = 38, &
-         TAB_NDX_JHOCL      = 39, &
-         TAB_NDX_JBRCL      = 40
+         TAB_NDX_JO2        = 1,  TAB_NDX_JO1D       = 2, &
+         TAB_NDX_JO3P       = 3,  TAB_NDX_JNO2       = 4, &
+         TAB_NDX_JNO3       = 5,  TAB_NDX_JN2O5      = 6, &
+         TAB_NDX_JN2O5_225  = 7,  TAB_NDX_JN2O5_250  = 8, &
+         TAB_NDX_JN2O5_300  = 9,  TAB_NDX_JN2O       = 10, &
+         TAB_NDX_JN2O_200   = 11, TAB_NDX_JN2O_250   = 12, &
+         TAB_NDX_JN2O_300   = 13, TAB_NDX_JH2O2      = 14, &
+         TAB_NDX_JHNO3      = 15, TAB_NDX_JHNO3_200  = 16, &
+         TAB_NDX_JHNO3_250  = 17, TAB_NDX_JHNO3_300  = 18, &
+         TAB_NDX_JHO2NO2    = 19, TAB_NDX_JCH2Oa     = 20, &
+         TAB_NDX_JCH2Ob     = 21, TAB_NDX_JCH3CHO    = 22, &
+         TAB_NDX_JMGLY      = 23, TAB_NDX_JACET      = 24, &
+         TAB_NDX_JCH3OOH    = 25, TAB_NDX_JPAN       = 26, &
+         TAB_NDX_JCLONO2    = 27, TAB_NDX_JCLONO2_200= 28, &
+         TAB_NDX_JCLONO2_250= 29, TAB_NDX_JCLONO2_300= 30, &
+         TAB_NDX_JBRONO2    = 31, TAB_NDX_JCL2       = 32, &
+         TAB_NDX_JMVK       = 33, TAB_NDX_JMACRa     = 34, &
+         TAB_NDX_JCL2O2     = 35, TAB_NDX_JHYAC      = 36, &
+         TAB_NDX_JHOBR      = 37, TAB_NDX_JBR2       = 38, &
+         TAB_NDX_JHOCL      = 39, TAB_NDX_JBRCL      = 40
 
       logical :: use_tdep_jvals, use_solar_cycle
       real    :: o3_column_top, jno_scale_factor
 
-character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 16.0 2008/07/30 22:10:58 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: perth_2008_10 $'
+character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 17.0 2009/07/21 02:59:46 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: quebec $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -163,10 +148,11 @@ logical                       :: module_is_initialized = .false.
 !        ... Local variables
 !----------------------------------------------------------------------
       integer    :: it500, it200, izen, ialb, idob
-      integer    :: ios, ofl, k
-      integer    :: retval, unit
-      logical    :: cosb
-      real       :: temp(tabdim)
+      integer    :: ios
+      integer    :: unit
+!     integer    :: retval
+!     logical    :: cosb
+!     real       :: temp(tabdim)
       character(len=128) :: msg
 
 !     unit = navu()
@@ -252,7 +238,7 @@ logical                       :: module_is_initialized = .false.
 !----------------------------------------------------------------------
       delz(:altdim-1) = 1. / (zz(2:altdim) - zz(:altdim-1))
       delvo3(0:79) = vo3(1:80) - vo3(0:79)
-      delang(:zangdim-1)  = 1. / (vsec(2:zangdim) - vsec(:zangdim-1))
+      delang(:zangdim-1)  = 1. / (vcos(2:zangdim) - vcos(:zangdim-1))
       delv(:o3ratdim-1)   = 1. / (xv3(2:o3ratdim) - xv3(:o3ratdim-1))
       delalb(:albdim-1)   = 1. / (albev(2:albdim) - albev(:albdim-1))
       delt500(:t500dim-1) = 1. / (t500(2:t500dim) - t500(:t500dim-1))
@@ -374,6 +360,7 @@ logical                       :: module_is_initialized = .false.
       jh2o2_ndx    = get_rxt_ndx( 'jh2o2' )
       jpan_ndx     = get_rxt_ndx( 'jpan' )
       jch3cho_ndx  = get_rxt_ndx( 'jch3cho' )
+      jho2no2_ndx  = get_rxt_ndx( 'jho2no2' )
       jn2o5_ndx    = get_rxt_ndx( 'jn2o5' )
       jo3p_ndx     = get_rxt_ndx( 'jo3p' )
       jno2_ndx     = get_rxt_ndx( 'jno2' )
@@ -551,72 +538,74 @@ logical                       :: module_is_initialized = .false.
          tmp_jclono2_250(:,k) = 0.
          tmp_jclono2_300(:,k) = 0.
       end do
-      zagtz(:) = coszen(:) > 0. 
+      zagtz(:) = coszen(:) >= coszen_min
 
       do i = 1,plonl
          if( zagtz(i) ) then
-            secant = 1. / coszen(i)
-            if( secant <= 50. ) then
-               zarg(:)     = zmid(i,:)
-               colo3(:)    = col_dens(i,:,1)
-               pline(:)    = pmid(i,:)
-               fac1(:)     = pdel(i,:)
-               tline(:)    = temper(i,:)
-               lwc_line(:) = lwc(i,:)
-               cld_line(:) = clouds(i,:)
-               call cloud_mod( coszen(i), cld_line, lwc_line, fac1, srf_alb(i), &
-                               eff_alb, cld_mult )
-               call T_INT( pline, tline, t500, t200 )
-               call PHOTO_INTERP( zarg, secant, colo3, eff_alb, t500, &
-                                  t200, solar_phase, prates )
-               do m = 1,jdim
-                  if( indexer(m) > 0 ) then
+!           secant = 1. / coszen(i)
+!           if( secant <= 50. ) then
+!           if( coszen(i) >= coszen_min ) then
+            zarg(:)     = zmid(i,:)
+            colo3(:)    = col_dens(i,:,1)
+            pline(:)    = pmid(i,:)
+            fac1(:)     = pdel(i,:)
+            tline(:)    = temper(i,:)
+            lwc_line(:) = lwc(i,:)
+            cld_line(:) = clouds(i,:)
+            call cloud_mod( coszen(i), cld_line, lwc_line, fac1, srf_alb(i), &
+                            eff_alb, cld_mult )
+            call T_INT( pline, tline, t500, t200 )
+            call PHOTO_INTERP( zarg, coszen(i), colo3, eff_alb, t500, &
+                               t200, solar_phase, prates )
+            do m = 1,jdim
+               if( indexer(m) > 0 ) then
                   photos(i,:,indexer(m)) = esfact *prates(m,:) * cld_mult(:)
-                  else
-                     select case( m )
-                        case( TAB_NDX_JCH3OOH )
-                           tmp_jch3ooh(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JH2O2 )
-                           tmp_jh2o2(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JCH3CHO )
-                           tmp_jch3cho(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JPAN )
-                           tmp_jpan(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JMACRa )
-                           tmp_jmacr_a(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JN2O_200 )
-                           tmp_jn2o_200(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JN2O_250 )
-                           tmp_jn2o_250(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JN2O_300 )
-                           tmp_jn2o_300(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JN2O5_225 )
-                           tmp_jn2o5_225(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JN2O5_250 )
-                           tmp_jn2o5_250(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JN2O5_300 )
-                           tmp_jn2o5_300(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JHNO3_200 )
-                           tmp_jhno3_200(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JHNO3_250 )
-                           tmp_jhno3_250(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JHNO3_300 )
-                           tmp_jhno3_300(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JCLONO2_200 )
-                           tmp_jclono2_200(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JCLONO2_250 )
-                           tmp_jclono2_250(i,:) = esfact *prates(m,:) * cld_mult(:)
-                        case( TAB_NDX_JCLONO2_300 )
-                           tmp_jclono2_300(i,:) = esfact *prates(m,:) * cld_mult(:)
-                     end select
-                  end if
-               end do
-               fac1(:) = 1.e-8  * (col_dens(i,:,2)/coszen(i))**.38
-               fac2(:) = 5.e-19 * col_dens(i,:,1) / coszen(i)
-               if( jno_ndx > 0 ) then
+               else
+                  select case( m )
+                     case( TAB_NDX_JCH3OOH )
+                        tmp_jch3ooh(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JH2O2 )
+                        tmp_jh2o2(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JCH3CHO )
+                        tmp_jch3cho(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JPAN )
+                        tmp_jpan(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JMACRa )
+                        tmp_jmacr_a(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JN2O_200 )
+                        tmp_jn2o_200(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JN2O_250 )
+                        tmp_jn2o_250(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JN2O_300 )
+                        tmp_jn2o_300(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JN2O5_225 )
+                        tmp_jn2o5_225(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JN2O5_250 )
+                        tmp_jn2o5_250(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JN2O5_300 )
+                        tmp_jn2o5_300(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JHNO3_200 )
+                        tmp_jhno3_200(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JHNO3_250 )
+                        tmp_jhno3_250(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JHNO3_300 )
+                        tmp_jhno3_300(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JCLONO2_200 )
+                        tmp_jclono2_200(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JCLONO2_250 )
+                        tmp_jclono2_250(i,:) = esfact *prates(m,:) * cld_mult(:)
+                     case( TAB_NDX_JCLONO2_300 )
+                        tmp_jclono2_300(i,:) = esfact *prates(m,:) * cld_mult(:)
+                  end select
+               end if
+            end do
 !-----------------------------------------------------------------
 !        ... Calculate J(no) from formula
 !-----------------------------------------------------------------
+            if (coszen(i) > 0. ) then
+               fac1(:) = 1.e-8  * (col_dens(i,:,2)/coszen(i))**.38
+               fac2(:) = 5.e-19 * col_dens(i,:,1) / coszen(i)
+               if( jno_ndx > 0 ) then
                   photos(i,:,jno_ndx) = 4.5e-6 * esfact * exp( -(fac1(:) + fac2(:)) ) &
                                                * cld_mult(:) * jno_scale_factor
                else
@@ -624,6 +613,14 @@ logical                       :: module_is_initialized = .false.
                                         * cld_mult(:) * jno_scale_factor
                end if
             end if
+!-----------------------------------------------------------------
+!        ... ho2no2 near-IR photolysis
+!-----------------------------------------------------------------
+            if (jho2no2_ndx > 0) then
+               photos(i,:,jho2no2_ndx) = photos(i, :, jho2no2_ndx) + &
+                    1.e-5 * esfact * cld_mult(:)
+            endif
+!        end if
          end if
       end do
         
@@ -932,7 +929,7 @@ logical                       :: module_is_initialized = .false.
 
       end subroutine T_INT
 
-      subroutine PHOTO_INTERP( zin, sin, vin, albin, t500in, &
+      subroutine PHOTO_INTERP( zin, cin, vin, albin, t500in, &
                                t200in, solar_phase, ajout )
 !----------------------------------------------------------------------
 !           ... Loglinear interpolation for the photodissociation rates
@@ -952,7 +949,7 @@ logical                       :: module_is_initialized = .false.
 !        ... Dummy arguments
 !----------------------------------------------------------------------
       real, intent(in)  ::   zin(:), &              ! geo height of midpoints
-                             sin, &                 ! secant solar zenith angle
+                             cin, &                 ! cosine solar zenith angle
                              vin(:), &              ! o3 column density
                              albin(:), &            ! surface albedo
                              t500in, &              ! temp on 500mb surface
@@ -963,10 +960,9 @@ logical                       :: module_is_initialized = .false.
 !----------------------------------------------------------------------
 !        ... Local variables
 !----------------------------------------------------------------------
-      integer, parameter ::  it200 = 1, it200p1 = 2
       integer  ::  plev
-      integer  ::  iz, is, iv, ial, nn, it500
-      integer  ::  izp1, isp1, ivp1, ialp1, it500p1
+      integer  ::  iz, is, iv, ial, nn, it500, it200
+      integer  ::  izp1, isp1, ivp1, ialp1, it500p1, it200p1
       integer  ::  i, k
       integer  ::  izl
       integer, dimension(SIZE(zin)) :: altind, ratind, albind
@@ -982,13 +978,18 @@ logical                       :: module_is_initialized = .false.
 !        ... Find the zenith angle index ( same for all levels )
 !----------------------------------------------------------------------
       do is = 1,zangdim
-         if( vsec(is) > sin ) then
+         if( vcos(is) > cin ) then
             exit
          end if
       end do
       is       = MAX( MIN( is,zangdim ) - 1,1 )
       isp1     = is + 1
-      dels(2)  = MIN( 1.,MAX( 0.,(sin - vsec(is)) * delang(is) ) )
+      dels(2)  = MIN( 1.,MAX( 0.,(cin - vcos(is)) * delang(is) ) )
+      if (dels(2) > 0.5) then
+         dels(2) = 1. - dels(2)
+         isp1 = is
+         is   = isp1 + 1
+      end if
 
 !----------------------------------------------------------------------
 !        ... Find the 500mb temp index ( same for all levels )
@@ -1001,11 +1002,23 @@ logical                       :: module_is_initialized = .false.
       it500    = MAX( MIN( it500,t500dim ) - 1,1 )
       it500p1  = it500 + 1
       dels(5)  = MIN( 1.,MAX( 0.,(t500in - t500(it500)) * delt500(it500) ) )
+      if (dels(5) > 0.5) then
+         dels(5) = 1. - dels(5)
+         it500p1  = it500
+         it500    = it500p1 + 1
+      end if
 
 !----------------------------------------------------------------------
 !        ... Find the 200mb temp index ( same for all levels )
 !----------------------------------------------------------------------
+      it200 = 1
+      it200p1 = 2
       dels(6)  = MIN( 1.,MAX( 0.,(t200in - t200(it200)) * delt200(it200) )) 
+      if (dels(6) > 0.5) then
+         dels(6) = 1. - dels(6)
+         it200    = 2
+         it200p1  = 1
+      end if
 
       izl = 1
       do k = plev,1,-1
@@ -1043,38 +1056,61 @@ logical                       :: module_is_initialized = .false.
       end do
 Vert_loop : &
       do k = 1,plev
-         iz    = altind(k)
-         izp1  = iz + 1
-         iv    = ratind(k)
-         ivp1  = iv + 1
-         ial   = albind(k)
-         ialp1 = ial + 1
 !----------------------------------------------------------------------
 !        ... Interval deltas and primary weight
 !----------------------------------------------------------------------
+         iz    = altind(k)
+         izp1  = iz + 1
          dels(1)  = MIN( 1.,MAX( 0.,(zin(k) - zz(iz)) * delz(iz) ) )
+         if (dels(1) > 0.5) then
+            dels(1) = 1. - dels(1)
+            izp1 = iz
+            iz   = izp1 + 1
+         end if
+         iv    = ratind(k)
+         ivp1  = iv + 1
          dels(3)  = MIN( 1.,MAX( 0.,(v3rat(k) - xv3(iv)) * delv(iv) ) )
+         if (dels(3) > 0.5) then
+            dels(3) = 1. - dels(3)
+            ivp1 = iv
+            iv   = ivp1 + 1
+         end if
+         ial   = albind(k)
+         ialp1 = ial + 1
          dels(4)  = MIN( 1.,MAX( 0.,(albin(k) - albev(ial)) * delalb(ial) ) )
+         if (dels(4) > 0.5) then
+            dels(4) = 1. - dels(4)
+            ialp1 = ial
+            ial   = ialp1 + 1
+         end if
          wght0    = 1. - SUM( dels )
 Rate_loop : &
          do nn = 1,jdim
-            ajout(nn,k) = EXP( wght0     * ajl(nn,iz,is,iv,ial,it500,it200) &
-                               + dels(1) * ajl(nn,izp1,is,iv,ial,it500,it200) &
-                               + dels(2) * ajl(nn,iz,isp1,iv,ial,it500,it200) &
-                               + dels(3) * ajl(nn,iz,is,ivp1,ial,it500,it200) &
-                               + dels(4) * ajl(nn,iz,is,iv,ialp1,it500,it200) &
-                               + dels(5) * ajl(nn,iz,is,iv,ial,it500p1,it200) &
-                               + dels(6) * ajl(nn,iz,is,iv,ial,it500,it200p1) )
+            ajout(nn,k) = wght0     * ajl(nn,iz,is,iv,ial,it500,it200) &
+                          + dels(1) * ajl(nn,izp1,is,iv,ial,it500,it200) &
+                          + dels(2) * ajl(nn,iz,isp1,iv,ial,it500,it200) &
+                          + dels(3) * ajl(nn,iz,is,ivp1,ial,it500,it200) &
+                          + dels(4) * ajl(nn,iz,is,iv,ialp1,it500,it200) &
+                          + dels(5) * ajl(nn,iz,is,iv,ial,it500p1,it200) &
+                          + dels(6) * ajl(nn,iz,is,iv,ial,it500,it200p1)
+            ajl2(:,:,:,:,:,:) = ajl(nn,(/iz,izp1/),(/is,isp1/),(/iv,ivp1/),(/ial,ialp1/), &
+                                    (/it500,it500p1/),(/it200,it200p1/))
+            ajout(nn,k) = MAX( MIN( ajout(nn,k), MAXVAL(ajl2) ), MINVAL(ajl2) )
+            ajout(nn,k) = EXP( ajout(nn,k) )
          end do Rate_loop
          if (use_solar_cycle .and. solar_phase /= 1.) then
             do nn = 1,jdim
-               ajout_tmp = EXP( wght0     * ajl_solarmin(nn,iz,is,iv,ial,it500,it200) &
-                                + dels(1) * ajl_solarmin(nn,izp1,is,iv,ial,it500,it200) &
-                                + dels(2) * ajl_solarmin(nn,iz,isp1,iv,ial,it500,it200) &
-                                + dels(3) * ajl_solarmin(nn,iz,is,ivp1,ial,it500,it200) &
-                                + dels(4) * ajl_solarmin(nn,iz,is,iv,ialp1,it500,it200) &
-                                + dels(5) * ajl_solarmin(nn,iz,is,iv,ial,it500p1,it200) &
-                                + dels(6) * ajl_solarmin(nn,iz,is,iv,ial,it500,it200p1) )
+               ajout_tmp = wght0     * ajl_solarmin(nn,iz,is,iv,ial,it500,it200) &
+                           + dels(1) * ajl_solarmin(nn,izp1,is,iv,ial,it500,it200) &
+                           + dels(2) * ajl_solarmin(nn,iz,isp1,iv,ial,it500,it200) &
+                           + dels(3) * ajl_solarmin(nn,iz,is,ivp1,ial,it500,it200) &
+                           + dels(4) * ajl_solarmin(nn,iz,is,iv,ialp1,it500,it200) &
+                           + dels(5) * ajl_solarmin(nn,iz,is,iv,ial,it500p1,it200) &
+                           + dels(6) * ajl_solarmin(nn,iz,is,iv,ial,it500,it200p1)
+               ajl2(:,:,:,:,:,:) = ajl_solarmin(nn,(/iz,izp1/),(/is,isp1/),(/iv,ivp1/),(/ial,ialp1/), &
+                                                (/it500,it500p1/),(/it200,it200p1/))
+               ajout_tmp = MAX( MIN( ajout_tmp, MAXVAL(ajl2) ), MINVAL(ajl2) )
+               ajout_tmp = EXP( ajout_tmp )
                ajout(nn,k) = ajout(nn,k) + (ajout_tmp-ajout(nn,k)) * (1.-solar_phase)
                ajout(nn,k) = MAX(ajout(nn,k),0.)
             end do
@@ -1161,7 +1197,7 @@ Rate_loop : &
 !---------------------------------------------------------------
 !        The local variables
 !---------------------------------------------------------------
-      integer  ::   i, k, km1      ! long, alt indicies
+      integer  ::   k, km1      ! alt indicies
       integer  ::   spc_ndx
       integer  ::   plev
       

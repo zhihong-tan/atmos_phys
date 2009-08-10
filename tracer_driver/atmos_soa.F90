@@ -70,8 +70,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_soa.F90,v 15.0 2007/08/14 03:56:57 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: atmos_soa.F90,v 17.0 2009/07/21 02:59:21 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 !-----------------------------------------------------------------------
 
 contains
@@ -96,8 +96,8 @@ integer :: n, m
 !
 !-----------------------------------------------------------------------
 !
-      integer  unit,io,ierr
-      character*3 :: SOA_tracer
+      integer  unit,io,ierr, logunit
+      character(len=3) :: SOA_tracer
 !
       data SOA_tracer/'SOA'/
 
@@ -118,8 +118,9 @@ integer :: n, m
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit=stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                          write (stdlog(), nml=secondary_organics_nml)
+                          write (logunit, nml=secondary_organics_nml)
 
 !----- set initial value of soa ------------
 
@@ -129,7 +130,7 @@ integer :: n, m
          if (nSOA > 0 .and. mpp_pe() == mpp_root_pe()) &
                  write (*,30) SOA_tracer,nsoa
          if (nSOA > 0 .and. mpp_pe() == mpp_root_pe()) &
-                 write (stdlog(),30) SOA_tracer,nsoa
+                 write (logunit,30) SOA_tracer,nsoa
       endif
 
 

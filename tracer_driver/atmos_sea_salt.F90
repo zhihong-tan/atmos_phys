@@ -65,8 +65,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 16.0 2008/07/30 22:10:26 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 17.0 2009/07/21 02:59:18 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 !-----------------------------------------------------------------------
 
 contains
@@ -111,7 +111,7 @@ integer, intent(in)                    :: is, ie, js, je
       integer, parameter :: nrh= 65   ! number of RH in look-up table
       integer, parameter :: nr = 10   ! number of integration points 
                                       ! The difference with nr=100 & nr=5 < 1e-3
-      integer :: istep, nstep
+      integer :: istep, nstep, logunit
       real, parameter :: ptmb = 0.01     ! pascal to mb
       integer, parameter :: nstep_max = 5  !Maximum number of cyles for settling
       real :: step
@@ -187,10 +187,11 @@ integer, intent(in)                    :: is, ie, js, je
         enddo
       endif
 
+      logunit=stdlog()
       if (present(kbot)) then
    
         if (scheme .eq. "Smith") then
-          if (mpp_pe() == mpp_root_pe()) write (stdlog(),*) "Smith parameterization for sea-salt production"
+          if (mpp_pe() == mpp_root_pe()) write (logunit,*) "Smith parameterization for sea-salt production"
           do j=1,jd
             do i=1,id
               kb=kbot(i,j)
@@ -235,7 +236,7 @@ integer, intent(in)                    :: is, ie, js, je
 !    Surface emission of sea salt
 !------------------------------------------------------------------
         if (scheme .eq. "Smith") then
-          if (mpp_pe() == mpp_root_pe()) write (stdlog(),*) "Smith parameterization for sea-salt production"
+          if (mpp_pe() == mpp_root_pe()) write (logunit,*) "Smith parameterization for sea-salt production"
 ! Smith et al. (1993)
           do j=1,jd
             do i=1,id
@@ -366,9 +367,9 @@ integer :: n, m
 !
 !-----------------------------------------------------------------------
 !
-      integer  log_unit,unit,ierr,io,index,ntr,nt
+      integer  log_unit,unit,ierr,io,index,ntr,nt, logunit
       character(len=16) ::  fld
-      character*1 :: numb(5)
+      character(len=1) :: numb(5)
       data numb/'1','2','3','4','5'/
 
       if (module_is_initialized) return
@@ -386,8 +387,9 @@ integer :: n, m
       endif
 !--------- write version and namelist to standard log ------------
       call write_version_number ( version, tagname )
+      logunit=stdlog()
       if ( mpp_pe() == mpp_root_pe() ) &
-      write ( stdlog(), nml=ssalt_nml )
+        write ( logunit, nml=ssalt_nml )
       if (scheme .eq. "Smith") then
         if (coef_emis1 .le. -990) then
           coef1 = 1.0
@@ -419,7 +421,7 @@ integer :: n, m
        if (n>0) then
          nseasalt=n
          if (nseasalt > 0 .and. mpp_pe() == mpp_root_pe()) write (*,30) 'Sea-salt',nseasalt
-         if (nseasalt > 0 .and. mpp_pe() == mpp_root_pe()) write (stdlog(),30) 'Sea-salt',nseasalt
+         if (nseasalt > 0 .and. mpp_pe() == mpp_root_pe()) write (logunit,30) 'Sea-salt',nseasalt
        endif
 !
 

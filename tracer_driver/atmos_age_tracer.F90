@@ -253,8 +253,7 @@ real, intent(in), dimension(:,:,:), optional        :: mask
 !-----------------------------------------------------------------------
       tracer_initialized = .false.
       if ( field_exist('INPUT/atmos_tracers.res.nc', 'age') .or. &
-           field_exist('INPUT/fv_tracers.res.nc', 'age') .or. &
-           field_exist('INPUT/fv_tracer.res.tile1.nc', 'age') .or. &
+           field_exist('INPUT/fv_tracer.res.nc', 'age') .or. &
            field_exist('INPUT/tracer_age.res', 'age') ) then
          tracer_initialized = .true.
       end if

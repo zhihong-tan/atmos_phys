@@ -83,7 +83,7 @@ subroutine atmos_ch3i_init( lonb_mod, latb_mod, axes, Time, mask )
 !-----------------------------------------------------------------------
 
    integer ::  unit, nfields, flag_file
-   integer :: ierr, io
+   integer :: ierr, io, logunit
 
    character(len=128) :: tracer_name, tracer_units, name, control
 
@@ -111,8 +111,9 @@ subroutine atmos_ch3i_init( lonb_mod, latb_mod, axes, Time, mask )
    endif
 
   
+   logunit=stdlog()
    if(mpp_pe() == mpp_root_pe()) then       
-      write(stdlog(), nml=atmos_ch3i_nml)
+      write(logunit, nml=atmos_ch3i_nml)
    endif
      
 !-----------------------------------------------------------------------

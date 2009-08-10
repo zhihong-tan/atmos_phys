@@ -8,8 +8,8 @@
 
 !     save
 
-character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 16.0 2008/07/30 22:10:46 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: perth_2008_10 $'
+character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 17.0 2009/07/21 02:59:39 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: quebec $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -119,7 +119,7 @@ logical                       :: module_is_initialized = .false.
                          zma, zi, &
                          cldfr, cwat, tfld, inv_data, sh, &
                          albedo, coszen, esfact, &
-                         prod_out, loss_out, sulfate, psc, &
+                         prod_out, loss_out, jvals_out, rate_const_out, sulfate, psc, &
                          do_interactive_h2o, solar_phase, imp_slv_nonconv, &
                          plonl )
 !-----------------------------------------------------------------------
@@ -186,6 +186,10 @@ logical                       :: module_is_initialized = .false.
       real, dimension(:,:,:), intent(out) :: &
                               prod_out, &             ! chemical production rate
                               loss_out                ! chemical loss rate
+      real, dimension(:,:,:), intent(out) :: &
+                              jvals_out               ! photolysis rates (J-values, s^-1)
+      real, dimension(:,:,:), intent(out) :: &
+                              rate_const_out          ! kinetic rxn rate constants (cm^3 molec^-1 s^-1 for 2nd order)
       real, dimension(:,:,:), intent(in) :: &
                               inv_data                ! invariant species
       real, dimension(:,:), intent(out) :: &
@@ -284,6 +288,10 @@ logical                       :: module_is_initialized = .false.
          call usrrxt( reaction_rates, tfld, invariants, h2ovmr, pmid, &
                       invariants(:,:,indexm), sulfate, psc, vmr, sh, delt, plonl )
 !-----------------------------------------------------------------------      
+!       ...  Save reaction rate constants for diagnostic output
+!-----------------------------------------------------------------------      
+         rate_const_out(:,:,:) = reaction_rates(:,:,phtcnt+1:rxntot)
+!-----------------------------------------------------------------------      
 !       ...  History output for instantaneous reaction rates
 !-----------------------------------------------------------------------      
 !        do file = 1,moz_file_cnt
@@ -351,6 +359,10 @@ logical                       :: module_is_initialized = .false.
 !              call outfld( fldname, reaction_rates(1,1,hndx), plonl, ip, lat, file )
 !           end do
 !        end do
+!-----------------------------------------------------------------------      
+!       ...  Save photolysis rates for diagnostic output
+!-----------------------------------------------------------------------      
+         jvals_out(:,:,:) = reaction_rates(:,:,:phtcnt)
 !-----------------------------------------------------------------------      
 !             ... Adjust the photodissociation rates
 !-----------------------------------------------------------------------      

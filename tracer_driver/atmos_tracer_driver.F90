@@ -262,8 +262,8 @@ integer, allocatable :: local_indices(:)
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 16.0.2.4 2008/09/05 19:16:46 jgj Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 17.0 2009/07/21 02:59:30 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 !-----------------------------------------------------------------------
 
 contains
@@ -337,6 +337,14 @@ contains
 !   <IN NAME="rm" TYPE="real" DIM="(:,:,:,:)">
 !     The tracer array in the component model for the previous timestep.
 !   </IN>
+!++amf
+!   <IN NAME="flux_sw_down_vis_dir" TYPE="real" DIM="(:,:)">
+!     Visible direct radiation at the surface in W / m2
+!   </IN>
+!   <IN NAME="flux_sw_down_vis_dif" TYPE="real" DIM="(:,:)">
+!     Visible diffuse radiation at the surface in W / m2
+!   </IN>
+!--amf
 !   <INOUT NAME="rdiag" TYPE="real" DIM="(:,:,:,:)">
 !     The array of diagnostic tracers. As these may be changed within the
 !     tracer routines for diagnostic purposes, they need to be writable.
@@ -352,7 +360,10 @@ contains
                            u_star, b_star, q_star, &
                            z_half, z_full,&
                            t_surf_rad, albedo, &
-                           Time_next, mask, &
+                           Time_next, &
+                           flux_sw_down_vis_dir, &
+                           flux_sw_down_vis_dif, &
+                           mask, &
                            kbot)
 
 !-----------------------------------------------------------------------
@@ -372,6 +383,8 @@ real, intent(in),    dimension(:,:,:)         :: z_half !height in meters at hal
 real, intent(in),    dimension(:,:,:)         :: z_full !height in meters at full levels
 real, intent(in),    dimension(:,:)           :: t_surf_rad !surface temperature
 real, intent(in),    dimension(:,:)           :: albedo
+real, intent(in), dimension(:,:)              :: flux_sw_down_vis_dir
+real, intent(in), dimension(:,:)              :: flux_sw_down_vis_dif
 type(time_type), intent(in)                   :: Time_next
 integer, intent(in), dimension(:,:), optional :: kbot
 real, intent(in), dimension(:,:,:),  optional :: mask
@@ -392,7 +405,7 @@ integer :: actual_month
 integer :: year,month,day,hour,minute,second
 integer :: jday
 real, dimension(size(rdt,1),size(rdt,2),size(rdt,3),size(rdt,4)) :: chem_tend
-real, dimension(size(r,1),size(r,2))           :: coszen, fracday
+real, dimension(size(r,1),size(r,2))           :: coszen, fracday, half_day
 real :: ang,dec,rrsun
 real, dimension(size(r,1),size(r,2),size(r,3)) :: cldf ! cloud fraction
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rh  ! relative humidity
@@ -526,7 +539,8 @@ integer :: n, nnn
 ! Calculate cosine of solar zenith angle
 !
        call diurnal_solar( lat, lon, Time, coszen, fracday, &
-                           rrsun, dt_time=real_to_time_type(dt) )
+                           rrsun, dt_time=real_to_time_type(dt), &
+                           half_day_out=half_day )
 
 !------------------------------------------------------------------------
 ! Get air mass in layer (in kg/m2), equal to dP/g
@@ -546,7 +560,7 @@ integer :: n, nnn
                                  pwt(:,:,kd), pfull(:,:,kd), &
                                  z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
                                  (land > 0.5), dsinku, &
-                                 tracer(:,:,kd,n), Time, &
+                                 tracer(:,:,kd,n), Time, lon, half_day, &
                                  drydep_data(n) )
             rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku
          end if
@@ -630,8 +644,11 @@ integer :: n, nnn
       call mpp_clock_begin (tropchem_clock)
       call tropchem_driver( lon, lat, land, pwt, &
                             tracer(:,:,:,1:ntp),chem_tend, &
-                            Time, phalf, pfull, t, is, js, dt, &
+                            Time, phalf, pfull, t, is, ie, js, je, dt, &
                             z_half, z_full, q, t_surf_rad, albedo, coszen, rrsun, &
+                            area, w10m_ocean, &
+                            flux_sw_down_vis_dir, flux_sw_down_vis_dif, & 
+                            half_day, &
                             Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), kbot)
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
@@ -1169,10 +1186,11 @@ type(time_type), intent(in)                                :: Time
  subroutine atmos_tracer_driver_end
 
 !-----------------------------------------------------------------------
-
+integer :: logunit
       if (mpp_pe() /= mpp_root_pe()) return
 
-      write (stdlog(),'(/,(a))') 'Exiting tracer_driver, have a nice day ...'
+      logunit=stdlog()
+      write (logunit,'(/,(a))') 'Exiting tracer_driver, have a nice day ...'
 
       call atmos_radon_end
       call atmos_sulfur_hex_end

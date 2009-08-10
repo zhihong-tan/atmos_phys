@@ -68,8 +68,8 @@ logical :: module_is_initialized=.FALSE.
 
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_radon.F90,v 11.0 2004/09/28 19:26:41 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: atmos_radon.F90,v 17.0 2009/07/21 02:59:15 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 !-----------------------------------------------------------------------
 
 contains
@@ -253,7 +253,7 @@ integer :: n
 !
 !-----------------------------------------------------------------------
 !
-      integer  log_unit,unit,io,index,ntr,nt
+      integer  logunit,unit,io,index,ntr,nt
       character(len=16) ::  fld
       character(len=64) ::  search_name
       character(len=4) ::  chname
@@ -264,8 +264,9 @@ integer :: n
 !---- write namelist ------------------
 
       call write_version_number (version, tagname)
+      logunit=stdlog()
       if ( mpp_pe() == mpp_root_pe() ) &
-        write ( stdlog(), nml=atmos_radon_nml )
+        write ( logunit, nml=atmos_radon_nml )
  
       if (ncopies_radon > 9) then
         call error_mesg ('atmos_radonm_mod', &
@@ -288,7 +289,7 @@ integer :: n
        if (n>0) then
          nradon(nn)=n
          if (nradon(nn) > 0 .and. mpp_pe() == mpp_root_pe()) write (*,30) trim(search_name), nradon(nn)
-         if (nradon(nn) > 0 .and. mpp_pe() == mpp_root_pe()) write (stdlog(),30) trim(search_name), nradon(nn)
+         if (nradon(nn) > 0 .and. mpp_pe() == mpp_root_pe()) write (logunit,30) trim(search_name), nradon(nn)
        endif
 
       end do

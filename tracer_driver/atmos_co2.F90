@@ -27,6 +27,9 @@ use    field_manager_mod, only : MODEL_ATMOS
 use     diag_manager_mod, only : register_diag_field, send_data
 use     time_manager_mod, only : time_type
 use        constants_mod, only : WTMCO2, WTMAIR
+use    data_override_mod, only : data_override
+use              mpp_mod, only : mpp_pe, mpp_root_pe
+
 
 implicit none
 
@@ -36,6 +39,7 @@ private
 !----- interfaces -------
 
 public  atmos_co2_sourcesink
+public  atmos_co2_rad
 public  atmos_co2_gather_data
 public  atmos_co2_flux_init
 public  atmos_co2_init
@@ -50,18 +54,21 @@ character(len=48), parameter    :: mod_name = 'atmos_co2_mod'
 integer, save   :: ind_co2_flux = 0
 integer, save   :: ind_co2  = 0
 integer, save   :: ind_sphum = 0
-integer         :: id_co2dt
+integer         :: id_co2dt, id_pwt
+real            :: restore_co2_dvmr = -1
+real            :: radiation_co2_dvmr = -1
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-real     :: restore_co2_dvmr = -1
 real     :: restore_tscale   = -1
 integer  :: restore_klimit   = -1
 logical  :: do_co2_restore   = .false.
+logical  :: co2_radiation_override = .false.
 
 namelist /atmos_co2_nml/  &
-          do_co2_restore, restore_co2_dvmr, restore_tscale, restore_klimit
+          do_co2_restore, restore_tscale, restore_klimit,  &
+          co2_radiation_override
 
 !-----------------------------------------------------------------------
 !
@@ -76,10 +83,12 @@ namelist /atmos_co2_nml/  &
 !
 !-----------------------------------------------------------------------
 
-! tracer numbers for CO2
+!PUBLIC VARIABLES
+public :: co2_radiation_override
 
 logical :: module_is_initialized = .FALSE.
 logical :: used
+
 
 !---- version number -----
 character(len=128) :: version = '$$'
@@ -104,7 +113,7 @@ contains
 ! A routine to calculate the sources and sinks of carbon dixoide.
 !</DESCRIPTION>
 !<TEMPLATE>
-!call atmos_co2_sourcesink (Time, dt, pwt, co2, sphum, co2_dt)
+!call atmos_co2_sourcesink (Time, dt,  pwt, co2, sphum, co2_dt)
 !
 !</TEMPLATE>
 !   <IN NAME="Time" TYPE="type(time_type)">
@@ -129,13 +138,13 @@ contains
 !
 
 subroutine atmos_co2_sourcesink(Time, dt, pwt, co2, sphum, co2_dt)
+
    type (time_type),      intent(in)   :: Time
    real, intent(in)                    :: dt
+   real, intent(in),  dimension(:,:,:) :: pwt          ! kg/m2
    real, intent(in),  dimension(:,:,:) :: co2          ! moist mmr
    real, intent(in),  dimension(:,:,:) :: sphum        
-   real, intent(in),  dimension(:,:,:) :: pwt          ! kg/m2
    real, intent(out), dimension(:,:,:) :: co2_dt
-   logical                             :: sent
 !
 !-----------------------------------------------------------------------
 !     local parameters
@@ -150,8 +159,9 @@ character(len=256), parameter   :: warn_header =                                
 character(len=256), parameter   :: note_header =                                &
      '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 
-integer ::  i,j,k,id,jd,kd
 
+integer   :: i,j,k,id,jd,kd, logunit
+logical   :: sent
 
 !-----------------------------------------------------------------------
 
@@ -159,36 +169,111 @@ id=size(co2,1); jd=size(co2,2); kd=min(size(co2,3),restore_klimit)
 
 co2_dt(:,:,:)=0.0
 
+logunit=stdlog()
 if (ind_co2 > 0 .and. do_co2_restore) then
 
-  if (restore_tscale .gt. 0 .and. restore_co2_dvmr .ge. 0.0) then
+! input is in dvmr (mol/mol)
+  call data_override('ATM', 'co2_dvmr_restore', restore_co2_dvmr, Time, override=used)
+  if (.not. used) then
+    call error_mesg (trim(error_header), ' data override needed for co2_dvmr_restore ', FATAL)
+  endif
+  if (mpp_pe() == mpp_root_pe() ) &
+      write (logunit,*)' atmos_co2_sourcesink: mean restore co2_dvmr   = ', restore_co2_dvmr
 
+
+  if (restore_tscale .gt. 0 .and. restore_co2_dvmr .ge. 0.0) then
 ! co2mmr = (wco2/wair) * co2vmr;  wet_mmr = dry_mmr * (1-Q)
     do k=1,kd
       do j=1,jd
         do i=1,id
 ! convert restore_co2_dvmr to wet mmr and get tendency
           co2_dt(i,j,k) = (restore_co2_dvmr * (WTMCO2/WTMAIR) * (1.0 - &
-                          sphum(i,j,k)) - co2(i,j,k))/restore_tscale
+                           sphum(i,j,k)) - co2(i,j,k))/restore_tscale
         enddo
       enddo
     enddo
 
-! restoring diagnostic in moles co2/m2/sec
-    if (id_co2dt > 0) sent = send_data (id_co2dt, co2_dt / (1.0 - sphum) * &
+! restoring diagnostic in moles co2/m2/sec 
+! pwt is moist air, so no need to divide by 1-sphum here
+    if (id_co2dt > 0) sent = send_data (id_co2dt, co2_dt  *            &
                                          pwt / (WTMCO2*1.e-3), Time)
-
   endif
 
 else
   if (mpp_pe() == mpp_root_pe() ) &
-      write (stdlog(),*) trim(note_header), ' CO2 restoring not active ', ind_co2,do_co2_restore
+      write (logunit,*)' atmos_co2_sourcesink: CO2 restoring not active: ',do_co2_restore
 endif
 
-return
+!! add pwt as a diagnostic
+if (id_pwt > 0) sent = send_data (id_pwt, pwt, Time)
+
 
 end subroutine atmos_co2_sourcesink
 !</SUBROUTINE >
+
+
+!#######################################################################
+
+!<SUBROUTINE NAME ="atmos_co2_rad">
+
+!<OVERVIEW>
+! Subroutine to get global avg co2 to be used in radiation.
+! input co2 field is from data override 
+!</OVERVIEW>
+
+ subroutine atmos_co2_rad(Time, radiation_co2_dvmr)
+
+!
+!-----------------------------------------------------------------------
+!     arguments
+!-----------------------------------------------------------------------
+!
+   type (time_type),      intent(in)    :: Time
+   real,                  intent(inout) :: radiation_co2_dvmr
+!
+!-----------------------------------------------------------------------
+!     local variables
+!-----------------------------------------------------------------------
+!
+
+!
+!-----------------------------------------------------------------------
+!     local parameters
+!-----------------------------------------------------------------------
+!
+
+character(len=64), parameter    :: sub_name = 'atmos_co2_rad'
+character(len=256), parameter   :: error_header =                               &
+     '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+character(len=256), parameter   :: warn_header =                                &
+     '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+character(len=256), parameter   :: note_header =                                &
+     '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+integer :: logunit
+!-----------------------------------------------------------------------
+
+logunit=stdlog()
+
+if (ind_co2 > 0 .and. co2_radiation_override) then
+
+! input is in dvmr (mol/mol)
+  call data_override('ATM', 'co2_dvmr_rad', radiation_co2_dvmr, Time, override=used)
+  if (.not. used) then
+    call error_mesg (trim(error_header), ' data override needed for co2_dvmr_rad ', FATAL)
+  endif
+  if (mpp_pe() == mpp_root_pe() ) &
+      write (logunit,*)' atmos_co2_rad       : mean radiation co2_dvmr = ', radiation_co2_dvmr
+
+else
+  if (mpp_pe() == mpp_root_pe() ) &
+      write (logunit,*)' atmos_co2_rad: CO2 radiation override not active: ',co2_radiation_override
+endif
+
+
+!-----------------------------------------------------------------------
+
+end subroutine atmos_co2_rad
+!</SUBROUTINE>
 
 !#######################################################################
 
@@ -284,6 +369,7 @@ character(len=256), parameter   :: warn_header =                                
 character(len=256), parameter   :: note_header =                                &
      '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 
+integer :: logunit
 
 if ( .not. module_is_initialized) then
 
@@ -294,8 +380,10 @@ if ( .not. module_is_initialized) then
   if (n > 0) then
     ind_co2 = n
     if (ind_co2 > 0) then
-      write (stdout(),*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
-      write (stdlog(),*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
+      logunit=stdout()
+      write (logunit,*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
+      logunit=stdlog()
+      write (logunit,*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
     endif
   endif
   module_is_initialized = .TRUE.
@@ -318,6 +406,7 @@ endif
 end subroutine atmos_co2_flux_init
 !</SUBROUTINE>
 
+
 !#######################################################################
 
 !<SUBROUTINE NAME ="atmos_co2_init">
@@ -334,8 +423,8 @@ end subroutine atmos_co2_flux_init
 !-----------------------------------------------------------------------
 !
 
-type (time_type),      intent(in)  :: Time
-integer, dimension(3), intent(in)  :: axes
+type(time_type),  intent(in)                        :: Time
+integer, dimension(3), intent(in)                   :: axes
 
 !
 !-----------------------------------------------------------------------
@@ -345,7 +434,7 @@ integer, dimension(3), intent(in)  :: axes
 !         io         error status returned from io operation
 !-----------------------------------------------------------------------
 !
-integer :: ierr, unit, io
+integer :: ierr, unit, io, logunit
 integer :: n
 real    :: missing_value = -1.e10
 character(len=64) :: desc
@@ -383,16 +472,19 @@ character(len=256), parameter   :: note_header =                                
 !---------------------------------------------------------------------
 !    write namelist to logfile.
 !---------------------------------------------------------------------
+      logunit=stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
-                          write (stdlog(), nml=atmos_co2_nml)
+                          write (logunit, nml=atmos_co2_nml)
 
 !----- set initial value of carbon ------------
 
 n = get_tracer_index(MODEL_ATMOS,'co2')
 if (n > 0) then
   ind_co2 = n
-    write (stdout(),*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
-    write (stdlog(),*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
+    logunit=stdout()
+    write (logunit,*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
+    logunit=stdlog()
+    write (logunit,*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
 
  ! initialize diagnostics
 
@@ -401,6 +493,9 @@ if (n > 0) then
    id_co2dt    = register_diag_field ('atmos_co2_restoring', 'co2_dt', axes, Time, &
                    'CO2'//trim(desc), 'moles co2/m2/s',missing_value=missing_value)
 
+   desc = ' pressure weighting array = dP/grav'
+   id_pwt    = register_diag_field ('atmos_co2', 'pwt', axes, Time, &
+                   trim(desc), 'kg/m2',missing_value=missing_value)
 
 !
 !	get the index for sphum
@@ -411,7 +506,9 @@ if (n > 0) then
     call error_mesg (trim(error_header), ' Could not find index for sphum', FATAL)
   endif
 
+
 endif
+
 
 call write_version_number (version, tagname)
 module_is_initialized = .TRUE.
@@ -444,5 +541,6 @@ character(len=256), parameter   :: note_header =                                
 
 end subroutine atmos_co2_end
 !</SUBROUTINE>
+
 
 end module atmos_co2_mod

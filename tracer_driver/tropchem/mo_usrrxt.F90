@@ -23,8 +23,8 @@ implicit none
       real, parameter :: d622 = rdgas/rvgas
       real, parameter :: d378 = 1. - d622     
 
-character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 16.0.2.1 2008/09/09 13:36:15 rsh Exp $'
-character(len=128), parameter :: tagname     = '$Name: perth_2008_10 $'
+character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 17.0 2009/07/21 02:59:50 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: quebec $'
 logical                       :: module_is_initialized = .false.
 
       contains

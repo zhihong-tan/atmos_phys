@@ -70,8 +70,8 @@ logical :: module_is_initialized=.FALSE.
 
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_convection_tracer.F90,v 11.0 2004/09/28 19:26:35 fms Exp $'
-character(len=128) :: tagname = '$Name: perth_2008_10 $'
+character(len=128) :: version = '$Id: atmos_convection_tracer.F90,v 17.0 2009/07/21 02:59:09 fms Exp $'
+character(len=128) :: tagname = '$Name: quebec $'
 !-----------------------------------------------------------------------
 
 contains
@@ -219,7 +219,7 @@ integer :: nn
       character(len=16) ::  fld
 
       real :: xba = 1.0
-      integer :: nlev, k
+      integer :: nlev, k, logunit
       character(len=64) :: filename
 
       nlev = size(r,3)
@@ -230,8 +230,9 @@ integer :: nn
 !---- write namelist ------------------
 
       call write_version_number (version, tagname)
+      logunit=stdlog()
       if ( mpp_pe() == mpp_root_pe() ) &
-        write ( stdlog(), nml=atmos_convection_tracer_nml )
+        write ( logunit, nml=atmos_convection_tracer_nml )
 
 !----- set initial value of convection tracer ------------
 
@@ -256,7 +257,7 @@ integer :: nn
        if (n>0) then
          nconvect(nn)=n
          if (nconvect(nn) > 0 .and. mpp_pe() == mpp_root_pe()) write (*,30) trim(search_name(nn))  ,nconvect(nn)
-         if (nconvect(nn) > 0 .and. mpp_pe() == mpp_root_pe()) write (stdlog(),30) trim(search_name(nn))  ,nconvect(nn)
+         if (nconvect(nn) > 0 .and. mpp_pe() == mpp_root_pe()) write (logunit,30) trim(search_name(nn))  ,nconvect(nn)
        endif
 
       end do

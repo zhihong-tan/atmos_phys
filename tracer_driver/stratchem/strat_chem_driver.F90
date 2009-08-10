@@ -21,8 +21,8 @@ use STRAT_CHEM_MOD, only : chemistry, zen2, dcly_dt, sediment
 private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 16.0 2008/07/30 22:10:42 fms Exp $'
-character(len=128)  :: tagname =  '$Name: perth_2008_10 $'
+character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 17.0 2009/07/21 02:59:36 fms Exp $'
+character(len=128)  :: tagname =  '$Name: quebec $'
 
 !-------  interfaces --------
 
@@ -94,7 +94,7 @@ integer :: naerosol = 0
 function strat_chem_driver_init()
  logical :: strat_chem_driver_init
 
-      integer                 :: unit, ierr, io
+      integer                 :: unit, ierr, io, logunit
 !---------------------------------------------------------------------
 !    read strat_chem namelist.
 !---------------------------------------------------------------------
@@ -114,7 +114,8 @@ function strat_chem_driver_init()
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
-      if (mpp_pe() == mpp_root_pe()) write (stdlog(), nml=strat_chem_nml)
+      logunit=stdlog()
+      if (mpp_pe() == mpp_root_pe()) write (logunit, nml=strat_chem_nml)
  
       if (.not. do_coupled_stratozone) return
 !---------------------------------------------------------------------
