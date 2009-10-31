@@ -13,7 +13,7 @@ MODULE CONV_PLUMES_k_MOD
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
   character(len=128) :: version = '$Id: conv_plumes_k.F90,v 17.0 2009/07/21 02:58:01 fms Exp $'
-  character(len=128) :: tagname = '$Name: quebec $'
+  character(len=128) :: tagname = '$Name: quebec_200910 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

@@ -19,7 +19,7 @@ private
 !   ---- version number ----
 
  character(len=128) :: version = '$Id: bm_massflux.F90,v 17.0 2009/07/21 02:53:39 fms Exp $'
- character(len=128) :: tagname = '$Name: quebec $'
+ character(len=128) :: tagname = '$Name: quebec_200910 $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----

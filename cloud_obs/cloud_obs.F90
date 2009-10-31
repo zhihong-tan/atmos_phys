@@ -28,7 +28,7 @@ public  cloud_obs, cloud_obs_init, cloud_obs_end
 !   ---------- private data ------------
 
    character(len=128) :: version = '$Id: cloud_obs.F90,v 17.0 2009/07/21 02:53:50 fms Exp $'
-   character(len=128) :: tagname = '$Name: quebec $'
+   character(len=128) :: tagname = '$Name: quebec_200910 $'
 
       real, allocatable, dimension(:,:,:) :: clda,cldb
       real, allocatable, dimension(:)     :: londat,latdat

@@ -58,7 +58,7 @@ end interface
 !--------------------- version number ---------------------------------
 
 character(len=128) :: version = '$Id: monin_obukhov.F90,v 17.0 2009/07/21 02:55:38 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec $'
+character(len=128) :: tagname = '$Name: quebec_200910 $'
 
 !=======================================================================
 

@@ -35,7 +35,7 @@ public  moistproc_init, moistproc_end, moistproc_mca, moistproc_ras, &
 !--------------------- version number ----------------------------------
 character(len=128) :: &
 version = '$Id: moistproc_kernels.F90,v 17.0 2009/07/21 02:55:36 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec $'
+character(len=128) :: tagname = '$Name: quebec_200910 $'
 
 !-----------------------------------------------------------------------
 real, public, allocatable, dimension(:,:)     :: rain_uw, snow_uw

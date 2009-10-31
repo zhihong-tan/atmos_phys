@@ -268,7 +268,7 @@ private
 !------------ VERSION NUMBER ----------------
 
  character(len=128) :: version = '$Id: co2int.F90,v 13.0 2006/03/28 21:09:25 fms Exp $'
- character(len=128) :: tagname = '$Name: quebec $'
+ character(len=128) :: tagname = '$Name: quebec_200910 $'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 

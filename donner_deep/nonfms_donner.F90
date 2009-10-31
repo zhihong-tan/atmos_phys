@@ -29,7 +29,7 @@ private
 
 
 character(len=128)  :: version =  '$Id: nonfms_donner.F90,v 17.0 2009/07/21 02:54:49 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec $'
+character(len=128)  :: tagname =  '$Name: quebec_200910 $'
 
 
 !--------------------------------------------------------------------

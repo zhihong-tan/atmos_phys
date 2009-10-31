@@ -46,7 +46,7 @@ namelist /microphys_cloud_nml/  diam_liq
 !-----------------------------------------------------------------------
 
 character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 17.0 2009/07/21 02:56:59 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec $'
+character(len=128)  :: tagname =  '$Name: quebec_200910 $'
 
 logical ::   module_is_initialized = .false.
 contains 

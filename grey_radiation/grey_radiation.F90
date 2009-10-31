@@ -35,7 +35,7 @@ character(len=128), parameter :: version = &
 '$Id: grey_radiation.F90,v 17.0 2009/07/21 02:55:20 fms Exp $'
 
 character(len=128), parameter :: tagname = &
-'$Name: quebec $'
+'$Name: quebec_200910 $'
 
 !==================================================================================
 

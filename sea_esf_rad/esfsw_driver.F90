@@ -64,7 +64,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 17.0 2009/07/21 02:56:23 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec $'
+character(len=128)  :: tagname =  '$Name: quebec_200910 $'
 
 
 !---------------------------------------------------------------------
