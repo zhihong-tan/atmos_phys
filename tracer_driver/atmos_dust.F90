@@ -77,7 +77,7 @@ namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis
 
 !---- version number -----
 character(len=128) :: version = '$Id: atmos_dust.F90,v 17.0 2009/07/21 02:59:12 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec $'
+character(len=128) :: tagname = '$Name: quebec_200910 $'
 !-----------------------------------------------------------------------
 
 contains

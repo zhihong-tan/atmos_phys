@@ -13,7 +13,7 @@ implicit none
       logical :: do_ox
 
 character(len=128), parameter :: version     = '$Id: mo_chem_utls.F90,v 16.0 2008/07/30 22:10:50 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: quebec $'
+character(len=128), parameter :: tagname     = '$Name: quebec_200910 $'
 logical                       :: module_is_initialized = .false.
 
       contains

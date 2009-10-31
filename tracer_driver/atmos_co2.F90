@@ -54,7 +54,7 @@ character(len=48), parameter    :: mod_name = 'atmos_co2_mod'
 integer, save   :: ind_co2_flux = 0
 integer, save   :: ind_co2  = 0
 integer, save   :: ind_sphum = 0
-integer         :: id_co2dt, id_pwt
+integer         :: id_co2restore, id_pwt
 real            :: restore_co2_dvmr = -1
 real            :: radiation_co2_dvmr = -1
 
@@ -113,7 +113,7 @@ contains
 ! A routine to calculate the sources and sinks of carbon dixoide.
 !</DESCRIPTION>
 !<TEMPLATE>
-!call atmos_co2_sourcesink (Time, dt,  pwt, co2, sphum, co2_dt)
+!call atmos_co2_sourcesink (Time, dt,  pwt, co2, sphum, co2_restore)
 !
 !</TEMPLATE>
 !   <IN NAME="Time" TYPE="type(time_type)">
@@ -132,19 +132,19 @@ contains
 !     The array of the specific humidity mixing ratio (kg/kg)
 !   </IN>
 
-!   <OUT NAME="co2_dt" TYPE="real" DIM="(:,:,:)">
-!     The array of the tendency of the carbon dioxide mixing ratio.
+!   <OUT NAME="co2_restore" TYPE="real" DIM="(:,:,:)">
+!     The array of the restoring tendency of the carbon dioxide mixing ratio.
 !   </OUT>
 !
 
-subroutine atmos_co2_sourcesink(Time, dt, pwt, co2, sphum, co2_dt)
+subroutine atmos_co2_sourcesink(Time, dt, pwt, co2, sphum, co2_restore)
 
    type (time_type),      intent(in)   :: Time
    real, intent(in)                    :: dt
    real, intent(in),  dimension(:,:,:) :: pwt          ! kg/m2
    real, intent(in),  dimension(:,:,:) :: co2          ! moist mmr
    real, intent(in),  dimension(:,:,:) :: sphum        
-   real, intent(out), dimension(:,:,:) :: co2_dt
+   real, intent(out), dimension(:,:,:) :: co2_restore
 !
 !-----------------------------------------------------------------------
 !     local parameters
@@ -167,7 +167,7 @@ logical   :: sent
 
 id=size(co2,1); jd=size(co2,2); kd=min(size(co2,3),restore_klimit)
 
-co2_dt(:,:,:)=0.0
+co2_restore(:,:,:)=0.0
 
 logunit=stdlog()
 if (ind_co2 > 0 .and. do_co2_restore) then
@@ -177,17 +177,17 @@ if (ind_co2 > 0 .and. do_co2_restore) then
   if (.not. used) then
     call error_mesg (trim(error_header), ' data override needed for co2_dvmr_restore ', FATAL)
   endif
-  if (mpp_pe() == mpp_root_pe() ) &
-      write (logunit,*)' atmos_co2_sourcesink: mean restore co2_dvmr   = ', restore_co2_dvmr
+!  if (mpp_pe() == mpp_root_pe() ) &
+!      write (logunit,*)' atmos_co2_sourcesink: mean restore co2_dvmr   = ', restore_co2_dvmr
 
 
   if (restore_tscale .gt. 0 .and. restore_co2_dvmr .ge. 0.0) then
-! co2mmr = (wco2/wair) * co2vmr;  wet_mmr = dry_mmr * (1-Q)
+! co2mmr = (wco2/wair) * co2vmr;  wet_mmr is approximated as dry_mmr * (1-Q)
     do k=1,kd
       do j=1,jd
         do i=1,id
 ! convert restore_co2_dvmr to wet mmr and get tendency
-          co2_dt(i,j,k) = (restore_co2_dvmr * (WTMCO2/WTMAIR) * (1.0 - &
+          co2_restore(i,j,k) = (restore_co2_dvmr * (WTMCO2/WTMAIR) * (1.0 - &
                            sphum(i,j,k)) - co2(i,j,k))/restore_tscale
         enddo
       enddo
@@ -195,13 +195,13 @@ if (ind_co2 > 0 .and. do_co2_restore) then
 
 ! restoring diagnostic in moles co2/m2/sec 
 ! pwt is moist air, so no need to divide by 1-sphum here
-    if (id_co2dt > 0) sent = send_data (id_co2dt, co2_dt  *            &
+    if (id_co2restore > 0) sent = send_data (id_co2restore, co2_restore  *  &
                                          pwt / (WTMCO2*1.e-3), Time)
   endif
 
-else
-  if (mpp_pe() == mpp_root_pe() ) &
-      write (logunit,*)' atmos_co2_sourcesink: CO2 restoring not active: ',do_co2_restore
+!else
+!  if (mpp_pe() == mpp_root_pe() ) &
+!      write (logunit,*)' atmos_co2_sourcesink: CO2 restoring not active: ',do_co2_restore
 endif
 
 !! add pwt as a diagnostic
@@ -261,12 +261,12 @@ if (ind_co2 > 0 .and. co2_radiation_override) then
   if (.not. used) then
     call error_mesg (trim(error_header), ' data override needed for co2_dvmr_rad ', FATAL)
   endif
-  if (mpp_pe() == mpp_root_pe() ) &
-      write (logunit,*)' atmos_co2_rad       : mean radiation co2_dvmr = ', radiation_co2_dvmr
+!  if (mpp_pe() == mpp_root_pe() ) &
+!      write (logunit,*)' atmos_co2_rad       : mean radiation co2_dvmr = ', radiation_co2_dvmr
 
-else
-  if (mpp_pe() == mpp_root_pe() ) &
-      write (logunit,*)' atmos_co2_rad: CO2 radiation override not active: ',co2_radiation_override
+!else
+!  if (mpp_pe() == mpp_root_pe() ) &
+!      write (logunit,*)' atmos_co2_rad: CO2 radiation override not active: ',co2_radiation_override
 endif
 
 
@@ -490,7 +490,7 @@ if (n > 0) then
 
    desc = ' restoring tendency'
 
-   id_co2dt    = register_diag_field ('atmos_co2_restoring', 'co2_dt', axes, Time, &
+   id_co2restore  = register_diag_field ('atmos_co2_restoring', 'co2_restore', axes, Time, &
                    'CO2'//trim(desc), 'moles co2/m2/s',missing_value=missing_value)
 
    desc = ' pressure weighting array = dP/grav'
@@ -506,9 +506,18 @@ if (n > 0) then
     call error_mesg (trim(error_header), ' Could not find index for sphum', FATAL)
   endif
 
-
 endif
 
+logunit=stdlog()
+if (.not.(ind_co2 > 0 .and. do_co2_restore)) then
+   if (mpp_pe() == mpp_root_pe() ) &
+     write (logunit,*)' CO2 restoring not active: ',do_co2_restore
+endif
+
+if (.not.(ind_co2 > 0 .and. co2_radiation_override)) then
+   if (mpp_pe() == mpp_root_pe() ) &
+     write (logunit,*)' CO2 radiation override not active: ',co2_radiation_override
+endif
 
 call write_version_number (version, tagname)
 module_is_initialized = .TRUE.

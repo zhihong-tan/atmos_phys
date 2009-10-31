@@ -289,7 +289,7 @@ integer :: pts_processed = 0
 
 !---- version number ---------------------------------------------------
 character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 17.0 2009/07/21 03:00:01 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: quebec $'
+character(len=128), parameter :: tagname     = '$Name: quebec_200910 $'
 !-----------------------------------------------------------------------
 
 contains

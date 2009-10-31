@@ -86,7 +86,7 @@
       real    :: o3_column_top, jno_scale_factor
 
 character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 17.0 2009/07/21 02:59:46 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: quebec $'
+character(len=128), parameter :: tagname     = '$Name: quebec_200910 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS

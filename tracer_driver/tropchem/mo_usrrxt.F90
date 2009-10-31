@@ -24,7 +24,7 @@ implicit none
       real, parameter :: d378 = 1. - d622     
 
 character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 17.0 2009/07/21 02:59:50 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: quebec $'
+character(len=128), parameter :: tagname     = '$Name: quebec_200910 $'
 logical                       :: module_is_initialized = .false.
 
       contains

@@ -2,7 +2,7 @@
 
 implicit none
 character(len=128), parameter :: version     = '$Id: mo_setsox.F90,v 16.0 2008/07/30 22:11:03 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: quebec $'
+character(len=128), parameter :: tagname     = '$Name: quebec_200910 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
