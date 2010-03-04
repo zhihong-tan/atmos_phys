@@ -38,15 +38,16 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.F90,v 17.0 2009/07/21 02:53:42 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: cg_drag.F90,v 18.0 2010/03/02 23:28:40 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
-public    cg_drag_init, cg_drag_calc, cg_drag_end, cg_drag_restart
+public    cg_drag_init, cg_drag_calc, cg_drag_end, cg_drag_restart, &
+          cg_drag_time_vary, cg_drag_endts
 
 
 private   read_restart_file, read_nc_restart_file, &
@@ -199,14 +200,10 @@ integer    :: klevel_of_source
 !---------------------------------------------------------------------
 !   variables which control module calculations:
 !   
-!   pts_processed
-!                counter of current number of columns which have been
-!                processed on this step
-!   total_pts    number of columns which must be processed on each step
 !   cgdrag_alarm time remaining until next cg_drag calculation  [ s ]
 !
 !---------------------------------------------------------------------
-integer          :: pts_processed, total_pts, cgdrag_alarm
+integer          :: cgdrag_alarm
 
 !---------------------------------------------------------------------
 !   variables used with column diagnostics:
@@ -292,7 +289,8 @@ type(time_type),         intent(in)      :: Time
       real                    :: pif = 3.14159265358979/180.
 !      real                    :: pif = PI/180.
 
-      real, allocatable       :: lat(:,:)
+!      real, allocatable       :: lat(:,:)
+      real                    :: lat(size(lonb,1) - 1, size(latb,2) - 1)
 !-------------------------------------------------------------------
 !   local variables: 
 !   
@@ -351,7 +349,7 @@ type(time_type),         intent(in)      :: Time
 
       allocate(  source_level(idf,jdf)  )
       allocate(  source_amp(idf,jdf)  )
-      allocate(  lat(idf,jdf)  )
+!      allocate(  lat(idf,jdf)  )
 
 !--------------------------------------------------------------------
 !    define the k level which will serve as source level for the grav-
@@ -377,7 +375,7 @@ type(time_type),         intent(in)      :: Time
       end do
       source_level = MIN (source_level, kmax-1)
 
-      deallocate( lat )
+!      deallocate( lat )
 
 !---------------------------------------------------------------------
 !    determine if column diagnostics are desired from this module. if
@@ -469,12 +467,6 @@ type(time_type),         intent(in)      :: Time
          register_diag_field (mod_name, 'kedy_cgwd', axes(1:3), Time, &
                'effective eddy viscosity from cg_drag', 'm^2/s',   &
                missing_value=missing_value)
-!---------------------------------------------------------------------
-!    initialize counters needed when cg_drag is not calculated on every
-!    time step. 
-!---------------------------------------------------------------------
-      total_pts = idf*jdf
-      pts_processed = 0
 
 !--------------------------------------------------------------------
 !    allocate and define module variables to hold values across 
@@ -522,6 +514,37 @@ type(time_type),         intent(in)      :: Time
 
 end subroutine cg_drag_init
 
+
+!####################################################################
+ 
+subroutine cg_drag_time_vary (delt)
+
+real           ,        intent(in)      :: delt
+
+!---------------------------------------------------------------------
+!    decrement the time remaining until the next cg_drag calculation.
+!---------------------------------------------------------------------
+      cgdrag_alarm = cgdrag_alarm - delt
+
+!---------------------------------------------------------------------
+ 
+end subroutine cg_drag_time_vary
+
+
+!####################################################################
+ 
+subroutine cg_drag_endts
+ 
+!--------------------------------------------------------------------
+!    if this was a calculation step, reset cgdrag_alarm to indicate 
+!    the time remaining before the next calculation of gravity wave 
+!    forcing.
+!--------------------------------------------------------------------
+      if (cgdrag_alarm <= 0 ) then
+        cgdrag_alarm = cgdrag_alarm + cg_drag_freq
+      endif
+
+end subroutine cg_drag_endts
 
 
 !####################################################################
@@ -622,14 +645,6 @@ real, dimension(:,:,:), intent(out)     :: gwfcng_x, gwfcng_y
       kmax = size(uuu,3)
       ie = is + imax - 1
       je = js + jmax - 1
-
-!---------------------------------------------------------------------
-!    if this is the first entry into this module on this timestep,
-!    decrement the time remaining until the next cg_drag calculation.
-!---------------------------------------------------------------------
-      if (pts_processed == 0) then
-        cgdrag_alarm = cgdrag_alarm - delt
-      endif
 
 !---------------------------------------------------------------------
 !    if the convective gravity wave forcing should be calculated on 
@@ -821,21 +836,6 @@ real, dimension(:,:,:), intent(out)     :: gwfcng_x, gwfcng_y
         gwfcng_x(:,:,:) = gwd_u(is:ie,js:je,:)
         gwfcng_y(:,:,:) = gwd_v(is:ie,js:je,:)
      endif  ! (cgdrag_alarm <= 0)
-
-!--------------------------------------------------------------------
-!    increment the number of points processed on this time step, and 
-!    if all points have now been processed and this was a calculation
-!    step, reset cgdrag_alarm to indicate the time remaining before the
-!    next calculation of gravity wave forcing.
-!--------------------------------------------------------------------
-      pts_processed = pts_processed + size(gwfcng_x,1)*size(gwfcng_x,2)
-      if (pts_processed == total_pts) then
-        pts_processed = 0
-        if (cgdrag_alarm <= 0 ) then
-           cgdrag_alarm = cgdrag_alarm + cg_drag_freq
-        endif
-      endif
-
 
 !--------------------------------------------------------------------
 

@@ -38,8 +38,8 @@ end interface column_diag
 
 !--------------------- version number ----------------------------------
 character(len=128) :: &
-version = '$Id: moist_processes_utils.F90,v 17.0 2009/07/21 02:55:35 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec_200910 $'
+version = '$Id: moist_processes_utils.F90,v 18.0 2010/03/02 23:31:11 fms Exp $'
+character(len=128) :: tagname = '$Name: riga $'
 
 !-----------------------------------------------------------------------
 
@@ -419,6 +419,7 @@ subroutine column_diag_1 (id_diag, is, js, Time, val1, c_val1, temp_in)
   real, dimension(size(val1,1), size(val1,2)) :: temp
   integer :: k
   logical :: used
+  integer :: ie, je
 
   if (present(temp_in)) then
     temp = temp_in
@@ -426,8 +427,11 @@ subroutine column_diag_1 (id_diag, is, js, Time, val1, c_val1, temp_in)
     temp = 0.
   endif
 
+  ie = is + size(val1,1) -1
+  je = js + size(val1,2) -1
+
   do k = 1,size(val1,3)
-    temp(:,:) = temp(:,:) + c_val1 * val1(:,:,k) * pmass(:,:,k)
+    temp(:,:) = temp(:,:) + c_val1 * val1(:,:,k) * pmass(is:ie,js:je,k)
   enddo
   used = send_data (id_diag, temp, Time, is, js)
 
@@ -447,6 +451,7 @@ subroutine column_diag_2 (id_diag, is, js, Time, val1, c_val1, val2, c_val2, tem
   real, dimension(size(val1,1), size(val1,2)) :: temp
   integer :: k
   logical :: used
+  integer :: ie, je
 
   if (present(temp_in)) then
     temp = temp_in
@@ -454,9 +459,11 @@ subroutine column_diag_2 (id_diag, is, js, Time, val1, c_val1, val2, c_val2, tem
     temp = 0.
   endif
 
+  ie = is + size(val1,1) -1
+  je = js + size(val1,2) -1
   do k = 1,size(val1,3)
     temp(:,:) = temp(:,:) + (c_val1 * val1(:,:,k) + &
-                             c_val2 * val2(:,:,k) ) * pmass(:,:,k)
+                             c_val2 * val2(:,:,k) ) * pmass(is:ie,js:je,k)
   enddo
   used = send_data (id_diag, temp, Time, is, js)
 
@@ -476,6 +483,7 @@ subroutine column_diag_3 (id_diag, is, js, Time, val1, c_val1, val2, c_val2, val
   real, dimension(size(val1,1), size(val1,2)) :: temp
   integer :: k
   logical :: used
+  integer :: ie, je
 
   if (present(temp_in)) then
     temp = temp_in
@@ -483,10 +491,12 @@ subroutine column_diag_3 (id_diag, is, js, Time, val1, c_val1, val2, c_val2, val
     temp = 0.
   endif
 
+  ie = is + size(val1,1) -1
+  je = js + size(val1,2) -1
   do k = 1,size(val1,3)
     temp(:,:) = temp(:,:) + (c_val1 * val1(:,:,k) + &
                              c_val2 * val2(:,:,k) + &
-                             c_val3 * val3(:,:,k) ) * pmass(:,:,k)
+                             c_val3 * val3(:,:,k) ) * pmass(is:ie,js:je,k)
   enddo
   used = send_data (id_diag, temp, Time, is, js)
 
@@ -496,7 +506,7 @@ end subroutine column_diag_3
 
   
 !#######################################################################
-subroutine rh_calc(pfull,T,qv,RH,do_simple,MASK)
+subroutine rh_calc(pfull,T,qv,RH,do_simple,MASK, do_cmip)
   
 !-----------------------------------------------------------------------
 !       Calculate RELATIVE humidity. 
@@ -518,6 +528,7 @@ subroutine rh_calc(pfull,T,qv,RH,do_simple,MASK)
         REAL, INTENT (IN),    DIMENSION(:,:,:) :: pfull,T,qv
         REAL, INTENT (OUT),   DIMENSION(:,:,:) :: RH
         REAL, INTENT (IN), OPTIONAL, DIMENSION(:,:,:) :: MASK
+        logical, intent(in), optional :: do_cmip
         logical, intent(in) :: do_simple
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2),SIZE(T,3)) :: esat
       
@@ -531,8 +542,14 @@ subroutine rh_calc(pfull,T,qv,RH,do_simple,MASK)
           RH(:,:,:) = MAX(RH(:,:,:),esat(:,:,:))  !limit where pfull ~ esat
           RH(:,:,:)=qv(:,:,:)/(d622*esat(:,:,:)/RH(:,:,:))
         else
-          call compute_qs (T, pfull, rh, q=qv)
-          RH(:,:,:)=qv(:,:,:)/RH(:,:,:)
+          if (present(do_cmip)) then
+            call compute_qs (T, pfull, rh, q=qv,  &
+                                          es_over_liq_and_ice = .true.)
+             RH(:,:,:)=qv(:,:,:)/RH(:,:,:)
+          else
+            call compute_qs (T, pfull, rh, q=qv)
+            RH(:,:,:)=qv(:,:,:)/RH(:,:,:)
+          endif
         endif
 
         !IF MASK is present set RH to zero

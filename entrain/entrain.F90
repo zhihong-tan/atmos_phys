@@ -246,8 +246,8 @@ real, parameter :: d608 = (rvgas-rdgas)/rdgas
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: entrain.F90,v 17.0 2009/07/21 02:55:04 fms Exp $'
-character(len=128) :: Tagname = '$Name: quebec_200910 $'
+character(len=128) :: Version = '$Id: entrain.F90,v 18.0 2010/03/02 23:30:32 fms Exp $'
+character(len=128) :: Tagname = '$Name: riga $'
 logical            :: module_is_initialized = .false.      
 !-----------------------------------------------------------------------
 !
@@ -367,7 +367,8 @@ real                           :: dellat, dellon
 
        if ( mpp_pe() == mpp_root_pe() ) then
             call write_version_number(Version, Tagname)
-            Write (stdlog(),nml=entrain_nml)
+            unit = stdlog()
+            Write (unit,nml=entrain_nml)
        endif
 
        

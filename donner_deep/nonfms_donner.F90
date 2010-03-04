@@ -28,8 +28,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: nonfms_donner.F90,v 17.0 2009/07/21 02:54:49 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: nonfms_donner.F90,v 18.0 2010/03/02 23:30:20 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 
 !--------------------------------------------------------------------
@@ -527,6 +527,8 @@ integer, parameter :: NLIM = NSIZE - 1
 real, parameter :: TFREEZE = 273.16
 logical, parameter :: use_exact_qs_input = .true.
 logical, parameter :: do_simple = .false.
+logical, parameter :: construct_table_wrt_liq = .false.
+logical, parameter :: construct_table_wrt_liq_and_ice = .false.
 
       real  :: teps, tmin, dtinv
       character(len=128) :: err_msg
@@ -535,6 +537,8 @@ logical, parameter :: do_simple = .false.
       call sat_vapor_pres_init_k (NSIZE, REAL(TCMIN), REAL(TCMAX), &
                              TFREEZE, HLV, RVGAS, ES0, err_msg,  &
                              use_exact_qs_input, do_simple,  &
+                             construct_table_wrt_liq, &
+                             construct_table_wrt_liq_and_ice, &
                              teps, tmin, dtinv)
  
 
@@ -674,6 +678,7 @@ type(donner_nml_type), intent(inout) :: Nml
       Don_save%cememf            = 0.
       Don_save%tracer_tends      = 0.
       Don_save%mass_flux         = 0.
+      Don_save%mflux_up          = 0.
       Don_save%cell_up_mass_flux = 0.
       Don_save%det_mass_flux     = 0.
       Don_save%dql_strat         = 0.

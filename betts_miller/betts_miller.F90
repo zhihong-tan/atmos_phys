@@ -19,13 +19,13 @@ private
 !---------------------------------------------------------------------
 !  ---- public interfaces ----
 
-   public  betts_miller, betts_miller_init
+   public  betts_miller, betts_miller_init, betts_miller_end
 
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
- character(len=128) :: version = '$Id: betts_miller.F90,v 17.0 2009/07/21 02:53:38 fms Exp $'
- character(len=128) :: tagname = '$Name: quebec_200910 $'
+ character(len=128) :: version = '$Id: betts_miller.F90,v 18.0 2010/03/02 23:28:34 fms Exp $'
+ character(len=128) :: tagname = '$Name: riga $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----
@@ -33,7 +33,7 @@ private
     real, parameter :: d622 = rdgas/rvgas
     real, parameter :: d378 = 1.-d622
 
-    logical :: do_init=.true.
+    logical :: module_is_initialized=.false.
 
 !-----------------------------------------------------------------------
 !   --- namelist ----
@@ -164,7 +164,7 @@ integer  i, j, k, ix, jx, kx, klzb, ktop, klzb2
 !     computation of precipitation by betts-miller scheme
 !-----------------------------------------------------------------------
 
-      if (do_init) call error_mesg ('betts_miller',  &
+      if (.not. module_is_initialized) call error_mesg ('betts_miller',  &
                          'betts_miller_init has not been called.', FATAL)
 
       ix=size(tin,1)
@@ -875,11 +875,16 @@ integer  i, j, k, ix, jx, kx, klzb, ktop, klzb2
            write (logunit,nml=betts_miller_nml)
       endif
 
-      do_init=.false.
+      module_is_initialized =.true.
 
    end subroutine betts_miller_init
 
 !#######################################################################
+   subroutine betts_miller_end ()
+
+      module_is_initialized =.false.
+
+   end subroutine betts_miller_end
 
 end module betts_miller_mod
 

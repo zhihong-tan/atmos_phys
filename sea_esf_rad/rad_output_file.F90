@@ -24,7 +24,7 @@ use fms_mod,           only: open_namelist_file, fms_init, &
 use time_manager_mod,  only: time_manager_init, time_type
 use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
                              send_data
-use constants_mod,     only: constants_init, GRAV
+use constants_mod,     only: constants_init, GRAV, WTMAIR, WTMOZONE
 
 !  radiation package shared modules:
 
@@ -58,8 +58,8 @@ private
 !----------- version number for this module ------------------------
 
 character(len=128)  :: version = &
-'$Id: rad_output_file.F90,v 17.0 2009/07/21 02:57:23 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+'$Id: rad_output_file.F90,v 18.0 2010/03/02 23:32:29 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 
 !---------------------------------------------------------------------
@@ -125,6 +125,8 @@ integer, dimension(2)              :: id_absopdep_vlcno_column, &
 integer, dimension(4)              :: id_lw_bdyflx_clr, id_lw_bdyflx, &
                                       id_sw_bdyflx_clr, id_sw_bdyflx
 integer                            :: id_swheat_vlcno
+integer                            :: id_sulfate_col_cmip,  &
+                                      id_sulfate_cmip
 integer, dimension(:), allocatable :: id_aerosol_fam, &
                                       id_aerosol_fam_column    
 integer, dimension(:,:), allocatable :: id_absopdep_fam,  &
@@ -133,8 +135,10 @@ integer, dimension(:,:), allocatable :: id_absopdep_fam,  &
                                         id_extopdep_fam_column
 integer                            :: id_radswp, id_radp, id_temp, &
                                       id_rh2o, id_qo3, id_qo3_col,  &
+                                      id_qo3v, &
                                       id_cmxolw, id_crndlw, id_flxnet, &
                                       id_fsw, id_ufsw, id_psj, &
+                                      id_dfsw, &
                                       id_tmpsfc, id_cvisrfgd_dir,  &
                                       id_cirrfgd_dir, &
                                       id_cvisrfgd_dif, id_cirrfgd_dif, &
@@ -143,6 +147,7 @@ integer                            :: id_radswp, id_radp, id_temp, &
                                       id_cldarea, &
                                       id_radpcf, id_flxnetcf, &
                                       id_fswcf, id_ufswcf, id_pressm,  &
+                                      id_dfswcf, &
                                       id_phalfm, id_pfluxm, &
                                       id_dphalf, id_dpflux, &
                                       id_ptop
@@ -152,12 +157,13 @@ integer                            :: id_radswp, id_radp, id_temp, &
 !---------------------------------------------------------------------
 !    miscellaneous variables
 !---------------------------------------------------------------------
+integer :: nso4 
 integer :: naerosol=0                      ! number of active aerosols
 logical :: module_is_initialized= .false.  ! module initialized ?
-integer, parameter              :: N_DIAG_BANDS = 5
+integer, parameter              :: N_DIAG_BANDS = 6
 character(len=16), dimension(N_DIAG_BANDS) ::   &
                      band_suffix = (/ '_vis', '_nir', '_con',  &
-                                      '_bd5', '_bd6' /)
+                                      '_bd5', '_bd6', '_870' /)
 
 
 !---------------------------------------------------------------------
@@ -646,12 +652,12 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
             if (Rad_control%volcanic_sw_aerosols) then
               allocate ( extopdep_vlcno_col(   &
                            size(Aerosol_diags%extopdep_vlcno  , 1), &
-                           size(Aerosol_diags%extopdep_vlcno  , 2),2))
+                           size(Aerosol_diags%extopdep_vlcno  , 2),3))
               extopdep_vlcno_col(:,:,:) =    &
                         SUM (Aerosol_diags%extopdep_vlcno  (:,:,:,:), 3)
               allocate ( absopdep_vlcno_col(    &
                             size(Aerosol_diags%absopdep_vlcno  , 1), &
-                            size(Aerosol_diags%absopdep_vlcno  , 2),2))
+                            size(Aerosol_diags%absopdep_vlcno  , 2),3))
               absopdep_vlcno_col(:,:,:) =    &
                         SUM (Aerosol_diags%absopdep_vlcno  (:,:,:,:), 3)
             endif
@@ -739,6 +745,10 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                                        extopdep_vlcno_col(:,:,2)
              absopdep_fam_col(:,:,n,2) = absopdep_fam_col(:,:,n,2) +  &
                                        absopdep_vlcno_col(:,:,2)
+             extopdep_fam_col(:,:,n,6) = extopdep_fam_col(:,:,n,6) +  &
+                                       extopdep_vlcno_col(:,:,3)
+             absopdep_fam_col(:,:,n,6) = absopdep_fam_col(:,:,n,6) +  &
+                                       absopdep_vlcno_col(:,:,3)
            endif
             if (Rad_control%volcanic_lw_aerosols) then
              extopdep_fam_col(:,:,n,4) = extopdep_fam_col(:,:,n,4) +  &
@@ -843,6 +853,10 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
           used = send_data (id_qo3, qo3, Time_diag, is, js, 1)
         endif
 
+        if (id_qo3v  > 0 ) then
+          used = send_data (id_qo3v, 1.0e09*qo3*WTMAIR/WTMOZONE, Time_diag, is, js, 1)
+        endif
+
         if (id_qo3_col  > 0 ) then
           used = send_data (id_qo3_col, qo3_col, Time_diag, is, js)
         endif
@@ -859,6 +873,16 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
             used = send_data (id_ptop, ptop, Time_diag, is, js)
           endif
         if (Rad_control%do_aerosol) then
+            if (id_sulfate_col_cmip  > 0 ) then
+              used = send_data (id_sulfate_col_cmip,      &
+                            (96./132.)*aerosol_col(:,:,nso4), Time_diag, is, js)
+            endif
+            if (id_sulfate_cmip  > 0 ) then
+              used = send_data (id_sulfate_cmip,      &
+                       (96./132.)*Aerosol%aerosol(:,:,:,nso4)/  &
+                                   deltaz(:,:,:), Time_diag, is, js,1)
+            endif
+!           if (Sw_control%do_swaerosol) then
           do n = 1,naerosol
             if (id_aerosol(n)  > 0 ) then
               used = send_data (id_aerosol(n),  &
@@ -1053,6 +1077,10 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
           used = send_data (id_ufsw  , ufsw  , Time_diag, is, js, 1)
         endif
 
+        if (id_dfsw   > 0 ) then
+          used = send_data (id_dfsw  , ufsw-fsw  , Time_diag, is, js, 1)
+        endif
+
         if (id_psj    > 0 ) then
           used = send_data (id_psj   , psj   , Time_diag, is, js)
         endif
@@ -1122,6 +1150,10 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
 
           if (id_ufswcf  > 0 ) then
             used = send_data (id_ufswcf , ufswcf , Time_diag, is, js, 1)
+          endif
+
+          if (id_dfswcf  > 0 ) then
+            used = send_data (id_dfswcf , ufswcf-fswcf , Time_diag, is, js, 1)
           endif
         endif
       endif
@@ -1346,6 +1378,11 @@ character(len=*), dimension(:), intent(in) :: names, family_names
                           'ozone mixing ratio', &
                           'kg/kg', missing_value=missing_value)
 
+      id_qo3v    = &
+         register_diag_field (mod_name, 'qo3v', axes(1:3), Time, &
+                          'ozone mole fraction', &
+                          '1.e-9', missing_value=missing_value)
+
       id_qo3_col = &
          register_diag_field (mod_name, 'qo3_col', axes(1:2), Time, &
                           'ozone column', &
@@ -1359,8 +1396,19 @@ character(len=*), dimension(:), intent(in) :: names, family_names
         allocate (id_aerosol(naerosol))
         allocate (id_aerosol_column(naerosol)) 
         allocate (aerosol_column_names(naerosol))
+        id_sulfate_col_cmip = &
+             register_diag_field (mod_name, 'sulfate_col_cmip',  &
+                            axes(1:2), Time, 'sulfate_col_cmip',&
+                                  'kg/m2', missing_value=missing_value)
+        id_sulfate_cmip = &
+             register_diag_field (mod_name, 'sulfate_cmip',  &
+                            axes(1:3), Time, 'sulfate_cmip',&
+                                  'kg/m3', missing_value=missing_value)
         do n = 1,naerosol                           
           aerosol_column_names(n) = TRIM(names(n) ) // "_col"
+          if (TRIM(names(n)) == 'so4') then
+            nso4 = n
+          endif
         end do
         do n = 1,naerosol
           id_aerosol(n)    = &
@@ -1655,6 +1703,11 @@ character(len=*), dimension(:), intent(in) :: names, family_names
                           'upward shortwave radiative flux ', &
                           'W/m**2', missing_value=missing_value)
 
+      id_dfsw   = &
+         register_diag_field (mod_name, 'dfsw', bxes(1:3), Time, &
+                          'downward shortwave radiative flux ', &
+                          'W/m**2', missing_value=missing_value)
+
       id_psj    = &
          register_diag_field (mod_name, 'psj', axes(1:2), Time, &
                           'surface pressure', &
@@ -1763,6 +1816,11 @@ character(len=*), dimension(:), intent(in) :: names, family_names
         id_ufswcf   = &
            register_diag_field (mod_name, 'ufswcf', bxes(1:3), Time, &
                             'upward shortwave flux w/o clouds', &
+                            'W/m**2', missing_value=missing_value)
+
+        id_dfswcf   = &
+           register_diag_field (mod_name, 'dfswcf', bxes(1:3), Time, &
+                            'downward shortwave flux w/o clouds', &
                             'W/m**2', missing_value=missing_value)
 
        id_lw_bdyflx_clr(1) = &

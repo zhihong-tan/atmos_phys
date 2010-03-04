@@ -1,8 +1,9 @@
 
 MODULE DEEP_CONV_MOD
 
-  use      Constants_Mod, ONLY: tfreeze,HLv,HLf,HLs,CP_AIR,GRAV,Kappa,rdgas,rvgas
-  use  conv_utilities_mod,only :   uw_params_init
+  use      fms_mod,         only : write_version_number
+  use      Constants_Mod,   ONLY : tfreeze,HLv,HLf,HLs,CP_AIR,GRAV,Kappa,rdgas,rvgas
+  use  conv_utilities_mod,  only : uw_params_init
   use  conv_utilities_k_mod,only : sd_init_k, sd_copy_k, sd_end_k,  &
                                    ac_init_k, ac_clear_k, ac_end_k, &
                                    pack_sd_k, adi_cloud_k, extend_sd_k,&
@@ -10,12 +11,12 @@ MODULE DEEP_CONV_MOD
                                    findt_end_k, &
                                    adicloud, sounding, uw_params
 
-  use  conv_plumes_k_mod,only    : cp_init_k, cp_end_k, cp_clear_k, &
+  use  conv_plumes_k_mod,   only : cp_init_k, cp_end_k, cp_clear_k, &
                                    ct_init_k, ct_end_k, ct_clear_k, &
                                    cumulus_tend_k, cumulus_plume_k, &
                                    cplume, ctend, cpnlist
 
-  use  conv_closures_mod,only    : cclosure_bretherton,   &
+  use  conv_closures_mod,   only : cclosure_bretherton,   &
                                    cclosure_relaxcbmf, &
                                    cclosure_relaxwfn,  &
                                    cclosure_implicit, cclosure
@@ -24,10 +25,14 @@ MODULE DEEP_CONV_MOD
 !---------------------------------------------------------------------
   implicit none
   private
+!----------- ****** VERSION NUMBER ******* ---------------------------
+
+  character(len=128) :: version = '$Id: deep_conv.F90,v 18.0 2010/03/02 23:33:10 fms Exp $'
+  character(len=128) :: tagname = '$Name: riga $'
 
 !-------  interfaces --------
 
-  public  :: dpconv0, dpconv1, dpconv2, dpconv3
+  public  :: dpconv0, dpconv1, dpconv2, dpconv3, DEEP_CONV_INIT, DEEP_CONV_END
 
   logical         :: module_is_initialized = .false.
 
@@ -608,6 +613,32 @@ contains
     
   end subroutine dpconv3
 
+
+!#####################################################################
+!#####################################################################
+
+subroutine DEEP_CONV_INIT
+
+!---------------------------------------------------------------------
+!    write version number and namelist to logfile.
+!---------------------------------------------------------------------
+      call write_version_number (version, tagname)
+!---------------------------------------------------------------------
+!    mark the module as initialized.
+!---------------------------------------------------------------------
+      module_is_initialized = .true.
+    
+
+
+end subroutine DEEP_CONV_INIT
+!#####################################################################
+!#####################################################################
+subroutine DEEP_CONV_END
+
+      module_is_initialized = .false.
+
+
+end subroutine DEEP_CONV_END
 
 !#####################################################################
 !#####################################################################

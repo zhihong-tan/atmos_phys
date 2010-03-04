@@ -1,5 +1,6 @@
-!VERSION NUMBER:
-!  $Id: donner_deep_k.F90,v 17.0 2009/07/21 02:54:31 fms Exp $
+!#VERSION NUMBER:
+!  $Name: riga $
+!  $Id: donner_deep_k.F90,v 18.0 2010/03/02 23:30:05 fms Exp $
 
 !module donner_deep_inter_mod
 
@@ -22,6 +23,7 @@ subroutine don_d_donner_deep_k   &
           meso_liq_size, meso_ice_amt, meso_ice_size,    &
           meso_droplet_number, nsum, & 
           precip, delta_temp, delta_vapor, detf, uceml_inter, mtot,   &
+          mfluxup, &
           donner_humidity_area, donner_humidity_factor, total_precip,  &
           temperature_forcing, moisture_forcing, parcel_rise, &
           delta_ql, delta_qi, delta_qa, qtrtnd, calc_conv_on_this_step, &
@@ -82,7 +84,7 @@ real,    dimension(isize,jsize),                                     &
                          intent(out)    :: precip      
 real, dimension(isize,jsize,nlev_lsm),                                 &
                          intent(out)    :: delta_temp, delta_vapor,&
-                                           detf,  mtot, &
+                                           detf,  mtot, mfluxup, &
                                            donner_humidity_area,&
                                            donner_humidity_factor, &
                                            temperature_forcing,   &
@@ -95,7 +97,7 @@ real, dimension(isize,jsize),                                         &
                          intent(out)    :: total_precip, parcel_rise
 real,    dimension(isize,jsize,nlev_lsm,ntr),                        &
                          intent(out)    :: qtrtnd 
-logical,                 intent(out)    :: calc_conv_on_this_step
+logical,                 intent(in)     :: calc_conv_on_this_step
 character(len=*),        intent(out)    :: ermesg
 integer,                 intent(out)    :: error
 type(donner_initialized_type),                            &
@@ -194,6 +196,9 @@ type(ctend),             intent(inout)  :: ct
 !                    [ (kg / (m**2 sec) ) ]
 !     mtot           mass flux at model full levels, convective plus 
 !                    mesoscale, due to donner_deep_mod 
+!                    [ (kg / (m**2 sec) ) ]
+!     mfluxup        upward mass flux at model full levels, convective 
+!                    plus mesoscale, due to donner_deep_mod 
 !                    [ (kg / (m**2 sec) ) ]
 !     donner_humidity_area
 !                    fraction of grid box in which humidity is affected
@@ -331,35 +336,6 @@ type(ctend),             intent(inout)  :: ct
         return
       endif
 
-!--------------------------------------------------------------------
-!    decrement the time remaining before the convection calculations 
-!    on the first entry to this routine on a given timestep. save the
-!    current model physics timestep.
-!--------------------------------------------------------------------
-      if (Initialized%pts_processed_conv == 0) then
-        Initialized%conv_alarm  = Initialized%conv_alarm - int(dt)
-        Initialized%physics_dt = int(dt)
-      endif
-
-!--------------------------------------------------------------------
-!    set a flag to indicate whether the convection calculation is to be 
-!    done on this timestep. if this is the first call to donner_deep 
-!    (i.e., coldstart), convection cannot be calculated because the 
-!    lag profiles needed to calculate cape are unavailable, and so
-!    a time tendency of cape can not be obtained. otherwise, it is a
-!    calculation step or not dependent on whether the convection "alarm"
-!    has gone off. 
-!---------------------------------------------------------------------
-      if (Initialized%coldstart) then
-        calc_conv_on_this_step = .false.
-      else
-        if (Initialized%conv_alarm <= 0) then
-          calc_conv_on_this_step = .true.
-        else
-          calc_conv_on_this_step = .false.
-        endif
-      endif
-
 !---------------------------------------------------------------------
 !    perform the following calculations only if this is a step upon
 !    which donner convection is to be calculated.
@@ -378,7 +354,7 @@ type(ctend),             intent(inout)  :: ct
               meso_cld_frac, meso_liq_amt, meso_liq_size, meso_ice_amt, &
               meso_ice_size, meso_droplet_number, nsum, Don_conv,   &
               Don_cape, Don_rad, Don_cem, Param, Don_budgets, Nml, &
-              Initialized, ermesg, error) 
+              Initialized, sd, ac, cp, ct, ermesg, error) 
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -583,6 +559,14 @@ type(ctend),             intent(inout)  :: ct
                                         Don_conv%umeml(i,j,k) + &
                                         Don_conv%dmeml(i,j,k)
               endif
+              if ((Don_conv%uceml(i,j,k) <= 1.0e-10) .and.   &
+                  (Don_conv%umeml(i,j,k) <= 1.0e-10) ) then
+                Don_save%mflux_up(i+is-1,j+js-1,k) = 0.
+              else
+                Don_save%mflux_up(i+is-1,j+js-1,k) =   &
+                                        Don_conv%uceml(i,j,k) + &
+                                        Don_conv%umeml(i,j,k)
+              endif
               if (Don_conv%detmfl(i,j,k) <= 1.0e-10) then
                 Don_save%det_mass_flux(i+is-1,j+js-1,k) = 0.
               else
@@ -672,6 +656,7 @@ type(ctend),             intent(inout)  :: ct
 !       donner convection.
 !-------------------------------------------------------------------
       mtot(:,:,:)        = Don_save%mass_flux(is:ie, js:je,:)
+      mfluxup(:,:,:)     = Don_save%mflux_up(is:ie, js:je,:)
       detf(:,:,:)        = Don_save%det_mass_flux(is:ie,js:je,:)
       uceml_inter(:,:,:) = Don_save%cell_up_mass_flux(is:ie,js:je,:)
 
@@ -774,26 +759,6 @@ type(ctend),             intent(inout)  :: ct
         endif
       endif !(calc_conv_on_this_step) 
 
-!---------------------------------------------------------------------
-!    determine if all points on this processor's subdomain have been 
-!    processed on this timestep. if so, set the point counter to zero, 
-!    and if this was the first time through the parameterization, set
-!    the flag so indicating (coldstart) to be .false.. if all points 
-!    have been processed and if this was a calculation step, set the 
-!    alarm to define the next time at which donner convection is to be 
-!    executed.
-!----------------------------------------------------------------------
-      Initialized%pts_processed_conv = Initialized%pts_processed_conv + &
-                                       isize*jsize
-      if (Initialized%pts_processed_conv >= Initialized%total_pts) then
-        Initialized%pts_processed_conv = 0 
-        if (Initialized%coldstart) Initialized%coldstart = .false.
-        if (calc_conv_on_this_step) then
-          Initialized%conv_alarm = Initialized%conv_alarm +    &
-                                   Nml%donner_deep_freq 
-        endif 
-      endif
-
 !--------------------------------------------------------------------
 
 
@@ -811,13 +776,16 @@ subroutine don_d_init_loc_vars_k      &
           meso_cld_frac, meso_liq_amt, meso_liq_size, meso_ice_amt,   &
           meso_ice_size, meso_droplet_number, nsum, Don_conv,   &
           Don_cape, Don_rad, Don_cem, Param, Don_budgets, Nml, &
-          Initialized, ermesg, error)
+          Initialized, sd, ac, cp, ct, ermesg, error)
 
 use donner_types_mod, only : donner_rad_type, donner_conv_type, &
                              donner_budgets_type, &
                              donner_initialized_type, &
                              donner_cape_type, donner_nml_type, &
                              donner_param_type, donner_cem_type
+use  conv_utilities_k_mod,only : adicloud, sounding, ac_init_k, &
+                                 sd_init_k
+use  conv_plumes_k_mod,only    : cplume, ctend, cp_init_k, ct_init_k
 implicit none
 
 !--------------------------------------------------------------------
@@ -853,6 +821,10 @@ type(donner_param_type),         intent(in)    :: Param
 type(donner_budgets_type),       intent(inout) :: Don_budgets
 type(donner_nml_type),           intent(in)    :: Nml
 type(donner_initialized_type),   intent(in)    :: Initialized
+type(sounding),               intent(inout) :: sd
+type(adicloud),               intent(inout) :: ac
+type(cplume),                 intent(inout) :: cp
+type(ctend),                  intent(inout) :: ct
 character(len=*),                intent(out)   :: ermesg
 integer,                         intent(out)   :: error
 
@@ -922,6 +894,11 @@ integer,                         intent(out)   :: error
 !    sages returned through this subroutine.
 !---------------------------------------------------------------------
       ermesg= ' ' ; error = 0
+
+      call sd_init_k (nlev_lsm, ntr, sd)
+      call ac_init_k (nlev_lsm, ac)
+      call cp_init_k (nlev_lsm, ntr, cp)
+      call ct_init_k (nlev_lsm, ntr, ct)
 
 !---------------------------------------------------------------------
 !    allocate the components of the donner_conv_type variable Don_conv.
@@ -1206,7 +1183,7 @@ implicit none
 integer,                            intent(in)  :: isize, jsize, nlev_lsm
 real,                               intent(in)  :: dt
 logical,                            intent(in)  :: calc_conv_on_this_step
-type(donner_column_diag_type),      intent(in)  :: Col_Diag
+type(donner_column_diag_type),      intent(in)  :: Col_diag
 real, dimension(isize,jsize,nlev_lsm),                            &
                                     intent(in)  :: temp, mixing_ratio, &
                                                    pfull, omega
@@ -1346,7 +1323,7 @@ use donner_types_mod, only : donner_initialized_type, donner_rad_type, &
                              donner_cem_type, &
                              donner_column_diag_type, donner_cape_type
 
-use  conv_utilities_k_mod,only : adicloud, sounding, uw_params !miz
+use  conv_utilities_k_mod,only : adicloud, sounding, uw_params
 use  conv_plumes_k_mod,only    : cplume, ctend
 implicit none
 
@@ -3214,7 +3191,8 @@ integer,                      intent(out)    ::  error
             Don_budgets%vert_motion(i,j)  = vrt_mot
           
           endif
-          if (Nml%do_budget_analysis) then
+          if (Initialized%do_conservation_checks .or.   &
+                                          Nml%do_budget_analysis) then
             Don_budgets%water_budget(i,j,:,:) = wat_budg
             Don_budgets%enthalpy_budget(i,j,:,:) = ent_budg
             Don_budgets%precip_budget(i,j,:,:,:) = prc_budg
@@ -7994,7 +7972,8 @@ logical,                      intent( in) :: melting_in_cloud
    endif
       endif
 
-      if (Nml%do_budget_analysis) then
+      if (Initialized%do_conservation_checks .or.   &
+                                         Nml%do_budget_analysis) then
 ! units of water budget: g(h20) / kg(air) / day
         do k=1,nlev_lsm
           water_budget(k,1) = dise(nlev_lsm-k+1)
@@ -8123,7 +8102,7 @@ logical,                      intent( in) :: melting_in_cloud
          precip_budget(k,4,2) = dism_ice(nlev_lsm-k+1)
          precip_budget(k,5,2) = dism_ice_melted(nlev_lsm-k+1)
 
-         precip_budget(k,1,3) = disl_liq(nlev_lsm-k+1+1)
+         precip_budget(k,1,3) = disl_liq(nlev_lsm-k+1)
          precip_budget(k,2,3) = 0.0  
          precip_budget(k,3,3) = 0.0
          precip_budget(k,4,3) = disl_ice(nlev_lsm-k+1)
@@ -9291,7 +9270,7 @@ end subroutine don_d_output_cupar_diags_k
 
 subroutine don_d_dealloc_loc_vars_k   &
          (Don_conv, Don_cape, Don_rad, Don_cem, Don_budgets, Nml,   &
-          Initialized, ermesg, error)
+          Initialized, sd, ac, cp, ct, ermesg, error)
 
 !----------------------------------------------------------------------
 !    subroutine don_d_dealloc_loc_vars_k deallocates the
@@ -9305,6 +9284,9 @@ use donner_types_mod, only : donner_conv_type, donner_cape_type, &
                              donner_rad_type, donner_budgets_type, &
                              donner_cem_type, &
                              donner_nml_type, donner_initialized_type
+use  conv_utilities_k_mod,only : adicloud, sounding, ac_end_k, &
+                                 sd_end_k
+use  conv_plumes_k_mod,only    : cplume, ctend, cp_end_k, ct_end_k
 
 implicit none
 
@@ -9316,6 +9298,10 @@ type(donner_cem_type),          intent(inout) :: Don_cem
 type(donner_budgets_type),      intent(inout) :: Don_budgets
 type(donner_nml_type),          intent(inout) :: Nml         
 type(donner_initialized_type),  intent(inout) :: Initialized 
+type(sounding),                 intent(inout) ::  sd
+type(adicloud),                 intent(inout) ::  ac
+type(cplume),                   intent(inout) ::  cp
+type(ctend),                    intent(inout) ::  ct
 character(len=*),               intent(out)   :: ermesg
 integer,                        intent(out)   :: error
 !----------------------------------------------------------------------
@@ -9349,6 +9335,13 @@ integer,                        intent(out)   :: error
 !---------------------------------------------------------------------
       ermesg = ' ' ; error = 0
 
+!---------------------------------------------------------------------
+!    deallocate the components of the donner lite derived types.  
+!------------------------------------------------------------------
+      call sd_end_k(sd)
+      call ac_end_k(ac)
+      call cp_end_k(cp)
+      call ct_end_k(ct)
 !----------------------------------------------------------------------
 !    deallocate the components of the donner_conv_type variable.
 !----------------------------------------------------------------------

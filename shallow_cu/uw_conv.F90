@@ -1,4 +1,4 @@
-
+#include <fms_platform.h>
 MODULE UW_CONV_MOD
 
   use           mpp_mod, only : mpp_pe, mpp_root_pe, stdlog
@@ -31,7 +31,7 @@ MODULE UW_CONV_MOD
   use  conv_plumes_k_mod,only    : cp_init_k, cp_end_k, cp_clear_k, &
                                    ct_init_k, ct_end_k, ct_clear_k, &
                                    cumulus_tend_k, cumulus_plume_k, &
-                                   cplume, ctend, cpnlist
+                                   cplume, ctend, cpnlist, cwetdep_type
 
   use  conv_closures_mod,only    : cclosure_bretherton,   &
                                    cclosure_relaxcbmf, &
@@ -46,8 +46,8 @@ MODULE UW_CONV_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: uw_conv.F90,v 17.0 2009/07/21 02:58:10 fms Exp $'
-  character(len=128) :: tagname = '$Name: quebec_200910 $'
+  character(len=128) :: version = '$Id: uw_conv.F90,v 18.0 2010/03/02 23:33:12 fms Exp $'
+  character(len=128) :: tagname = '$Name: riga $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -216,14 +216,10 @@ MODULE UW_CONV_MOD
        id_tdt_pevap_uwd, id_qdt_pevap_uwd
 !========Option for deep convection=======================================
 
-  type(sounding),   save  :: sd, sd1
-  type(adicloud),   save  :: ac, ac1
-  type(cclosure),   save  :: cc, cc1
-  type(cplume)  ,   save  :: cp, cp1
-  type(ctend)   ,   save  :: ct, ct1
-  type(cpnlist),    save  :: cpn
+  type(cwetdep_type), dimension(:), allocatable :: wetdep
   type(uw_params),  save  :: Uw_p
-  type(deepc),      save  :: dpc
+  character(len=32), dimension(:), allocatable   :: tracername 
+  character(len=32), dimension(:), allocatable   :: tracer_units 
 
 contains
 
@@ -254,14 +250,6 @@ contains
  
     ntracers = count(tracers_in_uw)
 
-    call sd_init_k(kd,ntracers,sd);
-    call sd_init_k(kd,ntracers,sd1);
-    call ac_init_k(kd,ac);
-    call ac_init_k(kd,ac1);
-    call cp_init_k(kd,ntracers,cp)
-    call cp_init_k(kd,ntracers,cp1)
-    call ct_init_k(kd,ntracers,ct)
-    call ct_init_k(kd,ntracers,ct1)
     call uw_params_init   (Uw_p)
 
 !   Initialize lookup tables needed for findt and exn
@@ -269,7 +257,6 @@ contains
     call sat_vapor_pres_init     
     call exn_init_k (Uw_p)
     call findt_init_k (Uw_p)
-    call aer_ccn_act_init
 
     if( FILE_EXIST( 'input.nml' ) ) then
        unit = OPEN_NAMELIST_FILE ()
@@ -312,62 +299,7 @@ contains
     WRITE( stdlog(), nml = uw_plume_nml )
     WRITE( stdlog(), nml = deep_conv_nml )
 
-    !pack namelist parameters into plume and closure structure
-    cpn % do_qctflx_zero = do_qctflx_zero
-    cpn % do_detran_zero = do_detran_zero
-    cpn % rle       = rle
-    cpn % rpen      = rpen
-    cpn % rmaxfrac  = rmaxfrac
-    cpn % wmin      = wmin
-    cpn % rbuoy     = rbuoy
-    cpn % rdrag     = rdrag  
-    cpn % frac_drs  = frac_drs
-    cpn % bigc      = bigc    
-    cpn % auto_th0  = auto_th0
-    cpn % deltaqc0  = deltaqc0
-    cpn % do_pdfpcp = do_pdfpcp
-    cpn % do_pmadjt = do_pmadjt
-    cpn % do_emmax  = do_emmax
-    cpn % do_pnqv   = do_pnqv
-    cpn % emfrac_max= emfrac_max
-    cpn % auto_rate = auto_rate
-    cpn % tcrit     = tcrit  
-    cpn % cldhgt_max= cldhgt_max
-    cpn % do_ice    = do_ice
-    cpn % do_ppen   = do_ppen
-    cpn % do_pevap  = do_pevap
-    cpn % hcevap    = hcevap
-    cpn % cfrac     = cfrac
-    cpn % mixing_assumption= mixing_assumption
-    cpn % mp_choice = mp_choice
-    cpn % Nl_land   = Nl_land
-    cpn % Nl_ocean  = Nl_ocean
-    cpn % qi_thresh = qi_thresh
-    cpn % r_thresh  = r_thresh
-    cpn % peff      = peff
-    cpn % t00       = t00
-    cpn % rh0       = rh0
-    cpn % do_forcedlifting= do_forcedlifting
-    cpn % atopevap  = atopevap
-    cpn % wtwmin_ratio = wmin_ratio*wmin_ratio
-    cpn % do_auto_aero = do_auto_aero
-    cpn % rad_crit = rad_crit
-    cpn % wrel_min = wrel_min
-    cpn % do_weffect = do_weffect
-    cpn % weffect    = weffect
-
-!========Option for deep convection=======================================
-    dpc % rkm_dp  = rkm_dp
-    dpc % rat_dp  = rat_dp
-    dpc % cape_th = cape_th
-    dpc % omeg_th = omeg_th
-    dpc % tau_dp  = tau_dp
-    dpc % ideep_closure = ideep_closure
-    dpc % do_generation = do_generation
-    dpc % mixing_assumption = mixing_assumption_d
-    dpc % do_ppen   =  do_ppen_d
-    dpc % do_pevap  =  do_pevap_d
-!========Option for deep convection=======================================
+    if ( use_online_aerosol ) call aer_ccn_act_init
 
     nqv = get_tracer_index ( MODEL_ATMOS, 'sphum' )
     nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
@@ -376,40 +308,34 @@ contains
     nqn = get_tracer_index ( MODEL_ATMOS, 'liq_drp' )
     if (nqn /= NO_TRACER) do_qn = .true.
     if (ntracers > 0) then
-      allocate ( cpn%tracername   (ntracers) )
-      allocate ( cpn%tracer_units (ntracers) )
-      allocate ( cpn%wetdep       (ntracers) )
+      allocate ( tracername   (ntracers) )
+      allocate ( tracer_units (ntracers) )
+      allocate ( wetdep       (ntracers) )
       nn = 1
       do n=1,size(tracers_in_uw(:))
          if (tracers_in_uw(n)) then
              call get_tracer_names (MODEL_ATMOS, n,  &
-                                    name = cpn%tracername(nn), &
-                                    units = cpn%tracer_units(nn))
+                                    name = tracername(nn), &
+                                    units = tracer_units(nn))
              flag = query_method( 'wet_deposition', MODEL_ATMOS, n, &
                                   text_in_scheme, control )
              call get_wetdep_param( text_in_scheme, control, &
-                                    cpn%wetdep(nn)%scheme, &
-                                    cpn%wetdep(nn)%Henry_constant, &
-                                    cpn%wetdep(nn)%Henry_variable, &
+                                    wetdep(nn)%scheme, &
+                                    wetdep(nn)%Henry_constant, &
+                                    wetdep(nn)%Henry_variable, &
                                     frac_junk, &
-                                    cpn%wetdep(nn)%alpha_r, &
-                                    cpn%wetdep(nn)%alpha_s, &
-                                    cpn%wetdep(nn)%Lwetdep, &
-                                    cpn%wetdep(nn)%Lgas, &
-                                    cpn%wetdep(nn)%Laerosol, &
-                                    cpn%wetdep(nn)%Lice, &
-                                    frac_in_cloud_uw=cpn%wetdep(nn)%frac_in_cloud )
-             cpn%wetdep(nn)%scheme = lowercase( cpn%wetdep(nn)%scheme )
+                                    wetdep(nn)%alpha_r, &
+                                    wetdep(nn)%alpha_s, &
+                                    wetdep(nn)%Lwetdep, &
+                                    wetdep(nn)%Lgas, &
+                                    wetdep(nn)%Laerosol, &
+                                    wetdep(nn)%Lice, &
+                                    frac_in_cloud_uw=wetdep(nn)%frac_in_cloud )
+             wetdep(nn)%scheme = lowercase( wetdep(nn)%scheme )
              nn = nn + 1
           endif
        end do
     endif
-    cc  % igauss    = igauss
-    cc  % rkfre     = rkfre
-    cc  % rmaxfrac  = rmaxfrac
-    cc  % wcrit_min = wcrit_min
-    cc  % rbuoy     = rbuoy
-    cc  % tau_sh    = tau_sh
 
     id_xhlsrc_uwc = register_diag_field (mod_name,'xhlsrc_uwc', axes(1:2), Time, &
          'xhlsrc', 'J/kg' )
@@ -592,25 +518,25 @@ contains
        allocate(id_tracerdtwet_uwc(ntracers), id_tracerdtwet_uwc_col(ntracers))
       do nn = 1,ntracers
          id_tracerdt_uwc(nn) = &
-            register_diag_field (mod_name, trim(cpn%tracername(nn))//'dt_uwc', &
+            register_diag_field (mod_name, trim(tracername(nn))//'dt_uwc', &
                                     axes(1:3), Time, &
-                                  trim(cpn%tracername(nn)) //' tendency from uw_conv', &
-                                  trim(cpn%tracer_units(nn))//'/s', missing_value=mv)
+                                  trim(tracername(nn)) //' tendency from uw_conv', &
+                                  trim(tracer_units(nn))//'/s', missing_value=mv)
             id_tracerdt_uwc_col(nn) = &
-              register_diag_field (mod_name, trim(cpn%tracername(nn))//'dt_uwc_col', &
+              register_diag_field (mod_name, trim(tracername(nn))//'dt_uwc_col', &
                                      axes(1:2), Time, &
-                                   trim(cpn%tracername(nn)) //' column tendency from uw_conv', &
-                                   trim(cpn%tracer_units(nn))//'*(kg/m2)/s', missing_value=mv)
+                                   trim(tracername(nn)) //' column tendency from uw_conv', &
+                                   trim(tracer_units(nn))//'*(kg/m2)/s', missing_value=mv)
            id_tracerdtwet_uwc(nn) = &
-              register_diag_field (mod_name, trim(cpn%tracername(nn))//'dt_uwc_wet', &
+              register_diag_field (mod_name, trim(tracername(nn))//'dt_uwc_wet', &
                                     axes(1:3), Time, &
-                                   trim(cpn%tracername(nn)) //' tendency from uw_conv wetdep', &
-                                   trim(cpn%tracer_units(nn))//'/s', missing_value=mv)
+                                   trim(tracername(nn)) //' tendency from uw_conv wetdep', &
+                                   trim(tracer_units(nn))//'/s', missing_value=mv)
             id_tracerdtwet_uwc_col(nn) = &
-              register_diag_field (mod_name, trim(cpn%tracername(nn))//'dt_uwc_wet_col', &
+              register_diag_field (mod_name, trim(tracername(nn))//'dt_uwc_wet_col', &
                                    axes(1:2), Time, &
-                                   trim(cpn%tracername(nn)) //' column tendency from uw_conv wetdep', &
-                                   trim(cpn%tracer_units(nn))//'*(kg/m2)/s', missing_value=mv)
+                                   trim(tracername(nn)) //' column tendency from uw_conv wetdep', &
+                                   trim(tracer_units(nn))//'*(kg/m2)/s', missing_value=mv)
         end do
      end if
 
@@ -625,12 +551,6 @@ contains
   subroutine uw_conv_end
     call exn_end_k
     call findt_end_k
-    call sd_end_k(sd)
-    call ac_end_k(ac)
-    call cp_end_k(cp)
-    call cp_end_k(cp1)
-    call ct_end_k(ct)
-    call ct_end_k(ct1)
     module_is_initialized = .FALSE.
   end subroutine uw_conv_end
 
@@ -643,8 +563,8 @@ contains
        cush, do_strat,  skip_calculation, max_available_cf,          & !input
        tten, qvten, qlten, qiten, qaten, qnten,                      & !output
        uten, vten, rain, snow,                                       & !output
-       cmf, hlflx, qtflx, pflx, cldql, cldqi, cldqa, cldqn, cbmfo,  & !output
-        tracers, trtend)
+       cmf, hlflx, qtflx, pflx, liq_pflx, ice_pflx, cldql, cldqi, cldqa,cldqn, cbmfo,  & !output
+        tracers, trtend, uw_wetdep)
 
 !CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 !
@@ -693,12 +613,15 @@ contains
     real, intent(out), dimension(:,:,:)  :: cldql,cldqi,cldqa, cldqn!in-updraft q
     real, intent(out), dimension(:,:,:)  :: cmf    ! mass flux at level above layer (kg/m2/s)
     real, intent(out), dimension(:,:,:)  :: pflx   ! precipitation flux removed from a layer
+    real, intent(out), dimension(:,:,:)  :: liq_pflx   ! liq precipitation flux removed from a layer
+    real, intent(out), dimension(:,:,:)  :: ice_pflx   ! solid precipitation flux removed from a layer
     real, intent(out), dimension(:,:,:)  :: hlflx ! theta_l flux
     real, intent(out), dimension(:,:,:)  :: qtflx  ! qt  flux
     real, intent(out), dimension(:,:)    :: rain, snow
     real, intent(inout), dimension(:,:)  :: cbmfo  ! cloud-base mass flux
     real, intent(in),  dimension(:,:,:,:)  :: tracers         ! env. tracers
     real, intent(out), dimension(:,:,:,:)  :: trtend          ! calculated tracer tendencies
+    real, intent(out), dimension(:,:,:)  :: uw_wetdep       ! calculated wet depostion for tracers
 
     integer i, j, k, kl, klm, km1, nk, ks, m, naer, na, n
 
@@ -747,11 +670,108 @@ contains
     real, dimension(size(tracers,1),size(tracers,2),size(tracers,3),size(tracers,4))  :: trwet          ! calculated tracer wet deposition tendencies
 
     integer imax, jmax, kmax
+    integer kd, ntracers
     
     logical used
+    type(sounding)          :: sd, sd1
+    type(adicloud)          :: ac, ac1
+    type(cclosure)          :: cc, cc1
+    type(cplume)            :: cp, cp1
+    type(ctend)             :: ct, ct1
+    type(cpnlist)           :: cpn
+    type(deepc)             :: dpc
     integer ::  ier
     character(len=256) :: ermesg
 
+    kd = size(tracers,3)
+    ntracers = size(tracers,4)
+    call sd_init_k(kd,ntracers,sd);
+    call sd_init_k(kd,ntracers,sd1);
+    call ac_init_k(kd,ac);
+    call ac_init_k(kd,ac1);
+    call cp_init_k(kd,ntracers,cp)
+    call cp_init_k(kd,ntracers,cp1)
+    call ct_init_k(kd,ntracers,ct)
+    call ct_init_k(kd,ntracers,ct1)
+    !pack namelist parameters into plume and closure structure
+    cpn % do_qctflx_zero = do_qctflx_zero
+    cpn % do_detran_zero = do_detran_zero
+    cpn % rle       = rle
+    cpn % rpen      = rpen
+    cpn % rmaxfrac  = rmaxfrac
+    cpn % wmin      = wmin
+    cpn % rbuoy     = rbuoy
+    cpn % rdrag     = rdrag  
+    cpn % frac_drs  = frac_drs
+    cpn % bigc      = bigc    
+    cpn % auto_th0  = auto_th0
+    cpn % deltaqc0  = deltaqc0
+    cpn % do_pdfpcp = do_pdfpcp
+    cpn % do_pmadjt = do_pmadjt
+    cpn % do_emmax  = do_emmax
+    cpn % do_pnqv   = do_pnqv
+    cpn % emfrac_max= emfrac_max
+    cpn % auto_rate = auto_rate
+    cpn % tcrit     = tcrit  
+    cpn % cldhgt_max= cldhgt_max
+    cpn % do_ice    = do_ice
+    cpn % do_ppen   = do_ppen
+    cpn % do_pevap  = do_pevap
+    cpn % hcevap    = hcevap
+    cpn % cfrac     = cfrac
+    cpn % mixing_assumption= mixing_assumption
+    cpn % mp_choice = mp_choice
+    cpn % Nl_land   = Nl_land
+    cpn % Nl_ocean  = Nl_ocean
+    cpn % qi_thresh = qi_thresh
+    cpn % r_thresh  = r_thresh
+    cpn % peff      = peff
+    cpn % t00       = t00
+    cpn % rh0       = rh0
+    cpn % do_forcedlifting= do_forcedlifting
+    cpn % atopevap  = atopevap
+    cpn % wtwmin_ratio = wmin_ratio*wmin_ratio
+    cpn % do_auto_aero = do_auto_aero
+    cpn % rad_crit = rad_crit
+    cpn % wrel_min = wrel_min
+    cpn % do_weffect = do_weffect
+    cpn % weffect    = weffect
+    cpn % use_online_aerosol = use_online_aerosol
+    if (ntracers > 0) then
+      allocate ( cpn%tracername   (ntracers) )
+      allocate ( cpn%tracer_units (ntracers) )
+      allocate ( cpn%wetdep       (ntracers) )
+      cpn%tracername(:) = tracername(:)
+      cpn%tracer_units(:) = tracer_units(:)
+      cpn%wetdep(:)%scheme = wetdep(:)%scheme
+      cpn%wetdep(:)%Henry_constant = wetdep(:)%Henry_constant
+      cpn%wetdep(:)%Henry_variable = wetdep(:)%Henry_variable
+      cpn%wetdep(:)%frac_in_cloud = wetdep(:)%frac_in_cloud
+      cpn%wetdep(:)%alpha_r = wetdep(:)%alpha_r
+      cpn%wetdep(:)%alpha_s = wetdep(:)%alpha_s
+      cpn%wetdep(:)%Lwetdep = wetdep(:)%Lwetdep
+      cpn%wetdep(:)%Lgas = wetdep(:)%Lgas
+      cpn%wetdep(:)%Laerosol = wetdep(:)%Laerosol
+      cpn%wetdep(:)%Lice = wetdep(:)%Lice
+    endif
+    cc  % igauss    = igauss
+    cc  % rkfre     = rkfre
+    cc  % rmaxfrac  = rmaxfrac
+    cc  % wcrit_min = wcrit_min
+    cc  % rbuoy     = rbuoy
+    cc  % tau_sh    = tau_sh
+!========Option for deep convection=======================================
+    dpc % rkm_dp  = rkm_dp
+    dpc % rat_dp  = rat_dp
+    dpc % cape_th = cape_th
+    dpc % omeg_th = omeg_th
+    dpc % tau_dp  = tau_dp
+    dpc % ideep_closure = ideep_closure
+    dpc % do_generation = do_generation
+    dpc % mixing_assumption = mixing_assumption_d
+    dpc % do_ppen   =  do_ppen_d
+    dpc % do_pevap  =  do_pevap_d
+!========Option for deep convection=======================================
     imax  = size( tb, 1 )
     jmax  = size( tb, 2 )
     kmax  = size( tb, 3 )
@@ -767,6 +787,7 @@ contains
     cldqa=0.; cldql=0.; cldqi=0.; cldqn=0.;
     hlflx=0.; qtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.; am4=0.;
     tten_pevap=0.; qvten_pevap=0.;
+    ice_pflx = 0. ; liq_pflx = 0.
 
     cino=0.; capeo=0.; tkeo=0.; wrelo=0.; ufrco=0.; zinvo=0.; wuo=0.; peo=0.; 
     fero=0.; fdro=0.; fdrso=0.; cmf=0.; denth=0.;  dqtmp=0.; ocode=0;
@@ -1103,6 +1124,8 @@ contains
              qadet (i,j,nk) = ct%qadet(k)
              qvten (i,j,nk) = ct%qvten(k)
              pflx  (i,j,nk) = ct%pflx (k)
+             ice_pflx(i,j,nk) = cp%ppti(k)
+             liq_pflx(i,j,nk) = cp%pptr(k)
              tten  (i,j,nk) = ct%tten (k)
              rhos0j = sd%ps(k)/(rdgas*0.5*(cp%thvbot(k+1)+cp%thvtop(k))*sd%exners(k))
              hlflx(i,j,nk) = ct%hlflx(k)
@@ -1233,6 +1256,17 @@ contains
        enddo
     enddo
 
+    call sd_end_k(sd)
+    call sd_end_k(sd1)
+    call ac_end_k(ac)
+    call ac_end_k(ac1)
+    call cp_end_k(cp)
+    call cp_end_k(cp1)
+    call ct_end_k(ct)
+    call ct_end_k(ct1)
+    if (_ALLOCATED ( cpn%tracername    ))  deallocate ( cpn%tracername    )
+    if (_ALLOCATED ( cpn%tracer_units  ))  deallocate ( cpn%tracer_units  )
+    if (_ALLOCATED ( cpn%wetdep        ))  deallocate ( cpn%wetdep        )
     if (.not.do_uwcmt) then
        uten=0.;
        vten=0.;
@@ -1404,6 +1438,7 @@ contains
        end do
     end if
     if ( allocated(id_tracerdtwet_uwc_col) ) then
+       uw_wetdep = 0.
        do n = 1,size(id_tracerdtwet_uwc_col)
           if ( id_tracerdtwet_uwc_col(n) > 0 ) then
              tempdiag = 0.
@@ -1411,6 +1446,7 @@ contains
                tempdiag(:,:) = tempdiag(:,:) + trwet(:,:,k,n) * pmass(:,:,k)
             end do
             used = send_data( id_tracerdtwet_uwc_col(n), tempdiag(:,:), Time, is, js)
+            uw_wetdep(:,:,n) = tempdiag(:,:)
           end if
        end do
     end if

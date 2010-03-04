@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: cumulus_closure_k.F90,v 17.0 2009/07/21 02:54:23 fms Exp $
+!  $Id: cumulus_closure_k.F90,v 18.0 2010/03/02 23:29:59 fms Exp $
 
 
 !module cumulus_closure_inter_mod
@@ -201,7 +201,7 @@ integer,                        intent(out) :: error
         end do
       endif
 
-      if (Nml%do_freezing_for_cape /= Nml%do_freezing_for_closure .or. &
+      if (Nml%do_freezing_for_cape .NEQV. Nml%do_freezing_for_closure .or. &   ! kerr
           Nml%tfre_for_cape /= Nml%tfre_for_closure .or. &
           Nml%dfre_for_cape /= Nml%dfre_for_closure .or. &
           .not. (Initialized%use_constant_rmuz_for_closure) .or. &

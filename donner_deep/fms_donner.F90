@@ -65,8 +65,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: fms_donner.F90,v 17.0 2009/07/21 02:54:47 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: fms_donner.F90,v 18.0 2010/03/02 23:30:18 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 
 !--------------------------------------------------------------------
@@ -699,7 +699,8 @@ end subroutine fms_donner_col_diag
 !                                      the any restart file name as a prefix. 
 ! </DESCRIPTION>
 !
-subroutine fms_donner_write_restart (timestamp)
+subroutine fms_donner_write_restart (Initialized, timestamp)
+  type(donner_initialized_type), intent(in) :: Initialized
   character(len=*), intent(in), optional :: timestamp
 
 !-------------------------------------------------------------------
@@ -712,6 +713,24 @@ subroutine fms_donner_write_restart (timestamp)
            &format (not currently supported); if you must have native &
            &mode, then you must update the source code and remove &
                                                &this if loop.', NOTE)
+      endif
+      if (mpp_pe() == mpp_root_pe() ) then
+        if (.not. (write_reduced_restart_file) ) then
+          call error_mesg ('donner_deep_mod', 'write_restart_nc: &
+            &Writing FULL netCDF formatted restart file as requested: &
+                 &RESTART/donner_deep.res.nc', NOTE)
+        else
+          if (Initialized%conv_alarm >= Initialized%physics_dt)  then
+            call error_mesg ('donner_deep_mod', 'write_restart_nc: &
+            &Writing FULL netCDF formatted restart file; it is needed &
+             &to allow seamless restart because next step is not a &
+             &donner calculation step: RESTART/donner_deep.res.nc', NOTE)
+          else
+            call error_mesg ('donner_deep_mod', 'write_restart_nc: &
+              &Writing REDUCED netCDF formatted restart file as  &
+                &requested: RESTART/donner_deep.res.nc', NOTE)
+          endif
+        endif
       endif
       call save_restart(Don_restart, timestamp)
       if(in_different_file) call save_restart(Til_restart, timestamp)
@@ -2123,7 +2142,11 @@ type(donner_nml_type), intent(inout) :: Nml
           print *, 'Error in subroutine register_fields:'
           print *, '  number of specified cumulus ensemble members = ',ncem
           print *, '  is more than current limit of 99.'
-          stop
+!          stop
+        call error_mesg ('fms_donner_mod', 'register_fields: & 
+         &Error in subroutine register_fields : number of specified &
+         &cumulus ensemble members is more than current limit of 99.',&
+                                                                  FATAL) 
         endif
 
 !    area-weighted convective precipitation rate:
@@ -2535,6 +2558,7 @@ type(donner_nml_type), intent(inout) :: Nml
       Don_save%cememf            = 0.
       Don_save%tracer_tends      = 0.
       Don_save%mass_flux         = 0.
+      Don_save%mflux_up          = 0.
       Don_save%cell_up_mass_flux = 0.
       Don_save%det_mass_flux     = 0.
       Don_save%dql_strat         = 0.
@@ -2575,7 +2599,7 @@ subroutine fms_donner_register_restart(fname, Initialized, ntracers, Don_save, N
    id_restart = register_restart_field(Don_restart, fname, 'donner_deep_freq', Nml%donner_deep_freq)
 
    if (.not. (write_reduced_restart_file) .or. &
-        Initialized%conv_alarm >= Initialized%physics_dt)  then
+        Initialized%conv_alarm >  Initialized%physics_dt)  then
       id_restart = register_restart_field(Til_restart, fname, 'cemetf', Don_save%cemetf)
       id_restart = register_restart_field(Til_restart, fname, 'cememf', Don_save%cememf)
       id_restart = register_restart_field(Til_restart, fname, 'mass_flux', Don_save%mass_flux)
@@ -2646,7 +2670,7 @@ type(donner_nml_type), intent(inout) :: Nml
       integer,         dimension(:), allocatable :: ntindices
       type(fieldtype), dimension(:), allocatable :: tracer_fields
 
-      character(len=64)     :: fname2='INPUT/donner_deep.res'
+      character(len=64)     :: fname2='INPUT/donner_deep.res.tile1'
       character(len=64)     :: fname='INPUT/donner_deep.res.nc'
       character(len=128)    :: tname
       integer               :: ndim, natt, nvar, ntime

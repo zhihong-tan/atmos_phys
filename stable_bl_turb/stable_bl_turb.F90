@@ -19,8 +19,8 @@
 
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  character(len=128) :: version = '$Id: stable_bl_turb.F90,v 17.0 2009/07/21 02:58:15 fms Exp $'
-  character(len=128) :: tagname = '$Name: quebec_200910 $'
+  character(len=128) :: version = '$Id: stable_bl_turb.F90,v 18.0 2010/03/02 23:33:18 fms Exp $'
+  character(len=128) :: tagname = '$Name: riga $'
   logical            :: module_is_initialized = .false.
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -499,7 +499,8 @@ real :: missing_value = -999.
 
   if ( mpp_pe() == mpp_root_pe() ) then
        call write_version_number(version, tagname)
-       WRITE( stdlog(), nml = stable_bl_turb_nml ) 
+       unit = stdlog()
+       WRITE( unit, nml = stable_bl_turb_nml ) 
   endif
 
 !---------------------------------------------------------------------

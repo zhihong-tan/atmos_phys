@@ -43,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 17.0 2009/07/21 02:57:26 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 18.0 2010/03/02 23:32:32 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -980,11 +980,17 @@ public rad_output_type
 
 type rad_output_type
      real, dimension(:,:,:,:), pointer :: tdt_rad=>NULL(),  &
-                                        tdtsw=>NULL()
+                                        ufsw=>NULL(),  &
+                                        dfsw=>NULL(),  &
+                                        tdtsw=>NULL()  
      real, dimension(:,:,:,:), pointer :: tdt_rad_clr=>NULL(), &
+                                        ufsw_clr=>NULL(),  &
+                                        dfsw_clr=>NULL(),  &
                                         tdtsw_clr=>NULL()
                                         
      real, dimension(:,:,:), pointer :: tdtlw=>NULL()
+     real, dimension(:,:,:), pointer :: flxnet=>NULL()
+     real, dimension(:,:,:), pointer :: flxnetcf=>NULL()
      real, dimension(:,:,:), pointer :: tdtlw_clr=>NULL()
      real, dimension(:,:,:),   pointer :: flux_sw_surf=>NULL(), &
                                         flux_sw_surf_dir=>NULL(), &
@@ -1049,8 +1055,10 @@ public solar_spectrum_type
 !    nh2obands
 !    visible_band_indx
 !    one_micron_indx
+!    eight70_band_indx
 !    visible_band_indx_iz
 !    one_micron_indx_iz
+!    eight70_band_indx_iz
 
 type solar_spectrum_type
     real, dimension(:),    pointer   :: solarfluxtoa=>null()
@@ -1066,7 +1074,9 @@ type solar_spectrum_type
     integer         :: nstreams
     integer         :: nh2obands
     integer         :: visible_band_indx, one_micron_indx
+    integer         :: eight70_band_indx
     logical         :: visible_band_indx_iz, one_micron_indx_iz
+    logical         :: eight70_band_indx_iz
 end type solar_spectrum_type
 
 !---------------------------------------------------------------------

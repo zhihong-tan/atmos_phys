@@ -32,10 +32,11 @@ private
 ! version information 
 
 character(len=128), parameter :: version = &
-'$Id: grey_radiation.F90,v 17.0 2009/07/21 02:55:20 fms Exp $'
+'$Id: grey_radiation.F90,v 18.0 2010/03/02 23:30:53 fms Exp $'
 
-character(len=128), parameter :: tagname = &
-'$Name: quebec_200910 $'
+character(len=128), parameter :: tagname = '$Name: riga $'
+
+logical                       :: module_is_initialized = .false.
 
 !==================================================================================
 
@@ -96,7 +97,9 @@ namelist/grey_radiation_nml/ solar_constant, del_sol, &
 !-------------------- diagnostics fields -------------------------------
 
 integer :: id_olr, id_swdn_sfc, id_swdn_toa, id_lwdn_sfc, id_lwup_sfc, &
-           id_tdt_rad, id_flux_rad, id_flux_lw, id_flux_sw, id_entrop_rad
+           id_tdt_rad, id_flux_rad, id_flux_lw, id_flux_sw, id_entrop_rad, & 
+           id_tsurfgrey, id_tempgrey
+
 
 character(len=14), parameter :: mod_name = 'grey_radiation'
 
@@ -198,9 +201,20 @@ initialized = .true.
                'Entropy production by radiation', &
                '1/s', missing_value=missing_value               )
 
+    ! rif:(09/09/09) New Diagnostics 
+    id_tsurfgrey = &
+    register_diag_field ( mod_name, 't_surf_rad', axes(1:2), Time, &
+               'Temp surf from grey radiation', &
+               'K', missing_value=missing_value               )
+
+    id_tempgrey = &
+        register_diag_field ( mod_name, 'temp_rad', axes(1:3), Time, &
+               'Temperature from grey radiation', &
+               'K', missing_value=missing_value               )
 
 
 
+      module_is_initialized = .true.
 
 return
 end subroutine grey_radiation_init
@@ -339,7 +353,15 @@ net_surf_sw_down = solar_down(:,:,n+1)*(1. - albedo(:,:))
 olr = up(:,:,1)
 swin = solar_down(:,:,1)
 
-    
+
+!------- t_surf grey (t_surf_greyrad) -------
+      if ( id_tsurfgrey > 0 ) then
+          used = send_data ( id_tsurfgrey, t_surf, Time_diag, is, js )
+      endif
+!------- temp grey (temp_greyrad) -------
+      if ( id_tempgrey > 0 ) then
+          used = send_data ( id_tempgrey, t, Time_diag, is, js, 1 )
+      endif
 
 !------- outgoing lw flux toa (olr) -------
       if ( id_olr > 0 ) then
@@ -390,6 +412,9 @@ end subroutine grey_radiation
 ! ==================================================================================
 
 subroutine grey_radiation_end()
+
+      module_is_initialized = .false.
+
 end subroutine grey_radiation_end
 
 ! ==================================================================================

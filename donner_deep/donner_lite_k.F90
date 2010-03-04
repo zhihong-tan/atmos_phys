@@ -1,5 +1,5 @@
 !VERSION NUMBER:
-!   $Id: donner_lite_k.F90,v 17.0 2009/07/21 02:54:34 fms Exp $
+!   $Id: donner_lite_k.F90,v 18.0 2010/03/02 23:30:08 fms Exp $
 
 !######################################################################
 !######################################################################
@@ -1252,12 +1252,20 @@ integer,                           intent(out)   :: error
         do kk=1,nlev_lsm
           dp = phalf_c(kk) - phalf_c(kk+1)
           ci_ice_cond = ci_ice_cond + h1_ice(kk)*dp
+!RSHfix for "s" release:  
+!     replace the above line with the following; also comment out line
+!     noted below. This fix will eliminate the occurrence of roundoff
+!     "snow" falling from donner (~10e-22, + and -) that results from 
+!     difference in this calc and that of "summel" above 
+!NOTE THAT THE SAME CHANGE NEEDS TO BE MADE IN THE DONNER-FULL CODE.>>>
+!         ci_ice_cond = ci_ice_cond + h1_ice(kk)*dp/Param%grav
         end do
        if (pmelt_lsm < pb) then
          melting_in_cloud = .true.
       else
         melting_in_cloud = .false.
      endif
+!RSHfix  for "s" release -- comment out this line:
         ci_ice_cond = ci_ice_cond/(Param%grav)
         if (ci_ice_cond /= 0.0) then
           if (melting_in_cloud) then
@@ -5862,11 +5870,11 @@ integer                      :: debug_unit
 !   a different algorithm.
 
 
-    if ( (Nml%do_donner_cape == .false.  &
-         .and. Nml%do_hires_cape_for_closure == .true. ) .or.  &
-    Nml%do_freezing_for_cape /= Nml%do_freezing_for_closure .or. &
-           Nml%tfre_for_cape /= Nml%tfre_for_closure .or. &
-           Nml%dfre_for_cape /= Nml%dfre_for_closure .or. &
+    if ( (Nml%do_donner_cape .EQV. .false.  &                        
+         .and. Nml%do_hires_cape_for_closure .EQV. .true. ) .or.  &
+    Nml%do_freezing_for_cape .NEQV. Nml%do_freezing_for_closure .or. &
+           Nml%tfre_for_cape /=     Nml%tfre_for_closure .or. &
+           Nml%dfre_for_cape /=     Nml%dfre_for_closure .or. &
            .not. (Initialized%use_constant_rmuz_for_closure) .or.  &
           Nml%rmuz_for_cape /= Nml%rmuz_for_closure) then
       nfirst = 1

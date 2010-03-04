@@ -63,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 17.0 2009/07/21 02:56:23 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 18.0 2010/03/02 23:31:55 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 
 !---------------------------------------------------------------------
@@ -198,6 +198,7 @@ real, dimension(4)                  :: wtstr_4 =      &
 integer :: nbands, tot_wvnums, nfrqpts, nh2obands, nstreams
 logical :: nstr4 = .false.
 real    :: vis_wvnum = 1.0E+04/0.55
+real    :: wvnum_870 = 1.0E+04/0.87
 real    :: one_micron_wvnum = 1.0E+04/1.00
 real    :: onepsix_micron_wvnum = 1.0E+04/1.61
 integer :: onepsix_band_indx
@@ -589,6 +590,18 @@ subroutine esfsw_driver_init
         if (endwvnbands(ni) > vis_wvnum) then
           Solar_spect%visible_band_indx = ni
           Solar_spect%visible_band_indx_iz = .true.
+          exit
+        endif
+      end do
+
+!---------------------------------------------------------------------
+!    define the band index corresponding to 870nm
+!    (0.87 microns). note that endwvnbands is in units of (cm**-1).
+!---------------------------------------------------------------------
+      do ni=1,nbands
+        if (endwvnbands(ni) > wvnum_870) then
+          Solar_spect%eight70_band_indx = ni
+          Solar_spect%eight70_band_indx_iz = .true.
           exit
         endif
       end do
@@ -1136,10 +1149,13 @@ integer,                       intent(in)    :: naerosol_optical
 !    input is varying with time.
 !---------------------------------------------------------------------
       if (Rad_control%using_solar_timeseries_data) then
+!$OMP MASTER
         solflxtotal = 0.0
         do nband = 1,NBANDS
           solflxtotal = solflxtotal + Solar_spect%solflxband(nband)
         end do
+!$OMP END MASTER
+!$OMP BARRIER
       endif
 
 !---------------------------------------------------------------------
@@ -2465,6 +2481,11 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       Aerosol_diags%absopdep(i,j,:,nsc,1) =    &
                                             arprod(:) - arprod2(:)
                     endif
+                    if (nband == Solar_spect%eight70_band_indx) then
+                      Aerosol_diags%extopdep(i,j,:,nsc,6) = arprod(:)
+                      Aerosol_diags%absopdep(i,j,:,nsc,6) =    &
+                                            arprod(:) - arprod2(:)
+                    endif
                     if (nband == Solar_spect%one_micron_indx) then
                       Aerosol_diags%extopdep(i,j,:,nsc,2) = arprod(:)
                       Aerosol_diags%absopdep(i,j,:,nsc,2) =    &
@@ -2499,6 +2520,15 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                                  Aerosol_props%sw_ext(i,j,k,nband)*  &
                                  deltaz(k)
                            Aerosol_diags%absopdep_vlcno(i,j,k,1) =   &
+                            (1.0 - Aerosol_props%sw_ssa(i,j,k,nband))*&
+                                Aerosol_props%sw_ext(i,j,k,nband)*  &
+                                deltaz(k)
+                      endif
+                      if (nband == Solar_spect%eight70_band_indx) then
+                           Aerosol_diags%extopdep_vlcno(i,j,k,3) =   &
+                                 Aerosol_props%sw_ext(i,j,k,nband)*  &
+                                 deltaz(k)
+                           Aerosol_diags%absopdep_vlcno(i,j,k,3) =   &
                             (1.0 - Aerosol_props%sw_ssa(i,j,k,nband))*&
                                 Aerosol_props%sw_ext(i,j,k,nband)*  &
                                 deltaz(k)

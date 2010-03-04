@@ -106,12 +106,13 @@ module strat_cloud_mod
   use  cloud_rad_mod,      only :  cloud_rad_init
   use  diag_manager_mod,   only :  register_diag_field, send_data
   use  time_manager_mod,   only :  time_type, get_date
-  use cloud_generator_mod, only :  do_cloud_generator,           &
-       compute_overlap_weighting
+  use cloud_generator_mod, only :  do_cloud_generator,  &
+                                   cloud_generator_init,         &
+                                   compute_overlap_weighting
   use beta_dist_mod,        only: beta_dist_init, beta_dist_end, &
                                   incomplete_beta
   use  rad_utilities_mod,  only : aerosol_type
-  use  aer_ccn_act_mod,    only : aer_ccn_act_wpdf
+  use  aer_ccn_act_mod,    only : aer_ccn_act_wpdf, aer_ccn_act_init
   use  aer_in_act_mod,     only : Jhete_dep
   use  mpp_mod,            only : mpp_clock_id, mpp_clock_begin, &
                                   mpp_clock_end, CLOCK_LOOP
@@ -582,8 +583,8 @@ module strat_cloud_mod
   !       DECLARE VERSION NUMBER OF SCHEME
   !
 
-  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 17.0 2009/07/21 02:58:18 fms Exp $'
-  Character(len=128) :: Tagname = '$Name: quebec_200910 $'
+  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 18.0 2010/03/02 23:33:21 fms Exp $'
+  Character(len=128) :: Tagname = '$Name: riga $'
   logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   integer               :: vers
@@ -807,6 +808,10 @@ CONTAINS
  
  if (do_pdf_clouds) call beta_dist_init
  
+ call cloud_generator_init
+ cloud_generator_on = do_cloud_generator()
+
+ if (do_liq_num) call aer_ccn_act_init
  !-----------------------------------------------------------------------
  !
  !       Read Restart file
@@ -1663,7 +1668,7 @@ end subroutine diag_field_init
 
 subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
     T,qv,ql,qi,qa,omega,Mc,diff_t,LAND,              &
-    ST,SQ,SL,SI,SA,rain3d,snow3d,surfrain,                         &
+    ST,SQ,SL,SI,SA,rain3d,snow3d,snowclr3d,surfrain,     &
     surfsnow,qrat,ahuco,limit_conv_cloud_frac,MASK, &
     qn, Aerosol, SN)
 
@@ -2073,6 +2078,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         real, intent (in),  optional, dimension(:,:,:) :: qn
         real, intent (out),   dimension(:,:,:) :: rain3d
         real, intent (out),   dimension(:,:,:) :: snow3d
+        real, intent (out),   dimension(:,:,:) :: snowclr3d
         type(aerosol_type), intent (in), optional      :: Aerosol  
         real, intent (out), optional, dimension(:,:,:) :: SN
 
@@ -2118,7 +2124,10 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
                                                         concen_dust_sub
         real, dimension(size(T,1),size(T,2))   :: Vfall,iwc,lamda_f
         real, dimension(size(T,1),size(T,2))   :: U_clr
+!RSH: intended for s release:
+!       real, dimension(size(T,1),size(T,2))   :: tmp1,tmp2,tmp3,tmp5,dr        op1,crystal, tmp6
         real, dimension(size(T,1),size(T,2))   :: tmp1,tmp2,tmp3,tmp5,drop1,crystal
+!RSH end block
         real, dimension(size(T,1),size(T,2))   :: qtbar,deltaQ
         real, dimension(size(T,1),size(T,2))   :: qtmin,qs_norm          
 
@@ -2492,7 +2501,6 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         qcg           = 0.
         qcg_ice       = 0.
         
-        cloud_generator_on = do_cloud_generator()
                      
 !-----------------------------------------------------------------------
 !
@@ -2723,6 +2731,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !
         rain3d = 0.
         snow3d = 0.
+        snowclr3d = 0.
 
         DO j = 1, kdim
 
@@ -4933,13 +4942,33 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
  
 !       New more accurate version
 
+!RSH 9/18/09: should be within the super_choice if block:
         ! updated temperature in tmp1
         tmp1 = T(:,:,j) + ST(:,:,j)
 
         ! updated qs in tmp2, updated gamma in tmp3, updated dqsdT in tmp5
         call compute_qs(tmp1, pfull(:,:,j), tmp2, dqsdT=tmp5)
+ 
+!RSH intended for s block:
+!   use blended L  between 0 and -20 C, both in expression below for
+!    temp1 , and in the ST terms which follow below to avoid 
+!    inconsistency and non-saturated conditions after calculation.
         tmp3 = tmp5 *(min(1.,max(0.,0.05*(tmp1-tfreeze+20.)))*hlv +     &
                       min(1.,max(0.,0.05*(tfreeze -tmp1   )))*hls)/cp_air
+
+!         do k=1,jdim
+!          do i=1,idim
+!       if (tmp1(i,k) <= tfreeze - 20.) then
+!         tmp6(i,k) = hls
+!       else if (tmp1(i,k) >= tfreeze) then
+!         tmp6(i,k) = hlv
+!       else
+!         tmp6(i,k) = 0.05*((tfreeze-tmp1(i,k))*hls + (tmp1(i,k)-tfreeze        +20.)*hlv)
+!       endif
+!       end do
+!       end do
+!       tmp3 = tmp5 * tmp6/cp_air
+!RSH end block
 
         !compute excess over saturation
         tmp1 = max(0.,qv(:,:,j)+SQ(:,:,j)-tmp2)/(1.+tmp3)
@@ -4989,11 +5018,21 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
                 if (T(i,k,j) .le. tfreeze-40.)then
                   qi_upd(i,k)   = qi_upd(i,k) + tmp1(i,k)
                   SI(i,k,j) = SI(i,k,j) + tmp1(i,k)
+!RSH intended for s:
                   ST(i,k,j) = ST(i,k,j) + hls*tmp1(i,k)/cp_air
+! probably need to partition ql and qi in same way as L here for 
+!  entropy conservation
+!                 ST(i,k,j) = ST(i,k,j) + tmp6(i,k)*tmp1(i,k)/cp_air
+!RSH end block
                 else   ! where (T(i,k,j) .gt. tfreeze-40.)
                   ql_upd(i,k)   = ql_upd(i,k) + tmp1(i,k)
                   SL(i,k,j) = SL(i,k,j) + tmp1(i,k)
-                  ST(i,k,j) = ST(i,k,j) + hlv*tmp1(i,k)/cp_air              
+!RSH intended for s:
+                  ST(i,k,j) = ST(i,k,j) + hlv*tmp1(i,k)/cp_air        
+! probably need to partition ql and qi in same way as L here for 
+!  entropy conservation
+!                 ST(i,k,j) = ST(i,k,j) + tmp6(i,k)*tmp1(i,k)/cp_air    
+!RSH end block
                 endif
                 if (limit_conv_cloud_frac) then
                   tmp2s = ahuco(i,k,j)
@@ -5100,6 +5139,7 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
 !
         rain3d(:,:,j+1) = rain_clr(:,:) + rain_cld(:,:)
         snow3d(:,:,j+1) = snow_clr(:,:) + snow_cld(:,:)
+        snowclr3d(:,:,j+1) = snow_clr(:,:)
 
 !-----------------------------------------------------------------------
 !
@@ -5928,7 +5968,7 @@ real, dimension(:,:,:), intent(in )   :: phalf, airdens, T
 real, dimension(:,:,:), intent(out)        :: concen_dust_sub
 real, dimension(:,:,:,:), intent(out)            :: totalmass1
 type(aerosol_type), intent (in), optional      :: Aerosol  
-real, intent (in), optional, dimension(:,:,:) :: MASK
+real, intent (in), optional, dimension(:,:,:) :: mask
 
       real, dimension(size(T,1),size(T,2),size(T,3)) :: pthickness
       real, dimension(size(T,1),size(T,2),size(T,3)) :: concen, &

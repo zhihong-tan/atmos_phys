@@ -13,13 +13,13 @@ private
 !----------------------------------------------------------------------
 !  ---- public interfaces ----
 
-   public  bm_massflux, bm_massflux_init
+   public  bm_massflux, bm_massflux_init, bm_massflux_end
 
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
- character(len=128) :: version = '$Id: bm_massflux.F90,v 17.0 2009/07/21 02:53:39 fms Exp $'
- character(len=128) :: tagname = '$Name: quebec_200910 $'
+ character(len=128) :: version = '$Id: bm_massflux.F90,v 18.0 2010/03/02 23:28:36 fms Exp $'
+ character(len=128) :: tagname = '$Name: riga $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----
@@ -27,7 +27,7 @@ private
     real, parameter :: d622 = rdgas/rvgas
     real, parameter :: d378 = 1.-d622
 
-    logical :: do_init=.true.
+    logical :: module_is_initialized=.false.
 
 !-----------------------------------------------------------------------
 !   --- namelist ----
@@ -106,9 +106,9 @@ contains
 
    real   , intent(in) , dimension(:,:,:) :: tin, qin, pfull, phalf
    real   , intent(in)                    :: dt
-   logical   , intent(in) , dimension(:,:):: coldT
+   logical, intent(in) , dimension(:,:)   :: coldT
    real   , intent(out), dimension(:,:)   :: rain,snow, bmflag, klzbs
-   real   , intent(out), dimension(:,:,:) :: tdel, qdel, q_ref, t_ref
+   real   , intent(out), dimension(:,:,:) :: tdel, qdel, q_ref, t_ref, massflux
    real   , intent(in) , dimension(:,:,:), optional :: mask
    logical, intent(in) , dimension(:,:,:), optional :: conv
 !-----------------------------------------------------------------------
@@ -117,7 +117,7 @@ contains
 logical,dimension(size(tin,1),size(tin,2),size(tin,3)) :: do_adjust
 logical :: avgbl
    real,dimension(size(tin,1),size(tin,2),size(tin,3)) ::  &
-             rin, esat, qsat, desat, dqsat, pmes, pmass, massflux
+             rin, esat, qsat, desat, dqsat, pmes, pmass
    real,dimension(size(tin,1),size(tin,2))             ::  &
                      hlcp, precip, cape, cin
    real,dimension(size(tin,3))                         :: eref, rpc, tpc, &
@@ -135,7 +135,7 @@ real :: rs, es
 !     computation of precipitation by betts-miller scheme
 !-----------------------------------------------------------------------
 
-      if (do_init) call error_mesg ('bm_massflux',  &
+      if (.not. module_is_initialized) call error_mesg ('bm_massflux',  &
                          'bm_massflux_init has not been called.', FATAL)
 
       ix=size(tin,1)
@@ -788,7 +788,8 @@ real :: rs, es
          tpcback = tback
          rpcback = rback
 !        write(6,*) 'plcl=0'
-         stop
+!         stop
+         call error_mesg ('bm_massflux:capecalc', 'ieq = 0', FATAL)
       end if
 !
 !     Calculate temperature along saturated adiabat, starting at p(kLCL).
@@ -949,7 +950,9 @@ real :: rs, es
                 xcape=xcape+delt
                 if (xcape .lt. 0.) then
 !                   write(6,*) 'xcape error'
-                   stop
+                    call error_mesg ('bm_massflux:capecalc', &
+                                     'xcape error', FATAL)
+!                   stop
                 end if
               end if
           end if
@@ -1446,8 +1449,8 @@ real :: rs, es
 !
 
      implicit none
-     real, intent(in) :: tp
-     real, intent(out) :: es
+     real, intent(in)  :: TP
+     real, intent(out) :: ES
 
      integer :: it
      real, dimension(161) :: table
@@ -1583,9 +1586,17 @@ real :: rs, es
       endif
       call close_file (unit)
 
-      do_init=.false.
+      module_is_initialized =.true.
 
    end subroutine bm_massflux_init
+
+!#######################################################################
+
+   subroutine bm_massflux_end()
+   
+      module_is_initialized =.false.
+   
+   end subroutine bm_massflux_end
 
 !#######################################################################
 

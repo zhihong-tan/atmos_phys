@@ -61,8 +61,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 17.0 2009/07/21 02:56:11 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 18.0 2010/03/02 23:31:48 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 
 !---------------------------------------------------------------------
@@ -525,6 +525,7 @@ subroutine cloud_radiative_properties (is, ie, js, je, Rad_time,   &
                                        Lsc_microphys, Meso_microphys, &
                                        Cell_microphys,   &
                                        Shallow_microphys,Cldrad_props, &
+                                       Model_microphys, &
                                        kbot, mask)
 
 !----------------------------------------------------------------------
@@ -544,6 +545,7 @@ type(microphysics_type),      intent(in)             :: Lsc_microphys, &
                                                         Cell_microphys,&
                                                      Shallow_microphys
 type(cldrad_properties_type), intent(inout)          :: Cldrad_props
+type(microphysics_type),      intent(inout)          :: Model_microphys
 integer, dimension(:,:),      intent(in),   optional :: kbot
 real, dimension(:,:,:),       intent(in),   optional :: mask
 !-------------------------------------------------------------------
@@ -597,6 +599,7 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
                                         Mesorad_props, Shallowrad_props
       integer  ::   ix, jx, kx  
       logical  ::   donner_flag = .true.
+      logical  ::   donner_flag_uw = .false.
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -724,13 +727,13 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !    than that used by donner_deep (generalized effective size).
 !----------------------------------------------------------------------
        if (Cldrad_control%do_uw_clouds) then
-         donner_flag = .false.
+         donner_flag_uw = .false.
          call microphys_lw_driver (is, ie, js, je, Shallow_microphys, &
                                    Micro_rad_props=Shallowrad_props, &
-                                   donner_flag=donner_flag)
+                                   donner_flag=donner_flag_uw)
          call microphys_sw_driver (is, ie, js, je, Shallow_microphys, &
                                    Micro_rad_props=Shallowrad_props,&
-                                   donner_flag=donner_flag)
+                                   donner_flag=donner_flag_uw)
         endif
       endif ! ( .not. do_no_clouds)
 
@@ -783,7 +786,7 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
                                 Shallow_microphys, &
                                 Lscrad_props, Mesorad_props,    &
                                 Cellrad_props, Shallowrad_props, &
-                                Cldrad_props, Cld_spec)
+                                Cldrad_props, Cld_spec, Model_microphys)
       endif   ! (do_no_clouds)
 
 !--------------------------------------------------------------------

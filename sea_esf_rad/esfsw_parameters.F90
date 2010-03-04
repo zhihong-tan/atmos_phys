@@ -49,8 +49,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 17.0 2009/07/21 02:56:26 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 18.0 2010/03/02 23:31:58 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 !--------------------------------------------------------------------
 !----- interfaces ------
@@ -216,6 +216,12 @@ subroutine esfsw_parameters_init
 !-------------------------------------------------------------------
       Solar_spect%visible_band_indx = -10000000
       Solar_spect%visible_band_indx_iz = .false.
+
+!-------------------------------------------------------------------
+!    indicate that eight70_band_indx has not yet been defined.
+!-------------------------------------------------------------------
+      Solar_spect%eight70_band_indx = -10000000
+      Solar_spect%eight70_band_indx_iz = .false.
 
 !-------------------------------------------------------------------
 !    allocate space for the array components of the solar_spect_type

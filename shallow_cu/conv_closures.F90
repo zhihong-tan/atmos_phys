@@ -3,6 +3,7 @@ MODULE CONV_CLOSURES_MOD
 
 ! use Sat_Vapor_Pres_Mod, ONLY: ESCOMP, DESCOMP
 ! use      Constants_Mod, ONLY: tfreeze,HLv,HLf,HLs,CP_AIR,GRAV,Kappa,rdgas,rvgas
+  use fms_mod,              only: write_version_number
   use  conv_utilities_k_mod,only: sd_copy_k, adi_cloud_k, extend_sd_k,&
                                   adicloud, sounding, uw_params
   use  conv_plumes_k_mod,   only: cumulus_plume_k, cumulus_tend_k, &
@@ -15,14 +16,16 @@ MODULE CONV_CLOSURES_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_closures.F90,v 17.0 2009/07/21 02:57:58 fms Exp $'
-  character(len=128) :: tagname = '$Name: quebec_200910 $'
+  character(len=128) :: version = '$Id: conv_closures.F90,v 18.0 2010/03/02 23:33:02 fms Exp $'
+  character(len=128) :: tagname = '$Name: riga $'
+  logical            :: module_is_initialized=.false.  ! module initialized ?
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
   public  :: cclosure_bretherton, cclosure_relaxcbmf, cclosure_emanuel, &
-             cclosure_implicit, cclosure_relaxwfn
+             cclosure_implicit, cclosure_relaxwfn, &
+             conv_closures_init, conv_closures_end
 
   character(len=11) :: mod_name = 'conv_closures'
 
@@ -417,6 +420,31 @@ contains
     end if
 
   end subroutine cclosure_relaxwfn
+
+!#####################################################################
+!#####################################################################
+subroutine conv_closures_init
+
+!---------------------------------------------------------------------
+!    write version number and namelist to logfile.
+!---------------------------------------------------------------------
+      call write_version_number (version, tagname)
+!---------------------------------------------------------------------
+!    mark the module as initialized.
+!---------------------------------------------------------------------
+      module_is_initialized = .true.
+    
+
+
+end subroutine conv_closures_init
+!#####################################################################
+!#####################################################################
+subroutine conv_closures_end
+
+      module_is_initialized = .false.
+
+
+end subroutine conv_closures_end
 
 !#####################################################################
 !#####################################################################

@@ -27,8 +27,8 @@ public  cloud_obs, cloud_obs_init, cloud_obs_end
 !-----------------------------------------------------------------------
 !   ---------- private data ------------
 
-   character(len=128) :: version = '$Id: cloud_obs.F90,v 17.0 2009/07/21 02:53:50 fms Exp $'
-   character(len=128) :: tagname = '$Name: quebec_200910 $'
+   character(len=128) :: version = '$Id: cloud_obs.F90,v 18.0 2010/03/02 23:28:48 fms Exp $'
+   character(len=128) :: tagname = '$Name: riga $'
 
       real, allocatable, dimension(:,:,:) :: clda,cldb
       real, allocatable, dimension(:)     :: londat,latdat
@@ -47,7 +47,7 @@ public  cloud_obs, cloud_obs_init, cloud_obs_end
      integer, parameter :: mobs=144, nobs=72
         real :: sb, wb, dx, dy
 
-     type (horiz_interp_type) :: Interp
+     type (horiz_interp_type), save :: Interp   ! kerr
 !-----------------------------------------------------------------------
 
 contains

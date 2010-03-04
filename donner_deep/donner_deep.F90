@@ -61,15 +61,16 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 17.0 2009/07/21 02:54:29 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 18.0 2010/03/02 23:30:03 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 
 !--------------------------------------------------------------------
 !---interfaces------
 
 public   &
-        donner_deep_init, donner_deep, donner_deep_end, donner_deep_restart
+        donner_deep_init, donner_deep, donner_deep_end,  &
+        donner_deep_restart, donner_deep_time_vary, donner_deep_endts
 
 private   & 
         deallocate_variables
@@ -364,12 +365,9 @@ type(donner_nml_type),         save :: Nml
 type(donner_save_type),        save :: Don_save
 type(donner_initialized_type), save :: Initialized
  
-type(sounding),                save :: sd
 type(uw_params),               save :: Uw_p
-type(adicloud),                save :: ac
-type(cplume),                  save :: cp
-type(ctend ),                  save :: ct
 
+logical                             :: calc_conv_on_this_step
 
 !-----------------------------------------------------------------------
 !   miscellaneous variables
@@ -767,13 +765,6 @@ logical,                         intent(in), optional :: &
       idf  = size(lonb,1) - 1
       jdf  = size(latb,2) - 1
 
-!---------------------------------------------------------------------
-!    initialize the points processed counter. define the total number 
-!    of columns present on the processor. 
-!---------------------------------------------------------------------
-      Initialized%pts_processed_conv   = 0
-      Initialized%total_pts = idf*jdf
-
 !--------------------------------------------------------------------
 !    allocate module variables that will be saved across timesteps.
 !    these are stored in the derived-type variable Don_save. see 
@@ -785,6 +776,7 @@ logical,                         intent(in), optional :: &
       allocate ( Don_save%lag_press          (idf, jdf, nlev ) )
       allocate ( Don_save%cememf             (idf, jdf, nlev ) )
       allocate ( Don_save%mass_flux          (idf, jdf, nlev ) )
+      allocate ( Don_save%mflux_up           (idf, jdf, nlev ) )
       allocate ( Don_save%cell_up_mass_flux  (idf, jdf, nlev+1 ) )
       allocate ( Don_save%det_mass_flux      (idf, jdf, nlev ) )
       allocate ( Don_save%dql_strat          (idf, jdf, nlev ) )
@@ -985,14 +977,10 @@ logical,                         intent(in), optional :: &
         call nonfms_get_pe_number(me, root_pe)
       endif
 
-      call sd_init_k (nlev, ntracers, sd);
       call uw_params_init_k (Param%hlv, Param%hls, Param%hlf, &
           Param%cp_air, Param%grav, Param%kappa, Param%rdgas,  &
           Param%ref_press, Param%d622,Param%d608, Param%kelvin -160., & 
           Param%kelvin + 100. , me, root_pe, Uw_p)
-      call ac_init_k (nlev, ac);
-      call cp_init_k (nlev, ntracers, cp);
-      call ct_init_k (nlev, ntracers, ct)
 
 
       call exn_init_k (Uw_p)
@@ -1035,6 +1023,67 @@ logical,                         intent(in), optional :: &
 
 end subroutine donner_deep_init
 
+!###################################################################
+         
+subroutine donner_deep_time_vary (dt)  
+                                  
+real, intent(in) :: dt
+
+!--------------------------------------------------------------------
+!    decrement the time remaining before the convection calculations. 
+!    save the current model physics timestep.
+!--------------------------------------------------------------------
+      Initialized%conv_alarm  = Initialized%conv_alarm - int(dt)
+      Initialized%physics_dt = int(dt)
+ 
+!--------------------------------------------------------------------
+!    set a flag to indicate whether the convection calculation is to be 
+!    done on this timestep. if this is the first call to donner_deep 
+!    (i.e., coldstart), convection cannot be calculated because the
+!    lag profiles needed to calculate cape are unavailable, and so
+!    a time tendency of cape can not be obtained. otherwise, it is a
+!    calculation step or not dependent on whether the convection "alarm"
+!    has gone off. 
+!---------------------------------------------------------------------
+      if (Initialized%coldstart) then
+        calc_conv_on_this_step = .false.
+      else
+        if (Initialized%conv_alarm <= 0) then
+          calc_conv_on_this_step = .true.
+        else
+          calc_conv_on_this_step = .false.
+        endif
+      endif
+
+!--------------------------------------------------------------------
+
+
+end subroutine donner_deep_time_vary
+
+
+
+!###################################################################
+ 
+subroutine donner_deep_endts
+
+!---------------------------------------------------------------------
+!    if this was the first time through the parameterization, set
+!    the flag so indicating (coldstart) to be .false.. if this was a 
+!    calculation step, set the alarm to define the next time at which 
+!    donner convection is to be executed.
+!----------------------------------------------------------------------
+      if (Initialized%coldstart) Initialized%coldstart = .false.
+      if (calc_conv_on_this_step) then
+        Initialized%conv_alarm = Initialized%conv_alarm +    &
+                                                 Nml%donner_deep_freq
+      endif
+
+!--------------------------------------------------------------------
+
+
+end subroutine donner_deep_endts
+
+
 
 
 !###################################################################
@@ -1050,10 +1099,12 @@ subroutine donner_deep (is, ie, js, je, dt, temp, mixing_ratio, pfull, &
                         meso_liq_size, meso_ice_amt, meso_ice_size,  &
                         meso_droplet_number, &
                         nsum, precip, delta_temp, delta_vapor, detf, &
-                        uceml_inter, mtot, donner_humidity_area,    &
-                        donner_humidity_factor, qtrtnd, &
+                        uceml_inter, mtot, mfluxup, &
+                        donner_humidity_area,    &
+                        donner_humidity_factor, qtrtnd, donner_wetdep,&
                         lheat_precip, vert_motion,        &
                         total_precip, liquid_precip, frozen_precip, &
+                        frz_meso, liq_meso, frz_cell, liq_cell, &
                         qlin, qiin, qain,              &      ! optional
                         delta_ql, delta_qi, delta_qa)         ! optional
                         
@@ -1114,12 +1165,15 @@ real, dimension(:,:),         intent(out)   :: precip, &
                                                vert_motion, &
                                                total_precip
 real, dimension(:,:,:),       intent(out)   :: delta_temp, delta_vapor,&
-                                               detf, uceml_inter, mtot, &
+                                               detf, uceml_inter, &
+                                               mtot, mfluxup, &
                                                donner_humidity_area,&
                                                donner_humidity_factor, &
                                                liquid_precip, &
-                                               frozen_precip
+                                               frozen_precip, frz_meso,&
+                                            liq_meso, frz_cell, liq_cell
 real, dimension(:,:,:,:),     intent(out)   :: qtrtnd 
+real, dimension(:,:,:),       intent(out)   :: donner_wetdep
 real, dimension(:,:,:),       intent(in),                &
                                    optional :: qlin, qiin, qain
 real, dimension(:,:,:),       intent(out),               &
@@ -1174,6 +1228,9 @@ real, dimension(:,:,:),       intent(out),               &
 !                    [ (kg / (m**2 sec) ) ]
 !     mtot           mass flux at model full levels, convective plus 
 !                    mesoscale, due to donner_deep_mod 
+!                    [ (kg / (m**2 sec) ) ]
+!     mfluxup        upward mass flux at model full levels, convective 
+!                    plus mesoscale, due to donner_deep_mod 
 !                    [ (kg / (m**2 sec) ) ]
 !     donner_humidity_area
 !                    fraction of grid box in which humidity is affected
@@ -1237,18 +1294,22 @@ real, dimension(:,:,:),       intent(out),               &
                        qlin_arg, qiin_arg, qain_arg, delta_ql_arg, & 
                        delta_qi_arg, delta_qa_arg
 
-      real,    dimension (size(temp,1), size(temp,2)) ::   parcel_rise
+      real,    dimension (size(temp,1), size(temp,2)) :: parcel_rise, &
+                                                         summa
 
       type(donner_conv_type)            :: Don_conv
       type(donner_budgets_type)         :: Don_budgets
       type(donner_cape_type)            :: Don_cape
       type(donner_rad_type)             :: Don_rad
       type(donner_cem_type)             :: Don_cem
+      type(sounding)                    :: sd
+      type(adicloud)                    :: ac
+      type(cplume)                      :: cp
+      type(ctend )                      :: ct
       character(len=128)                :: ermesg
       integer                           :: error
       integer                           :: isize, jsize, nlev_lsm
       integer                           :: ntr, me, root_pe
-      logical                           :: calc_conv_on_this_step 
       logical                           :: cloud_tracers_present
       integer                           :: num_cld_tracers
       integer                           :: i, j, k, n   
@@ -1424,7 +1485,8 @@ real, dimension(:,:,:),       intent(out),               &
             meso_liq_amt, meso_liq_size, meso_ice_amt, meso_ice_size,  &
             meso_droplet_number, &
             nsum, precip, delta_temp, delta_vapor, detf, uceml_inter,  &
-            mtot, donner_humidity_area, donner_humidity_factor, &
+            mtot, mfluxup, donner_humidity_area,  &
+            donner_humidity_factor, &
             total_precip, temperature_forcing, moisture_forcing,    &
             parcel_rise, delta_ql_arg, delta_qi_arg, delta_qa_arg,   &
             qtrtnd,         &
@@ -1484,6 +1546,20 @@ real, dimension(:,:,:),       intent(out),               &
           pmass(:,:,k) = (phalf(:,:,k+1) - phalf(:,:,k))/Param%GRAV   
         end do
 
+!---------------------------------------------------------------------
+!   define the column integrated tracer wet deposition associated with 
+!   donner convection so that it may be returned to moist_processes.
+!---------------------------------------------------------------------
+
+        donner_wetdep = 0.
+        do n=1, ntr
+          summa = 0.
+          do k=1,nlev_lsm
+            summa(:,:) = summa(:,:) + &
+                                 Don_conv%wetdept(:,:,k,n)*pmass(:,:,k)
+          end do
+          donner_wetdep(:,:,n) = summa(:,:)
+        end do
         if (running_in_fms) then
           call fms_donner_deep_netcdf (is, ie, js, je, Nml, secs, days,&
                                  Param, Initialized, Don_conv,  &
@@ -1521,12 +1597,39 @@ real, dimension(:,:,:),       intent(out),               &
         nsum          = Don_rad%nsum
 
 !--------------------------------------------------------------------
+!    define the precip fields at each model level for liq and frozen 
+!    precip associated with the cell and meso circulations.
+!    UNITS KG / KG/ DAY 
+!--------------------------------------------------------------------
+        do k=1,nlev_lsm
+          frz_meso(:,:,k) = (Don_budgets%precip_budget(:,:,k,2,2) + &
+                   Don_budgets%precip_budget(:,:,k,2,3) + &
+                   Don_budgets%precip_budget(:,:,k,4,2) + &
+                   Don_budgets%precip_budget(:,:,k,4,3))*  &
+                                                     Don_conv%a1(:,:)
+          liq_meso(:,:,k) = (Don_budgets%precip_budget(:,:,k,1,2) + &
+                   Don_budgets%precip_budget(:,:,k,1,3) + &
+                   Don_budgets%precip_budget(:,:,k,3,2) + &
+                   Don_budgets%precip_budget(:,:,k,3,3) + &
+                   Don_budgets%precip_budget(:,:,k,5,2) + &
+                   Don_budgets%precip_budget(:,:,k,5,3))*  &
+                                                     Don_conv%a1(:,:)
+          frz_cell(:,:,k) = (Don_budgets%precip_budget(:,:,k,2,1) + &
+                   Don_budgets%precip_budget(:,:,k,4,1))*   &
+                                                     Don_conv%a1(:,:)
+          liq_cell(:,:,k) = (Don_budgets%precip_budget(:,:,k,1,1) + &
+                   Don_budgets%precip_budget(:,:,k,3,1) + &
+                   Don_budgets%precip_budget(:,:,k,5,1))*  &
+                                                     Don_conv%a1(:,:)
+        end do
+
+!--------------------------------------------------------------------
 !    call deallocate_local_variables to deallocate space used by the
 !    local derived-type variables.
 !--------------------------------------------------------------------
         call don_d_dealloc_loc_vars_k   &
                (Don_conv, Don_cape, Don_rad, Don_cem,Don_budgets, Nml, &
-                                            Initialized, ermesg, error)
+                          Initialized, sd, ac, cp, ct, ermesg, error)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1569,7 +1672,7 @@ subroutine donner_deep_restart(timestamp)
   integer                                :: ntracers
 
   if (running_in_fms) then
-     call fms_donner_write_restart (timestamp)
+     call fms_donner_write_restart (Initialized, timestamp)
   else 
 
      !---------------------------------------------------------------------
@@ -1758,6 +1861,7 @@ subroutine deallocate_variables
       deallocate ( Don_save%lag_press           )
       deallocate ( Don_save%cememf              )
       deallocate ( Don_save%mass_flux           )
+      deallocate ( Don_save%mflux_up            )
       deallocate ( Don_save%cell_up_mass_flux   )
       deallocate ( Don_save%det_mass_flux       )
       deallocate ( Don_save%dql_strat           )
@@ -1777,12 +1881,6 @@ subroutine deallocate_variables
       deallocate (Param%dgeice)
       deallocate (Param%relht )
 
-
-
-      call sd_end_k(sd);
-      call ac_end_k(ac);
-      call cp_end_k(cp);
-      call ct_end_k(ct);
       call exn_end_k
       call findt_end_k
 

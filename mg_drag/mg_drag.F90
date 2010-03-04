@@ -25,8 +25,8 @@ module mg_drag_mod
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 17.0 2009/07/21 02:55:27 fms Exp $'
- character(len=128) :: tagname = '$Name: quebec_200910 $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 18.0 2010/03/02 23:31:01 fms Exp $'
+ character(len=128) :: tagname = '$Name: riga $'
 
  real, parameter :: p00 = 1.e5
 
@@ -309,6 +309,7 @@ if ( .not.do_mcm_mg_drag ) then
 !  Based on fraction of model atmosphere to be considered "low-level"
 !  (input via namelist), find highest model level.
 
+    ktop(:,:) = kdim
     ptop(:,:) = (1.-low_lev_frac)*psurf(:,:)
     do kd=kdim,1,-1 
          where (pfull(:,:,kd) .ge. ptop(:,:)) 

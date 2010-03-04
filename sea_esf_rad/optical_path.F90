@@ -64,8 +64,8 @@ private
 !----------- version number for this module -------------------
 
    character(len=128)  :: &
-   version =  '$Id: optical_path.F90,v 17.0 2009/07/21 02:57:10 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+   version =  '$Id: optical_path.F90,v 18.0 2010/03/02 23:32:22 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: riga $'
 
 
 !---------------------------------------------------------------------
@@ -237,7 +237,7 @@ real      :: d622 = RDGAS/RVGAS
 integer   :: NBTRG, NBTRGE
 !!$integer   :: n
 
-integer   :: israd, ierad, jsrad, jerad, ks, ke
+integer   :: ks, ke
 
 logical   :: module_is_initialized      = .false. ! module has been
                                                   ! initialized ?
@@ -672,6 +672,7 @@ logical,                   intent(in)            :: including_aerosols
       integer      :: n_aerosol_bands
       integer      :: k, i, j, n
       integer      :: ix, jx, kx
+      integer      :: israd, ierad, jsrad, jerad
 
 !--------------------------------------------------------------------
 !  local variables:
@@ -2677,6 +2678,7 @@ type(optical_path_type), intent(inout)    :: Optical
 
       real                    ::  t0 = 296.0
       integer                 ::  k, nu
+      integer      :: israd, ierad, jsrad, jerad
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -2691,6 +2693,10 @@ type(optical_path_type), intent(inout)    :: Optical
 !      nu
 !
 !--------------------------------------------------------------------
+      israd = 1
+      ierad = size(press,1)
+      jsrad = 1
+      jerad = size(press,2)
 
 !--------------------------------------------------------------------
 !
@@ -2829,8 +2835,13 @@ type(optical_path_type), intent(inout) ::  Optical
 !  local variables:
 
       integer  ::    k    ! do-loop index
+      integer      :: israd, ierad, jsrad, jerad
 
 !---------------------------------------------------------------------
+      israd = 1
+      ierad = size(qo3,1)
+      jsrad = 1
+      jerad = size(qo3,2)
 
 !--------------------------------------------------------------------
 !
@@ -2925,6 +2936,7 @@ type(optical_path_type), intent(inout) :: Optical
       real, dimension(size(temp,1), size(temp,2), &
                                      size(temp,3)) :: texpsl
       integer     :: k, i
+      integer      :: israd, ierad, jsrad, jerad
 
 !--------------------------------------------------------------------
 !  local variables:
@@ -2933,6 +2945,10 @@ type(optical_path_type), intent(inout) :: Optical
 !      i,k
 !
 !----------------------------------------------------------------------
+      israd = 1
+      ierad = size(temp,1)
+      jsrad = 1
+      jerad = size(temp,2)
 
 !---------------------------------------------------------------------
 !
@@ -3053,6 +3069,7 @@ type(optical_path_type), intent(inout) ::  Optical
                                              tpl1, tpl2, &
                                              qh2o, tdif, tdif2
       integer    ::  m, k
+      integer      :: israd, ierad, jsrad, jerad
 
 !--------------------------------------------------------------------
 !  local variables:
@@ -3067,6 +3084,10 @@ type(optical_path_type), intent(inout) ::  Optical
 !
 !-----------------------------------------------------------------------
 
+      israd = 1
+      ierad = size(pflux,1)
+      jsrad = 1
+      jerad = size(pflux,2)
 !-------------------------------------------------------------------- 
 !    compute mean temperature in the "nearby layer" between a flux
 !    level and the first data level below the flux level (tpl1) or the

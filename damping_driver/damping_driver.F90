@@ -19,6 +19,7 @@ module damping_driver_mod
  use      mg_drag_mod, only:  mg_drag, mg_drag_init, mg_drag_end, &
                               mg_drag_restart
  use      cg_drag_mod, only:  cg_drag_init, cg_drag_calc, cg_drag_end, &
+                              cg_drag_time_vary, cg_drag_endts, &
                               cg_drag_restart
  use    topo_drag_mod, only:  topo_drag_init, topo_drag, topo_drag_end, &
                               topo_drag_restart
@@ -36,6 +37,7 @@ module damping_driver_mod
  private
 
  public   damping_driver, damping_driver_init, damping_driver_end
+ public   damping_driver_time_vary, damping_driver_endts
  public   damping_driver_restart
 
 !-----------------------------------------------------------------------
@@ -96,8 +98,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 17.0 2009/07/21 02:54:04 fms Exp $'
- character(len=128) :: tagname = '$Name: quebec_200910 $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 18.0 2010/03/02 23:29:45 fms Exp $'
+ character(len=128) :: tagname = '$Name: riga $'
 
 !-----------------------------------------------------------------------
 
@@ -522,6 +524,32 @@ endif
 
  end subroutine damping_driver_init
 
+
+!#####################################################################
+
+subroutine damping_driver_time_vary (delt)
+
+real, intent(in) :: delt
+
+
+       call cg_drag_time_vary (delt)
+
+end subroutine damping_driver_time_vary
+
+
+
+!#####################################################################
+
+subroutine damping_driver_endts
+
+
+     call cg_drag_endts
+
+end subroutine damping_driver_endts
+
+
+
+!######################################################################
 !#######################################################################
 
  subroutine damping_driver_end

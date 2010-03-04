@@ -40,8 +40,8 @@
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- character(len=128) :: version = '$Id: ras.F90,v 17.0 2009/07/21 02:55:53 fms Exp $'
- character(len=128) :: tagname = '$Name: quebec_200910 $'
+ character(len=128) :: version = '$Id: ras.F90,v 18.0 2010/03/02 23:31:30 fms Exp $'
+ character(len=128) :: tagname = '$Name: riga $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -225,7 +225,7 @@ logical  :: do_ras_tracer = .false.
  character(len=128)    :: diagname, diaglname, tendunits, name, units
  integer               :: tr
  integer               :: num_tracers
- integer :: nn
+ integer               :: nn, logunit
 !=====================================================================
 
 !---------------------------------------------------------------------
@@ -246,7 +246,8 @@ logical  :: do_ras_tracer = .false.
 !---------------------------------------------------------------------
 
   call write_version_number (version, tagname)
-       WRITE( stdlog(), nml = ras_nml ) 
+       logunit = stdlog()
+       WRITE( logunit, nml = ras_nml ) 
 
 
 !---------------------------------------------------------------------
@@ -2585,7 +2586,7 @@ if ( LRcu ) then
 FUNCTION ran0(idum)
 
 
-!     $Id: ras.F90,v 17.0 2009/07/21 02:55:53 fms Exp $
+!     $Id: ras.F90,v 18.0 2010/03/02 23:31:30 fms Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

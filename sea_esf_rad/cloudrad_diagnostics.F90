@@ -20,7 +20,7 @@ use fms_mod,                 only: fms_init, open_namelist_file, &
                                    write_version_number, mpp_pe, &
                                    mpp_root_pe, stdlog, file_exist,  &
                                    check_nml_error, error_mesg,   &
-                                   FATAL, close_file
+                                   FATAL, NOTE, close_file
 use time_manager_mod,        only: time_type, time_manager_init
 use diag_manager_mod,        only: register_diag_field, send_data, &
                                    diag_manager_init
@@ -64,8 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 17.0 2009/07/21 02:56:08 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 18.0 2010/03/02 23:31:45 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 
 !---------------------------------------------------------------------
@@ -73,7 +73,8 @@ character(len=128)  :: tagname =  '$Name: quebec_200910 $'
 
 public          &
          cloudrad_diagnostics_init, cloudrad_netcdf, &
-         cloudrad_diagnostics_end
+         obtain_cloud_tau_and_em, modis_yim, modis_cmip, &
+         model_micro_dealloc, cloudrad_diagnostics_end
 
 private          &
 !   called from cloudrad_diagnostics_init:
@@ -88,6 +89,11 @@ private          &
 !-------- namelist  ---------
 !
 ! do_isccp                 should isccp_cloudtypes processing be done?
+!
+! do_outdated_isccp        should isccp_cloudtypes processing be done,
+!                          here, using outdated isccp code? the 
+!                          recommended approach is to use isccp 
+!                          supplied via the COSP simulator
 !
 ! isccp_actual_radprops    should the GCM's radiative properties be 
 !                          used in the isccp_cloudtypes processing?
@@ -110,6 +116,7 @@ private          &
 !                          more accurately.    
 
 logical :: do_isccp = .false.
+logical :: do_outdated_isccp = .false.
 logical :: isccp_actual_radprops = .true.
 real    :: isccp_scale_factor = 0.85
 logical :: cloud_screen = .false.
@@ -118,6 +125,7 @@ real    :: cod_limit = 2.
 real    :: water_ice_ratio =1.
 
 namelist /cloudrad_diagnostics_nml /  do_isccp, isccp_actual_radprops,&
+                                      do_outdated_isccp, &
                                       isccp_scale_factor, cloud_screen,&
                                       cloud_cover_limit, cod_limit, &
                                       water_ice_ratio
@@ -150,6 +158,9 @@ real             :: min_cld_drop_rad, max_cld_drop_rad, &
 !----------------------------------------------------------------------
 integer          :: ncol 
 
+integer          :: nswbands, isccpSwBand, isccpLwBand
+integer          :: iuv, ivis, inir
+
 !----------------------------------------------------------------------
 !    diagnostics variables.     
 !----------------------------------------------------------------------
@@ -160,6 +171,8 @@ integer :: id_tot_cld_amt, id_cld_amt, &
            id_high_cld_amt, id_mid_cld_amt, id_low_cld_amt,  &
            id_lam_cld_amt
 integer :: id_reff_modis, id_reff_modis2, id_reff_modis3
+integer :: id_cldtop_reff, id_cldtop_area, id_cldtop_dropnum, &
+           id_dropnum_col
 
 ! radiative property diagnostics
 integer :: id_em_cld_lw, id_em_cld_10u, & 
@@ -464,6 +477,44 @@ type(time_type),         intent(in)    ::   Time
          'Cldrad_control%do_no_clouds not yet defined', FATAL)
       endif
 
+!--------------------------------------------------------------------
+!    decide if isccp processing will be done here, using outdated 
+!    code.
+!--------------------------------------------------------------------
+      if (do_isccp) then
+        if (do_outdated_isccp) then
+!         the outdated isccp code referenced here will be executed
+        else
+          call error_mesg ('cloudrad_diagnostics', &
+           ' The isccp code in this module is outdated. if you REALLY &
+             &want to use it, set do_outdated_isccp in this nml &
+             &to .true., and resubmit; otherwise use the COSP &
+             &simulator interface to obtain isccp analysis.', NOTE)
+          call error_mesg ('cloudrad_diagnostics', &
+             ' The yim modis output is controlled by setting &
+         &do_modis_yim to .true. (default)in physics_driver_nml.', NOTE)
+          do_isccp = .false.
+!         if (mpp_pe() == mpp_root_pe() ) then
+!           call error_mesg ('cloudrad_diagnostics', &
+!            ' See above two NOTES for ways to avoid this error', FATAL)
+!         endif
+        endif
+      else
+        if (do_outdated_isccp) then
+          call error_mesg ('cloudrad_diagnostics', &
+           'if you REALLY want to use outdated isccp code, you must &
+             &also set do_isccp in this nml to .true., and &
+             &resubmit; otherwise use the COSP simulator.', NOTE)
+          call error_mesg ('cloudrad_diagnostics', &
+              ' To get the simple modis output, set do_modis_yim to &
+               &.true. in physics_driver_nml.', NOTE)  
+          if (mpp_pe() == mpp_root_pe() ) then
+            call error_mesg ('cloudrad_diagnostics', &
+             ' See above two NOTES for ways to avoid this error', FATAL)
+          endif
+        endif
+      endif
+
 !---------------------------------------------------------------------
 !    initialize isccp_clouds_init 
 !---------------------------------------------------------------------
@@ -483,6 +534,81 @@ type(time_type),         intent(in)    ::   Time
          'Cldrad_control%do_strat_clouds not yet defined', FATAL)
       endif
 
+      nswbands = Solar_spect%nbands
+
+!--------------------------------------------------------------------
+!    define the number of shortwave bands and set integer correspond-
+!    ance for diagnostics output
+!
+!    The understanding used in this code is that there are 2 
+!    resolutions to the shortwave spectrum.  A high resolution with
+!    25 bands and a low resolution with 18 bands.  The low resolution
+!    is used conventional for AM2.      Here are the bands in the 
+!    high and low res used for the UV, VIS, and NIR prescriptions
+!    below.
+!
+!
+!    For Low Resolution (nswbands = 18) :
+!
+!    Region   iband     Wavenumbers (cm-1)         Wavelength (microns)
+!    ------   -----     ------------------         --------------------
+!
+!     UV       15          35300-36500                    0.274-0.283
+!     VIS       7          16700-20000                      0.5-0.6
+!     NIR       3           4200-8200                      1.22-2.38
+!
+!
+!    For High Resolution (nswbands = 25) :
+!
+!    Region   iband     Wavenumbers (cm-1)         Wavelength (microns)
+!    ------   -----     ------------------         --------------------
+!
+!     UV       22          35300-36500                    0.274-0.283
+!     VIS      12          16700-20000                      0.5-0.6
+!     NIR       8           6200-8200                      1.22-1.61
+!
+!---------------------------------------------------------------------
+!---------------------------------------------------------------------
+! Which bands to use for ISCCP cloud detection?
+!
+!    Note that cloud optical thickness in the visible band is sent
+!    to isccp diag.  Band 6 corresponds to 14600-16700 cm-1 or 
+!    0.6-0.685 microns, from 18 band structure.
+!
+!    If the multi-band lw emissivity is active, longwave emissivity 
+!    is taken from the band closest to 10 microns (900-990 cm-1 band, 
+!    10.1-11.1 microns, band 4 of 8). If the multi-band lw cloud 
+!    emissivity formulation is not active, longwave emissivity is 
+!    taken from band 1 (0-2200 cm-1).
+!---------------------------------------------------------------------
+      select case(nswbands)
+        case (25) 
+          isccpSwBand = 11
+          iuv=22
+          ivis=12
+          inir=8
+        case (18) 
+          isccpSwBand = 6
+          iuv=15
+          ivis=7
+          inir=3
+        case default
+          isccpSwBand = 6
+          iuv=15
+          ivis=7
+          inir=3
+      end select
+      if (Cldrad_control%do_lw_micro_iz) then
+        if (Cldrad_control%do_lw_micro) then
+          isccpLwBand = 4
+        else
+          isccpLwBand = 1    
+        end if
+      else
+        call error_mesg ('cloudrad_diagnostics_mod',  &
+         'Cldrad_control%do_lw_micro not yet defined', FATAL)
+      endif
+
 !--------------------------------------------------------------------
 !    mark the module initialized.
 !--------------------------------------------------------------------
@@ -493,6 +619,309 @@ type(time_type),         intent(in)    ::   Time
 
 
 end subroutine cloudrad_diagnostics_init
+
+
+
+!--------------------------------------------------------------------
+
+subroutine obtain_cloud_tau_and_em (is, js, Model_microphys, &
+                                    Atmos_input, &
+                                    Tau_stoch, Lwem_stoch)
+
+
+integer,                     intent(in)     :: is, js
+type(atmos_input_type),      intent(in)     :: Atmos_input
+type(microphysics_type),     intent(in)     :: Model_microphys
+real, dimension(:,:,:,:),    intent(inout)  :: Tau_stoch, LwEm_stoch
+
+      integer :: n
+
+!--------------------------------------------------------------------
+!    execute the following when stochastic clouds are activated. there 
+!    are separate cloud fields for each sw and lw radiative band.
+!--------------------------------------------------------------------
+      if (Cldrad_control%do_stochastic_clouds) then
+      
+!---------------------------------------------------------------------
+!    after this call the Tau array is actually extinction.
+!---------------------------------------------------------------------
+        call isccp_microphys_sw_driver   &
+                          (is, js, isccpSwBand, Model_microphys,    &
+                                                 cldext=Tau_stoch) 
+
+!---------------------------------------------------------------------
+!    and to get optical thickness...
+!---------------------------------------------------------------------
+        do n=1,ncol
+          Tau_stoch(:,:,:,n) = (Tau_stoch(:,:,:,n)*         &
+                   Atmos_input%deltaz(:,:,:)/1000./isccp_scale_factor)
+        end do
+ 
+!---------------------------------------------------------------------
+!    at first the LwEm array holds the absorption coefficient...
+!---------------------------------------------------------------------
+        call isccp_microphys_lw_driver (is, js, isccpLwBand, &
+                                Model_microphys, abscoeff=LwEm_stoch)
+ 
+!---------------------------------------------------------------------
+!    and then the emissivity 
+!---------------------------------------------------------------------
+        do n=1,ncol
+          LwEm_stoch(:,:,:,n) = 1. -   &
+               exp(-1.*diffac*(LwEm_stoch(:,:,:,n)*  &
+                  Atmos_input%deltaz(:,:,:)/1000.)/isccp_scale_factor)
+        end do
+      else
+        call error_mesg ('cloudrad_diagnostics', &
+              'trying to activate cosp or modis_yim without &
+                                           &stochastic clouds', FATAL)
+      endif ! (do_stochastic_clouds)
+
+!-------------------------------------------------------------------
+
+end subroutine obtain_cloud_tau_and_em 
+
+
+
+
+!#####################################################################
+
+subroutine modis_yim (is, js, Time_diag, Tau_stoch, Model_microphys, &
+                      Atmos_input)
+
+integer,                        intent(in)   :: is, js
+type(time_type),                intent(in)   :: Time_diag
+type(microphysics_type),        intent(in)   :: Model_microphys
+type(atmos_input_type),         intent(in)   :: Atmos_input
+real, dimension(:,:,:,:),       intent(in)   :: Tau_stoch           
+
+
+      real, dimension(size(Atmos_input%rh2o,1),                  &
+                      size(Atmos_input%rh2o,2)) :: reff_modis,   &
+                                                   reff_modis2,  &
+                                                   reff_modis3      
+                                                  
+      integer    :: i, j, n, k
+      real       :: reff_n, coun_n, pres_n, Tau_m, reff_m, coun_m
+      integer    :: ix, jx, kx
+      real       :: min_conc
+      logical    :: used
+
+!--------------------------------------------------------------------
+      ix =  size(Atmos_input%rh2o,1)
+      jx =  size(Atmos_input%rh2o,2)
+      kx =  size(Atmos_input%rh2o,3)
+
+!---------------------------------------------------------------------
+!     generate diagnostics related to the drop sizes which would be
+!     diagnosed from MODIS satellite data. use the isccp simulator 
+!     data to retrieve the drop size.
+!---------------------------------------------------------------------
+      if (max(id_reff_modis, id_reff_modis2, id_reff_modis3) > 0) then
+        reff_modis(:,:) = 0.
+        reff_modis2(:,:) = 0.
+        reff_modis3(:,:) = 0.
+
+!---------------------------------------------------------------------
+!     process each model grid column. the variables ending in _n accum-
+!     ulate vertical column data across the stochastic columns for a
+!     given model column.
+!---------------------------------------------------------------------
+        do j=1,jx
+          do i=1,ix
+            reff_n = 0.
+            coun_n = 0.
+            pres_n = 0.
+
+!---------------------------------------------------------------------
+!     process each stochastic column. the variables ending in _m accu-
+!     mulate data in the vertical column for a given stochastic column.
+!---------------------------------------------------------------------
+            do n=1,ncol
+              Tau_m = 0.
+              reff_m = 0.
+              coun_m = 0.
+
+!----------------------------------------------------------------------
+!     scan downward in each stochastic column until the cloud optical
+!     depth limit (cod_limit) is reached (the limit of the MODIS scan).
+!     accumulate the effective droplet diameter for each layer the scan
+!     penetrates and keep count of the number of such layers.
+!----------------------------------------------------------------------
+              k = 1
+              do while ( k <= kx .and. Tau_m <= cod_limit)
+                Tau_m = Tau_m + Tau_stoch(i,j,k,n)
+                min_conc = MAX (1.0e-10, water_ice_ratio*  &
+                             Model_microphys%stoch_conc_ice(i,j,k,n)) 
+                if (Model_microphys%stoch_conc_drop(i,j,k,n)  &
+                                                   > min_conc) then  
+                  if (Model_microphys%stoch_size_drop(i,j,k,n)  &
+                                                            > 1. ) then 
+                    reff_m = reff_m +    &
+                               Model_microphys%stoch_size_drop(i,j,k,n)
+                    coun_m = coun_m + 1.
+                  endif
+                endif
+                k = k + 1
+              end do
+
+!---------------------------------------------------------------------
+!     if there were any layers in this stochastic column which are seen
+!     by MODIS, add the mean droplet diameter from this column to the 
+!     sum being accumulated over the stochastic columns. increment the
+!     count of contributing columns, and add the pressure of maximum
+!     penetration to that accumulation array. 
+!---------------------------------------------------------------------
+              if (coun_m >= 1.) then
+                reff_n = reff_n + reff_m/coun_m
+                coun_n = coun_n + 1.
+                pres_n = pres_n + Atmos_input%press(i,j,k)
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!     if there were any stochastic columns in this grid column in which
+!     MODIS would have seen drops,  process the data.
+!---------------------------------------------------------------------
+            if (coun_n >= 1.) then
+
+!---------------------------------------------------------------------
+!     if cloud_screen is .true., then drop sizes are reported only in 
+!     columns with a cloud fraction greater than cloud_cover_limit.
+!     otherwise, any grid columns with cloudiness in at least one
+!     stochastic column will have the drop size reported. note here that
+!     droplet diameter is now converted to droplet radius, and the 
+!     pressure level of maximum penetration is converted to hPa.
+!---------------------------------------------------------------------
+              if (cloud_screen) then
+                if (coun_n/real(ncol) > cloud_cover_limit) then
+                  reff_modis(i,j) = 0.5*reff_n
+                  reff_modis2(i,j) = coun_n
+                  reff_modis3(i,j) = pres_n*1.0e-02
+                endif  
+              else
+                reff_modis(i,j) = 0.5*reff_n
+                reff_modis2(i,j) = coun_n
+                reff_modis3(i,j) = pres_n*1.0e-02
+              endif
+            endif
+          end do
+        end do
+
+!---------------------------------------------------------------------
+!     send the data to diag_manager. post-processing of these output
+!     fields will be needed.
+!---------------------------------------------------------------------
+        used = send_data (id_reff_modis, reff_modis, Time_diag, is, js)
+        used = send_data (id_reff_modis2, reff_modis2,   &
+                                                     Time_diag, is, js)
+        used = send_data (id_reff_modis3, reff_modis3, &
+                                                     Time_diag, is, js)
+      endif  ! (reff_modis)
+
+!--------------------------------------------------------------------
+
+
+end subroutine modis_yim
+
+
+
+!#####################################################################
+
+subroutine modis_cmip (is, js, Time_diag, Lsc_microphys, &
+                      Atmos_input)
+
+integer,                        intent(in)   :: is, js
+type(time_type),                intent(in)   :: Time_diag
+type(microphysics_type),        intent(in)   :: Lsc_microphys
+type(atmos_input_type),         intent(in)   :: Atmos_input
+
+
+      real, dimension(size(Atmos_input%rh2o,1),                  &
+                      size(Atmos_input%rh2o,2)) :: cldtop_reff,  &
+                                                   cldtop_dropnum,  &
+                                                   cldtop_area, &      
+                                                   dropnum_col
+      real, dimension(size(Atmos_input%rh2o,1),                  &
+                      size(Atmos_input%rh2o,2),                 &
+                      size(Atmos_input%rh2o,3)) :: dpog             
+                                                  
+      integer    :: i, j, k
+      integer    :: ix, jx, kx
+      logical    :: used
+
+!--------------------------------------------------------------------
+      ix =  size(Atmos_input%rh2o,1)
+      jx =  size(Atmos_input%rh2o,2)
+      kx =  size(Atmos_input%rh2o,3)
+
+      cldtop_reff = 0.0              
+      cldtop_area = 0.0              
+      cldtop_dropnum = 0.0              
+
+!---------------------------------------------------------------------
+!     generate diagnostics related to the drop sizes which would be
+!     diagnosed from MODIS satellite data. use the isccp simulator 
+!     data to retrieve the drop size.
+!---------------------------------------------------------------------
+      if (max(id_cldtop_reff, id_cldtop_dropnum,  &
+                                    id_dropnum_col) > 0) then
+!---------------------------------------------------------------------
+!     process each model grid column. the variables ending in _n accum-
+!     ulate vertical column data across the stochastic columns for a
+!     given model column.
+!---------------------------------------------------------------------
+        do j=1,jx
+          do i=1,ix
+            do k=1, kx
+
+!----------------------------------------------------------------------
+!     scan downward in each stochastic column until the cloud optical
+!     depth limit (cod_limit) is reached (the limit of the MODIS scan).
+!     accumulate the effective droplet diameter for each layer the scan
+!     penetrates and keep count of the number of such layers.
+!----------------------------------------------------------------------
+                if (Lsc_microphys%conc_drop(i,j,k) > 0.0) then
+                  cldtop_reff  (i,j) =  0.5*  &
+                                Lsc_microphys%cldamt(i,j,k)* &
+                                         Lsc_microphys%size_drop(i,j,k)
+                  cldtop_dropnum(i,j) = (Atmos_input%press(i,j,k)/  &
+                                   (RDGAS*Atmos_input%temp(i,j,k)))* &
+                                Lsc_microphys%cldamt(i,j,k)* &
+                                    Lsc_microphys%droplet_number(i,j,k)
+                  cldtop_area(i,j) =  & 
+                            Lsc_microphys%cldamt(i,j,k)
+                  exit
+                endif
+            end do
+          end do
+          end do
+
+          do k=1, kx
+            dpog(:,:,k) = (Atmos_input%pflux(:,:,k+1) -     &
+                                     Atmos_input%pflux(:,:,k))/GRAV
+          end do
+          dropnum_col(:,:) = SUM  &
+            (Lsc_microphys%droplet_number*dpog*Lsc_microphys%cldamt, &
+                                                                 dim=3)
+
+!---------------------------------------------------------------------
+!     send the data to diag_manager. post-processing of these output
+!     fields will be needed.
+!---------------------------------------------------------------------
+        used = send_data (id_cldtop_reff, 1.0e-06*cldtop_reff, Time_diag, is, js)
+        used = send_data (id_cldtop_area, cldtop_area, Time_diag, is, js)
+        used = send_data (id_cldtop_dropnum, cldtop_dropnum,   &
+                                                     Time_diag, is, js)
+        used = send_data (id_dropnum_col, dropnum_col, &
+                                                     Time_diag, is, js)
+      endif  ! (id_cldtop_reff)
+
+!----------------------------------------------------------------------
+
+
+end subroutine modis_cmip
+
 
 
 !###################################################################
@@ -580,7 +1009,7 @@ subroutine cloudrad_netcdf (is, js, Time_diag, Atmos_input, cosz, &
                             Lscrad_props,   &
                             Mesorad_props, Cellrad_props,  &
                             Shallowrad_props, Cldrad_props,&
-                            Cld_spec, mask)
+                            Cld_spec, Model_microphys, mask)
 
 !---------------------------------------------------------------------
 !    cloudrad_netcdf generates and outputs netcdf fields describing the
@@ -602,6 +1031,7 @@ type(microrad_properties_type), intent(in)      :: Lscrad_props, &
                                                    Shallowrad_props
 type(cldrad_properties_type),   intent(in)      :: Cldrad_props
 type(cld_specification_type),   intent(in)      :: Cld_spec       
+type(microphysics_type),        intent(inout)   :: Model_microphys
 real, dimension(:,:,:),         intent(in),  &
                                        optional :: mask
 
@@ -699,19 +1129,9 @@ real, dimension(:,:,:),         intent(in),  &
                       size(Atmos_input%rh2o,2),                       &
                       size(Atmos_input%rh2o,3))   ::  Tau, LwEm
 
-      real, dimension(size(Atmos_input%rh2o,1),                  &
-                      size(Atmos_input%rh2o,2)) :: reff_modis,   &
-                                                   reff_modis2,  &
-                                                   reff_modis3      
-                                                  
-      type(microphysics_type) :: Model_microphys
-      
-      real       :: reff_n, coun_n, pres_n, Tau_m, reff_m, coun_m
-      real       :: min_conc
       logical    :: used
       integer    :: ix, jx, kx
-      integer    :: i, j, k, n,  isccpSwBand, isccpLwBand, nswbands
-      integer    :: iuv, ivis, inir
+      integer    :: i, j, k, n
       integer    :: ier
       integer    :: nn
 
@@ -747,55 +1167,6 @@ real, dimension(:,:,:),         intent(in),  &
                                                                  FATAL)
       endif
 
-!--------------------------------------------------------------------
-!    define the number of shortwave bands and set integer correspond-
-!    ance for diagnostics output
-!
-!    The understanding used in this code is that there are 2 
-!    resolutions to the shortwave spectrum.  A high resolution with
-!    25 bands and a low resolution with 18 bands.  The low resolution
-!    is used conventional for AM2.      Here are the bands in the 
-!    high and low res used for the UV, VIS, and NIR prescriptions
-!    below.
-!
-!
-!    For Low Resolution (nswbands = 18) :
-!
-!    Region   iband     Wavenumbers (cm-1)         Wavelength (microns)
-!    ------   -----     ------------------         --------------------
-!
-!     UV       15          35300-36500                    0.274-0.283
-!     VIS       7          16700-20000                      0.5-0.6
-!     NIR       3           4200-8200                      1.22-2.38
-!
-!
-!    For High Resolution (nswbands = 25) :
-!
-!    Region   iband     Wavenumbers (cm-1)         Wavelength (microns)
-!    ------   -----     ------------------         --------------------
-!
-!     UV       22          35300-36500                    0.274-0.283
-!     VIS      12          16700-20000                      0.5-0.6
-!     NIR       8           6200-8200                      1.22-1.61
-!
-!---------------------------------------------------------------------
-
-      nswbands = size(Lscrad_props%cldext,4)
-      if (nswbands .eq. 25) then      
-          iuv=22
-          ivis=12
-          inir=8
-      else if (nswbands .eq. 18) then
-          iuv=15
-          ivis=7
-          inir=3
-      else
-          iuv=15
-          ivis=7
-          inir=3
-      endif        
-      
-      
 !--------------------------------------------------------------------
 !    define the array dimensions on the processor.
 !---------------------------------------------------------------------
@@ -1075,203 +1446,46 @@ real, dimension(:,:,:),         intent(in),  &
 !---------------------------------------------------------------------
 
       if (do_isccp) then
-        if (Cldrad_control%do_strat_clouds) then
+        call obtain_cloud_tau_and_em (is, js, Model_microphys, &
+                                    Atmos_input, &
+                                    Tau_stoch, Lwem_stoch)
+      endif  ! (do_isccp )
 
-!---------------------------------------------------------------------
-! Which bands to use for ISCCP cloud detection?
-!
-!    Note that cloud optical thickness in the visible band is sent
-!    to isccp diag.  Band 6 corresponds to 14600-16700 cm-1 or 
-!    0.6-0.685 microns, from 18 band structure.
-!
-!    If the multi-band lw emissivity is active, longwave emissivity 
-!    is taken from the band closest to 10 microns (900-990 cm-1 band, 
-!    10.1-11.1 microns, band 4 of 8). If the multi-band lw cloud 
-!    emissivity formulation is not active, longwave emissivity is 
-!    taken from band 1 (0-2200 cm-1).
-!---------------------------------------------------------------------
-          select case(nswbands)
-            case (25) 
-              isccpSwBand = 11
-            case (18) 
-              isccpSwBand = 6
-            case default
-              isccpSwBand = 6
-          end select
-          if (Cldrad_control%do_lw_micro) then
-            isccpLwBand = 4
-          else
-            isccpLwBand = 1    
-          end if
-      
 !--------------------------------------------------------------------
 !    execute the following when stochastic clouds are activated. there 
 !    are separate cloud fields for each sw and lw radiative band.
 !--------------------------------------------------------------------
-          if (Cldrad_control%do_stochastic_clouds) then
-      
-!---------------------------------------------------------------------
-!    after this call the Tau array is actually extinction.
-!---------------------------------------------------------------------
-            call isccp_microphys_sw_driver   &
-                          (is, js, isccpSwBand, Model_microphys,    &
-                                                 cldext=Tau_stoch) 
+      if (Cldrad_control%do_stochastic_clouds) then
 
-!---------------------------------------------------------------------
-!    and to get optical thickness...
-!---------------------------------------------------------------------
-            do n=1,ncol
-              Tau_stoch(:,:,:,n) = (Tau_stoch(:,:,:,n)*         &
-                   Atmos_input%deltaz(:,:,:)/1000./isccp_scale_factor)
-            end do
- 
-!---------------------------------------------------------------------
-!    at first the LwEm array holds the absorption coefficient...
-!---------------------------------------------------------------------
-            call isccp_microphys_lw_driver (is, js, isccpLwBand, &
-                                Model_microphys, abscoeff=LwEm_stoch)
- 
-!---------------------------------------------------------------------
-!    and then the emissivity 
-!---------------------------------------------------------------------
-            do n=1,ncol
-              LwEm_stoch(:,:,:,n) = 1. -   &
-                 exp(-1.*diffac*(LwEm_stoch(:,:,:,n)*  &
-                    Atmos_input%deltaz(:,:,:)/1000.)/isccp_scale_factor)
-            end do
+        if (do_isccp) then
                         
 !----------------------------------------------------------------------
 !    call isccp_diag_stochastic to map the stochastic clouds and cloud
 !    properties to the isccp cloud categories.
 !----------------------------------------------------------------------
-            call isccp_diag_stochastic (is, js, Atmos_input, cosz, &
+          call isccp_diag_stochastic (is, js, Atmos_input, cosz, &
                                         Tau_stoch, LwEm_stoch,   &
                                         Model_microphys%stoch_cldamt, &
                                         Time_diag)
-
-!---------------------------------------------------------------------
-!     generate diagnostics related to the drop sizes which would be
-!     diagnosed from MODIS satellite data. use the isccp simulator 
-!     data to retrieve the drop size.
-!---------------------------------------------------------------------
-            if (max(id_reff_modis, id_reff_modis2, id_reff_modis3) > 0) then
-              reff_modis(:,:) = 0.
-              reff_modis2(:,:) = 0.
-              reff_modis3(:,:) = 0.
-!---------------------------------------------------------------------
-!     process each model grid column. the variables ending in _n accum-
-!     ulate vertical column data across the stochastic columns for a
-!     given model column.
-!---------------------------------------------------------------------
-              do j=1,jx
-                do i=1,ix
-                  reff_n = 0.
-                  coun_n = 0.
-                  pres_n = 0.
-
-!---------------------------------------------------------------------
-!     process each stochastic column. the variables ending in _m accu-
-!     mulate data in the vertical column for a given stochastic column.
-!---------------------------------------------------------------------
-                  do n=1,ncol
-                    Tau_m = 0.
-                    reff_m = 0.
-                    coun_m = 0.
-!----------------------------------------------------------------------
-!     scan downward in each stochastic column until the cloud optical
-!     depth limit (cod_limit) is reached (the limit of the MODIS scan).
-!     accumulate the effective droplet diameter for each layer the scan
-!     penetrates and keep count of the number of such layers.
-!----------------------------------------------------------------------
-                    k = 1
-                    do while ( k <= kx .and. Tau_m <= cod_limit)
-                      Tau_m = Tau_m + Tau_stoch(i,j,k,n)
-                      min_conc = MAX (1.0e-10, water_ice_ratio*  &
-                             Model_microphys%stoch_conc_ice(i,j,k,n)) 
-                      if (Model_microphys%stoch_conc_drop(i,j,k,n)  &
-                                                      > min_conc) then  
-                        if (Model_microphys%stoch_size_drop(i,j,k,n) &
-                                                      > 1. ) then 
-                          reff_m = reff_m +    &
-                               Model_microphys%stoch_size_drop(i,j,k,n)
-                          coun_m = coun_m + 1.
-                        endif
-                      endif
-                      k = k + 1
-                    end do
-
-!---------------------------------------------------------------------
-!     if there were any layers in this stochastic column which are seen
-!     by MODIS, add the mean droplet diameter from this column to the 
-!     sum being accumulated over the stochastic columns. increment the
-!     count of contributing columns, and add the pressure of maximum
-!     penetration to that accumulation array. 
-!---------------------------------------------------------------------
-                    if (coun_m >= 1.) then
-                      reff_n = reff_n + reff_m/coun_m
-                      coun_n = coun_n + 1.
-                      pres_n = pres_n + Atmos_input%press(i,j,k)
-                    endif
-                  end do
-
-!---------------------------------------------------------------------
-!     if there were any stochastic columns in this grid column in which
-!     MODIS would have seen drops,  process the data.
-!---------------------------------------------------------------------
-                  if (coun_n >= 1.) then
-
-!---------------------------------------------------------------------
-!     if cloud_screen is .true., then drop sizes are reported only in 
-!     columns with a cloud fraction greater than cloud_cover_limit.
-!     otherwise, any grid columns with cloudiness in at least one
-!     stochastic column will have the drop size reported. note here that
-!     droplet diameter is now converted to droplet radius, and the 
-!     pressure level of maximum penetration is converted to hPa.
-!---------------------------------------------------------------------
-                    if (cloud_screen) then
-                      if (coun_n/real(ncol) > cloud_cover_limit) then
-                        reff_modis(i,j) = 0.5*reff_n
-                        reff_modis2(i,j) = coun_n
-                        reff_modis3(i,j) = pres_n*1.0e-02
-                      endif  
-                    else
-                      reff_modis(i,j) = 0.5*reff_n
-                      reff_modis2(i,j) = coun_n
-                      reff_modis3(i,j) = pres_n*1.0e-02
-                    endif
-                  endif
-                end do
-              end do
-
-!---------------------------------------------------------------------
-!     send the data to diag_manager. post-processing of these output
-!     fields will be needed.
-!---------------------------------------------------------------------
-              used = send_data (id_reff_modis, reff_modis,   &
-                                                    Time_diag, is, js)
-              used = send_data (id_reff_modis2, reff_modis2, &
-                                                    Time_diag, is, js)
-              used = send_data (id_reff_modis3, reff_modis3, &
-                                                    Time_diag, is, js)
-            endif  ! (reff_modis)
+        endif
 
 !--------------------------------------------------------------------
 !    define the isccp properties when stochastic clouds are not active.
 !    here there is only a single cloud profile for each gridbox.
 !---------------------------------------------------------------------
-          else  ! (do_stochastic_clouds)
-            Tau(:,:,:) = (Lscrad_props%cldext(:,:,:,isccpSwBand)* &
+      else  ! (do_stochastic_clouds)
+        if ( do_isccp ) then 
+          Tau(:,:,:) = (Lscrad_props%cldext(:,:,:,isccpSwBand)* &
                                   Atmos_input%deltaz(:,:,:)/1000.) / &
                                                      isccp_scale_factor
-            LwEm(:,:,:) =  1. - exp( -1. * diffac *        &
+          LwEm(:,:,:) =  1. - exp( -1. * diffac *        &
                            (Lscrad_props%abscoeff(:,:,:,isccpLwBand)* &
                                     Atmos_input%deltaz(:,:,:)/1000.)/ &
                                                     isccp_scale_factor) 
-            call isccp_diag (is, js, Cld_spec, Atmos_input, cosz, &
-                             Tau, LwEm, Time_diag)
-          endif ! (do_stochastic_clouds)
-        endif  ! (do_strat_clouds)
-      endif  ! (do_isccp)
+          call isccp_diag (is, js, Cld_spec, Atmos_input, cosz, &
+                                                  Tau, LwEm, Time_diag)
+        endif
+      endif ! (do_stochastic_clouds)
 
 !---------------------------------------------------------------------
 !
@@ -3113,10 +3327,29 @@ real, dimension(:,:,:),         intent(in),  &
           endif
         end do 
 
+      endif ! (do_stochastic_clouds)
+
+!---------------------------------------------------------------------
+
+
+
+end subroutine cloudrad_netcdf
+
+
+
+!#####################################################################
+
+subroutine model_micro_dealloc (Model_microphys)
+ 
+type(microphysics_type), intent(inout) :: Model_microphys
+
+    integer :: ier
+
 !--------------------------------------------------------------------
 !    deallocate the components of the microphysics_type derived type
 !    variable.
 !--------------------------------------------------------------------
+     if (Cldrad_control%do_stochastic_clouds) then
         nullify (Model_microphys%lw_stoch_conc_ice)
         nullify (Model_microphys%lw_stoch_conc_drop)
         nullify (Model_microphys%lw_stoch_size_ice)
@@ -3153,7 +3386,7 @@ real, dimension(:,:,:),         intent(in),  &
 
 
 
-end subroutine cloudrad_netcdf
+end subroutine model_micro_dealloc
 
 
 !####################################################################
@@ -3277,6 +3510,22 @@ integer        , intent(in) :: axes(4)
                          (mod_name, 'reff_modis3', axes(1:2), Time, &
                           'MODIS scan pressure level', 'mbar')
 
+      id_cldtop_reff = register_diag_field    &
+                         (mod_name, 'cldtop_reff', axes(1:2), Time, &
+                          'liq drop radius at cld top*cfrac', 'meters')
+     
+      id_cldtop_area = register_diag_field    &
+                         (mod_name, 'cldtop_area', axes(1:2), Time, &
+                          'liq cloud area at cld top', '1')
+     
+      id_cldtop_dropnum = register_diag_field    &
+                         (mod_name, 'cldtop_dropnum', axes(1:2), Time, &
+                          'liq droplet # at cld top*cfrac', 'm-3')
+     
+      id_dropnum_col = register_diag_field    &
+                         (mod_name, 'dropnum_col', axes(1:2), Time, &
+                    'column integrated liq droplet # * cfrac', 'm-2')
+     
 !---------------------------------------------------------------------
 !    register various cloud fraction diagnostics.
 !---------------------------------------------------------------------

@@ -30,8 +30,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: my25_turb.F90,v 17.0 2009/07/21 02:55:42 fms Exp $'
- character(len=128) :: tagname = '$Name: quebec_200910 $'
+ character(len=128) :: version = '$Id: my25_turb.F90,v 18.0 2010/03/02 23:31:19 fms Exp $'
+ character(len=128) :: tagname = '$Name: riga $'
  logical            :: module_is_initialized = .false.
  
  logical :: init_tke
@@ -680,21 +680,21 @@ end subroutine get_tke
 !---------------------------------------------------------------------
 
   id_restart = register_restart_field(Tur_restart, 'my25_turb.res', 'TKE', TKE)
-  if( FILE_EXIST( 'INPUT/my25_turb.res' ) ) then
-
-      unit = OPEN_restart_FILE ( file = 'INPUT/my25_turb.res', action = 'read' )
-      call read_data ( unit, TKE )
-      CALL CLOSE_FILE( unit )
-
-      init_tke = .false.
-
-  else if (file_exist( 'INPUT/my25_turb.res.nc' )) then
+  if (file_exist( 'INPUT/my25_turb.res.nc' )) then
       if (mpp_pe() == mpp_root_pe() ) then
         call error_mesg ('my25_turb_mod',  'MY25_TURB_INIT:&
              &Reading netCDF formatted restart file: &
                                  &INPUT/my25_turb.res.nc', NOTE)
       endif
       call restore_state(Tur_restart)
+
+  else if( FILE_EXIST( 'INPUT/my25_turb.res' ) ) then
+
+      unit = OPEN_restart_FILE ( file = 'INPUT/my25_turb.res', action = 'read' )
+      call read_data ( unit, TKE )
+      CALL CLOSE_FILE( unit )
+
+      init_tke = .false.
       
   else
 

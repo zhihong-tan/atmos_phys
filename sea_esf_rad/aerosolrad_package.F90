@@ -27,6 +27,8 @@ use time_manager_mod,      only: time_type, time_manager_init,  &
 use diag_manager_mod,      only: diag_manager_init, get_base_time
 use interpolator_mod,      only: interpolate_type, interpolator_init, &
                                  interpolator, interpolator_end, &
+                                 obtain_interpolator_time_slices, &
+                                 unset_interpolator_time_flag, &
                                  CONSTANT, INTERP_WEIGHTED_P
 
 ! shared radiation package modules:
@@ -36,7 +38,6 @@ use rad_utilities_mod,     only: Sw_control, &
                                  Rad_control,&
                                  aerosol_type, aerosol_properties_type,&
                                  aerosol_diagnostics_type, &
-                                 assignment(=), &
                                  Lw_parameters, rad_utilities_init, &
                                  thickavg
 use esfsw_parameters_mod,  only: Solar_spect, esfsw_parameters_init 
@@ -56,8 +57,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 17.0 2009/07/21 02:56:02 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 18.0 2010/03/02 23:31:39 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 
 !---------------------------------------------------------------------
@@ -65,7 +66,8 @@ character(len=128)  :: tagname =  '$Name: quebec_200910 $'
 
 public           &
        aerosolrad_package_init, aerosol_radiative_properties, &
-       aerosolrad_package_alloc, &
+       aerosolrad_package_alloc, aerosolrad_package_time_vary, &
+       aerosolrad_package_endts, &
        aerosolrad_package_end,  get_aerosol_optical_info, &
        get_aerosol_optical_index
      
@@ -88,6 +90,12 @@ logical              ::        &
 logical              ::        &
              do_swaerosol = .false.    ! aerosol effects included in sw
                                        ! radiation ?
+logical              ::        &
+             force_to_repro_quebec = .false.
+                                       ! if true, code sequence is 
+                                       ! executed which reproduces
+                                       ! quebec+ answers for 
+                                       ! AM3p8e in pre_Riga
 character(len=48)    ::        &
              aerosol_data_set = ' '    ! source of aerosol data; if 
                                        ! aerosols not desired remains
@@ -268,6 +276,7 @@ integer, dimension(0:100) ::  sulfate_vol_indices = (/      &
 
 namelist / aerosolrad_package_nml /                          &
                                     do_lwaerosol, do_swaerosol, &
+                                    force_to_repro_quebec, &
                                     aerosol_data_set, &
                                     aerosol_optical_names, &
                                     sulfate_indices, &
@@ -365,12 +374,19 @@ integer, PARAMETER ::  BC_FLAG = -8
 integer, PARAMETER ::  NOT_IN_USE = -2000
 
 !----------------------------------------------------------------------
-!    Aerosol_props is an aerosol_properties_type variable which retains
-!    the information needed throughout the run concerning aerosol
-!    radiative properties and provides the means to transfer that
-!    information to other modules.
+!    the following index arrays contain the mapping information between 
+!    actual model relative humidity and the available enties in the 
+!    aerosol optical properties file.
 !----------------------------------------------------------------------
-type(aerosol_properties_type), save         :: Aerosol_props
+integer, dimension(:,:), allocatable :: sulfate_index
+integer, dimension(:),   allocatable :: optical_index
+integer, dimension(:),   allocatable :: omphilic_index
+integer, dimension(:),   allocatable :: bcphilic_index
+integer, dimension(:),   allocatable :: seasalt1_index
+integer, dimension(:),   allocatable :: seasalt2_index
+integer, dimension(:),   allocatable :: seasalt3_index
+integer, dimension(:),   allocatable :: seasalt4_index
+integer, dimension(:),   allocatable :: seasalt5_index
 
 !---------------------------------------------------------------------
 !    the following arrays related to sw aerosol effects are allocated 
@@ -419,14 +435,12 @@ real,    dimension(:,:), allocatable   :: sflwwts, sflwwts_cn
 !--------------------------------------------------------------------
 !    logical flags 
 !--------------------------------------------------------------------
-logical :: swprops_completed          = .false. ! sw properties have
-                                                ! been calculated ?
-logical :: band_calculation_completed = .false. ! lw properties have
-                                                ! been calculated ?
 logical :: module_is_initialized      = .false. ! module has been
                                                 ! initialized ?
 !logical :: doing_predicted_aerosols   = .false. ! predicted aerosol 
                                                 ! scheme being used ?
+logical :: band_calculation_completed = .false. ! lw properties have
+                                                ! been calculated ?
 
 type(time_type) :: Model_init_time  ! initial calendar time for model  
                                     ! [ time_type ]
@@ -465,6 +479,19 @@ real, dimension(:,:,:,:), allocatable :: sw_ext_save
 real, dimension(:,:,:,:), allocatable :: sw_ssa_save
 real, dimension(:,:,:,:), allocatable :: sw_asy_save
 real, dimension(:,:,:,:), allocatable :: lw_ext_save
+real, dimension(:,:,:,:), allocatable :: lw_ssa_save
+real, dimension(:,:,:,:), allocatable :: lw_asy_save
+
+!---------------------------------------------------------------------
+!   module variables to hold values unchanging in time:
+!---------------------------------------------------------------------
+real, dimension(:,:), allocatable :: aerextband_MOD
+real, dimension(:,:), allocatable :: aerssalbband_MOD
+real, dimension(:,:), allocatable :: aerasymmband_MOD
+real, dimension(:,:), allocatable :: aerextbandlw_MOD
+real, dimension(:,:), allocatable :: aerssalbbandlw_MOD
+real, dimension(:,:), allocatable :: aerextbandlw_cn_MOD
+real, dimension(:,:), allocatable :: aerssalbbandlw_cn_MOD
 
 !---------------------------------------------------------------------
 !    logical variables indicating whether interpolation is currently
@@ -473,15 +500,27 @@ logical :: need_sw_ext = .true.
 logical :: need_sw_ssa = .true.
 logical :: need_sw_asy = .true.
 logical :: need_lw_ext = .true.
+logical :: need_lw_ssa = .true.
+logical :: need_lw_asy = .true.
+
+!---------------------------------------------------------------------
+!    logical variables indicating whether the particular radiative 
+!    property associated with volcanoes is being supplied:
+logical :: using_sw_ext = .false. 
+logical :: using_sw_ssa = .false. 
+logical :: using_sw_asy = .false. 
+logical :: using_lw_ext = .false. 
+logical :: using_lw_ssa = .false. 
+logical :: using_lw_asy = .false. 
 
 !---------------------------------------------------------------------
 !    counters associated with determining when interpolation needs to
 !    be done:
-integer :: tot_points 
-integer :: pts_processed = 0
 logical :: mo_save_set = .false.
 integer :: mo_save = 0
+integer :: mo_new
 
+type(time_type) :: Volcano_time
 integer :: nfields_save
 integer :: num_sul, num_bc
 integer, dimension(:), allocatable :: sul_ind, bc_ind
@@ -644,6 +683,7 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
          ' using Rad_control%do_{l,s}waerosol_forcing  before it &
                                              &is defined', FATAL)
       endif
+
 !--------------------------------------------------------------------
 !    mark the just defined logicals as initialized.
 !--------------------------------------------------------------------
@@ -818,11 +858,6 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
         negative_offset = .false.
       endif
 
-!--------------------------------------------------------------------
-!    define the processor's total number of columns.
-!--------------------------------------------------------------------
-      tot_points = ( size(lonb,1)-1)*( size(latb,2) -1)
-
 !-----------------------------------------------------------------------
 !    if desired, process the sw extinction coefficient file. allocate 
 !    space for and define the names of each variable. if not interpol-
@@ -856,6 +891,7 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
                                   sw_ext_name(:nfields_sw_ext),   &
                                   data_out_of_bounds=(/CONSTANT/), &
                                   vert_interp=(/INTERP_WEIGHTED_P/) )  
+          using_sw_ext = .true.
         endif
 
 !--------------------------------------------------------------------
@@ -890,6 +926,7 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
                                   sw_ssa_name(:nfields_sw_ssa),   &
                                   data_out_of_bounds=(/CONSTANT/), &
                                   vert_interp=(/INTERP_WEIGHTED_P/) ) 
+          using_sw_ssa = .true.
         endif
 
 !--------------------------------------------------------------------
@@ -924,6 +961,7 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
                                   sw_asy_name(:nfields_sw_asy),   &
                                   data_out_of_bounds=(/CONSTANT/), &
                                   vert_interp=(/INTERP_WEIGHTED_P/) )  
+          using_sw_asy = .true.
         endif
       endif
 
@@ -960,6 +998,7 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
                                   lw_ext_name(:nfields_lw_ext),   &
                                   data_out_of_bounds=(/CONSTANT/), &
                                   vert_interp=(/INTERP_WEIGHTED_P/) )
+          using_lw_ext= .true.
         endif
 
 !--------------------------------------------------------------------
@@ -972,6 +1011,11 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
         if (trim(lw_ssa_root)    /= ' '  ) then
           nfields_lw_ssa = N_AEROSOL_BANDS
           allocate (lw_ssa_name (nfields_lw_ssa))
+          if (.not. interpolating_volcanic_data) then
+            allocate (lw_ssa_save(size(lonb,1)-1, size(latb,2)-1, &
+                                  kmax, nfields_lw_ssa) )
+            lw_ssa_save = 0.0
+          endif
           do n=1, nfields_lw_ssa
             if (n<= 9) then
               write (chvers, '(i1)') n
@@ -989,6 +1033,7 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
                                   lw_ssa_name(:nfields_lw_ssa),   &
                                   data_out_of_bounds=(/CONSTANT/), &
                                   vert_interp=(/INTERP_WEIGHTED_P/) )  
+          using_lw_ssa = .true.
         endif
 
 !--------------------------------------------------------------------
@@ -1000,6 +1045,11 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
         if (trim(lw_asy_root)    /= ' '  ) then
           nfields_lw_asy = N_AEROSOL_BANDS
           allocate (lw_asy_name (nfields_lw_asy))
+          if (.not. interpolating_volcanic_data) then
+            allocate (lw_asy_save(size(lonb,1)-1, size(latb,2)-1, &
+                                  kmax, nfields_lw_asy) )
+            lw_asy_save = 0.0
+          endif
           do n=1, nfields_lw_asy
             if (n<= 9) then
               write (chvers, '(i1)') n
@@ -1017,32 +1067,9 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
                                    lw_asy_name(:nfields_lw_asy),   &
                                    data_out_of_bounds=(/CONSTANT/), &
                                    vert_interp=(/INTERP_WEIGHTED_P/) )  
+          using_lw_asy = .true.
         endif
      endif
-
-!---------------------------------------------------------------------
-!    save the flags into the aerosol_props derived type variable so they
-!    may be used in external modules.
-!---------------------------------------------------------------------
-      Aerosol_props%sulfate_flag  = SULFATE_FLAG
-      Aerosol_props%omphilic_flag = OMPHILIC_FLAG
-      Aerosol_props%bcphilic_flag = BCPHILIC_FLAG
-      Aerosol_props%seasalt1_flag = SEASALT1_FLAG
-      Aerosol_props%seasalt2_flag = SEASALT2_FLAG
-      Aerosol_props%seasalt3_flag = SEASALT3_FLAG
-      Aerosol_props%seasalt4_flag = SEASALT4_FLAG
-      Aerosol_props%seasalt5_flag = SEASALT5_FLAG
-!yim
-      if (Rad_control%using_im_bcsul_iz) then
-        if (Rad_control%using_im_bcsul) then
-          Aerosol_props%bc_flag = BC_FLAG
-        else
-          Aerosol_props%bc_flag = NOT_IN_USE
-        endif
-      else
-        call error_mesg ('aerosolrad_package_init', &
-          'using using_im_bcsul before it is initialized', FATAL)
-      endif
 
 !---------------------------------------------------------------------
 !    mark the module as initialized.
@@ -1055,205 +1082,20 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
 end subroutine aerosolrad_package_init
 
 
-!######################################################################
+!##########################################################################
 
-subroutine aerosolrad_package_alloc (ix, jx, kx, Aerosol_props)
+subroutine aerosolrad_package_time_vary (Time)
 
-integer,                       intent(in) :: ix, jx, kx
-type(aerosol_properties_type), intent(inout) :: Aerosol_props
+!-------------------------------------------------------------------------
+!    aerosolrad_package_time_vary performs time-dependent, space-independent
+!    caluclations for this module
+!-------------------------------------------------------------------------
 
-
-        if (Rad_control%volcanic_sw_aerosols) then
-          allocate (Aerosol_props%sw_ext (ix,jx,kx, nfields_sw_ext))
-          allocate (Aerosol_props%sw_ssa (ix,jx,kx,nfields_sw_ssa))
-          allocate (Aerosol_props%sw_asy (ix,jx,kx,nfields_sw_asy))
-        endif
-        if (Rad_control%volcanic_lw_aerosols) then
-          allocate (Aerosol_props%lw_ext (ix,jx,kx, nfields_lw_ext))
-          allocate (Aerosol_props%lw_ssa (ix,jx,kx,nfields_lw_ssa))
-          allocate (Aerosol_props%lw_asy (ix,jx,kx,nfields_lw_asy))
-        endif
-        allocate (Aerosol_props%ivol(ix,jx,kx))
-        allocate (Aerosol_props%aerextband   &
-                                      (Solar_spect%nbands, naermodels))
-        allocate (Aerosol_props%aerssalbband &
-                                      (Solar_spect%nbands, naermodels))
-        allocate (Aerosol_props%aerasymmband &
-                                      (Solar_spect%nbands, naermodels))
-        allocate (Aerosol_props%aerextbandlw  &
-                                      (N_AEROSOL_BANDS, naermodels))
-        allocate (Aerosol_props%aerssalbbandlw  &
-                                      (N_AEROSOL_BANDS, naermodels))
-        allocate (Aerosol_props%aerextbandlw_cn &
-                                      (N_AEROSOL_BANDS_CN, naermodels))
-        allocate (Aerosol_props%aerssalbbandlw_cn  &
-                                      (N_AEROSOL_BANDS_CN, naermodels))
-        if (Rad_control%using_im_bcsul) then
-          allocate (Aerosol_props%sulfate_index (0:100, 0:100))
-        else
-          allocate (Aerosol_props%sulfate_index (0:100, 0:0))
-        endif
-        allocate (Aerosol_props%optical_index (nfields_save))
-        allocate (Aerosol_props%omphilic_index(0:100))
-        allocate (Aerosol_props%bcphilic_index(0:100))
-        allocate (Aerosol_props%seasalt1_index(0:100))
-        allocate (Aerosol_props%seasalt2_index(0:100))
-        allocate (Aerosol_props%seasalt3_index(0:100))
-        allocate (Aerosol_props%seasalt4_index(0:100))
-        allocate (Aerosol_props%seasalt5_index(0:100))
-
-!--------------------------------------------------------------------
+type(time_type),         intent(in)   :: Time
 
 
-end subroutine aerosolrad_package_alloc
-
-
-
-
-!####################################################################
-! <SUBROUTINE NAME="aerosol_radiative_properties">
-!  <OVERVIEW>
-!    aerosol_radiative_properties defines and returns the radiative
-!    properties for each aerosol properties type and for each solar
-!    parameterization band in the shortwave and for each aerosol 
-!    emissivity band in the longwave.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!    aerosol_radiative_properties defines and returns the radiative
-!    properties for each aerosol properties type and for each solar
-!    parameterization band in the shortwave and for each aerosol 
-!    emissivity band in the longwave.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call aerosol_radiative_properties (is, ie, js, je, &
-!                                         Aerosol, Aerosol_props_out)
-!  </TEMPLATE>
-!  <IN NAME="Aerosol" TYPE="aerosol_type">
-!   Aerosol climatology input
-!  </IN>
-!  <INOUT NAME="Aerosol_props_out" TYPE="aerosol_properties_type">
-!   Aerosol radiative properties in radiation package
-!  </INOUT>
-!  <IN NAME="is, ie" TYPE="integer">
-!   The longitude index of model physics window domain
-!  </IN>
-!  <IN NAME="js, je" TYPE="integer">
-!   The latitude index of model physics window domain
-!  </IN>
-! </SUBROUTINE>
-!
-subroutine aerosol_radiative_properties (is, ie, js, je, &
-                                         Time, p_half, Aerosol_diags, &
-                                         Aerosol, Aerosol_props_out)
-
-!---------------------------------------------------------------------
-!    aerosol_radiative_properties defines and returns the radiative
-!    properties for each aerosol properties type and for each solar
-!    parameterization band in the shortwave and for each aerosol 
-!    emissivity band in the longwave.
-!---------------------------------------------------------------------
-
-integer,                       intent(in)    :: is, ie, js, je
-type(time_type),               intent(in)    :: Time
-real, dimension(:,:,:),        intent(in)    :: p_half
-type(aerosol_type),            intent(in)    :: Aerosol
-type(aerosol_diagnostics_type), intent(inout) :: Aerosol_diags
-type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
- 
-!----------------------------------------------------------------------
-! local variables:                                                     
-
-      type(time_type) :: Volcano_time
-      integer  :: na, nw, ni, nmodel       ! do-loop indices
-      integer  :: n
       integer  :: yr, mo, dy, hr, mn, sc
-      integer  :: iaer, i, j, k
-      real, dimension (size(Aerosol%aerosol,1),  &
-                       size(Aerosol%aerosol,2),  &
-                       size(Aerosol%aerosol,3))  :: sul, bc
-     
-!---------------------------------------------------------------------
-!    be sure module has been initialized.
-!---------------------------------------------------------------------
-      if (.not. module_is_initialized ) then
-        call error_mesg ('aerosolrad_package_mod',   &
-             'module has not been initialized', FATAL )
-      endif
-
-!---------------------------------------------------------------------
-!    allocate and initialize arrays to hold aerosol diagnostics.
-!---------------------------------------------------------------------
-      allocate (Aerosol_diags%extopdep (size(Aerosol%aerosol,1), &
-                                        size(Aerosol%aerosol,2), &
-                                        size(Aerosol%aerosol,3), &
-                                        size(Aerosol%aerosol,4), 5 ))
-      Aerosol_diags%extopdep = 0.0
-      allocate (Aerosol_diags%absopdep (size(Aerosol%aerosol,1), &
-                                        size(Aerosol%aerosol,2), &
-                                        size(Aerosol%aerosol,3), &
-                                        size(Aerosol%aerosol,4), 5 ))
-      Aerosol_diags%absopdep = 0.0
-      allocate (Aerosol_diags%extopdep_vlcno    &
-                                        (size(Aerosol%aerosol,1), &
-                                         size(Aerosol%aerosol,2), &
-                                         size(Aerosol%aerosol,3),2))
-      Aerosol_diags%extopdep_vlcno = 0.0
-      allocate (Aerosol_diags%absopdep_vlcno  &
-                                        (size(Aerosol%aerosol,1), &
-                                         size(Aerosol%aerosol,2), &
-                                         size(Aerosol%aerosol,3),2))
-      Aerosol_diags%absopdep_vlcno = 0.0
-      allocate (Aerosol_diags%sw_heating_vlcno  &
-                                        (size(Aerosol%aerosol,1), &
-                                         size(Aerosol%aerosol,2), &
-                                         size(Aerosol%aerosol,3), &
-                                         Rad_control%nzens))
-      Aerosol_diags%sw_heating_vlcno = 0.0
-      allocate (Aerosol_diags%lw_extopdep_vlcno    &
-                                        (size(Aerosol%aerosol,1), &
-                                         size(Aerosol%aerosol,2), &
-                                         size(Aerosol%aerosol,3)+1,2))
-      Aerosol_diags%lw_extopdep_vlcno = 0.0
-      allocate (Aerosol_diags%lw_absopdep_vlcno  &
-                                        (size(Aerosol%aerosol,1), &
-                                         size(Aerosol%aerosol,2), &
-                                         size(Aerosol%aerosol,3)+1,2))
-      Aerosol_diags%lw_absopdep_vlcno = 0.0
-
-!--------------------------------------------------------------------
-!    if sw aerosol properties are desired and have not yet been calc-
-!    ulated, use the thick-averaging technique to define the single-
-!    scattering properties for each solar parameterization band n 
-!    from the specified properties on the aerosol parameterization 
-!    bands ni for each aerosol properties type nmodel. 
-! references:                                                          
-!    edwards,j.m. and a. slingo, studies with a flexible new radiation  
-!    code I: choosing a configuration for a large-scale model.,     
-!    q.j.r. meteorological society, 122, 689-719, 1996.              
-!                                                                      
-! note: a thin-averaging technique (subroutine thinavg in 
-!    rad_utilities_mod) is also available.   
-!--------------------------------------------------------------------
-        if ((Sw_control%do_swaerosol .or.   &
-             Rad_control%do_swaerosol_forcing)  .and. &
-            .not. swprops_completed) then
-          do nmodel=1,naermodels
-            call thickavg (nivl1aero, nivl2aero, num_wavenumbers,   &
-                           Solar_spect%nbands, aeroextivl(:,nmodel), &
-                           aerossalbivl(:,nmodel),    &
-                           aeroasymmivl(:,nmodel), solivlaero,   &
-                           Solar_spect%solflxbandref,       & 
-                           Aerosol_props%aerextband(:,nmodel),    &
-                           Aerosol_props%aerssalbband(:,nmodel),   &
-                           Aerosol_props%aerasymmband(:,nmodel))
-          end do
-
-!--------------------------------------------------------------------
-!    mark the sw aerosol properties as having been calculated.
-!--------------------------------------------------------------------
-          swprops_completed = .true.
-        endif
-
+    
 !---------------------------------------------------------------------
 !    define the time for which the volcanic properties will be obtained.
 !---------------------------------------------------------------------
@@ -1283,49 +1125,337 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
             need_sw_ssa = .true.
             need_sw_asy = .true.
             need_lw_ext = .true.
+            need_lw_ssa = .true.
+            need_lw_asy = .true.
           else
             call get_date (Volcano_time, yr,mo,dy,hr,mn,sc)
             Volcano_time =  set_date (yr, mo,15,12,0,0)
             if (mo_save_set) then
               if (mo /= mo_save) then
+                mo_new = mo       
                 need_sw_ext = .true.
                 need_sw_ssa = .true.
                 need_sw_asy = .true.
                 need_lw_ext = .true.
+                need_lw_ssa = .true.
+                need_lw_asy = .true.
               endif
             else
               need_sw_ext = .true.
               need_sw_ssa = .true.
               need_sw_asy = .true.
               need_lw_ext = .true.
+              need_lw_ssa = .true.
+              need_lw_asy = .true.
+            endif
+          endif
+        endif ! (using_volcanic_lw or using_volcanic_sw)
+
+!--------------------------------------------------------------------
+!    if the volcanic sw aerosol extinction is being supplied, make sure
+!    needed time slices are available.
+!--------------------------------------------------------------------
+        if (using_sw_ext) then
+          if (need_sw_ext) then
+            if (nfields_sw_ext >= 1) then
+              call obtain_interpolator_time_slices  &
+                              (Sw_aer_extopdep_interp, Volcano_Time)
             endif
           endif
         endif
 
 !--------------------------------------------------------------------
-!    if the volcanic sw aerosol optical properties file is being used,
-!    allocate space to hold the volcanic properties.
+!    if the volcanic sw aerosol single scattering albedo is being 
+!    supplied, make sure needed time slices are available.
 !--------------------------------------------------------------------
-        if (using_volcanic_sw_files) then
-          if (.not. associated(Aerosol_props%sw_ext)) &
-          allocate (Aerosol_props%sw_ext(size(p_half,1),  &
-                                         size(p_half,2), &
-                                         size(p_half,3)-1, &
-                                         nfields_sw_ext) )
-          if (.not. associated(Aerosol_props%sw_ssa)) &
-          allocate (Aerosol_props%sw_ssa(size(p_half,1), &
-                                         size(p_half,2), &
-                                         size(p_half,3)-1, &
-                                         nfields_sw_ssa) )
-          if (.not. associated(Aerosol_props%sw_asy)) &
-          allocate (Aerosol_props%sw_asy(size(p_half,1), &
-                                         size(p_half,2), &
-                                         size(p_half,3)-1, &
-                                         nfields_sw_asy) )
+        if (using_sw_ssa) then
+          if (need_sw_ssa) then
+            if (nfields_sw_ssa >= 1) then
+              call obtain_interpolator_time_slices  &
+                              (Sw_aer_ssalb_interp, Volcano_Time)
+            endif
+          endif
+        endif
+
+!--------------------------------------------------------------------
+!    if the volcanic sw aerosol asymmetry factor is being supplied, 
+!    make sure needed time slices are available.
+!--------------------------------------------------------------------
+        if (using_sw_asy) then
+          if (need_sw_asy) then
+            if (nfields_sw_asy >= 1) then
+              call obtain_interpolator_time_slices  &
+                              (Sw_aer_asymm_interp, Volcano_Time)
+            endif
+          endif
+        endif
+
+!--------------------------------------------------------------------
+!    if the volcanic lw aerosol extinction is being supplied, 
+!    make sure needed time slices are available.
+!--------------------------------------------------------------------
+        if (using_lw_ext) then
+          if (need_lw_ext) then
+            if (nfields_lw_ext >= 1) then
+              call obtain_interpolator_time_slices  &
+                              (Lw_aer_extopdep_interp, Volcano_Time)
+            endif
+          endif
+        endif
+
+!--------------------------------------------------------------------
+!    if the volcanic lw single scattering albedo is being supplied, 
+!    make sure needed time slices are available.
+!--------------------------------------------------------------------
+        if (using_lw_ssa) then
+          if (need_lw_ssa) then
+            if (nfields_lw_ssa >= 1) then
+              call obtain_interpolator_time_slices  &
+                              (Lw_aer_ssalb_interp, Volcano_Time)
+            endif
+          endif
+        endif
+
+!--------------------------------------------------------------------
+!    if the volcanic lw aerosol asymmetry factor is being supplied, 
+!    obtain the appropriate data.
+!--------------------------------------------------------------------
+        if (using_lw_asy) then
+          if (need_lw_asy) then
+            if (nfields_lw_asy >= 1) then
+              call obtain_interpolator_time_slices  &
+                              (Lw_aer_asymm_interp, Volcano_Time)
+            endif
+          endif
+        endif
+
+!---------------------------------------------------------------------------
+
+
+end subroutine aerosolrad_package_time_vary 
+
+!######################################################################
+
+subroutine aerosolrad_package_alloc (ix, jx, kx, Aerosol_props)
+
+integer,                       intent(in) :: ix, jx, kx
+type(aerosol_properties_type), intent(inout) :: Aerosol_props
+
+
+        if (Rad_control%volcanic_sw_aerosols) then
+          allocate (Aerosol_props%sw_ext (ix,jx,kx, nfields_sw_ext))
+          allocate (Aerosol_props%sw_ssa (ix,jx,kx,nfields_sw_ssa))
+          allocate (Aerosol_props%sw_asy (ix,jx,kx,nfields_sw_asy))
+        endif
+        if (Rad_control%volcanic_lw_aerosols) then
+          allocate (Aerosol_props%lw_ext (ix,jx,kx, nfields_lw_ext))
+          allocate (Aerosol_props%lw_ssa (ix,jx,kx,nfields_lw_ssa))
+          allocate (Aerosol_props%lw_asy (ix,jx,kx,nfields_lw_asy))
+        endif
+        allocate (Aerosol_props%ivol(ix,jx,kx))
+        if (Rad_control%do_swaerosol_forcing .or.  &
+                                         Sw_control%do_swaerosol) then
+          allocate (Aerosol_props%aerextband   &
+                                      (Solar_spect%nbands, naermodels))
+          allocate (Aerosol_props%aerssalbband &
+                                      (Solar_spect%nbands, naermodels))
+          allocate (Aerosol_props%aerasymmband &
+                                      (Solar_spect%nbands, naermodels))
+        endif
+        if (Rad_control%do_lwaerosol_forcing .or.  &
+                                         Lw_control%do_lwaerosol) then
+          allocate (Aerosol_props%aerextbandlw  &
+                                      (N_AEROSOL_BANDS, naermodels))
+          allocate (Aerosol_props%aerssalbbandlw  &
+                                      (N_AEROSOL_BANDS, naermodels))
+          allocate (Aerosol_props%aerextbandlw_cn &
+                                      (N_AEROSOL_BANDS_CN, naermodels))
+          allocate (Aerosol_props%aerssalbbandlw_cn  &
+                                      (N_AEROSOL_BANDS_CN, naermodels))
+        endif
+        if (Rad_control%using_im_bcsul) then
+          allocate (Aerosol_props%sulfate_index (0:100, 0:100))
+        else
+          allocate (Aerosol_props%sulfate_index (0:100, 0:0))
+        endif
+        allocate (Aerosol_props%optical_index (nfields_save))
+        allocate (Aerosol_props%omphilic_index(0:100))
+        allocate (Aerosol_props%bcphilic_index(0:100))
+        allocate (Aerosol_props%seasalt1_index(0:100))
+        allocate (Aerosol_props%seasalt2_index(0:100))
+        allocate (Aerosol_props%seasalt3_index(0:100))
+        allocate (Aerosol_props%seasalt4_index(0:100))
+        allocate (Aerosol_props%seasalt5_index(0:100))
+
+!--------------------------------------------------------------------
+
+
+end subroutine aerosolrad_package_alloc
+
+
+subroutine aerosolrad_package_endts
 
 !---------------------------------------------------------------------
-!    if new sw extinction data is needed, call interpolator to obtain 
-!    it. otherwise, retrieve it from the storage variable.
+!    when data is not always interpolated, set flags to indicate whether
+!    data must be obtained on the next call to this subroutine. if 
+!    the current call has obtained data, set the flag indicating that 
+!    data is not needed on the next call. also set the flag to indicate 
+!    that the initial call has been completed (mo_save_set), and that 
+!    the month for which data was obtained has been defined (mo_save). 
+!---------------------------------------------------------------------
+        if (.not. interpolating_volcanic_data) then
+          if (need_sw_ext) then
+              need_sw_ext = .false.
+              need_sw_ssa = .false.
+              need_sw_asy = .false.
+              need_lw_ext = .false.
+              mo_save_set = .true.
+              mo_save = mo_new
+          endif
+        endif
+
+      if (using_sw_ext) then
+        call unset_interpolator_time_flag (Sw_aer_extopdep_interp)
+      endif
+      if (using_sw_ssa) then
+        call unset_interpolator_time_flag (Sw_aer_ssalb_interp)
+      endif
+      if (using_sw_asy) then
+        call unset_interpolator_time_flag (Sw_aer_asymm_interp)
+      endif
+      if (using_lw_ext) then
+        call unset_interpolator_time_flag (Lw_aer_extopdep_interp)
+      endif
+      if (using_sw_ssa) then
+        call unset_interpolator_time_flag (Lw_aer_ssalb_interp)
+      endif
+      if (using_sw_asy) then
+        call unset_interpolator_time_flag (Lw_aer_asymm_interp)
+      endif
+
+end subroutine aerosolrad_package_endts
+
+
+!####################################################################
+! <SUBROUTINE NAME="aerosol_radiative_properties">
+!  <OVERVIEW>
+!    aerosol_radiative_properties defines and returns the radiative
+!    properties for each aerosol properties type and for each solar
+!    parameterization band in the shortwave and for each aerosol 
+!    emissivity band in the longwave.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!    aerosol_radiative_properties defines and returns the radiative
+!    properties for each aerosol properties type and for each solar
+!    parameterization band in the shortwave and for each aerosol 
+!    emissivity band in the longwave.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call aerosol_radiative_properties (is, ie, js, je, &
+!                                         Aerosol, Aerosol_props)
+!  </TEMPLATE>
+!  <IN NAME="Aerosol" TYPE="aerosol_type">
+!   Aerosol climatology input
+!  </IN>
+!  <INOUT NAME="Aerosol_props" TYPE="aerosol_properties_type">
+!   Aerosol radiative properties in radiation package
+!  </INOUT>
+!  <IN NAME="is, ie" TYPE="integer">
+!   The longitude index of model physics window domain
+!  </IN>
+!  <IN NAME="js, je" TYPE="integer">
+!   The latitude index of model physics window domain
+!  </IN>
+! </SUBROUTINE>
+!
+subroutine aerosol_radiative_properties (is, ie, js, je, &
+                                         Time, p_half, Aerosol_diags, &
+                                         Aerosol, Aerosol_props)
+
+!---------------------------------------------------------------------
+!    aerosol_radiative_properties defines and returns the radiative
+!    properties for each aerosol properties type and for each solar
+!    parameterization band in the shortwave and for each aerosol 
+!    emissivity band in the longwave.
+!---------------------------------------------------------------------
+
+integer,                       intent(in)    :: is, ie, js, je
+type(time_type),               intent(in)    :: Time
+real, dimension(:,:,:),        intent(in)    :: p_half
+type(aerosol_type),            intent(in)    :: Aerosol
+type(aerosol_diagnostics_type), intent(inout) :: Aerosol_diags
+type(aerosol_properties_type), intent(inout) :: Aerosol_props
+ 
+!----------------------------------------------------------------------
+! local variables:                                                     
+
+      integer  :: na, nw, ni, nmodel       ! do-loop indices
+      integer  :: n
+      integer  :: yr, mo, dy, hr, mn, sc
+      integer  :: iaer, i, j, k
+      real, dimension (size(Aerosol%aerosol,1),  &
+                       size(Aerosol%aerosol,2),  &
+                       size(Aerosol%aerosol,3))  :: sul, bc
+     
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('aerosolrad_package_mod',   &
+             'module has not been initialized', FATAL )
+      endif
+
+!---------------------------------------------------------------------
+!    allocate and initialize arrays to hold aerosol diagnostics.
+!---------------------------------------------------------------------
+      allocate (Aerosol_diags%extopdep (size(Aerosol%aerosol,1), &
+                                        size(Aerosol%aerosol,2), &
+                                        size(Aerosol%aerosol,3), &
+                                        size(Aerosol%aerosol,4), 6 ))
+      Aerosol_diags%extopdep = 0.0
+      allocate (Aerosol_diags%absopdep (size(Aerosol%aerosol,1), &
+                                        size(Aerosol%aerosol,2), &
+                                        size(Aerosol%aerosol,3), &
+                                        size(Aerosol%aerosol,4), 6 ))
+      Aerosol_diags%absopdep = 0.0
+      allocate (Aerosol_diags%extopdep_vlcno    &
+                                        (size(Aerosol%aerosol,1), &
+                                         size(Aerosol%aerosol,2), &
+                                         size(Aerosol%aerosol,3),3))
+      Aerosol_diags%extopdep_vlcno = 0.0
+      allocate (Aerosol_diags%absopdep_vlcno  &
+                                        (size(Aerosol%aerosol,1), &
+                                         size(Aerosol%aerosol,2), &
+                                         size(Aerosol%aerosol,3),3))
+      Aerosol_diags%absopdep_vlcno = 0.0
+      allocate (Aerosol_diags%sw_heating_vlcno  &
+                                        (size(Aerosol%aerosol,1), &
+                                         size(Aerosol%aerosol,2), &
+                                         size(Aerosol%aerosol,3), &
+                                         Rad_control%nzens))
+      Aerosol_diags%sw_heating_vlcno = 0.0
+      allocate (Aerosol_diags%lw_extopdep_vlcno    &
+                                        (size(Aerosol%aerosol,1), &
+                                         size(Aerosol%aerosol,2), &
+                                         size(Aerosol%aerosol,3)+1,2))
+      Aerosol_diags%lw_extopdep_vlcno = 0.0
+      allocate (Aerosol_diags%lw_absopdep_vlcno  &
+                                        (size(Aerosol%aerosol,1), &
+                                         size(Aerosol%aerosol,2), &
+                                         size(Aerosol%aerosol,3)+1,2))
+      Aerosol_diags%lw_absopdep_vlcno = 0.0
+
+
+!--------------------------------------------------------------------
+!    if the volcanic sw aerosol extinction is being supplied, obtain
+!    the appropriate data.
+!--------------------------------------------------------------------
+        if (using_sw_ext) then
+
+!---------------------------------------------------------------------
+!    if new sw extinction data is needed on this step, call interpolator
+!    to obtain it.  if the data is not to be interpolated, save the
+!    retrieved values in a module variable.
 !---------------------------------------------------------------------
           if (need_sw_ext) then
             if (nfields_sw_ext >= 1) then
@@ -1333,109 +1463,95 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
                                  p_half, Aerosol_props%sw_ext,    &
                                  sw_ext_name(1), is, js)
             endif
-          else
-            Aerosol_props%sw_ext = sw_ext_save(is:ie,js:je,:,:)
-          endif
+            if (.not. interpolating_volcanic_data) then
+              sw_ext_save(is:ie,js:je,:,:) = Aerosol_props%sw_ext
+            endif
 
 !---------------------------------------------------------------------
-!    if new sw single scattering albedo data is needed, call 
-!    interpolator to obtain it. otherwise, retrieve it from the storage
-!    variable.
+!    if new data from the file is not needed on this step, then retrieve
+!    the relevant data from the storage variable.
 !---------------------------------------------------------------------
-          if (need_sw_ssa) then
-            if (nfields_sw_ssa >= 1) then
-              call interpolator (Sw_aer_ssalb_interp, Volcano_Time,  &
-                                 p_half, Aerosol_props%sw_ssa,    &
-                                 sw_ssa_name(1), is, js)
-            endif
           else
-            Aerosol_props%sw_ssa = sw_ssa_save(is:ie,js:je,:,:)
-          endif
-
-!---------------------------------------------------------------------
-!    if new sw asymmetry factor data is needed, call interpolator to 
-!    obtain it. otherwise, retrieve it from the storage variable.
-!---------------------------------------------------------------------
-          if (need_sw_asy) then
-            if (nfields_sw_asy >= 1) then
-              call interpolator (Sw_aer_asymm_interp, Volcano_Time,  &
-                                 p_half, Aerosol_props%sw_asy,    &
-                                 sw_asy_name(1), is, js)
+            if ( .not. interpolating_volcanic_data) then
+              Aerosol_props%sw_ext = sw_ext_save(is:ie,js:je,:,:)
             endif
-          else
-            Aerosol_props%sw_asy = sw_asy_save(is:ie,js:je,:,:)
           endif
         endif
 
-!---------------------------------------------------------------------
-!    if longwave aerosol effects are desired, and the following cal-
-!    culation has not already been done, calculate the aerosol 
-!    properties for each aerosol properties type nw over each aerosol 
-!    emissivity band na using the weighted contributions from each
-!    aerosol parameterization band ni. mark the calculation as com-
-!    pleted.
-!
-!    the units of extinction coefficient (aeroextivl) are m**2/gm.
-!    to make the lw band extinction coefficient (aerextbandlw) have
-!    units (m**2/Kg) consistent with the units in FMS models, one
-!    must multiply by 1000. this is done below.
-!---------------------------------------------------------------------
-        if ((Lw_control%do_lwaerosol .or.  &
-           Rad_control%do_lwaerosol_forcing) .and. &
-           .not. band_calculation_completed) then
-          do nw=1,naermodels    
-            do na=1,N_AEROSOL_BANDS  
-              do ni=1,num_wavenumbers 
-                Aerosol_props%aerextbandlw(na,nw) =    &
-                                  Aerosol_props%aerextbandlw(na,nw) + &
-                                  aeroextivl(ni,nw)*sflwwts(na,ni)*  &
-                                  1.0E+03
-                Aerosol_props%aerssalbbandlw(na,nw) =     &
-                                  Aerosol_props%aerssalbbandlw(na,nw) +&
-                                  aerossalbivl(ni,nw)*sflwwts(na,ni)
-              end do
-            end do
-          end do
-          do nw=1,naermodels    
-            do na=1,N_AEROSOL_BANDS_CN
-              do ni=1,num_wavenumbers 
-                Aerosol_props%aerextbandlw_cn(na,nw) =    &
-                                  Aerosol_props%aerextbandlw_cn(na,nw) + &
-                                  aeroextivl(ni,nw)*sflwwts_cn(na,ni)*  &
-                                  1.0E+03
-                Aerosol_props%aerssalbbandlw_cn(na,nw) =     &
-                                  Aerosol_props%aerssalbbandlw_cn(na,nw) +&
-                                  aerossalbivl(ni,nw)*sflwwts_cn(na,ni)
-              end do
-            end do
-          end do
-          band_calculation_completed = .true.
-        endif ! (do_lwaerosol)
-
 !--------------------------------------------------------------------
-!    if the volcanic lw aerosol optical properties file is being used,
-!    allocate space to hold the volcanic properties.
+!    if the volcanic sw aerosol single scattering albedo is being 
+!    supplied, obtain the appropriate data.
 !--------------------------------------------------------------------
-        if (using_volcanic_lw_files) then
-          if (.not. associated(Aerosol_props%lw_ssa)) &
-            allocate (Aerosol_props%lw_ssa(size(p_half,1), &
-                                           size(p_half,2), &
-                                           size(p_half,3)-1, &
-                                           nfields_lw_ssa) )
-          if (.not. associated(Aerosol_props%lw_asy)) &
-            allocate (Aerosol_props%lw_asy(size(p_half,1), &
-                                           size(p_half,2), &
-                                           size(p_half,3)-1, &
-                                           nfields_lw_asy) )
-          if (.not. associated(Aerosol_props%lw_ext)) &
-            allocate (Aerosol_props%lw_ext(size(p_half,1), &
-                                           size(p_half,2), &
-                                           size(p_half,3)-1, &
-                                           nfields_lw_ext) )
+        if (using_sw_ssa) then
 
 !---------------------------------------------------------------------
-!    if new lw extinction data is needed, call interpolator to obtain 
-!    it. otherwise, retrieve it from the storage variable.
+!    if new sw single scattering albedo data is needed on this step, 
+!    call interpolator to obtain it.  if the data is not to be inter-
+!    polated, save the retrieved values in a module variable.
+!---------------------------------------------------------------------
+          if (need_sw_ssa) then
+            if (nfields_sw_ssa >= 1) then
+              call interpolator (Sw_aer_ssalb_interp, Volcano_Time, &
+                                 p_half, Aerosol_props%sw_ssa,    &
+                                 sw_ssa_name(1), is, js)
+            endif
+            if ( .not. interpolating_volcanic_data) then
+              sw_ssa_save(is:ie,js:je,:,:) = Aerosol_props%sw_ssa
+            endif
+
+!---------------------------------------------------------------------
+!    if new data from the file is not needed on this step, then retrieve
+!    the relevant data from the storage variable.
+!---------------------------------------------------------------------
+          else
+            if ( .not. interpolating_volcanic_data) then
+              Aerosol_props%sw_ssa = sw_ssa_save(is:ie,js:je,:,:)
+            endif
+          endif
+        endif
+
+!--------------------------------------------------------------------
+!    if the volcanic sw aerosol asymmetry factor is being supplied, 
+!    obtain the appropriate data.
+!--------------------------------------------------------------------
+        if (using_sw_asy) then
+
+!---------------------------------------------------------------------
+!    if new sw asymmetry factor data is needed on this step, call 
+!    interpolator to obtain it.  if the data is not to be interpolated,
+!    save the retrieved values in a module variable.
+!---------------------------------------------------------------------
+          if (need_sw_asy) then
+            if (nfields_sw_asy >= 1) then
+              call interpolator (Sw_aer_asymm_interp, Volcano_Time, &
+                                 p_half, Aerosol_props%sw_asy,    &
+                                 sw_asy_name(1), is, js)
+            endif
+            if ( .not. interpolating_volcanic_data) then
+              sw_asy_save(is:ie,js:je,:,:) = Aerosol_props%sw_asy
+            endif
+
+!---------------------------------------------------------------------
+!    if new data from the file is not needed on this step, then retrieve
+!    the relevant data from the storage variable.
+!---------------------------------------------------------------------
+          else
+            if (.not. interpolating_volcanic_data) then
+              Aerosol_props%sw_asy = sw_asy_save(is:ie,js:je,:,:)
+            endif
+          endif
+        endif
+
+!--------------------------------------------------------------------
+!    if the volcanic lw aerosol extinction is being supplied, obtain
+!    the appropriate data.
+!--------------------------------------------------------------------
+        if (using_lw_ext) then
+
+!---------------------------------------------------------------------
+!    if new lw extinction data is needed on this step, call interpolator
+!    to obtain it.  if the data is not to be interpolated, save the
+!    retrieved values in a module variable.
 !---------------------------------------------------------------------
           if (need_lw_ext) then
             if (nfields_lw_ext >= 1) then
@@ -1443,55 +1559,81 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
                                  p_half, Aerosol_props%lw_ext,    &
                                  lw_ext_name(1), is, js)
             endif
+            if (.not. interpolating_volcanic_data) then
+              lw_ext_save(is:ie,js:je,:,:) = Aerosol_props%lw_ext
+            endif
+
+!---------------------------------------------------------------------
+!    if new data from the file is not needed on this step, then retrieve
+!    the relevant data from the storage variable.
+!---------------------------------------------------------------------
           else
-            Aerosol_props%lw_ext = lw_ext_save(is:ie,js:je,:,:)
-          endif
-
-!---------------------------------------------------------------------
-!    if lw single scattering albedo data is needed, call interpolator 
-!    to obtain it. Since it is not currently used in sea radiation, it 
-!    has not yet been adapted to the treatment afforded to lw_ext.
-!---------------------------------------------------------------------
-          if (nfields_lw_ssa >= 1) then
-            call interpolator (Lw_aer_ssalb_interp, Volcano_Time,  &
-                               p_half, Aerosol_props%lw_ssa,    &
-                               lw_ssa_name(1), is, js)
-          endif
-
-!---------------------------------------------------------------------
-!    if lw asymmetry factor is needed, call interpolator 
-!    to obtain it. Since it is not currently used in the sea radiation, 
-!    it has not yet been adapted to the treatment afforded to lw_ext.
-!---------------------------------------------------------------------
-          if (nfields_lw_asy >= 1) then
-            call interpolator (Lw_aer_asymm_interp, Volcano_Time, &
-                               p_half, Aerosol_props%lw_asy,    &
-                               lw_asy_name(1), is, js)
+            if ( .not. interpolating_volcanic_data) then
+              Aerosol_props%lw_ext = lw_ext_save(is:ie,js:je,:,:)
+            endif
           endif
         endif
 
+!--------------------------------------------------------------------
+!    if the volcanic lw single scattering albedo is being supplied, 
+!    obtain the appropriate data.
+!--------------------------------------------------------------------
+        if (using_lw_ssa) then
+
 !---------------------------------------------------------------------
-!    when data is not always interpolated, set flags to indicate whether
-!    data must be obtained on the next call to this subroutine. if 
-!    the current call has obtained data, increment the points processed
-!    counter. if all processor points have now obtained new data, set
-!    the flag indicating that data is not needed on the next call.
-!    also set the flag to indicate that the initial call has been com-
-!    pleted (mo_save_set), and that the month for which data was obtain-
-!    ed has been defined (mo_save). set the points processed counter to
-!    zero so it is ready when new data is again required.
+!    if new lw single scattering albedo data is needed on this step, 
+!    call interpolator to obtain it.  if the data is not to be inter-
+!    polated, save the retrieved values in a module variable.
 !---------------------------------------------------------------------
-        if (.not. interpolating_volcanic_data) then
-          if (need_sw_ext) then
-            pts_processed = pts_processed + (ie-is+1) *(je-js+1)
-            if (pts_processed >= tot_points)   then
-              need_sw_ext = .false.
-              need_sw_ssa = .false.
-              need_sw_asy = .false.
-              need_lw_ext = .false.
-              mo_save_set = .true.
-              mo_save = mo
-              pts_processed = 0
+          if (need_lw_ssa) then
+            if (nfields_lw_ssa >= 1) then
+              call interpolator (Lw_aer_ssalb_interp, Volcano_Time, &
+                                 p_half, Aerosol_props%lw_ssa,    &
+                                 lw_ssa_name(1), is, js)
+            endif
+            if ( .not. interpolating_volcanic_data) then
+              lw_ssa_save(is:ie,js:je,:,:) = Aerosol_props%lw_ssa
+            endif
+
+!---------------------------------------------------------------------
+!    if new data from the file is not needed on this step, then retrieve
+!    the relevant data from the storage variable.
+!---------------------------------------------------------------------
+          else
+            if ( .not. interpolating_volcanic_data) then
+              Aerosol_props%lw_ssa = lw_ssa_save(is:ie,js:je,:,:)
+            endif
+          endif
+        endif
+
+!--------------------------------------------------------------------
+!    if the volcanic lw aerosol asymmetry factor is being supplied, 
+!    obtain the appropriate data.
+!--------------------------------------------------------------------
+        if (using_lw_asy) then
+
+!---------------------------------------------------------------------
+!    if new lw asymmetry factor data is needed on this step, call 
+!    interpolator to obtain it.  if the data is not to be interpolated, 
+!    save the retrieved values in a module variable.
+!---------------------------------------------------------------------
+          if (need_lw_asy) then
+            if (nfields_lw_asy >= 1) then
+              call interpolator (Lw_aer_asymm_interp, Volcano_Time, &
+                                 p_half, Aerosol_props%lw_asy,    &
+                                 lw_asy_name(1), is, js)
+            endif
+            if (.not. interpolating_volcanic_data) then
+              lw_asy_save(is:ie,js:je,:,:) = Aerosol_props%lw_asy
+            endif
+
+!---------------------------------------------------------------------
+!    if new data from the file is not needed on this step, then retrieve
+!    the relevant data from the storage variable.
+!---------------------------------------------------------------------
+          else
+            if (.not. interpolating_volcanic_data) then
+              Aerosol_props%lw_asy = lw_asy_save(is:ie,js:je,:,:)
             endif
           endif
         endif
@@ -1500,9 +1642,6 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
 !    code for treating sulfate and black carbon as an internal aerosol
 !    mixture.
 !---------------------------------------------------------------------
-        if (.not. associated( Aerosol_props%ivol)) &
-          allocate (Aerosol_props%ivol (  &
-                      size(p_half,1), size(p_half,2), size(p_half,3)-1))
         if (Rad_control%using_im_bcsul) then
           if (num_sul > 0) then
             sul(:,:,:) = Aerosol%aerosol(:,:,:,sul_ind(1))
@@ -1539,13 +1678,101 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props_out
         endif ! (using_im_bcsul)
 
 !---------------------------------------------------------------------
-!    return the aerosol_properties_type variable to the calling 
-!    routine. this variable contains the aerosol radiative properties 
-!    for each aerosol properties type over each solar and aerosol
-!    emissivity band.
+!    fill the remaining components of the aerosol_properties_type var-
+!    iable and return to the calling routine. this variable contains 
+!    the aerosol radiative properties for each aerosol properties type 
+!    over each solar and aerosol emissivity band.
 !---------------------------------------------------------------------
-        Aerosol_props_out = Aerosol_props 
+        if (Rad_control%do_swaerosol_forcing .or.  &
+                                         Sw_control%do_swaerosol) then
+          Aerosol_props%aerextband = aerextband_MOD
+          Aerosol_props%aerssalbband = aerssalbband_MOD
+          Aerosol_props%aerasymmband = aerasymmband_MOD
+        endif
 
+!---------------------------------------------------------------------
+!    if longwave aerosol effects are desired, and the following cal-
+!    culation has not already been done, calculate the aerosol 
+!    properties for each aerosol properties type nw over each aerosol 
+!    emissivity band na using the weighted contributions from each
+!    aerosol parameterization band ni. mark the calculation as com-
+!    pleted.
+!
+!    the units of extinction coefficient (aeroextivl) are m**2/gm.
+!    to make the lw band extinction coefficient (aerextbandlw) have
+!    units (m**2/Kg) consistent with the units in FMS models, one
+!    must multiply by 1000. this is done below.
+!---------------------------------------------------------------------
+        if (Rad_control%do_lwaerosol_forcing .or. &
+                Lw_control%do_lwaerosol) then
+!$OMP MASTER
+          if (force_to_repro_quebec) then
+            if (.not. band_calculation_completed) then
+              Aerosol_props%aerextbandlw = 0.0               
+              Aerosol_props%aerssalbbandlw = 0.0                 
+              Aerosol_props%aerextbandlw_cn = 0.0
+              Aerosol_props%aerssalbbandlw_cn = 0.0
+              do nw=1,naermodels    
+                do na=1,N_AEROSOL_BANDS  
+                  do ni=1,num_wavenumbers 
+                    Aerosol_props%aerextbandlw(na,nw) =   &
+                               Aerosol_props%aerextbandlw(na,nw) + &
+                                aeroextivl(ni,nw)*sflwwts(na,ni)*1.0E+03
+                    Aerosol_props%aerssalbbandlw(na,nw) =   &
+                              Aerosol_props%aerssalbbandlw(na,nw) +   &
+                                     aerossalbivl(ni,nw)*sflwwts(na,ni)
+                  end do
+                end do
+              end do
+              do nw=1,naermodels    
+                do na=1,N_AEROSOL_BANDS_CN
+                  do ni=1,num_wavenumbers 
+                    Aerosol_props%aerextbandlw_cn(na,nw) = &
+                         Aerosol_props%aerextbandlw_cn(na,nw) + &
+                            aeroextivl(ni,nw)*sflwwts_cn(na,ni)*1.0E+03
+                    Aerosol_props%aerssalbbandlw_cn(na,nw) =    &
+                               Aerosol_props%aerssalbbandlw_cn(na,nw) +&
+                                  aerossalbivl(ni,nw)*sflwwts_cn(na,ni)
+                  end do
+                end do
+              end do
+
+              aerextbandlw_MOD = Aerosol_props%aerextbandlw
+              aerssalbbandlw_MOD = Aerosol_props%aerssalbbandlw
+              aerextbandlw_cn_MOD = Aerosol_props%aerextbandlw_cn
+              aerssalbbandlw_cn_MOD = Aerosol_props%aerssalbbandlw_cn
+              band_calculation_completed = .true.
+            endif
+          endif
+!$OMP END MASTER
+!$OMP BARRIER
+          Aerosol_props%aerextbandlw = aerextbandlw_MOD
+          Aerosol_props%aerssalbbandlw = aerssalbbandlw_MOD
+          Aerosol_props%aerextbandlw_cn = aerextbandlw_cn_MOD
+          Aerosol_props%aerssalbbandlw_cn = aerssalbbandlw_cn_MOD
+        endif
+        Aerosol_props%sulfate_index = sulfate_index
+        Aerosol_props%optical_index = optical_index
+        Aerosol_props%omphilic_index =omphilic_index
+        Aerosol_props%bcphilic_index =bcphilic_index
+        Aerosol_props%seasalt1_index =seasalt1_index
+        Aerosol_props%seasalt2_index =seasalt2_index
+        Aerosol_props%seasalt3_index =seasalt3_index
+        Aerosol_props%seasalt4_index =seasalt4_index
+        Aerosol_props%seasalt5_index =seasalt5_index
+        Aerosol_props%sulfate_flag =   SULFATE_FLAG
+        Aerosol_props%omphilic_flag =  OMPHILIC_FLAG
+        Aerosol_props%bcphilic_flag =  BCPHILIC_FLAG
+        Aerosol_props%seasalt1_flag =  SEASALT1_FLAG
+        Aerosol_props%seasalt2_flag =  SEASALT2_FLAG
+        Aerosol_props%seasalt3_flag =  SEASALT3_FLAG
+        Aerosol_props%seasalt4_flag =  SEASALT4_FLAG
+        Aerosol_props%seasalt5_flag =  SEASALT5_FLAG
+        if (Rad_control%using_im_bcsul) then
+          Aerosol_props%bc_flag = BC_FLAG
+        else
+          Aerosol_props%bc_flag = NOT_IN_USE
+        endif
 
 end subroutine aerosol_radiative_properties
 
@@ -1595,29 +1822,15 @@ subroutine aerosolrad_package_end
 !---------------------------------------------------------------------
 !    deallocate elements of the aerosol_properties_type array.
 !---------------------------------------------------------------------
-     if (do_swaerosol .or. Rad_control%do_swaerosol_forcing) then
-        deallocate ( Aerosol_props%aerextband,      &
-                     Aerosol_props%aerssalbband,    &
-                     Aerosol_props%aerasymmband     )
-      endif
-      if (do_lwaerosol .or. Rad_control%do_lwaerosol_forcing) then
-        deallocate ( Aerosol_props%aerextbandlw,    &
-                     Aerosol_props%aerssalbbandlw,  &
-                     Aerosol_props%aerextbandlw_cn,    &
-                     Aerosol_props%aerssalbbandlw_cn )
-      endif
-
-      if (Rad_control%do_aerosol) then
-        deallocate ( Aerosol_props%sulfate_index,   &
-                     Aerosol_props%bcphilic_index,  &
-                     Aerosol_props%omphilic_index,  &
-                     Aerosol_props%seasalt1_index,  &
-                     Aerosol_props%seasalt2_index,  &
-                     Aerosol_props%seasalt3_index,  &
-                     Aerosol_props%seasalt4_index,  &
-                     Aerosol_props%seasalt5_index,  &
-                     Aerosol_props%optical_index    )
-      endif
+      if (allocated(sulfate_index )) deallocate(sulfate_index )
+      if (allocated(bcphilic_index)) deallocate(bcphilic_index)
+      if (allocated(omphilic_index)) deallocate(omphilic_index)
+      if (allocated(seasalt1_index)) deallocate(seasalt1_index)
+      if (allocated(seasalt2_index)) deallocate(seasalt2_index)
+      if (allocated(seasalt3_index)) deallocate(seasalt3_index)
+      if (allocated(seasalt4_index)) deallocate(seasalt4_index)
+      if (allocated(seasalt5_index)) deallocate(seasalt5_index)
+      if (allocated(optical_index )) deallocate(optical_index )
 
       
       if (Rad_control%volcanic_lw_aerosols) then
@@ -1645,7 +1858,8 @@ subroutine aerosolrad_package_end
       endif
 
       if (.not. interpolating_volcanic_data) then
-        deallocate (sw_ext_save, sw_ssa_save, sw_asy_save, lw_ext_save)
+        deallocate (sw_ext_save, sw_ssa_save, sw_asy_save, &
+                    lw_ext_save, lw_ssa_save, lw_asy_save)
       endif
 
 !---------------------------------------------------------------------
@@ -1787,7 +2001,6 @@ function get_aerosol_optical_index( name, naerosol, rh ) result(index)
 !    index for given aerosol number and relative humidity.
 !-----------------------------------------------------------------------
 
-!character(len=64),         intent(in) :: name
 character(len=*),         intent(in) :: name
 integer,                   intent(in) :: naerosol
 real,                      intent(in) :: rh
@@ -1830,7 +2043,7 @@ integer                               :: index  ! function value
 !---------------------------------------------------------------------
 !    be sure the desired aerosol index is valid.
 !---------------------------------------------------------------------
-      nfields = size(Aerosol_props%optical_index(:))
+      nfields = size(optical_index(:),1)
       if (naerosol > nfields) then
         call error_mesg( 'aerosolrad_package_mod', &
            'aerosol index exceeds number of aerosol fields', FATAL )
@@ -1841,50 +2054,50 @@ integer                               :: index  ! function value
 !    If the aerosol is hydrophilic, then the optical propeties 
 !    index will depend on the relative humidity.
 !---------------------------------------------------------------------
-      if (Aerosol_props%optical_index(naerosol) == SULFATE_FLAG ) then
+      if (optical_index(naerosol) == SULFATE_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
 !yim no vol info is passed here now. Set 0 for now.
-        index = Aerosol_props%sulfate_index( irh, 0 )
-      elseif (Aerosol_props%optical_index(naerosol) == BC_FLAG ) then
+        index = sulfate_index( irh, 0 )
+      elseif (optical_index(naerosol) == BC_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
 !yim no vol info is passed here now. Set 0 for now.
-        index = Aerosol_props%sulfate_index( irh, 0 )
-      elseif (Aerosol_props%optical_index(naerosol) == &
+        index = sulfate_index( irh, 0 )
+      elseif (optical_index(naerosol) == &
                                                OMPHILIC_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
-        index = Aerosol_props%omphilic_index( irh )
-      elseif (Aerosol_props%optical_index(naerosol) ==   &
+        index = omphilic_index( irh )
+      elseif (optical_index(naerosol) ==   &
                   BCPHILIC_FLAG .and. Rad_control%using_im_bcsul ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
 !yim
-        index = Aerosol_props%sulfate_index( irh, 0 )
-      elseif (Aerosol_props%optical_index(naerosol) == BCPHILIC_FLAG  &
+        index = sulfate_index( irh, 0 )
+      elseif (optical_index(naerosol) == BCPHILIC_FLAG  &
                         .and. .not. Rad_control%using_im_bcsul ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
 !yim
-        index = Aerosol_props%bcphilic_index( irh )
-      elseif (Aerosol_props%optical_index(naerosol) ==    &
+        index = bcphilic_index( irh )
+      elseif (optical_index(naerosol) ==    &
                                                SEASALT1_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
-        index = Aerosol_props%seasalt1_index( irh )
-      elseif (Aerosol_props%optical_index(naerosol) ==  &            
+        index = seasalt1_index( irh )
+      elseif (optical_index(naerosol) ==  &            
                                                SEASALT2_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
-        index = Aerosol_props%seasalt2_index( irh )
-      elseif (Aerosol_props%optical_index(naerosol) ==  &            
+        index = seasalt2_index( irh )
+      elseif (optical_index(naerosol) ==  &            
                                                SEASALT3_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
-        index = Aerosol_props%seasalt3_index( irh )
-      elseif (Aerosol_props%optical_index(naerosol) ==  &           
+        index = seasalt3_index( irh )
+      elseif (optical_index(naerosol) ==  &           
                                                SEASALT4_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
-        index = Aerosol_props%seasalt4_index( irh )
-      elseif (Aerosol_props%optical_index(naerosol) ==  &           
+        index = seasalt4_index( irh )
+      elseif (optical_index(naerosol) ==  &           
                                                SEASALT5_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
-        index = Aerosol_props%seasalt5_index( irh )
+        index = seasalt5_index( irh )
       else
-        index = Aerosol_props%optical_index(naerosol)
+        index = optical_index(naerosol)
       endif
 
 !---------------------------------------------------------------------
@@ -2003,27 +2216,27 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    which will contain the indices for the different aerosols.
 !---------------------------------------------------------------------
       if (Rad_control%using_im_bcsul) then
-        allocate (Aerosol_props%sulfate_index (0:100,0:100))
+        allocate (sulfate_index (0:100,0:100))
       else
-        allocate (Aerosol_props%sulfate_index (0:100,0:0  ))
+        allocate (sulfate_index (0:100,0:0  ))
       endif
-      allocate (Aerosol_props%omphilic_index(0:100 ), &
-                Aerosol_props%bcphilic_index(0:100 ), &
-                Aerosol_props%seasalt1_index(0:100 ), &
-                Aerosol_props%seasalt2_index(0:100 ), &
-                Aerosol_props%seasalt3_index(0:100 ), &
-                Aerosol_props%seasalt4_index(0:100 ), &
-                Aerosol_props%seasalt5_index(0:100 ) )
-      allocate (Aerosol_props%optical_index(nfields) )
-      Aerosol_props%optical_index    = 0
-      Aerosol_props%sulfate_index    = 0
-      Aerosol_props%omphilic_index    = 0
-      Aerosol_props%bcphilic_index    = 0
-      Aerosol_props%seasalt1_index    = 0
-      Aerosol_props%seasalt2_index    = 0
-      Aerosol_props%seasalt3_index    = 0
-      Aerosol_props%seasalt4_index    = 0
-      Aerosol_props%seasalt5_index    = 0
+      allocate (omphilic_index(0:100 ), &
+                bcphilic_index(0:100 ), &
+                seasalt1_index(0:100 ), &
+                seasalt2_index(0:100 ), &
+                seasalt3_index(0:100 ), &
+                seasalt4_index(0:100 ), &
+                seasalt5_index(0:100 ) )
+      allocate (optical_index(nfields) )
+      optical_index    = 0
+      sulfate_index    = 0
+      omphilic_index    = 0
+      bcphilic_index    = 0
+      seasalt1_index    = 0
+      seasalt2_index    = 0
+      seasalt3_index    = 0
+      seasalt4_index    = 0
+      seasalt5_index    = 0
 
 !----------------------------------------------------------------------
 !    match aerosol optical property indices with aerosol indices.
@@ -2036,35 +2249,35 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
       do n=1,nfields
         name_in = trim(aerosol_names(n))
         if (name_in == 'so4' .or. name_in == 'so4_anthro' .or. name_in == 'so4_natural') then
-          Aerosol_props%optical_index(n) = SULFATE_FLAG
+          optical_index(n) = SULFATE_FLAG
           if (Rad_control%using_im_bcsul) then
             num_sul = num_sul +1
             sul_ind(isul) = n
             isul = isul + 1
           endif
         else if (name_in == "omphilic" .or. name_in == "oc_hydrophilic") then
-            Aerosol_props%optical_index(n) = OMPHILIC_FLAG
+            optical_index(n) = OMPHILIC_FLAG
         else if (name_in == "bcphilic" .or. name_in == "bc_hydrophilic") then
-            Aerosol_props%optical_index(n) = BCPHILIC_FLAG
+            optical_index(n) = BCPHILIC_FLAG
             if (Rad_control%using_im_bcsul) then
               num_bc = num_bc +1
               bc_ind(ibc) = n
               ibc = ibc + 1
             endif
         else if (name_in == "seasalt1") then
-            Aerosol_props%optical_index(n) = SEASALT1_FLAG
+            optical_index(n) = SEASALT1_FLAG
         else if (name_in == "seasalt2") then
-            Aerosol_props%optical_index(n) = SEASALT2_FLAG
+            optical_index(n) = SEASALT2_FLAG
         else if (name_in == "seasalt3") then
-            Aerosol_props%optical_index(n) = SEASALT3_FLAG
+            optical_index(n) = SEASALT3_FLAG
         else if (name_in == "seasalt4") then
-            Aerosol_props%optical_index(n) = SEASALT4_FLAG
+            optical_index(n) = SEASALT4_FLAG
         else if (name_in == "seasalt5") then
-            Aerosol_props%optical_index(n) = SEASALT5_FLAG
+            optical_index(n) = SEASALT5_FLAG
 !yim
         else if (name_in == "black_carbon" .and.   &
                               Rad_control%using_im_bcsul) then
-            Aerosol_props%optical_index(n) = BC_FLAG
+            optical_index(n) = BC_FLAG
             num_bc = num_bc +1
             bc_ind(ibc) = n
             ibc = ibc + 1
@@ -2119,7 +2332,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !--------------------------------------------------------------------
           do noptical=1,naermodels
             if (aerosol_optical_names(noptical) == target_name) then
-              Aerosol_props%optical_index(n) = noptical
+              optical_index(n) = noptical
               exit
             end if
           end do
@@ -2127,7 +2340,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !--------------------------------------------------------------------
 !    if the target_name is not found, exit with an error message.
 !----------------------------------------------------------------------
-          if (Aerosol_props%optical_index(n) == 0 ) then
+          if (optical_index(n) == 0 ) then
             call error_mesg( 'aerosolrad_package_mod', &
                 'Cannot find aerosol optical model = ' //    &
                                            TRIM( target_name ), FATAL )
@@ -2167,10 +2380,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-!        Aerosol_props%sulfate_index(n) = 0
         do noptical=1,naermodels
           if (aerosol_optical_names(noptical) == target_name ) then
-            Aerosol_props%sulfate_index(n,m) = noptical
+            sulfate_index(n,m) = noptical
             exit
           end if
         end do
@@ -2179,7 +2391,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    if the  aerosol_optical name_is not included in the potential
 !    set listed above, exit with an error message.
 !---------------------------------------------------------------------
-        if (Aerosol_props%sulfate_index(n,m) == 0 ) then
+        if (sulfate_index(n,m) == 0 ) then
           call error_mesg( 'aerosolrad_package_mod', &
                  'Cannot find aerosol optical model = ' // &
                                           TRIM( target_name), FATAL )
@@ -2205,10 +2417,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-!!       Aerosol_props%sulfate_index(n) = 0
         do noptical=1,naermodels
           if (aerosol_optical_names(noptical) == target_name ) then
-            Aerosol_props%sulfate_index(n,0) = noptical
+            sulfate_index(n,0) = noptical
             exit
           end if
         end do
@@ -2217,7 +2428,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    if the  aerosol_optical name_is not included in the potential
 !    set listed above, exit with an error message.
 !---------------------------------------------------------------------
-        if (Aerosol_props%sulfate_index(n,0) == 0 ) then
+        if (sulfate_index(n,0) == 0 ) then
           call error_mesg( 'aerosolrad_package_mod', &
                  'Cannot find aerosol optical model = ' // &
                                           TRIM( target_name), FATAL )
@@ -2244,10 +2455,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-!           Aerosol_props%omphilic_index(n) = 0
             do noptical=1,naermodels
               if (aerosol_optical_names(noptical) == target_name ) then
-                Aerosol_props%omphilic_index(n) = noptical
+                omphilic_index(n) = noptical
                 exit
               endif
             end do
@@ -2256,7 +2466,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    if the  aerosol_optical name_is not included in the potential
 !    set listed above, exit with an error message.
 !---------------------------------------------------------------------
-            if (Aerosol_props%omphilic_index(n) == 0 ) then
+            if (omphilic_index(n) == 0 ) then
               call error_mesg( 'aerosolrad_package_mod', &
                  'Cannot find aerosol optical model = ' // &
                                           TRIM( target_name), FATAL )
@@ -2281,10 +2491,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-!           Aerosol_props%seasalt1_index(n) = 0
             do noptical=1,naermodels
               if (aerosol_optical_names(noptical) == target_name ) then
-                Aerosol_props%seasalt1_index(n) = noptical
+                seasalt1_index(n) = noptical
                 exit
               endif
             end do
@@ -2293,7 +2502,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    if the  aerosol_optical name_is not included in the potential
 !    set listed above, exit with an error message.
 !---------------------------------------------------------------------
-            if (Aerosol_props%seasalt1_index(n) == 0 ) then
+            if (seasalt1_index(n) == 0 ) then
               call error_mesg( 'aerosolrad_package_mod', &
                  'Cannot find aerosol optical model = ' // &
                                           TRIM( target_name), FATAL )
@@ -2318,10 +2527,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-!           Aerosol_props%seasalt2_index(n) = 0
             do noptical=1,naermodels
               if (aerosol_optical_names(noptical) == target_name ) then
-                Aerosol_props%seasalt2_index(n) = noptical
+                seasalt2_index(n) = noptical
                 exit
               endif
             end do
@@ -2330,7 +2538,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    if the  aerosol_optical name_is not included in the potential
 !    set listed above, exit with an error message.
 !---------------------------------------------------------------------
-            if (Aerosol_props%seasalt2_index(n) == 0 ) then
+            if (seasalt2_index(n) == 0 ) then
               call error_mesg( 'aerosolrad_package_mod', &
                  'Cannot find aerosol optical model = ' // &
                                           TRIM( target_name), FATAL )
@@ -2355,10 +2563,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-!           Aerosol_props%seasalt3_index(n) = 0
             do noptical=1,naermodels
               if (aerosol_optical_names(noptical) == target_name ) then
-                Aerosol_props%seasalt3_index(n) = noptical
+                seasalt3_index(n) = noptical
                 exit
               endif
             end do
@@ -2367,7 +2574,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    if the  aerosol_optical name_is not included in the potential
 !    set listed above, exit with an error message.
 !---------------------------------------------------------------------
-            if (Aerosol_props%seasalt3_index(n) == 0 ) then
+            if (seasalt3_index(n) == 0 ) then
               call error_mesg( 'aerosolrad_package_mod', &
                  'Cannot find aerosol optical model = ' // &
                                           TRIM( target_name), FATAL )
@@ -2392,10 +2599,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-!           Aerosol_props%seasalt4_index(n) = 0
             do noptical=1,naermodels
               if (aerosol_optical_names(noptical) == target_name ) then
-                Aerosol_props%seasalt4_index(n) = noptical
+                seasalt4_index(n) = noptical
                 exit
               endif
             end do
@@ -2404,7 +2610,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    if the  aerosol_optical name_is not included in the potential
 !    set listed above, exit with an error message.
 !---------------------------------------------------------------------
-            if (Aerosol_props%seasalt4_index(n) == 0 ) then
+            if (seasalt4_index(n) == 0 ) then
               call error_mesg( 'aerosolrad_package_mod', &
                  'Cannot find aerosol optical model = ' // &
                                           TRIM( target_name), FATAL )
@@ -2429,10 +2635,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-!           Aerosol_props%seasalt5_index(n) = 0
             do noptical=1,naermodels
               if (aerosol_optical_names(noptical) == target_name ) then
-                Aerosol_props%seasalt5_index(n) = noptical
+                seasalt5_index(n) = noptical
                 exit
               endif
             end do
@@ -2441,7 +2646,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    if the  aerosol_optical name_is not included in the potential
 !    set listed above, exit with an error message.
 !---------------------------------------------------------------------
-            if (Aerosol_props%seasalt5_index(n) == 0 ) then 
+            if (seasalt5_index(n) == 0 ) then 
               call error_mesg( 'aerosolrad_package_mod', &
                  'Cannot find aerosol optical model = ' // &
                                           TRIM( target_name), FATAL )
@@ -2467,10 +2672,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-!!          Aerosol_props%bcphilic_index(n) = 0
              do noptical=1,naermodels
                if (aerosol_optical_names(noptical) == target_name ) then
-                 Aerosol_props%bcphilic_index(n) = noptical
+                 bcphilic_index(n) = noptical
                  exit
                endif
              end do
@@ -2479,7 +2683,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    if the  aerosol_optical name_is not included in the potential
 !    set listed above, exit with an error message.
 !---------------------------------------------------------------------
-             if (Aerosol_props%bcphilic_index(n) == 0 ) then
+             if (bcphilic_index(n) == 0 ) then
                call error_mesg( 'aerosolrad_package_mod', &
                   'Cannot find aerosol optical model = ' // &
                                            TRIM( target_name), FATAL )
@@ -2517,10 +2721,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-!        Aerosol_props%sulfate_index(n) = 0
         do noptical=1,naermodels
           if (aerosol_optical_names(noptical) == target_name ) then
-            Aerosol_props%sulfate_index(n,m) = noptical
+            sulfate_index(n,m) = noptical
             exit
           end if
         end do
@@ -2529,7 +2732,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    if the  aerosol_optical name_is not included in the potential
 !    set listed above, exit with an error message.
 !---------------------------------------------------------------------
-        if (Aerosol_props%sulfate_index(n,m) == 0 ) then
+        if (sulfate_index(n,m) == 0 ) then
           call error_mesg( 'aerosolrad_package_mod', &
                  'Cannot find aerosol optical model = ' // &
                                           TRIM( target_name), FATAL )
@@ -2555,10 +2758,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !---------------------------------------------------------------------
 !    associate an index value with each possible relative humidity.
 !---------------------------------------------------------------------
-!        Aerosol_props%sulfate_index(n) = 0
         do noptical=1,naermodels
           if (aerosol_optical_names(noptical) == target_name ) then
-            Aerosol_props%sulfate_index(n,0) = noptical
+            sulfate_index(n,0) = noptical
             exit
           end if
         end do
@@ -2567,7 +2769,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    if the  aerosol_optical name_is not included in the potential
 !    set listed above, exit with an error message.
 !---------------------------------------------------------------------
-        if (Aerosol_props%sulfate_index(n,0) == 0 ) then
+        if (sulfate_index(n,0) == 0 ) then
           call error_mesg( 'aerosolrad_package_mod', &
                  'Cannot find aerosol optical model = ' // &
                                           TRIM( target_name), FATAL )
@@ -2776,6 +2978,7 @@ subroutine sw_aerosol_interaction
       integer           :: nbands, nband, nivl3
       real              :: sumsol3
       integer           :: n, nw, noptical
+      integer           :: nmodel
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -2805,24 +3008,6 @@ subroutine sw_aerosol_interaction
 !---------------------------------------------------------------------
 
 
-!---------------------------------------------------------------------
-!    allocate and initialize the array components of an 
-!    aerosol_properties_type variable which will hold the aerosol 
-!    radiative properties for each solar spectral parameterization band.
-!    aerextband     the solar band values of the extinction 
-!                   coefficient for aerosols                           
-!    aerssalbband   the solar band values of the single-     
-!                   scattering albedo for aerosols                      
-!    aerasymmband   the solar band values of the asymmetry   
-!                   factor for aerosols                                 
-!---------------------------------------------------------------------
-      allocate     &
-        (Aerosol_props%aerextband   (Solar_spect%nbands, naermodels), &
-         Aerosol_props%aerssalbband (Solar_spect%nbands, naermodels), &
-         Aerosol_props%aerasymmband (Solar_spect%nbands, naermodels) )
-      Aerosol_props%aerextband   = 0.
-      Aerosol_props%aerssalbband = 0.
-      Aerosol_props%aerasymmband = 0.
 
 !---------------------------------------------------------------------
 !    define the number of bands in the solar spectrum parameterization.
@@ -2869,6 +3054,49 @@ subroutine sw_aerosol_interaction
           end if
         end if
         if ( nw == endaerwvnsf(nivl3) ) nivl3 = nivl3 + 1
+      end do
+
+!---------------------------------------------------------------------
+!    allocate and initialize variables which will hold the aerosol 
+!    radiative properties for each solar spectral parameterization band.
+!    aerextband     the solar band values of the extinction 
+!                   coefficient for aerosols                           
+!    aerssalbband   the solar band values of the single-     
+!                   scattering albedo for aerosols                      
+!    aerasymmband   the solar band values of the asymmetry   
+!                   factor for aerosols                                 
+!---------------------------------------------------------------------
+      allocate     &
+        (aerextband_MOD   (Solar_spect%nbands, naermodels), &
+         aerssalbband_MOD (Solar_spect%nbands, naermodels), &
+         aerasymmband_MOD (Solar_spect%nbands, naermodels) )
+      aerextband_MOD   = 0.
+      aerssalbband_MOD = 0.
+      aerasymmband_MOD = 0.
+
+!--------------------------------------------------------------------
+!    if sw aerosol properties are desired and have not yet been calc-
+!    ulated, use the thick-averaging technique to define the single-
+!    scattering properties for each solar parameterization band n 
+!    from the specified properties on the aerosol parameterization 
+!    bands ni for each aerosol properties type nmodel. 
+! references:                                                          
+!    edwards,j.m. and a. slingo, studies with a flexible new radiation  
+!    code I: choosing a configuration for a large-scale model.,     
+!    q.j.r. meteorological society, 122, 689-719, 1996.              
+!                                                                      
+! note: a thin-averaging technique (subroutine thinavg in 
+!    rad_utilities_mod) is also available.   
+!--------------------------------------------------------------------
+      do nmodel=1,naermodels
+        call thickavg (nivl1aero, nivl2aero, num_wavenumbers,   &
+                       Solar_spect%nbands, aeroextivl(:,nmodel), &
+                       aerossalbivl(:,nmodel),    &
+                       aeroasymmivl(:,nmodel), solivlaero,   &
+                       Solar_spect%solflxbandref,  &
+                       aerextband_MOD(:,nmodel),    &
+                       aerssalbband_MOD(:,nmodel),   &
+                       aerasymmband_MOD(:,nmodel))
       end do
 
 !---------------------------------------------------------------------
@@ -3093,6 +3321,7 @@ subroutine lw_aerosol_interaction
                                    !  for band 1 ?
      integer         :: ib, nw, nivl, nband, n, ni 
                                    !  do-loop indices and counters
+     integer         :: na
 
 !--------------------------------------------------------------------
 !    define arrays containing the characteristics of all the ir aerosol
@@ -3356,14 +3585,51 @@ subroutine lw_aerosol_interaction
 !    aerosol optical type over each ir aerosol emissivity band.
 !----------------------------------------------------------------
       allocate     &
-         (Aerosol_props%aerextbandlw   (N_AEROSOL_BANDS, naermodels), &
-          Aerosol_props%aerssalbbandlw (N_AEROSOL_BANDS, naermodels), &
-     Aerosol_props%aerextbandlw_cn   (N_AEROSOL_BANDS_CN, naermodels), &
-     Aerosol_props%aerssalbbandlw_cn (N_AEROSOL_BANDS_CN, naermodels) )
-      Aerosol_props%aerextbandlw   = 0.0E+00
-      Aerosol_props%aerssalbbandlw = 0.0E+00
-      Aerosol_props%aerextbandlw_cn   = 0.0E+00
-      Aerosol_props%aerssalbbandlw_cn = 0.0E+00
+         (aerextbandlw_MOD   (N_AEROSOL_BANDS, naermodels), &
+          aerssalbbandlw_MOD (N_AEROSOL_BANDS, naermodels), &
+          aerextbandlw_cn_MOD   (N_AEROSOL_BANDS_CN, naermodels), &
+          aerssalbbandlw_cn_MOD (N_AEROSOL_BANDS_CN, naermodels) )
+      aerextbandlw_MOD   = 0.0E+00
+      aerssalbbandlw_MOD = 0.0E+00
+      aerextbandlw_cn_MOD   = 0.0E+00
+      aerssalbbandlw_cn_MOD = 0.0E+00
+
+      if (.not. force_to_repro_quebec) then
+!---------------------------------------------------------------------
+!    if longwave aerosol effects are desired, and the following cal-
+!    culation has not already been done, calculate the aerosol 
+!    properties for each aerosol properties type nw over each aerosol 
+!    emissivity band na using the weighted contributions from each
+!    aerosol parameterization band ni. mark the calculation as com-
+!    pleted.
+!
+!    the units of extinction coefficient (aeroextivl) are m**2/gm.
+!    to make the lw band extinction coefficient (aerextbandlw) have
+!    units (m**2/Kg) consistent with the units in FMS models, one
+!    must multiply by 1000. this is done below.
+!---------------------------------------------------------------------
+        do nw=1,naermodels    
+          do na=1,N_AEROSOL_BANDS  
+            do ni=1,num_wavenumbers 
+              aerextbandlw_MOD(na,nw) = aerextbandlw_MOD(na,nw) + &
+                                aeroextivl(ni,nw)*sflwwts(na,ni)*1.0E+03
+              aerssalbbandlw_MOD(na,nw) = aerssalbbandlw_MOD(na,nw) + &
+                                     aerossalbivl(ni,nw)*sflwwts(na,ni)
+            end do
+          end do
+        end do
+        do nw=1,naermodels    
+          do na=1,N_AEROSOL_BANDS_CN
+            do ni=1,num_wavenumbers 
+              aerextbandlw_cn_MOD(na,nw) = aerextbandlw_cn_MOD(na,nw) +&
+                            aeroextivl(ni,nw)*sflwwts_cn(na,ni)*1.0E+03
+              aerssalbbandlw_cn_MOD(na,nw) =    &
+                               aerssalbbandlw_cn_MOD(na,nw) +&
+                                  aerossalbivl(ni,nw)*sflwwts_cn(na,ni)
+            end do
+          end do
+        end do
+      endif
 
 !----------------------------------------------------------------------
 

@@ -51,7 +51,9 @@ use radiation_diag_mod,   only: radiation_diag_init,   &
                                 radiation_diag_driver, &
                                 radiation_diag_end
 use longwave_driver_mod,  only: longwave_driver_init,   &
+                                longwave_driver_time_vary, &
                                 longwave_driver, &
+                                longwave_driver_endts, &
                                 longwave_driver_end
 use shortwave_driver_mod, only: shortwave_driver_init,  &
                                 shortwave_driver,  &
@@ -71,15 +73,16 @@ private
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 
-character(len=128) :: version = '$Id: sea_esf_rad.F90,v 17.0 2009/07/21 02:57:32 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec_200910 $'
+character(len=128) :: version = '$Id: sea_esf_rad.F90,v 18.0 2010/03/02 23:32:40 fms Exp $'
+character(len=128) :: tagname = '$Name: riga $'
 
 
 !--------------------------------------------------------------------
 !-- interfaces -----
 
 public       &
-            sea_esf_rad_init, sea_esf_rad, sea_esf_rad_end
+            sea_esf_rad_init, sea_esf_rad, sea_esf_rad_time_vary,  &
+            sea_esf_rad_endts,  sea_esf_rad_end
 
 
 private      &
@@ -251,6 +254,32 @@ real, dimension(:,:),    intent(in)  :: pref_r
 
 
 end subroutine sea_esf_rad_init
+
+
+!####################################################################
+ 
+subroutine sea_esf_rad_time_vary (Time, Rad_gases_tv)
+
+!----------------------------------------------------------------------
+type(time_type), intent(in)  :: Time
+type(radiative_gases_type), intent(inout) :: Rad_gases_tv
+
+ 
+      call longwave_driver_time_vary (Time, Rad_gases_tv)
+ 
+
+end subroutine sea_esf_rad_time_vary
+ 
+
+!#######################################################################        ######
+
+subroutine sea_esf_rad_endts (Rad_gases_tv)
+ 
+type(radiative_gases_type), intent(in) :: Rad_gases_tv
+ 
+    call longwave_driver_endts (Rad_gases_tv)
+
+end subroutine sea_esf_rad_endts 
 
 
 

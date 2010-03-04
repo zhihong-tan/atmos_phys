@@ -48,8 +48,8 @@ public :: moist_conv, moist_conv_Init, moist_conv_end
 !-----------------------------------------------------------------------
 !---- VERSION NUMBER -----
 
- character(len=128) :: version = '$Id: moist_conv.F90,v 17.0 2009/07/21 02:55:30 fms Exp $'
- character(len=128) :: tagname = '$Name: quebec_200910 $'
+ character(len=128) :: version = '$Id: moist_conv.F90,v 18.0 2010/03/02 23:31:04 fms Exp $'
+ character(len=128) :: tagname = '$Name: riga $'
  logical            :: module_is_initialized = .false.
 
 !---------- initialize constants used by this module -------------------
@@ -68,7 +68,6 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_q_conv_col, id_t_conv_col
 
 character(len=3) :: mod_name = 'mca'
-logical :: used
 
 logical :: do_mca_tracer = .false.
 integer :: num_mca_tracers = 0
@@ -167,6 +166,7 @@ logical  :: cloud_tracers_present
 real, dimension(size(Phalf,1),size(Phalf,2),size(Phalf,3)) :: pmass
 real, dimension(size(Phalf,1),size(Phalf,2)) :: tempdiag
 integer  :: tr, num_cld_tracers
+logical :: used
 !-----------------------------------------------------------------------
 
       if (.not. module_is_initialized) call ERROR_MESG( 'MCA',  &

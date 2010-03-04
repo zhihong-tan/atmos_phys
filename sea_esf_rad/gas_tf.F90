@@ -42,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: gas_tf.F90,v 17.0 2009/07/21 02:56:29 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: gas_tf.F90,v 18.0 2010/03/02 23:32:01 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 
 !---------------------------------------------------------------------
@@ -317,7 +317,7 @@ real     :: b1 = -0.18113332E-03
 real     :: b2 = -0.10680132E-05
 real     :: b3 = -0.67303519E-07
 
-integer               :: israd, ierad, jsrad, jerad, ksrad, kerad
+integer               :: ksrad, kerad
 integer, parameter    :: nvalids=1
 integer               :: ixprkminh2o
 logical               :: do_linearlblint, do_loglblint
@@ -712,6 +712,7 @@ type(atmos_input_type), intent(in)    :: Atmos_input
 
       real                                 ::  palog8, alogps8 
       integer                              ::  i, j, k   
+      integer                              :: israd, ierad, jsrad, jerad
 
 !---------------------------------------------------------------------
 !  local variables:

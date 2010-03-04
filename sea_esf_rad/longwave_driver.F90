@@ -34,7 +34,8 @@ use rad_utilities_mod,  only: rad_utilities_init, Rad_control, &
 
 !   radiation package module:
 
-use sealw99_mod,        only: sealw99_init, sealw99, sealw99_end
+use sealw99_mod,        only: sealw99_init,sealw99_time_vary, sealw99, &
+                              sealw99_endts, sealw99_end
 
 !------------------------------------------------------------------
 
@@ -50,15 +51,15 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: longwave_driver.F90,v 17.0 2009/07/21 02:56:41 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: longwave_driver.F90,v 18.0 2010/03/02 23:32:08 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
 public      &
-         longwave_driver_init, longwave_driver,   &
-         longwave_driver_end
+   longwave_driver_init, longwave_driver_time_vary, longwave_driver,   &
+   longwave_driver_endts, longwave_driver_end
 
 private      &
 
@@ -226,6 +227,34 @@ type(lw_table_type),    intent(inout) :: Lw_tables
 
 end  subroutine longwave_driver_init
 
+
+!#####################################################################
+
+subroutine longwave_driver_time_vary (Time, Rad_gases_tv)
+ 
+!-------------------------------------------------------------------- 
+type(time_type), intent(in) :: Time
+type(radiative_gases_type), intent(inout) :: Rad_gases_tv
+
+ 
+
+      call sealw99_time_vary (Time, Rad_gases_tv)
+ 
+end subroutine longwave_driver_time_vary      
+
+        
+ 
+!#####################################################################
+
+subroutine longwave_driver_endts (Rad_gases_tv)
+          
+type(radiative_gases_type), intent(in) :: Rad_gases_tv
+ 
+
+     call sealw99_endts (Rad_gases_tv)
+
+
+end subroutine longwave_driver_endts 
 
 
 

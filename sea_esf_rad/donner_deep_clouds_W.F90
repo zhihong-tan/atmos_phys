@@ -40,8 +40,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 17.0 2009/07/21 02:56:20 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 18.0 2010/03/02 23:31:52 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: riga $'
 
 
 
@@ -493,6 +493,9 @@ real,    dimension(:,:,:), intent(out) :: cell_cloud_frac_out,        &
         where (meso_cloud_frac_out == 0.0 .and.   &
                meso_liquid_amt_out  > 0.0)
           meso_liquid_amt_out  = 0.0
+        end where
+        where (meso_liquid_amt_out == 0.0)
+          meso_liquid_size_out = 0.0
         end where
         where (meso_cloud_frac_out == 0.0 .and.   &
                meso_ice_amt_out     > 0.0)

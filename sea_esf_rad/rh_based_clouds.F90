@@ -47,7 +47,7 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
   character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 17.0 2009/07/21 02:57:29 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+  character(len=128)  :: tagname =  '$Name: riga $'
 
 
 

@@ -39,6 +39,8 @@ use fms_io_mod,          only: get_restart_io_mode, &
                                register_restart_field, restart_file_type, &
                                save_restart, restore_state, query_initialized
 use time_interp_mod,     only: time_interp_init, time_interp
+use tracer_manager_mod,  only: get_tracer_index, NO_TRACER
+use field_manager_mod,   only: MODEL_ATMOS
 
 !  shared radiation package modules:
 
@@ -48,7 +50,8 @@ use rad_utilities_mod,   only: rad_utilities_init, Lw_control, &
 
 ! component modules:
 
-use ozone_mod,           only: ozone_driver, ozone_init, ozone_end
+use ozone_mod,           only: ozone_driver, ozone_init,  &
+                               ozone_time_vary, ozone_endts, ozone_end
 
 !---------------------------------------------------------------------
 
@@ -67,14 +70,15 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 17.0 2009/07/21 02:57:20 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+'$Id: radiative_gases.F90,v 18.0 2010/03/02 23:32:36 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
 public     &
          radiative_gases_init, define_radiative_gases,  &
+         radiative_gases_time_vary, radiative_gases_endts,  &
          radiative_gases_end, radiative_gases_dealloc,  &
          radiative_gases_restart
 
@@ -233,7 +237,9 @@ integer, dimension(6) ::       &
                       ! time in f22  data set corresponding to model
                       ! initial time  (yr, mo, dy, hr, mn, sc)
 logical              :: time_varying_restart_bug = .false.
+logical              :: use_globally_uniform_co2 = .true.
 namelist /radiative_gases_nml/ verbose, &
+        use_globally_uniform_co2, &
         gas_printout_freq, time_varying_restart_bug, &
         co2_dataset_entry, ch4_dataset_entry, n2o_dataset_entry,  &
         f11_dataset_entry, f12_dataset_entry, f113_dataset_entry, &
@@ -310,6 +316,15 @@ real         ::  co2_for_last_tf_calc
 real         ::  ch4_for_last_tf_calc
 real         ::  n2o_for_last_tf_calc
 
+!RSH
+!  Need these as module variables rather than components of derived type
+!   since they are needed in region executed by master thread only:
+real         ::  co2_for_next_tf_calc
+real         ::  ch4_for_next_tf_calc
+real         ::  n2o_for_next_tf_calc
+real         ::  ch4_tf_offset
+real         ::  n2o_tf_offset
+real         ::  co2_tf_offset
 !--------------------------------------------------------------------
 !    these variables are .true. if transmission functions are cal-
 !    culated for the referenced gas.
@@ -370,8 +385,7 @@ real,            dimension(:), pointer :: co2_value, ch4_value,  &
 !---------------------------------------------------------------------
 logical      ::  restart_present =  .false.   
 logical      ::  module_is_initialized =  .false. 
-integer      ::  pts_processed                 
-integer      ::  total_points
+integer      ::  ico2
 logical      ::  define_co2_for_last_tf_calc = .false.
 logical      ::  define_ch4_for_last_tf_calc = .false.
 logical      ::  define_n2o_for_last_tf_calc = .false.
@@ -835,17 +849,16 @@ real, dimension(:,:), intent(in) :: latb, lonb
                          f22_variation_type, F22_time_list, f22_value)
       endif
 
+      ico2 = get_tracer_index(MODEL_ATMOS, 'co2')
+      if (ico2 == NO_TRACER .and. trim(co2_data_source) == 'predicted') then
+        call error_mesg('radiation_driver_mod', &
+        'co2 must be a tracer when predicted co2 desired for radiation.', FATAL)
+      endif
+
 !--------------------------------------------------------------------- 
 !    call ozone_init to initialize the ozone field.
 !---------------------------------------------------------------------
       call ozone_init (latb, lonb)
-
-!--------------------------------------------------------------------
-!    define the total number of columns on the processor. set the 
-!    number of columns processed on the current time step to 0.
-!---------------------------------------------------------------------
-      total_points = (size(latb,2)-1)*(size(lonb,1)-1)
-      pts_processed = 0
 
 !---------------------------------------------------------------------
 !    mark the module as initialized.
@@ -862,10 +875,6 @@ end subroutine radiative_gases_init
 !####################################################################
 
 
-
-
-
-!##################################################################
 ! <SUBROUTINE NAME="define_radiative_gases">
 !  <OVERVIEW>
 !   Subroutine that returns the current values of the radiative 
@@ -960,11 +969,118 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
         call error_mesg ( 'radiative_gases_mod', &
              'module has not been initialized', FATAL )
       endif
+
 !--------------------------------------------------------------------
-!    execute the following code only on the first time into this
-!    subroutine on a given timestep.
-!----------------------------------------------------------------------
-      if (pts_processed == 0) then
+!    if time-varying co2 is desired, and the time at which variation 
+!    was to begin has been exceeded, define the gas_name variable and
+!    call define_gas_amount to return the values of co2 needed on this
+!    timestep.
+!--------------------------------------------------------------------
+        if (time_varying_co2) then 
+        else
+           if (trim(co2_data_source) == 'predicted') then
+              if (.not. use_globally_uniform_co2) then    
+! if predicted, not globally uniform co2 for radiation is desired, then
+! rrvco2 will have become an array and will be filled here:
+!               rrvco2(:,:,:) = Atmos_input%tracer_co2(is:ie,js:je,:)  
+              endif
+           endif
+        endif
+
+!--------------------------------------------------------------------
+!    fill the contents of the radiative_gases_type variable which
+!    will be returned to the calling routine.  values of the gas mixing
+!    ratio at the current time and a flag indicating if the gas is time-
+!    varying are returned for all gases, and for gases for which tfs are
+!    calculated, a variable indicating how long they have been varying,
+!    and the value of gas mixing ratio used for the last tf calculation
+!    are returned.
+!---------------------------------------------------------------------
+!   these values must now be filled from the module variables:
+!      Rad_gases%ch4_tf_offset = ch4_tf_offset
+!      Rad_gases%n2o_tf_offset = n2o_tf_offset
+!      Rad_gases%co2_tf_offset = co2_tf_offset
+!      Rad_gases%ch4_for_next_tf_calc = ch4_for_next_tf_calc
+!      Rad_gases%n2o_for_next_tf_calc = n2o_for_next_tf_calc
+!      Rad_gases%co2_for_next_tf_calc = co2_for_next_tf_calc
+
+!      Rad_gases%rrvch4  = rrvch4
+!      Rad_gases%rrvn2o  = rrvn2o
+!      Rad_gases%rrvf11  = rrvf11
+!      Rad_gases%rrvf12  = rrvf12
+!      Rad_gases%rrvf113 = rrvf113
+!      Rad_gases%rrvf22  = rrvf22
+!      Rad_gases%rrvco2  = rrvco2
+!      Rad_gases%time_varying_co2  = time_varying_co2
+!      Rad_gases%time_varying_ch4  = time_varying_ch4
+!      Rad_gases%time_varying_n2o  = time_varying_n2o
+!      Rad_gases%time_varying_f11  = time_varying_f11
+!      Rad_gases%time_varying_f12  = time_varying_f12
+!      Rad_gases%time_varying_f113 = time_varying_f113
+!      Rad_gases%time_varying_f22  = time_varying_f22
+!      if (time_varying_co2) then
+!        Rad_gases%Co2_time = Co2_time_list(1)
+!      endif
+!      if (time_varying_ch4) then
+!        Rad_gases%Ch4_time = Ch4_time_list(1)
+!      endif
+!      if (time_varying_n2o) then
+!        Rad_gases%N2o_time = N2o_time_list(1)
+!      endif
+!RSH    define value for the new variable 
+!RSH                     Rad_gases%use_model_supplied_co2, .true. for
+!RSH   co2_data_source = 'predicted', .false. otherwise.
+!      if (trim(co2_data_source) == 'predicted') then
+!         Rad_gases%use_model_supplied_co2 = .true.
+!      else
+!         Rad_gases%use_model_supplied_co2 = .false.
+!      endif
+
+!      Rad_gases%co2_for_last_tf_calc = co2_for_last_tf_calc
+!      Rad_gases%ch4_for_last_tf_calc = ch4_for_last_tf_calc
+!      Rad_gases%n2o_for_last_tf_calc = n2o_for_last_tf_calc
+
+!--------------------------------------------------------------------
+!    allocate an array in a radiative_gases_type variable to hold the
+!    model ozone field at the current time. call ozone_driver to define
+!    this field for use in the radiation calculation.
+!--------------------------------------------------------------------
+      allocate (Rad_gases%qo3(ie-is+1, je-js+1,    &
+                              size(Atmos_input%press,3) - 1))
+      Rad_gases%qo3 = 0.
+      call ozone_driver (is, ie, js, je, lat, Rad_time, Atmos_input, &
+                         r, Rad_gases)
+
+
+!---------------------------------------------------------------------
+
+
+end subroutine define_radiative_gases
+
+
+!#####################################################################
+
+subroutine radiative_gases_time_vary (Rad_time, gavg_rrv, Rad_gases_tv)
+
+!---------------------------------------------------------------------
+!     subroutine radiative_gases_time_vary calculates time-dependent, space-
+!     independent quantities needed by this module
+!---------------------------------------------------------------------
+
+type(time_type),    intent(in)   :: Rad_time
+real, dimension(:), intent(in)   :: gavg_rrv
+type(radiative_gases_type), intent(inout)  :: Rad_gases_tv
+
+!---------------------------------------------------------------------
+!  local variables:
+!
+      character(len=8)   :: gas_name  ! name associated with the 
+                                      ! radiative gas
+      integer            :: yr, mo, dy, hr, mn, sc 
+                                      ! components of Rad_time
+      type(time_type)    :: Gas_time
+
+!---------------------------------------------------------------------
 
 !--------------------------------------------------------------------
 !    if time-varying ch4 is desired, and the time at which variation 
@@ -999,11 +1115,11 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
                  use_current_gas_for_tf = &
                             Rad_control%use_current_ch4_for_tf,  &
                  gas_tf_offset = &
-                            Rad_gases%ch4_tf_offset,  &
+                            ch4_tf_offset,  &
                  gas_for_last_tf_calc =   &
                             ch4_for_last_tf_calc,    &
                  gas_for_next_tf_calc = &
-                            Rad_gases%ch4_for_next_tf_calc, &
+                            ch4_for_next_tf_calc, &
                  gas_tfs_needed = ch4_tfs_needed, &
                  define_gas_for_last_tf_calc = &
                             define_ch4_for_last_tf_calc)
@@ -1020,7 +1136,7 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
 !---------------------------------------------------------------------
           else  ! (Rad_time > Ch4_time)
             ch4_for_last_tf_calc = rrvch4
-            Rad_gases%ch4_tf_offset = 0.0
+            ch4_tf_offset = 0.0
           endif   ! (Rad_time > Ch4_time)
         else
           ch4_for_last_tf_calc = rrvch4
@@ -1057,11 +1173,11 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
                  use_current_gas_for_tf = &
                                Rad_control%use_current_n2o_for_tf,  &
                  gas_tf_offset = &
-                               Rad_gases%n2o_tf_offset,  &
+                               n2o_tf_offset,  &
                  gas_for_last_tf_calc =   &
                                n2o_for_last_tf_calc,    &
                  gas_for_next_tf_calc = &
-                               Rad_gases%n2o_for_next_tf_calc, &
+                               n2o_for_next_tf_calc, &
                  gas_tfs_needed = n2o_tfs_needed, &
                  define_gas_for_last_tf_calc = &
                                define_n2o_for_last_tf_calc)
@@ -1078,7 +1194,7 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
 !---------------------------------------------------------------------
           else  ! (Rad_time > N2o_time)
             n2o_for_last_tf_calc = rrvn2o
-            Rad_gases%n2o_tf_offset = 0.0
+            n2o_tf_offset = 0.0
           endif   ! (Rad_time > N2o_time)
         else
           n2o_for_last_tf_calc = rrvn2o
@@ -1207,11 +1323,11 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
                  use_current_gas_for_tf = &
                                Rad_control%use_current_co2_for_tf,  &
                  gas_tf_offset = &
-                               Rad_gases%co2_tf_offset,  &
+                               co2_tf_offset,  &
                  gas_for_last_tf_calc =   &
                                co2_for_last_tf_calc,    &
                  gas_for_next_tf_calc = &
-                               Rad_gases%co2_for_next_tf_calc, &
+                               co2_for_next_tf_calc, &
                  gas_tfs_needed = co2_tfs_needed, &
                  define_gas_for_last_tf_calc = &
                                define_co2_for_last_tf_calc)
@@ -1228,91 +1344,26 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
 !---------------------------------------------------------------------
           else  ! (Rad_time > Co2_time)
             co2_for_last_tf_calc = rrvco2
-            Rad_gases%co2_tf_offset = 0.0
+            co2_tf_offset = 0.0
           endif   ! (Rad_time > Co2_time)
         else
            if (trim(co2_data_source) == 'predicted') then
-              if (associated (Atmos_input%tracer_co2) ) then
-                 ! Note shape cannot be applied to unallocated array or unassociated pointer.
-                 ! And associated cannot be applied to a scalar. This code assumes that rrvco2
-                 ! is either a scalar, or allocated/associated at this point.
-                 if(size(shape(rrvco2)) == 0) then         ! if rrvco2 is a scalar 
-                    rrvco2 = Atmos_input%g_rrvco2
-                 else
-!                    rrvco2 = Atmos_input%tracer_co2        ! if rrvco2 is an array, this doesn't compile
-                 endif
+              if (use_globally_uniform_co2) then    
+                 rrvco2 = gavg_rrv(ico2)
               else
-                 call error_mesg('radiative_gases_mod', &
-                      '%tracer_co2 not associated, therefore donot have predicted values of co2 to use', FATAL)
-              endif !(associated (Atmos_input%tracer_co2)
-       
+!    if 3d co2 distribution desired for radiation, it will be defined in
+!    define_radiatiove_gases.
+              endif
            else !trim(co2_data_source) == 'predicted')
               co2_for_last_tf_calc = rrvco2
            endif  !(trim(co2_data_source) == 'predicted')
         endif  ! (time_varying_co2)
-      endif ! (pts_processed == 0)
 
-!--------------------------------------------------------------------
-!    fill the contents of the radiative_gases_type variable which
-!    will be returned to the calling routine.  values of the gas mixing
-!    ratio at the current time and a flag indicating if the gas is time-
-!    varying are returned for all gases, and for gases for which tfs are
-!    calculated, a variable indicating how long they have been varying,
-!    and the value of gas mixing ratio used for the last tf calculation
-!    are returned.
-!---------------------------------------------------------------------
-      Rad_gases%rrvch4  = rrvch4
-      Rad_gases%rrvn2o  = rrvn2o
-      Rad_gases%rrvf11  = rrvf11
-      Rad_gases%rrvf12  = rrvf12
-      Rad_gases%rrvf113 = rrvf113
-      Rad_gases%rrvf22  = rrvf22
-      Rad_gases%rrvco2  = rrvco2
-      Rad_gases%time_varying_co2  = time_varying_co2
-      Rad_gases%time_varying_ch4  = time_varying_ch4
-      Rad_gases%time_varying_n2o  = time_varying_n2o
-      Rad_gases%time_varying_f11  = time_varying_f11
-      Rad_gases%time_varying_f12  = time_varying_f12
-      Rad_gases%time_varying_f113 = time_varying_f113
-      Rad_gases%time_varying_f22  = time_varying_f22
-      if (time_varying_co2) then
-        Rad_gases%Co2_time = Co2_time_list(1)
-      endif
-      if (time_varying_ch4) then
-        Rad_gases%Ch4_time = Ch4_time_list(1)
-      endif
-      if (time_varying_n2o) then
-        Rad_gases%N2o_time = N2o_time_list(1)
-      endif
-!RSH    define value for the new variable 
-!RSH                     Rad_gases%use_model_supplied_co2, .true. for
-!RSH   co2_data_source = 'predicted', .false. otherwise.
-      if (trim(co2_data_source) == 'predicted') then
-         Rad_gases%use_model_supplied_co2 = .true.
-      else
-         Rad_gases%use_model_supplied_co2 = .false.
-      endif
-
-      Rad_gases%co2_for_last_tf_calc = co2_for_last_tf_calc
-      Rad_gases%ch4_for_last_tf_calc = ch4_for_last_tf_calc
-      Rad_gases%n2o_for_last_tf_calc = n2o_for_last_tf_calc
-
-!--------------------------------------------------------------------
-!    allocate an array in a radiative_gases_type variable to hold the
-!    model ozone field at the current time. call ozone_driver to define
-!    this field for use in the radiation calculation.
-!--------------------------------------------------------------------
-      allocate (Rad_gases%qo3(ie-is+1, je-js+1,    &
-                              size(Atmos_input%press,3) - 1))
-      Rad_gases%qo3 = 0.
-      call ozone_driver (is, ie, js, je, lat, Rad_time, Atmos_input, &
-                         r, Rad_gases)
 
 !---------------------------------------------------------------------
 !    print out the current gas mixing ratios, if desired.
 !---------------------------------------------------------------------
-      if (pts_processed == 0 .and. (mpp_pe() == mpp_root_pe()) .and. &
-          verbose >= 3) then
+      if ((mpp_pe() == mpp_root_pe()) .and. verbose >= 3) then
         if (Rad_control%do_lw_rad) then
           print_alarm = print_alarm - Rad_control%lw_rad_time_step
         endif
@@ -1334,23 +1385,83 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
       endif
 
 !--------------------------------------------------------------------
-!    increment the points processed counter for this time step. check
-!    if all processor points have been processed; if so, reset the
-!    points processed counter to 0.
-!--------------------------------------------------------------------
-      pts_processed = pts_processed + (ie - is + 1)*(je - js + 1) 
-      if (pts_processed == total_points) then
-        pts_processed = 0
+!    fill the contents of the radiative_gases_type variable which
+!    will be returned to the calling routine.  values of the gas mixing
+!    ratio at the current time and a flag indicating if the gas is time-
+!    varying are returned for all gases, and for gases for which tfs are
+!    calculated, a variable indicating how long they have been varying,
+!    and the value of gas mixing ratio used for the last tf calculation
+!    are returned.
+!---------------------------------------------------------------------
+!   these values must now be filled from the module variables:
+      Rad_gases_tv%ch4_tf_offset = ch4_tf_offset
+      Rad_gases_tv%n2o_tf_offset = n2o_tf_offset
+      Rad_gases_tv%co2_tf_offset = co2_tf_offset
+      Rad_gases_tv%ch4_for_next_tf_calc = ch4_for_next_tf_calc
+      Rad_gases_tv%n2o_for_next_tf_calc = n2o_for_next_tf_calc
+      Rad_gases_tv%co2_for_next_tf_calc = co2_for_next_tf_calc
+
+      Rad_gases_tv%rrvch4  = rrvch4
+      Rad_gases_tv%rrvn2o  = rrvn2o
+      Rad_gases_tv%rrvf11  = rrvf11
+      Rad_gases_tv%rrvf12  = rrvf12
+      Rad_gases_tv%rrvf113 = rrvf113
+      Rad_gases_tv%rrvf22  = rrvf22
+      Rad_gases_tv%rrvco2  = rrvco2
+      Rad_gases_tv%time_varying_co2  = time_varying_co2
+      Rad_gases_tv%time_varying_ch4  = time_varying_ch4
+      Rad_gases_tv%time_varying_n2o  = time_varying_n2o
+      Rad_gases_tv%time_varying_f11  = time_varying_f11
+      Rad_gases_tv%time_varying_f12  = time_varying_f12
+      Rad_gases_tv%time_varying_f113 = time_varying_f113
+      Rad_gases_tv%time_varying_f22  = time_varying_f22
+      if (time_varying_co2) then
+        Rad_gases_tv%Co2_time = Co2_time_list(1)
+      endif
+      if (time_varying_ch4) then
+        Rad_gases_tv%Ch4_time = Ch4_time_list(1)
+      endif
+      if (time_varying_n2o) then
+        Rad_gases_tv%N2o_time = N2o_time_list(1)
+      endif
+!    define value for the new variable 
+!    Rad_gases%use_model_supplied_co2, .true. for
+!                    co2_data_source = 'predicted', .false. otherwise.
+      if (trim(co2_data_source) == 'predicted') then
+         Rad_gases_tv%use_model_supplied_co2 = .true.
+      else
+         Rad_gases_tv%use_model_supplied_co2 = .false.
       endif
 
-!---------------------------------------------------------------------
+      Rad_gases_tv%co2_for_last_tf_calc = co2_for_last_tf_calc
+      Rad_gases_tv%ch4_for_last_tf_calc = ch4_for_last_tf_calc
+      Rad_gases_tv%n2o_for_last_tf_calc = n2o_for_last_tf_calc
 
 
-end subroutine define_radiative_gases
+!----------------------------------------------------------------------
+
+            call ozone_time_vary (Rad_time)
+
+!--------------------------------------------------------------------
 
 
-!#####################################################################
+end subroutine radiative_gases_time_vary
 
+
+
+!##################################################################
+
+subroutine radiative_gases_endts
+
+     call ozone_endts
+
+
+end subroutine radiative_gases_endts
+
+
+
+
+!##################################################################
 
 !####################################################################
 ! <SUBROUTINE NAME="radiative_gases_end">

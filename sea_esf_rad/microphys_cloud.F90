@@ -31,7 +31,7 @@ use fms_mod,                only: open_namelist_file, mpp_pe,          &
 implicit none
 private
 
-public microphys_cloud, microphys_cloud_init
+public microphys_cloud, microphys_cloud_init, microphys_cloud_end
 
 integer :: idim, jdim, kdim
 
@@ -45,8 +45,8 @@ namelist /microphys_cloud_nml/  diam_liq
 ! version control information
 !-----------------------------------------------------------------------
 
-character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 17.0 2009/07/21 02:56:59 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 18.0 2010/03/02 23:32:18 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 logical ::   module_is_initialized = .false.
 contains 
@@ -242,6 +242,14 @@ integer :: unit, ierr, io, logunit
 
   return
 end subroutine microphys_cloud_init
+
+!#######################################################################
+subroutine microphys_cloud_end
+
+   module_is_initialized = .true.
+
+  return
+end subroutine microphys_cloud_end
 
 !#######################################################################
 

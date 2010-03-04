@@ -11,8 +11,8 @@ MODULE CONV_UTILITIES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 17.0 2009/07/21 02:58:05 fms Exp $'
-  character(len=128) :: tagname = '$Name: quebec_200910 $'
+  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 18.0 2010/03/02 23:33:08 fms Exp $'
+  character(len=128) :: tagname = '$Name: riga $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -137,6 +137,21 @@ contains
     integer, intent(in) :: kd, num_tracers
     type(sounding), intent(inout) :: sd
     
+    sd%coldT    = .false.
+    sd%kmax     = kd
+    sd%kinv     = 0
+    sd%ktoppbl  = 0
+    sd%ktopconv = 0
+    sd%psfc     = 0.0
+    sd%pinv     = 0.0
+    sd%zinv     = 0.0
+    sd%thvinv   = 0.0
+    sd%land     = 0.0
+    sd%pblht    = 0.0
+    sd%qint     = 0.0
+    sd%delt     = 0.0
+    sd%rhav     = 0.0
+    sd%tke      = 0.0
     allocate ( sd%t     (1:kd)); sd%t     =0.;
     allocate ( sd%qv    (1:kd)); sd%qv    =0.;
     allocate ( sd%u     (1:kd)); sd%u     =0.;
@@ -225,6 +240,23 @@ contains
     integer, intent(in) :: kd
     type(adicloud), intent(inout) :: ac
     
+    ac%usrc    = 0.0
+    ac%vsrc    = 0.0
+    ac%hlsrc   = 0.0
+    ac%thcsrc  = 0.0
+    ac%qctsrc  = 0.0
+    ac%klcl    = 0
+    ac%klfc    = 0
+    ac%klnb    = 0
+    ac%plcl    = 0.0
+    ac%zlcl    = 0.0
+    ac%thvlcl  = 0.0
+    ac%thv0lcl = 0.0
+    ac%rho0lcl = 0.0
+    ac%plfc    = 0.0
+    ac%plnb    = 0.0
+    ac%cape    = 0.0
+    ac%cin     = 0.0
     allocate ( ac%t     (1:kd)); ac%t    =0.;
     allocate ( ac%qv    (1:kd)); ac%qv   =0.;
     allocate ( ac%ql    (1:kd)); ac%ql   =0.;

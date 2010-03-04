@@ -15,13 +15,13 @@ private
 !-----------------------------------------------------------------------
 !  ---- public interfaces ----
 
-   public  bm_omp, bm_omp_init
+   public  bm_omp, bm_omp_init, bm_omp_end
 
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
- character(len=128) :: version = '$Id: bm_omp.F90,v 17.0 2009/07/21 02:53:40 fms Exp $'
- character(len=128) :: tagname = '$Name: quebec_200910 $'
+ character(len=128) :: version = '$Id: bm_omp.F90,v 18.0 2010/03/02 23:28:38 fms Exp $'
+ character(len=128) :: tagname = '$Name: riga $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----
@@ -29,7 +29,7 @@ private
     real, parameter :: d622 = rdgas/rvgas
     real, parameter :: d378 = 1.-d622
 
-    logical :: do_init=.true.
+    logical :: module_is_initialized =.false.
 
 !-----------------------------------------------------------------------
 !   --- namelist ----
@@ -145,7 +145,7 @@ real :: rs, es
 
 
 
-      if (do_init) call error_mesg ('bm_omp',  &
+      if (.not. module_is_initialized) call error_mesg ('bm_omp',  &
                          'bm_omp_init has not been called.', FATAL)
 
       ix=size(tin,1)
@@ -681,7 +681,8 @@ if (k .eq. nlev) go to 11
          tpcback = tback
          rpcback = rback
 !        write(6,*) 'plcl=0'
-         stop
+         call error_mesg ('bm_omp:capecalc', 'ieq = 0', FATAL)
+!         stop
       end if
 !
 !     Calculate temperature along saturated adiabat, starting at p(kLCL).
@@ -842,7 +843,9 @@ if (k .eq. nlev) go to 11
                 xcape=xcape+delt
                 if (xcape .lt. 0.) then
 !                  write(6,*) 'xcape error'
-                   stop
+                   call error_mesg ('bm_omp:capecalc', &
+                                    'xcape error', FATAL)
+!                  stop
                 end if
               end if
           end if
@@ -1354,8 +1357,8 @@ if (k .eq. nlev) go to 11
 !
 
      implicit none
-     real, intent(in) :: tp
-     real, intent(out) :: es
+     real, intent(in)  :: TP
+     real, intent(out) :: ES
 
      integer :: it
      real, dimension(161) :: table
@@ -1491,9 +1494,17 @@ if (k .eq. nlev) go to 11
       endif
       call close_file (unit)
 
-      do_init=.false.
+      module_is_initialized =.true.
 
    end subroutine bm_omp_init
+
+!#######################################################################
+
+   subroutine bm_omp_end()
+
+      module_is_initialized =.false.
+
+   end subroutine bm_omp_end
 
 !#######################################################################
 

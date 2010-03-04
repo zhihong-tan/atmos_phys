@@ -33,6 +33,8 @@ use time_interp_mod,     only:  fraction_of_year, &
                                 time_interp_init  
 use constants_mod,       only:  constants_init, radian
 use interpolator_mod,    only:  interpolate_type, interpolator_init, &
+                                obtain_interpolator_time_slices, &
+                                unset_interpolator_time_flag, &
                                 interpolator, interpolator_end, &
                                 CONSTANT, INTERP_WEIGHTED_P
 
@@ -63,15 +65,16 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: ozone.F90,v 17.0 2009/07/21 02:57:14 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: ozone.F90,v 18.0 2010/03/02 23:32:26 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
 
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
 
 public       &
-        ozone_init, ozone_driver, ozone_end
+        ozone_init, ozone_time_vary, ozone_driver, ozone_endts, &
+        ozone_end
 private         &
 
 !   called from ozone_init:
@@ -212,6 +215,8 @@ type(time_type) :: Ozone_offset     ! difference between model initial
 type(time_type) :: Ozone_entry      ! time in ozone timeseries which
                                     ! is mapped to model initial time
                                     ! [ time_type ]
+type(time_type) :: Ozone_time       ! time for which ozone profile is 
+                                    ! valid
 type(time_type) :: Ozone_column_time
                                     ! time for which ozone data is extr
                                     ! acted from the ozone timeseries
@@ -531,6 +536,87 @@ real, dimension(:,:),   intent(in) :: latb, lonb
 end subroutine ozone_init
 
 
+!#################################################################### 
+ 
+subroutine ozone_time_vary (model_time)
+ 
+!----------------------------------------------------------------------
+!     subroutine ozone_time_vary calculates time-dependent, 
+!     space-independent variables needed by this module.
+!---------------------------------------------------------------------
+
+type(time_type),    intent(in)   :: model_time
+ 
+!----------------------------------------------------------------------
+!
+!   local variables
+ 
+      integer         :: yr, mo, dy, hr, mn, sc, dum
+      integer         :: dayspmn, mo_yr
+      integer         :: i, j, k
+
+      if (do_clim_zonal_ozone) then
+
+
+       if(trim(basic_ozone_type) == 'time_varying') then
+!--------------------------------------------------------------------
+!    define the time in the ozone data set from which data is to be 
+!    taken. if ozone is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+       if (negative_offset) then
+         Ozone_time = model_time - Ozone_offset
+       else
+         Ozone_time = model_time + Ozone_offset
+       endif
+     else if(trim(basic_ozone_type) == 'fixed_year') then
+       call get_date (Ozone_entry, yr, dum,dum,dum,dum,dum)
+       call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+       if (mo ==2 .and. dy == 29) then
+         dayspmn = days_in_month(Ozone_entry)
+         if (dayspmn /= 29) then
+           Ozone_time = set_date (yr, mo, dy-1, hr, mn, sc)
+         else
+           Ozone_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         Ozone_time = set_date (yr, mo, dy, hr, mn, sc)
+       endif
+     else if(trim(basic_ozone_type) == 'clim_zonal') then
+       Ozone_time = model_time
+    endif
+
+!--------------------------------------------------------------------
+!    if 'calculate_column' is being used, obtain the ozone values for
+!    each column, one at a time, using the pressure profile for that
+!    column. this allows each column to see the same ozone fields,
+!    but distributed appropriately for its pressure structure.
+!--------------------------------------------------------------------
+   if (trim(ozone_data_source) == 'calculate_column') then
+     call obtain_interpolator_time_slices (O3_interp, Ozone_column_time)
+   else
+     call obtain_interpolator_time_slices (O3_interp, Ozone_time)
+   endif
+
+!----------------------------------------------------------------------
+
+     endif
+ 
+end subroutine ozone_time_vary
+
+
+
+!######################################################################
+
+subroutine ozone_endts
+
+
+     call unset_interpolator_time_flag (O3_interp)
+
+
+end subroutine ozone_endts
+
+
+
 
 !######################################################################
 ! <SUBROUTINE NAME="ozone_driver">
@@ -806,26 +892,10 @@ subroutine obtain_input_file_data
 
 
 !-------------------------------------------------------------------
-!    determine if the input data input file exists in ascii format.
-!    if so, read the number of data records in the file.
-!---------------------------------------------------------------------
-      if (file_exist ( 'INPUT/id1o3') ) then
-        iounit = open_namelist_file ('INPUT/id1o3')
-        read (iounit,FMT = '(i4)') kmax_file
-
-!-------------------------------------------------------------------
-!    allocate space for the input data. read the data set. close the 
-!    file upon completion.
-!---------------------------------------------------------------------
-         allocate (qqo3(kmax_file) )
-         read (iounit,FMT = '(5e18.10)') (qqo3(k),k=1,kmax_file)
-         call close_file (iounit)
-
-!-------------------------------------------------------------------
 !    determine if a netcdf input data file exists. if so, read the
 !    number of data records in the file.
 !---------------------------------------------------------------------
-      else if (file_exist ( 'INPUT/id1o3.nc') ) then
+      if (file_exist ( 'INPUT/id1o3.nc') ) then
         ncid = ncopn ('INPUT/id1o3.nc', 0, rcode)
         call ncinq (ncid, ndims, nvars, ngatts, recdim, rcode)
         do i=1,ndims
@@ -849,6 +919,22 @@ subroutine obtain_input_file_data
         end do
         call ncvgt (ncid, ivarid, start, count, qqo3, rcode)
         call ncclos (ncid, rcode)
+
+!-------------------------------------------------------------------
+!    determine if the input data input file exists in ascii format.
+!    if so, read the number of data records in the file.
+!---------------------------------------------------------------------
+      else if (file_exist ( 'INPUT/id1o3') ) then
+        iounit = open_namelist_file ('INPUT/id1o3')
+        read (iounit,FMT = '(i4)') kmax_file
+
+!-------------------------------------------------------------------
+!    allocate space for the input data. read the data set. close the 
+!    file upon completion.
+!---------------------------------------------------------------------
+         allocate (qqo3(kmax_file) )
+         read (iounit,FMT = '(5e18.10)') (qqo3(k),k=1,kmax_file)
+         call close_file (iounit)
 
 !---------------------------------------------------------------------
 !    if file is not present, write an error message.
@@ -1635,37 +1721,9 @@ real, dimension(:,:,:), intent(out)     :: model_data
  
       real, dimension(1,1, size(p_half,3)-1) :: ozone_data
       real, dimension(1,1, size(p_half,3)) :: p_half_col
-      type(time_type) :: Ozone_time
       integer         :: yr, mo, dy, hr, mn, sc, dum
       integer         :: dayspmn, mo_yr
       integer         :: i, j, k
-
-      if(trim(basic_ozone_type) == 'time_varying') then
-!--------------------------------------------------------------------
-!    define the time in the ozone data set from which data is to be 
-!    taken. if ozone is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-      if (negative_offset) then
-        Ozone_time = model_time - Ozone_offset
-      else
-        Ozone_time = model_time + Ozone_offset
-      endif
-    else if(trim(basic_ozone_type) == 'fixed_year') then
-      call get_date (Ozone_entry, yr, dum,dum,dum,dum,dum)
-      call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-      if (mo ==2 .and. dy == 29) then
-        dayspmn = days_in_month(Ozone_entry)
-        if (dayspmn /= 29) then
-          Ozone_time = set_date (yr, mo, dy-1, hr, mn, sc)
-        else
-          Ozone_time = set_date (yr, mo, dy, hr, mn, sc)
-        endif
-      else
-        Ozone_time = set_date (yr, mo, dy, hr, mn, sc)
-      endif
-    else if(trim(basic_ozone_type) == 'clim_zonal') then
-        Ozone_time = model_time
-    endif
 
 !--------------------------------------------------------------------
 !    if 'calculate_column' is being used, obtain the ozone values for

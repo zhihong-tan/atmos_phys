@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 17.0 2009/07/21 02:54:43 fms Exp $
+!  $Id: donner_types.h,v 18.0 2010/03/02 23:30:15 fms Exp $
 
 !#####################################################################
  
@@ -73,10 +73,6 @@ type donner_initialized_type
 !   do_input_cell_ice_size      cell ice size to be input ?
 !   do_default_cell_ice_size    use default cell ice size ?
 !   coldstart                   is this a donner_deep coldstart ?
-!   total_pts                   total number of points in the processor's
-!                               subdomain
-!   pts_processed_conv          number of points processed during current
-!                               convection calculation
 !   conv_alarm                  time remaining until next convection 
 !                               calculation [ sec ]
 !   using_unified_closure       use cbmf from uw shallow in donner 
@@ -98,8 +94,6 @@ logical  :: using_unified_closure
 logical  :: do_conservation_checks
 logical  :: use_constant_rmuz_for_closure
 
-integer  :: total_pts
-integer  :: pts_processed_conv
 integer  :: conv_alarm
 integer  :: physics_dt
 
@@ -154,6 +148,8 @@ type donner_save_type
 !                  [ mm/day ]
 !   mass_flux      total mass flux at model levels, convective +
 !                  mesoscale  [ kg/(m**2)/sec) ]
+!   mflux_up       upward mass flux at model levels, convective +
+!                  mesoscale  [ kg/(m**2)/sec) ]
 !   cell_up_mass_flux
 !                  upward cell mass flux at interface levels
 !                  [ kg / (m**2 sec) ]
@@ -186,6 +182,7 @@ real, dimension(:,:,:),          pointer  ::  lag_vapor=>NULL()
 real, dimension(:,:,:),          pointer  ::  lag_press=>NULL()
 real, dimension(:,:,:),          pointer  ::  cememf=>NULL()
 real, dimension(:,:,:),          pointer  ::  mass_flux=>NULL()
+real, dimension(:,:,:),          pointer  ::  mflux_up=>NULL()
 real, dimension(:,:,:),          pointer  ::  cell_up_mass_flux=>NULL()
 real, dimension(:,:,:),          pointer  ::  det_mass_flux=>NULL()
 real, dimension(:,:,:),          pointer  ::  dql_strat=>NULL()

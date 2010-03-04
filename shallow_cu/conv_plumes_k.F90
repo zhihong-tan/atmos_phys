@@ -12,8 +12,8 @@ MODULE CONV_PLUMES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 17.0 2009/07/21 02:58:01 fms Exp $'
-  character(len=128) :: tagname = '$Name: quebec_200910 $'
+  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 18.0 2010/03/02 23:33:05 fms Exp $'
+  character(len=128) :: tagname = '$Name: riga $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -41,7 +41,7 @@ MODULE CONV_PLUMES_k_MOD
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit,  &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min,                        &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff, rh0, cfrac,hcevap, weffect,t00
-     logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep
+     logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_weffect, do_qctflx_zero,do_detran_zero
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
@@ -395,7 +395,7 @@ contains
 
     real, dimension(4)            :: totalmass
     integer                       :: tym
-    real                          :: thickness, drop=0
+    real                          :: thickness, drop
    
     integer :: k, klm, km1, krel, let, ltop, id_check
     real    :: thv0rel, thv0t1, wexp, wtw, wtwtop
@@ -466,7 +466,7 @@ contains
     totalmass(2)=     sd%am2(krel-1); !totalmass(2)=0.;
     totalmass(3)=     sd%am3(krel-1); !totalmass(3)=0.;
     totalmass(4)=     sd%am4(krel-1); !totalmass(4)=0.;
-    if (SUM(totalmass(:)) /= 0.0) then
+    if (SUM(totalmass(:)) /= 0.0 .and. cpn%use_online_aerosol) then
       wrel2 = wrel*cpn%wrel_min
       call aer_ccn_act_k(thj*exn_k(prel,Uw_p), prel, wrel2, totalmass, &
                          tym, drop, ier, ermesg)

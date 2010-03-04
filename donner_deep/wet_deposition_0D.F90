@@ -1,6 +1,7 @@
  
 !VERSION NUMBER:
-!  $Id: wet_deposition_0D.F90,v 17.0 2009/07/21 02:54:54 fms Exp $
+!  $Name: riga $
+!  $Id: wet_deposition_0D.F90,v 18.0 2010/03/02 23:30:22 fms Exp $
 
 !<SUBROUTINE NAME = "wet_deposition_0D">
 !<TEMPLATE>
@@ -17,6 +18,7 @@ subroutine wet_deposition_0D( Henry_constant, Henry_variable, &
                               cloud, rain, snow, &
                               tracer, Lgas, Laerosol, Lice, &
                               delta_tracer )
+implicit none
 !      
 !<OVERVIEW>
 ! Routine to calculate the fraction of tracer removed by wet deposition
