@@ -44,6 +44,8 @@ use         tracer_manager_mod, only : get_tracer_index,        &
                                        set_tracer_atts
 use          field_manager_mod, only : MODEL_ATMOS
 use           interpolator_mod, only:  interpolate_type, interpolator_init, &
+                                      obtain_interpolator_time_slices, &
+                                      unset_interpolator_time_flag, &
                                        interpolator, interpolator_end,     &
                                        CONSTANT, INTERP_WEIGHTED_P
 use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR
@@ -55,6 +57,7 @@ private
 !----- interfaces -------
 !
 public  atmos_sulfate_init, atmos_sulfate_end, &
+        atmos_sulfate_time_vary, atmos_sulfate_endts, &
         atmos_DMS_emission, atmos_SOx_emission, atmos_SOx_chem
 
 !-----------------------------------------------------------------------
@@ -89,6 +92,7 @@ integer ::   id_pH                  = 0
 
 integer ::   id_DMSo                = 0
 integer ::   id_DMS_emis            = 0
+integer ::   id_DMS_emis_cmip       = 0
 integer ::   id_SO2_emis            = 0
 integer ::   id_SO4_emis            = 0
 integer ::   id_DMS_chem            = 0
@@ -242,6 +246,9 @@ namelist /simple_sulfate_nml/  &
         aircraft_time_dependency_type, aircraft_dataset_entry, so2_aircraft_EI,&
       cont_volc_source, expl_volc_source
 
+type(time_type) :: anthro_time, biobur_time, ship_time, aircraft_time
+type(time_type)        :: gas_conc_time
+
 !trim(runtype) 
 !biomass_only; fossil_fuels_only, natural_only, anthrop
 
@@ -249,8 +256,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfate.F90,v 17.0 2009/07/21 02:59:24 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec_200910 $'
+character(len=128) :: version = '$Id: atmos_sulfate.F90,v 18.0 2010/03/02 23:34:18 fms Exp $'
+character(len=128) :: tagname = '$Name: riga $'
 !-----------------------------------------------------------------------
 
 contains
@@ -792,6 +799,10 @@ integer :: n, m, nsulfate
                    'simpleDMS_emis', axes(1:2),Time,                         &
                    'simpleDMS_emis', 'kgS/m2/s',                             &
                     missing_value=-999.  )
+   id_DMS_emis_cmip   = register_diag_field ( mod_name,                                   &
+                   'simpleDMS_emis_cmip', axes(1:2),Time,                                 &
+                   'simpleDMS_emis_cmip', 'kgDMS/m2/s',                                     &
+                    missing_value=-999.  )
    id_SO2_emis   = register_diag_field ( mod_name,                           &
                    'simpleSO2_emis', axes(1:3),Time,                         &
                    'simpleSO2_emis', 'kgS/m2/s',                             &
@@ -899,6 +910,229 @@ integer :: n, m, nsulfate
 
 !-----------------------------------------------------------------------
  end subroutine atmos_sulfate_init
+
+
+
+!######################################################################
+
+subroutine atmos_sulfate_time_vary (model_time)
+
+
+type(time_type), intent(in) :: model_time
+
+      integer :: yr,dum, mo_yr, mo, dy, hr, mn, sc, dayspmn
+
+
+      call obtain_interpolator_time_slices (gocart_emission_interp, &
+                                                           model_time)
+
+      call obtain_interpolator_time_slices (aerocom_emission_interp, &
+                                                           model_time)
+
+      if (trim(anthro_source) .eq. 'do_anthro') then
+!--------------------------------------------------------------------
+!    define the time in the anthro data set from which data is to be 
+!    taken. if anthro is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+          if(anthro_time_serie_type .eq. 3) then
+            if (anthro_negative_offset) then
+              anthro_time = model_time - anthro_offset
+            else
+              anthro_time = model_time + anthro_offset
+            endif
+          else
+            if(anthro_time_serie_type .eq. 2 ) then
+              call get_date (anthro_entry, yr, dum,dum,dum,dum,dum)
+              call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+              if (mo ==2 .and. dy == 29) then
+                dayspmn = days_in_month(anthro_entry)
+                if (dayspmn /= 29) then
+                  anthro_time = set_date (yr, mo, dy-1, hr, mn, sc)
+                else
+                  anthro_time = set_date (yr, mo, dy, hr, mn, sc)
+                endif
+              else
+                anthro_time = set_date (yr, mo, dy, hr, mn, sc)
+              endif
+            else
+              anthro_time = model_time
+            endif
+          endif
+          call obtain_interpolator_time_slices &
+                      (anthro_emission_interp, anthro_time)
+
+      endif 
+
+      if (trim(biobur_source) .eq. 'do_biobur') then
+!--------------------------------------------------------------------
+!    define the time in the biobur data set from which data is to be 
+!    taken. if biobur is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+          if(biobur_time_serie_type .eq. 3) then
+            if (biobur_negative_offset) then
+              biobur_time = model_time - biobur_offset
+            else
+              biobur_time = model_time + biobur_offset
+            endif
+          else
+            if(biobur_time_serie_type .eq. 2 ) then
+              call get_date (biobur_entry, yr, dum,dum,dum,dum,dum)
+              call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+              if (mo ==2 .and. dy == 29) then
+                dayspmn = days_in_month(biobur_entry)
+                if (dayspmn /= 29) then
+                  biobur_time = set_date (yr, mo, dy-1, hr, mn, sc)
+                else
+                  biobur_time = set_date (yr, mo, dy, hr, mn, sc)
+                endif
+              else
+                biobur_time = set_date (yr, mo, dy, hr, mn, sc)
+              endif
+            else
+              biobur_time = model_time
+            endif
+          endif
+          call obtain_interpolator_time_slices &
+                            (biobur_emission_interp, biobur_time)
+
+      endif 
+
+      if (trim(ship_source) .eq. 'do_ship') then
+!--------------------------------------------------------------------
+!    define the time in the ship data set from which data is to be 
+!    taken. if ship is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+          if(ship_time_serie_type .eq. 3) then
+            if (ship_negative_offset) then
+              ship_time = model_time - ship_offset
+            else
+              ship_time = model_time + ship_offset
+            endif
+          else
+            if(ship_time_serie_type .eq. 2 ) then
+              call get_date (ship_entry, yr, dum,dum,dum,dum,dum)
+              call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+              if (mo ==2 .and. dy == 29) then
+                dayspmn = days_in_month(ship_entry)
+                if (dayspmn /= 29) then
+                  ship_time = set_date (yr, mo, dy-1, hr, mn, sc)
+                else
+                  ship_time = set_date (yr, mo, dy, hr, mn, sc)
+                endif
+              else
+                ship_time = set_date (yr, mo, dy, hr, mn, sc)
+              endif
+            else
+              ship_time = model_time
+            endif
+          endif
+          call obtain_interpolator_time_slices &
+              (ship_emission_interp, ship_time)
+
+        endif
+!
+! Aircraft emissions
+      if (trim(aircraft_source) .eq. 'do_aircraft') then
+        if(aircraft_time_serie_type .eq. 3) then
+          if (aircraft_negative_offset) then
+            aircraft_time = model_time - aircraft_offset
+          else
+            aircraft_time = model_time + aircraft_offset
+          endif
+        else
+          if(aircraft_time_serie_type .eq. 2 ) then
+            call get_date (aircraft_entry, yr, dum,dum,dum,dum,dum)
+            call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+            if (mo ==2 .and. dy == 29) then
+              dayspmn = days_in_month(aircraft_entry)
+              if (dayspmn /= 29) then
+                aircraft_time = set_date (yr, mo, dy-1, hr, mn, sc)
+              else
+                aircraft_time = set_date (yr, mo, dy, hr, mn, sc)
+              endif
+            else
+              aircraft_time = set_date (yr, mo, dy, hr, mn, sc)
+            endif
+          else
+            aircraft_time = model_time
+          endif
+        endif
+
+!
+          call obtain_interpolator_time_slices &
+                         (aircraft_emission_interp, aircraft_time)
+      endif
+
+
+!--------------------------------------------------------------------
+!    define the time in the gas_conc data set from which data is to be 
+!    taken. if gas_conc is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(gas_conc_time_serie_type .eq. 3) then
+       if (gas_conc_negative_offset) then
+         gas_conc_time = model_time - gas_conc_offset
+       else
+         gas_conc_time = model_time + gas_conc_offset
+       endif
+     else
+       if(gas_conc_time_serie_type .eq. 2 ) then
+         call get_date (gas_conc_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(gas_conc_entry)
+           if (dayspmn /= 29) then
+             gas_conc_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             gas_conc_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           gas_conc_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         gas_conc_time = model_time
+       endif
+     endif
+
+      call obtain_interpolator_time_slices &
+                          (gas_conc_interp, gas_conc_time)
+
+end subroutine atmos_sulfate_time_vary 
+
+
+
+
+!######################################################################
+
+subroutine atmos_sulfate_endts                    
+
+
+      call unset_interpolator_time_flag (gocart_emission_interp)
+
+      call unset_interpolator_time_flag (aerocom_emission_interp)
+
+      if (trim(anthro_source) .eq. 'do_anthro') then
+          call unset_interpolator_time_flag (anthro_emission_interp)
+      endif 
+
+      if (trim(biobur_source) .eq. 'do_biobur') then
+          call unset_interpolator_time_flag (biobur_emission_interp)
+      endif 
+
+      if (trim(ship_source) .eq. 'do_ship') then
+          call unset_interpolator_time_flag (ship_emission_interp)
+      endif
+
+      if (trim(aircraft_source) .eq. 'do_aircraft') then
+          call unset_interpolator_time_flag (aircraft_emission_interp)
+      endif
+
+      call unset_interpolator_time_flag (gas_conc_interp)
+
+
+end subroutine atmos_sulfate_endts         
+
+
+
 !</SUBROUTINE>
 
 !#######################################################################
@@ -1076,6 +1310,10 @@ subroutine atmos_DMS_emission (lon, lat, area, frac_land, t_surf_rad, w10m, &
         used = send_data ( id_DMS_emis, dms_emis*WTM_S/WTM_DMS, Time, &
               is_in=is,js_in=js )
       endif
+      if (id_DMS_emis_cmip > 0) then
+        used = send_data ( id_DMS_emis_cmip, dms_emis, Time, &
+              is_in=is,js_in=js )
+      endif
 
 end subroutine atmos_DMS_emission
 !#######################################################################
@@ -1169,7 +1407,6 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
 
       real :: z1, z2, bltop, fbt, del
       integer  :: i, j, k, l, id, jd, kd, il, lf
-      type(time_type) :: anthro_time, biobur_time, ship_time, aircraft_time
       integer        :: yr, mo, dy, hr, mn, sc, dum, mo_yr, dayspmn
       integer :: ivolc_lev
 
@@ -1214,164 +1451,66 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
 !
       select case ( trim(runtype))
         case ('gocart')
-          call interpolator(gocart_emission_interp, model_time, SO2_ff1, &
-                       trim(gocart_emission_name(2)), is, js)
-          call interpolator(gocart_emission_interp, model_time, SO2_ff2, &
-                       trim(gocart_emission_name(3)), is, js)
-          call interpolator(gocart_emission_interp, model_time, SO4_ff1, &
-                       trim(gocart_emission_name(4)), is, js)
-          call interpolator(gocart_emission_interp, model_time, SO4_ff2, &
-                       trim(gocart_emission_name(5)), is, js)
-          call interpolator(gocart_emission_interp, model_time, &
-                       SO2_biobur(:,:,1),trim(gocart_emission_name(6)), is, js)
+          if (trim(anthro_source) .eq. 'do_anthro') then
+            call interpolator(gocart_emission_interp, model_time, SO2_ff1, &
+                         trim(gocart_emission_name(2)), is, js)
+            call interpolator(gocart_emission_interp, model_time, SO2_ff2, &
+                         trim(gocart_emission_name(3)), is, js)
+            call interpolator(gocart_emission_interp, model_time, SO4_ff1, &
+                         trim(gocart_emission_name(4)), is, js)
+            call interpolator(gocart_emission_interp, model_time, SO4_ff2, &
+                         trim(gocart_emission_name(5)), is, js)
+          endif
+          if (trim(biobur_source) .eq. 'do_biobur') then 
+            call interpolator(gocart_emission_interp, model_time, &
+                         SO2_biobur(:,:,1),trim(gocart_emission_name(6)), is, js)
+          endif
         case ('aerocom')
-          call interpolator(aerocom_emission_interp, model_time, &
-                       SO2_RoadTransport,trim(aerocom_emission_name(1)),is, js)
-          call interpolator(aerocom_emission_interp, model_time, SO2_Off_road, &
-                       trim(aerocom_emission_name(2)), is, js)
-          call interpolator(aerocom_emission_interp, model_time, SO2_Domestic, &
-                       trim(aerocom_emission_name(3)), is, js)
-          call interpolator(aerocom_emission_interp, model_time, SO2_Industry, &
-                       trim(aerocom_emission_name(4)), is, js)
-          call interpolator(aerocom_emission_interp, model_time, SO2_ship, &
-                       trim(aerocom_emission_name(5)), is, js)
-          call interpolator(aerocom_emission_interp, model_time, &
-                       SO2_Powerplants, trim(aerocom_emission_name(6)), is, js)
+          if (trim(anthro_source) .eq. 'do_anthro') then
+            call interpolator(aerocom_emission_interp, model_time, &
+                         SO2_RoadTransport,trim(aerocom_emission_name(1)),is, js)
+            call interpolator(aerocom_emission_interp, model_time, SO2_Off_road, &
+                         trim(aerocom_emission_name(2)), is, js)
+            call interpolator(aerocom_emission_interp, model_time, SO2_Domestic, &
+                         trim(aerocom_emission_name(3)), is, js)
+            call interpolator(aerocom_emission_interp, model_time, SO2_Industry, &
+                         trim(aerocom_emission_name(4)), is, js)
+            call interpolator(aerocom_emission_interp, model_time, SO2_ship, &
+                         trim(aerocom_emission_name(5)), is, js)
+            call interpolator(aerocom_emission_interp, model_time, &
+                         SO2_Powerplants, trim(aerocom_emission_name(6)), is, js)
+          endif
+          if (trim(biobur_source) .eq. 'do_biobur') then
 ! Wildfire emissions at 6 levels from 0 to 6 km
 ! (cf. AEROCOM web site or Dentener et al., ACPD, 2006)
-          do il=1,nlevel_fire
-            call interpolator(aerocom_emission_interp, model_time, &
-                       SO2_biobur(:,:,il), &
-                       trim(aerocom_emission_name(12+il)), is, js)
-          enddo
+            do il=1,nlevel_fire
+              call interpolator(aerocom_emission_interp, model_time, &
+                         SO2_biobur(:,:,il), &
+                         trim(aerocom_emission_name(12+il)), is, js)
+            enddo
+          endif
         case default
-          !--------------------------------------------------------------------
-          !    define the time in the anthro data set from which data is to be 
-          !    taken. if anthro is not time-varying, it is simply model_time.
-          !---------------------------------------------------------------------
-          if(anthro_time_serie_type .eq. 3) then
-            if (anthro_negative_offset) then
-              anthro_time = model_time - anthro_offset
-            else
-              anthro_time = model_time + anthro_offset
-            endif
-          else
-            if(anthro_time_serie_type .eq. 2 ) then
-              call get_date (anthro_entry, yr, dum,dum,dum,dum,dum)
-              call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-              if (mo ==2 .and. dy == 29) then
-                dayspmn = days_in_month(anthro_entry)
-                if (dayspmn /= 29) then
-                  anthro_time = set_date (yr, mo, dy-1, hr, mn, sc)
-                else
-                  anthro_time = set_date (yr, mo, dy, hr, mn, sc)
-                endif
-              else
-                anthro_time = set_date (yr, mo, dy, hr, mn, sc)
-              endif
-            else
-              anthro_time = model_time
-            endif
+          if (trim(anthro_source) .eq. 'do_anthro') then
+            call interpolator(anthro_emission_interp, anthro_time, SO2_ff1(:,:), &
+                     trim(anthro_emission_name(1)), is, js)
+            call interpolator(anthro_emission_interp, anthro_time, SO4_ff1(:,:), &
+                     trim(anthro_emission_name(2)), is, js)
           endif
-          call interpolator(anthro_emission_interp, anthro_time, SO2_ff1(:,:), &
-                   trim(anthro_emission_name(1)), is, js)
-          call interpolator(anthro_emission_interp, anthro_time, SO4_ff1(:,:), &
-                   trim(anthro_emission_name(2)), is, js)
-
-          !--------------------------------------------------------------------
-          !    define the time in the biobur data set from which data is to be 
-          !    taken. if biobur is not time-varying, it is simply model_time.
-          !---------------------------------------------------------------------
-          if(biobur_time_serie_type .eq. 3) then
-            if (biobur_negative_offset) then
-              biobur_time = model_time - biobur_offset
-            else
-              biobur_time = model_time + biobur_offset
-            endif
-          else
-            if(biobur_time_serie_type .eq. 2 ) then
-              call get_date (biobur_entry, yr, dum,dum,dum,dum,dum)
-              call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-              if (mo ==2 .and. dy == 29) then
-                dayspmn = days_in_month(biobur_entry)
-                if (dayspmn /= 29) then
-                  biobur_time = set_date (yr, mo, dy-1, hr, mn, sc)
-                else
-                  biobur_time = set_date (yr, mo, dy, hr, mn, sc)
-                endif
-              else
-                biobur_time = set_date (yr, mo, dy, hr, mn, sc)
-              endif
-            else
-              biobur_time = model_time
-            endif
+          if (trim(biobur_source) .eq. 'do_biobur') then
+            call interpolator(biobur_emission_interp, biobur_time, SO2_biobur(:,:,1), &
+                     trim(biobur_emission_name(1)), is, js)
           endif
-          call interpolator(biobur_emission_interp, biobur_time, SO2_biobur(:,:,1), &
-                   trim(biobur_emission_name(1)), is, js)
-
-          !--------------------------------------------------------------------
-          !    define the time in the ship data set from which data is to be 
-          !    taken. if ship is not time-varying, it is simply model_time.
-          !---------------------------------------------------------------------
-          if(ship_time_serie_type .eq. 3) then
-            if (ship_negative_offset) then
-              ship_time = model_time - ship_offset
-            else
-              ship_time = model_time + ship_offset
-            endif
-          else
-            if(ship_time_serie_type .eq. 2 ) then
-              call get_date (ship_entry, yr, dum,dum,dum,dum,dum)
-              call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-              if (mo ==2 .and. dy == 29) then
-                dayspmn = days_in_month(ship_entry)
-                if (dayspmn /= 29) then
-                  ship_time = set_date (yr, mo, dy-1, hr, mn, sc)
-                else
-                  ship_time = set_date (yr, mo, dy, hr, mn, sc)
-                endif
-              else
-                ship_time = set_date (yr, mo, dy, hr, mn, sc)
-              endif
-            else
-              ship_time = model_time
-            endif
+          if (trim(ship_source) .eq. 'do_ship') then
+            call interpolator(ship_emission_interp, ship_time, SO2_ship(:,:), &
+                     trim(ship_emission_name(1)), is, js)
+            call interpolator(ship_emission_interp, ship_time, SO4_ship(:,:), &
+                     trim(ship_emission_name(2)), is, js)
           endif
-          call interpolator(ship_emission_interp, ship_time, SO2_ship(:,:), &
-                   trim(ship_emission_name(1)), is, js)
-          call interpolator(ship_emission_interp, ship_time, SO4_ship(:,:), &
-                   trim(ship_emission_name(2)), is, js)
 
       end select
 !
 ! Aircraft emissions
       if (trim(aircraft_source) .eq. 'do_aircraft') then
-        if(aircraft_time_serie_type .eq. 3) then
-          if (aircraft_negative_offset) then
-            aircraft_time = model_time - aircraft_offset
-          else
-            aircraft_time = model_time + aircraft_offset
-          endif
-        else
-          if(aircraft_time_serie_type .eq. 2 ) then
-            call get_date (aircraft_entry, yr, dum,dum,dum,dum,dum)
-            call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-            if (mo ==2 .and. dy == 29) then
-              dayspmn = days_in_month(aircraft_entry)
-              if (dayspmn /= 29) then
-                aircraft_time = set_date (yr, mo, dy-1, hr, mn, sc)
-              else
-                aircraft_time = set_date (yr, mo, dy, hr, mn, sc)
-              endif
-            else
-              aircraft_time = set_date (yr, mo, dy, hr, mn, sc)
-            endif
-          else
-            aircraft_time = model_time
-          endif
-        endif
-
-!
         call interpolator(aircraft_emission_interp, aircraft_time, &
                      phalf, SO2_aircraft, &
                      trim(aircraft_emission_name(1)), is, js)
@@ -1724,7 +1863,6 @@ end subroutine atmos_SOx_emission
       real, parameter        :: Ra = 8314./101325.
       real, parameter        :: xkw = 1.e-14 ! water acidity
       real, parameter        :: const0 = 1.e3/6.022e23
-      type(time_type)        :: gas_conc_time
       integer        :: yr, mo, dy, hr, mn, sc, dum, mo_yr, dayspmn
 
 
@@ -1737,34 +1875,6 @@ end subroutine atmos_SOx_emission
       msa_dt(:,:,:) = 0.0
       h2o2_dt(:,:,:) = 0.0
 
-!--------------------------------------------------------------------
-!    define the time in the gas_conc data set from which data is to be 
-!    taken. if gas_conc is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(gas_conc_time_serie_type .eq. 3) then
-       if (gas_conc_negative_offset) then
-         gas_conc_time = model_time - gas_conc_offset
-       else
-         gas_conc_time = model_time + gas_conc_offset
-       endif
-     else
-       if(gas_conc_time_serie_type .eq. 2 ) then
-         call get_date (gas_conc_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(gas_conc_entry)
-           if (dayspmn /= 29) then
-             gas_conc_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             gas_conc_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           gas_conc_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         gas_conc_time = model_time
-       endif
-     endif
 
       OH_conc(:,:,:)=1.e5  ! molec/cm3
       call interpolator(gas_conc_interp, gas_conc_time, phalf, OH_conc, &

@@ -24,6 +24,8 @@ use field_manager_mod,          only : MODEL_ATMOS
 use atmos_tracer_utilities_mod, only : wet_deposition,       &
                                        dry_deposition
 use interpolator_mod,           only:  interpolate_type, interpolator_init, &
+                                       obtain_interpolator_time_slices,&
+                                       unset_interpolator_time_flag, &
                                        interpolator, interpolator_end, &
                                        CONSTANT, INTERP_WEIGHTED_P
 use constants_mod,              only : PI, GRAV, RDGAS
@@ -34,6 +36,8 @@ private
 
 public  atmos_carbon_aerosol_driver,   &
         atmos_carbon_aerosol_init, &
+        atmos_carbon_aerosol_time_vary, &
+        atmos_carbon_aerosol_endts, &
         atmos_carbon_aerosol_end
 
 !-----------------------------------------------------------------------
@@ -45,6 +49,7 @@ integer :: nomphilic=0
 
 !--- identification numbers for  diagnostic fields and axes ----
 integer :: id_bcphob_emis, id_bcphil_emis, id_omphob_emis, id_omphil_emis
+integer :: id_om_emis_col, id_bc_emis_col
 integer :: id_bcphob_sink, id_omphob_sink
 integer :: id_bcemisbf, id_bcemisbb, id_bcemissh, id_bcemisff, id_bcemisav
 integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg, id_omemisocean
@@ -260,9 +265,23 @@ logical :: module_is_initialized = .FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 17.0 2009/07/21 02:59:01 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec_200910 $'
+character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 18.0 2010/03/02 23:33:58 fms Exp $'
+character(len=128) :: tagname = '$Name: riga $'
 !-----------------------------------------------------------------------
+
+type(time_type)                        :: bcff_time
+type(time_type)                        :: bcbb_time
+type(time_type)                        :: bcbf_time
+type(time_type)                        :: bcsh_time
+type(time_type)                        :: bcav_time
+type(time_type)                        :: omff_time
+type(time_type)                        :: ombb_time
+type(time_type)                        :: ombf_time
+type(time_type)                        :: omsh_time
+type(time_type)                        :: omna_time
+type(time_type)                        :: omss_time
+
+
 
 contains
 
@@ -283,6 +302,7 @@ subroutine atmos_carbon_aerosol_driver(lon, lat, land, pfull,phalf, &
    real, intent(in),  dimension(:,:)   :: land
    real, intent(in),  dimension(:,:)   :: z_pbl
    real, intent(in),  dimension(:,:,:) :: z_half
+   real, intent(in),  dimension(:,:)   :: w10m, t_surf  ! ocean sea surface temperature and 10 meter wind speed
    real, intent(in),  dimension(:,:,:) :: pwt,pfull,phalf,T
    real, intent(in),  dimension(:,:,:) :: bcphob,bcphil
    real, intent(in),  dimension(:,:,:) :: omphob,omphil
@@ -291,17 +311,7 @@ subroutine atmos_carbon_aerosol_driver(lon, lat, land, pfull,phalf, &
 type(time_type), intent(in)            :: model_time
 integer, intent(in)                    :: is, ie, js, je
 !-----------------------------------------------------------------------
-type(time_type)                        :: bcff_time
-type(time_type)                        :: bcbb_time
-type(time_type)                        :: bcbf_time
-type(time_type)                        :: bcsh_time
-type(time_type)                        :: bcav_time
-type(time_type)                        :: omff_time
-type(time_type)                        :: ombb_time
-type(time_type)                        :: ombf_time
-type(time_type)                        :: omsh_time
-type(time_type)                        :: omna_time
-type(time_type)                        :: omss_time
+
 real  dtr,bltop,z1,z2,del
 real, dimension(size(bcphob,3)) :: fa1, fa2
 real, dimension(size(bcphob,3),6) :: fbb
@@ -323,7 +333,7 @@ real, dimension(nlevel_fire_GEIA) :: &
       alt_fire_max_GEIA=(/300.,1500./)
 real :: ze1 = 100.
 real :: ze2 = 300.
-integer        :: j,l, kb,id,jd,kd,lat1,k
+integer        :: i, j,l, kb,id,jd,kd,lat1,k
 integer        :: yr, mo, dy, hr, mn, sc, dum, mo_yr, dayspmn
 REAL,PARAMETER :: frac_bc_phobic = 0.8
 REAL,PARAMETER :: frac_bc_philic = 0.2
@@ -346,8 +356,7 @@ real, dimension(size(bcphob,1),size(bcphob,2)) ::          &
    bcemisbf, bcemissh
 real, dimension(size(omphob,1),size(omphob,2)) ::          &
    omemisbf, omemissh, omemisbg, dmso, omemisocean
-real, dimension(size(omphob,1),size(omphob,2)) ::          &
-   w10m, t_surf  ! ocean sea surface temperature and 10 meter wind speed
+real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
 !
 !-----------------------------------------------------------------------
 !
@@ -388,68 +397,13 @@ real, dimension(size(omphob,1),size(omphob,2)) ::          &
     omemisbg(:,:)    = 0.0
     dmso(:,:)        = 0.0
     omemisocean(:,:) = 0.0
+
     if ( trim(bcff_source) .ne. ' ') then
-!--------------------------------------------------------------------
-!    define the time in the bcff data set from which data is to be 
-!    taken. if bcff is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(bcff_time_serie_type .eq. 3) then
-       if (bcff_negative_offset) then
-         bcff_time = model_time - bcff_offset
-       else
-         bcff_time = model_time + bcff_offset
-       endif
-     else 
-       if(bcff_time_serie_type .eq. 2 ) then
-         call get_date (bcff_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(bcff_entry)
-           if (dayspmn /= 29) then
-             bcff_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             bcff_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           bcff_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         bcff_time = model_time
-       endif
-     endif
      call interpolator(bcff_aerosol_interp, bcff_time, bcemisff_l1, &
           trim(bcff_emission_name(1)), is, js)
    endif
-   if ( trim(bcbb_source).ne.' ') then
 
-!--------------------------------------------------------------------
-!    define the time in the bcbb data set from which data is to be 
-!    taken. if bcbb is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(bcbb_time_serie_type .eq. 3) then
-       if (bcbb_negative_offset) then
-         bcbb_time = model_time - bcbb_offset
-       else
-         bcbb_time = model_time + bcbb_offset
-       endif
-     else 
-       if(bcbb_time_serie_type .eq. 2 ) then
-         call get_date (bcbb_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(bcbb_entry)
-           if (dayspmn /= 29) then
-             bcbb_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             bcbb_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           bcbb_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         bcbb_time = model_time
-       endif
-     endif
+   if ( trim(bcbb_source).ne.' ') then
     nlevel_fire = 1
     alt_fire_min(:) = 0.0
     alt_fire_max(:) = 0.0
@@ -489,162 +443,23 @@ real, dimension(size(omphob,1),size(omphob,2)) ::          &
     end select
    endif
    if ( trim(bcbf_source).ne. ' ') then
-!--------------------------------------------------------------------
-!    define the time in the bcbf data set from which data is to be 
-!    taken. if bcbf is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(bcbf_time_serie_type .eq. 3) then
-       if (bcbf_negative_offset) then
-         bcbf_time = model_time - bcbf_offset
-       else
-         bcbf_time = model_time + bcbf_offset
-       endif
-     else 
-       if(bcbf_time_serie_type .eq. 2 ) then
-         call get_date (bcbf_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(bcbf_entry)
-           if (dayspmn /= 29) then
-             bcbf_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             bcbf_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           bcbf_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         bcbf_time = model_time
-       endif
-     endif
      call interpolator(bcbf_aerosol_interp, bcbf_time, bcemisbf, &
                        trim(bcbf_emission_name(1)), is, js)
    endif
+
    if ( trim(bcsh_source).ne. ' ') then
-!--------------------------------------------------------------------
-!    define the time in the bcsh data set from which data is to be 
-!    taken. if bcsh is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(bcsh_time_serie_type .eq. 3) then
-       if (bcsh_negative_offset) then
-         bcsh_time = model_time - bcsh_offset
-       else
-         bcsh_time = model_time + bcsh_offset
-       endif
-     else 
-       if(bcsh_time_serie_type .eq. 2 ) then
-         call get_date (bcsh_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(bcsh_entry)
-           if (dayspmn /= 29) then
-             bcsh_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             bcsh_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           bcsh_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         bcsh_time = model_time
-       endif
-     endif
      call interpolator(bcsh_aerosol_interp, bcsh_time, bcemissh, &
                   trim(bcsh_emission_name(1)), is, js)
    endif
    if ( trim(bcav_source).ne. ' ') then
-!--------------------------------------------------------------------
-!    define the time in the bcav data set from which data is to be 
-!    taken. if bcav is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(bcav_time_serie_type .eq. 3) then
-       if (bcav_negative_offset) then
-         bcav_time = model_time - bcav_offset
-       else
-         bcav_time = model_time + bcav_offset
-       endif
-     else 
-       if(bcav_time_serie_type .eq. 2 ) then
-         call get_date (bcav_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(bcav_entry)
-           if (dayspmn /= 29) then
-             bcav_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             bcav_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           bcav_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         bcav_time = model_time
-       endif
-     endif
      call interpolator(bcav_aerosol_interp, bcav_time, phalf, bcemisav, &
                          trim(bcav_emission_name(1)), is, js)
    endif
    if ( trim(omff_source).ne. ' ') then
-!--------------------------------------------------------------------
-!    define the time in the omff data set from which data is to be 
-!    taken. if omff is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(omff_time_serie_type .eq. 3) then
-       if (omff_negative_offset) then
-         omff_time = model_time - omff_offset
-       else
-         omff_time = model_time + omff_offset
-       endif
-     else 
-       if(omff_time_serie_type .eq. 2 ) then
-         call get_date (omff_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(omff_entry)
-           if (dayspmn /= 29) then
-             omff_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             omff_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           omff_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         omff_time = model_time
-       endif
-     endif
      call interpolator(omff_aerosol_interp, omff_time, omemisff_l1, &
                       trim(omff_emission_name(1)), is, js)
    endif
    if ( trim(ombb_source).ne. ' ') then
-!--------------------------------------------------------------------
-!    define the time in the ombb data set from which data is to be 
-!    taken. if ombb is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(ombb_time_serie_type .eq. 3) then
-       if (ombb_negative_offset) then
-         ombb_time = model_time - ombb_offset
-       else
-         ombb_time = model_time + ombb_offset
-       endif
-     else 
-       if(ombb_time_serie_type .eq. 2 ) then
-         call get_date (ombb_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(ombb_entry)
-           if (dayspmn /= 29) then
-             ombb_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             ombb_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           ombb_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         ombb_time = model_time
-       endif
-     endif
     omemisbb(:,:,:) = 0.0
     nlevel_fire = 1
     alt_fire_min(:) = 0.0
@@ -688,131 +503,19 @@ real, dimension(size(omphob,1),size(omphob,2)) ::          &
     end select
    endif
    if ( trim(ombf_source).ne. ' ') then
-!--------------------------------------------------------------------
-!    define the time in the ombf data set from which data is to be 
-!    taken. if ombf is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(ombf_time_serie_type .eq. 3) then
-       if (ombf_negative_offset) then
-         ombf_time = model_time - ombf_offset
-       else
-         ombf_time = model_time + ombf_offset
-       endif
-     else 
-       if(ombf_time_serie_type .eq. 2 ) then
-         call get_date (ombf_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(ombf_entry)
-           if (dayspmn /= 29) then
-             ombf_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             ombf_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           ombf_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         ombf_time = model_time
-       endif
-     endif
      call interpolator(ombf_aerosol_interp, ombf_time, omemisbf, &
                        trim(ombf_emission_name(1)), is, js)
    endif
    if ( trim(omsh_source).ne. ' ') then
-!--------------------------------------------------------------------
-!    define the time in the omsh data set from which data is to be 
-!    taken. if omsh is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(omsh_time_serie_type .eq. 3) then
-       if (omsh_negative_offset) then
-         omsh_time = model_time - omsh_offset
-       else
-         omsh_time = model_time + omsh_offset
-       endif
-     else 
-       if(omsh_time_serie_type .eq. 2 ) then
-         call get_date (omsh_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(omsh_entry)
-           if (dayspmn /= 29) then
-             omsh_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             omsh_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           omsh_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         omsh_time = model_time
-       endif
-     endif
      call interpolator(omsh_aerosol_interp, omsh_time, omemissh, &
                   trim(omsh_emission_name(1)), is, js)
    endif
    if ( trim(omna_source).ne. ' ') then
-!--------------------------------------------------------------------
-!    define the time in the omna data set from which data is to be 
-!    taken. if omna is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(omna_time_serie_type .eq. 3) then
-       if (omna_negative_offset) then
-         omna_time = model_time - omna_offset
-       else
-         omna_time = model_time + omna_offset
-       endif
-     else 
-       if(omna_time_serie_type .eq. 2 ) then
-         call get_date (omna_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(omna_entry)
-           if (dayspmn /= 29) then
-             omna_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             omna_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           omna_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         omna_time = model_time
-       endif
-     endif
-     call interpolator(omna_aerosol_interp, model_time, omemisbg, &
+     call interpolator(omna_aerosol_interp, omna_time, omemisbg, &
                        trim(omna_emission_name(1)), is, js)
    endif
    if ( trim(omss_source).ne. ' ') then
-!--------------------------------------------------------------------
-!    define the time in the omss data set from which data is to be 
-!    taken. if omss is not time-varying, it is simply model_time.
-!---------------------------------------------------------------------
-     if(omss_time_serie_type .eq. 3) then
-       if (omss_negative_offset) then
-         omss_time = model_time - omss_offset
-       else
-         omss_time = model_time + omss_offset
-       endif
-     else 
-       if(omss_time_serie_type .eq. 2 ) then
-         call get_date (omss_entry, yr, dum,dum,dum,dum,dum)
-         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
-         if (mo ==2 .and. dy == 29) then
-           dayspmn = days_in_month(omss_entry)
-           if (dayspmn /= 29) then
-             omss_time = set_date (yr, mo, dy-1, hr, mn, sc)
-           else
-             omss_time = set_date (yr, mo, dy, hr, mn, sc)
-           endif
-         else
-           omss_time = set_date (yr, mo, dy, hr, mn, sc)
-         endif
-       else
-         omss_time = model_time
-       endif
-     endif
-     call interpolator(omss_aerosol_interp, model_time, dmso, &
+     call interpolator(omss_aerosol_interp, omss_time, dmso, &
                        trim(omss_emission_name(1)), is, js)
      do j = 1, jd
      do i = 1, id
@@ -997,9 +700,32 @@ real, dimension(size(omphob,1),size(omphob,2)) ::          &
 
       omphob_dt = omphob_emis - omphob_sink
       omphil_dt = omphil_emis + omphob_sink
+
+! column emissions for bc and om
+
+      bc_emis = 0.
+      om_emis = 0.
+      do k=1,kd
+        bc_emis(is:ie,js:je) = bc_emis(is:ie,js:je) +  &
+             bcphob_emis(is:ie,js:je,k) + bcphil_emis(is:ie,js:je,k)
+        om_emis(is:ie,js:je) = om_emis(is:ie,js:je) +  &
+            omphob_emis(is:ie,js:je,k) + omphil_emis(is:ie,js:je,k)
+      end do
+
+
 !
 ! Send registered results to diag manager
 !
+      if (id_bc_emis_col > 0) then
+        used = send_data ( id_bc_emis_col, bc_emis, model_time, &
+              is_in=is,js_in=js)
+      endif
+ 
+      if (id_om_emis_col > 0) then
+        used = send_data ( id_om_emis_col, om_emis, model_time, &
+              is_in=is,js_in=js)
+      endif
+
       if (id_bcphob_emis > 0) then
         used = send_data ( id_bcphob_emis, bcphob_emis, model_time, &
               is_in=is,js_in=js,ks_in=1)
@@ -1199,6 +925,14 @@ integer ::  unit, ierr, io, logunit
      id_omphil_emis = register_diag_field ( mod_name,           &
                     'omphil_emis', axes(1:3),Time,          &
                     'OM phylic emission rate', 'kg/m2/sec' )
+
+     id_bc_emis_col = register_diag_field ( mod_name,           &
+                    'bc_emis_col', axes(1:2),Time,          &
+                    'total BC column emission rate', 'kg/m2/sec' )
+
+     id_om_emis_col = register_diag_field ( mod_name,           &
+                    'om_emis_col', axes(1:2),Time,          &
+                    'total OM column emission rate', 'kg/m2/sec' )
 
      id_bcphob_sink = register_diag_field ( mod_name,           &
                     'bcphob_sink', axes(1:3),Time,          &
@@ -2351,6 +2085,443 @@ integer ::  unit, ierr, io, logunit
 !-----------------------------------------------------------------------
 
 end subroutine atmos_carbon_aerosol_init
+
+
+
+!######################################################################
+
+subroutine atmos_carbon_aerosol_time_vary (model_time)
+
+
+type(time_type), intent(in) :: model_time
+
+
+    integer ::  yr, dum, mo_yr, mo, dy, hr, mn, sc, dayspmn
+
+
+    if ( trim(bcff_source) .ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the bcff data set from which data is to be 
+!    taken. if bcff is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(bcff_time_serie_type .eq. 3) then
+       if (bcff_negative_offset) then
+         bcff_time = model_time - bcff_offset
+       else
+         bcff_time = model_time + bcff_offset
+       endif
+     else 
+       if(bcff_time_serie_type .eq. 2 ) then
+         call get_date (bcff_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(bcff_entry)
+           if (dayspmn /= 29) then
+             bcff_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             bcff_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           bcff_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         bcff_time = model_time
+       endif
+     endif
+     call obtain_interpolator_time_slices   &
+                                   (bcff_aerosol_interp, bcff_time)
+   endif
+
+   if ( trim(bcbb_source).ne.' ') then
+
+!--------------------------------------------------------------------
+!    define the time in the bcbb data set from which data is to be 
+!    taken. if bcbb is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(bcbb_time_serie_type .eq. 3) then
+       if (bcbb_negative_offset) then
+         bcbb_time = model_time - bcbb_offset
+       else
+         bcbb_time = model_time + bcbb_offset
+       endif
+     else 
+       if(bcbb_time_serie_type .eq. 2 ) then
+         call get_date (bcbb_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(bcbb_entry)
+           if (dayspmn /= 29) then
+             bcbb_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             bcbb_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           bcbb_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         bcbb_time = model_time
+       endif
+     endif
+     call obtain_interpolator_time_slices   &
+                       (bcbb_aerosol_interp, bcbb_time)
+   endif
+
+   if ( trim(bcbf_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the bcbf data set from which data is to be 
+!    taken. if bcbf is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(bcbf_time_serie_type .eq. 3) then
+       if (bcbf_negative_offset) then
+         bcbf_time = model_time - bcbf_offset
+       else
+         bcbf_time = model_time + bcbf_offset
+       endif
+     else 
+       if(bcbf_time_serie_type .eq. 2 ) then
+         call get_date (bcbf_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(bcbf_entry)
+           if (dayspmn /= 29) then
+             bcbf_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             bcbf_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           bcbf_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         bcbf_time = model_time
+       endif
+     endif
+     call obtain_interpolator_time_slices   &
+                 (bcbf_aerosol_interp, bcbf_time)
+   endif
+
+   if ( trim(bcsh_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the bcsh data set from which data is to be 
+!    taken. if bcsh is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(bcsh_time_serie_type .eq. 3) then
+       if (bcsh_negative_offset) then
+         bcsh_time = model_time - bcsh_offset
+       else
+         bcsh_time = model_time + bcsh_offset
+       endif
+     else 
+       if(bcsh_time_serie_type .eq. 2 ) then
+         call get_date (bcsh_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(bcsh_entry)
+           if (dayspmn /= 29) then
+             bcsh_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             bcsh_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           bcsh_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         bcsh_time = model_time
+       endif
+     endif
+     call obtain_interpolator_time_slices   &
+                    (bcsh_aerosol_interp, bcsh_time)
+   endif
+
+   if ( trim(bcav_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the bcav data set from which data is to be 
+!    taken. if bcav is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(bcav_time_serie_type .eq. 3) then
+       if (bcav_negative_offset) then
+         bcav_time = model_time - bcav_offset
+       else
+         bcav_time = model_time + bcav_offset
+       endif
+     else 
+       if(bcav_time_serie_type .eq. 2 ) then
+         call get_date (bcav_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(bcav_entry)
+           if (dayspmn /= 29) then
+             bcav_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             bcav_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           bcav_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         bcav_time = model_time
+       endif
+     endif
+     call obtain_interpolator_time_slices   &
+                     (bcav_aerosol_interp, bcav_time)
+   endif
+
+   if ( trim(omff_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the omff data set from which data is to be 
+!    taken. if omff is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(omff_time_serie_type .eq. 3) then
+       if (omff_negative_offset) then
+         omff_time = model_time - omff_offset
+       else
+         omff_time = model_time + omff_offset
+       endif
+     else 
+       if(omff_time_serie_type .eq. 2 ) then
+         call get_date (omff_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(omff_entry)
+           if (dayspmn /= 29) then
+             omff_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             omff_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           omff_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         omff_time = model_time
+       endif
+     endif
+     call obtain_interpolator_time_slices   &
+                     (omff_aerosol_interp, omff_time)
+   endif
+
+   if ( trim(ombb_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the ombb data set from which data is to be 
+!    taken. if ombb is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(ombb_time_serie_type .eq. 3) then
+       if (ombb_negative_offset) then
+         ombb_time = model_time - ombb_offset
+       else
+         ombb_time = model_time + ombb_offset
+       endif
+     else 
+       if(ombb_time_serie_type .eq. 2 ) then
+         call get_date (ombb_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(ombb_entry)
+           if (dayspmn /= 29) then
+             ombb_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             ombb_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           ombb_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         ombb_time = model_time
+       endif
+     endif
+     call obtain_interpolator_time_slices   &
+                  (ombb_aerosol_interp, ombb_time)
+   endif
+
+   if ( trim(ombf_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the ombf data set from which data is to be 
+!    taken. if ombf is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(ombf_time_serie_type .eq. 3) then
+       if (ombf_negative_offset) then
+         ombf_time = model_time - ombf_offset
+       else
+         ombf_time = model_time + ombf_offset
+       endif
+     else 
+       if(ombf_time_serie_type .eq. 2 ) then
+         call get_date (ombf_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(ombf_entry)
+           if (dayspmn /= 29) then
+             ombf_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             ombf_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           ombf_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         ombf_time = model_time
+       endif
+     endif
+     call obtain_interpolator_time_slices   &
+                 (ombf_aerosol_interp, ombf_time)
+   endif
+
+   if ( trim(omsh_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the omsh data set from which data is to be 
+!    taken. if omsh is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(omsh_time_serie_type .eq. 3) then
+       if (omsh_negative_offset) then
+         omsh_time = model_time - omsh_offset
+       else
+         omsh_time = model_time + omsh_offset
+       endif
+     else 
+       if(omsh_time_serie_type .eq. 2 ) then
+         call get_date (omsh_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(omsh_entry)
+           if (dayspmn /= 29) then
+             omsh_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             omsh_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           omsh_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         omsh_time = model_time
+       endif
+     endif
+     call obtain_interpolator_time_slices   &
+                       (omsh_aerosol_interp, omsh_time)
+   endif
+
+   if ( trim(omna_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the omna data set from which data is to be 
+!    taken. if omna is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(omna_time_serie_type .eq. 3) then
+       if (omna_negative_offset) then
+         omna_time = model_time - omna_offset
+       else
+         omna_time = model_time + omna_offset
+       endif
+     else 
+       if(omna_time_serie_type .eq. 2 ) then
+         call get_date (omna_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(omna_entry)
+           if (dayspmn /= 29) then
+             omna_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             omna_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           omna_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         omna_time = model_time
+       endif
+     endif
+     call obtain_interpolator_time_slices   &
+                                     (omna_aerosol_interp, omna_time)
+   endif
+   if ( trim(omss_source).ne. ' ') then
+!--------------------------------------------------------------------
+!    define the time in the omss data set from which data is to be 
+!    taken. if omss is not time-varying, it is simply model_time.
+!---------------------------------------------------------------------
+     if(omss_time_serie_type .eq. 3) then
+       if (omss_negative_offset) then
+         omss_time = model_time - omss_offset
+       else
+         omss_time = model_time + omss_offset
+       endif
+     else 
+       if(omss_time_serie_type .eq. 2 ) then
+         call get_date (omss_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(omss_entry)
+           if (dayspmn /= 29) then
+             omss_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             omss_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           omss_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         omss_time = model_time
+       endif
+     endif
+     call obtain_interpolator_time_slices   &
+                                      (omss_aerosol_interp, omss_time)
+  endif
+
+
+end subroutine atmos_carbon_aerosol_time_vary 
+
+
+!######################################################################
+
+subroutine atmos_carbon_aerosol_endts 
+
+
+   if ( trim(bcff_source) .ne. ' ') then
+     call unset_interpolator_time_flag (bcff_aerosol_interp)
+   endif
+
+   if ( trim(bcbb_source).ne.' ') then
+     call unset_interpolator_time_flag (bcbb_aerosol_interp)
+   endif
+
+   if ( trim(bcbf_source).ne. ' ') then
+     call unset_interpolator_time_flag (bcbf_aerosol_interp)
+   endif
+
+   if ( trim(bcsh_source).ne. ' ') then
+     call unset_interpolator_time_flag (bcsh_aerosol_interp)
+   endif
+
+   if ( trim(bcav_source).ne. ' ') then
+     call unset_interpolator_time_flag (bcav_aerosol_interp)
+   endif
+
+   if ( trim(omff_source).ne. ' ') then
+     call unset_interpolator_time_flag (omff_aerosol_interp)
+   endif
+
+   if ( trim(ombb_source).ne. ' ') then
+     call unset_interpolator_time_flag (ombb_aerosol_interp)
+   endif
+
+   if ( trim(ombf_source).ne. ' ') then
+     call unset_interpolator_time_flag (ombf_aerosol_interp)
+   endif
+
+   if ( trim(omsh_source).ne. ' ') then
+     call unset_interpolator_time_flag (omsh_aerosol_interp)
+   endif
+
+   if ( trim(omna_source).ne. ' ') then
+     call unset_interpolator_time_flag (omna_aerosol_interp)
+   endif
+
+   if ( trim(omss_source).ne. ' ') then
+     call unset_interpolator_time_flag (omss_aerosol_interp)
+  endif
+
+
+end subroutine atmos_carbon_aerosol_endts 
+
+
+!######################################################################
+
+
 !</SUBROUTINE>
 
 !#######################################################################

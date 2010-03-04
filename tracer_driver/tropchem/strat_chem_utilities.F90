@@ -10,6 +10,8 @@ use time_manager_mod, only : time_type, get_date, days_in_month, days_in_year, &
                              operator(>), operator(<), operator(-), operator(+)
 !++lwh
 use interpolator_mod, only : interpolate_type, interpolator_init, &
+                             obtain_interpolator_time_slices, &
+                             unset_interpolator_time_flag, &
                              interpolator, interpolator_end, &
                              CONSTANT, INTERP_WEIGHTED_P
 use time_interp_mod, only  : time_interp_init, time_interp
@@ -53,9 +55,9 @@ end type psc_type
 !++lwh
 type(interpolate_type), save  :: dfdage_interp
 character(len=32), save  :: dfdage_filename = "dfdage3.dat.nc"
-character(len=32), dimension(nspecies_age), save :: dfdage_name = &
-      (/ "dfdage_cfc11", "dfdage_cfc12", "dfdage_cfc113", "dfdage_ccl4", &
-         "dfdage_ch3cl", "dfdage_ch3ccl3", "dfdage_hcfc22", "dfdage_bry" /)
+character(len=32), dimension(nspecies_age), save :: dfdage_name = &      ! kerr
+      (/ "dfdage_cfc11  ", "dfdage_cfc12  ", "dfdage_cfc113 ", "dfdage_ccl4   ", &
+         "dfdage_ch3cl  ", "dfdage_ch3ccl3", "dfdage_hcfc22 ", "dfdage_bry    " /)
 !--lwh
 
 ! For extra H2O calculation
@@ -68,6 +70,7 @@ type(time_type) :: ch4_entry
 !     ... interfaces
 !-----------------------------------------------------------------------
 public strat_chem_utilities_init, strat_chem_dcly_dt, strat_chem_get_aerosol, &
+       strat_chem_dcly_dt_time_vary, strat_chem_dcly_dt_endts, &
        strat_chem_get_h2so4, strat_chem_get_psc, strat_chem_destroy_psc, &
        strat_chem_get_gamma, strat_chem_get_hetrates, strat_chem_psc_sediment, &
        strat_chem_get_extra_h2o, &
@@ -104,7 +107,7 @@ subroutine strat_chem_utilities_init( lonb, latb, age_factor_in, dclydt_factor_i
    real :: age_dummy(nlat_input,nlev_input,12), &
            chlb_dummy(nlat_input,nspecies_lbc), &
            ozb_dummy(nlon_input, nlat_input, 12)
-   integer :: unit, nc, j, n, year
+   integer :: unit, nc, j, n, year, outunit
    type(time_type) :: Model_init_time
    
    if (module_is_initialized) return
@@ -124,7 +127,8 @@ subroutine strat_chem_utilities_init( lonb, latb, age_factor_in, dclydt_factor_i
 !     ... read in chemical lower boundary 
 !-----------------------------------------------------------------------
    call mpp_open( unit, 'INPUT/' // TRIM(cfc_lbc_filename),action=MPP_RDONLY )
-   if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'reading INPUT/' // TRIM(cfc_lbc_filename)
+   outunit= stdout()
+   if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'reading INPUT/' // TRIM(cfc_lbc_filename)
    do nc = 1,15                                           
      read(unit,'(6E13.6)') chlb_dummy(:,nc)
    end do
@@ -206,6 +210,33 @@ subroutine strat_chem_utilities_init( lonb, latb, age_factor_in, dclydt_factor_i
 
 
 end subroutine strat_chem_utilities_init
+
+
+
+!#####################################################################
+
+subroutine strat_chem_dcly_dt_time_vary(Time)
+
+
+type(time_type), intent(in) :: Time
+
+      call obtain_interpolator_time_slices (dfdage_interp, Time)
+
+end subroutine strat_chem_dcly_dt_time_vary
+
+
+
+!#####################################################################
+
+subroutine strat_chem_dcly_dt_endts              
+
+      call unset_interpolator_time_flag (dfdage_interp)
+
+end subroutine strat_chem_dcly_dt_endts
+
+
+
+!#####################################################################
 
 !++lwh
 subroutine strat_chem_dcly_dt(Time, phalf, is, js, age, cly, bry, dclydt, dbrydt)

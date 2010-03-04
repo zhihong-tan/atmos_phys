@@ -5,12 +5,12 @@ private
     private    CalcG,  erff, CalcAlphaGamma, CalcBeta
       
     public aer_ccn_act_k, aer_ccn_act2_k, aer_ccn_act_wpdf_k,  &
-           aer_ccn_act_init_k
+           aer_ccn_act_k_init, aer_ccn_act_k_end
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 17.0 2009/07/21 02:58:56 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec_200910 $'
+character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 18.0 2010/03/02 23:34:30 fms Exp $'
+character(len=128) :: tagname = '$Name: riga $'
 
 !---------------- private data -------------------
 
@@ -71,7 +71,7 @@ logical :: module_is_initialized  = .false.
  
 contains
 
-subroutine aer_ccn_act_init_k      &
+subroutine aer_ccn_act_k_init      &
              (droplets_in, droplets2_in, res_in, res2_in, nooc_in,  &
               sul_concen_in, low_concen_in, high_concen_in, &
               lowup_in, highup_in, lowup2_in, highup2_in, lowmass2_in, &
@@ -121,7 +121,7 @@ real, intent(in)    :: lowup_in, highup_in, lowup2_in, highup2_in,  &
     module_is_initialized = .true.
 
 
-end subroutine aer_ccn_act_init_k
+end subroutine aer_ccn_act_k_init
 
 
 
@@ -332,11 +332,12 @@ subroutine aer_ccn_act_wpdf_k (T, p, wm, wp2, totalmass, tym, drop,  &
 ! Compute CCN activation assuming a normal distribution of w
 ! given by its mean (wm) and second moment (wp2)
 
-integer, intent(in) :: tym
-real :: T, p, wm, wp2, totalmass(tym)
-real :: drop
-integer, intent(out) :: ier
-character(len=*), intent(out) :: ermesg
+integer,          intent(in)    :: tym
+real,             intent(in)    :: T, p, wm, wp2
+real,             intent(inout) :: totalmass(tym)
+real,             intent(out)   :: drop
+integer,          intent(out)   :: ier
+character(len=*), intent(out)   :: ermesg
 
 !  Paranmeters
 
@@ -448,8 +449,9 @@ subroutine dlocate(xx,n,x,j)
 
 ! Subroutine to locate the position of element in an ordered array
 
-integer j,n
-real(kind=8) x,xx(n)
+integer,      intent(in)  :: n
+real(kind=8), intent(in)  :: x, xx(n)
+integer,      intent(out) :: j
 integer jl,jm,ju
 
 jl=0
@@ -828,5 +830,10 @@ subroutine CalcBeta(beta, Le_cpa)
   beta = Mw*Le/(R*T**2.) ! (K-1)
 end subroutine CalcBeta
 
+subroutine aer_ccn_act_k_end()
+
+  module_is_initialized = .false.
+
+end subroutine aer_ccn_act_k_end
 
 end module aer_ccn_act_k_mod

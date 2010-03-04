@@ -30,6 +30,8 @@ use    field_manager_mod, only : MODEL_ATMOS
 use atmos_tracer_utilities_mod, only : wet_deposition,       &
                                  dry_deposition
 use interpolator_mod,    only:  interpolate_type, interpolator_init, &
+                                obtain_interpolator_time_slices, &
+                                unset_interpolator_time_flag, &
                                 interpolator, interpolator_end, &
                                 CONSTANT, INTERP_WEIGHTED_P
 use     constants_mod, only : PI, GRAV, RDGAS, DENS_H2O, PSTD_MKS, WTMAIR
@@ -40,7 +42,8 @@ private
 !-----------------------------------------------------------------------
 !----- interfaces -------
 
-public  atmos_dust_sourcesink, atmos_dust_init, atmos_dust_end
+public  atmos_dust_sourcesink, atmos_dust_init, atmos_dust_end, &
+        atmos_dust_time_vary, atmos_dust_endts
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
@@ -76,8 +79,8 @@ real :: coef_emis =-999.
 namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_dust.F90,v 17.0 2009/07/21 02:59:12 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec_200910 $'
+character(len=128) :: version = '$Id: atmos_dust.F90,v 18.0 2010/03/02 23:34:07 fms Exp $'
+character(len=128) :: tagname = '$Name: riga $'
 !-----------------------------------------------------------------------
 
 contains
@@ -91,7 +94,7 @@ contains
  subroutine atmos_dust_sourcesink (i_DU,ra,rb,dustref,dustden, &
        lon, lat, frac_land, pwt, &
        zhalf, pfull, w10m, t, rh, &
-       dust, dust_dt, Time, is,ie,js,je,kbot)
+       dust, dust_dt, dust_emis, dust_setl, Time, is,ie,js,je,kbot)
 
 !-----------------------------------------------------------------------
    integer, intent(in)                 :: i_DU
@@ -102,13 +105,13 @@ contains
    real, intent(in),  dimension(:,:)   :: lon, lat
    real, intent(in),  dimension(:,:)   :: frac_land
    real, intent(in),  dimension(:,:)   :: w10m
+   real, intent(out),  dimension(:,:)  :: dust_setl, dust_emis
    real, intent(in),  dimension(:,:,:) :: pwt, dust
    real, intent(in),  dimension(:,:,:) :: zhalf, pfull, t, rh
    real, intent(out), dimension(:,:,:) :: dust_dt
    type(time_type), intent(in) :: Time     
    integer, intent(in),  dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
- real, dimension(size(dust,1),size(dust,2)) :: dust_setl, dust_emis
  logical :: flag
 integer  i, j, k, m, id, jd, kd, kb, ir
 integer, intent(in)                    :: is, ie, js, je
@@ -315,6 +318,31 @@ enddo
 
  end subroutine atmos_dust_init
 !</SUBROUTINE>
+
+!######################################################################
+
+subroutine atmos_dust_time_vary (Time)
+
+
+type(time_type), intent(in) :: Time
+
+      call obtain_interpolator_time_slices (dust_source_interp, Time)
+
+
+end subroutine atmos_dust_time_vary 
+
+
+!######################################################################
+
+subroutine atmos_dust_endts              
+
+
+      call unset_interpolator_time_flag (dust_source_interp)
+
+
+end subroutine atmos_dust_endts 
+
+
 
 !#######################################################################
 !<SUBROUTINE NAME="atmos_dust_end">

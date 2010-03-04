@@ -1,8 +1,8 @@
       module MO_EXP_PROD_LOSS_MOD
 
 implicit none
-character(len=128), parameter :: version     = '$Id: moz.mat.F90,v 17.0 2009/07/21 02:59:52 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: quebec_200910 $'
+character(len=128), parameter :: version     = '$Id: moz.mat.F90,v 18.0 2010/03/02 23:34:49 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -390,7 +390,7 @@ logical                       :: module_is_initialized = .false.
          prod(73) =rxt(200)*y(78)*y(1) +rxt(205)*y(75)*y(2)
          loss(26) = ( + rxt(39))* y(80)
          prod(26) =rxt(220)*y(75)*y(68) +rxt(221)*y(76)*y(69) +rxt(209)*y(79)*y(72)
-         loss(4) = 0.
+         loss(4) = ( + rxt(224))* y(81)
          prod(4) =rxt(63)*y(17)*y(12)
          loss(27) = (rxt(184)* y(1) + rxt(185))* y(82)
          prod(27) = (rxt(73)*y(16) +rxt(75)*y(2))*y(17) +.200*rxt(64)*y(12)*y(3) &
@@ -894,6 +894,7 @@ logical                       :: module_is_initialized = .false.
 
          mat(94) = -( rxt(39) )
 
+         mat(4) = -( rxt(224) )
          mat(742) = rxt(63)*y(12)
 
          mat(97) = -( rxt(185) )
@@ -2033,6 +2034,7 @@ logical                       :: module_is_initialized = .false.
 !       ... Complete matrix entries Implicit species
 !----------------------------------------------
 
+         mat(   4) = lmat(   4)
          mat(   5) = lmat(   5)
          mat(   6) = mat(   6) + lmat(   6)
          mat(  11) = lmat(  11)
@@ -2192,7 +2194,6 @@ logical                       :: module_is_initialized = .false.
          mat(   1) = 0.
          mat(   2) = 0.
          mat(   3) = 0.
-         mat(   4) = 0.
          mat( 103) = 0.
          mat( 105) = 0.
          mat( 106) = 0.
@@ -2329,7 +2330,7 @@ logical                       :: module_is_initialized = .false.
          mat(   1) = -dti
          mat(   2) = -dti
          mat(   3) = -dti
-         mat(   4) = -dti
+         mat(   4) = mat(   4) - dti
          mat(   6) = mat(   6) - dti
          mat(   8) = mat(   8) - dti
          mat(  11) = mat(  11) - dti

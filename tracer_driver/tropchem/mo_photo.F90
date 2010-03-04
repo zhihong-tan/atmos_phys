@@ -36,7 +36,7 @@
       integer ::  ox_ndx, o3_ndx
       real    ::  ajl(jdim,altdim,zangdim,o3ratdim,albdim,t500dim,t200dim) = 0., &
                   ajl_solarmin(jdim,altdim,zangdim,o3ratdim,albdim,t500dim,t200dim) = 0.
-      real    ::  ajl2(2,2,2,2,2,2)
+!RSH  real    ::  ajl2(2,2,2,2,2,2)
       real    ::  vo3(0:80), vo3_solarmin(0:80)
       real    ::  delvo3(0:79)
       real    ::  delz(altdim-1)
@@ -85,8 +85,8 @@
       logical :: use_tdep_jvals, use_solar_cycle
       real    :: o3_column_top, jno_scale_factor
 
-character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 17.0 2009/07/21 02:59:46 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: quebec_200910 $'
+character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 18.0 2010/03/02 23:34:42 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -623,7 +623,7 @@ logical                       :: module_is_initialized = .false.
 !        end if
          end if
       end do
-        
+
 !-----------------------------------------------------------------
 !        ... Set J(pooh) from J(ch3ooh)
 !                J(c2h5ooh) from J(ch3ooh)
@@ -971,6 +971,8 @@ logical                       :: module_is_initialized = .false.
       real     ::  dels(6)
       real, dimension(SIZE(zin)) :: v3rat
       real     :: ajout_tmp
+!RSH ADD HERE:
+      real    ::  ajl2(2,2,2,2,2,2)
       
       plev = SIZE(zin)
 

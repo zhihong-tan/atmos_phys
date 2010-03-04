@@ -23,6 +23,8 @@ use   diag_manager_mod, only : send_data,            &
                                register_diag_field
 use   interpolator_mod, only : interpolate_type,     &
                                interpolator_init,    &
+                               obtain_interpolator_time_slices, &
+                               unset_interpolator_time_flag, &
                                interpolator_end,     &
                                interpolator,         &
                                query_interpolator,   &
@@ -34,7 +36,8 @@ use      constants_mod, only : WTMAIR, &
 implicit none
 
 private
-public :: atmos_ch3i_init, atmos_ch3i, atmos_ch3i_end
+public :: atmos_ch3i_init, atmos_ch3i_time_vary, atmos_ch3i,  &
+          atmos_ch3i_endts, atmos_ch3i_end
 
 !-----------------------------------------------------------------------
 !     ... namelist
@@ -59,8 +62,8 @@ real, parameter :: boltz = 1.38044e-16      ! Boltzmann's Constant (erg/K)
 
 character(len=7), parameter :: module_name = 'tracers'
 !---- version number -----
-character(len=128) :: version = '$Id: '
-character(len=128) :: tagname = '$Name: '
+character(len=128) :: version = '$Id: atmos_ch3i.F90,v 18.0 2010/03/02 23:34:01 fms Exp $'
+character(len=128) :: tagname = '$Name: riga $'
 logical :: module_is_initialized = .FALSE.
 
 contains
@@ -160,6 +163,39 @@ subroutine atmos_ch3i_init( lonb_mod, latb_mod, axes, Time, mask )
    module_is_initialized = .true.
 
 end subroutine atmos_ch3i_init
+
+
+!#####################################################################
+
+subroutine atmos_ch3i_time_vary (Time)
+
+
+type(time_type), intent(in) :: Time
+
+      if (has_emissions) then
+        call obtain_interpolator_time_slices (ch3i_emissions, Time)  
+      endif
+      if (conc_filename /= '') then
+        call obtain_interpolator_time_slices (input_conc, Time)  
+      endif
+
+end subroutine atmos_ch3i_time_vary
+
+
+!######################################################################
+
+subroutine atmos_ch3i_endts              
+
+
+      if (has_emissions) then
+        call unset_interpolator_time_flag (ch3i_emissions)  
+      endif
+      if (conc_filename /= '') then
+        call unset_interpolator_time_flag (input_conc)  
+      endif
+
+end subroutine atmos_ch3i_endts
+
 
 !-----------------------------------------------------------------------
 

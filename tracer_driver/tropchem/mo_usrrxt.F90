@@ -23,8 +23,8 @@ implicit none
       real, parameter :: d622 = rdgas/rvgas
       real, parameter :: d378 = 1. - d622     
 
-character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 17.0 2009/07/21 02:59:50 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: quebec_200910 $'
+character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 18.0 2010/03/02 23:34:47 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -169,7 +169,7 @@ logical                       :: module_is_initialized = .false.
       integer ::   plev
       real, dimension(SIZE(temp,1),SIZE(temp,2)) :: &
                    relhum                   ! relative humidity
-
+      INTEGER :: tmp_indexh2o
 
       plev = SIZE(temp,2)
       
@@ -228,8 +228,9 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
          if( usr9_ndx > 0 ) then
             if( indexh2o > 0 ) then
+               tmp_indexh2o = indexh2o
                call vexp( exp_fac, 2200.*tinv, plonl )
-               fc(:)   = 1. + 1.4e-21 * invariants(:,k,indexh2o) * exp_fac(:)
+               fc(:)   = 1. + 1.4e-21 * invariants(:,k,tmp_indexh2o) * exp_fac(:)
             else if( h2o_ndx > 0 ) then
                call vexp( exp_fac, 2200.*tinv, plonl )
                fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * m(:,k) * exp_fac(:)
@@ -349,7 +350,8 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
          if( usr9_ndx > 0 ) then
             if( indexh2o > 0 ) then
-               fc(:)   = 1. + 1.4e-21 * invariants(:,k,indexh2o) * exp( 2200.*tinv(:) )
+               tmp_indexh2o = indexh2o
+               fc(:)   = 1. + 1.4e-21 * invariants(:,k,tmp_indexh2o) * exp( 2200.*tinv(:) )
             else if( h2o_ndx > 0 ) then
                fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * m(:,k) * exp( 2200.*tinv(:) )
             else

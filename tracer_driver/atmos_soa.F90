@@ -32,8 +32,11 @@ use         tracer_manager_mod, only : get_tracer_index,        &
                                        set_tracer_atts
 use          field_manager_mod, only : MODEL_ATMOS
 use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR
-use           interpolator_mod, only:  interpolate_type, interpolator_init, &
-                                       interpolator, interpolator_end,     &
+use           interpolator_mod, only:  interpolate_type,  &
+                                       interpolator_init, &
+                                       obtain_interpolator_time_slices,&
+                                       unset_interpolator_time_flag, &
+                                       interpolator, interpolator_end, &
                                        CONSTANT, INTERP_WEIGHTED_P
 
 implicit none
@@ -42,7 +45,8 @@ private
 !-----------------------------------------------------------------------
 !----- interfaces -------
 !
-public  atmos_SOA_init, atmos_SOA_end, atmos_SOA_chem
+public  atmos_SOA_init, atmos_SOA_end, atmos_SOA_chem, &
+        atmos_SOA_time_vary, atmos_soa_endts
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
@@ -58,6 +62,7 @@ integer :: nSOA = 0  ! tracer number for Secondary Organic Aerosol
 integer ::   id_OH_conc            = 0
 integer ::   id_C4H10_conc         = 0
 integer ::   id_SOA_chem           = 0
+integer ::   id_SOA_chem_col       = 0
 
 type(interpolate_type),save         ::  gas_conc_interp
 character(len=32)  :: gas_conc_filename = 'gas_conc_3D.nc'
@@ -70,8 +75,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_soa.F90,v 17.0 2009/07/21 02:59:21 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec_200910 $'
+character(len=128) :: version = '$Id: atmos_soa.F90,v 18.0 2010/03/02 23:34:14 fms Exp $'
+character(len=128) :: tagname = '$Name: riga $'
 !-----------------------------------------------------------------------
 
 contains
@@ -155,8 +160,12 @@ integer :: n, m
       id_SOA_chem    = register_diag_field ( mod_name,       &
                       'SOA_chem',axes(1:3),Time,            &
                       'SOA production by C4H10 + OH',        &
-                      'kgC/m2/s')
+                      'kg/m2/s')
 
+      id_SOA_chem_col= register_diag_field ( mod_name,       &
+                      'SOA_chem_col',axes(1:2),Time,            &
+                      'column SOA production by C4H10 + OH',        &
+                      'kg/m2/s')
 
       call write_version_number (version, tagname)
 
@@ -164,6 +173,36 @@ integer :: n, m
 
 !-----------------------------------------------------------------------
  end subroutine atmos_SOA_init
+
+
+
+
+!#####################################################################
+
+subroutine atmos_SOA_time_vary (Time)
+
+type(time_type), intent(in) :: Time
+
+
+      call obtain_interpolator_time_slices (gas_conc_interp, Time)
+
+end subroutine atmos_SOA_time_vary
+
+
+!#####################################################################
+
+subroutine atmos_SOA_endts             
+
+
+      call unset_interpolator_time_flag (gas_conc_interp)
+
+
+end subroutine atmos_SOA_endts
+
+
+
+!#####################################################################
+
 !</SUBROUTINE>
 
 !#######################################################################
@@ -204,6 +243,7 @@ integer :: n, m
       real, dimension(size(SOA,1),size(SOA,2),size(SOA,3)) :: &
                SOA_chem, OH_conc, C4H10_conc
       real, dimension(size(SOA,1),size(SOA,2)) :: &
+               SOA_prod, &
                xu, dayl, h, hl, hc, hred, fac_OH, fact_OH
       real                                       :: oh, c4h10
       real, parameter                            :: wtm_C = 12.
@@ -280,11 +320,25 @@ integer :: n, m
         enddo
       enddo
 
-      SOA_chem(:,:,:)=SOA_dt(:,:,:)*pwt(:,:,:)*wtm_C/WTMAIR
+      SOA_chem(:,:,:)=SOA_dt(:,:,:)*pwt(:,:,:)
 
       if (id_SOA_chem > 0) then
         used = send_data ( id_SOA_chem, &
               SOA_chem, Time,is_in=is,js_in=js,ks_in=1)
+      endif
+
+! column production of SOA 
+
+
+      SOA_prod = 0.
+      do k=1,kd
+        SOA_prod(is:ie,js:je) = SOA_prod(is:ie,js:je) +  &
+                                             SOA_chem(is:ie,js:je,k)
+      end do
+
+      if (id_SOA_chem_col > 0) then
+        used = send_data ( id_SOA_chem_col, &
+                           SOA_prod, Time,is_in=is,js_in=js)
       endif
 
 

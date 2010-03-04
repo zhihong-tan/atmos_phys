@@ -48,6 +48,8 @@ use      constants_mod, only : GRAV, &     ! acceleration due to gravity [m/s2]
                                WTMAIR, &   ! Air molecular weight [g/mole]
                                AVOGNO      ! Avogadro's number
 use   interpolator_mod, only : interpolator,  &
+                               obtain_interpolator_time_slices, &
+                               unset_interpolator_time_flag, &
                                interpolate_type
 use      astronomy_mod, only : universal_time
 
@@ -58,6 +60,8 @@ private
 
 public  wet_deposition,    &
         dry_deposition,    &
+        dry_deposition_time_vary,    &
+        dry_deposition_endts,        &
         interp_emiss,      &
         atmos_tracer_utilities_end, &
         atmos_tracer_utilities_init, &
@@ -70,8 +74,8 @@ public  wet_deposition,    &
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 17.0 2009/07/21 02:59:33 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec_200910 $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 18.0 2010/03/02 23:34:25 fms Exp $'
+character(len=128) :: tagname = '$Name: riga $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 integer, parameter :: max_tracers = MAX_TRACER_FIELDS
@@ -82,6 +86,7 @@ integer :: id_tracer_ddep(max_tracers), id_tracer_dvel(max_tracers), &
            id_tracer_wdep_lsin(max_tracers), id_tracer_wdep_cvin(max_tracers),&
            id_tracer_wdep_lsbc(max_tracers), id_tracer_wdep_cvbc(max_tracers),&
            id_tracer_reevap_ls(max_tracers), id_tracer_reevap_cv(max_tracers)
+integer :: id_tracer_ddep_cmip(max_tracers)
 integer :: id_w10m, id_delm
 character(len=32),  dimension(max_tracers) :: tracer_names     = ' '
 character(len=32),  dimension(max_tracers) :: tracer_units     = ' '
@@ -100,6 +105,30 @@ real, allocatable :: blon_out(:,:), blat_out(:,:)
 real, parameter :: mw_air = WTMAIR/1000.  ! Convert from [g/mole] to [kg/mole]
 real, parameter :: mw_h2o = WTMH2O/1000.  ! Convert from [g/mole] to [kg/mole]
 real, parameter :: twopi = 2*PI
+
+type wetdep_type
+   character (len=200) :: scheme, text_in_scheme, control
+   real  :: Henry_constant
+   real  :: Henry_variable
+   real  :: frac_in_cloud
+   real  :: alpha_r
+   real  :: alpha_s
+   logical :: Lwetdep, Lgas, Laerosol, Lice
+end type wetdep_type
+
+type(wetdep_type), dimension(:), allocatable :: Wetdep
+
+
+type drydep_type
+   character (len=200) :: scheme, name, control
+   real  :: land_dry_dep_vel
+   real  :: sea_dry_dep_vel
+   logical :: Ldrydep
+end type drydep_type
+
+type(drydep_type), dimension(:), allocatable :: Drydep
+
+
 contains
 
 !
@@ -147,6 +176,8 @@ character(len=20) :: units =''
 integer :: n, unit, logunit
 character(len=128) :: name
 
+logical  :: flag
+
 ! Make local copies of the local domain dimensions for use 
 ! in interp_emiss.
       allocate ( blon_out(size(lonb,1),size(lonb,2)))
@@ -164,6 +195,11 @@ character(len=128) :: name
   102 format ('tracer ',i3.3)
 
 call get_number_tracers(MODEL_ATMOS, num_tracers= ntrace)
+
+   if (ntrace > 0) then
+     allocate (Wetdep(ntrace))
+     allocate (Drydep(ntrace))
+   endif
    do n = 1, ntrace
 !--- set tracer tendency names where tracer names have changed ---
 
@@ -202,11 +238,37 @@ call get_tracer_names(MODEL_ATMOS,n,tracer_names(n),tracer_longnames(n),tracer_u
            NOTE)
       end select
 
+    
+      flag = query_method ('wet_deposition',MODEL_ATMOS,n, &
+                            Wetdep(n)%text_in_scheme,Wetdep(n)%control)
+      call get_wetdep_param(Wetdep(n)%text_in_scheme,  &
+                            Wetdep(n)%control,&
+                            Wetdep(n)%scheme, &
+                            Wetdep(n)%Henry_constant,  &
+                            Wetdep(n)%Henry_variable, &
+                            Wetdep(n)%frac_in_cloud, &
+                            Wetdep(n)%alpha_r, Wetdep(n)%alpha_s, &
+                            Wetdep(n)%Lwetdep, Wetdep(n)%Lgas, &
+                            Wetdep(n)%Laerosol, Wetdep(n)%Lice )
+
+      Drydep(n)%Ldrydep = query_method ('dry_deposition', MODEL_ATMOS,&
+                                  n,Drydep(n)%name, Drydep(n)%control)
+
+
+      call get_drydep_param(Drydep(n)%name,Drydep(n)%control,  &
+                         Drydep(n)%scheme,Drydep(n)%land_dry_dep_vel,  &
+                                             Drydep(n)%sea_dry_dep_vel)
+
+
 ! Register the dry deposition of the n tracers
      id_tracer_ddep(n) = register_diag_field ( mod_name,                    &
             trim(tracer_ddep_names(n)), mass_axes(1:2), Time,               &
             trim(tracer_ddep_longnames(n)),                                 &
             trim(units), missing_value=-999.     )
+     id_tracer_ddep_cmip(n) = register_diag_field ( mod_name,               &
+            trim(tracer_ddep_names(n))//'_cmip', mass_axes(1:2), Time,      &
+            trim(tracer_ddep_longnames(n)),                                 &
+           'kg/m2/s', missing_value=-999.     )
 ! Register the dry deposition of the n tracers
      id_tracer_dvel(n) = register_diag_field ( mod_name,                    &
             trim(tracer_dvel_names(n)), mass_axes(1:2), Time,               &
@@ -276,6 +338,47 @@ call get_tracer_names(MODEL_ATMOS,n,tracer_names(n),tracer_longnames(n),tracer_u
       module_is_initialized = .TRUE.
 
 end subroutine atmos_tracer_utilities_init
+
+
+!####################################################################
+
+subroutine dry_deposition_time_vary (drydep_data, Time)
+
+type(time_type), intent(in) :: Time
+type(interpolate_type), dimension(:), intent(inout) :: drydep_data
+
+      integer :: n
+
+
+      do n=1,size(drydep_data,1)
+        if (Drydep(n)%Ldrydep .and. Drydep(n)%scheme == 'file') then
+          call obtain_interpolator_time_slices (drydep_data(n), Time)
+        endif
+      end do
+
+end subroutine dry_deposition_time_vary 
+
+
+
+!####################################################################
+
+subroutine dry_deposition_endts (drydep_data)                          
+
+type(interpolate_type), dimension(:), intent(inout) :: drydep_data
+
+      integer :: n
+
+      do n=1, size(drydep_data,1)     
+        call unset_interpolator_time_flag (drydep_data(n))
+      end do
+
+
+end subroutine dry_deposition_endts       
+
+
+
+!####################################################################
+
 !</SUBROUTINE>
 !
 !#######################################################################
@@ -417,16 +520,18 @@ character(len=80) :: name,control,scheme, speciesname,dummy
 
 ! Default zero
 dsinku = 0.0
-flag = query_method ('dry_deposition',MODEL_ATMOS,n,name,control)
-
-if (.not. flag) return
+if (.not. Drydep(n)%Ldrydep) return
+name =Drydep(n)%name
+control = Drydep(n)%control
+scheme = Drydep(n)%scheme
+land_dry_dep_vel = Drydep(n)%land_dry_dep_vel
+sea_dry_dep_vel = Drydep(n)%sea_dry_dep_vel
 
 ! delta z = dp/(rho * grav)
 ! delta z = RT/g*dp/p    pwt = dp/g
 !dz(:,:) = pwt(:,:)*rdgas*T(:,:)/pfull(:,:)
 id=size(pfull,1); jd=size(pfull,2)
 
-call get_drydep_param(name,control,scheme,land_dry_dep_vel,sea_dry_dep_vel)
 
   select case(lowercase(scheme))
   
@@ -530,6 +635,23 @@ endwhere
       used = send_data ( id_tracer_ddep(n), dsinku*pwt/diag_scale, Time, &
           is_in =is,js_in=js)
     endif
+    if (id_tracer_ddep_cmip(n) > 0 ) then
+      call get_tracer_names(MODEL_ATMOS,n,names,units=units)
+      select case (trim(names))
+        case ('so2')
+          diag_scale = mw_air/0.064
+        case ('so4')
+          diag_scale = mw_air/0.096
+        case ('dms')
+          diag_scale = mw_air/0.062
+        case ('nh3')
+          diag_scale = mw_air/0.017
+        case default
+          diag_scale = 1.
+        end select
+       used = send_data ( id_tracer_ddep_cmip(n), dsinku*pwt/diag_scale,Time, &
+           is_in =is,js_in=js)
+    endif
     if (id_tracer_dvel(n) > 0 ) then
       used = send_data ( id_tracer_dvel(n), drydep_vel, Time, &
           is_in =is,js_in=js)
@@ -547,7 +669,8 @@ end subroutine dry_deposition
 !</TEMPLATE>
 subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
                            rain, snow, qdt, cloud, cloud_frac, rain3d, snow3d, &
-                           tracer, tracer_dt, Time, cloud_param, is, js, dt )
+                           tracer, tracer_dt, Time, cloud_param, &
+                           is, js, dt, sum_wdep_out )
 !      
 !<OVERVIEW>
 ! Routine to calculate the fraction of tracer removed by wet deposition
@@ -655,6 +778,7 @@ type (time_type), intent(in)                     :: Time
 real,             intent(out), dimension(:,:,:)  :: tracer_dt
 real,             intent(in)                     :: dt
 real,             intent(in),  dimension(:,:,:)  :: rain3d, snow3d
+real,             intent(out),  dimension(:,:), optional :: sum_wdep_out
 
 !-----------------------------------------------------------------------
 !     ... local variables
@@ -738,13 +862,20 @@ character(len=200) :: &
     kd = size(T,3)
 
     call get_tracer_names(MODEL_ATMOS,n,tracer_name, units = units)
+    if ( .not. Wetdep(n)%Lwetdep) return
+     text_in_scheme = Wetdep(n)%text_in_scheme
+     control = Wetdep(n)%control
+     scheme = Wetdep(n)%scheme
+     Henry_constant = Wetdep(n)%Henry_constant
+     Henry_variable = Wetdep(n)%Henry_variable
+     frac_in_cloud = Wetdep(n)%frac_in_cloud
+     alpha_r = Wetdep(n)%alpha_r
+     alpha_s = Wetdep(n)%alpha_s
+     Lwetdep = Wetdep(n)%Lwetdep
+     Lgas    = Wetdep(n)%Lgas
+     Laerosol = Wetdep(n)%Laerosol
+     Lice    = Wetdep(n)%Lice
 
-    flag = query_method ('wet_deposition',MODEL_ATMOS,n,text_in_scheme,control)
-    if(.not. flag) return
-    call get_wetdep_param( text_in_scheme, control, scheme, &
-                           Henry_constant, Henry_variable, &
-                           frac_in_cloud, alpha_r, alpha_s, &
-                           Lwetdep, Lgas, Laerosol, Lice )
     rho_air(:,:,:) = pfull(:,:,:) / ( T(:,:,:)*RDGAS ) ! kg/m3
 !   Lice = .not. (scheme=='henry_noice' .or. scheme=='henry_below_noice' .or. &
 !                 scheme=='aerosol_noice' .or. scheme=='aerosol_below_noice' )
@@ -1151,6 +1282,7 @@ do k=1,kd
    sum_wdep = sum_wdep + tracer_dt(:,:,k)*pwt(:,:,k)/diag_scale
 end do
 
+if (present (sum_wdep_out))  sum_wdep_out = sum_wdep
 
 if(trim(cloud_param) == 'lscale') then
    if (id_tracer_reevap_ls(n) > 0 ) then

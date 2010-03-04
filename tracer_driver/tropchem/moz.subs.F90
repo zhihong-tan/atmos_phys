@@ -4,8 +4,8 @@ implicit none
       private
       public :: setrxt
 
-character(len=128), parameter :: version     = '$Id: moz.subs.F90,v 17.0 2009/07/21 02:59:56 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: quebec_200910 $'
+character(len=128), parameter :: version     = '$Id: moz.subs.F90,v 18.0 2010/03/02 23:34:53 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -57,6 +57,7 @@ logical                       :: module_is_initialized = .false.
       rate(:,:,175) = 4.e-14
       rate(:,:,176) = 3.e-12
       rate(:,:,177) = 1.e-11
+      rate(:,:,224) = 3.17e-8
       itemp(:,:) = 1. / temp(:,:)
       rate(:,:,43) = 8e-12 * exp( -2060. * itemp(:,:) )
       rate(:,:,44) = 2.15e-11 * exp( 110. * itemp(:,:) )

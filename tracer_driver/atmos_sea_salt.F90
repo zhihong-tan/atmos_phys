@@ -65,8 +65,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 17.0 2009/07/21 02:59:18 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec_200910 $'
+character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 18.0 2010/03/02 23:34:11 fms Exp $'
+character(len=128) :: tagname = '$Name: riga $'
 !-----------------------------------------------------------------------
 
 contains
@@ -79,7 +79,7 @@ contains
  subroutine atmos_sea_salt_sourcesink (i_SS,ra,rb,ssaltref,ssaltden, &
        lon, lat, frac_land, pwt, &
        zhalf, pfull, w10m, t, rh, &
-       seasalt, seasalt_dt, dt, Time, is,ie,js,je,kbot)
+       seasalt, seasalt_dt, dt, SS_setl, SS_emis, Time, is,ie,js,je,kbot)
 
 !-----------------------------------------------------------------------
    integer, intent(in)                 :: i_SS
@@ -91,13 +91,13 @@ contains
    real, intent(in),  dimension(:,:)   :: lon, lat
    real, intent(in),  dimension(:,:)   :: frac_land
    real, intent(in),  dimension(:,:)   :: w10m
+   real, intent(out),  dimension(:,:)   :: SS_setl, SS_emis
    real, intent(in),  dimension(:,:,:) :: pwt, seasalt
    real, intent(in),  dimension(:,:,:) :: zhalf, pfull, t, rh
    real, intent(out), dimension(:,:,:) :: seasalt_dt
    type(time_type), intent(in) :: Time     
    integer, intent(in),  dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
-real, dimension(size(seasalt,1),size(seasalt,2)) :: SS_setl, SS_emis
 real, dimension(size(seasalt,3)) :: SS_conc0, SS_conc1
 integer  i, j, k, m, id, jd, kd, kb, ir, irh
 integer, intent(in)                    :: is, ie, js, je

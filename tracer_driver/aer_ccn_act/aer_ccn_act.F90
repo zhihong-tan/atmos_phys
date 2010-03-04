@@ -6,18 +6,20 @@ use fms_mod,             only: error_mesg, FATAL, open_namelist_file, &
                                check_nml_error, close_file
 use mpp_mod,             only: get_unit
 use aer_ccn_act_k_mod,   only: aer_ccn_act_k, aer_ccn_act2_k, &
-                               aer_ccn_act_wpdf_k, aer_ccn_act_init_k
+                               aer_ccn_act_wpdf_k, aer_ccn_act_k_init, &
+                               aer_ccn_act_k_end
 
 implicit none
 private
     private Loading
       
-    public aer_ccn_act, aer_ccn_act2, aer_ccn_act_wpdf, aer_ccn_act_init
+    public aer_ccn_act, aer_ccn_act2, aer_ccn_act_wpdf, &
+           aer_ccn_act_init, aer_ccn_act_end
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act.F90,v 17.0 2009/07/21 02:58:54 fms Exp $'
-character(len=128) :: tagname = '$Name: quebec_200910 $'
+character(len=128) :: version = '$Id: aer_ccn_act.F90,v 18.0 2010/03/02 23:34:28 fms Exp $'
+character(len=128) :: tagname = '$Name: riga $'
 
 !---------------- private data -------------------
 
@@ -123,8 +125,9 @@ subroutine aer_ccn_act_wpdf(T, p, wm, wp2, totalmass, drop)
 ! Compute CCN activation assuming a normal distribution of w
 ! given by its mean (wm) and second moment (wp2)
 
-real :: T, p, wm, wp2, totalmass(4)
-real :: drop
+real, intent(in)    :: T, p, wm, wp2
+real, intent(inout) :: totalmass(4)
+real, intent(out)   :: drop
 
   integer :: tym, ier
   character(len=256) :: ermesg
@@ -176,7 +179,7 @@ subroutine aer_ccn_act_init ()
 
        call Loading( droplets, droplets2)
 
-       call aer_ccn_act_init_k (droplets,   &
+       call aer_ccn_act_k_init (droplets,   &
                       droplets2, res, res2, nooc,  &
                        sul_concen, low_concen, high_concen, &
                        lowup, highup, lowup2, highup2, lowmass2, &
@@ -232,5 +235,11 @@ integer res, res2
 end subroutine Loading
 
 
+subroutine aer_ccn_act_end()
+
+  call aer_ccn_act_k_end 
+  module_is_initialized  = .false.
+
+end subroutine aer_ccn_act_end
 
 end module aer_ccn_act_mod

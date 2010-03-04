@@ -21,12 +21,13 @@ use STRAT_CHEM_MOD, only : chemistry, zen2, dcly_dt, sediment
 private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 17.0 2009/07/21 02:59:36 fms Exp $'
-character(len=128)  :: tagname =  '$Name: quebec_200910 $'
+character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 18.0 2010/03/02 23:34:34 fms Exp $'
+character(len=128)  :: tagname =  '$Name: riga $'
+logical             :: module_is_initialized = .FALSE.
 
 !-------  interfaces --------
 
-public   strat_chem_driver_init,   strat_chem
+public   strat_chem_driver_init,   strat_chem, strat_chem_driver_end
 
 
 !----------- namelist -------------------
@@ -117,12 +118,20 @@ function strat_chem_driver_init()
       logunit=stdlog()
       if (mpp_pe() == mpp_root_pe()) write (logunit, nml=strat_chem_nml)
  
+      module_is_initialized = .true.
+
       if (.not. do_coupled_stratozone) return
 !---------------------------------------------------------------------
 
       call chem_startup
-
+      
 end function strat_chem_driver_init
+
+subroutine strat_chem_driver_end
+
+      module_is_initialized = .false.
+
+end subroutine strat_chem_driver_end
 
      subroutine chem_startup()
 !
@@ -137,7 +146,7 @@ end function strat_chem_driver_init
 !
 !   local variables: 
 
-      integer                 :: unit
+      integer                 :: unit, outunit
 
       if(run_startup) then
          run_startup = .false.
@@ -192,8 +201,9 @@ end function strat_chem_driver_init
 
 !  read in chemical lower boundary 
 !  
+         outunit = stdout()
          call mpp_open( unit, 'INPUT/chemlbf',action=MPP_RDONLY )
-         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/chemlbf'
+         if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/chemlbf'
          DO NC = 1,15                                           
            READ(unit,'(6E13.6)') (CHLB(JL,NC),JL=1,90) 
          ENDDO                                                          
@@ -204,7 +214,7 @@ end function strat_chem_driver_init
 !  read in photolysis files
 !         
          call mpp_open( unit, 'INPUT/photolsmax', action=MPP_RDONLY )
-         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/photolsmax'
+         if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/photolsmax'
          DO LEV = 1,48                                            
          DO IPZ = 1,11                                               
          DO ICZ = 1,14                                               
@@ -218,7 +228,7 @@ end function strat_chem_driver_init
          enddo
          call mpp_close(unit)
          call mpp_open( unit, 'INPUT/photolsmin', action=MPP_RDONLY )
-         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/photolsmin'
+         if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/photolsmin'
          DO LEV = 1,48                                            
          DO IPZ = 1,11                                               
          DO ICZ = 1,14                                               
@@ -232,7 +242,7 @@ end function strat_chem_driver_init
          enddo
          call mpp_close(unit)
          call mpp_open( unit, 'INPUT/solar_f107.dat', action=MPP_RDONLY )
-         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/solar_f107.dat'
+         if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/solar_f107.dat'
          read(unit,'(f6.0,5f7.0)') solardata
          call mpp_close(unit)
          DO LEV = 1,48                                              
@@ -248,7 +258,7 @@ end function strat_chem_driver_init
 !  read in data for Cly and Bry computation
 !         
          call mpp_open( unit, 'INPUT/dfdage.dat', action=MPP_RDONLY )
-         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/dfdage.dat'
+         if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/dfdage.dat'
          read(unit,'(6e13.6)') age
          read(unit,'(6e13.6)') dfdage
          call mpp_close(unit)
@@ -256,7 +266,7 @@ end function strat_chem_driver_init
 !  read in data for NOy tropospheric relaxation
 !         
          call mpp_open( unit, 'INPUT/noy_annual.dat', action=MPP_RDONLY )
-         if (mpp_pe() == mpp_root_pe()) WRITE(stdout(),*) 'INPUT/noy_annual.dat'
+         if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/noy_annual.dat'
          read(unit,'(6e13.6)') anoy
          call mpp_close(unit)
      endif

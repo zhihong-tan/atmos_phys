@@ -6,8 +6,8 @@
 
       save
 
-character(len=128), parameter :: version     = '$Id: moz.mods.F90,v 17.0 2009/07/21 02:59:54 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: quebec_200910 $'
+character(len=128), parameter :: version     = '$Id: moz.mods.F90,v 18.0 2010/03/02 23:34:51 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga $'
 logical                       :: module_is_initialized = .false.
 
       integer, parameter :: &
@@ -47,8 +47,8 @@ logical                       :: module_is_initialized = .false.
 
       integer, parameter :: hetcnt     =     0, &    ! number of heterogeneous processes
                             phtcnt     =    41, &    ! number of photo processes
-                            rxntot     =   223, &    ! number of total reactions
-                            gascnt     =   182, &    ! number of gas phase reactions
+                            rxntot     =   224, &    ! number of total reactions
+                            gascnt     =   183, &    ! number of gas phase reactions
                             nfs        =     3, &       ! number of "fixed" species
                             relcnt     =     0, &    ! number of relationship species
                             grpcnt     =     0, &    ! number of group members
@@ -119,7 +119,7 @@ logical                       :: module_is_initialized = .false.
       explicit%indprd_cnt   =    52
 
       implicit%clscnt       =    76
-      implicit%lin_rxt_cnt  =    69
+      implicit%lin_rxt_cnt  =    70
       implicit%nln_rxt_cnt  =   151
       implicit%indprd_cnt   =     3
       implicit%iter_max     =    11
@@ -501,6 +501,7 @@ logical                       :: module_is_initialized = .false.
       integer, parameter :: rid_r0179 =  179                                    
       integer, parameter :: rid_r0181 =  181                                    
       integer, parameter :: rid_r0183 =  183                                    
+      integer, parameter :: rid_r0224 =  224                                    
                                                                                 
       end module M_RXT_ID_MOD
                                                                                 

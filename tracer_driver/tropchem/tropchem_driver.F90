@@ -63,7 +63,10 @@ use                    mpp_mod, only : mpp_clock_id,         &
                                        mpp_clock_begin,      &
                                        mpp_clock_end
 use           interpolator_mod, only : interpolate_type,     &
+                                        interpolate_type_eq, &
                                        interpolator_init,    &
+                                    obtain_interpolator_time_slices, &
+                                    unset_interpolator_time_flag, &
                                        interpolator_end,     &
                                        interpolator,         &
                                        query_interpolator,   &
@@ -79,6 +82,8 @@ use              CHEM_MODS_MOD, only : phtcnt, gascnt
 use               MOZ_HOOK_MOD, only : moz_hook_init
 use   strat_chem_utilities_mod, only : strat_chem_utilities_init, &
                                        strat_chem_dcly_dt, &
+                                       strat_chem_dcly_dt_time_vary, &
+                                       strat_chem_dcly_dt_endts, &
                                        strat_chem_get_aerosol, &
                                        psc_type, &
                                        strat_chem_get_h2so4, &
@@ -87,7 +92,9 @@ use   strat_chem_utilities_mod, only : strat_chem_utilities_init, &
                                        strat_chem_psc_sediment, &
                                        strat_chem_get_extra_h2o
 use           mo_chem_utls_mod, only : get_spc_ndx
-use          atmos_sulfate_mod, only : atmos_sulfate_init, atmos_DMS_emission
+use          atmos_sulfate_mod, only : atmos_sulfate_init, &
+                                       atmos_sulfate_time_vary, &
+                                       atmos_DMS_emission
 use       esfsw_parameters_mod, only: Solar_spect, esfsw_parameters_init 
 use astronomy_mod,         only : diurnal_solar, universal_time
 use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
@@ -102,7 +109,8 @@ private
 !-----------------------------------------------------------------------
 !     ... interfaces
 !-----------------------------------------------------------------------
-public  tropchem_driver, tropchem_driver_init
+public  tropchem_driver, tropchem_driver_init,  &
+        tropchem_driver_time_vary, tropchem_driver_endts
 
 !-----------------------------------------------------------------------
 !     ...  declare type that will store the field infomation for the 
@@ -245,8 +253,10 @@ logical :: module_is_initialized=.false.
 integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
                                id_emis, id_emis3d, id_xactive_emis, &
                                id_ub, id_lb, id_airc
+integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_glaiage, id_gtemp, id_glight, id_tsfc, id_fsds, id_ctas, id_cfsds
 integer :: isop_oldmonth = 0
+logical :: newmonth            
 logical :: has_ts_avg = .true.   ! currently reading in from monthly mean files.
 integer, dimension(phtcnt)  :: id_jval
 integer, dimension(gascnt)  :: id_rate_const
@@ -281,15 +291,12 @@ real, allocatable, dimension(:,:) :: diag_climtas, diag_climfsds ! climatologica
 real, allocatable, dimension(:,:,:) :: ts_avg  ! climatological monthly mean surface air T
 real, allocatable, dimension(:,:,:) :: fsds_avg  ! climat. montly mean total shortwave down (W/m2)
 
-type (horiz_interp_type) :: Interp
-
-integer :: tot_pts 
-integer :: pts_processed = 0
+type (horiz_interp_type), save :: Interp
 
 
 !---- version number ---------------------------------------------------
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 17.0 2009/07/21 03:00:01 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: quebec_200910 $'
+character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 18.0 2010/03/02 23:34:57 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga $'
 !-----------------------------------------------------------------------
 
 contains
@@ -498,6 +505,18 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
                                  emis_field_names(n)%field_names, &
                                  diurnal_emis(n), coszen, half_day, lon, &
                                  is, js, id_emis(n) )
+         if (tracnam(n) == 'SO2') then
+           if (id_so2_emis_cmip > 0) then
+             used = send_data(id_so2_emis_cmip,emis*1.0e04*0.064/AVOGNO,Time, &
+                                                  is_in=is,js_in=js)
+           endif
+         endif
+         if (tracnam(n) == 'NH3') then
+           if (id_nh3_emis_cmip > 0) then
+             used = send_data(id_nh3_emis_cmip,emis*1.0e04*0.017/AVOGNO,Time, &
+                                                  is_in=is,js_in=js)
+           endif
+         endif
 
          if (present(kbot)) then
             do j=1,jd
@@ -874,6 +893,7 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
          endwhere
       end if
 
+   end do
 !-----------------------------------------------------------------------
 !     ... surface concentration diagnostics
 !-----------------------------------------------------------------------
@@ -881,7 +901,6 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
          used = send_data(id_srf_o3, r_temp(:,:,size(r_temp,3),o3_ndx), Time, is_in=is, js_in=js)
       end if
 
-   end do
    
 !-----------------------------------------------------------------------
 !     ... special case(nox = no + no2)
@@ -1266,14 +1285,6 @@ function tropchem_driver_init( r, mask, axes, Time, &
       return
    end if
      
-!---------------------------------------------------------------------
-!    define total number of pts on this processor.
-!---------------------------------------------------------------------
-   tot_pts = (size(lonb_mod,1)-1)*(size(latb_mod,2)-1)
-   if (mpp_pe() == mpp_root_pe()) then 
-      print *, 'tot_pts = ', tot_pts
-   endif
-
 !-----------------------------------------------------------------------
 !     ... Setup sulfate input/interpolation
 !-----------------------------------------------------------------------
@@ -1680,7 +1691,13 @@ function tropchem_driver_init( r, mask, axes, Time, &
 !-----------------------------------------------------------------------
 !     ... Register diagnostic fields for species tendencies
 !-----------------------------------------------------------------------
-     
+   id_so2_emis_cmip =     &
+        register_diag_field( module_name, 'so2_emis_cmip', axes(1:2), &
+                             Time, 'so2_emis_cmip', 'kg/m2/s')
+   id_nh3_emis_cmip =     &
+        register_diag_field( module_name, 'nh3_emis_cmip', axes(1:2), &
+                            Time, 'nh3_emis_cmip', 'kg/m2/s')  
+
    do i=1,pcnstm1
       id_chem_tend(i) = register_diag_field( module_name, trim(tracnam(i))//'_chem_dt', axes(1:3), &
                                              Time, trim(tracnam(i))//'_chem_dt','VMR/s' )
@@ -1782,7 +1799,116 @@ function tropchem_driver_init( r, mask, axes, Time, &
 end function tropchem_driver_init
 !</FUNCTION>
  
+!#####################################################################
+
+subroutine tropchem_driver_time_vary (Time)
+
+type(time_type), intent(in) :: Time
+
+      integer :: yr, mo,day, hr,min, sec
+      integer :: n
+
+      do n=1, size(inter_emis,1)
+        if (has_emis(n)) then
+          call obtain_interpolator_time_slices (inter_emis(n), Time)
+        endif
+      end do
+
+      do n=1, size(inter_emis3d,1)
+        if (has_emis3d(n)) then
+          call obtain_interpolator_time_slices (inter_emis3d(n), Time)
+        endif
+      end do
+
+      do n=1, size(inter_aircraft_emis,1)
+        if (has_airc(n)) then
+          call obtain_interpolator_time_slices   &
+                                         (inter_aircraft_emis(n), Time)
+        endif
+      end do
+
+      call obtain_interpolator_time_slices (conc, Time)
+
+      call obtain_interpolator_time_slices (sulfate, Time)
+
+      do n=1, size(ub,1)
+        if (has_ubc(n)) then
+          call obtain_interpolator_time_slices (ub(n), Time)
+        endif
+      end do
+
+      call strat_chem_dcly_dt_time_vary (Time)
+
+!----------------------------------------------------------------------
+!    determine if this time step starts a new month; if so, then
+!    new interactive isoprene emission data is needed, and the 
+!    necessary flag is set.
+!----------------------------------------------------------------------
+      do n=1,pcnstm1
+        if ( has_xactive_emis(n) .or. id_xactive_emis(n)>0 ) then
+          select case (trim(tracnam(n)))
+            case ('ISOP')
+              call get_date(Time,yr,mo,day,hr,min,sec)  !model GMT
+              newmonth = ( mo /= isop_oldmonth )
+              if (newmonth) then
+                isop_oldmonth = mo
+              endif
+            case ('DMS')
+              call atmos_sulfate_time_vary (Time)
+            case default
+          end select
+        endif
+      end do
+             
+
+end subroutine tropchem_driver_time_vary 
       
+
+
+
+!#####################################################################
+
+subroutine tropchem_driver_endts
+
+
+      integer :: n
+
+      do n=1, size(inter_emis,1)
+        if (has_emis(n)) then
+          call unset_interpolator_time_flag(inter_emis(n))
+         endif
+      end do
+
+      do n=1, size(inter_emis3d,1)
+        if (has_emis3d(n)) then
+         call unset_interpolator_time_flag(inter_emis3d(n))
+        endif
+      end do
+
+      do n=1, size(inter_aircraft_emis,1)
+        if (has_airc(n)) then
+          call unset_interpolator_time_flag(inter_aircraft_emis(n))
+        endif
+      end do
+
+      call unset_interpolator_time_flag(conc)           
+      call unset_interpolator_time_flag(sulfate)         
+
+      do n=1, size(ub,1)
+        if (has_ubc(n)) then
+          call unset_interpolator_time_flag(ub(n))
+        endif
+      end do
+
+      call strat_chem_dcly_dt_endts               
+
+
+
+end subroutine tropchem_driver_endts
+
+
+!######################################################################
+
 subroutine tropchem_driver_end
 
 !-----------------------------------------------------------------------
@@ -2221,7 +2347,6 @@ subroutine isop_xactive_init( lonb, latb, axes )
   diag_climfsds(:,:) = 0.
 ! always get gamma age / gamma lai at start of run.
 ! newmonth = .true.     
-  isop_oldmonth = 0
 
 !  --- check existence of input file containing isoprene emission capacities --------
   if (file_exist(ecfile)) then
@@ -2530,15 +2655,13 @@ subroutine calc_xactive_isop( index, Time, lon, lat, oro, pwtsfc, is, js, &
    real    :: calday
    type(time_type) :: Year_t
    integer :: yr, mo, day, hr, min, sec
-   logical :: used, newmonth
+   logical :: used
    integer :: ie, je
 
    ie = is + size(land,1) -1
    je = js + size(land,2) -1
-!CHECK IF FIRST OF THE MONTH
 
    call get_date(Time,yr,mo,day,hr,min,sec)  !model GMT
-   newmonth = ( mo /= isop_oldmonth )
 
 !update gamma age and gamma once per month
    if (newmonth) then 
@@ -2552,11 +2675,6 @@ subroutine calc_xactive_isop( index, Time, lon, lat, oro, pwtsfc, is, js, &
       
       call get_monthly_gammas( lon, lat, oro, is, js, mo, &
                                id_gamma_lai_age )
-      pts_processed = pts_processed + size(land,1)*size(land,2)
-      if (pts_processed == tot_pts) then
-        isop_oldmonth = mo
-        pts_processed = 0
-      endif
 !     if( mpp_pe() == mpp_root_pe() ) then 
 !        print *, 'pts_proc, oldmonth AFTER', pts_processed, isop_oldmonth
 !        print*, 'AMF calc_xactive_isop: after call to  get_monthly_gammas'
@@ -3135,6 +3253,7 @@ subroutine tropchem_drydep_init( dry_files, dry_names, &
             else
                dry_files(i) = trim(file_dry)
                drydep_data(indices(i)) = drydep_data_default
+
             end if
             if(flag_spec >0) then
                dry_names(i) = trim(specname)
