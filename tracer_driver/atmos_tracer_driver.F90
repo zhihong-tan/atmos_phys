@@ -169,6 +169,7 @@ use strat_chem_driver_mod, only : strat_chem, strat_chem_driver_init
 use atmos_age_tracer_mod,  only : atmos_age_tracer_init, atmos_age_tracer, &
                                   atmos_age_tracer_end
 use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
+                                  atmos_co2_emissions,          &
                                   atmos_co2_gather_data,        &
                                   atmos_co2_flux_init,          &
                                   atmos_co2_init,               &
@@ -293,8 +294,8 @@ integer :: id_so2_cmip, id_dms_cmip
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 18.0 2010/03/02 23:34:22 fms Exp $'
-character(len=128) :: tagname = '$Name: riga $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 18.0.2.1 2010/03/29 20:41:16 jgj Exp $'
+character(len=128) :: tagname = '$Name: riga_201004 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -429,6 +430,7 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndso2, rtndso4
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtnddms, rtndmsa, rtndh2o2
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndbcphob, rtndbcphil
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndomphob, rtndomphil
+real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndco2, rtndco2_emis
 real, dimension(size(r,1),size(r,2),size(rdt,4)) :: dsinku
 real, dimension(size(r,1),size(r,2),size(r,3)) :: so2_nerup_volc_emis
 real, dimension(size(r,1),size(r,2)) ::  w10m_ocean, w10m_land
@@ -1075,9 +1077,13 @@ logical :: used
          if (nco2 > ntp ) call error_mesg ('Tracer_driver', &
                             'Number of tracers < number for co2', FATAL)
          call mpp_clock_begin (co2_clock)
+         call atmos_co2_emissions (is, ie, js, je, Time, dt, pwt, tracer(:,:,:,nco2),     &
+                                   tracer(:,:,:,nsphum), rtndco2_emis, kbot)
+         rdt(:,:,:,nco2)=rdt(:,:,:,nco2)+rtndco2_emis(:,:,:)
+
          call atmos_co2_sourcesink (Time, dt, pwt, tracer(:,:,:,nco2),     &
-                                    tracer(:,:,:,nsphum), rtnd)
-         rdt(:,:,:,nco2)=rdt(:,:,:,nco2)+rtnd(:,:,:)
+                                    tracer(:,:,:,nsphum), rtndco2)
+         rdt(:,:,:,nco2)=rdt(:,:,:,nco2)+rtndco2(:,:,:)
          call mpp_clock_end (co2_clock)
    endif
 

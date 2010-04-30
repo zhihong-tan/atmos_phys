@@ -266,7 +266,7 @@ logical :: used
 
 !---- version number -----
 character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 18.0 2010/03/02 23:33:58 fms Exp $'
-character(len=128) :: tagname = '$Name: riga $'
+character(len=128) :: tagname = '$Name: riga_201004 $'
 !-----------------------------------------------------------------------
 
 type(time_type)                        :: bcff_time

@@ -7,7 +7,7 @@
       save
 
 character(len=128), parameter :: version     = '$Id: moz.mods.F90,v 18.0 2010/03/02 23:34:51 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga $'
+character(len=128), parameter :: tagname     = '$Name: riga_201004 $'
 logical                       :: module_is_initialized = .false.
 
       integer, parameter :: &

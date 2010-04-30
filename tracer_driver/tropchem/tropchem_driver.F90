@@ -296,7 +296,7 @@ type (horiz_interp_type), save :: Interp
 
 !---- version number ---------------------------------------------------
 character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 18.0 2010/03/02 23:34:57 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga $'
+character(len=128), parameter :: tagname     = '$Name: riga_201004 $'
 !-----------------------------------------------------------------------
 
 contains

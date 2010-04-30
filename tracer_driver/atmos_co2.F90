@@ -26,7 +26,7 @@ use   tracer_manager_mod, only : get_tracer_index, tracer_manager_init
 use    field_manager_mod, only : MODEL_ATMOS
 use     diag_manager_mod, only : register_diag_field, send_data
 use     time_manager_mod, only : time_type
-use        constants_mod, only : WTMCO2, WTMAIR
+use        constants_mod, only : WTMCO2, WTMAIR, WTMC
 use    data_override_mod, only : data_override
 use              mpp_mod, only : mpp_pe, mpp_root_pe
 
@@ -39,6 +39,7 @@ private
 !----- interfaces -------
 
 public  atmos_co2_sourcesink
+public  atmos_co2_emissions
 public  atmos_co2_rad
 public  atmos_co2_gather_data
 public  atmos_co2_flux_init
@@ -54,7 +55,7 @@ character(len=48), parameter    :: mod_name = 'atmos_co2_mod'
 integer, save   :: ind_co2_flux = 0
 integer, save   :: ind_co2  = 0
 integer, save   :: ind_sphum = 0
-integer         :: id_co2restore, id_pwt
+integer         :: id_co2restore, id_pwt, id_co2_mol_emiss, id_co2_emiss_orig
 real            :: restore_co2_dvmr = -1
 real            :: radiation_co2_dvmr = -1
 
@@ -65,10 +66,11 @@ real     :: restore_tscale   = -1
 integer  :: restore_klimit   = -1
 logical  :: do_co2_restore   = .false.
 logical  :: co2_radiation_override = .false.
+logical  :: do_co2_emissions = .false.
 
 namelist /atmos_co2_nml/  &
           do_co2_restore, restore_tscale, restore_klimit,  &
-          co2_radiation_override
+          co2_radiation_override, do_co2_emissions
 
 !-----------------------------------------------------------------------
 !
@@ -84,7 +86,7 @@ namelist /atmos_co2_nml/  &
 !-----------------------------------------------------------------------
 
 !PUBLIC VARIABLES
-public :: co2_radiation_override
+public :: co2_radiation_override, do_co2_emissions
 
 logical :: module_is_initialized = .FALSE.
 logical :: used
@@ -274,6 +276,120 @@ endif
 
 end subroutine atmos_co2_rad
 !</SUBROUTINE>
+
+!#######################################################################
+
+!<SUBROUTINE NAME ="atmos_co2_emissions">
+!<OVERVIEW>
+!  A subroutine to calculate the internal sources and sinks of carbon dioxide
+!  from input co2 emissions data.
+!
+! do_co2_emissions   = logical to activate using co2 emissions: default = .false.
+!
+!</OVERVIEW>
+!<DESCRIPTION>
+! A routine to calculate the sources and sinks of carbon dixoide from co2 emissions.
+!</DESCRIPTION>
+!<TEMPLATE>
+!call atmos_co2_emissions (Time, dt,  pwt, co2, sphum, co2_emiss_dt, kbot)
+!
+!</TEMPLATE>
+!   <IN NAME="Time" TYPE="type(time_type)">
+!     Model time.
+!   </IN>
+!   <IN NAME="dt" TYPE="real">
+!     Model timestep.
+!   </IN>
+!   <IN NAME="pwt" TYPE="real" DIM="(:,:,:)">
+!     The pressure weighting array. = dP/grav (kg/m2)
+!   </IN>
+!   <IN NAME="co2" TYPE="real" DIM="(:,:,:)">
+!     The array of the carbon dioxide mixing ratio (kg co2/kg moist air)
+!   </IN>
+!   <IN NAME="sphum" TYPE="real" DIM="(:,:,:)">
+!     The array of the specific humidity mixing ratio (kg/kg)
+!   </IN>
+!   <IN NAME="kbot" TYPE="integer, optional" DIM="(:,:)">
+!     Integer array describing which model layer intercepts the surface.
+!   </IN>
+
+!   <OUT NAME="co2_emiss_dt" TYPE="real" DIM="(:,:,:)">
+!     The array of the restoring tendency of the carbon dioxide emissions
+!   </OUT>
+!
+!
+
+subroutine atmos_co2_emissions(is, ie, js, je, Time, dt, pwt, co2, sphum, co2_emiss_dt, kbot)
+
+   integer, intent(in)                 :: is, ie, js, je
+   type (time_type),      intent(in)   :: Time
+   real, intent(in)                    :: dt
+   real, intent(in),  dimension(:,:,:) :: pwt          ! kg/m2
+   real, intent(in),  dimension(:,:,:) :: co2          ! moist mmr
+   real, intent(in),  dimension(:,:,:) :: sphum        
+   real, intent(out), dimension(:,:,:) :: co2_emiss_dt 
+   integer, intent(in),  dimension(:,:), optional :: kbot
+!
+!-----------------------------------------------------------------------
+!     local parameters
+!-----------------------------------------------------------------------
+!
+
+character(len=64), parameter    :: sub_name = 'atmos_co2_emissions'
+character(len=256), parameter   :: error_header =                               &
+     '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+character(len=256), parameter   :: warn_header =                                &
+     '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+character(len=256), parameter   :: note_header =                                &
+     '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+
+
+integer   :: i,j,k,id,jd,kd,kb, logunit
+logical   :: sent
+real, dimension(size(co2,1),size(co2,2),size(co2,3)) ::  co2_emis_source
+real      ::  co2_emis2d(is:ie, js:je)
+
+
+!---------------------------------------------------------------------------------------
+! Original IPCC AR5 historical CO2 emissions converted to kg C/m2/sec 
+! Assume scenario input will be in same format/units
+!---------------------------------------------------------------------------------------
+
+id=size(co2,1); jd=size(co2,2); kd=size(co2,3)
+
+co2_emis2d(:,:)=0.0
+co2_emis_source(:,:,:)=0.0
+co2_emiss_dt(:,:,:)=0.0
+
+logunit=stdlog()
+if (ind_co2 > 0 .and. do_co2_emissions) then
+
+  call data_override('ATM', 'co2_emiss', co2_emis2d, Time, override=used)
+  if (id_co2_emiss_orig > 0) sent = send_data (id_co2_emiss_orig, co2_emis2d, Time)
+
+  if (.not. used) then
+    call error_mesg (trim(error_header), ' data override needed for co2 emission ', FATAL)
+  endif
+
+! lowest model layer
+    do j=1,jd
+      do i=1,id
+        co2_emis_source(i,j,kd) = co2_emis2d(i,j) * (WTMCO2/WTMC) / pwt(i,j,kd)
+      enddo
+    enddo
+  
+  co2_emiss_dt = co2_emis_source
+
+! co2 mol emission diagnostic in moles CO2/m2/sec 
+  if (id_co2_mol_emiss > 0) sent = send_data (id_co2_mol_emiss,   &
+                 co2_emiss_dt(:,:,kd)*pwt(:,:,kd)/(WTMCO2*1.e-3), Time)
+
+endif
+
+
+end subroutine atmos_co2_emissions
+!</SUBROUTINE >
+
 
 !#######################################################################
 
@@ -497,6 +613,14 @@ if (n > 0) then
    id_pwt    = register_diag_field ('atmos_co2', 'pwt', axes, Time, &
                    trim(desc), 'kg/m2',missing_value=missing_value)
 
+   desc = ' mol emission'
+   id_co2_mol_emiss = register_diag_field ('atmos_co2_emissions', 'co2_mol_emission', axes(1:2), Time, &
+                      'CO2'//trim(desc), 'moles co2/m2/s',missing_value=missing_value)
+
+   desc = ' emission_orig'
+   id_co2_emiss_orig = register_diag_field ('atmos_co2_emissions', 'co2_emissions_orig', axes(1:2), Time, &
+                   'CO2'//trim(desc), 'kg C/m2/s',missing_value=missing_value)
+
 !
 !	get the index for sphum
 !
@@ -511,12 +635,17 @@ endif
 logunit=stdlog()
 if (.not.(ind_co2 > 0 .and. do_co2_restore)) then
    if (mpp_pe() == mpp_root_pe() ) &
-     write (logunit,*)' CO2 restoring not active: ',do_co2_restore
+     write (logunit,*)' CO2 restoring not active:do_co2_restore= ',do_co2_restore
 endif
 
 if (.not.(ind_co2 > 0 .and. co2_radiation_override)) then
    if (mpp_pe() == mpp_root_pe() ) &
-     write (logunit,*)' CO2 radiation override not active: ',co2_radiation_override
+     write (logunit,*)' CO2 radiation override not active:co2_radiation_override= ',co2_radiation_override
+endif
+
+if (.not.(ind_co2 > 0 .and. do_co2_emissions)) then
+   if (mpp_pe() == mpp_root_pe() ) &
+     write (logunit,*)' not using CO2 emissions: do_co2_emissions= ',do_co2_emissions
 endif
 
 call write_version_number (version, tagname)
