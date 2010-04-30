@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: cosp_utils.f90,v 18.0 2010/03/02 23:29:06 fms Exp $
-! $Name: riga $
+! $Name: riga_201004 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.

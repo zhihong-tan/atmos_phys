@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
  
 ! $Id: cosp_io.f90,v 18.0 2010/03/02 23:28:59 fms Exp $
-! $Name: riga $
+! $Name: riga_201004 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -54,7 +54,7 @@ MODULE MOD_COSP_IO
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------     
 character(len=128)  :: versiona =  '$Id: cosp_io.f90,v 18.0 2010/03/02 23:28:59 fms Exp $'
-character(len=128)  :: tagnamea =  '$Name: riga $'
+character(len=128)  :: tagnamea =  '$Name: riga_201004 $'
 
   ! Types to be used as arrays of pointers
   TYPE var1d

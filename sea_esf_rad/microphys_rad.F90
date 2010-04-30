@@ -56,7 +56,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128)  :: version =  '$Id: microphys_rad.F90,v 17.0 2009/07/21 02:57:02 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga $'
+character(len=128)  :: tagname =  '$Name: riga_201004 $'
 
 
 !---------------------------------------------------------------------

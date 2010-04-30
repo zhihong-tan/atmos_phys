@@ -31,7 +31,7 @@
 !---------------------------------------------------------------------
 
  character(len=128) :: version = '$Id: my25_turb.F90,v 18.0 2010/03/02 23:31:19 fms Exp $'
- character(len=128) :: tagname = '$Name: riga $'
+ character(len=128) :: tagname = '$Name: riga_201004 $'
  logical            :: module_is_initialized = .false.
  
  logical :: init_tke

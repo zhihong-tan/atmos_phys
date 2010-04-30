@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
        
 ! $Id: mrgrnk.f90,v 18.0 2010/03/02 23:29:37 fms Exp $
-! $Name: riga $
+! $Name: riga_201004 $
 
 Module m_mrgrnk
 Integer, Parameter :: kdp = selected_real_kind(15)

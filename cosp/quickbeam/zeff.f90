@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
        
 ! $Id: zeff.f90,v 18.0 2010/03/02 23:29:41 fms Exp $
-! $Name: riga $
+! $Name: riga_201004 $
 
   subroutine zeff(freq,D,N,nsizes,k2,tt,ice,xr,z_eff,z_ray,kr,qe,qs,rho_e)
   use math_lib

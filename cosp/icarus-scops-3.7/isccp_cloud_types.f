@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: isccp_cloud_types.f,v 18.0 2010/03/02 23:29:12 fms Exp $
-! $Name: riga $
+! $Name: riga_201004 $
 
       SUBROUTINE ISCCP_CLOUD_TYPES(
      &     debug,

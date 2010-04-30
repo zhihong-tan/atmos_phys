@@ -6,7 +6,7 @@
 !------------ FMS version number and tagname for this file -----------
  
 ! $Id: scops.f,v 18.0 2010/03/02 23:29:15 fms Exp $
-! $Name: riga $
+! $Name: riga_201004 $
  
 
 

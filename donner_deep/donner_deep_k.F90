@@ -1,5 +1,5 @@
 !#VERSION NUMBER:
-!  $Name: riga $
+!  $Name: riga_201004 $
 !  $Id: donner_deep_k.F90,v 18.0 2010/03/02 23:30:05 fms Exp $
 
 !module donner_deep_inter_mod

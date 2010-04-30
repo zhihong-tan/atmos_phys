@@ -41,7 +41,7 @@
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
  character(len=128) :: version = '$Id: ras.F90,v 18.0 2010/03/02 23:31:30 fms Exp $'
- character(len=128) :: tagname = '$Name: riga $'
+ character(len=128) :: tagname = '$Name: riga_201004 $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav

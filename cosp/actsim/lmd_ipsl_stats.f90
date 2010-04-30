@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: lmd_ipsl_stats.f90,v 18.0 2010/03/02 23:29:09 fms Exp $
-! $Name: riga $
+! $Name: riga_201004 $
 
 ! Copyright (c) 2009, Centre National de la Recherche Scientifique
 ! All rights reserved.

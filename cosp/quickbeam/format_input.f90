@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
          
 ! $Id: format_input.f90,v 18.0 2010/03/02 23:29:29 fms Exp $
-! $Name: riga $
+! $Name: riga_201004 $
 
 ! FORMAT_INPUT: Procedures to prepare data for input to the simulator
 ! Compiled/Modified:

@@ -584,7 +584,7 @@ module strat_cloud_mod
   !
 
   Character(len=128) :: Version = '$Id: strat_cloud.F90,v 18.0 2010/03/02 23:33:21 fms Exp $'
-  Character(len=128) :: Tagname = '$Name: riga $'
+  Character(len=128) :: Tagname = '$Name: riga_201004 $'
   logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   integer               :: vers

@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: llnl_stats.f90,v 18.0 2010/03/02 23:29:17 fms Exp $
-! $Name: riga $
+! $Name: riga_201004 $
 
 ! (c) 2008, Lawrence Livermore National Security Limited Liability Corporation.
 ! All rights reserved.

@@ -91,7 +91,7 @@ IMPLICIT NONE
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: cosp_driver.F90,v 18.0 2010/03/02 23:28:58 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga $'
+character(len=128)  :: tagname =  '$Name: riga_201004 $'
  
 
 

@@ -44,7 +44,7 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 character(len=128)  :: version =  '$Id: rad_utilities.F90,v 18.0 2010/03/02 23:32:32 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga $'
+character(len=128)  :: tagname =  '$Name: riga_201004 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
