@@ -66,7 +66,7 @@ logical :: used
 
 !---- version number -----
 character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 18.0 2010/03/02 23:34:11 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201004 $'
+character(len=128) :: tagname = '$Name: riga_201006 $'
 !-----------------------------------------------------------------------
 
 contains

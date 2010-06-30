@@ -288,14 +288,16 @@ integer :: id_om_ddep, id_bc_ddep, id_ssalt_ddep, id_dust_ddep, &
 integer :: id_ssalt_emis, id_dust_emis
 integer :: id_nh4no3_col, id_nh4_col
 integer :: id_nh4no3_cmip, id_nh4_cmip
+integer :: id_nh4no3_cmipv2, id_nh4_cmipv2
 integer :: id_so2_cmip, id_dms_cmip
+integer :: id_so2_cmipv2, id_dms_cmipv2
 
 !-----------------------------------------------------------------------
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 18.0.2.1 2010/03/29 20:41:16 jgj Exp $'
-character(len=128) :: tagname = '$Name: riga_201004 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 18.0.4.2.2.1 2010/05/14 18:40:15 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201006 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -425,7 +427,7 @@ real, intent(in), dimension(:,:,:),  optional :: mask
 ! Local variables
 !-----------------------------------------------------------------------
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtnd, pwt, ozone, o3_prod, &
-                                                  aerosol
+                                                  aerosol, rho
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndso2, rtndso4
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtnddms, rtndmsa, rtndh2o2
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndbcphob, rtndbcphil
@@ -588,6 +590,7 @@ logical :: used
 !------------------------------------------------------------------------
       do k=1,kd
          pwt(:,:,k)=(phalf(:,:,k+1)-phalf(:,:,k))/grav
+         rho(:,:,k) = pwt(:,:,k)/(z_half(:,:,k) - z_half(:,:,k+1))
       enddo
 
 !------------------------------------------------------------------------
@@ -655,9 +658,20 @@ logical :: used
                               tracer(:,:,:,nNH4)) /WTMAIR,  &
                                           Time, is_in=is, js_in=js, ks_in=1)
       endif
+      if (id_nh4_cmipv2 > 0) then
+        used  = send_data (id_nh4_cmipv2,  &
+               0.018*1.0e03*rho(:,:,:)* (tracer(:,:,:,nNH4NO3) + &
+                              tracer(:,:,:,nNH4)) /WTMAIR,  &
+                                          Time, is_in=is, js_in=js, ks_in=1)
+      endif
       if(id_nh4no3_cmip > 0) then
         used  = send_data (id_nh4no3_cmip,  &
                 0.062*1.0e03*tracer(:,:,:,nNH4NO3)/WTMAIR,  &
+                                         Time, is_in=is, js_in=js, ks_in=1)
+     endif
+      if(id_nh4no3_cmipv2 > 0) then
+        used  = send_data (id_nh4no3_cmipv2,  &
+                0.062*1.0e03*rho(:,:,:)*tracer(:,:,:,nNH4NO3)/WTMAIR,  &
                                          Time, is_in=is, js_in=js, ks_in=1)
      endif
      if(id_so2_cmip > 0) then
@@ -665,9 +679,19 @@ logical :: used
                  0.064*1.0e03*tracer(:,:,:,nSO2_cmip)/WTMAIR,  &
                                          Time, is_in=is, js_in=js, ks_in=1)
      endif
+     if(id_so2_cmipv2 > 0) then
+       used  = send_data (id_so2_cmipv2,  &
+               0.064*1.0e03*rho(:,:,:)*tracer(:,:,:,nSO2_cmip)/WTMAIR,  &
+                                         Time, is_in=is, js_in=js, ks_in=1)
+     endif
      if(id_dms_cmip > 0) then
        used  = send_data (id_dms_cmip,  &
                 0.062*1.0e03*tracer(:,:,:,nDMS_cmip)/WTMAIR,  &
+                                         Time, is_in=is, js_in=js, ks_in=1)
+     endif
+     if(id_dms_cmipv2 > 0) then
+       used  = send_data (id_dms_cmipv2,  &
+                0.062*1.0e03*rho(:,:,:)*tracer(:,:,:,nDMS_cmip)/WTMAIR,  &
                                          Time, is_in=is, js_in=js, ks_in=1)
      endif
 
@@ -1362,12 +1386,28 @@ type(time_type), intent(in)                                :: Time
           'tot_nh4', axes(1:3), Time, &
           'total ammonium', 'kg/m3')
 
+      id_nh4no3_cmipv2 = register_diag_field (mod_name, &
+          'tot_no3v2', axes(1:3), Time, &
+          'total nitrate', 'kg/m3')
+
+      id_nh4_cmipv2  = register_diag_field (mod_name, &
+          'tot_nh4v2', axes(1:3), Time, &
+          'total ammonium', 'kg/m3')
+
       id_so2_cmip  = register_diag_field (mod_name, &
           'so2_cmip', axes(1:3), Time, &
           'SO2', 'kg/m3')
 
       id_dms_cmip  = register_diag_field (mod_name, &
           'dms_cmip', axes(1:3), Time, &
+          'DMS', 'kg/m3')
+
+      id_so2_cmipv2  = register_diag_field (mod_name, &
+          'so2_cmipv2', axes(1:3), Time, &
+          'SO2', 'kg/m3')
+
+      id_dms_cmipv2  = register_diag_field (mod_name, &
+          'dms_cmipv2', axes(1:3), Time, &
           'DMS', 'kg/m3')
 
       module_is_initialized = .TRUE.

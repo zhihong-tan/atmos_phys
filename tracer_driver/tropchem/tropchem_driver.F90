@@ -254,6 +254,9 @@ integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
                                id_emis, id_emis3d, id_xactive_emis, &
                                id_ub, id_lb, id_airc
 integer :: id_so2_emis_cmip, id_nh3_emis_cmip
+integer :: id_co_emis_cmip, id_no_emis_cmip
+integer :: id_co_emis_cmip2, id_no_emis_cmip2
+integer :: id_so2_emis_cmip2, id_nh3_emis_cmip2
 integer :: id_glaiage, id_gtemp, id_glight, id_tsfc, id_fsds, id_ctas, id_cfsds
 integer :: isop_oldmonth = 0
 logical :: newmonth            
@@ -295,8 +298,8 @@ type (horiz_interp_type), save :: Interp
 
 
 !---- version number ---------------------------------------------------
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 18.0 2010/03/02 23:34:57 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201004 $'
+character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 17.0.2.1.6.1.2.1.2.1 2009/11/28 18:39:09 rsh Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -436,6 +439,7 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
    real, dimension(size(r,1),size(r,2),size(r,3)) :: ub_temp,rno
    real, dimension(size(r,1),size(r,2),size(r,3),maxinv) :: inv_data
    real, dimension(size(r,1),size(r,2)) :: emis, temp_data
+   real, dimension(size(r,1),size(r,2), pcnstm1) :: emisz
    real, dimension(size(r,1),size(r,2),size(r,3)) :: emis3d, xactive_emis
    real, dimension(size(r,1),size(r,2),size(r,3)) :: age, cly0, cly, cly_ratio, &
                                                      bry, dclydt, dbrydt, noy, &
@@ -505,13 +509,29 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
                                  emis_field_names(n)%field_names, &
                                  diurnal_emis(n), coszen, half_day, lon, &
                                  is, js, id_emis(n) )
+         if (tracnam(n) == 'NO') then
+           emisz(:,:,n) = emis(:,:)
+           if (id_no_emis_cmip > 0) then
+             used = send_data(id_no_emis_cmip,emis*1.0e04*0.030/AVOGNO,Time, &
+                                                  is_in=is,js_in=js)
+           endif
+         endif
+         if (tracnam(n) == 'CO') then
+           emisz(:,:,n) = emis(:,:)
+           if (id_co_emis_cmip > 0) then
+             used = send_data(id_co_emis_cmip,emis*1.0e04*0.028/AVOGNO,Time, &
+                                                  is_in=is,js_in=js)
+           endif
+         endif
          if (tracnam(n) == 'SO2') then
+           emisz(:,:,n) = emis(:,:)
            if (id_so2_emis_cmip > 0) then
              used = send_data(id_so2_emis_cmip,emis*1.0e04*0.064/AVOGNO,Time, &
                                                   is_in=is,js_in=js)
            endif
          endif
          if (tracnam(n) == 'NH3') then
+           emisz(:,:,n) = emis(:,:)
            if (id_nh3_emis_cmip > 0) then
              used = send_data(id_nh3_emis_cmip,emis*1.0e04*0.017/AVOGNO,Time, &
                                                   is_in=is,js_in=js)
@@ -541,6 +561,26 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
       
          emis_source(:,:,:,n) = emis_source(:,:,:,n) &
                               + emis3d(:,:,:)/pwt(:,:,:) * emis_cons
+         if (tracnam(n) == 'SO2') then
+           do k=1, size(emis3d,3)
+           emisz(:,:,n) = emisz(:,:,n) + emis3d(:,:,k)
+           end do
+         endif
+         if (tracnam(n) == 'NO') then
+           do k=1, size(emis3d,3)
+           emisz(:,:,n) = emisz(:,:,n) + emis3d(:,:,k)
+           end do
+         endif
+         if (tracnam(n) == 'CO') then
+           do k=1, size(emis3d,3)
+           emisz(:,:,n) = emisz(:,:,n) + emis3d(:,:,k)
+           end do
+         endif
+         if (tracnam(n) == 'NH3') then
+           do k=1, size(emis3d,3)
+           emisz(:,:,n) = emisz(:,:,n) + emis3d(:,:,k)
+           end do
+         endif
       end if
 
 !-----------------------------------------------------------------------
@@ -598,8 +638,53 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
          if(id_airc(n) > 0)&
               used = send_data(id_airc(n),airc_emis(:,:,:,n),Time, is_in=is, js_in=js)
     
+         if (tracnam(n) == 'CO') then
+           do k=1, size(emis3d,3)
+           emisz(:,:,n) = emisz(:,:,n) + airc_emis(:,:,k,n)
+           end do
+         endif
+         if (tracnam(n) == 'NO') then
+           do k=1, size(emis3d,3)
+           emisz(:,:,n) = emisz(:,:,n) + airc_emis(:,:,k,n)
+           end do
+         endif
+         if (tracnam(n) == 'SO2') then
+           do k=1, size(emis3d,3)
+           emisz(:,:,n) = emisz(:,:,n) + airc_emis(:,:,k,n)
+           end do
+         endif
+         if (tracnam(n) == 'NH3') then
+           do k=1, size(emis3d,3)
+           emisz(:,:,n) = emisz(:,:,n) + airc_emis(:,:,k,n)
+           end do
+         endif
          airc_emis(:,:,:,n) = airc_emis(:,:,:,n)/pwt(:,:,:)*emis_cons
+!     end if
       end if
+         if (tracnam(n) == 'NO') then
+           if (id_no_emis_cmip2 > 0) then
+             used = send_data(id_no_emis_cmip2,emisz(:,:,n)*1.0e04*0.030/AVOGNO,Time, &
+                                                 is_in=is,js_in=js)
+           endif
+         endif
+         if (tracnam(n) == 'CO') then
+           if (id_co_emis_cmip2 > 0) then
+             used = send_data(id_co_emis_cmip2,emisz(:,:,n)*1.0e04*0.028/AVOGNO,Time, &
+                                                 is_in=is,js_in=js)
+           endif
+         endif
+         if (tracnam(n) == 'SO2') then
+           if (id_so2_emis_cmip2 > 0) then
+             used = send_data(id_so2_emis_cmip2,emisz(:,:,n)*1.0e04*0.064/AVOGNO,Time, &
+                                                 is_in=is,js_in=js)
+           endif
+         endif
+         if (tracnam(n) == 'NH3') then
+           if (id_nh3_emis_cmip2 > 0) then
+             used = send_data(id_nh3_emis_cmip2,emisz(:,:,n)*1.0e04*0.017/AVOGNO,Time, &
+                                                  is_in=is,js_in=js)
+           endif
+         endif
    end do
 
 !-----------------------------------------------------------------------
@@ -1691,12 +1776,31 @@ function tropchem_driver_init( r, mask, axes, Time, &
 !-----------------------------------------------------------------------
 !     ... Register diagnostic fields for species tendencies
 !-----------------------------------------------------------------------
+   id_co_emis_cmip =     &
+        register_diag_field( module_name, 'co_emis_cmip', axes(1:2), &
+                             Time, 'co_emis_cmip', 'kg/m2/s')
+   id_no_emis_cmip =     &
+        register_diag_field( module_name, 'no_emis_cmip', axes(1:2), &
+                            Time, 'no_emis_cmip', 'kg/m2/s')  
    id_so2_emis_cmip =     &
         register_diag_field( module_name, 'so2_emis_cmip', axes(1:2), &
                              Time, 'so2_emis_cmip', 'kg/m2/s')
    id_nh3_emis_cmip =     &
         register_diag_field( module_name, 'nh3_emis_cmip', axes(1:2), &
                             Time, 'nh3_emis_cmip', 'kg/m2/s')  
+
+   id_co_emis_cmip2 =     &
+        register_diag_field( module_name, 'co_emis_cmip2', axes(1:2), &
+                             Time, 'co_emis_cmip2', 'kg/m2/s')
+   id_no_emis_cmip2 =     &
+        register_diag_field( module_name, 'no_emis_cmip2', axes(1:2), &
+                            Time, 'no_emis_cmip2', 'kg/m2/s')  
+   id_so2_emis_cmip2 =     &
+        register_diag_field( module_name, 'so2_emis_cmip2', axes(1:2), &
+                             Time, 'so2_emis_cmip2', 'kg/m2/s')
+   id_nh3_emis_cmip2 =     &
+        register_diag_field( module_name, 'nh3_emis_cmip2', axes(1:2), &
+                            Time, 'nh3_emis_cmip2', 'kg/m2/s')  
 
    do i=1,pcnstm1
       id_chem_tend(i) = register_diag_field( module_name, trim(tracnam(i))//'_chem_dt', axes(1:3), &

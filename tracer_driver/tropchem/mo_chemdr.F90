@@ -9,7 +9,7 @@
 !     save
 
 character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 17.0 2009/07/21 02:59:39 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201004 $'
+character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
 logical                       :: module_is_initialized = .false.
 
       contains

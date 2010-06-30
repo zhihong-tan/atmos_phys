@@ -50,7 +50,9 @@ integer :: nomphilic=0
 !--- identification numbers for  diagnostic fields and axes ----
 integer :: id_bcphob_emis, id_bcphil_emis, id_omphob_emis, id_omphil_emis
 integer :: id_om_emis_col, id_bc_emis_col
+integer :: id_om_emis_colv2, id_bc_emis_colv2
 integer :: id_bcphob_sink, id_omphob_sink
+integer :: id_emisbb, id_omemisbb_col
 integer :: id_bcemisbf, id_bcemisbb, id_bcemissh, id_bcemisff, id_bcemisav
 integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg, id_omemisocean
 !----------------------------------------------------------------------
@@ -265,8 +267,8 @@ logical :: module_is_initialized = .FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 18.0 2010/03/02 23:33:58 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201004 $'
+character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 17.0.2.1.2.1.6.1.2.1.6.1.2.1 2010/05/14 18:38:20 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201006 $'
 !-----------------------------------------------------------------------
 
 type(time_type)                        :: bcff_time
@@ -333,8 +335,7 @@ real, dimension(nlevel_fire_GEIA) :: &
       alt_fire_max_GEIA=(/300.,1500./)
 real :: ze1 = 100.
 real :: ze2 = 300.
-integer        :: i, j,l, kb,id,jd,kd,lat1,k
-integer        :: yr, mo, dy, hr, mn, sc, dum, mo_yr, dayspmn
+integer        :: i, j,l, id,jd,kd,k
 REAL,PARAMETER :: frac_bc_phobic = 0.8
 REAL,PARAMETER :: frac_bc_philic = 0.2
 REAL,PARAMETER :: frac_om_phobic = 0.5
@@ -348,6 +349,7 @@ real, dimension(size(omphob,1),size(omphob,2)) :: omemisff_l1, omemisff_l2
 real, dimension(size(bcphob,1),size(bcphob,2),6) :: bcemisbb
 real, dimension(size(omphob,1),size(omphob,2),6) :: omemisbb
 
+real,dimension(size(bcphob,1),size(bcphob,2)) ::  emisob, omemisob_2d
 real,dimension(size(bcphob,1),size(bcphob,2),size(bcphob,3)) ::&
    bcphob_emis, bcphil_emis, bcphob_sink, bcemisob, bcemisff, bcemisav
 real,dimension(size(omphob,1),size(omphob,2),size(omphob,3)) ::&
@@ -376,6 +378,8 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
     bcemisff(:,:,:)  = 0.0
     bcemisbb(:,:,:)  = 0.0
     bcemisob(:,:,:)  = 0.0
+    emisob(:,:) = 0.
+    omemisob_2d(:,:) = 0.
     bcemisbf(:,:)    = 0.0
     bcemissh(:,:)    = 0.0
     bcemisav(:,:,:)  = 0.0
@@ -654,6 +658,11 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
         omphob_emis(i,j,:)= omphob_emis(i,j,:) + omemisff(i,j,:) + &
            omemisob(i,j,:)
 
+        do l=1,kd
+          emisob(i,j) = emisob(i,j) + bcemisob(i,j,l) + omemisob(i,j,l)
+          omemisob_2d(i,j) = omemisob_2d(i,j) + omemisob(i,j,l)
+        end do
+
         bcphil_emis(i,j,:) = bcphob_emis(i,j,:) * frac_bc_philic/pwt(i,j,:)
         omphil_emis(i,j,:) = omphob_emis(i,j,:) * frac_om_philic/pwt(i,j,:)
         bcphob_emis(i,j,:) = bcphob_emis(i,j,:) * frac_bc_phobic/pwt(i,j,:)
@@ -701,30 +710,66 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
       omphob_dt = omphob_emis - omphob_sink
       omphil_dt = omphil_emis + omphob_sink
 
-! column emissions for bc and om
-
-      bc_emis = 0.
-      om_emis = 0.
-      do k=1,kd
-        bc_emis(is:ie,js:je) = bc_emis(is:ie,js:je) +  &
-             bcphob_emis(is:ie,js:je,k) + bcphil_emis(is:ie,js:je,k)
-        om_emis(is:ie,js:je) = om_emis(is:ie,js:je) +  &
-            omphob_emis(is:ie,js:je,k) + omphil_emis(is:ie,js:je,k)
-      end do
+!-----------------------------------------------------------------
 
 
 !
 ! Send registered results to diag manager
 !
       if (id_bc_emis_col > 0) then
+! column emissions for bc and om
+
+        bc_emis = 0.
+        do k=1,kd
+          bc_emis(is:ie,js:je) = bc_emis(is:ie,js:je) +  &
+               bcphob_emis(is:ie,js:je,k) + bcphil_emis(is:ie,js:je,k)
+        end do
+
         used = send_data ( id_bc_emis_col, bc_emis, model_time, &
               is_in=is,js_in=js)
       endif
  
       if (id_om_emis_col > 0) then
+! column emissions for bc and om
+
+        om_emis = 0.
+        do k=1,kd
+          om_emis(is:ie,js:je) = om_emis(is:ie,js:je) +  &
+              omphob_emis(is:ie,js:je,k) + omphil_emis(is:ie,js:je,k)
+        end do
+
         used = send_data ( id_om_emis_col, om_emis, model_time, &
               is_in=is,js_in=js)
       endif
+
+!
+! Send registered results to diag manager
+!
+      if (id_bc_emis_colv2 > 0) then
+! column emissions for bc (corrected cmip units)
+
+        bc_emis = 0.
+        do k=1,kd
+          bc_emis(is:ie,js:je) = bc_emis(is:ie,js:je) + pwt(is:ie,js:je,k)*&
+               (bcphob_emis(is:ie,js:je,k) + bcphil_emis(is:ie,js:je,k))
+        end do
+        used = send_data ( id_bc_emis_colv2, bc_emis, model_time, &
+              is_in=is,js_in=js)
+      endif
+ 
+      if (id_om_emis_colv2 > 0) then
+! column emissions for om (corrected cmip units)
+
+        om_emis = 0.
+        do k=1,kd
+          om_emis(is:ie,js:je) = om_emis(is:ie,js:je) + pwt(is:ie,js:je,k)* &
+              (omphob_emis(is:ie,js:je,k) + omphil_emis(is:ie,js:je,k))
+        end do
+        used = send_data ( id_om_emis_colv2, om_emis, model_time, &
+              is_in=is,js_in=js)
+      endif
+
+!-----------------------------------------------------------------
 
       if (id_bcphob_emis > 0) then
         used = send_data ( id_bcphob_emis, bcphob_emis, model_time, &
@@ -752,6 +797,14 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
       endif
       if (id_bcemisbf > 0) then
         used = send_data ( id_bcemisbf, bcemisbf, model_time, &
+              is_in=is,js_in=js)
+      endif
+      if (id_emisbb > 0) then
+        used = send_data ( id_emisbb, emisob, model_time, &
+              is_in=is,js_in=js)
+      endif
+      if (id_omemisbb_col > 0) then
+        used = send_data ( id_omemisbb_col, omemisob_2d, model_time, &
               is_in=is,js_in=js)
       endif
       if (id_bcemisbb > 0) then
@@ -934,6 +987,14 @@ integer ::  unit, ierr, io, logunit
                     'om_emis_col', axes(1:2),Time,          &
                     'total OM column emission rate', 'kg/m2/sec' )
 
+     id_bc_emis_colv2 = register_diag_field ( mod_name,           &
+                    'bc_emis_colv2', axes(1:2),Time,          &
+                    'total BC column emission rate', 'kg/m2/sec' )
+
+     id_om_emis_colv2 = register_diag_field ( mod_name,           &
+                    'om_emis_colv2', axes(1:2),Time,          &
+                    'total OM column emission rate', 'kg/m2/sec' )
+
      id_bcphob_sink = register_diag_field ( mod_name,           &
                     'bcphob_sink', axes(1:3),Time,          &
                     'BC phobic sink rate', 'kg/m2/sec' )
@@ -945,6 +1006,14 @@ integer ::  unit, ierr, io, logunit
      id_bcemisbf    = register_diag_field ( mod_name,           &
                     'bcemisbf', axes(1:2),Time,                 &
                     'BC biofuel emission', 'kg/m2/sec' )
+
+     id_emisbb    = register_diag_field ( mod_name,           &
+                    'emisbb', axes(1:2),Time,                 &
+                    'column BC + OM open biomass burning emission', 'kg/m2/sec' )
+
+     id_omemisbb_col    = register_diag_field ( mod_name,           &
+                    'omemisbb_col', axes(1:2),Time,                 &
+                    'column OM open biomass burning emission', 'kg/m2/sec' )
 
      id_bcemisbb    = register_diag_field ( mod_name,           &
                     'bcemisbb', axes(1:3),Time,                 &

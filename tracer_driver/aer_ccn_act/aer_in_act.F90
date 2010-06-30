@@ -34,7 +34,7 @@ real, dimension(upDIM) :: up = (/0.1,0.05,0.01,0.005,0.001/)
 real, dimension(tpDIM,msDIM,upDIM) :: crystal2
 
 character(len=128) :: version = '$Id: aer_in_act.F90,v 18.0 2010/03/02 23:34:32 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201004 $'
+character(len=128) :: tagname = '$Name: riga_201006 $'
 logical :: module_is_initialized  = .false.
 
 contains
