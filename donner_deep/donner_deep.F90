@@ -61,8 +61,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 18.0 2010/03/02 23:30:03 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201004 $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 17.0.2.1.2.1.2.1 2009/11/28 17:41:22 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201006 $'
 
 
 !--------------------------------------------------------------------
@@ -1099,7 +1099,7 @@ subroutine donner_deep (is, ie, js, je, dt, temp, mixing_ratio, pfull, &
                         meso_liq_size, meso_ice_amt, meso_ice_size,  &
                         meso_droplet_number, &
                         nsum, precip, delta_temp, delta_vapor, detf, &
-                        uceml_inter, mtot, mfluxup, &
+                        uceml_inter, mtot, mfluxup, mhalf_3d, &
                         donner_humidity_area,    &
                         donner_humidity_factor, qtrtnd, donner_wetdep,&
                         lheat_precip, vert_motion,        &
@@ -1167,6 +1167,7 @@ real, dimension(:,:),         intent(out)   :: precip, &
 real, dimension(:,:,:),       intent(out)   :: delta_temp, delta_vapor,&
                                                detf, uceml_inter, &
                                                mtot, mfluxup, &
+                                               mhalf_3d, &
                                                donner_humidity_area,&
                                                donner_humidity_factor, &
                                                liquid_precip, &
@@ -1490,7 +1491,7 @@ real, dimension(:,:,:),       intent(out),               &
             total_precip, temperature_forcing, moisture_forcing,    &
             parcel_rise, delta_ql_arg, delta_qi_arg, delta_qa_arg,   &
             qtrtnd,         &
-            calc_conv_on_this_step, ermesg, error, Initialized, Col_diag,   &
+            calc_conv_on_this_step, mhalf_3d, ermesg, error, Initialized, Col_diag,   &
             Don_rad, Don_conv, Don_cape, Don_cem, Don_save, &!miz
             sd, Uw_p, ac, cp, ct,  Don_budgets)
 

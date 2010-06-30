@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: cosp_lidar.f90,v 18.0 2010/03/02 23:29:01 fms Exp $
-! $Name: riga_201004 $
+! $Id: cosp_lidar.f90,v 1.1.2.1.4.1.6.1 2010/03/04 08:23:34 rsh Exp $
+! $Name: riga_201006 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -67,7 +67,6 @@ SUBROUTINE COSP_LIDAR(gbx,sgx,sghydro,y)
   
   presf(:,1:sgx%Nlevels) = gbx%ph
   presf(:,sgx%Nlevels + 1) = 0.0
-!   presf(:,sgx%Nlevels + 1) = gbx%p(:,sgx%Nlevels) - (presf(:,sgx%Nlevels) - gbx%p(:,sgx%Nlevels)) 
   lsca = gbx%tca-gbx%cca
   do i=1,sgx%Ncolumns
       ! Temporary arrays for simulator call

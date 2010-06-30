@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: isccp_cloud_types.f,v 18.0 2010/03/02 23:29:12 fms Exp $
-! $Name: riga_201004 $
+! $Id: isccp_cloud_types.f,v 1.1.2.1.4.1 2009/08/10 10:45:51 rsh Exp $
+! $Name: riga_201006 $
 
       SUBROUTINE ISCCP_CLOUD_TYPES(
      &     debug,
@@ -43,7 +43,7 @@
      &     passing_in_column_data
      &)
 
-!$Id: isccp_cloud_types.f,v 18.0 2010/03/02 23:29:12 fms Exp $
+!$Id: isccp_cloud_types.f,v 1.1.2.1.4.1 2009/08/10 10:45:51 rsh Exp $
 
 ! *****************************COPYRIGHT****************************
 ! (c) British Crown Copyright 2009, the Met Office.

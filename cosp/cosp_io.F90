@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: cosp_io.f90,v 18.0 2010/03/02 23:28:59 fms Exp $
-! $Name: riga_201004 $
+! $Id: cosp_io.F90,v 1.1.2.1 2010/03/04 08:04:37 rsh Exp $
+! $Name: riga_201006 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -36,16 +36,20 @@
 !                      the label of layered cloud fractions was wrong -> corrected
 !                      (before: low was actually mid, mid was high, high was total,
 !                      total was low)
+! Sep 2009 - A. Bodas-Salcedo - CMIP5 variable names implemented
 !
  
+#include "cosp_defs.h"
 MODULE MOD_COSP_IO
   USE MOD_COSP_CONSTANTS
   USE MOD_COSP_TYPES
 ! USE cmor_users_functions
   USE netcdf
+  use MOD_COSP_Modis_Simulator
 
   use fms_mod, only: open_namelist_file, open_file, close_file,   &
                      file_exist, mpp_pe, mpp_root_pe,   &
+                     error_mesg, FATAL, &
                      check_nml_error, write_version_number, stdlog
   
   IMPLICIT NONE
@@ -53,8 +57,8 @@ MODULE MOD_COSP_IO
   
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------     
-character(len=128)  :: versiona =  '$Id: cosp_io.f90,v 18.0 2010/03/02 23:28:59 fms Exp $'
-character(len=128)  :: tagnamea =  '$Name: riga_201004 $'
+character(len=128)  :: versiona =  '$Id: cosp_io.F90,v 1.1.2.1 2010/03/04 08:04:37 rsh Exp $'
+character(len=128)  :: tagnamea =  '$Name: riga_201006 $'
 
   ! Types to be used as arrays of pointers
   TYPE var1d
@@ -178,8 +182,9 @@ CONTAINS
         enddo
       enddo
      else
-       print *, ' -- '//trim(proname)//': geomode not supported, ',geomode
-       stop
+       call error_mesg ('cosp_io:map_point_to_ll',  &
+                    ' -- '//trim(proname)//': geomode not supported, ', &
+                                                            FATAL)
      endif
 
      if (present(x1).and.present(y2)) then
@@ -187,8 +192,9 @@ CONTAINS
         Mi = size(y2,1)
         Mj = size(y2,2)
         if (Mi*Mj /= Ni) then
-          print *, ' -- '//trim(proname)//': Nlon*Nlat /= Npoints (opt 1)'
-          stop
+          call error_mesg ('cosp_io:map_point_to_ll',  &
+           ' -- '//trim(proname)//': Nlon*Nlat /= Npoints (opt 1)', &
+                                                            FATAL)
         endif
         do i=1,Npoints
           y2(px(i),py(i)) = x1(i)
@@ -200,12 +206,14 @@ CONTAINS
         Mj = size(y3,2)
         Mk = size(y3,3)
         if (Mi*Mj /= Ni) then
-          print *, ' -- '//trim(proname)//': Nlon*Nlat /= Npoints (opt 2)'
-          stop
+          call error_mesg ('cosp_io:map_point_to_ll',  &
+           ' -- '//trim(proname)//': Nlon*Nlat /= Npoints (opt 2)', &
+                                                            FATAL)
         endif
         if (Nj /= Mk) then
-          print *, ' -- '//trim(proname)//': Nj /= Mk (opt 2)'
-          stop
+          call error_mesg ('cosp_io:map_point_to_ll',  &
+           ' -- '//trim(proname)//': Nj /= Mk (opt 2)', &
+                                                            FATAL)
         endif
         do k=1,Mk
          do i=1,Npoints
@@ -221,16 +229,20 @@ CONTAINS
         Mk = size(y4,3)
         Ml = size(y4,4)
         if (Mi*Mj /= Ni) then
-          print *, ' -- '//trim(proname)//': Nlon*Nlat /= Npoints (opt 3)'
-          stop
+          call error_mesg ('cosp_io:map_point_to_ll',  &
+           ' -- '//trim(proname)//': Nlon*Nlat /= Npoints (opt 3)', &
+                                                            FATAL)
+
         endif
         if (Nj /= Mk) then
-          print *, ' -- '//trim(proname)//': Nj /= Mk (opt 3)'
-          stop
+          call error_mesg ('cosp_io:map_point_to_ll',  &
+           ' -- '//trim(proname)//': Nj /= Mk (opt 3)', &
+                                                            FATAL)
         endif
         if (Nk /= Ml) then
-          print *, ' -- '//trim(proname)//': Nk /= Ml (opt 3)'
-          stop
+          call error_mesg ('cosp_io:map_point_to_ll',  &
+                   ' -- '//trim(proname)//': Nk /= Ml (opt 3)', &
+                                                            FATAL)
         endif
         do l=1,Ml
          do k=1,Mk
@@ -250,20 +262,24 @@ CONTAINS
         Ml = size(y5,4)
         Mm = size(y5,5)
         if (Mi*Mj /= Ni) then
-          print *, ' -- '//trim(proname)//': Nlon*Nlat /= Npoints (opt 4)'
-          stop
+          call error_mesg ('cosp_io:map_point_to_ll',  &
+                 ' -- '//trim(proname)//': Nlon*Nlat /= Npoints (opt 4)', &
+                                                            FATAL)
         endif
         if (Nj /= Mk) then
-          print *, ' -- '//trim(proname)//': Nj /= Mk (opt 4)'
-          stop
+          call error_mesg ('cosp_io:map_point_to_ll',  &
+                   ' -- '//trim(proname)//': Nj /= Mk (opt 4)', &
+                                                            FATAL)
         endif
         if (Nk /= Ml) then
-          print *, ' -- '//trim(proname)//': Nk /= Ml (opt 4)'
-          stop
+          call error_mesg ('cosp_io:map_point_to_ll',  &
+                   ' -- '//trim(proname)//': Nk /= Ml (opt 4)', &
+                                                            FATAL)
         endif
         if (Nl /= Mm) then
-          print *, ' -- '//trim(proname)//': Nl /= Mm (opt 4)'
-          stop
+          call error_mesg ('cosp_io:map_point_to_ll',  &
+                   ' -- '//trim(proname)//': Nl /= Mm (opt 4)', &
+                                                            FATAL)
         endif
         do m=1,Mm
          do l=1,Ml
@@ -275,8 +291,9 @@ CONTAINS
          enddo
         enddo
      else
-        print *, ' -- '//trim(proname)//': wrong option'
-        stop
+        call error_mesg ('cosp_io:map_point_to_ll',  &
+                 ' -- '//trim(proname)//': wrong option', &
+                                                            FATAL)
      endif
 
      
@@ -302,8 +319,9 @@ CONTAINS
      px=0
      py=0
      if (Nx*Ny < Np) then
-       print *, ' -- '//trim(proname)//': Nx*Ny < Np'
-       stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+                ' -- '//trim(proname)//': Nx*Ny < Np', &
+                                                            FATAL)
      endif
      do j=1,Ny
        do i=1,Nx
@@ -318,8 +336,9 @@ CONTAINS
         Nj = size(x2,2)
         Mi = size(y1,1)
         if (Ni*Nj < Mi) then
-          print *, ' -- '//trim(proname)//': Nlon*Nlat < Npoints (opt 1)'
-          stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+                ' -- '//trim(proname)//': Nlon*Nlat < Npoints (opt 1)', &
+                                                            FATAL)
         endif
         do j=1,Np
           y1(j) = x2(px(j),py(j))
@@ -331,12 +350,14 @@ CONTAINS
         Mi = size(y2,1)
         Mj = size(y2,2)
         if (Ni*Nj < Mi) then
-          print *, ' -- '//trim(proname)//': Nlon*Nlat < Npoints (opt 2)'
-          stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+              ' -- '//trim(proname)//': Nlon*Nlat < Npoints (opt 2)', &
+                                                            FATAL)
         endif
         if (Nk /= Mj) then
-          print *, ' -- '//trim(proname)//': Nk /= Mj (opt 2)'
-          stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+                   ' -- '//trim(proname)//': Nk /= Mj (opt 2)', &
+                                                            FATAL)
         endif
         do k=1,Nk
           do j=1,Np
@@ -352,16 +373,19 @@ CONTAINS
         Mj = size(y3,2)
         Mk = size(y3,3)
         if (Ni*Nj < Mi) then
-          print *, ' -- '//trim(proname)//': Nlon*Nlat < Npoints (opt 3)'
-          stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+              ' -- '//trim(proname)//': Nlon*Nlat < Npoints (opt 3)', &
+                                                            FATAL)
         endif
         if (Nk /= Mj) then
-          print *, ' -- '//trim(proname)//': Nk /= Mj (opt 3)'
-          stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+                   ' -- '//trim(proname)//': Nk /= Mj (opt 3)', &
+                                                            FATAL)
         endif
         if (Nl /= Mk) then
-          print *, ' -- '//trim(proname)//': Nl /= Mk (opt 3)'
-          stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+                   ' -- '//trim(proname)//': Nl /= Mk (opt 3)', &
+                                                            FATAL)
         endif
         do l=1,Nl
          do k=1,Nk
@@ -381,20 +405,24 @@ CONTAINS
         Mk = size(y4,3)
         Ml = size(y4,4)
         if (Ni*Nj < Mi) then
-          print *, ' -- '//trim(proname)//': Nlon*Nlat < Npoints (opt 4)'
-          stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+               ' -- '//trim(proname)//': Nlon*Nlat < Npoints (opt 4)', &
+                                                            FATAL)
         endif
         if (Nk /= Mj) then
-          print *, ' -- '//trim(proname)//': Nk /= Mj (opt 4)'
-          stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+                   ' -- '//trim(proname)//': Nk /= Mj (opt 4)', &
+                                                            FATAL)
         endif
         if (Nl /= Mk) then
-          print *, ' -- '//trim(proname)//': Nl /= Mk (opt 4)'
-          stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+                   ' -- '//trim(proname)//': Nl /= Mk (opt 4)', &
+                                                            FATAL)
         endif
         if (Nm /= Ml) then
-          print *, ' -- '//trim(proname)//': Nm /= Ml (opt 4)'
-          stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+                   ' -- '//trim(proname)//': Nm /= Ml (opt 4)', &
+                                                            FATAL)
         endif
         do m=1,Nm
          do l=1,Nl
@@ -406,8 +434,9 @@ CONTAINS
          enddo
         enddo
      else
-        print *, ' -- '//trim(proname)//': wrong option'
-        stop
+        call error_mesg ('cosp_io:map_ll_to_point',  &
+                 ' -- '//trim(proname)//': wrong option', &
+                                                            FATAL)
      endif
   
   END SUBROUTINE MAP_LL_TO_POINT
@@ -462,17 +491,30 @@ CONTAINS
     Llon  =.false.
     Lpoint=.false.
     errst = nf90_inquire(ncid, ndims, nvars, ngatts, recdim)
+    if (errst /= 0) then
+        call error_mesg ('cosp_io:nc_read_input_file',  &
+                ' --- NC_READ_INPUT_FILE: error in  nf90_inquire', &
+                                                            FATAL)
+    endif
     do i = 1,ndims
        errst = nf90_Inquire_Dimension(ncid,i,name=dimname(i),len=dimsize(i))
+       if (errst /= 0) then
+        print *, 'nf90 error, i=', i
+        call error_mesg ('cosp_io:nc_read_input_file',  &
+                   ' --- NC_READ_INPUT_FILE: error in nf90_Inquire_Dimension ',  &
+                                                            FATAL)
+       endif
        if ((trim(dimname(i)).eq.'level').and.(Nlevels > dimsize(i))) then
-         print *,' --- NC_READ_INPUT_FILE: number of levels selected is greater than in input file '//trim(fname)
-         stop
+        call error_mesg ('cosp_io:nc_read_input_file',  &
+                 ' --- NC_READ_INPUT_FILE: number of levels selected is greater than in input file '//trim(fname), &
+                                                            FATAL)
        endif
        if (trim(dimname(i)).eq.'point') then
          Lpoint = .true.
          if (Npnts > dimsize(i)) then
-           print *,' --- NC_READ_INPUT_FILE: number of points selected is greater than in input file '//trim(fname)
-           stop
+        call error_mesg ('cosp_io:nc_read_input_file',  &
+                   ' --- NC_READ_INPUT_FILE: number of points selected is greater than in input file '//trim(fname), &
+                                                            FATAL)
          endif
        endif
        if (trim(dimname(i)).eq.'lon') then
@@ -496,8 +538,9 @@ CONTAINS
         Nlat = Npoints
         mode = 1
     else
-        print *, ' -- NC_READ_INPUT_FILE: '//trim(fname)//' file contains wrong dimensions'
-        stop
+        call error_mesg ('cosp_io:nc_read_input_file',  &
+                 ' -- NC_READ_INPUT_FILE: '//trim(fname)//' file contains wrong dimensions', &
+                                                            FATAL)
     endif
     errst = nf90_inq_varid(ncid, 'lon', vid)
     errst = nf90_get_var(ncid, vid, lon, start = (/1/), count = (/Nlon/))
@@ -508,7 +551,14 @@ CONTAINS
     do vid = 1,nvars
        vdimid=0
        errst = nf90_Inquire_Variable(ncid, vid, name=vname, ndims=vrank, dimids=vdimid)
+       if (errst /= 0) then
+        print *, 'vid, errst = ', vid, errst
+        call error_mesg ('cosp_io:nc_read_input_file',  &
+                 ' --- NC_READ_INPUT_FILE: error reading ', &
+                                                            FATAL)
+       endif
        ! Read in into temporary array of correct shape
+       print *, 'Reading '//trim(vname)//' ...'
        if (vrank == 1) then
           Na = dimsize(vdimid(1))
           allocate(x1(Na))
@@ -532,8 +582,9 @@ CONTAINS
             else if ((Na == Nlat).and.(Nb == Nlon)) then
               mode = 3
             else
-              print *, '  -- NC_READ_INPUT_FILE: wrong mode for variable '//trim(vname)
-              stop
+        call error_mesg ('cosp_io:nc_read_input_file',  &
+                       '  -- NC_READ_INPUT_FILE: wrong mode for variable '//trim(vname), &
+                                                            FATAL)
             endif
           endif
        endif
@@ -555,7 +606,6 @@ CONTAINS
           errst = nf90_get_var(ncid, vid, x5, start=(/1,1,1,1,1/), count=(/Na,Nb,Nc,Nd,Ne/))
        endif
        ! Map to the right input argument
-       print *, 'Reading '//trim(vname)//' ...'
        select case (trim(vname))
        case ('pfull')
          if (Lpoint) then
@@ -605,12 +655,14 @@ CONTAINS
          else
            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=tca)
          endif
+         tca = tca
        case ('cca')
          if (Lpoint) then
            cca(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
          else
            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=cca)
          endif
+         cca = cca
        case ('mr_lsliq')
          if (Lpoint) then
            mr_lsliq(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
@@ -732,6 +784,184 @@ CONTAINS
            call map_ll_to_point(Na,Nb,Npoints,x2=x2,y1=v_wind)
          endif
        end select
+!        select case (trim(vname))
+!        case ('pfull')
+!          if (Lpoint) then
+!            p(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=p)
+!          endif
+!        case ('phalf')
+!          if (Lpoint) then
+!            ph(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=ph)
+!          endif
+!        case ('zfull')
+!          if (Lpoint) then
+!            z(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=z)
+!          endif
+!        case ('zhalf')
+!          if (Lpoint) then
+!            zh(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=zh)
+!          endif
+!        case ('ta')
+!          if (Lpoint) then
+!            T(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=T)
+!          endif
+!        case ('hus')
+!          if (Lpoint) then
+!            qv(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=qv)
+!          endif
+!        case ('hur')
+!          if (Lpoint) then
+!            rh(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=rh)
+!          endif
+!        case ('cl')
+!          if (Lpoint) then
+!            tca(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=tca)
+!          endif
+!          tca = tca/100.0
+!        case ('clc')
+!          if (Lpoint) then
+!            cca(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=cca)
+!          endif
+!          cca = cca/100.0
+!        case ('clws')
+!          if (Lpoint) then
+!            mr_lsliq(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=mr_lsliq)
+!          endif
+!        case ('clis')
+!          if (Lpoint) then
+!            mr_lsice(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=mr_lsice)
+!          endif
+!        case ('clwc')
+!          if (Lpoint) then
+!            mr_ccliq(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=mr_ccliq)
+!          endif
+!        case ('clic')
+!          if (Lpoint) then
+!            mr_ccice(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=mr_ccice)
+!          endif
+!        case ('prsprof')
+!          if (Lpoint) then
+!            fl_lsrain(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=fl_lsrain)
+!          endif
+!        case ('prsns')
+!          if (Lpoint) then
+!            fl_lssnow(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=fl_lssnow)
+!          endif
+!        case ('grplprof')
+!          if (Lpoint) then
+!            fl_lsgrpl(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=fl_lsgrpl)
+!          endif
+!        case ('prcprof')
+!          if (Lpoint) then
+!            fl_ccrain(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=fl_ccrain)
+!          endif
+!        case ('prsnc')
+!          if (Lpoint) then
+!            fl_ccsnow(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=fl_ccsnow)
+!          endif
+!        case ('dtaus')
+!          if (Lpoint) then
+!            dtau_s(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=dtau_s)
+!          endif
+!        case ('dtauc')
+!          if (Lpoint) then
+!            dtau_c(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=dtau_c)
+!          endif
+!        case ('dems')
+!          if (Lpoint) then
+!            dem_s(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=dem_s)
+!          endif
+!        case ('demc')
+!          if (Lpoint) then
+!            dem_c(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=dem_c)
+!          endif
+!        case ('reff')
+!          if (Lpoint) then
+!            Reff(1:Npoints,:,:) = x3(1:Npoints,1:Nlevels,:)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x4=x4,y3=Reff)
+!          endif
+!        case ('ts')
+!          if (Lpoint) then
+!            skt(1:Npoints) = x1(1:Npoints)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x2=x2,y1=skt)
+!          endif
+!        case ('landmask')
+!          if (Lpoint) then
+!            landmask(1:Npoints) = x1(1:Npoints)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x2=x2,y1=landmask)
+!          endif
+!        case ('orog')
+!          if (Lpoint) then
+!            sfc_height(1:Npoints) = x1(1:Npoints)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x2=x2,y1=sfc_height)
+!          endif
+!        case ('mrozone')
+!          if (Lpoint) then
+!            mr_ozone(1:Npoints,:) = x2(1:Npoints,1:Nlevels)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x3=x3,y2=mr_ozone)
+!          endif
+!        case ('uas')
+!          if (Lpoint) then
+!            u_wind(1:Npoints) = x1(1:Npoints)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x2=x2,y1=u_wind)
+!          endif
+!        case ('vas')
+!          if (Lpoint) then
+!            v_wind(1:Npoints) = x1(1:Npoints)
+!          else
+!            call map_ll_to_point(Na,Nb,Npoints,x2=x2,y1=v_wind)
+!          endif
+!        end select
        ! Free memory
        if (vrank == 1) deallocate(x1)
        if (vrank == 2) deallocate(x2)
@@ -741,7 +971,7 @@ CONTAINS
     enddo
        
     ! SFC emissivity
-    errst = nf90_inq_varid(ncid, 'emsfc_lw', vid)
+    errst = nf90_inq_varid(ncid, 'emsfclw', vid)
     errst = nf90_get_var(ncid, vid, emsfc_lw)
     
     ! Fill in the lat/lon vectors with the right values for 2D modes
@@ -788,18 +1018,24 @@ CONTAINS
   type(cosp_config),intent(out) :: cfg
   ! Local variables
   integer :: i
-  logical ::   Lradar_sim,Llidar_sim,Lisccp_sim,Lmisr_sim,Lrttov_sim, &
-             Lalbisccp,Latb532,Lboxptopisccp,Lboxtauisccp,Lcfad_dbze94, &
-             Lcfad_lidarsr532,Lclcalipso2,Lclcalipso,Lclhcalipso,Lclisccp2,Lcllcalipso, &
-             Lclmcalipso,Lcltcalipso,Lcltlidarradar,Lctpisccp,Ldbze94,Ltauisccp,Ltclisccp, &
-             Llongitude,Llatitude,Lparasol_refl,LclMISR,Lmeantbisccp,Lmeantbclrisccp, &
-             Lfrac_out,Lbeta_mol532,Ltbrttov
-  namelist/COSP_OUTPUT/Lradar_sim,Llidar_sim,Lisccp_sim,Lmisr_sim,Lrttov_sim, &
-             Lalbisccp,Latb532,Lboxptopisccp,Lboxtauisccp,Lcfad_dbze94, &
-             Lcfad_lidarsr532,Lclcalipso2,Lclcalipso,Lclhcalipso,Lclisccp2, &
-             Lcllcalipso,Lclmcalipso,Lcltcalipso,Lcltlidarradar,Lctpisccp,Ldbze94,Ltauisccp, &
-             Ltclisccp,Llongitude,Llatitude,Lparasol_refl,LclMISR,Lmeantbisccp,Lmeantbclrisccp, &
-             Lfrac_out,Lbeta_mol532,Ltbrttov
+  logical :: Lradar_sim,Llidar_sim,Lisccp_sim,Lmodis_sim,Lmisr_sim,Lrttov_sim, &
+             Lalbisccp,Latb532,Lboxptopisccp,Lboxtauisccp,Lcfaddbze94, &
+             LcfadLidarsr532,Lclcalipso2,Lclcalipso,Lclhcalipso,Lclisccp,Lcllcalipso, &
+             Lclmcalipso,Lcltcalipso,Lcltlidarradar,Lpctisccp,Ldbze94,Ltauisccp,Lcltisccp, &
+             Llongitude,Llatitude,LparasolRefl,LclMISR,Lmeantbisccp,Lmeantbclrisccp, &
+             Lfracout,LlidarBetaMol532,Ltbrttov, &
+             Lcltmodis,Lclwmodis,Lclimodis,Lclhmodis,Lclmmodis,Lcllmodis,Ltautmodis,Ltauwmodis,Ltauimodis,Ltautlogmodis, &
+             Ltauwlogmodis,Ltauilogmodis,Lreffclwmodis,Lreffclimodis,Lpctmodis,Llwpmodis, &
+             Liwpmodis,Lclmodis
+  namelist/COSP_OUTPUT/Lradar_sim,Llidar_sim,Lisccp_sim,Lmodis_sim,Lmisr_sim,Lrttov_sim, &
+             Lalbisccp,Latb532,Lboxptopisccp,Lboxtauisccp,Lcfaddbze94, &
+             LcfadLidarsr532,Lclcalipso2,Lclcalipso,Lclhcalipso,Lclisccp, &
+             Lcllcalipso,Lclmcalipso,Lcltcalipso,Lcltlidarradar,Lpctisccp,Ldbze94,Ltauisccp, &
+             Lcltisccp,Llongitude,Llatitude,LparasolRefl,LclMISR,Lmeantbisccp,Lmeantbclrisccp, &
+             Lfracout,LlidarBetaMol532,Ltbrttov, &
+             Lcltmodis,Lclwmodis,Lclimodis,Lclimodis,Lclhmodis,Lclmmodis,Lcllmodis,Ltautmodis,Ltauwmodis,Ltauimodis,Ltautlogmodis, &
+             Ltauwlogmodis,Ltauilogmodis,Lreffclwmodis,Lreffclimodis,Lpctmodis,Llwpmodis, &
+             Liwpmodis,Lclmodis
 
   integer :: unit, io, ierr
   
@@ -831,14 +1067,14 @@ CONTAINS
   
   ! Deal with dependencies
   if (.not.Lradar_sim) then
-    Lcfad_dbze94   = .false.
+    Lcfaddbze94   = .false.
     Lclcalipso2    = .false.
     Lcltlidarradar = .false.
     Ldbze94        = .false.
   endif
   if (.not.Llidar_sim) then
     Latb532 = .false.
-    Lcfad_lidarsr532 = .false.
+    LcfadLidarsr532 = .false.
     Lclcalipso2      = .false.
     Lclcalipso       = .false.
     Lclhcalipso      = .false.
@@ -846,17 +1082,17 @@ CONTAINS
     Lclmcalipso      = .false.
     Lcltcalipso      = .false.
     Lcltlidarradar   = .false.
-    Lparasol_refl    = .false.
-    Lbeta_mol532     = .false.
+    LparasolRefl    = .false.
+    LlidarBetaMol532     = .false.
   endif
   if (.not.Lisccp_sim) then
     Lalbisccp       = .false.
     Lboxptopisccp   = .false.
     Lboxtauisccp    = .false.
-    Lclisccp2       = .false.
-    Lctpisccp       = .false.
+    Lclisccp        = .false.
+    Lpctisccp       = .false.
     Ltauisccp       = .false.
-    Ltclisccp       = .false.
+    Lcltisccp       = .false.
     Lmeantbisccp    = .false.
     Lmeantbclrisccp = .false.
   endif
@@ -868,8 +1104,29 @@ CONTAINS
   endif
   if ((.not.Lradar_sim).and.(.not.Llidar_sim).and. &
       (.not.Lisccp_sim).and.(.not.Lmisr_sim)) then
-    Lfrac_out = .false.
+    Lfracout = .false.
   endif
+  if (.not.Lmodis_sim) then
+    Lcltmodis=.false.
+    Lclwmodis=.false.
+    Lclimodis=.false.
+    Lclhmodis=.false.
+    Lclmmodis=.false.
+    Lcllmodis=.false.
+    Ltautmodis=.false.
+    Ltauwmodis=.false.
+    Ltauimodis=.false.
+    Ltautlogmodis=.false.
+    Ltauwlogmodis=.false.
+    Ltauilogmodis=.false.
+    Lreffclwmodis=.false.
+    Lreffclimodis=.false.
+    Lpctmodis=.false.
+    Llwpmodis=.false.
+    Liwpmodis=.false.
+    Lclmodis=.false.
+  endif
+  if (Lmodis_sim) Lisccp_sim = .true.
   
   ! Diagnostics that use Radar and Lidar
   if (((Lclcalipso2).or.(Lcltlidarradar)).and.((Lradar_sim).or.(Llidar_sim))) then
@@ -886,6 +1143,7 @@ CONTAINS
   cfg%Lradar_sim = Lradar_sim
   cfg%Llidar_sim = Llidar_sim
   cfg%Lisccp_sim = Lisccp_sim
+  cfg%Lmodis_sim = Lmodis_sim
   cfg%Lmisr_sim  = Lmisr_sim
   cfg%Lrttov_sim = Lrttov_sim
   
@@ -905,9 +1163,9 @@ CONTAINS
   i = i+1
   if (Lboxtauisccp)     cfg%out_list(i) = 'boxtauisccp'
   i = i+1
-  if (Lcfad_dbze94)     cfg%out_list(i) = 'cfad_dbze94'
+  if (Lcfaddbze94)     cfg%out_list(i) = 'cfaddbze94'
   i = i+1
-  if (Lcfad_lidarsr532) cfg%out_list(i) = 'cfad_lidarsr532'
+  if (LcfadLidarsr532) cfg%out_list(i) = 'cfadLidarsr532'
   i = i+1
   if (Lclcalipso2)      cfg%out_list(i) = 'clcalipso2'
   i = i+1
@@ -915,7 +1173,7 @@ CONTAINS
   i = i+1
   if (Lclhcalipso)      cfg%out_list(i) = 'clhcalipso'
   i = i+1
-  if (Lclisccp2)        cfg%out_list(i) = 'clisccp2'
+  if (Lclisccp)        cfg%out_list(i) = 'clisccp'
   i = i+1
   if (Lcllcalipso)      cfg%out_list(i) = 'cllcalipso'
   i = i+1
@@ -925,19 +1183,19 @@ CONTAINS
   i = i+1
   if (Lcltlidarradar)   cfg%out_list(i) = 'cltlidarradar'
   i = i+1
-  if (Lctpisccp)        cfg%out_list(i) = 'ctpisccp'
+  if (Lpctisccp)        cfg%out_list(i) = 'pctisccp'
   i = i+1
   if (Ldbze94)          cfg%out_list(i) = 'dbze94'
   i = i+1
   if (Ltauisccp)        cfg%out_list(i) = 'tauisccp'
   i = i+1
-  if (Ltclisccp)        cfg%out_list(i) = 'tclisccp'
+  if (Lcltisccp)        cfg%out_list(i) = 'cltisccp'
   i = i+1
   if (Llongitude)       cfg%out_list(i) = 'lon'
   i = i+1
   if (Llatitude)        cfg%out_list(i) = 'lat'
   i = i+1
-  if (Lparasol_refl)    cfg%out_list(i) = 'parasol_refl'
+  if (LparasolRefl)    cfg%out_list(i) = 'parasolRefl'
   i = i+1
   if (LclMISR)          cfg%out_list(i) = 'clMISR'
   i = i+1
@@ -945,46 +1203,107 @@ CONTAINS
   i = i+1
   if (Lmeantbclrisccp)  cfg%out_list(i) = 'meantbclrisccp'
   i = i+1
-  if (Lfrac_out)        cfg%out_list(i) = 'frac_out'
+  if (Lfracout)        cfg%out_list(i) = 'fracout'
   i = i+1
-  if (Lbeta_mol532)     cfg%out_list(i) = 'beta_mol532'
+  if (LlidarBetaMol532)     cfg%out_list(i) = 'lidarBbetaMol532'
   i = i+1
   if (Ltbrttov)         cfg%out_list(i) = 'tbrttov'
+  i = i+1
+  if (Lcltmodis)        cfg%out_list(i) = 'cltmodis'
+  i = i+1
+  if (Lclwmodis)        cfg%out_list(i) = 'clwmodis'
+  i = i+1
+  if (Lclimodis)        cfg%out_list(i) = 'climodis'
+  i = i+1
+  if (Lclhmodis)        cfg%out_list(i) = 'clhmodis'
+  i = i+1
+  if (Lclmmodis)        cfg%out_list(i) = 'clmmodis'
+  i = i+1
+  if (Lcllmodis)        cfg%out_list(i) = 'cllmodis'
+  i = i+1
+  if (Ltautmodis)       cfg%out_list(i) = 'tautmodis'
+  i = i+1
+  if (Ltauwmodis)       cfg%out_list(i) = 'tauwmodis'
+  i = i+1
+  if (Ltauimodis)       cfg%out_list(i) = 'tauimodis'
+  i = i+1
+  if (Ltautlogmodis)    cfg%out_list(i) = 'tautlogmodis'
+  i = i+1
+  if (Ltauwlogmodis)    cfg%out_list(i) = 'tauwlogmodis'
+  i = i+1
+  if (Ltauilogmodis)    cfg%out_list(i) = 'tauilogmodis'
+  i = i+1
+  if (Lreffclwmodis)    cfg%out_list(i) = 'reffclwmodis'
+  i = i+1
+  if (Lreffclimodis)    cfg%out_list(i) = 'reffclimodis'
+  i = i+1
+  if (Lpctmodis)        cfg%out_list(i) = 'pctmodis'
+  i = i+1
+  if (Llwpmodis)        cfg%out_list(i) = 'lwpmodis'
+  i = i+1
+  if (Liwpmodis)        cfg%out_list(i) = 'iwpmodis'
+  i = i+1
+  if (Lclmodis)         cfg%out_list(i) = 'clmodis'
 
   if (i /= N_OUT_LIST) then
-     print *, 'COSP_IO: wrong number of output diagnostics'
-     stop
+        call error_mesg ('cosp_io:read_cosp_output_nl',  &
+              'COSP_IO: wrong number of output diagnostics', &
+                                                            FATAL)
   endif
 
   ! Copy diagnostic flags to cfg structure
+  ! ISCCP simulator
   cfg%Lalbisccp = Lalbisccp
   cfg%Latb532 = Latb532
   cfg%Lboxptopisccp = Lboxptopisccp
   cfg%Lboxtauisccp = Lboxtauisccp
-  cfg%Lcfad_dbze94 = Lcfad_dbze94
-  cfg%Lcfad_lidarsr532 = Lcfad_lidarsr532
+  cfg%Lmeantbisccp = Lmeantbisccp
+  cfg%Lmeantbclrisccp = Lmeantbclrisccp
+  cfg%Lclisccp = Lclisccp
+  cfg%Lpctisccp = Lpctisccp
+  cfg%Ltauisccp = Ltauisccp
+  cfg%Lcltisccp = Lcltisccp
+  ! CloudSat simulator
+  cfg%Ldbze94 = Ldbze94
+  cfg%Lcfaddbze94 = Lcfaddbze94
+  ! CALIPSO/PARASOL simulator  
+  cfg%LcfadLidarsr532 = LcfadLidarsr532
   cfg%Lclcalipso2 = Lclcalipso2
   cfg%Lclcalipso = Lclcalipso
   cfg%Lclhcalipso = Lclhcalipso
-  cfg%Lclisccp2 = Lclisccp2
   cfg%Lcllcalipso = Lcllcalipso
   cfg%Lclmcalipso = Lclmcalipso
   cfg%Lcltcalipso = Lcltcalipso
   cfg%Lcltlidarradar = Lcltlidarradar
-  cfg%Lctpisccp = Lctpisccp
-  cfg%Ldbze94 = Ldbze94
-  cfg%Ltauisccp = Ltauisccp
-  cfg%Ltclisccp = Ltclisccp
+  cfg%LparasolRefl = LparasolRefl
+  ! MISR simulator  
+  cfg%LclMISR = LclMISR
+  ! Other
   cfg%Llongitude = Llongitude
   cfg%Llatitude = Llatitude
-  cfg%Lparasol_refl = Lparasol_refl
-  cfg%LclMISR = LclMISR
-  cfg%Lmeantbisccp = Lmeantbisccp
-  cfg%Lmeantbclrisccp = Lmeantbclrisccp
-  cfg%Lfrac_out = Lfrac_out
-  cfg%Lbeta_mol532 = Lbeta_mol532
+  cfg%Lfracout = Lfracout
+  cfg%LlidarBetaMol532 = LlidarBetaMol532
+  ! RTTOV
   cfg%Ltbrttov = Ltbrttov
-  
+  ! MODIS simulator  
+  cfg%Lcltmodis=Lcltmodis
+  cfg%Lclwmodis=Lclwmodis
+  cfg%Lclimodis=Lclimodis
+  cfg%Lclhmodis=Lclhmodis
+  cfg%Lclmmodis=Lclmmodis
+  cfg%Lcllmodis=Lcllmodis
+  cfg%Ltautmodis=Ltautmodis
+  cfg%Ltauwmodis=Ltauwmodis
+  cfg%Ltauimodis=Ltauimodis
+  cfg%Ltautlogmodis=Ltautlogmodis
+  cfg%Ltauwlogmodis=Ltauwlogmodis
+  cfg%Ltauilogmodis=Ltauilogmodis
+  cfg%Lreffclwmodis=Lreffclwmodis
+  cfg%Lreffclimodis=Lreffclimodis
+  cfg%Lpctmodis=Lpctmodis
+  cfg%Llwpmodis=Llwpmodis
+  cfg%Liwpmodis=Liwpmodis
+  cfg%Lclmodis=Lclmodis
  END SUBROUTINE READ_COSP_OUTPUT_NL
    
 END MODULE MOD_COSP_IO

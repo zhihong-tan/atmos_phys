@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: llnl_stats.f90,v 18.0 2010/03/02 23:29:17 fms Exp $
-! $Name: riga_201004 $
+! $Id: llnl_stats.f90,v 1.1.2.1.2.1.6.1 2010/03/04 08:23:49 rsh Exp $
+! $Name: riga_201006 $
 
 ! (c) 2008, Lawrence Livermore National Security Limited Liability Corporation.
 ! All rights reserved.
@@ -30,6 +30,7 @@
 ! OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 MODULE MOD_LLNL_STATS
+  USE MOD_COSP_CONSTANTS
   IMPLICIT NONE
 
 CONTAINS
@@ -69,7 +70,9 @@ FUNCTION COSP_CFAD(Npoints,Ncolumns,Nlevels,Nbins,x,xmin,xmax,bmin,bwidth)
    do j = 1, Nlevels, 1
       do k = 1, Ncolumns, 1
          do i = 1, Npoints, 1 
-            if ((x(i,k,j) >= xmin) .and. (x(i,k,j) <= xmax)) then 
+            if (x(i,k,j) == R_GROUND) then
+               cosp_cfad(i,:,j) = R_UNDEF
+            elseif ((x(i,k,j) >= xmin) .and. (x(i,k,j) <= xmax)) then 
                ibin = ceiling((x(i,k,j) - bmin)/bwidth)
                if (ibin > Nbins) ibin = Nbins
                if (ibin < 1)     ibin = 1
@@ -78,7 +81,7 @@ FUNCTION COSP_CFAD(Npoints,Ncolumns,Nlevels,Nbins,x,xmin,xmax,bmin,bwidth)
          enddo  !i
       enddo  !k
    enddo  !j
-   cosp_cfad = cosp_cfad / Ncolumns
+   where ((cosp_cfad /= R_UNDEF).and.(cosp_cfad /= 0.0)) cosp_cfad = cosp_cfad / Ncolumns
 END FUNCTION COSP_CFAD
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -104,8 +107,8 @@ SUBROUTINE COSP_LIDAR_ONLY_CLOUD(Npoints,Ncolumns,Nlevels,beta_tot,beta_mol,Ze_t
    integer :: flag_cld !cloudy column
    integer :: pr,i,j
    
-!    lidar_only_freq_cloud = 0.0
-!    tcc = 0.0
+     lidar_only_freq_cloud = 0.0
+     tcc = 0.0
    do pr=1,Npoints
      do i=1,Ncolumns
        flag_sat = 0

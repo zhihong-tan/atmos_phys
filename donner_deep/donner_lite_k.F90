@@ -1,5 +1,5 @@
 !VERSION NUMBER:
-!   $Id: donner_lite_k.F90,v 18.0 2010/03/02 23:30:08 fms Exp $
+!   $Id: donner_lite_k.F90,v 18.0.4.2 2010/05/26 19:45:44 wfc Exp $
 
 !######################################################################
 !######################################################################
@@ -54,9 +54,11 @@ type(uw_params),                           intent(inout) :: Uw_p
                       lofactor
       integer      :: i, j, k, n, kmax
 
+      do n=1,ntr
       do k=1,nlev_lsm
-        xgcm_v(:,:,k,:) = tracers(:,:,nlev_lsm-k+1,:)
+        xgcm_v(:,:,k,n) = tracers(:,:,nlev_lsm-k+1,n)
       end do
+      enddo
 
 !--------------------------------------------------------------------
 !    if in diagnostics window, write message indicating lag-time cape
@@ -848,7 +850,11 @@ integer,                           intent(out)   :: error
       do k=1,nlev_lsm
          rlsm(k)   = 0.
          emsm(k)   = 0.
-         etsm(k,:) = 0.
+      end do
+      do n=1,ntr
+      do k=1,nlev_lsm
+         etsm(k,n) = 0.
+      end do
       end do
 
 
@@ -889,8 +895,12 @@ integer,                           intent(out)   :: error
         disg_liq(k)    = 0.
         disg_ice(k)    = 0.
         enev(k)    = 0.
-        qtren(k,:) = 0.
-        ensmbl_wetc(k,:) = 0.
+      end do
+      do n=1,ntr
+      do k=1,nlev_lsm
+        qtren(k,n) = 0.
+        ensmbl_wetc(k,n) = 0.
+      end do
       end do
 
       alp_miz   = 0.
@@ -1440,11 +1450,15 @@ integer,                           intent(out)   :: error
         emsm_miz(k)   = emsm_miz(k)   + Param%arat(kou)*emfhr_miz(k)
         qvfm_miz(k)   = Param%arat(kou)*(dpf_miz (k) + emfhr_miz(k))
         qvfm_tot(k)   = qvfm_tot(k) + qvfm_miz(k)
-         
-        etsm_miz(k,:) = etsm_miz(k,:) + Param%arat(kou)*etfhr_miz(k,:)
-        qtren(k,:)    = qtren(k,:) + Param%arat(kou)*etfhr_miz(k,:)
-        ensmbl_wetc(k,:) = ensmbl_wetc(k,:) +  &
-                                   Param%arat(kou)*dpftr_miz(k,:)
+     end do
+
+     do n=1,ntr
+     do k=1,ncc_kou_miz
+        etsm_miz(k,n) = etsm_miz(k,n) + Param%arat(kou)*etfhr_miz(k,n)
+        qtren(k,n)    = qtren(k,n) + Param%arat(kou)*etfhr_miz(k,n)
+        ensmbl_wetc(k,n) = ensmbl_wetc(k,n) +  &
+                                   Param%arat(kou)*dpftr_miz(k,n)
+     end do
      end do
 
 !--------------------------------------------------------------------
@@ -5157,7 +5171,7 @@ subroutine don_l_lscloud_driver_miz   &
           Col_diag, pfull, temp,  exit_flag,  &
           mixing_ratio, qlin, qiin, qain, phalf, Don_conv, &
           donner_humidity_factor, donner_humidity_area,  &
-           dql, dqi, dqa, &
+           dql, dqi, dqa, mhalf_3d, &
           ermesg, error) 
 
 !---------------------------------------------------------------------
@@ -5195,6 +5209,8 @@ real, dimension(isize,jsize,nlev_lsm),           &
                             intent(out)   :: donner_humidity_factor,  &
                                              donner_humidity_area, dql, &
                                              dqi, dqa
+real, dimension   (isize, jsize, nlev_lsm+1), &
+                            intent(out)   :: mhalf_3d
 character(len=*),           intent(out)   :: ermesg
 integer,                    intent(out)   :: error
 
@@ -5244,8 +5260,6 @@ integer,                    intent(out)   :: error
 
       real, dimension   &
             (isize, jsize, nlev_lsm  ) :: dmeso_3d
-      real, dimension  &
-            (isize, jsize, nlev_lsm+1) :: mhalf_3d
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -5265,7 +5279,7 @@ integer,                    intent(out)   :: error
 !---------------------------------------------------------------------
       call don_l_define_mass_flux_k    &
            (isize, jsize, nlev_lsm, pfull, phalf, Don_conv,   &
-            dmeso_3d, mhalf_3d, ermesg, error)
+            dmeso_3d, mhalf_3d, exit_flag, ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.

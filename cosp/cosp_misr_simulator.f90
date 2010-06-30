@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: cosp_misr_simulator.f90,v 18.0 2010/03/02 23:29:02 fms Exp $
-! $Name: riga_201004 $
+! $Id: cosp_misr_simulator.f90,v 1.1.2.1 2009/08/10 10:44:30 rsh Exp $
+! $Name: riga_201006 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.

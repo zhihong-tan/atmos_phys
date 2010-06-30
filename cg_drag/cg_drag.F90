@@ -39,7 +39,7 @@ private
 
 
 character(len=128)  :: version =  '$Id: cg_drag.F90,v 18.0 2010/03/02 23:28:40 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201004 $'
+character(len=128)  :: tagname =  '$Name: riga_201006 $'
 
 
 

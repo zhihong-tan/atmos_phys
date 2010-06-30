@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: lmd_ipsl_stats.f90,v 18.0 2010/03/02 23:29:09 fms Exp $
-! $Name: riga_201004 $
+! $Id: lmd_ipsl_stats.f90,v 1.1.2.1.2.1.6.1 2010/03/04 08:23:49 rsh Exp $
+! $Name: riga_201006 $
 
 ! Copyright (c) 2009, Centre National de la Recherche Scientifique
 ! All rights reserved.
@@ -71,6 +71,10 @@ CONTAINS
 ! - remove of the detection of the first fully attenuated layer encountered from above.
 ! December 2008, A. Bodas-Salcedo:
 ! - Dimensions of pmol reduced to (npoints,llm)
+! August 2009, A. Bodas-Salcedo:
+! - Warning message regarding PARASOL being valid only over ocean deleted.
+! February 2010, A. Bodas-Salcedo:
+! - Undef passed into cosp_cfad_sr
 !
 ! Version 1.0 (June 2007)
 ! Version 1.1 (May 2008)
@@ -113,12 +117,6 @@ CONTAINS
 ! c 0- Initializations
 ! c -------------------------------------------------------
 !
-! Parasol reflectance algorithm is not valid over land. Write
-! a warning if there is no land. Landmask [0 - Ocean, 1 - Land] 
-!RSH  IF ( MAXVAL(land(:)) .EQ. 0.0) THEN
-!RSH      WRITE (*,*) 'WARNING. PARASOL reflectance is not valid over land' &
-!RSH         & ,' and there is only land'
-!RSH    END IF
 
 !  Should be modified in future version
       xmax=undef-1.0
@@ -159,7 +157,7 @@ CONTAINS
 !
 ! c CFADs of subgrid-scale lidar scattering ratios :
 ! c -------------------------------------------------------
-      CALL COSP_CFAD_SR(npoints,ncol,llm,max_bin, &
+      CALL COSP_CFAD_SR(npoints,ncol,llm,max_bin, undef, &
                  x3d, &
                  S_att,S_clr,xmax,cfad2,srbval)
 
@@ -194,7 +192,7 @@ CONTAINS
 !-------------------- FUNCTION COSP_CFAD_SR ------------------------
 ! Author: Sandrine Bony (LMD/IPSL, CNRS, Paris)
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-      SUBROUTINE COSP_CFAD_SR(Npoints,Ncolumns,Nlevels,Nbins, &
+      SUBROUTINE COSP_CFAD_SR(Npoints,Ncolumns,Nlevels,Nbins,undef, &
                       x,S_att,S_clr,xmax,cfad,srbval)
       IMPLICIT NONE
 
@@ -216,7 +214,7 @@ CONTAINS
 
 ! Input arguments
       integer Npoints,Ncolumns,Nlevels,Nbins
-      real xmax,S_att,S_clr
+      real xmax,S_att,S_clr,undef
 ! Input-output arguments
       real x(Npoints,Ncolumns,Nlevels)
 ! Output :
@@ -224,6 +222,7 @@ CONTAINS
       real srbval(Nbins)
 ! Local variables
       integer i, j, k, ib
+      real srbval_ext(0:Nbins)
 
 ! c -------------------------------------------------------
 ! c 0- Initializations
@@ -236,28 +235,29 @@ CONTAINS
 
       cfad(:,:,:) = 0.0
 
+      srbval_ext(1:Nbins) = srbval
+      srbval_ext(0) = -1.0
 
 ! c -------------------------------------------------------
 ! c c- Compute CFAD
 ! c -------------------------------------------------------
 
-        do j = Nlevels, 1, -1 
-          do k = 1, Ncolumns
-              where ( x(:,k,j).le.srbval(1) ) &
-                        cfad(:,1,j) = cfad(:,1,j) + 1.0
-          enddo  !k
-        enddo  !j
-
-      do ib = 2, Nbins
-        do j = Nlevels, 1, -1 
-          do k = 1, Ncolumns
-              where ( ( x(:,k,j).gt.srbval(ib-1) ) .and. ( x(:,k,j).le.srbval(ib) ) ) &
-                        cfad(:,ib,j) = cfad(:,ib,j) + 1.0
-          enddo  !k
-        enddo  !j
-      enddo  !ib
-
-      cfad(:,:,:) = cfad(:,:,:) / float(Ncolumns)
+      do j = 1, Nlevels
+        do ib = 1, Nbins
+          do i = 1, Npoints
+            do k = 1, Ncolumns
+              if (x(i,k,j) /= undef) then
+                if ((x(i,k,j).gt.srbval_ext(ib-1)).and.(x(i,k,j).le.srbval_ext(ib))) &
+                    cfad(i,ib,j) = cfad(i,ib,j) + 1.0
+              else
+                cfad(i,:,j) = undef
+              endif
+            enddo
+          enddo
+        enddo  !k
+      enddo  !j
+ 
+      where (cfad .ne. undef)  cfad = cfad / float(Ncolumns)
 
 ! c -------------------------------------------------------
       RETURN

@@ -17,7 +17,7 @@ MODULE CONV_CLOSURES_MOD
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
   character(len=128) :: version = '$Id: conv_closures.F90,v 18.0 2010/03/02 23:33:02 fms Exp $'
-  character(len=128) :: tagname = '$Name: riga_201004 $'
+  character(len=128) :: tagname = '$Name: riga_201006 $'
   logical            :: module_is_initialized=.false.  ! module initialized ?
 
 !---------------------------------------------------------------------

@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
         
-! $Id: array_lib.f90,v 18.0 2010/03/02 23:29:24 fms Exp $
-! $Name: riga_201004 $
+! $Id: array_lib.f90,v 1.1.2.1.2.1 2009/08/10 10:48:13 rsh Exp $
+! $Name: riga_201006 $
 
 ! ARRAY_LIB: Array procedures for F90
 ! Compiled/Modified:

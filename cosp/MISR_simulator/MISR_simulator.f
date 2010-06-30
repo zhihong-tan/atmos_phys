@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: MISR_simulator.f,v 18.0 2010/03/02 23:29:07 fms Exp $
-! $Name: riga_201004 $
+! $Id: MISR_simulator.f,v 1.1.2.1 2009/08/15 08:22:40 rsh Exp $
+! $Name: riga_201006 $
 
 ! 
 ! Copyright (c) 2009,  Roger Marchand, version 1.2

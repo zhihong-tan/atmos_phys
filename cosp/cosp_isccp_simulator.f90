@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: cosp_isccp_simulator.f90,v 18.0 2010/03/02 23:29:00 fms Exp $
-! $Name: riga_201004 $
+! $Id: cosp_isccp_simulator.f90,v 1.1.2.1.4.1.6.1 2010/03/04 08:23:34 rsh Exp $
+! $Name: riga_201006 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -105,8 +105,6 @@ SUBROUTINE COSP_ISCCP_SIMULATOR(gbx,sgx,y)
   ! --- (npoints,tau=7,pressure=7)
   y%fq_isccp(:,:,:) = y%fq_isccp(:,:,7:1:-1)
      
-  ! Change boxptop from hPa to Pa. This avoids using UDUNITS in CMOR
-  y%boxptop = y%boxptop*100.0
   
   ! Check if there is any value slightly greater than 1
   where ((y%totalcldarea > 1.0-1.e-5) .and. (y%totalcldarea < 1.0+1.e-5))

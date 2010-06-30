@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: cosp_types.f90,v 18.0 2010/03/02 23:29:05 fms Exp $
-! $Name: riga_201004 $
+! $Id: cosp_types.f90,v 1.1.2.1.4.1.2.1.6.1 2010/03/04 08:23:34 rsh Exp $
+! $Name: riga_201006 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -52,12 +52,16 @@ MODULE MOD_COSP_TYPES
 
   ! Configuration choices (simulators, variables)
   TYPE COSP_CONFIG
-     logical :: Lradar_sim,Llidar_sim,Lisccp_sim,Lmisr_sim,Lrttov_sim,Lstats,Lwrite_output, &
-                Lalbisccp,Latb532,Lboxptopisccp,Lboxtauisccp,Lcfad_dbze94, &
-                Lcfad_lidarsr532,Lclcalipso2,Lclcalipso,Lclhcalipso,Lclisccp2,Lcllcalipso, &
-                Lclmcalipso,Lcltcalipso,Lcltlidarradar,Lctpisccp,Ldbze94,Ltauisccp,Ltclisccp, &
-                Llongitude,Llatitude,Lparasol_refl,LclMISR,Lmeantbisccp,Lmeantbclrisccp, &
-                Lfrac_out,Lbeta_mol532,Ltbrttov
+     logical :: Lradar_sim,Llidar_sim,Lisccp_sim,Lmodis_sim,Lmisr_sim,Lrttov_sim,Lstats,Lwrite_output, &
+                Lalbisccp,Latb532,Lboxptopisccp,Lboxtauisccp,Lcfaddbze94, &
+                LcfadLidarsr532,Lclcalipso2,Lclcalipso,Lclhcalipso,Lclisccp,Lcllcalipso, &
+                Lclmcalipso,Lcltcalipso,Lcltlidarradar,Lpctisccp,Ldbze94,Ltauisccp,Lcltisccp, &
+                Llongitude,Llatitude,LparasolRefl,LclMISR,Lmeantbisccp,Lmeantbclrisccp, &
+                Lfracout,LlidarBetaMol532,Ltbrttov, &
+                Lcltmodis,Lclwmodis,Lclimodis,Lclhmodis,Lclmmodis,Lcllmodis,Ltautmodis,Ltauwmodis,Ltauimodis,Ltautlogmodis, &
+                Ltauwlogmodis,Ltauilogmodis,Lreffclwmodis,Lreffclimodis,Lpctmodis,Llwpmodis, &
+                Liwpmodis,Lclmodis
+
      character(len=32) :: out_list(N_OUT_LIST)
   END TYPE COSP_CONFIG
   
@@ -255,6 +259,7 @@ MODULE MOD_COSP_TYPES
     
     ! Time [days]
     double precision :: time
+    double precision :: time_bnds(2)
     
     ! Radar ancillary info
     real :: radar_freq, & ! Radar frequency [GHz]
@@ -883,7 +888,7 @@ CONTAINS
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !------------- SUBROUTINE CONSTRUCT_COSP_GRIDBOX ------------------
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  SUBROUTINE CONSTRUCT_COSP_GRIDBOX(time,radar_freq,surface_radar,use_mie_tables,use_gas_abs,do_ray,melt_lay,k2, &
+  SUBROUTINE CONSTRUCT_COSP_GRIDBOX(time,time_bnds,radar_freq,surface_radar,use_mie_tables,use_gas_abs,do_ray,melt_lay,k2, &
                                    Npoints,Nlevels,Ncolumns,Nhydro,Nprmts_max_hydro,Naero,Nprmts_max_aero,Npoints_it, & 
                                    lidar_ice_type,isccp_top_height,isccp_top_height_direction,isccp_overlap,isccp_emsfc_lw, &
                                    use_precipitation_fluxes,use_reff, &
@@ -891,6 +896,7 @@ CONTAINS
                                    Plat,Sat,Inst,Nchan,ZenAng,Ichan,SurfEm,co2,ch4,n2o,co,&
                                    y)
     double precision,intent(in) :: time ! Time since start of run [days] 
+    double precision, intent(in) :: time_bnds(2)  ! Time boundaries
     real,intent(in)    :: radar_freq, & ! Radar frequency [GHz]
                           k2            ! |K|^2, -1=use frequency dependent default
     integer,intent(in) :: &
@@ -955,6 +961,7 @@ CONTAINS
     y%use_reff = use_reff
     
     y%time = time
+    y%time_bnds = time_bnds
     
     ! RTTOV parameters
     y%Plat   = Plat
@@ -1090,15 +1097,17 @@ CONTAINS
 
     ! load mie tables ?
     if (y%use_mie_tables == 1) then
-
-        ! ----- Mie tables ----
-  	    mie_table_name='mie_table.dat'
-        call load_mie_table(mie_table_name,y%mt)
-	
-	    !   :: D specified by table ... not must match that used when mie LUT generated!
-    	y%nsizes = mt_nd
-    	allocate(y%D(y%nsizes))
-    	y%D = y%mt%D
+! This problem taken care of in cosp_driver prior to this call
+!     print *, '%%% COSP: Mie tables option for Quickbem not supported'
+!     stop
+!       ! ----- Mie tables ----
+! 	    mie_table_name='mie_table.dat'
+!       call load_mie_table(mie_table_name,y%mt)
+!
+!    !   :: D specified by table ... not must match that used when mie LUT generated!
+!   	y%nsizes = mt_nd
+!   	allocate(y%D(y%nsizes))
+!   	y%D = y%mt%D
 
     else
 	   ! otherwise we still need to initialize temperature arrays for Ze scaling (which is only done when not using mie table)
@@ -1390,5 +1399,273 @@ SUBROUTINE COSP_LIDARSTATS_CPSECTION(ix,iy,x,y)
     y%cldlayer(iy(1):iy(2),:)    = x%cldlayer(ix(1):ix(2),:)
     y%parasolrefl(iy(1):iy(2),:) = x%parasolrefl(ix(1):ix(2),:)
 END SUBROUTINE COSP_LIDARSTATS_CPSECTION
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!------------- PRINT SUBROUTINES --------------
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+SUBROUTINE COSP_GRIDBOX_PRINT(x)
+    type(cosp_gridbox),intent(in) :: x
+
+    print *, '%%%%----- Information on COSP_GRIDBOX ------'
+    ! Scalars and dimensions
+    print *,  x%Npoints
+    print *,  x%Nlevels
+    print *,  x%Ncolumns
+    print *,  x%Nhydro
+    print *,  x%Nprmts_max_hydro
+    print *,  x%Naero
+    print *,  x%Nprmts_max_aero
+    print *,  x%Npoints_it
+    
+    ! Time [days]
+    print *,  x%time
+    
+    ! Radar ancillary info
+    print *,  x%radar_freq, &
+            x%k2
+    print *,  x%surface_radar, &
+	       x%use_mie_tables, &
+	       x%use_gas_abs, &
+	       x%do_ray, &
+	       x%melt_lay
+
+!               print *,  'shape(x%): ',shape(x%)
+ 
+!     type(class_param) ::  hp	! structure used by radar simulator to store Ze and N scaling constants and other information
+!     type(mie)::  mt		! structure used by radar simulator to store mie LUT information
+    print *,  x%nsizes
+    print *,  'shape(x%D): ',shape(x%D)
+    print *,  'shape(x%mt_ttl): ',shape(x%mt_ttl)
+    print *,  'shape(x%mt_tti): ',shape(x%mt_tti)
+    
+    ! Lidar
+    print *,  x%lidar_ice_type
+    
+    ! Radar
+    print *,  x%use_precipitation_fluxes
+    print *,  x%use_reff
+    
+    ! Geolocation (Npoints)
+    print *,  'shape(x%longitude): ',shape(x%longitude)
+    print *,  'shape(x%latitude): ',shape(x%latitude)
+    ! Gridbox information (Npoints,Nlevels)
+    print *,  'shape(x%zlev): ',shape(x%zlev)
+    print *,  'shape(x%zlev_half): ',shape(x%zlev_half)
+    print *,  'shape(x%dlev): ',shape(x%dlev)
+    print *,  'shape(x%p): ',shape(x%p)
+    print *,  'shape(x%ph): ',shape(x%ph)
+    print *,  'shape(x%T): ',shape(x%T)
+    print *,  'shape(x%q): ',shape(x%q)
+    print *,  'shape(x%sh): ',shape(x%sh)
+    print *,  'shape(x%dtau_s): ',shape(x%dtau_s)
+    print *,  'shape(x%dtau_c): ',shape(x%dtau_c)
+    print *,  'shape(x%dem_s): ',shape(x%dem_s)
+    print *,  'shape(x%dem_c): ',shape(x%dem_c)
+    print *,  'shape(x%mr_ozone): ',shape(x%mr_ozone)
+
+    ! Point information (Npoints)
+    print *,  'shape(x%land): ',shape(x%land)
+    print *,  'shape(x%psfc): ',shape(x%psfc)
+    print *,  'shape(x%sunlit): ',shape(x%sunlit)
+    print *,  'shape(x%skt): ',shape(x%skt)
+    print *,  'shape(x%sfc_height): ',shape(x%sfc_height)
+    print *,  'shape(x%u_wind): ',shape(x%u_wind)
+    print *,  'shape(x%v_wind): ',shape(x%v_wind)
+
+    ! TOTAL and CONV cloud fraction for SCOPS
+    print *,  'shape(x%tca): ',shape(x%tca)
+    print *,  'shape(x%cca): ',shape(x%cca)
+    ! Precipitation fluxes on model levels
+    print *,  'shape(x%rain_ls): ',shape(x%rain_ls)
+    print *,  'shape(x%rain_cv): ',shape(x%rain_cv)
+    print *,  'shape(x%snow_ls): ',shape(x%snow_ls)
+    print *,  'shape(x%snow_cv): ',shape(x%snow_cv)
+    print *,  'shape(x%grpl_ls): ',shape(x%grpl_ls)
+    ! Hydrometeors concentration and distribution parameters
+    print *,  'shape(x%mr_hydro): ',shape(x%mr_hydro)
+    print *,  'shape(x%dist_prmts_hydro): ',shape(x%dist_prmts_hydro)
+    ! Effective radius [m]. (Npoints,Nlevels,Nhydro)
+    print *,  'shape(x%Reff): ',shape(x%Reff)
+    ! Aerosols concentration and distribution parameters
+    print *,  'shape(x%conc_aero): ',shape(x%conc_aero)
+    print *,  'shape(x%dist_type_aero): ',shape(x%dist_type_aero)
+    print *,  'shape(x%dist_prmts_aero): ',shape(x%dist_prmts_aero)
+    ! ISCCP simulator inputs
+    print *, x%isccp_top_height
+    print *, x%isccp_top_height_direction
+    print *, x%isccp_overlap
+    print *, x%isccp_emsfc_lw
+  
+    ! RTTOV inputs/options
+    print *, x%plat
+    print *, x%sat
+    print *, x%inst
+    print *, x%Nchan
+    print *,  'shape(x%Ichan): ',x%Ichan
+    print *,  'shape(x%Surfem): ',x%Surfem
+    print *, x%ZenAng
+    print *, x%co2,x%ch4,x%n2o,x%co
+                
+END SUBROUTINE COSP_GRIDBOX_PRINT
+
+SUBROUTINE COSP_MISR_PRINT(x)
+    type(cosp_misr),intent(in) :: x
+
+    print *, '%%%%----- Information on COSP_MISR ------'
+                
+     ! Dimensions
+    print *, x%Npoints
+    print *, x%Ntau
+    print *, x%Nlevels
+
+     ! --- (npoints,ntau,nlevels)
+     !  the fraction of the model grid box covered by each of the MISR cloud types
+     print *,  'shape(x%fq_MISR): ',shape(x%fq_MISR)
+     
+     ! --- (npoints)
+     print *,  'shape(x%MISR_meanztop): ',shape(x%MISR_meanztop)
+     print *,  'shape(x%MISR_cldarea): ',shape(x%MISR_cldarea)
+     ! --- (npoints,nlevels)
+     print *,  'shape(x%MISR_dist_model_layertops): ',shape(x%MISR_dist_model_layertops)
+    
+END SUBROUTINE COSP_MISR_PRINT
+
+SUBROUTINE COSP_ISCCP_PRINT(x)
+    type(cosp_isccp),intent(in) :: x
+            
+    print *, x%Npoints
+    print *, x%Ncolumns
+    print *, x%Nlevels
+
+    print *, '%%%%----- Information on COSP_ISCCP ------'
+    
+     print *, 'shape(x%fq_isccp): ',shape(x%fq_isccp)
+     print *, 'shape(x%totalcldarea): ',shape(x%totalcldarea)
+     print *, 'shape(x%meantb): ',shape(x%meantb)
+     print *, 'shape(x%meantbclr): ',shape(x%meantbclr)
+     
+     print *, 'shape(x%meanptop): ',shape(x%meanptop)
+     print *, 'shape(x%meantaucld): ',shape(x%meantaucld)
+     print *, 'shape(x%meanalbedocld): ',shape(x%meanalbedocld)
+     print *, 'shape(x%boxtau): ',shape(x%boxtau)
+     print *, 'shape(x%boxptop): ',shape(x%boxptop)
+END SUBROUTINE COSP_ISCCP_PRINT
+
+SUBROUTINE COSP_VGRID_PRINT(x)
+    type(cosp_vgrid),intent(in) :: x
+            
+    print *, '%%%%----- Information on COSP_VGRID ------'
+    print *, x%use_vgrid
+    print *, x%csat_vgrid
+    print *, x%Npoints
+    print *, x%Ncolumns
+    print *, x%Nlevels
+    print *, x%Nlvgrid
+    ! Array with dimensions (Nlvgrid)
+    print *, 'shape(x%z): ',shape(x%z)
+    print *, 'shape(x%zl): ',shape(x%zl)
+    print *, 'shape(x%zu): ',shape(x%zu)
+    ! Array with dimensions (Nlevels)
+    print *, 'shape(x%mz): ',shape(x%mz)
+    print *, 'shape(x%mzl): ',shape(x%mzl)
+    print *, 'shape(x%mzu): ',shape(x%mzu)
+END SUBROUTINE COSP_VGRID_PRINT
+
+SUBROUTINE COSP_SGLIDAR_PRINT(x)
+    type(cosp_sglidar),intent(in) :: x
+            
+    print *, '%%%%----- Information on COSP_SGLIDAR ------'
+    ! Dimensions
+    print *, x%Npoints
+    print *, x%Ncolumns
+    print *, x%Nlevels
+    print *, x%Nhydro
+    print *, x%Nrefl
+    ! Arrays with dimensions (Npoints,Nlevels)
+    print *, 'shape(x%beta_mol): ',shape(x%beta_mol)
+    ! Arrays with dimensions (Npoints,Ncolumns,Nlevels)
+    print *, 'shape(x%beta_tot): ',shape(x%beta_tot)
+    print *, 'shape(x%tau_tot): ',shape(x%tau_tot)
+    ! Arrays with dimensions (Npoints,Ncolumns,Nrefl)
+    print *, 'shape(x%refl): ',shape(x%refl)
+END SUBROUTINE COSP_SGLIDAR_PRINT
+
+SUBROUTINE COSP_SGRADAR_PRINT(x)
+    type(cosp_sgradar),intent(in) :: x
+            
+    print *, '%%%%----- Information on COSP_SGRADAR ------'
+    print *, x%Npoints
+    print *, x%Ncolumns
+    print *, x%Nlevels
+    print *, x%Nhydro
+    ! output vertical levels: spaceborne radar -> from TOA to SURFACE
+    ! Arrays with dimensions (Npoints,Nlevels)
+    print *, 'shape(x%att_gas): ', shape(x%att_gas)
+    ! Arrays with dimensions (Npoints,Ncolumns,Nlevels)
+    print *, 'shape(x%Ze_tot): ', shape(x%Ze_tot)
+END SUBROUTINE COSP_SGRADAR_PRINT
+
+SUBROUTINE COSP_RADARSTATS_PRINT(x)
+    type(cosp_radarstats),intent(in) :: x
+            
+    print *, '%%%%----- Information on COSP_SGRADAR ------'
+    print *, x%Npoints
+    print *, x%Ncolumns
+    print *, x%Nlevels
+    print *, x%Nhydro
+    print *, 'shape(x%cfad_ze): ',shape(x%cfad_ze)
+    print *, 'shape(x%radar_lidar_tcc): ',shape(x%radar_lidar_tcc)
+    print *, 'shape(x%lidar_only_freq_cloud): ',shape(x%lidar_only_freq_cloud)
+END SUBROUTINE COSP_RADARSTATS_PRINT
+
+SUBROUTINE COSP_LIDARSTATS_PRINT(x)
+    type(cosp_lidarstats),intent(in) :: x
+            
+    print *, '%%%%----- Information on COSP_SGLIDAR ------'
+    print *, x%Npoints
+    print *, x%Ncolumns
+    print *, x%Nlevels
+    print *, x%Nhydro
+    print *, x%Nrefl
+    
+    ! Arrays with dimensions (SR_BINS)
+    print *, 'shape(x%srbval): ',shape(x%srbval)
+    ! Arrays with dimensions (Npoints,SR_BINS,Nlevels)
+    print *, 'shape(x%cfad_sr): ',shape(x%cfad_sr)
+    ! Arrays with dimensions (Npoints,Nlevels)
+    print *, 'shape(x%lidarcld): ',shape(x%lidarcld)
+    ! Arrays with dimensions (Npoints,LIDAR_NCAT)
+    print *, 'shape(x%cldlayer): ',shape(x%cldlayer)
+    ! Arrays with dimensions (Npoints,PARASOL_NREFL)
+    print *, 'shape(x%parasolrefl): ',shape(x%parasolrefl)
+END SUBROUTINE COSP_LIDARSTATS_PRINT
+
+SUBROUTINE COSP_SUBGRID_PRINT(x)
+    type(cosp_subgrid),intent(in) :: x
+            
+    print *, '%%%%----- Information on COSP_SUBGRID ------'
+    print *, x%Npoints
+    print *, x%Ncolumns
+    print *, x%Nlevels
+    print *, x%Nhydro
+    
+    print *, 'shape(x%prec_frac): ',shape(x%prec_frac)
+    print *, 'shape(x%frac_out): ',shape(x%frac_out)
+END SUBROUTINE COSP_SUBGRID_PRINT
+
+SUBROUTINE COSP_SGHYDRO_PRINT(x)
+    type(cosp_sghydro),intent(in) :: x
+            
+    print *, '%%%%----- Information on COSP_SGHYDRO ------'
+    print *, x%Npoints
+    print *, x%Ncolumns
+    print *, x%Nlevels
+    print *, x%Nhydro
+    
+    print *, 'shape(x%mr_hydro): ',shape(x%mr_hydro)
+    print *, 'shape(x%Reff): ',shape(x%Reff)
+END SUBROUTINE COSP_SGHYDRO_PRINT
+
 
 END MODULE MOD_COSP_TYPES

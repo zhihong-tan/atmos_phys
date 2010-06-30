@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: cosp_constants.f90,v 18.0 2010/03/02 23:28:57 fms Exp $
-! $Name: riga_201004 $
+! $Id: cosp_constants.f90,v 1.1.2.1.2.1.6.1 2010/03/04 08:23:33 rsh Exp $
+! $Name: riga_201006 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -36,6 +36,7 @@
 ! Oct 2008 - H. Chepfer       - Added PARASOL_NREFL
 !
 ! 
+
 MODULE MOD_COSP_CONSTANTS
     IMPLICIT NONE
     
@@ -53,13 +54,18 @@ MODULE MOD_COSP_CONSTANTS
     ! Missing value
     real,parameter :: R_UNDEF = -1.0E30
     ! Number of possible output variables
-    integer,parameter :: N_OUT_LIST = 27
+    integer,parameter :: N_OUT_LIST = 45
+    ! Value for forward model result from a level that is under the ground
+    real,parameter :: R_GROUND = -1.0E20
     
+    ! Stratiform and convective clouds in frac_out
+    integer, parameter :: I_LSC = 1, & ! Large-scale clouds
+                          I_CVC = 2    ! Convective clouds
     !--- Radar constants
     ! CFAD constants
     integer,parameter :: DBZE_BINS     =   15   ! Number of dBZe bins in histogram (cfad)
     real,parameter    :: DBZE_MIN      = -100.0 ! Minimum value for radar reflectivity
-    real,parameter    :: DBZE_MAX      =   30.0 ! Maximum value for radar reflectivity
+    real,parameter    :: DBZE_MAX      =   80.0 ! Maximum value for radar reflectivity
     real,parameter    :: CFAD_ZE_MIN   =  -50.0 ! Lower value of the first CFAD Ze bin
     real,parameter    :: CFAD_ZE_WIDTH =    5.0 ! Bin width (dBZe)
 
@@ -72,8 +78,7 @@ MODULE MOD_COSP_CONSTANTS
     ! Other constants
     integer,parameter :: LIDAR_NCAT    =   4
     integer,parameter :: PARASOL_NREFL =   5 ! parasol
-!     real,parameter,dimension(PARASOL_NREFL) :: PARASOL_SZA = (/0.0, 15.0, 30.0, 45.0, 60.0/)
-    real,parameter,dimension(PARASOL_NREFL) :: PARASOL_SZA = (/1.0, 2.0, 3.0, 4.0, 5.0/)
+    real,parameter,dimension(PARASOL_NREFL) :: PARASOL_SZA = (/0.0, 20.0, 40.0, 60.0, 80.0/)
     real,parameter    :: DEFAULT_LIDAR_REFF = 30.0e-6 ! Default lidar effective radius
     
     !--- MISR constants
@@ -83,10 +88,9 @@ MODULE MOD_COSP_CONSTANTS
     integer,parameter :: RTTOV_MAX_CHANNELS = 20
     
     ! ISCCP tau-Pc axes
-    real,parameter,dimension(7) :: ISCCP_TAU = (/0.15, 0.80, 2.45, 6.5, 16.2, 41.5, 50000.0/)
+    real,parameter,dimension(7) :: ISCCP_TAU = (/0.15, 0.80, 2.45, 6.5, 16.2, 41.5, 100.0/)
     real,parameter,dimension(2,7) :: ISCCP_TAU_BNDS = reshape(source=(/0.0,0.3,0.3,1.30,1.30,3.6,3.6,9.4, &
                                                       9.4,23.0,23.0,60.0,60.0,100000.0/), shape=(/2,7/))
-   
 !     real,parameter,dimension(7) :: ISCCP_PC = (/9000., 24500., 37500., 50000., 62000., 74000., 90000./)
 !     real,parameter,dimension(2,7) :: ISCCP_PC_BNDS = reshape(source=(/0.0,18000.0,18000.0,31000.0,31000.0, &
 !                                44000.0,44000.0,56000.0,56000.0,68000.0,68000.0,80000.0,80000.0,100000.0/), shape=(/2,7/))
@@ -95,9 +99,9 @@ MODULE MOD_COSP_CONSTANTS
     real,parameter,dimension(2,7) :: ISCCP_PC_BNDS = reshape(source=(/100000.0,80000.0,80000.0,68000.0,68000.0,56000.0 &
                                ,56000.0,44000.0,44000.0,31000.0,31000.0,18000.0,18000.0,0.0/), shape=(/2,7/))
     
-    real,parameter,dimension(MISR_N_CTH) :: MISR_CTH = (/ 0., 0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.5, &
+    real,parameter,dimension(MISR_N_CTH) :: MISR_CTH = 1000.0*(/ 0., 0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.5, &
                                             4.5, 6., 8., 10., 12., 14.5, 16., 18./)
-    real,parameter,dimension(2,MISR_N_CTH) :: MISR_CTH_BNDS = reshape(source=(/ &
+    real,parameter,dimension(2,MISR_N_CTH) :: MISR_CTH_BNDS = 1000.0*reshape(source=(/ &
                                             -99.0,  0.0,       0.0,  0.5,       0.5,  1.0,      1.0,  1.5, &
                                               1.5,  2.0,       2.0,  2.5,       2.5,  3.0,      3.0,  4.0, &
                                               4.0,  5.0,       5.0,  7.0,       7.0,  9.0,      9.0, 11.0, &
@@ -113,16 +117,29 @@ MODULE MOD_COSP_CONSTANTS
     data HCLASS_TYPE/5,1,2,2,5,1,2,2,2/
     data HCLASS_COL/1,2,3,4,5,6,7,8,9/
     data HCLASS_PHASE/0,1,0,1,0,1,0,1,1/
-    data HCLASS_CP/0,0,1,1,0,0,1,1,1/
+    data HCLASS_CP/0,0,0,0,0,0,0,0,0/            ! This is not used in the version of Quickbeam included in COSP
     data HCLASS_DMIN/-1,-1,-1,-1,-1,-1,-1,-1,-1/
     data HCLASS_DMAX/-1,-1,-1,-1,-1,-1,-1,-1,-1/
-    data HCLASS_APM/524,110.8,524,-1,524,110.8,524,-1,-1/
-    data HCLASS_BPM/3,2.91,3,-1,3,2.91,3,-1,-1/
-    data HCLASS_RHO/-1,-1,-1,100,-1,-1,-1,100,400/
-    data HCLASS_P1/-1,-1,8000000.,3000000.,-1,-1,8000000.,3000000.,4000000./
-    data HCLASS_P2/6,40,-1,-1,6,40,-1,-1,-1/
-    data HCLASS_P3/0.3,2,-1,-1,0.3,2,-1,-1,-1/
+    data HCLASS_APM/524,110.8,524, -1,524,110.8,524, -1, -1/
+    data HCLASS_BPM/  3, 2.91,  3, -1,  3, 2.91,  3, -1, -1/
+    data HCLASS_RHO/ -1,   -1, -1,100, -1,   -1, -1,100,400/
+    data HCLASS_P1/ -1,-1,8000000.,3000000., -1,-1,8000000.,3000000.,4000000./
+    data HCLASS_P2/  6,40,      -1,      -1,  6,40,      -1,      -1,      -1/
+    data HCLASS_P3/0.3, 2,      -1,      -1,0.3, 2,      -1,      -1,      -1/
 
-    
-    
+!                     LSL    LSI   LSR     LSS   CVL    CVI   CVR     CVS     LSG
+!     data HCLASS_TYPE/   1,     1,    1,     -1,    1,     1,    1,      1,     -1/
+!     data HCLASS_COL/    1,     2,    3,      4,    5,     6,    7,      8,      9/
+!     data HCLASS_PHASE/  0,     1,    0,      1,    0,     1,    0,      1,      1/
+!     data HCLASS_CP/     0,     0,    0,      0,    0,     0,    0,      0,      0/ ! This is not used in the version of Quickbeam included in COSP
+!     data HCLASS_DMIN/  -1,    -1,   -1,     -1,   -1,    -1,   -1,     -1,     -1/
+!     data HCLASS_DMAX/  -1,    -1,   -1,     -1,   -1,    -1,   -1,     -1,     -1/
+!     data HCLASS_APM/   -1, 0.587,   -1, 0.0444,   -1, 0.587,   -1, 0.0444,  261.8/
+!     data HCLASS_BPM/   -1,  2.45,   -1,    2.1,   -1,  2.45,   -1,    2.1,      3/
+!     data HCLASS_RHO/ 1000,    -1, 1000,     -1, 1000,    -1, 1000,     -1,     -1/
+!     data HCLASS_P1/    -1,    -1,   -1,     -1,   -1,    -1,   -1,     -1,     -1/
+!     data HCLASS_P2/    10,    40, 1000,    120,   10,    40, 1000,    120,   1000/
+!     data HCLASS_P3/     3,     1,    1,      1,    3,     1,    1,      1,    3.5/
+
+
 END MODULE MOD_COSP_CONSTANTS

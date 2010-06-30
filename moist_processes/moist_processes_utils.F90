@@ -39,7 +39,7 @@ end interface column_diag
 !--------------------- version number ----------------------------------
 character(len=128) :: &
 version = '$Id: moist_processes_utils.F90,v 18.0 2010/03/02 23:31:11 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201004 $'
+character(len=128) :: tagname = '$Name: riga_201006 $'
 
 !-----------------------------------------------------------------------
 

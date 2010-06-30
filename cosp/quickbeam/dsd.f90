@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
          
-! $Id: dsd.f90,v 18.0 2010/03/02 23:29:28 fms Exp $
-! $Name: riga_201004 $
+! $Id: dsd.f90,v 1.1.2.1.2.1.6.1 2010/03/04 08:23:50 rsh Exp $
+! $Name: riga_201006 $
 
   subroutine dsd(Q,Re,D,N,nsizes,dtype,rho_a,tc, &
              dmin,dmax,apm,bpm,rho_c,p1,p2,p3,fc,scaled)
@@ -51,7 +51,7 @@
  
 ! ----- INPUTS -----  
   
-  integer*4, intent(in) :: nsizes
+  integer, intent(in) :: nsizes
   integer, intent(in) :: dtype
   real*8, intent(in) :: Q,D(nsizes),rho_a,tc,dmin,dmax, &
     rho_c,p1,p2,p3

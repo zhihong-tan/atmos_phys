@@ -41,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: diag_integral.F90,v 17.0 2009/07/21 02:54:16 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201004 $'
+character(len=128) :: version = '$Id: diag_integral.F90,v 17.0.8.1 2010/05/19 16:29:00 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201006 $'
 
 
 !---------------------------------------------------------------------
@@ -243,9 +243,8 @@ real,dimension(:,:), intent(in), optional :: blon, blat, area_in
 !---------------------------------------------------------------------
 !  local variables:
 
-      real    :: r2
       real    :: rsize
-      integer :: unit, io, ierr, nc, i, j, logunit
+      integer :: unit, io, ierr, nc, logunit
       integer :: field_size_local
       real    :: sum_area_local
 
@@ -1050,6 +1049,9 @@ type(time_type)  :: Time
          sec = int(atime*3600. + 0.5)
       else if (units(1:3) == 'day') then
          sec = int(atime*86400. + 0.5)
+      else
+         call error_mesg('diag_integral_mod', &
+                         'Invalid units sent to set_axis_time', FATAL)
       endif
 
 !--------------------------------------------------------------------

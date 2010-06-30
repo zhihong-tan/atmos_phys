@@ -2,47 +2,47 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: icarus.f,v 18.0 2010/03/02 23:29:11 fms Exp $
-! $Name: riga_201004 $
+! $Id: icarus.f90,v 1.1.2.2 2010/05/24 18:59:16 wfc Exp $
+! $Name: riga_201006 $
 
-      SUBROUTINE ICARUS(
-     &     debug,
-     &     debugcol,
-     &     npoints,
-     &     sunlit,
-     &     nlev,
-     &     ncol,
-     &     pfull,
-     &     phalf,
-     &     qv,
-     &     cc,
-     &     conv,
-     &     dtau_s,
-     &     dtau_c,
-     &     top_height,
-     &     top_height_direction,
-     &     overlap,
-     &     frac_out,
-     &     skt,
-     &     emsfc_lw,
-     &     at,
-     &     dem_s,
-     &     dem_c,
-     &     fq_isccp,
-     &     totalcldarea,
-     &     meanptop,
-     &     meantaucld,
-     &     meanalbedocld,
-     &     meantb,
-     &     meantbclr,
-     &     boxtau,
-     &     boxptop,
-     &     dtau_col,
-     &     dem_col,
-     &     passing_in_column_data
+      SUBROUTINE ICARUS(          &
+     &     debug,                 &
+     &     debugcol,              &
+     &     npoints,               &
+     &     sunlit,                &
+     &     nlev,                  &
+     &     ncol,                  &
+     &     pfull,                 &
+     &     phalf,                 &
+     &     qv,                    &
+     &     cc,                    &
+     &     conv,                  &
+     &     dtau_s,                &
+     &     dtau_c,                &
+     &     top_height,            &
+     &     top_height_direction,  &
+     &     overlap,               &
+     &     frac_out,              &
+     &     skt,                   &
+     &     emsfc_lw,              &
+     &     at,                    &
+     &     dem_s,                 &
+     &     dem_c,                 &
+     &     fq_isccp,              &
+     &     totalcldarea,          &
+     &     meanptop,              &
+     &     meantaucld,            &
+     &     meanalbedocld,         &
+     &     meantb,                &
+     &     meantbclr,             &
+     &     boxtau,                &
+     &     boxptop,               &
+     &     dtau_col,              &
+     &     dem_col,               &
+     &     passing_in_column_data &
      &)
 
-!$Id: icarus.f,v 18.0 2010/03/02 23:29:11 fms Exp $
+!$Id: icarus.f90,v 1.1.2.2 2010/05/24 18:59:16 wfc Exp $
 
 ! *****************************COPYRIGHT****************************
 ! (c) 2009, Lawrence Livermore National Security Limited Liability 
@@ -81,6 +81,8 @@
 ! *****************************COPYRIGHT*******************************
 ! *****************************COPYRIGHT*******************************
 ! *****************************COPYRIGHT*******************************
+  use mpp_mod,only: get_unit                  
+  use fms_mod,only: stdlog, error_mesg, FATAL
 
       implicit none
 
@@ -254,7 +256,6 @@
       REAL attrop(npoints)
       REAL attropmin (npoints)
       REAL atmax(npoints)
-      REAL atmin(npoints)
       REAL btcmin(npoints)
       REAL transmax(npoints)
 
@@ -275,7 +276,7 @@
       real rh20s(npoints), rfrgn(npoints)
       real tmpexp(npoints),tauwv(npoints)
       
-      character*1 cchar(6),cchar_realtops(6)
+      character(len=1) :: cchar(6),cchar_realtops(6)
       integer icycle
       REAL tau(npoints,ncol)
       LOGICAL box_cloudy(npoints,ncol)
@@ -293,11 +294,11 @@
                     ! decomposition with step debugcol
       integer rangevec(npoints),rangeerror
 
-      integer index1(npoints),num1,jj,k1,k2
+      integer index1(npoints),num1,jj,k1,k2, funit, logunit
       real rec2p13,tauchk,logp,logp1,logp2,atd
       real output_missing_value
 
-      character*10 ftn09
+      character(len=10) :: ftn09
       
       DATA isccp_taumin / 0.3 /
       DATA output_missing_value / -1.E+30 /
@@ -311,55 +312,56 @@
 
       ncolprint=0
 
+      logunit = stdlog()
       if ( debug.ne.0 ) then
           j=1
-          write(6,'(a10)') 'j='
-          write(6,'(8I10)') j
-          write(6,'(a10)') 'debug='
-          write(6,'(8I10)') debug
-          write(6,'(a10)') 'debugcol='
-          write(6,'(8I10)') debugcol
-          write(6,'(a10)') 'npoints='
-          write(6,'(8I10)') npoints
-          write(6,'(a10)') 'nlev='
-          write(6,'(8I10)') nlev
-          write(6,'(a10)') 'ncol='
-          write(6,'(8I10)') ncol
-          write(6,'(a11)') 'top_height='
-          write(6,'(8I10)') top_height
-	  write(6,'(a21)') 'top_height_direction='
-          write(6,'(8I10)') top_height_direction
-          write(6,'(a10)') 'overlap='
-          write(6,'(8I10)') overlap
-          write(6,'(a10)') 'emsfc_lw='
-          write(6,'(8f10.2)') emsfc_lw
+          write(logunit,'(a10)') 'j='
+          write(logunit,'(8I10)') j
+          write(logunit,'(a10)') 'debug='
+          write(logunit,'(8I10)') debug
+          write(logunit,'(a10)') 'debugcol='
+          write(logunit,'(8I10)') debugcol
+          write(logunit,'(a10)') 'npoints='
+          write(logunit,'(8I10)') npoints
+          write(logunit,'(a10)') 'nlev='
+          write(logunit,'(8I10)') nlev
+          write(logunit,'(a10)') 'ncol='
+          write(logunit,'(8I10)') ncol
+          write(logunit,'(a11)') 'top_height='
+          write(logunit,'(8I10)') top_height
+	  write(logunit,'(a21)') 'top_height_direction='
+          write(logunit,'(8I10)') top_height_direction
+          write(logunit,'(a10)') 'overlap='
+          write(logunit,'(8I10)') overlap
+          write(logunit,'(a10)') 'emsfc_lw='
+          write(logunit,'(8f10.2)') emsfc_lw
         do j=1,npoints,debug
-          write(6,'(a10)') 'j='
-          write(6,'(8I10)') j
-          write(6,'(a10)') 'sunlit='
-          write(6,'(8I10)') sunlit(j)
-          write(6,'(a10)') 'pfull='
-          write(6,'(8f10.2)') (pfull(j,i),i=1,nlev)
-          write(6,'(a10)') 'phalf='
-          write(6,'(8f10.2)') (phalf(j,i),i=1,nlev+1)
-          write(6,'(a10)') 'qv='
-          write(6,'(8f10.3)') (qv(j,i),i=1,nlev)
-          write(6,'(a10)') 'cc='
-          write(6,'(8f10.3)') (cc(j,i),i=1,nlev)
-          write(6,'(a10)') 'conv='
-          write(6,'(8f10.2)') (conv(j,i),i=1,nlev)
-          write(6,'(a10)') 'dtau_s='
-          write(6,'(8g12.5)') (dtau_s(j,i),i=1,nlev)
-          write(6,'(a10)') 'dtau_c='
-          write(6,'(8f10.2)') (dtau_c(j,i),i=1,nlev)
-          write(6,'(a10)') 'skt='
-          write(6,'(8f10.2)') skt(j)
-          write(6,'(a10)') 'at='
-          write(6,'(8f10.2)') (at(j,i),i=1,nlev)
-          write(6,'(a10)') 'dem_s='
-          write(6,'(8f10.3)') (dem_s(j,i),i=1,nlev)
-          write(6,'(a10)') 'dem_c='
-          write(6,'(8f10.3)') (dem_c(j,i),i=1,nlev)
+          write(logunit,'(a10)') 'j='
+          write(logunit,'(8I10)') j
+          write(logunit,'(a10)') 'sunlit='
+          write(logunit,'(8I10)') sunlit(j)
+          write(logunit,'(a10)') 'pfull='
+          write(logunit,'(8f10.2)') (pfull(j,i),i=1,nlev)
+          write(logunit,'(a10)') 'phalf='
+          write(logunit,'(8f10.2)') (phalf(j,i),i=1,nlev+1)
+          write(logunit,'(a10)') 'qv='
+          write(logunit,'(8f10.3)') (qv(j,i),i=1,nlev)
+          write(logunit,'(a10)') 'cc='
+          write(logunit,'(8f10.3)') (cc(j,i),i=1,nlev)
+          write(logunit,'(a10)') 'conv='
+          write(logunit,'(8f10.2)') (conv(j,i),i=1,nlev)
+          write(logunit,'(a10)') 'dtau_s='
+          write(logunit,'(8g12.5)') (dtau_s(j,i),i=1,nlev)
+          write(logunit,'(a10)') 'dtau_c='
+          write(logunit,'(8f10.2)') (dtau_c(j,i),i=1,nlev)
+          write(logunit,'(a10)') 'skt='
+          write(logunit,'(8f10.2)') skt(j)
+          write(logunit,'(a10)') 'at='
+          write(logunit,'(8f10.2)') (at(j,i),i=1,nlev)
+          write(logunit,'(a10)') 'dem_s='
+          write(logunit,'(8f10.3)') (dem_s(j,i),i=1,nlev)
+          write(logunit,'(a10)') 'dem_c='
+          write(logunit,'(8f10.3)') (dem_c(j,i),i=1,nlev)
         enddo
       endif
 
@@ -367,8 +369,8 @@
 
       if (ncolprint.ne.0) then
       do j=1,npoints,1000
-        write(6,'(a10)') 'j='
-        write(6,'(8I10)') j
+        write(logunit,'(a10)') 'j='
+        write(logunit,'(8I10)') j
       enddo
       endif
 
@@ -376,7 +378,6 @@
 
       do j=1,npoints 
           ptrop(j)=5000.
-          atmin(j) = 400.
           attropmin(j) = 400.
           atmax(j) = 0.
           attrop(j) = 120.
@@ -385,19 +386,23 @@
 
       do 12 ilev=1,nlev
         do j=1,npoints 
-         if (pfull(j,ilev) .lt. 40000. .and.
-     &          pfull(j,ilev) .gt.  5000. .and.
+         if (pfull(j,ilev) .lt. 40000. .and. &
+     &          pfull(j,ilev) .gt.  5000. .and. &
      &          at(j,ilev) .lt. attropmin(j)) then
                 ptrop(j) = pfull(j,ilev)
                 attropmin(j) = at(j,ilev)
                 attrop(j) = attropmin(j)
                 itrop(j)=ilev
            end if
-           if (at(j,ilev) .gt. atmax(j)) atmax(j)=at(j,ilev)
-           if (at(j,ilev) .lt. atmin(j)) atmin(j)=at(j,ilev)
         enddo
 12    continue
 
+      do 13 ilev=1,nlev
+        do j=1,npoints
+          if (at(j,ilev) .gt. atmax(j) .and. &
+     &             ilev  .ge. itrop(j)) atmax(j) = at(j,ilev)
+        enddo
+13    continue
       end if
 
 
@@ -463,11 +468,13 @@
         enddo
 
         if (rangeerror.ne.0) then 
-              write (6,*) 'Input variable out of range'
-              write (6,*) 'rangevec:'
-              write (6,*) rangevec
-              call flush(6)
-              STOP
+              write (logunit,*) 'Input variable out of range'
+              write (logunit,*) 'rangevec:'
+              write (logunit,*) rangevec
+!             call flush(6)
+!              STOP
+              call error_mesg('ICARUS','Input variable out of range',FATAL)
+
         endif
       enddo
 
@@ -497,7 +504,7 @@
             !increment tau for each of the boxes
             do ibox=1,ncol
               do j=1,npoints
-                tau(j,ibox)=tau(j,ibox)
+                tau(j,ibox)=tau(j,ibox) &
      &                     + dtau_col(j,ibox,ilev)
               enddo
             enddo ! ibox
@@ -511,11 +518,11 @@
             do ibox=1,ncol
               do j=1,npoints 
                  if (frac_out(j,ibox,ilev).eq.1) then
-                        tau(j,ibox)=tau(j,ibox)
+                        tau(j,ibox)=tau(j,ibox) &
      &                     + dtau_s(j,ilev)
                  endif
                  if (frac_out(j,ibox,ilev).eq.2) then
-                        tau(j,ibox)=tau(j,ibox)
+                        tau(j,ibox)=tau(j,ibox) &
      &                     + dtau_c(j,ilev)
                  end if
               enddo
@@ -527,10 +534,10 @@
           if (ncolprint.ne.0) then
 
               do j=1,npoints ,1000
-                write(6,'(a10)') 'j='
-                write(6,'(8I10)') j
-                write(6,'(i2,1X,8(f7.2,1X))') 
-     &          ilev,
+                write(logunit,'(a10)') 'j='
+                write(logunit,'(8I10)') j
+                write(logunit,'(i2,1X,8(f7.2,1X))')  &
+     &          ilev,                                &
      &          (tau(j,ibox),ibox=1,ncolprint)
               enddo
           endif 
@@ -571,8 +578,8 @@
         grav = 9.806650E+02
         pstd = 1.013250E+06
         t0 = 296.
-        if (ncolprint .ne. 0) 
-     &         write(6,*)  'ilev   pw (kg/m2)   tauwv(j)      dem_wv'
+        if (ncolprint .ne. 0) &
+     &         write(logunit,*)  'ilev   pw (kg/m2)   tauwv(j)      dem_wv'
         do 125 ilev=1,nlev
           do j=1,npoints 
                !press and dpress are dyne/cm2 = Pascals *10
@@ -586,17 +593,17 @@
                rh20s(j) = rvh20(j)*rhoave(j)
                rfrgn(j) = rhoave(j)-rh20s(j)
                tmpexp(j) = exp(-0.02*(at(j,ilev)-t0))
-               tauwv(j) = wk(j)*1.e-20*( 
-     &           (0.0224697*rh20s(j)*tmpexp(j)) + 
+               tauwv(j) = wk(j)*1.e-20*(          &
+     &           (0.0224697*rh20s(j)*tmpexp(j)) + &
      &                (3.41817e-7*rfrgn(j)) )*0.98
                dem_wv(j,ilev) = 1. - exp( -1. * tauwv(j))
           enddo
                if (ncolprint .ne. 0) then
                do j=1,npoints ,1000
-               write(6,'(a10)') 'j='
-               write(6,'(8I10)') j
-               write(6,'(i2,1X,3(f8.3,3X))') ilev,
-     &           qv(j,ilev)*(phalf(j,ilev+1)-phalf(j,ilev))/(grav/100.),
+               write(logunit,'(a10)') 'j='
+               write(logunit,'(8I10)') j
+               write(logunit,'(i2,1X,3(f8.3,3X))') ilev,                 &
+     &           qv(j,ilev)*(phalf(j,ilev+1)-phalf(j,ilev))/(grav/100.), &
      &           tauwv(j),dem_wv(j,ilev)
                enddo
              endif
@@ -619,27 +626,27 @@
               ! increase TOA flux by flux emitted from layer
               ! times total transmittance in layers above
 
-                fluxtop_clrsky(j) = fluxtop_clrsky(j) 
+                fluxtop_clrsky(j) = fluxtop_clrsky(j) &
      &            + dem_wv(j,ilev)*bb(j)*trans_layers_above_clrsky(j) 
             
                 ! update trans_layers_above with transmissivity
               ! from this layer for next time around loop
 
-                trans_layers_above_clrsky(j)=
+                trans_layers_above_clrsky(j)= &
      &            trans_layers_above_clrsky(j)*(1.-dem_wv(j,ilev))
                    
 
           enddo   
             if (ncolprint.ne.0) then
              do j=1,npoints ,1000
-              write(6,'(a10)') 'j='
-              write(6,'(8I10)') j
-              write (6,'(a)') 'ilev:'
-              write (6,'(I2)') ilev
+              write(logunit,'(a10)') 'j='
+              write(logunit,'(8I10)') j
+              write (logunit,'(a)') 'ilev:'
+              write (logunit,'(I2)') ilev
     
-              write (6,'(a)') 
+              write (logunit,'(a)') &
      &        'emiss_layer,100.*bb(j),100.*f,total_trans:'
-              write (6,'(4(f7.2,1X))') dem_wv(j,ilev),100.*bb(j),
+              write (logunit,'(4(f7.2,1X))') dem_wv(j,ilev),100.*bb(j), &
      &             100.*fluxtop_clrsky(j),trans_layers_above_clrsky(j)
              enddo   
             endif
@@ -651,7 +658,7 @@
           bb(j)=1/( exp(1307.27/skt(j)) - 1. )
           !bb(j)=5.67e-8*skt(j)**4
 
-          fluxtop_clrsky(j) = fluxtop_clrsky(j) + emsfc_lw * bb(j) 
+          fluxtop_clrsky(j) = fluxtop_clrsky(j) + emsfc_lw * bb(j) &
      &     * trans_layers_above_clrsky(j)
      
           !clear sky brightness temperature
@@ -661,14 +668,14 @@
 
         if (ncolprint.ne.0) then
         do j=1,npoints ,1000
-          write(6,'(a10)') 'j='
-          write(6,'(8I10)') j
-          write (6,'(a)') 'id:'
-          write (6,'(a)') 'surface'
+          write(logunit,'(a10)') 'j='
+          write(logunit,'(8I10)') j
+          write (logunit,'(a)') 'id:'
+          write (logunit,'(a)') 'surface'
 
-          write (6,'(a)') 'emsfc,100.*bb(j),100.*f,total_trans:'
-          write (6,'(5(f7.2,1X))') emsfc_lw,100.*bb(j),
-     &      100.*fluxtop_clrsky(j),
+          write (logunit,'(a)') 'emsfc,100.*bb(j),100.*f,total_trans:'
+          write (logunit,'(5(f7.2,1X))') emsfc_lw,100.*bb(j), &
+     &      100.*fluxtop_clrsky(j), &
      &       trans_layers_above_clrsky(j), meantbclr(j)
         enddo
       endif
@@ -684,13 +691,13 @@
         if (ncolprint.ne.0) then
 
         do j=1,npoints ,1000
-            write(6,'(a10)') 'j='
-            write(6,'(8I10)') j
-            write (6,'(a)') 'ts:'
-            write (6,'(8f7.2)') (skt(j),ibox=1,ncolprint)
+            write(logunit,'(a10)') 'j='
+            write(logunit,'(8I10)') j
+            write (logunit,'(a)') 'ts:'
+            write (logunit,'(8f7.2)') (skt(j),ibox=1,ncolprint)
     
-            write (6,'(a)') 'ta_rev:'
-            write (6,'(8f7.2)') 
+            write (logunit,'(a)') 'ta_rev:'
+            write (logunit,'(8f7.2)') &
      &       ((at(j,ilev2),ibox=1,ncolprint),ilev2=1,nlev)
 
         enddo
@@ -716,9 +723,9 @@
 
          if (passing_in_column_data) then
                ! emissivity for point in this layer
-                if (frac_out(j,ibox,ilev).eq.1 .or.
+                if (frac_out(j,ibox,ilev).eq.1 .or. &
      &              frac_out(j,ibox,ilev).eq.2) then
-                dem(j,ibox)= 1. -
+                dem(j,ibox)= 1. - &
      &          ( (1. - dem_wv(j,ilev)) * (1. -  dem_col(j,ibox,ilev)) )
                 else
                 dem(j,ibox)=  dem_wv(j,ilev)
@@ -727,10 +734,10 @@
          else
               ! emissivity for point in this layer
                 if (frac_out(j,ibox,ilev).eq.1) then
-                dem(j,ibox)= 1. - 
+                dem(j,ibox)= 1. - &
      &             ( (1. - dem_wv(j,ilev)) * (1. -  dem_s(j,ilev)) )
                 else if (frac_out(j,ibox,ilev).eq.2) then
-                dem(j,ibox)= 1. - 
+                dem(j,ibox)= 1. - &
      &             ( (1. - dem_wv(j,ilev)) * (1. -  dem_c(j,ilev)) )
                 else
                 dem(j,ibox)=  dem_wv(j,ilev)
@@ -742,14 +749,14 @@
                 ! increase TOA flux by flux emitted from layer
               ! times total transmittance in layers above
 
-                fluxtop(j,ibox) = fluxtop(j,ibox) 
-     &            + dem(j,ibox) * bb(j)
+                fluxtop(j,ibox) = fluxtop(j,ibox) &
+     &            + dem(j,ibox) * bb(j)           &
      &            * trans_layers_above(j,ibox) 
             
                 ! update trans_layers_above with transmissivity
               ! from this layer for next time around loop
 
-                trans_layers_above(j,ibox)=
+                trans_layers_above(j,ibox)= &
      &            trans_layers_above(j,ibox)*(1.-dem(j,ibox))
 
               enddo ! j
@@ -757,23 +764,23 @@
 
             if (ncolprint.ne.0) then
               do j=1,npoints,1000
-              write (6,'(a)') 'ilev:'
-              write (6,'(I2)') ilev
+              write (logunit,'(a)') 'ilev:'
+              write (logunit,'(I2)') ilev
     
-              write(6,'(a10)') 'j='
-              write(6,'(8I10)') j
-              write (6,'(a)') 'emiss_layer:'
-              write (6,'(8f7.2)') (dem(j,ibox),ibox=1,ncolprint)
+              write(logunit,'(a10)') 'j='
+              write(logunit,'(8I10)') j
+              write (logunit,'(a)') 'emiss_layer:'
+              write (logunit,'(8f7.2)') (dem(j,ibox),ibox=1,ncolprint)
         
-              write (6,'(a)') '100.*bb(j):'
-              write (6,'(8f7.2)') (100.*bb(j),ibox=1,ncolprint)
+              write (logunit,'(a)') '100.*bb(j):'
+              write (logunit,'(8f7.2)') (100.*bb(j),ibox=1,ncolprint)
         
-              write (6,'(a)') '100.*f:'
-              write (6,'(8f7.2)') 
+              write (logunit,'(a)') '100.*f:'
+              write (logunit,'(8f7.2)') &
      &         (100.*fluxtop(j,ibox),ibox=1,ncolprint)
         
-              write (6,'(a)') 'total_trans:'
-              write (6,'(8f7.2)') 
+              write (logunit,'(a)') 'total_trans:'
+              write (logunit,'(8f7.2)') &
      &          (trans_layers_above(j,ibox),ibox=1,ncolprint)
             enddo
           endif
@@ -792,8 +799,8 @@
 
             !add in surface emission
 
-            fluxtop(j,ibox) = fluxtop(j,ibox) 
-     &         + emsfc_lw * bb(j) 
+            fluxtop(j,ibox) = fluxtop(j,ibox) &
+     &         + emsfc_lw * bb(j)             &
      &         * trans_layers_above(j,ibox) 
             
           end do
@@ -812,22 +819,22 @@
         if (ncolprint.ne.0) then
 
           do j=1,npoints ,1000
-          write(6,'(a10)') 'j='
-          write(6,'(8I10)') j
-          write (6,'(a)') 'id:'
-          write (6,'(a)') 'surface'
+          write(logunit,'(a10)') 'j='
+          write(logunit,'(8I10)') j
+          write (logunit,'(a)') 'id:'
+          write (logunit,'(a)') 'surface'
 
-          write (6,'(a)') 'emiss_layer:'
-          write (6,'(8f7.2)') (dem(1,ibox),ibox=1,ncolprint)
+          write (logunit,'(a)') 'emiss_layer:'
+          write (logunit,'(8f7.2)') (dem(1,ibox),ibox=1,ncolprint)
     
-          write (6,'(a)') '100.*bb(j):'
-          write (6,'(8f7.2)') (100.*bb(j),ibox=1,ncolprint)
+          write (logunit,'(a)') '100.*bb(j):'
+          write (logunit,'(8f7.2)') (100.*bb(j),ibox=1,ncolprint)
     
-          write (6,'(a)') '100.*f:'
-          write (6,'(8f7.2)') (100.*fluxtop(j,ibox),ibox=1,ncolprint)
+          write (logunit,'(a)') '100.*f:'
+          write (logunit,'(8f7.2)') (100.*fluxtop(j,ibox),ibox=1,ncolprint)
           
-	  write (6,'(a)') 'meantb(j):'
-          write (6,'(8f7.2)') (meantb(j),ibox=1,ncolprint)
+	  write (logunit,'(a)') 'meantb(j):'
+          write (logunit,'(8f7.2)') (meantb(j),ibox=1,ncolprint)
       
           end do
       endif
@@ -854,7 +861,7 @@
           enddo 
         do ibox=1,ncol
           do j=1,npoints  
-            transmax(j) = (fluxtop(j,ibox)-btcmin(j))
+            transmax(j) = (fluxtop(j,ibox)-btcmin(j)) &
      &                /(fluxtop_clrsky(j)-btcmin(j))
           !note that the initial setting of tauir(j) is needed so that
           !tauir(j) has a realistic value should the next if block be
@@ -866,7 +873,7 @@
 
           if (top_height .eq. 1) then
             do j=1,npoints  
-              if (transmax(j) .gt. 0.001 .and. 
+              if (transmax(j) .gt. 0.001 .and. &
      &          transmax(j) .le. 0.9999999) then
                 fluxtopinit(j) = fluxtop(j,ibox)
               tauir(j) = tau(j,ibox) *rec2p13
@@ -875,14 +882,14 @@
             do icycle=1,2
               do j=1,npoints  
                 if (tau(j,ibox) .gt. (tauchk            )) then 
-                if (transmax(j) .gt. 0.001 .and. 
+                if (transmax(j) .gt. 0.001 .and. &
      &            transmax(j) .le. 0.9999999) then
                   emcld(j,ibox) = 1. - exp(-1. * tauir(j)  )
-                  fluxtop(j,ibox) = fluxtopinit(j) -   
+                  fluxtop(j,ibox) = fluxtopinit(j) -   &
      &              ((1.-emcld(j,ibox))*fluxtop_clrsky(j))
-                  fluxtop(j,ibox)=max(1.E-06,
+                  fluxtop(j,ibox)=max(1.E-06, &
      &              (fluxtop(j,ibox)/emcld(j,ibox)))
-                  tb(j,ibox)= 1307.27
+                  tb(j,ibox)= 1307.27 &
      &              / (log(1. + (1./fluxtop(j,ibox))))
                   if (tb(j,ibox) .gt. 260.) then
                   tauir(j) = tau(j,ibox) / 2.56
@@ -914,45 +921,45 @@
         if (ncolprint.ne.0) then
 
           do j=1,npoints,1000
-          write(6,'(a10)') 'j='
-          write(6,'(8I10)') j
+          write(logunit,'(a10)') 'j='
+          write(logunit,'(8I10)') j
 
-          write (6,'(a)') 'attrop:'
-          write (6,'(8f7.2)') (attrop(j))
+          write (logunit,'(a)') 'attrop:'
+          write (logunit,'(8f7.2)') (attrop(j))
     
-          write (6,'(a)') 'btcmin:'
-          write (6,'(8f7.2)') (btcmin(j))
+          write (logunit,'(a)') 'btcmin:'
+          write (logunit,'(8f7.2)') (btcmin(j))
     
-          write (6,'(a)') 'fluxtop_clrsky*100:'
-          write (6,'(8f7.2)') 
+          write (logunit,'(a)') 'fluxtop_clrsky*100:'
+          write (logunit,'(8f7.2)') &
      &      (100.*fluxtop_clrsky(j))
 
-          write (6,'(a)') '100.*f_adj:'
-          write (6,'(8f7.2)') (100.*fluxtop(j,ibox),ibox=1,ncolprint)
+          write (logunit,'(a)') '100.*f_adj:'
+          write (logunit,'(8f7.2)') (100.*fluxtop(j,ibox),ibox=1,ncolprint)
     
-          write (6,'(a)') 'transmax:'
-          write (6,'(8f7.2)') (transmax(ibox),ibox=1,ncolprint)
+          write (logunit,'(a)') 'transmax:'
+          write (logunit,'(8f7.2)') (transmax(ibox),ibox=1,ncolprint)
     
-          write (6,'(a)') 'tau:'
-          write (6,'(8f7.2)') (tau(j,ibox),ibox=1,ncolprint)
+          write (logunit,'(a)') 'tau:'
+          write (logunit,'(8f7.2)') (tau(j,ibox),ibox=1,ncolprint)
     
-          write (6,'(a)') 'emcld:'
-          write (6,'(8f7.2)') (emcld(j,ibox),ibox=1,ncolprint)
+          write (logunit,'(a)') 'emcld:'
+          write (logunit,'(8f7.2)') (emcld(j,ibox),ibox=1,ncolprint)
     
-          write (6,'(a)') 'total_trans:'
-          write (6,'(8f7.2)') 
+          write (logunit,'(a)') 'total_trans:'
+          write (logunit,'(8f7.2)') &
      &        (trans_layers_above(j,ibox),ibox=1,ncolprint)
     
-          write (6,'(a)') 'total_emiss:'
-          write (6,'(8f7.2)') 
+          write (logunit,'(a)') 'total_emiss:'
+          write (logunit,'(8f7.2)') &
      &        (1.0-trans_layers_above(j,ibox),ibox=1,ncolprint)
     
-          write (6,'(a)') 'total_trans:'
-          write (6,'(8f7.2)') 
+          write (logunit,'(a)') 'total_trans:'
+          write (logunit,'(8f7.2)') &
      &        (trans_layers_above(j,ibox),ibox=1,ncolprint)
     
-          write (6,'(a)') 'ppout:'
-          write (6,'(8f7.2)') (tb(j,ibox),ibox=1,ncolprint)
+          write (logunit,'(a)') 'ppout:'
+          write (logunit,'(8f7.2)') (tb(j,ibox),ibox=1,ncolprint)
           enddo ! j
       endif
 
@@ -987,9 +994,9 @@
             !cdir nodep
             do j=1,npoints 
 	     if (ilev .ge. itrop(j)) then
-              if ((at(j,ilev)   .ge. tb(j,ibox) .and. 
-     &          at(j,ilev+1) .le. tb(j,ibox)) .or.
-     &          (at(j,ilev) .le. tb(j,ibox) .and. 
+              if ((at(j,ilev)   .ge. tb(j,ibox) .and. &
+     &          at(j,ilev+1) .le. tb(j,ibox)) .or. &
+     &          (at(j,ilev) .le. tb(j,ibox) .and. &
      &          at(j,ilev+1) .ge. tb(j,ibox))) then 
                 nmatch(j)=nmatch(j)+1
 		match(j,nmatch(j))=ilev
@@ -1007,7 +1014,7 @@
 	      atd = max(tauchk,abs(at(j,k2) - at(j,k1)))
               logp=logp1+(logp2-logp1)*abs(tb(j,ibox)-at(j,k1))/atd
               ptop(j,ibox) = exp(logp)
-	      if(abs(pfull(j,k1)-ptop(j,ibox)) .lt.
+	      if(abs(pfull(j,k1)-ptop(j,ibox)) .lt. &
      &            abs(pfull(j,k2)-ptop(j,ibox))) then
                  levmatch(j,ibox)=k1
               else
@@ -1032,7 +1039,7 @@
           enddo
           do ilev=1,nlev
             do j=1,npoints     
-              if ((ptop(j,ibox) .eq. 0. )
+              if ((ptop(j,ibox) .eq. 0. ) &
      &           .and.(frac_out(j,ibox,ilev) .ne. 0)) then
                 ptop(j,ibox)=phalf(j,ilev)
               levmatch(j,ibox)=ilev
@@ -1108,7 +1115,7 @@
       do 39 ibox=1,ncol
         do j=1,npoints 
 
-          if (tau(j,ibox) .gt. (tauchk            )
+          if (tau(j,ibox) .gt. (tauchk            ) &
      &      .and. ptop(j,ibox) .gt. 0.) then
               box_cloudy(j,ibox)=.true.
           endif
@@ -1123,11 +1130,11 @@
 		   totalcldarea(j) = totalcldarea(j) + boxarea
 		
                    !convert optical thickness to albedo
-                   albedocld(j,ibox)
+                   albedocld(j,ibox) &
      &		   = (tau(j,ibox)**0.895)/((tau(j,ibox)**0.895)+6.82)
          
                    !contribute to averaging
-                   meanalbedocld(j) = meanalbedocld(j) 
+                   meanalbedocld(j) = meanalbedocld(j)  &
      &                                +albedocld(j,ibox)*boxarea
 
                 end if
@@ -1157,20 +1164,19 @@
               !determine optical depth category
               if (tau(j,ibox) .lt. isccp_taumin) then
                   itau(j)=1
-              else if (tau(j,ibox) .ge. isccp_taumin
-     &                                    
+              else if (tau(j,ibox) .ge. isccp_taumin &
      &          .and. tau(j,ibox) .lt. 1.3) then
                 itau(j)=2
-              else if (tau(j,ibox) .ge. 1.3 
+              else if (tau(j,ibox) .ge. 1.3 &
      &          .and. tau(j,ibox) .lt. 3.6) then
                 itau(j)=3
-              else if (tau(j,ibox) .ge. 3.6 
+              else if (tau(j,ibox) .ge. 3.6 &
      &          .and. tau(j,ibox) .lt. 9.4) then
                   itau(j)=4
-              else if (tau(j,ibox) .ge. 9.4 
+              else if (tau(j,ibox) .ge. 9.4 &
      &          .and. tau(j,ibox) .lt. 23.) then
                   itau(j)=5
-              else if (tau(j,ibox) .ge. 23. 
+              else if (tau(j,ibox) .ge. 23. &
      &          .and. tau(j,ibox) .lt. 60.) then
                   itau(j)=6
               else if (tau(j,ibox) .ge. 60.) then
@@ -1178,22 +1184,22 @@
               end if
 
               !determine cloud top pressure category
-              if (    ptop(j,ibox) .gt. 0.  
+              if (    ptop(j,ibox) .gt. 0.   &
      &          .and.ptop(j,ibox) .lt. 180.) then
                   ipres(j)=1
-              else if(ptop(j,ibox) .ge. 180.
+              else if(ptop(j,ibox) .ge. 180. &
      &          .and.ptop(j,ibox) .lt. 310.) then
                   ipres(j)=2
-              else if(ptop(j,ibox) .ge. 310.
+              else if(ptop(j,ibox) .ge. 310. &
      &          .and.ptop(j,ibox) .lt. 440.) then
                   ipres(j)=3
-              else if(ptop(j,ibox) .ge. 440.
+              else if(ptop(j,ibox) .ge. 440. &
      &          .and.ptop(j,ibox) .lt. 560.) then
                   ipres(j)=4
-              else if(ptop(j,ibox) .ge. 560.
+              else if(ptop(j,ibox) .ge. 560. &
      &          .and.ptop(j,ibox) .lt. 680.) then
                   ipres(j)=5
-              else if(ptop(j,ibox) .ge. 680.
+              else if(ptop(j,ibox) .ge. 680. &
      &          .and.ptop(j,ibox) .lt. 800.) then
                   ipres(j)=6
               else if(ptop(j,ibox) .ge. 800.) then
@@ -1202,7 +1208,7 @@
 
               !update frequencies
               if(ipres(j) .gt. 0.and.itau(j) .gt. 0) then
-              fq_isccp(j,itau(j),ipres(j))=
+              fq_isccp(j,itau(j),ipres(j))= &
      &          fq_isccp(j,itau(j),ipres(j))+ boxarea
               end if
 
@@ -1252,7 +1258,7 @@
             do ilev=1,nlev
               do ibox=1,ncol
                    acc(ilev,ibox)=frac_out(j,ibox,ilev)*2
-                   if (levmatch(j,ibox) .eq. ilev) 
+                   if (levmatch(j,ibox) .eq. ilev) &
      &                 acc(ilev,ibox)=acc(ilev,ibox)+1
               enddo
             enddo
@@ -1261,49 +1267,50 @@
 
           write(ftn09,11) j
 11        format('ftn09.',i4.4)
-          open(9, FILE=ftn09, FORM='FORMATTED')
+          funit = get_unit()
+          open(funit, FILE=ftn09, FORM='FORMATTED')
 
-             write(9,'(a1)') ' '
-             write(9,'(10i5)')
+             write(funit,'(a1)') ' '
+             write(funit,'(10i5)')  &
      &                  (ilev,ilev=5,nlev,5)
-             write(9,'(a1)') ' '
+             write(funit,'(a1)') ' '
              
              do ibox=1,ncol
-               write(9,'(40(a1),1x,40(a1))')
-     &           (cchar_realtops(acc(ilev,ibox)+1),ilev=1,nlev) 
+               write(funit,'(40(a1),1x,40(a1))')                &
+     &           (cchar_realtops(acc(ilev,ibox)+1),ilev=1,nlev) &
      &           ,(cchar(acc(ilev,ibox)+1),ilev=1,nlev) 
              end do
-             close(9)
+             close(funit)
 
              if (ncolprint.ne.0) then
-               write(6,'(a1)') ' '
-                    write(6,'(a2,1X,5(a7,1X),a50)') 
-     &                  'ilev',
-     &                  'pfull','at',
-     &                  'cc*100','dem_s','dtau_s',
+               write(logunit,'(a1)') ' '
+                    write(logunit,'(a2,1X,5(a7,1X),a50)') &
+     &                  'ilev',                           &
+     &                  'pfull','at',                     &
+     &                  'cc*100','dem_s','dtau_s',        &
      &                  'cchar'
 
 !               do 4012 ilev=1,nlev
-!                    write(6,'(60i2)') (box(i,ilev),i=1,ncolprint)
-!                   write(6,'(i2,1X,5(f7.2,1X),50(a1))') 
+!                    write(logunit,'(60i2)') (box(i,ilev),i=1,ncolprint)
+!                   write(logunit,'(i2,1X,5(f7.2,1X),50(a1))') 
 !     &                  ilev,
 !     &                  pfull(j,ilev)/100.,at(j,ilev),
 !     &                  cc(j,ilev)*100.0,dem_s(j,ilev),dtau_s(j,ilev)
 !     &                  ,(cchar(acc(ilev,ibox)+1),ibox=1,ncolprint)
 !4012           continue
-               write (6,'(a)') 'skt(j):'
-               write (6,'(8f7.2)') skt(j)
+               write (logunit,'(a)') 'skt(j):'
+               write (logunit,'(8f7.2)') skt(j)
                                       
-               write (6,'(8I7)') (ibox,ibox=1,ncolprint)
+               write (logunit,'(8I7)') (ibox,ibox=1,ncolprint)
             
-               write (6,'(a)') 'tau:'
-               write (6,'(8f7.2)') (tau(j,ibox),ibox=1,ncolprint)
+               write (logunit,'(a)') 'tau:'
+               write (logunit,'(8f7.2)') (tau(j,ibox),ibox=1,ncolprint)
     
-               write (6,'(a)') 'tb:'
-               write (6,'(8f7.2)') (tb(j,ibox),ibox=1,ncolprint)
+               write (logunit,'(a)') 'tb:'
+               write (logunit,'(8f7.2)') (tb(j,ibox),ibox=1,ncolprint)
     
-               write (6,'(a)') 'ptop:'
-               write (6,'(8f7.2)') (ptop(j,ibox),ibox=1,ncolprint)
+               write (logunit,'(a)') 'ptop:'
+               write (logunit,'(8f7.2)') (ptop(j,ibox),ibox=1,ncolprint)
              endif 
     
         enddo

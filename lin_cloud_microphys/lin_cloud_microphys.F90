@@ -17,8 +17,8 @@ module lin_cld_microphys_mod
  implicit none
  private
 
- character(len=128) :: version = '$Id: lin_cloud_microphys.F90,v 18.0 2010/03/02 23:30:57 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201004 $'
+ character(len=128) :: version = '$Id: lin_cloud_microphys.F90,v 17.0.4.3.2.1.4.1 2010/01/07 18:31:16 z1l Exp $'
+ character(len=128) :: tagname = '$Name: riga_201006 $'
 
  public  lin_cld_microphys_driver, lin_cld_microphys_init, lin_cld_microphys_end, sg_conv
  public  qsmith_init, qsmith, es2_table1d, es3_table1d, esw_table1d
@@ -54,12 +54,13 @@ module lin_cld_microphys_mod
 
  real, parameter:: dz_min = 1.e-2
 ! Derived variables:
- real :: ccn   = 150.     !
- real :: dts, rdts, pie
+!real :: ccn   = 150.     ! these variables have been made thread-private
+!real :: c_praut
+!real :: h_var = 0.
+
+ real :: dts, rdts, pie  ! these variables have been left unchanged
  real :: lcp, icp, tcp, rgrav
- real :: c_praut
  real :: fac_rc
- real :: h_var = 0.
  real :: mp_count = 0.
 
  logical :: do_setup=.true.
@@ -222,12 +223,6 @@ module lin_cld_microphys_mod
      rdts = 1./dts
 
   call get_time (time, seconds, days)
-
-  if ( do_setup ) then
-      call setup_con (is, ie, js, je, ks, ke)
-      call setupm
-      do_setup = .false.
-  endif
 
 !rab  if ( mp_debug ) then
 !rab       call prt_maxmin('T_b_mp',    pt, is, ie, js, je, 0, kbot, 1., master)
@@ -430,8 +425,9 @@ module lin_cld_microphys_mod
                                den0, tz, p1, dz0, dz1, denfac
 
   real :: r1, s1, i1, g1, rdt, omq
-  real :: cpaut
+  real :: cpaut, ccn, c_praut
   real :: dt_rain
+  real :: h_var
   integer :: i,k,n
 ! real:: x, pexp
 ! pexp(x) = 1.+x*(1.+x*(0.5+x/6.*(1.+x*(0.25+0.05*x))))
@@ -518,7 +514,7 @@ module lin_cld_microphys_mod
 ! Time-split warm rain processes: first pass
 !-------------------------------------------
 !                                       call timing_on (" warm_rain")
-   call warm_rain(dt_rain, ktop, kbot, p1, dp1, dz1, tz, qvz, qlz, qrz, p1, den, denfac, vtrz, r1)
+   call warm_rain(dt_rain, ktop, kbot, p1, dp1, dz1, tz, qvz, qlz, qrz, p1, den, denfac, ccn, c_praut, h_var, vtrz, r1)
 !                                       call timing_off(" warm_rain")
    rain(i) = rain(i) + r1
 
@@ -542,7 +538,7 @@ module lin_cld_microphys_mod
 ! Time-split warm rain processes: 2nd pass
 !-------------------------------------------
 !                                       call timing_on (" warm_rain")
-   call warm_rain(dt_rain, ktop, kbot, p1, dp1, dz1, tz, qvz, qlz, qrz, p1, den, denfac, vtrz, r1)
+   call warm_rain(dt_rain, ktop, kbot, p1, dp1, dz1, tz, qvz, qlz, qrz, p1, den, denfac, ccn, c_praut, h_var, vtrz, r1)
 !                                       call timing_off(" warm_rain")
    rain(i) = rain(i) + r1
 
@@ -552,7 +548,7 @@ module lin_cld_microphys_mod
 
 !                                       call timing_on (" icloud")
    call icloud( ktop, kbot, tz, p1, qvz, qlz, qrz, qiz, qsz, qgz,  &
-                dp1, den, denfac, vtsz, vtgz, vtrz, qaz )
+                dp1, den, denfac, vtsz, vtgz, vtrz, qaz, h_var )
 !                                       call timing_off(" icloud")
 1000  continue  ! sub-cycle
 
@@ -606,13 +602,15 @@ module lin_cld_microphys_mod
 
 
  subroutine warm_rain( dt, ktop, kbot, p1, dp, dz, tz, qv, ql, qr, pm,  &
-                       den, denfac, vtr, r1)
+                       den, denfac, ccn, c_praut, h_var, vtr, r1)
 
  integer, intent(in):: ktop, kbot
  real,    intent(in):: dt                    ! time step (s)
  real,    intent(in), dimension(ktop:kbot):: p1, dp, dz, pm, den, denfac
+ real,    intent(in):: ccn, c_praut, h_var
  real, intent(inout), dimension(ktop:kbot):: tz, qv, ql, qr, vtr
  real, intent(out):: r1
+ 
 ! local:
  real, parameter:: so3 = 7./3.
  real, dimension(ktop:kbot):: dl
@@ -679,7 +677,7 @@ module lin_cld_microphys_mod
  enddo
 
 ! Evap_acc of rain for 1/2 time step
-  call revap_racc( ktop, kbot, dt5, tz, qv, ql, qr, pm, den, denfac )
+  call revap_racc( ktop, kbot, dt5, tz, qv, ql, qr, pm, den, denfac, h_var )
 
   if ( use_ppm ) then
        call lagrangian_fall_ppm(ktop, kbot, zs, ze, zt, dp, qr, r1, mono_prof)
@@ -688,7 +686,7 @@ module lin_cld_microphys_mod
   endif
 
 ! Finish the remaing 1/2 time step
-  call revap_racc( ktop, kbot, dt5, tz, qv, ql, qr, pm, den, denfac )
+  call revap_racc( ktop, kbot, dt5, tz, qv, ql, qr, pm, den, denfac, h_var )
 
 999  continue
 
@@ -698,7 +696,7 @@ module lin_cld_microphys_mod
 ! Assuming linear subgrid vertical distribution of cloud water
 ! following Lin et al. 1994, MWR
 
-  call linear0_prof( kbot-ktop+1, p1(ktop), ql(ktop), dl(ktop), .true. )
+  call linear0_prof( kbot-ktop+1, p1(ktop), ql(ktop), dl(ktop), .true., h_var )
 
   qc = fac_rc*ccn
 
@@ -731,10 +729,11 @@ module lin_cld_microphys_mod
  end subroutine warm_rain
 
 
- subroutine revap_racc( ktop, kbot, dt, tz, qv, ql, qr, pm, den, denfac )
+ subroutine revap_racc( ktop, kbot, dt, tz, qv, ql, qr, pm, den, denfac, h_var )
  integer, intent(in):: ktop, kbot
  real,    intent(in):: dt                 ! time step (s)
  real,    intent(in), dimension(ktop:kbot):: pm, den, denfac
+ real,    intent(in)                      :: h_var
  real, intent(inout), dimension(ktop:kbot):: tz, qv, qr, ql
 ! local:
  real:: qsat, dqsdt, evap, tsq, qden, q_plus, q_minus, sink
@@ -795,11 +794,12 @@ module lin_cld_microphys_mod
 
 
 
- subroutine linear0_prof(km, p1,  q, dm, b_var)
+ subroutine linear0_prof(km, p1,  q, dm, b_var, h_var)
  integer, intent(in):: km
  real, intent(in ):: p1(km),  q(km)
  real, intent(out):: dm(km)
  logical, intent(in):: b_var
+ real, intent(in):: h_var
 !
  real :: dq(km)
  integer:: k
@@ -891,7 +891,7 @@ module lin_cld_microphys_mod
 
 
  subroutine icloud(ktop, kbot, tzk, p1, qvk, qlk, qrk, qik, qsk, qgk, dp1, &
-                   den, denfac, vts, vtg, vtr, qak)
+                   den, denfac, vts, vtg, vtr, qak, h_var)
 
 !----------------------------------------------------
 ! Bulk cloud micro-physics; processes splitting
@@ -903,6 +903,7 @@ module lin_cld_microphys_mod
  integer, intent(in) :: ktop, kbot
  real, intent(in),    dimension(ktop:kbot):: p1, dp1, den, denfac, vts, vtg, vtr
  real, intent(inout), dimension(ktop:kbot):: tzk, qvk, qlk, qrk, qik, qsk, qgk, qak
+ real, intent(in) :: h_var
 ! local:
  real, parameter:: rhos = 0.1e3    ! snow density (1/10 of water)
  real, dimension(2*(kbot-ktop-1)):: p2, den2, tz2, qv2, ql2, qr2, qs2, qi2, qg2, qa2 
@@ -967,7 +968,7 @@ module lin_cld_microphys_mod
     endif
  enddo
 
- call linear0_prof( kbot-ktop+1, p1(ktop), qik(ktop), di(ktop), .true. )
+ call linear0_prof( kbot-ktop+1, p1(ktop), qik(ktop), di(ktop), .true., h_var )
 
  do 3000 k=ktop, kbot
 
@@ -1362,7 +1363,7 @@ endif   ! end ice-physics
        qa2(k) = 0.
    enddo
 
-   call subgrid_z_proc(1, km, p2, den2, tz2, qv2, ql2, qi2, qs2, qa2)
+   call subgrid_z_proc(1, km, p2, den2, h_var, tz2, qv2, ql2, qi2, qs2, qa2)
  
 ! Remap back to original larger volumes:
    qak(ktop  ) = qak(ktop  ) + qa2(1)
@@ -1422,7 +1423,7 @@ endif   ! end ice-physics
         qsk(kbot  ) = qs2(km  )
    endif
  else
-   call subgrid_z_proc(ktop, kbot, p1, den, tzk, qvk, qlk, qik, qsk, qak)
+   call subgrid_z_proc(ktop, kbot, p1, den, h_var, tzk, qvk, qlk, qik, qsk, qak)
  endif
 
  end subroutine icloud
@@ -1469,12 +1470,13 @@ endif   ! end ice-physics
 
 
 
- subroutine subgrid_z_proc(ktop, kbot, p1, den, tz, qv, ql, qi, qs, qa)
+ subroutine subgrid_z_proc(ktop, kbot, p1, den, h_var, tz, qv, ql, qi, qs, qa)
 
 ! Temperature sentive high vertical resolution processes:
 
  integer, intent(in):: ktop, kbot
  real, intent(in),    dimension(ktop:kbot):: p1, den
+ real, intent(in)                         :: h_var
  real, intent(inout), dimension(ktop:kbot):: tz, qv, ql, qi, qs, qa
 ! local:
  real:: qc_crt = 5.0e-8  ! minimum condensate mixing ratio to allow partial cloudiness
@@ -2485,17 +2487,18 @@ endif   ! end ice-physics
       c1brg = dts/rmi50
 !lin  c2brg = ri50**2*1.e3 ! error
       c2brg = pie*ri50**2*1.e3
- 
-      do_setup = .false.
 
  end subroutine setupm
 
 
- subroutine lin_cld_microphys_init(axes, time)
+ subroutine lin_cld_microphys_init(id, jd, kd, axes, time)
+ 
+    integer,         intent(in) :: id, jd, kd
     integer,         intent(in) :: axes(4)
     type(time_type), intent(in) :: time
     
     integer   :: unit, io, ierr, k, logunit
+    integer   :: is, ie, js, je, ks, ke
     logical   :: flag
     real :: tmp, q1, q2
 
@@ -2512,6 +2515,20 @@ endif   ! end ice-physics
     end if
     call write_version_number (version, tagname)
     logunit = stdlog()
+    
+    if ( do_setup ) then
+      is = 1
+      js = 1
+      ks = 1
+      ie = id
+      je = jd
+      ke = kd
+
+      call setup_con (is, ie, js, je, ks, ke)
+      call setupm
+      do_setup = .false.
+    endif
+
     if (master) write( logunit, nml = lin_cld_microphys_nml )
  
     id_vtr = register_diag_field ( mod_name, 'vt_r', axes(1:3), time,        &

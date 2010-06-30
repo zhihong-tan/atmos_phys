@@ -1,6 +1,6 @@
 !#VERSION NUMBER:
-!  $Name: riga_201004 $
-!  $Id: donner_deep_k.F90,v 18.0 2010/03/02 23:30:05 fms Exp $
+!  $Name: riga_201006 $
+!  $Id: donner_deep_k.F90,v 18.0.2.1.2.1 2010/04/26 21:53:05 wfc Exp $
 
 !module donner_deep_inter_mod
 
@@ -27,6 +27,7 @@ subroutine don_d_donner_deep_k   &
           donner_humidity_area, donner_humidity_factor, total_precip,  &
           temperature_forcing, moisture_forcing, parcel_rise, &
           delta_ql, delta_qi, delta_qa, qtrtnd, calc_conv_on_this_step, &
+          mhalf_3d, &
           ermesg, error, Initialized, Col_diag, Don_rad, Don_conv, Don_cape, &
           Don_cem, Don_save, sd, Uw_p, ac, cp, ct, Don_budgets)
                         
@@ -98,6 +99,8 @@ real, dimension(isize,jsize),                                         &
 real,    dimension(isize,jsize,nlev_lsm,ntr),                        &
                          intent(out)    :: qtrtnd 
 logical,                 intent(in)     :: calc_conv_on_this_step
+real, dimension(isize,jsize,nlev_lsm+1),                               &
+                         intent(out)    :: mhalf_3d
 character(len=*),        intent(out)    :: ermesg
 integer,                 intent(out)    :: error
 type(donner_initialized_type),                            &
@@ -280,6 +283,8 @@ type(ctend),             intent(inout)  :: ct
                                                 lag_cape_vapor,      &
                                                 lag_cape_press, &
                                                 dql, dqi, dqa
+      real,                                                      &
+         dimension (isize, jsize, nlev_lsm+1) ::  mhalf_3d_local  
       real,    dimension (isize, jsize)     ::  current_displ
       logical, dimension (isize, jsize)     ::  exit_flag
       integer                               ::  idiag, jdiag, unitdiag
@@ -488,7 +493,7 @@ type(ctend),             intent(inout)  :: ct
               sfc_vapor_flux, tr_flux, tracers, Don_cape, Don_conv, &
               Don_rad, Don_cem, temperature_forcing, moisture_forcing,  &
               total_precip, donner_humidity_factor, donner_humidity_area,&
-              dql, dqi, dqa, exit_flag, ermesg, error, sd, Uw_p, ac, cp, ct, &
+              dql, dqi, dqa, mhalf_3d_local, exit_flag, ermesg, error, sd, Uw_p, ac, cp, ct, &
               Don_budgets)
 
 !----------------------------------------------------------------------
@@ -659,6 +664,7 @@ type(ctend),             intent(inout)  :: ct
       mfluxup(:,:,:)     = Don_save%mflux_up(is:ie, js:je,:)
       detf(:,:,:)        = Don_save%det_mass_flux(is:ie,js:je,:)
       uceml_inter(:,:,:) = Don_save%cell_up_mass_flux(is:ie,js:je,:)
+      mhalf_3d(:,:,:) = mhalf_3d_local
 
 !-------------------------------------------------------------------
 !    4) the increments of the large-scale cloud variables due to deep
@@ -1315,6 +1321,7 @@ subroutine don_d_convection_driver_k    &
           Don_rad, Don_cem, temperature_forcing, moisture_forcing, &
           total_precip, &
           donner_humidity_factor, donner_humidity_area, dql, dqi, dqa, &
+          mhalf_3d, &
           exit_flag, ermesg, error, sd, Uw_p, ac, cp, ct, Don_budgets)
 
 use donner_types_mod, only : donner_initialized_type, donner_rad_type, &
@@ -1379,6 +1386,8 @@ real,    dimension(isize,jsize,nlev_lsm),                              &
                               intent(out)   :: donner_humidity_factor, &
                                                donner_humidity_area, &
                                                dql, dqi, dqa
+real,    dimension(isize,jsize,nlev_lsm+1),                          &
+                              intent(out)   :: mhalf_3d  
 character(len=*),             intent(out)   :: ermesg
 integer,                      intent(out)   :: error
 logical, dimension(isize,jsize),                                &
@@ -1703,14 +1712,15 @@ type(ctend),                  intent(inout) :: ct
             Col_diag, pfull, temp, exit_flag,  &
             mixing_ratio, qlin, qiin, qain, phalf, Don_conv, &
             donner_humidity_factor, donner_humidity_area, dql, dqi,  &
-            dqa, ermesg, error)
+            dqa, mhalf_3d, ermesg, error)
       else
        call don_l_lscloud_driver_miz   &
             (isize, jsize, nlev_lsm, cloud_tracers_present, Param,  &
              Col_diag, pfull, temp, exit_flag,  &
              mixing_ratio, qlin, qiin, qain, phalf, Don_conv, &
              donner_humidity_factor, donner_humidity_area, dql, dqi,  &
-             dqa,ermesg, error)
+!            dqa,ermesg, error)
+             dqa,mhalf_3d, ermesg, error)
       end if
 
 !----------------------------------------------------------------------
@@ -1973,8 +1983,10 @@ logical, dimension(isize,jsize),   intent(out)   :: exit_flag
 !    define an inverted tracer profile (index 1 nearest ground) for use
 !    in the cloud and convection routines.
 !------------------------------------------------------------------
+        do n=1,ntr
         do k=1,nlev_lsm
-          xgcm_v(:,:,k,:) = tracers(:,:,nlev_lsm-k+1,:)
+          xgcm_v(:,:,k,n) = tracers(:,:,nlev_lsm-k+1,n)
+        end do
         end do
 
 !--------------------------------------------------------------------
@@ -8509,7 +8521,7 @@ integer,                          intent(out)   :: error
 !---------------------------------------------------------------------
 !   local variables:
 
-      integer  :: k, kinv    ! do-loop indices
+      integer  :: k, kinv, n    ! do-loop indices
 
 !-----------------------------------------------------------------------
 !    initialize the error message character string.
@@ -8570,11 +8582,17 @@ integer,                          intent(out)   :: error
         Don_conv%umeml (i,j,kinv)   = umeml(k)
         Don_conv%cuqi  (i,j,kinv)   = cuq(k)
         Don_conv%cuql  (i,j,kinv)   = cuql_v(k)
-        Don_conv%qtren1(i,j,kinv,:) = qtren(k,:)
-        Don_conv%qtmes1(i,j,kinv,:) = qtmes(k,:)
-        Don_conv%temptr(i,j,kinv,:) = temptr(k,:)
-        Don_conv%wtp1  (i,j,kinv,:) = wtp(k,:)
-        Don_conv%wetdepc(i,j,kinv,:)= ensmbl_wetc(k,:)
+        enddo
+
+      do n=1,ntr
+      do k=1,nlev_lsm            
+        kinv = nlev_lsm + 1 - k
+        Don_conv%qtren1(i,j,kinv,n) = qtren(k,n)
+        Don_conv%qtmes1(i,j,kinv,n) = qtmes(k,n)
+        Don_conv%temptr(i,j,kinv,n) = temptr(k,n)
+        Don_conv%wtp1  (i,j,kinv,n) = wtp(k,n)
+        Don_conv%wetdepc(i,j,kinv,n)= ensmbl_wetc(k,n)
+      end do
       end do
         
 

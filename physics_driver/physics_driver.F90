@@ -176,8 +176,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 18.0 2010/03/02 23:31:24 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201004 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 17.0.2.1.6.1.2.1.2.1.2.2.2.1.2.1.4.1.2.1 2010/04/09 08:00:15 rsh Exp $'
+character(len=128) :: tagname = '$Name: riga_201006 $'
 
 
 !---------------------------------------------------------------------
@@ -388,6 +388,7 @@ real,    dimension(:,:,:,:), allocatable ::  tau_stoch, lwem_stoch, &
                            stoch_size_ice
 real,    dimension(:,:,:), allocatable ::  fl_lsrain, fl_lssnow, &
                                            fl_lsgrpl, &
+                                           fl_donmca_rain, fl_donmca_snow,&
                                            fl_ccrain, fl_ccsnow, &
                                            mr_ozone
 real,       dimension(:,:), allocatable  :: daytime
@@ -719,12 +720,6 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
                                   include_donmca_in_cosp_out = &
                                           include_donmca_in_cosp)
 
-      if ( (include_donmca_in_cosp) .and.   &
-           (.not. allow_cosp_precip_wo_clouds) ) then
-        call error_mesg ('physics_driver_init', &
-           'if cosp is to see donmca, then must allow cvctv precip in &
-                                   &grid boxes w/o cvctv clouds', FATAL)
-      endif
       call mpp_clock_end ( moist_processes_init_clock )
      
 !-----------------------------------------------------------------------
@@ -832,6 +827,8 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
       allocate (fl_lsgrpl  (id, jd, kd))
       allocate (fl_ccrain  (id, jd, kd))
       allocate (fl_ccsnow  (id, jd, kd))
+      allocate (fl_donmca_snow  (id, jd, kd))
+      allocate (fl_donmca_rain  (id, jd, kd))
       allocate (mr_ozone   (id, jd, kd))
       allocate (daytime    (id, jd    ))
       allocate ( temp_last (id, jd, kd))
@@ -841,6 +838,8 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
       fl_lsgrpl = 0.
       fl_ccrain = 0.
       fl_ccsnow = 0.
+      fl_donmca_rain = 0.
+      fl_donmca_snow = 0.
       mr_ozone  = 0.
       daytime =   0.
       temp_last = 0.
@@ -1032,7 +1031,7 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !--------------------------------------------------------------------
       if (do_cosp) then
         call mpp_clock_begin ( cosp_init_clock )
-        call cosp_driver_init (Time, axes, kd, ncol)
+        call cosp_driver_init (lonb, latb, Time, axes, kd, ncol)
         call mpp_clock_end   ( cosp_init_clock )
       endif
 
@@ -2529,6 +2528,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                              reff_ccprliq, reff_ccprice, &
                              fl_lsrain_loc, fl_lssnow_loc,  &
                              fl_lsgrpl_loc, &
+                             fl_donmca_rain_loc, fl_donmca_snow_loc, &
                              fl_ccrain_loc, fl_ccsnow_loc, mr_ozone_loc
       real, dimension(size(t,1), size(t,2), size(t,3), ncol) ::  &
                              stoch_mr_liq, stoch_mr_ice, &
@@ -2653,6 +2653,8 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
             fl_lsgrpl_loc(:,:,:) = fl_lsgrpl(is:ie,js:je,:)
             fl_ccrain_loc(:,:,:) = fl_ccrain(is:ie,js:je,:)
             fl_ccsnow_loc(:,:,:) = fl_ccsnow(is:ie,js:je,:)
+            fl_donmca_rain_loc(:,:,:) = fl_donmca_rain(is:ie,js:je,:)
+            fl_donmca_snow_loc(:,:,:) = fl_donmca_snow(is:ie,js:je,:)
             mr_ozone_loc(:,:,:)  = mr_ozone (is:ie,js:je,:)
           endif
         endif
@@ -2667,6 +2669,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
            vdt, diff_cu_mo_loc, convect(is:ie,js:je), lprec, &
            fprec, fl_lsrain(is:ie,js:je,:), fl_lssnow(is:ie,js:je,:),  &
            fl_ccrain(is:ie,js:je,:), fl_ccsnow(is:ie,js:je,:),    &
+           fl_donmca_rain(is:ie,js:je,:), fl_donmca_snow(is:ie,js:je,:), &
            gust_cv, area, lat, lsc_cloud_area(is:ie,js:je,:),  &
            lsc_liquid(is:ie,js:je,:), lsc_ice(is:ie,js:je,:), &
            lsc_droplet_number(is:ie,js:je,:), Aerosol, mask=mask,  &
@@ -2702,6 +2705,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                            convect(is:ie,js:je), lprec, fprec,       &
             fl_lsrain(is:ie,js:je,:), fl_lssnow(is:ie,js:je,:),  &
             fl_ccrain(is:ie,js:je,:), fl_ccsnow(is:ie,js:je,:),    &
+           fl_donmca_rain(is:ie,js:je,:), fl_donmca_snow(is:ie,js:je,:), &
                            gust_cv, area, lat,  &
                            lsc_cloud_area(is:ie,js:je,:), &
                            lsc_liquid(is:ie,js:je,:), &
@@ -2737,6 +2741,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                             convect(is:ie,js:je), lprec, fprec,       &
                fl_lsrain(is:ie,js:je,:), fl_lssnow(is:ie,js:je,:),  &
                fl_ccrain(is:ie,js:je,:), fl_ccsnow(is:ie,js:je,:),    &
+           fl_donmca_rain(is:ie,js:je,:), fl_donmca_snow(is:ie,js:je,:), &
                             gust_cv, area, lat,   &
                            lsc_cloud_area(is:ie,js:je,:),  &
                            lsc_liquid(is:ie,js:je,:),  &
@@ -2762,6 +2767,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                            convect(is:ie,js:je), lprec, fprec,       &
                fl_lsrain(is:ie,js:je,:), fl_lssnow(is:ie,js:je,:),  &
                fl_ccrain(is:ie,js:je,:), fl_ccsnow(is:ie,js:je,:),    &
+           fl_donmca_rain(is:ie,js:je,:), fl_donmca_snow(is:ie,js:je,:), &
                            gust_cv, area, lat,   &
                            lsc_cloud_area(is:ie,js:je,:),  &
                            lsc_liquid(is:ie,js:je,:),  &
@@ -2827,6 +2833,8 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
             fl_lsgrpl_loc(:,:,:) = fl_lsgrpl(is:ie,js:je,:)
             fl_ccrain_loc(:,:,:) = fl_ccrain(is:ie,js:je,:)
             fl_ccsnow_loc(:,:,:) = fl_ccsnow(is:ie,js:je,:)
+            fl_donmca_rain_loc(:,:,:) = fl_donmca_rain(is:ie,js:je,:)
+            fl_donmca_snow_loc(:,:,:) = fl_donmca_snow(is:ie,js:je,:)
           endif
 
 !----------------------------------------------------------------------
@@ -2999,6 +3007,11 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
           end do
           endif
 
+          if (include_donmca_in_cosp) then
+            fl_ccrain_loc = fl_ccrain_loc + fl_donmca_rain_loc
+            fl_ccsnow_loc = fl_ccsnow_loc + fl_donmca_snow_loc
+          endif
+
 !---------------------------------------------------------------------
 !    pass in the large-scale graupel flux, lowest-level u and v wind
 !    components.
@@ -3020,15 +3033,16 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                             lsice, ccliq, ccice,  &
                            fl_lsrain_loc, fl_lssnow_loc, fl_lsgrpl_loc,&
                             fl_ccrain_loc, fl_ccsnow_loc,&
-                            reff_lsclliq, reff_lsclice, reff_lsprliq, &
-                            reff_lsprice, reff_ccclliq, reff_ccclice, &
+                            0.5*reff_lsclliq, 0.5*reff_lsclice,  &
+                            reff_lsprliq, reff_lsprice,  &
+                            0.5*reff_ccclliq, 0.5*reff_ccclice, &
                             reff_ccprliq, reff_ccprice, &
                             tsurf_save(is:ie, js:je), land_mask, &
                             Time_next, is, js, &
                 stoch_mr_liq_in =stoch_mr_liq,  &
                 stoch_mr_ice_in =stoch_mr_ice,  &
-                stoch_size_liq_in =stoch_size_liq, &
-                stoch_size_frz_in = stoch_size_frz,  &
+                stoch_size_liq_in =0.5*stoch_size_liq, &
+                stoch_size_frz_in = 0.5*stoch_size_frz,  &
                 tau_stoch_in = tau_stoch(is:ie,js:je,:,:),&
                 lwem_stoch_in = lwem_stoch(is:ie,js:je,:,:), &
                 stoch_cloud_type_in = stoch_cloud_type(is:ie,js:je,:,:))

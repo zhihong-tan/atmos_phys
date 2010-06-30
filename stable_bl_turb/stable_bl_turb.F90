@@ -20,7 +20,7 @@
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   character(len=128) :: version = '$Id: stable_bl_turb.F90,v 18.0 2010/03/02 23:33:18 fms Exp $'
-  character(len=128) :: tagname = '$Name: riga_201004 $'
+  character(len=128) :: tagname = '$Name: riga_201006 $'
   logical            :: module_is_initialized = .false.
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

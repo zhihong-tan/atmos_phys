@@ -2,11 +2,12 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
          
-! $Id: load_mie_table.f90,v 18.0 2010/03/02 23:29:33 fms Exp $
-! $Name: riga_201004 $
+! $Id: load_mie_table.f90,v 1.1.2.1.2.1.8.1 2010/04/29 21:14:27 wfc Exp $
+! $Name: riga_201006 $
 
   subroutine load_mie_table(mie_table_name,mt)
   use radar_simulator_types
+  use mpp_mod,only: get_unit                  
   implicit none
   
 ! Purpose:
@@ -29,13 +30,14 @@
   type(mie), intent(out) :: mt
 
 ! ----- INTERNAL -----  
-  integer :: i
+  integer :: i, funit
 
   integer*4 :: dummy_in(4)
 	
-    open(51,file=mie_table_name,action='read')
+    funit = get_unit()
+    open(funit,file=mie_table_name,action='read')
  
-    read(51,*) dummy_in 
+    read(funit,*) dummy_in 
 
 	if(dummy_in(1).ne. mt_nfreq .or. &
 	   dummy_in(2).ne. mt_ntt .or. &
@@ -48,15 +50,15 @@
 		stop
 	endif
 
-    read(51,*) mt%freq
-    read(51,*) mt%tt
-    read(51,*) mt%f
-    read(51,*) mt%phase
-    read(51,*) mt%D
-    read(51,*) mt%qext
-    read(51,*) mt%qbsca
+    read(funit,*) mt%freq
+    read(funit,*) mt%tt
+    read(funit,*) mt%f
+    read(funit,*) mt%phase
+    read(funit,*) mt%D
+    read(funit,*) mt%qext
+    read(funit,*) mt%qbsca
     
-    close(51)
+    close(funit)
 
 ! // create arrays of liquid/ice temperature
   cnt_liq = 0

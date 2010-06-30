@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
          
-! $Id: radar_simulator.f90,v 18.0 2010/03/02 23:29:39 fms Exp $
-! $Name: riga_201004 $
+! $Id: radar_simulator.f90,v 1.1.2.1.2.1 2009/08/10 10:48:14 rsh Exp $
+! $Name: riga_201006 $
 
   subroutine radar_simulator(me,freq,k2,do_ray,use_gas_abs,use_mie_table,mt, &
     nhclass,hp,nprof,ngate,nsizes,D,hgt_matrix,hm_matrix,re_matrix,p_matrix,t_matrix, &

@@ -96,8 +96,8 @@ private
 
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 18.0 2010/03/02 23:31:08 fms Exp $'
-   character(len=128) :: tagname = '$Name: riga_201004 $'
+   version = '$Id: moist_processes.F90,v 18.0.4.2 2010/05/24 18:23:49 wfc Exp $'
+   character(len=128) :: tagname = '$Name: riga_201006 $'
 
    character(len=5), private :: mod_name = 'moist'
    logical            :: moist_allocated = .false.
@@ -273,7 +273,8 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_LWP_all_clouds,  id_IWP_all_clouds, id_WP_all_clouds, &
 
            id_tdt_dadj, id_rh,  id_qs, id_mc, id_mc_donner, id_mc_full, &
-           id_rh_cmip, id_mc_conv_up, &
+           id_mc_donner_half, &
+           id_rh_cmip, id_mc_conv_up, id_mc_half, &
            id_conv_cld_base, id_conv_cld_top, &
            id_tdt_deep_donner, id_qdt_deep_donner, &
            id_qadt_deep_donner, id_qldt_deep_donner, &
@@ -394,7 +395,8 @@ real :: missing_value = -999.
                                           ice_precflxh, liq_precflxh
    real, allocatable, dimension(:,:,:) :: ttnd_conv, qtnd_conv
    real, allocatable, dimension(:,:,:) :: qsat, det0, det_cmt       
-   real, allocatable, dimension(:,:,:) :: mc_full, mc_donner, m_cdet_donner, massflux, mc_donner_up
+   real, allocatable, dimension(:,:,:) :: mc_full, mc_donner, m_cdet_donner, massflux, mc_donner_up, &
+                                          mc_half, mc_donner_half
    real, allocatable, dimension(:,:,:) :: RH, wetdeptnd, q_ref, t_ref
    real, allocatable, dimension(:,:,:) :: cf, cmf
    real, allocatable, dimension(:,:,:,:) :: tracer,tracer_orig, rdt_init, &
@@ -466,6 +468,8 @@ subroutine moist_alloc_init (ix, jx, kx, lx)
    allocate( mc_full   (ix,jx,kx))
    allocate( mc_donner (ix,jx,kx))
    allocate( mc_donner_up (ix,jx,kx))
+   allocate( mc_half      (ix,jx,kx+1))
+   allocate( mc_donner_half (ix,jx,kx+1))
    allocate( m_cdet_donner(ix,jx,kx))
    allocate( massflux  (ix,jx,kx))
    allocate( RH        (ix,jx,kx))
@@ -544,6 +548,8 @@ subroutine moist_alloc_end
    deallocate( mc_full   )
    deallocate( mc_donner )
    deallocate( mc_donner_up )
+   deallocate( mc_half      )
+   deallocate( mc_donner_half      )
    deallocate( m_cdet_donner)
    deallocate( massflux  )
    deallocate( RH        )
@@ -570,7 +576,8 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
                             t, q, r, u, v, tm, qm, rm, um, vm,         &
                             tdt, qdt, rdt, udt, vdt, diff_cu_mo,       &
                             convect, lprec, fprec, fl_lsrain,          &
-                            fl_lssnow, fl_ccrain, fl_ccsnow, gust_cv,  &
+                            fl_lssnow, fl_ccrain, fl_ccsnow, &
+                            fl_donmca_rain, fl_donmca_snow, gust_cv,  &
                             area, lat, lsc_cloud_area, lsc_liquid,     &
                             lsc_ice, lsc_droplet_number, &
                             Aerosol, mask, kbot, &
@@ -690,7 +697,8 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
 logical, intent(out), dimension(:,:)     :: convect
    real, intent(out), dimension(:,:)     :: lprec, fprec, gust_cv
    real, intent(out), dimension(:,:,:)   :: fl_lsrain, fl_lssnow, &
-                                            fl_ccrain, fl_ccsnow
+                                            fl_ccrain, fl_ccsnow, &
+                                            fl_donmca_rain, fl_donmca_snow
    real, intent(out), dimension(:,:,:)   :: diff_cu_mo
    real, intent(in) , dimension(:,:)     :: area
    real, intent(in) , dimension(:,:)     :: lat
@@ -818,6 +826,8 @@ logical, intent(out), dimension(:,:)     :: convect
       fl_lssnow(:,:,:) = 0.
       fl_ccrain(:,:,:) = 0.
       fl_ccsnow(:,:,:) = 0.
+      fl_donmca_rain(:,:,:) = 0.
+      fl_donmca_snow(:,:,:) = 0.
       convect      = .false.
       gust_cv      = 0.0
       precip       = 0.0 
@@ -1116,7 +1126,7 @@ logical, intent(out), dimension(:,:)     :: convect
                         meso_droplet_number, nsum_out,              &
                         precip_returned, delta_temp(is:ie,js:je,:), delta_vapor(is:ie,js:je,:),   &
                         m_cdet_donner(is:ie,js:je,:), m_cellup, mc_donner(is:ie,js:je,:),         &
-                        mc_donner_up(is:ie,js:je,:), &
+                        mc_donner_up(is:ie,js:je,:), mc_donner_half(is:ie,js:je,:), &
                         donner_humidity_area(is:ie,js:je,:), donner_humidity_factor(is:ie,js:je,:),&
                         qtr(is:ie,js:je,:,:),  &
                         donner_wetdep, &
@@ -1140,7 +1150,7 @@ logical, intent(out), dimension(:,:)     :: convect
                         meso_droplet_number, nsum_out,              &
                         precip_returned, delta_temp(is:ie,js:je,:), delta_vapor(is:ie,js:je,:),   &
                         m_cdet_donner(is:ie,js:je,:), m_cellup, mc_donner(is:ie,js:je,:),         &
-                        mc_donner_up(is:ie,js:je,:), &
+                        mc_donner_up(is:ie,js:je,:), mc_donner_half(is:ie,js:je,:), &
                         donner_humidity_area(is:ie,js:je,:), donner_humidity_factor(is:ie,js:je,:),&
                         qtr(is:ie,js:je,:,:), donner_wetdep, &
                         lheat_precip, vert_motion,             &
@@ -1365,6 +1375,7 @@ logical, intent(out), dimension(:,:)     :: convect
     used = send_data (id_qldt_deep_donner, delta_ql(is:ie,js:je,:)*dtinv, Time, is, js, 1, rmask=mask )
     used = send_data (id_qidt_deep_donner, delta_qi(is:ie,js:je,:)*dtinv, Time, is, js, 1, rmask=mask )
     used = send_data (id_mc_donner, mc_donner(is:ie,js:je,:), Time, is, js, 1, rmask=mask )
+    used = send_data (id_mc_donner_half, mc_donner_half(is:ie,js:je,:), Time, is, js, 1, rmask=mask )
     used = send_data (id_m_cdet_donner, m_cdet_donner(is:ie,js:je,:), Time,  is, js, 1, rmask=mask )
     used = send_data (id_m_cellup, m_cellup, Time, is, js, 1, rmask=mask )
     used = send_data (id_snow_deep_donner, snow_don, Time, is, js)
@@ -1536,6 +1547,7 @@ logical, intent(out), dimension(:,:)     :: convect
   else   ! (do_donner_deep)
     mc_donner(is:ie,js:je,:) = 0.0
     mc_donner_up(is:ie,js:je,:) = 0.0
+    mc_donner_half(is:ie,js:je, : ) = 0.0
     m_cdet_donner(is:ie,js:je,:) = 0.0
     m_cellup = 0.0
     donner_humidity_area(is:ie,js:je,:) = 0.
@@ -1839,10 +1851,16 @@ logical, intent(out), dimension(:,:)     :: convect
    end do
 
    mc_full(is:ie,js:je,:)=0.; 
+   mc_half(is:ie,js:je,:)=0.; 
    do k=2,kx   
      mc_full(is:ie,js:je,k) = 0.5*(mc(:,:,k) + mc(:,:,k+1)) +   &
                       0.5*(cmf(is:ie,js:je,k)+cmf(is:ie,js:je,k-1)) +   &
                            mc_donner(is:ie,js:je,k)
+   end do
+   do k=2,kx+1   
+     mc_half(is:ie,js:je,k) = mc(:,:,k) +    &
+                      cmf(is:ie,js:je,k-1)+   &
+                           mc_donner_half(is:ie,js:je,k)
    end do
 
    if ( get_tracer_index(MODEL_ATMOS,'no') .ne. NO_TRACER &
@@ -2387,6 +2405,11 @@ logical, intent(out), dimension(:,:)     :: convect
 !    total cumulus mass flux due to strat_cloud parameterization:
 !---------------------------------------------------------------------
       used = send_data (id_mc_full, mc_full(is:ie,js:je,:), Time, is, js, 1, rmask=mask)
+
+!---------------------------------------------------------------------
+!    total cumulus mass flux on half levels:
+!---------------------------------------------------------------------
+      used = send_data (id_mc_half, mc_half(is:ie,js:je,:), Time, is, js, 1, rmask=mask)
 
 !---------------------------------------------------------------------
 !    cloud liquid, ice and area tendencies due to strat_cloud 
@@ -3050,10 +3073,10 @@ logical, intent(out), dimension(:,:)     :: convect
                                       ice_precflxh(i+is-1,j+js-1,k+1))
               endif
               if (include_donmca_in_cosp) then
-                fl_ccsnow(i,j,k) = fl_ccsnow(i,j,k) + 0.5*  &
+                fl_donmca_snow(i,j,k) = fl_donmca_snow(i,j,k) + 0.5*  &
                                    (mca_frzh(i+is-1,j+js-1,k) +   &
                                            mca_frzh(i+is-1,j+js-1,k+1))
-                fl_ccrain(i,j,k) = fl_ccrain(i,j,k) + 0.5*  &
+                fl_donmca_rain(i,j,k) = fl_donmca_rain(i,j,k) + 0.5*  &
                                    (mca_liqh(i+is-1,j+js-1,k) +   &
                                            mca_liqh(i+is-1,j+js-1,k+1))
               endif
@@ -3668,7 +3691,7 @@ integer            :: k
          nqr = get_tracer_index (MODEL_ATMOS, 'rainwat')
          nqs = get_tracer_index (MODEL_ATMOS, 'snowwat')
          nqg = get_tracer_index (MODEL_ATMOS, 'graupel')
-         call lin_cld_microphys_init (axes, Time)
+         call lin_cld_microphys_init (id, jd, kd, axes, Time)
          ktop = 1
          do k = 1, kd
             if (pref(k) > 10.E2) then
@@ -4134,6 +4157,11 @@ if ( do_strat ) then
      'Net Mass Flux from convection',   'kg/m2/s', &
                        missing_value=missing_value               )
    
+   id_mc_half = register_diag_field ( mod_name, &
+     'mc_half', axes(half), Time, &
+     'Net Mass Flux from convection on half levs',   'kg/m2/s', &
+                       missing_value=missing_value               )
+   
    id_tdt_ls = register_diag_field ( mod_name, &
      'tdt_ls', axes(1:3), Time, &
      'Temperature tendency from strat cloud',        'deg_K/s',  &
@@ -4380,6 +4408,11 @@ if (do_donner_deep) then
    id_mc_donner = register_diag_field ( mod_name, &
            'mc_donner', axes(1:3), Time, &
            'Net Mass Flux from donner',   'kg/m2/s', &
+                        missing_value=missing_value               )
+
+   id_mc_donner_half = register_diag_field ( mod_name, &
+           'mc_donner_half', axes(half), Time, &
+           'Net Mass Flux from donner at half levs',   'kg/m2/s', &
                         missing_value=missing_value               )
 
    id_mc_conv_up = register_diag_field ( mod_name, &

@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: cosp_radar.f90,v 18.0 2010/03/02 23:29:16 fms Exp $
-! $Name: riga_201004 $
+! $Id: cosp_radar.f90,v 1.1.2.1.4.1.6.1 2010/03/04 08:23:49 rsh Exp $
+! $Name: riga_201006 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -32,6 +32,7 @@
 MODULE MOD_COSP_RADAR
   USE MOD_COSP_CONSTANTS
   USE MOD_COSP_TYPES
+  USE MOD_COSP_UTILS
   use radar_simulator_types
   use array_lib
   use atmos_lib
@@ -176,15 +177,6 @@ SUBROUTINE COSP_RADAR(me, gbx,sgx,sghydro,z)
 
       !   ----- call radar simulator -----
       if (pr == 1) then ! Compute gaseous attenuation for all profiles
-         j=0
-         if (gbx%Npoints == 53) then
-           unt=10
-           j=1
-         endif
-         if (gbx%Npoints == 153) then
-           unt=11
-           j=101
-         endif
          call radar_simulator(me,freq,k2,gbx%do_ray,gbx%use_gas_abs,gbx%use_mie_tables,gbx%mt, &    !  v0.2: mt changed to gbx%mt, roj
            gbx%Nhydro,gbx%hp,gbx%Npoints,gbx%Nlevels,gbx%nsizes,gbx%D, &                         !  v0.2: hp->gbx%hp, D->gbx%d, nsizes->gbx%nsizes, roj
            hgt_matrix,hm_matrix,re_matrix,p_matrix,t_matrix,rh_matrix, &

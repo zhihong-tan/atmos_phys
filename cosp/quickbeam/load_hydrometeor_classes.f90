@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
         
-! $Id: load_hydrometeor_classes.f90,v 18.0 2010/03/02 23:29:32 fms Exp $
-! $Name: riga_201004 $
+! $Id: load_hydrometeor_classes.f90,v 1.1.2.1.2.1 2009/08/10 10:48:14 rsh Exp $
+! $Name: riga_201006 $
 
   subroutine load_hydrometeor_classes(Nprmts_max,dist_prmts_hydro,hp,nhclass)
   use radar_simulator_types

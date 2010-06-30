@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: cosp_utils.f90,v 18.0 2010/03/02 23:29:06 fms Exp $
-! $Name: riga_201004 $
+! $Id: cosp_utils.f90,v 1.1.2.1.2.1.6.1 2010/03/04 08:23:34 rsh Exp $
+! $Name: riga_201006 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -46,6 +46,70 @@ MODULE MOD_COSP_UTILS
     MODULE PROCEDURE COSP_CHECK_INPUT_1D,COSP_CHECK_INPUT_2D,COSP_CHECK_INPUT_3D
   END INTERFACE
 CONTAINS
+
+
+! ! FUNCTION GAMMA(Y)
+! !       real,intent(in) :: y
+! !       integer :: i,m
+! !       real gg,g,pare,x
+! !       real :: gamma
+! !       
+! !       gg=1.
+! !       m=y
+! !       x=y-m
+! !       if (m /= 1) then
+! !          do i=1,m-1
+! !          g=y-i
+! !          gg=gg*g
+! !          end do
+! !       end if
+! !       pare=-0.5748646*x+0.9512363*x*x-0.6998588*x*x*x              &
+! !             +0.4245549*x*x*x*x-0.1010678*x*x*x*x*x+1.
+! !       gamma=pare*gg
+! !       
+! ! END FUNCTION GAMMA
+
+! ! !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! ! !------------------- SUBROUTINE COSP_PRECIP_MXRATIO --------------
+! ! !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! ! SUBROUTINE COSP_PRECIP_MXRATIO(Npoints,Nlevels,Ncolumns,rho,prec_frac,prec_type, &
+! !                           n_ax,n_bx,alpha_x,lambda_x,c_x,d_x,g_x,a_x,b_x, &
+! !                           flux,mxratio)
+! ! 
+! !     ! Input arguments, (IN)
+! !     integer,intent(in) :: Npoints,Nlevels,Ncolumns,Nprecip
+! !     real,intent(in),dimension(Npoints,Nlevels) :: rho,flux
+! !     real,intent(in),dimension(Npoints,Ncolumns,Nlevels) :: prec_frac
+! !     real,intent(in) :: n_ax,n_bx,alpha_x,lambda_x, &
+! !                        c_x,d_x,g_x,a_x,b_x,prec_type
+! !     ! Input arguments, (OUT)
+! !     real,intent(out),dimension(Npoints,Ncolumns,Nlevels),mxratio
+! !     ! Local variables
+! !     integer :: i,j,k
+! !     real :: gamma1,gamma2,sigma,one_over_xip1
+! !     real :: ,dimension(Npoints,Nlevels) :: rho
+! !     
+! !     gamma1  = gamma(alpha_x + b_x + d_x + 1.0)
+! !     gamma2  = gamma(alpha_x + b_x + 1.0)
+! !     xi      = 1.0/(alpha_x + b_x + d_x - n_bx + 1.0)
+! !     rho0    = 1.29
+! !     mxratio = 0.0
+! !     sigma   = (gamma2/(gamma1*c_x))*(n_ax*a_x*gamma2)**xi
+! !     one_over_xip1 = 1.0/(xi + 1.0)
+! !     
+! !     
+! !     do k=1,Nlev
+! !         do j=1,Ncolumns
+! !             do i=1,Npoints
+! !                 if ((prec_frac(i,j,k)==prec_type).or.(prec_frac(i,j,k)==3.)) then
+! !                     mxratio(i,j,k)=(flux(i,k)*((rho(i,k)/rho0)**g_x)*sigma)**one_over_xip1
+! !                     mxratio(i,j,k)=mxratio(i,j,k)/rho(i,k)
+! !                 endif
+! !             enddo
+! !         enddo
+! !     enddo
+! ! 
+! ! END SUBROUTINE COSP_PRECIP_MXRATIO
 
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -25,7 +25,7 @@ private
 
 !-----------------------------------------------------------------------
       character(len=128) :: version = '$Id: rad_diag.F90,v 10.0 2003/10/24 22:00:32 fms Exp $'
-      character(len=128) :: tagname = '$Name: riga_201004 $'
+      character(len=128) :: tagname = '$Name: riga_201006 $'
       logical            :: module_is_initialized = .false.
 
 public RADIAG, RAD_DIAG_init, RAD_DIAG_end

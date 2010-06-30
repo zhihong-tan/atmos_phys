@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: pf_to_mr.f,v 18.0 2010/03/02 23:29:19 fms Exp $
-! $Name: riga_201004 $
+! $Id: pf_to_mr.f,v 1.1.2.1.2.1 2009/08/10 10:47:57 rsh Exp $
+! $Name: riga_201006 $
 
 ! (c) 2008, Lawrence Livermore National Security Limited Liability Corporation.
 ! All rights reserved.

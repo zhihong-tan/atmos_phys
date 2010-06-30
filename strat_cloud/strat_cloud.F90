@@ -397,6 +397,7 @@ module strat_cloud_mod
   !-------------------- diagnostics fields -------------------------------
 
   integer :: id_droplets,  id_droplets_col, id_sulfate,  &
+             id_droplets_wtd, id_ql_wt, &
              id_seasalt_sub, id_seasalt_sup, id_om
   integer :: id_aliq,         id_aice,            id_aall,       &
        id_rvolume,      id_autocv,          id_vfall 
@@ -583,8 +584,8 @@ module strat_cloud_mod
   !       DECLARE VERSION NUMBER OF SCHEME
   !
 
-  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 18.0 2010/03/02 23:33:21 fms Exp $'
-  Character(len=128) :: Tagname = '$Name: riga_201004 $'
+  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 17.0.2.1.2.1.2.1.2.1 2009/11/28 18:00:04 rsh Exp $'
+  Character(len=128) :: Tagname = '$Name: riga_201006 $'
   logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   integer               :: vers
@@ -949,6 +950,14 @@ subroutine diag_field_init (axes,Time)
  id_droplets = register_diag_field ( mod_name, 'droplets', &
       axes(1:3), Time, 'Droplet number conentration',     &
       '/m3', missing_value=missing_value )
+
+ id_droplets_wtd = register_diag_field ( mod_name, 'droplets_wtd', &
+      axes(1:3), Time, 'Droplet number conc*Cld liq',     &
+      'kg/(kg*m3)', mask_variant = .true., missing_value=missing_value )
+
+ id_ql_wt = register_diag_field ( mod_name, 'ql_wt', &
+      axes(1:3), Time, 'Cld liq for weighting droplet conc',     &
+      'kg/kg', mask_variant = .true., missing_value=missing_value )
 
  id_droplets_col = register_diag_field ( mod_name, 'droplets_col', &
       axes(1:2), Time, 'Droplet number column burden',     &
@@ -1464,6 +1473,7 @@ subroutine diag_field_init (axes,Time)
       id_qndt_super    > 0 .or.                           &
       id_debug1        > 0 .or. id_debug2        > 0 .or. &
       id_droplets      > 0 .or. id_sulfate       > 0 .or. &
+      id_droplets_wtd  > 0 .or. id_ql_wt         > 0 .or. &
       id_seasalt_sub   > 0 .or. id_seasalt_sup   > 0 .or. &
       id_om            > 0 .or. id_droplets_col  > 0 .or. &
       id_lsf_strat     > 0 .or. id_lcf_strat     > 0 .or. &
@@ -5279,6 +5289,10 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         endif
 
         used = send_data ( id_droplets, N3D, Time, is, js, 1, rmask=mask )
+        used = send_data ( id_droplets_wtd, N3D*ql, Time, is, js, 1, &
+                                                     mask = N3D > 0.0 )
+        used = send_data ( id_ql_wt, ql, Time, is, js, 1, &
+                                                      mask = N3D > 0.0)
         used = send_data ( id_aall, areaall, Time, is, js, 1, rmask=mask )
         used = send_data ( id_aliq, arealiq, Time, is, js, 1, rmask=mask )
         used = send_data ( id_aice, areaice, Time, is, js, 1, rmask=mask )

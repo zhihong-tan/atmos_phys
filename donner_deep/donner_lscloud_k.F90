@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_lscloud_k.F90,v 17.0 2009/07/21 02:54:36 fms Exp $
+!  $Id: donner_lscloud_k.F90,v 17.0.2.1 2009/11/28 17:41:23 rsh Exp $
 
 !module donner_lscloud_inter_mod
 
@@ -16,6 +16,7 @@ subroutine don_l_lscloud_driver_k   &
           Col_diag, pfull, temp, exit_flag,   &
           mixing_ratio, qlin, qiin, qain, phalf, Don_conv, &
           donner_humidity_factor, donner_humidity_area, dql, dqi, dqa, &
+          mhalf_3d, &
           ermesg, error) 
 
 !---------------------------------------------------------------------
@@ -53,6 +54,8 @@ real, dimension(isize,jsize,nlev_lsm),           &
                             intent(out)   :: donner_humidity_factor,  &
                                              donner_humidity_area, dql, &
                                              dqi, dqa
+real, dimension(isize, jsize, nlev_lsm+1),   &
+                            intent(out)   :: mhalf_3d
 character(len=*),           intent(out)   :: ermesg
 integer,                    intent(out)   :: error
 
@@ -99,8 +102,6 @@ integer,                    intent(out)   :: error
 
       real, dimension   &
             (isize, jsize, nlev_lsm  ) :: dmeso_3d
-      real, dimension  &
-            (isize, jsize, nlev_lsm+1) :: mhalf_3d
 
 !---------------------------------------------------------------------
 !   local variables:

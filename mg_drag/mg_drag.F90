@@ -26,7 +26,7 @@ module mg_drag_mod
  private
 
  character(len=128) :: version = '$Id: mg_drag.F90,v 18.0 2010/03/02 23:31:01 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201004 $'
+ character(len=128) :: tagname = '$Name: riga_201006 $'
 
  real, parameter :: p00 = 1.e5
 

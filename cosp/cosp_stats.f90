@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: cosp_stats.f90,v 18.0 2010/03/02 23:29:04 fms Exp $
-! $Name: riga_201004 $
+! $Id: cosp_stats.f90,v 1.1.2.1.2.1.2.1.6.1 2010/03/04 08:09:16 rsh Exp $
+! $Name: riga_201006 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -78,7 +78,7 @@ SUBROUTINE COSP_STATS(gbx,sgx,cfg,sgradar,sglidar,vgrid,stradar,stlidar)
    Ncolumns = gbx%Ncolumns
    Nlr      = vgrid%Nlvgrid
   
-   if (cfg%Lcfad_lidarsr532) ok_lidar_cfad=.true.
+   if (cfg%LcfadLidarsr532)  ok_lidar_cfad=.true.
 
    if (vgrid%use_vgrid) then ! Statistics in a different vertical grid
         allocate(Ze_out(Npoints,Ncolumns,Nlr),betatot_out(Npoints,Ncolumns,Nlr), &
@@ -86,7 +86,6 @@ SUBROUTINE COSP_STATS(gbx,sgx,cfg,sgradar,sglidar,vgrid,stradar,stlidar)
                  ph_in(Npoints,1,Nlevels),ph_out(Npoints,1,Nlr),ph_c(Npoints,Nlr))
         Ze_out = 0.0
         betatot_out  = 0.0
-        betamol_in(:,1,:) = sglidar%beta_mol(:,:)
         betamol_out= 0.0
         betamol_c  = 0.0
         ph_in(:,1,:)  = gbx%ph(:,:)
@@ -101,6 +100,7 @@ SUBROUTINE COSP_STATS(gbx,sgx,cfg,sgradar,sglidar,vgrid,stradar,stlidar)
         endif
         !++++++++++++ Lidar CFAD ++++++++++++++++
         if (cfg%Llidar_sim) then
+            betamol_in(:,1,:) = sglidar%beta_mol(:,:)
             call cosp_change_vertical_grid(Npoints,1,Nlevels,gbx%zlev,gbx%zlev_half,betamol_in, &
                                            Nlr,vgrid%zl,vgrid%zu,betamol_out)
             call cosp_change_vertical_grid(Npoints,Ncolumns,Nlevels,gbx%zlev,gbx%zlev_half,sglidar%beta_tot, &
@@ -222,18 +222,22 @@ SUBROUTINE COSP_CHANGE_VERTICAL_GRID(Npoints,Ncolumns,Nlevels,zfull,zhalf,y,M,zl
      ! Do the weighted mean
      do j=1,Ncolumns
        do k=1,M
-          ws = sum(w(:,k))
-          if (ws > 0.0) r(i,j,k) = sum(w(:,k)*yp(j,:))/ws
+          if (zu(k) <= zhalf(i,1)) then ! Level below model bottom level
+             r(i,j,k) = R_GROUND
+          else
+            ws = sum(w(:,k))
+            if ((ws > 0.0).and.(r(i,j,k) /= R_GROUND)) r(i,j,k) = sum(w(:,k)    *yp(j,:))/ws
+            ! Check for dBZ and change if necessary
+            if ((lunits).and.(r(i,j,k) /= R_GROUND)) then
+                if (r(i,j,k) <= 0.0) then
+                    r(i,j,k) = R_UNDEF
+                else
+                    r(i,j,k) = 10.0*log10(r(i,j,k))
+                endif
+            endif
+          endif
        enddo
      enddo
-     ! Check for dBZ and change if necessary
-     if (lunits) then
-        where (r(i,:,:) <= 0.0)
-          r(i,:,:) = R_UNDEF
-        elsewhere
-          r(i,:,:) = 10.0*log10(r(i,:,:))
-        end where
-     endif
    enddo
  
  
