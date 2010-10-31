@@ -15,6 +15,7 @@ module atmos_sea_salt_mod
 ! 
 !
 !-----------------------------------------------------------------------
+use mpp_mod, only: input_nml_file 
 use              fms_mod, only : file_exist, &
                                  write_version_number, &
                                  close_file,              &
@@ -65,8 +66,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 18.0 2010/03/02 23:34:11 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 17.0.2.1.4.2.2.1 2010/08/30 20:33:36 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -99,7 +100,7 @@ contains
    integer, intent(in),  dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
 real, dimension(size(seasalt,3)) :: SS_conc0, SS_conc1
-integer  i, j, k, m, id, jd, kd, kb, ir, irh
+integer  i, j, k, id, jd, kd, kb, ir, irh
 integer, intent(in)                    :: is, ie, js, je
 !----------------------------------------------
 !     Sea-Salt parameters
@@ -118,10 +119,10 @@ integer, intent(in)                    :: is, ie, js, je
       real :: rhb, betha
       real :: rho_wet_salt, viscosity, free_path, C_c
       real :: rho_air, Bcoef
-      real :: r0, r1, r, dr, rmid, rwet, seasalt_flux
+      real :: r, dr, rmid, rwet, seasalt_flux
       real :: a1, a2
       real, dimension(size(pfull,3))  :: vdep
-      real, dimension(nrh) :: rh_table, rho_table, growth_table
+      real, dimension(nrh) :: rho_table, growth_table
 !! Sea salt hygroscopic growth factor from 35 to 99% RH
 !! We start at the deliquescence point of sea-salt for RH=37%
 !! Any lower RH doesn't affect dry properties
@@ -222,6 +223,7 @@ integer, intent(in)                    :: is, ie, js, je
         else  
           do j=1,jd
             do i=1,id
+              kb=kbot(i,j)
               if (frac_land(i,j).lt.critical_land_fraction) then
 ! Monahan et . (1986)
                 SS_emis(i,j) = seasalt_flux*(1.-frac_land(i,j))*w10m(i,j)**3.41
@@ -367,8 +369,7 @@ integer :: n, m
 !
 !-----------------------------------------------------------------------
 !
-      integer  log_unit,unit,ierr,io,index,ntr,nt, logunit
-      character(len=16) ::  fld
+      integer  unit,ierr,io,logunit
       character(len=1) :: numb(5)
       data numb/'1','2','3','4','5'/
 
@@ -378,12 +379,17 @@ integer :: n, m
 !    read namelist.
 !-----------------------------------------------------------------------
       if ( file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+        read (input_nml_file, nml=ssalt_nml, iostat=io)
+        ierr = check_nml_error(io,'ssalt_nml')
+#else
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
         read  (unit, nml=ssalt_nml, iostat=io, end=10)
         ierr = check_nml_error(io, 'ssalt_nml')
         end do
 10      call close_file (unit)
+#endif
       endif
 !--------- write version and namelist to standard log ------------
       call write_version_number ( version, tagname )

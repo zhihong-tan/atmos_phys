@@ -5,8 +5,8 @@
                              MPP_SINGLE, mpp_close
 
 implicit none
-character(len=128), parameter :: version     = '$Id: mo_read_sim_chm.F90,v 13.0 2006/03/28 21:16:21 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_read_sim_chm.F90,v 13.0.14.1 2010/03/17 20:27:12 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -39,12 +39,8 @@ logical                       :: module_is_initialized = .false.
 !--------------------------------------------------------
       integer, parameter :: inst = 1, avrg = 2
       integer, parameter :: max_hst_ind = 17
-      integer  ::  i, k, ios, astat, funit, file
-      integer  ::  start, end
-      integer  ::  starti, endi
-      integer, dimension(2)               ::  moz_cnt
-      integer, allocatable, dimension(:)  ::  minst , mtimav
-        character(len=128) :: msg
+      integer  ::  ios, funit
+      character(len=128) :: msg
 
 !     funit = NAVU()
 !--------------------------------------------------------

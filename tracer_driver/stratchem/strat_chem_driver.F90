@@ -1,6 +1,7 @@
      module strat_chem_driver_mod
 
 
+use mpp_mod, only: input_nml_file 
 use              fms_mod, only : file_exist, &
                                  check_nml_error,  &
                                  close_file, open_namelist_file, &
@@ -21,8 +22,8 @@ use STRAT_CHEM_MOD, only : chemistry, zen2, dcly_dt, sediment
 private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 18.0 2010/03/02 23:34:34 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 18.0.2.1 2010/08/30 20:33:36 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 logical             :: module_is_initialized = .FALSE.
 
 !-------  interfaces --------
@@ -102,12 +103,17 @@ function strat_chem_driver_init()
 
 
          if (file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+           read (input_nml_file, nml=strat_chem_nml, iostat=io)
+           ierr = check_nml_error(io,'strat_chem_nml')
+#else
            unit =  open_namelist_file ( )
            ierr=1; do while (ierr /= 0)
            read (unit, nml=strat_chem_nml, iostat=io, end=10)
            ierr = check_nml_error (io, 'strat_chem_nml')
            enddo
  10        call close_file (unit)
+#endif
          endif
 
      strat_chem_driver_init = do_coupled_stratozone

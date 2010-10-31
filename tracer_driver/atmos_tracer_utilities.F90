@@ -74,8 +74,8 @@ public  wet_deposition,    &
 !---- version number -----
 logical :: module_is_initialized = .FALSE.
 
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 18.0 2010/03/02 23:34:25 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 17.0.2.1.2.1.4.1 2010/03/17 20:27:11 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 character(len=7), parameter :: mod_name = 'tracers'
 integer, parameter :: max_tracers = MAX_TRACER_FIELDS
@@ -173,7 +173,7 @@ type(time_type),       intent(in) :: Time
 integer :: ntrace
 character(len=20) :: units =''
 !
-integer :: n, unit, logunit
+integer :: n, logunit
 character(len=128) :: name
 
 logical  :: flag
@@ -508,12 +508,12 @@ type(time_type), intent(in)         :: Time
 type(interpolate_type),intent(inout)  :: drydep_data
 real, intent(out), dimension(:,:)   :: dsinku
 
-real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,xxfm,drydep_vel
+real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,drydep_vel
 integer :: i,j, flagsr, id, jd
 real    :: land_dry_dep_vel, sea_dry_dep_vel, surfr
 real    :: diag_scale
 real    :: factor_tmp, gmt, dv_on, dv_off, dayfrac, vd_night, vd_day, loc_angle
-logical :: used, flag, diurnal
+logical :: used, diurnal
 integer :: flag_species, flag_diurnal
 character(len=10) ::units,names
 character(len=80) :: name,control,scheme, speciesname,dummy
@@ -784,10 +784,10 @@ real,             intent(out),  dimension(:,:), optional :: sum_wdep_out
 !     ... local variables
 !-----------------------------------------------------------------------
 real, dimension(size(T,1),size(T,2),size(pfull,3)) :: &
-      Htemp, xliq, n_air, wsinku, rho_air, pwt, zdel, precip3d,scav_fact3d
+      Htemp, xliq, n_air, rho_air, pwt, zdel, precip3d,scav_fact3d
 real, dimension(size(T,1),size(T,2)) :: &
-      temp_factor, scav_factor, dz, washout, sum_wdep, &
-      w_h2o, K1, K2, pr, ps, beta, f_a, &
+      temp_factor, scav_factor, washout, sum_wdep, &
+      w_h2o, K1, K2, beta, f_a, &
       wdep_in, wdep_bc, fluxr,fluxs, tracer_flux
 real, dimension(size(T,1),size(T,2),size(pfull,3)) :: &
       in_temp, bc_temp, dt_temp, reevap_fraction, reevap_diag
@@ -822,8 +822,7 @@ real, parameter :: &
 real :: &
       k_g,                       & ! mass transfer coefficient (m/s)
       stay,                      & ! fraction
-      fall_time,                 & ! fall time through layer (s)
-      ph0                          ! pH
+      fall_time                    ! fall time through layer (s)
 
 real :: f_a0, scav_factor0, sa_drop0, fgas0
 real :: frac_in_cloud, frac_int, ph
@@ -836,7 +835,7 @@ real , parameter :: &
 real :: alpha_r, alpha_s
 
 logical :: &
-      used, flag, &
+      used, &
       Lwetdep, Lgas, Laerosol, Lice
 character(len=200) :: &
       tracer_name, control, scheme, units, &
@@ -1339,8 +1338,7 @@ character(len=*), intent(in)    :: text_in_scheme, text_in_param
 character(len=*), intent(out)   :: scheme
 real, intent(out)               :: land_dry_dep_vel, sea_dry_dep_vel
 
-integer :: m,m1,n,lentext, flag
-character(len=32) :: dummy
+integer :: flag
 
 !Default
 scheme                  = 'None'
@@ -1437,8 +1435,7 @@ real, intent(out)               :: frac_in_cloud, alpha_r, alpha_s
 logical, intent(out)            :: Lwetdep, Lgas, Laerosol, Lice
 real, intent(out), optional     :: frac_in_cloud_uw, frac_in_cloud_donner
 
-integer :: m,m1,n,lentext, flag
-character(len=32) :: dummy
+integer :: flag
 
 !Default
 scheme                  = 'None'
@@ -1568,7 +1565,6 @@ real, intent(in)  :: global_source(:,:)
 real, intent(in)  :: start_lon,start_lat,lon_resol,lat_resol
 real, intent(out) :: data_out(:,:)
 
-real :: modydeg,modxdeg
 integer :: i, j, nlon_in, nlat_in
 real :: blon_in(size(global_source,1)+1)
 real :: blat_in(size(global_source,2)+1)
@@ -1732,7 +1728,7 @@ real, intent(in),    dimension(:,:)   :: u_star, b_star, q_star
 type(time_type), intent(in)           :: Time
 integer, intent(in)                   :: is,js
 
-logical :: used, flag
+logical :: used
 
 real, intent(out),   dimension(:,:)   :: w10m_ocean, w10m_land
 real, dimension(size(u,1),size(u,2)) ::  del_m

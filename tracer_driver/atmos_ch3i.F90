@@ -1,6 +1,7 @@
 module atmos_ch3i_mod
 
 
+use mpp_mod, only: input_nml_file 
 use            fms_mod, only : file_exist,   &
                                write_version_number, &
                                error_mesg, &
@@ -62,8 +63,8 @@ real, parameter :: boltz = 1.38044e-16      ! Boltzmann's Constant (erg/K)
 
 character(len=7), parameter :: module_name = 'tracers'
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_ch3i.F90,v 18.0 2010/03/02 23:34:01 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_ch3i.F90,v 18.0.2.1 2010/08/30 20:33:36 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 logical :: module_is_initialized = .FALSE.
 
 contains
@@ -105,12 +106,17 @@ subroutine atmos_ch3i_init( lonb_mod, latb_mod, axes, Time, mask )
 !     ... read namelist
 !-----------------------------------------------------------------------
    if ( file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+     read (input_nml_file, nml=atmos_ch3i_nml, iostat=io)
+     ierr = check_nml_error(io, 'atmos_ch3i_nml')
+#else
      unit = open_namelist_file ()
      ierr=1; do while (ierr /= 0)
      read  (unit, nml=atmos_ch3i_nml, iostat=io, end=10)
      ierr = check_nml_error(io, 'atmos_ch3i_nml')
      enddo
 10   call close_file (unit)
+#endif
    endif
 
   

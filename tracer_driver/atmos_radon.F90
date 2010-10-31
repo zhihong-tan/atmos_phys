@@ -68,8 +68,8 @@ logical :: module_is_initialized=.FALSE.
 
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_radon.F90,v 17.0 2009/07/21 02:59:15 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_radon.F90,v 17.0.4.1 2010/03/17 20:27:11 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -136,7 +136,7 @@ integer, intent(in),  dimension(:,:), optional :: kbot
          source, sink
 logical, dimension(size(radon,1),size(radon,2)) ::  maskeq,masknh
    real  radon_flux, dtr, deg60, deg70, deg300, deg336
-integer  i,j,kb,id,jd,kd,lat1
+integer  i,j,kb,id,jd,kd
 !-----------------------------------------------------------------------
 
       id=size(radon,1); jd=size(radon,2); kd=size(radon,3)
@@ -248,13 +248,11 @@ integer,          intent(in)                        :: axes(4)
 integer, dimension(:), pointer                         :: nradon
 real, intent(in), dimension(:,:,:), optional        :: mask
 
-logical :: flag
 integer :: n
 !
 !-----------------------------------------------------------------------
 !
-      integer  logunit,unit,io,index,ntr,nt
-      character(len=16) ::  fld
+      integer  logunit
       character(len=64) ::  search_name
       character(len=4) ::  chname
       integer :: nn

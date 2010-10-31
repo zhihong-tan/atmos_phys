@@ -20,6 +20,7 @@ module atmos_sulfate_mod
 ! </CONTACT>
 !-----------------------------------------------------------------------
 
+use mpp_mod, only: input_nml_file 
 use                    fms_mod, only : file_exist,              &
                                        write_version_number,    &
                                        mpp_pe,                  &
@@ -98,6 +99,9 @@ integer ::   id_SO4_emis            = 0
 integer ::   id_DMS_chem            = 0
 integer ::   id_SO2_chem            = 0
 integer ::   id_SO4_chem            = 0
+integer ::   id_SO4_oh_prod         = 0
+integer ::   id_SO4_o3_prod         = 0
+integer ::   id_SO4_h2o2_prod       = 0
 integer ::   id_MSA_chem            = 0
 integer ::   id_H2O2_chem           = 0
 integer ::   id_so2_aircraft        = 0
@@ -256,8 +260,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfate.F90,v 18.0 2010/03/02 23:34:18 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_sulfate.F90,v 18.0.2.1.2.1.2.1 2010/08/30 20:33:36 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -281,7 +285,6 @@ type(time_type),  intent(in)                        :: Time
 integer,          intent(in)                        :: axes(4)
 real, intent(in), dimension(:,:,:), optional        :: mask
 character(len=7), parameter :: mod_name = 'tracers'
-logical :: flag
 integer :: n, m, nsulfate
 !
 !----------------------------------------------------------------------
@@ -302,7 +305,6 @@ integer :: n, m, nsulfate
 !-----------------------------------------------------------------------
 !
       integer  unit,io, logunit
-      real :: initial_values(5)
       character(len=12) :: SOx_tracer(5)
 !
 !     1. DMS       = Dimethyl sulfide            = CH3SCH3
@@ -327,12 +329,17 @@ integer :: n, m, nsulfate
 !    read namelist.
 !-----------------------------------------------------------------------
       if ( file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+        read (input_nml_file, nml=simple_sulfate_nml, iostat=io)
+        ierr = check_nml_error(io,'simple_sulfate_nml')
+#else
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
         read  (unit, nml=simple_sulfate_nml, iostat=io, end=10)
         ierr = check_nml_error(io,'simple_sulfate_nml')
         end do
 10      call close_file (unit)
+#endif
       endif
 
 !---------------------------------------------------------------------
@@ -895,6 +902,18 @@ integer :: n, m, nsulfate
                    'simpleSO4_chem',axes(1:3),Time,                          &
                    'simpleSO4 chemical production',                          &
                    'kgS/m2/s')
+   id_SO4_oh_prod= register_diag_field ( mod_name,                           &
+                   'simpleSO4_oh_prod',axes(1:3),Time,                       &
+                   'simpleSO4 gas phase production',                         &
+                   'kgS/m2/s')
+   id_SO4_o3_prod= register_diag_field ( mod_name,                           &
+                   'simpleSO4_o3_prod',axes(1:3),Time,                       &
+                   'simpleSO4 aqueous phase production SO2+O3',              &
+                   'kgS/m2/s')
+   id_SO4_h2o2_prod= register_diag_field ( mod_name,                         &
+                   'simpleSO4_h2o2_prod',axes(1:3),Time,                     &
+                   'simpleSO4 aqueous phase production SO2+H2O2',            &
+                   'kgS/m2/s')
    id_MSA_chem   = register_diag_field ( mod_name,                           &
                    'simpleMSA_chem',axes(1:3),Time,                          &
                    'simpleMSA chemical production',                          &
@@ -1406,8 +1425,7 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
       real, parameter :: fe = 0.025
 
       real :: z1, z2, bltop, fbt, del
-      integer  :: i, j, k, l, id, jd, kd, il, lf
-      integer        :: yr, mo, dy, hr, mn, sc, dum, mo_yr, dayspmn
+      integer  :: i, j, l, id, jd, kd, il, lf
       integer :: ivolc_lev
 
       id=size(SO2_dt,1); jd=size(SO2_dt,2); kd=size(SO2_dt,3)
@@ -1819,7 +1837,7 @@ end subroutine atmos_SOx_emission
       integer, intent(in),  dimension(:,:), optional :: kbot
       integer, intent(in)                            :: is,ie,js,je
 ! Working vectors
-      integer :: i,j,k,id,jd,kd, istop
+      integer :: i,j,k,id,jd,kd
       integer                                    :: istep, nstep
 !!! Input fields from interpolator
       real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: pH
@@ -1833,6 +1851,8 @@ end subroutine atmos_SOx_emission
       real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: oh_diurnal
       real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) ::jh2o2_diurnal
       real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: ho2_diurnal
+      real, dimension(size(pfull,1),size(pfull,2),size(pfull,3)) :: &
+               SO4_oh_prod, SO4_o3_prod, SO4_h2o2_prod
 
       real, dimension(size(pfull,1),size(pfull,2)) :: &
                xu, dayl, h, hl, hc, hred
@@ -1851,11 +1871,11 @@ end subroutine atmos_SOx_emission
       real :: SO2_0,SO4_0,MSA_0,DMS_0,H2O2_0    ! initial concentrations
       real :: xSO2,xSO4,xMSA,xDMS,xH2O2,xno3,xo3,xoh,xho2,xjh2o2 ! update conc.
       real :: rk0, rk1, rk2, rk3  ! kinetic rates
-      real :: cfact, work1, xk, xe, x2, xph
+      real :: work1, xk, xe, x2, xph
       real :: heh2o2, h2o2g, rah2o2, px, heso2, so2g, heo3, o3g, rao3
       real :: pso4a, pso4b
       real :: xlwc, xhnm, ccc1, ccc2
-      real :: pmsa, pso2, pso4, ph2o2    ! chemical production terms
+      real :: pmsa, pso2, ph2o2    ! chemical production terms
       real :: ldms, lso2, lh2o2          ! chemical loss terms
       real :: o2
       real, parameter        :: small_value=1.e-21
@@ -1863,7 +1883,6 @@ end subroutine atmos_SOx_emission
       real, parameter        :: Ra = 8314./101325.
       real, parameter        :: xkw = 1.e-14 ! water acidity
       real, parameter        :: const0 = 1.e3/6.022e23
-      integer        :: yr, mo, dy, hr, mn, sc, dum, mo_yr, dayspmn
 
 
 ! Local grid sizes
@@ -1874,6 +1893,9 @@ end subroutine atmos_SOx_emission
       dms_dt(:,:,:) = 0.0
       msa_dt(:,:,:) = 0.0
       h2o2_dt(:,:,:) = 0.0
+      SO4_h2o2_prod(:,:,:)=0.0
+      SO4_o3_prod(:,:,:)=0.0
+      SO4_oh_prod(:,:,:)=0.0
 
 
       OH_conc(:,:,:)=1.e5  ! molec/cm3
@@ -2163,6 +2185,9 @@ end subroutine atmos_SOx_emission
        SO2_dt(i,j,k) = (xso2-SO2_0)/dt
        SO4_dt(i,j,k) = (xso4-SO4_0)/dt
        H2O2_dt(i,j,k)= (xh2o2-H2O2_0)/dt
+       SO4_oh_prod(i,j,k)=LSO2*xso2
+       SO4_o3_prod(i,j,k)=ccc2/dt
+       SO4_h2o2_prod(i,j,k)=ccc1/dt
       end do
       end do
       end do
@@ -2199,6 +2224,19 @@ end subroutine atmos_SOx_emission
       if (id_SO4_chem > 0) then
         used = send_data ( id_SO4_chem, &
               SO4_dt*pwt*WTM_S/WTMAIR, model_time,is_in=is,js_in=js,ks_in=1)
+      endif
+
+      if (id_SO4_oh_prod > 0) then
+        used = send_data ( id_SO4_oh_prod, &
+              SO4_oh_prod*pwt*WTM_S/WTMAIR, model_time,is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_SO4_o3_prod > 0) then
+        used = send_data ( id_SO4_o3_prod, &
+              SO4_o3_prod*pwt*WTM_S/WTMAIR, model_time,is_in=is,js_in=js,ks_in=1)
+      endif
+      if (id_SO4_h2o2_prod > 0) then
+        used = send_data ( id_SO4_h2o2_prod, &
+              SO4_h2o2_prod*pwt*WTM_S/WTMAIR, model_time,is_in=is,js_in=js,ks_in=1)
       endif
 
       if (id_DMS_chem > 0) then

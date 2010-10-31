@@ -33,8 +33,8 @@ real, dimension(msDIM) :: ms = (/100.,10.,1.,0.1,0.01/) ! The last dimension is 
 real, dimension(upDIM) :: up = (/0.1,0.05,0.01,0.005,0.001/)
 real, dimension(tpDIM,msDIM,upDIM) :: crystal2
 
-character(len=128) :: version = '$Id: aer_in_act.F90,v 18.0 2010/03/02 23:34:32 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: aer_in_act.F90,v 15.0.4.1.4.1 2010/03/17 20:27:12 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 logical :: module_is_initialized  = .false.
 
 contains
@@ -43,8 +43,7 @@ subroutine Jhete_dep (temp,Si,concen_dust_sub,crystal)
    real, intent(in) :: temp,Si,concen_dust_sub
    real, intent(out) :: crystal
 
-   integer i, j, k, tpD, msD, upD, no_ms, no_up, no_tp, no_tp2
-   real dust, Nhomo, mcut, Ncut, s, base
+   real dust
 
    if(.not. module_is_initialized) call aer_in_act_init()
    

@@ -16,6 +16,7 @@ module atmos_co2_mod
 ! </DESCRIPTION>
 
 
+use mpp_mod, only: input_nml_file 
 use              fms_mod, only : file_exist, write_version_number,    &
                                  mpp_pe, mpp_root_pe,                 &
                                  close_file, stdlog, stdout,          &
@@ -56,7 +57,6 @@ integer, save   :: ind_co2_flux = 0
 integer, save   :: ind_co2  = 0
 integer, save   :: ind_sphum = 0
 integer         :: id_co2restore, id_pwt, id_co2_mol_emiss, id_co2_emiss_orig
-real            :: restore_co2_dvmr = -1
 real            :: radiation_co2_dvmr = -1
 
 !---------------------------------------------------------------------
@@ -89,7 +89,6 @@ namelist /atmos_co2_nml/  &
 public :: co2_radiation_override, do_co2_emissions
 
 logical :: module_is_initialized = .FALSE.
-logical :: used
 
 
 !---- version number -----
@@ -164,6 +163,8 @@ character(len=256), parameter   :: note_header =                                
 
 integer   :: i,j,k,id,jd,kd, logunit
 logical   :: sent
+logical   :: used
+real      :: restore_co2_dvmr = -1
 
 !-----------------------------------------------------------------------
 
@@ -252,6 +253,7 @@ character(len=256), parameter   :: warn_header =                                
 character(len=256), parameter   :: note_header =                                &
      '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 integer :: logunit
+logical   :: used
 !-----------------------------------------------------------------------
 
 logunit=stdlog()
@@ -348,6 +350,7 @@ integer   :: i,j,k,id,jd,kd,kb, logunit
 logical   :: sent
 real, dimension(size(co2,1),size(co2,2),size(co2,3)) ::  co2_emis_source
 real      ::  co2_emis2d(is:ie, js:je)
+logical   :: used
 
 
 !---------------------------------------------------------------------------------------
@@ -435,7 +438,7 @@ character(len=256), parameter   :: note_header =                                
 ! dry_mmr = wet_mmr / (1-Q); co2vmr = (wair/wco2) * co2mmr
 
 if (ind_co2_flux .gt. 0) then
-  gas_fields%bc(ind_co2_flux)%field(ind_pcair)%values(:,:) = (tr_bot(:,:,ind_co2) /	&
+  gas_fields%bc(ind_co2_flux)%field(ind_pcair)%values(:,:) = (tr_bot(:,:,ind_co2) / &
        (1.0 - tr_bot(:,:,ind_sphum))) * (WTMAIR/gas_fields%bc(ind_co2_flux)%mol_wt)
 endif
 
@@ -512,8 +515,8 @@ endif
 if (ind_co2 > 0) then
   ind_co2_flux = aof_set_coupler_flux('co2_flux',                       &
        flux_type = 'air_sea_gas_flux', implementation = 'ocmip2',       &
-       atm_tr_index = ind_co2,						&
-       mol_wt = WTMCO2, param = (/ 9.36e-07, 9.7561e-06 /),      	&
+       atm_tr_index = ind_co2,                                          &
+       mol_wt = WTMCO2, param = (/ 9.36e-07, 9.7561e-06 /),              &
        caller = trim(mod_name) // '(' // trim(sub_name) // ')')
 endif
 
@@ -577,12 +580,17 @@ character(len=256), parameter   :: note_header =                                
 !    read namelist.
 !-----------------------------------------------------------------------
       if ( file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+        read (input_nml_file, nml=atmos_co2_nml, iostat=io)
+        ierr = check_nml_error(io,'atmos_co2_nml')
+#else
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
         read  (unit, nml=atmos_co2_nml, iostat=io, end=10)
         ierr = check_nml_error(io,'atmos_co2_nml')
         end do
 10      call close_file (unit)
+#endif
       endif
 
 !---------------------------------------------------------------------
@@ -622,7 +630,7 @@ if (n > 0) then
                    'CO2'//trim(desc), 'kg C/m2/s',missing_value=missing_value)
 
 !
-!	get the index for sphum
+!       get the index for sphum
 !
 
   ind_sphum = get_tracer_index(MODEL_ATMOS,'sphum')

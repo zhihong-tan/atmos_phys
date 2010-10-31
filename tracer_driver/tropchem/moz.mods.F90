@@ -1,13 +1,13 @@
       module mo_grid_mod
 !---------------------------------------------------------------------
-! 	... Basic grid point resolution parameters
+!       ... Basic grid point resolution parameters
 !---------------------------------------------------------------------
       implicit none
 
       save
 
-character(len=128), parameter :: version     = '$Id: moz.mods.F90,v 18.0 2010/03/02 23:34:51 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: moz.mods.F90,v 18.0.2.1 2010/03/25 00:31:42 pjp Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       integer, parameter :: &
@@ -33,7 +33,7 @@ logical                       :: module_is_initialized = .false.
 
       module chem_mods_mod
 !--------------------------------------------------------------
-!     	... basic chemistry array parameters
+!       ... basic chemistry array parameters
 !--------------------------------------------------------------
 
       use mo_grid_mod, only : pcnstm1
@@ -82,11 +82,11 @@ logical                       :: module_is_initialized = .false.
       character(len=8)               :: inv_lst(max(1,nfs))
 
       type solver_class
-	 integer :: clscnt
-	 integer :: lin_rxt_cnt
-	 integer :: nln_rxt_cnt
-	 integer :: indprd_cnt
-	 integer :: iter_max
+         integer :: clscnt
+         integer :: lin_rxt_cnt
+         integer :: nln_rxt_cnt
+         integer :: indprd_cnt
+         integer :: iter_max
          integer :: cls_rxt_cnt(4)
          integer, pointer :: permute(:)
          integer, pointer :: diag_map(:)
@@ -108,7 +108,7 @@ logical                       :: module_is_initialized = .false.
 
       subroutine chem_mods_init
 !--------------------------------------------------------------
-!     	... intialize the class derived type
+!       ... intialize the class derived type
 !--------------------------------------------------------------
 
       implicit none
@@ -130,51 +130,51 @@ logical                       :: module_is_initialized = .false.
       rodas%indprd_cnt      =     0
 
       if( explicit%clscnt > 0 ) then
-	 allocate( explicit%clsmap(explicit%clscnt),stat=astat )
-	 if( astat /= 0 ) then
-	    write(*,*) 'chem_mods_init: failed to allocate explicit%clsmap ; error = ',astat
-	    call endrun
-	 end if
+         allocate( explicit%clsmap(explicit%clscnt),stat=astat )
+         if( astat /= 0 ) then
+            write(*,*) 'chem_mods_init: failed to allocate explicit%clsmap ; error = ',astat
+            call endrun
+         end if
          explicit%clsmap(:)  = 0
       end if
       if( implicit%clscnt > 0 ) then
-	 allocate( implicit%permute(implicit%clscnt),stat=astat )
-	 if( astat /= 0 ) then
-	    write(*,*) 'chem_mods_init: failed to allocate implicit%permute ; error = ',astat
-	    call endrun
-	 end if
+         allocate( implicit%permute(implicit%clscnt),stat=astat )
+         if( astat /= 0 ) then
+            write(*,*) 'chem_mods_init: failed to allocate implicit%permute ; error = ',astat
+            call endrun
+         end if
          implicit%permute(:)  = 0
-	 allocate( implicit%diag_map(implicit%clscnt),stat=astat )
-	 if( astat /= 0 ) then
-	    write(*,*) 'chem_mods_init: failed to allocate implicit%diag_map ; error = ',astat
-	    call endrun
-	 end if
+         allocate( implicit%diag_map(implicit%clscnt),stat=astat )
+         if( astat /= 0 ) then
+            write(*,*) 'chem_mods_init: failed to allocate implicit%diag_map ; error = ',astat
+            call endrun
+         end if
          implicit%diag_map(:)  = 0
-	 allocate( implicit%clsmap(implicit%clscnt),stat=astat )
-	 if( astat /= 0 ) then
-	    write(*,*) 'chem_mods_init: failed to allocate implicit%clsmap ; error = ',astat
-	    call endrun
-	 end if
+         allocate( implicit%clsmap(implicit%clscnt),stat=astat )
+         if( astat /= 0 ) then
+            write(*,*) 'chem_mods_init: failed to allocate implicit%clsmap ; error = ',astat
+            call endrun
+         end if
          implicit%clsmap(:)  = 0
       end if
       if( rodas%clscnt > 0 ) then
-	 allocate( rodas%permute(rodas%clscnt),stat=astat )
-	 if( astat /= 0 ) then
-	    write(*,*) 'chem_mods_init: failed to allocate rodas%permute ; error = ',astat
-	    call endrun
-	 end if
+         allocate( rodas%permute(rodas%clscnt),stat=astat )
+         if( astat /= 0 ) then
+            write(*,*) 'chem_mods_init: failed to allocate rodas%permute ; error = ',astat
+            call endrun
+         end if
          rodas%permute(:)  = 0
-	 allocate( rodas%diag_map(rodas%clscnt),stat=astat )
-	 if( astat /= 0 ) then
-	    write(*,*) 'chem_mods_init: failed to allocate rodas%diag_map ; error = ',astat
-	    call endrun
-	 end if
+         allocate( rodas%diag_map(rodas%clscnt),stat=astat )
+         if( astat /= 0 ) then
+            write(*,*) 'chem_mods_init: failed to allocate rodas%diag_map ; error = ',astat
+            call endrun
+         end if
          rodas%diag_map(:)  = 0
-	 allocate( rodas%clsmap(rodas%clscnt),stat=astat )
-	 if( astat /= 0 ) then
-	    write(*,*) 'chem_mods_init: failed to allocate rodas%clsmap ; error = ',astat
-	    call endrun
-	 end if
+         allocate( rodas%clsmap(rodas%clscnt),stat=astat )
+         if( astat /= 0 ) then
+            write(*,*) 'chem_mods_init: failed to allocate rodas%clsmap ; error = ',astat
+            call endrun
+         end if
          rodas%clsmap(:)  = 0
       end if
 

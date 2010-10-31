@@ -9,8 +9,8 @@ private
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 18.0 2010/03/02 23:34:30 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 17.0.2.1.4.1 2010/03/17 20:27:11 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !---------------- private data -------------------
 
@@ -134,9 +134,8 @@ real, intent(inout) :: Drop
 integer, intent(out) :: ier
 character(len=*), intent(out) :: ermesg
     
-real number, tmass, tmass2, tmass3, tmass4, updr, temp, sum
-integer nomass, nomass2, nomass3, nomass4, noup, noT, i
-real, dimension(3) :: Drop1
+real tmass, tmass2, tmass3, tmass4, updr
+integer nomass, nomass2, nomass3, nomass4, noup
         
   ier = 0
   ermesg = '  '
@@ -785,12 +784,10 @@ end function erff
 subroutine CalcAlphaGamma(alpha, gamma)
 
   real, intent(inout) :: alpha, gamma
-  real :: rhow = 1.0e3  ! density of water (Kg m-3)
   real rhoa ! density of air (Kg m-3)
   real :: Cpa = 1.007e3 ! specific heat of air (J Kg-1 K-1)
   real :: Mw = 0.018  ! molecular weight of water (Kg mol-1)
   real :: Ma = 0.028965  ! molecular weight of air (Kg mol-1)
-  real :: alpc = 1.  ! mass accomodation coef. 
   real :: g = 9.815 ! gravitational acceleration (m s-2) 
   real vpres, Dv, ka, Le, TC
   
@@ -809,13 +806,10 @@ end subroutine CalcAlphaGamma
 subroutine CalcBeta(beta, Le_cpa)
 
   real, intent(inout) :: beta, Le_cpa 
-  real :: rhow = 1.0e3  ! density of water (Kg m-3)
   real rhoa ! density of air (Kg m-3)
   real :: Cpa = 1.007e3 ! specific heat of air (J Kg-1 K-1)
   real :: Mw = 0.018  ! molecular weight of water (Kg mol-1)
   real :: Ma = 0.028965  ! molecular weight of air (Kg mol-1)
-  real :: alpc = 1.  ! mass accomodation coef. 
-  real :: g = 9.815 ! gravitational acceleration (m s-2) 
   real vpres, Dv, ka, Le, TC
   
   rhoa = P*Ma/R/T  ! (Kg m-3)

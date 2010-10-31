@@ -25,8 +25,8 @@
       integer :: id_prod_no_col, id_flash_freq
       real :: lat25
       
-character(len=128), parameter :: version     = '$Id: mo_hook.F90,v 16.0 2008/07/30 22:10:53 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_hook.F90,v 16.0.4.1 2010/03/17 20:27:12 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -49,7 +49,6 @@ logical                       :: module_is_initialized = .false.
 !----------------------------------------------------------------------
 !        ... local variables
 !----------------------------------------------------------------------
-      integer :: astat
 
       if (module_is_initialized) return
 
@@ -122,19 +121,14 @@ logical                       :: module_is_initialized = .false.
       real, parameter    :: dayspy = 365.
       real, parameter    :: secpyr = dayspy * 8.64e4
 
-      integer :: i, ip, istat, j, jgbl, &
+      integer :: i, j, &
                  cldtind, &         ! level index for cloud top
-                 cldbind, &         ! level index for cloud base > 273K
-                 surf_type, &
-                 file               ! file index
+                 cldbind            ! level index for cloud base > 273K
       integer :: k, kk, zlow_ind, zhigh_ind, itype
 !     real    :: glob_flashfreq, &  ! global flash frequency [s-1]
 !                glob_noprod        ! global rate of NO production [as TgN/yr]
-      real    :: frac_sum, &        !
-                 wrk                ! work variable
+      real    :: frac_sum
       real       :: zlow, zhigh, zlow_scal, zhigh_scal, fraction
-      real       :: sflux1, sflux2, sumoc, sumln
-      real       :: total_flux
       real, dimension( size(prod_no,1),size(prod_no,2) ) :: &
                  dchgzone, &        ! depth of discharge zone [km]
                  cldhgt, &          ! cloud top height [km]

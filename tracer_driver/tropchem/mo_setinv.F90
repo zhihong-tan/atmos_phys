@@ -1,8 +1,8 @@
       module MO_SETINV_MOD
 
 implicit none
-character(len=128), parameter :: version     = '$Id: mo_setinv.F90,v 16.0 2008/07/30 22:11:01 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_setinv.F90,v 16.0.4.1 2010/03/25 00:31:41 pjp Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -38,11 +38,11 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
 !        NOTE: Invariants are in cgs density units.
 !              The pmid array is in pascals and must be
-!	       mutiplied by 10. to yield dynes/cm**2.
+!              mutiplied by 10. to yield dynes/cm**2.
 !-----------------------------------------------------------------
 
 !-----------------------------------------------------------------
-!	... Set M, N2, O2, and H2O densities
+!       ... Set M, N2, O2, and H2O densities
 !-----------------------------------------------------------------
       do k = 1,plev
          invariants(:,k,1) = 10. * pmid(:,k) / (boltz*tfld(:,k))

@@ -8,8 +8,8 @@
 
 !     save
 
-character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 17.0 2009/07/21 02:59:39 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 17.0.4.1 2010/03/17 20:27:12 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -200,30 +200,21 @@ logical                       :: module_is_initialized = .false.
 !             ... Local variables
 !-----------------------------------------------------------------------
       integer, parameter :: inst = 1, avrg = 2
-      integer  :: idate
-      integer  ::  i, k, m, n, hndx, file
+      integer  ::  k
 !     integer  ::  ox_ndx, o3_ndx
       integer  ::  so2_ndx, so4_ndx
       real     ::  invariants(plonl,SIZE(vmr,2),max(1,nfs))
-      real     ::  group_ratios(plonl,SIZE(vmr,2),max(1,grpcnt))
-      real     ::  group_vmr(plonl,SIZE(vmr,2),max(1,grpcnt))
       real     ::  col_dens(plonl,SIZE(vmr,2),max(1,ncol_abs))                  ! column densities (molecules/cm^2)
       real     ::  col_delta(plonl,0:SIZE(vmr,2),max(1,ncol_abs))               ! layer column densities (molecules/cm^2)
       real     ::  het_rates(plonl,SIZE(vmr,2),max(1,hetcnt))
       real     ::  extfrc(plonl,SIZE(vmr,2),max(1,extcnt))
       real     ::  reaction_rates(plonl,SIZE(vmr,2),rxntot)
-      real     ::  nas(plonl,SIZE(vmr,2),max(1,grpcnt))                         ! non-advected species( mmr )
       real, dimension(plonl,SIZE(vmr,2)) :: &
                    h2ovmr, &             ! water vapor volume mixing ratio
                    mbar, &               ! mean wet atmospheric mass ( amu )
                    zmid                  ! midpoint geopotential in km
       real, dimension(plonl,SIZE(zi,2)) :: &
                    zint                  ! interface geopotential in km
-      real, dimension(plonl)  :: &
-                   zen_angle, &
-                   loc_angle, &
-                   albs
-      character(len=32) :: fldname
       integer :: plev, plevp, plnplv, num_invar
       integer :: nstep
 

@@ -12,8 +12,8 @@ implicit none
       integer :: ox_ndx, o3_ndx, o1d_ndx, o_ndx
       logical :: do_ox
 
-character(len=128), parameter :: version     = '$Id: mo_chem_utls.F90,v 16.0 2008/07/30 22:10:50 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_chem_utls.F90,v 16.0.4.1.2.1 2010/03/25 00:36:29 pjp Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -49,7 +49,7 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !-----------------------------------------------------------------------
-!	... dummy arguments
+!       ... dummy arguments
 !-----------------------------------------------------------------------
       integer, intent(in) :: plonl
       real, dimension(:,:,:), intent(in)  :: vmr         ! xported species vmr
@@ -59,7 +59,7 @@ logical                       :: module_is_initialized = .false.
       real, dimension(:,:),   intent(out) :: h2o         ! water vapor vmr
 
 !-----------------------------------------------------------------------
-!	... local variables
+!       ... local variables
 !-----------------------------------------------------------------------
       real, parameter :: mh2o = 1. /18.01528
 
@@ -69,7 +69,7 @@ logical                       :: module_is_initialized = .false.
 
       plev = SIZE(vmr,2)
 !-----------------------------------------------------------------------
-!	... if not using interactive water vapor, adjust model
+!       ... if not using interactive water vapor, adjust model
 !           water vapor in stratosphere for source from CH4 oxidation
 !-----------------------------------------------------------------------
       ndx_ch4 = get_spc_ndx( 'CH4' )
@@ -90,21 +90,21 @@ logical                       :: module_is_initialized = .false.
 
       subroutine inti_mr_xform( sh, mbar, plonl )
 !-----------------------------------------------------------------
-!	... initialize mean atmospheric "wet" mass
+!       ... initialize mean atmospheric "wet" mass
 !-----------------------------------------------------------------
 
 
       implicit none
 
 !-----------------------------------------------------------------
-!	... dummy args
+!       ... dummy args
 !-----------------------------------------------------------------
       integer, intent(in) :: plonl
       real, intent(in)  :: sh(:,:)     ! specific humidity (kg/kg)
       real, intent(out) :: mbar(:,:)   ! mean wet atm mass ( amu )
 
 !-----------------------------------------------------------------
-!	... local variables
+!       ... local variables
 !-----------------------------------------------------------------
       real, parameter :: dry_mass = 28.966    ! amu
       real, parameter :: mfac = 1. / .622
@@ -122,7 +122,7 @@ logical                       :: module_is_initialized = .false.
 
       subroutine mmr2vmr( vmr, mmr, mbar, plonl )
 !-----------------------------------------------------------------
-!	... xfrom from mass to volume mixing ratio
+!       ... xfrom from mass to volume mixing ratio
 !-----------------------------------------------------------------
 
       use chem_mods_mod, only : adv_mass
@@ -131,7 +131,7 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !-----------------------------------------------------------------
-!	... dummy args
+!       ... dummy args
 !-----------------------------------------------------------------
       integer, intent(in) :: plonl
       real, intent(in)  :: mbar(:,:)
@@ -139,7 +139,7 @@ logical                       :: module_is_initialized = .false.
       real, intent(out) :: vmr(:,:,:)
 
 !-----------------------------------------------------------------
-!	... local variables
+!       ... local variables
 !-----------------------------------------------------------------
       integer :: k, m
       integer :: plev
@@ -158,7 +158,7 @@ logical                       :: module_is_initialized = .false.
 
       subroutine vmr2mmr( vmr, mmr, nas, grp_ratios, mbar, plonl )
 !-----------------------------------------------------------------
-!	... xfrom from mass to volume mixing ratio
+!       ... xfrom from mass to volume mixing ratio
 !-----------------------------------------------------------------
 
       use chem_mods_mod, only : adv_mass, nadv_mass, grpcnt
@@ -167,7 +167,7 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !-----------------------------------------------------------------
-!	... dummy args
+!       ... dummy args
 !-----------------------------------------------------------------
       integer, intent(in) :: plonl
       real, intent(in)  :: mbar(:,:)
@@ -177,7 +177,7 @@ logical                       :: module_is_initialized = .false.
       real, intent(out) :: nas(:,:,:)
 
 !-----------------------------------------------------------------
-!	... local variables
+!       ... local variables
 !-----------------------------------------------------------------
       integer :: k, m
       integer :: plev
@@ -186,7 +186,7 @@ logical                       :: module_is_initialized = .false.
       plev = size(mbar,2)
 
 !-----------------------------------------------------------------
-!	... the non-group species
+!       ... the non-group species
 !-----------------------------------------------------------------
       do m = 1,pcnstm1
          if( adv_mass(m) /= 0. ) then
@@ -196,7 +196,7 @@ logical                       :: module_is_initialized = .false.
          end if
       end do
 !-----------------------------------------------------------------
-!	... the "group" species
+!       ... the "group" species
 !-----------------------------------------------------------------
       if( do_ox ) then
          do k = 1,plev
@@ -215,8 +215,8 @@ logical                       :: module_is_initialized = .false.
 
       subroutine negtrc( lat, header, fld, plonl )
 !-----------------------------------------------------------------------
-!  	... check for negative constituent values and
-!	    replace with zero value
+!       ... check for negative constituent values and
+!           replace with zero value
 !-----------------------------------------------------------------------
 
       use mo_grid_mod,    only : pcnstm1
@@ -225,7 +225,7 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !-----------------------------------------------------------------------
-!  	... dummy arguments
+!       ... dummy arguments
 !-----------------------------------------------------------------------
       integer, intent(in)          :: lat                      ! current latitude
       integer, intent(in)          :: plonl
@@ -233,13 +233,10 @@ logical                       :: module_is_initialized = .false.
       real, intent(inout)          :: fld(:,:,:)               ! field to check
 
 !-----------------------------------------------------------------------
-!  	... local variables
+!       ... local variables
 !-----------------------------------------------------------------------
       integer :: m
       integer :: nneg                       ! flag counter
-      integer :: iw, kw
-      integer :: windex(2)
-      real    :: worst
 
       do m  = 1,pcnstm1
          nneg = count( fld(:,:,m) < 0. )
@@ -247,14 +244,14 @@ logical                       :: module_is_initialized = .false.
             where( fld(:,:,m) < 0. )
                fld(:,:,m) = 0.
             endwhere
-!	    if( pdiags%negtrc ) then
-!	       worst     = minval( fld(:,:,m) )
-!	       windex(:) = minloc( fld(:,:,m) )
-!	       iw        = windex(1)
-!	       kw        = windex(2)
-!	    end if
+!           if( pdiags%negtrc ) then
+!              worst     = minval( fld(:,:,m) )
+!              windex(:) = minloc( fld(:,:,m) )
+!              iw        = windex(1)
+!              kw        = windex(2)
+!           end if
          end if
-!	 if( pdiags%negtrc .and. nneg > 0 ) then
+!        if( pdiags%negtrc .and. nneg > 0 ) then
 !           write(*,*) header(:len(header)), tracnam(m), ' has ',nneg,' neg values'
 !           write(*,*) ' worst =',worst,' @ long = ',iw,' lat = ',lat,' eta = ',kw
 !        end if

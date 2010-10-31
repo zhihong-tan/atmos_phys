@@ -104,8 +104,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 17.0 2009/07/21 02:59:27 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_sulfur_hex.F90,v 17.0.4.1 2010/03/17 20:27:11 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -165,7 +165,6 @@ integer, intent(in)                    :: is, ie, js, je
 !-----------------------------------------------------------------------
    real, dimension(size(sf6,1),size(sf6,2),size(sf6,3)) ::  &
          source, sink
-logical, dimension(size(sf6,1),size(sf6,2)) ::  maskeq,masknh
 integer :: i,j,kb,kd, id,jd
 real :: rate ! sf6 interpolated emission rate
 !-----------------------------------------------------------------------
@@ -260,7 +259,6 @@ real,            intent(in),    dimension(:,:,:), optional :: mask
 type(time_type), intent(in)                                :: Time
 integer        , intent(in)                                :: axes(4)
 
-logical :: flag
 integer :: n
 !-----------------------------------------------------------------------
 !
@@ -278,7 +276,7 @@ integer :: n
 !  non-zero.
 !
 !-----------------------------------------------------------------------
-      integer  log_unit,unit,io,index,ntr,nt, logunit, outunit
+      integer  logunit, outunit
 
       if (module_is_initialized) return
 
@@ -327,11 +325,10 @@ type(time_type), intent(in) :: Time
       integer, parameter :: k6=selected_int_kind(6) ! find kind sufficient for 6 digit integer precision
       integer(kind=k6) :: t ! temporary time variable of kind k6
       integer      :: y,m,d ! calendar vars
-      real,pointer         :: data_out1(:,:) ! temporary sf6_grid output
 !-------------------------------------------------
       real :: MW_air=28.9644 ! molecular wt. of air (gm/mole)
       real :: MW_sf6=86.0 ! molecular wt. of sf6 (gm/mole) PLEASE CHECK!
-      logical :: used, opened
+      logical :: used
 
       dtr=PI/180.
       deg_90= -90.*dtr; deg_180= -180.*dtr ! -90 and -180 degrees are the southwest boundaries 

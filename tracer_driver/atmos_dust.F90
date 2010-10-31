@@ -13,6 +13,7 @@ module atmos_dust_mod
 ! </CONTACT>
 !-----------------------------------------------------------------------
 
+use mpp_mod, only: input_nml_file 
 use              fms_mod, only : file_exist, &
                                  write_version_number, &
                                  mpp_pe, &
@@ -79,8 +80,8 @@ real :: coef_emis =-999.
 namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_dust.F90,v 18.0 2010/03/02 23:34:07 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_dust.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -111,27 +112,26 @@ contains
    real, intent(out), dimension(:,:,:) :: dust_dt
    type(time_type), intent(in) :: Time     
    integer, intent(in),  dimension(:,:), optional :: kbot
-!-----------------------------------------------------------------------
- logical :: flag
-integer  i, j, k, m, id, jd, kd, kb, ir
 integer, intent(in)                    :: is, ie, js, je
+!-----------------------------------------------------------------------
+integer  i, j, k, id, jd, kd, kb
 !----------------------------------------------
 !     Dust parameters
 !----------------------------------------------
       real, dimension(5) ::   frac_s
 
       real, dimension(size(dust,3)) :: setl
-      real, dimension(size(dust,1),size(dust,2)) :: u_ts_2d, source, maxgw
+      real, dimension(size(dust,1),size(dust,2)) :: u_ts_2d, source
 
       real, parameter :: small_value = 1.e-20
       real, parameter :: mtcm = 100.            ! meter to cm
       real, parameter :: mtv  = 1. ! factor conversion for mixing ratio of dust
       real, parameter :: ptmb = 0.01     ! pascal to mb
 
-      real :: rhb, rcm, g0
+      real :: rhb, rcm
       real :: ratio_r, rho_wet_dust, viscosity, free_path, C_c, vdep
       real :: rho_air
-      real :: rmid, rwet
+      real :: rwet
 !-----------------------------------
 !    SET-Up  DATA
 !-----------------------------------
@@ -234,13 +234,11 @@ type(time_type),  intent(in)                        :: Time
 integer,          intent(in)                        :: axes(4)
 real, intent(in), dimension(:,:,:), optional        :: mask
 character(len=7), parameter :: mod_name = 'tracers'
-logical :: flag
 integer :: n, m, logunit
 !
 !-----------------------------------------------------------------------
 !
-      integer  log_unit,unit,ierr, io,index,ntr,nt
-      character(len=16) ::  fld
+      integer  unit,ierr, io
       character(len=1)  :: numb(5)
       data numb/'1','2','3','4','5'/
 
@@ -252,12 +250,17 @@ integer :: n, m, logunit
 !    read namelist.
 !-----------------------------------------------------------------------
       if ( file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+        read (input_nml_file, nml=dust_nml, iostat=io)
+        ierr = check_nml_error(io,'dust_nml')
+#else
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
         read  (unit, nml=dust_nml, iostat=io, end=10)
         ierr = check_nml_error(io, 'dust_nml')
         end do
 10      call close_file (unit)
+#endif
       endif
 
       if (uthresh .le. -990) then

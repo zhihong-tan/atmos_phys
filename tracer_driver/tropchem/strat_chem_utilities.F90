@@ -104,10 +104,9 @@ subroutine strat_chem_utilities_init( lonb, latb, age_factor_in, dclydt_factor_i
    integer,          intent(in), dimension(:)   :: cfc_lbc_dataset_entry
    
 ! local variables
-   real :: age_dummy(nlat_input,nlev_input,12), &
-           chlb_dummy(nlat_input,nspecies_lbc), &
+   real :: chlb_dummy(nlat_input,nspecies_lbc), &
            ozb_dummy(nlon_input, nlat_input, 12)
-   integer :: unit, nc, j, n, year, outunit
+   integer :: unit, nc, n, year, outunit
    type(time_type) :: Model_init_time
    
    if (module_is_initialized) return
@@ -256,8 +255,8 @@ real, dimension(:,:,:), intent(out) :: dclydt, dbrydt
 ! local variables
 
 integer :: iyear, imon, iday, ihour, imin, isec
-real :: time0, monthfrac, dt1, factor, extra_seconds
-integer :: it1,it2, imon2
+real :: dt1, factor, extra_seconds
+integer :: it1,it2
 integer :: ic, i, j, k, il, jl, kl
 real :: clytot, brytot
 !++lwh
@@ -527,14 +526,14 @@ type(psc_type),       intent(out)   :: psc
 real, dimension(:,:,:), intent(out), optional :: psc_vmr_out
 
 ! Local variables
-integer :: il, jl, kl, i, j, k
+integer :: il, kl, i, k
 real :: rho(size(temp,1)), &
         DENS(size(temp,1)), &
         VHET(size(temp,1),4), &
         WF(size(temp,1),2)
 real :: PH2O, &                    ! H2O partial pressure (atm)
         TSAT,ABT,AMT,BMT,PX,C2, &
-        A1,A2,A3,A4,C3,C4,CLIMIT,P0H2O,Y1,Y2,T1,RMODE,RMODESAT,SANAT
+        A1,A2,A3,A4,C3,P0H2O,Y1,Y2,T1,RMODE,RMODESAT,SANAT
 !----------------------------------------------------------------------------
 !
 ! AVGDR IS THE RECIPROCAL OF THE AVOGADRO CONSTANT
@@ -723,12 +722,12 @@ REAL, dimension(:,:), intent(out) :: gamma
 
 ! local variables
 
-integer :: i,il,kl
+integer :: i,il
 REAL, dimension(size(temp,1)) :: AMH2SO4, XH2SO4, VISC, AACID, TEMP2, RTT
 REAL :: T2,Z1,Z2,Z3,RHOX,AA,X,T1,T3,AKH,AKH2O,AKHYDR,DIFF,SCLONO2, &
         CCLONO2,GAMMAB1,HHCL,AKHCL,Q1,RQ,A1,FCLONO2,GAMMARXN,      &
         GAMMABHCL,GAMMAS,FHCL,GAMMASP,GAMMABHCLP,GAMMAB,GCLONO2,   &
-        SHOCL,HHOCL,AKHOCLCHOCL,FHOCL,WT,AK0,AK1,AK2,T0,HCLONO2,   &
+        SHOCL,HHOCL,FHOCL,WT,AK0,AK1,AK2,T0,HCLONO2,   &
         AMHCL,AKHOCL,CHOCL
 
 !  The parameterisations used here break down below about 185K, so the
@@ -908,7 +907,7 @@ REAL, dimension(size(temp)) :: CHEMC, &        ! chemical species number density
                                RTT, &
                                VEL1, &
                                VEL2
-REAL :: VCONST, GN, ANUM, ADEN, MW2, area, afac1, adsorb_frac
+REAL :: VCONST, ANUM, ADEN, MW2, area, afac1, adsorb_frac
 
 real, dimension(nhet_data), parameter :: &
          AMW = (/ 52.45, 108.00, 108.00, 97.45, 97.45, 96.91, 52.45, 96.91, 141.91 /), &

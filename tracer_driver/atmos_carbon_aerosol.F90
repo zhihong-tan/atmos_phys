@@ -3,6 +3,7 @@ Module atmos_carbon_aerosol_mod
 ! <CONTACT EMAIL="Shekar.Reddy@noaa.gov">
 !   Shekar Reddy
 ! </CONTACT>
+use mpp_mod, only: input_nml_file 
 use fms_mod,                    only : file_exist, close_file, &
                                        write_version_number, &
                                        mpp_pe, mpp_root_pE, &
@@ -54,7 +55,7 @@ integer :: id_om_emis_colv2, id_bc_emis_colv2
 integer :: id_bcphob_sink, id_omphob_sink
 integer :: id_emisbb, id_omemisbb_col
 integer :: id_bcemisbf, id_bcemisbb, id_bcemissh, id_bcemisff, id_bcemisav
-integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg, id_omemisocean
+integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg, id_omemisoc
 !----------------------------------------------------------------------
 !--- Interpolate_type variable containing all the information needed to
 ! interpolate the emission provided in the netcdf input file.
@@ -267,8 +268,8 @@ logical :: module_is_initialized = .FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 17.0.2.1.2.1.6.1.2.1.6.1.2.1 2010/05/14 18:38:20 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 17.0.2.1.2.1.6.1.2.1.6.1.2.2.2.2 2010/08/30 20:39:47 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 
 type(time_type)                        :: bcff_time
@@ -836,11 +837,15 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
               is_in=is,js_in=js)
       endif
       if (id_omemisff > 0) then
-        used = send_data ( id_omemisff, bcemisff, model_time, &
+        used = send_data ( id_omemisff, omemisff, model_time, &
               is_in=is,js_in=js,ks_in=1)
       endif
       if (id_omemisbg > 0) then
         used = send_data ( id_omemisbg, omemisbg, model_time, &
+              is_in=is,js_in=js)
+      endif
+      if (id_omemisoc > 0) then
+        used = send_data ( id_omemisoc, omemisocean, model_time, &
               is_in=is,js_in=js)
       endif
 !
@@ -899,12 +904,17 @@ integer ::  unit, ierr, io, logunit
 !----------------------------------
 !namelist files
       if ( file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+        read (input_nml_file, nml=carbon_aerosol_nml, iostat=io)
+        ierr = check_nml_error(io,'carbon_aerosol_nml')
+#else
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
         read  (unit, nml=carbon_aerosol_nml, iostat=io, end=10)
         ierr = check_nml_error(io,'carbon_aerosol_nml')
         end do
 10      call close_file (unit)
+#endif
       endif
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -1049,7 +1059,11 @@ integer ::  unit, ierr, io, logunit
 
      id_omemisbg    = register_diag_field ( mod_name,           &
                     'omemisbg', axes(1:2),Time,                 &
-                    'OM biogenic emission', 'kg/m2/sec' )
+                    'OM biogenic emission over land', 'kg/m2/sec' )
+
+     id_omemisoc    = register_diag_field ( mod_name,           &
+                    'omemisoc', axes(1:2),Time,                 &
+                    'OM biogenic emission over ocean', 'kg/m2/sec' )
 
 !----------------------------------------------------------------------
 !    initialize namelist entries

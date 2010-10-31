@@ -23,6 +23,7 @@ module tropchem_driver_mod
 
 !-----------------------------------------------------------------------
 
+use                    mpp_mod, only : input_nml_file 
 use                    fms_mod, only : file_exist,   &
                                        field_exist, &
                                        write_version_number, &
@@ -154,7 +155,8 @@ logical            :: allow_psc_settling_type1 = .false.! Allow Type-I (NAT) PSC
 logical            :: allow_psc_settling_type2 = .false.! Allow Type-II (ice) PSCs to settle
 logical            :: force_cly_conservation = .false.  ! Force chemical conservation of Cly
 logical            :: rescale_cly_components = .false.  ! Rescale individual Cly components to total Cly VMR
-logical            :: set_min_h2o_strat = .false.       ! Don't allow total water concentration in the stratosphere to fall below 2*CH4_trop
+logical            :: set_min_h2o_strat = .false.       
+! Don't allow total water concentration in the stratosphere to fall below 2*CH4_trop
 character(len=64)  :: ch4_filename = 'ch4_gblannualdata'! Methane timeseries filename
 real               :: ch4_scale_factor = 1.             ! Methane scale factor to convert to VMR (mol/mol)
 character(len=64)  :: cfc_lbc_filename = 'chemlbf'      ! Input file for CFC lower boundary conditions
@@ -162,6 +164,9 @@ logical            :: time_varying_cfc_lbc = .true.     ! Allow time variation o
 integer, dimension(6) :: cfc_lbc_dataset_entry = (/ 1, 1, 1, 0, 0, 0 /) ! Entry date for CFC lower boundary condition file
 real               :: Tdaily_clim = 297.                ! climatological T for use in MEGAN gamma_age calc
 real               :: Pdaily_clim = 420.                ! climatological PPFD for MEGAN light correction 
+!++amf/van
+integer, parameter :: nveg=5, npft=17, nmos=12          ! number of vegetation types, pfts, and months
+!--amf/van
 integer            :: verbose = 3                       ! level of diagnostic output
  
 namelist /tropchem_driver_nml/    &
@@ -298,8 +303,8 @@ type (horiz_interp_type), save :: Interp
 
 
 !---- version number ---------------------------------------------------
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 17.0.2.1.6.1.2.1.2.1 2009/11/28 18:39:09 rsh Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 17.0.2.1.6.1.2.1.2.1.4.1.2.1 2010/09/07 15:09:58 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -436,9 +441,9 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
    integer, intent(in),  dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
    real, dimension(size(r,1),size(r,2),size(r,3)) :: sulfate_data
-   real, dimension(size(r,1),size(r,2),size(r,3)) :: ub_temp,rno
+!   real, dimension(size(r,1),size(r,2),size(r,3)) :: ub_temp,rno
    real, dimension(size(r,1),size(r,2),size(r,3),maxinv) :: inv_data
-   real, dimension(size(r,1),size(r,2)) :: emis, temp_data
+   real, dimension(size(r,1),size(r,2)) :: emis
    real, dimension(size(r,1),size(r,2), pcnstm1) :: emisz
    real, dimension(size(r,1),size(r,2),size(r,3)) :: emis3d, xactive_emis
    real, dimension(size(r,1),size(r,2),size(r,3)) :: age, cly0, cly, cly_ratio, &
@@ -457,7 +462,6 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
    real, dimension(size(r,1),size(r,2),size(r,3)) :: tend_tmp, extra_h2o
    real, dimension(pcnstm1) :: r_lb
    real, dimension(size(land,1), size(land,2)) :: oro ! 0 and 1 rep. of land
-   character(len=64) :: name
    real, dimension(size(r,1),size(r,2)) :: coszen_local, fracday_local
    real :: rrsun_local
    real, dimension(size(r,1),size(r,2),size(r,3),pcnstm1) :: prod, loss
@@ -827,8 +831,8 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
                                h2so4, strat_aerosol(:,j,:), psc, psc_vmr_out=psc_vmr_save(:,j,:,:) )
 
       if (repartition_water_tracers) then
-         cloud_water(:,:) = MAX(0.,cloud_water(:,:) - psc_vmr_save(:,j,:,3)*WTMH2O/WTMAIR) ! reduce cloud_water by amount of type-II PSC
-         h2o_temp(:,:) = h2o_temp(:,:) - cloud_water(:,:) * WTMAIR/WTMH2O                  ! remaining water is present as vapor
+         cloud_water(:,:) = MAX(0.,cloud_water(:,:) - psc_vmr_save(:,j,:,3)*WTMH2O/WTMAIR) ! reduce cloud_water by amount of type-II
+         h2o_temp(:,:) = h2o_temp(:,:) - cloud_water(:,:) * WTMAIR/WTMH2O                  ! PSC remaining water is present as vapor
       end if
       if (sphum_ndx>0) then
          r_temp(:,j,:,sphum_ndx) = h2o_temp(:,:)
@@ -1311,10 +1315,9 @@ function tropchem_driver_init( r, mask, axes, Time, &
 
    logical :: Ltropchem
    integer :: flag_file, flag_spec, flag_fixed
-   integer :: n,i,j,nfields,nt
+   integer :: n,i
    integer :: ierr, io, logunit
    character(len=64) :: nc_file,filename,specname
-   character(len=64) :: units
    character(len=256) :: control=''
    character(len=64) :: name=''
    type(interpolate_type) :: init_conc
@@ -1351,12 +1354,17 @@ function tropchem_driver_init( r, mask, axes, Time, &
 !     ... read namelist
 !-----------------------------------------------------------------------
    if(file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=tropchem_driver_nml, iostat=io)
+      ierr = check_nml_error(io,'tropchem_driver_nml')
+#else
       unit = open_namelist_file('input.nml')
       ierr=1; do while (ierr /= 0)
       read(unit, nml = tropchem_driver_nml, iostat=io, end=10)
       ierr = check_nml_error (io, 'tropchem_driver_nml')
       end do
 10    call close_file(unit)
+#endif
    end if
   
    logunit = stdlog()
@@ -2377,6 +2385,7 @@ end subroutine init_xactive_emis
 !     monthly mean surface air temp + downward short wave radiation from 
 !     Sheffield et al., J. clim, 2006  (obtained from Christine Wiedinmyer, NCAR,
 !     Feb, 2009.  Also allocate and initialize arrays needed for diagnostics, etc.
+!     Updated to MEGAN v2.1 amf/van
 !   </DESCRIPTION>
 !   <TEMPLATE>
 !     call isop_xactive_init( lonb_mod, latb_mod, axes )
@@ -2390,7 +2399,9 @@ subroutine isop_xactive_init( lonb, latb, axes )
 !parameters for input file
 !number of vegetation types for emission capacities
 
-  integer, parameter :: nveg=6, npft=17, nmos=12
+!++amf/van updated to megan2.1 nveg = 5 types above
+! integer, parameter :: nveg=6, npft=17, nmos=12
+!--amf/van
   integer, parameter :: nlonin = 720, nlatin = 360
   integer, parameter :: metlonin = 360, metlatin= 180
   real, dimension(nlonin) :: inlon, lonpft, lonlai
@@ -2404,13 +2415,12 @@ subroutine isop_xactive_init( lonb, latb, axes )
   integer, dimension(npft) :: pft
   integer, dimension(nmos) :: mos
   real :: edgew,edges,edgen,edgee,dlon,dlat
-  character(len=17), parameter :: ecfile = 'INPUT/iso_bvoc.nc'
+  character(len=19), parameter :: ecfile = 'INPUT/megan.ISOP.nc'       ! amf/van
   character(len=25), parameter :: laifile = 'INPUT/mksrf_lai.060929.nc'
   character(len=25), parameter :: pftfile = 'INPUT/mksrf_pft.060929.nc'
   character(len=35), parameter :: tasfile = 'INPUT/tas_monthly_clim_1980-2000.nc'
   character(len=37), parameter :: dswfile = 'INPUT/dswrf_monthly_clim_1980-2000.nc'
-  character(len=6) :: vegnames(nveg) = (/ 'isoftd', 'isofte', 'isobtr', &
-       'isocrp', 'isogrs', 'isoshr' /)  
+  character(len=3) :: vegnames(nveg) = (/ 'ntr', 'btr', 'crp', 'grs', 'shr' /)    !amf/van
   character(len=5) :: pftnames(npft) = (/ 'pft01','pft02','pft03','pft04','pft05','pft06', &
        'pft07','pft08','pft09','pft10','pft11','pft12','pft13','pft14','pft15','pft16','pft17' /)
   character(len=5) :: lainames(npft) = (/ 'lai01','lai02','lai03','lai04','lai05','lai06', &
@@ -2459,12 +2469,21 @@ subroutine isop_xactive_init( lonb, latb, axes )
      if(mpp_pe() == mpp_root_pe()) call error_mesg ('isop_xactive_init',  &
           'Reading NetCDF formatted input file: iso_bvoc.nc', NOTE)
       
+! amf/van -- new file only has lat lon centers, not boundaries...
 !read in lat & lon boundaries from input file and convert to radians
 !no.domain = true tells it all fields are in one global file (as opposed to e.g., one per cube face)
-     call read_data (ecfile, 'lone', inlone, no_domain=.true.)
-     call read_data (ecfile, 'late', inlate, no_domain=.true.)
-     inlone = inlone*DEG_TO_RAD
-     inlate = inlate*DEG_TO_RAD
+     call read_data (ecfile, 'lon', inlon, no_domain=.true.)
+     call read_data (ecfile, 'lat', inlat, no_domain=.true.)
+     inlon = inlon*DEG_TO_RAD
+     inlat = inlat*DEG_TO_RAD
+     dlat = inlat(2)-inlat(1)
+     dlon = inlon(2)-inlon(1)
+     inlone(1:nlonin) = inlon-(dlon/2.)
+     inlone(nlonin+1) = inlon(nlonin)+(dlon/2.)
+     inlate(1:nlatin) = inlat-(dlat/2.)
+     inlate(nlatin+1) = inlat(nlatin)+(dlat/2.)
+
+!     print*, 'lat,lon edges for new megan.isop.nc file: ', inlate, inlone
      
      call horiz_interp_init
      call horiz_interp_new ( Interp, inlone, inlate, lonb, latb )
@@ -2484,6 +2503,7 @@ subroutine isop_xactive_init( lonb, latb, axes )
      end do
     
   else 
+     print*, 'what is ecfile ', ecfile
      call error_mesg ('isop_xactive_init',  &
           'ecfile does not exist.', FATAL)
   endif
@@ -2947,9 +2967,8 @@ subroutine get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vi
       real, parameter :: rho_iso = 0.96  ! to account for deposition to canopy
       real, parameter :: gamma_sm = 1.   ! soil moisture - eventually estimate as f(sm, wilting point)
 
-      integer :: month, total_days
       integer :: i, j, nlon, nlat
-      real    :: ppfd, x, Eopt, sol_angle_deg, sol_angle_rad,Ptoa, phi
+      real    :: ppfd, x, Eopt, Ptoa, phi
       real    :: Topt
       real    :: fac_par, fac_tmp
       real    :: Tdaily, Pdaily 
@@ -3021,10 +3040,10 @@ subroutine get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vi
          diag_climtas(i+is-1,j+js-1) = Tdaily
          diag_climfsds(i+is-1,j+js-1) = Pdaily
 
-!         if( mpp_pe() == mpp_root_pe() ) then
-!            print*, 'AMF: i,j,gt,gl,emis = ', i,j,fac_tmp,fac_par, emis(i,j)
-!            print*, 'AMF: calday = ', calday
-!         endif
+!        if( mpp_pe() == mpp_root_pe() ) then
+!           print*, 'AMF: i,j,gt,gl,emis = ', i,j,fac_tmp,fac_par, emis(i,j)
+!           print*, 'AMF: calday = ', calday
+!        endif
       end do !lon
    end do !lat
 
@@ -3074,12 +3093,21 @@ subroutine get_monthly_gammas( lon, lat, oro, is, js, &
 !-------------------------------------------------------------------------------------
 !       ... local variables
 !-------------------------------------------------------------------------------------
-      integer                  :: i, j, n, nlon, nlat
+      integer                  :: i, j, n, nlon, nlat, nl, nu
+      integer                  :: pft_li(nveg)
+      integer                  :: pft_lu(nveg)
 !      real                     :: wrk_area  
       real                     :: total_iso
-      real                     :: work_iso
+      real                     :: work_iso(nveg)    !amf/van
       real                     :: ts_wrk
-      real                     :: work_gamma  ! for diagnostic
+      real                     :: total_work_gamma
+
+!++amf/van
+      real                     :: work_gamma(nveg)  ! for diagnostic
+      real                     :: lai_fac(npft)  ! npft = 17 (mksrf files)
+      real                     :: lai_work(npft,nmos)
+      logical                  :: age_work(npft)
+!--amf/van
 
       nlon = size(lon,1)
       nlat = size(lat,2)
@@ -3088,69 +3116,53 @@ subroutine get_monthly_gammas( lon, lat, oro, is, js, &
 !          print*, 'AMF get_monthly_gammas: made it here'
 !       end if
       
+!++amf/van
+      age_work(:) = .true.
+      age_work((/2,3,5,6,10/)) = .false.
+
+! hardwired indices for matching pfts to ecs 
+! pfts 2-4   fine leaf 
+! pfts 5-9   broadleaf
+! pfts 10-12 shrubs 
+! pfts 13-15 grass
+! pfts 16-17 crops
+
+      pft_li(:) = (/ 2,5,10,13,16 /)
+      pft_lu(1:nveg-1) = (/ 4,9,12,15 /)
+      pft_lu(nveg) = npft
+!--amf/van
       do j = 1,nlat
          do i = 1,nlon
             total_iso = 0. 
-            ts_wrk = ts_avg(i+is-1,j+js-1,month)  
+            total_work_gamma = 0.
+            if (has_ts_avg) then
+              ts_wrk = ts_avg(i,j,month)
+            end if
 
 !-----------------------------------------------------------------
 !       ... no emissions for ocean grid point 
 !-----------------------------------------------------------------
-            if( oro(i,j) == 1 ) then    
+            if( oro(i,j) .eq. 1 ) then
                 
-!-------------------------------------------------------------------------------------
-!       ... emissions from fine leaf  deciduous
-!-------------------------------------------------------------------------------------
-              work_iso  = calc_gamma_lai_age( mlai(i+is-1,j+js-1,4,:), ts_wrk, month, 0 ) * pctpft(i+is-1,j+js-1,4)
-              work_gamma = work_iso
-              total_iso = total_iso + work_iso * ecisop(i+is-1,j+js-1,1) !!* wrk_area
-!------------------------------------------------------------------------------------
-!       ... emissions from fine leaf evergreen
-!-------------------------------------------------------------------------------------
-              work_iso  = calc_gamma_lai_age( mlai(i+is-1,j+js-1,2,:), ts_wrk, month, 1 ) * pctpft(i+is-1,j+js-1,2) &
-                        + calc_gamma_lai_age( mlai(i+is-1,j+js-1,3,:), ts_wrk, month, 1 ) * pctpft(i+is-1,j+js-1,3)
-              work_gamma = work_gamma + work_iso
-              total_iso = total_iso + work_iso * ecisop(i+is-1,j+js-1,2) !!* wrk_area
-!-------------------------------------------------------------------------------------
-!       ... emissions from broadleaf
-!-------------------------------------------------------------------------------------
-              work_iso = calc_gamma_lai_age( mlai(i+is-1,j+js-1,5,:), ts_wrk, month, 1 ) * pctpft(i+is-1,j+js-1,5) &
-                       + calc_gamma_lai_age( mlai(i+is-1,j+js-1,6,:), ts_wrk, month, 1 ) * pctpft(i+is-1,j+js-1,6) &
-                       + calc_gamma_lai_age( mlai(i+is-1,j+js-1,7,:), ts_wrk, month, 0 ) * pctpft(i+is-1,j+js-1,7) &
-                       + calc_gamma_lai_age( mlai(i+is-1,j+js-1,8,:), ts_wrk, month, 0 ) * pctpft(i+is-1,j+js-1,8) &
-                       + calc_gamma_lai_age( mlai(i+is-1,j+js-1,9,:), ts_wrk, month, 0 ) * pctpft(i+is-1,j+js-1,9)
-              work_gamma = work_gamma+work_iso
-              total_iso = total_iso + work_iso * ecisop(i+is-1,j+js-1,3) !!* wrk_area
-!-------------------------------------------------------------------------------------
-!       ... emissions from shrubs
-!-------------------------------------------------------------------------------------
-              work_iso = calc_gamma_lai_age( mlai(i+is-1,j+js-1,10,:), ts_wrk, month, 1 ) * pctpft(i+is-1,j+js-1,10) &
-                       + calc_gamma_lai_age( mlai(i+is-1,j+js-1,11,:), ts_wrk, month, 0 ) * pctpft(i+is-1,j+js-1,11) &
-                       + calc_gamma_lai_age( mlai(i+is-1,j+js-1,12,:), ts_wrk, month, 0 ) * pctpft(i+is-1,j+js-1,12)
-              work_gamma = work_gamma+work_iso
-              total_iso = total_iso + work_iso * ecisop(i+is-1,j+js-1,6)!! * wrk_area
-!-------------------------------------------------------------------------------------
-!       ... emissions from grass
-!-------------------------------------------------------------------------------------
-              work_iso = calc_gamma_lai_age( mlai(i+is-1,j+js-1,13,:), ts_wrk, month, 0 ) * pctpft(i+is-1,j+js-1,13) &
-                       + calc_gamma_lai_age( mlai(i+is-1,j+js-1,14,:), ts_wrk, month, 0 ) * pctpft(i+is-1,j+js-1,14) &
-                       + calc_gamma_lai_age( mlai(i+is-1,j+js-1,15,:), ts_wrk, month, 0 ) * pctpft(i+is-1,j+js-1,15)
-              work_gamma = work_gamma + work_iso
-              total_iso = total_iso + work_iso *  ecisop(i+is-1,j+js-1,5) !!* wrk_area
-!-------------------------------------------------------------------------------------
-!       ... emissions from crops
-!-------------------------------------------------------------------------------------
-              work_iso = calc_gamma_lai_age( mlai(i+is-1,j+js-1,16,:), ts_wrk, month, 0 ) * pctpft(i+is-1,j+js-1,16) &
-                       + calc_gamma_lai_age( mlai(i+is-1,j+js-1,17,:), ts_wrk, month, 0 ) * pctpft(i+is-1,j+js-1,17)
-              work_gamma = work_gamma + work_iso
-              total_iso = total_iso + work_iso *  ecisop(i+is-1,j+js-1,4) !! * wrk_area
- 
+!++amv/van
+            lai_work(:,:) = mlai(i,j,:,:)
+            lai_fac(:) = calc_gamma_lai_age( lai_work, ts_wrk, month, age_work)
 
-              emisop_month(i+is-1,j+js-1) = total_iso 
-              diag_gamma_lai_age(i+is-1,j+js-1) = work_gamma
-!              if( mpp_pe() == mpp_root_pe() ) then
-!                 print*, 'AMF: i,j,oro, gamma, emis ', i,j,oro(i,j),work_gamma, emisop_month(i,j)
-!              end if 
+            do n = 1, nveg
+              nl = pft_li(n)  !beginning index for the pfts that fall within this veg type for n types in ecisop
+              nu = pft_lu(n)  !end index
+              work_iso(n) = dot_product( lai_fac (nl:nu), pctpft(i,j,nl:nu)) * ecisop(i,j,n)
+              work_gamma(n) = dot_product( lai_fac (nl:nu), pctpft(i,j,nl:nu))
+            end do
+            total_work_gamma = total_work_gamma + sum(work_gamma)
+            total_iso = total_iso + sum(work_iso)
+        
+!--amf/van
+              emisop_month(i,j) = total_iso
+              diag_gamma_lai_age(i,j) = total_work_gamma
+!             if( mpp_pe() == mpp_root_pe() ) then
+!                print*, 'AMF: i,j,oro, work_iso, emis ', i,j,oro(i,j), work_iso, emisop_month(i,j)
+!             end if
           end if ! land box
         end do !lon
       end do !lat
@@ -3198,10 +3210,10 @@ function calc_gamma_lai_age(clai, ts_wrk, month, doage )
 
   implicit none
 
-  integer, intent(in) :: doage            !calculate gamma_age?
+  logical, intent(in) :: doage(:)         !calculate gamma_age?,  amf/van
   integer, intent(in) :: month            !current month index
   real, intent(in) :: ts_wrk              ! currently = climatological sfc T for ea i,j,m
-  real, intent(in) :: clai(:)             ! monthly lai for this grid cell
+  real, intent(in) :: clai(:,:)           ! monthly lai for this grid cell,   amf/van
   
 !-------------------------------------------------------------------------------------
 !       ... local variables
@@ -3215,25 +3227,25 @@ function calc_gamma_lai_age(clai, ts_wrk, month, doage )
 !! amf: time step in days btw previous month's LAI and current month's LAI (p3192 guenther)
       integer, parameter :: t(12) = (/ 31,31,28,31,30,31,30,31,31,30,31,30 /)
 
-      integer :: i, n
+      integer :: n
       integer :: mnthm1
-      real    :: tg
       real    :: x
       real    :: wrk
       real    :: gamma
+      real    :: lai_n, lai_p      ! amf/van
       real    :: Fnew
       real    :: Fgro
       real    :: Fmat
-      real    :: Fold
+      real    :: Fsen              ! amf/van
       real    :: ti, tm  ! ti = # days btw budbreak and induction of isoprene emissions
                          ! tm = # days btw budbreak + initiation of peak isop emissions rates
 
 !-------------------------------------------------------------------------------------
 !       ... function declarations
 !-------------------------------------------------------------------------------------
-      real    :: calc_gamma_lai_age
+      real    :: calc_gamma_lai_age(npft)    ! amf/van
 
-      if( month > 2 ) then
+      if( month > 1 ) then      ! amf/van
          mnthm1 = month - 1
       else
          mnthm1 = 12
@@ -3254,20 +3266,27 @@ function calc_gamma_lai_age(clai, ts_wrk, month, doage )
       end if
       tm = 2.3*ti                                             ! Eq 19 
 
-      Fnew = 0.
-      Fgro = 0.
-      Fmat = 0.
-      Fold = 0.
-      if( clai(mnthm1) == clai(month) ) then                  !previous LAI = current LAI  - p.392 G06
-         Fmat = 0.8    
-         Fold = 0.1
+!++amf/van
+      calc_gamma_lai_age(1) = 0.
+      do n = 2, npft
+       if (doage(n)) then
+        Fnew = 0.
+        Fgro = 0.
+        Fmat = 0.
+        Fsen = 0.
+        lai_n = clai(n, month)
+        lai_p = clai(n, mnthm1)
+        if( lai_n == lai_p ) then                  !previous LAI = current LAI  - p.392 G06
+         Fmat = 0.8
+         Fsen = 0.1
          Fgro = 0.1
-      else if( clai(mnthm1) > clai(month) ) then              !LAip > LAIc
-         Fold = (clai(mnthm1) - clai(month)) / clai(mnthm1)
-         Fmat = 1. - Fold
-      else if( clai(mnthm1) < clai(month) ) then              !LAIp < LAIc
-         Fold = 0.
-         x    = clai(mnthm1)/clai(month)
+      else if( lai_p > lai_n ) then              !LAip > LAIc
+         Fsen = (lai_p - lai_n) / lai_p
+         Fmat = 1. - Fsen
+      else if( lai_p < lai_n ) then              !LAIp < LAIc
+         Fsen = 0.
+         x    = lai_p/lai_n
+!--amf/van
          wrk  = 1. - x                                        ! = Fnew
          if( t(month) <= tm ) then
             Fmat =  x                                         ! Eqn 17c
@@ -3287,8 +3306,7 @@ function calc_gamma_lai_age(clai, ts_wrk, month, doage )
 !       ... equations 15 and 16 in Guenther et al. [2006]
 !            -- get gamma age
 !-------------------------------------------------------------------------------------
-      if( doage == 0 ) then    ! depends on land type
-        gamma   = .05*Fnew + .6*Fgro + 1.125*Fmat + Fold   !!  Eq 16
+      gamma   = .05*Fnew + .6*Fgro + 1.125*Fmat + Fsen   !!  Eq 16
       else
         gamma   = 1.
       end if
@@ -3296,7 +3314,9 @@ function calc_gamma_lai_age(clai, ts_wrk, month, doage )
 !-------------------------------------------------------------------------------------
 !     gamma_age ("gamma" below) * gamma_lai where gamma_lai is from Eqn 15 
 !-------------------------------------------------------------------------------------
-      calc_gamma_lai_age = gamma * .49 * clai(month) / sqrt( 1. + 0.2 * clai(month)*clai(month) )
+      calc_gamma_lai_age(n) = gamma * .49 * clai(n,month) / sqrt( 1. + 0.2 * clai(n, month)*clai(n, month) )
+
+      end do
   
 
 end function calc_gamma_lai_age

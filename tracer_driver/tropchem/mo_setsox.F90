@@ -1,8 +1,8 @@
       module MO_SETSOX_MOD
 
 implicit none
-character(len=128), parameter :: version     = '$Id: mo_setsox.F90,v 16.0 2008/07/30 22:11:03 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_setsox.F90,v 16.0.4.1 2010/03/17 20:27:12 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -66,14 +66,13 @@ logical                       :: module_is_initialized = .false.
                           xkw = 1.e-14            ! water acidity
       real, parameter :: small_value = 1.e-20
 
-      integer    ::      k, i, iter, file
+      integer    ::      k, i, iter
       integer    ::      plev
       real       ::      wrk, delta
-      real       ::      xph0, aden, xk, xe, x2
+      real       ::      xph0, xk, xe, x2
       real       ::      tz, xl, px, qz, pz, es, qs, patm
       real       ::      Eso2, Eso4, Ehno3, Eco2, Eh2o, Enh3
       real       ::      hno3g, nh3g, so2g, h2o2g, co2g, o3g
-      real       ::      hno3a, nh3a, so2a, h2o2a, co2a, o3a
       real       ::      rah2o2, rao3, pso4, ccc
       real       ::      xx0, yy1, xkp
       real       ::      cnh3, chno3, com, com1, com2, xra
@@ -93,15 +92,14 @@ logical                       :: module_is_initialized = .false.
 
       real, dimension(SIZE(tfld,1),SIZE(tfld,2))  :: &
                          xhno3, xh2o2, xso2, xso4,&
-                         xnh3, xnh4, xo3,         &
-                         xlwc, cfact, xrain,      &
+                         xnh3, xo3,         &
+                         xlwc, cfact,       &
                          xph, xant, xho2,         &
                          hehno3, &            ! henry law const for hno3
                          heh2o2, &            ! henry law const for h2o2
                          heso2,  &            ! henry law const for so2
                          henh3,  &            ! henry law const for nh3
-                         heo3,   &            ! henry law const for nh3
-                         precip
+                         heo3                 ! henry law const for nh3
       real, dimension(plonl)  :: &
                          t_fac
       logical :: converged

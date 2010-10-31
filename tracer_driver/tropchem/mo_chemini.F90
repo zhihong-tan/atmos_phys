@@ -5,8 +5,8 @@ implicit none
       private
       public :: chemini
 
-character(len=128), parameter :: version     = '$Id: mo_chemini.F90,v 16.0 2008/07/30 22:10:48 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_chemini.F90,v 16.0.4.1.2.1 2010/03/25 00:36:29 pjp Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -14,7 +14,7 @@ logical                       :: module_is_initialized = .false.
       subroutine chemini( file_jval_lut, file_jval_lut_min, use_tdep_jvals, &
                           o3_column_top, jno_scale_factor, verbose )
 !-----------------------------------------------------------------------
-! 	... Chemistry module intialization
+!       ... Chemistry module intialization
 !-----------------------------------------------------------------------
 
       use MO_PHOTO_MOD,      only : prate_init
@@ -30,7 +30,7 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !-----------------------------------------------------------------------
-! 	... Dummy arguments
+!       ... Dummy arguments
 !-----------------------------------------------------------------------
       character(len=*), intent(in) :: file_jval_lut, &
                                       file_jval_lut_min
@@ -40,34 +40,33 @@ logical                       :: module_is_initialized = .false.
       integer,          intent(in) :: verbose
 
 !-----------------------------------------------------------------------
-! 	... Local variables
+!       ... Local variables
 !-----------------------------------------------------------------------
       character(len=80) ::   lpath
       character(len=80) ::   mspath
       character(len=32) ::   filename, filename_solarmin
-      character(len=30) ::   emires, surfres
       
       character(len=128) ::  sim
       integer :: sim_file_cnt
 
 !-----------------------------------------------------------------------
-! 	... Allocate variables
+!       ... Allocate variables
 !-----------------------------------------------------------------------
       call chem_mods_init
 
 !-----------------------------------------------------------------------
-! 	... Read sim.dat
+!       ... Read sim.dat
 !-----------------------------------------------------------------------
       sim = 'INPUT/sim.dat'
       call read_sim_chm( sim, sim_file_cnt )
 
 !-----------------------------------------------------------------------
-! 	... Diagnostics initialization
+!       ... Diagnostics initialization
 !-----------------------------------------------------------------------
 !     call diags_init( tracnam, plonl, platl, pplon )
 
 !-----------------------------------------------------------------------
-! 	... Initialize photorate module
+!       ... Initialize photorate module
 !-----------------------------------------------------------------------
 !     filename = photo_flsp%nl_filename
 !     lpath    = photo_flsp%local_path
@@ -79,7 +78,7 @@ logical                       :: module_is_initialized = .false.
                        use_tdep_jvals, o3_column_top, jno_scale_factor )
 
 !-----------------------------------------------------------------------
-! 	... Read time-independent airplane emissions
+!       ... Read time-independent airplane emissions
 !-----------------------------------------------------------------------
 !     emires = emis_flsp%hor_res
 !     if( emires(1:1) /= '.' ) then
@@ -91,37 +90,37 @@ logical                       :: module_is_initialized = .false.
 !     call airpl_src( filename, lpath, mspath, plonl, platl, pplon )
 
 !-----------------------------------------------------------------------
-! 	... Initialize the chem utils module
+!       ... Initialize the chem utils module
 !-----------------------------------------------------------------------
       call chem_utls_init
 
 !-----------------------------------------------------------------------
-! 	... Read time-dependent surface flux dataset
+!       ... Read time-dependent surface flux dataset
 !-----------------------------------------------------------------------
 !     call srf_emis_init( plonl, platl, pplon )
 
 !-----------------------------------------------------------------------
-! 	... Intialize the het rates module
+!       ... Intialize the het rates module
 !-----------------------------------------------------------------------
 !     call sethet_init
 
 !-----------------------------------------------------------------------
-! 	... Intialize the ext frcing module
+!       ... Intialize the ext frcing module
 !-----------------------------------------------------------------------
 !     call setext_init
 
 !-----------------------------------------------------------------------
-! 	... Intialize the rxt rate constant module
+!       ... Intialize the rxt rate constant module
 !-----------------------------------------------------------------------
       call usrrxt_init( verbose )
 
 !-----------------------------------------------------------------------
-! 	... Intialize the grp ratios module
+!       ... Intialize the grp ratios module
 !-----------------------------------------------------------------------
 !     call set_grp_ratios_init
 
 !-----------------------------------------------------------------------
-! 	... Read time-dependent surface variables dataset
+!       ... Read time-dependent surface variables dataset
 !-----------------------------------------------------------------------
 !     surfres = surf_flsp%hor_res
 !     if( surfres(1:1) /= '.' ) then
@@ -133,7 +132,7 @@ logical                       :: module_is_initialized = .false.
 !     call surf_init( filename, lpath, mspath, plonl, platl, pplon )
 
 !-----------------------------------------------------------------------
-! 	... Read time-dependent upper boundary values
+!       ... Read time-dependent upper boundary values
 !-----------------------------------------------------------------------
 !     filename = ubc_flsp%nl_filename
 !     lpath    = ubc_flsp%local_path
@@ -141,8 +140,8 @@ logical                       :: module_is_initialized = .false.
 !     call ub_init( platl, filename, lpath, mspath )
 
 !-----------------------------------------------------------------------
-! 	... Read time-dependent sulfate dataset
-!	    NOTE : This is now a netcdf dataset
+!       ... Read time-dependent sulfate dataset
+!           NOTE : This is now a netcdf dataset
 !-----------------------------------------------------------------------
 !     filename = 'sulfate.M1.nc'
 !     lpath    = sulf_flsp%local_path
@@ -151,19 +150,19 @@ logical                       :: module_is_initialized = .false.
 
       if( clscnt1 > 0 ) then
 !-----------------------------------------------------------------------
-!	... Initialize the explicit solver
+!       ... Initialize the explicit solver
 !-----------------------------------------------------------------------
          call exp_slv_init
       end if
       if( clscnt4 > 0 ) then
 !-----------------------------------------------------------------------
-!	... Initialize the implicit solver
+!       ... Initialize the implicit solver
 !-----------------------------------------------------------------------
          call imp_slv_init( verbose )
       end if
       if( clscnt5 > 0 ) then
 !-----------------------------------------------------------------------
-!	... Initialize the implicit solver
+!       ... Initialize the implicit solver
 !-----------------------------------------------------------------------
          call rodas_slv_init
       end if

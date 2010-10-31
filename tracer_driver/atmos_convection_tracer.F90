@@ -70,8 +70,8 @@ logical :: module_is_initialized=.FALSE.
 
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_convection_tracer.F90,v 17.0 2009/07/21 02:59:09 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_convection_tracer.F90,v 17.0.4.1 2010/03/17 20:27:11 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -206,7 +206,6 @@ integer,          intent(in)                        :: axes(4)
 integer, dimension(:), pointer                         :: nconvect
 real, intent(in), dimension(:,:,:), optional        :: mask
 
-logical :: flag
 integer :: n
 character(len=64) ::  search_name (10)
 character(len=4) ::  chname
@@ -215,8 +214,6 @@ integer :: nn
 !-----------------------------------------------------------------------
 !
       real, dimension (size(r,1), size(r,2), size(r,3)) :: xgcm, pfull
-      integer  log_unit,unit,io,index,ntr,nt
-      character(len=16) ::  fld
 
       real :: xba = 1.0
       integer :: nlev, k, logunit

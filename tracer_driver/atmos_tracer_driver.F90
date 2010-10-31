@@ -296,8 +296,8 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 18.0.4.2.2.1 2010/05/14 18:40:15 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 18.0.4.2.2.2 2010/09/07 14:05:09 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -434,14 +434,12 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndbcphob, rtndbcphil
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndomphob, rtndomphil
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndco2, rtndco2_emis
 real, dimension(size(r,1),size(r,2),size(rdt,4)) :: dsinku
-real, dimension(size(r,1),size(r,2),size(r,3)) :: so2_nerup_volc_emis
 real, dimension(size(r,1),size(r,2)) ::  w10m_ocean, w10m_land
-integer :: actual_month
 integer :: year,month,day,hour,minute,second
 integer :: jday
 real, dimension(size(rdt,1),size(rdt,2),size(rdt,3),size(rdt,4)) :: chem_tend
 real, dimension(size(r,1),size(r,2))           :: coszen, fracday, half_day
-real :: ang,dec,rrsun
+real :: rrsun
 real, dimension(size(r,1),size(r,2),size(r,3)) :: cldf ! cloud fraction
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rh  ! relative humidity
 real, dimension(size(r,1),size(r,2),size(r,3)) :: lwc ! liq water content
@@ -451,9 +449,8 @@ real, dimension(size(r,1),size(r,2),5) ::  ssalt_settl, dust_settl
 real, dimension(size(r,1),size(r,2),5) ::  ssalt_emis, dust_emis                
 real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl         
 real, dimension(size(r,1),size(r,2)) ::  suma
-logical :: found
 
-integer :: i, j, k, id, jd, kd, nt, kb
+integer :: j, k, id, jd, kd, nt
 integer :: nqq  ! index of specific humidity
 integer :: nql  ! index of cloud liquid specific humidity
 integer :: nqi  ! index of cloud ice water specific humidity

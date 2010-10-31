@@ -46,8 +46,8 @@
       type(hst_pl), private, allocatable ::   imp_hst_loss(:)
       logical, private, allocatable      ::   factor(:)
 
-character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 17.0 2009/07/21 02:59:43 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 17.0.4.1.2.1 2010/03/25 00:36:29 pjp Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -64,15 +64,14 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !-----------------------------------------------------------------------
-! 	... Dummy arguments
+!       ... Dummy arguments
 !-----------------------------------------------------------------------
       integer,          intent(in) :: verbose_in
 
 !-----------------------------------------------------------------------
 !        ... local variables
 !-----------------------------------------------------------------------
-      integer :: m, astat, file, timetype
-      integer :: il, iu
+      integer :: m, astat
       integer :: wrk(21)
       real    :: eps(pcnstm1)
       character(len=128) ::  msg
@@ -379,14 +378,10 @@ logical                       :: module_is_initialized = .false.
                    indx, &
                    i, &
                    j, &
-                   k, l, &
+                   k, &
                    m, &
-                   n, &
-                   class, cls_ndx, file, &
                    cut_cnt, stp_con_cnt
-      integer ::   timetype, hndx
-      integer ::   astat
-      real :: interval_done, dt, dti, wrk
+      real :: interval_done, dt, dti
       real :: max_delta(max(1,clscnt4))
       real, dimension(max(1,imp_nzcnt)) :: &
                    sys_jac, &
@@ -400,17 +395,11 @@ logical                       :: module_is_initialized = .false.
       real :: lrxt(max(1,rxntot))
       real :: lsol(max(1,pcnstm1))
       real :: lhet(max(1,hetcnt))
-      real, dimension(plnplv) :: &
-                   wrk_buff
       real, dimension(plnplv,max(1,clscnt4)) :: &
                    ind_prd
-      real    ::   timer
       logical ::   convergence
-      logical ::   dump_buff, fill_buff
-      logical ::   frc_mask, iter_conv
+      logical ::   frc_mask
       logical ::   converged(max(1,clscnt4))
-      character(len=32) :: fldname
-      type(hst_buff), allocatable :: prod_buff(:), loss_buff(:)
       integer :: indx_old
 
 !-----------------------------------------------------------------------
@@ -751,8 +740,8 @@ iter_loop : &
 !-----------------------------------------------------------------------
 !         ... ozone production (only valid for the troposphere!)
 !-----------------------------------------------------------------------
-!			      if( do_ox_pl ) then
-!			         k = indx
+!                             if( do_ox_pl ) then
+!                                k = indx
 !                                   prod_buff(file)%buff(k,hndx) = &
 !                                    (reaction_rates(k,ox_p1_ndx)*base_sol(k,ho2_ndx) &
 !                                    + reaction_rates(k,ox_p2_ndx) *base_sol(k,ch3o2_ndx) &
@@ -794,12 +783,12 @@ iter_loop : &
 !                           hndx = hndx + 1
 !                           l = implicit%clsmap(cls_ndx)
 !                           if( l == ox_ndx ) then
-!			      if( do_ox_pl ) then
+!                             if( do_ox_pl ) then
 !-----------------------------------------------------------------------
 !         ... ozone destruction (only valid for the troposphere!)
 !             also include ox loss from no2+oh, n2o5+aerosol, no3+aerosol
 !-----------------------------------------------------------------------
-!	                         k = indx
+!                                k = indx
 !                                   loss_buff(file)%buff(k,hndx) =  reaction_rates(k,ox_l1_ndx) &
 !                                   + reaction_rates(k,ox_l2_ndx) *base_sol(k,oh_ndx) &
 !                                   + reaction_rates(k,ox_l3_ndx) *base_sol(k,ho2_ndx) &
@@ -827,7 +816,7 @@ iter_loop : &
       end do level_loop
 
 !-----------------------------------------------------------------------
-!    	... check for implicit species production and loss output
+!       ... check for implicit species production and loss output
 !           first check production; instantaneous then time averaged
 !           then  check loss; instantaneous then time averaged
 !-----------------------------------------------------------------------
@@ -881,7 +870,7 @@ iter_loop : &
 !                     end if
 !                     hndx        = hndx + 1
 !                     l           = implicit%clsmap(cls_ndx)
-!	             wrk_buff(:) = loss_buff(file)%buff(:,hndx) * hnm(:) * base_sol(:,l)
+!                    wrk_buff(:) = loss_buff(file)%buff(:,hndx) * hnm(:) * base_sol(:,l)
 !                     call outfld( fldname, wrk_buff, plonl, ip, lat, file )
 !                 end if
 !              end do

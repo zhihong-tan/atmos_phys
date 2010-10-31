@@ -17,8 +17,8 @@
       real :: epsilon(max(1,clscnt5))
       real :: err_wghts(max(1,clscnt5))
 
-character(len=128), parameter :: version     = '$Id: mo_rodas_slv.F90,v 14.0 2007/03/15 22:11:10 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_rodas_slv.F90,v 14.0.10.1 2010/03/17 20:27:12 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -139,9 +139,9 @@ logical                       :: module_is_initialized = .false.
       real, parameter    :: min_val   = 1.e-30
       real, parameter    :: con3      = 8./3.
 
-      integer ::   i, isec, j, k, m
+      integer ::   isec, j, k, m
       integer ::   lev, indx
-      integer ::   attempts, failures, tsteps, step_fail_cnt
+      integer ::   attempts, failures, step_fail_cnt
       real    ::   con1, con2
       real, dimension(max(1,rod_nzcnt)) :: sys_jac, lin_jac
       real, dimension(max(1,clscnt5))   :: yn, prod, loss, &
@@ -152,8 +152,7 @@ logical                       :: module_is_initialized = .false.
       real, dimension(max(1,hetcnt))    :: lhet
       real, dimension(max(1,pcnstm1))   :: lsol, y_temp
       real, dimension(max(1,clscnt5))         :: spc_err
-      real    ::   err, h_pred
-      real    ::   timer 
+      real    ::   err
       real    ::   hfull, hinv, interval
       real    ::   h
       logical ::   interval_done

@@ -4,7 +4,7 @@ use fms_mod,             only: error_mesg, FATAL, open_namelist_file, &
                                mpp_pe, mpp_root_pe, stdlog, &
                                file_exist, write_version_number, &
                                check_nml_error, close_file
-use mpp_mod,             only: get_unit
+use mpp_mod,             only: input_nml_file, get_unit
 use aer_ccn_act_k_mod,   only: aer_ccn_act_k, aer_ccn_act2_k, &
                                aer_ccn_act_wpdf_k, aer_ccn_act_k_init, &
                                aer_ccn_act_k_end
@@ -18,8 +18,8 @@ private
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act.F90,v 18.0 2010/03/02 23:34:28 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: aer_ccn_act.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !---------------- private data -------------------
 
@@ -148,7 +148,6 @@ subroutine aer_ccn_act_init ()
 !  local variables:
       
       integer   ::   unit, ierr, io, logunit
-      integer   ::   n
       integer, parameter :: res = 20 !
       real, dimension(res,res,res,res,res) :: droplets
 
@@ -161,6 +160,10 @@ subroutine aer_ccn_act_init ()
 !    read namelist.
 !--------------------------------------------------------------------
       if ( file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+        read (input_nml_file, nml=aer_ccn_act_nml, iostat=io)
+        ierr = check_nml_error(io,'aer_ccn_act_nmliostat=io')
+#else
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
         read  (unit, nml=aer_ccn_act_nml, iostat=io,  &
@@ -168,6 +171,7 @@ subroutine aer_ccn_act_init ()
         ierr = check_nml_error(io,'aer_ccn_act_nml')
         end do
 10      call close_file (unit)   
+#endif
       endif                      
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.

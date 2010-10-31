@@ -75,8 +75,8 @@ real, parameter :: sec_per_day = 86400., &
                    k_aging = 1./(days_per_year*sec_per_day) ! increase age at 1 yr/yr (convert to yr/sec)
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_age_tracer.F90,v 18.0 2010/03/02 23:33:56 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_age_tracer.F90,v 16.0.2.1.4.1.2.1.4.1 2010/03/17 20:27:11 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -125,7 +125,7 @@ contains
 !-----------------------------------------------------------------------
    real, dimension(size(age,1),size(age,2),size(age,3)) ::  &
          source, sink
-   integer :: i,j,k,id,jd,kd
+   integer :: j,k,id,jd,kd
    real :: dagesq(size(age,1))
 !-----------------------------------------------------------------------
 

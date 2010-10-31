@@ -1,6 +1,12 @@
 module atmos_nudge_mod
 
-use fms_mod, only: open_namelist_file, check_nml_error, close_file, &
+#ifdef INTERNAL_FILE_NML
+use mpp_mod, only: input_nml_file
+#else
+use fms_mod, only: open_namelist_file
+#endif
+
+use fms_mod, only: check_nml_error, close_file, &
                    stdlog, mpp_pe, mpp_root_pe, write_version_number, &
                    error_mesg, FATAL, WARNING
 use time_manager_mod, only: time_type, set_time, get_date, &
@@ -14,8 +20,8 @@ private
 
 public :: atmos_nudge_init, get_atmos_nudge, atmos_nudge_end, do_ps
 
-character(len=128), parameter :: version = '$Id: atmos_nudge.F90,v 17.0 2009/07/21 02:58:50 fms Exp $'
-character(len=128), parameter :: tagname = '$Name: riga_201006 $'
+character(len=128), parameter :: version = '$Id: atmos_nudge.F90,v 17.0.4.1.2.1 2010/09/07 18:39:55 pjp Exp $'
+character(len=128), parameter :: tagname = '$Name: riga_201012 $'
 
 logical :: module_is_initialized = .false.
 
@@ -292,11 +298,14 @@ integer, dimension(3), intent(in)  :: axes
 logical, optional,     intent(out) :: flag
 integer :: ierr, io, unit, logunit
 real :: eps
-real :: missval = -1.e30
 character(len=64) :: desc
 real :: missing_value = -1.e10
 
  ! read namelist
+#ifdef INTERNAL_FILE_NML
+   read (input_nml_file, nml=atmos_nudge_nml, iostat=io)
+   ierr = check_nml_error(io, 'atmos_nudge_nml')
+#else
    unit = open_namelist_file()
    ierr=1  
    do while (ierr /= 0)
@@ -304,6 +313,7 @@ real :: missing_value = -1.e10
      ierr = check_nml_error (io, 'atmos_nudge_nml')
    enddo   
 10 call close_file (unit)
+#endif
    call write_version_number (version, tagname)
    logunit=stdlog()
    if (mpp_pe() == mpp_root_pe()) write (logunit, nml=atmos_nudge_nml)

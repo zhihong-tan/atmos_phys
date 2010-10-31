@@ -20,15 +20,15 @@
       logical ::  class_hist_prod = .false.
       logical ::  class_hist_loss = .false.
 
-character(len=128), parameter :: version     = '$Id: mo_exp_slv.F90,v 13.0 2006/03/28 21:16:09 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_exp_slv.F90,v 13.0.14.1.2.1 2010/03/25 00:36:29 pjp Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
 
       subroutine exp_slv_init
 !-----------------------------------------------------------------------      
-!	... Initialize the explicit solver
+!       ... Initialize the explicit solver
 !-----------------------------------------------------------------------      
 
       use CHEM_MODS_MOD,   only : clscnt1, explicit
@@ -37,10 +37,8 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !-----------------------------------------------------------------------      
-!	... Local variables
+!       ... Local variables
 !-----------------------------------------------------------------------      
-      integer :: m, file, timetype
-      integer :: il, iu
 
       o3s_ndx     = get_spc_ndx( 'O3S' )
       o3inert_ndx = get_spc_ndx( 'O3INERT' )
@@ -74,54 +72,54 @@ logical                       :: module_is_initialized = .false.
       usr17_ndx = get_rxt_ndx( 'usr17' )
 
 !-----------------------------------------------------------------------      
-!	... Scan for class production to history file(s)
+!       ... Scan for class production to history file(s)
 !-----------------------------------------------------------------------      
 !     do file = 1,moz_file_cnt
-!	 do timetype = inst,avrg
+!        do timetype = inst,avrg
 !           if( hfile(file)%histout_cnt(14,timetype) > 0 ) then
-!	       il = hfile(file)%histout_ind(14,timetype)
-!	       iu = il + hfile(file)%histout_cnt(14,timetype) - 1
-!	       if( timetype == inst ) then
-!	          if( ANY( hfile(file)%inst_map(il:iu)/1000 == 1 ) ) then
-!	             class_hist_prod = .true.
-!	             exit
+!              il = hfile(file)%histout_ind(14,timetype)
+!              iu = il + hfile(file)%histout_cnt(14,timetype) - 1
+!              if( timetype == inst ) then
+!                 if( ANY( hfile(file)%inst_map(il:iu)/1000 == 1 ) ) then
+!                    class_hist_prod = .true.
+!                    exit
 !                 end if
-!	       else if( timetype == avrg ) then
-!	          if( ANY( hfile(file)%timav_map(il:iu)/1000 == 1 ) ) then
-!	             class_hist_prod = .true.
-!	             exit
+!              else if( timetype == avrg ) then
+!                 if( ANY( hfile(file)%timav_map(il:iu)/1000 == 1 ) ) then
+!                    class_hist_prod = .true.
+!                    exit
 !                 end if
 !              end if
 !           end if
 !        end do
-!	 if( class_hist_prod ) then
-!	    exit
-!	 end if
+!        if( class_hist_prod ) then
+!           exit
+!        end if
 !     end do
 !-----------------------------------------------------------------------      
-!	... Scan for class loss to history file(s)
+!       ... Scan for class loss to history file(s)
 !-----------------------------------------------------------------------      
 !     do file = 1,moz_file_cnt
-!	 do timetype = inst,avrg
+!        do timetype = inst,avrg
 !           if( hfile(file)%histout_cnt(15,timetype) > 0 ) then
-!	       il = hfile(file)%histout_ind(15,timetype)
-!	       iu = il + hfile(file)%histout_cnt(15,timetype) - 1
-!	       if( timetype == inst ) then
-!	          if( ANY( hfile(file)%inst_map(il:iu)/1000 == 1 ) ) then
-!	             class_hist_loss = .true.
-!	             exit
+!              il = hfile(file)%histout_ind(15,timetype)
+!              iu = il + hfile(file)%histout_cnt(15,timetype) - 1
+!              if( timetype == inst ) then
+!                 if( ANY( hfile(file)%inst_map(il:iu)/1000 == 1 ) ) then
+!                    class_hist_loss = .true.
+!                    exit
 !                 end if
-!	       else if( timetype == avrg ) then
-!	          if( ANY( hfile(file)%timav_map(il:iu)/1000 == 1 ) ) then
-!	             class_hist_loss = .true.
-!	             exit
+!              else if( timetype == avrg ) then
+!                 if( ANY( hfile(file)%timav_map(il:iu)/1000 == 1 ) ) then
+!                    class_hist_loss = .true.
+!                    exit
 !                 end if
-!	       end if
+!              end if
 !           end if
 !        end do
-!	 if( class_hist_loss ) then
-!	    exit
-!	 end if
+!        if( class_hist_loss ) then
+!           exit
+!        end if
 !     end do
 
       end subroutine EXP_SLV_INIT
@@ -132,7 +130,7 @@ logical                       :: module_is_initialized = .false.
                           prod_out, loss_out,&
                           plonl, plnplv )
 !-----------------------------------------------------------------------
-!      	... Exp_sol advances the volumetric mixing ratio
+!       ... Exp_sol advances the volumetric mixing ratio
 !           forward one time step via the fully explicit
 !           Euler scheme
 !           Note : This code has o3inert and o3s as the last
@@ -148,7 +146,7 @@ logical                       :: module_is_initialized = .false.
 
       implicit none
 !-----------------------------------------------------------------------
-!     	... Dummy arguments
+!       ... Dummy arguments
 !-----------------------------------------------------------------------
       integer, intent(in) ::  nstep            ! time step index
       integer, intent(in) ::  plonl            ! lon tile dim
@@ -161,20 +159,14 @@ logical                       :: module_is_initialized = .false.
       real, intent(out), optional :: prod_out(plnplv,pcnstm1),loss_out(plnplv,pcnstm1)
 
 !-----------------------------------------------------------------------
-!     	... Local variables
+!       ... Local variables
 !-----------------------------------------------------------------------
-      integer  ::  k, l, m, n, class, cls_ndx, file
-      real     ::  timer 
+      integer  ::  k, l, m
       real, dimension(plnplv,max(1,clscnt1)) :: &
                    prod, &
                    loss, &
                    ind_prd
-      real, dimension(plnplv) :: &
-                   wrk
-      character(len=32) :: &
-                   fldname
 
-!     if( explicit%indprd_cnt /= 0 .or. extcnt > 0 ) then
       if( explicit%indprd_cnt /= 0 ) then
 !-----------------------------------------------------------------------      
 !        ... Put "independent" production in the forcing
@@ -186,12 +178,12 @@ logical                       :: module_is_initialized = .false.
          end do
       end if
 !-----------------------------------------------------------------------      
-!      	... Form F(y)
+!       ... Form F(y)
 !-----------------------------------------------------------------------      
       call exp_prod_loss( prod, loss, base_sol, reaction_rates, het_rates )
 
 !-----------------------------------------------------------------------      
-!    	... Solve for the mixing ratio at t(n+1)
+!       ... Solve for the mixing ratio at t(n+1)
 !-----------------------------------------------------------------------      
       do m = 1,clscnt1
          l             = explicit%clsmap(m)
@@ -199,7 +191,7 @@ logical                       :: module_is_initialized = .false.
          base_sol(:,l) = base_sol(:,l) + delt * (prod(:,m) + ind_prd(:,m) - loss(:,m))
          else if( l == o3s_ndx ) then
 !-----------------------------------------------------------------------      
-!    	... special code for o3s
+!       ... special code for o3s
 ! NB: The coefficients for O3S loss from rxn with ISOP, MVK, MACR, and C10H16
 !     are unity. For the OX loss rate (in IMP_SOL) they are adjusted (downward)
 !     to account for the regeneration of OX by these rxns. But here, we
@@ -236,58 +228,58 @@ logical                       :: module_is_initialized = .false.
       end do
 
 !-----------------------------------------------------------------------      
-!    	... Check for explicit species production and loss output
+!       ... Check for explicit species production and loss output
 !           First check instantaneous then time averaged
 !-----------------------------------------------------------------------      
 !     if( class_hist_prod ) then
-!	 do file = 1,moz_file_cnt
+!        do file = 1,moz_file_cnt
 !           if( hfile(file)%wrhstts .and. hfile(file)%histout_cnt(14,1) > 0 ) then
-!	       do n = 1,hfile(file)%histout_cnt(14,1)
-!	          class = hfile(file)%inst_map(hfile(file)%histout_ind(14,1)+n-1)/1000
-!	          if( class == 1 ) then
-!	             cls_ndx = mod( hfile(file)%inst_map(hfile(file)%histout_ind(14,1)+n-1),1000 )
-!	             fldname = hfile(file)%hist_inst(hfile(file)%histout_ind(14,1)+n-1)
-!	             wrk(:)  = (prod(:,cls_ndx) + ind_prd(:,cls_ndx)) * hnm(:)
-!	             call outfld( fldname, wrk, plonl, ip, lat, file )
+!              do n = 1,hfile(file)%histout_cnt(14,1)
+!                 class = hfile(file)%inst_map(hfile(file)%histout_ind(14,1)+n-1)/1000
+!                 if( class == 1 ) then
+!                    cls_ndx = mod( hfile(file)%inst_map(hfile(file)%histout_ind(14,1)+n-1),1000 )
+!                    fldname = hfile(file)%hist_inst(hfile(file)%histout_ind(14,1)+n-1)
+!                    wrk(:)  = (prod(:,cls_ndx) + ind_prd(:,cls_ndx)) * hnm(:)
+!                    call outfld( fldname, wrk, plonl, ip, lat, file )
 !                 end if
 !              end do
 !           end if
 !           if( hfile(file)%histout_cnt(14,2) > 0 ) then
-!	       do n = 1,hfile(file)%histout_cnt(14,2)
-!	          class = hfile(file)%timav_map(hfile(file)%histout_ind(14,2)+n-1)/1000
-!	          if( class == 1 ) then
-!	             cls_ndx = mod( hfile(file)%timav_map(hfile(file)%histout_ind(14,2)+n-1),1000 )
-!	             fldname = hfile(file)%hist_timav(hfile(file)%histout_ind(14,2)+n-1)
-!	             wrk(:) = (prod(:,cls_ndx) + ind_prd(:,cls_ndx)) * hnm(:)
-!	             call outfld( fldname, wrk, plonl, ip, lat, file )
+!              do n = 1,hfile(file)%histout_cnt(14,2)
+!                 class = hfile(file)%timav_map(hfile(file)%histout_ind(14,2)+n-1)/1000
+!                 if( class == 1 ) then
+!                    cls_ndx = mod( hfile(file)%timav_map(hfile(file)%histout_ind(14,2)+n-1),1000 )
+!                    fldname = hfile(file)%hist_timav(hfile(file)%histout_ind(14,2)+n-1)
+!                    wrk(:) = (prod(:,cls_ndx) + ind_prd(:,cls_ndx)) * hnm(:)
+!                    call outfld( fldname, wrk, plonl, ip, lat, file )
 !                 end if
 !              end do
 !           end if
 !        end do
 !     end if
 !     if( class_hist_loss ) then
-!	 do file = 1,moz_file_cnt
+!        do file = 1,moz_file_cnt
 !           if( hfile(file)%wrhstts .and. hfile(file)%histout_cnt(15,1) > 0 ) then
-!	       do n = 1,hfile(file)%histout_cnt(15,1)
-!	          class = hfile(file)%inst_map(hfile(file)%histout_ind(15,1)+n-1)/1000
-!	          if( class == 1 ) then
-!	             cls_ndx = mod( hfile(file)%inst_map(hfile(file)%histout_ind(15,1)+n-1),1000 )
-!	             fldname = hfile(file)%hist_inst(hfile(file)%histout_ind(15,1)+n-1)
-!	             l       = explicit%clsmap(cls_ndx)
-!	             wrk(:)  = loss(:,cls_ndx) * hnm(:)
-!	             call outfld( fldname, wrk, plonl, ip, lat, file )
+!              do n = 1,hfile(file)%histout_cnt(15,1)
+!                 class = hfile(file)%inst_map(hfile(file)%histout_ind(15,1)+n-1)/1000
+!                 if( class == 1 ) then
+!                    cls_ndx = mod( hfile(file)%inst_map(hfile(file)%histout_ind(15,1)+n-1),1000 )
+!                    fldname = hfile(file)%hist_inst(hfile(file)%histout_ind(15,1)+n-1)
+!                    l       = explicit%clsmap(cls_ndx)
+!                    wrk(:)  = loss(:,cls_ndx) * hnm(:)
+!                    call outfld( fldname, wrk, plonl, ip, lat, file )
 !                 end if
 !              end do
 !           end if
 !           if( hfile(file)%histout_cnt(15,2) > 0 ) then
-!	       do n = 1,hfile(file)%histout_cnt(15,2)
-!	          class = hfile(file)%timav_map(hfile(file)%histout_ind(15,2)+n-1)/1000
-!	          if( class == 1 ) then
-!	             cls_ndx = mod( hfile(file)%timav_map(hfile(file)%histout_ind(15,2)+n-1),1000 )
-!	             fldname = hfile(file)%hist_timav(hfile(file)%histout_ind(15,2)+n-1)
-!	             l       = explicit%clsmap(cls_ndx)
-!	             wrk(:)  = loss(:,cls_ndx) * hnm(:)
-!	             call outfld( fldname, wrk, plonl, ip, lat, file )
+!              do n = 1,hfile(file)%histout_cnt(15,2)
+!                 class = hfile(file)%timav_map(hfile(file)%histout_ind(15,2)+n-1)/1000
+!                 if( class == 1 ) then
+!                    cls_ndx = mod( hfile(file)%timav_map(hfile(file)%histout_ind(15,2)+n-1),1000 )
+!                    fldname = hfile(file)%hist_timav(hfile(file)%histout_ind(15,2)+n-1)
+!                    l       = explicit%clsmap(cls_ndx)
+!                    wrk(:)  = loss(:,cls_ndx) * hnm(:)
+!                    call outfld( fldname, wrk, plonl, ip, lat, file )
 !                 end if
 !              end do
 !           end if

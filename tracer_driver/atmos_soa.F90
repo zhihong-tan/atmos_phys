@@ -16,6 +16,7 @@ module atmos_soa_mod
 ! </CONTACT>
 !-----------------------------------------------------------------------
 
+use mpp_mod, only: input_nml_file 
 use                    fms_mod, only : file_exist,              &
                                        write_version_number,    &
                                        mpp_pe,                  &
@@ -75,8 +76,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_soa.F90,v 18.0 2010/03/02 23:34:14 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: atmos_soa.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -96,8 +97,6 @@ type(time_type),  intent(in)                        :: Time
 integer,          intent(in)                        :: axes(4)
 real, intent(in), dimension(:,:,:), optional        :: mask
 character(len=7), parameter :: mod_name = 'tracers'
-logical :: flag
-integer :: n, m
 !
 !-----------------------------------------------------------------------
 !
@@ -111,12 +110,17 @@ integer :: n, m
 !    read namelist.
 !-----------------------------------------------------------------------
       if ( file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+        read (input_nml_file, nml=secondary_organics_nml, iostat=io)
+        ierr = check_nml_error(io,'secondary_organics_nml')
+#else
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
         read  (unit, nml=secondary_organics_nml, iostat=io, end=10)
         ierr = check_nml_error(io,'secondary_organics_nml')
         end do
 10      call close_file (unit)
+#endif
       endif
 
 !---------------------------------------------------------------------
@@ -245,7 +249,6 @@ end subroutine atmos_SOA_endts
       real, dimension(size(SOA,1),size(SOA,2)) :: &
                SOA_prod, &
                xu, dayl, h, hl, hc, hred, fac_OH, fact_OH
-      real                                       :: oh, c4h10
       real, parameter                            :: wtm_C = 12.
       real, parameter                            :: wtm_C4H10 = 58.
       real, parameter                            :: yield = 0.1

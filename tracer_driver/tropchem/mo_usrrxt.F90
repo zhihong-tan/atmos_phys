@@ -23,8 +23,8 @@ implicit none
       real, parameter :: d622 = rdgas/rvgas
       real, parameter :: d378 = 1. - d622     
 
-character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 18.0 2010/03/02 23:34:47 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_usrrxt.F90,v 17.0.4.2.2.1.2.1 2010/03/25 00:36:29 pjp Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -39,7 +39,7 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !-----------------------------------------------------------------------
-! 	... Dummy arguments
+!       ... Dummy arguments
 !-----------------------------------------------------------------------
       integer,          intent(in) :: verbose
 
@@ -145,7 +145,7 @@ logical                       :: module_is_initialized = .false.
       real, parameter :: fare = 4.*3.14*rm1*rm1              ! each mean particle(r=0.1u) area   cm2/cm3
       real, parameter :: dg   = 0.1                          ! mole diffusion =0.1 cm2 (Dentener, 1993)
 
-      integer  ::  i, k
+      integer  ::  k
       real     ::  amas
       real, dimension( SIZE(temp,1) ) :: &
                    tp, &                    ! 300/t
@@ -153,9 +153,6 @@ logical                       :: module_is_initialized = .false.
                    ko, &
                    kinf, &
                    fc, &
-!                  relhum, &                ! relative humidity
-                   satq, &                  ! saturation specific humidity
-                   satv, &                  ! saturation vapor pressure
                    xr, &                    ! factor to increase particle radii depending on rel hum
                    sur, &                   ! sulfate particle surface area (cm^2/cm^3)
                    exp_fac, &               ! vector exponential
@@ -550,7 +547,6 @@ logical                       :: module_is_initialized = .false.
         real, intent(in), dimension(:) :: pmid, temp, sh
         real, intent(out), dimension(:) :: rh
         
-        real, dimension(size(temp)) :: esat
 !-----------------------------------------------------------------------
 !       Calculate RELATIVE humidity.
 !       This is calculated according to the formula:

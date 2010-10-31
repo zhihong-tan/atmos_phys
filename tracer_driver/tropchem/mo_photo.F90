@@ -85,8 +85,8 @@
       logical :: use_tdep_jvals, use_solar_cycle
       real    :: o3_column_top, jno_scale_factor
 
-character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 18.0 2010/03/02 23:34:42 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 17.0.2.1.4.1 2010/03/17 20:27:12 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -473,7 +473,6 @@ logical                       :: module_is_initialized = .false.
       integer  ::  i, k, m                 ! indicies
       integer  ::  plev
       logical  ::  zagtz(size(coszen))     ! zenith angle > 0 flag array
-      real     ::  secant
       real     ::  t500, t200              ! 500 & 200 mb temperatures
       real, dimension(size(zmid,2)) :: &
                    fac1, &                ! work space for J(no) calc

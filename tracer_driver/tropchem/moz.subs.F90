@@ -4,8 +4,8 @@ implicit none
       private
       public :: setrxt
 
-character(len=128), parameter :: version     = '$Id: moz.subs.F90,v 18.0 2010/03/02 23:34:53 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201006 $'
+character(len=128), parameter :: version     = '$Id: moz.subs.F90,v 17.0.2.1.4.1 2010/03/17 20:27:12 wfc Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -295,7 +295,6 @@ logical                       :: module_is_initialized = .false.
 !--------------------------------------------------------------------
 !       ... Local variables
 !--------------------------------------------------------------------
-      real    ::  im(plnplv)
 
       rate(:, 44) = rate(:, 44) * inv(:, 2)
       rate(:, 45) = rate(:, 45) * inv(:, 3)
@@ -578,7 +577,6 @@ logical                       :: module_is_initialized = .false.
 !----------------------------------------------------------------------------
 !        ... Local variables
 !----------------------------------------------------------------------------
-      integer ::  k
 
       end subroutine mak_grp_vmr
 
